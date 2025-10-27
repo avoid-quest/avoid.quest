@@ -1,12 +1,9 @@
-"use client";
-
-import { Button } from "@workspace/ui/components/button";
+import AvoidLogo from "@workspace/ui/components/avoid-logo";
 
 export default function Home() {
   return (
-    <div className="flex h-screen flex-col items-center justify-center gap-4">
-      <h1 className="font-bold text-2xl">Hello World</h1>
-      <Button variant="outline">just a button</Button>
+    <div className="flex h-full flex-col items-center justify-center gap-4">
+      <AvoidLogo className="size-64" />
     </div>
   );
 }

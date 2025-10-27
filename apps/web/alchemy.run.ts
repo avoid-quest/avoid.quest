@@ -4,7 +4,7 @@ import { config } from "dotenv";
 
 config({ path: "./.env" });
 
-const app = await alchemy("my-app");
+const app = await alchemy("avoid.quest");
 
 export const web = await Nextjs("web", {
   bindings: {},

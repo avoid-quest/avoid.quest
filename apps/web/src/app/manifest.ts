@@ -2,9 +2,9 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "my-app",
-    short_name: "my-app",
-    description: "my-app",
+    name: "avoid.quest",
+    short_name: "avoid.quest",
+    description: "avoid.quest",
     start_url: "/new",
     display: "standalone",
     background_color: "#ffffff",

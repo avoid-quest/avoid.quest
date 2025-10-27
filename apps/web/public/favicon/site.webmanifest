@@ -1,6 +1,6 @@
 {
-  "name": "my-app",
-  "short_name": "my-app",
+  "name": "avoid.quest",
+  "short_name": "avoid.quest",
   "icons": [
     {
       "src": "/web-app-manifest-192x192.png",

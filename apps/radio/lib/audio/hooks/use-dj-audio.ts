@@ -1,0 +1,349 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { FilterConfig } from "@/components/audio/filter-control";
+import type { Radio } from "../../types";
+import { AudioManager } from "../audio-manager";
+
+const CROSSFADE_POSITION = 0.5;
+
+export function useDjAudio() {
+  const audioManager = AudioManager.getInstance();
+
+  const [leftRadio, setLeftRadioState] = useState<Radio | null>(null);
+  const [rightRadio, setRightRadioState] = useState<Radio | null>(null);
+  const [crossfadePosition, setCrossfadePosition] =
+    useState(CROSSFADE_POSITION);
+  const [leftVolume, setLeftVolume] = useState(1);
+  const [rightVolume, setRightVolume] = useState(1);
+  const [leftIsPlaying, setLeftIsPlaying] = useState(false);
+  const [rightIsPlaying, setRightIsPlaying] = useState(false);
+  const [leftIsLoading, setLeftIsLoading] = useState(false);
+  const [rightIsLoading, setRightIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [masterVolume, setMasterVolume] = useState(1);
+  const [leftMuted, setLeftMuted] = useState(false);
+  const [rightMuted, setRightMuted] = useState(false);
+  const [leftFilterConfig, setLeftFilterConfig] = useState<FilterConfig>({
+    type: "lowpass",
+    frequency: 1000,
+    Q: 1,
+    gain: 0,
+    enabled: false,
+  });
+  const [rightFilterConfig, setRightFilterConfig] = useState<FilterConfig>({
+    type: "lowpass",
+    frequency: 1000,
+    Q: 1,
+    gain: 0,
+    enabled: false,
+  });
+
+  const leftSoundIdRef = useRef<string | null>(null);
+  const rightSoundIdRef = useRef<string | null>(null);
+
+  // Generate unique sound ID
+  const getSoundId = useCallback(
+    (radio: Radio, side: "left" | "right") =>
+      `dj_${side}_${radio.id || radio.name}_${Date.now()}`,
+    []
+  );
+
+  // Load sound for a specific side
+  const loadSound = useCallback(
+    async (radio: Radio, side: "left" | "right") => {
+      const soundId = getSoundId(radio, side);
+
+      try {
+        setError(null);
+
+        if (side === "left") {
+          setLeftIsLoading(true);
+        } else {
+          setRightIsLoading(true);
+        }
+
+        // Clean up existing sound
+        const existingSoundId =
+          side === "left" ? leftSoundIdRef.current : rightSoundIdRef.current;
+        if (existingSoundId) {
+          await audioManager.cleanupSound(existingSoundId);
+        }
+
+        // Create new sound
+        await audioManager.createSound(radio, soundId);
+
+        // Subscribe to state changes
+        const _unsubscribe = audioManager.subscribe(soundId, (state) => {
+          if (side === "left") {
+            setLeftIsPlaying(state.isPlaying);
+            setLeftIsLoading(state.isLoading);
+          } else {
+            setRightIsPlaying(state.isPlaying);
+            setRightIsLoading(state.isLoading);
+          }
+
+          if (state.error) {
+            setError(state.error.message);
+          }
+        });
+
+        // Update sound ID reference
+        if (side === "left") {
+          leftSoundIdRef.current = soundId;
+          setLeftRadioState(radio);
+          setLeftIsLoading(false);
+        } else {
+          rightSoundIdRef.current = soundId;
+          setRightRadioState(radio);
+          setRightIsLoading(false);
+        }
+      } catch (err) {
+        const errorMessage =
+          err instanceof Error ? err.message : "Failed to load sound";
+        setError(errorMessage);
+
+        if (side === "left") {
+          setLeftIsLoading(false);
+        } else {
+          setRightIsLoading(false);
+        }
+      }
+    },
+    [audioManager, getSoundId]
+  );
+
+  // Apply crossfade to current playbacks
+  const applyCrossfade = useCallback(() => {
+    const leftFinalVol = (1 - crossfadePosition) * leftVolume;
+    const rightFinalVol = crossfadePosition * rightVolume;
+
+    if (leftSoundIdRef.current) {
+      audioManager.setVolume(leftSoundIdRef.current, leftFinalVol);
+    }
+    if (rightSoundIdRef.current) {
+      audioManager.setVolume(rightSoundIdRef.current, rightFinalVol);
+    }
+  }, [audioManager, crossfadePosition, leftVolume, rightVolume]);
+
+  // Update crossfade when position or volumes change
+  useEffect(() => {
+    applyCrossfade();
+  }, [applyCrossfade]);
+
+  // Set left radio
+  const setLeftRadio = useCallback(
+    async (radio: Radio | null) => {
+      if (radio) {
+        await loadSound(radio, "left");
+      } else {
+        // Clean up left sound
+        if (leftSoundIdRef.current) {
+          await audioManager.cleanupSound(leftSoundIdRef.current);
+          leftSoundIdRef.current = null;
+        }
+        setLeftRadioState(null);
+        setLeftIsPlaying(false);
+        setLeftIsLoading(false);
+      }
+    },
+    [loadSound, audioManager]
+  );
+
+  // Set right radio
+  const setRightRadio = useCallback(
+    async (radio: Radio | null) => {
+      if (radio) {
+        await loadSound(radio, "right");
+      } else {
+        // Clean up right sound
+        if (rightSoundIdRef.current) {
+          await audioManager.cleanupSound(rightSoundIdRef.current);
+          rightSoundIdRef.current = null;
+        }
+        setRightRadioState(null);
+        setRightIsPlaying(false);
+        setRightIsLoading(false);
+      }
+    },
+    [loadSound, audioManager]
+  );
+
+  // Play left
+  const playLeft = useCallback(async () => {
+    if (leftSoundIdRef.current && !leftIsPlaying) {
+      try {
+        await audioManager.playSound(leftSoundIdRef.current, leftVolume);
+        applyCrossfade();
+      } catch (err) {
+        const errorMessage =
+          err instanceof Error ? err.message : "Failed to play left";
+        setError(errorMessage);
+      }
+    }
+  }, [audioManager, leftIsPlaying, leftVolume, applyCrossfade]);
+
+  // Pause left
+  const pauseLeft = useCallback(() => {
+    if (leftSoundIdRef.current) {
+      audioManager.pauseSound(leftSoundIdRef.current);
+    }
+  }, [audioManager]);
+
+  // Play right
+  const playRight = useCallback(async () => {
+    if (rightSoundIdRef.current && !rightIsPlaying) {
+      try {
+        await audioManager.playSound(rightSoundIdRef.current, rightVolume);
+        applyCrossfade();
+      } catch (err) {
+        const errorMessage =
+          err instanceof Error ? err.message : "Failed to play right";
+        setError(errorMessage);
+      }
+    }
+  }, [audioManager, rightIsPlaying, rightVolume, applyCrossfade]);
+
+  // Pause right
+  const pauseRight = useCallback(() => {
+    if (rightSoundIdRef.current) {
+      audioManager.pauseSound(rightSoundIdRef.current);
+    }
+  }, [audioManager]);
+
+  // Set left volume
+  const setLeftVolumeCallback = useCallback(
+    (volume: number) => {
+      setLeftVolume(volume);
+      applyCrossfade();
+    },
+    [applyCrossfade]
+  );
+
+  // Set right volume
+  const setRightVolumeCallback = useCallback(
+    (volume: number) => {
+      setRightVolume(volume);
+      applyCrossfade();
+    },
+    [applyCrossfade]
+  );
+
+  // Set crossfade position
+  const setCrossfadePositionCallback = useCallback(
+    (position: number) => {
+      setCrossfadePosition(position);
+      applyCrossfade();
+    },
+    [applyCrossfade]
+  );
+
+  // Master volume control
+  const setMasterVolumeCallback = useCallback(
+    (volume: number) => {
+      setMasterVolume(volume);
+      audioManager.setGlobalVolume(volume);
+    },
+    [audioManager]
+  );
+
+  // Mute controls
+  const setLeftMuteCallback = useCallback(
+    (muted: boolean) => {
+      setLeftMuted(muted);
+      if (leftSoundIdRef.current) {
+        if (muted) {
+          audioManager.muteSound(leftSoundIdRef.current);
+        } else {
+          audioManager.unmuteSound(leftSoundIdRef.current);
+        }
+      }
+    },
+    [audioManager]
+  );
+
+  const setRightMuteCallback = useCallback(
+    (muted: boolean) => {
+      setRightMuted(muted);
+      if (rightSoundIdRef.current) {
+        if (muted) {
+          audioManager.muteSound(rightSoundIdRef.current);
+        } else {
+          audioManager.unmuteSound(rightSoundIdRef.current);
+        }
+      }
+    },
+    [audioManager]
+  );
+
+  // Filter controls
+  const updateLeftFilterCallback = useCallback(
+    (config: FilterConfig) => {
+      setLeftFilterConfig(config);
+      if (leftSoundIdRef.current) {
+        audioManager.updateFilter(leftSoundIdRef.current, config);
+      }
+    },
+    [audioManager]
+  );
+
+  const updateRightFilterCallback = useCallback(
+    (config: FilterConfig) => {
+      setRightFilterConfig(config);
+      if (rightSoundIdRef.current) {
+        audioManager.updateFilter(rightSoundIdRef.current, config);
+      }
+    },
+    [audioManager]
+  );
+
+  // Cleanup on unmount
+  useEffect(() => {
+    const cleanup = async () => {
+      if (leftSoundIdRef.current) {
+        await audioManager.cleanupSound(leftSoundIdRef.current);
+        leftSoundIdRef.current = null;
+      }
+      if (rightSoundIdRef.current) {
+        await audioManager.cleanupSound(rightSoundIdRef.current);
+        rightSoundIdRef.current = null;
+      }
+    };
+
+    return () => {
+      cleanup();
+    };
+  }, [audioManager]);
+
+  return {
+    leftRadio,
+    rightRadio,
+    crossfadePosition,
+    leftVolume,
+    rightVolume,
+    leftIsPlaying,
+    rightIsPlaying,
+    leftIsLoading,
+    rightIsLoading,
+    error,
+    masterVolume,
+    leftMuted,
+    rightMuted,
+    leftFilterConfig,
+    rightFilterConfig,
+    setLeftRadio,
+    setRightRadio,
+    setCrossfadePosition: setCrossfadePositionCallback,
+    setLeftVolume: setLeftVolumeCallback,
+    setRightVolume: setRightVolumeCallback,
+    setMasterVolume: setMasterVolumeCallback,
+    setLeftMute: setLeftMuteCallback,
+    setRightMute: setRightMuteCallback,
+    updateLeftFilter: updateLeftFilterCallback,
+    updateRightFilter: updateRightFilterCallback,
+    playLeft,
+    pauseLeft,
+    playRight,
+    pauseRight,
+  };
+}

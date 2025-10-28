@@ -1,0 +1,17 @@
+{
+  "main": ".open-next/worker.js",
+  "name": "radio",
+  "compatibility_date": "2025-03-25",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "preview_urls": true,
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "observability": {
+    "logs": {
+      "enabled": true
+    }
+  }
+}

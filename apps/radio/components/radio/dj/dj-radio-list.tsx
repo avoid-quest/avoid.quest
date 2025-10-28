@@ -1,0 +1,127 @@
+"use client";
+
+import { useDraggable } from "@dnd-kit/core";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@workspace/ui/components/card";
+import { GripVertical, Volume2 } from "lucide-react";
+import type { Radio } from "@/lib/types";
+import { SettingsButton } from "../../settings/settings-button";
+import { RadioLogo } from "../radio-logo";
+import { RadioNameLink } from "../radio-name-link";
+
+type DjRadioListProps = {
+  radios: Radio[];
+};
+
+type DraggableRadioItemProps = {
+  radio: Radio;
+};
+
+function DraggableRadioItem({ radio }: DraggableRadioItemProps) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } =
+    useDraggable({
+      id: `radio-${radio.id}`,
+      data: { radio },
+    });
+
+  const style = transform
+    ? {
+        transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
+      }
+    : undefined;
+
+  return (
+    <div
+      className={`flex items-center gap-2 rounded-lg border bg-card p-3 transition-all hover:shadow-md ${
+        isDragging ? "opacity-50 shadow-lg" : ""
+      }`}
+      ref={setNodeRef}
+      style={{
+        ...style,
+        // Ensure drag operations can escape scroll containers on mobile
+        touchAction: "none",
+        // Prevent text selection during drag on mobile
+        userSelect: "none",
+        WebkitUserSelect: "none",
+      }}
+    >
+      {/* Drag Handle - Only this area is draggable */}
+      <div
+        className={`cursor-grab touch-manipulation rounded p-1 text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground active:cursor-grabbing ${
+          isDragging ? "bg-primary/20 text-primary" : ""
+        }`}
+        style={{
+          touchAction: "none",
+          // Ensure proper touch handling on mobile
+          WebkitTouchCallout: "none",
+          WebkitUserSelect: "none",
+          userSelect: "none",
+        }}
+        {...attributes}
+        {...listeners}
+      >
+        <GripVertical className="size-4 sm:size-3" />
+      </div>
+
+      {/* Radio Content - Not draggable, allows normal interaction */}
+      <div className="flex min-w-0 flex-1 items-center gap-3">
+        <div className="flex-shrink-0">
+          <RadioLogo
+            fallbackIcon={<Volume2 className="size-4 text-muted-foreground" />}
+            logoUrl={radio.logoUrl}
+            name={radio.name}
+            size="md"
+          />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="truncate font-medium text-sm">
+              <RadioNameLink radio={radio} />
+            </h3>
+          </div>
+          {radio.description && (
+            <p className="truncate text-muted-foreground text-xs">
+              {radio.description}
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function DjRadioList({ radios }: DjRadioListProps) {
+  return (
+    <Card className="w-full">
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-center">Radio Stations</CardTitle>
+          <SettingsButton />
+        </div>
+        <CardDescription>
+          Use the grip handle to drag stations to the decks above
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="p-4">
+        <div
+          className="grid max-h-80 grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+          style={{
+            touchAction: "pan-y",
+            // Ensure drag operations can escape this container
+            position: "relative",
+            zIndex: 1,
+          }}
+        >
+          {radios.map((radio) => (
+            <DraggableRadioItem key={radio.id} radio={radio} />
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}

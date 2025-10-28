@@ -10,6 +10,7 @@
     "cf-build": "turbo cf-build",
     "cf-deploy": "turbo cf-deploy",
     "cf-upload": "turbo cf-upload",
+    "cf-typegen": "turbo cf-typegen",
     "ui": "bun --filter @workspace/ui ui",
     "dev": "turbo dev",
     "build": "turbo build",

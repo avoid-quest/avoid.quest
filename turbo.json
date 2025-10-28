@@ -34,6 +34,10 @@
     "cf-upload": {
       "cache": false,
       "dependsOn": ["^cf-upload"]
+    },
+    "cf-typegen": {
+      "cache": false,
+      "dependsOn": ["^cf-typegen"]
     }
   }
 }

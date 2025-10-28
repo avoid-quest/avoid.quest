@@ -32,7 +32,6 @@ A production-ready monorepo template built with modern web technologies, featuri
 ### **Deployment & Infrastructure**
 
 - **Cloudflare Pages** deployment ready
-- **Alchemy** for infrastructure management
 - **OpenNext** for Cloudflare optimization
 - **PWA** support with web app manifest
 - **Favicon** generation and management
@@ -55,7 +54,6 @@ A production-ready monorepo template built with modern web technologies, featuri
 │       │   ├── components/    # App-specific components
 │       │   └── hooks/         # Custom hooks
 │       ├── public/            # Static assets
-│       └── alchemy.run.ts     # Deployment configuration
 ├── packages/
 │   ├── ui/                    # Shared UI components
 │   │   ├── src/
@@ -145,21 +143,9 @@ bun run ui add input
 
 ## 🚀 Deployment
 
-### **Cloudflare Pages**
+### **Cloudflare Workers**
 
-1. **Deploy with Alchemy:**
-
-```bash
-cd apps/web
-bun run deploy
-```
-
-2. **Manual deployment:**
-
-```bash
-bun run build
-# Deploy the .next folder to Cloudflare Pages
-```
+...TODO: Add deployment instructions...
 
 ### **Environment Variables**
 

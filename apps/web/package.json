@@ -6,11 +6,15 @@
     "dev": "next dev --turbo",
     "build": "next build",
     "start": "next start",
-    "fix": "bunx ultracite fix",
-    "check": "bunx ultracite check",
     "check-types": "tsc --noEmit",
-    "deploy": "alchemy deploy",
-    "destroy": "alchemy destroy"
+    "fix": "bun x ultracite fix",
+    "check": "bun x ultracite check",
+    "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
+    "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
+    "cf-build": "opennextjs-cloudflare build",
+    "cf-deploy": "opennextjs-cloudflare deploy",
+    "cf-upload": "opennextjs-cloudflare upload",
+    "cf-typegen": "wrangler types --env-interface CloudflareEnv ./cloudflare-env.d.ts"
   },
   "dependencies": {
     "babel-plugin-react-compiler": "^1.0.0",
@@ -28,7 +32,6 @@
     "@types/node": "^20.19.23",
     "@types/react": "19.2.2",
     "@types/react-dom": "19.2.2",
-    "alchemy": "^0.75.1",
     "typescript": "^5.9.3",
     "wrangler": "^4.45.0"
   },

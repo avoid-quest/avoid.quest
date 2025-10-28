@@ -18,7 +18,8 @@
       "!**/.wrangler",
       "!**/.svelte-kit",
       "!**/wrangler.jsonc",
-      "!**/.source"
+      "!**/.source",
+      "!**/cloudflare-env.d.ts"
     ]
   },
   "linter": {

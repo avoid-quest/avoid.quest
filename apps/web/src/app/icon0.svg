@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" width="200" height="200"><svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" class="size-14">
+  <circle cx="100" cy="100" r="60"></circle>
+  <path d="M40 55h120" stroke="#000" stroke-width="2"></path>
+  <path d="M60 54.5h80" stroke="#fff" stroke-width="3"></path>
+  <path d="M20 60h160" stroke="#000" stroke-width="2"></path>
+  <path d="M50 60h100" stroke="#fff" stroke-width="3"></path>
+</svg><style>@media (prefers-color-scheme: light) { :root { filter: none; } }
+@media (prefers-color-scheme: dark) { :root { filter: invert(100%); } }
+</style></svg>

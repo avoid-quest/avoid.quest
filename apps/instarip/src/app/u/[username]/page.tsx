@@ -1,0 +1,77 @@
+import { Button } from "@workspace/ui/components/button";
+import { PostsGridSkeleton } from "@workspace/ui/components/skeletons";
+import { ArrowLeft } from "lucide-react";
+import type { Metadata } from "next";
+import Link from "next/link";
+import { Suspense } from "react";
+import PostsGridVirtualized from "@/components/posts/posts-grid-virtualized";
+import { getAllUsers, getUserByUsername } from "@/lib/queries";
+import type { User } from "@/lib/types";
+
+type UserPageProps = {
+  params: Promise<{ username: string }>;
+};
+
+export async function generateStaticParams() {
+  const users = await getAllUsers();
+  return users.map((user: User) => ({
+    username: user.username,
+  }));
+}
+
+export async function generateMetadata({
+  params,
+}: UserPageProps): Promise<Metadata> {
+  const { username } = await params;
+  const user = await getUserByUsername(username);
+
+  if (!user) {
+    return {
+      title: "User not found",
+    };
+  }
+
+  return {
+    title: `${user.username} - Posts`,
+    description: `View all posts by ${user.username}.`,
+    openGraph: {
+      title: `${user.username} - Posts`,
+      description: `View all posts by ${user.username}.`,
+      type: "profile",
+    },
+  };
+}
+
+export default async function UserPage({ params }: UserPageProps) {
+  const { username } = await params;
+  const user = await getUserByUsername(username);
+
+  if (!user) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="text-center">
+          <h1 className="mb-4 font-bold text-2xl">User not found</h1>
+          <Link href="/">
+            <Button variant="outline">
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back to Feed
+            </Button>
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <h1 className="mb-4 font-bold text-2xl">@{user.username}</h1>
+
+      {/* Virtualized Posts Grid */}
+      <div className="mb-6">
+        <Suspense fallback={<PostsGridSkeleton count={8} />}>
+          <PostsGridVirtualized userId={user.id} />
+        </Suspense>
+      </div>
+    </div>
+  );
+}

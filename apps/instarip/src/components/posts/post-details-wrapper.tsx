@@ -40,7 +40,9 @@ export default function PostDetailsWrapper({
           <div className="flex flex-col gap-2">
             {postData.url && (
               <Link
-                href={postData.url}
+                href={{
+                  href: postData.url,
+                }}
                 rel="noopener noreferrer"
                 target="_blank"
               >
@@ -56,7 +58,9 @@ export default function PostDetailsWrapper({
             )}
             {postData.video_url && isVideo && (
               <Link
-                href={postData.video_url}
+                href={{
+                  href: postData.video_url,
+                }}
                 rel="noopener noreferrer"
                 target="_blank"
               >

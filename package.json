@@ -19,6 +19,7 @@
 	},
 	"dependencies": {
 		"dotenv": "^17.2.3",
+		"kysely": "^0.28.8",
 		"zod": "^4.1.12"
 	},
 	"devDependencies": {

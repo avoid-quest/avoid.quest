@@ -9,6 +9,7 @@
     "lint": "next lint",
     "fix": "bun x ultracite fix",
     "check": "bun x ultracite check",
+    "check-types": "tsc --noEmit",
     "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
     "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
     "cf-build": "opennextjs-cloudflare build",

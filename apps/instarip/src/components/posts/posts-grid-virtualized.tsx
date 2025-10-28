@@ -106,7 +106,7 @@ export default function PostsGridVirtualized({
     const observer = new IntersectionObserver(
       (entries) => {
         const [entry] = entries;
-        if (entry.isIntersecting) {
+        if (entry?.isIntersecting) {
           loadMore();
         }
       },

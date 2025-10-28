@@ -7,6 +7,9 @@ const nextConfig: NextConfig = {
   transpilePackages: ["@workspace/ui"],
 };
 
-export default nextConfig;
+if (process.env.NODE_ENV === "development") {
+  // Initialize OpenNext Cloudflare for development
+  initOpenNextCloudflareForDev();
+}
 
-initOpenNextCloudflareForDev();
+export default nextConfig;

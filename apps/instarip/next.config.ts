@@ -6,7 +6,9 @@ const QUALITY_HIGH = 90;
 
 const nextConfig: NextConfig = {
   /* config options here */
-  // cacheComponents: true,
+  typedRoutes: true,
+  reactCompiler: true,
+  transpilePackages: ["@workspace/ui"],
   serverExternalPackages: ["@libsql/isomorphic-ws"],
   images: {
     remotePatterns: [

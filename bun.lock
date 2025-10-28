@@ -25,6 +25,7 @@
         "@tanstack/react-virtual": "^3.13.12",
         "@workspace/typescript-config": "workspace:*",
         "@workspace/ui": "workspace:*",
+        "babel-plugin-react-compiler": "^1.0.0",
         "kysely": "^0.28.8",
         "kysely-libsql": "^0.7.1",
         "next": "^16.0.0",

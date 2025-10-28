@@ -20,6 +20,7 @@
   "dependencies": {
     "@workspace/ui": "workspace:*",
     "@workspace/typescript-config": "workspace:*",
+    "babel-plugin-react-compiler": "^1.0.0",
     "@libsql/client": "^0.15.15",
     "@opennextjs/cloudflare": "^1.11.0",
     "@tanstack/react-virtual": "^3.13.12",

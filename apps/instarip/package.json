@@ -23,6 +23,7 @@
     "@opennextjs/cloudflare": "^1.11.0",
     "@tanstack/react-virtual": "^3.13.12",
     "kysely-libsql": "^0.7.1",
+    "kysely": "^0.28.8",
     "next": "^16.0.0",
     "next-themes": "^0.4.6",
     "nuqs": "^2.7.2",

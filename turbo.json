@@ -22,6 +22,18 @@
     "dev": {
       "cache": false,
       "persistent": true
+    },
+    "cf-build": {
+      "cache": false,
+      "dependsOn": ["^cf-build"]
+    },
+    "cf-deploy": {
+      "cache": false,
+      "dependsOn": ["^cf-deploy"]
+    },
+    "cf-upload": {
+      "cache": false,
+      "dependsOn": ["^cf-upload"]
     }
   }
 }

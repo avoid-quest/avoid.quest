@@ -17,32 +17,36 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-export const metadata: Metadata = {
-  title: "Radio Proxy",
-  description: "Anonymize your radio listening",
-  manifest: "/site.webmanifest",
-  appleWebApp: {
-    capable: true,
-    statusBarStyle: "black-translucent",
-    title: "Radio Proxy",
-  },
-  icons: {
-    icon: [
-      { url: "/favicon-16x16.png", sizes: "16x16", type: "image/png" },
-      { url: "/favicon-32x32.png", sizes: "32x32", type: "image/png" },
-    ],
-    apple: [
-      { url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
-    ],
-  },
-};
+import appleIcon from "@workspace/ui/assets/favicon/apple-icon.png";
+import favicon from "@workspace/ui/assets/favicon/favicon.ico";
+import icon0 from "@workspace/ui/assets/favicon/icon0.svg";
+import icon1 from "@workspace/ui/assets/favicon/icon1.png";
 
-export const viewport = {
-  width: "device-width",
-  initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
-  themeColor: "#1a1a1a",
+export const metadata: Metadata = {
+  title: "radio - avoid.quest",
+  description: "Enhanced internet radio",
+  manifest: "https://avoid.quest/manifest.json",
+  icons: [
+    {
+      rel: "icon",
+      type: "image/x-icon",
+      url: favicon.src,
+    },
+    {
+      rel: "apple-touch-icon",
+      url: appleIcon.src,
+    },
+    {
+      rel: "icon",
+      type: "image/svg+xml",
+      url: icon0.src,
+    },
+    {
+      rel: "icon",
+      type: "image/png",
+      url: icon1.src,
+    },
+  ],
 };
 
 export default function RootLayout({
@@ -53,30 +57,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        <meta content="yes" name="mobile-web-app-capable" />
-        <meta content="yes" name="apple-mobile-web-app-capable" />
-        <meta
-          content="black-translucent"
-          name="apple-mobile-web-app-status-bar-style"
-        />
-        <link
-          href="/apple-touch-icon.png"
-          rel="apple-touch-icon"
-          sizes="180x180"
-        />
-        <link
-          href="/favicon-32x32.png"
-          rel="icon"
-          sizes="32x32"
-          type="image/png"
-        />
-        <link
-          href="/favicon-16x16.png"
-          rel="icon"
-          sizes="16x16"
-          type="image/png"
-        />
-        <link href="/site.webmanifest" rel="manifest" />
+        <meta content="radio.avoid.quest" name="apple-mobile-web-app-title" />
       </head>
       <body
         className={cn(
@@ -92,7 +73,7 @@ export default function RootLayout({
           enableSystem
         >
           <SWRegister />
-          <div className="relative h-screen bg-background dark:bg-gradient-to-br dark:from-darkest dark:via-darker dark:to-dark">
+          <div className="relative h-screen bg-background dark:bg-linear-to-br dark:from-darkest dark:via-darker dark:to-dark">
             <Header />
             <main className="relative z-10 h-full overflow-y-auto pt-20">
               {children}

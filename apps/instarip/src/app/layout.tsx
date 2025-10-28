@@ -15,10 +15,37 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+import appleIcon from "@workspace/ui/assets/favicon/apple-icon.png";
+import favicon from "@workspace/ui/assets/favicon/favicon.ico";
+import icon0 from "@workspace/ui/assets/favicon/icon0.svg";
+import icon1 from "@workspace/ui/assets/favicon/icon1.png";
+
 export const metadata: Metadata = {
-  title: "instarip",
+  title: "instarip - avoid.quest",
   description:
     "A tool designed to help non-Instagram users stay updated with content that's exclusively published on Instagram.",
+  manifest: "https://avoid.quest/manifest.json",
+  icons: [
+    {
+      rel: "icon",
+      type: "image/x-icon",
+      url: favicon.src,
+    },
+    {
+      rel: "apple-touch-icon",
+      url: appleIcon.src,
+    },
+    {
+      rel: "icon",
+      type: "image/svg+xml",
+      url: icon0.src,
+    },
+    {
+      rel: "icon",
+      type: "image/png",
+      url: icon1.src,
+    },
+  ],
 };
 
 export default function RootLayout({
@@ -29,7 +56,10 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
-        <meta content="avoid.quest" name="apple-mobile-web-app-title" />
+        <meta
+          content="instarip.avoid.quest"
+          name="apple-mobile-web-app-title"
+        />
       </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} dark antialiased`}

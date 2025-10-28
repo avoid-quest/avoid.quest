@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { Providers } from "@/components/providers";
-import "@workspace/ui/globals.css";
 import { Toaster } from "sonner";
 import { Footer } from "@/components/footer";
+import { Providers } from "@/components/providers";
+
+import "@workspace/ui/globals.css";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -15,9 +16,36 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+import appleIcon from "@workspace/ui/assets/favicon/apple-icon.png";
+import favicon from "@workspace/ui/assets/favicon/favicon.ico";
+import icon0 from "@workspace/ui/assets/favicon/icon0.svg";
+import icon1 from "@workspace/ui/assets/favicon/icon1.png";
+
 export const metadata: Metadata = {
   title: "avoid.quest",
   description: "avoid.quest",
+  manifest: "https://avoid.quest/manifest.json",
+  icons: [
+    {
+      rel: "icon",
+      type: "image/x-icon",
+      url: favicon.src,
+    },
+    {
+      rel: "apple-touch-icon",
+      url: appleIcon.src,
+    },
+    {
+      rel: "icon",
+      type: "image/svg+xml",
+      url: icon0.src,
+    },
+    {
+      rel: "icon",
+      type: "image/png",
+      url: icon1.src,
+    },
+  ],
 };
 
 export default function RootLayout({

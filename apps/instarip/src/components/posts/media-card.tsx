@@ -1,5 +1,6 @@
 "use client";
 
+import type { Doc } from "@workspace/backend/convex/_generated/dataModel";
 import { Button } from "@workspace/ui/components/button";
 import { Card, CardContent, CardHeader } from "@workspace/ui/components/card";
 import {
@@ -15,13 +16,12 @@ import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
 import { formatCompactDate } from "@/lib/date-utils";
-import type { MediaItem, Post } from "@/lib/types";
 import UserLink from "../user-link";
 
 type MediaCardProps = {
   className?: string;
-  post: Post;
-  mediaItems?: MediaItem[];
+  post: Doc<"posts">;
+  mediaItems?: Doc<"media_items">[];
   username?: string;
   isViewer?: boolean;
 };
@@ -29,7 +29,7 @@ type MediaCardProps = {
 export default function MediaCard({
   className,
   post,
-  mediaItems = [],
+  mediaItems,
   username,
   isViewer = false,
 }: MediaCardProps) {
@@ -43,7 +43,7 @@ export default function MediaCard({
 
   // Create media array for carousels
   const mediaArray =
-    mediaItems?.length > 0
+    mediaItems && mediaItems.length > 0
       ? mediaItems
           .map((item) => ({ url: item.url, type: item.type }))
           .filter((item) => item.url)

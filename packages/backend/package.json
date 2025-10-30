@@ -1,0 +1,18 @@
+{
+  "name": "@workspace/backend",
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "convex dev",
+    "dev:setup": "convex dev --configure --until-success"
+  },
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "devDependencies": {
+    "@types/node": "^22.18.13",
+    "typescript": " ^5.9.3"
+  },
+  "dependencies": {
+    "convex": " ^1.28.0"
+  }
+}

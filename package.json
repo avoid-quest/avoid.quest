@@ -2,16 +2,20 @@
   "name": "avoid.quest",
   "private": true,
   "type": "module",
-  "workspaces": [
-    "apps/*",
-    "packages/*"
-  ],
+  "workspaces": {
+    "packages": [
+      "apps/*",
+      "packages/*"
+    ]
+  },
   "scripts": {
     "cf-build": "turbo cf-build",
     "cf-deploy": "turbo cf-deploy",
     "cf-upload": "turbo cf-upload",
     "cf-typegen": "turbo cf-typegen",
     "ui": "bun --filter @workspace/ui ui",
+    "dev:server": "turbo -F @workspace/backend dev",
+    "dev:setup": "turbo -F @workspace/backend dev:setup",
     "dev": "turbo dev",
     "build": "turbo build",
     "fix": "turbo fix",
@@ -26,8 +30,9 @@
   "devDependencies": {
     "@biomejs/biome": "2.3.0",
     "@cloudflare/workers-types": "^4.20251014.0",
-    "@types/node": "^22.18.12",
-    "tsdown": "^0.15.11",
+    "@types/bun": "latest",
+    "@types/node": "^22.18.13",
+    "tsdown": "^0.15.12",
     "turbo": "^2.5.8",
     "ultracite": "6.0.4"
   },

@@ -12,6 +12,12 @@ export const getUserById = query({
   handler: async (ctx, { id }) => await ctx.db.get(id),
 });
 
+export const getUsersByIds = query({
+  args: { ids: v.array(v.id("users")) },
+  handler: async (ctx, { ids }) =>
+    await Promise.all(ids.map(async (id) => await ctx.db.get(id))),
+});
+
 export const getUserByUsername = query({
   args: { username: v.string() },
   handler: async (ctx, { username }) =>

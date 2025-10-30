@@ -23,6 +23,15 @@ export const getPostById = query({
   handler: async (ctx, { id }) => await ctx.db.get(id),
 });
 
+export const getPostsByUserId = query({
+  args: { userId: v.id("users") },
+  handler: async (ctx, { userId }) =>
+    await ctx.db
+      .query("posts")
+      .withIndex("by_user_id", (q) => q.eq("users", [userId]))
+      .collect(),
+});
+
 export const getPostByShortcode = query({
   args: { shortcode: v.string() },
   handler: async (ctx, { shortcode }) =>

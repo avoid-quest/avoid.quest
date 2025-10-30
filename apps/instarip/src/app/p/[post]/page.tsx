@@ -1,38 +1,30 @@
+import { api } from "@workspace/backend/convex/_generated/api";
 import { Button } from "@workspace/ui/components/button";
 import { Skeleton } from "@workspace/ui/components/skeleton";
+import { fetchQuery } from "convex/nextjs";
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { Suspense } from "react";
 import MediaCard from "@/components/posts/media-card";
 import PostDetailsWrapper from "@/components/posts/post-details-wrapper";
-import {
-  getAllPosts,
-  getMediaItemByPostId,
-  getPostByShortcodeWithUsername,
-} from "@/lib/queries";
-import type { MediaItem, Post } from "@/lib/types";
 
 type PostPageProps = {
   params: Promise<{ post: string }>;
 };
 
-export async function generateStaticParams() {
-  const posts = await getAllPosts();
-  const params = posts
-    .filter((post: Post) => post.shortcode !== null)
-    .map((post: Post) => ({ post: post.shortcode }));
-  return params;
-}
+// export async function generateStaticParams() {
+//   const posts = await getAllPosts();
+//   const params = posts
+//     .filter((post: Post) => post.shortcode !== null)
+//     .map((post: Post) => ({ post: post.shortcode }));
+//   return params;
+// }
 
 export default async function PostPage({ params }: PostPageProps) {
   const { post } = await params;
-  const postData = await getPostByShortcodeWithUsername(post);
-
-  // Fetch media items for carousel posts
-  let mediaItems: MediaItem[] = [];
-  if (postData && postData.media_type === "carousel") {
-    mediaItems = await getMediaItemByPostId(postData.int_id);
-  }
+  const postData = await fetchQuery(api.posts.getPostByShortcode, {
+    shortcode: post,
+  });
 
   if (!postData) {
     return (
@@ -50,6 +42,9 @@ export default async function PostPage({ params }: PostPageProps) {
     );
   }
 
+  const mediaItems = await fetchQuery(api.media_items.getMediaItemsByPostId, {
+    postId: postData._id,
+  });
   const isVideo = postData.is_video || postData.media_type === "video";
 
   return (
@@ -89,11 +84,7 @@ export default async function PostPage({ params }: PostPageProps) {
             </div>
           }
         >
-          <PostDetailsWrapper
-            isVideo={isVideo}
-            postData={postData}
-            username={postData.username}
-          />
+          <PostDetailsWrapper isVideo={isVideo} postData={postData} />
         </Suspense>
       </div>
     </div>

@@ -3,7 +3,6 @@ import Link from "next/link";
 
 export default function UserLink({
   username,
-  children,
 }: {
   username: string;
   children?: React.ReactNode;
@@ -19,9 +18,6 @@ export default function UserLink({
           <ArrowUpRight className="h-3 w-3" />
         </span>
       </Link>
-      <p className="ml-2 text-start text-muted-foreground text-xs">
-        {children}
-      </p>
     </div>
   );
 }

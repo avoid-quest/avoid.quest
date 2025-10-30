@@ -1,20 +1,21 @@
+import { api } from "@workspace/backend/convex/_generated/api";
+import type { Doc } from "@workspace/backend/convex/_generated/dataModel";
 import { Button } from "@workspace/ui/components/button";
 import { PostsGridSkeleton } from "@workspace/ui/components/skeletons";
+import { fetchQuery } from "convex/nextjs";
 import { ArrowLeft } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
-import PostsGridVirtualized from "@/components/posts/posts-grid-virtualized";
-import { getAllUsers, getUserByUsername } from "@/lib/queries";
-import type { User } from "@/lib/types";
+import PostCard from "@/components/posts/post-card";
 
 type UserPageProps = {
   params: Promise<{ username: string }>;
 };
 
 export async function generateStaticParams() {
-  const users = await getAllUsers();
-  return users.map((user: User) => ({
+  const users = await fetchQuery(api.users.getUsers, {});
+  return users.map((user: Doc<"users">) => ({
     username: user.username,
   }));
 }
@@ -23,7 +24,7 @@ export async function generateMetadata({
   params,
 }: UserPageProps): Promise<Metadata> {
   const { username } = await params;
-  const user = await getUserByUsername(username);
+  const user = await fetchQuery(api.users.getUserByUsername, { username });
 
   if (!user) {
     return {
@@ -44,7 +45,7 @@ export async function generateMetadata({
 
 export default async function UserPage({ params }: UserPageProps) {
   const { username } = await params;
-  const user = await getUserByUsername(username);
+  const user = await fetchQuery(api.users.getUserByUsername, { username });
 
   if (!user) {
     return (
@@ -62,14 +63,21 @@ export default async function UserPage({ params }: UserPageProps) {
     );
   }
 
+  const userPosts = await fetchQuery(api.posts.getPostsByUserId, {
+    userId: user?._id,
+  });
+
   return (
     <div>
       <h1 className="mb-4 font-bold text-2xl">@{user.username}</h1>
 
-      {/* Virtualized Posts Grid */}
       <div className="mb-6">
         <Suspense fallback={<PostsGridSkeleton count={8} />}>
-          <PostsGridVirtualized userId={user.id} />
+          <div className="flex flex-wrap items-center justify-center gap-4 p-24">
+            {userPosts?.map((post) => (
+              <PostCard key={post._id} post={post} />
+            ))}
+          </div>
         </Suspense>
       </div>
     </div>

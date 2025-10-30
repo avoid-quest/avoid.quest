@@ -1,27 +1,37 @@
+"use client";
+
+import { api } from "@workspace/backend/convex/_generated/api";
+import type { Doc } from "@workspace/backend/convex/_generated/dataModel";
 import { Button } from "@workspace/ui/components/button";
+import { useQuery } from "convex/react";
 import { ExternalLink, PlayIcon } from "lucide-react";
 import Link from "next/link";
 import { formatCompactDate } from "@/lib/date-utils";
-import type { Post } from "@/lib/types";
 import UserLink from "../user-link";
 
 type PostDetailsWrapperProps = {
-  postData: Post;
+  postData: Doc<"posts">;
   isVideo: boolean;
-  username: string;
 };
 
 export default function PostDetailsWrapper({
   postData,
   isVideo,
-  username,
 }: PostDetailsWrapperProps) {
+  const username = useQuery(api.users.getUsersByIds, { ids: postData.users });
+
   return (
     <div className="flex max-h-[calc(100vh-10rem)] flex-col justify-start overflow-hidden">
       <div className="no-scrollbar space-y-6 overflow-auto">
-        <UserLink username={username || "username"}>
-          {formatCompactDate(postData.timestamp)}
-        </UserLink>
+        <div className="flex flex-col items-start gap-1">
+          {username?.map((user) => (
+            <UserLink key={user?._id} username={user?.username || ""} />
+          ))}
+          <p className="ml-2 text-start text-muted-foreground text-xs">
+            {" "}
+            {formatCompactDate(postData.timestamp)}
+          </p>
+        </div>
         {/* Caption */}
         {postData.caption && (
           <div className="rounded-lg border bg-card p-4">

@@ -26,6 +26,7 @@ export default defineSchema({
     .index("by_timestamp", ["timestamp"])
     .index("by_event_date", ["event_date"])
     .index("by_shortcode", ["shortcode"])
+    .index("by_user_id", ["users"])
     .index("by_sent", ["sent"]),
   media_items: defineTable({
     url: v.string(),

@@ -1,3 +1,4 @@
+import { file } from "bun";
 import { startScheduler } from "../scheduler";
 import {
   handleAdminCommand,
@@ -44,8 +45,17 @@ export async function runCli(): Promise<number> {
     }
 
     if (args.command === "version") {
-      // Version would come from package.json, for now just show a message
-      console.log("Scraper v0.1.0");
+      // Read version from package.json
+      try {
+        const packageJson = await file(
+          new URL("../../package.json", import.meta.url)
+        ).json();
+        const version = packageJson.version || "unknown";
+        console.log(`Scraper v${version}`);
+      } catch (error) {
+        console.error("Failed to read version from package.json:", error);
+        console.log("Scraper v0.1.0");
+      }
       return 0;
     }
 

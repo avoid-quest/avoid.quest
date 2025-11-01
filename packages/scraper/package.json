@@ -6,6 +6,11 @@
   "private": true,
   "scripts": {
     "build": "bun build src/cli/index.ts --compile --outfile scraper",
+    "build:linux": "bun build src/cli/index.ts --compile --target linux-x64 --outfile scraper-linux",
+    "build:macos-x64": "bun build src/cli/index.ts --compile --target darwin-x64 --outfile scraper-macos-x64",
+    "build:macos-arm64": "bun build src/cli/index.ts --compile --target darwin-arm64 --outfile scraper-macos-arm64",
+    "build:windows": "bun build src/cli/index.ts --compile --target windows-x64 --outfile scraper-windows.exe",
+    "build:all": "bun run build:linux && bun run build:macos-x64 && bun run build:macos-arm64 && bun run build:windows",
     "cli": "bun run src/cli/index.ts",
     "start": "bun run src/cli/index.ts start",
     "scrape": "bun run src/cli/index.ts scrape",

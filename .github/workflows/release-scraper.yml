@@ -1,0 +1,163 @@
+name: Release Scraper
+
+on:
+ push:
+  branches:
+   - main
+  paths:
+   - "packages/scraper/**"
+   - ".changeset/**"
+   - "packages/scraper/package.json"
+ pull_request:
+  branches:
+   - main
+  paths:
+   - "packages/scraper/**"
+   - ".changeset/**"
+
+concurrency: ${{ github.workflow }}-${{ github.ref }}
+
+jobs:
+ create-version-pr:
+  name: Create Version PR
+  runs-on: ubuntu-latest
+  # Only run on push to main (not on PRs)
+  if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+  steps:
+   - name: Checkout Repository
+     uses: actions/checkout@v4
+     with:
+      fetch-depth: 0
+
+   - name: Setup Bun
+     uses: oven-sh/setup-bun@v2
+     with:
+      bun-version: latest
+
+   - name: Install Dependencies
+     run: bun install
+
+   - name: Create Release Pull Request
+     uses: changesets/action@v1
+     with:
+      version: bun changeset version
+      commit: "chore: version packages"
+      title: "chore: version packages"
+     env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+ build-and-release:
+  name: Build and Release
+  runs-on: ubuntu-latest
+  # Only run when version PR is merged (detected by checking if package.json version changed or commit message)
+  if: |
+   github.event_name == 'push' &&
+   github.ref == 'refs/heads/main'
+  steps:
+   - name: Checkout Repository
+     uses: actions/checkout@v4
+     with:
+      fetch-depth: 2
+
+   - name: Setup Bun
+     uses: oven-sh/setup-bun@v2
+     with:
+      bun-version: latest
+
+   - name: Install Dependencies
+     run: bun install
+
+   - name: Check if Version Changed
+     id: version_check
+     run: |
+      cat > /tmp/get-version.js << 'EOF'
+      const file = await Bun.file('packages/scraper/package.json').json();
+      console.log(file.version);
+      EOF
+
+      CURRENT_VERSION=$(bun /tmp/get-version.js)
+
+      # Try to get previous version
+      PREVIOUS_VERSION=""
+      if git show HEAD~1:packages/scraper/package.json > /tmp/prev-package.json 2>/dev/null; then
+        cat > /tmp/get-prev-version.js << 'EOF'
+        const file = await Bun.file('/tmp/prev-package.json').json();
+        console.log(file.version);
+        EOF
+        PREVIOUS_VERSION=$(bun /tmp/get-prev-version.js)
+      fi
+
+      COMMIT_MSG="${{ github.event.head_commit.message }}"
+      IS_VERSION_COMMIT=false
+
+      # Check if version changed or commit message indicates versioning
+      if [[ "$CURRENT_VERSION" != "$PREVIOUS_VERSION" ]] || \
+         [[ "$COMMIT_MSG" == *"chore: version packages"* ]] || \
+         [[ "$COMMIT_MSG" == *"Version Packages"* ]]; then
+        IS_VERSION_COMMIT=true
+      fi
+
+      echo "should_release=$IS_VERSION_COMMIT" >> $GITHUB_OUTPUT
+      echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+      echo "Previous: $PREVIOUS_VERSION, Current: $CURRENT_VERSION, Should release: $IS_VERSION_COMMIT"
+
+   - name: Get Version
+     id: get_version
+     if: steps.version_check.outputs.should_release == 'true'
+     run: |
+      cat > /tmp/get-version.js << 'EOF'
+      const file = await Bun.file('packages/scraper/package.json').json();
+      console.log(file.version);
+      EOF
+      VERSION=$(bun /tmp/get-version.js)
+      echo "version=$VERSION" >> $GITHUB_OUTPUT
+      echo "Version: $VERSION"
+
+   - name: Build Linux x64
+     if: steps.version_check.outputs.should_release == 'true'
+     run: |
+      cd packages/scraper
+      bun run build:linux
+
+   - name: Build macOS x64
+     if: steps.version_check.outputs.should_release == 'true'
+     run: |
+      cd packages/scraper
+      bun run build:macos-x64
+
+   - name: Build macOS ARM64
+     if: steps.version_check.outputs.should_release == 'true'
+     run: |
+      cd packages/scraper
+      bun run build:macos-arm64
+
+   - name: Build Windows x64
+     if: steps.version_check.outputs.should_release == 'true'
+     run: |
+      cd packages/scraper
+      bun run build:windows
+
+   - name: Create GitHub Release
+     if: steps.version_check.outputs.should_release == 'true'
+     uses: softprops/action-gh-release@v2
+     with:
+      tag_name: scraper-v${{ steps.get_version.outputs.version }}
+      name: Scraper v${{ steps.get_version.outputs.version }}
+      body: |
+       Release of Scraper v${{ steps.get_version.outputs.version }}
+
+       ## Downloads
+
+       - **Linux x64**: `scraper-linux`
+       - **macOS x64**: `scraper-macos-x64`
+       - **macOS ARM64**: `scraper-macos-arm64`
+       - **Windows x64**: `scraper-windows.exe`
+      files: |
+       packages/scraper/scraper-linux
+       packages/scraper/scraper-macos-x64
+       packages/scraper/scraper-macos-arm64
+       packages/scraper/scraper-windows.exe
+      draft: false
+      prerelease: false
+     env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

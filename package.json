@@ -30,6 +30,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.3.0",
+    "@changesets/cli": "^2.29.7",
     "@cloudflare/workers-types": "^4.20251014.0",
     "@types/bun": "latest",
     "@types/node": "^22.18.13",

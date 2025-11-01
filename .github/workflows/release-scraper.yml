@@ -103,9 +103,9 @@ jobs:
           tag_name: ${{ steps.tag.outputs.tag }}
           name: Scraper v${{ steps.version_check.outputs.version }}
           files: |
-            packages/scraper/ig-scraper-linux
-            packages/scraper/ig-scraper-macos-x64
-            packages/scraper/ig-scraper-macos-arm64
-            packages/scraper/ig-scraper-windows.exe
+            packages/scraper/out/ig-scraper-linux
+            packages/scraper/out/ig-scraper-macos-x64
+            packages/scraper/out/ig-scraper-macos-arm64
+            packages/scraper/out/ig-scraper-windows.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

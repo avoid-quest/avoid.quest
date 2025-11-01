@@ -1,5 +1,8 @@
-import { file } from "bun";
 import { startScheduler } from "../scheduler";
+
+// PACKAGE_VERSION is injected at build time via --define flag
+declare const PACKAGE_VERSION: string;
+
 import {
   handleAdminCommand,
   handleScrapeCommand,
@@ -45,17 +48,10 @@ export async function runCli(): Promise<number> {
     }
 
     if (args.command === "version") {
-      // Read version from package.json
-      try {
-        const packageJson = await file(
-          new URL("../../package.json", import.meta.url)
-        ).json();
-        const version = packageJson.version || "unknown";
-        console.log(`Scraper v${version}`);
-      } catch (error) {
-        console.error("Failed to read version from package.json:", error);
-        console.log("Scraper v0.1.0");
-      }
+      // Version is injected at build time via --define PACKAGE_VERSION
+      const version =
+        typeof PACKAGE_VERSION !== "undefined" ? PACKAGE_VERSION : "unknown";
+      console.log(`Scraper v${version}`);
       return 0;
     }
 

@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
 
 export const getPosts = query({
   args: { limit: v.number() },
@@ -69,7 +70,7 @@ export const upsertPost = mutation({
     users: v.array(v.id("users")),
     timestamp: v.number(),
     event_date: v.optional(v.number()),
-    sent: v.boolean(),
+    sent: v.optional(v.boolean()),
     sentAt: v.optional(v.number()),
   },
   handler: async (
@@ -93,7 +94,33 @@ export const upsertPost = mutation({
     }
   ) => {
     if (id) {
-      await ctx.db.patch(id, {
+      // Update existing post - preserve sent, sentAt, and event_date if not provided
+      const existing = await ctx.db.get(id);
+      if (!existing) {
+        throw new Error(`Post with id ${id} not found`);
+      }
+
+      // Merge users arrays - add new users if they don't already exist
+      const existingUsers = existing.users ?? [];
+      const mergedUsers = [...new Set([...existingUsers, ...users])];
+
+      // Only update sent/sentAt/event_date if explicitly provided (not undefined)
+      const patchData: {
+        ig_id: string;
+        shortcode: string;
+        display_url: string;
+        video_url?: string;
+        thumbnail_url?: string;
+        caption: string;
+        is_video: boolean;
+        url: string;
+        media_type: "image" | "video" | "carousel";
+        users: Array<Id<"users">>;
+        timestamp: number;
+        event_date?: number;
+        sent?: boolean;
+        sentAt?: number;
+      } = {
         ig_id,
         shortcode,
         display_url,
@@ -103,12 +130,22 @@ export const upsertPost = mutation({
         is_video,
         url,
         media_type,
-        users,
+        users: mergedUsers,
         timestamp,
-        event_date,
-        sent,
-        sentAt,
-      });
+      };
+
+      // Only patch optional fields if they are explicitly provided
+      if (event_date !== undefined) {
+        patchData.event_date = event_date;
+      }
+      if (sent !== undefined) {
+        patchData.sent = sent;
+      }
+      if (sentAt !== undefined) {
+        patchData.sentAt = sentAt;
+      }
+
+      await ctx.db.patch(id, patchData);
       return id;
     }
     return await ctx.db.insert("posts", {
@@ -124,7 +161,7 @@ export const upsertPost = mutation({
       users,
       timestamp,
       event_date,
-      sent,
+      sent: sent ?? false,
       sentAt,
     });
   },

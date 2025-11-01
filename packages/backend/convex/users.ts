@@ -54,15 +54,31 @@ export const upsertUser = mutation({
     { id, username, profile_url, to_be_scraped, last_scraped_at }
   ) => {
     if (id) {
-      await ctx.db.patch(id, {
-        username,
-        profile_url,
+      // Only update fields that are explicitly provided (not undefined)
+      // Never overwrite username with empty string
+      const patchData: {
+        profile_url?: string;
+        to_be_scraped: boolean;
+        last_scraped_at?: number;
+        username?: string;
+      } = {
         to_be_scraped,
-        last_scraped_at,
-      });
+      };
+
+      if (username !== undefined && username !== "") {
+        patchData.username = username;
+      }
+      if (profile_url !== undefined) {
+        patchData.profile_url = profile_url;
+      }
+      if (last_scraped_at !== undefined) {
+        patchData.last_scraped_at = last_scraped_at;
+      }
+
+      await ctx.db.patch(id, patchData);
       return id;
     }
-    if (!username) {
+    if (!username || username === "") {
       throw new Error("Username is required");
     }
     return await ctx.db.insert("users", {

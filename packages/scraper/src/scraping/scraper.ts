@@ -35,7 +35,6 @@ export async function updateUserLastScraped(
 ): Promise<void> {
   await getHttpClient().mutation(api.users.upsertUser, {
     id: userId,
-    username: "",
     to_be_scraped: true,
     last_scraped_at: lastScrapedAt,
   });
@@ -66,6 +65,8 @@ async function processPost(
     shortcode: post.shortcode,
   });
 
+  // When updating existing posts, don't overwrite sent, sentAt, or event_date
+  // Only pass these fields when creating new posts
   const postId = await getHttpClient().mutation(api.posts.upsertPost, {
     id: existing?._id,
     ig_id: post.id,
@@ -73,26 +74,25 @@ async function processPost(
     display_url: post.display_url,
     video_url: post.video_url,
     thumbnail_url: post.thumbnail_url,
-    caption: post.caption,
+    caption: post.caption, // Caption is updated when re-scraping
     is_video: post.is_video,
     url: post.url,
     media_type: post.media_type,
     users: [userId],
     timestamp: post.timestampSec,
-    event_date: undefined,
-    sent: false,
-    sentAt: undefined,
+    // Don't pass event_date, sent, or sentAt when updating - they will be preserved
+    // When creating new posts, these will default to undefined/false
+    ...(existing?._id
+      ? {}
+      : { event_date: undefined, sent: false, sentAt: undefined }),
   });
 
-  for (const m of post.media_items) {
-    await getHttpClient().mutation(api.media_items.upsertMediaItem, {
-      url: m.url,
-      type: m.type,
-      width: m.width,
-      height: m.height,
-      post_id: postId,
-    });
-  }
+  // Sync media items: updates existing, adds new, removes deleted ones
+  // This ensures media items stay in sync with the scraped data
+  await getHttpClient().mutation(api.media_items.syncMediaItemsForPost, {
+    post_id: postId,
+    media_items: post.media_items,
+  });
 }
 
 async function processUser(
@@ -310,6 +310,7 @@ export async function scrapeAndSaveSinglePost(
     });
 
     // Save post to database
+    // When updating existing posts, don't overwrite sent, sentAt, or event_date
     const postId = await getHttpClient().mutation(api.posts.upsertPost, {
       id: existing?._id,
       ig_id: post.id,
@@ -317,27 +318,25 @@ export async function scrapeAndSaveSinglePost(
       display_url: post.display_url,
       video_url: post.video_url,
       thumbnail_url: post.thumbnail_url,
-      caption: post.caption,
+      caption: post.caption, // Caption is updated when re-scraping
       is_video: post.is_video,
       url: post.url,
       media_type: post.media_type,
       users: [userId],
       timestamp: post.timestampSec,
-      event_date: undefined,
-      sent: false,
-      sentAt: undefined,
+      // Don't pass event_date, sent, or sentAt when updating - they will be preserved
+      // When creating new posts, these will default to undefined/false
+      ...(existing?._id
+        ? {}
+        : { event_date: undefined, sent: false, sentAt: undefined }),
     });
 
-    // Save media items
-    for (const item of post.media_items) {
-      await getHttpClient().mutation(api.media_items.upsertMediaItem, {
-        url: item.url,
-        type: item.type,
-        width: item.width,
-        height: item.height,
-        post_id: postId,
-      });
-    }
+    // Sync media items: updates existing, adds new, removes deleted ones
+    // This ensures media items stay in sync with the scraped data
+    await getHttpClient().mutation(api.media_items.syncMediaItemsForPost, {
+      post_id: postId,
+      media_items: post.media_items,
+    });
 
     return {
       success: true,

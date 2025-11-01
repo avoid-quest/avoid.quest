@@ -9,6 +9,7 @@
     ]
   },
   "scripts": {
+    "scraper": "cd packages/scraper && bun run",
     "cf-build": "turbo cf-build",
     "cf-deploy": "turbo cf-deploy",
     "cf-upload": "turbo cf-upload",

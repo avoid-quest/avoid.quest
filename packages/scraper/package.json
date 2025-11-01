@@ -5,6 +5,7 @@
   "type": "module",
   "private": true,
   "scripts": {
+    "build": "bun build src/cli/index.ts --compile --outfile scraper",
     "cli": "bun run src/cli/index.ts",
     "start": "bun run src/cli/index.ts start",
     "scrape": "bun run src/cli/index.ts scrape",

@@ -32,20 +32,16 @@ export const upsertMediaItem = mutation({
     width: v.optional(v.number()),
     height: v.optional(v.number()),
     post_id: v.id("posts"),
-    legacy_post_id: v.optional(v.number()),
   },
-  handler: async (
-    ctx,
-    { id, url, type, width, height, post_id, legacy_post_id }
-  ) => {
+  handler: async (ctx, { id, url, type, width, height, post_id }) => {
     if (id) {
-      return await ctx.db.patch(id, {
+      await ctx.db.patch(id, {
         url,
         type,
         width,
         height,
-        legacy_post_id,
       });
+      return id;
     }
     return await ctx.db.insert("media_items", {
       url,
@@ -53,7 +49,6 @@ export const upsertMediaItem = mutation({
       width,
       height,
       post_id,
-      legacy_post_id,
     });
   },
 });

@@ -27,34 +27,49 @@ export const getUserByUsername = query({
       .first(),
 });
 
+const DEFAULT_TO_BE_SCRAPED_LIMIT = 100;
+
+export const listToBeScraped = query({
+  args: { limit: v.optional(v.number()) },
+  handler: async (ctx, { limit }) =>
+    await ctx.db
+      .query("users")
+      .withIndex("by_to_be_scraped_last_scraped_at", (q) =>
+        q.eq("to_be_scraped", true)
+      )
+      .order("asc")
+      .take(limit ?? DEFAULT_TO_BE_SCRAPED_LIMIT),
+});
+
 export const upsertUser = mutation({
   args: {
     id: v.optional(v.id("users")),
-    username: v.string(),
+    username: v.optional(v.string()),
     profile_url: v.optional(v.string()),
     to_be_scraped: v.boolean(),
     last_scraped_at: v.optional(v.number()),
-    legacy_id: v.optional(v.number()),
   },
   handler: async (
     ctx,
-    { id, username, profile_url, to_be_scraped, last_scraped_at, legacy_id }
+    { id, username, profile_url, to_be_scraped, last_scraped_at }
   ) => {
     if (id) {
-      return await ctx.db.patch(id, {
+      await ctx.db.patch(id, {
         username,
         profile_url,
         to_be_scraped,
         last_scraped_at,
-        legacy_id,
       });
+      return id;
+    }
+    if (!username) {
+      throw new Error("Username is required");
     }
     return await ctx.db.insert("users", {
       username,
       profile_url,
       to_be_scraped,
       last_scraped_at,
-      legacy_id,
     });
   },
 });

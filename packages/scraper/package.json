@@ -1,0 +1,34 @@
+{
+  "name": "@workspace/scraper",
+  "version": "0.1.0",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "cli": "bun run src/cli/index.ts",
+    "start": "bun run src/cli/index.ts start",
+    "scrape": "bun run src/cli/index.ts scrape",
+    "telegram": "bun run src/cli/index.ts telegram",
+    "start-both": "bun run src/cli/index.ts start-both",
+    "cron:start": "bun run src/cli/index.ts cron start",
+    "cron:status": "bun run src/cli/index.ts cron status",
+    "help": "bun run src/cli/index.ts help",
+    "version": "bun run src/cli/index.ts version"
+  },
+  "dependencies": {
+    "@grammyjs/auto-retry": "^2.0.2",
+    "@workspace/backend": "workspace:*",
+    "@workspace/typescript-config": "workspace:*",
+    "convex": "^1.28.0",
+    "croner": "^9.1.0",
+    "dompurify": "^3.3.0",
+    "grammy": "^1.38.3",
+    "happy-dom": "^20.0.10"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}

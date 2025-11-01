@@ -41,6 +41,15 @@ export const getPostByShortcode = query({
       .first(),
 });
 
+export const getUnsent = query({
+  args: { limit: v.number() },
+  handler: async (ctx, { limit }) =>
+    await ctx.db
+      .query("posts")
+      .withIndex("by_sent", (q) => q.eq("sent", false))
+      .take(limit),
+});
+
 export const upsertPost = mutation({
   args: {
     id: v.optional(v.id("posts")),
@@ -62,7 +71,6 @@ export const upsertPost = mutation({
     event_date: v.optional(v.number()),
     sent: v.boolean(),
     sentAt: v.optional(v.number()),
-    legacy_id: v.optional(v.number()),
   },
   handler: async (
     ctx,
@@ -82,11 +90,10 @@ export const upsertPost = mutation({
       event_date,
       sent,
       sentAt,
-      legacy_id,
     }
   ) => {
     if (id) {
-      return await ctx.db.patch(id, {
+      await ctx.db.patch(id, {
         ig_id,
         shortcode,
         display_url,
@@ -101,8 +108,8 @@ export const upsertPost = mutation({
         event_date,
         sent,
         sentAt,
-        legacy_id,
       });
+      return id;
     }
     return await ctx.db.insert("posts", {
       ig_id,
@@ -119,7 +126,6 @@ export const upsertPost = mutation({
       event_date,
       sent,
       sentAt,
-      legacy_id,
     });
   },
 });
@@ -127,4 +133,12 @@ export const upsertPost = mutation({
 export const deletePost = mutation({
   args: { id: v.id("posts") },
   handler: async (ctx, { id }) => await ctx.db.delete(id),
+});
+
+export const markSent = mutation({
+  args: { id: v.id("posts"), sentAt: v.number() },
+  handler: async (ctx, { id, sentAt }) => {
+    await ctx.db.patch(id, { sent: true, sentAt });
+    return null;
+  },
 });

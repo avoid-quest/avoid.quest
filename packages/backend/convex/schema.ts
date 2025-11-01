@@ -21,7 +21,6 @@ export default defineSchema({
     users: v.array(v.id("users")),
     sent: v.boolean(),
     sentAt: v.optional(v.number()),
-    legacy_id: v.optional(v.number()),
   })
     .index("by_timestamp", ["timestamp"])
     .index("by_event_date", ["event_date"])
@@ -38,7 +37,6 @@ export default defineSchema({
     width: v.optional(v.number()),
     height: v.optional(v.number()),
     post_id: v.id("posts"),
-    legacy_post_id: v.optional(v.number()),
   })
     .index("by_url", ["url"])
     .index("by_type", ["type"])
@@ -48,7 +46,6 @@ export default defineSchema({
     profile_url: v.optional(v.string()),
     to_be_scraped: v.boolean(),
     last_scraped_at: v.optional(v.number()),
-    legacy_id: v.optional(v.number()),
   })
     .index("by_username", ["username"])
     .index("by_to_be_scraped_last_scraped_at", [
@@ -73,6 +70,7 @@ export default defineSchema({
         active: v.boolean(),
         cron_expression: v.optional(v.string()),
         limit: v.optional(v.number()),
+        post_per_user: v.optional(v.number()),
         last_scraped_at: v.optional(v.number()),
       })
     ),

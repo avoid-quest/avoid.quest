@@ -1,0 +1,221 @@
+/** biome-ignore-all lint/complexity/noExcessiveCognitiveComplexity: just complex */
+import { createLogger } from "../infra/logger";
+import { TokenBucketLimiter } from "../infra/rateLimiter";
+import { startScheduler } from "../scheduler";
+import { InstagramScraper } from "../scraping/instagram";
+import { scrapeAndSaveSinglePost, scrapeOnce } from "../scraping/scraper";
+import { getEffectiveSettings } from "../settings";
+import { runTelegramOnce } from "../telegram";
+import type { AdminOptions, SinglePostOptions, StartOptions } from "./types";
+
+/**
+ * Handle start command - start scheduler
+ */
+export async function handleStartCommand(options: StartOptions): Promise<void> {
+  console.log("🚀 Starting Scraper - Full System");
+
+  if (options.verbose) {
+    console.log("📊 Configuration:");
+    console.log("  Mode: Full system (cron scheduler)");
+    console.log("  Cron: Automated scraping and telegram jobs");
+  }
+
+  try {
+    // Start cron scheduler
+    console.log("🕐 Starting cron scheduler...");
+    await startScheduler();
+
+    console.log("\n✅ Scraper is now running!");
+    console.log("📋 Services running:");
+    console.log("  • Cron scheduler (automated jobs)");
+    console.log("🛑 Press Ctrl+C to stop all services");
+
+    const POLL_INTERVAL_MS = 1000;
+    // Keep the process alive
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+    }
+  } catch (error) {
+    console.error("💥 Failed to start Scraper:", error);
+    process.exit(1);
+  }
+}
+
+/**
+ * Handle scrape command
+ */
+export async function handleScrapeCommand(): Promise<void> {
+  console.log("🚀 Starting Instagram scraper");
+  try {
+    await scrapeOnce();
+    console.log("✅ Scraping completed!");
+  } catch (error) {
+    console.error("💥 Fatal error during scraping:", error);
+    process.exit(1);
+  }
+}
+
+/**
+ * Handle telegram command
+ */
+export async function handleTelegramCommand(): Promise<void> {
+  console.log("📤 Sending unsent posts to Telegram");
+  try {
+    await runTelegramOnce();
+    console.log("✅ Telegram job completed successfully!");
+  } catch (error) {
+    console.error("💥 Fatal error sending to Telegram:", error);
+    process.exit(1);
+  }
+}
+
+/**
+ * Handle start-both command
+ */
+export async function handleStartBothCommand(): Promise<void> {
+  console.log("🚀 Starting both scrape and telegram jobs");
+
+  try {
+    // First, run the scrape job
+    console.log("\n🔍 Starting scrape job...");
+    await scrapeOnce();
+    console.log("✅ Scrape completed!");
+
+    // Then, run the telegram job
+    console.log("\n📤 Starting telegram job...");
+    await runTelegramOnce();
+    console.log("✅ Telegram job completed successfully!");
+
+    console.log("\n🎉 Both jobs completed successfully!");
+  } catch (error) {
+    console.error("💥 Fatal error during start-both operation:", error);
+    process.exit(1);
+  }
+}
+
+/**
+ * Handle single-post command
+ */
+export async function handleSinglePostCommand(
+  options: SinglePostOptions
+): Promise<void> {
+  console.log("📱 Starting single post scraper");
+
+  if (!options.url) {
+    console.log("❌ Please provide an Instagram post URL");
+    console.log(
+      "Usage: bun run src/cli/index.ts single-post --url <instagram_post_url>"
+    );
+    console.log(
+      "Example: bun run src/cli/index.ts single-post --url https://www.instagram.com/p/ABC123/"
+    );
+    process.exit(1);
+  }
+
+  if (options.verbose) {
+    console.log("📊 Configuration:");
+    console.log(`  Post URL: ${options.url}`);
+    console.log(`  Save to database: ${options.save !== false}`);
+  }
+
+  try {
+    if (options.save !== false) {
+      // Scrape and save to database
+      console.log("⏳ Scraping post and saving to database...");
+      const result = await scrapeAndSaveSinglePost(options.url);
+
+      if (result.success) {
+        console.log("✅ Successfully scraped and saved post to database!");
+        if (result.postId) {
+          console.log(`📊 Database Post ID: ${result.postId}`);
+        }
+      } else {
+        console.log("❌ Failed to scrape and save post:");
+        console.log(`   Error: ${result.error}`);
+        process.exit(1);
+      }
+    } else {
+      // Just scrape without saving
+      console.log("⏳ Scraping post (not saving to database)...");
+      const settings = await getEffectiveSettings();
+      const logger = createLogger(
+        !!(settings.logging?.active || process.env.DEBUG),
+        process.env.DEBUG ? "debug" : "info"
+      );
+      const DEFAULT_BURST = 3;
+      const DEFAULT_RPS = 0.5;
+      const limiter = new TokenBucketLimiter(DEFAULT_BURST, DEFAULT_RPS);
+      const scraper = new InstagramScraper(
+        {
+          minDelayMs: 2000,
+          maxDelayMs: 5000,
+          timeoutMs: 30_000,
+          postProcessingDelayMs: 2000,
+          postProcessingMaxDelayMs: 5000,
+        },
+        { limiter, logger }
+      );
+
+      const result = await scraper.getSinglePost(options.url);
+
+      if (result.success && result.post) {
+        console.log("✅ Successfully scraped post!");
+        console.log("📊 Post Data:");
+        console.log(`   ID: ${result.post.id}`);
+        console.log(`   Shortcode: ${result.post.shortcode}`);
+        console.log(`   URL: ${result.post.url}`);
+        console.log(`   Media Type: ${result.post.media_type}`);
+        console.log(`   Is Video: ${result.post.is_video}`);
+        const MAX_CAPTION_PREVIEW_LENGTH = 100;
+        const captionPreview =
+          result.post.caption.length > MAX_CAPTION_PREVIEW_LENGTH
+            ? `${result.post.caption.substring(0, MAX_CAPTION_PREVIEW_LENGTH)}...`
+            : result.post.caption;
+        console.log(`   Caption: ${captionPreview}`);
+        console.log(`   Display URL: ${result.post.display_url}`);
+        console.log(`   Media Items: ${result.post.media_items.length}`);
+        if (result.scraped_at) {
+          console.log(`   Scraped At: ${result.scraped_at}`);
+        }
+
+        if (result.post.media_items.length > 0) {
+          console.log("\n📸 Media Items:");
+          result.post.media_items.forEach((item, index) => {
+            console.log(`   ${index + 1}. ${item.type} - ${item.url}`);
+            if (item.width && item.height) {
+              console.log(`      Dimensions: ${item.width}x${item.height}`);
+            }
+          });
+        }
+      } else {
+        console.log("❌ Failed to scrape post:");
+        console.log(`   Error: ${result.error}`);
+        if (result.code) {
+          console.log(`   Code: ${result.code}`);
+        }
+        if (result.statusCode) {
+          console.log(`   Status Code: ${result.statusCode}`);
+        }
+        process.exit(1);
+      }
+    }
+  } catch (error) {
+    console.error("💥 Fatal error during single post scraping:", error);
+    process.exit(1);
+  }
+}
+
+/**
+ * Handle admin command - placeholder
+ */
+export function handleAdminCommand(options: AdminOptions): void {
+  console.log("🤖 Admin bot command");
+  console.log(
+    "⚠️  Admin bot functionality will be implemented in a future update."
+  );
+  if (options.verbose) {
+    console.log("📊 Configuration:");
+    console.log("  Mode: Admin bot (not yet implemented)");
+  }
+}

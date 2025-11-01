@@ -1,5 +1,7 @@
 "use client";
 
+import { api } from "@workspace/backend/convex/_generated/api";
+import type { Doc } from "@workspace/backend/convex/_generated/dataModel";
 import { Button } from "@workspace/ui/components/button";
 import { Card, CardContent, CardHeader } from "@workspace/ui/components/card";
 import {
@@ -10,32 +12,30 @@ import {
   CarouselPrevious,
 } from "@workspace/ui/components/carousel";
 import { cn } from "@workspace/ui/lib/utils";
+import { useQuery } from "convex/react";
 import { PlayIcon } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
 import { formatCompactDate } from "@/lib/date-utils";
-import type { MediaItem, Post } from "@/lib/types";
 import UserLink from "../user-link";
 
 type MediaCardProps = {
   className?: string;
-  post: Post;
-  mediaItems?: MediaItem[];
-  username?: string;
+  post: Doc<"posts">;
+  mediaItems?: Doc<"media_items">[];
   isViewer?: boolean;
 };
 
 export default function MediaCard({
   className,
   post,
-  mediaItems = [],
-  username,
+  mediaItems,
   isViewer = false,
 }: MediaCardProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [hasError, setHasError] = useState(false);
-
+  const users = useQuery(api.users.getUsersByIds, { ids: post.users });
   const videoUrl = post.video_url;
   const thumbnailUrl = post.thumbnail_url || post.display_url;
   const isVideo = post.is_video || post.media_type === "video";
@@ -43,7 +43,7 @@ export default function MediaCard({
 
   // Create media array for carousels
   const mediaArray =
-    mediaItems?.length > 0
+    mediaItems && mediaItems.length > 0
       ? mediaItems
           .map((item) => ({ url: item.url, type: item.type }))
           .filter((item) => item.url)
@@ -252,9 +252,14 @@ export default function MediaCard({
     >
       {/* User Header */}
       <CardHeader className="mb-2 flex flex-row items-center p-2">
-        <UserLink username={username || "username"}>
-          {formatCompactDate(post.timestamp)}
-        </UserLink>
+        <div className="flex flex-col items-start gap-1">
+          {users?.map((user) => (
+            <UserLink key={user?._id} username={user?.username || ""} />
+          ))}
+          <p className="ml-2 text-start text-muted-foreground text-xs">
+            {formatCompactDate(post.timestamp)}
+          </p>
+        </div>
       </CardHeader>
 
       {/* Media Content */}

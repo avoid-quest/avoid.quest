@@ -2,22 +2,27 @@
   "name": "avoid.quest",
   "private": true,
   "type": "module",
-  "workspaces": [
-    "apps/*",
-    "packages/*"
-  ],
+  "workspaces": {
+    "packages": [
+      "apps/*",
+      "packages/*"
+    ]
+  },
   "scripts": {
+    "scraper": "cd packages/scraper && bun run",
     "cf-build": "turbo cf-build",
     "cf-deploy": "turbo cf-deploy",
     "cf-upload": "turbo cf-upload",
     "cf-typegen": "turbo cf-typegen",
     "ui": "bun --filter @workspace/ui ui",
+    "dev:server": "turbo -F @workspace/backend dev",
+    "dev:setup": "turbo -F @workspace/backend dev:setup",
     "dev": "turbo dev",
     "build": "turbo build",
     "fix": "turbo fix",
     "check": "turbo check",
     "check-types": "turbo check-types",
-    "cleanup": "rm -rf bun.lock .turbo node_modules apps/instarip/node_modules apps/instarip/.next apps/web/node_modules apps/radio/node_modules apps/radio/.next packages/ui/node_modules"
+    "cleanup": "rm -rf bun.lock .turbo node_modules apps/instarip/node_modules apps/instarip/.next apps/web/node_modules apps/radio/node_modules apps/radio/.next packages/ui/node_modules packages/backend/node_modules packages/scraper/node_modules"
   },
   "dependencies": {
     "dotenv": "^17.2.3",
@@ -25,10 +30,12 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.3.0",
+    "@changesets/cli": "^2.29.7",
     "@cloudflare/workers-types": "^4.20251014.0",
-    "@types/node": "^22.18.12",
-    "tsdown": "^0.15.11",
-    "turbo": "^2.5.8",
+    "@types/bun": "latest",
+    "@types/node": "^22.18.13",
+    "tsdown": "^0.15.12",
+    "turbo": "^2.6.0",
     "ultracite": "6.0.4"
   },
   "packageManager": "bun@1.3.1"

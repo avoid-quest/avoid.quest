@@ -17,27 +17,25 @@
     "cf-typegen": "wrangler types --env-interface CloudflareEnv ./cloudflare-env.d.ts"
   },
   "dependencies": {
-    "@libsql/client": "^0.15.15",
     "@opennextjs/cloudflare": "^1.11.0",
     "@tanstack/react-virtual": "^3.13.12",
+    "@workspace/backend": "workspace:*",
     "@workspace/typescript-config": "workspace:*",
     "@workspace/ui": "workspace:*",
     "babel-plugin-react-compiler": "^1.0.0",
-    "kysely": "^0.28.8",
-    "kysely-libsql": "^0.7.1",
-    "next": "^16.0.0",
+    "convex": " ^1.28.0",
+    "next": "^16.0.1",
     "next-themes": "^0.4.6",
-    "nuqs": "^2.7.2",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "server-only": "^0.0.1"
   },
   "devDependencies": {
-    "@types/node": "^24.9.1",
+    "@types/node": "^22.18.13",
     "@types/react": "19.2.2",
     "@types/react-dom": "19.2.2",
     "typescript": "^5.9.3",
-    "wrangler": "^4.45.1"
+    "wrangler": "^4.45.3"
   },
   "peerDependencies": {
     "@tailwindcss/postcss": "^4.1.16",

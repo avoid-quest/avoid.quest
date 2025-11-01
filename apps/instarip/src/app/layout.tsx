@@ -1,8 +1,8 @@
 import { Toaster } from "@workspace/ui/components/sonner";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { NuqsAdapter } from "nuqs/adapters/next/app";
 import { Header } from "@/components/layout/header";
+
 import "@workspace/ui/globals.css";
 
 const geistSans = Geist({
@@ -19,6 +19,7 @@ import appleIcon from "@workspace/ui/assets/favicon/apple-icon.png";
 import favicon from "@workspace/ui/assets/favicon/favicon.ico";
 import icon0 from "@workspace/ui/assets/favicon/icon0.svg";
 import icon1 from "@workspace/ui/assets/favicon/icon1.png";
+import { Providers } from "@/components/layout/providers";
 
 export const metadata: Metadata = {
   title: "instarip - avoid.quest",
@@ -53,6 +54,9 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  if (!process.env.NEXT_PUBLIC_CONVEX_URL) {
+    throw new Error("NEXT_PUBLIC_CONVEX_URL is not set");
+  }
   return (
     <html lang="en">
       <head>
@@ -64,11 +68,11 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} dark antialiased`}
       >
-        <NuqsAdapter>
+        <Providers>
           <Header />
           <main className="container mx-auto px-4 py-8">{children}</main>
-        </NuqsAdapter>
-        <Toaster />
+          <Toaster />
+        </Providers>
       </body>
     </html>
   );

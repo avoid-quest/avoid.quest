@@ -1,0 +1,40 @@
+{
+  "name": "@workspace/scraper",
+  "version": "0.1.0",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "bun build src/cli/index.ts --compile --outfile out/scraper",
+    "build:linux": "bun build src/cli/index.ts --compile --target linux-x64 --outfile ig-scraper-linux",
+    "build:macos-x64": "bun build src/cli/index.ts --compile --target darwin-x64 --outfile ig-scraper-macos-x64",
+    "build:macos-arm64": "bun build src/cli/index.ts --compile --target darwin-arm64 --outfile ig-scraper-macos-arm64",
+    "build:windows": "bun build src/cli/index.ts --compile --target windows-x64 --outfile ig-scraper-windows.exe",
+    "build:all": "bun run build:linux && bun run build:macos-x64 && bun run build:macos-arm64 && bun run build:windows",
+    "cli": "bun run src/cli/index.ts",
+    "start": "bun run src/cli/index.ts start",
+    "scrape": "bun run src/cli/index.ts scrape",
+    "telegram": "bun run src/cli/index.ts telegram",
+    "start-both": "bun run src/cli/index.ts start-both",
+    "cron:start": "bun run src/cli/index.ts cron start",
+    "cron:status": "bun run src/cli/index.ts cron status",
+    "help": "bun run src/cli/index.ts help",
+    "version": "bun run src/cli/index.ts version"
+  },
+  "dependencies": {
+    "@grammyjs/auto-retry": "^2.0.2",
+    "@workspace/backend": "workspace:*",
+    "@workspace/typescript-config": "workspace:*",
+    "convex": "^1.28.0",
+    "croner": "^9.1.0",
+    "dompurify": "^3.3.0",
+    "grammy": "^1.38.3",
+    "happy-dom": "^20.0.10"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}

@@ -1,16 +1,18 @@
-import type { MediaItem, Post } from "@/lib/types";
+"use client";
+
+import { api } from "@workspace/backend/convex/_generated/api";
+import type { Doc } from "@workspace/backend/convex/_generated/dataModel";
+import { useQuery } from "convex/react";
 import MediaCard from "./media-card";
 
 type PostCardProps = {
-  post: Post;
-  mediaItems?: MediaItem[];
-  username?: string;
+  post: Doc<"posts">;
+  mediaItems?: Doc<"media_items">[];
 };
 
-export default function PostCard({
-  post,
-  mediaItems,
-  username,
-}: PostCardProps) {
-  return <MediaCard mediaItems={mediaItems} post={post} username={username} />;
+export default function PostCard({ post }: PostCardProps) {
+  const mediaItemsQuery = useQuery(api.media_items.getMediaItemsByPostId, {
+    postId: post._id,
+  });
+  return <MediaCard mediaItems={mediaItemsQuery} post={post} />;
 }

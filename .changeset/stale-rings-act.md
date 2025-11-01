@@ -2,7 +2,7 @@
 "@workspace/scraper": major
 ---
 
-Moved to Convex 🫠
+Moved to Convex 🫠🎉
 
 This major release represents a complete refactoring of the scraper package, migrating to Convex as the primary database backend.
 

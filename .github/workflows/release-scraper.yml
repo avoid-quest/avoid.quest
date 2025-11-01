@@ -54,13 +54,17 @@ jobs:
       - name: Check if Version Changed
         id: version_check
         run: |
+          set -e
           CURRENT_VERSION=$(bun -e "console.log(JSON.parse(await Bun.file('packages/scraper/package.json').text()).version)")
+
           PREVIOUS_VERSION=""
-          if git show HEAD~1:packages/scraper/package.json > /tmp/prev-package.json 2>/dev/null; then
-            PREVIOUS_VERSION=$(bun -e "console.log(JSON.parse(await Bun.file('/tmp/prev-package.json').text()).version)")
+          if git rev-parse HEAD~1 >/dev/null 2>&1; then
+            if git show HEAD~1:packages/scraper/package.json > /tmp/prev-package.json 2>/dev/null; then
+              PREVIOUS_VERSION=$(bun -e "console.log(JSON.parse(await Bun.file('/tmp/prev-package.json').text()).version)")
+            fi
           fi
 
-          if [ "$CURRENT_VERSION" != "$PREVIOUS_VERSION" ]; then
+          if [ -z "$PREVIOUS_VERSION" ] || [ "$CURRENT_VERSION" != "$PREVIOUS_VERSION" ]; then
             echo "version_changed=true" >> $GITHUB_OUTPUT
             echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
           else
@@ -69,21 +73,20 @@ jobs:
 
       - name: Create Git Tags
         if: steps.version_check.outputs.version_changed == 'true'
-        run: bun changeset tag
+        run: |
+          # Changesets reads from package.json and creates tags based on current version
+          bun changeset tag
 
-      - name: Get Created Tag
+      - name: Get Version and Create Tag Name
         id: tag
         if: steps.version_check.outputs.version_changed == 'true'
         run: |
+          # Read from package.json as single source of truth
+          PKG_NAME=$(bun -e "console.log(JSON.parse(await Bun.file('packages/scraper/package.json').text()).name)")
           VERSION="${{ steps.version_check.outputs.version }}"
-          # Changesets creates tags in format: package-name@version for monorepos
-          TAG_NAME=$(git tag -l "*@$VERSION" | head -n 1)
-          if [ -z "$TAG_NAME" ]; then
-            # Fallback: construct tag name from package.json name
-            PKG_NAME=$(bun -e "console.log(JSON.parse(await Bun.file('packages/scraper/package.json').text()).name)")
-            TAG_NAME="${PKG_NAME}@${VERSION}"
-          fi
+          TAG_NAME="${PKG_NAME}@${VERSION}"
           echo "tag=$TAG_NAME" >> $GITHUB_OUTPUT
+          echo "Package: $PKG_NAME, Version: $VERSION, Tag: $TAG_NAME"
 
       - name: Build All Platforms
         if: steps.version_check.outputs.version_changed == 'true'
@@ -100,9 +103,9 @@ jobs:
           tag_name: ${{ steps.tag.outputs.tag }}
           name: Scraper v${{ steps.version_check.outputs.version }}
           files: |
-            packages/scraper/scraper-linux
-            packages/scraper/scraper-macos-x64
-            packages/scraper/scraper-macos-arm64
-            packages/scraper/scraper-windows.exe
+            packages/scraper/ig-scraper-linux
+            packages/scraper/ig-scraper-macos-x64
+            packages/scraper/ig-scraper-macos-arm64
+            packages/scraper/ig-scraper-windows.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

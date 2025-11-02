@@ -31,3 +31,9 @@
   - Complete media item details on failure
   - Specific error code explanations (400, 413, 429)
   - Common causes for known Telegram API issues
+- Comprehensive test suite with 18 test cases covering:
+  - All error handling scenarios (GrammyError codes 400, 413, 429)
+  - Media group validation (count limits, URL validation)
+  - URL accessibility checks
+  - Fallback mechanisms (tryPrimaryMedia, trySingleValidMedia, sendMessage)
+  - Edge cases and integration scenarios

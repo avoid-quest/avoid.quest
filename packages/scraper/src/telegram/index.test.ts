@@ -79,7 +79,8 @@ class MockBot {
 }
 
 // Store bot instances created during tests
-let createdBots: MockBot[] = [];
+// Use an object to maintain reference across module mock closures
+const botRegistry = { bots: [] as MockBot[] };
 
 // Mock InputMediaBuilder
 const MockInputMediaBuilder = {
@@ -180,7 +181,7 @@ mock.module("grammy", () => ({
   Bot: class extends MockBot {
     constructor(token: string) {
       super(token);
-      createdBots.push(this);
+      botRegistry.bots.push(this);
     }
   } as any,
   GrammyError: MockGrammyError,
@@ -209,7 +210,7 @@ describe("Telegram Module", () => {
     originalEnvToken = process.env.TELEGRAM_BOT_TOKEN;
 
     // Reset bot instances
-    createdBots = [];
+    botRegistry.bots = [];
 
     // Create fresh mocks
     mockLogger = createMockLogger();
@@ -386,7 +387,7 @@ describe("Telegram Module", () => {
       await runTelegramOnce();
 
       // Get the bot instance that was created
-      const bot = createdBots[0];
+      const bot = botRegistry.bots[0];
       if (!bot) {
         throw new Error("Bot instance not created");
       }
@@ -445,7 +446,7 @@ describe("Telegram Module", () => {
             }
             return Promise.resolve();
           });
-          createdBots.push(this);
+          botRegistry.bots.push(this);
         }
       }
 
@@ -460,7 +461,7 @@ describe("Telegram Module", () => {
       await runTelegramOnce();
 
       // Should have tried to send both posts
-      const bot = createdBots[0];
+      const bot = botRegistry.bots[0];
       if (!bot) {
         throw new Error("Bot instance not created");
       }
@@ -478,7 +479,7 @@ describe("Telegram Module", () => {
         Bot: class extends MockBot {
           constructor(token: string) {
             super(token);
-            createdBots.push(this);
+            botRegistry.bots.push(this);
           }
         } as any,
         GrammyError: MockGrammyError,
@@ -572,7 +573,7 @@ describe("Telegram Module", () => {
 
       await runTelegramOnce();
 
-      const bot = createdBots[0];
+      const bot = botRegistry.bots[0];
       if (!bot) {
         throw new Error("Bot instance not created");
       }
@@ -614,7 +615,7 @@ describe("Telegram Module", () => {
 
       await runTelegramOnce();
 
-      const bot = createdBots[0];
+      const bot = botRegistry.bots[0];
       if (!bot) {
         throw new Error("Bot instance not created");
       }
@@ -668,7 +669,7 @@ describe("Telegram Module", () => {
 
       await runTelegramOnce();
 
-      const bot = createdBots[0];
+      const bot = botRegistry.bots[0];
       if (!bot) {
         throw new Error("Bot instance not created");
       }
@@ -728,7 +729,7 @@ describe("Telegram Module", () => {
 
       await runTelegramOnce();
 
-      const bot = createdBots[0];
+      const bot = botRegistry.bots[0];
       if (!bot) {
         throw new Error("Bot instance not created");
       }
@@ -785,7 +786,7 @@ describe("Telegram Module", () => {
               )
             )
           );
-          createdBots.push(this);
+          botRegistry.bots.push(this);
         }
       }
 
@@ -799,7 +800,7 @@ describe("Telegram Module", () => {
 
       await runTelegramOnce();
 
-      const bot = createdBots[0];
+      const bot = botRegistry.bots[0];
       if (!bot) {
         throw new Error("Bot instance not created");
       }
@@ -822,7 +823,7 @@ describe("Telegram Module", () => {
         Bot: class extends MockBot {
           constructor(token: string) {
             super(token);
-            createdBots.push(this);
+            botRegistry.bots.push(this);
           }
         } as any,
         GrammyError: MockGrammyError,
@@ -872,7 +873,7 @@ describe("Telegram Module", () => {
               )
             )
           );
-          createdBots.push(this);
+          botRegistry.bots.push(this);
         }
       }
 
@@ -886,7 +887,7 @@ describe("Telegram Module", () => {
 
       await runTelegramOnce();
 
-      const bot = createdBots[0];
+      const bot = botRegistry.bots[0];
       if (!bot) {
         throw new Error("Bot instance not created");
       }
@@ -901,7 +902,7 @@ describe("Telegram Module", () => {
         Bot: class extends MockBot {
           constructor(token: string) {
             super(token);
-            createdBots.push(this);
+            botRegistry.bots.push(this);
           }
         } as any,
         GrammyError: MockGrammyError,
@@ -951,7 +952,7 @@ describe("Telegram Module", () => {
               )
             )
           );
-          createdBots.push(this);
+          botRegistry.bots.push(this);
         }
       }
 
@@ -965,7 +966,7 @@ describe("Telegram Module", () => {
 
       await runTelegramOnce();
 
-      const bot = createdBots[0];
+      const bot = botRegistry.bots[0];
       if (!bot) {
         throw new Error("Bot instance not created");
       }
@@ -983,7 +984,7 @@ describe("Telegram Module", () => {
         Bot: class extends MockBot {
           constructor(token: string) {
             super(token);
-            createdBots.push(this);
+            botRegistry.bots.push(this);
           }
         } as any,
         GrammyError: MockGrammyError,
@@ -1022,7 +1023,7 @@ describe("Telegram Module", () => {
 
       await runTelegramOnce();
 
-      const bot = createdBots[0];
+      const bot = botRegistry.bots[0];
       if (!bot) {
         throw new Error("Bot instance not created");
       }
@@ -1072,7 +1073,7 @@ describe("Telegram Module", () => {
 
       await runTelegramOnce();
 
-      const bot = createdBots[0];
+      const bot = botRegistry.bots[0];
       if (!bot) {
         throw new Error("Bot instance not created");
       }
@@ -1120,7 +1121,7 @@ describe("Telegram Module", () => {
 
       await runTelegramOnce();
 
-      const bot = createdBots[0];
+      const bot = botRegistry.bots[0];
       if (!bot) {
         throw new Error("Bot instance not created");
       }
@@ -1164,7 +1165,7 @@ describe("Telegram Module", () => {
 
       await runTelegramOnce();
 
-      const bot = createdBots[0];
+      const bot = botRegistry.bots[0];
       if (!bot) {
         throw new Error("Bot instance not created");
       }

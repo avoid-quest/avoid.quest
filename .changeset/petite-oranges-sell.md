@@ -1,5 +1,5 @@
 ---
-"@workspace/scraper": minor
+"@workspace/scraper": patch
 ---
 
 ## Fixed

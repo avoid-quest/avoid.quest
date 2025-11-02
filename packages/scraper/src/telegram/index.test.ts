@@ -80,9 +80,10 @@ class MockBot {
 
 // Store bot instances created during tests
 // Use a function-based registry to ensure reference stability across module mock closures
+// Also store on globalThis for CI compatibility
 const getBotRegistry = (() => {
   let bots: MockBot[] = [];
-  return {
+  const registry = {
     get bots() {
       return bots;
     },
@@ -93,6 +94,11 @@ const getBotRegistry = (() => {
       bots.push(bot);
     },
   };
+  // Store on globalThis to ensure it's accessible across module boundaries in CI
+  if (typeof globalThis !== "undefined") {
+    (globalThis as any).__testBotRegistry = registry;
+  }
+  return registry;
 })();
 
 // Mock InputMediaBuilder
@@ -190,17 +196,24 @@ mock.module("../convex/client", () => ({
   },
 }));
 
-mock.module("grammy", () => ({
-  Bot: class extends MockBot {
-    constructor(token: string) {
-      super(token);
-      getBotRegistry.push(this);
-    }
-  } as any,
-  GrammyError: MockGrammyError,
-  HttpError: MockHttpError,
-  InputMediaBuilder: MockInputMediaBuilder,
-}));
+mock.module("grammy", () => {
+  // Use global registry if available (for CI), otherwise fallback to module-level
+  const registry =
+    (typeof globalThis !== "undefined" &&
+      (globalThis as any).__testBotRegistry) ||
+    getBotRegistry;
+  return {
+    Bot: class extends MockBot {
+      constructor(token: string) {
+        super(token);
+        registry.push(this);
+      }
+    } as any,
+    GrammyError: MockGrammyError,
+    HttpError: MockHttpError,
+    InputMediaBuilder: MockInputMediaBuilder,
+  };
+});
 
 mock.module("@grammyjs/auto-retry", () => ({
   autoRetry: (config: any) => mockAutoRetry(config),
@@ -222,8 +235,15 @@ describe("Telegram Module", () => {
     // Save original env
     originalEnvToken = process.env.TELEGRAM_BOT_TOKEN;
 
-    // Reset bot instances
+    // Set a default token for tests that need it (can be overridden in individual tests)
+    // This ensures getBot() doesn't return null in CI
+    process.env.TELEGRAM_BOT_TOKEN = originalEnvToken || "test_token";
+
+    // Reset bot instances - also ensure global registry is updated
     getBotRegistry.clear();
+    if (typeof globalThis !== "undefined") {
+      (globalThis as any).__testBotRegistry = getBotRegistry;
+    }
 
     // Create fresh mocks
     mockLogger = createMockLogger();
@@ -316,6 +336,7 @@ describe("Telegram Module", () => {
     });
 
     test("returns early when bot token is missing", async () => {
+      // Explicitly remove the token for this test
       process.env.TELEGRAM_BOT_TOKEN = undefined;
 
       await runTelegramOnce();
@@ -357,7 +378,10 @@ describe("Telegram Module", () => {
     });
 
     test("fetches unsent posts with correct limit", async () => {
-      process.env.TELEGRAM_BOT_TOKEN = "test_token";
+      // Ensure token is set before test runs
+      if (!process.env.TELEGRAM_BOT_TOKEN) {
+        process.env.TELEGRAM_BOT_TOKEN = "test_token";
+      }
       const mockQuery = mock(async () => []);
       mockGetHttpClient = mock(() => ({
         query: mockQuery,
@@ -459,7 +483,11 @@ describe("Telegram Module", () => {
             }
             return Promise.resolve();
           });
-          getBotRegistry.push(this);
+          const registry =
+            (typeof globalThis !== "undefined" &&
+              (globalThis as any).__testBotRegistry) ||
+            getBotRegistry;
+          registry.push(this);
         }
       }
 
@@ -492,7 +520,11 @@ describe("Telegram Module", () => {
         Bot: class extends MockBot {
           constructor(token: string) {
             super(token);
-            getBotRegistry.push(this);
+            const registry =
+              (typeof globalThis !== "undefined" &&
+                (globalThis as any).__testBotRegistry) ||
+              getBotRegistry;
+            registry.push(this);
           }
         } as any,
         GrammyError: MockGrammyError,
@@ -799,7 +831,11 @@ describe("Telegram Module", () => {
               )
             )
           );
-          getBotRegistry.push(this);
+          const registry =
+            (typeof globalThis !== "undefined" &&
+              (globalThis as any).__testBotRegistry) ||
+            getBotRegistry;
+          registry.push(this);
         }
       }
 
@@ -836,7 +872,11 @@ describe("Telegram Module", () => {
         Bot: class extends MockBot {
           constructor(token: string) {
             super(token);
-            getBotRegistry.push(this);
+            const registry =
+              (typeof globalThis !== "undefined" &&
+                (globalThis as any).__testBotRegistry) ||
+              getBotRegistry;
+            registry.push(this);
           }
         } as any,
         GrammyError: MockGrammyError,
@@ -886,7 +926,11 @@ describe("Telegram Module", () => {
               )
             )
           );
-          getBotRegistry.push(this);
+          const registry =
+            (typeof globalThis !== "undefined" &&
+              (globalThis as any).__testBotRegistry) ||
+            getBotRegistry;
+          registry.push(this);
         }
       }
 
@@ -915,7 +959,11 @@ describe("Telegram Module", () => {
         Bot: class extends MockBot {
           constructor(token: string) {
             super(token);
-            getBotRegistry.push(this);
+            const registry =
+              (typeof globalThis !== "undefined" &&
+                (globalThis as any).__testBotRegistry) ||
+              getBotRegistry;
+            registry.push(this);
           }
         } as any,
         GrammyError: MockGrammyError,
@@ -965,7 +1013,11 @@ describe("Telegram Module", () => {
               )
             )
           );
-          getBotRegistry.push(this);
+          const registry =
+            (typeof globalThis !== "undefined" &&
+              (globalThis as any).__testBotRegistry) ||
+            getBotRegistry;
+          registry.push(this);
         }
       }
 
@@ -997,7 +1049,11 @@ describe("Telegram Module", () => {
         Bot: class extends MockBot {
           constructor(token: string) {
             super(token);
-            getBotRegistry.push(this);
+            const registry =
+              (typeof globalThis !== "undefined" &&
+                (globalThis as any).__testBotRegistry) ||
+              getBotRegistry;
+            registry.push(this);
           }
         } as any,
         GrammyError: MockGrammyError,

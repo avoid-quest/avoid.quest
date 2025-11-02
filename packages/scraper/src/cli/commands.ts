@@ -1,7 +1,7 @@
 /** biome-ignore-all lint/complexity/noExcessiveCognitiveComplexity: just complex */
 import { createLogger } from "../infra/logger";
 import { TokenBucketLimiter } from "../infra/rateLimiter";
-import { startScheduler } from "../scheduler";
+import { getSchedulerStatus, startScheduler } from "../scheduler";
 import { InstagramScraper } from "../scraping/instagram";
 import { scrapeAndSaveSinglePost, scrapeOnce } from "../scraping/scraper";
 import { getEffectiveSettings } from "../settings";
@@ -25,10 +25,83 @@ export async function handleStartCommand(options: StartOptions): Promise<void> {
     console.log("🕐 Starting cron scheduler...");
     await startScheduler();
 
+    // Get scheduler status for display
+    const status = getSchedulerStatus();
+    const settings = await getEffectiveSettings();
+    const logger = createLogger(
+      !!(settings.logging?.active || process.env.DEBUG),
+      process.env.DEBUG ? "debug" : "info"
+    );
+
     console.log("\n✅ Scraper is now running!");
     console.log("📋 Services running:");
     console.log("  • Cron scheduler (automated jobs)");
-    console.log("🛑 Press Ctrl+C to stop all services");
+
+    // Display "Next Runs" section
+    console.log("\n⏰ Next Runs:");
+    if (status.scraper.active && status.scraper.nextRun) {
+      const nextRun = status.scraper.nextRun;
+      const now = new Date();
+      const diff = nextRun.getTime() - now.getTime();
+      const minutes = Math.floor(diff / (1000 * 60));
+      const hours = Math.floor(minutes / 60);
+      const days = Math.floor(hours / 24);
+
+      let timeStr: string;
+      if (days > 0) {
+        timeStr = `in ${days} day${days > 1 ? "s" : ""}`;
+      } else if (hours > 0) {
+        timeStr = `in ${hours} hour${hours > 1 ? "s" : ""}`;
+      } else if (minutes > 0) {
+        timeStr = `in ${minutes} minute${minutes > 1 ? "s" : ""}`;
+      } else {
+        timeStr = "now";
+      }
+      console.log(`  🔍 Scraper: ${timeStr} (${nextRun.toLocaleString()})`);
+      if (status.scraper.cronExpression) {
+        logger.debug(`    Cron expression: ${status.scraper.cronExpression}`);
+      }
+    } else {
+      console.log("  🔍 Scraper: Not scheduled");
+      if (!settings.scraper.active) {
+        logger.debug("    Reason: Scraper is not active in settings");
+      } else if (!settings.scraper.cron_expression) {
+        logger.debug("    Reason: Cron expression is not set");
+      }
+    }
+
+    if (status.telegram.active && status.telegram.nextRun) {
+      const nextRun = status.telegram.nextRun;
+      const now = new Date();
+      const diff = nextRun.getTime() - now.getTime();
+      const minutes = Math.floor(diff / (1000 * 60));
+      const hours = Math.floor(minutes / 60);
+      const days = Math.floor(hours / 24);
+
+      let timeStr: string;
+      if (days > 0) {
+        timeStr = `in ${days} day${days > 1 ? "s" : ""}`;
+      } else if (hours > 0) {
+        timeStr = `in ${hours} hour${hours > 1 ? "s" : ""}`;
+      } else if (minutes > 0) {
+        timeStr = `in ${minutes} minute${minutes > 1 ? "s" : ""}`;
+      } else {
+        timeStr = "now";
+      }
+      console.log(`  📤 Telegram: ${timeStr} (${nextRun.toLocaleString()})`);
+      if (status.telegram.cronExpression) {
+        logger.debug(`    Cron expression: ${status.telegram.cronExpression}`);
+      }
+    } else {
+      console.log("  📤 Telegram: Not scheduled");
+      if (!settings.telegram.active) {
+        logger.debug("    Reason: Telegram is not active in settings");
+      } else if (!settings.telegram.cron_expression) {
+        logger.debug("    Reason: Cron expression is not set");
+      }
+    }
+
+    console.log("\n🛑 Press Ctrl+C to stop all services");
 
     const POLL_INTERVAL_MS = 1000;
     // Keep the process alive

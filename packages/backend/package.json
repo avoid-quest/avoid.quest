@@ -15,6 +15,6 @@
   },
   "dependencies": {
     "@convex-dev/migrations": "^0.2.9",
-    "convex": " ^1.28.0"
+    "convex": "^1.28.1"
   }
 }

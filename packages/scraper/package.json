@@ -26,7 +26,7 @@
     "@grammyjs/auto-retry": "^2.0.2",
     "@workspace/backend": "workspace:*",
     "@workspace/typescript-config": "workspace:*",
-    "convex": "^1.28.0",
+    "convex": "^1.28.1",
     "croner": "^9.1.0",
     "dompurify": "^3.3.0",
     "grammy": "^1.38.3",

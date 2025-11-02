@@ -3,7 +3,8 @@
   "version": "0.1.0",
   "scripts": {
     "dev": "convex dev",
-    "dev:setup": "convex dev --configure --until-success"
+    "dev:setup": "convex dev --configure --until-success",
+    "deploy": "bunx convex deploy"
   },
   "author": "",
   "license": "ISC",

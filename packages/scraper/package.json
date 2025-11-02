@@ -19,7 +19,8 @@
     "cron:start": "bun run src/cli/index.ts cron start",
     "cron:status": "bun run src/cli/index.ts cron status",
     "help": "bun run src/cli/index.ts help",
-    "version": "bun run src/cli/index.ts version"
+    "version": "bun run src/cli/index.ts version",
+    "test": "bun test"
   },
   "dependencies": {
     "@grammyjs/auto-retry": "^2.0.2",

@@ -42,6 +42,10 @@
     "cf-typegen": {
       "cache": false,
       "dependsOn": ["^cf-typegen"]
+    },
+    "test": {
+      "cache": false,
+      "dependsOn": ["^build"]
     }
   }
 }

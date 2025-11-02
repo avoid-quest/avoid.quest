@@ -23,6 +23,7 @@
     "fix": "turbo fix",
     "check": "turbo check",
     "check-types": "turbo check-types",
+    "test": "turbo test",
     "cleanup": "rm -rf bun.lock .turbo node_modules apps/instarip/node_modules apps/instarip/.next apps/web/node_modules apps/radio/node_modules apps/radio/.next packages/ui/node_modules packages/backend/node_modules packages/scraper/node_modules"
   },
   "dependencies": {

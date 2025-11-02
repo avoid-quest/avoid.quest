@@ -1,283 +1,93 @@
-# Modern Monorepo Template
+# avoid.quest
 
-A production-ready monorepo template built with modern web technologies, featuring Next.js, TypeScript, Tailwind CSS, and optimized for Cloudflare deployment.
+Monorepo for avoid.quest apps. Next.js + Convex + Cloudflare.
 
-## 🚀 Features
+## Apps
 
-### **Core Technologies**
+- **instarip**: Instagram post viewer, browse scraped IG content without account
+- **radio**: PWA internet radio player, 3 modes (Multiple/Single/DJ), audio mixing
+- **web**: Landing page, links to instarip and radio
 
-- **Next.js 16** with App Router and React 19
-- **TypeScript** with strict configuration
-- **Tailwind CSS v4** with modern CSS features
-- **Bun** as the package manager and runtime
-- **Turbo** for monorepo build orchestration
+## Packages
 
-### **UI & Styling**
+- **backend**: Convex database, posts/users/media_items tables, queries/mutations
+- **scraper**: Instagram scraper CLI, cron scheduler, Telegram bot integration
+- **ui**: Shared component library, shadcn/ui + Radix UI, theme support
+- **typescript-config**: Shared TS configs for all packages
 
-- **shadcn/ui** components with Radix UI primitives
-- **Lucide React** icons
-- **next-themes** for dark/light mode support
-- **Sonner** for toast notifications
-- **tw-animate-css** for animations
-- Modern CSS with OKLCH color space
+## Tech Stack
 
-### **Development Experience**
+- Next.js 16, React 19, TypeScript
+- Convex (backend)
+- Tailwind CSS v4, shadcn/ui
+- Bun, Turbo (monorepo)
+- Cloudflare Pages (deploy)
 
-- **Biome** for linting and formatting (via Ultracite)
-- **Ultracite** for code formatting
-- **TypeScript** strict mode with comprehensive type checking
-- **Hot reload** with Turbo mode
-- **Path aliases** for clean imports
+## Connections
 
-### **Deployment & Infrastructure**
+- `scraper` → writes to `backend` → displayed in `instarip`
+- All apps use `ui` components
+- All packages use `typescript-config`
 
-- **Cloudflare Pages** deployment ready
-- **OpenNext** for Cloudflare optimization
-- **PWA** support with web app manifest
-- **Favicon** generation and management
+## Commands
 
-### **Monorepo Architecture**
-
-- **Workspace-based** package management
-- **Shared TypeScript** configurations
-- **Shared UI components** package
-- **Independent app** deployments
-- **Centralized** dependency management
-
-## 📁 Project Structure
-
-```
-├── apps/
-│   └── web/                    # Next.js web application
-│       ├── src/
-│       │   ├── app/           # App Router pages
-│       │   ├── components/    # App-specific components
-│       │   └── hooks/         # Custom hooks
-│       ├── public/            # Static assets
-├── packages/
-│   ├── ui/                    # Shared UI components
-│   │   ├── src/
-│   │   │   ├── components/    # Reusable components
-│   │   │   ├── hooks/        # Shared hooks
-│   │   │   └── styles/       # Global styles
-│   │   └── components.json    # shadcn/ui configuration
-│   └── typescript-config/     # Shared TS configurations
-│       ├── base.json         # Base TS config
-│       ├── nextjs.json       # Next.js TS config
-│       └── react-library.json # React library TS config
-├── turbo.json                 # Turbo build configuration
-├── biome.json                 # Biome linting/formatting config
-└── bunfig.toml               # Bun configuration
-```
-
-## 🛠️ Getting Started
-
-### Prerequisites
-
-- **Bun** 1.3.1+ ([Install Bun](https://bun.sh/docs/installation))
-- **Node.js** 18+ (for compatibility)
-
-### Installation
-
-1. **Clone and setup:**
+### Development
 
 ```bash
-git clone <your-repo-url>
-cd avoid.quest
-bun install
+bun install          # Install dependencies
+bun run dev          # Start all apps
+bun run dev:server   # Start Convex backend
+bun run dev:setup    # Setup Convex backend
+bun run build        # Build all
+bun run check        # Lint + type check
+bun run check-types  # Type check only
+bun run fix          # Auto-fix linting
+bun run cleanup      # Clean all node_modules and build artifacts
 ```
 
-2. **Start development:**
+### Scraper
 
 ```bash
-bun run dev
+bun scraper          # Run scraper CLI (pass commands after)
+bun scraper start    # Start full system (scraper + telegram)
+bun scraper scrape   # Run scraping once
+bun scraper telegram # Send telegram messages once
+bun scraper start-both # Run both jobs in sequence
+bun scraper cron:start # Start cron scheduler
+bun scraper cron:status # Check cron status
 ```
 
-3. **Open your browser:**
-   - Web app: http://localhost:3000
-
-### Available Scripts
-
-| Command           | Description                                |
-| ----------------- | ------------------------------------------ |
-| `bun run dev`     | Start all apps in development mode         |
-| `bun run dev:web` | Start only the web app                     |
-| `bun run build`   | Build all packages and apps                |
-| `bun run check`   | Run linting and type checking              |
-| `bun run fix`     | Auto-fix linting issues                    |
-| `bun run ui`      | Open shadcn/ui component CLI               |
-| `bun run cleanup` | Clean all build artifacts and dependencies |
-
-## 🎨 UI Components
-
-This template includes a comprehensive UI system:
-
-### **Component Library**
-
-- Built with **shadcn/ui** and **Radix UI**
-- **Class Variance Authority** for variant management
-- **Tailwind CSS** for styling
-- **TypeScript** with full type safety
-
-### **Available Components**
-
-- `Button` - Multiple variants (default, destructive, outline, secondary, ghost, link)
-- More components can be added via `bun run ui`
-
-### **Adding New Components**
+### Scraper Build (packages/scraper)
 
 ```bash
-# Add shadcn/ui components
-bun run ui add button
-bun run ui add card
-bun run ui add input
+cd packages/scraper
+bun run build        # Build for current platform
+bun run build:linux  # Build Linux binary
+bun run build:macos-x64 # Build macOS Intel binary
+bun run build:macos-arm64 # Build macOS ARM binary
+bun run build:windows # Build Windows binary
+bun run build:all    # Build all platforms
 ```
 
-## 🌙 Theme System
-
-- **Dark/Light mode** support with `next-themes`
-- **System preference** detection
-- **OKLCH color space** for better color consistency
-- **CSS custom properties** for theming
-- **Smooth transitions** between themes
-
-## 🚀 Deployment
-
-### **Cloudflare Workers**
-
-...TODO: Add deployment instructions...
-
-### **Environment Variables**
-
-Create `.env` files as needed:
+### Cloudflare
 
 ```bash
-# apps/web/.env
-NEXT_PUBLIC_APP_URL=https://your-app.pages.dev
+bun run cf-build     # Build all apps for Cloudflare
+bun run cf-deploy    # Deploy all apps to Cloudflare
+bun run cf-upload    # Upload all apps to Cloudflare
+bun run cf-typegen   # Generate Cloudflare types
 ```
 
-## 🔧 Configuration
-
-### **TypeScript**
-
-- **Strict mode** enabled
-- **Path mapping** for clean imports
-- **Shared configurations** across packages
-- **Type checking** in CI/CD
-
-### **Linting & Formatting**
-
-- **Biome** for fast linting and formatting
-- **Ultracite** for AI-ready code formatting
-- **Consistent** code style across the monorepo
-- **Auto-fix** capabilities
-
-### **Build System**
-
-- **Turbo** for efficient builds
-- **Incremental** builds with caching
-- **Parallel** task execution
-- **Dependency-aware** builds
-
-## 📦 Package Management
-
-### **Workspace Structure**
-
-- **Root workspace** manages all dependencies
-- **Package-specific** dependencies in each package
-- **Shared dependencies** hoisted to root
-- **Peer dependencies** properly configured
-
-### **Adding Dependencies**
+### Changesets
 
 ```bash
-# Add to root (shared)
-bun add <package>
-
-# Add to specific package
-bun add <package> --filter @workspace/ui
-bun add <package> --filter web
+bun changeset add     # Create new changeset
+bun changeset version # Version packages
+bun changeset tag    # Create git tags for releases
 ```
 
-## 🎯 Best Practices
-
-### **Code Organization**
-
-- **Feature-based** folder structure
-- **Shared components** in `@workspace/ui`
-- **App-specific** logic in respective apps
-- **Type definitions** centralized
-
-### **Import Aliases**
-
-```typescript
-// Use workspace aliases
-import { Button } from "@workspace/ui/components/button";
-import { cn } from "@workspace/ui/lib/utils";
-
-// Use app aliases
-import { MyComponent } from "@/components/my-component";
-```
-
-### **Component Development**
-
-- **TypeScript** for all components
-- **Proper prop types** with VariantProps
-- **Accessibility** considerations
-- **Responsive design** with Tailwind
-
-## 🔍 Troubleshooting
-
-### **Common Issues**
-
-1. **Build failures:**
+### UI Components
 
 ```bash
-bun run cleanup
-bun install
-bun run build
+bun run ui           # Open shadcn/ui CLI
 ```
-
-2. **Type errors:**
-
-```bash
-bun run check-types
-```
-
-3. **Linting issues:**
-
-```bash
-bun run fix
-```
-
-### **Performance**
-
-- **Turbo** caching for faster builds
-- **Incremental** TypeScript compilation
-- **Tree shaking** for smaller bundles
-- **Code splitting** with Next.js
-
-## 📚 Additional Resources
-
-- [Next.js Documentation](https://nextjs.org/docs)
-- [Tailwind CSS Documentation](https://tailwindcss.com/docs)
-- [shadcn/ui Documentation](https://ui.shadcn.com/)
-- [Turbo Documentation](https://turbo.build/repo/docs)
-- [Bun Documentation](https://bun.sh/docs)
-- [Cloudflare Pages Documentation](https://developers.cloudflare.com/pages/)
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Run `bun run check` to ensure quality
-5. Submit a pull request
-
-## 📄 License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
----
-
-**Happy coding! 🎉**

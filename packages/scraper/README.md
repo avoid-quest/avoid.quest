@@ -1,92 +1,17 @@
 # scraper
 
-Instagram scraper and Telegram bot integration for the avoid.quest project.
+Instagram scraper CLI with cron scheduler and Telegram bot integration.
 
-## Installation
+## Features
 
-```bash
-bun install
-```
+- Instagram scraping: fetch posts from IG users, extract media (images/videos), metadata (caption, timestamp, shortcode)
+- Convex integration: saves posts/users/media_items to backend, handles upserts, syncs media items
+- Cron scheduler: configurable schedule via Convex settings, auto-run scraping jobs
+- Telegram bot: sends unsent posts to configured chat (admin/group), rate limiting, cron-based sending, reports
+- CLI commands: `bun start` (full system), `bun scrape` (run once), `bun telegram` (send once), `bun start-both` (both)
+- Settings: telegram config (chat IDs, cron, send limits), scraper config (cron, post limits), loaded from Convex
 
-## Usage
+## Connections
 
-### Main Commands
-
-Start the full system (recommended for production):
-
-```bash
-bun start
-```
-
-Run scraping job immediately:
-
-```bash
-bun scrape
-```
-
-Run telegram job immediately:
-
-```bash
-bun telegram
-```
-
-Run both scraping and telegram jobs in sequence:
-
-```bash
-bun start-both
-```
-
-### Cron Management
-
-Start the cron scheduler:
-
-```bash
-bun run cron:start
-```
-
-Check cron job status:
-
-```bash
-bun run cron:status
-```
-
-### Other Commands
-
-Show help:
-
-```bash
-bun help
-```
-
-Show version:
-
-```bash
-bun version
-```
-
-Run CLI with custom arguments:
-
-```bash
-bun cli <command> [options]
-```
-
-For detailed help on any command:
-
-```bash
-bun cli <command> --help
-```
-
-## Project Structure
-
-```
-src/
-├── cli/              # Command-line interface
-├── scraping/         # Instagram scraping logic
-├── telegram/         # Telegram bot integration
-├── scheduler/        # Cron job scheduling
-├── settings/         # Configuration management
-├── infra/            # Infrastructure utilities
-└── convex/           # Database client
-```
-
-This project uses [Bun](https://bun.com) as the JavaScript runtime.
+- Writes to `packages/backend`: saves posts/users/media via Convex mutations
+- Data displayed in `apps/instarip`: scraped posts shown in feed

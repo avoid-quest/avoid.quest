@@ -1,4 +1,6 @@
 import type { Doc } from "@workspace/backend/convex/_generated/dataModel";
+import { Window } from "happy-dom";
+import DOMPurify from "dompurify";
 import { MAX_CAPTION_LENGTH } from "./types";
 
 /**
@@ -16,85 +18,144 @@ export function escapeHtmlEntities(text: string): string {
 /**
  * Convert Instagram @ mentions to clickable Instagram profile links
  * Only converts mentions that are NOT already inside HTML tags
+ * Uses happy-dom to properly parse HTML and avoid nested tags
  */
 export function linkMentions(html: string): string {
-  return html.replace(/@([a-zA-Z0-9._]+)/g, (match, username: string) => {
-    // Check if this @ mention is already inside an <a> tag
-    const beforeMatch = html.substring(0, html.indexOf(match));
-    const lastOpenTag = beforeMatch.lastIndexOf("<a ");
-    const lastCloseTag = beforeMatch.lastIndexOf("</a>");
+  if (!html || html.trim().length === 0) {
+    return html;
+  }
 
-    // If we're inside an <a> tag, don't convert
-    if (lastOpenTag > lastCloseTag) {
-      return match;
+  // Use happy-dom to parse HTML properly
+  const window = new Window();
+  const document = window.document;
+  
+  // Create a temporary container
+  const container = document.createElement("div");
+  container.innerHTML = html;
+
+  // Walk through text nodes and convert @ mentions
+  function processNode(node: Node): void {
+    if (node.nodeType === 3) {
+      // Text node - process for @ mentions
+      const text = node.textContent || "";
+      const mentionRegex = /@([a-zA-Z0-9._]+)/g;
+      const matches = Array.from(text.matchAll(mentionRegex));
+
+      if (matches.length > 0) {
+        // Build new content with links
+        let newContent = "";
+        let lastIndex = 0;
+
+        for (const match of matches) {
+          if (match.index === undefined) continue;
+          
+          // Add text before the mention
+          newContent += text.substring(lastIndex, match.index);
+          
+          // Create link element
+          const link = document.createElement("a");
+          const username = match[1];
+          link.href = `https://instagram.com/${username}`;
+          link.textContent = `@${username}`;
+          
+          // Add link as text representation (we'll convert to HTML later)
+          newContent += link.outerHTML;
+          
+          lastIndex = match.index + match[0].length;
+        }
+
+        // Add remaining text
+        newContent += text.substring(lastIndex);
+
+        // Replace text node with parsed HTML
+        const tempDiv = document.createElement("div");
+        tempDiv.innerHTML = newContent;
+        
+        // Replace the text node with the new nodes
+        const parent = node.parentNode;
+        if (parent) {
+          while (tempDiv.firstChild) {
+            parent.insertBefore(tempDiv.firstChild, node);
+          }
+          parent.removeChild(node);
+        }
+      }
+    } else if (node.nodeType === 1) {
+      // Element node - recursively process children
+      // Skip if it's already an <a> tag
+      if ((node as Element).tagName !== "A") {
+        const children = Array.from(node.childNodes);
+        for (const child of children) {
+          processNode(child);
+        }
+      }
     }
+  }
 
-    return `<a href="https://instagram.com/${username}">@${username}</a>`;
-  });
+  // Process all nodes in the container
+  const children = Array.from(container.childNodes);
+  for (const child of children) {
+    processNode(child);
+  }
+
+  return container.innerHTML;
 }
 
 /**
  * Sanitize HTML to prevent parsing errors in Telegram
- * Simplified version without DOMPurify dependency
+ * Uses DOMPurify to ensure valid, safe HTML
  */
 export function sanitizeHtmlForTelegram(html: string): string {
-  // Remove any unclosed or malformed HTML tags
-  let sanitized = html;
-
-  // Fix common issues:
-  // 1. Remove unclosed tags at end of string
-  sanitized = sanitized.replace(/<a[^>]*$/g, "");
-
-  // 2. Remove orphaned closing tags
-  sanitized = sanitized.replace(/<\/a>(?![^<]*<a[^>]*>)/g, "");
-
-  // 3. Ensure all <a> tags are properly closed
-  const openTags = (sanitized.match(/<a[^>]*>/g) || []).length;
-  const closeTags = (sanitized.match(/<\/a>/g) || []).length;
-
-  if (openTags > closeTags) {
-    // Remove excess opening tags
-    let excess = openTags - closeTags;
-    sanitized = sanitized.replace(/<a[^>]*>/g, (match) => {
-      if (excess > 0) {
-        excess--;
-        return "";
-      }
-      return match;
-    });
+  if (!html || html.trim().length === 0) {
+    return html;
   }
 
-  // 4. Basic validation - check for balanced tags
-  // If we have mismatched tags, convert to plain text as fallback
-  const remainingOpenTags = (sanitized.match(/<a[^>]*>/g) || []).length;
-  const remainingCloseTags = (sanitized.match(/<\/a>/g) || []).length;
+  // Create a window for DOMPurify (needed for server-side usage)
+  const window = new Window();
+  const purify = DOMPurify(window as unknown as Window & typeof globalThis);
 
-  if (remainingOpenTags !== remainingCloseTags) {
-    // If tags are still unbalanced, strip all HTML
-    return sanitized.replace(/<[^>]*>/g, "").trim();
-  }
+  // Configure DOMPurify for Telegram HTML mode
+  // Telegram supports: <b>, <i>, <u>, <s>, <a>, <code>, <pre>
+  // We only use <a> tags for links
+  const clean = purify.sanitize(html, {
+    ALLOWED_TAGS: ["a"],
+    ALLOWED_ATTR: ["href"],
+    ALLOW_DATA_ATTR: false,
+    RETURN_DOM: false,
+    RETURN_DOM_FRAGMENT: false,
+    RETURN_TRUSTED_TYPE: false,
+  });
 
-  return sanitized;
+  return clean.trim();
 }
 
 /**
  * Truncate HTML content by counting actual text content, not HTML markup
+ * Uses happy-dom to properly extract text content
  */
 function truncateHtmlContent(html: string, maxLength: number): string {
-  // Extract plain text to check length
-  const textContent = html.replace(/<[^>]*>/g, "");
+  if (!html || html.trim().length === 0) {
+    return html;
+  }
 
-  // Always truncate to be safe, accounting for HTML markup overhead
-  // Each @ mention becomes ~50 chars of HTML
-  const estimatedHtmlOverhead = (textContent.match(/@/g) || []).length * 50;
-  const safeMaxLength = maxLength - estimatedHtmlOverhead - 50; // Extra buffer
+  // Use happy-dom to extract plain text
+  const window = new Window();
+  const document = window.document;
+  const tempDiv = document.createElement("div");
+  tempDiv.innerHTML = html;
+  const textContent = tempDiv.textContent || "";
+
+  // Account for HTML markup overhead
+  // Each @ mention becomes ~50 chars of HTML, plus Instagram link at end
+  const mentionCount = (textContent.match(/@/g) || []).length;
+  const estimatedHtmlOverhead = mentionCount * 50 + 50; // Extra buffer
+  const safeMaxLength = Math.max(0, maxLength - estimatedHtmlOverhead);
 
   if (safeMaxLength <= 0) {
-    // If we don't have enough space, return empty string
     return "";
   }
 
-  // Truncate plain text first
+  // Truncate plain text
   const truncatedText = textContent.substring(0, safeMaxLength) + "...";
 
   // Escape HTML entities FIRST

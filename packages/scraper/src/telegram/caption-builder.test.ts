@@ -51,10 +51,16 @@ describe("caption-builder", () => {
   });
 
   describe("sanitizeHtmlForTelegram", () => {
-    test("removes unclosed tags", () => {
+    test("fixes unclosed tags (DOMPurify auto-closes them)", () => {
       const html = 'Hello <a href="https://example.com">World';
       const result = sanitizeHtmlForTelegram(html);
-      expect(result).not.toContain('<a href="https://example.com">');
+      // DOMPurify will auto-close the tag, which is correct behavior
+      expect(result).toContain('Hello');
+      expect(result).toContain('World');
+      // Tags should be balanced
+      const openTags = (result.match(/<a[^>]*>/g) || []).length;
+      const closeTags = (result.match(/<\/a>/g) || []).length;
+      expect(openTags).toBe(closeTags);
     });
 
     test("removes orphaned closing tags", () => {
@@ -87,6 +93,47 @@ describe("caption-builder", () => {
 
     test("handles empty string", () => {
       expect(sanitizeHtmlForTelegram("")).toBe("");
+    });
+
+    test("fixes unclosed tag that causes 'Unexpected end tag' error", () => {
+      // This pattern caused "can't parse entities: Unexpected end tag at byte offset 290"
+      const html = '<a href="https://instagram.com/user">@user</a> <a href="https://instagram.com/another">@another';
+      const result = sanitizeHtmlForTelegram(html);
+      // DOMPurify will auto-close the unclosed tag, which fixes the error
+      const openTags = (result.match(/<a[^>]*>/g) || []).length;
+      const closeTags = (result.match(/<\/a>/g) || []).length;
+      expect(openTags).toBe(closeTags);
+      // Both links should be present and properly closed
+      expect(result).toContain('instagram.com/user');
+      expect(result).toContain('instagram.com/another');
+    });
+
+    test("handles multiple unclosed tags", () => {
+      const html = '<a href="https://instagram.com/user1">@user1</a> <a href="https://instagram.com/user2">@user2 <a href="https://instagram.com/user3">@user3';
+      const result = sanitizeHtmlForTelegram(html);
+      const openTags = (result.match(/<a[^>]*>/g) || []).length;
+      const closeTags = (result.match(/<\/a>/g) || []).length;
+      expect(openTags).toBe(closeTags);
+    });
+
+    test("handles orphaned closing tags", () => {
+      const html = '</a> Hello <a href="https://instagram.com/user">@user</a>';
+      const result = sanitizeHtmlForTelegram(html);
+      // Should remove orphaned closing tag
+      expect(result).not.toMatch(/^<\/a>/);
+      const openTags = (result.match(/<a[^>]*>/g) || []).length;
+      const closeTags = (result.match(/<\/a>/g) || []).length;
+      expect(openTags).toBe(closeTags);
+    });
+
+    test("preserves valid nested structure", () => {
+      const html = '<a href="https://instagram.com/user1">@user1</a> and <a href="https://instagram.com/user2">@user2</a>';
+      const result = sanitizeHtmlForTelegram(html);
+      expect(result).toContain('instagram.com/user1');
+      expect(result).toContain('instagram.com/user2');
+      const openTags = (result.match(/<a[^>]*>/g) || []).length;
+      const closeTags = (result.match(/<\/a>/g) || []).length;
+      expect(openTags).toBe(closeTags);
     });
   });
 

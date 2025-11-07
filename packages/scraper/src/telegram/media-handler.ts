@@ -67,11 +67,37 @@ export function validateMediaGroup(
 }
 
 /**
- * Check URL accessibility with timeout
+ * Check if Instagram URL might be expired based on URL pattern
+ * Instagram CDN URLs with certain patterns are more likely to be expired
+ */
+function isLikelyExpiredInstagramUrl(url: string): boolean {
+  try {
+    const urlObj = new URL(url);
+    // Instagram CDN URLs
+    if (
+      urlObj.hostname.includes("cdninstagram.com") ||
+      urlObj.hostname.includes("fbcdn.net")
+    ) {
+      // Check for expiration indicators in query params
+      // Instagram URLs with `oe=` parameter might expire
+      // URLs older than a certain pattern might be expired
+      // This is a heuristic - actual expiration requires HTTP check
+      return false; // Don't pre-filter, let HTTP check determine
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Check URL accessibility with timeout and retry logic
+ * Improved to better detect expired Instagram URLs and handle transient errors
  */
 export async function validateMediaUrls(
   media: MediaItem[],
-  logger: Logger
+  logger: Logger,
+  retries = 1
 ): Promise<UrlValidationResult> {
   const inaccessible: Array<{ index: number; url: string; error: string }> = [];
   let accessible = 0;
@@ -82,32 +108,94 @@ export async function validateMediaUrls(
       continue;
     }
 
-    try {
-      // Quick HEAD request to check if URL is accessible
-      const response = await fetch(item.url, {
-        method: "HEAD",
-        signal: AbortSignal.timeout(5000), // 5 second timeout
-      });
+    let lastError: string | null = null;
+    let success = false;
 
-      if (!response.ok) {
-        inaccessible.push({
-          index: i,
-          url: item.url,
-          error: `HTTP ${response.status}: ${response.statusText}`,
+    // Retry logic for transient errors
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        // Quick HEAD request to check if URL is accessible
+        // Use GET for Instagram URLs as some don't support HEAD
+        const method = item.url.includes("cdninstagram.com") || item.url.includes("fbcdn.net")
+          ? "GET"
+          : "HEAD";
+
+        const response = await fetch(item.url, {
+          method,
+          signal: AbortSignal.timeout(5000), // 5 second timeout
+          headers: {
+            // Add user agent to avoid some blocking
+            "User-Agent": "Mozilla/5.0 (compatible; TelegramBot/1.0)",
+          },
         });
-      } else {
-        accessible++;
-        // Log content type if available
-        const contentType = response.headers.get("content-type");
-        if (contentType) {
-          logger.debug(`Media item ${i} (${item.type}): Content-Type: ${contentType}`);
+
+        if (!response.ok) {
+          const errorMsg = `HTTP ${response.status}: ${response.statusText}`;
+          
+          // 403 Forbidden is a strong indicator of expired/blocked URL
+          if (response.status === 403) {
+            lastError = `${errorMsg} - URL may be expired or blocked`;
+            // Don't retry 403 errors - they're permanent
+            break;
+          }
+          
+          // 404 Not Found - also permanent
+          if (response.status === 404) {
+            lastError = `${errorMsg} - URL not found`;
+            break;
+          }
+
+          // Other errors might be transient - retry
+          if (attempt < retries) {
+            lastError = errorMsg;
+            // Wait a bit before retry (exponential backoff)
+            await new Promise((resolve) => setTimeout(resolve, 100 * (attempt + 1)));
+            continue;
+          }
+
+          lastError = errorMsg;
+        } else {
+          accessible++;
+          success = true;
+          // Log content type if available
+          const contentType = response.headers.get("content-type");
+          if (contentType) {
+            logger.debug(`Media item ${i} (${item.type}): Content-Type: ${contentType}`);
+          }
+          break; // Success, no need to retry
+        }
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        
+        // Network errors might be transient - retry
+        if (
+          attempt < retries &&
+          (errorMsg.includes("timeout") ||
+            errorMsg.includes("network") ||
+            errorMsg.includes("ECONNREFUSED") ||
+            errorMsg.includes("ETIMEDOUT"))
+        ) {
+          lastError = errorMsg;
+          // Wait before retry
+          await new Promise((resolve) => setTimeout(resolve, 100 * (attempt + 1)));
+          continue;
+        }
+
+        // Permanent errors or max retries reached
+        lastError = errorMsg;
+        
+        // Check for specific error patterns
+        if (errorMsg.includes("Malformed_HTTP_Response")) {
+          lastError = `${errorMsg} - URL may be expired or server error`;
         }
       }
-    } catch (error) {
+    }
+
+    if (!success && lastError) {
       inaccessible.push({
         index: i,
         url: item.url,
-        error: error instanceof Error ? error.message : String(error),
+        error: lastError,
       });
     }
   }

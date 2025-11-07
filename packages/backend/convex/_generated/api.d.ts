@@ -10,12 +10,12 @@
 
 import type * as ai_postMetadataExtractorAgent from "../ai/postMetadataExtractorAgent.js";
 import type * as ai_telegramMessageGenerator from "../ai/telegramMessageGenerator.js";
+import type * as crons from "../crons.js";
 import type * as healthCheck from "../healthCheck.js";
 import type * as media_items from "../media_items.js";
 import type * as post_metadata from "../post_metadata.js";
 import type * as posts from "../posts.js";
 import type * as settings from "../settings.js";
-import type * as test from "../test.js";
 import type * as users from "../users.js";
 import type * as workflows_postMetadata from "../workflows/postMetadata.js";
 import type * as workflows_workflow from "../workflows/workflow.js";
@@ -37,12 +37,12 @@ import type {
 declare const fullApi: ApiFromModules<{
   "ai/postMetadataExtractorAgent": typeof ai_postMetadataExtractorAgent;
   "ai/telegramMessageGenerator": typeof ai_telegramMessageGenerator;
+  crons: typeof crons;
   healthCheck: typeof healthCheck;
   media_items: typeof media_items;
   post_metadata: typeof post_metadata;
   posts: typeof posts;
   settings: typeof settings;
-  test: typeof test;
   users: typeof users;
   "workflows/postMetadata": typeof workflows_postMetadata;
   "workflows/workflow": typeof workflows_workflow;

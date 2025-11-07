@@ -1,13 +1,9 @@
-import type { FunctionReference } from "convex/server";
 import { v } from "convex/values";
+import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { internalMutation, internalQuery } from "../_generated/server";
-import {
-  extractPostMetadata,
-  type PostMetadataExtraction,
-  postMetadataValidator,
-} from "../ai/postMetadataExtractorAgent";
-import { generateTelegramMessage } from "../ai/telegramMessageGenerator";
+import type { PostMetadataExtraction } from "../ai/postMetadataExtractorAgent";
+import { postMetadataValidator } from "../ai/postMetadataExtractorAgent";
 import { workflow } from "./workflow";
 
 /**
@@ -165,15 +161,10 @@ async function extractMetadataWithRetry(
   caption: string,
   postUrl: string
 ): Promise<PostMetadataExtraction> {
-  const extractAction = extractPostMetadata as unknown as FunctionReference<
-    "action",
-    "internal"
-  >;
-
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
       return await step.runAction(
-        extractAction,
+        internal.ai.postMetadataExtractorAgent.extractPostMetadata,
         { caption, postUrl },
         { retry: attempt < MAX_RETRIES }
       );
@@ -198,12 +189,10 @@ async function generateTelegramMessageSafe(
   postUrl: string
 ): Promise<string | undefined> {
   try {
-    const generateAction =
-      generateTelegramMessage as unknown as FunctionReference<
-        "action",
-        "internal"
-      >;
-    return await step.runAction(generateAction, { metadata, postUrl });
+    return await step.runAction(
+      internal.ai.telegramMessageGenerator.generateTelegramMessage,
+      { metadata, postUrl }
+    );
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.error("Failed to generate Telegram message:", errorMessage);
@@ -226,11 +215,10 @@ async function handleWorkflowError(
   const errorMessage = error instanceof Error ? error.message : String(error);
 
   if (metadataId) {
-    const markFailed = markMetadataFailed as unknown as FunctionReference<
-      "mutation",
-      "internal"
-    >;
-    await step.runMutation(markFailed, { metadataId, error: errorMessage });
+    await step.runMutation(internal.workflows.postMetadata.markMetadataFailed, {
+      metadataId,
+      error: errorMessage,
+    });
   }
 
   return {
@@ -250,24 +238,28 @@ export const processPostMetadata = workflow.define({
     metadataId: v.optional(v.id("post_metadata")),
     error: v.optional(v.string()),
   }),
-  handler: async (step, { postId }) => {
+  handler: async (
+    step,
+    { postId }
+  ): Promise<{
+    success: boolean;
+    metadataId?: Id<"post_metadata">;
+    error?: string;
+  }> => {
     let metadataId: Id<"post_metadata"> | undefined;
 
     try {
       // Step 1: Create or get metadata record
-      const createMetadata =
-        createOrGetMetadata as unknown as FunctionReference<
-          "mutation",
-          "internal"
-        >;
-      metadataId = await step.runMutation(createMetadata, { postId });
+      metadataId = await step.runMutation(
+        internal.workflows.postMetadata.createOrGetMetadata,
+        { postId }
+      );
 
       // Step 2: Load post data
-      const getPost = getPostData as unknown as FunctionReference<
-        "query",
-        "internal"
-      >;
-      const post = await step.runQuery(getPost, { postId });
+      const post = await step.runQuery(
+        internal.workflows.postMetadata.getPostData,
+        { postId }
+      );
 
       // Step 3: Extract metadata via agent (with retry)
       const extractedData = await extractMetadataWithRetry(
@@ -284,11 +276,10 @@ export const processPostMetadata = workflow.define({
       );
 
       // Step 5: Save metadata and link to post
-      const save = saveMetadata as unknown as FunctionReference<
-        "mutation",
-        "internal"
-      >;
-      await step.runMutation(save, {
+      if (!metadataId) {
+        throw new Error("Metadata ID is undefined");
+      }
+      await step.runMutation(internal.workflows.postMetadata.saveMetadata, {
         metadataId,
         extractedData,
         telegramMessage,

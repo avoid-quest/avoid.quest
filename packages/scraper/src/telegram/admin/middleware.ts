@@ -43,7 +43,7 @@ export function clearAdminChatIdCache(): void {
  * Admin authentication middleware
  * Silently ignores all messages from non-admin chats
  * Adds admin properties to context
- * 
+ *
  * SECURITY: This middleware MUST be applied first to ensure all updates
  * (messages, callback queries, etc.) are authenticated before processing.
  */

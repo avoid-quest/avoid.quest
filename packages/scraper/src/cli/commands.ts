@@ -11,6 +11,7 @@ import type { AdminOptions, SinglePostOptions, StartOptions } from "./types";
 const MS_PER_SECOND = 1000;
 const SECONDS_PER_MINUTE = 60;
 const MS_PER_MINUTE = MS_PER_SECOND * SECONDS_PER_MINUTE;
+const CLEAN_UP_DELAY_MS = 500;
 
 /**
  * Handle start command - start scheduler
@@ -141,7 +142,7 @@ export async function handleStartCommand(options: StartOptions): Promise<void> {
       }
       shutdownRequested = true;
       console.log(`\n🛑 Received ${signal}, shutting down gracefully...`);
-      
+
       try {
         // Stop scheduler (stops all cron jobs)
         const { stopScheduler } = await import("../scheduler");
@@ -152,12 +153,12 @@ export async function handleStartCommand(options: StartOptions): Promise<void> {
           `⚠️  Error stopping scheduler: ${error instanceof Error ? error.message : String(error)}`
         );
       }
-      
+
       // Give a moment for cleanup, then exit
       setTimeout(() => {
         console.log("👋 Goodbye!");
         process.exit(0);
-      }, 500);
+      }, CLEAN_UP_DELAY_MS);
     };
 
     process.once("SIGTERM", () => shutdown("SIGTERM"));

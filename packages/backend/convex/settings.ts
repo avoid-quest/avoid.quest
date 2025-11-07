@@ -1,9 +1,31 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { internalQuery, mutation, query } from "./_generated/server";
 
 export const getSettings = query({
   args: {},
   handler: async (ctx) => await ctx.db.query("settings").first(),
+});
+
+export const getSettingsInternal = internalQuery({
+  args: {},
+  returns: v.union(
+    v.object({
+      ai_metadata_extraction: v.optional(
+        v.object({
+          enabled: v.boolean(),
+          model: v.string(),
+          batch_size: v.number(),
+          backlog_interval_minutes: v.number(),
+          max_concurrent_workflows: v.number(),
+        })
+      ),
+    }),
+    v.null()
+  ),
+  handler: async (ctx) => {
+    const settings = await ctx.db.query("settings").first();
+    return settings;
+  },
 });
 
 export const upsertSettings = mutation({

@@ -164,15 +164,20 @@ ${postUrl ? `Post URL: ${postUrl}` : ""}
 Extract all relevant event information including dates, times, location, event type, organizer details, and any other relevant metadata.`;
 
     // Create a temporary thread for this extraction
-    const { thread } = await agent.createThread(ctx, {
+    const { threadId } = await agent.createThread(ctx, {
       title: "Post Metadata Extraction",
     });
 
-    // Generate structured object using the thread
-    const result = await thread.generateObject({
-      prompt,
-      schema: postMetadataZodSchema,
-    });
+    // Generate structured object using agent.generateObject with threadId
+    // This is the recommended pattern for workflows
+    const result = await agent.generateObject(
+      ctx,
+      { threadId },
+      {
+        prompt,
+        schema: postMetadataZodSchema,
+      }
+    );
 
     return result.object;
   },

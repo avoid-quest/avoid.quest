@@ -1,4 +1,4 @@
-import { parseArgs } from "util";
+import { parseArgs } from "node:util";
 import type {
   AdminOptions,
   Command,
@@ -18,6 +18,126 @@ import {
   validatePostsPerProfile,
   validatePostUrl,
 } from "./validators";
+
+type ParsedValues = {
+  verbose?: boolean;
+  help?: boolean;
+  version?: boolean;
+  "posts-per-profile"?: string;
+  "continue-on-error"?: boolean;
+  "use-smart-selection"?: boolean;
+  "max-users"?: string;
+  limit?: string;
+  "send-only"?: boolean;
+  start?: boolean;
+  status?: boolean;
+  trigger?: string;
+  stop?: string;
+  "start-job"?: string;
+  url?: string;
+  save?: boolean;
+  "no-save"?: boolean;
+};
+
+function parseScrapeOptions(values: ParsedValues): ScrapeOptions {
+  return {
+    postsPerProfile: values["posts-per-profile"]
+      ? Number.parseInt(values["posts-per-profile"], 10)
+      : undefined,
+    continueOnError: values["continue-on-error"] ?? true,
+    useSmartSelection: values["use-smart-selection"] ?? true,
+    maxUsers: values["max-users"]
+      ? Number.parseInt(values["max-users"], 10)
+      : undefined,
+    verbose: values.verbose ?? false,
+    help: values.help ?? false,
+  };
+}
+
+function parseTelegramOptions(values: ParsedValues): TelegramOptions {
+  return {
+    limit: values.limit ? Number.parseInt(values.limit, 10) : undefined,
+    sendOnly: values["send-only"] ?? false,
+    verbose: values.verbose ?? false,
+    help: values.help ?? false,
+  };
+}
+
+function parseCronOptions(values: ParsedValues): CronOptions {
+  return {
+    start: values.start ?? false,
+    status: values.status ?? false,
+    trigger: values.trigger,
+    stop: values.stop,
+    startJob: values["start-job"],
+    verbose: values.verbose ?? false,
+    help: values.help ?? false,
+  };
+}
+
+function parseStartBothOptions(values: ParsedValues): StartBothOptions {
+  return {
+    postsPerProfile: values["posts-per-profile"]
+      ? Number.parseInt(values["posts-per-profile"], 10)
+      : undefined,
+    continueOnError: values["continue-on-error"] ?? true,
+    useSmartSelection: values["use-smart-selection"] ?? true,
+    maxUsers: values["max-users"]
+      ? Number.parseInt(values["max-users"], 10)
+      : undefined,
+    limit: values.limit ? Number.parseInt(values.limit, 10) : undefined,
+    sendOnly: values["send-only"] ?? false,
+    verbose: values.verbose ?? false,
+    help: values.help ?? false,
+  };
+}
+
+function parseSinglePostOptions(values: ParsedValues): SinglePostOptions {
+  return {
+    url: values.url,
+    save: values["no-save"] ? false : (values.save ?? true),
+    verbose: values.verbose ?? false,
+    help: values.help ?? false,
+  };
+}
+
+function parseGlobalOptions(values: ParsedValues): GlobalOptions {
+  return {
+    verbose: values.verbose ?? false,
+    help: values.help ?? false,
+  };
+}
+
+function parseOptionsForCommand(
+  command: Command,
+  values: ParsedValues
+):
+  | ScrapeOptions
+  | TelegramOptions
+  | CronOptions
+  | StartBothOptions
+  | SinglePostOptions
+  | AdminOptions
+  | StartOptions
+  | GlobalOptions {
+  switch (command) {
+    case "scrape":
+      return parseScrapeOptions(values);
+    case "telegram":
+      return parseTelegramOptions(values);
+    case "cron":
+      return parseCronOptions(values);
+    case "start-both":
+      return parseStartBothOptions(values);
+    case "single-post":
+      return parseSinglePostOptions(values);
+    case "admin":
+    case "start":
+      return parseGlobalOptions(values);
+    default:
+      return parseGlobalOptions(values);
+  }
+}
 
 /**
  * Parse command line arguments using Bun's recommended util.parseArgs
@@ -77,79 +197,7 @@ export function parseCommandLineArgs(): ParsedArgs {
 
   const command = (positionals[0] || "help") as Command;
   const subcommand = positionals[1] as CronSubcommand | undefined;
-
-  // Parse options based on command
-  let options:
-    | ScrapeOptions
-    | TelegramOptions
-    | CronOptions
-    | StartBothOptions
-    | SinglePostOptions
-    | AdminOptions
-    | StartOptions
-    | GlobalOptions = {
-    verbose: values.verbose ?? false,
-    help: values.help ?? false,
-  };
-
-  if (command === "scrape") {
-    options = {
-      postsPerProfile: values["posts-per-profile"]
-        ? Number.parseInt(values["posts-per-profile"], 10)
-        : undefined,
-      continueOnError: values["continue-on-error"] ?? true,
-      useSmartSelection: values["use-smart-selection"] ?? true,
-      maxUsers: values["max-users"]
-        ? Number.parseInt(values["max-users"], 10)
-        : undefined,
-      verbose: values.verbose ?? false,
-      help: values.help ?? false,
-    };
-  } else if (command === "telegram") {
-    options = {
-      limit: values.limit ? Number.parseInt(values.limit, 10) : undefined,
-      sendOnly: values["send-only"] ?? false,
-      verbose: values.verbose ?? false,
-      help: values.help ?? false,
-    };
-  } else if (command === "cron") {
-    options = {
-      start: values.start ?? false,
-      status: values.status ?? false,
-      trigger: values.trigger,
-      stop: values.stop,
-      startJob: values["start-job"],
-      verbose: values.verbose ?? false,
-      help: values.help ?? false,
-    };
-  } else if (command === "start-both") {
-    options = {
-      postsPerProfile: values["posts-per-profile"]
-        ? Number.parseInt(values["posts-per-profile"], 10)
-        : undefined,
-      continueOnError: values["continue-on-error"] ?? true,
-      useSmartSelection: values["use-smart-selection"] ?? true,
-      maxUsers: values["max-users"]
-        ? Number.parseInt(values["max-users"], 10)
-        : undefined,
-      limit: values.limit ? Number.parseInt(values.limit, 10) : undefined,
-      sendOnly: values["send-only"] ?? false,
-      verbose: values.verbose ?? false,
-      help: values.help ?? false,
-    };
-  } else if (command === "single-post") {
-    options = {
-      url: values.url,
-      save: values["no-save"] ? false : (values.save ?? true),
-      verbose: values.verbose ?? false,
-      help: values.help ?? false,
-    };
-  } else if (command === "admin" || command === "start") {
-    options = {
-      verbose: values.verbose ?? false,
-      help: values.help ?? false,
-    };
-  }
+  const options = parseOptionsForCommand(command, values as ParsedValues);
 
   return {
     command,
@@ -159,16 +207,10 @@ export function parseCommandLineArgs(): ParsedArgs {
   };
 }
 
-/**
- * Validate command structure and arguments
- */
-export function validateCommand(args: ParsedArgs): {
+function validateMainCommand(command: string): {
   isValid: boolean;
   error?: string;
 } {
-  const { command, subcommand, options } = args;
-
-  // Validate main command
   const validCommands: Command[] = [
     "start",
     "scrape",
@@ -188,93 +230,137 @@ export function validateCommand(args: ParsedArgs): {
       error: `❌ Invalid command: '${command}'\n\nAvailable commands: ${validCommands.join(", ")}\n\nRun 'bun run src/cli/index.ts --help' for more information.`,
     };
   }
-
-  // Validate cron subcommands
-  if (command === "cron") {
-    const validSubcommands: CronSubcommand[] = [
-      "start",
-      "status",
-      "trigger",
-      "stop",
-      "start-job",
-    ];
-    if (
-      subcommand &&
-      !validSubcommands.includes(subcommand as CronSubcommand)
-    ) {
-      return {
-        isValid: false,
-        error: `❌ Invalid cron subcommand: '${subcommand}'\n\nAvailable subcommands: ${validSubcommands.join(", ")}\n\nRun 'bun run src/cli.ts cron --help' for more information.`,
-      };
-    }
-  }
-
-  // Validate numeric options
-  if (command === "scrape") {
-    const scrapeOptions = options as ScrapeOptions;
-    if (scrapeOptions.postsPerProfile) {
-      const validation = validatePostsPerProfile(scrapeOptions.postsPerProfile);
-      if (!validation.isValid) {
-        return validation;
-      }
-    }
-    if (scrapeOptions.maxUsers) {
-      const validation = validateMaxUsers(scrapeOptions.maxUsers);
-      if (!validation.isValid) {
-        return validation;
-      }
-    }
-  }
-
-  if (command === "telegram") {
-    const telegramOptions = options as TelegramOptions;
-    if (telegramOptions.limit) {
-      const validation = validateLimit(telegramOptions.limit);
-      if (!validation.isValid) {
-        return validation;
-      }
-    }
-  }
-
-  if (command === "start-both") {
-    const startBothOptions = options as StartBothOptions;
-
-    // Validate posts-per-profile
-    if (startBothOptions.postsPerProfile) {
-      const validation = validatePostsPerProfile(
-        startBothOptions.postsPerProfile
-      );
-      if (!validation.isValid) {
-        return validation;
-      }
-    }
-
-    // Validate limit
-    if (startBothOptions.limit) {
-      const validation = validateLimit(startBothOptions.limit);
-      if (!validation.isValid) {
-        return validation;
-      }
-    }
-  }
-
-  if (command === "single-post") {
-    const singlePostOptions = options as SinglePostOptions;
-    // Skip validation if help is requested
-    if (!singlePostOptions.help) {
-      if (!singlePostOptions.url) {
-        return {
-          isValid: false,
-          error: "❌ --url is required for single-post command",
-        };
-      }
-      const urlValidation = validatePostUrl(singlePostOptions.url);
-      if (!urlValidation.isValid) {
-        return urlValidation;
-      }
-    }
-  }
-
   return { isValid: true };
 }
 
+function validateCronSubcommand(subcommand: string | undefined): {
+  isValid: boolean;
+  error?: string;
+} {
+  if (!subcommand) {
+    return { isValid: true };
+  }
+  const validSubcommands: CronSubcommand[] = [
+    "start",
+    "status",
+    "trigger",
+    "stop",
+    "start-job",
+  ];
+  if (!validSubcommands.includes(subcommand as CronSubcommand)) {
+    return {
+      isValid: false,
+      error: `❌ Invalid cron subcommand: '${subcommand}'\n\nAvailable subcommands: ${validSubcommands.join(", ")}\n\nRun 'bun run src/cli.ts cron --help' for more information.`,
+    };
+  }
+  return { isValid: true };
+}
+
+function validateScrapeCommand(options: ScrapeOptions): {
+  isValid: boolean;
+  error?: string;
+} {
+  if (options.postsPerProfile) {
+    const validation = validatePostsPerProfile(options.postsPerProfile);
+    if (!validation.isValid) {
+      return validation;
+    }
+  }
+  if (options.maxUsers) {
+    const validation = validateMaxUsers(options.maxUsers);
+    if (!validation.isValid) {
+      return validation;
+    }
+  }
+  return { isValid: true };
+}
+
+function validateTelegramCommand(options: TelegramOptions): {
+  isValid: boolean;
+  error?: string;
+} {
+  if (options.limit) {
+    const validation = validateLimit(options.limit);
+    if (!validation.isValid) {
+      return validation;
+    }
+  }
+  return { isValid: true };
+}
+
+function validateStartBothCommand(options: StartBothOptions): {
+  isValid: boolean;
+  error?: string;
+} {
+  if (options.postsPerProfile) {
+    const validation = validatePostsPerProfile(options.postsPerProfile);
+    if (!validation.isValid) {
+      return validation;
+    }
+  }
+  if (options.limit) {
+    const validation = validateLimit(options.limit);
+    if (!validation.isValid) {
+      return validation;
+    }
+  }
+  return { isValid: true };
+}
+
+function validateSinglePostCommand(options: SinglePostOptions): {
+  isValid: boolean;
+  error?: string;
+} {
+  if (options.help) {
+    return { isValid: true };
+  }
+  if (!options.url) {
+    return {
+      isValid: false,
+      error: "❌ --url is required for single-post command",
+    };
+  }
+  return validatePostUrl(options.url);
+}
+
+function validateCommandOptions(
+  command: Command,
+  options: ParsedArgs["options"]
+): { isValid: boolean; error?: string } {
+  switch (command) {
+    case "scrape":
+      return validateScrapeCommand(options as ScrapeOptions);
+    case "telegram":
+      return validateTelegramCommand(options as TelegramOptions);
+    case "start-both":
+      return validateStartBothCommand(options as StartBothOptions);
+    case "single-post":
+      return validateSinglePostCommand(options as SinglePostOptions);
+    default:
+      return { isValid: true };
+  }
+}
+
+/**
+ * Validate command structure and arguments
+ */
+export function validateCommand(args: ParsedArgs): {
+  isValid: boolean;
+  error?: string;
+} {
+  const { command, subcommand, options } = args;
+
+  const commandValidation = validateMainCommand(command);
+  if (!commandValidation.isValid) {
+    return commandValidation;
+  }
+
+  if (command === "cron") {
+    const subcommandValidation = validateCronSubcommand(subcommand);
+    if (!subcommandValidation.isValid) {
+      return subcommandValidation;
+    }
+  }
+
+  return validateCommandOptions(command, options);
+}

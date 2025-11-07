@@ -1,7 +1,9 @@
 import type { Doc } from "@workspace/backend/convex/_generated/dataModel";
-import { Window } from "happy-dom";
 import DOMPurify from "dompurify";
+import { Window } from "happy-dom";
 import { MAX_CAPTION_LENGTH } from "./types";
+
+const INSTAGRAM_LINK_REGEX = /\n\n<a href="([^"]+)">View on Instagram<\/a>/;
 
 /**
  * Escape HTML entities in text to make it safe for Telegram HTML parsing
@@ -28,67 +30,83 @@ export function linkMentions(html: string): string {
   // Use happy-dom to parse HTML properly
   const window = new Window();
   const document = window.document;
-  
+
   // Create a temporary container
   const container = document.createElement("div");
   container.innerHTML = html;
 
+  const MENTION_REGEX = /@([a-zA-Z0-9._]+)/g;
+  const TEXT_NODE_TYPE = 3;
+  const ELEMENT_NODE_TYPE = 1;
+
+  function processTextNode(node: Node, text: string): void {
+    const matches = Array.from(text.matchAll(MENTION_REGEX));
+
+    if (matches.length === 0) {
+      return;
+    }
+
+    // Build new content with links
+    let newContent = "";
+    let lastIndex = 0;
+
+    for (const match of matches) {
+      if (match.index === undefined) {
+        continue;
+      }
+
+      // Add text before the mention
+      newContent += text.substring(lastIndex, match.index);
+
+      // Create link element
+      const link = document.createElement("a");
+      const username = match[1];
+      link.href = `https://instagram.com/${username}`;
+      link.textContent = `@${username}`;
+
+      // Add link as text representation (we'll convert to HTML later)
+      newContent += link.outerHTML;
+
+      lastIndex = match.index + match[0].length;
+    }
+
+    // Add remaining text
+    newContent += text.substring(lastIndex);
+
+    // Replace text node with parsed HTML
+    const tempDiv = document.createElement("div");
+    tempDiv.innerHTML = newContent;
+
+    // Replace the text node with the new nodes
+    const parent = node.parentNode;
+    if (parent) {
+      while (tempDiv.firstChild) {
+        parent.insertBefore(tempDiv.firstChild, node);
+      }
+      parent.removeChild(node);
+    }
+  }
+
+  function processElementNode(node: Node): void {
+    const element = node as Element;
+    if (element.tagName === "A") {
+      return;
+    }
+    const children = Array.from(node.childNodes);
+    for (const child of children) {
+      processNode(child);
+    }
+  }
+
   // Walk through text nodes and convert @ mentions
   function processNode(node: Node): void {
-    if (node.nodeType === 3) {
+    if (node.nodeType === TEXT_NODE_TYPE) {
       // Text node - process for @ mentions
       const text = node.textContent || "";
-      const mentionRegex = /@([a-zA-Z0-9._]+)/g;
-      const matches = Array.from(text.matchAll(mentionRegex));
-
-      if (matches.length > 0) {
-        // Build new content with links
-        let newContent = "";
-        let lastIndex = 0;
-
-        for (const match of matches) {
-          if (match.index === undefined) continue;
-          
-          // Add text before the mention
-          newContent += text.substring(lastIndex, match.index);
-          
-          // Create link element
-          const link = document.createElement("a");
-          const username = match[1];
-          link.href = `https://instagram.com/${username}`;
-          link.textContent = `@${username}`;
-          
-          // Add link as text representation (we'll convert to HTML later)
-          newContent += link.outerHTML;
-          
-          lastIndex = match.index + match[0].length;
-        }
-
-        // Add remaining text
-        newContent += text.substring(lastIndex);
-
-        // Replace text node with parsed HTML
-        const tempDiv = document.createElement("div");
-        tempDiv.innerHTML = newContent;
-        
-        // Replace the text node with the new nodes
-        const parent = node.parentNode;
-        if (parent) {
-          while (tempDiv.firstChild) {
-            parent.insertBefore(tempDiv.firstChild, node);
-          }
-          parent.removeChild(node);
-        }
-      }
-    } else if (node.nodeType === 1) {
+      processTextNode(node, text);
+    } else if (node.nodeType === ELEMENT_NODE_TYPE) {
       // Element node - recursively process children
-      // Skip if it's already an <a> tag
-      if ((node as Element).tagName !== "A") {
-        const children = Array.from(node.childNodes);
-        for (const child of children) {
-          processNode(child);
-        }
-      }
+      processElementNode(node);
     }
   }
 
@@ -147,8 +165,14 @@ function truncateHtmlContent(html: string, maxLength: number): string {
 
   // Account for HTML markup overhead
   // Each @ mention becomes ~50 chars of HTML, plus Instagram link at end
-  const mentionCount = (textContent.match(/@/g) || []).length;
-  const estimatedHtmlOverhead = mentionCount * 50 + 50; // Extra buffer
+  const MENTION_CHAR = "@";
+  const HTML_OVERHEAD_PER_MENTION = 50;
+  const EXTRA_BUFFER = 50;
+  const ELLIPSIS = "...";
+  const mentionCount = (textContent.match(new RegExp(MENTION_CHAR, "g")) || [])
+    .length;
+  const estimatedHtmlOverhead =
+    mentionCount * HTML_OVERHEAD_PER_MENTION + EXTRA_BUFFER;
   const safeMaxLength = Math.max(0, maxLength - estimatedHtmlOverhead);
 
   if (safeMaxLength <= 0) {
@@ -156,7 +180,7 @@ function truncateHtmlContent(html: string, maxLength: number): string {
   }
 
   // Truncate plain text
-  const truncatedText = textContent.substring(0, safeMaxLength) + "...";
+  const truncatedText = `${textContent.substring(0, safeMaxLength)}${ELLIPSIS}`;
 
   // Escape HTML entities FIRST
   const escapedText = escapeHtmlEntities(truncatedText);
@@ -198,9 +222,7 @@ export function createCaption(post: Doc<"posts">): string {
   // Telegram caption limit is 1024 characters
   if (combined.length > MAX_CAPTION_LENGTH) {
     // Extract Instagram link for preservation
-    const instagramLinkMatch = combined.match(
-      /\n\n<a href="([^"]+)">View on Instagram<\/a>/
-    );
+    const instagramLinkMatch = combined.match(INSTAGRAM_LINK_REGEX);
     const instagramLinkHtml = instagramLinkMatch ? instagramLinkMatch[0] : "";
 
     // Get caption without Instagram link
@@ -224,4 +246,3 @@ export function createCaption(post: Doc<"posts">): string {
 
   return combined;
 }
-

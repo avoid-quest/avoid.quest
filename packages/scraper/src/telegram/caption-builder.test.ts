@@ -1,11 +1,15 @@
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
+import type { Doc } from "@workspace/backend/convex/_generated/dataModel";
 import {
+  createCaption,
   escapeHtmlEntities,
   linkMentions,
   sanitizeHtmlForTelegram,
-  createCaption,
 } from "./caption-builder";
-import type { Doc } from "@workspace/backend/convex/_generated/dataModel";
+
+const ORPHANED_CLOSING_TAG_REGEX = /^<\/a>/;
+const LONG_CAPTION_LENGTH = 2000;
+const MAX_CAPTION_LENGTH_VALUE = 1024;
 
 describe("caption-builder", () => {
   describe("escapeHtmlEntities", () => {
@@ -28,21 +32,24 @@ describe("caption-builder", () => {
   describe("linkMentions", () => {
     test("converts @ mentions to Instagram links", () => {
       const result = linkMentions("Hello @username world");
-      expect(result).toContain('<a href="https://instagram.com/username">@username</a>');
+      expect(result).toContain(
+        '<a href="https://instagram.com/username">@username</a>'
+      );
     });
 
     test("handles multiple mentions", () => {
       const result = linkMentions("Hello @user1 and @user2");
-      expect(result).toContain('instagram.com/user1');
-      expect(result).toContain('instagram.com/user2');
+      expect(result).toContain("instagram.com/user1");
+      expect(result).toContain("instagram.com/user2");
     });
 
     test("does not convert mentions inside HTML tags", () => {
-      const html = '<a href="https://instagram.com/@existing">@existing</a> @new';
+      const html =
+        '<a href="https://instagram.com/@existing">@existing</a> @new';
       const result = linkMentions(html);
       // Should only convert @new, not @existing
-      expect(result).toContain('instagram.com/new');
-      expect(result).toContain('instagram.com/@existing');
+      expect(result).toContain("instagram.com/new");
+      expect(result).toContain("instagram.com/@existing");
     });
 
     test("handles empty string", () => {
@@ -55,8 +62,8 @@ describe("caption-builder", () => {
       const html = 'Hello <a href="https://example.com">World';
       const result = sanitizeHtmlForTelegram(html);
       // DOMPurify will auto-close the tag, which is correct behavior
-      expect(result).toContain('Hello');
-      expect(result).toContain('World');
+      expect(result).toContain("Hello");
+      expect(result).toContain("World");
       // Tags should be balanced
       const openTags = (result.match(/<a[^>]*>/g) || []).length;
       const closeTags = (result.match(/<\/a>/g) || []).length;
@@ -71,7 +78,8 @@ describe("caption-builder", () => {
 
     test("handles unclosed tags", () => {
       // Test with unclosed tag - the function attempts to clean it up
-      const html = '<a href="https://example.com">Link 1</a> <a href="https://example2.com">';
+      const html =
+        '<a href="https://example.com">Link 1</a> <a href="https://example2.com">';
       const result = sanitizeHtmlForTelegram(html);
       // Should contain the valid part
       expect(result).toContain("Link 1");
@@ -97,19 +105,21 @@ describe("caption-builder", () => {
 
     test("fixes unclosed tag that causes 'Unexpected end tag' error", () => {
       // This pattern caused "can't parse entities: Unexpected end tag at byte offset 290"
-      const html = '<a href="https://instagram.com/user">@user</a> <a href="https://instagram.com/another">@another';
+      const html =
+        '<a href="https://instagram.com/user">@user</a> <a href="https://instagram.com/another">@another';
       const result = sanitizeHtmlForTelegram(html);
       // DOMPurify will auto-close the unclosed tag, which fixes the error
       const openTags = (result.match(/<a[^>]*>/g) || []).length;
       const closeTags = (result.match(/<\/a>/g) || []).length;
       expect(openTags).toBe(closeTags);
       // Both links should be present and properly closed
-      expect(result).toContain('instagram.com/user');
-      expect(result).toContain('instagram.com/another');
+      expect(result).toContain("instagram.com/user");
+      expect(result).toContain("instagram.com/another");
     });
 
     test("handles multiple unclosed tags", () => {
-      const html = '<a href="https://instagram.com/user1">@user1</a> <a href="https://instagram.com/user2">@user2 <a href="https://instagram.com/user3">@user3';
+      const html =
+        '<a href="https://instagram.com/user1">@user1</a> <a href="https://instagram.com/user2">@user2 <a href="https://instagram.com/user3">@user3';
       const result = sanitizeHtmlForTelegram(html);
       const openTags = (result.match(/<a[^>]*>/g) || []).length;
       const closeTags = (result.match(/<\/a>/g) || []).length;
@@ -120,17 +130,18 @@ describe("caption-builder", () => {
       const html = '</a> Hello <a href="https://instagram.com/user">@user</a>';
       const result = sanitizeHtmlForTelegram(html);
       // Should remove orphaned closing tag
-      expect(result).not.toMatch(/^<\/a>/);
+      expect(result).not.toMatch(ORPHANED_CLOSING_TAG_REGEX);
       const openTags = (result.match(/<a[^>]*>/g) || []).length;
       const closeTags = (result.match(/<\/a>/g) || []).length;
       expect(openTags).toBe(closeTags);
     });
 
     test("preserves valid nested structure", () => {
-      const html = '<a href="https://instagram.com/user1">@user1</a> and <a href="https://instagram.com/user2">@user2</a>';
+      const html =
+        '<a href="https://instagram.com/user1">@user1</a> and <a href="https://instagram.com/user2">@user2</a>';
       const result = sanitizeHtmlForTelegram(html);
-      expect(result).toContain('instagram.com/user1');
-      expect(result).toContain('instagram.com/user2');
+      expect(result).toContain("instagram.com/user1");
+      expect(result).toContain("instagram.com/user2");
       const openTags = (result.match(/<a[^>]*>/g) || []).length;
       const closeTags = (result.match(/<\/a>/g) || []).length;
       expect(openTags).toBe(closeTags);
@@ -198,7 +209,7 @@ describe("caption-builder", () => {
       };
 
       const result = createCaption(post);
-      expect(result).toContain('instagram.com/username');
+      expect(result).toContain("instagram.com/username");
     });
 
     test("handles empty caption", () => {
@@ -222,7 +233,7 @@ describe("caption-builder", () => {
     });
 
     test("truncates long captions", () => {
-      const longCaption = "A".repeat(2000);
+      const longCaption = "A".repeat(LONG_CAPTION_LENGTH);
       const post: Doc<"posts"> = {
         _id: "test-id" as any,
         _creationTime: Date.now(),
@@ -240,9 +251,8 @@ describe("caption-builder", () => {
 
       const result = createCaption(post);
       // Should be truncated to MAX_CAPTION_LENGTH (1024)
-      expect(result.length).toBeLessThanOrEqual(1024);
+      expect(result.length).toBeLessThanOrEqual(MAX_CAPTION_LENGTH_VALUE);
       expect(result).toContain("View on Instagram");
     });
   });
 });
-

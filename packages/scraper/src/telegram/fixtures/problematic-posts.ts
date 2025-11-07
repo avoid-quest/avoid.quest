@@ -22,9 +22,10 @@ export const postWithHtmlParsingError: Partial<Doc<"posts">> = {
 /**
  * Post with very long caption that needs truncation
  */
+const LONG_CAPTION_REPEAT_COUNT = 2000;
 export const postWithLongCaption: Partial<Doc<"posts">> = {
   caption:
-    "A".repeat(2000) +
+    "A".repeat(LONG_CAPTION_REPEAT_COUNT) +
     " This is a very long caption that should be truncated properly while preserving the Instagram link at the end.",
   url: "https://instagram.com/p/test456",
   media_type: "image",
@@ -51,7 +52,7 @@ export const postWithManyMentions: Partial<Doc<"posts">> = {
  */
 export const postWithSpecialCharacters: Partial<Doc<"posts">> = {
   caption:
-    'This post has <tags> & "quotes" and \'apostrophes\' that need to be escaped properly!',
+    "This post has <tags> & \"quotes\" and 'apostrophes' that need to be escaped properly!",
   url: "https://instagram.com/p/test101",
   media_type: "image",
   is_video: false,
@@ -154,4 +155,3 @@ export const expiredMediaItems = [
     height: 1080,
   },
 ];
-

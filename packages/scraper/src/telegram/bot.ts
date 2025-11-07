@@ -1,6 +1,6 @@
 import { autoRetry } from "@grammyjs/auto-retry";
-import { Bot, GrammyError, HttpError } from "grammy";
 import type { BotError } from "grammy";
+import { Bot, GrammyError, HttpError } from "grammy";
 import { createLogger } from "../infra/logger";
 
 /**
@@ -26,25 +26,41 @@ export function createBot(): Bot | null {
 
   // Configure global error handling
   const logger = createLogger(!!process.env.DEBUG);
+
+  function handleGrammyError(error: GrammyError): void {
+    logger.error(
+      `Telegram API error ${error.error_code ?? "unknown"}: ${error.description ?? error.message}`
+    );
+    if (error.error_code) {
+      logger.debug(`Error code: ${error.error_code}`);
+    }
+    if (error.description) {
+      logger.debug(`Error description: ${error.description}`);
+    }
+  }
+
+  function handleHttpError(error: HttpError): void {
+    logger.error(`HTTP error: Could not contact Telegram: ${error.message}`);
+  }
+
+  function handleUnknownError(error: unknown): void {
+    logger.error(
+      `Unknown error: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+
   bot.catch((err: BotError) => {
     const ctx = err.ctx;
     logger.error(`Error while handling update ${ctx.update.update_id}:`);
     const e = err.error;
     if (e instanceof GrammyError) {
-      logger.error(`Telegram API error ${e.error_code ?? "unknown"}: ${e.description ?? e.message}`);
-      if (e.error_code) {
-        logger.debug(`Error code: ${e.error_code}`);
-      }
-      if (e.description) {
-        logger.debug(`Error description: ${e.description}`);
-      }
+      handleGrammyError(e);
     } else if (e instanceof HttpError) {
-      logger.error(`HTTP error: Could not contact Telegram: ${e.message}`);
+      handleHttpError(e);
     } else {
-      logger.error(`Unknown error: ${e instanceof Error ? e.message : String(e)}`);
+      handleUnknownError(e);
     }
   });
 
   return bot;
 }
-

@@ -1,17 +1,21 @@
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import {
+  DEFAULT_SEND_LIMIT,
+  MAX_CAPTION_LENGTH,
   MAX_MEDIA_GROUP_SIZE,
   MIN_MEDIA_GROUP_SIZE,
-  MAX_CAPTION_LENGTH,
-  DEFAULT_SEND_LIMIT,
 } from "./types";
 
 describe("types", () => {
   test("constants have correct values", () => {
-    expect(MAX_MEDIA_GROUP_SIZE).toBe(10);
-    expect(MIN_MEDIA_GROUP_SIZE).toBe(2);
-    expect(MAX_CAPTION_LENGTH).toBe(1024);
-    expect(DEFAULT_SEND_LIMIT).toBe(3);
+    const EXPECTED_MAX_MEDIA_GROUP_SIZE = 10;
+    const EXPECTED_MIN_MEDIA_GROUP_SIZE = 2;
+    const EXPECTED_MAX_CAPTION_LENGTH = 1024;
+    const EXPECTED_DEFAULT_SEND_LIMIT = 3;
+    expect(MAX_MEDIA_GROUP_SIZE).toBe(EXPECTED_MAX_MEDIA_GROUP_SIZE);
+    expect(MIN_MEDIA_GROUP_SIZE).toBe(EXPECTED_MIN_MEDIA_GROUP_SIZE);
+    expect(MAX_CAPTION_LENGTH).toBe(EXPECTED_MAX_CAPTION_LENGTH);
+    expect(DEFAULT_SEND_LIMIT).toBe(EXPECTED_DEFAULT_SEND_LIMIT);
   });
 
   test("MAX_MEDIA_GROUP_SIZE is greater than MIN_MEDIA_GROUP_SIZE", () => {
@@ -26,4 +30,3 @@ describe("types", () => {
     expect(DEFAULT_SEND_LIMIT).toBeGreaterThan(0);
   });
 });
-

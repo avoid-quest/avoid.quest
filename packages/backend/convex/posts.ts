@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { paginationOptsValidator } from "convex/server";
 import type { Id } from "./_generated/dataModel";
 
 export const getPosts = query({
@@ -49,6 +50,94 @@ export const getUnsent = query({
       .query("posts")
       .withIndex("by_sent", (q) => q.eq("sent", false))
       .take(limit),
+});
+
+export const getPostsPaginated = query({
+  args: { paginationOpts: paginationOptsValidator },
+  returns: v.object({
+    page: v.array(
+      v.object({
+        _id: v.id("posts"),
+        _creationTime: v.number(),
+        ig_id: v.string(),
+        shortcode: v.string(),
+        display_url: v.string(),
+        video_url: v.optional(v.string()),
+        thumbnail_url: v.optional(v.string()),
+        caption: v.string(),
+        is_video: v.boolean(),
+        url: v.string(),
+        media_type: v.union(
+          v.literal("image"),
+          v.literal("video"),
+          v.literal("carousel")
+        ),
+        users: v.array(v.id("users")),
+        timestamp: v.number(),
+        event_date: v.optional(v.number()),
+        sent: v.optional(v.boolean()),
+        sentAt: v.optional(v.number()),
+      })
+    ),
+    isDone: v.boolean(),
+    continueCursor: v.union(v.string(), v.null()),
+  }),
+  handler: async (ctx, { paginationOpts }) => {
+    const result = await ctx.db
+      .query("posts")
+      .withIndex("by_event_date")
+      .order("desc")
+      .paginate(paginationOpts);
+    return {
+      page: result.page,
+      isDone: result.isDone,
+      continueCursor: result.continueCursor,
+    };
+  },
+});
+
+export const getUnsentPaginated = query({
+  args: { paginationOpts: paginationOptsValidator },
+  returns: v.object({
+    page: v.array(
+      v.object({
+        _id: v.id("posts"),
+        _creationTime: v.number(),
+        ig_id: v.string(),
+        shortcode: v.string(),
+        display_url: v.string(),
+        video_url: v.optional(v.string()),
+        thumbnail_url: v.optional(v.string()),
+        caption: v.string(),
+        is_video: v.boolean(),
+        url: v.string(),
+        media_type: v.union(
+          v.literal("image"),
+          v.literal("video"),
+          v.literal("carousel")
+        ),
+        users: v.array(v.id("users")),
+        timestamp: v.number(),
+        event_date: v.optional(v.number()),
+        sent: v.optional(v.boolean()),
+        sentAt: v.optional(v.number()),
+      })
+    ),
+    isDone: v.boolean(),
+    continueCursor: v.union(v.string(), v.null()),
+  }),
+  handler: async (ctx, { paginationOpts }) => {
+    const result = await ctx.db
+      .query("posts")
+      .withIndex("by_sent", (q) => q.eq("sent", false))
+      .order("desc")
+      .paginate(paginationOpts);
+    return {
+      page: result.page,
+      isDone: result.isDone,
+      continueCursor: result.continueCursor,
+    };
+  },
 });
 
 export const upsertPost = mutation({

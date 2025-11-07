@@ -7,37 +7,36 @@ export const MAX_CAPTION_LENGTH = 1024;
 export const DEFAULT_SEND_LIMIT = 3;
 
 // Media item types
-export interface MediaItem {
+export type MediaItem = {
   url: string;
   type: "image" | "video";
   width?: number;
   height?: number;
-}
+};
 
-export interface MediaItemWithThumbnail extends MediaItem {
+export type MediaItemWithThumbnail = MediaItem & {
   type: "image" | "video" | "thumbnail";
-}
+};
 
 // Post with media items attached
-export interface PostWithMedia {
+export type PostWithMedia = {
   post: Doc<"posts">;
   mediaItems: MediaItem[];
-}
+};
 
 // Media validation results
-export interface MediaValidationResult {
+export type MediaValidationResult = {
   isValid: boolean;
   errors: string[];
   warnings: string[];
-}
+};
 
 // URL validation results
-export interface UrlValidationResult {
+export type UrlValidationResult = {
   accessible: number;
   inaccessible: Array<{
     index: number;
     url: string;
     error: string;
   }>;
-}
-
+};

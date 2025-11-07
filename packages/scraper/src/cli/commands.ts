@@ -131,10 +131,45 @@ export async function handleStartCommand(options: StartOptions): Promise<void> {
 
     console.log("\n🛑 Press Ctrl+C to stop all services");
 
+    // Set up graceful shutdown handlers
+    let shutdownRequested = false;
+    const shutdown = async (signal: string) => {
+      if (shutdownRequested) {
+        // Force exit if shutdown already requested
+        console.log(`\n⚠️  Force stopping after ${signal}...`);
+        process.exit(1);
+      }
+      shutdownRequested = true;
+      console.log(`\n🛑 Received ${signal}, shutting down gracefully...`);
+      
+      try {
+        // Stop scheduler (stops all cron jobs)
+        const { stopScheduler } = await import("../scheduler");
+        stopScheduler();
+        console.log("✅ Scheduler stopped");
+      } catch (error) {
+        console.error(
+          `⚠️  Error stopping scheduler: ${error instanceof Error ? error.message : String(error)}`
+        );
+      }
+      
+      // Give a moment for cleanup, then exit
+      setTimeout(() => {
+        console.log("👋 Goodbye!");
+        process.exit(0);
+      }, 500);
+    };
+
+    process.once("SIGTERM", () => shutdown("SIGTERM"));
+    process.once("SIGINT", () => shutdown("SIGINT"));
+
     const POLL_INTERVAL_MS = 1000;
-    // Keep the process alive
+    // Keep the process alive, but check for shutdown flag
     // eslint-disable-next-line no-constant-condition
     while (true) {
+      if (shutdownRequested) {
+        break;
+      }
       await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
     }
   } catch (error) {

@@ -1,22 +1,22 @@
 // CLI Types and Interfaces
 
-export interface ScrapeOptions {
+export type ScrapeOptions = {
   postsPerProfile?: number;
   continueOnError?: boolean;
   useSmartSelection?: boolean;
   maxUsers?: number;
   verbose?: boolean;
   help?: boolean;
-}
+};
 
-export interface TelegramOptions {
+export type TelegramOptions = {
   limit?: number;
   sendOnly?: boolean;
   verbose?: boolean;
   help?: boolean;
-}
+};
 
-export interface CronOptions {
+export type CronOptions = {
   start?: boolean;
   status?: boolean;
   trigger?: string;
@@ -24,9 +24,9 @@ export interface CronOptions {
   startJob?: string;
   verbose?: boolean;
   help?: boolean;
-}
+};
 
-export interface StartBothOptions {
+export type StartBothOptions = {
   postsPerProfile?: number;
   continueOnError?: boolean;
   useSmartSelection?: boolean;
@@ -35,32 +35,32 @@ export interface StartBothOptions {
   sendOnly?: boolean;
   verbose?: boolean;
   help?: boolean;
-}
+};
 
-export interface AdminOptions {
+export type AdminOptions = {
   verbose?: boolean;
   help?: boolean;
-}
+};
 
-export interface SinglePostOptions {
+export type SinglePostOptions = {
   url?: string;
   save?: boolean;
   verbose?: boolean;
   help?: boolean;
-}
+};
 
-export interface StartOptions {
+export type StartOptions = {
   verbose?: boolean;
   help?: boolean;
-}
+};
 
-export interface GlobalOptions {
+export type GlobalOptions = {
   verbose?: boolean;
   help?: boolean;
   version?: boolean;
-}
+};
 
-export interface ParsedArgs {
+export type ParsedArgs = {
   command: string;
   subcommand?: string;
   options:
@@ -73,7 +73,7 @@ export interface ParsedArgs {
     | StartOptions
     | GlobalOptions;
   positionals: string[];
-}
+};
 
 export type Command =
   | "start"
@@ -94,4 +94,3 @@ export type CronSubcommand =
   | "trigger"
   | "stop"
   | "start-job";
-

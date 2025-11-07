@@ -10,11 +10,11 @@
   "license": "ISC",
   "description": "",
   "devDependencies": {
-    "@types/node": "^22.18.13",
+    "@types/node": "^22.19.0",
     "typescript": " ^5.9.3"
   },
   "dependencies": {
     "@convex-dev/migrations": "^0.2.9",
-    "convex": "^1.28.1"
+    "convex": "^1.28.2"
   }
 }

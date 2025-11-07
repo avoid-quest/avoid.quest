@@ -14,7 +14,12 @@
     "typescript": " ^5.9.3"
   },
   "dependencies": {
+    "@convex-dev/agent": "^0.2.12",
+    "@convex-dev/workflow": "^0.2.7",
     "@convex-dev/migrations": "^0.2.9",
+    "ai": "^5.0.89",
+    "@ai-sdk/google": "^2.0.29",
+    "zod": "^4.1.12",
     "convex": "^1.28.2"
   }
 }

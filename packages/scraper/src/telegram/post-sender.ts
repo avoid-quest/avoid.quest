@@ -23,7 +23,21 @@ export async function sendPost(
   post: Doc<"posts">,
   logger: Logger
 ): Promise<void> {
-  const caption = createCaption(post);
+  // Load metadata if available
+  let metadata: Doc<"post_metadata"> | null = null;
+  if (post.metadata_id) {
+    try {
+      metadata = await getHttpClient().query(api.post_metadata.getPostMetadata, {
+        postId: post._id,
+      });
+    } catch (error) {
+      logger.warn(
+        `Failed to load metadata for post ${post._id}: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  const caption = createCaption(post, metadata);
 
   // Load media items for this post
   const mediaItems = await getHttpClient().query(

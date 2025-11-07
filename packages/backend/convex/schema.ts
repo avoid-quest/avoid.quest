@@ -21,6 +21,7 @@ export default defineSchema({
     users: v.array(v.id("users")),
     sent: v.boolean(),
     sentAt: v.optional(v.number()),
+    metadata_id: v.optional(v.id("post_metadata")),
   })
     .index("by_timestamp", ["timestamp"])
     .index("by_event_date", ["event_date"])
@@ -83,5 +84,78 @@ export default defineSchema({
         log_level: v.optional(v.string()),
       })
     ),
+    ai_metadata_extraction: v.optional(
+      v.object({
+        enabled: v.boolean(),
+        model: v.string(),
+        batch_size: v.number(),
+        backlog_interval_minutes: v.number(),
+        max_concurrent_workflows: v.number(),
+      })
+    ),
   }),
+  post_metadata: defineTable({
+    post_id: v.id("posts"),
+    event_score: v.number(),
+    event_date_start: v.optional(v.number()),
+    event_date_end: v.optional(v.number()),
+    event_time_start: v.optional(v.string()),
+    event_time_end: v.optional(v.string()),
+    location: v.optional(v.string()),
+    location_address: v.optional(v.string()),
+    location_coordinates: v.optional(
+      v.object({
+        lat: v.number(),
+        lng: v.number(),
+      })
+    ),
+    event_type: v.optional(
+      v.union(
+        v.literal("concert"),
+        v.literal("workshop"),
+        v.literal("conference"),
+        v.literal("festival"),
+        v.literal("exhibition"),
+        v.literal("meetup"),
+        v.literal("other")
+      )
+    ),
+    event_title: v.optional(v.string()),
+    organizer_name: v.optional(v.string()),
+    organizer_contact: v.optional(v.string()),
+    target_audience: v.optional(v.array(v.string())),
+    registration_required: v.optional(v.boolean()),
+    registration_url: v.optional(v.string()),
+    ticket_price: v.optional(v.string()),
+    event_description: v.optional(v.string()),
+    hashtags: v.optional(v.array(v.string())),
+    keywords: v.optional(v.array(v.string())),
+    language: v.optional(v.string()),
+    content_type: v.optional(
+      v.union(
+        v.literal("event_announcement"),
+        v.literal("event_reminder"),
+        v.literal("event_recap"),
+        v.literal("other")
+      )
+    ),
+    telegram_message: v.optional(v.string()),
+    processing_status: v.union(
+      v.literal("pending"),
+      v.literal("processing"),
+      v.literal("completed"),
+      v.literal("failed")
+    ),
+    processing_started_at: v.optional(v.number()),
+    processing_completed_at: v.optional(v.number()),
+    processing_error: v.optional(v.string()),
+    ai_model_used: v.optional(v.string()),
+    extraction_version: v.number(),
+    agent_thread_id: v.optional(v.string()),
+  })
+    .index("by_post_id", ["post_id"])
+    .index("by_event_score", ["event_score"])
+    .index("by_event_date_start", ["event_date_start"])
+    .index("by_processing_status", ["processing_status"])
+    .index("by_event_type", ["event_type"]),
 });

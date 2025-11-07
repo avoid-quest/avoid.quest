@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { paginationOptsValidator } from "convex/server";
 import type { Id } from "./_generated/dataModel";
+import { startProcessPostMetadata } from "./workflows/postMetadata";
 
 export const getPosts = query({
   args: { limit: v.number() },
@@ -235,9 +236,20 @@ export const upsertPost = mutation({
       }
 
       await ctx.db.patch(id, patchData);
+      
+      // Trigger workflow if caption was updated and AI extraction is enabled
+      const settings = await ctx.db.query("settings").first();
+      if (
+        settings?.ai_metadata_extraction?.enabled &&
+        existing.caption !== caption
+      ) {
+        // Trigger workflow for caption update (re-extraction)
+        await ctx.scheduler.runAfter(0, startProcessPostMetadata, { postId: id });
+      }
+      
       return id;
     }
-    return await ctx.db.insert("posts", {
+    const newPostId = await ctx.db.insert("posts", {
       ig_id,
       shortcode,
       display_url,
@@ -253,6 +265,14 @@ export const upsertPost = mutation({
       sent: sent ?? false,
       sentAt,
     });
+
+    // Trigger workflow for new post if AI extraction is enabled
+    const settings = await ctx.db.query("settings").first();
+    if (settings?.ai_metadata_extraction?.enabled) {
+      await ctx.scheduler.runAfter(0, startProcessPostMetadata, { postId: newPostId });
+    }
+
+    return newPostId;
   },
 });
 

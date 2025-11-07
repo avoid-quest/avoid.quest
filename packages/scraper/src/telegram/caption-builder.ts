@@ -194,8 +194,33 @@ function truncateHtmlContent(html: string, maxLength: number): string {
 
 /**
  * Create caption with proper formatting and truncation
+ * If metadata.telegram_message is provided, it will be used directly (already formatted and includes Instagram link)
+ * Otherwise, falls back to processing the post caption
  */
-export function createCaption(post: Doc<"posts">): string {
+export function createCaption(
+  post: Doc<"posts">,
+  metadata?: Doc<"post_metadata"> | null
+): string {
+  // Use AI-generated Telegram message if available
+  if (metadata?.telegram_message) {
+    // The telegram_message already includes formatting and Instagram link
+    // Just ensure it doesn't exceed the limit (should already be handled by AI, but double-check)
+    if (metadata.telegram_message.length <= MAX_CAPTION_LENGTH) {
+      return metadata.telegram_message;
+    }
+    // If somehow it's too long, truncate it (shouldn't happen, but safety check)
+    const instagramLinkMatch = metadata.telegram_message.match(INSTAGRAM_LINK_REGEX);
+    const instagramLinkHtml = instagramLinkMatch ? instagramLinkMatch[0] : "";
+    const messageWithoutLink = instagramLinkHtml
+      ? metadata.telegram_message.replace(instagramLinkHtml, "").trim()
+      : metadata.telegram_message;
+    const linkLength = instagramLinkHtml.length;
+    const availableLength = MAX_CAPTION_LENGTH - linkLength;
+    const truncated = truncateHtmlContent(messageWithoutLink, availableLength);
+    return truncated + instagramLinkHtml;
+  }
+
+  // Fallback to original caption processing
   let caption = "";
 
   if (post.caption) {

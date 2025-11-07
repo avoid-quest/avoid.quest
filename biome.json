@@ -22,6 +22,9 @@
       "!**/cloudflare-env.d.ts"
     ]
   },
+  "javascript": {
+    "globals": ["Bun"]
+  },
   "linter": {
     "rules": {
       "performance": {

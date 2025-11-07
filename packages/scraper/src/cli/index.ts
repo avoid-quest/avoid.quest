@@ -78,7 +78,7 @@ export async function runCli(): Promise<number> {
         return 0;
 
       case "admin":
-        handleAdminCommand(args.options as AdminOptions);
+        await handleAdminCommand(args.options as AdminOptions);
         return 0;
 
       case "single-post":

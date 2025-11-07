@@ -40,6 +40,8 @@ WHAT IT STARTS:
   🕐 Cron Scheduler:
     • Automated scraping jobs (based on settings)
     • Automated telegram jobs (based on settings)
+  🤖 Admin Bot (if TELEGRAM_BOT_TOKEN is set):
+    • Telegram admin bot for managing the scraper
 
 EXAMPLES:
   bun run src/cli/index.ts start
@@ -67,6 +69,7 @@ DEVELOPMENT/TESTING COMMANDS:
   cron        ⏰ Manage SCHEDULED jobs (automated execution)
   user        👥 Manage users in database
   settings    ⚙️  Manage application settings
+  admin       🤖 Start Telegram admin bot
   help        Show this help message
   version     Show version information
 
@@ -177,7 +180,7 @@ EXAMPLES:
 
 function showAdminHelp(): void {
   console.log(`
-🤖 Admin Command
+🤖 Admin Command - TELEGRAM ADMIN BOT
 
 Starts an interactive Telegram admin bot for managing the scraper.
 
@@ -188,7 +191,25 @@ OPTIONS:
   -v, --verbose    Enable verbose output
   -h, --help       Show this help message
 
-NOTE: Admin bot functionality will be implemented in a future update.
+FEATURES:
+  📊 View bot status and scheduler information
+  ⚙️  Edit settings via interactive menus
+  📱 Insert single posts by Instagram URL
+  👥 Manage users (list, toggle, rename, delete)
+  👀 Preview post messages before sending
+  📈 View database statistics
+  🚀 Manually trigger scraper/telegram jobs
+
+REQUIREMENTS:
+  • TELEGRAM_BOT_TOKEN environment variable must be set
+  • admin_chat_id must be configured in Convex settings
+  • Bot will only respond to messages from the admin chat
+
+EXAMPLES:
+  bun run src/cli/index.ts admin
+  bun run src/cli/index.ts admin --verbose
+
+💡 TIP: Run this in a separate process to manage the scraper via Telegram!
 `);
 }
 

@@ -1,63 +1,89 @@
-import type { MediaItem, MediaItemWithThumbnail, MediaValidationResult, UrlValidationResult } from "./types";
-import { MAX_MEDIA_GROUP_SIZE, MIN_MEDIA_GROUP_SIZE } from "./types";
-import { createLogger } from "../infra/logger";
 import { InputMediaBuilder } from "grammy";
+import type { createLogger } from "../infra/logger";
+import type {
+  MediaItem,
+  MediaItemWithThumbnail,
+  MediaValidationResult,
+  UrlValidationResult,
+} from "./types";
+import { MAX_MEDIA_GROUP_SIZE, MIN_MEDIA_GROUP_SIZE } from "./types";
 
 type Logger = ReturnType<typeof createLogger>;
+
+function validateMediaCount(count: number, errors: string[]): void {
+  if (count < MIN_MEDIA_GROUP_SIZE) {
+    errors.push(
+      `Media group must have at least ${MIN_MEDIA_GROUP_SIZE} items, got ${count}`
+    );
+  }
+  if (count > MAX_MEDIA_GROUP_SIZE) {
+    errors.push(
+      `Media group exceeds maximum of ${MAX_MEDIA_GROUP_SIZE} items, got ${count}`
+    );
+  }
+}
+
+function validateMediaItem(
+  item: MediaItem | undefined,
+  index: number,
+  errors: string[]
+): void {
+  if (!item) {
+    errors.push(`Media item at index ${index} is null or undefined`);
+    return;
+  }
+
+  if (!item.url || typeof item.url !== "string") {
+    errors.push(`Media item at index ${index} has invalid URL: ${item.url}`);
+    return;
+  }
+
+  // Check URL format
+  try {
+    const url = new URL(item.url);
+    if (!["http:", "https:"].includes(url.protocol)) {
+      errors.push(
+        `Media item at index ${index} has invalid protocol: ${url.protocol}`
+      );
+    }
+  } catch {
+    errors.push(`Media item at index ${index} has malformed URL: ${item.url}`);
+  }
+
+  // Validate media type
+  if (item.type !== "image" && item.type !== "video") {
+    errors.push(`Media item at index ${index} has invalid type: ${item.type}`);
+  }
+}
+
+function checkMixedMediaTypes(media: MediaItem[], warnings: string[]): void {
+  const hasVideos = media.some((m) => m.type === "video");
+  const hasImages = media.some((m) => m.type === "image");
+  if (hasVideos && hasImages) {
+    warnings.push(
+      "Media group contains both videos and images - this may cause issues with some Telegram clients"
+    );
+  }
+}
 
 /**
  * Validate media group constraints
  */
 export function validateMediaGroup(
   media: MediaItem[],
-  caption: string
+  _caption: string
 ): MediaValidationResult {
   const errors: string[] = [];
   const warnings: string[] = [];
 
-  // Check media count
-  if (media.length < MIN_MEDIA_GROUP_SIZE) {
-    errors.push(`Media group must have at least ${MIN_MEDIA_GROUP_SIZE} items, got ${media.length}`);
-  }
-  if (media.length > MAX_MEDIA_GROUP_SIZE) {
-    errors.push(`Media group exceeds maximum of ${MAX_MEDIA_GROUP_SIZE} items, got ${media.length}`);
-  }
+  validateMediaCount(media.length, errors);
 
   // Validate URLs
   for (let i = 0; i < media.length; i++) {
-    const item = media[i];
-    if (!item) {
-      errors.push(`Media item at index ${i} is null or undefined`);
-      continue;
-    }
-
-    if (!item.url || typeof item.url !== "string") {
-      errors.push(`Media item at index ${i} has invalid URL: ${item.url}`);
-      continue;
-    }
-
-    // Check URL format
-    try {
-      const url = new URL(item.url);
-      if (!["http:", "https:"].includes(url.protocol)) {
-        errors.push(`Media item at index ${i} has invalid protocol: ${url.protocol}`);
-      }
-    } catch {
-      errors.push(`Media item at index ${i} has malformed URL: ${item.url}`);
-    }
-
-    // Validate media type
-    if (item.type !== "image" && item.type !== "video") {
-      errors.push(`Media item at index ${i} has invalid type: ${item.type}`);
-    }
+    validateMediaItem(media[i], i, errors);
   }
 
-  // Check for mixed media types (Telegram may have issues with certain combinations)
-  const hasVideos = media.some((m) => m.type === "video");
-  const hasImages = media.some((m) => m.type === "image");
-  if (hasVideos && hasImages) {
-    warnings.push("Media group contains both videos and images - this may cause issues with some Telegram clients");
-  }
+  checkMixedMediaTypes(media, warnings);
 
   return {
     isValid: errors.length === 0,
@@ -70,7 +96,7 @@ export function validateMediaGroup(
  * Check if Instagram URL might be expired based on URL pattern
  * Instagram CDN URLs with certain patterns are more likely to be expired
  */
-function isLikelyExpiredInstagramUrl(url: string): boolean {
+function _isLikelyExpiredInstagramUrl(url: string): boolean {
   try {
     const urlObj = new URL(url);
     // Instagram CDN URLs
@@ -94,6 +120,132 @@ function isLikelyExpiredInstagramUrl(url: string): boolean {
  * Check URL accessibility with timeout and retry logic
  * Improved to better detect expired Instagram URLs and handle transient errors
  */
+const HTTP_TIMEOUT_MS = 5000;
+const HTTP_STATUS_FORBIDDEN = 403;
+const HTTP_STATUS_NOT_FOUND = 404;
+const RETRY_BACKOFF_BASE_MS = 100;
+
+function getRequestMethod(url: string): "GET" | "HEAD" {
+  // Use GET for Instagram URLs as some don't support HEAD
+  if (url.includes("cdninstagram.com") || url.includes("fbcdn.net")) {
+    return "GET";
+  }
+  return "HEAD";
+}
+
+function isPermanentError(status: number): boolean {
+  return status === HTTP_STATUS_FORBIDDEN || status === HTTP_STATUS_NOT_FOUND;
+}
+
+function isTransientNetworkError(errorMsg: string): boolean {
+  return (
+    errorMsg.includes("timeout") ||
+    errorMsg.includes("network") ||
+    errorMsg.includes("ECONNREFUSED") ||
+    errorMsg.includes("ETIMEDOUT")
+  );
+}
+
+async function waitForRetry(attempt: number): Promise<void> {
+  await new Promise((resolve) =>
+    setTimeout(resolve, RETRY_BACKOFF_BASE_MS * (attempt + 1))
+  );
+}
+
+async function attemptUrlValidation(
+  item: MediaItem,
+  index: number,
+  logger: Logger
+): Promise<{ success: boolean; error: string | null; isPermanent: boolean }> {
+  try {
+    const method = getRequestMethod(item.url);
+    const response = await fetch(item.url, {
+      method,
+      signal: AbortSignal.timeout(HTTP_TIMEOUT_MS),
+      headers: {
+        // Add user agent to avoid some blocking
+        "User-Agent": "Mozilla/5.0 (compatible; TelegramBot/1.0)",
+      },
+    });
+
+    if (response.ok) {
+      // Log content type if available
+      const contentType = response.headers.get("content-type");
+      if (contentType) {
+        logger.debug(
+          `Media item ${index} (${item.type}): Content-Type: ${contentType}`
+        );
+      }
+      return { success: true, error: null, isPermanent: false };
+    }
+
+    const errorMsg = `HTTP ${response.status}: ${response.statusText}`;
+    const isPermanent = isPermanentError(response.status);
+
+    if (response.status === HTTP_STATUS_FORBIDDEN) {
+      return {
+        success: false,
+        error: `${errorMsg} - URL may be expired or blocked`,
+        isPermanent: true,
+      };
+    }
+
+    if (response.status === HTTP_STATUS_NOT_FOUND) {
+      return {
+        success: false,
+        error: `${errorMsg} - URL not found`,
+        isPermanent: true,
+      };
+    }
+
+    return { success: false, error: errorMsg, isPermanent };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    const isPermanent = !isTransientNetworkError(errorMsg);
+
+    if (errorMsg.includes("Malformed_HTTP_Response")) {
+      return {
+        success: false,
+        error: `${errorMsg} - URL may be expired or server error`,
+        isPermanent: true,
+      };
+    }
+
+    return { success: false, error: errorMsg, isPermanent };
+  }
+}
+
+async function validateSingleMediaUrl(
+  item: MediaItem,
+  index: number,
+  logger: Logger,
+  retries: number
+): Promise<{ success: boolean; error: string | null }> {
+  // Retry logic for transient errors
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const result = await attemptUrlValidation(item, index, logger);
+
+    if (result.success) {
+      return { success: true, error: null };
+    }
+
+    if (result.isPermanent) {
+      return { success: false, error: result.error };
+    }
+
+    // Transient error - retry if attempts remain
+    if (attempt < retries) {
+      await waitForRetry(attempt);
+      continue;
+    }
+
+    // Max retries reached
+    return { success: false, error: result.error };
+  }
+
+  return { success: false, error: "Max retries exceeded" };
+}
+
 export async function validateMediaUrls(
   media: MediaItem[],
   logger: Logger,
@@ -108,94 +260,14 @@ export async function validateMediaUrls(
       continue;
     }
 
-    let lastError: string | null = null;
-    let success = false;
-
-    // Retry logic for transient errors
-    for (let attempt = 0; attempt <= retries; attempt++) {
-      try {
-        // Quick HEAD request to check if URL is accessible
-        // Use GET for Instagram URLs as some don't support HEAD
-        const method = item.url.includes("cdninstagram.com") || item.url.includes("fbcdn.net")
-          ? "GET"
-          : "HEAD";
-
-        const response = await fetch(item.url, {
-          method,
-          signal: AbortSignal.timeout(5000), // 5 second timeout
-          headers: {
-            // Add user agent to avoid some blocking
-            "User-Agent": "Mozilla/5.0 (compatible; TelegramBot/1.0)",
-          },
-        });
-
-        if (!response.ok) {
-          const errorMsg = `HTTP ${response.status}: ${response.statusText}`;
-          
-          // 403 Forbidden is a strong indicator of expired/blocked URL
-          if (response.status === 403) {
-            lastError = `${errorMsg} - URL may be expired or blocked`;
-            // Don't retry 403 errors - they're permanent
-            break;
-          }
-          
-          // 404 Not Found - also permanent
-          if (response.status === 404) {
-            lastError = `${errorMsg} - URL not found`;
-            break;
-          }
-
-          // Other errors might be transient - retry
-          if (attempt < retries) {
-            lastError = errorMsg;
-            // Wait a bit before retry (exponential backoff)
-            await new Promise((resolve) => setTimeout(resolve, 100 * (attempt + 1)));
-            continue;
-          }
-
-          lastError = errorMsg;
-        } else {
-          accessible++;
-          success = true;
-          // Log content type if available
-          const contentType = response.headers.get("content-type");
-          if (contentType) {
-            logger.debug(`Media item ${i} (${item.type}): Content-Type: ${contentType}`);
-          }
-          break; // Success, no need to retry
-        }
-      } catch (error) {
-        const errorMsg = error instanceof Error ? error.message : String(error);
-        
-        // Network errors might be transient - retry
-        if (
-          attempt < retries &&
-          (errorMsg.includes("timeout") ||
-            errorMsg.includes("network") ||
-            errorMsg.includes("ECONNREFUSED") ||
-            errorMsg.includes("ETIMEDOUT"))
-        ) {
-          lastError = errorMsg;
-          // Wait before retry
-          await new Promise((resolve) => setTimeout(resolve, 100 * (attempt + 1)));
-          continue;
-        }
-
-        // Permanent errors or max retries reached
-        lastError = errorMsg;
-        
-        // Check for specific error patterns
-        if (errorMsg.includes("Malformed_HTTP_Response")) {
-          lastError = `${errorMsg} - URL may be expired or server error`;
-        }
-      }
-    }
-
-    if (!success && lastError) {
+    const result = await validateSingleMediaUrl(item, i, logger, retries);
+    if (result.success) {
+      accessible++;
+    } else if (result.error) {
       inaccessible.push({
         index: i,
         url: item.url,
-        error: lastError,
+        error: result.error,
       });
     }
   }
@@ -257,8 +329,12 @@ function isWithinSizeLimits(item: MediaItemWithThumbnail): boolean {
 
   const maxDimension = 4096;
 
-  if (item.width && item.width > maxDimension) return false;
-  if (item.height && item.height > maxDimension) return false;
+  if (item.width && item.width > maxDimension) {
+    return false;
+  }
+  if (item.height && item.height > maxDimension) {
+    return false;
+  }
 
   // Note: We can't check actual file size without downloading,
   // so we rely on URL validation and let Telegram handle size errors
@@ -288,14 +364,46 @@ function correctVideoThumbnails(item: MediaItemWithThumbnail): MediaItem {
   };
 }
 
+function shouldSkipMediaItem(
+  item: MediaItemWithThumbnail,
+  verbose: boolean,
+  logger: Logger
+): boolean {
+  // Skip thumbnails and invalid types
+  if (item.type !== "image" && item.type !== "video") {
+    if (verbose) {
+      logger.debug(`    ❌ Skipped: Invalid type (${item.type})`);
+    }
+    return true;
+  }
+
+  // Basic URL validation
+  if (!isValidMediaUrl(item.url)) {
+    if (verbose) {
+      logger.debug("    ❌ Skipped: Invalid URL format");
+    }
+    return true;
+  }
+
+  // Check file size limits (Telegram limits)
+  if (!isWithinSizeLimits(item)) {
+    if (verbose) {
+      logger.debug(`    ❌ Skipped: Too large (${item.width}x${item.height})`);
+    }
+    return true;
+  }
+
+  return false;
+}
+
 /**
  * Validate and filter media items for sending
  */
-export async function validateAndFilterMediaItems(
+export function validateAndFilterMediaItems(
   mediaItems: MediaItemWithThumbnail[],
   logger: Logger,
   verbose = false
-): Promise<MediaItem[]> {
+): MediaItem[] {
   const validMedia: MediaItem[] = [];
 
   if (verbose) {
@@ -307,29 +415,7 @@ export async function validateAndFilterMediaItems(
       logger.debug(`  📄 Item: ${item.type} - ${item.url}`);
     }
 
-    // Skip thumbnails and invalid types
-    if (item.type !== "image" && item.type !== "video") {
-      if (verbose) {
-        logger.debug(`    ❌ Skipped: Invalid type (${item.type})`);
-      }
-      continue;
-    }
-
-    // Basic URL validation
-    if (!isValidMediaUrl(item.url)) {
-      if (verbose) {
-        logger.debug(`    ❌ Skipped: Invalid URL format`);
-      }
-      continue;
-    }
-
-    // Check file size limits (Telegram limits)
-    if (!isWithinSizeLimits(item)) {
-      if (verbose) {
-        logger.debug(
-          `    ❌ Skipped: Too large (${item.width}x${item.height})`
-        );
-      }
+    if (shouldSkipMediaItem(item, verbose, logger)) {
       continue;
     }
 
@@ -344,7 +430,9 @@ export async function validateAndFilterMediaItems(
     // Telegram media group limit
     if (validMedia.length >= MAX_MEDIA_GROUP_SIZE) {
       if (verbose) {
-        logger.debug(`    ⚠️ Reached Telegram limit (${MAX_MEDIA_GROUP_SIZE} items)`);
+        logger.debug(
+          `    ⚠️ Reached Telegram limit (${MAX_MEDIA_GROUP_SIZE} items)`
+        );
       }
       break;
     }
@@ -374,12 +462,10 @@ export function buildMediaGroup(
         caption: mediaCaption,
         parse_mode: "HTML",
       });
-    } else {
-      return InputMediaBuilder.photo(item.url, {
-        caption: mediaCaption,
-        parse_mode: "HTML",
-      });
     }
+    return InputMediaBuilder.photo(item.url, {
+      caption: mediaCaption,
+      parse_mode: "HTML",
+    });
   });
 }
-

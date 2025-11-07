@@ -1,10 +1,41 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { paginationOptsValidator } from "convex/server";
 
 export const getUsers = query({
   args: {},
   handler: async (ctx) =>
     await ctx.db.query("users").withIndex("by_username").order("asc").collect(),
+});
+
+export const getUsersPaginated = query({
+  args: { paginationOpts: paginationOptsValidator },
+  returns: v.object({
+    page: v.array(
+      v.object({
+        _id: v.id("users"),
+        _creationTime: v.number(),
+        username: v.string(),
+        profile_url: v.optional(v.string()),
+        to_be_scraped: v.boolean(),
+        last_scraped_at: v.optional(v.number()),
+      })
+    ),
+    isDone: v.boolean(),
+    continueCursor: v.union(v.string(), v.null()),
+  }),
+  handler: async (ctx, { paginationOpts }) => {
+    const result = await ctx.db
+      .query("users")
+      .withIndex("by_username")
+      .order("asc")
+      .paginate(paginationOpts);
+    return {
+      page: result.page,
+      isDone: result.isDone,
+      continueCursor: result.continueCursor,
+    };
+  },
 });
 
 export const getUserById = query({

@@ -1,12 +1,16 @@
 /** biome-ignore-all lint/complexity/noExcessiveCognitiveComplexity: just complex */
 import { createLogger } from "../infra/logger";
-import { TokenBucketLimiter } from "../infra/rateLimiter";
+import { TokenBucketLimiter } from "../infra/rate-limiter";
 import { getSchedulerStatus, startScheduler } from "../scheduler";
 import { InstagramScraper } from "../scraping/instagram";
 import { scrapeAndSaveSinglePost, scrapeOnce } from "../scraping/scraper";
 import { getEffectiveSettings } from "../settings";
 import { runTelegramOnce } from "../telegram";
 import type { AdminOptions, SinglePostOptions, StartOptions } from "./types";
+
+const MS_PER_SECOND = 1000;
+const SECONDS_PER_MINUTE = 60;
+const MS_PER_MINUTE = MS_PER_SECOND * SECONDS_PER_MINUTE;
 
 /**
  * Handle start command - start scheduler
@@ -33,9 +37,33 @@ export async function handleStartCommand(options: StartOptions): Promise<void> {
       process.env.DEBUG ? "debug" : "info"
     );
 
+    // Start admin bot in background
+    let adminBotRunning = false;
+    try {
+      const { startAdminBot } = await import("../telegram/admin-bot");
+      // Start admin bot but don't await (runs in background)
+      startAdminBot().catch((error) => {
+        logger.warn(
+          `Admin bot failed to start: ${error instanceof Error ? error.message : String(error)}`
+        );
+        logger.debug(
+          "Admin bot is optional and can be started separately with 'admin' command"
+        );
+      });
+      adminBotRunning = true;
+    } catch {
+      // Admin bot is optional, just log a warning
+      logger.debug(
+        "Admin bot not available (TELEGRAM_BOT_TOKEN may not be set)"
+      );
+    }
+
     console.log("\n✅ Scraper is now running!");
     console.log("📋 Services running:");
     console.log("  • Cron scheduler (automated jobs)");
+    if (adminBotRunning) {
+      console.log("  • Admin bot (Telegram)");
+    }
 
     // Display "Next Runs" section
     console.log("\n⏰ Next Runs:");
@@ -43,8 +71,8 @@ export async function handleStartCommand(options: StartOptions): Promise<void> {
       const nextRun = status.scraper.nextRun;
       const now = new Date();
       const diff = nextRun.getTime() - now.getTime();
-      const minutes = Math.floor(diff / (1000 * 60));
-      const hours = Math.floor(minutes / 60);
+      const minutes = Math.floor(diff / MS_PER_MINUTE);
+      const hours = Math.floor(minutes / SECONDS_PER_MINUTE);
       const days = Math.floor(hours / 24);
 
       let timeStr: string;
@@ -74,8 +102,8 @@ export async function handleStartCommand(options: StartOptions): Promise<void> {
       const nextRun = status.telegram.nextRun;
       const now = new Date();
       const diff = nextRun.getTime() - now.getTime();
-      const minutes = Math.floor(diff / (1000 * 60));
-      const hours = Math.floor(minutes / 60);
+      const minutes = Math.floor(diff / MS_PER_MINUTE);
+      const hours = Math.floor(minutes / SECONDS_PER_MINUTE);
       const days = Math.floor(hours / 24);
 
       let timeStr: string;
@@ -280,15 +308,31 @@ export async function handleSinglePostCommand(
 }
 
 /**
- * Handle admin command - placeholder
+ * Handle admin command - start admin bot
  */
-export function handleAdminCommand(options: AdminOptions): void {
-  console.log("🤖 Admin bot command");
-  console.log(
-    "⚠️  Admin bot functionality will be implemented in a future update."
-  );
+export async function handleAdminCommand(options: AdminOptions): Promise<void> {
+  console.log("🤖 Starting Admin Bot");
+
   if (options.verbose) {
     console.log("📊 Configuration:");
-    console.log("  Mode: Admin bot (not yet implemented)");
+    console.log("  Mode: Admin bot (Telegram)");
+  }
+
+  try {
+    const { startAdminBot } = await import("../telegram/admin-bot");
+    await startAdminBot();
+
+    console.log("\n✅ Admin bot is now running!");
+    console.log("🛑 Press Ctrl+C to stop");
+
+    // Keep the process alive
+    const POLL_INTERVAL_MS = 1000;
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+    }
+  } catch (error) {
+    console.error("💥 Failed to start Admin Bot:", error);
+    process.exit(1);
   }
 }

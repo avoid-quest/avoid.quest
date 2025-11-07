@@ -33,7 +33,10 @@ export class TokenBucketLimiter {
         return;
       }
       const need = n - this.tokens;
-      const waitMs = Math.max(MIN_WAIT_MS, Math.ceil((need / this.refillPerSec) * MS_PER_SECOND));
+      const waitMs = Math.max(
+        MIN_WAIT_MS,
+        Math.ceil((need / this.refillPerSec) * MS_PER_SECOND)
+      );
       await Bun.sleep(waitMs);
     }
   }

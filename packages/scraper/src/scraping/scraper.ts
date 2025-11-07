@@ -2,7 +2,7 @@ import type { Doc, Id } from "@workspace/backend/convex/_generated/dataModel";
 import { sleep } from "bun";
 import { api, getHttpClient } from "../convex/client";
 import { createLogger } from "../infra/logger";
-import { TokenBucketLimiter } from "../infra/rateLimiter";
+import { TokenBucketLimiter } from "../infra/rate-limiter";
 import { getEffectiveSettings } from "../settings";
 import { InstagramScraper, type SinglePostResponse } from "./instagram";
 

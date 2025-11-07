@@ -1,6 +1,6 @@
 import { MOBILE_USER_AGENTS } from "../infra/constants";
 import type { Logger } from "../infra/logger";
-import { TokenBucketLimiter } from "../infra/rateLimiter";
+import { TokenBucketLimiter } from "../infra/rate-limiter";
 
 type MediaItem = {
   url: string;
@@ -521,4 +521,3 @@ export class InstagramScraper {
     }
   }
 }
-

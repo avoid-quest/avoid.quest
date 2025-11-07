@@ -1,10 +1,10 @@
-import { describe, test, expect, mock } from "bun:test";
-import {
-  validateMediaGroup,
-  buildMediaGroup,
-} from "./media-handler";
+import { describe, expect, test } from "bun:test";
+import { buildMediaGroup, validateMediaGroup } from "./media-handler";
 import type { MediaItem } from "./types";
-import { MAX_MEDIA_GROUP_SIZE, MIN_MEDIA_GROUP_SIZE } from "./types";
+import { MAX_MEDIA_GROUP_SIZE } from "./types";
+
+const LONG_CAPTION_LENGTH = 2000;
+const EXPECTED_MEDIA_GROUP_LENGTH = 3;
 
 describe("media-handler", () => {
   describe("validateMediaGroup", () => {
@@ -29,10 +29,13 @@ describe("media-handler", () => {
     });
 
     test("rejects media group with too many items", () => {
-      const media: MediaItem[] = Array.from({ length: MAX_MEDIA_GROUP_SIZE + 1 }, (_, i) => ({
-        url: `https://example.com/image${i}.jpg`,
-        type: "image" as const,
-      }));
+      const media: MediaItem[] = Array.from(
+        { length: MAX_MEDIA_GROUP_SIZE + 1 },
+        (_, i) => ({
+          url: `https://example.com/image${i}.jpg`,
+          type: "image" as const,
+        })
+      );
       const result = validateMediaGroup(media, "Test caption");
       expect(result.isValid).toBe(false);
       expect(result.errors.length).toBeGreaterThan(0);
@@ -76,7 +79,7 @@ describe("media-handler", () => {
         { url: "https://example.com/image1.jpg", type: "image" },
         { url: "https://example.com/image2.jpg", type: "image" },
       ];
-      const longCaption = "A".repeat(2000);
+      const longCaption = "A".repeat(LONG_CAPTION_LENGTH);
       const result = validateMediaGroup(media, longCaption);
       // Media group validation passes, caption truncation happens elsewhere
       expect(result.isValid).toBe(true);
@@ -108,7 +111,7 @@ describe("media-handler", () => {
       const caption = "Test caption";
       const result = buildMediaGroup(media, caption);
 
-      expect(result).toHaveLength(3);
+      expect(result).toHaveLength(EXPECTED_MEDIA_GROUP_LENGTH);
       // Verify structure (we can't easily check caption property without accessing internals)
       expect(result[0]).toBeDefined();
       expect(result[1]).toBeDefined();
@@ -127,4 +130,3 @@ describe("media-handler", () => {
     });
   });
 });
-

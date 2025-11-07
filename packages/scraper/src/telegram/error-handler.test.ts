@@ -1,7 +1,11 @@
-import { describe, test, expect, mock } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { GrammyError, HttpError } from "grammy";
-import { logGrammyError, handleTelegramApiError, isRecoverableError } from "./error-handler";
 import { createLogger } from "../infra/logger";
+import {
+  handleTelegramApiError,
+  isRecoverableError,
+  logGrammyError,
+} from "./error-handler";
 
 describe("error-handler", () => {
   describe("logGrammyError", () => {
@@ -40,7 +44,9 @@ describe("error-handler", () => {
         parameters: {},
       } as any);
 
-      expect(() => handleTelegramApiError(error, logger, "Test context")).not.toThrow();
+      expect(() =>
+        handleTelegramApiError(error, logger, "Test context")
+      ).not.toThrow();
     });
 
     test("handles 429 rate limit error", () => {
@@ -52,7 +58,9 @@ describe("error-handler", () => {
         parameters: {},
       } as any);
 
-      expect(() => handleTelegramApiError(error, logger, "Test context")).not.toThrow();
+      expect(() =>
+        handleTelegramApiError(error, logger, "Test context")
+      ).not.toThrow();
     });
 
     test("handles 403 bot blocked error", () => {
@@ -64,7 +72,9 @@ describe("error-handler", () => {
         parameters: {},
       } as any);
 
-      expect(() => handleTelegramApiError(error, logger, "Test context")).not.toThrow();
+      expect(() =>
+        handleTelegramApiError(error, logger, "Test context")
+      ).not.toThrow();
     });
 
     test("handles unknown error codes", () => {
@@ -76,7 +86,9 @@ describe("error-handler", () => {
         parameters: {},
       } as any);
 
-      expect(() => handleTelegramApiError(error, logger, "Test context")).not.toThrow();
+      expect(() =>
+        handleTelegramApiError(error, logger, "Test context")
+      ).not.toThrow();
     });
   });
 
@@ -125,4 +137,3 @@ describe("error-handler", () => {
     });
   });
 });
-

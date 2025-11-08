@@ -2,7 +2,12 @@ import { NoObjectGeneratedError } from "ai";
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
-import { internalMutation, internalQuery } from "../_generated/server";
+import {
+  internalAction,
+  internalMutation,
+  internalQuery,
+} from "../_generated/server";
+import { getAIModelFromSettings, getModelIdentifier } from "../ai/config";
 import type { PostMetadataExtraction } from "../ai/postMetadataExtractorAgent";
 import { postMetadataValidator } from "../ai/postMetadataExtractorAgent";
 import { workflow } from "./workflow";
@@ -121,9 +126,8 @@ export const saveMetadata = internalMutation({
       telegram_message: telegramMessage,
       processing_status: "completed",
       processing_completed_at: now,
-      processing_error: undefined,
+      ...(agentThreadId ? { agent_thread_id: agentThreadId } : {}),
       ai_model_used: aiModelUsed,
-      agent_thread_id: agentThreadId,
     });
 
     // Link metadata to post
@@ -149,70 +153,243 @@ export const markMetadataFailed = internalMutation({
   },
 });
 
-const MAX_RETRIES = 3;
-const AI_MODEL_USED = "gemini-2.0-flash-exp";
+const SECONDS_PER_MINUTE = 60;
+const MS_PER_SECOND = 1000;
+const DEFAULT_QUOTA_RETRY_DELAY_MS = SECONDS_PER_MINUTE * MS_PER_SECOND; // Default 60 seconds if we can't parse the retry time
+const RETRY_BUFFER_MULTIPLIER = 1.1; // Add 10% buffer to retry delays
+const MS_THRESHOLD_FOR_SECONDS = 1000; // If retryAfter < 1000, assume it's in seconds
+
+// Regex patterns for extracting retry delays from error messages (defined at top level for performance)
+const RETRY_DELAY_PATTERNS = [
+  /try again in ([\d.]+)s/i, // Groq format: "Please try again in 35.436s"
+  /retry in ([\d.]+)s/i,
+  /retry after ([\d.]+)s/i,
+  /retry_after[:\s]+([\d.]+)/i,
+  /retry after ([\d.]+) seconds/i,
+  /try again after ([\d.]+)s/i,
+] as const;
+
+// Pattern for parsing our custom RATE_LIMIT_RETRY error format
+const RATE_LIMIT_RETRY_PATTERN = /^RATE_LIMIT_RETRY:(\d+):/;
 
 type WorkflowStep = Parameters<
   Parameters<typeof workflow.define>[0]["handler"]
 >[0];
 
 /**
- * Extract metadata from post with retry logic
+ * Check if error is a quota/rate limit error
+ * Handles errors from AI SDK and Groq API
  */
-async function extractMetadataWithRetry(
+function isQuotaError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const message = error.message.toLowerCase();
+
+  // Check for common rate limit/quota error messages
+  const hasQuotaKeywords =
+    message.includes("quota") ||
+    message.includes("rate limit") ||
+    message.includes("rate_limit") ||
+    message.includes("exceeded your current quota") ||
+    message.includes("resource exhausted") ||
+    message.includes("429") || // HTTP 429 Too Many Requests
+    message.includes("too many requests");
+
+  // Check if error has status code property (common in HTTP errors)
+  const HTTP_TOO_MANY_REQUESTS = 429;
+  const errorAny = error as Error & { statusCode?: number; status?: number };
+  const has429Status =
+    errorAny.statusCode === HTTP_TOO_MANY_REQUESTS ||
+    errorAny.status === HTTP_TOO_MANY_REQUESTS;
+
+  // Check error name for rate limit indicators
+  const hasRateLimitName =
+    error.name === "RateLimitError" ||
+    error.name === "QuotaExceededError" ||
+    error.name === "429";
+
+  return hasQuotaKeywords || has429Status || hasRateLimitName;
+}
+
+/**
+ * Extract retry delay from quota error message
+ * Returns delay in milliseconds, or null if not found
+ * Handles multiple formats from AI providers:
+ * - Groq: "Please try again in 35.436s"
+ * - Generic: "retry after 60s", "retry_after: 30"
+ * Also checks for retryAfter property in error object
+ */
+function extractRetryDelayFromError(error: Error): number | null {
+  // Check for retryAfter property in error object (common in HTTP errors)
+  const errorAny = error as Error & {
+    retryAfter?: number;
+    retry_after?: number;
+    retryAfterMs?: number;
+    cause?: Error | unknown;
+  };
+
+  if (errorAny.retryAfter !== undefined && errorAny.retryAfter > 0) {
+    // If in seconds, convert to ms
+    return errorAny.retryAfter < MS_THRESHOLD_FOR_SECONDS
+      ? errorAny.retryAfter * MS_PER_SECOND
+      : errorAny.retryAfter;
+  }
+
+  if (errorAny.retry_after !== undefined && errorAny.retry_after > 0) {
+    return errorAny.retry_after < MS_THRESHOLD_FOR_SECONDS
+      ? errorAny.retry_after * MS_PER_SECOND
+      : errorAny.retry_after;
+  }
+
+  if (errorAny.retryAfterMs !== undefined && errorAny.retryAfterMs > 0) {
+    return errorAny.retryAfterMs;
+  }
+
+  // Try to extract from error message
+  const extractFromMessage = (msg: string): number | null => {
+    for (const pattern of RETRY_DELAY_PATTERNS) {
+      const match = msg.match(pattern);
+      if (match?.[1]) {
+        const seconds = Number.parseFloat(match[1]);
+        if (!Number.isNaN(seconds) && seconds > 0) {
+          // Add buffer and round up to nearest second, then convert to ms
+          return Math.ceil(seconds * RETRY_BUFFER_MULTIPLIER) * MS_PER_SECOND;
+        }
+      }
+    }
+    return null;
+  };
+
+  // First try the main error message
+  const delayFromMessage = extractFromMessage(error.message);
+  if (delayFromMessage !== null) {
+    return delayFromMessage;
+  }
+
+  // If not found, check the cause chain (for wrapped errors like AI_RetryError)
+  if (errorAny.cause instanceof Error) {
+    const delayFromCause = extractFromMessage(errorAny.cause.message);
+    if (delayFromCause !== null) {
+      return delayFromCause;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Helper action to reschedule a workflow after a delay
+ * This is used when we hit rate limits and need to retry later
+ * Uses the scheduler to reschedule the workflow based on AI response delay
+ */
+export const rescheduleWorkflow = internalAction({
+  args: {
+    postId: v.id("posts"),
+    delayMs: v.number(),
+  },
+  returns: v.null(),
+  handler: async (ctx, { postId, delayMs }) => {
+    console.log(
+      `Rescheduling workflow for post ${postId} after ${delayMs}ms delay (from AI response)`
+    );
+    await ctx.scheduler.runAfter(
+      delayMs,
+      internal.workflows.postMetadata.startWorkflow,
+      { postId }
+    );
+    return null;
+  },
+});
+
+/**
+ * Action to start the workflow (used for rescheduling)
+ */
+export const startWorkflow = internalAction({
+  args: { postId: v.id("posts") },
+  returns: v.null(),
+  handler: async (ctx, { postId }) => {
+    await workflow.start(
+      ctx,
+      internal.workflows.postMetadata.processPostMetadata,
+      { postId }
+    );
+    return null;
+  },
+});
+
+/**
+ * Extract metadata from post
+ * On rate limit errors, throws a special error with retry delay extracted from AI response
+ */
+async function extractMetadata(
   step: WorkflowStep,
   caption: string,
   postUrl: string,
   timestamp: number
 ): Promise<PostMetadataExtraction> {
-  let lastError: Error | undefined;
+  try {
+    // Use built-in retry for transient errors, but we'll handle rate limits specially
+    return await step.runAction(
+      internal.ai.postMetadataExtractorAgent.extractPostMetadata,
+      { caption, postUrl, timestamp },
+      { retry: false } // Disable automatic retry, we handle rate limits with rescheduling
+    );
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorName = error instanceof Error ? error.name : "UnknownError";
 
-  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-    try {
+    // Use AI SDK's proper error detection
+    const isNoObjectError = NoObjectGeneratedError.isInstance(error);
+    const isQuota = isQuotaError(error);
+
+    // Extract additional error properties for logging
+    const errorAny = error as Error & {
+      statusCode?: number;
+      status?: number;
+      retryAfter?: number;
+      retry_after?: number;
+      cause?: unknown;
+    };
+
+    console.error("Metadata extraction failed:", {
+      errorName,
+      errorMessage,
+      isNoObjectError,
+      isQuota,
+      statusCode: errorAny.statusCode,
+      status: errorAny.status,
+      retryAfter: errorAny.retryAfter,
+      retry_after: errorAny.retry_after,
+      cause: errorAny.cause,
+    });
+
+    // If it's a quota error, extract the retry delay from AI response and signal reschedule
+    if (isQuota) {
+      const errorObj = error instanceof Error ? error : new Error(errorMessage);
+      const retryDelayMs =
+        extractRetryDelayFromError(errorObj) ?? DEFAULT_QUOTA_RETRY_DELAY_MS;
+
       console.log(
-        `Attempting metadata extraction (attempt ${attempt}/${MAX_RETRIES})`
-      );
-      return await step.runAction(
-        internal.ai.postMetadataExtractorAgent.extractPostMetadata,
-        { caption, postUrl, timestamp },
-        { retry: attempt < MAX_RETRIES }
-      );
-    } catch (error) {
-      lastError = error instanceof Error ? error : new Error(String(error));
-      const errorMessage = lastError.message;
-      
-      // Use AI SDK's proper error detection
-      const isNoObjectError = NoObjectGeneratedError.isInstance(error);
-      const noObjectError = isNoObjectError ? error : null;
-
-      console.error(
-        `Metadata extraction attempt ${attempt}/${MAX_RETRIES} failed:`,
-        {
-          error: errorMessage,
-          isNoObjectError,
-          willRetry: attempt < MAX_RETRIES,
-          ...(noObjectError && {
-            finishReason: noObjectError.finishReason,
-            hasText: !!noObjectError.text,
-          }),
-        }
+        `Rate limit detected (${errorName}). Will reschedule after ${retryDelayMs}ms (extracted from AI response)`
       );
 
-      if (attempt >= MAX_RETRIES) {
-        console.error(
-          `All ${MAX_RETRIES} attempts failed. Last error:`,
-          errorMessage
-        );
-        throw lastError;
+      // Throw a special error that includes the delay for the workflow handler to process
+      const rescheduleError = new Error(
+        `RATE_LIMIT_RETRY:${retryDelayMs}:${errorMessage}`
+      );
+      // Preserve the original error name and stack
+      rescheduleError.name = errorName;
+      if (error instanceof Error && error.stack) {
+        rescheduleError.stack = error.stack;
       }
-
-      // Note: In Convex workflows, we can't add delays between retries
-      // The workflow system will handle retries automatically
+      throw rescheduleError;
     }
-  }
 
-  // This should never be reached, but TypeScript needs it
-  throw lastError ?? new Error("Failed to extract metadata after retries");
+    // For other errors, just throw them
+    throw error;
+  }
 }
 
 /**
@@ -296,13 +473,48 @@ export const processPostMetadata = workflow.define({
         { postId }
       );
 
-      // Step 3: Extract metadata via agent (with retry)
-      const extractedData = await extractMetadataWithRetry(
-        step,
-        post.caption,
-        post.url,
-        post.timestamp
-      );
+      // Step 3: Extract metadata via agent
+      // If rate limited, this will throw an error with retry delay info
+      let extractedData: PostMetadataExtraction;
+      try {
+        extractedData = await extractMetadata(
+          step,
+          post.caption,
+          post.url,
+          post.timestamp
+        );
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
+
+        // Check if this is a rate limit error with retry delay
+        const rateLimitMatch = errorMessage.match(RATE_LIMIT_RETRY_PATTERN);
+        if (rateLimitMatch) {
+          const delayMs = Number.parseInt(rateLimitMatch[1], 10);
+          console.log(
+            `Rate limit detected. Rescheduling workflow for post ${postId} after ${delayMs}ms`
+          );
+
+          // Reschedule the workflow using an action (actions have scheduler access)
+          await step.runAction(
+            internal.workflows.postMetadata.rescheduleWorkflow,
+            {
+              postId,
+              delayMs,
+            }
+          );
+
+          // Return early - the workflow will be rescheduled
+          return {
+            success: false,
+            metadataId,
+            error: `Rate limited. Rescheduled for retry in ${delayMs}ms`,
+          };
+        }
+
+        // Re-throw other errors
+        throw error;
+      }
 
       // Step 4: Generate Telegram message (non-critical)
       const telegramMessage = await generateTelegramMessageSafe(
@@ -315,12 +527,17 @@ export const processPostMetadata = workflow.define({
       if (!metadataId) {
         throw new Error("Metadata ID is undefined");
       }
+
+      // Get the model identifier from settings for storage
+      const modelConfig = await getAIModelFromSettings(step);
+      const aiModelUsed = getModelIdentifier(modelConfig);
+
       await step.runMutation(internal.workflows.postMetadata.saveMetadata, {
         metadataId,
         extractedData,
         telegramMessage,
-        agentThreadId: undefined,
-        aiModelUsed: AI_MODEL_USED,
+        // agentThreadId omitted - optional field
+        aiModelUsed,
       });
 
       return {

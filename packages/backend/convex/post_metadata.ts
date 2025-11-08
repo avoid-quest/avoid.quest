@@ -192,8 +192,8 @@ export const updateMetadataSettings = mutation({
 
     const currentAiSettings = settings.ai_metadata_extraction ?? {
       enabled: true,
-      model: "gemini-2.5-flash",
-      batch_size: 10,
+      model: "moonshotai/kimi-k2-instruct",
+      batch_size: 5,
       backlog_interval_minutes: 5,
       max_concurrent_workflows: 1,
     };

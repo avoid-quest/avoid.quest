@@ -18,7 +18,7 @@
     "@convex-dev/workflow": "^0.2.7",
     "@convex-dev/migrations": "^0.2.9",
     "ai": "^5.0.89",
-    "@ai-sdk/google": "^2.0.29",
+    "@ai-sdk/groq": "^2.0.28",
     "zod": "^4.1.12",
     "convex": "^1.28.2"
   }

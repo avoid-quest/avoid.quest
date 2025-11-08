@@ -1,7 +1,7 @@
-import { google } from "@ai-sdk/google";
 import { generateText } from "ai";
 import { v } from "convex/values";
 import { internalAction } from "../_generated/server";
+import { getAIModelFromSettings } from "./config";
 import { postMetadataValidator } from "./postMetadataExtractorAgent";
 import {
   buildTelegramMessagePrompt,
@@ -245,14 +245,9 @@ export const generateTelegramMessage = internalAction({
     postUrl: v.string(),
   },
   returns: v.string(),
-  handler: async (_ctx, { metadata, postUrl }) => {
-    if (!process.env.GOOGLE_GENERATIVE_AI_API_KEY) {
-      throw new Error(
-        "GOOGLE_GENERATIVE_AI_API_KEY environment variable is required"
-      );
-    }
-
-    const model = google("gemini-2.0-flash-exp");
+  handler: async (ctx, { metadata, postUrl }) => {
+    // Get model from settings or use default
+    const { model } = await getAIModelFromSettings(ctx);
     const eventDetails = buildEventDetailsString(metadata);
 
     const userPrompt = buildTelegramMessagePrompt(

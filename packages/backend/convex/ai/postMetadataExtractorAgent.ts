@@ -1,10 +1,10 @@
-import { google } from "@ai-sdk/google";
 import { Agent } from "@convex-dev/agent";
 import { NoObjectGeneratedError } from "ai";
 import { v } from "convex/values";
 import { z } from "zod";
 import { components } from "../_generated/api";
 import { internalAction } from "../_generated/server";
+import { getAIModelFromSettings } from "./config";
 import {
   buildPostMetadataExtractionPrompt,
   POST_METADATA_EXTRACTION_SYSTEM_PROMPT,
@@ -45,7 +45,7 @@ const postMetadataZodSchema = z.object({
   organizer_contact: z.string().optional(),
   target_audience: z.array(z.string()).optional(),
   registration_required: z.boolean().optional(),
-  registration_url: z.string().url().optional(),
+  registration_url: z.union([z.string().url(), z.literal("")]).optional(),
   ticket_price: z.string().optional(),
   event_description: z.string().optional(),
   hashtags: z.array(z.string()).optional(),
@@ -107,15 +107,13 @@ export const postMetadataValidator = v.object({
 
 /**
  * Create and configure the post metadata extractor agent
+ * Uses centralized AI configuration to get the model from settings or defaults
  */
-function createPostMetadataExtractorAgent(): Agent {
-  if (!process.env.GOOGLE_GENERATIVE_AI_API_KEY) {
-    throw new Error(
-      "GOOGLE_GENERATIVE_AI_API_KEY environment variable is required"
-    );
-  }
-
-  const model = google("gemini-2.0-flash-exp");
+async function createPostMetadataExtractorAgent(
+  ctx: Parameters<typeof getAIModelFromSettings>[0]
+): Promise<Agent> {
+  // Get model from settings or use default
+  const { model } = await getAIModelFromSettings(ctx);
 
   return new Agent(components.agent, {
     name: "Post Metadata Extractor",
@@ -135,7 +133,7 @@ export const extractPostMetadata = internalAction({
   },
   returns: postMetadataValidator,
   handler: async (ctx, { caption, postUrl, timestamp }) => {
-    const agent = createPostMetadataExtractorAgent();
+    const agent = await createPostMetadataExtractorAgent(ctx);
 
     const prompt = buildPostMetadataExtractionPrompt(
       caption,
@@ -160,7 +158,17 @@ export const extractPostMetadata = internalAction({
         }
       );
 
-      return result.object;
+      // Convert empty strings to undefined for optional URL fields
+      // (Zod transforms can't be used in JSON Schema, so we handle this manually)
+      const cleanedObject = {
+        ...result.object,
+        registration_url:
+          result.object.registration_url === ""
+            ? undefined
+            : result.object.registration_url,
+      };
+
+      return cleanedObject;
     } catch (error) {
       // Truncate caption for logging
       const captionPreview =

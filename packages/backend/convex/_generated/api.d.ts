@@ -8,6 +8,9 @@
  * @module
  */
 
+import type * as ai_config_index from "../ai/config/index.js";
+import type * as ai_config_models from "../ai/config/models.js";
+import type * as ai_config_providers from "../ai/config/providers.js";
 import type * as ai_postMetadataExtractorAgent from "../ai/postMetadataExtractorAgent.js";
 import type * as ai_prompts from "../ai/prompts.js";
 import type * as ai_telegramMessageGenerator from "../ai/telegramMessageGenerator.js";
@@ -36,6 +39,9 @@ import type {
  * ```
  */
 declare const fullApi: ApiFromModules<{
+  "ai/config/index": typeof ai_config_index;
+  "ai/config/models": typeof ai_config_models;
+  "ai/config/providers": typeof ai_config_providers;
   "ai/postMetadataExtractorAgent": typeof ai_postMetadataExtractorAgent;
   "ai/prompts": typeof ai_prompts;
   "ai/telegramMessageGenerator": typeof ai_telegramMessageGenerator;

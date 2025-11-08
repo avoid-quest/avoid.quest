@@ -1,9 +1,13 @@
 import { cronJobs } from "convex/server";
 import { v } from "convex/values";
-import type { Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
 import { internalAction, internalQuery } from "./_generated/server";
 import { workflow } from "./workflows/workflow";
+
+const SECONDS_PER_MINUTE = 60;
+const MINUTES_PER_HOUR = 60;
+const MS_PER_SECOND = 1000;
+const ONE_HOUR_MS = SECONDS_PER_MINUTE * MINUTES_PER_HOUR * MS_PER_SECOND;
 
 /**
  * Internal query to get posts without metadata_id
@@ -22,24 +26,63 @@ export const getPostsWithoutMetadata = internalQuery({
 });
 
 /**
- * Internal query to check if metadata exists for a post
+ * Internal query to check if metadata exists and is completed for a post
+ * Returns true if we should skip processing (metadata is completed)
+ * Returns false if we should process (no metadata, failed, or stuck processing)
  */
 export const checkMetadataExists = internalQuery({
   args: { postId: v.id("posts") },
   returns: v.boolean(),
   handler: async (ctx, { postId }) => {
     const post = await ctx.db.get(postId);
-    if (!post || post.metadata_id) {
-      return true; // Post doesn't exist or already has metadata
+    if (!post) {
+      return true; // Post doesn't exist, skip
     }
 
-    // Also check if metadata record exists (in case post.metadata_id is not set but record exists)
+    // If post has metadata_id linked, check if it's completed
+    if (post.metadata_id) {
+      const metadata = await ctx.db.get(post.metadata_id);
+      if (metadata?.processing_status === "completed") {
+        return true; // Already completed, skip
+      }
+      // If linked but not completed, we should retry
+      return false;
+    }
+
+    // Check if metadata record exists (in case post.metadata_id is not set but record exists)
     const existingMetadata = await ctx.db
       .query("post_metadata")
       .withIndex("by_post_id", (q) => q.eq("post_id", postId))
       .first();
 
-    return existingMetadata !== null;
+    if (!existingMetadata) {
+      return false; // No metadata record, should process
+    }
+
+    // Only skip if metadata is completed
+    // Retry if failed, processing, or pending
+    if (existingMetadata.processing_status === "completed") {
+      return true; // Completed, skip
+    }
+
+    // Check if processing is stuck (processing for more than 1 hour)
+    if (existingMetadata.processing_status === "processing") {
+      const processingStartedAt = existingMetadata.processing_started_at ?? 0;
+      const isStuck = Date.now() - processingStartedAt > ONE_HOUR_MS;
+
+      if (isStuck) {
+        console.log(
+          `Metadata for post ${postId} is stuck in processing (started ${Date.now() - processingStartedAt}ms ago), will retry`
+        );
+        return false; // Stuck, should retry
+      }
+
+      // Still processing and not stuck, skip for now
+      return true;
+    }
+
+    // Failed or pending, should retry
+    return false;
   },
 });
 
@@ -60,8 +103,9 @@ export const processMetadataBacklog = internalAction({
     const aiSettings = settings?.ai_metadata_extraction;
 
     // Default values for AI metadata extraction settings
+    // Reduced defaults to respect Gemini free tier (50 requests limit)
     const DEFAULT_BATCH_SIZE = 1;
-    const DEFAULT_MAX_CONCURRENT_WORKFLOWS = 3;
+    const DEFAULT_MAX_CONCURRENT_WORKFLOWS = 1; // Reduced from 3 to avoid quota issues
 
     if (!aiSettings?.enabled) {
       console.log("AI metadata extraction is disabled in settings");
@@ -69,7 +113,8 @@ export const processMetadataBacklog = internalAction({
     }
 
     const batchSize = aiSettings.batch_size ?? DEFAULT_BATCH_SIZE;
-    const maxConcurrent = aiSettings.max_concurrent_workflows ?? DEFAULT_MAX_CONCURRENT_WORKFLOWS;
+    const maxConcurrent =
+      aiSettings.max_concurrent_workflows ?? DEFAULT_MAX_CONCURRENT_WORKFLOWS;
 
     console.log(
       `Processing metadata backlog: batchSize=${batchSize}, maxConcurrent=${maxConcurrent}`
@@ -134,6 +179,15 @@ export const processMetadataBacklog = internalAction({
           );
         }
       });
+
+      // Add delay between batches to respect rate limits (only if not last batch)
+      if (i + maxConcurrent < postsWithoutMetadata.length) {
+        const BATCH_DELAY_SECONDS = 5; // 5 seconds between batches
+        console.log(`Waiting ${BATCH_DELAY_SECONDS}s before next batch...`);
+        await new Promise((resolve) =>
+          setTimeout(resolve, BATCH_DELAY_SECONDS * MS_PER_SECOND)
+        );
+      }
     }
 
     console.log(
@@ -146,7 +200,7 @@ export const processMetadataBacklog = internalAction({
 
 const crons = cronJobs();
 
-// Run every 15 minutes by default (respects Google Gemini free tier rate limits)
+// Run every 15 minutes by default (respects Groq API rate limits)
 // The interval can be configured via settings.ai_metadata_extraction.backlog_interval_minutes
 crons.interval(
   "process-metadata-backlog",
@@ -156,4 +210,3 @@ crons.interval(
 );
 
 export default crons;
-

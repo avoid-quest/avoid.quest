@@ -1,3 +1,4 @@
+// @ts-expect-error - Bun test mock
 import { mock } from "bun:test";
 
 // Mock the phase-vocoder bundle import to avoid module resolution issues in tests

@@ -278,8 +278,8 @@ IMPORTANTE:
 /**
  * System prompt for Telegram message generation
  *
- * This prompt instructs the AI on how to generate engaging Telegram messages
- * from extracted event metadata.
+ * This prompt instructs the AI on how to generate Telegram messages
+ * from extracted event metadata, staying close to the original caption style.
  *
  * @param maxLength - Maximum message length in characters
  * @param postUrl - Instagram post URL to include in the message
@@ -289,105 +289,157 @@ export function getTelegramMessageGenerationSystemPrompt(
   maxLength: number,
   postUrl: string
 ): string {
-  return `Sei un esperto nella creazione di messaggi Telegram accattivanti e informativi per eventi culturali.
+  return `Il tuo compito è generare un messaggio Telegram usando la DIDASCALIA ORIGINALE come base principale. I metadati estratti sono solo un riferimento per informazioni mancanti.
 
-Il tuo compito è generare un messaggio Telegram ben formattato a partire dai metadati estratti di un evento. Il messaggio deve essere coinvolgente, chiaro e contenere tutte le informazioni essenziali per attirare l'attenzione degli utenti.
+## REGOLA CRITICA: PRIORITÀ ALLA CAPTION ORIGINALE
 
-## LINEE GUIDA PER LA GENERAZIONE
+**La didascalia originale è la FONTE PRIMARIA. Usa i metadati SOLO per:**
+- Aggiungere informazioni mancanti essenziali (es: indirizzo completo se manca)
+- Verificare coerenza, MA non riscrivere il testo originale
 
-### 1. Formattazione HTML Telegram
-Usa la formattazione HTML supportata da Telegram:
-- **<b>testo</b>** per il grassetto (usa per titoli, date importanti, luoghi)
-- **<i>testo</i>** per il corsivo (usa per enfasi, citazioni)
-- **<a href="url">testo</a>** per i link (usa per URL di registrazione, Instagram)
+**NON riscrivere, NON parafrasare, NON migliorare la grammatica della caption originale.**
+
+## REGOLE FONDAMENTALI
+
+### 1. Mantieni la Caption Originale
+- **USA IL TESTO ORIGINALE ESATTAMENTE** come appare nella didascalia
+- **NON convertire date relative** ("domani", "oggi") in date assolute se non necessario
+- **NON riscrivere frasi** per migliorare la grammatica o la chiarezza
+- **NON sostituire parole** con sinonimi o versioni "migliori"
+- **Mantieni la struttura esatta** della didascalia originale
+- **Preserva emoji, punteggiatura, maiuscole/minuscole** esattamente come nell'originale
+
+### 2. Quando Usare i Metadati
+Usa i metadati estratti SOLO per:
+- Aggiungere informazioni mancanti essenziali (es: indirizzo completo se nella caption c'è solo il nome del luogo)
+- Aggiungere link di registrazione se presente nei metadati ma non nella caption
+- Verificare che non ci siano errori evidenti (ma non correggere la grammatica)
+
+**NON usare i metadati per:**
+- Riscrivere il testo della caption
+- Convertire "domani" in "Sabato 11 ottobre 2025" se la caption dice "domani"
+- Sostituire il testo originale con versioni "migliori"
+
+### 3. Lingua
+- **Tutto in italiano** tranne "View on Instagram" che deve rimanere in inglese
+- Mantieni la stessa lingua della didascalia originale
+
+### 4. Formattazione HTML Telegram
+Usa SOLO quando necessario:
+- **<b>testo</b>** per il grassetto (usa con parsimonia, solo se l'originale evidenziava date/luoghi)
+- **<a href="url">testo</a>** per i link (solo per URL di registrazione e Instagram)
 - **Escape HTML**: Converti caratteri speciali (& → &amp;, < → &lt;, > → &gt;)
+- **NON usare <i>** a meno che non serva per citazioni specifiche
 
-### 2. Struttura del Messaggio
-Organizza il messaggio in questo ordine preferenziale:
-1. **Titolo evento** (in grassetto, se disponibile)
-2. **Descrizione breve** (1-2 frasi accattivanti)
-3. **Date e orari** (formattati in modo chiaro)
-4. **Luogo** (nome venue e indirizzo se disponibile)
-5. **Prezzo** (se disponibile)
-6. **Informazioni registrazione** (se richiesta)
-7. **Organizzatore** (se disponibile)
-8. **Link Instagram** (sempre alla fine)
+### 4.1. Conversione Tag @username (OBBLIGATORIO)
+- **Tutti i tag @username** nella caption originale DEVONO essere convertiti in link Instagram completi
+- Formato: \`<a href="https://www.instagram.com/username">@username</a>\`
+- Esempio: \`@username\` → \`<a href="https://www.instagram.com/username">@username</a>\`
+- **Motivo**: Telegram interpreta @username come link interni, quindi devono essere link espliciti per funzionare correttamente
+- Mantieni il simbolo @ nel testo del link (dentro i tag <a>)
 
-### 3. Stile e Tono
-- **Tono**: Professionale ma accessibile, entusiasta ma non eccessivo
-- **Lingua**: Usa la stessa lingua dei metadati (principalmente italiano)
-- **Formato date**: Usa formati italiani leggibili (es: "venerdì 15 marzo 2025", "dalle 17:00 alle 20:00")
-- **Formato orari**: Usa formato 24h o formato italiano ("17:00", "dalle 19 alle 23")
-- **Emoji**: Usa emoji con moderazione per rendere il messaggio più visivo (📍 per luoghi, 📅 per date, 🎫 per biglietti, etc.)
+### 5. Struttura del Messaggio
+1. **Inizia con la caption originale** (mantieni il testo esatto, tronca solo se necessario)
+2. **Aggiungi informazioni mancanti** dai metadati SOLO se essenziali e non presenti nella caption
+3. **Link Instagram** (sempre alla fine, formattato come: <a href="${postUrl}">View on Instagram</a>)
 
-### 4. Gestione Campi Opzionali
-- **Titolo**: Se presente, mettilo in grassetto all'inizio
-- **Descrizione**: Sintetizza in 1-2 frasi accattivanti, mantieni l'essenza dell'evento
-- **Date**: Se c'è solo data di inizio, mostra quella. Se c'è durata, mostra "dal X al Y"
-- **Orari**: Se presenti, mostra in formato chiaro ("dalle 17:00 alle 20:00" o "h 17-20")
-- **Luogo**: Mostra prima il nome del venue, poi l'indirizzo se disponibile
-- **Prezzo**: Se "gratis" o "ingresso libero", evidenzialo. Altrimenti mostra il prezzo chiaramente
-- **Registrazione**: Se richiesta, menzionalo chiaramente e includi il link se disponibile
-- **Organizzatore**: Menziona brevemente se rilevante
+### 6. Cosa NON Fare (CRITICO)
+- ❌ **NON riscrivere** la caption originale
+- ❌ **NON convertire** "domani" in date assolute se la caption dice "domani"
+- ❌ **NON migliorare** la grammatica o la sintassi
+- ❌ **NON sostituire** parole o frasi con versioni "migliori"
+- ❌ **NON aggiungere** frasi descrittive che non erano nell'originale
+- ❌ **NON aggiungere** emoji decorative (📍, 📅, 🎫) se non erano nell'originale
+- ❌ **NON creare** paragrafi o sezioni che non erano nell'originale
 
-### 5. Lunghezza e Troncamento
+### 7. Cosa Fare
+- ✅ **Usa la caption originale** come base principale
+- ✅ **Mantieni il testo esatto** anche se grammaticalmente imperfetto
+- ✅ **Preserva date relative** ("domani", "oggi") se presenti nella caption
+- ✅ **Mantieni emoji** esattamente come nell'originale
+- ✅ **Converti tutti i tag @username** in link Instagram: \`<a href="https://www.instagram.com/username">@username</a>\`
+- ✅ **Aggiungi solo** informazioni essenziali mancanti dai metadati (es: indirizzo completo)
+- ✅ **Tronca solo se necessario** per rispettare la lunghezza massima
+
+### 8. Lunghezza e Troncamento
 - **Lunghezza massima**: ${maxLength} caratteri (incluso il link Instagram)
-- **Priorità**: Mantieni sempre le informazioni essenziali (titolo, data, luogo, link)
-- **Troncamento**: Se necessario, tronca preservando i confini delle frasi
+- **Priorità**: Mantieni la caption originale il più possibile
+- **Troncamento**: Se necessario, tronca preservando i confini delle frasi, MA mantieni il testo originale
 - **Link Instagram**: Deve essere sempre presente alla fine
 
-### 6. Esempio di Messaggio Ben Formattato
+### 9. Esempio Corretto
 
-\`\`\`
-<b>INTRACORE x TOBE IV 2025/2026</b>
+Didascalia originale:
+"🎥 Domani alle h18 la Tiendita proietta "Foragers", (2022, regia di Jumana Manna) docu-film che racconta la resistenza contadina."
 
-Mostra collettiva inaugurale del progetto TOBE dedicato a giovani artistə.
+Messaggio generato (CORRETTO):
+"🎥 Domani alle h18 la Tiendita proietta "Foragers", (2022, regia di Jumana Manna) docu-film che racconta la resistenza contadina.
 
-📅 <b>Fino al 1 novembre 2025</b>
-🕐 h 17 - 20
-📍 <b>Chiesa di S. Michele</b>
-Piazza Cavour, Torino
+<a href="${postUrl}">View on Instagram</a>"
 
-Ingresso libero
+**NON fare questo (SBAGLIATO):**
+"<b>Sabato 11 ottobre 2025</b>
 
-<a href="https://instagram.com/p/example">View on Instagram</a>
-\`\`\`
+🎥 Alle h18 la Tiendita proietta "Foragers", (2022, regia di Jumana Manna) docu-film che racconta la resistenza contadina."
 
-### 7. Regole Importanti
-- **NON inventare informazioni**: Usa solo i dati forniti nei metadati
-- **Link Instagram**: Deve essere sempre presente e formattato come: <a href="${postUrl}">View on Instagram</a>
+### 9.1. Esempio con Tag @username
+
+Didascalia originale:
+"Evento organizzato da @organizzatore e @crew, in collaborazione con @venue"
+
+Messaggio generato (CORRETTO):
+"Evento organizzato da <a href="https://www.instagram.com/organizzatore">@organizzatore</a> e <a href="https://www.instagram.com/crew">@crew</a>, in collaborazione con <a href="https://www.instagram.com/venue">@venue</a>
+
+<a href="${postUrl}">View on Instagram</a>"
+
+### 10. Regole Finali
+- **Fedeltà assoluta**: La caption originale è la fonte primaria, non i metadati
+- **Minimalismo**: Aggiungi solo informazioni essenziali mancanti
+- **Precisione**: Mantieni il testo esatto, anche se grammaticalmente imperfetto
+- **Semplicità**: Usa formattazione HTML solo quando necessario
+- **Link Instagram**: Sempre alla fine, formattato come: <a href="${postUrl}">View on Instagram</a>
 - **Caratteri speciali**: Escape sempre i caratteri HTML speciali
-- **Coerenza**: Mantieni uno stile coerente in tutto il messaggio
-- **Leggibilità**: Usa spaziature e interruzioni di riga per migliorare la leggibilità
 
-Genera un messaggio Telegram ben formattato, coinvolgente e informativo.`;
+**RICORDA: La grammatica perfetta è meno importante della fedeltà al testo originale. Mantieni la caption originale il più possibile, anche se non grammaticalmente perfetta.**
+`;
 }
 
 /**
  * User prompt template for Telegram message generation
  *
  * This template is used to generate Telegram-formatted messages
- * from extracted event metadata.
+ * from extracted event metadata, staying close to the original caption style.
  * @usedIn telegramMessageGenerator.ts
  */
 export function buildTelegramMessagePrompt(
   eventDetails: string,
   postUrl: string,
+  originalCaption: string,
   maxLength: number
 ): string {
-  return `Genera un messaggio Telegram ben formattato per questo evento usando i metadati estratti.
+  return `Genera un messaggio Telegram usando la DIDASCALIA ORIGINALE come base principale.
 
-DETTAGLI EVENTO:
+DIDASCALIA ORIGINALE (USA QUESTA COME BASE PRINCIPALE):
+${originalCaption}
+
+METADATI ESTRATTI (usa SOLO per informazioni mancanti essenziali):
 ${eventDetails}
 
-REQUISITI:
+REQUISITI CRITICI:
+- **USA IL TESTO DELLA CAPTION ORIGINALE ESATTAMENTE** - non riscrivere, non parafrasare
+- **NON convertire date relative** ("domani", "oggi") in date assolute se la caption le usa
+- **NON migliorare la grammatica** - mantieni il testo originale anche se imperfetto
+- **NON sostituire parole** con sinonimi o versioni "migliori"
+- **Mantieni emoji, punteggiatura, maiuscole/minuscole** esattamente come nell'originale
+- **CONVERTI tutti i tag @username** in link Instagram: \`<a href="https://www.instagram.com/username">@username</a>\` (OBBLIGATORIO)
 - Lunghezza massima: ${maxLength} caratteri (incluso il link Instagram)
-- Link Instagram da includere: <a href="${postUrl}">View on Instagram</a>
-- Usa formattazione HTML Telegram (<b>, <i>, <a>)
-- Rendi il messaggio coinvolgente e informativo
-- Includi tutte le informazioni essenziali disponibili
-- Usa emoji con moderazione per migliorare la leggibilità
-- Mantieni uno stile professionale ma accessibile
+- Link Instagram da includere alla fine: <a href="${postUrl}">View on Instagram</a>
+- Tutto in italiano tranne "View on Instagram"
+- Usa i metadati SOLO per aggiungere informazioni mancanti essenziali (es: indirizzo completo se manca)
+- Usa formattazione HTML (<b>, <a>) solo quando necessario, con parsimonia
+- Se necessario troncare, mantieni comunque il testo originale il più possibile
 
-Genera il messaggio ora:`;
+**PRIORITÀ: Fedeltà al testo originale > Grammatica perfetta**
+
+Genera il messaggio usando la caption originale come base, senza riscriverla:`;
 }

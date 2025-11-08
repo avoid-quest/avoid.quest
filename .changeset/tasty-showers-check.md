@@ -15,7 +15,11 @@
   - Organizer identification from @mentions and hashtags
   - Pricing and registration information
   - Hashtag and language detection
-- **Telegram message generator** - AI-powered generation of formatted Telegram messages from extracted metadata
+- **Telegram message generator** - AI-powered generation of formatted Telegram messages from extracted metadata:
+  - **Original caption fidelity** - Prioritizes exact preservation of original caption text over grammar perfection
+  - **Automatic @username link conversion** - Converts Instagram @mentions to full Instagram profile links for proper Telegram rendering
+  - **Minimal rewriting** - Preserves relative dates ("domani", "oggi"), emoji, punctuation, and original structure
+  - **Metadata as supplement only** - Uses extracted metadata only for missing essential information, not to rewrite original text
 - **Structured output validation** - Uses Zod schemas for type-safe AI responses
 - **Isolated thread context** - Each post extraction gets its own agent thread for proper context separation
 

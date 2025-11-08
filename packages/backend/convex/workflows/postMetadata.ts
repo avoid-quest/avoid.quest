@@ -1,9 +1,9 @@
-import { vWorkflowId } from "@convex-dev/workflow";
+import { vWorkflowId, type WorkflowId } from "@convex-dev/workflow";
 import { vResultValidator } from "@convex-dev/workpool";
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
-import { internalMutation, internalQuery } from "../_generated/server";
+import { action, internalMutation, internalQuery } from "../_generated/server";
 import { MODEL_IDENTIFIER } from "../ai/config";
 import { postMetadataValidator } from "../ai/postMetadataExtractorAgent";
 import { now } from "../lib/dateUtils";
@@ -75,11 +75,12 @@ export const saveMetadata = internalMutation({
     extractedData: postMetadataValidator,
     aiModelUsed: v.string(),
     threadId: v.string(),
+    telegramMessage: v.optional(v.string()),
   },
   returns: v.null(),
   handler: async (
     ctx,
-    { metadataId, extractedData, aiModelUsed, threadId }
+    { metadataId, extractedData, aiModelUsed, threadId, telegramMessage }
   ) => {
     const metadata = await ctx.db.get(metadataId);
     if (!metadata) {
@@ -88,16 +89,41 @@ export const saveMetadata = internalMutation({
 
     // Update metadata - only fields that exist in extractedData will be set
     // Store thread ID for tracking and debugging (each post has isolated thread)
+    // Include telegram message if it was generated
     await ctx.db.patch(metadataId, {
       ...extractedData,
       processing_status: "completed",
       processing_completed_at: now(),
       ai_model_used: aiModelUsed,
       agent_thread_id: threadId,
+      ...(telegramMessage !== undefined && {
+        telegram_message: telegramMessage,
+      }),
     });
 
     // Link metadata to post
     await ctx.db.patch(metadata.post_id, { metadata_id: metadataId });
+  },
+});
+
+/**
+ * Save telegram message to metadata
+ */
+export const saveTelegramMessage = internalMutation({
+  args: {
+    metadataId: v.id("post_metadata"),
+    telegramMessage: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, { metadataId, telegramMessage }) => {
+    const metadata = await ctx.db.get(metadataId);
+    if (!metadata) {
+      throw new Error(`Metadata ${metadataId} not found`);
+    }
+
+    await ctx.db.patch(metadataId, {
+      telegram_message: telegramMessage,
+    });
   },
 });
 
@@ -193,6 +219,27 @@ export const handlePostMetadataCompletion = internalMutation({
 });
 
 /**
+ * Public action to trigger metadata extraction workflow for testing
+ */
+export const triggerMetadataExtraction = action({
+  args: { postId: v.id("posts") },
+  returns: v.string(),
+  handler: async (ctx, { postId }): Promise<string> => {
+    const workflowId: WorkflowId = await workflow.start(
+      ctx,
+      internal.workflows.postMetadata.processPostMetadata,
+      { postId },
+      {
+        onComplete:
+          internal.workflows.postMetadata.handlePostMetadataCompletion,
+        context: { postId },
+      }
+    );
+    return workflowId;
+  },
+});
+
+/**
  * Process post metadata extraction
  * Uses onComplete callback for error handling instead of try-catch
  */
@@ -238,13 +285,64 @@ export const processPostMetadata = workflow.define({
     // Use constant model identifier (workflow steps can't access process.env)
     const aiModelUsed = MODEL_IDENTIFIER;
 
-    // Save metadata with thread ID for tracking and debugging
+    // Generate telegram message for high-confidence events (event_score >= 70)
+    // Do this BEFORE marking metadata as completed to avoid race conditions
+    const HIGH_CONFIDENCE_THRESHOLD = 70;
+    let telegramMessage: string | undefined;
+
+    if (
+      extractionResult.extractedData.event_score >= HIGH_CONFIDENCE_THRESHOLD
+    ) {
+      console.log(
+        `Generating telegram message for post ${postId} (event_score: ${extractionResult.extractedData.event_score})`
+      );
+      try {
+        // Generate telegram message using AI
+        telegramMessage = await step.runAction(
+          internal.ai.telegramMessageGenerator.generateTelegramMessage,
+          {
+            metadata: extractionResult.extractedData,
+            postUrl: post.url,
+            originalCaption: post.caption,
+          },
+          { retry: true }
+        );
+
+        console.log(
+          `Telegram message generated successfully for post ${postId}, length: ${telegramMessage.length}`
+        );
+      } catch (error) {
+        // Log error but don't fail the workflow if message generation fails
+        // The workflow has already successfully extracted metadata
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
+        const errorStack = error instanceof Error ? error.stack : undefined;
+        console.error(
+          `Failed to generate telegram message for post ${postId}:`,
+          errorMessage,
+          errorStack ? `\nStack: ${errorStack}` : ""
+        );
+        // Continue without telegram message - metadata extraction was successful
+      }
+    } else {
+      console.log(
+        `Skipping telegram message generation for post ${postId} (event_score: ${extractionResult.extractedData.event_score} < ${HIGH_CONFIDENCE_THRESHOLD})`
+      );
+    }
+
+    // Save metadata with thread ID and telegram message (if generated)
+    // This ensures metadata is marked as completed only after telegram message is saved
     await step.runMutation(internal.workflows.postMetadata.saveMetadata, {
       metadataId,
       extractedData: extractionResult.extractedData,
       aiModelUsed,
       threadId: extractionResult.threadId,
+      telegramMessage,
     });
+
+    if (telegramMessage) {
+      console.log(`Telegram message saved to metadata for post ${postId}`);
+    }
 
     return { metadataId };
   },

@@ -75,13 +75,6 @@ export default defineSchema({
     event_time_start: v.optional(v.string()),
     event_time_end: v.optional(v.string()),
     location: v.optional(v.string()),
-    location_address: v.optional(v.string()),
-    location_coordinates: v.optional(
-      v.object({
-        lat: v.number(),
-        lng: v.number(),
-      })
-    ),
     event_type: v.optional(
       v.union(
         v.literal("concert"),
@@ -95,23 +88,12 @@ export default defineSchema({
     ),
     event_title: v.optional(v.string()),
     organizer_name: v.optional(v.string()),
-    organizer_contact: v.optional(v.string()),
-    target_audience: v.optional(v.array(v.string())),
     registration_required: v.optional(v.boolean()),
     registration_url: v.optional(v.string()),
     ticket_price: v.optional(v.string()),
     event_description: v.optional(v.string()),
     hashtags: v.optional(v.array(v.string())),
-    keywords: v.optional(v.array(v.string())),
     language: v.optional(v.string()),
-    content_type: v.optional(
-      v.union(
-        v.literal("event_announcement"),
-        v.literal("event_reminder"),
-        v.literal("event_recap"),
-        v.literal("other")
-      )
-    ),
     telegram_message: v.optional(v.string()),
     processing_status: v.union(
       v.literal("pending"),

@@ -271,9 +271,10 @@ export const generateTelegramMessage = internalAction({
   args: {
     metadata: postMetadataValidator,
     postUrl: v.string(),
+    originalCaption: v.string(),
   },
   returns: v.string(),
-  handler: async (_ctx, { metadata, postUrl }) => {
+  handler: async (_ctx, { metadata, postUrl, originalCaption }) => {
     try {
       // Validate inputs
       validateMetadata(metadata);
@@ -285,6 +286,7 @@ export const generateTelegramMessage = internalAction({
       const userPrompt = buildTelegramMessagePrompt(
         eventDetails,
         postUrl,
+        originalCaption,
         MAX_TELEGRAM_MESSAGE_LENGTH
       );
       const systemPrompt = getTelegramMessageGenerationSystemPrompt(

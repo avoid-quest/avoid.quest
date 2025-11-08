@@ -10,7 +10,8 @@
       {
         "name": "next"
       }
-    ]
+    ],
+    "strictNullChecks": true
   },
   "types": ["@cloudflare/workers-types"],
   "include": [

@@ -243,12 +243,12 @@ export const previewImportChanges = async (
         existing.websiteUrl !== importedRadio.websiteUrl;
 
       if (hasChanged) {
-        updatedRadios++;
+        updatedRadios += 1;
       } else {
-        unchangedRadios++;
+        unchangedRadios += 1;
       }
     } else {
-      newRadios++;
+      newRadios += 1;
     }
   }
 

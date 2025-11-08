@@ -201,7 +201,10 @@ export function createCaption(
   metadata?: Doc<"post_metadata"> | null
 ): string {
   // Check if AI-generated telegram message exists and is non-empty
-  if (metadata?.telegram_message && metadata.telegram_message.trim().length > 0) {
+  if (
+    metadata?.telegram_message &&
+    metadata.telegram_message.trim().length > 0
+  ) {
     // AI-generated message is already HTML-formatted and sanitized
     // It should already include the Instagram link
     return metadata.telegram_message;

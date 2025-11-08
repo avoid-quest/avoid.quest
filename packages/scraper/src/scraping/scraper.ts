@@ -71,9 +71,12 @@ async function optionallyTriggerMetadataExtraction(
     // Trigger metadata extraction workflow
     // This is fire-and-forget - errors are handled by the workflow's onComplete handler
     logger.debug(`Triggering immediate metadata extraction for post ${postId}`);
-    await getHttpClient().action(api.workflows.postMetadata.triggerMetadataExtraction, {
-      postId,
-    });
+    await getHttpClient().action(
+      api.workflows.postMetadata.triggerMetadataExtraction,
+      {
+        postId,
+      }
+    );
     logger.debug(`Metadata extraction workflow triggered for post ${postId}`);
   } catch (error) {
     // Log error but don't fail scraping - metadata will be processed by cron job
@@ -186,7 +189,7 @@ async function processUser(
     await processPost(p, cvxUser._id, logger);
   }
 
-  await updateUserLastScraped(user._id, now);
+  await updateUserLastScraped(user._id, now());
   logger.debug(`Updated last_scraped_at for @${user.username}`);
   return true;
 }
@@ -244,7 +247,7 @@ export async function scrapeOnce(): Promise<void> {
     }
 
     if (!user.username) {
-      skippedNoUsername++;
+      skippedNoUsername += 1;
       continue;
     }
 
@@ -257,9 +260,9 @@ export async function scrapeOnce(): Promise<void> {
     });
 
     if (wasProcessed) {
-      processedUsers++;
+      processedUsers += 1;
     } else {
-      skippedRecently++;
+      skippedRecently += 1;
     }
 
     if (processedUsers < usersPerSession) {

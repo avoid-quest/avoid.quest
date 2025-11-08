@@ -262,7 +262,7 @@ export async function validateMediaUrls(
 
     const result = await validateSingleMediaUrl(item, i, logger, retries);
     if (result.success) {
-      accessible++;
+      accessible += 1;
     } else if (result.error) {
       inaccessible.push({
         index: i,

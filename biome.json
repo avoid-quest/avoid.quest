@@ -23,7 +23,9 @@
     ]
   },
   "javascript": {
-    "globals": ["Bun"]
+    "globals": [
+      "Bun"
+    ]
   },
   "linter": {
     "rules": {
@@ -38,5 +40,8 @@
       }
     }
   },
-  "extends": ["ultracite/core", "ultracite/next"]
+  "extends": [
+    "ultracite/core",
+    "ultracite/next"
+  ]
 }

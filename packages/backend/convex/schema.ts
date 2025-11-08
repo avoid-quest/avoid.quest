@@ -151,10 +151,10 @@ export default defineSchema({
     ai_metadata_extraction: v.optional(
       v.object({
         enabled: v.boolean(),
-        model: v.string(),
-        batch_size: v.number(),
-        backlog_interval_minutes: v.number(),
-        max_concurrent_workflows: v.number(),
+        model: v.optional(v.string()),
+        batch_size: v.optional(v.number()),
+        backlog_interval_minutes: v.optional(v.number()),
+        max_concurrent_workflows: v.optional(v.number()),
       })
     ),
   }),

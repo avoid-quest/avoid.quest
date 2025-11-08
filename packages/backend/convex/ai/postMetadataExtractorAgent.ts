@@ -1,12 +1,18 @@
 import { google } from "@ai-sdk/google";
 import { Agent } from "@convex-dev/agent";
+import { NoObjectGeneratedError } from "ai";
 import { v } from "convex/values";
 import { z } from "zod";
 import { components } from "../_generated/api";
 import { internalAction } from "../_generated/server";
+import {
+  buildPostMetadataExtractionPrompt,
+  POST_METADATA_EXTRACTION_SYSTEM_PROMPT,
+} from "./prompts";
 
 const MIN_EVENT_SCORE = 0;
 const MAX_EVENT_SCORE = 100;
+const CAPTION_PREVIEW_LENGTH = 200;
 
 // Zod schema for AI extraction (used internally by agent)
 const postMetadataZodSchema = z.object({
@@ -99,31 +105,6 @@ export const postMetadataValidator = v.object({
   ),
 });
 
-const SYSTEM_INSTRUCTIONS = `You are an expert at extracting event-related information from Instagram post captions.
-
-Your task is to analyze the post caption and extract structured metadata about events. An "event" is defined as any gathering, performance, workshop, meetup, concert, conference, festival, exhibition, or similar activity that happens at a specific time and/or location.
-
-Key extraction guidelines:
-1. **Event Score (0-100)**: Determine how confident you are that this post describes an event. Use 0-30 for non-events, 31-60 for possibly related content, 61-80 for likely events, and 81-100 for clear event announcements.
-
-2. **Date/Time Parsing**: 
-   - Assume Rome/Italy timezone (UTC+1/UTC+2) for event dates unless explicitly stated otherwise
-   - Extract both start and end dates for multi-day events
-   - Extract times in the format provided (e.g., "19:00", "7:00 PM")
-   - Convert relative dates (e.g., "tomorrow", "next Friday") to absolute timestamps
-
-3. **Location**: Extract venue names, addresses, and if possible, geocoded coordinates. Prefer full addresses when available.
-
-4. **Event Type**: Classify as: concert, workshop, conference, festival, exhibition, meetup, or other.
-
-5. **Content Type**: Determine if this is an event_announcement (promoting upcoming event), event_reminder (reminder about upcoming event), event_recap (summary of past event), or other.
-
-6. **Extract all relevant details**: organizer info, registration requirements, ticket prices, target audience, hashtags, keywords, and language.
-
-7. **Be thorough but accurate**: Only extract information that is clearly stated or strongly implied in the caption. Don't make assumptions.
-
-Output the extracted metadata in the structured format provided.`;
-
 /**
  * Create and configure the post metadata extractor agent
  */
@@ -139,7 +120,7 @@ function createPostMetadataExtractorAgent(): Agent {
   return new Agent(components.agent, {
     name: "Post Metadata Extractor",
     languageModel: model,
-    instructions: SYSTEM_INSTRUCTIONS,
+    instructions: POST_METADATA_EXTRACTION_SYSTEM_PROMPT,
   });
 }
 
@@ -150,35 +131,89 @@ export const extractPostMetadata = internalAction({
   args: {
     caption: v.string(),
     postUrl: v.optional(v.string()),
+    timestamp: v.optional(v.number()),
   },
   returns: postMetadataValidator,
-  handler: async (ctx, { caption, postUrl }) => {
+  handler: async (ctx, { caption, postUrl, timestamp }) => {
     const agent = createPostMetadataExtractorAgent();
 
-    const prompt = `Analyze this Instagram post caption and extract event-related metadata:
-
-${caption}
-
-${postUrl ? `Post URL: ${postUrl}` : ""}
-
-Extract all relevant event information including dates, times, location, event type, organizer details, and any other relevant metadata.`;
+    const prompt = buildPostMetadataExtractionPrompt(
+      caption,
+      postUrl,
+      timestamp
+    );
 
     // Create a temporary thread for this extraction
     const { threadId } = await agent.createThread(ctx, {
       title: "Post Metadata Extraction",
     });
 
-    // Generate structured object using agent.generateObject with threadId
-    // This is the recommended pattern for workflows
-    const result = await agent.generateObject(
-      ctx,
-      { threadId },
-      {
-        prompt,
-        schema: postMetadataZodSchema,
-      }
-    );
+    try {
+      // Generate structured object using agent.generateObject with threadId
+      // This is the recommended pattern for workflows
+      const result = await agent.generateObject(
+        ctx,
+        { threadId },
+        {
+          prompt,
+          schema: postMetadataZodSchema,
+        }
+      );
 
-    return result.object;
+      return result.object;
+    } catch (error) {
+      // Truncate caption for logging
+      const captionPreview =
+        caption.length > CAPTION_PREVIEW_LENGTH
+          ? `${caption.substring(0, CAPTION_PREVIEW_LENGTH)}...`
+          : caption;
+
+      // Use AI SDK's proper error detection
+      if (NoObjectGeneratedError.isInstance(error)) {
+        // Log detailed error information from AI SDK error object
+        console.error(
+          "NoObjectGeneratedError - Failed to extract post metadata:",
+          {
+            cause: error.cause,
+            text: error.text,
+            response: error.response,
+            usage: error.usage,
+            finishReason: error.finishReason,
+            captionPreview,
+            captionLength: caption.length,
+            postUrl,
+            timestamp,
+            threadId,
+          }
+        );
+
+        console.error(
+          "AI model failed to generate a valid object. Possible reasons:",
+          "- Model returned invalid JSON",
+          "- Model response doesn't match schema",
+          "- Model returned text instead of structured data",
+          "- Caption may be too complex or ambiguous",
+          `- Finish reason: ${error.finishReason ?? "unknown"}`
+        );
+      } else {
+        // Handle other types of errors
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
+        const errorName = error instanceof Error ? error.name : "UnknownError";
+
+        console.error("Error extracting post metadata:", {
+          errorName,
+          errorMessage,
+          captionPreview,
+          captionLength: caption.length,
+          postUrl,
+          timestamp,
+          threadId,
+        });
+      }
+
+      // Re-throw the error so workflow retry logic can handle it
+      throw error;
+    }
   },
 });

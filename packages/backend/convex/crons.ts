@@ -59,17 +59,30 @@ export const processMetadataBacklog = internalAction({
     const settings = await ctx.runQuery(internal.settings.getSettingsInternal);
     const aiSettings = settings?.ai_metadata_extraction;
 
+    // Default values for AI metadata extraction settings
+    const DEFAULT_BATCH_SIZE = 1;
+    const DEFAULT_MAX_CONCURRENT_WORKFLOWS = 3;
+
     if (!aiSettings?.enabled) {
+      console.log("AI metadata extraction is disabled in settings");
       return { processed: 0, skipped: 0, errors: 0 };
     }
 
-    const batchSize = aiSettings.batch_size ?? 10;
-    const maxConcurrent = aiSettings.max_concurrent_workflows ?? 5;
+    const batchSize = aiSettings.batch_size ?? DEFAULT_BATCH_SIZE;
+    const maxConcurrent = aiSettings.max_concurrent_workflows ?? DEFAULT_MAX_CONCURRENT_WORKFLOWS;
+
+    console.log(
+      `Processing metadata backlog: batchSize=${batchSize}, maxConcurrent=${maxConcurrent}`
+    );
 
     // Find posts without metadata_id
     const postsWithoutMetadata = await ctx.runQuery(
       internal.crons.getPostsWithoutMetadata,
       { limit: batchSize }
+    );
+
+    console.log(
+      `Found ${postsWithoutMetadata.length} posts without metadata_id`
     );
 
     if (postsWithoutMetadata.length === 0) {
@@ -122,6 +135,10 @@ export const processMetadataBacklog = internalAction({
         }
       });
     }
+
+    console.log(
+      `Metadata backlog processing complete: processed=${processed}, skipped=${skipped}, errors=${errors}`
+    );
 
     return { processed, skipped, errors };
   },

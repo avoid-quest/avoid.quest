@@ -9,6 +9,7 @@
  */
 
 import type * as ai_postMetadataExtractorAgent from "../ai/postMetadataExtractorAgent.js";
+import type * as ai_prompts from "../ai/prompts.js";
 import type * as ai_telegramMessageGenerator from "../ai/telegramMessageGenerator.js";
 import type * as crons from "../crons.js";
 import type * as healthCheck from "../healthCheck.js";
@@ -36,6 +37,7 @@ import type {
  */
 declare const fullApi: ApiFromModules<{
   "ai/postMetadataExtractorAgent": typeof ai_postMetadataExtractorAgent;
+  "ai/prompts": typeof ai_prompts;
   "ai/telegramMessageGenerator": typeof ai_telegramMessageGenerator;
   crons: typeof crons;
   healthCheck: typeof healthCheck;

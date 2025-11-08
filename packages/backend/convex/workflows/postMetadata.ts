@@ -1,3 +1,4 @@
+import { NoObjectGeneratedError } from "ai";
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
@@ -15,6 +16,7 @@ export const getPostData = internalQuery({
     _id: v.id("posts"),
     caption: v.string(),
     url: v.string(),
+    timestamp: v.number(),
   }),
   handler: async (ctx, { postId }) => {
     const post = await ctx.db.get(postId);
@@ -25,6 +27,7 @@ export const getPostData = internalQuery({
       _id: post._id,
       caption: post.caption,
       url: post.url,
+      timestamp: post.timestamp,
     };
   },
 });
@@ -159,25 +162,57 @@ type WorkflowStep = Parameters<
 async function extractMetadataWithRetry(
   step: WorkflowStep,
   caption: string,
-  postUrl: string
+  postUrl: string,
+  timestamp: number
 ): Promise<PostMetadataExtraction> {
+  let lastError: Error | undefined;
+
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
+      console.log(
+        `Attempting metadata extraction (attempt ${attempt}/${MAX_RETRIES})`
+      );
       return await step.runAction(
         internal.ai.postMetadataExtractorAgent.extractPostMetadata,
-        { caption, postUrl },
+        { caption, postUrl, timestamp },
         { retry: attempt < MAX_RETRIES }
       );
     } catch (error) {
-      const lastError =
-        error instanceof Error ? error : new Error(String(error));
+      lastError = error instanceof Error ? error : new Error(String(error));
+      const errorMessage = lastError.message;
+      
+      // Use AI SDK's proper error detection
+      const isNoObjectError = NoObjectGeneratedError.isInstance(error);
+      const noObjectError = isNoObjectError ? error : null;
+
+      console.error(
+        `Metadata extraction attempt ${attempt}/${MAX_RETRIES} failed:`,
+        {
+          error: errorMessage,
+          isNoObjectError,
+          willRetry: attempt < MAX_RETRIES,
+          ...(noObjectError && {
+            finishReason: noObjectError.finishReason,
+            hasText: !!noObjectError.text,
+          }),
+        }
+      );
+
       if (attempt >= MAX_RETRIES) {
+        console.error(
+          `All ${MAX_RETRIES} attempts failed. Last error:`,
+          errorMessage
+        );
         throw lastError;
       }
+
+      // Note: In Convex workflows, we can't add delays between retries
+      // The workflow system will handle retries automatically
     }
   }
 
-  throw new Error("Failed to extract metadata after retries");
+  // This should never be reached, but TypeScript needs it
+  throw lastError ?? new Error("Failed to extract metadata after retries");
 }
 
 /**
@@ -265,7 +300,8 @@ export const processPostMetadata = workflow.define({
       const extractedData = await extractMetadataWithRetry(
         step,
         post.caption,
-        post.url
+        post.url,
+        post.timestamp
       );
 
       // Step 4: Generate Telegram message (non-critical)

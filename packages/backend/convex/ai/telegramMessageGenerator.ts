@@ -3,6 +3,10 @@ import { generateText } from "ai";
 import { v } from "convex/values";
 import { internalAction } from "../_generated/server";
 import { postMetadataValidator } from "./postMetadataExtractorAgent";
+import {
+  buildTelegramMessagePrompt,
+  getTelegramMessageGenerationSystemPrompt,
+} from "./prompts";
 
 const MAX_TELEGRAM_MESSAGE_LENGTH = 1024;
 const ELLIPSIS_LENGTH = 3;
@@ -21,52 +25,165 @@ function formatEventDate(timestamp: number): string {
 }
 
 /**
- * Build event details string for prompt
+ * Format event time for display
  */
-function buildEventDetailsString(metadata: {
+function formatEventTime(timeStart?: string, timeEnd?: string): string {
+  if (!timeStart) {
+    return "";
+  }
+  if (timeEnd) {
+    return `dalle ${timeStart} alle ${timeEnd}`;
+  }
+  return timeStart;
+}
+
+/**
+ * Format event date range for display
+ */
+function formatEventDateRange(dateStart?: number, dateEnd?: number): string {
+  if (!dateStart) {
+    return "";
+  }
+  if (dateEnd && dateEnd !== dateStart) {
+    const startDate = formatEventDate(dateStart);
+    const endDate = formatEventDate(dateEnd);
+    return `dal ${startDate} al ${endDate}`;
+  }
+  return formatEventDate(dateStart);
+}
+
+type EventMetadata = {
   event_title?: string;
   event_description?: string;
   event_date_start?: number;
+  event_date_end?: number;
   event_time_start?: string;
+  event_time_end?: string;
   location?: string;
   location_address?: string;
   ticket_price?: string;
   registration_url?: string;
+  registration_required?: boolean;
   organizer_name?: string;
+  organizer_contact?: string;
+  target_audience?: string[];
   hashtags?: string[];
-}): string {
-  const parts: string[] = [];
+  event_type?: string;
+};
 
+/**
+ * Build basic event info (title, description)
+ */
+function buildBasicInfo(metadata: EventMetadata): string[] {
+  const parts: string[] = [];
   if (metadata.event_title) {
-    parts.push(`Title: ${metadata.event_title}`);
+    parts.push(`Titolo: ${metadata.event_title}`);
   }
   if (metadata.event_description) {
-    parts.push(`Description: ${metadata.event_description}`);
+    parts.push(`Descrizione: ${metadata.event_description}`);
   }
-  if (metadata.event_date_start) {
-    parts.push(`Date: ${formatEventDate(metadata.event_date_start)}`);
+  return parts;
+}
+
+/**
+ * Build date and time info
+ */
+function buildDateTimeInfo(metadata: EventMetadata): string[] {
+  const parts: string[] = [];
+  const dateRange = formatEventDateRange(
+    metadata.event_date_start,
+    metadata.event_date_end
+  );
+  if (dateRange) {
+    parts.push(`Data: ${dateRange}`);
   }
-  if (metadata.event_time_start) {
-    parts.push(`Time: ${metadata.event_time_start}`);
+
+  const timeRange = formatEventTime(
+    metadata.event_time_start,
+    metadata.event_time_end
+  );
+  if (timeRange) {
+    parts.push(`Orario: ${timeRange}`);
   }
+  return parts;
+}
+
+/**
+ * Build location info
+ */
+function buildLocationInfo(metadata: EventMetadata): string[] {
+  const parts: string[] = [];
   if (metadata.location) {
-    parts.push(`Location: ${metadata.location}`);
+    parts.push(`Luogo: ${metadata.location}`);
   }
   if (metadata.location_address) {
-    parts.push(`Address: ${metadata.location_address}`);
+    parts.push(`Indirizzo: ${metadata.location_address}`);
   }
+  return parts;
+}
+
+/**
+ * Build pricing and registration info
+ */
+function buildPricingInfo(metadata: EventMetadata): string[] {
+  const parts: string[] = [];
   if (metadata.ticket_price) {
-    parts.push(`Price: ${metadata.ticket_price}`);
+    parts.push(`Prezzo: ${metadata.ticket_price}`);
+  }
+  if (metadata.registration_required !== undefined) {
+    parts.push(
+      `Registrazione: ${metadata.registration_required ? "Richiesta" : "Non richiesta"}`
+    );
   }
   if (metadata.registration_url) {
-    parts.push(`Registration: ${metadata.registration_url}`);
+    parts.push(`URL Registrazione: ${metadata.registration_url}`);
   }
+  return parts;
+}
+
+/**
+ * Build organizer info
+ */
+function buildOrganizerInfo(metadata: EventMetadata): string[] {
+  const parts: string[] = [];
   if (metadata.organizer_name) {
-    parts.push(`Organizer: ${metadata.organizer_name}`);
+    parts.push(`Organizzatore: ${metadata.organizer_name}`);
+  }
+  if (metadata.organizer_contact) {
+    parts.push(`Contatto: ${metadata.organizer_contact}`);
+  }
+  return parts;
+}
+
+/**
+ * Build additional info (audience, type, hashtags)
+ */
+function buildAdditionalInfo(metadata: EventMetadata): string[] {
+  const parts: string[] = [];
+  if (metadata.target_audience && metadata.target_audience.length > 0) {
+    parts.push(`Pubblico target: ${metadata.target_audience.join(", ")}`);
+  }
+  if (metadata.event_type) {
+    parts.push(`Tipo evento: ${metadata.event_type}`);
   }
   if (metadata.hashtags && metadata.hashtags.length > 0) {
-    parts.push(`Hashtags: ${metadata.hashtags.join(", ")}`);
+    parts.push(`Hashtag: ${metadata.hashtags.join(", ")}`);
   }
+  return parts;
+}
+
+/**
+ * Build event details string for prompt (Italian format)
+ */
+function buildEventDetailsString(metadata: EventMetadata): string {
+  const parts: string[] = [
+    ...buildBasicInfo(metadata),
+    ...buildDateTimeInfo(metadata),
+    ...buildLocationInfo(metadata),
+    ...buildPricingInfo(metadata),
+    ...buildOrganizerInfo(metadata),
+    ...buildAdditionalInfo(metadata),
+  ];
 
   return parts.join("\n");
 }
@@ -138,24 +255,21 @@ export const generateTelegramMessage = internalAction({
     const model = google("gemini-2.0-flash-exp");
     const eventDetails = buildEventDetailsString(metadata);
 
-    const prompt = `Generate a Telegram message caption for an Instagram post about an event. The message should:
+    const userPrompt = buildTelegramMessagePrompt(
+      eventDetails,
+      postUrl,
+      MAX_TELEGRAM_MESSAGE_LENGTH
+    );
 
-1. Be formatted using Telegram HTML formatting (<b>bold</b>, <i>italic</i>, <a href="url">link</a>)
-2. Be engaging and informative
-3. Include key event details: title, date/time, location, price, registration info
-4. End with an Instagram link: <a href="${postUrl}">View on Instagram</a>
-5. Be maximum ${MAX_TELEGRAM_MESSAGE_LENGTH} characters (including the Instagram link)
-6. Preserve sentence/word boundaries when truncating if needed
-7. Use proper HTML escaping for special characters
-
-Event details:
-${eventDetails}
-
-Generate the message now:`;
+    const systemPrompt = getTelegramMessageGenerationSystemPrompt(
+      MAX_TELEGRAM_MESSAGE_LENGTH,
+      postUrl
+    );
 
     const { text } = await generateText({
       model,
-      prompt,
+      system: systemPrompt,
+      prompt: userPrompt,
     });
 
     let message = text.trim();

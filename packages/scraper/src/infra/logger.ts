@@ -1,3 +1,5 @@
+import { now } from "@workspace/backend/convex/lib/dateUtils";
+
 type Level = "debug" | "info" | "warn" | "error";
 
 function write(stream: "stdout" | "stderr", msg: string): void {
@@ -30,7 +32,7 @@ export function createLogger(
     if (order[level] < threshold) {
       return;
     }
-    const ts = new Date().toISOString();
+    const ts = new Date(now()).toISOString();
     const line = `[${ts}] [${level.toUpperCase()}] ${msg}`;
     write(level === "error" ? "stderr" : "stdout", line);
   };

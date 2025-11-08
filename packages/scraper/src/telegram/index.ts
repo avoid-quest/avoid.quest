@@ -1,4 +1,5 @@
 import type { Doc } from "@workspace/backend/convex/_generated/dataModel";
+import { now } from "@workspace/backend/convex/lib/dateUtils";
 import { GrammyError } from "grammy";
 import { api, getHttpClient } from "../convex/client";
 import { createLogger } from "../infra/logger";
@@ -21,7 +22,7 @@ async function processPost(
   await sendPost(bot, chatId, post, logger);
   await getHttpClient().mutation(api.posts.markSent, {
     id: post._id,
-    sentAt: Date.now(),
+    sentAt: now(),
   });
   logger.debug(`Successfully sent and marked post ${post._id} as sent`);
 }

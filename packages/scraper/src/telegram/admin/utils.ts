@@ -1,4 +1,8 @@
 import type { Doc } from "@workspace/backend/convex/_generated/dataModel";
+import {
+  formatTimestampForLog,
+  now,
+} from "@workspace/backend/convex/lib/dateUtils";
 import { InlineKeyboard } from "grammy";
 import type { AdminContext } from "./types";
 
@@ -30,8 +34,8 @@ export function formatSchedulerStatus(status: {
     if (!nextRun) {
       return "Not scheduled";
     }
-    const now = new Date();
-    const diff = nextRun.getTime() - now.getTime();
+    const currentTime = now();
+    const diff = nextRun.getTime() - currentTime;
     const minutes = Math.floor(diff / (MS_PER_SECOND * SECONDS_PER_MINUTE));
     const hours = Math.floor(minutes / MINUTES_PER_HOUR);
     const days = Math.floor(hours / HOURS_PER_DAY);
@@ -112,9 +116,9 @@ export function formatPost(post: Doc<"posts">): string {
   text += `Is Video: ${post.is_video ? "Yes" : "No"}\n`;
   text += `Sent: ${post.sent ? "✅" : "❌"}\n`;
   if (post.sentAt) {
-    text += `Sent At: ${new Date(post.sentAt).toLocaleString()}\n`;
+    text += `Sent At: ${formatTimestampForLog(post.sentAt)}\n`;
   }
-  text += `Timestamp: ${new Date(post.timestamp).toLocaleString()}\n`;
+  text += `Timestamp: ${formatTimestampForLog(post.timestamp)}\n`;
   text += `URL: <a href="${escapeHtml(post.url)}">View on Instagram</a>\n`;
 
   const MAX_CAPTION_PREVIEW_LENGTH = 200;
@@ -136,7 +140,7 @@ export function formatUser(user: Doc<"users">): string {
   text += `Username: <code>${escapeHtml(user.username)}</code>\n`;
   text += `To Be Scraped: ${user.to_be_scraped ? "✅" : "❌"}\n`;
   if (user.last_scraped_at) {
-    text += `Last Scraped: ${new Date(user.last_scraped_at).toLocaleString()}\n`;
+    text += `Last Scraped: ${formatTimestampForLog(user.last_scraped_at)}\n`;
   }
   if (user.profile_url) {
     text += `Profile: <a href="${escapeHtml(user.profile_url)}">View Profile</a>\n`;

@@ -1,3 +1,4 @@
+import { now } from "@workspace/backend/convex/lib/dateUtils";
 import type { NextFunction } from "grammy";
 import { api, getHttpClient } from "../../convex/client";
 import { createLogger } from "../../infra/logger";
@@ -12,15 +13,18 @@ const CACHE_TTL_MS = 60_000; // 1 minute cache
  * Get admin chat ID from settings, with caching
  */
 async function getAdminChatId(): Promise<string | null> {
-  const now = Date.now();
-  if (cachedAdminChatId !== null && now - cacheTimestamp < CACHE_TTL_MS) {
+  const currentTime = now();
+  if (
+    cachedAdminChatId !== null &&
+    currentTime - cacheTimestamp < CACHE_TTL_MS
+  ) {
     return cachedAdminChatId;
   }
 
   try {
     const settings = await getHttpClient().query(api.settings.getSettings, {});
     cachedAdminChatId = settings?.telegram?.admin_chat_id ?? null;
-    cacheTimestamp = now;
+    cacheTimestamp = currentTime;
     return cachedAdminChatId;
   } catch (error) {
     const logger = createLogger(!!process.env.DEBUG);
@@ -43,7 +47,7 @@ export function clearAdminChatIdCache(): void {
  * Admin authentication middleware
  * Silently ignores all messages from non-admin chats
  * Adds admin properties to context
- * 
+ *
  * SECURITY: This middleware MUST be applied first to ensure all updates
  * (messages, callback queries, etc.) are authenticated before processing.
  */

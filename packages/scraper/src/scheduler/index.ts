@@ -1,3 +1,4 @@
+import { now } from "@workspace/backend/convex/lib/dateUtils";
 import { Cron } from "croner";
 import { createLogger } from "../infra/logger";
 import { scrapeOnce } from "../scraping/scraper";
@@ -24,8 +25,8 @@ function formatNextRunHuman(nextRun: Date | null): string {
   if (!nextRun) {
     return "Not scheduled";
   }
-  const now = new Date();
-  const diff = nextRun.getTime() - now.getTime();
+  const currentTime = now();
+  const diff = nextRun.getTime() - currentTime;
   const minutes = Math.floor(diff / MS_PER_MINUTE);
   const hours = Math.floor(minutes / SECONDS_PER_MINUTE);
   const days = Math.floor(hours / 24);

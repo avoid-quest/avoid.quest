@@ -23,12 +23,77 @@ export async function sendPost(
   post: Doc<"posts">,
   logger: Logger
 ): Promise<void> {
-  const caption = createCaption(post);
+  // Refetch post to ensure we have the latest metadata_id
+  // This is important because metadata might have been added after the post was fetched
+  let currentPost = post;
+  try {
+    const refreshedPost = await getHttpClient().query(api.posts.getPostById, {
+      id: post._id,
+    });
+    if (refreshedPost) {
+      currentPost = refreshedPost;
+      logger.debug(
+        `Refreshed post ${post._id}, metadata_id: ${refreshedPost.metadata_id || "none"}`
+      );
+    }
+  } catch (error) {
+    logger.debug(
+      `Failed to refresh post ${post._id}, using original: ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
+  }
+
+  // Fetch metadata if available (for AI-generated telegram messages)
+  let metadata = null;
+  if (currentPost.metadata_id) {
+    try {
+      metadata = await getHttpClient().query(api.post_metadata.getPostMetadata, {
+        postId: currentPost._id,
+      });
+      if (metadata) {
+        logger.debug(
+          `Fetched metadata for post ${currentPost._id}, has telegram_message: ${!!metadata.telegram_message}`
+        );
+        if (metadata.telegram_message) {
+          logger.info(
+            `✅ Using AI-generated telegram message for post ${currentPost._id} (length: ${metadata.telegram_message.length})`
+          );
+        } else {
+          logger.info(
+            `⚠️  Metadata exists for post ${currentPost._id} but no telegram_message found (event_score: ${metadata.event_score})`
+          );
+        }
+      }
+    } catch (error) {
+      // Log error but continue with fallback to raw caption
+      logger.warn(
+        `Failed to fetch metadata for post ${currentPost._id}, using raw caption: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
+  } else {
+    logger.info(`Post ${currentPost._id} has no metadata_id, using raw caption`);
+  }
+
+  const caption = createCaption(currentPost, metadata);
+  
+  const captionSource = metadata?.telegram_message ? "AI-generated" : "raw caption";
+  logger.info(
+    `Caption for post ${currentPost._id}: ${captionSource}, length: ${caption.length}`
+  );
+  
+  if (metadata?.telegram_message && caption !== metadata.telegram_message) {
+    logger.warn(
+      `⚠️  Caption mismatch! Expected AI-generated message but got different caption for post ${currentPost._id}`
+    );
+  }
 
   // Load media items for this post
   const mediaItems = await getHttpClient().query(
     api.media_items.getMediaItemsByPostId,
-    { postId: post._id }
+    { postId: currentPost._id }
   );
 
   // Convert to MediaItem format and filter valid types
@@ -54,53 +119,72 @@ export async function sendPost(
   );
 
   logger.debug(
-    `Sending post ${post._id} with ${validMedia.length} media items (total: ${mediaItems.length})`
+    `Sending post ${currentPost._id} with ${validMedia.length} media items (total: ${mediaItems.length})`
   );
 
   try {
     // Strategy 1: Try media group if we have multiple items
-    if (
-      await tryMediaGroupStrategy({
-        bot,
-        chatId,
-        validMedia,
-        caption,
-        logger,
-        postId: post._id,
-      })
-    ) {
-      return;
+    try {
+      if (
+        await tryMediaGroupStrategy({
+          bot,
+          chatId,
+          validMedia,
+          caption,
+          logger,
+          postId: currentPost._id,
+        })
+      ) {
+        return;
+      }
+    } catch (error) {
+      logger.warn(
+        `Media group strategy failed, trying next strategy: ${error instanceof Error ? error.message : String(error)}`
+      );
     }
 
     // Strategy 2: Try primary media URLs from post
-    if (await tryPrimaryMedia({ bot, chatId, post, caption, logger })) {
-      return;
+    try {
+      if (await tryPrimaryMedia({ bot, chatId, post: currentPost, caption, logger })) {
+        return;
+      }
+    } catch (error) {
+      logger.warn(
+        `Primary media strategy failed, trying next strategy: ${error instanceof Error ? error.message : String(error)}`
+      );
     }
 
     // Strategy 3: Try single valid media item
     if (validMedia.length === 1) {
       const media = validMedia[0];
       if (media) {
-        await sendSingleMedia({ bot, chatId, media, caption, logger });
-        return;
+        try {
+          await sendSingleMedia({ bot, chatId, media, caption, logger });
+          return;
+        } catch (error) {
+          logger.warn(
+            `Single media item failed, falling back to text-only: ${error instanceof Error ? error.message : String(error)}`
+          );
+        }
       }
     }
 
     // Strategy 4: Fallback to text-only message
-    logger.debug(
-      `No valid media found, sending text-only message for post ${post._id}`
+    logger.info(
+      `All media strategies failed or no valid media found, sending text-only message for post ${currentPost._id}`
     );
     await bot.api.sendMessage(chatId, caption, { parse_mode: "HTML" });
   } catch (error) {
+    // Final fallback: if even text-only fails, log and rethrow
     if (error instanceof GrammyError) {
-      handleTelegramApiError(error, logger, `Failed to send post ${post._id}`);
+      handleTelegramApiError(error, logger, `Failed to send post ${currentPost._id}`);
       logger.debug(
         `Post details: ${JSON.stringify({
-          postId: post._id,
-          mediaType: post.media_type,
+          postId: currentPost._id,
+          mediaType: currentPost.media_type,
           mediaCount: validMedia.length,
-          hasVideoUrl: !!post.video_url,
-          hasDisplayUrl: !!post.display_url,
+          hasVideoUrl: !!currentPost.video_url,
+          hasDisplayUrl: !!currentPost.display_url,
         })}`
       );
     }
@@ -272,13 +356,21 @@ async function sendSingleBestMediaItem(
     ? sanitizeHtmlForTelegram(caption)
     : undefined;
 
-  await sendSingleMedia({
-    bot,
-    chatId,
-    media: bestItem,
-    caption: sanitizedCaption || caption,
-    logger,
-  });
+  try {
+    await sendSingleMedia({
+      bot,
+      chatId,
+      media: bestItem,
+      caption: sanitizedCaption || caption,
+      logger,
+    });
+  } catch (error) {
+    // If media fails, throw error to trigger text-only fallback
+    logger.warn(
+      `Best media item failed, will fallback to text-only: ${error instanceof Error ? error.message : String(error)}`
+    );
+    throw error;
+  }
 }
 
 type SendSingleMediaOptions = {
@@ -295,21 +387,43 @@ type SendSingleMediaOptions = {
 export async function sendSingleMedia(
   options: SendSingleMediaOptions
 ): Promise<void> {
-  const { bot, chatId, media, caption } = options;
+  const { bot, chatId, media, caption, logger } = options;
   const sanitizedCaption = caption
     ? sanitizeHtmlForTelegram(caption)
     : undefined;
 
-  if (media.type === "video") {
-    await bot.api.sendVideo(chatId, media.url, {
-      caption: sanitizedCaption,
-      parse_mode: "HTML",
-    });
-  } else {
-    await bot.api.sendPhoto(chatId, media.url, {
-      caption: sanitizedCaption,
-      parse_mode: "HTML",
-    });
+  try {
+    if (media.type === "video") {
+      await bot.api.sendVideo(chatId, media.url, {
+        caption: sanitizedCaption,
+        parse_mode: "HTML",
+      });
+    } else {
+      await bot.api.sendPhoto(chatId, media.url, {
+        caption: sanitizedCaption,
+        parse_mode: "HTML",
+      });
+    }
+  } catch (error) {
+    // Check if it's a media-related error (expired URL, wrong content type, etc.)
+    if (error instanceof GrammyError) {
+      const isMediaError = 
+        error.error_code === 400 && 
+        (error.description?.includes("wrong type") || 
+         error.description?.includes("Bad Request") ||
+         error.description?.includes("file") ||
+         error.description?.includes("web page content"));
+      
+      if (isMediaError) {
+        logger.warn(
+          `Media URL failed (likely expired or invalid): ${error.description} - ${media.url.substring(0, 100)}...`
+        );
+        // Re-throw as a specific error that can be caught for fallback
+        throw new Error(`Media URL expired or invalid: ${error.description}`);
+      }
+    }
+    // Re-throw other errors
+    throw error;
   }
 }
 
@@ -345,9 +459,28 @@ async function trySendVideo(options: TrySendVideoOptions): Promise<boolean> {
     await bot.api.sendVideo(chatId, videoUrl, videoOptions);
     return true;
   } catch (error) {
-    logger.warn(
-      `Primary video URL failed: ${error instanceof Error ? error.message : String(error)}`
-    );
+    // Check if it's a media-related error (expired URL, wrong content type, etc.)
+    if (error instanceof GrammyError) {
+      const isMediaError = 
+        error.error_code === 400 && 
+        (error.description?.includes("wrong type") || 
+         error.description?.includes("Bad Request") ||
+         error.description?.includes("file"));
+      
+      if (isMediaError) {
+        logger.warn(
+          `Primary video URL failed (likely expired or invalid): ${error.description}`
+        );
+      } else {
+        logger.warn(
+          `Primary video URL failed: ${error.description || error.message}`
+        );
+      }
+    } else {
+      logger.warn(
+        `Primary video URL failed: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
     return false;
   }
 }
@@ -370,9 +503,29 @@ async function trySendImage(options: TrySendImageOptions): Promise<boolean> {
     });
     return true;
   } catch (error) {
-    logger.warn(
-      `Primary image URL failed: ${error instanceof Error ? error.message : String(error)}`
-    );
+    // Check if it's a media-related error (expired URL, wrong content type, etc.)
+    if (error instanceof GrammyError) {
+      const isMediaError = 
+        error.error_code === 400 && 
+        (error.description?.includes("wrong type") || 
+         error.description?.includes("Bad Request") ||
+         error.description?.includes("file") ||
+         error.description?.includes("web page content"));
+      
+      if (isMediaError) {
+        logger.warn(
+          `Primary image URL failed (likely expired or invalid): ${error.description}`
+        );
+      } else {
+        logger.warn(
+          `Primary image URL failed: ${error.description || error.message}`
+        );
+      }
+    } else {
+      logger.warn(
+        `Primary image URL failed: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
     return false;
   }
 }

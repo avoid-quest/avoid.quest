@@ -194,8 +194,20 @@ function truncateHtmlContent(html: string, maxLength: number): string {
 
 /**
  * Create caption with proper formatting and truncation
+ * Uses AI-generated telegram_message from metadata if available, otherwise falls back to raw caption
  */
-export function createCaption(post: Doc<"posts">): string {
+export function createCaption(
+  post: Doc<"posts">,
+  metadata?: Doc<"post_metadata"> | null
+): string {
+  // Check if AI-generated telegram message exists and is non-empty
+  if (metadata?.telegram_message && metadata.telegram_message.trim().length > 0) {
+    // AI-generated message is already HTML-formatted and sanitized
+    // It should already include the Instagram link
+    return metadata.telegram_message;
+  }
+
+  // Fallback to raw caption formatting
   let caption = "";
 
   if (post.caption) {

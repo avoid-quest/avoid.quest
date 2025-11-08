@@ -1,4 +1,6 @@
 /** biome-ignore-all lint/complexity/noExcessiveCognitiveComplexity: just complex */
+
+import { now } from "@workspace/backend/convex/lib/dateUtils";
 import { createLogger } from "../infra/logger";
 import { TokenBucketLimiter } from "../infra/rate-limiter";
 import { getSchedulerStatus, startScheduler } from "../scheduler";
@@ -11,6 +13,7 @@ import type { AdminOptions, SinglePostOptions, StartOptions } from "./types";
 const MS_PER_SECOND = 1000;
 const SECONDS_PER_MINUTE = 60;
 const MS_PER_MINUTE = MS_PER_SECOND * SECONDS_PER_MINUTE;
+const CLEAN_UP_DELAY_MS = 500;
 
 /**
  * Handle start command - start scheduler
@@ -69,8 +72,8 @@ export async function handleStartCommand(options: StartOptions): Promise<void> {
     console.log("\n⏰ Next Runs:");
     if (status.scraper.active && status.scraper.nextRun) {
       const nextRun = status.scraper.nextRun;
-      const now = new Date();
-      const diff = nextRun.getTime() - now.getTime();
+      const currentTime = now();
+      const diff = nextRun.getTime() - currentTime;
       const minutes = Math.floor(diff / MS_PER_MINUTE);
       const hours = Math.floor(minutes / SECONDS_PER_MINUTE);
       const days = Math.floor(hours / 24);
@@ -100,8 +103,8 @@ export async function handleStartCommand(options: StartOptions): Promise<void> {
 
     if (status.telegram.active && status.telegram.nextRun) {
       const nextRun = status.telegram.nextRun;
-      const now = new Date();
-      const diff = nextRun.getTime() - now.getTime();
+      const currentTime = now();
+      const diff = nextRun.getTime() - currentTime;
       const minutes = Math.floor(diff / MS_PER_MINUTE);
       const hours = Math.floor(minutes / SECONDS_PER_MINUTE);
       const days = Math.floor(hours / 24);
@@ -141,7 +144,7 @@ export async function handleStartCommand(options: StartOptions): Promise<void> {
       }
       shutdownRequested = true;
       console.log(`\n🛑 Received ${signal}, shutting down gracefully...`);
-      
+
       try {
         // Stop scheduler (stops all cron jobs)
         const { stopScheduler } = await import("../scheduler");
@@ -152,12 +155,12 @@ export async function handleStartCommand(options: StartOptions): Promise<void> {
           `⚠️  Error stopping scheduler: ${error instanceof Error ? error.message : String(error)}`
         );
       }
-      
+
       // Give a moment for cleanup, then exit
       setTimeout(() => {
         console.log("👋 Goodbye!");
         process.exit(0);
-      }, 500);
+      }, CLEAN_UP_DELAY_MS);
     };
 
     process.once("SIGTERM", () => shutdown("SIGTERM"));

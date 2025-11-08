@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { paginationOptsValidator } from "convex/server";
 import type { Id } from "./_generated/dataModel";
+import { secondsToMilliseconds } from "./lib/dateUtils";
 
 export const getPosts = query({
   args: { limit: v.number() },
@@ -182,6 +183,12 @@ export const upsertPost = mutation({
       sentAt,
     }
   ) => {
+    // Convert timestamp from seconds (Instagram API format) to milliseconds (internal standard)
+    // The scraper sends timestamps in seconds, but we store them in milliseconds
+    const timestampMs = secondsToMilliseconds(timestamp);
+    const eventDateMs = event_date ? secondsToMilliseconds(event_date) : undefined;
+    const sentAtMs = sentAt ? secondsToMilliseconds(sentAt) : undefined;
+
     if (id) {
       // Update existing post - preserve sent, sentAt, and event_date if not provided
       const existing = await ctx.db.get(id);
@@ -220,18 +227,18 @@ export const upsertPost = mutation({
         url,
         media_type,
         users: mergedUsers,
-        timestamp,
+        timestamp: timestampMs,
       };
 
       // Only patch optional fields if they are explicitly provided
       if (event_date !== undefined) {
-        patchData.event_date = event_date;
+        patchData.event_date = eventDateMs;
       }
       if (sent !== undefined) {
         patchData.sent = sent;
       }
       if (sentAt !== undefined) {
-        patchData.sentAt = sentAt;
+        patchData.sentAt = sentAtMs;
       }
 
       await ctx.db.patch(id, patchData);
@@ -248,10 +255,10 @@ export const upsertPost = mutation({
       url,
       media_type,
       users,
-      timestamp,
-      event_date,
+      timestamp: timestampMs,
+      event_date: eventDateMs,
       sent: sent ?? false,
-      sentAt,
+      sentAt: sentAtMs,
     });
   },
 });
@@ -264,6 +271,8 @@ export const deletePost = mutation({
 export const markSent = mutation({
   args: { id: v.id("posts"), sentAt: v.number() },
   handler: async (ctx, { id, sentAt }) => {
+    // sentAt is already in milliseconds (Date.now() returns milliseconds)
+    // Store directly without conversion
     await ctx.db.patch(id, { sent: true, sentAt });
     return null;
   },

@@ -1,3 +1,5 @@
+import { now } from "@workspace/backend/convex/lib/dateUtils";
+
 const MS_PER_SECOND = 1000;
 const MIN_WAIT_MS = 5;
 
@@ -11,18 +13,18 @@ export class TokenBucketLimiter {
     this.capacity = capacity;
     this.refillPerSec = refillPerSec;
     this.tokens = capacity;
-    this.lastRefillMs = Date.now();
+    this.lastRefillMs = now();
   }
 
   private refill(): void {
-    const now = Date.now();
-    const elapsedSec = (now - this.lastRefillMs) / MS_PER_SECOND;
+    const currentTime = now();
+    const elapsedSec = (currentTime - this.lastRefillMs) / MS_PER_SECOND;
     if (elapsedSec <= 0) {
       return;
     }
     const add = elapsedSec * this.refillPerSec;
     this.tokens = Math.min(this.capacity, this.tokens + add);
-    this.lastRefillMs = now;
+    this.lastRefillMs = currentTime;
   }
 
   async removeTokens(n: number): Promise<void> {

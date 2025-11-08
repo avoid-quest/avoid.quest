@@ -1,0 +1,4 @@
+[test]
+# Preload mock for phase-vocoder bundle before tests run
+preload = ["./src/test-preload.ts"]
+

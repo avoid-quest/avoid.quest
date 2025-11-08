@@ -1,0 +1,657 @@
+/**
+ * The Playback class encapsulates the functionality for playing audio in a web application.
+ * It integrates with the standardized-audio-context library to provide a cross-browser way to handle audio.
+ * This class allows for the manipulation of audio playback through various features such as:
+ * - Playing and stopping audio
+ * - Looping audio a specific number of times or infinitely
+ * - Adjusting volume and playback rate
+ * - Applying stereo or 3D (HRTF) panning
+ * - Adding and removing filters to modify the audio output
+ * - Handling audio looping with custom logic
+ * - Fading audio in and out linearly or exponentially
+ * - Seeking to specific points in the audio
+ * - Checking if the audio is currently playing
+ * - Cleaning up resources when the audio is no longer needed
+ *
+ * The class is designed to be flexible and can be used with different types of audio sources,
+ * including buffer sources and media elements. It also provides detailed control over the audio's
+ * spatial characteristics when using 3D audio.
+ */
+/** biome-ignore-all lint/complexity/noExcessiveCognitiveComplexity: needed for complex audio processing */
+
+import type { IAudioNode, IAudioParam } from "standardized-audio-context";
+import { BasePlayback } from "./base-playback.js";
+import type { BaseSound, LoopCount, PanType } from "./cacophony.js";
+import type {
+  AudioBuffer,
+  AudioContext,
+  GainNode,
+  SourceNode,
+} from "./context.js";
+import type { Sound } from "./sound.js";
+
+type PlaybackCloneOverrides = {
+  loopCount: LoopCount;
+  panType: PanType;
+};
+
+const PlaybackState = {
+  Unplayed: 0,
+  Playing: 1,
+  Paused: 2,
+  Stopped: 3,
+} as const;
+
+type PlaybackState = (typeof PlaybackState)[keyof typeof PlaybackState];
+
+export class Playback extends BasePlayback implements BaseSound {
+  private readonly context: AudioContext;
+  declare source?: SourceNode;
+  loopCount: LoopCount = 0;
+  currentLoop = 0;
+  origin: Sound;
+  private readonly buffer?: AudioBuffer;
+  private _offset = 0;
+  private _startTime = 0;
+  private _state: PlaybackState = PlaybackState.Unplayed;
+  private _playbackRate = 1;
+
+  /**
+   * Creates an instance of the Playback class.
+   * @param {Sound} origin - The Sound instance that the Playback is associated with.
+   * @param {SourceNode} source - The audio source node.
+   * @param {GainNode} gainNode - The gain node for controlling volume.
+   * @throws {Error} Throws an error if an invalid pan type is provided.
+   */
+
+  constructor(origin: Sound, source: SourceNode, gainNode: GainNode) {
+    super();
+    this.context = origin.context;
+    this.origin = origin;
+    this.loopCount = origin.loopCount;
+    this.setPanType(origin.panType, origin.context);
+    this.source = source;
+    if ("buffer" in source && source.buffer) {
+      this.buffer = source.buffer;
+    }
+    this.setupSourceNode(source);
+    if (this.panner) {
+      this.source.connect(this.panner);
+    }
+    this.setGainNode(gainNode);
+    if (this.panner && this.gainNode) {
+      this.panner.connect(this.gainNode);
+    }
+    this.refreshFilters();
+  }
+
+  private setupSourceNode(source: SourceNode) {
+    if ("mediaElement" in source && source.mediaElement) {
+      source.mediaElement.onended = this.loopEnded;
+    } else if ("onended" in source) {
+      source.onended = this.loopEnded;
+    } else {
+      throw new Error("Unsupported source type");
+    }
+  }
+
+  get isPlaying(): boolean {
+    return this._state === PlaybackState.Playing;
+  }
+
+  /**
+   * Gets the duration of the audio in seconds.
+   * @returns {number} The duration of the audio or NaN if the duration is unknown.
+   * @throws {Error} Throws an error if the sound has been cleaned up.
+   */
+
+  get duration() {
+    if (!this.source) {
+      throw new Error(
+        "Cannot get duration of a sound that has been cleaned up"
+      );
+    }
+    if ("mediaElement" in this.source && this.source.mediaElement) {
+      return this.source.mediaElement.duration;
+    }
+    if (!this.buffer) {
+      return Number.NaN;
+    }
+    return this.buffer.duration || Number.NaN;
+  }
+
+  /**
+   * Gets the current playback rate of the audio.
+   * @returns {number} The current playback rate.
+   */
+
+  get playbackRate() {
+    return this._playbackRate;
+  }
+
+  /**
+   * Sets the playback rate of the audio.
+   * @param {number} rate - The playback rate to set.
+   * @throws {Error} Throws an error if the sound has been cleaned up or if the source type is unsupported.
+   */
+
+  set playbackRate(rate: number) {
+    if (rate <= 0) {
+      throw new Error("Playback rate must be greater than 0");
+    }
+    if (this._state === PlaybackState.Playing) {
+      const elapsed =
+        (this.context.currentTime - this._startTime) * this._playbackRate;
+      this._offset += elapsed;
+      this._startTime = this.context.currentTime;
+    }
+    this._playbackRate = rate;
+    if (!this.source) {
+      return;
+    }
+    if ("playbackRate" in this.source) {
+      this.source.playbackRate.value = rate;
+    }
+    if ("mediaElement" in this.source && this.source.mediaElement) {
+      this.source.mediaElement.playbackRate = rate;
+    }
+  }
+
+  /**
+   * Handles the loop event when the audio ends.
+   * This method is bound to the 'onended' event of the audio source.
+   * It manages looping logic and restarts playback if necessary.
+   */
+  loopEnded = () => {
+    if (!this.source || this._state !== PlaybackState.Playing) {
+      return;
+    }
+
+    this.currentLoop += 1;
+
+    if (this.loopCount !== "infinite" && this.currentLoop > this.loopCount) {
+      this.stop();
+    } else {
+      this.seek(0); // Resets offset and handles play/pause state internally.
+      // If it was playing, seek will call play() again.
+
+      // Ensure playback resumes/starts after seeking for the loop.
+      if ("mediaElement" in this.source && this.source.mediaElement) {
+        // Media elements need an explicit play call after their currentTime is set.
+        this.source.mediaElement.play();
+      } else {
+        // For AudioBufferSourceNode:
+        // If seek() already called play(), this.play() will return early (idempotent).
+        // If seek() did not call play() (e.g., if state wasn't Playing before seek),
+        // this will start playback from the new offset.
+        this.play();
+      }
+    }
+  };
+
+  /**
+   * Starts playing the audio.
+   * @returns {[this]} Returns the instance of the Playback class for chaining.
+   * @throws {Error} Throws an error if the sound has been cleaned up.
+   */
+
+  play(): [this] {
+    if (!this.source) {
+      throw new Error("Cannot play a sound that has been cleaned up");
+    }
+
+    if (this._state === PlaybackState.Playing) {
+      return [this];
+    }
+
+    try {
+      // Ensure AudioContext is resumed (required for Chrome autoplay policy)
+      if (this.context.state === "suspended") {
+        this.context.resume().catch((error) => {
+          console.warn("Failed to resume AudioContext:", error);
+          this.emitAsync("error", {
+            error: error as Error,
+            errorType: "context",
+            timestamp: Date.now(),
+            recoverable: true,
+          });
+        });
+      }
+
+      if (this._state === PlaybackState.Paused) {
+        // If we're resuming from a paused state
+        if ("mediaElement" in this.source && this.source.mediaElement) {
+          const playPromise = this.source.mediaElement.play();
+          // Handle promise rejection (Chrome autoplay policy)
+          if (playPromise !== undefined) {
+            playPromise.catch((error) => {
+              // Chrome may reject play() if user interaction hasn't occurred
+              this.emitAsync("error", {
+                error: error as Error,
+                errorType: "context",
+                timestamp: Date.now(),
+                recoverable: true,
+              });
+              // Don't throw - let the error event handle it
+            });
+          }
+        } else if ("start" in this.source && this.source.start) {
+          // For non-mediaElement sources, we need to recreate and start the source
+          this.recreateSource();
+          this.source.start(0, this._offset);
+        }
+      } else if ("mediaElement" in this.source && this.source.mediaElement) {
+        // If we're starting from the beginning or a stopped state
+        this.source.mediaElement.currentTime = this._offset;
+        const playPromise = this.source.mediaElement.play();
+        // Handle promise rejection (Chrome autoplay policy)
+        if (playPromise !== undefined) {
+          playPromise.catch((error) => {
+            // Chrome may reject play() if user interaction hasn't occurred
+            this.emitAsync("error", {
+              error: error as Error,
+              errorType: "context",
+              timestamp: Date.now(),
+              recoverable: true,
+            });
+            // Don't throw - let the error event handle it
+            return;
+          });
+        }
+      } else if ("start" in this.source && this.source.start) {
+        this.recreateSource();
+        this.source.start(0, this._offset);
+      }
+
+      this._startTime = this.context.currentTime;
+      this._state = PlaybackState.Playing;
+      this.emit("play", this);
+
+      // Emit globalPlay for all playback
+      this.origin.cacophony?.emit("globalPlay", {
+        source: this.origin,
+        timestamp: Date.now(),
+      });
+
+      return [this];
+    } catch (error) {
+      this.emitAsync("error", {
+        error: error as Error,
+        errorType: "source",
+        timestamp: Date.now(),
+        recoverable: true,
+      });
+      throw error;
+    }
+  }
+
+  pause(): void {
+    if (!this.source || this._state !== PlaybackState.Playing) {
+      return;
+    }
+
+    const elapsed =
+      (this.context.currentTime - this._startTime) * this._playbackRate;
+    this._offset += elapsed;
+
+    if ("mediaElement" in this.source && this.source.mediaElement) {
+      this.source.mediaElement.pause();
+    } else if ("stop" in this.source) {
+      // For AudioBufferSourceNode and OscillatorNode, stop the source.
+      // It cannot be restarted; a new one will be created on play().
+      this.source.stop();
+    }
+
+    this._state = PlaybackState.Paused;
+    this.emit("pause", undefined);
+
+    // Emit globalPause for all playback
+    this.origin.cacophony?.emit("globalPause", {
+      source: this.origin,
+      timestamp: Date.now(),
+    });
+  }
+
+  stop(): void {
+    if (!this.source) {
+      throw new Error("Cannot stop a sound that has been cleaned up");
+    }
+    if (
+      this._state === PlaybackState.Stopped ||
+      this._state === PlaybackState.Unplayed
+    ) {
+      return;
+    }
+
+    if ("stop" in this.source && this._state === PlaybackState.Playing) {
+      this.source.stop();
+    }
+    if ("mediaElement" in this.source && this.source.mediaElement) {
+      this.source.mediaElement.pause();
+      this.source.mediaElement.currentTime = 0;
+    }
+
+    this._offset = 0;
+    this._startTime = 0;
+    this._state = PlaybackState.Stopped;
+    this.emit("stop", undefined);
+
+    // Emit globalStop for all playback
+    this.origin.cacophony?.emit("globalStop", {
+      source: this.origin,
+      timestamp: Date.now(),
+    });
+  }
+
+  seek(time: number): void {
+    if (!(this.source && this.gainNode && this.panner)) {
+      throw new Error("Cannot seek a sound that has been cleaned up");
+    }
+    if (!Number.isFinite(time) || time < 0) {
+      throw new Error("Invalid time value for seek");
+    }
+
+    const wasPlaying = this._state === PlaybackState.Playing;
+    if (wasPlaying) {
+      this.pause();
+    }
+
+    this._offset = time;
+
+    if ("mediaElement" in this.source && this.source.mediaElement) {
+      this.source.mediaElement.currentTime = time;
+    }
+    // For non-media elements, play() will handle recreating the source if needed.
+
+    if (wasPlaying) {
+      this.play();
+    }
+  }
+
+  get currentTime(): number {
+    if (this._state === PlaybackState.Playing) {
+      const elapsed =
+        (this.context.currentTime - this._startTime) * this._playbackRate;
+      return this._offset + elapsed;
+    }
+    return this._offset;
+  }
+
+  private recreateSource() {
+    if (!(this.buffer && this.panner && this.context && this.gainNode)) {
+      throw new Error(
+        "Cannot recreate source of a sound that has been cleaned up"
+      );
+    }
+    try {
+      if (this.source) {
+        // It's crucial to nullify onended of the old source if it's an AudioBufferSourceNode (or similar non-restartable source),
+        // as its onended event could otherwise interfere with the new source created for seek/resume.
+        // MediaElementAudioSourceNode is handled differently as its underlying element can be paused/played.
+        if (!("mediaElement" in this.source) && "onended" in this.source) {
+          this.source.onended = null;
+        }
+        this.source.disconnect();
+      }
+      this.source = this.context.createBufferSource();
+      this.source.buffer = this.buffer;
+      this.source.connect(this.panner);
+      this.source.onended = this.loopEnded;
+      this.playbackRate = this._playbackRate;
+      this.refreshFilters();
+    } catch (error) {
+      this.emitAsync("error", {
+        error: error as Error,
+        errorType: "source",
+        timestamp: Date.now(),
+        recoverable: false,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Sets whether the audio source should loop.
+   * @param {boolean} loop - Whether the audio should loop.
+   * @throws {Error} Throws an error if the sound has been cleaned up.
+   */
+  set sourceLoop(loop: boolean) {
+    if (!this.source) {
+      throw new Error("Cannot set loop on a sound that has been cleaned up");
+    }
+    if ("loop" in this.source) {
+      this.source.loop = loop;
+    }
+    if ("mediaElement" in this.source && this.source.mediaElement) {
+      this.source.mediaElement.loop = loop;
+    }
+  }
+
+  /**
+   * Cleans up resources used by the Playback instance.
+   * This method should be called when the audio is no longer needed to free up resources.
+   */
+
+  cleanup(): void {
+    if (!this.source) {
+      return; // Already cleaned up
+    }
+    this.source.disconnect();
+    this.source = undefined;
+    super.cleanup();
+  }
+
+  private assertNotCleanedUp(): void {
+    if (!(this.source && this.gainNode && this.panner)) {
+      throw new Error(
+        "Cannot perform operation on a sound that has been cleaned up"
+      );
+    }
+  }
+
+  addFilter(filter: BiquadFilterNode): void {
+    this.assertNotCleanedUp();
+    super.addFilter(filter);
+    this.refreshFilters();
+  }
+
+  removeFilter(filter: BiquadFilterNode): void {
+    this.assertNotCleanedUp();
+    super.removeFilter(filter);
+    this.refreshFilters();
+  }
+
+  /**
+   * Sets or gets the loop count for the audio.
+   * @param {LoopCount} loopCount - The number of times the audio should loop. 'infinite' for endless looping.
+   * @returns {LoopCount} The loop count if no parameter is provided.
+   * @throws {Error} Throws an error if the sound has been cleaned up or if the source type is unsupported.
+   */
+
+  loop(loopCount?: LoopCount): LoopCount {
+    if (!this.source) {
+      throw new Error("Cannot loop a sound that has been cleaned up");
+    }
+    if (loopCount !== undefined) {
+      this.loopCount =
+        loopCount === "infinite" ? "infinite" : Math.max(0, loopCount);
+      this.currentLoop = 0;
+    }
+    if ("mediaElement" in this.source && this.source.mediaElement) {
+      const mediaElement = this.source.mediaElement;
+      mediaElement.loop = this.loopCount === "infinite";
+    } else if ("loop" in this.source) {
+      this.source.loop = this.loopCount === "infinite";
+      if (this.source.buffer) {
+        this.source.loopEnd = this.source.buffer.duration;
+        this.source.loopStart = 0;
+      }
+    } else {
+      throw new Error("Unsupported source type");
+    }
+    return this.loopCount;
+  }
+
+  /**
+   * Refreshes the audio filters by re-applying them to the audio signal chain.
+   * This method is called internally whenever filters are added or removed.
+   * @throws {Error} Throws an error if the sound has been cleaned up.
+   */
+
+  private refreshFilters(): void {
+    if (!(this.panner && this.gainNode)) {
+      throw new Error(
+        "Cannot update filters on a sound that has been cleaned up"
+      );
+    }
+    let connection: AudioNode = this.panner as unknown as AudioNode;
+    connection.disconnect();
+    connection = this.applyFilters(connection);
+    if (this.gainNode) {
+      connection.connect(this.gainNode as unknown as AudioNode);
+    }
+  }
+
+  /**
+   * Gets the output node of this playback's audio graph.
+   * This is the final node in the internal chain before connection to destination.
+   * Use this to manually wire the playback into custom audio graphs.
+   *
+   * @returns {GainNode} The gain node that serves as the output of this playback.
+   * @throws {Error} Throws an error if the playback has been cleaned up.
+   *
+   * @example
+   * // Manual routing through custom effects
+   * const playback = sound.play()[0];
+   * playback.disconnect(); // Disconnect from default destination
+   * playback.connect(reverbNode).connect(context.destination);
+   */
+  get outputNode(): GainNode {
+    if (!this.gainNode) {
+      throw new Error(
+        "Cannot access output node of a playback that has been cleaned up"
+      );
+    }
+    return this.gainNode;
+  }
+
+  /**
+   * Connects this playback's output to an AudioNode or AudioParam.
+   * Follows the Web Audio API connection pattern.
+   *
+   * @param {AudioNode | AudioParam} destination - The node or param to connect to.
+   * @returns {AudioNode} The destination node (for chaining).
+   * @throws {Error} Throws an error if the playback has been cleaned up.
+   *
+   * @example
+   * // Chain multiple effects
+   * playback.connect(delay).connect(reverb).connect(context.destination);
+   */
+  connect(destination: AudioNode | IAudioParam): AudioNode {
+    const gainNode = this.outputNode;
+    if ("connect" in destination && destination !== null) {
+      // It's an AudioNode - connect to it
+      return gainNode.connect(
+        destination as unknown as IAudioNode<
+          AudioContext,
+          Record<string, never>
+        >
+      ) as unknown as AudioNode;
+    }
+    // It's an AudioParam - connect to it
+    gainNode.connect(destination as IAudioParam);
+    return destination as unknown as AudioNode;
+  }
+
+  /**
+   * Disconnects this playback's output from a specific destination or from all destinations.
+   *
+   * @param {AudioNode | AudioParam} [destination] - Optional specific destination to disconnect from.
+   *                                                   If omitted, disconnects from all destinations.
+   * @throws {Error} Throws an error if the playback has been cleaned up.
+   *
+   * @example
+   * // Disconnect from all
+   * playback.disconnect();
+   *
+   * @example
+   * // Disconnect from specific node
+   * playback.disconnect(reverbNode);
+   */
+  disconnect(destination?: AudioNode | IAudioParam): void {
+    const gainNode = this.outputNode;
+    if (destination) {
+      if ("connect" in destination && destination !== null) {
+        // It's an AudioNode
+        gainNode.disconnect(
+          destination as unknown as IAudioNode<
+            AudioContext,
+            Record<string, never>
+          >
+        );
+      } else {
+        // It's an AudioParam
+        gainNode.disconnect(destination as IAudioParam);
+      }
+    } else {
+      gainNode.disconnect();
+    }
+  }
+
+  /**
+   * Creates a clone of the current Playback instance with optional overrides for certain properties.
+   * This method allows for the creation of a new Playback instance that shares the same audio context
+   * and source node but can have different settings such as loop count or pan type.
+   * @param {Partial<Playback>} overrides - An object containing properties to override in the cloned instance.
+   * @returns {Playback} A new Playback instance cloned from the current one with the specified overrides applied.
+   * @throws {Error} Throws an error if the sound has been cleaned up.
+   */
+
+  clone(overrides: Partial<PlaybackCloneOverrides> = {}): Playback {
+    if (!(this.source && this.gainNode && this.context)) {
+      throw new Error("Cannot clone a sound that has been cleaned up");
+    }
+    const panType = overrides.panType || this.panType;
+    // we'll need to create a new gain node
+    const gainNode = this.context.createGain();
+    // clone the source node
+    let source: SourceNode;
+    if ("buffer" in this.source && this.source.buffer) {
+      source = this.context.createBufferSource();
+      source.buffer = this.source.buffer;
+    } else if ("mediaElement" in this.source && this.source.mediaElement) {
+      source = this.context.createMediaElementSource(this.source.mediaElement);
+    } else {
+      throw new Error("Unsupported source type");
+    }
+    const loopCount =
+      overrides.loopCount !== undefined ? overrides.loopCount : this.loopCount;
+    const clone = new Playback(this.origin, source, gainNode);
+
+    // Copy all relevant properties
+    clone.loopCount = loopCount;
+    clone.currentLoop = this.currentLoop;
+    clone.setPanType(panType, this.context);
+    clone.volume = this.volume;
+    clone.playbackRate = this._playbackRate;
+    clone._offset = this._offset;
+    clone._state = this._state;
+
+    // Deep clone filters
+    for (const filter of this._filters) {
+      const clonedFilter = this.context.createBiquadFilter();
+      clonedFilter.type = filter.type;
+      clonedFilter.frequency.value = filter.frequency.value;
+      clonedFilter.Q.value = filter.Q.value;
+      clonedFilter.gain.value = filter.gain.value;
+      clone.addFilter(clonedFilter as unknown as BiquadFilterNode);
+    }
+
+    // If the original is playing, start the clone
+    if (this._state === PlaybackState.Playing) {
+      clone.play();
+    }
+
+    return clone;
+  }
+}

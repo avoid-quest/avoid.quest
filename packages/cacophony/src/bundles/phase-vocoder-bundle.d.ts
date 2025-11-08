@@ -1,0 +1,2 @@
+declare const phaseVocoderProcessorWorkletUrl: string;
+export default phaseVocoderProcessorWorkletUrl;

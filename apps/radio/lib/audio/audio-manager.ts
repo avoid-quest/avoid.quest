@@ -1,6 +1,11 @@
 "use client";
 
-import { Cacophony, type Playback, type Sound, SoundType } from "cacophony";
+import {
+  Cacophony,
+  type Playback,
+  type Sound,
+  SoundType,
+} from "@workspace/cacophony";
 import type { FilterConfig } from "@/components/audio/filter-control";
 import type { Radio } from "../types";
 

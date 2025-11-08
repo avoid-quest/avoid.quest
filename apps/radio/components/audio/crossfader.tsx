@@ -27,7 +27,7 @@ export function Crossfader({
   disabled = false,
 }: CrossfaderProps) {
   const handleValueChange = (value: number[]) => {
-    onPositionChange(value[0] ?? 0 / MAX_POSITION);
+    onPositionChange((value[0] ?? 0) / MAX_POSITION);
   };
 
   const sizeClasses = {

@@ -14,13 +14,13 @@
     "typescript": " ^5.9.3"
   },
   "dependencies": {
+    "@ai-sdk/groq": "^2.0.28",
     "@convex-dev/agent": "^0.2.12",
+    "@convex-dev/migrations": "^0.2.9",
     "@convex-dev/workflow": "^0.2.7",
     "@convex-dev/workpool": "^0.2.19",
-    "@convex-dev/migrations": "^0.2.9",
     "ai": "^5.0.89",
-    "@ai-sdk/groq": "^2.0.28",
-    "zod": "^4.1.12",
-    "convex": "^1.28.2"
+    "convex": "^1.28.2",
+    "zod": "^4.1.12"
   }
 }

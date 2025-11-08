@@ -1,4 +1,5 @@
 import type { Doc, Id } from "@workspace/backend/convex/_generated/dataModel";
+import { now } from "@workspace/backend/convex/lib/dateUtils";
 import { sleep } from "bun";
 import { api, getHttpClient } from "../convex/client";
 import { createLogger } from "../infra/logger";
@@ -111,9 +112,9 @@ async function processUser(
   }
 
   const last = user.last_scraped_at ?? 0;
-  const now = Date.now();
-  if (last > 0 && now - last < minIntervalMs) {
-    const minutesAgo = Math.round((now - last) / msPerMinute);
+  const currentTime = now();
+  if (last > 0 && currentTime - last < minIntervalMs) {
+    const minutesAgo = Math.round((currentTime - last) / msPerMinute);
     logger.debug(`Skip @${user.username} (scraped ${minutesAgo}m ago)`);
     return false;
   }

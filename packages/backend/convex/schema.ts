@@ -1,6 +1,14 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
+/**
+ * Database schema for the backend
+ *
+ * IMPORTANT: All timestamp fields (timestamp, event_date, sentAt, *_at, etc.)
+ * are stored in MILLISECONDS (JavaScript standard, UTC).
+ * Timestamps are timezone-agnostic (stored in UTC) and converted to
+ * Europe/Rome timezone for display purposes.
+ */
 export default defineSchema({
   posts: defineTable({
     ig_id: v.string(),
@@ -16,10 +24,13 @@ export default defineSchema({
       v.literal("video"),
       v.literal("carousel")
     ),
+    /** Timestamp in milliseconds (UTC) - when the post was published on Instagram */
     timestamp: v.number(),
+    /** Event date in milliseconds (UTC) - when the event occurs (if applicable) */
     event_date: v.optional(v.number()),
     users: v.array(v.id("users")),
     sent: v.boolean(),
+    /** Timestamp in milliseconds (UTC) - when the post was sent to Telegram */
     sentAt: v.optional(v.number()),
     metadata_id: v.optional(v.id("post_metadata")),
   })
@@ -46,6 +57,7 @@ export default defineSchema({
     username: v.string(),
     profile_url: v.optional(v.string()),
     to_be_scraped: v.boolean(),
+    /** Timestamp in milliseconds (UTC) - when the user was last scraped */
     last_scraped_at: v.optional(v.number()),
   })
     .index("by_username", ["username"])
@@ -56,7 +68,9 @@ export default defineSchema({
   post_metadata: defineTable({
     post_id: v.id("posts"),
     event_score: v.number(),
+    /** Event start date in milliseconds (UTC) */
     event_date_start: v.optional(v.number()),
+    /** Event end date in milliseconds (UTC) */
     event_date_end: v.optional(v.number()),
     event_time_start: v.optional(v.string()),
     event_time_end: v.optional(v.string()),
@@ -105,7 +119,9 @@ export default defineSchema({
       v.literal("completed"),
       v.literal("failed")
     ),
+    /** Timestamp in milliseconds (UTC) - when metadata extraction started */
     processing_started_at: v.optional(v.number()),
+    /** Timestamp in milliseconds (UTC) - when metadata extraction completed */
     processing_completed_at: v.optional(v.number()),
     processing_error: v.optional(v.string()),
     ai_model_used: v.optional(v.string()),
@@ -125,6 +141,7 @@ export default defineSchema({
         group_chat_id: v.optional(v.string()),
         cron_expression: v.optional(v.string()),
         send_limit: v.optional(v.number()),
+        /** Timestamp in milliseconds (UTC) - when posts were last sent to Telegram */
         last_sent_at: v.optional(v.number()),
         send_report: v.boolean(),
         report_cron_expression: v.optional(v.string()),
@@ -136,12 +153,14 @@ export default defineSchema({
         cron_expression: v.optional(v.string()),
         limit: v.optional(v.number()),
         post_per_user: v.optional(v.number()),
+        /** Timestamp in milliseconds (UTC) - when scraping last ran */
         last_scraped_at: v.optional(v.number()),
       })
     ),
-    logging: v.optional(
+      logging: v.optional(
       v.object({
         active: v.boolean(),
+        /** Timestamp in milliseconds (UTC) - when logging last ran */
         last_logged_at: v.optional(v.number()),
         max_retention_days: v.optional(v.number()),
         log_file: v.optional(v.string()),
@@ -150,8 +169,7 @@ export default defineSchema({
     ),
     ai_metadata_extraction: v.optional(
       v.object({
-        enabled: v.boolean(),
-        model: v.optional(v.string()),
+        active: v.boolean(),
         batch_size: v.optional(v.number()),
         backlog_interval_minutes: v.optional(v.number()),
         max_concurrent_workflows: v.optional(v.number()),

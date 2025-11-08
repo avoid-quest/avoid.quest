@@ -16,6 +16,7 @@
   "dependencies": {
     "@convex-dev/agent": "^0.2.12",
     "@convex-dev/workflow": "^0.2.7",
+    "@convex-dev/workpool": "^0.2.19",
     "@convex-dev/migrations": "^0.2.9",
     "ai": "^5.0.89",
     "@ai-sdk/groq": "^2.0.28",

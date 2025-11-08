@@ -1,72 +1,44 @@
 /**
- * Centralized AI Configuration
+ * AI Configuration
  *
- * Single source of truth for AI model configuration.
+ * Simple Groq configuration - no abstraction, just what we need.
  */
 
+import { createGroq } from "@ai-sdk/groq";
 import type { LanguageModel } from "ai";
-import type { FunctionReference, FunctionReturnType } from "convex/server";
-import { internal } from "../../_generated/api";
-import type { Doc } from "../../_generated/dataModel";
-import { DEFAULT_MODEL_ID, type ModelId, parseModelId } from "./models";
-import { createProvider, type ProviderName } from "./providers";
+import { InvalidArgumentError } from "ai";
 
 /**
- * Model selection result
+ * Groq model ID
+ * Using moonshotai/kimi-k2-instruct as it supports structured outputs (json_schema)
+ * which is required for Convex Agent's generateObject functionality
  */
-export type AIModelResult = {
-  model: LanguageModel;
-  provider: ProviderName;
-  modelId: string;
-  displayName: string;
-};
+export const GROQ_MODEL_ID = "moonshotai/kimi-k2-instruct";
 
 /**
- * Context interface for running queries
- * Compatible with both ActionCtx and WorkflowStep
- * WorkflowStep only accepts internal queries, so we restrict to internal
+ * Model identifier string for storage/logging
  */
-type QueryRunner = {
-  runQuery<Query extends FunctionReference<"query", "internal">>(
-    query: Query,
-    ...args: unknown[]
-  ): Promise<FunctionReturnType<Query>>;
-};
+export const MODEL_IDENTIFIER = `groq:${GROQ_MODEL_ID}`;
 
 /**
- * Get AI model from settings or use defaults
+ * Get Groq model instance
+ * ONLY works in Action contexts (where process.env is available)
+ * @throws {InvalidArgumentError} If API key is missing
  */
-export async function getAIModelFromSettings(
-  ctx: QueryRunner
-): Promise<AIModelResult> {
-  const settings = (await ctx.runQuery(
-    internal.settings.getSettingsInternal
-  )) as Doc<"settings"> | null;
-  const modelString =
-    settings?.ai_metadata_extraction?.model ?? DEFAULT_MODEL_ID;
-  return getAIModel(modelString);
-}
+export function getGroqModel(): LanguageModel {
+  const apiKey = process.env.GROQ_API_KEY;
 
-/**
- * Get AI model instance based on model identifier
- */
-export function getAIModel(modelString?: string | null): AIModelResult {
-  const { modelId } = parseModelId(modelString);
-  const provider: ProviderName = "groq";
-  const providerInstance = createProvider();
-  const model = providerInstance(modelId as ModelId);
+  if (!apiKey || typeof apiKey !== "string" || apiKey.trim().length === 0) {
+    throw new InvalidArgumentError({
+      parameter: "GROQ_API_KEY",
+      value: apiKey,
+      message: "GROQ_API_KEY environment variable is required but not set.",
+    });
+  }
 
-  return {
-    model,
-    provider,
-    modelId,
-    displayName: `${modelId} (${provider})`,
-  };
-}
+  const groq = createGroq({
+    apiKey,
+  });
 
-/**
- * Get model identifier string for storage
- */
-export function getModelIdentifier(result: AIModelResult): string {
-  return `${result.provider}:${result.modelId}`;
+  return groq(GROQ_MODEL_ID);
 }

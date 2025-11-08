@@ -1,3 +1,4 @@
+import { now } from "@workspace/backend/convex/lib/dateUtils";
 import { MOBILE_USER_AGENTS } from "../infra/constants";
 import type { Logger } from "../infra/logger";
 import { TokenBucketLimiter } from "../infra/rate-limiter";
@@ -292,10 +293,12 @@ export class InstagramScraper {
   }
 
   private extractTimestamp(node: InstagramPostNode): number {
+    // Instagram API returns timestamps in seconds
+    // Return as-is (seconds) - will be converted to milliseconds in backend
     return (
       node.taken_at_timestamp ||
       node.taken_at ||
-      Math.floor(Date.now() / MS_PER_SECOND)
+      Math.floor(now() / MS_PER_SECOND)
     );
   }
 
@@ -400,7 +403,7 @@ export class InstagramScraper {
     }
 
     const caption = oembedData.title || "";
-    const timestamp = Math.floor(Date.now() / MS_PER_SECOND);
+    const timestamp = Math.floor(now() / MS_PER_SECOND);
     const isVideo = oembedData.type === "video";
 
     const post: ScrapedPost = {
@@ -514,7 +517,7 @@ export class InstagramScraper {
         success: true,
         post: processedPost,
         username,
-        scraped_at: new Date().toISOString(),
+        scraped_at: new Date(now()).toISOString(),
       };
     } catch (error) {
       return this.handleSinglePostError(error);

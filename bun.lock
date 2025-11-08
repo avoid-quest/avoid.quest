@@ -123,6 +123,7 @@
         "@convex-dev/agent": "^0.2.12",
         "@convex-dev/migrations": "^0.2.9",
         "@convex-dev/workflow": "^0.2.7",
+        "@convex-dev/workpool": "^0.2.19",
         "ai": "^5.0.89",
         "convex": "^1.28.2",
         "zod": "^4.1.12",

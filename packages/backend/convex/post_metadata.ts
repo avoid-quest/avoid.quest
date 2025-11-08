@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
+import { now } from "./lib/dateUtils";
 
 export const getPostMetadata = query({
   args: { postId: v.id("posts") },
@@ -50,11 +51,11 @@ export const getHighConfidenceEvents = query({
 export const getUpcomingEvents = query({
   args: {},
   handler: async (ctx) => {
-    const now = Date.now();
+    const currentTime = now();
     return await ctx.db
       .query("post_metadata")
       .withIndex("by_event_date_start")
-      .filter((q) => q.gte(q.field("event_date_start"), now))
+      .filter((q) => q.gte(q.field("event_date_start"), currentTime))
       .collect();
   },
 });
@@ -178,8 +179,7 @@ export const clearMetadata = mutation({
 
 export const updateMetadataSettings = mutation({
   args: {
-    enabled: v.optional(v.boolean()),
-    model: v.optional(v.string()),
+    active: v.optional(v.boolean()),
     batch_size: v.optional(v.number()),
     backlog_interval_minutes: v.optional(v.number()),
     max_concurrent_workflows: v.optional(v.number()),
@@ -191,8 +191,7 @@ export const updateMetadataSettings = mutation({
     }
 
     const currentAiSettings = settings.ai_metadata_extraction ?? {
-      enabled: true,
-      model: "moonshotai/kimi-k2-instruct",
+      active: false,
       batch_size: 5,
       backlog_interval_minutes: 5,
       max_concurrent_workflows: 1,
@@ -200,8 +199,7 @@ export const updateMetadataSettings = mutation({
 
     const updatedAiSettings = {
       ...currentAiSettings,
-      ...(args.enabled !== undefined && { enabled: args.enabled }),
-      ...(args.model !== undefined && { model: args.model }),
+      ...(args.active !== undefined && { active: args.active }),
       ...(args.batch_size !== undefined && { batch_size: args.batch_size }),
       ...(args.backlog_interval_minutes !== undefined && {
         backlog_interval_minutes: args.backlog_interval_minutes,
@@ -276,7 +274,7 @@ export const manuallyFillMetadata = mutation({
       .withIndex("by_post_id", (q) => q.eq("post_id", postId))
       .first();
 
-    const now = Date.now();
+    const currentTime = now();
     const metadataData = {
       post_id: postId,
       event_score: metadataFields.event_score,
@@ -302,8 +300,8 @@ export const manuallyFillMetadata = mutation({
       content_type: metadataFields.content_type,
       telegram_message: metadataFields.telegram_message,
       processing_status: "completed" as const,
-      processing_started_at: existing?.processing_started_at ?? now,
-      processing_completed_at: now,
+      processing_started_at: existing?.processing_started_at ?? currentTime,
+      processing_completed_at: currentTime,
       processing_error: undefined,
       ai_model_used: "manual",
       extraction_version: (existing?.extraction_version ?? 0) + 1,

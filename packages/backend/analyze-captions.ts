@@ -2,10 +2,10 @@
 
 /**
  * Script per analizzare caption random da Convex
- * 
+ *
  * Usage:
  *   bun analyze-captions.ts [--limit 20]
- * 
+ *
  * Environment:
  *   CONVEX_URL - Required
  */
@@ -13,8 +13,13 @@
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "./convex/_generated/api";
 import type { Doc } from "./convex/_generated/dataModel";
+import { formatTimestampForLog } from "./convex/lib/dateUtils";
 
 const DEFAULT_LIMIT = 20;
+const SEPARATOR_LENGTH = 100;
+const FETCH_MULTIPLIER = 3;
+const MIN_FETCH_LIMIT = 100;
+const RADIX_DECIMAL = 10;
 
 /**
  * Get Convex HTTP client
@@ -28,21 +33,10 @@ function getConvexClient(): ConvexHttpClient {
 }
 
 /**
- * Format timestamp to readable date
- */
-function formatTimestamp(ts: number): string {
-  return new Date(ts).toLocaleString("it-IT", {
-    timeZone: "Europe/Rome",
-    dateStyle: "full",
-    timeStyle: "short",
-  });
-}
-
-/**
  * Print separator
  */
 function printSeparator(): void {
-  console.log("=".repeat(100));
+  console.log("=".repeat(SEPARATOR_LENGTH));
 }
 
 /**
@@ -58,14 +52,15 @@ function printPostCaption(
   console.log(`ID: ${post._id}`);
   console.log(`Shortcode: ${post.shortcode}`);
   console.log(`URL: ${post.url}`);
-  console.log(`Timestamp: ${formatTimestamp(post.timestamp)}`);
+  // Timestamp is already in milliseconds (database stores in milliseconds)
+  console.log(`Timestamp: ${formatTimestampForLog(post.timestamp)}`);
   console.log(`Media Type: ${post.media_type}`);
   console.log(`Has Metadata: ${post.metadata_id ? "Yes" : "No"}`);
-  
+
   console.log(`\n📝 CAPTION (${post.caption.length} caratteri):`);
-  console.log("-".repeat(100));
+  console.log("-".repeat(SEPARATOR_LENGTH));
   console.log(post.caption);
-  console.log("-".repeat(100));
+  console.log("-".repeat(SEPARATOR_LENGTH));
 }
 
 /**
@@ -75,27 +70,19 @@ function shuffleArray<T>(array: T[]): T[] {
   const shuffled = [...array];
   for (let i = shuffled.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
-    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    const temp = shuffled[i];
+    if (temp !== undefined && shuffled[j] !== undefined) {
+      shuffled[i] = shuffled[j];
+      shuffled[j] = temp;
+    }
   }
   return shuffled;
 }
 
 /**
- * Main function
+ * Parse command line arguments and return limit
  */
-async function main(): Promise<void> {
-  const args = process.argv.slice(2);
-  
-  // Parse limit
-  let limit = DEFAULT_LIMIT;
-  const limitIndex = args.indexOf("--limit");
-  if (limitIndex !== -1 && args[limitIndex + 1]) {
-    const parsedLimit = Number.parseInt(args[limitIndex + 1], 10);
-    if (!Number.isNaN(parsedLimit) && parsedLimit > 0) {
-      limit = parsedLimit;
-    }
-  }
-
+function parseArgs(args: string[]): number | null {
   // Help
   if (args.includes("--help") || args.includes("-h")) {
     console.log(`
@@ -115,6 +102,73 @@ Examples:
   bun analyze-captions.ts
   bun analyze-captions.ts --limit 50
 `);
+    return null;
+  }
+
+  // Parse limit
+  let limit = DEFAULT_LIMIT;
+  const limitIndex = args.indexOf("--limit");
+  if (limitIndex !== -1 && limitIndex + 1 < args.length) {
+    const limitValue = args[limitIndex + 1];
+    if (limitValue) {
+      const parsedLimit = Number.parseInt(limitValue, RADIX_DECIMAL);
+      if (!Number.isNaN(parsedLimit) && parsedLimit > 0) {
+        limit = parsedLimit;
+      }
+    }
+  }
+
+  return limit;
+}
+
+/**
+ * Fetch and process posts
+ */
+async function fetchAndProcessPosts(
+  client: ConvexHttpClient,
+  limit: number
+): Promise<void> {
+  console.log("\n🔍 Fetching posts from Convex...");
+  console.log(`📊 Will show ${limit} random captions\n`);
+
+  // Fetch more posts than needed to have better randomization
+  const fetchLimit = Math.max(limit * FETCH_MULTIPLIER, MIN_FETCH_LIMIT);
+  const allPosts = await client.query(api.posts.getPosts, {
+    limit: fetchLimit,
+  });
+
+  if (allPosts.length === 0) {
+    console.log("❌ No posts found in database");
+    return;
+  }
+
+  console.log(`✅ Found ${allPosts.length} posts total`);
+
+  // Shuffle and take the requested limit
+  const shuffledPosts = shuffleArray(allPosts);
+  const selectedPosts = shuffledPosts.slice(0, limit);
+
+  console.log(`\n📋 Showing ${selectedPosts.length} random captions:\n`);
+
+  // Print each caption
+  selectedPosts.forEach((post, index) => {
+    printPostCaption(post, index, selectedPosts.length);
+  });
+
+  printSeparator();
+  console.log(
+    `\n✅ Analysis complete! Analyzed ${selectedPosts.length} captions.\n`
+  );
+}
+
+/**
+ * Main function
+ */
+async function main(): Promise<void> {
+  const args = process.argv.slice(2);
+  const limit = parseArgs(args);
+
+  if (limit === null) {
     return;
   }
 
@@ -128,36 +182,8 @@ Examples:
     process.exit(1);
   }
 
-  console.log(`\n🔍 Fetching posts from Convex...`);
-  console.log(`📊 Will show ${limit} random captions\n`);
-
   try {
-    // Fetch more posts than needed to have better randomization
-    const fetchLimit = Math.max(limit * 3, 100);
-    const allPosts = await client.query(api.posts.getPosts, {
-      limit: fetchLimit,
-    });
-
-    if (allPosts.length === 0) {
-      console.log("❌ No posts found in database");
-      return;
-    }
-
-    console.log(`✅ Found ${allPosts.length} posts total`);
-
-    // Shuffle and take the requested limit
-    const shuffledPosts = shuffleArray(allPosts);
-    const selectedPosts = shuffledPosts.slice(0, limit);
-
-    console.log(`\n📋 Showing ${selectedPosts.length} random captions:\n`);
-
-    // Print each caption
-    selectedPosts.forEach((post, index) => {
-      printPostCaption(post, index, selectedPosts.length);
-    });
-
-    printSeparator();
-    console.log(`\n✅ Analysis complete! Analyzed ${selectedPosts.length} captions.\n`);
+    await fetchAndProcessPosts(client, limit);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.error(`❌ Error fetching posts: ${errorMessage}`);
@@ -172,4 +198,3 @@ if (import.meta.main) {
     process.exit(1);
   });
 }
-

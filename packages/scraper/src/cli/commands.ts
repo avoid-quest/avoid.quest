@@ -1,4 +1,6 @@
 /** biome-ignore-all lint/complexity/noExcessiveCognitiveComplexity: just complex */
+
+import { now } from "@workspace/backend/convex/lib/dateUtils";
 import { createLogger } from "../infra/logger";
 import { TokenBucketLimiter } from "../infra/rate-limiter";
 import { getSchedulerStatus, startScheduler } from "../scheduler";
@@ -70,8 +72,8 @@ export async function handleStartCommand(options: StartOptions): Promise<void> {
     console.log("\n⏰ Next Runs:");
     if (status.scraper.active && status.scraper.nextRun) {
       const nextRun = status.scraper.nextRun;
-      const now = new Date();
-      const diff = nextRun.getTime() - now.getTime();
+      const currentTime = now();
+      const diff = nextRun.getTime() - currentTime;
       const minutes = Math.floor(diff / MS_PER_MINUTE);
       const hours = Math.floor(minutes / SECONDS_PER_MINUTE);
       const days = Math.floor(hours / 24);
@@ -101,8 +103,8 @@ export async function handleStartCommand(options: StartOptions): Promise<void> {
 
     if (status.telegram.active && status.telegram.nextRun) {
       const nextRun = status.telegram.nextRun;
-      const now = new Date();
-      const diff = nextRun.getTime() - now.getTime();
+      const currentTime = now();
+      const diff = nextRun.getTime() - currentTime;
       const minutes = Math.floor(diff / MS_PER_MINUTE);
       const hours = Math.floor(minutes / SECONDS_PER_MINUTE);
       const days = Math.floor(hours / 24);

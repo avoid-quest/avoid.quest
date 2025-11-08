@@ -44,8 +44,7 @@ export const getSettingsInternal = internalQuery({
       ),
       ai_metadata_extraction: v.optional(
         v.object({
-          enabled: v.boolean(),
-          model: v.optional(v.string()),
+          active: v.boolean(),
           batch_size: v.optional(v.number()),
           backlog_interval_minutes: v.optional(v.number()),
           max_concurrent_workflows: v.optional(v.number()),
@@ -94,7 +93,7 @@ export const upsertSettings = mutation({
     ),
     ai_metadata_extraction: v.optional(
       v.object({
-        enabled: v.boolean(),
+        active: v.boolean(),
         model: v.optional(v.string()),
         batch_size: v.optional(v.number()),
         backlog_interval_minutes: v.optional(v.number()),

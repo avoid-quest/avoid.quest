@@ -1,7 +1,9 @@
 import { cronJobs } from "convex/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
 import { internalAction, internalQuery } from "./_generated/server";
+import { now } from "./lib/dateUtils";
 import { workflow } from "./workflows/workflow";
 
 const SECONDS_PER_MINUTE = 60;
@@ -68,11 +70,12 @@ export const checkMetadataExists = internalQuery({
     // Check if processing is stuck (processing for more than 1 hour)
     if (existingMetadata.processing_status === "processing") {
       const processingStartedAt = existingMetadata.processing_started_at ?? 0;
-      const isStuck = Date.now() - processingStartedAt > ONE_HOUR_MS;
+      const currentTime = now();
+      const isStuck = currentTime - processingStartedAt > ONE_HOUR_MS;
 
       if (isStuck) {
         console.log(
-          `Metadata for post ${postId} is stuck in processing (started ${Date.now() - processingStartedAt}ms ago), will retry`
+          `Metadata for post ${postId} is stuck in processing (started ${currentTime - processingStartedAt}ms ago), will retry`
         );
         return false; // Stuck, should retry
       }
@@ -107,7 +110,7 @@ export const processMetadataBacklog = internalAction({
     const DEFAULT_BATCH_SIZE = 1;
     const DEFAULT_MAX_CONCURRENT_WORKFLOWS = 1; // Reduced from 3 to avoid quota issues
 
-    if (!aiSettings?.enabled) {
+    if (!aiSettings?.active) {
       console.log("AI metadata extraction is disabled in settings");
       return { processed: 0, skipped: 0, errors: 0 };
     }
@@ -143,7 +146,7 @@ export const processMetadataBacklog = internalAction({
       const batch = postsWithoutMetadata.slice(i, i + maxConcurrent);
 
       const results = await Promise.allSettled(
-        batch.map(async (postId) => {
+        batch.map(async (postId: Id<"posts">) => {
           try {
             // Check if metadata already exists for this post
             const hasMetadata = await ctx.runQuery(
@@ -156,11 +159,16 @@ export const processMetadataBacklog = internalAction({
               return;
             }
 
-            // Start workflow for this post
+            // Start workflow for this post with completion handler
             await workflow.start(
               ctx,
               internal.workflows.postMetadata.processPostMetadata,
-              { postId }
+              { postId },
+              {
+                onComplete:
+                  internal.workflows.postMetadata.handlePostMetadataCompletion,
+                context: { postId },
+              }
             );
             processed++;
           } catch (error) {
@@ -171,7 +179,7 @@ export const processMetadataBacklog = internalAction({
       );
 
       // Log any failures
-      results.forEach((result, index) => {
+      results.forEach((result: PromiseSettledResult<void>, index: number) => {
         if (result.status === "rejected") {
           console.error(
             `Failed to process post ${batch[index]}:`,

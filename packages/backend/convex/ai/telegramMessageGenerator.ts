@@ -1,8 +1,18 @@
-import { generateText } from "ai";
+import {
+  generateText,
+  InvalidArgumentError,
+  InvalidPromptError,
+  InvalidResponseDataError,
+} from "ai";
 import { v } from "convex/values";
 import { internalAction } from "../_generated/server";
-import { getAIModelFromSettings } from "./config";
-import { postMetadataValidator } from "./postMetadataExtractorAgent";
+import { formatEventDateRange, formatEventTime } from "../lib/dateUtils";
+import { getGroqModel } from "./config";
+import {
+  type PostMetadataExtraction,
+  postMetadataValidator,
+  postMetadataZodSchema,
+} from "./postMetadataExtractorAgent";
 import {
   buildTelegramMessagePrompt,
   getTelegramMessageGenerationSystemPrompt,
@@ -13,68 +23,9 @@ const ELLIPSIS_LENGTH = 3;
 const MIN_TRUNCATION_THRESHOLD = 0.7;
 
 /**
- * Format event date for display
- */
-function formatEventDate(timestamp: number): string {
-  return new Date(timestamp).toLocaleDateString("it-IT", {
-    weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
-}
-
-/**
- * Format event time for display
- */
-function formatEventTime(timeStart?: string, timeEnd?: string): string {
-  if (!timeStart) {
-    return "";
-  }
-  if (timeEnd) {
-    return `dalle ${timeStart} alle ${timeEnd}`;
-  }
-  return timeStart;
-}
-
-/**
- * Format event date range for display
- */
-function formatEventDateRange(dateStart?: number, dateEnd?: number): string {
-  if (!dateStart) {
-    return "";
-  }
-  if (dateEnd && dateEnd !== dateStart) {
-    const startDate = formatEventDate(dateStart);
-    const endDate = formatEventDate(dateEnd);
-    return `dal ${startDate} al ${endDate}`;
-  }
-  return formatEventDate(dateStart);
-}
-
-type EventMetadata = {
-  event_title?: string;
-  event_description?: string;
-  event_date_start?: number;
-  event_date_end?: number;
-  event_time_start?: string;
-  event_time_end?: string;
-  location?: string;
-  location_address?: string;
-  ticket_price?: string;
-  registration_url?: string;
-  registration_required?: boolean;
-  organizer_name?: string;
-  organizer_contact?: string;
-  target_audience?: string[];
-  hashtags?: string[];
-  event_type?: string;
-};
-
-/**
  * Build basic event info (title, description)
  */
-function buildBasicInfo(metadata: EventMetadata): string[] {
+function buildBasicInfo(metadata: PostMetadataExtraction): string[] {
   const parts: string[] = [];
   if (metadata.event_title) {
     parts.push(`Titolo: ${metadata.event_title}`);
@@ -88,7 +39,7 @@ function buildBasicInfo(metadata: EventMetadata): string[] {
 /**
  * Build date and time info
  */
-function buildDateTimeInfo(metadata: EventMetadata): string[] {
+function buildDateTimeInfo(metadata: PostMetadataExtraction): string[] {
   const parts: string[] = [];
   const dateRange = formatEventDateRange(
     metadata.event_date_start,
@@ -111,13 +62,10 @@ function buildDateTimeInfo(metadata: EventMetadata): string[] {
 /**
  * Build location info
  */
-function buildLocationInfo(metadata: EventMetadata): string[] {
+function buildLocationInfo(metadata: PostMetadataExtraction): string[] {
   const parts: string[] = [];
   if (metadata.location) {
     parts.push(`Luogo: ${metadata.location}`);
-  }
-  if (metadata.location_address) {
-    parts.push(`Indirizzo: ${metadata.location_address}`);
   }
   return parts;
 }
@@ -125,7 +73,7 @@ function buildLocationInfo(metadata: EventMetadata): string[] {
 /**
  * Build pricing and registration info
  */
-function buildPricingInfo(metadata: EventMetadata): string[] {
+function buildPricingInfo(metadata: PostMetadataExtraction): string[] {
   const parts: string[] = [];
   if (metadata.ticket_price) {
     parts.push(`Prezzo: ${metadata.ticket_price}`);
@@ -144,25 +92,19 @@ function buildPricingInfo(metadata: EventMetadata): string[] {
 /**
  * Build organizer info
  */
-function buildOrganizerInfo(metadata: EventMetadata): string[] {
+function buildOrganizerInfo(metadata: PostMetadataExtraction): string[] {
   const parts: string[] = [];
   if (metadata.organizer_name) {
     parts.push(`Organizzatore: ${metadata.organizer_name}`);
-  }
-  if (metadata.organizer_contact) {
-    parts.push(`Contatto: ${metadata.organizer_contact}`);
   }
   return parts;
 }
 
 /**
- * Build additional info (audience, type, hashtags)
+ * Build additional info (type, hashtags)
  */
-function buildAdditionalInfo(metadata: EventMetadata): string[] {
+function buildAdditionalInfo(metadata: PostMetadataExtraction): string[] {
   const parts: string[] = [];
-  if (metadata.target_audience && metadata.target_audience.length > 0) {
-    parts.push(`Pubblico target: ${metadata.target_audience.join(", ")}`);
-  }
   if (metadata.event_type) {
     parts.push(`Tipo evento: ${metadata.event_type}`);
   }
@@ -175,7 +117,7 @@ function buildAdditionalInfo(metadata: EventMetadata): string[] {
 /**
  * Build event details string for prompt (Italian format)
  */
-function buildEventDetailsString(metadata: EventMetadata): string {
+function buildEventDetailsString(metadata: PostMetadataExtraction): string {
   const parts: string[] = [
     ...buildBasicInfo(metadata),
     ...buildDateTimeInfo(metadata),
@@ -237,6 +179,92 @@ function ensureInstagramLink(message: string, postUrl: string): string {
 }
 
 /**
+ * Validate metadata using Zod schema
+ */
+function validateMetadata(metadata: unknown): void {
+  const validationResult = postMetadataZodSchema.safeParse(metadata);
+  if (!validationResult.success) {
+    throw new InvalidArgumentError({
+      parameter: "metadata",
+      value: metadata,
+      message: validationResult.error.message,
+    });
+  }
+}
+
+/**
+ * Validate postUrl
+ */
+function validatePostUrl(postUrl: unknown): void {
+  if (postUrl === undefined || postUrl === null) {
+    return;
+  }
+
+  if (typeof postUrl !== "string" || postUrl.length === 0) {
+    throw new InvalidArgumentError({
+      parameter: "postUrl",
+      value: postUrl,
+      message: "Post URL must be a non-empty string",
+    });
+  }
+
+  try {
+    new URL(postUrl);
+  } catch {
+    throw new InvalidArgumentError({
+      parameter: "postUrl",
+      value: postUrl,
+      message: "Post URL must be a valid URL",
+    });
+  }
+}
+
+/**
+ * Generate text using AI model with proper error handling
+ */
+async function generateTextWithModel(
+  model: ReturnType<typeof getGroqModel>,
+  systemPrompt: string,
+  userPrompt: string
+): Promise<string> {
+  try {
+    const result = await generateText({
+      model,
+      system: systemPrompt,
+      prompt: userPrompt,
+    });
+    return result.text;
+  } catch (error) {
+    // Re-throw AI SDK errors as-is
+    if (
+      InvalidPromptError.isInstance(error) ||
+      InvalidResponseDataError.isInstance(error) ||
+      InvalidArgumentError.isInstance(error)
+    ) {
+      throw error;
+    }
+    // Wrap other errors
+    throw new InvalidResponseDataError({
+      data: undefined,
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+/**
+ * Process generated text: trim, add link, truncate
+ */
+function processMessage(text: string, postUrl: string): string {
+  let message = text.trim();
+  message = ensureInstagramLink(message, postUrl);
+  message = truncateMessage(
+    message,
+    `<a href="${postUrl}">View on Instagram</a>`
+  );
+  return message;
+}
+
+/**
  * Generate a Telegram-formatted message from extracted metadata
  */
 export const generateTelegramMessage = internalAction({
@@ -245,35 +273,43 @@ export const generateTelegramMessage = internalAction({
     postUrl: v.string(),
   },
   returns: v.string(),
-  handler: async (ctx, { metadata, postUrl }) => {
-    // Get model from settings or use default
-    const { model } = await getAIModelFromSettings(ctx);
-    const eventDetails = buildEventDetailsString(metadata);
+  handler: async (_ctx, { metadata, postUrl }) => {
+    try {
+      // Validate inputs
+      validateMetadata(metadata);
+      validatePostUrl(postUrl);
 
-    const userPrompt = buildTelegramMessagePrompt(
-      eventDetails,
-      postUrl,
-      MAX_TELEGRAM_MESSAGE_LENGTH
-    );
+      // Get Groq model and build prompts
+      const model = getGroqModel();
+      const eventDetails = buildEventDetailsString(metadata);
+      const userPrompt = buildTelegramMessagePrompt(
+        eventDetails,
+        postUrl,
+        MAX_TELEGRAM_MESSAGE_LENGTH
+      );
+      const systemPrompt = getTelegramMessageGenerationSystemPrompt(
+        MAX_TELEGRAM_MESSAGE_LENGTH,
+        postUrl
+      );
 
-    const systemPrompt = getTelegramMessageGenerationSystemPrompt(
-      MAX_TELEGRAM_MESSAGE_LENGTH,
-      postUrl
-    );
-
-    const { text } = await generateText({
-      model,
-      system: systemPrompt,
-      prompt: userPrompt,
-    });
-
-    let message = text.trim();
-    message = ensureInstagramLink(message, postUrl);
-    message = truncateMessage(
-      message,
-      `<a href="${postUrl}">View on Instagram</a>`
-    );
-
-    return message;
+      // Generate and process message
+      const text = await generateTextWithModel(model, systemPrompt, userPrompt);
+      return processMessage(text, postUrl);
+    } catch (error) {
+      // Re-throw AI SDK errors as-is
+      if (
+        InvalidArgumentError.isInstance(error) ||
+        InvalidPromptError.isInstance(error) ||
+        InvalidResponseDataError.isInstance(error)
+      ) {
+        throw error;
+      }
+      // Wrap unknown errors
+      throw new InvalidArgumentError({
+        parameter: "telegramMessageGeneration",
+        value: { metadata, postUrl },
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
   },
 });

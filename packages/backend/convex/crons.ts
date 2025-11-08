@@ -106,7 +106,7 @@ export const processMetadataBacklog = internalAction({
     const aiSettings = settings?.ai_metadata_extraction;
 
     // Default values for AI metadata extraction settings
-    // Reduced defaults to respect Gemini free tier (50 requests limit)
+    // Reduced defaults to respect Groq API rate limits
     const DEFAULT_BATCH_SIZE = 1;
     const DEFAULT_MAX_CONCURRENT_WORKFLOWS = 1; // Reduced from 3 to avoid quota issues
 
@@ -208,8 +208,10 @@ export const processMetadataBacklog = internalAction({
 
 const crons = cronJobs();
 
-// Run every 15 minutes by default (respects Groq API rate limits)
-// The interval can be configured via settings.ai_metadata_extraction.backlog_interval_minutes
+// Run every 15 minutes (hardcoded interval to respect Groq API rate limits)
+// Note: Convex cron jobs require static intervals, so the interval cannot be
+// dynamically configured via settings. The settings.backlog_interval_minutes
+// value is reserved for future use if Convex adds support for dynamic intervals.
 crons.interval(
   "process-metadata-backlog",
   { minutes: 15 },

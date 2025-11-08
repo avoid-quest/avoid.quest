@@ -41,6 +41,50 @@ export async function updateUserLastScraped(
   });
 }
 
+/**
+ * Optionally trigger metadata extraction for a newly created post
+ * Only triggers if AI metadata extraction is enabled in settings
+ * Errors are logged but don't fail the scraping process
+ */
+async function optionallyTriggerMetadataExtraction(
+  postId: Id<"posts">,
+  isNewPost: boolean,
+  logger: ReturnType<typeof createLogger>
+): Promise<void> {
+  // Only trigger for new posts, not updates
+  if (!isNewPost) {
+    return;
+  }
+
+  try {
+    // Check if AI metadata extraction is enabled
+    const settings = await getHttpClient().query(api.settings.getSettings, {});
+    const aiSettings = settings?.ai_metadata_extraction;
+
+    if (!aiSettings?.active) {
+      logger.debug(
+        `Skipping immediate metadata extraction for post ${postId} (AI extraction disabled)`
+      );
+      return;
+    }
+
+    // Trigger metadata extraction workflow
+    // This is fire-and-forget - errors are handled by the workflow's onComplete handler
+    logger.debug(`Triggering immediate metadata extraction for post ${postId}`);
+    await getHttpClient().action(api.workflows.postMetadata.triggerMetadataExtraction, {
+      postId,
+    });
+    logger.debug(`Metadata extraction workflow triggered for post ${postId}`);
+  } catch (error) {
+    // Log error but don't fail scraping - metadata will be processed by cron job
+    logger.warn(
+      `Failed to trigger immediate metadata extraction for post ${postId}: ${
+        error instanceof Error ? error.message : String(error)
+      }. Will be processed by cron job.`
+    );
+  }
+}
+
 async function processPost(
   post: {
     shortcode: string;
@@ -60,11 +104,14 @@ async function processPost(
       height?: number;
     }>;
   },
-  userId: Id<"users">
+  userId: Id<"users">,
+  logger: ReturnType<typeof createLogger>
 ): Promise<void> {
   const existing = await getHttpClient().query(api.posts.getPostByShortcode, {
     shortcode: post.shortcode,
   });
+
+  const isNewPost = !existing?._id;
 
   // When updating existing posts, don't overwrite sent, sentAt, or event_date
   // Only pass these fields when creating new posts
@@ -83,9 +130,9 @@ async function processPost(
     timestamp: post.timestampSec,
     // Don't pass event_date, sent, or sentAt when updating - they will be preserved
     // When creating new posts, these will default to undefined/false
-    ...(existing?._id
-      ? {}
-      : { event_date: undefined, sent: false, sentAt: undefined }),
+    ...(isNewPost
+      ? { event_date: undefined, sent: false, sentAt: undefined }
+      : {}),
   });
 
   // Sync media items: updates existing, adds new, removes deleted ones
@@ -94,6 +141,10 @@ async function processPost(
     post_id: postId,
     media_items: post.media_items,
   });
+
+  // Optionally trigger immediate metadata extraction for new posts
+  // This is rate-limit aware and respects settings
+  await optionallyTriggerMetadataExtraction(postId, isNewPost, logger);
 }
 
 async function processUser(
@@ -132,7 +183,7 @@ async function processUser(
   }
 
   for (const p of posts) {
-    await processPost(p, cvxUser._id);
+    await processPost(p, cvxUser._id, logger);
   }
 
   await updateUserLastScraped(user._id, now);
@@ -287,6 +338,8 @@ export async function scrapeAndSaveSinglePost(
       shortcode: post.shortcode,
     });
 
+    const isNewPost = !existing?._id;
+
     // Extract username from oEmbed response or fallback to URL extraction
     const username = result.username ?? extractUsernameFromUrl(postUrl);
 
@@ -327,9 +380,9 @@ export async function scrapeAndSaveSinglePost(
       timestamp: post.timestampSec,
       // Don't pass event_date, sent, or sentAt when updating - they will be preserved
       // When creating new posts, these will default to undefined/false
-      ...(existing?._id
-        ? {}
-        : { event_date: undefined, sent: false, sentAt: undefined }),
+      ...(isNewPost
+        ? { event_date: undefined, sent: false, sentAt: undefined }
+        : {}),
     });
 
     // Sync media items: updates existing, adds new, removes deleted ones
@@ -338,6 +391,10 @@ export async function scrapeAndSaveSinglePost(
       post_id: postId,
       media_items: post.media_items,
     });
+
+    // Optionally trigger immediate metadata extraction for new posts
+    // This is rate-limit aware and respects settings
+    await optionallyTriggerMetadataExtraction(postId, isNewPost, logger);
 
     return {
       success: true,

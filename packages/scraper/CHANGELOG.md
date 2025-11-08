@@ -1,5 +1,11 @@
 # @workspace/scraper
 
+## 3.2.1
+
+### Patch Changes
+
+- c6cadf0: Fix lint issues: replace increment/decrement operators with += 1, add explicit type annotations, and refactor sendPost function to reduce complexity from 40 to below 15.
+
 ## 3.2.0
 
 ### Minor Changes

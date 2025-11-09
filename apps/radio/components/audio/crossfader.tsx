@@ -71,7 +71,7 @@ export function Crossfader({
         />
 
         {/* Center indicator */}
-        <div className="-translate-x-1/2 -translate-y-1/2 absolute top-1/2 left-1/2 h-1 w-1 rounded-full bg-muted-foreground/50" />
+        <div className="-translate-x-1/2 -translate-y-1/2 pointer-events-none absolute top-1/2 left-1/2 h-1 w-1 rounded-full bg-muted-foreground/50" />
       </div>
 
       {/* Position indicator */}

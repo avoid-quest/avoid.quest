@@ -31,4 +31,3 @@ jobs:
       - name: Run tests
         working-directory: packages/scraper
         run: bun test
-

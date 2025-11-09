@@ -75,7 +75,7 @@ jobs:
 
       - name: Build Package
         if: steps.version_check.outputs.version_changed == 'true'
-        run: turbo build --filter=@avoid.quest/cacophony
+        run: bun run build -F @avoid.quest/cacophony
 
       - name: Create Git Tags
         if: steps.version_check.outputs.version_changed == 'true'

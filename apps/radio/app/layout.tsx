@@ -2,6 +2,7 @@ import { Toaster } from "@workspace/ui/components/sonner";
 import { cn } from "@workspace/ui/lib/utils";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { InstallPrompt } from "@/components/pwa/install-prompt";
 import { SWRegister } from "@/components/pwa/sw-register";
 import { Header } from "@/components/theme/header";
 import { ThemeProvider } from "@/components/theme/theme-provider";
@@ -25,7 +26,7 @@ import icon1 from "@workspace/ui/assets/favicon/icon1.png";
 export const metadata: Metadata = {
   title: "radio - avoid.quest",
   description: "Enhanced internet radio",
-  manifest: "https://avoid.quest/manifest.json",
+  manifest: "/manifest.json",
   icons: [
     {
       rel: "icon",
@@ -58,6 +59,11 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <head>
         <meta content="radio.avoid.quest" name="apple-mobile-web-app-title" />
+        <meta content="yes" name="apple-mobile-web-app-capable" />
+        <meta content="black" name="apple-mobile-web-app-status-bar-style" />
+        <meta content="Radio - avoid.quest" name="application-name" />
+        <meta content="#000000" name="theme-color" />
+        <meta content="#000000" name="msapplication-TileColor" />
       </head>
       <body
         className={cn(
@@ -73,6 +79,7 @@ export default function RootLayout({
           enableSystem
         >
           <SWRegister />
+          <InstallPrompt />
           <div className="relative h-screen bg-background dark:bg-linear-to-br dark:from-darkest dark:via-darker dark:to-dark">
             <Header />
             <main className="relative z-10 h-full overflow-y-auto pt-20">

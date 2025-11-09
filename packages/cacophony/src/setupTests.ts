@@ -13,7 +13,9 @@ export const mockCache: ICache = {
   getAudioBuffer: mock(() =>
     Promise.resolve(new AudioBuffer({ length: 100, sampleRate: 44_100 }))
   ),
-  clearMemoryCache: mock(() => {}),
+  clearMemoryCache: mock(() => {
+    //
+  }),
 };
 
 // Create a Cacophony instance with the mock context and cache

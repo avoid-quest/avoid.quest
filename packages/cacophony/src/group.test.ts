@@ -1,5 +1,13 @@
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  mock,
+  spyOn,
+} from "bun:test";
 import { AudioBuffer } from "standardized-audio-context-mock";
-import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
 
 import { Group } from "./group";
 import type { Playback } from "./playback";
@@ -44,10 +52,12 @@ describe("Group class", () => {
   });
 
   it("performs collective operations on grouped sounds", () => {
-    const preplaySpy1 = spyOn(sound1, "preplay")
-      .mockReturnValue([{ play: mock() } as unknown as Playback]);
-    const preplaySpy2 = spyOn(sound2, "preplay")
-      .mockReturnValue([{ play: mock() } as unknown as Playback]);
+    const preplaySpy1 = spyOn(sound1, "preplay").mockReturnValue([
+      { play: mock() } as unknown as Playback,
+    ]);
+    const preplaySpy2 = spyOn(sound2, "preplay").mockReturnValue([
+      { play: mock() } as unknown as Playback,
+    ]);
 
     group.play();
     expect(preplaySpy1).toHaveBeenCalled();
@@ -66,10 +76,12 @@ describe("Group class", () => {
   });
 
   it("plays sounds in order", () => {
-    const preplaySpy1 = spyOn(sound1, "preplay")
-      .mockReturnValue([{ play: mock() } as unknown as Playback]);
-    const preplaySpy2 = spyOn(sound2, "preplay")
-      .mockReturnValue([{ play: mock() } as unknown as Playback]);
+    const preplaySpy1 = spyOn(sound1, "preplay").mockReturnValue([
+      { play: mock() } as unknown as Playback,
+    ]);
+    const preplaySpy2 = spyOn(sound2, "preplay").mockReturnValue([
+      { play: mock() } as unknown as Playback,
+    ]);
 
     const playback1 = group.playOrdered();
     expect(preplaySpy1).toHaveBeenCalled();
@@ -84,8 +96,9 @@ describe("Group class", () => {
   it("plays random sounds", () => {
     const randomSpy = spyOn(Math, "random").mockReturnValue(0.7);
     const preplaySpy1 = spyOn(sound1, "preplay").mockReturnValue([]);
-    const preplaySpy2 = spyOn(sound2, "preplay")
-      .mockReturnValue([{ play: mock() } as unknown as Playback]);
+    const preplaySpy2 = spyOn(sound2, "preplay").mockReturnValue([
+      { play: mock() } as unknown as Playback,
+    ]);
 
     const playback = group.playRandom();
     expect(randomSpy).toHaveBeenCalled();

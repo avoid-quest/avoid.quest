@@ -1,8 +1,17 @@
 import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  jest,
+  mock,
+  spyOn,
+} from "bun:test";
+import {
   AudioBuffer,
   type AudioBufferSourceNode,
 } from "standardized-audio-context-mock";
-import { afterEach, beforeEach, describe, expect, it, jest, mock, spyOn } from "bun:test";
 
 import { Playback } from "./playback";
 import { audioContextMock, cacophony } from "./setupTests";
@@ -545,9 +554,7 @@ describe("Playback looping and seeking with AudioBufferSourceNode (Bug Catching)
 
     expect(playback.isPlaying).toBe(true); // Should be playing the next loop
     // A new source should have been created for the loop
-    expect(
-      (audioContextMock.createBufferSource as any)
-    ).toHaveBeenCalledTimes(1);
+    expect(audioContextMock.createBufferSource as any).toHaveBeenCalledTimes(1);
 
     const secondSourceInstance = playback.source as any;
     expect(secondSourceInstance).not.toBe(firstSourceInstance);
@@ -573,9 +580,7 @@ describe("Playback looping and seeking with AudioBufferSourceNode (Bug Catching)
 
     expect(playback.isPlaying).toBe(true);
     // A new source should have been created due to seek while playing
-    expect(
-      (audioContextMock.createBufferSource as any)
-    ).toHaveBeenCalledTimes(1);
+    expect(audioContextMock.createBufferSource as any).toHaveBeenCalledTimes(1);
 
     const secondSourceInstance = playback.source as any;
     expect(secondSourceInstance).not.toBe(firstSourceInstance);
@@ -603,9 +608,7 @@ describe("Playback looping and seeking with AudioBufferSourceNode (Bug Catching)
     playback.seek(seekTime);
 
     // Seeking while paused should not immediately recreate the source
-    expect(
-      (audioContextMock.createBufferSource as any)
-    ).not.toHaveBeenCalled();
+    expect(audioContextMock.createBufferSource as any).not.toHaveBeenCalled();
     // The source instance should still be the first one (though it's stopped)
     expect(playback.source).toBe(firstSourceInstance);
 
@@ -613,9 +616,7 @@ describe("Playback looping and seeking with AudioBufferSourceNode (Bug Catching)
 
     expect(playback.isPlaying).toBe(true);
     // A new source should have been created on play() after pause+seek
-    expect(
-      (audioContextMock.createBufferSource as any)
-    ).toHaveBeenCalledTimes(1);
+    expect(audioContextMock.createBufferSource as any).toHaveBeenCalledTimes(1);
 
     const secondSourceInstance = playback.source as any;
     expect(secondSourceInstance).not.toBe(firstSourceInstance);

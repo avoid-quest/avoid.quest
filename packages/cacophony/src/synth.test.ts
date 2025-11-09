@@ -1,5 +1,5 @@
-import { AudioContext } from "standardized-audio-context-mock";
 import { beforeEach, describe, expect, it } from "bun:test";
+import { AudioContext } from "standardized-audio-context-mock";
 
 import { SoundType } from "./cacophony";
 import { Synth } from "./synth";

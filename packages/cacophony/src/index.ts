@@ -1,4 +1,5 @@
 export * from "./cacophony.js";
+export * from "./context.js";
 export * from "./group.js";
 export { MicrophonePlayback } from "./microphone.js";
 export * from "./playback.js";

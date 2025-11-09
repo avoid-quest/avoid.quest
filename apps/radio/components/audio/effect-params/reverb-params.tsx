@@ -56,7 +56,7 @@ function PreDelayBandwidthGroup({
       formatKey: "samples",
       key: "preDelay",
       label: "Pre-Delay",
-      max: ranges.preDelay?.max ?? 48_000,
+      max: ranges.preDelay?.max ?? 47_999,
       min: ranges.preDelay?.min ?? 0,
       step: ranges.preDelay?.step ?? 1,
     },

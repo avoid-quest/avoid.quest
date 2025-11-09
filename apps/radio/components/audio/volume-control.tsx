@@ -29,7 +29,7 @@ export function VolumeControl({
   orientation = "horizontal",
 }: VolumeControlProps) {
   const handleSliderChange = (value: number[]) => {
-    onVolumeChange(value[0] ?? 0 / MAX_VOLUME);
+    onVolumeChange((value[0] ?? 0) / MAX_VOLUME);
   };
 
   const handleMute = () => {

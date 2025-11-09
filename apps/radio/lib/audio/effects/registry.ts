@@ -50,7 +50,7 @@ export const AVAILABLE_EFFECTS: EffectMetadata[] = [
       dry: 0.6,
     } as Omit<EffectConfig, "id" | "order">,
     parameterRanges: {
-      preDelay: { min: 0, max: 48_000, step: 1 },
+      preDelay: { min: 0, max: 47_999, step: 1 },
       bandwidth: { min: 0, max: 1, step: 0.0001 },
       inputDiffusion1: { min: 0, max: 1, step: 0.01 },
       inputDiffusion2: { min: 0, max: 1, step: 0.01 },

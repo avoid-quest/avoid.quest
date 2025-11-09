@@ -52,7 +52,7 @@
     },
     "apps/radio": {
       "name": "radio",
-      "version": "0.2.2",
+      "version": "0.2.4",
       "dependencies": {
         "@avoid.quest/cacophony": "^0.18.5",
         "@dnd-kit/core": "^6.3.1",

@@ -29,7 +29,23 @@ jobs:
 
       - run: bun install
 
+      - name: Check for cacophony changesets
+        id: check-changesets
+        run: |
+          if bunx changeset status --output status.json 2>/dev/null; then
+            HAS_CACOPHONY=$(bun -e "
+              const status = JSON.parse(await Bun.file('status.json').text());
+              const hasCacophony = status.releases?.some(r => r.name === '@avoid.quest/cacophony') || false;
+              console.log(hasCacophony ? 'true' : 'false');
+            ")
+            echo "has_changesets=$HAS_CACOPHONY" >> $GITHUB_OUTPUT
+            rm -f status.json
+          else
+            echo "has_changesets=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Create Release Pull Request or Publish to npm
+        if: steps.check-changesets.outputs.has_changesets == 'true'
         id: changesets
         uses: changesets/action@v1
         with:

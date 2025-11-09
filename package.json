@@ -28,7 +28,7 @@
     "changeset": "changeset",
     "version-packages": "changeset version",
     "release:cacophony": "bun run build -F @avoid.quest/cacophony && bunx changeset publish",
-    "release:scraper": "cd packages/scraper && bun run build:all && cd ../.. && bun changeset tag && git push --follow-tags"
+    "release:scraper": "cd packages/scraper && bun run build:all && cd ../.. && bunx changeset tag && git push --follow-tags"
   },
   "dependencies": {
     "dotenv": "^17.2.3",

@@ -1,5 +1,11 @@
 # @avoid.quest/cacophony
 
+## 0.18.6
+
+### Patch Changes
+
+- 188ef62: Fix
+
 ## 0.18.5
 
 ### Patch Changes

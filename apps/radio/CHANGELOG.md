@@ -1,5 +1,13 @@
 # radio
 
+## 0.2.2
+
+### Patch Changes
+
+- 188ef62: Fix
+- Updated dependencies [188ef62]
+  - @avoid.quest/cacophony@0.18.6
+
 ## 0.2.1
 
 ### Patch Changes

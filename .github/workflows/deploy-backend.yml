@@ -1,32 +1,31 @@
 name: Deploy Backend
 
 on:
- push:
-  branches:
-   - main
-  paths:
-   - "packages/backend/**"
-   - ".changeset/**"
+  push:
+    branches:
+      - main
+    paths:
+      - "packages/backend/**"
 
 permissions:
- contents: read
+  contents: read
 
 jobs:
- deploy:
-  name: Deploy Convex Backend
-  runs-on: ubuntu-latest
-  if: github.event_name == 'push'
-  steps:
-   - uses: actions/checkout@v4
+  deploy:
+    name: Deploy Convex Backend
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
 
-   - uses: oven-sh/setup-bun@v2
-     with:
-      bun-version: latest
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
 
-   - run: bun install
+      - run: bun install
 
-   - name: Deploy to Convex
-     working-directory: packages/backend
-     run: bun run deploy
-     env:
-      CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+      - name: Deploy to Convex
+        working-directory: packages/backend
+        run: bun run deploy
+        env:
+          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}

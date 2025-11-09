@@ -2,14 +2,108 @@
 
 import { fetchClientID } from "@scdl/fetch-client";
 import { setClientID, stream } from "scdl-core";
+import type {
+  PlatformItemError,
+  PlatformItemResponse,
+  SoundCloudItemResult,
+  SoundCloudItemType,
+  SoundCloudMetadata,
+} from "@/lib/external-url/types";
 
-export async function getSoundCloudStreamUrl(url: string): Promise<string> {
+const SOUNDCLOUD_TRACK_PATTERN = /soundcloud\.com\/[^/]+\/[^/]+/i;
+const SOUNDCLOUD_PLAYLIST_PATTERN = /soundcloud\.com\/[^/]+\/sets\/[^/]+/i;
+
+function detectSoundCloudItemType(url: string): SoundCloudItemType {
+  if (SOUNDCLOUD_PLAYLIST_PATTERN.test(url)) {
+    return "playlist";
+  }
+  if (SOUNDCLOUD_TRACK_PATTERN.test(url)) {
+    return "track";
+  }
+  return "user";
+}
+
+export async function getSoundCloudItem(
+  url: string
+): Promise<PlatformItemResponse> {
   try {
-    // Get and set client ID
+    const itemType = detectSoundCloudItemType(url);
+
+    if (itemType === "track") {
+      return await getSoundCloudTrack(url);
+    }
+    if (itemType === "playlist") {
+      return await getSoundCloudPlaylist(url);
+    }
+
+    return {
+      success: false,
+      error: "User pages are not yet supported",
+    };
+  } catch (error) {
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown error occurred";
+    return {
+      success: false,
+      error: `Failed to get SoundCloud item: ${errorMessage}`,
+    };
+  }
+}
+
+async function getSoundCloudTrack(
+  url: string
+): Promise<SoundCloudItemResult | PlatformItemError> {
+  try {
+    // Initialize client ID for future API calls
     const clientID = await fetchClientID();
     setClientID(clientID);
 
-    // Stream the track
+    // The stream function returns a stream, not metadata
+    // For now, we'll create basic metadata from the URL
+    // Metadata extraction can be enhanced later with proper API calls
+    const metadata: SoundCloudMetadata = {
+      platform: "soundcloud",
+      itemType: "track",
+      url,
+      streamUrl: url, // Use original URL as stream URL for SoundCloud
+    };
+
+    // For now, we'll use the original URL as the stream URL
+    // The actual streaming will be handled by the player
+    return {
+      success: true,
+      metadata,
+      streamUrl: url,
+    };
+  } catch (error) {
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown error occurred";
+    return {
+      success: false,
+      error: `Failed to get SoundCloud track: ${errorMessage}`,
+    };
+  }
+}
+
+function getSoundCloudPlaylist(
+  _url: string
+): Promise<SoundCloudItemResult | PlatformItemError> {
+  // For playlists, we'll need to fetch the playlist info
+  // Since scdl-core may not have direct playlist support,
+  // we'll return the first track URL for now
+  // This can be expanded when we have better API access
+
+  return Promise.resolve({
+    success: false,
+    error: "Playlist support is not yet fully implemented",
+  } as PlatformItemError);
+}
+
+export async function getSoundCloudStreamUrl(url: string): Promise<string> {
+  try {
+    const clientID = await fetchClientID();
+    setClientID(clientID);
+
     const streamResult = await stream(url);
 
     // Convert the stream to a Buffer
@@ -43,4 +137,3 @@ export async function getSoundCloudStreamUrl(url: string): Promise<string> {
     throw new Error(`Failed to stream SoundCloud track: ${errorMessage}`);
   }
 }
-

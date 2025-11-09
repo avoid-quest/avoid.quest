@@ -17,11 +17,23 @@ import {
 import { PlayPauseButton } from "@workspace/ui/components/play-pause-button";
 import { Slider } from "@workspace/ui/components/slider";
 import { cn } from "@workspace/ui/lib/utils";
-import { Copy, ExternalLink, MoreHorizontal, Volume2 } from "lucide-react";
+import {
+  Copy,
+  ExternalLink,
+  MoreHorizontal,
+  Music,
+  Volume2,
+} from "lucide-react";
 import { toast } from "sonner";
+import type {
+  BandcampMetadata,
+  Platform,
+  SoundCloudMetadata,
+} from "@/lib/external-url/types";
 import type { Radio } from "@/lib/types";
 import { RadioLogo } from "../radio-logo";
 import { RadioNameLink } from "../radio-name-link";
+import { PlatformForm } from "./platform-form";
 
 const MAX_VOLUME = 100;
 
@@ -35,6 +47,9 @@ type DjDeckProps = {
   onPlayPause: () => void;
   onVolumeChange: (volume: number) => void;
   onClear: () => void;
+  onLoadTrack?: (streamUrl: string) => void;
+  onLoadPlatformItem?: (radio: Radio) => void;
+  pendingPlatform?: Platform;
 };
 
 export function DjDeck({
@@ -47,6 +62,9 @@ export function DjDeck({
   onPlayPause,
   onVolumeChange,
   onClear,
+  onLoadTrack,
+  onLoadPlatformItem,
+  pendingPlatform,
 }: DjDeckProps) {
   const { isOver, setNodeRef } = useDroppable({
     id: deckId,
@@ -77,6 +95,16 @@ export function DjDeck({
     }
     window.open(radio.websiteUrl, "_blank", "noopener,noreferrer");
   };
+
+  const handlePlayTrack = (streamUrl: string) => {
+    if (onLoadTrack) {
+      onLoadTrack(streamUrl);
+    }
+  };
+
+  const platformMetadata = radio?.platformMetadata;
+  const isBandcamp = platformMetadata?.platform === "bandcamp";
+  const isSoundCloud = platformMetadata?.platform === "soundcloud";
 
   return (
     <Card
@@ -146,6 +174,19 @@ export function DjDeck({
               </div>
             </div>
 
+            {/* Platform-Specific Actions */}
+            {isBandcamp && platformMetadata && (
+              <BandcampActions
+                metadata={platformMetadata as BandcampMetadata}
+                onPlayTrack={handlePlayTrack}
+              />
+            )}
+            {isSoundCloud && platformMetadata && (
+              <SoundCloudActions
+                metadata={platformMetadata as SoundCloudMetadata}
+              />
+            )}
+
             {/* Play/Pause Button */}
             <div className="flex justify-center">
               <PlayPauseButton
@@ -184,6 +225,8 @@ export function DjDeck({
               Clear Deck
             </Button>
           </>
+        ) : onLoadPlatformItem && pendingPlatform ? (
+          <PlatformForm initialPlatform={pendingPlatform} onLoad={onLoadPlatformItem} />
         ) : (
           <div className="flex flex-1 flex-col items-center justify-center text-center sm:space-y-4">
             <div className="rounded-lg border-2 border-muted-foreground/25 border-dashed p-2 sm:p-6">
@@ -197,4 +240,85 @@ export function DjDeck({
       </CardContent>
     </Card>
   );
+}
+
+type BandcampActionsProps = {
+  metadata: BandcampMetadata;
+  onPlayTrack: (streamUrl: string) => void;
+};
+
+function BandcampActions({ metadata, onPlayTrack }: BandcampActionsProps) {
+  if (
+    metadata.itemType === "album" &&
+    metadata.tracks &&
+    metadata.tracks.length > 0
+  ) {
+    return (
+      <div className="space-y-2">
+        <div className="font-medium text-muted-foreground text-xs">
+          Album Actions
+        </div>
+        <div className="grid grid-cols-1 gap-2">
+          <Button
+            onClick={() => {
+              if (metadata.streamUrl) {
+                onPlayTrack(metadata.streamUrl);
+              }
+            }}
+            size="sm"
+            variant="outline"
+          >
+            <Music className="mr-2 size-4" />
+            Play First Track
+          </Button>
+          {metadata.tracks.length > 1 && (
+            <div className="text-muted-foreground text-xs">
+              {metadata.tracks.length} tracks available
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (metadata.itemType === "track") {
+    return (
+      <div className="space-y-2">
+        <div className="font-medium text-muted-foreground text-xs">
+          Track Info
+        </div>
+        {metadata.albumName && (
+          <div className="text-muted-foreground text-xs">
+            From: {metadata.albumName}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return null;
+}
+
+type SoundCloudActionsProps = {
+  metadata: SoundCloudMetadata;
+};
+
+function SoundCloudActions({ metadata }: SoundCloudActionsProps) {
+  if (metadata.itemType === "track") {
+    return (
+      <div className="space-y-2">
+        <div className="font-medium text-muted-foreground text-xs">
+          Track Info
+        </div>
+        {metadata.duration && (
+          <div className="text-muted-foreground text-xs">
+            Duration: {Math.floor(metadata.duration / 60)}:
+            {String(Math.floor(metadata.duration % 60)).padStart(2, "0")}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return null;
 }

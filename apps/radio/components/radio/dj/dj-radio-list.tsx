@@ -8,7 +8,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@workspace/ui/components/card";
-import { GripVertical, Volume2 } from "lucide-react";
+import { GripVertical, Music, Volume2 } from "lucide-react";
+import type { Platform } from "@/lib/external-url/types";
 import type { Radio } from "@/lib/types";
 import { SettingsButton } from "../../settings/settings-button";
 import { RadioLogo } from "../radio-logo";
@@ -17,6 +18,48 @@ import { RadioNameLink } from "../radio-name-link";
 type DjRadioListProps = {
   radios: Radio[];
 };
+
+// Platform-specific placeholder items
+const PLATFORM_ITEMS: Radio[] = [
+  {
+    id: -1, // Special ID for Bandcamp
+    name: "Bandcamp",
+    streamUrl: "",
+    description: "Paste a Bandcamp URL (album, track, or artist)",
+    enabled: true,
+    platformMetadata: {
+      platform: "bandcamp",
+      itemType: "album",
+      url: "",
+    },
+  },
+  {
+    id: -2, // Special ID for SoundCloud
+    name: "SoundCloud",
+    streamUrl: "",
+    description: "Paste a SoundCloud URL (track, playlist, or user)",
+    enabled: true,
+    platformMetadata: {
+      platform: "soundcloud",
+      itemType: "track",
+      url: "",
+    },
+  },
+];
+
+export function isPlatformItem(radio: Radio): boolean {
+  return radio.id === -1 || radio.id === -2;
+}
+
+export function getPlatformFromItem(radio: Radio): Platform | null {
+  if (radio.id === -1) {
+    return "bandcamp";
+  }
+  if (radio.id === -2) {
+    return "soundcloud";
+  }
+  return radio.platformMetadata?.platform || null;
+}
 
 type DraggableRadioItemProps = {
   radio: Radio;
@@ -35,11 +78,14 @@ function DraggableRadioItem({ radio }: DraggableRadioItemProps) {
       }
     : undefined;
 
+  const isPlatform = isPlatformItem(radio);
+  const platform = getPlatformFromItem(radio);
+
   return (
     <div
       className={`flex items-center gap-2 rounded-lg border bg-card p-3 transition-all hover:shadow-md ${
         isDragging ? "opacity-50 shadow-lg" : ""
-      }`}
+      } ${isPlatform ? "border-primary/50 border-dashed bg-primary/5" : ""}`}
       ref={setNodeRef}
       style={{
         ...style,
@@ -70,18 +116,34 @@ function DraggableRadioItem({ radio }: DraggableRadioItemProps) {
 
       {/* Radio Content - Not draggable, allows normal interaction */}
       <div className="flex min-w-0 flex-1 items-center gap-3">
-        <div className="flex-shrink-0">
-          <RadioLogo
-            fallbackIcon={<Volume2 className="size-4 text-muted-foreground" />}
-            logoUrl={radio.logoUrl}
-            name={radio.name}
-            size="md"
-          />
+        <div className="shrink-0">
+          {isPlatform ? (
+            <div
+              className={`flex size-10 items-center justify-center rounded ${
+                platform === "bandcamp" ? "bg-[#629aa0]/10" : "bg-[#ff7700]/10"
+              }`}
+            >
+              <Music
+                className={`size-5 ${
+                  platform === "bandcamp" ? "text-[#629aa0]" : "text-[#ff7700]"
+                }`}
+              />
+            </div>
+          ) : (
+            <RadioLogo
+              fallbackIcon={
+                <Volume2 className="size-4 text-muted-foreground" />
+              }
+              logoUrl={radio.logoUrl}
+              name={radio.name}
+              size="md"
+            />
+          )}
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-2">
             <h3 className="truncate font-medium text-sm">
-              <RadioNameLink radio={radio} />
+              {isPlatform ? radio.name : <RadioNameLink radio={radio} />}
             </h3>
           </div>
           {radio.description && (
@@ -96,6 +158,9 @@ function DraggableRadioItem({ radio }: DraggableRadioItemProps) {
 }
 
 export function DjRadioList({ radios }: DjRadioListProps) {
+  // Combine platform items with regular radios
+  const allRadios = [...PLATFORM_ITEMS, ...radios];
+
   return (
     <Card className="w-full">
       <CardHeader>
@@ -117,7 +182,7 @@ export function DjRadioList({ radios }: DjRadioListProps) {
             zIndex: 1,
           }}
         >
-          {radios.map((radio) => (
+          {allRadios.map((radio) => (
             <DraggableRadioItem key={radio.id} radio={radio} />
           ))}
         </div>

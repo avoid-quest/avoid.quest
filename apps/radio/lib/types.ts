@@ -1,3 +1,5 @@
+import type { PlatformMetadata } from "./external-url/types";
+
 export type Radio = {
   id?: number;
   name: string;
@@ -7,6 +9,7 @@ export type Radio = {
   websiteUrl?: string;
   order?: number;
   enabled?: boolean;
+  platformMetadata?: PlatformMetadata;
 };
 
 export type Settings = {

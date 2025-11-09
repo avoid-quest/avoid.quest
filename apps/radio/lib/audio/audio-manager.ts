@@ -53,6 +53,19 @@ export class AudioManager {
     return this.cacophony;
   }
 
+  /**
+   * Get the proxied URL for Bandcamp streams to avoid CORS issues
+   */
+  private getProxiedUrl(url: string): string {
+    // Check if this is a Bandcamp URL (bcbits.com domain)
+    if (url.includes("bcbits.com")) {
+      // Use the proxy endpoint to avoid CORS issues
+      const proxyUrl = `/api/bandcamp-proxy?url=${encodeURIComponent(url)}`;
+      return proxyUrl;
+    }
+    return url;
+  }
+
   async createSound(radio: Radio, soundId?: string): Promise<Sound> {
     const id = soundId || `sound_${radio.id || Date.now()}`;
 
@@ -62,9 +75,19 @@ export class AudioManager {
     }
 
     try {
+      // Get the URL to use (proxied for Bandcamp to avoid CORS)
+      const streamUrl = this.getProxiedUrl(radio.streamUrl);
+
+      // Use HTML type for Bandcamp to avoid CORS issues (works like simple player)
+      // Streaming type requires crossOrigin which Bandcamp doesn't support
+      const soundType =
+        radio.platformMetadata?.platform === "bandcamp"
+          ? SoundType.HTML
+          : SoundType.Streaming;
+
       const sound = await this.cacophony.createSound(
-        radio.streamUrl,
-        SoundType.Streaming,
+        streamUrl,
+        soundType,
         "stereo"
       );
 

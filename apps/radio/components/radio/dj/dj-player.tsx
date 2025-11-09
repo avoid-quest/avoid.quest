@@ -9,21 +9,19 @@ import {
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@workspace/ui/components/card";
 import { Volume2 } from "lucide-react";
 import { useState } from "react";
 import { useDjAudio } from "@/lib/audio";
 import type { Radio } from "@/lib/types";
-import { SettingsButton } from "../../settings/settings-button";
 import { RadioLogo } from "../radio-logo";
 import { DjDeck } from "./dj-deck";
 import { DjMixer } from "./dj-mixer";
-import { DjRadioList } from "./dj-radio-list";
+import {
+  DjRadioList,
+  getPlatformFromItem,
+  isPlatformItem,
+} from "./dj-radio-list";
+import type { Platform } from "@/lib/external-url/types";
 
 type DjPlayerProps = {
   radios?: Radio[];
@@ -75,6 +73,10 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
   } = useDjAudio();
 
   const [activeRadio, setActiveRadio] = useState<Radio | null>(null);
+  const [pendingPlatformItem, setPendingPlatformItem] = useState<{
+    deckId: "left-deck" | "right-deck";
+    platform: Platform;
+  } | null>(null);
 
   // Configure sensors for both mouse and touch interactions
   // Enhanced mobile support with better touch handling
@@ -100,22 +102,51 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
     }
   };
 
+  const handleRegularRadioDrag = (radio: Radio, deckId: string): void => {
+    if (deckId === "left-deck") {
+      setLeftRadio(radio);
+    } else if (deckId === "right-deck") {
+      setRightRadio(radio);
+    }
+  };
+
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     setActiveRadio(null);
 
     if (!over) {
+      setPendingPlatformItem(null);
       return;
     }
 
     const radio = active.data.current?.radio as Radio;
     const deckId = over.id as string;
 
-    if (deckId === "left-deck") {
-      setLeftRadio(radio);
-    } else if (deckId === "right-deck") {
-      setRightRadio(radio);
+    // Handle platform items - show form for the specific platform
+    if (isPlatformItem(radio)) {
+      const platform = getPlatformFromItem(radio);
+      if (platform && (deckId === "left-deck" || deckId === "right-deck")) {
+        setPendingPlatformItem({
+          deckId: deckId as "left-deck" | "right-deck",
+          platform,
+        });
+      }
+      return;
     }
+
+    // Clear pending platform item when dragging regular radio
+    setPendingPlatformItem(null);
+    handleRegularRadioDrag(radio, deckId);
+  };
+
+  const handleLeftPlatformItemLoad = (radio: Radio) => {
+    setLeftRadio(radio);
+    setPendingPlatformItem(null);
+  };
+
+  const handleRightPlatformItemLoad = (radio: Radio) => {
+    setRightRadio(radio);
+    setPendingPlatformItem(null);
   };
 
   const handleLeftPlayPause = () => {
@@ -152,10 +183,36 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
 
   const handleLeftClear = () => {
     setLeftRadio(null);
+    // Clear pending platform item if it was for left deck
+    if (pendingPlatformItem?.deckId === "left-deck") {
+      setPendingPlatformItem(null);
+    }
   };
 
   const handleRightClear = () => {
     setRightRadio(null);
+    // Clear pending platform item if it was for right deck
+    if (pendingPlatformItem?.deckId === "right-deck") {
+      setPendingPlatformItem(null);
+    }
+  };
+
+  const handleLeftLoadTrack = (streamUrl: string) => {
+    if (leftRadio) {
+      setLeftRadio({
+        ...leftRadio,
+        streamUrl,
+      });
+    }
+  };
+
+  const handleRightLoadTrack = (streamUrl: string) => {
+    if (rightRadio) {
+      setRightRadio({
+        ...rightRadio,
+        streamUrl,
+      });
+    }
   };
 
   return (
@@ -180,6 +237,13 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
             isLoading={leftIsLoading}
             isPlaying={leftIsPlaying}
             onClear={handleLeftClear}
+            onLoadPlatformItem={
+              pendingPlatformItem?.deckId === "left-deck"
+                ? handleLeftPlatformItemLoad
+                : undefined
+            }
+            pendingPlatform={pendingPlatformItem?.deckId === "left-deck" ? pendingPlatformItem.platform : undefined}
+            onLoadTrack={handleLeftLoadTrack}
             onPlayPause={handleLeftPlayPause}
             onVolumeChange={handleLeftVolumeChange}
             radio={leftRadio}
@@ -228,6 +292,13 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
             isLoading={rightIsLoading}
             isPlaying={rightIsPlaying}
             onClear={handleRightClear}
+            onLoadPlatformItem={
+              pendingPlatformItem?.deckId === "right-deck"
+                ? handleRightPlatformItemLoad
+                : undefined
+            }
+            pendingPlatform={pendingPlatformItem?.deckId === "right-deck" ? pendingPlatformItem.platform : undefined}
+            onLoadTrack={handleRightLoadTrack}
             onPlayPause={handleRightPlayPause}
             onVolumeChange={handleRightVolumeChange}
             radio={rightRadio}
@@ -237,28 +308,7 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
 
         {/* Radio List at Bottom - Full Width */}
         <div className="w-full">
-          {radios && radios.length > 0 ? (
-            <DjRadioList radios={radios} />
-          ) : (
-            <Card className="w-full">
-              <CardHeader className="pb-4">
-                <CardTitle className="text-center">Radio Stations</CardTitle>
-              </CardHeader>
-              <CardContent className="p-4">
-                <div className="flex flex-col items-center justify-center py-12 text-center">
-                  <Volume2 className="mb-4 size-12 text-muted-foreground" />
-                  <h3 className="mb-2 font-medium text-lg">
-                    No Radio Stations Available
-                  </h3>
-                  <p className="mb-4 text-muted-foreground text-sm">
-                    All radio stations are currently disabled. Please enable
-                    some stations in the settings.
-                  </p>
-                  <SettingsButton />
-                </div>
-              </CardContent>
-            </Card>
-          )}
+          <DjRadioList radios={radios || []} />
         </div>
       </div>
 
@@ -293,6 +343,7 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
           </div>
         ) : null}
       </DragOverlay>
+
     </DndContext>
   );
 }

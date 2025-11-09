@@ -34,7 +34,7 @@ jobs:
         uses: changesets/action@v1
         with:
           version: bun run version-packages
-          publish: bun run release
+          publish: bun run release:cacophony
           commit: "chore: version packages"
           title: "chore: version packages"
         env:

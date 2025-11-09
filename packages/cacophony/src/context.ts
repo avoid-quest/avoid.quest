@@ -4,6 +4,7 @@ import type {
   IAudioBufferSourceNode,
   IAudioNode,
   IBiquadFilterNode,
+  IConvolverNode,
   IGainNode,
   IMediaElementAudioSourceNode,
   IMediaStreamAudioSourceNode,
@@ -26,4 +27,5 @@ export type MediaStreamAudioSourceNode =
 export type GainNode = IGainNode<AudioContext>;
 export type PannerNode = IPannerNode<AudioContext>;
 export type StereoPannerNode = IStereoPannerNode<AudioContext>;
+export type ConvolverNode = IConvolverNode<AudioContext>;
 export type { AudioContext } from "standardized-audio-context";

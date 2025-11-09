@@ -7,6 +7,7 @@
   "access": "public",
   "baseBranch": "main",
   "updateInternalDependents": "always",
+  "updateInternalDependencies": "patch",
   "ignore": ["web", "instarip-web"],
   "privatePackages": {
     "version": true,

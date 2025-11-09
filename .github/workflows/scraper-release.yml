@@ -8,15 +8,16 @@ on:
       - "packages/scraper/**"
       - ".changeset/**"
 
+concurrency: ${{ github.workflow }}-${{ github.ref }}
+
 permissions:
   contents: write
   pull-requests: write
 
 jobs:
-  version:
-    name: Version Packages
+  release:
+    name: Release
     runs-on: ubuntu-latest
-    if: github.event_name == 'push'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -28,30 +29,18 @@ jobs:
 
       - run: bun install
 
-      - uses: changesets/action@v1
+      - name: Create Release Pull Request or Build and Release
+        id: changesets
+        uses: changesets/action@v1
         with:
-          version: bun changeset version
+          version: bun run version-packages
           commit: "chore: version packages"
           title: "chore: version packages"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  release:
-    name: Build and Release
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push'
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-
-      - run: bun install
-
       - name: Check if Version Changed
+        if: steps.changesets.outputs.hasChangesets == 'false'
         id: version_check
         run: |
           set -e
@@ -72,14 +61,14 @@ jobs:
           fi
 
       - name: Create Git Tags
-        if: steps.version_check.outputs.version_changed == 'true'
+        if: steps.changesets.outputs.hasChangesets == 'false' && steps.version_check.outputs.version_changed == 'true'
         run: |
           # Changesets reads from package.json and creates tags based on current version
           bun changeset tag
 
       - name: Get Version and Create Tag Name
+        if: steps.changesets.outputs.hasChangesets == 'false' && steps.version_check.outputs.version_changed == 'true'
         id: tag
-        if: steps.version_check.outputs.version_changed == 'true'
         run: |
           # Read from package.json as single source of truth
           PKG_NAME=$(bun -e "console.log(JSON.parse(await Bun.file('packages/scraper/package.json').text()).name)")
@@ -89,16 +78,16 @@ jobs:
           echo "Package: $PKG_NAME, Version: $VERSION, Tag: $TAG_NAME"
 
       - name: Build All Platforms
-        if: steps.version_check.outputs.version_changed == 'true'
+        if: steps.changesets.outputs.hasChangesets == 'false' && steps.version_check.outputs.version_changed == 'true'
         working-directory: packages/scraper
         run: bun run build:all
 
       - name: Push Tags
-        if: steps.version_check.outputs.version_changed == 'true'
+        if: steps.changesets.outputs.hasChangesets == 'false' && steps.version_check.outputs.version_changed == 'true'
         run: git push --follow-tags
 
       - uses: softprops/action-gh-release@v2
-        if: steps.version_check.outputs.version_changed == 'true'
+        if: steps.changesets.outputs.hasChangesets == 'false' && steps.version_check.outputs.version_changed == 'true'
         with:
           tag_name: ${{ steps.tag.outputs.tag }}
           name: Scraper v${{ steps.version_check.outputs.version }}

@@ -1,5 +1,11 @@
 # @avoid.quest/cacophony
 
+## 0.18.4
+
+### Patch Changes
+
+- f0d35e8: Export audio context types (AudioBuffer, AudioContext, ConvolverNode, GainNode, etc.) from the main package entry point. This allows consumers to properly type Web Audio API nodes without relying on type assertions or external type imports.
+
 ## 0.18.3
 
 ### Patch Changes

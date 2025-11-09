@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  type AudioContext,
   type AudioNode,
   Cacophony,
   type Playback,
@@ -135,7 +134,6 @@ export class AudioManager {
       effectManager.setOutputNode(
         this.cacophony.globalGainNode as unknown as AudioNode
       );
-
     } else {
       throw new Error(`Failed to play sound with id ${soundId}`);
     }
@@ -246,7 +244,6 @@ export class AudioManager {
 
     // Remove filter (legacy)
     this.removeFilter(soundId);
-
 
     // Cleanup sound
     const sound = this.sounds.get(soundId);
@@ -483,7 +480,6 @@ export class AudioManager {
   hasFilter(soundId: string): boolean {
     return this.filters.has(soundId);
   }
-
 
   /**
    * Add an effect to a sound's effect chain

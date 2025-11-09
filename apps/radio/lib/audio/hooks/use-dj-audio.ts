@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FilterConfig } from "@/components/audio/filter-control";
+import type { ReverbConfig } from "@/components/audio/reverb-control";
 import type { Radio } from "../../types";
 import { AudioManager } from "../audio-manager";
 
@@ -37,6 +38,20 @@ export function useDjAudio() {
     Q: 1,
     gain: 0,
     enabled: false,
+  });
+  const [leftReverbConfig, setLeftReverbConfig] = useState<ReverbConfig>({
+    enabled: false,
+    roomSize: 0.05,
+    wet: 0.3,
+    dry: 0.7,
+    decayTime: 2.0,
+  });
+  const [rightReverbConfig, setRightReverbConfig] = useState<ReverbConfig>({
+    enabled: false,
+    roomSize: 0.05,
+    wet: 0.3,
+    dry: 0.7,
+    decayTime: 2.0,
   });
 
   const leftSoundIdRef = useRef<string | null>(null);
@@ -297,6 +312,27 @@ export function useDjAudio() {
     [audioManager]
   );
 
+  // Reverb controls
+  const updateLeftReverbCallback = useCallback(
+    (config: ReverbConfig) => {
+      setLeftReverbConfig(config);
+      if (leftSoundIdRef.current) {
+        audioManager.updateReverb(leftSoundIdRef.current, config);
+      }
+    },
+    [audioManager]
+  );
+
+  const updateRightReverbCallback = useCallback(
+    (config: ReverbConfig) => {
+      setRightReverbConfig(config);
+      if (rightSoundIdRef.current) {
+        audioManager.updateReverb(rightSoundIdRef.current, config);
+      }
+    },
+    [audioManager]
+  );
+
   // Cleanup on unmount
   useEffect(() => {
     const cleanup = async () => {
@@ -331,6 +367,8 @@ export function useDjAudio() {
     rightMuted,
     leftFilterConfig,
     rightFilterConfig,
+    leftReverbConfig,
+    rightReverbConfig,
     setLeftRadio,
     setRightRadio,
     setCrossfadePosition: setCrossfadePositionCallback,
@@ -341,6 +379,8 @@ export function useDjAudio() {
     setRightMute: setRightMuteCallback,
     updateLeftFilter: updateLeftFilterCallback,
     updateRightFilter: updateRightFilterCallback,
+    updateLeftReverb: updateLeftReverbCallback,
+    updateRightReverb: updateRightReverbCallback,
     playLeft,
     pauseLeft,
     playRight,

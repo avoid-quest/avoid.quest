@@ -26,9 +26,9 @@ export function InstallPrompt() {
 
     // Listen for beforeinstallprompt event (Android/Chrome)
     const handleBeforeInstallPrompt = (e: Event) => {
-      e.preventDefault();
       const dismissed = localStorage.getItem("pwa-install-dismissed");
       if (!dismissed) {
+        e.preventDefault();
         setDeferredPrompt(e as BeforeInstallPromptEvent);
         setShowPrompt(true);
       }
@@ -79,8 +79,8 @@ export function InstallPrompt() {
   }
 
   return (
-    <div className="fixed bottom-4 left-4 right-4 z-50 mx-auto max-w-md animate-in slide-in-from-bottom-4 fade-in-0 md:left-auto">
-      <div className="rounded-xl border bg-card/95 backdrop-blur-xl p-5 shadow-lg">
+    <div className="slide-in-from-bottom-4 fade-in-0 fixed right-4 bottom-4 left-4 z-50 mx-auto max-w-md animate-in md:left-auto">
+      <div className="rounded-xl border bg-card/95 p-5 shadow-lg backdrop-blur-xl">
         <div className="flex items-start gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
             <Download className="h-5 w-5 text-primary" />
@@ -88,10 +88,12 @@ export function InstallPrompt() {
           <div className="flex-1 space-y-3">
             <div className="flex items-start justify-between gap-2">
               <div>
-                <h3 className="font-semibold leading-none">Install Radio App</h3>
-                <p className="mt-1.5 text-sm text-muted-foreground leading-relaxed">
-                  Install this app for a better experience with faster access and
-                  app-like interface.
+                <h3 className="font-semibold leading-none">
+                  Install Radio App
+                </h3>
+                <p className="mt-1.5 text-muted-foreground text-sm leading-relaxed">
+                  Install this app for a better experience with faster access
+                  and app-like interface.
                 </p>
               </div>
               <Button
@@ -106,19 +108,19 @@ export function InstallPrompt() {
             </div>
             <div className="flex items-center gap-2">
               <Button
+                className="h-8"
                 disabled={isInstalling}
                 onClick={handleInstallClick}
                 size="sm"
-                className="h-8"
               >
                 <Download className="mr-2 h-3.5 w-3.5" />
                 {isInstalling ? "Installing..." : "Install"}
               </Button>
               <Button
+                className="h-8"
                 onClick={handleDismiss}
                 size="sm"
                 variant="ghost"
-                className="h-8"
               >
                 Not now
               </Button>

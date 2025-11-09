@@ -30,14 +30,30 @@ type SliderConfig = {
   step: number;
 };
 
-function createSlider(
-  sliderConfig: SliderConfig,
-  effect: PannerConfig,
-  disabled: boolean,
-  onUpdate: (config: Partial<EffectConfig>) => void
-) {
+type CreateSliderOptions = {
+  defaultConfig: Omit<EffectConfig, "id" | "order"> | undefined;
+  disabled: boolean;
+  effect: PannerConfig;
+  onUpdate: (config: Partial<EffectConfig>) => void;
+  sliderConfig: SliderConfig;
+};
+
+function createSlider({
+  defaultConfig,
+  disabled,
+  effect,
+  onUpdate,
+  sliderConfig,
+}: CreateSliderOptions) {
+  const defaultValue = defaultConfig
+    ? ((defaultConfig as Record<string, unknown>)[sliderConfig.key] as
+        | number
+        | undefined)
+    : undefined;
+
   return (
     <ParamSlider
+      defaultValue={defaultValue}
       disabled={disabled}
       formatKey={sliderConfig.formatKey}
       key={sliderConfig.key}
@@ -86,11 +102,13 @@ function ConeGroup({
   disabled,
   onUpdate,
   ranges,
+  defaultConfig,
 }: {
   effect: PannerConfig;
   disabled: boolean;
   onUpdate: (config: Partial<EffectConfig>) => void;
   ranges: Record<string, { max?: number; min?: number; step?: number }>;
+  defaultConfig: Omit<EffectConfig, "id" | "order"> | undefined;
 }) {
   const sliders: SliderConfig[] = [
     {
@@ -122,7 +140,13 @@ function ConeGroup({
   return (
     <ParamGroup title="Cone">
       {sliders.map((slider) =>
-        createSlider(slider, effect, disabled, onUpdate)
+        createSlider({
+          defaultConfig,
+          disabled,
+          effect,
+          onUpdate,
+          sliderConfig: slider,
+        })
       )}
     </ParamGroup>
   );
@@ -133,11 +157,13 @@ function DistanceGroup({
   disabled,
   onUpdate,
   ranges,
+  defaultConfig,
 }: {
   effect: PannerConfig;
   disabled: boolean;
   onUpdate: (config: Partial<EffectConfig>) => void;
   ranges: Record<string, { max?: number; min?: number; step?: number }>;
+  defaultConfig: Omit<EffectConfig, "id" | "order"> | undefined;
 }) {
   const sliders: SliderConfig[] = [
     {
@@ -169,7 +195,13 @@ function DistanceGroup({
   return (
     <ParamGroup title="Distance">
       {sliders.map((slider) =>
-        createSlider(slider, effect, disabled, onUpdate)
+        createSlider({
+          defaultConfig,
+          disabled,
+          effect,
+          onUpdate,
+          sliderConfig: slider,
+        })
       )}
     </ParamGroup>
   );
@@ -180,11 +212,13 @@ function PositionGroup({
   disabled,
   onUpdate,
   ranges,
+  defaultConfig,
 }: {
   effect: PannerConfig;
   disabled: boolean;
   onUpdate: (config: Partial<EffectConfig>) => void;
   ranges: Record<string, { max?: number; min?: number; step?: number }>;
+  defaultConfig: Omit<EffectConfig, "id" | "order"> | undefined;
 }) {
   const sliders: SliderConfig[] = [
     {
@@ -216,7 +250,13 @@ function PositionGroup({
   return (
     <ParamGroup title="Position">
       {sliders.map((slider) =>
-        createSlider(slider, effect, disabled, onUpdate)
+        createSlider({
+          defaultConfig,
+          disabled,
+          effect,
+          onUpdate,
+          sliderConfig: slider,
+        })
       )}
     </ParamGroup>
   );
@@ -227,11 +267,13 @@ function OrientationGroup({
   disabled,
   onUpdate,
   ranges,
+  defaultConfig,
 }: {
   effect: PannerConfig;
   disabled: boolean;
   onUpdate: (config: Partial<EffectConfig>) => void;
   ranges: Record<string, { max?: number; min?: number; step?: number }>;
+  defaultConfig: Omit<EffectConfig, "id" | "order"> | undefined;
 }) {
   const sliders: SliderConfig[] = [
     {
@@ -263,7 +305,13 @@ function OrientationGroup({
   return (
     <ParamGroup title="Orientation">
       {sliders.map((slider) =>
-        createSlider(slider, effect, disabled, onUpdate)
+        createSlider({
+          defaultConfig,
+          disabled,
+          effect,
+          onUpdate,
+          sliderConfig: slider,
+        })
       )}
     </ParamGroup>
   );
@@ -276,6 +324,7 @@ export function PannerParams({
 }: PannerParamsProps) {
   const metadata = getEffectMetadata("panner");
   const ranges = metadata?.parameterRanges ?? {};
+  const defaultConfig = metadata?.defaultConfig;
   const disabled = !(isInitialized && effect.enabled);
 
   return (
@@ -286,24 +335,28 @@ export function PannerParams({
         onUpdate={onUpdate}
       />
       <ConeGroup
+        defaultConfig={defaultConfig}
         disabled={disabled}
         effect={effect}
         onUpdate={onUpdate}
         ranges={ranges}
       />
       <DistanceGroup
+        defaultConfig={defaultConfig}
         disabled={disabled}
         effect={effect}
         onUpdate={onUpdate}
         ranges={ranges}
       />
       <PositionGroup
+        defaultConfig={defaultConfig}
         disabled={disabled}
         effect={effect}
         onUpdate={onUpdate}
         ranges={ranges}
       />
       <OrientationGroup
+        defaultConfig={defaultConfig}
         disabled={disabled}
         effect={effect}
         onUpdate={onUpdate}

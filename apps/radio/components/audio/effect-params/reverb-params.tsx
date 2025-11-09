@@ -19,14 +19,30 @@ type SliderConfig = {
   step: number;
 };
 
-function createSlider(
-  sliderConfig: SliderConfig,
-  effect: ReverbConfig,
-  disabled: boolean,
-  onUpdate: (config: Partial<EffectConfig>) => void
-) {
+type CreateSliderOptions = {
+  defaultConfig: Omit<EffectConfig, "id" | "order"> | undefined;
+  disabled: boolean;
+  effect: ReverbConfig;
+  onUpdate: (config: Partial<EffectConfig>) => void;
+  sliderConfig: SliderConfig;
+};
+
+function createSlider({
+  defaultConfig,
+  disabled,
+  effect,
+  onUpdate,
+  sliderConfig,
+}: CreateSliderOptions) {
+  const defaultValue = defaultConfig
+    ? ((defaultConfig as Record<string, unknown>)[sliderConfig.key] as
+        | number
+        | undefined)
+    : undefined;
+
   return (
     <ParamSlider
+      defaultValue={defaultValue}
       disabled={disabled}
       formatKey={sliderConfig.formatKey}
       key={sliderConfig.key}
@@ -45,11 +61,13 @@ function PreDelayBandwidthGroup({
   disabled,
   onUpdate,
   ranges,
+  defaultConfig,
 }: {
   effect: ReverbConfig;
   disabled: boolean;
   onUpdate: (config: Partial<EffectConfig>) => void;
   ranges: Record<string, { max?: number; min?: number; step?: number }>;
+  defaultConfig: Omit<EffectConfig, "id" | "order"> | undefined;
 }) {
   const sliders: SliderConfig[] = [
     {
@@ -73,7 +91,13 @@ function PreDelayBandwidthGroup({
   return (
     <ParamGroup title="Pre-Delay & Bandwidth">
       {sliders.map((slider) =>
-        createSlider(slider, effect, disabled, onUpdate)
+        createSlider({
+          defaultConfig,
+          disabled,
+          effect,
+          onUpdate,
+          sliderConfig: slider,
+        })
       )}
     </ParamGroup>
   );
@@ -84,11 +108,13 @@ function InputDiffusionGroup({
   disabled,
   onUpdate,
   ranges,
+  defaultConfig,
 }: {
   effect: ReverbConfig;
   disabled: boolean;
   onUpdate: (config: Partial<EffectConfig>) => void;
   ranges: Record<string, { max?: number; min?: number; step?: number }>;
+  defaultConfig: Omit<EffectConfig, "id" | "order"> | undefined;
 }) {
   const sliders: SliderConfig[] = [
     {
@@ -112,7 +138,13 @@ function InputDiffusionGroup({
   return (
     <ParamGroup title="Input Diffusion">
       {sliders.map((slider) =>
-        createSlider(slider, effect, disabled, onUpdate)
+        createSlider({
+          defaultConfig,
+          disabled,
+          effect,
+          onUpdate,
+          sliderConfig: slider,
+        })
       )}
     </ParamGroup>
   );
@@ -123,11 +155,13 @@ function DecayGroup({
   disabled,
   onUpdate,
   ranges,
+  defaultConfig,
 }: {
   effect: ReverbConfig;
   disabled: boolean;
   onUpdate: (config: Partial<EffectConfig>) => void;
   ranges: Record<string, { max?: number; min?: number; step?: number }>;
+  defaultConfig: Omit<EffectConfig, "id" | "order"> | undefined;
 }) {
   const sliders: SliderConfig[] = [
     {
@@ -159,7 +193,13 @@ function DecayGroup({
   return (
     <ParamGroup title="Decay">
       {sliders.map((slider) =>
-        createSlider(slider, effect, disabled, onUpdate)
+        createSlider({
+          defaultConfig,
+          disabled,
+          effect,
+          onUpdate,
+          sliderConfig: slider,
+        })
       )}
     </ParamGroup>
   );
@@ -170,11 +210,13 @@ function ModulationGroup({
   disabled,
   onUpdate,
   ranges,
+  defaultConfig,
 }: {
   effect: ReverbConfig;
   disabled: boolean;
   onUpdate: (config: Partial<EffectConfig>) => void;
   ranges: Record<string, { max?: number; min?: number; step?: number }>;
+  defaultConfig: Omit<EffectConfig, "id" | "order"> | undefined;
 }) {
   const sliders: SliderConfig[] = [
     {
@@ -206,7 +248,13 @@ function ModulationGroup({
   return (
     <ParamGroup title="Modulation">
       {sliders.map((slider) =>
-        createSlider(slider, effect, disabled, onUpdate)
+        createSlider({
+          defaultConfig,
+          disabled,
+          effect,
+          onUpdate,
+          sliderConfig: slider,
+        })
       )}
     </ParamGroup>
   );
@@ -217,11 +265,13 @@ function MixGroup({
   disabled,
   onUpdate,
   ranges,
+  defaultConfig,
 }: {
   effect: ReverbConfig;
   disabled: boolean;
   onUpdate: (config: Partial<EffectConfig>) => void;
   ranges: Record<string, { max?: number; min?: number; step?: number }>;
+  defaultConfig: Omit<EffectConfig, "id" | "order"> | undefined;
 }) {
   const sliders: SliderConfig[] = [
     {
@@ -245,7 +295,13 @@ function MixGroup({
   return (
     <ParamGroup title="Mix">
       {sliders.map((slider) =>
-        createSlider(slider, effect, disabled, onUpdate)
+        createSlider({
+          defaultConfig,
+          disabled,
+          effect,
+          onUpdate,
+          sliderConfig: slider,
+        })
       )}
     </ParamGroup>
   );
@@ -258,35 +314,41 @@ export function ReverbParams({
 }: ReverbParamsProps) {
   const metadata = getEffectMetadata("reverb");
   const ranges = metadata?.parameterRanges ?? {};
+  const defaultConfig = metadata?.defaultConfig;
   const disabled = !(isInitialized && effect.enabled);
 
   return (
     <div className="space-y-4">
       <PreDelayBandwidthGroup
+        defaultConfig={defaultConfig}
         disabled={disabled}
         effect={effect}
         onUpdate={onUpdate}
         ranges={ranges}
       />
       <InputDiffusionGroup
+        defaultConfig={defaultConfig}
         disabled={disabled}
         effect={effect}
         onUpdate={onUpdate}
         ranges={ranges}
       />
       <DecayGroup
+        defaultConfig={defaultConfig}
         disabled={disabled}
         effect={effect}
         onUpdate={onUpdate}
         ranges={ranges}
       />
       <ModulationGroup
+        defaultConfig={defaultConfig}
         disabled={disabled}
         effect={effect}
         onUpdate={onUpdate}
         ranges={ranges}
       />
       <MixGroup
+        defaultConfig={defaultConfig}
         disabled={disabled}
         effect={effect}
         onUpdate={onUpdate}

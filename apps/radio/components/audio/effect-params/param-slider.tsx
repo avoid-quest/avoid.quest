@@ -14,6 +14,7 @@ type ParamSliderProps = {
   onChange: (value: number) => void;
   formatter?: ParamFormatter;
   formatKey?: string;
+  defaultValue?: number;
 };
 
 export function ParamSlider({
@@ -26,6 +27,7 @@ export function ParamSlider({
   onChange,
   formatter,
   formatKey = "default",
+  defaultValue,
 }: ParamSliderProps) {
   const displayValue = formatter
     ? formatter(value)
@@ -41,6 +43,7 @@ export function ParamSlider({
       </div>
       <Slider
         className="w-full"
+        defaultValue={defaultValue !== undefined ? [defaultValue] : undefined}
         disabled={disabled}
         max={max}
         min={min}

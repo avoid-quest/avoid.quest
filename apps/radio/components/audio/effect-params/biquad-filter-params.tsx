@@ -24,6 +24,23 @@ type BiquadFilterParamsProps = {
   onUpdate: (config: Partial<EffectConfig>) => void;
 };
 
+function getDefaultValue(
+  defaultConfig: Omit<EffectConfig, "id" | "order"> | undefined,
+  key: string
+): number | undefined {
+  return defaultConfig && key in defaultConfig
+    ? (defaultConfig[key as keyof typeof defaultConfig] as number)
+    : undefined;
+}
+
+function shouldShowGain(filterType: BiquadFilterConfig["filterType"]): boolean {
+  return (
+    filterType === "lowshelf" ||
+    filterType === "highshelf" ||
+    filterType === "peaking"
+  );
+}
+
 export function BiquadFilterParams({
   effect,
   isInitialized,
@@ -31,11 +48,9 @@ export function BiquadFilterParams({
 }: BiquadFilterParamsProps) {
   const metadata = getEffectMetadata("biquadFilter");
   const ranges = metadata?.parameterRanges ?? {};
-
-  const showGain =
-    effect.filterType === "lowshelf" ||
-    effect.filterType === "highshelf" ||
-    effect.filterType === "peaking";
+  const defaultConfig = metadata?.defaultConfig;
+  const showGain = shouldShowGain(effect.filterType);
+  const disabled = !(isInitialized && effect.enabled);
 
   return (
     <div className="space-y-4">
@@ -50,7 +65,8 @@ export function BiquadFilterParams({
       />
 
       <ParamSlider
-        disabled={!(isInitialized && effect.enabled)}
+        defaultValue={getDefaultValue(defaultConfig, "frequency")}
+        disabled={disabled}
         formatKey="frequency"
         label="Frequency"
         max={ranges.frequency?.max ?? 20_000}
@@ -61,7 +77,8 @@ export function BiquadFilterParams({
       />
 
       <ParamSlider
-        disabled={!(isInitialized && effect.enabled)}
+        defaultValue={getDefaultValue(defaultConfig, "Q")}
+        disabled={disabled}
         formatKey="default"
         label="Q (Resonance)"
         max={ranges.Q?.max ?? 30}
@@ -73,7 +90,8 @@ export function BiquadFilterParams({
 
       {showGain && (
         <ParamSlider
-          disabled={!(isInitialized && effect.enabled)}
+          defaultValue={getDefaultValue(defaultConfig, "gain")}
+          disabled={disabled}
           formatKey="gain"
           label="Gain"
           max={ranges.gain?.max ?? 40}

@@ -16,4 +16,3 @@ export const EFFECT_ICONS: Record<EffectType, typeof Filter> = {
   compressor: FireExtinguisher,
   panner: Radio,
 };
-

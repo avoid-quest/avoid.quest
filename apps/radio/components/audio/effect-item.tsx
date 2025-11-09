@@ -10,7 +10,7 @@ import {
 } from "@workspace/ui/components/card";
 import { Toggle } from "@workspace/ui/components/toggle";
 import { cn } from "@workspace/ui/lib/utils";
-import { Filter, GripVertical, X } from "lucide-react";
+import { Filter, GripVertical, RotateCcw, X } from "lucide-react";
 import { getEffectMetadata } from "@/lib/audio/effects/registry";
 import type { EffectConfig } from "@/lib/audio/effects/types";
 import { EFFECT_ICONS } from "./effect-constants";
@@ -52,10 +52,21 @@ export function EffectItem({
     onUpdate({ enabled });
   };
 
+  const handleReset = () => {
+    if (!metadata?.defaultConfig) {
+      return;
+    }
+    onUpdate({
+      ...metadata.defaultConfig,
+      id: effect.id,
+      order: effect.order,
+    });
+  };
+
   return (
     <Card
       className={cn(
-        "w-full border gap-0 py-0 transition-all duration-200",
+        "w-full gap-0 border py-0 transition-all duration-200",
         isDragging && "scale-[0.98] opacity-50 shadow-lg",
         !isInitialized && "opacity-60",
         effect.enabled && "border-primary/20 bg-primary/5",
@@ -129,6 +140,15 @@ export function EffectItem({
             {effect.enabled ? "ON" : "OFF"}
           </Toggle>
           <Button
+            className="h-8 w-8 p-0 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            onClick={handleReset}
+            size="sm"
+            title="Reset to defaults"
+            variant="ghost"
+          >
+            <RotateCcw className="size-4" />
+          </Button>
+          <Button
             className="h-8 w-8 p-0 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
             onClick={onRemove}
             size="sm"
@@ -140,7 +160,7 @@ export function EffectItem({
       </CardHeader>
 
       {isExpanded && (
-        <CardContent className="border-t bg-muted/30 pb-4 pt-4">
+        <CardContent className="border-t bg-muted/30 pt-4 pb-4">
           <EffectParams
             effect={effect}
             isInitialized={isInitialized}

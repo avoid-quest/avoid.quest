@@ -10,6 +10,7 @@ function Slider({
   value,
   min = 0,
   max = 100,
+  onValueChange,
   ...props
 }: ComponentProps<typeof Root>) {
   const _values = useMemo(
@@ -23,6 +24,41 @@ function Slider({
     [value, defaultValue, min, max]
   );
 
+  const _defaultValue = useMemo(() => {
+    if (Array.isArray(defaultValue)) {
+      return defaultValue;
+    }
+    if (defaultValue !== undefined) {
+      return [defaultValue];
+    }
+    return;
+  }, [defaultValue]);
+
+  const handleReset = (index: number, e?: React.MouseEvent | React.TouchEvent) => {
+    if (!(onValueChange && _defaultValue)) {
+      return;
+    }
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    const newValues = [..._values];
+    newValues[index] = _defaultValue[index] ?? _defaultValue[0] ?? min;
+    onValueChange(newValues);
+  };
+
+  const handleClick = (index: number, e: React.MouseEvent) => {
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.detail === 2) {
+      handleReset(index, e);
+    }
+  };
+
+  const handleTouchEnd = (index: number, e: React.TouchEvent) => {
+    if (e.detail === 2) {
+      handleReset(index, e);
+    }
+  };
+
   return (
     <Root
       className={cn(
@@ -33,6 +69,7 @@ function Slider({
       defaultValue={defaultValue}
       max={max}
       min={min}
+      onValueChange={onValueChange}
       value={value}
       {...props}
     >
@@ -55,6 +92,9 @@ function Slider({
           data-slot="slider-thumb"
           // biome-ignore lint/suspicious/noArrayIndexKey: shadcn
           key={index}
+          onClick={(e) => handleClick(index, e)}
+          onDoubleClick={(e) => handleReset(index, e)}
+          onTouchEnd={(e) => handleTouchEnd(index, e)}
         />
       ))}
     </Root>

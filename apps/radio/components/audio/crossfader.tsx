@@ -14,6 +14,7 @@ export type CrossfaderProps = {
   leftLabel?: string;
   rightLabel?: string;
   disabled?: boolean;
+  defaultValue?: number; // Default position (0 = fully left, 1 = fully right)
 };
 
 export function Crossfader({
@@ -25,6 +26,7 @@ export function Crossfader({
   leftLabel = "Left",
   rightLabel = "Right",
   disabled = false,
+  defaultValue = 0.5, // Default to center (50%)
 }: CrossfaderProps) {
   const handleValueChange = (value: number[]) => {
     onPositionChange((value[0] ?? 0) / MAX_POSITION);
@@ -62,6 +64,7 @@ export function Crossfader({
             "[&_.slider-thumb]:shadow-lg",
             thumbSizeClasses[size]
           )}
+          defaultValue={[defaultValue * MAX_POSITION]}
           disabled={disabled}
           max={MAX_POSITION}
           min={0}

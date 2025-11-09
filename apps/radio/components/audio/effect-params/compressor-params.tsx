@@ -19,14 +19,30 @@ type SliderConfig = {
   step: number;
 };
 
-function createSlider(
-  sliderConfig: SliderConfig,
-  effect: CompressorConfig,
-  disabled: boolean,
-  onUpdate: (config: Partial<EffectConfig>) => void
-) {
+type CreateSliderOptions = {
+  defaultConfig: Omit<EffectConfig, "id" | "order"> | undefined;
+  disabled: boolean;
+  effect: CompressorConfig;
+  onUpdate: (config: Partial<EffectConfig>) => void;
+  sliderConfig: SliderConfig;
+};
+
+function createSlider({
+  defaultConfig,
+  disabled,
+  effect,
+  onUpdate,
+  sliderConfig,
+}: CreateSliderOptions) {
+  const defaultValue = defaultConfig
+    ? ((defaultConfig as Record<string, unknown>)[sliderConfig.key] as
+        | number
+        | undefined)
+    : undefined;
+
   return (
     <ParamSlider
+      defaultValue={defaultValue}
       disabled={disabled}
       formatKey={sliderConfig.formatKey}
       key={sliderConfig.key}
@@ -45,11 +61,13 @@ function ThresholdRatioGroup({
   disabled,
   onUpdate,
   ranges,
+  defaultConfig,
 }: {
   effect: CompressorConfig;
   disabled: boolean;
   onUpdate: (config: Partial<EffectConfig>) => void;
   ranges: Record<string, { max?: number; min?: number; step?: number }>;
+  defaultConfig: Omit<EffectConfig, "id" | "order"> | undefined;
 }) {
   const sliders: SliderConfig[] = [
     {
@@ -73,7 +91,13 @@ function ThresholdRatioGroup({
   return (
     <ParamGroup title="Threshold & Ratio">
       {sliders.map((slider) =>
-        createSlider(slider, effect, disabled, onUpdate)
+        createSlider({
+          defaultConfig,
+          disabled,
+          effect,
+          onUpdate,
+          sliderConfig: slider,
+        })
       )}
     </ParamGroup>
   );
@@ -84,11 +108,13 @@ function TimingGroup({
   disabled,
   onUpdate,
   ranges,
+  defaultConfig,
 }: {
   effect: CompressorConfig;
   disabled: boolean;
   onUpdate: (config: Partial<EffectConfig>) => void;
   ranges: Record<string, { max?: number; min?: number; step?: number }>;
+  defaultConfig: Omit<EffectConfig, "id" | "order"> | undefined;
 }) {
   const sliders: SliderConfig[] = [
     {
@@ -112,7 +138,13 @@ function TimingGroup({
   return (
     <ParamGroup title="Timing">
       {sliders.map((slider) =>
-        createSlider(slider, effect, disabled, onUpdate)
+        createSlider({
+          defaultConfig,
+          disabled,
+          effect,
+          onUpdate,
+          sliderConfig: slider,
+        })
       )}
     </ParamGroup>
   );
@@ -125,24 +157,31 @@ export function CompressorParams({
 }: CompressorParamsProps) {
   const metadata = getEffectMetadata("compressor");
   const ranges = metadata?.parameterRanges ?? {};
+  const defaultConfig = metadata?.defaultConfig;
   const disabled = !(isInitialized && effect.enabled);
 
   return (
     <div className="space-y-4">
       <ThresholdRatioGroup
+        defaultConfig={defaultConfig}
         disabled={disabled}
         effect={effect}
         onUpdate={onUpdate}
         ranges={ranges}
       />
       <TimingGroup
+        defaultConfig={defaultConfig}
         disabled={disabled}
         effect={effect}
         onUpdate={onUpdate}
         ranges={ranges}
       />
-      {createSlider(
-        {
+      {createSlider({
+        defaultConfig,
+        disabled,
+        effect,
+        onUpdate,
+        sliderConfig: {
           formatKey: "db",
           key: "knee",
           label: "Knee",
@@ -150,10 +189,7 @@ export function CompressorParams({
           min: ranges.knee?.min ?? 0,
           step: ranges.knee?.step ?? 1,
         },
-        effect,
-        disabled,
-        onUpdate
-      )}
+      })}
     </div>
   );
 }

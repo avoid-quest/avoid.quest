@@ -17,6 +17,7 @@ export type VolumeControlProps = {
   showMute?: boolean;
   size?: "sm" | "md" | "lg";
   orientation?: "horizontal" | "vertical";
+  defaultValue?: number;
 };
 
 export function VolumeControl({
@@ -27,6 +28,7 @@ export function VolumeControl({
   showMute = true,
   size = "md",
   orientation = "horizontal",
+  defaultValue = 1,
 }: VolumeControlProps) {
   const handleSliderChange = (value: number[]) => {
     onVolumeChange((value[0] ?? 0) / MAX_VOLUME);
@@ -85,6 +87,7 @@ export function VolumeControl({
             sliderSizeClasses[size],
             orientation === "vertical" && "h-24"
           )}
+          defaultValue={[defaultValue * MAX_VOLUME]}
           max={MAX_VOLUME}
           min={0}
           onValueChange={handleSliderChange}

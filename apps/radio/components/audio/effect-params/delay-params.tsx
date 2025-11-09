@@ -10,6 +10,22 @@ type DelayParamsProps = {
   onUpdate: (config: Partial<EffectConfig>) => void;
 };
 
+function getDefaultValue(
+  defaultConfig: Omit<EffectConfig, "id" | "order"> | undefined,
+  key: string
+): number | undefined {
+  return defaultConfig && key in defaultConfig
+    ? (defaultConfig[key as keyof typeof defaultConfig] as number)
+    : undefined;
+}
+
+function handleWetChange(
+  value: number,
+  onUpdate: (config: Partial<EffectConfig>) => void
+) {
+  onUpdate({ wet: value, dry: 1 - value });
+}
+
 export function DelayParams({
   effect,
   isInitialized,
@@ -17,11 +33,14 @@ export function DelayParams({
 }: DelayParamsProps) {
   const metadata = getEffectMetadata("delay");
   const ranges = metadata?.parameterRanges ?? {};
+  const defaultConfig = metadata?.defaultConfig;
+  const disabled = !(isInitialized && effect.enabled);
 
   return (
     <div className="space-y-4">
       <ParamSlider
-        disabled={!(isInitialized && effect.enabled)}
+        defaultValue={getDefaultValue(defaultConfig, "delayTime")}
+        disabled={disabled}
         formatKey="time"
         label="Delay Time"
         max={ranges.delayTime?.max ?? 1}
@@ -32,7 +51,8 @@ export function DelayParams({
       />
 
       <ParamSlider
-        disabled={!(isInitialized && effect.enabled)}
+        defaultValue={getDefaultValue(defaultConfig, "feedback")}
+        disabled={disabled}
         formatKey="percentage"
         label="Feedback"
         max={ranges.feedback?.max ?? 0.95}
@@ -44,14 +64,13 @@ export function DelayParams({
 
       <ParamGroup title="Mix">
         <ParamSlider
-          disabled={!(isInitialized && effect.enabled)}
+          defaultValue={getDefaultValue(defaultConfig, "wet")}
+          disabled={disabled}
           formatKey="percentage"
           label="Wet"
           max={ranges.wet?.max ?? 1}
           min={ranges.wet?.min ?? 0}
-          onChange={(value) => {
-            onUpdate({ wet: value, dry: 1 - value });
-          }}
+          onChange={(value) => handleWetChange(value, onUpdate)}
           step={ranges.wet?.step ?? 0.01}
           value={effect.wet}
         />

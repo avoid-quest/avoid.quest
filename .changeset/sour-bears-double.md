@@ -2,7 +2,7 @@
 "@avoid.quest/cacophony": minor
 ---
 
-# Cacophony: Advanced Browser Audio Library
+# Cacophony: Advanced Browser Audio Library (with Bun)
 
 > **Note**: This package is based on [Cacophony](https://github.com/ctoth/cacophony) by [@ctoth](https://github.com/ctoth). This is a maintained fork/version published under the `@avoid.quest` scope, but with Bun runtime instead of Node.js.
 

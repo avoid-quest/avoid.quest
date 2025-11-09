@@ -303,7 +303,6 @@ export function useDjAudio() {
     [audioManager]
   );
 
-
   // Cleanup on unmount
   useEffect(() => {
     const cleanup = async () => {

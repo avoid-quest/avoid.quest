@@ -7,7 +7,7 @@
   "access": "public",
   "baseBranch": "main",
   "updateInternalDependents": "always",
-  "ignore": ["web", "instarip-web", "@workspace/ui"],
+  "ignore": ["web", "instarip-web"],
   "privatePackages": {
     "version": true,
     "tag": false

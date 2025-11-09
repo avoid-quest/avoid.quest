@@ -121,12 +121,8 @@ async function buildMainLibrary() {
     cmd: [
       "bunx",
       "tsc",
-      "--declaration",
-      "--emitDeclarationOnly",
-      "--outDir",
-      "./dist",
       "--project",
-      "./tsconfig.json",
+      "./tsconfig.declarations.json",
     ],
     stdout: "inherit",
     stderr: "inherit",

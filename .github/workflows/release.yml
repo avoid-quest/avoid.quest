@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - main
+    paths:
+      - "packages/cacophony/**"
+      - ".changeset/**"
 
 concurrency: ${{ github.workflow }}-${{ github.ref }}
 
@@ -12,30 +15,90 @@ permissions:
   pull-requests: write
 
 jobs:
-  release:
-    name: Release
+  version:
+    name: Version Packages
     runs-on: ubuntu-latest
+    if: github.event_name == 'push'
     steps:
-      - name: Checkout Repo
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
 
-      - name: Install Dependencies
-        run: bun install
+      - run: bun install
 
-      - name: Create Release Pull Request or Publish to npm
-        id: changesets
-        uses: changesets/action@v1
+      - uses: changesets/action@v1
         with:
-          # This expects you to have a script called release which does a build for your packages and calls changeset publish
-          publish: bun run release
+          version: bun run version-packages
+          commit: "chore: version packages"
+          title: "chore: version packages"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  release:
+    name: Build and Release
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install
+
+      - name: Check if Version Changed
+        id: version_check
+        run: |
+          set -e
+          CURRENT_VERSION=$(bun -e "console.log(JSON.parse(await Bun.file('packages/cacophony/package.json').text()).version)")
+
+          PREVIOUS_VERSION=""
+          if git rev-parse HEAD~1 >/dev/null 2>&1; then
+            if git show HEAD~1:packages/cacophony/package.json > /tmp/prev-package.json 2>/dev/null; then
+              PREVIOUS_VERSION=$(bun -e "console.log(JSON.parse(await Bun.file('/tmp/prev-package.json').text()).version)")
+            fi
+          fi
+
+          if [ -z "$PREVIOUS_VERSION" ] || [ "$CURRENT_VERSION" != "$PREVIOUS_VERSION" ]; then
+            echo "version_changed=true" >> $GITHUB_OUTPUT
+            echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+          else
+            echo "version_changed=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build Package
+        if: steps.version_check.outputs.version_changed == 'true'
+        run: turbo build --filter=@avoid.quest/cacophony
+
+      - name: Create Git Tags
+        if: steps.version_check.outputs.version_changed == 'true'
+        run: |
+          bun changeset tag
+
+      - name: Get Version and Create Tag Name
+        id: tag
+        if: steps.version_check.outputs.version_changed == 'true'
+        run: |
+          PKG_NAME=$(bun -e "console.log(JSON.parse(await Bun.file('packages/cacophony/package.json').text()).name)")
+          VERSION="${{ steps.version_check.outputs.version }}"
+          TAG_NAME="${PKG_NAME}@${VERSION}"
+          echo "tag=$TAG_NAME" >> $GITHUB_OUTPUT
+          echo "Package: $PKG_NAME, Version: $VERSION, Tag: $TAG_NAME"
+
+      - name: Publish to npm
+        if: steps.version_check.outputs.version_changed == 'true'
+        run: bunx changeset publish
+        env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Push Tags
+        if: steps.version_check.outputs.version_changed == 'true'
+        run: git push --follow-tags
 

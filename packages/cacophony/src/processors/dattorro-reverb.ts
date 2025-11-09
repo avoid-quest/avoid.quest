@@ -41,6 +41,7 @@ export class DattorroReverbProcessor extends AudioWorkletProcessor {
   private _lp3 = 0.0;
   private _excPhase = 0.0;
   private readonly _taps: Int16Array;
+  private _debugLogged = false;
 
   static get parameterDescriptors(): AudioParamDescriptor[] {
     return [
@@ -192,31 +193,49 @@ export class DattorroReverbProcessor extends AudioWorkletProcessor {
     outputs: Float32Array[][],
     parameters: AudioParamMap
   ): boolean {
-    const pdParam = parameters.get("preDelay");
+    // Helper function to get parameter value
+    // In AudioWorkletProcessor, k-rate parameters are provided as Float32Arrays
+    // The current value is at index 0 of the array
+    const getParamValue = (name: string, defaultValue: number): number => {
+      try {
+        // Access parameter as object property (parameters is a plain object)
+        const param = (parameters as unknown as Record<string, Float32Array | AudioParam>)[name];
+        
+        if (!param) {
+          return defaultValue;
+        }
+        
+        // Check if it's a Float32Array (k-rate parameter in worklet)
+        if (param instanceof Float32Array) {
+          return param[0] ?? defaultValue;
+        }
+        
+        // Fallback: if it's an AudioParam, use .value
+        if (typeof (param as AudioParam).value === "number") {
+          return (param as AudioParam).value;
+        }
+        
+        return defaultValue;
+      } catch (error) {
+        console.error(`[Worklet] Error getting parameter "${name}":`, error);
+        return defaultValue;
+      }
+    };
+
+    // Get parameter values - k-rate parameters are Float32Arrays with value at index 0
     // biome-ignore lint/suspicious/noBitwiseOperators: Double bitwise NOT used for fast floor operation
-    const pd = pdParam ? ~~pdParam.value : 0;
-    const bwParam = parameters.get("bandwidth");
-    const bw = bwParam?.value ?? 0.9999;
-    const fiParam = parameters.get("inputDiffusion1");
-    const fi = fiParam?.value ?? 0.75;
-    const siParam = parameters.get("inputDiffusion2");
-    const si = siParam?.value ?? 0.625;
-    const dcParam = parameters.get("decay");
-    const dc = dcParam?.value ?? 0.5;
-    const ftParam = parameters.get("decayDiffusion1");
-    const ft = ftParam?.value ?? 0.7;
-    const stParam = parameters.get("decayDiffusion2");
-    const st = stParam?.value ?? 0.5;
-    const dampingParam = parameters.get("damping");
-    const dp = 1 - (dampingParam?.value ?? 0.005);
-    const exParam = parameters.get("excursionRate");
-    const ex = (exParam?.value ?? 0.5) / sampleRate;
-    const edParam = parameters.get("excursionDepth");
-    const ed = ((edParam?.value ?? 0.7) * sampleRate) / 1000;
-    const wetParam = parameters.get("wet");
-    const we = (wetParam?.value ?? 0.3) * 0.6; // lo & ro both mult. by 0.6 anyways
-    const dryParam = parameters.get("dry");
-    const dr = dryParam?.value ?? 0.6;
+    const pd = ~~getParamValue("preDelay", 0);
+    const bw = getParamValue("bandwidth", 0.9999);
+    const fi = getParamValue("inputDiffusion1", 0.75);
+    const si = getParamValue("inputDiffusion2", 0.625);
+    const dc = getParamValue("decay", 0.5);
+    const ft = getParamValue("decayDiffusion1", 0.7);
+    const st = getParamValue("decayDiffusion2", 0.5);
+    const dp = 1 - getParamValue("damping", 0.005);
+    const ex = getParamValue("excursionRate", 0.5) / sampleRate;
+    const ed = (getParamValue("excursionDepth", 0.7) * sampleRate) / 1000;
+    const we = getParamValue("wet", 0.3) * 0.6; // lo & ro both mult. by 0.6 anyways
+    const dr = getParamValue("dry", 0.6);
 
     // Write to predelay and dry output
     if (inputs[0]?.length === 2) {

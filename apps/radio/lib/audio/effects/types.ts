@@ -1,9 +1,8 @@
 import type {
   AudioContext,
   BiquadFilterNode,
-  ConvolverNode,
   GainNode,
-  StereoPannerNode,
+  PannerNode,
 } from "@avoid.quest/cacophony";
 
 // These types are not exported by cacophony, so we'll use the AudioContext types directly
@@ -12,6 +11,7 @@ export type WaveShaperNode = ReturnType<AudioContext["createWaveShaper"]>;
 export type DynamicsCompressorNode = ReturnType<
   AudioContext["createDynamicsCompressor"]
 >;
+// AudioWorkletNode is a global Web Audio API type
 
 export type FilterType =
   | "lowpass"
@@ -33,11 +33,11 @@ export type EffectType =
 
 export type EffectNode =
   | BiquadFilterNode
-  | ConvolverNode
+  | globalThis.AudioWorkletNode
   | DelayNode
   | WaveShaperNode
   | DynamicsCompressorNode
-  | StereoPannerNode;
+  | PannerNode;
 
 export type BaseEffectConfig = {
   id: string;
@@ -56,10 +56,18 @@ export interface BiquadFilterConfig extends BaseEffectConfig {
 
 export interface ReverbConfig extends BaseEffectConfig {
   type: "reverb";
-  roomSize: number;
+  preDelay: number;
+  bandwidth: number;
+  inputDiffusion1: number;
+  inputDiffusion2: number;
+  decay: number;
+  decayDiffusion1: number;
+  decayDiffusion2: number;
+  damping: number;
+  excursionRate: number;
+  excursionDepth: number;
   wet: number;
   dry: number;
-  decayTime: number;
 }
 
 export interface DelayConfig extends BaseEffectConfig {
@@ -87,7 +95,20 @@ export interface CompressorConfig extends BaseEffectConfig {
 
 export interface PannerConfig extends BaseEffectConfig {
   type: "panner";
-  pan: number;
+  coneInnerAngle: number;
+  coneOuterAngle: number;
+  coneOuterGain: number;
+  distanceModel: "linear" | "inverse" | "exponential";
+  maxDistance: number;
+  refDistance: number;
+  rolloffFactor: number;
+  panningModel: "equalpower" | "HRTF";
+  positionX: number;
+  positionY: number;
+  positionZ: number;
+  orientationX: number;
+  orientationY: number;
+  orientationZ: number;
 }
 
 export type EffectConfig =

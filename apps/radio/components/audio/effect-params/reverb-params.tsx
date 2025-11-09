@@ -1,0 +1,297 @@
+"use client";
+
+import { getEffectMetadata } from "@/lib/audio/effects/registry";
+import type { EffectConfig, ReverbConfig } from "@/lib/audio/effects/types";
+import { ParamGroup, ParamSlider } from "./";
+
+type ReverbParamsProps = {
+  effect: ReverbConfig;
+  isInitialized: boolean;
+  onUpdate: (config: Partial<EffectConfig>) => void;
+};
+
+type SliderConfig = {
+  formatKey: string;
+  key: keyof ReverbConfig;
+  label: string;
+  max: number;
+  min: number;
+  step: number;
+};
+
+function createSlider(
+  sliderConfig: SliderConfig,
+  effect: ReverbConfig,
+  disabled: boolean,
+  onUpdate: (config: Partial<EffectConfig>) => void
+) {
+  return (
+    <ParamSlider
+      disabled={disabled}
+      formatKey={sliderConfig.formatKey}
+      key={sliderConfig.key}
+      label={sliderConfig.label}
+      max={sliderConfig.max}
+      min={sliderConfig.min}
+      onChange={(value) => onUpdate({ [sliderConfig.key]: value })}
+      step={sliderConfig.step}
+      value={effect[sliderConfig.key] as number}
+    />
+  );
+}
+
+function PreDelayBandwidthGroup({
+  effect,
+  disabled,
+  onUpdate,
+  ranges,
+}: {
+  effect: ReverbConfig;
+  disabled: boolean;
+  onUpdate: (config: Partial<EffectConfig>) => void;
+  ranges: Record<string, { max?: number; min?: number; step?: number }>;
+}) {
+  const sliders: SliderConfig[] = [
+    {
+      formatKey: "samples",
+      key: "preDelay",
+      label: "Pre-Delay",
+      max: ranges.preDelay?.max ?? 48_000,
+      min: ranges.preDelay?.min ?? 0,
+      step: ranges.preDelay?.step ?? 1,
+    },
+    {
+      formatKey: "default",
+      key: "bandwidth",
+      label: "Bandwidth",
+      max: ranges.bandwidth?.max ?? 1,
+      min: ranges.bandwidth?.min ?? 0,
+      step: ranges.bandwidth?.step ?? 0.0001,
+    },
+  ];
+
+  return (
+    <ParamGroup title="Pre-Delay & Bandwidth">
+      {sliders.map((slider) =>
+        createSlider(slider, effect, disabled, onUpdate)
+      )}
+    </ParamGroup>
+  );
+}
+
+function InputDiffusionGroup({
+  effect,
+  disabled,
+  onUpdate,
+  ranges,
+}: {
+  effect: ReverbConfig;
+  disabled: boolean;
+  onUpdate: (config: Partial<EffectConfig>) => void;
+  ranges: Record<string, { max?: number; min?: number; step?: number }>;
+}) {
+  const sliders: SliderConfig[] = [
+    {
+      formatKey: "default",
+      key: "inputDiffusion1",
+      label: "Input Diffusion 1",
+      max: ranges.inputDiffusion1?.max ?? 1,
+      min: ranges.inputDiffusion1?.min ?? 0,
+      step: ranges.inputDiffusion1?.step ?? 0.01,
+    },
+    {
+      formatKey: "default",
+      key: "inputDiffusion2",
+      label: "Input Diffusion 2",
+      max: ranges.inputDiffusion2?.max ?? 1,
+      min: ranges.inputDiffusion2?.min ?? 0,
+      step: ranges.inputDiffusion2?.step ?? 0.01,
+    },
+  ];
+
+  return (
+    <ParamGroup title="Input Diffusion">
+      {sliders.map((slider) =>
+        createSlider(slider, effect, disabled, onUpdate)
+      )}
+    </ParamGroup>
+  );
+}
+
+function DecayGroup({
+  effect,
+  disabled,
+  onUpdate,
+  ranges,
+}: {
+  effect: ReverbConfig;
+  disabled: boolean;
+  onUpdate: (config: Partial<EffectConfig>) => void;
+  ranges: Record<string, { max?: number; min?: number; step?: number }>;
+}) {
+  const sliders: SliderConfig[] = [
+    {
+      formatKey: "default",
+      key: "decay",
+      label: "Decay",
+      max: ranges.decay?.max ?? 1,
+      min: ranges.decay?.min ?? 0,
+      step: ranges.decay?.step ?? 0.01,
+    },
+    {
+      formatKey: "default",
+      key: "decayDiffusion1",
+      label: "Decay Diffusion 1",
+      max: ranges.decayDiffusion1?.max ?? 0.999_999,
+      min: ranges.decayDiffusion1?.min ?? 0,
+      step: ranges.decayDiffusion1?.step ?? 0.001,
+    },
+    {
+      formatKey: "default",
+      key: "decayDiffusion2",
+      label: "Decay Diffusion 2",
+      max: ranges.decayDiffusion2?.max ?? 0.999_999,
+      min: ranges.decayDiffusion2?.min ?? 0,
+      step: ranges.decayDiffusion2?.step ?? 0.001,
+    },
+  ];
+
+  return (
+    <ParamGroup title="Decay">
+      {sliders.map((slider) =>
+        createSlider(slider, effect, disabled, onUpdate)
+      )}
+    </ParamGroup>
+  );
+}
+
+function ModulationGroup({
+  effect,
+  disabled,
+  onUpdate,
+  ranges,
+}: {
+  effect: ReverbConfig;
+  disabled: boolean;
+  onUpdate: (config: Partial<EffectConfig>) => void;
+  ranges: Record<string, { max?: number; min?: number; step?: number }>;
+}) {
+  const sliders: SliderConfig[] = [
+    {
+      formatKey: "default",
+      key: "damping",
+      label: "Damping",
+      max: ranges.damping?.max ?? 1,
+      min: ranges.damping?.min ?? 0,
+      step: ranges.damping?.step ?? 0.001,
+    },
+    {
+      formatKey: "default",
+      key: "excursionRate",
+      label: "Excursion Rate",
+      max: ranges.excursionRate?.max ?? 2,
+      min: ranges.excursionRate?.min ?? 0,
+      step: ranges.excursionRate?.step ?? 0.01,
+    },
+    {
+      formatKey: "default",
+      key: "excursionDepth",
+      label: "Excursion Depth",
+      max: ranges.excursionDepth?.max ?? 2,
+      min: ranges.excursionDepth?.min ?? 0,
+      step: ranges.excursionDepth?.step ?? 0.01,
+    },
+  ];
+
+  return (
+    <ParamGroup title="Modulation">
+      {sliders.map((slider) =>
+        createSlider(slider, effect, disabled, onUpdate)
+      )}
+    </ParamGroup>
+  );
+}
+
+function MixGroup({
+  effect,
+  disabled,
+  onUpdate,
+  ranges,
+}: {
+  effect: ReverbConfig;
+  disabled: boolean;
+  onUpdate: (config: Partial<EffectConfig>) => void;
+  ranges: Record<string, { max?: number; min?: number; step?: number }>;
+}) {
+  const sliders: SliderConfig[] = [
+    {
+      formatKey: "percentage",
+      key: "wet",
+      label: "Wet",
+      max: ranges.wet?.max ?? 1,
+      min: ranges.wet?.min ?? 0,
+      step: ranges.wet?.step ?? 0.01,
+    },
+    {
+      formatKey: "percentage",
+      key: "dry",
+      label: "Dry",
+      max: ranges.dry?.max ?? 1,
+      min: ranges.dry?.min ?? 0,
+      step: ranges.dry?.step ?? 0.01,
+    },
+  ];
+
+  return (
+    <ParamGroup title="Mix">
+      {sliders.map((slider) =>
+        createSlider(slider, effect, disabled, onUpdate)
+      )}
+    </ParamGroup>
+  );
+}
+
+export function ReverbParams({
+  effect,
+  isInitialized,
+  onUpdate,
+}: ReverbParamsProps) {
+  const metadata = getEffectMetadata("reverb");
+  const ranges = metadata?.parameterRanges ?? {};
+  const disabled = !(isInitialized && effect.enabled);
+
+  return (
+    <div className="space-y-4">
+      <PreDelayBandwidthGroup
+        disabled={disabled}
+        effect={effect}
+        onUpdate={onUpdate}
+        ranges={ranges}
+      />
+      <InputDiffusionGroup
+        disabled={disabled}
+        effect={effect}
+        onUpdate={onUpdate}
+        ranges={ranges}
+      />
+      <DecayGroup
+        disabled={disabled}
+        effect={effect}
+        onUpdate={onUpdate}
+        ranges={ranges}
+      />
+      <ModulationGroup
+        disabled={disabled}
+        effect={effect}
+        onUpdate={onUpdate}
+        ranges={ranges}
+      />
+      <MixGroup
+        disabled={disabled}
+        effect={effect}
+        onUpdate={onUpdate}
+        ranges={ranges}
+      />
+    </div>
+  );
+}

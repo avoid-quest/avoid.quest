@@ -21,7 +21,7 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@hookform/resolvers": "^5.2.2",
     "@opennextjs/cloudflare": "^1.11.1",
-    "@workspace/cacophony": "workspace:*",
+    "@avoid.quest/cacophony": "workspace:*",
     "@workspace/typescript-config": "workspace:*",
     "@workspace/ui": "workspace:*",
     "babel-plugin-react-compiler": "^1.0.0",

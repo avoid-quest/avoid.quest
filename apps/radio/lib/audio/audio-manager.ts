@@ -5,7 +5,7 @@ import {
   type Playback,
   type Sound,
   SoundType,
-} from "@workspace/cacophony";
+} from "@avoid.quest/cacophony";
 import type { FilterConfig } from "@/components/audio/filter-control";
 import type { Radio } from "../types";
 

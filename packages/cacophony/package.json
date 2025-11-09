@@ -1,8 +1,19 @@
 {
-  "name": "@workspace/cacophony",
-  "version": "0.16.0",
+  "name": "@avoid.quest/cacophony",
+  "version": "0.17.0",
   "description": "Typescript audio library with caching",
+  "license": "MIT",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/avoid-quest/avoid.quest.git",
+    "directory": "packages/cacophony"
+  },
+  "homepage": "https://github.com/avoid-quest/avoid.quest/tree/main/packages/cacophony",
+  "author": "avoid.quest",
+  "publishConfig": {
+    "access": "public"
+  },
   "main": "./dist/index.cjs",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
@@ -15,7 +26,8 @@
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "build": "bun run typecheck && bun run clean && bun run build.ts",

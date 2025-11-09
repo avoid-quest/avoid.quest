@@ -1,6 +1,8 @@
 
 # Cacophony: Advanced Browser Audio Library
 
+> **Note**: This package is based on [Cacophony](https://github.com/ctoth/cacophony) by [@ctoth](https://github.com/ctoth). This is a maintained fork/version published under the `@avoid.quest` scope.
+
 Cacophony is a powerful and intuitive audio library designed for modern web applications. It provides a high-level interface to the Web Audio API, simplifying complex audio operations while offering fine-grained control. Cacophony is perfect for projects ranging from simple sound playback to sophisticated audio processing and 3D audio positioning.
 
 ## Key Features

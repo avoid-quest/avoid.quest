@@ -1,4 +1,3 @@
-import { AudioBuffer } from "standardized-audio-context-mock";
 import {
   afterAll,
   beforeAll,
@@ -9,6 +8,7 @@ import {
   jest,
   mock,
 } from "bun:test";
+import { AudioBuffer } from "standardized-audio-context-mock";
 
 import { Playback } from "./playback";
 import { audioContextMock, cacophony } from "./setupTests";
@@ -87,7 +87,7 @@ describe("Synth event system", () => {
     }));
 
   it("can remove event listeners", () => {
-      const listener = mock();
+    const listener = mock();
     synth.on("play", listener);
     synth.off("play", listener);
     synth.play();
@@ -95,8 +95,8 @@ describe("Synth event system", () => {
   });
 
   it("handles multiple listeners for the same event", () => {
-      const listener1 = mock();
-      const listener2 = mock();
+    const listener1 = mock();
+    const listener2 = mock();
     synth.on("play", listener1);
     synth.on("play", listener2);
     synth.play();
@@ -166,7 +166,7 @@ describe("Event system", () => {
     }));
 
   it("can remove event listeners", () => {
-      const listener = mock();
+    const listener = mock();
     sound.on("play", listener);
     sound.off("play", listener);
     sound.play();
@@ -174,8 +174,8 @@ describe("Event system", () => {
   });
 
   it("handles multiple listeners for the same event", () => {
-      const listener1 = mock();
-      const listener2 = mock();
+    const listener1 = mock();
+    const listener2 = mock();
     sound.on("play", listener1);
     sound.on("play", listener2);
     sound.play();

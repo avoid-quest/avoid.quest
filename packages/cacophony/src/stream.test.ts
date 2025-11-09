@@ -1,5 +1,13 @@
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  mock,
+  spyOn,
+} from "bun:test";
 import { AudioBuffer, AudioContext } from "standardized-audio-context-mock";
-import { afterEach, beforeEach, describe, expect, it, mock, mock as mockModule, spyOn } from "bun:test";
 import { createStream } from "./stream";
 
 describe("Stream operations with AbortController", () => {
@@ -56,7 +64,9 @@ describe("Stream operations with AbortController", () => {
     const controller = new AbortController();
 
     // Mock simple completion to avoid infinite loop
-    mockReader.read = mock(() => Promise.resolve({ value: undefined, done: true }));
+    mockReader.read = mock(() =>
+      Promise.resolve({ value: undefined, done: true })
+    );
 
     createStream(
       "https://example.com/audio.wav",
@@ -71,7 +81,9 @@ describe("Stream operations with AbortController", () => {
 
   it("should work without AbortSignal (backward compatibility)", () => {
     // Mock simple completion to avoid infinite loop
-    mockReader.read = mock(() => Promise.resolve({ value: undefined, done: true }));
+    mockReader.read = mock(() =>
+      Promise.resolve({ value: undefined, done: true })
+    );
 
     createStream("https://example.com/audio.wav", audioContextMock);
 
@@ -136,7 +148,9 @@ describe("Stream operations with AbortController", () => {
 
   it("should setup reader and abort listener", async () => {
     const controller = new AbortController();
-    mockReader.read = mock(() => Promise.resolve({ value: undefined, done: true }));
+    mockReader.read = mock(() =>
+      Promise.resolve({ value: undefined, done: true })
+    );
 
     createStream(
       "https://example.com/audio.wav",

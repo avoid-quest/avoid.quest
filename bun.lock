@@ -52,9 +52,9 @@
     },
     "apps/radio": {
       "name": "radio",
-      "version": "0.1.1",
+      "version": "0.1.3",
       "dependencies": {
-        "@avoid.quest/cacophony": "^0.18.3",
+        "@avoid.quest/cacophony": "^0.18.4",
         "@dnd-kit/core": "^6.3.1",
         "@dnd-kit/sortable": "^10.0.0",
         "@dnd-kit/utilities": "^3.2.2",
@@ -137,7 +137,7 @@
     },
     "packages/cacophony": {
       "name": "@avoid.quest/cacophony",
-      "version": "0.18.3",
+      "version": "0.18.4",
       "dependencies": {
         "fft.js": "^4.0.4",
         "standardized-audio-context": "^25.3.77",
@@ -2691,7 +2691,7 @@
 
     "path-scurry/lru-cache": ["lru-cache@11.2.2", "", {}, "sha512-F9ODfyqML2coTIsQpSkRHnLSZMtkU8Q+mSfcaIyKwy58u+8k5nvAYeiNhsyMARvzNcXJ9QfWVrcPsC9e9rAxtg=="],
 
-    "radio/@avoid.quest/cacophony": ["@avoid.quest/cacophony@0.18.3", "", { "dependencies": { "fft.js": "^4.0.4", "standardized-audio-context": "^25.3.77" } }, "sha512-pOWqnIJF5FTRBYoqzRebma20lNHFz898vz/R480Zs+AM7bho0f3V2Ppe86nm7pbAfAj6D0uPVCcfA9b9JUxVLQ=="],
+    "radio/@avoid.quest/cacophony": ["@avoid.quest/cacophony@0.18.4", "", { "dependencies": { "fft.js": "^4.0.4", "standardized-audio-context": "^25.3.77" } }, "sha512-B0SgYJVhk8tCYSSOTURj1M2BpjPXBxS/rqsXnnHqoc2MkWq5QPkvfeRGM++oY0M81BeYQq28jM3+kYfuuDug/Q=="],
 
     "read-yaml-file/js-yaml": ["js-yaml@3.14.1", "", { "dependencies": { "argparse": "^1.0.7", "esprima": "^4.0.0" }, "bin": { "js-yaml": "bin/js-yaml.js" } }, "sha512-okMH7OXXJ7YrN9Ok3/SXrnu4iX9yOk+25nqX4imS2npuvTYDmo/QEZoqwZkYaIDk3jVvBOTOIEgEhaLOynBS9g=="],
 

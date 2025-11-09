@@ -118,12 +118,7 @@ async function buildMainLibrary() {
 
   // Generate TypeScript definitions
   const tscExitCode = await Bun.spawn({
-    cmd: [
-      "bunx",
-      "tsc",
-      "--project",
-      "./tsconfig.declarations.json",
-    ],
+    cmd: ["bunx", "tsc", "--project", "./tsconfig.declarations.json"],
     stdout: "inherit",
     stderr: "inherit",
   }).exited;

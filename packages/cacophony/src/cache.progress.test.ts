@@ -1,5 +1,5 @@
-import { AudioBuffer, AudioContext } from "standardized-audio-context-mock";
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
+import { AudioBuffer, AudioContext } from "standardized-audio-context-mock";
 import { AudioCache } from "./cache";
 
 describe("AudioCache Progress Tracking", () => {
@@ -132,11 +132,13 @@ describe("AudioCache Progress Tracking", () => {
 
       // Mock caches.open to return a working cache
       global.caches = {
-        open: mock(() => Promise.resolve({
-          match: mock(() => Promise.resolve(null)),
-          put: mock(() => Promise.resolve(undefined)),
-          delete: mock(() => Promise.resolve(true)),
-        })),
+        open: mock(() =>
+          Promise.resolve({
+            match: mock(() => Promise.resolve(null)),
+            put: mock(() => Promise.resolve(undefined)),
+            delete: mock(() => Promise.resolve(true)),
+          })
+        ),
       } as any;
     });
 
@@ -149,14 +151,18 @@ describe("AudioCache Progress Tracking", () => {
       });
 
       // Mock fetch to return response with Content-Length
-      global.fetch = mock(() => Promise.resolve(
-        createMockResponse(mockArrayBuffer, {
-          contentLength: 1024,
-          headers: { "content-type": "audio/mpeg" },
-        })
-      ));
+      global.fetch = mock(() =>
+        Promise.resolve(
+          createMockResponse(mockArrayBuffer, {
+            contentLength: 1024,
+            headers: { "content-type": "audio/mpeg" },
+          })
+        )
+      );
 
-      audioContextMock.decodeAudioData = mock(() => Promise.resolve(mockAudioBuffer));
+      audioContextMock.decodeAudioData = mock(() =>
+        Promise.resolve(mockAudioBuffer)
+      );
 
       await cache.getAudioBuffer(
         audioContextMock,
@@ -205,14 +211,18 @@ describe("AudioCache Progress Tracking", () => {
       });
 
       // Mock fetch to return response WITHOUT Content-Length
-      global.fetch = mock(() => Promise.resolve(
-        createMockResponse(mockArrayBuffer, {
-          // No contentLength specified
-          headers: { "content-type": "audio/mpeg" },
-        })
-      ));
+      global.fetch = mock(() =>
+        Promise.resolve(
+          createMockResponse(mockArrayBuffer, {
+            // No contentLength specified
+            headers: { "content-type": "audio/mpeg" },
+          })
+        )
+      );
 
-      audioContextMock.decodeAudioData = mock(() => Promise.resolve(mockAudioBuffer));
+      audioContextMock.decodeAudioData = mock(() =>
+        Promise.resolve(mockAudioBuffer)
+      );
 
       await cache.getAudioBuffer(
         audioContextMock,
@@ -305,7 +315,9 @@ describe("AudioCache Progress Tracking", () => {
           )
       );
 
-      audioContextMock.decodeAudioData = mock(() => Promise.resolve(mockAudioBuffer));
+      audioContextMock.decodeAudioData = mock(() =>
+        Promise.resolve(mockAudioBuffer)
+      );
 
       // Start two concurrent requests
       const [result1, result2] = await Promise.all([
@@ -337,41 +349,47 @@ describe("AudioCache Progress Tracking", () => {
 
       // Mock cache with existing content
       global.caches = {
-        open: mock(() => Promise.resolve({
-          match: mock((url) => {
-            if (url.endsWith(":meta")) {
-              return Promise.resolve({
-                ok: true,
-                json: () =>
-                  Promise.resolve({
-                    url: testUrl,
-                    etag: '"cached-version"',
-                    timestamp: Date.now() - 1000,
-                  }),
-              });
-            }
-            if (url === testUrl) {
-              return Promise.resolve({
-                ok: true,
-                arrayBuffer: () => Promise.resolve(mockArrayBuffer),
-              });
-            }
-            return Promise.resolve(null);
-          }),
-          put: mock(),
-          delete: mock(),
-        })),
+        open: mock(() =>
+          Promise.resolve({
+            match: mock((url) => {
+              if (url.endsWith(":meta")) {
+                return Promise.resolve({
+                  ok: true,
+                  json: () =>
+                    Promise.resolve({
+                      url: testUrl,
+                      etag: '"cached-version"',
+                      timestamp: Date.now() - 1000,
+                    }),
+                });
+              }
+              if (url === testUrl) {
+                return Promise.resolve({
+                  ok: true,
+                  arrayBuffer: () => Promise.resolve(mockArrayBuffer),
+                });
+              }
+              return Promise.resolve(null);
+            }),
+            put: mock(),
+            delete: mock(),
+          })
+        ),
       } as any;
 
       // Mock 304 response
-      global.fetch = mock(() => Promise.resolve({
-        status: 304,
-        statusText: "Not Modified",
-        ok: false,
-        headers: new Headers(),
-      }));
+      global.fetch = mock(() =>
+        Promise.resolve({
+          status: 304,
+          statusText: "Not Modified",
+          ok: false,
+          headers: new Headers(),
+        })
+      );
 
-      audioContextMock.decodeAudioData = mock(() => Promise.resolve(mockAudioBuffer));
+      audioContextMock.decodeAudioData = mock(() =>
+        Promise.resolve(mockAudioBuffer)
+      );
 
       await cache.getAudioBuffer(
         audioContextMock,

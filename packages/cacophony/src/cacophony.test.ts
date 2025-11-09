@@ -1,5 +1,3 @@
-import { AudioBuffer } from "standardized-audio-context-mock";
-
 import {
   afterAll,
   afterEach,
@@ -8,13 +6,13 @@ import {
   describe,
   expect,
   it,
-  test,
+  jest,
   mock,
   spyOn,
-  jest,
+  test,
 } from "bun:test";
-
 import { AudioWorkletNode } from "standardized-audio-context";
+import { AudioBuffer } from "standardized-audio-context-mock";
 import { SoundType } from "./cacophony";
 import { Group } from "./group";
 import { audioContextMock, cacophony, mockCache } from "./setupTests";
@@ -186,7 +184,7 @@ describe("Cacophony advanced features", () => {
   });
 
   it("throws an error when creating a sound with an invalid URL", async () => {
-      (mockCache.getAudioBuffer as any).mockRejectedValueOnce(
+    (mockCache.getAudioBuffer as any).mockRejectedValueOnce(
       new Error("Invalid URL")
     );
     await expect(cacophony.createSound("invalid-url")).rejects.toThrow(
@@ -238,8 +236,10 @@ describe("Cacophony advanced features", () => {
       const mockBuffer = new AudioBuffer({ length: 100, sampleRate: 44_100 });
 
       // Mock the cache to verify signal is passed through
-      const getAudioBufferSpy = spyOn(mockCache, "getAudioBuffer")
-        .mockResolvedValueOnce(mockBuffer);
+      const getAudioBufferSpy = spyOn(
+        mockCache,
+        "getAudioBuffer"
+      ).mockResolvedValueOnce(mockBuffer);
 
       const sound = await cacophony.createSound(
         url,

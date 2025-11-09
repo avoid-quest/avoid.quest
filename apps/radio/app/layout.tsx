@@ -59,7 +59,7 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <head>
         <meta content="radio.avoid.quest" name="apple-mobile-web-app-title" />
-        <meta content="yes" name="apple-mobile-web-app-capable" />
+        <meta content="yes" name="mobile-web-app-capable" />
         <meta content="black" name="apple-mobile-web-app-status-bar-style" />
         <meta content="Radio - avoid.quest" name="application-name" />
         <meta content="#000000" name="theme-color" />

@@ -12,6 +12,8 @@ import { cn } from "@workspace/ui/lib/utils";
 import { Crossfader } from "@/components/audio/crossfader";
 import type { FilterConfig } from "@/components/audio/filter-control";
 import { FilterControl } from "@/components/audio/filter-control";
+import type { ReverbConfig } from "@/components/audio/reverb-control";
+import { ReverbControl } from "@/components/audio/reverb-control";
 import { VolumeControl } from "@/components/audio/volume-control";
 
 type DjMixerProps = {
@@ -28,6 +30,8 @@ type DjMixerProps = {
   rightSoundId: string | null;
   leftFilterConfig: FilterConfig;
   rightFilterConfig: FilterConfig;
+  leftReverbConfig: ReverbConfig;
+  rightReverbConfig: ReverbConfig;
   onCrossfadeChange: (position: number) => void;
   onLeftVolumeChange: (volume: number) => void;
   onRightVolumeChange: (volume: number) => void;
@@ -36,6 +40,8 @@ type DjMixerProps = {
   onRightMuteChange: (muted: boolean) => void;
   onLeftFilterChange: (config: FilterConfig) => void;
   onRightFilterChange: (config: FilterConfig) => void;
+  onLeftReverbChange: (config: ReverbConfig) => void;
+  onRightReverbChange: (config: ReverbConfig) => void;
 };
 
 export function DjMixer({
@@ -52,6 +58,8 @@ export function DjMixer({
   rightSoundId,
   leftFilterConfig,
   rightFilterConfig,
+  leftReverbConfig,
+  rightReverbConfig,
   onCrossfadeChange,
   onLeftVolumeChange,
   onRightVolumeChange,
@@ -60,6 +68,8 @@ export function DjMixer({
   onRightMuteChange,
   onLeftFilterChange,
   onRightFilterChange,
+  onLeftReverbChange,
+  onRightReverbChange,
 }: DjMixerProps) {
   return (
     <Card className={cn("h-full w-full", className)}>
@@ -164,15 +174,19 @@ export function DjMixer({
 
             {/* FX Tab */}
             <TabsContent className="mt-4" value="fx">
-              <div className="flex h-32 items-center justify-center rounded-lg border-2 border-muted-foreground/25 border-dashed">
-                <div className="text-center">
-                  <div className="font-medium text-lg text-muted-foreground">
-                    Coming Soon
-                  </div>
-                  <div className="text-muted-foreground text-sm">
-                    Advanced effects will be available here
-                  </div>
-                </div>
+              <div className="flex flex-col gap-2">
+                <ReverbControl
+                  initialConfig={leftReverbConfig}
+                  onReverbChange={onLeftReverbChange}
+                  soundId={leftSoundId}
+                  title="Left Deck Reverb"
+                />
+                <ReverbControl
+                  initialConfig={rightReverbConfig}
+                  onReverbChange={onRightReverbChange}
+                  soundId={rightSoundId}
+                  title="Right Deck Reverb"
+                />
               </div>
             </TabsContent>
           </Tabs>

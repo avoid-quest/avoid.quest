@@ -46,6 +46,8 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
     rightMuted,
     leftFilterConfig,
     rightFilterConfig,
+    leftReverbConfig,
+    rightReverbConfig,
     setLeftRadio,
     setRightRadio,
     setCrossfadePosition,
@@ -56,6 +58,8 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
     setRightMute,
     updateLeftFilter,
     updateRightFilter,
+    updateLeftReverb,
+    updateRightReverb,
     playLeft,
     playRight,
     pauseLeft,
@@ -182,19 +186,23 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
             isTransitioning={false}
             leftFilterConfig={leftFilterConfig}
             leftMuted={leftMuted}
+            leftReverbConfig={leftReverbConfig}
             leftSoundId={leftRadio ? `left_${leftRadio.id}` : null}
             leftVolume={leftVolume}
             masterVolume={masterVolume}
             onCrossfadeChange={handleCrossfadeChange}
             onLeftFilterChange={updateLeftFilter}
             onLeftMuteChange={setLeftMute}
+            onLeftReverbChange={updateLeftReverb}
             onLeftVolumeChange={handleLeftVolumeChange}
             onMasterVolumeChange={setMasterVolume}
             onRightFilterChange={updateRightFilter}
             onRightMuteChange={setRightMute}
+            onRightReverbChange={updateRightReverb}
             onRightVolumeChange={handleRightVolumeChange}
             rightFilterConfig={rightFilterConfig}
             rightMuted={rightMuted}
+            rightReverbConfig={rightReverbConfig}
             rightSoundId={rightRadio ? `right_${rightRadio.id}` : null}
             rightVolume={rightVolume}
           />

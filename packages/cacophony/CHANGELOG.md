@@ -1,5 +1,11 @@
 # @avoid.quest/cacophony
 
+## 0.18.1
+
+### Patch Changes
+
+- 002ac20: Fix TypeScript declaration file generation. The build process now properly generates `.d.ts` files by using a dedicated `tsconfig.declarations.json` configuration, resolving the "Could not find a declaration file for module '@avoid.quest/cacophony'" error in consuming packages.
+
 ## 0.18.0
 
 ### Minor Changes

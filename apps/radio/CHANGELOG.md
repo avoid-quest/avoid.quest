@@ -1,5 +1,16 @@
 # radio
 
+## 0.2.3
+
+### Patch Changes
+
+- 6f76110: Fix type errors in audio effect parameter components
+
+  - Fix `getDefaultValue` function type safety in biquad-filter and delay parameter components
+  - Update `ParamSelect` to accept readonly option arrays
+  - Add proper type guards for potentially undefined values in `param-slider`
+  - Fix optional chaining for `paramFormatters.default` in `param-definitions`
+
 ## 0.2.2
 
 ### Patch Changes

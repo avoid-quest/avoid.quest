@@ -36,11 +36,11 @@
     "zod": "^4.1.12"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^4.20251109.0",
     "@types/node": "^22.19.0",
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",
     "typescript": "^5.9.3",
-    "@cloudflare/workers-types": "^4.20251109.0",
     "wrangler": "^4.46.0"
   },
   "peerDependencies": {

@@ -29,23 +29,7 @@ jobs:
 
       - run: bun install
 
-      - name: Check for scraper changesets
-        id: check-changesets
-        run: |
-          if bunx changeset status --output status.json 2>/dev/null; then
-            HAS_SCRAPER=$(bun -e "
-              const status = JSON.parse(await Bun.file('status.json').text());
-              const hasScraper = status.releases?.some(r => r.name === '@workspace/scraper') || false;
-              console.log(hasScraper ? 'true' : 'false');
-            ")
-            echo "has_changesets=$HAS_SCRAPER" >> $GITHUB_OUTPUT
-            rm -f status.json
-          else
-            echo "has_changesets=false" >> $GITHUB_OUTPUT
-          fi
-
       - name: Create Release Pull Request or Build and Release
-        if: steps.check-changesets.outputs.has_changesets == 'true'
         id: changesets
         uses: changesets/action@v1
         with:

@@ -30,11 +30,11 @@ export const AVAILABLE_EFFECTS: EffectMetadata[] = [
     },
   },
   {
-    type: "reverb",
-    name: "Reverb",
-    description: "Dattorro plate reverb with advanced controls",
+    type: "plateReverb",
+    name: "Plate Reverb",
+    description: "Advanced plate reverb with extensive controls",
     defaultConfig: {
-      type: "reverb",
+      type: "plateReverb",
       enabled: false,
       preDelay: 0,
       bandwidth: 0.9999,
@@ -62,6 +62,38 @@ export const AVAILABLE_EFFECTS: EffectMetadata[] = [
       excursionDepth: { min: 0, max: 2, step: 0.01 },
       wet: { min: 0, max: 1, step: 0.01 },
       dry: { min: 0, max: 1, step: 0.01 },
+    },
+  },
+  {
+    type: "standardReverb",
+    name: "Standard Reverb",
+    description: "Simple convolution-based reverb with room size and decay",
+    defaultConfig: {
+      type: "standardReverb",
+      enabled: false,
+      roomSize: 0.05,
+      decayTime: 2.0,
+      wet: 0.3,
+      dry: 0.7,
+    } as Omit<EffectConfig, "id" | "order">,
+    parameterRanges: {
+      roomSize: { min: 0.01, max: 0.1, step: 0.001 },
+      decayTime: { min: 0.1, max: 5.0, step: 0.1 },
+      wet: { min: 0, max: 1, step: 0.01 },
+      dry: { min: 0, max: 1, step: 0.01 },
+    },
+  },
+  {
+    type: "phaseVocoder",
+    name: "Phase Vocoder",
+    description: "Pitch shifting effect using phase vocoder algorithm",
+    defaultConfig: {
+      type: "phaseVocoder",
+      enabled: false,
+      pitchFactor: 1.0,
+    } as Omit<EffectConfig, "id" | "order">,
+    parameterRanges: {
+      pitchFactor: { min: 0.25, max: 4.0, step: 0.01 },
     },
   },
   {

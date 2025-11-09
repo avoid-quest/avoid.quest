@@ -9,4 +9,6 @@ export { formatParam, paramFormatters } from "./param-definitions";
 export { ParamGroup } from "./param-group";
 export { ParamSelect } from "./param-select";
 export { ParamSlider } from "./param-slider";
-export { ReverbParams } from "./reverb-params";
+export { PhaseVocoderParams } from "./phase-vocoder-params";
+export { PlateReverbParams } from "./reverb-params";
+export { StandardReverbParams } from "./standard-reverb-params";

@@ -6,7 +6,9 @@ import { CompressorParams } from "./compressor-params";
 import { DelayParams } from "./delay-params";
 import { DistortionParams } from "./distortion-params";
 import { PannerParams } from "./panner-params";
-import { ReverbParams } from "./reverb-params";
+import { PhaseVocoderParams } from "./phase-vocoder-params";
+import { PlateReverbParams } from "./reverb-params";
+import { StandardReverbParams } from "./standard-reverb-params";
 
 type EffectParamsProps = {
   effect: EffectConfig;
@@ -28,9 +30,25 @@ export function EffectParams({
           onUpdate={onUpdate}
         />
       );
-    case "reverb":
+    case "plateReverb":
       return (
-        <ReverbParams
+        <PlateReverbParams
+          effect={effect}
+          isInitialized={isInitialized}
+          onUpdate={onUpdate}
+        />
+      );
+    case "standardReverb":
+      return (
+        <StandardReverbParams
+          effect={effect}
+          isInitialized={isInitialized}
+          onUpdate={onUpdate}
+        />
+      );
+    case "phaseVocoder":
+      return (
+        <PhaseVocoderParams
           effect={effect}
           isInitialized={isInitialized}
           onUpdate={onUpdate}

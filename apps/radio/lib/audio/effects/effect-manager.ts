@@ -10,6 +10,7 @@ import type {
 import type {
   BiquadFilterConfig,
   CompressorConfig,
+  ConvolverNode,
   DelayConfig,
   DelayNode,
   DistortionConfig,
@@ -18,7 +19,9 @@ import type {
   EffectInstance,
   EffectNode,
   PannerConfig,
-  ReverbConfig,
+  PhaseVocoderConfig,
+  PlateReverbConfig,
+  StandardReverbConfig,
   WaveShaperNode,
 } from "./types";
 
@@ -172,12 +175,14 @@ export class EffectManager {
       return;
     }
 
-    // Check if we have any reverb effects that need async creation
-    const hasReverb = enabledEffects.some(
-      (e) => e.config.type === "reverb" && !e.node
+    // Check if we have any async effects that need async creation
+    const hasAsyncEffects = enabledEffects.some(
+      (e) =>
+        (e.config.type === "plateReverb" || e.config.type === "phaseVocoder") &&
+        !e.node
     );
 
-    if (hasReverb) {
+    if (hasAsyncEffects) {
       // Handle async reverb creation
       this.buildEffectChainAsync(enabledEffects)
         .then((currentNode) => {
@@ -223,7 +228,10 @@ export class EffectManager {
    * Ensure an effect node exists, creating it if necessary
    */
   private async ensureEffectNode(effect: EffectInstance): Promise<void> {
-    if (effect.config.type === "reverb") {
+    if (
+      effect.config.type === "plateReverb" ||
+      effect.config.type === "phaseVocoder"
+    ) {
       const newNode = await this.createEffectNodeAsync(effect.config);
       if (newNode) {
         effect.node = newNode;
@@ -248,8 +256,11 @@ export class EffectManager {
     for (const effect of enabledEffects) {
       // Create or get the effect node
       if (!effect.node) {
-        if (effect.config.type === "reverb") {
-          // Reverb is async, will be handled separately
+        if (
+          effect.config.type === "plateReverb" ||
+          effect.config.type === "phaseVocoder"
+        ) {
+          // Async effects, will be handled separately
           continue;
         }
         const newNode = this.createEffectNode(effect.config);
@@ -275,12 +286,27 @@ export class EffectManager {
     effect: EffectInstance,
     currentNode: AudioNode
   ): AudioNode {
-    // Handle reverb (Dattorro reverb handles wet/dry internally)
-    if (effect.config.type === "reverb") {
+    // Handle plate reverb (handles wet/dry internally)
+    if (effect.config.type === "plateReverb") {
       const mergeNode = this.cacophony.context.createGain();
       mergeNode.gain.value = 1.0;
-      this.connectReverbEffect(effect, currentNode, mergeNode);
+      this.connectPlateReverbEffect(effect, currentNode, mergeNode);
       return mergeNode as unknown as AudioNode;
+    }
+
+    // Handle standard reverb (needs wet/dry routing)
+    if (effect.config.type === "standardReverb") {
+      const mergeNode = this.cacophony.context.createGain();
+      mergeNode.gain.value = 1.0;
+      this.setupWetDryRouting(effect, currentNode, mergeNode);
+      return mergeNode as unknown as AudioNode;
+    }
+
+    // Handle phase vocoder (simple pass-through)
+    if (effect.config.type === "phaseVocoder") {
+      const effectNode = effect.node as unknown as AudioNode;
+      currentNode.connect(effectNode);
+      return effectNode;
     }
 
     // Handle effects that need wet/dry routing (delay)
@@ -320,11 +346,12 @@ export class EffectManager {
   /**
    * Create an effect node from config
    */
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Complex async effect creation with multiple worklet types
   private async createEffectNodeAsync(
     config: EffectConfig
   ): Promise<EffectNode | null> {
     try {
-      if (config.type === "reverb") {
+      if (config.type === "plateReverb") {
         // Use public path to serve the bundle as a static file
         // The bundle is copied to public/api/worklets during build
         // This works in all environments including Cloudflare Workers
@@ -338,7 +365,7 @@ export class EffectManager {
 
           // Initialize parameters with default values from config
           if (reverbNode.parameters) {
-            const reverbConfig = config as ReverbConfig;
+            const reverbConfig = config as PlateReverbConfig;
             const params = reverbNode.parameters;
 
             const initParam = (name: string, value: number) => {
@@ -358,7 +385,7 @@ export class EffectManager {
                   param.setValueAtTime(value, now);
                 } else {
                   console.warn(
-                    `Reverb parameter "${name}" not found during initialization`
+                    `Plate reverb parameter "${name}" not found during initialization`
                   );
                 }
               } catch (error) {
@@ -383,12 +410,17 @@ export class EffectManager {
             initParam("wet", reverbConfig.wet);
             initParam("dry", reverbConfig.dry);
           } else {
-            console.warn("Reverb node parameters not available after creation");
+            console.warn(
+              "Plate reverb node parameters not available after creation"
+            );
           }
 
           return reverbNode as unknown as globalThis.AudioWorkletNode;
         } catch (workletError) {
-          console.error("Failed to create reverb worklet node:", workletError);
+          console.error(
+            "Failed to create plate reverb worklet node:",
+            workletError
+          );
           // Check if it's a NotSupportedError
           if (
             workletError instanceof Error &&
@@ -403,9 +435,78 @@ export class EffectManager {
           throw workletError;
         }
       }
+
+      if (config.type === "phaseVocoder") {
+        const workletUrl = "/api/worklets/phase-vocoder-bundle.js";
+
+        try {
+          const vocoderNode = await this.cacophony.createWorkletNode(
+            "phase-vocoder",
+            workletUrl
+          );
+
+          // Initialize parameters
+          if (vocoderNode.parameters) {
+            const vocoderConfig = config as PhaseVocoderConfig;
+            const params = vocoderNode.parameters;
+
+            const initParam = (name: string, value: number) => {
+              try {
+                let param: AudioParam | undefined;
+                if (typeof params.get === "function") {
+                  param = params.get(name) as AudioParam | undefined;
+                } else {
+                  param = (params as unknown as Record<string, AudioParam>)[
+                    name
+                  ];
+                }
+                if (param) {
+                  const now = this.cacophony.context.currentTime;
+                  param.cancelScheduledValues(now);
+                  param.setValueAtTime(value, now);
+                } else {
+                  console.warn(
+                    `Phase vocoder parameter "${name}" not found during initialization`
+                  );
+                }
+              } catch (error) {
+                console.warn(
+                  `Failed to initialize parameter "${name}":`,
+                  error
+                );
+              }
+            };
+
+            initParam("pitchFactor", vocoderConfig.pitchFactor);
+          } else {
+            console.warn(
+              "Phase vocoder node parameters not available after creation"
+            );
+          }
+
+          return vocoderNode as unknown as globalThis.AudioWorkletNode;
+        } catch (workletError) {
+          console.error(
+            "Failed to create phase vocoder worklet node:",
+            workletError
+          );
+          if (
+            workletError instanceof Error &&
+            (workletError.name === "NotSupportedError" ||
+              workletError.message.includes("not supported"))
+          ) {
+            console.error(
+              "AudioWorklet is not supported in this browser or the worklet failed to load. URL:",
+              workletUrl
+            );
+          }
+          throw workletError;
+        }
+      }
+
       return null;
     } catch (error) {
-      console.error("Failed to create reverb node:", error);
+      console.error("Failed to create async effect node:", error);
       return null;
     }
   }
@@ -429,9 +530,23 @@ export class EffectManager {
           return filter as unknown as BiquadFilterNode;
         }
 
-        case "reverb": {
-          // Reverb is async, handled separately
+        case "plateReverb":
+        case "phaseVocoder": {
+          // Async effects, handled separately
           return null;
+        }
+
+        case "standardReverb": {
+          const reverbConfig = config as StandardReverbConfig;
+          const convolver = context.createConvolver();
+          const impulseResponse = this.generateImpulseResponse(
+            context,
+            reverbConfig.roomSize,
+            reverbConfig.decayTime
+          );
+          convolver.buffer = impulseResponse;
+          convolver.normalize = false;
+          return convolver as ConvolverNode;
         }
 
         case "delay": {
@@ -493,6 +608,7 @@ export class EffectManager {
   /**
    * Update an effect node's parameters
    */
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Complex effect node update logic with multiple effect types
   private updateEffectNode(effect: EffectInstance): void {
     const wasEnabled = effect.node !== null;
     const isEnabled = effect.config.enabled;
@@ -510,8 +626,11 @@ export class EffectManager {
 
     // If effect is being enabled but has no node, create it
     if (!effect.node && isEnabled) {
-      if (effect.config.type === "reverb") {
-        // Handle async reverb creation
+      if (
+        effect.config.type === "plateReverb" ||
+        effect.config.type === "phaseVocoder"
+      ) {
+        // Handle async effect creation
         this.createEffectNodeAsync(effect.config)
           .then((newNode) => {
             if (newNode) {
@@ -520,13 +639,16 @@ export class EffectManager {
             } else {
               // If node creation failed, disable the effect
               console.warn(
-                "Reverb node creation returned null, disabling effect"
+                `${effect.config.type} node creation returned null, disabling effect`
               );
               effect.config.enabled = false;
             }
           })
           .catch((error) => {
-            console.error("Failed to create reverb node:", error);
+            console.error(
+              `Failed to create ${effect.config.type} node:`,
+              error
+            );
             // Disable the effect if creation fails
             effect.config.enabled = false;
           });
@@ -574,8 +696,14 @@ export class EffectManager {
         case "biquadFilter":
           this.updateBiquadFilter(effect, now, smoothTime);
           break;
-        case "reverb":
-          this.updateReverb(effect, context, now);
+        case "plateReverb":
+          this.updatePlateReverb(effect, context, now);
+          break;
+        case "standardReverb":
+          this.updateStandardReverb(effect, context, now, smoothTime);
+          break;
+        case "phaseVocoder":
+          this.updatePhaseVocoder(effect, now);
           break;
         case "delay":
           this.updateDelay(effect, now, smoothTime);
@@ -623,19 +751,19 @@ export class EffectManager {
     filter.gain.linearRampToValueAtTime(filterConfig.gain, now + smoothTime);
   }
 
-  private updateReverb(
+  private updatePlateReverb(
     effect: EffectInstance,
     _context: AudioContext,
     now: number
   ): void {
-    const reverbConfig = effect.config as ReverbConfig;
+    const reverbConfig = effect.config as PlateReverbConfig;
     const reverb = effect.node as globalThis.AudioWorkletNode;
     if (!reverb?.parameters) {
-      console.warn("Reverb node or parameters not available");
+      console.warn("Plate reverb node or parameters not available");
       return;
     }
 
-    // Update all Dattorro reverb parameters
+    // Update all plate reverb parameters
     const params = reverb.parameters;
 
     // Helper to safely get and update a parameter
@@ -657,14 +785,17 @@ export class EffectManager {
           param.setValueAtTime(value, now);
         } else {
           console.warn(
-            `Reverb parameter "${name}" not found. Available parameters:`,
+            `Plate reverb parameter "${name}" not found. Available parameters:`,
             typeof params.get === "function"
               ? Array.from(params.keys?.() ?? [])
               : Object.keys(params)
           );
         }
       } catch (error) {
-        console.error(`Error updating reverb parameter "${name}":`, error);
+        console.error(
+          `Error updating plate reverb parameter "${name}":`,
+          error
+        );
       }
     };
 
@@ -680,6 +811,79 @@ export class EffectManager {
     updateParam("excursionDepth", reverbConfig.excursionDepth);
     updateParam("wet", reverbConfig.wet);
     updateParam("dry", reverbConfig.dry);
+  }
+
+  private updateStandardReverb(
+    effect: EffectInstance,
+    context: AudioContext,
+    now: number,
+    smoothTime: number
+  ): void {
+    const reverbConfig = effect.config as StandardReverbConfig;
+    const convolver = effect.node as ConvolverNode;
+
+    if (!convolver) {
+      return;
+    }
+
+    // Regenerate impulse response when roomSize or decayTime changes
+    // We regenerate every time since checking previous values would require storing state
+    // The performance impact is minimal since this is only called on parameter changes
+    const impulseResponse = this.generateImpulseResponse(
+      context,
+      reverbConfig.roomSize,
+      reverbConfig.decayTime
+    );
+    convolver.buffer = impulseResponse;
+
+    // Update wet/dry gains
+    if (effect.wetGain && effect.dryGain) {
+      this.updateWetDryGains(effect, reverbConfig.wet, reverbConfig.dry, {
+        now,
+        smoothTime,
+      });
+    }
+  }
+
+  private updatePhaseVocoder(effect: EffectInstance, now: number): void {
+    const vocoderConfig = effect.config as PhaseVocoderConfig;
+    const vocoder = effect.node as globalThis.AudioWorkletNode;
+    if (!vocoder?.parameters) {
+      console.warn("Phase vocoder node or parameters not available");
+      return;
+    }
+
+    const params = vocoder.parameters;
+
+    const updateParam = (name: string, value: number) => {
+      try {
+        let param: AudioParam | undefined;
+        if (typeof params.get === "function") {
+          param = params.get(name) as AudioParam | undefined;
+        } else {
+          param = (params as unknown as Record<string, AudioParam>)[name];
+        }
+
+        if (param) {
+          param.cancelScheduledValues(now);
+          param.setValueAtTime(value, now);
+        } else {
+          console.warn(
+            `Phase vocoder parameter "${name}" not found. Available parameters:`,
+            typeof params.get === "function"
+              ? Array.from(params.keys?.() ?? [])
+              : Object.keys(params)
+          );
+        }
+      } catch (error) {
+        console.error(
+          `Error updating phase vocoder parameter "${name}":`,
+          error
+        );
+      }
+    };
+
+    updateParam("pitchFactor", vocoderConfig.pitchFactor);
   }
 
   private updateDelay(
@@ -820,10 +1024,38 @@ export class EffectManager {
   }
 
   /**
+   * Generate an impulse response for standard reverb
+   */
+  private generateImpulseResponse(
+    context: AudioContext,
+    roomSize: number,
+    decayTime: number
+  ): ReturnType<AudioContext["createBuffer"]> {
+    const sampleRate = context.sampleRate;
+    const length = Math.floor(decayTime * sampleRate);
+    const impulse = context.createBuffer(2, length, sampleRate);
+    const leftChannel = impulse.getChannelData(0);
+    const rightChannel = impulse.getChannelData(1);
+
+    // Exponential decay with some randomness for natural reverb
+    const decaySamples = decayTime * sampleRate;
+    for (let i = 0; i < length; i++) {
+      const decay = Math.exp((-i / decaySamples) * (1 + roomSize));
+      const noise = (Math.random() * 2 - 1) * 0.1; // Small random component
+      const value = decay * (1 + noise) * roomSize;
+      leftChannel[i] = value;
+      rightChannel[i] = value * (0.9 + Math.random() * 0.2); // Slight stereo variation
+    }
+
+    return impulse;
+  }
+
+  /**
    * Check if an effect needs wet/dry routing
    */
   private needsWetDryRouting(config: EffectConfig): boolean {
-    // Dattorro reverb handles wet/dry internally, so we don't need separate routing
+    // Plate reverb handles wet/dry internally, so we don't need separate routing
+    // Standard reverb is handled separately in connectEffect
     return config.type === "delay";
   }
 
@@ -866,6 +1098,10 @@ export class EffectManager {
         }
       ).connect(effect.feedbackGain as unknown as AudioNode);
       effect.feedbackGain.connect(effect.node as unknown as AudioNode);
+    } else if (effect.config.type === "standardReverb") {
+      const config = effect.config as StandardReverbConfig;
+      effect.wetGain.gain.value = config.wet;
+      effect.dryGain.gain.value = config.dry;
     }
 
     // Route dry signal: input → dryGain → output
@@ -883,9 +1119,9 @@ export class EffectManager {
   }
 
   /**
-   * Connect reverb effect (Dattorro reverb handles wet/dry internally)
+   * Connect plate reverb effect (handles wet/dry internally)
    */
-  private connectReverbEffect(
+  private connectPlateReverbEffect(
     effect: EffectInstance,
     inputNode: AudioNode,
     outputNode: AudioNode
@@ -893,7 +1129,7 @@ export class EffectManager {
     if (!effect.node) {
       return;
     }
-    // Dattorro reverb already handles wet/dry mixing internally
+    // Plate reverb already handles wet/dry mixing internally
     inputNode.connect(effect.node as unknown as AudioNode);
     (
       effect.node as unknown as {

@@ -10,7 +10,9 @@ import type { EffectType } from "@/lib/audio/effects/types";
 
 export const EFFECT_ICONS: Record<EffectType, typeof Filter> = {
   biquadFilter: Filter,
-  reverb: Waves,
+  plateReverb: Waves,
+  standardReverb: Waves,
+  phaseVocoder: Radio,
   delay: Clock,
   distortion: Zap,
   compressor: FireExtinguisher,

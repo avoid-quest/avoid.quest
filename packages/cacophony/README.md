@@ -1,7 +1,7 @@
 
 # Cacophony: Advanced Browser Audio Library
 
-> **Note**: This package is based on [Cacophony](https://github.com/ctoth/cacophony) by [@ctoth](https://github.com/ctoth). This is a maintained fork/version published under the `@avoid.quest` scope.
+> **Note**: This package is based on [Cacophony](https://github.com/ctoth/cacophony) by [@ctoth](https://github.com/ctoth). This is a maintained fork/version published under the `@avoid.quest` scope, but with Bun runtime instead of Node.js.
 
 Cacophony is a powerful and intuitive audio library designed for modern web applications. It provides a high-level interface to the Web Audio API, simplifying complex audio operations while offering fine-grained control. Cacophony is perfect for projects ranging from simple sound playback to sophisticated audio processing and 3D audio positioning.
 
@@ -21,13 +21,13 @@ Cacophony is a powerful and intuitive audio library designed for modern web appl
 ## Installation
 
 ```bash
-npm install cacophony
+npm install @avoid.quest/cacophony
 ```
 
 ## Quick Start
 
 ```typescript
-import { Cacophony } from 'cacophony';
+import { Cacophony } from '@avoid.quest/cacophony';
 
 async function audioDemo() {
   const cacophony = new Cacophony();
@@ -809,7 +809,7 @@ cacophony.on('cacheMiss', (event) => {
 cacophony.clearMemoryCache();
 
 // Optional: configure TTL for when no validation tokens exist
-import { AudioCache } from 'cacophony';
+import { AudioCache } from '@avoid.quest/cacophony';
 AudioCache.setCacheExpirationTime(60 * 60 * 1000); // 1 hour
 ```
 

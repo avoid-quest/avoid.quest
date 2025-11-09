@@ -1,4 +1,4 @@
-name: Release Scraper
+name: Publish Scraper
 
 on:
   push:
@@ -12,11 +12,10 @@ concurrency: ${{ github.workflow }}-${{ github.ref }}
 
 permissions:
   contents: write
-  pull-requests: write
 
 jobs:
-  release:
-    name: Release
+  publish:
+    name: Publish
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -29,14 +28,11 @@ jobs:
 
       - run: bun install
 
-      - name: Create Release Pull Request or Build and Release
+      - name: Build and Tag Release
         id: changesets
         uses: changesets/action@v1
         with:
-          version: bun run version-packages
           publish: bun run release:scraper
-          commit: "chore: version packages"
-          title: "chore: version packages"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

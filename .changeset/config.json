@@ -4,7 +4,7 @@
   "commit": false,
   "fixed": [],
   "linked": [],
-  "access": "restricted",
+  "access": "public",
   "baseBranch": "main",
   "updateInternalDependents": "always",
   "ignore": ["web", "radio", "instarip-web", "@workspace/ui"],

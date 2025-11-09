@@ -1,0 +1,17 @@
+{
+  "extends": "@workspace/typescript-config/base.json",
+  "compilerOptions": {
+    "baseUrl": "./src",
+    "rootDir": "./src",
+    "noEmit": true,
+    "sourceMap": true,
+    "types": ["node"]
+  },
+  "exclude": ["node_modules", "src/*.test.ts", "src/setupTests.ts"],
+  "include": ["src/**/*.ts"],
+  "references": [
+    {
+      "path": "./tsconfig.node.json"
+    }
+  ]
+}

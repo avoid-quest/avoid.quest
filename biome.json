@@ -19,12 +19,22 @@
       "!**/.svelte-kit",
       "!**/wrangler.jsonc",
       "!**/.source",
-      "!**/cloudflare-env.d.ts"
+      "!**/cloudflare-env.d.ts",
+      "!**/*-bundle.js",
+      "!**/*-bundle.d.ts"
     ]
   },
   "javascript": {
     "globals": [
-      "Bun"
+      "Bun",
+      "AudioWorkletProcessor",
+      "AudioWorkletNodeOptions",
+      "AudioParam",
+      "MessagePort",
+      "AutomationRate",
+      "registerProcessor",
+      "sampleRate",
+      "BUFFER_SIZE"
     ]
   },
   "linter": {
@@ -40,8 +50,5 @@
       }
     }
   },
-  "extends": [
-    "ultracite/core",
-    "ultracite/next"
-  ]
+  "extends": ["ultracite/core", "ultracite/next"]
 }

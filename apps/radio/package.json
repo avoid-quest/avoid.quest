@@ -48,8 +48,5 @@
     "tailwindcss": "^4.1.16",
     "sonner": "^2.0.7",
     "lucide-react": "^0.475.0"
-  },
-  "resolutions": {
-    "@avoid.quest/cacophony": "^0.18.3"
   }
 }

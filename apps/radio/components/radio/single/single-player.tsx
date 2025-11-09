@@ -245,6 +245,7 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
               <div className="flex-1">
                 <Slider
                   className="w-full"
+                  defaultValue={[1]}
                   max={1}
                   min={0}
                   onValueChange={handleVolumeChange}

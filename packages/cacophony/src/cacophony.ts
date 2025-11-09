@@ -85,6 +85,10 @@ export class Cacophony {
   private readonly eventEmitter: TypedEventEmitter<CacophonyEvents> =
     new TypedEventEmitter<CacophonyEvents>();
   private readonly cache: ICache;
+  // Track which worklets have been loaded to avoid duplicate loads
+  private readonly loadedWorklets = new Set<string>();
+  // Track worklets currently being loaded to avoid race conditions
+  private readonly loadingWorklets = new Map<string, Promise<void>>();
 
   constructor(context?: AudioContext, cache?: ICache) {
     this.context = context || new AudioContext();
@@ -151,23 +155,52 @@ export class Cacophony {
     if (!audioWorklet || typeof AudioWorkletNode === "undefined") {
       throw new Error("AudioWorklet not supported");
     }
-    try {
+
+    // Check if worklet is already loaded
+    if (this.loadedWorklets.has(workletName)) {
       return new AudioWorkletNode(this.context, workletName);
+    }
+
+    // Check if worklet is currently being loaded (avoid race conditions)
+    const loadingPromise = this.loadingWorklets.get(workletName);
+    if (loadingPromise) {
+      await loadingPromise;
+      return new AudioWorkletNode(this.context, workletName);
+    }
+
+    // Try to create the node first (in case it's already loaded but not tracked)
+    try {
+      const node = new AudioWorkletNode(this.context, workletName);
+      this.loadedWorklets.add(workletName);
+      return node;
     } catch (err) {
-      console.error(err);
-      console.log("Loading worklet from url", url);
+      // Expected error - worklet not loaded yet, proceed to load it
+      // Don't log this error as it's expected behavior
+    }
+
+    // Load the worklet module
+    const loadPromise = (async () => {
       try {
         await audioWorklet.addModule(url, {
           credentials: "same-origin",
           ...(signal && { signal }),
         });
+        this.loadedWorklets.add(workletName);
       } catch (moduleErr) {
-        console.error(moduleErr);
+        console.error(
+          `Failed to load worklet "${workletName}" from ${url}:`,
+          moduleErr
+        );
         throw moduleErr; // Preserve original error (including AbortError)
+      } finally {
+        this.loadingWorklets.delete(workletName);
       }
+    })();
 
-      return new AudioWorkletNode(this.context, workletName);
-    }
+    this.loadingWorklets.set(workletName, loadPromise);
+    await loadPromise;
+
+    return new AudioWorkletNode(this.context, workletName);
   }
 
   clearMemoryCache(): void {

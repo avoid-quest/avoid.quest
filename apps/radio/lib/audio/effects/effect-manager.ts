@@ -3,10 +3,9 @@ import type {
   AudioNode,
   BiquadFilterNode,
   Cacophony,
-  ConvolverNode,
+  PannerNode,
   Playback,
   Sound,
-  StereoPannerNode,
 } from "@avoid.quest/cacophony";
 import type {
   BiquadFilterConfig,
@@ -173,12 +172,72 @@ export class EffectManager {
       return;
     }
 
-    const currentNode = this.buildEffectChain(enabledEffects);
-    this.connectToDestination(currentNode);
+    // Check if we have any reverb effects that need async creation
+    const hasReverb = enabledEffects.some(
+      (e) => e.config.type === "reverb" && !e.node
+    );
+
+    if (hasReverb) {
+      // Handle async reverb creation
+      this.buildEffectChainAsync(enabledEffects)
+        .then((currentNode) => {
+          this.connectToDestination(currentNode);
+        })
+        .catch((error) => {
+          console.error("Failed to build effect chain:", error);
+        });
+    } else {
+      const currentNode = this.buildEffectChain(enabledEffects);
+      this.connectToDestination(currentNode);
+    }
   }
 
   /**
    * Build the effect chain and return the last node
+   */
+  private async buildEffectChainAsync(
+    enabledEffects: EffectInstance[]
+  ): Promise<AudioNode> {
+    if (!this.inputNode) {
+      throw new Error("Input node not set");
+    }
+    let currentNode: AudioNode = this.inputNode;
+
+    for (const effect of enabledEffects) {
+      // Create or get the effect node
+      if (!effect.node) {
+        await this.ensureEffectNode(effect);
+      }
+
+      if (!effect.node) {
+        continue;
+      }
+
+      currentNode = this.connectEffect(effect, currentNode);
+    }
+
+    return currentNode;
+  }
+
+  /**
+   * Ensure an effect node exists, creating it if necessary
+   */
+  private async ensureEffectNode(effect: EffectInstance): Promise<void> {
+    if (effect.config.type === "reverb") {
+      const newNode = await this.createEffectNodeAsync(effect.config);
+      if (newNode) {
+        effect.node = newNode;
+      }
+    } else {
+      const newNode = this.createEffectNode(effect.config);
+      if (newNode) {
+        effect.node = newNode;
+      }
+    }
+  }
+
+  /**
+   * Build the effect chain and return the last node (synchronous version)
    */
   private buildEffectChain(enabledEffects: EffectInstance[]): AudioNode {
     if (!this.inputNode) {
@@ -189,6 +248,10 @@ export class EffectManager {
     for (const effect of enabledEffects) {
       // Create or get the effect node
       if (!effect.node) {
+        if (effect.config.type === "reverb") {
+          // Reverb is async, will be handled separately
+          continue;
+        }
         const newNode = this.createEffectNode(effect.config);
         if (newNode) {
           effect.node = newNode;
@@ -212,7 +275,15 @@ export class EffectManager {
     effect: EffectInstance,
     currentNode: AudioNode
   ): AudioNode {
-    // Handle effects that need wet/dry routing (reverb, delay)
+    // Handle reverb (Dattorro reverb handles wet/dry internally)
+    if (effect.config.type === "reverb") {
+      const mergeNode = this.cacophony.context.createGain();
+      mergeNode.gain.value = 1.0;
+      this.connectReverbEffect(effect, currentNode, mergeNode);
+      return mergeNode as unknown as AudioNode;
+    }
+
+    // Handle effects that need wet/dry routing (delay)
     if (this.needsWetDryRouting(effect.config)) {
       // Create a merge node to combine wet and dry signals
       const mergeNode = this.cacophony.context.createGain();
@@ -249,6 +320,99 @@ export class EffectManager {
   /**
    * Create an effect node from config
    */
+  private async createEffectNodeAsync(
+    config: EffectConfig
+  ): Promise<EffectNode | null> {
+    try {
+      if (config.type === "reverb") {
+        // Use API route to serve the bundle from node_modules
+        // This allows us to access the file from @avoid.quest/cacophony package
+        // The API route handles cache control based on environment
+        const workletUrl = "/api/worklets/dattorro-reverb-bundle.js";
+
+        try {
+          const reverbNode = await this.cacophony.createWorkletNode(
+            "dattorro-reverb",
+            workletUrl
+          );
+
+          // Initialize parameters with default values from config
+          if (reverbNode.parameters) {
+            const reverbConfig = config as ReverbConfig;
+            const params = reverbNode.parameters;
+
+            const initParam = (name: string, value: number) => {
+              try {
+                let param: AudioParam | undefined;
+                if (typeof params.get === "function") {
+                  param = params.get(name) as AudioParam | undefined;
+                } else {
+                  param = (params as unknown as Record<string, AudioParam>)[
+                    name
+                  ];
+                }
+                if (param) {
+                  // Use setValueAtTime for proper initialization
+                  const now = this.cacophony.context.currentTime;
+                  param.cancelScheduledValues(now);
+                  param.setValueAtTime(value, now);
+                } else {
+                  console.warn(
+                    `Reverb parameter "${name}" not found during initialization`
+                  );
+                }
+              } catch (error) {
+                console.warn(
+                  `Failed to initialize parameter "${name}":`,
+                  error
+                );
+              }
+            };
+
+            // Set initial parameter values
+            initParam("preDelay", reverbConfig.preDelay);
+            initParam("bandwidth", reverbConfig.bandwidth);
+            initParam("inputDiffusion1", reverbConfig.inputDiffusion1);
+            initParam("inputDiffusion2", reverbConfig.inputDiffusion2);
+            initParam("decay", reverbConfig.decay);
+            initParam("decayDiffusion1", reverbConfig.decayDiffusion1);
+            initParam("decayDiffusion2", reverbConfig.decayDiffusion2);
+            initParam("damping", reverbConfig.damping);
+            initParam("excursionRate", reverbConfig.excursionRate);
+            initParam("excursionDepth", reverbConfig.excursionDepth);
+            initParam("wet", reverbConfig.wet);
+            initParam("dry", reverbConfig.dry);
+          } else {
+            console.warn("Reverb node parameters not available after creation");
+          }
+
+          return reverbNode as unknown as globalThis.AudioWorkletNode;
+        } catch (workletError) {
+          console.error("Failed to create reverb worklet node:", workletError);
+          // Check if it's a NotSupportedError
+          if (
+            workletError instanceof Error &&
+            (workletError.name === "NotSupportedError" ||
+              workletError.message.includes("not supported"))
+          ) {
+            console.error(
+              "AudioWorklet is not supported in this browser or the worklet failed to load. URL:",
+              workletUrl
+            );
+          }
+          throw workletError;
+        }
+      }
+      return null;
+    } catch (error) {
+      console.error("Failed to create reverb node:", error);
+      return null;
+    }
+  }
+
+  /**
+   * Create an effect node from config (synchronous for non-worklet effects)
+   */
   private createEffectNode(config: EffectConfig): EffectNode | null {
     const context = this.cacophony.context;
 
@@ -266,16 +430,8 @@ export class EffectManager {
         }
 
         case "reverb": {
-          const reverbConfig = config as ReverbConfig;
-          const reverb = context.createConvolver();
-          const impulseResponse = this.generateImpulseResponse(
-            context,
-            reverbConfig.roomSize,
-            reverbConfig.decayTime
-          );
-          reverb.buffer = impulseResponse;
-          reverb.normalize = false;
-          return reverb as ConvolverNode;
+          // Reverb is async, handled separately
+          return null;
         }
 
         case "delay": {
@@ -306,9 +462,23 @@ export class EffectManager {
 
         case "panner": {
           const pannerConfig = config as PannerConfig;
-          const panner = context.createStereoPanner();
-          panner.pan.value = pannerConfig.pan;
-          return panner as StereoPannerNode;
+          const panner = this.cacophony.createPanner({
+            coneInnerAngle: pannerConfig.coneInnerAngle,
+            coneOuterAngle: pannerConfig.coneOuterAngle,
+            coneOuterGain: pannerConfig.coneOuterGain,
+            distanceModel: pannerConfig.distanceModel,
+            maxDistance: pannerConfig.maxDistance,
+            refDistance: pannerConfig.refDistance,
+            rolloffFactor: pannerConfig.rolloffFactor,
+            panningModel: pannerConfig.panningModel,
+            positionX: pannerConfig.positionX,
+            positionY: pannerConfig.positionY,
+            positionZ: pannerConfig.positionZ,
+            orientationX: pannerConfig.orientationX,
+            orientationY: pannerConfig.orientationY,
+            orientationZ: pannerConfig.orientationZ,
+          });
+          return panner as unknown as PannerNode;
         }
 
         default:
@@ -340,11 +510,39 @@ export class EffectManager {
 
     // If effect is being enabled but has no node, create it
     if (!effect.node && isEnabled) {
-      const newNode = this.createEffectNode(effect.config);
-      if (newNode) {
-        effect.node = newNode;
+      if (effect.config.type === "reverb") {
+        // Handle async reverb creation
+        this.createEffectNodeAsync(effect.config)
+          .then((newNode) => {
+            if (newNode) {
+              effect.node = newNode;
+              this.rebuildChain();
+            } else {
+              // If node creation failed, disable the effect
+              console.warn(
+                "Reverb node creation returned null, disabling effect"
+              );
+              effect.config.enabled = false;
+            }
+          })
+          .catch((error) => {
+            console.error("Failed to create reverb node:", error);
+            // Disable the effect if creation fails
+            effect.config.enabled = false;
+          });
+      } else {
+        const newNode = this.createEffectNode(effect.config);
+        if (newNode) {
+          effect.node = newNode;
+        } else {
+          // If node creation failed, disable the effect
+          console.warn(
+            `Effect node creation returned null for ${effect.config.type}, disabling effect`
+          );
+          effect.config.enabled = false;
+        }
+        this.rebuildChain();
       }
-      this.rebuildChain();
       return;
     }
 
@@ -377,7 +575,7 @@ export class EffectManager {
           this.updateBiquadFilter(effect, now, smoothTime);
           break;
         case "reverb":
-          this.updateReverb(effect, context, now, smoothTime);
+          this.updateReverb(effect, context, now);
           break;
         case "delay":
           this.updateDelay(effect, now, smoothTime);
@@ -427,34 +625,61 @@ export class EffectManager {
 
   private updateReverb(
     effect: EffectInstance,
-    context: AudioContext,
-    now: number,
-    smoothTime: number
+    _context: AudioContext,
+    now: number
   ): void {
     const reverbConfig = effect.config as ReverbConfig;
-    const reverb = effect.node as ConvolverNode;
-    // Regenerate impulse response if room size or decay changed
-    const oldConfig = this.effects.find((e) => e.config.id === effect.config.id)
-      ?.config as ReverbConfig | undefined;
-    if (
-      oldConfig &&
-      (oldConfig.roomSize !== reverbConfig.roomSize ||
-        oldConfig.decayTime !== reverbConfig.decayTime)
-    ) {
-      const impulseResponse = this.generateImpulseResponse(
-        context,
-        reverbConfig.roomSize,
-        reverbConfig.decayTime
-      );
-      reverb.buffer = impulseResponse;
+    const reverb = effect.node as globalThis.AudioWorkletNode;
+    if (!reverb?.parameters) {
+      console.warn("Reverb node or parameters not available");
+      return;
     }
-    // Update wet/dry gains
-    if (effect.wetGain && effect.dryGain) {
-      this.updateWetDryGains(effect, reverbConfig.wet, reverbConfig.dry, {
-        now,
-        smoothTime,
-      });
-    }
+
+    // Update all Dattorro reverb parameters
+    const params = reverb.parameters;
+
+    // Helper to safely get and update a parameter
+    const updateParam = (name: string, value: number) => {
+      try {
+        // Check if parameters.get exists (for AudioParamMap)
+        let param: AudioParam | undefined;
+        if (typeof params.get === "function") {
+          param = params.get(name);
+        } else {
+          // Fallback for plain object access
+          param = (params as unknown as Record<string, AudioParam>)[name];
+        }
+
+        if (param) {
+          // For reverb parameters, use immediate updates for better responsiveness
+          // The worklet reads k-rate parameters once per render quantum, so immediate updates work better
+          param.cancelScheduledValues(now);
+          param.setValueAtTime(value, now);
+        } else {
+          console.warn(
+            `Reverb parameter "${name}" not found. Available parameters:`,
+            typeof params.get === "function"
+              ? Array.from(params.keys?.() ?? [])
+              : Object.keys(params)
+          );
+        }
+      } catch (error) {
+        console.error(`Error updating reverb parameter "${name}":`, error);
+      }
+    };
+
+    updateParam("preDelay", reverbConfig.preDelay);
+    updateParam("bandwidth", reverbConfig.bandwidth);
+    updateParam("inputDiffusion1", reverbConfig.inputDiffusion1);
+    updateParam("inputDiffusion2", reverbConfig.inputDiffusion2);
+    updateParam("decay", reverbConfig.decay);
+    updateParam("decayDiffusion1", reverbConfig.decayDiffusion1);
+    updateParam("decayDiffusion2", reverbConfig.decayDiffusion2);
+    updateParam("damping", reverbConfig.damping);
+    updateParam("excursionRate", reverbConfig.excursionRate);
+    updateParam("excursionDepth", reverbConfig.excursionDepth);
+    updateParam("wet", reverbConfig.wet);
+    updateParam("dry", reverbConfig.dry);
   }
 
   private updateDelay(
@@ -543,10 +768,34 @@ export class EffectManager {
     smoothTime: number
   ): void {
     const pannerConfig = effect.config as PannerConfig;
-    const panner = effect.node as StereoPannerNode;
-    panner.pan.cancelScheduledValues(now);
-    panner.pan.setValueAtTime(panner.pan.value, now);
-    panner.pan.linearRampToValueAtTime(pannerConfig.pan, now + smoothTime);
+    const panner = effect.node as PannerNode;
+    if (!panner) {
+      return;
+    }
+
+    // Update panner properties (non-audio-param properties)
+    panner.coneInnerAngle = pannerConfig.coneInnerAngle;
+    panner.coneOuterAngle = pannerConfig.coneOuterAngle;
+    panner.coneOuterGain = pannerConfig.coneOuterGain;
+    panner.distanceModel = pannerConfig.distanceModel;
+    panner.maxDistance = pannerConfig.maxDistance;
+    panner.refDistance = pannerConfig.refDistance;
+    panner.rolloffFactor = pannerConfig.rolloffFactor;
+    panner.panningModel = pannerConfig.panningModel;
+
+    // Update audio-param properties with smooth transitions
+    const updateParam = (param: PannerNode["positionX"], value: number) => {
+      param.cancelScheduledValues(now);
+      param.setValueAtTime(param.value, now);
+      param.linearRampToValueAtTime(value, now + smoothTime);
+    };
+
+    updateParam(panner.positionX, pannerConfig.positionX);
+    updateParam(panner.positionY, pannerConfig.positionY);
+    updateParam(panner.positionZ, pannerConfig.positionZ);
+    updateParam(panner.orientationX, pannerConfig.orientationX);
+    updateParam(panner.orientationY, pannerConfig.orientationY);
+    updateParam(panner.orientationZ, pannerConfig.orientationZ);
   }
 
   private updateWetDryGains(
@@ -574,7 +823,8 @@ export class EffectManager {
    * Check if an effect needs wet/dry routing
    */
   private needsWetDryRouting(config: EffectConfig): boolean {
-    return config.type === "reverb" || config.type === "delay";
+    // Dattorro reverb handles wet/dry internally, so we don't need separate routing
+    return config.type === "delay";
   }
 
   /**
@@ -600,11 +850,7 @@ export class EffectManager {
     }
 
     // Set gain values
-    if (effect.config.type === "reverb") {
-      const config = effect.config as ReverbConfig;
-      effect.wetGain.gain.value = config.wet;
-      effect.dryGain.gain.value = config.dry;
-    } else if (effect.config.type === "delay") {
+    if (effect.config.type === "delay") {
       const config = effect.config as DelayConfig;
       effect.wetGain.gain.value = config.wet;
       effect.dryGain.gain.value = config.dry;
@@ -614,44 +860,46 @@ export class EffectManager {
         effect.feedbackGain = context.createGain();
       }
       effect.feedbackGain.gain.value = config.feedback;
-      effect.node.connect(effect.feedbackGain);
-      effect.feedbackGain.connect(effect.node);
+      (
+        effect.node as unknown as {
+          connect(destination: AudioNode | { value: number }): void;
+        }
+      ).connect(effect.feedbackGain as unknown as AudioNode);
+      effect.feedbackGain.connect(effect.node as unknown as AudioNode);
     }
 
     // Route dry signal: input → dryGain → output
-    inputNode.connect(effect.dryGain);
+    inputNode.connect(effect.dryGain as unknown as AudioNode);
     effect.dryGain.connect(outputNode);
 
     // Route wet signal: input → effect → wetGain → output
-    inputNode.connect(effect.node);
-    effect.node.connect(effect.wetGain);
+    inputNode.connect(effect.node as unknown as AudioNode);
+    (
+      effect.node as unknown as {
+        connect(destination: AudioNode | { value: number }): void;
+      }
+    ).connect(effect.wetGain as unknown as AudioNode);
     effect.wetGain.connect(outputNode);
   }
 
   /**
-   * Generate impulse response for reverb
+   * Connect reverb effect (Dattorro reverb handles wet/dry internally)
    */
-  private generateImpulseResponse(
-    context: AudioContext,
-    roomSize: number,
-    decayTime: number
-  ): import("@avoid.quest/cacophony").AudioBuffer {
-    const sampleRate = context.sampleRate;
-    const length = Math.floor(decayTime * sampleRate);
-    const impulse = context.createBuffer(2, length, sampleRate);
-    const leftChannel = impulse.getChannelData(0);
-    const rightChannel = impulse.getChannelData(1);
-
-    const decaySamples = decayTime * sampleRate;
-    for (let i = 0; i < length; i++) {
-      const decay = Math.exp((-i / decaySamples) * (1 + roomSize));
-      const noise = (Math.random() * 2 - 1) * 0.1;
-      const value = decay * (1 + noise) * roomSize;
-      leftChannel[i] = value;
-      rightChannel[i] = value * (0.9 + Math.random() * 0.2);
+  private connectReverbEffect(
+    effect: EffectInstance,
+    inputNode: AudioNode,
+    outputNode: AudioNode
+  ): void {
+    if (!effect.node) {
+      return;
     }
-
-    return impulse;
+    // Dattorro reverb already handles wet/dry mixing internally
+    inputNode.connect(effect.node as unknown as AudioNode);
+    (
+      effect.node as unknown as {
+        connect(destination: AudioNode | { value: number }): void;
+      }
+    ).connect(outputNode);
   }
 
   /**

@@ -31,10 +31,13 @@ declare function registerProcessor(
 ): void;
 
 type AudioParamMap = {
+  get(name: string): AudioParam | undefined;
+  has(name: string): boolean;
   forEach(
     callbackfn: (value: AudioParam, key: string, parent: AudioParamMap) => void,
     thisArg?: unknown
   ): void;
+  readonly size: number;
 };
 
 // sample rate is 44100 Hz, buffer size is 128 frames

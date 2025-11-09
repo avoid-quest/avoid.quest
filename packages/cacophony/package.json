@@ -1,6 +1,6 @@
 {
   "name": "@avoid.quest/cacophony",
-  "version": "0.17.2",
+  "version": "1.0.0",
   "description": "Typescript audio library with caching",
   "license": "MIT",
   "type": "module",

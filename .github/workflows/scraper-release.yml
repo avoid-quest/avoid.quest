@@ -23,13 +23,42 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Check for relevant changes
+        id: check_changes
+        run: |
+          # For push events, compare with previous commit
+          BASE_SHA="${{ github.event.before }}"
+          HEAD_SHA="${{ github.sha }}"
+
+          # If BASE_SHA is empty or invalid, default to HEAD~1
+          if [ -z "$BASE_SHA" ] || [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            BASE_SHA="HEAD~1"
+          fi
+
+          CHANGED_FILES=$(git diff --name-only $BASE_SHA $HEAD_SHA 2>/dev/null || echo "")
+
+          SCRAPER_CHANGED=$(echo "$CHANGED_FILES" | grep -E "^packages/scraper/" || echo "")
+          CHANGESET_CHANGED=$(echo "$CHANGED_FILES" | grep -E "^\.changeset/" || echo "")
+
+          if [ -z "$SCRAPER_CHANGED" ] && [ -z "$CHANGESET_CHANGED" ]; then
+            echo "No relevant changes found in packages/scraper/ or .changeset/"
+            echo "should_run=false" >> $GITHUB_OUTPUT
+            exit 0
+          else
+            echo "Relevant changes detected"
+            echo "should_run=true" >> $GITHUB_OUTPUT
+          fi
+
       - uses: oven-sh/setup-bun@v2
+        if: steps.check_changes.outputs.should_run == 'true'
         with:
           bun-version: latest
 
       - run: bun install
+        if: steps.check_changes.outputs.should_run == 'true'
 
       - name: Create Release Pull Request or Build and Release
+        if: steps.check_changes.outputs.should_run == 'true'
         id: changesets
         uses: changesets/action@v1
         with:
@@ -40,7 +69,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Check if Version Changed
-        if: steps.changesets.outputs.hasChangesets == 'false'
+        if: steps.check_changes.outputs.should_run == 'true' && steps.changesets.outputs.hasChangesets == 'false'
         id: version_check
         run: |
           set -e
@@ -61,13 +90,13 @@ jobs:
           fi
 
       - name: Create Git Tags
-        if: steps.changesets.outputs.hasChangesets == 'false' && steps.version_check.outputs.version_changed == 'true'
+        if: steps.check_changes.outputs.should_run == 'true' && steps.changesets.outputs.hasChangesets == 'false' && steps.version_check.outputs.version_changed == 'true'
         run: |
           # Changesets reads from package.json and creates tags based on current version
           bun changeset tag
 
       - name: Get Version and Create Tag Name
-        if: steps.changesets.outputs.hasChangesets == 'false' && steps.version_check.outputs.version_changed == 'true'
+        if: steps.check_changes.outputs.should_run == 'true' && steps.changesets.outputs.hasChangesets == 'false' && steps.version_check.outputs.version_changed == 'true'
         id: tag
         run: |
           # Read from package.json as single source of truth
@@ -78,16 +107,16 @@ jobs:
           echo "Package: $PKG_NAME, Version: $VERSION, Tag: $TAG_NAME"
 
       - name: Build All Platforms
-        if: steps.changesets.outputs.hasChangesets == 'false' && steps.version_check.outputs.version_changed == 'true'
+        if: steps.check_changes.outputs.should_run == 'true' && steps.changesets.outputs.hasChangesets == 'false' && steps.version_check.outputs.version_changed == 'true'
         working-directory: packages/scraper
         run: bun run build:all
 
       - name: Push Tags
-        if: steps.changesets.outputs.hasChangesets == 'false' && steps.version_check.outputs.version_changed == 'true'
+        if: steps.check_changes.outputs.should_run == 'true' && steps.changesets.outputs.hasChangesets == 'false' && steps.version_check.outputs.version_changed == 'true'
         run: git push --follow-tags
 
       - uses: softprops/action-gh-release@v2
-        if: steps.changesets.outputs.hasChangesets == 'false' && steps.version_check.outputs.version_changed == 'true'
+        if: steps.check_changes.outputs.should_run == 'true' && steps.changesets.outputs.hasChangesets == 'false' && steps.version_check.outputs.version_changed == 'true'
         with:
           tag_name: ${{ steps.tag.outputs.tag }}
           name: Scraper v${{ steps.version_check.outputs.version }}

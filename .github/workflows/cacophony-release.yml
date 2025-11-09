@@ -94,8 +94,11 @@ jobs:
 
       - name: Publish to npm
         if: steps.version_check.outputs.version_changed == 'true'
-        run: bunx changeset publish
+        uses: changesets/action@v1
+        with:
+          publish: bun run release
         env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Push Tags

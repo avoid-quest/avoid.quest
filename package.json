@@ -27,7 +27,7 @@
     "cleanup": "rm -rf bun.lock .turbo node_modules apps/instarip/node_modules apps/instarip/.next apps/web/node_modules apps/radio/node_modules apps/radio/.next packages/ui/node_modules packages/backend/node_modules packages/scraper/node_modules packages/cacophony/node_modules",
     "changeset": "changeset",
     "version-packages": "changeset version",
-    "release": "bun run build -F @avoid.quest/cacophony && changeset publish"
+    "release": "bun run build -F @avoid.quest/cacophony && bunx changeset publish"
   },
   "dependencies": {
     "dotenv": "^17.2.3",

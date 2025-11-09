@@ -16,12 +16,12 @@
     "cf-typegen": "wrangler types --env-interface CloudflareEnv ./cloudflare-env.d.ts"
   },
   "dependencies": {
+    "@avoid.quest/cacophony": "^0.18.0",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@hookform/resolvers": "^5.2.2",
     "@opennextjs/cloudflare": "^1.11.1",
-    "@avoid.quest/cacophony": "^0.18.0",
     "@workspace/typescript-config": "workspace:*",
     "@workspace/ui": "workspace:*",
     "babel-plugin-react-compiler": "^1.0.0",
@@ -40,6 +40,7 @@
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",
     "typescript": "^5.9.3",
+    "@cloudflare/workers-types": "^4.20251109.0",
     "wrangler": "^4.46.0"
   },
   "peerDependencies": {

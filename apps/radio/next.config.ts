@@ -4,7 +4,7 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   typedRoutes: true,
   reactCompiler: true,
-  transpilePackages: ["@workspace/ui", "@avoid.quest/cacophony"],
+  transpilePackages: ["@workspace/ui"],
   images: {
     remotePatterns: [
       {

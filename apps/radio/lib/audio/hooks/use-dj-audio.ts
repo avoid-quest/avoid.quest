@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FilterConfig } from "@/components/audio/filter-control";
-import type { ReverbConfig } from "@/components/audio/reverb-control";
 import type { Radio } from "../../types";
 import { AudioManager } from "../audio-manager";
 import { createDefaultEffectConfig } from "../effects/registry";
@@ -41,20 +40,6 @@ export function useDjAudio() {
     Q: 1,
     gain: 0,
     enabled: false,
-  });
-  const [leftReverbConfig, setLeftReverbConfig] = useState<ReverbConfig>({
-    enabled: false,
-    roomSize: 0.05,
-    wet: 0.3,
-    dry: 0.7,
-    decayTime: 2.0,
-  });
-  const [rightReverbConfig, setRightReverbConfig] = useState<ReverbConfig>({
-    enabled: false,
-    roomSize: 0.05,
-    wet: 0.3,
-    dry: 0.7,
-    decayTime: 2.0,
   });
 
   // New unified effect system
@@ -318,26 +303,6 @@ export function useDjAudio() {
     [audioManager]
   );
 
-  // Reverb controls
-  const updateLeftReverbCallback = useCallback(
-    (config: ReverbConfig) => {
-      setLeftReverbConfig(config);
-      if (leftSoundIdRef.current) {
-        audioManager.updateReverb(leftSoundIdRef.current, config);
-      }
-    },
-    [audioManager]
-  );
-
-  const updateRightReverbCallback = useCallback(
-    (config: ReverbConfig) => {
-      setRightReverbConfig(config);
-      if (rightSoundIdRef.current) {
-        audioManager.updateReverb(rightSoundIdRef.current, config);
-      }
-    },
-    [audioManager]
-  );
 
   // Cleanup on unmount
   useEffect(() => {
@@ -536,8 +501,6 @@ export function useDjAudio() {
     // Legacy support
     leftFilterConfig,
     rightFilterConfig,
-    leftReverbConfig,
-    rightReverbConfig,
     // New unified effect system
     leftEffects,
     rightEffects,
@@ -555,8 +518,6 @@ export function useDjAudio() {
     // Legacy support
     updateLeftFilter: updateLeftFilterCallback,
     updateRightFilter: updateRightFilterCallback,
-    updateLeftReverb: updateLeftReverbCallback,
-    updateRightReverb: updateRightReverbCallback,
     // New unified effect system
     addLeftEffect,
     addRightEffect,

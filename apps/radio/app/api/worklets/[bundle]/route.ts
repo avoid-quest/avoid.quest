@@ -6,7 +6,10 @@ type RouteParams = {
   params: Promise<{ bundle: string }>;
 };
 
-const ALLOWED_BUNDLES = ["dattorro-reverb-bundle.js"] as const;
+const ALLOWED_BUNDLES = [
+  "dattorro-reverb-bundle.js",
+  "phase-vocoder-bundle.js",
+] as const;
 
 function isBundleAllowed(bundle: string): boolean {
   return ALLOWED_BUNDLES.includes(bundle as (typeof ALLOWED_BUNDLES)[number]);

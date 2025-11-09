@@ -11,6 +11,7 @@ export type WaveShaperNode = ReturnType<AudioContext["createWaveShaper"]>;
 export type DynamicsCompressorNode = ReturnType<
   AudioContext["createDynamicsCompressor"]
 >;
+export type ConvolverNode = ReturnType<AudioContext["createConvolver"]>;
 // AudioWorkletNode is a global Web Audio API type
 
 export type FilterType =
@@ -25,7 +26,9 @@ export type FilterType =
 
 export type EffectType =
   | "biquadFilter"
-  | "reverb"
+  | "plateReverb"
+  | "standardReverb"
+  | "phaseVocoder"
   | "delay"
   | "distortion"
   | "compressor"
@@ -37,6 +40,7 @@ export type EffectNode =
   | DelayNode
   | WaveShaperNode
   | DynamicsCompressorNode
+  | ConvolverNode
   | PannerNode;
 
 export type BaseEffectConfig = {
@@ -54,8 +58,8 @@ export interface BiquadFilterConfig extends BaseEffectConfig {
   gain: number;
 }
 
-export interface ReverbConfig extends BaseEffectConfig {
-  type: "reverb";
+export interface PlateReverbConfig extends BaseEffectConfig {
+  type: "plateReverb";
   preDelay: number;
   bandwidth: number;
   inputDiffusion1: number;
@@ -68,6 +72,19 @@ export interface ReverbConfig extends BaseEffectConfig {
   excursionDepth: number;
   wet: number;
   dry: number;
+}
+
+export interface StandardReverbConfig extends BaseEffectConfig {
+  type: "standardReverb";
+  roomSize: number;
+  decayTime: number;
+  wet: number;
+  dry: number;
+}
+
+export interface PhaseVocoderConfig extends BaseEffectConfig {
+  type: "phaseVocoder";
+  pitchFactor: number;
 }
 
 export interface DelayConfig extends BaseEffectConfig {
@@ -113,7 +130,9 @@ export interface PannerConfig extends BaseEffectConfig {
 
 export type EffectConfig =
   | BiquadFilterConfig
-  | ReverbConfig
+  | PlateReverbConfig
+  | StandardReverbConfig
+  | PhaseVocoderConfig
   | DelayConfig
   | DistortionConfig
   | CompressorConfig

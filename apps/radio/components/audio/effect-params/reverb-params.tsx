@@ -1,18 +1,21 @@
 "use client";
 
 import { getEffectMetadata } from "@/lib/audio/effects/registry";
-import type { EffectConfig, ReverbConfig } from "@/lib/audio/effects/types";
+import type {
+  EffectConfig,
+  PlateReverbConfig,
+} from "@/lib/audio/effects/types";
 import { ParamGroup, ParamSlider } from "./";
 
-type ReverbParamsProps = {
-  effect: ReverbConfig;
+type PlateReverbParamsProps = {
+  effect: PlateReverbConfig;
   isInitialized: boolean;
   onUpdate: (config: Partial<EffectConfig>) => void;
 };
 
 type SliderConfig = {
   formatKey: string;
-  key: keyof ReverbConfig;
+  key: keyof PlateReverbConfig;
   label: string;
   max: number;
   min: number;
@@ -22,7 +25,7 @@ type SliderConfig = {
 type CreateSliderOptions = {
   defaultConfig: Omit<EffectConfig, "id" | "order"> | undefined;
   disabled: boolean;
-  effect: ReverbConfig;
+  effect: PlateReverbConfig;
   onUpdate: (config: Partial<EffectConfig>) => void;
   sliderConfig: SliderConfig;
 };
@@ -63,7 +66,7 @@ function PreDelayBandwidthGroup({
   ranges,
   defaultConfig,
 }: {
-  effect: ReverbConfig;
+  effect: PlateReverbConfig;
   disabled: boolean;
   onUpdate: (config: Partial<EffectConfig>) => void;
   ranges: Record<string, { max?: number; min?: number; step?: number }>;
@@ -110,7 +113,7 @@ function InputDiffusionGroup({
   ranges,
   defaultConfig,
 }: {
-  effect: ReverbConfig;
+  effect: PlateReverbConfig;
   disabled: boolean;
   onUpdate: (config: Partial<EffectConfig>) => void;
   ranges: Record<string, { max?: number; min?: number; step?: number }>;
@@ -157,7 +160,7 @@ function DecayGroup({
   ranges,
   defaultConfig,
 }: {
-  effect: ReverbConfig;
+  effect: PlateReverbConfig;
   disabled: boolean;
   onUpdate: (config: Partial<EffectConfig>) => void;
   ranges: Record<string, { max?: number; min?: number; step?: number }>;
@@ -212,7 +215,7 @@ function ModulationGroup({
   ranges,
   defaultConfig,
 }: {
-  effect: ReverbConfig;
+  effect: PlateReverbConfig;
   disabled: boolean;
   onUpdate: (config: Partial<EffectConfig>) => void;
   ranges: Record<string, { max?: number; min?: number; step?: number }>;
@@ -267,7 +270,7 @@ function MixGroup({
   ranges,
   defaultConfig,
 }: {
-  effect: ReverbConfig;
+  effect: PlateReverbConfig;
   disabled: boolean;
   onUpdate: (config: Partial<EffectConfig>) => void;
   ranges: Record<string, { max?: number; min?: number; step?: number }>;
@@ -307,12 +310,12 @@ function MixGroup({
   );
 }
 
-export function ReverbParams({
+export function PlateReverbParams({
   effect,
   isInitialized,
   onUpdate,
-}: ReverbParamsProps) {
-  const metadata = getEffectMetadata("reverb");
+}: PlateReverbParamsProps) {
+  const metadata = getEffectMetadata("plateReverb");
   const ranges = metadata?.parameterRanges ?? {};
   const defaultConfig = metadata?.defaultConfig;
   const disabled = !(isInitialized && effect.enabled);

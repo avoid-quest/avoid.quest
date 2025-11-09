@@ -82,6 +82,7 @@ export class Cacophony {
   globalGainNode: GainNode;
   listener: IAudioListener;
   private prevVolume = 1;
+  private _muted = false;
   private readonly eventEmitter: TypedEventEmitter<CacophonyEvents> =
     new TypedEventEmitter<CacophonyEvents>();
   private readonly cache: ICache;
@@ -470,7 +471,7 @@ export class Cacophony {
   }
 
   set volume(volume: number) {
-    if (this.muted) {
+    if (this._muted) {
       this.prevVolume = volume;
       return;
     }
@@ -478,24 +479,26 @@ export class Cacophony {
   }
 
   mute() {
-    if (!this.muted) {
+    if (!this._muted) {
       this.prevVolume = this.globalGainNode.gain.value;
       this.setGlobalVolume(0);
+      this._muted = true;
     }
   }
 
   unmute() {
-    if (this.muted) {
+    if (this._muted) {
       this.setGlobalVolume(this.prevVolume);
+      this._muted = false;
     }
   }
 
   get muted(): boolean {
-    return this.globalGainNode.gain.value === 0;
+    return this._muted;
   }
 
   set muted(muted: boolean) {
-    if (muted !== this.muted) {
+    if (muted !== this._muted) {
       if (muted) {
         this.mute();
       } else {

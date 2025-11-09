@@ -128,6 +128,24 @@ describe("Cacophony core", () => {
       expect(cacophony.volume).toBe(0.6);
       expect(cacophony.globalGainNode.gain.value).toBe(0.6);
     });
+
+    it("allows setting volume to 0 and back without getting stuck", () => {
+      cacophony.volume = 0.5;
+      expect(cacophony.volume).toBe(0.5);
+      expect(cacophony.muted).toBe(false);
+
+      // Set volume to 0 directly (not via mute)
+      cacophony.volume = 0;
+      expect(cacophony.volume).toBe(0);
+      expect(cacophony.globalGainNode.gain.value).toBe(0);
+      expect(cacophony.muted).toBe(false); // Should not be muted
+
+      // Should be able to set volume back to non-zero
+      cacophony.volume = 0.7;
+      expect(cacophony.volume).toBe(0.7);
+      expect(cacophony.globalGainNode.gain.value).toBe(0.7);
+      expect(cacophony.muted).toBe(false);
+    });
   });
 });
 

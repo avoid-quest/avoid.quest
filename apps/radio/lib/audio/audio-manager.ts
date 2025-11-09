@@ -1,18 +1,14 @@
 "use client";
 
 import {
-  type AudioBuffer,
   type AudioContext,
   type AudioNode,
   Cacophony,
-  type ConvolverNode,
-  type GainNode,
   type Playback,
   type Sound,
   SoundType,
 } from "@avoid.quest/cacophony";
 import type { FilterConfig } from "@/components/audio/filter-control";
-import type { ReverbConfig } from "@/components/audio/reverb-control";
 import type { Radio } from "../types";
 import { EffectManager } from "./effects/effect-manager";
 import type { EffectConfig } from "./effects/types";
@@ -40,12 +36,7 @@ export class AudioManager {
     new Map();
   // Legacy support - will be removed after migration
   private readonly filters: Map<string, BiquadFilterNode> = new Map();
-  private readonly reverbs: Map<string, ConvolverNode> = new Map();
-  private readonly reverbGains: Map<string, { wet: GainNode; dry: GainNode }> =
-    new Map();
-  private readonly reverbConfigs: Map<string, ReverbConfig> = new Map();
-  private readonly defaultDestinations: Map<string, AudioNode> = new Map();
-  // New unified effect system
+  // Unified effect system
   private readonly effectManagers: Map<string, EffectManager> = new Map();
 
   private constructor() {
@@ -145,11 +136,6 @@ export class AudioManager {
         this.cacophony.globalGainNode as unknown as AudioNode
       );
 
-      // Apply reverb if config exists and is enabled (legacy support)
-      const reverbConfig = this.reverbConfigs.get(soundId);
-      if (reverbConfig?.enabled) {
-        this.applyReverb(soundId, reverbConfig);
-      }
     } else {
       throw new Error(`Failed to play sound with id ${soundId}`);
     }
@@ -261,8 +247,6 @@ export class AudioManager {
     // Remove filter (legacy)
     this.removeFilter(soundId);
 
-    // Remove reverb (legacy)
-    this.removeReverb(soundId);
 
     // Cleanup sound
     const sound = this.sounds.get(soundId);
@@ -291,10 +275,6 @@ export class AudioManager {
     this.playbacks.clear();
     this.listeners.clear();
     this.filters.clear();
-    this.reverbs.clear();
-    this.reverbGains.clear();
-    this.reverbConfigs.clear();
-    this.defaultDestinations.clear();
     this.effectManagers.clear();
   }
 
@@ -504,238 +484,6 @@ export class AudioManager {
     return this.filters.has(soundId);
   }
 
-  /**
-   * Generate an impulse response for reverb
-   */
-  private generateImpulseResponse(
-    context: AudioContext,
-    roomSize: number,
-    decayTime: number
-  ): AudioBuffer {
-    const sampleRate = context.sampleRate;
-    const length = Math.floor(decayTime * sampleRate);
-    const impulse = context.createBuffer(2, length, sampleRate);
-    const leftChannel = impulse.getChannelData(0);
-    const rightChannel = impulse.getChannelData(1);
-
-    // Exponential decay with some randomness for natural reverb
-    const decaySamples = decayTime * sampleRate;
-    for (let i = 0; i < length; i++) {
-      const decay = Math.exp((-i / decaySamples) * (1 + roomSize));
-      const noise = (Math.random() * 2 - 1) * 0.1; // Small random component
-      const value = decay * (1 + noise) * roomSize;
-      leftChannel[i] = value;
-      rightChannel[i] = value * (0.9 + Math.random() * 0.2); // Slight stereo variation
-    }
-
-    return impulse;
-  }
-
-  /**
-   * Apply reverb to a sound
-   */
-  applyReverb(soundId: string, config: ReverbConfig): void {
-    const playback = this.playbacks.get(soundId);
-
-    if (!playback) {
-      console.warn(`Sound ${soundId} not found for reverb application`);
-      return;
-    }
-
-    if (!config.enabled) {
-      // If disabled, just remove any existing reverb
-      if (this.reverbs.has(soundId)) {
-        this.removeReverb(soundId);
-      }
-      return;
-    }
-
-    // Remove existing reverb if any (only if one exists)
-    if (this.reverbs.has(soundId)) {
-      this.removeReverb(soundId);
-    }
-
-    try {
-      const context = this.cacophony.context;
-      const outputNode = playback.outputNode;
-
-      // Generate impulse response
-      const impulseResponse = this.generateImpulseResponse(
-        context,
-        config.roomSize,
-        config.decayTime
-      );
-
-      // Create reverb convolver
-      const reverb = context.createConvolver();
-      reverb.buffer = impulseResponse;
-      reverb.normalize = false;
-
-      // Create wet and dry gain nodes
-      const wetGain = context.createGain();
-      const dryGain = context.createGain();
-
-      wetGain.gain.value = config.wet;
-      dryGain.gain.value = config.dry;
-
-      // Store default destination (globalGainNode from cacophony)
-      const globalGainNode = this.cacophony.globalGainNode;
-      this.defaultDestinations.set(
-        soundId,
-        globalGainNode as unknown as AudioNode
-      );
-
-      // Disconnect from default routing
-      // The outputNode is connected to globalGainNode by default
-      // We need to disconnect it and route through reverb
-      outputNode.disconnect();
-
-      // Route dry signal: outputNode → dryGain → globalGainNode
-      outputNode.connect(dryGain);
-      dryGain.connect(globalGainNode);
-
-      // Route wet signal: outputNode → reverb → wetGain → globalGainNode
-      outputNode.connect(reverb);
-      reverb.connect(wetGain);
-      wetGain.connect(globalGainNode);
-
-      // Store references
-      this.reverbs.set(soundId, reverb);
-      this.reverbGains.set(soundId, { wet: wetGain, dry: dryGain });
-      this.reverbConfigs.set(soundId, config);
-    } catch (error) {
-      console.error("Failed to apply reverb:", error);
-    }
-  }
-
-  /**
-   * Update reverb parameters
-   */
-  updateReverb(soundId: string, config: ReverbConfig): void {
-    const playback = this.playbacks.get(soundId);
-    const oldConfig = this.reverbConfigs.get(soundId);
-
-    // Always store config so it can be applied when playback starts
-    this.reverbConfigs.set(soundId, config);
-
-    if (!playback) {
-      // No playback yet, just store the config for later
-      return;
-    }
-
-    const reverb = this.reverbs.get(soundId);
-    const gains = this.reverbGains.get(soundId);
-
-    if (!reverb) {
-      // If no reverb exists, create a new one (only if enabled)
-      if (config.enabled) {
-        this.applyReverb(soundId, config);
-      }
-      return;
-    }
-    if (!gains) {
-      return;
-    }
-
-    if (!config.enabled) {
-      this.removeReverb(soundId);
-      return;
-    }
-
-    try {
-      const context = this.cacophony.context;
-      const now = context.currentTime;
-      const smoothTime = 0.01; // 10ms smooth transition
-
-      // Check if we need to regenerate impulse response
-      const needsNewIR =
-        oldConfig?.roomSize !== config.roomSize ||
-        oldConfig?.decayTime !== config.decayTime;
-
-      if (needsNewIR) {
-        // Regenerate impulse response
-        const impulseResponse = this.generateImpulseResponse(
-          context,
-          config.roomSize,
-          config.decayTime
-        );
-        reverb.buffer = impulseResponse;
-      }
-
-      // Update wet/dry gains with smooth transitions
-      const wetGain = gains.wet;
-      const dryGain = gains.dry;
-
-      wetGain.gain.cancelScheduledValues(now);
-      wetGain.gain.setValueAtTime(wetGain.gain.value, now);
-      wetGain.gain.linearRampToValueAtTime(config.wet, now + smoothTime);
-
-      dryGain.gain.cancelScheduledValues(now);
-      dryGain.gain.setValueAtTime(dryGain.gain.value, now);
-      dryGain.gain.linearRampToValueAtTime(config.dry, now + smoothTime);
-    } catch (error) {
-      console.error("Failed to update reverb:", error);
-    }
-  }
-
-  /**
-   * Remove reverb from a sound
-   */
-  removeReverb(soundId: string): void {
-    const playback = this.playbacks.get(soundId);
-    const reverb = this.reverbs.get(soundId);
-    const gains = this.reverbGains.get(soundId);
-
-    if (playback && reverb && gains) {
-      try {
-        const outputNode = playback.outputNode;
-        const globalGainNode = this.cacophony.globalGainNode;
-
-        // Disconnect all reverb routing
-        outputNode.disconnect();
-        reverb.disconnect();
-        gains.wet.disconnect();
-        gains.dry.disconnect();
-
-        // Reconnect to default routing (globalGainNode)
-        // This ensures audio continues to play after reverb removal
-        outputNode.connect(globalGainNode);
-      } catch (error) {
-        console.error("Failed to remove reverb:", error);
-        // Try to restore default routing even if there was an error
-        try {
-          const outputNode = playback.outputNode;
-          const globalGainNode = this.cacophony.globalGainNode;
-          outputNode.connect(globalGainNode);
-        } catch (reconnectError) {
-          console.error(
-            "Failed to restore default routing after reverb removal:",
-            reconnectError
-          );
-        }
-      }
-    }
-
-    // Clean up references
-    this.reverbs.delete(soundId);
-    this.reverbGains.delete(soundId);
-    this.defaultDestinations.delete(soundId);
-    // Note: We keep reverbConfigs so reverb can be reapplied when playback starts
-  }
-
-  /**
-   * Get current reverb config for a sound
-   */
-  getReverbConfig(soundId: string): ReverbConfig | undefined {
-    return this.reverbConfigs.get(soundId);
-  }
-
-  /**
-   * Check if a sound has reverb applied
-   */
-  hasReverb(soundId: string): boolean {
-    return this.reverbs.has(soundId);
-  }
 
   /**
    * Add an effect to a sound's effect chain

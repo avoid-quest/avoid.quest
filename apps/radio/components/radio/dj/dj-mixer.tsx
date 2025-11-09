@@ -12,7 +12,6 @@ import { cn } from "@workspace/ui/lib/utils";
 import { Crossfader } from "@/components/audio/crossfader";
 import { EffectChain } from "@/components/audio/effect-chain";
 import type { FilterConfig } from "@/components/audio/filter-control";
-import type { ReverbConfig } from "@/components/audio/reverb-control";
 import { VolumeControl } from "@/components/audio/volume-control";
 import type { EffectConfig } from "@/lib/audio/effects/types";
 
@@ -31,9 +30,7 @@ type DjMixerProps = {
   // Legacy support
   leftFilterConfig: FilterConfig;
   rightFilterConfig: FilterConfig;
-  leftReverbConfig: ReverbConfig;
-  rightReverbConfig: ReverbConfig;
-  // New unified effect system
+  // Unified effect system
   leftEffects: EffectConfig[];
   rightEffects: EffectConfig[];
   onCrossfadeChange: (position: number) => void;
@@ -45,9 +42,7 @@ type DjMixerProps = {
   // Legacy support
   onLeftFilterChange: (config: FilterConfig) => void;
   onRightFilterChange: (config: FilterConfig) => void;
-  onLeftReverbChange: (config: ReverbConfig) => void;
-  onRightReverbChange: (config: ReverbConfig) => void;
-  // New unified effect system
+  // Unified effect system
   onAddLeftEffect: (type: string) => void;
   onAddRightEffect: (type: string) => void;
   onUpdateLeftEffect: (effectId: string, config: Partial<EffectConfig>) => void;

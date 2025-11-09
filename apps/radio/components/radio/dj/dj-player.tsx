@@ -48,6 +48,10 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
     rightFilterConfig,
     leftReverbConfig,
     rightReverbConfig,
+    leftEffects,
+    rightEffects,
+    leftSoundId,
+    rightSoundId,
     setLeftRadio,
     setRightRadio,
     setCrossfadePosition,
@@ -60,6 +64,14 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
     updateRightFilter,
     updateLeftReverb,
     updateRightReverb,
+    addLeftEffect,
+    addRightEffect,
+    updateLeftEffect,
+    updateRightEffect,
+    removeLeftEffect,
+    removeRightEffect,
+    reorderLeftEffects,
+    reorderRightEffects,
     playLeft,
     playRight,
     pauseLeft,
@@ -187,9 +199,11 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
             leftFilterConfig={leftFilterConfig}
             leftMuted={leftMuted}
             leftReverbConfig={leftReverbConfig}
-            leftSoundId={leftRadio ? `left_${leftRadio.id}` : null}
+            leftSoundId={leftSoundId}
             leftVolume={leftVolume}
             masterVolume={masterVolume}
+            leftEffects={leftEffects}
+            rightEffects={rightEffects}
             onCrossfadeChange={handleCrossfadeChange}
             onLeftFilterChange={updateLeftFilter}
             onLeftMuteChange={setLeftMute}
@@ -203,8 +217,16 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
             rightFilterConfig={rightFilterConfig}
             rightMuted={rightMuted}
             rightReverbConfig={rightReverbConfig}
-            rightSoundId={rightRadio ? `right_${rightRadio.id}` : null}
+            rightSoundId={rightSoundId}
             rightVolume={rightVolume}
+            onAddLeftEffect={addLeftEffect}
+            onAddRightEffect={addRightEffect}
+            onUpdateLeftEffect={updateLeftEffect}
+            onUpdateRightEffect={updateRightEffect}
+            onRemoveLeftEffect={removeLeftEffect}
+            onRemoveRightEffect={removeRightEffect}
+            onReorderLeftEffects={reorderLeftEffects}
+            onReorderRightEffects={reorderRightEffects}
           />
 
           {/* Right Deck */}

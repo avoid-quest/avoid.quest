@@ -325,9 +325,9 @@ export class EffectManager {
   ): Promise<EffectNode | null> {
     try {
       if (config.type === "reverb") {
-        // Use API route to serve the bundle from node_modules
-        // This allows us to access the file from @avoid.quest/cacophony package
-        // The API route handles cache control based on environment
+        // Use public path to serve the bundle as a static file
+        // The bundle is copied to public/api/worklets during build
+        // This works in all environments including Cloudflare Workers
         const workletUrl = "/api/worklets/dattorro-reverb-bundle.js";
 
         try {

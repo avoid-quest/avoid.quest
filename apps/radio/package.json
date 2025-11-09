@@ -1,16 +1,16 @@
 {
   "name": "radio",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
-    "build": "next build --webpack",
+    "build": "bun run scripts/copy-worklets.ts && next build --webpack",
     "start": "next start",
     "fix": "bunx ultracite fix",
     "check": "bunx ultracite check",
-    "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
-    "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
-    "cf-build": "opennextjs-cloudflare build",
+    "deploy": "bun run scripts/copy-worklets.ts && opennextjs-cloudflare build && opennextjs-cloudflare deploy",
+    "preview": "bun run scripts/copy-worklets.ts && opennextjs-cloudflare build && opennextjs-cloudflare preview",
+    "cf-build": "bun run scripts/copy-worklets.ts && opennextjs-cloudflare build",
     "cf-deploy": "opennextjs-cloudflare deploy",
     "cf-upload": "opennextjs-cloudflare upload",
     "cf-typegen": "wrangler types --env-interface CloudflareEnv ./cloudflare-env.d.ts"

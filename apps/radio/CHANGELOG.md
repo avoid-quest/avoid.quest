@@ -1,5 +1,17 @@
 # radio
 
+## 0.2.4
+
+### Patch Changes
+
+- Fix reverb worklet loading in Cloudflare Workers deployment
+
+  - Add build script to copy worklet bundles from `@avoid.quest/cacophony` to `public/api/worklets/` during build
+  - Update build scripts to run worklet copy before Next.js build and Cloudflare deployment
+  - Serve worklet bundles as static files instead of using API route with filesystem access
+  - Add cache headers for worklet bundles in `public/_headers` for proper caching
+  - Fix compatibility with Cloudflare Workers edge runtime which doesn't support Node.js filesystem APIs
+
 ## 0.2.3
 
 ### Patch Changes

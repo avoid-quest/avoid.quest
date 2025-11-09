@@ -1,6 +1,5 @@
 import type {
   AudioContext,
-  AudioNode,
   BiquadFilterNode,
   ConvolverNode,
   GainNode,
@@ -40,12 +39,12 @@ export type EffectNode =
   | DynamicsCompressorNode
   | StereoPannerNode;
 
-export interface BaseEffectConfig {
+export type BaseEffectConfig = {
   id: string;
   type: EffectType;
   enabled: boolean;
   order: number;
-}
+};
 
 export interface BiquadFilterConfig extends BaseEffectConfig {
   type: "biquadFilter";
@@ -99,10 +98,10 @@ export type EffectConfig =
   | CompressorConfig
   | PannerConfig;
 
-export interface EffectInstance {
+export type EffectInstance = {
   config: EffectConfig;
   node: EffectNode | null;
   wetGain?: GainNode;
   dryGain?: GainNode;
   feedbackGain?: GainNode; // For delay feedback loop
-}
+};

@@ -3,6 +3,7 @@
 import {
   type AudioBuffer,
   type AudioContext,
+  type AudioNode,
   Cacophony,
   type ConvolverNode,
   type GainNode,
@@ -15,7 +16,6 @@ import type { ReverbConfig } from "@/components/audio/reverb-control";
 import type { Radio } from "../types";
 import { EffectManager } from "./effects/effect-manager";
 import type { EffectConfig } from "./effects/types";
-import { createDefaultEffectConfig } from "./effects/registry";
 
 export type AudioError = {
   message: string;
@@ -614,7 +614,7 @@ export class AudioManager {
   updateReverb(soundId: string, config: ReverbConfig): void {
     const playback = this.playbacks.get(soundId);
     const oldConfig = this.reverbConfigs.get(soundId);
-    
+
     // Always store config so it can be applied when playback starts
     this.reverbConfigs.set(soundId, config);
 
@@ -673,7 +673,6 @@ export class AudioManager {
       dryGain.gain.cancelScheduledValues(now);
       dryGain.gain.setValueAtTime(dryGain.gain.value, now);
       dryGain.gain.linearRampToValueAtTime(config.dry, now + smoothTime);
-
     } catch (error) {
       console.error("Failed to update reverb:", error);
     }
@@ -709,7 +708,10 @@ export class AudioManager {
           const globalGainNode = this.cacophony.globalGainNode;
           outputNode.connect(globalGainNode);
         } catch (reconnectError) {
-          console.error("Failed to restore default routing after reverb removal:", reconnectError);
+          console.error(
+            "Failed to restore default routing after reverb removal:",
+            reconnectError
+          );
         }
       }
     }
@@ -740,7 +742,9 @@ export class AudioManager {
    */
   addEffect(soundId: string, config: EffectConfig): void {
     const effectManager = this.effectManagers.get(soundId);
-    if (!effectManager) {
+    if (effectManager) {
+      effectManager.addEffect(config);
+    } else {
       // Create effect manager if it doesn't exist
       const sound = this.sounds.get(soundId);
       const playback = this.playbacks.get(soundId);
@@ -757,12 +761,11 @@ export class AudioManager {
       if (playback) {
         newEffectManager.setInputNode(playback.outputNode);
         newEffectManager.setOutputNode(
-          this.cacophony.globalGainNode as unknown as AudioNode
+          this.cacophony
+            .globalGainNode as unknown as import("@avoid.quest/cacophony").AudioNode
         );
       }
       newEffectManager.addEffect(config);
-    } else {
-      effectManager.addEffect(config);
     }
   }
 
@@ -779,7 +782,11 @@ export class AudioManager {
   /**
    * Update an effect's configuration
    */
-  updateEffect(soundId: string, effectId: string, config: Partial<EffectConfig>): void {
+  updateEffect(
+    soundId: string,
+    effectId: string,
+    config: Partial<EffectConfig>
+  ): void {
     const effectManager = this.effectManagers.get(soundId);
     if (effectManager) {
       effectManager.updateEffect(effectId, config);

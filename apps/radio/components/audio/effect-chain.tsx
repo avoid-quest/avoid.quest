@@ -1,7 +1,18 @@
 "use client";
 
+import type { DragEndEvent } from "@dnd-kit/core";
 import {
+  closestCenter,
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
   SortableContext,
+  sortableKeyboardCoordinates,
   useSortable,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
@@ -35,9 +46,36 @@ export function EffectChain({
   const [expandedEffectId, setExpandedEffectId] = useState<string | null>(null);
   const [showPicker, setShowPicker] = useState(false);
 
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
   const handleAddEffect = (type: string) => {
     onAddEffect(type);
     setShowPicker(false);
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (!over || active.id === over.id) {
+      return;
+    }
+
+    const oldIndex = effects.findIndex((e) => e.id === active.id);
+    const newIndex = effects.findIndex((e) => e.id === over.id);
+
+    if (oldIndex !== -1 && newIndex !== -1) {
+      const newOrder = arrayMove(effects, oldIndex, newIndex);
+      onReorderEffects(newOrder.map((e) => e.id));
+    }
   };
 
   const sortedEffects = [...effects].sort((a, b) => a.order - b.order);
@@ -45,40 +83,44 @@ export function EffectChain({
   return (
     <div className="space-y-2">
       {title && (
-        <div className="font-medium text-sm text-muted-foreground">
-          {title}
-        </div>
+        <div className="font-medium text-muted-foreground text-sm">{title}</div>
       )}
 
-      <div className="space-y-2">
-        <SortableContext
-          items={sortedEffects.map((e) => e.id)}
-          strategy={verticalListSortingStrategy}
-        >
-          {sortedEffects.map((effect) => (
-            <SortableEffectItem
-              key={effect.id}
-              effect={effect}
-              isInitialized={isInitialized}
-              isExpanded={expandedEffectId === effect.id}
-              onUpdate={(config) => onUpdateEffect(effect.id, config)}
-              onRemove={() => onRemoveEffect(effect.id)}
-              onExpand={() =>
-                setExpandedEffectId(
-                  expandedEffectId === effect.id ? null : effect.id
-                )
-              }
-            />
-          ))}
-        </SortableContext>
-      </div>
+      <DndContext
+        collisionDetection={closestCenter}
+        onDragEnd={handleDragEnd}
+        sensors={sensors}
+      >
+        <div className="space-y-2">
+          <SortableContext
+            items={sortedEffects.map((e) => e.id)}
+            strategy={verticalListSortingStrategy}
+          >
+            {sortedEffects.map((effect) => (
+              <SortableEffectItem
+                effect={effect}
+                isExpanded={expandedEffectId === effect.id}
+                isInitialized={isInitialized}
+                key={effect.id}
+                onExpand={() =>
+                  setExpandedEffectId(
+                    expandedEffectId === effect.id ? null : effect.id
+                  )
+                }
+                onRemove={() => onRemoveEffect(effect.id)}
+                onUpdate={(config) => onUpdateEffect(effect.id, config)}
+              />
+            ))}
+          </SortableContext>
+        </div>
+      </DndContext>
 
       <Button
-        onClick={() => setShowPicker(true)}
-        variant="outline"
-        size="sm"
         className="w-full"
         disabled={!isInitialized}
+        onClick={() => setShowPicker(true)}
+        size="sm"
+        variant="outline"
       >
         <Plus className="mr-2 size-4" />
         Add Effect
@@ -86,8 +128,8 @@ export function EffectChain({
 
       {showPicker && (
         <EffectPicker
-          onSelect={handleAddEffect}
           onClose={() => setShowPicker(false)}
+          onSelect={handleAddEffect}
         />
       )}
 
@@ -117,14 +159,9 @@ function SortableEffectItem({
   onRemove: () => void;
   onExpand: () => void;
 }) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: effect.id });
+  const { setNodeRef, transform, transition, isDragging } = useSortable({
+    id: effect.id,
+  });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -136,11 +173,11 @@ function SortableEffectItem({
     <div ref={setNodeRef} style={style}>
       <EffectItem
         effect={effect}
-        isInitialized={isInitialized}
         isExpanded={isExpanded}
-        onUpdate={onUpdate}
-        onRemove={onRemove}
+        isInitialized={isInitialized}
         onExpand={onExpand}
+        onRemove={onRemove}
+        onUpdate={onUpdate}
       />
     </div>
   );

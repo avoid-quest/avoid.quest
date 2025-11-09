@@ -2,11 +2,12 @@ import type {
   AudioContext,
   AudioNode,
   BiquadFilterNode,
+  Cacophony,
   ConvolverNode,
-  GainNode,
+  Playback,
+  Sound,
   StereoPannerNode,
 } from "@avoid.quest/cacophony";
-import type { Cacophony, Playback, Sound } from "@avoid.quest/cacophony";
 import type {
   BiquadFilterConfig,
   CompressorConfig,
@@ -16,6 +17,7 @@ import type {
   DynamicsCompressorNode,
   EffectConfig,
   EffectInstance,
+  EffectNode,
   PannerConfig,
   ReverbConfig,
   WaveShaperNode,
@@ -23,21 +25,16 @@ import type {
 
 export class EffectManager {
   private readonly cacophony: Cacophony;
-  private readonly sound: Sound;
-  private readonly playback: Playback | null;
   private effects: EffectInstance[] = [];
   private inputNode: AudioNode | null = null;
-  private outputNode: AudioNode | null = null;
   private defaultDestination: AudioNode | null = null;
 
   constructor(
     cacophony: Cacophony,
-    sound: Sound,
-    playback: Playback | null = null
+    _sound: Sound,
+    _playback: Playback | null = null
   ) {
     this.cacophony = cacophony;
-    this.sound = sound;
-    this.playback = playback;
     this.defaultDestination = cacophony.globalGainNode as unknown as AudioNode;
   }
 
@@ -84,10 +81,14 @@ export class EffectManager {
    */
   removeEffect(effectId: string): void {
     const index = this.effects.findIndex((e) => e.config.id === effectId);
-    if (index === -1) return;
+    if (index === -1) {
+      return;
+    }
 
     const effect = this.effects[index];
-    this.cleanupEffect(effect);
+    if (effect) {
+      this.cleanupEffect(effect);
+    }
     this.effects.splice(index, 1);
 
     // Reorder remaining effects
@@ -103,7 +104,9 @@ export class EffectManager {
    */
   updateEffect(effectId: string, config: Partial<EffectConfig>): void {
     const effect = this.effects.find((e) => e.config.id === effectId);
-    if (!effect) return;
+    if (!effect) {
+      return;
+    }
 
     effect.config = { ...effect.config, ...config } as EffectConfig;
     this.updateEffectNode(effect);
@@ -120,12 +123,12 @@ export class EffectManager {
     });
 
     // Update order values
-    this.effects.forEach((effect) => {
+    for (const effect of this.effects) {
       const newOrderValue = newOrder.get(effect.config.id);
       if (newOrderValue !== undefined) {
         effect.config.order = newOrderValue;
       }
-    });
+    }
 
     // Sort effects by order
     this.effects.sort((a, b) => a.config.order - b.config.order);
@@ -151,7 +154,7 @@ export class EffectManager {
    * Rebuild the entire effect chain
    */
   private rebuildChain(): void {
-    if (!this.inputNode || !this.defaultDestination) {
+    if (!(this.inputNode && this.defaultDestination)) {
       return;
     }
 
@@ -164,61 +167,89 @@ export class EffectManager {
       return;
     }
 
-    // Build the chain
-    let currentNode: AudioNode = this.inputNode;
     const enabledEffects = this.effects.filter((e) => e.config.enabled);
-
     if (enabledEffects.length === 0) {
       this.inputNode.connect(this.defaultDestination);
       return;
     }
 
-    for (let i = 0; i < enabledEffects.length; i++) {
-      const effect = enabledEffects[i];
-      const isLast = i === enabledEffects.length - 1;
+    const currentNode = this.buildEffectChain(enabledEffects);
+    this.connectToDestination(currentNode);
+  }
 
+  /**
+   * Build the effect chain and return the last node
+   */
+  private buildEffectChain(enabledEffects: EffectInstance[]): AudioNode {
+    if (!this.inputNode) {
+      throw new Error("Input node not set");
+    }
+    let currentNode: AudioNode = this.inputNode;
+
+    for (const effect of enabledEffects) {
       // Create or get the effect node
       if (!effect.node) {
-        effect.node = this.createEffectNode(effect.config);
+        const newNode = this.createEffectNode(effect.config);
+        if (newNode) {
+          effect.node = newNode;
+        }
       }
 
       if (!effect.node) {
         continue;
       }
 
-      // Handle effects that need wet/dry routing (reverb, delay)
-      if (this.needsWetDryRouting(effect.config)) {
-        // Create a merge node to combine wet and dry signals
-        // This merge node will be the input to the next effect (or output if last)
-        const mergeNode = this.cacophony.context.createGain();
-        mergeNode.gain.value = 1.0;
-
-        // Setup wet/dry routing - both paths output to merge node
-        this.setupWetDryRouting(effect, currentNode, mergeNode);
-
-        // Continue chain from merge node
-        currentNode = mergeNode;
-      } else {
-        // Simple pass-through effects
-        currentNode.connect(effect.node);
-        currentNode = effect.node;
-      }
+      currentNode = this.connectEffect(effect, currentNode);
     }
 
-    // Connect the last node to the destination (if not already connected)
-    if (currentNode !== this.inputNode) {
+    return currentNode;
+  }
+
+  /**
+   * Connect an effect to the chain and return the output node
+   */
+  private connectEffect(
+    effect: EffectInstance,
+    currentNode: AudioNode
+  ): AudioNode {
+    // Handle effects that need wet/dry routing (reverb, delay)
+    if (this.needsWetDryRouting(effect.config)) {
+      // Create a merge node to combine wet and dry signals
+      const mergeNode = this.cacophony.context.createGain();
+      mergeNode.gain.value = 1.0;
+
+      // Setup wet/dry routing - both paths output to merge node
+      this.setupWetDryRouting(effect, currentNode, mergeNode);
+
+      // Continue chain from merge node
+      return mergeNode as unknown as AudioNode;
+    }
+
+    // Simple pass-through effects
+    const effectNode = effect.node as unknown as AudioNode;
+    currentNode.connect(effectNode);
+    return effectNode;
+  }
+
+  /**
+   * Connect the last node to the destination
+   */
+  private connectToDestination(currentNode: AudioNode): void {
+    if (!this.defaultDestination) {
+      return;
+    }
+    if (currentNode !== this.inputNode && this.inputNode) {
       currentNode.connect(this.defaultDestination);
-    } else {
+    } else if (this.inputNode) {
       // No enabled effects, connect input directly
       this.inputNode.connect(this.defaultDestination);
     }
   }
 
-
   /**
    * Create an effect node from config
    */
-  private createEffectNode(config: EffectConfig): AudioNode | null {
+  private createEffectNode(config: EffectConfig): EffectNode | null {
     const context = this.cacophony.context;
 
     try {
@@ -231,7 +262,7 @@ export class EffectManager {
             Q: filterConfig.Q,
             gain: filterConfig.gain,
           });
-          return filter;
+          return filter as unknown as BiquadFilterNode;
         }
 
         case "reverb": {
@@ -244,14 +275,14 @@ export class EffectManager {
           );
           reverb.buffer = impulseResponse;
           reverb.normalize = false;
-          return reverb;
+          return reverb as ConvolverNode;
         }
 
         case "delay": {
           const delayConfig = config as DelayConfig;
           const delay = context.createDelay(1.0);
           delay.delayTime.value = delayConfig.delayTime;
-          return delay;
+          return delay as DelayNode;
         }
 
         case "distortion": {
@@ -259,7 +290,7 @@ export class EffectManager {
           const shaper = context.createWaveShaper();
           shaper.curve = this.makeDistortionCurve(distortionConfig.amount);
           shaper.oversample = distortionConfig.oversample;
-          return shaper;
+          return shaper as WaveShaperNode;
         }
 
         case "compressor": {
@@ -270,14 +301,14 @@ export class EffectManager {
           compressor.attack.value = compressorConfig.attack;
           compressor.release.value = compressorConfig.release;
           compressor.knee.value = compressorConfig.knee;
-          return compressor;
+          return compressor as DynamicsCompressorNode;
         }
 
         case "panner": {
           const pannerConfig = config as PannerConfig;
           const panner = context.createStereoPanner();
           panner.pan.value = pannerConfig.pan;
-          return panner;
+          return panner as StereoPannerNode;
         }
 
         default:
@@ -293,16 +324,46 @@ export class EffectManager {
    * Update an effect node's parameters
    */
   private updateEffectNode(effect: EffectInstance): void {
-    if (!effect.node) {
-      if (effect.config.enabled) {
-        effect.node = this.createEffectNode(effect.config);
-        this.rebuildChain();
-      }
+    const wasEnabled = effect.node !== null;
+    const isEnabled = effect.config.enabled;
+
+    // If effect is being disabled, disconnect and clean up immediately
+    if (wasEnabled && !isEnabled) {
+      this.cleanupEffect(effect);
+      effect.node = null;
+      effect.wetGain = undefined;
+      effect.dryGain = undefined;
+      effect.feedbackGain = undefined;
+      this.rebuildChain();
       return;
     }
 
-    if (!effect.config.enabled) {
+    // If effect is being enabled but has no node, create it
+    if (!effect.node && isEnabled) {
+      const newNode = this.createEffectNode(effect.config);
+      if (newNode) {
+        effect.node = newNode;
+      }
       this.rebuildChain();
+      return;
+    }
+
+    // If effect is disabled and has no node, nothing to do
+    if (!(effect.node || isEnabled)) {
+      return;
+    }
+
+    // If effect is enabled, update its parameters
+    if (isEnabled && effect.node) {
+      this.updateEffectNodeParams(effect);
+    }
+  }
+
+  /**
+   * Update effect node parameters (extracted to reduce complexity)
+   */
+  private updateEffectNodeParams(effect: EffectInstance): void {
+    if (!effect.node) {
       return;
     }
 
@@ -312,183 +373,201 @@ export class EffectManager {
 
     try {
       switch (effect.config.type) {
-        case "biquadFilter": {
-          const filterConfig = effect.config as BiquadFilterConfig;
-          const filter = effect.node as BiquadFilterNode;
-          if (filter.type !== filterConfig.filterType) {
-            filter.type = filterConfig.filterType;
-          }
-          filter.frequency.cancelScheduledValues(now);
-          filter.frequency.setValueAtTime(filter.frequency.value, now);
-          filter.frequency.exponentialRampToValueAtTime(
-            filterConfig.frequency,
-            now + smoothTime
-          );
-          filter.Q.cancelScheduledValues(now);
-          filter.Q.setValueAtTime(filter.Q.value, now);
-          filter.Q.exponentialRampToValueAtTime(
-            filterConfig.Q,
-            now + smoothTime
-          );
-          filter.gain.cancelScheduledValues(now);
-          filter.gain.setValueAtTime(filter.gain.value, now);
-          filter.gain.linearRampToValueAtTime(
-            filterConfig.gain,
-            now + smoothTime
-          );
+        case "biquadFilter":
+          this.updateBiquadFilter(effect, now, smoothTime);
           break;
-        }
-
-        case "reverb": {
-          const reverbConfig = effect.config as ReverbConfig;
-          const reverb = effect.node as ConvolverNode;
-          // Regenerate impulse response if room size or decay changed
-          const oldConfig = this.effects.find(
-            (e) => e.config.id === effect.config.id
-          )?.config as ReverbConfig | undefined;
-          if (
-            oldConfig &&
-            (oldConfig.roomSize !== reverbConfig.roomSize ||
-              oldConfig.decayTime !== reverbConfig.decayTime)
-          ) {
-            const impulseResponse = this.generateImpulseResponse(
-              context,
-              reverbConfig.roomSize,
-              reverbConfig.decayTime
-            );
-            reverb.buffer = impulseResponse;
-          }
-          // Update wet/dry gains
-          if (effect.wetGain && effect.dryGain) {
-            effect.wetGain.gain.cancelScheduledValues(now);
-            effect.wetGain.gain.setValueAtTime(
-              effect.wetGain.gain.value,
-              now
-            );
-            effect.wetGain.gain.linearRampToValueAtTime(
-              reverbConfig.wet,
-              now + smoothTime
-            );
-            effect.dryGain.gain.cancelScheduledValues(now);
-            effect.dryGain.gain.setValueAtTime(
-              effect.dryGain.gain.value,
-              now
-            );
-            effect.dryGain.gain.linearRampToValueAtTime(
-              reverbConfig.dry,
-              now + smoothTime
-            );
-          }
+        case "reverb":
+          this.updateReverb(effect, context, now, smoothTime);
           break;
-        }
-
-        case "delay": {
-          const delayConfig = effect.config as DelayConfig;
-          const delay = effect.node as DelayNode;
-          delay.delayTime.cancelScheduledValues(now);
-          delay.delayTime.setValueAtTime(delay.delayTime.value, now);
-          delay.delayTime.linearRampToValueAtTime(
-            delayConfig.delayTime,
-            now + smoothTime
-          );
-          // Update feedback gain
-          if (effect.feedbackGain) {
-            effect.feedbackGain.gain.cancelScheduledValues(now);
-            effect.feedbackGain.gain.setValueAtTime(
-              effect.feedbackGain.gain.value,
-              now
-            );
-            effect.feedbackGain.gain.linearRampToValueAtTime(
-              delayConfig.feedback,
-              now + smoothTime
-            );
-          }
-          // Update wet/dry gains
-          if (effect.wetGain && effect.dryGain) {
-            effect.wetGain.gain.cancelScheduledValues(now);
-            effect.wetGain.gain.setValueAtTime(
-              effect.wetGain.gain.value,
-              now
-            );
-            effect.wetGain.gain.linearRampToValueAtTime(
-              delayConfig.wet,
-              now + smoothTime
-            );
-            effect.dryGain.gain.cancelScheduledValues(now);
-            effect.dryGain.gain.setValueAtTime(
-              effect.dryGain.gain.value,
-              now
-            );
-            effect.dryGain.gain.linearRampToValueAtTime(
-              delayConfig.dry,
-              now + smoothTime
-            );
-          }
+        case "delay":
+          this.updateDelay(effect, now, smoothTime);
           break;
-        }
-
-        case "distortion": {
-          const distortionConfig = effect.config as DistortionConfig;
-          const shaper = effect.node as WaveShaperNode;
-          shaper.curve = this.makeDistortionCurve(distortionConfig.amount);
-          shaper.oversample = distortionConfig.oversample;
+        case "distortion":
+          this.updateDistortion(effect);
           break;
-        }
-
-        case "compressor": {
-          const compressorConfig = effect.config as CompressorConfig;
-          const compressor = effect.node as DynamicsCompressorNode;
-          compressor.threshold.cancelScheduledValues(now);
-          compressor.threshold.setValueAtTime(
-            compressor.threshold.value,
-            now
-          );
-          compressor.threshold.linearRampToValueAtTime(
-            compressorConfig.threshold,
-            now + smoothTime
-          );
-          compressor.ratio.cancelScheduledValues(now);
-          compressor.ratio.setValueAtTime(compressor.ratio.value, now);
-          compressor.ratio.linearRampToValueAtTime(
-            compressorConfig.ratio,
-            now + smoothTime
-          );
-          compressor.attack.cancelScheduledValues(now);
-          compressor.attack.setValueAtTime(compressor.attack.value, now);
-          compressor.attack.linearRampToValueAtTime(
-            compressorConfig.attack,
-            now + smoothTime
-          );
-          compressor.release.cancelScheduledValues(now);
-          compressor.release.setValueAtTime(compressor.release.value, now);
-          compressor.release.linearRampToValueAtTime(
-            compressorConfig.release,
-            now + smoothTime
-          );
-          compressor.knee.cancelScheduledValues(now);
-          compressor.knee.setValueAtTime(compressor.knee.value, now);
-          compressor.knee.linearRampToValueAtTime(
-            compressorConfig.knee,
-            now + smoothTime
-          );
+        case "compressor":
+          this.updateCompressor(effect, now, smoothTime);
           break;
-        }
-
-        case "panner": {
-          const pannerConfig = effect.config as PannerConfig;
-          const panner = effect.node as StereoPannerNode;
-          panner.pan.cancelScheduledValues(now);
-          panner.pan.setValueAtTime(panner.pan.value, now);
-          panner.pan.linearRampToValueAtTime(
-            pannerConfig.pan,
-            now + smoothTime
-          );
+        case "panner":
+          this.updatePanner(effect, now, smoothTime);
+          break;
+        default: {
+          // Unknown effect type, do nothing
           break;
         }
       }
     } catch (error) {
-      console.error(`Failed to update effect node:`, error);
+      console.error("Failed to update effect node:", error);
     }
+  }
+
+  private updateBiquadFilter(
+    effect: EffectInstance,
+    now: number,
+    smoothTime: number
+  ): void {
+    const filterConfig = effect.config as BiquadFilterConfig;
+    const filter = effect.node as BiquadFilterNode;
+    if (filter.type !== filterConfig.filterType) {
+      filter.type = filterConfig.filterType;
+    }
+    filter.frequency.cancelScheduledValues(now);
+    filter.frequency.setValueAtTime(filter.frequency.value, now);
+    filter.frequency.exponentialRampToValueAtTime(
+      filterConfig.frequency,
+      now + smoothTime
+    );
+    filter.Q.cancelScheduledValues(now);
+    filter.Q.setValueAtTime(filter.Q.value, now);
+    filter.Q.exponentialRampToValueAtTime(filterConfig.Q, now + smoothTime);
+    filter.gain.cancelScheduledValues(now);
+    filter.gain.setValueAtTime(filter.gain.value, now);
+    filter.gain.linearRampToValueAtTime(filterConfig.gain, now + smoothTime);
+  }
+
+  private updateReverb(
+    effect: EffectInstance,
+    context: AudioContext,
+    now: number,
+    smoothTime: number
+  ): void {
+    const reverbConfig = effect.config as ReverbConfig;
+    const reverb = effect.node as ConvolverNode;
+    // Regenerate impulse response if room size or decay changed
+    const oldConfig = this.effects.find((e) => e.config.id === effect.config.id)
+      ?.config as ReverbConfig | undefined;
+    if (
+      oldConfig &&
+      (oldConfig.roomSize !== reverbConfig.roomSize ||
+        oldConfig.decayTime !== reverbConfig.decayTime)
+    ) {
+      const impulseResponse = this.generateImpulseResponse(
+        context,
+        reverbConfig.roomSize,
+        reverbConfig.decayTime
+      );
+      reverb.buffer = impulseResponse;
+    }
+    // Update wet/dry gains
+    if (effect.wetGain && effect.dryGain) {
+      this.updateWetDryGains(effect, reverbConfig.wet, reverbConfig.dry, {
+        now,
+        smoothTime,
+      });
+    }
+  }
+
+  private updateDelay(
+    effect: EffectInstance,
+    now: number,
+    smoothTime: number
+  ): void {
+    const delayConfig = effect.config as DelayConfig;
+    const delay = effect.node as DelayNode;
+    delay.delayTime.cancelScheduledValues(now);
+    delay.delayTime.setValueAtTime(delay.delayTime.value, now);
+    delay.delayTime.linearRampToValueAtTime(
+      delayConfig.delayTime,
+      now + smoothTime
+    );
+    // Update feedback gain
+    if (effect.feedbackGain) {
+      effect.feedbackGain.gain.cancelScheduledValues(now);
+      effect.feedbackGain.gain.setValueAtTime(
+        effect.feedbackGain.gain.value,
+        now
+      );
+      effect.feedbackGain.gain.linearRampToValueAtTime(
+        delayConfig.feedback,
+        now + smoothTime
+      );
+    }
+    // Update wet/dry gains
+    if (effect.wetGain && effect.dryGain) {
+      this.updateWetDryGains(effect, delayConfig.wet, delayConfig.dry, {
+        now,
+        smoothTime,
+      });
+    }
+  }
+
+  private updateDistortion(effect: EffectInstance): void {
+    const distortionConfig = effect.config as DistortionConfig;
+    const shaper = effect.node as WaveShaperNode;
+    shaper.curve = this.makeDistortionCurve(distortionConfig.amount);
+    shaper.oversample = distortionConfig.oversample;
+  }
+
+  private updateCompressor(
+    effect: EffectInstance,
+    now: number,
+    smoothTime: number
+  ): void {
+    const compressorConfig = effect.config as CompressorConfig;
+    const compressor = effect.node as DynamicsCompressorNode;
+    compressor.threshold.cancelScheduledValues(now);
+    compressor.threshold.setValueAtTime(compressor.threshold.value, now);
+    compressor.threshold.linearRampToValueAtTime(
+      compressorConfig.threshold,
+      now + smoothTime
+    );
+    compressor.ratio.cancelScheduledValues(now);
+    compressor.ratio.setValueAtTime(compressor.ratio.value, now);
+    compressor.ratio.linearRampToValueAtTime(
+      compressorConfig.ratio,
+      now + smoothTime
+    );
+    compressor.attack.cancelScheduledValues(now);
+    compressor.attack.setValueAtTime(compressor.attack.value, now);
+    compressor.attack.linearRampToValueAtTime(
+      compressorConfig.attack,
+      now + smoothTime
+    );
+    compressor.release.cancelScheduledValues(now);
+    compressor.release.setValueAtTime(compressor.release.value, now);
+    compressor.release.linearRampToValueAtTime(
+      compressorConfig.release,
+      now + smoothTime
+    );
+    compressor.knee.cancelScheduledValues(now);
+    compressor.knee.setValueAtTime(compressor.knee.value, now);
+    compressor.knee.linearRampToValueAtTime(
+      compressorConfig.knee,
+      now + smoothTime
+    );
+  }
+
+  private updatePanner(
+    effect: EffectInstance,
+    now: number,
+    smoothTime: number
+  ): void {
+    const pannerConfig = effect.config as PannerConfig;
+    const panner = effect.node as StereoPannerNode;
+    panner.pan.cancelScheduledValues(now);
+    panner.pan.setValueAtTime(panner.pan.value, now);
+    panner.pan.linearRampToValueAtTime(pannerConfig.pan, now + smoothTime);
+  }
+
+  private updateWetDryGains(
+    effect: EffectInstance,
+    wet: number,
+    dry: number,
+    timing: { now: number; smoothTime: number }
+  ): void {
+    const { wetGain, dryGain } = effect;
+    if (!wetGain) {
+      return;
+    }
+    if (!dryGain) {
+      return;
+    }
+    wetGain.gain.cancelScheduledValues(timing.now);
+    wetGain.gain.setValueAtTime(wetGain.gain.value, timing.now);
+    wetGain.gain.linearRampToValueAtTime(wet, timing.now + timing.smoothTime);
+    dryGain.gain.cancelScheduledValues(timing.now);
+    dryGain.gain.setValueAtTime(dryGain.gain.value, timing.now);
+    dryGain.gain.linearRampToValueAtTime(dry, timing.now + timing.smoothTime);
   }
 
   /**
@@ -506,7 +585,9 @@ export class EffectManager {
     inputNode: AudioNode,
     outputNode: AudioNode
   ): void {
-    if (!effect.node) return;
+    if (!effect.node) {
+      return;
+    }
 
     const context = this.cacophony.context;
 
@@ -577,7 +658,7 @@ export class EffectManager {
    * Create distortion curve for wave shaper
    */
   private makeDistortionCurve(amount: number): Float32Array {
-    const samples = 44100;
+    const samples = 44_100;
     const curve = new Float32Array(samples);
     const deg = Math.PI / 180;
     const k = amount * 2;

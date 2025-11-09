@@ -5,8 +5,8 @@ import type { FilterConfig } from "@/components/audio/filter-control";
 import type { ReverbConfig } from "@/components/audio/reverb-control";
 import type { Radio } from "../../types";
 import { AudioManager } from "../audio-manager";
-import type { EffectConfig } from "../effects/types";
 import { createDefaultEffectConfig } from "../effects/registry";
+import type { EffectConfig } from "../effects/types";
 
 const CROSSFADE_POSITION = 0.5;
 
@@ -66,8 +66,7 @@ export function useDjAudio() {
 
   // Generate unique sound ID (matches format used in dj-player)
   const getSoundId = useCallback(
-    (radio: Radio, side: "left" | "right") =>
-      `${side}_${radio.id}`,
+    (radio: Radio, side: "left" | "right") => `${side}_${radio.id}`,
     []
   );
 
@@ -362,7 +361,9 @@ export function useDjAudio() {
   const addLeftEffect = useCallback(
     (effectType: string) => {
       const soundId = leftSoundIdRef.current;
-      if (!soundId) return;
+      if (!soundId) {
+        return;
+      }
 
       const newEffect = createDefaultEffectConfig(
         effectType as EffectConfig["type"],
@@ -379,7 +380,9 @@ export function useDjAudio() {
   const addRightEffect = useCallback(
     (effectType: string) => {
       const soundId = rightSoundIdRef.current;
-      if (!soundId) return;
+      if (!soundId) {
+        return;
+      }
 
       const newEffect = createDefaultEffectConfig(
         effectType as EffectConfig["type"],
@@ -396,10 +399,15 @@ export function useDjAudio() {
   const updateLeftEffect = useCallback(
     (effectId: string, config: Partial<EffectConfig>) => {
       const soundId = leftSoundIdRef.current;
-      if (!soundId) return;
+      if (!soundId) {
+        return;
+      }
 
-      setLeftEffects((prev) =>
-        prev.map((e) => (e.id === effectId ? { ...e, ...config } : e))
+      setLeftEffects(
+        (prev) =>
+          prev.map((e) =>
+            e.id === effectId ? { ...e, ...config } : e
+          ) as EffectConfig[]
       );
       audioManager.updateEffect(soundId, effectId, config);
     },
@@ -409,10 +417,15 @@ export function useDjAudio() {
   const updateRightEffect = useCallback(
     (effectId: string, config: Partial<EffectConfig>) => {
       const soundId = rightSoundIdRef.current;
-      if (!soundId) return;
+      if (!soundId) {
+        return;
+      }
 
-      setRightEffects((prev) =>
-        prev.map((e) => (e.id === effectId ? { ...e, ...config } : e))
+      setRightEffects(
+        (prev) =>
+          prev.map((e) =>
+            e.id === effectId ? { ...e, ...config } : e
+          ) as EffectConfig[]
       );
       audioManager.updateEffect(soundId, effectId, config);
     },
@@ -422,7 +435,9 @@ export function useDjAudio() {
   const removeLeftEffect = useCallback(
     (effectId: string) => {
       const soundId = leftSoundIdRef.current;
-      if (!soundId) return;
+      if (!soundId) {
+        return;
+      }
 
       setLeftEffects((prev) => {
         const filtered = prev.filter((e) => e.id !== effectId);
@@ -437,7 +452,9 @@ export function useDjAudio() {
   const removeRightEffect = useCallback(
     (effectId: string) => {
       const soundId = rightSoundIdRef.current;
-      if (!soundId) return;
+      if (!soundId) {
+        return;
+      }
 
       setRightEffects((prev) => {
         const filtered = prev.filter((e) => e.id !== effectId);
@@ -452,7 +469,9 @@ export function useDjAudio() {
   const reorderLeftEffects = useCallback(
     (effectIds: string[]) => {
       const soundId = leftSoundIdRef.current;
-      if (!soundId) return;
+      if (!soundId) {
+        return;
+      }
 
       setLeftEffects((prev) => {
         const reordered = effectIds
@@ -469,7 +488,9 @@ export function useDjAudio() {
   const reorderRightEffects = useCallback(
     (effectIds: string[]) => {
       const soundId = rightSoundIdRef.current;
-      if (!soundId) return;
+      if (!soundId) {
+        return;
+      }
 
       setRightEffects((prev) => {
         const reordered = effectIds
@@ -489,14 +510,14 @@ export function useDjAudio() {
       const effects = audioManager.getEffects(leftSoundIdRef.current);
       setLeftEffects(effects.map((e) => e.config));
     }
-  }, [audioManager, leftSoundIdRef.current]);
+  }, [audioManager]);
 
   useEffect(() => {
     if (rightSoundIdRef.current) {
       const effects = audioManager.getEffects(rightSoundIdRef.current);
       setRightEffects(effects.map((e) => e.config));
     }
-  }, [audioManager, rightSoundIdRef.current]);
+  }, [audioManager]);
 
   return {
     leftRadio,

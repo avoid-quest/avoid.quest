@@ -21,7 +21,8 @@
       "!**/.source",
       "!**/cloudflare-env.d.ts",
       "!**/*-bundle.js",
-      "!**/*-bundle.d.ts"
+      "!**/*-bundle.d.ts",
+      "!**/packages/cacophony/src"
     ]
   },
   "javascript": {

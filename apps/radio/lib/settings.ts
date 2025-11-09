@@ -10,7 +10,7 @@ export const resetAllSettings = async (): Promise<void> => {
   // Clear all data
   await db.radios.clear();
   await db.settings.clear();
-  
+
   // Reinitialize with defaults
   await db.settings.add(defaultSettings);
   await db.radios.bulkAdd(defaultRadios);

@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@workspace/ui/components/button";
 import {
   Dialog,
   DialogContent,
@@ -7,10 +8,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@workspace/ui/components/dialog";
-import { AVAILABLE_EFFECTS } from "@/lib/audio/effects/registry";
-import { Button } from "@workspace/ui/components/button";
 import { Input } from "@workspace/ui/components/input";
 import { useState } from "react";
+import { AVAILABLE_EFFECTS } from "@/lib/audio/effects/registry";
 
 type EffectPickerProps = {
   onSelect: (effectType: string) => void;
@@ -20,13 +20,14 @@ type EffectPickerProps = {
 export function EffectPicker({ onSelect, onClose }: EffectPickerProps) {
   const [searchQuery, setSearchQuery] = useState("");
 
-  const filteredEffects = AVAILABLE_EFFECTS.filter((effect) =>
-    effect.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    effect.description.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredEffects = AVAILABLE_EFFECTS.filter(
+    (effect) =>
+      effect.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      effect.description.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   return (
-    <Dialog open onOpenChange={onClose}>
+    <Dialog onOpenChange={onClose} open>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Add Effect</DialogTitle>
@@ -37,18 +38,18 @@ export function EffectPicker({ onSelect, onClose }: EffectPickerProps) {
 
         <div className="space-y-4">
           <Input
+            onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search effects..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
           />
 
           <div className="max-h-96 space-y-2 overflow-y-auto">
             {filteredEffects.map((effect) => (
               <Button
-                key={effect.type}
-                variant="outline"
                 className="w-full justify-start text-left"
+                key={effect.type}
                 onClick={() => onSelect(effect.type)}
+                variant="outline"
               >
                 <div className="flex flex-col items-start">
                   <div className="font-medium">{effect.name}</div>

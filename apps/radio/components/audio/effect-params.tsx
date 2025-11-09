@@ -18,7 +18,6 @@ import type {
   PannerConfig,
   ReverbConfig,
 } from "@/lib/audio/effects/types";
-import { useCallback } from "react";
 
 type EffectParamsProps = {
   effect: EffectConfig;
@@ -45,17 +44,53 @@ export function EffectParams({
   const renderParams = () => {
     switch (effect.type) {
       case "biquadFilter":
-        return <BiquadFilterParams effect={effect} onUpdate={onUpdate} isInitialized={isInitialized} />;
+        return (
+          <BiquadFilterParams
+            effect={effect}
+            isInitialized={isInitialized}
+            onUpdate={onUpdate}
+          />
+        );
       case "reverb":
-        return <ReverbParams effect={effect} onUpdate={onUpdate} isInitialized={isInitialized} />;
+        return (
+          <ReverbParams
+            effect={effect}
+            isInitialized={isInitialized}
+            onUpdate={onUpdate}
+          />
+        );
       case "delay":
-        return <DelayParams effect={effect} onUpdate={onUpdate} isInitialized={isInitialized} />;
+        return (
+          <DelayParams
+            effect={effect}
+            isInitialized={isInitialized}
+            onUpdate={onUpdate}
+          />
+        );
       case "distortion":
-        return <DistortionParams effect={effect} onUpdate={onUpdate} isInitialized={isInitialized} />;
+        return (
+          <DistortionParams
+            effect={effect}
+            isInitialized={isInitialized}
+            onUpdate={onUpdate}
+          />
+        );
       case "compressor":
-        return <CompressorParams effect={effect} onUpdate={onUpdate} isInitialized={isInitialized} />;
+        return (
+          <CompressorParams
+            effect={effect}
+            isInitialized={isInitialized}
+            onUpdate={onUpdate}
+          />
+        );
       case "panner":
-        return <PannerParams effect={effect} onUpdate={onUpdate} isInitialized={isInitialized} />;
+        return (
+          <PannerParams
+            effect={effect}
+            isInitialized={isInitialized}
+            onUpdate={onUpdate}
+          />
+        );
       default:
         return null;
     }
@@ -117,7 +152,7 @@ function BiquadFilterParams({
         <Slider
           className="w-full"
           disabled={!(isInitialized && effect.enabled)}
-          max={20000}
+          max={20_000}
           min={20}
           onValueChange={([value]) => onUpdate({ frequency: value })}
           step={1}
@@ -147,9 +182,7 @@ function BiquadFilterParams({
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <Label className="text-xs">Gain</Label>
-            <span className="font-mono text-xs">
-              {formatGain(effect.gain)}
-            </span>
+            <span className="font-mono text-xs">{formatGain(effect.gain)}</span>
           </div>
           <Slider
             className="w-full"
@@ -209,9 +242,11 @@ function ReverbParams({
           disabled={!(isInitialized && effect.enabled)}
           max={1}
           min={0}
-          onValueChange={([value]) =>
-            onUpdate({ wet: value, dry: 1 - value })
-          }
+          onValueChange={([value]) => {
+            if (value) {
+              onUpdate({ wet: value, dry: 1 - value });
+            }
+          }}
           step={0.01}
           value={[effect.wet]}
         />
@@ -300,9 +335,11 @@ function DelayParams({
           disabled={!(isInitialized && effect.enabled)}
           max={1}
           min={0}
-          onValueChange={([value]) =>
-            onUpdate({ wet: value, dry: 1 - value })
-          }
+          onValueChange={([value]) => {
+            if (value) {
+              onUpdate({ wet: value, dry: 1 - value });
+            }
+          }}
           step={0.01}
           value={[effect.wet]}
         />
@@ -379,7 +416,9 @@ function CompressorParams({
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <Label className="text-xs">Threshold</Label>
-          <span className="font-mono text-xs">{effect.threshold.toFixed(1)} dB</span>
+          <span className="font-mono text-xs">
+            {effect.threshold.toFixed(1)} dB
+          </span>
         </div>
         <Slider
           className="w-full"
@@ -411,9 +450,7 @@ function CompressorParams({
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <Label className="text-xs">Attack</Label>
-          <span className="font-mono text-xs">
-            {formatTime(effect.attack)}
-          </span>
+          <span className="font-mono text-xs">{formatTime(effect.attack)}</span>
         </div>
         <Slider
           className="w-full"
@@ -473,8 +510,12 @@ function PannerParams({
   isInitialized: boolean;
 }) {
   const formatPan = (pan: number) => {
-    if (pan === 0) return "Center";
-    if (pan < 0) return `L ${Math.abs(pan).toFixed(2)}`;
+    if (pan === 0) {
+      return "Center";
+    }
+    if (pan < 0) {
+      return `L ${Math.abs(pan).toFixed(2)}`;
+    }
     return `R ${pan.toFixed(2)}`;
   };
 

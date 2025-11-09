@@ -28,9 +28,14 @@ function getDefaultValue(
   defaultConfig: Omit<EffectConfig, "id" | "order"> | undefined,
   key: string
 ): number | undefined {
-  return defaultConfig && key in defaultConfig
-    ? (defaultConfig[key as keyof typeof defaultConfig] as number)
-    : undefined;
+  if (!defaultConfig) {
+    return;
+  }
+  if (!(key in defaultConfig)) {
+    return;
+  }
+  const value = (defaultConfig as Record<string, unknown>)[key];
+  return typeof value === "number" ? value : undefined;
 }
 
 function shouldShowGain(filterType: BiquadFilterConfig["filterType"]): boolean {

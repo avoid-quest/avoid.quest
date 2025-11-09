@@ -47,7 +47,12 @@ export function ParamSlider({
         disabled={disabled}
         max={max}
         min={min}
-        onValueChange={([newValue]) => onChange(newValue)}
+        onValueChange={(values) => {
+          const newValue = values[0];
+          if (newValue !== undefined) {
+            onChange(newValue);
+          }
+        }}
         step={step}
         value={[value]}
       />

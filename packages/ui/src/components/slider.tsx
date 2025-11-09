@@ -34,7 +34,10 @@ function Slider({
     return;
   }, [defaultValue]);
 
-  const handleReset = (index: number, e?: React.MouseEvent | React.TouchEvent) => {
+  const handleReset = (
+    index: number,
+    e?: React.MouseEvent | React.TouchEvent
+  ) => {
     if (!(onValueChange && _defaultValue)) {
       return;
     }

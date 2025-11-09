@@ -17,7 +17,7 @@ type SelectOption = {
 type ParamSelectProps = {
   label: string;
   value: string;
-  options: SelectOption[];
+  options: readonly SelectOption[];
   disabled?: boolean;
   onChange: (value: string) => void;
 };

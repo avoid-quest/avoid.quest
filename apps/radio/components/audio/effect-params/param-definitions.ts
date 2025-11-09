@@ -36,5 +36,5 @@ export function formatParam(
   if (customFormatter) {
     return customFormatter(value);
   }
-  return paramFormatters[key]?.(value) ?? paramFormatters.default(value);
+  return paramFormatters[key]?.(value) ?? paramFormatters.default?.(value) ?? value.toFixed(2);
 }

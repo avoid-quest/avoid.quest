@@ -5,6 +5,8 @@ import type { FilterConfig } from "@/components/audio/filter-control";
 import type { ReverbConfig } from "@/components/audio/reverb-control";
 import type { Radio } from "../../types";
 import { AudioManager } from "../audio-manager";
+import { createDefaultEffectConfig } from "../effects/registry";
+import type { EffectConfig } from "../effects/types";
 
 const CROSSFADE_POSITION = 0.5;
 
@@ -25,6 +27,7 @@ export function useDjAudio() {
   const [masterVolume, setMasterVolume] = useState(1);
   const [leftMuted, setLeftMuted] = useState(false);
   const [rightMuted, setRightMuted] = useState(false);
+  // Legacy filter/reverb configs for backward compatibility
   const [leftFilterConfig, setLeftFilterConfig] = useState<FilterConfig>({
     type: "lowpass",
     frequency: 1000,
@@ -54,13 +57,16 @@ export function useDjAudio() {
     decayTime: 2.0,
   });
 
+  // New unified effect system
+  const [leftEffects, setLeftEffects] = useState<EffectConfig[]>([]);
+  const [rightEffects, setRightEffects] = useState<EffectConfig[]>([]);
+
   const leftSoundIdRef = useRef<string | null>(null);
   const rightSoundIdRef = useRef<string | null>(null);
 
-  // Generate unique sound ID
+  // Generate unique sound ID (matches format used in dj-player)
   const getSoundId = useCallback(
-    (radio: Radio, side: "left" | "right") =>
-      `dj_${side}_${radio.id || radio.name}_${Date.now()}`,
+    (radio: Radio, side: "left" | "right") => `${side}_${radio.id}`,
     []
   );
 
@@ -351,6 +357,168 @@ export function useDjAudio() {
     };
   }, [audioManager]);
 
+  // New effect management functions
+  const addLeftEffect = useCallback(
+    (effectType: string) => {
+      const soundId = leftSoundIdRef.current;
+      if (!soundId) {
+        return;
+      }
+
+      const newEffect = createDefaultEffectConfig(
+        effectType as EffectConfig["type"],
+        `effect_${Date.now()}_${Math.random()}`,
+        leftEffects.length
+      );
+
+      setLeftEffects((prev) => [...prev, newEffect]);
+      audioManager.addEffect(soundId, newEffect);
+    },
+    [audioManager, leftEffects.length]
+  );
+
+  const addRightEffect = useCallback(
+    (effectType: string) => {
+      const soundId = rightSoundIdRef.current;
+      if (!soundId) {
+        return;
+      }
+
+      const newEffect = createDefaultEffectConfig(
+        effectType as EffectConfig["type"],
+        `effect_${Date.now()}_${Math.random()}`,
+        rightEffects.length
+      );
+
+      setRightEffects((prev) => [...prev, newEffect]);
+      audioManager.addEffect(soundId, newEffect);
+    },
+    [audioManager, rightEffects.length]
+  );
+
+  const updateLeftEffect = useCallback(
+    (effectId: string, config: Partial<EffectConfig>) => {
+      const soundId = leftSoundIdRef.current;
+      if (!soundId) {
+        return;
+      }
+
+      setLeftEffects(
+        (prev) =>
+          prev.map((e) =>
+            e.id === effectId ? { ...e, ...config } : e
+          ) as EffectConfig[]
+      );
+      audioManager.updateEffect(soundId, effectId, config);
+    },
+    [audioManager]
+  );
+
+  const updateRightEffect = useCallback(
+    (effectId: string, config: Partial<EffectConfig>) => {
+      const soundId = rightSoundIdRef.current;
+      if (!soundId) {
+        return;
+      }
+
+      setRightEffects(
+        (prev) =>
+          prev.map((e) =>
+            e.id === effectId ? { ...e, ...config } : e
+          ) as EffectConfig[]
+      );
+      audioManager.updateEffect(soundId, effectId, config);
+    },
+    [audioManager]
+  );
+
+  const removeLeftEffect = useCallback(
+    (effectId: string) => {
+      const soundId = leftSoundIdRef.current;
+      if (!soundId) {
+        return;
+      }
+
+      setLeftEffects((prev) => {
+        const filtered = prev.filter((e) => e.id !== effectId);
+        // Reorder remaining effects
+        return filtered.map((e, i) => ({ ...e, order: i }));
+      });
+      audioManager.removeEffect(soundId, effectId);
+    },
+    [audioManager]
+  );
+
+  const removeRightEffect = useCallback(
+    (effectId: string) => {
+      const soundId = rightSoundIdRef.current;
+      if (!soundId) {
+        return;
+      }
+
+      setRightEffects((prev) => {
+        const filtered = prev.filter((e) => e.id !== effectId);
+        // Reorder remaining effects
+        return filtered.map((e, i) => ({ ...e, order: i }));
+      });
+      audioManager.removeEffect(soundId, effectId);
+    },
+    [audioManager]
+  );
+
+  const reorderLeftEffects = useCallback(
+    (effectIds: string[]) => {
+      const soundId = leftSoundIdRef.current;
+      if (!soundId) {
+        return;
+      }
+
+      setLeftEffects((prev) => {
+        const reordered = effectIds
+          .map((id) => prev.find((e) => e.id === id))
+          .filter((e): e is EffectConfig => e !== undefined)
+          .map((e, i) => ({ ...e, order: i }));
+        return reordered;
+      });
+      audioManager.reorderEffects(soundId, effectIds);
+    },
+    [audioManager]
+  );
+
+  const reorderRightEffects = useCallback(
+    (effectIds: string[]) => {
+      const soundId = rightSoundIdRef.current;
+      if (!soundId) {
+        return;
+      }
+
+      setRightEffects((prev) => {
+        const reordered = effectIds
+          .map((id) => prev.find((e) => e.id === id))
+          .filter((e): e is EffectConfig => e !== undefined)
+          .map((e, i) => ({ ...e, order: i }));
+        return reordered;
+      });
+      audioManager.reorderEffects(soundId, effectIds);
+    },
+    [audioManager]
+  );
+
+  // Sync effects from audio manager when sound is loaded
+  useEffect(() => {
+    if (leftSoundIdRef.current) {
+      const effects = audioManager.getEffects(leftSoundIdRef.current);
+      setLeftEffects(effects.map((e) => e.config));
+    }
+  }, [audioManager]);
+
+  useEffect(() => {
+    if (rightSoundIdRef.current) {
+      const effects = audioManager.getEffects(rightSoundIdRef.current);
+      setRightEffects(effects.map((e) => e.config));
+    }
+  }, [audioManager]);
+
   return {
     leftRadio,
     rightRadio,
@@ -365,10 +533,17 @@ export function useDjAudio() {
     masterVolume,
     leftMuted,
     rightMuted,
+    // Legacy support
     leftFilterConfig,
     rightFilterConfig,
     leftReverbConfig,
     rightReverbConfig,
+    // New unified effect system
+    leftEffects,
+    rightEffects,
+    // Sound IDs for effect initialization
+    leftSoundId: leftSoundIdRef.current,
+    rightSoundId: rightSoundIdRef.current,
     setLeftRadio,
     setRightRadio,
     setCrossfadePosition: setCrossfadePositionCallback,
@@ -377,10 +552,20 @@ export function useDjAudio() {
     setMasterVolume: setMasterVolumeCallback,
     setLeftMute: setLeftMuteCallback,
     setRightMute: setRightMuteCallback,
+    // Legacy support
     updateLeftFilter: updateLeftFilterCallback,
     updateRightFilter: updateRightFilterCallback,
     updateLeftReverb: updateLeftReverbCallback,
     updateRightReverb: updateRightReverbCallback,
+    // New unified effect system
+    addLeftEffect,
+    addRightEffect,
+    updateLeftEffect,
+    updateRightEffect,
+    removeLeftEffect,
+    removeRightEffect,
+    reorderLeftEffects,
+    reorderRightEffects,
     playLeft,
     pauseLeft,
     playRight,

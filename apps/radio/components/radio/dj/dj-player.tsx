@@ -48,6 +48,10 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
     rightFilterConfig,
     leftReverbConfig,
     rightReverbConfig,
+    leftEffects,
+    rightEffects,
+    leftSoundId,
+    rightSoundId,
     setLeftRadio,
     setRightRadio,
     setCrossfadePosition,
@@ -60,6 +64,14 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
     updateRightFilter,
     updateLeftReverb,
     updateRightReverb,
+    addLeftEffect,
+    addRightEffect,
+    updateLeftEffect,
+    updateRightEffect,
+    removeLeftEffect,
+    removeRightEffect,
+    reorderLeftEffects,
+    reorderRightEffects,
     playLeft,
     playRight,
     pauseLeft,
@@ -184,26 +196,36 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
             crossfadePosition={crossfadePosition}
             error={error}
             isTransitioning={false}
+            leftEffects={leftEffects}
             leftFilterConfig={leftFilterConfig}
             leftMuted={leftMuted}
             leftReverbConfig={leftReverbConfig}
-            leftSoundId={leftRadio ? `left_${leftRadio.id}` : null}
+            leftSoundId={leftSoundId}
             leftVolume={leftVolume}
             masterVolume={masterVolume}
+            onAddLeftEffect={addLeftEffect}
+            onAddRightEffect={addRightEffect}
             onCrossfadeChange={handleCrossfadeChange}
             onLeftFilterChange={updateLeftFilter}
             onLeftMuteChange={setLeftMute}
             onLeftReverbChange={updateLeftReverb}
             onLeftVolumeChange={handleLeftVolumeChange}
             onMasterVolumeChange={setMasterVolume}
+            onRemoveLeftEffect={removeLeftEffect}
+            onRemoveRightEffect={removeRightEffect}
+            onReorderLeftEffects={reorderLeftEffects}
+            onReorderRightEffects={reorderRightEffects}
             onRightFilterChange={updateRightFilter}
             onRightMuteChange={setRightMute}
             onRightReverbChange={updateRightReverb}
             onRightVolumeChange={handleRightVolumeChange}
+            onUpdateLeftEffect={updateLeftEffect}
+            onUpdateRightEffect={updateRightEffect}
+            rightEffects={rightEffects}
             rightFilterConfig={rightFilterConfig}
             rightMuted={rightMuted}
             rightReverbConfig={rightReverbConfig}
-            rightSoundId={rightRadio ? `right_${rightRadio.id}` : null}
+            rightSoundId={rightSoundId}
             rightVolume={rightVolume}
           />
 

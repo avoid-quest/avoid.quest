@@ -3,6 +3,7 @@
 import {
   type AudioBuffer,
   type AudioContext,
+  type AudioNode,
   Cacophony,
   type ConvolverNode,
   type GainNode,
@@ -13,6 +14,8 @@ import {
 import type { FilterConfig } from "@/components/audio/filter-control";
 import type { ReverbConfig } from "@/components/audio/reverb-control";
 import type { Radio } from "../types";
+import { EffectManager } from "./effects/effect-manager";
+import type { EffectConfig } from "./effects/types";
 
 export type AudioError = {
   message: string;
@@ -35,12 +38,15 @@ export class AudioManager {
   private readonly playbacks: Map<string, Playback> = new Map();
   private readonly listeners: Map<string, Set<(state: AudioState) => void>> =
     new Map();
+  // Legacy support - will be removed after migration
   private readonly filters: Map<string, BiquadFilterNode> = new Map();
   private readonly reverbs: Map<string, ConvolverNode> = new Map();
   private readonly reverbGains: Map<string, { wet: GainNode; dry: GainNode }> =
     new Map();
   private readonly reverbConfigs: Map<string, ReverbConfig> = new Map();
   private readonly defaultDestinations: Map<string, AudioNode> = new Map();
+  // New unified effect system
+  private readonly effectManagers: Map<string, EffectManager> = new Map();
 
   private constructor() {
     this.cacophony = new Cacophony();
@@ -126,7 +132,20 @@ export class AudioManager {
       playback.volume = volume;
       this.playbacks.set(soundId, playback);
 
-      // Apply reverb if config exists and is enabled
+      // Setup effect manager for this sound
+      let effectManager = this.effectManagers.get(soundId);
+      if (!effectManager) {
+        effectManager = new EffectManager(this.cacophony, sound, playback);
+        this.effectManagers.set(soundId, effectManager);
+      }
+
+      // Set input and output nodes
+      effectManager.setInputNode(playback.outputNode);
+      effectManager.setOutputNode(
+        this.cacophony.globalGainNode as unknown as AudioNode
+      );
+
+      // Apply reverb if config exists and is enabled (legacy support)
       const reverbConfig = this.reverbConfigs.get(soundId);
       if (reverbConfig?.enabled) {
         this.applyReverb(soundId, reverbConfig);
@@ -232,10 +251,17 @@ export class AudioManager {
     // Stop and cleanup playback
     this.stopSound(soundId);
 
-    // Remove filter
+    // Cleanup effect manager
+    const effectManager = this.effectManagers.get(soundId);
+    if (effectManager) {
+      effectManager.cleanup();
+      this.effectManagers.delete(soundId);
+    }
+
+    // Remove filter (legacy)
     this.removeFilter(soundId);
 
-    // Remove reverb
+    // Remove reverb (legacy)
     this.removeReverb(soundId);
 
     // Cleanup sound
@@ -269,6 +295,7 @@ export class AudioManager {
     this.reverbGains.clear();
     this.reverbConfigs.clear();
     this.defaultDestinations.clear();
+    this.effectManagers.clear();
   }
 
   subscribe(
@@ -587,7 +614,7 @@ export class AudioManager {
   updateReverb(soundId: string, config: ReverbConfig): void {
     const playback = this.playbacks.get(soundId);
     const oldConfig = this.reverbConfigs.get(soundId);
-    
+
     // Always store config so it can be applied when playback starts
     this.reverbConfigs.set(soundId, config);
 
@@ -646,7 +673,6 @@ export class AudioManager {
       dryGain.gain.cancelScheduledValues(now);
       dryGain.gain.setValueAtTime(dryGain.gain.value, now);
       dryGain.gain.linearRampToValueAtTime(config.dry, now + smoothTime);
-
     } catch (error) {
       console.error("Failed to update reverb:", error);
     }
@@ -682,7 +708,10 @@ export class AudioManager {
           const globalGainNode = this.cacophony.globalGainNode;
           outputNode.connect(globalGainNode);
         } catch (reconnectError) {
-          console.error("Failed to restore default routing after reverb removal:", reconnectError);
+          console.error(
+            "Failed to restore default routing after reverb removal:",
+            reconnectError
+          );
         }
       }
     }
@@ -706,5 +735,89 @@ export class AudioManager {
    */
   hasReverb(soundId: string): boolean {
     return this.reverbs.has(soundId);
+  }
+
+  /**
+   * Add an effect to a sound's effect chain
+   */
+  addEffect(soundId: string, config: EffectConfig): void {
+    const effectManager = this.effectManagers.get(soundId);
+    if (effectManager) {
+      effectManager.addEffect(config);
+    } else {
+      // Create effect manager if it doesn't exist
+      const sound = this.sounds.get(soundId);
+      const playback = this.playbacks.get(soundId);
+      if (!sound) {
+        console.warn(`Sound ${soundId} not found for effect addition`);
+        return;
+      }
+      const newEffectManager = new EffectManager(
+        this.cacophony,
+        sound,
+        playback
+      );
+      this.effectManagers.set(soundId, newEffectManager);
+      if (playback) {
+        newEffectManager.setInputNode(playback.outputNode);
+        newEffectManager.setOutputNode(
+          this.cacophony
+            .globalGainNode as unknown as import("@avoid.quest/cacophony").AudioNode
+        );
+      }
+      newEffectManager.addEffect(config);
+    }
+  }
+
+  /**
+   * Remove an effect from a sound's effect chain
+   */
+  removeEffect(soundId: string, effectId: string): void {
+    const effectManager = this.effectManagers.get(soundId);
+    if (effectManager) {
+      effectManager.removeEffect(effectId);
+    }
+  }
+
+  /**
+   * Update an effect's configuration
+   */
+  updateEffect(
+    soundId: string,
+    effectId: string,
+    config: Partial<EffectConfig>
+  ): void {
+    const effectManager = this.effectManagers.get(soundId);
+    if (effectManager) {
+      effectManager.updateEffect(effectId, config);
+    }
+  }
+
+  /**
+   * Reorder effects in a sound's effect chain
+   */
+  reorderEffects(soundId: string, effectIds: string[]): void {
+    const effectManager = this.effectManagers.get(soundId);
+    if (effectManager) {
+      effectManager.reorderEffects(effectIds);
+    }
+  }
+
+  /**
+   * Get all effects for a sound
+   */
+  getEffects(soundId: string): ReturnType<EffectManager["getEffects"]> {
+    const effectManager = this.effectManagers.get(soundId);
+    if (effectManager) {
+      return effectManager.getEffects();
+    }
+    return [];
+  }
+
+  /**
+   * Get effect manager for a sound (for advanced usage)
+   */
+  getEffectManager(soundId: string): EffectManager | undefined {
+    return this.effectManagers.get(soundId);
   }
 }

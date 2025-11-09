@@ -10,11 +10,11 @@ import {
 } from "@workspace/ui/components/tabs";
 import { cn } from "@workspace/ui/lib/utils";
 import { Crossfader } from "@/components/audio/crossfader";
+import { EffectChain } from "@/components/audio/effect-chain";
 import type { FilterConfig } from "@/components/audio/filter-control";
-import { FilterControl } from "@/components/audio/filter-control";
 import type { ReverbConfig } from "@/components/audio/reverb-control";
-import { ReverbControl } from "@/components/audio/reverb-control";
 import { VolumeControl } from "@/components/audio/volume-control";
+import type { EffectConfig } from "@/lib/audio/effects/types";
 
 type DjMixerProps = {
   className?: string;
@@ -28,20 +28,37 @@ type DjMixerProps = {
   error: string | null;
   leftSoundId: string | null;
   rightSoundId: string | null;
+  // Legacy support
   leftFilterConfig: FilterConfig;
   rightFilterConfig: FilterConfig;
   leftReverbConfig: ReverbConfig;
   rightReverbConfig: ReverbConfig;
+  // New unified effect system
+  leftEffects: EffectConfig[];
+  rightEffects: EffectConfig[];
   onCrossfadeChange: (position: number) => void;
   onLeftVolumeChange: (volume: number) => void;
   onRightVolumeChange: (volume: number) => void;
   onMasterVolumeChange: (volume: number) => void;
   onLeftMuteChange: (muted: boolean) => void;
   onRightMuteChange: (muted: boolean) => void;
+  // Legacy support
   onLeftFilterChange: (config: FilterConfig) => void;
   onRightFilterChange: (config: FilterConfig) => void;
   onLeftReverbChange: (config: ReverbConfig) => void;
   onRightReverbChange: (config: ReverbConfig) => void;
+  // New unified effect system
+  onAddLeftEffect: (type: string) => void;
+  onAddRightEffect: (type: string) => void;
+  onUpdateLeftEffect: (effectId: string, config: Partial<EffectConfig>) => void;
+  onUpdateRightEffect: (
+    effectId: string,
+    config: Partial<EffectConfig>
+  ) => void;
+  onRemoveLeftEffect: (effectId: string) => void;
+  onRemoveRightEffect: (effectId: string) => void;
+  onReorderLeftEffects: (effectIds: string[]) => void;
+  onReorderRightEffects: (effectIds: string[]) => void;
 };
 
 export function DjMixer({
@@ -56,20 +73,22 @@ export function DjMixer({
   error,
   leftSoundId,
   rightSoundId,
-  leftFilterConfig,
-  rightFilterConfig,
-  leftReverbConfig,
-  rightReverbConfig,
+  leftEffects,
+  rightEffects,
   onCrossfadeChange,
   onLeftVolumeChange,
   onRightVolumeChange,
   onMasterVolumeChange,
   onLeftMuteChange,
   onRightMuteChange,
-  onLeftFilterChange,
-  onRightFilterChange,
-  onLeftReverbChange,
-  onRightReverbChange,
+  onAddLeftEffect,
+  onAddRightEffect,
+  onUpdateLeftEffect,
+  onUpdateRightEffect,
+  onRemoveLeftEffect,
+  onRemoveRightEffect,
+  onReorderLeftEffects,
+  onReorderRightEffects,
 }: DjMixerProps) {
   return (
     <Card className={cn("h-full w-full", className)}>
@@ -91,10 +110,9 @@ export function DjMixer({
         {/* Tabs Section */}
         <div className="flex-1 p-4">
           <Tabs className="h-full" defaultValue="general">
-            <TabsList className="grid w-full grid-cols-3">
+            <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="general">General</TabsTrigger>
-              <TabsTrigger value="filters">Filters</TabsTrigger>
-              <TabsTrigger value="fx">FX</TabsTrigger>
+              <TabsTrigger value="effects">Effects</TabsTrigger>
             </TabsList>
 
             {/* General Tab */}
@@ -154,40 +172,26 @@ export function DjMixer({
               </div>
             </TabsContent>
 
-            {/* Filters Tab */}
-            <TabsContent className="mt-4" value="filters">
-              <div className="flex flex-col gap-2">
-                <FilterControl
-                  initialConfig={leftFilterConfig}
-                  onFilterChange={onLeftFilterChange}
-                  soundId={leftSoundId}
-                  title="Left Deck Filter"
-                />
-                <FilterControl
-                  initialConfig={rightFilterConfig}
-                  onFilterChange={onRightFilterChange}
-                  soundId={rightSoundId}
-                  title="Right Deck Filter"
-                />
-              </div>
-            </TabsContent>
-
-            {/* FX Tab */}
-            <TabsContent className="mt-4" value="fx">
-              <div className="flex flex-col gap-2">
-                <ReverbControl
-                  initialConfig={leftReverbConfig}
-                  onReverbChange={onLeftReverbChange}
-                  soundId={leftSoundId}
-                  title="Left Deck Reverb"
-                />
-                <ReverbControl
-                  initialConfig={rightReverbConfig}
-                  onReverbChange={onRightReverbChange}
-                  soundId={rightSoundId}
-                  title="Right Deck Reverb"
-                />
-              </div>
+            {/* Effects Tab */}
+            <TabsContent className="mt-4 space-y-4" value="effects">
+              <EffectChain
+                effects={leftEffects}
+                isInitialized={!!leftSoundId}
+                onAddEffect={onAddLeftEffect}
+                onRemoveEffect={onRemoveLeftEffect}
+                onReorderEffects={onReorderLeftEffects}
+                onUpdateEffect={onUpdateLeftEffect}
+                title="Left Deck Effects"
+              />
+              <EffectChain
+                effects={rightEffects}
+                isInitialized={!!rightSoundId}
+                onAddEffect={onAddRightEffect}
+                onRemoveEffect={onRemoveRightEffect}
+                onReorderEffects={onReorderRightEffects}
+                onUpdateEffect={onUpdateRightEffect}
+                title="Right Deck Effects"
+              />
             </TabsContent>
           </Tabs>
         </div>

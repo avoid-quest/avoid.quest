@@ -103,6 +103,7 @@ export function AudioPlayer({
           </Button>
           <Slider
             className="flex-1"
+            defaultValue={[MAX_VOLUME]}
             max={MAX_VOLUME}
             min={0}
             onValueChange={handleVolumeChange}

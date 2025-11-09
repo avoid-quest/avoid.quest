@@ -27,7 +27,7 @@
     "cleanup": "rm -rf bun.lock .turbo node_modules apps/instarip/node_modules apps/instarip/.next apps/web/node_modules apps/radio/node_modules apps/radio/.next packages/ui/node_modules packages/backend/node_modules packages/scraper/node_modules packages/cacophony/node_modules",
     "changeset": "changeset",
     "version-packages": "changeset version",
-    "release:cacophony": "bun run build -F @avoid.quest/cacophony && bunx changeset publish",
+    "release:cacophony": "bun run build -F @avoid.quest/cacophony && bunx changeset publish --no-git-tag && bunx changeset tag && (git push --follow-tags || true)",
     "release:scraper": "cd packages/scraper && bun run build:all && cd ../.. && bunx changeset tag && git push --follow-tags"
   },
   "dependencies": {

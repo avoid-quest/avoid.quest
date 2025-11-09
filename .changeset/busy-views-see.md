@@ -1,10 +1,6 @@
 ---
-"@avoid.quest/cacophony": major
+"@avoid.quest/cacophony": patch
 ---
-
-## Major Version Release
-
-This major version release represents a significant milestone for the package, including:
 
 - **Improved Release Infrastructure**: Updated GitHub Actions workflow to use changesets action for automated npm publishing with proper authentication
 - **Stable API**: The package API has stabilized and is ready for production use

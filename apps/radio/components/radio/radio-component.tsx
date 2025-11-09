@@ -38,7 +38,7 @@ export function RadioComponent({
     settings?.player.mode === "multiple";
 
   return (
-    <Card>
+    <Card className={useCustomPlayer ? "min-w-xs" : ""}>
       {radio ? (
         <>
           <CardHeader className="flex items-center justify-between">
@@ -59,7 +59,7 @@ export function RadioComponent({
             {useCustomPlayer ? (
               <CustomPlayer radio={radio} />
             ) : (
-              <div className="w-[19rem]">
+              <div className="w-xs">
                 <audio
                   aria-label={radio.name}
                   autoPlay={false}

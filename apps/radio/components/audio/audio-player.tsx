@@ -59,7 +59,7 @@ export function AudioPlayer({
   }
 
   return (
-    <div className={cn("flex items-center gap-2", className)}>
+    <div className={cn("flex w-full items-center gap-2", className)}>
       {/* Play/Pause Button */}
       <Button
         className="min-w-[40px]"
@@ -88,7 +88,7 @@ export function AudioPlayer({
 
       {/* Volume Control */}
       {showVolume && (
-        <div className="flex min-w-[120px] items-center gap-2">
+        <div className="flex w-full min-w-[120px] items-center gap-2">
           <Button
             className="h-8 w-8 p-0"
             onClick={handleMute}

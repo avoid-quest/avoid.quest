@@ -1,6 +1,15 @@
 "use client";
 
 import { Button } from "@workspace/ui/components/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@workspace/ui/components/dialog";
 import { DrawerClose } from "@workspace/ui/components/drawer";
 import { Slider } from "@workspace/ui/components/slider";
 import {
@@ -15,6 +24,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { DEFAULT_TRANSITION_DURATION } from "@/lib/const";
 import { db } from "@/lib/db";
+import { resetAllSettings } from "@/lib/settings";
 import type { Settings } from "@/lib/types";
 import { RadioManagement } from "./radio-management";
 import { SettingsSelect } from "./settings-select";
@@ -39,6 +49,8 @@ export function SettingsForm({
   const [transitionDuration, setTransitionDuration] = useState(
     settings?.player.single?.transitionDuration ?? DEFAULT_TRANSITION_DURATION
   );
+  const [isResetting, setIsResetting] = useState(false);
+  const [showResetDialog, setShowResetDialog] = useState(false);
 
   const handleTransitionDurationChange = async (value: number[]) => {
     const newValue = value[0];
@@ -64,6 +76,20 @@ export function SettingsForm({
     }
   };
 
+  const handleResetAllSettings = async () => {
+    setIsResetting(true);
+    try {
+      await resetAllSettings();
+      setShowResetDialog(false);
+      toast.success("All settings reset to defaults");
+    } catch (error) {
+      console.error("Failed to reset all settings:", error);
+      toast.error("Failed to reset all settings");
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
   if (!settings) {
     return (
       <div className="flex items-center justify-center p-8">
@@ -75,7 +101,7 @@ export function SettingsForm({
   return (
     <div className="w-full space-y-4">
       <Tabs className="w-full" defaultValue="radios">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger className="text-xs sm:text-sm" value="radios">
             Radios
           </TabsTrigger>
@@ -84,6 +110,9 @@ export function SettingsForm({
           </TabsTrigger>
           <TabsTrigger className="text-xs sm:text-sm" value="import-export">
             Data
+          </TabsTrigger>
+          <TabsTrigger className="text-xs sm:text-sm" value="reset">
+            Reset
           </TabsTrigger>
         </TabsList>
 
@@ -128,6 +157,60 @@ export function SettingsForm({
 
         <TabsContent className="space-y-4" value="import-export">
           <ImportExport />
+        </TabsContent>
+
+        <TabsContent className="space-y-4" value="reset">
+          <div className="space-y-4">
+            <div className="space-y-3">
+              <h3 className="font-medium text-sm">Reset All Settings</h3>
+              <p className="text-muted-foreground text-sm">
+                This will reset all settings and radio stations to their default
+                values. All your customizations will be lost. This action cannot
+                be undone.
+              </p>
+              <Dialog onOpenChange={setShowResetDialog} open={showResetDialog}>
+                <DialogTrigger asChild>
+                  <Button className="w-full" variant="destructive">
+                    Reset All Settings
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Reset All Settings</DialogTitle>
+                    <DialogDescription>
+                      Are you sure you want to reset all settings and radio
+                      stations to their default values? This will clear all your
+                      customizations. This action cannot be undone.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="text-muted-foreground text-sm">
+                    <p className="mb-2">This will clear:</p>
+                    <ul className="list-disc space-y-1 pl-5">
+                      <li>All player settings</li>
+                      <li>All radio station customizations</li>
+                      <li>Radio station order and enabled/disabled states</li>
+                    </ul>
+                  </div>
+                  <DialogFooter>
+                    <Button
+                      disabled={isResetting}
+                      onClick={() => setShowResetDialog(false)}
+                      variant="outline"
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      disabled={isResetting}
+                      onClick={handleResetAllSettings}
+                      variant="destructive"
+                    >
+                      {isResetting ? "Resetting..." : "Reset All Settings"}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            </div>
+          </div>
         </TabsContent>
       </Tabs>
 

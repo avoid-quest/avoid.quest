@@ -8,9 +8,9 @@
     "start": "next start",
     "fix": "bunx ultracite fix",
     "check": "bunx ultracite check",
-    "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
-    "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
-    "cf-build": "opennextjs-cloudflare build",
+    "deploy": "CLOUDFLARE_BUILD=true opennextjs-cloudflare build && opennextjs-cloudflare deploy",
+    "preview": "CLOUDFLARE_BUILD=true opennextjs-cloudflare build && opennextjs-cloudflare preview",
+    "cf-build": "CLOUDFLARE_BUILD=true opennextjs-cloudflare build",
     "cf-deploy": "opennextjs-cloudflare deploy",
     "cf-upload": "opennextjs-cloudflare upload",
     "cf-typegen": "wrangler types --env-interface CloudflareEnv ./cloudflare-env.d.ts"

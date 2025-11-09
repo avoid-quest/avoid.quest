@@ -1,5 +1,13 @@
 # @avoid.quest/cacophony
 
+## 0.17.1
+
+### Patch Changes
+
+- 6496ef9: - Renamed release workflow to `release-cacophony.yml` to match naming convention
+  - Updated READMEs to clearly indicate Bun runtime difference from original package
+  - Fixed import statements in README examples to use `@avoid.quest/cacophony` package name
+
 ## 0.17.0
 
 ### Minor Changes

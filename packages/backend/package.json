@@ -1,6 +1,7 @@
 {
   "name": "@workspace/backend",
   "version": "0.1.0",
+  "private": true,
   "scripts": {
     "dev": "convex dev",
     "dev:setup": "convex dev --configure --until-success",

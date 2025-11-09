@@ -44,8 +44,5 @@
     "turbo": "^2.6.0",
     "ultracite": "6.3.2"
   },
-  "packageManager": "bun@1.3.2",
-  "overrides": {
-    "@avoid.quest/cacophony": "^0.18.3"
-  }
+  "packageManager": "bun@1.3.2"
 }

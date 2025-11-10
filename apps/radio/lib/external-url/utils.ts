@@ -13,7 +13,12 @@ function getDescription(metadata: PlatformMetadata): string | undefined {
   }
   if (metadata.platform === "soundcloud") {
     if (metadata.itemType === "track" || metadata.itemType === "playlist") {
-      return metadata.artist || (metadata.itemType === "track" ? "SoundCloud Track" : "SoundCloud Playlist");
+      return (
+        metadata.artist ||
+        (metadata.itemType === "track"
+          ? "SoundCloud Track"
+          : "SoundCloud Playlist")
+      );
     }
     return;
   }

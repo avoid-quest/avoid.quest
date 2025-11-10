@@ -53,6 +53,34 @@ export class AudioManager {
     return this.cacophony;
   }
 
+  /**
+   * Get the proxied URL for Bandcamp and SoundCloud streams to avoid CORS issues
+   */
+  private getProxiedUrl(url: string): string {
+    // Check if this is a Bandcamp URL (bcbits.com domain)
+    if (url.includes("bcbits.com")) {
+      // Use the proxy endpoint to avoid CORS issues
+      const proxyUrl = `/api/bandcamp-proxy?url=${encodeURIComponent(url)}`;
+      return proxyUrl;
+    }
+
+    // Check if this is a SoundCloud stream URL (not already proxied)
+    // SoundCloud stream URLs typically come from CDN domains like cf-media.sndcdn.com
+    // or media.soundcloud.com, but we should only proxy if it's not already a proxy URL
+    if (
+      !url.startsWith("/api/") &&
+      (url.includes("sndcdn.com") ||
+        url.includes("media.soundcloud.com") ||
+        url.includes("soundcloud.com"))
+    ) {
+      // Use the proxy endpoint to avoid CORS issues
+      const proxyUrl = `/api/soundcloud-proxy?url=${encodeURIComponent(url)}`;
+      return proxyUrl;
+    }
+
+    return url;
+  }
+
   async createSound(radio: Radio, soundId?: string): Promise<Sound> {
     const id = soundId || `sound_${radio.id || Date.now()}`;
 
@@ -62,9 +90,20 @@ export class AudioManager {
     }
 
     try {
+      // Get the URL to use (proxied for Bandcamp and SoundCloud to avoid CORS)
+      const streamUrl = this.getProxiedUrl(radio.streamUrl);
+
+      // Use HTML type for Bandcamp and SoundCloud to avoid CORS issues (works like simple player)
+      // Streaming type requires crossOrigin which these platforms don't support
+      const soundType =
+        radio.platformMetadata?.platform === "bandcamp" ||
+        radio.platformMetadata?.platform === "soundcloud"
+          ? SoundType.HTML
+          : SoundType.Streaming;
+
       const sound = await this.cacophony.createSound(
-        radio.streamUrl,
-        SoundType.Streaming,
+        streamUrl,
+        soundType,
         "stereo"
       );
 
@@ -81,6 +120,17 @@ export class AudioManager {
             radio,
             timestamp: Date.now(),
           },
+        });
+      });
+
+      // Also listen to sound ended event (in addition to playback ended)
+      sound.on("ended", () => {
+        console.log(`Sound ended for ${radio.name} (soundId: ${id})`);
+        this.notifyListeners(id, {
+          isPlaying: false,
+          isLoading: false,
+          volume: sound.volume,
+          error: null,
         });
       });
 
@@ -112,8 +162,9 @@ export class AudioManager {
     }
 
     // Clean up existing playback
-    if (this.playbacks.has(soundId)) {
-      this.playbacks.get(soundId)?.cleanup();
+    const existingPlayback = this.playbacks.get(soundId);
+    if (existingPlayback) {
+      existingPlayback.cleanup();
     }
 
     const [playback] = sound.play();
@@ -121,6 +172,18 @@ export class AudioManager {
     if (playback) {
       playback.volume = volume;
       this.playbacks.set(soundId, playback);
+
+      // Listen for track end events - bind soundId to the handler
+      const endedHandler = () => {
+        // Notify listeners that playback ended
+        this.notifyListeners(soundId, {
+          isPlaying: false,
+          isLoading: false,
+          volume: playback.volume,
+          error: null,
+        });
+      };
+      playback.on("ended", endedHandler);
 
       // Setup effect manager for this sound
       let effectManager = this.effectManagers.get(soundId);

@@ -1,6 +1,13 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import { NextResponse } from "next/server";
+import { getSessionId } from "@/lib/auth/session";
+import { logAuthFailure, logRateLimitViolation } from "@/lib/logger";
+import { checkRateLimit } from "@/lib/rate-limit";
+
+type RateLimit = {
+  limit(options: { key: string }): Promise<{ success: boolean }>;
+};
 
 type RouteParams = {
   params: Promise<{ bundle: string }>;
@@ -13,6 +20,20 @@ const ALLOWED_BUNDLES = [
 
 function isBundleAllowed(bundle: string): boolean {
   return ALLOWED_BUNDLES.includes(bundle as (typeof ALLOWED_BUNDLES)[number]);
+}
+
+function getCorsHeaders(origin: string): Record<string, string> {
+  return {
+    "Access-Control-Allow-Origin": origin,
+  };
+}
+
+function getClientIP(request: Request): string | undefined {
+  return (
+    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    request.headers.get("cf-connecting-ip") ||
+    undefined
+  );
 }
 
 function getBunPaths(bundle: string): string[] {
@@ -62,7 +83,10 @@ function findBundlePath(possiblePaths: string[]): string | null {
   return null;
 }
 
-function createResponseHeaders(bundlePath: string): Record<string, string> {
+function createResponseHeaders(
+  bundlePath: string,
+  origin: string
+): Record<string, string> {
   const stats = statSync(bundlePath);
   const lastModified = stats.mtime.toUTCString();
   const etag = `"${stats.mtime.getTime()}-${stats.size}"`;
@@ -73,19 +97,56 @@ function createResponseHeaders(bundlePath: string): Record<string, string> {
     "Cache-Control": isDevelopment
       ? "no-cache, must-revalidate"
       : "public, max-age=31536000, immutable",
-    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Origin": origin,
     "Last-Modified": lastModified,
     ETag: etag,
   };
 }
 
-export async function GET(_request: Request, { params }: RouteParams) {
+export async function GET(request: Request, { params }: RouteParams) {
+  const origin = new URL(request.url).origin;
+  const ip = getClientIP(request);
+  const cookieHeader = request.headers.get("cookie");
+  const sessionId = await getSessionId(cookieHeader);
+
+  // Authentication check
+  if (!sessionId) {
+    logAuthFailure("worklets", ip);
+    return NextResponse.json(
+      { error: "Unauthorized" },
+      { status: 401, headers: getCorsHeaders(origin) }
+    );
+  }
+
+  // Rate limiting
+  const env = process.env as unknown as { RATE_LIMIT?: RateLimit };
+  const rateLimitResult = await checkRateLimit(
+    env.RATE_LIMIT,
+    sessionId,
+    "worklets",
+    {
+      limit: 200, // 200 requests
+      window: 60, // per minute (worklets are less resource-intensive)
+    }
+  );
+
+  if (!rateLimitResult.allowed) {
+    logRateLimitViolation(sessionId, "worklets", ip);
+    return NextResponse.json(
+      { error: "Rate limit exceeded" },
+      { status: 429, headers: getCorsHeaders(origin) }
+    );
+  }
+
   try {
     const { bundle } = await params;
 
     if (!isBundleAllowed(bundle)) {
       console.error(`Bundle not allowed: ${bundle}`);
-      return new NextResponse("Bundle not found", { status: 404 });
+      return new NextResponse("Bundle not found", {
+        status: 404,
+        headers: getCorsHeaders(origin),
+      });
     }
 
     const possiblePaths = getPossiblePaths(bundle);
@@ -93,18 +154,21 @@ export async function GET(_request: Request, { params }: RouteParams) {
 
     if (!bundlePath) {
       console.error("Bundle file not found. Tried paths:", possiblePaths);
-      return new NextResponse("Bundle not found", { status: 404 });
+      return new NextResponse("Bundle not found", {
+        status: 404,
+        headers: getCorsHeaders(origin),
+      });
     }
 
     const bundleContent = readFileSync(bundlePath, "utf-8");
-    const headers = createResponseHeaders(bundlePath);
+    const headers = createResponseHeaders(bundlePath, origin);
 
     return new NextResponse(bundleContent, { headers });
   } catch (error) {
     console.error("Failed to load worklet bundle:", error);
     return new NextResponse(
       `Error loading bundle: ${error instanceof Error ? error.message : String(error)}`,
-      { status: 500 }
+      { status: 500, headers: getCorsHeaders(origin) }
     );
   }
 }

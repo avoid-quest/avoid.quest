@@ -48,11 +48,25 @@ export function useDjAudio() {
 
   const leftSoundIdRef = useRef<string | null>(null);
   const rightSoundIdRef = useRef<string | null>(null);
+  const leftEffectsRef = useRef<EffectConfig[]>([]);
+  const rightEffectsRef = useRef<EffectConfig[]>([]);
 
   // Generate unique sound ID (matches format used in dj-player)
   const getSoundId = useCallback(
     (radio: Radio, side: "left" | "right") => `${side}_${radio.id}`,
     []
+  );
+
+  // Helper to reapply effects to a sound
+  const reapplyEffects = useCallback(
+    (soundId: string, effects: EffectConfig[]) => {
+      if (effects.length > 0) {
+        for (const effect of effects) {
+          audioManager.addEffect(soundId, effect);
+        }
+      }
+    },
+    [audioManager]
   );
 
   // Load sound for a specific side
@@ -94,15 +108,17 @@ export function useDjAudio() {
           }
         });
 
-        // Update sound ID reference
+        // Update sound ID reference and reapply effects
         if (side === "left") {
           leftSoundIdRef.current = soundId;
           setLeftRadioState(radio);
           setLeftIsLoading(false);
+          reapplyEffects(soundId, leftEffectsRef.current);
         } else {
           rightSoundIdRef.current = soundId;
           setRightRadioState(radio);
           setRightIsLoading(false);
+          reapplyEffects(soundId, rightEffectsRef.current);
         }
       } catch (err) {
         const errorMessage =
@@ -116,7 +132,7 @@ export function useDjAudio() {
         }
       }
     },
-    [audioManager, getSoundId]
+    [audioManager, getSoundId, reapplyEffects]
   );
 
   // Apply crossfade to current playbacks
@@ -468,20 +484,14 @@ export function useDjAudio() {
     [audioManager]
   );
 
-  // Sync effects from audio manager when sound is loaded
+  // Keep effects refs in sync with state
   useEffect(() => {
-    if (leftSoundIdRef.current) {
-      const effects = audioManager.getEffects(leftSoundIdRef.current);
-      setLeftEffects(effects.map((e) => e.config));
-    }
-  }, [audioManager]);
+    leftEffectsRef.current = leftEffects;
+  }, [leftEffects]);
 
   useEffect(() => {
-    if (rightSoundIdRef.current) {
-      const effects = audioManager.getEffects(rightSoundIdRef.current);
-      setRightEffects(effects.map((e) => e.config));
-    }
-  }, [audioManager]);
+    rightEffectsRef.current = rightEffects;
+  }, [rightEffects]);
 
   return {
     leftRadio,

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { logSSRFAttempt } from "@/lib/logger";
 import { getCorsHeaders, getCorsOptionsHeaders } from "@/lib/middleware/cors";
-import { validateAuthAndRateLimit, getClientIP } from "@/lib/middleware/rate-limit";
+import { validateAuthAndRateLimit } from "@/lib/middleware/rate-limit";
 
 export const runtime = "nodejs";
 
@@ -155,9 +155,13 @@ export async function GET(request: Request) {
   const origin = new URL(request.url).origin;
 
   // Validate authentication and rate limiting (requires existing session)
-  const authResult = await validateAuthAndRateLimit(request, "soundcloud-proxy", {
-    createSessionIfMissing: false,
-  });
+  const authResult = await validateAuthAndRateLimit(
+    request,
+    "soundcloud-proxy",
+    {
+      createSessionIfMissing: false,
+    }
+  );
   if (authResult instanceof NextResponse) {
     return authResult;
   }

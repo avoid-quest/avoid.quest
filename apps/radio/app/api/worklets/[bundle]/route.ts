@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import { NextResponse } from "next/server";
-import { getCorsHeaders, getCorsOptionsHeaders } from "@/lib/middleware/cors";
+import { getCorsHeaders } from "@/lib/middleware/cors";
 import { validateAuthAndRateLimit } from "@/lib/middleware/rate-limit";
 
 type RouteParams = {
@@ -16,7 +16,6 @@ const ALLOWED_BUNDLES = [
 function isBundleAllowed(bundle: string): boolean {
   return ALLOWED_BUNDLES.includes(bundle as (typeof ALLOWED_BUNDLES)[number]);
 }
-
 
 function getBunPaths(bundle: string): string[] {
   const bunPaths: string[] = [];

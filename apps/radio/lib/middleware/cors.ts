@@ -26,4 +26,3 @@ export function getCorsHeaders(origin: string): CorsHeaders {
 export function getCorsOptionsHeaders(origin: string): CorsHeaders {
   return getCorsHeaders(origin);
 }
-

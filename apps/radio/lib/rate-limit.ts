@@ -16,9 +16,9 @@ export type RateLimitResult = {
 export function getRateLimitBinding(): RateLimit | undefined {
   // Access the binding using the exact name from wrangler.jsonc: "proxy-rate-limit"
   // In Cloudflare Workers, hyphenated binding names are accessible via process.env
-  const binding = (process.env as unknown as { "proxy-rate-limit"?: RateLimit })[
-    "proxy-rate-limit"
-  ];
+  const binding = (
+    process.env as unknown as { "proxy-rate-limit"?: RateLimit }
+  )["proxy-rate-limit"];
   return binding;
 }
 

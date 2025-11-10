@@ -72,4 +72,3 @@ export async function validateAuthAndRateLimit(
 
   return { sessionId, ip, shouldSetCookie };
 }
-

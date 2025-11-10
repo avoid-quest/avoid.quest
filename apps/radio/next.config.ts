@@ -5,7 +5,7 @@ const nextConfig: NextConfig = {
   typedRoutes: true,
   reactCompiler: true,
   transpilePackages: ["@workspace/ui"],
-  serverExternalPackages: ["ioredis"],
+  serverExternalPackages: ["ioredis", "redis"],
   images: {
     remotePatterns: [
       {

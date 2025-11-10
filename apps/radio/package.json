@@ -43,6 +43,8 @@
     "@types/node": "^22.19.0",
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",
+    "ioredis": "^5.8.2",
+    "redis": "^5.9.0",
     "typescript": "^5.9.3",
     "wrangler": "^4.46.0"
   },

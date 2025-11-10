@@ -1,7 +1,7 @@
 "use server";
 
-import { getBandcampItem } from "@/lib/external-url/bandcamp/actions";
-import { getSoundCloudItem } from "@/lib/external-url/soundcloud/actions";
+import { getBandcampItem } from "@/lib/external-url/bandcamp";
+import { getSoundCloudItem } from "@/lib/external-url/soundcloud";
 import { detectPlatformFromUrl } from "./detect";
 import type { PlatformItemResponse } from "./types";
 

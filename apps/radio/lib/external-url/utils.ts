@@ -1,40 +1,21 @@
 import type { Radio } from "@/lib/types";
 import type { PlatformMetadata } from "./types";
 
-function generateName(metadata: PlatformMetadata): string {
-  return metadata.name || metadata.artist || "Unknown";
-}
-
-function getBandcampDescription(
-  metadata: PlatformMetadata & { platform: "bandcamp" }
-): string | undefined {
-  if (metadata.itemType === "album") {
-    return metadata.artist ? `${metadata.artist}` : "Bandcamp Album";
-  }
-  if (metadata.itemType === "track") {
-    return metadata.albumName ? `${metadata.albumName}` : "Bandcamp Track";
-  }
-  return;
-}
-
-function getSoundCloudDescription(
-  metadata: PlatformMetadata & { platform: "soundcloud" }
-): string | undefined {
-  if (metadata.itemType === "track") {
-    return metadata.artist ? `${metadata.artist}` : "SoundCloud Track";
-  }
-  if (metadata.itemType === "playlist") {
-    return metadata.artist ? `${metadata.artist}` : "SoundCloud Playlist";
-  }
-  return;
-}
-
-function generateDescription(metadata: PlatformMetadata): string | undefined {
+function getDescription(metadata: PlatformMetadata): string | undefined {
   if (metadata.platform === "bandcamp") {
-    return getBandcampDescription(metadata);
+    if (metadata.itemType === "album") {
+      return metadata.artist || "Bandcamp Album";
+    }
+    if (metadata.itemType === "track") {
+      return metadata.albumName || "Bandcamp Track";
+    }
+    return;
   }
   if (metadata.platform === "soundcloud") {
-    return getSoundCloudDescription(metadata);
+    if (metadata.itemType === "track" || metadata.itemType === "playlist") {
+      return metadata.artist || (metadata.itemType === "track" ? "SoundCloud Track" : "SoundCloud Playlist");
+    }
+    return;
   }
   return;
 }
@@ -56,14 +37,12 @@ export function createPlatformRadio(
   streamUrl: string,
   metadata: PlatformMetadata
 ): Radio {
-  const timestamp = Date.now();
-
   return {
-    id: timestamp,
-    name: generateName(metadata),
+    id: Date.now(),
+    name: metadata.name || metadata.artist || "Unknown",
     streamUrl,
     logoUrl: getLogoUrl(metadata),
-    description: generateDescription(metadata),
+    description: getDescription(metadata),
     websiteUrl: metadata.url,
     platformMetadata: metadata,
     enabled: true,

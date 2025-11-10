@@ -9,6 +9,13 @@ import type {
   PlatformItemResponse,
 } from "@/lib/external-url/types";
 
+function createErrorResponse(message: string): PlatformItemError {
+  return {
+    success: false,
+    error: message,
+  };
+}
+
 export async function getBandcampItem(
   url: string
 ): Promise<PlatformItemResponse> {
@@ -22,17 +29,11 @@ export async function getBandcampItem(
       return await getBandcampTrack(url);
     }
 
-    return {
-      success: false,
-      error: "Artist pages are not yet supported",
-    };
+    return createErrorResponse("Artist pages are not yet supported");
   } catch (error) {
     const errorMessage =
       error instanceof Error ? error.message : "Unknown error occurred";
-    return {
-      success: false,
-      error: `Failed to get Bandcamp item: ${errorMessage}`,
-    };
+    return createErrorResponse(`Failed to get Bandcamp item: ${errorMessage}`);
   }
 }
 
@@ -49,10 +50,7 @@ async function getBandcampAlbum(
 
     const album = await bcfetch.album.getInfo(params);
     if (!album?.tracks || album.tracks.length === 0) {
-      return {
-        success: false,
-        error: "No tracks found in album",
-      };
+      return createErrorResponse("No tracks found in album");
     }
 
     const mappedTracks = album.tracks.map((track, index) => ({
@@ -62,7 +60,6 @@ async function getBandcampAlbum(
       trackNumber: index + 1,
     }));
 
-    // Calculate total duration from all tracks
     const totalDuration = mappedTracks.reduce(
       (sum, track) => sum + (track.duration || 0),
       0
@@ -90,10 +87,7 @@ async function getBandcampAlbum(
   } catch (error) {
     const errorMessage =
       error instanceof Error ? error.message : "Unknown error occurred";
-    return {
-      success: false,
-      error: `Failed to get Bandcamp album: ${errorMessage}`,
-    };
+    return createErrorResponse(`Failed to get Bandcamp album: ${errorMessage}`);
   }
 }
 
@@ -110,10 +104,7 @@ async function getBandcampTrack(
 
     const track = await bcfetch.track.getInfo(params);
     if (!track?.streamUrl) {
-      return {
-        success: false,
-        error: "No stream URL found for track",
-      };
+      return createErrorResponse("No stream URL found for track");
     }
 
     const metadata: BandcampMetadata = {
@@ -136,29 +127,7 @@ async function getBandcampTrack(
   } catch (error) {
     const errorMessage =
       error instanceof Error ? error.message : "Unknown error occurred";
-    return {
-      success: false,
-      error: `Failed to get Bandcamp track: ${errorMessage}`,
-    };
+    return createErrorResponse(`Failed to get Bandcamp track: ${errorMessage}`);
   }
 }
 
-export async function getBandcampAlbunUrl(
-  url: string
-): Promise<string | undefined> {
-  const result = await getBandcampAlbum(url);
-  if (result.success) {
-    return result.streamUrl;
-  }
-  return;
-}
-
-export async function getBandcampTrackUrl(
-  url: string
-): Promise<string | undefined> {
-  const result = await getBandcampTrack(url);
-  if (result.success) {
-    return result.streamUrl;
-  }
-  return;
-}

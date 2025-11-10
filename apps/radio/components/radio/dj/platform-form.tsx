@@ -5,13 +5,12 @@ import { Input } from "@workspace/ui/components/input";
 import { Label } from "@workspace/ui/components/label";
 import { Loader2, Music } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { loadPlatformItem } from "@/lib/external-url/actions";
 import {
   detectBandcampItemType,
   detectPlatformFromUrl,
   detectSoundCloudItemType,
 } from "@/lib/external-url/detect";
-import type { Platform } from "@/lib/external-url/types";
+import type { Platform, PlatformItemResponse } from "@/lib/external-url/types";
 import { createPlatformRadio } from "@/lib/external-url/utils";
 import type { Radio } from "@/lib/types";
 
@@ -78,7 +77,15 @@ export function PlatformForm({ onLoad, initialPlatform }: PlatformFormProps) {
     setError(null);
 
     try {
-      const result = await loadPlatformItem(url.trim());
+      const response = await fetch("/api/load-platform-item", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ url: url.trim() }),
+      });
+
+      const result = (await response.json()) as PlatformItemResponse;
 
       if (!result.success) {
         setError(result.error);

@@ -1,13 +1,8 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import { NextResponse } from "next/server";
-import { getSessionId } from "@/lib/auth/session";
-import { logAuthFailure, logRateLimitViolation } from "@/lib/logger";
-import { checkRateLimit } from "@/lib/rate-limit";
-
-type RateLimit = {
-  limit(options: { key: string }): Promise<{ success: boolean }>;
-};
+import { getCorsHeaders, getCorsOptionsHeaders } from "@/lib/middleware/cors";
+import { validateAuthAndRateLimit } from "@/lib/middleware/rate-limit";
 
 type RouteParams = {
   params: Promise<{ bundle: string }>;
@@ -22,19 +17,6 @@ function isBundleAllowed(bundle: string): boolean {
   return ALLOWED_BUNDLES.includes(bundle as (typeof ALLOWED_BUNDLES)[number]);
 }
 
-function getCorsHeaders(origin: string): Record<string, string> {
-  return {
-    "Access-Control-Allow-Origin": origin,
-  };
-}
-
-function getClientIP(request: Request): string | undefined {
-  return (
-    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-    request.headers.get("cf-connecting-ip") ||
-    undefined
-  );
-}
 
 function getBunPaths(bundle: string): string[] {
   const bunPaths: string[] = [];
@@ -105,37 +87,13 @@ function createResponseHeaders(
 
 export async function GET(request: Request, { params }: RouteParams) {
   const origin = new URL(request.url).origin;
-  const ip = getClientIP(request);
-  const cookieHeader = request.headers.get("cookie");
-  const sessionId = await getSessionId(cookieHeader);
 
-  // Authentication check
-  if (!sessionId) {
-    logAuthFailure("worklets", ip);
-    return NextResponse.json(
-      { error: "Unauthorized" },
-      { status: 401, headers: getCorsHeaders(origin) }
-    );
-  }
-
-  // Rate limiting
-  const env = process.env as unknown as { RATE_LIMIT?: RateLimit };
-  const rateLimitResult = await checkRateLimit(
-    env.RATE_LIMIT,
-    sessionId,
-    "worklets",
-    {
-      limit: 200, // 200 requests
-      window: 60, // per minute (worklets are less resource-intensive)
-    }
-  );
-
-  if (!rateLimitResult.allowed) {
-    logRateLimitViolation(sessionId, "worklets", ip);
-    return NextResponse.json(
-      { error: "Rate limit exceeded" },
-      { status: 429, headers: getCorsHeaders(origin) }
-    );
+  // Validate authentication and rate limiting (requires existing session)
+  const authResult = await validateAuthAndRateLimit(request, "worklets", {
+    createSessionIfMissing: false,
+  });
+  if (authResult instanceof NextResponse) {
+    return authResult;
   }
 
   try {

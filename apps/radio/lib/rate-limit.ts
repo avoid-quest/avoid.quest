@@ -8,28 +8,42 @@ export type RateLimitResult = {
   remaining?: number;
 };
 
-export type RateLimitOptions = {
-  limit: number;
-  window: number;
-};
+/**
+ * Get the Cloudflare rate limit binding from the environment.
+ * In Cloudflare Workers, bindings are available via process.env with the exact binding name.
+ * @returns The rate limit binding or undefined if not available
+ */
+export function getRateLimitBinding(): RateLimit | undefined {
+  // Access the binding using the exact name from wrangler.jsonc: "proxy-rate-limit"
+  // In Cloudflare Workers, hyphenated binding names are accessible via process.env
+  const binding = (process.env as unknown as { "proxy-rate-limit"?: RateLimit })[
+    "proxy-rate-limit"
+  ];
+  return binding;
+}
 
 /**
  * Check rate limit using Cloudflare Rate Limit API
- * @param rateLimit - The rate limit binding from Cloudflare environment
  * @param sessionId - The session ID to rate limit against
  * @param identifier - Unique identifier for this rate limit (e.g., 'soundcloud-proxy')
- * @param _options - Rate limit options (for documentation, actual limits are configured in wrangler.jsonc)
- * @returns Rate limit result with allowed status and remaining requests
+ * @returns Rate limit result with allowed status
  */
 export async function checkRateLimit(
-  rateLimit: RateLimit | undefined,
   sessionId: string,
-  identifier: string,
-  _options: RateLimitOptions
+  identifier: string
 ): Promise<RateLimitResult> {
-  // If rate limit binding is not available (e.g., in development), allow the request
+  const rateLimit = getRateLimitBinding();
+
+  // In development, if rate limit binding is not available, allow the request
+  // In production, fail closed for security
+  const isDevelopment = process.env.NODE_ENV === "development";
   if (!rateLimit) {
-    return { allowed: true };
+    if (isDevelopment) {
+      return { allowed: true };
+    }
+    // Fail closed in production if binding is missing
+    console.error("Rate limit binding not available in production");
+    return { allowed: false };
   }
 
   try {
@@ -37,18 +51,15 @@ export async function checkRateLimit(
     const outcome = await rateLimit.limit({ key });
 
     // Cloudflare Rate Limit API returns success: true if within limit
-    // We need to check the actual implementation - typically it returns
-    // success: false when rate limited, but we'll be defensive
     if (!outcome.success) {
       return { allowed: false };
     }
 
     // Note: Cloudflare Rate Limit API doesn't expose remaining count
-    // We return allowed: true when within limits
     return { allowed: true };
   } catch (error) {
-    // On error, log but allow the request (fail open for availability)
+    // Fail closed on error for security
     console.error("Rate limit check failed:", error);
-    return { allowed: true };
+    return { allowed: false };
   }
 }

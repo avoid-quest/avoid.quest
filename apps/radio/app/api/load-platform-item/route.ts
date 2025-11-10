@@ -1,20 +1,12 @@
-import { randomBytes } from "node:crypto";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { getSessionId } from "@/lib/auth/session";
 import { getBandcampItem } from "@/lib/external-url/bandcamp";
 import { detectPlatformFromUrl } from "@/lib/external-url/detect";
 import { getSoundCloudItem } from "@/lib/external-url/soundcloud";
 import type { PlatformItemResponse } from "@/lib/external-url/types";
-import { logRateLimitViolation } from "@/lib/logger";
-import { checkRateLimit } from "@/lib/rate-limit";
-
-const SESSION_COOKIE_NAME = "radio_session_id";
-const SESSION_MAX_AGE = 60 * 60 * 24 * 365; // 1 year
-
-type RateLimit = {
-  limit(options: { key: string }): Promise<{ success: boolean }>;
-};
+import { getCorsHeaders, getCorsOptionsHeaders } from "@/lib/middleware/cors";
+import { validateAuthAndRateLimit } from "@/lib/middleware/rate-limit";
+import { createSessionCookie } from "@/lib/middleware/session";
 
 export const runtime = "nodejs";
 
@@ -34,24 +26,6 @@ const URL_SCHEMA = z
     }
   }, "Invalid URL format");
 
-function generateSessionId(): string {
-  return randomBytes(32).toString("hex");
-}
-
-function getCorsHeaders(origin: string): Record<string, string> {
-  return {
-    "Access-Control-Allow-Origin": origin,
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
-  };
-}
-
-function createSessionCookie(sessionId: string): string {
-  const isProduction = process.env.NODE_ENV === "production";
-  const secure = isProduction ? "Secure; " : "";
-  return `${SESSION_COOKIE_NAME}=${sessionId}; Path=/; Max-Age=${SESSION_MAX_AGE}; HttpOnly; SameSite=Lax; ${secure}`;
-}
-
 function getResponseHeaders(
   origin: string,
   shouldSetCookie: boolean,
@@ -64,58 +38,14 @@ function getResponseHeaders(
   return headers;
 }
 
-function getClientIP(request: Request): string | undefined {
-  return (
-    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-    request.headers.get("cf-connecting-ip") ||
-    undefined
-  );
-}
-
-async function validateAuthAndRateLimit(
-  request: Request,
-  origin: string
-): Promise<
-  | { sessionId: string; ip: string | undefined; shouldSetCookie: boolean }
-  | NextResponse
-> {
-  const ip = getClientIP(request);
-  const cookieHeader = request.headers.get("cookie");
-  let sessionId = await getSessionId(cookieHeader);
-  let shouldSetCookie = false;
-
-  // Create session if it doesn't exist (similar to getOrCreateSession)
-  if (!sessionId) {
-    sessionId = generateSessionId();
-    shouldSetCookie = true;
-  }
-
-  const env = process.env as unknown as { RATE_LIMIT?: RateLimit };
-  const rateLimitResult = await checkRateLimit(
-    env.RATE_LIMIT,
-    sessionId,
-    "load-platform-item",
-    {
-      limit: 50, // 50 requests
-      window: 60, // per minute
-    }
-  );
-
-  if (!rateLimitResult.allowed) {
-    logRateLimitViolation(sessionId, "load-platform-item", ip);
-    return NextResponse.json(
-      { error: "Rate limit exceeded" },
-      { status: 429, headers: getCorsHeaders(origin) }
-    );
-  }
-
-  return { sessionId, ip, shouldSetCookie };
-}
-
 export async function POST(request: Request) {
   const origin = new URL(request.url).origin;
 
-  const authResult = await validateAuthAndRateLimit(request, origin);
+  // Validate authentication and rate limiting (creates session if missing)
+  const authResult = await validateAuthAndRateLimit(
+    request,
+    "load-platform-item"
+  );
   if (authResult instanceof NextResponse) {
     return authResult;
   }
@@ -219,6 +149,6 @@ export function OPTIONS(request: Request) {
   const origin = new URL(request.url).origin;
   return new NextResponse(null, {
     status: 200,
-    headers: getCorsHeaders(origin),
+    headers: getCorsOptionsHeaders(origin),
   });
 }

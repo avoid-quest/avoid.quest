@@ -1,4 +1,3 @@
-export { loadPlatformItem } from "./actions";
 export {
   detectBandcampItemType,
   detectPlatformFromUrl,

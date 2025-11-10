@@ -1,3 +1,9 @@
+export { loadPlatformItem } from "./actions";
+export {
+  detectBandcampItemType,
+  detectPlatformFromUrl,
+  detectSoundCloudItemType,
+} from "./detect";
 export type {
   BandcampItemType,
   BandcampMetadata,

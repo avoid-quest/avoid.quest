@@ -63,7 +63,7 @@ export class AudioManager {
       const proxyUrl = `/api/bandcamp-proxy?url=${encodeURIComponent(url)}`;
       return proxyUrl;
     }
-    
+
     // Check if this is a SoundCloud stream URL (not already proxied)
     // SoundCloud stream URLs typically come from CDN domains like cf-media.sndcdn.com
     // or media.soundcloud.com, but we should only proxy if it's not already a proxy URL
@@ -77,7 +77,7 @@ export class AudioManager {
       const proxyUrl = `/api/soundcloud-proxy?url=${encodeURIComponent(url)}`;
       return proxyUrl;
     }
-    
+
     return url;
   }
 

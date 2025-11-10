@@ -44,7 +44,9 @@ export type SoundCloudMetadata = {
 
 export type PlatformMetadata = BandcampMetadata | SoundCloudMetadata;
 
-export type PlatformTrack = NonNullable<BandcampMetadata["tracks"]>[number] | NonNullable<SoundCloudMetadata["tracks"]>[number];
+export type PlatformTrack =
+  | NonNullable<BandcampMetadata["tracks"]>[number]
+  | NonNullable<SoundCloudMetadata["tracks"]>[number];
 
 export type BandcampItemResult = {
   success: true;

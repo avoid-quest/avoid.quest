@@ -1,26 +1,13 @@
 "use server";
 
 import bcfetch from "bandcamp-fetch";
+import { detectBandcampItemType } from "@/lib/external-url/detect";
 import type {
   BandcampItemResult,
-  BandcampItemType,
   BandcampMetadata,
   PlatformItemError,
   PlatformItemResponse,
 } from "@/lib/external-url/types";
-
-const BANDCAMP_ALBUM_PATTERN = /bandcamp\.com\/album\//i;
-const BANDCAMP_TRACK_PATTERN = /bandcamp\.com\/track\//i;
-
-function detectBandcampItemType(url: string): BandcampItemType {
-  if (BANDCAMP_ALBUM_PATTERN.test(url)) {
-    return "album";
-  }
-  if (BANDCAMP_TRACK_PATTERN.test(url)) {
-    return "track";
-  }
-  return "artist";
-}
 
 export async function getBandcampItem(
   url: string

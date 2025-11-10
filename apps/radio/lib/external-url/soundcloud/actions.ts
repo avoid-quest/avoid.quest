@@ -9,26 +9,13 @@ import {
   setClientID,
   stream,
 } from "scdl-core";
+import { detectSoundCloudItemType } from "@/lib/external-url/detect";
 import type {
   PlatformItemError,
   PlatformItemResponse,
   SoundCloudItemResult,
-  SoundCloudItemType,
   SoundCloudMetadata,
 } from "@/lib/external-url/types";
-
-const SOUNDCLOUD_TRACK_PATTERN = /soundcloud\.com\/[^/]+\/[^/]+/i;
-const SOUNDCLOUD_PLAYLIST_PATTERN = /soundcloud\.com\/[^/]+\/sets\/[^/]+/i;
-
-function detectSoundCloudItemType(url: string): SoundCloudItemType {
-  if (SOUNDCLOUD_PLAYLIST_PATTERN.test(url)) {
-    return "playlist";
-  }
-  if (SOUNDCLOUD_TRACK_PATTERN.test(url)) {
-    return "track";
-  }
-  return "user";
-}
 
 export async function getSoundCloudItem(
   url: string

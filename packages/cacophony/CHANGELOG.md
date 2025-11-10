@@ -1,5 +1,11 @@
 # @avoid.quest/cacophony
 
+## 0.18.7
+
+### Patch Changes
+
+- a1bde19: Fixed `ended` event not being emitted when playback completes after all loops finish. The `Playback` class now properly emits the `ended` event before stopping when the loop count is exceeded, ensuring consistent event handling for natural playback completion.
+
 ## 0.18.6
 
 ### Patch Changes

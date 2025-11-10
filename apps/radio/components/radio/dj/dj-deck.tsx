@@ -21,9 +21,9 @@ import {
   Copy,
   ExternalLink,
   MoreHorizontal,
-  Music,
   Volume2,
 } from "lucide-react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import type {
   BandcampMetadata,
@@ -34,6 +34,7 @@ import type { Radio } from "@/lib/types";
 import { RadioLogo } from "../radio-logo";
 import { RadioNameLink } from "../radio-name-link";
 import { PlatformForm } from "./platform-form";
+import { PlaylistView } from "./playlist-view";
 
 const MAX_VOLUME = 100;
 
@@ -70,6 +71,36 @@ export function DjDeck({
     id: deckId,
   });
 
+  // Track current track index for playlists/albums
+  const [currentTrackIndex, setCurrentTrackIndex] = useState(0);
+
+  // Reset track index when radio changes
+  useEffect(() => {
+    setCurrentTrackIndex(0);
+  }, [radio?.id]);
+
+  // Update track index when streamUrl changes to match current track
+  useEffect(() => {
+    if (!radio?.platformMetadata) return;
+
+    const metadata = radio.platformMetadata;
+    if (metadata.platform === "bandcamp" && metadata.itemType === "album" && metadata.tracks) {
+      const index = metadata.tracks.findIndex(
+        (track) => track.streamUrl === radio.streamUrl
+      );
+      if (index !== -1) {
+        setCurrentTrackIndex(index);
+      }
+    } else if (metadata.platform === "soundcloud" && metadata.itemType === "playlist" && metadata.tracks) {
+      const index = metadata.tracks.findIndex(
+        (track) => track.streamUrl === radio.streamUrl
+      );
+      if (index !== -1) {
+        setCurrentTrackIndex(index);
+      }
+    }
+  }, [radio?.streamUrl, radio?.platformMetadata]);
+
   const handleVolumeChange = (value: number[]) => {
     onVolumeChange(value[0] ?? 0);
   };
@@ -100,6 +131,10 @@ export function DjDeck({
     if (onLoadTrack) {
       onLoadTrack(streamUrl);
     }
+  };
+
+  const handleTrackSelect = (index: number) => {
+    setCurrentTrackIndex(index);
   };
 
   const platformMetadata = radio?.platformMetadata;
@@ -177,13 +212,18 @@ export function DjDeck({
             {/* Platform-Specific Actions */}
             {isBandcamp && platformMetadata && (
               <BandcampActions
+                currentTrackIndex={currentTrackIndex}
                 metadata={platformMetadata as BandcampMetadata}
                 onPlayTrack={handlePlayTrack}
+                onTrackSelect={handleTrackSelect}
               />
             )}
             {isSoundCloud && platformMetadata && (
               <SoundCloudActions
+                currentTrackIndex={currentTrackIndex}
                 metadata={platformMetadata as SoundCloudMetadata}
+                onPlayTrack={handlePlayTrack}
+                onTrackSelect={handleTrackSelect}
               />
             )}
 
@@ -244,40 +284,29 @@ export function DjDeck({
 
 type BandcampActionsProps = {
   metadata: BandcampMetadata;
+  currentTrackIndex: number;
   onPlayTrack: (streamUrl: string) => void;
+  onTrackSelect: (index: number) => void;
 };
 
-function BandcampActions({ metadata, onPlayTrack }: BandcampActionsProps) {
+function BandcampActions({
+  metadata,
+  currentTrackIndex,
+  onPlayTrack,
+  onTrackSelect,
+}: BandcampActionsProps) {
   if (
     metadata.itemType === "album" &&
     metadata.tracks &&
     metadata.tracks.length > 0
   ) {
     return (
-      <div className="space-y-2">
-        <div className="font-medium text-muted-foreground text-xs">
-          Album Actions
-        </div>
-        <div className="grid grid-cols-1 gap-2">
-          <Button
-            onClick={() => {
-              if (metadata.streamUrl) {
-                onPlayTrack(metadata.streamUrl);
-              }
-            }}
-            size="sm"
-            variant="outline"
-          >
-            <Music className="mr-2 size-4" />
-            Play First Track
-          </Button>
-          {metadata.tracks.length > 1 && (
-            <div className="text-muted-foreground text-xs">
-              {metadata.tracks.length} tracks available
-            </div>
-          )}
-        </div>
-      </div>
+      <PlaylistView
+        currentTrackIndex={currentTrackIndex}
+        onPlayTrack={onPlayTrack}
+        onTrackSelect={onTrackSelect}
+        tracks={metadata.tracks}
+      />
     );
   }
 
@@ -301,9 +330,32 @@ function BandcampActions({ metadata, onPlayTrack }: BandcampActionsProps) {
 
 type SoundCloudActionsProps = {
   metadata: SoundCloudMetadata;
+  currentTrackIndex: number;
+  onPlayTrack: (streamUrl: string) => void;
+  onTrackSelect: (index: number) => void;
 };
 
-function SoundCloudActions({ metadata }: SoundCloudActionsProps) {
+function SoundCloudActions({
+  metadata,
+  currentTrackIndex,
+  onPlayTrack,
+  onTrackSelect,
+}: SoundCloudActionsProps) {
+  if (
+    metadata.itemType === "playlist" &&
+    metadata.tracks &&
+    metadata.tracks.length > 0
+  ) {
+    return (
+      <PlaylistView
+        currentTrackIndex={currentTrackIndex}
+        onPlayTrack={onPlayTrack}
+        onTrackSelect={onTrackSelect}
+        tracks={metadata.tracks}
+      />
+    );
+  }
+
   if (metadata.itemType === "track") {
     return (
       <div className="space-y-2">

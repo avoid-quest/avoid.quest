@@ -107,6 +107,17 @@ export class AudioManager {
         });
       });
 
+      // Also listen to sound ended event (in addition to playback ended)
+      sound.on("ended", () => {
+        console.log(`Sound ended for ${radio.name} (soundId: ${id})`);
+        this.notifyListeners(id, {
+          isPlaying: false,
+          isLoading: false,
+          volume: sound.volume,
+          error: null,
+        });
+      });
+
       this.sounds.set(id, sound);
       return sound;
     } catch (error) {
@@ -135,8 +146,9 @@ export class AudioManager {
     }
 
     // Clean up existing playback
-    if (this.playbacks.has(soundId)) {
-      this.playbacks.get(soundId)?.cleanup();
+    const existingPlayback = this.playbacks.get(soundId);
+    if (existingPlayback) {
+      existingPlayback.cleanup();
     }
 
     const [playback] = sound.play();
@@ -144,6 +156,18 @@ export class AudioManager {
     if (playback) {
       playback.volume = volume;
       this.playbacks.set(soundId, playback);
+
+      // Listen for track end events - bind soundId to the handler
+      const endedHandler = () => {
+        // Notify listeners that playback ended
+        this.notifyListeners(soundId, {
+          isPlaying: false,
+          isLoading: false,
+          volume: playback.volume,
+          error: null,
+        });
+      };
+      playback.on("ended", endedHandler);
 
       // Setup effect manager for this sound
       let effectManager = this.effectManagers.get(soundId);

@@ -170,6 +170,8 @@ export class Playback extends BasePlayback implements BaseSound {
     this.currentLoop += 1;
 
     if (this.loopCount !== "infinite" && this.currentLoop > this.loopCount) {
+      // Track ended naturally - emit ended event before stopping
+      this.emit("ended", undefined);
       this.stop();
     } else {
       this.seek(0); // Resets offset and handles play/pause state internally.

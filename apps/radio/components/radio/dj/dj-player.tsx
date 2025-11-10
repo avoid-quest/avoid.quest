@@ -10,9 +10,14 @@ import {
   useSensors,
 } from "@dnd-kit/core";
 import { Volume2 } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useDjAudio } from "@/lib/audio";
+import type { Platform } from "@/lib/external-url/types";
 import type { Radio } from "@/lib/types";
+
+// Regex pattern for extracting URLs from proxy URLs
+const PROXY_URL_PATTERN = /url=([^&]+)/;
+
 import { RadioLogo } from "../radio-logo";
 import { DjDeck } from "./dj-deck";
 import { DjMixer } from "./dj-mixer";
@@ -21,7 +26,6 @@ import {
   getPlatformFromItem,
   isPlatformItem,
 } from "./dj-radio-list";
-import type { Platform } from "@/lib/external-url/types";
 
 type DjPlayerProps = {
   radios?: Radio[];
@@ -77,6 +81,10 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
     deckId: "left-deck" | "right-deck";
     platform: Platform;
   } | null>(null);
+
+  // Track previous playing states to detect when tracks end
+  const prevLeftIsPlayingRef = useRef(leftIsPlaying);
+  const prevRightIsPlayingRef = useRef(rightIsPlaying);
 
   // Configure sensors for both mouse and touch interactions
   // Enhanced mobile support with better touch handling
@@ -197,23 +205,205 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
     }
   };
 
-  const handleLeftLoadTrack = (streamUrl: string) => {
+  const handleLeftLoadTrack = async (streamUrl: string) => {
     if (leftRadio) {
-      setLeftRadio({
+      const wasPlaying = leftIsPlaying;
+      // Pause current track if playing
+      if (wasPlaying) {
+        pauseLeft();
+      }
+      // Update radio with new streamUrl and reload sound
+      const updatedRadio = {
         ...leftRadio,
         streamUrl,
-      });
+      };
+      await setLeftRadio(updatedRadio);
+      // Resume playback if it was playing
+      if (wasPlaying) {
+        playLeft();
+      }
     }
   };
 
-  const handleRightLoadTrack = (streamUrl: string) => {
+  const handleRightLoadTrack = async (streamUrl: string) => {
     if (rightRadio) {
-      setRightRadio({
+      const wasPlaying = rightIsPlaying;
+      // Pause current track if playing
+      if (wasPlaying) {
+        pauseRight();
+      }
+      // Update radio with new streamUrl and reload sound
+      const updatedRadio = {
         ...rightRadio,
         streamUrl,
-      });
+      };
+      await setRightRadio(updatedRadio);
+      // Resume playback if it was playing
+      if (wasPlaying) {
+        playRight();
+      }
     }
   };
+
+  // Store handler refs for autoplay
+  const handleLeftLoadTrackRef = useRef(handleLeftLoadTrack);
+  const handleRightLoadTrackRef = useRef(handleRightLoadTrack);
+
+  // Keep refs up to date on every render
+  handleLeftLoadTrackRef.current = handleLeftLoadTrack;
+  handleRightLoadTrackRef.current = handleRightLoadTrack;
+
+  // Helper function to get tracks from metadata
+  const getTracksFromMetadata = useCallback(
+    (
+      metadata: Radio["platformMetadata"]
+    ): Array<{ streamUrl: string }> | null => {
+      if (!metadata) {
+        return null;
+      }
+      if (metadata.platform === "bandcamp" && metadata.itemType === "album") {
+        return metadata.tracks || null;
+      }
+      if (
+        metadata.platform === "soundcloud" &&
+        metadata.itemType === "playlist"
+      ) {
+        return metadata.tracks || null;
+      }
+      return null;
+    },
+    []
+  );
+
+  // Helper to normalize URLs for comparison (handles proxy URLs)
+  const normalizeUrl = useCallback((url: string): string => {
+    // Extract the actual URL from proxy URLs
+    if (url.includes("/api/bandcamp-proxy?url=")) {
+      const match = url.match(PROXY_URL_PATTERN);
+      if (match?.[1]) {
+        return decodeURIComponent(match[1]);
+      }
+    }
+    return url;
+  }, []);
+
+  // Autoplay next track when current track ends (left deck)
+  useEffect(() => {
+    const wasPlaying = prevLeftIsPlayingRef.current;
+    // Track ended if it was playing and now stopped (don't check isLoading as it might be false)
+    const trackEnded = wasPlaying && !leftIsPlaying;
+
+    if (!trackEnded) {
+      prevLeftIsPlayingRef.current = leftIsPlaying;
+      return;
+    }
+
+    if (!leftRadio?.platformMetadata) {
+      prevLeftIsPlayingRef.current = leftIsPlaying;
+      return;
+    }
+
+    const tracks = getTracksFromMetadata(leftRadio.platformMetadata);
+    if (!tracks || tracks.length === 0) {
+      prevLeftIsPlayingRef.current = leftIsPlaying;
+      return;
+    }
+
+    // Normalize URLs for comparison
+    const currentStreamUrl = normalizeUrl(leftRadio.streamUrl);
+    const currentIndex = tracks.findIndex(
+      (track) => normalizeUrl(track.streamUrl) === currentStreamUrl
+    );
+
+    if (currentIndex === -1) {
+      console.warn("Could not find current track in playlist", {
+        currentStreamUrl,
+        tracks: tracks.map((t) => normalizeUrl(t.streamUrl)),
+      });
+      prevLeftIsPlayingRef.current = leftIsPlaying;
+      return;
+    }
+
+    const nextIndex = currentIndex + 1;
+
+    if (nextIndex < tracks.length) {
+      const nextTrack = tracks[nextIndex];
+      if (nextTrack) {
+        // Load the next track and then auto-play it
+        handleLeftLoadTrackRef.current(nextTrack.streamUrl).then(() => {
+          // Auto-play the next track after it's loaded
+          playLeft();
+        });
+      }
+    } else {
+      console.log("Reached end of playlist");
+    }
+
+    prevLeftIsPlayingRef.current = leftIsPlaying;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leftIsPlaying, leftRadio, getTracksFromMetadata, normalizeUrl, playLeft]);
+
+  // Autoplay next track when current track ends (right deck)
+  useEffect(() => {
+    const wasPlaying = prevRightIsPlayingRef.current;
+    // Track ended if it was playing and now stopped (don't check isLoading as it might be false)
+    const trackEnded = wasPlaying && !rightIsPlaying;
+
+    if (!trackEnded) {
+      prevRightIsPlayingRef.current = rightIsPlaying;
+      return;
+    }
+
+    if (!rightRadio?.platformMetadata) {
+      prevRightIsPlayingRef.current = rightIsPlaying;
+      return;
+    }
+
+    const tracks = getTracksFromMetadata(rightRadio.platformMetadata);
+    if (!tracks || tracks.length === 0) {
+      prevRightIsPlayingRef.current = rightIsPlaying;
+      return;
+    }
+
+    // Normalize URLs for comparison
+    const currentStreamUrl = normalizeUrl(rightRadio.streamUrl);
+    const currentIndex = tracks.findIndex(
+      (track) => normalizeUrl(track.streamUrl) === currentStreamUrl
+    );
+
+    if (currentIndex === -1) {
+      console.warn("Could not find current track in playlist", {
+        currentStreamUrl,
+        tracks: tracks.map((t) => normalizeUrl(t.streamUrl)),
+      });
+      prevRightIsPlayingRef.current = rightIsPlaying;
+      return;
+    }
+
+    const nextIndex = currentIndex + 1;
+
+    if (nextIndex < tracks.length) {
+      const nextTrack = tracks[nextIndex];
+      if (nextTrack) {
+        // Load the next track and then auto-play it
+        handleRightLoadTrackRef.current(nextTrack.streamUrl).then(() => {
+          // Auto-play the next track after it's loaded
+          playRight();
+        });
+      }
+    } else {
+      console.log("Reached end of playlist");
+    }
+
+    prevRightIsPlayingRef.current = rightIsPlaying;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    rightIsPlaying,
+    rightRadio,
+    getTracksFromMetadata,
+    normalizeUrl,
+    playRight,
+  ]);
 
   return (
     <DndContext
@@ -242,10 +432,14 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
                 ? handleLeftPlatformItemLoad
                 : undefined
             }
-            pendingPlatform={pendingPlatformItem?.deckId === "left-deck" ? pendingPlatformItem.platform : undefined}
             onLoadTrack={handleLeftLoadTrack}
             onPlayPause={handleLeftPlayPause}
             onVolumeChange={handleLeftVolumeChange}
+            pendingPlatform={
+              pendingPlatformItem?.deckId === "left-deck"
+                ? pendingPlatformItem.platform
+                : undefined
+            }
             radio={leftRadio}
             volume={leftVolume}
           />
@@ -297,10 +491,14 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
                 ? handleRightPlatformItemLoad
                 : undefined
             }
-            pendingPlatform={pendingPlatformItem?.deckId === "right-deck" ? pendingPlatformItem.platform : undefined}
             onLoadTrack={handleRightLoadTrack}
             onPlayPause={handleRightPlayPause}
             onVolumeChange={handleRightVolumeChange}
+            pendingPlatform={
+              pendingPlatformItem?.deckId === "right-deck"
+                ? pendingPlatformItem.platform
+                : undefined
+            }
             radio={rightRadio}
             volume={rightVolume}
           />
@@ -343,7 +541,6 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
           </div>
         ) : null}
       </DragOverlay>
-
     </DndContext>
   );
 }

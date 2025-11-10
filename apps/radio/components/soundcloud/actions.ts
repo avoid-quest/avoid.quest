@@ -1,7 +1,14 @@
 "use server";
 
 import { fetchClientID } from "@scdl/fetch-client";
-import { setClientID, stream } from "scdl-core";
+import type { PlaylistInfo, TrackInfoData } from "scdl-core";
+import {
+  getClientID,
+  getInfo,
+  getPlaylistInfo,
+  setClientID,
+  stream,
+} from "scdl-core";
 import type {
   PlatformItemError,
   PlatformItemResponse,
@@ -54,26 +61,57 @@ async function getSoundCloudTrack(
   url: string
 ): Promise<SoundCloudItemResult | PlatformItemError> {
   try {
-    // Initialize client ID for future API calls
     const clientID = await fetchClientID();
     setClientID(clientID);
 
-    // The stream function returns a stream, not metadata
-    // For now, we'll create basic metadata from the URL
-    // Metadata extraction can be enhanced later with proper API calls
+    const trackInfo = await getInfo(url);
+    const track = trackInfo.data;
+
+    // Get stream URL using scdl-core's stream function
+    const streamResult = await stream(url);
+    const transcodingUrl = streamResult.transcoding?.url;
+
+    if (!transcodingUrl) {
+      return {
+        success: false,
+        error: "No stream URL available for this track",
+      };
+    }
+
+    // Resolve the transcoding URL to get the actual stream URL
+    // The transcoding URL needs the client ID as a query parameter
+    const currentClientID = getClientID();
+    const resolveUrl = currentClientID
+      ? `${transcodingUrl}${transcodingUrl.includes("?") ? "&" : "?"}client_id=${currentClientID}`
+      : transcodingUrl;
+    const resolveResponse = await fetch(resolveUrl);
+    if (!resolveResponse.ok) {
+      return {
+        success: false,
+        error: `Failed to resolve stream URL: ${resolveResponse.statusText}`,
+      };
+    }
+    const resolveData = (await resolveResponse.json()) as { url: string };
+    const streamUrl = resolveData.url;
+
+    const proxyUrl = `/api/soundcloud-proxy?url=${encodeURIComponent(streamUrl)}`;
+
     const metadata: SoundCloudMetadata = {
       platform: "soundcloud",
       itemType: "track",
       url,
-      streamUrl: url, // Use original URL as stream URL for SoundCloud
+      name: track.title,
+      artist: track.user.username,
+      artwork:
+        track.artwork_url?.replace("-large", "-t500x500") || track.artwork_url,
+      duration: Math.floor(track.duration / 1000),
+      streamUrl: proxyUrl,
     };
 
-    // For now, we'll use the original URL as the stream URL
-    // The actual streaming will be handled by the player
     return {
       success: true,
       metadata,
-      streamUrl: url,
+      streamUrl: proxyUrl,
     };
   } catch (error) {
     const errorMessage =
@@ -85,55 +123,154 @@ async function getSoundCloudTrack(
   }
 }
 
-function getSoundCloudPlaylist(
-  _url: string
+async function getSoundCloudPlaylist(
+  url: string
 ): Promise<SoundCloudItemResult | PlatformItemError> {
-  // For playlists, we'll need to fetch the playlist info
-  // Since scdl-core may not have direct playlist support,
-  // we'll return the first track URL for now
-  // This can be expanded when we have better API access
-
-  return Promise.resolve({
-    success: false,
-    error: "Playlist support is not yet fully implemented",
-  } as PlatformItemError);
-}
-
-export async function getSoundCloudStreamUrl(url: string): Promise<string> {
   try {
+    // Initialize client ID for future API calls
     const clientID = await fetchClientID();
     setClientID(clientID);
 
-    const streamResult = await stream(url);
+    // Get playlist info
+    const playlistInfo: PlaylistInfo = await getPlaylistInfo(url);
 
-    // Convert the stream to a Buffer
-    const chunks: Uint8Array[] = [];
-    for await (const chunk of streamResult) {
-      chunks.push(chunk instanceof Uint8Array ? chunk : new Uint8Array(chunk));
+    // Fetch partial tracks if needed to get full track data
+    const fetchedPlaylist = await playlistInfo.fetchPartialTracks();
+    const playlist = fetchedPlaylist.data;
+
+    if (!playlist.tracks || playlist.tracks.length === 0) {
+      return {
+        success: false,
+        error: "No tracks found in playlist",
+      };
     }
 
-    // Combine all chunks into a single buffer
-    const totalLength = chunks.reduce((acc, chunk) => acc + chunk.length, 0);
-    const combined = new Uint8Array(totalLength);
-    let offset = 0;
-    for (const chunk of chunks) {
-      combined.set(chunk, offset);
-      offset += chunk.length;
+    // Process tracks to get their stream URLs and metadata
+    const processedTracks = await Promise.all(
+      playlist.tracks.map(async (track: TrackInfoData) => {
+        try {
+          const streamResult = await stream(track.permalink_url);
+          const transcodingUrl = streamResult.transcoding?.url;
+
+          if (!transcodingUrl) {
+            return {
+              name: track.title,
+              streamUrl: "",
+              duration: Math.floor(track.duration / 1000),
+            };
+          }
+
+          // Resolve the transcoding URL to get the actual stream URL
+          const currentClientID = getClientID();
+          const resolveUrl = currentClientID
+            ? `${transcodingUrl}${transcodingUrl.includes("?") ? "&" : "?"}client_id=${currentClientID}`
+            : transcodingUrl;
+          const resolveResponse = await fetch(resolveUrl);
+          if (!resolveResponse.ok) {
+            return {
+              name: track.title,
+              streamUrl: "",
+              duration: Math.floor(track.duration / 1000),
+            };
+          }
+          const resolveData = (await resolveResponse.json()) as { url: string };
+          const streamUrl = resolveData.url;
+
+          const proxyUrl = `/api/soundcloud-proxy?url=${encodeURIComponent(streamUrl)}`;
+
+          return {
+            name: track.title,
+            streamUrl: proxyUrl,
+            duration: Math.floor(track.duration / 1000),
+          };
+        } catch {
+          return {
+            name: track.title,
+            streamUrl: "",
+            duration: Math.floor(track.duration / 1000),
+          };
+        }
+      })
+    );
+
+    // Filter out tracks without stream URLs
+    const validTracks = processedTracks.filter((t) => t.streamUrl);
+
+    if (validTracks.length === 0) {
+      return {
+        success: false,
+        error: "No playable tracks found in playlist",
+      };
     }
 
-    // Convert to base64
-    const base64 = Buffer.from(combined).toString("base64");
+    // Get stream URL for the first track
+    const firstTrackStreamUrl = validTracks[0]?.streamUrl || "";
 
-    // Determine content type from transcoding if available
-    const contentType =
-      streamResult.transcoding?.format.mime_type || "audio/mpeg";
+    const metadata: SoundCloudMetadata = {
+      platform: "soundcloud",
+      itemType: "playlist",
+      url,
+      name: playlist.title,
+      artist: playlist.user.username,
+      artwork:
+        playlist.artwork_url?.replace("-large", "-t500x500") ||
+        playlist.artwork_url,
+      duration: Math.floor(playlist.duration / 1000), // Convert from milliseconds to seconds
+      trackCount: playlist.track_count,
+      tracks: validTracks,
+      streamUrl: firstTrackStreamUrl,
+    };
 
-    // Return as data URL
-    return `data:${contentType};base64,${base64}`;
+    return {
+      success: true,
+      metadata,
+      streamUrl: firstTrackStreamUrl,
+    };
   } catch (error) {
-    console.error("Error streaming SoundCloud track:", error);
     const errorMessage =
-      error instanceof Error ? error.message : "Unknown error";
-    throw new Error(`Failed to stream SoundCloud track: ${errorMessage}`);
+      error instanceof Error ? error.message : "Unknown error occurred";
+    return {
+      success: false,
+      error: `Failed to get SoundCloud playlist: ${errorMessage}`,
+    };
   }
+}
+
+export async function getSoundCloudStreamUrl(url: string): Promise<string> {
+  const clientID = await fetchClientID();
+  setClientID(clientID);
+
+  const streamResult = await stream(url);
+  const transcodingUrl = streamResult.transcoding?.url;
+
+  if (!transcodingUrl) {
+    throw new Error("No stream URL available for this track");
+  }
+
+  // Resolve the transcoding URL to get the actual stream URL
+  // The transcoding URL needs the client ID as a query parameter
+  const currentClientID = getClientID();
+  const resolveUrl = currentClientID
+    ? `${transcodingUrl}${transcodingUrl.includes("?") ? "&" : "?"}client_id=${currentClientID}`
+    : transcodingUrl;
+  const resolveResponse = await fetch(resolveUrl);
+  if (!resolveResponse.ok) {
+    throw new Error(
+      `Failed to resolve stream URL: ${resolveResponse.statusText}`
+    );
+  }
+  const resolveData = (await resolveResponse.json()) as { url: string };
+  const streamUrl = resolveData.url;
+
+  return `/api/soundcloud-proxy?url=${encodeURIComponent(streamUrl)}`;
+}
+
+export async function getSoundCloudPlaylistUrl(
+  url: string
+): Promise<string | undefined> {
+  const result = await getSoundCloudPlaylist(url);
+  if (result.success) {
+    return result.streamUrl;
+  }
+  return;
 }

@@ -4,19 +4,14 @@ import { Button } from "@workspace/ui/components/button";
 import { cn } from "@workspace/ui/lib/utils";
 import { ChevronLeft, ChevronRight, Play } from "lucide-react";
 import { useState } from "react";
-
-type Track = {
-  name: string;
-  streamUrl: string;
-  duration?: number;
-  trackNumber?: number;
-};
+import type { PlatformTrack } from "@/lib/external-url/types";
 
 type PlaylistViewProps = {
-  tracks: Track[];
+  tracks: PlatformTrack[];
   currentTrackIndex: number;
   onTrackSelect: (index: number) => void;
   onPlayTrack: (streamUrl: string) => void;
+  artist?: string;
   className?: string;
 };
 
@@ -25,6 +20,7 @@ export function PlaylistView({
   currentTrackIndex,
   onTrackSelect,
   onPlayTrack,
+  artist,
   className,
 }: PlaylistViewProps) {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -72,7 +68,7 @@ export function PlaylistView({
     <div className={cn("space-y-2", className)}>
       <div className="flex items-center justify-between">
         <div className="font-medium text-muted-foreground text-xs">
-          {tracks.length === 1 ? "Track" : `Playlist (${tracks.length} tracks)`}
+          Playlist - {tracks.length} tracks
         </div>
         {tracks.length > 1 && (
           <Button
@@ -92,10 +88,13 @@ export function PlaylistView({
           <div className="flex items-center justify-between gap-2">
             <div className="min-w-0 flex-1">
               <div className="truncate font-medium text-sm">
-                {currentTrack.trackNumber && tracks.length > 1
-                  ? `${currentTrack.trackNumber}. ${currentTrack.name}`
-                  : currentTrack.name}
+                {currentTrack.name}
               </div>
+              {artist && (
+                <div className="truncate text-muted-foreground text-xs">
+                  {artist}
+                </div>
+              )}
               {currentTrack.duration && (
                 <div className="text-muted-foreground text-xs">
                   {formatDuration(currentTrack.duration)}
@@ -155,7 +154,7 @@ export function PlaylistView({
                     <Play className="size-3 text-primary" />
                   ) : (
                     <div className="text-muted-foreground text-xs">
-                      {track.trackNumber ?? index + 1}
+                      {index + 1}
                     </div>
                   )}
                 </div>

@@ -2,25 +2,17 @@ import type { Radio } from "@/lib/types";
 import type { PlatformMetadata } from "./types";
 
 function generateName(metadata: PlatformMetadata): string {
-  if (metadata.artist && metadata.name) {
-    return `${metadata.artist} - ${metadata.name}`;
-  }
-  if (metadata.artist) {
-    return metadata.artist;
-  }
-  return metadata.name || "Unknown";
+  return metadata.name || metadata.artist || "Unknown";
 }
 
 function getBandcampDescription(
   metadata: PlatformMetadata & { platform: "bandcamp" }
 ): string | undefined {
   if (metadata.itemType === "album") {
-    return metadata.artist ? `Album by ${metadata.artist}` : "Bandcamp Album";
+    return metadata.artist ? `${metadata.artist}` : "Bandcamp Album";
   }
   if (metadata.itemType === "track") {
-    return metadata.albumName
-      ? `Track from ${metadata.albumName}`
-      : "Bandcamp Track";
+    return metadata.albumName ? `${metadata.albumName}` : "Bandcamp Track";
   }
   return;
 }
@@ -29,10 +21,10 @@ function getSoundCloudDescription(
   metadata: PlatformMetadata & { platform: "soundcloud" }
 ): string | undefined {
   if (metadata.itemType === "track") {
-    return metadata.artist ? `Track by ${metadata.artist}` : "SoundCloud Track";
+    return metadata.artist ? `${metadata.artist}` : "SoundCloud Track";
   }
   if (metadata.itemType === "playlist") {
-    return "SoundCloud Playlist";
+    return metadata.artist ? `${metadata.artist}` : "SoundCloud Playlist";
   }
   return;
 }

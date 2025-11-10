@@ -4,12 +4,6 @@ export type BandcampItemType = "album" | "track" | "artist" | "label";
 
 export type SoundCloudItemType = "track" | "playlist" | "user";
 
-export type BandcampAction = "playAlbum" | "playTrack" | "playArtist";
-
-export type SoundCloudAction = "playTrack" | "playPlaylist" | "playUser";
-
-export type PlatformAction = BandcampAction | SoundCloudAction;
-
 export type BandcampMetadata = {
   platform: "bandcamp";
   itemType: BandcampItemType;
@@ -19,6 +13,8 @@ export type BandcampMetadata = {
   artwork?: string;
   albumName?: string;
   trackNumber?: number;
+  duration?: number;
+  trackCount?: number;
   tracks?: Array<{
     name: string;
     streamUrl: string;
@@ -35,6 +31,7 @@ export type SoundCloudMetadata = {
   name?: string;
   artist?: string;
   artwork?: string;
+  albumName?: string;
   duration?: number;
   trackCount?: number;
   tracks?: Array<{
@@ -46,6 +43,8 @@ export type SoundCloudMetadata = {
 };
 
 export type PlatformMetadata = BandcampMetadata | SoundCloudMetadata;
+
+export type PlatformTrack = NonNullable<BandcampMetadata["tracks"]>[number] | NonNullable<SoundCloudMetadata["tracks"]>[number];
 
 export type BandcampItemResult = {
   success: true;

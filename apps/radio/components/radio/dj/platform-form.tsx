@@ -2,6 +2,7 @@
 
 import { Button } from "@workspace/ui/components/button";
 import { Input } from "@workspace/ui/components/input";
+import { Label } from "@workspace/ui/components/label";
 import {
   Select,
   SelectContent,
@@ -9,14 +10,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@workspace/ui/components/select";
-import { Label } from "@workspace/ui/components/label";
 import { Loader2, Music } from "lucide-react";
 import { useState } from "react";
 import { getBandcampItem } from "@/components/bandcamp/actions";
 import { getSoundCloudItem } from "@/components/soundcloud/actions";
+import type { Platform } from "@/lib/external-url/types";
 import { createPlatformRadio } from "@/lib/external-url/utils";
 import type { Radio } from "@/lib/types";
-import type { Platform } from "@/lib/external-url/types";
 
 type PlatformFormProps = {
   onLoad: (radio: Radio) => void;
@@ -28,7 +28,11 @@ const BANDCAMP_ALBUM_PATTERN = /bandcamp\.com\/album\//i;
 const SOUNDCLOUD_TRACK_PATTERN = /soundcloud\.com\/[^/]+\/[^/]+/i;
 const SOUNDCLOUD_PLAYLIST_PATTERN = /soundcloud\.com\/[^/]+\/sets\/[^/]+/i;
 
-function validateUrl(platform: Platform, itemType: "track" | "album", url: string): string | null {
+function validateUrl(
+  platform: Platform,
+  itemType: "track" | "album" | "playlist",
+  url: string
+): string | null {
   if (!url.trim()) {
     return "Please enter a URL";
   }
@@ -55,14 +59,21 @@ function validateUrl(platform: Platform, itemType: "track" | "album", url: strin
         return "URL does not match a SoundCloud track format";
       }
     }
+    if (itemType === "playlist" && !SOUNDCLOUD_PLAYLIST_PATTERN.test(url)) {
+      return "URL does not match a SoundCloud playlist/set format. Make sure it contains '/sets/'";
+    }
   }
 
   return null;
 }
 
 export function PlatformForm({ onLoad, initialPlatform }: PlatformFormProps) {
-  const [platform, setPlatform] = useState<Platform | "">(initialPlatform || "");
-  const [itemType, setItemType] = useState<"track" | "album" | "">("");
+  const [platform, setPlatform] = useState<Platform | "">(
+    initialPlatform || ""
+  );
+  const [itemType, setItemType] = useState<"track" | "album" | "playlist" | "">(
+    ""
+  );
   const [url, setUrl] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -74,7 +85,7 @@ export function PlatformForm({ onLoad, initialPlatform }: PlatformFormProps) {
     setError(null);
   };
 
-  const handleItemTypeChange = (value: "track" | "album") => {
+  const handleItemTypeChange = (value: "track" | "album" | "playlist") => {
     setItemType(value);
     setUrl("");
     setError(null);
@@ -88,7 +99,7 @@ export function PlatformForm({ onLoad, initialPlatform }: PlatformFormProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!platform || !itemType) {
+    if (!(platform && itemType)) {
       setError("Please select both platform and item type");
       return;
     }
@@ -139,7 +150,10 @@ export function PlatformForm({ onLoad, initialPlatform }: PlatformFormProps) {
           { value: "album" as const, label: "Album" },
         ]
       : platform === "soundcloud"
-        ? [{ value: "track" as const, label: "Track" }]
+        ? [
+            { value: "track" as const, label: "Track" },
+            { value: "playlist" as const, label: "Playlist/Set" },
+          ]
         : [];
 
   return (
@@ -158,7 +172,7 @@ export function PlatformForm({ onLoad, initialPlatform }: PlatformFormProps) {
               onValueChange={handlePlatformChange}
               value={platform}
             >
-              <SelectTrigger id="platform" className="w-full">
+              <SelectTrigger className="w-full" id="platform">
                 <SelectValue placeholder="Select platform" />
               </SelectTrigger>
               <SelectContent>
@@ -176,7 +190,7 @@ export function PlatformForm({ onLoad, initialPlatform }: PlatformFormProps) {
                 onValueChange={handleItemTypeChange}
                 value={itemType}
               >
-                <SelectTrigger id="item-type" className="w-full">
+                <SelectTrigger className="w-full" id="item-type">
                   <SelectValue placeholder="Select item type" />
                 </SelectTrigger>
                 <SelectContent>
@@ -197,16 +211,16 @@ export function PlatformForm({ onLoad, initialPlatform }: PlatformFormProps) {
                 disabled={isLoading}
                 id="url"
                 onChange={(e) => handleUrlChange(e.target.value)}
-                onPaste={(e) => {
-                  const pastedUrl = e.clipboardData.getData("text");
-                  handleUrlChange(pastedUrl);
-                }}
                 placeholder={
                   platform === "bandcamp"
                     ? itemType === "track"
                       ? "https://artist.bandcamp.com/track/track-name"
                       : "https://artist.bandcamp.com/album/album-name"
-                    : "https://soundcloud.com/artist/track-name"
+                    : platform === "soundcloud"
+                      ? itemType === "track"
+                        ? "https://soundcloud.com/artist/track-name"
+                        : "https://soundcloud.com/artist/sets/playlist-name"
+                      : ""
                 }
                 type="url"
                 value={url}
@@ -235,4 +249,3 @@ export function PlatformForm({ onLoad, initialPlatform }: PlatformFormProps) {
     </div>
   );
 }
-

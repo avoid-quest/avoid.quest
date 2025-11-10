@@ -54,7 +54,7 @@ export class AudioManager {
   }
 
   /**
-   * Get the proxied URL for Bandcamp streams to avoid CORS issues
+   * Get the proxied URL for Bandcamp and SoundCloud streams to avoid CORS issues
    */
   private getProxiedUrl(url: string): string {
     // Check if this is a Bandcamp URL (bcbits.com domain)
@@ -63,6 +63,21 @@ export class AudioManager {
       const proxyUrl = `/api/bandcamp-proxy?url=${encodeURIComponent(url)}`;
       return proxyUrl;
     }
+    
+    // Check if this is a SoundCloud stream URL (not already proxied)
+    // SoundCloud stream URLs typically come from CDN domains like cf-media.sndcdn.com
+    // or media.soundcloud.com, but we should only proxy if it's not already a proxy URL
+    if (
+      !url.startsWith("/api/") &&
+      (url.includes("sndcdn.com") ||
+        url.includes("media.soundcloud.com") ||
+        url.includes("soundcloud.com"))
+    ) {
+      // Use the proxy endpoint to avoid CORS issues
+      const proxyUrl = `/api/soundcloud-proxy?url=${encodeURIComponent(url)}`;
+      return proxyUrl;
+    }
+    
     return url;
   }
 
@@ -75,13 +90,14 @@ export class AudioManager {
     }
 
     try {
-      // Get the URL to use (proxied for Bandcamp to avoid CORS)
+      // Get the URL to use (proxied for Bandcamp and SoundCloud to avoid CORS)
       const streamUrl = this.getProxiedUrl(radio.streamUrl);
 
-      // Use HTML type for Bandcamp to avoid CORS issues (works like simple player)
-      // Streaming type requires crossOrigin which Bandcamp doesn't support
+      // Use HTML type for Bandcamp and SoundCloud to avoid CORS issues (works like simple player)
+      // Streaming type requires crossOrigin which these platforms don't support
       const soundType =
-        radio.platformMetadata?.platform === "bandcamp"
+        radio.platformMetadata?.platform === "bandcamp" ||
+        radio.platformMetadata?.platform === "soundcloud"
           ? SoundType.HTML
           : SoundType.Streaming;
 

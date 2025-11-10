@@ -85,6 +85,9 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
   // Track previous playing states to detect when tracks end
   const prevLeftIsPlayingRef = useRef(leftIsPlaying);
   const prevRightIsPlayingRef = useRef(rightIsPlaying);
+  // Track if user manually paused to prevent autoplay
+  const leftManuallyPausedRef = useRef(false);
+  const rightManuallyPausedRef = useRef(false);
 
   // Configure sensors for both mouse and touch interactions
   // Enhanced mobile support with better touch handling
@@ -160,8 +163,10 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
   const handleLeftPlayPause = () => {
     if (leftRadio) {
       if (leftIsPlaying) {
+        leftManuallyPausedRef.current = true;
         pauseLeft();
       } else {
+        leftManuallyPausedRef.current = false;
         playLeft();
       }
     }
@@ -170,8 +175,10 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
   const handleRightPlayPause = () => {
     if (rightRadio) {
       if (rightIsPlaying) {
+        rightManuallyPausedRef.current = true;
         pauseRight();
       } else {
+        rightManuallyPausedRef.current = false;
         playRight();
       }
     }
@@ -287,123 +294,79 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
     return url;
   }, []);
 
+  // Helper function to find next track in playlist
+  const findNextTrack = useCallback(
+    (radio: Radio | null): { streamUrl: string } | null => {
+      if (!radio?.platformMetadata) {
+        return null;
+      }
+
+      const tracks = getTracksFromMetadata(radio.platformMetadata);
+      if (!tracks || tracks.length === 0) {
+        return null;
+      }
+
+      const currentStreamUrl = normalizeUrl(radio.streamUrl);
+      const currentIndex = tracks.findIndex(
+        (track) => normalizeUrl(track.streamUrl) === currentStreamUrl
+      );
+
+      if (currentIndex === -1 || currentIndex + 1 >= tracks.length) {
+        return null;
+      }
+
+      return tracks[currentIndex + 1] || null;
+    },
+    [getTracksFromMetadata, normalizeUrl]
+  );
+
   // Autoplay next track when current track ends (left deck)
   useEffect(() => {
     const wasPlaying = prevLeftIsPlayingRef.current;
-    // Track ended if it was playing and now stopped (don't check isLoading as it might be false)
-    const trackEnded = wasPlaying && !leftIsPlaying;
+    const trackEnded =
+      wasPlaying && !leftIsPlaying && !leftManuallyPausedRef.current;
 
-    if (!trackEnded) {
-      prevLeftIsPlayingRef.current = leftIsPlaying;
-      return;
+    if (leftIsPlaying) {
+      leftManuallyPausedRef.current = false;
     }
 
-    if (!leftRadio?.platformMetadata) {
-      prevLeftIsPlayingRef.current = leftIsPlaying;
-      return;
-    }
-
-    const tracks = getTracksFromMetadata(leftRadio.platformMetadata);
-    if (!tracks || tracks.length === 0) {
-      prevLeftIsPlayingRef.current = leftIsPlaying;
-      return;
-    }
-
-    // Normalize URLs for comparison
-    const currentStreamUrl = normalizeUrl(leftRadio.streamUrl);
-    const currentIndex = tracks.findIndex(
-      (track) => normalizeUrl(track.streamUrl) === currentStreamUrl
-    );
-
-    if (currentIndex === -1) {
-      console.warn("Could not find current track in playlist", {
-        currentStreamUrl,
-        tracks: tracks.map((t) => normalizeUrl(t.streamUrl)),
-      });
-      prevLeftIsPlayingRef.current = leftIsPlaying;
-      return;
-    }
-
-    const nextIndex = currentIndex + 1;
-
-    if (nextIndex < tracks.length) {
-      const nextTrack = tracks[nextIndex];
+    if (trackEnded) {
+      leftManuallyPausedRef.current = false;
+      const nextTrack = findNextTrack(leftRadio);
       if (nextTrack) {
-        // Load the next track and then auto-play it
         handleLeftLoadTrackRef.current(nextTrack.streamUrl).then(() => {
-          // Auto-play the next track after it's loaded
           playLeft();
         });
       }
-    } else {
-      console.log("Reached end of playlist");
     }
 
     prevLeftIsPlayingRef.current = leftIsPlaying;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [leftIsPlaying, leftRadio, getTracksFromMetadata, normalizeUrl, playLeft]);
+  }, [leftIsPlaying, leftRadio, findNextTrack, playLeft]);
 
   // Autoplay next track when current track ends (right deck)
   useEffect(() => {
     const wasPlaying = prevRightIsPlayingRef.current;
-    // Track ended if it was playing and now stopped (don't check isLoading as it might be false)
-    const trackEnded = wasPlaying && !rightIsPlaying;
+    const trackEnded =
+      wasPlaying && !rightIsPlaying && !rightManuallyPausedRef.current;
 
-    if (!trackEnded) {
-      prevRightIsPlayingRef.current = rightIsPlaying;
-      return;
+    if (rightIsPlaying) {
+      rightManuallyPausedRef.current = false;
     }
 
-    if (!rightRadio?.platformMetadata) {
-      prevRightIsPlayingRef.current = rightIsPlaying;
-      return;
-    }
-
-    const tracks = getTracksFromMetadata(rightRadio.platformMetadata);
-    if (!tracks || tracks.length === 0) {
-      prevRightIsPlayingRef.current = rightIsPlaying;
-      return;
-    }
-
-    // Normalize URLs for comparison
-    const currentStreamUrl = normalizeUrl(rightRadio.streamUrl);
-    const currentIndex = tracks.findIndex(
-      (track) => normalizeUrl(track.streamUrl) === currentStreamUrl
-    );
-
-    if (currentIndex === -1) {
-      console.warn("Could not find current track in playlist", {
-        currentStreamUrl,
-        tracks: tracks.map((t) => normalizeUrl(t.streamUrl)),
-      });
-      prevRightIsPlayingRef.current = rightIsPlaying;
-      return;
-    }
-
-    const nextIndex = currentIndex + 1;
-
-    if (nextIndex < tracks.length) {
-      const nextTrack = tracks[nextIndex];
+    if (trackEnded) {
+      rightManuallyPausedRef.current = false;
+      const nextTrack = findNextTrack(rightRadio);
       if (nextTrack) {
-        // Load the next track and then auto-play it
         handleRightLoadTrackRef.current(nextTrack.streamUrl).then(() => {
-          // Auto-play the next track after it's loaded
           playRight();
         });
       }
-    } else {
-      console.log("Reached end of playlist");
     }
 
     prevRightIsPlayingRef.current = rightIsPlaying;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    rightIsPlaying,
-    rightRadio,
-    getTracksFromMetadata,
-    normalizeUrl,
-    playRight,
-  ]);
+  }, [rightIsPlaying, rightRadio, findNextTrack, playRight]);
 
   return (
     <DndContext

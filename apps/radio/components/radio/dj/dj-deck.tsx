@@ -17,23 +17,16 @@ import {
 import { PlayPauseButton } from "@workspace/ui/components/play-pause-button";
 import { Slider } from "@workspace/ui/components/slider";
 import { cn } from "@workspace/ui/lib/utils";
-import {
-  Copy,
-  ExternalLink,
-  MoreHorizontal,
-  Volume2,
-} from "lucide-react";
-import { useEffect, useState } from "react";
+import { Copy, ExternalLink, MoreHorizontal, Volume2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import type {
-  BandcampMetadata,
-  Platform,
-  SoundCloudMetadata,
-} from "@/lib/external-url/types";
+import type { Platform, PlatformMetadata } from "@/lib/external-url/types";
 import type { Radio } from "@/lib/types";
 import { RadioLogo } from "../radio-logo";
 import { RadioNameLink } from "../radio-name-link";
 import { PlatformForm } from "./platform-form";
+import { PlatformItemInfo } from "./platform-item-info";
+import { PlatformTrackInfo } from "./platform-track-info";
 import { PlaylistView } from "./playlist-view";
 
 const MAX_VOLUME = 100;
@@ -73,25 +66,28 @@ export function DjDeck({
 
   // Track current track index for playlists/albums
   const [currentTrackIndex, setCurrentTrackIndex] = useState(0);
+  const prevRadioIdRef = useRef<number | undefined>(radio?.id);
 
   // Reset track index when radio changes
   useEffect(() => {
-    setCurrentTrackIndex(0);
-  }, [radio?.id]);
+    if (prevRadioIdRef.current !== radio?.id) {
+      setCurrentTrackIndex(0);
+      prevRadioIdRef.current = radio?.id;
+    }
+  }, [radio]);
 
   // Update track index when streamUrl changes to match current track
   useEffect(() => {
-    if (!radio?.platformMetadata) return;
+    if (!radio?.platformMetadata?.tracks) {
+      return;
+    }
 
     const metadata = radio.platformMetadata;
-    if (metadata.platform === "bandcamp" && metadata.itemType === "album" && metadata.tracks) {
-      const index = metadata.tracks.findIndex(
-        (track) => track.streamUrl === radio.streamUrl
-      );
-      if (index !== -1) {
-        setCurrentTrackIndex(index);
-      }
-    } else if (metadata.platform === "soundcloud" && metadata.itemType === "playlist" && metadata.tracks) {
+    const isCollection =
+      (metadata.platform === "bandcamp" && metadata.itemType === "album") ||
+      (metadata.platform === "soundcloud" && metadata.itemType === "playlist");
+
+    if (isCollection && metadata.tracks) {
       const index = metadata.tracks.findIndex(
         (track) => track.streamUrl === radio.streamUrl
       );
@@ -138,8 +134,6 @@ export function DjDeck({
   };
 
   const platformMetadata = radio?.platformMetadata;
-  const isBandcamp = platformMetadata?.platform === "bandcamp";
-  const isSoundCloud = platformMetadata?.platform === "soundcloud";
 
   return (
     <Card
@@ -210,18 +204,10 @@ export function DjDeck({
             </div>
 
             {/* Platform-Specific Actions */}
-            {isBandcamp && platformMetadata && (
-              <BandcampActions
+            {platformMetadata && (
+              <PlatformActions
                 currentTrackIndex={currentTrackIndex}
-                metadata={platformMetadata as BandcampMetadata}
-                onPlayTrack={handlePlayTrack}
-                onTrackSelect={handleTrackSelect}
-              />
-            )}
-            {isSoundCloud && platformMetadata && (
-              <SoundCloudActions
-                currentTrackIndex={currentTrackIndex}
-                metadata={platformMetadata as SoundCloudMetadata}
+                metadata={platformMetadata}
                 onPlayTrack={handlePlayTrack}
                 onTrackSelect={handleTrackSelect}
               />
@@ -265,110 +251,78 @@ export function DjDeck({
               Clear Deck
             </Button>
           </>
-        ) : onLoadPlatformItem && pendingPlatform ? (
-          <PlatformForm initialPlatform={pendingPlatform} onLoad={onLoadPlatformItem} />
         ) : (
-          <div className="flex flex-1 flex-col items-center justify-center text-center sm:space-y-4">
-            <div className="rounded-lg border-2 border-muted-foreground/25 border-dashed p-2 sm:p-6">
-              <Volume2 className="mx-auto size-8 text-muted-foreground sm:size-10" />
-              <p className="mt-2 text-muted-foreground text-sm">
-                Drop a radio station here
-              </p>
-            </div>
-          </div>
+          (() => {
+            if (onLoadPlatformItem && pendingPlatform) {
+              return (
+                <PlatformForm
+                  initialPlatform={pendingPlatform}
+                  onLoad={onLoadPlatformItem}
+                />
+              );
+            }
+            return (
+              <div className="flex flex-1 flex-col items-center justify-center text-center sm:space-y-4">
+                <div className="rounded-lg border-2 border-muted-foreground/25 border-dashed p-2 sm:p-6">
+                  <Volume2 className="mx-auto size-8 text-muted-foreground sm:size-10" />
+                  <p className="mt-2 text-muted-foreground text-sm">
+                    Drop a radio station here
+                  </p>
+                </div>
+              </div>
+            );
+          })()
         )}
       </CardContent>
     </Card>
   );
 }
 
-type BandcampActionsProps = {
-  metadata: BandcampMetadata;
+type PlatformActionsProps = {
+  metadata: PlatformMetadata;
   currentTrackIndex: number;
   onPlayTrack: (streamUrl: string) => void;
   onTrackSelect: (index: number) => void;
 };
 
-function BandcampActions({
+function PlatformActions({
   metadata,
   currentTrackIndex,
   onPlayTrack,
   onTrackSelect,
-}: BandcampActionsProps) {
-  if (
-    metadata.itemType === "album" &&
-    metadata.tracks &&
-    metadata.tracks.length > 0
-  ) {
-    return (
-      <PlaylistView
-        currentTrackIndex={currentTrackIndex}
-        onPlayTrack={onPlayTrack}
-        onTrackSelect={onTrackSelect}
-        tracks={metadata.tracks}
-      />
-    );
-  }
+}: PlatformActionsProps) {
+  const isCollection =
+    (metadata.platform === "bandcamp" && metadata.itemType === "album") ||
+    (metadata.platform === "soundcloud" && metadata.itemType === "playlist");
 
-  if (metadata.itemType === "track") {
+  if (isCollection && metadata.tracks && metadata.tracks.length > 0) {
     return (
-      <div className="space-y-2">
-        <div className="font-medium text-muted-foreground text-xs">
-          Track Info
-        </div>
-        {metadata.albumName && (
-          <div className="text-muted-foreground text-xs">
-            From: {metadata.albumName}
-          </div>
-        )}
+      <div className="space-y-3">
+        <PlatformItemInfo
+          duration={metadata.duration}
+          trackCount={metadata.trackCount}
+        />
+        <PlaylistView
+          artist={metadata.artist}
+          currentTrackIndex={currentTrackIndex}
+          onPlayTrack={onPlayTrack}
+          onTrackSelect={onTrackSelect}
+          tracks={metadata.tracks}
+        />
       </div>
     );
   }
 
-  return null;
-}
-
-type SoundCloudActionsProps = {
-  metadata: SoundCloudMetadata;
-  currentTrackIndex: number;
-  onPlayTrack: (streamUrl: string) => void;
-  onTrackSelect: (index: number) => void;
-};
-
-function SoundCloudActions({
-  metadata,
-  currentTrackIndex,
-  onPlayTrack,
-  onTrackSelect,
-}: SoundCloudActionsProps) {
   if (
-    metadata.itemType === "playlist" &&
-    metadata.tracks &&
-    metadata.tracks.length > 0
+    (metadata.platform === "bandcamp" && metadata.itemType === "track") ||
+    (metadata.platform === "soundcloud" && metadata.itemType === "track")
   ) {
     return (
-      <PlaylistView
-        currentTrackIndex={currentTrackIndex}
-        onPlayTrack={onPlayTrack}
-        onTrackSelect={onTrackSelect}
-        tracks={metadata.tracks}
+      <PlatformTrackInfo
+        albumName={metadata.albumName}
+        artist={metadata.artist}
+        duration={metadata.duration}
       />
-    );
-  }
-
-  if (metadata.itemType === "track") {
-    return (
-      <div className="space-y-2">
-        <div className="font-medium text-muted-foreground text-xs">
-          Track Info
-        </div>
-        {metadata.duration && (
-          <div className="text-muted-foreground text-xs">
-            Duration: {Math.floor(metadata.duration / 60)}:
-            {String(Math.floor(metadata.duration % 60)).padStart(2, "0")}
-          </div>
-        )}
-      </div>
     );
   }
 

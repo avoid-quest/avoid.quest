@@ -68,6 +68,19 @@ async function getBandcampAlbum(
       };
     }
 
+    const mappedTracks = album.tracks.map((track, index) => ({
+      name: track.name || `Track ${index + 1}`,
+      streamUrl: track.streamUrl || "",
+      duration: track.duration,
+      trackNumber: index + 1,
+    }));
+
+    // Calculate total duration from all tracks
+    const totalDuration = mappedTracks.reduce(
+      (sum, track) => sum + (track.duration || 0),
+      0
+    );
+
     const metadata: BandcampMetadata = {
       platform: "bandcamp",
       itemType: "album",
@@ -76,12 +89,9 @@ async function getBandcampAlbum(
       artist: album.artist?.name,
       artwork: album.imageUrl,
       albumName: album.name,
-      tracks: album.tracks.map((track, index) => ({
-        name: track.name || `Track ${index + 1}`,
-        streamUrl: track.streamUrl || "",
-        duration: track.duration,
-        trackNumber: index + 1,
-      })),
+      trackCount: mappedTracks.length,
+      duration: totalDuration > 0 ? totalDuration : undefined,
+      tracks: mappedTracks,
       streamUrl: album.tracks[0]?.streamUrl,
     };
 
@@ -127,6 +137,7 @@ async function getBandcampTrack(
       artist: track.artist?.name,
       artwork: track.imageUrl || track.album?.imageUrl,
       albumName: track.album?.name,
+      duration: track.duration,
       streamUrl: track.streamUrl,
     };
 

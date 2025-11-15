@@ -37,9 +37,14 @@ function getResponseHeaders(
 }
 
 export async function POST(request: Request) {
+  let origin = "*";
   try {
-    const origin = new URL(request.url).origin;
+    origin = new URL(request.url).origin;
+  } catch {
+    // Fallback if URL parsing fails
+  }
 
+  try {
     // Validate authentication and rate limiting (creates session if missing)
     const authResult = await validateAuthAndRateLimit(
       request,
@@ -131,7 +136,6 @@ export async function POST(request: Request) {
       headers: getResponseHeaders(origin, shouldSetCookie, sessionId),
     });
   } catch (error) {
-    const origin = new URL(request.url).origin;
     const errorMessage =
       error instanceof Error ? error.message : "Unknown error occurred";
     console.error("Load platform item error:", errorMessage, error);

@@ -33,7 +33,13 @@ export async function validateAuthAndRateLimit(
   | { sessionId: string; ip: string | undefined; shouldSetCookie: boolean }
   | NextResponse
 > {
-  const origin = new URL(request.url).origin;
+  let origin = "*";
+  try {
+    origin = new URL(request.url).origin;
+  } catch {
+    // Fallback if URL parsing fails
+  }
+
   const ip = getClientIP(request);
   const cookieHeader = request.headers.get("cookie");
   const createSessionIfMissing = options?.createSessionIfMissing ?? true;
@@ -41,34 +47,45 @@ export async function validateAuthAndRateLimit(
   let sessionId: string | null;
   let shouldSetCookie = false;
 
-  if (createSessionIfMissing) {
-    // Get or create session
-    const { getOrCreateSessionFromRequest } = await import("./session");
-    const result = await getOrCreateSessionFromRequest(cookieHeader);
-    sessionId = result.sessionId;
-    shouldSetCookie = result.shouldSetCookie;
-  } else {
-    // Require existing session
-    sessionId = await getSessionId(cookieHeader);
-    if (!sessionId) {
-      logAuthFailure(identifier, ip);
+  try {
+    if (createSessionIfMissing) {
+      // Get or create session
+      const { getOrCreateSessionFromRequest } = await import("./session");
+      const result = await getOrCreateSessionFromRequest(cookieHeader);
+      sessionId = result.sessionId;
+      shouldSetCookie = result.shouldSetCookie;
+    } else {
+      // Require existing session
+      sessionId = await getSessionId(cookieHeader);
+      if (!sessionId) {
+        logAuthFailure(identifier, ip);
+        return NextResponse.json(
+          { error: "Unauthorized" },
+          { status: 401, headers: getCorsHeaders(origin) }
+        );
+      }
+    }
+
+    // Check rate limit
+    const rateLimitResult = await checkRateLimit(sessionId, identifier);
+
+    if (!rateLimitResult.allowed) {
+      logRateLimitViolation(sessionId, identifier, ip);
       return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401, headers: getCorsHeaders(origin) }
+        { error: "Rate limit exceeded" },
+        { status: 429, headers: getCorsHeaders(origin) }
       );
     }
-  }
 
-  // Check rate limit
-  const rateLimitResult = await checkRateLimit(sessionId, identifier);
-
-  if (!rateLimitResult.allowed) {
-    logRateLimitViolation(sessionId, identifier, ip);
+    return { sessionId, ip, shouldSetCookie };
+  } catch (error) {
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown error";
+    console.error("validateAuthAndRateLimit error:", errorMessage, error);
+    // Fail closed - return unauthorized on error
     return NextResponse.json(
-      { error: "Rate limit exceeded" },
-      { status: 429, headers: getCorsHeaders(origin) }
+      { error: "Authentication failed" },
+      { status: 500, headers: getCorsHeaders(origin) }
     );
   }
-
-  return { sessionId, ip, shouldSetCookie };
 }

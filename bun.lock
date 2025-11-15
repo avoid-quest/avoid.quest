@@ -18,6 +18,9 @@
         "turbo": "^2.6.1",
         "ultracite": "6.3.3",
       },
+      "peerDependencies": {
+        "typescript": "^5",
+      },
     },
     "apps/instarip": {
       "name": "instarip-web",

@@ -7,7 +7,7 @@
     "fix": "bunx ultracite fix",
     "check": "bunx ultracite check",
     "start": "next start",
-    "build": "bun run scripts/copy-worklets.ts && next build",
+    "build": "bun run scripts/copy-worklets.ts && next build --turbopack",
     "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
     "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
     "cf-build": "opennextjs-cloudflare build",

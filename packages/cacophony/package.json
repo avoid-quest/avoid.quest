@@ -48,7 +48,7 @@
     "webaudio"
   ],
   "devDependencies": {
-    "@types/node": "^22.19.0",
+    "@types/node": "^22.19.1",
     "@workspace/typescript-config": "workspace:*",
     "rimraf": "^5.0.10",
     "standardized-audio-context-mock": "^9.7.24",

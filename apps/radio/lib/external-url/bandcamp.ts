@@ -1,6 +1,5 @@
 "use server";
 
-import bcfetch from "bandcamp-fetch";
 import { detectBandcampItemType } from "@/lib/external-url/detect";
 import type {
   BandcampItemResult,
@@ -41,6 +40,7 @@ async function getBandcampAlbum(
   url: string
 ): Promise<BandcampItemResult | PlatformItemError> {
   try {
+    const bcfetch = (await import("bandcamp-fetch")).default;
     const params = {
       albumUrl: url,
       albumImageFormat: "art_app_large",
@@ -95,6 +95,7 @@ async function getBandcampTrack(
   url: string
 ): Promise<BandcampItemResult | PlatformItemError> {
   try {
+    const bcfetch = (await import("bandcamp-fetch")).default;
     const params = {
       trackUrl: url,
       albumImageFormat: "art_app_large",

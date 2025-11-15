@@ -6,13 +6,7 @@ const nextConfig: NextConfig = {
   reactCompiler: true,
   turbopack: {},
   transpilePackages: ["@workspace/ui"],
-  serverExternalPackages: [
-    "ioredis",
-    "redis",
-    "bandcamp-fetch",
-    "scdl-core",
-    "@scdl/fetch-client",
-  ],
+  serverExternalPackages: ["ioredis", "redis"],
   experimental: {
     optimizePackageImports: [
       "lucide-react",

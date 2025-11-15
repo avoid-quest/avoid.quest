@@ -1,14 +1,6 @@
 "use server";
 
-import { fetchClientID } from "@scdl/fetch-client";
 import type { PlaylistInfo, TrackInfoData } from "scdl-core";
-import {
-  getClientID,
-  getInfo,
-  getPlaylistInfo,
-  setClientID,
-  stream,
-} from "scdl-core";
 import { detectSoundCloudItemType } from "@/lib/external-url/detect";
 import type {
   PlatformItemError,
@@ -28,14 +20,15 @@ async function resolveSoundCloudStreamUrl(
   trackUrl: string
 ): Promise<string | null> {
   try {
-    const streamResult = await stream(trackUrl);
+    const scdlCore = await import("scdl-core");
+    const streamResult = await scdlCore.stream(trackUrl);
     const transcodingUrl = streamResult.transcoding?.url;
 
     if (!transcodingUrl) {
       return null;
     }
 
-    const currentClientID = getClientID();
+    const currentClientID = scdlCore.getClientID();
     const resolveUrl = currentClientID
       ? `${transcodingUrl}${transcodingUrl.includes("?") ? "&" : "?"}client_id=${currentClientID}`
       : transcodingUrl;
@@ -80,10 +73,14 @@ async function getSoundCloudTrack(
   url: string
 ): Promise<SoundCloudItemResult | PlatformItemError> {
   try {
-    const clientID = await fetchClientID();
-    setClientID(clientID);
+    const [scdlFetchClient, scdlCore] = await Promise.all([
+      import("@scdl/fetch-client"),
+      import("scdl-core"),
+    ]);
+    const clientID = await scdlFetchClient.fetchClientID();
+    scdlCore.setClientID(clientID);
 
-    const trackInfo = await getInfo(url);
+    const trackInfo = await scdlCore.getInfo(url);
     const track = trackInfo.data;
 
     const proxyUrl = await resolveSoundCloudStreamUrl(url);
@@ -121,10 +118,14 @@ async function getSoundCloudPlaylist(
   url: string
 ): Promise<SoundCloudItemResult | PlatformItemError> {
   try {
-    const clientID = await fetchClientID();
-    setClientID(clientID);
+    const [scdlFetchClient, scdlCore] = await Promise.all([
+      import("@scdl/fetch-client"),
+      import("scdl-core"),
+    ]);
+    const clientID = await scdlFetchClient.fetchClientID();
+    scdlCore.setClientID(clientID);
 
-    const playlistInfo: PlaylistInfo = await getPlaylistInfo(url);
+    const playlistInfo: PlaylistInfo = await scdlCore.getPlaylistInfo(url);
     const fetchedPlaylist = await playlistInfo.fetchPartialTracks();
     const playlist = fetchedPlaylist.data;
 

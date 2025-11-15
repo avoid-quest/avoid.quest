@@ -5,7 +5,13 @@ const nextConfig: NextConfig = {
   typedRoutes: true,
   reactCompiler: true,
   transpilePackages: ["@workspace/ui"],
-  serverExternalPackages: ["ioredis", "redis"],
+  serverExternalPackages: [
+    "ioredis",
+    "redis",
+    "bandcamp-fetch",
+    "scdl-core",
+    "@scdl/fetch-client",
+  ],
   images: {
     remotePatterns: [
       {

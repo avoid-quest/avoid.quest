@@ -3,7 +3,7 @@
   "main": ".open-next/worker.js",
   "name": "radio",
   "compatibility_date": "2025-03-25",
-  "compatibility_flags": ["nodejs_compat"],
+  "compatibility_flags": ["nodejs_compat", "expose_global_message_channel"],
   "workers_dev": true,
   "preview_urls": true,
   "assets": {

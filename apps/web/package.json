@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbo",
-    "build": "next build --webpack",
+    "build": "next build",
     "start": "next start",
     "check-types": "tsc --noEmit",
     "fix": "bunx ultracite fix",

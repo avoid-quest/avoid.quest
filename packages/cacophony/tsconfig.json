@@ -5,7 +5,8 @@
     "rootDir": "./src",
     "noEmit": true,
     "sourceMap": true,
-    "types": ["node"]
+    "types": ["node"],
+    "strictNullChecks": true
   },
   "exclude": ["node_modules", "src/*.test.ts", "src/setupTests.ts"],
   "include": ["src/**/*.ts"],

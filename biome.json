@@ -51,5 +51,8 @@
       }
     }
   },
-  "extends": ["ultracite/core", "ultracite/next"]
+  "extends": [
+    "ultracite/core",
+    "ultracite/next"
+  ]
 }

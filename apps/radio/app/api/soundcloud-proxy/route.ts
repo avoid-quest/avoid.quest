@@ -4,8 +4,6 @@ import { logSSRFAttempt } from "@/lib/logger";
 import { getCorsHeaders, getCorsOptionsHeaders } from "@/lib/middleware/cors";
 import { validateAuthAndRateLimit } from "@/lib/middleware/rate-limit";
 
-export const runtime = "nodejs";
-
 const ALLOWED_SOUNDCLOUD_DOMAINS = [
   "cf-media.sndcdn.com",
   "media.soundcloud.com",
@@ -152,32 +150,43 @@ async function fetchWithTimeout(
 }
 
 export async function GET(request: Request) {
-  const origin = new URL(request.url).origin;
+  try {
+    const origin = new URL(request.url).origin;
 
-  // Validate authentication and rate limiting (requires existing session)
-  const authResult = await validateAuthAndRateLimit(
-    request,
-    "soundcloud-proxy",
-    {
-      createSessionIfMissing: false,
+    // Validate authentication and rate limiting (requires existing session)
+    const authResult = await validateAuthAndRateLimit(
+      request,
+      "soundcloud-proxy",
+      {
+        createSessionIfMissing: false,
+      }
+    );
+    if (authResult instanceof NextResponse) {
+      return authResult;
     }
-  );
-  if (authResult instanceof NextResponse) {
-    return authResult;
-  }
 
-  const urlParam = new URL(request.url).searchParams.get("url");
-  const urlValidation = validateSoundCloudUrl(
-    urlParam,
-    origin,
-    authResult.sessionId,
-    authResult.ip
-  );
-  if (urlValidation instanceof NextResponse) {
-    return urlValidation;
-  }
+    const urlParam = new URL(request.url).searchParams.get("url");
+    const urlValidation = validateSoundCloudUrl(
+      urlParam,
+      origin,
+      authResult.sessionId,
+      authResult.ip
+    );
+    if (urlValidation instanceof NextResponse) {
+      return urlValidation;
+    }
 
-  return fetchWithTimeout(urlValidation, request, origin);
+    return fetchWithTimeout(urlValidation, request, origin);
+  } catch (error) {
+    const origin = new URL(request.url).origin;
+    const errorMessage =
+      error instanceof Error ? error.message : "Internal server error";
+    console.error("SoundCloud proxy error:", errorMessage, error);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500, headers: getCorsHeaders(origin) }
+    );
+  }
 }
 
 export function OPTIONS(request: Request) {

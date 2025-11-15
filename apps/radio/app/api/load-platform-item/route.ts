@@ -8,8 +8,6 @@ import { getCorsHeaders, getCorsOptionsHeaders } from "@/lib/middleware/cors";
 import { validateAuthAndRateLimit } from "@/lib/middleware/rate-limit";
 import { createSessionCookie } from "@/lib/middleware/session";
 
-export const runtime = "nodejs";
-
 const REQUEST_BODY_SCHEMA = z.object({
   url: z.string(),
 });
@@ -39,20 +37,20 @@ function getResponseHeaders(
 }
 
 export async function POST(request: Request) {
-  const origin = new URL(request.url).origin;
-
-  // Validate authentication and rate limiting (creates session if missing)
-  const authResult = await validateAuthAndRateLimit(
-    request,
-    "load-platform-item"
-  );
-  if (authResult instanceof NextResponse) {
-    return authResult;
-  }
-
-  const { sessionId, shouldSetCookie } = authResult;
-
   try {
+    const origin = new URL(request.url).origin;
+
+    // Validate authentication and rate limiting (creates session if missing)
+    const authResult = await validateAuthAndRateLimit(
+      request,
+      "load-platform-item"
+    );
+    if (authResult instanceof NextResponse) {
+      return authResult;
+    }
+
+    const { sessionId, shouldSetCookie } = authResult;
+
     const body = await request.json();
     const bodyValidation = REQUEST_BODY_SCHEMA.safeParse(body);
 
@@ -133,13 +131,15 @@ export async function POST(request: Request) {
       headers: getResponseHeaders(origin, shouldSetCookie, sessionId),
     });
   } catch (error) {
+    const origin = new URL(request.url).origin;
     const errorMessage =
       error instanceof Error ? error.message : "Unknown error occurred";
+    console.error("Load platform item error:", errorMessage, error);
     return NextResponse.json(
       { success: false, error: `Failed to process request: ${errorMessage}` },
       {
         status: 500,
-        headers: getResponseHeaders(origin, shouldSetCookie, sessionId),
+        headers: getCorsHeaders(origin),
       }
     );
   }

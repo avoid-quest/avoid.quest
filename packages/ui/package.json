@@ -51,7 +51,7 @@
     "tailwindcss": "^4.1.17"
   },
   "peerDependencies": {
-    "next": "^16.0.1",
+    "next": "^16.0.3",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "@types/node": "^20.19.23",

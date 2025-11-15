@@ -3,8 +3,6 @@ import { z } from "zod";
 import { getCorsHeaders, getCorsOptionsHeaders } from "@/lib/middleware/cors";
 import { validateAuthAndRateLimit } from "@/lib/middleware/rate-limit";
 
-export const runtime = "nodejs";
-
 const URL_SCHEMA = z
   .string()
   .max(2048)
@@ -116,23 +114,38 @@ async function fetchWithTimeout(
 }
 
 export async function GET(request: Request) {
-  const origin = new URL(request.url).origin;
+  try {
+    const origin = new URL(request.url).origin;
 
-  // Validate authentication and rate limiting (requires existing session)
-  const authResult = await validateAuthAndRateLimit(request, "bandcamp-proxy", {
-    createSessionIfMissing: false,
-  });
-  if (authResult instanceof NextResponse) {
-    return authResult;
+    // Validate authentication and rate limiting (requires existing session)
+    const authResult = await validateAuthAndRateLimit(
+      request,
+      "bandcamp-proxy",
+      {
+        createSessionIfMissing: false,
+      }
+    );
+    if (authResult instanceof NextResponse) {
+      return authResult;
+    }
+
+    const urlParam = new URL(request.url).searchParams.get("url");
+    const urlValidation = validateUrl(urlParam, origin);
+    if (urlValidation instanceof NextResponse) {
+      return urlValidation;
+    }
+
+    return fetchWithTimeout(urlValidation, request, origin);
+  } catch (error) {
+    const origin = new URL(request.url).origin;
+    const errorMessage =
+      error instanceof Error ? error.message : "Internal server error";
+    console.error("Bandcamp proxy error:", errorMessage, error);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500, headers: getCorsHeaders(origin) }
+    );
   }
-
-  const urlParam = new URL(request.url).searchParams.get("url");
-  const urlValidation = validateUrl(urlParam, origin);
-  if (urlValidation instanceof NextResponse) {
-    return urlValidation;
-  }
-
-  return fetchWithTimeout(urlValidation, request, origin);
 }
 
 export function OPTIONS(request: Request) {

@@ -14,15 +14,33 @@ export async function checkRateLimit(
   sessionId: string,
   identifier: string
 ): Promise<RateLimitResult> {
-  try {
-    const { env } = getCloudflareContext();
-    const rateLimit = env["proxy-rate-limit"];
+  const isDevelopment = process.env.NODE_ENV === "development";
 
-    if (!rateLimit) {
-      // In development, allow the request if binding is not available
-      // In production, fail closed for security
-      const isDevelopment = process.env.NODE_ENV === "development";
+  try {
+    // Check if getCloudflareContext is available
+    if (typeof getCloudflareContext !== "function") {
       if (isDevelopment) {
+        console.warn("getCloudflareContext not available, allowing request");
+        return { allowed: true };
+      }
+      console.error("getCloudflareContext not available in production");
+      return { allowed: false };
+    }
+
+    const context = getCloudflareContext();
+    if (!context?.env) {
+      if (isDevelopment) {
+        console.warn("Cloudflare context not available, allowing request");
+        return { allowed: true };
+      }
+      console.error("Cloudflare context not available in production");
+      return { allowed: false };
+    }
+
+    const rateLimit = context.env["proxy-rate-limit"];
+    if (!rateLimit) {
+      if (isDevelopment) {
+        console.warn("Rate limit binding not available, allowing request");
         return { allowed: true };
       }
       console.error("Rate limit binding not available in production");
@@ -34,8 +52,16 @@ export async function checkRateLimit(
 
     return { allowed: outcome.success };
   } catch (error) {
-    // Fail closed on error for security
-    console.error("Rate limit check failed:", error);
+    // In development, allow on error to avoid blocking development
+    // In production, fail closed for security
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error("Rate limit check failed:", errorMessage, error);
+
+    if (isDevelopment) {
+      console.warn("Allowing request due to rate limit error in development");
+      return { allowed: true };
+    }
+
     return { allowed: false };
   }
 }

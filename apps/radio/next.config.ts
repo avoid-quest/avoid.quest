@@ -4,19 +4,24 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   typedRoutes: true,
   reactCompiler: true,
-  transpilePackages: ["@workspace/ui"],
-  serverExternalPackages: ["ioredis", "redis"],
   turbopack: {},
+  transpilePackages: ["@workspace/ui"],
+  serverExternalPackages: [
+    "ioredis",
+    "redis",
+    "bandcamp-fetch",
+    "scdl-core",
+    "@scdl/fetch-client",
+  ],
   experimental: {
     optimizePackageImports: [
       "lucide-react",
       "@dnd-kit/core",
       "@dnd-kit/sortable",
       "@dnd-kit/utilities",
-      "bandcamp-fetch",
-      "@scdl/fetch-client",
-      "scdl-core",
+      "@avoid.quest/cacophony",
       "dexie",
+      "dexie-react-hooks",
     ],
   },
   images: {
@@ -27,13 +32,13 @@ const nextConfig: NextConfig = {
       },
     ],
   },
-  // outputFileTracingExcludes: {
-  //   "*": [
-  //     "node_modules/@vercel/og/dist/resvg.wasm",
-  //     "node_modules/@vercel/og/dist/yoga.wasm",
-  //     "node_modules/@vercel/og/**/*.wasm",
-  //   ],
-  // },
+  outputFileTracingExcludes: {
+    "*": [
+      "node_modules/@vercel/og/dist/resvg.wasm",
+      "node_modules/@vercel/og/dist/yoga.wasm",
+      "node_modules/@vercel/og/**/*.wasm",
+    ],
+  },
 };
 
 // Initialize OpenNext Cloudflare for development

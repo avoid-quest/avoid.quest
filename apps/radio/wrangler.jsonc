@@ -2,8 +2,8 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "main": ".open-next/worker.js",
   "name": "radio",
-  "compatibility_date": "2025-03-25",
-  "compatibility_flags": ["nodejs_compat", "expose_global_message_channel"],
+  "compatibility_date": "2025-10-25",
+  "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
   "preview_urls": true,
   "assets": {

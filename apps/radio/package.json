@@ -11,6 +11,7 @@
     "serve": "vite preview",
     "test": "vitest run",
     "deploy": "bun run build && wrangler deploy",
+    "upload": "bun run build && wrangler upload",
     "preview": "bun run build && vite preview",
     "cf-typegen": "wrangler types --env-interface CloudflareEnv ./cloudflare-env.d.ts"
   },

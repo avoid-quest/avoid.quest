@@ -72,6 +72,11 @@ export default defineConfig({
             return;
           }
 
+          // Keep TypeScript helpers (tslib) with vendor-misc to avoid splitting issues
+          if (id.includes("tslib")) {
+            return "vendor-misc";
+          }
+
           // Define chunk mappings - order matters (more specific first)
           const chunkMap: [string[], string][] = [
             [["react", "react-dom"], "vendor-react"],
@@ -105,6 +110,11 @@ export default defineConfig({
           }
 
           // Split remaining vendor by first package name to avoid huge chunks
+          // But skip .bun paths to avoid splitting TypeScript helpers incorrectly
+          if (id.includes(".bun")) {
+            return "vendor-misc";
+          }
+
           const match = id.match(PACKAGE_NAME_REGEX);
           if (match) {
             const pkgName = match[1];
@@ -123,5 +133,11 @@ export default defineConfig({
   },
   esbuild: {
     legalComments: "none",
+    // Ensure TypeScript helpers are inlined (esbuild handles this natively)
+    target: "es2022",
+  },
+  optimizeDeps: {
+    // Ensure tslib is included if needed
+    include: ["tslib"],
   },
 });

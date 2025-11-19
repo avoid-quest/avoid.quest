@@ -1,0 +1,4 @@
+# https://developers.cloudflare.com/workers/static-assets/headers
+/api/worklets/*
+  Cache-Control: public,max-age=31536000,immutable
+  Content-Type: application/javascript

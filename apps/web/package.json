@@ -17,7 +17,7 @@
     "cf-typegen": "wrangler types --env-interface CloudflareEnv ./cloudflare-env.d.ts"
   },
   "dependencies": {
-    "@opennextjs/cloudflare": "^1.12.0",
+    "@opennextjs/cloudflare": "^1.13.0",
     "@workspace/typescript-config": "workspace:*",
     "@workspace/ui": "workspace:*",
     "babel-plugin-react-compiler": "^1.0.0",
@@ -28,12 +28,12 @@
     "zod": "^4.1.12"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20251115.0",
+    "@cloudflare/workers-types": "^4.20251118.0",
     "@types/node": "^20.19.25",
     "@types/react": "19.2.2",
     "@types/react-dom": "19.2.2",
     "typescript": "^5.9.3",
-    "wrangler": "^4.47.0"
+    "wrangler": "^4.49.0"
   },
   "peerDependencies": {
     "@tailwindcss/postcss": "^4.1.16",

@@ -20,7 +20,7 @@
     "@convex-dev/migrations": "^0.2.9",
     "@convex-dev/workflow": "^0.2.7",
     "@convex-dev/workpool": "^0.2.19",
-    "ai": "^5.0.94",
+    "ai": "^5.0.95",
     "convex": "^1.29.2",
     "zod": "^4.1.12"
   }

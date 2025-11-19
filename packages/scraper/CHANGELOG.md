@@ -1,5 +1,11 @@
 # @workspace/scraper
 
+## 3.2.2
+
+### Patch Changes
+
+- 760e001: chore: bump deps
+
 ## 3.2.1
 
 ### Patch Changes

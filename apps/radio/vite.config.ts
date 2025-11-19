@@ -84,7 +84,15 @@ export default defineConfig({
             [["@dnd-kit", "lucide-react", "sonner"], "vendor-ui"],
             [["@avoid.quest/cacophony"], "vendor-audio"],
             [
-              ["bandcamp-fetch", "@scdl", "@workspace/scdl-core"],
+              [
+                "bandcamp-fetch",
+                "@scdl",
+                "@workspace/scdl-core",
+                "bottleneck",
+                "cheerio",
+                "html-entities",
+                "node-cache",
+              ],
               "vendor-platforms",
             ],
             [["dexie"], "vendor-db"],
@@ -95,11 +103,6 @@ export default defineConfig({
             [["next-themes"], "vendor-theme"],
             // Split Cloudflare and Vite plugins (SSR only)
             [["@cloudflare", "wrangler"], "vendor-cloudflare"],
-            // Split remaining large packages
-            [
-              ["bottleneck", "cheerio", "html-entities", "node-cache"],
-              "vendor-bandcamp-deps",
-            ],
           ];
 
           // Find matching chunk

@@ -36,6 +36,38 @@ function resolveNodeUrlModule(): Plugin {
   };
 }
 
+// Plugin to provide TypeScript __assign helper globally
+// Some dependencies compiled with TypeScript expect __assign to be available
+function provideTypeScriptHelpers(): Plugin {
+  return {
+    name: "provide-typescript-helpers",
+    renderChunk(code) {
+      // Inject __assign helper at the top of chunks that use it
+      if (code.includes("__assign") && !code.includes("globalThis.__assign")) {
+        const helperCode = `
+(function() {
+  if (typeof globalThis.__assign === 'undefined') {
+    globalThis.__assign = Object.assign || function(t) {
+      for (var s, i = 1, n = arguments.length; i < n; i++) {
+        s = arguments[i];
+        for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p))
+          t[p] = s[p];
+      }
+      return t;
+    };
+  }
+})();
+`;
+        return {
+          code: helperCode + code,
+          map: null,
+        };
+      }
+      return null;
+    },
+  };
+}
+
 export default defineConfig({
   plugins: [
     cloudflare({
@@ -48,6 +80,7 @@ export default defineConfig({
     tanstackStart(),
     viteReact(),
     resolveNodeUrlModule(),
+    provideTypeScriptHelpers(),
   ],
   build: {
     // Increase chunk size warning limit for SSR builds (Cloudflare Workers can handle larger chunks)
@@ -66,15 +99,30 @@ export default defineConfig({
         warn(warning);
       },
       output: {
+        // Inject TypeScript helpers banner at the top of all chunks
+        banner: `
+(function() {
+  if (typeof globalThis.__assign === 'undefined') {
+    globalThis.__assign = Object.assign || function(t) {
+      for (var s, i = 1, n = arguments.length; i < n; i++) {
+        s = arguments[i];
+        for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p))
+          t[p] = s[p];
+      }
+      return t;
+    };
+  }
+})();
+        `.trim(),
         // Manual chunking strategy for better code splitting
         manualChunks: (id) => {
           if (!id.includes("node_modules")) {
             return;
           }
 
-          // Keep TypeScript helpers (tslib) with vendor-misc to avoid splitting issues
+          // Keep TypeScript helpers (tslib) with React since React code uses them
           if (id.includes("tslib")) {
-            return "vendor-misc";
+            return "vendor-react";
           }
 
           // Define chunk mappings - order matters (more specific first)
@@ -140,7 +188,10 @@ export default defineConfig({
     target: "es2022",
   },
   optimizeDeps: {
-    // Ensure tslib is included if needed
+    // Ensure tslib is included and pre-bundled
     include: ["tslib"],
+    esbuildOptions: {
+      target: "es2022",
+    },
   },
 });

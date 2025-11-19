@@ -56,8 +56,10 @@ export async function validateAuthAndRateLimit(
 
   try {
     if (createSessionIfMissing) {
-      // Get or create session
-      const { getOrCreateSessionFromRequest } = await import("./session");
+      // Get or create session (dynamic import to avoid bundling when not needed)
+      const { getOrCreateSessionFromRequest } = await import(
+        "./session-creation"
+      );
       const result = getOrCreateSessionFromRequest(cookieHeader);
       sessionId = result.sessionId;
       shouldSetCookie = result.shouldSetCookie;

@@ -4,7 +4,7 @@
  */
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "radio-tanstack",
+	"name": "radio",
 	"compatibility_date": "2025-10-25",
 	"compatibility_flags": [
 		"nodejs_compat",

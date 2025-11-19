@@ -1,20 +1,21 @@
+/**
+ * For more details on how to configure Wrangler, refer to:
+ * https://developers.cloudflare.com/workers/wrangler/configuration/
+ */
 {
-  "$schema": "./node_modules/wrangler/config-schema.json",
-  "main": ".open-next/worker.js",
-  "name": "radio",
-  "compatibility_date": "2025-10-25",
-  "compatibility_flags": ["nodejs_compat"],
-  "workers_dev": true,
-  "preview_urls": true,
-  "assets": {
-    "directory": ".open-next/assets",
-    "binding": "ASSETS"
-  },
-  "observability": {
-    "logs": {
-      "enabled": true
-    }
-  },
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "radio-tanstack",
+	"compatibility_date": "2025-10-25",
+	"compatibility_flags": [
+		"nodejs_compat",
+		"enable_nodejs_http_modules"
+	],
+	"main": "@tanstack/react-start/server-entry",
+	"observability": {
+		"logs": {
+			"enabled": true
+		}
+	},
 	"r2_buckets": [
 		{
 			"binding": "NEXT_INC_CACHE_R2_BUCKET",
@@ -23,12 +24,12 @@
 	],
 	"ratelimits": [
 		{
-      "name": "proxy-rate-limit",
-      "namespace_id": "1",
-      "simple": {
-        "limit": 100,
-        "period": 10
-      }
-    }
+			"name": "proxy-rate-limit",
+			"namespace_id": "1",
+			"simple": {
+				"limit": 100,
+				"period": 10
+			}
+		}
 	]
 }

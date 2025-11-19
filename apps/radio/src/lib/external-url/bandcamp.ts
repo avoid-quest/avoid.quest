@@ -1,7 +1,6 @@
 import { detectBandcampItemType } from "@/lib/external-url/detect";
 import type {
   BandcampItemResult,
-  BandcampMetadata,
   PlatformItemError,
   PlatformItemResponse,
 } from "@/lib/external-url/types";
@@ -14,8 +13,9 @@ function createErrorResponse(message: string): PlatformItemError {
 }
 
 // Lazy loader for bandcamp-fetch to avoid global scope execution issues in Cloudflare Workers
+// Module is externalized via Vite plugin in vite.config.ts, so it's only loaded dynamically
+// at runtime within handler context, not during bundle initialization
 async function loadBandcampFetch() {
-  // Use a function to ensure this import only happens when called within a handler
   const module = await import("bandcamp-fetch");
   return module.default;
 }
@@ -44,34 +44,38 @@ export async function getBandcampItem(
 async function getBandcampAlbum(
   url: string
 ): Promise<BandcampItemResult | PlatformItemError> {
-  try {
-    // Lazy import to ensure it only happens within handler context
-    const bcfetch = await loadBandcampFetch();
-    const params = {
-      albumUrl: url,
-      albumImageFormat: "art_app_large",
-      artistImageFormat: "bio_featured",
-      includeRawData: false,
-    };
+  const bcfetch = await loadBandcampFetch();
+  const album = await bcfetch.album.getInfo({
+    albumUrl: url,
+    albumImageFormat: "art_app_large",
+    artistImageFormat: "bio_featured",
+    includeRawData: false,
+  });
 
-    const album = await bcfetch.album.getInfo(params);
-    if (!album?.tracks || album.tracks.length === 0) {
-      return createErrorResponse("No tracks found in album");
-    }
+  if (!album?.tracks || album.tracks.length === 0) {
+    return createErrorResponse("No tracks found in album");
+  }
 
-    const mappedTracks = album.tracks.map((track, index) => ({
+  const mappedTracks = album.tracks.map(
+    (
+      track: { name?: string; streamUrl?: string; duration?: number },
+      index: number
+    ) => ({
       name: track.name || `Track ${index + 1}`,
       streamUrl: track.streamUrl || "",
       duration: track.duration,
       trackNumber: index + 1,
-    }));
+    })
+  );
 
-    const totalDuration = mappedTracks.reduce(
-      (sum, track) => sum + (track.duration || 0),
-      0
-    );
+  const totalDuration = mappedTracks.reduce(
+    (sum: number, track: { duration?: number }) => sum + (track.duration || 0),
+    0
+  );
 
-    const metadata: BandcampMetadata = {
+  return {
+    success: true,
+    metadata: {
       platform: "bandcamp",
       itemType: "album",
       url,
@@ -83,39 +87,29 @@ async function getBandcampAlbum(
       duration: totalDuration > 0 ? totalDuration : undefined,
       tracks: mappedTracks,
       streamUrl: album.tracks[0]?.streamUrl,
-    };
-
-    return {
-      success: true,
-      metadata,
-      streamUrl: album.tracks[0]?.streamUrl || "",
-    };
-  } catch (error) {
-    const errorMessage =
-      error instanceof Error ? error.message : "Unknown error occurred";
-    return createErrorResponse(`Failed to get Bandcamp album: ${errorMessage}`);
-  }
+    },
+    streamUrl: album.tracks[0]?.streamUrl || "",
+  };
 }
 
 async function getBandcampTrack(
   url: string
 ): Promise<BandcampItemResult | PlatformItemError> {
-  try {
-    // Lazy import to ensure it only happens within handler context
-    const bcfetch = await loadBandcampFetch();
-    const params = {
-      trackUrl: url,
-      albumImageFormat: "art_app_large",
-      artistImageFormat: "bio_featured",
-      includeRawData: false,
-    };
+  const bcfetch = await loadBandcampFetch();
+  const track = await bcfetch.track.getInfo({
+    trackUrl: url,
+    albumImageFormat: "art_app_large",
+    artistImageFormat: "bio_featured",
+    includeRawData: false,
+  });
 
-    const track = await bcfetch.track.getInfo(params);
-    if (!track?.streamUrl) {
-      return createErrorResponse("No stream URL found for track");
-    }
+  if (!track?.streamUrl) {
+    return createErrorResponse("No stream URL found for track");
+  }
 
-    const metadata: BandcampMetadata = {
+  return {
+    success: true,
+    metadata: {
       platform: "bandcamp",
       itemType: "track",
       url,
@@ -125,16 +119,7 @@ async function getBandcampTrack(
       albumName: track.album?.name,
       duration: track.duration,
       streamUrl: track.streamUrl,
-    };
-
-    return {
-      success: true,
-      metadata,
-      streamUrl: track.streamUrl,
-    };
-  } catch (error) {
-    const errorMessage =
-      error instanceof Error ? error.message : "Unknown error occurred";
-    return createErrorResponse(`Failed to get Bandcamp track: ${errorMessage}`);
-  }
+    },
+    streamUrl: track.streamUrl,
+  };
 }

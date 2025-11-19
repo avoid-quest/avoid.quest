@@ -13,6 +13,13 @@ function createErrorResponse(message: string): PlatformItemError {
   };
 }
 
+// Lazy loader for bandcamp-fetch to avoid global scope execution issues in Cloudflare Workers
+async function loadBandcampFetch() {
+  // Use a function to ensure this import only happens when called within a handler
+  const module = await import("bandcamp-fetch");
+  return module.default;
+}
+
 export async function getBandcampItem(
   url: string
 ): Promise<PlatformItemResponse> {
@@ -38,7 +45,8 @@ async function getBandcampAlbum(
   url: string
 ): Promise<BandcampItemResult | PlatformItemError> {
   try {
-    const bcfetch = (await import("bandcamp-fetch")).default;
+    // Lazy import to ensure it only happens within handler context
+    const bcfetch = await loadBandcampFetch();
     const params = {
       albumUrl: url,
       albumImageFormat: "art_app_large",
@@ -93,7 +101,8 @@ async function getBandcampTrack(
   url: string
 ): Promise<BandcampItemResult | PlatformItemError> {
   try {
-    const bcfetch = (await import("bandcamp-fetch")).default;
+    // Lazy import to ensure it only happens within handler context
+    const bcfetch = await loadBandcampFetch();
     const params = {
       trackUrl: url,
       albumImageFormat: "art_app_large",

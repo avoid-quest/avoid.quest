@@ -1,14 +1,5 @@
-import { randomBytes } from "node:crypto";
-
 const SESSION_COOKIE_NAME = "radio_session_id";
-const SESSION_MAX_AGE = 60 * 60 * 24 * 365; // 1 year
-
-/**
- * Generate a secure random session ID
- */
-function generateSessionId(): string {
-  return randomBytes(32).toString("hex");
-}
+const _SESSION_MAX_AGE = 60 * 60 * 24 * 365; // 1 year
 
 /**
  * Get session ID from cookies (for API routes).
@@ -16,9 +7,7 @@ function generateSessionId(): string {
  * @param cookieHeader - The Cookie header value from the request
  * @returns The session ID or null
  */
-export async function getSessionId(
-  cookieHeader: string | null
-): Promise<string | null> {
+export function getSessionId(cookieHeader: string | null): string | null {
   if (!cookieHeader) {
     return null;
   }

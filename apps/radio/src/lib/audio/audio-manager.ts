@@ -25,6 +25,7 @@ export type AudioState = {
 };
 
 export class AudioManager {
+  // biome-ignore lint/correctness/noUnusedPrivateClassMembers: Used in getInstance()
   private static instance: AudioManager | null = null;
   private readonly cacophony: Cacophony;
   private readonly sounds: Map<string, Sound> = new Map();

@@ -69,6 +69,7 @@ export function RadioLogo({
         className
       )}
     >
+      {/* biome-ignore lint/a11y/noNoninteractiveElementInteractions: onError and onLoad are valid img event handlers */}
       <img
         alt={`${name} logo`}
         className={cn(
@@ -76,6 +77,7 @@ export function RadioLogo({
           sizeMap[size],
           imageLoaded ? "opacity-100" : "opacity-0"
         )}
+        height={sizePixels[size]}
         onError={handleImageError}
         onLoad={handleImageLoad}
         src={logoUrl}
@@ -89,6 +91,7 @@ export function RadioLogo({
           width: `${sizePixels[size]}px`,
           height: `${sizePixels[size]}px`,
         }}
+        width={sizePixels[size]}
       />
       {/* Loading state */}
       {!(imageLoaded || imageError) && (

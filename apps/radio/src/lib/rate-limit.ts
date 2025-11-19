@@ -10,7 +10,11 @@ export type RateLimitResult = {
  * @returns Rate limit result with allowed status
  */
 export async function checkRateLimit(
-  env: { "proxy-rate-limit"?: { limit: (options: { key: string }) => Promise<{ success: boolean }> } },
+  env: {
+    "proxy-rate-limit"?: {
+      limit: (options: { key: string }) => Promise<{ success: boolean }>;
+    };
+  },
   sessionId: string,
   identifier: string
 ): Promise<RateLimitResult> {

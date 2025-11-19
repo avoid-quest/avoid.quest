@@ -1,7 +1,7 @@
-import { createFileRoute } from '@tanstack/react-router'
-import { json } from '@tanstack/react-start'
+import { createFileRoute } from "@tanstack/react-router";
+import { json } from "@tanstack/react-start";
 
-export const Route = createFileRoute('/manifest')({
+export const Route = createFileRoute("/manifest")({
   server: {
     handlers: {
       GET: () => {
@@ -31,11 +31,10 @@ export const Route = createFileRoute('/manifest')({
         };
         return json(manifest, {
           headers: {
-            'Content-Type': 'application/manifest+json',
+            "Content-Type": "application/manifest+json",
           },
         });
       },
     },
   },
-})
-
+});

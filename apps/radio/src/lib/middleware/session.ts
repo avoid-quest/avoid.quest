@@ -28,10 +28,11 @@ export function createSessionCookie(sessionId: string): string {
  * @param cookieHeader - The Cookie header value from the request
  * @returns Object with sessionId and shouldSetCookie flag
  */
-export async function getOrCreateSessionFromRequest(
-  cookieHeader: string | null
-): Promise<{ sessionId: string; shouldSetCookie: boolean }> {
-  let sessionId = await getSessionId(cookieHeader);
+export function getOrCreateSessionFromRequest(cookieHeader: string | null): {
+  sessionId: string;
+  shouldSetCookie: boolean;
+} {
+  let sessionId = getSessionId(cookieHeader);
   let shouldSetCookie = false;
 
   if (!sessionId) {

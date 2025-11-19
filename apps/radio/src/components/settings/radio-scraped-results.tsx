@@ -135,7 +135,9 @@ export function RadioScrapedResults({
                     <img
                       alt="Logo preview"
                       className="max-h-8 max-w-8 object-contain"
+                      height={32}
                       src={option.preview}
+                      width={32}
                     />
                   </button>
                   {/* Hover preview */}
@@ -143,7 +145,9 @@ export function RadioScrapedResults({
                     <img
                       alt="Logo preview large"
                       className="h-16 w-16 object-contain"
+                      height={64}
                       src={option.preview}
+                      width={64}
                     />
                   </div>
                 </div>
@@ -258,7 +262,9 @@ export function RadioScrapedResults({
                   <img
                     alt="Selected logo preview"
                     className="max-h-10 max-w-10 object-contain"
+                    height={40}
                     src={selectedValue}
+                    width={40}
                   />
                 </button>
                 <div className="min-w-0 flex-1">

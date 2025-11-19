@@ -1,8 +1,8 @@
+import { json } from "@tanstack/react-start";
 import { getSessionId } from "@/lib/auth/session";
 import { logAuthFailure, logRateLimitViolation } from "@/lib/logger";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { getCorsHeaders } from "./cors";
-import { json } from "@tanstack/react-start";
 
 /**
  * Get client IP from request headers
@@ -17,7 +17,7 @@ export function getClientIP(request: Request): string | undefined {
   );
 }
 
-export type AuthAndRateLimitResult = 
+export type AuthAndRateLimitResult =
   | { sessionId: string; ip: string | undefined; shouldSetCookie: boolean }
   | Response;
 
@@ -32,7 +32,11 @@ export type AuthAndRateLimitResult =
  */
 export async function validateAuthAndRateLimit(
   request: Request,
-  env: { "proxy-rate-limit"?: { limit: (options: { key: string }) => Promise<{ success: boolean }> } },
+  env: {
+    "proxy-rate-limit"?: {
+      limit: (options: { key: string }) => Promise<{ success: boolean }>;
+    };
+  },
   identifier: string,
   options?: { createSessionIfMissing?: boolean }
 ): Promise<AuthAndRateLimitResult> {
@@ -54,12 +58,12 @@ export async function validateAuthAndRateLimit(
     if (createSessionIfMissing) {
       // Get or create session
       const { getOrCreateSessionFromRequest } = await import("./session");
-      const result = await getOrCreateSessionFromRequest(cookieHeader);
+      const result = getOrCreateSessionFromRequest(cookieHeader);
       sessionId = result.sessionId;
       shouldSetCookie = result.shouldSetCookie;
     } else {
       // Require existing session
-      sessionId = await getSessionId(cookieHeader);
+      sessionId = getSessionId(cookieHeader);
       if (!sessionId) {
         logAuthFailure(identifier, ip);
         return json(

@@ -17,7 +17,7 @@ import {
   TabsTrigger,
 } from "@workspace/ui/components/tabs";
 import { useLiveQuery } from "dexie-react-hooks";
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useState } from "react";
 import { toast } from "sonner";
 import { DEFAULT_TRANSITION_DURATION } from "@/lib/const";
 import { db } from "@/lib/db";
@@ -29,8 +29,8 @@ import { SettingsSelect } from "./settings-select";
 const MAX_TRANSITION_DURATION = 10_000;
 
 // Lazy import for browser-only APIs (Dexie operations)
-const ImportExport = lazy(
-  () => import("./import-export").then((mod) => ({ default: mod.ImportExport }))
+const ImportExport = lazy(() =>
+  import("./import-export").then((mod) => ({ default: mod.ImportExport }))
 );
 
 export function SettingsForm({
@@ -150,7 +150,11 @@ export function SettingsForm({
         </TabsContent>
 
         <TabsContent className="space-y-4" value="import-export">
-          <Suspense fallback={<div className="text-muted-foreground text-sm">Loading...</div>}>
+          <Suspense
+            fallback={
+              <div className="text-muted-foreground text-sm">Loading...</div>
+            }
+          >
             <ImportExport />
           </Suspense>
         </TabsContent>

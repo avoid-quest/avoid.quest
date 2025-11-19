@@ -1,5 +1,8 @@
-import { createFileRoute } from '@tanstack/react-router'
-import { json } from '@tanstack/react-start'
+/** biome-ignore-all lint/suspicious/useAwait: needed for server-only */
+
+import { env } from "cloudflare:workers";
+import { createFileRoute } from "@tanstack/react-router";
+import { json } from "@tanstack/react-start";
 import { z } from "zod";
 import { logSSRFAttempt } from "@/lib/logger";
 import { getCorsHeaders, getCorsOptionsHeaders } from "@/lib/middleware/cors";
@@ -150,13 +153,12 @@ async function fetchWithTimeout(
   }
 }
 
-export const Route = createFileRoute('/api/soundcloud-proxy')({
+export const Route = createFileRoute("/api/soundcloud-proxy")({
   server: {
     handlers: {
-      GET: async ({ request, context }) => {
+      GET: async ({ request }) => {
         try {
           const origin = new URL(request.url).origin;
-          const env = (context as { env?: { "proxy-rate-limit"?: { limit: (options: { key: string }) => Promise<{ success: boolean }> } } })?.env || {};
 
           // Validate authentication and rate limiting (requires existing session)
           const authResult = await validateAuthAndRateLimit(
@@ -203,5 +205,4 @@ export const Route = createFileRoute('/api/soundcloud-proxy')({
       },
     },
   },
-})
-
+});

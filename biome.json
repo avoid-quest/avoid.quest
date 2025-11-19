@@ -41,7 +41,8 @@
   "linter": {
     "rules": {
       "performance": {
-        "noBarrelFile": "off"
+        "noBarrelFile": "off",
+        "noImgElement": "off"
       },
       "suspicious": {
         "noConsole": "off"
@@ -53,6 +54,8 @@
   },
   "extends": [
     "ultracite/core",
-    "ultracite/next"
+    "ultracite/next",
+    "ultracite/remix",
+    "ultracite/react"
   ]
 }

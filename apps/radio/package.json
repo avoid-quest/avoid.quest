@@ -7,7 +7,7 @@
     "dev": "vite dev --port 3000",
     "fix": "bunx ultracite fix",
     "check": "bunx ultracite check",
-    "cf-build": "bun run scripts/copy-worklets.ts && vite build",
+    "build": "bun run scripts/copy-worklets.ts && vite build",
     "serve": "vite preview",
     "test": "vitest run",
     "cf-deploy": "bun run build && wrangler deploy",

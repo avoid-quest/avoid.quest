@@ -1,6 +1,6 @@
 "use server";
 
-import type { PlaylistInfo, TrackInfoData } from "scdl-core";
+import type { PlaylistInfo, TrackInfoData } from "@workspace/scdl-core";
 import { detectSoundCloudItemType } from "@/lib/external-url/detect";
 import type {
   PlatformItemError,
@@ -20,7 +20,7 @@ async function resolveSoundCloudStreamUrl(
   trackUrl: string
 ): Promise<string | null> {
   try {
-    const scdlCore = await import("scdl-core");
+    const scdlCore = await import("@workspace/scdl-core");
     const streamResult = await scdlCore.stream(trackUrl);
     const transcodingUrl = streamResult.transcoding?.url;
 
@@ -76,7 +76,7 @@ async function getSoundCloudTrack(
   try {
     const [scdlFetchClient, scdlCore] = await Promise.all([
       import("@scdl/fetch-client"),
-      import("scdl-core"),
+      import("@workspace/scdl-core"),
     ]);
     const clientID = await scdlFetchClient.fetchClientID();
     scdlCore.setClientID(clientID);
@@ -121,7 +121,7 @@ async function getSoundCloudPlaylist(
   try {
     const [scdlFetchClient, scdlCore] = await Promise.all([
       import("@scdl/fetch-client"),
-      import("scdl-core"),
+      import("@workspace/scdl-core"),
     ]);
     const clientID = await scdlFetchClient.fetchClientID();
     scdlCore.setClientID(clientID);
@@ -145,7 +145,9 @@ async function getSoundCloudPlaylist(
       })
     );
 
-    const validTracks = processedTracks.filter((t) => t.streamUrl);
+    const validTracks = processedTracks.filter(
+      (t: { name: string; streamUrl: string; duration: number }) => t.streamUrl
+    );
 
     if (validTracks.length === 0) {
       return createErrorResponse("No playable tracks found in playlist");

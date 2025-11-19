@@ -1,8 +1,7 @@
-import { createFileRoute } from '@tanstack/react-router'
-import { json } from '@tanstack/react-start'
+import { env } from "cloudflare:workers";
+import { createFileRoute } from "@tanstack/react-router";
+import { json } from "@tanstack/react-start";
 import { z } from "zod";
-// Patch undici before any other imports that might use it
-import "@/lib/patches/undici-patch";
 import { getBandcampItem } from "@/lib/external-url/bandcamp";
 import { detectPlatformFromUrl } from "@/lib/external-url/detect";
 import { getSoundCloudItem } from "@/lib/external-url/soundcloud";
@@ -39,10 +38,10 @@ function getResponseHeaders(
   return headers;
 }
 
-export const Route = createFileRoute('/api/load-platform-item')({
+export const Route = createFileRoute("/api/load-platform-item")({
   server: {
     handlers: {
-      POST: async ({ request, context }) => {
+      POST: async ({ request }) => {
         let origin = "*";
         try {
           origin = new URL(request.url).origin;
@@ -51,8 +50,6 @@ export const Route = createFileRoute('/api/load-platform-item')({
         }
 
         try {
-          const env = (context as { env?: { "proxy-rate-limit"?: { limit: (options: { key: string }) => Promise<{ success: boolean }> } } })?.env || {};
-
           // Validate authentication and rate limiting (creates session if missing)
           const authResult = await validateAuthAndRateLimit(
             request,
@@ -115,7 +112,8 @@ export const Route = createFileRoute('/api/load-platform-item')({
             return json(
               {
                 success: false,
-                error: "Unsupported URL. Please enter a Bandcamp or SoundCloud URL.",
+                error:
+                  "Unsupported URL. Please enter a Bandcamp or SoundCloud URL.",
               },
               {
                 status: 400,
@@ -149,7 +147,10 @@ export const Route = createFileRoute('/api/load-platform-item')({
             error instanceof Error ? error.message : "Unknown error occurred";
           console.error("Load platform item error:", errorMessage, error);
           return json(
-            { success: false, error: `Failed to process request: ${errorMessage}` },
+            {
+              success: false,
+              error: `Failed to process request: ${errorMessage}`,
+            },
             {
               status: 500,
               headers: getCorsHeaders(origin),
@@ -157,7 +158,7 @@ export const Route = createFileRoute('/api/load-platform-item')({
           );
         }
       },
-      OPTIONS: async ({ request }) => {
+      OPTIONS: ({ request }) => {
         const origin = new URL(request.url).origin;
         return new Response(null, {
           status: 200,
@@ -166,5 +167,4 @@ export const Route = createFileRoute('/api/load-platform-item')({
       },
     },
   },
-})
-
+});

@@ -39,7 +39,7 @@
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-hook-form": "^7.66.1",
-    "scdl-core": "ducktrshessami/scdl-core#v5.0.0",
+    "@workspace/scdl-core": "workspace:*",
     "vite-tsconfig-paths": "^5.1.4",
     "zod": "^4.1.12",
     "@tailwindcss/postcss": "^4.1.16",

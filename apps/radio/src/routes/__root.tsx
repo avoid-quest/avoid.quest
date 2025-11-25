@@ -1,19 +1,17 @@
 import { TanStackDevtools } from "@tanstack/react-devtools";
 import { createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
 import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
+import appleIcon from "@workspace/ui/assets/favicon/apple-icon.png";
+import favicon from "@workspace/ui/assets/favicon/favicon.ico";
+import icon0 from "@workspace/ui/assets/favicon/icon0.svg";
+import icon1 from "@workspace/ui/assets/favicon/icon1.png";
 import { Toaster } from "@workspace/ui/components/sonner";
+import globalsCss from "@workspace/ui/globals.css?url";
 import { cn } from "@workspace/ui/lib/utils";
 import { InstallPrompt } from "@/components/pwa/install-prompt";
 import { SWRegister } from "@/components/pwa/sw-register";
 import { Header } from "@/components/theme/header";
 import { ThemeProvider } from "@/components/theme/theme-provider";
-import "@workspace/ui/globals.css";
-
-import appleIcon from "@workspace/ui/assets/favicon/apple-icon.png";
-import favicon from "@workspace/ui/assets/favicon/favicon.ico";
-import icon0 from "@workspace/ui/assets/favicon/icon0.svg";
-import icon1 from "@workspace/ui/assets/favicon/icon1.png";
-import appCss from "../styles.css?url";
 
 export const Route = createRootRoute({
   head: () => ({
@@ -60,20 +58,7 @@ export const Route = createRootRoute({
     links: [
       {
         rel: "stylesheet",
-        href: appCss,
-      },
-      {
-        rel: "preconnect",
-        href: "https://fonts.googleapis.com",
-      },
-      {
-        rel: "preconnect",
-        href: "https://fonts.gstatic.com",
-        crossOrigin: "anonymous",
-      },
-      {
-        rel: "stylesheet",
-        href: "https://fonts.googleapis.com/css2?family=Geist:wght@100..900&family=Geist+Mono:wght@100..900&display=swap",
+        href: globalsCss,
       },
       {
         rel: "manifest",
@@ -108,19 +93,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
       <HeadContent />
-      <body
-        className={cn(
-          "min-h-screen bg-background antialiased",
-          "[--font-geist-sans:var(--font-geist-sans)]",
-          "[--font-geist-mono:var(--font-geist-mono)]"
-        )}
-        style={
-          {
-            fontFamily:
-              'var(--font-geist-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen", "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif)',
-          } as React.CSSProperties
-        }
-      >
+      <body className={cn("min-h-screen bg-background antialiased")}>
         <ThemeProvider
           attribute="class"
           defaultTheme="system"

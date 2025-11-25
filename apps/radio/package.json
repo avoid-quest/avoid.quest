@@ -22,7 +22,6 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@hookform/resolvers": "^5.2.2",
     "@scdl/fetch-client": "ducktrshessami/scdl-fetch-client#v1.0.3",
-    "@tailwindcss/postcss": "^4.1.17",
     "@tailwindcss/vite": "^4.1.17",
     "@tanstack/react-devtools": "^0.8.1",
     "@tanstack/react-router": "^1.139.3",

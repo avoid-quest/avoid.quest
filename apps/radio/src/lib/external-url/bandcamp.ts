@@ -1,3 +1,5 @@
+import { load } from "cheerio";
+import { decode } from "html-entities";
 import { detectBandcampItemType } from "@/lib/external-url/detect";
 import type {
   BandcampItemResult,
@@ -10,14 +12,6 @@ function createErrorResponse(message: string): PlatformItemError {
     success: false,
     error: message,
   };
-}
-
-// Lazy loader for bandcamp-fetch to avoid global scope execution issues in Cloudflare Workers
-// Module is externalized via Vite plugin in vite.config.ts, so it's only loaded dynamically
-// at runtime within handler context, not during bundle initialization
-async function loadBandcampFetch() {
-  const module = await import("bandcamp-fetch");
-  return module.default;
 }
 
 export async function getBandcampItem(
@@ -41,32 +35,66 @@ export async function getBandcampItem(
   }
 }
 
+async function fetchBandcampPage(url: string): Promise<string> {
+  const response = await fetch(url, {
+    headers: {
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch Bandcamp page: ${response.statusText}`);
+  }
+
+  return await response.text();
+}
+
+function parseBandcampData(html: string) {
+  const $ = load(html);
+  const rawBasic = $('script[type="application/ld+json"]').html();
+  const rawExtra = $("script[data-tralbum]").attr("data-tralbum");
+
+  if (!(rawBasic && rawExtra)) {
+    throw new Error(
+      "Failed to parse Bandcamp data: missing JSON-LD or tralbum data"
+    );
+  }
+
+  const basic = JSON.parse(rawBasic);
+  const extra = JSON.parse(decode(rawExtra));
+
+  return { basic, extra };
+}
+
+type BandcampTrackInfo = {
+  title: string;
+  file?: { "mp3-128": string };
+  duration?: number;
+  track_num?: number;
+};
+
 async function getBandcampAlbum(
   url: string
 ): Promise<BandcampItemResult | PlatformItemError> {
-  const bcfetch = await loadBandcampFetch();
-  const album = await bcfetch.album.getInfo({
-    albumUrl: url,
-    albumImageFormat: "art_app_large",
-    artistImageFormat: "bio_featured",
-    includeRawData: false,
-  });
+  const html = await fetchBandcampPage(url);
+  const { basic, extra } = parseBandcampData(html);
 
-  if (!album?.tracks || album.tracks.length === 0) {
+  if (!extra.trackinfo || extra.trackinfo.length === 0) {
     return createErrorResponse("No tracks found in album");
   }
 
-  const mappedTracks = album.tracks.map(
-    (
-      track: { name?: string; streamUrl?: string; duration?: number },
-      index: number
-    ) => ({
-      name: track.name || `Track ${index + 1}`,
-      streamUrl: track.streamUrl || "",
+  const mappedTracks = extra.trackinfo.map(
+    (track: BandcampTrackInfo, index: number) => ({
+      name: track.title,
+      streamUrl: track.file?.["mp3-128"] || "",
       duration: track.duration,
-      trackNumber: index + 1,
+      trackNumber: track.track_num || index + 1,
     })
   );
+
+  // Filter out tracks without stream URL if necessary, or keep them but they won't play
+  // Bandcamp sometimes has tracks without audio (e.g. hidden or pre-order)
 
   const totalDuration = mappedTracks.reduce(
     (sum: number, track: { duration?: number }) => sum + (track.duration || 0),
@@ -79,31 +107,28 @@ async function getBandcampAlbum(
       platform: "bandcamp",
       itemType: "album",
       url,
-      name: album.name,
-      artist: album.artist?.name,
-      artwork: album.imageUrl,
-      albumName: album.name,
+      name: basic.name,
+      artist: basic.byArtist.name,
+      artwork: basic.image,
+      albumName: basic.name,
       trackCount: mappedTracks.length,
       duration: totalDuration > 0 ? totalDuration : undefined,
       tracks: mappedTracks,
-      streamUrl: album.tracks[0]?.streamUrl,
+      streamUrl: mappedTracks[0]?.streamUrl,
     },
-    streamUrl: album.tracks[0]?.streamUrl || "",
+    streamUrl: mappedTracks[0]?.streamUrl || "",
   };
 }
 
 async function getBandcampTrack(
   url: string
 ): Promise<BandcampItemResult | PlatformItemError> {
-  const bcfetch = await loadBandcampFetch();
-  const track = await bcfetch.track.getInfo({
-    trackUrl: url,
-    albumImageFormat: "art_app_large",
-    artistImageFormat: "bio_featured",
-    includeRawData: false,
-  });
+  const html = await fetchBandcampPage(url);
+  const { basic, extra } = parseBandcampData(html);
 
-  if (!track?.streamUrl) {
+  const trackInfo = extra.trackinfo?.[0];
+
+  if (!trackInfo?.file?.["mp3-128"]) {
     return createErrorResponse("No stream URL found for track");
   }
 
@@ -113,13 +138,13 @@ async function getBandcampTrack(
       platform: "bandcamp",
       itemType: "track",
       url,
-      name: track.name,
-      artist: track.artist?.name,
-      artwork: track.imageUrl || track.album?.imageUrl,
-      albumName: track.album?.name,
-      duration: track.duration,
-      streamUrl: track.streamUrl,
+      name: basic.name,
+      artist: basic.byArtist.name,
+      artwork: basic.image || basic.album?.image, // Fallback to album image if track image is missing
+      albumName: basic.inAlbum?.name,
+      duration: trackInfo.duration,
+      streamUrl: trackInfo.file["mp3-128"],
     },
-    streamUrl: track.streamUrl,
+    streamUrl: trackInfo.file["mp3-128"],
   };
 }

@@ -50,7 +50,7 @@
   "devDependencies": {
     "@types/node": "^22.19.1",
     "@workspace/typescript-config": "workspace:*",
-    "rimraf": "^5.0.10",
+    "rimraf": "^6.1.2",
     "standardized-audio-context-mock": "^9.7.24",
     "typescript": "^5.9.3"
   },

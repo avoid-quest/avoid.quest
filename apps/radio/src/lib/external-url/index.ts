@@ -12,4 +12,9 @@ export type {
   SoundCloudItemType,
   SoundCloudMetadata,
 } from "./types";
-export { createPlatformRadio } from "./utils";
+export {
+  createPlatformRadio,
+  formatPlatformDuration,
+  getPlatformItemTypeLabel,
+  isPlatformRadio,
+} from "./utils";

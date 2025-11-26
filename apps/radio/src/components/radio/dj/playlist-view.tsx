@@ -7,7 +7,6 @@ import type { PlatformTrack } from "@/lib/external-url/types";
 type PlaylistViewProps = {
   tracks: PlatformTrack[];
   currentTrackIndex: number;
-  onTrackSelect: (index: number) => void;
   onPlayTrack: (streamUrl: string) => void;
   artist?: string;
   className?: string;
@@ -16,7 +15,6 @@ type PlaylistViewProps = {
 export function PlaylistView({
   tracks,
   currentTrackIndex,
-  onTrackSelect,
   onPlayTrack,
   artist,
   className,
@@ -36,7 +34,7 @@ export function PlaylistView({
       const nextIndex = currentTrackIndex + 1;
       const nextTrack = tracks[nextIndex];
       if (nextTrack) {
-        onTrackSelect(nextIndex);
+        // Only call onPlayTrack - index will sync automatically when streamUrl changes
         onPlayTrack(nextTrack.streamUrl);
       }
     }
@@ -47,7 +45,7 @@ export function PlaylistView({
       const prevIndex = currentTrackIndex - 1;
       const prevTrack = tracks[prevIndex];
       if (prevTrack) {
-        onTrackSelect(prevIndex);
+        // Only call onPlayTrack - index will sync automatically when streamUrl changes
         onPlayTrack(prevTrack.streamUrl);
       }
     }
@@ -142,7 +140,7 @@ export function PlaylistView({
                 )}
                 key={track.streamUrl || index}
                 onClick={() => {
-                  onTrackSelect(index);
+                  // Only call onPlayTrack - index will sync automatically when streamUrl changes
                   onPlayTrack(track.streamUrl);
                 }}
                 type="button"

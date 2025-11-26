@@ -1,27 +1,59 @@
 {
-  "short_name": "Radio",
+  "id": "/",
   "name": "Radio - avoid.quest",
+  "short_name": "Radio",
+  "description": "Enhanced internet radio player",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "theme_color": "#000000",
+  "background_color": "#000000",
+  "categories": ["music", "entertainment"],
+  "screenshots": [
+    {
+      "src": "/sh_wide.png",
+      "sizes": "2870x1614",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Radio app desktop interface"
+    },
+    {
+      "src": "/sh_small.png",
+      "sizes": "1240x1620",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Radio app mobile interface"
+    }
+  ],
   "icons": [
     {
-      "src": "favicon.ico",
-      "sizes": "64x64 32x32 24x24 16x16",
+      "src": "/favicon.ico",
+      "sizes": "64x64",
       "type": "image/x-icon"
     },
     {
-      "src": "web-app-manifest-192x192.png",
+      "src": "/web-app-manifest-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/web-app-manifest-192x192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "maskable"
     },
     {
-      "src": "web-app-manifest-512x512.png",
+      "src": "/web-app-manifest-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/web-app-manifest-512x512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
     }
-  ],
-  "start_url": ".",
-  "display": "standalone",
-  "theme_color": "#000000",
-  "background_color": "#ffffff"
+  ]
 }

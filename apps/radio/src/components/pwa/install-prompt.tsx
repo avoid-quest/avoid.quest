@@ -86,9 +86,7 @@ export function InstallPrompt() {
           <div className="flex-1 space-y-3">
             <div className="flex items-start justify-between gap-2">
               <div>
-                <h3 className="font-semibold leading-none">
-                  Install Radio App
-                </h3>
+                <h3 className="font-semibold leading-none">Install as app</h3>
                 <p className="mt-1.5 text-muted-foreground text-sm leading-relaxed">
                   Install this app for a better experience with faster access
                   and app-like interface.
@@ -111,7 +109,7 @@ export function InstallPrompt() {
                 onClick={handleInstallClick}
                 size="sm"
               >
-                <Download className="mr-2 h-3.5 w-3.5" />
+                <Download className="h-3.5 w-3.5" />
                 {isInstalling ? "Installing..." : "Install"}
               </Button>
               <Button

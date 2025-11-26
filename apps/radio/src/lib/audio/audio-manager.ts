@@ -22,6 +22,7 @@ export type AudioState = {
   isLoading: boolean;
   volume: number;
   error: AudioError | null;
+  hasEnded: boolean;
 };
 
 export class AudioManager {
@@ -118,6 +119,7 @@ export class AudioManager {
             radio,
             timestamp: Date.now(),
           },
+          hasEnded: false,
         });
       });
 
@@ -129,6 +131,7 @@ export class AudioManager {
           isLoading: false,
           volume: sound.volume,
           error: null,
+          hasEnded: true,
         });
       });
 
@@ -147,6 +150,7 @@ export class AudioManager {
         isLoading: false,
         volume: 0,
         error: audioError,
+        hasEnded: false,
       });
 
       throw audioError;
@@ -179,6 +183,7 @@ export class AudioManager {
           isLoading: false,
           volume: playback.volume,
           error: null,
+          hasEnded: true,
         });
       };
       playback.on("ended", endedHandler);
@@ -204,6 +209,7 @@ export class AudioManager {
       isLoading: false,
       volume,
       error: null,
+      hasEnded: false,
     });
 
     return null;
@@ -218,6 +224,7 @@ export class AudioManager {
         isLoading: false,
         volume: playback.volume,
         error: null,
+        hasEnded: false,
       });
     }
   }
@@ -232,6 +239,7 @@ export class AudioManager {
         isLoading: false,
         volume: 0,
         error: null,
+        hasEnded: false,
       });
     }
   }
@@ -245,6 +253,7 @@ export class AudioManager {
         isLoading: false,
         volume: playback.volume,
         error: null,
+        hasEnded: false,
       });
     }
   }
@@ -319,6 +328,7 @@ export class AudioManager {
       isLoading: false,
       volume: 0,
       error: null,
+      hasEnded: false,
     });
   }
 

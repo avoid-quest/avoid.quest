@@ -130,12 +130,26 @@ async function processPlaylist(
   const processedTracks = await Promise.all(
     // biome-ignore lint/suspicious/noExplicitAny: External API response
     data.tracks.map(async (track: any) => {
-      // Some tracks in playlists might be incomplete or restricted
-      if (!track.media?.transcodings) {
+      let fullTrack = track;
+
+      // If track is partial (missing media/transcodings), fetch full details
+      if (!track.media?.transcodings && track.id) {
+        try {
+          // Construct the API URL for the track
+          // Note: We use the resolve endpoint with the track's API URL
+          const trackApiUrl = `https://api.soundcloud.com/tracks/${track.id}`;
+          fullTrack = await resolveSoundCloudUrl(trackApiUrl, clientId);
+        } catch (error) {
+          console.warn(`Failed to resolve partial track ${track.id}:`, error);
+          return null;
+        }
+      }
+
+      if (!fullTrack.media?.transcodings) {
         return null;
       }
 
-      const transcoding = track.media.transcodings.find(
+      const transcoding = fullTrack.media.transcodings.find(
         // biome-ignore lint/suspicious/noExplicitAny: External API response
         (t: any) => t.format?.protocol === "progressive"
       );
@@ -150,9 +164,9 @@ async function processPlaylist(
       }
 
       return {
-        name: track.title,
+        name: fullTrack.title,
         streamUrl,
-        duration: Math.floor(track.duration / 1000),
+        duration: Math.floor(fullTrack.duration / 1000),
       };
     })
   );

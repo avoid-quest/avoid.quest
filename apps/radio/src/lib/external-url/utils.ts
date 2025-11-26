@@ -53,3 +53,48 @@ export function createPlatformRadio(
     enabled: true,
   };
 }
+
+/**
+ * Check if a radio item is from an external platform (Bandcamp/SoundCloud)
+ */
+export function isPlatformRadio(radio: Radio | null): boolean {
+  return radio?.platformMetadata !== undefined;
+}
+
+/**
+ * Get human-friendly label for platform item type
+ */
+export function getPlatformItemTypeLabel(metadata: PlatformMetadata): string {
+  if (metadata.platform === "bandcamp") {
+    const labels: Record<typeof metadata.itemType, string> = {
+      album: "Album",
+      track: "Track",
+      artist: "Artist",
+      label: "Label",
+    };
+    return labels[metadata.itemType];
+  }
+
+  if (metadata.platform === "soundcloud") {
+    const labels: Record<typeof metadata.itemType, string> = {
+      track: "Track",
+      playlist: "Playlist",
+      user: "User",
+    };
+    return labels[metadata.itemType];
+  }
+
+  return "Unknown";
+}
+
+/**
+ * Format duration in seconds to MM:SS format
+ */
+export function formatPlatformDuration(seconds?: number): string {
+  if (!seconds) {
+    return "";
+  }
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${String(secs).padStart(2, "0")}`;
+}

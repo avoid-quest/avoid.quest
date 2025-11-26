@@ -7,82 +7,95 @@ import {
   TabsTrigger,
 } from "@workspace/ui/components/tabs";
 import { cn } from "@workspace/ui/lib/utils";
+import { useShallow } from "zustand/react/shallow";
 import { Crossfader } from "@/components/audio/crossfader";
 import { EffectChain } from "@/components/audio/effect-chain";
-import type { FilterConfig } from "@/components/audio/filter-control";
 import { VolumeControl } from "@/components/audio/volume-control";
-import type { EffectConfig } from "@/lib/audio/effects/types";
+import { useDjStore } from "@/lib/stores/dj-store";
 
 type DjMixerProps = {
   className?: string;
-  crossfadePosition: number;
-  leftVolume: number;
-  rightVolume: number;
-  masterVolume: number;
-  leftMuted: boolean;
-  rightMuted: boolean;
-  isTransitioning: boolean;
-  error: string | null;
-  leftSoundId: string | null;
-  rightSoundId: string | null;
-  // Legacy support
-  leftFilterConfig: FilterConfig;
-  rightFilterConfig: FilterConfig;
-  // Unified effect system
-  leftEffects: EffectConfig[];
-  rightEffects: EffectConfig[];
-  onCrossfadeChange: (position: number) => void;
-  onLeftVolumeChange: (volume: number) => void;
-  onRightVolumeChange: (volume: number) => void;
-  onMasterVolumeChange: (volume: number) => void;
-  onLeftMuteChange: (muted: boolean) => void;
-  onRightMuteChange: (muted: boolean) => void;
-  // Legacy support
-  onLeftFilterChange: (config: FilterConfig) => void;
-  onRightFilterChange: (config: FilterConfig) => void;
-  // Unified effect system
-  onAddLeftEffect: (type: string) => void;
-  onAddRightEffect: (type: string) => void;
-  onUpdateLeftEffect: (effectId: string, config: Partial<EffectConfig>) => void;
-  onUpdateRightEffect: (
-    effectId: string,
-    config: Partial<EffectConfig>
-  ) => void;
-  onRemoveLeftEffect: (effectId: string) => void;
-  onRemoveRightEffect: (effectId: string) => void;
-  onReorderLeftEffects: (effectIds: string[]) => void;
-  onReorderRightEffects: (effectIds: string[]) => void;
 };
 
-export function DjMixer({
-  className,
-  crossfadePosition,
-  leftVolume,
-  rightVolume,
-  masterVolume,
-  leftMuted,
-  rightMuted,
-  isTransitioning,
-  error,
-  leftSoundId,
-  rightSoundId,
-  leftEffects,
-  rightEffects,
-  onCrossfadeChange,
-  onLeftVolumeChange,
-  onRightVolumeChange,
-  onMasterVolumeChange,
-  onLeftMuteChange,
-  onRightMuteChange,
-  onAddLeftEffect,
-  onAddRightEffect,
-  onUpdateLeftEffect,
-  onUpdateRightEffect,
-  onRemoveLeftEffect,
-  onRemoveRightEffect,
-  onReorderLeftEffects,
-  onReorderRightEffects,
-}: DjMixerProps) {
+export function DjMixer({ className }: DjMixerProps) {
+  const {
+    crossfadePosition,
+    masterVolume,
+    leftVolume,
+    rightVolume,
+    leftMuted,
+    rightMuted,
+    error,
+    leftSoundId,
+    rightSoundId,
+    leftEffects,
+    rightEffects,
+    setCrossfadePosition,
+    setMasterVolume,
+    setLeftVolume,
+    setRightVolume,
+    setLeftMute,
+    setRightMute,
+    addLeftEffect,
+    addRightEffect,
+    updateLeftEffect,
+    updateRightEffect,
+    removeLeftEffect,
+    removeRightEffect,
+    reorderLeftEffects,
+    reorderRightEffects,
+  } = useDjStore(
+    useShallow((state) => ({
+      crossfadePosition: state.mixer.crossfadePosition,
+      masterVolume: state.mixer.masterVolume,
+      leftVolume: state.leftDeck.volume,
+      rightVolume: state.rightDeck.volume,
+      leftMuted: state.leftDeck.muted,
+      rightMuted: state.rightDeck.muted,
+      error: state.error,
+      leftSoundId: state.leftDeck.soundId,
+      rightSoundId: state.rightDeck.soundId,
+      leftEffects: state.leftDeck.effects,
+      rightEffects: state.rightDeck.effects,
+      setCrossfadePosition: state.setCrossfadePosition,
+      setMasterVolume: state.setMasterVolume,
+      setLeftVolume: state.setLeftVolume,
+      setRightVolume: state.setRightVolume,
+      setLeftMute: state.setLeftMute,
+      setRightMute: state.setRightMute,
+      addLeftEffect: state.addLeftEffect,
+      addRightEffect: state.addRightEffect,
+      updateLeftEffect: state.updateLeftEffect,
+      updateRightEffect: state.updateRightEffect,
+      removeLeftEffect: state.removeLeftEffect,
+      removeRightEffect: state.removeRightEffect,
+      reorderLeftEffects: state.reorderLeftEffects,
+      reorderRightEffects: state.reorderRightEffects,
+    }))
+  );
+
+  const handleLeftVolumeChange = (volume: number) => {
+    if (volume === 0 && !leftMuted) {
+      setLeftMute(true);
+    } else if (volume > 0 && leftMuted) {
+      setLeftMute(false);
+      setLeftVolume(volume);
+    } else if (!leftMuted) {
+      setLeftVolume(volume);
+    }
+  };
+
+  const handleRightVolumeChange = (volume: number) => {
+    if (volume === 0 && !rightMuted) {
+      setRightMute(true);
+    } else if (volume > 0 && rightMuted) {
+      setRightMute(false);
+      setRightVolume(volume);
+    } else if (!rightMuted) {
+      setRightVolume(volume);
+    }
+  };
+
   return (
     <Card className={cn("h-full w-full", className)}>
       <CardContent className="flex h-full flex-col p-0">
@@ -93,7 +106,7 @@ export function DjMixer({
               <div className="font-medium text-lg">Crossfade</div>
             </div>
             <Crossfader
-              onPositionChange={onCrossfadeChange}
+              onPositionChange={setCrossfadePosition}
               position={crossfadePosition}
               size="lg"
             />
@@ -114,7 +127,7 @@ export function DjMixer({
               <div className="space-y-3">
                 <div className="font-medium text-sm">Master Volume</div>
                 <VolumeControl
-                  onVolumeChange={onMasterVolumeChange}
+                  onVolumeChange={setMasterVolume}
                   showMute={false}
                   size="md"
                   volume={masterVolume}
@@ -128,16 +141,7 @@ export function DjMixer({
                 <div className="space-y-3">
                   <div className="font-medium text-sm">Left Deck Volume</div>
                   <VolumeControl
-                    onVolumeChange={(volume) => {
-                      if (volume === 0 && !leftMuted) {
-                        onLeftMuteChange(true);
-                      } else if (volume > 0 && leftMuted) {
-                        onLeftMuteChange(false);
-                        onLeftVolumeChange(volume);
-                      } else if (!leftMuted) {
-                        onLeftVolumeChange(volume);
-                      }
-                    }}
+                    onVolumeChange={handleLeftVolumeChange}
                     showMute={true}
                     size="md"
                     volume={leftMuted ? 0 : leftVolume}
@@ -147,16 +151,7 @@ export function DjMixer({
                 <div className="space-y-3">
                   <div className="font-medium text-sm">Right Deck Volume</div>
                   <VolumeControl
-                    onVolumeChange={(volume) => {
-                      if (volume === 0 && !rightMuted) {
-                        onRightMuteChange(true);
-                      } else if (volume > 0 && rightMuted) {
-                        onRightMuteChange(false);
-                        onRightVolumeChange(volume);
-                      } else if (!rightMuted) {
-                        onRightVolumeChange(volume);
-                      }
-                    }}
+                    onVolumeChange={handleRightVolumeChange}
                     showMute={true}
                     size="md"
                     volume={rightMuted ? 0 : rightVolume}
@@ -170,19 +165,19 @@ export function DjMixer({
               <EffectChain
                 effects={leftEffects}
                 isInitialized={!!leftSoundId}
-                onAddEffect={onAddLeftEffect}
-                onRemoveEffect={onRemoveLeftEffect}
-                onReorderEffects={onReorderLeftEffects}
-                onUpdateEffect={onUpdateLeftEffect}
+                onAddEffect={addLeftEffect}
+                onRemoveEffect={removeLeftEffect}
+                onReorderEffects={reorderLeftEffects}
+                onUpdateEffect={updateLeftEffect}
                 title="Left Deck Effects"
               />
               <EffectChain
                 effects={rightEffects}
                 isInitialized={!!rightSoundId}
-                onAddEffect={onAddRightEffect}
-                onRemoveEffect={onRemoveRightEffect}
-                onReorderEffects={onReorderRightEffects}
-                onUpdateEffect={onUpdateRightEffect}
+                onAddEffect={addRightEffect}
+                onRemoveEffect={removeRightEffect}
+                onReorderEffects={reorderRightEffects}
+                onUpdateEffect={updateRightEffect}
                 title="Right Deck Effects"
               />
             </TabsContent>
@@ -195,19 +190,6 @@ export function DjMixer({
             <div className="rounded-md bg-destructive/10 p-3 text-center">
               <div className="font-medium text-destructive text-sm">Error</div>
               <div className="text-destructive text-xs">{error}</div>
-            </div>
-          </div>
-        )}
-
-        {isTransitioning && (
-          <div className="border-t p-4">
-            <div className="rounded-md bg-primary/10 p-3 text-center">
-              <div className="font-medium text-primary text-sm">
-                Transitioning...
-              </div>
-              <div className="text-primary text-xs">
-                Crossfading between decks
-              </div>
             </div>
           </div>
         )}

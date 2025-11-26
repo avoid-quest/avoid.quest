@@ -2,11 +2,7 @@ import { useEffect } from "react";
 
 export function SWRegister() {
   useEffect(() => {
-    if (
-      typeof window !== "undefined" &&
-      "serviceWorker" in navigator &&
-      import.meta.env.PROD
-    ) {
+    if (typeof window !== "undefined" && "serviceWorker" in navigator) {
       navigator.serviceWorker
         .register("/sw.js", {
           scope: "/",

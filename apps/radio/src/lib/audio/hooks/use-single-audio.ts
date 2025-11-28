@@ -19,6 +19,7 @@ export function useSingleAudio() {
 
   const currentSoundIdRef = useRef<string | null>(null);
   const previousSoundIdRef = useRef<string | null>(null);
+  const unsubscribeRef = useRef<(() => void) | null>(null);
 
   // Generate unique sound ID
   const getSoundId = useCallback(
@@ -28,6 +29,11 @@ export function useSingleAudio() {
 
   // Cleanup function
   const cleanup = useCallback(async () => {
+    if (unsubscribeRef.current) {
+      unsubscribeRef.current();
+      unsubscribeRef.current = null;
+    }
+
     if (currentSoundIdRef.current) {
       await audioManager.cleanupSound(currentSoundIdRef.current);
       currentSoundIdRef.current = null;
@@ -42,6 +48,58 @@ export function useSingleAudio() {
     setIsCrossfading(false);
     setError(null);
   }, [audioManager]);
+
+  // Helper: Clean up previous sounds without resetting state
+  const cleanupPreviousSounds = useCallback(async () => {
+    if (unsubscribeRef.current) {
+      unsubscribeRef.current();
+      unsubscribeRef.current = null;
+    }
+
+    const oldSoundId = currentSoundIdRef.current;
+    if (oldSoundId) {
+      await audioManager.cleanupSound(oldSoundId);
+    }
+    if (previousSoundIdRef.current) {
+      await audioManager.cleanupSound(previousSoundIdRef.current);
+      previousSoundIdRef.current = null;
+    }
+  }, [audioManager]);
+
+  // Helper: Subscribe to sound state changes
+  const subscribeToSound = useCallback(
+    (soundId: string) => {
+      unsubscribeRef.current = audioManager.subscribe(soundId, (state) => {
+        setIsPlaying(state.isPlaying);
+        setIsLoading(state.isLoading);
+        if (state.error) {
+          setError(state.error.message);
+        }
+      });
+    },
+    [audioManager]
+  );
+
+  // Helper: Save radio to settings
+  const saveRadioToSettings = useCallback(
+    async (radio: Radio) => {
+      if (!settings?.id) {
+        return;
+      }
+
+      await db.settings.update(settings.id, {
+        player: {
+          ...settings.player,
+          single: {
+            transitionDuration:
+              settings.player.single?.transitionDuration ?? TRANSITION_DURATION,
+            lastUsedRadio: radio,
+          },
+        },
+      });
+    },
+    [settings]
+  );
 
   // Crossfade to new radio
   const crossfadeToNewRadio = useCallback(
@@ -61,14 +119,14 @@ export function useSingleAudio() {
         // Create new sound
         await audioManager.createSound(newRadio, newSoundId);
 
+        // Unsubscribe from previous sound if exists
+        if (unsubscribeRef.current) {
+          unsubscribeRef.current();
+          unsubscribeRef.current = null;
+        }
+
         // Subscribe to new sound state changes
-        const _unsubscribe = audioManager.subscribe(newSoundId, (state) => {
-          setIsPlaying(state.isPlaying);
-          setIsLoading(state.isLoading);
-          if (state.error) {
-            setError(state.error.message);
-          }
-        });
+        subscribeToSound(newSoundId);
 
         // Start new sound at volume 0 for crossfade
         await audioManager.playSound(newSoundId, 0);
@@ -100,17 +158,7 @@ export function useSingleAudio() {
         setIsPlaying(true);
 
         // Save to settings
-        if (settings?.id) {
-          await db.settings.update(settings.id, {
-            player: {
-              ...settings.player,
-              single: {
-                transitionDuration,
-                lastUsedRadio: newRadio,
-              },
-            },
-          });
-        }
+        await saveRadioToSettings(newRadio);
       } catch (err) {
         const errorMessage =
           err instanceof Error ? err.message : "Crossfade failed";
@@ -118,7 +166,7 @@ export function useSingleAudio() {
         setIsCrossfading(false);
       }
     },
-    [audioManager, settings, volume]
+    [audioManager, settings, volume, subscribeToSound, saveRadioToSettings]
   );
 
   // Load radio
@@ -126,8 +174,6 @@ export function useSingleAudio() {
     async (radio: Radio) => {
       try {
         setError(null);
-        // Loading state will be managed by AudioManager through subscription
-
         const soundId = getSoundId(radio);
 
         // If we have a current radio that's playing, do crossfade
@@ -137,39 +183,20 @@ export function useSingleAudio() {
         }
 
         // Otherwise, just load the new radio
+        await cleanupPreviousSounds();
+
+        // Create new sound
         await audioManager.createSound(radio, soundId);
 
         // Subscribe to state changes
-        const _unsubscribe = audioManager.subscribe(soundId, (state) => {
-          setIsPlaying(state.isPlaying);
-          setIsLoading(state.isLoading);
-          if (state.error) {
-            setError(state.error.message);
-          }
-        });
-
-        // Clean up previous audio
-        await cleanup();
+        subscribeToSound(soundId);
 
         currentSoundIdRef.current = soundId;
         setCurrentRadio(radio);
 
         // Save to settings
-        if (settings?.id) {
-          await db.settings.update(settings.id, {
-            player: {
-              ...settings.player,
-              single: {
-                transitionDuration:
-                  settings.player.single?.transitionDuration ??
-                  TRANSITION_DURATION,
-                lastUsedRadio: radio,
-              },
-            },
-          });
-        }
+        await saveRadioToSettings(radio);
       } catch (err) {
-        // Error handling - AudioManager will also update state through subscription
         const errorMessage =
           err instanceof Error ? err.message : "Failed to load radio";
         setError(errorMessage);
@@ -177,12 +204,13 @@ export function useSingleAudio() {
     },
     [
       audioManager,
-      cleanup,
       getSoundId,
-      settings,
       currentRadio,
       isPlaying,
       crossfadeToNewRadio,
+      cleanupPreviousSounds,
+      subscribeToSound,
+      saveRadioToSettings,
     ]
   );
 

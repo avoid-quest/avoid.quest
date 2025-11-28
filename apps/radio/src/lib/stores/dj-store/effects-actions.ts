@@ -45,9 +45,6 @@ export const createEffectsActions: StateCreator<
 
   addLeftEffect: (effectType: string) => {
     const { leftDeck } = get();
-    if (!leftDeck.soundId) {
-      return;
-    }
 
     const newEffect = createDefaultEffectConfig(
       effectType as EffectConfig["type"],
@@ -61,14 +58,15 @@ export const createEffectsActions: StateCreator<
         effects: [...state.leftDeck.effects, newEffect],
       },
     }));
-    getAudioManager().addEffect(leftDeck.soundId, newEffect);
+
+    // Apply effect immediately if sound is loaded
+    if (leftDeck.soundId) {
+      getAudioManager().addEffect(leftDeck.soundId, newEffect);
+    }
   },
 
   addRightEffect: (effectType: string) => {
     const { rightDeck } = get();
-    if (!rightDeck.soundId) {
-      return;
-    }
 
     const newEffect = createDefaultEffectConfig(
       effectType as EffectConfig["type"],
@@ -82,14 +80,15 @@ export const createEffectsActions: StateCreator<
         effects: [...state.rightDeck.effects, newEffect],
       },
     }));
-    getAudioManager().addEffect(rightDeck.soundId, newEffect);
+
+    // Apply effect immediately if sound is loaded
+    if (rightDeck.soundId) {
+      getAudioManager().addEffect(rightDeck.soundId, newEffect);
+    }
   },
 
   updateLeftEffect: (effectId: string, config: Partial<EffectConfig>) => {
     const { leftDeck } = get();
-    if (!leftDeck.soundId) {
-      return;
-    }
 
     set((state) => ({
       leftDeck: {
@@ -99,14 +98,15 @@ export const createEffectsActions: StateCreator<
         ),
       },
     }));
-    getAudioManager().updateEffect(leftDeck.soundId, effectId, config);
+
+    // Apply effect update immediately if sound is loaded
+    if (leftDeck.soundId) {
+      getAudioManager().updateEffect(leftDeck.soundId, effectId, config);
+    }
   },
 
   updateRightEffect: (effectId: string, config: Partial<EffectConfig>) => {
     const { rightDeck } = get();
-    if (!rightDeck.soundId) {
-      return;
-    }
 
     set((state) => ({
       rightDeck: {
@@ -116,14 +116,15 @@ export const createEffectsActions: StateCreator<
         ),
       },
     }));
-    getAudioManager().updateEffect(rightDeck.soundId, effectId, config);
+
+    // Apply effect update immediately if sound is loaded
+    if (rightDeck.soundId) {
+      getAudioManager().updateEffect(rightDeck.soundId, effectId, config);
+    }
   },
 
   removeLeftEffect: (effectId: string) => {
     const { leftDeck } = get();
-    if (!leftDeck.soundId) {
-      return;
-    }
 
     set((state) => ({
       leftDeck: {
@@ -133,14 +134,15 @@ export const createEffectsActions: StateCreator<
           .map((e, i) => ({ ...e, order: i })),
       },
     }));
-    getAudioManager().removeEffect(leftDeck.soundId, effectId);
+
+    // Apply removal immediately if sound is loaded
+    if (leftDeck.soundId) {
+      getAudioManager().removeEffect(leftDeck.soundId, effectId);
+    }
   },
 
   removeRightEffect: (effectId: string) => {
     const { rightDeck } = get();
-    if (!rightDeck.soundId) {
-      return;
-    }
 
     set((state) => ({
       rightDeck: {
@@ -150,14 +152,15 @@ export const createEffectsActions: StateCreator<
           .map((e, i) => ({ ...e, order: i })),
       },
     }));
-    getAudioManager().removeEffect(rightDeck.soundId, effectId);
+
+    // Apply removal immediately if sound is loaded
+    if (rightDeck.soundId) {
+      getAudioManager().removeEffect(rightDeck.soundId, effectId);
+    }
   },
 
   reorderLeftEffects: (effectIds: string[]) => {
     const { leftDeck } = get();
-    if (!leftDeck.soundId) {
-      return;
-    }
 
     set((state) => ({
       leftDeck: {
@@ -168,14 +171,14 @@ export const createEffectsActions: StateCreator<
       },
     }));
 
-    getAudioManager().reorderEffects(leftDeck.soundId, effectIds);
+    // Apply reordering immediately if sound is loaded
+    if (leftDeck.soundId) {
+      getAudioManager().reorderEffects(leftDeck.soundId, effectIds);
+    }
   },
 
   reorderRightEffects: (effectIds: string[]) => {
     const { rightDeck } = get();
-    if (!rightDeck.soundId) {
-      return;
-    }
 
     set((state) => ({
       rightDeck: {
@@ -186,6 +189,9 @@ export const createEffectsActions: StateCreator<
       },
     }));
 
-    getAudioManager().reorderEffects(rightDeck.soundId, effectIds);
+    // Apply reordering immediately if sound is loaded
+    if (rightDeck.soundId) {
+      getAudioManager().reorderEffects(rightDeck.soundId, effectIds);
+    }
   },
 });

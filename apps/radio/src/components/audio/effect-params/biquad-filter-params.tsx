@@ -18,7 +18,6 @@ const FILTER_TYPES = [
 
 type BiquadFilterParamsProps = {
   effect: BiquadFilterConfig;
-  isInitialized: boolean;
   onUpdate: (config: Partial<EffectConfig>) => void;
 };
 
@@ -46,19 +45,18 @@ function shouldShowGain(filterType: BiquadFilterConfig["filterType"]): boolean {
 
 export function BiquadFilterParams({
   effect,
-  isInitialized,
   onUpdate,
 }: BiquadFilterParamsProps) {
   const metadata = getEffectMetadata("biquadFilter");
   const ranges = metadata?.parameterRanges ?? {};
   const defaultConfig = metadata?.defaultConfig;
   const showGain = shouldShowGain(effect.filterType);
-  const disabled = !(isInitialized && effect.enabled);
+  const disabled = !effect.enabled;
 
   return (
     <div className="space-y-4">
       <ParamSelect
-        disabled={!isInitialized}
+        disabled={disabled}
         label="Filter Type"
         onChange={(value) =>
           onUpdate({ filterType: value as BiquadFilterConfig["filterType"] })

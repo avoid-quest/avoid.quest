@@ -219,10 +219,11 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
           <div className="flex flex-col gap-6">
             <div className="flex items-center justify-center gap-6">
               <PlayPauseButton
-                disabled={!currentRadio}
+                disabled={!currentRadio || isLoading || isCrossfading}
                 isLoading={isLoading || isCrossfading}
                 isPlaying={isPlaying}
                 onClick={handlePlayPause}
+                variant={isPlaying && !isLoading ? "outline" : "default"}
               />
             </div>
 

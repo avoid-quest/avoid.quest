@@ -22,6 +22,7 @@ type PlayPauseButtonProps = {
   iconClassName?: string;
   showLoadingText?: boolean;
   loadingText?: string;
+  inline?: boolean;
 };
 
 export function PlayPauseButton({
@@ -35,6 +36,7 @@ export function PlayPauseButton({
   iconClassName,
   showLoadingText = false,
   loadingText = "Loading...",
+  inline = false,
 }: PlayPauseButtonProps) {
   const isDisabled = disabled || isLoading;
 
@@ -50,17 +52,25 @@ export function PlayPauseButton({
     return <Play className={cn("size-8", iconClassName)} />;
   };
 
+  const button = (
+    <Button
+      className={cn(inline ? "" : "size-16 rounded-full", className)}
+      disabled={isDisabled}
+      onClick={onClick}
+      size={size}
+      variant={variant}
+    >
+      {renderIcon()}
+    </Button>
+  );
+
+  if (inline) {
+    return button;
+  }
+
   return (
     <div className="flex flex-col items-center gap-2">
-      <Button
-        className={cn("size-16 rounded-full", className)}
-        disabled={isDisabled}
-        onClick={onClick}
-        size={size}
-        variant={isPlaying && !isLoading ? "outline" : variant}
-      >
-        {renderIcon()}
-      </Button>
+      {button}
       {isLoading && showLoadingText && (
         <div className="text-muted-foreground text-sm">{loadingText}</div>
       )}

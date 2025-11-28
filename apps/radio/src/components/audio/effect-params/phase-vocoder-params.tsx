@@ -7,7 +7,6 @@ import { ParamGroup, ParamSlider } from "./";
 
 type PhaseVocoderParamsProps = {
   effect: PhaseVocoderConfig;
-  isInitialized: boolean;
   onUpdate: (config: Partial<EffectConfig>) => void;
 };
 
@@ -27,13 +26,12 @@ function getDefaultValue(
 
 export function PhaseVocoderParams({
   effect,
-  isInitialized,
   onUpdate,
 }: PhaseVocoderParamsProps) {
   const metadata = getEffectMetadata("phaseVocoder");
   const ranges = metadata?.parameterRanges ?? {};
   const defaultConfig = metadata?.defaultConfig;
-  const disabled = !(isInitialized && effect.enabled);
+  const disabled = !effect.enabled;
 
   return (
     <div className="space-y-4">

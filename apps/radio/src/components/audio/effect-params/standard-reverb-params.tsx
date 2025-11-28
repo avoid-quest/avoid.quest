@@ -7,7 +7,6 @@ import { ParamGroup, ParamSlider } from "./";
 
 type StandardReverbParamsProps = {
   effect: StandardReverbConfig;
-  isInitialized: boolean;
   onUpdate: (config: Partial<EffectConfig>) => void;
 };
 
@@ -34,13 +33,12 @@ function handleWetChange(
 
 export function StandardReverbParams({
   effect,
-  isInitialized,
   onUpdate,
 }: StandardReverbParamsProps) {
   const metadata = getEffectMetadata("standardReverb");
   const ranges = metadata?.parameterRanges ?? {};
   const defaultConfig = metadata?.defaultConfig;
-  const disabled = !(isInitialized && effect.enabled);
+  const disabled = !effect.enabled;
 
   return (
     <div className="space-y-4">

@@ -10,80 +10,27 @@ import { StandardReverbParams } from "./standard-reverb-params";
 
 type EffectParamsProps = {
   effect: EffectConfig;
-  isInitialized: boolean;
   onUpdate: (config: Partial<EffectConfig>) => void;
 };
 
-export function EffectParams({
-  effect,
-  isInitialized,
-  onUpdate,
-}: EffectParamsProps) {
+export function EffectParams({ effect, onUpdate }: EffectParamsProps) {
   switch (effect.type) {
     case "biquadFilter":
-      return (
-        <BiquadFilterParams
-          effect={effect}
-          isInitialized={isInitialized}
-          onUpdate={onUpdate}
-        />
-      );
+      return <BiquadFilterParams effect={effect} onUpdate={onUpdate} />;
     case "plateReverb":
-      return (
-        <PlateReverbParams
-          effect={effect}
-          isInitialized={isInitialized}
-          onUpdate={onUpdate}
-        />
-      );
+      return <PlateReverbParams effect={effect} onUpdate={onUpdate} />;
     case "standardReverb":
-      return (
-        <StandardReverbParams
-          effect={effect}
-          isInitialized={isInitialized}
-          onUpdate={onUpdate}
-        />
-      );
+      return <StandardReverbParams effect={effect} onUpdate={onUpdate} />;
     case "phaseVocoder":
-      return (
-        <PhaseVocoderParams
-          effect={effect}
-          isInitialized={isInitialized}
-          onUpdate={onUpdate}
-        />
-      );
+      return <PhaseVocoderParams effect={effect} onUpdate={onUpdate} />;
     case "delay":
-      return (
-        <DelayParams
-          effect={effect}
-          isInitialized={isInitialized}
-          onUpdate={onUpdate}
-        />
-      );
+      return <DelayParams effect={effect} onUpdate={onUpdate} />;
     case "distortion":
-      return (
-        <DistortionParams
-          effect={effect}
-          isInitialized={isInitialized}
-          onUpdate={onUpdate}
-        />
-      );
+      return <DistortionParams effect={effect} onUpdate={onUpdate} />;
     case "compressor":
-      return (
-        <CompressorParams
-          effect={effect}
-          isInitialized={isInitialized}
-          onUpdate={onUpdate}
-        />
-      );
+      return <CompressorParams effect={effect} onUpdate={onUpdate} />;
     case "panner":
-      return (
-        <PannerParams
-          effect={effect}
-          isInitialized={isInitialized}
-          onUpdate={onUpdate}
-        />
-      );
+      return <PannerParams effect={effect} onUpdate={onUpdate} />;
     default:
       return null;
   }

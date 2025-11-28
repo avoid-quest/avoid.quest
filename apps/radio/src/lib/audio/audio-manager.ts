@@ -89,6 +89,15 @@ export class AudioManager {
     }
 
     try {
+      // Set loading state before creating sound
+      this.notifyListeners(id, {
+        isPlaying: false,
+        isLoading: true,
+        volume: 0,
+        error: null,
+        hasEnded: false,
+      });
+
       // Get the URL to use (proxied for Bandcamp and SoundCloud to avoid CORS)
       const streamUrl = this.getProxiedUrl(radio.streamUrl);
 
@@ -100,11 +109,84 @@ export class AudioManager {
           ? SoundType.HTML
           : SoundType.Streaming;
 
+      // Subscribe to cacophony loading events for this URL
+      const loadingStartHandler = (event: {
+        url: string;
+        timestamp: number;
+      }) => {
+        if (event.url === streamUrl) {
+          this.notifyListeners(id, {
+            isPlaying: false,
+            isLoading: true,
+            volume: 0,
+            error: null,
+            hasEnded: false,
+          });
+        }
+      };
+
+      const loadingCompleteHandler = (event: {
+        url: string;
+        timestamp: number;
+      }) => {
+        if (event.url === streamUrl) {
+          // Loading complete - clear loading state
+          // If playSound is called, it will set isLoading again
+          this.notifyListeners(id, {
+            isPlaying: false,
+            isLoading: false,
+            volume: 0,
+            error: null,
+            hasEnded: false,
+          });
+        }
+      };
+
+      const loadingErrorHandler = (event: {
+        url: string;
+        error: Error;
+        errorType: string;
+        timestamp: number;
+      }) => {
+        if (event.url === streamUrl) {
+          this.notifyListeners(id, {
+            isPlaying: false,
+            isLoading: false,
+            volume: 0,
+            error: {
+              message: `Failed to load ${radio.name}: ${event.error.message}`,
+              code: "LOADING_ERROR",
+              radio,
+              timestamp: Date.now(),
+            },
+            hasEnded: false,
+          });
+        }
+      };
+
+      this.cacophony.on("loadingStart", loadingStartHandler);
+      this.cacophony.on("loadingComplete", loadingCompleteHandler);
+      this.cacophony.on("loadingError", loadingErrorHandler);
+
       const sound = await this.cacophony.createSound(
         streamUrl,
         soundType,
         "stereo"
       );
+
+      // Remove loading event listeners after sound is created
+      this.cacophony.off("loadingStart", loadingStartHandler);
+      this.cacophony.off("loadingComplete", loadingCompleteHandler);
+      this.cacophony.off("loadingError", loadingErrorHandler);
+
+      // Clear loading state after sound is created
+      this.notifyListeners(id, {
+        isPlaying: false,
+        isLoading: false,
+        volume: sound.volume,
+        error: null,
+        hasEnded: false,
+      });
 
       // Set up error handling for this specific sound
       sound.on("soundError", (event: { error: Error }) => {
@@ -157,7 +239,7 @@ export class AudioManager {
     }
   }
 
-  playSound(soundId: string, volume = 1): Playback | null {
+  async playSound(soundId: string, volume = 1): Promise<Playback | null> {
     const sound = this.sounds.get(soundId);
     if (!sound) {
       throw new Error(`Sound with id ${soundId} not found`);
@@ -169,50 +251,127 @@ export class AudioManager {
       existingPlayback.cleanup();
     }
 
-    const [playback] = sound.play();
-
-    if (playback) {
-      playback.volume = volume;
-      this.playbacks.set(soundId, playback);
-
-      // Listen for track end events - bind soundId to the handler
-      const endedHandler = () => {
-        // Notify listeners that playback ended
-        this.notifyListeners(soundId, {
-          isPlaying: false,
-          isLoading: false,
-          volume: playback.volume,
-          error: null,
-          hasEnded: true,
-        });
-      };
-      playback.on("ended", endedHandler);
-
-      // Setup effect manager for this sound
-      let effectManager = this.effectManagers.get(soundId);
-      if (!effectManager) {
-        effectManager = new EffectManager(this.cacophony, sound, playback);
-        this.effectManagers.set(soundId, effectManager);
-      }
-
-      // Set input and output nodes
-      effectManager.setInputNode(playback.outputNode);
-      effectManager.setOutputNode(
-        this.cacophony.globalGainNode as unknown as AudioNode
-      );
-    } else {
-      throw new Error(`Failed to play sound with id ${soundId}`);
-    }
-
+    // Notify that playback is starting with loading state BEFORE calling play()
+    // This ensures loading state is set before the play event fires
     this.notifyListeners(soundId, {
       isPlaying: true,
-      isLoading: false,
+      isLoading: true,
       volume,
       error: null,
       hasEnded: false,
     });
 
-    return null;
+    const [playback] = sound.play();
+
+    if (!playback) {
+      this.notifyListeners(soundId, {
+        isPlaying: false,
+        isLoading: false,
+        volume,
+        error: {
+          message: `Failed to play sound with id ${soundId}`,
+          code: "PLAY_ERROR",
+          timestamp: Date.now(),
+        },
+        hasEnded: false,
+      });
+      throw new Error(`Failed to play sound with id ${soundId}`);
+    }
+
+    playback.volume = volume;
+    this.playbacks.set(soundId, playback);
+
+    // Listen for track end events
+    const endedHandler = () => {
+      this.notifyListeners(soundId, {
+        isPlaying: false,
+        isLoading: false,
+        volume: playback.volume,
+        error: null,
+        hasEnded: true,
+      });
+    };
+    playback.on("ended", endedHandler);
+
+    // For HTML audio elements, we need to wait for the play promise to resolve
+    // The play() method returns synchronously, but actual playback start is async
+    // We'll wait for the "playing" event on the mediaElement if available
+    const clearLoadingState = () => {
+      this.notifyListeners(soundId, {
+        isPlaying: true,
+        isLoading: false,
+        volume: playback.volume,
+        error: null,
+        hasEnded: false,
+      });
+    };
+
+    // Check if this is an HTML audio element source
+    if (
+      playback.source &&
+      "mediaElement" in playback.source &&
+      playback.source.mediaElement
+    ) {
+      const mediaElement = playback.source.mediaElement;
+
+      // Wait for the "playing" event which fires when playback actually starts
+      // This is more reliable than the "play" event which fires synchronously
+      await new Promise<void>((resolve, reject) => {
+        const playingHandler = () => {
+          clearLoadingState();
+          mediaElement.removeEventListener("playing", playingHandler);
+          mediaElement.removeEventListener("error", errorHandler);
+          resolve();
+        };
+
+        // Also handle errors
+        const errorHandler = () => {
+          this.notifyListeners(soundId, {
+            isPlaying: false,
+            isLoading: false,
+            volume: playback.volume,
+            error: {
+              message: "Failed to start playback",
+              code: "PLAYBACK_ERROR",
+              timestamp: Date.now(),
+            },
+            hasEnded: false,
+          });
+          mediaElement.removeEventListener("playing", playingHandler);
+          mediaElement.removeEventListener("error", errorHandler);
+          reject(new Error("Failed to start playback"));
+        };
+
+        mediaElement.addEventListener("playing", playingHandler);
+        mediaElement.addEventListener("error", errorHandler);
+
+        // If already playing, clear loading immediately
+        if (!mediaElement.paused && mediaElement.readyState >= 2) {
+          clearLoadingState();
+          mediaElement.removeEventListener("playing", playingHandler);
+          mediaElement.removeEventListener("error", errorHandler);
+          resolve();
+        }
+      });
+    } else {
+      // For buffer sources, playback starts immediately
+      clearLoadingState();
+    }
+
+    // Setup effect manager for this sound
+    let effectManager = this.effectManagers.get(soundId);
+    if (!effectManager) {
+      effectManager = new EffectManager(this.cacophony, sound, playback);
+      this.effectManagers.set(soundId, effectManager);
+    }
+
+    // Set input and output nodes
+    effectManager.setInputNode(playback.outputNode);
+    effectManager.setOutputNode(
+      this.cacophony.globalGainNode as unknown as AudioNode
+    );
+
+    return playback;
   }
 
   pauseSound(soundId: string): void {
@@ -249,7 +408,7 @@ export class AudioManager {
     if (playback) {
       playback.volume = Math.max(0, Math.min(1, volume));
       this.notifyListeners(soundId, {
-        isPlaying: playback.volume > 0,
+        isPlaying: playback.isPlaying,
         isLoading: false,
         volume: playback.volume,
         error: null,

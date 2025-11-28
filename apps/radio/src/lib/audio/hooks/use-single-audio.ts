@@ -126,13 +126,12 @@ export function useSingleAudio() {
     async (radio: Radio) => {
       try {
         setError(null);
-        setIsLoading(true);
+        // Loading state will be managed by AudioManager through subscription
 
         const soundId = getSoundId(radio);
 
         // If we have a current radio that's playing, do crossfade
         if (currentRadio && isPlaying && currentSoundIdRef.current) {
-          setIsLoading(false);
           await crossfadeToNewRadio(radio, soundId);
           return;
         }
@@ -154,7 +153,6 @@ export function useSingleAudio() {
 
         currentSoundIdRef.current = soundId;
         setCurrentRadio(radio);
-        setIsLoading(false);
 
         // Save to settings
         if (settings?.id) {
@@ -171,10 +169,10 @@ export function useSingleAudio() {
           });
         }
       } catch (err) {
+        // Error handling - AudioManager will also update state through subscription
         const errorMessage =
           err instanceof Error ? err.message : "Failed to load radio";
         setError(errorMessage);
-        setIsLoading(false);
       }
     },
     [
@@ -195,8 +193,10 @@ export function useSingleAudio() {
     }
 
     try {
+      // Loading state will be managed by AudioManager through subscription
       await audioManager.playSound(currentSoundIdRef.current, volume);
     } catch (err) {
+      // Error handling - AudioManager will also update state through subscription
       const errorMessage = err instanceof Error ? err.message : "Play failed";
       setError(errorMessage);
     }

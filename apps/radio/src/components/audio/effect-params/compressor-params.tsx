@@ -4,7 +4,6 @@ import { ParamGroup, ParamSlider } from "./";
 
 type CompressorParamsProps = {
   effect: CompressorConfig;
-  isInitialized: boolean;
   onUpdate: (config: Partial<EffectConfig>) => void;
 };
 
@@ -148,15 +147,11 @@ function TimingGroup({
   );
 }
 
-export function CompressorParams({
-  effect,
-  isInitialized,
-  onUpdate,
-}: CompressorParamsProps) {
+export function CompressorParams({ effect, onUpdate }: CompressorParamsProps) {
   const metadata = getEffectMetadata("compressor");
   const ranges = metadata?.parameterRanges ?? {};
   const defaultConfig = metadata?.defaultConfig;
-  const disabled = !(isInitialized && effect.enabled);
+  const disabled = !effect.enabled;
 
   return (
     <div className="space-y-4">

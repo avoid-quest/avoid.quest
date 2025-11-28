@@ -2,7 +2,7 @@ import type { StateCreator } from "zustand";
 import { createDeckLoadingActions } from "./deck-loading-actions";
 import { createDeckPlaybackActions } from "./deck-playback-actions";
 import { createDeckVolumeActions } from "./deck-volume-actions";
-import type { DjState } from "./types";
+import type { InternalDjState } from "./types";
 
 /**
  * Composes all deck-related actions into a single action creator.
@@ -12,11 +12,11 @@ import type { DjState } from "./types";
  * - Volume actions (setLeftVolume, setRightVolume, setLeftMute, setRightMute)
  */
 export const createDeckActions: StateCreator<
-  DjState,
+  InternalDjState,
   [],
   [],
   Pick<
-    DjState,
+    InternalDjState,
     | "setLeftRadio"
     | "setRightRadio"
     | "playLeft"

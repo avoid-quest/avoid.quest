@@ -1,12 +1,12 @@
 import type { StateCreator } from "zustand";
 import { getAudioManager } from "./audio-manager-helpers";
-import type { DjState } from "./types";
+import type { InternalDjState } from "./types";
 
 export const createMixerActions: StateCreator<
-  DjState,
+  InternalDjState,
   [],
   [],
-  Pick<DjState, "setMasterVolume" | "setCrossfadePosition">
+  Pick<InternalDjState, "setMasterVolume" | "setCrossfadePosition">
 > = (set, get) => {
   // Helper to apply crossfade
   const applyCrossfade = () => {
@@ -47,7 +47,7 @@ export const createMixerActions: StateCreator<
 };
 
 // Export applyCrossfade for use by deck actions
-export const applyCrossfade = (get: () => DjState) => {
+export const applyCrossfade = (get: () => InternalDjState) => {
   if (typeof window === "undefined") {
     return;
   }

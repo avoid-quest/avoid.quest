@@ -3,15 +3,15 @@ import type { Radio } from "@/lib/types";
 import { getAudioManager, getSoundId } from "./audio-manager-helpers";
 import { applyCrossfade } from "./mixer-actions";
 import { findNextTrack } from "./track-actions";
-import { type DjState, initialDeckState } from "./types";
+import { type InternalDjState, initialDeckState } from "./types";
 
 /**
  * Helper to apply stored effects and filters to a newly loaded sound
  */
 function applyStoredEffectsAndFilters(
   soundId: string,
-  effects: DjState["leftDeck"]["effects"],
-  filter: DjState["leftDeck"]["filter"]
+  effects: InternalDjState["leftDeck"]["effects"],
+  filter: InternalDjState["leftDeck"]["filter"]
 ) {
   // Apply stored filter if enabled
   if (filter.enabled) {
@@ -25,11 +25,11 @@ function applyStoredEffectsAndFilters(
 }
 
 export const createDeckLoadingActions: StateCreator<
-  DjState,
+  InternalDjState,
   [],
   [],
   Pick<
-    DjState,
+    InternalDjState,
     "setLeftRadio" | "setRightRadio" | "resetLeft" | "resetRight" | "cleanupAll"
   >
 > = (set, get) => ({

@@ -1,14 +1,14 @@
 import type { StateCreator } from "zustand";
 import { getAudioManager } from "./audio-manager-helpers";
 import { applyCrossfade } from "./mixer-actions";
-import type { DjState } from "./types";
+import type { InternalDjState } from "./types";
 
 export const createDeckVolumeActions: StateCreator<
-  DjState,
+  InternalDjState,
   [],
   [],
   Pick<
-    DjState,
+    InternalDjState,
     "setLeftVolume" | "setRightVolume" | "setLeftMute" | "setRightMute"
   >
 > = (set, get) => ({

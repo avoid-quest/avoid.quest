@@ -1,13 +1,13 @@
 import type { StateCreator } from "zustand";
 import { getAudioManager } from "./audio-manager-helpers";
 import { applyCrossfade } from "./mixer-actions";
-import type { DjState } from "./types";
+import type { InternalDjState } from "./types";
 
 export const createDeckPlaybackActions: StateCreator<
-  DjState,
+  InternalDjState,
   [],
   [],
-  Pick<DjState, "playLeft" | "playRight" | "pauseLeft" | "pauseRight">
+  Pick<InternalDjState, "playLeft" | "playRight" | "pauseLeft" | "pauseRight">
 > = (set, get) => ({
   playLeft: async () => {
     const { leftDeck, setLeftRadio } = get();

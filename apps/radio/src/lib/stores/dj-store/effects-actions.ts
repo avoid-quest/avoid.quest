@@ -3,14 +3,14 @@ import type { FilterConfig } from "@/components/audio/filter-control";
 import { createDefaultEffectConfig } from "@/lib/audio/effects/registry";
 import type { EffectConfig } from "@/lib/audio/effects/types";
 import { getAudioManager } from "./audio-manager-helpers";
-import type { DjState } from "./types";
+import type { InternalDjState } from "./types";
 
 export const createEffectsActions: StateCreator<
-  DjState,
+  InternalDjState,
   [],
   [],
   Pick<
-    DjState,
+    InternalDjState,
     | "updateLeftFilter"
     | "updateRightFilter"
     | "addLeftEffect"

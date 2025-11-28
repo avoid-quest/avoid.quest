@@ -31,6 +31,7 @@ export type UiState = {
   } | null;
 };
 
+// Public API type (without internal state)
 export type DjState = {
   // State
   leftDeck: DeckState;
@@ -38,11 +39,6 @@ export type DjState = {
   mixer: MixerState;
   ui: UiState;
   error: string | null;
-  // Internal: subscription cleanup functions
-  _subscriptionCleanup: {
-    left: (() => void) | null;
-    right: (() => void) | null;
-  };
 
   // Actions
   setLeftRadio: (radio: Radio | null) => Promise<void>;
@@ -89,6 +85,15 @@ export type DjState = {
   setPendingPlatformItem: (
     item: { deckId: DeckId; platform: Platform } | null
   ) => void;
+};
+
+// Internal state type (includes subscription cleanup)
+export type InternalDjState = DjState & {
+  // Internal: subscription cleanup functions
+  _subscriptionCleanup: {
+    left: (() => void) | null;
+    right: (() => void) | null;
+  };
 };
 
 // Initial State

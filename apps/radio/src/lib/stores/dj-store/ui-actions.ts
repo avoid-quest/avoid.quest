@@ -1,11 +1,11 @@
 import type { StateCreator } from "zustand";
-import type { DjState } from "./types";
+import type { InternalDjState } from "./types";
 
 export const createUiActions: StateCreator<
-  DjState,
+  InternalDjState,
   [],
   [],
-  Pick<DjState, "setActiveDragRadio" | "setPendingPlatformItem">
+  Pick<InternalDjState, "setActiveDragRadio" | "setPendingPlatformItem">
 > = (set) => ({
   setActiveDragRadio: (radio) => {
     set((state) => ({

@@ -168,57 +168,76 @@ export class AudioManager {
       this.cacophony.on("loadingComplete", loadingCompleteHandler);
       this.cacophony.on("loadingError", loadingErrorHandler);
 
-      const sound = await this.cacophony.createSound(
-        streamUrl,
-        soundType,
-        "stereo"
-      );
+      try {
+        const sound = await this.cacophony.createSound(
+          streamUrl,
+          soundType,
+          "stereo"
+        );
 
-      // Remove loading event listeners after sound is created
-      this.cacophony.off("loadingStart", loadingStartHandler);
-      this.cacophony.off("loadingComplete", loadingCompleteHandler);
-      this.cacophony.off("loadingError", loadingErrorHandler);
-
-      // Clear loading state after sound is created
-      this.notifyListeners(id, {
-        isPlaying: false,
-        isLoading: false,
-        volume: sound.volume,
-        error: null,
-        hasEnded: false,
-      });
-
-      // Set up error handling for this specific sound
-      sound.on("soundError", (event: { error: Error }) => {
-        console.error(`Audio error for ${radio.name}:`, event.error);
-        this.notifyListeners(id, {
-          isPlaying: false,
-          isLoading: false,
-          volume: sound.volume,
-          error: {
-            message: `Failed to play ${radio.name}: ${event.error.message}`,
-            code: "SOUND_ERROR",
-            radio,
-            timestamp: Date.now(),
-          },
-          hasEnded: false,
-        });
-      });
-
-      // Also listen to sound ended event (in addition to playback ended)
-      sound.on("ended", () => {
-        console.log(`Sound ended for ${radio.name} (soundId: ${id})`);
+        // Clear loading state after sound is created
         this.notifyListeners(id, {
           isPlaying: false,
           isLoading: false,
           volume: sound.volume,
           error: null,
-          hasEnded: true,
+          hasEnded: false,
         });
-      });
 
-      this.sounds.set(id, sound);
-      return sound;
+        // Set up error handling for this specific sound
+        sound.on("soundError", (event: { error: Error }) => {
+          console.error(`Audio error for ${radio.name}:`, event.error);
+          this.notifyListeners(id, {
+            isPlaying: false,
+            isLoading: false,
+            volume: sound.volume,
+            error: {
+              message: `Failed to play ${radio.name}: ${event.error.message}`,
+              code: "SOUND_ERROR",
+              radio,
+              timestamp: Date.now(),
+            },
+            hasEnded: false,
+          });
+        });
+
+        // Also listen to sound ended event (in addition to playback ended)
+        sound.on("ended", () => {
+          console.log(`Sound ended for ${radio.name} (soundId: ${id})`);
+          this.notifyListeners(id, {
+            isPlaying: false,
+            isLoading: false,
+            volume: sound.volume,
+            error: null,
+            hasEnded: true,
+          });
+        });
+
+        this.sounds.set(id, sound);
+        return sound;
+      } catch (error) {
+        const audioError: AudioError = {
+          message: `Failed to create sound for ${radio.name}: ${error instanceof Error ? error.message : "Unknown error"}`,
+          code: "CREATE_SOUND_ERROR",
+          radio,
+          timestamp: Date.now(),
+        };
+
+        this.notifyListeners(id, {
+          isPlaying: false,
+          isLoading: false,
+          volume: 0,
+          error: audioError,
+          hasEnded: false,
+        });
+
+        throw audioError;
+      } finally {
+        // Always remove loading event listeners, even if createSound throws
+        this.cacophony.off("loadingStart", loadingStartHandler);
+        this.cacophony.off("loadingComplete", loadingCompleteHandler);
+        this.cacophony.off("loadingError", loadingErrorHandler);
+      }
     } catch (error) {
       const audioError: AudioError = {
         message: `Failed to create sound for ${radio.name}: ${error instanceof Error ? error.message : "Unknown error"}`,

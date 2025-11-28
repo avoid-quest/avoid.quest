@@ -195,7 +195,7 @@ export function DjDeck({ className, deckId }: DjDeckProps) {
 type DeckHeaderProps = {
   deckId: "left-deck" | "right-deck";
   radio: Radio | null;
-  onReset: () => void;
+  onReset: () => Promise<void>;
 };
 
 function DeckHeader({ deckId, radio, onReset }: DeckHeaderProps) {
@@ -251,10 +251,18 @@ function DeckHeader({ deckId, radio, onReset }: DeckHeaderProps) {
                 </DropdownMenuItem>
               )}
               <DropdownMenuItem
-                onClick={(e) => {
+                onClick={async (e) => {
                   e.stopPropagation();
-                  onReset();
-                  toast.success("Deck reset");
+                  try {
+                    await onReset();
+                    toast.success("Deck reset");
+                  } catch (error) {
+                    const message =
+                      error instanceof Error
+                        ? error.message
+                        : "Failed to reset deck";
+                    toast.error(message);
+                  }
                 }}
               >
                 <RefreshCw className="mr-2 size-4" />

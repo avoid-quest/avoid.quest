@@ -20,11 +20,22 @@ type PlayPauseButtonProps = {
     | "link";
   className?: string;
   iconClassName?: string;
+  /** When true, displays loading text below the button. Ignored when `inline={true}`. */
   showLoadingText?: boolean;
+  /** Text to display when loading. Only shown when `showLoadingText={true}` and `inline={false}`. */
   loadingText?: string;
+  /** When true, renders only the button without the wrapper container. Loading text is not displayed in inline mode. */
   inline?: boolean;
 };
 
+/**
+ * A button component that toggles between play and pause states.
+ *
+ * @remarks
+ * When `inline={true}`, the component renders only the button without any wrapper
+ * or loading text, making it suitable for inline use in text or compact layouts.
+ * The `showLoadingText` prop is ignored when `inline={true}`.
+ */
 export function PlayPauseButton({
   isPlaying,
   isLoading = false,

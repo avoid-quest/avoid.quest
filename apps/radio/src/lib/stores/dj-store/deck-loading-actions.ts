@@ -5,10 +5,6 @@ import { applyCrossfade } from "./mixer-actions";
 import { findNextTrack } from "./track-actions";
 import { type DjState, initialDeckState } from "./types";
 
-// Track subscriptions to clean them up properly
-let leftSubscriptionCleanup: (() => void) | null = null;
-let rightSubscriptionCleanup: (() => void) | null = null;
-
 /**
  * Helper to apply stored effects and filters to a newly loaded sound
  */
@@ -44,15 +40,17 @@ export const createDeckLoadingActions: StateCreator<
   },
 
   setLeftRadio: async (radio: Radio | null) => {
-    const { leftDeck } = get();
+    const { leftDeck, _subscriptionCleanup } = get();
 
     // Preserve the playing state before cleanup
     const wasPlaying = leftDeck.isPlaying;
 
     // Unsubscribe from previous subscription
-    if (leftSubscriptionCleanup) {
-      leftSubscriptionCleanup();
-      leftSubscriptionCleanup = null;
+    if (_subscriptionCleanup.left) {
+      _subscriptionCleanup.left();
+      set((state) => ({
+        _subscriptionCleanup: { ...state._subscriptionCleanup, left: null },
+      }));
     }
 
     // Cleanup existing sound
@@ -94,46 +92,46 @@ export const createDeckLoadingActions: StateCreator<
       );
 
       // Subscribe to this sound's events and store cleanup function
-      leftSubscriptionCleanup = getAudioManager().subscribe(
-        soundId,
-        (audioState) => {
-          const currentState = get();
+      const cleanup = getAudioManager().subscribe(soundId, (audioState) => {
+        const currentState = get();
 
-          // Detect track end using explicit flag
-          const trackEnded = audioState.hasEnded;
+        // Detect track end using explicit flag
+        const trackEnded = audioState.hasEnded;
 
-          // Only update if state actually changed to prevent unnecessary re-renders
-          if (
-            currentState.leftDeck.isPlaying !== audioState.isPlaying ||
-            currentState.leftDeck.isLoading !== audioState.isLoading
-          ) {
-            set((state) => ({
-              leftDeck: {
-                ...state.leftDeck,
-                isPlaying: audioState.isPlaying,
-                isLoading: audioState.isLoading,
+        // Only update if state actually changed to prevent unnecessary re-renders
+        if (
+          currentState.leftDeck.isPlaying !== audioState.isPlaying ||
+          currentState.leftDeck.isLoading !== audioState.isLoading
+        ) {
+          set((state) => ({
+            leftDeck: {
+              ...state.leftDeck,
+              isPlaying: audioState.isPlaying,
+              isLoading: audioState.isLoading,
+            },
+            error: audioState.error ? audioState.error.message : state.error,
+          }));
+        }
+
+        // Handle track end - auto-advance to next track
+        if (trackEnded) {
+          const nextTrack = findNextTrack(currentState.leftDeck.radio);
+          if (nextTrack && currentState.leftDeck.radio) {
+            // Load next track asynchronously
+            get().loadTrack(
+              "left",
+              {
+                ...currentState.leftDeck.radio,
+                streamUrl: nextTrack.streamUrl,
               },
-              error: audioState.error ? audioState.error.message : state.error,
-            }));
-          }
-
-          // Handle track end - auto-advance to next track
-          if (trackEnded) {
-            const nextTrack = findNextTrack(currentState.leftDeck.radio);
-            if (nextTrack && currentState.leftDeck.radio) {
-              // Load next track asynchronously
-              get().loadTrack(
-                "left",
-                {
-                  ...currentState.leftDeck.radio,
-                  streamUrl: nextTrack.streamUrl,
-                },
-                true // auto-play
-              );
-            }
+              true // auto-play
+            );
           }
         }
-      );
+      });
+      set((state) => ({
+        _subscriptionCleanup: { ...state._subscriptionCleanup, left: cleanup },
+      }));
 
       // If the previous radio was playing, auto-play the new one
       if (wasPlaying) {
@@ -151,15 +149,17 @@ export const createDeckLoadingActions: StateCreator<
   },
 
   setRightRadio: async (radio: Radio | null) => {
-    const { rightDeck } = get();
+    const { rightDeck, _subscriptionCleanup } = get();
 
     // Preserve the playing state before cleanup
     const wasPlaying = rightDeck.isPlaying;
 
     // Unsubscribe from previous subscription
-    if (rightSubscriptionCleanup) {
-      rightSubscriptionCleanup();
-      rightSubscriptionCleanup = null;
+    if (_subscriptionCleanup.right) {
+      _subscriptionCleanup.right();
+      set((state) => ({
+        _subscriptionCleanup: { ...state._subscriptionCleanup, right: null },
+      }));
     }
 
     // Cleanup existing sound
@@ -201,46 +201,46 @@ export const createDeckLoadingActions: StateCreator<
       );
 
       // Subscribe to this sound's events and store cleanup function
-      rightSubscriptionCleanup = getAudioManager().subscribe(
-        soundId,
-        (audioState) => {
-          const currentState = get();
+      const cleanup = getAudioManager().subscribe(soundId, (audioState) => {
+        const currentState = get();
 
-          // Detect track end using explicit flag
-          const trackEnded = audioState.hasEnded;
+        // Detect track end using explicit flag
+        const trackEnded = audioState.hasEnded;
 
-          // Only update if state actually changed to prevent unnecessary re-renders
-          if (
-            currentState.rightDeck.isPlaying !== audioState.isPlaying ||
-            currentState.rightDeck.isLoading !== audioState.isLoading
-          ) {
-            set((state) => ({
-              rightDeck: {
-                ...state.rightDeck,
-                isPlaying: audioState.isPlaying,
-                isLoading: audioState.isLoading,
+        // Only update if state actually changed to prevent unnecessary re-renders
+        if (
+          currentState.rightDeck.isPlaying !== audioState.isPlaying ||
+          currentState.rightDeck.isLoading !== audioState.isLoading
+        ) {
+          set((state) => ({
+            rightDeck: {
+              ...state.rightDeck,
+              isPlaying: audioState.isPlaying,
+              isLoading: audioState.isLoading,
+            },
+            error: audioState.error ? audioState.error.message : state.error,
+          }));
+        }
+
+        // Handle track end - auto-advance to next track
+        if (trackEnded) {
+          const nextTrack = findNextTrack(currentState.rightDeck.radio);
+          if (nextTrack && currentState.rightDeck.radio) {
+            // Load next track asynchronously
+            get().loadTrack(
+              "right",
+              {
+                ...currentState.rightDeck.radio,
+                streamUrl: nextTrack.streamUrl,
               },
-              error: audioState.error ? audioState.error.message : state.error,
-            }));
-          }
-
-          // Handle track end - auto-advance to next track
-          if (trackEnded) {
-            const nextTrack = findNextTrack(currentState.rightDeck.radio);
-            if (nextTrack && currentState.rightDeck.radio) {
-              // Load next track asynchronously
-              get().loadTrack(
-                "right",
-                {
-                  ...currentState.rightDeck.radio,
-                  streamUrl: nextTrack.streamUrl,
-                },
-                true // auto-play
-              );
-            }
+              true // auto-play
+            );
           }
         }
-      );
+      });
+      set((state) => ({
+        _subscriptionCleanup: { ...state._subscriptionCleanup, right: cleanup },
+      }));
 
       // If the previous radio was playing, auto-play the new one
       if (wasPlaying) {

@@ -33,6 +33,10 @@ export const useDjStore = create<DjState>((set, get, api) => ({
     pendingPlatformItem: null,
   },
   error: null,
+  _subscriptionCleanup: {
+    left: null,
+    right: null,
+  },
 
   // Compose all action creators
   ...createDeckActions(set, get, api),

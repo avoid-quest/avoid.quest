@@ -38,6 +38,11 @@ export type DjState = {
   mixer: MixerState;
   ui: UiState;
   error: string | null;
+  // Internal: subscription cleanup functions
+  _subscriptionCleanup: {
+    left: (() => void) | null;
+    right: (() => void) | null;
+  };
 
   // Actions
   setLeftRadio: (radio: Radio | null) => Promise<void>;

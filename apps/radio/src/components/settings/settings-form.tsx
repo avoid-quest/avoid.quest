@@ -17,6 +17,7 @@ import {
   TabsTrigger,
 } from "@workspace/ui/components/tabs";
 import { useLiveQuery } from "dexie-react-hooks";
+import { Database, Radio, RotateCcw, Settings2 } from "lucide-react";
 import { lazy, Suspense, useState } from "react";
 import { toast } from "sonner";
 import { DEFAULT_TRANSITION_DURATION } from "@/lib/const";
@@ -93,130 +94,178 @@ export function SettingsForm({
   }
 
   return (
-    <div className="w-full space-y-4">
-      <Tabs className="w-full" defaultValue="radios">
-        <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger className="text-xs sm:text-sm" value="radios">
-            Radios
+    <div className="flex min-h-[60vh] flex-col gap-4 md:flex-row">
+      <Tabs
+        className="flex h-full w-full flex-col gap-4 md:flex-row"
+        defaultValue="radios"
+        orientation="vertical"
+      >
+        <TabsList className="flex min-h-[60vh] w-full flex-row justify-start gap-2 overflow-x-auto bg-muted/50 p-2 md:h-auto md:w-48 md:flex-col md:justify-start">
+          <TabsTrigger
+            className="flex-1 justify-start gap-2 md:w-full"
+            value="radios"
+          >
+            <Radio className="size-4" />
+            <span className="hidden sm:inline">Radios</span>
           </TabsTrigger>
-          <TabsTrigger className="text-xs sm:text-sm" value="player">
-            Player
+          <TabsTrigger
+            className="flex-1 justify-start gap-2 md:w-full"
+            value="player"
+          >
+            <Settings2 className="size-4" />
+            <span className="hidden sm:inline">Player</span>
           </TabsTrigger>
-          <TabsTrigger className="text-xs sm:text-sm" value="import-export">
-            Data
+          <TabsTrigger
+            className="flex-1 justify-start gap-2 md:w-full"
+            value="import-export"
+          >
+            <Database className="size-4" />
+            <span className="hidden sm:inline">Data</span>
           </TabsTrigger>
-          <TabsTrigger className="text-xs sm:text-sm" value="reset">
-            Reset
+          <TabsTrigger
+            className="flex-1 justify-start gap-2 text-destructive hover:text-destructive md:w-full"
+            value="reset"
+          >
+            <RotateCcw className="size-4" />
+            <span className="hidden sm:inline">Reset</span>
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent className="space-y-4" value="radios">
-          <RadioManagement />
-        </TabsContent>
+        <div className="flex-1 rounded-lg border bg-card p-4 shadow-sm">
+          <TabsContent className="mt-0 h-full space-y-4" value="radios">
+            <div className="mb-4">
+              <h3 className="font-medium text-lg">Radio Stations</h3>
+              <p className="text-muted-foreground text-sm">
+                Manage your radio stations list.
+              </p>
+            </div>
+            <RadioManagement />
+          </TabsContent>
 
-        <TabsContent className="space-y-4" value="player">
-          <div className="space-y-4">
-            <div className="space-y-3">
-              <h3 className="font-medium text-sm">Player Settings</h3>
-              <SettingsSelect />
+          <TabsContent className="mt-0 space-y-4" value="player">
+            <div className="mb-4">
+              <h3 className="font-medium text-lg">Player Preferences</h3>
+              <p className="text-muted-foreground text-sm">
+                Customize your listening experience.
+              </p>
+            </div>
+            <div className="space-y-6">
+              <div className="space-y-3">
+                <h4 className="font-medium text-sm">Playback Mode</h4>
+                <SettingsSelect />
+              </div>
 
               {settings.player.mode === "single" && (
-                <div className="space-y-3">
+                <div className="space-y-3 rounded-lg border p-4">
                   <div className="flex items-center justify-between">
                     <span className="font-medium text-sm">
                       Transition Duration
                     </span>
-                    <span className="text-muted-foreground text-sm">
-                      {(transitionDuration / MAX_TRANSITION_DURATION).toFixed(
-                        2
-                      )}
-                      s
+                    <span className="font-mono text-muted-foreground text-sm">
+                      {(transitionDuration / 1000).toFixed(1)}s
                     </span>
                   </div>
                   <Slider
                     className="w-full"
                     max={MAX_TRANSITION_DURATION}
                     onValueChange={handleTransitionDurationChange}
-                    step={10}
+                    step={100}
                     value={[transitionDuration]}
                   />
                   <p className="text-muted-foreground text-xs">
-                    Time to fade between radio stations
+                    Adjust the crossfade duration between tracks.
                   </p>
                 </div>
               )}
             </div>
-          </div>
-        </TabsContent>
+          </TabsContent>
 
-        <TabsContent className="space-y-4" value="import-export">
-          <Suspense
-            fallback={
-              <div className="text-muted-foreground text-sm">Loading...</div>
-            }
-          >
-            <ImportExport />
-          </Suspense>
-        </TabsContent>
-
-        <TabsContent className="space-y-4" value="reset">
-          <div className="space-y-4">
-            <div className="space-y-3">
-              <h3 className="font-medium text-sm">Reset All Settings</h3>
+          <TabsContent className="mt-0 space-y-4" value="import-export">
+            <div className="mb-4">
+              <h3 className="font-medium text-lg">Data Management</h3>
               <p className="text-muted-foreground text-sm">
-                This will reset all settings and radio stations to their default
-                values. All your customizations will be lost. This action cannot
-                be undone.
+                Import or export your settings and radios.
               </p>
-              <Dialog onOpenChange={setShowResetDialog} open={showResetDialog}>
-                <DialogTrigger asChild>
-                  <Button className="w-full" variant="destructive">
-                    Reset All Settings
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Reset All Settings</DialogTitle>
-                    <DialogDescription>
-                      Are you sure you want to reset all settings and radio
-                      stations to their default values? This will clear all your
-                      customizations. This action cannot be undone.
-                    </DialogDescription>
-                  </DialogHeader>
-                  <div className="text-muted-foreground text-sm">
-                    <p className="mb-2">This will clear:</p>
-                    <ul className="list-disc space-y-1 pl-5">
-                      <li>All player settings</li>
-                      <li>All radio station customizations</li>
-                      <li>Radio station order and enabled/disabled states</li>
-                    </ul>
-                  </div>
-                  <DialogFooter>
-                    <Button
-                      disabled={isResetting}
-                      onClick={() => setShowResetDialog(false)}
-                      variant="outline"
-                    >
-                      Cancel
-                    </Button>
-                    <Button
-                      disabled={isResetting}
-                      onClick={handleResetAllSettings}
-                      variant="destructive"
-                    >
-                      {isResetting ? "Resetting..." : "Reset All Settings"}
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
             </div>
-          </div>
-        </TabsContent>
+            <Suspense
+              fallback={
+                <div className="text-muted-foreground text-sm">Loading...</div>
+              }
+            >
+              <ImportExport />
+            </Suspense>
+          </TabsContent>
+
+          <TabsContent className="mt-0 space-y-4" value="reset">
+            <div className="mb-4">
+              <h3 className="font-medium text-destructive text-lg">
+                Danger Zone
+              </h3>
+              <p className="text-muted-foreground text-sm">
+                Reset application to factory defaults.
+              </p>
+            </div>
+            <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-4">
+              <div className="space-y-3">
+                <h4 className="font-medium text-destructive text-sm">
+                  Reset All Settings
+                </h4>
+                <p className="text-muted-foreground text-sm">
+                  This will reset all settings and radio stations to their
+                  default values. All your customizations will be lost. This
+                  action cannot be undone.
+                </p>
+                <Dialog
+                  onOpenChange={setShowResetDialog}
+                  open={showResetDialog}
+                >
+                  <DialogTrigger asChild>
+                    <Button variant="destructive">Reset All Settings</Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Reset All Settings</DialogTitle>
+                      <DialogDescription>
+                        Are you sure you want to reset all settings and radio
+                        stations to their default values? This will clear all
+                        your customizations. This action cannot be undone.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="text-muted-foreground text-sm">
+                      <p className="mb-2">This will clear:</p>
+                      <ul className="list-disc space-y-1 pl-5">
+                        <li>All player settings</li>
+                        <li>All radio station customizations</li>
+                        <li>Radio station order and enabled/disabled states</li>
+                      </ul>
+                    </div>
+                    <DialogFooter>
+                      <Button
+                        disabled={isResetting}
+                        onClick={() => setShowResetDialog(false)}
+                        variant="outline"
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        disabled={isResetting}
+                        onClick={handleResetAllSettings}
+                        variant="destructive"
+                      >
+                        {isResetting ? "Resetting..." : "Reset All Settings"}
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+              </div>
+            </div>
+          </TabsContent>
+        </div>
       </Tabs>
 
-      <div className="flex w-full justify-center pt-2">
+      <div className="flex w-full justify-center pt-2 md:hidden">
         <DrawerClose asChild>
-          <Button className="w-full sm:w-auto" variant="outline">
+          <Button className="w-full" variant="outline">
             Close
           </Button>
         </DrawerClose>

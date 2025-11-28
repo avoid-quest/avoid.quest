@@ -74,6 +74,82 @@ export function useAudio(radio: Radio | null) {
     [audioManager, cleanup, getSoundId]
   );
 
+  // Helper: Set play error state
+  const setPlayError = useCallback((error: unknown, code: string) => {
+    const errorObj = error instanceof Error ? error : new Error("Play failed");
+    setState((prev) => ({
+      ...prev,
+      error: {
+        message: errorObj.message,
+        code,
+        timestamp: Date.now(),
+      },
+    }));
+  }, []);
+
+  // Helper: Check if error indicates sound was not found
+  const isSoundNotFoundError = useCallback(
+    (error: Error): boolean =>
+      error.message.includes("cleaned up") ||
+      error.message.includes("not found"),
+    []
+  );
+
+  // Helper: Ensure sound is loaded before playing
+  const ensureSoundLoaded = useCallback(async (): Promise<boolean> => {
+    if (!radio) {
+      return false;
+    }
+
+    if (!soundIdRef.current) {
+      await loadRadio(radio);
+    }
+
+    return soundIdRef.current !== null;
+  }, [radio, loadRadio]);
+
+  // Helper: Attempt to play the sound
+  const attemptPlaySound = useCallback(async (): Promise<void> => {
+    if (!soundIdRef.current) {
+      return;
+    }
+    await audioManager.playSound(soundIdRef.current, state.volume);
+  }, [audioManager, state.volume]);
+
+  // Helper: Reload radio and play sound
+  const reloadAndPlay = useCallback(async (): Promise<boolean> => {
+    if (!radio) {
+      return false;
+    }
+
+    try {
+      await loadRadio(radio);
+      await attemptPlaySound();
+      return true;
+    } catch (reloadError) {
+      setPlayError(reloadError, "PLAY_ERROR");
+      return false;
+    }
+  }, [radio, loadRadio, attemptPlaySound, setPlayError]);
+
+  // Helper: Handle play error with retry logic
+  const handlePlayError = useCallback(
+    async (error: unknown): Promise<void> => {
+      const errorObj =
+        error instanceof Error ? error : new Error("Play failed");
+
+      if (isSoundNotFoundError(errorObj)) {
+        const success = await reloadAndPlay();
+        if (success) {
+          return;
+        }
+      }
+
+      setPlayError(error, "PLAY_ERROR");
+    },
+    [isSoundNotFoundError, reloadAndPlay, setPlayError]
+  );
+
   // Play function
   const play = useCallback(async () => {
     if (!radio) {
@@ -81,59 +157,16 @@ export function useAudio(radio: Radio | null) {
     }
 
     try {
-      // If we don't have a sound ID or the sound has been cleaned up, reload it
-      if (!soundIdRef.current) {
-        await loadRadio(radio);
-      }
-
-      if (!soundIdRef.current) {
+      const isLoaded = await ensureSoundLoaded();
+      if (!isLoaded) {
         return;
       }
 
-      await audioManager.playSound(soundIdRef.current, state.volume);
+      await attemptPlaySound();
     } catch (error) {
-      const errorObj =
-        error instanceof Error ? error : new Error("Play failed");
-
-      // If the sound was cleaned up, reload it and try again
-      if (
-        errorObj.message.includes("cleaned up") ||
-        errorObj.message.includes("not found")
-      ) {
-        try {
-          await loadRadio(radio);
-          if (soundIdRef.current) {
-            await audioManager.playSound(soundIdRef.current, state.volume);
-            return;
-          }
-        } catch (reloadError) {
-          // If reload also fails, fall through to error handling
-          const reloadErrorObj =
-            reloadError instanceof Error
-              ? reloadError
-              : new Error("Reload failed");
-          setState((prev) => ({
-            ...prev,
-            error: {
-              message: reloadErrorObj.message,
-              code: "PLAY_ERROR",
-              timestamp: Date.now(),
-            },
-          }));
-          return;
-        }
-      }
-
-      setState((prev) => ({
-        ...prev,
-        error: {
-          message: errorObj.message,
-          code: "PLAY_ERROR",
-          timestamp: Date.now(),
-        },
-      }));
+      await handlePlayError(error);
     }
-  }, [audioManager, state.volume, radio, loadRadio]);
+  }, [radio, ensureSoundLoaded, attemptPlaySound, handlePlayError]);
 
   // Pause function
   const pause = useCallback(() => {

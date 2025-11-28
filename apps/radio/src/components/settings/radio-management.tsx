@@ -236,19 +236,19 @@ export function RadioManagement() {
 
   return (
     <div className="space-y-4">
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <h3 className="font-medium text-sm">Radio Stations</h3>
-          <Button onClick={handleAddRadio} size="sm" variant="outline">
-            <Plus className="mr-1 size-4 sm:mr-2" />
-            <span className="hidden sm:inline">Add Radio</span>
-            <span className="sm:hidden">Add</span>
-          </Button>
-        </div>
+      <div className="flex items-center justify-between gap-4">
         <p className="text-muted-foreground text-xs">
-          Drag to reorder • Checkbox to enable/disable • Disabled stations are
-          hidden
+          Drag to reorder • Checkbox to enable/disable
         </p>
+        <Button
+          className="h-8"
+          onClick={handleAddRadio}
+          size="sm"
+          variant="outline"
+        >
+          <Plus className="mr-1 size-3.5" />
+          Add Station
+        </Button>
       </div>
       <div className="max-h-72 overflow-y-auto sm:max-h-80">
         <DndContext

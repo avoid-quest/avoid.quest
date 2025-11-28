@@ -216,11 +216,22 @@ export function useSingleAudio() {
 
   // Play function
   const play = useCallback(async () => {
-    if (!currentSoundIdRef.current) {
+    // Always recreate the sound before playing (like DJ mode does)
+    // This ensures we have a fresh, valid sound and avoids "cleaned up" errors
+    if (!currentRadio) {
       return;
     }
 
     try {
+      // Recreate the sound before playing to ensure it's fresh and valid
+      // This matches the pattern used in DJ mode's playLeft/playRight
+      await loadRadio(currentRadio);
+
+      // After recreation, check if we have a valid sound ID
+      if (!currentSoundIdRef.current) {
+        return;
+      }
+
       // Loading state will be managed by AudioManager through subscription
       await audioManager.playSound(currentSoundIdRef.current, volume);
     } catch (err) {
@@ -228,7 +239,7 @@ export function useSingleAudio() {
       const errorMessage = err instanceof Error ? err.message : "Play failed";
       setError(errorMessage);
     }
-  }, [audioManager, volume]);
+  }, [audioManager, volume, currentRadio, loadRadio]);
 
   // Pause function
   const pause = useCallback(() => {

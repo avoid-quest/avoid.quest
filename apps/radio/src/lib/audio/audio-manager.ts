@@ -425,7 +425,19 @@ export class AudioManager {
   stopSound(soundId: string): void {
     const playback = this.playbacks.get(soundId);
     if (playback) {
-      playback.stop();
+      try {
+        playback.stop();
+      } catch (error) {
+        // Playback may have been cleaned up already, just remove it from the map
+        if (
+          error instanceof Error &&
+          error.message.includes("Cannot stop a sound that has been cleaned up")
+        ) {
+          // Already cleaned up, just remove from map
+        } else {
+          throw error;
+        }
+      }
       this.playbacks.delete(soundId);
       this.notifyListeners(soundId, {
         isPlaying: false,
@@ -495,13 +507,17 @@ export class AudioManager {
   }
 
   cleanupSound(soundId: string): void {
-    // Stop and cleanup playback
+    // Stop and cleanup playback (stopSound is now defensive and handles already-cleaned playbacks)
     this.stopSound(soundId);
 
     // Cleanup effect manager
     const effectManager = this.effectManagers.get(soundId);
     if (effectManager) {
-      effectManager.cleanup();
+      try {
+        effectManager.cleanup();
+      } catch {
+        // Effect manager may have been cleaned up already, continue
+      }
       this.effectManagers.delete(soundId);
     }
 
@@ -511,7 +527,11 @@ export class AudioManager {
     // Cleanup sound
     const sound = this.sounds.get(soundId);
     if (sound) {
-      sound.cleanup();
+      try {
+        sound.cleanup();
+      } catch {
+        // Sound may have been cleaned up already, continue
+      }
       this.sounds.delete(soundId);
     }
 

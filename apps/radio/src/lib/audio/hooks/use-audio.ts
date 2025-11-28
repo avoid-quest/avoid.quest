@@ -9,6 +9,7 @@ export function useAudio(radio: Radio | null) {
     isLoading: false,
     volume: 1,
     error: null,
+    hasEnded: false,
   });
 
   const soundIdRef = useRef<string | null>(null);
@@ -75,11 +76,22 @@ export function useAudio(radio: Radio | null) {
 
   // Play function
   const play = useCallback(async () => {
-    if (!soundIdRef.current) {
+    // Always recreate the sound before playing (like DJ mode does)
+    // This ensures we have a fresh, valid sound and avoids "cleaned up" errors
+    if (!radio) {
       return;
     }
 
     try {
+      // Recreate the sound before playing to ensure it's fresh and valid
+      // This matches the pattern used in DJ mode's playLeft/playRight
+      await loadRadio(radio);
+
+      // After recreation, check if we have a valid sound ID
+      if (!soundIdRef.current) {
+        return;
+      }
+
       await audioManager.playSound(soundIdRef.current, state.volume);
     } catch (error) {
       const errorObj =
@@ -93,7 +105,7 @@ export function useAudio(radio: Radio | null) {
         },
       }));
     }
-  }, [audioManager, state.volume]);
+  }, [audioManager, state.volume, radio, loadRadio]);
 
   // Pause function
   const pause = useCallback(() => {

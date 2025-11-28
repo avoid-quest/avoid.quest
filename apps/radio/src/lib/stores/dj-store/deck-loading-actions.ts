@@ -68,8 +68,8 @@ export const createDeckLoadingActions: StateCreator<
     const soundId = getSoundId(radio, "left");
 
     try {
-      set((state) => ({
-        leftDeck: { ...state.leftDeck, error: null },
+      set(() => ({
+        error: null,
       }));
 
       // Loading state will be managed by AudioManager through subscription
@@ -141,7 +141,11 @@ export const createDeckLoadingActions: StateCreator<
 
       // If the previous radio was playing, auto-play the new one
       if (wasPlaying) {
-        await getAudioManager().playSound(soundId, leftDeck.volume);
+        const stateForVolume = get();
+        await getAudioManager().playSound(
+          soundId,
+          stateForVolume.leftDeck.volume
+        );
         applyCrossfade(get);
       }
     } catch (err) {
@@ -183,8 +187,8 @@ export const createDeckLoadingActions: StateCreator<
     const soundId = getSoundId(radio, "right");
 
     try {
-      set((state) => ({
-        rightDeck: { ...state.rightDeck, error: null },
+      set(() => ({
+        error: null,
       }));
 
       // Loading state will be managed by AudioManager through subscription
@@ -256,7 +260,11 @@ export const createDeckLoadingActions: StateCreator<
 
       // If the previous radio was playing, auto-play the new one
       if (wasPlaying) {
-        await getAudioManager().playSound(soundId, rightDeck.volume);
+        const stateForVolume = get();
+        await getAudioManager().playSound(
+          soundId,
+          stateForVolume.rightDeck.volume
+        );
         applyCrossfade(get);
       }
     } catch (err) {

@@ -25,6 +25,7 @@ export function useDeckState(deckId: DeckId) {
         setVolume: isLeft ? state.setLeftVolume : state.setRightVolume,
         setMute: isLeft ? state.setLeftMute : state.setRightMute,
         loadTrack: state.loadTrack,
+        reset: isLeft ? state.resetLeft : state.resetRight,
       };
     })
   );

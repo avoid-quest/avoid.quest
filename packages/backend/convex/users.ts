@@ -1,6 +1,6 @@
+import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { paginationOptsValidator } from "convex/server";
 
 export const getUsers = query({
   args: {},

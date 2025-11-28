@@ -1,7 +1,7 @@
-import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
 import { paginationOptsValidator } from "convex/server";
+import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
+import { mutation, query } from "./_generated/server";
 import { secondsToMilliseconds } from "./lib/dateUtils";
 
 export const getPosts = query({
@@ -186,7 +186,9 @@ export const upsertPost = mutation({
     // Convert timestamp from seconds (Instagram API format) to milliseconds (internal standard)
     // The scraper sends timestamps in seconds, but we store them in milliseconds
     const timestampMs = secondsToMilliseconds(timestamp);
-    const eventDateMs = event_date ? secondsToMilliseconds(event_date) : undefined;
+    const eventDateMs = event_date
+      ? secondsToMilliseconds(event_date)
+      : undefined;
     const sentAtMs = sentAt ? secondsToMilliseconds(sentAt) : undefined;
 
     if (id) {

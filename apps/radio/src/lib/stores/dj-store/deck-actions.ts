@@ -26,6 +26,9 @@ export const createDeckActions: StateCreator<
     | "setRightVolume"
     | "setLeftMute"
     | "setRightMute"
+    | "resetLeft"
+    | "resetRight"
+    | "cleanupAll"
   >
 > = (set, get) => ({
   setLeftRadio: async (radio: Radio | null) => {
@@ -209,16 +212,34 @@ export const createDeckActions: StateCreator<
   },
 
   playLeft: async () => {
-    const { leftDeck } = get();
-    if (leftDeck.soundId && !leftDeck.isPlaying) {
-      try {
-        await getAudioManager().playSound(leftDeck.soundId, leftDeck.volume);
-        applyCrossfade(get);
-      } catch (err) {
-        set({
-          error: err instanceof Error ? err.message : "Failed to play left",
-        });
+    const { leftDeck, setLeftRadio } = get();
+    if (leftDeck.radio && !leftDeck.isPlaying) {
+      // Always reset buffer before playing to ensure fresh audio
+      // This is crucial for live radio stations to avoid stale buffers
+      await setLeftRadio(leftDeck.radio);
+
+      // Get fresh state after reload
+      const { leftDeck: newLeftDeck } = get();
+      if (newLeftDeck.soundId) {
+        try {
+          await getAudioManager().playSound(
+            newLeftDeck.soundId,
+            newLeftDeck.volume
+          );
+          applyCrossfade(get);
+        } catch (err) {
+          set({
+            error: err instanceof Error ? err.message : "Failed to play left",
+          });
+        }
       }
+    }
+  },
+
+  resetLeft: async () => {
+    const { leftDeck, setLeftRadio } = get();
+    if (leftDeck.radio) {
+      await setLeftRadio(leftDeck.radio);
     }
   },
 
@@ -230,16 +251,33 @@ export const createDeckActions: StateCreator<
   },
 
   playRight: async () => {
-    const { rightDeck } = get();
-    if (rightDeck.soundId && !rightDeck.isPlaying) {
-      try {
-        await getAudioManager().playSound(rightDeck.soundId, rightDeck.volume);
-        applyCrossfade(get);
-      } catch (err) {
-        set({
-          error: err instanceof Error ? err.message : "Failed to play right",
-        });
+    const { rightDeck, setRightRadio } = get();
+    if (rightDeck.radio && !rightDeck.isPlaying) {
+      // Always reset buffer before playing to ensure fresh audio
+      await setRightRadio(rightDeck.radio);
+
+      // Get fresh state after reload
+      const { rightDeck: newRightDeck } = get();
+      if (newRightDeck.soundId) {
+        try {
+          await getAudioManager().playSound(
+            newRightDeck.soundId,
+            newRightDeck.volume
+          );
+          applyCrossfade(get);
+        } catch (err) {
+          set({
+            error: err instanceof Error ? err.message : "Failed to play right",
+          });
+        }
       }
+    }
+  },
+
+  resetRight: async () => {
+    const { rightDeck, setRightRadio } = get();
+    if (rightDeck.radio) {
+      await setRightRadio(rightDeck.radio);
     }
   },
 
@@ -290,5 +328,11 @@ export const createDeckActions: StateCreator<
         getAudioManager().unmuteSound(rightDeck.soundId);
       }
     }
+  },
+
+  cleanupAll: async () => {
+    const { setLeftRadio, setRightRadio } = get();
+    // Setting radio to null triggers cleanup logic in setRadio actions
+    await Promise.all([setLeftRadio(null), setRightRadio(null)]);
   },
 });

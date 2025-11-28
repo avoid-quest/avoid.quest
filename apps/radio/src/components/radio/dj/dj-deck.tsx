@@ -13,7 +13,13 @@ import {
   DropdownMenuTrigger,
 } from "@workspace/ui/components/dropdown-menu";
 import { cn } from "@workspace/ui/lib/utils";
-import { Copy, ExternalLink, MoreHorizontal, Volume2 } from "lucide-react";
+import {
+  Copy,
+  ExternalLink,
+  MoreHorizontal,
+  RefreshCw,
+  Volume2,
+} from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useShallow } from "zustand/react/shallow";
@@ -51,6 +57,7 @@ export function DjDeck({ className, deckId }: DjDeckProps) {
     setVolume,
     loadTrack,
     soundId,
+    reset,
   } = useDeckState(deckId);
 
   const { currentTrackIndex, metadata } = usePlatformMetadata(radio);
@@ -179,7 +186,7 @@ export function DjDeck({ className, deckId }: DjDeckProps) {
       )}
       ref={setNodeRef}
     >
-      <DeckHeader deckId={deckId} radio={radio} />
+      <DeckHeader deckId={deckId} onReset={reset} radio={radio} />
       <CardContent className="flex h-full flex-col p-6">{content}</CardContent>
     </Card>
   );
@@ -188,9 +195,10 @@ export function DjDeck({ className, deckId }: DjDeckProps) {
 type DeckHeaderProps = {
   deckId: "left-deck" | "right-deck";
   radio: Radio | null;
+  onReset: () => void;
 };
 
-function DeckHeader({ deckId, radio }: DeckHeaderProps) {
+function DeckHeader({ deckId, radio, onReset }: DeckHeaderProps) {
   const handleCopyStreamLink = async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!radio) {
@@ -242,6 +250,16 @@ function DeckHeader({ deckId, radio }: DeckHeaderProps) {
                   Go to Website
                 </DropdownMenuItem>
               )}
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onReset();
+                  toast.success("Deck reset");
+                }}
+              >
+                <RefreshCw className="mr-2 size-4" />
+                Reset Deck
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         )}

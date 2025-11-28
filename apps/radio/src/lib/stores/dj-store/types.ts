@@ -45,8 +45,11 @@ export type DjState = {
 
   playLeft: () => Promise<void>;
   pauseLeft: () => void;
+  resetLeft: () => Promise<void>;
   playRight: () => Promise<void>;
   pauseRight: () => void;
+  resetRight: () => Promise<void>;
+  cleanupAll: () => Promise<void>;
 
   setLeftVolume: (volume: number) => void;
   setRightVolume: (volume: number) => void;

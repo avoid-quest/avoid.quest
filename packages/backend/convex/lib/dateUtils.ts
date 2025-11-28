@@ -232,9 +232,5 @@ export function isToday(timestamp: number): boolean {
   const nowMonth = nowParts.find((p) => p.type === "month")?.value;
   const nowDay = nowParts.find((p) => p.type === "day")?.value;
 
-  return (
-    dateYear === nowYear &&
-    dateMonth === nowMonth &&
-    dateDay === nowDay
-  );
+  return dateYear === nowYear && dateMonth === nowMonth && dateDay === nowDay;
 }

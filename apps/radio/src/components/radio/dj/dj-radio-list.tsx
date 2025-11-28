@@ -1,11 +1,4 @@
 import { useDraggable } from "@dnd-kit/core";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@workspace/ui/components/card";
 import { GripVertical, Music, Volume2 } from "lucide-react";
 import type { Platform } from "@/lib/external-url/types";
 import type { Radio } from "@/lib/types";
@@ -81,7 +74,7 @@ function DraggableRadioItem({ radio }: DraggableRadioItemProps) {
 
   return (
     <div
-      className={`flex items-center gap-2 rounded-lg border bg-card p-3 transition-all hover:shadow-md ${
+      className={`flex w-full shrink-0 items-center gap-2 rounded-lg border bg-card p-3 transition-all hover:shadow-md ${
         isDragging ? "opacity-50 shadow-lg" : ""
       } ${isPlatform ? "border-primary/50 border-dashed bg-primary/5" : ""}`}
       ref={setNodeRef}
@@ -160,31 +153,27 @@ export function DjRadioList({ radios }: DjRadioListProps) {
   const allRadios = [...PLATFORM_ITEMS, ...radios];
 
   return (
-    <Card className="w-full">
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-center">Radio Stations</CardTitle>
-          <SettingsButton />
-        </div>
-        <CardDescription>
-          Use the grip handle to drag stations to the decks above
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="p-4">
-        <div
-          className="grid max-h-80 grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
-          style={{
-            touchAction: "pan-y",
-            // Ensure drag operations can escape this container
-            position: "relative",
-            zIndex: 1,
-          }}
-        >
-          {allRadios.map((radio) => (
-            <DraggableRadioItem key={radio.id} radio={radio} />
-          ))}
-        </div>
-      </CardContent>
-    </Card>
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="mb-3 flex shrink-0 items-center justify-between">
+        <div className="font-medium text-sm">Radio Stations</div>
+        <SettingsButton />
+      </div>
+      <div className="mb-3 shrink-0 text-muted-foreground text-xs">
+        Use the grip handle to drag stations to the decks
+      </div>
+      <div
+        className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto"
+        style={{
+          touchAction: "pan-y",
+          // Ensure drag operations can escape this container
+          position: "relative",
+          zIndex: 1,
+        }}
+      >
+        {allRadios.map((radio) => (
+          <DraggableRadioItem key={radio.id} radio={radio} />
+        ))}
+      </div>
+    </div>
   );
 }

@@ -29,6 +29,8 @@ type EffectChainProps = {
   onRemoveEffect: (effectId: string) => void;
   onReorderEffects: (effectIds: string[]) => void;
   title?: string;
+  showAddButton?: boolean;
+  showEffectsList?: boolean;
 };
 
 export function EffectChain({
@@ -38,6 +40,8 @@ export function EffectChain({
   onRemoveEffect,
   onReorderEffects,
   title,
+  showAddButton = true,
+  showEffectsList = true,
 }: EffectChainProps) {
   const [expandedEffectId, setExpandedEffectId] = useState<string | null>(null);
   const [showPicker, setShowPicker] = useState(false);
@@ -82,49 +86,55 @@ export function EffectChain({
         <div className="font-medium text-muted-foreground text-sm">{title}</div>
       )}
 
-      <DndContext
-        collisionDetection={closestCenter}
-        onDragEnd={handleDragEnd}
-        sensors={sensors}
-      >
-        <div className="space-y-2">
-          <SortableContext
-            items={sortedEffects.map((e) => e.id)}
-            strategy={verticalListSortingStrategy}
+      {showEffectsList && (
+        <DndContext
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEnd}
+          sensors={sensors}
+        >
+          <div className="space-y-2">
+            <SortableContext
+              items={sortedEffects.map((e) => e.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              {sortedEffects.map((effect) => (
+                <SortableEffectItem
+                  effect={effect}
+                  isExpanded={expandedEffectId === effect.id}
+                  key={effect.id}
+                  onExpand={() =>
+                    setExpandedEffectId(
+                      expandedEffectId === effect.id ? null : effect.id
+                    )
+                  }
+                  onRemove={() => onRemoveEffect(effect.id)}
+                  onUpdate={(config) => onUpdateEffect(effect.id, config)}
+                />
+              ))}
+            </SortableContext>
+          </div>
+        </DndContext>
+      )}
+
+      {showAddButton && (
+        <>
+          <Button
+            className="w-full"
+            onClick={() => setShowPicker(true)}
+            size="sm"
+            variant="outline"
           >
-            {sortedEffects.map((effect) => (
-              <SortableEffectItem
-                effect={effect}
-                isExpanded={expandedEffectId === effect.id}
-                key={effect.id}
-                onExpand={() =>
-                  setExpandedEffectId(
-                    expandedEffectId === effect.id ? null : effect.id
-                  )
-                }
-                onRemove={() => onRemoveEffect(effect.id)}
-                onUpdate={(config) => onUpdateEffect(effect.id, config)}
-              />
-            ))}
-          </SortableContext>
-        </div>
-      </DndContext>
+            <Plus className="mr-2 size-4" />
+            Add Effect
+          </Button>
 
-      <Button
-        className="w-full"
-        onClick={() => setShowPicker(true)}
-        size="sm"
-        variant="outline"
-      >
-        <Plus className="mr-2 size-4" />
-        Add Effect
-      </Button>
-
-      {showPicker && (
-        <EffectPicker
-          onClose={() => setShowPicker(false)}
-          onSelect={handleAddEffect}
-        />
+          {showPicker && (
+            <EffectPicker
+              onClose={() => setShowPicker(false)}
+              onSelect={handleAddEffect}
+            />
+          )}
+        </>
       )}
     </div>
   );

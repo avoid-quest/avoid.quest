@@ -30,7 +30,6 @@ export function MultipleRadios({ radios }: { radios?: Radio[] }) {
 
   const handleToggleRadio = async (_radio: Radio, _enabled: boolean) => {
     // This will be handled by RadioItemActions component
-    // No need to implement here as it's handled in the actions component
   };
 
   const confirmDelete = async () => {
@@ -49,16 +48,18 @@ export function MultipleRadios({ radios }: { radios?: Radio[] }) {
 
   if (!radios || radios.length === 0) {
     return (
-      <div className="flex items-center justify-center p-8">
-        <Card className="w-full max-w-md">
+      <div className="mx-auto flex h-full min-h-0 w-full max-w-7xl items-center justify-center px-4 py-4">
+        <Card className="w-full max-w-md border-dashed">
           <CardHeader>
             <CardTitle className="text-center">
               No Radio Stations Available
             </CardTitle>
           </CardHeader>
-          <CardContent className="text-center">
-            <Volume2 className="mx-auto mb-4 size-12 text-muted-foreground" />
-            <p className="mb-4 text-muted-foreground text-sm">
+          <CardContent className="space-y-4 text-center">
+            <div className="mx-auto flex size-16 items-center justify-center rounded-full bg-muted">
+              <Volume2 className="size-8 text-muted-foreground" />
+            </div>
+            <p className="text-muted-foreground text-sm">
               All radio stations are currently disabled. Please enable some
               stations in the settings.
             </p>
@@ -70,20 +71,20 @@ export function MultipleRadios({ radios }: { radios?: Radio[] }) {
   }
 
   return (
-    <>
-      <div className="mb-4 flex items-center justify-center gap-4">
-        <h2 className="font-medium text-lg">Radio Stations</h2>
-        <SettingsButton />
-      </div>
-      <div className="flex flex-wrap items-center justify-center gap-4">
+    <div className="mx-auto flex h-full min-h-0 w-full max-w-7xl flex-col px-4 py-4">
+      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {radios.map((radio: Radio) => (
-          <RadioComponent
+          <div
+            className="group hover:-translate-y-1 relative transition-all duration-300 hover:shadow-lg"
             key={radio.id}
-            onDelete={handleDeleteRadio}
-            onEdit={handleEditRadio}
-            onToggle={handleToggleRadio}
-            radio={radio}
-          />
+          >
+            <RadioComponent
+              onDelete={handleDeleteRadio}
+              onEdit={handleEditRadio}
+              onToggle={handleToggleRadio}
+              radio={radio}
+            />
+          </div>
         ))}
       </div>
 
@@ -96,8 +97,8 @@ export function MultipleRadios({ radios }: { radios?: Radio[] }) {
 
       {/* Delete Confirmation Dialog */}
       {deleteConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="max-w-md rounded-lg border bg-background p-6">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="fade-in zoom-in w-full max-w-md animate-in rounded-lg border bg-background p-6 shadow-xl duration-200">
             <h3 className="mb-2 font-semibold text-lg">Delete Radio Station</h3>
             <p className="mb-4 text-muted-foreground">
               Are you sure you want to delete "{deleteConfirm.name}"? This
@@ -114,6 +115,6 @@ export function MultipleRadios({ radios }: { radios?: Radio[] }) {
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 }

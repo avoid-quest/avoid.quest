@@ -3,9 +3,11 @@ import { PlayPauseButton } from "@workspace/ui/components/play-pause-button";
 import { Slider } from "@workspace/ui/components/slider";
 import { cn } from "@workspace/ui/lib/utils";
 import { ExternalLink, Link2, Music2, X } from "lucide-react";
+import type { EffectConfig } from "@/lib/audio/effects/types";
 import type { PlatformMetadata } from "@/lib/external-url/types";
 import type { Radio } from "@/lib/types";
 import { RadioNameLink } from "../radio-name-link";
+import { DeckSections } from "./deck-sections";
 
 type DeckLayoutProps = {
   radio: Radio;
@@ -17,10 +19,17 @@ type DeckLayoutProps = {
     position: number;
     duration: number;
   };
+  currentTrackIndex?: number;
+  effects?: EffectConfig[];
   onPlayPause: () => void;
   onVolumeChange: (value: number[]) => void;
   onClear: () => void;
   onChangeUrl?: () => void;
+  onAddEffect?: (type: string) => void;
+  onUpdateEffect?: (effectId: string, config: Partial<EffectConfig>) => void;
+  onRemoveEffect?: (effectId: string) => void;
+  onReorderEffects?: (effectIds: string[]) => void;
+  onPlayTrack?: (streamUrl: string) => void;
   className?: string;
 };
 
@@ -31,13 +40,19 @@ export function DeckLayout({
   volume,
   metadata,
   trackProgress,
+  currentTrackIndex = 0,
+  effects = [],
   onPlayPause,
   onVolumeChange,
   onClear,
   onChangeUrl,
+  onAddEffect,
+  onUpdateEffect,
+  onRemoveEffect,
+  onReorderEffects,
+  onPlayTrack,
   className,
-  children,
-}: DeckLayoutProps & { children?: React.ReactNode }) {
+}: DeckLayoutProps) {
   const formatTime = (seconds: number) => {
     if (!seconds || Number.isNaN(seconds)) {
       return "0:00";
@@ -68,76 +83,78 @@ export function DeckLayout({
       ? (trackProgress.position / trackProgress.duration) * 100
       : 0;
 
-  const hasChildren = !!children;
-
   return (
-    <div className={cn("flex h-full flex-col", className)}>
+    <div className={cn("flex h-full min-h-0 flex-col", className)}>
       {/* Main Content Area - Pushes footer down */}
-      <div className="flex flex-1 flex-col overflow-hidden">
-        {/* Top Section: Artwork & Controls */}
-        {/* If no children (playlist), we center this section vertically */}
-        <div
-          className={cn(
-            "flex flex-col space-y-4",
-            !hasChildren && "flex-1 items-center justify-center text-center"
+      <div className="flex min-h-0 flex-1 flex-col space-y-3 overflow-hidden">
+        {/* Top Section: Compact Item Info */}
+        <DeckInfo
+          artist={artist}
+          artworkUrl={artworkUrl}
+          metadata={metadata || null}
+          radio={radio}
+          title={title}
+        />
+
+        {/* Progress Bar */}
+        <DeckProgress
+          formatTime={formatTime}
+          isLive={isLive ?? false}
+          metadata={metadata ?? null}
+          progress={progress}
+          trackProgress={trackProgress}
+        />
+
+        {/* Controls: Play/Pause + Volume */}
+        <DeckControls
+          isLoading={isLoading}
+          isPlaying={isPlaying}
+          onPlayPause={onPlayPause}
+          onVolumeChange={onVolumeChange}
+          volume={volume}
+        />
+
+        {/* Deck Sections: Now Playing, Effects, Tracklist */}
+        {onAddEffect &&
+          onUpdateEffect &&
+          onRemoveEffect &&
+          onReorderEffects &&
+          onPlayTrack && (
+            <div className="flex min-h-0 flex-1 flex-col border-t pt-3">
+              <DeckSections
+                currentTrackIndex={currentTrackIndex}
+                effects={effects}
+                metadata={metadata || null}
+                onAddEffect={onAddEffect}
+                onPlayTrack={onPlayTrack}
+                onRemoveEffect={onRemoveEffect}
+                onReorderEffects={onReorderEffects}
+                onUpdateEffect={onUpdateEffect}
+              />
+            </div>
           )}
-        >
-          <DeckInfo
-            artist={artist}
-            artworkUrl={artworkUrl}
-            hasChildren={hasChildren}
-            metadata={metadata || null}
-            radio={radio}
-            title={title}
-          />
-
-          <DeckProgress
-            formatTime={formatTime}
-            hasChildren={hasChildren}
-            isLive={isLive ?? false}
-            metadata={metadata ?? null}
-            progress={progress}
-            trackProgress={trackProgress}
-          />
-
-          <DeckControls
-            hasChildren={hasChildren}
-            isLoading={isLoading}
-            isPlaying={isPlaying}
-            onPlayPause={onPlayPause}
-            onVolumeChange={onVolumeChange}
-            volume={volume}
-          />
-        </div>
-
-        {/* Children (Playlist/Tracks) - Scrollable if needed */}
-        {children && (
-          <div className="mt-4 flex-1 overflow-y-auto border-t pt-4">
-            {children}
-          </div>
-        )}
       </div>
 
       {/* Footer Actions - Always at bottom */}
-      <div className="mt-4 flex gap-2 border-t pt-4">
+      <div className="flex gap-1 border-t pt-1.5">
         {onChangeUrl && (
           <Button
-            className="h-8 flex-1 text-xs"
+            className="h-7 flex-1 text-xs"
             onClick={onChangeUrl}
             size="sm"
             variant="ghost"
           >
-            <Link2 className="mr-2 size-3" />
+            <Link2 className="mr-1.5 size-3" />
             Change URL
           </Button>
         )}
         <Button
-          className="h-8 flex-1 text-xs hover:bg-destructive/10 hover:text-destructive"
+          className="h-7 flex-1 text-xs hover:bg-destructive/10 hover:text-destructive"
           onClick={onClear}
           size="sm"
           variant="ghost"
         >
-          <X className="mr-2 size-3" />
+          <X className="mr-1.5 size-3" />
           Eject
         </Button>
       </div>
@@ -146,14 +163,12 @@ export function DeckLayout({
 }
 
 function DeckInfo({
-  hasChildren,
   artworkUrl,
   title,
   metadata,
   radio,
   artist,
 }: {
-  hasChildren: boolean;
   artworkUrl?: string;
   title: string;
   metadata: PlatformMetadata | null;
@@ -161,66 +176,37 @@ function DeckInfo({
   artist: string;
 }) {
   return (
-    <div
-      className={cn(
-        "flex items-start gap-4",
-        !hasChildren && "w-full flex-col items-center gap-6"
-      )}
-    >
-      <div
-        className={cn(
-          "relative shrink-0 overflow-hidden rounded-md border bg-muted transition-all duration-300",
-          hasChildren ? "size-24" : "size-48 shadow-xl sm:size-56"
-        )}
-      >
+    <div className="flex w-full items-start gap-3">
+      <div className="relative size-16 shrink-0 overflow-hidden rounded-md border bg-muted">
         {artworkUrl ? (
           <img
             alt={title}
             className="h-full w-full object-contain"
-            height={hasChildren ? 96 : 224}
+            height={64}
             src={artworkUrl}
-            width={hasChildren ? 96 : 224}
+            width={64}
           />
         ) : (
           <div className="flex h-full w-full items-center justify-center">
-            <Music2
-              className={cn(
-                "text-muted-foreground/50",
-                hasChildren ? "size-8" : "size-16"
-              )}
-            />
+            <Music2 className="size-6 text-muted-foreground/50" />
           </div>
         )}
 
         {metadata?.platform && (
-          <div className="absolute right-0 bottom-0 left-0 bg-black/60 px-2 py-1 text-center font-medium text-[10px] text-white uppercase tracking-wider backdrop-blur-sm">
+          <div className="absolute right-0 bottom-0 left-0 bg-black/60 px-1 py-0.5 text-center font-medium text-[9px] text-white uppercase tracking-wider backdrop-blur-sm">
             {metadata.platform}
           </div>
         )}
       </div>
 
-      <div
-        className={cn(
-          "min-w-0 flex-1 space-y-1",
-          !hasChildren && "w-full px-4"
-        )}
-      >
+      <div className="min-w-0 flex-1 space-y-0.5">
         <h3
-          className={cn(
-            "truncate font-semibold leading-tight",
-            hasChildren ? "text-lg" : "text-2xl"
-          )}
+          className="truncate font-semibold text-base leading-tight"
           title={title}
         >
           {metadata ? title : <RadioNameLink radio={radio} />}
         </h3>
-        <p
-          className={cn(
-            "truncate text-muted-foreground",
-            hasChildren ? "text-sm" : "text-base"
-          )}
-          title={artist}
-        >
+        <p className="truncate text-muted-foreground text-sm" title={artist}>
           {artist}
         </p>
 
@@ -240,14 +226,12 @@ function DeckInfo({
 }
 
 function DeckProgress({
-  hasChildren,
   isLive,
   trackProgress,
   progress,
   formatTime,
   metadata,
 }: {
-  hasChildren: boolean;
   isLive: boolean;
   trackProgress: { position: number; duration: number } | undefined;
   progress: number;
@@ -258,9 +242,9 @@ function DeckProgress({
   const shouldShowLive = isLive && !metadata?.platform;
 
   return (
-    <div className={cn("w-full space-y-1.5", !hasChildren && "max-w-md")}>
+    <div className="w-full space-y-1.5">
       {shouldShowLive ? (
-        <div className="flex items-center justify-center py-2">
+        <div className="flex items-center justify-center py-1">
           <div className="flex items-center gap-2 rounded-full bg-red-500/10 px-3 py-1 text-red-500">
             <span className="relative flex size-2">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
@@ -293,14 +277,12 @@ function DeckProgress({
 }
 
 function DeckControls({
-  hasChildren,
   isLoading,
   isPlaying,
   onPlayPause,
   volume,
   onVolumeChange,
 }: {
-  hasChildren: boolean;
   isLoading: boolean;
   isPlaying: boolean;
   onPlayPause: () => void;
@@ -308,12 +290,7 @@ function DeckControls({
   onVolumeChange: (value: number[]) => void;
 }) {
   return (
-    <div
-      className={cn(
-        "flex items-center gap-3 pt-2",
-        !hasChildren && "w-full max-w-md"
-      )}
-    >
+    <div className="flex w-full items-center gap-3">
       <PlayPauseButton
         className="size-10 shrink-0 rounded-full"
         disabled={isLoading}

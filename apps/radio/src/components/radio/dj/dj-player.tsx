@@ -15,11 +15,7 @@ import type { Radio } from "@/lib/types";
 import { RadioLogo } from "../radio-logo";
 import { DjDeck } from "./dj-deck";
 import { DjMixer } from "./dj-mixer";
-import {
-  DjRadioList,
-  getPlatformFromItem,
-  isPlatformItem,
-} from "./dj-radio-list";
+import { getPlatformFromItem, isPlatformItem } from "./dj-radio-list";
 
 type DjPlayerProps = {
   radios?: Radio[];
@@ -110,27 +106,22 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
       sensors={sensors}
     >
       <div
-        className="mx-auto flex h-full w-full max-w-7xl flex-col space-y-4"
+        className="mx-auto flex h-full min-h-0 w-full max-w-7xl flex-col px-4 py-4"
         style={{
           // Ensure drag operations work properly on mobile
           touchAction: "manipulation",
         }}
       >
         {/* Main DJ Interface */}
-        <div className="grid w-full flex-1 grid-cols-1 gap-4 lg:grid-cols-3 xl:gap-6">
+        <div className="grid h-full min-h-0 w-full grid-cols-1 gap-4 lg:grid-cols-3 xl:gap-6">
           {/* Left Deck */}
           <DjDeck className="order-2 lg:order-1" deckId="left-deck" />
 
           {/* Center Mixer */}
-          <DjMixer className="order-1 lg:order-2" />
+          <DjMixer className="order-1 lg:order-2" radios={radios || []} />
 
           {/* Right Deck */}
           <DjDeck className="order-3" deckId="right-deck" />
-        </div>
-
-        {/* Radio List at Bottom - Full Width */}
-        <div className="w-full">
-          <DjRadioList radios={radios || []} />
         </div>
       </div>
 

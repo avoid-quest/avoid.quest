@@ -114,18 +114,18 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
   };
 
   return (
-    <div className="mx-auto grid h-full max-w-7xl grid-cols-1 gap-8 lg:grid-cols-2">
+    <div className="mx-auto grid h-full min-h-0 w-full max-w-7xl grid-cols-1 gap-8 px-4 py-4 lg:grid-cols-2">
       {/* Radio List */}
-      <Card className="order-last h-full lg:order-first">
+      <Card className="order-last flex min-h-0 flex-col lg:order-first">
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle>Radio Stations</CardTitle>
             <SettingsButton />
           </div>
         </CardHeader>
-        <CardContent className="p-0">
+        <CardContent className="flex min-h-0 flex-col p-0">
           {radios && radios.length > 0 ? (
-            <ItemGroup className="max-h-[420px] overflow-y-auto py-4">
+            <ItemGroup className="flex-1 overflow-y-auto py-4">
               {radios.map((radio) => (
                 <Item
                   className={`cursor-pointer ${
@@ -181,11 +181,11 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
       </Card>
 
       {/* Current Player */}
-      <Card className="h-full">
+      <Card className="flex min-h-0 flex-col">
         <CardHeader>
           <CardTitle>Now Playing</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-6 px-8">
+        <CardContent className="flex flex-1 flex-col space-y-6 px-8">
           {currentRadio ? (
             <div className="flex min-h-[120px] min-w-xs items-center gap-6">
               {/* Custom image container for better control */}

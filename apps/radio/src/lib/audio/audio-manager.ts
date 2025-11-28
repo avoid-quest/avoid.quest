@@ -268,7 +268,7 @@ export class AudioManager {
     }
   }
 
-  async playSound(soundId: string, volume = 1): Promise<Playback | null> {
+  async playSound(soundId: string, volume = 1): Promise<Playback> {
     const sound = this.sounds.get(soundId);
     if (!sound) {
       throw new Error(`Sound with id ${soundId} not found`);
@@ -290,21 +290,26 @@ export class AudioManager {
       hasEnded: false,
     });
 
-    const [playback] = sound.play();
-
-    if (!playback) {
+    let playback: Playback;
+    try {
+      const [playbackResult] = sound.play();
+      if (!playbackResult) {
+        throw new Error(`Failed to play sound with id ${soundId}`);
+      }
+      playback = playbackResult;
+    } catch (error) {
       this.notifyListeners(soundId, {
         isPlaying: false,
         isLoading: false,
         volume,
         error: {
-          message: `Failed to play sound with id ${soundId}`,
+          message: `Failed to play sound with id ${soundId}: ${error instanceof Error ? error.message : "Unknown error"}`,
           code: "PLAY_ERROR",
           timestamp: Date.now(),
         },
         hasEnded: false,
       });
-      throw new Error(`Failed to play sound with id ${soundId}`);
+      throw error;
     }
 
     playback.volume = volume;

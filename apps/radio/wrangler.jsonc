@@ -11,6 +11,8 @@
 		"enable_nodejs_http_modules"
 	],
 	"main": "@tanstack/react-start/server-entry",
+	"workers_dev": true,
+	"preview_urls": true,
 	"observability": {
 		"logs": {
 			"enabled": true

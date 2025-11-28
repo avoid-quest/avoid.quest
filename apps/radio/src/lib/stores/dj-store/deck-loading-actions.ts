@@ -98,10 +98,16 @@ export const createDeckLoadingActions: StateCreator<
         // Detect track end using explicit flag
         const trackEnded = audioState.hasEnded;
 
+        // Compute next error message outside the set callback
+        const nextError = audioState.error
+          ? audioState.error.message
+          : currentState.error;
+
         // Only update if state actually changed to prevent unnecessary re-renders
         if (
           currentState.leftDeck.isPlaying !== audioState.isPlaying ||
-          currentState.leftDeck.isLoading !== audioState.isLoading
+          currentState.leftDeck.isLoading !== audioState.isLoading ||
+          currentState.error !== nextError
         ) {
           set((state) => ({
             leftDeck: {
@@ -109,7 +115,7 @@ export const createDeckLoadingActions: StateCreator<
               isPlaying: audioState.isPlaying,
               isLoading: audioState.isLoading,
             },
-            error: audioState.error ? audioState.error.message : state.error,
+            error: nextError,
           }));
         }
 
@@ -207,10 +213,16 @@ export const createDeckLoadingActions: StateCreator<
         // Detect track end using explicit flag
         const trackEnded = audioState.hasEnded;
 
+        // Compute next error message outside the set callback
+        const nextError = audioState.error
+          ? audioState.error.message
+          : currentState.error;
+
         // Only update if state actually changed to prevent unnecessary re-renders
         if (
           currentState.rightDeck.isPlaying !== audioState.isPlaying ||
-          currentState.rightDeck.isLoading !== audioState.isLoading
+          currentState.rightDeck.isLoading !== audioState.isLoading ||
+          currentState.error !== nextError
         ) {
           set((state) => ({
             rightDeck: {
@@ -218,7 +230,7 @@ export const createDeckLoadingActions: StateCreator<
               isPlaying: audioState.isPlaying,
               isLoading: audioState.isLoading,
             },
-            error: audioState.error ? audioState.error.message : state.error,
+            error: nextError,
           }));
         }
 

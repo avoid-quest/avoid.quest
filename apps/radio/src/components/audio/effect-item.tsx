@@ -16,7 +16,6 @@ import { EffectParams } from "./effect-params/effect-params";
 
 type EffectItemProps = {
   effect: EffectConfig;
-  isInitialized: boolean;
   onUpdate: (config: Partial<EffectConfig>) => void;
   onRemove: () => void;
   onExpand?: () => void;
@@ -25,7 +24,6 @@ type EffectItemProps = {
 
 export function EffectItem({
   effect,
-  isInitialized,
   onUpdate,
   onRemove,
   onExpand,
@@ -66,14 +64,13 @@ export function EffectItem({
       className={cn(
         "w-full gap-0 border py-0 transition-all duration-200",
         isDragging && "scale-[0.98] opacity-50 shadow-lg",
-        !isInitialized && "opacity-60",
         effect.enabled && "border-primary/20 bg-primary/5",
         isExpanded && "shadow-md"
       )}
       ref={setNodeRef}
       style={style}
     >
-      <CardHeader className="!flex !flex-row !items-center !justify-between gap-3 pt-4 pb-3">
+      <CardHeader className="flex! items-center! justify-between! flex-row! gap-3 pt-4 pb-3">
         <div className="flex min-w-0 flex-1 items-center gap-3">
           {/* Drag Handle */}
           <div
@@ -130,7 +127,6 @@ export function EffectItem({
               "transition-all",
               effect.enabled && "bg-primary text-primary-foreground"
             )}
-            disabled={!isInitialized}
             onPressedChange={handleEnabledChange}
             pressed={effect.enabled}
             size="sm"
@@ -159,11 +155,7 @@ export function EffectItem({
 
       {isExpanded && (
         <CardContent className="border-t bg-muted/30 pt-4 pb-4">
-          <EffectParams
-            effect={effect}
-            isInitialized={isInitialized}
-            onUpdate={onUpdate}
-          />
+          <EffectParams effect={effect} onUpdate={onUpdate} />
         </CardContent>
       )}
     </Card>

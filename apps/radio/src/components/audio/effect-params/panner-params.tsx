@@ -4,7 +4,6 @@ import { ParamGroup, ParamSelect, ParamSlider } from "./";
 
 type PannerParamsProps = {
   effect: PannerConfig;
-  isInitialized: boolean;
   onUpdate: (config: Partial<EffectConfig>) => void;
 };
 
@@ -65,11 +64,12 @@ function createSlider({
   );
 }
 
-function BasicControls({ effect, isInitialized, onUpdate }: PannerParamsProps) {
+function BasicControls({ effect, onUpdate }: PannerParamsProps) {
+  const disabled = !effect.enabled;
   return (
     <ParamGroup title="Basic">
       <ParamSelect
-        disabled={!isInitialized}
+        disabled={disabled}
         label="Panning Model"
         onChange={(value) =>
           onUpdate({
@@ -81,7 +81,7 @@ function BasicControls({ effect, isInitialized, onUpdate }: PannerParamsProps) {
       />
 
       <ParamSelect
-        disabled={!isInitialized}
+        disabled={disabled}
         label="Distance Model"
         onChange={(value) =>
           onUpdate({
@@ -315,23 +315,15 @@ function OrientationGroup({
   );
 }
 
-export function PannerParams({
-  effect,
-  isInitialized,
-  onUpdate,
-}: PannerParamsProps) {
+export function PannerParams({ effect, onUpdate }: PannerParamsProps) {
   const metadata = getEffectMetadata("panner");
   const ranges = metadata?.parameterRanges ?? {};
   const defaultConfig = metadata?.defaultConfig;
-  const disabled = !(isInitialized && effect.enabled);
+  const disabled = !effect.enabled;
 
   return (
     <div className="space-y-4">
-      <BasicControls
-        effect={effect}
-        isInitialized={isInitialized}
-        onUpdate={onUpdate}
-      />
+      <BasicControls effect={effect} onUpdate={onUpdate} />
       <ConeGroup
         defaultConfig={defaultConfig}
         disabled={disabled}

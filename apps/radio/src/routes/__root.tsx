@@ -59,6 +59,7 @@ export const Route = createRootRoute({
       {
         rel: "stylesheet",
         href: globalsCss,
+        precedence: "default",
       },
       {
         rel: "manifest",

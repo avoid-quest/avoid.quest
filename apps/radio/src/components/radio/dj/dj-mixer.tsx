@@ -26,8 +26,6 @@ export function DjMixer({ className }: DjMixerProps) {
     leftMuted,
     rightMuted,
     error,
-    leftSoundId,
-    rightSoundId,
     leftEffects,
     rightEffects,
     setCrossfadePosition,
@@ -53,8 +51,6 @@ export function DjMixer({ className }: DjMixerProps) {
       leftMuted: state.leftDeck.muted,
       rightMuted: state.rightDeck.muted,
       error: state.error,
-      leftSoundId: state.leftDeck.soundId,
-      rightSoundId: state.rightDeck.soundId,
       leftEffects: state.leftDeck.effects,
       rightEffects: state.rightDeck.effects,
       setCrossfadePosition: state.setCrossfadePosition,
@@ -164,7 +160,6 @@ export function DjMixer({ className }: DjMixerProps) {
             <TabsContent className="mt-4 space-y-4" value="effects">
               <EffectChain
                 effects={leftEffects}
-                isInitialized={!!leftSoundId}
                 onAddEffect={addLeftEffect}
                 onRemoveEffect={removeLeftEffect}
                 onReorderEffects={reorderLeftEffects}
@@ -173,7 +168,6 @@ export function DjMixer({ className }: DjMixerProps) {
               />
               <EffectChain
                 effects={rightEffects}
-                isInitialized={!!rightSoundId}
                 onAddEffect={addRightEffect}
                 onRemoveEffect={removeRightEffect}
                 onReorderEffects={reorderRightEffects}

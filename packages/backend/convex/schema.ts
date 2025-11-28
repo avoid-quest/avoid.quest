@@ -139,7 +139,7 @@ export default defineSchema({
         last_scraped_at: v.optional(v.number()),
       })
     ),
-      logging: v.optional(
+    logging: v.optional(
       v.object({
         active: v.boolean(),
         /** Timestamp in milliseconds (UTC) - when logging last ran */

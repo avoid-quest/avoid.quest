@@ -20,10 +20,22 @@ type PlayPauseButtonProps = {
     | "link";
   className?: string;
   iconClassName?: string;
+  /** When true, displays loading text below the button. Ignored when `inline={true}`. */
   showLoadingText?: boolean;
+  /** Text to display when loading. Only shown when `showLoadingText={true}` and `inline={false}`. */
   loadingText?: string;
+  /** When true, renders only the button without the wrapper container. Loading text is not displayed in inline mode. */
+  inline?: boolean;
 };
 
+/**
+ * A button component that toggles between play and pause states.
+ *
+ * @remarks
+ * When `inline={true}`, the component renders only the button without any wrapper
+ * or loading text, making it suitable for inline use in text or compact layouts.
+ * The `showLoadingText` prop is ignored when `inline={true}`.
+ */
 export function PlayPauseButton({
   isPlaying,
   isLoading = false,
@@ -35,6 +47,7 @@ export function PlayPauseButton({
   iconClassName,
   showLoadingText = false,
   loadingText = "Loading...",
+  inline = false,
 }: PlayPauseButtonProps) {
   const isDisabled = disabled || isLoading;
 
@@ -50,17 +63,25 @@ export function PlayPauseButton({
     return <Play className={cn("size-8", iconClassName)} />;
   };
 
+  const button = (
+    <Button
+      className={cn(inline ? "" : "size-16 rounded-full", className)}
+      disabled={isDisabled}
+      onClick={onClick}
+      size={size}
+      variant={variant}
+    >
+      {renderIcon()}
+    </Button>
+  );
+
+  if (inline) {
+    return button;
+  }
+
   return (
     <div className="flex flex-col items-center gap-2">
-      <Button
-        className={cn("size-16 rounded-full", className)}
-        disabled={isDisabled}
-        onClick={onClick}
-        size={size}
-        variant={isPlaying && !isLoading ? "outline" : variant}
-      >
-        {renderIcon()}
-      </Button>
+      {button}
       {isLoading && showLoadingText && (
         <div className="text-muted-foreground text-sm">{loadingText}</div>
       )}

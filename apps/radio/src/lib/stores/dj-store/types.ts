@@ -31,6 +31,7 @@ export type UiState = {
   } | null;
 };
 
+// Public API type (without internal state)
 export type DjState = {
   // State
   leftDeck: DeckState;
@@ -45,8 +46,11 @@ export type DjState = {
 
   playLeft: () => Promise<void>;
   pauseLeft: () => void;
+  resetLeft: () => Promise<void>;
   playRight: () => Promise<void>;
   pauseRight: () => void;
+  resetRight: () => Promise<void>;
+  cleanupAll: () => Promise<void>;
 
   setLeftVolume: (volume: number) => void;
   setRightVolume: (volume: number) => void;
@@ -81,6 +85,15 @@ export type DjState = {
   setPendingPlatformItem: (
     item: { deckId: DeckId; platform: Platform } | null
   ) => void;
+};
+
+// Internal state type (includes subscription cleanup)
+export type InternalDjState = DjState & {
+  // Internal: subscription cleanup functions
+  _subscriptionCleanup: {
+    left: (() => void) | null;
+    right: (() => void) | null;
+  };
 };
 
 // Initial State

@@ -24,7 +24,6 @@ import { EffectPicker } from "./effect-picker";
 
 type EffectChainProps = {
   effects: EffectConfig[];
-  isInitialized: boolean;
   onAddEffect: (type: string) => void;
   onUpdateEffect: (effectId: string, config: Partial<EffectConfig>) => void;
   onRemoveEffect: (effectId: string) => void;
@@ -34,7 +33,6 @@ type EffectChainProps = {
 
 export function EffectChain({
   effects,
-  isInitialized,
   onAddEffect,
   onUpdateEffect,
   onRemoveEffect,
@@ -98,7 +96,6 @@ export function EffectChain({
               <SortableEffectItem
                 effect={effect}
                 isExpanded={expandedEffectId === effect.id}
-                isInitialized={isInitialized}
                 key={effect.id}
                 onExpand={() =>
                   setExpandedEffectId(
@@ -115,7 +112,6 @@ export function EffectChain({
 
       <Button
         className="w-full"
-        disabled={!isInitialized}
         onClick={() => setShowPicker(true)}
         size="sm"
         variant="outline"
@@ -130,28 +126,18 @@ export function EffectChain({
           onSelect={handleAddEffect}
         />
       )}
-
-      {!isInitialized && (
-        <div className="rounded-md bg-muted/50 p-2 text-center">
-          <span className="text-muted-foreground text-xs">
-            No audio source loaded
-          </span>
-        </div>
-      )}
     </div>
   );
 }
 
 function SortableEffectItem({
   effect,
-  isInitialized,
   isExpanded,
   onUpdate,
   onRemove,
   onExpand,
 }: {
   effect: EffectConfig;
-  isInitialized: boolean;
   isExpanded: boolean;
   onUpdate: (config: Partial<EffectConfig>) => void;
   onRemove: () => void;
@@ -172,7 +158,6 @@ function SortableEffectItem({
       <EffectItem
         effect={effect}
         isExpanded={isExpanded}
-        isInitialized={isInitialized}
         onExpand={onExpand}
         onRemove={onRemove}
         onUpdate={onUpdate}

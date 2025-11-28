@@ -7,6 +7,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { toast } from "sonner";
 import { DEFAULT_TRANSITION_DURATION } from "@/lib/const";
 import { db } from "@/lib/db";
+import { useDjStore } from "@/lib/stores/dj-store";
 import { playerModes, type Settings } from "@/lib/types";
 
 export function ModeSelect({ className }: { className?: string }) {
@@ -18,6 +19,9 @@ export function ModeSelect({ className }: { className?: string }) {
     }
 
     try {
+      // Stop all players before switching modes
+      await useDjStore.getState().cleanupAll();
+
       const newMode = value as "single" | "multiple" | "dj";
 
       // Mode change - no cleanup needed with simplified architecture

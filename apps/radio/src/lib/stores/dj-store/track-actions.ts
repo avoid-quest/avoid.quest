@@ -1,6 +1,6 @@
 import type { StateCreator } from "zustand";
 import type { Radio } from "@/lib/types";
-import type { DeckSide, DjState } from "./types";
+import type { DeckSide, InternalDjState } from "./types";
 
 // Helper to find next track in a platform playlist/album
 export const findNextTrack = (
@@ -40,7 +40,7 @@ export const findNextTrack = (
   return null;
 };
 
-const getDeckControls = (state: DjState, deckSide: DeckSide) => {
+const getDeckControls = (state: InternalDjState, deckSide: DeckSide) => {
   const isLeft = deckSide === "left";
   return {
     deck: isLeft ? state.leftDeck : state.rightDeck,
@@ -51,10 +51,10 @@ const getDeckControls = (state: DjState, deckSide: DeckSide) => {
 };
 
 export const createTrackActions: StateCreator<
-  DjState,
+  InternalDjState,
   [],
   [],
-  Pick<DjState, "loadTrack">
+  Pick<InternalDjState, "loadTrack">
 > = (_set, get) => ({
   // Track Management - Unified track loading
   loadTrack: async (

@@ -1,5 +1,8 @@
 export * from "./audio-manager-helpers";
 export * from "./deck-actions";
+export * from "./deck-loading-actions";
+export * from "./deck-playback-actions";
+export * from "./deck-volume-actions";
 export * from "./effects-actions";
 export * from "./mixer-actions";
 export * from "./track-actions";
@@ -7,17 +10,14 @@ export * from "./types";
 export * from "./ui-actions";
 
 import { create } from "zustand";
-import {
-  createDeckActions,
-  createEffectsActions,
-  createMixerActions,
-  createTrackActions,
-  createUiActions,
-  type DjState,
-  initialDeckState,
-} from "./index";
+import { createDeckActions } from "./deck-actions";
+import { createEffectsActions } from "./effects-actions";
+import { createMixerActions } from "./mixer-actions";
+import { createTrackActions } from "./track-actions";
+import { type InternalDjState, initialDeckState } from "./types";
+import { createUiActions } from "./ui-actions";
 
-export const useDjStore = create<DjState>((set, get, api) => ({
+export const useDjStore = create<InternalDjState>((set, get, api) => ({
   // Initial State
   leftDeck: { ...initialDeckState },
   rightDeck: { ...initialDeckState },
@@ -30,6 +30,10 @@ export const useDjStore = create<DjState>((set, get, api) => ({
     pendingPlatformItem: null,
   },
   error: null,
+  _subscriptionCleanup: {
+    left: null,
+    right: null,
+  },
 
   // Compose all action creators
   ...createDeckActions(set, get, api),

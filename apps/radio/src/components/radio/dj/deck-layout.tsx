@@ -1,7 +1,8 @@
 import { Button } from "@workspace/ui/components/button";
+import { PlayPauseButton } from "@workspace/ui/components/play-pause-button";
 import { Slider } from "@workspace/ui/components/slider";
 import { cn } from "@workspace/ui/lib/utils";
-import { ExternalLink, Link2, Music2, Pause, Play, X } from "lucide-react";
+import { ExternalLink, Link2, Music2, X } from "lucide-react";
 import type { PlatformMetadata } from "@/lib/external-url/types";
 import type { Radio } from "@/lib/types";
 import { RadioNameLink } from "../radio-name-link";
@@ -175,7 +176,7 @@ function DeckInfo({
         {artworkUrl ? (
           <img
             alt={title}
-            className="h-full w-full object-cover"
+            className="h-full w-full object-contain"
             height={hasChildren ? 96 : 224}
             src={artworkUrl}
             width={hasChildren ? 96 : 224}
@@ -306,20 +307,6 @@ function DeckControls({
   volume: number;
   onVolumeChange: (value: number[]) => void;
 }) {
-  const renderPlayIcon = () => {
-    if (isLoading) {
-      return (
-        <span className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-      );
-    }
-
-    if (isPlaying) {
-      return <Pause className="size-4 fill-current" />;
-    }
-
-    return <Play className="ml-0.5 size-4 fill-current" />;
-  };
-
   return (
     <div
       className={cn(
@@ -327,15 +314,17 @@ function DeckControls({
         !hasChildren && "w-full max-w-md"
       )}
     >
-      <Button
+      <PlayPauseButton
         className="size-10 shrink-0 rounded-full"
         disabled={isLoading}
+        iconClassName="size-4"
+        inline={true}
+        isLoading={isLoading}
+        isPlaying={isPlaying}
         onClick={onPlayPause}
         size="icon"
-        variant={isPlaying ? "default" : "outline"}
-      >
-        {renderPlayIcon()}
-      </Button>
+        variant={isPlaying ? "outline" : "default"}
+      />
 
       <div className="flex-1 space-y-1">
         <div className="flex justify-between font-medium text-[10px] text-muted-foreground uppercase tracking-wider">

@@ -4,7 +4,6 @@ import { ParamGroup, ParamSlider } from "./";
 
 type DelayParamsProps = {
   effect: DelayConfig;
-  isInitialized: boolean;
   onUpdate: (config: Partial<EffectConfig>) => void;
 };
 
@@ -29,15 +28,11 @@ function handleWetChange(
   onUpdate({ wet: value, dry: 1 - value });
 }
 
-export function DelayParams({
-  effect,
-  isInitialized,
-  onUpdate,
-}: DelayParamsProps) {
+export function DelayParams({ effect, onUpdate }: DelayParamsProps) {
   const metadata = getEffectMetadata("delay");
   const ranges = metadata?.parameterRanges ?? {};
   const defaultConfig = metadata?.defaultConfig;
-  const disabled = !(isInitialized && effect.enabled);
+  const disabled = !effect.enabled;
 
   return (
     <div className="space-y-4">

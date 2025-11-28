@@ -7,7 +7,6 @@ import { ParamGroup, ParamSlider } from "./";
 
 type PlateReverbParamsProps = {
   effect: PlateReverbConfig;
-  isInitialized: boolean;
   onUpdate: (config: Partial<EffectConfig>) => void;
 };
 
@@ -310,13 +309,12 @@ function MixGroup({
 
 export function PlateReverbParams({
   effect,
-  isInitialized,
   onUpdate,
 }: PlateReverbParamsProps) {
   const metadata = getEffectMetadata("plateReverb");
   const ranges = metadata?.parameterRanges ?? {};
   const defaultConfig = metadata?.defaultConfig;
-  const disabled = !(isInitialized && effect.enabled);
+  const disabled = !effect.enabled;
 
   return (
     <div className="space-y-4">

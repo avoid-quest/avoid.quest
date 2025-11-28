@@ -11,17 +11,13 @@
 		"enable_nodejs_http_modules"
 	],
 	"main": "@tanstack/react-start/server-entry",
+	"workers_dev": true,
+	"preview_urls": true,
 	"observability": {
 		"logs": {
 			"enabled": true
 		}
 	},
-	"r2_buckets": [
-		{
-			"binding": "NEXT_INC_CACHE_R2_BUCKET",
-			"bucket_name": "avoid-cache"
-		}
-	],
 	"ratelimits": [
 		{
 			"name": "proxy-rate-limit",

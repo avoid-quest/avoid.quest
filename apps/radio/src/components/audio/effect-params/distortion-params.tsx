@@ -4,7 +4,6 @@ import { ParamSelect, ParamSlider } from "./";
 
 type DistortionParamsProps = {
   effect: DistortionConfig;
-  isInitialized: boolean;
   onUpdate: (config: Partial<EffectConfig>) => void;
 };
 
@@ -14,14 +13,11 @@ const OVERSAMPLE_OPTIONS = [
   { value: "4x", label: "4x" },
 ] as const;
 
-export function DistortionParams({
-  effect,
-  isInitialized,
-  onUpdate,
-}: DistortionParamsProps) {
+export function DistortionParams({ effect, onUpdate }: DistortionParamsProps) {
   const metadata = getEffectMetadata("distortion");
   const ranges = metadata?.parameterRanges ?? {};
   const defaultConfig = metadata?.defaultConfig;
+  const disabled = !effect.enabled;
 
   return (
     <div className="space-y-4">
@@ -31,7 +27,7 @@ export function DistortionParams({
             ? (defaultConfig.amount as number)
             : undefined
         }
-        disabled={!(isInitialized && effect.enabled)}
+        disabled={disabled}
         formatKey="default"
         formatter={(value) => `${Math.round(value)}%`}
         label="Amount"
@@ -43,7 +39,7 @@ export function DistortionParams({
       />
 
       <ParamSelect
-        disabled={!isInitialized}
+        disabled={disabled}
         label="Oversample"
         onChange={(value) =>
           onUpdate({

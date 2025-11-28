@@ -110,18 +110,15 @@ export function FilterControl({
   });
 
   const filterRef = useRef<BiquadFilterNode | null>(null);
-  const [isInitialized, setIsInitialized] = useState(false);
 
   // Initialize filter when soundId changes
   useEffect(() => {
     if (!soundId) {
       filterRef.current = null;
-      setIsInitialized(false);
       return;
     }
 
     // This will be handled by the parent component that manages the audio
-    setIsInitialized(true);
   }, [soundId]);
 
   const updateConfig = useCallback((newConfig: Partial<FilterConfig>) => {
@@ -200,7 +197,7 @@ export function FilterControl({
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm">{title}</CardTitle>
           <Toggle
-            disabled={!isInitialized}
+            disabled={soundId === null}
             onPressedChange={handleEnabledChange}
             pressed={config.enabled}
             size="sm"
@@ -214,7 +211,7 @@ export function FilterControl({
         <div className="space-y-2">
           <Label className="text-xs">Filter Type</Label>
           <Select
-            disabled={!isInitialized}
+            disabled={soundId === null}
             onValueChange={handleTypeChange}
             value={config.type}
           >
@@ -241,7 +238,7 @@ export function FilterControl({
           </div>
           <Slider
             className="w-full"
-            disabled={!(isInitialized && config.enabled)}
+            disabled={soundId === null || !config.enabled}
             max={currentFreqRange.max}
             min={currentFreqRange.min}
             onValueChange={handleFrequencyChange}
@@ -258,7 +255,7 @@ export function FilterControl({
           </div>
           <Slider
             className="w-full"
-            disabled={!(isInitialized && config.enabled)}
+            disabled={soundId === null || !config.enabled}
             max={currentQRange.max}
             min={currentQRange.min}
             onValueChange={handleQChange}
@@ -280,7 +277,7 @@ export function FilterControl({
             </div>
             <Slider
               className="w-full"
-              disabled={!(isInitialized && config.enabled)}
+              disabled={soundId === null || !config.enabled}
               max={currentGainRange.max}
               min={currentGainRange.min}
               onValueChange={handleGainChange}
@@ -291,7 +288,7 @@ export function FilterControl({
         )}
 
         {/* Status Indicator */}
-        {!isInitialized && (
+        {soundId === null && (
           <div className="rounded-md bg-muted/50 p-2 text-center">
             <span className="text-muted-foreground text-xs">
               No audio source loaded

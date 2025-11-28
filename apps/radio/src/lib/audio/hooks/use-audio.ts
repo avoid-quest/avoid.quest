@@ -9,6 +9,7 @@ export function useAudio(radio: Radio | null) {
     isLoading: false,
     volume: 1,
     error: null,
+    hasEnded: false,
   });
 
   const soundIdRef = useRef<string | null>(null);
@@ -75,15 +76,54 @@ export function useAudio(radio: Radio | null) {
 
   // Play function
   const play = useCallback(async () => {
-    if (!soundIdRef.current) {
+    if (!radio) {
       return;
     }
 
     try {
+      // If we don't have a sound ID or the sound has been cleaned up, reload it
+      if (!soundIdRef.current) {
+        await loadRadio(radio);
+      }
+
+      if (!soundIdRef.current) {
+        return;
+      }
+
       await audioManager.playSound(soundIdRef.current, state.volume);
     } catch (error) {
       const errorObj =
         error instanceof Error ? error : new Error("Play failed");
+
+      // If the sound was cleaned up, reload it and try again
+      if (
+        errorObj.message.includes("cleaned up") ||
+        errorObj.message.includes("not found")
+      ) {
+        try {
+          await loadRadio(radio);
+          if (soundIdRef.current) {
+            await audioManager.playSound(soundIdRef.current, state.volume);
+            return;
+          }
+        } catch (reloadError) {
+          // If reload also fails, fall through to error handling
+          const reloadErrorObj =
+            reloadError instanceof Error
+              ? reloadError
+              : new Error("Reload failed");
+          setState((prev) => ({
+            ...prev,
+            error: {
+              message: reloadErrorObj.message,
+              code: "PLAY_ERROR",
+              timestamp: Date.now(),
+            },
+          }));
+          return;
+        }
+      }
+
       setState((prev) => ({
         ...prev,
         error: {
@@ -93,7 +133,7 @@ export function useAudio(radio: Radio | null) {
         },
       }));
     }
-  }, [audioManager, state.volume]);
+  }, [audioManager, state.volume, radio, loadRadio]);
 
   // Pause function
   const pause = useCallback(() => {

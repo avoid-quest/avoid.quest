@@ -48,7 +48,7 @@ export function MultipleRadios({ radios }: { radios?: Radio[] }) {
 
   if (!radios || radios.length === 0) {
     return (
-      <div className="flex h-[calc(100vh-4rem)] items-center justify-center bg-background p-8">
+      <div className="mx-auto flex h-full min-h-0 w-full max-w-7xl items-center justify-center px-4 py-4">
         <Card className="w-full max-w-md border-dashed">
           <CardHeader>
             <CardTitle className="text-center">
@@ -71,7 +71,7 @@ export function MultipleRadios({ radios }: { radios?: Radio[] }) {
   }
 
   return (
-    <div>
+    <div className="mx-auto flex h-full min-h-0 w-full max-w-7xl flex-col px-4 py-4">
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {radios.map((radio: Radio) => (
           <div

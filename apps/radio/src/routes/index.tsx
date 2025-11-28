@@ -7,7 +7,7 @@ export const Route = createFileRoute("/")({
 
 function Home() {
   return (
-    <div className="flex flex-col items-center justify-center p-4">
+    <div className="flex h-full w-full flex-col">
       <Radios />
     </div>
   );

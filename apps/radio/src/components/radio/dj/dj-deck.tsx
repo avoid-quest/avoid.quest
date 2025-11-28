@@ -24,17 +24,15 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { useShallow } from "zustand/react/shallow";
 import { isPlatformRadio } from "@/lib/external-url";
-import type { Platform, PlatformMetadata } from "@/lib/external-url/types";
+import type { Platform } from "@/lib/external-url/types";
 import { useDeckState } from "@/lib/hooks/use-deck-state";
 import { usePlatformMetadata } from "@/lib/hooks/use-platform-metadata";
 import { useTrackProgress } from "@/lib/hooks/use-track-progress";
 import { useDjStore } from "@/lib/stores/dj-store";
 import type { Radio } from "@/lib/types";
 import { DeckLayout } from "./deck-layout";
+import { DeckSections } from "./deck-sections";
 import { PlatformForm } from "./platform-form";
-import { PlatformItemInfo } from "./platform-item-info";
-import { PlatformTrackInfo } from "./platform-track-info";
-import { PlaylistView } from "./playlist-view";
 
 type DjDeckProps = {
   className?: string;
@@ -63,11 +61,37 @@ export function DjDeck({ className, deckId }: DjDeckProps) {
   const { currentTrackIndex, metadata } = usePlatformMetadata(radio);
   const trackProgress = useTrackProgress(soundId);
 
-  // UI State from store
-  const { pendingPlatformItem, setPendingPlatformItem } = useDjStore(
+  // UI State and deck-specific effects from store
+  const {
+    pendingPlatformItem,
+    setPendingPlatformItem,
+    effects,
+    addEffect,
+    updateEffect,
+    removeEffect,
+    reorderEffects,
+  } = useDjStore(
     useShallow((state) => ({
       pendingPlatformItem: state.ui.pendingPlatformItem,
       setPendingPlatformItem: state.setPendingPlatformItem,
+      effects:
+        deckId === "left-deck"
+          ? state.leftDeck.effects
+          : state.rightDeck.effects,
+      addEffect:
+        deckId === "left-deck" ? state.addLeftEffect : state.addRightEffect,
+      updateEffect:
+        deckId === "left-deck"
+          ? state.updateLeftEffect
+          : state.updateRightEffect,
+      removeEffect:
+        deckId === "left-deck"
+          ? state.removeLeftEffect
+          : state.removeRightEffect,
+      reorderEffects:
+        deckId === "left-deck"
+          ? state.reorderLeftEffects
+          : state.reorderRightEffects,
     }))
   );
 
@@ -134,27 +158,26 @@ export function DjDeck({ className, deckId }: DjDeckProps) {
     } else {
       content = (
         <DeckLayout
+          currentTrackIndex={currentTrackIndex}
+          effects={effects}
           isLoading={isLoading}
           isPlaying={isPlaying}
           metadata={metadata || radio.platformMetadata}
+          onAddEffect={addEffect}
           onChangeUrl={
             isPlatformRadio(radio) ? () => setIsChangingUrl(true) : undefined
           }
           onClear={handleClear}
           onPlayPause={handlePlayPause}
+          onPlayTrack={handleLoadTrack}
+          onRemoveEffect={removeEffect}
+          onReorderEffects={reorderEffects}
+          onUpdateEffect={updateEffect}
           onVolumeChange={handleVolumeChange}
           radio={radio}
           trackProgress={trackProgress}
           volume={volume}
-        >
-          {metadata && (
-            <PlatformActions
-              currentTrackIndex={currentTrackIndex}
-              metadata={metadata}
-              onPlayTrack={handleLoadTrack}
-            />
-          )}
-        </DeckLayout>
+        />
       );
     }
   } else if (pendingPlatform) {
@@ -166,12 +189,30 @@ export function DjDeck({ className, deckId }: DjDeckProps) {
     );
   } else {
     content = (
-      <div className="flex flex-1 flex-col items-center justify-center text-center sm:space-y-4">
-        <div className="rounded-lg border-2 border-muted-foreground/25 border-dashed p-2 sm:p-6">
-          <Volume2 className="mx-auto size-8 text-muted-foreground sm:size-10" />
-          <p className="mt-2 text-muted-foreground text-sm">
-            Drop a radio station here
-          </p>
+      <div className="flex h-full min-h-0 flex-col">
+        {/* Drop Zone */}
+        <div className="flex shrink-0 flex-col items-center justify-center py-8 text-center">
+          <div className="rounded-lg border-2 border-muted-foreground/25 border-dashed p-2 sm:p-6">
+            <Volume2 className="mx-auto size-8 text-muted-foreground sm:size-10" />
+            <p className="mt-2 text-muted-foreground text-sm">
+              Drop a radio station here
+            </p>
+          </div>
+        </div>
+        {/* Filter Section - Always visible */}
+        <div className="flex min-h-0 flex-1 flex-col border-t pt-3">
+          <DeckSections
+            currentTrackIndex={0}
+            effects={effects}
+            metadata={null}
+            onAddEffect={addEffect}
+            onPlayTrack={async () => {
+              // No-op when no radio is loaded
+            }}
+            onRemoveEffect={removeEffect}
+            onReorderEffects={reorderEffects}
+            onUpdateEffect={updateEffect}
+          />
         </div>
       </div>
     );
@@ -180,14 +221,16 @@ export function DjDeck({ className, deckId }: DjDeckProps) {
   return (
     <Card
       className={cn(
-        "h-full w-full transition-colors",
+        "flex h-full min-h-0 w-full flex-col py-2 transition-colors",
         isOver ? "border-primary bg-primary/5" : "",
         className
       )}
       ref={setNodeRef}
     >
       <DeckHeader deckId={deckId} onReset={reset} radio={radio} />
-      <CardContent className="flex h-full flex-col p-6">{content}</CardContent>
+      <CardContent className="flex h-full min-h-0 flex-col px-6 pt-4 pb-2">
+        {content}
+      </CardContent>
     </Card>
   );
 }
@@ -274,52 +317,4 @@ function DeckHeader({ deckId, radio, onReset }: DeckHeaderProps) {
       </div>
     </CardHeader>
   );
-}
-
-type PlatformActionsProps = {
-  metadata: PlatformMetadata;
-  currentTrackIndex: number;
-  onPlayTrack: (streamUrl: string) => void;
-};
-
-function PlatformActions({
-  metadata,
-  currentTrackIndex,
-  onPlayTrack,
-}: PlatformActionsProps) {
-  const isCollection =
-    (metadata.platform === "bandcamp" && metadata.itemType === "album") ||
-    (metadata.platform === "soundcloud" && metadata.itemType === "playlist");
-
-  if (isCollection && metadata.tracks && metadata.tracks.length > 0) {
-    return (
-      <div className="space-y-3">
-        <PlatformItemInfo
-          duration={metadata.duration}
-          trackCount={metadata.trackCount}
-        />
-        <PlaylistView
-          artist={metadata.artist}
-          currentTrackIndex={currentTrackIndex}
-          onPlayTrack={onPlayTrack}
-          tracks={metadata.tracks}
-        />
-      </div>
-    );
-  }
-
-  if (
-    (metadata.platform === "bandcamp" && metadata.itemType === "track") ||
-    (metadata.platform === "soundcloud" && metadata.itemType === "track")
-  ) {
-    return (
-      <PlatformTrackInfo
-        albumName={metadata.albumName}
-        artist={metadata.artist}
-        duration={metadata.duration}
-      />
-    );
-  }
-
-  return null;
 }

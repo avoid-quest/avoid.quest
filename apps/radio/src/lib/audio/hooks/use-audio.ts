@@ -76,18 +76,16 @@ export function useAudio(radio: Radio | null) {
 
   // Play function
   const play = useCallback(async () => {
-    // Always recreate the sound before playing (like DJ mode does)
-    // This ensures we have a fresh, valid sound and avoids "cleaned up" errors
     if (!radio) {
       return;
     }
 
     try {
-      // Recreate the sound before playing to ensure it's fresh and valid
-      // This matches the pattern used in DJ mode's playLeft/playRight
-      await loadRadio(radio);
+      // If we don't have a sound ID or the sound has been cleaned up, reload it
+      if (!soundIdRef.current) {
+        await loadRadio(radio);
+      }
 
-      // After recreation, check if we have a valid sound ID
       if (!soundIdRef.current) {
         return;
       }
@@ -96,6 +94,36 @@ export function useAudio(radio: Radio | null) {
     } catch (error) {
       const errorObj =
         error instanceof Error ? error : new Error("Play failed");
+
+      // If the sound was cleaned up, reload it and try again
+      if (
+        errorObj.message.includes("cleaned up") ||
+        errorObj.message.includes("not found")
+      ) {
+        try {
+          await loadRadio(radio);
+          if (soundIdRef.current) {
+            await audioManager.playSound(soundIdRef.current, state.volume);
+            return;
+          }
+        } catch (reloadError) {
+          // If reload also fails, fall through to error handling
+          const reloadErrorObj =
+            reloadError instanceof Error
+              ? reloadError
+              : new Error("Reload failed");
+          setState((prev) => ({
+            ...prev,
+            error: {
+              message: reloadErrorObj.message,
+              code: "PLAY_ERROR",
+              timestamp: Date.now(),
+            },
+          }));
+          return;
+        }
+      }
+
       setState((prev) => ({
         ...prev,
         error: {

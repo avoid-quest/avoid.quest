@@ -239,6 +239,16 @@ export class AudioManager {
         this.cacophony.off("loadingError", loadingErrorHandler);
       }
     } catch (error) {
+      // If already an AudioError from inner catch, just re-throw
+      if (
+        error &&
+        typeof error === "object" &&
+        "code" in error &&
+        "timestamp" in error
+      ) {
+        throw error;
+      }
+
       const audioError: AudioError = {
         message: `Failed to create sound for ${radio.name}: ${error instanceof Error ? error.message : "Unknown error"}`,
         code: "CREATE_SOUND_ERROR",

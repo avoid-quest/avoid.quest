@@ -164,7 +164,7 @@ export function RadioDialog({
           <DialogTitle>{getDialogTitle()}</DialogTitle>
           <DialogDescription>{getDialogDescription()}</DialogDescription>
         </DialogHeader>
-        <div className="flex-1 overflow-y-auto">{renderContent()}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto">{renderContent()}</div>
       </DialogContent>
     </Dialog>
   );

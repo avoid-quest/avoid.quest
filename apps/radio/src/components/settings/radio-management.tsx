@@ -250,7 +250,10 @@ export function RadioManagement() {
           Add Station
         </Button>
       </div>
-      <div className="max-h-72 overflow-y-auto sm:max-h-80">
+      <div
+        className="max-h-72 overflow-y-auto sm:max-h-80"
+        style={{ touchAction: "pan-y" }}
+      >
         <DndContext
           collisionDetection={closestCenter}
           onDragEnd={handleDragEnd}

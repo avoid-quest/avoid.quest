@@ -12,6 +12,13 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@workspace/ui/components/dropdown-menu";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@workspace/ui/components/tabs";
+import { useIsMobile } from "@workspace/ui/hooks/use-mobile";
 import { cn } from "@workspace/ui/lib/utils";
 import {
   Copy,
@@ -32,14 +39,16 @@ import { useDjStore } from "@/lib/stores/dj-store";
 import type { Radio } from "@/lib/types";
 import { DeckLayout } from "./deck-layout";
 import { DeckSections } from "./deck-sections";
+import { DjRadioList } from "./dj-radio-list";
 import { PlatformForm } from "./platform-form";
 
 type DjDeckProps = {
   className?: string;
   deckId: "left-deck" | "right-deck";
+  radios?: Radio[];
 };
 
-export function DjDeck({ className, deckId }: DjDeckProps) {
+export function DjDeck({ className, deckId, radios = [] }: DjDeckProps) {
   const { isOver, setNodeRef } = useDroppable({
     id: deckId,
   });
@@ -97,6 +106,7 @@ export function DjDeck({ className, deckId }: DjDeckProps) {
 
   const deckSide = deckId === "left-deck" ? "left" : "right";
   const [isChangingUrl, setIsChangingUrl] = useState(false);
+  const isMobile = useIsMobile();
 
   // Check if this deck has a pending platform item
   const pendingPlatform =
@@ -152,6 +162,7 @@ export function DjDeck({ className, deckId }: DjDeckProps) {
           currentUrl={radio.platformMetadata?.url}
           editMode={true}
           initialPlatform={radio.platformMetadata?.platform as Platform}
+          onCancel={() => setIsChangingUrl(false)}
           onLoad={handleUrlChanged}
         />
       );
@@ -184,10 +195,49 @@ export function DjDeck({ className, deckId }: DjDeckProps) {
     content = (
       <PlatformForm
         initialPlatform={pendingPlatform}
+        onCancel={handleClear}
         onLoad={handleLoadPlatformItem}
       />
     );
+  } else if (isMobile) {
+    // Mobile: Wrap in tabs with empty Source tab
+    content = (
+      <Tabs className="flex h-full min-h-0 flex-col" defaultValue="source">
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="source">Source</TabsTrigger>
+          <TabsTrigger value="effects">Effects</TabsTrigger>
+        </TabsList>
+
+        {/* Source Tab with radio list on mobile */}
+        <TabsContent
+          className="mt-3 flex min-h-0 flex-1 flex-col overflow-hidden"
+          value="source"
+        >
+          <DjRadioList radios={radios} />
+        </TabsContent>
+
+        {/* Effects Tab */}
+        <TabsContent
+          className="mt-3 flex min-h-0 flex-1 flex-col overflow-hidden"
+          value="effects"
+        >
+          <DeckSections
+            currentTrackIndex={0}
+            effects={effects}
+            metadata={null}
+            onAddEffect={addEffect}
+            onPlayTrack={async () => {
+              // No-op when no radio is loaded
+            }}
+            onRemoveEffect={removeEffect}
+            onReorderEffects={reorderEffects}
+            onUpdateEffect={updateEffect}
+          />
+        </TabsContent>
+      </Tabs>
+    );
   } else {
+    // Desktop: Original layout
     content = (
       <div className="flex h-full min-h-0 flex-col">
         {/* Drop Zone */}
@@ -228,7 +278,7 @@ export function DjDeck({ className, deckId }: DjDeckProps) {
       ref={setNodeRef}
     >
       <DeckHeader deckId={deckId} onReset={reset} radio={radio} />
-      <CardContent className="flex h-full min-h-0 flex-col px-6 pt-4 pb-2">
+      <CardContent className="flex h-full min-h-0 flex-col">
         {content}
       </CardContent>
     </Card>
@@ -270,18 +320,21 @@ function DeckHeader({ deckId, radio, onReset }: DeckHeaderProps) {
         <CardTitle className="text-center">
           {deckId === "left-deck" ? "Left Deck" : "Right Deck"}
         </CardTitle>
-        {radio && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                className="h-8 w-8 p-0"
-                onClick={(e) => e.stopPropagation()}
-                size="sm"
-                variant="ghost"
-              >
-                <MoreHorizontal className="size-4" />
-              </Button>
-            </DropdownMenuTrigger>
+        {/* Always render button to prevent layout shift, but hide when no radio */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              className="h-8 w-8 p-0"
+              disabled={!radio}
+              onClick={(e) => e.stopPropagation()}
+              size="sm"
+              style={{ visibility: radio ? "visible" : "hidden" }}
+              variant="ghost"
+            >
+              <MoreHorizontal className="size-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          {radio && (
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={handleCopyStreamLink}>
                 <Copy className="mr-2 size-4" />
@@ -312,8 +365,8 @@ function DeckHeader({ deckId, radio, onReset }: DeckHeaderProps) {
                 Reset Deck
               </DropdownMenuItem>
             </DropdownMenuContent>
-          </DropdownMenu>
-        )}
+          )}
+        </DropdownMenu>
       </div>
     </CardHeader>
   );

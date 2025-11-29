@@ -1,4 +1,5 @@
 import { Card, CardContent } from "@workspace/ui/components/card";
+import { useIsMobile } from "@workspace/ui/hooks/use-mobile";
 import { cn } from "@workspace/ui/lib/utils";
 import { useShallow } from "zustand/react/shallow";
 import { Crossfader } from "@/components/audio/crossfader";
@@ -29,21 +30,18 @@ export function DjMixer({ className, radios = [] }: DjMixerProps) {
     }))
   );
 
+  const isMobile = useIsMobile();
+
   return (
     <Card className={cn("flex h-full min-h-0 w-full flex-col", className)}>
       <CardContent className="flex h-full min-h-0 flex-col p-0">
         {/* Crossfade Section - Always Visible */}
         <div className="border-b p-4">
-          <div className="space-y-4">
-            <div className="text-center">
-              <div className="font-medium text-lg">Crossfade</div>
-            </div>
-            <Crossfader
-              onPositionChange={setCrossfadePosition}
-              position={crossfadePosition}
-              size="lg"
-            />
-          </div>
+          <Crossfader
+            onPositionChange={setCrossfadePosition}
+            position={crossfadePosition}
+            size="lg"
+          />
         </div>
 
         {/* Master Volume Section */}
@@ -59,10 +57,12 @@ export function DjMixer({ className, radios = [] }: DjMixerProps) {
           </div>
         </div>
 
-        {/* Radio List Section */}
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-4">
-          <DjRadioList radios={radios} />
-        </div>
+        {/* Radio List Section - Hidden on mobile */}
+        {!isMobile && (
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-4">
+            <DjRadioList radios={radios} />
+          </div>
+        )}
 
         {/* Status Indicators */}
         {error && (

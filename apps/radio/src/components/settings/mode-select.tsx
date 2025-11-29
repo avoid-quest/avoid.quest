@@ -4,6 +4,7 @@ import {
 } from "@workspace/ui/components/toggle-group";
 import { cn } from "@workspace/ui/lib/utils";
 import { useLiveQuery } from "dexie-react-hooks";
+import { DynamicIcon } from "lucide-react/dynamic";
 import { toast } from "sonner";
 import { DEFAULT_TRANSITION_DURATION } from "@/lib/const";
 import { db } from "@/lib/db";
@@ -67,7 +68,8 @@ export function ModeSelect({ className }: { className?: string }) {
           key={mode.value}
           value={mode.value}
         >
-          {mode.label}
+          <DynamicIcon name={mode.icon} />
+          <span className="hidden sm:block">{mode.label}</span>
         </ToggleGroupItem>
       ))}
     </ToggleGroup>

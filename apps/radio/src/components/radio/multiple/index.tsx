@@ -71,7 +71,7 @@ export function MultipleRadios({ radios }: { radios?: Radio[] }) {
   }
 
   return (
-    <div className="mx-auto flex h-full min-h-0 w-full max-w-7xl flex-col px-4 py-4">
+    <div className="mx-auto flex h-full max-h-[calc(100vh-6rem)] min-h-0 w-full max-w-7xl flex-col overflow-auto px-4 py-4">
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {radios.map((radio: Radio) => (
           <div

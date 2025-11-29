@@ -94,55 +94,61 @@ export function SettingsForm({
   }
 
   return (
-    <div className="flex min-h-[60vh] flex-col gap-4 md:flex-row">
+    <div className="flex h-[70vh] max-h-[85vh] flex-col gap-2 md:flex-row md:gap-4">
       <Tabs
         className="flex h-full w-full flex-col gap-4 md:flex-row"
         defaultValue="radios"
         orientation="vertical"
       >
-        <TabsList className="flex min-h-[60vh] w-full flex-row justify-start gap-2 overflow-x-auto bg-muted/50 p-2 md:h-auto md:w-48 md:flex-col md:justify-start">
+        <TabsList className="flex h-auto w-full flex-row justify-start gap-1 bg-muted/50 p-1.5 md:min-h-[60vh] md:w-48 md:flex-col md:justify-start md:gap-2 md:p-2">
           <TabsTrigger
-            className="flex-1 justify-start gap-2 md:w-full"
+            className="flex-1 justify-start gap-1.5 text-xs md:w-full md:gap-2 md:text-sm"
             value="radios"
           >
-            <Radio className="size-4" />
-            <span className="hidden sm:inline">Radios</span>
+            <Radio className="size-4 shrink-0" />
+            <span className="truncate">Radios</span>
           </TabsTrigger>
           <TabsTrigger
-            className="flex-1 justify-start gap-2 md:w-full"
+            className="flex-1 justify-start gap-1.5 text-xs md:w-full md:gap-2 md:text-sm"
             value="player"
           >
-            <Settings2 className="size-4" />
-            <span className="hidden sm:inline">Player</span>
+            <Settings2 className="size-4 shrink-0" />
+            <span className="truncate">Player</span>
           </TabsTrigger>
           <TabsTrigger
-            className="flex-1 justify-start gap-2 md:w-full"
+            className="flex-1 justify-start gap-1.5 text-xs md:w-full md:gap-2 md:text-sm"
             value="import-export"
           >
-            <Database className="size-4" />
-            <span className="hidden sm:inline">Data</span>
+            <Database className="size-4 shrink-0" />
+            <span className="truncate">Data</span>
           </TabsTrigger>
           <TabsTrigger
-            className="flex-1 justify-start gap-2 text-destructive hover:text-destructive md:w-full"
+            className="flex-1 justify-start gap-1.5 text-destructive text-xs hover:text-destructive md:w-full md:gap-2 md:text-sm"
             value="reset"
           >
-            <RotateCcw className="size-4" />
-            <span className="hidden sm:inline">Reset</span>
+            <RotateCcw className="size-4 shrink-0" />
+            <span className="truncate">Reset</span>
           </TabsTrigger>
         </TabsList>
 
-        <div className="flex-1 rounded-lg border bg-card p-4 shadow-sm">
-          <TabsContent className="mt-0 h-full space-y-4" value="radios">
+        <div className="flex min-h-0 flex-1 flex-col rounded-lg border bg-card shadow-sm">
+          <TabsContent
+            className="mt-0 flex min-h-0 flex-1 flex-col space-y-4 overflow-y-auto px-2 py-1 sm:p-4"
+            value="radios"
+          >
             <div className="mb-4">
-              <h3 className="font-medium text-lg">Radio Stations</h3>
-              <p className="text-muted-foreground text-sm">
+              <h3 className="font-medium sm:text-lg">Radio Stations</h3>
+              <p className="text-muted-foreground text-xs sm:text-sm">
                 Manage your radio stations list.
               </p>
             </div>
             <RadioManagement />
           </TabsContent>
 
-          <TabsContent className="mt-0 space-y-4" value="player">
+          <TabsContent
+            className="mt-0 flex min-h-0 flex-1 flex-col space-y-4 overflow-y-auto p-4"
+            value="player"
+          >
             <div className="mb-4">
               <h3 className="font-medium text-lg">Player Preferences</h3>
               <p className="text-muted-foreground text-sm">
@@ -180,7 +186,10 @@ export function SettingsForm({
             </div>
           </TabsContent>
 
-          <TabsContent className="mt-0 space-y-4" value="import-export">
+          <TabsContent
+            className="mt-0 flex min-h-0 flex-1 flex-col space-y-4 overflow-y-auto p-4"
+            value="import-export"
+          >
             <div className="mb-4">
               <h3 className="font-medium text-lg">Data Management</h3>
               <p className="text-muted-foreground text-sm">
@@ -196,7 +205,10 @@ export function SettingsForm({
             </Suspense>
           </TabsContent>
 
-          <TabsContent className="mt-0 space-y-4" value="reset">
+          <TabsContent
+            className="mt-0 flex min-h-0 flex-1 flex-col space-y-4 overflow-y-auto p-4"
+            value="reset"
+          >
             <div className="mb-4">
               <h3 className="font-medium text-destructive text-lg">
                 Danger Zone

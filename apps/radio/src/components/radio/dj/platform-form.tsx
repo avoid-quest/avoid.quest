@@ -15,6 +15,7 @@ import type { Radio } from "@/lib/types";
 
 type PlatformFormProps = {
   onLoad: (radio: Radio) => void;
+  onCancel?: () => void;
   initialPlatform?: Platform;
   editMode?: boolean;
   currentUrl?: string;
@@ -22,6 +23,7 @@ type PlatformFormProps = {
 
 export function PlatformForm({
   onLoad,
+  onCancel,
   initialPlatform,
   editMode = false,
   currentUrl,
@@ -94,7 +96,7 @@ export function PlatformForm({
   };
 
   return (
-    <div className="flex flex-1 flex-col items-center justify-center p-4">
+    <div className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-y-auto p-4">
       <div className="w-full max-w-md space-y-4">
         <div className="flex items-center justify-center gap-2 text-muted-foreground">
           <Music className="size-5" />
@@ -160,14 +162,26 @@ export function PlatformForm({
             </div>
           )}
 
-          <Button
-            className="w-full"
-            disabled={isLoading || !url.trim()}
-            type="submit"
-          >
-            {isLoading && <Loader2 className="mr-2 size-4 animate-spin" />}
-            {editMode ? "Update" : "Load"}
-          </Button>
+          <div className="flex gap-2">
+            {onCancel && (
+              <Button
+                className="flex-1"
+                onClick={onCancel}
+                type="button"
+                variant="outline"
+              >
+                Eject
+              </Button>
+            )}
+            <Button
+              className="flex-1"
+              disabled={isLoading || !url.trim()}
+              type="submit"
+            >
+              {isLoading && <Loader2 className="mr-2 size-4 animate-spin" />}
+              {editMode ? "Update" : "Load"}
+            </Button>
+          </div>
         </form>
       </div>
     </div>

@@ -1,6 +1,14 @@
 import { Button } from "@workspace/ui/components/button";
 import { PlayPauseButton } from "@workspace/ui/components/play-pause-button";
+import { ScrollArea } from "@workspace/ui/components/scroll-area";
 import { Slider } from "@workspace/ui/components/slider";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@workspace/ui/components/tabs";
+import { useIsMobile } from "@workspace/ui/hooks/use-mobile";
 import { cn } from "@workspace/ui/lib/utils";
 import { ExternalLink, Link2, Music2, X } from "lucide-react";
 import type { EffectConfig } from "@/lib/audio/effects/types";
@@ -8,6 +16,7 @@ import type { PlatformMetadata } from "@/lib/external-url/types";
 import type { Radio } from "@/lib/types";
 import { RadioNameLink } from "../radio-name-link";
 import { DeckSections } from "./deck-sections";
+import { PlaylistSnippet, PlaylistView } from "./playlist-view";
 
 type DeckLayoutProps = {
   radio: Radio;
@@ -32,6 +41,48 @@ type DeckLayoutProps = {
   onPlayTrack?: (streamUrl: string) => void;
   className?: string;
 };
+
+function calculateHasTracklist(metadata?: PlatformMetadata): boolean {
+  return Boolean(
+    metadata &&
+      ((metadata.platform === "bandcamp" && metadata.itemType === "album") ||
+        (metadata.platform === "soundcloud" &&
+          metadata.itemType === "playlist")) &&
+      metadata.tracks &&
+      metadata.tracks.length > 0
+  );
+}
+
+function calculateProgress(trackProgress?: {
+  position: number;
+  duration: number;
+}): { isLive: boolean; progress: number } {
+  const isLive =
+    trackProgress?.duration === Number.POSITIVE_INFINITY ||
+    trackProgress?.duration === 0 ||
+    (trackProgress?.duration !== undefined &&
+      !Number.isFinite(trackProgress.duration));
+
+  const progress =
+    !isLive && trackProgress?.duration
+      ? (trackProgress.position / trackProgress.duration) * 100
+      : 0;
+
+  return { isLive, progress };
+}
+
+function getDisplayInfo(
+  radio: Radio,
+  metadata?: PlatformMetadata
+): { artworkUrl?: string; title: string; artist: string } {
+  return {
+    artworkUrl: metadata?.artwork || radio.logoUrl,
+    title: metadata?.name || radio.name,
+    artist:
+      metadata?.artist ||
+      (metadata?.platform === "soundcloud" ? "SoundCloud" : "Radio"),
+  };
+}
 
 export function DeckLayout({
   radio,
@@ -65,24 +116,45 @@ export function DeckLayout({
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
-  const artworkUrl = metadata?.artwork || radio.logoUrl;
-  const title = metadata?.name || radio.name;
-  const artist =
-    metadata?.artist ||
-    (metadata?.platform === "soundcloud" ? "SoundCloud" : "Radio");
+  const { artworkUrl, title, artist } = getDisplayInfo(radio, metadata);
+  const { isLive, progress } = calculateProgress(trackProgress);
+  const hasTracklist = calculateHasTracklist(metadata);
+  const isMobile = useIsMobile();
 
-  // Calculate progress percentage
-  const isLive =
-    trackProgress?.duration === Number.POSITIVE_INFINITY ||
-    trackProgress?.duration === 0 || // Some live streams might report 0
-    (trackProgress?.duration !== undefined &&
-      !Number.isFinite(trackProgress.duration));
+  // On mobile, wrap content in tabs to separate info/controls from effects
+  if (isMobile) {
+    return (
+      <MobileDeckTabs
+        artist={artist}
+        artworkUrl={artworkUrl}
+        className={className}
+        currentTrackIndex={currentTrackIndex}
+        effects={effects}
+        formatTime={formatTime}
+        hasTracklist={hasTracklist}
+        isLive={isLive ?? false}
+        isLoading={isLoading}
+        isPlaying={isPlaying}
+        metadata={metadata || null}
+        onAddEffect={onAddEffect}
+        onChangeUrl={onChangeUrl}
+        onClear={onClear}
+        onPlayPause={onPlayPause}
+        onPlayTrack={onPlayTrack}
+        onRemoveEffect={onRemoveEffect}
+        onReorderEffects={onReorderEffects}
+        onUpdateEffect={onUpdateEffect}
+        onVolumeChange={onVolumeChange}
+        progress={progress}
+        radio={radio}
+        title={title}
+        trackProgress={trackProgress}
+        volume={volume}
+      />
+    );
+  }
 
-  const progress =
-    !isLive && trackProgress?.duration
-      ? (trackProgress.position / trackProgress.duration) * 100
-      : 0;
-
+  // Desktop layout: all in one view
   return (
     <div className={cn("flex h-full min-h-0 flex-col", className)}>
       {/* Main Content Area - Pushes footer down */}
@@ -114,6 +186,16 @@ export function DeckLayout({
           volume={volume}
         />
 
+        {/* Tracklist Snippet */}
+        {hasTracklist && metadata?.tracks && onPlayTrack && (
+          <PlaylistSnippet
+            artist={metadata.artist}
+            currentTrackIndex={currentTrackIndex}
+            onPlayTrack={onPlayTrack}
+            tracks={metadata.tracks}
+          />
+        )}
+
         {/* Deck Sections: Now Playing, Effects, Tracklist */}
         {onAddEffect &&
           onUpdateEffect &&
@@ -136,28 +218,7 @@ export function DeckLayout({
       </div>
 
       {/* Footer Actions - Always at bottom */}
-      <div className="flex gap-1 border-t pt-1.5">
-        {onChangeUrl && (
-          <Button
-            className="h-7 flex-1 text-xs"
-            onClick={onChangeUrl}
-            size="sm"
-            variant="ghost"
-          >
-            <Link2 className="mr-1.5 size-3" />
-            Change URL
-          </Button>
-        )}
-        <Button
-          className="h-7 flex-1 text-xs hover:bg-destructive/10 hover:text-destructive"
-          onClick={onClear}
-          size="sm"
-          variant="ghost"
-        >
-          <X className="mr-1.5 size-3" />
-          Eject
-        </Button>
-      </div>
+      <DeckFooterActions onChangeUrl={onChangeUrl} onClear={onClear} />
     </div>
   );
 }
@@ -316,6 +377,205 @@ function DeckControls({
           value={[volume]}
         />
       </div>
+    </div>
+  );
+}
+
+function DeckFooterActions({
+  onChangeUrl,
+  onClear,
+}: {
+  onChangeUrl?: () => void;
+  onClear: () => void;
+}) {
+  return (
+    <div className="flex gap-1 border-t pt-1.5">
+      {onChangeUrl && (
+        <Button
+          className="h-7 flex-1 text-xs"
+          onClick={onChangeUrl}
+          size="sm"
+          variant="ghost"
+        >
+          <Link2 className="mr-1.5 size-3" />
+          Change URL
+        </Button>
+      )}
+      <Button
+        className="h-7 flex-1 text-xs hover:bg-destructive/10 hover:text-destructive"
+        onClick={onClear}
+        size="sm"
+        variant="ghost"
+      >
+        <X className="mr-1.5 size-3" />
+        Eject
+      </Button>
+    </div>
+  );
+}
+
+type MobileDeckTabsProps = {
+  artist: string;
+  artworkUrl?: string;
+  className?: string;
+  currentTrackIndex: number;
+  effects: EffectConfig[];
+  formatTime: (seconds: number) => string;
+  hasTracklist: boolean;
+  isLoading: boolean;
+  isLive: boolean;
+  isPlaying: boolean;
+  metadata: PlatformMetadata | null;
+  onAddEffect?: (type: string) => void;
+  onChangeUrl?: () => void;
+  onClear: () => void;
+  onPlayPause: () => void;
+  onPlayTrack?: (streamUrl: string) => void;
+  onRemoveEffect?: (effectId: string) => void;
+  onReorderEffects?: (effectIds: string[]) => void;
+  onUpdateEffect?: (effectId: string, config: Partial<EffectConfig>) => void;
+  onVolumeChange: (value: number[]) => void;
+  progress: number;
+  radio: Radio;
+  title: string;
+  trackProgress?: {
+    position: number;
+    duration: number;
+  };
+  volume: number;
+};
+
+function MobileDeckTabs({
+  artist,
+  artworkUrl,
+  className,
+  currentTrackIndex,
+  effects,
+  formatTime,
+  hasTracklist,
+  isLoading,
+  isLive,
+  isPlaying,
+  metadata,
+  onAddEffect,
+  onChangeUrl,
+  onClear,
+  onPlayPause,
+  onPlayTrack,
+  onRemoveEffect,
+  onReorderEffects,
+  onUpdateEffect,
+  onVolumeChange,
+  progress,
+  radio,
+  title,
+  trackProgress,
+  volume,
+}: MobileDeckTabsProps) {
+  return (
+    <div className={cn("flex h-full min-h-0 flex-col", className)}>
+      <Tabs className="flex h-full min-h-0 flex-col" defaultValue="source">
+        <TabsList
+          className={cn(
+            "grid w-full",
+            hasTracklist ? "grid-cols-3" : "grid-cols-2"
+          )}
+        >
+          <TabsTrigger value="source">Source</TabsTrigger>
+          {hasTracklist && (
+            <TabsTrigger value="tracklist">Tracklist</TabsTrigger>
+          )}
+          <TabsTrigger value="effects">Effects</TabsTrigger>
+        </TabsList>
+
+        {/* Source Tab: Radio info + controls */}
+        <TabsContent
+          className="mt-3 flex min-h-0 flex-1 flex-col overflow-hidden"
+          value="source"
+        >
+          <div className="no-scrollbar flex min-h-0 flex-1 flex-col space-y-3 overflow-y-auto">
+            <DeckInfo
+              artist={artist}
+              artworkUrl={artworkUrl}
+              metadata={metadata}
+              radio={radio}
+              title={title}
+            />
+
+            <DeckProgress
+              formatTime={formatTime}
+              isLive={isLive}
+              metadata={metadata}
+              progress={progress}
+              trackProgress={trackProgress}
+            />
+
+            <DeckControls
+              isLoading={isLoading}
+              isPlaying={isPlaying}
+              onPlayPause={onPlayPause}
+              onVolumeChange={onVolumeChange}
+              volume={volume}
+            />
+
+            {/* Tracklist Snippet */}
+            {hasTracklist && metadata?.tracks && onPlayTrack && (
+              <PlaylistSnippet
+                artist={metadata.artist}
+                currentTrackIndex={currentTrackIndex}
+                onPlayTrack={onPlayTrack}
+                tracks={metadata.tracks}
+              />
+            )}
+          </div>
+        </TabsContent>
+
+        {/* Tracklist Tab */}
+        {hasTracklist && metadata?.tracks && onPlayTrack && (
+          <TabsContent
+            className="mt-3 flex min-h-0 flex-1 flex-col overflow-hidden"
+            value="tracklist"
+          >
+            <ScrollArea className="h-full min-h-0">
+              <div className="w-full pr-4">
+                <PlaylistView
+                  artist={metadata.artist}
+                  currentTrackIndex={currentTrackIndex}
+                  onPlayTrack={onPlayTrack}
+                  showFullList={true}
+                  tracks={metadata.tracks}
+                />
+              </div>
+            </ScrollArea>
+          </TabsContent>
+        )}
+
+        {/* Effects Tab: Effects only */}
+        <TabsContent
+          className="mt-3 flex min-h-0 flex-1 flex-col overflow-hidden"
+          value="effects"
+        >
+          {onAddEffect &&
+            onUpdateEffect &&
+            onRemoveEffect &&
+            onReorderEffects &&
+            onPlayTrack && (
+              <DeckSections
+                currentTrackIndex={currentTrackIndex}
+                effects={effects}
+                metadata={metadata}
+                onAddEffect={onAddEffect}
+                onPlayTrack={onPlayTrack}
+                onRemoveEffect={onRemoveEffect}
+                onReorderEffects={onReorderEffects}
+                onUpdateEffect={onUpdateEffect}
+              />
+            )}
+        </TabsContent>
+      </Tabs>
+
+      {/* Footer Actions - Always at bottom */}
+      <DeckFooterActions onChangeUrl={onChangeUrl} onClear={onClear} />
     </div>
   );
 }

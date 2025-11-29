@@ -114,10 +114,10 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
   };
 
   return (
-    <div className="mx-auto grid h-full min-h-0 w-full max-w-7xl grid-cols-1 gap-8 px-4 py-4 lg:grid-cols-2">
+    <div className="mx-auto grid h-full min-h-0 w-full max-w-7xl grid-cols-1 gap-4 px-4 py-4 lg:grid-cols-2 lg:gap-8">
       {/* Radio List */}
       <Card className="order-last flex min-h-0 flex-col lg:order-first">
-        <CardHeader>
+        <CardHeader className="hidden lg:block">
           <div className="flex items-center justify-between">
             <CardTitle>Radio Stations</CardTitle>
             <SettingsButton />
@@ -182,14 +182,11 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
 
       {/* Current Player */}
       <Card className="flex min-h-0 flex-col">
-        <CardHeader>
-          <CardTitle>Now Playing</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-1 flex-col space-y-6 px-8">
+        <CardContent className="flex flex-1 flex-col space-y-6 px-4 lg:px-8">
           {currentRadio ? (
-            <div className="flex min-h-[120px] min-w-xs items-center gap-6">
+            <div className="flex min-h-[120px] min-w-xs items-center gap-4 lg:gap-6">
               {/* Custom image container for better control */}
-              <div className="shrink-0 p-2">
+              <div className="shrink-0">
                 <RadioLogo
                   className="rounded-lg"
                   logoUrl={currentRadio.logoUrl}
@@ -215,30 +212,33 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
             <div className="text-destructive text-sm">Error: {error}</div>
           )}
 
-          {/* Player Controls */}
-          <div className="flex flex-col gap-6">
-            <div className="flex items-center justify-center gap-6">
-              <PlayPauseButton
-                disabled={!currentRadio || isLoading || isCrossfading}
-                isLoading={isLoading || isCrossfading}
-                isPlaying={isPlaying}
-                onClick={handlePlayPause}
-                variant={isPlaying && !isLoading ? "outline" : "default"}
-              />
-            </div>
+          {/* Player Controls - Compact on mobile, spacious on desktop */}
+          <div className="flex items-center gap-3 lg:flex-col lg:gap-6">
+            {/* Play/Pause Button - Smaller on mobile */}
+            <PlayPauseButton
+              className="size-10 shrink-0 lg:size-16"
+              disabled={!currentRadio || isLoading || isCrossfading}
+              iconClassName="size-6 lg:size-8"
+              isLoading={isLoading || isCrossfading}
+              isPlaying={isPlaying}
+              onClick={handlePlayPause}
+              size="sm"
+              variant={isPlaying && !isLoading ? "outline" : "default"}
+            />
 
-            {/* Volume Controls */}
-            <div className="flex items-center gap-8">
+            {/* Volume Controls - Flex row on mobile, full width on desktop */}
+            <div className="flex flex-1 items-center gap-2 lg:w-full lg:gap-4">
               <Button
-                className="size-10"
+                aria-label={isMuted ? "Unmute" : "Mute"}
+                className="size-8 shrink-0 lg:size-10"
                 onClick={handleMuteToggle}
                 size="sm"
                 variant="ghost"
               >
                 {isMuted ? (
-                  <VolumeX className="size-5" />
+                  <VolumeX className="size-4 lg:size-5" />
                 ) : (
-                  <Volume2 className="size-5" />
+                  <Volume2 className="size-4 lg:size-5" />
                 )}
               </Button>
               <div className="flex-1">

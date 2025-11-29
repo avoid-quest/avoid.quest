@@ -82,7 +82,7 @@ export function PlayPauseButton({
   return (
     <div className="flex flex-col items-center gap-2">
       {button}
-      {isLoading && showLoadingText && (
+      {isLoading.valueOf() && showLoadingText.valueOf() && (
         <div className="text-muted-foreground text-sm">{loadingText}</div>
       )}
     </div>

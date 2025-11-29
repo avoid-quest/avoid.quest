@@ -94,7 +94,7 @@ function SortableRadioItem({
         <div className="truncate font-medium text-sm">
           <RadioNameLink radio={radio} />
         </div>
-        {radio.description && (
+        {radio.description?.trim() !== "" && (
           <div className="line-clamp-1 text-muted-foreground text-xs">
             {radio.description}
           </div>
@@ -287,7 +287,7 @@ export function RadioManagement() {
       />
 
       {/* Delete Confirmation Dialog */}
-      {deleteConfirm && (
+      {deleteConfirm?.valueOf() && (
         <Dialog
           onOpenChange={() => setDeleteConfirm(null)}
           open={!!deleteConfirm}

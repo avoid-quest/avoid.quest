@@ -96,7 +96,7 @@ export function MultipleRadios({ radios }: { radios?: Radio[] }) {
       />
 
       {/* Delete Confirmation Dialog */}
-      {deleteConfirm && (
+      {deleteConfirm?.valueOf() && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
           <div className="fade-in zoom-in w-full max-w-md animate-in rounded-lg border bg-background p-6 shadow-xl duration-200">
             <h3 className="mb-2 font-semibold text-lg">Delete Radio Station</h3>

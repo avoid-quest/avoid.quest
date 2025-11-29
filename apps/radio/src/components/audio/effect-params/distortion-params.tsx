@@ -18,15 +18,15 @@ export function DistortionParams({ effect, onUpdate }: DistortionParamsProps) {
   const ranges = metadata?.parameterRanges ?? {};
   const defaultConfig = metadata?.defaultConfig;
   const disabled = !effect.enabled;
+  const amount =
+    defaultConfig?.valueOf() && "amount" in defaultConfig
+      ? (defaultConfig.amount as number)
+      : undefined;
 
   return (
     <div className="space-y-4">
       <ParamSlider
-        defaultValue={
-          defaultConfig && "amount" in defaultConfig
-            ? (defaultConfig.amount as number)
-            : undefined
-        }
+        defaultValue={amount}
         disabled={disabled}
         formatKey="default"
         formatter={(value) => `${Math.round(value)}%`}

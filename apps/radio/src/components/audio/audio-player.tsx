@@ -66,13 +66,13 @@ export function AudioPlayer({
         size="sm"
         variant="outline"
       >
-        {isLoading && <Spinner className="h-4 w-4" />}
-        {isPlaying && <Pause className="h-4 w-4" />}
+        {isLoading.valueOf() && <Spinner className="h-4 w-4" />}
+        {isPlaying.valueOf() && <Pause className="h-4 w-4" />}
         {!(isLoading || isPlaying) && <Play className="h-4 w-4" />}
       </Button>
 
       {/* Stop Button */}
-      {showStop && (
+      {showStop.valueOf() && (
         <Button
           className="min-w-[40px]"
           disabled={!radio || isLoading}
@@ -85,7 +85,7 @@ export function AudioPlayer({
       )}
 
       {/* Volume Control */}
-      {showVolume && (
+      {showVolume.valueOf() && (
         <div className="flex w-full min-w-[120px] items-center gap-2">
           <Button
             className="h-8 w-8 p-0"

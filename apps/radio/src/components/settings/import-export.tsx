@@ -200,13 +200,13 @@ export function ImportExport() {
                 </Button>
               </div>
 
-              {lastExportDate && (
+              {lastExportDate?.valueOf() && (
                 <div className="text-muted-foreground text-sm">
                   Last exported: {new Date(lastExportDate).toLocaleString()}
                 </div>
               )}
 
-              {shareUrl && (
+              {shareUrl?.trim() !== "" && (
                 <div className="space-y-2">
                   <Label htmlFor="share-url">Share URL:</Label>
                   <Input
@@ -285,7 +285,7 @@ export function ImportExport() {
           </div>
         </TabsContent>
 
-        {importPreview && (
+        {importPreview?.valueOf() && (
           <Card className="border-blue-200 bg-blue-50/50 p-6">
             <div className="space-y-4">
               <div className="flex items-center gap-2">

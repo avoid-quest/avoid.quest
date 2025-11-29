@@ -50,16 +50,16 @@ export function PlatformItemCard({
           <h4 className="font-medium text-sm leading-tight">
             {metadata.name || "Unknown"}
           </h4>
-          {metadata.artist && (
+          {metadata.artist?.trim() !== "" && (
             <p className="text-muted-foreground text-xs">{metadata.artist}</p>
           )}
         </div>
 
         {/* Collection Stats */}
-        {metadata.trackCount && metadata.trackCount > 1 && (
+        {metadata.trackCount?.valueOf() && metadata.trackCount > 1 && (
           <div className="flex items-center gap-3 text-muted-foreground text-xs">
             <span>{metadata.trackCount} tracks</span>
-            {metadata.duration && (
+            {metadata.duration?.valueOf() && (
               <>
                 <span>•</span>
                 <span>{formatPlatformDuration(metadata.duration)}</span>
@@ -70,7 +70,7 @@ export function PlatformItemCard({
 
         {/* Actions */}
         <div className="flex gap-2 pt-2">
-          {onChangeUrl && (
+          {onChangeUrl?.valueOf() && (
             <Button
               className="flex-1"
               onClick={onChangeUrl}
@@ -81,7 +81,7 @@ export function PlatformItemCard({
               Change URL
             </Button>
           )}
-          {metadata.url && (
+          {metadata.url?.trim() !== "" && (
             <Button onClick={handleOpenUrl} size="sm" variant="outline">
               <ExternalLink className="size-3" />
             </Button>

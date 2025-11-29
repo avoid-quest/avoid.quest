@@ -78,7 +78,7 @@ export function RadioGuidedForm({
         )}
       </Button>
 
-      {isLoading && (
+      {isLoading.valueOf() && (
         <div className="space-y-2">
           <p className="text-muted-foreground text-sm">
             Analyzing the website to find radio information...

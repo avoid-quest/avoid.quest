@@ -107,7 +107,7 @@ export function RadioItemActions({
           Copy Stream Link
         </DropdownMenuItem>
 
-        {radio.websiteUrl && (
+        {radio.websiteUrl?.trim() !== "" && (
           <DropdownMenuItem onClick={handleGoToWebsite}>
             <ExternalLink className="mr-2 size-4" />
             Go to Website
@@ -121,7 +121,7 @@ export function RadioItemActions({
           Edit
         </DropdownMenuItem>
 
-        {onToggle && (
+        {onToggle?.valueOf() && (
           <DropdownMenuItem disabled={isUpdating} onClick={handleToggle}>
             {radio.enabled ? (
               <>

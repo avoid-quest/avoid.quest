@@ -158,7 +158,7 @@ function DjPlayerDragOverlay({ activeDragRadio }: DjPlayerDragOverlayProps) {
         />
         <div>
           <div className="font-medium">{activeDragRadio.name}</div>
-          {activeDragRadio.description && (
+          {activeDragRadio.description?.trim() !== "" && (
             <div className="text-muted-foreground text-sm">
               {activeDragRadio.description}
             </div>

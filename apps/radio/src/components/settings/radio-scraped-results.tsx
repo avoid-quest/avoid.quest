@@ -122,7 +122,7 @@ export function RadioScrapedResults({
               {option.label}
             </Label>
             <div className="flex shrink-0 items-center gap-2">
-              {option.preview && field === "logoUrl" && (
+              {option.preview?.trim() !== "" && field === "logoUrl" && (
                 <div className="group relative">
                   <button
                     className="flex h-10 w-10 items-center justify-center rounded border bg-muted/50 transition-colors hover:bg-muted/80"
@@ -197,7 +197,7 @@ export function RadioScrapedResults({
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <Label className="font-medium text-sm">{fieldLabel}</Label>
-          {hasCustomInput && (
+          {hasCustomInput.valueOf() && (
             <div className="flex items-center gap-2">
               <Label className="text-muted-foreground text-xs">Custom:</Label>
               {field === "name" ? (
@@ -241,7 +241,7 @@ export function RadioScrapedResults({
         </RadioGroup>
 
         {/* Selected option preview */}
-        {selectedValue && (
+        {selectedValue?.trim() !== "" && (
           <div className="mt-2 rounded-md border bg-muted/30 p-3">
             <div className="mb-2 flex items-center gap-2">
               <div className="h-2 w-2 rounded-full bg-primary" />

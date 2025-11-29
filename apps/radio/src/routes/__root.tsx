@@ -111,7 +111,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
             <Toaster />
           </div>
         </ThemeProvider>
-        {import.meta.env.DEV && (
+        {process.env.NODE_ENV === "development" && (
           <TanStackDevtools
             config={{
               position: "bottom-right",

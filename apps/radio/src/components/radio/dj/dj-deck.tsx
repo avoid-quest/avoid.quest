@@ -27,7 +27,7 @@ import {
   RefreshCw,
   Volume2,
 } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useShallow } from "zustand/react/shallow";
 import { isPlatformRadio } from "@/lib/external-url";
@@ -153,6 +153,15 @@ export function DjDeck({ className, deckId, radios = [] }: DjDeckProps) {
     handleLoadPlatformItem(newRadio);
   };
 
+  const handleChangeUrl = useCallback(() => {
+    setIsChangingUrl(true);
+  }, []);
+
+  const onChangeUrl = useMemo(
+    () => (radio && isPlatformRadio(radio) ? handleChangeUrl : undefined),
+    [radio, handleChangeUrl]
+  );
+
   let content: React.ReactNode;
 
   if (radio) {
@@ -175,9 +184,7 @@ export function DjDeck({ className, deckId, radios = [] }: DjDeckProps) {
           isPlaying={isPlaying}
           metadata={metadata || radio.platformMetadata}
           onAddEffect={addEffect}
-          onChangeUrl={
-            isPlatformRadio(radio) ? () => setIsChangingUrl(true) : undefined
-          }
+          onChangeUrl={onChangeUrl}
           onClear={handleClear}
           onPlayPause={handlePlayPause}
           onPlayTrack={handleLoadTrack}
@@ -334,13 +341,13 @@ function DeckHeader({ deckId, radio, onReset }: DeckHeaderProps) {
               <MoreHorizontal className="size-4" />
             </Button>
           </DropdownMenuTrigger>
-          {radio && (
+          {radio?.valueOf() && (
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={handleCopyStreamLink}>
                 <Copy className="mr-2 size-4" />
                 Copy Stream Link
               </DropdownMenuItem>
-              {radio.websiteUrl && (
+              {radio.websiteUrl?.trim() !== "" && (
                 <DropdownMenuItem onClick={handleGoToWebsite}>
                   <ExternalLink className="mr-2 size-4" />
                   Go to Website

@@ -130,7 +130,10 @@ export function PlatformForm({
               }}
               onPaste={(e) => {
                 const pastedText = e.clipboardData.getData("text");
-                if (pastedText && detectPlatformFromUrl(pastedText)) {
+                if (
+                  pastedText?.valueOf()?.trim() !== "" &&
+                  detectPlatformFromUrl(pastedText)
+                ) {
                   e.preventDefault();
                   setUrl(pastedText.trim());
                   setError(null);
@@ -148,7 +151,7 @@ export function PlatformForm({
             <p className="text-muted-foreground text-xs">
               {getUrlExample(selectedPlatform)}
             </p>
-            {detectedPlatform && (
+            {detectedPlatform?.valueOf() && (
               <p className="text-primary text-xs">
                 Detected:{" "}
                 {detectedPlatform === "bandcamp" ? "Bandcamp" : "SoundCloud"}
@@ -156,14 +159,14 @@ export function PlatformForm({
             )}
           </div>
 
-          {error && (
+          {error?.trim() !== "" && (
             <div className="rounded-md bg-destructive/10 p-3">
               <p className="text-destructive text-sm">{error}</p>
             </div>
           )}
 
           <div className="flex gap-2">
-            {onCancel && (
+            {onCancel?.valueOf() && (
               <Button
                 className="flex-1"
                 onClick={onCancel}
@@ -178,7 +181,9 @@ export function PlatformForm({
               disabled={isLoading || !url.trim()}
               type="submit"
             >
-              {isLoading && <Loader2 className="mr-2 size-4 animate-spin" />}
+              {isLoading.valueOf() && (
+                <Loader2 className="mr-2 size-4 animate-spin" />
+              )}
               {editMode ? "Update" : "Load"}
             </Button>
           </div>

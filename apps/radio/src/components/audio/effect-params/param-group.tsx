@@ -10,7 +10,7 @@ type ParamGroupProps = {
 export function ParamGroup({ title, children, className }: ParamGroupProps) {
   return (
     <div className={cn("space-y-4", className)}>
-      {title && (
+      {title?.trim() !== "" && (
         <>
           <div className="font-medium text-muted-foreground text-xs uppercase tracking-wider">
             {title}

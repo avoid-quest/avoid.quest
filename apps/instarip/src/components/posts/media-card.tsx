@@ -94,7 +94,7 @@ export default function MediaCard({
             media.url ? renderCarouselItem(media, index) : null
           )}
         </CarouselContent>
-        {hasMultiple && (
+        {hasMultiple.valueOf() && (
           <>
             <CarouselPrevious
               className="left-2 transition-transform hover:scale-110"
@@ -293,6 +293,7 @@ function ImageComponent({
   height?: number;
   width?: number;
 }) {
+  const quality = isViewer ? QUALITY_HIGH : QUALITY_LOW;
   return (
     <Image
       alt={alt}
@@ -303,7 +304,7 @@ function ImageComponent({
       height={height}
       loading="lazy"
       onError={onError}
-      quality={isViewer ? QUALITY_HIGH : QUALITY_LOW}
+      quality={quality}
       src={src}
       width={width}
     />

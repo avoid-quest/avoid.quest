@@ -81,6 +81,8 @@ export function getPlatformFromItem(radio: Radio): Platform | null {
 function RadioItemContent({ radio }: { radio: Radio }) {
   const isPlatform = isPlatformItem(radio);
   const platform = getPlatformFromItem(radio);
+  const platformColor =
+    platform?.valueOf() === "bandcamp" ? BANDCAMP_COLOR : SOUNDCLOUD_COLOR;
 
   return (
     <div className="flex min-w-0 flex-1 items-center gap-3">
@@ -89,17 +91,13 @@ function RadioItemContent({ radio }: { radio: Radio }) {
           <div
             className="flex size-10 items-center justify-center rounded"
             style={{
-              backgroundColor:
-                platform === "bandcamp"
-                  ? `${BANDCAMP_COLOR}1a`
-                  : `${SOUNDCLOUD_COLOR}1a`,
+              backgroundColor: `${platformColor}1a`,
             }}
           >
             <Music
               className="size-5"
               style={{
-                color:
-                  platform === "bandcamp" ? BANDCAMP_COLOR : SOUNDCLOUD_COLOR,
+                color: platformColor,
               }}
             />
           </div>
@@ -116,7 +114,7 @@ function RadioItemContent({ radio }: { radio: Radio }) {
         <h3 className="truncate font-medium text-sm">
           {isPlatform ? radio.name : <RadioNameLink radio={radio} />}
         </h3>
-        {radio.description && (
+        {radio.description?.trim() !== "" && (
           <p className="truncate text-muted-foreground text-xs">
             {radio.description}
           </p>

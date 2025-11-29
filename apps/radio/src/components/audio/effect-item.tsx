@@ -63,9 +63,9 @@ export function EffectItem({
     <Card
       className={cn(
         "w-full gap-0 border py-0 transition-all duration-200",
-        isDragging && "scale-[0.98] opacity-50 shadow-lg",
-        effect.enabled && "border-primary/20 bg-primary/5",
-        isExpanded && "shadow-md"
+        isDragging.valueOf() && "scale-[0.98] opacity-50 shadow-lg",
+        effect.enabled.valueOf() && "border-primary/20 bg-primary/5",
+        isExpanded.valueOf() && "shadow-md"
       )}
       ref={setNodeRef}
       style={style}
@@ -76,7 +76,7 @@ export function EffectItem({
           <div
             className={cn(
               "cursor-grab touch-manipulation rounded-md p-1.5 text-muted-foreground transition-all hover:bg-muted/60 hover:text-foreground active:cursor-grabbing",
-              isDragging && "bg-primary/20 text-primary"
+              isDragging.valueOf() && "bg-primary/20 text-primary"
             )}
             style={{
               touchAction: "none",
@@ -125,7 +125,7 @@ export function EffectItem({
           <Toggle
             className={cn(
               "transition-all",
-              effect.enabled && "bg-primary text-primary-foreground"
+              effect.enabled.valueOf() && "bg-primary text-primary-foreground"
             )}
             onPressedChange={handleEnabledChange}
             pressed={effect.enabled}
@@ -153,7 +153,7 @@ export function EffectItem({
         </div>
       </CardHeader>
 
-      {isExpanded && (
+      {isExpanded.valueOf() && (
         <CardContent className="border-t bg-muted/30 pt-4 pb-4">
           <EffectParams effect={effect} onUpdate={onUpdate} />
         </CardContent>

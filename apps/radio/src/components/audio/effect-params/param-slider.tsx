@@ -31,6 +31,9 @@ export function ParamSlider({
     ? formatter(value)
     : formatParam(formatKey, value, formatter);
 
+  const defaultValueArray =
+    defaultValue?.valueOf() !== undefined ? [defaultValue] : undefined;
+
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
@@ -41,7 +44,7 @@ export function ParamSlider({
       </div>
       <Slider
         className="w-full"
-        defaultValue={defaultValue !== undefined ? [defaultValue] : undefined}
+        defaultValue={defaultValueArray}
         disabled={disabled}
         max={max}
         min={min}

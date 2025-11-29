@@ -33,7 +33,7 @@ export default function PostDetailsWrapper({
           </p>
         </div>
         {/* Caption */}
-        {postData.caption && (
+        {postData.caption?.trim() !== "" && (
           <div className="rounded-lg border bg-card p-4">
             <h3 className="mb-3 font-medium text-muted-foreground text-sm">
               Caption
@@ -48,7 +48,7 @@ export default function PostDetailsWrapper({
         <div className="space-y-3">
           <h3 className="font-medium text-muted-foreground text-sm">Actions</h3>
           <div className="flex flex-col gap-2">
-            {postData.url && (
+            {postData.url?.trim() !== "" && (
               <Link
                 href={{
                   href: postData.url,
@@ -66,7 +66,7 @@ export default function PostDetailsWrapper({
                 </Button>
               </Link>
             )}
-            {postData.video_url && isVideo && (
+            {postData.video_url?.trim() !== "" && isVideo.valueOf() && (
               <Link
                 href={{
                   href: postData.video_url,

@@ -89,22 +89,22 @@ export function PlaylistSnippet({
         </Button>
       </div>
 
-      {isExpanded && (
+      {isExpanded.valueOf() && (
         <>
           {/* Current Track Info */}
-          {currentTrack && (
+          {currentTrack?.valueOf() && (
             <div className="rounded-md border bg-muted/30 p-2">
               <div className="flex items-center justify-between gap-2">
                 <div className="min-w-0 flex-1">
                   <div className="truncate font-medium text-sm">
                     {currentTrack.name}
                   </div>
-                  {artist && (
+                  {artist?.trim() !== "" && (
                     <div className="truncate text-muted-foreground text-xs">
                       {artist}
                     </div>
                   )}
-                  {currentTrack.duration && (
+                  {currentTrack.duration?.valueOf() && (
                     <div className="text-muted-foreground text-xs">
                       {formatDuration(currentTrack.duration)}
                     </div>
@@ -197,7 +197,7 @@ export function PlaylistView({
                   <div className="truncate font-medium text-sm">
                     {track.name}
                   </div>
-                  {track.duration && (
+                  {track.duration?.valueOf() && (
                     <div className="text-muted-foreground text-xs">
                       {formatDuration(track.duration)}
                     </div>
@@ -231,7 +231,7 @@ export function PlaylistView({
       </div>
 
       {/* Expanded Track List */}
-      {isExpanded && tracks.length > 1 && (
+      {isExpanded.valueOf() && tracks.length > 1 && (
         <div className="h-48 overflow-y-auto rounded-md border">
           <div className="space-y-1 p-2">
             {tracks.map((track, index) => (
@@ -257,7 +257,7 @@ export function PlaylistView({
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm">{track.name}</div>
-                  {track.duration && (
+                  {track.duration?.valueOf() && (
                     <div className="text-muted-foreground text-xs">
                       {formatDuration(track.duration)}
                     </div>

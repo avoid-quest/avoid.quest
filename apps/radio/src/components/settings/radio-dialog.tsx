@@ -135,7 +135,7 @@ export function RadioDialog({
             onError={handleError}
             onScrapedData={handleScrapedData}
           />
-          {error && (
+          {error?.trim() !== "" && (
             <div className="rounded-md bg-destructive/10 p-3">
               <p className="text-destructive text-sm">{error}</p>
             </div>

@@ -137,7 +137,7 @@ export function RotaryKnob({
 
   return (
     <div className={cn("flex flex-col items-center gap-3", className)}>
-      {label && (
+      {label?.trim() !== "" && (
         // biome-ignore lint/a11y/noLabelWithoutControl: just a label
         <label className="font-medium text-muted-foreground text-xs uppercase tracking-wider">
           {label}
@@ -172,7 +172,7 @@ export function RotaryKnob({
 
         <div className="absolute inset-[30%] rounded-full border border-border/50 bg-background shadow-sm" />
       </div>
-      {showValue && (
+      {showValue.valueOf() && (
         <div className="font-medium font-mono text-foreground text-sm tabular-nums">
           {currentValue.toFixed(step < 1 ? 1 : 0)}
         </div>

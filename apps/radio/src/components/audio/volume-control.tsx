@@ -68,9 +68,13 @@ export function VolumeControl({
         className
       )}
     >
-      {showIcon && (
+      {showIcon.valueOf() && (
         <Button
-          className={cn("p-0", sizeClasses[size], showMute && "hover:bg-muted")}
+          className={cn(
+            "p-0",
+            sizeClasses[size],
+            showMute.valueOf() && "hover:bg-muted"
+          )}
           onClick={handleMute}
           size="sm"
           variant="ghost"

@@ -124,7 +124,7 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
           </div>
         </CardHeader>
         <CardContent className="flex min-h-0 flex-col p-0">
-          {radios && radios.length > 0 ? (
+          {radios?.valueOf() && radios.length > 0 ? (
             <ItemGroup className="flex-1 overflow-y-auto py-4">
               {radios.map((radio) => (
                 <Item
@@ -147,7 +147,7 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
                     <ItemTitle>
                       <RadioNameLink radio={radio} />
                     </ItemTitle>
-                    {radio.description && (
+                    {radio.description?.trim() !== "" && (
                       <ItemDescription>{radio.description}</ItemDescription>
                     )}
                   </ItemContent>
@@ -196,7 +196,7 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
               </div>
               <ItemContent>
                 <ItemTitle className="text-xl">{currentRadio.name}</ItemTitle>
-                {currentRadio.description && (
+                {currentRadio.description?.trim() !== "" && (
                   <ItemDescription>{currentRadio.description}</ItemDescription>
                 )}
               </ItemContent>
@@ -208,7 +208,7 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
           )}
 
           {/* Error Display */}
-          {error && (
+          {error?.trim() !== "" && (
             <div className="text-destructive text-sm">Error: {error}</div>
           )}
 
@@ -223,7 +223,11 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
               isPlaying={isPlaying}
               onClick={handlePlayPause}
               size="sm"
-              variant={isPlaying && !isLoading ? "outline" : "default"}
+              variant={
+                isPlaying.valueOf() && !isLoading.valueOf()
+                  ? "outline"
+                  : "default"
+              }
             />
 
             {/* Volume Controls - Flex row on mobile, full width on desktop */}
@@ -249,7 +253,7 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
                   min={0}
                   onValueChange={handleVolumeChange}
                   step={0.1}
-                  value={[isMuted ? 0 : volume]}
+                  value={[isMuted.valueOf() ? 0 : volume.valueOf()]}
                 />
               </div>
             </div>
@@ -265,7 +269,7 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
       />
 
       {/* Delete Confirmation Dialog */}
-      {deleteConfirm && (
+      {deleteConfirm?.valueOf() && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="max-w-md rounded-lg border bg-background p-6">
             <h3 className="mb-2 font-semibold text-lg">Delete Radio Station</h3>

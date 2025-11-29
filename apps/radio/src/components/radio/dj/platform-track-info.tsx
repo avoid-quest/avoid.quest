@@ -25,8 +25,10 @@ export function PlatformTrackInfo({
       <div className="font-medium text-muted-foreground text-xs">
         Track Info
       </div>
-      {artist && <div className="text-muted-foreground text-xs">{artist}</div>}
-      {albumName && (
+      {artist?.trim() !== "" && (
+        <div className="text-muted-foreground text-xs">{artist}</div>
+      )}
+      {albumName?.trim() !== "" && (
         <div className="text-muted-foreground text-xs">{albumName}</div>
       )}
       {duration !== undefined && (

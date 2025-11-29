@@ -82,11 +82,11 @@ export function EffectChain({
 
   return (
     <div className="space-y-2">
-      {title && (
+      {title?.trim() !== "" && (
         <div className="font-medium text-muted-foreground text-sm">{title}</div>
       )}
 
-      {showEffectsList && (
+      {showEffectsList.valueOf() && (
         <DndContext
           collisionDetection={closestCenter}
           onDragEnd={handleDragEnd}
@@ -116,7 +116,7 @@ export function EffectChain({
         </DndContext>
       )}
 
-      {showAddButton && (
+      {showAddButton.valueOf() && (
         <>
           <Button
             className="w-full"
@@ -128,7 +128,7 @@ export function EffectChain({
             Add Effect
           </Button>
 
-          {showPicker && (
+          {showPicker.valueOf() && (
             <EffectPicker
               onClose={() => setShowPicker(false)}
               onSelect={handleAddEffect}

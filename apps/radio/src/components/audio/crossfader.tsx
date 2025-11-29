@@ -44,7 +44,7 @@ export function Crossfader({
 
   return (
     <div className={cn("flex flex-col gap-2", className)}>
-      {showLabels && (
+      {showLabels.valueOf() && (
         <div className="flex justify-between text-muted-foreground text-xs">
           <span>{leftLabel}</span>
           <span>{rightLabel}</span>

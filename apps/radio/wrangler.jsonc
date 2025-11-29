@@ -5,7 +5,7 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "radio",
-	"compatibility_date": "2025-10-25",
+	"compatibility_date": "2025-11-17",
 	"compatibility_flags": [
 		"nodejs_compat",
 		"enable_nodejs_http_modules"

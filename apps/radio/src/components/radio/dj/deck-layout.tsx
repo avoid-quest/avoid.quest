@@ -187,17 +187,19 @@ export function DeckLayout({
         />
 
         {/* Tracklist Snippet */}
-        {hasTracklist && metadata?.tracks && onPlayTrack && (
-          <PlaylistSnippet
-            artist={metadata.artist}
-            currentTrackIndex={currentTrackIndex}
-            onPlayTrack={onPlayTrack}
-            tracks={metadata.tracks}
-          />
-        )}
+        {hasTracklist.valueOf() &&
+          metadata?.tracks &&
+          onPlayTrack?.valueOf() && (
+            <PlaylistSnippet
+              artist={metadata.artist}
+              currentTrackIndex={currentTrackIndex}
+              onPlayTrack={onPlayTrack}
+              tracks={metadata.tracks}
+            />
+          )}
 
         {/* Deck Sections: Now Playing, Effects, Tracklist */}
-        {onAddEffect &&
+        {onAddEffect?.valueOf() &&
           onUpdateEffect &&
           onRemoveEffect &&
           onReorderEffects &&
@@ -253,7 +255,7 @@ function DeckInfo({
           </div>
         )}
 
-        {metadata?.platform && (
+        {metadata?.platform?.valueOf() && (
           <div className="absolute right-0 bottom-0 left-0 bg-black/60 px-1 py-0.5 text-center font-medium text-[9px] text-white uppercase tracking-wider backdrop-blur-sm">
             {metadata.platform}
           </div>
@@ -271,10 +273,10 @@ function DeckInfo({
           {artist}
         </p>
 
-        {metadata?.url && (
+        {metadata?.url?.trim() !== "" && (
           <a
             className="mt-1 inline-flex items-center gap-1 text-primary text-xs hover:underline"
-            href={metadata.url}
+            href={metadata?.url}
             rel="noopener noreferrer"
             target="_blank"
           >
@@ -317,7 +319,7 @@ function DeckProgress({
           </div>
         </div>
       ) : (
-        trackProgress &&
+        trackProgress?.valueOf() &&
         trackProgress.duration > 0 && (
           <>
             <div className="h-1.5 w-full overflow-hidden rounded-full bg-secondary">
@@ -390,7 +392,7 @@ function DeckFooterActions({
 }) {
   return (
     <div className="flex gap-1 border-t pt-1.5">
-      {onChangeUrl && (
+      {onChangeUrl?.valueOf() && (
         <Button
           className="h-7 flex-1 text-xs"
           onClick={onChangeUrl}
@@ -482,7 +484,7 @@ function MobileDeckTabs({
           )}
         >
           <TabsTrigger value="source">Source</TabsTrigger>
-          {hasTracklist && (
+          {hasTracklist.valueOf() && (
             <TabsTrigger value="tracklist">Tracklist</TabsTrigger>
           )}
           <TabsTrigger value="effects">Effects</TabsTrigger>
@@ -519,43 +521,46 @@ function MobileDeckTabs({
             />
 
             {/* Tracklist Snippet */}
-            {hasTracklist && metadata?.tracks && onPlayTrack && (
-              <PlaylistSnippet
-                artist={metadata.artist}
-                currentTrackIndex={currentTrackIndex}
-                onPlayTrack={onPlayTrack}
-                tracks={metadata.tracks}
-              />
-            )}
+            {hasTracklist.valueOf() &&
+              metadata?.tracks &&
+              onPlayTrack?.valueOf() && (
+                <PlaylistSnippet
+                  artist={metadata.artist}
+                  currentTrackIndex={currentTrackIndex}
+                  onPlayTrack={onPlayTrack}
+                  tracks={metadata.tracks}
+                />
+              )}
           </div>
         </TabsContent>
 
         {/* Tracklist Tab */}
-        {hasTracklist && metadata?.tracks && onPlayTrack && (
-          <TabsContent
-            className="mt-3 flex min-h-0 flex-1 flex-col overflow-hidden"
-            value="tracklist"
-          >
-            <ScrollArea className="h-full min-h-0">
-              <div className="w-full pr-4">
-                <PlaylistView
-                  artist={metadata.artist}
-                  currentTrackIndex={currentTrackIndex}
-                  onPlayTrack={onPlayTrack}
-                  showFullList={true}
-                  tracks={metadata.tracks}
-                />
-              </div>
-            </ScrollArea>
-          </TabsContent>
-        )}
+        {hasTracklist.valueOf() &&
+          metadata?.tracks &&
+          onPlayTrack?.valueOf() && (
+            <TabsContent
+              className="mt-3 flex min-h-0 flex-1 flex-col overflow-hidden"
+              value="tracklist"
+            >
+              <ScrollArea className="h-full min-h-0">
+                <div className="w-full pr-4">
+                  <PlaylistView
+                    currentTrackIndex={currentTrackIndex}
+                    onPlayTrack={onPlayTrack}
+                    showFullList={true}
+                    tracks={metadata.tracks}
+                  />
+                </div>
+              </ScrollArea>
+            </TabsContent>
+          )}
 
         {/* Effects Tab: Effects only */}
         <TabsContent
           className="mt-3 flex min-h-0 flex-1 flex-col overflow-hidden"
           value="effects"
         >
-          {onAddEffect &&
+          {onAddEffect?.valueOf() &&
             onUpdateEffect &&
             onRemoveEffect &&
             onReorderEffects &&

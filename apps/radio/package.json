@@ -11,6 +11,7 @@
     "serve": "vite preview",
     "test": "vitest run",
     "cf-deploy": "wrangler deploy",
+    "cf-upload": "wrangler versions upload",
     "preview": "vite preview",
     "cf-typegen": "wrangler types --env-interface CloudflareEnv ./cloudflare-env.d.ts"
   },

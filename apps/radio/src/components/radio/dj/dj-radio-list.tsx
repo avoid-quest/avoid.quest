@@ -30,6 +30,9 @@ type DjRadioListProps = {
 const BANDCAMP_PLATFORM_ID = -1;
 const SOUNDCLOUD_PLATFORM_ID = -2;
 
+const BANDCAMP_COLOR = "#629aa0";
+const SOUNDCLOUD_COLOR = "#ff7700";
+
 // Platform-specific placeholder items
 const PLATFORM_ITEMS: Radio[] = [
   {
@@ -83,14 +86,20 @@ function RadioItemContent({ radio }: { radio: Radio }) {
       <div className="shrink-0">
         {isPlatform ? (
           <div
-            className={`flex size-10 items-center justify-center rounded ${
-              platform === "bandcamp" ? "bg-[#629aa0]/10" : "bg-[#ff7700]/10"
-            }`}
+            className="flex size-10 items-center justify-center rounded"
+            style={{
+              backgroundColor:
+                platform === "bandcamp"
+                  ? `${BANDCAMP_COLOR}1a`
+                  : `${SOUNDCLOUD_COLOR}1a`,
+            }}
           >
             <Music
-              className={`size-5 ${
-                platform === "bandcamp" ? "text-[#629aa0]" : "text-[#ff7700]"
-              }`}
+              className="size-5"
+              style={{
+                color:
+                  platform === "bandcamp" ? BANDCAMP_COLOR : SOUNDCLOUD_COLOR,
+              }}
             />
           </div>
         ) : (
@@ -175,10 +184,12 @@ function DraggableRadioItem({ radio }: DraggableRadioItemProps) {
 }
 
 function MobileRadioItem({ radio }: { radio: Radio }) {
-  const setLeftRadio = useDjStore((state) => state.setLeftRadio);
-  const setRightRadio = useDjStore((state) => state.setRightRadio);
-  const setPendingPlatformItem = useDjStore(
-    (state) => state.setPendingPlatformItem
+  const { setLeftRadio, setRightRadio, setPendingPlatformItem } = useDjStore(
+    (state) => ({
+      setLeftRadio: state.setLeftRadio,
+      setRightRadio: state.setRightRadio,
+      setPendingPlatformItem: state.setPendingPlatformItem,
+    })
   );
 
   const handleLoad = (deckId: "left-deck" | "right-deck") => {
@@ -233,29 +244,20 @@ export function DjRadioList({ radios }: DjRadioListProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState("radios");
 
-  // Filter radios by search query
-  const filteredRadios = radios.filter((radio) => {
-    if (!searchQuery.trim()) {
-      return true;
-    }
-    const query = searchQuery.toLowerCase();
-    return (
-      radio.name.toLowerCase().includes(query) ||
-      radio.description?.toLowerCase().includes(query)
-    );
-  });
+  const filterBySearchQuery = (items: Radio[]) =>
+    items.filter((item) => {
+      if (!searchQuery.trim()) {
+        return true;
+      }
+      const query = searchQuery.toLowerCase();
+      return (
+        item.name.toLowerCase().includes(query) ||
+        item.description?.toLowerCase().includes(query)
+      );
+    });
 
-  // Filter platform items by search query
-  const filteredPlatformItems = PLATFORM_ITEMS.filter((item) => {
-    if (!searchQuery.trim()) {
-      return true;
-    }
-    const query = searchQuery.toLowerCase();
-    return (
-      item.name.toLowerCase().includes(query) ||
-      item.description?.toLowerCase().includes(query)
-    );
-  });
+  const filteredRadios = filterBySearchQuery(radios);
+  const filteredPlatformItems = filterBySearchQuery(PLATFORM_ITEMS);
 
   const renderRadioList = (itemsToRender: Radio[]) => {
     if (itemsToRender.length === 0) {

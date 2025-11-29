@@ -17,6 +17,7 @@ import {
   Volume2,
 } from "lucide-react";
 import { useState } from "react";
+import { useShallow } from "zustand/react/shallow";
 import type { Platform } from "@/lib/external-url/types";
 import { useDjStore } from "@/lib/stores/dj-store";
 import type { Radio } from "@/lib/types";
@@ -185,11 +186,11 @@ function DraggableRadioItem({ radio }: DraggableRadioItemProps) {
 
 function MobileRadioItem({ radio }: { radio: Radio }) {
   const { setLeftRadio, setRightRadio, setPendingPlatformItem } = useDjStore(
-    (state) => ({
+    useShallow((state) => ({
       setLeftRadio: state.setLeftRadio,
       setRightRadio: state.setRightRadio,
       setPendingPlatformItem: state.setPendingPlatformItem,
-    })
+    }))
   );
 
   const handleLoad = (deckId: "left-deck" | "right-deck") => {

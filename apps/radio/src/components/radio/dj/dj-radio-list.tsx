@@ -27,10 +27,13 @@ type DjRadioListProps = {
   radios: Radio[];
 };
 
+const BANDCAMP_PLATFORM_ID = -1;
+const SOUNDCLOUD_PLATFORM_ID = -2;
+
 // Platform-specific placeholder items
 const PLATFORM_ITEMS: Radio[] = [
   {
-    id: -1, // Special ID for Bandcamp
+    id: BANDCAMP_PLATFORM_ID,
     name: "Bandcamp",
     streamUrl: "",
     description: "Paste a Bandcamp URL (album, track, or artist)",
@@ -42,7 +45,7 @@ const PLATFORM_ITEMS: Radio[] = [
     },
   },
   {
-    id: -2, // Special ID for SoundCloud
+    id: SOUNDCLOUD_PLATFORM_ID,
     name: "SoundCloud",
     streamUrl: "",
     description: "Paste a SoundCloud URL (track, playlist, or user)",
@@ -56,17 +59,61 @@ const PLATFORM_ITEMS: Radio[] = [
 ];
 
 export function isPlatformItem(radio: Radio): boolean {
-  return radio.id === -1 || radio.id === -2;
+  return (
+    radio.id === BANDCAMP_PLATFORM_ID || radio.id === SOUNDCLOUD_PLATFORM_ID
+  );
 }
 
 export function getPlatformFromItem(radio: Radio): Platform | null {
-  if (radio.id === -1) {
+  if (radio.id === BANDCAMP_PLATFORM_ID) {
     return "bandcamp";
   }
-  if (radio.id === -2) {
+  if (radio.id === SOUNDCLOUD_PLATFORM_ID) {
     return "soundcloud";
   }
   return radio.platformMetadata?.platform || null;
+}
+
+function RadioItemContent({ radio }: { radio: Radio }) {
+  const isPlatform = isPlatformItem(radio);
+  const platform = getPlatformFromItem(radio);
+
+  return (
+    <div className="flex min-w-0 flex-1 items-center gap-3">
+      <div className="shrink-0">
+        {isPlatform ? (
+          <div
+            className={`flex size-10 items-center justify-center rounded ${
+              platform === "bandcamp" ? "bg-[#629aa0]/10" : "bg-[#ff7700]/10"
+            }`}
+          >
+            <Music
+              className={`size-5 ${
+                platform === "bandcamp" ? "text-[#629aa0]" : "text-[#ff7700]"
+              }`}
+            />
+          </div>
+        ) : (
+          <RadioLogo
+            fallbackIcon={<Volume2 className="size-4 text-muted-foreground" />}
+            logoUrl={radio.logoUrl}
+            name={radio.name}
+            size="md"
+          />
+        )}
+      </div>
+      <div className="min-w-0 flex-1">
+        <h3 className="truncate font-medium text-sm">
+          {isPlatform ? radio.name : <RadioNameLink radio={radio} />}
+        </h3>
+        {radio.description && (
+          <p className="truncate text-muted-foreground text-xs">
+            {radio.description}
+          </p>
+        )}
+      </div>
+    </div>
+  );
 }
 
 type DraggableRadioItemProps = {
@@ -87,7 +134,6 @@ function DraggableRadioItem({ radio }: DraggableRadioItemProps) {
     : undefined;
 
   const isPlatform = isPlatformItem(radio);
-  const platform = getPlatformFromItem(radio);
 
   return (
     <div
@@ -123,44 +169,7 @@ function DraggableRadioItem({ radio }: DraggableRadioItemProps) {
       </div>
 
       {/* Radio Content - Not draggable, allows normal interaction */}
-      <div className="flex min-w-0 flex-1 items-center gap-3">
-        <div className="shrink-0">
-          {isPlatform ? (
-            <div
-              className={`flex size-10 items-center justify-center rounded ${
-                platform === "bandcamp" ? "bg-[#629aa0]/10" : "bg-[#ff7700]/10"
-              }`}
-            >
-              <Music
-                className={`size-5 ${
-                  platform === "bandcamp" ? "text-[#629aa0]" : "text-[#ff7700]"
-                }`}
-              />
-            </div>
-          ) : (
-            <RadioLogo
-              fallbackIcon={
-                <Volume2 className="size-4 text-muted-foreground" />
-              }
-              logoUrl={radio.logoUrl}
-              name={radio.name}
-              size="md"
-            />
-          )}
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center justify-between gap-2">
-            <h3 className="truncate font-medium text-sm">
-              {isPlatform ? radio.name : <RadioNameLink radio={radio} />}
-            </h3>
-          </div>
-          {radio.description && (
-            <p className="truncate text-muted-foreground text-xs">
-              {radio.description}
-            </p>
-          )}
-        </div>
-      </div>
+      <RadioItemContent radio={radio} />
     </div>
   );
 }
@@ -172,10 +181,9 @@ function MobileRadioItem({ radio }: { radio: Radio }) {
     (state) => state.setPendingPlatformItem
   );
 
-  const isPlatform = isPlatformItem(radio);
-  const platform = getPlatformFromItem(radio);
-
   const handleLoad = (deckId: "left-deck" | "right-deck") => {
+    const isPlatform = isPlatformItem(radio);
+    const platform = getPlatformFromItem(radio);
     if (isPlatform) {
       if (platform) {
         setPendingPlatformItem({
@@ -192,47 +200,11 @@ function MobileRadioItem({ radio }: { radio: Radio }) {
 
   return (
     <div className="flex w-full shrink-0 items-center justify-between gap-2 rounded-lg border bg-card p-3">
-      <div className="flex min-w-0 flex-1 items-center gap-3">
-        <div className="shrink-0">
-          {isPlatform ? (
-            <div
-              className={`flex size-10 items-center justify-center rounded ${
-                platform === "bandcamp" ? "bg-[#629aa0]/10" : "bg-[#ff7700]/10"
-              }`}
-            >
-              <Music
-                className={`size-5 ${
-                  platform === "bandcamp" ? "text-[#629aa0]" : "text-[#ff7700]"
-                }`}
-              />
-            </div>
-          ) : (
-            <RadioLogo
-              fallbackIcon={
-                <Volume2 className="size-4 text-muted-foreground" />
-              }
-              logoUrl={radio.logoUrl}
-              name={radio.name}
-              size="md"
-            />
-          )}
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center justify-between gap-2">
-            <h3 className="truncate font-medium text-sm">
-              {isPlatform ? radio.name : <RadioNameLink radio={radio} />}
-            </h3>
-          </div>
-          {radio.description && (
-            <p className="truncate text-muted-foreground text-xs">
-              {radio.description}
-            </p>
-          )}
-        </div>
-      </div>
+      <RadioItemContent radio={radio} />
 
       <div className="flex shrink-0 gap-1">
         <Button
+          aria-label="Load to Left Deck"
           className="h-8 w-8 p-0"
           onClick={() => handleLoad("left-deck")}
           size="sm"
@@ -242,6 +214,7 @@ function MobileRadioItem({ radio }: { radio: Radio }) {
           <ChevronLeft className="size-4" />
         </Button>
         <Button
+          aria-label="Load to Right Deck"
           className="h-8 w-8 p-0"
           onClick={() => handleLoad("right-deck")}
           size="sm"
@@ -322,7 +295,6 @@ export function DjRadioList({ radios }: DjRadioListProps) {
     <div className="flex h-full min-h-0 flex-col">
       <Tabs
         className="flex h-full min-h-0 flex-col"
-        defaultValue="radios"
         onValueChange={setActiveTab}
         value={activeTab}
       >
@@ -339,6 +311,7 @@ export function DjRadioList({ radios }: DjRadioListProps) {
           <div className="relative">
             <Search className="-translate-y-1/2 absolute top-1/2 left-2 size-4 text-muted-foreground" />
             <Input
+              aria-label="Search radios and external inputs"
               className="h-8 pl-8 text-xs"
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search..."

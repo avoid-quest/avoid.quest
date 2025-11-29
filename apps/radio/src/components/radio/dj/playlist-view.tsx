@@ -74,6 +74,7 @@ export function PlaylistSnippet({
           Playlist - {tracks.length} tracks
         </div>
         <Button
+          aria-label={isExpanded ? "Collapse playlist" : "Expand playlist"}
           className="h-6 w-6 p-0"
           onClick={() => setIsExpanded(!isExpanded)}
           size="sm"
@@ -117,6 +118,7 @@ export function PlaylistSnippet({
           {tracks.length > 1 && (
             <div className="flex items-center justify-center gap-2">
               <Button
+                aria-label="Previous track"
                 className="h-8 w-8 p-0"
                 disabled={!hasPrevious}
                 onClick={handlePrevious}
@@ -129,6 +131,7 @@ export function PlaylistSnippet({
                 {currentTrackIndex + 1} / {tracks.length}
               </div>
               <Button
+                aria-label="Next track"
                 className="h-8 w-8 p-0"
                 disabled={!hasNext}
                 onClick={handleNext}
@@ -151,7 +154,7 @@ export function PlaylistView({
   onPlayTrack,
   className,
   showFullList = false,
-}: PlaylistViewProps) {
+}: Omit<PlaylistViewProps, "artist">) {
   const [isExpanded, setIsExpanded] = useState(false);
 
   if (tracks.length === 0) {

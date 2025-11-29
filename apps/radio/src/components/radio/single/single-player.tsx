@@ -229,6 +229,7 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
             {/* Volume Controls - Flex row on mobile, full width on desktop */}
             <div className="flex flex-1 items-center gap-2 lg:w-full lg:gap-4">
               <Button
+                aria-label={isMuted ? "Unmute" : "Mute"}
                 className="size-8 shrink-0 lg:size-10"
                 onClick={handleMuteToggle}
                 size="sm"

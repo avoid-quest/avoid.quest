@@ -103,7 +103,7 @@ export function DeckSections({
   }
 
   // Desktop: Show effects and tracklist in tabs when tracklist exists
-  if (hasTracklist) {
+  if (hasTracklist && metadata && metadata.tracks) {
     return (
       <Tabs
         className={cn("flex h-full min-h-0 flex-col", className)}
@@ -129,24 +129,22 @@ export function DeckSections({
           </div>
         </TabsContent>
 
-        {metadata.tracks && (
-          <TabsContent
-            className="mt-3 flex min-h-0 flex-1 flex-col overflow-hidden"
-            value="tracklist"
-          >
-            <ScrollArea className="h-full min-h-0">
-              <div className="w-full pr-4">
-                <PlaylistView
-                  artist={metadata.artist}
-                  currentTrackIndex={currentTrackIndex}
-                  onPlayTrack={onPlayTrack}
-                  showFullList={true}
-                  tracks={metadata.tracks}
-                />
-              </div>
-            </ScrollArea>
-          </TabsContent>
-        )}
+        <TabsContent
+          className="mt-3 flex min-h-0 flex-1 flex-col overflow-hidden"
+          value="tracklist"
+        >
+          <ScrollArea className="h-full min-h-0">
+            <div className="w-full pr-4">
+              <PlaylistView
+                artist={metadata.artist}
+                currentTrackIndex={currentTrackIndex}
+                onPlayTrack={onPlayTrack}
+                showFullList={true}
+                tracks={metadata.tracks}
+              />
+            </div>
+          </ScrollArea>
+        </TabsContent>
       </Tabs>
     );
   }

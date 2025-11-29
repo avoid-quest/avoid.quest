@@ -218,28 +218,7 @@ export function DeckLayout({
       </div>
 
       {/* Footer Actions - Always at bottom */}
-      <div className="flex gap-1 border-t pt-1.5">
-        {onChangeUrl && (
-          <Button
-            className="h-7 flex-1 text-xs"
-            onClick={onChangeUrl}
-            size="sm"
-            variant="ghost"
-          >
-            <Link2 className="mr-1.5 size-3" />
-            Change URL
-          </Button>
-        )}
-        <Button
-          className="h-7 flex-1 text-xs hover:bg-destructive/10 hover:text-destructive"
-          onClick={onClear}
-          size="sm"
-          variant="ghost"
-        >
-          <X className="mr-1.5 size-3" />
-          Eject
-        </Button>
-      </div>
+      <DeckFooterActions onChangeUrl={onChangeUrl} onClear={onClear} />
     </div>
   );
 }
@@ -398,6 +377,39 @@ function DeckControls({
           value={[volume]}
         />
       </div>
+    </div>
+  );
+}
+
+function DeckFooterActions({
+  onChangeUrl,
+  onClear,
+}: {
+  onChangeUrl?: () => void;
+  onClear: () => void;
+}) {
+  return (
+    <div className="flex gap-1 border-t pt-1.5">
+      {onChangeUrl && (
+        <Button
+          className="h-7 flex-1 text-xs"
+          onClick={onChangeUrl}
+          size="sm"
+          variant="ghost"
+        >
+          <Link2 className="mr-1.5 size-3" />
+          Change URL
+        </Button>
+      )}
+      <Button
+        className="h-7 flex-1 text-xs hover:bg-destructive/10 hover:text-destructive"
+        onClick={onClear}
+        size="sm"
+        variant="ghost"
+      >
+        <X className="mr-1.5 size-3" />
+        Eject
+      </Button>
     </div>
   );
 }
@@ -563,28 +575,7 @@ function MobileDeckTabs({
       </Tabs>
 
       {/* Footer Actions - Always at bottom */}
-      <div className="flex gap-1 border-t pt-1.5">
-        {onChangeUrl && (
-          <Button
-            className="h-7 flex-1 text-xs"
-            onClick={onChangeUrl}
-            size="sm"
-            variant="ghost"
-          >
-            <Link2 className="mr-1.5 size-3" />
-            Change URL
-          </Button>
-        )}
-        <Button
-          className="h-7 flex-1 text-xs hover:bg-destructive/10 hover:text-destructive"
-          onClick={onClear}
-          size="sm"
-          variant="ghost"
-        >
-          <X className="mr-1.5 size-3" />
-          Eject
-        </Button>
-      </div>
+      <DeckFooterActions onChangeUrl={onChangeUrl} onClear={onClear} />
     </div>
   );
 }

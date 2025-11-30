@@ -208,7 +208,7 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
           )}
 
           {/* Error Display */}
-          {error?.trim() !== "" && (
+          {!!error?.trim() && (
             <div className="text-destructive text-sm">Error: {error}</div>
           )}
 

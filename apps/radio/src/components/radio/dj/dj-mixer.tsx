@@ -65,7 +65,7 @@ export function DjMixer({ className, radios = [] }: DjMixerProps) {
         )}
 
         {/* Status Indicators */}
-        {error?.trim() !== "" && (
+        {!!error?.trim() && (
           <div className="border-t p-4">
             <div className="rounded-md bg-destructive/10 p-3 text-center">
               <div className="font-medium text-destructive text-sm">Error</div>

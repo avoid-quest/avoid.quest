@@ -135,7 +135,7 @@ export function RadioDialog({
             onError={handleError}
             onScrapedData={handleScrapedData}
           />
-          {error?.trim() !== "" && (
+          {!!error?.trim() && (
             <div className="rounded-md bg-destructive/10 p-3">
               <p className="text-destructive text-sm">{error}</p>
             </div>
@@ -160,7 +160,7 @@ export function RadioDialog({
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogContent className="max-h-[90vh] w-full max-w-7xl xl:max-w-[90vw] 2xl:max-w-[80vw]">
-        <DialogHeader className="flex-shrink-0">
+        <DialogHeader className="shrink-0">
           <DialogTitle>{getDialogTitle()}</DialogTitle>
           <DialogDescription>{getDialogDescription()}</DialogDescription>
         </DialogHeader>

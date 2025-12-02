@@ -400,14 +400,19 @@ export function useDjAudio() {
 
       // Launch async cleanup tasks without awaiting
       (async () => {
-        if (leftId) {
-          await audioManager.cleanupSound(leftId);
+        try {
+          if (leftId) {
+            await audioManager.cleanupSound(leftId);
+          }
+          setLeftSoundId(null);
+          if (rightId) {
+            await audioManager.cleanupSound(rightId);
+          }
+          setRightSoundId(null);
+        } catch (err) {
+          // Log error but don't throw during unmount
+          console.error("Error during audio cleanup:", err);
         }
-        setLeftSoundId(null);
-        if (rightId) {
-          await audioManager.cleanupSound(rightId);
-        }
-        setRightSoundId(null);
       })();
     };
   }, [audioManager]);

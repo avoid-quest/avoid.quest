@@ -720,81 +720,109 @@ export class EffectManager {
    * Update an effect node's parameters
    * @returns Promise that resolves to true on success, false on failure
    */
-  private updateEffectNode(effect: EffectInstance): Promise<boolean> {
+  private async updateEffectNode(effect: EffectInstance): Promise<boolean> {
     const wasEnabled = effect.node !== null;
     const isEnabled = effect.config.enabled;
 
     // If effect is being disabled, disconnect and clean up immediately
     if (wasEnabled && !isEnabled) {
-      this.cleanupEffect(effect);
-      effect.node = null;
-      effect.inputGainNode = undefined;
-      effect.outputGainNode = undefined;
-      effect.wetGain = undefined;
-      effect.dryGain = undefined;
-      effect.feedbackGain = undefined;
-      this.rebuildChain();
-      return Promise.resolve(true);
+      return this.handleEffectDisable(effect);
     }
 
     // If effect is being enabled but has no node, create it
     if (!effect.node && isEnabled) {
-      if (
-        effect.config.type === "plateReverb" ||
-        effect.config.type === "phaseVocoder"
-      ) {
-        // Handle async effect creation
-        return this.createEffectNodeAsync(effect.config)
-          .then((newNode) => {
-            if (newNode) {
-              effect.node = newNode;
-              this.rebuildChain();
-              return true;
-            }
-            // If node creation failed, disable the effect
-            this.logger.warn(
-              "Effect node creation returned null, disabling effect",
-              { effectType: effect.config.type }
-            );
-            effect.config.enabled = false;
-            return false;
-          })
-          .catch((error) => {
-            this.logger.error("Failed to create effect node", {
-              effectType: effect.config.type,
-              error,
-            });
-            // Disable the effect if creation fails
-            effect.config.enabled = false;
-            return false;
-          });
-      }
-      const syncNode = this.createEffectNode(effect.config);
-      if (syncNode) {
-        effect.node = syncNode;
+      return await this.handleEffectEnable(effect);
+    }
+
+    // If effect is disabled and has no node, nothing to do
+    if (!(effect.node || isEnabled)) {
+      return true;
+    }
+
+    // If effect is enabled, update its parameters
+    if (isEnabled && effect.node) {
+      this.updateEffectNodeParams(effect);
+      return true;
+    }
+
+    return true;
+  }
+
+  /**
+   * Handle disabling an effect
+   */
+  private handleEffectDisable(effect: EffectInstance): boolean {
+    this.cleanupEffect(effect);
+    effect.node = null;
+    effect.inputGainNode = undefined;
+    effect.outputGainNode = undefined;
+    effect.wetGain = undefined;
+    effect.dryGain = undefined;
+    effect.feedbackGain = undefined;
+    this.rebuildChain();
+    return true;
+  }
+
+  /**
+   * Handle enabling an effect by creating its node
+   */
+  private handleEffectEnable(effect: EffectInstance): Promise<boolean> {
+    const isAsyncEffect =
+      effect.config.type === "plateReverb" ||
+      effect.config.type === "phaseVocoder";
+
+    if (isAsyncEffect) {
+      return this.createAsyncEffectNode(effect);
+    }
+    return Promise.resolve(this.createSyncEffectNode(effect));
+  }
+
+  /**
+   * Create an async effect node (plateReverb or phaseVocoder)
+   */
+  private async createAsyncEffectNode(
+    effect: EffectInstance
+  ): Promise<boolean> {
+    try {
+      const newNode = await this.createEffectNodeAsync(effect.config);
+      if (newNode) {
+        effect.node = newNode;
         this.rebuildChain();
-        return Promise.resolve(true);
+        return true;
       }
       // If node creation failed, disable the effect
       this.logger.warn("Effect node creation returned null, disabling effect", {
         effectType: effect.config.type,
       });
       effect.config.enabled = false;
-      return Promise.resolve(false);
+      return false;
+    } catch (error) {
+      this.logger.error("Failed to create effect node", {
+        effectType: effect.config.type,
+        error,
+      });
+      // Disable the effect if creation fails
+      effect.config.enabled = false;
+      return false;
     }
+  }
 
-    // If effect is disabled and has no node, nothing to do
-    if (!(effect.node || isEnabled)) {
-      return Promise.resolve(true);
+  /**
+   * Create a synchronous effect node
+   */
+  private createSyncEffectNode(effect: EffectInstance): boolean {
+    const syncNode = this.createEffectNode(effect.config);
+    if (syncNode) {
+      effect.node = syncNode;
+      this.rebuildChain();
+      return true;
     }
-
-    // If effect is enabled, update its parameters
-    if (isEnabled && effect.node) {
-      this.updateEffectNodeParams(effect);
-      return Promise.resolve(true);
-    }
-
-    return Promise.resolve(true);
+    // If node creation failed, disable the effect
+    this.logger.warn("Effect node creation returned null, disabling effect", {
+      effectType: effect.config.type,
+    });
+    effect.config.enabled = false;
+    return false;
   }
 
   /**
@@ -988,8 +1016,8 @@ export class EffectManager {
   private updateStandardReverb(
     effect: EffectInstance,
     context: AudioContext,
-    now: number,
-    smoothTime: number
+    _now: number,
+    _smoothTime: number
   ): void {
     const reverbConfig = effect.config as StandardReverbConfig;
     const convolver = effect.node as ConvolverNode;
@@ -1001,6 +1029,8 @@ export class EffectManager {
     // Regenerate impulse response when roomSize or decayTime changes
     // We regenerate every time since checking previous values would require storing state
     // The performance impact is minimal since this is only called on parameter changes
+    // Note: now and smoothTime are unused because ConvolverNode.buffer is not an AudioParam
+    // and cannot be smoothly transitioned - it's set immediately
     const impulseResponse = this.generateImpulseResponse(
       context,
       reverbConfig.roomSize,

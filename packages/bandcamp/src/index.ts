@@ -9,6 +9,8 @@ import { detectBandcampItemType } from "./detect";
 
 export { detectBandcampItemType, isBandcampUrl } from "./detect";
 
+const REQUEST_TIMEOUT_MS = 10_000;
+
 function createErrorResponse(message: string): PlatformItemError {
   return {
     success: false,
@@ -41,7 +43,7 @@ async function fetchBandcampPage(url: string): Promise<string> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => {
     controller.abort();
-  }, 10_000); // 10 second timeout
+  }, REQUEST_TIMEOUT_MS);
 
   try {
     const response = await fetch(url, {
@@ -52,19 +54,18 @@ async function fetchBandcampPage(url: string): Promise<string> {
       signal: controller.signal,
     });
 
-    clearTimeout(timeoutId);
-
     if (!response.ok) {
       throw new Error(`Failed to fetch Bandcamp page: ${response.statusText}`);
     }
 
     return await response.text();
   } catch (error) {
-    clearTimeout(timeoutId);
     if (error instanceof Error && error.name === "AbortError") {
       throw new Error(`Request to ${url} timed out after 10 seconds`);
     }
     throw error;
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 

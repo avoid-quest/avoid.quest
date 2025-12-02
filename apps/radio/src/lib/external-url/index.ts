@@ -1,8 +1,3 @@
-export {
-  detectBandcampItemType,
-  detectPlatformFromUrl,
-  detectSoundCloudItemType,
-} from "./detect";
 export type {
   BandcampItemType,
   BandcampMetadata,
@@ -11,7 +6,12 @@ export type {
   PlatformMetadata,
   SoundCloudItemType,
   SoundCloudMetadata,
-} from "./types";
+} from "@avoid.quest/radio-shared";
+export {
+  detectBandcampItemType,
+  detectPlatformFromUrl,
+  detectSoundCloudItemType,
+} from "./detect";
 export {
   createPlatformRadio,
   formatPlatformDuration,

@@ -1,3 +1,4 @@
+import type { Platform, PlatformItemResponse } from "@avoid.quest/radio-shared";
 import { Button } from "@workspace/ui/components/button";
 import { Input } from "@workspace/ui/components/input";
 import { Label } from "@workspace/ui/components/label";
@@ -9,7 +10,6 @@ import {
   getUrlExample,
   getUrlPlaceholder,
 } from "@/lib/external-url/metadata-helpers";
-import type { Platform, PlatformItemResponse } from "@/lib/external-url/types";
 import { createPlatformRadio } from "@/lib/external-url/utils";
 import type { Radio } from "@/lib/types";
 

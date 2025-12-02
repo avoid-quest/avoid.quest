@@ -1,3 +1,4 @@
+import type { Platform } from "@avoid.quest/radio-shared";
 import { useDraggable } from "@dnd-kit/core";
 import { Button } from "@workspace/ui/components/button";
 import { Input } from "@workspace/ui/components/input";
@@ -18,7 +19,6 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { useShallow } from "zustand/react/shallow";
-import type { Platform } from "@/lib/external-url/types";
 import { useDjStore } from "@/lib/stores/dj-store";
 import type { Radio } from "@/lib/types";
 import { RadioLogo } from "../radio-logo";

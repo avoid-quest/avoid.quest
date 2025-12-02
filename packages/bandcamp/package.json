@@ -9,7 +9,9 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "check": "bunx ultracite check"
+    "check": "bunx ultracite check",
+    "fix": "bunx ultracite fix",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@avoid.quest/radio-shared": "workspace:*",

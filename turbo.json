@@ -49,7 +49,7 @@
     },
     "preview": {
       "cache": false,
-      "dependsOn": ["^build", "^preview"],
+      "dependsOn": ["^preview"],
       "persistent": true
     }
   }

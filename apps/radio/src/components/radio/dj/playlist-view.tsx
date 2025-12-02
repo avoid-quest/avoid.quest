@@ -1,8 +1,8 @@
+import type { PlatformTrack } from "@avoid.quest/radio-shared";
 import { Button } from "@workspace/ui/components/button";
 import { cn } from "@workspace/ui/lib/utils";
 import { ChevronLeft, ChevronRight, ChevronUp, Play } from "lucide-react";
 import { useState } from "react";
-import type { PlatformTrack } from "@/lib/external-url/types";
 
 type PlaylistViewProps = {
   tracks: PlatformTrack[];

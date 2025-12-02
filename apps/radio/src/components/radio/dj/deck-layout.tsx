@@ -1,4 +1,5 @@
 import type { EffectConfig } from "@avoid.quest/radio-audio";
+import type { PlatformMetadata } from "@avoid.quest/radio-shared";
 import { Button } from "@workspace/ui/components/button";
 import { PlayPauseButton } from "@workspace/ui/components/play-pause-button";
 import { ScrollArea } from "@workspace/ui/components/scroll-area";
@@ -12,7 +13,6 @@ import {
 import { useIsMobile } from "@workspace/ui/hooks/use-mobile";
 import { cn } from "@workspace/ui/lib/utils";
 import { ExternalLink, Link2, Music2, X } from "lucide-react";
-import type { PlatformMetadata } from "@/lib/external-url/types";
 import type { Radio } from "@/lib/types";
 import { RadioNameLink } from "../radio-name-link";
 import { DeckSections } from "./deck-sections";

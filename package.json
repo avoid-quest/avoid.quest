@@ -22,7 +22,7 @@
     "build": "turbo build",
     "fix": "turbo fix",
     "check": "turbo check",
-    "check-types": "turbo check-types",
+    "typecheck": "turbo typecheck",
     "test": "turbo test",
     "cleanup": "rm -rf bun.lock .turbo node_modules apps/instarip/node_modules apps/instarip/.next apps/instarip/.open-next apps/web/node_modules apps/web/.next apps/web/.open-next apps/radio/node_modules apps/radio/.tanstack apps/radio/dist apps/radio/.wrangler packages/ui/node_modules packages/backend/node_modules packages/scraper/node_modules packages/cacophony/node_modules",
     "changeset": "changeset",

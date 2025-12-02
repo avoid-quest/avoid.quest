@@ -62,6 +62,8 @@ export function EffectChain({
     setShowPicker(false);
   };
 
+  const sortedEffects = [...effects].sort((a, b) => a.order - b.order);
+
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
 
@@ -69,16 +71,16 @@ export function EffectChain({
       return;
     }
 
-    const oldIndex = effects.findIndex((e) => e.id === active.id);
-    const newIndex = effects.findIndex((e) => e.id === over.id);
+    const ids = sortedEffects.map((e) => e.id);
+
+    const oldIndex = ids.indexOf(active.id as string);
+
+    const newIndex = ids.indexOf(over.id as string);
 
     if (oldIndex !== -1 && newIndex !== -1) {
-      const newOrder = arrayMove(effects, oldIndex, newIndex);
-      onReorderEffects(newOrder.map((e) => e.id));
+      onReorderEffects(arrayMove(ids, oldIndex, newIndex));
     }
   };
-
-  const sortedEffects = [...effects].sort((a, b) => a.order - b.order);
 
   return (
     <div className="space-y-2">

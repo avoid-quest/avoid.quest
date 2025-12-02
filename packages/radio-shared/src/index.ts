@@ -1,1 +1,19 @@
-export * from "./types";
+export type {
+  BandcampItemResult,
+  BandcampItemType,
+  BandcampMetadata,
+  BandcampTrackInfo,
+  Platform,
+  PlatformItemError,
+  PlatformItemResponse,
+  PlatformItemResult,
+  PlatformMetadata,
+  PlatformTrack,
+  Radio,
+  RadioMetadata,
+  ScrapedOption,
+  SoundCloudItemResult,
+  SoundCloudItemType,
+  SoundCloudMetadata,
+  SoundCloudTrackInfo,
+} from "./types";

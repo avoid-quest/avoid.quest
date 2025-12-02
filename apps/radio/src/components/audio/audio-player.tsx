@@ -32,9 +32,9 @@ export function AudioPlayer({
   } = useAudio(radio);
 
   const handleVolumeChange = (value: number[]) => {
-    setVolume(value[0] ?? 0 / MAX_VOLUME);
+    const raw = value[0] ?? 0;
+    setVolume(raw / MAX_VOLUME);
   };
-
   const handleMute = () => {
     setVolume(volume > 0 ? 0 : 1);
   };

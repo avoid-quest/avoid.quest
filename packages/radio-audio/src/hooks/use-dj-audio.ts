@@ -419,13 +419,17 @@ export function useDjAudio() {
       const newEffect = createDefaultEffectConfig(
         effectType as EffectConfig["type"],
         `effect_${Date.now()}_${Math.random()}`,
-        leftEffects.length
+        leftEffectsRef.current.length
       );
 
-      setLeftEffects((prev) => [...prev, newEffect]);
+      setLeftEffects((prev) => {
+        const updated = [...prev, newEffect];
+        leftEffectsRef.current = updated;
+        return updated;
+      });
       audioManager.addEffect(soundId, newEffect);
     },
-    [audioManager, leftEffects.length]
+    [audioManager]
   );
 
   const addRightEffect = useCallback(
@@ -438,13 +442,17 @@ export function useDjAudio() {
       const newEffect = createDefaultEffectConfig(
         effectType as EffectConfig["type"],
         `effect_${Date.now()}_${Math.random()}`,
-        rightEffects.length
+        rightEffectsRef.current.length
       );
 
-      setRightEffects((prev) => [...prev, newEffect]);
+      setRightEffects((prev) => {
+        const updated = [...prev, newEffect];
+        rightEffectsRef.current = updated;
+        return updated;
+      });
       audioManager.addEffect(soundId, newEffect);
     },
-    [audioManager, rightEffects.length]
+    [audioManager]
   );
 
   const updateLeftEffect = useCallback(

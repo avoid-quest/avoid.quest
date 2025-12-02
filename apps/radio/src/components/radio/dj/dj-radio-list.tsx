@@ -82,7 +82,7 @@ function RadioItemContent({ radio }: { radio: Radio }) {
   const isPlatform = isPlatformItem(radio);
   const platform = getPlatformFromItem(radio);
   const platformColor =
-    platform?.valueOf() === "bandcamp" ? BANDCAMP_COLOR : SOUNDCLOUD_COLOR;
+    platform === "bandcamp" ? BANDCAMP_COLOR : SOUNDCLOUD_COLOR;
 
   return (
     <div className="flex min-w-0 flex-1 items-center gap-3">

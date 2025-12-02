@@ -89,7 +89,7 @@ export function BiquadFilterParams({
         value={effect.Q}
       />
 
-      {showGain.valueOf() && (
+      {showGain ? (
         <ParamSlider
           defaultValue={getDefaultValue(defaultConfig, "gain")}
           disabled={disabled}
@@ -101,7 +101,7 @@ export function BiquadFilterParams({
           step={ranges.gain?.step ?? 0.1}
           value={effect.gain}
         />
-      )}
+      ) : null}
     </div>
   );
 }

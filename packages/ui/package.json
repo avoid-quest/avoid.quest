@@ -7,7 +7,7 @@
     "ui": "bunx --bun shadcn@latest",
     "fix": "bunx ultracite fix",
     "check": "bunx ultracite check",
-    "check-types": "tsc --noEmit"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@radix-ui/react-accordion": "^1.2.12",

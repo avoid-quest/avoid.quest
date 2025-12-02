@@ -94,9 +94,9 @@ export class EffectManager {
     this.effects.splice(index, 1);
 
     // Reorder remaining effects
-    this.effects.forEach((e, i) => {
+    for (const [i, e] of this.effects.entries()) {
       e.config.order = i;
-    });
+    }
 
     this.rebuildChain();
   }
@@ -124,11 +124,23 @@ export class EffectManager {
       newOrder.set(id, index);
     });
 
+    // Track original indices for effects not in effectIds
+    const originalIndices = new Map<string, number>();
+    this.effects.forEach((effect, index) => {
+      originalIndices.set(effect.config.id, index);
+    });
+
     // Update order values
+    // Effects in effectIds get their new order (0 to effectIds.length - 1)
+    // Effects not in effectIds get order at the end (effectIds.length + originalIndex)
     for (const effect of this.effects) {
       const newOrderValue = newOrder.get(effect.config.id);
       if (newOrderValue !== undefined) {
         effect.config.order = newOrderValue;
+      } else {
+        // Place missing effects at the end, preserving their relative order
+        const originalIndex = originalIndices.get(effect.config.id) ?? 0;
+        effect.config.order = effectIds.length + originalIndex;
       }
     }
 
@@ -155,7 +167,7 @@ export class EffectManager {
   /**
    * Rebuild the entire effect chain
    */
-  private rebuildChain(): void {
+  private async rebuildChain(): Promise<void> {
     if (!(this.inputNode && this.defaultDestination)) {
       return;
     }
@@ -182,19 +194,38 @@ export class EffectManager {
         !e.node
     );
 
-    if (hasAsyncEffects) {
-      // Handle async reverb creation
-      this.buildEffectChainAsync(enabledEffects)
-        .then((currentNode) => {
-          this.connectToDestination(currentNode);
-        })
-        .catch((error) => {
-          console.error("Failed to build effect chain:", error);
-        });
-    } else {
-      const currentNode = this.buildEffectChain(enabledEffects);
-      this.connectToDestination(currentNode);
+    try {
+      if (hasAsyncEffects) {
+        // Handle async effect creation with proper error handling
+        const currentNode = await this.buildEffectChainAsync(enabledEffects);
+        this.connectToDestination(currentNode);
+      } else {
+        const currentNode = this.buildEffectChain(enabledEffects);
+        this.connectToDestination(currentNode);
+      }
+    } catch (error) {
+      this.handleBuildChainError(error, enabledEffects);
     }
+  }
+
+  /**
+   * Handle errors during effect chain building with cleanup and state reset
+   */
+  private handleBuildChainError(
+    error: unknown,
+    enabledEffects: EffectInstance[]
+  ): never {
+    console.error("Failed to build effect chain:", error);
+    // Cleanup any partially-created nodes from the failed build
+    this.cleanupPartiallyCreatedNodes(enabledEffects);
+    // Ensure we're in a consistent state - disconnect everything
+    this.disconnectAll();
+    // Reconnect input directly to output as fallback
+    if (this.inputNode && this.defaultDestination) {
+      this.inputNode.connect(this.defaultDestination);
+    }
+    // Rethrow so callers can handle the error
+    throw error;
   }
 
   /**
@@ -344,6 +375,42 @@ export class EffectManager {
   }
 
   /**
+   * Initialize an AudioWorklet parameter safely
+   */
+  private initWorkletParam(
+    paramMap: unknown,
+    name: string,
+    value: number,
+    now: number
+  ): void {
+    try {
+      let param: AudioParam | undefined;
+      if (
+        paramMap !== null &&
+        typeof paramMap === "object" &&
+        "get" in paramMap &&
+        typeof paramMap.get === "function"
+      ) {
+        param = (
+          paramMap as { get(paramName: string): AudioParam | undefined }
+        ).get(name) as AudioParam | undefined;
+      } else {
+        param = (paramMap as unknown as Record<string, AudioParam>)[name];
+      }
+      if (param) {
+        param.cancelScheduledValues(now);
+        param.setValueAtTime(value, now);
+      } else {
+        console.warn(
+          `Worklet parameter "${name}" not found during initialization`
+        );
+      }
+    } catch (error) {
+      console.warn(`Failed to initialize parameter "${name}":`, error);
+    }
+  }
+
+  /**
    * Create an effect node from config
    */
   // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Complex async effect creation with multiple worklet types
@@ -367,48 +434,61 @@ export class EffectManager {
           if (reverbNode.parameters) {
             const reverbConfig = config as PlateReverbConfig;
             const params = reverbNode.parameters;
-
-            const initParam = (name: string, value: number) => {
-              try {
-                let param: AudioParam | undefined;
-                if (typeof params.get === "function") {
-                  param = params.get(name) as AudioParam | undefined;
-                } else {
-                  param = (params as unknown as Record<string, AudioParam>)[
-                    name
-                  ];
-                }
-                if (param) {
-                  // Use setValueAtTime for proper initialization
-                  const now = this.cacophony.context.currentTime;
-                  param.cancelScheduledValues(now);
-                  param.setValueAtTime(value, now);
-                } else {
-                  console.warn(
-                    `Plate reverb parameter "${name}" not found during initialization`
-                  );
-                }
-              } catch (error) {
-                console.warn(
-                  `Failed to initialize parameter "${name}":`,
-                  error
-                );
-              }
-            };
+            const now = this.cacophony.context.currentTime;
 
             // Set initial parameter values
-            initParam("preDelay", reverbConfig.preDelay);
-            initParam("bandwidth", reverbConfig.bandwidth);
-            initParam("inputDiffusion1", reverbConfig.inputDiffusion1);
-            initParam("inputDiffusion2", reverbConfig.inputDiffusion2);
-            initParam("decay", reverbConfig.decay);
-            initParam("decayDiffusion1", reverbConfig.decayDiffusion1);
-            initParam("decayDiffusion2", reverbConfig.decayDiffusion2);
-            initParam("damping", reverbConfig.damping);
-            initParam("excursionRate", reverbConfig.excursionRate);
-            initParam("excursionDepth", reverbConfig.excursionDepth);
-            initParam("wet", reverbConfig.wet);
-            initParam("dry", reverbConfig.dry);
+            this.initWorkletParam(
+              params,
+              "preDelay",
+              reverbConfig.preDelay,
+              now
+            );
+            this.initWorkletParam(
+              params,
+              "bandwidth",
+              reverbConfig.bandwidth,
+              now
+            );
+            this.initWorkletParam(
+              params,
+              "inputDiffusion1",
+              reverbConfig.inputDiffusion1,
+              now
+            );
+            this.initWorkletParam(
+              params,
+              "inputDiffusion2",
+              reverbConfig.inputDiffusion2,
+              now
+            );
+            this.initWorkletParam(params, "decay", reverbConfig.decay, now);
+            this.initWorkletParam(
+              params,
+              "decayDiffusion1",
+              reverbConfig.decayDiffusion1,
+              now
+            );
+            this.initWorkletParam(
+              params,
+              "decayDiffusion2",
+              reverbConfig.decayDiffusion2,
+              now
+            );
+            this.initWorkletParam(params, "damping", reverbConfig.damping, now);
+            this.initWorkletParam(
+              params,
+              "excursionRate",
+              reverbConfig.excursionRate,
+              now
+            );
+            this.initWorkletParam(
+              params,
+              "excursionDepth",
+              reverbConfig.excursionDepth,
+              now
+            );
+            this.initWorkletParam(params, "wet", reverbConfig.wet, now);
+            this.initWorkletParam(params, "dry", reverbConfig.dry, now);
           } else {
             console.warn(
               "Plate reverb node parameters not available after creation"
@@ -449,35 +529,14 @@ export class EffectManager {
           if (vocoderNode.parameters) {
             const vocoderConfig = config as PhaseVocoderConfig;
             const params = vocoderNode.parameters;
+            const now = this.cacophony.context.currentTime;
 
-            const initParam = (name: string, value: number) => {
-              try {
-                let param: AudioParam | undefined;
-                if (typeof params.get === "function") {
-                  param = params.get(name) as AudioParam | undefined;
-                } else {
-                  param = (params as unknown as Record<string, AudioParam>)[
-                    name
-                  ];
-                }
-                if (param) {
-                  const now = this.cacophony.context.currentTime;
-                  param.cancelScheduledValues(now);
-                  param.setValueAtTime(value, now);
-                } else {
-                  console.warn(
-                    `Phase vocoder parameter "${name}" not found during initialization`
-                  );
-                }
-              } catch (error) {
-                console.warn(
-                  `Failed to initialize parameter "${name}":`,
-                  error
-                );
-              }
-            };
-
-            initParam("pitchFactor", vocoderConfig.pitchFactor);
+            this.initWorkletParam(
+              params,
+              "pitchFactor",
+              vocoderConfig.pitchFactor,
+              now
+            );
           } else {
             console.warn(
               "Phase vocoder node parameters not available after creation"
@@ -1159,10 +1218,6 @@ export class EffectManager {
    * Disconnect all nodes
    */
   private disconnectAll(): void {
-    if (this.inputNode) {
-      this.inputNode.disconnect();
-    }
-
     for (const effect of this.effects) {
       if (effect.node) {
         effect.node.disconnect();
@@ -1198,13 +1253,21 @@ export class EffectManager {
   }
 
   /**
+   * Cleanup partially-created nodes from a failed build
+   * This ensures any nodes created during a failed chain build are properly disconnected
+   */
+  private cleanupPartiallyCreatedNodes(effects: EffectInstance[]): void {
+    for (const effect of effects) {
+      // Use existing cleanup method which handles all node types
+      this.cleanupEffect(effect);
+    }
+  }
+
+  /**
    * Cleanup all effects
    */
   cleanup(): void {
     this.disconnectAll();
-    for (const effect of this.effects) {
-      this.cleanupEffect(effect);
-    }
     this.effects = [];
   }
 }

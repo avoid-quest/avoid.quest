@@ -16,8 +16,14 @@ function createErrorResponse(message: string): PlatformItemError {
   };
 }
 
+let clientIdCache: Promise<string> | null = null;
+
 async function getClientId(): Promise<string> {
-  return await fetchClientID();
+  if (clientIdCache) {
+    return await clientIdCache;
+  }
+  clientIdCache = fetchClientID();
+  return await clientIdCache;
 }
 
 async function resolveSoundCloudUrl(url: string, clientId: string) {

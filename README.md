@@ -41,7 +41,7 @@ bun run dev:server   # Start Convex backend
 bun run dev:setup    # Setup Convex backend
 bun run build        # Build all
 bun run check        # Lint + type check
-bun run check-types  # Type check only
+bun run typecheck  # Type check only
 bun run fix          # Auto-fix linting
 bun run cleanup      # Clean all node_modules and build artifacts
 ```

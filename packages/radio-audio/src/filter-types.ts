@@ -1,15 +1,9 @@
-export type FilterType =
-  | "lowpass"
-  | "highpass"
-  | "bandpass"
-  | "lowshelf"
-  | "highshelf"
-  | "peaking"
-  | "notch"
-  | "allpass";
+import type { FilterType as EffectFilterType } from "./effects/types";
+
+export type FilterType = EffectFilterType;
 
 export type FilterConfig = {
-  type: FilterType;
+  type: EffectFilterType;
   frequency: number;
   Q: number;
   gain: number;

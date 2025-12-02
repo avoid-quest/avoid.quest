@@ -4,8 +4,6 @@ import type {
   BiquadFilterNode,
   Cacophony,
   PannerNode,
-  Playback,
-  Sound,
 } from "@avoid.quest/cacophony";
 import type {
   BiquadFilterConfig,
@@ -31,11 +29,7 @@ export class EffectManager {
   private inputNode: AudioNode | null = null;
   private defaultDestination: AudioNode | null = null;
 
-  constructor(
-    cacophony: Cacophony,
-    _sound: Sound,
-    _playback: Playback | null = null
-  ) {
+  constructor(cacophony: Cacophony) {
     this.cacophony = cacophony;
     this.defaultDestination = cacophony.globalGainNode as unknown as AudioNode;
   }

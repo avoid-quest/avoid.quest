@@ -25,6 +25,26 @@ export type AudioState = {
   hasEnded: boolean;
 };
 
+/**
+ * Timeout in milliseconds for waiting for mediaElement "playing" or "error" events.
+ * Exported for use in tests.
+ */
+export const MEDIA_ELEMENT_PLAYBACK_TIMEOUT_MS = 20_000; // 20 seconds
+
+/**
+ * Safely converts a GainNode to AudioNode for use with EffectManager.
+ * This function verifies the node has the necessary AudioNode properties
+ * and performs a single type assertion.
+ */
+function gainNodeToAudioNode(node: { connect: unknown }): AudioNode {
+  // Type guard: verify the node has the connect method (required for AudioNode)
+  if (typeof node.connect !== "function") {
+    throw new Error("Node does not have required AudioNode interface");
+  }
+  // Single safe assertion: GainNode extends AudioNode in Web Audio API
+  return node as AudioNode;
+}
+
 export class AudioManager {
   private static instance: AudioManager | null = null;
   private readonly cacophony: Cacophony;
@@ -46,6 +66,18 @@ export class AudioManager {
       AudioManager.instance = new AudioManager();
     }
     return AudioManager.instance;
+  }
+
+  /**
+   * Reset the singleton instance by cleaning up the existing instance
+   * and setting it to null. Useful for test teardown.
+   * External code can re-create the instance via getInstance().
+   */
+  static resetInstance(): void {
+    if (AudioManager.instance) {
+      AudioManager.instance.cleanup();
+      AudioManager.instance = null;
+    }
   }
 
   getCacophony(): Cacophony {
@@ -203,7 +235,6 @@ export class AudioManager {
 
         // Also listen to sound ended event (in addition to playback ended)
         sound.on("ended", () => {
-          console.log(`Sound ended for ${radio.name} (soundId: ${id})`);
           this.notifyListeners(id, {
             isPlaying: false,
             isLoading: false,
@@ -351,15 +382,26 @@ export class AudioManager {
       // Wait for the "playing" event which fires when playback actually starts
       // This is more reliable than the "play" event which fires synchronously
       await new Promise<void>((resolve, reject) => {
-        const playingHandler = () => {
-          clearLoadingState();
+        let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+        const cleanup = () => {
+          if (timeoutId !== null) {
+            clearTimeout(timeoutId);
+            timeoutId = null;
+          }
           mediaElement.removeEventListener("playing", playingHandler);
           mediaElement.removeEventListener("error", errorHandler);
+        };
+
+        const playingHandler = () => {
+          cleanup();
+          clearLoadingState();
           resolve();
         };
 
         // Also handle errors
         const errorHandler = () => {
+          cleanup();
           this.notifyListeners(soundId, {
             isPlaying: false,
             isLoading: false,
@@ -371,19 +413,38 @@ export class AudioManager {
             },
             hasEnded: false,
           });
-          mediaElement.removeEventListener("playing", playingHandler);
-          mediaElement.removeEventListener("error", errorHandler);
           reject(new Error("Failed to start playback"));
         };
+
+        // Set up timeout to prevent hanging forever
+        timeoutId = setTimeout(() => {
+          timeoutId = null;
+          cleanup();
+          this.notifyListeners(soundId, {
+            isPlaying: false,
+            isLoading: false,
+            volume: playback.volume,
+            error: {
+              message: `Playback timeout: mediaElement did not fire "playing" or "error" event within ${MEDIA_ELEMENT_PLAYBACK_TIMEOUT_MS}ms`,
+              code: "PLAYBACK_TIMEOUT",
+              timestamp: Date.now(),
+            },
+            hasEnded: false,
+          });
+          reject(
+            new Error(
+              `Playback timeout: mediaElement did not fire "playing" or "error" event within ${MEDIA_ELEMENT_PLAYBACK_TIMEOUT_MS}ms`
+            )
+          );
+        }, MEDIA_ELEMENT_PLAYBACK_TIMEOUT_MS);
 
         mediaElement.addEventListener("playing", playingHandler);
         mediaElement.addEventListener("error", errorHandler);
 
         // If already playing, clear loading immediately
         if (!mediaElement.paused && mediaElement.readyState >= 2) {
+          cleanup();
           clearLoadingState();
-          mediaElement.removeEventListener("playing", playingHandler);
-          mediaElement.removeEventListener("error", errorHandler);
           resolve();
         }
       });
@@ -402,7 +463,7 @@ export class AudioManager {
     // Set input and output nodes
     effectManager.setInputNode(playback.outputNode);
     effectManager.setOutputNode(
-      this.cacophony.globalGainNode as unknown as AudioNode
+      gainNodeToAudioNode(this.cacophony.globalGainNode)
     );
 
     return playback;
@@ -535,6 +596,9 @@ export class AudioManager {
       this.sounds.delete(soundId);
     }
 
+    // Cleanup volume tracking
+    this.lastSoundVolumes.delete(soundId);
+
     // Notify listeners
     this.notifyListeners(soundId, {
       isPlaying: false,
@@ -557,6 +621,7 @@ export class AudioManager {
     this.listeners.clear();
     this.filters.clear();
     this.effectManagers.clear();
+    this.lastSoundVolumes.clear();
   }
 
   subscribe(
@@ -608,6 +673,7 @@ export class AudioManager {
 
   private globalMuted = false;
   private lastGlobalVolume = 1;
+  private readonly lastSoundVolumes: Map<string, number> = new Map();
 
   muteGlobal(): void {
     if (!this.globalMuted) {
@@ -631,6 +697,7 @@ export class AudioManager {
   muteSound(soundId: string): void {
     const playback = this.playbacks.get(soundId);
     if (playback) {
+      this.lastSoundVolumes.set(soundId, playback.volume);
       playback.volume = 0;
     }
   }
@@ -638,8 +705,8 @@ export class AudioManager {
   unmuteSound(soundId: string): void {
     const playback = this.playbacks.get(soundId);
     if (playback) {
-      // Restore to previous volume or default to 1
-      playback.volume = 1;
+      playback.volume = this.lastSoundVolumes.get(soundId) ?? 1;
+      this.lastSoundVolumes.delete(soundId);
     }
   }
 
@@ -789,8 +856,7 @@ export class AudioManager {
       if (playback) {
         newEffectManager.setInputNode(playback.outputNode);
         newEffectManager.setOutputNode(
-          this.cacophony
-            .globalGainNode as unknown as import("@avoid.quest/cacophony").AudioNode
+          gainNodeToAudioNode(this.cacophony.globalGainNode)
         );
       }
       newEffectManager.addEffect(config);

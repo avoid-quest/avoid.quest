@@ -19,6 +19,8 @@ export function useSingleAudio(settings?: {
   const currentSoundIdRef = useRef<string | null>(null);
   const previousSoundIdRef = useRef<string | null>(null);
   const unsubscribeRef = useRef<(() => void) | null>(null);
+  const hasInitializedRef = useRef(false);
+  const loadRadioRef = useRef<((radio: Radio) => Promise<void>) | null>(null);
 
   // Generate unique sound ID
   const getSoundId = useCallback(
@@ -198,11 +200,22 @@ export function useSingleAudio(settings?: {
     ]
   );
 
+  // Keep ref updated with latest loadRadio function
+  useEffect(() => {
+    loadRadioRef.current = loadRadio;
+  }, [loadRadio]);
+
   // Play function
   const play = useCallback(async () => {
     // Always recreate the sound before playing (like DJ mode does)
     // This ensures we have a fresh, valid sound and avoids "cleaned up" errors
     if (!currentRadio) {
+      return;
+    }
+
+    // Skip redundant playSound() if the radio is already playing or crossfading
+    // This avoids duplicating playSound() and interrupting the crossfade
+    if (isPlaying || isCrossfading) {
       return;
     }
 
@@ -223,7 +236,7 @@ export function useSingleAudio(settings?: {
       const errorMessage = err instanceof Error ? err.message : "Play failed";
       setError(errorMessage);
     }
-  }, [audioManager, volume, currentRadio, loadRadio]);
+  }, [audioManager, volume, currentRadio, loadRadio, isPlaying, isCrossfading]);
 
   // Pause function
   const pause = useCallback(() => {
@@ -263,10 +276,17 @@ export function useSingleAudio(settings?: {
 
   // Load initial radio if provided
   useEffect(() => {
-    if (settings?.player.single?.lastUsedRadio && !currentRadio) {
-      loadRadio(settings.player.single.lastUsedRadio);
+    const initialRadio = settings?.player.single?.lastUsedRadio;
+    if (
+      initialRadio &&
+      !currentRadio &&
+      !hasInitializedRef.current &&
+      loadRadioRef.current
+    ) {
+      hasInitializedRef.current = true;
+      loadRadioRef.current(initialRadio);
     }
-  }, [settings?.player.single?.lastUsedRadio, currentRadio, loadRadio]);
+  }, [settings?.player.single?.lastUsedRadio, currentRadio]);
 
   // Cleanup on unmount
   useEffect(

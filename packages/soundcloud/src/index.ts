@@ -141,8 +141,7 @@ async function processPlaylist(
           // Note: We use the resolve endpoint with the track's API URL
           const trackApiUrl = `https://api.soundcloud.com/tracks/${track.id}`;
           fullTrack = await resolveSoundCloudUrl(trackApiUrl, clientId);
-        } catch (error) {
-          console.warn(`Failed to resolve partial track ${track.id}:`, error);
+        } catch {
           return null;
         }
       }
@@ -173,11 +172,10 @@ async function processPlaylist(
     })
   );
 
-  const validTracks = processedTracks.filter((t) => t !== null) as Array<{
-    name: string;
-    streamUrl: string;
-    duration: number;
-  }>;
+  const validTracks = processedTracks.filter(
+    (t): t is { name: string; streamUrl: string; duration: number } =>
+      t !== null
+  );
 
   if (validTracks.length === 0) {
     return createErrorResponse("No playable tracks found in playlist");
@@ -194,8 +192,12 @@ async function processPlaylist(
     duration: Math.floor(data.duration / 1000),
     trackCount: data.track_count,
     tracks: validTracks,
-    streamUrl: validTracks[0].streamUrl,
+    streamUrl: validTracks[0]?.streamUrl,
   };
+
+  if (!validTracks[0]) {
+    return createErrorResponse("No playable tracks found in playlist");
+  }
 
   return {
     success: true,

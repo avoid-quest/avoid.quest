@@ -34,6 +34,18 @@
 - **Refactored Effect Parameters** - Standardized effect parameter UI across all effect types
 - **Improved Type Safety** - Better type exports and re-exports for audio nodes and effects
 
+### Bug Fixes
+
+- **Fixed Group Volume Calculation** - Fixed division by zero bug when sounds array is empty in Group class
+- **Fixed Audio Player Volume Calculation** - Fixed operator precedence bug in volume calculation (`value[0] ?? 0 / MAX_VOLUME` → `(value[0] ?? 0) / MAX_VOLUME`)
+- **Improved Single Player Mute/Volume Logic** - Enhanced mute handling to automatically unmute when volume is adjusted above zero
+
+### UI/UX Improvements
+
+- **Effect Picker Styling** - Updated max height from `max-h-[32rem]` to standard Tailwind class `max-h-128`
+- **Simplified Tab Labels** - Changed "External Inputs" tab label to "External" for better brevity
+- **Component Cleanup** - Removed unused `artist` prop from PlaylistView component
+
 ### Type System Enhancements
 
 - **Cacophony Type Improvements** - Added proper `BiquadFilterNode`, `AudioNode` type exports
@@ -60,3 +72,7 @@
 - **Import Consolidation** - Moved all audio-related imports to use `@avoid.quest/radio-audio`
 - **Platform Abstraction** - Extracted platform-specific logic (SoundCloud, Bandcamp) into dedicated packages
 - **Better Separation of Concerns** - Clear boundaries between shared types, audio system, and platform integrations
+- **Parameter Formatters** - Added `linearGain` formatter for proper dB display with -∞ dB handling for zero values
+- **Code Cleanup** - Removed unused constants (`_SESSION_MAX_AGE`) and variables (`_debugLogged`)
+- **Type Improvements** - Removed unnecessary `@ts-expect-error` suppressions after fixing type compatibility issues
+- **Code Formatting** - Improved formatting consistency in audio processor files (phase-vocoder, dattorro-reverb)

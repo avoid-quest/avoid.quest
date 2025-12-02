@@ -1,6 +1,6 @@
 import type { Radio } from "@avoid.quest/radio-shared";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AudioManager } from "../audio-manager";
+import { AudioManager, type AudioState } from "../audio-manager";
 import { createDefaultEffectConfig } from "../effects/registry";
 import type { EffectConfig } from "../effects/types";
 import type { FilterConfig } from "../filter-types";
@@ -24,6 +24,8 @@ export function useDjAudio() {
   const [masterVolume, setMasterVolume] = useState(1);
   const [leftMuted, setLeftMuted] = useState(false);
   const [rightMuted, setRightMuted] = useState(false);
+  const [leftSoundId, setLeftSoundId] = useState<string | null>(null);
+  const [rightSoundId, setRightSoundId] = useState<string | null>(null);
   // Legacy filter/reverb configs for backward compatibility
   const [leftFilterConfig, setLeftFilterConfig] = useState<FilterConfig>({
     type: "lowpass",
@@ -48,6 +50,8 @@ export function useDjAudio() {
   const rightSoundIdRef = useRef<string | null>(null);
   const leftEffectsRef = useRef<EffectConfig[]>([]);
   const rightEffectsRef = useRef<EffectConfig[]>([]);
+  const leftUnsubscribeRef = useRef<(() => void) | null>(null);
+  const rightUnsubscribeRef = useRef<(() => void) | null>(null);
 
   // Generate unique sound ID (matches format used in dj-player)
   const getSoundId = useCallback(
@@ -67,70 +71,115 @@ export function useDjAudio() {
     [audioManager]
   );
 
+  // Helper to get side-specific refs
+  const getSideRefs = useCallback((side: "left" | "right") => {
+    if (side === "left") {
+      return {
+        soundIdRef: leftSoundIdRef,
+        unsubscribeRef: leftUnsubscribeRef,
+        effectsRef: leftEffectsRef,
+        setIsLoading: setLeftIsLoading,
+        setIsPlaying: setLeftIsPlaying,
+        setRadioState: setLeftRadioState,
+      };
+    }
+    return {
+      soundIdRef: rightSoundIdRef,
+      unsubscribeRef: rightUnsubscribeRef,
+      effectsRef: rightEffectsRef,
+      setIsLoading: setRightIsLoading,
+      setIsPlaying: setRightIsPlaying,
+      setRadioState: setRightRadioState,
+    };
+  }, []);
+
+  // Helper to clean up existing subscription
+  const cleanupExistingSubscription = useCallback(
+    (side: "left" | "right") => {
+      const { unsubscribeRef } = getSideRefs(side);
+      if (unsubscribeRef.current) {
+        unsubscribeRef.current();
+        unsubscribeRef.current = null;
+      }
+    },
+    [getSideRefs]
+  );
+
+  // Helper to create subscription callback
+  const createSubscriptionCallback = useCallback(
+    (side: "left" | "right") => {
+      const { setIsPlaying, setIsLoading } = getSideRefs(side);
+      return (state: AudioState) => {
+        setIsPlaying(state.isPlaying);
+        setIsLoading(state.isLoading);
+        if (state.error) {
+          setError(state.error.message);
+        }
+      };
+    },
+    [getSideRefs]
+  );
+
+  // Helper to finalize sound loading
+  const finalizeSoundLoading = useCallback(
+    (soundId: string, radio: Radio, side: "left" | "right") => {
+      const { soundIdRef, setIsLoading, setRadioState, effectsRef } =
+        getSideRefs(side);
+      soundIdRef.current = soundId;
+      if (side === "left") {
+        setLeftSoundId(soundId);
+      } else {
+        setRightSoundId(soundId);
+      }
+      setRadioState(radio);
+      setIsLoading(false);
+      reapplyEffects(soundId, effectsRef.current);
+    },
+    [getSideRefs, reapplyEffects]
+  );
+
   // Load sound for a specific side
   const loadSound = useCallback(
     async (radio: Radio, side: "left" | "right") => {
       const soundId = getSoundId(radio, side);
+      const { soundIdRef, setIsLoading } = getSideRefs(side);
 
       try {
         setError(null);
+        setIsLoading(true);
 
-        if (side === "left") {
-          setLeftIsLoading(true);
-        } else {
-          setRightIsLoading(true);
-        }
+        cleanupExistingSubscription(side);
 
-        // Clean up existing sound
-        const existingSoundId =
-          side === "left" ? leftSoundIdRef.current : rightSoundIdRef.current;
+        const existingSoundId = soundIdRef.current;
         if (existingSoundId) {
           await audioManager.cleanupSound(existingSoundId);
         }
 
-        // Create new sound
         await audioManager.createSound(radio, soundId);
 
-        // Subscribe to state changes
-        audioManager.subscribe(soundId, (state) => {
-          if (side === "left") {
-            setLeftIsPlaying(state.isPlaying);
-            setLeftIsLoading(state.isLoading);
-          } else {
-            setRightIsPlaying(state.isPlaying);
-            setRightIsLoading(state.isLoading);
-          }
+        const unsubscribe = audioManager.subscribe(
+          soundId,
+          createSubscriptionCallback(side)
+        );
+        const { unsubscribeRef } = getSideRefs(side);
+        unsubscribeRef.current = unsubscribe;
 
-          if (state.error) {
-            setError(state.error.message);
-          }
-        });
-
-        // Update sound ID reference and reapply effects
-        if (side === "left") {
-          leftSoundIdRef.current = soundId;
-          setLeftRadioState(radio);
-          setLeftIsLoading(false);
-          reapplyEffects(soundId, leftEffectsRef.current);
-        } else {
-          rightSoundIdRef.current = soundId;
-          setRightRadioState(radio);
-          setRightIsLoading(false);
-          reapplyEffects(soundId, rightEffectsRef.current);
-        }
+        finalizeSoundLoading(soundId, radio, side);
       } catch (err) {
         const errorMessage =
           err instanceof Error ? err.message : "Failed to load sound";
         setError(errorMessage);
-
-        if (side === "left") {
-          setLeftIsLoading(false);
-        } else {
-          setRightIsLoading(false);
-        }
+        setIsLoading(false);
       }
     },
-    [audioManager, getSoundId, reapplyEffects]
+    [
+      audioManager,
+      getSoundId,
+      getSideRefs,
+      cleanupExistingSubscription,
+      createSubscriptionCallback,
+      finalizeSoundLoading,
+    ]
   );
 
   // Apply crossfade to current playbacks
@@ -157,11 +206,17 @@ export function useDjAudio() {
       if (radio) {
         await loadSound(radio, "left");
       } else {
+        // Unsubscribe from state changes
+        if (leftUnsubscribeRef.current) {
+          leftUnsubscribeRef.current();
+          leftUnsubscribeRef.current = null;
+        }
         // Clean up left sound
         if (leftSoundIdRef.current) {
           await audioManager.cleanupSound(leftSoundIdRef.current);
           leftSoundIdRef.current = null;
         }
+        setLeftSoundId(null);
         setLeftRadioState(null);
         setLeftIsPlaying(false);
         setLeftIsLoading(false);
@@ -176,11 +231,17 @@ export function useDjAudio() {
       if (radio) {
         await loadSound(radio, "right");
       } else {
+        // Unsubscribe from state changes
+        if (rightUnsubscribeRef.current) {
+          rightUnsubscribeRef.current();
+          rightUnsubscribeRef.current = null;
+        }
         // Clean up right sound
         if (rightSoundIdRef.current) {
           await audioManager.cleanupSound(rightSoundIdRef.current);
           rightSoundIdRef.current = null;
         }
+        setRightSoundId(null);
         setRightRadioState(null);
         setRightIsPlaying(false);
         setRightIsLoading(false);
@@ -320,14 +381,26 @@ export function useDjAudio() {
   // Cleanup on unmount
   useEffect(() => {
     const cleanup = async () => {
+      // Unsubscribe from state changes
+      if (leftUnsubscribeRef.current) {
+        leftUnsubscribeRef.current();
+        leftUnsubscribeRef.current = null;
+      }
+      if (rightUnsubscribeRef.current) {
+        rightUnsubscribeRef.current();
+        rightUnsubscribeRef.current = null;
+      }
+
       if (leftSoundIdRef.current) {
         await audioManager.cleanupSound(leftSoundIdRef.current);
         leftSoundIdRef.current = null;
       }
+      setLeftSoundId(null);
       if (rightSoundIdRef.current) {
         await audioManager.cleanupSound(rightSoundIdRef.current);
         rightSoundIdRef.current = null;
       }
+      setRightSoundId(null);
     };
 
     return () => {
@@ -512,8 +585,8 @@ export function useDjAudio() {
     leftEffects,
     rightEffects,
     // Sound IDs for effect initialization
-    leftSoundId: leftSoundIdRef.current,
-    rightSoundId: rightSoundIdRef.current,
+    leftSoundId,
+    rightSoundId,
     setLeftRadio,
     setRightRadio,
     setCrossfadePosition: setCrossfadePositionCallback,

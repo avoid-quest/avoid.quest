@@ -1,3 +1,4 @@
+import { AVAILABLE_EFFECTS } from "@avoid.quest/radio-audio";
 import { Card, CardContent } from "@workspace/ui/components/card";
 import {
   Dialog,
@@ -10,7 +11,6 @@ import { Input } from "@workspace/ui/components/input";
 import { cn } from "@workspace/ui/lib/utils";
 import { Filter, Search } from "lucide-react";
 import { useState } from "react";
-import { AVAILABLE_EFFECTS } from "@/lib/audio/effects/registry";
 import { EFFECT_ICONS } from "./effect-constants";
 
 type EffectPickerProps = {
@@ -59,7 +59,7 @@ export function EffectPicker({ onSelect, onClose }: EffectPickerProps) {
               </p>
             </div>
           ) : (
-            <div className="grid max-h-[32rem] grid-cols-1 gap-3 overflow-y-auto pr-1 sm:grid-cols-2">
+            <div className="grid max-h-128 grid-cols-1 gap-3 overflow-y-auto pr-1 sm:grid-cols-2">
               {filteredEffects.map((effect) => {
                 const Icon = EFFECT_ICONS[effect.type] ?? Filter;
                 return (

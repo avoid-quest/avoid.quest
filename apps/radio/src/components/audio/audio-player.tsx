@@ -1,9 +1,9 @@
+import { useAudio } from "@avoid.quest/radio-audio";
 import { Button } from "@workspace/ui/components/button";
 import { Slider } from "@workspace/ui/components/slider";
 import { Spinner } from "@workspace/ui/components/spinner";
 import { cn } from "@workspace/ui/lib/utils";
 import { Pause, Play, Square, Volume2, VolumeX } from "lucide-react";
-import { useAudio } from "@/lib/audio/hooks/use-audio";
 import type { Radio } from "@/lib/types";
 
 const MAX_VOLUME = 100;

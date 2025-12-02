@@ -1,3 +1,4 @@
+import type { FilterConfig, FilterType } from "@avoid.quest/radio-audio";
 import {
   Card,
   CardContent,
@@ -19,24 +20,6 @@ import { cn } from "@workspace/ui/lib/utils";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 const MAX_FREQUENCY = 1000;
-
-export type FilterType =
-  | "lowpass"
-  | "highpass"
-  | "bandpass"
-  | "lowshelf"
-  | "highshelf"
-  | "peaking"
-  | "notch"
-  | "allpass";
-
-export type FilterConfig = {
-  type: FilterType;
-  frequency: number;
-  Q: number;
-  gain: number;
-  enabled: boolean;
-};
 
 type FilterControlProps = {
   className?: string;

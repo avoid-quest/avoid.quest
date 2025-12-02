@@ -1,8 +1,8 @@
-import { getEffectMetadata } from "@/lib/audio/effects/registry";
-import type {
-  EffectConfig,
-  StandardReverbConfig,
-} from "@/lib/audio/effects/types";
+import {
+  type EffectConfig,
+  getEffectMetadata,
+  type StandardReverbConfig,
+} from "@avoid.quest/radio-audio";
 import { ParamGroup, ParamSlider } from "./";
 
 type StandardReverbParamsProps = {

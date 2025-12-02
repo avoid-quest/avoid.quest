@@ -1,8 +1,8 @@
-import { getEffectMetadata } from "@/lib/audio/effects/registry";
-import type {
-  EffectConfig,
-  PhaseVocoderConfig,
-} from "@/lib/audio/effects/types";
+import {
+  type EffectConfig,
+  getEffectMetadata,
+  type PhaseVocoderConfig,
+} from "@avoid.quest/radio-audio";
 import { ParamGroup, ParamSlider } from "./";
 
 type PhaseVocoderParamsProps = {

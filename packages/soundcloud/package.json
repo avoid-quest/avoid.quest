@@ -1,0 +1,19 @@
+{
+  "name": "@avoid.quest/soundcloud",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "check": "bunx ultracite check"
+  },
+  "dependencies": {
+    "@avoid.quest/radio-shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "@workspace/typescript-config": "workspace:*",
+    "typescript": "^5.9.3"
+  }
+}

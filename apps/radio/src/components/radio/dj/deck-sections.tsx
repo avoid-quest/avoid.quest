@@ -1,3 +1,4 @@
+import type { EffectConfig } from "@avoid.quest/radio-audio";
 import { ScrollArea } from "@workspace/ui/components/scroll-area";
 import {
   Tabs,
@@ -8,7 +9,6 @@ import {
 import { useIsMobile } from "@workspace/ui/hooks/use-mobile";
 import { cn } from "@workspace/ui/lib/utils";
 import { EffectChain } from "@/components/audio/effect-chain";
-import type { EffectConfig } from "@/lib/audio/effects/types";
 import type { PlatformMetadata } from "@/lib/external-url/types";
 import { PlaylistView } from "./playlist-view";
 
@@ -136,7 +136,6 @@ export function DeckSections({
           <ScrollArea className="h-full min-h-0">
             <div className="w-full pr-4">
               <PlaylistView
-                artist={metadata.artist}
                 currentTrackIndex={currentTrackIndex}
                 onPlayTrack={onPlayTrack}
                 showFullList={true}

@@ -1,4 +1,4 @@
-import type { EffectConfig } from "@/lib/audio/effects/types";
+import type { EffectConfig } from "@avoid.quest/radio-audio";
 import { BiquadFilterParams } from "./biquad-filter-params";
 import { CompressorParams } from "./compressor-params";
 import { DelayParams } from "./delay-params";

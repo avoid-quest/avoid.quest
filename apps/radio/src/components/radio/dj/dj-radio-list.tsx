@@ -306,7 +306,7 @@ export function DjRadioList({ radios }: DjRadioListProps) {
               Radios
             </TabsTrigger>
             <TabsTrigger className="flex-1 text-xs" value="external">
-              External Inputs
+              External
             </TabsTrigger>
           </TabsList>
           <div className="relative">
@@ -337,7 +337,7 @@ export function DjRadioList({ radios }: DjRadioListProps) {
           {renderRadioList(filteredRadios)}
         </TabsContent>
 
-        {/* External Inputs Tab */}
+        {/* External Tab */}
         <TabsContent
           className="mt-0 flex min-h-0 flex-1 flex-col overflow-hidden"
           value="external"

@@ -1,5 +1,8 @@
-import { getEffectMetadata } from "@/lib/audio/effects/registry";
-import type { DistortionConfig, EffectConfig } from "@/lib/audio/effects/types";
+import {
+  type DistortionConfig,
+  type EffectConfig,
+  getEffectMetadata,
+} from "@avoid.quest/radio-audio";
 import { ParamSelect, ParamSlider } from "./";
 
 type DistortionParamsProps = {

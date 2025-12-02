@@ -1,5 +1,8 @@
-import { getEffectMetadata } from "@/lib/audio/effects/registry";
-import type { EffectConfig, PannerConfig } from "@/lib/audio/effects/types";
+import {
+  type EffectConfig,
+  getEffectMetadata,
+  type PannerConfig,
+} from "@avoid.quest/radio-audio";
 import { ParamGroup, ParamSelect, ParamSlider } from "./";
 
 type PannerParamsProps = {

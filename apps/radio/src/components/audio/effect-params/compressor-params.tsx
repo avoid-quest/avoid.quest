@@ -1,5 +1,8 @@
-import { getEffectMetadata } from "@/lib/audio/effects/registry";
-import type { CompressorConfig, EffectConfig } from "@/lib/audio/effects/types";
+import {
+  type CompressorConfig,
+  type EffectConfig,
+  getEffectMetadata,
+} from "@avoid.quest/radio-audio";
 import { ParamGroup, ParamSlider } from "./";
 
 type CompressorParamsProps = {

@@ -1,4 +1,4 @@
-import { AudioManager } from "@/lib/audio/audio-manager";
+import { AudioManager } from "@avoid.quest/radio-audio";
 import type { Radio } from "@/lib/types";
 import type { DeckSide } from "./types";
 

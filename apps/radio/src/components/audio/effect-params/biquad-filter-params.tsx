@@ -1,8 +1,8 @@
-import { getEffectMetadata } from "@/lib/audio/effects/registry";
-import type {
-  BiquadFilterConfig,
-  EffectConfig,
-} from "@/lib/audio/effects/types";
+import {
+  type BiquadFilterConfig,
+  type EffectConfig,
+  getEffectMetadata,
+} from "@avoid.quest/radio-audio";
 import { ParamSelect, ParamSlider } from "./";
 
 const FILTER_TYPES = [

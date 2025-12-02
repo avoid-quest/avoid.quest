@@ -16,13 +16,15 @@
     "cf-typegen": "wrangler types --env-interface CloudflareEnv ./cloudflare-env.d.ts"
   },
   "dependencies": {
-    "@avoid.quest/cacophony": "^0.18.7",
+    "@avoid.quest/bandcamp": "workspace:*",
+    "@avoid.quest/radio-audio": "workspace:*",
+    "@avoid.quest/radio-shared": "workspace:*",
+    "@avoid.quest/soundcloud": "workspace:*",
     "@cloudflare/vite-plugin": "^1.15.3",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@hookform/resolvers": "^5.2.2",
-    "@scdl/fetch-client": "ducktrshessami/scdl-fetch-client#v1.0.3",
     "@tailwindcss/vite": "^4.1.17",
     "@tanstack/react-devtools": "^0.8.2",
     "@tanstack/react-router": "^1.139.12",
@@ -32,10 +34,8 @@
     "@tanstack/router-plugin": "^1.139.12",
     "@workspace/typescript-config": "workspace:*",
     "@workspace/ui": "workspace:*",
-    "cheerio": "^1.1.2",
     "dexie": "^4.2.1",
     "dexie-react-hooks": "^4.2.0",
-    "html-entities": "^2.6.0",
     "lucide-react": "^0.554.0",
     "lz-string": "^1.5.0",
     "next-themes": "^0.4.6",
@@ -49,7 +49,7 @@
     "zustand": "^5.0.9"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20251128.0",
+    "@cloudflare/workers-types": "^4.20251202.0",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/react": "^16.3.0",
     "@types/node": "^24.10.1",
@@ -58,7 +58,7 @@
     "@vitejs/plugin-react": "^5.1.1",
     "jsdom": "^27.2.0",
     "typescript": "^5.9.3",
-    "vite": "^7.2.4",
+    "vite": "^7.2.6",
     "vitest": "^4.0.14",
     "web-vitals": "^5.1.0",
     "wrangler": "^4.51.0"

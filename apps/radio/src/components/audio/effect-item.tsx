@@ -1,3 +1,4 @@
+import { type EffectConfig, getEffectMetadata } from "@avoid.quest/radio-audio";
 import { useDraggable } from "@dnd-kit/core";
 import { Button } from "@workspace/ui/components/button";
 import {
@@ -9,8 +10,6 @@ import {
 import { Toggle } from "@workspace/ui/components/toggle";
 import { cn } from "@workspace/ui/lib/utils";
 import { Filter, GripVertical, RotateCcw, X } from "lucide-react";
-import { getEffectMetadata } from "@/lib/audio/effects/registry";
-import type { EffectConfig } from "@/lib/audio/effects/types";
 import { EFFECT_ICONS } from "./effect-constants";
 import { EffectParams } from "./effect-params/effect-params";
 

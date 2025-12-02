@@ -1,3 +1,4 @@
+import type { EffectType } from "@avoid.quest/radio-audio";
 import {
   Clock,
   Filter,
@@ -6,7 +7,6 @@ import {
   Waves,
   Zap,
 } from "lucide-react";
-import type { EffectType } from "@/lib/audio/effects/types";
 
 export const EFFECT_ICONS: Record<EffectType, typeof Filter> = {
   biquadFilter: Filter,

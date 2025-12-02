@@ -1,16 +1,10 @@
-import type { PlatformMetadata } from "./external-url/types";
+import type { Radio } from "@avoid.quest/radio-shared";
 
-export type Radio = {
-  id?: number;
-  name: string;
-  streamUrl: string;
-  logoUrl?: string;
-  description?: string;
-  websiteUrl?: string;
-  order?: number;
-  enabled?: boolean;
-  platformMetadata?: PlatformMetadata;
-};
+export type {
+  Radio,
+  RadioMetadata,
+  ScrapedOption,
+} from "@avoid.quest/radio-shared";
 
 export type Settings = {
   id?: number;
@@ -43,23 +37,6 @@ export const playerTypes = [
   { value: "default", label: "Custom Player" },
   { value: "browser", label: "Browser Default" },
 ] as const;
-
-export type ScrapedOption = {
-  value: string;
-  label: string;
-  confidence: number;
-  preview?: string;
-};
-
-export type RadioMetadata = {
-  name?: ScrapedOption[];
-  streamUrl?: ScrapedOption[];
-  logoUrl?: ScrapedOption[];
-  description?: ScrapedOption[];
-  websiteUrl?: string;
-  foundFields: string[];
-  missingFields: string[];
-};
 
 export type DatabaseExport = {
   version: number;

@@ -1,3 +1,4 @@
+import { useSingleAudio } from "@avoid.quest/radio-audio";
 import { Button } from "@workspace/ui/components/button";
 import {
   Card,
@@ -18,7 +19,6 @@ import { PlayPauseButton } from "@workspace/ui/components/play-pause-button";
 import { Slider } from "@workspace/ui/components/slider";
 import { AudioLines, Volume2, VolumeX } from "lucide-react";
 import { useEffect, useState } from "react";
-import { useSingleAudio } from "@/lib/audio";
 import type { Radio } from "@/lib/types";
 import { RadioDialog } from "../../settings/radio-dialog";
 import { SettingsButton } from "../../settings/settings-button";

@@ -1,5 +1,8 @@
-import { getEffectMetadata } from "@/lib/audio/effects/registry";
-import type { DelayConfig, EffectConfig } from "@/lib/audio/effects/types";
+import {
+  type DelayConfig,
+  type EffectConfig,
+  getEffectMetadata,
+} from "@avoid.quest/radio-audio";
 import { ParamGroup, ParamSlider } from "./";
 
 type DelayParamsProps = {

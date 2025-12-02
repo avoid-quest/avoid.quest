@@ -1,8 +1,8 @@
-import { getEffectMetadata } from "@/lib/audio/effects/registry";
-import type {
-  EffectConfig,
-  PlateReverbConfig,
-} from "@/lib/audio/effects/types";
+import {
+  type EffectConfig,
+  getEffectMetadata,
+  type PlateReverbConfig,
+} from "@avoid.quest/radio-audio";
 import { ParamGroup, ParamSlider } from "./";
 
 type PlateReverbParamsProps = {

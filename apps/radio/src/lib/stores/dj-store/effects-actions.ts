@@ -1,7 +1,6 @@
+import type { EffectConfig, FilterConfig } from "@avoid.quest/radio-audio";
+import { createDefaultEffectConfig } from "@avoid.quest/radio-audio";
 import type { StateCreator } from "zustand";
-import type { FilterConfig } from "@/components/audio/filter-control";
-import { createDefaultEffectConfig } from "@/lib/audio/effects/registry";
-import type { EffectConfig } from "@/lib/audio/effects/types";
 import { getAudioManager } from "./audio-manager-helpers";
 import type { InternalDjState } from "./types";
 

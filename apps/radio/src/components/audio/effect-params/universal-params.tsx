@@ -24,13 +24,11 @@ export function UniversalParams({ effect, onUpdate }: UniversalParamsProps) {
   const metadata = getEffectMetadata(effect.type);
   const ranges = metadata?.parameterRanges ?? {};
   const defaultConfig = metadata?.defaultConfig;
-  const disabled = !effect.enabled;
 
   return (
     <ParamGroup title="Universal Controls">
       <ParamSlider
         defaultValue={getDefaultValue(defaultConfig, "dryWet")}
-        disabled={disabled}
         formatKey="percentage"
         label="Dry/Wet"
         max={ranges.dryWet?.max ?? 1}
@@ -41,7 +39,6 @@ export function UniversalParams({ effect, onUpdate }: UniversalParamsProps) {
       />
       <ParamSlider
         defaultValue={getDefaultValue(defaultConfig, "inputGain")}
-        disabled={disabled}
         formatKey="linearGain"
         label="Input Gain"
         max={ranges.inputGain?.max ?? 4.0}
@@ -52,7 +49,6 @@ export function UniversalParams({ effect, onUpdate }: UniversalParamsProps) {
       />
       <ParamSlider
         defaultValue={getDefaultValue(defaultConfig, "outputGain")}
-        disabled={disabled}
         formatKey="linearGain"
         label="Output Gain"
         max={ranges.outputGain?.max ?? 4.0}

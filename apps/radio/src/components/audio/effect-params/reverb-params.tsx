@@ -21,7 +21,6 @@ type SliderConfig = {
 
 type CreateSliderOptions = {
   defaultConfig: Omit<EffectConfig, "id" | "order"> | undefined;
-  disabled: boolean;
   effect: PlateReverbConfig;
   onUpdate: (config: Partial<EffectConfig>) => void;
   sliderConfig: SliderConfig;
@@ -29,7 +28,6 @@ type CreateSliderOptions = {
 
 function createSlider({
   defaultConfig,
-  disabled,
   effect,
   onUpdate,
   sliderConfig,
@@ -43,7 +41,6 @@ function createSlider({
   return (
     <ParamSlider
       defaultValue={defaultValue}
-      disabled={disabled}
       formatKey={sliderConfig.formatKey}
       key={sliderConfig.key}
       label={sliderConfig.label}
@@ -58,13 +55,11 @@ function createSlider({
 
 function PreDelayBandwidthGroup({
   effect,
-  disabled,
   onUpdate,
   ranges,
   defaultConfig,
 }: {
   effect: PlateReverbConfig;
-  disabled: boolean;
   onUpdate: (config: Partial<EffectConfig>) => void;
   ranges: Record<string, { max?: number; min?: number; step?: number }>;
   defaultConfig: Omit<EffectConfig, "id" | "order"> | undefined;
@@ -93,7 +88,6 @@ function PreDelayBandwidthGroup({
       {sliders.map((slider) =>
         createSlider({
           defaultConfig,
-          disabled,
           effect,
           onUpdate,
           sliderConfig: slider,
@@ -105,13 +99,11 @@ function PreDelayBandwidthGroup({
 
 function InputDiffusionGroup({
   effect,
-  disabled,
   onUpdate,
   ranges,
   defaultConfig,
 }: {
   effect: PlateReverbConfig;
-  disabled: boolean;
   onUpdate: (config: Partial<EffectConfig>) => void;
   ranges: Record<string, { max?: number; min?: number; step?: number }>;
   defaultConfig: Omit<EffectConfig, "id" | "order"> | undefined;
@@ -140,7 +132,6 @@ function InputDiffusionGroup({
       {sliders.map((slider) =>
         createSlider({
           defaultConfig,
-          disabled,
           effect,
           onUpdate,
           sliderConfig: slider,
@@ -152,13 +143,11 @@ function InputDiffusionGroup({
 
 function DecayGroup({
   effect,
-  disabled,
   onUpdate,
   ranges,
   defaultConfig,
 }: {
   effect: PlateReverbConfig;
-  disabled: boolean;
   onUpdate: (config: Partial<EffectConfig>) => void;
   ranges: Record<string, { max?: number; min?: number; step?: number }>;
   defaultConfig: Omit<EffectConfig, "id" | "order"> | undefined;
@@ -195,7 +184,6 @@ function DecayGroup({
       {sliders.map((slider) =>
         createSlider({
           defaultConfig,
-          disabled,
           effect,
           onUpdate,
           sliderConfig: slider,
@@ -207,13 +195,11 @@ function DecayGroup({
 
 function ModulationGroup({
   effect,
-  disabled,
   onUpdate,
   ranges,
   defaultConfig,
 }: {
   effect: PlateReverbConfig;
-  disabled: boolean;
   onUpdate: (config: Partial<EffectConfig>) => void;
   ranges: Record<string, { max?: number; min?: number; step?: number }>;
   defaultConfig: Omit<EffectConfig, "id" | "order"> | undefined;
@@ -250,7 +236,6 @@ function ModulationGroup({
       {sliders.map((slider) =>
         createSlider({
           defaultConfig,
-          disabled,
           effect,
           onUpdate,
           sliderConfig: slider,
@@ -267,34 +252,29 @@ export function PlateReverbParams({
   const metadata = getEffectMetadata("plateReverb");
   const ranges = metadata?.parameterRanges ?? {};
   const defaultConfig = metadata?.defaultConfig;
-  const disabled = !effect.enabled;
 
   return (
     <div className="space-y-4">
       <PreDelayBandwidthGroup
         defaultConfig={defaultConfig}
-        disabled={disabled}
         effect={effect}
         onUpdate={onUpdate}
         ranges={ranges}
       />
       <InputDiffusionGroup
         defaultConfig={defaultConfig}
-        disabled={disabled}
         effect={effect}
         onUpdate={onUpdate}
         ranges={ranges}
       />
       <DecayGroup
         defaultConfig={defaultConfig}
-        disabled={disabled}
         effect={effect}
         onUpdate={onUpdate}
         ranges={ranges}
       />
       <ModulationGroup
         defaultConfig={defaultConfig}
-        disabled={disabled}
         effect={effect}
         onUpdate={onUpdate}
         ranges={ranges}

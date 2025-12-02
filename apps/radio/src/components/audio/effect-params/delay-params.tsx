@@ -28,13 +28,11 @@ export function DelayParams({ effect, onUpdate }: DelayParamsProps) {
   const metadata = getEffectMetadata("delay");
   const ranges = metadata?.parameterRanges ?? {};
   const defaultConfig = metadata?.defaultConfig;
-  const disabled = !effect.enabled;
 
   return (
     <div className="space-y-4">
       <ParamSlider
         defaultValue={getDefaultValue(defaultConfig, "delayTime")}
-        disabled={disabled}
         formatKey="time"
         label="Delay Time"
         max={ranges.delayTime?.max ?? 1}
@@ -46,7 +44,6 @@ export function DelayParams({ effect, onUpdate }: DelayParamsProps) {
 
       <ParamSlider
         defaultValue={getDefaultValue(defaultConfig, "feedback")}
-        disabled={disabled}
         formatKey="percentage"
         label="Feedback"
         max={ranges.feedback?.max ?? 0.95}

@@ -795,6 +795,8 @@ export class EffectManager {
       const newNode = await this.createEffectNodeAsync(effect.config);
       if (newNode) {
         effect.node = newNode;
+        // Apply all parameters from config to the newly created node
+        this.updateEffectNodeParams(effect);
         // Fire-and-forget: errors are handled internally
         this.rebuildChain();
         return true;
@@ -823,6 +825,8 @@ export class EffectManager {
     const syncNode = this.createEffectNode(effect.config);
     if (syncNode) {
       effect.node = syncNode;
+      // Apply all parameters from config to the newly created node
+      this.updateEffectNodeParams(effect);
       // Fire-and-forget: errors are handled internally
       this.rebuildChain();
       return true;

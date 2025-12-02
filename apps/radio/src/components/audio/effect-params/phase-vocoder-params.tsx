@@ -31,14 +31,12 @@ export function PhaseVocoderParams({
   const metadata = getEffectMetadata("phaseVocoder");
   const ranges = metadata?.parameterRanges ?? {};
   const defaultConfig = metadata?.defaultConfig;
-  const disabled = !effect.enabled;
 
   return (
     <div className="space-y-4">
       <ParamGroup title="Pitch">
         <ParamSlider
           defaultValue={getDefaultValue(defaultConfig, "pitchFactor")}
-          disabled={disabled}
           formatKey="default"
           label="Pitch Factor"
           max={ranges.pitchFactor?.max ?? 4.0}

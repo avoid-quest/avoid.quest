@@ -51,12 +51,10 @@ export function BiquadFilterParams({
   const ranges = metadata?.parameterRanges ?? {};
   const defaultConfig = metadata?.defaultConfig;
   const showGain = shouldShowGain(effect.filterType);
-  const disabled = !effect.enabled;
 
   return (
     <div className="space-y-4">
       <ParamSelect
-        disabled={disabled}
         label="Filter Type"
         onChange={(value) =>
           onUpdate({ filterType: value as BiquadFilterConfig["filterType"] })
@@ -67,7 +65,6 @@ export function BiquadFilterParams({
 
       <ParamSlider
         defaultValue={getDefaultValue(defaultConfig, "frequency")}
-        disabled={disabled}
         formatKey="frequency"
         label="Frequency"
         max={ranges.frequency?.max ?? 20_000}
@@ -79,7 +76,6 @@ export function BiquadFilterParams({
 
       <ParamSlider
         defaultValue={getDefaultValue(defaultConfig, "Q")}
-        disabled={disabled}
         formatKey="default"
         label="Q (Resonance)"
         max={ranges.Q?.max ?? 30}
@@ -92,7 +88,6 @@ export function BiquadFilterParams({
       {showGain ? (
         <ParamSlider
           defaultValue={getDefaultValue(defaultConfig, "gain")}
-          disabled={disabled}
           formatKey="gain"
           label="Gain"
           max={ranges.gain?.max ?? 40}

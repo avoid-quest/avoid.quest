@@ -479,6 +479,10 @@ export class AudioManager {
       clearLoadingState();
     }
 
+    // Disconnect playback from default routing (globalGainNode)
+    // This ensures all audio routes through the effect chain
+    playback.disconnect();
+
     // Setup effect manager for this sound
     let effectManager = this.effectManagers.get(soundId);
     if (!effectManager) {

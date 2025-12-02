@@ -1240,6 +1240,12 @@ export class EffectManager {
    * Disconnect all nodes
    */
   private disconnectAll(): void {
+    // Disconnect input node from destination to prevent duplicate connections
+    if (this.inputNode) {
+      this.inputNode.disconnect();
+    }
+
+    // Disconnect all effect nodes
     for (const effect of this.effects) {
       if (effect.node) {
         effect.node.disconnect();

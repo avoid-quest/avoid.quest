@@ -63,6 +63,7 @@ export function EffectChain({
   };
 
   const sortedEffects = [...effects].sort((a, b) => a.order - b.order);
+  const sortedIds = sortedEffects.map((e) => e.id);
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
@@ -71,14 +72,12 @@ export function EffectChain({
       return;
     }
 
-    const ids = sortedEffects.map((e) => e.id);
+    const oldIndex = sortedIds.indexOf(active.id as string);
 
-    const oldIndex = ids.indexOf(active.id as string);
-
-    const newIndex = ids.indexOf(over.id as string);
+    const newIndex = sortedIds.indexOf(over.id as string);
 
     if (oldIndex !== -1 && newIndex !== -1) {
-      onReorderEffects(arrayMove(ids, oldIndex, newIndex));
+      onReorderEffects(arrayMove(sortedIds, oldIndex, newIndex));
     }
   };
 
@@ -96,7 +95,7 @@ export function EffectChain({
         >
           <div className="space-y-2">
             <SortableContext
-              items={sortedEffects.map((e) => e.id)}
+              items={sortedIds}
               strategy={verticalListSortingStrategy}
             >
               {sortedEffects.map((effect) => (

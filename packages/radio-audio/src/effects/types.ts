@@ -1,17 +1,12 @@
 import type {
-  AudioContext,
   BiquadFilterNode,
+  ConvolverNode,
+  DelayNode,
+  DynamicsCompressorNode,
   GainNode,
   PannerNode,
-} from "@avoid.quest/cacophony";
-
-// These types are not exported by cacophony, so we'll use the AudioContext types directly
-export type DelayNode = ReturnType<AudioContext["createDelay"]>;
-export type WaveShaperNode = ReturnType<AudioContext["createWaveShaper"]>;
-export type DynamicsCompressorNode = ReturnType<
-  AudioContext["createDynamicsCompressor"]
->;
-export type ConvolverNode = ReturnType<AudioContext["createConvolver"]>;
+  WaveShaperNode,
+} from "../cacophony-types";
 // AudioWorkletNode is a global Web Audio API type
 
 export type FilterType =

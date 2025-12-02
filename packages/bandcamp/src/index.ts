@@ -29,7 +29,7 @@ export async function getBandcampItem(
       return await getBandcampTrack(url);
     }
 
-    return createErrorResponse("Artist pages are not yet supported");
+    return createErrorResponse(`${itemType} pages are not yet supported`);
   } catch (error) {
     const errorMessage =
       error instanceof Error ? error.message : "Unknown error occurred";

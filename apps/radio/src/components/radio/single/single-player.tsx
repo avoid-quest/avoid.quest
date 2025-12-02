@@ -96,9 +96,9 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
   const handleVolumeChange = (value: number[]) => {
     const newVolume = value[0] ?? 0;
     setVolume(newVolume);
-    setUnmutedVolume(newVolume);
 
     if (isMuted && newVolume > 0) {
+      setUnmutedVolume(newVolume);
       setIsMuted(false);
     }
   };
@@ -254,7 +254,7 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
                   min={0}
                   onValueChange={handleVolumeChange}
                   step={0.1}
-                  value={[volume.valueOf()]}
+                  value={[volume]}
                 />
               </div>
             </div>

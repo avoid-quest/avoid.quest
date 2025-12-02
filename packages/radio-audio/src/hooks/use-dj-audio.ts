@@ -380,8 +380,11 @@ export function useDjAudio() {
 
   // Cleanup on unmount
   useEffect(() => {
-    const cleanup = async () => {
-      // Unsubscribe from state changes
+    return () => {
+      // Synchronous cleanup: unsubscribe and capture IDs
+      const leftId = leftSoundIdRef.current;
+      const rightId = rightSoundIdRef.current;
+
       if (leftUnsubscribeRef.current) {
         leftUnsubscribeRef.current();
         leftUnsubscribeRef.current = null;
@@ -391,20 +394,21 @@ export function useDjAudio() {
         rightUnsubscribeRef.current = null;
       }
 
-      if (leftSoundIdRef.current) {
-        await audioManager.cleanupSound(leftSoundIdRef.current);
-        leftSoundIdRef.current = null;
-      }
-      setLeftSoundId(null);
-      if (rightSoundIdRef.current) {
-        await audioManager.cleanupSound(rightSoundIdRef.current);
-        rightSoundIdRef.current = null;
-      }
-      setRightSoundId(null);
-    };
+      // Clear refs synchronously
+      leftSoundIdRef.current = null;
+      rightSoundIdRef.current = null;
 
-    return () => {
-      cleanup();
+      // Launch async cleanup tasks without awaiting
+      (async () => {
+        if (leftId) {
+          await audioManager.cleanupSound(leftId);
+        }
+        setLeftSoundId(null);
+        if (rightId) {
+          await audioManager.cleanupSound(rightId);
+        }
+        setRightSoundId(null);
+      })();
     };
   }, [audioManager]);
 
@@ -456,39 +460,63 @@ export function useDjAudio() {
   );
 
   const updateLeftEffect = useCallback(
-    (effectId: string, config: Partial<EffectConfig>) => {
+    async (effectId: string, config: Partial<EffectConfig>) => {
       const soundId = leftSoundIdRef.current;
       if (!soundId) {
         return;
       }
 
+      // Optimistic update
+      const previousEffects = leftEffects;
       setLeftEffects(
         (prev) =>
           prev.map((e) =>
             e.id === effectId ? { ...e, ...config } : e
           ) as EffectConfig[]
       );
-      audioManager.updateEffect(soundId, effectId, config);
+
+      // Await the result and revert on failure
+      const success = await audioManager.updateEffect(
+        soundId,
+        effectId,
+        config
+      );
+      if (!success) {
+        // Revert optimistic update on failure
+        setLeftEffects(previousEffects);
+      }
     },
-    [audioManager]
+    [audioManager, leftEffects]
   );
 
   const updateRightEffect = useCallback(
-    (effectId: string, config: Partial<EffectConfig>) => {
+    async (effectId: string, config: Partial<EffectConfig>) => {
       const soundId = rightSoundIdRef.current;
       if (!soundId) {
         return;
       }
 
+      // Optimistic update
+      const previousEffects = rightEffects;
       setRightEffects(
         (prev) =>
           prev.map((e) =>
             e.id === effectId ? { ...e, ...config } : e
           ) as EffectConfig[]
       );
-      audioManager.updateEffect(soundId, effectId, config);
+
+      // Await the result and revert on failure
+      const success = await audioManager.updateEffect(
+        soundId,
+        effectId,
+        config
+      );
+      if (!success) {
+        // Revert optimistic update on failure
+        setRightEffects(previousEffects);
+      }
     },
-    [audioManager]
+    [audioManager, rightEffects]
   );
 
   const removeLeftEffect = useCallback(

@@ -1,14 +1,16 @@
+import { Cacophony } from "@avoid.quest/cacophony";
+import type { Radio } from "@avoid.quest/radio-shared";
 import {
   type AudioNode,
-  Cacophony,
+  type BiquadFilterNode,
   type Playback,
   type Sound,
   SoundType,
-} from "@avoid.quest/cacophony";
-import type { Radio } from "@avoid.quest/radio-shared";
+} from "./cacophony-types";
 import { EffectManager } from "./effects/effect-manager";
 import type { EffectConfig } from "./effects/types";
 import type { FilterConfig } from "./filter-types";
+import { getLogger, type Logger } from "./logger";
 
 export type AudioError = {
   message: string;
@@ -56,16 +58,25 @@ export class AudioManager {
   private readonly filters: Map<string, BiquadFilterNode> = new Map();
   // Unified effect system
   private readonly effectManagers: Map<string, EffectManager> = new Map();
+  private logger: Logger;
 
-  private constructor() {
+  private constructor(logger?: Logger) {
     this.cacophony = new Cacophony();
+    this.logger = getLogger(logger);
   }
 
-  static getInstance(): AudioManager {
+  static getInstance(logger?: Logger): AudioManager {
     if (!AudioManager.instance) {
-      AudioManager.instance = new AudioManager();
+      AudioManager.instance = new AudioManager(logger);
     }
     return AudioManager.instance;
+  }
+
+  /**
+   * Set the logger instance for this AudioManager
+   */
+  setLogger(logger: Logger): void {
+    this.logger = logger;
   }
 
   /**
@@ -218,7 +229,22 @@ export class AudioManager {
 
         // Set up error handling for this specific sound
         sound.on("soundError", (event: { error: Error }) => {
-          console.error(`Audio error for ${radio.name}:`, event.error);
+          const timestamp = Date.now();
+          this.logger.error(`Audio error for ${radio.name}`, {
+            error: {
+              message: event.error.message,
+              stack: event.error.stack,
+              name: event.error.name,
+            },
+            radio: {
+              id: radio.id,
+              name: radio.name,
+            },
+            sound: {
+              id,
+            },
+            timestamp,
+          });
           this.notifyListeners(id, {
             isPlaying: false,
             isLoading: false,
@@ -227,7 +253,7 @@ export class AudioManager {
               message: `Failed to play ${radio.name}: ${event.error.message}`,
               code: "SOUND_ERROR",
               radio,
-              timestamp: Date.now(),
+              timestamp,
             },
             hasEnded: false,
           });
@@ -456,7 +482,12 @@ export class AudioManager {
     // Setup effect manager for this sound
     let effectManager = this.effectManagers.get(soundId);
     if (!effectManager) {
-      effectManager = new EffectManager(this.cacophony, sound, playback);
+      effectManager = new EffectManager(
+        this.cacophony,
+        sound,
+        playback,
+        this.logger
+      );
       this.effectManagers.set(soundId, effectManager);
     }
 
@@ -491,13 +522,16 @@ export class AudioManager {
       } catch (error) {
         // Playback may have been cleaned up already, just remove it from the map
         if (
-          error instanceof Error &&
-          error.message.includes("Cannot stop a sound that has been cleaned up")
+          !(
+            error instanceof Error &&
+            error.message.includes(
+              "Cannot stop a sound that has been cleaned up"
+            )
+          )
         ) {
-          // Already cleaned up, just remove from map
-        } else {
           throw error;
         }
+        // Already cleaned up, just remove from map
       }
       this.playbacks.delete(soundId);
       this.notifyListeners(soundId, {
@@ -576,8 +610,15 @@ export class AudioManager {
     if (effectManager) {
       try {
         effectManager.cleanup();
-      } catch {
-        // Effect manager may have been cleaned up already, continue
+      } catch (error) {
+        this.logger.error("Failed to cleanup effect manager", {
+          soundId,
+          error: {
+            message: error instanceof Error ? error.message : String(error),
+            stack: error instanceof Error ? error.stack : undefined,
+            name: error instanceof Error ? error.name : undefined,
+          },
+        });
       }
       this.effectManagers.delete(soundId);
     }
@@ -721,7 +762,7 @@ export class AudioManager {
   applyFilter(soundId: string, config: FilterConfig): BiquadFilterNode | null {
     const sound = this.sounds.get(soundId);
     if (!sound) {
-      console.warn(`Sound ${soundId} not found for filter application`);
+      this.logger.warn("Sound not found for filter application", { soundId });
       return null;
     }
 
@@ -749,7 +790,15 @@ export class AudioManager {
 
       return filter;
     } catch (error) {
-      console.error("Failed to apply filter:", error);
+      this.logger.error("Failed to apply filter", {
+        soundId,
+        error: {
+          message: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+          name: error instanceof Error ? error.name : undefined,
+        },
+        config,
+      });
       return null;
     }
   }
@@ -796,7 +845,15 @@ export class AudioManager {
       filter.gain.setValueAtTime(filter.gain.value, now);
       filter.gain.linearRampToValueAtTime(config.gain, now + smoothTime);
     } catch (error) {
-      console.error("Failed to update filter:", error);
+      this.logger.error("Failed to update filter", {
+        soundId,
+        error: {
+          message: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+          name: error instanceof Error ? error.name : undefined,
+        },
+        config,
+      });
     }
   }
 
@@ -811,7 +868,14 @@ export class AudioManager {
       try {
         sound.removeFilter(filter);
       } catch (error) {
-        console.error("Failed to remove filter:", error);
+        this.logger.error("Failed to remove filter", {
+          soundId,
+          error: {
+            message: error instanceof Error ? error.message : String(error),
+            stack: error instanceof Error ? error.stack : undefined,
+            name: error instanceof Error ? error.name : undefined,
+          },
+        });
       }
     }
 
@@ -844,13 +908,14 @@ export class AudioManager {
       const sound = this.sounds.get(soundId);
       const playback = this.playbacks.get(soundId);
       if (!sound) {
-        console.warn(`Sound ${soundId} not found for effect addition`);
+        this.logger.warn("Sound not found for effect addition", { soundId });
         return;
       }
       const newEffectManager = new EffectManager(
         this.cacophony,
         sound,
-        playback
+        playback,
+        this.logger
       );
       this.effectManagers.set(soundId, newEffectManager);
       if (playback) {
@@ -875,16 +940,18 @@ export class AudioManager {
 
   /**
    * Update an effect's configuration
+   * @returns Promise that resolves to true on success, false on failure
    */
   updateEffect(
     soundId: string,
     effectId: string,
     config: Partial<EffectConfig>
-  ): void {
+  ): Promise<boolean> {
     const effectManager = this.effectManagers.get(soundId);
     if (effectManager) {
-      effectManager.updateEffect(effectId, config);
+      return effectManager.updateEffect(effectId, config);
     }
+    return Promise.resolve(false);
   }
 
   /**

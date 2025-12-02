@@ -3,18 +3,20 @@ import type {
   AudioNode,
   BiquadFilterNode,
   Cacophony,
+  ConvolverNode,
+  DelayNode,
+  DynamicsCompressorNode,
   PannerNode,
   Playback,
   Sound,
-} from "@avoid.quest/cacophony";
+  WaveShaperNode,
+} from "../cacophony-types";
+import { getLogger, type Logger } from "../logger";
 import type {
   BiquadFilterConfig,
   CompressorConfig,
-  ConvolverNode,
   DelayConfig,
-  DelayNode,
   DistortionConfig,
-  DynamicsCompressorNode,
   EffectConfig,
   EffectInstance,
   EffectNode,
@@ -22,11 +24,11 @@ import type {
   PhaseVocoderConfig,
   PlateReverbConfig,
   StandardReverbConfig,
-  WaveShaperNode,
 } from "./types";
 
 export class EffectManager {
   private readonly cacophony: Cacophony;
+  private readonly logger: Logger;
   private effects: EffectInstance[] = [];
   private inputNode: AudioNode | null = null;
   private defaultDestination: AudioNode | null = null;
@@ -34,9 +36,11 @@ export class EffectManager {
   constructor(
     cacophony: Cacophony,
     _sound: Sound,
-    _playback: Playback | null = null
+    _playback: Playback | null = null,
+    logger?: Logger
   ) {
     this.cacophony = cacophony;
+    this.logger = getLogger(logger);
     this.defaultDestination = cacophony.globalGainNode as unknown as AudioNode;
   }
 
@@ -103,15 +107,19 @@ export class EffectManager {
 
   /**
    * Update an effect's configuration
+   * @returns Promise that resolves to true on success, false on failure
    */
-  updateEffect(effectId: string, config: Partial<EffectConfig>): void {
+  updateEffect(
+    effectId: string,
+    config: Partial<EffectConfig>
+  ): Promise<boolean> {
     const effect = this.effects.find((e) => e.config.id === effectId);
     if (!effect) {
-      return;
+      return Promise.resolve(false);
     }
 
     effect.config = { ...effect.config, ...config } as EffectConfig;
-    this.updateEffectNode(effect);
+    return this.updateEffectNode(effect);
   }
 
   /**
@@ -120,15 +128,16 @@ export class EffectManager {
   reorderEffects(effectIds: string[]): void {
     // Create a map of new positions
     const newOrder = new Map<string, number>();
-    effectIds.forEach((id, index) => {
-      newOrder.set(id, index);
-    });
+    for (const [index, effectId] of effectIds.entries()) {
+      newOrder.set(effectId, index);
+    }
 
     // Track original indices for effects not in effectIds
     const originalIndices = new Map<string, number>();
-    this.effects.forEach((effect, index) => {
+
+    for (const [index, effect] of this.effects.entries()) {
       originalIndices.set(effect.config.id, index);
-    });
+    }
 
     // Update order values
     // Effects in effectIds get their new order (0 to effectIds.length - 1)
@@ -215,7 +224,7 @@ export class EffectManager {
     error: unknown,
     enabledEffects: EffectInstance[]
   ): never {
-    console.error("Failed to build effect chain:", error);
+    this.logger.error("Failed to build effect chain", { error });
     // Cleanup any partially-created nodes from the failed build
     this.cleanupPartiallyCreatedNodes(enabledEffects);
     // Ensure we're in a consistent state - disconnect everything
@@ -401,12 +410,15 @@ export class EffectManager {
         param.cancelScheduledValues(now);
         param.setValueAtTime(value, now);
       } else {
-        console.warn(
-          `Worklet parameter "${name}" not found during initialization`
-        );
+        this.logger.warn("Worklet parameter not found during initialization", {
+          parameter: name,
+        });
       }
     } catch (error) {
-      console.warn(`Failed to initialize parameter "${name}":`, error);
+      this.logger.warn("Failed to initialize parameter", {
+        parameter: name,
+        error,
+      });
     }
   }
 
@@ -490,27 +502,27 @@ export class EffectManager {
             this.initWorkletParam(params, "wet", reverbConfig.wet, now);
             this.initWorkletParam(params, "dry", reverbConfig.dry, now);
           } else {
-            console.warn(
+            this.logger.warn(
               "Plate reverb node parameters not available after creation"
             );
           }
 
           return reverbNode as unknown as globalThis.AudioWorkletNode;
         } catch (workletError) {
-          console.error(
-            "Failed to create plate reverb worklet node:",
-            workletError
-          );
           // Check if it's a NotSupportedError
           if (
             workletError instanceof Error &&
             (workletError.name === "NotSupportedError" ||
               workletError.message.includes("not supported"))
           ) {
-            console.error(
-              "AudioWorklet is not supported in this browser or the worklet failed to load. URL:",
-              workletUrl
+            this.logger.error(
+              "AudioWorklet is not supported in this browser or the worklet failed to load",
+              { url: workletUrl, error: workletError }
             );
+          } else {
+            this.logger.error("Failed to create plate reverb worklet node", {
+              error: workletError,
+            });
           }
           throw workletError;
         }
@@ -538,26 +550,26 @@ export class EffectManager {
               now
             );
           } else {
-            console.warn(
+            this.logger.warn(
               "Phase vocoder node parameters not available after creation"
             );
           }
 
           return vocoderNode as unknown as globalThis.AudioWorkletNode;
         } catch (workletError) {
-          console.error(
-            "Failed to create phase vocoder worklet node:",
-            workletError
-          );
           if (
             workletError instanceof Error &&
             (workletError.name === "NotSupportedError" ||
               workletError.message.includes("not supported"))
           ) {
-            console.error(
-              "AudioWorklet is not supported in this browser or the worklet failed to load. URL:",
-              workletUrl
+            this.logger.error(
+              "AudioWorklet is not supported in this browser or the worklet failed to load",
+              { url: workletUrl, error: workletError }
             );
+          } else {
+            this.logger.error("Failed to create phase vocoder worklet node", {
+              error: workletError,
+            });
           }
           throw workletError;
         }
@@ -565,7 +577,7 @@ export class EffectManager {
 
       return null;
     } catch (error) {
-      console.error("Failed to create async effect node:", error);
+      this.logger.error("Failed to create async effect node", { error });
       return null;
     }
   }
@@ -659,16 +671,19 @@ export class EffectManager {
           return null;
       }
     } catch (error) {
-      console.error(`Failed to create effect node for ${config.type}:`, error);
+      this.logger.error("Failed to create effect node", {
+        effectType: config.type,
+        error,
+      });
       return null;
     }
   }
 
   /**
    * Update an effect node's parameters
+   * @returns Promise that resolves to true on success, false on failure
    */
-  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Complex effect node update logic with multiple effect types
-  private updateEffectNode(effect: EffectInstance): void {
+  private updateEffectNode(effect: EffectInstance): Promise<boolean> {
     const wasEnabled = effect.node !== null;
     const isEnabled = effect.config.enabled;
 
@@ -680,7 +695,7 @@ export class EffectManager {
       effect.dryGain = undefined;
       effect.feedbackGain = undefined;
       this.rebuildChain();
-      return;
+      return Promise.resolve(true);
     }
 
     // If effect is being enabled but has no node, create it
@@ -690,52 +705,57 @@ export class EffectManager {
         effect.config.type === "phaseVocoder"
       ) {
         // Handle async effect creation
-        this.createEffectNodeAsync(effect.config)
+        return this.createEffectNodeAsync(effect.config)
           .then((newNode) => {
             if (newNode) {
               effect.node = newNode;
               this.rebuildChain();
-            } else {
-              // If node creation failed, disable the effect
-              console.warn(
-                `${effect.config.type} node creation returned null, disabling effect`
-              );
-              effect.config.enabled = false;
+              return true;
             }
+            // If node creation failed, disable the effect
+            this.logger.warn(
+              "Effect node creation returned null, disabling effect",
+              { effectType: effect.config.type }
+            );
+            effect.config.enabled = false;
+            return false;
           })
           .catch((error) => {
-            console.error(
-              `Failed to create ${effect.config.type} node:`,
-              error
-            );
+            this.logger.error("Failed to create effect node", {
+              effectType: effect.config.type,
+              error,
+            });
             // Disable the effect if creation fails
             effect.config.enabled = false;
+            return false;
           });
-      } else {
-        const newNode = this.createEffectNode(effect.config);
-        if (newNode) {
-          effect.node = newNode;
-        } else {
-          // If node creation failed, disable the effect
-          console.warn(
-            `Effect node creation returned null for ${effect.config.type}, disabling effect`
-          );
-          effect.config.enabled = false;
-        }
-        this.rebuildChain();
       }
-      return;
+      const syncNode = this.createEffectNode(effect.config);
+      if (syncNode) {
+        effect.node = syncNode;
+        this.rebuildChain();
+        return Promise.resolve(true);
+      }
+      // If node creation failed, disable the effect
+      this.logger.warn("Effect node creation returned null, disabling effect", {
+        effectType: effect.config.type,
+      });
+      effect.config.enabled = false;
+      return Promise.resolve(false);
     }
 
     // If effect is disabled and has no node, nothing to do
     if (!(effect.node || isEnabled)) {
-      return;
+      return Promise.resolve(true);
     }
 
     // If effect is enabled, update its parameters
     if (isEnabled && effect.node) {
       this.updateEffectNodeParams(effect);
+      return Promise.resolve(true);
     }
+
+    return Promise.resolve(true);
   }
 
   /**
@@ -782,7 +802,7 @@ export class EffectManager {
         }
       }
     } catch (error) {
-      console.error("Failed to update effect node:", error);
+      this.logger.error("Failed to update effect node", { error });
     }
   }
 
@@ -818,7 +838,7 @@ export class EffectManager {
     const reverbConfig = effect.config as PlateReverbConfig;
     const reverb = effect.node as globalThis.AudioWorkletNode;
     if (!reverb?.parameters) {
-      console.warn("Plate reverb node or parameters not available");
+      this.logger.warn("Plate reverb node or parameters not available");
       return;
     }
 
@@ -843,18 +863,19 @@ export class EffectManager {
           param.cancelScheduledValues(now);
           param.setValueAtTime(value, now);
         } else {
-          console.warn(
-            `Plate reverb parameter "${name}" not found. Available parameters:`,
-            typeof params.get === "function"
-              ? Array.from(params.keys?.() ?? [])
-              : Object.keys(params)
-          );
+          this.logger.warn("Plate reverb parameter not found", {
+            parameter: name,
+            availableParameters:
+              typeof params.get === "function"
+                ? Array.from(params.keys?.() ?? [])
+                : Object.keys(params),
+          });
         }
       } catch (error) {
-        console.error(
-          `Error updating plate reverb parameter "${name}":`,
-          error
-        );
+        this.logger.error("Error updating plate reverb parameter", {
+          parameter: name,
+          error,
+        });
       }
     };
 
@@ -908,7 +929,7 @@ export class EffectManager {
     const vocoderConfig = effect.config as PhaseVocoderConfig;
     const vocoder = effect.node as globalThis.AudioWorkletNode;
     if (!vocoder?.parameters) {
-      console.warn("Phase vocoder node or parameters not available");
+      this.logger.warn("Phase vocoder node or parameters not available");
       return;
     }
 
@@ -927,18 +948,19 @@ export class EffectManager {
           param.cancelScheduledValues(now);
           param.setValueAtTime(value, now);
         } else {
-          console.warn(
-            `Phase vocoder parameter "${name}" not found. Available parameters:`,
-            typeof params.get === "function"
-              ? Array.from(params.keys?.() ?? [])
-              : Object.keys(params)
-          );
+          this.logger.warn("Phase vocoder parameter not found", {
+            parameter: name,
+            availableParameters:
+              typeof params.get === "function"
+                ? Array.from(params.keys?.() ?? [])
+                : Object.keys(params),
+          });
         }
       } catch (error) {
-        console.error(
-          `Error updating phase vocoder parameter "${name}":`,
-          error
-        );
+        this.logger.error("Error updating phase vocoder parameter", {
+          parameter: name,
+          error,
+        });
       }
     };
 

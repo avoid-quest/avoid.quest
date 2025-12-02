@@ -27,11 +27,18 @@ async function getClientId(): Promise<string> {
 }
 
 async function resolveSoundCloudUrl(url: string, clientId: string) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10_000);
+
   const resolveUrl = new URL("https://api-v2.soundcloud.com/resolve");
   resolveUrl.searchParams.set("url", url);
   resolveUrl.searchParams.set("client_id", clientId);
 
-  const response = await fetch(resolveUrl.toString());
+  const response = await fetch(resolveUrl.toString(), {
+    signal: controller.signal,
+  });
+  clearTimeout(timeoutId);
+
   if (!response.ok) {
     throw new Error(`Failed to resolve URL: ${response.statusText}`);
   }

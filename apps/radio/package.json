@@ -8,7 +8,6 @@
     "fix": "bunx ultracite fix",
     "check": "bunx ultracite check",
     "build": "bun run scripts/copy-worklets.ts && vite build",
-    "serve": "vite preview",
     "test": "vitest run",
     "cf-deploy": "wrangler deploy",
     "cf-upload": "wrangler versions upload",

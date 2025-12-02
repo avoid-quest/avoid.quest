@@ -46,6 +46,11 @@
     "test": {
       "cache": false,
       "dependsOn": ["^build"]
+    },
+    "preview": {
+      "cache": false,
+      "dependsOn": ["^build", "^preview"],
+      "persistent": true
     }
   }
 }

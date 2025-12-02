@@ -3,7 +3,7 @@ import {
   getEffectMetadata,
   type PhaseVocoderConfig,
 } from "@avoid.quest/radio-audio";
-import { ParamGroup, ParamSlider } from "./";
+import { ParamGroup, ParamSlider, UniversalParams } from "./";
 
 type PhaseVocoderParamsProps = {
   effect: PhaseVocoderConfig;
@@ -48,6 +48,8 @@ export function PhaseVocoderParams({
           value={effect.pitchFactor}
         />
       </ParamGroup>
+
+      <UniversalParams effect={effect} onUpdate={onUpdate} />
     </div>
   );
 }

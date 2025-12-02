@@ -321,51 +321,87 @@ export class EffectManager {
 
   /**
    * Connect an effect to the chain and return the output node
+   * All effects are wrapped with: inputGain → [dry/wet split] → merge → outputGain
    */
   private connectEffect(
     effect: EffectInstance,
     currentNode: AudioNode
   ): AudioNode {
-    // Handle plate reverb (handles wet/dry internally)
-    if (effect.config.type === "plateReverb") {
-      const mergeNode = this.cacophony.context.createGain();
-      mergeNode.gain.value = 1.0;
-      this.connectPlateReverbEffect(effect, currentNode, mergeNode);
-      return mergeNode as unknown as AudioNode;
+    if (!effect.node) {
+      return currentNode;
     }
 
-    // Handle standard reverb (needs wet/dry routing)
-    if (effect.config.type === "standardReverb") {
-      const mergeNode = this.cacophony.context.createGain();
-      mergeNode.gain.value = 1.0;
-      this.setupWetDryRouting(effect, currentNode, mergeNode);
-      return mergeNode as unknown as AudioNode;
+    const context = this.cacophony.context;
+
+    // Create input gain node if needed
+    if (!effect.inputGainNode) {
+      effect.inputGainNode = context.createGain();
+    }
+    effect.inputGainNode.gain.value = effect.config.inputGain;
+
+    // Create merge node for dry/wet mixing
+    const mergeNode = context.createGain();
+    mergeNode.gain.value = 1.0;
+
+    // Create dry and wet gain nodes if needed
+    if (!effect.dryGain) {
+      effect.dryGain = context.createGain();
+    }
+    if (!effect.wetGain) {
+      effect.wetGain = context.createGain();
     }
 
-    // Handle phase vocoder (simple pass-through)
-    if (effect.config.type === "phaseVocoder") {
-      const effectNode = effect.node as unknown as AudioNode;
-      currentNode.connect(effectNode);
-      return effectNode;
+    // Set initial dry/wet values
+    effect.dryGain.gain.value = 1.0 - effect.config.dryWet;
+    effect.wetGain.gain.value = effect.config.dryWet;
+
+    // Connect: input → inputGain
+    currentNode.connect(effect.inputGainNode as unknown as AudioNode);
+    const inputGainOutput = effect.inputGainNode as unknown as AudioNode;
+
+    // Special handling for delay (needs feedback loop)
+    if (effect.config.type === "delay") {
+      const delayConfig = effect.config as DelayConfig;
+      const delayNode = effect.node as DelayNode;
+
+      // Setup feedback loop
+      if (!effect.feedbackGain) {
+        effect.feedbackGain = context.createGain();
+      }
+      effect.feedbackGain.gain.value = delayConfig.feedback;
+
+      // Delay feedback: delayNode → feedbackGain → delayNode
+      (
+        delayNode as unknown as {
+          connect(destination: AudioNode | { value: number }): void;
+        }
+      ).connect(effect.feedbackGain as unknown as AudioNode);
+      effect.feedbackGain.connect(delayNode as unknown as AudioNode);
     }
 
-    // Handle effects that need wet/dry routing (delay)
-    if (this.needsWetDryRouting(effect.config)) {
-      // Create a merge node to combine wet and dry signals
-      const mergeNode = this.cacophony.context.createGain();
-      mergeNode.gain.value = 1.0;
+    // Dry path: inputGain → dryGain → merge
+    inputGainOutput.connect(effect.dryGain as unknown as AudioNode);
+    effect.dryGain.connect(mergeNode as unknown as AudioNode);
 
-      // Setup wet/dry routing - both paths output to merge node
-      this.setupWetDryRouting(effect, currentNode, mergeNode);
+    // Wet path: inputGain → effect → wetGain → merge
+    inputGainOutput.connect(effect.node as unknown as AudioNode);
+    (
+      effect.node as unknown as {
+        connect(destination: AudioNode | { value: number }): void;
+      }
+    ).connect(effect.wetGain as unknown as AudioNode);
+    effect.wetGain.connect(mergeNode as unknown as AudioNode);
 
-      // Continue chain from merge node
-      return mergeNode as unknown as AudioNode;
+    // Create output gain node if needed
+    if (!effect.outputGainNode) {
+      effect.outputGainNode = context.createGain();
     }
+    effect.outputGainNode.gain.value = effect.config.outputGain;
 
-    // Simple pass-through effects
-    const effectNode = effect.node as unknown as AudioNode;
-    currentNode.connect(effectNode);
-    return effectNode;
+    // Connect: merge → outputGain
+    mergeNode.connect(effect.outputGainNode as unknown as AudioNode);
+
+    return effect.outputGainNode as unknown as AudioNode;
   }
 
   /**
@@ -499,8 +535,9 @@ export class EffectManager {
               reverbConfig.excursionDepth,
               now
             );
-            this.initWorkletParam(params, "wet", reverbConfig.wet, now);
-            this.initWorkletParam(params, "dry", reverbConfig.dry, now);
+            // Set internal wet/dry to fixed values since we handle mixing externally
+            this.initWorkletParam(params, "wet", 1.0, now);
+            this.initWorkletParam(params, "dry", 0.0, now);
           } else {
             this.logger.warn(
               "Plate reverb node parameters not available after creation"
@@ -691,6 +728,8 @@ export class EffectManager {
     if (wasEnabled && !isEnabled) {
       this.cleanupEffect(effect);
       effect.node = null;
+      effect.inputGainNode = undefined;
+      effect.outputGainNode = undefined;
       effect.wetGain = undefined;
       effect.dryGain = undefined;
       effect.feedbackGain = undefined;
@@ -770,6 +809,9 @@ export class EffectManager {
     const now = context.currentTime;
     const smoothTime = 0.01;
 
+    // Update universal parameters (dryWet, inputGain, outputGain)
+    this.updateUniversalParams(effect, now, smoothTime);
+
     try {
       switch (effect.config.type) {
         case "biquadFilter":
@@ -803,6 +845,55 @@ export class EffectManager {
       }
     } catch (error) {
       this.logger.error("Failed to update effect node", { error });
+    }
+  }
+
+  /**
+   * Update universal parameters (dryWet, inputGain, outputGain) for all effects
+   */
+  private updateUniversalParams(
+    effect: EffectInstance,
+    now: number,
+    smoothTime: number
+  ): void {
+    // Update input gain
+    if (effect.inputGainNode) {
+      effect.inputGainNode.gain.cancelScheduledValues(now);
+      effect.inputGainNode.gain.setValueAtTime(
+        effect.inputGainNode.gain.value,
+        now
+      );
+      effect.inputGainNode.gain.linearRampToValueAtTime(
+        effect.config.inputGain,
+        now + smoothTime
+      );
+    }
+
+    // Update output gain
+    if (effect.outputGainNode) {
+      effect.outputGainNode.gain.cancelScheduledValues(now);
+      effect.outputGainNode.gain.setValueAtTime(
+        effect.outputGainNode.gain.value,
+        now
+      );
+      effect.outputGainNode.gain.linearRampToValueAtTime(
+        effect.config.outputGain,
+        now + smoothTime
+      );
+    }
+
+    // Update dry/wet gains
+    if (effect.dryGain && effect.wetGain) {
+      const dryValue = 1.0 - effect.config.dryWet;
+      const wetValue = effect.config.dryWet;
+
+      effect.dryGain.gain.cancelScheduledValues(now);
+      effect.dryGain.gain.setValueAtTime(effect.dryGain.gain.value, now);
+      effect.dryGain.gain.linearRampToValueAtTime(dryValue, now + smoothTime);
+
+      effect.wetGain.gain.cancelScheduledValues(now);
+      effect.wetGain.gain.setValueAtTime(effect.wetGain.gain.value, now);
+      effect.wetGain.gain.linearRampToValueAtTime(wetValue, now + smoothTime);
     }
   }
 
@@ -889,8 +980,9 @@ export class EffectManager {
     updateParam("damping", reverbConfig.damping);
     updateParam("excursionRate", reverbConfig.excursionRate);
     updateParam("excursionDepth", reverbConfig.excursionDepth);
-    updateParam("wet", reverbConfig.wet);
-    updateParam("dry", reverbConfig.dry);
+    // Set internal wet/dry to fixed values since we handle mixing externally
+    updateParam("wet", 1.0);
+    updateParam("dry", 0.0);
   }
 
   private updateStandardReverb(
@@ -915,14 +1007,6 @@ export class EffectManager {
       reverbConfig.decayTime
     );
     convolver.buffer = impulseResponse;
-
-    // Update wet/dry gains
-    if (effect.wetGain && effect.dryGain) {
-      this.updateWetDryGains(effect, reverbConfig.wet, reverbConfig.dry, {
-        now,
-        smoothTime,
-      });
-    }
   }
 
   private updatePhaseVocoder(effect: EffectInstance, now: number): void {
@@ -991,13 +1075,6 @@ export class EffectManager {
         delayConfig.feedback,
         now + smoothTime
       );
-    }
-    // Update wet/dry gains
-    if (effect.wetGain && effect.dryGain) {
-      this.updateWetDryGains(effect, delayConfig.wet, delayConfig.dry, {
-        now,
-        smoothTime,
-      });
     }
   }
 
@@ -1083,27 +1160,6 @@ export class EffectManager {
     updateParam(panner.orientationZ, pannerConfig.orientationZ);
   }
 
-  private updateWetDryGains(
-    effect: EffectInstance,
-    wet: number,
-    dry: number,
-    timing: { now: number; smoothTime: number }
-  ): void {
-    const { wetGain, dryGain } = effect;
-    if (!wetGain) {
-      return;
-    }
-    if (!dryGain) {
-      return;
-    }
-    wetGain.gain.cancelScheduledValues(timing.now);
-    wetGain.gain.setValueAtTime(wetGain.gain.value, timing.now);
-    wetGain.gain.linearRampToValueAtTime(wet, timing.now + timing.smoothTime);
-    dryGain.gain.cancelScheduledValues(timing.now);
-    dryGain.gain.setValueAtTime(dryGain.gain.value, timing.now);
-    dryGain.gain.linearRampToValueAtTime(dry, timing.now + timing.smoothTime);
-  }
-
   /**
    * Generate an impulse response for standard reverb
    */
@@ -1129,94 +1185,6 @@ export class EffectManager {
     }
 
     return impulse;
-  }
-
-  /**
-   * Check if an effect needs wet/dry routing
-   */
-  private needsWetDryRouting(config: EffectConfig): boolean {
-    // Plate reverb handles wet/dry internally, so we don't need separate routing
-    // Standard reverb is handled separately in connectEffect
-    return config.type === "delay";
-  }
-
-  /**
-   * Setup wet/dry routing for effects that need it
-   */
-  private setupWetDryRouting(
-    effect: EffectInstance,
-    inputNode: AudioNode,
-    outputNode: AudioNode
-  ): void {
-    if (!effect.node) {
-      return;
-    }
-
-    const context = this.cacophony.context;
-
-    // Create gain nodes if they don't exist
-    if (!effect.wetGain) {
-      effect.wetGain = context.createGain();
-    }
-    if (!effect.dryGain) {
-      effect.dryGain = context.createGain();
-    }
-
-    // Set gain values
-    if (effect.config.type === "delay") {
-      const config = effect.config as DelayConfig;
-      effect.wetGain.gain.value = config.wet;
-      effect.dryGain.gain.value = config.dry;
-
-      // Setup feedback loop for delay
-      if (!effect.feedbackGain) {
-        effect.feedbackGain = context.createGain();
-      }
-      effect.feedbackGain.gain.value = config.feedback;
-      (
-        effect.node as unknown as {
-          connect(destination: AudioNode | { value: number }): void;
-        }
-      ).connect(effect.feedbackGain as unknown as AudioNode);
-      effect.feedbackGain.connect(effect.node as unknown as AudioNode);
-    } else if (effect.config.type === "standardReverb") {
-      const config = effect.config as StandardReverbConfig;
-      effect.wetGain.gain.value = config.wet;
-      effect.dryGain.gain.value = config.dry;
-    }
-
-    // Route dry signal: input → dryGain → output
-    inputNode.connect(effect.dryGain as unknown as AudioNode);
-    effect.dryGain.connect(outputNode);
-
-    // Route wet signal: input → effect → wetGain → output
-    inputNode.connect(effect.node as unknown as AudioNode);
-    (
-      effect.node as unknown as {
-        connect(destination: AudioNode | { value: number }): void;
-      }
-    ).connect(effect.wetGain as unknown as AudioNode);
-    effect.wetGain.connect(outputNode);
-  }
-
-  /**
-   * Connect plate reverb effect (handles wet/dry internally)
-   */
-  private connectPlateReverbEffect(
-    effect: EffectInstance,
-    inputNode: AudioNode,
-    outputNode: AudioNode
-  ): void {
-    if (!effect.node) {
-      return;
-    }
-    // Plate reverb already handles wet/dry mixing internally
-    inputNode.connect(effect.node as unknown as AudioNode);
-    (
-      effect.node as unknown as {
-        connect(destination: AudioNode | { value: number }): void;
-      }
-    ).connect(outputNode);
   }
 
   /**
@@ -1250,6 +1218,12 @@ export class EffectManager {
       if (effect.node) {
         effect.node.disconnect();
       }
+      if (effect.inputGainNode) {
+        effect.inputGainNode.disconnect();
+      }
+      if (effect.outputGainNode) {
+        effect.outputGainNode.disconnect();
+      }
       if (effect.wetGain) {
         effect.wetGain.disconnect();
       }
@@ -1268,6 +1242,12 @@ export class EffectManager {
   private cleanupEffect(effect: EffectInstance): void {
     if (effect.node) {
       effect.node.disconnect();
+    }
+    if (effect.inputGainNode) {
+      effect.inputGainNode.disconnect();
+    }
+    if (effect.outputGainNode) {
+      effect.outputGainNode.disconnect();
     }
     if (effect.wetGain) {
       effect.wetGain.disconnect();

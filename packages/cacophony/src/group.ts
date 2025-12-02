@@ -1,5 +1,5 @@
 import type { BaseSound, LoopCount, Position } from "./cacophony.js";
-
+import type { BiquadFilterNode } from "./context.js";
 import type { Playback } from "./playback.js";
 import type { Sound } from "./sound.js";
 

@@ -3,7 +3,7 @@ import {
   getEffectMetadata,
   type StandardReverbConfig,
 } from "@avoid.quest/radio-audio";
-import { ParamGroup, ParamSlider } from "./";
+import { ParamGroup, ParamSlider, UniversalParams } from "./";
 
 type StandardReverbParamsProps = {
   effect: StandardReverbConfig;
@@ -22,13 +22,6 @@ function getDefaultValue(
   }
   const value = (defaultConfig as Record<string, unknown>)[key];
   return typeof value === "number" ? value : undefined;
-}
-
-function handleWetChange(
-  value: number,
-  onUpdate: (config: Partial<EffectConfig>) => void
-) {
-  onUpdate({ wet: value, dry: 1 - value });
 }
 
 export function StandardReverbParams({
@@ -67,19 +60,7 @@ export function StandardReverbParams({
         />
       </ParamGroup>
 
-      <ParamGroup title="Mix">
-        <ParamSlider
-          defaultValue={getDefaultValue(defaultConfig, "wet")}
-          disabled={disabled}
-          formatKey="percentage"
-          label="Wet/Dry Mix"
-          max={ranges.wet?.max ?? 1}
-          min={ranges.wet?.min ?? 0}
-          onChange={(value) => handleWetChange(value, onUpdate)}
-          step={ranges.wet?.step ?? 0.01}
-          value={effect.wet}
-        />
-      </ParamGroup>
+      <UniversalParams effect={effect} onUpdate={onUpdate} />
     </div>
   );
 }

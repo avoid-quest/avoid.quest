@@ -25,6 +25,8 @@ import type { BaseSound, LoopCount, PanType } from "./cacophony.js";
 import type {
   AudioBuffer,
   AudioContext,
+  AudioNode,
+  BiquadFilterNode,
   GainNode,
   SourceNode,
 } from "./context.js";

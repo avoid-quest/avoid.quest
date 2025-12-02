@@ -32,6 +32,7 @@ import { PlaybackContainer } from "./container.js";
 import type {
   AudioBuffer,
   AudioContext,
+  BiquadFilterNode,
   GainNode,
   SourceNode,
 } from "./context.js";

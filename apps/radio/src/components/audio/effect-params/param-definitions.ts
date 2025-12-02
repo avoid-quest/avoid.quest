@@ -25,6 +25,13 @@ export const paramFormatters: Record<string, ParamFormatter> = {
   samples: (value: number) => `${Math.round(value).toLocaleString()} samples`,
   degrees: (value: number) => `${Math.round(value)}°`,
   distance: (value: number) => `${value.toFixed(1)}`,
+  linearGain: (value: number) => {
+    if (value === 0) {
+      return "-∞ dB";
+    }
+    const db = 20 * Math.log10(value);
+    return `${db > 0 ? "+" : ""}${db.toFixed(1)} dB`;
+  },
   default: (value: number) => value.toFixed(2),
 };
 

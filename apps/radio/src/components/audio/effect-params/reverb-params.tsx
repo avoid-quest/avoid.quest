@@ -3,7 +3,7 @@ import {
   getEffectMetadata,
   type PlateReverbConfig,
 } from "@avoid.quest/radio-audio";
-import { ParamGroup, ParamSlider } from "./";
+import { ParamGroup, ParamSlider, UniversalParams } from "./";
 
 type PlateReverbParamsProps = {
   effect: PlateReverbConfig;
@@ -260,53 +260,6 @@ function ModulationGroup({
   );
 }
 
-function MixGroup({
-  effect,
-  disabled,
-  onUpdate,
-  ranges,
-  defaultConfig,
-}: {
-  effect: PlateReverbConfig;
-  disabled: boolean;
-  onUpdate: (config: Partial<EffectConfig>) => void;
-  ranges: Record<string, { max?: number; min?: number; step?: number }>;
-  defaultConfig: Omit<EffectConfig, "id" | "order"> | undefined;
-}) {
-  const sliders: SliderConfig[] = [
-    {
-      formatKey: "percentage",
-      key: "wet",
-      label: "Wet",
-      max: ranges.wet?.max ?? 1,
-      min: ranges.wet?.min ?? 0,
-      step: ranges.wet?.step ?? 0.01,
-    },
-    {
-      formatKey: "percentage",
-      key: "dry",
-      label: "Dry",
-      max: ranges.dry?.max ?? 1,
-      min: ranges.dry?.min ?? 0,
-      step: ranges.dry?.step ?? 0.01,
-    },
-  ];
-
-  return (
-    <ParamGroup title="Mix">
-      {sliders.map((slider) =>
-        createSlider({
-          defaultConfig,
-          disabled,
-          effect,
-          onUpdate,
-          sliderConfig: slider,
-        })
-      )}
-    </ParamGroup>
-  );
-}
-
 export function PlateReverbParams({
   effect,
   onUpdate,
@@ -346,13 +299,8 @@ export function PlateReverbParams({
         onUpdate={onUpdate}
         ranges={ranges}
       />
-      <MixGroup
-        defaultConfig={defaultConfig}
-        disabled={disabled}
-        effect={effect}
-        onUpdate={onUpdate}
-        ranges={ranges}
-      />
+
+      <UniversalParams effect={effect} onUpdate={onUpdate} />
     </div>
   );
 }

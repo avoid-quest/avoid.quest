@@ -1,6 +1,11 @@
 import { BasePlayback } from "./base-playback.js";
 import type { BaseSound } from "./cacophony.js";
-import type { AudioContext, GainNode, OscillatorNode } from "./context.js";
+import type {
+  AudioContext,
+  AudioNode,
+  GainNode,
+  OscillatorNode,
+} from "./context.js";
 import { OscillatorMixin } from "./oscillator-mixin.js";
 import type { Synth } from "./synth.js";
 

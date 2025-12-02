@@ -3,7 +3,7 @@ import {
   type EffectConfig,
   getEffectMetadata,
 } from "@avoid.quest/radio-audio";
-import { ParamSelect, ParamSlider } from "./";
+import { ParamSelect, ParamSlider, UniversalParams } from "./";
 
 const FILTER_TYPES = [
   { value: "lowpass", label: "Low Pass" },
@@ -102,6 +102,8 @@ export function BiquadFilterParams({
           value={effect.gain}
         />
       ) : null}
+
+      <UniversalParams effect={effect} onUpdate={onUpdate} />
     </div>
   );
 }

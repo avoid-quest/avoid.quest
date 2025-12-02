@@ -12,3 +12,4 @@ export { ParamSlider } from "./param-slider";
 export { PhaseVocoderParams } from "./phase-vocoder-params";
 export { PlateReverbParams } from "./reverb-params";
 export { StandardReverbParams } from "./standard-reverb-params";
+export { UniversalParams } from "./universal-params";

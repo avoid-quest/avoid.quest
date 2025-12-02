@@ -3,7 +3,7 @@ import {
   type EffectConfig,
   getEffectMetadata,
 } from "@avoid.quest/radio-audio";
-import { ParamSelect, ParamSlider } from "./";
+import { ParamSelect, ParamSlider, UniversalParams } from "./";
 
 type DistortionParamsProps = {
   effect: DistortionConfig;
@@ -52,6 +52,8 @@ export function DistortionParams({ effect, onUpdate }: DistortionParamsProps) {
         options={OVERSAMPLE_OPTIONS}
         value={effect.oversample}
       />
+
+      <UniversalParams effect={effect} onUpdate={onUpdate} />
     </div>
   );
 }

@@ -3,7 +3,7 @@ import {
   type EffectConfig,
   getEffectMetadata,
 } from "@avoid.quest/radio-audio";
-import { ParamGroup, ParamSlider } from "./";
+import { ParamGroup, ParamSlider, UniversalParams } from "./";
 
 type CompressorParamsProps = {
   effect: CompressorConfig;
@@ -186,6 +186,8 @@ export function CompressorParams({ effect, onUpdate }: CompressorParamsProps) {
           step: ranges.knee?.step ?? 1,
         },
       })}
+
+      <UniversalParams effect={effect} onUpdate={onUpdate} />
     </div>
   );
 }

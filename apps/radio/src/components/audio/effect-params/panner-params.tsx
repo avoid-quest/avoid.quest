@@ -3,7 +3,7 @@ import {
   getEffectMetadata,
   type PannerConfig,
 } from "@avoid.quest/radio-audio";
-import { ParamGroup, ParamSelect, ParamSlider } from "./";
+import { ParamGroup, ParamSelect, ParamSlider, UniversalParams } from "./";
 
 type PannerParamsProps = {
   effect: PannerConfig;
@@ -355,6 +355,8 @@ export function PannerParams({ effect, onUpdate }: PannerParamsProps) {
         onUpdate={onUpdate}
         ranges={ranges}
       />
+
+      <UniversalParams effect={effect} onUpdate={onUpdate} />
     </div>
   );
 }

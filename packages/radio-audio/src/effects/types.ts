@@ -138,4 +138,5 @@ export type EffectInstance = {
   wetGain?: GainNode;
   dryGain?: GainNode;
   feedbackGain?: GainNode; // For delay feedback loop
+  mergeNode?: GainNode; // For dry/wet mixing
 };

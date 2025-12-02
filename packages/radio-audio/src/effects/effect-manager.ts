@@ -49,6 +49,7 @@ export class EffectManager {
    */
   setInputNode(node: AudioNode): void {
     this.inputNode = node;
+    // Fire-and-forget: errors are handled internally
     this.rebuildChain();
   }
 
@@ -57,6 +58,7 @@ export class EffectManager {
    */
   setOutputNode(node: AudioNode): void {
     this.defaultDestination = node;
+    // Fire-and-forget: errors are handled internally
     this.rebuildChain();
   }
 
@@ -79,6 +81,7 @@ export class EffectManager {
       this.effects.splice(insertIndex, 0, instance);
     }
 
+    // Fire-and-forget: errors are handled internally
     this.rebuildChain();
   }
 
@@ -102,6 +105,7 @@ export class EffectManager {
       e.config.order = i;
     }
 
+    // Fire-and-forget: errors are handled internally
     this.rebuildChain();
   }
 
@@ -156,6 +160,7 @@ export class EffectManager {
     // Sort effects by order
     this.effects.sort((a, b) => a.config.order - b.config.order);
 
+    // Fire-and-forget: errors are handled internally
     this.rebuildChain();
   }
 
@@ -214,6 +219,7 @@ export class EffectManager {
       }
     } catch (error) {
       this.handleBuildChainError(error, enabledEffects);
+      // Error is handled locally, no rethrow
     }
   }
 
@@ -223,7 +229,7 @@ export class EffectManager {
   private handleBuildChainError(
     error: unknown,
     enabledEffects: EffectInstance[]
-  ): never {
+  ): void {
     this.logger.error("Failed to build effect chain", { error });
     // Cleanup any partially-created nodes from the failed build
     this.cleanupPartiallyCreatedNodes(enabledEffects);
@@ -233,8 +239,6 @@ export class EffectManager {
     if (this.inputNode && this.defaultDestination) {
       this.inputNode.connect(this.defaultDestination);
     }
-    // Rethrow so callers can handle the error
-    throw error;
   }
 
   /**
@@ -339,9 +343,11 @@ export class EffectManager {
     }
     effect.inputGainNode.gain.value = effect.config.inputGain;
 
-    // Create merge node for dry/wet mixing
-    const mergeNode = context.createGain();
-    mergeNode.gain.value = 1.0;
+    // Create merge node for dry/wet mixing if needed
+    if (!effect.mergeNode) {
+      effect.mergeNode = context.createGain();
+    }
+    effect.mergeNode.gain.value = 1.0;
 
     // Create dry and wet gain nodes if needed
     if (!effect.dryGain) {
@@ -381,7 +387,7 @@ export class EffectManager {
 
     // Dry path: inputGain → dryGain → merge
     inputGainOutput.connect(effect.dryGain as unknown as AudioNode);
-    effect.dryGain.connect(mergeNode as unknown as AudioNode);
+    effect.dryGain.connect(effect.mergeNode as unknown as AudioNode);
 
     // Wet path: inputGain → effect → wetGain → merge
     inputGainOutput.connect(effect.node as unknown as AudioNode);
@@ -390,7 +396,7 @@ export class EffectManager {
         connect(destination: AudioNode | { value: number }): void;
       }
     ).connect(effect.wetGain as unknown as AudioNode);
-    effect.wetGain.connect(mergeNode as unknown as AudioNode);
+    effect.wetGain.connect(effect.mergeNode as unknown as AudioNode);
 
     // Create output gain node if needed
     if (!effect.outputGainNode) {
@@ -399,7 +405,7 @@ export class EffectManager {
     effect.outputGainNode.gain.value = effect.config.outputGain;
 
     // Connect: merge → outputGain
-    mergeNode.connect(effect.outputGainNode as unknown as AudioNode);
+    effect.mergeNode.connect(effect.outputGainNode as unknown as AudioNode);
 
     return effect.outputGainNode as unknown as AudioNode;
   }
@@ -759,6 +765,8 @@ export class EffectManager {
     effect.wetGain = undefined;
     effect.dryGain = undefined;
     effect.feedbackGain = undefined;
+    effect.mergeNode = undefined;
+    // Fire-and-forget: errors are handled internally
     this.rebuildChain();
     return true;
   }
@@ -787,6 +795,7 @@ export class EffectManager {
       const newNode = await this.createEffectNodeAsync(effect.config);
       if (newNode) {
         effect.node = newNode;
+        // Fire-and-forget: errors are handled internally
         this.rebuildChain();
         return true;
       }
@@ -814,6 +823,7 @@ export class EffectManager {
     const syncNode = this.createEffectNode(effect.config);
     if (syncNode) {
       effect.node = syncNode;
+      // Fire-and-forget: errors are handled internally
       this.rebuildChain();
       return true;
     }
@@ -1245,24 +1255,7 @@ export class EffectManager {
 
     // Disconnect all effect nodes
     for (const effect of this.effects) {
-      if (effect.node) {
-        effect.node.disconnect();
-      }
-      if (effect.inputGainNode) {
-        effect.inputGainNode.disconnect();
-      }
-      if (effect.outputGainNode) {
-        effect.outputGainNode.disconnect();
-      }
-      if (effect.wetGain) {
-        effect.wetGain.disconnect();
-      }
-      if (effect.dryGain) {
-        effect.dryGain.disconnect();
-      }
-      if (effect.feedbackGain) {
-        effect.feedbackGain.disconnect();
-      }
+      this.cleanupEffect(effect);
     }
   }
 
@@ -1287,6 +1280,10 @@ export class EffectManager {
     }
     if (effect.feedbackGain) {
       effect.feedbackGain.disconnect();
+    }
+    if (effect.mergeNode) {
+      effect.mergeNode.disconnect();
+      effect.mergeNode = undefined;
     }
   }
 

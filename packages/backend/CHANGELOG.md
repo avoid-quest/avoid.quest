@@ -1,8 +1,8 @@
-# radio
+# @workspace/backend
 
-## 0.4.0
+## 0.1.1
 
-### Minor Changes
+### Patch Changes
 
 - a90a800: ## Monorepo Refactoring & New Packages
 
@@ -71,27 +71,3 @@
   - **Code Cleanup** - Removed unused constants (`_SESSION_MAX_AGE`) and variables (`_debugLogged`)
   - **Type Improvements** - Removed unnecessary `@ts-expect-error` suppressions after fixing type compatibility issues
   - **Code Formatting** - Improved formatting consistency in audio processor files (phase-vocoder, dattorro-reverb)
-
-### Patch Changes
-
-- Updated dependencies [a90a800]
-  - @avoid.quest/radio-shared@0.0.1
-  - @avoid.quest/radio-audio@0.0.1
-  - @avoid.quest/soundcloud@0.0.1
-  - @avoid.quest/bandcamp@0.0.1
-
-## 0.3.0
-
-### Minor Changes
-
-- 760e001: Migrate from Next.js to TanStack Start
-
-  - Migrated from Next.js to TanStack Start (React Router) for better Cloudflare Workers compatibility
-  - Removed all "use client" directives (not needed in TanStack Start)
-  - Replaced Next.js Image component with native img tags
-  - Updated build system to use Vite with TanStack Start plugin
-  - Migrated from OpenNext to TanStack Start for Cloudflare deployment
-  - Updated to Tailwind CSS v4 with new import syntax
-  - Updated TypeScript configuration for TanStack Start
-  - Updated Wrangler configuration for TanStack Start server entry
-  - Bumped dependencies including Convex to latest versions

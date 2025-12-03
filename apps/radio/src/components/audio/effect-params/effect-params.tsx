@@ -3,7 +3,6 @@ import { BiquadFilterParams } from "./biquad-filter-params";
 import { CompressorParams } from "./compressor-params";
 import { DelayParams } from "./delay-params";
 import { DistortionParams } from "./distortion-params";
-import { PannerParams } from "./panner-params";
 import { PhaseVocoderParams } from "./phase-vocoder-params";
 import { PlateReverbParams } from "./reverb-params";
 import { StandardReverbParams } from "./standard-reverb-params";
@@ -29,8 +28,6 @@ export function EffectParams({ effect, onUpdate }: EffectParamsProps) {
       return <DistortionParams effect={effect} onUpdate={onUpdate} />;
     case "compressor":
       return <CompressorParams effect={effect} onUpdate={onUpdate} />;
-    case "panner":
-      return <PannerParams effect={effect} onUpdate={onUpdate} />;
     default:
       return null;
   }

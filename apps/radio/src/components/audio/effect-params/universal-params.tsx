@@ -13,7 +13,7 @@ export function UniversalParams({ effect, onUpdate }: UniversalParamsProps) {
   const defaultConfig = metadata?.defaultConfig;
 
   return (
-    <ParamGroup title="Universal Controls">
+    <ParamGroup>
       <ParamSlider
         defaultValue={getDefaultValue(defaultConfig, "dryWet")}
         formatKey="percentage"

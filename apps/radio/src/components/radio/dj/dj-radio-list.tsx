@@ -10,12 +10,12 @@ import {
 } from "@workspace/ui/components/tabs";
 import { useIsMobile } from "@workspace/ui/hooks/use-mobile";
 import {
-  ChevronLeft,
-  ChevronRight,
-  GripVertical,
-  Music,
-  Search,
-  Volume2,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  GripVerticalIcon,
+  MusicIcon,
+  SearchIcon,
+  Volume2Icon,
 } from "lucide-react";
 import { useState } from "react";
 import { useShallow } from "zustand/react/shallow";
@@ -94,7 +94,7 @@ function RadioItemContent({ radio }: { radio: Radio }) {
               backgroundColor: `${platformColor}1a`,
             }}
           >
-            <Music
+            <MusicIcon
               className="size-5"
               style={{
                 color: platformColor,
@@ -103,7 +103,9 @@ function RadioItemContent({ radio }: { radio: Radio }) {
           </div>
         ) : (
           <RadioLogo
-            fallbackIcon={<Volume2 className="size-4 text-muted-foreground" />}
+            fallbackIcon={
+              <Volume2Icon className="size-4 text-muted-foreground" />
+            }
             logoUrl={radio.logoUrl}
             name={radio.name}
             size="md"
@@ -173,7 +175,7 @@ function DraggableRadioItem({ radio }: DraggableRadioItemProps) {
         {...attributes}
         {...listeners}
       >
-        <GripVertical className="size-4 sm:size-3" />
+        <GripVerticalIcon className="size-4 sm:size-3" />
       </div>
 
       {/* Radio Content - Not draggable, allows normal interaction */}
@@ -221,7 +223,7 @@ function MobileRadioItem({ radio }: { radio: Radio }) {
           title="Load to Left Deck"
           variant="outline"
         >
-          <ChevronLeft className="size-4" />
+          <ChevronLeftIcon className="size-4" />
         </Button>
         <Button
           aria-label="Load to Right Deck"
@@ -231,7 +233,7 @@ function MobileRadioItem({ radio }: { radio: Radio }) {
           title="Load to Right Deck"
           variant="outline"
         >
-          <ChevronRight className="size-4" />
+          <ChevronRightIcon className="size-4" />
         </Button>
       </div>
     </div>
@@ -310,7 +312,7 @@ export function DjRadioList({ radios }: DjRadioListProps) {
             </TabsTrigger>
           </TabsList>
           <div className="relative">
-            <Search className="-translate-y-1/2 absolute top-1/2 left-2 size-4 text-muted-foreground" />
+            <SearchIcon className="-translate-y-1/2 absolute top-1/2 left-2 size-4 text-muted-foreground" />
             <Input
               aria-label="Search radios and external inputs"
               className="h-8 pl-8 text-xs"

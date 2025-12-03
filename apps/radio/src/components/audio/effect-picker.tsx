@@ -9,7 +9,7 @@ import {
 } from "@workspace/ui/components/dialog";
 import { Input } from "@workspace/ui/components/input";
 import { cn } from "@workspace/ui/lib/utils";
-import { Filter, Search } from "lucide-react";
+import { FilterIcon, SearchIcon } from "lucide-react";
 import { useState } from "react";
 import { EFFECT_ICONS } from "./effect-constants";
 
@@ -39,7 +39,7 @@ export function EffectPicker({ onSelect, onClose }: EffectPickerProps) {
 
         <div className="space-y-4">
           <div className="relative">
-            <Search className="-translate-y-1/2 absolute top-1/2 left-3 size-4 text-muted-foreground" />
+            <SearchIcon className="-translate-y-1/2 absolute top-1/2 left-3 size-4 text-muted-foreground" />
             <Input
               className="pl-9"
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -50,7 +50,7 @@ export function EffectPicker({ onSelect, onClose }: EffectPickerProps) {
 
           {filteredEffects.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">
-              <Search className="mb-4 size-12 text-muted-foreground/50" />
+              <SearchIcon className="mb-4 size-12 text-muted-foreground/50" />
               <p className="font-medium text-muted-foreground text-sm">
                 No effects found
               </p>
@@ -61,7 +61,7 @@ export function EffectPicker({ onSelect, onClose }: EffectPickerProps) {
           ) : (
             <div className="grid max-h-128 grid-cols-1 gap-3 overflow-y-auto pr-1 sm:grid-cols-2">
               {filteredEffects.map((effect) => {
-                const Icon = EFFECT_ICONS[effect.type] ?? Filter;
+                const Icon = EFFECT_ICONS[effect.type] ?? FilterIcon;
                 return (
                   <Card
                     className={cn(

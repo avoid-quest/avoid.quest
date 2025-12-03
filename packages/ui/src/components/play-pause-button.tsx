@@ -3,7 +3,7 @@
 import { Button } from "@workspace/ui/components/button";
 import { Spinner } from "@workspace/ui/components/spinner";
 import { cn } from "@workspace/ui/lib/utils";
-import { Pause, Play } from "lucide-react";
+import { PauseIcon, PlayIcon } from "lucide-react";
 
 type PlayPauseButtonProps = {
   isPlaying: boolean;
@@ -57,10 +57,10 @@ export function PlayPauseButton({
     }
 
     if (isPlaying) {
-      return <Pause className={cn("size-8", iconClassName)} />;
+      return <PauseIcon className={cn("size-8", iconClassName)} />;
     }
 
-    return <Play className={cn("size-8", iconClassName)} />;
+    return <PlayIcon className={cn("size-8", iconClassName)} />;
   };
 
   const button = (

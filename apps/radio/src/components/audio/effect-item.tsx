@@ -9,7 +9,12 @@ import {
 } from "@workspace/ui/components/card";
 import { Toggle } from "@workspace/ui/components/toggle";
 import { cn } from "@workspace/ui/lib/utils";
-import { Filter, GripVertical, RotateCcw, X } from "lucide-react";
+import {
+  FilterIcon,
+  GripVerticalIcon,
+  RotateCcwIcon,
+  XIcon,
+} from "lucide-react";
 import { EFFECT_ICONS } from "./effect-constants";
 import { EffectParams } from "./effect-params/effect-params";
 
@@ -35,7 +40,7 @@ export function EffectItem({
       data: { effect },
     });
 
-  const Icon = EFFECT_ICONS[effect.type] ?? Filter;
+  const Icon = EFFECT_ICONS[effect.type] ?? FilterIcon;
 
   const style = transform
     ? {
@@ -86,7 +91,7 @@ export function EffectItem({
             {...attributes}
             {...listeners}
           >
-            <GripVertical className="size-4" />
+            <GripVerticalIcon className="size-4" />
           </div>
 
           {/* Icon */}
@@ -139,7 +144,7 @@ export function EffectItem({
             title="Reset to defaults"
             variant="ghost"
           >
-            <RotateCcw className="size-4" />
+            <RotateCcwIcon className="size-4" />
           </Button>
           <Button
             className="h-8 w-8 p-0 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
@@ -147,7 +152,7 @@ export function EffectItem({
             size="sm"
             variant="ghost"
           >
-            <X className="size-4" />
+            <XIcon className="size-4" />
           </Button>
         </div>
       </CardHeader>

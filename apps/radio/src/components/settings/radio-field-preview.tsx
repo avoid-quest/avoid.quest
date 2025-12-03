@@ -1,4 +1,4 @@
-import { Image as ImageIcon, Volume2 } from "lucide-react";
+import { ImageIcon, Volume2Icon } from "lucide-react";
 import { useState } from "react";
 import { RadioLogo } from "../radio/radio-logo";
 
@@ -45,7 +45,7 @@ export function RadioFieldPreview({
             {audioError ? (
               <div className="flex items-center justify-center rounded border border-destructive/20 bg-destructive/10 p-2">
                 <div className="text-center">
-                  <Volume2 className="mx-auto mb-1 size-4 text-destructive" />
+                  <Volume2Icon className="mx-auto mb-1 size-4 text-destructive" />
                   <p className="text-destructive text-xs">Failed to load</p>
                 </div>
               </div>

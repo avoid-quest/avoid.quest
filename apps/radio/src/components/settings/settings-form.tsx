@@ -17,7 +17,12 @@ import {
   TabsTrigger,
 } from "@workspace/ui/components/tabs";
 import { useLiveQuery } from "dexie-react-hooks";
-import { Database, Radio, RotateCcw, Settings2 } from "lucide-react";
+import {
+  DatabaseIcon,
+  RadioIcon,
+  RotateCcwIcon,
+  Settings2Icon,
+} from "lucide-react";
 import { lazy, Suspense, useState } from "react";
 import { toast } from "sonner";
 import { DEFAULT_TRANSITION_DURATION } from "@/lib/const";
@@ -105,28 +110,28 @@ export function SettingsForm({
             className="flex-1 justify-start gap-1.5 text-xs md:w-full md:gap-2 md:text-sm"
             value="radios"
           >
-            <Radio className="size-4 shrink-0" />
+            <RadioIcon className="size-4 shrink-0" />
             <span className="truncate">Radios</span>
           </TabsTrigger>
           <TabsTrigger
             className="flex-1 justify-start gap-1.5 text-xs md:w-full md:gap-2 md:text-sm"
             value="player"
           >
-            <Settings2 className="size-4 shrink-0" />
+            <Settings2Icon className="size-4 shrink-0" />
             <span className="truncate">Player</span>
           </TabsTrigger>
           <TabsTrigger
             className="flex-1 justify-start gap-1.5 text-xs md:w-full md:gap-2 md:text-sm"
             value="import-export"
           >
-            <Database className="size-4 shrink-0" />
+            <DatabaseIcon className="size-4 shrink-0" />
             <span className="truncate">Data</span>
           </TabsTrigger>
           <TabsTrigger
             className="flex-1 justify-start gap-1.5 text-destructive text-xs hover:text-destructive md:w-full md:gap-2 md:text-sm"
             value="reset"
           >
-            <RotateCcw className="size-4 shrink-0" />
+            <RotateCcwIcon className="size-4 shrink-0" />
             <span className="truncate">Reset</span>
           </TabsTrigger>
         </TabsList>

@@ -1,5 +1,5 @@
 import { Button } from "@workspace/ui/components/button";
-import { FileText, Wand2 } from "lucide-react";
+import { FileTextIcon, Wand2Icon } from "lucide-react";
 
 type RadioAddModeSelectorProps = {
   onModeChange: (mode: "guided" | "manual") => void;
@@ -25,7 +25,7 @@ export function RadioAddModeSelector({
           <div className="space-y-3">
             <div className="flex items-center gap-3">
               <div className="rounded-lg bg-primary/10 p-2 text-primary">
-                <Wand2 className="size-5" />
+                <Wand2Icon className="size-5" />
               </div>
               <div>
                 <h4 className="font-semibold text-lg">Guided Mode</h4>
@@ -48,7 +48,7 @@ export function RadioAddModeSelector({
           <div className="space-y-3">
             <div className="flex items-center gap-3">
               <div className="rounded-lg bg-muted p-2 text-muted-foreground">
-                <FileText className="size-5" />
+                <FileTextIcon className="size-5" />
               </div>
               <div>
                 <h4 className="font-semibold text-lg">Manual Mode</h4>

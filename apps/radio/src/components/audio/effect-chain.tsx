@@ -17,7 +17,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Button } from "@workspace/ui/components/button";
-import { Plus } from "lucide-react";
+import { PlusIcon } from "lucide-react";
 import { useState } from "react";
 import { EffectItem } from "./effect-item";
 import { EffectPicker } from "./effect-picker";
@@ -125,7 +125,7 @@ export function EffectChain({
             size="sm"
             variant="outline"
           >
-            <Plus className="mr-2 size-4" />
+            <PlusIcon className="mr-2 size-4" />
             Add Effect
           </Button>
 

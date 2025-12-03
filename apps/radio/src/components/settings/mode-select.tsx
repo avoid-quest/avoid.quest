@@ -4,12 +4,18 @@ import {
 } from "@workspace/ui/components/toggle-group";
 import { cn } from "@workspace/ui/lib/utils";
 import { useLiveQuery } from "dexie-react-hooks";
-import { DynamicIcon } from "lucide-react/dynamic";
+import { LayersIcon, ListMusicIcon, SwordsIcon } from "lucide-react";
 import { toast } from "sonner";
 import { DEFAULT_TRANSITION_DURATION } from "@/lib/const";
 import { db } from "@/lib/db";
 import { useDjStore } from "@/lib/stores/dj-store";
 import { playerModes, type Settings } from "@/lib/types";
+
+const modeIcons = {
+  multiple: LayersIcon,
+  single: ListMusicIcon,
+  dj: SwordsIcon,
+} as const;
 
 export function ModeSelect({ className }: { className?: string }) {
   const settings = useLiveQuery(() => db.settings.limit(1).toArray())?.[0];
@@ -24,8 +30,6 @@ export function ModeSelect({ className }: { className?: string }) {
       await useDjStore.getState().cleanupAll();
 
       const newMode = value as "single" | "multiple" | "dj";
-
-      // Mode change - no cleanup needed with simplified architecture
 
       const updatedPlayer: Settings["player"] = {
         mode: newMode,
@@ -62,16 +66,19 @@ export function ModeSelect({ className }: { className?: string }) {
       value={settings?.player.mode || "multiple"}
       variant="outline"
     >
-      {playerModes.map((mode) => (
-        <ToggleGroupItem
-          className="cursor-pointer px-4"
-          key={mode.value}
-          value={mode.value}
-        >
-          <DynamicIcon name={mode.icon} />
-          <span className="hidden sm:block">{mode.label}</span>
-        </ToggleGroupItem>
-      ))}
+      {playerModes.map((mode) => {
+        const Icon = modeIcons[mode.value];
+        return (
+          <ToggleGroupItem
+            className="cursor-pointer px-4"
+            key={mode.value}
+            value={mode.value}
+          >
+            <Icon />
+            <span className="hidden sm:block">{mode.label}</span>
+          </ToggleGroupItem>
+        );
+      })}
     </ToggleGroup>
   );
 }

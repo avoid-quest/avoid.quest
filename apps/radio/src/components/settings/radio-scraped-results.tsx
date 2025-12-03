@@ -6,7 +6,7 @@ import {
   RadioGroupItem,
 } from "@workspace/ui/components/radio-group";
 import { Textarea } from "@workspace/ui/components/textarea";
-import { Volume2 } from "lucide-react";
+import { Volume2Icon } from "lucide-react";
 import { useState } from "react";
 import type { RadioMetadata, ScrapedOption } from "@/lib/types";
 
@@ -162,7 +162,7 @@ export function RadioScrapedResults({
                   size="sm"
                   variant="outline"
                 >
-                  <Volume2 className="mr-1 size-3" />
+                  <Volume2Icon className="mr-1 size-3" />
                   Test
                 </Button>
               )}
@@ -280,7 +280,7 @@ export function RadioScrapedResults({
             {field === "streamUrl" && (
               <div className="flex items-center gap-3">
                 <div className="flex h-12 w-12 items-center justify-center rounded border bg-background">
-                  <Volume2 className="h-6 w-6 text-muted-foreground" />
+                  <Volume2Icon className="h-6 w-6 text-muted-foreground" />
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="break-all font-medium text-sm">
@@ -297,7 +297,7 @@ export function RadioScrapedResults({
                   size="sm"
                   variant="outline"
                 >
-                  <Volume2 className="mr-1 size-3" />
+                  <Volume2Icon className="mr-1 size-3" />
                   Test
                 </Button>
               </div>

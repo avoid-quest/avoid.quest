@@ -3,7 +3,7 @@ import { Button } from "@workspace/ui/components/button";
 import { Input } from "@workspace/ui/components/input";
 import { Label } from "@workspace/ui/components/label";
 import { Tabs, TabsList, TabsTrigger } from "@workspace/ui/components/tabs";
-import { Loader2, Music } from "lucide-react";
+import { Loader2Icon, MusicIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { detectPlatformFromUrl } from "@/lib/external-url/detect";
 import {
@@ -99,7 +99,7 @@ export function PlatformForm({
     <div className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-y-auto p-4">
       <div className="w-full max-w-md space-y-4">
         <div className="flex items-center justify-center gap-2 text-muted-foreground">
-          <Music className="size-5" />
+          <MusicIcon className="size-5" />
           <h3 className="font-medium text-sm">
             {editMode ? "Change URL" : "Add Platform Item"}
           </h3>
@@ -182,7 +182,7 @@ export function PlatformForm({
               type="submit"
             >
               {isLoading.valueOf() && (
-                <Loader2 className="mr-2 size-4 animate-spin" />
+                <Loader2Icon className="mr-2 size-4 animate-spin" />
               )}
               {editMode ? "Update" : "Load"}
             </Button>

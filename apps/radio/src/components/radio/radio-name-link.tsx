@@ -4,7 +4,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@workspace/ui/components/tooltip";
-import { ExternalLink } from "lucide-react";
+import { ExternalLinkIcon } from "lucide-react";
 import { useState } from "react";
 import type { Radio } from "@/lib/types";
 
@@ -54,7 +54,7 @@ export function RadioNameLink({
             type="button"
           >
             {children || radio.name}
-            <ExternalLink className="size-3 opacity-60" />
+            <ExternalLinkIcon className="size-3 opacity-60" />
           </button>
         </TooltipTrigger>
         <TooltipContent>

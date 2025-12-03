@@ -9,7 +9,7 @@ import {
 } from "@workspace/ui/components/field";
 import { Input } from "@workspace/ui/components/input";
 import { Textarea } from "@workspace/ui/components/textarea";
-import { CheckCircle } from "lucide-react";
+import { CheckCircleIcon } from "lucide-react";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { db } from "@/lib/db";
@@ -137,7 +137,7 @@ export function RadioForm({
                   Name
                   {autoFilledFields.name?.valueOf() && (
                     <div className="flex items-center gap-1 text-primary text-xs">
-                      <CheckCircle className="size-3" />
+                      <CheckCircleIcon className="size-3" />
                       Auto-filled
                     </div>
                   )}
@@ -167,7 +167,7 @@ export function RadioForm({
                   Stream URL
                   {autoFilledFields.streamUrl?.valueOf() && (
                     <div className="flex items-center gap-1 text-primary text-xs">
-                      <CheckCircle className="size-3" />
+                      <CheckCircleIcon className="size-3" />
                       Auto-filled
                     </div>
                   )}
@@ -197,7 +197,7 @@ export function RadioForm({
                   Logo URL
                   {autoFilledFields.logoUrl?.valueOf() && (
                     <div className="flex items-center gap-1 text-primary text-xs">
-                      <CheckCircle className="size-3" />
+                      <CheckCircleIcon className="size-3" />
                       Auto-filled
                     </div>
                   )}
@@ -227,7 +227,7 @@ export function RadioForm({
                   Description
                   {autoFilledFields.description?.valueOf() && (
                     <div className="flex items-center gap-1 text-primary text-xs">
-                      <CheckCircle className="size-3" />
+                      <CheckCircleIcon className="size-3" />
                       Auto-filled
                     </div>
                   )}

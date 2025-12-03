@@ -1,5 +1,5 @@
 import { Button } from "@workspace/ui/components/button";
-import { Download, X } from "lucide-react";
+import { DownloadIcon, XIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 
 interface BeforeInstallPromptEvent extends Event {
@@ -81,7 +81,7 @@ export function InstallPrompt() {
       <div className="rounded-xl border bg-card/95 p-5 shadow-lg backdrop-blur-xl">
         <div className="flex items-start gap-2">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-            <Download className="h-5 w-5 text-primary" />
+            <DownloadIcon className="h-5 w-5 text-primary" />
           </div>
           <div className="flex-1 space-y-3">
             <div className="flex items-start justify-between gap-2">
@@ -98,7 +98,7 @@ export function InstallPrompt() {
                 size="icon"
                 variant="ghost"
               >
-                <X className="h-4 w-4" />
+                <XIcon className="h-4 w-4" />
                 <span className="sr-only">Dismiss</span>
               </Button>
             </div>
@@ -109,7 +109,7 @@ export function InstallPrompt() {
                 onClick={handleInstallClick}
                 size="sm"
               >
-                <Download className="h-3.5 w-3.5" />
+                <DownloadIcon className="h-3.5 w-3.5" />
                 {isInstalling ? "Installing..." : "Install"}
               </Button>
               <Button

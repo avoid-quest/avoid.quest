@@ -11,7 +11,7 @@ import {
 import { Button } from "@workspace/ui/components/button";
 import { useIsMobile } from "@workspace/ui/hooks/use-mobile";
 import { cn } from "@workspace/ui/lib/utils";
-import { Volume2 } from "lucide-react";
+import { Volume2Icon } from "lucide-react";
 import { useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useDjStore } from "@/lib/stores/dj-store";
@@ -151,7 +151,9 @@ function DjPlayerDragOverlay({ activeDragRadio }: DjPlayerDragOverlayProps) {
     <div className="rounded-lg border bg-background p-4 shadow-lg">
       <div className="flex items-center gap-3">
         <RadioLogo
-          fallbackIcon={<Volume2 className="size-4 text-muted-foreground" />}
+          fallbackIcon={
+            <Volume2Icon className="size-4 text-muted-foreground" />
+          }
           logoUrl={activeDragRadio.logoUrl}
           name={activeDragRadio.name}
           size="lg"

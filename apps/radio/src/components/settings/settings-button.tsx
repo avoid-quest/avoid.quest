@@ -7,7 +7,7 @@ import {
   DrawerTitle,
   DrawerTrigger,
 } from "@workspace/ui/components/drawer";
-import { Settings2 } from "lucide-react";
+import { Settings2Icon } from "lucide-react";
 import { useState } from "react";
 import { SettingsForm } from "./settings-form";
 
@@ -18,7 +18,7 @@ export function SettingsButton() {
     <Drawer handleOnly={true} onOpenChange={setIsOpen} open={isOpen}>
       <DrawerTrigger asChild>
         <Button size="icon" variant="outline">
-          <Settings2 className="size-4" />
+          <Settings2Icon className="size-4" />
         </Button>
       </DrawerTrigger>
       <DrawerContent>

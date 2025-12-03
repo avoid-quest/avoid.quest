@@ -1,7 +1,12 @@
 import type { PlatformTrack } from "@avoid.quest/radio-shared";
 import { Button } from "@workspace/ui/components/button";
 import { cn } from "@workspace/ui/lib/utils";
-import { ChevronLeft, ChevronRight, ChevronUp, Play } from "lucide-react";
+import {
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  ChevronUpIcon,
+  PlayIcon,
+} from "lucide-react";
 import { useState } from "react";
 
 type PlaylistViewProps = {
@@ -80,7 +85,7 @@ export function PlaylistSnippet({
           size="sm"
           variant="ghost"
         >
-          <ChevronUp
+          <ChevronUpIcon
             className={cn(
               "size-4 transition-transform",
               !isExpanded && "rotate-180"
@@ -125,7 +130,7 @@ export function PlaylistSnippet({
                 size="sm"
                 variant="outline"
               >
-                <ChevronLeft className="size-4" />
+                <ChevronLeftIcon className="size-4" />
               </Button>
               <div className="text-muted-foreground text-xs">
                 {currentTrackIndex + 1} / {tracks.length}
@@ -138,7 +143,7 @@ export function PlaylistSnippet({
                 size="sm"
                 variant="outline"
               >
-                <ChevronRight className="size-4" />
+                <ChevronRightIcon className="size-4" />
               </Button>
             </div>
           )}
@@ -186,7 +191,7 @@ export function PlaylistView({
               >
                 <div className="flex shrink-0 items-center justify-center">
                   {index === currentTrackIndex ? (
-                    <Play className="size-4 text-primary" />
+                    <PlayIcon className="size-4 text-primary" />
                   ) : (
                     <div className="text-muted-foreground text-xs">
                       {index + 1}
@@ -248,7 +253,7 @@ export function PlaylistView({
               >
                 <div className="flex shrink-0 items-center justify-center">
                   {index === currentTrackIndex ? (
-                    <Play className="size-3 text-primary" />
+                    <PlayIcon className="size-3 text-primary" />
                   ) : (
                     <div className="text-muted-foreground text-xs">
                       {index + 1}

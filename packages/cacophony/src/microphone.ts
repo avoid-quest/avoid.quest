@@ -1,6 +1,8 @@
 import type { BaseSound, LoopCount, Position } from "./cacophony.js";
 import type {
   AudioContext,
+  AudioNode,
+  BiquadFilterNode,
   GainNode,
   MediaStreamAudioSourceNode,
   PannerNode,

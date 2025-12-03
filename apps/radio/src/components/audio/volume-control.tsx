@@ -1,7 +1,7 @@
 import { Button } from "@workspace/ui/components/button";
 import { Slider } from "@workspace/ui/components/slider";
 import { cn } from "@workspace/ui/lib/utils";
-import { Volume1, Volume2, VolumeX } from "lucide-react";
+import { Volume1Icon, Volume2Icon, VolumeXIcon } from "lucide-react";
 
 const MAX_VOLUME = 100;
 
@@ -38,12 +38,12 @@ export function VolumeControl({
 
   const getVolumeIcon = () => {
     if (volume === 0) {
-      return VolumeX;
+      return VolumeXIcon;
     }
     if (volume < VOLUME_THRESHOLD) {
-      return Volume1;
+      return Volume1Icon;
     }
-    return Volume2;
+    return Volume2Icon;
   };
 
   const VolumeIcon = getVolumeIcon();

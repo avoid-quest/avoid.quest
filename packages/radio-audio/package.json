@@ -1,0 +1,25 @@
+{
+  "name": "@avoid.quest/radio-audio",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "check": "bunx ultracite check",
+    "fix": "bunx ultracite fix",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@avoid.quest/cacophony": "workspace:*",
+    "@avoid.quest/radio-shared": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": "^19.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.7",
+    "@workspace/typescript-config": "workspace:*",
+    "typescript": "^5.9.3"
+  }
+}

@@ -5,7 +5,7 @@ import {
   AvatarFallback,
   AvatarImage,
 } from "@workspace/ui/components/avatar";
-import { User } from "lucide-react";
+import { UserIcon } from "lucide-react";
 
 type UserAvatarProps = {
   className?: string;
@@ -66,7 +66,7 @@ export default function UserAvatar({
         {username ? (
           <span className="font-medium text-xs">{getInitials()}</span>
         ) : (
-          <User className={iconSize} />
+          <UserIcon className={iconSize} />
         )}
       </AvatarFallback>
     </Avatar>

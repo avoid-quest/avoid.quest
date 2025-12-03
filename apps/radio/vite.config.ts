@@ -15,4 +15,15 @@ export default defineConfig({
     tanstackStart(),
     viteReact(),
   ],
+  build: {
+    // Let Cloudflare plugin handle chunking for Workers
+    // The router bundle will be large (~1MB) for SSR as TanStack Start
+    // needs all routes bundled for server-side rendering on Workers
+    minify: "esbuild",
+    sourcemap: false,
+  },
+  // Optimize dependencies - exclude devtools from production builds
+  optimizeDeps: {
+    exclude: ["@tanstack/react-devtools", "@tanstack/react-router-devtools"],
+  },
 });

@@ -1,17 +1,12 @@
 import type {
-  AudioContext,
   BiquadFilterNode,
+  ConvolverNode,
+  DelayNode,
+  DynamicsCompressorNode,
   GainNode,
   PannerNode,
-} from "@avoid.quest/cacophony";
-
-// These types are not exported by cacophony, so we'll use the AudioContext types directly
-export type DelayNode = ReturnType<AudioContext["createDelay"]>;
-export type WaveShaperNode = ReturnType<AudioContext["createWaveShaper"]>;
-export type DynamicsCompressorNode = ReturnType<
-  AudioContext["createDynamicsCompressor"]
->;
-export type ConvolverNode = ReturnType<AudioContext["createConvolver"]>;
+  WaveShaperNode,
+} from "../cacophony-types";
 // AudioWorkletNode is a global Web Audio API type
 
 export type FilterType =
@@ -48,6 +43,9 @@ export type BaseEffectConfig = {
   type: EffectType;
   enabled: boolean;
   order: number;
+  dryWet: number; // 0.0 = fully dry, 1.0 = fully wet
+  inputGain: number; // Linear gain: 0.0 = -∞dB, 1.0 = 0dB, ~4.0 = +12dB
+  outputGain: number; // Linear gain: 0.0 = -∞dB, 1.0 = 0dB, ~4.0 = +12dB
 };
 
 export interface BiquadFilterConfig extends BaseEffectConfig {
@@ -70,16 +68,12 @@ export interface PlateReverbConfig extends BaseEffectConfig {
   damping: number;
   excursionRate: number;
   excursionDepth: number;
-  wet: number;
-  dry: number;
 }
 
 export interface StandardReverbConfig extends BaseEffectConfig {
   type: "standardReverb";
   roomSize: number;
   decayTime: number;
-  wet: number;
-  dry: number;
 }
 
 export interface PhaseVocoderConfig extends BaseEffectConfig {
@@ -91,8 +85,6 @@ export interface DelayConfig extends BaseEffectConfig {
   type: "delay";
   delayTime: number;
   feedback: number;
-  wet: number;
-  dry: number;
 }
 
 export interface DistortionConfig extends BaseEffectConfig {
@@ -141,7 +133,10 @@ export type EffectConfig =
 export type EffectInstance = {
   config: EffectConfig;
   node: EffectNode | null;
+  inputGainNode?: GainNode;
+  outputGainNode?: GainNode;
   wetGain?: GainNode;
   dryGain?: GainNode;
   feedbackGain?: GainNode; // For delay feedback loop
+  mergeNode?: GainNode; // For dry/wet mixing
 };

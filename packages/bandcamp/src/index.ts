@@ -1,11 +1,15 @@
-import { load } from "cheerio";
-import { decode } from "html-entities";
-import { detectBandcampItemType } from "@/lib/external-url/detect";
 import type {
   BandcampItemResult,
   PlatformItemError,
   PlatformItemResponse,
-} from "@/lib/external-url/types";
+} from "@avoid.quest/radio-shared";
+import { load } from "cheerio";
+import { decode } from "html-entities";
+import { detectBandcampItemType } from "./detect";
+
+export { detectBandcampItemType, isBandcampUrl } from "./detect";
+
+const REQUEST_TIMEOUT_MS = 10_000;
 
 function createErrorResponse(message: string): PlatformItemError {
   return {
@@ -27,7 +31,7 @@ export async function getBandcampItem(
       return await getBandcampTrack(url);
     }
 
-    return createErrorResponse("Artist pages are not yet supported");
+    return createErrorResponse(`${itemType} pages are not yet supported`);
   } catch (error) {
     const errorMessage =
       error instanceof Error ? error.message : "Unknown error occurred";
@@ -36,18 +40,33 @@ export async function getBandcampItem(
 }
 
 async function fetchBandcampPage(url: string): Promise<string> {
-  const response = await fetch(url, {
-    headers: {
-      "User-Agent":
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-    },
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => {
+    controller.abort();
+  }, REQUEST_TIMEOUT_MS);
 
-  if (!response.ok) {
-    throw new Error(`Failed to fetch Bandcamp page: ${response.statusText}`);
+  try {
+    const response = await fetch(url, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+      },
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch Bandcamp page: ${response.statusText}`);
+    }
+
+    return await response.text();
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error(`Request to ${url} timed out after 10 seconds`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
   }
-
-  return await response.text();
 }
 
 function parseBandcampData(html: string) {
@@ -61,11 +80,43 @@ function parseBandcampData(html: string) {
     );
   }
 
-  const basic = JSON.parse(rawBasic);
-  const extra = JSON.parse(decode(rawExtra));
+  let basic: BandcampBasicData;
+  try {
+    basic = JSON.parse(rawBasic) as BandcampBasicData;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `Failed to parse "basic" JSON-LD data: ${message}. Raw payload: ${rawBasic}`,
+      { cause: error instanceof Error ? error : undefined }
+    );
+  }
+
+  let extra: BandcampExtraData;
+  try {
+    const decodedExtra = decode(rawExtra);
+    extra = JSON.parse(decodedExtra) as BandcampExtraData;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `Failed to parse "extra" tralbum data: ${message}. Raw payload: ${rawExtra}`,
+      { cause: error instanceof Error ? error : undefined }
+    );
+  }
 
   return { basic, extra };
 }
+
+type BandcampBasicData = {
+  name: string;
+  byArtist: { name: string };
+  image: string;
+  inAlbum?: { name: string };
+  album?: { image: string };
+};
+
+type BandcampExtraData = {
+  trackinfo?: BandcampTrackInfo[];
+};
 
 type BandcampTrackInfo = {
   title: string;

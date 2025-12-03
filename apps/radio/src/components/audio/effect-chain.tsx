@@ -1,3 +1,4 @@
+import type { EffectConfig } from "@avoid.quest/radio-audio";
 import type { DragEndEvent } from "@dnd-kit/core";
 import {
   closestCenter,
@@ -16,9 +17,8 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Button } from "@workspace/ui/components/button";
-import { Plus } from "lucide-react";
+import { PlusIcon } from "lucide-react";
 import { useState } from "react";
-import type { EffectConfig } from "@/lib/audio/effects/types";
 import { EffectItem } from "./effect-item";
 import { EffectPicker } from "./effect-picker";
 
@@ -62,6 +62,9 @@ export function EffectChain({
     setShowPicker(false);
   };
 
+  const sortedEffects = [...effects].sort((a, b) => a.order - b.order);
+  const sortedIds = sortedEffects.map((e) => e.id);
+
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
 
@@ -69,16 +72,14 @@ export function EffectChain({
       return;
     }
 
-    const oldIndex = effects.findIndex((e) => e.id === active.id);
-    const newIndex = effects.findIndex((e) => e.id === over.id);
+    const oldIndex = sortedIds.indexOf(active.id as string);
+
+    const newIndex = sortedIds.indexOf(over.id as string);
 
     if (oldIndex !== -1 && newIndex !== -1) {
-      const newOrder = arrayMove(effects, oldIndex, newIndex);
-      onReorderEffects(newOrder.map((e) => e.id));
+      onReorderEffects(arrayMove(sortedIds, oldIndex, newIndex));
     }
   };
-
-  const sortedEffects = [...effects].sort((a, b) => a.order - b.order);
 
   return (
     <div className="space-y-2">
@@ -94,7 +95,7 @@ export function EffectChain({
         >
           <div className="space-y-2">
             <SortableContext
-              items={sortedEffects.map((e) => e.id)}
+              items={sortedIds}
               strategy={verticalListSortingStrategy}
             >
               {sortedEffects.map((effect) => (
@@ -124,7 +125,7 @@ export function EffectChain({
             size="sm"
             variant="outline"
           >
-            <Plus className="mr-2 size-4" />
+            <PlusIcon className="mr-2 size-4" />
             Add Effect
           </Button>
 

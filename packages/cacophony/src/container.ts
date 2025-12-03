@@ -2,6 +2,7 @@
 /** biome-ignore-all lint/suspicious/noExplicitAny: Required for mixin pattern */
 import type { BasePlayback } from "./base-playback.js";
 import type { Position } from "./cacophony.js";
+import type { BiquadFilterNode } from "./context.js";
 import type { FilterManager } from "./filters.js";
 
 type Constructor<T = FilterManager> = abstract new (...args: unknown[]) => T;

@@ -5,7 +5,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@workspace/ui/components/card";
-import { Volume2 } from "lucide-react";
+import { Volume2Icon } from "lucide-react";
 import { useState } from "react";
 import type { Radio } from "@/lib/types";
 import { RadioDialog } from "../../settings/radio-dialog";
@@ -57,7 +57,7 @@ export function MultipleRadios({ radios }: { radios?: Radio[] }) {
           </CardHeader>
           <CardContent className="space-y-4 text-center">
             <div className="mx-auto flex size-16 items-center justify-center rounded-full bg-muted">
-              <Volume2 className="size-8 text-muted-foreground" />
+              <Volume2Icon className="size-8 text-muted-foreground" />
             </div>
             <p className="text-muted-foreground text-sm">
               All radio stations are currently disabled. Please enable some

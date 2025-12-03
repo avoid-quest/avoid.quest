@@ -1,28 +1,15 @@
-import { getEffectMetadata } from "@/lib/audio/effects/registry";
-import type {
-  EffectConfig,
-  PhaseVocoderConfig,
-} from "@/lib/audio/effects/types";
-import { ParamGroup, ParamSlider } from "./";
+import {
+  type EffectConfig,
+  getEffectMetadata,
+  type PhaseVocoderConfig,
+} from "@avoid.quest/radio-audio";
+import { ParamGroup, ParamSlider, UniversalParams } from "./";
+import { getDefaultValue } from "./utils";
 
 type PhaseVocoderParamsProps = {
   effect: PhaseVocoderConfig;
   onUpdate: (config: Partial<EffectConfig>) => void;
 };
-
-function getDefaultValue(
-  defaultConfig: Omit<EffectConfig, "id" | "order"> | undefined,
-  key: string
-): number | undefined {
-  if (!defaultConfig) {
-    return;
-  }
-  if (!(key in defaultConfig)) {
-    return;
-  }
-  const value = (defaultConfig as Record<string, unknown>)[key];
-  return typeof value === "number" ? value : undefined;
-}
 
 export function PhaseVocoderParams({
   effect,
@@ -31,14 +18,12 @@ export function PhaseVocoderParams({
   const metadata = getEffectMetadata("phaseVocoder");
   const ranges = metadata?.parameterRanges ?? {};
   const defaultConfig = metadata?.defaultConfig;
-  const disabled = !effect.enabled;
 
   return (
     <div className="space-y-4">
       <ParamGroup title="Pitch">
         <ParamSlider
           defaultValue={getDefaultValue(defaultConfig, "pitchFactor")}
-          disabled={disabled}
           formatKey="default"
           label="Pitch Factor"
           max={ranges.pitchFactor?.max ?? 4.0}
@@ -48,6 +33,8 @@ export function PhaseVocoderParams({
           value={effect.pitchFactor}
         />
       </ParamGroup>
+
+      <UniversalParams effect={effect} onUpdate={onUpdate} />
     </div>
   );
 }

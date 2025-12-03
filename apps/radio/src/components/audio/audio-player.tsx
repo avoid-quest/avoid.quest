@@ -1,9 +1,15 @@
+import { useAudio } from "@avoid.quest/radio-audio";
 import { Button } from "@workspace/ui/components/button";
 import { Slider } from "@workspace/ui/components/slider";
 import { Spinner } from "@workspace/ui/components/spinner";
 import { cn } from "@workspace/ui/lib/utils";
-import { Pause, Play, Square, Volume2, VolumeX } from "lucide-react";
-import { useAudio } from "@/lib/audio/hooks/use-audio";
+import {
+  PauseIcon,
+  PlayIcon,
+  SquareIcon,
+  Volume2Icon,
+  VolumeXIcon,
+} from "lucide-react";
 import type { Radio } from "@/lib/types";
 
 const MAX_VOLUME = 100;
@@ -32,9 +38,9 @@ export function AudioPlayer({
   } = useAudio(radio);
 
   const handleVolumeChange = (value: number[]) => {
-    setVolume(value[0] ?? 0 / MAX_VOLUME);
+    const raw = value[0] ?? 0;
+    setVolume(raw / MAX_VOLUME);
   };
-
   const handleMute = () => {
     setVolume(volume > 0 ? 0 : 1);
   };
@@ -67,8 +73,8 @@ export function AudioPlayer({
         variant="outline"
       >
         {isLoading.valueOf() && <Spinner className="h-4 w-4" />}
-        {isPlaying.valueOf() && <Pause className="h-4 w-4" />}
-        {!(isLoading || isPlaying) && <Play className="h-4 w-4" />}
+        {isPlaying.valueOf() && <PauseIcon className="h-4 w-4" />}
+        {!(isLoading || isPlaying) && <PlayIcon className="h-4 w-4" />}
       </Button>
 
       {/* Stop Button */}
@@ -80,7 +86,7 @@ export function AudioPlayer({
           size="sm"
           variant="outline"
         >
-          <Square className="h-4 w-4" />
+          <SquareIcon className="h-4 w-4" />
         </Button>
       )}
 
@@ -94,9 +100,9 @@ export function AudioPlayer({
             variant="ghost"
           >
             {volume > 0 ? (
-              <Volume2 className="h-4 w-4" />
+              <Volume2Icon className="h-4 w-4" />
             ) : (
-              <VolumeX className="h-4 w-4" />
+              <VolumeXIcon className="h-4 w-4" />
             )}
           </Button>
           <Slider

@@ -1,11 +1,11 @@
 import { env } from "cloudflare:workers";
+import { getBandcampItem } from "@avoid.quest/bandcamp";
+import type { PlatformItemResponse } from "@avoid.quest/radio-shared";
+import { getSoundCloudItem } from "@avoid.quest/soundcloud";
 import { createFileRoute } from "@tanstack/react-router";
 import { json } from "@tanstack/react-start";
 import { z } from "zod";
-import { getBandcampItem } from "@/lib/external-url/bandcamp";
 import { detectPlatformFromUrl } from "@/lib/external-url/detect";
-import { getSoundCloudItem } from "@/lib/external-url/soundcloud";
-import type { PlatformItemResponse } from "@/lib/external-url/types";
 import { getCorsHeaders, getCorsOptionsHeaders } from "@/lib/middleware/cors";
 import { validateAuthAndRateLimit } from "@/lib/middleware/rate-limit";
 import { createSessionCookie } from "@/lib/middleware/session";

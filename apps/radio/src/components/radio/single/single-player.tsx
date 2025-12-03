@@ -1,3 +1,4 @@
+import { useSingleAudio } from "@avoid.quest/radio-audio";
 import { Button } from "@workspace/ui/components/button";
 import {
   Card,
@@ -16,9 +17,8 @@ import {
 } from "@workspace/ui/components/item";
 import { PlayPauseButton } from "@workspace/ui/components/play-pause-button";
 import { Slider } from "@workspace/ui/components/slider";
-import { AudioLines, Volume2, VolumeX } from "lucide-react";
+import { AudioLinesIcon, Volume2Icon, VolumeXIcon } from "lucide-react";
 import { useEffect, useState } from "react";
-import { useSingleAudio } from "@/lib/audio";
 import type { Radio } from "@/lib/types";
 import { RadioDialog } from "../../settings/radio-dialog";
 import { SettingsButton } from "../../settings/settings-button";
@@ -94,11 +94,12 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
   };
 
   const handleVolumeChange = (value: number[]) => {
-    const newVolume = value[0];
-    setVolume(newVolume ?? 0);
+    const newVolume = value[0] ?? 0;
+    setVolume(newVolume);
 
-    if (!isMuted) {
-      setUnmutedVolume(newVolume ?? 0);
+    if (isMuted && newVolume > 0) {
+      setUnmutedVolume(newVolume);
+      setIsMuted(false);
     }
   };
 
@@ -164,7 +165,7 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
             </ItemGroup>
           ) : (
             <div className="flex flex-col items-center justify-center py-12 text-center">
-              <AudioLines className="mb-4 size-12 text-muted-foreground" />
+              <AudioLinesIcon className="mb-4 size-12 text-muted-foreground" />
               <h3 className="mb-2 font-medium text-lg">
                 No Radio Stations Available
               </h3>
@@ -240,9 +241,9 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
                 variant="ghost"
               >
                 {isMuted ? (
-                  <VolumeX className="size-4 lg:size-5" />
+                  <VolumeXIcon className="size-4 lg:size-5" />
                 ) : (
-                  <Volume2 className="size-4 lg:size-5" />
+                  <Volume2Icon className="size-4 lg:size-5" />
                 )}
               </Button>
               <div className="flex-1">
@@ -253,7 +254,7 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
                   min={0}
                   onValueChange={handleVolumeChange}
                   step={0.1}
-                  value={[isMuted.valueOf() ? 0 : volume.valueOf()]}
+                  value={[volume]}
                 />
               </div>
             </div>

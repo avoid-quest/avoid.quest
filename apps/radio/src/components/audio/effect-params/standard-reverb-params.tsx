@@ -1,9 +1,9 @@
-import { getEffectMetadata } from "@/lib/audio/effects/registry";
-import type {
-  EffectConfig,
-  StandardReverbConfig,
-} from "@/lib/audio/effects/types";
-import { ParamGroup, ParamSlider } from "./";
+import {
+  type EffectConfig,
+  getEffectMetadata,
+  type StandardReverbConfig,
+} from "@avoid.quest/radio-audio";
+import { ParamGroup, ParamSlider, UniversalParams } from "./";
 
 type StandardReverbParamsProps = {
   effect: StandardReverbConfig;
@@ -24,13 +24,6 @@ function getDefaultValue(
   return typeof value === "number" ? value : undefined;
 }
 
-function handleWetChange(
-  value: number,
-  onUpdate: (config: Partial<EffectConfig>) => void
-) {
-  onUpdate({ wet: value, dry: 1 - value });
-}
-
 export function StandardReverbParams({
   effect,
   onUpdate,
@@ -38,14 +31,12 @@ export function StandardReverbParams({
   const metadata = getEffectMetadata("standardReverb");
   const ranges = metadata?.parameterRanges ?? {};
   const defaultConfig = metadata?.defaultConfig;
-  const disabled = !effect.enabled;
 
   return (
     <div className="space-y-4">
       <ParamGroup title="Room & Decay">
         <ParamSlider
           defaultValue={getDefaultValue(defaultConfig, "roomSize")}
-          disabled={disabled}
           formatKey="default"
           label="Room Size"
           max={ranges.roomSize?.max ?? 0.1}
@@ -56,7 +47,6 @@ export function StandardReverbParams({
         />
         <ParamSlider
           defaultValue={getDefaultValue(defaultConfig, "decayTime")}
-          disabled={disabled}
           formatKey="time"
           label="Decay Time"
           max={ranges.decayTime?.max ?? 5.0}
@@ -67,19 +57,7 @@ export function StandardReverbParams({
         />
       </ParamGroup>
 
-      <ParamGroup title="Mix">
-        <ParamSlider
-          defaultValue={getDefaultValue(defaultConfig, "wet")}
-          disabled={disabled}
-          formatKey="percentage"
-          label="Wet/Dry Mix"
-          max={ranges.wet?.max ?? 1}
-          min={ranges.wet?.min ?? 0}
-          onChange={(value) => handleWetChange(value, onUpdate)}
-          step={ranges.wet?.step ?? 0.01}
-          value={effect.wet}
-        />
-      </ParamGroup>
+      <UniversalParams effect={effect} onUpdate={onUpdate} />
     </div>
   );
 }

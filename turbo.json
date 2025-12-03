@@ -15,9 +15,9 @@
       "cache": false,
       "dependsOn": ["^check"]
     },
-    "check-types": {
+    "typecheck": {
       "cache": false,
-      "dependsOn": ["^check-types"]
+      "dependsOn": ["^typecheck"]
     },
     "dev": {
       "cache": false,
@@ -46,6 +46,11 @@
     "test": {
       "cache": false,
       "dependsOn": ["^build"]
+    },
+    "preview": {
+      "cache": false,
+      "dependsOn": ["^preview"],
+      "persistent": true
     }
   }
 }

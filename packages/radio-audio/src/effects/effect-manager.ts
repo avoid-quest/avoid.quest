@@ -3,18 +3,20 @@ import type {
   AudioNode,
   BiquadFilterNode,
   Cacophony,
+  ConvolverNode,
+  DelayNode,
+  DynamicsCompressorNode,
   PannerNode,
   Playback,
   Sound,
-} from "@avoid.quest/cacophony";
+  WaveShaperNode,
+} from "../cacophony-types";
+import { getLogger, type Logger } from "../logger";
 import type {
   BiquadFilterConfig,
   CompressorConfig,
-  ConvolverNode,
   DelayConfig,
-  DelayNode,
   DistortionConfig,
-  DynamicsCompressorNode,
   EffectConfig,
   EffectInstance,
   EffectNode,
@@ -22,11 +24,11 @@ import type {
   PhaseVocoderConfig,
   PlateReverbConfig,
   StandardReverbConfig,
-  WaveShaperNode,
 } from "./types";
 
 export class EffectManager {
   private readonly cacophony: Cacophony;
+  private readonly logger: Logger;
   private effects: EffectInstance[] = [];
   private inputNode: AudioNode | null = null;
   private defaultDestination: AudioNode | null = null;
@@ -34,9 +36,11 @@ export class EffectManager {
   constructor(
     cacophony: Cacophony,
     _sound: Sound,
-    _playback: Playback | null = null
+    _playback: Playback | null = null,
+    logger?: Logger
   ) {
     this.cacophony = cacophony;
+    this.logger = getLogger(logger);
     this.defaultDestination = cacophony.globalGainNode as unknown as AudioNode;
   }
 
@@ -45,6 +49,7 @@ export class EffectManager {
    */
   setInputNode(node: AudioNode): void {
     this.inputNode = node;
+    // Fire-and-forget: errors are handled internally
     this.rebuildChain();
   }
 
@@ -53,6 +58,7 @@ export class EffectManager {
    */
   setOutputNode(node: AudioNode): void {
     this.defaultDestination = node;
+    // Fire-and-forget: errors are handled internally
     this.rebuildChain();
   }
 
@@ -75,6 +81,7 @@ export class EffectManager {
       this.effects.splice(insertIndex, 0, instance);
     }
 
+    // Fire-and-forget: errors are handled internally
     this.rebuildChain();
   }
 
@@ -94,24 +101,29 @@ export class EffectManager {
     this.effects.splice(index, 1);
 
     // Reorder remaining effects
-    this.effects.forEach((e, i) => {
+    for (const [i, e] of this.effects.entries()) {
       e.config.order = i;
-    });
+    }
 
+    // Fire-and-forget: errors are handled internally
     this.rebuildChain();
   }
 
   /**
    * Update an effect's configuration
+   * @returns Promise that resolves to true on success, false on failure
    */
-  updateEffect(effectId: string, config: Partial<EffectConfig>): void {
+  updateEffect(
+    effectId: string,
+    config: Partial<EffectConfig>
+  ): Promise<boolean> {
     const effect = this.effects.find((e) => e.config.id === effectId);
     if (!effect) {
-      return;
+      return Promise.resolve(false);
     }
 
     effect.config = { ...effect.config, ...config } as EffectConfig;
-    this.updateEffectNode(effect);
+    return this.updateEffectNode(effect);
   }
 
   /**
@@ -120,21 +132,35 @@ export class EffectManager {
   reorderEffects(effectIds: string[]): void {
     // Create a map of new positions
     const newOrder = new Map<string, number>();
-    effectIds.forEach((id, index) => {
-      newOrder.set(id, index);
-    });
+    for (const [index, effectId] of effectIds.entries()) {
+      newOrder.set(effectId, index);
+    }
+
+    // Track original indices for effects not in effectIds
+    const originalIndices = new Map<string, number>();
+
+    for (const [index, effect] of this.effects.entries()) {
+      originalIndices.set(effect.config.id, index);
+    }
 
     // Update order values
+    // Effects in effectIds get their new order (0 to effectIds.length - 1)
+    // Effects not in effectIds get order at the end (effectIds.length + originalIndex)
     for (const effect of this.effects) {
       const newOrderValue = newOrder.get(effect.config.id);
       if (newOrderValue !== undefined) {
         effect.config.order = newOrderValue;
+      } else {
+        // Place missing effects at the end, preserving their relative order
+        const originalIndex = originalIndices.get(effect.config.id) ?? 0;
+        effect.config.order = effectIds.length + originalIndex;
       }
     }
 
     // Sort effects by order
     this.effects.sort((a, b) => a.config.order - b.config.order);
 
+    // Fire-and-forget: errors are handled internally
     this.rebuildChain();
   }
 
@@ -155,7 +181,7 @@ export class EffectManager {
   /**
    * Rebuild the entire effect chain
    */
-  private rebuildChain(): void {
+  private async rebuildChain(): Promise<void> {
     if (!(this.inputNode && this.defaultDestination)) {
       return;
     }
@@ -182,18 +208,36 @@ export class EffectManager {
         !e.node
     );
 
-    if (hasAsyncEffects) {
-      // Handle async reverb creation
-      this.buildEffectChainAsync(enabledEffects)
-        .then((currentNode) => {
-          this.connectToDestination(currentNode);
-        })
-        .catch((error) => {
-          console.error("Failed to build effect chain:", error);
-        });
-    } else {
-      const currentNode = this.buildEffectChain(enabledEffects);
-      this.connectToDestination(currentNode);
+    try {
+      if (hasAsyncEffects) {
+        // Handle async effect creation with proper error handling
+        const currentNode = await this.buildEffectChainAsync(enabledEffects);
+        this.connectToDestination(currentNode);
+      } else {
+        const currentNode = this.buildEffectChain(enabledEffects);
+        this.connectToDestination(currentNode);
+      }
+    } catch (error) {
+      this.handleBuildChainError(error, enabledEffects);
+      // Error is handled locally, no rethrow
+    }
+  }
+
+  /**
+   * Handle errors during effect chain building with cleanup and state reset
+   */
+  private handleBuildChainError(
+    error: unknown,
+    enabledEffects: EffectInstance[]
+  ): void {
+    this.logger.error("Failed to build effect chain", { error });
+    // Cleanup any partially-created nodes from the failed build
+    this.cleanupPartiallyCreatedNodes(enabledEffects);
+    // Ensure we're in a consistent state - disconnect everything
+    this.disconnectAll();
+    // Reconnect input directly to output as fallback
+    if (this.inputNode && this.defaultDestination) {
+      this.inputNode.connect(this.defaultDestination);
     }
   }
 
@@ -281,51 +325,89 @@ export class EffectManager {
 
   /**
    * Connect an effect to the chain and return the output node
+   * All effects are wrapped with: inputGain → [dry/wet split] → merge → outputGain
    */
   private connectEffect(
     effect: EffectInstance,
     currentNode: AudioNode
   ): AudioNode {
-    // Handle plate reverb (handles wet/dry internally)
-    if (effect.config.type === "plateReverb") {
-      const mergeNode = this.cacophony.context.createGain();
-      mergeNode.gain.value = 1.0;
-      this.connectPlateReverbEffect(effect, currentNode, mergeNode);
-      return mergeNode as unknown as AudioNode;
+    if (!effect.node) {
+      return currentNode;
     }
 
-    // Handle standard reverb (needs wet/dry routing)
-    if (effect.config.type === "standardReverb") {
-      const mergeNode = this.cacophony.context.createGain();
-      mergeNode.gain.value = 1.0;
-      this.setupWetDryRouting(effect, currentNode, mergeNode);
-      return mergeNode as unknown as AudioNode;
+    const context = this.cacophony.context;
+
+    // Create input gain node if needed
+    if (!effect.inputGainNode) {
+      effect.inputGainNode = context.createGain();
+    }
+    effect.inputGainNode.gain.value = effect.config.inputGain;
+
+    // Create merge node for dry/wet mixing if needed
+    if (!effect.mergeNode) {
+      effect.mergeNode = context.createGain();
+    }
+    effect.mergeNode.gain.value = 1.0;
+
+    // Create dry and wet gain nodes if needed
+    if (!effect.dryGain) {
+      effect.dryGain = context.createGain();
+    }
+    if (!effect.wetGain) {
+      effect.wetGain = context.createGain();
     }
 
-    // Handle phase vocoder (simple pass-through)
-    if (effect.config.type === "phaseVocoder") {
-      const effectNode = effect.node as unknown as AudioNode;
-      currentNode.connect(effectNode);
-      return effectNode;
+    // Set initial dry/wet values
+    effect.dryGain.gain.value = 1.0 - effect.config.dryWet;
+    effect.wetGain.gain.value = effect.config.dryWet;
+
+    // Connect: input → inputGain
+    currentNode.connect(effect.inputGainNode as unknown as AudioNode);
+    const inputGainOutput = effect.inputGainNode as unknown as AudioNode;
+
+    // Special handling for delay (needs feedback loop)
+    if (effect.config.type === "delay") {
+      const delayConfig = effect.config as DelayConfig;
+      const delayNode = effect.node as DelayNode;
+
+      // Setup feedback loop
+      if (!effect.feedbackGain) {
+        effect.feedbackGain = context.createGain();
+      }
+      effect.feedbackGain.gain.value = delayConfig.feedback;
+
+      // Delay feedback: delayNode → feedbackGain → delayNode
+      (
+        delayNode as unknown as {
+          connect(destination: AudioNode | { value: number }): void;
+        }
+      ).connect(effect.feedbackGain as unknown as AudioNode);
+      effect.feedbackGain.connect(delayNode as unknown as AudioNode);
     }
 
-    // Handle effects that need wet/dry routing (delay)
-    if (this.needsWetDryRouting(effect.config)) {
-      // Create a merge node to combine wet and dry signals
-      const mergeNode = this.cacophony.context.createGain();
-      mergeNode.gain.value = 1.0;
+    // Dry path: inputGain → dryGain → merge
+    inputGainOutput.connect(effect.dryGain as unknown as AudioNode);
+    effect.dryGain.connect(effect.mergeNode as unknown as AudioNode);
 
-      // Setup wet/dry routing - both paths output to merge node
-      this.setupWetDryRouting(effect, currentNode, mergeNode);
+    // Wet path: inputGain → effect → wetGain → merge
+    inputGainOutput.connect(effect.node as unknown as AudioNode);
+    (
+      effect.node as unknown as {
+        connect(destination: AudioNode | { value: number }): void;
+      }
+    ).connect(effect.wetGain as unknown as AudioNode);
+    effect.wetGain.connect(effect.mergeNode as unknown as AudioNode);
 
-      // Continue chain from merge node
-      return mergeNode as unknown as AudioNode;
+    // Create output gain node if needed
+    if (!effect.outputGainNode) {
+      effect.outputGainNode = context.createGain();
     }
+    effect.outputGainNode.gain.value = effect.config.outputGain;
 
-    // Simple pass-through effects
-    const effectNode = effect.node as unknown as AudioNode;
-    currentNode.connect(effectNode);
-    return effectNode;
+    // Connect: merge → outputGain
+    effect.mergeNode.connect(effect.outputGainNode as unknown as AudioNode);
+
+    return effect.outputGainNode as unknown as AudioNode;
   }
 
   /**
@@ -340,6 +422,45 @@ export class EffectManager {
     } else if (this.inputNode) {
       // No enabled effects, connect input directly
       this.inputNode.connect(this.defaultDestination);
+    }
+  }
+
+  /**
+   * Initialize an AudioWorklet parameter safely
+   */
+  private initWorkletParam(
+    paramMap: unknown,
+    name: string,
+    value: number,
+    now: number
+  ): void {
+    try {
+      let param: AudioParam | undefined;
+      if (
+        paramMap !== null &&
+        typeof paramMap === "object" &&
+        "get" in paramMap &&
+        typeof paramMap.get === "function"
+      ) {
+        param = (
+          paramMap as { get(paramName: string): AudioParam | undefined }
+        ).get(name) as AudioParam | undefined;
+      } else {
+        param = (paramMap as unknown as Record<string, AudioParam>)[name];
+      }
+      if (param) {
+        param.cancelScheduledValues(now);
+        param.setValueAtTime(value, now);
+      } else {
+        this.logger.warn("Worklet parameter not found during initialization", {
+          parameter: name,
+        });
+      }
+    } catch (error) {
+      this.logger.warn("Failed to initialize parameter", {
+        parameter: name,
+        error,
+      });
     }
   }
 
@@ -367,70 +488,84 @@ export class EffectManager {
           if (reverbNode.parameters) {
             const reverbConfig = config as PlateReverbConfig;
             const params = reverbNode.parameters;
-
-            const initParam = (name: string, value: number) => {
-              try {
-                let param: AudioParam | undefined;
-                if (typeof params.get === "function") {
-                  param = params.get(name) as AudioParam | undefined;
-                } else {
-                  param = (params as unknown as Record<string, AudioParam>)[
-                    name
-                  ];
-                }
-                if (param) {
-                  // Use setValueAtTime for proper initialization
-                  const now = this.cacophony.context.currentTime;
-                  param.cancelScheduledValues(now);
-                  param.setValueAtTime(value, now);
-                } else {
-                  console.warn(
-                    `Plate reverb parameter "${name}" not found during initialization`
-                  );
-                }
-              } catch (error) {
-                console.warn(
-                  `Failed to initialize parameter "${name}":`,
-                  error
-                );
-              }
-            };
+            const now = this.cacophony.context.currentTime;
 
             // Set initial parameter values
-            initParam("preDelay", reverbConfig.preDelay);
-            initParam("bandwidth", reverbConfig.bandwidth);
-            initParam("inputDiffusion1", reverbConfig.inputDiffusion1);
-            initParam("inputDiffusion2", reverbConfig.inputDiffusion2);
-            initParam("decay", reverbConfig.decay);
-            initParam("decayDiffusion1", reverbConfig.decayDiffusion1);
-            initParam("decayDiffusion2", reverbConfig.decayDiffusion2);
-            initParam("damping", reverbConfig.damping);
-            initParam("excursionRate", reverbConfig.excursionRate);
-            initParam("excursionDepth", reverbConfig.excursionDepth);
-            initParam("wet", reverbConfig.wet);
-            initParam("dry", reverbConfig.dry);
+            this.initWorkletParam(
+              params,
+              "preDelay",
+              reverbConfig.preDelay,
+              now
+            );
+            this.initWorkletParam(
+              params,
+              "bandwidth",
+              reverbConfig.bandwidth,
+              now
+            );
+            this.initWorkletParam(
+              params,
+              "inputDiffusion1",
+              reverbConfig.inputDiffusion1,
+              now
+            );
+            this.initWorkletParam(
+              params,
+              "inputDiffusion2",
+              reverbConfig.inputDiffusion2,
+              now
+            );
+            this.initWorkletParam(params, "decay", reverbConfig.decay, now);
+            this.initWorkletParam(
+              params,
+              "decayDiffusion1",
+              reverbConfig.decayDiffusion1,
+              now
+            );
+            this.initWorkletParam(
+              params,
+              "decayDiffusion2",
+              reverbConfig.decayDiffusion2,
+              now
+            );
+            this.initWorkletParam(params, "damping", reverbConfig.damping, now);
+            this.initWorkletParam(
+              params,
+              "excursionRate",
+              reverbConfig.excursionRate,
+              now
+            );
+            this.initWorkletParam(
+              params,
+              "excursionDepth",
+              reverbConfig.excursionDepth,
+              now
+            );
+            // Set internal wet/dry to fixed values since we handle mixing externally
+            this.initWorkletParam(params, "wet", 1.0, now);
+            this.initWorkletParam(params, "dry", 0.0, now);
           } else {
-            console.warn(
+            this.logger.warn(
               "Plate reverb node parameters not available after creation"
             );
           }
 
           return reverbNode as unknown as globalThis.AudioWorkletNode;
         } catch (workletError) {
-          console.error(
-            "Failed to create plate reverb worklet node:",
-            workletError
-          );
           // Check if it's a NotSupportedError
           if (
             workletError instanceof Error &&
             (workletError.name === "NotSupportedError" ||
               workletError.message.includes("not supported"))
           ) {
-            console.error(
-              "AudioWorklet is not supported in this browser or the worklet failed to load. URL:",
-              workletUrl
+            this.logger.error(
+              "AudioWorklet is not supported in this browser or the worklet failed to load",
+              { url: workletUrl, error: workletError }
             );
+          } else {
+            this.logger.error("Failed to create plate reverb worklet node", {
+              error: workletError,
+            });
           }
           throw workletError;
         }
@@ -449,56 +584,35 @@ export class EffectManager {
           if (vocoderNode.parameters) {
             const vocoderConfig = config as PhaseVocoderConfig;
             const params = vocoderNode.parameters;
+            const now = this.cacophony.context.currentTime;
 
-            const initParam = (name: string, value: number) => {
-              try {
-                let param: AudioParam | undefined;
-                if (typeof params.get === "function") {
-                  param = params.get(name) as AudioParam | undefined;
-                } else {
-                  param = (params as unknown as Record<string, AudioParam>)[
-                    name
-                  ];
-                }
-                if (param) {
-                  const now = this.cacophony.context.currentTime;
-                  param.cancelScheduledValues(now);
-                  param.setValueAtTime(value, now);
-                } else {
-                  console.warn(
-                    `Phase vocoder parameter "${name}" not found during initialization`
-                  );
-                }
-              } catch (error) {
-                console.warn(
-                  `Failed to initialize parameter "${name}":`,
-                  error
-                );
-              }
-            };
-
-            initParam("pitchFactor", vocoderConfig.pitchFactor);
+            this.initWorkletParam(
+              params,
+              "pitchFactor",
+              vocoderConfig.pitchFactor,
+              now
+            );
           } else {
-            console.warn(
+            this.logger.warn(
               "Phase vocoder node parameters not available after creation"
             );
           }
 
           return vocoderNode as unknown as globalThis.AudioWorkletNode;
         } catch (workletError) {
-          console.error(
-            "Failed to create phase vocoder worklet node:",
-            workletError
-          );
           if (
             workletError instanceof Error &&
             (workletError.name === "NotSupportedError" ||
               workletError.message.includes("not supported"))
           ) {
-            console.error(
-              "AudioWorklet is not supported in this browser or the worklet failed to load. URL:",
-              workletUrl
+            this.logger.error(
+              "AudioWorklet is not supported in this browser or the worklet failed to load",
+              { url: workletUrl, error: workletError }
             );
+          } else {
+            this.logger.error("Failed to create phase vocoder worklet node", {
+              error: workletError,
+            });
           }
           throw workletError;
         }
@@ -506,7 +620,7 @@ export class EffectManager {
 
       return null;
     } catch (error) {
-      console.error("Failed to create async effect node:", error);
+      this.logger.error("Failed to create async effect node", { error });
       return null;
     }
   }
@@ -600,83 +714,129 @@ export class EffectManager {
           return null;
       }
     } catch (error) {
-      console.error(`Failed to create effect node for ${config.type}:`, error);
+      this.logger.error("Failed to create effect node", {
+        effectType: config.type,
+        error,
+      });
       return null;
     }
   }
 
   /**
    * Update an effect node's parameters
+   * @returns Promise that resolves to true on success, false on failure
    */
-  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Complex effect node update logic with multiple effect types
-  private updateEffectNode(effect: EffectInstance): void {
+  private async updateEffectNode(effect: EffectInstance): Promise<boolean> {
     const wasEnabled = effect.node !== null;
     const isEnabled = effect.config.enabled;
 
     // If effect is being disabled, disconnect and clean up immediately
     if (wasEnabled && !isEnabled) {
-      this.cleanupEffect(effect);
-      effect.node = null;
-      effect.wetGain = undefined;
-      effect.dryGain = undefined;
-      effect.feedbackGain = undefined;
-      this.rebuildChain();
-      return;
+      return this.handleEffectDisable(effect);
     }
 
     // If effect is being enabled but has no node, create it
     if (!effect.node && isEnabled) {
-      if (
-        effect.config.type === "plateReverb" ||
-        effect.config.type === "phaseVocoder"
-      ) {
-        // Handle async effect creation
-        this.createEffectNodeAsync(effect.config)
-          .then((newNode) => {
-            if (newNode) {
-              effect.node = newNode;
-              this.rebuildChain();
-            } else {
-              // If node creation failed, disable the effect
-              console.warn(
-                `${effect.config.type} node creation returned null, disabling effect`
-              );
-              effect.config.enabled = false;
-            }
-          })
-          .catch((error) => {
-            console.error(
-              `Failed to create ${effect.config.type} node:`,
-              error
-            );
-            // Disable the effect if creation fails
-            effect.config.enabled = false;
-          });
-      } else {
-        const newNode = this.createEffectNode(effect.config);
-        if (newNode) {
-          effect.node = newNode;
-        } else {
-          // If node creation failed, disable the effect
-          console.warn(
-            `Effect node creation returned null for ${effect.config.type}, disabling effect`
-          );
-          effect.config.enabled = false;
-        }
-        this.rebuildChain();
-      }
-      return;
+      return await this.handleEffectEnable(effect);
     }
 
     // If effect is disabled and has no node, nothing to do
     if (!(effect.node || isEnabled)) {
-      return;
+      return true;
     }
 
     // If effect is enabled, update its parameters
     if (isEnabled && effect.node) {
       this.updateEffectNodeParams(effect);
+      return true;
     }
+
+    return true;
+  }
+
+  /**
+   * Handle disabling an effect
+   */
+  private handleEffectDisable(effect: EffectInstance): boolean {
+    this.cleanupEffect(effect);
+    effect.node = null;
+    effect.inputGainNode = undefined;
+    effect.outputGainNode = undefined;
+    effect.wetGain = undefined;
+    effect.dryGain = undefined;
+    effect.feedbackGain = undefined;
+    effect.mergeNode = undefined;
+    // Fire-and-forget: errors are handled internally
+    this.rebuildChain();
+    return true;
+  }
+
+  /**
+   * Handle enabling an effect by creating its node
+   */
+  private handleEffectEnable(effect: EffectInstance): Promise<boolean> {
+    const isAsyncEffect =
+      effect.config.type === "plateReverb" ||
+      effect.config.type === "phaseVocoder";
+
+    if (isAsyncEffect) {
+      return this.createAsyncEffectNode(effect);
+    }
+    return Promise.resolve(this.createSyncEffectNode(effect));
+  }
+
+  /**
+   * Create an async effect node (plateReverb or phaseVocoder)
+   */
+  private async createAsyncEffectNode(
+    effect: EffectInstance
+  ): Promise<boolean> {
+    try {
+      const newNode = await this.createEffectNodeAsync(effect.config);
+      if (newNode) {
+        effect.node = newNode;
+        // Apply all parameters from config to the newly created node
+        this.updateEffectNodeParams(effect);
+        // Fire-and-forget: errors are handled internally
+        this.rebuildChain();
+        return true;
+      }
+      // If node creation failed, disable the effect
+      this.logger.warn("Effect node creation returned null, disabling effect", {
+        effectType: effect.config.type,
+      });
+      effect.config.enabled = false;
+      return false;
+    } catch (error) {
+      this.logger.error("Failed to create effect node", {
+        effectType: effect.config.type,
+        error,
+      });
+      // Disable the effect if creation fails
+      effect.config.enabled = false;
+      return false;
+    }
+  }
+
+  /**
+   * Create a synchronous effect node
+   */
+  private createSyncEffectNode(effect: EffectInstance): boolean {
+    const syncNode = this.createEffectNode(effect.config);
+    if (syncNode) {
+      effect.node = syncNode;
+      // Apply all parameters from config to the newly created node
+      this.updateEffectNodeParams(effect);
+      // Fire-and-forget: errors are handled internally
+      this.rebuildChain();
+      return true;
+    }
+    // If node creation failed, disable the effect
+    this.logger.warn("Effect node creation returned null, disabling effect", {
+      effectType: effect.config.type,
+    });
+    effect.config.enabled = false;
+    return false;
   }
 
   /**
@@ -690,6 +850,9 @@ export class EffectManager {
     const context = this.cacophony.context;
     const now = context.currentTime;
     const smoothTime = 0.01;
+
+    // Update universal parameters (dryWet, inputGain, outputGain)
+    this.updateUniversalParams(effect, now, smoothTime);
 
     try {
       switch (effect.config.type) {
@@ -723,7 +886,56 @@ export class EffectManager {
         }
       }
     } catch (error) {
-      console.error("Failed to update effect node:", error);
+      this.logger.error("Failed to update effect node", { error });
+    }
+  }
+
+  /**
+   * Update universal parameters (dryWet, inputGain, outputGain) for all effects
+   */
+  private updateUniversalParams(
+    effect: EffectInstance,
+    now: number,
+    smoothTime: number
+  ): void {
+    // Update input gain
+    if (effect.inputGainNode) {
+      effect.inputGainNode.gain.cancelScheduledValues(now);
+      effect.inputGainNode.gain.setValueAtTime(
+        effect.inputGainNode.gain.value,
+        now
+      );
+      effect.inputGainNode.gain.linearRampToValueAtTime(
+        effect.config.inputGain,
+        now + smoothTime
+      );
+    }
+
+    // Update output gain
+    if (effect.outputGainNode) {
+      effect.outputGainNode.gain.cancelScheduledValues(now);
+      effect.outputGainNode.gain.setValueAtTime(
+        effect.outputGainNode.gain.value,
+        now
+      );
+      effect.outputGainNode.gain.linearRampToValueAtTime(
+        effect.config.outputGain,
+        now + smoothTime
+      );
+    }
+
+    // Update dry/wet gains
+    if (effect.dryGain && effect.wetGain) {
+      const dryValue = 1.0 - effect.config.dryWet;
+      const wetValue = effect.config.dryWet;
+
+      effect.dryGain.gain.cancelScheduledValues(now);
+      effect.dryGain.gain.setValueAtTime(effect.dryGain.gain.value, now);
+      effect.dryGain.gain.linearRampToValueAtTime(dryValue, now + smoothTime);
+
+      effect.wetGain.gain.cancelScheduledValues(now);
+      effect.wetGain.gain.setValueAtTime(effect.wetGain.gain.value, now);
+      effect.wetGain.gain.linearRampToValueAtTime(wetValue, now + smoothTime);
     }
   }
 
@@ -759,7 +971,7 @@ export class EffectManager {
     const reverbConfig = effect.config as PlateReverbConfig;
     const reverb = effect.node as globalThis.AudioWorkletNode;
     if (!reverb?.parameters) {
-      console.warn("Plate reverb node or parameters not available");
+      this.logger.warn("Plate reverb node or parameters not available");
       return;
     }
 
@@ -784,18 +996,19 @@ export class EffectManager {
           param.cancelScheduledValues(now);
           param.setValueAtTime(value, now);
         } else {
-          console.warn(
-            `Plate reverb parameter "${name}" not found. Available parameters:`,
-            typeof params.get === "function"
-              ? Array.from(params.keys?.() ?? [])
-              : Object.keys(params)
-          );
+          this.logger.warn("Plate reverb parameter not found", {
+            parameter: name,
+            availableParameters:
+              typeof params.get === "function"
+                ? Array.from(params.keys?.() ?? [])
+                : Object.keys(params),
+          });
         }
       } catch (error) {
-        console.error(
-          `Error updating plate reverb parameter "${name}":`,
-          error
-        );
+        this.logger.error("Error updating plate reverb parameter", {
+          parameter: name,
+          error,
+        });
       }
     };
 
@@ -809,15 +1022,16 @@ export class EffectManager {
     updateParam("damping", reverbConfig.damping);
     updateParam("excursionRate", reverbConfig.excursionRate);
     updateParam("excursionDepth", reverbConfig.excursionDepth);
-    updateParam("wet", reverbConfig.wet);
-    updateParam("dry", reverbConfig.dry);
+    // Set internal wet/dry to fixed values since we handle mixing externally
+    updateParam("wet", 1.0);
+    updateParam("dry", 0.0);
   }
 
   private updateStandardReverb(
     effect: EffectInstance,
     context: AudioContext,
-    now: number,
-    smoothTime: number
+    _now: number,
+    _smoothTime: number
   ): void {
     const reverbConfig = effect.config as StandardReverbConfig;
     const convolver = effect.node as ConvolverNode;
@@ -829,27 +1043,21 @@ export class EffectManager {
     // Regenerate impulse response when roomSize or decayTime changes
     // We regenerate every time since checking previous values would require storing state
     // The performance impact is minimal since this is only called on parameter changes
+    // Note: now and smoothTime are unused because ConvolverNode.buffer is not an AudioParam
+    // and cannot be smoothly transitioned - it's set immediately
     const impulseResponse = this.generateImpulseResponse(
       context,
       reverbConfig.roomSize,
       reverbConfig.decayTime
     );
     convolver.buffer = impulseResponse;
-
-    // Update wet/dry gains
-    if (effect.wetGain && effect.dryGain) {
-      this.updateWetDryGains(effect, reverbConfig.wet, reverbConfig.dry, {
-        now,
-        smoothTime,
-      });
-    }
   }
 
   private updatePhaseVocoder(effect: EffectInstance, now: number): void {
     const vocoderConfig = effect.config as PhaseVocoderConfig;
     const vocoder = effect.node as globalThis.AudioWorkletNode;
     if (!vocoder?.parameters) {
-      console.warn("Phase vocoder node or parameters not available");
+      this.logger.warn("Phase vocoder node or parameters not available");
       return;
     }
 
@@ -868,18 +1076,19 @@ export class EffectManager {
           param.cancelScheduledValues(now);
           param.setValueAtTime(value, now);
         } else {
-          console.warn(
-            `Phase vocoder parameter "${name}" not found. Available parameters:`,
-            typeof params.get === "function"
-              ? Array.from(params.keys?.() ?? [])
-              : Object.keys(params)
-          );
+          this.logger.warn("Phase vocoder parameter not found", {
+            parameter: name,
+            availableParameters:
+              typeof params.get === "function"
+                ? Array.from(params.keys?.() ?? [])
+                : Object.keys(params),
+          });
         }
       } catch (error) {
-        console.error(
-          `Error updating phase vocoder parameter "${name}":`,
-          error
-        );
+        this.logger.error("Error updating phase vocoder parameter", {
+          parameter: name,
+          error,
+        });
       }
     };
 
@@ -910,13 +1119,6 @@ export class EffectManager {
         delayConfig.feedback,
         now + smoothTime
       );
-    }
-    // Update wet/dry gains
-    if (effect.wetGain && effect.dryGain) {
-      this.updateWetDryGains(effect, delayConfig.wet, delayConfig.dry, {
-        now,
-        smoothTime,
-      });
     }
   }
 
@@ -1002,27 +1204,6 @@ export class EffectManager {
     updateParam(panner.orientationZ, pannerConfig.orientationZ);
   }
 
-  private updateWetDryGains(
-    effect: EffectInstance,
-    wet: number,
-    dry: number,
-    timing: { now: number; smoothTime: number }
-  ): void {
-    const { wetGain, dryGain } = effect;
-    if (!wetGain) {
-      return;
-    }
-    if (!dryGain) {
-      return;
-    }
-    wetGain.gain.cancelScheduledValues(timing.now);
-    wetGain.gain.setValueAtTime(wetGain.gain.value, timing.now);
-    wetGain.gain.linearRampToValueAtTime(wet, timing.now + timing.smoothTime);
-    dryGain.gain.cancelScheduledValues(timing.now);
-    dryGain.gain.setValueAtTime(dryGain.gain.value, timing.now);
-    dryGain.gain.linearRampToValueAtTime(dry, timing.now + timing.smoothTime);
-  }
-
   /**
    * Generate an impulse response for standard reverb
    */
@@ -1051,94 +1232,6 @@ export class EffectManager {
   }
 
   /**
-   * Check if an effect needs wet/dry routing
-   */
-  private needsWetDryRouting(config: EffectConfig): boolean {
-    // Plate reverb handles wet/dry internally, so we don't need separate routing
-    // Standard reverb is handled separately in connectEffect
-    return config.type === "delay";
-  }
-
-  /**
-   * Setup wet/dry routing for effects that need it
-   */
-  private setupWetDryRouting(
-    effect: EffectInstance,
-    inputNode: AudioNode,
-    outputNode: AudioNode
-  ): void {
-    if (!effect.node) {
-      return;
-    }
-
-    const context = this.cacophony.context;
-
-    // Create gain nodes if they don't exist
-    if (!effect.wetGain) {
-      effect.wetGain = context.createGain();
-    }
-    if (!effect.dryGain) {
-      effect.dryGain = context.createGain();
-    }
-
-    // Set gain values
-    if (effect.config.type === "delay") {
-      const config = effect.config as DelayConfig;
-      effect.wetGain.gain.value = config.wet;
-      effect.dryGain.gain.value = config.dry;
-
-      // Setup feedback loop for delay
-      if (!effect.feedbackGain) {
-        effect.feedbackGain = context.createGain();
-      }
-      effect.feedbackGain.gain.value = config.feedback;
-      (
-        effect.node as unknown as {
-          connect(destination: AudioNode | { value: number }): void;
-        }
-      ).connect(effect.feedbackGain as unknown as AudioNode);
-      effect.feedbackGain.connect(effect.node as unknown as AudioNode);
-    } else if (effect.config.type === "standardReverb") {
-      const config = effect.config as StandardReverbConfig;
-      effect.wetGain.gain.value = config.wet;
-      effect.dryGain.gain.value = config.dry;
-    }
-
-    // Route dry signal: input → dryGain → output
-    inputNode.connect(effect.dryGain as unknown as AudioNode);
-    effect.dryGain.connect(outputNode);
-
-    // Route wet signal: input → effect → wetGain → output
-    inputNode.connect(effect.node as unknown as AudioNode);
-    (
-      effect.node as unknown as {
-        connect(destination: AudioNode | { value: number }): void;
-      }
-    ).connect(effect.wetGain as unknown as AudioNode);
-    effect.wetGain.connect(outputNode);
-  }
-
-  /**
-   * Connect plate reverb effect (handles wet/dry internally)
-   */
-  private connectPlateReverbEffect(
-    effect: EffectInstance,
-    inputNode: AudioNode,
-    outputNode: AudioNode
-  ): void {
-    if (!effect.node) {
-      return;
-    }
-    // Plate reverb already handles wet/dry mixing internally
-    inputNode.connect(effect.node as unknown as AudioNode);
-    (
-      effect.node as unknown as {
-        connect(destination: AudioNode | { value: number }): void;
-      }
-    ).connect(outputNode);
-  }
-
-  /**
    * Create distortion curve for wave shaper
    */
   private makeDistortionCurve(amount: number): Float32Array {
@@ -1159,23 +1252,14 @@ export class EffectManager {
    * Disconnect all nodes
    */
   private disconnectAll(): void {
+    // Disconnect input node from destination to prevent duplicate connections
     if (this.inputNode) {
       this.inputNode.disconnect();
     }
 
+    // Disconnect all effect nodes
     for (const effect of this.effects) {
-      if (effect.node) {
-        effect.node.disconnect();
-      }
-      if (effect.wetGain) {
-        effect.wetGain.disconnect();
-      }
-      if (effect.dryGain) {
-        effect.dryGain.disconnect();
-      }
-      if (effect.feedbackGain) {
-        effect.feedbackGain.disconnect();
-      }
+      this.cleanupEffect(effect);
     }
   }
 
@@ -1186,6 +1270,12 @@ export class EffectManager {
     if (effect.node) {
       effect.node.disconnect();
     }
+    if (effect.inputGainNode) {
+      effect.inputGainNode.disconnect();
+    }
+    if (effect.outputGainNode) {
+      effect.outputGainNode.disconnect();
+    }
     if (effect.wetGain) {
       effect.wetGain.disconnect();
     }
@@ -1195,6 +1285,21 @@ export class EffectManager {
     if (effect.feedbackGain) {
       effect.feedbackGain.disconnect();
     }
+    if (effect.mergeNode) {
+      effect.mergeNode.disconnect();
+      effect.mergeNode = undefined;
+    }
+  }
+
+  /**
+   * Cleanup partially-created nodes from a failed build
+   * This ensures any nodes created during a failed chain build are properly disconnected
+   */
+  private cleanupPartiallyCreatedNodes(effects: EffectInstance[]): void {
+    for (const effect of effects) {
+      // Use existing cleanup method which handles all node types
+      this.cleanupEffect(effect);
+    }
   }
 
   /**
@@ -1202,9 +1307,6 @@ export class EffectManager {
    */
   cleanup(): void {
     this.disconnectAll();
-    for (const effect of this.effects) {
-      this.cleanupEffect(effect);
-    }
     this.effects = [];
   }
 }

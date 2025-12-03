@@ -1,5 +1,4 @@
 const SESSION_COOKIE_NAME = "radio_session_id";
-const _SESSION_MAX_AGE = 60 * 60 * 24 * 365; // 1 year
 
 /**
  * Get session ID from cookies (for API routes).

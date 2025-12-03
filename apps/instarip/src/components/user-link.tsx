@@ -1,4 +1,4 @@
-import { ArrowUpRight } from "lucide-react";
+import { ArrowUpRightIcon } from "lucide-react";
 import Link from "next/link";
 
 export default function UserLink({
@@ -15,7 +15,7 @@ export default function UserLink({
       >
         <span className="truncate">@{username}</span>
         <span className="opacity-0 transition-opacity group-hover/username:opacity-100 group-focus/username:opacity-100">
-          <ArrowUpRight className="h-3 w-3" />
+          <ArrowUpRightIcon className="h-3 w-3" />
         </span>
       </Link>
     </div>

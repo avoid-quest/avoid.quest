@@ -1,6 +1,9 @@
-import { getEffectMetadata } from "@/lib/audio/effects/registry";
-import type { CompressorConfig, EffectConfig } from "@/lib/audio/effects/types";
-import { ParamGroup, ParamSlider } from "./";
+import {
+  type CompressorConfig,
+  type EffectConfig,
+  getEffectMetadata,
+} from "@avoid.quest/radio-audio";
+import { ParamGroup, ParamSlider, UniversalParams } from "./";
 
 type CompressorParamsProps = {
   effect: CompressorConfig;
@@ -18,7 +21,6 @@ type SliderConfig = {
 
 type CreateSliderOptions = {
   defaultConfig: Omit<EffectConfig, "id" | "order"> | undefined;
-  disabled: boolean;
   effect: CompressorConfig;
   onUpdate: (config: Partial<EffectConfig>) => void;
   sliderConfig: SliderConfig;
@@ -26,7 +28,6 @@ type CreateSliderOptions = {
 
 function createSlider({
   defaultConfig,
-  disabled,
   effect,
   onUpdate,
   sliderConfig,
@@ -40,7 +41,6 @@ function createSlider({
   return (
     <ParamSlider
       defaultValue={defaultValue}
-      disabled={disabled}
       formatKey={sliderConfig.formatKey}
       key={sliderConfig.key}
       label={sliderConfig.label}
@@ -55,13 +55,11 @@ function createSlider({
 
 function ThresholdRatioGroup({
   effect,
-  disabled,
   onUpdate,
   ranges,
   defaultConfig,
 }: {
   effect: CompressorConfig;
-  disabled: boolean;
   onUpdate: (config: Partial<EffectConfig>) => void;
   ranges: Record<string, { max?: number; min?: number; step?: number }>;
   defaultConfig: Omit<EffectConfig, "id" | "order"> | undefined;
@@ -90,7 +88,6 @@ function ThresholdRatioGroup({
       {sliders.map((slider) =>
         createSlider({
           defaultConfig,
-          disabled,
           effect,
           onUpdate,
           sliderConfig: slider,
@@ -102,13 +99,11 @@ function ThresholdRatioGroup({
 
 function TimingGroup({
   effect,
-  disabled,
   onUpdate,
   ranges,
   defaultConfig,
 }: {
   effect: CompressorConfig;
-  disabled: boolean;
   onUpdate: (config: Partial<EffectConfig>) => void;
   ranges: Record<string, { max?: number; min?: number; step?: number }>;
   defaultConfig: Omit<EffectConfig, "id" | "order"> | undefined;
@@ -137,7 +132,6 @@ function TimingGroup({
       {sliders.map((slider) =>
         createSlider({
           defaultConfig,
-          disabled,
           effect,
           onUpdate,
           sliderConfig: slider,
@@ -151,27 +145,23 @@ export function CompressorParams({ effect, onUpdate }: CompressorParamsProps) {
   const metadata = getEffectMetadata("compressor");
   const ranges = metadata?.parameterRanges ?? {};
   const defaultConfig = metadata?.defaultConfig;
-  const disabled = !effect.enabled;
 
   return (
     <div className="space-y-4">
       <ThresholdRatioGroup
         defaultConfig={defaultConfig}
-        disabled={disabled}
         effect={effect}
         onUpdate={onUpdate}
         ranges={ranges}
       />
       <TimingGroup
         defaultConfig={defaultConfig}
-        disabled={disabled}
         effect={effect}
         onUpdate={onUpdate}
         ranges={ranges}
       />
       {createSlider({
         defaultConfig,
-        disabled,
         effect,
         onUpdate,
         sliderConfig: {
@@ -183,6 +173,8 @@ export function CompressorParams({ effect, onUpdate }: CompressorParamsProps) {
           step: ranges.knee?.step ?? 1,
         },
       })}
+
+      <UniversalParams effect={effect} onUpdate={onUpdate} />
     </div>
   );
 }

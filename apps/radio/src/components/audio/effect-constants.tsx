@@ -1,20 +1,20 @@
+import type { EffectType } from "@avoid.quest/radio-audio";
 import {
-  Clock,
-  Filter,
-  FireExtinguisher,
-  Radio,
-  Waves,
-  Zap,
+  ClockIcon,
+  FilterIcon,
+  FireExtinguisherIcon,
+  RadioIcon,
+  WavesIcon,
+  ZapIcon,
 } from "lucide-react";
-import type { EffectType } from "@/lib/audio/effects/types";
 
-export const EFFECT_ICONS: Record<EffectType, typeof Filter> = {
-  biquadFilter: Filter,
-  plateReverb: Waves,
-  standardReverb: Waves,
-  phaseVocoder: Radio,
-  delay: Clock,
-  distortion: Zap,
-  compressor: FireExtinguisher,
-  panner: Radio,
+export const EFFECT_ICONS: Record<EffectType, typeof FilterIcon> = {
+  biquadFilter: FilterIcon,
+  plateReverb: WavesIcon,
+  standardReverb: WavesIcon,
+  phaseVocoder: RadioIcon,
+  delay: ClockIcon,
+  distortion: ZapIcon,
+  compressor: FireExtinguisherIcon,
+  panner: RadioIcon,
 };

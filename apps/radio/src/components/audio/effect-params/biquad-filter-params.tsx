@@ -1,9 +1,10 @@
-import { getEffectMetadata } from "@/lib/audio/effects/registry";
-import type {
-  BiquadFilterConfig,
-  EffectConfig,
-} from "@/lib/audio/effects/types";
-import { ParamSelect, ParamSlider } from "./";
+import {
+  type BiquadFilterConfig,
+  type EffectConfig,
+  getEffectMetadata,
+} from "@avoid.quest/radio-audio";
+import { ParamSelect, ParamSlider, UniversalParams } from "./";
+import { getDefaultValue } from "./utils";
 
 const FILTER_TYPES = [
   { value: "lowpass", label: "Low Pass" },
@@ -21,20 +22,6 @@ type BiquadFilterParamsProps = {
   onUpdate: (config: Partial<EffectConfig>) => void;
 };
 
-function getDefaultValue(
-  defaultConfig: Omit<EffectConfig, "id" | "order"> | undefined,
-  key: string
-): number | undefined {
-  if (!defaultConfig) {
-    return;
-  }
-  if (!(key in defaultConfig)) {
-    return;
-  }
-  const value = (defaultConfig as Record<string, unknown>)[key];
-  return typeof value === "number" ? value : undefined;
-}
-
 function shouldShowGain(filterType: BiquadFilterConfig["filterType"]): boolean {
   return (
     filterType === "lowshelf" ||
@@ -51,12 +38,10 @@ export function BiquadFilterParams({
   const ranges = metadata?.parameterRanges ?? {};
   const defaultConfig = metadata?.defaultConfig;
   const showGain = shouldShowGain(effect.filterType);
-  const disabled = !effect.enabled;
 
   return (
     <div className="space-y-4">
       <ParamSelect
-        disabled={disabled}
         label="Filter Type"
         onChange={(value) =>
           onUpdate({ filterType: value as BiquadFilterConfig["filterType"] })
@@ -67,7 +52,6 @@ export function BiquadFilterParams({
 
       <ParamSlider
         defaultValue={getDefaultValue(defaultConfig, "frequency")}
-        disabled={disabled}
         formatKey="frequency"
         label="Frequency"
         max={ranges.frequency?.max ?? 20_000}
@@ -79,7 +63,6 @@ export function BiquadFilterParams({
 
       <ParamSlider
         defaultValue={getDefaultValue(defaultConfig, "Q")}
-        disabled={disabled}
         formatKey="default"
         label="Q (Resonance)"
         max={ranges.Q?.max ?? 30}
@@ -89,10 +72,9 @@ export function BiquadFilterParams({
         value={effect.Q}
       />
 
-      {showGain.valueOf() && (
+      {showGain ? (
         <ParamSlider
           defaultValue={getDefaultValue(defaultConfig, "gain")}
-          disabled={disabled}
           formatKey="gain"
           label="Gain"
           max={ranges.gain?.max ?? 40}
@@ -101,7 +83,9 @@ export function BiquadFilterParams({
           step={ranges.gain?.step ?? 0.1}
           value={effect.gain}
         />
-      )}
+      ) : null}
+
+      <UniversalParams effect={effect} onUpdate={onUpdate} />
     </div>
   );
 }

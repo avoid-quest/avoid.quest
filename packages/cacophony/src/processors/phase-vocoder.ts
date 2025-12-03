@@ -73,22 +73,24 @@ export class PhaseVocoderProcessor extends OLAProcessor {
     const getParamValue = (name: string, defaultValue: number): number => {
       try {
         // Access parameter as object property (parameters is a plain object)
-        const param = (parameters as unknown as Record<string, Float32Array | AudioParam>)[name];
-        
+        const param = (
+          parameters as unknown as Record<string, Float32Array | AudioParam>
+        )[name];
+
         if (!param) {
           return defaultValue;
         }
-        
+
         // Check if it's a Float32Array (k-rate parameter in worklet)
         if (param instanceof Float32Array) {
           return param[0] ?? defaultValue;
         }
-        
+
         // Fallback: if it's an AudioParam, use .value
         if (typeof (param as AudioParam).value === "number") {
           return (param as AudioParam).value;
         }
-        
+
         return defaultValue;
       } catch (error) {
         console.error(`[Worklet] Error getting parameter "${name}":`, error);

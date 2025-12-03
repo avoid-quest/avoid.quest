@@ -1,3 +1,4 @@
+import type { Platform } from "@avoid.quest/radio-shared";
 import { useDraggable } from "@dnd-kit/core";
 import { Button } from "@workspace/ui/components/button";
 import { Input } from "@workspace/ui/components/input";
@@ -9,16 +10,15 @@ import {
 } from "@workspace/ui/components/tabs";
 import { useIsMobile } from "@workspace/ui/hooks/use-mobile";
 import {
-  ChevronLeft,
-  ChevronRight,
-  GripVertical,
-  Music,
-  Search,
-  Volume2,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  GripVerticalIcon,
+  MusicIcon,
+  SearchIcon,
+  Volume2Icon,
 } from "lucide-react";
 import { useState } from "react";
 import { useShallow } from "zustand/react/shallow";
-import type { Platform } from "@/lib/external-url/types";
 import { useDjStore } from "@/lib/stores/dj-store";
 import type { Radio } from "@/lib/types";
 import { RadioLogo } from "../radio-logo";
@@ -82,7 +82,7 @@ function RadioItemContent({ radio }: { radio: Radio }) {
   const isPlatform = isPlatformItem(radio);
   const platform = getPlatformFromItem(radio);
   const platformColor =
-    platform?.valueOf() === "bandcamp" ? BANDCAMP_COLOR : SOUNDCLOUD_COLOR;
+    platform === "bandcamp" ? BANDCAMP_COLOR : SOUNDCLOUD_COLOR;
 
   return (
     <div className="flex min-w-0 flex-1 items-center gap-3">
@@ -94,7 +94,7 @@ function RadioItemContent({ radio }: { radio: Radio }) {
               backgroundColor: `${platformColor}1a`,
             }}
           >
-            <Music
+            <MusicIcon
               className="size-5"
               style={{
                 color: platformColor,
@@ -103,7 +103,9 @@ function RadioItemContent({ radio }: { radio: Radio }) {
           </div>
         ) : (
           <RadioLogo
-            fallbackIcon={<Volume2 className="size-4 text-muted-foreground" />}
+            fallbackIcon={
+              <Volume2Icon className="size-4 text-muted-foreground" />
+            }
             logoUrl={radio.logoUrl}
             name={radio.name}
             size="md"
@@ -173,7 +175,7 @@ function DraggableRadioItem({ radio }: DraggableRadioItemProps) {
         {...attributes}
         {...listeners}
       >
-        <GripVertical className="size-4 sm:size-3" />
+        <GripVerticalIcon className="size-4 sm:size-3" />
       </div>
 
       {/* Radio Content - Not draggable, allows normal interaction */}
@@ -221,7 +223,7 @@ function MobileRadioItem({ radio }: { radio: Radio }) {
           title="Load to Left Deck"
           variant="outline"
         >
-          <ChevronLeft className="size-4" />
+          <ChevronLeftIcon className="size-4" />
         </Button>
         <Button
           aria-label="Load to Right Deck"
@@ -231,7 +233,7 @@ function MobileRadioItem({ radio }: { radio: Radio }) {
           title="Load to Right Deck"
           variant="outline"
         >
-          <ChevronRight className="size-4" />
+          <ChevronRightIcon className="size-4" />
         </Button>
       </div>
     </div>
@@ -306,11 +308,11 @@ export function DjRadioList({ radios }: DjRadioListProps) {
               Radios
             </TabsTrigger>
             <TabsTrigger className="flex-1 text-xs" value="external">
-              External Inputs
+              External
             </TabsTrigger>
           </TabsList>
           <div className="relative">
-            <Search className="-translate-y-1/2 absolute top-1/2 left-2 size-4 text-muted-foreground" />
+            <SearchIcon className="-translate-y-1/2 absolute top-1/2 left-2 size-4 text-muted-foreground" />
             <Input
               aria-label="Search radios and external inputs"
               className="h-8 pl-8 text-xs"
@@ -337,7 +339,7 @@ export function DjRadioList({ radios }: DjRadioListProps) {
           {renderRadioList(filteredRadios)}
         </TabsContent>
 
-        {/* External Inputs Tab */}
+        {/* External Tab */}
         <TabsContent
           className="mt-0 flex min-h-0 flex-1 flex-col overflow-hidden"
           value="external"

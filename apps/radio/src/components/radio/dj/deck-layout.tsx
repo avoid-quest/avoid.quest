@@ -1,5 +1,8 @@
+import type { EffectConfig } from "@avoid.quest/radio-audio";
+import type { PlatformMetadata } from "@avoid.quest/radio-shared";
 import { Button } from "@workspace/ui/components/button";
 import { PlayPauseButton } from "@workspace/ui/components/play-pause-button";
+import { Progress } from "@workspace/ui/components/progress";
 import { ScrollArea } from "@workspace/ui/components/scroll-area";
 import { Slider } from "@workspace/ui/components/slider";
 import {
@@ -10,9 +13,7 @@ import {
 } from "@workspace/ui/components/tabs";
 import { useIsMobile } from "@workspace/ui/hooks/use-mobile";
 import { cn } from "@workspace/ui/lib/utils";
-import { ExternalLink, Link2, Music2, X } from "lucide-react";
-import type { EffectConfig } from "@/lib/audio/effects/types";
-import type { PlatformMetadata } from "@/lib/external-url/types";
+import { Link2Icon, Music2Icon, XIcon } from "lucide-react";
 import type { Radio } from "@/lib/types";
 import { RadioNameLink } from "../radio-name-link";
 import { DeckSections } from "./deck-sections";
@@ -56,19 +57,16 @@ function calculateHasTracklist(metadata?: PlatformMetadata): boolean {
 function calculateProgress(trackProgress?: {
   position: number;
   duration: number;
-}): { isLive: boolean; progress: number } {
-  const isLive =
-    trackProgress?.duration === Number.POSITIVE_INFINITY ||
-    trackProgress?.duration === 0 ||
-    (trackProgress?.duration !== undefined &&
-      !Number.isFinite(trackProgress.duration));
-
-  const progress =
-    !isLive && trackProgress?.duration
-      ? (trackProgress.position / trackProgress.duration) * 100
-      : 0;
-
-  return { isLive, progress };
+}): number {
+  // Calculate progress percentage for any track with a finite duration
+  if (
+    trackProgress?.duration &&
+    Number.isFinite(trackProgress.duration) &&
+    trackProgress.duration > 0
+  ) {
+    return (trackProgress.position / trackProgress.duration) * 100;
+  }
+  return 0;
 }
 
 function getDisplayInfo(
@@ -117,9 +115,12 @@ export function DeckLayout({
   };
 
   const { artworkUrl, title, artist } = getDisplayInfo(radio, metadata);
-  const { isLive, progress } = calculateProgress(trackProgress);
+  const progress = calculateProgress(trackProgress);
   const hasTracklist = calculateHasTracklist(metadata);
   const isMobile = useIsMobile();
+
+  // Show LIVE badge for radios (no platform metadata) that have started playing
+  const shouldShowLive = !metadata?.platform && Boolean(trackProgress);
 
   // On mobile, wrap content in tabs to separate info/controls from effects
   if (isMobile) {
@@ -132,7 +133,6 @@ export function DeckLayout({
         effects={effects}
         formatTime={formatTime}
         hasTracklist={hasTracklist}
-        isLive={isLive ?? false}
         isLoading={isLoading}
         isPlaying={isPlaying}
         metadata={metadata || null}
@@ -147,6 +147,7 @@ export function DeckLayout({
         onVolumeChange={onVolumeChange}
         progress={progress}
         radio={radio}
+        shouldShowLive={shouldShowLive}
         title={title}
         trackProgress={trackProgress}
         volume={volume}
@@ -165,14 +166,13 @@ export function DeckLayout({
           artworkUrl={artworkUrl}
           metadata={metadata || null}
           radio={radio}
+          shouldShowLive={shouldShowLive}
           title={title}
         />
 
         {/* Progress Bar */}
         <DeckProgress
           formatTime={formatTime}
-          isLive={isLive ?? false}
-          metadata={metadata ?? null}
           progress={progress}
           trackProgress={trackProgress}
         />
@@ -231,12 +231,14 @@ function DeckInfo({
   metadata,
   radio,
   artist,
+  shouldShowLive,
 }: {
   artworkUrl?: string;
   title: string;
   metadata: PlatformMetadata | null;
   radio: Radio;
   artist: string;
+  shouldShowLive: boolean;
 }) {
   return (
     <div className="flex w-full items-start gap-3">
@@ -251,7 +253,7 @@ function DeckInfo({
           />
         ) : (
           <div className="flex h-full w-full items-center justify-center">
-            <Music2 className="size-6 text-muted-foreground/50" />
+            <Music2Icon className="size-6 text-muted-foreground/50" />
           </div>
         )}
 
@@ -263,77 +265,52 @@ function DeckInfo({
       </div>
 
       <div className="min-w-0 flex-1 space-y-0.5">
-        <h3
-          className="truncate font-semibold text-base leading-tight"
-          title={title}
-        >
-          {metadata ? title : <RadioNameLink radio={radio} />}
-        </h3>
+        <div className="flex items-start justify-between gap-2">
+          <h3
+            className="truncate font-semibold text-base leading-tight"
+            title={title}
+          >
+            {metadata ? title : <RadioNameLink radio={radio} />}
+          </h3>
+          {shouldShowLive ? (
+            <div className="flex shrink-0 items-center gap-1.5 rounded-full bg-red-500/10 px-2 py-0.5 text-red-500">
+              <span className="relative flex size-1.5">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
+                <span className="relative inline-flex size-1.5 rounded-full bg-red-500" />
+              </span>
+              <span className="font-bold text-[9px] uppercase tracking-wider">
+                Live
+              </span>
+            </div>
+          ) : null}
+        </div>
         <p className="truncate text-muted-foreground text-sm" title={artist}>
           {artist}
         </p>
-
-        {metadata?.url?.trim() !== "" && (
-          <a
-            className="mt-1 inline-flex items-center gap-1 text-primary text-xs hover:underline"
-            href={metadata?.url}
-            rel="noopener noreferrer"
-            target="_blank"
-          >
-            Open Link <ExternalLink className="size-3" />
-          </a>
-        )}
       </div>
     </div>
   );
 }
 
 function DeckProgress({
-  isLive,
   trackProgress,
   progress,
   formatTime,
-  metadata,
 }: {
-  isLive: boolean;
   trackProgress: { position: number; duration: number } | undefined;
   progress: number;
   formatTime: (seconds: number) => string;
-  metadata: PlatformMetadata | null;
 }) {
-  // Only show LIVE badge for non-platform items (regular radio streams)
-  const shouldShowLive = isLive && !metadata?.platform;
-
   return (
     <div className="w-full space-y-1.5">
-      {shouldShowLive ? (
-        <div className="flex items-center justify-center py-1">
-          <div className="flex items-center gap-2 rounded-full bg-red-500/10 px-3 py-1 text-red-500">
-            <span className="relative flex size-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
-              <span className="relative inline-flex size-2 rounded-full bg-red-500" />
-            </span>
-            <span className="font-bold text-[10px] uppercase tracking-wider">
-              Live
-            </span>
+      {trackProgress?.valueOf() && trackProgress.duration > 0 && (
+        <>
+          <Progress className="h-1.5" value={progress} />
+          <div className="flex justify-between font-mono text-[10px] text-muted-foreground">
+            <span>{formatTime(trackProgress.position)}</span>
+            <span>{formatTime(trackProgress.duration)}</span>
           </div>
-        </div>
-      ) : (
-        trackProgress?.valueOf() &&
-        trackProgress.duration > 0 && (
-          <>
-            <div className="h-1.5 w-full overflow-hidden rounded-full bg-secondary">
-              <div
-                className="h-full bg-primary transition-all duration-100 ease-linear"
-                style={{ width: `${progress}%` }}
-              />
-            </div>
-            <div className="flex justify-between font-mono text-[10px] text-muted-foreground">
-              <span>{formatTime(trackProgress.position)}</span>
-              <span>{formatTime(trackProgress.duration)}</span>
-            </div>
-          </>
-        )
+        </>
       )}
     </div>
   );
@@ -399,7 +376,7 @@ function DeckFooterActions({
           size="sm"
           variant="ghost"
         >
-          <Link2 className="mr-1.5 size-3" />
+          <Link2Icon className="mr-1.5 size-3" />
           Change URL
         </Button>
       )}
@@ -409,7 +386,7 @@ function DeckFooterActions({
         size="sm"
         variant="ghost"
       >
-        <X className="mr-1.5 size-3" />
+        <XIcon className="mr-1.5 size-3" />
         Eject
       </Button>
     </div>
@@ -425,7 +402,6 @@ type MobileDeckTabsProps = {
   formatTime: (seconds: number) => string;
   hasTracklist: boolean;
   isLoading: boolean;
-  isLive: boolean;
   isPlaying: boolean;
   metadata: PlatformMetadata | null;
   onAddEffect?: (type: string) => void;
@@ -439,6 +415,7 @@ type MobileDeckTabsProps = {
   onVolumeChange: (value: number[]) => void;
   progress: number;
   radio: Radio;
+  shouldShowLive: boolean;
   title: string;
   trackProgress?: {
     position: number;
@@ -456,7 +433,6 @@ function MobileDeckTabs({
   formatTime,
   hasTracklist,
   isLoading,
-  isLive,
   isPlaying,
   metadata,
   onAddEffect,
@@ -470,6 +446,7 @@ function MobileDeckTabs({
   onVolumeChange,
   progress,
   radio,
+  shouldShowLive,
   title,
   trackProgress,
   volume,
@@ -501,13 +478,12 @@ function MobileDeckTabs({
               artworkUrl={artworkUrl}
               metadata={metadata}
               radio={radio}
+              shouldShowLive={shouldShowLive}
               title={title}
             />
 
             <DeckProgress
               formatTime={formatTime}
-              isLive={isLive}
-              metadata={metadata}
               progress={progress}
               trackProgress={trackProgress}
             />

@@ -1,3 +1,4 @@
+import type { Platform } from "@avoid.quest/radio-shared";
 import { useDroppable } from "@dnd-kit/core";
 import { Button } from "@workspace/ui/components/button";
 import {
@@ -21,17 +22,16 @@ import {
 import { useIsMobile } from "@workspace/ui/hooks/use-mobile";
 import { cn } from "@workspace/ui/lib/utils";
 import {
-  Copy,
-  ExternalLink,
-  MoreHorizontal,
-  RefreshCw,
-  Volume2,
+  CopyIcon,
+  ExternalLinkIcon,
+  MoreHorizontalIcon,
+  RefreshCwIcon,
+  Volume2Icon,
 } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useShallow } from "zustand/react/shallow";
 import { isPlatformRadio } from "@/lib/external-url";
-import type { Platform } from "@/lib/external-url/types";
 import { useDeckState } from "@/lib/hooks/use-deck-state";
 import { usePlatformMetadata } from "@/lib/hooks/use-platform-metadata";
 import { useTrackProgress } from "@/lib/hooks/use-track-progress";
@@ -250,7 +250,7 @@ export function DjDeck({ className, deckId, radios = [] }: DjDeckProps) {
         {/* Drop Zone */}
         <div className="flex shrink-0 flex-col items-center justify-center py-8 text-center">
           <div className="rounded-lg border-2 border-muted-foreground/25 border-dashed p-2 sm:p-6">
-            <Volume2 className="mx-auto size-8 text-muted-foreground sm:size-10" />
+            <Volume2Icon className="mx-auto size-8 text-muted-foreground sm:size-10" />
             <p className="mt-2 text-muted-foreground text-sm">
               Drop a radio station here
             </p>
@@ -338,18 +338,18 @@ function DeckHeader({ deckId, radio, onReset }: DeckHeaderProps) {
               style={{ visibility: radio ? "visible" : "hidden" }}
               variant="ghost"
             >
-              <MoreHorizontal className="size-4" />
+              <MoreHorizontalIcon className="size-4" />
             </Button>
           </DropdownMenuTrigger>
           {radio?.valueOf() && (
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={handleCopyStreamLink}>
-                <Copy className="mr-2 size-4" />
+                <CopyIcon className="mr-2 size-4" />
                 Copy Stream Link
               </DropdownMenuItem>
               {radio.websiteUrl?.trim() !== "" && (
                 <DropdownMenuItem onClick={handleGoToWebsite}>
-                  <ExternalLink className="mr-2 size-4" />
+                  <ExternalLinkIcon className="mr-2 size-4" />
                   Go to Website
                 </DropdownMenuItem>
               )}
@@ -368,7 +368,7 @@ function DeckHeader({ deckId, radio, onReset }: DeckHeaderProps) {
                   }
                 }}
               >
-                <RefreshCw className="mr-2 size-4" />
+                <RefreshCwIcon className="mr-2 size-4" />
                 Reset Deck
               </DropdownMenuItem>
             </DropdownMenuContent>

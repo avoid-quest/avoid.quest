@@ -1,11 +1,9 @@
-import type { BandcampItemType, Platform, SoundCloudItemType } from "./types";
+import { isBandcampUrl } from "@avoid.quest/bandcamp";
+import type { Platform } from "@avoid.quest/radio-shared";
+import { isSoundCloudUrl } from "@avoid.quest/soundcloud";
 
-const BANDCAMP_PATTERN = /bandcamp\.com/i;
-const SOUNDCLOUD_PATTERN = /soundcloud\.com/i;
-const BANDCAMP_ALBUM_PATTERN = /bandcamp\.com\/album\//i;
-const BANDCAMP_TRACK_PATTERN = /bandcamp\.com\/track\//i;
-const SOUNDCLOUD_TRACK_PATTERN = /soundcloud\.com\/[^/]+\/[^/]+/i;
-const SOUNDCLOUD_PLAYLIST_PATTERN = /soundcloud\.com\/[^/]+\/sets\/[^/]+/i;
+export { detectBandcampItemType } from "@avoid.quest/bandcamp";
+export { detectSoundCloudItemType } from "@avoid.quest/soundcloud";
 
 /**
  * Detects the platform from a URL string.
@@ -17,43 +15,13 @@ export function detectPlatformFromUrl(url: string): Platform | null {
     return null;
   }
 
-  if (BANDCAMP_PATTERN.test(url)) {
+  if (isBandcampUrl(url)) {
     return "bandcamp";
   }
 
-  if (SOUNDCLOUD_PATTERN.test(url)) {
+  if (isSoundCloudUrl(url)) {
     return "soundcloud";
   }
 
   return null;
-}
-
-/**
- * Detects the Bandcamp item type from a URL string.
- * @param url - The URL to detect the item type from
- * @returns The detected item type
- */
-export function detectBandcampItemType(url: string): BandcampItemType {
-  if (BANDCAMP_ALBUM_PATTERN.test(url)) {
-    return "album";
-  }
-  if (BANDCAMP_TRACK_PATTERN.test(url)) {
-    return "track";
-  }
-  return "artist";
-}
-
-/**
- * Detects the SoundCloud item type from a URL string.
- * @param url - The URL to detect the item type from
- * @returns The detected item type
- */
-export function detectSoundCloudItemType(url: string): SoundCloudItemType {
-  if (SOUNDCLOUD_PLAYLIST_PATTERN.test(url)) {
-    return "playlist";
-  }
-  if (SOUNDCLOUD_TRACK_PATTERN.test(url)) {
-    return "track";
-  }
-  return "user";
 }

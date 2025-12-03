@@ -1,11 +1,13 @@
-import { fetchClientID } from "@scdl/fetch-client";
-import { detectSoundCloudItemType } from "@/lib/external-url/detect";
 import type {
   PlatformItemError,
   PlatformItemResponse,
   SoundCloudItemResult,
   SoundCloudMetadata,
-} from "@/lib/external-url/types";
+} from "@avoid.quest/radio-shared";
+import { detectSoundCloudItemType } from "./detect";
+import { fetchClientID } from "./fetch-client";
+
+export { detectSoundCloudItemType, isSoundCloudUrl } from "./detect";
 
 function createErrorResponse(message: string): PlatformItemError {
   return {
@@ -14,16 +16,29 @@ function createErrorResponse(message: string): PlatformItemError {
   };
 }
 
+let clientIdCache: Promise<string> | null = null;
+
 async function getClientId(): Promise<string> {
-  return await fetchClientID();
+  if (clientIdCache) {
+    return await clientIdCache;
+  }
+  clientIdCache = fetchClientID();
+  return await clientIdCache;
 }
 
 async function resolveSoundCloudUrl(url: string, clientId: string) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10_000);
+
   const resolveUrl = new URL("https://api-v2.soundcloud.com/resolve");
   resolveUrl.searchParams.set("url", url);
   resolveUrl.searchParams.set("client_id", clientId);
 
-  const response = await fetch(resolveUrl.toString());
+  const response = await fetch(resolveUrl.toString(), {
+    signal: controller.signal,
+  });
+  clearTimeout(timeoutId);
+
   if (!response.ok) {
     throw new Error(`Failed to resolve URL: ${response.statusText}`);
   }
@@ -139,8 +154,7 @@ async function processPlaylist(
           // Note: We use the resolve endpoint with the track's API URL
           const trackApiUrl = `https://api.soundcloud.com/tracks/${track.id}`;
           fullTrack = await resolveSoundCloudUrl(trackApiUrl, clientId);
-        } catch (error) {
-          console.warn(`Failed to resolve partial track ${track.id}:`, error);
+        } catch {
           return null;
         }
       }
@@ -171,11 +185,10 @@ async function processPlaylist(
     })
   );
 
-  const validTracks = processedTracks.filter((t) => t !== null) as Array<{
-    name: string;
-    streamUrl: string;
-    duration: number;
-  }>;
+  const validTracks = processedTracks.filter(
+    (t): t is { name: string; streamUrl: string; duration: number } =>
+      t !== null
+  );
 
   if (validTracks.length === 0) {
     return createErrorResponse("No playable tracks found in playlist");
@@ -192,8 +205,12 @@ async function processPlaylist(
     duration: Math.floor(data.duration / 1000),
     trackCount: data.track_count,
     tracks: validTracks,
-    streamUrl: validTracks[0].streamUrl,
+    streamUrl: validTracks[0]?.streamUrl,
   };
+
+  if (!validTracks[0]) {
+    return createErrorResponse("No playable tracks found in playlist");
+  }
 
   return {
     success: true,

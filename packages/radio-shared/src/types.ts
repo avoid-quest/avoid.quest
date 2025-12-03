@@ -4,6 +4,19 @@ export type BandcampItemType = "album" | "track" | "artist" | "label";
 
 export type SoundCloudItemType = "track" | "playlist" | "user";
 
+export type BandcampTrackInfo = {
+  name: string;
+  streamUrl: string;
+  duration?: number;
+  trackNumber?: number;
+};
+
+export type SoundCloudTrackInfo = {
+  name: string;
+  streamUrl: string;
+  duration?: number;
+};
+
 export type BandcampMetadata = {
   platform: "bandcamp";
   itemType: BandcampItemType;
@@ -15,12 +28,7 @@ export type BandcampMetadata = {
   trackNumber?: number;
   duration?: number;
   trackCount?: number;
-  tracks?: Array<{
-    name: string;
-    streamUrl: string;
-    duration?: number;
-    trackNumber?: number;
-  }>;
+  tracks?: BandcampTrackInfo[];
   streamUrl?: string;
 };
 
@@ -34,19 +42,13 @@ export type SoundCloudMetadata = {
   albumName?: string;
   duration?: number;
   trackCount?: number;
-  tracks?: Array<{
-    name: string;
-    streamUrl: string;
-    duration?: number;
-  }>;
+  tracks?: SoundCloudTrackInfo[];
   streamUrl?: string;
 };
 
 export type PlatformMetadata = BandcampMetadata | SoundCloudMetadata;
 
-export type PlatformTrack =
-  | NonNullable<BandcampMetadata["tracks"]>[number]
-  | NonNullable<SoundCloudMetadata["tracks"]>[number];
+export type PlatformTrack = BandcampTrackInfo | SoundCloudTrackInfo;
 
 export type BandcampItemResult = {
   success: true;
@@ -68,3 +70,32 @@ export type PlatformItemError = {
 };
 
 export type PlatformItemResponse = PlatformItemResult | PlatformItemError;
+
+export type Radio = {
+  id?: number;
+  name: string;
+  streamUrl: string;
+  logoUrl?: string;
+  description?: string;
+  websiteUrl?: string;
+  order?: number;
+  enabled?: boolean;
+  platformMetadata?: PlatformMetadata;
+};
+
+export type ScrapedOption = {
+  value: string;
+  label: string;
+  confidence: number;
+  preview?: string;
+};
+
+export type RadioMetadata = {
+  name?: ScrapedOption[];
+  streamUrl?: ScrapedOption[];
+  logoUrl?: ScrapedOption[];
+  description?: ScrapedOption[];
+  websiteUrl?: string;
+  foundFields: string[];
+  missingFields: string[];
+};

@@ -1,6 +1,4 @@
-import { TanStackDevtools } from "@tanstack/react-devtools";
 import { createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
-import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
 import appleIcon from "@workspace/ui/assets/favicon/apple-icon.png";
 import favicon from "@workspace/ui/assets/favicon/favicon.ico";
 import icon0 from "@workspace/ui/assets/favicon/icon0.svg";
@@ -8,10 +6,38 @@ import icon1 from "@workspace/ui/assets/favicon/icon1.png";
 import { Toaster } from "@workspace/ui/components/sonner";
 import globalsCss from "@workspace/ui/globals.css?url";
 import { cn } from "@workspace/ui/lib/utils";
+import { lazy, Suspense } from "react";
 import { InstallPrompt } from "@/components/pwa/install-prompt";
 import { SWRegister } from "@/components/pwa/sw-register";
 import { Header } from "@/components/theme/header";
 import { ThemeProvider } from "@/components/theme/theme-provider";
+
+// Lazy load devtools only in development to avoid bundling in production
+const Devtools = lazy(async () => {
+  if (process.env.NODE_ENV !== "development") {
+    return { default: () => null as React.ReactElement | null };
+  }
+  const [{ TanStackDevtools }, { TanStackRouterDevtoolsPanel }] =
+    await Promise.all([
+      import("@tanstack/react-devtools"),
+      import("@tanstack/react-router-devtools"),
+    ]);
+  return {
+    default: () => (
+      <TanStackDevtools
+        config={{
+          position: "bottom-right",
+        }}
+        plugins={[
+          {
+            name: "Tanstack Router",
+            render: <TanStackRouterDevtoolsPanel />,
+          },
+        ]}
+      />
+    ),
+  };
+});
 
 export const Route = createRootRoute({
   head: () => ({
@@ -112,17 +138,9 @@ function RootDocument({ children }: { children: React.ReactNode }) {
           </div>
         </ThemeProvider>
         {process.env.NODE_ENV === "development" && (
-          <TanStackDevtools
-            config={{
-              position: "bottom-right",
-            }}
-            plugins={[
-              {
-                name: "Tanstack Router",
-                render: <TanStackRouterDevtoolsPanel />,
-              },
-            ]}
-          />
+          <Suspense fallback={null}>
+            <Devtools />
+          </Suspense>
         )}
         <Scripts />
       </body>

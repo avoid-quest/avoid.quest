@@ -1,5 +1,5 @@
 import { cn } from "@workspace/ui/lib/utils";
-import { AudioLines } from "lucide-react";
+import { AudioLinesIcon } from "lucide-react";
 import { useState } from "react";
 
 type RadioLogoProps = {
@@ -55,7 +55,7 @@ export function RadioLogo({
         )}
       >
         {fallbackIcon || (
-          <AudioLines className="size-4 text-muted-foreground" />
+          <AudioLinesIcon className="size-4 text-muted-foreground" />
         )}
       </div>
     );
@@ -101,7 +101,7 @@ export function RadioLogo({
             sizeMap[size]
           )}
         >
-          <AudioLines className="size-4 animate-pulse text-muted-foreground" />
+          <AudioLinesIcon className="size-4 animate-pulse text-muted-foreground" />
         </div>
       )}
     </div>

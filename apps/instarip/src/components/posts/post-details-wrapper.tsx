@@ -4,7 +4,7 @@ import { api } from "@workspace/backend/convex/_generated/api";
 import type { Doc } from "@workspace/backend/convex/_generated/dataModel";
 import { Button } from "@workspace/ui/components/button";
 import { useQuery } from "convex/react";
-import { ExternalLink, PlayIcon } from "lucide-react";
+import { ExternalLinkIcon, PlayIcon } from "lucide-react";
 import Link from "next/link";
 import { formatCompactDate } from "@/lib/date-utils";
 import UserLink from "../user-link";
@@ -61,7 +61,7 @@ export default function PostDetailsWrapper({
                   size="sm"
                   variant="outline"
                 >
-                  <ExternalLink className="mr-2 h-4 w-4" />
+                  <ExternalLinkIcon className="mr-2 h-4 w-4" />
                   View Original Post
                 </Button>
               </Link>

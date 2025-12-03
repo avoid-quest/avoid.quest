@@ -1,0 +1,25 @@
+{
+  "name": "@avoid.quest/bandcamp",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "check": "bunx ultracite check",
+    "fix": "bunx ultracite fix",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@avoid.quest/radio-shared": "workspace:*",
+    "cheerio": "^1.1.2",
+    "html-entities": "^2.6.0"
+  },
+  "devDependencies": {
+    "@workspace/typescript-config": "workspace:*",
+    "typescript": "^5.9.3"
+  }
+}

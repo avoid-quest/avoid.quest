@@ -2,7 +2,7 @@ import { api } from "@workspace/backend/convex/_generated/api";
 import { Button } from "@workspace/ui/components/button";
 import { Skeleton } from "@workspace/ui/components/skeleton";
 import { fetchQuery } from "convex/nextjs";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeftIcon } from "lucide-react";
 import Link from "next/link";
 import { Suspense } from "react";
 import MediaCard from "@/components/posts/media-card";
@@ -33,7 +33,7 @@ export default async function PostPage({ params }: PostPageProps) {
           <h1 className="mb-4 font-bold text-2xl">Post not found</h1>
           <Link href="/">
             <Button variant="outline">
-              <ArrowLeft className="mr-2 h-4 w-4" />
+              <ArrowLeftIcon className="mr-2 h-4 w-4" />
               Back to Feed
             </Button>
           </Link>

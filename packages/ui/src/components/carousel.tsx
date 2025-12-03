@@ -5,7 +5,7 @@ import { cn } from "@workspace/ui/lib/utils";
 import useEmblaCarousel, {
   type UseEmblaCarouselType,
 } from "embla-carousel-react";
-import { ArrowLeft, ArrowRight } from "lucide-react";
+import { ArrowLeftIcon, ArrowRightIcon } from "lucide-react";
 import {
   type ComponentProps,
   createContext,
@@ -210,7 +210,7 @@ function CarouselPrevious({
       variant={variant}
       {...props}
     >
-      <ArrowLeft />
+      <ArrowLeftIcon />
       <span className="sr-only">Previous slide</span>
     </Button>
   );
@@ -240,7 +240,7 @@ function CarouselNext({
       variant={variant}
       {...props}
     >
-      <ArrowRight />
+      <ArrowRightIcon />
       <span className="sr-only">Next slide</span>
     </Button>
   );

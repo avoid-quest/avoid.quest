@@ -1,13 +1,12 @@
-import { useLiveQuery } from "dexie-react-hooks";
+import type { Radio } from "@avoid.quest/radio-shared";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { db } from "../../db";
-import type { Radio } from "../../types";
 import { AudioManager } from "../audio-manager";
 
 const TRANSITION_DURATION = 2000;
 
-export function useSingleAudio() {
-  const settings = useLiveQuery(() => db.settings.limit(1).toArray())?.[0];
+export function useSingleAudio(settings?: {
+  player: { single?: { transitionDuration?: number; lastUsedRadio?: Radio } };
+}) {
   const audioManager = AudioManager.getInstance();
 
   const [currentRadio, setCurrentRadio] = useState<Radio | null>(null);
@@ -20,6 +19,8 @@ export function useSingleAudio() {
   const currentSoundIdRef = useRef<string | null>(null);
   const previousSoundIdRef = useRef<string | null>(null);
   const unsubscribeRef = useRef<(() => void) | null>(null);
+  const hasInitializedRef = useRef(false);
+  const loadRadioRef = useRef<((radio: Radio) => Promise<void>) | null>(null);
 
   // Generate unique sound ID
   const getSoundId = useCallback(
@@ -80,26 +81,11 @@ export function useSingleAudio() {
     [audioManager]
   );
 
-  // Helper: Save radio to settings
-  const saveRadioToSettings = useCallback(
-    async (radio: Radio) => {
-      if (!settings?.id) {
-        return;
-      }
-
-      await db.settings.update(settings.id, {
-        player: {
-          ...settings.player,
-          single: {
-            transitionDuration:
-              settings.player.single?.transitionDuration ?? TRANSITION_DURATION,
-            lastUsedRadio: radio,
-          },
-        },
-      });
-    },
-    [settings]
-  );
+  // Note: Settings persistence should be handled by the consuming app
+  // This is just a placeholder callback
+  const saveRadioToSettings = useCallback(async (_radio: Radio) => {
+    // Settings persistence handled externally
+  }, []);
 
   // Crossfade to new radio
   const crossfadeToNewRadio = useCallback(
@@ -214,11 +200,22 @@ export function useSingleAudio() {
     ]
   );
 
+  // Keep ref updated with latest loadRadio function
+  useEffect(() => {
+    loadRadioRef.current = loadRadio;
+  }, [loadRadio]);
+
   // Play function
   const play = useCallback(async () => {
     // Always recreate the sound before playing (like DJ mode does)
     // This ensures we have a fresh, valid sound and avoids "cleaned up" errors
     if (!currentRadio) {
+      return;
+    }
+
+    // Skip redundant playSound() if the radio is already playing or crossfading
+    // This avoids duplicating playSound() and interrupting the crossfade
+    if (isPlaying || isCrossfading) {
       return;
     }
 
@@ -239,7 +236,7 @@ export function useSingleAudio() {
       const errorMessage = err instanceof Error ? err.message : "Play failed";
       setError(errorMessage);
     }
-  }, [audioManager, volume, currentRadio, loadRadio]);
+  }, [audioManager, volume, currentRadio, loadRadio, isPlaying, isCrossfading]);
 
   // Pause function
   const pause = useCallback(() => {
@@ -277,12 +274,19 @@ export function useSingleAudio() {
     [audioManager]
   );
 
-  // Load last used radio on mount
+  // Load initial radio if provided
   useEffect(() => {
-    if (settings?.player.single?.lastUsedRadio && !currentRadio) {
-      loadRadio(settings.player.single.lastUsedRadio);
+    const initialRadio = settings?.player.single?.lastUsedRadio;
+    if (
+      initialRadio &&
+      !currentRadio &&
+      !hasInitializedRef.current &&
+      loadRadioRef.current
+    ) {
+      hasInitializedRef.current = true;
+      loadRadioRef.current(initialRadio);
     }
-  }, [settings, currentRadio, loadRadio]);
+  }, [settings?.player.single?.lastUsedRadio, currentRadio]);
 
   // Cleanup on unmount
   useEffect(

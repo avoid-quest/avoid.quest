@@ -25,7 +25,7 @@ import {
   DialogTitle,
 } from "@workspace/ui/components/dialog";
 import { useLiveQuery } from "dexie-react-hooks";
-import { GripVertical, Plus, Volume2 } from "lucide-react";
+import { GripVerticalIcon, PlusIcon, Volume2Icon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { db } from "@/lib/db";
@@ -79,12 +79,14 @@ function SortableRadioItem({
         {...attributes}
         {...listeners}
       >
-        <GripVertical className="size-4" />
+        <GripVerticalIcon className="size-4" />
       </div>
       <div className="shrink-0">
         <RadioLogo
           className="size-8"
-          fallbackIcon={<Volume2 className="size-3 text-muted-foreground" />}
+          fallbackIcon={
+            <Volume2Icon className="size-3 text-muted-foreground" />
+          }
           logoUrl={radio.logoUrl}
           name={radio.name}
           size="sm"
@@ -246,7 +248,7 @@ export function RadioManagement() {
           size="sm"
           variant="outline"
         >
-          <Plus className="mr-1 size-3.5" />
+          <PlusIcon className="mr-1 size-3.5" />
           Add Station
         </Button>
       </div>

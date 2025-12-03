@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import type { Radio } from "../../types";
+import type { Radio } from "@avoid.quest/radio-shared";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AudioManager, type AudioState } from "../audio-manager";
 
 export function useAudio(radio: Radio | null) {
-  const audioManager = AudioManager.getInstance();
+  // Memoize AudioManager instance to ensure stable reference across renders
+  const audioManager = useMemo(() => AudioManager.getInstance(), []);
   const [state, setState] = useState<AudioState>({
     isPlaying: false,
     isLoading: false,
@@ -14,6 +15,7 @@ export function useAudio(radio: Radio | null) {
 
   const soundIdRef = useRef<string | null>(null);
   const unsubscribeRef = useRef<(() => void) | null>(null);
+  const volumeRef = useRef<number>(state.volume);
 
   // Generate unique sound ID
   const getSoundId = useCallback(
@@ -113,8 +115,8 @@ export function useAudio(radio: Radio | null) {
     if (!soundIdRef.current) {
       return;
     }
-    await audioManager.playSound(soundIdRef.current, state.volume);
-  }, [audioManager, state.volume]);
+    await audioManager.playSound(soundIdRef.current, volumeRef.current);
+  }, [audioManager]);
 
   // Helper: Reload radio and play sound
   const reloadAndPlay = useCallback(async (): Promise<boolean> => {
@@ -204,6 +206,11 @@ export function useAudio(radio: Radio | null) {
     [audioManager]
   );
 
+  // Sync volume ref with state
+  useEffect(() => {
+    volumeRef.current = state.volume;
+  }, [state.volume]);
+
   // Load radio when radio changes
   useEffect(() => {
     if (radio) {
@@ -216,7 +223,10 @@ export function useAudio(radio: Radio | null) {
   // Cleanup on unmount
   useEffect(
     () => () => {
-      cleanup();
+      cleanup().catch((error) => {
+        // Handle cleanup errors to avoid unhandled promise rejections
+        console.error("Error during audio cleanup:", error);
+      });
     },
     [cleanup]
   );

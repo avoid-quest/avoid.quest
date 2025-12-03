@@ -7,7 +7,7 @@ import {
 } from "standardized-audio-context";
 import phaseVocoderProcessorWorkletUrl from "./bundles/phase-vocoder-bundle.js?url";
 import { AudioCache, type ICache } from "./cache.js";
-import type { AudioBuffer, GainNode } from "./context.js";
+import type { AudioBuffer, BiquadFilterNode, GainNode } from "./context.js";
 import { TypedEventEmitter } from "./eventEmitter.js";
 import type { CacophonyEvents } from "./events.js";
 import { Group } from "./group.js";
@@ -379,7 +379,6 @@ export class Cacophony {
     filter.frequency.value = frequency;
     filter.gain.value = gain || 0;
     filter.Q.value = Q || 1;
-    // @ts-expect-error
     return filter as BiquadFilterNode;
   };
 

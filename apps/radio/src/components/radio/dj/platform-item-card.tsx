@@ -1,12 +1,12 @@
+import type { PlatformMetadata } from "@avoid.quest/radio-shared";
 import { Badge } from "@workspace/ui/components/badge";
 import { Button } from "@workspace/ui/components/button";
 import { Card, CardContent } from "@workspace/ui/components/card";
-import { ExternalLink, Link2, Music2 } from "lucide-react";
+import { ExternalLinkIcon, Link2Icon, Music2Icon } from "lucide-react";
 import {
   formatPlatformDuration,
   getPlatformItemTypeLabel,
 } from "@/lib/external-url";
-import type { PlatformMetadata } from "@/lib/external-url/types";
 
 type PlatformItemCardProps = {
   metadata: PlatformMetadata;
@@ -35,7 +35,7 @@ export function PlatformItemCard({
         {/* Platform & Type Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Music2 className="size-4 text-muted-foreground" />
+            <Music2Icon className="size-4 text-muted-foreground" />
             <span className="font-medium text-muted-foreground text-xs">
               {platformName}
             </span>
@@ -77,13 +77,13 @@ export function PlatformItemCard({
               size="sm"
               variant="outline"
             >
-              <Link2 className="mr-2 size-3" />
+              <Link2Icon className="mr-2 size-3" />
               Change URL
             </Button>
           )}
           {metadata.url?.trim() !== "" && (
             <Button onClick={handleOpenUrl} size="sm" variant="outline">
-              <ExternalLink className="size-3" />
+              <ExternalLinkIcon className="size-3" />
             </Button>
           )}
         </div>

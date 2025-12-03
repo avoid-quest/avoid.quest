@@ -7,13 +7,13 @@ import {
   DropdownMenuTrigger,
 } from "@workspace/ui/components/dropdown-menu";
 import {
-  Copy,
-  ExternalLink,
-  MoreHorizontal,
-  Pencil,
-  ToggleLeft,
-  ToggleRight,
-  Trash2,
+  CopyIcon,
+  ExternalLinkIcon,
+  MoreHorizontalIcon,
+  PencilIcon,
+  ToggleLeftIcon,
+  ToggleRightIcon,
+  Trash2Icon,
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -98,18 +98,18 @@ export function RadioItemActions({
           size="sm"
           variant="ghost"
         >
-          <MoreHorizontal className="size-4" />
+          <MoreHorizontalIcon className="size-4" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuItem onClick={handleCopyStreamLink}>
-          <Copy className="mr-2 size-4" />
+          <CopyIcon className="mr-2 size-4" />
           Copy Stream Link
         </DropdownMenuItem>
 
         {radio.websiteUrl?.trim() !== "" && (
           <DropdownMenuItem onClick={handleGoToWebsite}>
-            <ExternalLink className="mr-2 size-4" />
+            <ExternalLinkIcon className="mr-2 size-4" />
             Go to Website
           </DropdownMenuItem>
         )}
@@ -117,7 +117,7 @@ export function RadioItemActions({
         <DropdownMenuSeparator />
 
         <DropdownMenuItem onClick={handleEdit}>
-          <Pencil className="mr-2 size-4" />
+          <PencilIcon className="mr-2 size-4" />
           Edit
         </DropdownMenuItem>
 
@@ -125,12 +125,12 @@ export function RadioItemActions({
           <DropdownMenuItem disabled={isUpdating} onClick={handleToggle}>
             {radio.enabled ? (
               <>
-                <ToggleRight className="mr-2 size-4" />
+                <ToggleRightIcon className="mr-2 size-4" />
                 Disable
               </>
             ) : (
               <>
-                <ToggleLeft className="mr-2 size-4" />
+                <ToggleLeftIcon className="mr-2 size-4" />
                 Enable
               </>
             )}
@@ -143,7 +143,7 @@ export function RadioItemActions({
           className="text-destructive focus:text-destructive"
           onClick={handleDelete}
         >
-          <Trash2 className="mr-2 size-4" />
+          <Trash2Icon className="mr-2 size-4" />
           Delete
         </DropdownMenuItem>
       </DropdownMenuContent>

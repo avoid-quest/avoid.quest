@@ -1,6 +1,5 @@
-import type { FilterConfig } from "@/components/audio/filter-control";
-import type { EffectConfig } from "@/lib/audio/effects/types";
-import type { Platform } from "@/lib/external-url/types";
+import type { EffectConfig, FilterConfig } from "@avoid.quest/radio-audio";
+import type { Platform } from "@avoid.quest/radio-shared";
 import type { Radio } from "@/lib/types";
 
 // Types

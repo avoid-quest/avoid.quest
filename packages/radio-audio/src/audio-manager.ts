@@ -1,14 +1,16 @@
+import { Cacophony } from "@avoid.quest/cacophony";
+import type { Radio } from "@avoid.quest/radio-shared";
 import {
   type AudioNode,
-  Cacophony,
+  type BiquadFilterNode,
   type Playback,
   type Sound,
   SoundType,
-} from "@avoid.quest/cacophony";
-import type { FilterConfig } from "@/components/audio/filter-control";
-import type { Radio } from "../types";
+} from "./cacophony-types";
 import { EffectManager } from "./effects/effect-manager";
 import type { EffectConfig } from "./effects/types";
+import type { FilterConfig } from "./filter-types";
+import { getLogger, type Logger } from "./logger";
 
 export type AudioError = {
   message: string;
@@ -25,6 +27,26 @@ export type AudioState = {
   hasEnded: boolean;
 };
 
+/**
+ * Timeout in milliseconds for waiting for mediaElement "playing" or "error" events.
+ * Exported for use in tests.
+ */
+export const MEDIA_ELEMENT_PLAYBACK_TIMEOUT_MS = 20_000; // 20 seconds
+
+/**
+ * Safely converts a GainNode to AudioNode for use with EffectManager.
+ * This function verifies the node has the necessary AudioNode properties
+ * and performs a single type assertion.
+ */
+function gainNodeToAudioNode(node: { connect: unknown }): AudioNode {
+  // Type guard: verify the node has the connect method (required for AudioNode)
+  if (typeof node.connect !== "function") {
+    throw new Error("Node does not have required AudioNode interface");
+  }
+  // Single safe assertion: GainNode extends AudioNode in Web Audio API
+  return node as AudioNode;
+}
+
 export class AudioManager {
   private static instance: AudioManager | null = null;
   private readonly cacophony: Cacophony;
@@ -36,16 +58,37 @@ export class AudioManager {
   private readonly filters: Map<string, BiquadFilterNode> = new Map();
   // Unified effect system
   private readonly effectManagers: Map<string, EffectManager> = new Map();
+  private logger: Logger;
 
-  private constructor() {
+  private constructor(logger?: Logger) {
     this.cacophony = new Cacophony();
+    this.logger = getLogger(logger);
   }
 
-  static getInstance(): AudioManager {
+  static getInstance(logger?: Logger): AudioManager {
     if (!AudioManager.instance) {
-      AudioManager.instance = new AudioManager();
+      AudioManager.instance = new AudioManager(logger);
     }
     return AudioManager.instance;
+  }
+
+  /**
+   * Set the logger instance for this AudioManager
+   */
+  setLogger(logger: Logger): void {
+    this.logger = logger;
+  }
+
+  /**
+   * Reset the singleton instance by cleaning up the existing instance
+   * and setting it to null. Useful for test teardown.
+   * External code can re-create the instance via getInstance().
+   */
+  static resetInstance(): void {
+    if (AudioManager.instance) {
+      AudioManager.instance.cleanup();
+      AudioManager.instance = null;
+    }
   }
 
   getCacophony(): Cacophony {
@@ -186,7 +229,22 @@ export class AudioManager {
 
         // Set up error handling for this specific sound
         sound.on("soundError", (event: { error: Error }) => {
-          console.error(`Audio error for ${radio.name}:`, event.error);
+          const timestamp = Date.now();
+          this.logger.error(`Audio error for ${radio.name}`, {
+            error: {
+              message: event.error.message,
+              stack: event.error.stack,
+              name: event.error.name,
+            },
+            radio: {
+              id: radio.id,
+              name: radio.name,
+            },
+            sound: {
+              id,
+            },
+            timestamp,
+          });
           this.notifyListeners(id, {
             isPlaying: false,
             isLoading: false,
@@ -195,7 +253,7 @@ export class AudioManager {
               message: `Failed to play ${radio.name}: ${event.error.message}`,
               code: "SOUND_ERROR",
               radio,
-              timestamp: Date.now(),
+              timestamp,
             },
             hasEnded: false,
           });
@@ -203,7 +261,6 @@ export class AudioManager {
 
         // Also listen to sound ended event (in addition to playback ended)
         sound.on("ended", () => {
-          console.log(`Sound ended for ${radio.name} (soundId: ${id})`);
           this.notifyListeners(id, {
             isPlaying: false,
             isLoading: false,
@@ -351,15 +408,26 @@ export class AudioManager {
       // Wait for the "playing" event which fires when playback actually starts
       // This is more reliable than the "play" event which fires synchronously
       await new Promise<void>((resolve, reject) => {
-        const playingHandler = () => {
-          clearLoadingState();
+        let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+        const cleanup = () => {
+          if (timeoutId !== null) {
+            clearTimeout(timeoutId);
+            timeoutId = null;
+          }
           mediaElement.removeEventListener("playing", playingHandler);
           mediaElement.removeEventListener("error", errorHandler);
+        };
+
+        const playingHandler = () => {
+          cleanup();
+          clearLoadingState();
           resolve();
         };
 
         // Also handle errors
         const errorHandler = () => {
+          cleanup();
           this.notifyListeners(soundId, {
             isPlaying: false,
             isLoading: false,
@@ -371,19 +439,38 @@ export class AudioManager {
             },
             hasEnded: false,
           });
-          mediaElement.removeEventListener("playing", playingHandler);
-          mediaElement.removeEventListener("error", errorHandler);
           reject(new Error("Failed to start playback"));
         };
+
+        // Set up timeout to prevent hanging forever
+        timeoutId = setTimeout(() => {
+          timeoutId = null;
+          cleanup();
+          this.notifyListeners(soundId, {
+            isPlaying: false,
+            isLoading: false,
+            volume: playback.volume,
+            error: {
+              message: `Playback timeout: mediaElement did not fire "playing" or "error" event within ${MEDIA_ELEMENT_PLAYBACK_TIMEOUT_MS}ms`,
+              code: "PLAYBACK_TIMEOUT",
+              timestamp: Date.now(),
+            },
+            hasEnded: false,
+          });
+          reject(
+            new Error(
+              `Playback timeout: mediaElement did not fire "playing" or "error" event within ${MEDIA_ELEMENT_PLAYBACK_TIMEOUT_MS}ms`
+            )
+          );
+        }, MEDIA_ELEMENT_PLAYBACK_TIMEOUT_MS);
 
         mediaElement.addEventListener("playing", playingHandler);
         mediaElement.addEventListener("error", errorHandler);
 
         // If already playing, clear loading immediately
         if (!mediaElement.paused && mediaElement.readyState >= 2) {
+          cleanup();
           clearLoadingState();
-          mediaElement.removeEventListener("playing", playingHandler);
-          mediaElement.removeEventListener("error", errorHandler);
           resolve();
         }
       });
@@ -392,17 +479,26 @@ export class AudioManager {
       clearLoadingState();
     }
 
+    // Disconnect playback from default routing (globalGainNode)
+    // This ensures all audio routes through the effect chain
+    playback.disconnect();
+
     // Setup effect manager for this sound
     let effectManager = this.effectManagers.get(soundId);
     if (!effectManager) {
-      effectManager = new EffectManager(this.cacophony, sound, playback);
+      effectManager = new EffectManager(
+        this.cacophony,
+        sound,
+        playback,
+        this.logger
+      );
       this.effectManagers.set(soundId, effectManager);
     }
 
     // Set input and output nodes
     effectManager.setInputNode(playback.outputNode);
     effectManager.setOutputNode(
-      this.cacophony.globalGainNode as unknown as AudioNode
+      gainNodeToAudioNode(this.cacophony.globalGainNode)
     );
 
     return playback;
@@ -430,13 +526,16 @@ export class AudioManager {
       } catch (error) {
         // Playback may have been cleaned up already, just remove it from the map
         if (
-          error instanceof Error &&
-          error.message.includes("Cannot stop a sound that has been cleaned up")
+          !(
+            error instanceof Error &&
+            error.message.includes(
+              "Cannot stop a sound that has been cleaned up"
+            )
+          )
         ) {
-          // Already cleaned up, just remove from map
-        } else {
           throw error;
         }
+        // Already cleaned up, just remove from map
       }
       this.playbacks.delete(soundId);
       this.notifyListeners(soundId, {
@@ -515,8 +614,15 @@ export class AudioManager {
     if (effectManager) {
       try {
         effectManager.cleanup();
-      } catch {
-        // Effect manager may have been cleaned up already, continue
+      } catch (error) {
+        this.logger.error("Failed to cleanup effect manager", {
+          soundId,
+          error: {
+            message: error instanceof Error ? error.message : String(error),
+            stack: error instanceof Error ? error.stack : undefined,
+            name: error instanceof Error ? error.name : undefined,
+          },
+        });
       }
       this.effectManagers.delete(soundId);
     }
@@ -534,6 +640,9 @@ export class AudioManager {
       }
       this.sounds.delete(soundId);
     }
+
+    // Cleanup volume tracking
+    this.lastSoundVolumes.delete(soundId);
 
     // Notify listeners
     this.notifyListeners(soundId, {
@@ -557,6 +666,7 @@ export class AudioManager {
     this.listeners.clear();
     this.filters.clear();
     this.effectManagers.clear();
+    this.lastSoundVolumes.clear();
   }
 
   subscribe(
@@ -608,6 +718,7 @@ export class AudioManager {
 
   private globalMuted = false;
   private lastGlobalVolume = 1;
+  private readonly lastSoundVolumes: Map<string, number> = new Map();
 
   muteGlobal(): void {
     if (!this.globalMuted) {
@@ -631,6 +742,7 @@ export class AudioManager {
   muteSound(soundId: string): void {
     const playback = this.playbacks.get(soundId);
     if (playback) {
+      this.lastSoundVolumes.set(soundId, playback.volume);
       playback.volume = 0;
     }
   }
@@ -638,8 +750,8 @@ export class AudioManager {
   unmuteSound(soundId: string): void {
     const playback = this.playbacks.get(soundId);
     if (playback) {
-      // Restore to previous volume or default to 1
-      playback.volume = 1;
+      playback.volume = this.lastSoundVolumes.get(soundId) ?? 1;
+      this.lastSoundVolumes.delete(soundId);
     }
   }
 
@@ -654,7 +766,7 @@ export class AudioManager {
   applyFilter(soundId: string, config: FilterConfig): BiquadFilterNode | null {
     const sound = this.sounds.get(soundId);
     if (!sound) {
-      console.warn(`Sound ${soundId} not found for filter application`);
+      this.logger.warn("Sound not found for filter application", { soundId });
       return null;
     }
 
@@ -682,7 +794,15 @@ export class AudioManager {
 
       return filter;
     } catch (error) {
-      console.error("Failed to apply filter:", error);
+      this.logger.error("Failed to apply filter", {
+        soundId,
+        error: {
+          message: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+          name: error instanceof Error ? error.name : undefined,
+        },
+        config,
+      });
       return null;
     }
   }
@@ -729,7 +849,15 @@ export class AudioManager {
       filter.gain.setValueAtTime(filter.gain.value, now);
       filter.gain.linearRampToValueAtTime(config.gain, now + smoothTime);
     } catch (error) {
-      console.error("Failed to update filter:", error);
+      this.logger.error("Failed to update filter", {
+        soundId,
+        error: {
+          message: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+          name: error instanceof Error ? error.name : undefined,
+        },
+        config,
+      });
     }
   }
 
@@ -744,7 +872,14 @@ export class AudioManager {
       try {
         sound.removeFilter(filter);
       } catch (error) {
-        console.error("Failed to remove filter:", error);
+        this.logger.error("Failed to remove filter", {
+          soundId,
+          error: {
+            message: error instanceof Error ? error.message : String(error),
+            stack: error instanceof Error ? error.stack : undefined,
+            name: error instanceof Error ? error.name : undefined,
+          },
+        });
       }
     }
 
@@ -777,20 +912,20 @@ export class AudioManager {
       const sound = this.sounds.get(soundId);
       const playback = this.playbacks.get(soundId);
       if (!sound) {
-        console.warn(`Sound ${soundId} not found for effect addition`);
+        this.logger.warn("Sound not found for effect addition", { soundId });
         return;
       }
       const newEffectManager = new EffectManager(
         this.cacophony,
         sound,
-        playback
+        playback,
+        this.logger
       );
       this.effectManagers.set(soundId, newEffectManager);
       if (playback) {
         newEffectManager.setInputNode(playback.outputNode);
         newEffectManager.setOutputNode(
-          this.cacophony
-            .globalGainNode as unknown as import("@avoid.quest/cacophony").AudioNode
+          gainNodeToAudioNode(this.cacophony.globalGainNode)
         );
       }
       newEffectManager.addEffect(config);
@@ -809,16 +944,18 @@ export class AudioManager {
 
   /**
    * Update an effect's configuration
+   * @returns Promise that resolves to true on success, false on failure
    */
   updateEffect(
     soundId: string,
     effectId: string,
     config: Partial<EffectConfig>
-  ): void {
+  ): Promise<boolean> {
     const effectManager = this.effectManagers.get(soundId);
     if (effectManager) {
-      effectManager.updateEffect(effectId, config);
+      return effectManager.updateEffect(effectId, config);
     }
+    return Promise.resolve(false);
   }
 
   /**

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import { AudioBuffer, AudioContext } from "standardized-audio-context-mock";
-import { AudioCache } from "./cache";
+import { AudioCache } from "./cache.js";
 
 describe("AudioCache Progress Tracking", () => {
   let audioContextMock: AudioContext;
@@ -158,14 +158,14 @@ describe("AudioCache Progress Tracking", () => {
             headers: { "content-type": "audio/mpeg" },
           })
         )
-      );
+      ) as any;
 
       audioContextMock.decodeAudioData = mock(() =>
         Promise.resolve(mockAudioBuffer)
       );
 
       await cache.getAudioBuffer(
-        audioContextMock,
+        audioContextMock as any,
         testUrl,
         undefined,
         mockCallbacks
@@ -218,14 +218,14 @@ describe("AudioCache Progress Tracking", () => {
             headers: { "content-type": "audio/mpeg" },
           })
         )
-      );
+      ) as any;
 
       audioContextMock.decodeAudioData = mock(() =>
         Promise.resolve(mockAudioBuffer)
       );
 
       await cache.getAudioBuffer(
-        audioContextMock,
+        audioContextMock as any,
         testUrl,
         undefined,
         mockCallbacks
@@ -270,11 +270,11 @@ describe("AudioCache Progress Tracking", () => {
               );
             }, 50);
           })
-      );
+      ) as any;
 
       // Start the request
       const requestPromise = cache.getAudioBuffer(
-        audioContextMock,
+        audioContextMock as any,
         testUrl,
         abortController.signal,
         mockCallbacks
@@ -313,7 +313,7 @@ describe("AudioCache Progress Tracking", () => {
               20
             )
           )
-      );
+      ) as any;
 
       audioContextMock.decodeAudioData = mock(() =>
         Promise.resolve(mockAudioBuffer)
@@ -321,8 +321,8 @@ describe("AudioCache Progress Tracking", () => {
 
       // Start two concurrent requests
       const [result1, result2] = await Promise.all([
-        cache.getAudioBuffer(audioContextMock, testUrl, undefined, callbacks1),
-        cache.getAudioBuffer(audioContextMock, testUrl, undefined, callbacks2),
+        cache.getAudioBuffer(audioContextMock as any, testUrl, undefined, callbacks1),
+        cache.getAudioBuffer(audioContextMock as any, testUrl, undefined, callbacks2),
       ]);
 
       expect(result1).toBe(result2); // Same buffer instance from deduplication
@@ -385,14 +385,14 @@ describe("AudioCache Progress Tracking", () => {
           ok: false,
           headers: new Headers(),
         })
-      );
+      ) as any;
 
       audioContextMock.decodeAudioData = mock(() =>
         Promise.resolve(mockAudioBuffer)
       );
 
       await cache.getAudioBuffer(
-        audioContextMock,
+        audioContextMock as any,
         testUrl,
         undefined,
         mockCallbacks

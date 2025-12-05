@@ -10,11 +10,11 @@ import {
 } from "bun:test";
 import { AudioBuffer } from "standardized-audio-context-mock";
 
-import { Playback } from "./playback";
-import { audioContextMock, cacophony } from "./setupTests";
-import type { Sound } from "./sound";
-import { Synth } from "./synth";
-import { SynthPlayback } from "./synth-playback";
+import { Playback } from "./playback.js";
+import { audioContextMock, cacophony } from "./setupTests.js";
+import type { Sound } from "./sound.js";
+import { Synth } from "./synth.js";
+import { SynthPlayback } from "./synth-playback.js";
 
 beforeAll(() => {
   jest.useFakeTimers();
@@ -25,8 +25,7 @@ describe("Synth event system", () => {
 
   beforeEach(() => {
     synth = new Synth({
-      context: audioContextMock,
-      globalGainNode: audioContextMock.createGain(),
+      context: audioContextMock as any,
     });
   });
 

@@ -1,24 +1,25 @@
 import { beforeEach, describe, expect, it } from "bun:test";
-import { AudioContext } from "standardized-audio-context-mock";
+import { AudioContext as AudioContextMock } from "standardized-audio-context-mock";
 
-import { SoundType } from "./cacophony";
-import { Synth } from "./synth";
-import { SynthPlayback } from "./synth-playback";
+import type { AudioContext } from "./context.js";
+import { SoundType } from "./cacophony.js";
+import { Synth } from "./synth.js";
+import { SynthPlayback } from "./synth-playback.js";
+import { cacophony } from "./setupTests.js";
 
 describe("Synth class", () => {
   let synth: Synth;
-  let audioContextMock: AudioContext;
+  let audioContextMock: AudioContextMock;
 
   beforeEach(() => {
-    audioContextMock = new AudioContext();
+    audioContextMock = new AudioContextMock();
     synth = new Synth({
-      context: audioContextMock,
-      globalGainNode: audioContextMock.createGain(),
+      context: audioContextMock as unknown as AudioContext,
     });
   });
 
-  it("is created with correct default properties", () => {
-    expect(synth.context).toBe(audioContextMock);
+  it("is created with correct properties", () => {
+    expect(synth.context).toBe(audioContextMock as any);
     expect(synth.soundType).toBe(SoundType.Oscillator);
     expect(synth.panType).toBe("HRTF");
     expect(synth.oscillatorOptions).toEqual({});
@@ -33,9 +34,9 @@ describe("Synth class", () => {
   it("can play and stop a synth", () => {
     const playbacks = synth.play();
     expect(playbacks.length).toBe(1);
-    expect(playbacks[0].isPlaying).toBe(true);
+    expect(playbacks[0]!.isPlaying).toBe(true);
     synth.stop();
-    expect(playbacks[0].isPlaying).toBe(false);
+    expect(playbacks[0]!.isPlaying).toBe(false);
   });
 
   it("can set and get frequency", () => {
@@ -73,16 +74,17 @@ describe("Synth class", () => {
   it("can add and remove filters", () => {
     const filter = audioContextMock.createBiquadFilter();
     synth.addFilter(filter);
-    expect(synth.filters.length).toBe(1);
+    const playbacks = synth.preplay(); // Added this line to define playbacks
+    expect(playbacks[0]!.filters.length).toBe(1);
     synth.removeFilter(filter);
-    expect(synth.filters.length).toBe(0);
+    expect(playbacks[0]!.filters.length).toBe(0);
   });
 
   it("applies filters to playbacks", () => {
     const filter = audioContextMock.createBiquadFilter();
     synth.addFilter(filter);
     const playbacks = synth.preplay();
-    expect(playbacks[0].filters.length).toBe(1);
+    expect(playbacks[0]!.filters.length).toBe(1);
   });
 
   it("can set and get volume", () => {

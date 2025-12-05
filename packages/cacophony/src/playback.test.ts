@@ -10,12 +10,17 @@ import {
 } from "bun:test";
 import {
   AudioBuffer,
-  type AudioBufferSourceNode,
 } from "standardized-audio-context-mock";
+import type {
+  AudioBufferSourceNode,
+  AudioContext,
+  BiquadFilterNode,
+  GainNode,
+} from "./context.js";
 
-import { Playback } from "./playback";
-import { audioContextMock, cacophony } from "./setupTests";
-import { Sound } from "./sound";
+import { Playback } from "./playback.js";
+import { audioContextMock, cacophony } from "./setupTests.js";
+import { Sound } from "./sound.js";
 
 describe("Playback class", () => {
   let playback: Playback;
@@ -26,10 +31,14 @@ describe("Playback class", () => {
 
   beforeEach(() => {
     buffer = new AudioBuffer({ length: 100, sampleRate: 44_100 });
-    source = audioContextMock.createBufferSource();
+    source = audioContextMock.createBufferSource() as unknown as AudioBufferSourceNode;
     source.buffer = buffer;
-    gainNode = audioContextMock.createGain();
-    sound = new Sound("test-url", buffer, audioContextMock, gainNode);
+    gainNode = audioContextMock.createGain() as unknown as GainNode;
+    sound = new Sound({
+      url: "test-url",
+      buffer,
+      context: audioContextMock as unknown as AudioContext
+    });
     playback = new Playback(sound, source, gainNode);
 
     // Mock createBufferSource to return a new source each time
@@ -42,7 +51,7 @@ describe("Playback class", () => {
       }),
       stop: mock(),
       onended: null,
-    }));
+    } as unknown as AudioBufferSourceNode));
   });
 
   afterEach(() => {
@@ -132,7 +141,7 @@ describe("Playback class", () => {
     playback.play();
 
     // Simulate some time passing
-    jest.advanceTimersByTime(1000);
+    (jest as any).advanceTimersByTime(1000);
 
     playback.pause();
     expect(playback.isPlaying).toBe(false);
@@ -153,9 +162,10 @@ describe("Playback class", () => {
 
     // Mock the context's currentTime
     let mockCurrentTime = 0;
-    spyOn(audioContextMock, "currentTime", "get").mockImplementation(
-      () => mockCurrentTime
-    );
+    Object.defineProperty(audioContextMock, "currentTime", {
+      get: () => mockCurrentTime,
+      configurable: true,
+    });
 
     playback.play();
     expect(playback.isPlaying).toBe(true);
@@ -200,7 +210,11 @@ describe("Playback cloning", () => {
     source = audioContextMock.createBufferSource();
     source.buffer = buffer;
     gainNode = audioContextMock.createGain();
-    sound = new Sound("test-url", buffer, audioContextMock, gainNode);
+    sound = new Sound({
+      url: "test-url",
+      buffer,
+      context: audioContextMock as unknown as AudioContext,
+    });
     originalPlayback = new Playback(sound, source, gainNode);
 
     originalPlayback.volume = 0.8;
@@ -246,19 +260,19 @@ describe("Playback cloning", () => {
   it("creates a clone with overridden properties", () => {
     const clone = originalPlayback.clone({ loopCount: 5, panType: "HRTF" });
 
-    expect(clone.loopCount).toBe(5);
-    expect(clone.panType).toBe("HRTF");
-    expect(clone.volume).toBe(originalPlayback.volume);
-    expect(clone.playbackRate).toBe(originalPlayback.playbackRate);
+    expect(clone!.loopCount).toBe(5);
+    expect(clone!.panType).toBe("HRTF");
+    expect(clone!.volume).toBe(originalPlayback.volume);
+    expect(clone!.playbackRate).toBe(originalPlayback.playbackRate);
   });
 
   it("clones filters correctly", () => {
     const clone = originalPlayback.clone();
 
     expect(clone._filters.length).toBe(originalPlayback._filters.length);
-    expect(clone._filters[0].type).toBe(originalPlayback._filters[0].type);
-    expect(clone._filters[0].frequency.value).toBe(
-      originalPlayback._filters[0].frequency.value
+    expect(clone._filters[0]!.type).toBe(originalPlayback._filters[0]!.type);
+    expect(clone._filters[0]!.frequency.value).toBe(
+      originalPlayback._filters[0]!.frequency.value
     );
   });
 
@@ -284,10 +298,14 @@ describe("Playback cleanup functionality", () => {
 
   beforeEach(() => {
     buffer = new AudioBuffer({ length: 100, sampleRate: 44_100 });
-    source = audioContextMock.createBufferSource();
+    source = audioContextMock.createBufferSource() as unknown as AudioBufferSourceNode;
     source.buffer = buffer;
-    gainNode = audioContextMock.createGain();
-    sound = new Sound("test-url", buffer, audioContextMock, gainNode);
+    gainNode = audioContextMock.createGain() as unknown as GainNode;
+    sound = new Sound({
+      url: "test-url",
+      buffer,
+      context: audioContextMock as unknown as AudioContext
+    });
     playback = new Playback(sound, source, gainNode);
   });
 
@@ -301,11 +319,11 @@ describe("Playback cleanup functionality", () => {
     spyOn(audioContextMock, "createBiquadFilter").mockReturnValue({
       ...filter,
       disconnect: filterSpy,
-      frequency: { value: 350 },
-      Q: { value: 1 },
-      gain: { value: 0 },
+      frequency: { value: 350 } as any,
+      Q: { value: 1 } as any,
+      gain: { value: 0 } as any,
       type: "lowpass",
-    });
+    } as unknown as BiquadFilterNode);
 
     playback.addFilter(filter as unknown as BiquadFilterNode);
     playback.cleanup();
@@ -361,10 +379,14 @@ describe("Playback filters chain", () => {
 
   beforeEach(() => {
     buffer = new AudioBuffer({ length: 100, sampleRate: 44_100 });
-    source = audioContextMock.createBufferSource();
+    source = audioContextMock.createBufferSource() as unknown as AudioBufferSourceNode;
     source.buffer = buffer;
-    gainNode = audioContextMock.createGain();
-    sound = new Sound("test-url", buffer, audioContextMock, gainNode);
+    gainNode = audioContextMock.createGain() as unknown as GainNode;
+    sound = new Sound({
+      url: "test-url",
+      buffer,
+      context: audioContextMock as unknown as AudioContext
+    });
     playback = new Playback(sound, source, gainNode);
   });
 
@@ -378,21 +400,22 @@ describe("Playback filters chain", () => {
 
   it("connects multiple filters in order", () => {
     const filter1 = audioContextMock.createBiquadFilter();
+    const lowpassFilter = audioContextMock.createBiquadFilter();
     const filter2 = audioContextMock.createBiquadFilter();
 
     // Spy on refreshFilters method
     const refreshSpy = spyOn(playback as any, "refreshFilters");
 
-    playback.addFilter(filter1);
-    playback.addFilter(filter2);
+    playback.addFilter(lowpassFilter as unknown as BiquadFilterNode);
+    playback.addFilter(filter2 as unknown as BiquadFilterNode);
 
     // Verify refreshFilters was called for each filter addition
     expect(refreshSpy).toHaveBeenCalledTimes(2);
 
     // Verify filters are in the correct order in the array
     expect(playback._filters.length).toBe(2);
-    expect(playback._filters[0].type).toBe(filter1.type);
-    expect(playback._filters[1].type).toBe(filter2.type);
+    expect(playback._filters[0]!.type).toBe(filter1.type);
+    expect(playback._filters[1]!.type).toBe(filter2.type);
   });
 });
 
@@ -408,7 +431,11 @@ describe("Playback error cases", () => {
     source = audioContextMock.createBufferSource();
     source.buffer = buffer;
     gainNode = audioContextMock.createGain();
-    sound = new Sound("test-url", buffer, audioContextMock, gainNode);
+    sound = new Sound({
+      url: "test-url",
+      buffer,
+      context: audioContextMock as unknown as AudioContext
+    });
     playback = new Playback(sound, source, gainNode);
   });
 
@@ -519,7 +546,11 @@ describe("Playback looping and seeking with AudioBufferSourceNode (Bug Catching)
     );
 
     gainNode = audioContextMock.createGain();
-    sound = new Sound("test-url", buffer, audioContextMock, gainNode);
+    sound = new Sound({
+      url: "test-url",
+      buffer,
+      context: audioContextMock as unknown as AudioContext
+    });
     // Pass the initialMockSource to the Playback constructor
     playback = new Playback(sound, initialMockSource, gainNode);
     // Now, clear the mock calls that happened during setup so we can test specific behaviors
@@ -548,8 +579,8 @@ describe("Playback looping and seeking with AudioBufferSourceNode (Bug Catching)
     (audioContextMock.createBufferSource as any).mockClear();
 
     // Simulate the first playback ending
-    if (playback.source?.onended) {
-      playback.source.onended({} as Event); // Trigger loopEnded
+    if ((playback.source as any)?.onended) {
+      (playback.source as any).onended({} as Event); // Trigger loopEnded
     }
 
     expect(playback.isPlaying).toBe(true); // Should be playing the next loop
@@ -638,10 +669,14 @@ describe("Playback Error Events", () => {
 
   beforeEach(() => {
     buffer = new AudioBuffer({ length: 100, sampleRate: 44_100 });
-    source = audioContextMock.createBufferSource();
+    source = audioContextMock.createBufferSource() as unknown as AudioBufferSourceNode;
     source.buffer = buffer;
-    gainNode = audioContextMock.createGain();
-    sound = new Sound("test-url", buffer, audioContextMock, gainNode);
+    gainNode = audioContextMock.createGain() as unknown as GainNode;
+    sound = new Sound({
+      url: "test-url",
+      buffer,
+      context: audioContextMock as unknown as AudioContext
+    });
     playback = new Playback(sound, source, gainNode);
 
     mockCallbacks = {
@@ -799,10 +834,14 @@ describe("Playback audio graph exposure", () => {
 
   beforeEach(() => {
     buffer = new AudioBuffer({ length: 100, sampleRate: 44_100 });
-    source = audioContextMock.createBufferSource();
+    source = audioContextMock.createBufferSource() as unknown as AudioBufferSourceNode;
     source.buffer = buffer;
-    gainNode = audioContextMock.createGain();
-    sound = new Sound("test-url", buffer, audioContextMock, gainNode);
+    gainNode = audioContextMock.createGain() as unknown as GainNode;
+    sound = new Sound({
+      url: "test-url",
+      buffer,
+      context: audioContextMock as unknown as AudioContext
+    });
     playback = new Playback(sound, source, gainNode);
   });
 
@@ -815,7 +854,7 @@ describe("Playback audio graph exposure", () => {
   });
 
   it("exposes outputNode as the gain node", () => {
-    expect(playback.outputNode).toBe(playback.gainNode);
+    expect(playback.outputNode).toBe(playback.gainNode as any);
   });
 
   it("throws error when accessing outputNode after cleanup", () => {

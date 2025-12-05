@@ -9,7 +9,7 @@ import {
 } from "bun:test";
 import { AudioBuffer } from "standardized-audio-context-mock";
 
-import { audioContextMock, cacophony } from "./setupTests";
+import { audioContextMock, cacophony } from "./setupTests.js";
 
 describe("Event System Integration Tests", () => {
   let mockCallbacks: any;
@@ -59,7 +59,7 @@ describe("Event System Integration Tests", () => {
         ok: true,
         arrayBuffer: () => Promise.resolve(mockArrayBuffer),
         headers: new Map(),
-      } as Response);
+      } as unknown as Response);
 
       // Mock successful decode
       audioContextMock.decodeAudioData = mock(() =>
@@ -128,7 +128,7 @@ describe("Event System Integration Tests", () => {
         ok: true,
         arrayBuffer: () => Promise.resolve(mockArrayBuffer),
         headers: new Map(),
-      } as Response);
+      } as unknown as Response);
 
       // Mock successful decode
       audioContextMock.decodeAudioData = mock(() =>
@@ -173,18 +173,16 @@ describe("Event System Integration Tests", () => {
       });
 
       // First attempt fails with network error
-      global.fetch = vi
-        .fn()
-        .mockRejectedValueOnce(new Error("Network timeout"))
-        .mockResolvedValueOnce({
+      global.fetch = mock(() => Promise.reject(new Error("Network timeout"))) as any;
+      (global.fetch as any).mockResolvedValueOnce({
           ok: true,
           arrayBuffer: () => Promise.resolve(mockArrayBuffer),
           headers: new Map(),
-        });
+        } as unknown as Response);
 
-      audioContextMock.decodeAudioData = vi
-        .fn()
-        .mockResolvedValue(mockAudioBuffer);
+      audioContextMock.decodeAudioData = mock(() =>
+        Promise.resolve(mockAudioBuffer)
+      );
 
       // Register event listeners
       cacophony.on("loadingStart", mockCallbacks.onLoadingStart);
@@ -235,7 +233,7 @@ describe("Event System Integration Tests", () => {
         ok: true,
         arrayBuffer: () => Promise.resolve(mockArrayBuffer),
         headers: new Map(),
-      } as Response);
+      } as unknown as Response);
       audioContextMock.decodeAudioData = mock(() =>
         Promise.resolve(mockAudioBuffer)
       );
@@ -263,7 +261,7 @@ describe("Event System Integration Tests", () => {
             loopStart: 0,
             loopEnd: 0,
             playbackRate: { value: 1, setValueAtTime: mock() } as any,
-          }) as unknown as AudioBufferSourceNode
+          } as any)
       );
 
       // Attempt to play should trigger error propagation
@@ -295,7 +293,7 @@ describe("Event System Integration Tests", () => {
             ok: true,
             arrayBuffer: () => Promise.resolve(mockArrayBuffer),
             headers: new Map(),
-          } as Response);
+          } as unknown as Response);
         }
         if (url.includes("sound2")) {
           return Promise.reject(new Error("404 Not Found"));
@@ -305,7 +303,7 @@ describe("Event System Integration Tests", () => {
             ok: true,
             arrayBuffer: () => Promise.resolve(mockArrayBuffer),
             headers: new Map(),
-          } as Response);
+          } as unknown as Response);
         }
         return Promise.reject(new Error("Unknown URL"));
       });
@@ -323,9 +321,9 @@ describe("Event System Integration Tests", () => {
 
       // Load sounds with different outcomes
       const results = await Promise.allSettled([
-        cacophony.createSound(urls[0]), // Should succeed
-        cacophony.createSound(urls[1]), // Should fail
-        cacophony.createSound(urls[2]), // Should succeed
+        cacophony.createSound(urls[0]!), // Should succeed
+        cacophony.createSound(urls[1]!), // Should fail
+        cacophony.createSound(urls[2]!), // Should succeed
       ]);
 
       // Verify results
@@ -340,7 +338,7 @@ describe("Event System Integration Tests", () => {
       expect(mockCallbacks.onCacheMiss).toHaveBeenCalledTimes(3); // All new URLs
 
       // Load sound1 again - should hit memory cache
-      await cacophony.createSound(urls[0]);
+      await cacophony.createSound(urls[0]!);
       expect(mockCallbacks.onCacheHit).toHaveBeenCalledWith(
         expect.objectContaining({
           url: urls[0],
@@ -363,7 +361,7 @@ describe("Event System Integration Tests", () => {
         ok: true,
         arrayBuffer: () => Promise.resolve(mockArrayBuffer),
         headers: new Map(),
-      } as Response);
+      } as unknown as Response);
       audioContextMock.decodeAudioData = mock(() =>
         Promise.resolve(mockAudioBuffer)
       );

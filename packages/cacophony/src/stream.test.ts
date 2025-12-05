@@ -8,7 +8,7 @@ import {
   spyOn,
 } from "bun:test";
 import { AudioBuffer, AudioContext } from "standardized-audio-context-mock";
-import { createStream } from "./stream";
+import { createStream } from "./stream.js";
 
 describe("Stream operations with AbortController", () => {
   let audioContextMock: AudioContext;
@@ -16,9 +16,13 @@ describe("Stream operations with AbortController", () => {
   let mockReader: any;
   let mockResponse: any;
   let consoleSpy: any;
+  let mockEngine: any;
 
   beforeEach(() => {
     audioContextMock = new AudioContext();
+    mockEngine = {
+        addStreamChunk: mock(),
+    };
 
     // Mock console to avoid test output noise
     consoleSpy = spyOn(console, "error").mockImplementation(() => {
@@ -47,11 +51,15 @@ describe("Stream operations with AbortController", () => {
     global.fetch = mockFetch;
 
     // Mock decodeAudioData to prevent infinite recursion
-    audioContextMock.decodeAudioData = mock((_buffer, success) => {
-      // Create a minimal buffer and call success immediately
-      const mockBuffer = new AudioBuffer({ length: 100, sampleRate: 44_100 });
-      setTimeout(() => success(mockBuffer), 0);
-    });
+    // Mock decodeAudioData to prevent infinite recursion
+    audioContextMock.decodeAudioData = mock((buffer: any, success?: any, error?: any) => {
+        const mockBuffer = new AudioBuffer({ length: 100, sampleRate: 44_100 });
+        if (success) {
+            setTimeout(() => success(mockBuffer), 0);
+            return Promise.resolve(mockBuffer);
+        }
+        return Promise.resolve(mockBuffer);
+    }) as any;
   });
 
   afterEach(() => {
@@ -70,7 +78,9 @@ describe("Stream operations with AbortController", () => {
 
     createStream(
       "https://example.com/audio.wav",
-      audioContextMock,
+      audioContextMock as any,
+      mockEngine,
+      "test-source",
       controller.signal
     );
 
@@ -85,7 +95,12 @@ describe("Stream operations with AbortController", () => {
       Promise.resolve({ value: undefined, done: true })
     );
 
-    createStream("https://example.com/audio.wav", audioContextMock);
+    createStream(
+      "https://example.com/audio.wav",
+      audioContextMock as any,
+      mockEngine,
+      "test-source"
+    );
 
     expect(mockFetch).toHaveBeenCalledWith(
       "https://example.com/audio.wav",
@@ -99,7 +114,9 @@ describe("Stream operations with AbortController", () => {
 
     createStream(
       "https://example.com/audio.wav",
-      audioContextMock,
+      audioContextMock as any,
+      mockEngine,
+      "test-source",
       controller.signal
     );
 
@@ -115,7 +132,12 @@ describe("Stream operations with AbortController", () => {
     mockFetch = mock(() => Promise.reject(new Error("Network error")));
     global.fetch = mockFetch;
 
-    createStream("https://example.com/audio.wav", audioContextMock);
+    createStream(
+      "https://example.com/audio.wav",
+      audioContextMock as any,
+      mockEngine,
+      "test-source"
+    );
 
     // Wait for promise rejection to be handled
     await new Promise((resolve) => setTimeout(resolve, 10));
@@ -127,7 +149,12 @@ describe("Stream operations with AbortController", () => {
     mockResponse.ok = false;
     mockResponse.status = 404;
 
-    createStream("https://example.com/audio.wav", audioContextMock);
+    createStream(
+      "https://example.com/audio.wav",
+      audioContextMock as any,
+      mockEngine,
+      "test-source"
+    );
 
     // Wait for promise rejection to be handled
     await new Promise((resolve) => setTimeout(resolve, 10));
@@ -138,7 +165,12 @@ describe("Stream operations with AbortController", () => {
   it("should handle missing response body", async () => {
     mockResponse.body = null;
 
-    createStream("https://example.com/audio.wav", audioContextMock);
+    createStream(
+      "https://example.com/audio.wav",
+      audioContextMock as any,
+      mockEngine,
+      "test-source"
+    );
 
     // Wait for promise rejection to be handled
     await new Promise((resolve) => setTimeout(resolve, 10));
@@ -154,7 +186,9 @@ describe("Stream operations with AbortController", () => {
 
     createStream(
       "https://example.com/audio.wav",
-      audioContextMock,
+      audioContextMock as any,
+      mockEngine,
+      "test-source",
       controller.signal
     );
 

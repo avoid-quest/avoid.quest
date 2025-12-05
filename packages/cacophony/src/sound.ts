@@ -41,6 +41,7 @@ import type { SoundEvents } from "./events.js";
 import { FilterManager } from "./filters.js";
 import type { PanCloneOverrides } from "./panner-mixin.js";
 import { Playback } from "./playback.js";
+import { createStream } from "./stream.js";
 import type { VolumeCloneOverrides } from "./volume-mixin.js";
 
 type SoundCloneOverrides = PanCloneOverrides &
@@ -68,6 +69,8 @@ export class Sound
   // Shared audio element for Streaming and HTML types (createMediaElementSource can only be called once per element)
   private _sharedAudioElement?: HTMLAudioElement;
   private _sharedMediaSource?: SourceNode;
+  // Abort controller for streaming
+  private _streamAbortController?: AbortController;
 
   constructor(options: {
     url: string;
@@ -251,35 +254,7 @@ export class Sound
     }
   }
 
-  /**
-   * Creates a source node for playback.
-   */
-  private createSourceNode(): SourceNode {
-    if (this.buffer) {
-      const source = this.context.createBufferSource();
-      source.buffer = this.buffer;
-      return source;
-    }
 
-    // For Streaming and HTML types, reuse the same audio element
-    // createMediaElementSource can only be called once per audio element
-    this.initializeSharedAudioElement();
-
-    // Reuse the shared source for Streaming/HTML types
-    // Note: For Streaming type, we only support one playback at a time
-    if (this.soundType === SoundType.Streaming && this.playbacks.length > 0) {
-      // Return existing playback for Streaming type
-      const existingPlayback = this.playbacks[0];
-      if (existingPlayback) {
-        throw new Error("Streaming sounds can only have one active playback");
-      }
-    }
-
-    if (!this._sharedMediaSource) {
-      throw new Error("Media source not initialized");
-    }
-    return this._sharedMediaSource;
-  }
 
   /**
    * Generates a Playback instance for the sound without starting playback.
@@ -315,9 +290,21 @@ export class Sound
           loop: this.loopCount === 'infinite',
           playbackRate: this._playbackRate,
         });
-      } else if (this.soundType === SoundType.Streaming || this.soundType === SoundType.HTML) {
-        // Hybrid mode: MediaElementSource -> GainNode -> EffectManager -> GlobalGain -> Engine
-        // This avoids manual decoding of streams which is unreliable with Web Audio API
+      } else if (this.soundType === SoundType.Streaming) {
+        // Full engine-based streaming: StreamSource in worklet receives decoded chunks
+        engine.createStreamSource(sourceId);
+        
+        // Create abort controller for this stream
+        this._streamAbortController = new AbortController();
+        
+        // Start streaming - createStream handles fetching, decoding, and sending chunks to engine
+        createStream(this.url, this.context, engine, sourceId, this._streamAbortController.signal);
+
+        // We do NOT use initializeSharedAudioElement here anymore for Streaming
+        // So we skip the hybrid setup below.
+
+      } else if (this.soundType === SoundType.HTML) {
+        // HTML Audio element - keep hybrid mode for compatibility (simpler, uses MediaElementSource)
         this.initializeSharedAudioElement();
         if (!this._sharedMediaSource) {
             throw new Error("Media source not initialized");
@@ -397,6 +384,11 @@ export class Sound
   }
 
   stop(): void {
+    // Abort any active streaming
+    if (this._streamAbortController) {
+      this._streamAbortController.abort();
+      this._streamAbortController = undefined;
+    }
     super.stop();
     this.emit("stop", undefined);
   }

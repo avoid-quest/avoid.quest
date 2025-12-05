@@ -6,14 +6,18 @@ import {
 } from "./cacophony.js";
 import { PlaybackContainer } from "./container.js";
 import type { AudioContext, GainNode, OscillatorNode } from "./context.js";
+import type { CacophonyEngine } from "./engine/cacophony-engine.js";
 import { TypedEventEmitter } from "./eventEmitter.js";
 import type { SynthEvents } from "./events.js";
 import type { FilterCloneOverrides } from "./filters.js";
 import { FilterManager } from "./filters.js";
-import type { OscillatorCloneOverrides } from "./oscillator-mixin.js";
 import type { PanCloneOverrides } from "./panner-mixin.js";
 import { SynthPlayback } from "./synth-playback.js";
 import type { VolumeCloneOverrides } from "./volume-mixin.js";
+
+type OscillatorCloneOverrides = {
+  oscillatorOptions?: Partial<OscillatorOptions>;
+};
 
 type SynthCloneOverrides = FilterCloneOverrides &
   OscillatorCloneOverrides &
@@ -138,36 +142,48 @@ export class Synth
    * @returns {SynthPlayback[]} An array of SynthPlayback instances that are ready to be played.
    */
   preplay(): SynthPlayback[] {
-    const oscillator = this.context.createOscillator();
-    const playbacks = this.createPlayback(oscillator);
-    return playbacks;
+    const engine = this.cacophony?.engine;
+    
+    // Engine is required - strict no-legacy policy
+    if (!engine) {
+       throw new Error('CacophonyEngine is required for Synth playback');
+    }
+
+    if (!engine.isReady) {
+      throw new Error('CacophonyEngine worklet is not ready');
+    }
+    
+    return this.createEnginePlayback(engine);
   }
 
-  private createPlayback(oscillator: OscillatorNode): SynthPlayback[] {
-    if (this.oscillatorOptions.detune) {
-      oscillator.detune.value = this.oscillatorOptions.detune;
-    }
-    if (this.oscillatorOptions.frequency) {
-      oscillator.frequency.value = this.oscillatorOptions.frequency;
-    }
-    if (this.oscillatorOptions.type) {
-      oscillator.type = this.oscillatorOptions.type;
-    }
-
-    const gainNode = this.context.createGain();
-    // Connect to destination (engine integration for Synth is TODO)
-    gainNode.connect(this.context.destination);
-    const playback = new SynthPlayback(this, oscillator, gainNode);
-    playback.volume = this.volume;
-    for (const filter of this._filters) {
-      playback.addFilter(filter);
-    }
+  private createEnginePlayback(engine: CacophonyEngine): SynthPlayback[] {
+    const sourceId = `oscillator-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Create oscillator source in the engine
+    // Filter out 'custom' type as engine only supports basic waveforms
+    const oscType = this.oscillatorOptions.type;
+    engine.createOscillatorSource(sourceId, {
+      frequency: this.oscillatorOptions.frequency,
+      detune: this.oscillatorOptions.detune,
+      type: oscType === 'custom' ? undefined : oscType,
+      volume: this.volume,
+      pan: this.stereoPan ?? 0,
+    });
+    
+    // Create engine-based playback
+    const playback = new SynthPlayback(this, sourceId, engine);
+    
+    // Apply filters and panning settings
+    // TODO: Filters are currently legacy-only in SynthPlayback, need to port BiquadFilter
+    // for (const filter of this._filters) {
+    //   playback.addFilter(filter);
+    // }
+    
     if (this.panType === "HRTF") {
       playback.threeDOptions = this.threeDOptions;
       playback.position = this.position;
-    } else if (this.panType === "stereo") {
-      playback.stereoPan = this.stereoPan as number;
     }
+    
     this.playbacks.push(playback);
     return [playback];
   }

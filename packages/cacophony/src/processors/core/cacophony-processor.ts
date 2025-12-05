@@ -10,7 +10,15 @@ import {
   type SetSourceVolumePayload,
   type SetSourcePanPayload,
   type SourceEndedPayload,
+  type CreateOscillatorSourcePayload,
+  type SetOscillatorFrequencyPayload,
+  type SetOscillatorDetunePayload,
+  type SetOscillatorTypePayload,
+  type AddFilterPayload,
+  type RemoveFilterPayload,
+  type SetFilterParamPayload,
 } from "../../protocol.js";
+import { type BiquadFilterType } from "../effects/biquad-filter.js";
 
 // Basic AudioWorkletProcessor definition since we don't have the types globally available yet
 declare class AudioWorkletProcessor {
@@ -29,7 +37,8 @@ declare function registerProcessor(
 
 import { ChannelStrip } from "../channel-strip.js";
 import { Source, BufferSource, StreamSource } from "../source.js";
-import { Delay } from "../effects/delay.js";
+import { OscillatorSource } from "../oscillator-source.js";
+import { StereoDelay } from "../effects/stereo-delay.js";
 
 export class CacophonyProcessor extends AudioWorkletProcessor {
   // Buffer registry
@@ -42,7 +51,7 @@ export class CacophonyProcessor extends AudioWorkletProcessor {
     startTime: number;
   }>();
   private channelStrip: ChannelStrip;
-  private delay: Delay;
+  private delay: StereoDelay;
 
   constructor() {
     super();
@@ -50,7 +59,7 @@ export class CacophonyProcessor extends AudioWorkletProcessor {
     // Initialize with default sample rate (usually 44100 or 48000)
     // In a real worklet, globalThis.sampleRate is available
     this.channelStrip = new ChannelStrip(globalThis.sampleRate);
-    this.delay = new Delay(globalThis.sampleRate * 2, 128); // 2 seconds max delay
+    this.delay = new StereoDelay(globalThis.sampleRate * 2, 128); // 2 seconds max delay
   }
 
   private handleMessage(event: MessageEvent<Message>) {
@@ -90,6 +99,54 @@ export class CacophonyProcessor extends AudioWorkletProcessor {
     case MessageType.SET_SOURCE_PAN:
       this.handleSetSourcePan(payload);
       break;
+    case MessageType.CREATE_OSCILLATOR_SOURCE:
+      this.handleCreateOscillatorSource(payload);
+      break;
+    case MessageType.SET_OSCILLATOR_FREQUENCY:
+      this.handleSetOscillatorFrequency(payload);
+      break;
+    case MessageType.SET_OSCILLATOR_DETUNE:
+      this.handleSetOscillatorDetune(payload);
+      break;
+    case MessageType.SET_OSCILLATOR_TYPE:
+      this.handleSetOscillatorType(payload);
+      break;
+    case MessageType.ADD_FILTER:
+      this.handleAddFilter(payload);
+      break;
+    case MessageType.REMOVE_FILTER:
+      this.handleRemoveFilter(payload);
+      break;
+    case MessageType.SET_FILTER_PARAM:
+      this.handleSetFilterParam(payload);
+      break;
+    }
+  }
+
+  private handleAddFilter(payload: AddFilterPayload) {
+    const source = this.sources.get(payload.sourceId);
+    if (source) {
+      source.addFilter(
+        payload.filterId, 
+        payload.type as BiquadFilterType, 
+        payload.frequency, 
+        payload.Q, 
+        payload.gain
+      );
+    }
+  }
+
+  private handleRemoveFilter(payload: RemoveFilterPayload) {
+    const source = this.sources.get(payload.sourceId);
+    if (source) {
+      source.removeFilter(payload.filterId);
+    }
+  }
+
+  private handleSetFilterParam(payload: SetFilterParamPayload) {
+    const source = this.sources.get(payload.sourceId);
+    if (source) {
+      source.setFilterParam(payload.filterId, payload.param, payload.value);
     }
   }
 
@@ -156,6 +213,8 @@ export class CacophonyProcessor extends AudioWorkletProcessor {
         state.startTime = payload.when || 0;
       } else if (source instanceof StreamSource) {
         source.start();
+      } else if (source instanceof OscillatorSource) {
+        source.start();
       }
       state.playing = true;
       state.paused = false;
@@ -170,6 +229,8 @@ export class CacophonyProcessor extends AudioWorkletProcessor {
       if (source instanceof BufferSource) {
         source.stop();
       } else if (source instanceof StreamSource) {
+        source.stop();
+      } else if (source instanceof OscillatorSource) {
         source.stop();
       }
       state.playing = false;
@@ -195,6 +256,8 @@ export class CacophonyProcessor extends AudioWorkletProcessor {
         source.pause();
       } else if (source instanceof StreamSource) {
         source.pause();
+      } else if (source instanceof OscillatorSource) {
+        source.pause();
       }
       state.playing = false;
       state.paused = true;
@@ -209,6 +272,8 @@ export class CacophonyProcessor extends AudioWorkletProcessor {
       if (source instanceof BufferSource) {
         source.resume();
       } else if (source instanceof StreamSource) {
+        source.resume();
+      } else if (source instanceof OscillatorSource) {
         source.resume();
       }
       state.playing = true;
@@ -229,7 +294,7 @@ export class CacophonyProcessor extends AudioWorkletProcessor {
   private handleSetSourceVolume(payload: SetSourceVolumePayload) {
     const source = this.sources.get(payload.sourceId);
     if (source) {
-      if (source instanceof BufferSource || source instanceof StreamSource) {
+      if (source instanceof BufferSource || source instanceof StreamSource || source instanceof OscillatorSource) {
         source.volume = payload.volume;
       }
     }
@@ -238,9 +303,53 @@ export class CacophonyProcessor extends AudioWorkletProcessor {
   private handleSetSourcePan(payload: SetSourcePanPayload) {
     const source = this.sources.get(payload.sourceId);
     if (source) {
-      if (source instanceof BufferSource || source instanceof StreamSource) {
+      if (source instanceof BufferSource || source instanceof StreamSource || source instanceof OscillatorSource) {
         source.pan = payload.pan;
       }
+    }
+  }
+
+  private handleCreateOscillatorSource(payload: CreateOscillatorSourcePayload) {
+    const source = new OscillatorSource({
+      frequency: payload.options?.frequency,
+      detune: payload.options?.detune,
+      type: payload.options?.type,
+    });
+    
+    if (payload.options?.volume !== undefined) {
+      source.volume = payload.options.volume;
+    }
+    if (payload.options?.pan !== undefined) {
+      source.pan = payload.options.pan;
+    }
+    
+    this.sources.set(payload.id, source);
+    this.sourceStates.set(payload.id, {
+      playing: false,
+      paused: false,
+      offset: 0,
+      startTime: 0,
+    });
+  }
+
+  private handleSetOscillatorFrequency(payload: SetOscillatorFrequencyPayload) {
+    const source = this.sources.get(payload.sourceId);
+    if (source && source instanceof OscillatorSource) {
+      source.frequency = payload.frequency;
+    }
+  }
+
+  private handleSetOscillatorDetune(payload: SetOscillatorDetunePayload) {
+    const source = this.sources.get(payload.sourceId);
+    if (source && source instanceof OscillatorSource) {
+      source.detune = payload.detune;
+    }
+  }
+
+  private handleSetOscillatorType(payload: SetOscillatorTypePayload) {
+    const source = this.sources.get(payload.sourceId);
+    if (source && source instanceof OscillatorSource) {
+      source.type = payload.type;
     }
   }
 
@@ -304,14 +413,8 @@ export class CacophonyProcessor extends AudioWorkletProcessor {
     }
     
     // Apply Effects
-    // Delay (Mono for now, applied to both channels equally or just L? Let's do stereo delay later)
-    // For now, simple mono delay on L and R independently or summed?
-    // Let's just apply to L and R independently for simplicity in this step
-    this.delay.process(outputL, outputL, 0, outputL.length);
-    // Note: We need a second delay instance for stereo or a stereo delay class. 
-    // For this proof of concept, applying to L only or sharing state is weird.
-    // Let's skip R delay processing for a moment or use the same delay (weird)
-    // Ideally we'd have StereoDelay.
+    // Stereo Delay
+    this.delay.process(outputL, outputR, outputL, outputR, 0, outputL.length);
     
     // Apply Channel Strip (Volume, Pan, etc.)
     // Note: We are processing in-place on the output buffer

@@ -6,7 +6,11 @@ import {
   type IPannerOptions,
 } from "standardized-audio-context";
 import phaseVocoderProcessorWorkletUrl from "./bundles/phase-vocoder-bundle.js?url";
+import dattorroReverbWorkletUrl from "./bundles/dattorro-reverb-bundle.js?url";
 import { AudioCache, type ICache } from "./cache.js";
+
+// Export worklet bundle URLs for use in other packages
+export { dattorroReverbWorkletUrl, phaseVocoderProcessorWorkletUrl };
 import type { AudioBuffer, BiquadFilterNode, GainNode } from "./context.js";
 import { TypedEventEmitter } from "./eventEmitter.js";
 import type { CacophonyEvents } from "./events.js";

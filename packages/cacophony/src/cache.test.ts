@@ -9,8 +9,8 @@ import {
 } from "bun:test";
 import { AudioBuffer } from "standardized-audio-context-mock";
 
-import { AudioCache } from "./cache";
-import { audioContextMock } from "./setupTests";
+import { AudioCache } from "./cache.js";
+import { audioContextMock } from "./setupTests.js";
 
 describe("AudioCache", () => {
   let cache: AudioCache;
@@ -36,7 +36,7 @@ describe("AudioCache", () => {
     (global as any).caches = mockCaches;
   });
 
-  afterEach(() => {
+  beforeEach(() => {
     mock.clearAllMocks();
     cache.clearMemoryCache();
   });
@@ -49,12 +49,12 @@ describe("AudioCache", () => {
     });
 
     spyOn(audioContextMock, "decodeAudioData").mockResolvedValueOnce(
-      mockAudioBuffer
+      mockAudioBuffer as any
     );
 
-    const result = await cache.getAudioBuffer(audioContextMock, dataUrl);
+    const result = await cache.getAudioBuffer(audioContextMock as any, dataUrl);
 
-    expect(result).toBe(mockAudioBuffer);
+    expect(result).toBe(mockAudioBuffer as any);
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
@@ -75,17 +75,17 @@ describe("AudioCache", () => {
     } as Response);
 
     spyOn(audioContextMock, "decodeAudioData").mockResolvedValueOnce(
-      mockAudioBuffer
+      mockAudioBuffer as any
     );
 
     // First request should fetch
-    const result1 = await cache.getAudioBuffer(audioContextMock, url);
-    expect(result1).toBe(mockAudioBuffer);
+    const result1 = await cache.getAudioBuffer(audioContextMock as any, url);
+    expect(result1).toBe(mockAudioBuffer as any);
     expect(mockFetch).toHaveBeenCalledTimes(1);
 
     // Second request should use memory cache
-    const result2 = await cache.getAudioBuffer(audioContextMock, url);
-    expect(result2).toBe(mockAudioBuffer);
+    const result2 = await cache.getAudioBuffer(audioContextMock as any, url);
+    expect(result2).toBe(mockAudioBuffer as any);
     expect(mockFetch).toHaveBeenCalledTimes(1); // Still just one fetch
   });
 
@@ -127,12 +127,12 @@ describe("AudioCache", () => {
     } as Response);
 
     spyOn(audioContextMock, "decodeAudioData").mockResolvedValueOnce(
-      mockAudioBuffer
+      mockAudioBuffer as any
     );
 
-    const result = await cache.getAudioBuffer(audioContextMock, url);
+    const result = await cache.getAudioBuffer(audioContextMock as any, url);
 
-    expect(result).toBe(mockAudioBuffer);
+    expect(result).toBe(mockAudioBuffer as any);
     const fetchCall = mockFetch.mock.calls[0];
     expect(fetchCall[0]).toBe(url);
     const headers = fetchCall[1].headers as Headers;
@@ -167,12 +167,12 @@ describe("AudioCache", () => {
     mockCaches.open = mock(() => Promise.resolve(mockCache)) as any;
 
     spyOn(audioContextMock, "decodeAudioData").mockResolvedValueOnce(
-      mockAudioBuffer
+      mockAudioBuffer as any
     );
 
-    const result = await cache.getAudioBuffer(audioContextMock, url);
+    const result = await cache.getAudioBuffer(audioContextMock as any, url);
 
-    expect(result).toBe(mockAudioBuffer);
+    expect(result).toBe(mockAudioBuffer as any);
     expect(mockFetch).not.toHaveBeenCalled(); // Should not fetch because content is fresh
   });
 
@@ -212,12 +212,12 @@ describe("AudioCache", () => {
     } as Response);
 
     spyOn(audioContextMock, "decodeAudioData").mockResolvedValueOnce(
-      mockAudioBuffer
+      mockAudioBuffer as any
     );
 
-    const result = await cache.getAudioBuffer(audioContextMock, url);
+    const result = await cache.getAudioBuffer(audioContextMock as any, url);
 
-    expect(result).toBe(mockAudioBuffer);
+    expect(result).toBe(mockAudioBuffer as any);
     expect(mockFetch).toHaveBeenCalledTimes(1); // Should fetch because max-age=0
     const fetchCall = mockFetch.mock.calls[0];
     const headers = fetchCall[1].headers as Headers;
@@ -265,12 +265,12 @@ describe("AudioCache", () => {
     } as Response);
 
     spyOn(audioContextMock, "decodeAudioData").mockResolvedValueOnce(
-      mockAudioBuffer
+      mockAudioBuffer as any
     );
 
-    const result = await cache.getAudioBuffer(audioContextMock, url);
+    const result = await cache.getAudioBuffer(audioContextMock as any, url);
 
-    expect(result).toBe(mockAudioBuffer);
+    expect(result).toBe(mockAudioBuffer as any);
     expect(mockFetch).toHaveBeenCalledTimes(1); // Should fetch as fallback
   });
 
@@ -314,12 +314,12 @@ describe("AudioCache", () => {
     } as Response);
 
     spyOn(audioContextMock, "decodeAudioData").mockResolvedValueOnce(
-      mockAudioBuffer
+      mockAudioBuffer as any
     );
 
-    const result = await cache.getAudioBuffer(audioContextMock, url);
+    const result = await cache.getAudioBuffer(audioContextMock as any, url);
 
-    expect(result).toBe(mockAudioBuffer);
+    expect(result).toBe(mockAudioBuffer as any);
 
     // Verify Cache-Control was updated in metadata
     const updateMetadataCall = mockCache.put.mock.calls.find((call) =>
@@ -372,12 +372,12 @@ describe("AudioCache", () => {
     } as Response);
 
     spyOn(audioContextMock, "decodeAudioData").mockResolvedValueOnce(
-      mockAudioBuffer
+      mockAudioBuffer as any
     );
 
-    const result = await cache.getAudioBuffer(audioContextMock, url);
+    const result = await cache.getAudioBuffer(audioContextMock as any, url);
 
-    expect(result).toBe(mockAudioBuffer);
+    expect(result).toBe(mockAudioBuffer as any);
     expect(mockFetch).toHaveBeenCalledTimes(1); // Should fetch due to expiration
   });
 
@@ -398,21 +398,21 @@ describe("AudioCache", () => {
     } as Response);
 
     spyOn(audioContextMock, "decodeAudioData").mockResolvedValue(
-      mockAudioBuffer
+      mockAudioBuffer as any
     );
 
     // Make multiple concurrent requests
     const requests = Promise.all([
-      cache.getAudioBuffer(audioContextMock, url),
-      cache.getAudioBuffer(audioContextMock, url),
-      cache.getAudioBuffer(audioContextMock, url),
+      cache.getAudioBuffer(audioContextMock as any, url),
+      cache.getAudioBuffer(audioContextMock as any, url),
+      cache.getAudioBuffer(audioContextMock as any, url),
     ]);
 
     const results = await requests;
 
     expect(results).toHaveLength(3);
     for (const result of results) {
-      expect(result).toBe(mockAudioBuffer);
+      expect(result).toBe(mockAudioBuffer as any);
     }
     expect(mockFetch).toHaveBeenCalledTimes(1); // Should only fetch once
   });
@@ -434,18 +434,18 @@ describe("AudioCache", () => {
     } as Response);
 
     spyOn(audioContextMock, "decodeAudioData").mockResolvedValue(
-      mockAudioBuffer
+      mockAudioBuffer as any
     );
 
     // First request
-    await cache.getAudioBuffer(audioContextMock, url);
+    await cache.getAudioBuffer(audioContextMock as any, url);
     expect(mockFetch).toHaveBeenCalledTimes(1);
 
     // Clear cache
     cache.clearMemoryCache();
 
     // Second request should fetch again
-    await cache.getAudioBuffer(audioContextMock, url);
+    await cache.getAudioBuffer(audioContextMock as any, url);
     expect(mockFetch).toHaveBeenCalledTimes(2);
   });
 
@@ -491,12 +491,12 @@ describe("AudioCache", () => {
     } as Response);
 
     spyOn(audioContextMock, "decodeAudioData").mockResolvedValueOnce(
-      mockAudioBuffer
+      mockAudioBuffer as any
     );
 
-    const result = await cache.getAudioBuffer(audioContextMock, url);
+    const result = await cache.getAudioBuffer(audioContextMock as any, url);
 
-    expect(result).toBe(mockAudioBuffer);
+    expect(result).toBe(mockAudioBuffer as any);
     expect(mockFetch).toHaveBeenCalledTimes(1);
 
     // Verify conditional request was made with If-None-Match header
@@ -549,12 +549,12 @@ describe("AudioCache", () => {
     } as Response);
 
     spyOn(audioContextMock, "decodeAudioData").mockResolvedValueOnce(
-      mockAudioBuffer
+      mockAudioBuffer as any
     );
 
-    const result = await cache.getAudioBuffer(audioContextMock, url);
+    const result = await cache.getAudioBuffer(audioContextMock as any, url);
 
-    expect(result).toBe(mockAudioBuffer);
+    expect(result).toBe(mockAudioBuffer as any);
     expect(mockFetch).toHaveBeenCalledTimes(1);
 
     // Verify conditional request was made with If-Modified-Since header
@@ -603,12 +603,12 @@ describe("AudioCache", () => {
     } as Response);
 
     spyOn(audioContextMock, "decodeAudioData").mockResolvedValueOnce(
-      mockAudioBuffer
+      mockAudioBuffer as any
     );
 
-    const result = await cache.getAudioBuffer(audioContextMock, url);
+    const result = await cache.getAudioBuffer(audioContextMock as any, url);
 
-    expect(result).toBe(mockAudioBuffer);
+    expect(result).toBe(mockAudioBuffer as any);
     expect(mockFetch).toHaveBeenCalledTimes(1);
 
     // Verify metadata timestamp was updated on 304 response
@@ -649,12 +649,12 @@ describe("AudioCache", () => {
     mockCaches.open = mock(() => Promise.resolve(mockCache)) as any;
 
     spyOn(audioContextMock, "decodeAudioData").mockResolvedValueOnce(
-      mockAudioBuffer
+      mockAudioBuffer as any
     );
 
-    const result = await cache.getAudioBuffer(audioContextMock, url);
+    const result = await cache.getAudioBuffer(audioContextMock as any, url);
 
-    expect(result).toBe(mockAudioBuffer);
+    expect(result).toBe(mockAudioBuffer as any);
     // Should NOT fetch because TTL hasn't expired and no validation tokens
     expect(mockFetch).not.toHaveBeenCalled();
   });
@@ -697,12 +697,12 @@ describe("AudioCache", () => {
     } as Response);
 
     spyOn(audioContextMock, "decodeAudioData").mockResolvedValueOnce(
-      mockAudioBuffer
+      mockAudioBuffer as any
     );
 
-    const result = await cache.getAudioBuffer(audioContextMock, url);
+    const result = await cache.getAudioBuffer(audioContextMock as any, url);
 
-    expect(result).toBe(mockAudioBuffer);
+    expect(result).toBe(mockAudioBuffer as any);
     expect(mockFetch).toHaveBeenCalledTimes(1);
 
     // Verify conditional request was made even though TTL expired
@@ -778,9 +778,9 @@ describe("AudioCache", () => {
         mockAudioBuffer
       );
 
-      const result = await cache.getAudioBuffer(audioContextMock, url);
+      const result = await cache.getAudioBuffer(audioContextMock as any, url);
 
-      expect(result).toBe(mockAudioBuffer);
+      expect(result).toBe(mockAudioBuffer as any);
       expect(mockFetch).toHaveBeenCalledTimes(2); // First 304, then recovery fetch
 
       // Verify warning was logged
@@ -829,9 +829,9 @@ describe("AudioCache", () => {
         mockAudioBuffer
       );
 
-      const result = await cache.getAudioBuffer(audioContextMock, url);
+      const result = await cache.getAudioBuffer(audioContextMock as any, url);
 
-      expect(result).toBe(mockAudioBuffer);
+      expect(result).toBe(mockAudioBuffer as any);
       expect(mockFetch).not.toHaveBeenCalled(); // Should use cached content since max-age parse failed
     });
 
@@ -868,14 +868,14 @@ describe("AudioCache", () => {
 
       // Make concurrent requests
       const [result1, result2, result3] = await Promise.all([
-        cache.getAudioBuffer(audioContextMock, url),
-        cache.getAudioBuffer(audioContextMock, url),
-        cache.getAudioBuffer(audioContextMock, url),
+        cache.getAudioBuffer(audioContextMock as any, url),
+        cache.getAudioBuffer(audioContextMock as any, url),
+        cache.getAudioBuffer(audioContextMock as any, url),
       ]);
 
-      expect(result1).toBe(mockAudioBuffer);
-      expect(result2).toBe(mockAudioBuffer);
-      expect(result3).toBe(mockAudioBuffer);
+      expect(result1).toBe(mockAudioBuffer as any);
+      expect(result2).toBe(mockAudioBuffer as any);
+      expect(result3).toBe(mockAudioBuffer as any);
       expect(mockFetch).not.toHaveBeenCalled(); // Should all use fresh cache
     });
 
@@ -920,9 +920,9 @@ describe("AudioCache", () => {
         mockAudioBuffer
       );
 
-      const result = await cache.getAudioBuffer(audioContextMock, url);
+      const result = await cache.getAudioBuffer(audioContextMock as any, url);
 
-      expect(result).toBe(mockAudioBuffer);
+      expect(result).toBe(mockAudioBuffer as any);
       expect(mockFetch).toHaveBeenCalledTimes(1);
       const fetchCall = mockFetch.mock.calls[0];
       const headers = fetchCall[1].headers as Headers;
@@ -964,9 +964,9 @@ describe("AudioCache", () => {
         mockAudioBuffer
       );
 
-      const result = await cache.getAudioBuffer(audioContextMock, url);
+      const result = await cache.getAudioBuffer(audioContextMock as any, url);
 
-      expect(result).toBe(mockAudioBuffer);
+      expect(result).toBe(mockAudioBuffer as any);
       expect(mockFetch).not.toHaveBeenCalled(); // Should use cache due to fresh TTL
     });
 
@@ -1010,9 +1010,9 @@ describe("AudioCache", () => {
         mockAudioBuffer
       );
 
-      const result = await cache.getAudioBuffer(audioContextMock, url);
+      const result = await cache.getAudioBuffer(audioContextMock as any, url);
 
-      expect(result).toBe(mockAudioBuffer);
+      expect(result).toBe(mockAudioBuffer as any);
       expect(mockFetch).toHaveBeenCalledTimes(1); // Should fetch due to no-cache directive
       const fetchCall = mockFetch.mock.calls[0];
       const headers = fetchCall[1].headers as Headers;
@@ -1059,9 +1059,9 @@ describe("AudioCache", () => {
         mockAudioBuffer
       );
 
-      const result = await cache.getAudioBuffer(audioContextMock, url);
+      const result = await cache.getAudioBuffer(audioContextMock as any, url);
 
-      expect(result).toBe(mockAudioBuffer);
+      expect(result).toBe(mockAudioBuffer as any);
       expect(mockFetch).toHaveBeenCalledTimes(1); // Should fetch due to must-revalidate directive
     });
 
@@ -1096,9 +1096,9 @@ describe("AudioCache", () => {
         mockAudioBuffer
       );
 
-      const result = await cache.getAudioBuffer(audioContextMock, url);
+      const result = await cache.getAudioBuffer(audioContextMock as any, url);
 
-      expect(result).toBe(mockAudioBuffer);
+      expect(result).toBe(mockAudioBuffer as any);
       expect(mockFetch).not.toHaveBeenCalled(); // Should not fetch because content is fresh
     });
 
@@ -1142,7 +1142,7 @@ describe("AudioCache", () => {
           ok: false,
         } as Response);
 
-      await expect(cache.getAudioBuffer(audioContextMock, url)).rejects.toThrow(
+      await expect(cache.getAudioBuffer(audioContextMock as any, url)).rejects.toThrow(
         "Failed to fetch resource after cache inconsistency: 500 Internal Server Error"
       );
 
@@ -1186,7 +1186,7 @@ describe("AudioCache", () => {
         mockAudioBuffer
       );
 
-      await cache.getAudioBuffer(audioContextMock, url, controller.signal);
+      await cache.getAudioBuffer(audioContextMock as any, url, controller.signal);
 
       expect(mockFetch).toHaveBeenCalledWith(
         url,
@@ -1202,11 +1202,11 @@ describe("AudioCache", () => {
       controller.abort();
 
       await expect(
-        cache.getAudioBuffer(audioContextMock, url, controller.signal)
+        cache.getAudioBuffer(audioContextMock as any, url, controller.signal)
       ).rejects.toThrow(DOMException);
 
       await expect(
-        cache.getAudioBuffer(audioContextMock, url, controller.signal)
+        cache.getAudioBuffer(audioContextMock as any, url, controller.signal)
       ).rejects.toMatchObject({
         name: "AbortError",
         message: "Operation was aborted",
@@ -1237,11 +1237,11 @@ describe("AudioCache", () => {
       controller.abort();
 
       await expect(
-        cache.getAudioBuffer(audioContextMock, url, controller.signal)
+        cache.getAudioBuffer(audioContextMock as any, url, controller.signal)
       ).rejects.toThrow(DOMException);
 
       await expect(
-        cache.getAudioBuffer(audioContextMock, url, controller.signal)
+        cache.getAudioBuffer(audioContextMock as any, url, controller.signal)
       ).rejects.toMatchObject({
         name: "AbortError",
       });
@@ -1265,7 +1265,7 @@ describe("AudioCache", () => {
 
       // First request should fail immediately with AbortError
       try {
-        await cache.getAudioBuffer(audioContextMock, url, controller.signal);
+        await cache.getAudioBuffer(audioContextMock as any, url, controller.signal);
         throw new Error("Expected AbortError to be thrown");
       } catch (error) {
         expect(error).toBeInstanceOf(DOMException);
@@ -1300,7 +1300,7 @@ describe("AudioCache", () => {
       );
 
       const result = await cache.getAudioBuffer(
-        audioContextMock,
+        audioContextMock as any,
         url,
         controller2.signal
       );
@@ -1377,7 +1377,7 @@ describe("AudioCache", () => {
         mockAudioBuffer
       );
 
-      await cache.getAudioBuffer(audioContextMock, url, controller.signal);
+      await cache.getAudioBuffer(audioContextMock as any, url, controller.signal);
 
       expect(mockFetch).toHaveBeenCalledTimes(2);
       expect(mockFetch).toHaveBeenNthCalledWith(
@@ -1428,7 +1428,7 @@ describe("AudioCache", () => {
       );
 
       // Call without AbortSignal
-      const result = await cache.getAudioBuffer(audioContextMock, url);
+      const result = await cache.getAudioBuffer(audioContextMock as any, url);
 
       expect(result).toBeDefined();
       expect(result.length).toBe(mockAudioBuffer.length);
@@ -1483,7 +1483,7 @@ describe("AudioCache", () => {
           mockAudioBuffer
         );
 
-        const result = await cache.getAudioBuffer(audioContextMock, url);
+        const result = await cache.getAudioBuffer(audioContextMock as any, url);
 
         expect(result).toBeDefined();
         expect(result.length).toBe(mockAudioBuffer.length);
@@ -1533,7 +1533,7 @@ describe("AudioCache", () => {
           mockAudioBuffer
         );
 
-        const result = await cache.getAudioBuffer(audioContextMock, url);
+        const result = await cache.getAudioBuffer(audioContextMock as any, url);
 
         expect(result).toBeDefined();
         expect(result.length).toBe(mockAudioBuffer.length);

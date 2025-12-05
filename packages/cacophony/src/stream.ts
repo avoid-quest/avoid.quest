@@ -11,26 +11,13 @@ const appendBuffer = (
   return tmp.buffer;
 };
 
-function processStreamChunk(
-  value: Uint8Array,
-  header: ArrayBuffer
-): { buffer: ArrayBuffer; header: ArrayBuffer } | null {
-  let audioBuffer: ArrayBuffer;
-  let newHeader = header;
+// Minimum buffer size before attempting decode (64KB)
+// This helps ensure we have enough data for compressed formats (MP3/AAC)
+const MIN_DECODE_BUFFER_SIZE = 64 * 1024;
 
-  if (header.byteLength) {
-    audioBuffer = appendBuffer(
-      header,
-      value.buffer as ArrayBuffer
-    ) as ArrayBuffer;
-  } else {
-    //copy first 44 bytes (wav header)
-    newHeader = value.buffer.slice(0, 44) as ArrayBuffer;
-    audioBuffer = value.buffer as ArrayBuffer;
-  }
-
-  return { buffer: audioBuffer, header: newHeader };
-}
+// Maximum buffer size before forcing a decode attempt (256KB)
+// Prevents unbounded memory growth
+const MAX_BUFFER_SIZE = 256 * 1024;
 
 function handleStreamDone(
   signal: AbortSignal | undefined,
@@ -76,7 +63,11 @@ export function createStream(
       }
 
       reader = response.body.getReader();
-      let header = new ArrayBuffer(0); //first 44bytes
+      
+      // Accumulate chunks before decoding (for compressed formats like MP3/AAC)
+      let accumulatedBuffer = new ArrayBuffer(0);
+      let consecutiveDecodeErrors = 0;
+      const MAX_CONSECUTIVE_ERRORS = 5; // Stop after 5 consecutive decode errors
 
       // Set up abort listener to cancel the reader
       const abortListener = () => {
@@ -88,6 +79,59 @@ export function createStream(
       };
 
       signal?.addEventListener("abort", abortListener);
+
+      function attemptDecode(buffer: ArrayBuffer): void {
+        if (signal?.aborted) {
+          return;
+        }
+
+        // Try to decode the accumulated buffer
+        context
+          .decodeAudioData(buffer.slice(0)) // Create a copy to avoid issues
+          .then((decodedBuffer) => {
+            if (signal?.aborted) {
+              return;
+            }
+            
+            // Success - reset error counter and send to engine
+            consecutiveDecodeErrors = 0;
+            engine.addStreamChunk(sourceId, decodedBuffer as IAudioBuffer);
+            
+            // Remove decoded portion from accumulated buffer
+            // For compressed formats, we can't know exact decoded size, so clear buffer
+            // The decoder will handle partial frames
+            accumulatedBuffer = new ArrayBuffer(0);
+          })
+          .catch((err) => {
+            consecutiveDecodeErrors++;
+            
+            // If we've had too many consecutive errors, stop trying
+            if (consecutiveDecodeErrors >= MAX_CONSECUTIVE_ERRORS) {
+              console.error(
+                `Stream decode failed after ${MAX_CONSECUTIVE_ERRORS} attempts. This may indicate an unsupported format or corrupted stream.`,
+                err
+              );
+              // Don't continue reading - the stream format is likely incompatible
+              if (reader) {
+                reader.cancel("Decode failed").catch(() => {
+                  // Ignore cancel errors
+                });
+              }
+              return;
+            }
+            
+            // If buffer is getting too large, try to decode what we have
+            // This handles cases where we never get a valid frame
+            if (buffer.byteLength >= MAX_BUFFER_SIZE) {
+              console.warn(
+                `Buffer reached max size (${MAX_BUFFER_SIZE} bytes) without successful decode. This may indicate format issues.`
+              );
+              // Clear buffer to prevent unbounded growth, but continue trying
+              accumulatedBuffer = new ArrayBuffer(0);
+            }
+            // Otherwise, continue accumulating - we might need more data
+          });
+      }
 
       function read() {
         if (signal?.aborted) {
@@ -106,6 +150,10 @@ export function createStream(
               }
 
               if (done) {
+                // Try to decode any remaining accumulated data
+                if (accumulatedBuffer.byteLength > 0) {
+                  attemptDecode(accumulatedBuffer);
+                }
                 handleStreamDone(signal, abortListener);
                 return;
               }
@@ -115,25 +163,21 @@ export function createStream(
                 return;
               }
 
-              const result = processStreamChunk(value, header);
-              if (result) {
-                header = result.header;
-                // Decode audio data and send to engine
-                context.decodeAudioData(
-                  result.buffer,
-                  (buffer) => {
-                    if (signal?.aborted) {
-                      return;
-                    }
-                    // Send decoded buffer to engine as stream chunk
-                    engine.addStreamChunk(sourceId, buffer as IAudioBuffer);
-                  },
-                  (err) => {
-                    console.log(`err(decodeAudioData): ${err}`);
-                  }
-                );
+              // Accumulate the chunk
+              accumulatedBuffer = appendBuffer(
+                accumulatedBuffer,
+                value.buffer as ArrayBuffer
+              );
+
+              // Try to decode if we have enough data
+              if (
+                accumulatedBuffer.byteLength >= MIN_DECODE_BUFFER_SIZE ||
+                accumulatedBuffer.byteLength >= MAX_BUFFER_SIZE
+              ) {
+                attemptDecode(accumulatedBuffer);
               }
-              //read next buffer
+
+              // Continue reading
               read();
             })
             .catch((error) => {

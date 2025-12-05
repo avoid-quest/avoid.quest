@@ -12,6 +12,9 @@ import {
   type SourceEndedPayload,
   type SourceErrorPayload,
   type PeakMeterPayload,
+  type AddFilterPayload,
+  type RemoveFilterPayload,
+  type SetFilterParamPayload,
 } from "../protocol.js";
 import type { AudioBuffer } from "../context.js";
 // @ts-ignore - This will be resolved by the build plugin
@@ -338,6 +341,106 @@ export class CacophonyEngine {
     
     this.postMessage({
       type: MessageType.SET_SOURCE_PAN,
+      payload,
+    });
+  }
+
+  // Oscillator methods
+  createOscillatorSource(
+    id: string,
+    options: {
+      frequency?: number;
+      detune?: number;
+      type?: "sine" | "sawtooth" | "square" | "triangle";
+      volume?: number;
+      pan?: number;
+    } = {}
+  ) {
+    this.postMessage({
+      type: MessageType.CREATE_OSCILLATOR_SOURCE,
+      payload: {
+        id,
+        options,
+      },
+    });
+  }
+
+  setOscillatorFrequency(sourceId: string, frequency: number) {
+    this.postMessage({
+      type: MessageType.SET_OSCILLATOR_FREQUENCY,
+      payload: {
+        sourceId,
+        frequency,
+      },
+    });
+  }
+
+  setOscillatorDetune(sourceId: string, detune: number) {
+    this.postMessage({
+      type: MessageType.SET_OSCILLATOR_DETUNE,
+      payload: {
+        sourceId,
+        detune,
+      },
+    });
+  }
+
+  setOscillatorType(sourceId: string, type: "sine" | "sawtooth" | "square" | "triangle") {
+    this.postMessage({
+      type: MessageType.SET_OSCILLATOR_TYPE,
+      payload: {
+        sourceId,
+        type,
+      },
+    });
+  }
+
+  // Filter methods
+  addFilter(
+    sourceId: string,
+    filterId: string,
+    type: "lowpass" | "highpass" | "bandpass" | "lowshelf" | "highshelf" | "peaking" | "notch" | "allpass",
+    frequency: number,
+    Q: number,
+    gain: number
+  ) {
+    const payload: AddFilterPayload = {
+      sourceId,
+      filterId,
+      type,
+      frequency,
+      Q,
+      gain,
+    };
+
+    this.postMessage({
+      type: MessageType.ADD_FILTER,
+      payload,
+    });
+  }
+
+  removeFilter(sourceId: string, filterId: string) {
+    const payload: RemoveFilterPayload = {
+      sourceId,
+      filterId,
+    };
+
+    this.postMessage({
+      type: MessageType.REMOVE_FILTER,
+      payload,
+    });
+  }
+
+  setFilterParam(sourceId: string, filterId: string, param: 'frequency' | 'Q' | 'gain' | 'type', value: number | string) {
+    const payload: SetFilterParamPayload = {
+      sourceId,
+      filterId,
+      param,
+      value,
+    };
+
+    this.postMessage({
+      type: MessageType.SET_FILTER_PARAM,
       payload,
     });
   }

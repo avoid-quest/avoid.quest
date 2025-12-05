@@ -1,3 +1,7 @@
+import {
+  dattorroReverbWorkletUrl,
+  phaseVocoderProcessorWorkletUrl,
+} from "@avoid.quest/cacophony";
 import type {
   AudioContext,
   AudioNode,
@@ -473,10 +477,9 @@ export class EffectManager {
   ): Promise<EffectNode | null> {
     try {
       if (config.type === "plateReverb") {
-        // Use public path to serve the bundle as a static file
-        // The bundle is copied to public/api/worklets during build
-        // This works in all environments including Cloudflare Workers
-        const workletUrl = "/api/worklets/dattorro-reverb-bundle.js";
+        // Use the exported bundle URL from cacophony package
+        // This uses Vite's ?url import which properly resolves the bundle
+        const workletUrl = dattorroReverbWorkletUrl;
 
         try {
           const reverbNode = await this.cacophony.createWorkletNode(
@@ -572,7 +575,9 @@ export class EffectManager {
       }
 
       if (config.type === "phaseVocoder") {
-        const workletUrl = "/api/worklets/phase-vocoder-bundle.js";
+        // Use the exported bundle URL from cacophony package
+        // This uses Vite's ?url import which properly resolves the bundle
+        const workletUrl = phaseVocoderProcessorWorkletUrl;
 
         try {
           const vocoderNode = await this.cacophony.createWorkletNode(

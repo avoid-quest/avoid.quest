@@ -27,6 +27,17 @@ export enum MessageType {
   // Streaming
   ADD_STREAM_CHUNK = "ADD_STREAM_CHUNK",
   
+  // Oscillator
+  CREATE_OSCILLATOR_SOURCE = "CREATE_OSCILLATOR_SOURCE",
+  SET_OSCILLATOR_FREQUENCY = "SET_OSCILLATOR_FREQUENCY",
+  SET_OSCILLATOR_DETUNE = "SET_OSCILLATOR_DETUNE",
+  SET_OSCILLATOR_TYPE = "SET_OSCILLATOR_TYPE",
+  
+  // Filter messages
+  ADD_FILTER = "ADD_FILTER",
+  REMOVE_FILTER = "REMOVE_FILTER",
+  SET_FILTER_PARAM = "SET_FILTER_PARAM",
+  
   // Events (worklet → main)
   SOURCE_ENDED = "SOURCE_ENDED",
   SOURCE_ERROR = "SOURCE_ERROR",
@@ -47,7 +58,7 @@ export interface Message {
 export interface SetParamPayload {
   target: string; // e.g., "channelStrip.volume"
   value: number;
-  smooth?: boolean;
+  rampTime?: number;
 }
 
 export interface LoadBufferPayload {
@@ -119,3 +130,53 @@ export interface PeakMeterPayload {
   peakL: number;
   peakR: number;
 }
+
+export type OscillatorType = "sine" | "sawtooth" | "square" | "triangle";
+
+export interface CreateOscillatorSourcePayload {
+  id: string;
+  options?: {
+    frequency?: number;
+    detune?: number;
+    type?: OscillatorType;
+    volume?: number;
+    pan?: number;
+  };
+}
+
+export interface SetOscillatorFrequencyPayload {
+  sourceId: string;
+  frequency: number;
+}
+
+export interface SetOscillatorDetunePayload {
+  sourceId: string;
+  detune: number;
+}
+
+export interface SetOscillatorTypePayload {
+  sourceId: string;
+  type: OscillatorType;
+}
+
+export interface AddFilterPayload {
+  sourceId: string;
+  filterId: string;
+  type: string; // BiquadFilterType
+  frequency: number;
+  Q: number;
+  gain: number;
+}
+
+export interface RemoveFilterPayload {
+  sourceId: string;
+  filterId: string;
+}
+
+export interface SetFilterParamPayload {
+  sourceId: string;
+  filterId: string;
+  param: 'frequency' | 'Q' | 'gain' | 'type';
+  value: number | string;
+}
+

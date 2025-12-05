@@ -13,10 +13,10 @@ import {
 } from "bun:test";
 import { AudioWorkletNode } from "standardized-audio-context";
 import { AudioBuffer } from "standardized-audio-context-mock";
-import { SoundType } from "./cacophony";
-import { Group } from "./group";
-import { audioContextMock, cacophony, mockCache } from "./setupTests";
-import { Sound } from "./sound";
+import { SoundType } from "./cacophony.js";
+import { Group } from "./group.js";
+import { audioContextMock, cacophony, mockCache } from "./setupTests.js";
+import { Sound } from "./sound.js";
 
 beforeAll(() => {
   jest.useFakeTimers();
@@ -28,7 +28,7 @@ afterAll(() => {
 
 describe("Cacophony core", () => {
   test("Cacophony is created with the correct context", () => {
-    expect(cacophony.context).toBe(audioContextMock);
+    expect(cacophony.context).toBe(audioContextMock as any);
   });
 
   test("that createSound creates a sound with the correct buffer", async () => {
@@ -40,7 +40,7 @@ describe("Cacophony core", () => {
   test("that createSound creates a sound with the correct context", async () => {
     const buffer = new AudioBuffer({ length: 100, sampleRate: 44_100 });
     const sound = await cacophony.createSound(buffer);
-    expect(sound.context).toBe(audioContextMock);
+    expect(sound.context).toBe(audioContextMock as any);
   });
 
   it("createOscillator creates an oscillator with default parameters when none are provided", () => {
@@ -197,8 +197,8 @@ describe("Cacophony advanced features", () => {
       upY: { value: 0 },
       upZ: { value: 0 },
     } as any;
-    cacophony.listenerOrientation = orientation;
-    expect(cacophony.listenerOrientation).toEqual(orientation);
+    cacophony.listenerOrientation = orientation as any;
+    expect(cacophony.listenerOrientation).toEqual(orientation as any);
   });
 
   it("throws an error when creating a sound with an invalid URL", async () => {
@@ -257,7 +257,7 @@ describe("Cacophony advanced features", () => {
       const getAudioBufferSpy = spyOn(
         mockCache,
         "getAudioBuffer"
-      ).mockResolvedValueOnce(mockBuffer);
+      ).mockResolvedValueOnce(mockBuffer as any);
 
       const sound = await cacophony.createSound(
         url,
@@ -299,9 +299,7 @@ describe("Cacophony advanced features", () => {
       const url = "https://example.com/audio.mp3";
       const mockBuffer = new AudioBuffer({ length: 100, sampleRate: 44_100 });
 
-      const getAudioBufferSpy = vi
-        .spyOn(mockCache, "getAudioBuffer")
-        .mockResolvedValueOnce(mockBuffer);
+      const getAudioBufferSpy = spyOn(mockCache, "getAudioBuffer");
 
       const sound = await cacophony.createSound(url, SoundType.Buffer);
 
@@ -351,7 +349,7 @@ describe("Cacophony advanced features", () => {
       const mockBuffer = new AudioBuffer({ length: 100, sampleRate: 44_100 });
 
       // Mock cache to return buffer for all calls
-      spyOn(mockCache, "getAudioBuffer").mockResolvedValue(mockBuffer);
+      spyOn(mockCache, "getAudioBuffer").mockResolvedValue(mockBuffer as any);
 
       const group = await cacophony.createGroupFromUrls(
         urls,
@@ -402,7 +400,7 @@ describe("Cacophony advanced features", () => {
       const urls = ["audio1.mp3", "audio2.mp3"];
       const mockBuffer = new AudioBuffer({ length: 100, sampleRate: 44_100 });
 
-      spyOn(mockCache, "getAudioBuffer").mockResolvedValue(mockBuffer);
+      spyOn(mockCache, "getAudioBuffer").mockResolvedValue(mockBuffer as any);
 
       const group = await cacophony.createGroupFromUrls(urls);
 
@@ -442,9 +440,9 @@ describe("Cacophony advanced features", () => {
 
     it("loadWorklets passes AbortSignal to createWorkletNode", async () => {
       const controller = new AbortController();
-      const createWorkletSpy = vi
-        .spyOn(cacophony, "createWorkletNode")
-        .mockResolvedValue({} as any);
+      const createWorkletSpy = spyOn(cacophony, "createWorkletNode").mockResolvedValue(
+        {} as any
+      );
 
       await cacophony.loadWorklets(controller.signal);
 
@@ -574,9 +572,9 @@ describe("Cacophony advanced features", () => {
     });
 
     it("loadWorklets works without AbortSignal (backward compatibility)", async () => {
-      const createWorkletSpy = vi
-        .spyOn(cacophony, "createWorkletNode")
-        .mockResolvedValue({} as any);
+      const createWorkletSpy = spyOn(cacophony, "createWorkletNode").mockResolvedValue(
+        {} as any
+      );
 
       await cacophony.loadWorklets();
 

@@ -63,6 +63,7 @@ export class Playback extends BasePlayback implements BaseSound {
   private sourceId?: string;
   private engine?: CacophonyEngine;
   public isEngineBased: boolean = false;
+  private filterIdMap = new Map<BiquadFilterNode, string>();
 
   /**
    * Creates an instance of the Playback class.
@@ -329,10 +330,8 @@ export class Playback extends BasePlayback implements BaseSound {
               // Don't throw - let the error event handle it
             });
           }
-        } else if ("start" in this.source && this.source.start) {
-          // For non-mediaElement sources, we need to recreate and start the source
-          this.recreateSource();
-          this.source.start(0, this._offset);
+        } else {
+           throw new Error("Legacy mode only supports MediaElement sources");
         }
       } else if ("mediaElement" in this.source && this.source.mediaElement) {
         // If we're starting from the beginning or a stopped state
@@ -352,9 +351,8 @@ export class Playback extends BasePlayback implements BaseSound {
             return;
           });
         }
-      } else if ("start" in this.source && this.source.start) {
-        this.recreateSource();
-        this.source.start(0, this._offset);
+      } else {
+        throw new Error("Legacy mode only supports MediaElement sources");
       }
 
       this._startTime = this.context.currentTime;
@@ -412,10 +410,8 @@ export class Playback extends BasePlayback implements BaseSound {
 
     if ("mediaElement" in this.source && this.source.mediaElement) {
       this.source.mediaElement.pause();
-    } else if ("stop" in this.source) {
-      // For AudioBufferSourceNode and OscillatorNode, stop the source.
-      // It cannot be restarted; a new one will be created on play().
-      this.source.stop();
+    } else {
+       throw new Error("Legacy mode only supports MediaElement sources");
     }
 
     this._state = PlaybackState.Paused;
@@ -537,38 +533,7 @@ export class Playback extends BasePlayback implements BaseSound {
     return this._offset;
   }
 
-  private recreateSource() {
-    if (!(this.buffer && this.panner && this.context && this.gainNode)) {
-      throw new Error(
-        "Cannot recreate source of a sound that has been cleaned up"
-      );
-    }
-    try {
-      if (this.source) {
-        // It's crucial to nullify onended of the old source if it's an AudioBufferSourceNode (or similar non-restartable source),
-        // as its onended event could otherwise interfere with the new source created for seek/resume.
-        // MediaElementAudioSourceNode is handled differently as its underlying element can be paused/played.
-        if (!("mediaElement" in this.source) && "onended" in this.source) {
-          this.source.onended = null;
-        }
-        this.source.disconnect();
-      }
-      this.source = this.context.createBufferSource();
-      this.source.buffer = this.buffer;
-      this.source.connect(this.panner);
-      this.source.onended = this.loopEnded;
-      this.playbackRate = this._playbackRate;
-      this.refreshFilters();
-    } catch (error) {
-      this.emitAsync("error", {
-        error: error as Error,
-        errorType: "source",
-        timestamp: Date.now(),
-        recoverable: false,
-      });
-      throw error;
-    }
-  }
+
 
   /**
    * Sets whether the audio source should loop.
@@ -610,15 +575,72 @@ export class Playback extends BasePlayback implements BaseSound {
   }
 
   addFilter(filter: BiquadFilterNode): void {
+    if (this.isEngineBased && this.engine && this.sourceId) {
+      // Generate ID and map it
+      const filterId = `filter-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      this.filterIdMap.set(filter, filterId);
+      
+      // Determine filter type string (handle custom types if any, standard ones match)
+      const type = filter.type;
+      
+      this.engine.addFilter(
+        this.sourceId,
+        filterId,
+        type,
+        filter.frequency.value,
+        filter.Q.value,
+        filter.gain.value
+      );
+      return;
+    }
+
     this.assertNotCleanedUp();
     super.addFilter(filter);
     this.refreshFilters();
   }
 
   removeFilter(filter: BiquadFilterNode): void {
+    if (this.isEngineBased && this.engine && this.sourceId) {
+      const filterId = this.filterIdMap.get(filter);
+      if (filterId) {
+        this.engine.removeFilter(this.sourceId, filterId);
+        this.filterIdMap.delete(filter);
+      }
+      return;
+    }
+
     this.assertNotCleanedUp();
     super.removeFilter(filter);
+    // Refresh filters is called by super.removeFilter? No, super is FilterManager which just removes from array.
+    // Wait, Playback.ts previously called super.removeFilter then refreshFilters.
+    // Let's check FilterManager again. It just removes from array.
+    // So we need to keep refreshFilters for legacy.
     this.refreshFilters();
+  }
+
+  /**
+   * Updates a filter parameter for engine-based playback.
+   * For legacy playback, automation on the AudioParam works directly.
+   * For engine playback, we must explicitly send the update.
+   */
+  setFilterParam(filter: BiquadFilterNode, param: 'frequency' | 'Q' | 'gain' | 'type', value: number | string): void {
+    if (this.isEngineBased && this.engine && this.sourceId) {
+      const filterId = this.filterIdMap.get(filter);
+      if (filterId) {
+        this.engine.setFilterParam(this.sourceId, filterId, param, value);
+      }
+      // Also update the local node so it stays in sync if inspected
+      if (param === 'frequency') filter.frequency.value = value as number;
+      if (param === 'Q') filter.Q.value = value as number;
+      if (param === 'gain') filter.gain.value = value as number;
+      if (param === 'type') filter.type = value as BiquadFilterType;
+    } else {
+        // Legacy mode - just update the node
+        if (param === 'frequency') filter.frequency.value = value as number;
+        if (param === 'Q') filter.Q.value = value as number;
+        if (param === 'gain') filter.gain.value = value as number;
+        if (param === 'type') filter.type = value as BiquadFilterType;
+    }
   }
 
   /**

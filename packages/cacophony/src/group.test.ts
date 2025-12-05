@@ -9,10 +9,10 @@ import {
 } from "bun:test";
 import { AudioBuffer } from "standardized-audio-context-mock";
 
-import { Group } from "./group";
-import type { Playback } from "./playback";
-import { audioContextMock, cacophony } from "./setupTests";
-import { Sound } from "./sound";
+import { Group } from "./group.js";
+import type { Playback } from "./playback.js";
+import { audioContextMock, cacophony } from "./setupTests.js";
+import { Sound } from "./sound.js";
 
 describe("Group class", () => {
   let group: Group;
@@ -28,7 +28,9 @@ describe("Group class", () => {
   });
 
   afterEach(() => {
-    sound1 = sound2 = group = null;
+    sound1 = null as any;
+    sound2 = null as any;
+    group = null as any;
     mock.clearAllMocks();
   });
 
@@ -36,12 +38,11 @@ describe("Group class", () => {
     expect(group.sounds.length).toBe(2);
 
     const buffer3 = new AudioBuffer({ length: 30, sampleRate: 44_100 });
-    const sound3 = new Sound(
-      "test-url-3",
-      buffer3,
-      audioContextMock,
-      audioContextMock.createGain()
-    );
+    const sound3 = new Sound({
+      url: "test-url-3",
+      buffer: buffer3,
+      context: audioContextMock as any,
+    });
     group.addSound(sound3);
     expect(group.sounds.length).toBe(3);
     expect(group.sounds).toContain(sound3);

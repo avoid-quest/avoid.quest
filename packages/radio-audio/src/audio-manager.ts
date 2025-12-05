@@ -144,13 +144,11 @@ export class AudioManager {
       // Get the URL to use (proxied for Bandcamp and SoundCloud to avoid CORS)
       const streamUrl = this.getProxiedUrl(radio.streamUrl);
 
-      // Use HTML type for Bandcamp and SoundCloud to avoid CORS issues (works like simple player)
-      // Streaming type requires crossOrigin which these platforms don't support
-      const soundType =
-        radio.platformMetadata?.platform === "bandcamp" ||
-        radio.platformMetadata?.platform === "soundcloud"
-          ? SoundType.HTML
-          : SoundType.Streaming;
+      // Use HTML type for all radio streams
+      // HTML Audio element handles streaming compressed formats (MP3/AAC) natively
+      // Streaming type uses decodeAudioData which cannot decode partial compressed streams
+      // Bandcamp and SoundCloud also use HTML type for CORS compatibility
+      const soundType = SoundType.HTML;
 
       // Subscribe to cacophony loading events for this URL
       const loadingStartHandler = (event: {

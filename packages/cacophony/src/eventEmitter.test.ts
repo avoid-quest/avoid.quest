@@ -1,6 +1,6 @@
 // biome-ignore lint/style/useFilenamingConvention: eventEmitter is a common naming pattern for event emitter classes
 import { beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
-import { TypedEventEmitter } from "./eventEmitter";
+import { TypedEventEmitter } from "./eventEmitter.js";
 
 // Test event interface
 type TestEvents = {

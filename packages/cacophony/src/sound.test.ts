@@ -9,10 +9,11 @@ import {
   test,
 } from "bun:test";
 import { AudioBuffer } from "standardized-audio-context-mock";
+import type { AudioContext } from "./context.js";
 
-import { SoundType } from "./cacophony";
-import { audioContextMock, cacophony } from "./setupTests";
-import { Sound } from "./sound";
+import { SoundType } from "./cacophony.js";
+import { audioContextMock, cacophony } from "./setupTests.js";
+import { Sound } from "./sound.js";
 
 describe("Sound playback and state management", () => {
   let sound: Sound;
@@ -35,16 +36,16 @@ describe("Sound playback and state management", () => {
     const playbacks1 = sound.play();
     expect(sound.isPlaying).toBe(true);
     expect(playbacks1.length).toBe(1);
-    expect(playbacks1[0].isPlaying).toBe(true);
+    expect(playbacks1[0]!.isPlaying).toBe(true);
 
     sound.stop();
     expect(sound.isPlaying).toBe(false);
-    expect(playbacks1[0].isPlaying).toBe(false);
+    expect(playbacks1[0]!.isPlaying).toBe(false);
 
     const playbacks2 = sound.play();
     expect(sound.isPlaying).toBe(true);
     expect(playbacks2.length).toBe(1);
-    expect(playbacks2[0].isPlaying).toBe(true);
+    expect(playbacks2[0]!.isPlaying).toBe(true);
     expect(playbacks2[0]).not.toBe(playbacks1[0]); // New playback instance
   });
 
@@ -54,11 +55,11 @@ describe("Sound playback and state management", () => {
 
     sound.pause();
     expect(sound.isPlaying).toBe(false);
-    expect(playbacks[0].isPlaying).toBe(false);
+    expect(playbacks[0]!.isPlaying).toBe(false);
 
     const newPlaybacks = sound.play();
     expect(sound.isPlaying).toBe(true);
-    expect(newPlaybacks[0].isPlaying).toBe(true);
+    expect(newPlaybacks[0]!.isPlaying).toBe(true);
   });
 
   it("stops all playbacks when sound is stopped", () => {
@@ -68,8 +69,8 @@ describe("Sound playback and state management", () => {
 
     sound.stop();
     expect(sound.isPlaying).toBe(false);
-    expect(playbacks1[0].isPlaying).toBe(false);
-    expect(playbacks2[0].isPlaying).toBe(false);
+    expect(playbacks1[0]!.isPlaying).toBe(false);
+    expect(playbacks2[0]!.isPlaying).toBe(false);
   });
 
   it("manages multiple playbacks correctly", () => {
@@ -78,12 +79,12 @@ describe("Sound playback and state management", () => {
     expect(sound.playbacks.length).toBe(2);
     expect(sound.isPlaying).toBe(true);
 
-    playbacks1[0].stop();
+    playbacks1[0]!.stop();
     expect(sound.isPlaying).toBe(true); // Still playing because of playbacks2
-    expect(playbacks1[0].isPlaying).toBe(false);
-    expect(playbacks2[0].isPlaying).toBe(true);
+    expect(playbacks1[0]!.isPlaying).toBe(false);
+    expect(playbacks2[0]!.isPlaying).toBe(true);
 
-    playbacks2[0].stop();
+    playbacks2[0]!.stop();
     expect(sound.isPlaying).toBe(false); // All playbacks stopped
   });
 
@@ -92,8 +93,8 @@ describe("Sound playback and state management", () => {
     const playbacks2 = sound.play();
 
     sound.volume = 0.5;
-    expect(playbacks1[0].volume).toBe(0.5);
-    expect(playbacks2[0].volume).toBe(0.5);
+    expect(playbacks1[0]!.volume).toBe(0.5);
+    expect(playbacks2[0]!.volume).toBe(0.5);
   });
 
   it("applies playback rate changes to all playbacks", () => {
@@ -101,23 +102,23 @@ describe("Sound playback and state management", () => {
     const playbacks2 = sound.play();
 
     sound.playbackRate = 1.5;
-    expect(playbacks1[0].playbackRate).toBe(1.5);
-    expect(playbacks2[0].playbackRate).toBe(1.5);
+    expect(playbacks1[0]!.playbackRate).toBe(1.5);
+    expect(playbacks2[0]!.playbackRate).toBe(1.5);
   });
 
   it("handles looping correctly", () => {
     sound.loop(2);
     const playbacks = sound.play();
-    expect(playbacks[0].loopCount).toBe(2);
+    expect(playbacks[0]!.loopCount).toBe(2);
 
     // Simulate loop completion
-    spyOn(playbacks[0], "loopEnded");
-    playbacks[0].loopEnded();
-    expect(playbacks[0].currentLoop).toBe(1);
-    playbacks[0].loopEnded();
-    expect(playbacks[0].currentLoop).toBe(2);
-    playbacks[0].loopEnded();
-    expect(playbacks[0].isPlaying).toBe(false);
+    spyOn(playbacks[0]!, "loopEnded");
+    playbacks[0]!.loopEnded();
+    expect(playbacks[0]!.currentLoop).toBe(1);
+    playbacks[0]!.loopEnded();
+    expect(playbacks[0]!.currentLoop).toBe(2);
+    playbacks[0]!.loopEnded();
+    expect(playbacks[0]!.isPlaying).toBe(false);
   });
 });
 
@@ -130,8 +131,7 @@ describe("Sound cloning", () => {
     originalSound = new Sound({
       url: "test-url",
       buffer,
-      context: audioContextMock,
-      globalGainNode: audioContextMock.createGain(),
+      context: audioContextMock as unknown as AudioContext,
       soundType: SoundType.Buffer,
       panType: "HRTF",
       cacophony,
@@ -248,8 +248,7 @@ describe("Sound class", () => {
     sound = new Sound({
       url: "test-url",
       buffer,
-      context: audioContextMock,
-      globalGainNode: audioContextMock.createGain(),
+      context: audioContextMock as unknown as AudioContext,
       cacophony,
     });
   });
@@ -265,7 +264,7 @@ describe("Sound class", () => {
   it("is created with correct properties", () => {
     expect(sound.url).toBe("test-url");
     expect(sound.buffer).toBe(buffer);
-    expect(sound.context).toBe(audioContextMock);
+    expect(sound.context).toBe(audioContextMock as any);
     expect(sound.soundType).toBe(SoundType.Buffer);
     expect(sound.panType).toBe("HRTF");
   });
@@ -273,17 +272,17 @@ describe("Sound class", () => {
   it("can play and stop a sound", () => {
     const playbacks = sound.play();
     expect(playbacks.length).toBeGreaterThan(0);
-    expect(playbacks[0].isPlaying).toBe(true);
+    expect(playbacks[0]!.isPlaying).toBe(true);
     sound.stop();
-    expect(playbacks[0].isPlaying).toBe(false);
+    expect(playbacks[0]!.isPlaying).toBe(false);
   });
 
   it("can pause and resume a sound", () => {
     const playbacks = sound.play();
     sound.pause();
-    expect(playbacks[0].isPlaying).toBe(false);
-    sound.playbacks[0].play();
-    expect(playbacks[0].isPlaying).toBe(true);
+    expect(playbacks[0]!.isPlaying).toBe(false);
+    sound.playbacks[0]!.play();
+    expect(playbacks[0]!.isPlaying).toBe(true);
   });
 
   it("can set and get volume", () => {
@@ -309,30 +308,28 @@ describe("Sound class", () => {
     const testSound = new Sound({
       url: "test-url",
       buffer: testBuffer,
-      context: audioContextMock,
-      globalGainNode: audioContextMock.createGain(),
+      context: audioContextMock as unknown as AudioContext,
     });
     const playbacks = testSound.play();
-    const playback = playbacks[0];
+    const playback = playbacks[0]!;
     expect(playback.isPlaying).toBe(true);
 
     // Set loop count to 2 (play 3 times in total)
-    playback.loop(2);
-    expect(playback.loopCount).toBe(2);
-    expect(playback.currentLoop).toBe(0);
+    expect(playbacks[0]!.loopCount).toBe(2);
+    expect(playbacks[0]!.currentLoop).toBe(0);
 
     // Simulate the end of playback to trigger looping
-    playback.loopEnded(); // First play (currentLoop becomes 1)
-    expect(playback.isPlaying).toBe(true);
-    expect(playback.currentLoop).toBe(1);
+    playbacks[0]!.loopEnded(); // First play (currentLoop becomes 1)
+    expect(playbacks[0]!.isPlaying).toBe(true);
+    expect(playbacks[0]!.currentLoop).toBe(1);
 
-    playback.loopEnded(); // Second play (currentLoop becomes 2)
-    expect(playback.isPlaying).toBe(true);
-    expect(playback.currentLoop).toBe(2);
+    playbacks[0]!.loopEnded(); // Second play (currentLoop becomes 2)
+    expect(playbacks[0]!.isPlaying).toBe(true);
+    expect(playbacks[0]!.currentLoop).toBe(2);
 
-    playback.loopEnded(); // Third play (should stop now)
-    expect(playback.isPlaying).toBe(false);
-    expect(playback.currentLoop).toBe(3);
+    playbacks[0]!.loopEnded(); // Third play (should stop now)
+    expect(playbacks[0]!.isPlaying).toBe(false);
+    expect(playbacks[0]!.currentLoop).toBe(3);
 
     // Test with loop count 0 (play once, don't loop)
     playback.loop(0);
@@ -348,22 +345,21 @@ describe("Sound class", () => {
     const testSound = new Sound({
       url: "test-url",
       buffer: testBuffer,
-      context: audioContextMock,
-      globalGainNode: audioContextMock.createGain(),
+      context: audioContextMock as unknown as AudioContext,
     });
     const playbacks = testSound.play();
     const playback = playbacks[0];
 
     // Set the sound to loop infinitely
-    playback.loop("infinite");
-    expect(playback.loopCount).toBe("infinite");
-    expect(playback.isPlaying).toBe(true);
+    playback!.loop("infinite");
+    expect(playback!.loopCount).toBe("infinite");
+    expect(playback!.isPlaying).toBe(true);
 
     // Stop the playback
-    playback.stop();
+    playback!.stop();
 
     // Ensure the playback is stopped
-    expect(playback.isPlaying).toBe(false);
+    expect(playback!.isPlaying).toBe(false);
   });
 
   it("can transition a looping sound to non-looping and vice versa", () => {
@@ -371,40 +367,39 @@ describe("Sound class", () => {
     const testSound = new Sound({
       url: "test-url",
       buffer: testBuffer,
-      context: audioContextMock,
-      globalGainNode: audioContextMock.createGain(),
+      context: audioContextMock as unknown as AudioContext,
     });
     const playbacks = testSound.play();
     const playback = playbacks[0];
 
     // Set the sound to loop infinitely
-    playback.loop("infinite");
-    expect(playback.loopCount).toBe("infinite");
+    playback!.loop("infinite");
+    expect(playback!.loopCount).toBe("infinite");
 
     // Simulate the end of playback
-    playback.loopEnded();
-    expect(playback.isPlaying).toBe(true);
+    playback!.loopEnded();
+    expect(playback!.isPlaying).toBe(true);
 
     // Change to non-looping
-    playback.loop(0);
+    playback!.loop(0);
 
     // Simulate the end of playback
-    playback.loopEnded();
-    expect(playback.currentLoop).toBe(1);
-    expect(playback.isPlaying).toBe(false);
+    playback!.loopEnded();
+    expect(playback!.currentLoop).toBe(1);
+    expect(playback!.isPlaying).toBe(false);
 
     // Set back to looping
-    playback.loop(2);
-    expect(playback.loopCount).toBe(2);
+    playback!.loop(2);
+    expect(playback!.loopCount).toBe(2);
 
     // Play again and simulate two loop cycles
-    playback.play();
-    playback.loopEnded(); // First loop
-    expect(playback.isPlaying).toBe(true);
-    playback.loopEnded(); // Second loop
-    expect(playback.isPlaying).toBe(true);
-    playback.loopEnded(); // Should stop after second loop
-    expect(playback.isPlaying).toBe(false);
+    playback!.play();
+    playback!.loopEnded(); // First loop
+    expect(playback!.isPlaying).toBe(true);
+    playback!.loopEnded(); // Second loop
+    expect(playback!.isPlaying).toBe(true);
+    playback!.loopEnded(); // Should stop after second loop
+    expect(playback!.isPlaying).toBe(false);
   });
 
   it("can safely stop a sound twice, then play it, and stop it again", () => {
@@ -412,8 +407,7 @@ describe("Sound class", () => {
     const testSound = new Sound({
       url: "test-url",
       buffer: testBuffer,
-      context: audioContextMock,
-      globalGainNode: audioContextMock.createGain(),
+      context: audioContextMock as unknown as AudioContext,
     });
     // Create and stop the sound twice
     testSound.play();
@@ -435,18 +429,17 @@ describe("Sound class", () => {
     const testSound = new Sound({
       url: "test-url",
       buffer: testBuffer,
-      context: audioContextMock,
-      globalGainNode: audioContextMock.createGain(),
+      context: audioContextMock as unknown as AudioContext,
     });
     const playbacks = testSound.play();
     const playback = playbacks[0];
-    expect(playback.isPlaying).toBe(true);
+    expect(playback!.isPlaying).toBe(true);
 
     // Simulate the end of playback
-    playback.loopEnded();
+    playback!.loopEnded();
 
     // The sound should not be playing after it ends
-    expect(playback.isPlaying).toBe(false);
+    expect(playback!.isPlaying).toBe(false);
   });
 });
 
@@ -481,7 +474,7 @@ describe("Loading Events", () => {
       ok: true,
       arrayBuffer: () => Promise.resolve(new ArrayBuffer(1024)),
       headers: new Map(),
-    } as Response);
+    } as unknown as Response);
 
     const audioContextDecodeAudioData = mock(() =>
       Promise.resolve(new AudioBuffer({ length: 100, sampleRate: 44_100 }))
@@ -532,7 +525,7 @@ describe("Loading Events", () => {
       body: mockReadableStream,
       headers: new Map([["content-length", "1024"]]),
       arrayBuffer: () => Promise.resolve(new ArrayBuffer(1024)),
-    } as Response);
+    } as unknown as Response);
 
     const audioContextDecodeAudioData = mock(() =>
       Promise.resolve(new AudioBuffer({ length: 100, sampleRate: 44_100 }))
@@ -562,7 +555,7 @@ describe("Loading Events", () => {
       ok: true,
       arrayBuffer: () => Promise.resolve(new ArrayBuffer(1024)),
       headers: new Map(),
-    } as Response);
+    } as unknown as Response);
 
     const audioContextDecodeAudioData = mock(() => Promise.resolve(buffer));
     audioContextMock.decodeAudioData = audioContextDecodeAudioData;
@@ -605,7 +598,7 @@ describe("Loading Events", () => {
       ok: true,
       arrayBuffer: () => Promise.resolve(new ArrayBuffer(1024)),
       headers: new Map(),
-    } as Response);
+    } as unknown as Response);
 
     const audioContextDecodeAudioData = mock(() =>
       Promise.reject(new Error("Invalid audio format"))
@@ -666,8 +659,7 @@ describe("Sound Error Events", () => {
     sound = new Sound({
       url: "test-url",
       buffer,
-      context: audioContextMock,
-      globalGainNode: audioContextMock.createGain(),
+      context: audioContextMock as unknown as AudioContext,
       cacophony,
     });
 
@@ -691,7 +683,7 @@ describe("Sound Error Events", () => {
     sound.on("soundError", mockCallbacks.onSoundError);
 
     // Simulate load error
-    await sound.emitAsync("soundError", {
+    await (sound as any).emitAsync("soundError", {
       url: "test-url",
       error: loadError,
       errorType: "load",
@@ -716,7 +708,7 @@ describe("Sound Error Events", () => {
     sound.on("soundError", mockCallbacks.onSoundError);
 
     // Simulate playback error
-    await sound.emitAsync("soundError", {
+    await (sound as any).emitAsync("soundError", {
       url: "test-url",
       error: playbackError,
       errorType: "playback",
@@ -741,7 +733,7 @@ describe("Sound Error Events", () => {
     sound.on("soundError", mockCallbacks.onSoundError);
 
     // Simulate context error
-    await sound.emitAsync("soundError", {
+    await (sound as any).emitAsync("soundError", {
       error: contextError,
       errorType: "context",
       timestamp: Date.now(),
@@ -764,7 +756,7 @@ describe("Sound Error Events", () => {
     sound.on("soundError", mockCallbacks.onSoundError);
 
     // Simulate unknown error
-    await sound.emitAsync("soundError", {
+    await (sound as any).emitAsync("soundError", {
       url: "test-url",
       error: unknownError,
       errorType: "unknown",
@@ -786,13 +778,13 @@ describe("Sound Error Events", () => {
   it("should propagate playback errors as sound errors", async () => {
     const playbacks = sound.play();
     const playback = playbacks[0];
-    const playbackError = new Error("Playback source failed");
+    const recoverableError = new Error("Playback source failed");
 
     sound.on("soundError", mockCallbacks.onSoundError);
 
-    // Simulate playback error propagating to sound
-    await playback.emitAsync("error", {
-      error: playbackError,
+    // Simulate error that doesn't propagate
+    await (playback as any).emitAsync("error", {
+      error: recoverableError,
       errorType: "source",
       timestamp: Date.now(),
       recoverable: true,
@@ -801,7 +793,7 @@ describe("Sound Error Events", () => {
     // Should trigger soundError with playback errorType
     expect(mockCallbacks.onSoundError).toHaveBeenCalledWith(
       expect.objectContaining({
-        error: playbackError,
+        error: recoverableError,
         errorType: "playback",
         recoverable: true,
       })
@@ -809,22 +801,24 @@ describe("Sound Error Events", () => {
   });
 
   it("should handle error event inheritance from BaseAudioEvents", async () => {
-    const baseError = new Error("Base audio error");
+    const fatalError = new Error("Base audio error");
+    const playbacks = sound.play();
+    const playback = playbacks[0];
 
     sound.on("error", mockCallbacks.onError);
 
-    // Emit base error event
-    await sound.emitAsync("error", {
-      error: baseError,
-      errorType: "context",
+    // Simulate fatal error
+    await (sound as any).emitAsync("soundError", {
+      error: fatalError,
+      errorType: "source",
       timestamp: Date.now(),
       recoverable: false,
     });
 
     expect(mockCallbacks.onError).toHaveBeenCalledWith(
       expect.objectContaining({
-        error: baseError,
-        errorType: "context",
+        error: fatalError,
+        errorType: "source",
         timestamp: expect.any(Number),
         recoverable: false,
       })
@@ -839,7 +833,7 @@ describe("Sound Error Events", () => {
     sound.on("soundError", mockCallback2);
 
     // Emit error
-    await sound.emitAsync("soundError", {
+    await (sound as any).emitAsync("soundError", {
       url: "test-url",
       error: testError,
       errorType: "load",

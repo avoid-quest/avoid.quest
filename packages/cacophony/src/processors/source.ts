@@ -1,12 +1,64 @@
 import { type int } from "@opendaw/lib-std";
+import { BiquadFilter, type BiquadFilterType } from "./effects/biquad-filter.js";
 
 export abstract class Source {
+  protected filters: Map<string, BiquadFilter> = new Map();
+  // Filter chain order - array of IDs
+  protected filterOrder: string[] = [];
+
   abstract process(
     outputL: Float32Array,
     outputR: Float32Array,
     fromIndex: int,
     toIndex: int
   ): boolean; // Returns false if finished
+
+  addFilter(id: string, type: BiquadFilterType, freq: number, Q: number, gain: number) {
+    const filter = new BiquadFilter(globalThis.sampleRate);
+    filter.type = type;
+    filter.frequency = freq;
+    filter.Q = Q;
+    filter.gain = gain;
+    this.filters.set(id, filter);
+    this.filterOrder.push(id);
+  }
+
+  removeFilter(id: string) {
+    this.filters.delete(id);
+    this.filterOrder = this.filterOrder.filter(fid => fid !== id);
+  }
+
+  setFilterParam(id: string, param: string, value: number | string) {
+    const filter = this.filters.get(id);
+    if (!filter) return;
+
+    switch (param) {
+      case 'frequency': filter.frequency = value as number; break;
+      case 'Q': filter.Q = value as number; break;
+      case 'gain': filter.gain = value as number; break;
+      case 'type': filter.type = value as BiquadFilterType; break;
+    }
+  }
+
+  /**
+   * Applies filters in chain order to the input buffers (in-place)
+   */
+  protected applyFilters(
+    bufferL: Float32Array,
+    bufferR: Float32Array,
+    fromIndex: int,
+    toIndex: int
+  ): void {
+    if (this.filterOrder.length === 0) return;
+
+    for (const id of this.filterOrder) {
+      const filter = this.filters.get(id);
+      if (filter) {
+        // Process in-place: input and output are same arrays
+        filter.process(bufferL, bufferR, bufferL, bufferR, fromIndex, toIndex);
+      }
+    }
+  }
 }
 
 export class BufferSource extends Source {
@@ -14,9 +66,13 @@ export class BufferSource extends Source {
   private position: number = 0;
   private loop: boolean = false;
   private playbackRate: number = 1.0;
-  private isPlaying: boolean = false; // Changed: Don't auto-play
+  private isPlaying: boolean = false; 
   private isPaused: boolean = false;
   private pausePosition: number = 0;
+  
+  // Internal buffers for processing before mixing
+  private tempL: Float32Array | null = null;
+  private tempR: Float32Array | null = null;
 
   constructor(buffer: Float32Array[], options: { loop?: boolean; playbackRate?: number } = {}) {
     super();
@@ -29,15 +85,15 @@ export class BufferSource extends Source {
   start(when?: number, offset?: number, duration?: number) {
     this.isPlaying = true;
     this.isPaused = false;
-    this.position = (offset ?? 0) * globalThis.sampleRate; // Convert seconds to samples
-    // Note: 'when' and 'duration' would require more complex scheduling
-    // For now, we start immediately and ignore duration
+    this.position = (offset ?? 0) * globalThis.sampleRate;
   }
 
   stop() {
     this.isPlaying = false;
     this.isPaused = false;
     this.position = 0;
+    // Reset filters
+    for (const filter of this.filters.values()) filter.reset();
   }
 
   pause() {
@@ -76,49 +132,65 @@ export class BufferSource extends Source {
     
     if (!outputL || !outputR) return false;
 
+    // Initialize temp buffers if needed
+    if (!this.tempL || this.tempL.length < outputL.length) {
+      this.tempL = new Float32Array(outputL.length);
+      this.tempR = new Float32Array(outputR.length);
+    }
+    
+    // Clear temp buffers for this block
+    this.tempL!.fill(0, fromIndex, toIndex);
+    this.tempR!.fill(0, fromIndex, toIndex);
+
     const bufferL = this.buffer[0];
     if (!bufferL) return false;
     const bufferR = this.buffer[1] || bufferL; // Mono fallback
     const bufferLength = bufferL.length;
 
-    // Calculate pan gains (constant power)
-    // Simple linear for now, or equal power:
-    // L = cos((pan + 1) * PI / 4)
-    // R = sin((pan + 1) * PI / 4)
-    // For simplicity/speed, let's use linear for now or simple balance
-    // Let's use simple linear balance for speed in JS
+    // Generate audio into temp buffers
+    for (let i = fromIndex; i < toIndex; i++) {
+        if (this.position >= bufferLength) {
+            if (this.loop) {
+              this.position = 0;
+            } else {
+              this.isPlaying = false;
+              // If stopped mid-block, we still process what we have so far
+              // But we can break generation here.
+              // We should still process filters on the silence? Or just break.
+              // Breaking is fine.
+              break; 
+            }
+        }
+        
+        const readIndex = Math.floor(this.position);
+        this.tempL![i] = bufferL[readIndex] ?? 0;
+        this.tempR![i] = bufferR[readIndex] ?? 0;
+        
+        this.position += this.playbackRate;
+    }
+
+    // Apply filters to temp buffers
+    this.applyFilters(this.tempL!, this.tempR!, fromIndex, toIndex);
+
+    // Apply volume/pan and mix to output
     let gainL = this.volume;
     let gainR = this.volume;
     
     if (this.pan < 0) {
-      gainR *= (1 + this.pan); // Pan left: reduce right
+      gainR *= (1 + this.pan);
     } else if (this.pan > 0) {
-      gainL *= (1 - this.pan); // Pan right: reduce left
+      gainL *= (1 - this.pan);
     }
 
     for (let i = fromIndex; i < toIndex; i++) {
-      if (this.position >= bufferLength) {
-        if (this.loop) {
-          this.position = 0;
-        } else {
-          this.isPlaying = false;
-          return false;
-        }
-      }
-
-      // Simple nearest-neighbor interpolation for now
-      const readIndex = Math.floor(this.position);
-      
-      // Mix into output (additive) with volume/pan
-      outputL[i]! += (bufferL[readIndex] ?? 0) * gainL;
-      outputR[i]! += (bufferR[readIndex] ?? 0) * gainR;
-
-      this.position += this.playbackRate;
+      outputL[i]! += this.tempL![i]! * gainL;
+      outputR[i]! += this.tempR![i]! * gainR;
     }
 
     return true;
   }
 }
+
 
 export class StreamSource extends Source {
   private chunks: Float32Array[][] = [];
@@ -130,6 +202,10 @@ export class StreamSource extends Source {
   // Volume and pan for per-source control
   volume = 1.0;
   pan = 0.0; // -1 (left) to 1 (right)
+  
+  // Internal buffers
+  private tempL: Float32Array | null = null;
+  private tempR: Float32Array | null = null;
 
   constructor() {
     super();
@@ -147,6 +223,8 @@ export class StreamSource extends Source {
     this.chunks = [];
     this.currentChunkIndex = 0;
     this.currentSampleIndex = 0;
+    // Reset filters
+    for (const filter of this.filters.values()) filter.reset();
   }
 
   pause() {
@@ -179,32 +257,34 @@ export class StreamSource extends Source {
     
     if (!outputL || !outputR) return false;
 
-    // Calculate pan gains (simple linear balance)
-    let gainL = this.volume;
-    let gainR = this.volume;
-    
-    if (this.pan < 0) {
-      gainR *= (1 + this.pan); // Pan left: reduce right
-    } else if (this.pan > 0) {
-      gainL *= (1 - this.pan); // Pan right: reduce left
+    // Initialize temp buffers if needed
+    if (!this.tempL || this.tempL.length < outputL.length) {
+      this.tempL = new Float32Array(outputL.length);
+      this.tempR = new Float32Array(outputR.length);
     }
+    
+    // Clear temp buffers for this block
+    this.tempL!.fill(0, fromIndex, toIndex);
+    this.tempR!.fill(0, fromIndex, toIndex);
 
     for (let i = fromIndex; i < toIndex; i++) {
       if (this.currentChunkIndex >= this.chunks.length) {
-        // Underrun - keep alive waiting for more chunks
-        return true; 
+        // Underrun - can't fetch more data
+        // We still process what we have written so far to temp buffers (which is nothing for the remaining part)
+        // Actually we initialized to 0, so it's silence.
+        break; 
       }
 
       const chunk = this.chunks[this.currentChunkIndex];
-      if (!chunk) return true; // Safety check
+      if (!chunk) break; 
 
       const chunkL = chunk[0];
-      if (!chunkL) return true;
+      if (!chunkL) break;
       const chunkR = chunk[1] || chunkL;
 
-      // Apply volume and pan
-      outputL[i]! += (chunkL[this.currentSampleIndex] ?? 0) * gainL;
-      outputR[i]! += ((chunkR ? chunkR[this.currentSampleIndex] : chunkL[this.currentSampleIndex]) ?? 0) * gainR;
+      // Copy audio to temp buffers
+      this.tempL![i] = chunkL[this.currentSampleIndex] ?? 0;
+      this.tempR![i] = (chunkR ? chunkR[this.currentSampleIndex] : chunkL[this.currentSampleIndex]) ?? 0;
 
       this.currentSampleIndex++;
 
@@ -217,6 +297,25 @@ export class StreamSource extends Source {
             this.currentChunkIndex -= 5;
         }
       }
+    }
+    
+    // Apply filters
+    this.applyFilters(this.tempL!, this.tempR!, fromIndex, toIndex);
+
+    // Calculate pan gains (simple linear balance)
+    let gainL = this.volume;
+    let gainR = this.volume;
+    
+    if (this.pan < 0) {
+      gainR *= (1 + this.pan); // Pan left: reduce right
+    } else if (this.pan > 0) {
+      gainL *= (1 - this.pan); // Pan right: reduce left
+    }
+
+    // Mix to output
+    for (let i = fromIndex; i < toIndex; i++) {
+        outputL[i]! += this.tempL![i]! * gainL;
+        outputR[i]! += this.tempR![i]! * gainR;
     }
 
     return true;

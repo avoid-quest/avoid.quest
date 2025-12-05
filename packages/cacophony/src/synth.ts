@@ -22,7 +22,6 @@ type SynthCloneOverrides = FilterCloneOverrides &
 
 type SynthOptions = {
   context: AudioContext;
-  globalGainNode: GainNode;
   soundType?: SoundType;
   panType?: PanType;
   oscillatorOptions?: Partial<OscillatorOptions>;
@@ -76,13 +75,11 @@ export class Synth
   context: AudioContext;
   soundType: SoundType;
   panType: PanType;
-  private readonly globalGainNode: GainNode;
   private readonly cacophony?: Cacophony;
 
   constructor(options: SynthOptions) {
     super();
     this.context = options.context;
-    this.globalGainNode = options.globalGainNode;
     this.soundType = options.soundType ?? SoundType.Oscillator;
     this.panType = options.panType ?? "HRTF";
     this._oscillatorOptions = options.oscillatorOptions ?? {};
@@ -122,7 +119,6 @@ export class Synth
 
     const clone = new Synth({
       context: this.context,
-      globalGainNode: this.globalGainNode,
       soundType: this.soundType,
       panType,
       oscillatorOptions,
@@ -159,7 +155,8 @@ export class Synth
     }
 
     const gainNode = this.context.createGain();
-    gainNode.connect(this.globalGainNode);
+    // Connect to destination (engine integration for Synth is TODO)
+    gainNode.connect(this.context.destination);
     const playback = new SynthPlayback(this, oscillator, gainNode);
     playback.volume = this.volume;
     for (const filter of this._filters) {

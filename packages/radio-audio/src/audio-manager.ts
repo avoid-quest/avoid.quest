@@ -481,25 +481,35 @@ export class AudioManager {
 
     // Disconnect playback from default routing (globalGainNode)
     // This ensures all audio routes through the effect chain
-    playback.disconnect();
-
-    // Setup effect manager for this sound
-    let effectManager = this.effectManagers.get(soundId);
-    if (!effectManager) {
-      effectManager = new EffectManager(
-        this.cacophony,
-        sound,
-        playback,
-        this.logger
+    // Only applies to legacy playback - engine playback handles routing internally
+    if (playback.isEngineBased) {
+      // For engine-based playback, we don't use the EffectManager's Web Audio graph
+      // The engine handles effects internally (once implemented)
+      // We might want to initialize an engine-compatible effect manager here in the future
+      this.logger.debug(
+        `Skipping legacy EffectManager for engine-based sound ${soundId}`
       );
-      this.effectManagers.set(soundId, effectManager);
-    }
+    } else {
+      playback.disconnect();
 
-    // Set input and output nodes
-    effectManager.setInputNode(playback.outputNode);
-    effectManager.setOutputNode(
-      gainNodeToAudioNode(this.cacophony.globalGainNode)
-    );
+      // Setup effect manager for this sound
+      let effectManager = this.effectManagers.get(soundId);
+      if (!effectManager) {
+        effectManager = new EffectManager(
+          this.cacophony,
+          sound,
+          playback,
+          this.logger
+        );
+        this.effectManagers.set(soundId, effectManager);
+      }
+
+      // Set input and output nodes
+      effectManager.setInputNode(playback.outputNode);
+      effectManager.setOutputNode(
+        gainNodeToAudioNode(this.cacophony.globalGainNode)
+      );
+    }
 
     return playback;
   }
@@ -923,10 +933,17 @@ export class AudioManager {
       );
       this.effectManagers.set(soundId, newEffectManager);
       if (playback) {
-        newEffectManager.setInputNode(playback.outputNode);
-        newEffectManager.setOutputNode(
-          gainNodeToAudioNode(this.cacophony.globalGainNode)
-        );
+        // Only set up Web Audio routing for legacy playback
+        if (playback.isEngineBased) {
+          this.logger.debug(
+            `Skipping legacy EffectManager setup for engine-based sound ${soundId}`
+          );
+        } else {
+          newEffectManager.setInputNode(playback.outputNode);
+          newEffectManager.setOutputNode(
+            gainNodeToAudioNode(this.cacophony.globalGainNode)
+          );
+        }
       }
       newEffectManager.addEffect(config);
     }

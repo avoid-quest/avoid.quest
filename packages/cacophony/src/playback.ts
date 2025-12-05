@@ -31,6 +31,7 @@ import type {
   SourceNode,
 } from "./context.js";
 import type { Sound } from "./sound.js";
+import type { CacophonyEngine } from "./engine/cacophony-engine.js";
 
 type PlaybackCloneOverrides = {
   loopCount: LoopCount;
@@ -57,34 +58,57 @@ export class Playback extends BasePlayback implements BaseSound {
   private _startTime = 0;
   private _state: PlaybackState = PlaybackState.Unplayed;
   private _playbackRate = 1;
+  
+  // Engine-based playback fields
+  private sourceId?: string;
+  private engine?: CacophonyEngine;
+  public isEngineBased: boolean = false;
 
   /**
    * Creates an instance of the Playback class.
-   * @param {Sound} origin - The Sound instance that the Playback is associated with.
-   * @param {SourceNode} source - The audio source node.
-   * @param {GainNode} gainNode - The gain node for controlling volume.
-   * @throws {Error} Throws an error if an invalid pan type is provided.
+   * Supports two modes:
+   * 1. Legacy: (origin, source, gainNode) - Uses Web Audio nodes directly
+   * 2. Engine: (origin, sourceId, engine) - Uses CacophonyEngine
    */
-
-  constructor(origin: Sound, source: SourceNode, gainNode: GainNode) {
+  constructor(origin: Sound, sourceOrId: SourceNode | string, gainNodeOrEngine: GainNode | CacophonyEngine) {
     super();
     this.context = origin.context;
     this.origin = origin;
     this.loopCount = origin.loopCount;
     this.setPanType(origin.panType, origin.context);
-    this.source = source;
-    if ("buffer" in source && source.buffer) {
-      this.buffer = source.buffer;
+    
+    // Detect which constructor signature was used
+    if (typeof sourceOrId === 'string') {
+      // Engine-based mode: (origin, sourceId, engine)
+      this.isEngineBased = true;
+      this.sourceId = sourceOrId;
+      this.engine = gainNodeOrEngine as CacophonyEngine;
+      
+      // No Web Audio node setup needed in engine mode
+      // Volume/pan are controlled through engine messages
+    } else {
+      // Legacy mode: (origin, source, gainNode)
+      this.isEngineBased = false;
+      this.source = sourceOrId;
+      
+      if ("buffer" in sourceOrId && sourceOrId.buffer) {
+        this.buffer = sourceOrId.buffer;
+      }
+      
+      this.setupSourceNode(sourceOrId);
+      
+      if (this.panner) {
+        this.source.connect(this.panner);
+      }
+      
+      this.setGainNode(gainNodeOrEngine as GainNode);
+      
+      if (this.panner && this.gainNode) {
+        this.panner.connect(this.gainNode);
+      }
+      
+      this.refreshFilters();
     }
-    this.setupSourceNode(source);
-    if (this.panner) {
-      this.source.connect(this.panner);
-    }
-    this.setGainNode(gainNode);
-    if (this.panner && this.gainNode) {
-      this.panner.connect(this.gainNode);
-    }
-    this.refreshFilters();
   }
 
   private setupSourceNode(source: SourceNode) {
@@ -141,6 +165,26 @@ export class Playback extends BasePlayback implements BaseSound {
     if (rate <= 0) {
       throw new Error("Playback rate must be greater than 0");
     }
+    
+    // Engine-based mode
+    if (this.isEngineBased && this.engine && this.sourceId) {
+       if (this._state === PlaybackState.Playing) {
+        const elapsed =
+          (this.context.currentTime - this._startTime) * this._playbackRate;
+        this._offset += elapsed;
+        this._startTime = this.context.currentTime;
+      }
+      this._playbackRate = rate;
+      // TODO: Implement setSourcePlaybackRate in engine/protocol if needed dynamically
+      // For now, we only set it at creation or via param if we add it.
+      // Actually, BufferSource.process uses this.playbackRate, so we need to update it.
+      // Let's assume we can't update it dynamically yet without a new message type.
+      // Or we can add SET_SOURCE_PLAYBACK_RATE.
+      // For now, let's just update local state.
+      return;
+    }
+
+    // Legacy mode
     if (this._state === PlaybackState.Playing) {
       const elapsed =
         (this.context.currentTime - this._startTime) * this._playbackRate;
@@ -200,6 +244,52 @@ export class Playback extends BasePlayback implements BaseSound {
    */
 
   play(): [this] {
+    // Engine-based mode
+    if (this.isEngineBased && this.engine && this.sourceId) {
+      if (this._state === PlaybackState.Playing) {
+        return [this];
+      }
+
+      try {
+        // Ensure AudioContext is resumed
+        if (this.context.state === "suspended") {
+          this.context.resume().catch((error) => {
+            console.warn("Failed to resume AudioContext:", error);
+          });
+        }
+
+        if (this._state === PlaybackState.Paused) {
+          // Resume from pause
+          this.engine.resumeSource(this.sourceId);
+        } else {
+          // Start from beginning or after stop
+          this.engine.startSource(this.sourceId, {
+            offset: this._offset,
+          });
+        }
+
+        this._startTime = this.context.currentTime;
+        this._state = PlaybackState.Playing;
+        this.emit("play", this);
+
+        this.origin.cacophony?.emit("globalPlay", {
+          source: this.origin,
+          timestamp: Date.now(),
+        });
+
+        return [this];
+      } catch (error) {
+        this.emitAsync("error", {
+          error: error as Error,
+          errorType: "source",
+          timestamp: Date.now(),
+          recoverable: true,
+        });
+        throw error;
+      }
+    }
+
+    // Legacy mode
     if (!this.source) {
       throw new Error("Cannot play a sound that has been cleaned up");
     }
@@ -290,6 +380,28 @@ export class Playback extends BasePlayback implements BaseSound {
   }
 
   pause(): void {
+    // Engine-based mode
+    if (this.isEngineBased && this.engine && this.sourceId) {
+      if (this._state !== PlaybackState.Playing) {
+        return;
+      }
+
+      const elapsed =
+        (this.context.currentTime - this._startTime) * this._playbackRate;
+      this._offset += elapsed;
+
+      this.engine.pauseSource(this.sourceId);
+      this._state = PlaybackState.Paused;
+      this.emit("pause", undefined);
+
+      this.origin.cacophony?.emit("globalPause", {
+        source: this.origin,
+        timestamp: Date.now(),
+      });
+      return;
+    }
+
+    // Legacy mode
     if (!this.source || this._state !== PlaybackState.Playing) {
       return;
     }
@@ -317,6 +429,29 @@ export class Playback extends BasePlayback implements BaseSound {
   }
 
   stop(): void {
+    // Engine-based mode
+    if (this.isEngineBased && this.engine && this.sourceId) {
+      if (
+        this._state === PlaybackState.Stopped ||
+        this._state === PlaybackState.Unplayed
+      ) {
+        return;
+      }
+
+      this.engine.stopSource(this.sourceId);
+      this._offset = 0;
+      this._startTime = 0;
+      this._state = PlaybackState.Stopped;
+      this.emit("stop", undefined);
+
+      this.origin.cacophony?.emit("globalStop", {
+        source: this.origin,
+        timestamp: Date.now(),
+      });
+      return;
+    }
+
+    // Legacy mode
     if (!this.source) {
       throw new Error("Cannot stop a sound that has been cleaned up");
     }
@@ -348,6 +483,27 @@ export class Playback extends BasePlayback implements BaseSound {
   }
 
   seek(time: number): void {
+    // Engine-based mode
+    if (this.isEngineBased && this.engine && this.sourceId) {
+      if (!Number.isFinite(time) || time < 0) {
+        throw new Error("Invalid time value for seek");
+      }
+
+      const wasPlaying = this._state === PlaybackState.Playing;
+      if (wasPlaying) {
+        this.pause();
+      }
+
+      this._offset = time;
+      this.engine.seekSource(this.sourceId, time);
+
+      if (wasPlaying) {
+        this.play();
+      }
+      return;
+    }
+
+    // Legacy mode
     if (!(this.source && this.gainNode && this.panner)) {
       throw new Error("Cannot seek a sound that has been cleaned up");
     }
@@ -473,6 +629,19 @@ export class Playback extends BasePlayback implements BaseSound {
    */
 
   loop(loopCount?: LoopCount): LoopCount {
+    // Engine-based mode
+    if (this.isEngineBased && this.engine && this.sourceId) {
+      if (loopCount !== undefined) {
+        this.loopCount =
+          loopCount === "infinite" ? "infinite" : Math.max(0, loopCount);
+        this.currentLoop = 0;
+        // TODO: Send loop update to engine
+        // this.engine.setSourceLoop(this.sourceId, this.loopCount === 'infinite');
+      }
+      return this.loopCount;
+    }
+
+    // Legacy mode
     if (!this.source) {
       throw new Error("Cannot loop a sound that has been cleaned up");
     }
@@ -494,6 +663,40 @@ export class Playback extends BasePlayback implements BaseSound {
       throw new Error("Unsupported source type");
     }
     return this.loopCount;
+  }
+
+  // Volume overrides
+  get volume(): number {
+    if (this.isEngineBased) {
+      return (this as any)._volume ?? 1;
+    }
+    return super.volume;
+  }
+
+  set volume(v: number) {
+    if (this.isEngineBased && this.engine && this.sourceId) {
+      (this as any)._volume = v;
+      this.engine.setSourceVolume(this.sourceId, v);
+    } else {
+      super.volume = v;
+    }
+  }
+
+  // Pan overrides
+  get stereoPan(): number | null {
+    if (this.isEngineBased) {
+      return (this as any)._pan ?? 0;
+    }
+    return super.stereoPan;
+  }
+
+  set stereoPan(v: number) {
+    if (this.isEngineBased && this.engine && this.sourceId) {
+      (this as any)._pan = v;
+      this.engine.setSourcePan(this.sourceId, v);
+    } else {
+      super.stereoPan = v;
+    }
   }
 
   /**

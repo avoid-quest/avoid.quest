@@ -55,6 +55,8 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
+    "@opendaw/lib-dsp": "^0.0.50",
+    "@opendaw/lib-std": "^0.0.50",
     "fft.js": "^4.0.4",
     "standardized-audio-context": "^25.3.77"
   }

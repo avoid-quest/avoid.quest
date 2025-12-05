@@ -35,8 +35,9 @@ const urlImportPlugin: BunPlugin = {
         if (bundlesMatch) {
           const bundleFileName = bundlesMatch[1];
           // Return path relative to dist directory (where bundles will be copied)
+          // Use import.meta.url to resolve relative to the module location
           return {
-            contents: `export default ${JSON.stringify(`./bundles/${bundleFileName}`)};`,
+            contents: `export default new URL("./bundles/${bundleFileName}", import.meta.url).href;`,
             loader: "js",
           };
         }
@@ -135,13 +136,25 @@ async function buildWorkletBundles() {
   console.log("Building worklet bundles...");
 
   const processorsDir = "src/processors";
-  const files = await readdir(processorsDir);
-  const processorFiles = files
-    .filter(
-      (f) =>
-        f.endsWith(".ts") && !f.endsWith(".test.ts") && !f.endsWith(".d.ts")
-    )
-    .map((f) => join(processorsDir, f));
+  const processorFiles: string[] = [];
+
+  async function collectProcessorFiles(dir: string) {
+    const entries = await readdir(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        await collectProcessorFiles(fullPath);
+      } else if (
+        entry.name.endsWith(".ts") &&
+        !entry.name.endsWith(".test.ts") &&
+        !entry.name.endsWith(".d.ts")
+      ) {
+        processorFiles.push(fullPath);
+      }
+    }
+  }
+
+  await collectProcessorFiles(processorsDir);
 
   if (processorFiles.length === 0) {
     console.warn("No processor files found");

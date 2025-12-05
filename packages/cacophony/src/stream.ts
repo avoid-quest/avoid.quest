@@ -1,4 +1,5 @@
 import type { AudioContext, IAudioBuffer } from "standardized-audio-context";
+import type { CacophonyEngine } from "./engine/cacophony-engine.js";
 
 const appendBuffer = (
   buffer1: ArrayBuffer,
@@ -31,49 +32,29 @@ function processStreamChunk(
   return { buffer: audioBuffer, header: newHeader };
 }
 
-type DecodeAndScheduleOptions = {
-  context: AudioContext;
-  audioBuffer: ArrayBuffer;
-  audioStack: IAudioBuffer[];
-  scheduleBuffers: () => void;
-  signal?: AbortSignal;
-};
-
 function handleStreamDone(
   signal: AbortSignal | undefined,
   abortListener: () => void
 ): void {
-  console.log("done");
   signal?.removeEventListener("abort", abortListener);
 }
 
-function decodeAndSchedule(options: DecodeAndScheduleOptions): void {
-  const { context, audioBuffer, audioStack, scheduleBuffers, signal } = options;
-  context.decodeAudioData(
-    audioBuffer,
-    (buffer) => {
-      if (signal?.aborted) {
-        return;
-      }
-
-      audioStack.push(buffer);
-      if (audioStack.length) {
-        scheduleBuffers();
-      }
-    },
-    (err) => {
-      console.log(`err(decodeAudioData): ${err}`);
-    }
-  );
-}
-
+/**
+ * Creates a stream from a URL and feeds decoded audio chunks to the engine.
+ * 
+ * @param url - The URL to stream audio from
+ * @param context - AudioContext for decoding audio data
+ * @param engine - CacophonyEngine to send decoded chunks to
+ * @param sourceId - The source ID to associate chunks with
+ * @param signal - Optional AbortSignal to cancel the stream
+ */
 export function createStream(
   url: string,
   context: AudioContext,
+  engine: CacophonyEngine,
+  sourceId: string,
   signal?: AbortSignal
-) {
-  const audioStack: IAudioBuffer[] = [];
-  let nextTime = 0;
+): void {
   let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
 
   // Check if already aborted
@@ -99,7 +80,6 @@ export function createStream(
 
       // Set up abort listener to cancel the reader
       const abortListener = () => {
-        audioStack.length = 0; // Clear decoded buffers to free memory
         if (reader) {
           reader.cancel("Stream aborted").catch(() => {
             // Ignore cancel errors - reader might already be closed
@@ -138,13 +118,20 @@ export function createStream(
               const result = processStreamChunk(value, header);
               if (result) {
                 header = result.header;
-                decodeAndSchedule({
-                  context,
-                  audioBuffer: result.buffer,
-                  audioStack,
-                  scheduleBuffers,
-                  signal,
-                });
+                // Decode audio data and send to engine
+                context.decodeAudioData(
+                  result.buffer,
+                  (buffer) => {
+                    if (signal?.aborted) {
+                      return;
+                    }
+                    // Send decoded buffer to engine as stream chunk
+                    engine.addStreamChunk(sourceId, buffer as IAudioBuffer);
+                  },
+                  (err) => {
+                    console.log(`err(decodeAudioData): ${err}`);
+                  }
+                );
               }
               //read next buffer
               read();
@@ -163,21 +150,4 @@ export function createStream(
     .catch((error) => {
       console.error("Stream error:", error);
     });
-
-  function scheduleBuffers() {
-    while (audioStack.length) {
-      const buffer = audioStack.shift();
-      const source = context.createBufferSource();
-      if (!buffer) {
-        return;
-      }
-      source.buffer = buffer;
-      source.connect(context.destination);
-      if (nextTime === 0) {
-        nextTime = context.currentTime + 0.02; /// add 50ms latency to work well across systems - tune this if you like
-      }
-      source.start(nextTime);
-      nextTime += source.buffer.duration; // Make the next buffer wait the length of the last buffer before being played
-    }
-  }
 }

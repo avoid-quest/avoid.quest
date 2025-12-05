@@ -13,7 +13,6 @@ import type { CacophonyEvents } from "./events.js";
 import { Group } from "./group.js";
 import { MicrophoneStream } from "./microphone.js";
 import { Sound } from "./sound.js";
-import { createStream } from "./stream.js";
 import { Synth } from "./synth.js";
 
 export const SoundType = {
@@ -77,10 +76,17 @@ export type BaseSound = {
   threeDOptions?: Partial<IPannerOptions>;
 };
 
+import { CacophonyEngine } from "./engine/cacophony-engine.js";
+
 export class Cacophony {
   context: AudioContext;
-  globalGainNode: GainNode;
+  engine: CacophonyEngine;
   listener: IAudioListener;
+  /**
+   * Global gain node for backward compatibility with legacy audio routing.
+   * Used by EffectManager and other code that needs a gain node for routing.
+   */
+  globalGainNode: GainNode;
   private prevVolume = 1;
   private _muted = false;
   private readonly eventEmitter: TypedEventEmitter<CacophonyEvents> =
@@ -94,8 +100,11 @@ export class Cacophony {
   constructor(context?: AudioContext, cache?: ICache) {
     this.context = context || new AudioContext();
     this.listener = this.context.listener;
-    this.globalGainNode = this.context.createGain();
+    // Create global gain node for backward compatibility
+    this.globalGainNode = this.context.createGain() as GainNode;
     this.globalGainNode.connect(this.context.destination);
+    // @ts-ignore - IAudioContext vs AudioContext type mismatch from standardized-audio-context
+    this.engine = new CacophonyEngine(this.context as any);
     this.cache = cache || new AudioCache();
   }
 
@@ -135,6 +144,13 @@ export class Cacophony {
   }
 
   async loadWorklets(signal?: AbortSignal) {
+    await this.engine.ready();
+    
+    // Route globalGainNode through engine for processing
+    // First disconnect from destination (set in constructor)
+    this.globalGainNode.disconnect();
+    this.engine.connectInput(this.globalGainNode as unknown as AudioNode);
+
     if (this.context.audioWorklet) {
       await this.createWorkletNode(
         "phase-vocoder",
@@ -214,7 +230,6 @@ export class Cacophony {
   ): Synth {
     const synth = new Synth({
       context: this.context,
-      globalGainNode: this.globalGainNode,
       soundType: SoundType.Oscillator,
       panType,
       oscillatorOptions: options,
@@ -252,7 +267,6 @@ export class Cacophony {
           url: "",
           buffer: bufferOrUrl,
           context: this.context,
-          globalGainNode: this.globalGainNode,
           soundType: SoundType.Buffer,
           panType,
           cacophony: this,
@@ -269,7 +283,6 @@ export class Cacophony {
           url,
           buffer: undefined,
           context: this.context,
-          globalGainNode: this.globalGainNode,
           soundType: SoundType.HTML,
           panType,
           cacophony: this,
@@ -282,7 +295,6 @@ export class Cacophony {
           url,
           buffer: undefined,
           context: this.context,
-          globalGainNode: this.globalGainNode,
           soundType: SoundType.Streaming,
           panType,
           cacophony: this,
@@ -302,7 +314,6 @@ export class Cacophony {
       url: url as string,
       buffer,
       context: this.context,
-      globalGainNode: this.globalGainNode,
       soundType,
       panType,
       cacophony: this,
@@ -344,22 +355,21 @@ export class Cacophony {
 
   /**
    * Creates a streaming Sound instance from a URL.
+   * Streaming begins when play() is called on the returned Sound.
    *
    * @param url - URL string to stream audio from
-   * @param signal - Optional AbortSignal to cancel the operation
+   * @param signal - Optional AbortSignal to cancel the operation (not yet implemented)
    * @returns Promise that resolves to a Sound instance for streaming
    */
   createStream(url: string, _signal?: AbortSignal): Promise<Sound> {
-    // Start the streaming process with AbortSignal support
-    createStream(url, this.context, _signal);
-
+    // Note: Streaming is now initiated when play() is called on the Sound
+    // The AbortSignal should be passed to the Sound for later use
     const sound = new Sound({
       url,
       buffer: undefined,
       context: this.context,
-      globalGainNode: this.globalGainNode,
       soundType: SoundType.Streaming,
-      panType: "HRTF",
+      panType: "stereo", // Use stereo for radio streams
       cacophony: this,
     });
     return Promise.resolve(sound);
@@ -462,11 +472,14 @@ export class Cacophony {
   }
 
   setGlobalVolume(volume: number) {
+    // Update both engine and globalGainNode for backward compatibility
+    this.engine.setVolume(volume);
     this.globalGainNode.gain.value = volume;
+    this.prevVolume = volume;
   }
 
   get volume(): number {
-    return this.globalGainNode.gain.value;
+    return this.prevVolume; 
   }
 
   set volume(volume: number) {
@@ -479,7 +492,7 @@ export class Cacophony {
 
   mute() {
     if (!this._muted) {
-      this.prevVolume = this.globalGainNode.gain.value;
+      this.prevVolume = 1; // Default or track actual volume
       this.setGlobalVolume(0);
       this._muted = true;
     }

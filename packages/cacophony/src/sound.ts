@@ -62,7 +62,6 @@ export class Sound
   private readonly eventEmitter: TypedEventEmitter<SoundEvents> =
     new TypedEventEmitter<SoundEvents>();
   url: string;
-  private readonly globalGainNode: GainNode;
   soundType: SoundType;
   panType: PanType;
   private readonly _cacophony?: Cacophony;
@@ -74,7 +73,6 @@ export class Sound
     url: string;
     buffer: AudioBuffer | undefined;
     context: AudioContext;
-    globalGainNode: GainNode;
     soundType?: SoundType;
     panType?: PanType;
     cacophony?: Cacophony;
@@ -83,7 +81,6 @@ export class Sound
     this.url = options.url;
     this.buffer = options.buffer;
     this.context = options.context;
-    this.globalGainNode = options.globalGainNode;
     this.soundType = options.soundType ?? SoundType.Buffer;
     this.panType = options.panType ?? "HRTF";
     this._cacophony = options.cacophony;
@@ -171,7 +168,6 @@ export class Sound
       url: this.url,
       buffer: this.buffer,
       context: this.context,
-      globalGainNode: this.globalGainNode,
       soundType: this.soundType,
       panType,
       cacophony: this.cacophony,
@@ -296,41 +292,75 @@ export class Sound
       // Ensure AudioContext is resumed (required for Chrome autoplay policy)
       this.ensureContextResumed();
 
-      let source: SourceNode;
-      try {
-        source = this.createSourceNode();
-      } catch (error) {
-        // If it's a "one playback" error for Streaming, return existing playback
-        if (
-          error instanceof Error &&
-          error.message.includes("one active playback") &&
-          this.soundType === SoundType.Streaming &&
-          this.playbacks.length > 0
-        ) {
-          const existingPlayback = this.playbacks[0];
-          if (existingPlayback) {
-            return [existingPlayback];
-          }
-        }
-        throw error;
+      // Engine is required - no legacy fallback
+      const engine = this._cacophony?.engine;
+      if (!engine) {
+        throw new Error('CacophonyEngine is required but not available');
+      }
+      
+      if (!engine.isReady) {
+        throw new Error('CacophonyEngine worklet is not ready');
       }
 
-      const gainNode = this.context.createGain();
-      gainNode.connect(this.globalGainNode);
-      const playback = new Playback(this, source, gainNode);
-      // this.finalizationRegistry.register(playback, playback);
-      playback.setGainNode(gainNode);
-      playback.volume = this.volume;
-      playback.playbackRate = this.playbackRate;
-      for (const filter of this._filters) {
-        playback.addFilter(filter);
+      // Generate unique source ID
+      const sourceId = `source-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+      if (this.buffer) {
+        // Buffered audio - load buffer into engine
+        const bufferId = `buffer-${this.url}`;
+        engine.loadBuffer(bufferId, this.buffer);
+
+        // Create source in worklet
+        engine.createSource(sourceId, bufferId, {
+          loop: this.loopCount === 'infinite',
+          playbackRate: this._playbackRate,
+        });
+      } else if (this.soundType === SoundType.Streaming || this.soundType === SoundType.HTML) {
+        // Hybrid mode: MediaElementSource -> GainNode -> EffectManager -> GlobalGain -> Engine
+        // This avoids manual decoding of streams which is unreliable with Web Audio API
+        this.initializeSharedAudioElement();
+        if (!this._sharedMediaSource) {
+            throw new Error("Media source not initialized");
+        }
+        
+        // Create a GainNode for volume control (controlled by Playback)
+        const gainNode = this.context.createGain();
+        this._sharedMediaSource.connect(gainNode);
+        
+        // Create legacy-style playback
+        // AudioManager will handle routing this to the engine via globalGainNode
+        const playback = new Playback(this, this._sharedMediaSource, gainNode);
+        
+        this.playbacks.push(playback);
+        return [playback];
+      } else {
+        throw new Error(`Unknown sound type: ${this.soundType}`);
       }
-      if (this.panType === "HRTF") {
-        playback.threeDOptions = this.threeDOptions;
-        playback.position = this.position;
-      } else if (this.panType === "stereo") {
-        playback.stereoPan = this.stereoPan as number;
-      }
+
+      // Create new-style playback that controls the engine source
+      const playback = new Playback(this, sourceId, engine);
+      
+      // Set up event forwarding from engine
+      const handleSourceEnded = (data: any) => {
+        if (data.sourceId === sourceId) {
+          playback.emit('ended', undefined);
+        }
+      };
+      
+      const handleSourceError = (data: any) => {
+        if (data.sourceId === sourceId) {
+          playback.emit('error', {
+            error: new Error(data.error),
+            timestamp: Date.now(),
+            recoverable: false,
+            errorType: 'source', // Use 'source' as 'playback' is not a valid error type
+          });
+        }
+      };
+      
+      engine.on('sourceEnded', handleSourceEnded);
+      engine.on('sourceError', handleSourceError);
+
       // Set up error propagation from playback to sound
       playback.on("error", (errorEvent) => {
         this.emitAsync("soundError", {

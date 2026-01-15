@@ -207,15 +207,15 @@ export class BiquadFilter {
    * Uses Direct Form II Transposed for better numerical stability.
    */
   process(
-    inputL: Float32Array,
-    inputR: Float32Array,
-    outputL: Float32Array,
-    outputR: Float32Array,
+    input: [Float32Array, Float32Array],
+    output: [Float32Array, Float32Array],
     fromIndex: number,
     toIndex: number
   ): void {
     const { b0, b1, b2, a1, a2 } = this;
     let { z1L, z2L, z1R, z2R } = this;
+    const [inputL, inputR] = input;
+    const [outputL, outputR] = output;
 
     for (let i = fromIndex; i < toIndex; i++) {
       // Left channel

@@ -86,15 +86,15 @@ export class Compressor {
   }
 
   process(
-    inputL: Float32Array,
-    inputR: Float32Array,
-    outputL: Float32Array,
-    outputR: Float32Array,
+    input: [Float32Array, Float32Array],
+    output: [Float32Array, Float32Array],
     fromIndex: number,
     toIndex: number
   ): void {
     const attackCoeff = Math.exp(-1 / (this.attack * this.sampleRate));
     const releaseCoeff = Math.exp(-1 / (this.release * this.sampleRate));
+    const [inputL, inputR] = input;
+    const [outputL, outputR] = output;
 
     for (let i = fromIndex; i < toIndex; i++) {
       const sampleL = inputL[i] ?? 0;

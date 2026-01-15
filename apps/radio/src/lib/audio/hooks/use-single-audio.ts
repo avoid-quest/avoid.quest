@@ -2,20 +2,33 @@
  * useSingleAudio Hook
  *
  * Single player audio hook with crossfading support for smooth transitions.
+ * Uses HTML5 Audio + Web Audio API for crossfade (no worklets).
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AudioManager } from "../manager/audio-manager.js";
-import { crossfade } from "../manager/crossfade.js";
+
+import { validateRadioForMode } from "@/lib/external-url/utils";
+
+import {
+  CrossfadeController,
+  getCrossfadeContext,
+  HTML5AudioPlayer,
+  resumeCrossfadeContext,
+} from "../html5/index.js";
 import type { Radio } from "../playback/types.js";
 
-const TRANSITION_DURATION = 2000;
+const DEFAULT_TRANSITION_DURATION = 2000;
 
-export function useSingleAudio(settings?: {
-  player: { single?: { transitionDuration?: number; lastUsedRadio?: Radio } };
-}) {
-  const audioManager = AudioManager.getInstance();
+export type SingleAudioSettings = {
+  player?: {
+    single?: {
+      transitionDuration?: number;
+      lastUsedRadio?: Radio;
+    };
+  };
+};
 
+export function useSingleAudio(settings?: SingleAudioSettings) {
   const [currentRadio, setCurrentRadio] = useState<Radio | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -23,170 +36,156 @@ export function useSingleAudio(settings?: {
   const [error, setError] = useState<string | null>(null);
   const [volume, setVolume] = useState(1);
 
-  const currentSoundIdRef = useRef<string | null>(null);
-  const previousSoundIdRef = useRef<string | null>(null);
-  const unsubscribeRef = useRef<(() => void) | null>(null);
+  const currentPlayerRef = useRef<HTML5AudioPlayer | null>(null);
+  const previousPlayerRef = useRef<HTML5AudioPlayer | null>(null);
+  const crossfadeControllerRef = useRef<CrossfadeController | null>(null);
   const hasInitializedRef = useRef(false);
   const loadRadioRef = useRef<((radio: Radio) => Promise<void>) | null>(null);
 
-  // Generate unique sound ID
-  const getSoundId = useCallback(
+  // Get or create crossfade controller
+  const getCrossfadeController = useCallback(() => {
+    if (!crossfadeControllerRef.current) {
+      const context = getCrossfadeContext();
+      crossfadeControllerRef.current = new CrossfadeController(context);
+    }
+    return crossfadeControllerRef.current;
+  }, []);
+
+  // Generate unique player ID
+  const getPlayerId = useCallback(
     (radio: Radio) => `single_${radio.id || radio.name}_${Date.now()}`,
     []
   );
 
   // Cleanup function
   const cleanup = useCallback(() => {
-    if (unsubscribeRef.current) {
-      unsubscribeRef.current();
-      unsubscribeRef.current = null;
-    }
+    currentPlayerRef.current?.dispose();
+    currentPlayerRef.current = null;
 
-    if (currentSoundIdRef.current) {
-      audioManager.cleanupSound(currentSoundIdRef.current);
-      currentSoundIdRef.current = null;
-    }
+    previousPlayerRef.current?.dispose();
+    previousPlayerRef.current = null;
 
-    if (previousSoundIdRef.current) {
-      audioManager.cleanupSound(previousSoundIdRef.current);
-      previousSoundIdRef.current = null;
-    }
+    crossfadeControllerRef.current?.dispose();
+    crossfadeControllerRef.current = null;
 
     setIsPlaying(false);
     setIsCrossfading(false);
     setError(null);
-  }, [audioManager]);
+  }, []);
 
-  // Helper: Clean up previous sounds without resetting state
-  const cleanupPreviousSounds = useCallback(() => {
-    if (unsubscribeRef.current) {
-      unsubscribeRef.current();
-      unsubscribeRef.current = null;
+  // Helper: Clean up previous players without resetting state
+  const cleanupPreviousPlayers = useCallback(() => {
+    if (previousPlayerRef.current) {
+      previousPlayerRef.current.dispose();
+      previousPlayerRef.current = null;
     }
+    if (currentPlayerRef.current) {
+      currentPlayerRef.current.dispose();
+      currentPlayerRef.current = null;
+    }
+  }, []);
 
-    const oldSoundId = currentSoundIdRef.current;
-    if (oldSoundId) {
-      audioManager.cleanupSound(oldSoundId);
-    }
-    if (previousSoundIdRef.current) {
-      audioManager.cleanupSound(previousSoundIdRef.current);
-      previousSoundIdRef.current = null;
-    }
-  }, [audioManager]);
-
-  // Helper: Subscribe to sound state changes
-  const subscribeToSound = useCallback(
-    (soundId: string) => {
-      unsubscribeRef.current = audioManager.subscribe(soundId, (state) => {
+  // Helper: Subscribe to player state changes
+  const subscribeToPlayer = useCallback(
+    (player: HTML5AudioPlayer) =>
+      player.subscribe((state) => {
         setIsPlaying(state.isPlaying);
         setIsLoading(state.isLoading);
         if (state.error) {
           setError(state.error.message);
         }
-      });
-    },
-    [audioManager]
+      }),
+    []
   );
-
-  // Note: Settings persistence should be handled by the consuming app
-  // This is just a placeholder callback
-  const saveRadioToSettings = useCallback(async (_radio: Radio) => {
-    // Settings persistence handled externally
-  }, []);
 
   // Crossfade to new radio
   const crossfadeToNewRadio = useCallback(
-    async (newRadio: Radio, newSoundId: string) => {
+    async (newRadio: Radio, newPlayerId: string) => {
       const transitionDuration =
-        settings?.player.single?.transitionDuration ?? TRANSITION_DURATION;
+        settings?.player?.single?.transitionDuration ??
+        DEFAULT_TRANSITION_DURATION;
 
       try {
         setError(null);
         setIsCrossfading(true);
 
-        // Store previous sound for crossfade
-        if (currentSoundIdRef.current) {
-          previousSoundIdRef.current = currentSoundIdRef.current;
-        }
+        // Resume audio context on user gesture
+        await resumeCrossfadeContext();
 
-        // Create new sound
-        audioManager.createSound(newRadio, newSoundId);
+        const controller = getCrossfadeController();
 
-        // Unsubscribe from previous sound if exists
-        if (unsubscribeRef.current) {
-          unsubscribeRef.current();
-          unsubscribeRef.current = null;
-        }
+        // Store previous player for crossfade
+        previousPlayerRef.current = currentPlayerRef.current;
 
-        // Subscribe to new sound state changes
-        subscribeToSound(newSoundId);
-
-        // Start new sound at volume 0 for crossfade
-        await audioManager.playSound(newSoundId, 0);
-
-        // Update current references
-        currentSoundIdRef.current = newSoundId;
+        // Create new player
+        const newPlayer = new HTML5AudioPlayer(newPlayerId, newRadio);
+        currentPlayerRef.current = newPlayer;
         setCurrentRadio(newRadio);
 
-        // Start crossfade
-        if (previousSoundIdRef.current) {
-          await crossfade(previousSoundIdRef.current, newSoundId, {
-            duration: transitionDuration,
-            targetVolume: volume,
-          });
-        } else {
-          // No previous sound, just set the volume to target
-          audioManager.setVolume(newSoundId, volume);
-        }
+        // Connect new player to crossfade controller
+        controller.connect(newPlayer);
 
-        // Clean up previous sound
-        if (previousSoundIdRef.current) {
-          audioManager.cleanupSound(previousSoundIdRef.current);
-          previousSoundIdRef.current = null;
+        // Start new player at volume 0 (crossfade controller manages gain)
+        await newPlayer.play(0);
+
+        // Subscribe to new player state changes
+        const unsubscribe = subscribeToPlayer(newPlayer);
+
+        // Perform crossfade
+        await controller.crossfade(previousPlayerRef.current, newPlayer, {
+          duration: transitionDuration,
+          targetVolume: volume,
+        });
+
+        // Clean up previous player
+        if (previousPlayerRef.current) {
+          previousPlayerRef.current.dispose();
+          previousPlayerRef.current = null;
         }
 
         setIsCrossfading(false);
         setIsPlaying(true);
 
-        // Save to settings
-        await saveRadioToSettings(newRadio);
+        // Return cleanup function
+        return unsubscribe;
       } catch (err) {
         const errorMessage =
           err instanceof Error ? err.message : "Crossfade failed";
         setError(errorMessage);
         setIsCrossfading(false);
+        return () => {};
       }
     },
-    [audioManager, settings, volume, subscribeToSound, saveRadioToSettings]
+    [settings, volume, getCrossfadeController, subscribeToPlayer]
   );
 
-  // Load radio
+  // Load radio (no crossfade, just load for later playback)
   const loadRadio = useCallback(
     async (radio: Radio) => {
       try {
         setError(null);
-        const soundId = getSoundId(radio);
+
+        // Validate platform radio can be played in single mode
+        validateRadioForMode(radio, "single");
+
+        const playerId = getPlayerId(radio);
 
         // If we have a current radio that's playing, do crossfade
-        if (currentRadio && isPlaying && currentSoundIdRef.current) {
-          await crossfadeToNewRadio(radio, soundId);
+        if (currentRadio && isPlaying && currentPlayerRef.current) {
+          await crossfadeToNewRadio(radio, playerId);
           return;
         }
 
         // Otherwise, just load the new radio
-        cleanupPreviousSounds();
+        cleanupPreviousPlayers();
 
-        // Create new sound
-        audioManager.createSound(radio, soundId);
-
-        // Subscribe to state changes
-        subscribeToSound(soundId);
-
-        currentSoundIdRef.current = soundId;
+        // Create new player
+        const player = new HTML5AudioPlayer(playerId, radio);
+        currentPlayerRef.current = player;
         setCurrentRadio(radio);
 
-        // Save to settings
-        await saveRadioToSettings(radio);
+        // Subscribe to state changes
+        subscribeToPlayer(player);
       } catch (err) {
         const errorMessage =
           err instanceof Error ? err.message : "Failed to load radio";
@@ -194,14 +193,12 @@ export function useSingleAudio(settings?: {
       }
     },
     [
-      audioManager,
-      getSoundId,
+      getPlayerId,
       currentRadio,
       isPlaying,
       crossfadeToNewRadio,
-      cleanupPreviousSounds,
-      subscribeToSound,
-      saveRadioToSettings,
+      cleanupPreviousPlayers,
+      subscribeToPlayer,
     ]
   );
 
@@ -212,52 +209,46 @@ export function useSingleAudio(settings?: {
 
   // Play function
   const play = useCallback(async () => {
-    // Always recreate the sound before playing (like DJ mode does)
-    // This ensures we have a fresh, valid sound and avoids "cleaned up" errors
     if (!currentRadio) {
       return;
     }
 
-    // Skip redundant playSound() if the radio is already playing or crossfading
-    // This avoids duplicating playSound() and interrupting the crossfade
+    // Skip redundant play if already playing or crossfading
     if (isPlaying || isCrossfading) {
       return;
     }
 
     try {
-      // Recreate the sound before playing to ensure it's fresh and valid
-      // This matches the pattern used in DJ mode's playLeft/playRight
-      await loadRadio(currentRadio);
+      // Resume audio context on user gesture
+      await resumeCrossfadeContext();
 
-      // After recreation, check if we have a valid sound ID
-      if (!currentSoundIdRef.current) {
+      const player = currentPlayerRef.current;
+      if (!player) {
+        // Need to create a new player
+        await loadRadio(currentRadio);
+        const newPlayer = currentPlayerRef.current;
+        if (newPlayer) {
+          await newPlayer.play(volume);
+        }
         return;
       }
 
-      // Loading state will be managed by AudioManager through subscription
-      await audioManager.playSound(currentSoundIdRef.current, volume);
+      await player.play(volume);
     } catch (err) {
-      // Error handling - AudioManager will also update state through subscription
       const errorMessage = err instanceof Error ? err.message : "Play failed";
       setError(errorMessage);
     }
-  }, [audioManager, volume, currentRadio, loadRadio, isPlaying, isCrossfading]);
+  }, [currentRadio, loadRadio, isPlaying, isCrossfading, volume]);
 
   // Pause function
   const pause = useCallback(() => {
-    if (!currentSoundIdRef.current) {
-      return;
-    }
-    audioManager.pauseSound(currentSoundIdRef.current);
-  }, [audioManager]);
+    currentPlayerRef.current?.pause();
+  }, []);
 
   // Stop function
   const stop = useCallback(() => {
-    if (!currentSoundIdRef.current) {
-      return;
-    }
-    audioManager.stopSound(currentSoundIdRef.current);
-  }, [audioManager]);
+    currentPlayerRef.current?.stop();
+  }, []);
 
   // Toggle play/pause
   const togglePlayPause = useCallback(async () => {
@@ -269,19 +260,25 @@ export function useSingleAudio(settings?: {
   }, [isPlaying, play, pause]);
 
   // Set volume
-  const setVolumeCallback = useCallback(
-    (newVolume: number) => {
-      setVolume(newVolume);
-      if (currentSoundIdRef.current) {
-        audioManager.setVolume(currentSoundIdRef.current, newVolume);
-      }
-    },
-    [audioManager]
-  );
+  const setVolumeCallback = useCallback((newVolume: number) => {
+    const clampedVolume = Math.max(0, Math.min(1, newVolume));
+    setVolume(clampedVolume);
+
+    // Update current player volume
+    currentPlayerRef.current?.setVolume(clampedVolume);
+
+    // Update crossfade controller gain
+    if (currentPlayerRef.current && crossfadeControllerRef.current) {
+      crossfadeControllerRef.current.setGain(
+        currentPlayerRef.current.id,
+        clampedVolume
+      );
+    }
+  }, []);
 
   // Load initial radio if provided
   useEffect(() => {
-    const initialRadio = settings?.player.single?.lastUsedRadio;
+    const initialRadio = settings?.player?.single?.lastUsedRadio;
     if (
       initialRadio &&
       !currentRadio &&
@@ -291,7 +288,7 @@ export function useSingleAudio(settings?: {
       hasInitializedRef.current = true;
       loadRadioRef.current(initialRadio);
     }
-  }, [settings?.player.single?.lastUsedRadio, currentRadio]);
+  }, [settings?.player?.single?.lastUsedRadio, currentRadio]);
 
   // Cleanup on unmount
   useEffect(

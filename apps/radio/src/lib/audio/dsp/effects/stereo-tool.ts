@@ -60,10 +60,8 @@ export class StereoToolEffect {
   }
 
   process(
-    inputL: Float32Array,
-    inputR: Float32Array,
-    outputL: Float32Array,
-    outputR: Float32Array,
+    input: StereoMatrix.Channels,
+    output: StereoMatrix.Channels,
     fromIndex: number,
     toIndex: number
   ): void {
@@ -71,9 +69,7 @@ export class StereoToolEffect {
       this.matrix.update(this.params, this.mixing, this.processed);
       this.needsUpdate = false;
     }
-    const source: StereoMatrix.Channels = [inputL, inputR];
-    const target: StereoMatrix.Channels = [outputL, outputR];
-    this.matrix.processFrames(source, target, fromIndex, toIndex);
+    this.matrix.processFrames(input, output, fromIndex, toIndex);
     this.processed = true;
   }
 }

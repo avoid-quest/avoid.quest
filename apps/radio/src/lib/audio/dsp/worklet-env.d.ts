@@ -24,10 +24,10 @@ declare class AudioWorkletProcessor {
   ): boolean;
 }
 
-interface AudioWorkletNodeOptions {
+type AudioWorkletNodeOptions = {
   numberOfInputs?: number;
   numberOfOutputs?: number;
   outputChannelCount?: number[];
   parameterData?: Record<string, number>;
   processorOptions?: unknown;
-}
+};

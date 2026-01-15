@@ -7,6 +7,7 @@
  * NOTE: This file is designed to be bundled separately and loaded as a worklet.
  */
 
+import { LevelMeter, SpectrumAnalyzer } from "./analysis/index.js";
 import {
   BiquadFilter,
   type BiquadFilterType,
@@ -16,6 +17,7 @@ import { CrusherEffect } from "./effects/crusher.js";
 import { Distortion } from "./effects/distortion.js";
 import { FoldEffect } from "./effects/fold.js";
 import { FreeVerbReverb } from "./effects/freeverb.js";
+import { Limiter } from "./effects/limiter.js";
 import { PhaseVocoder } from "./effects/phase-vocoder.js";
 import { RevampEffect } from "./effects/revamp.js";
 import { DattorroReverb } from "./effects/reverb.js";
@@ -59,7 +61,27 @@ export const MessageType = {
   SOURCE_ERROR: "SOURCE_ERROR",
   STREAM_READY: "STREAM_READY",
   STREAM_UNDERRUN: "STREAM_UNDERRUN",
+
+  // Analysis (worklet → main)
+  ANALYSIS_DATA: "ANALYSIS_DATA",
+
+  // Analysis control (main → worklet)
+  ENABLE_ANALYSIS: "ENABLE_ANALYSIS",
 } as const;
+
+/**
+ * Analysis data payload sent from worklet to main thread
+ */
+export type AnalysisData = {
+  levels: {
+    left: number;
+    right: number;
+    mono: number;
+    peak: number;
+  };
+  spectrum: Float32Array;
+  waveform: Float32Array;
+};
 
 export type MessageTypeValue = (typeof MessageType)[keyof typeof MessageType];
 
@@ -656,22 +678,14 @@ class StreamSource {
     }
 
     // Apply filters
-    let currentL = this.tempL;
-    let currentR = this.tempR;
+    let current: [Float32Array, Float32Array] = [this.tempL, this.tempR];
+    const outputChannels: [Float32Array, Float32Array] = [outputL, outputR];
 
     for (const filterId of this.filterOrder) {
       const filter = this.filters.get(filterId);
       if (filter) {
-        filter.process(
-          currentL,
-          currentR,
-          outputL,
-          outputR,
-          fromIndex,
-          toIndex
-        );
-        currentL = outputL;
-        currentR = outputR;
+        filter.process(current, outputChannels, fromIndex, toIndex);
+        current = outputChannels;
       }
     }
 
@@ -679,16 +693,8 @@ class StreamSource {
     for (const effectId of this.effectOrder) {
       const effect = this.effects.get(effectId);
       if (effect) {
-        effect.process(
-          currentL,
-          currentR,
-          outputL,
-          outputR,
-          fromIndex,
-          toIndex
-        );
-        currentL = outputL;
-        currentR = outputR;
+        effect.process(current, outputChannels, fromIndex, toIndex);
+        current = outputChannels;
       }
     }
 
@@ -716,13 +722,34 @@ class StreamSource {
 export class DSPProcessor {
   private readonly sources = new Map<string, StreamSource>();
   private readonly channelStrip = new ChannelStrip();
+  private readonly masterLimiter: Limiter;
   private readonly sampleRate: number;
+
+  // Analysis components (lazily initialized)
+  private levelMeter: LevelMeter | null = null;
+  private spectrumAnalyzer: SpectrumAnalyzer | null = null;
+  private analysisEnabled = false;
+  private analysisFrameCounter = 0;
+  private readonly analysisInterval = 3; // Send every N render quanta (~60fps at 128 samples)
 
   // Callback for emitting events to main thread
   private onMessage?: (message: { type: string; payload?: unknown }) => void;
 
   constructor(sampleRate: number) {
     this.sampleRate = sampleRate;
+    this.masterLimiter = new Limiter(sampleRate);
+  }
+
+  /**
+   * Enable or disable analysis (spectrum + levels)
+   */
+  setAnalysisEnabled(enabled: boolean): void {
+    this.analysisEnabled = enabled;
+    if (enabled && !this.levelMeter) {
+      // Lazy init to avoid overhead when not needed
+      this.levelMeter = new LevelMeter(2048, 0.95);
+      this.spectrumAnalyzer = new SpectrumAnalyzer(512);
+    }
   }
 
   /**
@@ -867,6 +894,12 @@ export class DSPProcessor {
         this.reorderEffects(sourceId, effectIds);
         break;
       }
+
+      case MessageType.ENABLE_ANALYSIS: {
+        const { enabled } = payload as { enabled: boolean };
+        this.setAnalysisEnabled(enabled);
+        break;
+      }
       default:
         break;
     }
@@ -912,6 +945,41 @@ export class DSPProcessor {
       fromIndex,
       toIndex
     );
+
+    // Apply master limiter as final protection
+    const outputChannels: [Float32Array, Float32Array] = [outputL, outputR];
+    this.masterLimiter.process(
+      outputChannels,
+      outputChannels,
+      fromIndex,
+      toIndex
+    );
+
+    // Run analysis if enabled (throttled)
+    if (this.analysisEnabled && this.levelMeter && this.spectrumAnalyzer) {
+      this.analysisFrameCounter++;
+      if (this.analysisFrameCounter >= this.analysisInterval) {
+        this.analysisFrameCounter = 0;
+
+        // Process level meter
+        const levels = this.levelMeter.process(
+          outputL,
+          outputR,
+          fromIndex,
+          toIndex
+        );
+
+        // Process spectrum analyzer
+        this.spectrumAnalyzer.process(outputL, outputR, fromIndex, toIndex);
+
+        // Emit analysis data
+        this.emitMessage(MessageType.ANALYSIS_DATA, {
+          levels,
+          spectrum: this.spectrumAnalyzer.getBins(),
+          waveform: this.spectrumAnalyzer.getWaveform(),
+        } satisfies AnalysisData);
+      }
+    }
   }
 
   // Source management

@@ -299,14 +299,15 @@ export class RevampEffect {
   }
 
   process(
-    inputL: Float32Array,
-    inputR: Float32Array,
-    outputL: Float32Array,
-    outputR: Float32Array,
+    input: [Float32Array, Float32Array],
+    output: [Float32Array, Float32Array],
     fromIndex: number,
     toIndex: number
   ): void {
-    if (this.enabled.some((b) => b)) {
+    const [inputL, inputR] = input;
+    const [outputL, outputR] = output;
+
+    if (this.enabled.some((enabled) => enabled)) {
       let inpL = inputL;
       let inpR = inputR;
       for (const [index, coeff] of this.biquadCoeff.entries()) {

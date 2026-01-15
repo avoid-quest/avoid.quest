@@ -181,7 +181,7 @@ export class EffectChain {
   ): void {
     const enabledEffects = this.effectOrder
       .map((id) => this.effects.get(id))
-      .filter((e): e is EffectInstance => !!e?.enabled);
+      .filter((effect): effect is EffectInstance => !!effect?.enabled);
 
     if (enabledEffects.length === 0) {
       // No effects enabled - pass through
@@ -192,40 +192,38 @@ export class EffectChain {
       return;
     }
 
-    // Process through chain
-    let currentInputL = inputL;
-    let currentInputR = inputR;
+    // Process through chain using stereo channel pairs
+    let current: [Float32Array, Float32Array] = [inputL, inputR];
+    const temp: [Float32Array, Float32Array] = [this.tempL, this.tempR];
+    const output: [Float32Array, Float32Array] = [outputL, outputR];
 
-    for (let e = 0; e < enabledEffects.length; e++) {
-      const effect = enabledEffects[e];
+    for (
+      let effectIndex = 0;
+      effectIndex < enabledEffects.length;
+      effectIndex++
+    ) {
+      const effect = enabledEffects[effectIndex];
       if (!effect) {
         continue;
       }
 
-      const isLast = e === enabledEffects.length - 1;
-      const targetL = isLast ? outputL : this.tempL;
-      const targetR = isLast ? outputR : this.tempR;
+      const isLast = effectIndex === enabledEffects.length - 1;
+      const target = isLast ? output : temp;
+      const [currentL, currentR] = current;
+      const [targetL, targetR] = target;
 
       // Apply input gain
       const inputGain = effect.config.inputGain;
       if (inputGain !== 1.0) {
         for (let i = fromIndex; i < toIndex; i++) {
-          targetL[i] = (currentInputL[i] ?? 0) * inputGain;
-          targetR[i] = (currentInputR[i] ?? 0) * inputGain;
+          targetL[i] = (currentL[i] ?? 0) * inputGain;
+          targetR[i] = (currentR[i] ?? 0) * inputGain;
         }
-        currentInputL = targetL;
-        currentInputR = targetR;
+        current = target;
       }
 
-      // Process effect
-      effect.processor.process(
-        currentInputL,
-        currentInputR,
-        targetL,
-        targetR,
-        fromIndex,
-        toIndex
-      );
+      // Process effect with stereo channels
+      effect.processor.process(current, target, fromIndex, toIndex);
 
       // Apply dry/wet mix
       const dryWet = effect.config.dryWet;
@@ -233,9 +231,9 @@ export class EffectChain {
         const dryAmount = 1.0 - dryWet;
         for (let i = fromIndex; i < toIndex; i++) {
           targetL[i] =
-            (currentInputL[i] ?? 0) * dryAmount + (targetL[i] ?? 0) * dryWet;
+            (currentL[i] ?? 0) * dryAmount + (targetL[i] ?? 0) * dryWet;
           targetR[i] =
-            (currentInputR[i] ?? 0) * dryAmount + (targetR[i] ?? 0) * dryWet;
+            (currentR[i] ?? 0) * dryAmount + (targetR[i] ?? 0) * dryWet;
         }
       }
 
@@ -250,8 +248,7 @@ export class EffectChain {
 
       // Set up for next iteration
       if (!isLast) {
-        currentInputL = targetL;
-        currentInputR = targetR;
+        current = target;
       }
     }
   }

@@ -137,13 +137,13 @@ export class FreeVerbReverb {
   }
 
   process(
-    inputL: Float32Array,
-    inputR: Float32Array,
-    outputL: Float32Array,
-    outputR: Float32Array,
+    input: [Float32Array, Float32Array],
+    output: [Float32Array, Float32Array],
     fromIndex: number,
     toIndex: number
   ): void {
+    const [inputL, inputR] = input;
+    const [outputL, outputR] = output;
     const p0 = 0.4 * this.damp;
     const p1 = 1.0 - p0;
     const p2 = 0.7 + 0.28 * this.roomSize;

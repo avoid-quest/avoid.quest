@@ -12,10 +12,16 @@ export {
 } from "./biquad-filter.js";
 export { Compressor } from "./compressor.js";
 export { CrusherEffect } from "./crusher.js";
+export {
+  CTAGCompressor,
+  type CTAGCompressorConfig,
+  DEFAULT_CTAG_CONFIG,
+} from "./ctag-compressor.js";
 export { Delay } from "./delay.js";
 export { Distortion } from "./distortion.js";
 export { FoldEffect } from "./fold.js";
 export { FreeVerbReverb } from "./freeverb.js";
+export { Limiter } from "./limiter.js";
 export { PhaseVocoder } from "./phase-vocoder.js";
 // Registry
 export {
@@ -45,6 +51,7 @@ export type {
   PlateReverbConfig,
   RevampConfig,
   StandardReverbConfig,
+  StereoChannels,
   StereoToolConfig,
   TidalConfig,
 } from "./types.js";

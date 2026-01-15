@@ -58,13 +58,14 @@ export class Distortion {
   }
 
   process(
-    inputL: Float32Array,
-    inputR: Float32Array,
-    outputL: Float32Array,
-    outputR: Float32Array,
+    input: [Float32Array, Float32Array],
+    output: [Float32Array, Float32Array],
     fromIndex: number,
     toIndex: number
   ): void {
+    const [inputL, inputR] = input;
+    const [outputL, outputR] = output;
+
     if (this.amount === 0) {
       // No distortion - pass through
       for (let i = fromIndex; i < toIndex; i++) {

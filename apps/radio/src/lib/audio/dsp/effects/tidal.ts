@@ -64,10 +64,8 @@ export class TidalEffect {
   }
 
   process(
-    inputL: Float32Array,
-    inputR: Float32Array,
-    outputL: Float32Array,
-    outputR: Float32Array,
+    input: [Float32Array, Float32Array],
+    output: [Float32Array, Float32Array],
     fromIndex: number,
     toIndex: number
   ): void {
@@ -76,6 +74,8 @@ export class TidalEffect {
       this.needsUpdate = false;
     }
 
+    const [inputL, inputR] = input;
+    const [outputL, outputR] = output;
     const offset0 = this.offset;
     const offset1 = offset0 + this.channelOffset;
     const phaseIncrement = this.rate / this.sampleRate;

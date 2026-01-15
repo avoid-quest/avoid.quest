@@ -17,4 +17,6 @@ export {
   formatPlatformDuration,
   getPlatformItemTypeLabel,
   isPlatformRadio,
+  PlatformModeError,
+  validateRadioForMode,
 } from "./utils";

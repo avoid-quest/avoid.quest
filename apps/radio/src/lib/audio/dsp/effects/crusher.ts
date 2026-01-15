@@ -4,7 +4,8 @@
  * Uses Crusher from @opendaw/lib-dsp directly.
  */
 
-import { Crusher, type StereoMatrix } from "@opendaw/lib-dsp";
+import { Crusher } from "@opendaw/lib-dsp";
+import type { StereoChannels } from "./types.js";
 
 export class CrusherEffect {
   private readonly dsp: Crusher;
@@ -35,15 +36,11 @@ export class CrusherEffect {
   }
 
   process(
-    inputL: Float32Array,
-    inputR: Float32Array,
-    outputL: Float32Array,
-    outputR: Float32Array,
+    input: StereoChannels,
+    output: StereoChannels,
     fromIndex: number,
     toIndex: number
   ): void {
-    const input: StereoMatrix.Channels = [inputL, inputR];
-    const output: StereoMatrix.Channels = [outputL, outputR];
     this.dsp.process(input, output, fromIndex, toIndex);
   }
 }

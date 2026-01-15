@@ -178,14 +178,20 @@ export type EffectConfig =
   | TidalConfig;
 
 /**
+ * Stereo channel pair type (openDAW compatible)
+ * @see StereoMatrix.Channels from @opendaw/lib-dsp
+ */
+export type StereoChannels = [Float32Array, Float32Array];
+
+/**
  * Common interface for all effect processors
+ *
+ * Uses openDAW-compatible signature with stereo channel pairs.
  */
 export type EffectProcessor = {
   process(
-    inputL: Float32Array,
-    inputR: Float32Array,
-    outputL: Float32Array,
-    outputR: Float32Array,
+    input: StereoChannels,
+    output: StereoChannels,
     fromIndex: number,
     toIndex: number
   ): void;

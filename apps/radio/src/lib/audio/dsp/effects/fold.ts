@@ -52,16 +52,11 @@ export class FoldEffect {
   }
 
   process(
-    inputL: Float32Array,
-    inputR: Float32Array,
-    outputL: Float32Array,
-    outputR: Float32Array,
+    input: StereoMatrix.Channels,
+    output: StereoMatrix.Channels,
     fromIndex: number,
     toIndex: number
   ): void {
-    const input: StereoMatrix.Channels = [inputL, inputR];
-    const output: StereoMatrix.Channels = [outputL, outputR];
-
     // Upsample
     this.resampler.upsample(input, this.buffer, fromIndex, toIndex);
     const oversampledLength = (toIndex - fromIndex) * this.oversamplingFactor;

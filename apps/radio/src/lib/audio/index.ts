@@ -10,6 +10,15 @@
  * - hooks/: React integration (useAudio, useSingleAudio, useDjAudio)
  */
 
+// DSP Analysis
+export {
+  FFTAnalyzer,
+  LevelMeter,
+  PeakMeter,
+  RMSMeter,
+  SpectrumAnalyzer,
+  type StereoLevels,
+} from "./dsp/analysis/index.js";
 // DSP effect defaults
 export {
   AVAILABLE_EFFECTS,
@@ -37,8 +46,35 @@ export type {
   StereoToolConfig,
   TidalConfig,
 } from "./dsp/effects/types.js";
+// DSP Processor types (for worklet communication)
+export {
+  type AnalysisData,
+  MessageType,
+  type MessageTypeValue,
+} from "./dsp/processor.js";
 // React hooks
-export { useAudio, useDjAudio, useSingleAudio } from "./hooks/index.js";
+export {
+  type MultipleAudioSettings,
+  type MultipleAudioState,
+  type SingleAudioSettings,
+  useAudio,
+  useDjAudio,
+  useMultipleAudio,
+  useSingleAudio,
+} from "./hooks/index.js";
+// HTML5 Audio (non-DJ modes)
+export {
+  type CrossfadeConfig,
+  CrossfadeController,
+  getCrossfadeContext,
+  type HTML5AudioError,
+  HTML5AudioManager,
+  HTML5AudioPlayer,
+  type HTML5AudioState,
+  type HTML5AudioStateCallback,
+  initialHTML5AudioState,
+  resumeCrossfadeContext,
+} from "./html5/index.js";
 // High-level API (primary exports)
 export {
   AudioManager,

@@ -32,13 +32,14 @@ export class PhaseVocoder {
   }
 
   process(
-    inputL: Float32Array,
-    inputR: Float32Array,
-    outputL: Float32Array,
-    outputR: Float32Array,
+    input: [Float32Array, Float32Array],
+    output: [Float32Array, Float32Array],
     fromIndex: number,
     toIndex: number
   ): void {
+    const [inputL, inputR] = input;
+    const [outputL, outputR] = output;
+
     // If pitch factor is 1.0, pass through
     if (Math.abs(this.pitchFactor - 1.0) < 0.001) {
       for (let i = fromIndex; i < toIndex; i++) {

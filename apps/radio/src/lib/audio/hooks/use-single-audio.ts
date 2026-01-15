@@ -41,6 +41,7 @@ export function useSingleAudio(settings?: SingleAudioSettings) {
   const crossfadeControllerRef = useRef<CrossfadeController | null>(null);
   const hasInitializedRef = useRef(false);
   const loadRadioRef = useRef<((radio: Radio) => Promise<void>) | null>(null);
+  const volumeRef = useRef(volume);
 
   // Get or create crossfade controller
   const getCrossfadeController = useCallback(() => {
@@ -145,6 +146,11 @@ export function useSingleAudio(settings?: SingleAudioSettings) {
 
         setIsCrossfading(false);
         setIsPlaying(true);
+
+        // Apply any volume changes that occurred during crossfade
+        const currentVolume = volumeRef.current;
+        newPlayer.setVolume(currentVolume);
+        controller.setGain(newPlayer.id, currentVolume);
 
         // Return cleanup function
         return unsubscribe;
@@ -260,9 +266,22 @@ export function useSingleAudio(settings?: SingleAudioSettings) {
   }, [isPlaying, play, pause]);
 
   // Set volume
+  // Use ref to avoid stale closure in useCallback while avoiding unnecessary re-renders
+  const isCrossfadingRef = useRef(isCrossfading);
+  useEffect(() => {
+    isCrossfadingRef.current = isCrossfading;
+  }, [isCrossfading]);
+
   const setVolumeCallback = useCallback((newVolume: number) => {
     const clampedVolume = Math.max(0, Math.min(1, newVolume));
     setVolume(clampedVolume);
+    volumeRef.current = clampedVolume;
+
+    // Skip actual gain updates during crossfade to avoid cancelling Web Audio ramps
+    // Volume will be applied after crossfade completes
+    if (isCrossfadingRef.current) {
+      return;
+    }
 
     // Update current player volume
     currentPlayerRef.current?.setVolume(clampedVolume);

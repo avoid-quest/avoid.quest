@@ -119,7 +119,9 @@ export const Route = createRootRoute({
 function RootDocument({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <HeadContent />
+      <head>
+        <HeadContent />
+      </head>
       <body className={cn("min-h-screen bg-background antialiased")}>
         <ThemeProvider
           attribute="class"

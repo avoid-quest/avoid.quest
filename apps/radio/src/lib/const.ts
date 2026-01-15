@@ -4,13 +4,6 @@ export const DEFAULT_TRANSITION_DURATION = 2000;
 
 export const radios: Radio[] = [
   {
-    name: "Gatto Misterioso",
-    description: "Radio driven by the mystery of cats",
-    streamUrl:
-      "https://azuracast.gattomisterioso.top/listen/gatto_dubbioso/radio.mp3",
-    order: 1,
-  },
-  {
     name: "Sygma Radio",
     description:
       "A community platform for mixes, podcasts, live recordings and releases by independent musicians, sound artists and collectives.",
@@ -57,6 +50,15 @@ export const radios: Radio[] = [
     order: 6,
   },
   {
+    name: "Radio BlackOut",
+    description:
+      "Radio Blackout trasmette notizie, approfondimenti, musica e controcultura dal 1992, libera e autogestita.",
+    websiteUrl: "https://radioblackout.org/",
+    streamUrl: "https://giffard.streampunk.cc/_stream/blackout.ogg",
+    logoUrl: "https://radioblackout.org/logo.png",
+    order: 12,
+  },
+  {
     name: "Resonance Extra",
     websiteUrl: "https://extra.resonance.fm/",
     description:
@@ -86,39 +88,12 @@ export const radios: Radio[] = [
     order: 9,
   },
   {
-    name: "Mutant Radio",
-    websiteUrl: "https://www.mutantradio.net/",
-    description:
-      "Mutant Radio is a media platform that focuses on various directions: mixes, interviews, educational shows, live performances and discusssion broadcasts",
-    logoUrl: "https://www.mutantradio.net/images/logo.svg",
-    streamUrl: "https://www.radioking.com/play/mutant-radio",
-    order: 10,
-  },
-  {
     name: "Radio Alhara",
     description: "Radio AlHara راديو الحارة",
     logoUrl: "https://www.radioalhara.net/img/radio-alhara-logo.svg",
     websiteUrl: "https://www.radioalhara.net/",
     streamUrl: "https://n03.radiojar.com/78cxy6wkxtzuv",
     order: 11,
-  },
-  {
-    name: "Radio BlackOut",
-    description:
-      "Radio Blackout trasmette notizie, approfondimenti, musica e controcultura dal 1992, libera e autogestita.",
-    websiteUrl: "https://radioblackout.org/",
-    streamUrl: "https://giffard.streampunk.cc/_stream/blackout.ogg",
-    logoUrl: "https://radioblackout.org/logo.png",
-    order: 12,
-  },
-  {
-    name: "Fango Radio",
-    websiteUrl: "https://www.fangoradio.com/",
-    logoUrl: "https://www.fangoradio.com/img/fango-logo-04.png",
-    description:
-      "Fango Radio è un esperimento di trasmissione comunitaria attivo dal 2019.",
-    streamUrl: "https://pantano.ovh:8444/pantano",
-    order: 13,
   },
 ];
 

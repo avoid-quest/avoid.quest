@@ -49,9 +49,8 @@ export class CrossfadeController {
   disconnect(playerId: string): void {
     const connection = this.#connections.get(playerId);
     if (connection) {
+      connection.source.disconnect();
       connection.gain.disconnect();
-      // Note: MediaElementAudioSourceNode cannot be disconnected
-      // and reused, so we just disconnect the gain node
       this.#connections.delete(playerId);
     }
   }

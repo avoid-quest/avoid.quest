@@ -10,56 +10,29 @@ export const createDeckPlaybackActions: StateCreator<
   Pick<InternalDjState, "playLeft" | "playRight" | "pauseLeft" | "pauseRight">
 > = (set, get) => ({
   playLeft: async () => {
-    const { leftDeck, setLeftRadio } = get();
-    if (leftDeck.radio && !leftDeck.isPlaying) {
-      // Loading state will be managed by AudioManager through subscription
-
-      // Always reset buffer before playing to ensure fresh audio
-      // This is crucial for live radio stations to avoid stale buffers
-      await setLeftRadio(leftDeck.radio);
-
-      // Get fresh state after reload
-      const { leftDeck: newLeftDeck } = get();
-      if (newLeftDeck.soundId) {
-        try {
-          await getAudioManager().playSound(
-            newLeftDeck.soundId,
-            newLeftDeck.volume
-          );
-          applyCrossfade(get);
-        } catch (err) {
-          // Error handling - AudioManager will also update state through subscription
-          set({
-            error: err instanceof Error ? err.message : "Failed to play left",
-          });
-        }
+    const { leftDeck } = get();
+    if (leftDeck.soundId && leftDeck.radio && !leftDeck.isPlaying) {
+      try {
+        await getAudioManager().playSound(leftDeck.soundId, leftDeck.volume);
+        applyCrossfade(get);
+      } catch (err) {
+        set({
+          error: err instanceof Error ? err.message : "Failed to play left",
+        });
       }
     }
   },
 
   playRight: async () => {
-    const { rightDeck, setRightRadio } = get();
-    if (rightDeck.radio && !rightDeck.isPlaying) {
-      // Loading state will be managed by AudioManager through subscription
-
-      // Always reset buffer before playing to ensure fresh audio
-      await setRightRadio(rightDeck.radio);
-
-      // Get fresh state after reload
-      const { rightDeck: newRightDeck } = get();
-      if (newRightDeck.soundId) {
-        try {
-          await getAudioManager().playSound(
-            newRightDeck.soundId,
-            newRightDeck.volume
-          );
-          applyCrossfade(get);
-        } catch (err) {
-          // Error handling - AudioManager will also update state through subscription
-          set({
-            error: err instanceof Error ? err.message : "Failed to play right",
-          });
-        }
+    const { rightDeck } = get();
+    if (rightDeck.soundId && rightDeck.radio && !rightDeck.isPlaying) {
+      try {
+        await getAudioManager().playSound(rightDeck.soundId, rightDeck.volume);
+        applyCrossfade(get);
+      } catch (err) {
+        set({
+          error: err instanceof Error ? err.message : "Failed to play right",
+        });
       }
     }
   },

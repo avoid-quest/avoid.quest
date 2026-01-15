@@ -203,12 +203,26 @@ export class AudioManager {
       hasEnded: false,
     });
 
-    // Start streaming if not already
-    if (!instance.stream) {
+    // Start streaming if not already (or if stream ended/errored)
+    let firstChunkPromise: Promise<void> | null = null;
+
+    if (!instance.stream?.isActive) {
+      // Clean up dead stream if it exists
+      if (instance.stream) {
+        instance.stream.stop();
+        instance.stream = null;
+      }
+
       const context = getAudioContext();
       if (!context) {
         throw new Error("Audio context not available");
       }
+
+      // Create promise to wait for first chunk before starting playback
+      let resolveFirstChunk: () => void;
+      firstChunkPromise = new Promise<void>((resolve) => {
+        resolveFirstChunk = resolve;
+      });
 
       const streamUrl = this.getProxiedUrl(instance.radio.streamUrl);
 
@@ -219,9 +233,10 @@ export class AudioManager {
           onChunk: (buffer) => {
             this.workletManager?.addStreamChunk(soundId, buffer);
 
-            // Clear loading state after first chunk
+            // Resolve first chunk promise and clear loading state
             if (instance.loading) {
               instance.loading = false;
+              resolveFirstChunk();
               this.notifyListeners(soundId, {
                 isPlaying: true,
                 isLoading: false,
@@ -247,6 +262,7 @@ export class AudioManager {
           },
           onEnded: () => {
             instance.playing = false;
+            instance.stream = null;
             this.notifyListeners(soundId, {
               isPlaying: false,
               isLoading: false,
@@ -261,7 +277,12 @@ export class AudioManager {
       instance.stream.start();
     }
 
-    // Start playback in worklet
+    // Wait for first chunk before starting playback to prevent glitches
+    if (firstChunkPromise) {
+      await firstChunkPromise;
+    }
+
+    // Start playback in worklet (now safe - we have data)
     this.workletManager?.startSource(soundId);
     this.workletManager?.setSourceVolume(soundId, volume * this.globalVolume);
   }

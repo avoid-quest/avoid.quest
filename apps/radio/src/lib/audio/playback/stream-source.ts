@@ -1,8 +1,11 @@
 /**
  * Stream Source
  *
- * Handles fetching and decoding of Icecast MP3 streams.
+ * Handles fetching and decoding of Icecast audio streams (MP3, OGG/Vorbis).
  * Accumulates data, decodes when buffer is sufficient, and emits decoded audio chunks.
+ *
+ * For OGG/Vorbis streams, header data from the first successful decode is retained
+ * and prepended to subsequent chunks, as decodeAudioData() requires codec headers.
  */
 
 import {
@@ -11,6 +14,78 @@ import {
   type StreamSourceConfig,
   type StreamStatus,
 } from "./types.js";
+
+// OGG page magic bytes: "OggS"
+const OGG_MAGIC_0 = 0x4f; // 'O'
+const OGG_MAGIC_1 = 0x67; // 'g'
+const OGG_MAGIC_2 = 0x67; // 'g'
+const OGG_MAGIC_3 = 0x53; // 'S'
+
+/**
+ * Find OGG Vorbis header boundary in buffer.
+ * OGG header pages have granule_position = 0, audio pages have granule > 0.
+ * Returns byte offset where audio data begins (end of headers).
+ * Returns null if not OGG or headers incomplete.
+ */
+function findOggHeaderEnd(buffer: Uint8Array): number | null {
+  // Check if this looks like OGG (minimum page header is 27 bytes)
+  if (
+    buffer.length < 27 ||
+    buffer[0] !== OGG_MAGIC_0 ||
+    buffer[1] !== OGG_MAGIC_1 ||
+    buffer[2] !== OGG_MAGIC_2 ||
+    buffer[3] !== OGG_MAGIC_3
+  ) {
+    return null; // Not OGG
+  }
+
+  // Use DataView for reading little-endian values
+  const view = new DataView(
+    buffer.buffer,
+    buffer.byteOffset,
+    buffer.byteLength
+  );
+  let offset = 0;
+
+  while (offset + 27 < buffer.length) {
+    // Verify OggS magic at current offset
+    if (
+      buffer[offset] !== OGG_MAGIC_0 ||
+      buffer[offset + 1] !== OGG_MAGIC_1 ||
+      buffer[offset + 2] !== OGG_MAGIC_2 ||
+      buffer[offset + 3] !== OGG_MAGIC_3
+    ) {
+      // Lost sync - shouldn't happen in valid OGG
+      return null;
+    }
+
+    // Read granule_position (bytes 6-13, little-endian int64)
+    // We read as two 32-bit values and check if either is > 0
+    const granuleLow = view.getUint32(offset + 6, true);
+    const granuleHigh = view.getUint32(offset + 10, true);
+
+    // If granule > 0, this is first audio page - headers end here
+    if (granuleLow > 0 || granuleHigh > 0) {
+      return offset;
+    }
+
+    // Read number of segments to calculate page size
+    const numSegments = buffer[offset + 26];
+    if (offset + 27 + numSegments > buffer.length) {
+      return null; // Need more data
+    }
+
+    // Calculate total page size: header (27) + segment table + segment data
+    let pageSize = 27 + numSegments;
+    for (let i = 0; i < numSegments; i++) {
+      pageSize += buffer[offset + 27 + i];
+    }
+
+    offset += pageSize;
+  }
+
+  return null; // Headers incomplete - need more data
+}
 
 /**
  * Events emitted by StreamSource
@@ -37,10 +112,11 @@ export type StreamSourceCallbacks = {
 };
 
 /**
- * StreamSource class for handling Icecast MP3 streaming
+ * StreamSource class for handling Icecast audio streaming
  *
  * Fetches audio data from a URL, accumulates it in a buffer,
  * decodes when enough data is available, and emits decoded chunks.
+ * Supports both MP3 (self-sync frames) and OGG/Vorbis (header retention).
  */
 export class StreamSource {
   private readonly url: string;
@@ -52,6 +128,7 @@ export class StreamSource {
   private abortController: AbortController | null = null;
   private reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
   private buffer: Uint8Array = new Uint8Array(0);
+  private headerData: Uint8Array | null = null;
   private decoding = false;
   private _status: StreamStatus = "idle";
   private hasEmittedFirstChunk = false;
@@ -102,6 +179,7 @@ export class StreamSource {
 
     this.abortController = new AbortController();
     this.buffer = new Uint8Array(0);
+    this.headerData = null;
     this.hasEmittedFirstChunk = false;
     this.setStatus("connecting");
 
@@ -146,6 +224,7 @@ export class StreamSource {
     }
 
     this.buffer = new Uint8Array(0);
+    this.headerData = null;
     this.decoding = false;
 
     if (this._status !== "error") {
@@ -226,9 +305,23 @@ export class StreamSource {
 
     this.decoding = true;
 
+    // For OGG/Vorbis: prepend header data to buffer before decode
+    // OGG requires codec headers in every decode call, unlike MP3 which is self-sync
+    let decodeBuffer = this.buffer;
+    if (this.headerData && this.hasEmittedFirstChunk) {
+      decodeBuffer = new Uint8Array(
+        this.headerData.length + this.buffer.length
+      );
+      decodeBuffer.set(this.headerData, 0);
+      decodeBuffer.set(this.buffer, this.headerData.length);
+    }
+
     // Create a copy of the buffer for decoding
-    // Cast to ArrayBuffer as decodeAudioData doesn't accept SharedArrayBuffer
-    const bufferCopy = this.buffer.buffer.slice(0) as ArrayBuffer;
+    // Use slice with explicit bounds for TypedArray backed by larger ArrayBuffer
+    const bufferCopy = decodeBuffer.buffer.slice(
+      decodeBuffer.byteOffset,
+      decodeBuffer.byteOffset + decodeBuffer.byteLength
+    ) as ArrayBuffer;
 
     this.context
       .decodeAudioData(bufferCopy)
@@ -238,10 +331,19 @@ export class StreamSource {
           return;
         }
 
+        // For OGG: extract and save only the header pages (not audio data)
+        // This prevents audio repetition when prepending headers to subsequent chunks
+        if (!this.hasEmittedFirstChunk) {
+          const headerEnd = findOggHeaderEnd(this.buffer);
+          if (headerEnd !== null && headerEnd > 0) {
+            this.headerData = new Uint8Array(this.buffer.slice(0, headerEnd));
+          }
+        }
+
         // Emit the decoded chunk
         this.emitChunk(decoded);
 
-        // Clear buffer after successful decode
+        // Clear buffer after successful decode (headers preserved in headerData)
         this.buffer = new Uint8Array(0);
         this.decoding = false;
 

@@ -16,6 +16,7 @@ export class HTML5AudioManager {
   private static instance: HTML5AudioManager | null = null;
 
   readonly #players = new Map<string, HTML5AudioPlayer>();
+  readonly #requestedVolumes = new Map<string, number>();
   #globalVolume = 1;
   #globalMuted = false;
   #lastGlobalVolume = 1;
@@ -55,6 +56,7 @@ export class HTML5AudioManager {
 
     const player = new HTML5AudioPlayer(id, radio);
     this.#players.set(id, player);
+    this.#requestedVolumes.set(id, 1);
 
     return id;
   }
@@ -74,6 +76,7 @@ export class HTML5AudioManager {
     if (player) {
       player.dispose();
       this.#players.delete(playerId);
+      this.#requestedVolumes.delete(playerId);
     }
   }
 
@@ -86,7 +89,10 @@ export class HTML5AudioManager {
       throw new Error(`Player ${playerId} not found`);
     }
 
-    const effectiveVolume = (volume ?? 1) * this.#globalVolume;
+    const requestedVolume = volume ?? this.#requestedVolumes.get(playerId) ?? 1;
+    this.#requestedVolumes.set(playerId, requestedVolume);
+
+    const effectiveVolume = requestedVolume * this.#globalVolume;
     await player.play(effectiveVolume);
   }
 
@@ -112,7 +118,9 @@ export class HTML5AudioManager {
   setVolume(playerId: string, volume: number): void {
     const player = this.#players.get(playerId);
     if (player) {
-      player.setVolume(volume * this.#globalVolume);
+      const clampedVolume = Math.max(0, Math.min(1, volume));
+      this.#requestedVolumes.set(playerId, clampedVolume);
+      player.setVolume(clampedVolume * this.#globalVolume);
     }
   }
 
@@ -129,12 +137,11 @@ export class HTML5AudioManager {
   setGlobalVolume(volume: number): void {
     this.#globalVolume = Math.max(0, Math.min(1, volume));
 
-    // Update all players
-    for (const player of this.#players.values()) {
-      const currentVolume = player.volume / this.#lastGlobalVolume;
-      player.setVolume(currentVolume * this.#globalVolume);
+    // Update all players using their requested volumes
+    for (const [playerId, player] of this.#players) {
+      const requestedVolume = this.#requestedVolumes.get(playerId) ?? 1;
+      player.setVolume(requestedVolume * this.#globalVolume);
     }
-    this.#lastGlobalVolume = this.#globalVolume;
   }
 
   /**
@@ -143,8 +150,12 @@ export class HTML5AudioManager {
   muteGlobal(): void {
     if (!this.#globalMuted) {
       this.#lastGlobalVolume = this.#globalVolume;
-      this.setGlobalVolume(0);
       this.#globalMuted = true;
+
+      // Set all players to 0
+      for (const player of this.#players.values()) {
+        player.setVolume(0);
+      }
     }
   }
 
@@ -153,8 +164,14 @@ export class HTML5AudioManager {
    */
   unmuteGlobal(): void {
     if (this.#globalMuted) {
-      this.setGlobalVolume(this.#lastGlobalVolume);
+      this.#globalVolume = this.#lastGlobalVolume;
       this.#globalMuted = false;
+
+      // Restore all players using their requested volumes
+      for (const [playerId, player] of this.#players) {
+        const requestedVolume = this.#requestedVolumes.get(playerId) ?? 1;
+        player.setVolume(requestedVolume * this.#globalVolume);
+      }
     }
   }
 
@@ -207,5 +224,6 @@ export class HTML5AudioManager {
       player.dispose();
     }
     this.#players.clear();
+    this.#requestedVolumes.clear();
   }
 }

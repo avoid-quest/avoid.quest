@@ -1,5 +1,7 @@
+import type { Radio } from "@/lib/audio";
+
 // Re-export Radio type for use in app
-export type { Radio } from "@/lib/audio";
+export type { Radio };
 
 export type Settings = {
   id?: number;

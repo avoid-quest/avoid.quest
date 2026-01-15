@@ -5,12 +5,7 @@ import {
   type IPannerNode,
   type IPannerOptions,
 } from "standardized-audio-context";
-import phaseVocoderProcessorWorkletUrl from "./bundles/phase-vocoder-bundle.js?url";
-import dattorroReverbWorkletUrl from "./bundles/dattorro-reverb-bundle.js?url";
 import { AudioCache, type ICache } from "./cache.js";
-
-// Export worklet bundle URLs for use in other packages
-export { dattorroReverbWorkletUrl, phaseVocoderProcessorWorkletUrl };
 import type { AudioBuffer, BiquadFilterNode, GainNode } from "./context.js";
 import { TypedEventEmitter } from "./eventEmitter.js";
 import type { CacophonyEvents } from "./events.js";
@@ -86,11 +81,6 @@ export class Cacophony {
   context: AudioContext;
   engine: CacophonyEngine;
   listener: IAudioListener;
-  /**
-   * Global gain node for backward compatibility with legacy audio routing.
-   * Used by EffectManager and other code that needs a gain node for routing.
-   */
-  globalGainNode: GainNode;
   private prevVolume = 1;
   private _muted = false;
   private readonly eventEmitter: TypedEventEmitter<CacophonyEvents> =
@@ -104,9 +94,6 @@ export class Cacophony {
   constructor(context?: AudioContext, cache?: ICache) {
     this.context = context || new AudioContext();
     this.listener = this.context.listener;
-    // Create global gain node for backward compatibility
-    this.globalGainNode = this.context.createGain() as GainNode;
-    this.globalGainNode.connect(this.context.destination);
     // @ts-ignore - IAudioContext vs AudioContext type mismatch from standardized-audio-context
     this.engine = new CacophonyEngine(this.context as any);
     this.cache = cache || new AudioCache();
@@ -147,24 +134,6 @@ export class Cacophony {
     return this.eventEmitter.emitAsync(event, data);
   }
 
-  async loadWorklets(signal?: AbortSignal) {
-    await this.engine.ready();
-    
-    // Route globalGainNode through engine for processing
-    // First disconnect from destination (set in constructor)
-    this.globalGainNode.disconnect();
-    this.engine.connectInput(this.globalGainNode as unknown as AudioNode);
-
-    if (this.context.audioWorklet) {
-      await this.createWorkletNode(
-        "phase-vocoder",
-        phaseVocoderProcessorWorkletUrl,
-        signal
-      );
-    } else {
-      console.warn("AudioWorklet not supported");
-    }
-  }
 
   async createWorkletNode(
     workletName: string,
@@ -278,21 +247,6 @@ export class Cacophony {
       );
     }
     const url = bufferOrUrl;
-    if (soundType === SoundType.HTML) {
-      const audio = new Audio();
-      audio.src = url;
-      audio.crossOrigin = "anonymous";
-      return Promise.resolve(
-        new Sound({
-          url,
-          buffer: undefined,
-          context: this.context,
-          soundType: SoundType.HTML,
-          panType,
-          cacophony: this,
-        })
-      );
-    }
     if (soundType === SoundType.Streaming) {
       return Promise.resolve(
         new Sound({
@@ -476,9 +430,8 @@ export class Cacophony {
   }
 
   setGlobalVolume(volume: number) {
-    // Update both engine and globalGainNode for backward compatibility
+    // Update engine volume via channelStrip
     this.engine.setVolume(volume);
-    this.globalGainNode.gain.value = volume;
     this.prevVolume = volume;
   }
 

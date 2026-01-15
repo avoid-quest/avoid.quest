@@ -5,9 +5,23 @@ import type {
 } from "@avoid.quest/radio-shared";
 import { load } from "cheerio";
 import { decode } from "html-entities";
-import { detectBandcampItemType } from "./detect";
+import { detectBandcampItemType } from "./detect.js";
 
-export { detectBandcampItemType, isBandcampUrl } from "./detect";
+export { detectBandcampItemType, isBandcampUrl } from "./detect.js";
+
+/**
+ * Get the proxied URL for a Bandcamp stream to avoid CORS issues
+ * @param url - The Bandcamp stream URL (typically from bcbits.com domain)
+ * @returns The proxied URL or the original URL if it's not a Bandcamp URL
+ */
+export function getProxiedBandcampUrl(url: string): string {
+  // Check if this is a Bandcamp URL (bcbits.com domain)
+  if (url.includes("bcbits.com")) {
+    // Use the proxy endpoint to avoid CORS issues
+    return `/api/bandcamp-proxy?url=${encodeURIComponent(url)}`;
+  }
+  return url;
+}
 
 const REQUEST_TIMEOUT_MS = 10_000;
 

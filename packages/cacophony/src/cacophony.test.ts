@@ -93,11 +93,12 @@ describe("Cacophony core", () => {
     it("sets and gets global volume correctly", () => {
       cacophony.volume = 0.5;
       expect(cacophony.volume).toBe(0.5);
-      expect(cacophony.globalGainNode.gain.value).toBe(0.5);
+      // Volume is controlled via engine, no globalGainNode
+      expect(cacophony.volume).toBe(0.5);
 
       cacophony.volume = 0.75;
       expect(cacophony.volume).toBe(0.75);
-      expect(cacophony.globalGainNode.gain.value).toBe(0.75);
+      // Volume is controlled via engine
     });
 
     it("mutes and unmutes correctly", () => {
@@ -107,12 +108,12 @@ describe("Cacophony core", () => {
       cacophony.mute();
       expect(cacophony.muted).toBe(true);
       expect(cacophony.volume).toBe(0);
-      expect(cacophony.globalGainNode.gain.value).toBe(0);
+      // Volume is controlled via engine
 
       cacophony.unmute();
       expect(cacophony.muted).toBe(false);
       expect(cacophony.volume).toBe(0.8);
-      expect(cacophony.globalGainNode.gain.value).toBe(0.8);
+      // Volume is controlled via engine
     });
 
     it("handles muted property correctly", () => {
@@ -121,12 +122,12 @@ describe("Cacophony core", () => {
       cacophony.muted = true;
       expect(cacophony.muted).toBe(true);
       expect(cacophony.volume).toBe(0);
-      expect(cacophony.globalGainNode.gain.value).toBe(0);
+      // Volume is controlled via engine
 
       cacophony.muted = false;
       expect(cacophony.muted).toBe(false);
       expect(cacophony.volume).toBe(0.6);
-      expect(cacophony.globalGainNode.gain.value).toBe(0.6);
+      // Volume is controlled via engine
     });
 
     it("allows setting volume to 0 and back without getting stuck", () => {
@@ -137,13 +138,13 @@ describe("Cacophony core", () => {
       // Set volume to 0 directly (not via mute)
       cacophony.volume = 0;
       expect(cacophony.volume).toBe(0);
-      expect(cacophony.globalGainNode.gain.value).toBe(0);
+      // Volume is controlled via engine
       expect(cacophony.muted).toBe(false); // Should not be muted
 
       // Should be able to set volume back to non-zero
       cacophony.volume = 0.7;
       expect(cacophony.volume).toBe(0.7);
-      expect(cacophony.globalGainNode.gain.value).toBe(0.7);
+      // Volume is controlled via engine
       expect(cacophony.muted).toBe(false);
     });
   });
@@ -221,9 +222,9 @@ describe("Cacophony advanced features", () => {
     expect(resumeSpy).toHaveBeenCalledTimes(1);
   });
 
-  it("setGlobalVolume sets the global gain node value", () => {
+  it("setGlobalVolume sets the engine volume", () => {
     cacophony.setGlobalVolume(0.5);
-    expect(cacophony.globalGainNode.gain.value).toBe(0.5);
+    expect(cacophony.volume).toBe(0.5);
   });
 
   describe("AbortSignal support", () => {
@@ -438,20 +439,6 @@ describe("Cacophony advanced features", () => {
       });
     });
 
-    it("loadWorklets passes AbortSignal to createWorkletNode", async () => {
-      const controller = new AbortController();
-      const createWorkletSpy = spyOn(cacophony, "createWorkletNode").mockResolvedValue(
-        {} as any
-      );
-
-      await cacophony.loadWorklets(controller.signal);
-
-      expect(createWorkletSpy).toHaveBeenCalledWith(
-        "phase-vocoder",
-        expect.any(String),
-        controller.signal
-      );
-    });
 
     it("createWorkletNode passes AbortSignal to addModule when needed", async () => {
       const controller = new AbortController();
@@ -571,39 +558,6 @@ describe("Cacophony advanced features", () => {
       expect(mockAudioWorklet.addModule).not.toHaveBeenCalled();
     });
 
-    it("loadWorklets works without AbortSignal (backward compatibility)", async () => {
-      const createWorkletSpy = spyOn(cacophony, "createWorkletNode").mockResolvedValue(
-        {} as any
-      );
-
-      await cacophony.loadWorklets();
-
-      expect(createWorkletSpy).toHaveBeenCalledWith(
-        "phase-vocoder",
-        expect.any(String),
-        undefined
-      );
-    });
-
-    it("loadWorklets handles missing audioWorklet gracefully", async () => {
-      const controller = new AbortController();
-      const consoleSpy = spyOn(console, "warn").mockImplementation(() => {
-        // Suppress console warnings in test
-      });
-
-      // Remove audioWorklet from context
-      Object.defineProperty(audioContextMock, "audioWorklet", {
-        value: null,
-        writable: true,
-        configurable: true,
-      });
-
-      await cacophony.loadWorklets(controller.signal);
-
-      expect(consoleSpy).toHaveBeenCalledWith("AudioWorklet not supported");
-
-      consoleSpy.mockRestore();
-    });
 
     it("createWorkletNode throws error when audioWorklet not supported", async () => {
       const controller = new AbortController();

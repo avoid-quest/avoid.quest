@@ -258,8 +258,8 @@ export class Synth
     this.emit("detuneChange", detune);
   }
 
-  get type(): OscillatorType {
-    return (this.oscillatorOptions.type as OscillatorType) || "sine";
+  get type(): OscillatorType | "custom" {
+    return (this.oscillatorOptions.type as OscillatorType | "custom") || "sine";
   }
 
   set type(type: OscillatorType) {

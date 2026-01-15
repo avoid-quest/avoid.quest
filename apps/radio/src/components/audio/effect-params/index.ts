@@ -1,4 +1,3 @@
-export { BiquadFilterParams } from "./biquad-filter-params";
 export { CompressorParams } from "./compressor-params";
 export { DelayParams } from "./delay-params";
 export { DistortionParams } from "./distortion-params";

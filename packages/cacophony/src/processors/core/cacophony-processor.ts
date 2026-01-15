@@ -10,6 +10,7 @@ import {
   type SetSourceVolumePayload,
   type SetSourcePanPayload,
   type SourceEndedPayload,
+  type StreamReadyPayload,
   type CreateOscillatorSourcePayload,
   type SetOscillatorFrequencyPayload,
   type SetOscillatorDetunePayload,
@@ -17,6 +18,10 @@ import {
   type AddFilterPayload,
   type RemoveFilterPayload,
   type SetFilterParamPayload,
+  type AddEffectPayload,
+  type RemoveEffectPayload,
+  type UpdateEffectPayload,
+  type ReorderEffectsPayload,
 } from "../../protocol.js";
 import { type BiquadFilterType } from "../effects/biquad-filter.js";
 
@@ -38,7 +43,6 @@ declare function registerProcessor(
 import { ChannelStrip } from "../channel-strip.js";
 import { Source, BufferSource, StreamSource } from "../source.js";
 import { OscillatorSource } from "../oscillator-source.js";
-import { StereoDelay } from "../effects/stereo-delay.js";
 
 export class CacophonyProcessor extends AudioWorkletProcessor {
   // Buffer registry
@@ -50,8 +54,8 @@ export class CacophonyProcessor extends AudioWorkletProcessor {
     offset: number;
     startTime: number;
   }>();
+  private streamFirstChunkReceived = new Map<string, boolean>();
   private channelStrip: ChannelStrip;
-  private delay: StereoDelay;
 
   constructor() {
     super();
@@ -59,10 +63,13 @@ export class CacophonyProcessor extends AudioWorkletProcessor {
     // Initialize with default sample rate (usually 44100 or 48000)
     // In a real worklet, globalThis.sampleRate is available
     this.channelStrip = new ChannelStrip(globalThis.sampleRate);
-    this.delay = new StereoDelay(globalThis.sampleRate * 2, 128); // 2 seconds max delay
   }
 
   private handleMessage(event: MessageEvent<Message>) {
+    if (!event.data) {
+      console.warn("Received null message in worklet");
+      return;
+    }
     const { type, payload } = event.data;
 
     switch (type) {
@@ -117,9 +124,21 @@ export class CacophonyProcessor extends AudioWorkletProcessor {
     case MessageType.REMOVE_FILTER:
       this.handleRemoveFilter(payload);
       break;
-    case MessageType.SET_FILTER_PARAM:
-      this.handleSetFilterParam(payload);
-      break;
+      case MessageType.SET_FILTER_PARAM:
+        this.handleSetFilterParam(payload);
+        break;
+      case MessageType.ADD_EFFECT:
+        this.handleAddEffect(payload);
+        break;
+      case MessageType.REMOVE_EFFECT:
+        this.handleRemoveEffect(payload);
+        break;
+      case MessageType.UPDATE_EFFECT:
+        this.handleUpdateEffect(payload);
+        break;
+      case MessageType.REORDER_EFFECTS:
+        this.handleReorderEffects(payload);
+        break;
     }
   }
 
@@ -147,6 +166,34 @@ export class CacophonyProcessor extends AudioWorkletProcessor {
     const source = this.sources.get(payload.sourceId);
     if (source) {
       source.setFilterParam(payload.filterId, payload.param, payload.value);
+    }
+  }
+
+  private handleAddEffect(payload: AddEffectPayload) {
+    const source = this.sources.get(payload.sourceId);
+    if (source) {
+      source.addEffect(payload.effectId, payload.type, payload.config, payload.order);
+    }
+  }
+
+  private handleRemoveEffect(payload: RemoveEffectPayload) {
+    const source = this.sources.get(payload.sourceId);
+    if (source) {
+      source.removeEffect(payload.effectId);
+    }
+  }
+
+  private handleUpdateEffect(payload: UpdateEffectPayload) {
+    const source = this.sources.get(payload.sourceId);
+    if (source) {
+      source.updateEffect(payload.effectId, payload.config);
+    }
+  }
+
+  private handleReorderEffects(payload: ReorderEffectsPayload) {
+    const source = this.sources.get(payload.sourceId);
+    if (source) {
+      source.reorderEffects(payload.effectIds);
     }
   }
 
@@ -185,6 +232,17 @@ export class CacophonyProcessor extends AudioWorkletProcessor {
     const source = this.sources.get(payload.sourceId);
     if (source && source instanceof StreamSource) {
         source.addChunk(payload.chunk);
+        
+        // Emit STREAM_READY event when first chunk is received
+        if (!this.streamFirstChunkReceived.get(payload.sourceId)) {
+          this.streamFirstChunkReceived.set(payload.sourceId, true);
+          this.port.postMessage({
+            type: MessageType.STREAM_READY,
+            payload: {
+              sourceId: payload.sourceId,
+            } as StreamReadyPayload,
+          });
+        }
     }
   }
 
@@ -193,13 +251,8 @@ export class CacophonyProcessor extends AudioWorkletProcessor {
       this.channelStrip.setVolume(payload.value);
     } else if (payload.target === "channelStrip.pan") {
       this.channelStrip.setPan(payload.value);
-    } else if (payload.target === "delay.time") {
-      this.delay.offset = payload.value * globalThis.sampleRate;
-    } else if (payload.target === "delay.feedback") {
-      this.delay.feedback = payload.value;
-    } else if (payload.target === "delay.mix") {
-      this.delay.mix(payload.value, 1 - payload.value);
     }
+    // Delay is now a per-source effect, not global
   }
 
   private handleStartSource(payload: StartSourcePayload) {
@@ -230,6 +283,8 @@ export class CacophonyProcessor extends AudioWorkletProcessor {
         source.stop();
       } else if (source instanceof StreamSource) {
         source.stop();
+        // Reset first chunk flag when stream is stopped
+        this.streamFirstChunkReceived.delete(payload.sourceId);
       } else if (source instanceof OscillatorSource) {
         source.stop();
       }
@@ -401,6 +456,7 @@ export class CacophonyProcessor extends AudioWorkletProcessor {
     for (const id of sourcesToRemove) {
       this.sources.delete(id);
       this.sourceStates.delete(id);
+      this.streamFirstChunkReceived.delete(id);
       
       // Emit SOURCE_ENDED event
       this.port.postMessage({
@@ -412,11 +468,8 @@ export class CacophonyProcessor extends AudioWorkletProcessor {
       });
     }
     
-    // Apply Effects
-    // Stereo Delay
-    this.delay.process(outputL, outputR, outputL, outputR, 0, outputL.length);
-    
     // Apply Channel Strip (Volume, Pan, etc.)
+    // Note: Effects are applied per-source in Source.applyEffects()
     // Note: We are processing in-place on the output buffer
     this.channelStrip.process(
         outputL, // Input L (mixed sources)

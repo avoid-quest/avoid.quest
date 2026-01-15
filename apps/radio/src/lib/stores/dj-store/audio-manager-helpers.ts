@@ -1,5 +1,5 @@
-import { AudioManager } from "@avoid.quest/radio-audio";
-import type { Radio } from "@/lib/types";
+import type { Radio } from "@avoid.quest/cacophony";
+import { AudioManager } from "@avoid.quest/cacophony";
 import type { DeckSide } from "./types";
 
 // Lazy initialization of AudioManager to avoid SSR issues

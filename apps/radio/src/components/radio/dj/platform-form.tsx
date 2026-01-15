@@ -1,3 +1,4 @@
+import type { Radio } from "@avoid.quest/cacophony";
 import type { Platform, PlatformItemResponse } from "@avoid.quest/radio-shared";
 import { Button } from "@workspace/ui/components/button";
 import { Input } from "@workspace/ui/components/input";
@@ -11,7 +12,6 @@ import {
   getUrlPlaceholder,
 } from "@/lib/external-url/metadata-helpers";
 import { createPlatformRadio } from "@/lib/external-url/utils";
-import type { Radio } from "@/lib/types";
 
 type PlatformFormProps = {
   onLoad: (radio: Radio) => void;

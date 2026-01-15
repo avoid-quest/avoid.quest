@@ -1,3 +1,4 @@
+import type { Radio } from "@avoid.quest/cacophony";
 import { Button } from "@workspace/ui/components/button";
 import {
   DropdownMenu,
@@ -18,7 +19,6 @@ import {
 import { useState } from "react";
 import { toast } from "sonner";
 import { db } from "@/lib/db";
-import type { Radio } from "@/lib/types";
 
 type RadioItemActionsProps = {
   radio: Radio;

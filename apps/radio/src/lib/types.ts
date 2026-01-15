@@ -1,10 +1,4 @@
-import type { Radio } from "@avoid.quest/radio-shared";
-
-export type {
-  Radio,
-  RadioMetadata,
-  ScrapedOption,
-} from "@avoid.quest/radio-shared";
+import type { Radio } from "@avoid.quest/cacophony";
 
 export type Settings = {
   id?: number;

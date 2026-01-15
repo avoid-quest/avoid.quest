@@ -1,3 +1,4 @@
+import type { Radio, RadioMetadata } from "@avoid.quest/cacophony";
 import {
   Dialog,
   DialogContent,
@@ -6,7 +7,6 @@ import {
   DialogTitle,
 } from "@workspace/ui/components/dialog";
 import { useState } from "react";
-import type { Radio, RadioMetadata } from "@/lib/types";
 import { RadioAddModeSelector } from "./radio-add-mode-selector";
 import { RadioForm } from "./radio-form";
 import { RadioGuidedForm } from "./radio-guided-form";

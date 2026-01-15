@@ -1,3 +1,4 @@
+import type { Radio } from "@avoid.quest/cacophony";
 import type { DragEndEvent } from "@dnd-kit/core";
 import {
   closestCenter,
@@ -29,7 +30,6 @@ import { GripVerticalIcon, PlusIcon, Volume2Icon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { db } from "@/lib/db";
-import type { Radio } from "@/lib/types";
 import { RadioItemActions } from "../radio/radio-item-actions";
 import { RadioLogo } from "../radio/radio-logo";
 import { RadioNameLink } from "../radio/radio-name-link";

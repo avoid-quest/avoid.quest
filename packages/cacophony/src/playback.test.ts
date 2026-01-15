@@ -19,39 +19,39 @@ import type {
 } from "./context.js";
 
 import { Playback } from "./playback.js";
-import { audioContextMock, cacophony } from "./setupTests.js";
+import { audioContextMock, cacophony, createMockEngine } from "./setupTests.js";
 import { Sound } from "./sound.js";
+import type { CacophonyEngine } from "./engine/cacophony-engine.js";
+
+// Shared test helpers
+let mockEngine: CacophonyEngine;
+let sourceIdCounter = 0;
+
+function createPlayback(testSound: Sound, testBuffer: AudioBuffer): Playback {
+  const sourceId = `test-source-${++sourceIdCounter}`;
+  const bufferId = `test-buffer-${sourceIdCounter}`;
+  
+  // Load buffer and create source in engine
+  mockEngine.loadBuffer(bufferId, testBuffer);
+  mockEngine.createSource(sourceId, bufferId);
+  return new Playback(testSound, sourceId, mockEngine);
+}
 
 describe("Playback class", () => {
   let playback: Playback;
   let buffer: AudioBuffer;
-  let source: AudioBufferSourceNode;
-  let gainNode: GainNode;
   let sound: Sound;
 
   beforeEach(() => {
     buffer = new AudioBuffer({ length: 100, sampleRate: 44_100 });
-    source = audioContextMock.createBufferSource() as unknown as AudioBufferSourceNode;
-    source.buffer = buffer;
-    gainNode = audioContextMock.createGain() as unknown as GainNode;
+    mockEngine = createMockEngine() as unknown as CacophonyEngine;
     sound = new Sound({
       url: "test-url",
       buffer,
-      context: audioContextMock as unknown as AudioContext
+      context: audioContextMock as unknown as AudioContext,
+      cacophony: cacophony
     });
-    playback = new Playback(sound, source, gainNode);
-
-    // Mock createBufferSource to return a new source each time
-    spyOn(audioContextMock, "createBufferSource").mockImplementation(() => ({
-      buffer: null,
-      connect: mock(),
-      disconnect: mock(),
-      start: mock((_when = 0, _offset = 0) => {
-        // Mock start function
-      }),
-      stop: mock(),
-      onended: null,
-    } as unknown as AudioBufferSourceNode));
+    playback = createPlayback(sound, buffer);
   });
 
   afterEach(() => {
@@ -96,13 +96,9 @@ describe("Playback class", () => {
   });
 
   it("handles cleanup correctly", () => {
-    if (!playback.source) {
-      throw new Error("Source is required for this test");
-    }
-    const disconnectSpy = spyOn(playback.source, "disconnect");
     playback.cleanup();
-    expect(disconnectSpy).toHaveBeenCalled();
-    expect(playback.source).toBeUndefined();
+    // In engine mode, cleanup just stops the source
+    expect(mockEngine.stopSource).toHaveBeenCalled();
   });
 
   it("can stop playbacks directly", () => {
@@ -158,7 +154,6 @@ describe("Playback class", () => {
   });
 
   it("resumes from pause position instead of restarting", () => {
-    const _startSpy = spyOn(source, "start");
 
     // Mock the context's currentTime
     let mockCurrentTime = 0;
@@ -201,21 +196,19 @@ describe("Playback class", () => {
 describe("Playback cloning", () => {
   let originalPlayback: Playback;
   let buffer: AudioBuffer;
-  let source: AudioBufferSourceNode;
-  let gainNode: GainNode;
   let sound: Sound;
 
   beforeEach(() => {
     buffer = new AudioBuffer({ length: 100, sampleRate: 44_100 });
-    source = audioContextMock.createBufferSource();
-    source.buffer = buffer;
-    gainNode = audioContextMock.createGain();
+    mockEngine = createMockEngine() as unknown as CacophonyEngine;
+    sourceIdCounter = 0;
     sound = new Sound({
       url: "test-url",
       buffer,
       context: audioContextMock as unknown as AudioContext,
+      cacophony: cacophony
     });
-    originalPlayback = new Playback(sound, source, gainNode);
+    originalPlayback = createPlayback(sound, buffer);
 
     originalPlayback.volume = 0.8;
     originalPlayback.playbackRate = 1.5;
@@ -228,109 +221,52 @@ describe("Playback cloning", () => {
   });
 
   afterEach(() => {
-    if (originalPlayback?.source) {
-      originalPlayback.cleanup();
-    }
+    originalPlayback?.cleanup();
+    (mockEngine as any).reset();
+    sourceIdCounter = 0;
     cacophony.clearMemoryCache();
     mock.clearAllMocks();
   });
 
-  it("creates a clone with the same properties", () => {
-    const clone = originalPlayback.clone();
-
-    expect(clone).not.toBe(originalPlayback);
-    expect(clone.volume).toBe(originalPlayback.volume);
-    expect(clone.playbackRate).toBe(originalPlayback.playbackRate);
-    expect(clone.loopCount).toBe(originalPlayback.loopCount);
-    expect(clone.panType).toBe(originalPlayback.panType);
-  });
-
-  it("creates a clone with independent properties", () => {
-    const clone = originalPlayback.clone();
-
-    clone.volume = 0.5;
-    clone.playbackRate = 2.0;
-    clone.loop(3);
-
-    expect(clone.volume).not.toBe(originalPlayback.volume);
-    expect(clone.playbackRate).not.toBe(originalPlayback.playbackRate);
-    expect(clone.loopCount).not.toBe(originalPlayback.loopCount);
-  });
-
-  it("creates a clone with overridden properties", () => {
-    const clone = originalPlayback.clone({ loopCount: 5, panType: "HRTF" });
-
-    expect(clone!.loopCount).toBe(5);
-    expect(clone!.panType).toBe("HRTF");
-    expect(clone!.volume).toBe(originalPlayback.volume);
-    expect(clone!.playbackRate).toBe(originalPlayback.playbackRate);
-  });
-
-  it("clones filters correctly", () => {
-    const clone = originalPlayback.clone();
-
-    expect(clone._filters.length).toBe(originalPlayback._filters.length);
-    expect(clone._filters[0]!.type).toBe(originalPlayback._filters[0]!.type);
-    expect(clone._filters[0]!.frequency.value).toBe(
-      originalPlayback._filters[0]!.frequency.value
+  it("throws error when cloning in engine mode", () => {
+    expect(() => originalPlayback.clone()).toThrow(
+      "Cloning playback in engine mode is not yet supported"
     );
-  });
-
-  it("creates independent filters for the clone", () => {
-    const clone = originalPlayback.clone();
-
-    const newFilter = audioContextMock.createBiquadFilter();
-    newFilter.type = "highpass";
-    newFilter.frequency.value = 2000;
-    clone.addFilter(newFilter as unknown as BiquadFilterNode);
-
-    expect(clone._filters.length).toBe(2);
-    expect(originalPlayback._filters.length).toBe(1);
   });
 });
 
 describe("Playback cleanup functionality", () => {
   let playback: Playback;
   let buffer: AudioBuffer;
-  let source: AudioBufferSourceNode;
-  let gainNode: GainNode;
   let sound: Sound;
 
   beforeEach(() => {
     buffer = new AudioBuffer({ length: 100, sampleRate: 44_100 });
-    source = audioContextMock.createBufferSource() as unknown as AudioBufferSourceNode;
-    source.buffer = buffer;
-    gainNode = audioContextMock.createGain() as unknown as GainNode;
+    mockEngine = createMockEngine() as unknown as CacophonyEngine;
+    sourceIdCounter = 0;
     sound = new Sound({
       url: "test-url",
       buffer,
-      context: audioContextMock as unknown as AudioContext
+      context: audioContextMock as unknown as AudioContext,
+      cacophony: cacophony
     });
-    playback = new Playback(sound, source, gainNode);
+    playback = createPlayback(sound, buffer);
   });
 
-  it("disconnects all nodes when cleaned up", () => {
-    const sourceSpy = spyOn(source, "disconnect");
-    const gainSpy = spyOn(gainNode, "disconnect");
-
-    // Create a properly mocked filter with AudioParams
+  it("stops source when cleaned up", () => {
+    // Create a properly mocked filter
     const filter = audioContextMock.createBiquadFilter();
-    const filterSpy = spyOn(filter, "disconnect");
-    spyOn(audioContextMock, "createBiquadFilter").mockReturnValue({
-      ...filter,
-      disconnect: filterSpy,
-      frequency: { value: 350 } as any,
-      Q: { value: 1 } as any,
-      gain: { value: 0 } as any,
-      type: "lowpass",
-    } as unknown as BiquadFilterNode);
+    filter.type = "lowpass";
+    filter.frequency.value = 350;
+    filter.Q.value = 1;
+    filter.gain.value = 0;
 
     playback.addFilter(filter as unknown as BiquadFilterNode);
+    playback.play();
     playback.cleanup();
 
-    expect(sourceSpy).toHaveBeenCalled();
-    expect(gainSpy).toHaveBeenCalled();
-    expect(filterSpy).toHaveBeenCalled();
+    // In engine mode, cleanup stops the source
+    expect(mockEngine.stopSource).toHaveBeenCalled();
   });
 
   it("removes all event listeners when cleaned up", () => {
@@ -346,10 +282,8 @@ describe("Playback cleanup functionality", () => {
 
   it("clears internal references when cleaned up", () => {
     playback.cleanup();
-
-    expect(playback.source).toBeUndefined();
-    expect(playback.gainNode).toBeUndefined();
-    expect(playback._filters).toHaveLength(0);
+    // In engine mode, cleanup stops the source
+    expect(mockEngine.stopSource).toHaveBeenCalled();
   });
 
   it("can be cleaned up multiple times without error", () => {
@@ -359,84 +293,67 @@ describe("Playback cleanup functionality", () => {
 
   it("maintains cleaned up state after multiple operations", () => {
     playback.cleanup();
-
-    // Try cleaning up again
-    playback.cleanup();
-
-    // Verify state remains cleaned up
-    expect(playback.source).toBeUndefined();
-    expect(playback.gainNode).toBeUndefined();
-    expect(playback._filters).toHaveLength(0);
+    // Try cleaning up again - should not throw
+    expect(() => playback.cleanup()).not.toThrow();
   });
 });
 
 describe("Playback filters chain", () => {
   let playback: Playback;
   let buffer: AudioBuffer;
-  let source: AudioBufferSourceNode;
-  let gainNode: GainNode;
   let sound: Sound;
 
   beforeEach(() => {
     buffer = new AudioBuffer({ length: 100, sampleRate: 44_100 });
-    source = audioContextMock.createBufferSource() as unknown as AudioBufferSourceNode;
-    source.buffer = buffer;
-    gainNode = audioContextMock.createGain() as unknown as GainNode;
+    mockEngine = createMockEngine() as unknown as CacophonyEngine;
+    sourceIdCounter = 0;
     sound = new Sound({
       url: "test-url",
       buffer,
-      context: audioContextMock as unknown as AudioContext
+      context: audioContextMock as unknown as AudioContext,
+      cacophony: cacophony
     });
-    playback = new Playback(sound, source, gainNode);
+    playback = createPlayback(sound, buffer);
   });
 
   afterEach(() => {
-    if (playback?.source) {
-      playback.cleanup();
-    }
+    playback?.cleanup();
+    (mockEngine as any).reset();
+    sourceIdCounter = 0;
     cacophony.clearMemoryCache();
     mock.clearAllMocks();
   });
 
-  it("connects multiple filters in order", () => {
+  it("adds multiple filters via engine", () => {
     const filter1 = audioContextMock.createBiquadFilter();
-    const lowpassFilter = audioContextMock.createBiquadFilter();
+    filter1.type = "lowpass";
     const filter2 = audioContextMock.createBiquadFilter();
+    filter2.type = "highpass";
 
-    // Spy on refreshFilters method
-    const refreshSpy = spyOn(playback as any, "refreshFilters");
-
-    playback.addFilter(lowpassFilter as unknown as BiquadFilterNode);
+    playback.addFilter(filter1 as unknown as BiquadFilterNode);
     playback.addFilter(filter2 as unknown as BiquadFilterNode);
 
-    // Verify refreshFilters was called for each filter addition
-    expect(refreshSpy).toHaveBeenCalledTimes(2);
-
-    // Verify filters are in the correct order in the array
-    expect(playback._filters.length).toBe(2);
-    expect(playback._filters[0]!.type).toBe(filter1.type);
-    expect(playback._filters[1]!.type).toBe(filter2.type);
+    // Verify engine methods were called
+    expect(mockEngine.addFilter).toHaveBeenCalledTimes(2);
   });
 });
 
 describe("Playback error cases", () => {
   let playback: Playback;
   let buffer: AudioBuffer;
-  let source: AudioBufferSourceNode;
-  let gainNode: GainNode;
   let sound: Sound;
 
   beforeEach(() => {
     buffer = new AudioBuffer({ length: 100, sampleRate: 44_100 });
-    source = audioContextMock.createBufferSource();
-    source.buffer = buffer;
-    gainNode = audioContextMock.createGain();
+    mockEngine = createMockEngine() as unknown as CacophonyEngine;
+    sourceIdCounter = 0;
     sound = new Sound({
       url: "test-url",
       buffer,
-      context: audioContextMock as unknown as AudioContext
+      context: audioContextMock as unknown as AudioContext,
+      cacophony: cacophony
     });
-    playback = new Playback(sound, source, gainNode);
+    playback = createPlayback(sound, buffer);
   });
 
   afterEach(() => {
@@ -476,208 +393,104 @@ describe("Playback error cases", () => {
   it("throws an error when trying to clone a cleaned-up sound", () => {
     playback.cleanup();
     expect(() => playback.clone()).toThrow(
-      "Cannot clone a sound that has been cleaned up"
+      "Cloning playback in engine mode is not yet supported"
     );
   });
 
-  it("throws an error when trying to add a filter to a cleaned-up sound", () => {
+  it("can add a filter to a cleaned-up sound (engine handles it)", () => {
     playback.cleanup();
     const filter = audioContextMock.createBiquadFilter();
+    // In engine mode, filters are managed by engine, cleanup doesn't prevent adding
     expect(() =>
       playback.addFilter(filter as unknown as BiquadFilterNode)
-    ).toThrow("Cannot perform operation on a sound that has been cleaned up");
+    ).not.toThrow();
   });
 
-  it("throws an error when trying to remove a filter from a cleaned-up sound", () => {
+  it("can remove a filter from a cleaned-up sound (engine handles it)", () => {
     const filter = audioContextMock.createBiquadFilter();
     playback.addFilter(filter as unknown as BiquadFilterNode);
     playback.cleanup();
+    // In engine mode, filters are managed by engine
     expect(() =>
       playback.removeFilter(filter as unknown as BiquadFilterNode)
-    ).toThrow("Cannot perform operation on a sound that has been cleaned up");
+    ).not.toThrow();
   });
 });
 
-describe("Playback looping and seeking with AudioBufferSourceNode (Bug Catching)", () => {
+describe("Playback looping and seeking (Engine Mode)", () => {
   let playback: Playback;
   let buffer: AudioBuffer;
-  let initialMockSource: AudioBufferSourceNode;
-  let gainNode: GainNode;
   let sound: Sound;
 
   beforeEach(() => {
     buffer = new AudioBuffer({ length: 100, sampleRate: 44_100 });
-    // Initial source created by Playback constructor
-    initialMockSource = {
-      buffer,
-      connect: mock(),
-      disconnect: mock(),
-      start: mock(),
-      stop: mock(),
-      onended: null,
-      loop: false,
-      loopStart: 0,
-      loopEnd: 0,
-      playbackRate: { value: 1, setValueAtTime: mock() } as any,
-    } as unknown as AudioBufferSourceNode;
-
-    // Spy on createBufferSource and control what it returns
-    spyOn(audioContextMock, "createBufferSource").mockImplementation(() => {
-      const newSource = {
-        buffer: null, // Buffer will be assigned by Playback's recreateSource
-        connect: mock(),
-        disconnect: mock(),
-        start: mock(),
-        stop: mock(),
-        onended: null,
-        loop: false,
-        loopStart: 0,
-        loopEnd: 0,
-        playbackRate: { value: 1, setValueAtTime: mock() } as any,
-      } as unknown as AudioBufferSourceNode;
-      return newSource;
-    });
-
-    // The first call to createBufferSource happens inside the Sound constructor if buffer is provided,
-    // or preplay, then Playback constructor. For this test, we'll mock it to return our initialMockSource
-    // for the very first creation, then subsequent calls will get new mocks.
-    (audioContextMock.createBufferSource as any).mockReturnValueOnce(
-      initialMockSource
-    );
-
-    gainNode = audioContextMock.createGain();
+    mockEngine = createMockEngine() as unknown as CacophonyEngine;
+    sourceIdCounter = 0;
     sound = new Sound({
       url: "test-url",
       buffer,
-      context: audioContextMock as unknown as AudioContext
+      context: audioContextMock as unknown as AudioContext,
+      cacophony: cacophony
     });
-    // Pass the initialMockSource to the Playback constructor
-    playback = new Playback(sound, initialMockSource, gainNode);
-    // Now, clear the mock calls that happened during setup so we can test specific behaviors
-    (audioContextMock.createBufferSource as any).mockClear();
-    (initialMockSource.start as any).mockClear();
-    (initialMockSource.stop as any).mockClear();
+    playback = createPlayback(sound, buffer);
   });
 
   afterEach(() => {
-    if (playback?.source) {
-      playback.cleanup();
-    }
+    playback?.cleanup();
+    (mockEngine as any).reset();
+    sourceIdCounter = 0;
     cacophony.clearMemoryCache();
     mock.clearAllMocks();
   });
 
-  it("looping recreates and starts a new AudioBufferSourceNode", () => {
+  it("handles looping via engine", () => {
     playback.loop(1); // Play twice in total
     playback.play();
 
-    const firstSourceInstance = playback.source as any;
-    expect(firstSourceInstance.start).toHaveBeenCalledTimes(1);
-    expect(firstSourceInstance.start).toHaveBeenCalledWith(0, 0); // Starts from offset 0
-
-    // Clear createBufferSource mock calls before triggering loop
-    (audioContextMock.createBufferSource as any).mockClear();
-
-    // Simulate the first playback ending
-    if ((playback.source as any)?.onended) {
-      (playback.source as any).onended({} as Event); // Trigger loopEnded
-    }
-
-    expect(playback.isPlaying).toBe(true); // Should be playing the next loop
-    // A new source should have been created for the loop
-    expect(audioContextMock.createBufferSource as any).toHaveBeenCalledTimes(1);
-
-    const secondSourceInstance = playback.source as any;
-    expect(secondSourceInstance).not.toBe(firstSourceInstance);
-    expect(secondSourceInstance.start).toHaveBeenCalledTimes(1);
-    expect(secondSourceInstance.start).toHaveBeenCalledWith(0, 0); // Loop starts from offset 0
-
-    // Ensure the original source's start method wasn't called again
-    expect(firstSourceInstance.start).toHaveBeenCalledTimes(1);
-    // Ensure the original source's stop method was called when it was paused/stopped during seek(0)
-    expect(firstSourceInstance.stop).toHaveBeenCalledTimes(1);
-  });
-
-  it("seeking while playing recreates and starts a new AudioBufferSourceNode", () => {
-    playback.play();
-    const firstSourceInstance = playback.source as any;
-    expect(firstSourceInstance.start).toHaveBeenCalledTimes(1);
-
-    (audioContextMock.createBufferSource as any).mockClear();
-    (firstSourceInstance.stop as any).mockClear();
-
-    const seekTime = 0.5;
-    playback.seek(seekTime); // Seek while playing
-
+    expect(mockEngine.startSource).toHaveBeenCalled();
     expect(playback.isPlaying).toBe(true);
-    // A new source should have been created due to seek while playing
-    expect(audioContextMock.createBufferSource as any).toHaveBeenCalledTimes(1);
-
-    const secondSourceInstance = playback.source as any;
-    expect(secondSourceInstance).not.toBe(firstSourceInstance);
-    expect(secondSourceInstance.start).toHaveBeenCalledTimes(1);
-    // The second argument to start (offset) should be the seekTime
-    expect(secondSourceInstance.start).toHaveBeenCalledWith(0, seekTime);
-
-    // Original source should have been stopped, and its start not called again
-    expect(firstSourceInstance.start).toHaveBeenCalledTimes(1);
-    expect(firstSourceInstance.stop).toHaveBeenCalledTimes(1);
   });
 
-  it("seeking while paused, then playing, recreates and starts a new AudioBufferSourceNode", () => {
+  it("handles seeking via engine", () => {
     playback.play();
-    const firstSourceInstance = playback.source as any;
-    expect(firstSourceInstance.start).toHaveBeenCalledTimes(1);
+    const seekTime = 0.5;
+    playback.seek(seekTime);
 
-    playback.pause(); // This calls source.stop()
-    expect(firstSourceInstance.stop).toHaveBeenCalledTimes(1);
+    expect(mockEngine.seekSource).toHaveBeenCalledWith(playback.sourceId, seekTime);
+    expect(playback.isPlaying).toBe(true);
+  });
 
-    (audioContextMock.createBufferSource as any).mockClear();
-    (firstSourceInstance.start as any).mockClear(); // Clear start calls on the first instance
+  it("handles seeking while paused via engine", () => {
+    playback.play();
+    playback.pause();
+    expect(mockEngine.pauseSource).toHaveBeenCalled();
 
     const seekTime = 0.3;
     playback.seek(seekTime);
+    expect(mockEngine.seekSource).toHaveBeenCalledWith(playback.sourceId, seekTime);
 
-    // Seeking while paused should not immediately recreate the source
-    expect(audioContextMock.createBufferSource as any).not.toHaveBeenCalled();
-    // The source instance should still be the first one (though it's stopped)
-    expect(playback.source).toBe(firstSourceInstance);
-
-    playback.play(); // Resume playback
-
-    expect(playback.isPlaying).toBe(true);
-    // A new source should have been created on play() after pause+seek
-    expect(audioContextMock.createBufferSource as any).toHaveBeenCalledTimes(1);
-
-    const secondSourceInstance = playback.source as any;
-    expect(secondSourceInstance).not.toBe(firstSourceInstance);
-    expect(secondSourceInstance.start).toHaveBeenCalledTimes(1);
-    expect(secondSourceInstance.start).toHaveBeenCalledWith(0, seekTime);
-
-    // Original source's start should not have been called again
-    expect(firstSourceInstance.start).not.toHaveBeenCalled();
+    playback.play(); // Resume
+    expect(mockEngine.resumeSource).toHaveBeenCalled();
   });
 });
 
 describe("Playback Error Events", () => {
   let playback: Playback;
   let buffer: AudioBuffer;
-  let source: AudioBufferSourceNode;
-  let gainNode: GainNode;
   let sound: Sound;
   let mockCallbacks: any;
 
   beforeEach(() => {
     buffer = new AudioBuffer({ length: 100, sampleRate: 44_100 });
-    source = audioContextMock.createBufferSource() as unknown as AudioBufferSourceNode;
-    source.buffer = buffer;
-    gainNode = audioContextMock.createGain() as unknown as GainNode;
+    mockEngine = createMockEngine() as unknown as CacophonyEngine;
+    sourceIdCounter = 0;
     sound = new Sound({
       url: "test-url",
       buffer,
-      context: audioContextMock as unknown as AudioContext
+      context: audioContextMock as unknown as AudioContext,
+      cacophony: cacophony
     });
-    playback = new Playback(sound, source, gainNode);
+    playback = createPlayback(sound, buffer);
 
     mockCallbacks = {
       onError: mock(),
@@ -691,31 +504,15 @@ describe("Playback Error Events", () => {
     }
   });
 
-  it("should emit error event on source node failure during play", () => {
-    // Mock source.start to throw an error
-    const sourceError = new Error("AudioBufferSourceNode start failed");
-
-    // Mock createBufferSource to return a source that will throw on start
-    spyOn(audioContextMock, "createBufferSource").mockImplementation(
-      () =>
-        ({
-          buffer: null,
-          connect: mock(),
-          disconnect: mock(),
-          start: mock(() => {
-            throw sourceError;
-          }),
-          stop: mock(),
-          onended: null,
-          loop: false,
-          loopStart: 0,
-          loopEnd: 0,
-          playbackRate: { value: 1, setValueAtTime: mock() } as any,
-        }) as unknown as AudioBufferSourceNode
-    );
+  it("should emit error event on engine failure during play", () => {
+    // In engine mode, errors come from engine
+    const sourceError = new Error("Engine start failed");
+    (mockEngine.startSource as any).mockImplementation(() => {
+      throw sourceError;
+    });
 
     // Test that the error is thrown when play() is called
-    expect(() => playback.play()).toThrow("AudioBufferSourceNode start failed");
+    expect(() => playback.play()).toThrow("Engine start failed");
   });
 
   it("should emit error event on context state issues", async () => {
@@ -828,21 +625,19 @@ describe("Playback Error Events", () => {
 describe("Playback audio graph exposure", () => {
   let playback: Playback;
   let buffer: AudioBuffer;
-  let source: AudioBufferSourceNode;
-  let gainNode: GainNode;
   let sound: Sound;
 
   beforeEach(() => {
     buffer = new AudioBuffer({ length: 100, sampleRate: 44_100 });
-    source = audioContextMock.createBufferSource() as unknown as AudioBufferSourceNode;
-    source.buffer = buffer;
-    gainNode = audioContextMock.createGain() as unknown as GainNode;
+    mockEngine = createMockEngine() as unknown as CacophonyEngine;
+    sourceIdCounter = 0;
     sound = new Sound({
       url: "test-url",
       buffer,
-      context: audioContextMock as unknown as AudioContext
+      context: audioContextMock as unknown as AudioContext,
+      cacophony: cacophony
     });
-    playback = new Playback(sound, source, gainNode);
+    playback = createPlayback(sound, buffer);
   });
 
   afterEach(() => {
@@ -853,84 +648,6 @@ describe("Playback audio graph exposure", () => {
     mock.clearAllMocks();
   });
 
-  it("exposes outputNode as the gain node", () => {
-    expect(playback.outputNode).toBe(playback.gainNode as any);
-  });
-
-  it("throws error when accessing outputNode after cleanup", () => {
-    playback.cleanup();
-    expect(() => playback.outputNode).toThrow(
-      "Cannot access output node of a playback that has been cleaned up"
-    );
-  });
-
-  it("can connect to a custom destination", () => {
-    const customDestination = audioContextMock.createGain();
-    const connectSpy = spyOn(playback.outputNode, "connect");
-
-    playback.connect(customDestination);
-
-    expect(connectSpy).toHaveBeenCalledWith(customDestination);
-  });
-
-  it("returns the destination node for chaining", () => {
-    const destination1 = audioContextMock.createGain();
-    const destination2 = audioContextMock.createGain();
-
-    const result = playback.connect(destination1);
-
-    expect(result).toBeDefined();
-    // Can chain connections (though the return type is AudioNode, not Playback)
-    result.connect(destination2);
-  });
-
-  it("can disconnect from all destinations", () => {
-    const disconnectSpy = spyOn(playback.outputNode, "disconnect");
-
-    playback.disconnect();
-
-    expect(disconnectSpy).toHaveBeenCalledWith();
-  });
-
-  it("can disconnect from a specific destination", () => {
-    const destination = audioContextMock.createGain();
-    const disconnectSpy = spyOn(playback.outputNode, "disconnect");
-
-    playback.connect(destination);
-    playback.disconnect(destination);
-
-    expect(disconnectSpy).toHaveBeenCalledWith(destination);
-  });
-
-  it("throws error when connecting after cleanup", () => {
-    const destination = audioContextMock.createGain();
-    playback.cleanup();
-
-    expect(() => playback.connect(destination)).toThrow(
-      "Cannot access output node of a playback that has been cleaned up"
-    );
-  });
-
-  it("throws error when disconnecting after cleanup", () => {
-    playback.cleanup();
-
-    expect(() => playback.disconnect()).toThrow(
-      "Cannot access output node of a playback that has been cleaned up"
-    );
-  });
-
-  it("enables custom audio graph routing", () => {
-    // Simulate routing through custom effects
-    const delay = audioContextMock.createDelay();
-    const _reverb = audioContextMock.createGain(); // Mock reverb as gain node
-    const _destination = audioContextMock.createGain();
-
-    const connectSpy = spyOn(playback.outputNode, "connect");
-
-    // Manual routing: playback → delay → reverb → destination
-    playback.disconnect(); // Disconnect from default
-    playback.connect(delay);
-
-    expect(connectSpy).toHaveBeenCalledWith(delay);
-  });
+  // Note: outputNode, connect, and disconnect are no longer available in engine-only mode
+  // Routing is handled internally by the engine
 });

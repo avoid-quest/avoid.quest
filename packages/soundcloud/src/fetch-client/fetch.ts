@@ -1,4 +1,4 @@
-import { ClientFetchError } from "./error";
+import { ClientFetchError } from "./error.js";
 
 const SCRIPT_URL_PATTERN =
   /<script\s+crossorigin\s+src=["'](https?:\/\/[^"']+)["']><\/script>/gi;

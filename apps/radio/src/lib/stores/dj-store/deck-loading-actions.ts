@@ -1,5 +1,5 @@
+import type { Radio } from "@avoid.quest/cacophony";
 import type { StateCreator } from "zustand";
-import type { Radio } from "@/lib/types";
 import { getAudioManager, getSoundId } from "./audio-manager-helpers";
 import { applyCrossfade } from "./mixer-actions";
 import { findNextTrack } from "./track-actions";

@@ -66,9 +66,6 @@ export class Sound
   soundType: SoundType;
   panType: PanType;
   private readonly _cacophony?: Cacophony;
-  // Shared audio element for Streaming and HTML types (createMediaElementSource can only be called once per element)
-  private _sharedAudioElement?: HTMLAudioElement;
-  private _sharedMediaSource?: SourceNode;
   // Abort controller for streaming
   private _streamAbortController?: AbortController;
 
@@ -206,53 +203,6 @@ export class Sound
     }
   }
 
-  /**
-   * Creates and initializes the shared audio element for Streaming/HTML types.
-   */
-  private initializeSharedAudioElement(): void {
-    if (this._sharedAudioElement) {
-      return;
-    }
-
-    this._sharedAudioElement = new Audio();
-    this._sharedAudioElement.crossOrigin = "anonymous";
-    this._sharedAudioElement.src = this.url;
-    this._sharedAudioElement.preload = "auto";
-
-    // Set up error handling for the audio element
-    this._sharedAudioElement.addEventListener("error", () => {
-      const error = new Error(
-        `Audio element error: ${this._sharedAudioElement?.error?.message || "Unknown error"}`
-      );
-      this.emitAsync("soundError", {
-        url: this.url,
-        error,
-        errorType: "playback",
-        timestamp: Date.now(),
-        recoverable: true,
-      });
-    });
-
-    // Create the media element source once
-    try {
-      this._sharedMediaSource = this.context.createMediaElementSource(
-        this._sharedAudioElement
-      );
-    } catch (error) {
-      // If createMediaElementSource fails (e.g., already called), handle it gracefully
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
-      if (
-        errorMessage.includes("already been connected") ||
-        errorMessage.includes("InvalidStateError")
-      ) {
-        throw new Error(
-          "Cannot create multiple media element sources. Streaming/HTML sounds can only have one active playback."
-        );
-      }
-      throw error;
-    }
-  }
 
 
 
@@ -299,27 +249,6 @@ export class Sound
         
         // Start streaming - createStream handles fetching, decoding, and sending chunks to engine
         createStream(this.url, this.context, engine, sourceId, this._streamAbortController.signal);
-
-        // We do NOT use initializeSharedAudioElement here anymore for Streaming
-        // So we skip the hybrid setup below.
-
-      } else if (this.soundType === SoundType.HTML) {
-        // HTML Audio element - keep hybrid mode for compatibility (simpler, uses MediaElementSource)
-        this.initializeSharedAudioElement();
-        if (!this._sharedMediaSource) {
-            throw new Error("Media source not initialized");
-        }
-        
-        // Create a GainNode for volume control (controlled by Playback)
-        const gainNode = this.context.createGain();
-        this._sharedMediaSource.connect(gainNode);
-        
-        // Create legacy-style playback
-        // AudioManager will handle routing this to the engine via globalGainNode
-        const playback = new Playback(this, this._sharedMediaSource, gainNode);
-        
-        this.playbacks.push(playback);
-        return [playback];
       } else {
         throw new Error(`Unknown sound type: ${this.soundType}`);
       }
@@ -463,14 +392,5 @@ export class Sound
     }
     this.playbacks = [];
     this.eventEmitter.removeAllListeners();
-
-    // Clean up shared audio element for Streaming/HTML types
-    if (this._sharedAudioElement) {
-      this._sharedAudioElement.pause();
-      this._sharedAudioElement.src = "";
-      this._sharedAudioElement.load();
-      this._sharedAudioElement = undefined;
-      this._sharedMediaSource = undefined;
-    }
   }
 }

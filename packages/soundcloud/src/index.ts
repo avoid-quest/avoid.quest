@@ -4,10 +4,31 @@ import type {
   SoundCloudItemResult,
   SoundCloudMetadata,
 } from "@avoid.quest/radio-shared";
-import { detectSoundCloudItemType } from "./detect";
-import { fetchClientID } from "./fetch-client";
+import { detectSoundCloudItemType } from "./detect.js";
+import { fetchClientID } from "./fetch-client/index.js";
 
-export { detectSoundCloudItemType, isSoundCloudUrl } from "./detect";
+export { detectSoundCloudItemType, isSoundCloudUrl } from "./detect.js";
+
+/**
+ * Get the proxied URL for a SoundCloud stream to avoid CORS issues
+ * @param url - The SoundCloud stream URL
+ * @returns The proxied URL or the original URL if it's not a SoundCloud URL or already proxied
+ */
+export function getProxiedSoundCloudUrl(url: string): string {
+  // Check if this is a SoundCloud stream URL (not already proxied)
+  // SoundCloud stream URLs typically come from CDN domains like cf-media.sndcdn.com
+  // or media.soundcloud.com, but we should only proxy if it's not already a proxy URL
+  if (
+    !url.startsWith("/api/") &&
+    (url.includes("sndcdn.com") ||
+      url.includes("media.soundcloud.com") ||
+      url.includes("soundcloud.com"))
+  ) {
+    // Use the proxy endpoint to avoid CORS issues
+    return `/api/soundcloud-proxy?url=${encodeURIComponent(url)}`;
+  }
+  return url;
+}
 
 function createErrorResponse(message: string): PlatformItemError {
   return {
@@ -22,8 +43,9 @@ async function getClientId(): Promise<string> {
   if (clientIdCache) {
     return await clientIdCache;
   }
-  clientIdCache = fetchClientID();
-  return await clientIdCache;
+  const promise = fetchClientID();
+  clientIdCache = promise;
+  return await promise;
 }
 
 async function resolveSoundCloudUrl(url: string, clientId: string) {

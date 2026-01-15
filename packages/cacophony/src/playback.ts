@@ -19,16 +19,11 @@
  */
 /** biome-ignore-all lint/complexity/noExcessiveCognitiveComplexity: needed for complex audio processing */
 
-import type { IAudioNode, IAudioParam } from "standardized-audio-context";
 import { BasePlayback } from "./base-playback.js";
 import type { BaseSound, LoopCount, PanType } from "./cacophony.js";
 import type {
-  AudioBuffer,
   AudioContext,
-  AudioNode,
   BiquadFilterNode,
-  GainNode,
-  SourceNode,
 } from "./context.js";
 import type { Sound } from "./sound.js";
 import type { CacophonyEngine } from "./engine/cacophony-engine.js";
@@ -49,77 +44,31 @@ type PlaybackState = (typeof PlaybackState)[keyof typeof PlaybackState];
 
 export class Playback extends BasePlayback implements BaseSound {
   private readonly context: AudioContext;
-  declare source?: SourceNode;
   loopCount: LoopCount = 0;
   currentLoop = 0;
   origin: Sound;
-  private readonly buffer?: AudioBuffer;
   private _offset = 0;
   private _startTime = 0;
   private _state: PlaybackState = PlaybackState.Unplayed;
   private _playbackRate = 1;
   
   // Engine-based playback fields
-  private sourceId?: string;
-  private engine?: CacophonyEngine;
-  public isEngineBased: boolean = false;
+  public readonly sourceId: string;
+  private engine: CacophonyEngine;
   private filterIdMap = new Map<BiquadFilterNode, string>();
 
   /**
    * Creates an instance of the Playback class.
-   * Supports two modes:
-   * 1. Legacy: (origin, source, gainNode) - Uses Web Audio nodes directly
-   * 2. Engine: (origin, sourceId, engine) - Uses CacophonyEngine
+   * Engine-only mode: (origin, sourceId, engine) - Uses CacophonyEngine
    */
-  constructor(origin: Sound, sourceOrId: SourceNode | string, gainNodeOrEngine: GainNode | CacophonyEngine) {
+  constructor(origin: Sound, sourceId: string, engine: CacophonyEngine) {
     super();
     this.context = origin.context;
     this.origin = origin;
     this.loopCount = origin.loopCount;
     this.setPanType(origin.panType, origin.context);
-    
-    // Detect which constructor signature was used
-    if (typeof sourceOrId === 'string') {
-      // Engine-based mode: (origin, sourceId, engine)
-      this.isEngineBased = true;
-      this.sourceId = sourceOrId;
-      this.engine = gainNodeOrEngine as CacophonyEngine;
-      
-      // No Web Audio node setup needed in engine mode
-      // Volume/pan are controlled through engine messages
-    } else {
-      // Legacy mode: (origin, source, gainNode)
-      this.isEngineBased = false;
-      this.source = sourceOrId;
-      
-      if ("buffer" in sourceOrId && sourceOrId.buffer) {
-        this.buffer = sourceOrId.buffer;
-      }
-      
-      this.setupSourceNode(sourceOrId);
-      
-      if (this.panner) {
-        this.source.connect(this.panner);
-      }
-      
-      this.setGainNode(gainNodeOrEngine as GainNode);
-      
-      if (this.panner && this.gainNode) {
-        this.panner.connect(this.gainNode);
-      }
-      
-      this.refreshFilters();
-    }
-  }
-
-  private setupSourceNode(source: SourceNode) {
-    if ("mediaElement" in source && source.mediaElement) {
-      source.mediaElement.onended = this.loopEnded;
-    } else if ("onended" in source) {
-      source.onended = this.loopEnded;
-    } else {
-      throw new Error("Unsupported source type");
-    }
+    this.sourceId = sourceId;
+    this.engine = engine;
   }
 
   get isPlaying(): boolean {
@@ -133,18 +82,10 @@ export class Playback extends BasePlayback implements BaseSound {
    */
 
   get duration() {
-    if (!this.source) {
-      throw new Error(
-        "Cannot get duration of a sound that has been cleaned up"
-      );
-    }
-    if ("mediaElement" in this.source && this.source.mediaElement) {
-      return this.source.mediaElement.duration;
-    }
-    if (!this.buffer) {
-      return Number.NaN;
-    }
-    return this.buffer.duration || Number.NaN;
+    // Engine-based playback doesn't have direct access to duration
+    // Duration would need to be tracked or queried from engine
+    // For now, return NaN as duration is not available in engine mode
+    return Number.NaN;
   }
 
   /**
@@ -167,25 +108,6 @@ export class Playback extends BasePlayback implements BaseSound {
       throw new Error("Playback rate must be greater than 0");
     }
     
-    // Engine-based mode
-    if (this.isEngineBased && this.engine && this.sourceId) {
-       if (this._state === PlaybackState.Playing) {
-        const elapsed =
-          (this.context.currentTime - this._startTime) * this._playbackRate;
-        this._offset += elapsed;
-        this._startTime = this.context.currentTime;
-      }
-      this._playbackRate = rate;
-      // TODO: Implement setSourcePlaybackRate in engine/protocol if needed dynamically
-      // For now, we only set it at creation or via param if we add it.
-      // Actually, BufferSource.process uses this.playbackRate, so we need to update it.
-      // Let's assume we can't update it dynamically yet without a new message type.
-      // Or we can add SET_SOURCE_PLAYBACK_RATE.
-      // For now, let's just update local state.
-      return;
-    }
-
-    // Legacy mode
     if (this._state === PlaybackState.Playing) {
       const elapsed =
         (this.context.currentTime - this._startTime) * this._playbackRate;
@@ -193,15 +115,8 @@ export class Playback extends BasePlayback implements BaseSound {
       this._startTime = this.context.currentTime;
     }
     this._playbackRate = rate;
-    if (!this.source) {
-      return;
-    }
-    if ("playbackRate" in this.source) {
-      this.source.playbackRate.value = rate;
-    }
-    if ("mediaElement" in this.source && this.source.mediaElement) {
-      this.source.mediaElement.playbackRate = rate;
-    }
+    // TODO: Implement setSourcePlaybackRate in engine/protocol if needed dynamically
+    // For now, playback rate is set at source creation
   }
 
   /**
@@ -210,7 +125,7 @@ export class Playback extends BasePlayback implements BaseSound {
    * It manages looping logic and restarts playback if necessary.
    */
   loopEnded = () => {
-    if (!this.source || this._state !== PlaybackState.Playing) {
+    if (this._state !== PlaybackState.Playing) {
       return;
     }
 
@@ -223,18 +138,7 @@ export class Playback extends BasePlayback implements BaseSound {
     } else {
       this.seek(0); // Resets offset and handles play/pause state internally.
       // If it was playing, seek will call play() again.
-
-      // Ensure playback resumes/starts after seeking for the loop.
-      if ("mediaElement" in this.source && this.source.mediaElement) {
-        // Media elements need an explicit play call after their currentTime is set.
-        this.source.mediaElement.play();
-      } else {
-        // For AudioBufferSourceNode:
-        // If seek() already called play(), this.play() will return early (idempotent).
-        // If seek() did not call play() (e.g., if state wasn't Playing before seek),
-        // this will start playback from the new offset.
-        this.play();
-      }
+      this.play();
     }
   };
 
@@ -245,121 +149,32 @@ export class Playback extends BasePlayback implements BaseSound {
    */
 
   play(): [this] {
-    // Engine-based mode
-    if (this.isEngineBased && this.engine && this.sourceId) {
-      if (this._state === PlaybackState.Playing) {
-        return [this];
-      }
-
-      try {
-        // Ensure AudioContext is resumed
-        if (this.context.state === "suspended") {
-          this.context.resume().catch((error) => {
-            console.warn("Failed to resume AudioContext:", error);
-          });
-        }
-
-        if (this._state === PlaybackState.Paused) {
-          // Resume from pause
-          this.engine.resumeSource(this.sourceId);
-        } else {
-          // Start from beginning or after stop
-          this.engine.startSource(this.sourceId, {
-            offset: this._offset,
-          });
-        }
-
-        this._startTime = this.context.currentTime;
-        this._state = PlaybackState.Playing;
-        this.emit("play", this);
-
-        this.origin.cacophony?.emit("globalPlay", {
-          source: this.origin,
-          timestamp: Date.now(),
-        });
-
-        return [this];
-      } catch (error) {
-        this.emitAsync("error", {
-          error: error as Error,
-          errorType: "source",
-          timestamp: Date.now(),
-          recoverable: true,
-        });
-        throw error;
-      }
-    }
-
-    // Legacy mode
-    if (!this.source) {
-      throw new Error("Cannot play a sound that has been cleaned up");
-    }
-
     if (this._state === PlaybackState.Playing) {
       return [this];
     }
 
     try {
-      // Ensure AudioContext is resumed (required for Chrome autoplay policy)
+      // Ensure AudioContext is resumed
       if (this.context.state === "suspended") {
         this.context.resume().catch((error) => {
           console.warn("Failed to resume AudioContext:", error);
-          this.emitAsync("error", {
-            error: error as Error,
-            errorType: "context",
-            timestamp: Date.now(),
-            recoverable: true,
-          });
         });
       }
 
       if (this._state === PlaybackState.Paused) {
-        // If we're resuming from a paused state
-        if ("mediaElement" in this.source && this.source.mediaElement) {
-          const playPromise = this.source.mediaElement.play();
-          // Handle promise rejection (Chrome autoplay policy)
-          if (playPromise !== undefined) {
-            playPromise.catch((error) => {
-              // Chrome may reject play() if user interaction hasn't occurred
-              this.emitAsync("error", {
-                error: error as Error,
-                errorType: "context",
-                timestamp: Date.now(),
-                recoverable: true,
-              });
-              // Don't throw - let the error event handle it
-            });
-          }
-        } else {
-           throw new Error("Legacy mode only supports MediaElement sources");
-        }
-      } else if ("mediaElement" in this.source && this.source.mediaElement) {
-        // If we're starting from the beginning or a stopped state
-        this.source.mediaElement.currentTime = this._offset;
-        const playPromise = this.source.mediaElement.play();
-        // Handle promise rejection (Chrome autoplay policy)
-        if (playPromise !== undefined) {
-          playPromise.catch((error) => {
-            // Chrome may reject play() if user interaction hasn't occurred
-            this.emitAsync("error", {
-              error: error as Error,
-              errorType: "context",
-              timestamp: Date.now(),
-              recoverable: true,
-            });
-            // Don't throw - let the error event handle it
-            return;
-          });
-        }
+        // Resume from pause
+        this.engine.resumeSource(this.sourceId);
       } else {
-        throw new Error("Legacy mode only supports MediaElement sources");
+        // Start from beginning or after stop
+        this.engine.startSource(this.sourceId, {
+          offset: this._offset,
+        });
       }
 
       this._startTime = this.context.currentTime;
       this._state = PlaybackState.Playing;
       this.emit("play", this);
 
-      // Emit globalPlay for all playback
       this.origin.cacophony?.emit("globalPlay", {
         source: this.origin,
         timestamp: Date.now(),
@@ -378,29 +193,7 @@ export class Playback extends BasePlayback implements BaseSound {
   }
 
   pause(): void {
-    // Engine-based mode
-    if (this.isEngineBased && this.engine && this.sourceId) {
-      if (this._state !== PlaybackState.Playing) {
-        return;
-      }
-
-      const elapsed =
-        (this.context.currentTime - this._startTime) * this._playbackRate;
-      this._offset += elapsed;
-
-      this.engine.pauseSource(this.sourceId);
-      this._state = PlaybackState.Paused;
-      this.emit("pause", undefined);
-
-      this.origin.cacophony?.emit("globalPause", {
-        source: this.origin,
-        timestamp: Date.now(),
-      });
-      return;
-    }
-
-    // Legacy mode
-    if (!this.source || this._state !== PlaybackState.Playing) {
+    if (this._state !== PlaybackState.Playing) {
       return;
     }
 
@@ -408,16 +201,10 @@ export class Playback extends BasePlayback implements BaseSound {
       (this.context.currentTime - this._startTime) * this._playbackRate;
     this._offset += elapsed;
 
-    if ("mediaElement" in this.source && this.source.mediaElement) {
-      this.source.mediaElement.pause();
-    } else {
-       throw new Error("Legacy mode only supports MediaElement sources");
-    }
-
+    this.engine.pauseSource(this.sourceId);
     this._state = PlaybackState.Paused;
     this.emit("pause", undefined);
 
-    // Emit globalPause for all playback
     this.origin.cacophony?.emit("globalPause", {
       source: this.origin,
       timestamp: Date.now(),
@@ -425,32 +212,6 @@ export class Playback extends BasePlayback implements BaseSound {
   }
 
   stop(): void {
-    // Engine-based mode
-    if (this.isEngineBased && this.engine && this.sourceId) {
-      if (
-        this._state === PlaybackState.Stopped ||
-        this._state === PlaybackState.Unplayed
-      ) {
-        return;
-      }
-
-      this.engine.stopSource(this.sourceId);
-      this._offset = 0;
-      this._startTime = 0;
-      this._state = PlaybackState.Stopped;
-      this.emit("stop", undefined);
-
-      this.origin.cacophony?.emit("globalStop", {
-        source: this.origin,
-        timestamp: Date.now(),
-      });
-      return;
-    }
-
-    // Legacy mode
-    if (!this.source) {
-      throw new Error("Cannot stop a sound that has been cleaned up");
-    }
     if (
       this._state === PlaybackState.Stopped ||
       this._state === PlaybackState.Unplayed
@@ -458,20 +219,12 @@ export class Playback extends BasePlayback implements BaseSound {
       return;
     }
 
-    if ("stop" in this.source && this._state === PlaybackState.Playing) {
-      this.source.stop();
-    }
-    if ("mediaElement" in this.source && this.source.mediaElement) {
-      this.source.mediaElement.pause();
-      this.source.mediaElement.currentTime = 0;
-    }
-
+    this.engine.stopSource(this.sourceId);
     this._offset = 0;
     this._startTime = 0;
     this._state = PlaybackState.Stopped;
     this.emit("stop", undefined);
 
-    // Emit globalStop for all playback
     this.origin.cacophony?.emit("globalStop", {
       source: this.origin,
       timestamp: Date.now(),
@@ -479,30 +232,6 @@ export class Playback extends BasePlayback implements BaseSound {
   }
 
   seek(time: number): void {
-    // Engine-based mode
-    if (this.isEngineBased && this.engine && this.sourceId) {
-      if (!Number.isFinite(time) || time < 0) {
-        throw new Error("Invalid time value for seek");
-      }
-
-      const wasPlaying = this._state === PlaybackState.Playing;
-      if (wasPlaying) {
-        this.pause();
-      }
-
-      this._offset = time;
-      this.engine.seekSource(this.sourceId, time);
-
-      if (wasPlaying) {
-        this.play();
-      }
-      return;
-    }
-
-    // Legacy mode
-    if (!(this.source && this.gainNode && this.panner)) {
-      throw new Error("Cannot seek a sound that has been cleaned up");
-    }
     if (!Number.isFinite(time) || time < 0) {
       throw new Error("Invalid time value for seek");
     }
@@ -513,11 +242,7 @@ export class Playback extends BasePlayback implements BaseSound {
     }
 
     this._offset = time;
-
-    if ("mediaElement" in this.source && this.source.mediaElement) {
-      this.source.mediaElement.currentTime = time;
-    }
-    // For non-media elements, play() will handle recreating the source if needed.
+    this.engine.seekSource(this.sourceId, time);
 
     if (wasPlaying) {
       this.play();
@@ -541,15 +266,8 @@ export class Playback extends BasePlayback implements BaseSound {
    * @throws {Error} Throws an error if the sound has been cleaned up.
    */
   set sourceLoop(loop: boolean) {
-    if (!this.source) {
-      throw new Error("Cannot set loop on a sound that has been cleaned up");
-    }
-    if ("loop" in this.source) {
-      this.source.loop = loop;
-    }
-    if ("mediaElement" in this.source && this.source.mediaElement) {
-      this.source.mediaElement.loop = loop;
-    }
+    // Loop is controlled via engine at source creation
+    // This setter is kept for API compatibility but doesn't do anything in engine mode
   }
 
   /**
@@ -558,89 +276,49 @@ export class Playback extends BasePlayback implements BaseSound {
    */
 
   cleanup(): void {
-    if (!this.source) {
-      return; // Already cleaned up
-    }
-    this.source.disconnect();
-    this.source = undefined;
+    // Engine handles cleanup automatically
     super.cleanup();
   }
 
-  private assertNotCleanedUp(): void {
-    if (!(this.source && this.gainNode && this.panner)) {
-      throw new Error(
-        "Cannot perform operation on a sound that has been cleaned up"
-      );
-    }
-  }
-
   addFilter(filter: BiquadFilterNode): void {
-    if (this.isEngineBased && this.engine && this.sourceId) {
-      // Generate ID and map it
-      const filterId = `filter-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-      this.filterIdMap.set(filter, filterId);
-      
-      // Determine filter type string (handle custom types if any, standard ones match)
-      const type = filter.type;
-      
-      this.engine.addFilter(
-        this.sourceId,
-        filterId,
-        type,
-        filter.frequency.value,
-        filter.Q.value,
-        filter.gain.value
-      );
-      return;
-    }
-
-    this.assertNotCleanedUp();
-    super.addFilter(filter);
-    this.refreshFilters();
+    // Generate ID and map it
+    const filterId = `filter-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    this.filterIdMap.set(filter, filterId);
+    
+    // Determine filter type string (handle custom types if any, standard ones match)
+    const type = filter.type;
+    
+    this.engine.addFilter(
+      this.sourceId,
+      filterId,
+      type,
+      filter.frequency.value,
+      filter.Q.value,
+      filter.gain.value
+    );
   }
 
   removeFilter(filter: BiquadFilterNode): void {
-    if (this.isEngineBased && this.engine && this.sourceId) {
-      const filterId = this.filterIdMap.get(filter);
-      if (filterId) {
-        this.engine.removeFilter(this.sourceId, filterId);
-        this.filterIdMap.delete(filter);
-      }
-      return;
+    const filterId = this.filterIdMap.get(filter);
+    if (filterId) {
+      this.engine.removeFilter(this.sourceId, filterId);
+      this.filterIdMap.delete(filter);
     }
-
-    this.assertNotCleanedUp();
-    super.removeFilter(filter);
-    // Refresh filters is called by super.removeFilter? No, super is FilterManager which just removes from array.
-    // Wait, Playback.ts previously called super.removeFilter then refreshFilters.
-    // Let's check FilterManager again. It just removes from array.
-    // So we need to keep refreshFilters for legacy.
-    this.refreshFilters();
   }
 
   /**
    * Updates a filter parameter for engine-based playback.
-   * For legacy playback, automation on the AudioParam works directly.
-   * For engine playback, we must explicitly send the update.
    */
   setFilterParam(filter: BiquadFilterNode, param: 'frequency' | 'Q' | 'gain' | 'type', value: number | string): void {
-    if (this.isEngineBased && this.engine && this.sourceId) {
-      const filterId = this.filterIdMap.get(filter);
-      if (filterId) {
-        this.engine.setFilterParam(this.sourceId, filterId, param, value);
-      }
-      // Also update the local node so it stays in sync if inspected
-      if (param === 'frequency') filter.frequency.value = value as number;
-      if (param === 'Q') filter.Q.value = value as number;
-      if (param === 'gain') filter.gain.value = value as number;
-      if (param === 'type') filter.type = value as BiquadFilterType;
-    } else {
-        // Legacy mode - just update the node
-        if (param === 'frequency') filter.frequency.value = value as number;
-        if (param === 'Q') filter.Q.value = value as number;
-        if (param === 'gain') filter.gain.value = value as number;
-        if (param === 'type') filter.type = value as BiquadFilterType;
+    const filterId = this.filterIdMap.get(filter);
+    if (filterId) {
+      this.engine.setFilterParam(this.sourceId, filterId, param, value);
     }
+    // Also update the local node so it stays in sync if inspected
+    if (param === 'frequency') filter.frequency.value = value as number;
+    if (param === 'Q') filter.Q.value = value as number;
+    if (param === 'gain') filter.gain.value = value as number;
+    if (param === 'type') filter.type = value as BiquadFilterType;
   }
 
   /**
@@ -651,236 +329,50 @@ export class Playback extends BasePlayback implements BaseSound {
    */
 
   loop(loopCount?: LoopCount): LoopCount {
-    // Engine-based mode
-    if (this.isEngineBased && this.engine && this.sourceId) {
-      if (loopCount !== undefined) {
-        this.loopCount =
-          loopCount === "infinite" ? "infinite" : Math.max(0, loopCount);
-        this.currentLoop = 0;
-        // TODO: Send loop update to engine
-        // this.engine.setSourceLoop(this.sourceId, this.loopCount === 'infinite');
-      }
-      return this.loopCount;
-    }
-
-    // Legacy mode
-    if (!this.source) {
-      throw new Error("Cannot loop a sound that has been cleaned up");
-    }
     if (loopCount !== undefined) {
       this.loopCount =
         loopCount === "infinite" ? "infinite" : Math.max(0, loopCount);
       this.currentLoop = 0;
-    }
-    if ("mediaElement" in this.source && this.source.mediaElement) {
-      const mediaElement = this.source.mediaElement;
-      mediaElement.loop = this.loopCount === "infinite";
-    } else if ("loop" in this.source) {
-      this.source.loop = this.loopCount === "infinite";
-      if (this.source.buffer) {
-        this.source.loopEnd = this.source.buffer.duration;
-        this.source.loopStart = 0;
-      }
-    } else {
-      throw new Error("Unsupported source type");
+      // TODO: Send loop update to engine
+      // this.engine.setSourceLoop(this.sourceId, this.loopCount === 'infinite');
     }
     return this.loopCount;
   }
 
   // Volume overrides
+  private _volume: number = 1;
+  
   get volume(): number {
-    if (this.isEngineBased) {
-      return (this as any)._volume ?? 1;
-    }
-    return super.volume;
+    return this._volume;
   }
 
   set volume(v: number) {
-    if (this.isEngineBased && this.engine && this.sourceId) {
-      (this as any)._volume = v;
-      this.engine.setSourceVolume(this.sourceId, v);
-    } else {
-      super.volume = v;
-    }
+    this._volume = v;
+    this.engine.setSourceVolume(this.sourceId, v);
   }
 
   // Pan overrides
+  private _pan: number = 0;
+  
   get stereoPan(): number | null {
-    if (this.isEngineBased) {
-      return (this as any)._pan ?? 0;
-    }
-    return super.stereoPan;
+    return this._pan;
   }
 
   set stereoPan(v: number) {
-    if (this.isEngineBased && this.engine && this.sourceId) {
-      (this as any)._pan = v;
-      this.engine.setSourcePan(this.sourceId, v);
-    } else {
-      super.stereoPan = v;
-    }
+    this._pan = v;
+    this.engine.setSourcePan(this.sourceId, v);
   }
 
-  /**
-   * Refreshes the audio filters by re-applying them to the audio signal chain.
-   * This method is called internally whenever filters are added or removed.
-   * @throws {Error} Throws an error if the sound has been cleaned up.
-   */
-
-  private refreshFilters(): void {
-    if (!(this.panner && this.gainNode)) {
-      throw new Error(
-        "Cannot update filters on a sound that has been cleaned up"
-      );
-    }
-    let connection: AudioNode = this.panner as unknown as AudioNode;
-    connection.disconnect();
-    connection = this.applyFilters(connection);
-    if (this.gainNode) {
-      connection.connect(this.gainNode as unknown as AudioNode);
-    }
-  }
-
-  /**
-   * Gets the output node of this playback's audio graph.
-   * This is the final node in the internal chain before connection to destination.
-   * Use this to manually wire the playback into custom audio graphs.
-   *
-   * @returns {GainNode} The gain node that serves as the output of this playback.
-   * @throws {Error} Throws an error if the playback has been cleaned up.
-   *
-   * @example
-   * // Manual routing through custom effects
-   * const playback = sound.play()[0];
-   * playback.disconnect(); // Disconnect from default destination
-   * playback.connect(reverbNode).connect(context.destination);
-   */
-  get outputNode(): GainNode {
-    if (!this.gainNode) {
-      throw new Error(
-        "Cannot access output node of a playback that has been cleaned up"
-      );
-    }
-    return this.gainNode;
-  }
-
-  /**
-   * Connects this playback's output to an AudioNode or AudioParam.
-   * Follows the Web Audio API connection pattern.
-   *
-   * @param {AudioNode | AudioParam} destination - The node or param to connect to.
-   * @returns {AudioNode} The destination node (for chaining).
-   * @throws {Error} Throws an error if the playback has been cleaned up.
-   *
-   * @example
-   * // Chain multiple effects
-   * playback.connect(delay).connect(reverb).connect(context.destination);
-   */
-  connect(destination: AudioNode | IAudioParam): AudioNode {
-    const gainNode = this.outputNode;
-    if ("connect" in destination && destination !== null) {
-      // It's an AudioNode - connect to it
-      return gainNode.connect(
-        destination as unknown as IAudioNode<
-          AudioContext,
-          Record<string, never>
-        >
-      ) as unknown as AudioNode;
-    }
-    // It's an AudioParam - connect to it
-    gainNode.connect(destination as IAudioParam);
-    return destination as unknown as AudioNode;
-  }
-
-  /**
-   * Disconnects this playback's output from a specific destination or from all destinations.
-   *
-   * @param {AudioNode | AudioParam} [destination] - Optional specific destination to disconnect from.
-   *                                                   If omitted, disconnects from all destinations.
-   * @throws {Error} Throws an error if the playback has been cleaned up.
-   *
-   * @example
-   * // Disconnect from all
-   * playback.disconnect();
-   *
-   * @example
-   * // Disconnect from specific node
-   * playback.disconnect(reverbNode);
-   */
-  disconnect(destination?: AudioNode | IAudioParam): void {
-    const gainNode = this.outputNode;
-    if (destination) {
-      if ("connect" in destination && destination !== null) {
-        // It's an AudioNode
-        gainNode.disconnect(
-          destination as unknown as IAudioNode<
-            AudioContext,
-            Record<string, never>
-          >
-        );
-      } else {
-        // It's an AudioParam
-        gainNode.disconnect(destination as IAudioParam);
-      }
-    } else {
-      gainNode.disconnect();
-    }
-  }
 
   /**
    * Creates a clone of the current Playback instance with optional overrides for certain properties.
-   * This method allows for the creation of a new Playback instance that shares the same audio context
-   * and source node but can have different settings such as loop count or pan type.
-   * @param {Partial<Playback>} overrides - An object containing properties to override in the cloned instance.
+   * In engine mode, cloning creates a new source in the engine.
+   * @param {Partial<PlaybackCloneOverrides>} overrides - An object containing properties to override in the cloned instance.
    * @returns {Playback} A new Playback instance cloned from the current one with the specified overrides applied.
-   * @throws {Error} Throws an error if the sound has been cleaned up.
    */
-
   clone(overrides: Partial<PlaybackCloneOverrides> = {}): Playback {
-    if (!(this.source && this.gainNode && this.context)) {
-      throw new Error("Cannot clone a sound that has been cleaned up");
-    }
-    const panType = overrides.panType || this.panType;
-    // we'll need to create a new gain node
-    const gainNode = this.context.createGain();
-    // clone the source node
-    let source: SourceNode;
-    if ("buffer" in this.source && this.source.buffer) {
-      source = this.context.createBufferSource();
-      source.buffer = this.source.buffer;
-    } else if ("mediaElement" in this.source && this.source.mediaElement) {
-      source = this.context.createMediaElementSource(this.source.mediaElement);
-    } else {
-      throw new Error("Unsupported source type");
-    }
-    const loopCount =
-      overrides.loopCount !== undefined ? overrides.loopCount : this.loopCount;
-    const clone = new Playback(this.origin, source, gainNode);
-
-    // Copy all relevant properties
-    clone.loopCount = loopCount;
-    clone.currentLoop = this.currentLoop;
-    clone.setPanType(panType, this.context);
-    clone.volume = this.volume;
-    clone.playbackRate = this._playbackRate;
-    clone._offset = this._offset;
-    clone._state = this._state;
-
-    // Deep clone filters
-    for (const filter of this._filters) {
-      const clonedFilter = this.context.createBiquadFilter();
-      clonedFilter.type = filter.type;
-      clonedFilter.frequency.value = filter.frequency.value;
-      clonedFilter.Q.value = filter.Q.value;
-      clonedFilter.gain.value = filter.gain.value;
-      clone.addFilter(clonedFilter as unknown as BiquadFilterNode);
-    }
-
-    // If the original is playing, start the clone
-    if (this._state === PlaybackState.Playing) {
-      clone.play();
-    }
-
-    return clone;
+    // In engine mode, we need to create a new source
+    // For now, throw an error as cloning in engine mode requires more complex logic
+    throw new Error("Cloning playback in engine mode is not yet supported. Create a new Sound instance instead.");
   }
 }

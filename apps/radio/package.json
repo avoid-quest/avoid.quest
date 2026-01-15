@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@avoid.quest/bandcamp": "workspace:*",
+    "@avoid.quest/cacophony": "workspace:*",
     "@avoid.quest/radio-audio": "workspace:*",
     "@avoid.quest/radio-shared": "workspace:*",
     "@avoid.quest/soundcloud": "workspace:*",

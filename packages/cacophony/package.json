@@ -56,6 +56,9 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
+    "@avoid.quest/bandcamp": "workspace:*",
+    "@avoid.quest/radio-shared": "workspace:*",
+    "@avoid.quest/soundcloud": "workspace:*",
     "@opendaw/lib-dsp": "^0.0.50",
     "@opendaw/lib-std": "^0.0.50",
     "fft.js": "^4.0.4",

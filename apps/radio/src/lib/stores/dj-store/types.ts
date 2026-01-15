@@ -1,6 +1,6 @@
+import type { Radio } from "@avoid.quest/cacophony";
 import type { EffectConfig, FilterConfig } from "@avoid.quest/radio-audio";
 import type { Platform } from "@avoid.quest/radio-shared";
-import type { Radio } from "@/lib/types";
 
 // Types
 export type DeckId = "left-deck" | "right-deck";

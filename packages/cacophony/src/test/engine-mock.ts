@@ -141,6 +141,13 @@ export class MockCacophonyEngine {
   setDelayMix = mock((_mix: number) => {});
 
   connectInput = mock((_node: AudioNode) => {});
+  
+  // Effect methods
+  addEffect = mock((_sourceId: string, _effectId: string, _type: string, _config: Record<string, number>, _order: number) => {});
+  removeEffect = mock((_sourceId: string, _effectId: string) => {});
+  updateEffect = mock((_sourceId: string, _effectId: string, _config: Partial<Record<string, number>>) => {});
+  reorderEffects = mock((_sourceId: string, _effectIds: string[]) => {});
+  
   cleanup = mock(() => {
     this.state.buffers.clear();
     this.state.sources.clear();
@@ -218,6 +225,10 @@ export class MockCacophonyEngine {
     this.setDelayFeedback.mockClear();
     this.setDelayMix.mockClear();
     this.connectInput.mockClear();
+    this.addEffect.mockClear();
+    this.removeEffect.mockClear();
+    this.updateEffect.mockClear();
+    this.reorderEffects.mockClear();
     this.cleanup.mockClear();
     
     this.state.buffers.clear();

@@ -1,5 +1,5 @@
 export enum MessageType {
-  // Legacy (may be deprecated)
+  // Deprecated - use START_SOURCE/PAUSE_SOURCE/STOP_SOURCE instead
   PLAY = "PLAY",
   PAUSE = "PAUSE",
   STOP = "STOP",
@@ -38,10 +38,17 @@ export enum MessageType {
   REMOVE_FILTER = "REMOVE_FILTER",
   SET_FILTER_PARAM = "SET_FILTER_PARAM",
   
+  // Effect messages
+  ADD_EFFECT = "ADD_EFFECT",
+  REMOVE_EFFECT = "REMOVE_EFFECT",
+  UPDATE_EFFECT = "UPDATE_EFFECT",
+  REORDER_EFFECTS = "REORDER_EFFECTS",
+  
   // Events (worklet → main)
   SOURCE_ENDED = "SOURCE_ENDED",
   SOURCE_ERROR = "SOURCE_ERROR",
   STREAM_UNDERRUN = "STREAM_UNDERRUN",
+  STREAM_READY = "STREAM_READY",
   PEAK_METER = "PEAK_METER",
 }
 
@@ -126,6 +133,10 @@ export interface StreamUnderrunPayload {
   sourceId: string;
 }
 
+export interface StreamReadyPayload {
+  sourceId: string;
+}
+
 export interface PeakMeterPayload {
   peakL: number;
   peakR: number;
@@ -178,5 +189,42 @@ export interface SetFilterParamPayload {
   filterId: string;
   param: 'frequency' | 'Q' | 'gain' | 'type';
   value: number | string;
+}
+
+export type EffectType = 
+  | "reverb" 
+  | "standardReverb" 
+  | "phaseVocoder" 
+  | "distortion" 
+  | "compressor" 
+  | "delay"
+  | "crusher"
+  | "fold"
+  | "stereoTool"
+  | "revamp"
+  | "tidal";
+
+export interface AddEffectPayload {
+  sourceId: string;
+  effectId: string;
+  type: EffectType;
+  config: Record<string, number>;
+  order: number;
+}
+
+export interface RemoveEffectPayload {
+  sourceId: string;
+  effectId: string;
+}
+
+export interface UpdateEffectPayload {
+  sourceId: string;
+  effectId: string;
+  config: Partial<Record<string, number>>;
+}
+
+export interface ReorderEffectsPayload {
+  sourceId: string;
+  effectIds: string[];
 }
 

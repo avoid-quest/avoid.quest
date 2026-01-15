@@ -9,11 +9,9 @@ export type {
   PlatformItemResult,
   PlatformMetadata,
   PlatformTrack,
-  Radio,
-  RadioMetadata,
-  ScrapedOption,
   SoundCloudItemResult,
   SoundCloudItemType,
   SoundCloudMetadata,
   SoundCloudTrackInfo,
-} from "./types";
+} from "./types.js";
+// Radio, RadioMetadata, and ScrapedOption types moved to @avoid.quest/cacophony

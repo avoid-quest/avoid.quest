@@ -165,6 +165,9 @@ export class OscillatorSource extends Source {
     // Apply filters
     this.applyFilters(this.tempL!, this.tempR!, fromIndex, toIndex);
 
+    // Apply effects
+    this.applyEffects(this.tempL!, this.tempR!, fromIndex, toIndex);
+
     // Calculate pan gains (simple linear balance)
     let gainL = this.volume;
     let gainR = this.volume;

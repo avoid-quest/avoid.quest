@@ -1,3 +1,4 @@
+import type { Radio } from "@avoid.quest/cacophony";
 import type { Platform } from "@avoid.quest/radio-shared";
 import { useDroppable } from "@dnd-kit/core";
 import { Button } from "@workspace/ui/components/button";
@@ -36,7 +37,6 @@ import { useDeckState } from "@/lib/hooks/use-deck-state";
 import { usePlatformMetadata } from "@/lib/hooks/use-platform-metadata";
 import { useTrackProgress } from "@/lib/hooks/use-track-progress";
 import { useDjStore } from "@/lib/stores/dj-store";
-import type { Radio } from "@/lib/types";
 import { DeckLayout } from "./deck-layout";
 import { DeckSections } from "./deck-sections";
 import { DjRadioList } from "./dj-radio-list";

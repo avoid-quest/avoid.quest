@@ -11,10 +11,16 @@ import {
   type SetSourcePanPayload,
   type SourceEndedPayload,
   type SourceErrorPayload,
+  type StreamReadyPayload,
   type PeakMeterPayload,
   type AddFilterPayload,
   type RemoveFilterPayload,
   type SetFilterParamPayload,
+  type AddEffectPayload,
+  type RemoveEffectPayload,
+  type UpdateEffectPayload,
+  type ReorderEffectsPayload,
+  type EffectType,
 } from "../protocol.js";
 import type { AudioBuffer } from "../context.js";
 // @ts-ignore - This will be resolved by the build plugin
@@ -81,6 +87,7 @@ export class CacophonyEngine {
         numberOfOutputs: 1,
         outputChannelCount: [2],
       });
+      // Connect engine output directly to destination
       this.workletNode.connect(nativeContext.destination);
       
       // Set up message listener for events from worklet
@@ -123,6 +130,9 @@ export class CacophonyEngine {
         break;
       case MessageType.STREAM_UNDERRUN:
         this.eventEmitter.emit('streamUnderrun', message.payload);
+        break;
+      case MessageType.STREAM_READY:
+        this.eventEmitter.emit('streamReady', message.payload as StreamReadyPayload);
         break;
       case MessageType.PEAK_METER:
         this.eventEmitter.emit('peakMeter', message.payload as PeakMeterPayload);
@@ -218,34 +228,18 @@ export class CacophonyEngine {
     });
   }
 
+  // Delay is now a per-source effect, use addEffect/updateEffect instead
+  // These methods are kept for backward compatibility but deprecated
   setDelayTime(time: number) {
-    this.postMessage({
-      type: MessageType.SET_PARAM,
-      payload: {
-        target: "delay.time",
-        value: time,
-      },
-    });
+    console.warn("setDelayTime is deprecated, use addEffect/updateEffect with delay effect instead");
   }
 
   setDelayFeedback(feedback: number) {
-    this.postMessage({
-      type: MessageType.SET_PARAM,
-      payload: {
-        target: "delay.feedback",
-        value: feedback,
-      },
-    });
+    console.warn("setDelayFeedback is deprecated, use addEffect/updateEffect with delay effect instead");
   }
 
   setDelayMix(mix: number) {
-    this.postMessage({
-      type: MessageType.SET_PARAM,
-      payload: {
-        target: "delay.mix",
-        value: mix,
-      },
-    });
+    console.warn("setDelayMix is deprecated, use addEffect/updateEffect with delay effect instead");
   }
 
   // Source control methods
@@ -445,6 +439,65 @@ export class CacophonyEngine {
     });
   }
 
+  // Effect methods
+  addEffect(
+    sourceId: string,
+    effectId: string,
+    type: EffectType,
+    config: Record<string, number>,
+    order: number
+  ) {
+    const payload: AddEffectPayload = {
+      sourceId,
+      effectId,
+      type,
+      config,
+      order,
+    };
+
+    this.postMessage({
+      type: MessageType.ADD_EFFECT,
+      payload,
+    });
+  }
+
+  removeEffect(sourceId: string, effectId: string) {
+    const payload: RemoveEffectPayload = {
+      sourceId,
+      effectId,
+    };
+
+    this.postMessage({
+      type: MessageType.REMOVE_EFFECT,
+      payload,
+    });
+  }
+
+  updateEffect(sourceId: string, effectId: string, config: Partial<Record<string, number>>) {
+    const payload: UpdateEffectPayload = {
+      sourceId,
+      effectId,
+      config,
+    };
+
+    this.postMessage({
+      type: MessageType.UPDATE_EFFECT,
+      payload,
+    });
+  }
+
+  reorderEffects(sourceId: string, effectIds: string[]) {
+    const payload: ReorderEffectsPayload = {
+      sourceId,
+      effectIds,
+    };
+
+    this.postMessage({
+      type: MessageType.REORDER_EFFECTS,
+      payload,
+    });
+  }
+
   // Event subscription
   on(event: string, callback: EventCallback) {
     this.eventEmitter.on(event, callback);
@@ -464,7 +517,8 @@ export class CacophonyEngine {
 
   /**
    * Connect an AudioNode to the engine's input.
-   * This allows external audio sources (like MediaElementSource) to be processed by the engine.
+   * This allows external audio sources to be processed by the engine.
+   * Note: With engine-only mode, this is rarely needed as all sources are created in the engine.
    */
   connectInput(node: AudioNode) {
     if (this.workletNode) {

@@ -1,3 +1,4 @@
+import type { Radio } from "@avoid.quest/cacophony";
 import { useSingleAudio } from "@avoid.quest/radio-audio";
 import { Button } from "@workspace/ui/components/button";
 import {
@@ -19,7 +20,6 @@ import { PlayPauseButton } from "@workspace/ui/components/play-pause-button";
 import { Slider } from "@workspace/ui/components/slider";
 import { AudioLinesIcon, Volume2Icon, VolumeXIcon } from "lucide-react";
 import { useEffect, useState } from "react";
-import type { Radio } from "@/lib/types";
 import { RadioDialog } from "../../settings/radio-dialog";
 import { SettingsButton } from "../../settings/settings-button";
 import { RadioItemActions } from "../radio-item-actions";

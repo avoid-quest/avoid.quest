@@ -4,6 +4,7 @@ import type {
   AudioContext,
 } from "./context.js";
 import type { CacophonyEngine } from "./engine/cacophony-engine.js";
+import type { OscillatorType } from "./protocol.js";
 import type { Synth } from "./synth.js";
 
 const SynthPlaybackBase = BasePlayback;
@@ -31,7 +32,6 @@ export class SynthPlayback extends SynthPlaybackBase implements BaseSound {
   // Engine-based playback fields
   private sourceId: string;
   private engine: CacophonyEngine;
-  public isEngineBased: boolean = true;
   private _state: PlaybackState = PlaybackState.Unplayed;
   
   /**
@@ -143,11 +143,11 @@ export class SynthPlayback extends SynthPlaybackBase implements BaseSound {
     this.engine.setOscillatorDetune(this.sourceId, value);
   }
 
-  get type(): OscillatorType {
-    return (this.origin.oscillatorOptions.type as OscillatorType) || "sine";
+  get type(): OscillatorType | "custom" {
+    return (this.origin.oscillatorOptions.type as OscillatorType | "custom") || "sine";
   }
 
-  set type(value: OscillatorType) {
+  set type(value: OscillatorType | "custom") {
     // Only send if it's a supported type (exclude 'custom')
     if (value !== 'custom') {
       this.engine.setOscillatorType(this.sourceId, value);
@@ -176,7 +176,6 @@ export class SynthPlayback extends SynthPlaybackBase implements BaseSound {
 
   /**
    * Refreshes the audio filters by re-applying them to the audio signal chain.
-   * Only applies to legacy mode.
    */
   private refreshFilters(): void {
     // No-op in engine mode until filters are ported

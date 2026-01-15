@@ -1,13 +1,11 @@
 import { Cacophony } from "@avoid.quest/cacophony";
 import type { Radio } from "@avoid.quest/radio-shared";
 import {
-  type AudioNode,
   type BiquadFilterNode,
   type Playback,
   type Sound,
   SoundType,
 } from "./cacophony-types";
-import { EffectManager } from "./effects/effect-manager";
 import type { EffectConfig } from "./effects/types";
 import type { FilterConfig } from "./filter-types";
 import { getLogger, type Logger } from "./logger";
@@ -34,17 +32,89 @@ export type AudioState = {
 export const MEDIA_ELEMENT_PLAYBACK_TIMEOUT_MS = 20_000; // 20 seconds
 
 /**
- * Safely converts a GainNode to AudioNode for use with EffectManager.
- * This function verifies the node has the necessary AudioNode properties
- * and performs a single type assertion.
+ * Maps EffectConfig type to engine effect type
  */
-function gainNodeToAudioNode(node: { connect: unknown }): AudioNode {
-  // Type guard: verify the node has the connect method (required for AudioNode)
-  if (typeof node.connect !== "function") {
-    throw new Error("Node does not have required AudioNode interface");
+function mapEffectTypeToEngine(
+  type: EffectConfig["type"]
+): "reverb" | "phaseVocoder" | "distortion" | "compressor" | "delay" {
+  switch (type) {
+    case "plateReverb":
+    case "standardReverb":
+      return "reverb";
+    case "phaseVocoder":
+      return "phaseVocoder";
+    case "distortion":
+      return "distortion";
+    case "compressor":
+      return "compressor";
+    case "delay":
+      return "delay";
+    default:
+      throw new Error(`Unsupported effect type: ${type}`);
   }
-  // Single safe assertion: GainNode extends AudioNode in Web Audio API
-  return node as AudioNode;
+}
+
+/**
+ * Converts EffectConfig to engine effect config
+ */
+function convertEffectConfigToEngine(
+  config: EffectConfig
+): Record<string, number> {
+  const base: Record<string, number> = {};
+
+  switch (config.type) {
+    case "plateReverb": {
+      const reverbConfig =
+        config as import("./effects/types").PlateReverbConfig;
+      base.preDelay = reverbConfig.preDelay;
+      base.bandwidth = reverbConfig.bandwidth;
+      base.inputDiffusion1 = reverbConfig.inputDiffusion1;
+      base.inputDiffusion2 = reverbConfig.inputDiffusion2;
+      base.decay = reverbConfig.decay;
+      base.decayDiffusion1 = reverbConfig.decayDiffusion1;
+      base.decayDiffusion2 = reverbConfig.decayDiffusion2;
+      base.damping = reverbConfig.damping;
+      base.excursionRate = reverbConfig.excursionRate;
+      base.excursionDepth = reverbConfig.excursionDepth;
+      base.wet = config.dryWet;
+      base.dry = 1 - config.dryWet;
+      break;
+    }
+    case "phaseVocoder": {
+      const vocoderConfig =
+        config as import("./effects/types").PhaseVocoderConfig;
+      base.pitchFactor = vocoderConfig.pitchFactor;
+      break;
+    }
+    case "distortion": {
+      const distortionConfig =
+        config as import("./effects/types").DistortionConfig;
+      base.amount = distortionConfig.amount;
+      break;
+    }
+    case "compressor": {
+      const compressorConfig =
+        config as import("./effects/types").CompressorConfig;
+      base.threshold = compressorConfig.threshold;
+      base.ratio = compressorConfig.ratio;
+      base.attack = compressorConfig.attack;
+      base.release = compressorConfig.release;
+      base.knee = compressorConfig.knee;
+      break;
+    }
+    case "delay": {
+      const delayConfig = config as import("./effects/types").DelayConfig;
+      base.delayTime = delayConfig.delayTime;
+      base.feedback = delayConfig.feedback;
+      base.wet = config.dryWet;
+      base.dry = 1 - config.dryWet;
+      break;
+    }
+    default:
+      throw new Error(`Unsupported effect type: ${config.type}`);
+  }
+
+  return base;
 }
 
 export class AudioManager {
@@ -57,7 +127,6 @@ export class AudioManager {
   // Legacy support - will be removed after migration
   private readonly filters: Map<string, BiquadFilterNode> = new Map();
   // Unified effect system
-  private readonly effectManagers: Map<string, EffectManager> = new Map();
   private logger: Logger;
 
   private constructor(logger?: Logger) {
@@ -144,11 +213,9 @@ export class AudioManager {
       // Get the URL to use (proxied for Bandcamp and SoundCloud to avoid CORS)
       const streamUrl = this.getProxiedUrl(radio.streamUrl);
 
-      // Use HTML type for all radio streams
-      // HTML Audio element handles streaming compressed formats (MP3/AAC) natively
-      // Streaming type uses decodeAudioData which cannot decode partial compressed streams
-      // Bandcamp and SoundCloud also use HTML type for CORS compatibility
-      const soundType = SoundType.HTML;
+      // Use engine-based streaming for all radio streams
+      // Engine StreamSource handles decoded audio chunks from createStream
+      const soundType = SoundType.Streaming;
 
       // Subscribe to cacophony loading events for this URL
       const loadingStartHandler = (event: {
@@ -477,37 +544,8 @@ export class AudioManager {
       clearLoadingState();
     }
 
-    // Disconnect playback from default routing (globalGainNode)
-    // This ensures all audio routes through the effect chain
-    // Only applies to legacy playback - engine playback handles routing internally
-    if (playback.isEngineBased) {
-      // For engine-based playback, we don't use the EffectManager's Web Audio graph
-      // The engine handles effects internally (once implemented)
-      // We might want to initialize an engine-compatible effect manager here in the future
-      this.logger.debug(
-        `Skipping legacy EffectManager for engine-based sound ${soundId}`
-      );
-    } else {
-      playback.disconnect();
-
-      // Setup effect manager for this sound
-      let effectManager = this.effectManagers.get(soundId);
-      if (!effectManager) {
-        effectManager = new EffectManager(
-          this.cacophony,
-          sound,
-          playback,
-          this.logger
-        );
-        this.effectManagers.set(soundId, effectManager);
-      }
-
-      // Set input and output nodes
-      effectManager.setInputNode(playback.outputNode);
-      effectManager.setOutputNode(
-        gainNodeToAudioNode(this.cacophony.globalGainNode)
-      );
-    }
+    // Engine-based playback handles routing internally
+    // Effects are managed via engine API
 
     return playback;
   }
@@ -617,23 +655,7 @@ export class AudioManager {
     // Stop and cleanup playback (stopSound is now defensive and handles already-cleaned playbacks)
     this.stopSound(soundId);
 
-    // Cleanup effect manager
-    const effectManager = this.effectManagers.get(soundId);
-    if (effectManager) {
-      try {
-        effectManager.cleanup();
-      } catch (error) {
-        this.logger.error("Failed to cleanup effect manager", {
-          soundId,
-          error: {
-            message: error instanceof Error ? error.message : String(error),
-            stack: error instanceof Error ? error.stack : undefined,
-            name: error instanceof Error ? error.name : undefined,
-          },
-        });
-      }
-      this.effectManagers.delete(soundId);
-    }
+    // Effects are managed by engine, no cleanup needed
 
     // Remove filter (legacy)
     this.removeFilter(soundId);
@@ -673,7 +695,6 @@ export class AudioManager {
     this.playbacks.clear();
     this.listeners.clear();
     this.filters.clear();
-    this.effectManagers.clear();
     this.lastSoundVolumes.clear();
   }
 
@@ -912,49 +933,47 @@ export class AudioManager {
    * Add an effect to a sound's effect chain
    */
   addEffect(soundId: string, config: EffectConfig): void {
-    const effectManager = this.effectManagers.get(soundId);
-    if (effectManager) {
-      effectManager.addEffect(config);
-    } else {
-      // Create effect manager if it doesn't exist
-      const sound = this.sounds.get(soundId);
-      const playback = this.playbacks.get(soundId);
-      if (!sound) {
-        this.logger.warn("Sound not found for effect addition", { soundId });
-        return;
-      }
-      const newEffectManager = new EffectManager(
-        this.cacophony,
-        sound,
-        playback,
-        this.logger
-      );
-      this.effectManagers.set(soundId, newEffectManager);
-      if (playback) {
-        // Only set up Web Audio routing for legacy playback
-        if (playback.isEngineBased) {
-          this.logger.debug(
-            `Skipping legacy EffectManager setup for engine-based sound ${soundId}`
-          );
-        } else {
-          newEffectManager.setInputNode(playback.outputNode);
-          newEffectManager.setOutputNode(
-            gainNodeToAudioNode(this.cacophony.globalGainNode)
-          );
-        }
-      }
-      newEffectManager.addEffect(config);
+    const playback = this.playbacks.get(soundId);
+    if (!playback) {
+      this.logger.warn("Playback not found for effect addition", { soundId });
+      return;
     }
+
+    const engine = this.cacophony.engine;
+    if (!engine.isReady) {
+      this.logger.warn("Engine not ready for effect addition", { soundId });
+      return;
+    }
+
+    const engineEffectType = mapEffectTypeToEngine(config.type);
+    const engineConfig = convertEffectConfigToEngine(config);
+
+    engine.addEffect(
+      playback.sourceId,
+      config.id,
+      engineEffectType,
+      engineConfig,
+      config.order
+    );
   }
 
   /**
    * Remove an effect from a sound's effect chain
    */
   removeEffect(soundId: string, effectId: string): void {
-    const effectManager = this.effectManagers.get(soundId);
-    if (effectManager) {
-      effectManager.removeEffect(effectId);
+    const playback = this.playbacks.get(soundId);
+    if (!playback) {
+      this.logger.warn("Playback not found for effect removal", { soundId });
+      return;
     }
+
+    const engine = this.cacophony.engine;
+    if (!engine.isReady) {
+      this.logger.warn("Engine not ready for effect removal", { soundId });
+      return;
+    }
+
+    engine.removeEffect(playback.sourceId, effectId);
   }
 
   /**
@@ -966,38 +985,128 @@ export class AudioManager {
     effectId: string,
     config: Partial<EffectConfig>
   ): Promise<boolean> {
-    const effectManager = this.effectManagers.get(soundId);
-    if (effectManager) {
-      return effectManager.updateEffect(effectId, config);
+    const playback = this.playbacks.get(soundId);
+    if (!playback) {
+      this.logger.warn("Playback not found for effect update", { soundId });
+      return Promise.resolve(false);
     }
-    return Promise.resolve(false);
+
+    const engine = this.cacophony.engine;
+    if (!engine.isReady) {
+      this.logger.warn("Engine not ready for effect update", { soundId });
+      return Promise.resolve(false);
+    }
+
+    // Convert partial config to engine config
+    const engineConfig: Record<string, number> = {};
+    if (
+      config.type === "plateReverb" ||
+      (config as any).preDelay !== undefined
+    ) {
+      const reverbConfig = config as Partial<
+        import("./effects/types").PlateReverbConfig
+      >;
+      if (reverbConfig.preDelay !== undefined)
+        engineConfig.preDelay = reverbConfig.preDelay;
+      if (reverbConfig.bandwidth !== undefined)
+        engineConfig.bandwidth = reverbConfig.bandwidth;
+      if (reverbConfig.inputDiffusion1 !== undefined)
+        engineConfig.inputDiffusion1 = reverbConfig.inputDiffusion1;
+      if (reverbConfig.inputDiffusion2 !== undefined)
+        engineConfig.inputDiffusion2 = reverbConfig.inputDiffusion2;
+      if (reverbConfig.decay !== undefined)
+        engineConfig.decay = reverbConfig.decay;
+      if (reverbConfig.decayDiffusion1 !== undefined)
+        engineConfig.decayDiffusion1 = reverbConfig.decayDiffusion1;
+      if (reverbConfig.decayDiffusion2 !== undefined)
+        engineConfig.decayDiffusion2 = reverbConfig.decayDiffusion2;
+      if (reverbConfig.damping !== undefined)
+        engineConfig.damping = reverbConfig.damping;
+      if (reverbConfig.excursionRate !== undefined)
+        engineConfig.excursionRate = reverbConfig.excursionRate;
+      if (reverbConfig.excursionDepth !== undefined)
+        engineConfig.excursionDepth = reverbConfig.excursionDepth;
+      if (config.dryWet !== undefined) {
+        engineConfig.wet = config.dryWet;
+        engineConfig.dry = 1 - config.dryWet;
+      }
+    } else if (
+      config.type === "phaseVocoder" ||
+      (config as any).pitchFactor !== undefined
+    ) {
+      const vocoderConfig = config as Partial<
+        import("./effects/types").PhaseVocoderConfig
+      >;
+      if (vocoderConfig.pitchFactor !== undefined)
+        engineConfig.pitchFactor = vocoderConfig.pitchFactor;
+    } else if (
+      config.type === "distortion" ||
+      (config as any).amount !== undefined
+    ) {
+      const distortionConfig = config as Partial<
+        import("./effects/types").DistortionConfig
+      >;
+      if (distortionConfig.amount !== undefined)
+        engineConfig.amount = distortionConfig.amount;
+    } else if (config.type === "compressor") {
+      const compressorConfig = config as Partial<
+        import("./effects/types").CompressorConfig
+      >;
+      if (compressorConfig.threshold !== undefined)
+        engineConfig.threshold = compressorConfig.threshold;
+      if (compressorConfig.ratio !== undefined)
+        engineConfig.ratio = compressorConfig.ratio;
+      if (compressorConfig.attack !== undefined)
+        engineConfig.attack = compressorConfig.attack;
+      if (compressorConfig.release !== undefined)
+        engineConfig.release = compressorConfig.release;
+      if (compressorConfig.knee !== undefined)
+        engineConfig.knee = compressorConfig.knee;
+    } else if (config.type === "delay") {
+      const delayConfig = config as Partial<
+        import("./effects/types").DelayConfig
+      >;
+      if (delayConfig.delayTime !== undefined)
+        engineConfig.delayTime = delayConfig.delayTime;
+      if (delayConfig.feedback !== undefined)
+        engineConfig.feedback = delayConfig.feedback;
+      if (config.dryWet !== undefined) {
+        engineConfig.wet = config.dryWet;
+        engineConfig.dry = 1 - config.dryWet;
+      }
+    }
+
+    engine.updateEffect(playback.sourceId, effectId, engineConfig);
+    return Promise.resolve(true);
   }
 
   /**
    * Reorder effects in a sound's effect chain
    */
   reorderEffects(soundId: string, effectIds: string[]): void {
-    const effectManager = this.effectManagers.get(soundId);
-    if (effectManager) {
-      effectManager.reorderEffects(effectIds);
+    const playback = this.playbacks.get(soundId);
+    if (!playback) {
+      this.logger.warn("Playback not found for effect reordering", { soundId });
+      return;
     }
+
+    const engine = this.cacophony.engine;
+    if (!engine.isReady) {
+      this.logger.warn("Engine not ready for effect reordering", { soundId });
+      return;
+    }
+
+    engine.reorderEffects(playback.sourceId, effectIds);
   }
 
   /**
    * Get all effects for a sound
+   * Note: Engine doesn't currently expose effect list, so this returns empty array
+   * TODO: Add getEffects API to engine if needed
    */
-  getEffects(soundId: string): ReturnType<EffectManager["getEffects"]> {
-    const effectManager = this.effectManagers.get(soundId);
-    if (effectManager) {
-      return effectManager.getEffects();
-    }
+  getEffects(soundId: string): EffectConfig[] {
+    // Engine doesn't expose effect list yet
+    // This would require adding a GET_EFFECTS message type and handler
     return [];
-  }
-
-  /**
-   * Get effect manager for a sound (for advanced usage)
-   */
-  getEffectManager(soundId: string): EffectManager | undefined {
-    return this.effectManagers.get(soundId);
   }
 }

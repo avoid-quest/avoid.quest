@@ -112,7 +112,8 @@ export function RadioForm({
   scrapedData,
 }: RadioFormProps) {
   const form = useForm<RadioFormData>({
-    resolver: zodResolver(radioSchema),
+    // biome-ignore lint/suspicious/noExplicitAny: Zod 4 type inference workaround
+    resolver: zodResolver(radioSchema as any),
     defaultValues: getFormDefaultValues(radio, scrapedData),
   });
 

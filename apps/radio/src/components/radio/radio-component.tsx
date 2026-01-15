@@ -1,4 +1,3 @@
-import type { Radio } from "@avoid.quest/cacophony";
 import {
   Card,
   CardAction,
@@ -7,6 +6,7 @@ import {
   CardTitle,
 } from "@workspace/ui/components/card";
 import { useLiveQuery } from "dexie-react-hooks";
+import type { Radio } from "@/lib/audio";
 import { db } from "@/lib/db";
 import { CustomPlayer } from "./custom-player";
 import { RadioSkeleton } from "./multiple/radio-skeleton";

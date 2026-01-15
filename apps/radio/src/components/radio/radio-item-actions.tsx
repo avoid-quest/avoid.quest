@@ -1,4 +1,3 @@
-import type { Radio } from "@avoid.quest/cacophony";
 import { Button } from "@workspace/ui/components/button";
 import {
   DropdownMenu,
@@ -18,6 +17,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import type { Radio } from "@/lib/audio";
 import { db } from "@/lib/db";
 
 type RadioItemActionsProps = {

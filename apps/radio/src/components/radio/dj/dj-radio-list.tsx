@@ -1,4 +1,3 @@
-import type { Radio } from "@avoid.quest/cacophony";
 import type { Platform } from "@avoid.quest/radio-shared";
 import { useDraggable } from "@dnd-kit/core";
 import { Button } from "@workspace/ui/components/button";
@@ -20,6 +19,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { useShallow } from "zustand/react/shallow";
+import type { Radio } from "@/lib/audio";
 import { useDjStore } from "@/lib/stores/dj-store";
 import { RadioLogo } from "../radio-logo";
 import { RadioNameLink } from "../radio-name-link";

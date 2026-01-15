@@ -1,4 +1,3 @@
-import { type EffectConfig, getEffectMetadata } from "@avoid.quest/radio-audio";
 import { useDraggable } from "@dnd-kit/core";
 import { Button } from "@workspace/ui/components/button";
 import {
@@ -15,6 +14,7 @@ import {
   RotateCcwIcon,
   XIcon,
 } from "lucide-react";
+import { type EffectConfig, getEffectMetadata } from "@/lib/audio";
 import { EFFECT_ICONS } from "./effect-constants";
 import { EffectParams } from "./effect-params/effect-params";
 

@@ -1,4 +1,4 @@
-import { type EffectConfig, getEffectMetadata } from "@avoid.quest/radio-audio";
+import { type EffectConfig, getEffectMetadata } from "@/lib/audio";
 import { ParamGroup, ParamSlider } from "./";
 import { getDefaultValue } from "./utils";
 

@@ -1,4 +1,3 @@
-import type { Radio } from "@avoid.quest/cacophony";
 import type { Platform } from "@avoid.quest/radio-shared";
 import type { DragEndEvent, DragStartEvent } from "@dnd-kit/core";
 import {
@@ -15,6 +14,7 @@ import { cn } from "@workspace/ui/lib/utils";
 import { Volume2Icon } from "lucide-react";
 import { useState } from "react";
 import { useShallow } from "zustand/react/shallow";
+import type { Radio } from "@/lib/audio";
 import { useDjStore } from "@/lib/stores/dj-store";
 import type { DeckId } from "@/lib/stores/dj-store/types";
 

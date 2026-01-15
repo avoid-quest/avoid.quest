@@ -2,7 +2,7 @@ import {
   type EffectConfig,
   getEffectMetadata,
   type PlateReverbConfig,
-} from "@avoid.quest/radio-audio";
+} from "@/lib/audio";
 import { ParamGroup, ParamSlider, UniversalParams } from "./";
 
 type PlateReverbParamsProps = {

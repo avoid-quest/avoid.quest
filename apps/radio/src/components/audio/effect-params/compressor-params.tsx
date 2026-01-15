@@ -2,7 +2,7 @@ import {
   type CompressorConfig,
   type EffectConfig,
   getEffectMetadata,
-} from "@avoid.quest/radio-audio";
+} from "@/lib/audio";
 import { ParamGroup, ParamSlider, UniversalParams } from "./";
 
 type CompressorParamsProps = {

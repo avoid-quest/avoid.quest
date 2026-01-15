@@ -2,7 +2,7 @@ import {
   type BiquadFilterConfig,
   type EffectConfig,
   getEffectMetadata,
-} from "@avoid.quest/radio-audio";
+} from "@/lib/audio";
 import { ParamSelect, ParamSlider, UniversalParams } from "./";
 import { getDefaultValue } from "./utils";
 

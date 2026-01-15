@@ -1,5 +1,3 @@
-import type { Radio } from "@avoid.quest/cacophony";
-import { useAudio } from "@avoid.quest/radio-audio";
 import { Button } from "@workspace/ui/components/button";
 import { Slider } from "@workspace/ui/components/slider";
 import { Spinner } from "@workspace/ui/components/spinner";
@@ -11,6 +9,7 @@ import {
   Volume2Icon,
   VolumeXIcon,
 } from "lucide-react";
+import { type Radio, useAudio } from "@/lib/audio";
 
 const MAX_VOLUME = 100;
 

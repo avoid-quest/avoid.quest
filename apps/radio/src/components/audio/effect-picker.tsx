@@ -1,4 +1,3 @@
-import { AVAILABLE_EFFECTS } from "@avoid.quest/radio-audio";
 import { Card, CardContent } from "@workspace/ui/components/card";
 import {
   Dialog,
@@ -11,6 +10,7 @@ import { Input } from "@workspace/ui/components/input";
 import { cn } from "@workspace/ui/lib/utils";
 import { FilterIcon, SearchIcon } from "lucide-react";
 import { useState } from "react";
+import { AVAILABLE_EFFECTS } from "@/lib/audio";
 import { EFFECT_ICONS } from "./effect-constants";
 
 type EffectPickerProps = {

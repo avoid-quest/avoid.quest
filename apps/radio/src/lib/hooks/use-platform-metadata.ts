@@ -1,5 +1,5 @@
-import type { Radio } from "@avoid.quest/cacophony";
 import { useEffect, useState } from "react";
+import type { Radio } from "@/lib/audio";
 import {
   getCurrentTrackIndex,
   isCollection,

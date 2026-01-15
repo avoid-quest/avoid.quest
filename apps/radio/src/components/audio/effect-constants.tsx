@@ -1,4 +1,3 @@
-import type { EffectType } from "@avoid.quest/radio-audio";
 import {
   ClockIcon,
   FilterIcon,
@@ -7,6 +6,7 @@ import {
   WavesIcon,
   ZapIcon,
 } from "lucide-react";
+import type { EffectType } from "@/lib/audio";
 
 export const EFFECT_ICONS: Record<EffectType, typeof FilterIcon> = {
   biquadFilter: FilterIcon,
@@ -16,7 +16,6 @@ export const EFFECT_ICONS: Record<EffectType, typeof FilterIcon> = {
   delay: ClockIcon,
   distortion: ZapIcon,
   compressor: FireExtinguisherIcon,
-  panner: RadioIcon,
   crusher: ZapIcon,
   fold: ZapIcon,
   stereoTool: RadioIcon,

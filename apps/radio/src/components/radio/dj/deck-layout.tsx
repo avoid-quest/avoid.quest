@@ -1,5 +1,3 @@
-import type { Radio } from "@avoid.quest/cacophony";
-import type { EffectConfig } from "@avoid.quest/radio-audio";
 import type { PlatformMetadata } from "@avoid.quest/radio-shared";
 import { Button } from "@workspace/ui/components/button";
 import { PlayPauseButton } from "@workspace/ui/components/play-pause-button";
@@ -15,6 +13,7 @@ import {
 import { useIsMobile } from "@workspace/ui/hooks/use-mobile";
 import { cn } from "@workspace/ui/lib/utils";
 import { Link2Icon, Music2Icon, XIcon } from "lucide-react";
+import type { EffectConfig, Radio } from "@/lib/audio";
 import { RadioNameLink } from "../radio-name-link";
 import { DeckSections } from "./deck-sections";
 import { PlaylistSnippet, PlaylistView } from "./playlist-view";

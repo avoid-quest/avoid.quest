@@ -1,5 +1,8 @@
+// biome-ignore lint/style/noExportedImports: needed for local use and re-export
+import type { Radio } from "@/lib/audio";
+
 // Re-export Radio type for use in app
-export type { Radio } from "@avoid.quest/cacophony";
+export type { Radio };
 
 export type Settings = {
   id?: number;

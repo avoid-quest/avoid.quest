@@ -1,4 +1,3 @@
-import type { Radio } from "@avoid.quest/cacophony";
 import { Button } from "@workspace/ui/components/button";
 import {
   Card,
@@ -8,6 +7,7 @@ import {
 } from "@workspace/ui/components/card";
 import { Volume2Icon } from "lucide-react";
 import { useState } from "react";
+import type { Radio } from "@/lib/audio";
 import { RadioDialog } from "../../settings/radio-dialog";
 import { SettingsButton } from "../../settings/settings-button";
 import { RadioComponent } from "../radio-component";

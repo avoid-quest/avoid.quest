@@ -1,4 +1,4 @@
-import type { RadioMetadata } from "@avoid.quest/cacophony";
+import type { RadioMetadata } from "@avoid.quest/radio-shared";
 import { Button } from "@workspace/ui/components/button";
 import { Input } from "@workspace/ui/components/input";
 import { Label } from "@workspace/ui/components/label";

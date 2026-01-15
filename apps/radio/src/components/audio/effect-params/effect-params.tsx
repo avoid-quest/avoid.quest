@@ -1,10 +1,15 @@
-import type { EffectConfig } from "@avoid.quest/radio-audio";
+import type { EffectConfig } from "@/lib/audio";
 import { CompressorParams } from "./compressor-params";
+import { CrusherParams } from "./crusher-params";
 import { DelayParams } from "./delay-params";
 import { DistortionParams } from "./distortion-params";
+import { FoldParams } from "./fold-params";
 import { PhaseVocoderParams } from "./phase-vocoder-params";
+import { RevampParams } from "./revamp-params";
 import { PlateReverbParams } from "./reverb-params";
 import { StandardReverbParams } from "./standard-reverb-params";
+import { StereoToolParams } from "./stereo-tool-params";
+import { TidalParams } from "./tidal-params";
 
 type EffectParamsProps = {
   effect: EffectConfig;
@@ -25,6 +30,16 @@ export function EffectParams({ effect, onUpdate }: EffectParamsProps) {
       return <DistortionParams effect={effect} onUpdate={onUpdate} />;
     case "compressor":
       return <CompressorParams effect={effect} onUpdate={onUpdate} />;
+    case "crusher":
+      return <CrusherParams effect={effect} onUpdate={onUpdate} />;
+    case "fold":
+      return <FoldParams effect={effect} onUpdate={onUpdate} />;
+    case "stereoTool":
+      return <StereoToolParams effect={effect} onUpdate={onUpdate} />;
+    case "revamp":
+      return <RevampParams effect={effect} onUpdate={onUpdate} />;
+    case "tidal":
+      return <TidalParams effect={effect} onUpdate={onUpdate} />;
     default:
       return null;
   }

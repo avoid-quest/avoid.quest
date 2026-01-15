@@ -2,7 +2,7 @@ import {
   type EffectConfig,
   getEffectMetadata,
   type PhaseVocoderConfig,
-} from "@avoid.quest/radio-audio";
+} from "@/lib/audio";
 import { ParamGroup, ParamSlider, UniversalParams } from "./";
 import { getDefaultValue } from "./utils";
 

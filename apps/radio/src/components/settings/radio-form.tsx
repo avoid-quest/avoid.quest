@@ -1,4 +1,4 @@
-import type { Radio, RadioMetadata } from "@avoid.quest/cacophony";
+import type { RadioMetadata } from "@avoid.quest/radio-shared";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "@workspace/ui/components/button";
 import {
@@ -13,6 +13,7 @@ import { Textarea } from "@workspace/ui/components/textarea";
 import { CheckCircleIcon } from "lucide-react";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
+import type { Radio } from "@/lib/audio";
 import { db } from "@/lib/db";
 import { type RadioFormData, radioSchema } from "@/lib/schemas/radio-schema";
 import { RadioFieldPreview } from "./radio-field-preview";
@@ -111,7 +112,8 @@ export function RadioForm({
   scrapedData,
 }: RadioFormProps) {
   const form = useForm<RadioFormData>({
-    resolver: zodResolver(radioSchema),
+    // biome-ignore lint/suspicious/noExplicitAny: Zod 4 type inference workaround
+    resolver: zodResolver(radioSchema as any),
     defaultValues: getFormDefaultValues(radio, scrapedData),
   });
 

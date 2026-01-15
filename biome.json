@@ -25,6 +25,24 @@
       "!**/packages/backend/convex/_generated/server.js"
     ]
   },
+  "overrides": [
+    {
+      "includes": ["**/dsp/**/*.ts"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noBitwiseOperators": "off"
+          },
+          "complexity": {
+            "noExcessiveCognitiveComplexity": "off"
+          },
+          "correctness": {
+            "noUnusedPrivateClassMembers": "off"
+          }
+        }
+      }
+    }
+  ],
   "javascript": {
     "globals": [
       "Bun",

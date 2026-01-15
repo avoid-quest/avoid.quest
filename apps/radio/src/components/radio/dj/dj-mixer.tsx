@@ -1,10 +1,10 @@
-import type { Radio } from "@avoid.quest/cacophony";
 import { Card, CardContent } from "@workspace/ui/components/card";
 import { useIsMobile } from "@workspace/ui/hooks/use-mobile";
 import { cn } from "@workspace/ui/lib/utils";
 import { useShallow } from "zustand/react/shallow";
 import { Crossfader } from "@/components/audio/crossfader";
 import { VolumeControl } from "@/components/audio/volume-control";
+import type { Radio } from "@/lib/audio";
 import { useDjStore } from "@/lib/stores/dj-store";
 import { DjRadioList } from "./dj-radio-list";
 

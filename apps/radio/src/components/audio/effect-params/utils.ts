@@ -1,4 +1,4 @@
-import type { EffectConfig } from "@avoid.quest/radio-audio";
+import type { EffectConfig } from "@/lib/audio";
 
 export function getDefaultValue(
   defaultConfig: Omit<EffectConfig, "id" | "order"> | undefined,

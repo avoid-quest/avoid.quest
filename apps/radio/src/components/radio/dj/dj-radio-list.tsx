@@ -312,7 +312,7 @@ export function DjRadioList({ radios }: DjRadioListProps) {
             </TabsTrigger>
           </TabsList>
           <div className="relative">
-            <SearchIcon className="-translate-y-1/2 absolute top-1/2 left-2 size-4 text-muted-foreground" />
+            <SearchIcon className="absolute top-1/2 left-2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               aria-label="Search radios and external inputs"
               className="h-8 pl-8 text-xs"

@@ -7,8 +7,6 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "fix": "bunx ultracite fix",
-    "check": "bunx ultracite check",
     "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
     "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
     "cf-build": "opennextjs-cloudflare build",

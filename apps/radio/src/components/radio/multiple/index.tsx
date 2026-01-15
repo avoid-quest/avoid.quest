@@ -75,7 +75,7 @@ export function MultipleRadios({ radios }: { radios?: Radio[] }) {
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {radios.map((radio: Radio) => (
           <div
-            className="group hover:-translate-y-1 relative transition-all duration-300 hover:shadow-lg"
+            className="group relative transition-all duration-300 hover:-translate-y-1 hover:shadow-lg"
             key={radio.id}
           >
             <RadioComponent

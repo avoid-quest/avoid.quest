@@ -1,9 +1,12 @@
-import type { Radio } from "@avoid.quest/radio-shared";
+import {
+  AudioManager,
+  type AudioState,
+  createDefaultEffectConfig,
+  type EffectConfig,
+  type FilterConfig,
+  type Radio,
+} from "@avoid.quest/cacophony";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AudioManager, type AudioState } from "../audio-manager";
-import { createDefaultEffectConfig } from "../effects/registry";
-import type { EffectConfig } from "../effects/types";
-import type { FilterConfig } from "../filter-types";
 
 const CROSSFADE_POSITION = 0.5;
 
@@ -26,7 +29,7 @@ export function useDjAudio() {
   const [rightMuted, setRightMuted] = useState(false);
   const [leftSoundId, setLeftSoundId] = useState<string | null>(null);
   const [rightSoundId, setRightSoundId] = useState<string | null>(null);
-  // Legacy filter/reverb configs for backward compatibility
+  // Simple filter controls (separate from effect chain)
   const [leftFilterConfig, setLeftFilterConfig] = useState<FilterConfig>({
     type: "lowpass",
     frequency: 1000,
@@ -619,10 +622,10 @@ export function useDjAudio() {
     masterVolume,
     leftMuted,
     rightMuted,
-    // Legacy support
+    // Simple filter controls
     leftFilterConfig,
     rightFilterConfig,
-    // New unified effect system
+    // Effect chain
     leftEffects,
     rightEffects,
     // Sound IDs for effect initialization
@@ -636,10 +639,10 @@ export function useDjAudio() {
     setMasterVolume: setMasterVolumeCallback,
     setLeftMute: setLeftMuteCallback,
     setRightMute: setRightMuteCallback,
-    // Legacy support
+    // Simple filter controls
     updateLeftFilter: updateLeftFilterCallback,
     updateRightFilter: updateRightFilterCallback,
-    // New unified effect system
+    // Effect chain
     addLeftEffect,
     addRightEffect,
     updateLeftEffect,

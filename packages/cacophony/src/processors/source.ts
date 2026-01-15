@@ -13,12 +13,13 @@ import { RevampEffect } from "./effects/revamp.js";
 import { TidalEffect } from "./effects/tidal.js";
 import type { EffectType } from "../protocol.js";
 
-type Effect = 
-  | DattorroReverb 
-  | FreeVerbReverb 
-  | PhaseVocoder 
-  | Distortion 
-  | Compressor 
+type Effect =
+  | BiquadFilter
+  | DattorroReverb
+  | FreeVerbReverb
+  | PhaseVocoder
+  | Distortion
+  | Compressor
   | StereoDelay
   | CrusherEffect
   | FoldEffect
@@ -96,6 +97,21 @@ export abstract class Source {
     let effect: Effect;
 
     switch (type) {
+      case "biquadFilter": {
+        const filter = new BiquadFilter(sampleRate);
+        if (config.filterType !== undefined) {
+          const filterTypes: BiquadFilterType[] = [
+            "lowpass", "highpass", "bandpass", "lowshelf",
+            "highshelf", "peaking", "notch", "allpass"
+          ];
+          filter.type = filterTypes[config.filterType] ?? "lowpass";
+        }
+        if (config.frequency !== undefined) filter.frequency = config.frequency;
+        if (config.Q !== undefined) filter.Q = config.Q;
+        if (config.gain !== undefined) filter.gain = config.gain;
+        effect = filter;
+        break;
+      }
       case "reverb": {
         const reverb = new DattorroReverb(sampleRate);
         if (config.preDelay !== undefined) reverb.setPreDelay(config.preDelay);
@@ -270,7 +286,18 @@ export abstract class Source {
     const effect = this.effects.get(id);
     if (!effect) return;
 
-    if (effect instanceof DattorroReverb) {
+    if (effect instanceof BiquadFilter) {
+      if (config.filterType !== undefined) {
+        const filterTypes: BiquadFilterType[] = [
+          "lowpass", "highpass", "bandpass", "lowshelf",
+          "highshelf", "peaking", "notch", "allpass"
+        ];
+        effect.type = filterTypes[config.filterType] ?? "lowpass";
+      }
+      if (config.frequency !== undefined) effect.frequency = config.frequency;
+      if (config.Q !== undefined) effect.Q = config.Q;
+      if (config.gain !== undefined) effect.gain = config.gain;
+    } else if (effect instanceof DattorroReverb) {
       if (config.preDelay !== undefined) effect.setPreDelay(config.preDelay);
       if (config.bandwidth !== undefined) effect.setBandwidth(config.bandwidth);
       if (config.inputDiffusion1 !== undefined) effect.setInputDiffusion1(config.inputDiffusion1);

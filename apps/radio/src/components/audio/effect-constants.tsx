@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 
 export const EFFECT_ICONS: Record<EffectType, typeof FilterIcon> = {
+  biquadFilter: FilterIcon,
   plateReverb: WavesIcon,
   standardReverb: WavesIcon,
   phaseVocoder: RadioIcon,

@@ -5,8 +5,6 @@
   "private": true,
   "scripts": {
     "ui": "bunx --bun shadcn@latest",
-    "fix": "bunx ultracite fix",
-    "check": "bunx ultracite check",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

@@ -11,8 +11,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@avoid.quest/cacophony": "workspace:*",
-    "@avoid.quest/radio-shared": "workspace:*"
+    "@avoid.quest/cacophony": "workspace:*"
   },
   "peerDependencies": {
     "react": "^19.2.0"

@@ -1,6 +1,5 @@
-import type { Radio } from "@avoid.quest/radio-shared";
+import { AudioManager, type Radio } from "@avoid.quest/cacophony";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AudioManager } from "../audio-manager";
 
 const TRANSITION_DURATION = 2000;
 

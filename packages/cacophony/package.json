@@ -35,8 +35,6 @@
     "build:worklets": "bun run build.ts --worklets",
     "dev": "bun --watch build.ts",
     "typecheck": "tsc --noEmit",
-    "fix": "bunx ultracite fix",
-    "check": "bunx ultracite check",
     "clean": "rimraf dist",
     "test": "bun test",
     "ci:test": "bun test"

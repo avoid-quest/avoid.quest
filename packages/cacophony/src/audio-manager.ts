@@ -51,6 +51,8 @@ function mapEffectTypeToEngine(
   type: EffectConfig["type"]
 ): EffectType {
   switch (type) {
+    case "biquadFilter":
+      return "biquadFilter";
     case "plateReverb":
       return "reverb";
     case "standardReverb":
@@ -87,6 +89,25 @@ function convertEffectConfigToEngine(
   const base: Record<string, number> = {};
 
   switch (config.type) {
+    case "biquadFilter": {
+      const filterConfig = config as import("./effects/types.js").BiquadFilterConfig;
+      // Map filterType string to a number for the worklet
+      const filterTypeMap: Record<string, number> = {
+        lowpass: 0,
+        highpass: 1,
+        bandpass: 2,
+        lowshelf: 3,
+        highshelf: 4,
+        peaking: 5,
+        notch: 6,
+        allpass: 7,
+      };
+      base.filterType = filterTypeMap[filterConfig.filterType] ?? 0;
+      base.frequency = filterConfig.frequency;
+      base.Q = filterConfig.Q;
+      base.gain = filterConfig.gain;
+      break;
+    }
     case "plateReverb": {
       const reverbConfig = config as PlateReverbConfig;
       base.preDelay = reverbConfig.preDelay;
@@ -227,7 +248,7 @@ export class AudioManager {
   private readonly playbacks: Map<string, Playback> = new Map();
   private readonly listeners: Map<string, Set<(state: AudioState) => void>> =
     new Map();
-  // Legacy support - will be removed after migration
+  // Simple filter system (separate from effect chain)
   private readonly filters: Map<string, BiquadFilterNode> = new Map();
   // Unified effect system
   private logger: Logger;
@@ -728,7 +749,7 @@ export class AudioManager {
 
     // Effects are managed by engine, no cleanup needed
 
-    // Remove filter (legacy)
+    // Remove filter if applied
     this.removeFilter(soundId);
 
     // Cleanup sound

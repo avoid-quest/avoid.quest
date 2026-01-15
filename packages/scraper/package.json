@@ -11,8 +11,6 @@
     "build:macos-arm64": "VERSION=$(bun -e \"console.log(JSON.stringify(JSON.parse(await Bun.file('package.json').text()).version))\") && bun build src/cli/index.ts --compile --target bun-darwin-arm64 --define PACKAGE_VERSION=$VERSION --outfile out/ig-scraper-macos-arm64",
     "build:windows": "VERSION=$(bun -e \"console.log(JSON.stringify(JSON.parse(await Bun.file('package.json').text()).version))\") && bun build src/cli/index.ts --compile --target bun-windows-x64 --define PACKAGE_VERSION=$VERSION --outfile out/ig-scraper-windows.exe",
     "build:all": "bun run build:linux && bun run build:macos-x64 && bun run build:macos-arm64 && bun run build:windows",
-    "fix": "bunx ultracite fix",
-    "check": "bunx ultracite check",
     "cli": "bun run src/cli/index.ts",
     "start": "bun run src/cli/index.ts start",
     "scrape": "bun run src/cli/index.ts scrape",

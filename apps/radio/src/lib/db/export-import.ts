@@ -1,6 +1,7 @@
+import type { Radio } from "@avoid.quest/cacophony";
 import LZString from "lz-string";
 import { toast } from "sonner";
-import type { DatabaseExport, ImportPreview, Radio } from "../types";
+import type { DatabaseExport, ImportPreview } from "../types";
 import { db } from ".";
 
 const EXPORT_VERSION = 1;
@@ -299,7 +300,6 @@ export const replaceImportedData = async (
  */
 export const mergeImportedData = async (
   importData: DatabaseExport
-  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Merge import data with existing data is a complex operation
 ): Promise<void> => {
   try {
     const existingRadios = await db.radios.toArray();

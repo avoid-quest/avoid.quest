@@ -5,8 +5,6 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev --port 3000",
-    "fix": "bunx ultracite fix",
-    "check": "bunx ultracite check",
     "build": "vite build",
     "test": "vitest run",
     "cf-deploy": "wrangler deploy",

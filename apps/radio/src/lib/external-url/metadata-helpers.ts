@@ -1,4 +1,4 @@
-import type { Platform, PlatformMetadata } from "./types";
+import type { Platform, PlatformMetadata } from "@avoid.quest/radio-shared";
 
 /**
  * Check if a platform item is a collection (album/playlist)

@@ -33,6 +33,7 @@ export type FilterType =
   | "allpass";
 
 export type EffectType =
+  | "biquadFilter"
   | "plateReverb"
   | "standardReverb"
   | "phaseVocoder"
@@ -64,6 +65,14 @@ export type BaseEffectConfig = {
   inputGain: number; // Linear gain: 0.0 = -∞dB, 1.0 = 0dB, ~4.0 = +12dB
   outputGain: number; // Linear gain: 0.0 = -∞dB, 1.0 = 0dB, ~4.0 = +12dB
 };
+
+export interface BiquadFilterConfig extends BaseEffectConfig {
+  type: "biquadFilter";
+  filterType: FilterType;
+  frequency: number;
+  Q: number;
+  gain: number;
+}
 
 export interface PlateReverbConfig extends BaseEffectConfig {
   type: "plateReverb";
@@ -201,6 +210,7 @@ export interface TidalConfig extends BaseEffectConfig {
 }
 
 export type EffectConfig =
+  | BiquadFilterConfig
   | PlateReverbConfig
   | StandardReverbConfig
   | PhaseVocoderConfig

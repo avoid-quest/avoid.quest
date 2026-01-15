@@ -191,12 +191,13 @@ export interface SetFilterParamPayload {
   value: number | string;
 }
 
-export type EffectType = 
-  | "reverb" 
-  | "standardReverb" 
-  | "phaseVocoder" 
-  | "distortion" 
-  | "compressor" 
+export type EffectType =
+  | "biquadFilter"
+  | "reverb"
+  | "standardReverb"
+  | "phaseVocoder"
+  | "distortion"
+  | "compressor"
   | "delay"
   | "crusher"
   | "fold"

@@ -11,6 +11,31 @@ export type EffectMetadata = {
 
 export const AVAILABLE_EFFECTS: EffectMetadata[] = [
   {
+    type: "biquadFilter",
+    name: "Filter",
+    description:
+      "Biquad filter with 8 types (lowpass, highpass, bandpass, etc.)",
+    defaultConfig: {
+      type: "biquadFilter",
+      filterType: "lowpass",
+      frequency: 1000,
+      Q: 1,
+      gain: 0,
+      enabled: false,
+      dryWet: 1.0,
+      inputGain: 1.0,
+      outputGain: 1.0,
+    } as Omit<EffectConfig, "id" | "order">,
+    parameterRanges: {
+      frequency: { min: 20, max: 20_000, step: 1 },
+      Q: { min: 0.1, max: 30, step: 0.1 },
+      gain: { min: -40, max: 40, step: 0.1 },
+      dryWet: { min: 0, max: 1, step: 0.01 },
+      inputGain: { min: 0, max: 4.0, step: 0.01 },
+      outputGain: { min: 0, max: 4.0, step: 0.01 },
+    },
+  },
+  {
     type: "plateReverb",
     name: "Plate Reverb",
     description: "Advanced plate reverb with extensive controls",

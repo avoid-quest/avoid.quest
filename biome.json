@@ -3,7 +3,6 @@
   "files": {
     "ignoreUnknown": false,
     "includes": [
-      "**",
       "!**/.next",
       "!**/dist",
       "!**/.turbo",
@@ -50,13 +49,24 @@
       },
       "nursery": {
         "useSortedClasses": "info"
+      },
+      "style": {
+        "useConsistentTypeDefinitions": {
+          "fix": "safe",
+          "level": "info",
+          "options": { "style": "type" }
+        },
+        "useBlockStatements": {
+          "fix": "safe",
+          "level": "info"
+        }
       }
     }
   },
   "extends": [
-    "ultracite/core",
-    "ultracite/next",
-    "ultracite/remix",
-    "ultracite/react"
+    "ultracite/biome/core",
+    "ultracite/biome/react",
+    "ultracite/biome/remix",
+    "ultracite/biome/next"
   ]
 }

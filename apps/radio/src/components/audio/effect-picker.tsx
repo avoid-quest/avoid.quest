@@ -39,7 +39,7 @@ export function EffectPicker({ onSelect, onClose }: EffectPickerProps) {
 
         <div className="space-y-4">
           <div className="relative">
-            <SearchIcon className="-translate-y-1/2 absolute top-1/2 left-3 size-4 text-muted-foreground" />
+            <SearchIcon className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               className="pl-9"
               onChange={(e) => setSearchQuery(e.target.value)}

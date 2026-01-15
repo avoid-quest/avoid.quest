@@ -1,6 +1,9 @@
-import type { Radio } from "@avoid.quest/radio-shared";
+import {
+  AudioManager,
+  type AudioState,
+  type Radio,
+} from "@avoid.quest/cacophony";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AudioManager, type AudioState } from "../audio-manager";
 
 export function useAudio(radio: Radio | null) {
   // Memoize AudioManager instance to ensure stable reference across renders

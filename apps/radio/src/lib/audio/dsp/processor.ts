@@ -489,7 +489,95 @@ class StreamSource {
         }
         break;
       }
-      // revamp has many parameters - handle separately if needed
+      case "revamp": {
+        const revamp = processor as RevampEffect;
+        // Highpass
+        if (config.highPassEnabled !== undefined) {
+          revamp.setHighPassEnabled(!!config.highPassEnabled);
+        }
+        if (config.highPassFrequency !== undefined) {
+          revamp.setHighPassFrequency(config.highPassFrequency as number);
+        }
+        if (config.highPassQ !== undefined) {
+          revamp.setHighPassQ(config.highPassQ as number);
+        }
+        if (config.highPassOrder !== undefined) {
+          revamp.setHighPassOrder(config.highPassOrder as number);
+        }
+        // Low shelf
+        if (config.lowShelfEnabled !== undefined) {
+          revamp.setLowShelfEnabled(!!config.lowShelfEnabled);
+        }
+        if (config.lowShelfFrequency !== undefined) {
+          revamp.setLowShelfFrequency(config.lowShelfFrequency as number);
+        }
+        if (config.lowShelfGain !== undefined) {
+          revamp.setLowShelfGain(config.lowShelfGain as number);
+        }
+        // Low bell
+        if (config.lowBellEnabled !== undefined) {
+          revamp.setLowBellEnabled(!!config.lowBellEnabled);
+        }
+        if (config.lowBellFrequency !== undefined) {
+          revamp.setLowBellFrequency(config.lowBellFrequency as number);
+        }
+        if (config.lowBellGain !== undefined) {
+          revamp.setLowBellGain(config.lowBellGain as number);
+        }
+        if (config.lowBellQ !== undefined) {
+          revamp.setLowBellQ(config.lowBellQ as number);
+        }
+        // Mid bell
+        if (config.midBellEnabled !== undefined) {
+          revamp.setMidBellEnabled(!!config.midBellEnabled);
+        }
+        if (config.midBellFrequency !== undefined) {
+          revamp.setMidBellFrequency(config.midBellFrequency as number);
+        }
+        if (config.midBellGain !== undefined) {
+          revamp.setMidBellGain(config.midBellGain as number);
+        }
+        if (config.midBellQ !== undefined) {
+          revamp.setMidBellQ(config.midBellQ as number);
+        }
+        // High bell
+        if (config.highBellEnabled !== undefined) {
+          revamp.setHighBellEnabled(!!config.highBellEnabled);
+        }
+        if (config.highBellFrequency !== undefined) {
+          revamp.setHighBellFrequency(config.highBellFrequency as number);
+        }
+        if (config.highBellGain !== undefined) {
+          revamp.setHighBellGain(config.highBellGain as number);
+        }
+        if (config.highBellQ !== undefined) {
+          revamp.setHighBellQ(config.highBellQ as number);
+        }
+        // High shelf
+        if (config.highShelfEnabled !== undefined) {
+          revamp.setHighShelfEnabled(!!config.highShelfEnabled);
+        }
+        if (config.highShelfFrequency !== undefined) {
+          revamp.setHighShelfFrequency(config.highShelfFrequency as number);
+        }
+        if (config.highShelfGain !== undefined) {
+          revamp.setHighShelfGain(config.highShelfGain as number);
+        }
+        // Lowpass
+        if (config.lowPassEnabled !== undefined) {
+          revamp.setLowPassEnabled(!!config.lowPassEnabled);
+        }
+        if (config.lowPassFrequency !== undefined) {
+          revamp.setLowPassFrequency(config.lowPassFrequency as number);
+        }
+        if (config.lowPassQ !== undefined) {
+          revamp.setLowPassQ(config.lowPassQ as number);
+        }
+        if (config.lowPassOrder !== undefined) {
+          revamp.setLowPassOrder(config.lowPassOrder as number);
+        }
+        break;
+      }
       default:
         break;
     }

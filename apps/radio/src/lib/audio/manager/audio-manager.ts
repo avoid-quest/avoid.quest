@@ -9,7 +9,6 @@ import { getProxiedBandcampUrl } from "@avoid.quest/bandcamp";
 import { getProxiedSoundCloudUrl } from "@avoid.quest/soundcloud";
 import type { EffectConfig } from "../dsp/effects/types.js";
 import {
-  type AudioError,
   type AudioState,
   type AudioStateCallback,
   type FilterType,
@@ -138,61 +137,40 @@ export class AudioManager {
 
   /**
    * Create a sound from a radio configuration
+   *
+   * Note: This is a lightweight operation that stores the sound config.
+   * Full audio system initialization is deferred to playSound() to avoid
+   * browser autoplay policy issues (AudioContext must be created/resumed
+   * after a user gesture).
    */
-  async createSound(radio: Radio, soundId?: string): Promise<string> {
+  createSound(radio: Radio, soundId?: string): string {
     const id = soundId ?? `sound_${radio.id ?? Date.now()}`;
 
     // Clean up existing sound
     if (this.sounds.has(id)) {
-      await this.cleanupSound(id);
+      this.cleanupSound(id);
     }
 
-    // Notify loading state
+    // Create sound instance (but don't initialize audio system yet)
+    // Full initialization happens in playSound() on user gesture
+    const instance: SoundInstance = {
+      radio,
+      sourceId: id,
+      stream: null,
+      volume: 1,
+      playing: false,
+      loading: false,
+    };
+
+    this.sounds.set(id, instance);
+
+    // Notify ready state (sound is registered but not initialized)
     this.notifyListeners(id, {
       ...initialAudioState,
-      isLoading: true,
+      isLoading: false,
     });
 
-    try {
-      await this.init();
-
-      // Create sound instance (but don't start streaming yet)
-      const instance: SoundInstance = {
-        radio,
-        sourceId: id,
-        stream: null,
-        volume: 1,
-        playing: false,
-        loading: false,
-      };
-
-      this.sounds.set(id, instance);
-
-      // Create source in worklet
-      this.workletManager?.createStreamSource(id);
-
-      // Notify ready state
-      this.notifyListeners(id, {
-        ...initialAudioState,
-        isLoading: false,
-      });
-
-      return id;
-    } catch (error) {
-      const audioError: AudioError = {
-        message: `Failed to create sound: ${error instanceof Error ? error.message : "Unknown error"}`,
-        code: "WORKLET_CREATION_FAILED",
-        radio,
-        timestamp: Date.now(),
-      };
-
-      this.notifyListeners(id, {
-        ...initialAudioState,
-        error: audioError,
-      });
-
-      throw audioError;
-    }
+    return id;
   }
 
   /**
@@ -206,6 +184,10 @@ export class AudioManager {
 
     await this.init();
     await resumeAudioContext();
+
+    // Create worklet source if not already created
+    // This is done here (on user gesture) rather than in createSound() to avoid autoplay policy issues
+    this.workletManager?.createStreamSource(soundId);
 
     // Update instance state
     instance.volume = volume;
@@ -639,6 +621,10 @@ export class AudioManager {
     if (!context) {
       throw new Error("Failed to get audio context");
     }
+
+    // Resume the audio context first - this is required before accessing audioWorklet
+    // on some browsers, as suspended contexts may not have audioWorklet fully initialized
+    await resumeAudioContext();
 
     this.workletManager = new WorkletManager(context, workletProcessorUrl);
     await this.workletManager.init();

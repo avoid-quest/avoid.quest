@@ -146,7 +146,7 @@ export function useDjAudio() {
 
   // Load sound for a specific side
   const loadSound = useCallback(
-    async (radio: Radio, side: "left" | "right") => {
+    (radio: Radio, side: "left" | "right") => {
       const soundId = getSoundId(radio, side);
       const { soundIdRef, setIsLoading } = getSideRefs(side);
 
@@ -161,7 +161,7 @@ export function useDjAudio() {
           audioManager.cleanupSound(existingSoundId);
         }
 
-        await audioManager.createSound(radio, soundId);
+        audioManager.createSound(radio, soundId);
 
         const unsubscribe = audioManager.subscribe(
           soundId,

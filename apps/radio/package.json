@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite dev --port 3000",
+    "dev": "node ./node_modules/vite/bin/vite.js dev --port 3000 --host",
     "build": "vite build",
     "test": "vitest run",
     "cf-deploy": "wrangler deploy",

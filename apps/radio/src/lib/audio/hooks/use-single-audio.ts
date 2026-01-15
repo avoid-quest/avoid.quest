@@ -110,7 +110,7 @@ export function useSingleAudio(settings?: {
         }
 
         // Create new sound
-        await audioManager.createSound(newRadio, newSoundId);
+        audioManager.createSound(newRadio, newSoundId);
 
         // Unsubscribe from previous sound if exists
         if (unsubscribeRef.current) {
@@ -177,7 +177,7 @@ export function useSingleAudio(settings?: {
         cleanupPreviousSounds();
 
         // Create new sound
-        await audioManager.createSound(radio, soundId);
+        audioManager.createSound(radio, soundId);
 
         // Subscribe to state changes
         subscribeToSound(soundId);

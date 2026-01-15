@@ -45,7 +45,7 @@ export function useAudio(radio: Radio | null) {
 
   // Load radio
   const loadRadio = useCallback(
-    async (newRadio: Radio) => {
+    (newRadio: Radio) => {
       try {
         setState((prev) => ({ ...prev, isLoading: true, error: null }));
 
@@ -56,7 +56,7 @@ export function useAudio(radio: Radio | null) {
         soundIdRef.current = soundId;
 
         // Create sound
-        await audioManager.createSound(newRadio, soundId);
+        audioManager.createSound(newRadio, soundId);
 
         // Subscribe to state changes
         unsubscribeRef.current = audioManager.subscribe(soundId, (newState) => {

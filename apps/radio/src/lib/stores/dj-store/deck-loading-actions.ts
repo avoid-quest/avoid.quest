@@ -73,7 +73,7 @@ export const createDeckLoadingActions: StateCreator<
       }));
 
       // Loading state will be managed by AudioManager through subscription
-      await getAudioManager().createSound(radio, soundId);
+      getAudioManager().createSound(radio, soundId);
 
       set((state) => ({
         leftDeck: {
@@ -192,7 +192,7 @@ export const createDeckLoadingActions: StateCreator<
       }));
 
       // Loading state will be managed by AudioManager through subscription
-      await getAudioManager().createSound(radio, soundId);
+      getAudioManager().createSound(radio, soundId);
 
       set((state) => ({
         rightDeck: {

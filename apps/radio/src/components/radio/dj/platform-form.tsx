@@ -1,4 +1,3 @@
-import type { Radio } from "@avoid.quest/cacophony";
 import type { Platform, PlatformItemResponse } from "@avoid.quest/radio-shared";
 import { Button } from "@workspace/ui/components/button";
 import { Input } from "@workspace/ui/components/input";
@@ -6,6 +5,7 @@ import { Label } from "@workspace/ui/components/label";
 import { Tabs, TabsList, TabsTrigger } from "@workspace/ui/components/tabs";
 import { Loader2Icon, MusicIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import type { Radio } from "@/lib/audio";
 import { detectPlatformFromUrl } from "@/lib/external-url/detect";
 import {
   getUrlExample,

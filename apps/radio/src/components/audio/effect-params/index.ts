@@ -2,7 +2,6 @@ export { CompressorParams } from "./compressor-params";
 export { DelayParams } from "./delay-params";
 export { DistortionParams } from "./distortion-params";
 export { EffectParams } from "./effect-params";
-export { PannerParams } from "./panner-params";
 export type { ParamFormatter } from "./param-definitions";
 export { formatParam, paramFormatters } from "./param-definitions";
 export { ParamGroup } from "./param-group";

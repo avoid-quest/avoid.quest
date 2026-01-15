@@ -2,7 +2,7 @@ import {
   type DelayConfig,
   type EffectConfig,
   getEffectMetadata,
-} from "@avoid.quest/radio-audio";
+} from "@/lib/audio";
 import { ParamSlider, UniversalParams } from "./";
 import { getDefaultValue } from "./utils";
 

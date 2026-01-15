@@ -71,4 +71,20 @@ export type PlatformItemError = {
 
 export type PlatformItemResponse = PlatformItemResult | PlatformItemError;
 
-// Radio, RadioMetadata, and ScrapedOption types moved to @avoid.quest/cacophony
+// ScrapedOption and RadioMetadata types for radio scraping functionality
+export type ScrapedOption = {
+  value: string;
+  label: string;
+  confidence: number;
+  preview?: string;
+};
+
+export type RadioMetadata = {
+  name?: ScrapedOption[];
+  streamUrl?: ScrapedOption[];
+  logoUrl?: ScrapedOption[];
+  description?: ScrapedOption[];
+  websiteUrl?: string;
+  foundFields: string[];
+  missingFields: string[];
+};

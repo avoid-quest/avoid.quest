@@ -1,4 +1,4 @@
-import type { EffectConfig } from "@avoid.quest/radio-audio";
+import type { EffectConfig } from "@/lib/audio";
 import { CompressorParams } from "./compressor-params";
 import { DelayParams } from "./delay-params";
 import { DistortionParams } from "./distortion-params";

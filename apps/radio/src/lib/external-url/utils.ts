@@ -1,5 +1,5 @@
-import type { Radio } from "@avoid.quest/cacophony";
 import type { PlatformMetadata } from "@avoid.quest/radio-shared";
+import type { Radio } from "@/lib/audio";
 
 function getDescription(metadata: PlatformMetadata): string | undefined {
   if (metadata.platform === "bandcamp") {

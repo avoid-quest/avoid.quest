@@ -1,4 +1,3 @@
-import type { Radio } from "@avoid.quest/cacophony";
 import type { Platform } from "@avoid.quest/radio-shared";
 import { useDroppable } from "@dnd-kit/core";
 import { Button } from "@workspace/ui/components/button";
@@ -32,6 +31,7 @@ import {
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useShallow } from "zustand/react/shallow";
+import type { Radio } from "@/lib/audio";
 import { isPlatformRadio } from "@/lib/external-url";
 import { useDeckState } from "@/lib/hooks/use-deck-state";
 import { usePlatformMetadata } from "@/lib/hooks/use-platform-metadata";

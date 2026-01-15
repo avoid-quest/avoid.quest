@@ -2,7 +2,7 @@ import {
   type DistortionConfig,
   type EffectConfig,
   getEffectMetadata,
-} from "@avoid.quest/radio-audio";
+} from "@/lib/audio";
 import { ParamSelect, ParamSlider, UniversalParams } from "./";
 
 type DistortionParamsProps = {

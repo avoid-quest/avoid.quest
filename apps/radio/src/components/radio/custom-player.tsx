@@ -1,5 +1,5 @@
-import type { Radio } from "@avoid.quest/cacophony";
 import { AudioPlayer } from "@/components/audio";
+import type { Radio } from "@/lib/audio";
 
 type CustomPlayerProps = {
   radio: Radio;

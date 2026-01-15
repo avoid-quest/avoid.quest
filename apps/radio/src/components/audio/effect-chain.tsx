@@ -1,4 +1,3 @@
-import type { EffectConfig } from "@avoid.quest/radio-audio";
 import type { DragEndEvent } from "@dnd-kit/core";
 import {
   closestCenter,
@@ -19,6 +18,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { Button } from "@workspace/ui/components/button";
 import { PlusIcon } from "lucide-react";
 import { useState } from "react";
+import type { EffectConfig } from "@/lib/audio";
 import { EffectItem } from "./effect-item";
 import { EffectPicker } from "./effect-picker";
 

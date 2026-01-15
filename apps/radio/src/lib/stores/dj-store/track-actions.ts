@@ -1,5 +1,5 @@
-import type { Radio } from "@avoid.quest/cacophony";
 import type { StateCreator } from "zustand";
+import type { Radio } from "@/lib/audio";
 import type { DeckSide, InternalDjState } from "./types";
 
 // Helper to find next track in a platform playlist/album

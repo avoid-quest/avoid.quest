@@ -1,6 +1,6 @@
-import type { Radio } from "@avoid.quest/cacophony";
 import LZString from "lz-string";
 import { toast } from "sonner";
+import type { Radio } from "@/lib/audio";
 import type { DatabaseExport, ImportPreview } from "../types";
 import { db } from ".";
 

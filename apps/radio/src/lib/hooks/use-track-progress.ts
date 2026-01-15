@@ -1,44 +1,19 @@
-import { useEffect, useRef, useState } from "react";
-import { getAudioManager } from "@/lib/stores/dj-store/audio-manager-helpers";
+import { useState } from "react";
 
-export function useTrackProgress(soundId: string | null) {
-  const [position, setPosition] = useState(0);
-  const [duration, setDuration] = useState(0);
-  const rafId = useRef<number | null>(null);
+/**
+ * Track progress hook
+ *
+ * Note: Track progress tracking is not currently supported with the streaming
+ * architecture. This hook returns stub values for compatibility.
+ * For finite media (non-streams), progress tracking would require additional
+ * AudioManager API extensions.
+ */
+export function useTrackProgress(_soundId: string | null) {
+  const [position] = useState(0);
+  const [duration] = useState(0);
 
-  useEffect(() => {
-    if (!soundId) {
-      setPosition(0);
-      setDuration(0);
-      return;
-    }
-
-    const updateProgress = () => {
-      try {
-        const playback = getAudioManager().getPlayback(soundId);
-        if (playback) {
-          const sound = getAudioManager().getSound(soundId);
-          const currentDuration = sound?.duration || 0;
-          const currentPos = playback.currentTime || 0;
-
-          setPosition(currentPos);
-          setDuration(currentDuration);
-        }
-      } catch {
-        // Ignore errors during polling
-      }
-
-      rafId.current = requestAnimationFrame(updateProgress);
-    };
-
-    updateProgress();
-
-    return () => {
-      if (rafId.current) {
-        cancelAnimationFrame(rafId.current);
-      }
-    };
-  }, [soundId]);
+  // Track progress is not available for streaming sources
+  // The streaming architecture doesn't expose playback position
 
   return { position, duration };
 }

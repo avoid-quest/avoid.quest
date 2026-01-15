@@ -17,8 +17,8 @@
     "@avoid.quest/radio-shared": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^24.10.1",
+    "@types/node": "catalog:",
     "@workspace/typescript-config": "workspace:*",
-    "typescript": "^5.9.3"
+    "typescript": "catalog:"
   }
 }

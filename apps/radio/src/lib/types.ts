@@ -1,5 +1,6 @@
-// Re-export Radio type for use in app
-export type { Radio } from "@avoid.quest/cacophony";
+// Import and re-export Radio type for use in app
+import type { Radio } from "@avoid.quest/cacophony";
+export type { Radio };
 
 export type Settings = {
   id?: number;

@@ -218,8 +218,8 @@ class AudioContextManager {
    */
   private createContext(): AudioContext {
     const options: AudioContextOptions = {
-      // Use interactive latency hint for real-time audio
-      latencyHint: "interactive",
+      // Use playback latency hint for better audio quality
+      latencyHint: "playback",
     };
 
     const context = new AudioContext(options);

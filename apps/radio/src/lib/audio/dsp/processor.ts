@@ -195,6 +195,11 @@ class StreamSource {
     this.paused = false;
     this.readPosition = 0;
     this.currentChunkIndex = 0;
+
+    // Clear old audio to prevent stale playback
+    this.bufferL.length = 0;
+    this.bufferR.length = 0;
+
     this.resetEffects();
   }
 
@@ -668,6 +673,14 @@ class StreamSource {
       if (this.readPosition >= chunkL.length) {
         this.readPosition = 0;
         this.currentChunkIndex++;
+
+        // Clean up old chunks to prevent memory leak (keep current + 2 ahead)
+        if (this.currentChunkIndex > 2) {
+          const removeCount = this.currentChunkIndex - 2;
+          this.bufferL.splice(0, removeCount);
+          this.bufferR.splice(0, removeCount);
+          this.currentChunkIndex = 2;
+        }
       }
     }
 
@@ -724,6 +737,10 @@ export class DSPProcessor {
   private readonly channelStrip = new ChannelStrip();
   private readonly masterLimiter: Limiter;
   private readonly sampleRate: number;
+
+  // Pre-allocated temp buffers for mixing (avoid GC pressure in audio thread)
+  private readonly mixTempL = new Float32Array(128);
+  private readonly mixTempR = new Float32Array(128);
 
   // Analysis components (lazily initialized)
   private levelMeter: LevelMeter | null = null;
@@ -920,12 +937,19 @@ export class DSPProcessor {
       outputR[i] = 0;
     }
 
-    // Mix all sources
-    const tempL = new Float32Array(toIndex - fromIndex + fromIndex);
-    const tempR = new Float32Array(toIndex - fromIndex + fromIndex);
+    // Use pre-allocated temp buffers (avoid GC pressure)
+    const tempL = this.mixTempL;
+    const tempR = this.mixTempR;
 
+    // Mix all sources
     for (const source of this.sources.values()) {
       if (source.isPlaying) {
+        // Clear temp buffers before each source
+        for (let i = fromIndex; i < toIndex; i++) {
+          tempL[i] = 0;
+          tempR[i] = 0;
+        }
+
         source.process(tempL, tempR, fromIndex, toIndex);
 
         // Mix into output

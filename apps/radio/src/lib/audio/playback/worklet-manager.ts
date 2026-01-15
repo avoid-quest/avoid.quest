@@ -153,15 +153,21 @@ type ActiveSource = {
  *
  * Manages the AudioWorklet processor for audio playback and effects.
  * Provides methods for source control, streaming, and effects.
+ *
+ * Audio routing: Worklet → GainNode (hardware volume) → Destination
  */
 export class WorkletManager {
   private readonly context: AudioContext;
   private workletNode: AudioWorkletNode | null = null;
+  private masterGainNode: GainNode | null = null;
   private readonly eventEmitter = new WorkletEventEmitter();
   private readonly activeSources = new Map<string, ActiveSource>();
   private initPromise: Promise<void> | null = null;
   private initFailed = false;
   private readonly processorUrl: string;
+
+  /** Ramp time for volume changes (ms) */
+  private static readonly VOLUME_RAMP_TIME = 0.05; // 50ms for smooth transitions
 
   /**
    * Create a new WorkletManager
@@ -217,6 +223,20 @@ export class WorkletManager {
    */
   get node(): AudioWorkletNode | null {
     return this.workletNode;
+  }
+
+  /**
+   * Get the master GainNode (for monitoring or external routing)
+   */
+  get gainNode(): GainNode | null {
+    return this.masterGainNode;
+  }
+
+  /**
+   * Get current master volume
+   */
+  get volume(): number {
+    return this.masterGainNode?.gain.value ?? 1;
   }
 
   // ============================================
@@ -463,16 +483,34 @@ export class WorkletManager {
   // ============================================
 
   /**
-   * Set global volume (channel strip)
+   * Set global volume using hardware-accelerated GainNode
+   *
+   * Uses exponential ramping for smooth, click-free transitions.
+   * This provides better audio quality than software gain processing.
    */
   setVolume(volume: number): void {
-    this.postMessage({
-      type: MessageType.SET_PARAM,
-      payload: {
-        target: "channelStrip.volume",
-        value: volume,
-      },
-    });
+    if (!this.masterGainNode) {
+      return;
+    }
+
+    const now = this.context.currentTime;
+    const clampedVolume = Math.max(0.0001, Math.min(1, volume)); // Avoid 0 for exponential ramp
+
+    // Cancel any scheduled changes
+    this.masterGainNode.gain.cancelScheduledValues(now);
+
+    // Set current value and ramp to target
+    this.masterGainNode.gain.setValueAtTime(
+      this.masterGainNode.gain.value,
+      now
+    );
+
+    // Use exponential ramp for natural-sounding volume changes
+    // (linear ramp sounds unnatural to human ears)
+    this.masterGainNode.gain.exponentialRampToValueAtTime(
+      clampedVolume,
+      now + WorkletManager.VOLUME_RAMP_TIME
+    );
   }
 
   /**
@@ -526,6 +564,11 @@ export class WorkletManager {
       this.workletNode = null;
     }
 
+    if (this.masterGainNode) {
+      this.masterGainNode.disconnect();
+      this.masterGainNode = null;
+    }
+
     this.activeSources.clear();
     this.eventEmitter.clear();
     this.initPromise = null;
@@ -577,13 +620,19 @@ export class WorkletManager {
         }
       );
 
-      // Connect to destination
-      this.workletNode.connect(nativeContext.destination);
+      // Create master GainNode for hardware-accelerated volume control
+      // This provides better audio quality than software gain in the worklet
+      this.masterGainNode = nativeContext.createGain();
+      this.masterGainNode.gain.value = 1;
+
+      // Route: Worklet → GainNode → Destination
+      this.workletNode.connect(this.masterGainNode);
+      this.masterGainNode.connect(nativeContext.destination);
 
       // Set up message listener
       this.setupMessageListener();
 
-      console.log("WorkletManager initialized");
+      console.log("WorkletManager initialized with hardware GainNode");
     } catch (error) {
       console.error("Failed to initialize WorkletManager:", error);
       throw error;

@@ -98,11 +98,14 @@ export type StreamBufferConfig = {
 
 /**
  * Default stream buffer configuration
+ *
+ * Lower values = more frequent, smaller decodes = smoother streaming
+ * Higher values = fewer decodes but risk of playback gaps
  */
 export const defaultStreamBufferConfig: StreamBufferConfig = {
-  minBufferSize: 128 * 1024, // 128KB
-  maxBufferSize: 512 * 1024, // 512KB
-  retainOnError: 64 * 1024, // 64KB
+  minBufferSize: 128 * 1024, // 128KB (~8 sec at 128kbps) - better codec alignment
+  maxBufferSize: 512 * 1024, // 512KB - fewer partial decodes
+  retainOnError: 64 * 1024, // 64KB - less data loss on failure
 };
 
 /**

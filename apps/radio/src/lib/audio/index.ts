@@ -7,6 +7,7 @@
  * - playback/: Thin playback infrastructure (context, streaming, worklet)
  * - dsp/: DSP processing (effects, analysis, routing)
  * - manager/: High-level API (AudioManager, crossfade)
+ * - hooks/: React integration (useAudio, useSingleAudio, useDjAudio)
  */
 
 // DSP effect defaults
@@ -36,6 +37,8 @@ export type {
   StereoToolConfig,
   TidalConfig,
 } from "./dsp/effects/types.js";
+// React hooks
+export { useAudio, useDjAudio, useSingleAudio } from "./hooks/index.js";
 // High-level API (primary exports)
 export {
   AudioManager,

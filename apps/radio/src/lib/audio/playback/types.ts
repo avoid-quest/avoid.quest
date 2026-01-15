@@ -38,6 +38,8 @@ export type AudioErrorCode =
   | "WORKLET_CREATION_FAILED"
   | "SOURCE_NOT_FOUND"
   | "PLAYBACK_FAILED"
+  | "LOAD_ERROR"
+  | "PLAY_ERROR"
   | "UNKNOWN_ERROR";
 
 /**

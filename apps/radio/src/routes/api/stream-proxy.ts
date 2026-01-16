@@ -73,9 +73,13 @@ function validateUrl(
     hostname.startsWith("172.29.") ||
     hostname.startsWith("172.30.") ||
     hostname.startsWith("172.31.") ||
+    hostname.startsWith("169.254.") || // Link-local
     hostname === "0.0.0.0" ||
     hostname === "::1" ||
-    hostname === "[::1]"
+    hostname === "[::1]" ||
+    hostname.startsWith("fc") || // IPv6 unique local (fc00::/7)
+    hostname.startsWith("fd") || // IPv6 unique local (fc00::/7)
+    hostname.startsWith("fe80:") // IPv6 link-local
   ) {
     return json(
       { error: "Internal addresses not allowed" },

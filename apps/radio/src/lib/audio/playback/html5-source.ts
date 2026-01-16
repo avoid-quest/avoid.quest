@@ -309,8 +309,16 @@ export class Html5AudioSource {
     this.audio.pause();
     this.audio.src = "";
 
-    this.source?.disconnect();
-    this.analyser?.disconnect();
+    try {
+      this.source?.disconnect();
+    } catch {
+      /* already disconnected */
+    }
+    try {
+      this.analyser?.disconnect();
+    } catch {
+      /* already disconnected */
+    }
 
     this.source = null;
     this.analyser = null;
@@ -350,7 +358,13 @@ export class Html5AudioSource {
           `[Html5AudioSource] MEDIA_ERR_SRC_NOT_SUPPORTED for ${this.currentUrl}, trying proxy`
         );
         this._corsState = "cors-failed";
-        this.retryWithProxy();
+        this.retryWithProxy().catch((err) => {
+          console.error("Proxy retry failed:", err);
+          this._status = "error";
+          this.callbacks.onError?.(
+            err instanceof Error ? err : new Error("Proxy retry failed")
+          );
+        });
       }
       // Don't propagate error - waitForCanPlay() will handle it
       return;

@@ -1,11 +1,18 @@
-import { createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
+import {
+  createRootRoute,
+  HeadContent,
+  Link,
+  Scripts,
+} from "@tanstack/react-router";
 import appleIcon from "@workspace/ui/assets/favicon/apple-icon.png";
 import favicon from "@workspace/ui/assets/favicon/favicon.ico";
 import icon0 from "@workspace/ui/assets/favicon/icon0.svg";
 import icon1 from "@workspace/ui/assets/favicon/icon1.png";
+import { Button } from "@workspace/ui/components/button";
 import { Toaster } from "@workspace/ui/components/sonner";
 import globalsCss from "@workspace/ui/globals.css?url";
 import { cn } from "@workspace/ui/lib/utils";
+import { HomeIcon } from "lucide-react";
 import { lazy, Suspense } from "react";
 import { InstallPrompt } from "@/components/pwa/install-prompt";
 import { SWRegister } from "@/components/pwa/sw-register";
@@ -114,7 +121,28 @@ export const Route = createRootRoute({
   }),
 
   shellComponent: RootDocument,
+  notFoundComponent: NotFoundComponent,
 });
+
+function NotFoundComponent() {
+  return (
+    <div className="flex h-full w-full flex-col items-center justify-center p-8">
+      <div className="text-center">
+        <h1 className="mb-2 font-bold text-6xl">404</h1>
+        <h2 className="mb-4 font-semibold text-2xl">Page Not Found</h2>
+        <p className="mb-6 text-muted-foreground">
+          The page you're looking for doesn't exist or has been moved.
+        </p>
+        <Link to="/">
+          <Button size="lg">
+            <HomeIcon className="mr-2 size-4" />
+            Go Home
+          </Button>
+        </Link>
+      </div>
+    </div>
+  );
+}
 
 function RootDocument({ children }: { children: React.ReactNode }) {
   return (

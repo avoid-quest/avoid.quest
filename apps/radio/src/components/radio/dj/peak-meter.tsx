@@ -1,28 +1,35 @@
 import { cn } from "@workspace/ui/lib/utils";
 
-type RmsMeterProps = {
+type PeakMeterProps = {
   leftLevel: number;
   rightLevel: number;
   className?: string;
 };
 
 /**
- * Vertical stereo RMS meter
+ * Vertical stereo peak meter
  *
- * Displays real-time audio levels for left and right channels.
+ * Displays real-time audio peak levels for left and right channels.
  * Level values should be 0-1 (linear amplitude).
  */
-export function RmsMeter({ leftLevel, rightLevel, className }: RmsMeterProps) {
-  // Convert linear to percentage (with some headroom visualization)
-  const leftPercent = Math.min(100, Math.max(0, leftLevel * 100));
-  const rightPercent = Math.min(100, Math.max(0, rightLevel * 100));
+export function PeakMeter({
+  leftLevel,
+  rightLevel,
+  className,
+}: PeakMeterProps) {
+  // Amplify signal for better visibility (peaks are often low in normalized audio)
+  // Using sqrt for perceptually linear response
+  const amplify = (level: number) => Math.sqrt(level) * 1.5;
 
-  // Determine color based on level
+  const leftPercent = Math.min(100, Math.max(0, amplify(leftLevel) * 100));
+  const rightPercent = Math.min(100, Math.max(0, amplify(rightLevel) * 100));
+
   const getColor = (level: number) => {
-    if (level > 0.9) {
+    const amplified = amplify(level);
+    if (amplified > 0.9) {
       return "bg-red-500";
     }
-    if (level > 0.7) {
+    if (amplified > 0.7) {
       return "bg-amber-500";
     }
     return "bg-emerald-500";
@@ -56,22 +63,24 @@ export function RmsMeter({ leftLevel, rightLevel, className }: RmsMeterProps) {
 }
 
 /**
- * Horizontal RMS meter (for compact layouts)
+ * Horizontal peak meter (for compact layouts)
  */
-export function HorizontalRmsMeter({
+export function HorizontalPeakMeter({
   level,
   className,
 }: {
   level: number;
   className?: string;
 }) {
-  const percent = Math.min(100, Math.max(0, level * 100));
+  const amplify = (l: number) => Math.sqrt(l) * 1.5;
+  const percent = Math.min(100, Math.max(0, amplify(level) * 100));
 
   const getColor = (l: number) => {
-    if (l > 0.9) {
+    const amplified = amplify(l);
+    if (amplified > 0.9) {
       return "bg-red-500";
     }
-    if (l > 0.7) {
+    if (amplified > 0.7) {
       return "bg-amber-500";
     }
     return "bg-emerald-500";

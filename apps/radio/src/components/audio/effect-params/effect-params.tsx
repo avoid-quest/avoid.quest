@@ -1,5 +1,4 @@
 import type { EffectConfig } from "@/lib/audio";
-import { BiquadFilterParams } from "./biquad-filter-params";
 import { CompressorParams } from "./compressor-params";
 import { CrusherParams } from "./crusher-params";
 import { DelayParams } from "./delay-params";
@@ -19,8 +18,6 @@ type EffectParamsProps = {
 
 export function EffectParams({ effect, onUpdate }: EffectParamsProps) {
   switch (effect.type) {
-    case "biquadFilter":
-      return <BiquadFilterParams effect={effect} onUpdate={onUpdate} />;
     case "plateReverb":
       return <PlateReverbParams effect={effect} onUpdate={onUpdate} />;
     case "pitchShifter":

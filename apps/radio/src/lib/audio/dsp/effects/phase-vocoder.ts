@@ -5,8 +5,21 @@
  * This is "varispeed" - changing pitch changes tempo proportionally
  * (like speeding up/slowing down a tape or vinyl record).
  *
- * Note: True pitch shifting (changing pitch without tempo change)
- * requires FFT-based phase vocoder which is not yet implemented.
+ * CURRENT LIMITATION:
+ * This is NOT a true pitch shifter. Both speed and pitch change together.
+ * - pitchFactor < 1.0 = slower + lower pitch
+ * - pitchFactor > 1.0 = faster + higher pitch
+ *
+ * TRUE PITCH SHIFTING (future implementation):
+ * Would require FFT-based phase vocoder with:
+ * 1. STFT analysis (overlap-add windowing)
+ * 2. Phase unwrapping and interpolation
+ * 3. Time stretching for speed-independent pitch
+ * 4. ISTFT synthesis
+ *
+ * For true pitch-independent speed control, use HTML5 playbackRate
+ * for speed and this effect chain for pitch (with the understanding
+ * that they currently both affect tempo).
  */
 
 export class PhaseVocoder {

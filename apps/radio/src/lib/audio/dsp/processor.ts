@@ -61,6 +61,7 @@ export const MessageType = {
 
   // Analysis (worklet → main)
   ANALYSIS_DATA: "ANALYSIS_DATA",
+  PEAK_METER: "PEAK_METER",
 
   // Analysis control (main → worklet)
   ENABLE_ANALYSIS: "ENABLE_ANALYSIS",
@@ -329,8 +330,9 @@ class EffectSource {
     this.effectTypes.set(effectId, type);
 
     // Store universal params (enabled, inputGain, outputGain, dryWet)
+    // Note: enabled comes as 0/1 number from audio-manager, convert to boolean
     this.effectConfigs.set(effectId, {
-      enabled: config.enabled !== false,
+      enabled: !!config.enabled,
       inputGain: typeof config.inputGain === "number" ? config.inputGain : 1.0,
       outputGain:
         typeof config.outputGain === "number" ? config.outputGain : 1.0,
@@ -365,6 +367,8 @@ class EffectSource {
     if (existingConfig) {
       if (typeof config.enabled === "boolean") {
         existingConfig.enabled = config.enabled;
+      } else if (typeof config.enabled === "number") {
+        existingConfig.enabled = config.enabled !== 0;
       }
       if (typeof config.inputGain === "number") {
         existingConfig.inputGain = config.inputGain;
@@ -384,8 +388,6 @@ class EffectSource {
 
   private createEffectProcessor(type: EffectType): EffectProcessor | null {
     switch (type) {
-      case "biquadFilter":
-        return new BiquadFilter(this.sampleRate);
       case "plateReverb":
         return new DattorroReverb(this.sampleRate);
       case "pitchShifter":
@@ -431,6 +433,9 @@ class EffectSource {
         if (config.boost !== undefined) {
           crusher.setBoost(config.boost as number);
         }
+        if (config.autoGain !== undefined) {
+          crusher.setAutoGain(config.autoGain as boolean);
+        }
         break;
       }
       case "fold": {
@@ -443,6 +448,9 @@ class EffectSource {
         }
         if (config.oversample !== undefined) {
           fold.setOversample(config.oversample as 2 | 4 | 8);
+        }
+        if (config.autoGain !== undefined) {
+          fold.setAutoGain(config.autoGain as boolean);
         }
         break;
       }
@@ -519,13 +527,19 @@ class EffectSource {
         if (config.excursionDepth !== undefined) {
           reverb.setExcursionDepth(config.excursionDepth as number);
         }
+        if (config.wet !== undefined) {
+          reverb.setWet(config.wet as number);
+        }
+        if (config.dry !== undefined) {
+          reverb.setDry(config.dry as number);
+        }
         break;
       }
       case "distortion": {
         const dist = processor as Distortion;
         if (config.amount !== undefined) {
-          // Registry uses 0-100, setAmount expects 0-1
-          dist.setAmount((config.amount as number) / 100);
+          // Distortion.setAmount handles 0-100 to 0-1 conversion internally
+          dist.setAmount(config.amount as number);
         }
         break;
       }
@@ -576,23 +590,9 @@ class EffectSource {
         break;
       }
       case "limiter": {
-        // Limiter uses automatic threshold detection - no params needed
-        // The effect threshold from the registry sets the ceiling
-        break;
-      }
-      case "biquadFilter": {
-        const filter = processor as BiquadFilter;
-        if (config.filterType !== undefined) {
-          filter.type = config.filterType as unknown as BiquadFilterType;
-        }
-        if (config.frequency !== undefined) {
-          filter.frequency = config.frequency as number;
-        }
-        if (config.Q !== undefined) {
-          filter.Q = config.Q as number;
-        }
-        if (config.gain !== undefined) {
-          filter.gain = config.gain as number;
+        const limiter = processor as Limiter;
+        if (config.threshold !== undefined) {
+          limiter.setThreshold(config.threshold as number);
         }
         break;
       }
@@ -760,6 +760,7 @@ class EffectSource {
     }
 
     // Apply effects with universal params (enabled, inputGain, outputGain, dryWet)
+    let anyEffectProcessed = false;
     for (const effectId of this.effectOrder) {
       const effect = this.effects.get(effectId);
       const config = this.effectConfigs.get(effectId);
@@ -772,6 +773,8 @@ class EffectSource {
       if (!config.enabled) {
         continue;
       }
+
+      anyEffectProcessed = true;
 
       // Apply input gain
       const inputGain = config.inputGain;
@@ -817,8 +820,9 @@ class EffectSource {
       }
     }
 
-    // If no filters/effects, copy temp to output
-    if (this.filterOrder.length === 0 && this.effectOrder.length === 0) {
+    // If no filters or effects actually processed, copy current signal to output
+    // This handles: no effects at all, OR all effects disabled (bypass)
+    if (this.filterOrder.length === 0 && !anyEffectProcessed) {
       for (let i = fromIndex; i < toIndex; i++) {
         outputL[i] = this.tempL[i] ?? 0;
         outputR[i] = this.tempR[i] ?? 0;
@@ -873,6 +877,10 @@ export class DSPProcessor {
   private analysisEnabled = false;
   private analysisFrameCounter = 0;
   private readonly analysisInterval = 3; // Send every N render quanta (~60fps)
+
+  // Peak meter (always active, independent of analysis)
+  private meterCounter = 0;
+  private readonly meterInterval = 3; // Send every N render quanta (~60fps)
 
   // Callback for emitting events to main thread
   private onMessage?: (message: { type: string; payload?: unknown }) => void;
@@ -1114,6 +1122,19 @@ export class DSPProcessor {
       fromIndex,
       toIndex
     );
+
+    // Emit peak meter data (always active, throttled to ~60fps)
+    this.meterCounter++;
+    if (this.meterCounter >= this.meterInterval) {
+      this.meterCounter = 0;
+      let peakL = 0;
+      let peakR = 0;
+      for (let i = fromIndex; i < toIndex; i++) {
+        peakL = Math.max(peakL, Math.abs(outputL[i] ?? 0));
+        peakR = Math.max(peakR, Math.abs(outputR[i] ?? 0));
+      }
+      this.emitMessage(MessageType.PEAK_METER, { peakL, peakR });
+    }
 
     // Run analysis if enabled (throttled)
     if (this.analysisEnabled && this.levelMeter && this.spectrumAnalyzer) {

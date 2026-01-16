@@ -1,6 +1,12 @@
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@workspace/ui/components/accordion";
 import { Slider } from "@workspace/ui/components/slider";
 import { cn } from "@workspace/ui/lib/utils";
-import { RmsMeter } from "./rms-meter";
+import { PeakMeter } from "./peak-meter";
 
 type ChannelStripProps = {
   volume: number;
@@ -8,7 +14,7 @@ type ChannelStripProps = {
   speed: number;
   channelFilter: number;
   effectsDryWet: number;
-  rmsLevel?: { left: number; right: number };
+  peakLevel?: { left: number; right: number };
   onVolumeChange: (value: number) => void;
   onPanChange: (value: number) => void;
   onSpeedChange: (value: number) => void;
@@ -60,105 +66,6 @@ function formatChannelFilter(value: number): string {
     : `HP ${Math.round(value * 100)}%`;
 }
 
-/**
- * Channel Strip Component
- *
- * DJ-style channel strip with:
- * - Volume fader (-∞ to +12dB)
- * - Pan knob (L-R)
- * - Filter knob (bipolar: left=LP, center=off, right=HP)
- * - Speed control (0.5x-2.0x via HTML5 playbackRate)
- * - FX Dry/Wet knob (master for effect chain)
- * - RMS meter (vertical bar)
- */
-export function ChannelStrip({
-  volume,
-  pan,
-  speed,
-  channelFilter,
-  effectsDryWet,
-  rmsLevel,
-  onVolumeChange,
-  onPanChange,
-  onSpeedChange,
-  onChannelFilterChange,
-  onEffectsDryWetChange,
-  className,
-}: ChannelStripProps) {
-  return (
-    <div className={cn("flex items-stretch gap-3", className)}>
-      {/* RMS Meter */}
-      <div className="flex flex-col items-center gap-1">
-        <RmsMeter
-          className="h-full w-4"
-          leftLevel={rmsLevel?.left ?? 0}
-          rightLevel={rmsLevel?.right ?? 0}
-        />
-        <span className="text-[9px] text-muted-foreground uppercase">RMS</span>
-      </div>
-
-      {/* Controls */}
-      <div className="flex flex-1 flex-col gap-2">
-        {/* Volume */}
-        <ChannelControl
-          formatValue={volumeToDb}
-          label="Vol"
-          max={1.585} // +4dB
-          min={0}
-          onChange={onVolumeChange}
-          step={0.01}
-          value={volume}
-        />
-
-        {/* Pan */}
-        <ChannelControl
-          formatValue={formatPan}
-          label="Pan"
-          max={1}
-          min={-1}
-          onChange={onPanChange}
-          step={0.01}
-          value={pan}
-        />
-
-        {/* Channel Filter (bipolar: LP ← OFF → HP) */}
-        <ChannelControl
-          formatValue={formatChannelFilter}
-          label="Filter"
-          max={1}
-          min={-1}
-          onChange={onChannelFilterChange}
-          step={0.01}
-          value={channelFilter}
-        />
-
-        {/* Speed */}
-        <ChannelControl
-          formatValue={formatSpeed}
-          label="Speed"
-          max={2.0}
-          min={0.5}
-          onChange={onSpeedChange}
-          step={0.01}
-          value={speed}
-        />
-
-        {/* FX Dry/Wet */}
-        <ChannelControl
-          description="Deck FX Send: Master dry/wet for entire effects chain. 0% = bypass all effects."
-          formatValue={(v) => `${Math.round(v * 100)}%`}
-          label="FX"
-          max={1}
-          min={0}
-          onChange={onEffectsDryWetChange}
-          step={0.01}
-          value={effectsDryWet}
-        />
-      </div>
-    </div>
-  );
-}
-
 type ChannelControlProps = {
   label: string;
   value: number;
@@ -208,7 +115,7 @@ export function CompactChannelStrip({
   volume,
   pan,
   effectsDryWet,
-  rmsLevel,
+  peakLevel,
   onVolumeChange,
   onPanChange,
   onEffectsDryWetChange,
@@ -218,7 +125,7 @@ export function CompactChannelStrip({
   | "volume"
   | "pan"
   | "effectsDryWet"
-  | "rmsLevel"
+  | "peakLevel"
   | "onVolumeChange"
   | "onPanChange"
   | "onEffectsDryWetChange"
@@ -226,10 +133,10 @@ export function CompactChannelStrip({
 >) {
   return (
     <div className={cn("flex items-center gap-3", className)}>
-      <RmsMeter
+      <PeakMeter
         className="h-8 w-3"
-        leftLevel={rmsLevel?.left ?? 0}
-        rightLevel={rmsLevel?.right ?? 0}
+        leftLevel={peakLevel?.left ?? 0}
+        rightLevel={peakLevel?.right ?? 0}
       />
 
       <div className="flex flex-1 flex-col gap-1.5">
@@ -288,5 +195,109 @@ export function CompactChannelStrip({
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * Collapsible channel strip that can be expanded/collapsed
+ * Shows peak meter and volume in collapsed state
+ */
+export function CollapsibleChannelStrip({
+  volume,
+  pan,
+  speed,
+  channelFilter,
+  effectsDryWet,
+  peakLevel,
+  onVolumeChange,
+  onPanChange,
+  onSpeedChange,
+  onChannelFilterChange,
+  onEffectsDryWetChange,
+  className,
+  defaultExpanded = true,
+}: ChannelStripProps & { defaultExpanded?: boolean }) {
+  return (
+    <Accordion
+      className={cn("w-full", className)}
+      collapsible
+      defaultValue={defaultExpanded ? "channel-strip" : undefined}
+      type="single"
+    >
+      <AccordionItem className="border-none" value="channel-strip">
+        <AccordionTrigger className="py-2 hover:no-underline">
+          <div className="flex items-center gap-3">
+            <PeakMeter
+              className="h-6 w-3"
+              leftLevel={peakLevel?.left ?? 0}
+              rightLevel={peakLevel?.right ?? 0}
+            />
+            <span className="font-medium text-xs">Channel Strip</span>
+            <span className="text-[10px] text-muted-foreground">
+              {volumeToDb(volume)}dB
+            </span>
+          </div>
+        </AccordionTrigger>
+        <AccordionContent className="pb-0">
+          <div className="flex flex-col gap-2 pt-2">
+            {/* Volume */}
+            <ChannelControl
+              formatValue={volumeToDb}
+              label="Vol"
+              max={1.585}
+              min={0}
+              onChange={onVolumeChange}
+              step={0.01}
+              value={volume}
+            />
+
+            {/* Pan */}
+            <ChannelControl
+              formatValue={formatPan}
+              label="Pan"
+              max={1}
+              min={-1}
+              onChange={onPanChange}
+              step={0.01}
+              value={pan}
+            />
+
+            {/* Channel Filter */}
+            <ChannelControl
+              formatValue={formatChannelFilter}
+              label="Filter"
+              max={1}
+              min={-1}
+              onChange={onChannelFilterChange}
+              step={0.01}
+              value={channelFilter}
+            />
+
+            {/* Speed */}
+            <ChannelControl
+              formatValue={formatSpeed}
+              label="Speed"
+              max={2.0}
+              min={0.5}
+              onChange={onSpeedChange}
+              step={0.01}
+              value={speed}
+            />
+
+            {/* FX Dry/Wet */}
+            <ChannelControl
+              description="Deck FX Send: Master dry/wet for entire effects chain. 0% = bypass all effects."
+              formatValue={(v) => `${Math.round(v * 100)}%`}
+              label="FX"
+              max={1}
+              min={0}
+              onChange={onEffectsDryWetChange}
+              step={0.01}
+              value={effectsDryWet}
+            />
+          </div>
+        </AccordionContent>
+      </AccordionItem>
+    </Accordion>
   );
 }

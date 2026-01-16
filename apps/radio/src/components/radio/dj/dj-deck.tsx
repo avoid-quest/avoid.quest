@@ -34,6 +34,7 @@ import { useShallow } from "zustand/react/shallow";
 import type { Radio } from "@/lib/audio";
 import { isPlatformRadio } from "@/lib/external-url";
 import { useDeckState } from "@/lib/hooks/use-deck-state";
+import { usePeakLevel } from "@/lib/hooks/use-peak-level";
 import { usePlatformMetadata } from "@/lib/hooks/use-platform-metadata";
 import { useTrackProgress } from "@/lib/hooks/use-track-progress";
 import { useDjStore } from "@/lib/stores/dj-store";
@@ -79,6 +80,7 @@ export function DjDeck({ className, deckId, radios = [] }: DjDeckProps) {
 
   const { currentTrackIndex, metadata } = usePlatformMetadata(radio);
   const trackProgress = useTrackProgress(soundId);
+  const peakLevel = usePeakLevel(soundId);
 
   // UI State and deck-specific effects from store
   const {
@@ -210,6 +212,7 @@ export function DjDeck({ className, deckId, radios = [] }: DjDeckProps) {
           onUpdateEffect={updateEffect}
           onVolumeChange={handleVolumeChange}
           pan={pan}
+          peakLevel={peakLevel}
           radio={radio}
           speed={speed}
           trackProgress={trackProgress}

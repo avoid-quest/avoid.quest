@@ -1,3 +1,5 @@
+import { Checkbox } from "@workspace/ui/components/checkbox";
+import { Label } from "@workspace/ui/components/label";
 import {
   type EffectConfig,
   type FoldConfig,
@@ -54,6 +56,19 @@ export function FoldParams({ effect, onUpdate }: FoldParamsProps) {
         options={oversampleOptions}
         value={String(effect.oversample)}
       />
+
+      <div className="flex items-center gap-2">
+        <Checkbox
+          checked={effect.autoGain}
+          id="fold-autoGain"
+          onCheckedChange={(checked) =>
+            onUpdate({ autoGain: checked === true })
+          }
+        />
+        <Label className="text-xs" htmlFor="fold-autoGain">
+          Auto Gain
+        </Label>
+      </div>
 
       <UniversalParams effect={effect} onUpdate={onUpdate} />
     </div>

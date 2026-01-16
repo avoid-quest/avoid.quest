@@ -18,6 +18,7 @@ export class Limiter {
   readonly #envelopeAttack: number;
   readonly #envelopeRelease: number;
   #envelope = 0.0;
+  #threshold = 1.0; // Linear threshold (default 0dB = 1.0)
 
   constructor(sampleRate: number) {
     // Calculate envelope coefficients
@@ -25,6 +26,16 @@ export class Limiter {
     // exponential decay/attack to 1% in the given time
     this.#envelopeAttack = 0.01 ** (1.0 / (ATTACK_SECONDS * sampleRate));
     this.#envelopeRelease = 0.01 ** (1.0 / (RELEASE_SECONDS * sampleRate));
+  }
+
+  /**
+   * Set threshold in dB (-60 to 0)
+   * 0dB = no limiting until clipping
+   * -6dB = limit at ~0.5 amplitude
+   */
+  setThreshold(dB: number): void {
+    // Convert dB to linear: 10^(dB/20)
+    this.#threshold = 10 ** (dB / 20);
   }
 
   reset(): void {
@@ -43,6 +54,7 @@ export class Limiter {
   ): void {
     const attack = this.#envelopeAttack;
     const release = this.#envelopeRelease;
+    const threshold = this.#threshold;
     const [inputL, inputR] = input;
     const [outputL, outputR] = output;
     let env = this.#envelope;
@@ -62,9 +74,9 @@ export class Limiter {
           ? attack * (env - abs) + abs // Attack: quick ramp up
           : release * (env - abs) + abs; // Release: slower decay
 
-      // Only apply gain reduction when envelope exceeds 1.0
-      if (env > 1.0) {
-        const gain = 1.0 / env;
+      // Apply gain reduction when envelope exceeds threshold
+      if (env > threshold) {
+        const gain = threshold / env;
         outputL[i] = sampleL * gain;
         outputR[i] = sampleR * gain;
       } else {
@@ -88,9 +100,9 @@ export class Limiter {
    * Get current gain reduction in dB (for visualization)
    */
   getGainReductionDb(): number {
-    if (this.#envelope <= 1.0) {
+    if (this.#envelope <= this.#threshold) {
       return 0.0;
     }
-    return -20 * Math.log10(this.#envelope);
+    return 20 * Math.log10(this.#threshold / this.#envelope);
   }
 }

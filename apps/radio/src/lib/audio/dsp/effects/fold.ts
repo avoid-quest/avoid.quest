@@ -22,6 +22,7 @@ export class FoldEffect {
   private smoothOutputGain = 1.0;
   private targetInputGain = 1.0;
   private targetOutputGain = 1.0;
+  private autoGain = true;
 
   constructor(_sampleRate: number) {
     this.buffer = [
@@ -44,6 +45,10 @@ export class FoldEffect {
   setOversample(factor: 2 | 4 | 8): void {
     this.oversamplingFactor = factor;
     this.resampler = new ResamplerStereo(factor);
+  }
+
+  setAutoGain(enabled: boolean): void {
+    this.autoGain = enabled;
   }
 
   reset(): void {
@@ -72,12 +77,20 @@ export class FoldEffect {
     for (let i = 0; i < oversampledLength; i++) {
       this.smoothInputGain += inputGainStep;
       this.smoothOutputGain += outputGainStep;
+
+      // Auto gain compensation: reduce output as input gain increases
+      const autoGainCompensation = this.autoGain
+        ? 1 / Math.sqrt(Math.max(1, this.smoothInputGain))
+        : 1;
+
       oversampledL[i] =
         wavefold((oversampledL[i] ?? 0) * this.smoothInputGain) *
-        this.smoothOutputGain;
+        this.smoothOutputGain *
+        autoGainCompensation;
       oversampledR[i] =
         wavefold((oversampledR[i] ?? 0) * this.smoothInputGain) *
-        this.smoothOutputGain;
+        this.smoothOutputGain *
+        autoGainCompensation;
     }
 
     // Downsample

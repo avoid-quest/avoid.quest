@@ -100,7 +100,7 @@ const MessageType = {
  */
 export type EffectType =
   | "biquadFilter"
-  | "reverb"
+  | "plateReverb"
   | "pitchShifter"
   | "distortion"
   | "compressor"

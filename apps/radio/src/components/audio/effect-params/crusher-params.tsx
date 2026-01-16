@@ -1,3 +1,5 @@
+import { Checkbox } from "@workspace/ui/components/checkbox";
+import { Label } from "@workspace/ui/components/label";
 import {
   type CrusherConfig,
   type EffectConfig,
@@ -50,6 +52,19 @@ export function CrusherParams({ effect, onUpdate }: CrusherParamsProps) {
         step={ranges.boost?.step ?? 0.1}
         value={effect.boost}
       />
+
+      <div className="flex items-center gap-2">
+        <Checkbox
+          checked={effect.autoGain}
+          id="crusher-autoGain"
+          onCheckedChange={(checked) =>
+            onUpdate({ autoGain: checked === true })
+          }
+        />
+        <Label className="text-xs" htmlFor="crusher-autoGain">
+          Auto Gain
+        </Label>
+      </div>
 
       <UniversalParams effect={effect} onUpdate={onUpdate} />
     </div>

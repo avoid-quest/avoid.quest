@@ -1,4 +1,3 @@
-export { BiquadFilterParams } from "./biquad-filter-params";
 export { CompressorParams } from "./compressor-params";
 export { CrusherParams } from "./crusher-params";
 export { DelayParams } from "./delay-params";

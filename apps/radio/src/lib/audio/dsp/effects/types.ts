@@ -15,7 +15,6 @@ export type FilterType =
   | "allpass";
 
 export type EffectType =
-  | "biquadFilter"
   | "plateReverb"
   | "pitchShifter"
   | "delay"
@@ -37,14 +36,6 @@ export type BaseEffectConfig = {
   inputGain: number; // Linear gain: 0.0 = -∞dB, 1.0 = 0dB, ~4.0 = +12dB
   outputGain: number; // Linear gain: 0.0 = -∞dB, 1.0 = 0dB, ~4.0 = +12dB
 };
-
-export interface BiquadFilterConfig extends BaseEffectConfig {
-  type: "biquadFilter";
-  filterType: FilterType;
-  frequency: number;
-  Q: number;
-  gain: number;
-}
 
 export interface PlateReverbConfig extends BaseEffectConfig {
   type: "plateReverb";
@@ -108,6 +99,7 @@ export interface CrusherConfig extends BaseEffectConfig {
   crush: number; // 0-1 (inverted in processor: setCrush(1.0 - value))
   bitDepth: number; // 1-16
   boost: number; // dB
+  autoGain: boolean; // Auto gain compensation for boost
 }
 
 export interface FoldConfig extends BaseEffectConfig {
@@ -115,6 +107,7 @@ export interface FoldConfig extends BaseEffectConfig {
   amount: number; // dB (converted to linear gain)
   volume: number; // dB (converted to linear gain)
   oversample: 2 | 4 | 8;
+  autoGain: boolean; // Auto gain compensation for amount
 }
 
 export interface StereoToolConfig extends BaseEffectConfig {
@@ -179,7 +172,6 @@ export interface LimiterConfig extends BaseEffectConfig {
 }
 
 export type EffectConfig =
-  | BiquadFilterConfig
   | PlateReverbConfig
   | PitchShifterConfig
   | DelayConfig

@@ -89,6 +89,10 @@ export class AudioManager {
 
   private readonly sounds = new Map<string, SoundInstance>();
   private readonly listeners = new Map<string, Set<AudioStateCallback>>();
+  private readonly meterListeners = new Map<
+    string,
+    Set<(level: { left: number; right: number }) => void>
+  >();
 
   private readonly workletManagers = new Map<string, WorkletManager>();
   private workletModuleLoaded = false;
@@ -733,9 +737,8 @@ export class AudioManager {
     }
 
     const engineConfig = this.convertEffectConfig(config);
-    const engineType = this.mapEffectType(config.type);
 
-    wm.addEffect(soundId, config.id, engineType, engineConfig, config.order);
+    wm.addEffect(soundId, config.id, config.type, engineConfig, config.order);
   }
 
   /**
@@ -845,6 +848,31 @@ export class AudioManager {
     };
   }
 
+  /**
+   * Subscribe to RMS meter updates for a sound
+   * Returns left/right RMS levels (0-1)
+   */
+  subscribeMeter(
+    soundId: string,
+    callback: (level: { left: number; right: number }) => void
+  ): Unsubscribe {
+    if (!this.meterListeners.has(soundId)) {
+      this.meterListeners.set(soundId, new Set());
+    }
+
+    this.meterListeners.get(soundId)?.add(callback);
+
+    return () => {
+      const callbacks = this.meterListeners.get(soundId);
+      if (callbacks) {
+        callbacks.delete(callback);
+        if (callbacks.size === 0) {
+          this.meterListeners.delete(soundId);
+        }
+      }
+    };
+  }
+
   // ============================================
   // Cleanup
   // ============================================
@@ -859,6 +887,7 @@ export class AudioManager {
 
     this.sounds.clear();
     this.listeners.clear();
+    this.meterListeners.clear();
     this.lastSoundVolumes.clear();
 
     // Cleanup all per-sound worklet managers
@@ -947,6 +976,15 @@ export class AudioManager {
       }
     });
 
+    wm.on("peakMeter", ({ peakL, peakR }) => {
+      const callbacks = this.meterListeners.get(soundId);
+      if (callbacks) {
+        for (const callback of callbacks) {
+          callback({ left: peakL, right: peakR });
+        }
+      }
+    });
+
     // Set initial global volume
     wm.setVolume(this.globalVolume);
 
@@ -977,23 +1015,16 @@ export class AudioManager {
   }
 
   /**
-   * Map effect type to worklet type
-   */
-  private mapEffectType(
-    type: EffectConfig["type"]
-  ): import("../playback/worklet-manager.js").EffectType {
-    if (type === "plateReverb") {
-      return "reverb";
-    }
-    return type as import("../playback/worklet-manager.js").EffectType;
-  }
-
-  /**
    * Convert effect config to worklet format
    */
   // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: simple switch over effect types
   private convertEffectConfig(config: EffectConfig): Record<string, number> {
-    const base: Record<string, number> = {};
+    // Universal params for all effects
+    const base: Record<string, number> = {
+      enabled: config.enabled ? 1 : 0,
+      inputGain: config.inputGain ?? 1.0,
+      outputGain: config.outputGain ?? 1.0,
+    };
 
     // Common dry/wet handling
     if (config.dryWet !== undefined) {

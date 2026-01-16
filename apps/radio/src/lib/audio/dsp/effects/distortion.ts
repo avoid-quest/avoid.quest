@@ -1,60 +1,38 @@
 /**
  * Distortion Effect
  *
- * Implements a distortion curve similar to WaveShaperNode.
+ * Soft-clipping distortion using atan waveshaping.
+ * Drive ranges from subtle warmth to heavy saturation.
+ * Includes auto gain compensation to maintain consistent volume.
  */
 
 export class Distortion {
-  private amount = 0;
-  private curve: Float32Array | null = null;
-  private readonly curveSamples = 44_100;
+  // Drive multiplier (1 = clean, 50 = heavy distortion)
+  private drive = 1;
+  // Auto gain compensation (reduces output as drive increases)
+  private makeup = 1;
 
-  constructor(_sampleRate: number) {
-    this.updateCurve();
-  }
-
+  /**
+   * Set distortion amount (0-100 scale)
+   */
   setAmount(value: number): void {
-    this.amount = Math.max(0, Math.min(1, value));
-    this.updateCurve();
+    // Map 0-100 to drive range: 1 (clean) to 50 (heavy)
+    const normalized = Math.max(0, Math.min(100, value)) / 100;
+    // Exponential curve for more musical response
+    this.drive = 1 + normalized * normalized * 49;
+
+    // Auto gain compensation: reduce output as drive increases
+    // At drive=1: makeup=1 (no change)
+    // At drive=50: makeup≈0.3 (significant reduction)
+    this.makeup = 1 / Math.sqrt(this.drive);
   }
 
   getAmount(): number {
-    return this.amount;
-  }
-
-  private updateCurve(): void {
-    const curve = new Float32Array(this.curveSamples);
-    const deg = Math.PI / 180;
-    const k = this.amount * 2;
-
-    for (let i = 0; i < this.curveSamples; i++) {
-      const x = (i * 2) / this.curveSamples - 1;
-      curve[i] = ((3 + k) * x * 20 * deg) / (Math.PI + k * Math.abs(x));
-    }
-
-    this.curve = curve;
-  }
-
-  private applyCurve(value: number): number {
-    if (!this.curve) {
-      return value;
-    }
-
-    // Map input value [-1, 1] to curve index [0, curveSamples-1]
-    const normalized = (value + 1) / 2;
-    const index = Math.max(
-      0,
-      Math.min(
-        this.curveSamples - 1,
-        Math.floor(normalized * this.curveSamples)
-      )
-    );
-
-    return this.curve[index] ?? value;
+    return ((this.drive - 1) / 99) * 100;
   }
 
   reset(): void {
-    // No state to reset for distortion
+    // No state to reset
   }
 
   process(
@@ -66,7 +44,7 @@ export class Distortion {
     const [inputL, inputR] = input;
     const [outputL, outputR] = output;
 
-    if (this.amount === 0) {
+    if (this.drive <= 1) {
       // No distortion - pass through
       for (let i = fromIndex; i < toIndex; i++) {
         outputL[i] = inputL[i] ?? 0;
@@ -75,9 +53,10 @@ export class Distortion {
       return;
     }
 
+    const inv = (2 / Math.PI) * this.makeup;
     for (let i = fromIndex; i < toIndex; i++) {
-      outputL[i] = this.applyCurve(inputL[i] ?? 0);
-      outputR[i] = this.applyCurve(inputR[i] ?? 0);
+      outputL[i] = inv * Math.atan(this.drive * (inputL[i] ?? 0));
+      outputR[i] = inv * Math.atan(this.drive * (inputR[i] ?? 0));
     }
   }
 }

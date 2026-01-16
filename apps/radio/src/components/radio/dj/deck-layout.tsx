@@ -15,7 +15,7 @@ import { cn } from "@workspace/ui/lib/utils";
 import { Link2Icon, Music2Icon, XIcon } from "lucide-react";
 import type { EffectConfig, Radio } from "@/lib/audio";
 import { RadioNameLink } from "../radio-name-link";
-import { ChannelStrip, CompactChannelStrip } from "./channel-strip";
+import { CollapsibleChannelStrip, CompactChannelStrip } from "./channel-strip";
 import { DeckSections } from "./deck-sections";
 import { PlaylistSnippet, PlaylistView } from "./playlist-view";
 
@@ -37,6 +37,7 @@ type DeckLayoutProps = {
   speed: number;
   channelFilter: number;
   effectsDryWet: number;
+  peakLevel?: { left: number; right: number };
   onPlayPause: () => void;
   onVolumeChange: (value: number[]) => void;
   onPanChange: (value: number) => void;
@@ -106,6 +107,7 @@ export function DeckLayout({
   speed,
   channelFilter,
   effectsDryWet,
+  peakLevel,
   onPlayPause,
   onVolumeChange,
   onPanChange,
@@ -172,6 +174,7 @@ export function DeckLayout({
         onUpdateEffect={onUpdateEffect}
         onVolumeChange={onVolumeChange}
         pan={pan}
+        peakLevel={peakLevel}
         progress={progress}
         radio={radio}
         shouldShowLive={shouldShowLive}
@@ -216,9 +219,10 @@ export function DeckLayout({
         />
 
         {/* Channel Strip: Pan, Speed, Filter, FX Dry/Wet */}
-        <ChannelStrip
+        <CollapsibleChannelStrip
           channelFilter={channelFilter}
           className="rounded-lg border bg-muted/30 p-3"
+          defaultExpanded={false}
           effectsDryWet={effectsDryWet}
           onChannelFilterChange={onChannelFilterChange}
           onEffectsDryWetChange={onEffectsDryWetChange}
@@ -226,6 +230,7 @@ export function DeckLayout({
           onSpeedChange={onSpeedChange}
           onVolumeChange={(v) => onVolumeChange([v])}
           pan={pan}
+          peakLevel={peakLevel}
           speed={speed}
           volume={volume}
         />
@@ -467,6 +472,7 @@ type MobileDeckTabsProps = {
   speed: number;
   channelFilter: number;
   effectsDryWet: number;
+  peakLevel?: { left: number; right: number };
   onAddEffect?: (type: string) => void;
   onChangeUrl?: () => void;
   onClear: () => void;
@@ -507,6 +513,7 @@ function MobileDeckTabs({
   speed: _speed, // Not used in compact mobile strip
   channelFilter: _channelFilter, // Not used in compact mobile strip
   effectsDryWet,
+  peakLevel,
   onAddEffect,
   onChangeUrl,
   onClear,
@@ -581,6 +588,7 @@ function MobileDeckTabs({
               onPanChange={onPanChange}
               onVolumeChange={(v) => onVolumeChange([v])}
               pan={pan}
+              peakLevel={peakLevel}
               volume={volume}
             />
 

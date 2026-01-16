@@ -168,7 +168,10 @@ export const createEffectsActions: StateCreator<
       leftDeck: {
         ...state.leftDeck,
         effects: effectIds
-          .map((id) => state.leftDeck.effects.find((e) => e.id === id))
+          .map((id, index) => {
+            const effect = state.leftDeck.effects.find((e) => e.id === id);
+            return effect ? { ...effect, order: index } : undefined;
+          })
           .filter((e): e is EffectConfig => !!e),
       },
     }));
@@ -186,7 +189,10 @@ export const createEffectsActions: StateCreator<
       rightDeck: {
         ...state.rightDeck,
         effects: effectIds
-          .map((id) => state.rightDeck.effects.find((e) => e.id === id))
+          .map((id, index) => {
+            const effect = state.rightDeck.effects.find((e) => e.id === id);
+            return effect ? { ...effect, order: index } : undefined;
+          })
           .filter((e): e is EffectConfig => !!e),
       },
     }));

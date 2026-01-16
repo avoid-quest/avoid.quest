@@ -58,6 +58,7 @@ export function DjDeck({ className, deckId, radios = [] }: DjDeckProps) {
     radio,
     isPlaying,
     isLoading,
+    isBuffering,
     volume,
     play,
     pause,
@@ -180,6 +181,7 @@ export function DjDeck({ className, deckId, radios = [] }: DjDeckProps) {
         <DeckLayout
           currentTrackIndex={currentTrackIndex}
           effects={effects}
+          isBuffering={isBuffering}
           isLoading={isLoading}
           isPlaying={isPlaying}
           metadata={metadata || radio.platformMetadata}

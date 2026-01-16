@@ -32,17 +32,6 @@ export function StereoToolParams({ effect, onUpdate }: StereoToolParamsProps) {
       />
 
       <ParamSlider
-        defaultValue={getDefaultValue(defaultConfig, "panning")}
-        formatKey="pan"
-        label="Panning"
-        max={ranges.panning?.max ?? 1}
-        min={ranges.panning?.min ?? -1}
-        onChange={(value) => onUpdate({ panning: value })}
-        step={ranges.panning?.step ?? 0.01}
-        value={effect.panning}
-      />
-
-      <ParamSlider
         defaultValue={getDefaultValue(defaultConfig, "stereo")}
         formatKey="percentage"
         label="Stereo Width"

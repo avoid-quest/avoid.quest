@@ -1,21 +1,21 @@
 import {
   type EffectConfig,
   getEffectMetadata,
-  type PhaseVocoderConfig,
+  type PitchShifterConfig,
 } from "@/lib/audio";
 import { ParamGroup, ParamSlider, UniversalParams } from "./";
 import { getDefaultValue } from "./utils";
 
-type PhaseVocoderParamsProps = {
-  effect: PhaseVocoderConfig;
+type PitchShifterParamsProps = {
+  effect: PitchShifterConfig;
   onUpdate: (config: Partial<EffectConfig>) => void;
 };
 
-export function PhaseVocoderParams({
+export function PitchShifterParams({
   effect,
   onUpdate,
-}: PhaseVocoderParamsProps) {
-  const metadata = getEffectMetadata("phaseVocoder");
+}: PitchShifterParamsProps) {
+  const metadata = getEffectMetadata("pitchShifter");
   const ranges = metadata?.parameterRanges ?? {};
   const defaultConfig = metadata?.defaultConfig;
 

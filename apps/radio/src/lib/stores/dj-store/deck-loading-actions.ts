@@ -99,14 +99,13 @@ export const createDeckLoadingActions: StateCreator<
         const trackEnded = audioState.hasEnded;
 
         // Compute next error message outside the set callback
-        const nextError = audioState.error
-          ? audioState.error.message
-          : currentState.error;
+        const nextError = audioState.error?.message ?? null;
 
         // Only update if state actually changed to prevent unnecessary re-renders
         if (
           currentState.leftDeck.isPlaying !== audioState.isPlaying ||
           currentState.leftDeck.isLoading !== audioState.isLoading ||
+          currentState.leftDeck.isBuffering !== audioState.isBuffering ||
           currentState.error !== nextError
         ) {
           set((state) => ({
@@ -114,6 +113,7 @@ export const createDeckLoadingActions: StateCreator<
               ...state.leftDeck,
               isPlaying: audioState.isPlaying,
               isLoading: audioState.isLoading,
+              isBuffering: audioState.isBuffering,
             },
             error: nextError,
           }));
@@ -218,14 +218,13 @@ export const createDeckLoadingActions: StateCreator<
         const trackEnded = audioState.hasEnded;
 
         // Compute next error message outside the set callback
-        const nextError = audioState.error
-          ? audioState.error.message
-          : currentState.error;
+        const nextError = audioState.error?.message ?? null;
 
         // Only update if state actually changed to prevent unnecessary re-renders
         if (
           currentState.rightDeck.isPlaying !== audioState.isPlaying ||
           currentState.rightDeck.isLoading !== audioState.isLoading ||
+          currentState.rightDeck.isBuffering !== audioState.isBuffering ||
           currentState.error !== nextError
         ) {
           set((state) => ({
@@ -233,6 +232,7 @@ export const createDeckLoadingActions: StateCreator<
               ...state.rightDeck,
               isPlaying: audioState.isPlaying,
               isLoading: audioState.isLoading,
+              isBuffering: audioState.isBuffering,
             },
             error: nextError,
           }));

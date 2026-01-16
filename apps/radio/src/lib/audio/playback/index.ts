@@ -15,13 +15,21 @@ export {
   suspendAudioContext,
 } from "./audio-context.js";
 
-// Stream Source
+// HTML5 Audio Source (primary - uses native <audio> element)
 export {
-  createStreamSource,
-  StreamSource,
-  type StreamSourceCallbacks,
-  type StreamSourceEvents,
-} from "./stream-source.js";
+  createHtml5AudioSource,
+  Html5AudioSource,
+  type Html5AudioSourceCallbacks,
+} from "./html5-source.js";
+
+// Microphone Source (for future live looper)
+export {
+  createMicSource,
+  type MicPermissionState,
+  MicSource,
+  type MicSourceCallbacks,
+} from "./mic-source.js";
+
 // Types
 export {
   // Worklet message types

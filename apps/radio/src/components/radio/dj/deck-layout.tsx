@@ -22,6 +22,7 @@ type DeckLayoutProps = {
   radio: Radio;
   isPlaying: boolean;
   isLoading: boolean;
+  isBuffering?: boolean;
   volume: number;
   metadata?: PlatformMetadata;
   trackProgress?: {
@@ -85,6 +86,7 @@ export function DeckLayout({
   radio,
   isPlaying,
   isLoading,
+  isBuffering = false,
   volume,
   metadata,
   trackProgress,
@@ -132,6 +134,7 @@ export function DeckLayout({
         effects={effects}
         formatTime={formatTime}
         hasTracklist={hasTracklist}
+        isBuffering={isBuffering}
         isLoading={isLoading}
         isPlaying={isPlaying}
         metadata={metadata || null}
@@ -178,6 +181,7 @@ export function DeckLayout({
 
         {/* Controls: Play/Pause + Volume */}
         <DeckControls
+          isBuffering={isBuffering}
           isLoading={isLoading}
           isPlaying={isPlaying}
           onPlayPause={onPlayPause}
@@ -316,12 +320,14 @@ function DeckProgress({
 }
 
 function DeckControls({
+  isBuffering,
   isLoading,
   isPlaying,
   onPlayPause,
   volume,
   onVolumeChange,
 }: {
+  isBuffering: boolean;
   isLoading: boolean;
   isPlaying: boolean;
   onPlayPause: () => void;
@@ -330,21 +336,32 @@ function DeckControls({
 }) {
   return (
     <div className="flex w-full items-center gap-3">
-      <PlayPauseButton
-        className="size-10 shrink-0 rounded-full"
-        disabled={isLoading}
-        iconClassName="size-4"
-        inline={true}
-        isLoading={isLoading}
-        isPlaying={isPlaying}
-        onClick={onPlayPause}
-        size="icon"
-        variant={isPlaying ? "outline" : "default"}
-      />
+      <div className="relative">
+        <PlayPauseButton
+          className="size-10 shrink-0 rounded-full"
+          disabled={isLoading}
+          iconClassName="size-4"
+          inline={true}
+          isLoading={isLoading}
+          isPlaying={isPlaying}
+          onClick={onPlayPause}
+          size="icon"
+          variant={isPlaying ? "outline" : "default"}
+        />
+        {/* Buffering indicator */}
+        {isBuffering && isPlaying && (
+          <div className="absolute -top-1 -right-1 flex items-center gap-1 rounded-full bg-amber-500/20 px-1.5 py-0.5">
+            <span className="relative flex size-1.5">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75" />
+              <span className="relative inline-flex size-1.5 rounded-full bg-amber-500" />
+            </span>
+          </div>
+        )}
+      </div>
 
       <div className="flex-1 space-y-1">
         <div className="flex justify-between font-medium text-[10px] text-muted-foreground uppercase tracking-wider">
-          <span>Volume</span>
+          <span>{isBuffering && isPlaying ? "Buffering..." : "Volume"}</span>
           <span>{Math.round(volume * 100)}%</span>
         </div>
         <Slider
@@ -400,6 +417,7 @@ type MobileDeckTabsProps = {
   effects: EffectConfig[];
   formatTime: (seconds: number) => string;
   hasTracklist: boolean;
+  isBuffering: boolean;
   isLoading: boolean;
   isPlaying: boolean;
   metadata: PlatformMetadata | null;
@@ -431,6 +449,7 @@ function MobileDeckTabs({
   effects,
   formatTime,
   hasTracklist,
+  isBuffering,
   isLoading,
   isPlaying,
   metadata,
@@ -488,6 +507,7 @@ function MobileDeckTabs({
             />
 
             <DeckControls
+              isBuffering={isBuffering}
               isLoading={isLoading}
               isPlaying={isPlaying}
               onPlayPause={onPlayPause}

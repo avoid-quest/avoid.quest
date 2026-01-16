@@ -102,7 +102,6 @@ export {
   getAudioContextManager,
   Html5AudioSource,
   type Html5AudioSourceCallbacks,
-  type Html5AudioSourceEvents,
   initialAudioState,
   MicSource,
   type MicSourceCallbacks,

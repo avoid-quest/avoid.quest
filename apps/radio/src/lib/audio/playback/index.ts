@@ -20,7 +20,6 @@ export {
   createHtml5AudioSource,
   Html5AudioSource,
   type Html5AudioSourceCallbacks,
-  type Html5AudioSourceEvents,
 } from "./html5-source.js";
 
 // Microphone Source (for future live looper)

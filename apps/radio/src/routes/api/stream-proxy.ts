@@ -50,6 +50,39 @@ function validateUrl(
     );
   }
 
+  // SSRF protection: block internal/private addresses
+  const hostname = parsed.hostname.toLowerCase();
+  if (
+    hostname === "localhost" ||
+    hostname.startsWith("127.") ||
+    hostname.startsWith("10.") ||
+    hostname.startsWith("192.168.") ||
+    hostname.startsWith("172.16.") ||
+    hostname.startsWith("172.17.") ||
+    hostname.startsWith("172.18.") ||
+    hostname.startsWith("172.19.") ||
+    hostname.startsWith("172.20.") ||
+    hostname.startsWith("172.21.") ||
+    hostname.startsWith("172.22.") ||
+    hostname.startsWith("172.23.") ||
+    hostname.startsWith("172.24.") ||
+    hostname.startsWith("172.25.") ||
+    hostname.startsWith("172.26.") ||
+    hostname.startsWith("172.27.") ||
+    hostname.startsWith("172.28.") ||
+    hostname.startsWith("172.29.") ||
+    hostname.startsWith("172.30.") ||
+    hostname.startsWith("172.31.") ||
+    hostname === "0.0.0.0" ||
+    hostname === "::1" ||
+    hostname === "[::1]"
+  ) {
+    return json(
+      { error: "Internal addresses not allowed" },
+      { status: 400, headers: getCorsHeaders(origin) }
+    );
+  }
+
   return urlParam;
 }
 

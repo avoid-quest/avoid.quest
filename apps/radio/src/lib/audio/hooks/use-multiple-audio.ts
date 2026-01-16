@@ -106,8 +106,8 @@ export function useMultipleAudio(settings?: MultipleAudioSettings) {
       if (autoPlay) {
         try {
           await manager.play(playerId);
-        } catch {
-          // Error will be handled by state subscription
+        } catch (error) {
+          console.error("Failed to auto-play audio:", error);
         }
       }
 
@@ -140,8 +140,8 @@ export function useMultipleAudio(settings?: MultipleAudioSettings) {
     async (playerId: string) => {
       try {
         await manager.play(playerId);
-      } catch {
-        // Error will be handled by state subscription
+      } catch (error) {
+        console.error("Failed to play audio:", error);
       }
     },
     [manager]
@@ -215,8 +215,8 @@ export function useMultipleAudio(settings?: MultipleAudioSettings) {
       if (!player.isPlaying) {
         try {
           await manager.play(player.id);
-        } catch {
-          // Continue with other players
+        } catch (error) {
+          console.error(`Failed to play audio ${player.id}:`, error);
         }
       }
     }

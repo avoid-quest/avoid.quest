@@ -8,18 +8,6 @@
 import type { StreamStatus } from "./types.js";
 
 /**
- * Events emitted by Html5AudioSource
- */
-export type Html5AudioSourceEvents = {
-  playing: () => void;
-  paused: () => void;
-  buffering: () => void;
-  ready: () => void;
-  error: (error: Error) => void;
-  ended: () => void;
-};
-
-/**
  * Callbacks for Html5AudioSource
  */
 export type Html5AudioSourceCallbacks = {
@@ -308,6 +296,15 @@ export class Html5AudioSource {
       clearTimeout(this.corsCheckTimer);
       this.corsCheckTimer = null;
     }
+
+    // Remove event listeners to prevent memory leaks
+    this.audio.removeEventListener("playing", this.handlePlaying);
+    this.audio.removeEventListener("pause", this.handlePaused);
+    this.audio.removeEventListener("ended", this.handleEnded);
+    this.audio.removeEventListener("error", this.handleError);
+    this.audio.removeEventListener("waiting", this.handleWaiting);
+    this.audio.removeEventListener("canplay", this.handleCanPlay);
+    this.audio.removeEventListener("canplaythrough", this.handleCanPlayThrough);
 
     this.audio.pause();
     this.audio.src = "";

@@ -187,6 +187,9 @@ class EffectSource {
   private readonly tempR: Float32Array;
   private readonly dryL: Float32Array;
   private readonly dryR: Float32Array;
+  // Original unprocessed input for master dry/wet mixing
+  private readonly originalL: Float32Array;
+  private readonly originalR: Float32Array;
 
   // State
   private playing = false;
@@ -202,6 +205,8 @@ class EffectSource {
     this.tempR = new Float32Array(128);
     this.dryL = new Float32Array(128);
     this.dryR = new Float32Array(128);
+    this.originalL = new Float32Array(128);
+    this.originalR = new Float32Array(128);
     this.updateGains();
   }
 
@@ -678,6 +683,12 @@ class EffectSource {
       return;
     }
 
+    // Store original unprocessed input for master dry/wet mixing
+    for (let i = fromIndex; i < toIndex; i++) {
+      this.originalL[i] = inputL[i] ?? 0;
+      this.originalR[i] = inputR[i] ?? 0;
+    }
+
     // Copy input to temp buffers
     for (let i = fromIndex; i < toIndex; i++) {
       this.tempL[i] = inputL[i] ?? 0;
@@ -767,8 +778,8 @@ class EffectSource {
       const wet = this.masterEffectsDryWet;
       const dry = 1.0 - wet;
       for (let i = fromIndex; i < toIndex; i++) {
-        outputL[i] = (this.tempL[i] ?? 0) * dry + (outputL[i] ?? 0) * wet;
-        outputR[i] = (this.tempR[i] ?? 0) * dry + (outputR[i] ?? 0) * wet;
+        outputL[i] = (this.originalL[i] ?? 0) * dry + (outputL[i] ?? 0) * wet;
+        outputR[i] = (this.originalR[i] ?? 0) * dry + (outputR[i] ?? 0) * wet;
       }
     }
 

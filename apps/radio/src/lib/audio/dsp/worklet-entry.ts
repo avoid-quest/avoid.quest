@@ -14,6 +14,8 @@ import { DSPProcessor } from "./processor.js";
  */
 class CacophonyProcessor extends AudioWorkletProcessor {
   private readonly dsp: DSPProcessor;
+  // Pre-allocated empty buffer to avoid GC pressure when no input
+  private readonly emptyBuffer = new Float32Array(128);
 
   constructor() {
     super();
@@ -50,9 +52,9 @@ class CacophonyProcessor extends AudioWorkletProcessor {
     }
 
     // Get input audio from Web Audio graph (from MediaElementSource)
-    // If no input, use empty/silent buffers
-    const inputL = input?.[0] ?? new Float32Array(outputL.length);
-    const inputR = input?.[1] ?? input?.[0] ?? new Float32Array(outputR.length);
+    // If no input, use pre-allocated empty buffer to avoid GC pressure
+    const inputL = input?.[0] ?? this.emptyBuffer;
+    const inputR = input?.[1] ?? input?.[0] ?? this.emptyBuffer;
 
     this.dsp.process(inputL, inputR, outputL, outputR, 0, outputL.length);
 

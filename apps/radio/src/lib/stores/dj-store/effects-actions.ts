@@ -3,6 +3,7 @@ import {
   createDefaultEffectConfig,
   type EffectConfig,
   type FilterConfig,
+  isEffectType,
 } from "@/lib/audio";
 import { getAudioManager } from "./audio-manager-helpers";
 import type { InternalDjState } from "./types";
@@ -46,10 +47,14 @@ export const createEffectsActions: StateCreator<
   },
 
   addLeftEffect: (effectType: string) => {
+    if (!isEffectType(effectType)) {
+      throw new Error(`Invalid effect type: ${effectType}`);
+    }
+
     const { leftDeck } = get();
 
     const newEffect = createDefaultEffectConfig(
-      effectType as EffectConfig["type"],
+      effectType,
       `effect_${Date.now()}_${Math.random()}`,
       leftDeck.effects.length
     );
@@ -68,10 +73,14 @@ export const createEffectsActions: StateCreator<
   },
 
   addRightEffect: (effectType: string) => {
+    if (!isEffectType(effectType)) {
+      throw new Error(`Invalid effect type: ${effectType}`);
+    }
+
     const { rightDeck } = get();
 
     const newEffect = createDefaultEffectConfig(
-      effectType as EffectConfig["type"],
+      effectType,
       `effect_${Date.now()}_${Math.random()}`,
       rightDeck.effects.length
     );

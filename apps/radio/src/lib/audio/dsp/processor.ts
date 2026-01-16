@@ -337,7 +337,7 @@ class EffectSource {
   addEffect(
     effectId: string,
     type: EffectType,
-    config: Record<string, number | boolean>,
+    config: Record<string, number | boolean | string>,
     order: number
   ): boolean {
     const processor = this.createEffectProcessor(type);
@@ -373,7 +373,7 @@ class EffectSource {
 
   updateEffect(
     effectId: string,
-    config: Record<string, number | boolean>
+    config: Record<string, number | boolean | string>
   ): void {
     const processor = this.effects.get(effectId);
     const type = this.effectTypes.get(effectId);
@@ -439,283 +439,286 @@ class EffectSource {
   private applyEffectConfig(
     processor: EffectProcessor,
     type: EffectType,
-    config: Record<string, number | boolean>
+    config: Record<string, number | boolean | string>
   ): void {
-    // Type-specific configuration
+    // Type-specific configuration with typeof guards
     switch (type) {
       case "crusher": {
         const crusher = processor as CrusherEffect;
-        if (config.crush !== undefined) {
-          crusher.setCrush(config.crush as number);
+        if (typeof config.crush === "number") {
+          crusher.setCrush(config.crush);
         }
-        if (config.bitDepth !== undefined) {
-          crusher.setBitDepth(config.bitDepth as number);
+        if (typeof config.bitDepth === "number") {
+          crusher.setBitDepth(config.bitDepth);
         }
-        if (config.boost !== undefined) {
-          crusher.setBoost(config.boost as number);
+        if (typeof config.boost === "number") {
+          crusher.setBoost(config.boost);
         }
-        if (config.autoGain !== undefined) {
-          crusher.setAutoGain(config.autoGain as boolean);
+        if (typeof config.autoGain === "boolean") {
+          crusher.setAutoGain(config.autoGain);
         }
         break;
       }
       case "fold": {
         const fold = processor as FoldEffect;
-        if (config.amount !== undefined) {
-          fold.setAmount(config.amount as number);
+        if (typeof config.amount === "number") {
+          fold.setAmount(config.amount);
         }
-        if (config.volume !== undefined) {
-          fold.setVolume(config.volume as number);
+        if (typeof config.volume === "number") {
+          fold.setVolume(config.volume);
         }
-        if (config.oversample !== undefined) {
-          fold.setOversample(config.oversample as 2 | 4 | 8);
+        if (typeof config.oversample === "number") {
+          const os = config.oversample;
+          if (os === 2 || os === 4 || os === 8) {
+            fold.setOversample(os);
+          }
         }
-        if (config.autoGain !== undefined) {
-          fold.setAutoGain(config.autoGain as boolean);
+        if (typeof config.autoGain === "boolean") {
+          fold.setAutoGain(config.autoGain);
         }
         break;
       }
       case "stereoTool": {
         const stereo = processor as StereoToolEffect;
-        if (config.volume !== undefined) {
-          stereo.setVolume(config.volume as number);
+        if (typeof config.volume === "number") {
+          stereo.setVolume(config.volume);
         }
-        if (config.stereo !== undefined) {
-          stereo.setStereoWidth(config.stereo as number);
+        if (typeof config.stereo === "number") {
+          stereo.setStereoWidth(config.stereo);
         }
-        if (config.invertL !== undefined) {
-          stereo.setInvertL(config.invertL as boolean);
+        if (typeof config.invertL === "boolean") {
+          stereo.setInvertL(config.invertL);
         }
-        if (config.invertR !== undefined) {
-          stereo.setInvertR(config.invertR as boolean);
+        if (typeof config.invertR === "boolean") {
+          stereo.setInvertR(config.invertR);
         }
-        if (config.swap !== undefined) {
-          stereo.setSwap(config.swap as boolean);
+        if (typeof config.swap === "boolean") {
+          stereo.setSwap(config.swap);
         }
         break;
       }
       case "tidal": {
         const tidal = processor as TidalEffect;
-        if (config.rate !== undefined) {
-          tidal.setRate(config.rate as number);
+        if (typeof config.rate === "number") {
+          tidal.setRate(config.rate);
         }
-        if (config.depth !== undefined) {
-          tidal.setDepth(config.depth as number);
+        if (typeof config.depth === "number") {
+          tidal.setDepth(config.depth);
         }
-        if (config.slope !== undefined) {
-          tidal.setSlope(config.slope as number);
+        if (typeof config.slope === "number") {
+          tidal.setSlope(config.slope);
         }
-        if (config.symmetry !== undefined) {
-          tidal.setSymmetry(config.symmetry as number);
+        if (typeof config.symmetry === "number") {
+          tidal.setSymmetry(config.symmetry);
         }
-        if (config.offset !== undefined) {
-          tidal.setOffset(config.offset as number);
+        if (typeof config.offset === "number") {
+          tidal.setOffset(config.offset);
         }
-        if (config.channelOffset !== undefined) {
-          tidal.setChannelOffset(config.channelOffset as number);
+        if (typeof config.channelOffset === "number") {
+          tidal.setChannelOffset(config.channelOffset);
         }
         break;
       }
       case "plateReverb": {
         const reverb = processor as DattorroReverb;
-        if (config.preDelay !== undefined) {
-          reverb.setPreDelay(config.preDelay as number);
+        if (typeof config.preDelay === "number") {
+          reverb.setPreDelay(config.preDelay);
         }
-        if (config.bandwidth !== undefined) {
-          reverb.setBandwidth(config.bandwidth as number);
+        if (typeof config.bandwidth === "number") {
+          reverb.setBandwidth(config.bandwidth);
         }
-        if (config.inputDiffusion1 !== undefined) {
-          reverb.setInputDiffusion1(config.inputDiffusion1 as number);
+        if (typeof config.inputDiffusion1 === "number") {
+          reverb.setInputDiffusion1(config.inputDiffusion1);
         }
-        if (config.inputDiffusion2 !== undefined) {
-          reverb.setInputDiffusion2(config.inputDiffusion2 as number);
+        if (typeof config.inputDiffusion2 === "number") {
+          reverb.setInputDiffusion2(config.inputDiffusion2);
         }
-        if (config.decay !== undefined) {
-          reverb.setDecay(config.decay as number);
+        if (typeof config.decay === "number") {
+          reverb.setDecay(config.decay);
         }
-        if (config.decayDiffusion1 !== undefined) {
-          reverb.setDecayDiffusion1(config.decayDiffusion1 as number);
+        if (typeof config.decayDiffusion1 === "number") {
+          reverb.setDecayDiffusion1(config.decayDiffusion1);
         }
-        if (config.decayDiffusion2 !== undefined) {
-          reverb.setDecayDiffusion2(config.decayDiffusion2 as number);
+        if (typeof config.decayDiffusion2 === "number") {
+          reverb.setDecayDiffusion2(config.decayDiffusion2);
         }
-        if (config.damping !== undefined) {
-          reverb.setDamping(config.damping as number);
+        if (typeof config.damping === "number") {
+          reverb.setDamping(config.damping);
         }
-        if (config.excursionRate !== undefined) {
-          reverb.setExcursionRate(config.excursionRate as number);
+        if (typeof config.excursionRate === "number") {
+          reverb.setExcursionRate(config.excursionRate);
         }
-        if (config.excursionDepth !== undefined) {
-          reverb.setExcursionDepth(config.excursionDepth as number);
+        if (typeof config.excursionDepth === "number") {
+          reverb.setExcursionDepth(config.excursionDepth);
         }
-        if (config.wet !== undefined) {
-          reverb.setWet(config.wet as number);
+        if (typeof config.wet === "number") {
+          reverb.setWet(config.wet);
         }
-        if (config.dry !== undefined) {
-          reverb.setDry(config.dry as number);
+        if (typeof config.dry === "number") {
+          reverb.setDry(config.dry);
         }
         break;
       }
       case "distortion": {
         const dist = processor as Distortion;
-        if (config.amount !== undefined) {
-          // Distortion.setAmount handles 0-100 to 0-1 conversion internally
-          dist.setAmount(config.amount as number);
+        if (typeof config.amount === "number") {
+          dist.setAmount(config.amount);
         }
-        if (config.oversample !== undefined) {
-          dist.setOversample(config.oversample as "none" | "2x" | "4x");
+        if (typeof config.oversample === "string") {
+          const os = config.oversample;
+          if (os === "none" || os === "2x" || os === "4x") {
+            dist.setOversample(os);
+          }
         }
         break;
       }
       case "compressor": {
         const comp = processor as CTAGCompressor;
-        if (config.threshold !== undefined) {
-          comp.setThreshold(config.threshold as number);
+        if (typeof config.threshold === "number") {
+          comp.setThreshold(config.threshold);
         }
-        if (config.ratio !== undefined) {
-          comp.setRatio(config.ratio as number);
+        if (typeof config.ratio === "number") {
+          comp.setRatio(config.ratio);
         }
-        if (config.attack !== undefined) {
-          // Attack is in ms in registry
-          comp.setAttack(config.attack as number);
+        if (typeof config.attack === "number") {
+          comp.setAttack(config.attack);
         }
-        if (config.release !== undefined) {
-          // Release is in ms in registry
-          comp.setRelease(config.release as number);
+        if (typeof config.release === "number") {
+          comp.setRelease(config.release);
         }
-        if (config.knee !== undefined) {
-          comp.setKnee(config.knee as number);
+        if (typeof config.knee === "number") {
+          comp.setKnee(config.knee);
         }
-        if (config.makeup !== undefined) {
-          comp.setMakeup(config.makeup as number);
+        if (typeof config.makeup === "number") {
+          comp.setMakeup(config.makeup);
         }
-        if (config.mix !== undefined) {
-          comp.setMix(config.mix as number);
+        if (typeof config.mix === "number") {
+          comp.setMix(config.mix);
         }
-        if (config.lookahead !== undefined) {
-          comp.setLookahead(config.lookahead as boolean);
+        if (typeof config.lookahead === "boolean") {
+          comp.setLookahead(config.lookahead);
         }
-        if (config.autoAttack !== undefined) {
-          comp.setAutoAttack(config.autoAttack as boolean);
+        if (typeof config.autoAttack === "boolean") {
+          comp.setAutoAttack(config.autoAttack);
         }
-        if (config.autoRelease !== undefined) {
-          comp.setAutoRelease(config.autoRelease as boolean);
+        if (typeof config.autoRelease === "boolean") {
+          comp.setAutoRelease(config.autoRelease);
         }
-        if (config.autoMakeup !== undefined) {
-          comp.setAutoMakeup(config.autoMakeup as boolean);
+        if (typeof config.autoMakeup === "boolean") {
+          comp.setAutoMakeup(config.autoMakeup);
         }
         break;
       }
       case "pitchShifter": {
         const pv = processor as PhaseVocoder;
-        if (config.pitchFactor !== undefined) {
-          pv.setPitchFactor(config.pitchFactor as number);
+        if (typeof config.pitchFactor === "number") {
+          pv.setPitchFactor(config.pitchFactor);
         }
         break;
       }
       case "limiter": {
         const limiter = processor as Limiter;
-        if (config.threshold !== undefined) {
-          limiter.setThreshold(config.threshold as number);
+        if (typeof config.threshold === "number") {
+          limiter.setThreshold(config.threshold);
         }
         break;
       }
       case "revamp": {
         const revamp = processor as RevampEffect;
         // Highpass
-        if (config.highPassEnabled !== undefined) {
-          revamp.setHighPassEnabled(!!config.highPassEnabled);
+        if (typeof config.highPassEnabled === "boolean") {
+          revamp.setHighPassEnabled(config.highPassEnabled);
         }
-        if (config.highPassFrequency !== undefined) {
-          revamp.setHighPassFrequency(config.highPassFrequency as number);
+        if (typeof config.highPassFrequency === "number") {
+          revamp.setHighPassFrequency(config.highPassFrequency);
         }
-        if (config.highPassQ !== undefined) {
-          revamp.setHighPassQ(config.highPassQ as number);
+        if (typeof config.highPassQ === "number") {
+          revamp.setHighPassQ(config.highPassQ);
         }
-        if (config.highPassOrder !== undefined) {
-          revamp.setHighPassOrder(config.highPassOrder as number);
+        if (typeof config.highPassOrder === "number") {
+          revamp.setHighPassOrder(config.highPassOrder);
         }
         // Low shelf
-        if (config.lowShelfEnabled !== undefined) {
-          revamp.setLowShelfEnabled(!!config.lowShelfEnabled);
+        if (typeof config.lowShelfEnabled === "boolean") {
+          revamp.setLowShelfEnabled(config.lowShelfEnabled);
         }
-        if (config.lowShelfFrequency !== undefined) {
-          revamp.setLowShelfFrequency(config.lowShelfFrequency as number);
+        if (typeof config.lowShelfFrequency === "number") {
+          revamp.setLowShelfFrequency(config.lowShelfFrequency);
         }
-        if (config.lowShelfGain !== undefined) {
-          revamp.setLowShelfGain(config.lowShelfGain as number);
+        if (typeof config.lowShelfGain === "number") {
+          revamp.setLowShelfGain(config.lowShelfGain);
         }
         // Low bell
-        if (config.lowBellEnabled !== undefined) {
-          revamp.setLowBellEnabled(!!config.lowBellEnabled);
+        if (typeof config.lowBellEnabled === "boolean") {
+          revamp.setLowBellEnabled(config.lowBellEnabled);
         }
-        if (config.lowBellFrequency !== undefined) {
-          revamp.setLowBellFrequency(config.lowBellFrequency as number);
+        if (typeof config.lowBellFrequency === "number") {
+          revamp.setLowBellFrequency(config.lowBellFrequency);
         }
-        if (config.lowBellGain !== undefined) {
-          revamp.setLowBellGain(config.lowBellGain as number);
+        if (typeof config.lowBellGain === "number") {
+          revamp.setLowBellGain(config.lowBellGain);
         }
-        if (config.lowBellQ !== undefined) {
-          revamp.setLowBellQ(config.lowBellQ as number);
+        if (typeof config.lowBellQ === "number") {
+          revamp.setLowBellQ(config.lowBellQ);
         }
         // Mid bell
-        if (config.midBellEnabled !== undefined) {
-          revamp.setMidBellEnabled(!!config.midBellEnabled);
+        if (typeof config.midBellEnabled === "boolean") {
+          revamp.setMidBellEnabled(config.midBellEnabled);
         }
-        if (config.midBellFrequency !== undefined) {
-          revamp.setMidBellFrequency(config.midBellFrequency as number);
+        if (typeof config.midBellFrequency === "number") {
+          revamp.setMidBellFrequency(config.midBellFrequency);
         }
-        if (config.midBellGain !== undefined) {
-          revamp.setMidBellGain(config.midBellGain as number);
+        if (typeof config.midBellGain === "number") {
+          revamp.setMidBellGain(config.midBellGain);
         }
-        if (config.midBellQ !== undefined) {
-          revamp.setMidBellQ(config.midBellQ as number);
+        if (typeof config.midBellQ === "number") {
+          revamp.setMidBellQ(config.midBellQ);
         }
         // High bell
-        if (config.highBellEnabled !== undefined) {
-          revamp.setHighBellEnabled(!!config.highBellEnabled);
+        if (typeof config.highBellEnabled === "boolean") {
+          revamp.setHighBellEnabled(config.highBellEnabled);
         }
-        if (config.highBellFrequency !== undefined) {
-          revamp.setHighBellFrequency(config.highBellFrequency as number);
+        if (typeof config.highBellFrequency === "number") {
+          revamp.setHighBellFrequency(config.highBellFrequency);
         }
-        if (config.highBellGain !== undefined) {
-          revamp.setHighBellGain(config.highBellGain as number);
+        if (typeof config.highBellGain === "number") {
+          revamp.setHighBellGain(config.highBellGain);
         }
-        if (config.highBellQ !== undefined) {
-          revamp.setHighBellQ(config.highBellQ as number);
+        if (typeof config.highBellQ === "number") {
+          revamp.setHighBellQ(config.highBellQ);
         }
         // High shelf
-        if (config.highShelfEnabled !== undefined) {
-          revamp.setHighShelfEnabled(!!config.highShelfEnabled);
+        if (typeof config.highShelfEnabled === "boolean") {
+          revamp.setHighShelfEnabled(config.highShelfEnabled);
         }
-        if (config.highShelfFrequency !== undefined) {
-          revamp.setHighShelfFrequency(config.highShelfFrequency as number);
+        if (typeof config.highShelfFrequency === "number") {
+          revamp.setHighShelfFrequency(config.highShelfFrequency);
         }
-        if (config.highShelfGain !== undefined) {
-          revamp.setHighShelfGain(config.highShelfGain as number);
+        if (typeof config.highShelfGain === "number") {
+          revamp.setHighShelfGain(config.highShelfGain);
         }
         // Lowpass
-        if (config.lowPassEnabled !== undefined) {
-          revamp.setLowPassEnabled(!!config.lowPassEnabled);
+        if (typeof config.lowPassEnabled === "boolean") {
+          revamp.setLowPassEnabled(config.lowPassEnabled);
         }
-        if (config.lowPassFrequency !== undefined) {
-          revamp.setLowPassFrequency(config.lowPassFrequency as number);
+        if (typeof config.lowPassFrequency === "number") {
+          revamp.setLowPassFrequency(config.lowPassFrequency);
         }
-        if (config.lowPassQ !== undefined) {
-          revamp.setLowPassQ(config.lowPassQ as number);
+        if (typeof config.lowPassQ === "number") {
+          revamp.setLowPassQ(config.lowPassQ);
         }
-        if (config.lowPassOrder !== undefined) {
-          revamp.setLowPassOrder(config.lowPassOrder as number);
+        if (typeof config.lowPassOrder === "number") {
+          revamp.setLowPassOrder(config.lowPassOrder);
         }
         break;
       }
       case "delay": {
         const delay = processor as Delay;
-        if (config.delayTime !== undefined) {
-          delay.setDelayTime(config.delayTime as number);
+        if (typeof config.delayTime === "number") {
+          delay.setDelayTime(config.delayTime);
         }
-        if (config.feedback !== undefined) {
-          delay.setFeedback(config.feedback as number);
+        if (typeof config.feedback === "number") {
+          delay.setFeedback(config.feedback);
         }
         break;
       }
@@ -1034,7 +1037,7 @@ export class DSPProcessor {
           sourceId: string;
           effectId: string;
           type: EffectType;
-          config: Record<string, number | boolean>;
+          config: Record<string, number | boolean | string>;
           order: number;
         };
         this.addEffect(sourceId, effectId, type, config, order);
@@ -1054,7 +1057,7 @@ export class DSPProcessor {
         const { sourceId, effectId, config } = payload as {
           sourceId: string;
           effectId: string;
-          config: Record<string, number | boolean>;
+          config: Record<string, number | boolean | string>;
         };
         this.updateEffect(sourceId, effectId, config);
         break;
@@ -1299,7 +1302,7 @@ export class DSPProcessor {
     sourceId: string,
     effectId: string,
     type: EffectType,
-    config: Record<string, number | boolean>,
+    config: Record<string, number | boolean | string>,
     order: number
   ): void {
     const source = this.sources.get(sourceId);
@@ -1333,7 +1336,7 @@ export class DSPProcessor {
   private updateEffect(
     sourceId: string,
     effectId: string,
-    config: Record<string, number | boolean>
+    config: Record<string, number | boolean | string>
   ): void {
     const source = this.sources.get(sourceId);
     if (source) {

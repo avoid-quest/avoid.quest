@@ -54,6 +54,7 @@ export type {
   StereoToolConfig,
   TidalConfig,
 } from "./dsp/effects/types.js";
+export { EFFECT_TYPES, isEffectType } from "./dsp/effects/types.js";
 // DSP Processor types (for worklet communication)
 export {
   type AnalysisData,

@@ -14,18 +14,36 @@ export type FilterType =
   | "notch"
   | "allpass";
 
-export type EffectType =
-  | "plateReverb"
-  | "pitchShifter"
-  | "delay"
-  | "distortion"
-  | "compressor"
-  | "crusher"
-  | "fold"
-  | "stereoTool"
-  | "revamp"
-  | "tidal"
-  | "limiter";
+/**
+ * All valid effect type identifiers as a const array.
+ * Used for runtime validation at store boundaries.
+ */
+export const EFFECT_TYPES = [
+  "plateReverb",
+  "pitchShifter",
+  "delay",
+  "distortion",
+  "compressor",
+  "crusher",
+  "fold",
+  "stereoTool",
+  "revamp",
+  "tidal",
+  "limiter",
+] as const;
+
+export type EffectType = (typeof EFFECT_TYPES)[number];
+
+/**
+ * Runtime type guard for EffectType.
+ * Use at store boundaries to validate user input.
+ */
+export function isEffectType(value: unknown): value is EffectType {
+  return (
+    typeof value === "string" &&
+    (EFFECT_TYPES as readonly string[]).includes(value)
+  );
+}
 
 export type BaseEffectConfig = {
   id: string;

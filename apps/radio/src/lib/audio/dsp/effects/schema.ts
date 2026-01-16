@@ -200,7 +200,7 @@ function createPassFilterGroup(prefix: string, title: string): GroupParamDef {
   };
 }
 
-export const EFFECT_SCHEMAS: Record<EffectType, EffectSchema> = {
+export const EFFECT_SCHEMAS = {
   plateReverb: {
     type: "plateReverb",
     name: "Plate Reverb",
@@ -746,8 +746,52 @@ export const EFFECT_SCHEMAS: Record<EffectType, EffectSchema> = {
       },
     ],
   },
-};
+} as const satisfies Record<EffectType, EffectSchema>;
 
 export function getEffectSchema(type: EffectType): EffectSchema | undefined {
   return EFFECT_SCHEMAS[type];
+}
+
+/**
+ * Extract all parameter keys from a schema's params array (recursive for groups).
+ * Used for runtime validation.
+ */
+function extractParamKeys(params: ParamDef[]): string[] {
+  const keys: string[] = [];
+  for (const param of params) {
+    if (param.type === "group") {
+      keys.push(...extractParamKeys(param.children));
+    } else {
+      keys.push(param.key);
+    }
+  }
+  return keys;
+}
+
+/**
+ * Validate that all schema parameter keys exist in their corresponding config type.
+ * Run this in tests or dev mode to catch typos in schema keys.
+ *
+ * @param configKeys - Map of effect type to array of valid config property names
+ * @returns Array of validation errors, empty if all valid
+ */
+export function validateSchemaKeys(
+  configKeys: Record<EffectType, string[]>
+): string[] {
+  const errors: string[] = [];
+
+  for (const [effectType, schema] of Object.entries(EFFECT_SCHEMAS)) {
+    const validKeys = new Set(configKeys[effectType as EffectType] ?? []);
+    const schemaKeys = extractParamKeys(schema.params);
+
+    for (const key of schemaKeys) {
+      if (!validKeys.has(key)) {
+        errors.push(
+          `Schema "${effectType}" has invalid key "${key}" - not found in config type`
+        );
+      }
+    }
+  }
+
+  return errors;
 }

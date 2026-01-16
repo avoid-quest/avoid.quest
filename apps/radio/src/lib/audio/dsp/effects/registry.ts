@@ -7,15 +7,18 @@
 import type { EffectConfig, EffectType } from "./types.js";
 
 export type EffectMetadata = {
-  type: EffectType;
-  name: string;
-  description: string;
-  icon?: string;
-  defaultConfig: Omit<EffectConfig, "id" | "order">;
-  parameterRanges?: Record<string, { min: number; max: number; step?: number }>;
+  readonly type: EffectType;
+  readonly name: string;
+  readonly description: string;
+  readonly icon?: string;
+  readonly defaultConfig: Omit<EffectConfig, "id" | "order">;
 };
 
-export const AVAILABLE_EFFECTS: EffectMetadata[] = [
+/**
+ * Available effects with their default configurations.
+ * Immutable array - use as const satisfies for type safety.
+ */
+export const AVAILABLE_EFFECTS = [
   {
     type: "plateReverb",
     name: "Plate Reverb",
@@ -36,21 +39,6 @@ export const AVAILABLE_EFFECTS: EffectMetadata[] = [
       dryWet: 1.0,
       inputGain: 1.0,
       outputGain: 1.0,
-    } as Omit<EffectConfig, "id" | "order">,
-    parameterRanges: {
-      preDelay: { min: 0, max: 47_999, step: 1 },
-      bandwidth: { min: 0, max: 1, step: 0.0001 },
-      inputDiffusion1: { min: 0, max: 1, step: 0.01 },
-      inputDiffusion2: { min: 0, max: 1, step: 0.01 },
-      decay: { min: 0, max: 1, step: 0.01 },
-      decayDiffusion1: { min: 0, max: 0.999_999, step: 0.001 },
-      decayDiffusion2: { min: 0, max: 0.999_999, step: 0.001 },
-      damping: { min: 0, max: 1, step: 0.001 },
-      excursionRate: { min: 0, max: 2, step: 0.01 },
-      excursionDepth: { min: 0, max: 2, step: 0.01 },
-      dryWet: { min: 0, max: 1, step: 0.01 },
-      inputGain: { min: 0, max: 4.0, step: 0.01 },
-      outputGain: { min: 0, max: 4.0, step: 0.01 },
     },
   },
   {
@@ -65,12 +53,6 @@ export const AVAILABLE_EFFECTS: EffectMetadata[] = [
       dryWet: 1.0,
       inputGain: 1.0,
       outputGain: 1.0,
-    } as Omit<EffectConfig, "id" | "order">,
-    parameterRanges: {
-      pitchFactor: { min: 0.25, max: 4.0, step: 0.01 },
-      dryWet: { min: 0, max: 1, step: 0.01 },
-      inputGain: { min: 0, max: 4.0, step: 0.01 },
-      outputGain: { min: 0, max: 4.0, step: 0.01 },
     },
   },
   {
@@ -85,13 +67,6 @@ export const AVAILABLE_EFFECTS: EffectMetadata[] = [
       dryWet: 1.0,
       inputGain: 1.0,
       outputGain: 1.0,
-    } as Omit<EffectConfig, "id" | "order">,
-    parameterRanges: {
-      delayTime: { min: 0, max: 1, step: 0.01 },
-      feedback: { min: 0, max: 0.95, step: 0.01 },
-      dryWet: { min: 0, max: 1, step: 0.01 },
-      inputGain: { min: 0, max: 4.0, step: 0.01 },
-      outputGain: { min: 0, max: 4.0, step: 0.01 },
     },
   },
   {
@@ -106,12 +81,6 @@ export const AVAILABLE_EFFECTS: EffectMetadata[] = [
       dryWet: 1.0,
       inputGain: 1.0,
       outputGain: 1.0,
-    } as Omit<EffectConfig, "id" | "order">,
-    parameterRanges: {
-      amount: { min: 0, max: 100, step: 1 },
-      dryWet: { min: 0, max: 1, step: 0.01 },
-      inputGain: { min: 0, max: 4.0, step: 0.01 },
-      outputGain: { min: 0, max: 4.0, step: 0.01 },
     },
   },
   {
@@ -124,8 +93,8 @@ export const AVAILABLE_EFFECTS: EffectMetadata[] = [
       enabled: false,
       threshold: -10,
       ratio: 4,
-      attack: 2, // ms
-      release: 140, // ms
+      attack: 2,
+      release: 140,
       knee: 6,
       makeup: 0,
       mix: 1,
@@ -136,18 +105,6 @@ export const AVAILABLE_EFFECTS: EffectMetadata[] = [
       dryWet: 1.0,
       inputGain: 1.0,
       outputGain: 1.0,
-    } as Omit<EffectConfig, "id" | "order">,
-    parameterRanges: {
-      threshold: { min: -60, max: 0, step: 0.5 },
-      ratio: { min: 1, max: 24, step: 0.1 },
-      attack: { min: 0.1, max: 100, step: 0.1 }, // ms
-      release: { min: 10, max: 2000, step: 1 }, // ms
-      knee: { min: 0, max: 24, step: 0.5 },
-      makeup: { min: -12, max: 24, step: 0.5 },
-      mix: { min: 0, max: 1, step: 0.01 },
-      dryWet: { min: 0, max: 1, step: 0.01 },
-      inputGain: { min: 0, max: 4.0, step: 0.01 },
-      outputGain: { min: 0, max: 4.0, step: 0.01 },
     },
   },
   {
@@ -164,14 +121,6 @@ export const AVAILABLE_EFFECTS: EffectMetadata[] = [
       dryWet: 1.0,
       inputGain: 1.0,
       outputGain: 1.0,
-    } as Omit<EffectConfig, "id" | "order">,
-    parameterRanges: {
-      crush: { min: 0, max: 1, step: 0.01 },
-      bitDepth: { min: 1, max: 16, step: 1 },
-      boost: { min: -40, max: 40, step: 0.1 },
-      dryWet: { min: 0, max: 1, step: 0.01 },
-      inputGain: { min: 0, max: 4.0, step: 0.01 },
-      outputGain: { min: 0, max: 4.0, step: 0.01 },
     },
   },
   {
@@ -188,14 +137,6 @@ export const AVAILABLE_EFFECTS: EffectMetadata[] = [
       dryWet: 1.0,
       inputGain: 1.0,
       outputGain: 1.0,
-    } as Omit<EffectConfig, "id" | "order">,
-    parameterRanges: {
-      amount: { min: -40, max: 40, step: 0.1 },
-      volume: { min: -40, max: 40, step: 0.1 },
-      oversample: { min: 2, max: 8, step: 2 },
-      dryWet: { min: 0, max: 1, step: 0.01 },
-      inputGain: { min: 0, max: 4.0, step: 0.01 },
-      outputGain: { min: 0, max: 4.0, step: 0.01 },
     },
   },
   {
@@ -213,13 +154,6 @@ export const AVAILABLE_EFFECTS: EffectMetadata[] = [
       dryWet: 1.0,
       inputGain: 1.0,
       outputGain: 1.0,
-    } as Omit<EffectConfig, "id" | "order">,
-    parameterRanges: {
-      volume: { min: -40, max: 40, step: 0.1 },
-      stereo: { min: -1, max: 1, step: 0.01 },
-      dryWet: { min: 0, max: 1, step: 0.01 },
-      inputGain: { min: 0, max: 4.0, step: 0.01 },
-      outputGain: { min: 0, max: 4.0, step: 0.01 },
     },
   },
   {
@@ -258,30 +192,6 @@ export const AVAILABLE_EFFECTS: EffectMetadata[] = [
       dryWet: 1.0,
       inputGain: 1.0,
       outputGain: 1.0,
-    } as Omit<EffectConfig, "id" | "order">,
-    parameterRanges: {
-      highPassFrequency: { min: 20, max: 20_000, step: 1 },
-      highPassQ: { min: 0.1, max: 30, step: 0.1 },
-      highPassOrder: { min: 1, max: 4, step: 1 },
-      lowShelfFrequency: { min: 20, max: 20_000, step: 1 },
-      lowShelfGain: { min: -40, max: 40, step: 0.1 },
-      lowBellFrequency: { min: 20, max: 20_000, step: 1 },
-      lowBellGain: { min: -40, max: 40, step: 0.1 },
-      lowBellQ: { min: 0.1, max: 30, step: 0.1 },
-      midBellFrequency: { min: 20, max: 20_000, step: 1 },
-      midBellGain: { min: -40, max: 40, step: 0.1 },
-      midBellQ: { min: 0.1, max: 30, step: 0.1 },
-      highBellFrequency: { min: 20, max: 20_000, step: 1 },
-      highBellGain: { min: -40, max: 40, step: 0.1 },
-      highBellQ: { min: 0.1, max: 30, step: 0.1 },
-      highShelfFrequency: { min: 20, max: 20_000, step: 1 },
-      highShelfGain: { min: -40, max: 40, step: 0.1 },
-      lowPassFrequency: { min: 20, max: 20_000, step: 1 },
-      lowPassQ: { min: 0.1, max: 30, step: 0.1 },
-      lowPassOrder: { min: 1, max: 4, step: 1 },
-      dryWet: { min: 0, max: 1, step: 0.01 },
-      inputGain: { min: 0, max: 4.0, step: 0.01 },
-      outputGain: { min: 0, max: 4.0, step: 0.01 },
     },
   },
   {
@@ -301,17 +211,6 @@ export const AVAILABLE_EFFECTS: EffectMetadata[] = [
       dryWet: 1.0,
       inputGain: 1.0,
       outputGain: 1.0,
-    } as Omit<EffectConfig, "id" | "order">,
-    parameterRanges: {
-      rate: { min: 0.1, max: 10.0, step: 0.01 },
-      depth: { min: 0, max: 1, step: 0.01 },
-      slope: { min: 0, max: 1, step: 0.01 },
-      symmetry: { min: 0, max: 1, step: 0.01 },
-      offset: { min: 0, max: 360, step: 1 },
-      channelOffset: { min: 0, max: 360, step: 1 },
-      dryWet: { min: 0, max: 1, step: 0.01 },
-      inputGain: { min: 0, max: 4.0, step: 0.01 },
-      outputGain: { min: 0, max: 4.0, step: 0.01 },
     },
   },
   {
@@ -325,15 +224,9 @@ export const AVAILABLE_EFFECTS: EffectMetadata[] = [
       dryWet: 1.0,
       inputGain: 1.0,
       outputGain: 1.0,
-    } as Omit<EffectConfig, "id" | "order">,
-    parameterRanges: {
-      threshold: { min: -60, max: 0, step: 0.1 },
-      dryWet: { min: 0, max: 1, step: 0.01 },
-      inputGain: { min: 0, max: 4.0, step: 0.01 },
-      outputGain: { min: 0, max: 4.0, step: 0.01 },
     },
   },
-];
+] as const;
 
 export function getEffectMetadata(
   type: EffectType

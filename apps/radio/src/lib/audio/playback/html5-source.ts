@@ -5,6 +5,7 @@
  * Uses MediaElementAudioSourceNode to connect to Web Audio graph.
  */
 
+import { safeDisconnect } from "../manager/audio-manager.js";
 import type { StreamStatus } from "./types.js";
 
 /**
@@ -309,16 +310,8 @@ export class Html5AudioSource {
     this.audio.pause();
     this.audio.src = "";
 
-    try {
-      this.source?.disconnect();
-    } catch {
-      /* already disconnected */
-    }
-    try {
-      this.analyser?.disconnect();
-    } catch {
-      /* already disconnected */
-    }
+    safeDisconnect(this.source, "Html5AudioSource.cleanup");
+    safeDisconnect(this.analyser, "Html5AudioSource.cleanup");
 
     this.source = null;
     this.analyser = null;

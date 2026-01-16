@@ -81,10 +81,28 @@ export function useMultipleAudio(settings?: MultipleAudioSettings) {
   // Add a new radio
   const addRadio = useCallback(
     async (radio: Radio, autoPlay = false) => {
-      // Validate platform radio can be played in multiple mode
-      validateRadioForMode(radio, "multiple");
-
       const playerId = getPlayerId(radio);
+
+      // Validate platform radio can be played in multiple mode
+      try {
+        validateRadioForMode(radio, "multiple");
+      } catch (err) {
+        const errorMsg =
+          err instanceof Error ? err.message : "Invalid radio for this mode";
+        setPlayers((prev) => [
+          ...prev,
+          {
+            id: playerId,
+            radio,
+            isPlaying: false,
+            isLoading: false,
+            volume: 1,
+            error: errorMsg,
+          },
+        ]);
+        return playerId;
+      }
+
       manager.createPlayer(radio, playerId);
 
       // Add to state
@@ -107,7 +125,11 @@ export function useMultipleAudio(settings?: MultipleAudioSettings) {
         try {
           await manager.play(playerId);
         } catch (error) {
-          console.error("Failed to auto-play audio:", error);
+          const errorMsg =
+            error instanceof Error ? error.message : "Failed to auto-play";
+          setPlayers((prev) =>
+            prev.map((p) => (p.id === playerId ? { ...p, error: errorMsg } : p))
+          );
         }
       }
 
@@ -141,7 +163,11 @@ export function useMultipleAudio(settings?: MultipleAudioSettings) {
       try {
         await manager.play(playerId);
       } catch (error) {
-        console.error("Failed to play audio:", error);
+        const errorMsg =
+          error instanceof Error ? error.message : "Failed to play audio";
+        setPlayers((prev) =>
+          prev.map((p) => (p.id === playerId ? { ...p, error: errorMsg } : p))
+        );
       }
     },
     [manager]
@@ -216,7 +242,13 @@ export function useMultipleAudio(settings?: MultipleAudioSettings) {
         try {
           await manager.play(player.id);
         } catch (error) {
-          console.error(`Failed to play audio ${player.id}:`, error);
+          const errorMsg =
+            error instanceof Error ? error.message : "Failed to play audio";
+          setPlayers((prev) =>
+            prev.map((p) =>
+              p.id === player.id ? { ...p, error: errorMsg } : p
+            )
+          );
         }
       }
     }

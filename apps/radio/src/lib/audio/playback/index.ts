@@ -41,6 +41,8 @@ export {
   type AudioStateCallback,
   // Stream types
   defaultStreamBufferConfig,
+  // Error tracking
+  generateErrorId,
   initialAudioState,
   // Radio type
   type Radio,
@@ -52,6 +54,7 @@ export {
   type StreamSourceConfig,
   type StreamStatus,
   type Unsubscribe,
+  type WorkletErrorCode,
   type WorkletEvent,
   type WorkletEventType,
   type WorkletMessage,

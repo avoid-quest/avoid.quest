@@ -74,7 +74,8 @@ export class DattorroReverb {
   private writeDelay(index: number, data: number): number {
     const delay = this.delays[index];
     if (!delay) {
-      throw new Error(`Delay at index ${index} not found`);
+      // Return safe default instead of throwing to prevent worklet crash
+      return 0;
     }
     delay[0][delay[1]] = data;
     return data;
@@ -83,7 +84,8 @@ export class DattorroReverb {
   private readDelay(index: number): number {
     const delay = this.delays[index];
     if (!delay || delay[2] === undefined) {
-      throw new Error(`Delay at index ${index} not found`);
+      // Return safe default instead of throwing to prevent worklet crash
+      return 0;
     }
     return delay[0][delay[2]] ?? 0;
   }
@@ -91,7 +93,8 @@ export class DattorroReverb {
   private readDelayAt(index: number, offset: number): number {
     const d = this.delays[index];
     if (!d || d[2] === undefined || d[3] === undefined) {
-      throw new Error(`Delay at index ${index} not found`);
+      // Return safe default instead of throwing to prevent worklet crash
+      return 0;
     }
     const readIndex = (d[2] + offset) & d[3];
     return d[0][readIndex] ?? 0;
@@ -100,7 +103,8 @@ export class DattorroReverb {
   private readDelayCAt(index: number, offset: number): number {
     const d = this.delays[index];
     if (!d) {
-      throw new Error(`Delay at index ${index} not found`);
+      // Return safe default instead of throwing to prevent worklet crash
+      return 0;
     }
     const frac = offset - ~~offset;
     let int = ~~offset + d[2] - 1;

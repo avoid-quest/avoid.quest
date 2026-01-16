@@ -84,6 +84,22 @@ export type AnalysisData = {
 export type MessageTypeValue = (typeof MessageType)[keyof typeof MessageType];
 
 /**
+ * Error codes for worklet errors
+ */
+export type WorkletErrorCode =
+  | "EFFECT_INIT_FAILED"
+  | "EFFECT_PROCESS_FAILED"
+  | "SOURCE_NOT_FOUND"
+  | "UNKNOWN_ERROR";
+
+/**
+ * Generate a unique error ID (worklet-compatible)
+ */
+function generateWorkletErrorId(): string {
+  return `werr_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+}
+
+/**
  * Channel strip for volume and panning with smoothing
  */
 class ChannelStrip {
@@ -314,15 +330,19 @@ class EffectSource {
   }
 
   // Effect management
+  /**
+   * Add an effect to the source
+   * @returns true if effect was added successfully, false if creation failed
+   */
   addEffect(
     effectId: string,
     type: EffectType,
     config: Record<string, number | boolean>,
     order: number
-  ): void {
+  ): boolean {
     const processor = this.createEffectProcessor(type);
     if (!processor) {
-      return;
+      return false;
     }
 
     this.applyEffectConfig(processor, type, config);
@@ -341,6 +361,7 @@ class EffectSource {
 
     // Insert at correct order position
     this.insertEffectAtOrder(effectId, order);
+    return true;
   }
 
   removeEffect(effectId: string): void {
@@ -1282,8 +1303,23 @@ export class DSPProcessor {
     order: number
   ): void {
     const source = this.sources.get(sourceId);
-    if (source) {
-      source.addEffect(effectId, type, config, order);
+    if (!source) {
+      this.emitSourceError(
+        sourceId,
+        "SOURCE_NOT_FOUND",
+        `Source ${sourceId} not found`
+      );
+      return;
+    }
+
+    const success = source.addEffect(effectId, type, config, order);
+    if (!success) {
+      this.emitSourceError(
+        sourceId,
+        "EFFECT_INIT_FAILED",
+        `Failed to create effect "${type}" (${effectId})`,
+        effectId
+      );
     }
   }
 
@@ -1316,5 +1352,24 @@ export class DSPProcessor {
     if (this.onMessage) {
       this.onMessage({ type, payload });
     }
+  }
+
+  /**
+   * Emit a source error with proper error payload structure
+   */
+  private emitSourceError(
+    sourceId: string,
+    code: WorkletErrorCode,
+    message: string,
+    effectId?: string
+  ): void {
+    this.emitMessage(MessageType.SOURCE_ERROR, {
+      id: generateWorkletErrorId(),
+      sourceId,
+      error: message,
+      code,
+      effectId,
+      timestamp: Date.now(),
+    });
   }
 }

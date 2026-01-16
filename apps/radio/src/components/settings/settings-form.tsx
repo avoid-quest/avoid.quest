@@ -54,6 +54,9 @@ export function SettingsForm({
 
   const handleTransitionDurationChange = async (value: number[]) => {
     const newValue = value[0];
+    // Store previous value for rollback on error
+    const previousValue = transitionDuration;
+    // Optimistically update the UI
     setTransitionDuration(newValue ?? 0);
 
     if (!settings?.id) {
@@ -71,8 +74,10 @@ export function SettingsForm({
         },
       });
     } catch (error) {
+      // Rollback to previous value on error
+      setTransitionDuration(previousValue);
       console.error("Failed to update transition duration:", error);
-      toast.error("Failed to update transition duration");
+      toast.error("Failed to update transition duration. Changes reverted.");
     }
   };
 

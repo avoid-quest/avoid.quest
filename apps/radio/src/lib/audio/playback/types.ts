@@ -16,13 +16,26 @@ export type Radio = {
 };
 
 /**
+ * Generate a unique error tracking ID
+ */
+export function generateErrorId(): string {
+  return typeof crypto !== "undefined" && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `err_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+}
+
+/**
  * Error information for audio playback issues
  */
 export type AudioError = {
+  /** Unique identifier for error tracking/correlation */
+  id: string;
   message: string;
   code: AudioErrorCode;
   radio?: Radio;
   timestamp: number;
+  /** Source ID if error originated from a specific source/effect */
+  sourceId?: string;
 };
 
 /**
@@ -36,10 +49,13 @@ export type AudioErrorCode =
   | "STREAM_ABORTED"
   | "WORKLET_LOAD_FAILED"
   | "WORKLET_CREATION_FAILED"
+  | "WORKLET_INIT_TIMEOUT"
   | "SOURCE_NOT_FOUND"
   | "PLAYBACK_FAILED"
   | "LOAD_ERROR"
   | "PLAY_ERROR"
+  | "EFFECT_INIT_FAILED"
+  | "EFFECT_PROCESS_FAILED"
   | "UNKNOWN_ERROR";
 
 /**
@@ -200,11 +216,29 @@ export type SourceEndedPayload = {
 };
 
 /**
+ * Error codes specific to worklet/DSP errors
+ */
+export type WorkletErrorCode =
+  | "EFFECT_INIT_FAILED"
+  | "EFFECT_PROCESS_FAILED"
+  | "SOURCE_NOT_FOUND"
+  | "UNKNOWN_ERROR";
+
+/**
  * Payload for source error event
  */
 export type SourceErrorPayload = {
+  /** Unique error ID for tracking/correlation */
+  id: string;
   sourceId: string;
+  /** Human-readable error message */
   error: string;
+  /** Error code for programmatic handling */
+  code: WorkletErrorCode;
+  /** Effect ID if error originated from a specific effect */
+  effectId?: string;
+  /** Timestamp when error occurred */
+  timestamp: number;
 };
 
 /**

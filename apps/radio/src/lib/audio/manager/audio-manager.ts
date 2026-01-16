@@ -15,6 +15,7 @@ import {
   type AudioState,
   type AudioStateCallback,
   type FilterType,
+  generateErrorId,
   getAudioContext,
   Html5AudioSource,
   initialAudioState,
@@ -23,6 +24,29 @@ import {
   type Unsubscribe,
   WorkletManager,
 } from "../playback/index.js";
+
+/**
+ * Safely disconnect an AudioNode, ignoring "already disconnected" errors
+ * but logging unexpected errors.
+ */
+export function safeDisconnect(node: AudioNode | null, context?: string): void {
+  if (!node) {
+    return;
+  }
+  try {
+    node.disconnect();
+  } catch (error) {
+    // Only ignore InvalidAccessError (already disconnected)
+    if (
+      !(error instanceof DOMException && error.name === "InvalidAccessError")
+    ) {
+      console.warn(
+        `[${context ?? "Audio"}] Unexpected disconnect error:`,
+        error
+      );
+    }
+  }
+}
 
 /**
  * Filter configuration for simple biquad filtering
@@ -276,10 +300,12 @@ export class AudioManager {
             isBuffering: false,
             volume: instance.volume,
             error: {
+              id: generateErrorId(),
               message: error.message,
               code: "STREAM_FETCH_FAILED",
               radio: instance.radio,
               timestamp: Date.now(),
+              sourceId: soundId,
             },
             hasEnded: false,
           });
@@ -351,31 +377,11 @@ export class AudioManager {
     const sourceOutput = instance.html5Source.output;
 
     // Disconnect any existing connections (may already be disconnected)
-    try {
-      sourceOutput.disconnect();
-    } catch {
-      /* already disconnected */
-    }
-    try {
-      gain.disconnect();
-    } catch {
-      /* already disconnected */
-    }
-    try {
-      pan.disconnect();
-    } catch {
-      /* already disconnected */
-    }
-    try {
-      filter.disconnect();
-    } catch {
-      /* already disconnected */
-    }
-    try {
-      analyser.disconnect();
-    } catch {
-      /* already disconnected */
-    }
+    safeDisconnect(sourceOutput, "AudioManager.connectAudioGraph");
+    safeDisconnect(gain, "AudioManager.connectAudioGraph");
+    safeDisconnect(pan, "AudioManager.connectAudioGraph");
+    safeDisconnect(filter, "AudioManager.connectAudioGraph");
+    safeDisconnect(analyser, "AudioManager.connectAudioGraph");
 
     // Get or create per-sound worklet manager
     const wm = await this.getOrCreateWorkletManager(instance.sourceId);
@@ -461,26 +467,10 @@ export class AudioManager {
 
       // Disconnect nodes (may already be disconnected)
       if (instance.nodes) {
-        try {
-          instance.nodes.gain.disconnect();
-        } catch {
-          /* already disconnected */
-        }
-        try {
-          instance.nodes.pan.disconnect();
-        } catch {
-          /* already disconnected */
-        }
-        try {
-          instance.nodes.filter.disconnect();
-        } catch {
-          /* already disconnected */
-        }
-        try {
-          instance.nodes.analyser.disconnect();
-        } catch {
-          /* already disconnected */
-        }
+        safeDisconnect(instance.nodes.gain, "AudioManager.cleanupSound");
+        safeDisconnect(instance.nodes.pan, "AudioManager.cleanupSound");
+        safeDisconnect(instance.nodes.filter, "AudioManager.cleanupSound");
+        safeDisconnect(instance.nodes.analyser, "AudioManager.cleanupSound");
         instance.nodes = null;
       }
     }
@@ -957,24 +947,32 @@ export class AudioManager {
       }
     });
 
-    wm.on("sourceError", ({ sourceId, error }) => {
-      const instance = this.sounds.get(sourceId);
-      if (instance) {
-        this.notifyListeners(sourceId, {
-          isPlaying: false,
-          isLoading: false,
-          isBuffering: false,
-          volume: instance.volume,
-          error: {
-            message: error,
-            code: "PLAYBACK_FAILED",
-            radio: instance.radio,
-            timestamp: Date.now(),
-          },
-          hasEnded: false,
-        });
+    wm.on(
+      "sourceError",
+      ({ id, sourceId, error, code, effectId, timestamp }) => {
+        const instance = this.sounds.get(sourceId);
+        if (instance) {
+          this.notifyListeners(sourceId, {
+            isPlaying: false,
+            isLoading: false,
+            isBuffering: false,
+            volume: instance.volume,
+            error: {
+              id,
+              message: effectId ? `[${effectId}] ${error}` : error,
+              code:
+                code === "EFFECT_PROCESS_FAILED"
+                  ? "EFFECT_PROCESS_FAILED"
+                  : "PLAYBACK_FAILED",
+              radio: instance.radio,
+              timestamp,
+              sourceId,
+            },
+            hasEnded: false,
+          });
+        }
       }
-    });
+    );
 
     wm.on("peakMeter", ({ peakL, peakR }) => {
       const callbacks = this.meterListeners.get(soundId);

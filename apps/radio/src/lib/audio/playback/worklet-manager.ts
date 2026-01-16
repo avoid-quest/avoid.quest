@@ -161,8 +161,15 @@ export class WorkletManager {
   private initFailed = false;
   private readonly processorUrl: string;
 
+  /** Queue for messages sent before worklet is ready */
+  private readonly messageQueue: Array<{ type: string; payload?: unknown }> =
+    [];
+
   /** Ramp time for volume changes (ms) */
   private static readonly VOLUME_RAMP_TIME = 0.05; // 50ms for smooth transitions
+
+  /** Timeout for worklet initialization (ms) */
+  private static readonly INIT_TIMEOUT_MS = 10_000; // 10 seconds
 
   /**
    * Create a new WorkletManager
@@ -554,6 +561,7 @@ export class WorkletManager {
 
     this.activeSources.clear();
     this.eventEmitter.clear();
+    this.messageQueue.length = 0;
     this.initPromise = null;
     this.initFailed = false;
   }
@@ -577,7 +585,7 @@ export class WorkletManager {
   // ============================================
 
   /**
-   * Perform initialization
+   * Perform initialization with timeout
    */
   private async doInit(): Promise<void> {
     // Get native AudioContext if using standardized-audio-context wrapper
@@ -588,36 +596,72 @@ export class WorkletManager {
         ._nativeAudioContext ??
       this.context;
 
+    // Create a timeout promise
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => {
+        reject(
+          new Error(
+            `WorkletManager initialization timed out after ${WorkletManager.INIT_TIMEOUT_MS}ms`
+          )
+        );
+      }, WorkletManager.INIT_TIMEOUT_MS);
+    });
+
     try {
-      // Load the worklet module
-      await this.context.audioWorklet.addModule(this.processorUrl);
+      // Race between initialization and timeout
+      await Promise.race([this.performInit(nativeContext), timeoutPromise]);
 
-      // Create the worklet node
-      this.workletNode = new AudioWorkletNode(
-        nativeContext,
-        "cacophony-processor",
-        {
-          numberOfInputs: 1,
-          numberOfOutputs: 1,
-          outputChannelCount: [2],
-        }
-      );
-
-      // Create master GainNode for hardware-accelerated volume control
-      // This provides better audio quality than software gain in the worklet
-      this.masterGainNode = nativeContext.createGain();
-      this.masterGainNode.gain.value = 1;
-
-      // Route: Worklet → GainNode → Destination
-      this.workletNode.connect(this.masterGainNode);
-      this.masterGainNode.connect(nativeContext.destination);
-
-      // Set up message listener
-      this.setupMessageListener();
+      // Flush any queued messages now that we're ready
+      this.flushMessageQueue();
     } catch (error) {
       console.error("Failed to initialize WorkletManager:", error);
       throw error;
     }
+  }
+
+  /**
+   * Perform the actual initialization work
+   */
+  private async performInit(nativeContext: AudioContext): Promise<void> {
+    // Load the worklet module
+    await this.context.audioWorklet.addModule(this.processorUrl);
+
+    // Create the worklet node
+    this.workletNode = new AudioWorkletNode(
+      nativeContext,
+      "cacophony-processor",
+      {
+        numberOfInputs: 1,
+        numberOfOutputs: 1,
+        outputChannelCount: [2],
+      }
+    );
+
+    // Create master GainNode for hardware-accelerated volume control
+    // This provides better audio quality than software gain in the worklet
+    this.masterGainNode = nativeContext.createGain();
+    this.masterGainNode.gain.value = 1;
+
+    // Route: Worklet → GainNode → Destination
+    this.workletNode.connect(this.masterGainNode);
+    this.masterGainNode.connect(nativeContext.destination);
+
+    // Set up message listener
+    this.setupMessageListener();
+  }
+
+  /**
+   * Flush queued messages to the worklet
+   */
+  private flushMessageQueue(): void {
+    if (!this.workletNode) {
+      return;
+    }
+
+    for (const message of this.messageQueue) {
+      this.workletNode.port.postMessage(message);
+    }
+    this.messageQueue.length = 0;
   }
 
   /**
@@ -684,12 +728,20 @@ export class WorkletManager {
 
   /**
    * Post a message to the worklet
+   * If worklet isn't ready yet, queues the message to be sent after initialization
    */
   private postMessage(message: { type: string; payload?: unknown }): void {
     if (this.workletNode) {
       this.workletNode.port.postMessage(message);
+    } else if (this.initFailed) {
+      // Don't queue if init already failed
+      console.warn(
+        "WorkletManager init failed, message dropped:",
+        message.type
+      );
     } else {
-      console.warn("WorkletManager not ready, message dropped:", message.type);
+      // Queue the message to be sent when worklet is ready
+      this.messageQueue.push(message);
     }
   }
 }

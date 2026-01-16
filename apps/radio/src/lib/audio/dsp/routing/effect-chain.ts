@@ -127,11 +127,8 @@ export class EffectChain {
    * Reorder effects
    */
   reorderEffects(newOrder: string[]): void {
-    // Validate all IDs exist
+    // Filter to only valid IDs instead of throwing
     const validIds = newOrder.filter((id) => this.effects.has(id));
-    if (validIds.length !== newOrder.length) {
-      throw new Error("Invalid effect IDs in reorder list");
-    }
 
     this.effectOrder = validIds;
 

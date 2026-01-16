@@ -6,11 +6,29 @@
  * Includes auto gain compensation to maintain consistent volume.
  */
 
+import {
+  RenderQuantum,
+  ResamplerStereo,
+  type StereoMatrix,
+} from "@opendaw/lib-dsp";
+
 export class Distortion {
+  private readonly sampleRate: number;
+  private readonly buffer: StereoMatrix.Channels;
+  private resampler: ResamplerStereo | null = null;
+  private oversamplingFactor: 1 | 2 | 4 = 1;
   // Drive multiplier (1 = clean, 50 = heavy distortion)
   private drive = 1;
   // Auto gain compensation (reduces output as drive increases)
   private makeup = 1;
+
+  constructor(sampleRate: number) {
+    this.sampleRate = sampleRate;
+    this.buffer = [
+      new Float32Array(RenderQuantum * 4),
+      new Float32Array(RenderQuantum * 4),
+    ];
+  }
 
   /**
    * Set distortion amount (0-100 scale)
@@ -35,6 +53,14 @@ export class Distortion {
     // No state to reset
   }
 
+  setOversample(factor: "none" | "2x" | "4x"): void {
+    const factorMap = { none: 1, "2x": 2, "4x": 4 } as const;
+    const numeric = factorMap[factor];
+    this.oversamplingFactor = numeric;
+    this.resampler =
+      numeric === 1 ? null : new ResamplerStereo(numeric as 2 | 4);
+  }
+
   process(
     input: [Float32Array, Float32Array],
     output: [Float32Array, Float32Array],
@@ -54,9 +80,28 @@ export class Distortion {
     }
 
     const inv = (2 / Math.PI) * this.makeup;
-    for (let i = fromIndex; i < toIndex; i++) {
-      outputL[i] = inv * Math.atan(this.drive * (inputL[i] ?? 0));
-      outputR[i] = inv * Math.atan(this.drive * (inputR[i] ?? 0));
+
+    // No oversampling - direct processing
+    if (this.oversamplingFactor === 1 || !this.resampler) {
+      for (let i = fromIndex; i < toIndex; i++) {
+        outputL[i] = inv * Math.atan(this.drive * (inputL[i] ?? 0));
+        outputR[i] = inv * Math.atan(this.drive * (inputR[i] ?? 0));
+      }
+      return;
     }
+
+    // Upsample
+    this.resampler.upsample(input, this.buffer, fromIndex, toIndex);
+    const oversampledLength = (toIndex - fromIndex) * this.oversamplingFactor;
+    const [oversampledL, oversampledR] = this.buffer;
+
+    // Process at higher sample rate
+    for (let i = 0; i < oversampledLength; i++) {
+      oversampledL[i] = inv * Math.atan(this.drive * (oversampledL[i] ?? 0));
+      oversampledR[i] = inv * Math.atan(this.drive * (oversampledR[i] ?? 0));
+    }
+
+    // Downsample
+    this.resampler.downsample(this.buffer, output, fromIndex, toIndex);
   }
 }

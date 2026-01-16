@@ -32,7 +32,7 @@ export class PhaseVocoder {
   private readPosition = 0;
   private writePosition = 0;
 
-  constructor(_sampleRate: number) {
+  constructor() {
     this.bufferL = new Float32Array(this.bufferSize);
     this.bufferR = new Float32Array(this.bufferSize);
   }

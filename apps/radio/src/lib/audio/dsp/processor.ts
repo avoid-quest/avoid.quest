@@ -391,7 +391,7 @@ class EffectSource {
       case "plateReverb":
         return new DattorroReverb(this.sampleRate);
       case "pitchShifter":
-        return new PhaseVocoder(this.sampleRate);
+        return new PhaseVocoder();
       case "limiter":
         return new Limiter(this.sampleRate);
       case "distortion":
@@ -540,6 +540,9 @@ class EffectSource {
         if (config.amount !== undefined) {
           // Distortion.setAmount handles 0-100 to 0-1 conversion internally
           dist.setAmount(config.amount as number);
+        }
+        if (config.oversample !== undefined) {
+          dist.setOversample(config.oversample as "none" | "2x" | "4x");
         }
         break;
       }

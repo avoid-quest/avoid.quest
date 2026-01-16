@@ -86,13 +86,18 @@ export type AnalysisData = {
 export type MessageTypeValue = (typeof MessageType)[keyof typeof MessageType];
 
 /**
- * Channel strip for volume and panning
+ * Channel strip for volume and panning with smoothing
  */
 class ChannelStrip {
   volume = 1.0;
   pan = 0.0;
-  private leftGain = 1.0;
-  private rightGain = 1.0;
+  private targetLeftGain = 1.0;
+  private targetRightGain = 1.0;
+  private currentLeftGain = 1.0;
+  private currentRightGain = 1.0;
+
+  // Volume smoothing coefficient
+  private static readonly GAIN_SMOOTH_COEFF = 0.1;
 
   constructor() {
     this.updateGains();
@@ -111,8 +116,12 @@ class ChannelStrip {
   private updateGains(): void {
     // Equal power panning
     const angle = ((this.pan + 1) / 2) * (Math.PI / 2);
-    this.leftGain = Math.cos(angle) * this.volume;
-    this.rightGain = Math.sin(angle) * this.volume;
+    this.targetLeftGain = Math.cos(angle) * this.volume;
+    this.targetRightGain = Math.sin(angle) * this.volume;
+  }
+
+  private smoothGain(current: number, target: number): number {
+    return current + (target - current) * ChannelStrip.GAIN_SMOOTH_COEFF;
   }
 
   apply(
@@ -124,9 +133,80 @@ class ChannelStrip {
     toIndex: number
   ): void {
     for (let i = fromIndex; i < toIndex; i++) {
-      outputL[i] = (inputL[i] ?? 0) * this.leftGain;
-      outputR[i] = (inputR[i] ?? 0) * this.rightGain;
+      // Smooth gain changes per-sample to avoid clicks
+      this.currentLeftGain = this.smoothGain(
+        this.currentLeftGain,
+        this.targetLeftGain
+      );
+      this.currentRightGain = this.smoothGain(
+        this.currentRightGain,
+        this.targetRightGain
+      );
+
+      outputL[i] = (inputL[i] ?? 0) * this.currentLeftGain;
+      outputR[i] = (inputR[i] ?? 0) * this.currentRightGain;
     }
+  }
+}
+
+/**
+ * Circular buffer for audio chunks to avoid GC pressure in audio thread.
+ * Uses fixed-size array with read/write indices instead of splice operations.
+ */
+class CircularChunkBuffer {
+  private readonly chunks: (Float32Array | null)[];
+  private readonly maxChunks: number;
+  private writeIndex = 0;
+  private readIndex = 0;
+  private _count = 0;
+
+  constructor(maxChunks = 32) {
+    this.maxChunks = maxChunks;
+    this.chunks = new Array<Float32Array | null>(maxChunks).fill(null);
+  }
+
+  get count(): number {
+    return this._count;
+  }
+
+  get isEmpty(): boolean {
+    return this._count === 0;
+  }
+
+  push(chunk: Float32Array): boolean {
+    if (this._count >= this.maxChunks) {
+      return false; // Buffer full
+    }
+    this.chunks[this.writeIndex] = chunk;
+    this.writeIndex = (this.writeIndex + 1) % this.maxChunks;
+    this._count++;
+    return true;
+  }
+
+  peek(): Float32Array | null {
+    if (this._count === 0) {
+      return null;
+    }
+    return this.chunks[this.readIndex];
+  }
+
+  advance(): void {
+    if (this._count === 0) {
+      return;
+    }
+    // Clear the reference to allow GC (but no array resize)
+    this.chunks[this.readIndex] = null;
+    this.readIndex = (this.readIndex + 1) % this.maxChunks;
+    this._count--;
+  }
+
+  clear(): void {
+    for (let i = 0; i < this.maxChunks; i++) {
+      this.chunks[i] = null;
+    }
+    this.writeIndex = 0;
+    this.readIndex = 0;
+    this._count = 0;
   }
 }
 
@@ -136,19 +216,26 @@ class ChannelStrip {
 class StreamSource {
   readonly id: string;
   private readonly sampleRate: number;
-  private readonly bufferL: Float32Array[] = [];
-  private readonly bufferR: Float32Array[] = [];
+
+  // Circular buffers instead of dynamic arrays to avoid GC pressure
+  private readonly bufferL = new CircularChunkBuffer(32);
+  private readonly bufferR = new CircularChunkBuffer(32);
   private readPosition = 0;
-  private currentChunkIndex = 0;
   private playing = false;
   private paused = false;
   private hasReceivedFirstChunk = false;
 
-  // Per-source volume and pan
+  // Per-source volume and pan with smoothing to avoid clicks
   volume = 1.0;
   pan = 0.0;
-  private leftGain = 1.0;
-  private rightGain = 1.0;
+  private targetLeftGain = 1.0;
+  private targetRightGain = 1.0;
+  private currentLeftGain = 1.0;
+  private currentRightGain = 1.0;
+
+  // Volume smoothing coefficient (higher = faster response)
+  // At 48kHz with 128 sample blocks, 0.1 gives ~5ms smoothing
+  private static readonly GAIN_SMOOTH_COEFF = 0.1;
 
   // Filters and effects
   private readonly filters = new Map<string, BiquadFilter>();
@@ -178,7 +265,11 @@ class StreamSource {
   }
 
   get hasData(): boolean {
-    return this.bufferL.length > 0;
+    return !this.bufferL.isEmpty;
+  }
+
+  get chunkCount(): number {
+    return this.bufferL.count;
   }
 
   get firstChunkReceived(): boolean {
@@ -194,11 +285,10 @@ class StreamSource {
     this.playing = false;
     this.paused = false;
     this.readPosition = 0;
-    this.currentChunkIndex = 0;
 
-    // Clear old audio to prevent stale playback
-    this.bufferL.length = 0;
-    this.bufferR.length = 0;
+    // Clear buffers (no array resize, just index reset)
+    this.bufferL.clear();
+    this.bufferR.clear();
 
     this.resetEffects();
   }
@@ -223,23 +313,35 @@ class StreamSource {
 
   private updateGains(): void {
     const angle = ((this.pan + 1) / 2) * (Math.PI / 2);
-    this.leftGain = Math.cos(angle) * this.volume;
-    this.rightGain = Math.sin(angle) * this.volume;
+    this.targetLeftGain = Math.cos(angle) * this.volume;
+    this.targetRightGain = Math.sin(angle) * this.volume;
   }
 
-  addChunk(channels: Float32Array[]): void {
+  /**
+   * Smoothly interpolate current gain towards target to avoid clicks
+   */
+  private smoothGain(current: number, target: number): number {
+    return current + (target - current) * StreamSource.GAIN_SMOOTH_COEFF;
+  }
+
+  addChunk(channels: Float32Array[]): boolean {
+    let added = false;
     if (channels.length >= 2) {
-      this.bufferL.push(channels[0] ?? new Float32Array(0));
-      this.bufferR.push(channels[1] ?? new Float32Array(0));
+      const addedL = this.bufferL.push(channels[0] ?? new Float32Array(0));
+      const addedR = this.bufferR.push(channels[1] ?? new Float32Array(0));
+      added = addedL && addedR;
     } else if (channels.length === 1) {
       // Mono - duplicate to stereo
-      this.bufferL.push(channels[0] ?? new Float32Array(0));
-      this.bufferR.push(channels[0] ?? new Float32Array(0));
+      const addedL = this.bufferL.push(channels[0] ?? new Float32Array(0));
+      const addedR = this.bufferR.push(channels[0] ?? new Float32Array(0));
+      added = addedL && addedR;
     }
 
-    if (!this.hasReceivedFirstChunk && this.bufferL.length > 0) {
+    if (!(this.hasReceivedFirstChunk || this.bufferL.isEmpty)) {
       this.hasReceivedFirstChunk = true;
     }
+
+    return added;
   }
 
   // Filter management
@@ -626,31 +728,30 @@ class StreamSource {
 
   /**
    * Process audio into output buffers
-   * Returns false if source has ended
+   * Returns false if source has ended (underrun)
    */
   process(
     outputL: Float32Array,
     outputR: Float32Array,
     fromIndex: number,
     toIndex: number
-  ): boolean {
+  ): { continue: boolean; underrun: boolean } {
     if (!(this.isPlaying && this.hasData)) {
-      return true; // Keep source alive but produce silence
+      return { continue: true, underrun: false }; // Keep source alive but produce silence
     }
 
     const blockSize = toIndex - fromIndex;
     let samplesWritten = 0;
 
-    // Read from buffer
-    while (
-      samplesWritten < blockSize &&
-      this.currentChunkIndex < this.bufferL.length
-    ) {
-      const chunkL = this.bufferL[this.currentChunkIndex];
-      const chunkR = this.bufferR[this.currentChunkIndex];
+    // Read from circular buffer - no splice operations, just index updates
+    while (samplesWritten < blockSize && !this.bufferL.isEmpty) {
+      const chunkL = this.bufferL.peek();
+      const chunkR = this.bufferR.peek();
 
       if (!(chunkL && chunkR)) {
-        this.currentChunkIndex++;
+        // Skip empty chunk
+        this.bufferL.advance();
+        this.bufferR.advance();
         continue;
       }
 
@@ -672,17 +773,14 @@ class StreamSource {
 
       if (this.readPosition >= chunkL.length) {
         this.readPosition = 0;
-        this.currentChunkIndex++;
-
-        // Clean up old chunks to prevent memory leak (keep current + 2 ahead)
-        if (this.currentChunkIndex > 2) {
-          const removeCount = this.currentChunkIndex - 2;
-          this.bufferL.splice(0, removeCount);
-          this.bufferR.splice(0, removeCount);
-          this.currentChunkIndex = 2;
-        }
+        // Advance circular buffer (O(1) operation, no array resize)
+        this.bufferL.advance();
+        this.bufferR.advance();
       }
     }
+
+    // Check for underrun - we couldn't fill the entire block
+    const underrun = samplesWritten < blockSize;
 
     // Fill remaining with silence
     for (let i = samplesWritten; i < blockSize; i++) {
@@ -719,13 +817,23 @@ class StreamSource {
       }
     }
 
-    // Apply volume/pan
+    // Apply volume/pan with per-sample smoothing to avoid clicks
     for (let i = fromIndex; i < toIndex; i++) {
-      outputL[i] = (outputL[i] ?? 0) * this.leftGain;
-      outputR[i] = (outputR[i] ?? 0) * this.rightGain;
+      // Smooth gain changes per-sample
+      this.currentLeftGain = this.smoothGain(
+        this.currentLeftGain,
+        this.targetLeftGain
+      );
+      this.currentRightGain = this.smoothGain(
+        this.currentRightGain,
+        this.targetRightGain
+      );
+
+      outputL[i] = (outputL[i] ?? 0) * this.currentLeftGain;
+      outputR[i] = (outputR[i] ?? 0) * this.currentRightGain;
     }
 
-    return true;
+    return { continue: true, underrun };
   }
 }
 
@@ -950,7 +1058,15 @@ export class DSPProcessor {
           tempR[i] = 0;
         }
 
-        source.process(tempL, tempR, fromIndex, toIndex);
+        const result = source.process(tempL, tempR, fromIndex, toIndex);
+
+        // Emit underrun event if buffer ran dry
+        if (result.underrun) {
+          this.emitMessage(MessageType.STREAM_UNDERRUN, {
+            sourceId: source.id,
+            chunkCount: source.chunkCount,
+          });
+        }
 
         // Mix into output
         for (let i = fromIndex; i < toIndex; i++) {

@@ -14,6 +14,7 @@ export function useAudio(radio: Radio | null) {
   const [state, setState] = useState<AudioState>({
     isPlaying: false,
     isLoading: false,
+    isBuffering: false,
     volume: 1,
     error: null,
     hasEnded: false,

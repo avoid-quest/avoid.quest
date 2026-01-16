@@ -48,6 +48,8 @@ export type AudioErrorCode =
 export type AudioState = {
   isPlaying: boolean;
   isLoading: boolean;
+  /** True when recovering from buffer underrun (distinct from initial load) */
+  isBuffering: boolean;
   volume: number;
   error: AudioError | null;
   hasEnded: boolean;
@@ -59,6 +61,7 @@ export type AudioState = {
 export const initialAudioState: AudioState = {
   isPlaying: false,
   isLoading: false,
+  isBuffering: false,
   volume: 1,
   error: null,
   hasEnded: false,
@@ -94,6 +97,12 @@ export type StreamBufferConfig = {
   maxBufferSize: number;
   /** Bytes to retain on decode error (default: 64KB) */
   retainOnError: number;
+  /** Minimum decoded chunks before playback starts (default: 4 = ~800ms) */
+  minPreBufferChunks: number;
+  /** Low watermark - trigger buffering state when chunks drop below this (default: 2) */
+  lowWatermarkChunks: number;
+  /** High watermark - exit buffering state when chunks reach this (default: 4) */
+  highWatermarkChunks: number;
 };
 
 /**
@@ -106,6 +115,9 @@ export const defaultStreamBufferConfig: StreamBufferConfig = {
   minBufferSize: 128 * 1024, // 128KB (~8 sec at 128kbps) - better codec alignment
   maxBufferSize: 512 * 1024, // 512KB - fewer partial decodes
   retainOnError: 64 * 1024, // 64KB - less data loss on failure
+  minPreBufferChunks: 4, // 4 chunks = ~800ms of audio before playback
+  lowWatermarkChunks: 2, // Enter buffering state when below 2 chunks
+  highWatermarkChunks: 4, // Exit buffering state when reaching 4 chunks
 };
 
 /**

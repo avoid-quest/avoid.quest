@@ -26,6 +26,8 @@ export function useDjAudio() {
   const [rightIsPlaying, setRightIsPlaying] = useState(false);
   const [leftIsLoading, setLeftIsLoading] = useState(false);
   const [rightIsLoading, setRightIsLoading] = useState(false);
+  const [leftIsBuffering, setLeftIsBuffering] = useState(false);
+  const [rightIsBuffering, setRightIsBuffering] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [masterVolume, setMasterVolume] = useState(1);
   const [leftMuted, setLeftMuted] = useState(false);
@@ -86,6 +88,7 @@ export function useDjAudio() {
         effectsRef: leftEffectsRef,
         setIsLoading: setLeftIsLoading,
         setIsPlaying: setLeftIsPlaying,
+        setIsBuffering: setLeftIsBuffering,
         setRadioState: setLeftRadioState,
       };
     }
@@ -95,6 +98,7 @@ export function useDjAudio() {
       effectsRef: rightEffectsRef,
       setIsLoading: setRightIsLoading,
       setIsPlaying: setRightIsPlaying,
+      setIsBuffering: setRightIsBuffering,
       setRadioState: setRightRadioState,
     };
   }, []);
@@ -114,10 +118,11 @@ export function useDjAudio() {
   // Helper to create subscription callback
   const createSubscriptionCallback = useCallback(
     (side: "left" | "right") => {
-      const { setIsPlaying, setIsLoading } = getSideRefs(side);
+      const { setIsPlaying, setIsLoading, setIsBuffering } = getSideRefs(side);
       return (state: AudioState) => {
         setIsPlaying(state.isPlaying);
         setIsLoading(state.isLoading);
+        setIsBuffering(state.isBuffering);
         if (state.error) {
           setError(state.error.message);
         }
@@ -606,6 +611,8 @@ export function useDjAudio() {
     rightIsPlaying,
     leftIsLoading,
     rightIsLoading,
+    leftIsBuffering,
+    rightIsBuffering,
     error,
     masterVolume,
     leftMuted,

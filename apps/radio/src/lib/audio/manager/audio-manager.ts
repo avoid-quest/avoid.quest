@@ -42,6 +42,7 @@ type SoundInstance = {
   volume: number;
   playing: boolean;
   loading: boolean;
+  buffering: boolean;
 };
 
 /**
@@ -160,6 +161,7 @@ export class AudioManager {
       volume: 1,
       playing: false,
       loading: false,
+      buffering: false,
     };
 
     this.sounds.set(id, instance);
@@ -167,7 +169,6 @@ export class AudioManager {
     // Notify ready state (sound is registered but not initialized)
     this.notifyListeners(id, {
       ...initialAudioState,
-      isLoading: false,
     });
 
     return id;
@@ -198,13 +199,14 @@ export class AudioManager {
     this.notifyListeners(soundId, {
       isPlaying: true,
       isLoading: true,
+      isBuffering: false,
       volume,
       error: null,
       hasEnded: false,
     });
 
     // Start streaming if not already (or if stream ended/errored)
-    let firstChunkPromise: Promise<void> | null = null;
+    let preBufferReadyPromise: Promise<void> | null = null;
 
     if (!instance.stream?.isActive) {
       // Clean up dead stream if it exists
@@ -218,10 +220,10 @@ export class AudioManager {
         throw new Error("Audio context not available");
       }
 
-      // Create promise to wait for first chunk before starting playback
-      let resolveFirstChunk: () => void;
-      firstChunkPromise = new Promise<void>((resolve) => {
-        resolveFirstChunk = resolve;
+      // Create promise to wait for pre-buffer threshold before starting playback
+      let resolvePreBufferReady: () => void;
+      preBufferReadyPromise = new Promise<void>((resolve) => {
+        resolvePreBufferReady = resolve;
       });
 
       const streamUrl = this.getProxiedUrl(instance.radio.streamUrl);
@@ -232,14 +234,31 @@ export class AudioManager {
         {
           onChunk: (buffer) => {
             this.workletManager?.addStreamChunk(soundId, buffer);
+          },
+          onPreBufferReady: () => {
+            // Pre-buffer threshold reached - safe to start playback
+            instance.loading = false;
+            resolvePreBufferReady();
+            this.notifyListeners(soundId, {
+              isPlaying: true,
+              isLoading: false,
+              isBuffering: false,
+              volume: instance.volume,
+              error: null,
+              hasEnded: false,
+            });
+          },
+          onBufferLevel: ({ isBuffering: bufferingState }) => {
+            // Update buffering state for UI
+            const wasBuffering = instance.buffering;
+            instance.buffering = bufferingState;
 
-            // Resolve first chunk promise and clear loading state
-            if (instance.loading) {
-              instance.loading = false;
-              resolveFirstChunk();
+            // Only notify if buffering state changed and we're past initial load
+            if (wasBuffering !== bufferingState && !instance.loading) {
               this.notifyListeners(soundId, {
-                isPlaying: true,
+                isPlaying: instance.playing,
                 isLoading: false,
+                isBuffering: bufferingState,
                 volume: instance.volume,
                 error: null,
                 hasEnded: false,
@@ -250,6 +269,7 @@ export class AudioManager {
             this.notifyListeners(soundId, {
               isPlaying: false,
               isLoading: false,
+              isBuffering: false,
               volume: instance.volume,
               error: {
                 message: error.message,
@@ -266,6 +286,7 @@ export class AudioManager {
             this.notifyListeners(soundId, {
               isPlaying: false,
               isLoading: false,
+              isBuffering: false,
               volume: instance.volume,
               error: null,
               hasEnded: true,
@@ -277,9 +298,10 @@ export class AudioManager {
       instance.stream.start();
     }
 
-    // Wait for first chunk before starting playback to prevent glitches
-    if (firstChunkPromise) {
-      await firstChunkPromise;
+    // Wait for pre-buffer threshold before starting playback (~800ms of audio)
+    // This prevents audio jumps from insufficient buffering
+    if (preBufferReadyPromise) {
+      await preBufferReadyPromise;
     }
 
     // Start playback in worklet (now safe - we have data)
@@ -302,6 +324,7 @@ export class AudioManager {
     this.notifyListeners(soundId, {
       isPlaying: false,
       isLoading: false,
+      isBuffering: false,
       volume: instance.volume,
       error: null,
       hasEnded: false,
@@ -324,6 +347,7 @@ export class AudioManager {
     this.notifyListeners(soundId, {
       isPlaying: false,
       isLoading: false,
+      isBuffering: false,
       volume: 0,
       error: null,
       hasEnded: false,
@@ -376,6 +400,7 @@ export class AudioManager {
     this.notifyListeners(soundId, {
       isPlaying: instance.playing,
       isLoading: instance.loading,
+      isBuffering: instance.buffering,
       volume: clampedVolume,
       error: null,
       hasEnded: false,
@@ -658,6 +683,7 @@ export class AudioManager {
         this.notifyListeners(sourceId, {
           isPlaying: false,
           isLoading: false,
+          isBuffering: false,
           volume: instance.volume,
           error: null,
           hasEnded: true,
@@ -671,6 +697,7 @@ export class AudioManager {
         this.notifyListeners(sourceId, {
           isPlaying: false,
           isLoading: false,
+          isBuffering: false,
           volume: instance.volume,
           error: {
             message: error,
@@ -690,6 +717,7 @@ export class AudioManager {
         this.notifyListeners(sourceId, {
           isPlaying: instance.playing,
           isLoading: false,
+          isBuffering: instance.buffering,
           volume: instance.volume,
           error: null,
           hasEnded: false,

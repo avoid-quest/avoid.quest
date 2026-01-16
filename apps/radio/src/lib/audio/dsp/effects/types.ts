@@ -176,7 +176,7 @@ export interface RevampConfig extends BaseEffectConfig {
 
 export interface TidalConfig extends BaseEffectConfig {
   type: "tidal";
-  rate: number; // multiplier (1.0 = no change)
+  rate: number; // Hz (0.1-10.0)
   depth: number; // 0-1
   slope: number; // 0-1
   symmetry: number; // 0-1

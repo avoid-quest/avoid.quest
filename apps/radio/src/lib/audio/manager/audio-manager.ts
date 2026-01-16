@@ -5,7 +5,7 @@
  * Uses HTML5 Audio with native Web Audio nodes for hardware acceleration.
  *
  * Audio routing:
- *   Html5AudioSource → GainNode → StereoPannerNode → BiquadFilterNode → WorkletNode (effects) → Destination
+ *   Html5AudioSource → GainNode → StereoPannerNode → BiquadFilterNode → WorkletNode (effects) → MasterGainNode → Destination
  */
 
 import { getProxiedBandcampUrl } from "@avoid.quest/bandcamp";
@@ -500,6 +500,7 @@ export class AudioManager {
   setVolume(soundId: string, volume: number): void {
     const instance = this.sounds.get(soundId);
     if (!instance) {
+      console.warn(`[AudioManager] setVolume: sound ${soundId} not found`);
       return;
     }
 
@@ -535,6 +536,9 @@ export class AudioManager {
   setPan(soundId: string, pan: number): void {
     const instance = this.sounds.get(soundId);
     if (!instance?.nodes) {
+      console.warn(
+        `[AudioManager] setPan: sound ${soundId} not found or not initialized`
+      );
       return;
     }
 
@@ -555,6 +559,9 @@ export class AudioManager {
   setPlaybackRate(soundId: string, rate: number): void {
     const instance = this.sounds.get(soundId);
     if (!instance?.html5Source) {
+      console.warn(
+        `[AudioManager] setPlaybackRate: sound ${soundId} not found or not initialized`
+      );
       return;
     }
 
@@ -569,6 +576,9 @@ export class AudioManager {
   setChannelFilter(soundId: string, value: number): void {
     const instance = this.sounds.get(soundId);
     if (!instance?.nodes) {
+      console.warn(
+        `[AudioManager] setChannelFilter: sound ${soundId} not found or not initialized`
+      );
       return;
     }
 
@@ -612,6 +622,9 @@ export class AudioManager {
   setEffectsDryWet(soundId: string, value: number): void {
     const instance = this.sounds.get(soundId);
     if (!instance) {
+      console.warn(
+        `[AudioManager] setEffectsDryWet: sound ${soundId} not found`
+      );
       return;
     }
 
@@ -773,6 +786,9 @@ export class AudioManager {
   updateFilter(soundId: string, config: FilterConfig): void {
     const instance = this.sounds.get(soundId);
     if (!instance?.nodes) {
+      console.warn(
+        `[AudioManager] updateFilter: sound ${soundId} not found or not initialized`
+      );
       return;
     }
 
@@ -1031,23 +1047,6 @@ export class AudioManager {
     }
 
     switch (config.type) {
-      case "biquadFilter": {
-        const filterTypeMap: Record<string, number> = {
-          lowpass: 0,
-          highpass: 1,
-          bandpass: 2,
-          lowshelf: 3,
-          highshelf: 4,
-          peaking: 5,
-          notch: 6,
-          allpass: 7,
-        };
-        base.filterType = filterTypeMap[config.filterType] ?? 0;
-        base.frequency = config.frequency;
-        base.Q = config.Q;
-        base.gain = config.gain;
-        break;
-      }
       case "plateReverb":
         base.preDelay = config.preDelay;
         base.bandwidth = config.bandwidth;

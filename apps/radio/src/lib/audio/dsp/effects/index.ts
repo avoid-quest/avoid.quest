@@ -36,7 +36,6 @@ export { TidalEffect } from "./tidal.js";
 // Types
 export type {
   BaseEffectConfig,
-  BiquadFilterConfig,
   CompressorConfig,
   CrusherConfig,
   DelayConfig,

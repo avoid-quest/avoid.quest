@@ -18,13 +18,13 @@ import { CSS } from "@dnd-kit/utilities";
 import { Button } from "@workspace/ui/components/button";
 import { PlusIcon } from "lucide-react";
 import { useState } from "react";
-import type { EffectConfig } from "@/lib/audio";
+import type { EffectConfig, EffectType } from "@/lib/audio";
 import { EffectItem } from "./effect-item";
 import { EffectPicker } from "./effect-picker";
 
 type EffectChainProps = {
   effects: EffectConfig[];
-  onAddEffect: (type: string) => void;
+  onAddEffect: (type: EffectType) => void;
   onUpdateEffect: (effectId: string, config: Partial<EffectConfig>) => void;
   onRemoveEffect: (effectId: string) => void;
   onReorderEffects: (effectIds: string[]) => void;
@@ -57,7 +57,7 @@ export function EffectChain({
     })
   );
 
-  const handleAddEffect = (type: string) => {
+  const handleAddEffect = (type: EffectType) => {
     onAddEffect(type);
     setShowPicker(false);
   };

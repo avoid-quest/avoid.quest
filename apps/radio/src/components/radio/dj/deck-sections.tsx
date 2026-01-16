@@ -9,14 +9,14 @@ import {
 import { useIsMobile } from "@workspace/ui/hooks/use-mobile";
 import { cn } from "@workspace/ui/lib/utils";
 import { EffectChain } from "@/components/audio/effect-chain";
-import type { EffectConfig } from "@/lib/audio";
+import type { EffectConfig, EffectType } from "@/lib/audio";
 import { PlaylistView } from "./playlist-view";
 
 type DeckSectionsProps = {
   metadata: PlatformMetadata | null;
   currentTrackIndex: number;
   effects: EffectConfig[];
-  onAddEffect: (type: string) => void;
+  onAddEffect: (type: EffectType) => void;
   onUpdateEffect: (effectId: string, config: Partial<EffectConfig>) => void;
   onRemoveEffect: (effectId: string) => void;
   onReorderEffects: (effectIds: string[]) => void;
@@ -32,7 +32,7 @@ function renderEffectsChain({
   onUpdateEffect,
 }: {
   effects: EffectConfig[];
-  onAddEffect: (type: string) => void;
+  onAddEffect: (type: EffectType) => void;
   onRemoveEffect: (effectId: string) => void;
   onReorderEffects: (effectIds: string[]) => void;
   onUpdateEffect: (effectId: string, config: Partial<EffectConfig>) => void;

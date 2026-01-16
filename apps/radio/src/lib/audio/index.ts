@@ -37,7 +37,6 @@ export {
 // DSP types (effect configs)
 export type {
   BaseEffectConfig,
-  BiquadFilterConfig,
   CompressorConfig,
   CrusherConfig,
   DelayConfig,

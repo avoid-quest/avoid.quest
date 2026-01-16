@@ -13,7 +13,7 @@ import {
 import { useIsMobile } from "@workspace/ui/hooks/use-mobile";
 import { cn } from "@workspace/ui/lib/utils";
 import { Link2Icon, Music2Icon, XIcon } from "lucide-react";
-import type { EffectConfig, Radio } from "@/lib/audio";
+import type { EffectConfig, EffectType, Radio } from "@/lib/audio";
 import { RadioNameLink } from "../radio-name-link";
 import { CollapsibleChannelStrip, CompactChannelStrip } from "./channel-strip";
 import { DeckSections } from "./deck-sections";
@@ -46,7 +46,7 @@ type DeckLayoutProps = {
   onEffectsDryWetChange: (value: number) => void;
   onClear: () => void;
   onChangeUrl?: () => void;
-  onAddEffect?: (type: string) => void;
+  onAddEffect?: (type: EffectType) => void;
   onUpdateEffect?: (effectId: string, config: Partial<EffectConfig>) => void;
   onRemoveEffect?: (effectId: string) => void;
   onReorderEffects?: (effectIds: string[]) => void;
@@ -473,7 +473,7 @@ type MobileDeckTabsProps = {
   channelFilter: number;
   effectsDryWet: number;
   peakLevel?: { left: number; right: number };
-  onAddEffect?: (type: string) => void;
+  onAddEffect?: (type: EffectType) => void;
   onChangeUrl?: () => void;
   onClear: () => void;
   onPlayPause: () => void;

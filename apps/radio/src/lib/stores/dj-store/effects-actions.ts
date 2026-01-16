@@ -46,7 +46,8 @@ export const createEffectsActions: StateCreator<
     }
   },
 
-  addLeftEffect: (effectType: string) => {
+  addLeftEffect: (effectType) => {
+    // Runtime guard kept for defensive safety at store boundaries
     if (!isEffectType(effectType)) {
       throw new Error(`Invalid effect type: ${effectType}`);
     }
@@ -72,7 +73,8 @@ export const createEffectsActions: StateCreator<
     }
   },
 
-  addRightEffect: (effectType: string) => {
+  addRightEffect: (effectType) => {
+    // Runtime guard kept for defensive safety at store boundaries
     if (!isEffectType(effectType)) {
       throw new Error(`Invalid effect type: ${effectType}`);
     }

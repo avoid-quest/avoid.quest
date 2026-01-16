@@ -1,11 +1,11 @@
 /**
- * Dynamics Compressor Effect
+ * Dynamics Compressor Effect (Legacy)
  *
  * Implements a simplified compressor algorithm similar to DynamicsCompressorNode.
  *
- * TODO: Upgrade to use CTAGDRC components from @opendaw/lib-dsp/ctagdrc
- * (GainComputer, LevelDetector, LookAhead, DelayLine, SmoothingFilter)
- * This requires API documentation to determine correct constructor arguments and usage.
+ * NOTE: This is a basic compressor for compatibility. For production use, prefer
+ * CTAGCompressor from ctag-compressor.ts which provides professional-grade
+ * compression with lookahead, auto-attack/release, and parallel compression.
  */
 
 export class Compressor {

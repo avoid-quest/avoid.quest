@@ -171,6 +171,7 @@ type EffectConfigData = {
   inputGain: number;
   outputGain: number;
   dryWet: number;
+  order: number;
 };
 
 /**
@@ -349,7 +350,7 @@ class EffectSource {
     this.effects.set(effectId, processor);
     this.effectTypes.set(effectId, type);
 
-    // Store universal params (enabled, inputGain, outputGain, dryWet)
+    // Store universal params (enabled, inputGain, outputGain, dryWet, order)
     // Note: enabled comes as 0/1 number from audio-manager, convert to boolean
     this.effectConfigs.set(effectId, {
       enabled: !!config.enabled,
@@ -357,6 +358,7 @@ class EffectSource {
       outputGain:
         typeof config.outputGain === "number" ? config.outputGain : 1.0,
       dryWet: typeof config.dryWet === "number" ? config.dryWet : 1.0,
+      order,
     });
 
     // Insert at correct order position
@@ -727,9 +729,22 @@ class EffectSource {
     }
   }
 
-  private insertEffectAtOrder(effectId: string, _order: number): void {
-    // For now, just append (proper ordering would require tracking order numbers)
-    this.effectOrder.push(effectId);
+  private insertEffectAtOrder(effectId: string, order: number): void {
+    // Find the correct position based on order number
+    // Effects with lower order values come first in the chain
+    const insertIndex = this.effectOrder.findIndex((existingId) => {
+      const existingConfig = this.effectConfigs.get(existingId);
+      // Insert before any effect with higher order, or at end if none found
+      return existingConfig !== undefined && existingConfig.order > order;
+    });
+
+    if (insertIndex === -1) {
+      // No effect with higher order found, append at end
+      this.effectOrder.push(effectId);
+    } else {
+      // Insert at the found position
+      this.effectOrder.splice(insertIndex, 0, effectId);
+    }
   }
 
   private resetEffects(): void {
@@ -1204,55 +1219,97 @@ export class DSPProcessor {
 
   private startSource(sourceId: string): void {
     const source = this.sources.get(sourceId);
-    if (source) {
-      source.start();
+    if (!source) {
+      this.emitSourceError(
+        sourceId,
+        "SOURCE_NOT_FOUND",
+        `Cannot start: source ${sourceId} not found`
+      );
+      return;
     }
+    source.start();
   }
 
   private stopSource(sourceId: string): void {
     const source = this.sources.get(sourceId);
-    if (source) {
-      source.stop();
-      this.emitMessage(MessageType.SOURCE_ENDED, {
+    if (!source) {
+      this.emitSourceError(
         sourceId,
-        reason: "stopped",
-      });
+        "SOURCE_NOT_FOUND",
+        `Cannot stop: source ${sourceId} not found`
+      );
+      return;
     }
+    source.stop();
+    this.emitMessage(MessageType.SOURCE_ENDED, {
+      sourceId,
+      reason: "stopped",
+    });
   }
 
   private pauseSource(sourceId: string): void {
     const source = this.sources.get(sourceId);
-    if (source) {
-      source.pause();
+    if (!source) {
+      this.emitSourceError(
+        sourceId,
+        "SOURCE_NOT_FOUND",
+        `Cannot pause: source ${sourceId} not found`
+      );
+      return;
     }
+    source.pause();
   }
 
   private resumeSource(sourceId: string): void {
     const source = this.sources.get(sourceId);
-    if (source) {
-      source.resume();
+    if (!source) {
+      this.emitSourceError(
+        sourceId,
+        "SOURCE_NOT_FOUND",
+        `Cannot resume: source ${sourceId} not found`
+      );
+      return;
     }
+    source.resume();
   }
 
   private setSourceVolume(sourceId: string, volume: number): void {
     const source = this.sources.get(sourceId);
-    if (source) {
-      source.setVolume(volume);
+    if (!source) {
+      this.emitSourceError(
+        sourceId,
+        "SOURCE_NOT_FOUND",
+        `Cannot set volume: source ${sourceId} not found`
+      );
+      return;
     }
+    source.setVolume(volume);
   }
 
   private setSourcePan(sourceId: string, pan: number): void {
     const source = this.sources.get(sourceId);
-    if (source) {
-      source.setPan(pan);
+    if (!source) {
+      this.emitSourceError(
+        sourceId,
+        "SOURCE_NOT_FOUND",
+        `Cannot set pan: source ${sourceId} not found`
+      );
+      return;
     }
+    source.setPan(pan);
   }
 
   private setEffectsDryWet(sourceId: string, dryWet: number): void {
     const source = this.sources.get(sourceId);
-    if (source) {
-      source.setEffectsDryWet(dryWet);
+    if (!source) {
+      this.emitSourceError(
+        sourceId,
+        "SOURCE_NOT_FOUND",
+        `Cannot set effects dry/wet: source ${sourceId} not found`
+      );
+      return;
     }
+    source.setEffectsDryWet(dryWet);
   }
 
   private setParam(target: string, value: number): void {
@@ -1273,16 +1330,28 @@ export class DSPProcessor {
     gain: number
   ): void {
     const source = this.sources.get(sourceId);
-    if (source) {
-      source.addFilter(filterId, type, frequency, Q, gain);
+    if (!source) {
+      this.emitSourceError(
+        sourceId,
+        "SOURCE_NOT_FOUND",
+        `Cannot add filter: source ${sourceId} not found`
+      );
+      return;
     }
+    source.addFilter(filterId, type, frequency, Q, gain);
   }
 
   private removeFilter(sourceId: string, filterId: string): void {
     const source = this.sources.get(sourceId);
-    if (source) {
-      source.removeFilter(filterId);
+    if (!source) {
+      this.emitSourceError(
+        sourceId,
+        "SOURCE_NOT_FOUND",
+        `Cannot remove filter: source ${sourceId} not found`
+      );
+      return;
     }
+    source.removeFilter(filterId);
   }
 
   private setFilterParam(
@@ -1292,9 +1361,15 @@ export class DSPProcessor {
     value: number | string
   ): void {
     const source = this.sources.get(sourceId);
-    if (source) {
-      source.setFilterParam(filterId, param, value);
+    if (!source) {
+      this.emitSourceError(
+        sourceId,
+        "SOURCE_NOT_FOUND",
+        `Cannot set filter param: source ${sourceId} not found`
+      );
+      return;
     }
+    source.setFilterParam(filterId, param, value);
   }
 
   // Effect management
@@ -1328,9 +1403,15 @@ export class DSPProcessor {
 
   private removeEffect(sourceId: string, effectId: string): void {
     const source = this.sources.get(sourceId);
-    if (source) {
-      source.removeEffect(effectId);
+    if (!source) {
+      this.emitSourceError(
+        sourceId,
+        "SOURCE_NOT_FOUND",
+        `Cannot remove effect: source ${sourceId} not found`
+      );
+      return;
     }
+    source.removeEffect(effectId);
   }
 
   private updateEffect(
@@ -1339,16 +1420,28 @@ export class DSPProcessor {
     config: Record<string, number | boolean | string>
   ): void {
     const source = this.sources.get(sourceId);
-    if (source) {
-      source.updateEffect(effectId, config);
+    if (!source) {
+      this.emitSourceError(
+        sourceId,
+        "SOURCE_NOT_FOUND",
+        `Cannot update effect: source ${sourceId} not found`
+      );
+      return;
     }
+    source.updateEffect(effectId, config);
   }
 
   private reorderEffects(sourceId: string, effectIds: string[]): void {
     const source = this.sources.get(sourceId);
-    if (source) {
-      source.reorderEffects(effectIds);
+    if (!source) {
+      this.emitSourceError(
+        sourceId,
+        "SOURCE_NOT_FOUND",
+        `Cannot reorder effects: source ${sourceId} not found`
+      );
+      return;
     }
+    source.reorderEffects(effectIds);
   }
 
   private emitMessage(type: string, payload?: unknown): void {

@@ -46,7 +46,10 @@ export class Distortion {
   }
 
   getAmount(): number {
-    return ((this.drive - 1) / 99) * 100;
+    // Reverse the exponential curve from setAmount:
+    // drive = 1 + normalized^2 * 49, so normalized = sqrt((drive-1)/49)
+    const normalized = Math.sqrt((this.drive - 1) / 49);
+    return normalized * 100;
   }
 
   reset(): void {

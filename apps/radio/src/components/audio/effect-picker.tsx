@@ -10,11 +10,11 @@ import { Input } from "@workspace/ui/components/input";
 import { cn } from "@workspace/ui/lib/utils";
 import { FilterIcon, SearchIcon } from "lucide-react";
 import { useState } from "react";
-import { AVAILABLE_EFFECTS } from "@/lib/audio";
+import { AVAILABLE_EFFECTS, type EffectType } from "@/lib/audio";
 import { EFFECT_ICONS } from "./effect-constants";
 
 type EffectPickerProps = {
-  onSelect: (effectType: string) => void;
+  onSelect: (effectType: EffectType) => void;
   onClose: () => void;
 };
 

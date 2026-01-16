@@ -11,7 +11,6 @@ export {
   AVAILABLE_EFFECTS,
   type BaseEffectConfig,
   BiquadFilter,
-  type BiquadFilterConfig,
   type BiquadFilterParams,
   type BiquadFilterType,
   Compressor,

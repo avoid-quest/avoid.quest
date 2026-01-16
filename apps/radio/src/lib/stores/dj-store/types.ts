@@ -1,5 +1,10 @@
 import type { Platform } from "@avoid.quest/radio-shared";
-import type { EffectConfig, FilterConfig, Radio } from "@/lib/audio";
+import type {
+  EffectConfig,
+  EffectType,
+  FilterConfig,
+  Radio,
+} from "@/lib/audio";
 
 // Types
 export type DeckId = "left-deck" | "right-deck";
@@ -78,8 +83,8 @@ export type DjState = {
   updateLeftFilter: (config: FilterConfig) => void;
   updateRightFilter: (config: FilterConfig) => void;
 
-  addLeftEffect: (effectType: string) => void;
-  addRightEffect: (effectType: string) => void;
+  addLeftEffect: (effectType: EffectType) => void;
+  addRightEffect: (effectType: EffectType) => void;
   updateLeftEffect: (effectId: string, config: Partial<EffectConfig>) => void;
   updateRightEffect: (effectId: string, config: Partial<EffectConfig>) => void;
   removeLeftEffect: (effectId: string) => void;

@@ -95,22 +95,9 @@ const MessageType = {
   PEAK_METER: "PEAK_METER",
 } as const;
 
-/**
- * Effect types supported by the worklet processor
- */
-export type EffectType =
-  | "biquadFilter"
-  | "plateReverb"
-  | "pitchShifter"
-  | "distortion"
-  | "compressor"
-  | "delay"
-  | "crusher"
-  | "fold"
-  | "stereoTool"
-  | "revamp"
-  | "tidal"
-  | "limiter";
+// Import and re-export EffectType from canonical source for API consistency
+import type { EffectType } from "../dsp/effects/types.js";
+export type { EffectType };
 
 /**
  * Filter types supported by the worklet processor

@@ -159,6 +159,7 @@ export function useSingleAudio(settings?: SingleAudioSettings) {
           err instanceof Error ? err.message : "Crossfade failed";
         setError(errorMessage);
         setIsCrossfading(false);
+        // biome-ignore lint/suspicious/noEmptyBlockStatements: noop unsubscribe
         return () => {};
       }
     },

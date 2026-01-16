@@ -7,6 +7,8 @@
 import { cn } from "@workspace/ui/lib/utils";
 import { memo, useEffect, useRef } from "react";
 
+const RGBA_REGEX = /rgba?\(([^)]+)\)/;
+
 export type WaveformDisplayProps = {
   waveform: Float32Array | null;
   lineWidth?: number;
@@ -60,10 +62,7 @@ export const WaveformDisplay = memo(function WaveformDisplay({
       const sliceWidth = scaledWidth / waveform.length;
 
       // Draw filled area
-      ctx.fillStyle = color.replace(
-        /rgba?\(([^)]+)\)/,
-        `rgba($1, ${fillOpacity})`
-      );
+      ctx.fillStyle = color.replace(RGBA_REGEX, `rgba($1, ${fillOpacity})`);
       ctx.beginPath();
       ctx.moveTo(0, centerY * dpr);
 

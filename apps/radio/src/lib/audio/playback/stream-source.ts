@@ -21,6 +21,36 @@ const OGG_MAGIC_1 = 0x67; // 'g'
 const OGG_MAGIC_2 = 0x67; // 'g'
 const OGG_MAGIC_3 = 0x53; // 'S'
 
+// MP3 frame sync detection
+// MP3 frames start with 0xFF followed by 0xE0-0xFF (11 sync bits)
+const MP3_SYNC_BYTE1 = 0xff;
+const MP3_SYNC_MASK = 0xe0; // Top 3 bits of second byte must be 111
+
+/**
+ * Find the next MP3 frame sync position in buffer.
+ * MP3 frames start with 11 sync bits (0xFF followed by 0xE0+).
+ * Returns byte offset of frame start, or -1 if not found.
+ */
+function findMp3FrameSync(buffer: Uint8Array, startOffset = 0): number {
+  for (let i = startOffset; i < buffer.length - 1; i++) {
+    if (
+      buffer[i] === MP3_SYNC_BYTE1 &&
+      // biome-ignore lint/suspicious/noBitwiseOperators: Intentional bitwise AND for MP3 frame sync
+      ((buffer[i + 1] ?? 0) & MP3_SYNC_MASK) === MP3_SYNC_MASK
+    ) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+/**
+ * Check if buffer looks like MP3 data (has frame sync in first 4KB)
+ */
+function looksLikeMp3(buffer: Uint8Array): boolean {
+  return findMp3FrameSync(buffer, 0) !== -1;
+}
+
 /**
  * Find OGG Vorbis header boundary in buffer.
  * OGG header pages have granule_position = 0, audio pages have granule > 0.
@@ -99,6 +129,10 @@ export type StreamSourceEvents = {
   error: (error: Error) => void;
   /** Emitted when stream ends naturally */
   ended: () => void;
+  /** Emitted when pre-buffer threshold is reached */
+  preBufferReady: () => void;
+  /** Emitted when buffer level changes (for UI) */
+  bufferLevel: (level: { chunks: number; isBuffering: boolean }) => void;
 };
 
 /**
@@ -109,6 +143,8 @@ export type StreamSourceCallbacks = {
   onStatus?: (status: StreamStatus) => void;
   onError?: (error: Error) => void;
   onEnded?: () => void;
+  onPreBufferReady?: () => void;
+  onBufferLevel?: (level: { chunks: number; isBuffering: boolean }) => void;
 };
 
 /**
@@ -132,6 +168,13 @@ export class StreamSource {
   private decoding = false;
   private _status: StreamStatus = "idle";
   private hasEmittedFirstChunk = false;
+
+  // Pre-buffering state
+  private _chunkCount = 0;
+  private _isPreBufferReady = false;
+  private _isBuffering = false;
+
+  private isMp3Stream: boolean | null = null; // Detected on first successful decode
 
   constructor(
     context: AudioContext,
@@ -166,6 +209,27 @@ export class StreamSource {
   }
 
   /**
+   * Get current chunk count
+   */
+  get chunkCount(): number {
+    return this._chunkCount;
+  }
+
+  /**
+   * Check if pre-buffer threshold has been reached
+   */
+  get isPreBufferReady(): boolean {
+    return this._isPreBufferReady;
+  }
+
+  /**
+   * Check if currently in buffering state (recovering from underrun)
+   */
+  get isBuffering(): boolean {
+    return this._isBuffering;
+  }
+
+  /**
    * Start streaming from the URL
    */
   async start(): Promise<void> {
@@ -181,6 +245,10 @@ export class StreamSource {
     this.buffer = new Uint8Array(0);
     this.headerData = null;
     this.hasEmittedFirstChunk = false;
+    this._chunkCount = 0;
+    this._isPreBufferReady = false;
+    this._isBuffering = false;
+    this.isMp3Stream = null;
     this.setStatus("connecting");
 
     try {
@@ -347,6 +415,11 @@ export class StreamSource {
         this.buffer = new Uint8Array(0);
         this.decoding = false;
 
+        // Detect stream type on first successful decode
+        if (this.isMp3Stream === null) {
+          this.isMp3Stream = this.headerData === null; // MP3 has no OGG headers
+        }
+
         // Update status to streaming after first successful decode
         if (!this.hasEmittedFirstChunk) {
           this.hasEmittedFirstChunk = true;
@@ -356,13 +429,52 @@ export class StreamSource {
       .catch(() => {
         this.decoding = false;
 
-        // Decode failed - if buffer is too large, trim it to prevent memory issues
-        if (this.buffer.length >= this.config.maxBufferSize) {
-          // Keep the last portion in case it contains a frame start
-          this.buffer = this.buffer.slice(-this.config.retainOnError);
-        }
-        // Otherwise keep accumulating - we might need more data
+        // Progressive error handling to avoid abrupt audio jumps
+        this.handleDecodeFailure();
       });
+  }
+
+  /**
+   * Handle decode failures with progressive trimming
+   * Instead of abruptly cutting buffer, try to find valid frame boundaries
+   */
+  private handleDecodeFailure(): void {
+    const bufferLength = this.buffer.length;
+
+    // If buffer is small, just accumulate more data
+    if (bufferLength < this.config.maxBufferSize) {
+      return;
+    }
+
+    // Detect if this is MP3 data
+    const isMp3 = this.isMp3Stream ?? looksLikeMp3(this.buffer);
+
+    if (isMp3) {
+      // For MP3: try to find next frame sync and trim to that point
+      // This preserves frame alignment and reduces audio glitches
+      const trimTarget = Math.floor(bufferLength * 0.75); // Keep 75% of buffer
+      const syncPos = findMp3FrameSync(this.buffer, bufferLength - trimTarget);
+
+      if (syncPos !== -1) {
+        // Found a frame sync - trim to that position
+        this.buffer = this.buffer.slice(syncPos);
+      } else {
+        // No sync found - use progressive trim (keep more data than before)
+        const keepAmount = Math.max(
+          this.config.retainOnError,
+          Math.floor(bufferLength * 0.5)
+        );
+        this.buffer = this.buffer.slice(-keepAmount);
+      }
+    } else {
+      // For OGG/other formats: progressive trim keeping more data
+      // OGG needs headers, so we can't easily resync
+      const keepAmount = Math.max(
+        this.config.retainOnError,
+        Math.floor(bufferLength * 0.5)
+      );
+      this.buffer = this.buffer.slice(-keepAmount);
+    }
   }
 
   /**
@@ -417,7 +529,52 @@ export class StreamSource {
    * Emit a decoded chunk
    */
   private emitChunk(audioBuffer: AudioBuffer): void {
+    this._chunkCount++;
+
+    // Check if we've reached pre-buffer threshold
+    if (
+      !this._isPreBufferReady &&
+      this._chunkCount >= this.config.minPreBufferChunks
+    ) {
+      this._isPreBufferReady = true;
+      this.callbacks.onPreBufferReady?.();
+    }
+
+    // Update buffering state based on watermarks
+    this.updateBufferingState();
+
     this.callbacks.onChunk?.(audioBuffer);
+  }
+
+  /**
+   * Called by audio-manager when a chunk is consumed by the worklet
+   */
+  notifyChunkConsumed(): void {
+    if (this._chunkCount > 0) {
+      this._chunkCount--;
+      this.updateBufferingState();
+    }
+  }
+
+  /**
+   * Update buffering state based on watermarks
+   */
+  private updateBufferingState(): void {
+    const wasBuffering = this._isBuffering;
+
+    if (this._chunkCount <= this.config.lowWatermarkChunks) {
+      this._isBuffering = true;
+    } else if (this._chunkCount >= this.config.highWatermarkChunks) {
+      this._isBuffering = false;
+    }
+
+    // Emit buffer level if changed or if we have a listener
+    if (wasBuffering !== this._isBuffering || this.callbacks.onBufferLevel) {
+      this.callbacks.onBufferLevel?.({
+        chunks: this._chunkCount,
+        isBuffering: this._isBuffering,
+      });
+    }
   }
 }
 

@@ -3,7 +3,11 @@
 import { cn } from "@workspace/ui/lib/utils";
 import { GripVerticalIcon } from "lucide-react";
 import type * as React from "react";
-import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
+import {
+  Panel,
+  Group as PanelGroup,
+  Separator as PanelResizeHandle,
+} from "react-resizable-panels";
 
 function ResizablePanelGroup({
   className,

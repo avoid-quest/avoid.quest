@@ -103,14 +103,16 @@ export function formatPlatformDuration(seconds?: number): string {
  * Platform radio mode restriction error
  */
 export class PlatformModeError extends Error {
-  constructor(
-    public readonly platform: string,
-    public readonly mode: string
-  ) {
+  readonly platform: string;
+  readonly mode: string;
+
+  constructor(platform: string, mode: string) {
     super(
       `${platform} tracks are only supported in DJ mode. Switch to DJ mode to play this track.`
     );
     this.name = "PlatformModeError";
+    this.platform = platform;
+    this.mode = mode;
   }
 }
 

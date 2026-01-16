@@ -106,7 +106,7 @@ export function useMultipleAudio(settings?: MultipleAudioSettings) {
       if (autoPlay) {
         try {
           await manager.play(playerId);
-        } catch (error) {
+        } catch {
           // Error will be handled by state subscription
         }
       }
@@ -140,7 +140,7 @@ export function useMultipleAudio(settings?: MultipleAudioSettings) {
     async (playerId: string) => {
       try {
         await manager.play(playerId);
-      } catch (error) {
+      } catch {
         // Error will be handled by state subscription
       }
     },
@@ -215,7 +215,7 @@ export function useMultipleAudio(settings?: MultipleAudioSettings) {
       if (!player.isPlaying) {
         try {
           await manager.play(player.id);
-        } catch (error) {
+        } catch {
           // Continue with other players
         }
       }

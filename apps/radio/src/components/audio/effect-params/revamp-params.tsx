@@ -75,7 +75,7 @@ function PassBandParams({
   onUpdate,
 }: PassBandProps) {
   return (
-    <ParamGroup title={title}>
+    <ParamGroup collapsible defaultOpen={enabled} title={title}>
       <BandToggle
         checked={enabled}
         id={enabledKey}
@@ -141,7 +141,7 @@ function ShelfBandParams({
   onUpdate,
 }: ShelfBandProps) {
   return (
-    <ParamGroup title={title}>
+    <ParamGroup collapsible defaultOpen={enabled} title={title}>
       <BandToggle
         checked={enabled}
         id={enabledKey}
@@ -203,7 +203,7 @@ function BellBandParams({
   onUpdate,
 }: BellBandProps) {
   return (
-    <ParamGroup title={title}>
+    <ParamGroup collapsible defaultOpen={enabled} title={title}>
       <BandToggle
         checked={enabled}
         id={enabledKey}

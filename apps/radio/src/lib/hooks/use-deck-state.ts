@@ -13,6 +13,7 @@ export function useDeckState(deckId: DeckId) {
         radio: deckState.radio,
         isPlaying: deckState.isPlaying,
         isLoading: deckState.isLoading,
+        isBuffering: deckState.isBuffering,
         volume: deckState.volume,
         muted: deckState.muted,
         effects: deckState.effects,

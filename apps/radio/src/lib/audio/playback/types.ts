@@ -110,14 +110,17 @@ export type StreamBufferConfig = {
  *
  * Lower values = more frequent, smaller decodes = smoother streaming
  * Higher values = fewer decodes but risk of playback gaps
+ *
+ * Note: With SharedArrayBuffer mode, watermarks are handled in samples by the
+ * processor. These chunk-based values are for legacy mode and initial buffering.
  */
 export const defaultStreamBufferConfig: StreamBufferConfig = {
-  minBufferSize: 128 * 1024, // 128KB (~8 sec at 128kbps) - better codec alignment
+  minBufferSize: 48 * 1024, // 48KB (~3 sec at 128kbps) - balanced startup vs codec alignment
   maxBufferSize: 512 * 1024, // 512KB - fewer partial decodes
   retainOnError: 64 * 1024, // 64KB - less data loss on failure
   minPreBufferChunks: 4, // 4 chunks = ~800ms of audio before playback
-  lowWatermarkChunks: 2, // Enter buffering state when below 2 chunks
-  highWatermarkChunks: 4, // Exit buffering state when reaching 4 chunks
+  lowWatermarkChunks: 2, // Enter buffering state when below 2 chunks (~400ms)
+  highWatermarkChunks: 4, // Exit buffering state when reaching 4 chunks (~800ms)
 };
 
 /**

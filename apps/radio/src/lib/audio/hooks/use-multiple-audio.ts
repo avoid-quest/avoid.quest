@@ -267,15 +267,12 @@ export function useMultipleAudio(settings?: MultipleAudioSettings) {
     }
   }, [settings?.player?.multiple?.lastUsedRadios, players.length, addRadio]);
 
-  // Cleanup on unmount
+  // Cleanup on unmount - dispose all players to stop audio
   useEffect(
     () => () => {
-      for (const unsubscribe of unsubscribesRef.current.values()) {
-        unsubscribe();
-      }
-      unsubscribesRef.current.clear();
+      clearAll();
     },
-    []
+    [clearAll]
   );
 
   return {

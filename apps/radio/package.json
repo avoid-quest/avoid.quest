@@ -7,6 +7,7 @@
     "dev": "vite dev --port 3000",
     "build": "vite build",
     "test": "vitest run",
+    "typecheck": "tsc --noEmit",
     "cf-deploy": "wrangler deploy",
     "cf-upload": "wrangler versions upload",
     "preview": "vite preview",

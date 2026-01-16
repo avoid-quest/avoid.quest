@@ -31,11 +31,13 @@ class CacophonyProcessor extends AudioWorkletProcessor {
   }
 
   process(
-    _inputs: Float32Array[][],
+    inputs: Float32Array[][],
     outputs: Float32Array[][],
     _parameters: Record<string, Float32Array>
   ): boolean {
+    const input = inputs[0];
     const output = outputs[0];
+
     if (!output || output.length < 2) {
       return true;
     }
@@ -47,7 +49,12 @@ class CacophonyProcessor extends AudioWorkletProcessor {
       return true;
     }
 
-    this.dsp.process(outputL, outputR, 0, outputL.length);
+    // Get input audio from Web Audio graph (from MediaElementSource)
+    // If no input, use empty/silent buffers
+    const inputL = input?.[0] ?? new Float32Array(outputL.length);
+    const inputR = input?.[1] ?? input?.[0] ?? new Float32Array(outputR.length);
+
+    this.dsp.process(inputL, inputR, outputL, outputR, 0, outputL.length);
 
     return true;
   }

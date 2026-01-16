@@ -73,14 +73,12 @@ const MessageType = {
   SET_SOURCE_VOLUME: "SET_SOURCE_VOLUME",
   SET_SOURCE_PAN: "SET_SOURCE_PAN",
 
-  // Streaming
-  ADD_STREAM_CHUNK: "ADD_STREAM_CHUNK",
-
   // Effects
   ADD_EFFECT: "ADD_EFFECT",
   REMOVE_EFFECT: "REMOVE_EFFECT",
   UPDATE_EFFECT: "UPDATE_EFFECT",
   REORDER_EFFECTS: "REORDER_EFFECTS",
+  SET_EFFECTS_DRY_WET: "SET_EFFECTS_DRY_WET",
 
   // Filter
   ADD_FILTER: "ADD_FILTER",
@@ -94,7 +92,6 @@ const MessageType = {
   SOURCE_ENDED: "SOURCE_ENDED",
   SOURCE_ERROR: "SOURCE_ERROR",
   STREAM_READY: "STREAM_READY",
-  STREAM_UNDERRUN: "STREAM_UNDERRUN",
   PEAK_METER: "PEAK_METER",
 } as const;
 
@@ -104,8 +101,7 @@ const MessageType = {
 export type EffectType =
   | "biquadFilter"
   | "reverb"
-  | "standardReverb"
-  | "phaseVocoder"
+  | "pitchShifter"
   | "distortion"
   | "compressor"
   | "delay"
@@ -136,7 +132,6 @@ export type WorkletManagerEvents = {
   sourceEnded: SourceEndedPayload;
   sourceError: SourceErrorPayload;
   streamReady: StreamReadyPayload;
-  streamUnderrun: { sourceId: string };
   peakMeter: { peakL: number; peakR: number };
 };
 
@@ -356,25 +351,13 @@ export class WorkletManager {
     });
   }
 
-  // ============================================
-  // Streaming Methods
-  // ============================================
-
   /**
-   * Add a decoded audio chunk to a streaming source
+   * Set master dry/wet for all effects on a source (0 = bypass, 1 = full)
    */
-  addStreamChunk(sourceId: string, buffer: AudioBuffer): void {
-    const channels: Float32Array[] = [];
-    for (let i = 0; i < buffer.numberOfChannels; i++) {
-      channels.push(buffer.getChannelData(i));
-    }
-
+  setEffectsDryWet(sourceId: string, dryWet: number): void {
     this.postMessage({
-      type: MessageType.ADD_STREAM_CHUNK,
-      payload: {
-        sourceId,
-        chunk: channels,
-      },
+      type: MessageType.SET_EFFECTS_DRY_WET,
+      payload: { sourceId, dryWet },
     });
   }
 
@@ -686,13 +669,6 @@ export class WorkletManager {
         this.eventEmitter.emit(
           "streamReady",
           message.payload as StreamReadyPayload
-        );
-        break;
-
-      case MessageType.STREAM_UNDERRUN:
-        this.eventEmitter.emit(
-          "streamUnderrun",
-          message.payload as { sourceId: string }
         );
         break;
 

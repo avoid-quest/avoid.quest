@@ -1,13 +1,14 @@
 import type { EffectConfig } from "@/lib/audio";
+import { BiquadFilterParams } from "./biquad-filter-params";
 import { CompressorParams } from "./compressor-params";
 import { CrusherParams } from "./crusher-params";
 import { DelayParams } from "./delay-params";
 import { DistortionParams } from "./distortion-params";
 import { FoldParams } from "./fold-params";
-import { PhaseVocoderParams } from "./phase-vocoder-params";
+import { LimiterParams } from "./limiter-params";
+import { PitchShifterParams } from "./pitch-shifter-params";
 import { RevampParams } from "./revamp-params";
 import { PlateReverbParams } from "./reverb-params";
-import { StandardReverbParams } from "./standard-reverb-params";
 import { StereoToolParams } from "./stereo-tool-params";
 import { TidalParams } from "./tidal-params";
 
@@ -18,12 +19,12 @@ type EffectParamsProps = {
 
 export function EffectParams({ effect, onUpdate }: EffectParamsProps) {
   switch (effect.type) {
+    case "biquadFilter":
+      return <BiquadFilterParams effect={effect} onUpdate={onUpdate} />;
     case "plateReverb":
       return <PlateReverbParams effect={effect} onUpdate={onUpdate} />;
-    case "standardReverb":
-      return <StandardReverbParams effect={effect} onUpdate={onUpdate} />;
-    case "phaseVocoder":
-      return <PhaseVocoderParams effect={effect} onUpdate={onUpdate} />;
+    case "pitchShifter":
+      return <PitchShifterParams effect={effect} onUpdate={onUpdate} />;
     case "delay":
       return <DelayParams effect={effect} onUpdate={onUpdate} />;
     case "distortion":
@@ -40,6 +41,8 @@ export function EffectParams({ effect, onUpdate }: EffectParamsProps) {
       return <RevampParams effect={effect} onUpdate={onUpdate} />;
     case "tidal":
       return <TidalParams effect={effect} onUpdate={onUpdate} />;
+    case "limiter":
+      return <LimiterParams effect={effect} onUpdate={onUpdate} />;
     default:
       return null;
   }

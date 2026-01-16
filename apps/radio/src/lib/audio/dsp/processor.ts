@@ -1,8 +1,8 @@
 /**
  * DSP Audio Processor
  *
- * AudioWorklet processor for real-time audio processing.
- * Handles streaming audio sources with effects and filters.
+ * AudioWorklet processor for real-time audio effects processing.
+ * Receives audio via Web Audio graph connection (from MediaElementSource).
  *
  * NOTE: This file is designed to be bundled separately and loaded as a worklet.
  */
@@ -16,7 +16,6 @@ import { Compressor } from "./effects/compressor.js";
 import { CrusherEffect } from "./effects/crusher.js";
 import { Distortion } from "./effects/distortion.js";
 import { FoldEffect } from "./effects/fold.js";
-import { FreeVerbReverb } from "./effects/freeverb.js";
 import { Limiter } from "./effects/limiter.js";
 import { PhaseVocoder } from "./effects/phase-vocoder.js";
 import { RevampEffect } from "./effects/revamp.js";
@@ -37,12 +36,10 @@ export const MessageType = {
   PAUSE_SOURCE: "PAUSE_SOURCE",
   RESUME_SOURCE: "RESUME_SOURCE",
 
-  // Streaming
-  ADD_STREAM_CHUNK: "ADD_STREAM_CHUNK",
-
   // Volume/Pan
   SET_SOURCE_VOLUME: "SET_SOURCE_VOLUME",
   SET_SOURCE_PAN: "SET_SOURCE_PAN",
+  SET_EFFECTS_DRY_WET: "SET_EFFECTS_DRY_WET",
   SET_PARAM: "SET_PARAM",
 
   // Filters
@@ -60,7 +57,6 @@ export const MessageType = {
   SOURCE_ENDED: "SOURCE_ENDED",
   SOURCE_ERROR: "SOURCE_ERROR",
   STREAM_READY: "STREAM_READY",
-  STREAM_UNDERRUN: "STREAM_UNDERRUN",
 
   // Analysis (worklet → main)
   ANALYSIS_DATA: "ANALYSIS_DATA",
@@ -150,82 +146,24 @@ class ChannelStrip {
 }
 
 /**
- * Circular buffer for audio chunks to avoid GC pressure in audio thread.
- * Uses fixed-size array with read/write indices instead of splice operations.
+ * Stored effect configuration for universal params
  */
-class CircularChunkBuffer {
-  private readonly chunks: (Float32Array | null)[];
-  private readonly maxChunks: number;
-  private writeIndex = 0;
-  private readIndex = 0;
-  private _count = 0;
-
-  constructor(maxChunks = 32) {
-    this.maxChunks = maxChunks;
-    this.chunks = new Array<Float32Array | null>(maxChunks).fill(null);
-  }
-
-  get count(): number {
-    return this._count;
-  }
-
-  get isEmpty(): boolean {
-    return this._count === 0;
-  }
-
-  push(chunk: Float32Array): boolean {
-    if (this._count >= this.maxChunks) {
-      return false; // Buffer full
-    }
-    this.chunks[this.writeIndex] = chunk;
-    this.writeIndex = (this.writeIndex + 1) % this.maxChunks;
-    this._count++;
-    return true;
-  }
-
-  peek(): Float32Array | null {
-    if (this._count === 0) {
-      return null;
-    }
-    return this.chunks[this.readIndex];
-  }
-
-  advance(): void {
-    if (this._count === 0) {
-      return;
-    }
-    // Clear the reference to allow GC (but no array resize)
-    this.chunks[this.readIndex] = null;
-    this.readIndex = (this.readIndex + 1) % this.maxChunks;
-    this._count--;
-  }
-
-  clear(): void {
-    for (let i = 0; i < this.maxChunks; i++) {
-      this.chunks[i] = null;
-    }
-    this.writeIndex = 0;
-    this.readIndex = 0;
-    this._count = 0;
-  }
-}
+type EffectConfigData = {
+  enabled: boolean;
+  inputGain: number;
+  outputGain: number;
+  dryWet: number;
+};
 
 /**
- * Stream source for buffered audio playback
+ * Effect source - tracks effects and filters for a source
+ * Audio comes from Web Audio graph, not from chunks
  */
-class StreamSource {
+class EffectSource {
   readonly id: string;
   private readonly sampleRate: number;
 
-  // Circular buffers instead of dynamic arrays to avoid GC pressure
-  private readonly bufferL = new CircularChunkBuffer(32);
-  private readonly bufferR = new CircularChunkBuffer(32);
-  private readPosition = 0;
-  private playing = false;
-  private paused = false;
-  private hasReceivedFirstChunk = false;
-
-  // Per-source volume and pan with smoothing to avoid clicks
+  // Per-source volume and pan with smoothing
   volume = 1.0;
   pan = 0.0;
   private targetLeftGain = 1.0;
@@ -233,8 +171,7 @@ class StreamSource {
   private currentLeftGain = 1.0;
   private currentRightGain = 1.0;
 
-  // Volume smoothing coefficient (higher = faster response)
-  // At 48kHz with 128 sample blocks, 0.1 gives ~5ms smoothing
+  // Volume smoothing coefficient
   private static readonly GAIN_SMOOTH_COEFF = 0.1;
 
   // Filters and effects
@@ -243,16 +180,28 @@ class StreamSource {
   private readonly effects = new Map<string, EffectProcessor>();
   private effectOrder: string[] = [];
   private readonly effectTypes = new Map<string, EffectType>();
+  private readonly effectConfigs = new Map<string, EffectConfigData>();
 
   // Temp buffers for processing
   private readonly tempL: Float32Array;
   private readonly tempR: Float32Array;
+  private readonly dryL: Float32Array;
+  private readonly dryR: Float32Array;
+
+  // State
+  private playing = false;
+  private paused = false;
+
+  // Master effects dry/wet (0 = bypass all, 1 = full effects)
+  private masterEffectsDryWet = 1.0;
 
   constructor(id: string, sampleRate: number) {
     this.id = id;
     this.sampleRate = sampleRate;
     this.tempL = new Float32Array(128);
     this.tempR = new Float32Array(128);
+    this.dryL = new Float32Array(128);
+    this.dryR = new Float32Array(128);
     this.updateGains();
   }
 
@@ -264,18 +213,6 @@ class StreamSource {
     return this.paused;
   }
 
-  get hasData(): boolean {
-    return !this.bufferL.isEmpty;
-  }
-
-  get chunkCount(): number {
-    return this.bufferL.count;
-  }
-
-  get firstChunkReceived(): boolean {
-    return this.hasReceivedFirstChunk;
-  }
-
   start(): void {
     this.playing = true;
     this.paused = false;
@@ -284,12 +221,6 @@ class StreamSource {
   stop(): void {
     this.playing = false;
     this.paused = false;
-    this.readPosition = 0;
-
-    // Clear buffers (no array resize, just index reset)
-    this.bufferL.clear();
-    this.bufferR.clear();
-
     this.resetEffects();
   }
 
@@ -311,37 +242,18 @@ class StreamSource {
     this.updateGains();
   }
 
+  setEffectsDryWet(value: number): void {
+    this.masterEffectsDryWet = Math.max(0, Math.min(1, value));
+  }
+
   private updateGains(): void {
     const angle = ((this.pan + 1) / 2) * (Math.PI / 2);
     this.targetLeftGain = Math.cos(angle) * this.volume;
     this.targetRightGain = Math.sin(angle) * this.volume;
   }
 
-  /**
-   * Smoothly interpolate current gain towards target to avoid clicks
-   */
   private smoothGain(current: number, target: number): number {
-    return current + (target - current) * StreamSource.GAIN_SMOOTH_COEFF;
-  }
-
-  addChunk(channels: Float32Array[]): boolean {
-    let added = false;
-    if (channels.length >= 2) {
-      const addedL = this.bufferL.push(channels[0] ?? new Float32Array(0));
-      const addedR = this.bufferR.push(channels[1] ?? new Float32Array(0));
-      added = addedL && addedR;
-    } else if (channels.length === 1) {
-      // Mono - duplicate to stereo
-      const addedL = this.bufferL.push(channels[0] ?? new Float32Array(0));
-      const addedR = this.bufferR.push(channels[0] ?? new Float32Array(0));
-      added = addedL && addedR;
-    }
-
-    if (!(this.hasReceivedFirstChunk || this.bufferL.isEmpty)) {
-      this.hasReceivedFirstChunk = true;
-    }
-
-    return added;
+    return current + (target - current) * EffectSource.GAIN_SMOOTH_COEFF;
   }
 
   // Filter management
@@ -410,6 +322,15 @@ class StreamSource {
     this.effects.set(effectId, processor);
     this.effectTypes.set(effectId, type);
 
+    // Store universal params (enabled, inputGain, outputGain, dryWet)
+    this.effectConfigs.set(effectId, {
+      enabled: config.enabled !== false,
+      inputGain: typeof config.inputGain === "number" ? config.inputGain : 1.0,
+      outputGain:
+        typeof config.outputGain === "number" ? config.outputGain : 1.0,
+      dryWet: typeof config.dryWet === "number" ? config.dryWet : 1.0,
+    });
+
     // Insert at correct order position
     this.insertEffectAtOrder(effectId, order);
   }
@@ -417,6 +338,7 @@ class StreamSource {
   removeEffect(effectId: string): void {
     this.effects.delete(effectId);
     this.effectTypes.delete(effectId);
+    this.effectConfigs.delete(effectId);
     this.effectOrder = this.effectOrder.filter((id) => id !== effectId);
   }
 
@@ -431,6 +353,23 @@ class StreamSource {
     }
 
     this.applyEffectConfig(processor, type, config);
+
+    // Update universal params if provided
+    const existingConfig = this.effectConfigs.get(effectId);
+    if (existingConfig) {
+      if (typeof config.enabled === "boolean") {
+        existingConfig.enabled = config.enabled;
+      }
+      if (typeof config.inputGain === "number") {
+        existingConfig.inputGain = config.inputGain;
+      }
+      if (typeof config.outputGain === "number") {
+        existingConfig.outputGain = config.outputGain;
+      }
+      if (typeof config.dryWet === "number") {
+        existingConfig.dryWet = config.dryWet;
+      }
+    }
   }
 
   reorderEffects(effectIds: string[]): void {
@@ -443,10 +382,10 @@ class StreamSource {
         return new BiquadFilter(this.sampleRate);
       case "plateReverb":
         return new DattorroReverb(this.sampleRate);
-      case "standardReverb":
-        return new FreeVerbReverb(this.sampleRate);
-      case "phaseVocoder":
+      case "pitchShifter":
         return new PhaseVocoder(this.sampleRate);
+      case "limiter":
+        return new Limiter(this.sampleRate);
       case "distortion":
         return new Distortion(this.sampleRate);
       case "compressor":
@@ -504,9 +443,6 @@ class StreamSource {
         if (config.volume !== undefined) {
           stereo.setVolume(config.volume as number);
         }
-        if (config.panning !== undefined) {
-          stereo.setPanning(config.panning as number);
-        }
         if (config.stereo !== undefined) {
           stereo.setStereoWidth(config.stereo as number);
         }
@@ -559,16 +495,6 @@ class StreamSource {
         }
         break;
       }
-      case "standardReverb": {
-        const reverb = processor as FreeVerbReverb;
-        if (config.roomSize !== undefined) {
-          reverb.setRoomSize(config.roomSize as number);
-        }
-        if (config.damp !== undefined) {
-          reverb.setDamp(config.damp as number);
-        }
-        break;
-      }
       case "distortion": {
         const dist = processor as Distortion;
         if (config.amount !== undefined) {
@@ -595,11 +521,16 @@ class StreamSource {
         }
         break;
       }
-      case "phaseVocoder": {
+      case "pitchShifter": {
         const pv = processor as PhaseVocoder;
         if (config.pitchFactor !== undefined) {
           pv.setPitchFactor(config.pitchFactor as number);
         }
+        break;
+      }
+      case "limiter": {
+        // Limiter uses automatic threshold detection - no params needed
+        // The effect threshold from the registry sets the ceiling
         break;
       }
       case "biquadFilter": {
@@ -727,65 +658,30 @@ class StreamSource {
   }
 
   /**
-   * Process audio into output buffers
-   * Returns false if source has ended (underrun)
+   * Process input audio through filters and effects
+   * Audio comes from Web Audio graph input, not from chunks
    */
   process(
+    inputL: Float32Array,
+    inputR: Float32Array,
     outputL: Float32Array,
     outputR: Float32Array,
     fromIndex: number,
     toIndex: number
-  ): { continue: boolean; underrun: boolean } {
-    if (!(this.isPlaying && this.hasData)) {
-      return { continue: true, underrun: false }; // Keep source alive but produce silence
+  ): void {
+    // If paused, output silence
+    if (this.paused) {
+      for (let i = fromIndex; i < toIndex; i++) {
+        outputL[i] = 0;
+        outputR[i] = 0;
+      }
+      return;
     }
 
-    const blockSize = toIndex - fromIndex;
-    let samplesWritten = 0;
-
-    // Read from circular buffer - no splice operations, just index updates
-    while (samplesWritten < blockSize && !this.bufferL.isEmpty) {
-      const chunkL = this.bufferL.peek();
-      const chunkR = this.bufferR.peek();
-
-      if (!(chunkL && chunkR)) {
-        // Skip empty chunk
-        this.bufferL.advance();
-        this.bufferR.advance();
-        continue;
-      }
-
-      const chunkRemaining = chunkL.length - this.readPosition;
-      const samplesToRead = Math.min(
-        blockSize - samplesWritten,
-        chunkRemaining
-      );
-
-      for (let i = 0; i < samplesToRead; i++) {
-        this.tempL[fromIndex + samplesWritten + i] =
-          chunkL[this.readPosition + i] ?? 0;
-        this.tempR[fromIndex + samplesWritten + i] =
-          chunkR[this.readPosition + i] ?? 0;
-      }
-
-      this.readPosition += samplesToRead;
-      samplesWritten += samplesToRead;
-
-      if (this.readPosition >= chunkL.length) {
-        this.readPosition = 0;
-        // Advance circular buffer (O(1) operation, no array resize)
-        this.bufferL.advance();
-        this.bufferR.advance();
-      }
-    }
-
-    // Check for underrun - we couldn't fill the entire block
-    const underrun = samplesWritten < blockSize;
-
-    // Fill remaining with silence
-    for (let i = samplesWritten; i < blockSize; i++) {
-      this.tempL[fromIndex + i] = 0;
-      this.tempR[fromIndex + i] = 0;
+    // Copy input to temp buffers
+    for (let i = fromIndex; i < toIndex; i++) {
+      this.tempL[i] = inputL[i] ?? 0;
+      this.tempR[i] = inputR[i] ?? 0;
     }
 
     // Apply filters
@@ -800,12 +696,61 @@ class StreamSource {
       }
     }
 
-    // Apply effects
+    // Apply effects with universal params (enabled, inputGain, outputGain, dryWet)
     for (const effectId of this.effectOrder) {
       const effect = this.effects.get(effectId);
-      if (effect) {
-        effect.process(current, outputChannels, fromIndex, toIndex);
-        current = outputChannels;
+      const config = this.effectConfigs.get(effectId);
+
+      if (!(effect && config)) {
+        continue;
+      }
+
+      // Skip disabled effects
+      if (!config.enabled) {
+        continue;
+      }
+
+      // Apply input gain
+      const inputGain = config.inputGain;
+      if (inputGain !== 1.0) {
+        for (let i = fromIndex; i < toIndex; i++) {
+          current[0][i] = (current[0][i] ?? 0) * inputGain;
+          current[1][i] = (current[1][i] ?? 0) * inputGain;
+        }
+      }
+
+      // Store dry signal for dry/wet mixing
+      const dryWet = config.dryWet;
+      const needsDryMix = dryWet < 1.0;
+      if (needsDryMix) {
+        for (let i = fromIndex; i < toIndex; i++) {
+          this.dryL[i] = current[0][i] ?? 0;
+          this.dryR[i] = current[1][i] ?? 0;
+        }
+      }
+
+      // Process through effect (wet signal)
+      effect.process(current, outputChannels, fromIndex, toIndex);
+      current = outputChannels;
+
+      // Mix dry/wet
+      if (needsDryMix) {
+        const dry = 1.0 - dryWet;
+        for (let i = fromIndex; i < toIndex; i++) {
+          current[0][i] =
+            (this.dryL[i] ?? 0) * dry + (current[0][i] ?? 0) * dryWet;
+          current[1][i] =
+            (this.dryR[i] ?? 0) * dry + (current[1][i] ?? 0) * dryWet;
+        }
+      }
+
+      // Apply output gain
+      const outputGain = config.outputGain;
+      if (outputGain !== 1.0) {
+        for (let i = fromIndex; i < toIndex; i++) {
+          current[0][i] = (current[0][i] ?? 0) * outputGain;
+          current[1][i] = (current[1][i] ?? 0) * outputGain;
+        }
       }
     }
 
@@ -817,9 +762,18 @@ class StreamSource {
       }
     }
 
+    // Apply master effects dry/wet (mix original input with processed output)
+    if (this.masterEffectsDryWet < 1.0 && this.effectOrder.length > 0) {
+      const wet = this.masterEffectsDryWet;
+      const dry = 1.0 - wet;
+      for (let i = fromIndex; i < toIndex; i++) {
+        outputL[i] = (this.tempL[i] ?? 0) * dry + (outputL[i] ?? 0) * wet;
+        outputR[i] = (this.tempR[i] ?? 0) * dry + (outputR[i] ?? 0) * wet;
+      }
+    }
+
     // Apply volume/pan with per-sample smoothing to avoid clicks
     for (let i = fromIndex; i < toIndex; i++) {
-      // Smooth gain changes per-sample
       this.currentLeftGain = this.smoothGain(
         this.currentLeftGain,
         this.targetLeftGain
@@ -832,21 +786,21 @@ class StreamSource {
       outputL[i] = (outputL[i] ?? 0) * this.currentLeftGain;
       outputR[i] = (outputR[i] ?? 0) * this.currentRightGain;
     }
-
-    return { continue: true, underrun };
   }
 }
 
 /**
  * Main DSP Processor for AudioWorklet
+ *
+ * Receives audio from Web Audio graph and processes through effect chains.
  */
 export class DSPProcessor {
-  private readonly sources = new Map<string, StreamSource>();
+  private readonly sources = new Map<string, EffectSource>();
   private readonly channelStrip = new ChannelStrip();
   private readonly masterLimiter: Limiter;
   private readonly sampleRate: number;
 
-  // Pre-allocated temp buffers for mixing (avoid GC pressure in audio thread)
+  // Pre-allocated temp buffers for mixing
   private readonly mixTempL = new Float32Array(128);
   private readonly mixTempR = new Float32Array(128);
 
@@ -855,7 +809,7 @@ export class DSPProcessor {
   private spectrumAnalyzer: SpectrumAnalyzer | null = null;
   private analysisEnabled = false;
   private analysisFrameCounter = 0;
-  private readonly analysisInterval = 3; // Send every N render quanta (~60fps at 128 samples)
+  private readonly analysisInterval = 3; // Send every N render quanta (~60fps)
 
   // Callback for emitting events to main thread
   private onMessage?: (message: { type: string; payload?: unknown }) => void;
@@ -917,15 +871,6 @@ export class DSPProcessor {
         this.resumeSource((payload as { sourceId: string }).sourceId);
         break;
 
-      case MessageType.ADD_STREAM_CHUNK: {
-        const { sourceId, chunk } = payload as {
-          sourceId: string;
-          chunk: Float32Array[];
-        };
-        this.addStreamChunk(sourceId, chunk);
-        break;
-      }
-
       case MessageType.SET_SOURCE_VOLUME: {
         const { sourceId, volume } = payload as {
           sourceId: string;
@@ -938,6 +883,15 @@ export class DSPProcessor {
       case MessageType.SET_SOURCE_PAN: {
         const { sourceId, pan } = payload as { sourceId: string; pan: number };
         this.setSourcePan(sourceId, pan);
+        break;
+      }
+
+      case MessageType.SET_EFFECTS_DRY_WET: {
+        const { sourceId, dryWet } = payload as {
+          sourceId: string;
+          dryWet: number;
+        };
+        this.setEffectsDryWet(sourceId, dryWet);
         break;
       }
 
@@ -1031,48 +985,51 @@ export class DSPProcessor {
   }
 
   /**
-   * Process audio
+   * Process audio from Web Audio graph input
+   *
+   * Audio comes in via inputs parameter, not via postMessage chunks.
    */
   process(
+    inputL: Float32Array,
+    inputR: Float32Array,
     outputL: Float32Array,
     outputR: Float32Array,
     fromIndex: number,
     toIndex: number
   ): void {
-    // Clear output
+    // Use pre-allocated temp buffers
+    const tempL = this.mixTempL;
+    const tempR = this.mixTempR;
+
+    // Copy input to temp for processing
+    for (let i = fromIndex; i < toIndex; i++) {
+      tempL[i] = inputL[i] ?? 0;
+      tempR[i] = inputR[i] ?? 0;
+    }
+
+    // Clear output first
     for (let i = fromIndex; i < toIndex; i++) {
       outputL[i] = 0;
       outputR[i] = 0;
     }
 
-    // Use pre-allocated temp buffers (avoid GC pressure)
-    const tempL = this.mixTempL;
-    const tempR = this.mixTempR;
-
-    // Mix all sources
+    // Process through all active sources (apply effects)
+    // In the new architecture, all sources receive the same input
+    // but can have different effects chains
+    let hasActiveSource = false;
     for (const source of this.sources.values()) {
       if (source.isPlaying) {
-        // Clear temp buffers before each source
-        for (let i = fromIndex; i < toIndex; i++) {
-          tempL[i] = 0;
-          tempR[i] = 0;
-        }
+        hasActiveSource = true;
+        // Process effects for this source
+        source.process(tempL, tempR, outputL, outputR, fromIndex, toIndex);
+      }
+    }
 
-        const result = source.process(tempL, tempR, fromIndex, toIndex);
-
-        // Emit underrun event if buffer ran dry
-        if (result.underrun) {
-          this.emitMessage(MessageType.STREAM_UNDERRUN, {
-            sourceId: source.id,
-            chunkCount: source.chunkCount,
-          });
-        }
-
-        // Mix into output
-        for (let i = fromIndex; i < toIndex; i++) {
-          outputL[i] = (outputL[i] ?? 0) + (tempL[i] ?? 0);
-          outputR[i] = (outputR[i] ?? 0) + (tempR[i] ?? 0);
-        }
+    // If no active sources with effects, pass through input directly
+    if (!hasActiveSource) {
+      for (let i = fromIndex; i < toIndex; i++) {
+        outputL[i] = tempL[i] ?? 0;
+        outputR[i] = tempR[i] ?? 0;
       }
     }
 
@@ -1124,8 +1081,10 @@ export class DSPProcessor {
 
   // Source management
   private createSource(id: string): void {
-    const source = new StreamSource(id, this.sampleRate);
+    const source = new EffectSource(id, this.sampleRate);
     this.sources.set(id, source);
+    // Source is immediately ready since audio comes from graph
+    this.emitMessage(MessageType.STREAM_READY, { sourceId: id });
   }
 
   private removeSource(sourceId: string): void {
@@ -1164,20 +1123,6 @@ export class DSPProcessor {
     }
   }
 
-  private addStreamChunk(sourceId: string, chunk: Float32Array[]): void {
-    const source = this.sources.get(sourceId);
-    if (!source) {
-      return;
-    }
-
-    const wasEmpty = !source.firstChunkReceived;
-    source.addChunk(chunk);
-
-    if (wasEmpty && source.firstChunkReceived) {
-      this.emitMessage(MessageType.STREAM_READY, { sourceId });
-    }
-  }
-
   private setSourceVolume(sourceId: string, volume: number): void {
     const source = this.sources.get(sourceId);
     if (source) {
@@ -1189,6 +1134,13 @@ export class DSPProcessor {
     const source = this.sources.get(sourceId);
     if (source) {
       source.setPan(pan);
+    }
+  }
+
+  private setEffectsDryWet(sourceId: string, dryWet: number): void {
+    const source = this.sources.get(sourceId);
+    if (source) {
+      source.setEffectsDryWet(dryWet);
     }
   }
 

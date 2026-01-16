@@ -20,7 +20,6 @@ export {
 export { Delay } from "./delay.js";
 export { Distortion } from "./distortion.js";
 export { FoldEffect } from "./fold.js";
-export { FreeVerbReverb } from "./freeverb.js";
 export { Limiter } from "./limiter.js";
 export { PhaseVocoder } from "./phase-vocoder.js";
 // Registry
@@ -47,10 +46,10 @@ export type {
   EffectType,
   FilterType,
   FoldConfig,
-  PhaseVocoderConfig,
+  LimiterConfig,
+  PitchShifterConfig,
   PlateReverbConfig,
   RevampConfig,
-  StandardReverbConfig,
   StereoChannels,
   StereoToolConfig,
   TidalConfig,

@@ -17,8 +17,7 @@ export type FilterType =
 export type EffectType =
   | "biquadFilter"
   | "plateReverb"
-  | "standardReverb"
-  | "phaseVocoder"
+  | "pitchShifter"
   | "delay"
   | "distortion"
   | "compressor"
@@ -26,7 +25,8 @@ export type EffectType =
   | "fold"
   | "stereoTool"
   | "revamp"
-  | "tidal";
+  | "tidal"
+  | "limiter";
 
 export type BaseEffectConfig = {
   id: string;
@@ -60,14 +60,8 @@ export interface PlateReverbConfig extends BaseEffectConfig {
   excursionDepth: number;
 }
 
-export interface StandardReverbConfig extends BaseEffectConfig {
-  type: "standardReverb";
-  roomSize: number;
-  decayTime: number;
-}
-
-export interface PhaseVocoderConfig extends BaseEffectConfig {
-  type: "phaseVocoder";
+export interface PitchShifterConfig extends BaseEffectConfig {
+  type: "pitchShifter";
   pitchFactor: number;
 }
 
@@ -109,7 +103,6 @@ export interface FoldConfig extends BaseEffectConfig {
 export interface StereoToolConfig extends BaseEffectConfig {
   type: "stereoTool";
   volume: number; // dB (converted to linear gain)
-  panning: number; // -1 to 1
   stereo: number; // -1 to 1 (stereo width)
   invertL: boolean;
   invertR: boolean;
@@ -163,11 +156,15 @@ export interface TidalConfig extends BaseEffectConfig {
   channelOffset: number; // degrees 0-360
 }
 
+export interface LimiterConfig extends BaseEffectConfig {
+  type: "limiter";
+  threshold: number; // dB (-60 to 0)
+}
+
 export type EffectConfig =
   | BiquadFilterConfig
   | PlateReverbConfig
-  | StandardReverbConfig
-  | PhaseVocoderConfig
+  | PitchShifterConfig
   | DelayConfig
   | DistortionConfig
   | CompressorConfig
@@ -175,7 +172,8 @@ export type EffectConfig =
   | FoldConfig
   | StereoToolConfig
   | RevampConfig
-  | TidalConfig;
+  | TidalConfig
+  | LimiterConfig;
 
 /**
  * Stereo channel pair type (openDAW compatible)

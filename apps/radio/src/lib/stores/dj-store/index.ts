@@ -1,4 +1,5 @@
 export * from "./audio-manager-helpers";
+export * from "./channel-strip-actions";
 export * from "./deck-actions";
 export * from "./deck-loading-actions";
 export * from "./deck-playback-actions";
@@ -10,6 +11,7 @@ export * from "./types";
 export * from "./ui-actions";
 
 import { create } from "zustand";
+import { createChannelStripActions } from "./channel-strip-actions";
 import { createDeckActions } from "./deck-actions";
 import { createEffectsActions } from "./effects-actions";
 import { createMixerActions } from "./mixer-actions";
@@ -41,4 +43,5 @@ export const useDjStore = create<InternalDjState>((set, get, api) => ({
   ...createEffectsActions(set, get, api),
   ...createTrackActions(set, get, api),
   ...createUiActions(set, get, api),
+  ...createChannelStripActions(set, get, api),
 }));

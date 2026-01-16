@@ -9,11 +9,17 @@ export type DeckState = {
   radio: Radio | null;
   isPlaying: boolean;
   isLoading: boolean;
+  isBuffering: boolean;
   volume: number;
   muted: boolean;
   effects: EffectConfig[];
   filter: FilterConfig;
   soundId: string | null;
+  // Channel strip params
+  pan: number; // -1 (left) to 1 (right)
+  speed: number; // 0.5x to 2.0x (playbackRate)
+  channelFilter: number; // -1 (LP) to 0 (off) to 1 (HP)
+  effectsDryWet: number; // 0 (bypass all) to 1 (full effects)
 };
 
 export type MixerState = {
@@ -58,6 +64,16 @@ export type DjState = {
   setLeftMute: (muted: boolean) => void;
   setRightMute: (muted: boolean) => void;
 
+  // Channel Strip
+  setLeftPan: (pan: number) => void;
+  setRightPan: (pan: number) => void;
+  setLeftSpeed: (speed: number) => void;
+  setRightSpeed: (speed: number) => void;
+  setLeftChannelFilter: (value: number) => void;
+  setRightChannelFilter: (value: number) => void;
+  setLeftEffectsDryWet: (value: number) => void;
+  setRightEffectsDryWet: (value: number) => void;
+
   // Effects & Filters
   updateLeftFilter: (config: FilterConfig) => void;
   updateRightFilter: (config: FilterConfig) => void;
@@ -99,6 +115,7 @@ export const initialDeckState: DeckState = {
   radio: null,
   isPlaying: false,
   isLoading: false,
+  isBuffering: false,
   volume: 1,
   muted: false,
   effects: [],
@@ -110,4 +127,9 @@ export const initialDeckState: DeckState = {
     enabled: false,
   },
   soundId: null,
+  // Channel strip defaults
+  pan: 0, // Center
+  speed: 1.0, // Normal speed
+  channelFilter: 0, // Filter off
+  effectsDryWet: 1.0, // Full effects
 };

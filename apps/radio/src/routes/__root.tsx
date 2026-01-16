@@ -47,6 +47,11 @@ const Devtools = lazy(async () => {
 });
 
 export const Route = createRootRoute({
+  headers: () => ({
+    // Required for SharedArrayBuffer support in AudioWorklet
+    "Cross-Origin-Opener-Policy": "same-origin",
+    "Cross-Origin-Embedder-Policy": "credentialless",
+  }),
   head: () => ({
     meta: [
       {

@@ -5,7 +5,7 @@ import {
   Root,
   CollapsibleTrigger as Trigger,
 } from "@radix-ui/react-collapsible";
-import { cn } from "../lib/utils";
+import { cn } from "@workspace/ui/lib/utils";
 
 function Collapsible({ ...props }: React.ComponentProps<typeof Root>) {
   return <Root data-slot="collapsible" {...props} />;

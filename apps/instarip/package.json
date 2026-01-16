@@ -26,7 +26,8 @@
     "next-themes": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
-    "server-only": "^0.0.1"
+    "server-only": "^0.0.1",
+    "lucide-react": "catalog:"
   },
   "devDependencies": {
     "@types/node": "catalog:",

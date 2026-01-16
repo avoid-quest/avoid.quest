@@ -40,12 +40,16 @@ export class EffectChain {
   // Processing buffers
   private readonly tempL: Float32Array;
   private readonly tempR: Float32Array;
+  private readonly dryL: Float32Array;
+  private readonly dryR: Float32Array;
 
   constructor(config: EffectChainConfig) {
     this.sampleRate = config.sampleRate;
     const blockSize = config.blockSize ?? 128;
     this.tempL = new Float32Array(blockSize);
     this.tempR = new Float32Array(blockSize);
+    this.dryL = new Float32Array(blockSize);
+    this.dryR = new Float32Array(blockSize);
   }
 
   /**
@@ -222,18 +226,25 @@ export class EffectChain {
         current = target;
       }
 
+      // Store dry signal before effect processing for dry/wet mix
+      const dryWet = effect.config.dryWet;
+      const needsDryMix = dryWet < 1.0;
+      if (needsDryMix) {
+        for (let i = fromIndex; i < toIndex; i++) {
+          this.dryL[i] = current[0][i] ?? 0;
+          this.dryR[i] = current[1][i] ?? 0;
+        }
+      }
+
       // Process effect with stereo channels
       effect.processor.process(current, target, fromIndex, toIndex);
 
-      // Apply dry/wet mix
-      const dryWet = effect.config.dryWet;
-      if (dryWet < 1.0) {
+      // Apply dry/wet mix using saved dry signal
+      if (needsDryMix) {
         const dryAmount = 1.0 - dryWet;
         for (let i = fromIndex; i < toIndex; i++) {
-          targetL[i] =
-            (currentL[i] ?? 0) * dryAmount + (targetL[i] ?? 0) * dryWet;
-          targetR[i] =
-            (currentR[i] ?? 0) * dryAmount + (targetR[i] ?? 0) * dryWet;
+          targetL[i] = this.dryL[i] * dryAmount + (targetL[i] ?? 0) * dryWet;
+          targetR[i] = this.dryR[i] * dryAmount + (targetR[i] ?? 0) * dryWet;
         }
       }
 

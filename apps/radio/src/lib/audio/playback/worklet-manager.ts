@@ -614,8 +614,6 @@ export class WorkletManager {
 
       // Set up message listener
       this.setupMessageListener();
-
-      console.log("WorkletManager initialized with hardware GainNode");
     } catch (error) {
       console.error("Failed to initialize WorkletManager:", error);
       throw error;

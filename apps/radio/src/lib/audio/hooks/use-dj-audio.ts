@@ -435,12 +435,15 @@ export function useDjAudio() {
         leftEffectsRef.current.length
       );
 
-      setLeftEffects((prev) => {
-        const updated = [...prev, newEffect];
-        leftEffectsRef.current = updated;
-        return updated;
-      });
-      audioManager.addEffect(soundId, newEffect);
+      // Only update UI state if effect was successfully added to audio engine
+      const success = audioManager.addEffect(soundId, newEffect);
+      if (success) {
+        setLeftEffects((prev) => {
+          const updated = [...prev, newEffect];
+          leftEffectsRef.current = updated;
+          return updated;
+        });
+      }
     },
     [audioManager]
   );
@@ -458,12 +461,15 @@ export function useDjAudio() {
         rightEffectsRef.current.length
       );
 
-      setRightEffects((prev) => {
-        const updated = [...prev, newEffect];
-        rightEffectsRef.current = updated;
-        return updated;
-      });
-      audioManager.addEffect(soundId, newEffect);
+      // Only update UI state if effect was successfully added to audio engine
+      const success = audioManager.addEffect(soundId, newEffect);
+      if (success) {
+        setRightEffects((prev) => {
+          const updated = [...prev, newEffect];
+          rightEffectsRef.current = updated;
+          return updated;
+        });
+      }
     },
     [audioManager]
   );

@@ -419,7 +419,7 @@ export class AudioManager {
         `[AudioManager] Worklet unavailable for ${instance.sourceId}, effects bypassed`
       );
       this.notifyListeners(instance.sourceId, {
-        ...(this.states.get(instance.sourceId) ?? initialAudioState),
+        ...initialAudioState,
         error: {
           id: generateErrorId(),
           message: "Audio effects unavailable - worklet failed to initialize",

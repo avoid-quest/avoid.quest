@@ -13,7 +13,6 @@ import {
 } from "@opendaw/lib-dsp";
 
 export class Distortion {
-  private readonly sampleRate: number;
   private readonly buffer: StereoMatrix.Channels;
   private resampler: ResamplerStereo | null = null;
   private oversamplingFactor: 1 | 2 | 4 = 1;
@@ -22,8 +21,8 @@ export class Distortion {
   // Auto gain compensation (reduces output as drive increases)
   private makeup = 1;
 
-  constructor(sampleRate: number) {
-    this.sampleRate = sampleRate;
+  // sampleRate parameter kept for API consistency with other effects
+  constructor(_sampleRate: number) {
     this.buffer = [
       new Float32Array(RenderQuantum * 4),
       new Float32Array(RenderQuantum * 4),
@@ -41,7 +40,7 @@ export class Distortion {
 
     // Auto gain compensation: reduce output as drive increases
     // At drive=1: makeup=1 (no change)
-    // At drive=50: makeup≈0.3 (significant reduction)
+    // At drive=50: makeup≈0.14 (1/sqrt(50))
     this.makeup = 1 / Math.sqrt(this.drive);
   }
 

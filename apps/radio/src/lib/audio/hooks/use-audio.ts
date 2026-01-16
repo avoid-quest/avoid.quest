@@ -6,7 +6,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AudioManager } from "../manager/audio-manager.js";
-import type { AudioErrorCode, AudioState, Radio } from "../playback/types.js";
+import {
+  type AudioErrorCode,
+  type AudioState,
+  generateErrorId,
+  type Radio,
+} from "../playback/types.js";
 
 export function useAudio(radio: Radio | null) {
   // Memoize AudioManager instance to ensure stable reference across renders
@@ -72,6 +77,7 @@ export function useAudio(radio: Radio | null) {
           ...prev,
           isLoading: false,
           error: {
+            id: generateErrorId(),
             message: errorObj.message,
             code: "LOAD_ERROR",
             radio: newRadio,
@@ -89,6 +95,7 @@ export function useAudio(radio: Radio | null) {
     setState((prev) => ({
       ...prev,
       error: {
+        id: generateErrorId(),
         message: errorObj.message,
         code,
         timestamp: Date.now(),

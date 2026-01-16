@@ -15,7 +15,7 @@ describe("Effect Types", () => {
       "revamp",
       "tidal",
       "limiter",
-    ];
+    ] as const;
 
     expect(EFFECT_TYPES).toHaveLength(expectedTypes.length);
     for (const type of expectedTypes) {

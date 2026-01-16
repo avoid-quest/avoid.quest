@@ -6,7 +6,7 @@
 
 export class PeakMeter {
   private readonly decayRate: number;
-  private readonly holdTimeMs: number;
+  private readonly holdTimeSamples: number;
   private readonly minDb: number;
   private currentPeakL = 0;
   private currentPeakR = 0;
@@ -33,7 +33,8 @@ export class PeakMeter {
     // Calculate samples to decay from 1 to 0 over decayMs
     const decaySamples = (decayMs / 1000) * sampleRate;
     this.decayRate = 1 / decaySamples;
-    this.holdTimeMs = holdTimeMs;
+    // Convert hold time from ms to samples for consistent units
+    this.holdTimeSamples = (holdTimeMs / 1000) * sampleRate;
     this.minDb = minDb;
   }
 
@@ -78,7 +79,7 @@ export class PeakMeter {
     // Update current peak with new peak or decay
     if (blockPeakL >= this.currentPeakL) {
       this.currentPeakL = blockPeakL;
-      this.holdCounterL = this.holdTimeMs;
+      this.holdCounterL = this.holdTimeSamples;
     } else if (this.holdCounterL > 0) {
       this.holdCounterL -= blockSize;
     } else {
@@ -90,7 +91,7 @@ export class PeakMeter {
 
     if (blockPeakR >= this.currentPeakR) {
       this.currentPeakR = blockPeakR;
-      this.holdCounterR = this.holdTimeMs;
+      this.holdCounterR = this.holdTimeSamples;
     } else if (this.holdCounterR > 0) {
       this.holdCounterR -= blockSize;
     } else {

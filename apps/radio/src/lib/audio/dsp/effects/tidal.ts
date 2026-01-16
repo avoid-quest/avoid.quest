@@ -13,7 +13,7 @@ export class TidalEffect {
   private readonly smoothGainL: Smooth;
   private readonly smoothGainR: Smooth;
 
-  private rate = 1.0; // Rate multiplier (1.0 = no change)
+  private rate = 1.0; // LFO frequency in Hz (1.0 = 1 cycle per second)
   private depth = 0.0;
   private slope = 0.0;
   private symmetry = 0.0;

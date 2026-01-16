@@ -28,7 +28,7 @@ type DeclarativeParamsProps = {
 };
 
 function getEffectValue(effect: EffectConfig, key: string): unknown {
-  return (effect as Record<string, unknown>)[key];
+  return (effect as unknown as Record<string, unknown>)[key];
 }
 
 function getDefaultValue(

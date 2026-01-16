@@ -99,6 +99,7 @@ const MessageType = {
 } as const;
 
 // Import and re-export EffectType from canonical source for API consistency
+// biome-ignore lint/style/noExportedImports: needed for local use and re-export
 import type { EffectType } from "../dsp/effects/types.js";
 export type { EffectType };
 

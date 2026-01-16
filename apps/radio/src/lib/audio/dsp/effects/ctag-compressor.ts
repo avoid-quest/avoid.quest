@@ -103,8 +103,8 @@ class StereoDelay {
     let writePos = this.#writePosition;
 
     for (let i = fromIndex; i < toIndex; i++) {
-      const delayedL = this.#bufferL[readPos];
-      const delayedR = this.#bufferR[readPos];
+      const delayedL = this.#bufferL[readPos] ?? 0;
+      const delayedR = this.#bufferR[readPos] ?? 0;
       this.#bufferL[writePos] = channelL[i] ?? 0;
       this.#bufferR[writePos] = channelR[i] ?? 0;
       channelL[i] = delayedL;

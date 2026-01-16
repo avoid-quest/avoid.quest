@@ -328,7 +328,12 @@ export class AudioManager {
 
       // Load and connect
       await instance.html5Source.load(streamUrl);
-      await this.connectAudioGraph(instance);
+      const graphConnected = await this.connectAudioGraph(instance);
+      if (!graphConnected) {
+        console.warn(
+          `[AudioManager] Audio graph connection failed for ${soundId}, playback may be affected`
+        );
+      }
     }
 
     // Set initial volume
@@ -362,15 +367,23 @@ export class AudioManager {
    * Connect the audio graph for a sound instance
    *
    * Routing: Html5Source → Gain → Pan → Filter → Worklet → Analyser → Destination
+   *
+   * @returns true if graph was connected successfully, false otherwise
    */
-  private async connectAudioGraph(instance: SoundInstance): Promise<void> {
+  private async connectAudioGraph(instance: SoundInstance): Promise<boolean> {
     if (!(instance.html5Source?.output && instance.nodes)) {
-      return;
+      console.warn(
+        `[AudioManager] Cannot connect graph: missing source or nodes for ${instance.sourceId}`
+      );
+      return false;
     }
 
     const context = getAudioContext();
     if (!context) {
-      return;
+      console.warn(
+        "[AudioManager] Cannot connect graph: no AudioContext available"
+      );
+      return false;
     }
 
     const { gain, pan, filter, analyser } = instance.nodes;
@@ -401,10 +414,26 @@ export class AudioManager {
       filter.connect(wm.node);
       // Worklet's master gain connects to destination in init()
     } else {
-      // Fallback: direct to analyser/destination
+      // Fallback: direct to analyser/destination - effects will be bypassed
+      console.warn(
+        `[AudioManager] Worklet unavailable for ${instance.sourceId}, effects bypassed`
+      );
+      this.notifyListeners(instance.sourceId, {
+        ...(this.states.get(instance.sourceId) ?? initialAudioState),
+        error: {
+          id: generateErrorId(),
+          message: "Audio effects unavailable - worklet failed to initialize",
+          code: "WORKLET_UNAVAILABLE",
+          radio: instance.radio,
+          timestamp: Date.now(),
+          sourceId: instance.sourceId,
+        },
+      });
       filter.connect(analyser);
       analyser.connect(context.destination);
     }
+
+    return true;
   }
 
   /**
@@ -731,17 +760,22 @@ export class AudioManager {
 
   /**
    * Add an effect to a sound
+   *
+   * @returns true if effect was added successfully, false if worklet not ready
    */
-  addEffect(soundId: string, config: EffectConfig): void {
+  addEffect(soundId: string, config: EffectConfig): boolean {
     const wm = this.workletManagers.get(soundId);
     if (!wm?.isReady) {
-      console.warn("Worklet not ready for effect addition");
-      return;
+      console.warn(
+        `[AudioManager] Cannot add effect: worklet not ready for ${soundId}`
+      );
+      return false;
     }
 
     const engineConfig = this.convertEffectConfig(config);
 
     wm.addEffect(soundId, config.id, config.type, engineConfig, config.order);
+    return true;
   }
 
   /**
@@ -753,6 +787,8 @@ export class AudioManager {
 
   /**
    * Update an effect's configuration
+   *
+   * @returns true if effect was updated successfully, false if worklet not ready
    */
   updateEffect(
     soundId: string,
@@ -761,6 +797,9 @@ export class AudioManager {
   ): boolean {
     const wm = this.workletManagers.get(soundId);
     if (!wm?.isReady) {
+      console.warn(
+        `[AudioManager] Cannot update effect ${effectId}: worklet not ready for ${soundId}`
+      );
       return false;
     }
 

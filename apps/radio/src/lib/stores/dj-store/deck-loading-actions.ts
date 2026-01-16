@@ -13,14 +13,23 @@ function applyStoredEffectsAndFilters(
   effects: InternalDjState["leftDeck"]["effects"],
   filter: InternalDjState["leftDeck"]["filter"]
 ) {
-  // Apply stored filter if enabled
-  if (filter.enabled) {
-    getAudioManager().updateFilter(soundId, filter);
-  }
+  try {
+    // Apply stored filter if enabled
+    if (filter.enabled) {
+      getAudioManager().updateFilter(soundId, filter);
+    }
 
-  // Apply stored effects
-  for (const effect of effects) {
-    getAudioManager().addEffect(soundId, effect);
+    // Apply stored effects
+    for (const effect of effects) {
+      const success = getAudioManager().addEffect(soundId, effect);
+      if (!success) {
+        console.warn(
+          `[DeckLoading] Failed to apply effect ${effect.type} to ${soundId}`
+        );
+      }
+    }
+  } catch (err) {
+    console.error("[DeckLoading] Error applying stored effects:", err);
   }
 }
 

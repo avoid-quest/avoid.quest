@@ -48,7 +48,10 @@ class WorkletEventEmitter {
         try {
           callback(payload);
         } catch (error) {
-          console.error(`Error in worklet event listener for ${event}:`, error);
+          console.error(
+            `[WorkletEventEmitter] Error in listener for "${event}" (${callbacks.size} listeners):`,
+            error
+          );
         }
       }
     }

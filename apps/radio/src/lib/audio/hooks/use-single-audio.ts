@@ -155,6 +155,7 @@ export function useSingleAudio(settings?: SingleAudioSettings) {
         // Return cleanup function
         return unsubscribe;
       } catch (err) {
+        console.error("[useSingleAudio] Crossfade failed:", err);
         const errorMessage =
           err instanceof Error ? err.message : "Crossfade failed";
         setError(errorMessage);

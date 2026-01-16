@@ -1093,6 +1093,9 @@ export class DSPProcessor {
         break;
       }
       default:
+        // Log unknown message types for debugging version mismatches
+        // Note: console.warn in AudioWorklet goes to browser console
+        console.warn(`[DSPProcessor] Unknown message type: ${type}`);
         break;
     }
   }

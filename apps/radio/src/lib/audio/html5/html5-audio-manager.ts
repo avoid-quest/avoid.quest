@@ -188,7 +188,10 @@ export class HTML5AudioManager {
   subscribe(playerId: string, callback: HTML5AudioStateCallback): () => void {
     const player = this.#players.get(playerId);
     if (!player) {
-      // biome-ignore lint/suspicious/noEmptyBlockStatements: noop unsubscribe
+      console.warn(
+        `[HTML5AudioManager] Cannot subscribe: player ${playerId} not found`
+      );
+      // biome-ignore lint/suspicious/noEmptyBlockStatements: noop unsubscribe for missing player
       return () => {};
     }
     return player.subscribe(callback);

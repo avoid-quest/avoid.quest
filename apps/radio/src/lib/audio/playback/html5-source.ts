@@ -352,7 +352,10 @@ export class Html5AudioSource {
         );
         this._corsState = "cors-failed";
         this.retryWithProxy().catch((err) => {
-          console.error("Proxy retry failed:", err);
+          console.error(
+            `[Html5AudioSource] Proxy retry failed for ${this.currentUrl}:`,
+            err
+          );
           this._status = "error";
           this.callbacks.onError?.(
             err instanceof Error ? err : new Error("Proxy retry failed")

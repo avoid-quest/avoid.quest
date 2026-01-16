@@ -21,8 +21,8 @@ export function Crossfader({
   className,
   size = "md",
   showLabels = true,
-  leftLabel = "Left",
-  rightLabel = "Right",
+  leftLabel = "A",
+  rightLabel = "B",
   disabled = false,
   defaultValue = 0.5, // Default to center (50%)
 }: CrossfaderProps) {

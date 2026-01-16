@@ -193,7 +193,7 @@ function MobileRadioItem({ radio }: { radio: Radio }) {
     }))
   );
 
-  const handleLoad = (deckId: "left-deck" | "right-deck") => {
+  const handleLoad = (deckId: "deck-a" | "deck-b") => {
     const isPlatform = isPlatformItem(radio);
     const platform = getPlatformFromItem(radio);
     if (isPlatform) {
@@ -203,7 +203,7 @@ function MobileRadioItem({ radio }: { radio: Radio }) {
           platform,
         });
       }
-    } else if (deckId === "left-deck") {
+    } else if (deckId === "deck-a") {
       setLeftRadio(radio);
     } else {
       setRightRadio(radio);
@@ -216,21 +216,21 @@ function MobileRadioItem({ radio }: { radio: Radio }) {
 
       <div className="flex shrink-0 gap-1">
         <Button
-          aria-label="Load to Left Deck"
+          aria-label="Load to Deck A"
           className="h-8 w-8 p-0"
-          onClick={() => handleLoad("left-deck")}
+          onClick={() => handleLoad("deck-a")}
           size="sm"
-          title="Load to Left Deck"
+          title="Load to Deck A"
           variant="outline"
         >
           <ChevronLeftIcon className="size-4" />
         </Button>
         <Button
-          aria-label="Load to Right Deck"
+          aria-label="Load to Deck B"
           className="h-8 w-8 p-0"
-          onClick={() => handleLoad("right-deck")}
+          onClick={() => handleLoad("deck-b")}
           size="sm"
-          title="Load to Right Deck"
+          title="Load to Deck B"
           variant="outline"
         >
           <ChevronRightIcon className="size-4" />

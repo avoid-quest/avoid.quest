@@ -21,8 +21,8 @@ import { createUiActions } from "./ui-actions";
 
 export const useDjStore = create<InternalDjState>((set, get, api) => ({
   // Initial State
-  leftDeck: { ...initialDeckState },
-  rightDeck: { ...initialDeckState },
+  deckA: { ...initialDeckState },
+  deckB: { ...initialDeckState },
   mixer: {
     crossfadePosition: 0.5,
     masterVolume: 1,

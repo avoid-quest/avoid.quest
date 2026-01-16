@@ -14,42 +14,42 @@ export const createDeckVolumeActions: StateCreator<
 > = (set, get) => ({
   setLeftVolume: (volume: number) => {
     set((state) => ({
-      leftDeck: { ...state.leftDeck, volume },
+      deckA: { ...state.deckA, volume },
     }));
     applyCrossfade(get);
   },
 
   setRightVolume: (volume: number) => {
     set((state) => ({
-      rightDeck: { ...state.rightDeck, volume },
+      deckB: { ...state.deckB, volume },
     }));
     applyCrossfade(get);
   },
 
   setLeftMute: (muted: boolean) => {
-    const { leftDeck } = get();
+    const { deckA } = get();
     set((state) => ({
-      leftDeck: { ...state.leftDeck, muted },
+      deckA: { ...state.deckA, muted },
     }));
-    if (leftDeck.soundId) {
+    if (deckA.soundId) {
       if (muted) {
-        getAudioManager().muteSound(leftDeck.soundId);
+        getAudioManager().muteSound(deckA.soundId);
       } else {
-        getAudioManager().unmuteSound(leftDeck.soundId);
+        getAudioManager().unmuteSound(deckA.soundId);
       }
     }
   },
 
   setRightMute: (muted: boolean) => {
-    const { rightDeck } = get();
+    const { deckB } = get();
     set((state) => ({
-      rightDeck: { ...state.rightDeck, muted },
+      deckB: { ...state.deckB, muted },
     }));
-    if (rightDeck.soundId) {
+    if (deckB.soundId) {
       if (muted) {
-        getAudioManager().muteSound(rightDeck.soundId);
+        getAudioManager().muteSound(deckB.soundId);
       } else {
-        getAudioManager().unmuteSound(rightDeck.soundId);
+        getAudioManager().unmuteSound(deckB.soundId);
       }
     }
   },

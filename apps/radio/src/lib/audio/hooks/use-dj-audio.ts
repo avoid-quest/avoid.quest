@@ -269,7 +269,7 @@ export function useDjAudio() {
         applyCrossfade();
       } catch (err) {
         const errorMessage =
-          err instanceof Error ? err.message : "Failed to play left";
+          err instanceof Error ? err.message : "Failed to play Deck A";
         setError(errorMessage);
       }
     }
@@ -290,7 +290,7 @@ export function useDjAudio() {
         applyCrossfade();
       } catch (err) {
         const errorMessage =
-          err instanceof Error ? err.message : "Failed to play right";
+          err instanceof Error ? err.message : "Failed to play Deck B";
         setError(errorMessage);
       }
     }

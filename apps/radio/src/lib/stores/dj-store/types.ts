@@ -7,7 +7,7 @@ import type {
 import type { Platform } from "@/lib/platform-types";
 
 // Types
-export type DeckId = "left-deck" | "right-deck";
+export type DeckId = "deck-a" | "deck-b";
 export type DeckSide = "left" | "right";
 
 export type DeckState = {
@@ -43,8 +43,8 @@ export type UiState = {
 // Public API type (without internal state)
 export type DjState = {
   // State
-  leftDeck: DeckState;
-  rightDeck: DeckState;
+  deckA: DeckState;
+  deckB: DeckState;
   mixer: MixerState;
   ui: UiState;
   error: string | null;

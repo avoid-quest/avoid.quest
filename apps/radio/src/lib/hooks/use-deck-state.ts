@@ -5,8 +5,8 @@ import { useDjStore } from "@/lib/stores/dj-store";
 export function useDeckState(deckId: DeckId) {
   return useDjStore(
     useShallow((state) => {
-      const isLeft = deckId === "left-deck";
-      const deckState = isLeft ? state.leftDeck : state.rightDeck;
+      const isLeft = deckId === "deck-a";
+      const deckState = isLeft ? state.deckA : state.deckB;
 
       return {
         // State

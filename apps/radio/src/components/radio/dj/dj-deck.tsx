@@ -45,7 +45,7 @@ import { PlatformForm } from "./platform-form";
 
 type DjDeckProps = {
   className?: string;
-  deckId: "left-deck" | "right-deck";
+  deckId: "deck-a" | "deck-b";
   radios?: Radio[];
 };
 
@@ -95,28 +95,21 @@ export function DjDeck({ className, deckId, radios = [] }: DjDeckProps) {
     useShallow((state) => ({
       pendingPlatformItem: state.ui.pendingPlatformItem,
       setPendingPlatformItem: state.setPendingPlatformItem,
-      effects:
-        deckId === "left-deck"
-          ? state.leftDeck.effects
-          : state.rightDeck.effects,
+      effects: deckId === "deck-a" ? state.deckA.effects : state.deckB.effects,
       addEffect:
-        deckId === "left-deck" ? state.addLeftEffect : state.addRightEffect,
+        deckId === "deck-a" ? state.addLeftEffect : state.addRightEffect,
       updateEffect:
-        deckId === "left-deck"
-          ? state.updateLeftEffect
-          : state.updateRightEffect,
+        deckId === "deck-a" ? state.updateLeftEffect : state.updateRightEffect,
       removeEffect:
-        deckId === "left-deck"
-          ? state.removeLeftEffect
-          : state.removeRightEffect,
+        deckId === "deck-a" ? state.removeLeftEffect : state.removeRightEffect,
       reorderEffects:
-        deckId === "left-deck"
+        deckId === "deck-a"
           ? state.reorderLeftEffects
           : state.reorderRightEffects,
     }))
   );
 
-  const deckSide = deckId === "left-deck" ? "left" : "right";
+  const deckSide = deckId === "deck-a" ? "left" : "right";
   const [isChangingUrl, setIsChangingUrl] = useState(false);
   const isMobile = useIsMobile();
 
@@ -315,7 +308,7 @@ export function DjDeck({ className, deckId, radios = [] }: DjDeckProps) {
 }
 
 type DeckHeaderProps = {
-  deckId: "left-deck" | "right-deck";
+  deckId: "deck-a" | "deck-b";
   radio: Radio | null;
   onReset: () => Promise<void>;
 };
@@ -347,7 +340,7 @@ function DeckHeader({ deckId, radio, onReset }: DeckHeaderProps) {
     <CardHeader className="sm:pb-4">
       <div className="flex items-center justify-between">
         <CardTitle className="text-center">
-          {deckId === "left-deck" ? "Left Deck" : "Right Deck"}
+          {deckId === "deck-a" ? "Deck A" : "Deck B"}
         </CardTitle>
         {/* Always render button to prevent layout shift, but hide when no radio */}
         <DropdownMenu>

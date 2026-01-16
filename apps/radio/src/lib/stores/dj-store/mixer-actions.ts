@@ -8,18 +8,18 @@ export const applyCrossfade = (get: () => InternalDjState) => {
     return;
   }
 
-  const { leftDeck, rightDeck, mixer } = get();
+  const { deckA, deckB, mixer } = get();
   const { crossfadePosition } = mixer;
 
-  const leftFinalVol = (1 - crossfadePosition) * leftDeck.volume;
-  const rightFinalVol = crossfadePosition * rightDeck.volume;
+  const leftFinalVol = (1 - crossfadePosition) * deckA.volume;
+  const rightFinalVol = crossfadePosition * deckB.volume;
 
   const manager = getAudioManager();
-  if (leftDeck.soundId) {
-    manager.setVolume(leftDeck.soundId, leftFinalVol);
+  if (deckA.soundId) {
+    manager.setVolume(deckA.soundId, leftFinalVol);
   }
-  if (rightDeck.soundId) {
-    manager.setVolume(rightDeck.soundId, rightFinalVol);
+  if (deckB.soundId) {
+    manager.setVolume(deckB.soundId, rightFinalVol);
   }
 };
 

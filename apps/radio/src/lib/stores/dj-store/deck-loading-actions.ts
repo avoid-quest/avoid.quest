@@ -10,8 +10,8 @@ import { type InternalDjState, initialDeckState } from "./types";
  */
 function applyStoredEffectsAndFilters(
   soundId: string,
-  effects: InternalDjState["leftDeck"]["effects"],
-  filter: InternalDjState["leftDeck"]["filter"]
+  effects: InternalDjState["deckA"]["effects"],
+  filter: InternalDjState["deckA"]["filter"]
 ) {
   try {
     // Apply stored filter if enabled
@@ -49,10 +49,10 @@ export const createDeckLoadingActions: StateCreator<
   },
 
   setLeftRadio: async (radio: Radio | null) => {
-    const { leftDeck, _subscriptionCleanup } = get();
+    const { deckA, _subscriptionCleanup } = get();
 
     // Preserve the playing state before cleanup
-    const wasPlaying = leftDeck.isPlaying;
+    const wasPlaying = deckA.isPlaying;
 
     // Unsubscribe from previous subscription
     if (_subscriptionCleanup.left) {
@@ -63,13 +63,13 @@ export const createDeckLoadingActions: StateCreator<
     }
 
     // Cleanup existing sound
-    if (leftDeck.soundId) {
-      await getAudioManager().cleanupSound(leftDeck.soundId);
+    if (deckA.soundId) {
+      await getAudioManager().cleanupSound(deckA.soundId);
     }
 
     if (!radio) {
       set((_state) => ({
-        leftDeck: { ...initialDeckState },
+        deckA: { ...initialDeckState },
       }));
       return;
     }
@@ -85,8 +85,8 @@ export const createDeckLoadingActions: StateCreator<
       getAudioManager().createSound(radio, soundId);
 
       set((state) => ({
-        leftDeck: {
-          ...state.leftDeck,
+        deckA: {
+          ...state.deckA,
           radio,
           soundId,
         },
@@ -96,8 +96,8 @@ export const createDeckLoadingActions: StateCreator<
       const freshState = get();
       applyStoredEffectsAndFilters(
         soundId,
-        freshState.leftDeck.effects,
-        freshState.leftDeck.filter
+        freshState.deckA.effects,
+        freshState.deckA.filter
       );
 
       // Subscribe to this sound's events and store cleanup function
@@ -112,14 +112,14 @@ export const createDeckLoadingActions: StateCreator<
 
         // Only update if state actually changed to prevent unnecessary re-renders
         if (
-          currentState.leftDeck.isPlaying !== audioState.isPlaying ||
-          currentState.leftDeck.isLoading !== audioState.isLoading ||
-          currentState.leftDeck.isBuffering !== audioState.isBuffering ||
+          currentState.deckA.isPlaying !== audioState.isPlaying ||
+          currentState.deckA.isLoading !== audioState.isLoading ||
+          currentState.deckA.isBuffering !== audioState.isBuffering ||
           currentState.error !== nextError
         ) {
           set((state) => ({
-            leftDeck: {
-              ...state.leftDeck,
+            deckA: {
+              ...state.deckA,
               isPlaying: audioState.isPlaying,
               isLoading: audioState.isLoading,
               isBuffering: audioState.isBuffering,
@@ -130,13 +130,13 @@ export const createDeckLoadingActions: StateCreator<
 
         // Handle track end - auto-advance to next track
         if (trackEnded) {
-          const nextTrack = findNextTrack(currentState.leftDeck.radio);
-          if (nextTrack && currentState.leftDeck.radio) {
+          const nextTrack = findNextTrack(currentState.deckA.radio);
+          if (nextTrack && currentState.deckA.radio) {
             // Load next track asynchronously
             get().loadTrack(
               "left",
               {
-                ...currentState.leftDeck.radio,
+                ...currentState.deckA.radio,
                 streamUrl: nextTrack.streamUrl,
               },
               true // auto-play
@@ -151,16 +151,13 @@ export const createDeckLoadingActions: StateCreator<
       // If the previous radio was playing, auto-play the new one
       if (wasPlaying) {
         const stateForVolume = get();
-        await getAudioManager().playSound(
-          soundId,
-          stateForVolume.leftDeck.volume
-        );
+        await getAudioManager().playSound(soundId, stateForVolume.deckA.volume);
         applyCrossfade(get);
       }
     } catch (err) {
       // Error handling - AudioManager will also update state through subscription
       const msg =
-        err instanceof Error ? err.message : "Failed to load left deck";
+        err instanceof Error ? err.message : "Failed to load Deck A";
       set((_state) => ({
         error: msg,
       }));
@@ -168,10 +165,10 @@ export const createDeckLoadingActions: StateCreator<
   },
 
   setRightRadio: async (radio: Radio | null) => {
-    const { rightDeck, _subscriptionCleanup } = get();
+    const { deckB, _subscriptionCleanup } = get();
 
     // Preserve the playing state before cleanup
-    const wasPlaying = rightDeck.isPlaying;
+    const wasPlaying = deckB.isPlaying;
 
     // Unsubscribe from previous subscription
     if (_subscriptionCleanup.right) {
@@ -182,13 +179,13 @@ export const createDeckLoadingActions: StateCreator<
     }
 
     // Cleanup existing sound
-    if (rightDeck.soundId) {
-      await getAudioManager().cleanupSound(rightDeck.soundId);
+    if (deckB.soundId) {
+      await getAudioManager().cleanupSound(deckB.soundId);
     }
 
     if (!radio) {
       set((_state) => ({
-        rightDeck: { ...initialDeckState },
+        deckB: { ...initialDeckState },
       }));
       return;
     }
@@ -204,8 +201,8 @@ export const createDeckLoadingActions: StateCreator<
       getAudioManager().createSound(radio, soundId);
 
       set((state) => ({
-        rightDeck: {
-          ...state.rightDeck,
+        deckB: {
+          ...state.deckB,
           radio,
           soundId,
         },
@@ -215,8 +212,8 @@ export const createDeckLoadingActions: StateCreator<
       const freshState = get();
       applyStoredEffectsAndFilters(
         soundId,
-        freshState.rightDeck.effects,
-        freshState.rightDeck.filter
+        freshState.deckB.effects,
+        freshState.deckB.filter
       );
 
       // Subscribe to this sound's events and store cleanup function
@@ -231,14 +228,14 @@ export const createDeckLoadingActions: StateCreator<
 
         // Only update if state actually changed to prevent unnecessary re-renders
         if (
-          currentState.rightDeck.isPlaying !== audioState.isPlaying ||
-          currentState.rightDeck.isLoading !== audioState.isLoading ||
-          currentState.rightDeck.isBuffering !== audioState.isBuffering ||
+          currentState.deckB.isPlaying !== audioState.isPlaying ||
+          currentState.deckB.isLoading !== audioState.isLoading ||
+          currentState.deckB.isBuffering !== audioState.isBuffering ||
           currentState.error !== nextError
         ) {
           set((state) => ({
-            rightDeck: {
-              ...state.rightDeck,
+            deckB: {
+              ...state.deckB,
               isPlaying: audioState.isPlaying,
               isLoading: audioState.isLoading,
               isBuffering: audioState.isBuffering,
@@ -249,13 +246,13 @@ export const createDeckLoadingActions: StateCreator<
 
         // Handle track end - auto-advance to next track
         if (trackEnded) {
-          const nextTrack = findNextTrack(currentState.rightDeck.radio);
-          if (nextTrack && currentState.rightDeck.radio) {
+          const nextTrack = findNextTrack(currentState.deckB.radio);
+          if (nextTrack && currentState.deckB.radio) {
             // Load next track asynchronously
             get().loadTrack(
               "right",
               {
-                ...currentState.rightDeck.radio,
+                ...currentState.deckB.radio,
                 streamUrl: nextTrack.streamUrl,
               },
               true // auto-play
@@ -270,16 +267,13 @@ export const createDeckLoadingActions: StateCreator<
       // If the previous radio was playing, auto-play the new one
       if (wasPlaying) {
         const stateForVolume = get();
-        await getAudioManager().playSound(
-          soundId,
-          stateForVolume.rightDeck.volume
-        );
+        await getAudioManager().playSound(soundId, stateForVolume.deckB.volume);
         applyCrossfade(get);
       }
     } catch (err) {
       // Error handling - AudioManager will also update state through subscription
       const msg =
-        err instanceof Error ? err.message : "Failed to load right deck";
+        err instanceof Error ? err.message : "Failed to load Deck B";
       set((_state) => ({
         error: msg,
       }));
@@ -287,16 +281,16 @@ export const createDeckLoadingActions: StateCreator<
   },
 
   resetLeft: async () => {
-    const { leftDeck, setLeftRadio } = get();
-    if (leftDeck.radio) {
-      await setLeftRadio(leftDeck.radio);
+    const { deckA, setLeftRadio } = get();
+    if (deckA.radio) {
+      await setLeftRadio(deckA.radio);
     }
   },
 
   resetRight: async () => {
-    const { rightDeck, setRightRadio } = get();
-    if (rightDeck.radio) {
-      await setRightRadio(rightDeck.radio);
+    const { deckB, setRightRadio } = get();
+    if (deckB.radio) {
+      await setRightRadio(deckB.radio);
     }
   },
 });

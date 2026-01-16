@@ -27,22 +27,22 @@ export const createEffectsActions: StateCreator<
   >
 > = (set, get) => ({
   updateLeftFilter: (config: FilterConfig) => {
-    const { leftDeck } = get();
+    const { deckA } = get();
     set((state) => ({
-      leftDeck: { ...state.leftDeck, filter: config },
+      deckA: { ...state.deckA, filter: config },
     }));
-    if (leftDeck.soundId) {
-      getAudioManager().updateFilter(leftDeck.soundId, config);
+    if (deckA.soundId) {
+      getAudioManager().updateFilter(deckA.soundId, config);
     }
   },
 
   updateRightFilter: (config: FilterConfig) => {
-    const { rightDeck } = get();
+    const { deckB } = get();
     set((state) => ({
-      rightDeck: { ...state.rightDeck, filter: config },
+      deckB: { ...state.deckB, filter: config },
     }));
-    if (rightDeck.soundId) {
-      getAudioManager().updateFilter(rightDeck.soundId, config);
+    if (deckB.soundId) {
+      getAudioManager().updateFilter(deckB.soundId, config);
     }
   },
 
@@ -52,24 +52,24 @@ export const createEffectsActions: StateCreator<
       throw new Error(`Invalid effect type: ${effectType}`);
     }
 
-    const { leftDeck } = get();
+    const { deckA } = get();
 
     const newEffect = createDefaultEffectConfig(
       effectType,
       `effect_${Date.now()}_${Math.random()}`,
-      leftDeck.effects.length
+      deckA.effects.length
     );
 
     set((state) => ({
-      leftDeck: {
-        ...state.leftDeck,
-        effects: [...state.leftDeck.effects, newEffect],
+      deckA: {
+        ...state.deckA,
+        effects: [...state.deckA.effects, newEffect],
       },
     }));
 
     // Apply effect immediately if sound is loaded
-    if (leftDeck.soundId) {
-      getAudioManager().addEffect(leftDeck.soundId, newEffect);
+    if (deckA.soundId) {
+      getAudioManager().addEffect(deckA.soundId, newEffect);
     }
   },
 
@@ -79,108 +79,108 @@ export const createEffectsActions: StateCreator<
       throw new Error(`Invalid effect type: ${effectType}`);
     }
 
-    const { rightDeck } = get();
+    const { deckB } = get();
 
     const newEffect = createDefaultEffectConfig(
       effectType,
       `effect_${Date.now()}_${Math.random()}`,
-      rightDeck.effects.length
+      deckB.effects.length
     );
 
     set((state) => ({
-      rightDeck: {
-        ...state.rightDeck,
-        effects: [...state.rightDeck.effects, newEffect],
+      deckB: {
+        ...state.deckB,
+        effects: [...state.deckB.effects, newEffect],
       },
     }));
 
     // Apply effect immediately if sound is loaded
-    if (rightDeck.soundId) {
-      getAudioManager().addEffect(rightDeck.soundId, newEffect);
+    if (deckB.soundId) {
+      getAudioManager().addEffect(deckB.soundId, newEffect);
     }
   },
 
   updateLeftEffect: (effectId: string, config: Partial<EffectConfig>) => {
-    const { leftDeck } = get();
+    const { deckA } = get();
 
     set((state) => ({
-      leftDeck: {
-        ...state.leftDeck,
-        effects: state.leftDeck.effects.map((e) =>
+      deckA: {
+        ...state.deckA,
+        effects: state.deckA.effects.map((e) =>
           e.id === effectId ? ({ ...e, ...config } as EffectConfig) : e
         ),
       },
     }));
 
     // Apply effect update immediately if sound is loaded
-    if (leftDeck.soundId) {
-      getAudioManager().updateEffect(leftDeck.soundId, effectId, config);
+    if (deckA.soundId) {
+      getAudioManager().updateEffect(deckA.soundId, effectId, config);
     }
   },
 
   updateRightEffect: (effectId: string, config: Partial<EffectConfig>) => {
-    const { rightDeck } = get();
+    const { deckB } = get();
 
     set((state) => ({
-      rightDeck: {
-        ...state.rightDeck,
-        effects: state.rightDeck.effects.map((e) =>
+      deckB: {
+        ...state.deckB,
+        effects: state.deckB.effects.map((e) =>
           e.id === effectId ? ({ ...e, ...config } as EffectConfig) : e
         ),
       },
     }));
 
     // Apply effect update immediately if sound is loaded
-    if (rightDeck.soundId) {
-      getAudioManager().updateEffect(rightDeck.soundId, effectId, config);
+    if (deckB.soundId) {
+      getAudioManager().updateEffect(deckB.soundId, effectId, config);
     }
   },
 
   removeLeftEffect: (effectId: string) => {
-    const { leftDeck } = get();
+    const { deckA } = get();
 
     set((state) => ({
-      leftDeck: {
-        ...state.leftDeck,
-        effects: state.leftDeck.effects
+      deckA: {
+        ...state.deckA,
+        effects: state.deckA.effects
           .filter((e) => e.id !== effectId)
           .map((e, i) => ({ ...e, order: i })),
       },
     }));
 
     // Apply removal immediately if sound is loaded
-    if (leftDeck.soundId) {
-      getAudioManager().removeEffect(leftDeck.soundId, effectId);
+    if (deckA.soundId) {
+      getAudioManager().removeEffect(deckA.soundId, effectId);
     }
   },
 
   removeRightEffect: (effectId: string) => {
-    const { rightDeck } = get();
+    const { deckB } = get();
 
     set((state) => ({
-      rightDeck: {
-        ...state.rightDeck,
-        effects: state.rightDeck.effects
+      deckB: {
+        ...state.deckB,
+        effects: state.deckB.effects
           .filter((e) => e.id !== effectId)
           .map((e, i) => ({ ...e, order: i })),
       },
     }));
 
     // Apply removal immediately if sound is loaded
-    if (rightDeck.soundId) {
-      getAudioManager().removeEffect(rightDeck.soundId, effectId);
+    if (deckB.soundId) {
+      getAudioManager().removeEffect(deckB.soundId, effectId);
     }
   },
 
   reorderLeftEffects: (effectIds: string[]) => {
-    const { leftDeck } = get();
+    const { deckA } = get();
 
     set((state) => ({
-      leftDeck: {
-        ...state.leftDeck,
+      deckA: {
+        ...state.deckA,
         effects: effectIds
           .map((id, index) => {
-            const effect = state.leftDeck.effects.find((e) => e.id === id);
+            const effect = state.deckA.effects.find((e) => e.id === id);
             return effect ? { ...effect, order: index } : undefined;
           })
           .filter((e): e is EffectConfig => !!e),
@@ -188,20 +188,20 @@ export const createEffectsActions: StateCreator<
     }));
 
     // Apply reordering immediately if sound is loaded
-    if (leftDeck.soundId) {
-      getAudioManager().reorderEffects(leftDeck.soundId, effectIds);
+    if (deckA.soundId) {
+      getAudioManager().reorderEffects(deckA.soundId, effectIds);
     }
   },
 
   reorderRightEffects: (effectIds: string[]) => {
-    const { rightDeck } = get();
+    const { deckB } = get();
 
     set((state) => ({
-      rightDeck: {
-        ...state.rightDeck,
+      deckB: {
+        ...state.deckB,
         effects: effectIds
           .map((id, index) => {
-            const effect = state.rightDeck.effects.find((e) => e.id === id);
+            const effect = state.deckB.effects.find((e) => e.id === id);
             return effect ? { ...effect, order: index } : undefined;
           })
           .filter((e): e is EffectConfig => !!e),
@@ -209,8 +209,8 @@ export const createEffectsActions: StateCreator<
     }));
 
     // Apply reordering immediately if sound is loaded
-    if (rightDeck.soundId) {
-      getAudioManager().reorderEffects(rightDeck.soundId, effectIds);
+    if (deckB.soundId) {
+      getAudioManager().reorderEffects(deckB.soundId, effectIds);
     }
   },
 });

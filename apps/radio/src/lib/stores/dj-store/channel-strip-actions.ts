@@ -19,82 +19,82 @@ export const createChannelStripActions: StateCreator<
   >
 > = (set, get) => ({
   setLeftPan: (pan: number) => {
-    const { leftDeck } = get();
+    const { deckA } = get();
     set((state) => ({
-      leftDeck: { ...state.leftDeck, pan },
+      deckA: { ...state.deckA, pan },
     }));
-    if (leftDeck.soundId) {
-      getAudioManager().setPan(leftDeck.soundId, pan);
+    if (deckA.soundId) {
+      getAudioManager().setPan(deckA.soundId, pan);
     }
   },
 
   setRightPan: (pan: number) => {
-    const { rightDeck } = get();
+    const { deckB } = get();
     set((state) => ({
-      rightDeck: { ...state.rightDeck, pan },
+      deckB: { ...state.deckB, pan },
     }));
-    if (rightDeck.soundId) {
-      getAudioManager().setPan(rightDeck.soundId, pan);
+    if (deckB.soundId) {
+      getAudioManager().setPan(deckB.soundId, pan);
     }
   },
 
   setLeftSpeed: (speed: number) => {
-    const { leftDeck } = get();
+    const { deckA } = get();
     set((state) => ({
-      leftDeck: { ...state.leftDeck, speed },
+      deckA: { ...state.deckA, speed },
     }));
-    if (leftDeck.soundId) {
-      getAudioManager().setPlaybackRate(leftDeck.soundId, speed);
+    if (deckA.soundId) {
+      getAudioManager().setPlaybackRate(deckA.soundId, speed);
     }
   },
 
   setRightSpeed: (speed: number) => {
-    const { rightDeck } = get();
+    const { deckB } = get();
     set((state) => ({
-      rightDeck: { ...state.rightDeck, speed },
+      deckB: { ...state.deckB, speed },
     }));
-    if (rightDeck.soundId) {
-      getAudioManager().setPlaybackRate(rightDeck.soundId, speed);
+    if (deckB.soundId) {
+      getAudioManager().setPlaybackRate(deckB.soundId, speed);
     }
   },
 
   setLeftChannelFilter: (value: number) => {
-    const { leftDeck } = get();
+    const { deckA } = get();
     set((state) => ({
-      leftDeck: { ...state.leftDeck, channelFilter: value },
+      deckA: { ...state.deckA, channelFilter: value },
     }));
-    if (leftDeck.soundId) {
-      getAudioManager().setChannelFilter(leftDeck.soundId, value);
+    if (deckA.soundId) {
+      getAudioManager().setChannelFilter(deckA.soundId, value);
     }
   },
 
   setRightChannelFilter: (value: number) => {
-    const { rightDeck } = get();
+    const { deckB } = get();
     set((state) => ({
-      rightDeck: { ...state.rightDeck, channelFilter: value },
+      deckB: { ...state.deckB, channelFilter: value },
     }));
-    if (rightDeck.soundId) {
-      getAudioManager().setChannelFilter(rightDeck.soundId, value);
+    if (deckB.soundId) {
+      getAudioManager().setChannelFilter(deckB.soundId, value);
     }
   },
 
   setLeftEffectsDryWet: (value: number) => {
-    const { leftDeck } = get();
+    const { deckA } = get();
     set((state) => ({
-      leftDeck: { ...state.leftDeck, effectsDryWet: value },
+      deckA: { ...state.deckA, effectsDryWet: value },
     }));
-    if (leftDeck.soundId) {
-      getAudioManager().setEffectsDryWet(leftDeck.soundId, value);
+    if (deckA.soundId) {
+      getAudioManager().setEffectsDryWet(deckA.soundId, value);
     }
   },
 
   setRightEffectsDryWet: (value: number) => {
-    const { rightDeck } = get();
+    const { deckB } = get();
     set((state) => ({
-      rightDeck: { ...state.rightDeck, effectsDryWet: value },
+      deckB: { ...state.deckB, effectsDryWet: value },
     }));
-    if (rightDeck.soundId) {
-      getAudioManager().setEffectsDryWet(rightDeck.soundId, value);
+    if (deckB.soundId) {
+      getAudioManager().setEffectsDryWet(deckB.soundId, value);
     }
   },
 });

@@ -45,9 +45,9 @@ function handlePlatformItemDrag({
   }
 
   const platform = getPlatformFromItem(radio);
-  if (platform && (deckId === "left-deck" || deckId === "right-deck")) {
+  if (platform && (deckId === "deck-a" || deckId === "deck-b")) {
     setPendingPlatformItem({
-      deckId: deckId as "left-deck" | "right-deck",
+      deckId: deckId as "deck-a" | "deck-b",
       platform,
     });
   }
@@ -73,7 +73,7 @@ function DjPlayerMobileView({ radios }: DjPlayerMobileViewProps) {
           size="sm"
           variant={mobileTab === "left" ? "default" : "ghost"}
         >
-          Left Deck
+          Deck A
         </Button>
         <Button
           className="w-full"
@@ -89,7 +89,7 @@ function DjPlayerMobileView({ radios }: DjPlayerMobileViewProps) {
           size="sm"
           variant={mobileTab === "right" ? "default" : "ghost"}
         >
-          Right Deck
+          Deck B
         </Button>
       </div>
 
@@ -98,7 +98,7 @@ function DjPlayerMobileView({ radios }: DjPlayerMobileViewProps) {
         <div
           className={cn("h-full", mobileTab === "left" ? "block" : "hidden")}
         >
-          <DjDeck deckId="left-deck" radios={radios} />
+          <DjDeck deckId="deck-a" radios={radios} />
         </div>
         <div
           className={cn("h-full", mobileTab === "mixer" ? "block" : "hidden")}
@@ -108,7 +108,7 @@ function DjPlayerMobileView({ radios }: DjPlayerMobileViewProps) {
         <div
           className={cn("h-full", mobileTab === "right" ? "block" : "hidden")}
         >
-          <DjDeck deckId="right-deck" radios={radios} />
+          <DjDeck deckId="deck-b" radios={radios} />
         </div>
       </div>
     </div>
@@ -122,18 +122,14 @@ type DjPlayerDesktopViewProps = {
 function DjPlayerDesktopView({ radios }: DjPlayerDesktopViewProps) {
   return (
     <div className="grid h-full min-h-0 w-full grid-cols-1 gap-4 lg:grid-cols-3 xl:gap-6">
-      {/* Left Deck */}
-      <DjDeck
-        className="order-2 lg:order-1"
-        deckId="left-deck"
-        radios={radios}
-      />
+      {/* Deck A */}
+      <DjDeck className="order-2 lg:order-1" deckId="deck-a" radios={radios} />
 
       {/* Center Mixer */}
       <DjMixer className="order-1 lg:order-2" radios={radios} />
 
-      {/* Right Deck */}
-      <DjDeck className="order-3" deckId="right-deck" radios={radios} />
+      {/* Deck B */}
+      <DjDeck className="order-3" deckId="deck-b" radios={radios} />
     </div>
   );
 }
@@ -213,9 +209,9 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
   };
 
   const handleRegularRadioDrag = (radio: Radio, deckId: string): void => {
-    if (deckId === "left-deck") {
+    if (deckId === "deck-a") {
       setLeftRadio(radio);
-    } else if (deckId === "right-deck") {
+    } else if (deckId === "deck-b") {
       setRightRadio(radio);
     }
   };

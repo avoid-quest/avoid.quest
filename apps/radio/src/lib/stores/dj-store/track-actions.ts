@@ -43,7 +43,7 @@ export const findNextTrack = (
 const getDeckControls = (state: InternalDjState, deckSide: DeckSide) => {
   const isLeft = deckSide === "left";
   return {
-    deck: isLeft ? state.leftDeck : state.rightDeck,
+    deck: isLeft ? state.deckA : state.deckB,
     setRadio: isLeft ? state.setLeftRadio : state.setRightRadio,
     pause: isLeft ? state.pauseLeft : state.pauseRight,
     play: isLeft ? state.playLeft : state.playRight,

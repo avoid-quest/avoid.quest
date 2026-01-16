@@ -1,23 +1,47 @@
 import type {
+  BandcampItemError,
+  BandcampItemResponse,
   BandcampItemResult,
-  PlatformItemError,
-  PlatformItemResponse,
-} from "@avoid.quest/radio-shared";
+} from "./types.js";
+
+export type {
+  BandcampItemError,
+  BandcampItemResponse,
+  BandcampItemResult,
+  BandcampItemType,
+  BandcampMetadata,
+  BandcampTrackInfo,
+} from "./types.js";
+
 import { load } from "cheerio";
 import { decode } from "html-entities";
+
 import { detectBandcampItemType } from "./detect.js";
 
 export { detectBandcampItemType, isBandcampUrl } from "./detect.js";
 
-/**
- * Get the proxied URL for a Bandcamp stream to avoid CORS issues
- * @param url - The Bandcamp stream URL (typically from bcbits.com domain)
- * @returns The proxied URL or the original URL if it's not a Bandcamp URL
- */
+type BandcampBasicData = {
+  name: string;
+  byArtist: { name: string };
+  image: string;
+  inAlbum?: { name: string };
+  album?: { image: string };
+};
+
+type RawBandcampTrack = {
+  title: string;
+  file?: { "mp3-128": string };
+  duration?: number;
+  track_num?: number;
+};
+
+type BandcampExtraData = {
+  trackinfo?: RawBandcampTrack[];
+};
+
+/** Proxies bcbits.com URLs through the API to avoid CORS issues. */
 export function getProxiedBandcampUrl(url: string): string {
-  // Check if this is a Bandcamp URL (bcbits.com domain)
   if (url.includes("bcbits.com")) {
-    // Use the proxy endpoint to avoid CORS issues
     return `/api/bandcamp-proxy?url=${encodeURIComponent(url)}`;
   }
   return url;
@@ -25,7 +49,7 @@ export function getProxiedBandcampUrl(url: string): string {
 
 const REQUEST_TIMEOUT_MS = 10_000;
 
-function createErrorResponse(message: string): PlatformItemError {
+function createErrorResponse(message: string): BandcampItemError {
   return {
     success: false,
     error: message,
@@ -34,7 +58,7 @@ function createErrorResponse(message: string): PlatformItemError {
 
 export async function getBandcampItem(
   url: string
-): Promise<PlatformItemResponse> {
+): Promise<BandcampItemResponse> {
   try {
     const itemType = detectBandcampItemType(url);
 
@@ -120,28 +144,9 @@ function parseBandcampData(html: string) {
   return { basic, extra };
 }
 
-type BandcampBasicData = {
-  name: string;
-  byArtist: { name: string };
-  image: string;
-  inAlbum?: { name: string };
-  album?: { image: string };
-};
-
-type BandcampExtraData = {
-  trackinfo?: BandcampTrackInfo[];
-};
-
-type BandcampTrackInfo = {
-  title: string;
-  file?: { "mp3-128": string };
-  duration?: number;
-  track_num?: number;
-};
-
 async function getBandcampAlbum(
   url: string
-): Promise<BandcampItemResult | PlatformItemError> {
+): Promise<BandcampItemResult | BandcampItemError> {
   const html = await fetchBandcampPage(url);
   const { basic, extra } = parseBandcampData(html);
 
@@ -149,20 +154,15 @@ async function getBandcampAlbum(
     return createErrorResponse("No tracks found in album");
   }
 
-  const mappedTracks = extra.trackinfo.map(
-    (track: BandcampTrackInfo, index: number) => ({
-      name: track.title,
-      streamUrl: track.file?.["mp3-128"] || "",
-      duration: track.duration,
-      trackNumber: track.track_num || index + 1,
-    })
-  );
-
-  // Filter out tracks without stream URL if necessary, or keep them but they won't play
-  // Bandcamp sometimes has tracks without audio (e.g. hidden or pre-order)
+  const mappedTracks = extra.trackinfo.map((track, index) => ({
+    name: track.title,
+    streamUrl: track.file?.["mp3-128"] || "",
+    duration: track.duration,
+    trackNumber: track.track_num || index + 1,
+  }));
 
   const totalDuration = mappedTracks.reduce(
-    (sum: number, track: { duration?: number }) => sum + (track.duration || 0),
+    (sum, track) => sum + (track.duration || 0),
     0
   );
 
@@ -187,7 +187,7 @@ async function getBandcampAlbum(
 
 async function getBandcampTrack(
   url: string
-): Promise<BandcampItemResult | PlatformItemError> {
+): Promise<BandcampItemResult | BandcampItemError> {
   const html = await fetchBandcampPage(url);
   const { basic, extra } = parseBandcampData(html);
 
@@ -205,7 +205,7 @@ async function getBandcampTrack(
       url,
       name: basic.name,
       artist: basic.byArtist.name,
-      artwork: basic.image || basic.album?.image, // Fallback to album image if track image is missing
+      artwork: basic.image || basic.album?.image,
       albumName: basic.inAlbum?.name,
       duration: trackInfo.duration,
       streamUrl: trackInfo.file["mp3-128"],

@@ -1,10 +1,10 @@
-import type { Platform } from "@avoid.quest/radio-shared";
 import type {
   EffectConfig,
   EffectType,
   FilterConfig,
   Radio,
 } from "@/lib/audio";
+import type { Platform } from "@/lib/platform-types";
 
 // Types
 export type DeckId = "left-deck" | "right-deck";

@@ -1,4 +1,3 @@
-import type { Platform, PlatformItemResponse } from "@avoid.quest/radio-shared";
 import { Button } from "@workspace/ui/components/button";
 import { Input } from "@workspace/ui/components/input";
 import { Label } from "@workspace/ui/components/label";
@@ -12,6 +11,7 @@ import {
   getUrlPlaceholder,
 } from "@/lib/external-url/metadata-helpers";
 import { createPlatformRadio } from "@/lib/external-url/utils";
+import type { Platform, PlatformItemResponse } from "@/lib/platform-types";
 
 type PlatformFormProps = {
   onLoad: (radio: Radio) => void;

@@ -1,4 +1,4 @@
-import type { RadioMetadata, ScrapedOption } from "@avoid.quest/radio-shared";
+import type { RadioMetadata, ScrapedOption } from "@/lib/platform-types";
 
 const CORS_PROXY = "https://api.allorigins.win/raw?url=";
 const FETCH_TIMEOUT = 10_000; // 10 seconds

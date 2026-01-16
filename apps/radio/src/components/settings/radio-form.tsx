@@ -1,4 +1,3 @@
-import type { RadioMetadata } from "@avoid.quest/radio-shared";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "@workspace/ui/components/button";
 import {
@@ -15,6 +14,7 @@ import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import type { Radio } from "@/lib/audio";
 import { db } from "@/lib/db";
+import type { RadioMetadata } from "@/lib/platform-types";
 import { type RadioFormData, radioSchema } from "@/lib/schemas/radio-schema";
 import { RadioFieldPreview } from "./radio-field-preview";
 

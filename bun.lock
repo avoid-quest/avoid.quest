@@ -29,6 +29,7 @@
         "@workspace/ui": "workspace:*",
         "babel-plugin-react-compiler": "^1.0.0",
         "convex": "catalog:",
+        "lucide-react": "catalog:",
         "next": "catalog:",
         "next-themes": "catalog:",
         "react": "catalog:",
@@ -48,7 +49,6 @@
       "version": "0.4.0",
       "dependencies": {
         "@avoid.quest/bandcamp": "workspace:*",
-        "@avoid.quest/radio-shared": "workspace:*",
         "@avoid.quest/soundcloud": "workspace:*",
         "@cloudflare/vite-plugin": "^1.21.0",
         "@dnd-kit/core": "^6.3.1",
@@ -142,18 +142,9 @@
       "name": "@avoid.quest/bandcamp",
       "version": "0.0.1",
       "dependencies": {
-        "@avoid.quest/radio-shared": "workspace:*",
         "cheerio": "^1.1.2",
         "html-entities": "^2.6.0",
       },
-      "devDependencies": {
-        "@workspace/typescript-config": "workspace:*",
-        "typescript": "catalog:",
-      },
-    },
-    "packages/radio-shared": {
-      "name": "@avoid.quest/radio-shared",
-      "version": "0.0.1",
       "devDependencies": {
         "@workspace/typescript-config": "workspace:*",
         "typescript": "catalog:",
@@ -184,9 +175,6 @@
     "packages/soundcloud": {
       "name": "@avoid.quest/soundcloud",
       "version": "0.0.1",
-      "dependencies": {
-        "@avoid.quest/radio-shared": "workspace:*",
-      },
       "devDependencies": {
         "@types/node": "catalog:",
         "@workspace/typescript-config": "workspace:*",
@@ -317,8 +305,6 @@
     "@ast-grep/napi-win32-x64-msvc": ["@ast-grep/napi-win32-x64-msvc@0.40.0", "", { "os": "win32", "cpu": "x64" }, "sha512-Hk2IwfPqMFGZt5SRxsoWmGLxBXxprow4LRp1eG6V8EEiJCNHxZ9ZiEaIc5bNvMDBjHVSnqZAXT22dROhrcSKQg=="],
 
     "@avoid.quest/bandcamp": ["@avoid.quest/bandcamp@workspace:packages/bandcamp"],
-
-    "@avoid.quest/radio-shared": ["@avoid.quest/radio-shared@workspace:packages/radio-shared"],
 
     "@avoid.quest/soundcloud": ["@avoid.quest/soundcloud@workspace:packages/soundcloud"],
 

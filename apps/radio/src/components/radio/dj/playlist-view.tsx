@@ -1,4 +1,3 @@
-import type { PlatformTrack } from "@avoid.quest/radio-shared";
 import { Button } from "@workspace/ui/components/button";
 import { cn } from "@workspace/ui/lib/utils";
 import {
@@ -8,6 +7,7 @@ import {
   PlayIcon,
 } from "lucide-react";
 import { useState } from "react";
+import type { PlatformTrack } from "@/lib/platform-types";
 
 type PlaylistViewProps = {
   tracks: PlatformTrack[];

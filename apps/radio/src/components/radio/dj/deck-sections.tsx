@@ -1,4 +1,3 @@
-import type { PlatformMetadata } from "@avoid.quest/radio-shared";
 import { ScrollArea } from "@workspace/ui/components/scroll-area";
 import {
   Tabs,
@@ -10,6 +9,7 @@ import { useIsMobile } from "@workspace/ui/hooks/use-mobile";
 import { cn } from "@workspace/ui/lib/utils";
 import { EffectChain } from "@/components/audio/effect-chain";
 import type { EffectConfig, EffectType } from "@/lib/audio";
+import type { PlatformMetadata } from "@/lib/platform-types";
 import { PlaylistView } from "./playlist-view";
 
 type DeckSectionsProps = {

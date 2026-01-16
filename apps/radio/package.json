@@ -15,7 +15,6 @@
   },
   "dependencies": {
     "@avoid.quest/bandcamp": "workspace:*",
-    "@avoid.quest/radio-shared": "workspace:*",
     "@avoid.quest/soundcloud": "workspace:*",
     "@cloudflare/vite-plugin": "^1.21.0",
     "@dnd-kit/core": "^6.3.1",

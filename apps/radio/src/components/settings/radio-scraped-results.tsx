@@ -1,4 +1,3 @@
-import type { RadioMetadata, ScrapedOption } from "@avoid.quest/radio-shared";
 import { Button } from "@workspace/ui/components/button";
 import { Input } from "@workspace/ui/components/input";
 import { Label } from "@workspace/ui/components/label";
@@ -9,6 +8,7 @@ import {
 import { Textarea } from "@workspace/ui/components/textarea";
 import { Volume2Icon } from "lucide-react";
 import { useState } from "react";
+import type { RadioMetadata, ScrapedOption } from "@/lib/platform-types";
 
 type RadioScrapedResultsProps = {
   data: RadioMetadata;

@@ -1,4 +1,4 @@
-import type { PlatformMetadata } from "@avoid.quest/radio-shared";
+import type { PlatformMetadata } from "@/lib/platform-types";
 
 /**
  * Radio station/stream configuration

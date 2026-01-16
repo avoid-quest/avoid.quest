@@ -6,7 +6,7 @@ export type {
   PlatformMetadata,
   SoundCloudItemType,
   SoundCloudMetadata,
-} from "@avoid.quest/radio-shared";
+} from "@/lib/platform-types";
 export {
   detectBandcampItemType,
   detectPlatformFromUrl,

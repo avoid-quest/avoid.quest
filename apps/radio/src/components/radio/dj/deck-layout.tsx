@@ -1,4 +1,3 @@
-import type { PlatformMetadata } from "@avoid.quest/radio-shared";
 import { Button } from "@workspace/ui/components/button";
 import { PlayPauseButton } from "@workspace/ui/components/play-pause-button";
 import { Progress } from "@workspace/ui/components/progress";
@@ -14,6 +13,7 @@ import { useIsMobile } from "@workspace/ui/hooks/use-mobile";
 import { cn } from "@workspace/ui/lib/utils";
 import { Link2Icon, Music2Icon, XIcon } from "lucide-react";
 import type { EffectConfig, EffectType, Radio } from "@/lib/audio";
+import type { PlatformMetadata } from "@/lib/platform-types";
 import { RadioNameLink } from "../radio-name-link";
 import { CollapsibleChannelStrip, CompactChannelStrip } from "./channel-strip";
 import { DeckSections } from "./deck-sections";

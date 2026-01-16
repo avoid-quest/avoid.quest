@@ -14,7 +14,6 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@avoid.quest/radio-shared": "workspace:*",
     "cheerio": "^1.1.2",
     "html-entities": "^2.6.0"
   },

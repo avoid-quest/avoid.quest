@@ -13,9 +13,7 @@
     "fix": "bunx ultracite fix",
     "typecheck": "tsc --noEmit"
   },
-  "dependencies": {
-    "@avoid.quest/radio-shared": "workspace:*"
-  },
+  "dependencies": {},
   "devDependencies": {
     "@types/node": "catalog:",
     "@workspace/typescript-config": "workspace:*",

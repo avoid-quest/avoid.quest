@@ -1,4 +1,3 @@
-import type { Platform } from "@avoid.quest/radio-shared";
 import { useDroppable } from "@dnd-kit/core";
 import { Button } from "@workspace/ui/components/button";
 import {
@@ -37,6 +36,7 @@ import { useDeckState } from "@/lib/hooks/use-deck-state";
 import { usePeakLevel } from "@/lib/hooks/use-peak-level";
 import { usePlatformMetadata } from "@/lib/hooks/use-platform-metadata";
 import { useTrackProgress } from "@/lib/hooks/use-track-progress";
+import type { Platform } from "@/lib/platform-types";
 import { useDjStore } from "@/lib/stores/dj-store";
 import { DeckLayout } from "./deck-layout";
 import { DeckSections } from "./deck-sections";

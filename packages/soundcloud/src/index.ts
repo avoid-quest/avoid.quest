@@ -1,36 +1,44 @@
-import type {
-  PlatformItemError,
-  PlatformItemResponse,
-  SoundCloudItemResult,
-  SoundCloudMetadata,
-} from "@avoid.quest/radio-shared";
 import { detectSoundCloudItemType } from "./detect.js";
 import { fetchClientID } from "./fetch-client/index.js";
+import type {
+  SoundCloudItemError,
+  SoundCloudItemResponse,
+  SoundCloudItemResult,
+  SoundCloudMetadata,
+} from "./types.js";
 
 export { detectSoundCloudItemType, isSoundCloudUrl } from "./detect.js";
+export type {
+  SoundCloudItemError,
+  SoundCloudItemResponse,
+  SoundCloudItemResult,
+  SoundCloudItemType,
+  SoundCloudMetadata,
+  SoundCloudTrackInfo,
+} from "./types.js";
 
-/**
- * Get the proxied URL for a SoundCloud stream to avoid CORS issues
- * @param url - The SoundCloud stream URL
- * @returns The proxied URL or the original URL if it's not a SoundCloud URL or already proxied
- */
-export function getProxiedSoundCloudUrl(url: string): string {
-  // Check if this is a SoundCloud stream URL (not already proxied)
-  // SoundCloud stream URLs typically come from CDN domains like cf-media.sndcdn.com
-  // or media.soundcloud.com, but we should only proxy if it's not already a proxy URL
-  if (
+const SOUNDCLOUD_DOMAINS = [
+  "sndcdn.com",
+  "media.soundcloud.com",
+  "soundcloud.com",
+];
+
+function isSoundCloudStreamUrl(url: string): boolean {
+  return (
     !url.startsWith("/api/") &&
-    (url.includes("sndcdn.com") ||
-      url.includes("media.soundcloud.com") ||
-      url.includes("soundcloud.com"))
-  ) {
-    // Use the proxy endpoint to avoid CORS issues
+    SOUNDCLOUD_DOMAINS.some((domain) => url.includes(domain))
+  );
+}
+
+/** Proxies SoundCloud stream URLs to avoid CORS issues */
+export function getProxiedSoundCloudUrl(url: string): string {
+  if (isSoundCloudStreamUrl(url)) {
     return `/api/soundcloud-proxy?url=${encodeURIComponent(url)}`;
   }
   return url;
 }
 
-function createErrorResponse(message: string): PlatformItemError {
+function createErrorResponse(message: string): SoundCloudItemError {
   return {
     success: false,
     error: message,
@@ -39,13 +47,9 @@ function createErrorResponse(message: string): PlatformItemError {
 
 let clientIdCache: Promise<string> | null = null;
 
-async function getClientId(): Promise<string> {
-  if (clientIdCache) {
-    return await clientIdCache;
-  }
-  const promise = fetchClientID();
-  clientIdCache = promise;
-  return await promise;
+function getClientId(): Promise<string> {
+  clientIdCache ??= fetchClientID();
+  return clientIdCache;
 }
 
 async function resolveSoundCloudUrl(url: string, clientId: string) {
@@ -89,7 +93,7 @@ async function getStreamUrl(
 
 export async function getSoundCloudItem(
   url: string
-): Promise<PlatformItemResponse> {
+): Promise<SoundCloudItemResponse> {
   try {
     const itemType = detectSoundCloudItemType(url);
     const clientId = await getClientId();
@@ -119,7 +123,7 @@ async function processTrack(
   data: any,
   url: string,
   clientId: string
-): Promise<SoundCloudItemResult | PlatformItemError> {
+): Promise<SoundCloudItemResult | SoundCloudItemError> {
   const transcoding = data.media?.transcodings?.find(
     // biome-ignore lint/suspicious/noExplicitAny: External API response
     (t: any) => t.format?.protocol === "progressive"
@@ -159,7 +163,7 @@ async function processPlaylist(
   data: any,
   url: string,
   clientId: string
-): Promise<SoundCloudItemResult | PlatformItemError> {
+): Promise<SoundCloudItemResult | SoundCloudItemError> {
   if (!data.tracks || data.tracks.length === 0) {
     return createErrorResponse("No tracks found in playlist");
   }
@@ -169,11 +173,9 @@ async function processPlaylist(
     data.tracks.map(async (track: any) => {
       let fullTrack = track;
 
-      // If track is partial (missing media/transcodings), fetch full details
+      // Fetch full track details if partial (missing transcodings)
       if (!track.media?.transcodings && track.id) {
         try {
-          // Construct the API URL for the track
-          // Note: We use the resolve endpoint with the track's API URL
           const trackApiUrl = `https://api.soundcloud.com/tracks/${track.id}`;
           fullTrack = await resolveSoundCloudUrl(trackApiUrl, clientId);
         } catch {
@@ -216,6 +218,8 @@ async function processPlaylist(
     return createErrorResponse("No playable tracks found in playlist");
   }
 
+  // Safe: we checked validTracks.length > 0 above
+  const firstTrack = validTracks[0]!;
   const metadata: SoundCloudMetadata = {
     platform: "soundcloud",
     itemType: "playlist",
@@ -227,16 +231,12 @@ async function processPlaylist(
     duration: Math.floor(data.duration / 1000),
     trackCount: data.track_count,
     tracks: validTracks,
-    streamUrl: validTracks[0]?.streamUrl,
+    streamUrl: firstTrack.streamUrl,
   };
-
-  if (!validTracks[0]) {
-    return createErrorResponse("No playable tracks found in playlist");
-  }
 
   return {
     success: true,
     metadata,
-    streamUrl: validTracks[0].streamUrl,
+    streamUrl: firstTrack.streamUrl,
   };
 }

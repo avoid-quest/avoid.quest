@@ -12,8 +12,9 @@ import {
   BiquadFilter,
   type BiquadFilterType,
 } from "./effects/biquad-filter.js";
-import { Compressor } from "./effects/compressor.js";
 import { CrusherEffect } from "./effects/crusher.js";
+import { CTAGCompressor } from "./effects/ctag-compressor.js";
+import { Delay } from "./effects/delay.js";
 import { Distortion } from "./effects/distortion.js";
 import { FoldEffect } from "./effects/fold.js";
 import { Limiter } from "./effects/limiter.js";
@@ -394,7 +395,7 @@ class EffectSource {
       case "distortion":
         return new Distortion(this.sampleRate);
       case "compressor":
-        return new Compressor(this.sampleRate);
+        return new CTAGCompressor(this.sampleRate);
       case "crusher":
         return new CrusherEffect(this.sampleRate);
       case "fold":
@@ -405,6 +406,8 @@ class EffectSource {
         return new RevampEffect(this.sampleRate);
       case "tidal":
         return new TidalEffect(this.sampleRate);
+      case "delay":
+        return new Delay(this.sampleRate);
       default:
         return null;
     }
@@ -492,23 +495,42 @@ class EffectSource {
         if (config.bandwidth !== undefined) {
           reverb.setBandwidth(config.bandwidth as number);
         }
+        if (config.inputDiffusion1 !== undefined) {
+          reverb.setInputDiffusion1(config.inputDiffusion1 as number);
+        }
+        if (config.inputDiffusion2 !== undefined) {
+          reverb.setInputDiffusion2(config.inputDiffusion2 as number);
+        }
         if (config.decay !== undefined) {
           reverb.setDecay(config.decay as number);
         }
+        if (config.decayDiffusion1 !== undefined) {
+          reverb.setDecayDiffusion1(config.decayDiffusion1 as number);
+        }
+        if (config.decayDiffusion2 !== undefined) {
+          reverb.setDecayDiffusion2(config.decayDiffusion2 as number);
+        }
         if (config.damping !== undefined) {
           reverb.setDamping(config.damping as number);
+        }
+        if (config.excursionRate !== undefined) {
+          reverb.setExcursionRate(config.excursionRate as number);
+        }
+        if (config.excursionDepth !== undefined) {
+          reverb.setExcursionDepth(config.excursionDepth as number);
         }
         break;
       }
       case "distortion": {
         const dist = processor as Distortion;
         if (config.amount !== undefined) {
-          dist.setAmount(config.amount as number);
+          // Registry uses 0-100, setAmount expects 0-1
+          dist.setAmount((config.amount as number) / 100);
         }
         break;
       }
       case "compressor": {
-        const comp = processor as Compressor;
+        const comp = processor as CTAGCompressor;
         if (config.threshold !== undefined) {
           comp.setThreshold(config.threshold as number);
         }
@@ -516,13 +538,33 @@ class EffectSource {
           comp.setRatio(config.ratio as number);
         }
         if (config.attack !== undefined) {
+          // Attack is in ms in registry
           comp.setAttack(config.attack as number);
         }
         if (config.release !== undefined) {
+          // Release is in ms in registry
           comp.setRelease(config.release as number);
         }
         if (config.knee !== undefined) {
           comp.setKnee(config.knee as number);
+        }
+        if (config.makeup !== undefined) {
+          comp.setMakeup(config.makeup as number);
+        }
+        if (config.mix !== undefined) {
+          comp.setMix(config.mix as number);
+        }
+        if (config.lookahead !== undefined) {
+          comp.setLookahead(config.lookahead as boolean);
+        }
+        if (config.autoAttack !== undefined) {
+          comp.setAutoAttack(config.autoAttack as boolean);
+        }
+        if (config.autoRelease !== undefined) {
+          comp.setAutoRelease(config.autoRelease as boolean);
+        }
+        if (config.autoMakeup !== undefined) {
+          comp.setAutoMakeup(config.autoMakeup as boolean);
         }
         break;
       }
@@ -640,6 +682,16 @@ class EffectSource {
         }
         if (config.lowPassOrder !== undefined) {
           revamp.setLowPassOrder(config.lowPassOrder as number);
+        }
+        break;
+      }
+      case "delay": {
+        const delay = processor as Delay;
+        if (config.delayTime !== undefined) {
+          delay.setDelayTime(config.delayTime as number);
+        }
+        if (config.feedback !== undefined) {
+          delay.setFeedback(config.feedback as number);
         }
         break;
       }

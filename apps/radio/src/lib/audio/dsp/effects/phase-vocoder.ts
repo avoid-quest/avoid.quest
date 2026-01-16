@@ -1,8 +1,12 @@
 /**
- * Phase Vocoder Effect
+ * Varispeed Pitch/Speed Effect
  *
- * Simplified pitch shifting using linear interpolation.
- * Note: This is a placeholder that needs proper FFT/OLA implementation.
+ * Simple speed-based pitch change using linear interpolation.
+ * This is "varispeed" - changing pitch changes tempo proportionally
+ * (like speeding up/slowing down a tape or vinyl record).
+ *
+ * Note: True pitch shifting (changing pitch without tempo change)
+ * requires FFT-based phase vocoder which is not yet implemented.
  */
 
 export class PhaseVocoder {

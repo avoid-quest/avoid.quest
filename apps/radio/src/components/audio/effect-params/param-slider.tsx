@@ -13,6 +13,8 @@ type ParamSliderProps = {
   formatter?: ParamFormatter;
   formatKey?: string;
   defaultValue?: number;
+  /** Tooltip description shown on hover */
+  description?: string;
 };
 
 export function ParamSlider({
@@ -26,6 +28,7 @@ export function ParamSlider({
   formatter,
   formatKey = "default",
   defaultValue,
+  description,
 }: ParamSliderProps) {
   const displayValue = formatter
     ? formatter(value)
@@ -35,7 +38,7 @@ export function ParamSlider({
     defaultValue?.valueOf() !== undefined ? [defaultValue] : undefined;
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-2" title={description}>
       <div className="flex items-center justify-between">
         <Label className="text-xs">{label}</Label>
         <span className="font-mono text-muted-foreground text-xs">

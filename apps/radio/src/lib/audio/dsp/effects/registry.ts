@@ -80,8 +80,9 @@ export const AVAILABLE_EFFECTS: EffectMetadata[] = [
   },
   {
     type: "pitchShifter",
-    name: "Pitch Shifter",
-    description: "Pitch shifting effect using phase vocoder algorithm",
+    name: "Pitch/Speed",
+    description:
+      "Speed-based pitch change (varispeed). Changes tempo proportionally with pitch.",
     defaultConfig: {
       type: "pitchShifter",
       enabled: false,
@@ -141,25 +142,34 @@ export const AVAILABLE_EFFECTS: EffectMetadata[] = [
   {
     type: "compressor",
     name: "Compressor",
-    description: "Dynamic range compressor",
+    description:
+      "Professional dynamics compressor with lookahead and auto attack/release",
     defaultConfig: {
       type: "compressor",
       enabled: false,
-      threshold: -24,
-      ratio: 12,
-      attack: 0.003,
-      release: 0.25,
-      knee: 30,
+      threshold: -10,
+      ratio: 4,
+      attack: 2, // ms
+      release: 140, // ms
+      knee: 6,
+      makeup: 0,
+      mix: 1,
+      lookahead: true,
+      autoAttack: false,
+      autoRelease: false,
+      autoMakeup: false,
       dryWet: 1.0,
       inputGain: 1.0,
       outputGain: 1.0,
     } as Omit<EffectConfig, "id" | "order">,
     parameterRanges: {
-      threshold: { min: -100, max: 0, step: 1 },
-      ratio: { min: 1, max: 20, step: 0.1 },
-      attack: { min: 0, max: 1, step: 0.001 },
-      release: { min: 0, max: 1, step: 0.001 },
-      knee: { min: 0, max: 40, step: 1 },
+      threshold: { min: -60, max: 0, step: 0.5 },
+      ratio: { min: 1, max: 24, step: 0.1 },
+      attack: { min: 0.1, max: 100, step: 0.1 }, // ms
+      release: { min: 10, max: 2000, step: 1 }, // ms
+      knee: { min: 0, max: 24, step: 0.5 },
+      makeup: { min: -12, max: 24, step: 0.5 },
+      mix: { min: 0, max: 1, step: 0.01 },
       dryWet: { min: 0, max: 1, step: 0.01 },
       inputGain: { min: 0, max: 4.0, step: 0.01 },
       outputGain: { min: 0, max: 4.0, step: 0.01 },

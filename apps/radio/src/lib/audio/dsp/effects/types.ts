@@ -79,11 +79,28 @@ export interface DistortionConfig extends BaseEffectConfig {
 
 export interface CompressorConfig extends BaseEffectConfig {
   type: "compressor";
+  /** Threshold in dB (-60 to 0) */
   threshold: number;
+  /** Ratio (1:1 to inf:1, values > 24 become limiter) */
   ratio: number;
+  /** Attack time in ms (0.1 to 100) */
   attack: number;
+  /** Release time in ms (10 to 2000) */
   release: number;
+  /** Knee width in dB (0 to 24) */
   knee: number;
+  /** Makeup gain in dB (-12 to 24) */
+  makeup: number;
+  /** Mix (0 to 1) for parallel compression */
+  mix: number;
+  /** Enable lookahead (5ms delay) */
+  lookahead: boolean;
+  /** Auto attack based on crest factor */
+  autoAttack: boolean;
+  /** Auto release based on crest factor */
+  autoRelease: boolean;
+  /** Auto makeup gain */
+  autoMakeup: boolean;
 }
 
 export interface CrusherConfig extends BaseEffectConfig {

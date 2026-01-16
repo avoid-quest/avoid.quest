@@ -19,6 +19,11 @@ export function useDeckState(deckId: DeckId) {
         effects: deckState.effects,
         filter: deckState.filter,
         soundId: deckState.soundId,
+        // Channel strip state
+        pan: deckState.pan,
+        speed: deckState.speed,
+        channelFilter: deckState.channelFilter,
+        effectsDryWet: deckState.effectsDryWet,
 
         // Actions
         play: isLeft ? state.playLeft : state.playRight,
@@ -27,6 +32,15 @@ export function useDeckState(deckId: DeckId) {
         setMute: isLeft ? state.setLeftMute : state.setRightMute,
         loadTrack: state.loadTrack,
         reset: isLeft ? state.resetLeft : state.resetRight,
+        // Channel strip actions
+        setPan: isLeft ? state.setLeftPan : state.setRightPan,
+        setSpeed: isLeft ? state.setLeftSpeed : state.setRightSpeed,
+        setChannelFilter: isLeft
+          ? state.setLeftChannelFilter
+          : state.setRightChannelFilter,
+        setEffectsDryWet: isLeft
+          ? state.setLeftEffectsDryWet
+          : state.setRightEffectsDryWet,
       };
     })
   );

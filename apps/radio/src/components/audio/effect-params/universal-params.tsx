@@ -16,6 +16,7 @@ export function UniversalParams({ effect, onUpdate }: UniversalParamsProps) {
     <ParamGroup>
       <ParamSlider
         defaultValue={getDefaultValue(defaultConfig, "dryWet")}
+        description="Effect Mix: 0% = dry (bypassed), 100% = fully wet (full effect)"
         formatKey="percentage"
         label="Dry/Wet"
         max={ranges.dryWet?.max ?? 1}

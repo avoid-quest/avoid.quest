@@ -145,6 +145,7 @@ export function ChannelStrip({
 
         {/* FX Dry/Wet */}
         <ChannelControl
+          description="Deck FX Send: Master dry/wet for entire effects chain. 0% = bypass all effects."
           formatValue={(v) => `${Math.round(v * 100)}%`}
           label="FX"
           max={1}
@@ -166,6 +167,8 @@ type ChannelControlProps = {
   step: number;
   onChange: (value: number) => void;
   formatValue: (value: number) => string;
+  /** Tooltip description shown on hover */
+  description?: string;
 };
 
 function ChannelControl({
@@ -176,9 +179,10 @@ function ChannelControl({
   step,
   onChange,
   formatValue,
+  description,
 }: ChannelControlProps) {
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-2" title={description}>
       <span className="w-10 shrink-0 text-right text-[10px] text-muted-foreground uppercase tracking-wider">
         {label}
       </span>
@@ -263,7 +267,10 @@ export function CompactChannelStrip({
           </span>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div
+          className="flex items-center gap-2"
+          title="Deck FX Send: Master dry/wet for entire effects chain"
+        >
           <span className="w-8 text-[9px] text-muted-foreground uppercase">
             FX
           </span>

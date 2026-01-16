@@ -66,6 +66,15 @@ export function DjDeck({ className, deckId, radios = [] }: DjDeckProps) {
     loadTrack,
     soundId,
     reset,
+    // Channel strip state
+    pan,
+    speed,
+    channelFilter,
+    effectsDryWet,
+    setPan,
+    setSpeed,
+    setChannelFilter,
+    setEffectsDryWet,
   } = useDeckState(deckId);
 
   const { currentTrackIndex, metadata } = usePlatformMetadata(radio);
@@ -179,22 +188,30 @@ export function DjDeck({ className, deckId, radios = [] }: DjDeckProps) {
     } else {
       content = (
         <DeckLayout
+          channelFilter={channelFilter}
           currentTrackIndex={currentTrackIndex}
           effects={effects}
+          effectsDryWet={effectsDryWet}
           isBuffering={isBuffering}
           isLoading={isLoading}
           isPlaying={isPlaying}
           metadata={metadata || radio.platformMetadata}
           onAddEffect={addEffect}
           onChangeUrl={onChangeUrl}
+          onChannelFilterChange={setChannelFilter}
           onClear={handleClear}
+          onEffectsDryWetChange={setEffectsDryWet}
+          onPanChange={setPan}
           onPlayPause={handlePlayPause}
           onPlayTrack={handleLoadTrack}
           onRemoveEffect={removeEffect}
           onReorderEffects={reorderEffects}
+          onSpeedChange={setSpeed}
           onUpdateEffect={updateEffect}
           onVolumeChange={handleVolumeChange}
+          pan={pan}
           radio={radio}
+          speed={speed}
           trackProgress={trackProgress}
           volume={volume}
         />

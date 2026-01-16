@@ -15,6 +15,7 @@ import { cn } from "@workspace/ui/lib/utils";
 import { Link2Icon, Music2Icon, XIcon } from "lucide-react";
 import type { EffectConfig, Radio } from "@/lib/audio";
 import { RadioNameLink } from "../radio-name-link";
+import { ChannelStrip, CompactChannelStrip } from "./channel-strip";
 import { DeckSections } from "./deck-sections";
 import { PlaylistSnippet, PlaylistView } from "./playlist-view";
 
@@ -31,8 +32,17 @@ type DeckLayoutProps = {
   };
   currentTrackIndex?: number;
   effects?: EffectConfig[];
+  // Channel strip
+  pan: number;
+  speed: number;
+  channelFilter: number;
+  effectsDryWet: number;
   onPlayPause: () => void;
   onVolumeChange: (value: number[]) => void;
+  onPanChange: (value: number) => void;
+  onSpeedChange: (value: number) => void;
+  onChannelFilterChange: (value: number) => void;
+  onEffectsDryWetChange: (value: number) => void;
   onClear: () => void;
   onChangeUrl?: () => void;
   onAddEffect?: (type: string) => void;
@@ -92,8 +102,16 @@ export function DeckLayout({
   trackProgress,
   currentTrackIndex = 0,
   effects = [],
+  pan,
+  speed,
+  channelFilter,
+  effectsDryWet,
   onPlayPause,
   onVolumeChange,
+  onPanChange,
+  onSpeedChange,
+  onChannelFilterChange,
+  onEffectsDryWetChange,
   onClear,
   onChangeUrl,
   onAddEffect,
@@ -129,9 +147,11 @@ export function DeckLayout({
       <MobileDeckTabs
         artist={artist}
         artworkUrl={artworkUrl}
+        channelFilter={channelFilter}
         className={className}
         currentTrackIndex={currentTrackIndex}
         effects={effects}
+        effectsDryWet={effectsDryWet}
         formatTime={formatTime}
         hasTracklist={hasTracklist}
         isBuffering={isBuffering}
@@ -140,16 +160,22 @@ export function DeckLayout({
         metadata={metadata || null}
         onAddEffect={onAddEffect}
         onChangeUrl={onChangeUrl}
+        onChannelFilterChange={onChannelFilterChange}
         onClear={onClear}
+        onEffectsDryWetChange={onEffectsDryWetChange}
+        onPanChange={onPanChange}
         onPlayPause={onPlayPause}
         onPlayTrack={onPlayTrack}
         onRemoveEffect={onRemoveEffect}
         onReorderEffects={onReorderEffects}
+        onSpeedChange={onSpeedChange}
         onUpdateEffect={onUpdateEffect}
         onVolumeChange={onVolumeChange}
+        pan={pan}
         progress={progress}
         radio={radio}
         shouldShowLive={shouldShowLive}
+        speed={speed}
         title={title}
         trackProgress={trackProgress}
         volume={volume}
@@ -186,6 +212,21 @@ export function DeckLayout({
           isPlaying={isPlaying}
           onPlayPause={onPlayPause}
           onVolumeChange={onVolumeChange}
+          volume={volume}
+        />
+
+        {/* Channel Strip: Pan, Speed, Filter, FX Dry/Wet */}
+        <ChannelStrip
+          channelFilter={channelFilter}
+          className="rounded-lg border bg-muted/30 p-3"
+          effectsDryWet={effectsDryWet}
+          onChannelFilterChange={onChannelFilterChange}
+          onEffectsDryWetChange={onEffectsDryWetChange}
+          onPanChange={onPanChange}
+          onSpeedChange={onSpeedChange}
+          onVolumeChange={(v) => onVolumeChange([v])}
+          pan={pan}
+          speed={speed}
           volume={volume}
         />
 
@@ -421,6 +462,11 @@ type MobileDeckTabsProps = {
   isLoading: boolean;
   isPlaying: boolean;
   metadata: PlatformMetadata | null;
+  // Channel strip
+  pan: number;
+  speed: number;
+  channelFilter: number;
+  effectsDryWet: number;
   onAddEffect?: (type: string) => void;
   onChangeUrl?: () => void;
   onClear: () => void;
@@ -430,6 +476,10 @@ type MobileDeckTabsProps = {
   onReorderEffects?: (effectIds: string[]) => void;
   onUpdateEffect?: (effectId: string, config: Partial<EffectConfig>) => void;
   onVolumeChange: (value: number[]) => void;
+  onPanChange: (value: number) => void;
+  onSpeedChange: (value: number) => void;
+  onChannelFilterChange: (value: number) => void;
+  onEffectsDryWetChange: (value: number) => void;
   progress: number;
   radio: Radio;
   shouldShowLive: boolean;
@@ -453,6 +503,10 @@ function MobileDeckTabs({
   isLoading,
   isPlaying,
   metadata,
+  pan,
+  speed: _speed, // Not used in compact mobile strip
+  channelFilter: _channelFilter, // Not used in compact mobile strip
+  effectsDryWet,
   onAddEffect,
   onChangeUrl,
   onClear,
@@ -462,6 +516,10 @@ function MobileDeckTabs({
   onReorderEffects,
   onUpdateEffect,
   onVolumeChange,
+  onPanChange,
+  onSpeedChange: _onSpeedChange, // Not used in compact mobile strip
+  onChannelFilterChange: _onChannelFilterChange, // Not used in compact mobile strip
+  onEffectsDryWetChange,
   progress,
   radio,
   shouldShowLive,
@@ -512,6 +570,17 @@ function MobileDeckTabs({
               isPlaying={isPlaying}
               onPlayPause={onPlayPause}
               onVolumeChange={onVolumeChange}
+              volume={volume}
+            />
+
+            {/* Compact Channel Strip for mobile */}
+            <CompactChannelStrip
+              className="rounded-lg border bg-muted/30 p-2"
+              effectsDryWet={effectsDryWet}
+              onEffectsDryWetChange={onEffectsDryWetChange}
+              onPanChange={onPanChange}
+              onVolumeChange={(v) => onVolumeChange([v])}
+              pan={pan}
               volume={volume}
             />
 

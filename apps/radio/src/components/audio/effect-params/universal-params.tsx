@@ -1,6 +1,16 @@
 import { type EffectConfig, getEffectMetadata } from "@/lib/audio";
 import { ParamGroup, ParamSlider } from "./";
-import { getDefaultValue } from "./utils";
+
+function getDefaultValue(
+  defaultConfig: Omit<EffectConfig, "id" | "order"> | undefined,
+  key: string
+): number | undefined {
+  if (!defaultConfig) {
+    return undefined;
+  }
+  const value = (defaultConfig as Record<string, unknown>)[key];
+  return typeof value === "number" ? value : undefined;
+}
 
 type UniversalParamsProps = {
   effect: EffectConfig;

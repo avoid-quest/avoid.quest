@@ -4,6 +4,9 @@
  * Real-time audio analysis displays for DJ mode.
  */
 
+export { CompressorCanvas } from "./compressor-canvas.js";
+export { EffectVisualization } from "./effect-visualization.js";
+export { EQCanvas } from "./eq-canvas.js";
 export { LevelMeterDisplay, type LevelMeterProps } from "./level-meter.js";
 export {
   SpectrumDisplay,

@@ -26,6 +26,14 @@ export {
   type EffectMetadata,
   getEffectMetadata,
 } from "./dsp/effects/registry.js";
+// DSP effect schema (declarative params)
+export {
+  EFFECT_SCHEMAS,
+  type EffectSchema,
+  getEffectSchema,
+  type ParamDef,
+  type VisualizationType,
+} from "./dsp/effects/schema.js";
 // DSP types (effect configs)
 export type {
   BaseEffectConfig,

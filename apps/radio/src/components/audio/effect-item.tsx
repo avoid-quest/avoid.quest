@@ -17,6 +17,7 @@ import {
 import { type EffectConfig, getEffectMetadata } from "@/lib/audio";
 import { EFFECT_ICONS } from "./effect-constants";
 import { EffectParams } from "./effect-params/effect-params";
+import { EffectVisualization } from "./visualizations/effect-visualization";
 
 type EffectItemProps = {
   effect: EffectConfig;
@@ -167,7 +168,8 @@ export function EffectItem({
       </CardHeader>
 
       {isExpanded.valueOf() && (
-        <CardContent className="border-t bg-muted/30 pt-4 pb-4">
+        <CardContent className="space-y-4 border-t bg-muted/30 pt-4 pb-4">
+          <EffectVisualization effect={effect} />
           <EffectParams effect={effect} onUpdate={onUpdate} />
         </CardContent>
       )}

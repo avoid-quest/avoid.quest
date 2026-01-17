@@ -138,7 +138,7 @@ export function RadioForm({
                   htmlFor={field.name}
                 >
                   Name
-                  {autoFilledFields.name?.valueOf() && (
+                  {autoFilledFields.name && (
                     <div className="flex items-center gap-1 text-primary text-xs">
                       <CheckCircleIcon className="size-3" />
                       Auto-filled
@@ -151,7 +151,7 @@ export function RadioForm({
                   placeholder="Radio station name"
                   {...field}
                 />
-                {fieldState.invalid.valueOf() && (
+                {fieldState.invalid && (
                   <FieldError errors={[fieldState.error]} />
                 )}
               </Field>
@@ -168,7 +168,7 @@ export function RadioForm({
                   htmlFor={field.name}
                 >
                   Stream URL
-                  {autoFilledFields.streamUrl?.valueOf() && (
+                  {autoFilledFields.streamUrl && (
                     <div className="flex items-center gap-1 text-primary text-xs">
                       <CheckCircleIcon className="size-3" />
                       Auto-filled
@@ -181,7 +181,7 @@ export function RadioForm({
                   placeholder="https://example.com/stream.mp3"
                   {...field}
                 />
-                {fieldState.invalid.valueOf() && (
+                {fieldState.invalid && (
                   <FieldError errors={[fieldState.error]} />
                 )}
               </Field>
@@ -198,7 +198,7 @@ export function RadioForm({
                   htmlFor={field.name}
                 >
                   Logo URL
-                  {autoFilledFields.logoUrl?.valueOf() && (
+                  {autoFilledFields.logoUrl && (
                     <div className="flex items-center gap-1 text-primary text-xs">
                       <CheckCircleIcon className="size-3" />
                       Auto-filled
@@ -211,7 +211,7 @@ export function RadioForm({
                   placeholder="https://example.com/logo.png"
                   {...field}
                 />
-                {fieldState.invalid.valueOf() && (
+                {fieldState.invalid && (
                   <FieldError errors={[fieldState.error]} />
                 )}
               </Field>
@@ -228,7 +228,7 @@ export function RadioForm({
                   htmlFor={field.name}
                 >
                   Description
-                  {autoFilledFields.description?.valueOf() && (
+                  {autoFilledFields.description && (
                     <div className="flex items-center gap-1 text-primary text-xs">
                       <CheckCircleIcon className="size-3" />
                       Auto-filled
@@ -242,7 +242,7 @@ export function RadioForm({
                   placeholder="Radio station description"
                   {...field}
                 />
-                {fieldState.invalid.valueOf() && (
+                {fieldState.invalid && (
                   <FieldError errors={[fieldState.error]} />
                 )}
               </Field>
@@ -261,7 +261,7 @@ export function RadioForm({
                   placeholder="https://example.com"
                   {...field}
                 />
-                {fieldState.invalid.valueOf() && (
+                {fieldState.invalid && (
                   <FieldError errors={[fieldState.error]} />
                 )}
               </Field>
@@ -269,7 +269,7 @@ export function RadioForm({
           />
         </FieldGroup>
       </FieldSet>
-      {scrapedData?.valueOf() && scrapedData.missingFields.length > 0 && (
+      {scrapedData && scrapedData.missingFields.length > 0 && (
         <div className="space-y-2 border-t pt-4">
           <h4 className="font-medium text-amber-600 text-sm">
             Missing Required Fields

@@ -369,7 +369,7 @@ function DeckHeader({ deckId, radio, onReset }: DeckHeaderProps) {
               <MoreHorizontalIcon className="size-4" />
             </Button>
           </DropdownMenuTrigger>
-          {radio?.valueOf() && (
+          {radio && (
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={handleCopyStreamLink}>
                 <CopyIcon className="mr-2 size-4" />

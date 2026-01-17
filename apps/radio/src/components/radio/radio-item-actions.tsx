@@ -121,7 +121,7 @@ export function RadioItemActions({
           Edit
         </DropdownMenuItem>
 
-        {onToggle?.valueOf() && (
+        {onToggle && (
           <DropdownMenuItem disabled={isUpdating} onClick={handleToggle}>
             {radio.enabled ? (
               <>

@@ -138,10 +138,6 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
     setDeleteConfirm(radio);
   };
 
-  const handleToggleRadio = async (_radio: Radio, _enabled: boolean) => {
-    // This will be handled by RadioItemActions component
-  };
-
   const confirmDelete = () => {
     if (!deleteConfirm?.id) {
       return;
@@ -204,7 +200,7 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
           </div>
         </CardHeader>
         <CardContent className="flex min-h-0 flex-col p-0">
-          {radios?.valueOf() && radios.length > 0 ? (
+          {radios && radios.length > 0 ? (
             <ItemGroup className="flex-1 overflow-y-auto py-4">
               {radios.map((radio) => (
                 <Item
@@ -235,7 +231,6 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
                     <RadioItemActions
                       onDelete={handleDeleteRadio}
                       onEdit={handleEditRadio}
-                      onToggle={handleToggleRadio}
                       radio={radio}
                     />
                   </ItemActions>
@@ -303,11 +298,7 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
               isPlaying={isPlaying}
               onClick={handlePlayPause}
               size="sm"
-              variant={
-                isPlaying.valueOf() && !isLoading.valueOf()
-                  ? "outline"
-                  : "default"
-              }
+              variant={isPlaying && !isLoading ? "outline" : "default"}
             />
 
             {/* Volume Controls - Flex row on mobile, full width on desktop */}
@@ -349,7 +340,7 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
       />
 
       {/* Delete Confirmation Dialog */}
-      {deleteConfirm?.valueOf() && (
+      {deleteConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="max-w-md rounded-lg border bg-background p-6">
             <h3 className="mb-2 font-semibold text-lg">Delete Radio Station</h3>

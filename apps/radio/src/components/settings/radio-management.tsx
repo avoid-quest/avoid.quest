@@ -125,12 +125,7 @@ function SortableRadioItem({
 }
 
 export function RadioManagement() {
-  const { data: radioRecords } = useAllRadios();
-  // Map RadioRecord[] to Radio[] - use string IDs directly
-  const radios = radioRecords?.map((r) => ({
-    ...r,
-    id: r.id,
-  }));
+  const { data: radios } = useAllRadios();
   const [isUpdating, setIsUpdating] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogMode, setDialogMode] = useState<"create" | "edit">("create");
@@ -298,7 +293,7 @@ export function RadioManagement() {
       />
 
       {/* Delete Confirmation Dialog */}
-      {deleteConfirm?.valueOf() && (
+      {deleteConfirm && (
         <Dialog
           onOpenChange={() => setDeleteConfirm(null)}
           open={!!deleteConfirm}

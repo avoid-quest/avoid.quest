@@ -84,8 +84,8 @@ export const generateShareUrl = (): string => {
     };
 
     const jsonString = JSON.stringify(exportData);
-    const compressed = LZString.compress(jsonString);
-    const base64 = LZString.compressToBase64(compressed);
+    // Use compressToBase64 directly - it handles both compression and base64 encoding
+    const base64 = LZString.compressToBase64(jsonString);
 
     // Generate URL pointing to the import page
     const baseUrl = window.location.origin;
@@ -178,13 +178,8 @@ export const importFromUrl = (url: string): DatabaseExport => {
     const base64Data = decodeURIComponent(
       fragment.substring(DATA_FRAGMENT_LENGTH)
     );
-    const compressed = LZString.decompressFromBase64(base64Data);
-
-    if (!compressed) {
-      throw new Error("Failed to decompress data");
-    }
-
-    const jsonString = LZString.decompress(compressed);
+    // decompressFromBase64 returns the original string directly (not compressed data)
+    const jsonString = LZString.decompressFromBase64(base64Data);
 
     if (!jsonString) {
       throw new Error("Failed to decompress data");

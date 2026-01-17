@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import {
   loadTrack,
   pauseDeckA,
@@ -19,7 +20,7 @@ import {
   setDeckBSpeed,
   setDeckBVolume,
 } from "@/lib/dj-actions";
-import { useDeckA, useDeckB } from "@/lib/hooks/use-dj-state";
+import { type DeckState, useDeckA, useDeckB } from "@/lib/hooks/use-dj-state";
 import type { DeckId } from "@/lib/stores/dj-runtime-store";
 
 const DEFAULT_FILTER = {
@@ -54,15 +55,37 @@ const deckBActions = {
   setEffectsDryWet: setDeckBEffectsDryWet,
 };
 
-export function useDeckState(deckId: DeckId) {
-  const isLeft = deckId === "deck-a";
-  const deckA = useDeckA();
-  const deckB = useDeckB();
-  const deckState = isLeft ? deckA : deckB;
-  const actions = isLeft ? deckAActions : deckBActions;
+type DeckStateResult = {
+  radio: DeckState["radio"];
+  isPlaying: boolean;
+  isLoading: boolean;
+  isBuffering: boolean;
+  volume: number;
+  muted: boolean;
+  effects: DeckState["effects"];
+  filter: DeckState["filter"];
+  soundId: string | null;
+  pan: number;
+  speed: number;
+  channelFilter: number;
+  effectsDryWet: number;
+  play: typeof playDeckA;
+  pause: typeof pauseDeckA;
+  setVolume: typeof setDeckAVolume;
+  setMute: typeof setDeckAMute;
+  reset: typeof resetDeckA;
+  setPan: typeof setDeckAPan;
+  setSpeed: typeof setDeckASpeed;
+  setChannelFilter: typeof setDeckAChannelFilter;
+  setEffectsDryWet: typeof setDeckAEffectsDryWet;
+  loadTrack: typeof loadTrack;
+};
 
+function createDeckStateResult(
+  deckState: DeckState | null,
+  actions: typeof deckAActions
+): DeckStateResult {
   return {
-    // State
     radio: deckState?.radio ?? null,
     isPlaying: deckState?.isPlaying ?? false,
     isLoading: deckState?.isLoading ?? false,
@@ -72,14 +95,43 @@ export function useDeckState(deckId: DeckId) {
     effects: deckState?.effects ?? [],
     filter: deckState?.filter ?? DEFAULT_FILTER,
     soundId: deckState?.soundId ?? null,
-    // Channel strip state
     pan: deckState?.pan ?? 0,
     speed: deckState?.speed ?? 1,
     channelFilter: deckState?.channelFilter ?? 0,
     effectsDryWet: deckState?.effectsDryWet ?? 1,
-
-    // Actions
     ...actions,
     loadTrack,
   };
+}
+
+/**
+ * Hook for Deck A state only - subscribes only to Deck A
+ */
+export function useDeckAState(): DeckStateResult {
+  const deckState = useDeckA();
+  return useMemo(
+    () => createDeckStateResult(deckState, deckAActions),
+    [deckState]
+  );
+}
+
+/**
+ * Hook for Deck B state only - subscribes only to Deck B
+ */
+export function useDeckBState(): DeckStateResult {
+  const deckState = useDeckB();
+  return useMemo(
+    () => createDeckStateResult(deckState, deckBActions),
+    [deckState]
+  );
+}
+
+/**
+ * Hook for deck state by ID - prefer useDeckAState/useDeckBState for better performance
+ * @deprecated Use useDeckAState() or useDeckBState() directly to avoid subscribing to both decks
+ */
+export function useDeckState(deckId: DeckId): DeckStateResult {
+  const deckAState = useDeckAState();
+  const deckBState = useDeckBState();
+  return deckId === "deck-a" ? deckAState : deckBState;
 }

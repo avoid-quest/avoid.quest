@@ -101,83 +101,76 @@ export function useDjError() {
   return useStore(djRuntimeStore, (state) => state.error);
 }
 
-// Deck runtime state setters
-export function setDeckARuntimeState(
+// Generic deck runtime state setter
+function setDeckRuntimeState(
+  deck: "deckA" | "deckB",
   updater: (state: DeckRuntimeState) => Partial<DeckRuntimeState>
 ) {
   djRuntimeStore.setState((state) => ({
     ...state,
-    deckA: { ...state.deckA, ...updater(state.deckA) },
+    [deck]: { ...state[deck], ...updater(state[deck]) },
   }));
+}
+
+// Generic deck property setter
+function setDeckProperty<K extends keyof DeckRuntimeState>(
+  deck: "deckA" | "deckB",
+  key: K,
+  value: DeckRuntimeState[K]
+) {
+  djRuntimeStore.setState((state) => ({
+    ...state,
+    [deck]: { ...state[deck], [key]: value },
+  }));
+}
+
+// Deck runtime state setters
+export function setDeckARuntimeState(
+  updater: (state: DeckRuntimeState) => Partial<DeckRuntimeState>
+) {
+  setDeckRuntimeState("deckA", updater);
 }
 
 export function setDeckBRuntimeState(
   updater: (state: DeckRuntimeState) => Partial<DeckRuntimeState>
 ) {
-  djRuntimeStore.setState((state) => ({
-    ...state,
-    deckB: { ...state.deckB, ...updater(state.deckB) },
-  }));
+  setDeckRuntimeState("deckB", updater);
 }
 
 // Set deck soundId
 export function setDeckASoundId(soundId: string | null) {
-  djRuntimeStore.setState((state) => ({
-    ...state,
-    deckA: { ...state.deckA, soundId },
-  }));
+  setDeckProperty("deckA", "soundId", soundId);
 }
 
 export function setDeckBSoundId(soundId: string | null) {
-  djRuntimeStore.setState((state) => ({
-    ...state,
-    deckB: { ...state.deckB, soundId },
-  }));
+  setDeckProperty("deckB", "soundId", soundId);
 }
 
 // Set deck playing state
 export function setDeckAPlaying(isPlaying: boolean) {
-  djRuntimeStore.setState((state) => ({
-    ...state,
-    deckA: { ...state.deckA, isPlaying },
-  }));
+  setDeckProperty("deckA", "isPlaying", isPlaying);
 }
 
 export function setDeckBPlaying(isPlaying: boolean) {
-  djRuntimeStore.setState((state) => ({
-    ...state,
-    deckB: { ...state.deckB, isPlaying },
-  }));
+  setDeckProperty("deckB", "isPlaying", isPlaying);
 }
 
 // Set deck loading state
 export function setDeckALoading(isLoading: boolean) {
-  djRuntimeStore.setState((state) => ({
-    ...state,
-    deckA: { ...state.deckA, isLoading },
-  }));
+  setDeckProperty("deckA", "isLoading", isLoading);
 }
 
 export function setDeckBLoading(isLoading: boolean) {
-  djRuntimeStore.setState((state) => ({
-    ...state,
-    deckB: { ...state.deckB, isLoading },
-  }));
+  setDeckProperty("deckB", "isLoading", isLoading);
 }
 
 // Set deck buffering state
 export function setDeckABuffering(isBuffering: boolean) {
-  djRuntimeStore.setState((state) => ({
-    ...state,
-    deckA: { ...state.deckA, isBuffering },
-  }));
+  setDeckProperty("deckA", "isBuffering", isBuffering);
 }
 
 export function setDeckBBuffering(isBuffering: boolean) {
-  djRuntimeStore.setState((state) => ({
-    ...state,
-    deckB: { ...state.deckB, isBuffering },
-  }));
+  setDeckProperty("deckB", "isBuffering", isBuffering);
 }
 
 // UI state setters

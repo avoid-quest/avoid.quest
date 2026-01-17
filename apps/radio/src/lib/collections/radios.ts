@@ -4,12 +4,7 @@ import {
 } from "@tanstack/react-db";
 import { z } from "zod";
 import { radios as defaultRadios } from "../const";
-
-// Use a loose schema for platformMetadata since it comes from external APIs
-// and the full types (BandcampMetadata | SoundCloudMetadata) are complex unions
-const platformMetadataSchema = z
-  .custom<import("@/lib/platform-types").PlatformMetadata>()
-  .optional();
+import { platformMetadataSchema } from "./schemas";
 
 const radioSchema = z.object({
   id: z.string(),

@@ -9,15 +9,16 @@ const SETTINGS_ID = "app-settings";
  * Components using this hook must be wrapped in <ClientOnly>.
  */
 export function useSettings() {
-  const { data, ...rest } = useLiveQuery((q) =>
+  const result = useLiveQuery((q) =>
     q
       .from({ settings: settingsCollection })
       .where(({ settings }) => eq(settings.id, SETTINGS_ID))
   );
 
+  // Return only the properties we need to preserve TanStack DB's tracked property optimization
   return {
-    ...rest,
-    data: data?.[0] as SettingsRecord | undefined,
+    data: result.data?.[0] as SettingsRecord | undefined,
+    status: result.status,
   };
 }
 

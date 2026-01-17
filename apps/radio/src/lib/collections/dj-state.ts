@@ -3,11 +3,7 @@ import {
   localStorageCollectionOptions,
 } from "@tanstack/react-db";
 import { z } from "zod";
-
-// Use a loose schema for platformMetadata since it comes from external APIs
-const platformMetadataSchema = z
-  .custom<import("@/lib/platform-types").PlatformMetadata>()
-  .optional();
+import { platformMetadataSchema } from "./schemas";
 
 const radioSchema = z
   .object({

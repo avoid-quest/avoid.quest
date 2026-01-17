@@ -7,9 +7,6 @@ import {
   mixerCollection,
   resetAllDjState as resetAllDjStateDb,
   resetDeck as resetDeckDb,
-  updateDeckA as updateDeckADb,
-  updateDeckB as updateDeckBDb,
-  updateMixer as updateMixerDb,
 } from "@/lib/collections";
 import type { Platform } from "@/lib/platform-types";
 import {
@@ -46,82 +43,72 @@ export type DeckState = {
   effectsDryWet: number;
 };
 
+// Generic hook to get deck persisted state from DB
+function useDeckPersisted(deckId: string): DeckRecord | undefined {
+  const result = useLiveQuery((q) =>
+    q.from({ deck: deckCollection }).where(({ deck }) => eq(deck.id, deckId))
+  );
+  return result.data?.[0] as DeckRecord | undefined;
+}
+
 // Hook to get Deck A persisted state from DB
 export function useDeckAPersisted(): DeckRecord | undefined {
-  const { data } = useLiveQuery((q) =>
-    q.from({ deck: deckCollection }).where(({ deck }) => eq(deck.id, DECK_A_ID))
-  );
-  return data?.[0] as DeckRecord | undefined;
+  return useDeckPersisted(DECK_A_ID);
 }
 
 // Hook to get Deck B persisted state from DB
 export function useDeckBPersisted(): DeckRecord | undefined {
-  const { data } = useLiveQuery((q) =>
-    q.from({ deck: deckCollection }).where(({ deck }) => eq(deck.id, DECK_B_ID))
-  );
-  return data?.[0] as DeckRecord | undefined;
+  return useDeckPersisted(DECK_B_ID);
 }
 
 // Hook to get mixer state from DB
 export function useMixer(): MixerRecord | undefined {
-  const { data } = useLiveQuery((q) =>
+  const result = useLiveQuery((q) =>
     q
       .from({ mixer: mixerCollection })
       .where(({ mixer }) => eq(mixer.id, MIXER_ID))
   );
-  return data?.[0] as MixerRecord | undefined;
+  return result.data?.[0] as MixerRecord | undefined;
+}
+
+// Helper to combine persisted and runtime state into DeckState
+function combineDeckState(
+  persisted: DeckRecord | undefined,
+  runtime: ReturnType<typeof useDeckARuntimeState>
+): DeckState | null {
+  if (!persisted) {
+    return null;
+  }
+
+  return {
+    radio: persisted.radio as Radio | null,
+    soundId: runtime.soundId,
+    isPlaying: runtime.isPlaying,
+    isLoading: runtime.isLoading,
+    isBuffering: runtime.isBuffering,
+    volume: persisted.volume,
+    muted: persisted.muted,
+    pan: persisted.pan,
+    speed: persisted.speed,
+    channelFilter: persisted.channelFilter,
+    effects: persisted.effects as unknown as EffectConfig[],
+    filter: persisted.filter as FilterConfig,
+    effectsDryWet: persisted.effectsDryWet,
+  };
 }
 
 // Combined Deck A state (persisted + runtime)
 export function useDeckA(): DeckState | null {
   const persisted = useDeckAPersisted();
   const runtime = useDeckARuntimeState();
-
-  if (!persisted) {
-    return null;
-  }
-
-  return {
-    radio: persisted.radio as Radio | null,
-    soundId: runtime.soundId,
-    isPlaying: runtime.isPlaying,
-    isLoading: runtime.isLoading,
-    isBuffering: runtime.isBuffering,
-    volume: persisted.volume,
-    muted: persisted.muted,
-    pan: persisted.pan,
-    speed: persisted.speed,
-    channelFilter: persisted.channelFilter,
-    effects: persisted.effects as unknown as EffectConfig[],
-    filter: persisted.filter as FilterConfig,
-    effectsDryWet: persisted.effectsDryWet,
-  };
+  return combineDeckState(persisted, runtime);
 }
 
 // Combined Deck B state (persisted + runtime)
 export function useDeckB(): DeckState | null {
   const persisted = useDeckBPersisted();
   const runtime = useDeckBRuntimeState();
-
-  if (!persisted) {
-    return null;
-  }
-
-  return {
-    radio: persisted.radio as Radio | null,
-    soundId: runtime.soundId,
-    isPlaying: runtime.isPlaying,
-    isLoading: runtime.isLoading,
-    isBuffering: runtime.isBuffering,
-    volume: persisted.volume,
-    muted: persisted.muted,
-    pan: persisted.pan,
-    speed: persisted.speed,
-    channelFilter: persisted.channelFilter,
-    effects: persisted.effects as unknown as EffectConfig[],
-    filter: persisted.filter as FilterConfig,
-    effectsDryWet: persisted.effectsDryWet,
-  };
+  return combineDeckState(persisted, runtime);
 }
 
 // Get both decks
@@ -144,224 +131,9 @@ export {
   usePendingPlatformItem,
 } from "@/lib/stores/dj-runtime-store";
 
-// Actions for updating persisted state (writes to DB collections)
-
-// Deck A volume
-export function setDeckAVolume(volume: number) {
-  updateDeckADb((draft) => {
-    draft.volume = volume;
-  });
-}
-
-// Deck B volume
-export function setDeckBVolume(volume: number) {
-  updateDeckBDb((draft) => {
-    draft.volume = volume;
-  });
-}
-
-// Deck A mute
-export function setDeckAMute(muted: boolean) {
-  updateDeckADb((draft) => {
-    draft.muted = muted;
-  });
-}
-
-// Deck B mute
-export function setDeckBMute(muted: boolean) {
-  updateDeckBDb((draft) => {
-    draft.muted = muted;
-  });
-}
-
-// Deck A pan
-export function setDeckAPan(pan: number) {
-  updateDeckADb((draft) => {
-    draft.pan = pan;
-  });
-}
-
-// Deck B pan
-export function setDeckBPan(pan: number) {
-  updateDeckBDb((draft) => {
-    draft.pan = pan;
-  });
-}
-
-// Deck A speed
-export function setDeckASpeed(speed: number) {
-  updateDeckADb((draft) => {
-    draft.speed = speed;
-  });
-}
-
-// Deck B speed
-export function setDeckBSpeed(speed: number) {
-  updateDeckBDb((draft) => {
-    draft.speed = speed;
-  });
-}
-
-// Deck A channel filter
-export function setDeckAChannelFilter(value: number) {
-  updateDeckADb((draft) => {
-    draft.channelFilter = value;
-  });
-}
-
-// Deck B channel filter
-export function setDeckBChannelFilter(value: number) {
-  updateDeckBDb((draft) => {
-    draft.channelFilter = value;
-  });
-}
-
-// Deck A effects dry/wet
-export function setDeckAEffectsDryWet(value: number) {
-  updateDeckADb((draft) => {
-    draft.effectsDryWet = value;
-  });
-}
-
-// Deck B effects dry/wet
-export function setDeckBEffectsDryWet(value: number) {
-  updateDeckBDb((draft) => {
-    draft.effectsDryWet = value;
-  });
-}
-
-// Deck A filter
-export function updateDeckAFilter(filter: FilterConfig) {
-  updateDeckADb((draft) => {
-    draft.filter = filter;
-  });
-}
-
-// Deck B filter
-export function updateDeckBFilter(filter: FilterConfig) {
-  updateDeckBDb((draft) => {
-    draft.filter = filter;
-  });
-}
-
-// Deck A effects
-export function addDeckAEffect(effect: EffectConfig) {
-  updateDeckADb((draft) => {
-    (draft.effects as unknown as EffectConfig[]).push(effect);
-  });
-}
-
-export function updateDeckAEffect(
-  effectId: string,
-  config: Partial<EffectConfig>
-) {
-  updateDeckADb((draft) => {
-    const effects = draft.effects as unknown as EffectConfig[];
-    const idx = effects.findIndex((e) => e.id === effectId);
-    if (idx !== -1) {
-      const effect = effects[idx];
-      if (effect) {
-        effects[idx] = { ...effect, ...config } as EffectConfig;
-      }
-    }
-  });
-}
-
-export function removeDeckAEffect(effectId: string) {
-  updateDeckADb((draft) => {
-    const effects = draft.effects as unknown as EffectConfig[];
-    draft.effects = effects.filter(
-      (e) => e.id !== effectId
-    ) as unknown as typeof draft.effects;
-  });
-}
-
-export function reorderDeckAEffects(effectIds: string[]) {
-  updateDeckADb((draft) => {
-    const effects = draft.effects as unknown as EffectConfig[];
-    const newEffects: EffectConfig[] = [];
-    for (const id of effectIds) {
-      const effect = effects.find((e) => e.id === id);
-      if (effect) {
-        newEffects.push(effect);
-      }
-    }
-    draft.effects = newEffects as unknown as typeof draft.effects;
-  });
-}
-
-// Deck B effects
-export function addDeckBEffect(effect: EffectConfig) {
-  updateDeckBDb((draft) => {
-    (draft.effects as unknown as EffectConfig[]).push(effect);
-  });
-}
-
-export function updateDeckBEffect(
-  effectId: string,
-  config: Partial<EffectConfig>
-) {
-  updateDeckBDb((draft) => {
-    const effects = draft.effects as unknown as EffectConfig[];
-    const idx = effects.findIndex((e) => e.id === effectId);
-    if (idx !== -1) {
-      const effect = effects[idx];
-      if (effect) {
-        effects[idx] = { ...effect, ...config } as EffectConfig;
-      }
-    }
-  });
-}
-
-export function removeDeckBEffect(effectId: string) {
-  updateDeckBDb((draft) => {
-    const effects = draft.effects as unknown as EffectConfig[];
-    draft.effects = effects.filter(
-      (e) => e.id !== effectId
-    ) as unknown as typeof draft.effects;
-  });
-}
-
-export function reorderDeckBEffects(effectIds: string[]) {
-  updateDeckBDb((draft) => {
-    const effects = draft.effects as unknown as EffectConfig[];
-    const newEffects: EffectConfig[] = [];
-    for (const id of effectIds) {
-      const effect = effects.find((e) => e.id === id);
-      if (effect) {
-        newEffects.push(effect);
-      }
-    }
-    draft.effects = newEffects as unknown as typeof draft.effects;
-  });
-}
-
-// Deck A radio (persisted)
-export function setDeckARadio(radio: Radio | null) {
-  updateDeckADb((draft) => {
-    draft.radio = radio;
-  });
-}
-
-// Deck B radio (persisted)
-export function setDeckBRadio(radio: Radio | null) {
-  updateDeckBDb((draft) => {
-    draft.radio = radio;
-  });
-}
-
-// Mixer controls
-export function setCrossfadePosition(position: number) {
-  updateMixerDb((draft) => {
-    draft.crossfadePosition = position;
-  });
-}
-
-export function setMasterVolume(volume: number) {
-  updateMixerDb((draft) => {
-    draft.masterVolume = volume;
-  });
-}
+// NOTE: All deck/mixer action functions (setDeckAVolume, setDeckBVolume, etc.)
+// should be imported from "@/lib/dj-actions" which properly syncs with the audio manager.
+// The functions below are UI-only actions that write to the runtime store.
 
 // UI actions (write to runtime store)
 export function setActiveDragRadio(radio: Radio | null) {
@@ -404,55 +176,42 @@ export function resetAllDjState() {
   resetAllDjRuntime();
 }
 
-// Direct state access for non-React contexts
-export function getDeckAState(): DeckState | null {
-  const deckA = deckCollection.state.get(DECK_A_ID);
-  const runtime = getDeckARuntime();
+// Helper to get deck state synchronously (for non-React contexts)
+function getDeckState(
+  deckId: string,
+  getRuntime: typeof getDeckARuntime
+): DeckState | null {
+  const deck = deckCollection.state.get(deckId);
+  const runtime = getRuntime();
 
-  if (!deckA) {
+  if (!deck) {
     return null;
   }
 
   return {
-    radio: deckA.radio as Radio | null,
+    radio: deck.radio as Radio | null,
     soundId: runtime.soundId,
     isPlaying: runtime.isPlaying,
     isLoading: runtime.isLoading,
     isBuffering: runtime.isBuffering,
-    volume: deckA.volume,
-    muted: deckA.muted,
-    pan: deckA.pan,
-    speed: deckA.speed,
-    channelFilter: deckA.channelFilter,
-    effects: deckA.effects as unknown as EffectConfig[],
-    filter: deckA.filter as FilterConfig,
-    effectsDryWet: deckA.effectsDryWet,
+    volume: deck.volume,
+    muted: deck.muted,
+    pan: deck.pan,
+    speed: deck.speed,
+    channelFilter: deck.channelFilter,
+    effects: deck.effects as unknown as EffectConfig[],
+    filter: deck.filter as FilterConfig,
+    effectsDryWet: deck.effectsDryWet,
   };
 }
 
+// Direct state access for non-React contexts
+export function getDeckAState(): DeckState | null {
+  return getDeckState(DECK_A_ID, getDeckARuntime);
+}
+
 export function getDeckBState(): DeckState | null {
-  const deckB = deckCollection.state.get(DECK_B_ID);
-  const runtime = getDeckBRuntime();
-
-  if (!deckB) {
-    return null;
-  }
-
-  return {
-    radio: deckB.radio as Radio | null,
-    soundId: runtime.soundId,
-    isPlaying: runtime.isPlaying,
-    isLoading: runtime.isLoading,
-    isBuffering: runtime.isBuffering,
-    volume: deckB.volume,
-    muted: deckB.muted,
-    pan: deckB.pan,
-    speed: deckB.speed,
-    channelFilter: deckB.channelFilter,
-    effects: deckB.effects as unknown as EffectConfig[],
-    filter: deckB.filter as FilterConfig,
-    effectsDryWet: deckB.effectsDryWet,
-  };
+  return getDeckState(DECK_B_ID, getDeckBRuntime);
 }
 
 export function getMixerState(): MixerRecord | undefined {

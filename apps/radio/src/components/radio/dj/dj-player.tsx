@@ -203,7 +203,7 @@ function DjPlayerDesktopView({
   masterVolume,
 }: DjPlayerDesktopViewProps) {
   return (
-    <div className="grid h-full min-h-0 w-full grid-cols-1 gap-4 lg:grid-cols-3 xl:gap-6">
+    <div className="grid h-full min-h-0 w-full grid-cols-1 gap-2 lg:grid-cols-[1fr_18rem_1fr]">
       {/* Deck A */}
       <DjDeck className="order-2 lg:order-1" deckId="deck-a" radios={radios} />
 
@@ -334,7 +334,7 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
       sensors={sensors}
     >
       <div
-        className="mx-auto flex h-full min-h-0 w-full max-w-7xl flex-col px-4 py-4"
+        className="flex h-full min-h-0 w-full flex-col px-2 py-2"
         style={{
           // Ensure drag operations work properly on mobile
           touchAction: "manipulation",

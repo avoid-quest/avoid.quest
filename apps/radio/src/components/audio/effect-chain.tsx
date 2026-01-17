@@ -113,6 +113,11 @@ export function EffectChain({
                 />
               ))}
             </SortableContext>
+            {sortedEffects.length >= 2 && (
+              <p className="py-1 text-center text-muted-foreground text-xs">
+                Drag to reorder
+              </p>
+            )}
           </div>
         </DndContext>
       )}

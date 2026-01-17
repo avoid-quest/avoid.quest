@@ -1,5 +1,6 @@
 import { Label } from "@workspace/ui/components/label";
 import { Slider } from "@workspace/ui/components/slider";
+import { useThrottledParam } from "@/lib/hooks/use-throttled-param";
 import { formatParam, type ParamFormatter } from "./param-definitions";
 
 type ParamSliderProps = {
@@ -30,6 +31,9 @@ export function ParamSlider({
   defaultValue,
   description,
 }: ParamSliderProps) {
+  // Throttle onChange to ~30fps to prevent overwhelming audio manager
+  const throttledOnChange = useThrottledParam(onChange);
+
   const displayValue = formatter
     ? formatter(value)
     : formatParam(formatKey, value, formatter);
@@ -54,7 +58,7 @@ export function ParamSlider({
         onValueChange={(values) => {
           const newValue = values[0];
           if (newValue !== undefined) {
-            onChange(newValue);
+            throttledOnChange(newValue);
           }
         }}
         step={step}

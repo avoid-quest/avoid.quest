@@ -2,6 +2,7 @@
  * Hook for receiving audio analysis data from the DSP worklet
  */
 
+import { useThrottledCallback } from "@tanstack/react-pacer";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AnalysisData } from "../../../lib/audio/dsp/processor.js";
 
@@ -36,9 +37,16 @@ export function useAnalysisData(options: UseAnalysisDataOptions = {}) {
   const [state, setState] = useState<AnalysisState>(initialState);
   const smoothedLevelsRef = useRef(initialState.levels);
 
+  // Throttle setState to ~30fps to reduce React re-renders
+  const throttledSetState = useThrottledCallback(setState, {
+    wait: 32,
+    leading: true,
+    trailing: true,
+  });
+
   const handleAnalysisMessage = useCallback(
     (data: AnalysisData) => {
-      // Apply smoothing to levels
+      // Apply smoothing to levels (always runs for accurate ref tracking)
       const prev = smoothedLevelsRef.current;
       const smoothed = {
         left: prev.left + (data.levels.left - prev.left) * (1 - smoothing),
@@ -48,13 +56,14 @@ export function useAnalysisData(options: UseAnalysisDataOptions = {}) {
       };
       smoothedLevelsRef.current = smoothed;
 
-      setState({
+      // Throttled state update to limit React re-renders
+      throttledSetState({
         levels: smoothed,
         spectrum: data.spectrum,
         waveform: data.waveform,
       });
     },
-    [smoothing]
+    [smoothing, throttledSetState]
   );
 
   // Reset state when disabled

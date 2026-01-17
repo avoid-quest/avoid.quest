@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   createRootRoute,
   HeadContent,
@@ -13,7 +14,7 @@ import { Toaster } from "@workspace/ui/components/sonner";
 import globalsCss from "@workspace/ui/globals.css?url";
 import { cn } from "@workspace/ui/lib/utils";
 import { HomeIcon } from "lucide-react";
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useState } from "react";
 import { InstallPrompt } from "@/components/pwa/install-prompt";
 import { SWRegister } from "@/components/pwa/sw-register";
 import { Header } from "@/components/theme/header";
@@ -24,24 +25,31 @@ const Devtools = lazy(async () => {
   if (process.env.NODE_ENV !== "development") {
     return { default: () => null as React.ReactElement | null };
   }
-  const [{ TanStackDevtools }, { TanStackRouterDevtoolsPanel }] =
-    await Promise.all([
-      import("@tanstack/react-devtools"),
-      import("@tanstack/react-router-devtools"),
-    ]);
+  const [
+    { TanStackDevtools },
+    { TanStackRouterDevtoolsPanel },
+    { ReactQueryDevtools },
+  ] = await Promise.all([
+    import("@tanstack/react-devtools"),
+    import("@tanstack/react-router-devtools"),
+    import("@tanstack/react-query-devtools"),
+  ]);
   return {
     default: () => (
-      <TanStackDevtools
-        config={{
-          position: "bottom-right",
-        }}
-        plugins={[
-          {
-            name: "Tanstack Router",
-            render: <TanStackRouterDevtoolsPanel />,
-          },
-        ]}
-      />
+      <>
+        <TanStackDevtools
+          config={{
+            position: "bottom-right",
+          }}
+          plugins={[
+            {
+              name: "Tanstack Router",
+              render: <TanStackRouterDevtoolsPanel />,
+            },
+          ]}
+        />
+        <ReactQueryDevtools initialIsOpen={false} />
+      </>
     ),
   };
 });
@@ -150,6 +158,21 @@ function NotFoundComponent() {
 }
 
 function RootDocument({ children }: { children: React.ReactNode }) {
+  // Create QueryClient in state to ensure unique cache per request/user
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: {
+          queries: {
+            // Avoid refetching immediately on mount after SSR
+            staleTime: 60 * 1000,
+            // Cache metadata for 5 minutes
+            gcTime: 5 * 60 * 1000,
+          },
+        },
+      })
+  );
+
   return (
     <html lang="en" suppressHydrationWarning>
       {/* biome-ignore lint/style/noHeadElement: TanStack Router requires <head> in shellComponent */}
@@ -157,27 +180,29 @@ function RootDocument({ children }: { children: React.ReactNode }) {
         <HeadContent />
       </head>
       <body className={cn("min-h-screen bg-background antialiased")}>
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="system"
-          disableTransitionOnChange
-          enableSystem
-        >
-          <SWRegister />
-          <InstallPrompt />
-          <div className="relative flex h-screen flex-col bg-background dark:bg-linear-to-br dark:from-darkest dark:via-darker dark:to-dark">
-            <Header />
-            <main className="relative z-10 flex min-h-0 flex-1 flex-col overflow-hidden pt-20">
-              {children}
-            </main>
-            <Toaster />
-          </div>
-        </ThemeProvider>
-        {process.env.NODE_ENV === "development" && (
-          <Suspense fallback={null}>
-            <Devtools />
-          </Suspense>
-        )}
+        <QueryClientProvider client={queryClient}>
+          <ThemeProvider
+            attribute="class"
+            defaultTheme="system"
+            disableTransitionOnChange
+            enableSystem
+          >
+            <SWRegister />
+            <InstallPrompt />
+            <div className="relative flex h-screen flex-col bg-background dark:bg-linear-to-br dark:from-darkest dark:via-darker dark:to-dark">
+              <Header />
+              <main className="relative z-10 flex min-h-0 flex-1 flex-col overflow-hidden pt-20">
+                {children}
+              </main>
+              <Toaster />
+            </div>
+          </ThemeProvider>
+          {process.env.NODE_ENV === "development" && (
+            <Suspense fallback={null}>
+              <Devtools />
+            </Suspense>
+          )}
+        </QueryClientProvider>
         <Scripts />
       </body>
     </html>

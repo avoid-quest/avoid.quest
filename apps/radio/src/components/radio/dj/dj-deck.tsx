@@ -35,6 +35,7 @@ import { isPlatformRadio } from "@/lib/external-url";
 import { useDeckState } from "@/lib/hooks/use-deck-state";
 import { usePeakLevel } from "@/lib/hooks/use-peak-level";
 import { usePlatformMetadata } from "@/lib/hooks/use-platform-metadata";
+import { useThrottledParam } from "@/lib/hooks/use-throttled-param";
 import { useTrackProgress } from "@/lib/hooks/use-track-progress";
 import type { Platform } from "@/lib/platform-types";
 import { useDjStore } from "@/lib/stores/dj-store";
@@ -82,6 +83,13 @@ export function DjDeck({ className, deckId, radios = [] }: DjDeckProps) {
   const trackProgress = useTrackProgress(soundId);
   const peakLevel = usePeakLevel(soundId);
 
+  // Throttle channel strip setters to ~30fps to prevent overwhelming audio manager
+  const throttledSetPan = useThrottledParam(setPan);
+  const throttledSetSpeed = useThrottledParam(setSpeed);
+  const throttledSetChannelFilter = useThrottledParam(setChannelFilter);
+  const throttledSetEffectsDryWet = useThrottledParam(setEffectsDryWet);
+  const throttledSetVolume = useThrottledParam(setVolume);
+
   // UI State and deck-specific effects from store
   const {
     pendingPlatformItem,
@@ -128,7 +136,7 @@ export function DjDeck({ className, deckId, radios = [] }: DjDeckProps) {
   };
 
   const handleVolumeChange = (value: number[]) => {
-    setVolume(value[0] ?? 0);
+    throttledSetVolume(value[0] ?? 0);
   };
 
   const handleClear = () => {
@@ -193,15 +201,15 @@ export function DjDeck({ className, deckId, radios = [] }: DjDeckProps) {
           metadata={metadata || radio.platformMetadata}
           onAddEffect={addEffect}
           onChangeUrl={onChangeUrl}
-          onChannelFilterChange={setChannelFilter}
+          onChannelFilterChange={throttledSetChannelFilter}
           onClear={handleClear}
-          onEffectsDryWetChange={setEffectsDryWet}
-          onPanChange={setPan}
+          onEffectsDryWetChange={throttledSetEffectsDryWet}
+          onPanChange={throttledSetPan}
           onPlayPause={handlePlayPause}
           onPlayTrack={handleLoadTrack}
           onRemoveEffect={removeEffect}
           onReorderEffects={reorderEffects}
-          onSpeedChange={setSpeed}
+          onSpeedChange={throttledSetSpeed}
           onUpdateEffect={updateEffect}
           onVolumeChange={handleVolumeChange}
           pan={pan}

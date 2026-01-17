@@ -1,7 +1,7 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Radio } from "@/lib/audio";
 import { createPlatformRadio } from "@/lib/external-url/utils";
-import type { PlatformItemResponse } from "@/lib/platform-types";
+import { loadPlatformItem as loadPlatformItemFn } from "@/utils/platform.functions";
 
 /**
  * Query key factory for platform-related queries
@@ -16,16 +16,10 @@ type LoadPlatformItemResult =
   | { success: false; error: string };
 
 /**
- * Fetches platform item metadata from the API
+ * Fetches platform item metadata using server function
  */
 async function loadPlatformItem(url: string): Promise<LoadPlatformItemResult> {
-  const response = await fetch("/api/load-platform-item", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ url: url.trim() }),
-  });
-
-  const result = (await response.json()) as PlatformItemResponse;
+  const result = await loadPlatformItemFn({ data: { url: url.trim() } });
 
   if (!result.success) {
     return { success: false, error: result.error };
@@ -77,5 +71,35 @@ export function usePlatformLoad(options: UsePlatformLoadOptions = {}) {
         error instanceof Error ? error.message : "Failed to load platform item"
       );
     },
+  });
+}
+
+/**
+ * Query hook for loading platform items with caching
+ *
+ * Benefits:
+ * - 5-minute stale time for caching
+ * - Automatic retries on failure
+ * - Declarative data fetching
+ *
+ * @example
+ * const { data: radio, isLoading, error } = usePlatformItem(url);
+ */
+export function usePlatformItem(url: string | null) {
+  return useQuery({
+    queryKey: platformKeys.item(url ?? ""),
+    queryFn: async () => {
+      if (!url) {
+        return null;
+      }
+      const result = await loadPlatformItem(url);
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+      return result.radio;
+    },
+    enabled: !!url,
+    staleTime: 1000 * 60 * 5, // 5 minutes
+    retry: 2,
   });
 }

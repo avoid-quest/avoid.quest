@@ -16,11 +16,11 @@ import {
 } from "@workspace/ui/components/item";
 import { PlayPauseButton } from "@workspace/ui/components/play-pause-button";
 import { Slider } from "@workspace/ui/components/slider";
-import { useLiveQuery } from "dexie-react-hooks";
 import { AudioLinesIcon, Volume2Icon, VolumeXIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { type Radio, useSingleAudio } from "@/lib/audio";
-import { db } from "@/lib/db";
+import { deleteRadio } from "@/lib/hooks/use-radios";
+import { useSettings } from "@/lib/hooks/use-settings";
 import { useSingleStore } from "@/lib/stores/single-store";
 import { RadioDialog } from "../../settings/radio-dialog";
 import { SettingsButton } from "../../settings/settings-button";
@@ -34,7 +34,7 @@ function useSingleStoreHydration(
   selectRadio: (radio: Radio) => Promise<void>,
   setVolume: (volume: number) => void
 ) {
-  const settings = useLiveQuery(() => db.settings.limit(1).toArray())?.[0];
+  const { data: settings } = useSettings();
   const hasHydratedRef = useRef(false);
   const [isHydrated, setIsHydrated] = useState(false);
 
@@ -142,14 +142,13 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
     // This will be handled by RadioItemActions component
   };
 
-  const confirmDelete = async () => {
+  const confirmDelete = () => {
     if (!deleteConfirm?.id) {
       return;
     }
 
     try {
-      const { db } = await import("@/lib/db");
-      await db.radios.delete(deleteConfirm.id);
+      deleteRadio(String(deleteConfirm.id));
       setDeleteConfirm(null);
     } catch (deleteError) {
       console.error("Failed to delete radio:", deleteError);

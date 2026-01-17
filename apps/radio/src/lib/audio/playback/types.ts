@@ -4,7 +4,7 @@ import type { PlatformMetadata } from "@/lib/platform-types";
  * Radio station/stream configuration
  */
 export type Radio = {
-  id?: number;
+  id?: string | number;
   name: string;
   streamUrl: string;
   logoUrl?: string;

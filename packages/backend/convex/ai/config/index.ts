@@ -26,19 +26,19 @@ export const MODEL_IDENTIFIER = `groq:${GROQ_MODEL_ID}`;
  * @throws {InvalidArgumentError} If API key is missing
  */
 export function getGroqModel(): LanguageModel {
-  const apiKey = process.env.GROQ_API_KEY;
+	const apiKey = process.env.GROQ_API_KEY;
 
-  if (!apiKey || typeof apiKey !== "string" || apiKey.trim().length === 0) {
-    throw new InvalidArgumentError({
-      parameter: "GROQ_API_KEY",
-      value: apiKey,
-      message: "GROQ_API_KEY environment variable is required but not set.",
-    });
-  }
+	if (!apiKey || typeof apiKey !== "string" || apiKey.trim().length === 0) {
+		throw new InvalidArgumentError({
+			parameter: "GROQ_API_KEY",
+			value: apiKey,
+			message: "GROQ_API_KEY environment variable is required but not set.",
+		});
+	}
 
-  const groq = createGroq({
-    apiKey,
-  });
+	const groq = createGroq({
+		apiKey,
+	});
 
-  return groq(GROQ_MODEL_ID);
+	return groq(GROQ_MODEL_ID);
 }

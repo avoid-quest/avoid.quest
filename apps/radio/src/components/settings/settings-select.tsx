@@ -5,27 +5,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@workspace/ui/components/select";
-import { useLiveQuery } from "dexie-react-hooks";
 import { toast } from "sonner";
-import { db } from "@/lib/db";
+import { setPlayerType } from "@/lib/collections";
+import { useSettings } from "@/lib/hooks/use-settings";
 import { playerTypes } from "@/lib/types";
 import { ModeSelect } from "./mode-select";
 
 export function SettingsSelect() {
-  const settings = useLiveQuery(() => db.settings.limit(1).toArray())?.[0];
+  const { data: settings } = useSettings();
 
-  const handlePlayerTypeChange = async (value: string) => {
-    if (!settings?.id) {
+  const handlePlayerTypeChange = (value: string) => {
+    if (!settings) {
       return;
     }
 
     try {
-      await db.settings.update(settings.id, {
-        player: {
-          ...settings.player,
-          playerType: value as "default" | "browser",
-        },
-      });
+      setPlayerType(value as "default" | "browser");
     } catch (error) {
       console.error("Failed to update player type:", error);
       toast.error("Failed to update player type");

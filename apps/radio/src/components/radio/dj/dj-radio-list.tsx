@@ -17,10 +17,10 @@ import {
   Volume2Icon,
 } from "lucide-react";
 import { useState } from "react";
-import { useShallow } from "zustand/react/shallow";
 import type { Radio } from "@/lib/audio";
+import { setDeckARadio, setDeckBRadio } from "@/lib/dj-actions";
+import { setPendingPlatformItem } from "@/lib/hooks/use-dj-state";
 import type { Platform } from "@/lib/platform-types";
-import { useDjStore } from "@/lib/stores/dj-store";
 import { RadioLogo } from "../radio-logo";
 import { RadioNameLink } from "../radio-name-link";
 
@@ -185,14 +185,6 @@ function DraggableRadioItem({ radio }: DraggableRadioItemProps) {
 }
 
 function MobileRadioItem({ radio }: { radio: Radio }) {
-  const { setLeftRadio, setRightRadio, setPendingPlatformItem } = useDjStore(
-    useShallow((state) => ({
-      setLeftRadio: state.setLeftRadio,
-      setRightRadio: state.setRightRadio,
-      setPendingPlatformItem: state.setPendingPlatformItem,
-    }))
-  );
-
   const handleLoad = (deckId: "deck-a" | "deck-b") => {
     const isPlatform = isPlatformItem(radio);
     const platform = getPlatformFromItem(radio);
@@ -204,9 +196,9 @@ function MobileRadioItem({ radio }: { radio: Radio }) {
         });
       }
     } else if (deckId === "deck-a") {
-      setLeftRadio(radio);
+      setDeckARadio(radio);
     } else {
-      setRightRadio(radio);
+      setDeckBRadio(radio);
     }
   };
 

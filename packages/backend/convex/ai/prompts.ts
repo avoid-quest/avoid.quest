@@ -230,13 +230,13 @@ Output i metadati estratti nel formato JSON strutturato fornito.`;
  * It includes placeholders for caption, URL, and timestamp.
  */
 export function buildPostMetadataExtractionPrompt(
-  caption: string,
-  postUrl: string | undefined,
-  timestamp: number | undefined
+	caption: string,
+	postUrl: string | undefined,
+	timestamp: number | undefined,
 ): string {
-  const timestampFormatted = timestamp ? formatTimestampForAI(timestamp) : null;
+	const timestampFormatted = timestamp ? formatTimestampForAI(timestamp) : null;
 
-  return `Analizza questa didascalia di post Instagram e il timestamp di pubblicazione per estrarre metadati relativi all'evento:
+	return `Analizza questa didascalia di post Instagram e il timestamp di pubblicazione per estrarre metadati relativi all'evento:
 
 DIDASCALIA:
 ${caption}
@@ -249,8 +249,8 @@ ${timestamp ? `- Timestamp Unix (ms): ${timestamp}` : ""}
 ⚠️ ISTRUZIONI CRITICHE:
 
 ${
-  timestamp
-    ? `Il post è stato pubblicato il ${timestampFormatted}. USA QUESTO TIMESTAMP come riferimento temporale principale per completare date incomplete nella didascalia.
+	timestamp
+		? `Il post è stato pubblicato il ${timestampFormatted}. USA QUESTO TIMESTAMP come riferimento temporale principale per completare date incomplete nella didascalia.
 
 REGOLA FONDAMENTALE: Se la didascalia menziona date incomplete (es: solo "15 marzo" senza anno, o solo "dal 10 al 15" senza mese/anno), DEVI completarle usando il timestamp:
 - Se manca l'anno: usa l'anno dal timestamp (o anno successivo se il mese è già passato)
@@ -260,7 +260,7 @@ REGOLA FONDAMENTALE: Se la didascalia menziona date incomplete (es: solo "15 mar
 Se la didascalia menziona date relative ("oggi", "domani", "venerdì prossimo", "questo weekend"), calcola la data assoluta usando il timestamp come punto di partenza.
 
 ATTENZIONE: Se il timestamp sembra errato (es: 1970), usa la data nella didascalia come riferimento principale.`
-    : "Estrai le date menzionate nella didascalia. Se ci sono date relative o incomplete, usa il contesto per interpretarle."
+		: "Estrai le date menzionate nella didascalia. Se ci sono date relative o incomplete, usa il contesto per interpretarle."
 }
 
 IMPORTANTE:
@@ -286,10 +286,10 @@ IMPORTANTE:
  * @usedIn telegramMessageGenerator.ts
  */
 export function getTelegramMessageGenerationSystemPrompt(
-  maxLength: number,
-  postUrl: string
+	maxLength: number,
+	postUrl: string,
 ): string {
-  return `Il tuo compito è generare un messaggio Telegram usando la DIDASCALIA ORIGINALE come base principale. I metadati estratti sono solo un riferimento per informazioni mancanti.
+	return `Il tuo compito è generare un messaggio Telegram usando la DIDASCALIA ORIGINALE come base principale. I metadati estratti sono solo un riferimento per informazioni mancanti.
 
 ## REGOLA CRITICA: PRIORITÀ ALLA CAPTION ORIGINALE
 
@@ -412,12 +412,12 @@ Messaggio generato (CORRETTO):
  * @usedIn telegramMessageGenerator.ts
  */
 export function buildTelegramMessagePrompt(
-  eventDetails: string,
-  postUrl: string,
-  originalCaption: string,
-  maxLength: number
+	eventDetails: string,
+	postUrl: string,
+	originalCaption: string,
+	maxLength: number,
 ): string {
-  return `Genera un messaggio Telegram usando la DIDASCALIA ORIGINALE come base principale.
+	return `Genera un messaggio Telegram usando la DIDASCALIA ORIGINALE come base principale.
 
 DIDASCALIA ORIGINALE (USA QUESTA COME BASE PRINCIPALE):
 ${originalCaption}

@@ -3,13 +3,13 @@ import {
   ToggleGroupItem,
 } from "@workspace/ui/components/toggle-group";
 import { cn } from "@workspace/ui/lib/utils";
-import { useLiveQuery } from "dexie-react-hooks";
 import { LayersIcon, ListMusicIcon, SwordsIcon } from "lucide-react";
 import { toast } from "sonner";
+import { cleanupAudioOnly } from "src/lib/dj-actions";
+import { updatePlayerSettings } from "@/lib/collections";
 import { DEFAULT_TRANSITION_DURATION } from "@/lib/const";
-import { db } from "@/lib/db";
-import { useDjStore } from "@/lib/stores/dj-store";
-import { playerModes, type Settings } from "@/lib/types";
+import { useSettings } from "@/lib/hooks/use-settings";
+import { playerModes } from "@/lib/types";
 
 const modeIcons = {
   multiple: LayersIcon,
@@ -18,35 +18,29 @@ const modeIcons = {
 } as const;
 
 export function ModeSelect({ className }: { className?: string }) {
-  const settings = useLiveQuery(() => db.settings.limit(1).toArray())?.[0];
+  const { data: settings } = useSettings();
 
   const handleModeChange = async (value: string) => {
-    if (!settings?.id) {
+    if (!settings) {
       return;
     }
 
     try {
       // Stop audio before switching modes (preserves persisted radio state)
-      await useDjStore.getState().cleanupAudioOnly();
+      await cleanupAudioOnly();
 
       const newMode = value as "single" | "multiple" | "dj";
 
-      const updatedPlayer: Settings["player"] = {
+      updatePlayerSettings((player) => ({
         mode: newMode,
-        playerType: settings.player.playerType,
-      };
-
-      updatedPlayer.single = {
-        transitionDuration:
-          settings.player.single?.transitionDuration ??
-          DEFAULT_TRANSITION_DURATION,
-      };
-
-      await db.settings.update(settings.id, {
-        player: updatedPlayer,
-      });
+        playerType: player.playerType,
+        single: {
+          transitionDuration:
+            player.single?.transitionDuration ?? DEFAULT_TRANSITION_DURATION,
+        },
+      }));
     } catch (error) {
-      console.error("❌ Failed to update mode:", error);
+      console.error("Failed to update mode:", error);
       toast.error("Failed to update mode");
     }
   };

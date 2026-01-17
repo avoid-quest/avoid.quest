@@ -5,9 +5,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@workspace/ui/components/card";
-import { useLiveQuery } from "dexie-react-hooks";
 import type { Radio } from "@/lib/audio";
-import { db } from "@/lib/db";
+import { useSettings } from "@/lib/hooks/use-settings";
 import { CustomPlayer } from "./custom-player";
 import { RadioSkeleton } from "./multiple/radio-skeleton";
 import { RadioItemActions } from "./radio-item-actions";
@@ -28,7 +27,7 @@ export function RadioComponent({
   onToggle,
   disabled = false,
 }: RadioComponentProps) {
-  const settings = useLiveQuery(() => db.settings.limit(1).toArray())?.[0];
+  const { data: settings } = useSettings();
 
   // Use custom player when playerType is "default" and mode is "multiple"
   const useCustomPlayer =

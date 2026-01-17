@@ -14,11 +14,12 @@ import { Toaster } from "@workspace/ui/components/sonner";
 import globalsCss from "@workspace/ui/globals.css?url";
 import { cn } from "@workspace/ui/lib/utils";
 import { HomeIcon } from "lucide-react";
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { InstallPrompt } from "@/components/pwa/install-prompt";
 import { SWRegister } from "@/components/pwa/sw-register";
 import { Header } from "@/components/theme/header";
 import { ThemeProvider } from "@/components/theme/theme-provider";
+import { initializeCollections } from "@/lib/collections";
 
 // Lazy load devtools only in development to avoid bundling in production
 const Devtools = lazy(async () => {
@@ -172,6 +173,11 @@ function RootDocument({ children }: { children: React.ReactNode }) {
         },
       })
   );
+
+  // Initialize TanStack DB collections with default data
+  useEffect(() => {
+    initializeCollections();
+  }, []);
 
   return (
     <html lang="en" suppressHydrationWarning>

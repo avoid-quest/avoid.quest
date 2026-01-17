@@ -9,6 +9,7 @@ import { Slider } from "@workspace/ui/components/slider";
 import { PauseIcon, PlayIcon, Volume2Icon, VolumeXIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { type Radio, useMultipleAudio } from "@/lib/audio";
+import { deleteRadio } from "@/lib/hooks/use-radios";
 import { RadioDialog } from "../../settings/radio-dialog";
 import { SettingsButton } from "../../settings/settings-button";
 import { MultipleRadioCard } from "./multiple-radio-card";
@@ -34,7 +35,7 @@ export function MultipleRadios({ radios }: { radios?: Radio[] }) {
   const [deleteConfirm, setDeleteConfirm] = useState<Radio | null>(null);
 
   // Track which radios we've added to avoid duplicates
-  const addedRadioIdsRef = useRef<Set<number>>(new Set());
+  const addedRadioIdsRef = useRef<Set<string | number>>(new Set());
 
   // Reset tracking when unmounting to ensure clean state on remount
   useEffect(() => {
@@ -109,14 +110,13 @@ export function MultipleRadios({ radios }: { radios?: Radio[] }) {
     // Handled by RadioItemActions component
   };
 
-  const confirmDelete = async () => {
+  const confirmDelete = () => {
     if (!deleteConfirm?.id) {
       return;
     }
 
     try {
-      const { db } = await import("@/lib/db");
-      await db.radios.delete(deleteConfirm.id);
+      deleteRadio(String(deleteConfirm.id));
       setDeleteConfirm(null);
     } catch (error) {
       console.error("Failed to delete radio:", error);

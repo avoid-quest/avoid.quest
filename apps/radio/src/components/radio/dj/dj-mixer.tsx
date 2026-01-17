@@ -1,11 +1,11 @@
 import { Card, CardContent } from "@workspace/ui/components/card";
 import { useIsMobile } from "@workspace/ui/hooks/use-mobile";
 import { cn } from "@workspace/ui/lib/utils";
-import { useShallow } from "zustand/react/shallow";
 import { Crossfader } from "@/components/audio/crossfader";
 import { VolumeControl } from "@/components/audio/volume-control";
 import type { Radio } from "@/lib/audio";
-import { useDjStore } from "@/lib/stores/dj-store";
+import { setCrossfadePosition, setMasterVolume } from "@/lib/dj-actions";
+import { useDjError, useMixer } from "@/lib/hooks/use-dj-state";
 import { DjRadioList } from "./dj-radio-list";
 
 type DjMixerProps = {
@@ -14,23 +14,12 @@ type DjMixerProps = {
 };
 
 export function DjMixer({ className, radios = [] }: DjMixerProps) {
-  const {
-    crossfadePosition,
-    masterVolume,
-    error,
-    setCrossfadePosition,
-    setMasterVolume,
-  } = useDjStore(
-    useShallow((state) => ({
-      crossfadePosition: state.mixer.crossfadePosition,
-      masterVolume: state.mixer.masterVolume,
-      error: state.error,
-      setCrossfadePosition: state.setCrossfadePosition,
-      setMasterVolume: state.setMasterVolume,
-    }))
-  );
-
+  const mixer = useMixer();
+  const error = useDjError();
   const isMobile = useIsMobile();
+
+  const crossfadePosition = mixer?.crossfadePosition ?? 0.5;
+  const masterVolume = mixer?.masterVolume ?? 1;
 
   return (
     <Card className={cn("flex h-full min-h-0 w-full flex-col", className)}>

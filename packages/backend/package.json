@@ -1,27 +1,27 @@
 {
-  "name": "@workspace/backend",
-  "version": "0.1.1",
-  "private": true,
-  "scripts": {
-    "dev": "convex dev",
-    "dev:setup": "convex dev --configure --until-success",
-    "deploy": "bunx convex deploy"
-  },
-  "author": "",
-  "license": "ISC",
-  "description": "",
-  "devDependencies": {
-    "@types/node": "catalog:",
-    "typescript": "catalog:"
-  },
-  "dependencies": {
-    "@ai-sdk/groq": "^3.0.9",
-    "@convex-dev/agent": "^0.3.2",
-    "@convex-dev/migrations": "^0.3.1",
-    "@convex-dev/workflow": "^0.3.3",
-    "@convex-dev/workpool": "^0.3.1",
-    "ai": "^6.0.37",
-    "convex": "catalog:",
-    "zod": "catalog:"
-  }
+	"name": "@workspace/backend",
+	"version": "0.1.1",
+	"private": true,
+	"scripts": {
+		"dev": "convex dev",
+		"dev:setup": "convex dev --configure --until-success",
+		"deploy": "bunx convex deploy"
+	},
+	"author": "",
+	"license": "ISC",
+	"description": "",
+	"devDependencies": {
+		"@types/node": "catalog:",
+		"typescript": "catalog:"
+	},
+	"dependencies": {
+		"@ai-sdk/groq": "^3.0.9",
+		"@convex-dev/agent": "^0.3.2",
+		"@convex-dev/migrations": "^0.3.1",
+		"@convex-dev/workflow": "^0.3.3",
+		"@convex-dev/workpool": "^0.3.1",
+		"ai": "^6.0.37",
+		"convex": "catalog:",
+		"zod": "catalog:"
+	}
 }

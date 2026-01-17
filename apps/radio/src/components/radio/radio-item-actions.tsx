@@ -18,7 +18,7 @@ import {
 import { useState } from "react";
 import { toast } from "sonner";
 import type { Radio } from "@/lib/audio";
-import { db } from "@/lib/db";
+import { updateRadio } from "@/lib/hooks/use-radios";
 
 type RadioItemActionsProps = {
   radio: Radio;
@@ -37,7 +37,7 @@ export function RadioItemActions({
 }: RadioItemActionsProps) {
   const [isUpdating, setIsUpdating] = useState(false);
 
-  const handleToggle = async (e: React.MouseEvent) => {
+  const handleToggle = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!radio.id) {
       return;
@@ -49,7 +49,7 @@ export function RadioItemActions({
     setIsUpdating(true);
     try {
       const newEnabled = !radio.enabled;
-      await db.radios.update(radio.id, { enabled: newEnabled });
+      updateRadio(String(radio.id), { enabled: newEnabled });
       onToggle(radio, newEnabled);
       toast.success(`${radio.name} ${newEnabled ? "enabled" : "disabled"}`);
     } catch (error) {

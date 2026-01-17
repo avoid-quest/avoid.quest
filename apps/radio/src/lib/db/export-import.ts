@@ -1,33 +1,40 @@
 import LZString from "lz-string";
 import { toast } from "sonner";
 import type { Radio } from "@/lib/audio";
+import {
+  getSettings,
+  radiosCollection,
+  type SettingsRecord,
+  settingsCollection,
+} from "@/lib/collections";
 import type { DatabaseExport, ImportPreview } from "../types";
-import { db } from ".";
 
 const EXPORT_VERSION = 1;
 const STORAGE_KEY_LAST_EXPORT = "radioproxy_last_export";
 const DATA_FRAGMENT_LENGTH = 6;
+const SETTINGS_ID = "app-settings";
 
 /**
  * Export the entire database to a JSON file
  */
-export const exportDatabase = async (): Promise<void> => {
+export const exportDatabase = (): void => {
   // Check if we're in browser environment
   if (typeof window === "undefined") {
     throw new Error("Export can only be used in browser environment");
   }
 
   try {
-    const [radios, settings] = await Promise.all([
-      db.radios.toArray(),
-      db.settings.toArray(),
-    ]);
+    const radios = Array.from(radiosCollection.state.values());
+    const settings = getSettings();
 
     const exportData: DatabaseExport = {
       version: EXPORT_VERSION,
       exportDate: new Date().toISOString(),
-      radios,
-      settings: settings[0] || { player: { mode: "multiple" } },
+      radios: radios as unknown as Radio[],
+      settings: (settings || {
+        id: SETTINGS_ID,
+        player: { mode: "multiple" },
+      }) as unknown as DatabaseExport["settings"],
     };
 
     const jsonString = JSON.stringify(exportData, null, 2);
@@ -54,7 +61,7 @@ export const exportDatabase = async (): Promise<void> => {
 /**
  * Generate a shareable URL with compressed data in the fragment
  */
-export const generateShareUrl = async (): Promise<string> => {
+export const generateShareUrl = (): string => {
   // Check if we're in browser environment
   if (typeof window === "undefined") {
     throw new Error(
@@ -63,16 +70,17 @@ export const generateShareUrl = async (): Promise<string> => {
   }
 
   try {
-    const [radios, settings] = await Promise.all([
-      db.radios.toArray(),
-      db.settings.toArray(),
-    ]);
+    const radios = Array.from(radiosCollection.state.values());
+    const settings = getSettings();
 
     const exportData: DatabaseExport = {
       version: EXPORT_VERSION,
       exportDate: new Date().toISOString(),
-      radios,
-      settings: settings[0] || { player: { mode: "multiple" } },
+      radios: radios as unknown as Radio[],
+      settings: (settings || {
+        id: SETTINGS_ID,
+        player: { mode: "multiple" },
+      }) as unknown as DatabaseExport["settings"],
     };
 
     const jsonString = JSON.stringify(exportData);
@@ -103,7 +111,7 @@ export const copyShareUrlToClipboard = async (): Promise<void> => {
   }
 
   try {
-    const shareUrl = await generateShareUrl();
+    const shareUrl = generateShareUrl();
     await navigator.clipboard.writeText(shareUrl);
     toast.success("Share link copied to clipboard");
   } catch (error) {
@@ -219,11 +227,11 @@ export const importFromFile = async (file: File): Promise<DatabaseExport> =>
 /**
  * Preview what changes would be made during import
  */
-export const previewImportChanges = async (
+export const previewImportChanges = (
   importData: DatabaseExport
-): Promise<ImportPreview> => {
-  const existingRadios = await db.radios.toArray();
-  const existingSettings = await db.settings.limit(1).toArray();
+): ImportPreview => {
+  const existingRadios = Array.from(radiosCollection.state.values());
+  const existingSettings = getSettings();
 
   const existingRadiosMap = new Map(
     existingRadios.map((radio) => [radio.name, radio])
@@ -254,8 +262,8 @@ export const previewImportChanges = async (
   }
 
   const settingsChanged =
-    existingSettings.length > 0 &&
-    JSON.stringify(existingSettings[0]) !== JSON.stringify(importData.settings);
+    existingSettings !== undefined &&
+    JSON.stringify(existingSettings) !== JSON.stringify(importData.settings);
 
   return {
     newRadios,
@@ -268,21 +276,60 @@ export const previewImportChanges = async (
 /**
  * Replace all data with imported data
  */
-export const replaceImportedData = async (
-  importData: DatabaseExport
-): Promise<void> => {
+export const replaceImportedData = (importData: DatabaseExport): void => {
   try {
-    // Clear existing data
-    await db.radios.clear();
-    await db.settings.clear();
-
-    // Import new data
-    if (importData.radios.length > 0) {
-      await db.radios.bulkAdd(importData.radios);
+    // Clear existing radios
+    const existingRadios = Array.from(radiosCollection.state.values());
+    for (const radio of existingRadios) {
+      radiosCollection.delete(radio.id);
     }
 
+    // Import new radios
+    for (const radio of importData.radios) {
+      const id = radio.id ? String(radio.id) : crypto.randomUUID();
+      radiosCollection.insert({
+        id,
+        name: radio.name,
+        streamUrl: radio.streamUrl,
+        logoUrl: radio.logoUrl,
+        description: radio.description,
+        websiteUrl: radio.websiteUrl,
+        order: radio.order ?? 0,
+        enabled: radio.enabled ?? true,
+        platformMetadata: radio.platformMetadata,
+      });
+    }
+
+    // Replace settings
     if (importData.settings) {
-      await db.settings.add(importData.settings);
+      const existingSettings = getSettings();
+      const importSettings = importData.settings as unknown as SettingsRecord;
+      if (existingSettings) {
+        settingsCollection.update(SETTINGS_ID, (draft) => {
+          draft.player.mode =
+            importSettings.player?.mode ?? existingSettings.player.mode;
+          draft.player.playerType =
+            importSettings.player?.playerType ??
+            existingSettings.player.playerType;
+          draft.player.restoreStateOnLoad =
+            importSettings.player?.restoreStateOnLoad ??
+            existingSettings.player.restoreStateOnLoad;
+          if (importSettings.player?.single) {
+            draft.player.single = importSettings.player.single;
+          }
+        });
+      } else {
+        settingsCollection.insert({
+          id: SETTINGS_ID,
+          player: {
+            mode: importSettings.player?.mode ?? "multiple",
+            playerType: importSettings.player?.playerType ?? "default",
+            restoreStateOnLoad:
+              importSettings.player?.restoreStateOnLoad ?? true,
+            single: importSettings.player?.single,
+          },
+        });
+      }
     }
 
     toast.success(
@@ -298,20 +345,18 @@ export const replaceImportedData = async (
 /**
  * Merge imported data with existing data
  */
-export const mergeImportedData = async (
-  importData: DatabaseExport
-): Promise<void> => {
+export const mergeImportedData = (importData: DatabaseExport): void => {
   try {
-    const existingRadios = await db.radios.toArray();
-    const existingSettings = await db.settings.limit(1).toArray();
+    const existingRadios = Array.from(radiosCollection.state.values());
+    const existingSettings = getSettings();
 
     // Merge radios using similar logic to syncRadioData
     const existingRadiosMap = new Map(
       existingRadios.map((radio) => [radio.name, radio])
     );
 
-    const newRadios: Radio[] = [];
-    const updatedRadios: Radio[] = [];
+    let newRadiosCount = 0;
+    let updatedRadiosCount = 0;
 
     for (const importedRadio of importData.radios) {
       const existing = existingRadiosMap.get(importedRadio.name);
@@ -326,59 +371,68 @@ export const mergeImportedData = async (
 
         if (hasChanged) {
           // Update existing radio with new data, preserving user preferences
-          updatedRadios.push({
-            ...importedRadio,
-            id: existing.id, // Keep the existing ID
-            order: existing.order, // Preserve user's custom order
-            enabled: existing.enabled, // Preserve user's enabled/disabled state
+          radiosCollection.update(existing.id, (draft) => {
+            draft.streamUrl = importedRadio.streamUrl;
+            draft.logoUrl = importedRadio.logoUrl;
+            draft.description = importedRadio.description;
+            draft.websiteUrl = importedRadio.websiteUrl;
+            // Keep order and enabled status from existing
           });
+          updatedRadiosCount += 1;
         }
       } else {
-        // New radio - add to newRadios
+        // New radio - add with disabled state
         const maxOrder = Math.max(
           ...existingRadios.map((r) => r.order || 0),
           0
         );
-        newRadios.push({
-          ...importedRadio,
-          order: maxOrder + newRadios.length + 1,
+        radiosCollection.insert({
+          id: crypto.randomUUID(),
+          name: importedRadio.name,
+          streamUrl: importedRadio.streamUrl,
+          logoUrl: importedRadio.logoUrl,
+          description: importedRadio.description,
+          websiteUrl: importedRadio.websiteUrl,
+          order: maxOrder + newRadiosCount + 1,
           enabled: false, // New radios are disabled by default
         });
+        newRadiosCount += 1;
       }
-    }
-
-    // Apply changes
-    if (newRadios.length > 0) {
-      await db.radios.bulkAdd(newRadios);
-    }
-
-    if (updatedRadios.length > 0) {
-      await db.radios.bulkPut(updatedRadios);
     }
 
     // Merge settings (be careful not to overwrite volatile data)
-    if (importData.settings && existingSettings.length > 0) {
-      const currentSettings = existingSettings[0];
-      if (currentSettings) {
-        const mergedSettings = {
-          ...importData.settings,
-          id: currentSettings.id, // Keep existing ID
-          player: {
-            ...importData.settings.player,
-            // Preserve volatile single mode data
-            single:
-              currentSettings.player.single ||
-              importData.settings.player.single,
-          },
-        };
-        await db.settings.update(currentSettings.id, mergedSettings);
-      }
+    if (importData.settings && existingSettings) {
+      const importSettings = importData.settings as unknown as SettingsRecord;
+      settingsCollection.update(SETTINGS_ID, (draft) => {
+        // Merge player settings
+        if (importSettings.player) {
+          if (importSettings.player.mode) {
+            draft.player.mode = importSettings.player.mode;
+          }
+          if (importSettings.player.playerType) {
+            draft.player.playerType = importSettings.player.playerType;
+          }
+          // Preserve volatile single mode data from existing, or use import
+          if (!draft.player.single && importSettings.player.single) {
+            draft.player.single = importSettings.player.single;
+          }
+        }
+      });
     } else if (importData.settings) {
-      await db.settings.add(importData.settings);
+      const importSettings = importData.settings as unknown as SettingsRecord;
+      settingsCollection.insert({
+        id: SETTINGS_ID,
+        player: {
+          mode: importSettings.player?.mode ?? "multiple",
+          playerType: importSettings.player?.playerType ?? "default",
+          restoreStateOnLoad: importSettings.player?.restoreStateOnLoad ?? true,
+          single: importSettings.player?.single,
+        },
+      });
     }
 
     toast.success(
-      `Configuration merged successfully: ${newRadios.length} new, ${updatedRadios.length} updated`
+      `Configuration merged successfully: ${newRadiosCount} new, ${updatedRadiosCount} updated`
     );
   } catch (error) {
     console.error("Merge import failed:", error);
@@ -423,14 +477,14 @@ export const autoImportFromUrl = (): DatabaseExport | null => {
   }
 
   try {
-    const importData = importFromUrl(window.location.href);
+    const importedData = importFromUrl(window.location.href);
 
     // Clear the URL fragment after successful import
     const url = new URL(window.location.href);
     url.hash = "";
     window.history.replaceState({}, "", url.toString());
 
-    return importData;
+    return importedData;
   } catch (error) {
     console.error("Auto-import from URL failed:", error);
     toast.error("Failed to import configuration from URL");

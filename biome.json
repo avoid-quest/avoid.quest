@@ -58,6 +58,12 @@
   },
   "linter": {
     "rules": {
+      "correctness": {
+        "noUnusedImports": {
+          "fix": "none",
+          "level": "warn"
+        }
+      },
       "performance": {
         "noBarrelFile": "off",
         "noImgElement": "off"

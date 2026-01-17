@@ -13,7 +13,8 @@ import { CheckCircleIcon } from "lucide-react";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import type { Radio } from "@/lib/audio";
-import { db } from "@/lib/db";
+import { radiosCollection } from "@/lib/collections";
+import { addRadio, updateRadio } from "@/lib/hooks/use-radios";
 import type { RadioMetadata } from "@/lib/platform-types";
 import { type RadioFormData, radioSchema } from "@/lib/schemas/radio-schema";
 import { RadioFieldPreview } from "./radio-field-preview";
@@ -62,7 +63,7 @@ const getAutoFilledFields = (scrapedData: RadioMetadata | null) => {
   };
 };
 
-const handleFormSubmit = async (
+const handleFormSubmit = (
   data: RadioFormData,
   mode: "create" | "edit",
   radio: Radio | undefined,
@@ -71,17 +72,17 @@ const handleFormSubmit = async (
   try {
     if (mode === "create") {
       // Get the maximum order value and add 1 for the new radio
-      const existingRadios = await db.radios.orderBy("order").toArray();
+      const existingRadios = Array.from(radiosCollection.state.values());
       const maxOrder = Math.max(...existingRadios.map((r) => r.order || 0), 0);
 
-      await db.radios.add({
+      addRadio({
         ...data,
         order: maxOrder + 1,
         enabled: true,
       });
       toast.success("Radio station created successfully");
     } else if (mode === "edit" && radio?.id) {
-      await db.radios.update(radio.id, data);
+      updateRadio(String(radio.id), data);
       toast.success("Radio station updated successfully");
     }
     onSuccess();

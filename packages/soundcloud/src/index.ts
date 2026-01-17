@@ -219,7 +219,10 @@ async function processPlaylist(
   }
 
   // Safe: we checked validTracks.length > 0 above
-  const firstTrack = validTracks[0]!;
+  const firstTrack = validTracks[0];
+  if (!firstTrack) {
+    return createErrorResponse("No playable tracks found in playlist");
+  }
   const metadata: SoundCloudMetadata = {
     platform: "soundcloud",
     itemType: "playlist",

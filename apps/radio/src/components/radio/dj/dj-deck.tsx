@@ -29,16 +29,30 @@ import {
 } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { useShallow } from "zustand/react/shallow";
 import type { Radio } from "@/lib/audio";
+import {
+  addDeckAEffect,
+  addDeckBEffect,
+  removeDeckAEffect,
+  removeDeckBEffect,
+  reorderDeckAEffects,
+  reorderDeckBEffects,
+  updateDeckAEffect,
+  updateDeckBEffect,
+} from "@/lib/dj-actions";
 import { isPlatformRadio } from "@/lib/external-url";
 import { useDeckState } from "@/lib/hooks/use-deck-state";
+import {
+  setPendingPlatformItem,
+  useDeckA,
+  useDeckB,
+  usePendingPlatformItem,
+} from "@/lib/hooks/use-dj-state";
 import { usePeakLevel } from "@/lib/hooks/use-peak-level";
 import { usePlatformMetadata } from "@/lib/hooks/use-platform-metadata";
 import { useThrottledParam } from "@/lib/hooks/use-throttled-param";
 import { useTrackProgress } from "@/lib/hooks/use-track-progress";
 import type { Platform } from "@/lib/platform-types";
-import { useDjStore } from "@/lib/stores/dj-store";
 import { DeckLayout } from "./deck-layout";
 import { DeckSections } from "./deck-sections";
 import { DjRadioList } from "./dj-radio-list";
@@ -90,32 +104,23 @@ export function DjDeck({ className, deckId, radios = [] }: DjDeckProps) {
   const throttledSetEffectsDryWet = useThrottledParam(setEffectsDryWet);
   const throttledSetVolume = useThrottledParam(setVolume);
 
-  // UI State and deck-specific effects from store
-  const {
-    pendingPlatformItem,
-    setPendingPlatformItem,
-    effects,
-    addEffect,
-    updateEffect,
-    removeEffect,
-    reorderEffects,
-  } = useDjStore(
-    useShallow((state) => ({
-      pendingPlatformItem: state.ui.pendingPlatformItem,
-      setPendingPlatformItem: state.setPendingPlatformItem,
-      effects: deckId === "deck-a" ? state.deckA.effects : state.deckB.effects,
-      addEffect:
-        deckId === "deck-a" ? state.addLeftEffect : state.addRightEffect,
-      updateEffect:
-        deckId === "deck-a" ? state.updateLeftEffect : state.updateRightEffect,
-      removeEffect:
-        deckId === "deck-a" ? state.removeLeftEffect : state.removeRightEffect,
-      reorderEffects:
-        deckId === "deck-a"
-          ? state.reorderLeftEffects
-          : state.reorderRightEffects,
-    }))
-  );
+  // Get effects from the deck state
+  const deckA = useDeckA();
+  const deckB = useDeckB();
+  const effects =
+    deckId === "deck-a" ? (deckA?.effects ?? []) : (deckB?.effects ?? []);
+
+  // Get effects actions based on deck
+  const addEffect = deckId === "deck-a" ? addDeckAEffect : addDeckBEffect;
+  const updateEffect =
+    deckId === "deck-a" ? updateDeckAEffect : updateDeckBEffect;
+  const removeEffect =
+    deckId === "deck-a" ? removeDeckAEffect : removeDeckBEffect;
+  const reorderEffects =
+    deckId === "deck-a" ? reorderDeckAEffects : reorderDeckBEffects;
+
+  // Get pending platform item from UI state
+  const pendingPlatformItem = usePendingPlatformItem();
 
   const deckSide = deckId === "deck-a" ? "left" : "right";
   const [isChangingUrl, setIsChangingUrl] = useState(false);

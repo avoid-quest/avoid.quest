@@ -1,17 +1,36 @@
-import { radios as defaultRadios, settings as defaultSettings } from "./const";
-import { db } from "./db";
+import {
+  initializeRadios,
+  initializeSettings,
+  radiosCollection,
+  settingsCollection,
+} from "./collections";
 
-export const resetSettings = async (): Promise<void> => {
-  await db.settings.clear();
-  await db.settings.add(defaultSettings);
+const SETTINGS_ID = "app-settings";
+
+export const resetSettings = (): void => {
+  // Clear existing settings
+  const settings = settingsCollection.state.get(SETTINGS_ID);
+  if (settings) {
+    settingsCollection.delete(SETTINGS_ID);
+  }
+  // Reinitialize with defaults
+  initializeSettings();
 };
 
 export const resetAllSettings = async (): Promise<void> => {
-  // Clear all data
-  await db.radios.clear();
-  await db.settings.clear();
+  // Clear all radios
+  const radios = Array.from(radiosCollection.state.values());
+  for (const radio of radios) {
+    radiosCollection.delete(radio.id);
+  }
+
+  // Clear settings
+  const settings = settingsCollection.state.get(SETTINGS_ID);
+  if (settings) {
+    settingsCollection.delete(SETTINGS_ID);
+  }
 
   // Reinitialize with defaults
-  await db.settings.add(defaultSettings);
-  await db.radios.bulkAdd(defaultRadios);
+  initializeSettings();
+  await initializeRadios();
 };

@@ -16,7 +16,6 @@ import {
   TabsList,
   TabsTrigger,
 } from "@workspace/ui/components/tabs";
-import { useLiveQuery } from "dexie-react-hooks";
 import {
   DatabaseIcon,
   RadioIcon,
@@ -25,30 +24,22 @@ import {
 } from "lucide-react";
 import { lazy, Suspense, useState } from "react";
 import { toast } from "sonner";
+import {
+  type SettingsRecord,
+  setRestoreStateOnLoad,
+  setSingleModeTransitionDuration,
+} from "@/lib/collections";
 import { DEFAULT_TRANSITION_DURATION } from "@/lib/const";
-import { db } from "@/lib/db";
+import { useSettings } from "@/lib/hooks/use-settings";
 import { resetAllSettings } from "@/lib/settings";
-import type { Settings } from "@/lib/types";
 import { RadioManagement } from "./radio-management";
 import { SettingsSelect } from "./settings-select";
 
 const MAX_TRANSITION_DURATION = 10_000;
 
-async function handleRestoreStateToggle(
-  settings: Settings,
-  checked: boolean
-): Promise<void> {
-  if (!settings.id) {
-    return;
-  }
-
+function handleRestoreStateToggle(checked: boolean): void {
   try {
-    await db.settings.update(settings.id, {
-      player: {
-        ...settings.player,
-        restoreStateOnLoad: checked,
-      },
-    });
+    setRestoreStateOnLoad(checked);
   } catch (error) {
     console.error("Failed to update restore state setting:", error);
     toast.error("Failed to update setting");
@@ -63,36 +54,29 @@ const ImportExport = lazy(() =>
 export function SettingsForm({
   settings: passedSettings,
 }: {
-  settings?: Settings;
+  settings?: SettingsRecord;
 }) {
-  const settings =
-    useLiveQuery(() => db.settings.limit(1).toArray())?.[0] || passedSettings;
+  const { data: liveSettings } = useSettings();
+  const settings = liveSettings || passedSettings;
   const [transitionDuration, setTransitionDuration] = useState(
     settings?.player.single?.transitionDuration ?? DEFAULT_TRANSITION_DURATION
   );
   const [isResetting, setIsResetting] = useState(false);
   const [showResetDialog, setShowResetDialog] = useState(false);
 
-  const handleTransitionDurationChange = async (value: number[]) => {
+  const handleTransitionDurationChange = (value: number[]) => {
     const newValue = value[0];
     // Store previous value for rollback on error
     const previousValue = transitionDuration;
     // Optimistically update the UI
     setTransitionDuration(newValue ?? 0);
 
-    if (!settings?.id) {
+    if (!settings) {
       return;
     }
 
     try {
-      await db.settings.update(settings.id, {
-        player: {
-          ...settings.player,
-          single: {
-            transitionDuration: newValue ?? 0,
-          },
-        },
-      });
+      setSingleModeTransitionDuration(newValue ?? 0);
     } catch (error) {
       // Rollback to previous value on error
       setTransitionDuration(previousValue);
@@ -208,9 +192,7 @@ export function SettingsForm({
                     checked={settings.player.restoreStateOnLoad !== false}
                     className="size-4 cursor-pointer accent-primary"
                     id="restore-state"
-                    onChange={(e) =>
-                      handleRestoreStateToggle(settings, e.target.checked)
-                    }
+                    onChange={(e) => handleRestoreStateToggle(e.target.checked)}
                     type="checkbox"
                   />
                 </div>

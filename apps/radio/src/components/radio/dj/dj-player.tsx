@@ -10,15 +10,24 @@ import {
 import { Button } from "@workspace/ui/components/button";
 import { useIsMobile } from "@workspace/ui/hooks/use-mobile";
 import { cn } from "@workspace/ui/lib/utils";
-import { useLiveQuery } from "dexie-react-hooks";
 import { Volume2Icon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { useShallow } from "zustand/react/shallow";
 import type { Radio } from "@/lib/audio";
-import { db } from "@/lib/db";
+import { getDeckA, getDeckB, getMixer } from "@/lib/collections";
+import {
+  setCrossfadePosition,
+  setDeckARadio,
+  setDeckBRadio,
+  setMasterVolume,
+} from "@/lib/dj-actions";
+import {
+  setActiveDragRadio,
+  setPendingPlatformItem,
+  useActiveDragRadio,
+} from "@/lib/hooks/use-dj-state";
+import { useSettings } from "@/lib/hooks/use-settings";
 import type { Platform } from "@/lib/platform-types";
-import { useDjStore } from "@/lib/stores/dj-store";
-import type { DeckId } from "@/lib/stores/dj-store/types";
+import type { DeckId } from "@/lib/stores/dj-runtime-store";
 
 import { RadioLogo } from "../radio-logo";
 import { DjDeck } from "./dj-deck";
@@ -32,15 +41,13 @@ type DjPlayerProps = {
 type HandlePlatformItemDragParams = {
   radio: Radio;
   deckId: string;
-  setPendingPlatformItem: (
-    item: { deckId: DeckId; platform: Platform } | null
-  ) => void;
+  setPendingItem: (item: { deckId: DeckId; platform: Platform } | null) => void;
 };
 
 function handlePlatformItemDrag({
   radio,
   deckId,
-  setPendingPlatformItem,
+  setPendingItem,
 }: HandlePlatformItemDragParams): boolean {
   if (!isPlatformItem(radio)) {
     return false;
@@ -48,7 +55,7 @@ function handlePlatformItemDrag({
 
   const platform = getPlatformFromItem(radio);
   if (platform && (deckId === "deck-a" || deckId === "deck-b")) {
-    setPendingPlatformItem({
+    setPendingItem({
       deckId: deckId as "deck-a" | "deck-b",
       platform,
     });
@@ -56,9 +63,9 @@ function handlePlatformItemDrag({
   return true;
 }
 
-// Conditional hydration hook for DJ store persistence
-function useDjStoreHydration() {
-  const settings = useLiveQuery(() => db.settings.limit(1).toArray())?.[0];
+// Conditional hydration hook for DJ state
+function useDjStateHydration() {
+  const { data: settings } = useSettings();
   const hasHydratedRef = useRef(false);
 
   // Note: Cleanup on mode change is handled by mode-select.tsx which awaits cleanupAudioOnly()
@@ -74,23 +81,26 @@ function useDjStoreHydration() {
     if (shouldRestore && settings !== undefined) {
       hasHydratedRef.current = true;
 
-      // Async IIFE - await rehydrate, then re-init audio
+      // Async IIFE - re-init audio from persisted state
       (async () => {
-        await useDjStore.persist.rehydrate();
-        const state = useDjStore.getState();
+        const deckA = getDeckA();
+        const deckB = getDeckB();
+        const mixer = getMixer();
 
         // Re-init audio for decks that have radios (audio needs component context)
         // This also applies channel strip settings (pan, speed, filter, etc.)
-        if (state.deckA.radio) {
-          await state.setLeftRadio(state.deckA.radio);
+        if (deckA?.radio) {
+          await setDeckARadio(deckA.radio as Radio);
         }
-        if (state.deckB.radio) {
-          await state.setRightRadio(state.deckB.radio);
+        if (deckB?.radio) {
+          await setDeckBRadio(deckB.radio as Radio);
         }
 
         // Apply mixer settings to audio engine
-        state.setMasterVolume(state.mixer.masterVolume);
-        state.setCrossfadePosition(state.mixer.crossfadePosition);
+        if (mixer) {
+          setMasterVolume(mixer.masterVolume);
+          setCrossfadePosition(mixer.crossfadePosition);
+        }
       })();
     }
   }, [settings]);
@@ -210,24 +220,11 @@ function DjPlayerDragOverlay({ activeDragRadio }: DjPlayerDragOverlayProps) {
 }
 
 export function DjPlayer({ radios = [] }: DjPlayerProps) {
-  // Conditionally hydrate the DJ store based on user settings
-  useDjStoreHydration();
+  // Conditionally hydrate the DJ state based on user settings
+  useDjStateHydration();
 
-  const {
-    setLeftRadio,
-    setRightRadio,
-    setPendingPlatformItem,
-    setActiveDragRadio,
-    activeDragRadio,
-  } = useDjStore(
-    useShallow((state) => ({
-      setLeftRadio: state.setLeftRadio,
-      setRightRadio: state.setRightRadio,
-      setPendingPlatformItem: state.setPendingPlatformItem,
-      setActiveDragRadio: state.setActiveDragRadio,
-      activeDragRadio: state.ui.activeDragRadio,
-    }))
-  );
+  // Get UI state from the runtime store
+  const activeDragRadio = useActiveDragRadio();
 
   // Configure sensors for both mouse and touch interactions
   // Enhanced mobile support with better touch handling
@@ -255,9 +252,9 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
 
   const handleRegularRadioDrag = (radio: Radio, deckId: string): void => {
     if (deckId === "deck-a") {
-      setLeftRadio(radio);
+      setDeckARadio(radio);
     } else if (deckId === "deck-b") {
-      setRightRadio(radio);
+      setDeckBRadio(radio);
     }
   };
 
@@ -276,7 +273,7 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
     const handled = handlePlatformItemDrag({
       radio,
       deckId,
-      setPendingPlatformItem,
+      setPendingItem: setPendingPlatformItem,
     });
 
     if (handled) {

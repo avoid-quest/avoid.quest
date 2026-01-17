@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { Toaster } from "sonner";
 import { Footer } from "@/components/footer";
 import { Providers } from "@/components/providers";
 
@@ -66,7 +65,6 @@ export default function RootLayout({
             <main className="h-full w-full">{children}</main>
             <Footer />
           </div>
-          <Toaster />
         </Providers>
       </body>
     </html>

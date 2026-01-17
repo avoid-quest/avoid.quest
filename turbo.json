@@ -7,13 +7,9 @@
       "inputs": ["$TURBO_DEFAULT$", ".env*"],
       "outputs": [".next/**", "out/**", "dist/**"]
     },
-    "fix": {
-      "cache": false,
-      "dependsOn": ["^fix"]
-    },
-    "check": {
-      "cache": false,
-      "dependsOn": ["^check"]
+    "//#check": {},
+    "//#fix": {
+      "cache": false
     },
     "typecheck": {
       "cache": false,

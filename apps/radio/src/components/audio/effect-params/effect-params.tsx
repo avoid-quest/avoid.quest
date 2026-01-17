@@ -1,11 +1,6 @@
-import type { EffectConfig } from "@avoid.quest/radio-audio";
-import { BiquadFilterParams } from "./biquad-filter-params";
-import { CompressorParams } from "./compressor-params";
-import { DelayParams } from "./delay-params";
-import { DistortionParams } from "./distortion-params";
-import { PhaseVocoderParams } from "./phase-vocoder-params";
-import { PlateReverbParams } from "./reverb-params";
-import { StandardReverbParams } from "./standard-reverb-params";
+import type { EffectConfig } from "@/lib/audio";
+import { getEffectSchema } from "@/lib/audio/dsp/effects/schema";
+import { DeclarativeParams } from "./declarative-params";
 
 type EffectParamsProps = {
   effect: EffectConfig;
@@ -13,22 +8,13 @@ type EffectParamsProps = {
 };
 
 export function EffectParams({ effect, onUpdate }: EffectParamsProps) {
-  switch (effect.type) {
-    case "biquadFilter":
-      return <BiquadFilterParams effect={effect} onUpdate={onUpdate} />;
-    case "plateReverb":
-      return <PlateReverbParams effect={effect} onUpdate={onUpdate} />;
-    case "standardReverb":
-      return <StandardReverbParams effect={effect} onUpdate={onUpdate} />;
-    case "phaseVocoder":
-      return <PhaseVocoderParams effect={effect} onUpdate={onUpdate} />;
-    case "delay":
-      return <DelayParams effect={effect} onUpdate={onUpdate} />;
-    case "distortion":
-      return <DistortionParams effect={effect} onUpdate={onUpdate} />;
-    case "compressor":
-      return <CompressorParams effect={effect} onUpdate={onUpdate} />;
-    default:
-      return null;
+  const schema = getEffectSchema(effect.type);
+
+  if (!schema) {
+    return null;
   }
+
+  return (
+    <DeclarativeParams effect={effect} onUpdate={onUpdate} schema={schema} />
+  );
 }

@@ -1,5 +1,6 @@
 import { Label } from "@workspace/ui/components/label";
 import { Slider } from "@workspace/ui/components/slider";
+import { useThrottledParam } from "@/lib/hooks/use-throttled-param";
 import { formatParam, type ParamFormatter } from "./param-definitions";
 
 type ParamSliderProps = {
@@ -13,6 +14,8 @@ type ParamSliderProps = {
   formatter?: ParamFormatter;
   formatKey?: string;
   defaultValue?: number;
+  /** Tooltip description shown on hover */
+  description?: string;
 };
 
 export function ParamSlider({
@@ -26,7 +29,11 @@ export function ParamSlider({
   formatter,
   formatKey = "default",
   defaultValue,
+  description,
 }: ParamSliderProps) {
+  // Throttle onChange to ~30fps to prevent overwhelming audio manager
+  const throttledOnChange = useThrottledParam(onChange);
+
   const displayValue = formatter
     ? formatter(value)
     : formatParam(formatKey, value, formatter);
@@ -35,7 +42,7 @@ export function ParamSlider({
     defaultValue?.valueOf() !== undefined ? [defaultValue] : undefined;
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-2" title={description}>
       <div className="flex items-center justify-between">
         <Label className="text-xs">{label}</Label>
         <span className="font-mono text-muted-foreground text-xs">
@@ -51,7 +58,7 @@ export function ParamSlider({
         onValueChange={(values) => {
           const newValue = values[0];
           if (newValue !== undefined) {
-            onChange(newValue);
+            throttledOnChange(newValue);
           }
         }}
         step={step}

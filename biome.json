@@ -3,7 +3,6 @@
   "files": {
     "ignoreUnknown": false,
     "includes": [
-      "**",
       "!**/.next",
       "!**/dist",
       "!**/.turbo",
@@ -26,6 +25,24 @@
       "!**/packages/backend/convex/_generated/server.js"
     ]
   },
+  "overrides": [
+    {
+      "includes": ["**/dsp/**/*.ts"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noBitwiseOperators": "off"
+          },
+          "complexity": {
+            "noExcessiveCognitiveComplexity": "off"
+          },
+          "correctness": {
+            "noUnusedPrivateClassMembers": "off"
+          }
+        }
+      }
+    }
+  ],
   "javascript": {
     "globals": [
       "Bun",
@@ -41,6 +58,12 @@
   },
   "linter": {
     "rules": {
+      "correctness": {
+        "noUnusedImports": {
+          "fix": "none",
+          "level": "warn"
+        }
+      },
       "performance": {
         "noBarrelFile": "off",
         "noImgElement": "off"
@@ -50,13 +73,24 @@
       },
       "nursery": {
         "useSortedClasses": "info"
+      },
+      "style": {
+        "useConsistentTypeDefinitions": {
+          "fix": "safe",
+          "level": "info",
+          "options": { "style": "type" }
+        },
+        "useBlockStatements": {
+          "fix": "safe",
+          "level": "info"
+        }
       }
     }
   },
   "extends": [
-    "ultracite/core",
-    "ultracite/next",
-    "ultracite/remix",
-    "ultracite/react"
+    "ultracite/biome/core",
+    "ultracite/biome/react",
+    "ultracite/biome/remix",
+    "ultracite/biome/next"
   ]
 }

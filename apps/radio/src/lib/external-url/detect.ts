@@ -1,6 +1,6 @@
 import { isBandcampUrl } from "@avoid.quest/bandcamp";
-import type { Platform } from "@avoid.quest/radio-shared";
 import { isSoundCloudUrl } from "@avoid.quest/soundcloud";
+import type { Platform } from "@/lib/platform-types";
 
 export { detectBandcampItemType } from "@avoid.quest/bandcamp";
 export { detectSoundCloudItemType } from "@avoid.quest/soundcloud";

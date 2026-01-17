@@ -1,4 +1,3 @@
-import type { Platform } from "@avoid.quest/radio-shared";
 import { useDraggable } from "@dnd-kit/core";
 import { Button } from "@workspace/ui/components/button";
 import { Input } from "@workspace/ui/components/input";
@@ -18,11 +17,11 @@ import {
   Volume2Icon,
 } from "lucide-react";
 import { useState } from "react";
-import { useShallow } from "zustand/react/shallow";
-import { useDjStore } from "@/lib/stores/dj-store";
-import type { Radio } from "@/lib/types";
+import type { Radio } from "@/lib/audio";
+import { setDeckARadio, setDeckBRadio } from "@/lib/dj-actions";
+import { setPendingPlatformItem } from "@/lib/hooks/use-dj-state";
+import type { Platform } from "@/lib/platform-types";
 import { RadioLogo } from "../radio-logo";
-import { RadioNameLink } from "../radio-name-link";
 
 type DjRadioListProps = {
   radios: Radio[];
@@ -113,9 +112,7 @@ function RadioItemContent({ radio }: { radio: Radio }) {
         )}
       </div>
       <div className="min-w-0 flex-1">
-        <h3 className="truncate font-medium text-sm">
-          {isPlatform ? radio.name : <RadioNameLink radio={radio} />}
-        </h3>
+        <h3 className="truncate font-medium text-sm">{radio.name}</h3>
         {radio.description?.trim() !== "" && (
           <p className="truncate text-muted-foreground text-xs">
             {radio.description}
@@ -147,53 +144,31 @@ function DraggableRadioItem({ radio }: DraggableRadioItemProps) {
 
   return (
     <div
-      className={`flex w-full shrink-0 items-center gap-2 rounded-lg border bg-card p-3 transition-all hover:shadow-md ${
-        isDragging ? "opacity-50 shadow-lg" : ""
+      className={`flex w-full shrink-0 items-center gap-2 rounded-lg border bg-card p-3 transition-all hover:-translate-y-0.5 hover:shadow-md ${
+        isDragging ? "cursor-grabbing opacity-50 shadow-lg" : "cursor-grab"
       } ${isPlatform ? "border-primary/50 border-dashed bg-primary/5" : ""}`}
       ref={setNodeRef}
       style={{
         ...style,
-        // Ensure drag operations can escape scroll containers on mobile
         touchAction: "none",
-        // Prevent text selection during drag on mobile
         userSelect: "none",
         WebkitUserSelect: "none",
       }}
+      {...attributes}
+      {...listeners}
     >
-      {/* Drag Handle - Only this area is draggable */}
-      <div
-        className={`cursor-grab touch-manipulation rounded p-1 text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground active:cursor-grabbing ${
-          isDragging ? "bg-primary/20 text-primary" : ""
-        }`}
-        style={{
-          touchAction: "none",
-          // Ensure proper touch handling on mobile
-          WebkitTouchCallout: "none",
-          WebkitUserSelect: "none",
-          userSelect: "none",
-        }}
-        {...attributes}
-        {...listeners}
-      >
-        <GripVerticalIcon className="size-4 sm:size-3" />
+      {/* Grip icon - visual indicator only */}
+      <div className="rounded p-1">
+        <GripVerticalIcon className="size-4 text-muted-foreground/50 sm:size-3" />
       </div>
 
-      {/* Radio Content - Not draggable, allows normal interaction */}
       <RadioItemContent radio={radio} />
     </div>
   );
 }
 
 function MobileRadioItem({ radio }: { radio: Radio }) {
-  const { setLeftRadio, setRightRadio, setPendingPlatformItem } = useDjStore(
-    useShallow((state) => ({
-      setLeftRadio: state.setLeftRadio,
-      setRightRadio: state.setRightRadio,
-      setPendingPlatformItem: state.setPendingPlatformItem,
-    }))
-  );
-
-  const handleLoad = (deckId: "left-deck" | "right-deck") => {
+  const handleLoad = (deckId: "deck-a" | "deck-b") => {
     const isPlatform = isPlatformItem(radio);
     const platform = getPlatformFromItem(radio);
     if (isPlatform) {
@@ -203,10 +178,10 @@ function MobileRadioItem({ radio }: { radio: Radio }) {
           platform,
         });
       }
-    } else if (deckId === "left-deck") {
-      setLeftRadio(radio);
+    } else if (deckId === "deck-a") {
+      setDeckARadio(radio);
     } else {
-      setRightRadio(radio);
+      setDeckBRadio(radio);
     }
   };
 
@@ -216,21 +191,21 @@ function MobileRadioItem({ radio }: { radio: Radio }) {
 
       <div className="flex shrink-0 gap-1">
         <Button
-          aria-label="Load to Left Deck"
+          aria-label="Load to Deck A"
           className="h-8 w-8 p-0"
-          onClick={() => handleLoad("left-deck")}
+          onClick={() => handleLoad("deck-a")}
           size="sm"
-          title="Load to Left Deck"
+          title="Load to Deck A"
           variant="outline"
         >
           <ChevronLeftIcon className="size-4" />
         </Button>
         <Button
-          aria-label="Load to Right Deck"
+          aria-label="Load to Deck B"
           className="h-8 w-8 p-0"
-          onClick={() => handleLoad("right-deck")}
+          onClick={() => handleLoad("deck-b")}
           size="sm"
-          title="Load to Right Deck"
+          title="Load to Deck B"
           variant="outline"
         >
           <ChevronRightIcon className="size-4" />
@@ -312,7 +287,7 @@ export function DjRadioList({ radios }: DjRadioListProps) {
             </TabsTrigger>
           </TabsList>
           <div className="relative">
-            <SearchIcon className="-translate-y-1/2 absolute top-1/2 left-2 size-4 text-muted-foreground" />
+            <SearchIcon className="absolute top-1/2 left-2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               aria-label="Search radios and external inputs"
               className="h-8 pl-8 text-xs"
@@ -326,9 +301,7 @@ export function DjRadioList({ radios }: DjRadioListProps) {
 
         {/* Help text */}
         <div className="mb-3 shrink-0 text-muted-foreground text-xs">
-          {isMobile
-            ? "Tap ← or → to load stations"
-            : "Use the grip handle to drag stations to the decks"}
+          {isMobile ? "Tap ← or → to load stations" : "Drag to load in a deck"}
         </div>
 
         {/* Radios Tab */}

@@ -24,7 +24,7 @@ const MS_PER_SECOND = 1000;
  * @returns Timestamp in milliseconds
  */
 export function secondsToMilliseconds(seconds: number): number {
-  return seconds * MS_PER_SECOND;
+	return seconds * MS_PER_SECOND;
 }
 
 /**
@@ -37,7 +37,7 @@ export function secondsToMilliseconds(seconds: number): number {
  * @returns Timestamp in seconds (Unix timestamp)
  */
 export function millisecondsToSeconds(milliseconds: number): number {
-  return Math.floor(milliseconds / MS_PER_SECOND);
+	return Math.floor(milliseconds / MS_PER_SECOND);
 }
 
 /**
@@ -49,7 +49,7 @@ export function millisecondsToSeconds(milliseconds: number): number {
  * @returns Current timestamp in milliseconds (UTC)
  */
 export function now(): number {
-  return Date.now();
+	return Date.now();
 }
 
 /**
@@ -59,7 +59,7 @@ export function now(): number {
  * @returns Date object representing the timestamp
  */
 function createDate(timestamp: number): Date {
-  return new Date(timestamp);
+	return new Date(timestamp);
 }
 
 /**
@@ -71,18 +71,18 @@ function createDate(timestamp: number): Date {
  * @example "mercoledì 21 gennaio 1970 alle ore 10:06"
  */
 export function formatTimestampForAI(timestamp: number): string {
-  const date = createDate(timestamp);
-  const options: Intl.DateTimeFormatOptions = {
-    timeZone: TIMEZONE,
-    weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  };
-  return date.toLocaleString(LOCALE, options);
+	const date = createDate(timestamp);
+	const options: Intl.DateTimeFormatOptions = {
+		timeZone: TIMEZONE,
+		weekday: "long",
+		year: "numeric",
+		month: "long",
+		day: "numeric",
+		hour: "2-digit",
+		minute: "2-digit",
+		hour12: false,
+	};
+	return date.toLocaleString(LOCALE, options);
 }
 
 /**
@@ -94,15 +94,15 @@ export function formatTimestampForAI(timestamp: number): string {
  * @example "venerdì 15 marzo 2025"
  */
 export function formatEventDate(timestamp: number): string {
-  const date = createDate(timestamp);
-  const options: Intl.DateTimeFormatOptions = {
-    timeZone: TIMEZONE,
-    weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  };
-  return date.toLocaleDateString(LOCALE, options);
+	const date = createDate(timestamp);
+	const options: Intl.DateTimeFormatOptions = {
+		timeZone: TIMEZONE,
+		weekday: "long",
+		year: "numeric",
+		month: "long",
+		day: "numeric",
+	};
+	return date.toLocaleDateString(LOCALE, options);
 }
 
 /**
@@ -115,18 +115,18 @@ export function formatEventDate(timestamp: number): string {
  * @example "venerdì 15 marzo 2025" (if dateEnd is same as dateStart or undefined)
  */
 export function formatEventDateRange(
-  dateStart?: number,
-  dateEnd?: number
+	dateStart?: number,
+	dateEnd?: number,
 ): string {
-  if (!dateStart) {
-    return "";
-  }
-  if (dateEnd && dateEnd !== dateStart) {
-    const startDate = formatEventDate(dateStart);
-    const endDate = formatEventDate(dateEnd);
-    return `dal ${startDate} al ${endDate}`;
-  }
-  return formatEventDate(dateStart);
+	if (!dateStart) {
+		return "";
+	}
+	if (dateEnd && dateEnd !== dateStart) {
+		const startDate = formatEventDate(dateStart);
+		const endDate = formatEventDate(dateEnd);
+		return `dal ${startDate} al ${endDate}`;
+	}
+	return formatEventDate(dateStart);
 }
 
 /**
@@ -136,13 +136,13 @@ export function formatEventDateRange(
  * @example "17:00" (if only timeStart)
  */
 export function formatEventTime(timeStart?: string, timeEnd?: string): string {
-  if (!timeStart) {
-    return "";
-  }
-  if (timeEnd) {
-    return `dalle ${timeStart} alle ${timeEnd}`;
-  }
-  return timeStart;
+	if (!timeStart) {
+		return "";
+	}
+	if (timeEnd) {
+		return `dalle ${timeStart} alle ${timeEnd}`;
+	}
+	return timeStart;
 }
 
 /**
@@ -154,12 +154,12 @@ export function formatEventTime(timeStart?: string, timeEnd?: string): string {
  * @example "mercoledì 21 gennaio 1970, 10:06"
  */
 export function formatTimestampForLog(timestamp: number): string {
-  const date = createDate(timestamp);
-  return date.toLocaleString(LOCALE, {
-    timeZone: TIMEZONE,
-    dateStyle: "full",
-    timeStyle: "short",
-  });
+	const date = createDate(timestamp);
+	return date.toLocaleString(LOCALE, {
+		timeZone: TIMEZONE,
+		dateStyle: "full",
+		timeStyle: "short",
+	});
 }
 
 /**
@@ -170,14 +170,14 @@ export function formatTimestampForLog(timestamp: number): string {
  * @example "15 marzo 2025"
  */
 export function formatDateShort(timestamp: number): string {
-  const date = createDate(timestamp);
-  const options: Intl.DateTimeFormatOptions = {
-    timeZone: TIMEZONE,
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  };
-  return date.toLocaleDateString(LOCALE, options);
+	const date = createDate(timestamp);
+	const options: Intl.DateTimeFormatOptions = {
+		timeZone: TIMEZONE,
+		year: "numeric",
+		month: "long",
+		day: "numeric",
+	};
+	return date.toLocaleDateString(LOCALE, options);
 }
 
 /**
@@ -187,7 +187,7 @@ export function formatDateShort(timestamp: number): string {
  * @returns true if timestamp is before current time
  */
 export function isPast(timestamp: number): boolean {
-  return createDate(timestamp).getTime() < now();
+	return createDate(timestamp).getTime() < now();
 }
 
 /**
@@ -197,7 +197,7 @@ export function isPast(timestamp: number): boolean {
  * @returns true if timestamp is after current time
  */
 export function isFuture(timestamp: number): boolean {
-  return createDate(timestamp).getTime() > now();
+	return createDate(timestamp).getTime() > now();
 }
 
 /**
@@ -210,27 +210,27 @@ export function isFuture(timestamp: number): boolean {
  * @returns true if timestamp falls on today's date in Europe/Rome timezone
  */
 export function isToday(timestamp: number): boolean {
-  const date = createDate(timestamp);
-  const nowDate = createDate(now());
+	const date = createDate(timestamp);
+	const nowDate = createDate(now());
 
-  // Get date components in Europe/Rome timezone
-  const dateFormatter = new Intl.DateTimeFormat(LOCALE, {
-    timeZone: TIMEZONE,
-    year: "numeric",
-    month: "numeric",
-    day: "numeric",
-  });
+	// Get date components in Europe/Rome timezone
+	const dateFormatter = new Intl.DateTimeFormat(LOCALE, {
+		timeZone: TIMEZONE,
+		year: "numeric",
+		month: "numeric",
+		day: "numeric",
+	});
 
-  const dateParts = dateFormatter.formatToParts(date);
-  const nowParts = dateFormatter.formatToParts(nowDate);
+	const dateParts = dateFormatter.formatToParts(date);
+	const nowParts = dateFormatter.formatToParts(nowDate);
 
-  const dateYear = dateParts.find((p) => p.type === "year")?.value;
-  const dateMonth = dateParts.find((p) => p.type === "month")?.value;
-  const dateDay = dateParts.find((p) => p.type === "day")?.value;
+	const dateYear = dateParts.find((p) => p.type === "year")?.value;
+	const dateMonth = dateParts.find((p) => p.type === "month")?.value;
+	const dateDay = dateParts.find((p) => p.type === "day")?.value;
 
-  const nowYear = nowParts.find((p) => p.type === "year")?.value;
-  const nowMonth = nowParts.find((p) => p.type === "month")?.value;
-  const nowDay = nowParts.find((p) => p.type === "day")?.value;
+	const nowYear = nowParts.find((p) => p.type === "year")?.value;
+	const nowMonth = nowParts.find((p) => p.type === "month")?.value;
+	const nowDay = nowParts.find((p) => p.type === "day")?.value;
 
-  return dateYear === nowYear && dateMonth === nowMonth && dateDay === nowDay;
+	return dateYear === nowYear && dateMonth === nowMonth && dateDay === nowDay;
 }

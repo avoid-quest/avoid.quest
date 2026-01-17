@@ -93,14 +93,19 @@ async function fetchWithTimeout(
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
   try {
+    const rangeHeader = request.headers.get("range");
+    const requestHeaders: HeadersInit = {
+      Referer: "https://soundcloud.com/",
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    };
+    if (rangeHeader) {
+      requestHeaders.Range = rangeHeader;
+    }
+
     const res = await fetch(url, {
       signal: controller.signal,
-      headers: {
-        Range: request.headers.get("range") || "",
-        Referer: "https://soundcloud.com/",
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-      },
+      headers: requestHeaders,
     });
 
     clearTimeout(timeout);
@@ -160,13 +165,13 @@ export const Route = createFileRoute("/api/soundcloud-proxy")({
         try {
           const origin = new URL(request.url).origin;
 
-          // Validate authentication and rate limiting (requires existing session)
+          // Validate authentication and rate limiting (creates session if missing for audio element requests)
           const authResult = await validateAuthAndRateLimit(
             request,
             env,
             "soundcloud-proxy",
             {
-              createSessionIfMissing: false,
+              createSessionIfMissing: true,
             }
           );
           if (authResult instanceof Response) {

@@ -17,8 +17,8 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { db } from "@/lib/db";
-import type { Radio } from "@/lib/types";
+import type { Radio } from "@/lib/audio";
+import { updateRadio } from "@/lib/hooks/use-radios";
 
 type RadioItemActionsProps = {
   radio: Radio;
@@ -37,7 +37,7 @@ export function RadioItemActions({
 }: RadioItemActionsProps) {
   const [isUpdating, setIsUpdating] = useState(false);
 
-  const handleToggle = async (e: React.MouseEvent) => {
+  const handleToggle = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!radio.id) {
       return;
@@ -49,7 +49,7 @@ export function RadioItemActions({
     setIsUpdating(true);
     try {
       const newEnabled = !radio.enabled;
-      await db.radios.update(radio.id, { enabled: newEnabled });
+      updateRadio(String(radio.id), { enabled: newEnabled });
       onToggle(radio, newEnabled);
       toast.success(`${radio.name} ${newEnabled ? "enabled" : "disabled"}`);
     } catch (error) {
@@ -121,7 +121,7 @@ export function RadioItemActions({
           Edit
         </DropdownMenuItem>
 
-        {onToggle?.valueOf() && (
+        {onToggle && (
           <DropdownMenuItem disabled={isUpdating} onClick={handleToggle}>
             {radio.enabled ? (
               <>

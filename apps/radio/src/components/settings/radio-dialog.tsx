@@ -6,7 +6,8 @@ import {
   DialogTitle,
 } from "@workspace/ui/components/dialog";
 import { useState } from "react";
-import type { Radio, RadioMetadata } from "@/lib/types";
+import type { Radio } from "@/lib/audio";
+import type { RadioMetadata } from "@/lib/platform-types";
 import { RadioAddModeSelector } from "./radio-add-mode-selector";
 import { RadioForm } from "./radio-form";
 import { RadioGuidedForm } from "./radio-guided-form";

@@ -1,4 +1,3 @@
-import type { Platform } from "@avoid.quest/radio-shared";
 import { useDroppable } from "@dnd-kit/core";
 import { Button } from "@workspace/ui/components/button";
 import {
@@ -30,21 +29,38 @@ import {
 } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { useShallow } from "zustand/react/shallow";
+import { EffectChain } from "@/components/audio/effect-chain";
+import type { Radio } from "@/lib/audio";
+import {
+  addDeckAEffect,
+  addDeckBEffect,
+  removeDeckAEffect,
+  removeDeckBEffect,
+  reorderDeckAEffects,
+  reorderDeckBEffects,
+  updateDeckAEffect,
+  updateDeckBEffect,
+} from "@/lib/dj-actions";
 import { isPlatformRadio } from "@/lib/external-url";
 import { useDeckState } from "@/lib/hooks/use-deck-state";
+import {
+  setPendingPlatformItem,
+  useDeckA,
+  useDeckB,
+  usePendingPlatformItem,
+} from "@/lib/hooks/use-dj-state";
+import { usePeakLevel } from "@/lib/hooks/use-peak-level";
 import { usePlatformMetadata } from "@/lib/hooks/use-platform-metadata";
+import { useThrottledParam } from "@/lib/hooks/use-throttled-param";
 import { useTrackProgress } from "@/lib/hooks/use-track-progress";
-import { useDjStore } from "@/lib/stores/dj-store";
-import type { Radio } from "@/lib/types";
+import type { Platform } from "@/lib/platform-types";
 import { DeckLayout } from "./deck-layout";
-import { DeckSections } from "./deck-sections";
 import { DjRadioList } from "./dj-radio-list";
 import { PlatformForm } from "./platform-form";
 
 type DjDeckProps = {
   className?: string;
-  deckId: "left-deck" | "right-deck";
+  deckId: "deck-a" | "deck-b";
   radios?: Radio[];
 };
 
@@ -58,6 +74,7 @@ export function DjDeck({ className, deckId, radios = [] }: DjDeckProps) {
     radio,
     isPlaying,
     isLoading,
+    isBuffering,
     volume,
     play,
     pause,
@@ -65,46 +82,47 @@ export function DjDeck({ className, deckId, radios = [] }: DjDeckProps) {
     loadTrack,
     soundId,
     reset,
+    // Channel strip state
+    pan,
+    speed,
+    channelFilter,
+    effectsDryWet,
+    setPan,
+    setSpeed,
+    setChannelFilter,
+    setEffectsDryWet,
   } = useDeckState(deckId);
 
   const { currentTrackIndex, metadata } = usePlatformMetadata(radio);
   const trackProgress = useTrackProgress(soundId);
+  const peakLevel = usePeakLevel(soundId);
 
-  // UI State and deck-specific effects from store
-  const {
-    pendingPlatformItem,
-    setPendingPlatformItem,
-    effects,
-    addEffect,
-    updateEffect,
-    removeEffect,
-    reorderEffects,
-  } = useDjStore(
-    useShallow((state) => ({
-      pendingPlatformItem: state.ui.pendingPlatformItem,
-      setPendingPlatformItem: state.setPendingPlatformItem,
-      effects:
-        deckId === "left-deck"
-          ? state.leftDeck.effects
-          : state.rightDeck.effects,
-      addEffect:
-        deckId === "left-deck" ? state.addLeftEffect : state.addRightEffect,
-      updateEffect:
-        deckId === "left-deck"
-          ? state.updateLeftEffect
-          : state.updateRightEffect,
-      removeEffect:
-        deckId === "left-deck"
-          ? state.removeLeftEffect
-          : state.removeRightEffect,
-      reorderEffects:
-        deckId === "left-deck"
-          ? state.reorderLeftEffects
-          : state.reorderRightEffects,
-    }))
-  );
+  // Throttle channel strip setters to ~30fps to prevent overwhelming audio manager
+  const throttledSetPan = useThrottledParam(setPan);
+  const throttledSetSpeed = useThrottledParam(setSpeed);
+  const throttledSetChannelFilter = useThrottledParam(setChannelFilter);
+  const throttledSetEffectsDryWet = useThrottledParam(setEffectsDryWet);
+  const throttledSetVolume = useThrottledParam(setVolume);
 
-  const deckSide = deckId === "left-deck" ? "left" : "right";
+  // Get effects from the deck state
+  const deckA = useDeckA();
+  const deckB = useDeckB();
+  const effects =
+    deckId === "deck-a" ? (deckA?.effects ?? []) : (deckB?.effects ?? []);
+
+  // Get effects actions based on deck
+  const addEffect = deckId === "deck-a" ? addDeckAEffect : addDeckBEffect;
+  const updateEffect =
+    deckId === "deck-a" ? updateDeckAEffect : updateDeckBEffect;
+  const removeEffect =
+    deckId === "deck-a" ? removeDeckAEffect : removeDeckBEffect;
+  const reorderEffects =
+    deckId === "deck-a" ? reorderDeckAEffects : reorderDeckBEffects;
+
+  // Get pending platform item from UI state
+  const pendingPlatformItem = usePendingPlatformItem();
+
+  const deckSide = deckId === "deck-a" ? "left" : "right";
   const [isChangingUrl, setIsChangingUrl] = useState(false);
   const isMobile = useIsMobile();
 
@@ -123,7 +141,7 @@ export function DjDeck({ className, deckId, radios = [] }: DjDeckProps) {
   };
 
   const handleVolumeChange = (value: number[]) => {
-    setVolume(value[0] ?? 0);
+    throttledSetVolume(value[0] ?? 0);
   };
 
   const handleClear = () => {
@@ -178,21 +196,32 @@ export function DjDeck({ className, deckId, radios = [] }: DjDeckProps) {
     } else {
       content = (
         <DeckLayout
+          channelFilter={channelFilter}
           currentTrackIndex={currentTrackIndex}
+          deckSide={deckSide}
           effects={effects}
+          effectsDryWet={effectsDryWet}
+          isBuffering={isBuffering}
           isLoading={isLoading}
           isPlaying={isPlaying}
           metadata={metadata || radio.platformMetadata}
           onAddEffect={addEffect}
           onChangeUrl={onChangeUrl}
+          onChannelFilterChange={throttledSetChannelFilter}
           onClear={handleClear}
+          onEffectsDryWetChange={throttledSetEffectsDryWet}
+          onPanChange={throttledSetPan}
           onPlayPause={handlePlayPause}
           onPlayTrack={handleLoadTrack}
           onRemoveEffect={removeEffect}
           onReorderEffects={reorderEffects}
+          onSpeedChange={throttledSetSpeed}
           onUpdateEffect={updateEffect}
           onVolumeChange={handleVolumeChange}
+          pan={pan}
+          peakLevel={peakLevel}
           radio={radio}
+          speed={speed}
           trackProgress={trackProgress}
           volume={volume}
         />
@@ -228,14 +257,9 @@ export function DjDeck({ className, deckId, radios = [] }: DjDeckProps) {
           className="mt-3 flex min-h-0 flex-1 flex-col overflow-hidden"
           value="effects"
         >
-          <DeckSections
-            currentTrackIndex={0}
+          <EffectChain
             effects={effects}
-            metadata={null}
             onAddEffect={addEffect}
-            onPlayTrack={async () => {
-              // No-op when no radio is loaded
-            }}
             onRemoveEffect={removeEffect}
             onReorderEffects={reorderEffects}
             onUpdateEffect={updateEffect}
@@ -244,28 +268,24 @@ export function DjDeck({ className, deckId, radios = [] }: DjDeckProps) {
       </Tabs>
     );
   } else {
-    // Desktop: Original layout
+    // Desktop: Minimal empty deck placeholder
     content = (
-      <div className="flex h-full min-h-0 flex-col">
+      <div className="flex h-full min-h-0 flex-col gap-3">
         {/* Drop Zone */}
-        <div className="flex shrink-0 flex-col items-center justify-center py-8 text-center">
-          <div className="rounded-lg border-2 border-muted-foreground/25 border-dashed p-2 sm:p-6">
-            <Volume2Icon className="mx-auto size-8 text-muted-foreground sm:size-10" />
+        <div className="flex flex-1 flex-col items-center justify-center py-6 text-center">
+          <div className="rounded-lg border-2 border-muted-foreground/25 border-dashed p-4">
+            <Volume2Icon className="mx-auto size-8 text-muted-foreground" />
             <p className="mt-2 text-muted-foreground text-sm">
-              Drop a radio station here
+              Drop a source here
             </p>
           </div>
         </div>
-        {/* Filter Section - Always visible */}
-        <div className="flex min-h-0 flex-1 flex-col border-t pt-3">
-          <DeckSections
-            currentTrackIndex={0}
+
+        {/* Effects (can still configure before loading) */}
+        <div className="border-t pt-2">
+          <EffectChain
             effects={effects}
-            metadata={null}
             onAddEffect={addEffect}
-            onPlayTrack={async () => {
-              // No-op when no radio is loaded
-            }}
             onRemoveEffect={removeEffect}
             onReorderEffects={reorderEffects}
             onUpdateEffect={updateEffect}
@@ -293,7 +313,7 @@ export function DjDeck({ className, deckId, radios = [] }: DjDeckProps) {
 }
 
 type DeckHeaderProps = {
-  deckId: "left-deck" | "right-deck";
+  deckId: "deck-a" | "deck-b";
   radio: Radio | null;
   onReset: () => Promise<void>;
 };
@@ -325,7 +345,7 @@ function DeckHeader({ deckId, radio, onReset }: DeckHeaderProps) {
     <CardHeader className="sm:pb-4">
       <div className="flex items-center justify-between">
         <CardTitle className="text-center">
-          {deckId === "left-deck" ? "Left Deck" : "Right Deck"}
+          {deckId === "deck-a" ? "Deck A" : "Deck B"}
         </CardTitle>
         {/* Always render button to prevent layout shift, but hide when no radio */}
         <DropdownMenu>
@@ -341,7 +361,7 @@ function DeckHeader({ deckId, radio, onReset }: DeckHeaderProps) {
               <MoreHorizontalIcon className="size-4" />
             </Button>
           </DropdownMenuTrigger>
-          {radio?.valueOf() && (
+          {radio && (
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={handleCopyStreamLink}>
                 <CopyIcon className="mr-2 size-4" />

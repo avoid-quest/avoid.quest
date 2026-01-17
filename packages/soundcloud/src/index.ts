@@ -1,15 +1,44 @@
+import { detectSoundCloudItemType } from "./detect.js";
+import { fetchClientID } from "./fetch-client/index.js";
 import type {
-  PlatformItemError,
-  PlatformItemResponse,
+  SoundCloudItemError,
+  SoundCloudItemResponse,
   SoundCloudItemResult,
   SoundCloudMetadata,
-} from "@avoid.quest/radio-shared";
-import { detectSoundCloudItemType } from "./detect";
-import { fetchClientID } from "./fetch-client";
+} from "./types.js";
 
-export { detectSoundCloudItemType, isSoundCloudUrl } from "./detect";
+export { detectSoundCloudItemType, isSoundCloudUrl } from "./detect.js";
+export type {
+  SoundCloudItemError,
+  SoundCloudItemResponse,
+  SoundCloudItemResult,
+  SoundCloudItemType,
+  SoundCloudMetadata,
+  SoundCloudTrackInfo,
+} from "./types.js";
 
-function createErrorResponse(message: string): PlatformItemError {
+const SOUNDCLOUD_DOMAINS = [
+  "sndcdn.com",
+  "media.soundcloud.com",
+  "soundcloud.com",
+];
+
+function isSoundCloudStreamUrl(url: string): boolean {
+  return (
+    !url.startsWith("/api/") &&
+    SOUNDCLOUD_DOMAINS.some((domain) => url.includes(domain))
+  );
+}
+
+/** Proxies SoundCloud stream URLs to avoid CORS issues */
+export function getProxiedSoundCloudUrl(url: string): string {
+  if (isSoundCloudStreamUrl(url)) {
+    return `/api/soundcloud-proxy?url=${encodeURIComponent(url)}`;
+  }
+  return url;
+}
+
+function createErrorResponse(message: string): SoundCloudItemError {
   return {
     success: false,
     error: message,
@@ -18,12 +47,9 @@ function createErrorResponse(message: string): PlatformItemError {
 
 let clientIdCache: Promise<string> | null = null;
 
-async function getClientId(): Promise<string> {
-  if (clientIdCache) {
-    return await clientIdCache;
-  }
-  clientIdCache = fetchClientID();
-  return await clientIdCache;
+function getClientId(): Promise<string> {
+  clientIdCache ??= fetchClientID();
+  return clientIdCache;
 }
 
 async function resolveSoundCloudUrl(url: string, clientId: string) {
@@ -67,7 +93,7 @@ async function getStreamUrl(
 
 export async function getSoundCloudItem(
   url: string
-): Promise<PlatformItemResponse> {
+): Promise<SoundCloudItemResponse> {
   try {
     const itemType = detectSoundCloudItemType(url);
     const clientId = await getClientId();
@@ -97,7 +123,7 @@ async function processTrack(
   data: any,
   url: string,
   clientId: string
-): Promise<SoundCloudItemResult | PlatformItemError> {
+): Promise<SoundCloudItemResult | SoundCloudItemError> {
   const transcoding = data.media?.transcodings?.find(
     // biome-ignore lint/suspicious/noExplicitAny: External API response
     (t: any) => t.format?.protocol === "progressive"
@@ -137,7 +163,7 @@ async function processPlaylist(
   data: any,
   url: string,
   clientId: string
-): Promise<SoundCloudItemResult | PlatformItemError> {
+): Promise<SoundCloudItemResult | SoundCloudItemError> {
   if (!data.tracks || data.tracks.length === 0) {
     return createErrorResponse("No tracks found in playlist");
   }
@@ -147,11 +173,9 @@ async function processPlaylist(
     data.tracks.map(async (track: any) => {
       let fullTrack = track;
 
-      // If track is partial (missing media/transcodings), fetch full details
+      // Fetch full track details if partial (missing transcodings)
       if (!track.media?.transcodings && track.id) {
         try {
-          // Construct the API URL for the track
-          // Note: We use the resolve endpoint with the track's API URL
           const trackApiUrl = `https://api.soundcloud.com/tracks/${track.id}`;
           fullTrack = await resolveSoundCloudUrl(trackApiUrl, clientId);
         } catch {
@@ -194,6 +218,11 @@ async function processPlaylist(
     return createErrorResponse("No playable tracks found in playlist");
   }
 
+  // Safe: we checked validTracks.length > 0 above
+  const firstTrack = validTracks[0];
+  if (!firstTrack) {
+    return createErrorResponse("No playable tracks found in playlist");
+  }
   const metadata: SoundCloudMetadata = {
     platform: "soundcloud",
     itemType: "playlist",
@@ -205,16 +234,12 @@ async function processPlaylist(
     duration: Math.floor(data.duration / 1000),
     trackCount: data.track_count,
     tracks: validTracks,
-    streamUrl: validTracks[0]?.streamUrl,
+    streamUrl: firstTrack.streamUrl,
   };
-
-  if (!validTracks[0]) {
-    return createErrorResponse("No playable tracks found in playlist");
-  }
 
   return {
     success: true,
     metadata,
-    streamUrl: validTracks[0].streamUrl,
+    streamUrl: firstTrack.streamUrl,
   };
 }

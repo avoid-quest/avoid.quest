@@ -8,7 +8,7 @@ import {
 import { Textarea } from "@workspace/ui/components/textarea";
 import { Volume2Icon } from "lucide-react";
 import { useState } from "react";
-import type { RadioMetadata, ScrapedOption } from "@/lib/types";
+import type { RadioMetadata, ScrapedOption } from "@/lib/platform-types";
 
 type RadioScrapedResultsProps = {
   data: RadioMetadata;
@@ -141,7 +141,7 @@ export function RadioScrapedResults({
                     />
                   </button>
                   {/* Hover preview */}
-                  <div className="-top-2 -right-2 absolute z-10 hidden rounded-lg border bg-background p-2 shadow-lg group-hover:block">
+                  <div className="absolute -top-2 -right-2 z-10 hidden rounded-lg border bg-background p-2 shadow-lg group-hover:block">
                     <img
                       alt="Logo preview large"
                       className="h-16 w-16 object-contain"

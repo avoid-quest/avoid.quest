@@ -1,8 +1,10 @@
-import type { EffectConfig } from "@avoid.quest/radio-audio";
-import type { PlatformMetadata } from "@avoid.quest/radio-shared";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@workspace/ui/components/accordion";
 import { Button } from "@workspace/ui/components/button";
-import { PlayPauseButton } from "@workspace/ui/components/play-pause-button";
-import { Progress } from "@workspace/ui/components/progress";
 import { ScrollArea } from "@workspace/ui/components/scroll-area";
 import { Slider } from "@workspace/ui/components/slider";
 import {
@@ -13,16 +15,24 @@ import {
 } from "@workspace/ui/components/tabs";
 import { useIsMobile } from "@workspace/ui/hooks/use-mobile";
 import { cn } from "@workspace/ui/lib/utils";
-import { Link2Icon, Music2Icon, XIcon } from "lucide-react";
-import type { Radio } from "@/lib/types";
-import { RadioNameLink } from "../radio-name-link";
-import { DeckSections } from "./deck-sections";
-import { PlaylistSnippet, PlaylistView } from "./playlist-view";
+import {
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  Link2Icon,
+  PlayIcon,
+  XIcon,
+} from "lucide-react";
+import { EffectChain } from "@/components/audio/effect-chain";
+import type { EffectConfig, EffectType, Radio } from "@/lib/audio";
+import type { PlatformMetadata, PlatformTrack } from "@/lib/platform-types";
+import { DeckTransportBar } from "./deck-transport-bar";
+import { DeckPeakMeter } from "./peak-meter";
 
 type DeckLayoutProps = {
   radio: Radio;
   isPlaying: boolean;
   isLoading: boolean;
+  isBuffering?: boolean;
   volume: number;
   metadata?: PlatformMetadata;
   trackProgress?: {
@@ -31,11 +41,23 @@ type DeckLayoutProps = {
   };
   currentTrackIndex?: number;
   effects?: EffectConfig[];
+  // Channel strip
+  pan: number;
+  speed: number;
+  channelFilter: number;
+  effectsDryWet: number;
+  peakLevel?: { left: number; right: number };
+  // Deck side for peak meter positioning
+  deckSide: "left" | "right";
   onPlayPause: () => void;
   onVolumeChange: (value: number[]) => void;
+  onPanChange: (value: number) => void;
+  onSpeedChange: (value: number) => void;
+  onChannelFilterChange: (value: number) => void;
+  onEffectsDryWetChange: (value: number) => void;
   onClear: () => void;
   onChangeUrl?: () => void;
-  onAddEffect?: (type: string) => void;
+  onAddEffect?: (type: EffectType) => void;
   onUpdateEffect?: (effectId: string, config: Partial<EffectConfig>) => void;
   onRemoveEffect?: (effectId: string) => void;
   onReorderEffects?: (effectIds: string[]) => void;
@@ -52,21 +74,6 @@ function calculateHasTracklist(metadata?: PlatformMetadata): boolean {
       metadata.tracks &&
       metadata.tracks.length > 0
   );
-}
-
-function calculateProgress(trackProgress?: {
-  position: number;
-  duration: number;
-}): number {
-  // Calculate progress percentage for any track with a finite duration
-  if (
-    trackProgress?.duration &&
-    Number.isFinite(trackProgress.duration) &&
-    trackProgress.duration > 0
-  ) {
-    return (trackProgress.position / trackProgress.duration) * 100;
-  }
-  return 0;
 }
 
 function getDisplayInfo(
@@ -86,13 +93,24 @@ export function DeckLayout({
   radio,
   isPlaying,
   isLoading,
+  isBuffering = false,
   volume,
   metadata,
   trackProgress,
   currentTrackIndex = 0,
   effects = [],
+  pan,
+  speed,
+  channelFilter,
+  effectsDryWet,
+  peakLevel,
+  deckSide,
   onPlayPause,
   onVolumeChange,
+  onPanChange,
+  onSpeedChange,
+  onChannelFilterChange,
+  onEffectsDryWetChange,
   onClear,
   onChangeUrl,
   onAddEffect,
@@ -102,52 +120,65 @@ export function DeckLayout({
   onPlayTrack,
   className,
 }: DeckLayoutProps) {
-  const formatTime = (seconds: number) => {
-    if (!seconds || Number.isNaN(seconds)) {
-      return "0:00";
-    }
-    if (!Number.isFinite(seconds)) {
-      return "LIVE";
-    }
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, "0")}`;
-  };
-
-  const { artworkUrl, title, artist } = getDisplayInfo(radio, metadata);
-  const progress = calculateProgress(trackProgress);
+  const { artworkUrl, title } = getDisplayInfo(radio, metadata);
   const hasTracklist = calculateHasTracklist(metadata);
   const isMobile = useIsMobile();
 
-  // Show LIVE badge for radios (no platform metadata) that have started playing
-  const shouldShowLive = !metadata?.platform && Boolean(trackProgress);
+  // Tracklist navigation handlers
+  const handleNextTrack = () => {
+    if (
+      hasTracklist &&
+      metadata?.tracks &&
+      currentTrackIndex < metadata.tracks.length - 1
+    ) {
+      const nextTrack = metadata.tracks[currentTrackIndex + 1];
+      if (nextTrack) {
+        onPlayTrack?.(nextTrack.streamUrl);
+      }
+    }
+  };
 
-  // On mobile, wrap content in tabs to separate info/controls from effects
+  const handlePreviousTrack = () => {
+    if (hasTracklist && metadata?.tracks && currentTrackIndex > 0) {
+      const prevTrack = metadata.tracks[currentTrackIndex - 1];
+      if (prevTrack) {
+        onPlayTrack?.(prevTrack.streamUrl);
+      }
+    }
+  };
+
+  // On mobile, wrap content in tabs
   if (isMobile) {
     return (
-      <MobileDeckTabs
-        artist={artist}
+      <MobileDeckLayout
         artworkUrl={artworkUrl}
+        channelFilter={channelFilter}
         className={className}
         currentTrackIndex={currentTrackIndex}
         effects={effects}
-        formatTime={formatTime}
+        effectsDryWet={effectsDryWet}
         hasTracklist={hasTracklist}
+        isBuffering={isBuffering}
         isLoading={isLoading}
         isPlaying={isPlaying}
         metadata={metadata || null}
         onAddEffect={onAddEffect}
         onChangeUrl={onChangeUrl}
+        onChannelFilterChange={onChannelFilterChange}
         onClear={onClear}
+        onEffectsDryWetChange={onEffectsDryWetChange}
+        onNextTrack={handleNextTrack}
+        onPanChange={onPanChange}
         onPlayPause={onPlayPause}
         onPlayTrack={onPlayTrack}
+        onPreviousTrack={handlePreviousTrack}
         onRemoveEffect={onRemoveEffect}
         onReorderEffects={onReorderEffects}
+        onSpeedChange={onSpeedChange}
         onUpdateEffect={onUpdateEffect}
         onVolumeChange={onVolumeChange}
-        progress={progress}
-        radio={radio}
-        shouldShowLive={shouldShowLive}
+        pan={pan}
+        speed={speed}
         title={title}
         trackProgress={trackProgress}
         volume={volume}
@@ -155,210 +186,97 @@ export function DeckLayout({
     );
   }
 
-  // Desktop layout: all in one view
+  // Desktop layout with full-height VU meters on external edges
   return (
-    <div className={cn("flex h-full min-h-0 flex-col", className)}>
-      {/* Main Content Area - Pushes footer down */}
-      <div className="flex min-h-0 flex-1 flex-col space-y-3 overflow-hidden">
-        {/* Top Section: Compact Item Info */}
-        <DeckInfo
-          artist={artist}
+    <div className={cn("flex h-full min-h-0", className)}>
+      {/* VU Meter on left edge for Deck A (external edge) */}
+      {deckSide === "left" && <DeckPeakMeter peakLevel={peakLevel} />}
+
+      {/* Main deck content */}
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 px-2">
+        {/* Transport Bar: artwork, play, track name, progress */}
+        <DeckTransportBar
           artworkUrl={artworkUrl}
-          metadata={metadata || null}
-          radio={radio}
-          shouldShowLive={shouldShowLive}
-          title={title}
-        />
-
-        {/* Progress Bar */}
-        <DeckProgress
-          formatTime={formatTime}
-          progress={progress}
-          trackProgress={trackProgress}
-        />
-
-        {/* Controls: Play/Pause + Volume */}
-        <DeckControls
+          isBuffering={isBuffering}
           isLoading={isLoading}
           isPlaying={isPlaying}
           onPlayPause={onPlayPause}
-          onVolumeChange={onVolumeChange}
-          volume={volume}
+          title={title}
+          trackProgress={trackProgress}
         />
 
-        {/* Tracklist Snippet */}
-        {hasTracklist.valueOf() &&
-          metadata?.tracks &&
-          onPlayTrack?.valueOf() && (
-            <PlaylistSnippet
-              artist={metadata.artist}
-              currentTrackIndex={currentTrackIndex}
-              onPlayTrack={onPlayTrack}
-              tracks={metadata.tracks}
-            />
-          )}
-
-        {/* Deck Sections: Now Playing, Effects, Tracklist */}
-        {onAddEffect?.valueOf() &&
-          onUpdateEffect &&
-          onRemoveEffect &&
-          onReorderEffects &&
-          onPlayTrack && (
-            <div className="flex min-h-0 flex-1 flex-col border-t pt-3">
-              <DeckSections
-                currentTrackIndex={currentTrackIndex}
-                effects={effects}
-                metadata={metadata || null}
-                onAddEffect={onAddEffect}
-                onPlayTrack={onPlayTrack}
-                onRemoveEffect={onRemoveEffect}
-                onReorderEffects={onReorderEffects}
-                onUpdateEffect={onUpdateEffect}
-              />
-            </div>
-          )}
-      </div>
-
-      {/* Footer Actions - Always at bottom */}
-      <DeckFooterActions onChangeUrl={onChangeUrl} onClear={onClear} />
-    </div>
-  );
-}
-
-function DeckInfo({
-  artworkUrl,
-  title,
-  metadata,
-  radio,
-  artist,
-  shouldShowLive,
-}: {
-  artworkUrl?: string;
-  title: string;
-  metadata: PlatformMetadata | null;
-  radio: Radio;
-  artist: string;
-  shouldShowLive: boolean;
-}) {
-  return (
-    <div className="flex w-full items-start gap-3">
-      <div className="relative size-16 shrink-0 overflow-hidden rounded-md border bg-muted">
-        {artworkUrl ? (
-          <img
-            alt={title}
-            className="h-full w-full object-contain"
-            height={64}
-            src={artworkUrl}
-            width={64}
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center">
-            <Music2Icon className="size-6 text-muted-foreground/50" />
-          </div>
-        )}
-
-        {metadata?.platform?.valueOf() && (
-          <div className="absolute right-0 bottom-0 left-0 bg-black/60 px-1 py-0.5 text-center font-medium text-[9px] text-white uppercase tracking-wider backdrop-blur-sm">
-            {metadata.platform}
-          </div>
-        )}
-      </div>
-
-      <div className="min-w-0 flex-1 space-y-0.5">
-        <div className="flex items-start justify-between gap-2">
-          <h3
-            className="truncate font-semibold text-base leading-tight"
-            title={title}
+        {/* Scrollable content area for accordion sections */}
+        <ScrollArea className="min-h-0 flex-1">
+          <Accordion
+            className="space-y-1"
+            defaultValue={["channel-strip"]}
+            type="multiple"
           >
-            {metadata ? title : <RadioNameLink radio={radio} />}
-          </h3>
-          {shouldShowLive ? (
-            <div className="flex shrink-0 items-center gap-1.5 rounded-full bg-red-500/10 px-2 py-0.5 text-red-500">
-              <span className="relative flex size-1.5">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
-                <span className="relative inline-flex size-1.5 rounded-full bg-red-500" />
-              </span>
-              <span className="font-bold text-[9px] uppercase tracking-wider">
-                Live
-              </span>
-            </div>
-          ) : null}
+            <DeckSection title="Channel Strip" value="channel-strip">
+              <ChannelStrip
+                channelFilter={channelFilter}
+                effectsDryWet={effectsDryWet}
+                onChannelFilterChange={onChannelFilterChange}
+                onEffectsDryWetChange={onEffectsDryWetChange}
+                onPanChange={onPanChange}
+                onSpeedChange={onSpeedChange}
+                onVolumeChange={(v) => onVolumeChange([v])}
+                pan={pan}
+                speed={speed}
+                volume={volume}
+              />
+            </DeckSection>
+
+            {hasTracklist && metadata?.tracks && onPlayTrack && (
+              <DeckSection
+                title={`Tracks (${currentTrackIndex + 1}/${metadata.tracks.length})`}
+                value="tracks"
+              >
+                <TracklistContent
+                  currentTrackIndex={currentTrackIndex}
+                  onNext={handleNextTrack}
+                  onPlayTrack={onPlayTrack}
+                  onPrevious={handlePreviousTrack}
+                  tracks={metadata.tracks}
+                />
+              </DeckSection>
+            )}
+
+            {onAddEffect &&
+              onUpdateEffect &&
+              onRemoveEffect &&
+              onReorderEffects && (
+                <DeckSection
+                  title={`Effects${effects.length > 0 ? ` (${effects.length})` : ""}`}
+                  value="effects"
+                >
+                  <EffectChain
+                    effects={effects}
+                    onAddEffect={onAddEffect}
+                    onRemoveEffect={onRemoveEffect}
+                    onReorderEffects={onReorderEffects}
+                    onUpdateEffect={onUpdateEffect}
+                  />
+                </DeckSection>
+              )}
+          </Accordion>
+        </ScrollArea>
+
+        {/* Footer Actions */}
+        <div className="mt-auto">
+          <DeckFooterActions onChangeUrl={onChangeUrl} onClear={onClear} />
         </div>
-        <p className="truncate text-muted-foreground text-sm" title={artist}>
-          {artist}
-        </p>
       </div>
+
+      {/* VU Meter on right edge for Deck B (external edge) */}
+      {deckSide === "right" && <DeckPeakMeter peakLevel={peakLevel} />}
     </div>
   );
 }
 
-function DeckProgress({
-  trackProgress,
-  progress,
-  formatTime,
-}: {
-  trackProgress: { position: number; duration: number } | undefined;
-  progress: number;
-  formatTime: (seconds: number) => string;
-}) {
-  return (
-    <div className="w-full space-y-1.5">
-      {trackProgress?.valueOf() && trackProgress.duration > 0 && (
-        <>
-          <Progress className="h-1.5" value={progress} />
-          <div className="flex justify-between font-mono text-[10px] text-muted-foreground">
-            <span>{formatTime(trackProgress.position)}</span>
-            <span>{formatTime(trackProgress.duration)}</span>
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
-function DeckControls({
-  isLoading,
-  isPlaying,
-  onPlayPause,
-  volume,
-  onVolumeChange,
-}: {
-  isLoading: boolean;
-  isPlaying: boolean;
-  onPlayPause: () => void;
-  volume: number;
-  onVolumeChange: (value: number[]) => void;
-}) {
-  return (
-    <div className="flex w-full items-center gap-3">
-      <PlayPauseButton
-        className="size-10 shrink-0 rounded-full"
-        disabled={isLoading}
-        iconClassName="size-4"
-        inline={true}
-        isLoading={isLoading}
-        isPlaying={isPlaying}
-        onClick={onPlayPause}
-        size="icon"
-        variant={isPlaying ? "outline" : "default"}
-      />
-
-      <div className="flex-1 space-y-1">
-        <div className="flex justify-between font-medium text-[10px] text-muted-foreground uppercase tracking-wider">
-          <span>Volume</span>
-          <span>{Math.round(volume * 100)}%</span>
-        </div>
-        <Slider
-          className="w-full"
-          max={1}
-          onValueChange={onVolumeChange}
-          step={0.01}
-          value={[volume]}
-        />
-      </div>
-    </div>
-  );
-}
+// ============================================================================
+// Subcomponents
+// ============================================================================
 
 function DeckFooterActions({
   onChangeUrl,
@@ -369,7 +287,7 @@ function DeckFooterActions({
 }) {
   return (
     <div className="flex gap-1 border-t pt-1.5">
-      {onChangeUrl?.valueOf() && (
+      {onChangeUrl && (
         <Button
           className="h-7 flex-1 text-xs"
           onClick={onChangeUrl}
@@ -393,169 +311,430 @@ function DeckFooterActions({
   );
 }
 
-type MobileDeckTabsProps = {
-  artist: string;
-  artworkUrl?: string;
-  className?: string;
-  currentTrackIndex: number;
-  effects: EffectConfig[];
-  formatTime: (seconds: number) => string;
-  hasTracklist: boolean;
-  isLoading: boolean;
-  isPlaying: boolean;
-  metadata: PlatformMetadata | null;
-  onAddEffect?: (type: string) => void;
-  onChangeUrl?: () => void;
-  onClear: () => void;
-  onPlayPause: () => void;
-  onPlayTrack?: (streamUrl: string) => void;
-  onRemoveEffect?: (effectId: string) => void;
-  onReorderEffects?: (effectIds: string[]) => void;
-  onUpdateEffect?: (effectId: string, config: Partial<EffectConfig>) => void;
-  onVolumeChange: (value: number[]) => void;
-  progress: number;
-  radio: Radio;
-  shouldShowLive: boolean;
+// ============================================================================
+// Shared Accordion Section Component
+// ============================================================================
+
+type DeckSectionProps = {
+  value: string;
   title: string;
-  trackProgress?: {
-    position: number;
-    duration: number;
-  };
-  volume: number;
+  children: React.ReactNode;
 };
 
-function MobileDeckTabs({
-  artist,
+function DeckSection({ value, title, children }: DeckSectionProps) {
+  return (
+    <AccordionItem className="rounded-lg border bg-muted/30" value={value}>
+      <AccordionTrigger className="px-2 py-2 font-medium text-xs hover:no-underline">
+        {title}
+      </AccordionTrigger>
+      <AccordionContent className="px-2 pb-2">{children}</AccordionContent>
+    </AccordionItem>
+  );
+}
+
+// ============================================================================
+// Channel Strip
+// ============================================================================
+
+type ChannelStripProps = {
+  volume: number;
+  pan: number;
+  channelFilter: number;
+  speed: number;
+  effectsDryWet: number;
+  onVolumeChange: (value: number) => void;
+  onPanChange: (value: number) => void;
+  onChannelFilterChange: (value: number) => void;
+  onSpeedChange: (value: number) => void;
+  onEffectsDryWetChange: (value: number) => void;
+};
+
+function formatPan(pan: number): string {
+  if (Math.abs(pan) < 0.05) {
+    return "C";
+  }
+  const percent = Math.abs(Math.round(pan * 100));
+  return pan < 0 ? `L${percent}` : `R${percent}`;
+}
+
+function formatChannelFilter(value: number): string {
+  if (Math.abs(value) < 0.05) {
+    return "OFF";
+  }
+  return value < 0
+    ? `LP ${Math.round(Math.abs(value) * 100)}%`
+    : `HP ${Math.round(value * 100)}%`;
+}
+
+function formatSpeed(speed: number): string {
+  return `${speed.toFixed(2)}x`;
+}
+
+function formatPercent(value: number): string {
+  return `${Math.round(value * 100)}%`;
+}
+
+function ChannelStrip({
+  volume,
+  pan,
+  channelFilter,
+  speed,
+  effectsDryWet,
+  onVolumeChange,
+  onPanChange,
+  onChannelFilterChange,
+  onSpeedChange,
+  onEffectsDryWetChange,
+}: ChannelStripProps) {
+  return (
+    <div className="space-y-1.5">
+      <ChannelSlider
+        formatValue={formatPercent}
+        label="VOL"
+        max={1.585}
+        min={0}
+        onChange={onVolumeChange}
+        step={0.01}
+        value={volume}
+      />
+      <ChannelSlider
+        formatValue={formatPan}
+        label="PAN"
+        max={1}
+        min={-1}
+        onChange={onPanChange}
+        step={0.01}
+        value={pan}
+      />
+      <ChannelSlider
+        formatValue={formatChannelFilter}
+        label="FILT"
+        max={1}
+        min={-1}
+        onChange={onChannelFilterChange}
+        step={0.01}
+        value={channelFilter}
+      />
+      <ChannelSlider
+        formatValue={formatSpeed}
+        label="SPD"
+        max={2.0}
+        min={0.5}
+        onChange={onSpeedChange}
+        step={0.01}
+        value={speed}
+      />
+      <ChannelSlider
+        formatValue={formatPercent}
+        label="FX"
+        max={1}
+        min={0}
+        onChange={onEffectsDryWetChange}
+        step={0.01}
+        value={effectsDryWet}
+      />
+    </div>
+  );
+}
+
+type ChannelSliderProps = {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  onChange: (value: number) => void;
+  formatValue: (value: number) => string;
+};
+
+function ChannelSlider({
+  label,
+  value,
+  min,
+  max,
+  step,
+  onChange,
+  formatValue,
+}: ChannelSliderProps) {
+  return (
+    <div className="flex h-7 items-center gap-2">
+      <span className="w-8 shrink-0 font-medium text-[10px] text-muted-foreground uppercase tracking-wide">
+        {label}
+      </span>
+      <Slider
+        className="min-w-0 flex-1"
+        max={max}
+        min={min}
+        onValueChange={([v]) => onChange(v)}
+        step={step}
+        value={[value]}
+      />
+      <span className="w-12 shrink-0 text-right font-mono text-[10px] text-muted-foreground">
+        {formatValue(value)}
+      </span>
+    </div>
+  );
+}
+
+// ============================================================================
+// Tracklist Content (for accordion)
+// ============================================================================
+
+type TracklistContentProps = {
+  tracks: PlatformTrack[];
+  currentTrackIndex: number;
+  onPrevious: () => void;
+  onNext: () => void;
+  onPlayTrack: (streamUrl: string) => void;
+};
+
+function formatDuration(seconds?: number): string {
+  if (!seconds) {
+    return "";
+  }
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${String(secs).padStart(2, "0")}`;
+}
+
+function TracklistContent({
+  tracks,
+  currentTrackIndex,
+  onPrevious,
+  onNext,
+  onPlayTrack,
+}: TracklistContentProps) {
+  const hasNext = currentTrackIndex < tracks.length - 1;
+  const hasPrevious = currentTrackIndex > 0;
+
+  if (tracks.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="space-y-1.5">
+      {/* Navigation row */}
+      <div className="flex items-center gap-1">
+        <Button
+          aria-label="Previous track"
+          className="h-6 w-6 p-0"
+          disabled={!hasPrevious}
+          onClick={onPrevious}
+          size="sm"
+          variant="ghost"
+        >
+          <ChevronLeftIcon className="size-4" />
+        </Button>
+
+        <Button
+          aria-label="Next track"
+          className="h-6 w-6 p-0"
+          disabled={!hasNext}
+          onClick={onNext}
+          size="sm"
+          variant="ghost"
+        >
+          <ChevronRightIcon className="size-4" />
+        </Button>
+      </div>
+
+      {/* Track list */}
+      <ScrollArea className="h-40 rounded-md border">
+        <div className="space-y-0.5 p-1.5">
+          {tracks.map((track, index) => (
+            <button
+              className={cn(
+                "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-muted/50",
+                index === currentTrackIndex && "bg-primary/10"
+              )}
+              key={track.streamUrl || index}
+              onClick={() => onPlayTrack(track.streamUrl)}
+              type="button"
+            >
+              <div className="flex size-5 shrink-0 items-center justify-center">
+                {index === currentTrackIndex ? (
+                  <PlayIcon className="size-3 text-primary" />
+                ) : (
+                  <span className="text-[10px] text-muted-foreground">
+                    {index + 1}
+                  </span>
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="truncate font-medium text-xs">{track.name}</div>
+              </div>
+              {track.duration && (
+                <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+                  {formatDuration(track.duration)}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      </ScrollArea>
+    </div>
+  );
+}
+
+// ============================================================================
+// Mobile Layout
+// ============================================================================
+
+type MobileDeckLayoutProps = {
+  title: string;
+  artworkUrl?: string;
+  isPlaying: boolean;
+  isLoading: boolean;
+  isBuffering: boolean;
+  volume: number;
+  trackProgress?: { position: number; duration: number };
+  metadata: PlatformMetadata | null;
+  currentTrackIndex: number;
+  effects: EffectConfig[];
+  pan: number;
+  speed: number;
+  channelFilter: number;
+  effectsDryWet: number;
+  hasTracklist: boolean;
+  onPlayPause: () => void;
+  onVolumeChange: (value: number[]) => void;
+  onPanChange: (value: number) => void;
+  onSpeedChange: (value: number) => void;
+  onChannelFilterChange: (value: number) => void;
+  onEffectsDryWetChange: (value: number) => void;
+  onClear: () => void;
+  onChangeUrl?: () => void;
+  onAddEffect?: (type: EffectType) => void;
+  onUpdateEffect?: (effectId: string, config: Partial<EffectConfig>) => void;
+  onRemoveEffect?: (effectId: string) => void;
+  onReorderEffects?: (effectIds: string[]) => void;
+  onPlayTrack?: (streamUrl: string) => void;
+  onNextTrack: () => void;
+  onPreviousTrack: () => void;
+  className?: string;
+};
+
+function MobileDeckLayout({
+  title,
   artworkUrl,
-  className,
+  isPlaying,
+  isLoading,
+  isBuffering,
+  volume,
+  trackProgress,
+  metadata,
   currentTrackIndex,
   effects,
-  formatTime,
+  pan,
+  channelFilter,
+  speed,
+  effectsDryWet,
   hasTracklist,
-  isLoading,
-  isPlaying,
-  metadata,
-  onAddEffect,
-  onChangeUrl,
-  onClear,
   onPlayPause,
-  onPlayTrack,
+  onVolumeChange,
+  onPanChange,
+  onSpeedChange,
+  onChannelFilterChange,
+  onEffectsDryWetChange,
+  onClear,
+  onChangeUrl,
+  onAddEffect,
+  onUpdateEffect,
   onRemoveEffect,
   onReorderEffects,
-  onUpdateEffect,
-  onVolumeChange,
-  progress,
-  radio,
-  shouldShowLive,
-  title,
-  trackProgress,
-  volume,
-}: MobileDeckTabsProps) {
+  onPlayTrack,
+  onNextTrack,
+  onPreviousTrack,
+  className,
+}: MobileDeckLayoutProps) {
   return (
     <div className={cn("flex h-full min-h-0 flex-col", className)}>
       <Tabs className="flex h-full min-h-0 flex-col" defaultValue="source">
-        <TabsList
-          className={cn(
-            "grid w-full",
-            hasTracklist ? "grid-cols-3" : "grid-cols-2"
-          )}
-        >
+        <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="source">Source</TabsTrigger>
-          {hasTracklist.valueOf() && (
-            <TabsTrigger value="tracklist">Tracklist</TabsTrigger>
-          )}
           <TabsTrigger value="effects">Effects</TabsTrigger>
         </TabsList>
 
-        {/* Source Tab: Radio info + controls */}
+        {/* Source Tab */}
         <TabsContent
-          className="mt-3 flex min-h-0 flex-1 flex-col overflow-hidden"
+          className="mt-3 flex min-h-0 flex-1 flex-col gap-2 overflow-hidden"
           value="source"
         >
-          <div className="no-scrollbar flex min-h-0 flex-1 flex-col space-y-3 overflow-y-auto">
-            <DeckInfo
-              artist={artist}
-              artworkUrl={artworkUrl}
-              metadata={metadata}
-              radio={radio}
-              shouldShowLive={shouldShowLive}
-              title={title}
-            />
+          <ScrollArea className="min-h-0 flex-1">
+            <div className="flex flex-col gap-2 pr-3">
+              {/* Transport Bar */}
+              <DeckTransportBar
+                artworkUrl={artworkUrl}
+                isBuffering={isBuffering}
+                isLoading={isLoading}
+                isPlaying={isPlaying}
+                onPlayPause={onPlayPause}
+                title={title}
+                trackProgress={trackProgress}
+              />
 
-            <DeckProgress
-              formatTime={formatTime}
-              progress={progress}
-              trackProgress={trackProgress}
-            />
+              <Accordion
+                className="space-y-1"
+                defaultValue={["channel-strip"]}
+                type="multiple"
+              >
+                <DeckSection title="Channel Strip" value="channel-strip">
+                  <ChannelStrip
+                    channelFilter={channelFilter}
+                    effectsDryWet={effectsDryWet}
+                    onChannelFilterChange={onChannelFilterChange}
+                    onEffectsDryWetChange={onEffectsDryWetChange}
+                    onPanChange={onPanChange}
+                    onSpeedChange={onSpeedChange}
+                    onVolumeChange={(v) => onVolumeChange([v])}
+                    pan={pan}
+                    speed={speed}
+                    volume={volume}
+                  />
+                </DeckSection>
 
-            <DeckControls
-              isLoading={isLoading}
-              isPlaying={isPlaying}
-              onPlayPause={onPlayPause}
-              onVolumeChange={onVolumeChange}
-              volume={volume}
-            />
-
-            {/* Tracklist Snippet */}
-            {hasTracklist.valueOf() &&
-              metadata?.tracks &&
-              onPlayTrack?.valueOf() && (
-                <PlaylistSnippet
-                  artist={metadata.artist}
-                  currentTrackIndex={currentTrackIndex}
-                  onPlayTrack={onPlayTrack}
-                  tracks={metadata.tracks}
-                />
-              )}
-          </div>
+                {hasTracklist && metadata?.tracks && onPlayTrack && (
+                  <DeckSection
+                    title={`Tracks (${currentTrackIndex + 1}/${metadata.tracks.length})`}
+                    value="tracks"
+                  >
+                    <TracklistContent
+                      currentTrackIndex={currentTrackIndex}
+                      onNext={onNextTrack}
+                      onPlayTrack={onPlayTrack}
+                      onPrevious={onPreviousTrack}
+                      tracks={metadata.tracks}
+                    />
+                  </DeckSection>
+                )}
+              </Accordion>
+            </div>
+          </ScrollArea>
         </TabsContent>
 
-        {/* Tracklist Tab */}
-        {hasTracklist.valueOf() &&
-          metadata?.tracks &&
-          onPlayTrack?.valueOf() && (
-            <TabsContent
-              className="mt-3 flex min-h-0 flex-1 flex-col overflow-hidden"
-              value="tracklist"
-            >
-              <ScrollArea className="h-full min-h-0">
-                <div className="w-full pr-4">
-                  <PlaylistView
-                    currentTrackIndex={currentTrackIndex}
-                    onPlayTrack={onPlayTrack}
-                    showFullList={true}
-                    tracks={metadata.tracks}
-                  />
-                </div>
-              </ScrollArea>
-            </TabsContent>
-          )}
-
-        {/* Effects Tab: Effects only */}
+        {/* Effects Tab */}
         <TabsContent
           className="mt-3 flex min-h-0 flex-1 flex-col overflow-hidden"
           value="effects"
         >
-          {onAddEffect?.valueOf() &&
+          {onAddEffect &&
             onUpdateEffect &&
             onRemoveEffect &&
-            onReorderEffects &&
-            onPlayTrack && (
-              <DeckSections
-                currentTrackIndex={currentTrackIndex}
-                effects={effects}
-                metadata={metadata}
-                onAddEffect={onAddEffect}
-                onPlayTrack={onPlayTrack}
-                onRemoveEffect={onRemoveEffect}
-                onReorderEffects={onReorderEffects}
-                onUpdateEffect={onUpdateEffect}
-              />
+            onReorderEffects && (
+              <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+                <EffectChain
+                  effects={effects}
+                  onAddEffect={onAddEffect}
+                  onRemoveEffect={onRemoveEffect}
+                  onReorderEffects={onReorderEffects}
+                  onUpdateEffect={onUpdateEffect}
+                />
+              </div>
             )}
         </TabsContent>
       </Tabs>
 
-      {/* Footer Actions - Always at bottom */}
+      {/* Footer Actions */}
       <DeckFooterActions onChangeUrl={onChangeUrl} onClear={onClear} />
     </div>
   );

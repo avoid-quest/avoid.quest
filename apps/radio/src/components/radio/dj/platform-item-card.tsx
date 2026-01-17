@@ -1,4 +1,3 @@
-import type { PlatformMetadata } from "@avoid.quest/radio-shared";
 import { Badge } from "@workspace/ui/components/badge";
 import { Button } from "@workspace/ui/components/button";
 import { Card, CardContent } from "@workspace/ui/components/card";
@@ -7,6 +6,7 @@ import {
   formatPlatformDuration,
   getPlatformItemTypeLabel,
 } from "@/lib/external-url";
+import type { PlatformMetadata } from "@/lib/platform-types";
 
 type PlatformItemCardProps = {
   metadata: PlatformMetadata;

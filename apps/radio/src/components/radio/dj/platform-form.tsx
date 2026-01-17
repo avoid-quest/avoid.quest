@@ -1,17 +1,17 @@
-import type { Platform, PlatformItemResponse } from "@avoid.quest/radio-shared";
 import { Button } from "@workspace/ui/components/button";
 import { Input } from "@workspace/ui/components/input";
 import { Label } from "@workspace/ui/components/label";
 import { Tabs, TabsList, TabsTrigger } from "@workspace/ui/components/tabs";
 import { Loader2Icon, MusicIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import type { Radio } from "@/lib/audio";
 import { detectPlatformFromUrl } from "@/lib/external-url/detect";
 import {
   getUrlExample,
   getUrlPlaceholder,
 } from "@/lib/external-url/metadata-helpers";
-import { createPlatformRadio } from "@/lib/external-url/utils";
-import type { Radio } from "@/lib/types";
+import { usePlatformLoad } from "@/lib/hooks/use-platform-query";
+import type { Platform } from "@/lib/platform-types";
 
 type PlatformFormProps = {
   onLoad: (radio: Radio) => void;
@@ -32,26 +32,32 @@ export function PlatformForm({
     initialPlatform || "bandcamp"
   );
   const [url, setUrl] = useState(currentUrl || "");
-  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const detectedPlatform = detectPlatformFromUrl(url);
-  // We can't easily detect item type without fetching, but we can try basic regex if needed.
-  // For now, we'll just show the platform.
-  // If we want to show item type label, we'd need to import the specific detectors or move them to helpers.
-  // Since the original code imported them, let's just use the helper which expects platform and itemType.
-  // But we don't have itemType yet until we fetch.
-  // The original code used detectBandcampItemType/detectSoundCloudItemType.
-  // Let's assume we just show "Detected: Bandcamp" for now, or we could import the detectors if we really want that feature.
-  // Actually, let's keep it simple as requested.
+
+  // Use TanStack Query mutation for loading platform items
+  const { mutate: loadItem, isPending: isLoading } = usePlatformLoad({
+    onSuccess: (radio) => {
+      onLoad(radio);
+      // Reset form after successful load
+      if (!editMode) {
+        setUrl("");
+      }
+      setError(null);
+    },
+    onError: (errorMessage) => {
+      setError(errorMessage);
+    },
+  });
 
   // Auto-focus input on mount
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!url.trim()) {
@@ -59,40 +65,8 @@ export function PlatformForm({
       return;
     }
 
-    setIsLoading(true);
     setError(null);
-
-    try {
-      const response = await fetch("/api/load-platform-item", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ url: url.trim() }),
-      });
-
-      const result = (await response.json()) as PlatformItemResponse;
-
-      if (!result.success) {
-        setError(result.error);
-        setIsLoading(false);
-        return;
-      }
-
-      const radio = createPlatformRadio(result.streamUrl, result.metadata);
-      onLoad(radio);
-      // Reset form after successful load
-      if (!editMode) {
-        setUrl("");
-      }
-      setError(null);
-    } catch (err) {
-      const errorMessage =
-        err instanceof Error ? err.message : "Failed to process URL";
-      setError(errorMessage);
-    } finally {
-      setIsLoading(false);
-    }
+    loadItem(url);
   };
 
   return (

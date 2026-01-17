@@ -1,2 +1,2 @@
-export { ClientFetchError } from "./error";
-export { fetchClientID } from "./fetch";
+export { ClientFetchError } from "./error.js";
+export { fetchClientID } from "./fetch.js";

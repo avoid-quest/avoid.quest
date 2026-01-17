@@ -1,4 +1,3 @@
-import { AVAILABLE_EFFECTS } from "@avoid.quest/radio-audio";
 import { Card, CardContent } from "@workspace/ui/components/card";
 import {
   Dialog,
@@ -11,10 +10,11 @@ import { Input } from "@workspace/ui/components/input";
 import { cn } from "@workspace/ui/lib/utils";
 import { FilterIcon, SearchIcon } from "lucide-react";
 import { useState } from "react";
+import { AVAILABLE_EFFECTS, type EffectType } from "@/lib/audio";
 import { EFFECT_ICONS } from "./effect-constants";
 
 type EffectPickerProps = {
-  onSelect: (effectType: string) => void;
+  onSelect: (effectType: EffectType) => void;
   onClose: () => void;
 };
 
@@ -39,7 +39,7 @@ export function EffectPicker({ onSelect, onClose }: EffectPickerProps) {
 
         <div className="space-y-4">
           <div className="relative">
-            <SearchIcon className="-translate-y-1/2 absolute top-1/2 left-3 size-4 text-muted-foreground" />
+            <SearchIcon className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               className="pl-9"
               onChange={(e) => setSearchQuery(e.target.value)}

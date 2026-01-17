@@ -16,7 +16,6 @@ import {
   TabsList,
   TabsTrigger,
 } from "@workspace/ui/components/tabs";
-import { useLiveQuery } from "dexie-react-hooks";
 import {
   DatabaseIcon,
   RadioIcon,
@@ -25,16 +24,29 @@ import {
 } from "lucide-react";
 import { lazy, Suspense, useState } from "react";
 import { toast } from "sonner";
+import {
+  type SettingsRecord,
+  setRestoreStateOnLoad,
+  setSingleModeTransitionDuration,
+} from "@/lib/collections";
 import { DEFAULT_TRANSITION_DURATION } from "@/lib/const";
-import { db } from "@/lib/db";
+import { useSettings } from "@/lib/hooks/use-settings";
 import { resetAllSettings } from "@/lib/settings";
-import type { Settings } from "@/lib/types";
 import { RadioManagement } from "./radio-management";
 import { SettingsSelect } from "./settings-select";
 
 const MAX_TRANSITION_DURATION = 10_000;
 
-// Lazy import for browser-only APIs (Dexie operations)
+function handleRestoreStateToggle(checked: boolean): void {
+  try {
+    setRestoreStateOnLoad(checked);
+  } catch (error) {
+    console.error("Failed to update restore state setting:", error);
+    toast.error("Failed to update setting");
+  }
+}
+
+// Lazy import for browser-only APIs
 const ImportExport = lazy(() =>
   import("./import-export").then((mod) => ({ default: mod.ImportExport }))
 );
@@ -42,37 +54,34 @@ const ImportExport = lazy(() =>
 export function SettingsForm({
   settings: passedSettings,
 }: {
-  settings?: Settings;
+  settings?: SettingsRecord;
 }) {
-  const settings =
-    useLiveQuery(() => db.settings.limit(1).toArray())?.[0] || passedSettings;
+  const { data: liveSettings } = useSettings();
+  const settings = liveSettings || passedSettings;
   const [transitionDuration, setTransitionDuration] = useState(
     settings?.player.single?.transitionDuration ?? DEFAULT_TRANSITION_DURATION
   );
   const [isResetting, setIsResetting] = useState(false);
   const [showResetDialog, setShowResetDialog] = useState(false);
 
-  const handleTransitionDurationChange = async (value: number[]) => {
+  const handleTransitionDurationChange = (value: number[]) => {
     const newValue = value[0];
+    // Store previous value for rollback on error
+    const previousValue = transitionDuration;
+    // Optimistically update the UI
     setTransitionDuration(newValue ?? 0);
 
-    if (!settings?.id) {
+    if (!settings) {
       return;
     }
 
     try {
-      await db.settings.update(settings.id, {
-        player: {
-          ...settings.player,
-          single: {
-            transitionDuration: newValue ?? 0,
-            lastUsedRadio: settings.player.single?.lastUsedRadio,
-          },
-        },
-      });
+      setSingleModeTransitionDuration(newValue ?? 0);
     } catch (error) {
+      // Rollback to previous value on error
+      setTransitionDuration(previousValue);
       console.error("Failed to update transition duration:", error);
-      toast.error("Failed to update transition duration");
+      toast.error("Failed to update transition duration. Changes reverted.");
     }
   };
 
@@ -164,6 +173,29 @@ export function SettingsForm({
               <div className="space-y-3">
                 <h4 className="font-medium text-sm">Playback Mode</h4>
                 <SettingsSelect />
+              </div>
+
+              <div className="space-y-3 rounded-lg border p-4">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="space-y-0.5">
+                    <label
+                      className="font-medium text-sm"
+                      htmlFor="restore-state"
+                    >
+                      Restore playback state on load
+                    </label>
+                    <p className="text-muted-foreground text-xs">
+                      Remember last played radio and volume settings
+                    </p>
+                  </div>
+                  <input
+                    checked={settings.player.restoreStateOnLoad !== false}
+                    className="size-4 cursor-pointer accent-primary"
+                    id="restore-state"
+                    onChange={(e) => handleRestoreStateToggle(e.target.checked)}
+                    type="checkbox"
+                  />
+                </div>
               </div>
 
               {settings.player.mode === "single" && (

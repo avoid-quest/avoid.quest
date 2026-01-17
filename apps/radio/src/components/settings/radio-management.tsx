@@ -24,12 +24,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@workspace/ui/components/dialog";
-import { useLiveQuery } from "dexie-react-hooks";
 import { GripVerticalIcon, PlusIcon, Volume2Icon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { db } from "@/lib/db";
-import type { Radio } from "@/lib/types";
+import type { Radio } from "@/lib/audio";
+import {
+  deleteRadio,
+  reorderRadios,
+  updateRadio,
+  useAllRadios,
+} from "@/lib/hooks/use-radios";
 import { RadioItemActions } from "../radio/radio-item-actions";
 import { RadioLogo } from "../radio/radio-logo";
 import { RadioNameLink } from "../radio/radio-name-link";
@@ -121,7 +125,7 @@ function SortableRadioItem({
 }
 
 export function RadioManagement() {
-  const radios = useLiveQuery(() => db.radios.orderBy("order").toArray());
+  const { data: radios } = useAllRadios();
   const [isUpdating, setIsUpdating] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogMode, setDialogMode] = useState<"create" | "edit">("create");
@@ -139,14 +143,14 @@ export function RadioManagement() {
     })
   );
 
-  const handleToggleRadio = async (radio: Radio, enabled: boolean) => {
+  const handleToggleRadio = (radio: Radio, enabled: boolean) => {
     if (!radio.id) {
       return;
     }
 
     setIsUpdating(true);
     try {
-      await db.radios.update(radio.id, { enabled });
+      updateRadio(String(radio.id), { enabled });
       toast.success(`${radio.name} ${enabled ? "enabled" : "disabled"}`);
     } catch (error) {
       console.error("Failed to update radio:", error);
@@ -176,15 +180,15 @@ export function RadioManagement() {
     }
   };
 
-  const handleReorder = async (reorderedRadios: Radio[]) => {
+  const handleReorder = (reorderedRadios: Radio[]) => {
     setIsUpdating(true);
     try {
-      const updates = reorderedRadios.map((radio, index) => ({
-        ...radio,
-        order: index + 1,
-      }));
+      // Get IDs in new order
+      const orderedIds = reorderedRadios
+        .map((r) => (r.id ? String(r.id) : undefined))
+        .filter((id): id is string => id !== undefined);
 
-      await db.radios.bulkPut(updates);
+      reorderRadios(orderedIds);
       toast.success("Radio order updated");
     } catch (error) {
       console.error("Failed to reorder radios:", error);
@@ -210,14 +214,14 @@ export function RadioManagement() {
     setDeleteConfirm(radio);
   };
 
-  const confirmDelete = async () => {
+  const confirmDelete = () => {
     if (!deleteConfirm?.id) {
       return;
     }
 
     setIsUpdating(true);
     try {
-      await db.radios.delete(deleteConfirm.id);
+      deleteRadio(String(deleteConfirm.id));
       toast.success(`"${deleteConfirm.name}" deleted successfully`);
     } catch (error) {
       console.error("Failed to delete radio:", error);
@@ -289,7 +293,7 @@ export function RadioManagement() {
       />
 
       {/* Delete Confirmation Dialog */}
-      {deleteConfirm?.valueOf() && (
+      {deleteConfirm && (
         <Dialog
           onOpenChange={() => setDeleteConfirm(null)}
           open={!!deleteConfirm}

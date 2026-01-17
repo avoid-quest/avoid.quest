@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
+import type { Radio } from "@/lib/audio";
 import {
   getCurrentTrackIndex,
   isCollection,
 } from "@/lib/external-url/metadata-helpers";
-import type { Radio } from "@/lib/types";
 
 export function usePlatformMetadata(radio: Radio | null) {
   const [currentTrackIndex, setCurrentTrackIndex] = useState(0);

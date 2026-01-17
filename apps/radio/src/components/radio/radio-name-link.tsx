@@ -6,7 +6,7 @@ import {
 } from "@workspace/ui/components/tooltip";
 import { ExternalLinkIcon } from "lucide-react";
 import { useState } from "react";
-import type { Radio } from "@/lib/types";
+import type { Radio } from "@/lib/audio";
 
 type RadioNameLinkProps = {
   radio: Radio;

@@ -21,8 +21,8 @@ export function Crossfader({
   className,
   size = "md",
   showLabels = true,
-  leftLabel = "Left",
-  rightLabel = "Right",
+  leftLabel = "A",
+  rightLabel = "B",
   disabled = false,
   defaultValue = 0.5, // Default to center (50%)
 }: CrossfaderProps) {
@@ -72,7 +72,7 @@ export function Crossfader({
         />
 
         {/* Center indicator */}
-        <div className="-translate-x-1/2 -translate-y-1/2 pointer-events-none absolute top-1/2 left-1/2 h-1 w-1 rounded-full bg-muted-foreground/50" />
+        <div className="pointer-events-none absolute top-1/2 left-1/2 h-1 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-muted-foreground/50" />
       </div>
 
       {/* Position indicator */}

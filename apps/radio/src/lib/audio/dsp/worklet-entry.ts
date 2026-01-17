@@ -1,0 +1,65 @@
+/**
+ * AudioWorklet Entry Point
+ *
+ * This file is bundled separately and loaded as an AudioWorklet module.
+ * It wraps the DSPProcessor in an AudioWorkletProcessor class.
+ */
+
+/// <reference path="./worklet-env.d.ts" />
+
+import { DSPProcessor } from "./processor.js";
+
+/**
+ * AudioWorklet processor wrapper for DSPProcessor
+ */
+class CacophonyProcessor extends AudioWorkletProcessor {
+  private readonly dsp: DSPProcessor;
+  // Pre-allocated empty buffer to avoid GC pressure when no input
+  private readonly emptyBuffer = new Float32Array(128);
+
+  constructor() {
+    super();
+    this.dsp = new DSPProcessor(sampleRate);
+
+    // Set up message callback to send events to main thread
+    this.dsp.setMessageCallback((message) => {
+      this.port.postMessage(message);
+    });
+
+    // Handle messages from main thread
+    this.port.onmessage = (event: MessageEvent) => {
+      this.dsp.handleMessage(event.data);
+    };
+  }
+
+  process(
+    inputs: Float32Array[][],
+    outputs: Float32Array[][],
+    _parameters: Record<string, Float32Array>
+  ): boolean {
+    const input = inputs[0];
+    const output = outputs[0];
+
+    if (!output || output.length < 2) {
+      return true;
+    }
+
+    const outputL = output[0];
+    const outputR = output[1];
+
+    if (!(outputL && outputR)) {
+      return true;
+    }
+
+    // Get input audio from Web Audio graph (from MediaElementSource)
+    // If no input, use pre-allocated empty buffer to avoid GC pressure
+    const inputL = input?.[0] ?? this.emptyBuffer;
+    const inputR = input?.[1] ?? input?.[0] ?? this.emptyBuffer;
+
+    this.dsp.process(inputL, inputR, outputL, outputR, 0, outputL.length);
+
+    return true;
+  }
+}
+
+registerProcessor("cacophony-processor", CacophonyProcessor);

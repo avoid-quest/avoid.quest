@@ -1,6 +1,5 @@
 import { env } from "cloudflare:workers";
 import { getBandcampItem } from "@avoid.quest/bandcamp";
-import type { PlatformItemResponse } from "@avoid.quest/radio-shared";
 import { getSoundCloudItem } from "@avoid.quest/soundcloud";
 import { createFileRoute } from "@tanstack/react-router";
 import { json } from "@tanstack/react-start";
@@ -9,6 +8,7 @@ import { detectPlatformFromUrl } from "@/lib/external-url/detect";
 import { getCorsHeaders, getCorsOptionsHeaders } from "@/lib/middleware/cors";
 import { validateAuthAndRateLimit } from "@/lib/middleware/rate-limit";
 import { createSessionCookie } from "@/lib/middleware/session";
+import type { PlatformItemResponse } from "@/lib/platform-types";
 
 const REQUEST_BODY_SCHEMA = z.object({
   url: z.string(),

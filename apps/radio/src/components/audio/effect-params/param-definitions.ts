@@ -32,6 +32,9 @@ export const paramFormatters: Record<string, ParamFormatter> = {
     const db = 20 * Math.log10(value);
     return `${db > 0 ? "+" : ""}${db.toFixed(1)} dB`;
   },
+  bits: (value: number) => `${Math.round(value)} bits`,
+  q: (value: number) => `Q ${value.toFixed(2)}`,
+  hz: (value: number) => `${value.toFixed(2)} Hz`,
   default: (value: number) => value.toFixed(2),
 };
 

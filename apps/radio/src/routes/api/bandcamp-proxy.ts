@@ -124,13 +124,13 @@ export const Route = createFileRoute("/api/bandcamp-proxy")({
         try {
           const origin = new URL(request.url).origin;
 
-          // Validate authentication and rate limiting (requires existing session)
+          // Validate authentication and rate limiting (creates session if missing for audio element requests)
           const authResult = await validateAuthAndRateLimit(
             request,
             env,
             "bandcamp-proxy",
             {
-              createSessionIfMissing: false,
+              createSessionIfMissing: true,
             }
           );
           if (authResult instanceof Response) {

@@ -1,5 +1,5 @@
-import type { PlatformMetadata } from "@avoid.quest/radio-shared";
-import type { Radio } from "@/lib/types";
+import type { Radio } from "@/lib/audio";
+import type { PlatformMetadata } from "@/lib/platform-types";
 
 function getDescription(metadata: PlatformMetadata): string | undefined {
   if (metadata.platform === "bandcamp") {
@@ -97,4 +97,45 @@ export function formatPlatformDuration(seconds?: number): string {
   const mins = Math.floor(seconds / 60);
   const secs = Math.floor(seconds % 60);
   return `${mins}:${String(secs).padStart(2, "0")}`;
+}
+
+/**
+ * Platform radio mode restriction error
+ */
+export class PlatformModeError extends Error {
+  readonly platform: string;
+  readonly mode: string;
+
+  constructor(platform: string, mode: string) {
+    super(
+      `${platform} tracks are only supported in DJ mode. Switch to DJ mode to play this track.`
+    );
+    this.name = "PlatformModeError";
+    this.platform = platform;
+    this.mode = mode;
+  }
+}
+
+/**
+ * Validate that a radio can be played in the given mode
+ * @param radio The radio to validate
+ * @param mode Current player mode ("single", "multiple", or "dj")
+ * @throws PlatformModeError if the radio is a platform track and mode is not "dj"
+ */
+export function validateRadioForMode(
+  radio: Radio | null,
+  mode: "single" | "multiple" | "dj"
+): void {
+  if (!radio) {
+    return;
+  }
+
+  // Platform radios (SoundCloud/Bandcamp) only work in DJ mode
+  if (isPlatformRadio(radio) && mode !== "dj") {
+    const platform =
+      radio.platformMetadata?.platform === "bandcamp"
+        ? "Bandcamp"
+        : "SoundCloud";
+    throw new PlatformModeError(platform, mode);
+  }
 }

@@ -1,18 +1,16 @@
-import type { Radio } from "@avoid.quest/radio-shared";
+// biome-ignore lint/style/noExportedImports: needed for local use and re-export
+import type { Radio } from "@/lib/audio";
 
-export type {
-  Radio,
-  RadioMetadata,
-  ScrapedOption,
-} from "@avoid.quest/radio-shared";
+// Re-export Radio type for use in app
+export type { Radio };
 
 export type Settings = {
   id?: number;
   player: {
     mode: (typeof playerModes)[number]["value"];
     playerType?: (typeof playerTypes)[number]["value"];
+    restoreStateOnLoad?: boolean;
     single?: {
-      lastUsedRadio?: Radio;
       transitionDuration: number;
     };
   };
@@ -22,7 +20,6 @@ export type SingleModeSettings = Settings & {
   player: Settings["player"] & {
     mode: "single";
     single: {
-      lastUsedRadio?: Radio;
       transitionDuration: number;
     };
   };

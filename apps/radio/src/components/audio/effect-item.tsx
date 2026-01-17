@@ -1,4 +1,3 @@
-import { type EffectConfig, getEffectMetadata } from "@avoid.quest/radio-audio";
 import { useDraggable } from "@dnd-kit/core";
 import { Button } from "@workspace/ui/components/button";
 import {
@@ -15,8 +14,10 @@ import {
   RotateCcwIcon,
   XIcon,
 } from "lucide-react";
+import { type EffectConfig, getEffectMetadata } from "@/lib/audio";
 import { EFFECT_ICONS } from "./effect-constants";
 import { EffectParams } from "./effect-params/effect-params";
+import { EffectVisualization } from "./visualizations/effect-visualization";
 
 type EffectItemProps = {
   effect: EffectConfig;
@@ -68,7 +69,9 @@ export function EffectItem({
       className={cn(
         "w-full gap-0 border py-0 transition-all duration-200",
         isDragging.valueOf() && "scale-[0.98] opacity-50 shadow-lg",
-        effect.enabled.valueOf() && "border-primary/20 bg-primary/5",
+        effect.enabled.valueOf()
+          ? "border-primary/20 bg-primary/5"
+          : "opacity-60 grayscale-[30%]",
         isExpanded.valueOf() && "shadow-md"
       )}
       ref={setNodeRef}
@@ -116,6 +119,13 @@ export function EffectItem({
           >
             {metadata?.name || effect.type}
           </CardTitle>
+
+          {/* Bypassed badge */}
+          {!effect.enabled && (
+            <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 font-medium text-[10px] text-muted-foreground uppercase tracking-wider">
+              Bypassed
+            </span>
+          )}
         </div>
 
         {/** biome-ignore lint/a11y/noNoninteractiveElementInteractions: just a toggle */}
@@ -158,7 +168,8 @@ export function EffectItem({
       </CardHeader>
 
       {isExpanded.valueOf() && (
-        <CardContent className="border-t bg-muted/30 pt-4 pb-4">
+        <CardContent className="space-y-4 border-t bg-muted/30 pt-4 pb-4">
+          <EffectVisualization effect={effect} />
           <EffectParams effect={effect} onUpdate={onUpdate} />
         </CardContent>
       )}

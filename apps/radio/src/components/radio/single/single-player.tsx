@@ -1,4 +1,3 @@
-import { useSingleAudio } from "@avoid.quest/radio-audio";
 import { Button } from "@workspace/ui/components/button";
 import {
   Card,
@@ -18,19 +17,82 @@ import {
 import { PlayPauseButton } from "@workspace/ui/components/play-pause-button";
 import { Slider } from "@workspace/ui/components/slider";
 import { AudioLinesIcon, Volume2Icon, VolumeXIcon } from "lucide-react";
-import { useEffect, useState } from "react";
-import type { Radio } from "@/lib/types";
+import { useEffect, useRef, useState } from "react";
+import { type Radio, useSingleAudio } from "@/lib/audio";
+import { deleteRadio } from "@/lib/hooks/use-radios";
+import { useSettings } from "@/lib/hooks/use-settings";
+import { useSingleStore } from "@/lib/stores/single-store";
 import { RadioDialog } from "../../settings/radio-dialog";
 import { SettingsButton } from "../../settings/settings-button";
 import { RadioItemActions } from "../radio-item-actions";
 import { RadioLogo } from "../radio-logo";
 import { RadioNameLink } from "../radio-name-link";
 
+// Conditional hydration hook for single store persistence
+// Returns true once hydration is complete (or skipped)
+function useSingleStoreHydration(
+  selectRadio: (radio: Radio) => Promise<void>,
+  setVolume: (volume: number) => void
+) {
+  const { data: settings } = useSettings();
+  const hasHydratedRef = useRef(false);
+  const [isHydrated, setIsHydrated] = useState(false);
+
+  // Use refs to avoid stale closures - these always have the latest functions
+  const selectRadioRef = useRef(selectRadio);
+  const setVolumeRef = useRef(setVolume);
+  useEffect(() => {
+    selectRadioRef.current = selectRadio;
+    setVolumeRef.current = setVolume;
+  }, [selectRadio, setVolume]);
+
+  useEffect(() => {
+    if (hasHydratedRef.current) {
+      return;
+    }
+
+    // If settings loaded and restore is disabled, mark as hydrated immediately
+    if (
+      settings !== undefined &&
+      settings?.player?.restoreStateOnLoad === false
+    ) {
+      hasHydratedRef.current = true;
+      setIsHydrated(true);
+      return;
+    }
+
+    const shouldRestore = settings?.player?.restoreStateOnLoad !== false;
+    if (shouldRestore && settings !== undefined) {
+      hasHydratedRef.current = true;
+
+      (async () => {
+        await useSingleStore.persist.rehydrate();
+        const { radio, volume } = useSingleStore.getState();
+
+        // Restore volume first (before loading radio which might trigger audio)
+        if (volume !== undefined) {
+          setVolumeRef.current(volume);
+        }
+
+        // Then restore radio
+        if (radio) {
+          await selectRadioRef.current(radio);
+        }
+
+        setIsHydrated(true);
+      })();
+    }
+  }, [settings]);
+
+  return isHydrated;
+}
+
 type SinglePlayerProps = {
   radios?: Radio[];
 };
 
 export function SinglePlayer({ radios }: SinglePlayerProps) {
+  const transitionDuration = useSingleStore((s) => s.transitionDuration);
   const {
     currentRadio,
     isPlaying,
@@ -41,7 +103,25 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
     selectRadio,
     togglePlayPause,
     setVolume,
-  } = useSingleAudio();
+  } = useSingleAudio(transitionDuration);
+
+  // Conditionally hydrate the single store based on user settings
+  const isHydrated = useSingleStoreHydration(selectRadio, setVolume);
+
+  // Sync radio and volume changes to the store (only after hydration to avoid overwriting)
+  useEffect(() => {
+    if (!isHydrated) {
+      return;
+    }
+    useSingleStore.getState().setRadio(currentRadio);
+  }, [currentRadio, isHydrated]);
+
+  useEffect(() => {
+    if (!isHydrated) {
+      return;
+    }
+    useSingleStore.getState().setVolume(volume);
+  }, [volume, isHydrated]);
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogMode, setDialogMode] = useState<"create" | "edit">("create");
@@ -58,18 +138,13 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
     setDeleteConfirm(radio);
   };
 
-  const handleToggleRadio = async (_radio: Radio, _enabled: boolean) => {
-    // This will be handled by RadioItemActions component
-  };
-
-  const confirmDelete = async () => {
+  const confirmDelete = () => {
     if (!deleteConfirm?.id) {
       return;
     }
 
     try {
-      const { db } = await import("@/lib/db");
-      await db.radios.delete(deleteConfirm.id);
+      deleteRadio(String(deleteConfirm.id));
       setDeleteConfirm(null);
     } catch (deleteError) {
       console.error("Failed to delete radio:", deleteError);
@@ -125,7 +200,7 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
           </div>
         </CardHeader>
         <CardContent className="flex min-h-0 flex-col p-0">
-          {radios?.valueOf() && radios.length > 0 ? (
+          {radios && radios.length > 0 ? (
             <ItemGroup className="flex-1 overflow-y-auto py-4">
               {radios.map((radio) => (
                 <Item
@@ -156,7 +231,6 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
                     <RadioItemActions
                       onDelete={handleDeleteRadio}
                       onEdit={handleEditRadio}
-                      onToggle={handleToggleRadio}
                       radio={radio}
                     />
                   </ItemActions>
@@ -224,11 +298,7 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
               isPlaying={isPlaying}
               onClick={handlePlayPause}
               size="sm"
-              variant={
-                isPlaying.valueOf() && !isLoading.valueOf()
-                  ? "outline"
-                  : "default"
-              }
+              variant={isPlaying && !isLoading ? "outline" : "default"}
             />
 
             {/* Volume Controls - Flex row on mobile, full width on desktop */}
@@ -270,7 +340,7 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
       />
 
       {/* Delete Confirmation Dialog */}
-      {deleteConfirm?.valueOf() && (
+      {deleteConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="max-w-md rounded-lg border bg-background p-6">
             <h3 className="mb-2 font-semibold text-lg">Delete Radio Station</h3>

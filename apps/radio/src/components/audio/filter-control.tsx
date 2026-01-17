@@ -1,4 +1,3 @@
-import type { FilterConfig, FilterType } from "@avoid.quest/radio-audio";
 import {
   Card,
   CardContent,
@@ -18,6 +17,7 @@ import { Toggle } from "@workspace/ui/components/toggle";
 import { cn } from "@workspace/ui/lib/utils";
 // BiquadFilterNode is a Web Audio API type, not exported by cacophony
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { FilterConfig, FilterType } from "@/lib/audio";
 
 const MAX_FREQUENCY = 1000;
 

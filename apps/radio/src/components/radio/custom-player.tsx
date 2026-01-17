@@ -1,5 +1,5 @@
 import { AudioPlayer } from "@/components/audio";
-import type { Radio } from "@/lib/types";
+import type { Radio } from "@/lib/audio";
 
 type CustomPlayerProps = {
   radio: Radio;

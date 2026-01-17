@@ -12,9 +12,11 @@ import { Textarea } from "@workspace/ui/components/textarea";
 import { CheckCircleIcon } from "lucide-react";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
-import { db } from "@/lib/db";
+import type { Radio } from "@/lib/audio";
+import { radiosCollection } from "@/lib/collections";
+import { addRadio, updateRadio } from "@/lib/hooks/use-radios";
+import type { RadioMetadata } from "@/lib/platform-types";
 import { type RadioFormData, radioSchema } from "@/lib/schemas/radio-schema";
-import type { Radio, RadioMetadata } from "@/lib/types";
 import { RadioFieldPreview } from "./radio-field-preview";
 
 type RadioFormProps = {
@@ -61,7 +63,7 @@ const getAutoFilledFields = (scrapedData: RadioMetadata | null) => {
   };
 };
 
-const handleFormSubmit = async (
+const handleFormSubmit = (
   data: RadioFormData,
   mode: "create" | "edit",
   radio: Radio | undefined,
@@ -70,17 +72,18 @@ const handleFormSubmit = async (
   try {
     if (mode === "create") {
       // Get the maximum order value and add 1 for the new radio
-      const existingRadios = await db.radios.orderBy("order").toArray();
+      const existingRadios = Array.from(radiosCollection.state.values());
       const maxOrder = Math.max(...existingRadios.map((r) => r.order || 0), 0);
 
-      await db.radios.add({
+      addRadio({
         ...data,
         order: maxOrder + 1,
         enabled: true,
+        isSystem: false,
       });
       toast.success("Radio station created successfully");
     } else if (mode === "edit" && radio?.id) {
-      await db.radios.update(radio.id, data);
+      updateRadio(String(radio.id), data);
       toast.success("Radio station updated successfully");
     }
     onSuccess();
@@ -111,7 +114,8 @@ export function RadioForm({
   scrapedData,
 }: RadioFormProps) {
   const form = useForm<RadioFormData>({
-    resolver: zodResolver(radioSchema),
+    // biome-ignore lint/suspicious/noExplicitAny: Zod 4 type inference workaround
+    resolver: zodResolver(radioSchema as any),
     defaultValues: getFormDefaultValues(radio, scrapedData),
   });
 
@@ -135,7 +139,7 @@ export function RadioForm({
                   htmlFor={field.name}
                 >
                   Name
-                  {autoFilledFields.name?.valueOf() && (
+                  {autoFilledFields.name && (
                     <div className="flex items-center gap-1 text-primary text-xs">
                       <CheckCircleIcon className="size-3" />
                       Auto-filled
@@ -148,7 +152,7 @@ export function RadioForm({
                   placeholder="Radio station name"
                   {...field}
                 />
-                {fieldState.invalid.valueOf() && (
+                {fieldState.invalid && (
                   <FieldError errors={[fieldState.error]} />
                 )}
               </Field>
@@ -165,7 +169,7 @@ export function RadioForm({
                   htmlFor={field.name}
                 >
                   Stream URL
-                  {autoFilledFields.streamUrl?.valueOf() && (
+                  {autoFilledFields.streamUrl && (
                     <div className="flex items-center gap-1 text-primary text-xs">
                       <CheckCircleIcon className="size-3" />
                       Auto-filled
@@ -178,7 +182,7 @@ export function RadioForm({
                   placeholder="https://example.com/stream.mp3"
                   {...field}
                 />
-                {fieldState.invalid.valueOf() && (
+                {fieldState.invalid && (
                   <FieldError errors={[fieldState.error]} />
                 )}
               </Field>
@@ -195,7 +199,7 @@ export function RadioForm({
                   htmlFor={field.name}
                 >
                   Logo URL
-                  {autoFilledFields.logoUrl?.valueOf() && (
+                  {autoFilledFields.logoUrl && (
                     <div className="flex items-center gap-1 text-primary text-xs">
                       <CheckCircleIcon className="size-3" />
                       Auto-filled
@@ -208,7 +212,7 @@ export function RadioForm({
                   placeholder="https://example.com/logo.png"
                   {...field}
                 />
-                {fieldState.invalid.valueOf() && (
+                {fieldState.invalid && (
                   <FieldError errors={[fieldState.error]} />
                 )}
               </Field>
@@ -225,7 +229,7 @@ export function RadioForm({
                   htmlFor={field.name}
                 >
                   Description
-                  {autoFilledFields.description?.valueOf() && (
+                  {autoFilledFields.description && (
                     <div className="flex items-center gap-1 text-primary text-xs">
                       <CheckCircleIcon className="size-3" />
                       Auto-filled
@@ -239,7 +243,7 @@ export function RadioForm({
                   placeholder="Radio station description"
                   {...field}
                 />
-                {fieldState.invalid.valueOf() && (
+                {fieldState.invalid && (
                   <FieldError errors={[fieldState.error]} />
                 )}
               </Field>
@@ -258,7 +262,7 @@ export function RadioForm({
                   placeholder="https://example.com"
                   {...field}
                 />
-                {fieldState.invalid.valueOf() && (
+                {fieldState.invalid && (
                   <FieldError errors={[fieldState.error]} />
                 )}
               </Field>
@@ -266,7 +270,7 @@ export function RadioForm({
           />
         </FieldGroup>
       </FieldSet>
-      {scrapedData?.valueOf() && scrapedData.missingFields.length > 0 && (
+      {scrapedData && scrapedData.missingFields.length > 0 && (
         <div className="space-y-2 border-t pt-4">
           <h4 className="font-medium text-amber-600 text-sm">
             Missing Required Fields

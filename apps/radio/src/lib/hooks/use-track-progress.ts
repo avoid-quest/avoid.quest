@@ -1,10 +1,21 @@
-import { useEffect, useRef, useState } from "react";
-import { getAudioManager } from "@/lib/stores/dj-store/audio-manager-helpers";
+import { useEffect, useState } from "react";
+import { AudioManager } from "@/lib/audio";
 
-export function useTrackProgress(soundId: string | null) {
+/**
+ * Track progress hook
+ *
+ * Polls the AudioManager for current playback position and duration.
+ * Updates at ~4Hz (250ms intervals) to balance accuracy and performance.
+ *
+ * For live streams, duration will be Infinity.
+ * For finite tracks (Bandcamp, SoundCloud), both position and duration are available.
+ */
+export function useTrackProgress(soundId: string | null): {
+  position: number;
+  duration: number;
+} {
   const [position, setPosition] = useState(0);
   const [duration, setDuration] = useState(0);
-  const rafId = useRef<number | null>(null);
 
   useEffect(() => {
     if (!soundId) {
@@ -13,30 +24,27 @@ export function useTrackProgress(soundId: string | null) {
       return;
     }
 
+    const audioManager = AudioManager.getInstance();
+
+    // Poll for progress updates
     const updateProgress = () => {
-      try {
-        const playback = getAudioManager().getPlayback(soundId);
-        if (playback) {
-          const sound = getAudioManager().getSound(soundId);
-          const currentDuration = sound?.duration || 0;
-          const currentPos = playback.currentTime || 0;
-
-          setPosition(currentPos);
-          setDuration(currentDuration);
-        }
-      } catch {
-        // Ignore errors during polling
+      const progress = audioManager.getTrackProgress(soundId);
+      if (progress) {
+        setPosition(progress.position);
+        // For live streams, duration is Infinity - we keep it as-is
+        // The UI can decide how to display this
+        setDuration(progress.duration);
       }
-
-      rafId.current = requestAnimationFrame(updateProgress);
     };
 
+    // Initial update
     updateProgress();
 
+    // Poll at ~4Hz (250ms) for smooth progress updates
+    const intervalId = setInterval(updateProgress, 250);
+
     return () => {
-      if (rafId.current) {
-        cancelAnimationFrame(rafId.current);
-      }
+      clearInterval(intervalId);
     };
   }, [soundId]);
 

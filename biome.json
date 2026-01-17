@@ -21,7 +21,6 @@
       "!**/cloudflare-env.d.ts",
       "!**/*-bundle.js",
       "!**/*-bundle.d.ts",
-      "!**/packages/cacophony/src",
       "!**/packages/backend/convex/_generated/server.js"
     ]
   },

@@ -10,9 +10,10 @@ Monorepo for avoid.quest apps. Next.js + Convex + Cloudflare.
 
 ## Packages
 
-- **backend**: Convex database, posts/users/media_items tables, queries/mutations
-- **scraper**: Instagram scraper CLI, cron scheduler, Telegram bot integration
-- **cacophony**: Advanced browser audio library (based on [Cacophony](https://github.com/ctoth/cacophony) by @ctoth, but with Bun runtime)
+- **backend**: Convex database, posts/users/media_items/post_metadata tables, AI metadata extraction via Groq
+- **scraper**: Instagram scraper CLI, cron scheduler, Telegram bot, compiles to native binaries
+- **bandcamp**: Bandcamp metadata scraper, extracts tracks/albums/stream URLs
+- **soundcloud**: SoundCloud metadata scraper, extracts tracks/playlists/stream URLs
 - **ui**: Shared component library, shadcn/ui + Radix UI, theme support
 - **typescript-config**: Shared TS configs for all packages
 

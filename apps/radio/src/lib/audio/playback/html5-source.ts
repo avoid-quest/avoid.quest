@@ -290,6 +290,20 @@ export class Html5AudioSource {
   }
 
   /**
+   * Get current playback position in seconds
+   */
+  get currentTime(): number {
+    return this.audio.currentTime;
+  }
+
+  /**
+   * Get total duration in seconds (Infinity for live streams)
+   */
+  get duration(): number {
+    return this.audio.duration;
+  }
+
+  /**
    * Cleanup resources
    */
   cleanup(): void {

@@ -919,6 +919,29 @@ export class AudioManager {
   }
 
   // ============================================
+  // Track Progress
+  // ============================================
+
+  /**
+   * Get current track progress for a sound
+   * Returns position and duration in seconds
+   * For live streams, duration will be Infinity
+   */
+  getTrackProgress(
+    soundId: string
+  ): { position: number; duration: number } | null {
+    const instance = this.sounds.get(soundId);
+    if (!instance?.html5Source) {
+      return null;
+    }
+
+    return {
+      position: instance.html5Source.currentTime,
+      duration: instance.html5Source.duration,
+    };
+  }
+
+  // ============================================
   // Cleanup
   // ============================================
 

@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { EffectChain } from "@/components/audio/effect-chain";
 import type { Radio } from "@/lib/audio";
 import {
   addDeckAEffect,
@@ -54,7 +55,6 @@ import { useThrottledParam } from "@/lib/hooks/use-throttled-param";
 import { useTrackProgress } from "@/lib/hooks/use-track-progress";
 import type { Platform } from "@/lib/platform-types";
 import { DeckLayout } from "./deck-layout";
-import { DeckSections } from "./deck-sections";
 import { DjRadioList } from "./dj-radio-list";
 import { PlatformForm } from "./platform-form";
 
@@ -198,6 +198,7 @@ export function DjDeck({ className, deckId, radios = [] }: DjDeckProps) {
         <DeckLayout
           channelFilter={channelFilter}
           currentTrackIndex={currentTrackIndex}
+          deckSide={deckSide}
           effects={effects}
           effectsDryWet={effectsDryWet}
           isBuffering={isBuffering}
@@ -256,14 +257,9 @@ export function DjDeck({ className, deckId, radios = [] }: DjDeckProps) {
           className="mt-3 flex min-h-0 flex-1 flex-col overflow-hidden"
           value="effects"
         >
-          <DeckSections
-            currentTrackIndex={0}
+          <EffectChain
             effects={effects}
-            metadata={null}
             onAddEffect={addEffect}
-            onPlayTrack={async () => {
-              // No-op when no radio is loaded
-            }}
             onRemoveEffect={removeEffect}
             onReorderEffects={reorderEffects}
             onUpdateEffect={updateEffect}
@@ -272,28 +268,24 @@ export function DjDeck({ className, deckId, radios = [] }: DjDeckProps) {
       </Tabs>
     );
   } else {
-    // Desktop: Original layout
+    // Desktop: Minimal empty deck placeholder
     content = (
-      <div className="flex h-full min-h-0 flex-col">
+      <div className="flex h-full min-h-0 flex-col gap-3">
         {/* Drop Zone */}
-        <div className="flex shrink-0 flex-col items-center justify-center py-8 text-center">
-          <div className="rounded-lg border-2 border-muted-foreground/25 border-dashed p-2 sm:p-6">
-            <Volume2Icon className="mx-auto size-8 text-muted-foreground sm:size-10" />
+        <div className="flex flex-1 flex-col items-center justify-center py-6 text-center">
+          <div className="rounded-lg border-2 border-muted-foreground/25 border-dashed p-4">
+            <Volume2Icon className="mx-auto size-8 text-muted-foreground" />
             <p className="mt-2 text-muted-foreground text-sm">
-              Drop a radio station here
+              Drop a source here
             </p>
           </div>
         </div>
-        {/* Filter Section - Always visible */}
-        <div className="flex min-h-0 flex-1 flex-col border-t pt-3">
-          <DeckSections
-            currentTrackIndex={0}
+
+        {/* Effects (can still configure before loading) */}
+        <div className="border-t pt-2">
+          <EffectChain
             effects={effects}
-            metadata={null}
             onAddEffect={addEffect}
-            onPlayTrack={async () => {
-              // No-op when no radio is loaded
-            }}
             onRemoveEffect={removeEffect}
             onReorderEffects={reorderEffects}
             onUpdateEffect={updateEffect}

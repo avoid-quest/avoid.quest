@@ -22,7 +22,6 @@ import { setDeckARadio, setDeckBRadio } from "@/lib/dj-actions";
 import { setPendingPlatformItem } from "@/lib/hooks/use-dj-state";
 import type { Platform } from "@/lib/platform-types";
 import { RadioLogo } from "../radio-logo";
-import { RadioNameLink } from "../radio-name-link";
 
 type DjRadioListProps = {
   radios: Radio[];
@@ -113,9 +112,7 @@ function RadioItemContent({ radio }: { radio: Radio }) {
         )}
       </div>
       <div className="min-w-0 flex-1">
-        <h3 className="truncate font-medium text-sm">
-          {isPlatform ? radio.name : <RadioNameLink radio={radio} />}
-        </h3>
+        <h3 className="truncate font-medium text-sm">{radio.name}</h3>
         {radio.description?.trim() !== "" && (
           <p className="truncate text-muted-foreground text-xs">
             {radio.description}
@@ -147,38 +144,24 @@ function DraggableRadioItem({ radio }: DraggableRadioItemProps) {
 
   return (
     <div
-      className={`flex w-full shrink-0 items-center gap-2 rounded-lg border bg-card p-3 transition-all hover:shadow-md ${
-        isDragging ? "opacity-50 shadow-lg" : ""
+      className={`flex w-full shrink-0 items-center gap-2 rounded-lg border bg-card p-3 transition-all hover:-translate-y-0.5 hover:shadow-md ${
+        isDragging ? "cursor-grabbing opacity-50 shadow-lg" : "cursor-grab"
       } ${isPlatform ? "border-primary/50 border-dashed bg-primary/5" : ""}`}
       ref={setNodeRef}
       style={{
         ...style,
-        // Ensure drag operations can escape scroll containers on mobile
         touchAction: "none",
-        // Prevent text selection during drag on mobile
         userSelect: "none",
         WebkitUserSelect: "none",
       }}
+      {...attributes}
+      {...listeners}
     >
-      {/* Drag Handle - Only this area is draggable */}
-      <div
-        className={`cursor-grab touch-manipulation rounded p-1 text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground active:cursor-grabbing ${
-          isDragging ? "bg-primary/20 text-primary" : ""
-        }`}
-        style={{
-          touchAction: "none",
-          // Ensure proper touch handling on mobile
-          WebkitTouchCallout: "none",
-          WebkitUserSelect: "none",
-          userSelect: "none",
-        }}
-        {...attributes}
-        {...listeners}
-      >
-        <GripVerticalIcon className="size-4 sm:size-3" />
+      {/* Grip icon - visual indicator only */}
+      <div className="rounded p-1">
+        <GripVerticalIcon className="size-4 text-muted-foreground/50 sm:size-3" />
       </div>
 
-      {/* Radio Content - Not draggable, allows normal interaction */}
       <RadioItemContent radio={radio} />
     </div>
   );
@@ -318,9 +301,7 @@ export function DjRadioList({ radios }: DjRadioListProps) {
 
         {/* Help text */}
         <div className="mb-3 shrink-0 text-muted-foreground text-xs">
-          {isMobile
-            ? "Tap ← or → to load stations"
-            : "Use the grip handle to drag stations to the decks"}
+          {isMobile ? "Tap ← or → to load stations" : "Drag to load in a deck"}
         </div>
 
         {/* Radios Tab */}

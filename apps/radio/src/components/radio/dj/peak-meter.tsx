@@ -4,6 +4,8 @@ type PeakMeterProps = {
   leftLevel: number;
   rightLevel: number;
   className?: string;
+  /** Use wider bars (10px vs 6px per channel) */
+  wide?: boolean;
 };
 
 /**
@@ -16,6 +18,7 @@ export function PeakMeter({
   leftLevel,
   rightLevel,
   className,
+  wide = false,
 }: PeakMeterProps) {
   // Amplify signal for better visibility (peaks are often low in normalized audio)
   // Using sqrt for perceptually linear response
@@ -35,10 +38,17 @@ export function PeakMeter({
     return "bg-emerald-500";
   };
 
+  const barWidth = wide ? "w-2.5" : "w-1.5";
+
   return (
     <div className={cn("flex gap-0.5", className)}>
       {/* Left channel */}
-      <div className="relative h-full w-1.5 overflow-hidden rounded-sm bg-muted">
+      <div
+        className={cn(
+          "relative h-full overflow-hidden rounded-sm bg-muted",
+          barWidth
+        )}
+      >
         <div
           className={cn(
             "absolute right-0 bottom-0 left-0 transition-all duration-75",
@@ -49,7 +59,12 @@ export function PeakMeter({
       </div>
 
       {/* Right channel */}
-      <div className="relative h-full w-1.5 overflow-hidden rounded-sm bg-muted">
+      <div
+        className={cn(
+          "relative h-full overflow-hidden rounded-sm bg-muted",
+          barWidth
+        )}
+      >
         <div
           className={cn(
             "absolute right-0 bottom-0 left-0 transition-all duration-75",
@@ -58,6 +73,30 @@ export function PeakMeter({
           style={{ height: `${rightPercent}%` }}
         />
       </div>
+    </div>
+  );
+}
+
+type DeckPeakMeterProps = {
+  peakLevel?: { left: number; right: number };
+  className?: string;
+};
+
+/**
+ * Full-height peak meter for deck edges.
+ * Use as visual anchor at deck boundaries.
+ */
+export function DeckPeakMeter({ peakLevel, className }: DeckPeakMeterProps) {
+  return (
+    <div
+      className={cn("flex h-full w-6 shrink-0 items-stretch py-2", className)}
+    >
+      <PeakMeter
+        className="h-full"
+        leftLevel={peakLevel?.left ?? 0}
+        rightLevel={peakLevel?.right ?? 0}
+        wide
+      />
     </div>
   );
 }

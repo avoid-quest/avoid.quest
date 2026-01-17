@@ -28,6 +28,7 @@ import {
   setActiveDragRadio,
   setPendingPlatformItem,
   useActiveDragRadio,
+  useMixer,
 } from "@/lib/hooks/use-dj-state";
 import type { Platform } from "@/lib/platform-types";
 import type { DeckId } from "@/lib/stores/dj-runtime-store";
@@ -119,9 +120,15 @@ function useDjStateHydration() {
 
 type DjPlayerMobileViewProps = {
   radios: Radio[];
+  crossfadePosition: number;
+  masterVolume: number;
 };
 
-function DjPlayerMobileView({ radios }: DjPlayerMobileViewProps) {
+function DjPlayerMobileView({
+  radios,
+  crossfadePosition,
+  masterVolume,
+}: DjPlayerMobileViewProps) {
   const [mobileTab, setMobileTab] = useState<"left" | "mixer" | "right">(
     "mixer"
   );
@@ -166,7 +173,13 @@ function DjPlayerMobileView({ radios }: DjPlayerMobileViewProps) {
         <div
           className={cn("h-full", mobileTab === "mixer" ? "block" : "hidden")}
         >
-          <DjMixer radios={radios} />
+          <DjMixer
+            crossfadePosition={crossfadePosition}
+            masterVolume={masterVolume}
+            onCrossfadeChange={setCrossfadePosition}
+            onMasterVolumeChange={setMasterVolume}
+            radios={radios}
+          />
         </div>
         <div
           className={cn("h-full", mobileTab === "right" ? "block" : "hidden")}
@@ -180,16 +193,29 @@ function DjPlayerMobileView({ radios }: DjPlayerMobileViewProps) {
 
 type DjPlayerDesktopViewProps = {
   radios: Radio[];
+  crossfadePosition: number;
+  masterVolume: number;
 };
 
-function DjPlayerDesktopView({ radios }: DjPlayerDesktopViewProps) {
+function DjPlayerDesktopView({
+  radios,
+  crossfadePosition,
+  masterVolume,
+}: DjPlayerDesktopViewProps) {
   return (
     <div className="grid h-full min-h-0 w-full grid-cols-1 gap-4 lg:grid-cols-3 xl:gap-6">
       {/* Deck A */}
       <DjDeck className="order-2 lg:order-1" deckId="deck-a" radios={radios} />
 
-      {/* Center Mixer */}
-      <DjMixer className="order-1 lg:order-2" radios={radios} />
+      {/* Center Mixer with crossfader + master + radio list */}
+      <DjMixer
+        className="order-1 lg:order-2"
+        crossfadePosition={crossfadePosition}
+        masterVolume={masterVolume}
+        onCrossfadeChange={setCrossfadePosition}
+        onMasterVolumeChange={setMasterVolume}
+        radios={radios}
+      />
 
       {/* Deck B */}
       <DjDeck className="order-3" deckId="deck-b" radios={radios} />
@@ -236,6 +262,10 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
 
   // Get UI state from the runtime store
   const activeDragRadio = useActiveDragRadio();
+  const mixer = useMixer();
+
+  const crossfadePosition = mixer?.crossfadePosition ?? 0.5;
+  const masterVolume = mixer?.masterVolume ?? 1;
 
   // Configure sensors for both mouse and touch interactions
   // Enhanced mobile support with better touch handling
@@ -311,9 +341,17 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
         }}
       >
         {isMobile ? (
-          <DjPlayerMobileView radios={radios} />
+          <DjPlayerMobileView
+            crossfadePosition={crossfadePosition}
+            masterVolume={masterVolume}
+            radios={radios}
+          />
         ) : (
-          <DjPlayerDesktopView radios={radios} />
+          <DjPlayerDesktopView
+            crossfadePosition={crossfadePosition}
+            masterVolume={masterVolume}
+            radios={radios}
+          />
         )}
       </div>
 

@@ -17,9 +17,14 @@ import { HomeIcon } from "lucide-react";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { InstallPrompt } from "@/components/pwa/install-prompt";
 import { SWRegister } from "@/components/pwa/sw-register";
+import { SyncDialog } from "@/components/settings/sync-dialog";
 import { Header } from "@/components/theme/header";
 import { ThemeProvider } from "@/components/theme/theme-provider";
-import { initializeCollections } from "@/lib/collections";
+import {
+  applySyncChanges,
+  initializeCollections,
+  type SyncChanges,
+} from "@/lib/collections";
 
 // Lazy load devtools only in development to avoid bundling in production
 const Devtools = lazy(async () => {
@@ -175,10 +180,24 @@ function RootDocument({ children }: { children: React.ReactNode }) {
       })
   );
 
+  // State for sync dialog
+  const [syncChanges, setSyncChanges] = useState<SyncChanges | null>(null);
+  const [showSyncDialog, setShowSyncDialog] = useState(false);
+
   // Initialize TanStack DB collections with default data
   useEffect(() => {
-    initializeCollections();
+    initializeCollections().then((changes) => {
+      if (changes) {
+        setSyncChanges(changes);
+        setShowSyncDialog(true);
+      }
+    });
   }, []);
+
+  const handleApplySyncChanges = (changes: SyncChanges) => {
+    applySyncChanges(changes);
+    setSyncChanges(null);
+  };
 
   return (
     <html lang="en" suppressHydrationWarning>
@@ -202,6 +221,14 @@ function RootDocument({ children }: { children: React.ReactNode }) {
                 {children}
               </main>
               <Toaster />
+              {syncChanges && (
+                <SyncDialog
+                  changes={syncChanges}
+                  onApply={handleApplySyncChanges}
+                  onOpenChange={setShowSyncDialog}
+                  open={showSyncDialog}
+                />
+              )}
             </div>
           </ThemeProvider>
           {process.env.NODE_ENV === "development" && (

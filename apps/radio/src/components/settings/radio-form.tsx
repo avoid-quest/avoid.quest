@@ -79,6 +79,7 @@ const handleFormSubmit = (
         ...data,
         order: maxOrder + 1,
         enabled: true,
+        isSystem: false,
       });
       toast.success("Radio station created successfully");
     } else if (mode === "edit" && radio?.id) {

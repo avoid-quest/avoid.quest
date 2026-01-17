@@ -11,6 +11,7 @@ export const radios: Radio[] = [
     streamUrl: "https://radio.syg.ma/audio.ogg",
     logoUrl: "https://f4.bcbits.com/img/0016171260_10.jpg",
     order: 2,
+    isSystem: true,
   },
   {
     name: "Lyl Radio",
@@ -21,6 +22,7 @@ export const radios: Radio[] = [
     logoUrl:
       "https://pbs.twimg.com/profile_images/905788826207096833/A53KDDzj_400x400.jpg",
     order: 3,
+    isSystem: true,
   },
   {
     name: "Cashmere Radio",
@@ -30,6 +32,7 @@ export const radios: Radio[] = [
     logoUrl: "https://cashmereradio.com/cashmere_logo.svg",
     streamUrl: "https://cashmereradio.out.airtime.pro/cashmereradio_b",
     order: 4,
+    isSystem: true,
   },
   {
     name: "NTS Radio | Channel 1",
@@ -39,6 +42,7 @@ export const radios: Radio[] = [
       "https://upload.wikimedia.org/wikipedia/commons/thumb/2/20/NTS_Radio_logo.svg/2048px-NTS_Radio_logo.svg.png",
     streamUrl: "https://stream-relay-geo.ntslive.net/stream",
     order: 5,
+    isSystem: true,
   },
   {
     name: "NTS Radio | Channel 2",
@@ -48,6 +52,7 @@ export const radios: Radio[] = [
       "https://upload.wikimedia.org/wikipedia/commons/thumb/2/20/NTS_Radio_logo.svg/2048px-NTS_Radio_logo.svg.png",
     streamUrl: "https://stream-relay-geo.ntslive.net/stream2",
     order: 6,
+    isSystem: true,
   },
   {
     name: "Radio BlackOut",
@@ -57,6 +62,7 @@ export const radios: Radio[] = [
     streamUrl: "https://giffard.streampunk.cc/_stream/blackout.ogg",
     logoUrl: "https://radioblackout.org/logo.png",
     order: 12,
+    isSystem: true,
   },
   {
     name: "Resonance Extra",
@@ -66,6 +72,7 @@ export const radios: Radio[] = [
     logoUrl: "https://extra.resonance.fm/static/media/logo.2d5353a2.svg",
     streamUrl: "https://stream.resonance.fm/resonance-extra",
     order: 7,
+    isSystem: true,
   },
   {
     name: "Internet Public Radio",
@@ -76,6 +83,7 @@ export const radios: Radio[] = [
       "https://www.internetpublicradio.live/static/main-logo.bcb1782f3ce2.svg",
     streamUrl: "https://c11.radioboss.fm:18270/stream",
     order: 8,
+    isSystem: true,
   },
   {
     name: "EOS Radio",
@@ -86,6 +94,7 @@ export const radios: Radio[] = [
       "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcReBIsbbj5FoSfB3z_yrbDlRWmPpdVKOqeT1g&s",
     streamUrl: "https://s5.radio.co/s21c5fbf27/listen",
     order: 9,
+    isSystem: true,
   },
   {
     name: "Radio Alhara",
@@ -94,6 +103,7 @@ export const radios: Radio[] = [
     websiteUrl: "https://www.radioalhara.net/",
     streamUrl: "https://n03.radiojar.com/78cxy6wkxtzuv",
     order: 11,
+    isSystem: true,
   },
 ];
 

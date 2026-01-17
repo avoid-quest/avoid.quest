@@ -14,11 +14,20 @@ export {
   updateMixer,
 } from "./dj-state";
 export {
+  addDismissedRadio,
+  addDismissedRadios,
+  applySyncChanges,
+  clearDismissedRadios,
   getAllRadios,
+  getDismissedRadios,
   getEnabledRadios,
+  getSyncChanges,
+  hasSyncChanges,
   initializeRadios,
   type RadioRecord,
   radiosCollection,
+  removeDismissedRadio,
+  type SyncChanges,
   syncRadios,
 } from "./radios";
 export {
@@ -35,13 +44,18 @@ export {
 
 /**
  * Initialize all collections with default data
+ * Returns sync changes if radio collection has pending updates/additions
  */
-export async function initializeCollections(): Promise<void> {
+export async function initializeCollections(): Promise<
+  import("./radios").SyncChanges | null
+> {
   const { initializeRadios } = await import("./radios");
   const { initializeSettings } = await import("./settings");
   const { initializeDjState } = await import("./dj-state");
 
-  await initializeRadios();
+  const syncChanges = await initializeRadios();
   await initializeSettings();
   await initializeDjState();
+
+  return syncChanges;
 }

@@ -13,6 +13,8 @@ export type Radio = {
   order?: number;
   enabled?: boolean;
   platformMetadata?: PlatformMetadata;
+  /** Whether this is a system-provided radio (from const.ts defaults) */
+  isSystem?: boolean;
 };
 
 /**

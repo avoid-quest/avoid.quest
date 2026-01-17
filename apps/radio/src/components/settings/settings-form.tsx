@@ -46,7 +46,7 @@ function handleRestoreStateToggle(checked: boolean): void {
   }
 }
 
-// Lazy import for browser-only APIs (Dexie operations)
+// Lazy import for browser-only APIs
 const ImportExport = lazy(() =>
   import("./import-export").then((mod) => ({ default: mod.ImportExport }))
 );

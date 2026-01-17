@@ -1,5 +1,9 @@
 import { eq, useLiveQuery } from "@tanstack/react-db";
-import { type RadioRecord, radiosCollection } from "@/lib/collections";
+import {
+  addDismissedRadio,
+  type RadioRecord,
+  radiosCollection,
+} from "@/lib/collections";
 
 /**
  * Get all enabled radios sorted by order.
@@ -64,9 +68,14 @@ export function updateRadio(
 }
 
 /**
- * Delete a radio
+ * Delete a radio.
+ * If it's a system radio, adds it to the dismissed list to prevent re-prompting.
  */
 export function deleteRadio(id: string): void {
+  const radio = radiosCollection.state.get(id);
+  if (radio?.isSystem) {
+    addDismissedRadio(radio.name);
+  }
   radiosCollection.delete(id);
 }
 

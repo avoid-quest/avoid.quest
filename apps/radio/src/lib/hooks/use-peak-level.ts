@@ -4,8 +4,8 @@ import { AudioManager } from "@/lib/audio";
 
 type PeakLevel = { left: number; right: number };
 
-// Throttle to ~30fps for peak meter updates (reduces CPU during playback)
-const METER_THROTTLE_MS = 33;
+// Throttle to ~20fps for peak meter updates (reduces CPU during playback)
+const METER_THROTTLE_MS = 50;
 
 /**
  * Hook to subscribe to peak meter levels for a sound

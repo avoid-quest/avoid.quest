@@ -51,7 +51,7 @@ export function PeakMeter({
       >
         <div
           className={cn(
-            "absolute right-0 bottom-0 left-0 transition-all duration-75",
+            "absolute right-0 bottom-0 left-0 transition-all duration-100",
             getColor(leftLevel)
           )}
           style={{ height: `${leftPercent}%` }}
@@ -67,7 +67,7 @@ export function PeakMeter({
       >
         <div
           className={cn(
-            "absolute right-0 bottom-0 left-0 transition-all duration-75",
+            "absolute right-0 bottom-0 left-0 transition-all duration-100",
             getColor(rightLevel)
           )}
           style={{ height: `${rightPercent}%` }}
@@ -134,7 +134,7 @@ export function HorizontalPeakMeter({
     >
       <div
         className={cn(
-          "absolute top-0 bottom-0 left-0 transition-all duration-75",
+          "absolute top-0 bottom-0 left-0 transition-all duration-100",
           getColor(level)
         )}
         style={{ width: `${percent}%` }}

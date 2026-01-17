@@ -922,7 +922,7 @@ export class DSPProcessor {
 
   // Peak meter (always active, independent of analysis)
   private meterCounter = 0;
-  private readonly meterInterval = 3; // Send every N render quanta (~60fps)
+  private readonly meterInterval = 6; // Send every N render quanta (~30fps)
 
   // Callback for emitting events to main thread
   private onMessage?: (message: { type: string; payload?: unknown }) => void;

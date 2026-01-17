@@ -203,7 +203,7 @@ function DjPlayerDesktopView({
   masterVolume,
 }: DjPlayerDesktopViewProps) {
   return (
-    <div className="grid h-full min-h-0 w-full grid-cols-1 gap-2 lg:grid-cols-[1fr_18rem_1fr]">
+    <div className="grid h-full min-h-0 w-full grid-cols-1 gap-2 lg:grid-cols-[1fr_20rem_1fr]">
       {/* Deck A */}
       <DjDeck className="order-2 lg:order-1" deckId="deck-a" radios={radios} />
 

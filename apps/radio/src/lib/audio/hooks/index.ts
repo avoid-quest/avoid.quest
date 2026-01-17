@@ -11,7 +11,4 @@ export {
   type MultipleAudioState,
   useMultipleAudio,
 } from "./use-multiple-audio.js";
-export {
-  type SingleAudioSettings,
-  useSingleAudio,
-} from "./use-single-audio.js";
+export { useSingleAudio } from "./use-single-audio.js";

@@ -10,10 +10,12 @@ import {
 import { Button } from "@workspace/ui/components/button";
 import { useIsMobile } from "@workspace/ui/hooks/use-mobile";
 import { cn } from "@workspace/ui/lib/utils";
+import { useLiveQuery } from "dexie-react-hooks";
 import { Volume2Icon } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import type { Radio } from "@/lib/audio";
+import { db } from "@/lib/db";
 import type { Platform } from "@/lib/platform-types";
 import { useDjStore } from "@/lib/stores/dj-store";
 import type { DeckId } from "@/lib/stores/dj-store/types";
@@ -52,6 +54,46 @@ function handlePlatformItemDrag({
     });
   }
   return true;
+}
+
+// Conditional hydration hook for DJ store persistence
+function useDjStoreHydration() {
+  const settings = useLiveQuery(() => db.settings.limit(1).toArray())?.[0];
+  const hasHydratedRef = useRef(false);
+
+  // Note: Cleanup on mode change is handled by mode-select.tsx which awaits cleanupAudioOnly()
+  // We don't cleanup on unmount here because on page refresh the audio stops naturally,
+  // and running cleanup could interfere with state persistence timing.
+
+  useEffect(() => {
+    if (hasHydratedRef.current) {
+      return;
+    }
+
+    const shouldRestore = settings?.player?.restoreStateOnLoad !== false;
+    if (shouldRestore && settings !== undefined) {
+      hasHydratedRef.current = true;
+
+      // Async IIFE - await rehydrate, then re-init audio
+      (async () => {
+        await useDjStore.persist.rehydrate();
+        const state = useDjStore.getState();
+
+        // Re-init audio for decks that have radios (audio needs component context)
+        // This also applies channel strip settings (pan, speed, filter, etc.)
+        if (state.deckA.radio) {
+          await state.setLeftRadio(state.deckA.radio);
+        }
+        if (state.deckB.radio) {
+          await state.setRightRadio(state.deckB.radio);
+        }
+
+        // Apply mixer settings to audio engine
+        state.setMasterVolume(state.mixer.masterVolume);
+        state.setCrossfadePosition(state.mixer.crossfadePosition);
+      })();
+    }
+  }, [settings]);
 }
 
 type DjPlayerMobileViewProps = {
@@ -168,6 +210,9 @@ function DjPlayerDragOverlay({ activeDragRadio }: DjPlayerDragOverlayProps) {
 }
 
 export function DjPlayer({ radios = [] }: DjPlayerProps) {
+  // Conditionally hydrate the DJ store based on user settings
+  useDjStoreHydration();
+
   const {
     setLeftRadio,
     setRightRadio,

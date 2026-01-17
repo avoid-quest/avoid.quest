@@ -39,9 +39,9 @@ export function useMultipleAudio(settings?: MultipleAudioSettings) {
   const unsubscribesRef = useRef<Map<string, () => void>>(new Map());
   const hasInitializedRef = useRef(false);
 
-  // Generate unique player ID
+  // Generate stable player ID based on radio
   const getPlayerId = useCallback(
-    (radio: Radio) => `multi_${radio.id || radio.name}_${Date.now()}`,
+    (radio: Radio) => `multi_${radio.id || radio.name}`,
     []
   );
 
@@ -276,12 +276,17 @@ export function useMultipleAudio(settings?: MultipleAudioSettings) {
     }
     unsubscribesRef.current.clear();
 
-    // Clear manager
-    manager.dispose();
+    // Stop and remove all players individually (don't dispose manager singleton)
+    for (const player of players) {
+      manager.removePlayer(player.id);
+    }
+
+    // Reset initialization flag for next mount
+    hasInitializedRef.current = false;
 
     // Clear state
     setPlayers([]);
-  }, [manager]);
+  }, [manager, players]);
 
   // Load initial radios if provided
   useEffect(() => {
@@ -299,12 +304,20 @@ export function useMultipleAudio(settings?: MultipleAudioSettings) {
     }
   }, [settings?.player?.multiple?.lastUsedRadios, players.length, addRadio]);
 
-  // Cleanup on unmount - dispose all players to stop audio
+  // Cleanup on unmount - remove all players we created
   useEffect(
     () => () => {
-      clearAll();
+      // Unsubscribe and remove each player we created
+      for (const [playerId, unsubscribe] of unsubscribesRef.current) {
+        unsubscribe();
+        manager.removePlayer(playerId);
+      }
+      unsubscribesRef.current.clear();
+
+      // Reset initialization flag for next mount
+      hasInitializedRef.current = false;
     },
-    [clearAll]
+    [manager]
   );
 
   return {

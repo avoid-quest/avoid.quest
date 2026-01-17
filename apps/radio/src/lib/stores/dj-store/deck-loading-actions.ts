@@ -33,19 +33,103 @@ function applyStoredEffectsAndFilters(
   }
 }
 
+/**
+ * Helper to apply stored channel strip settings to a newly loaded sound
+ */
+function applyStoredChannelStrip(
+  soundId: string,
+  deck: InternalDjState["deckA"]
+) {
+  try {
+    const audioManager = getAudioManager();
+
+    // Apply mute state
+    if (deck.muted) {
+      audioManager.muteSound(soundId);
+    }
+
+    // Apply pan (default is 0 = center)
+    if (deck.pan !== 0) {
+      audioManager.setPan(soundId, deck.pan);
+    }
+
+    // Apply speed/playback rate (default is 1)
+    if (deck.speed !== 1) {
+      audioManager.setPlaybackRate(soundId, deck.speed);
+    }
+
+    // Apply channel filter (default is 0 = neutral)
+    if (deck.channelFilter !== 0) {
+      audioManager.setChannelFilter(soundId, deck.channelFilter);
+    }
+
+    // Apply effects dry/wet (default is 1 = full wet)
+    if (deck.effectsDryWet !== 1) {
+      audioManager.setEffectsDryWet(soundId, deck.effectsDryWet);
+    }
+  } catch (err) {
+    console.error("[DeckLoading] Error applying channel strip:", err);
+  }
+}
+
 export const createDeckLoadingActions: StateCreator<
   InternalDjState,
   [],
   [],
   Pick<
     InternalDjState,
-    "setLeftRadio" | "setRightRadio" | "resetLeft" | "resetRight" | "cleanupAll"
+    | "setLeftRadio"
+    | "setRightRadio"
+    | "resetLeft"
+    | "resetRight"
+    | "cleanupAll"
+    | "cleanupAudioOnly"
   >
 > = (set, get) => ({
   cleanupAll: async () => {
     const { setLeftRadio, setRightRadio } = get();
     // Setting radio to null triggers cleanup logic in setRadio actions
     await Promise.all([setLeftRadio(null), setRightRadio(null)]);
+  },
+
+  cleanupAudioOnly: async () => {
+    const { deckA, deckB, _subscriptionCleanup } = get();
+
+    // Unsubscribe from audio events
+    if (_subscriptionCleanup.left) {
+      _subscriptionCleanup.left();
+    }
+    if (_subscriptionCleanup.right) {
+      _subscriptionCleanup.right();
+    }
+
+    // Cleanup sounds without clearing radio state
+    if (deckA.soundId) {
+      await getAudioManager().cleanupSound(deckA.soundId);
+    }
+    if (deckB.soundId) {
+      await getAudioManager().cleanupSound(deckB.soundId);
+    }
+
+    // Reset only runtime state, keep radio + channel strip settings
+    set((state) => ({
+      deckA: {
+        ...state.deckA,
+        soundId: null,
+        isPlaying: false,
+        isLoading: false,
+        isBuffering: false,
+      },
+      deckB: {
+        ...state.deckB,
+        soundId: null,
+        isPlaying: false,
+        isLoading: false,
+        isBuffering: false,
+      },
+      _subscriptionCleanup: { left: null, right: null },
+      error: null,
+    }));
   },
 
   setLeftRadio: async (radio: Radio | null) => {
@@ -92,17 +176,28 @@ export const createDeckLoadingActions: StateCreator<
         },
       }));
 
-      // Apply stored filter and effects
-      const freshState = get();
-      applyStoredEffectsAndFilters(
-        soundId,
-        freshState.deckA.effects,
-        freshState.deckA.filter
-      );
+      // Track whether we've applied channel strip settings (deferred until first play)
+      let hasAppliedChannelStrip = false;
 
       // Subscribe to this sound's events and store cleanup function
       const cleanup = getAudioManager().subscribe(soundId, (audioState) => {
         const currentState = get();
+
+        // Apply stored settings on first play (when audio nodes are fully initialized)
+        // Must check !isLoading because isPlaying=true is set before nodes are created
+        if (
+          audioState.isPlaying &&
+          !audioState.isLoading &&
+          !hasAppliedChannelStrip
+        ) {
+          hasAppliedChannelStrip = true;
+          applyStoredEffectsAndFilters(
+            soundId,
+            currentState.deckA.effects,
+            currentState.deckA.filter
+          );
+          applyStoredChannelStrip(soundId, currentState.deckA);
+        }
 
         // Detect track end using explicit flag
         const trackEnded = audioState.hasEnded;
@@ -156,8 +251,7 @@ export const createDeckLoadingActions: StateCreator<
       }
     } catch (err) {
       // Error handling - AudioManager will also update state through subscription
-      const msg =
-        err instanceof Error ? err.message : "Failed to load Deck A";
+      const msg = err instanceof Error ? err.message : "Failed to load Deck A";
       set((_state) => ({
         error: msg,
       }));
@@ -208,17 +302,28 @@ export const createDeckLoadingActions: StateCreator<
         },
       }));
 
-      // Apply stored filter and effects
-      const freshState = get();
-      applyStoredEffectsAndFilters(
-        soundId,
-        freshState.deckB.effects,
-        freshState.deckB.filter
-      );
+      // Track whether we've applied channel strip settings (deferred until first play)
+      let hasAppliedChannelStrip = false;
 
       // Subscribe to this sound's events and store cleanup function
       const cleanup = getAudioManager().subscribe(soundId, (audioState) => {
         const currentState = get();
+
+        // Apply stored settings on first play (when audio nodes are fully initialized)
+        // Must check !isLoading because isPlaying=true is set before nodes are created
+        if (
+          audioState.isPlaying &&
+          !audioState.isLoading &&
+          !hasAppliedChannelStrip
+        ) {
+          hasAppliedChannelStrip = true;
+          applyStoredEffectsAndFilters(
+            soundId,
+            currentState.deckB.effects,
+            currentState.deckB.filter
+          );
+          applyStoredChannelStrip(soundId, currentState.deckB);
+        }
 
         // Detect track end using explicit flag
         const trackEnded = audioState.hasEnded;
@@ -272,8 +377,7 @@ export const createDeckLoadingActions: StateCreator<
       }
     } catch (err) {
       // Error handling - AudioManager will also update state through subscription
-      const msg =
-        err instanceof Error ? err.message : "Failed to load Deck B";
+      const msg = err instanceof Error ? err.message : "Failed to load Deck B";
       set((_state) => ({
         error: msg,
       }));
@@ -283,6 +387,20 @@ export const createDeckLoadingActions: StateCreator<
   resetLeft: async () => {
     const { deckA, setLeftRadio } = get();
     if (deckA.radio) {
+      // Reset channel strip to defaults before reloading
+      set((state) => ({
+        deckA: {
+          ...state.deckA,
+          volume: 1,
+          muted: false,
+          pan: 0,
+          speed: 1.0,
+          channelFilter: 0,
+          effectsDryWet: 1.0,
+          effects: [],
+          filter: { ...initialDeckState.filter },
+        },
+      }));
       await setLeftRadio(deckA.radio);
     }
   },
@@ -290,6 +408,20 @@ export const createDeckLoadingActions: StateCreator<
   resetRight: async () => {
     const { deckB, setRightRadio } = get();
     if (deckB.radio) {
+      // Reset channel strip to defaults before reloading
+      set((state) => ({
+        deckB: {
+          ...state.deckB,
+          volume: 1,
+          muted: false,
+          pan: 0,
+          speed: 1.0,
+          channelFilter: 0,
+          effectsDryWet: 1.0,
+          effects: [],
+          filter: { ...initialDeckState.filter },
+        },
+      }));
       await setRightRadio(deckB.radio);
     }
   },

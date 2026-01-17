@@ -26,8 +26,8 @@ export function ModeSelect({ className }: { className?: string }) {
     }
 
     try {
-      // Stop all players before switching modes
-      await useDjStore.getState().cleanupAll();
+      // Stop audio before switching modes (preserves persisted radio state)
+      await useDjStore.getState().cleanupAudioOnly();
 
       const newMode = value as "single" | "multiple" | "dj";
 
@@ -36,18 +36,11 @@ export function ModeSelect({ className }: { className?: string }) {
         playerType: settings.player.playerType,
       };
 
-      if (newMode === "single") {
-        updatedPlayer.single = {
-          transitionDuration:
-            settings.player.single?.transitionDuration ??
-            DEFAULT_TRANSITION_DURATION,
-          lastUsedRadio: settings.player.single?.lastUsedRadio,
-        };
-      } else {
-        updatedPlayer.single = settings.player.single ?? {
-          transitionDuration: DEFAULT_TRANSITION_DURATION,
-        };
-      }
+      updatedPlayer.single = {
+        transitionDuration:
+          settings.player.single?.transitionDuration ??
+          DEFAULT_TRANSITION_DURATION,
+      };
 
       await db.settings.update(settings.id, {
         player: updatedPlayer,

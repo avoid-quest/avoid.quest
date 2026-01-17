@@ -19,16 +19,7 @@ import type { Radio } from "../playback/types.js";
 
 const DEFAULT_TRANSITION_DURATION = 2000;
 
-export type SingleAudioSettings = {
-  player?: {
-    single?: {
-      transitionDuration?: number;
-      lastUsedRadio?: Radio;
-    };
-  };
-};
-
-export function useSingleAudio(settings?: SingleAudioSettings) {
+export function useSingleAudio(transitionDuration?: number) {
   const [currentRadio, setCurrentRadio] = useState<Radio | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -39,8 +30,6 @@ export function useSingleAudio(settings?: SingleAudioSettings) {
   const currentPlayerRef = useRef<HTML5AudioPlayer | null>(null);
   const previousPlayerRef = useRef<HTML5AudioPlayer | null>(null);
   const crossfadeControllerRef = useRef<CrossfadeController | null>(null);
-  const hasInitializedRef = useRef(false);
-  const loadRadioRef = useRef<((radio: Radio) => Promise<void>) | null>(null);
   const volumeRef = useRef(volume);
 
   // Get or create crossfade controller
@@ -102,9 +91,7 @@ export function useSingleAudio(settings?: SingleAudioSettings) {
   // Crossfade to new radio
   const crossfadeToNewRadio = useCallback(
     async (newRadio: Radio, newPlayerId: string) => {
-      const transitionDuration =
-        settings?.player?.single?.transitionDuration ??
-        DEFAULT_TRANSITION_DURATION;
+      const duration = transitionDuration ?? DEFAULT_TRANSITION_DURATION;
 
       try {
         setError(null);
@@ -134,7 +121,7 @@ export function useSingleAudio(settings?: SingleAudioSettings) {
 
         // Perform crossfade
         await controller.crossfade(previousPlayerRef.current, newPlayer, {
-          duration: transitionDuration,
+          duration,
           targetVolume: volume,
         });
 
@@ -164,7 +151,7 @@ export function useSingleAudio(settings?: SingleAudioSettings) {
         return () => {};
       }
     },
-    [settings, volume, getCrossfadeController, subscribeToPlayer]
+    [transitionDuration, volume, getCrossfadeController, subscribeToPlayer]
   );
 
   // Load radio (no crossfade, just load for later playback)
@@ -209,11 +196,6 @@ export function useSingleAudio(settings?: SingleAudioSettings) {
       subscribeToPlayer,
     ]
   );
-
-  // Keep ref updated with latest loadRadio function
-  useEffect(() => {
-    loadRadioRef.current = loadRadio;
-  }, [loadRadio]);
 
   // Play function
   const play = useCallback(async () => {
@@ -296,20 +278,6 @@ export function useSingleAudio(settings?: SingleAudioSettings) {
       );
     }
   }, []);
-
-  // Load initial radio if provided
-  useEffect(() => {
-    const initialRadio = settings?.player?.single?.lastUsedRadio;
-    if (
-      initialRadio &&
-      !currentRadio &&
-      !hasInitializedRef.current &&
-      loadRadioRef.current
-    ) {
-      hasInitializedRef.current = true;
-      loadRadioRef.current(initialRadio);
-    }
-  }, [settings?.player?.single?.lastUsedRadio, currentRadio]);
 
   // Cleanup on unmount
   useEffect(

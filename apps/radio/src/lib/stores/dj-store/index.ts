@@ -11,37 +11,86 @@ export * from "./types";
 export * from "./ui-actions";
 
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
 import { createChannelStripActions } from "./channel-strip-actions";
 import { createDeckActions } from "./deck-actions";
 import { createEffectsActions } from "./effects-actions";
 import { createMixerActions } from "./mixer-actions";
 import { createTrackActions } from "./track-actions";
-import { type InternalDjState, initialDeckState } from "./types";
+import {
+  type DeckState,
+  type InternalDjState,
+  initialDeckState,
+} from "./types";
 import { createUiActions } from "./ui-actions";
 
-export const useDjStore = create<InternalDjState>((set, get, api) => ({
-  // Initial State
-  deckA: { ...initialDeckState },
-  deckB: { ...initialDeckState },
-  mixer: {
-    crossfadePosition: 0.5,
-    masterVolume: 1,
-  },
-  ui: {
-    activeDragRadio: null,
-    pendingPlatformItem: null,
-  },
-  error: null,
-  _subscriptionCleanup: {
-    left: null,
-    right: null,
-  },
+// Extract only the persistable state from a deck (excludes runtime state)
+const extractDeckState = (deck: DeckState) => ({
+  // Source
+  radio: deck.radio,
+  // Channel Strip
+  volume: deck.volume,
+  muted: deck.muted,
+  pan: deck.pan,
+  speed: deck.speed,
+  channelFilter: deck.channelFilter,
+  // Effects
+  effects: deck.effects,
+  filter: deck.filter,
+  effectsDryWet: deck.effectsDryWet,
+});
 
-  // Compose all action creators
-  ...createDeckActions(set, get, api),
-  ...createMixerActions(set, get, api),
-  ...createEffectsActions(set, get, api),
-  ...createTrackActions(set, get, api),
-  ...createUiActions(set, get, api),
-  ...createChannelStripActions(set, get, api),
-}));
+export const useDjStore = create<InternalDjState>()(
+  persist(
+    (set, get, api) => ({
+      // Initial State
+      deckA: { ...initialDeckState },
+      deckB: { ...initialDeckState },
+      mixer: {
+        crossfadePosition: 0.5,
+        masterVolume: 1,
+      },
+      ui: {
+        activeDragRadio: null,
+        pendingPlatformItem: null,
+      },
+      error: null,
+      _subscriptionCleanup: {
+        left: null,
+        right: null,
+      },
+
+      // Compose all action creators
+      ...createDeckActions(set, get, api),
+      ...createMixerActions(set, get, api),
+      ...createEffectsActions(set, get, api),
+      ...createTrackActions(set, get, api),
+      ...createUiActions(set, get, api),
+      ...createChannelStripActions(set, get, api),
+    }),
+    {
+      name: "radio-dj-store",
+      skipHydration: true,
+      partialize: (state) => ({
+        deckA: extractDeckState(state.deckA),
+        deckB: extractDeckState(state.deckB),
+        mixer: state.mixer,
+      }),
+      merge: (persisted, current) => ({
+        ...current,
+        deckA: {
+          ...current.deckA,
+          ...(persisted as Partial<InternalDjState>)?.deckA,
+        },
+        deckB: {
+          ...current.deckB,
+          ...(persisted as Partial<InternalDjState>)?.deckB,
+        },
+        mixer: {
+          ...current.mixer,
+          ...(persisted as Partial<InternalDjState>)?.mixer,
+        },
+      }),
+    }
+  )
+);

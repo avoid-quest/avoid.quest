@@ -23,7 +23,7 @@ export const createChannelStripActions: StateCreator<
     set((state) => ({
       deckA: { ...state.deckA, pan },
     }));
-    if (deckA.soundId) {
+    if (deckA.soundId && deckA.isPlaying && !deckA.isLoading) {
       getAudioManager().setPan(deckA.soundId, pan);
     }
   },
@@ -33,7 +33,7 @@ export const createChannelStripActions: StateCreator<
     set((state) => ({
       deckB: { ...state.deckB, pan },
     }));
-    if (deckB.soundId) {
+    if (deckB.soundId && deckB.isPlaying && !deckB.isLoading) {
       getAudioManager().setPan(deckB.soundId, pan);
     }
   },
@@ -43,7 +43,7 @@ export const createChannelStripActions: StateCreator<
     set((state) => ({
       deckA: { ...state.deckA, speed },
     }));
-    if (deckA.soundId) {
+    if (deckA.soundId && deckA.isPlaying && !deckA.isLoading) {
       getAudioManager().setPlaybackRate(deckA.soundId, speed);
     }
   },
@@ -53,7 +53,7 @@ export const createChannelStripActions: StateCreator<
     set((state) => ({
       deckB: { ...state.deckB, speed },
     }));
-    if (deckB.soundId) {
+    if (deckB.soundId && deckB.isPlaying && !deckB.isLoading) {
       getAudioManager().setPlaybackRate(deckB.soundId, speed);
     }
   },
@@ -63,7 +63,7 @@ export const createChannelStripActions: StateCreator<
     set((state) => ({
       deckA: { ...state.deckA, channelFilter: value },
     }));
-    if (deckA.soundId) {
+    if (deckA.soundId && deckA.isPlaying && !deckA.isLoading) {
       getAudioManager().setChannelFilter(deckA.soundId, value);
     }
   },
@@ -73,7 +73,7 @@ export const createChannelStripActions: StateCreator<
     set((state) => ({
       deckB: { ...state.deckB, channelFilter: value },
     }));
-    if (deckB.soundId) {
+    if (deckB.soundId && deckB.isPlaying && !deckB.isLoading) {
       getAudioManager().setChannelFilter(deckB.soundId, value);
     }
   },
@@ -83,7 +83,7 @@ export const createChannelStripActions: StateCreator<
     set((state) => ({
       deckA: { ...state.deckA, effectsDryWet: value },
     }));
-    if (deckA.soundId) {
+    if (deckA.soundId && deckA.isPlaying && !deckA.isLoading) {
       getAudioManager().setEffectsDryWet(deckA.soundId, value);
     }
   },
@@ -93,7 +93,7 @@ export const createChannelStripActions: StateCreator<
     set((state) => ({
       deckB: { ...state.deckB, effectsDryWet: value },
     }));
-    if (deckB.soundId) {
+    if (deckB.soundId && deckB.isPlaying && !deckB.isLoading) {
       getAudioManager().setEffectsDryWet(deckB.soundId, value);
     }
   },

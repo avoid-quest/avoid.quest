@@ -126,18 +126,14 @@ export const cleanupVolatileData = async () => {
         return;
       }
 
-      const oldRadio = (setting && (setting.player.single as { radio?: Radio }))
-        ?.radio;
       const transitionDuration =
         setting?.player.single?.transitionDuration ?? TRANSITION_DURATION;
-      const lastUsedRadio = setting?.player.single?.lastUsedRadio ?? oldRadio;
 
       const cleanedPlayer = {
         mode: setting?.player.mode as "multiple" | "single" | "dj",
         playerType: setting?.player.playerType,
         single: {
           transitionDuration,
-          lastUsedRadio,
         },
       };
 

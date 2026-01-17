@@ -34,6 +34,27 @@ import { SettingsSelect } from "./settings-select";
 
 const MAX_TRANSITION_DURATION = 10_000;
 
+async function handleRestoreStateToggle(
+  settings: Settings,
+  checked: boolean
+): Promise<void> {
+  if (!settings.id) {
+    return;
+  }
+
+  try {
+    await db.settings.update(settings.id, {
+      player: {
+        ...settings.player,
+        restoreStateOnLoad: checked,
+      },
+    });
+  } catch (error) {
+    console.error("Failed to update restore state setting:", error);
+    toast.error("Failed to update setting");
+  }
+}
+
 // Lazy import for browser-only APIs (Dexie operations)
 const ImportExport = lazy(() =>
   import("./import-export").then((mod) => ({ default: mod.ImportExport }))
@@ -69,7 +90,6 @@ export function SettingsForm({
           ...settings.player,
           single: {
             transitionDuration: newValue ?? 0,
-            lastUsedRadio: settings.player.single?.lastUsedRadio,
           },
         },
       });
@@ -169,6 +189,31 @@ export function SettingsForm({
               <div className="space-y-3">
                 <h4 className="font-medium text-sm">Playback Mode</h4>
                 <SettingsSelect />
+              </div>
+
+              <div className="space-y-3 rounded-lg border p-4">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="space-y-0.5">
+                    <label
+                      className="font-medium text-sm"
+                      htmlFor="restore-state"
+                    >
+                      Restore playback state on load
+                    </label>
+                    <p className="text-muted-foreground text-xs">
+                      Remember last played radio and volume settings
+                    </p>
+                  </div>
+                  <input
+                    checked={settings.player.restoreStateOnLoad !== false}
+                    className="size-4 cursor-pointer accent-primary"
+                    id="restore-state"
+                    onChange={(e) =>
+                      handleRestoreStateToggle(settings, e.target.checked)
+                    }
+                    type="checkbox"
+                  />
+                </div>
               </div>
 
               {settings.player.mode === "single" && (

@@ -36,6 +36,13 @@ export function MultipleRadios({ radios }: { radios?: Radio[] }) {
   // Track which radios we've added to avoid duplicates
   const addedRadioIdsRef = useRef<Set<number>>(new Set());
 
+  // Reset tracking when unmounting to ensure clean state on remount
+  useEffect(() => {
+    return () => {
+      addedRadioIdsRef.current.clear();
+    };
+  }, []);
+
   // Sync radios with audio players
   useEffect(() => {
     if (!radios) {
@@ -55,14 +62,12 @@ export function MultipleRadios({ radios }: { radios?: Radio[] }) {
     // Remove radios that are no longer in the list
     for (const radioId of addedRadioIdsRef.current) {
       if (!currentRadioIds.has(radioId)) {
-        const player = players.find((p) => p.radio.id === radioId);
-        if (player) {
-          removeRadio(player.id);
-        }
+        // With stable IDs, we can compute the playerId directly
+        removeRadio(`multi_${radioId}`);
         addedRadioIdsRef.current.delete(radioId);
       }
     }
-  }, [radios, addRadio, removeRadio, players]);
+  }, [radios, addRadio, removeRadio]);
 
   // Find player state by matching radio ID
   const getPlayerState = useCallback(

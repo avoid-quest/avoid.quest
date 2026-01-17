@@ -16,20 +16,83 @@ import {
 } from "@workspace/ui/components/item";
 import { PlayPauseButton } from "@workspace/ui/components/play-pause-button";
 import { Slider } from "@workspace/ui/components/slider";
+import { useLiveQuery } from "dexie-react-hooks";
 import { AudioLinesIcon, Volume2Icon, VolumeXIcon } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { type Radio, useSingleAudio } from "@/lib/audio";
+import { db } from "@/lib/db";
+import { useSingleStore } from "@/lib/stores/single-store";
 import { RadioDialog } from "../../settings/radio-dialog";
 import { SettingsButton } from "../../settings/settings-button";
 import { RadioItemActions } from "../radio-item-actions";
 import { RadioLogo } from "../radio-logo";
 import { RadioNameLink } from "../radio-name-link";
 
+// Conditional hydration hook for single store persistence
+// Returns true once hydration is complete (or skipped)
+function useSingleStoreHydration(
+  selectRadio: (radio: Radio) => Promise<void>,
+  setVolume: (volume: number) => void
+) {
+  const settings = useLiveQuery(() => db.settings.limit(1).toArray())?.[0];
+  const hasHydratedRef = useRef(false);
+  const [isHydrated, setIsHydrated] = useState(false);
+
+  // Use refs to avoid stale closures - these always have the latest functions
+  const selectRadioRef = useRef(selectRadio);
+  const setVolumeRef = useRef(setVolume);
+  useEffect(() => {
+    selectRadioRef.current = selectRadio;
+    setVolumeRef.current = setVolume;
+  }, [selectRadio, setVolume]);
+
+  useEffect(() => {
+    if (hasHydratedRef.current) {
+      return;
+    }
+
+    // If settings loaded and restore is disabled, mark as hydrated immediately
+    if (
+      settings !== undefined &&
+      settings?.player?.restoreStateOnLoad === false
+    ) {
+      hasHydratedRef.current = true;
+      setIsHydrated(true);
+      return;
+    }
+
+    const shouldRestore = settings?.player?.restoreStateOnLoad !== false;
+    if (shouldRestore && settings !== undefined) {
+      hasHydratedRef.current = true;
+
+      (async () => {
+        await useSingleStore.persist.rehydrate();
+        const { radio, volume } = useSingleStore.getState();
+
+        // Restore volume first (before loading radio which might trigger audio)
+        if (volume !== undefined) {
+          setVolumeRef.current(volume);
+        }
+
+        // Then restore radio
+        if (radio) {
+          await selectRadioRef.current(radio);
+        }
+
+        setIsHydrated(true);
+      })();
+    }
+  }, [settings]);
+
+  return isHydrated;
+}
+
 type SinglePlayerProps = {
   radios?: Radio[];
 };
 
 export function SinglePlayer({ radios }: SinglePlayerProps) {
+  const transitionDuration = useSingleStore((s) => s.transitionDuration);
   const {
     currentRadio,
     isPlaying,
@@ -40,7 +103,25 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
     selectRadio,
     togglePlayPause,
     setVolume,
-  } = useSingleAudio();
+  } = useSingleAudio(transitionDuration);
+
+  // Conditionally hydrate the single store based on user settings
+  const isHydrated = useSingleStoreHydration(selectRadio, setVolume);
+
+  // Sync radio and volume changes to the store (only after hydration to avoid overwriting)
+  useEffect(() => {
+    if (!isHydrated) {
+      return;
+    }
+    useSingleStore.getState().setRadio(currentRadio);
+  }, [currentRadio, isHydrated]);
+
+  useEffect(() => {
+    if (!isHydrated) {
+      return;
+    }
+    useSingleStore.getState().setVolume(volume);
+  }, [volume, isHydrated]);
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogMode, setDialogMode] = useState<"create" | "edit">("create");

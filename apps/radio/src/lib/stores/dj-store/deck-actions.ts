@@ -7,7 +7,7 @@ import type { InternalDjState } from "./types";
 /**
  * Composes all deck-related actions into a single action creator.
  * This file serves as the main entry point for deck actions, combining:
- * - Loading actions (setLeftRadio, setRightRadio, resetLeft, resetRight, cleanupAll)
+ * - Loading actions (setLeftRadio, setRightRadio, resetLeft, resetRight, cleanupAll, cleanupAudioOnly)
  * - Playback actions (playLeft, playRight, pauseLeft, pauseRight)
  * - Volume actions (setLeftVolume, setRightVolume, setLeftMute, setRightMute)
  */
@@ -30,6 +30,7 @@ export const createDeckActions: StateCreator<
     | "resetLeft"
     | "resetRight"
     | "cleanupAll"
+    | "cleanupAudioOnly"
   >
 > = (set, get, api) => ({
   ...createDeckLoadingActions(set, get, api),

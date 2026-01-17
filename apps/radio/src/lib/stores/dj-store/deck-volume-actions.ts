@@ -31,7 +31,7 @@ export const createDeckVolumeActions: StateCreator<
     set((state) => ({
       deckA: { ...state.deckA, muted },
     }));
-    if (deckA.soundId) {
+    if (deckA.soundId && deckA.isPlaying && !deckA.isLoading) {
       if (muted) {
         getAudioManager().muteSound(deckA.soundId);
       } else {
@@ -45,7 +45,7 @@ export const createDeckVolumeActions: StateCreator<
     set((state) => ({
       deckB: { ...state.deckB, muted },
     }));
-    if (deckB.soundId) {
+    if (deckB.soundId && deckB.isPlaying && !deckB.isLoading) {
       if (muted) {
         getAudioManager().muteSound(deckB.soundId);
       } else {

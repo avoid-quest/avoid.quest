@@ -64,7 +64,6 @@ export {
 export {
   type MultipleAudioSettings,
   type MultipleAudioState,
-  type SingleAudioSettings,
   useAudio,
   useDjAudio,
   useMultipleAudio,

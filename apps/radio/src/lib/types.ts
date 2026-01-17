@@ -9,8 +9,8 @@ export type Settings = {
   player: {
     mode: (typeof playerModes)[number]["value"];
     playerType?: (typeof playerTypes)[number]["value"];
+    restoreStateOnLoad?: boolean;
     single?: {
-      lastUsedRadio?: Radio;
       transitionDuration: number;
     };
   };
@@ -20,7 +20,6 @@ export type SingleModeSettings = Settings & {
   player: Settings["player"] & {
     mode: "single";
     single: {
-      lastUsedRadio?: Radio;
       transitionDuration: number;
     };
   };

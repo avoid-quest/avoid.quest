@@ -101,6 +101,7 @@ export const settings: Settings = {
   player: {
     mode: "multiple",
     playerType: "default",
+    restoreStateOnLoad: true,
     single: {
       transitionDuration: DEFAULT_TRANSITION_DURATION,
     },

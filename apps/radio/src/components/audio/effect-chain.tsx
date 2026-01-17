@@ -1,7 +1,8 @@
-import type { DragEndEvent } from "@dnd-kit/core";
+import type { DragEndEvent, DragStartEvent } from "@dnd-kit/core";
 import {
   closestCenter,
   DndContext,
+  DragOverlay,
   KeyboardSensor,
   PointerSensor,
   useSensor,
@@ -16,6 +17,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Button } from "@workspace/ui/components/button";
+import { cn } from "@workspace/ui/lib/utils";
 import { PlusIcon } from "lucide-react";
 import { useState } from "react";
 import type { EffectConfig, EffectType } from "@/lib/audio";
@@ -45,6 +47,7 @@ export function EffectChain({
 }: EffectChainProps) {
   const [expandedEffectId, setExpandedEffectId] = useState<string | null>(null);
   const [showPicker, setShowPicker] = useState(false);
+  const [activeId, setActiveId] = useState<string | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -65,15 +68,23 @@ export function EffectChain({
   const sortedEffects = [...effects].sort((a, b) => a.order - b.order);
   const sortedIds = sortedEffects.map((e) => e.id);
 
+  const activeEffect = activeId
+    ? sortedEffects.find((e) => e.id === activeId)
+    : null;
+
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveId(event.active.id as string);
+  };
+
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
+    setActiveId(null);
 
     if (!over || active.id === over.id) {
       return;
     }
 
     const oldIndex = sortedIds.indexOf(active.id as string);
-
     const newIndex = sortedIds.indexOf(over.id as string);
 
     if (oldIndex !== -1 && newIndex !== -1) {
@@ -91,6 +102,7 @@ export function EffectChain({
         <DndContext
           collisionDetection={closestCenter}
           onDragEnd={handleDragEnd}
+          onDragStart={handleDragStart}
           sensors={sensors}
         >
           <div className="space-y-2">
@@ -101,6 +113,7 @@ export function EffectChain({
               {sortedEffects.map((effect) => (
                 <SortableEffectItem
                   effect={effect}
+                  isDraggingAny={activeId !== null}
                   isExpanded={expandedEffectId === effect.id}
                   key={effect.id}
                   onExpand={() =>
@@ -119,6 +132,19 @@ export function EffectChain({
               </p>
             )}
           </div>
+          <DragOverlay>
+            {activeEffect ? (
+              <div className="scale-[1.02] rounded-lg shadow-lg ring-2 ring-primary/50">
+                <EffectItem
+                  effect={activeEffect}
+                  isExpanded={false}
+                  onExpand={() => undefined}
+                  onRemove={() => undefined}
+                  onUpdate={() => undefined}
+                />
+              </div>
+            ) : null}
+          </DragOverlay>
         </DndContext>
       )}
 
@@ -149,28 +175,46 @@ export function EffectChain({
 function SortableEffectItem({
   effect,
   isExpanded,
+  isDraggingAny,
   onUpdate,
   onRemove,
   onExpand,
 }: {
   effect: EffectConfig;
   isExpanded: boolean;
+  isDraggingAny: boolean;
   onUpdate: (config: Partial<EffectConfig>) => void;
   onRemove: () => void;
   onExpand: () => void;
 }) {
-  const { setNodeRef, transform, transition, isDragging } = useSortable({
+  const {
+    setNodeRef,
+    attributes,
+    listeners,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
     id: effect.id,
   });
 
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.5 : 1,
   };
 
   return (
-    <div ref={setNodeRef} style={style}>
+    <div
+      className={cn(
+        "rounded-lg transition-all duration-150",
+        isDragging && "opacity-40",
+        isDraggingAny && !isDragging && "opacity-75"
+      )}
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+    >
       <EffectItem
         effect={effect}
         isExpanded={isExpanded}

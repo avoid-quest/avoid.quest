@@ -1,3 +1,7 @@
+import { initializeDjState } from "./dj-state";
+import { initializeRadios, type SyncChanges } from "./radios";
+import { initializeSettings } from "./settings";
+
 export {
   type DeckRecord,
   deckCollection,
@@ -46,13 +50,7 @@ export {
  * Initialize all collections with default data
  * Returns sync changes if radio collection has pending updates/additions
  */
-export async function initializeCollections(): Promise<
-  import("./radios").SyncChanges | null
-> {
-  const { initializeRadios } = await import("./radios");
-  const { initializeSettings } = await import("./settings");
-  const { initializeDjState } = await import("./dj-state");
-
+export async function initializeCollections(): Promise<SyncChanges | null> {
   const syncChanges = await initializeRadios();
   await initializeSettings();
   await initializeDjState();

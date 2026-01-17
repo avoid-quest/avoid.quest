@@ -5,6 +5,7 @@
  * Single component that handles all effect types.
  */
 
+import { useMemo } from "react";
 import type { EffectConfig } from "@/lib/audio";
 import { getEffectMetadata } from "@/lib/audio";
 import type {
@@ -170,8 +171,10 @@ export function DeclarativeParams({
   effect,
   onUpdate,
 }: DeclarativeParamsProps) {
-  const metadata = getEffectMetadata(effect.type);
-  const defaultConfig = metadata?.defaultConfig;
+  const defaultConfig = useMemo(() => {
+    const metadata = getEffectMetadata(effect.type);
+    return metadata?.defaultConfig;
+  }, [effect.type]);
 
   const ctx: RenderParamContext = {
     effect,

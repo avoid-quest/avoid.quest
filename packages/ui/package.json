@@ -45,7 +45,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "catalog:",
-    "@turbo/gen": "^2.7.4",
+    "@turbo/gen": "^2.7.5",
     "@workspace/typescript-config": "workspace:*",
     "tailwindcss": "catalog:",
     "typescript": "catalog:"

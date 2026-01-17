@@ -15,19 +15,19 @@
     "cf-typegen": "wrangler types --env-interface CloudflareEnv ./cloudflare-env.d.ts"
   },
   "dependencies": {
-    "@opennextjs/cloudflare": "^1.14.8",
+    "@opennextjs/cloudflare": "^1.14.9",
     "@tanstack/react-virtual": "^3.13.18",
     "@workspace/backend": "workspace:*",
     "@workspace/typescript-config": "workspace:*",
     "@workspace/ui": "workspace:*",
     "babel-plugin-react-compiler": "^1.0.0",
     "convex": "catalog:",
+    "lucide-react": "catalog:",
     "next": "catalog:",
     "next-themes": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
-    "server-only": "^0.0.1",
-    "lucide-react": "catalog:"
+    "server-only": "^0.0.1"
   },
   "devDependencies": {
     "@types/node": "catalog:",

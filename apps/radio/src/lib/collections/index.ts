@@ -42,6 +42,6 @@ export async function initializeCollections(): Promise<void> {
   const { initializeDjState } = await import("./dj-state");
 
   await initializeRadios();
-  initializeSettings();
-  initializeDjState();
+  await initializeSettings();
+  await initializeDjState();
 }

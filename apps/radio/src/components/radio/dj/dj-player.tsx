@@ -13,7 +13,11 @@ import { cn } from "@workspace/ui/lib/utils";
 import { Volume2Icon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { Radio } from "@/lib/audio";
-import { getDeckA, getDeckB, getMixer } from "@/lib/collections";
+import {
+  deckCollection,
+  mixerCollection,
+  settingsCollection,
+} from "@/lib/collections";
 import {
   setCrossfadePosition,
   setDeckARadio,
@@ -25,7 +29,6 @@ import {
   setPendingPlatformItem,
   useActiveDragRadio,
 } from "@/lib/hooks/use-dj-state";
-import { useSettings } from "@/lib/hooks/use-settings";
 import type { Platform } from "@/lib/platform-types";
 import type { DeckId } from "@/lib/stores/dj-runtime-store";
 
@@ -65,7 +68,6 @@ function handlePlatformItemDrag({
 
 // Conditional hydration hook for DJ state
 function useDjStateHydration() {
-  const { data: settings } = useSettings();
   const hasHydratedRef = useRef(false);
 
   // Note: Cleanup on mode change is handled by mode-select.tsx which awaits cleanupAudioOnly()
@@ -76,34 +78,43 @@ function useDjStateHydration() {
     if (hasHydratedRef.current) {
       return;
     }
+    hasHydratedRef.current = true;
 
-    const shouldRestore = settings?.player?.restoreStateOnLoad !== false;
-    if (shouldRestore && settings !== undefined) {
-      hasHydratedRef.current = true;
+    // Async IIFE - wait for all collections to load from localStorage, then restore state
+    (async () => {
+      // Wait for all collections to complete initial sync from localStorage
+      const [settingsMap, deckMap, mixerMap] = await Promise.all([
+        settingsCollection.stateWhenReady(),
+        deckCollection.stateWhenReady(),
+        mixerCollection.stateWhenReady(),
+      ]);
 
-      // Async IIFE - re-init audio from persisted state
-      (async () => {
-        const deckA = getDeckA();
-        const deckB = getDeckB();
-        const mixer = getMixer();
+      const settings = settingsMap.get("app-settings");
+      const shouldRestore = settings?.player?.restoreStateOnLoad !== false;
+      if (!shouldRestore) {
+        return;
+      }
 
-        // Re-init audio for decks that have radios (audio needs component context)
-        // This also applies channel strip settings (pan, speed, filter, etc.)
-        if (deckA?.radio) {
-          await setDeckARadio(deckA.radio as Radio);
-        }
-        if (deckB?.radio) {
-          await setDeckBRadio(deckB.radio as Radio);
-        }
+      const deckA = deckMap.get("deck-a");
+      const deckB = deckMap.get("deck-b");
+      const mixer = mixerMap.get("mixer");
 
-        // Apply mixer settings to audio engine
-        if (mixer) {
-          setMasterVolume(mixer.masterVolume);
-          setCrossfadePosition(mixer.crossfadePosition);
-        }
-      })();
-    }
-  }, [settings]);
+      // Re-init audio for decks that have radios (audio needs component context)
+      // This also applies channel strip settings (pan, speed, filter, etc.)
+      if (deckA?.radio) {
+        await setDeckARadio(deckA.radio as Radio);
+      }
+      if (deckB?.radio) {
+        await setDeckBRadio(deckB.radio as Radio);
+      }
+
+      // Apply mixer settings to audio engine
+      if (mixer) {
+        setMasterVolume(mixer.masterVolume);
+        setCrossfadePosition(mixer.crossfadePosition);
+      }
+    })();
+  }, []);
 }
 
 type DjPlayerMobileViewProps = {

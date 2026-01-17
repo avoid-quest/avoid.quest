@@ -40,8 +40,9 @@ export const settingsCollection = createCollection(
 /**
  * Initialize settings with defaults if empty
  */
-export function initializeSettings(): void {
-  const existing = settingsCollection.state;
+export async function initializeSettings(): Promise<void> {
+  // Wait for collection to load from localStorage first
+  const existing = await settingsCollection.stateWhenReady();
 
   if (existing.size === 0) {
     settingsCollection.insert({

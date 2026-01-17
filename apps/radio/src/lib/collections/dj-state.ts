@@ -114,11 +114,14 @@ const defaultDeckState: Omit<DeckRecord, "id"> = {
 };
 
 /**
- * Initialize DJ state with defaults
+ * Initialize DJ state with defaults (only if not already present)
  */
-export function initializeDjState(): void {
-  const decks = deckCollection.state;
-  const mixer = mixerCollection.state;
+export async function initializeDjState(): Promise<void> {
+  // Wait for collections to load from localStorage first
+  const [decks, mixer] = await Promise.all([
+    deckCollection.stateWhenReady(),
+    mixerCollection.stateWhenReady(),
+  ]);
 
   if (!decks.has(DECK_A_ID)) {
     deckCollection.insert({ id: DECK_A_ID, ...defaultDeckState });

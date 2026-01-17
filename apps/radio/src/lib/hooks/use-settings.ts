@@ -19,6 +19,7 @@ export function useSettings() {
   return {
     data: result.data?.[0] as SettingsRecord | undefined,
     status: result.status,
+    isReady: result.isReady,
   };
 }
 

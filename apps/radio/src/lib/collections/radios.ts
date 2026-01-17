@@ -32,8 +32,9 @@ export const radiosCollection = createCollection(
 /**
  * Initialize the radios collection with default data if empty
  */
-export function initializeRadios(): void {
-  const existing = radiosCollection.state;
+export async function initializeRadios(): Promise<void> {
+  // Wait for collection to load from localStorage first
+  const existing = await radiosCollection.stateWhenReady();
 
   if (existing.size === 0) {
     for (const radio of defaultRadios) {

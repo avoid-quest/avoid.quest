@@ -645,7 +645,7 @@ function addDeckEffect(deckId: DeckId, type: EffectType) {
   const config = deckConfig[deckId];
   const runtime = config.getRuntime();
   const deck = config.getDeck();
-  const effects = (deck?.effects ?? []) as unknown as EffectConfig[];
+  const effects = deck?.effects ?? [];
   const effect = createDefaultEffectConfig(
     type,
     crypto.randomUUID(),
@@ -707,10 +707,7 @@ function removeDeckEffect(deckId: DeckId, effectId: string) {
   const config = deckConfig[deckId];
   const runtime = config.getRuntime();
   config.updateDeck((draft) => {
-    const effects = draft.effects as unknown as EffectConfig[];
-    draft.effects = effects.filter(
-      (e) => e.id !== effectId
-    ) as unknown as typeof draft.effects;
+    draft.effects = draft.effects.filter((e) => e.id !== effectId);
   });
   if (runtime.soundId) {
     getAudioManager().removeEffect(runtime.soundId, effectId);

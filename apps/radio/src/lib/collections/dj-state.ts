@@ -36,12 +36,17 @@ const filterConfigSchema = z.object({
   enabled: z.boolean(),
 });
 
-const effectConfigSchema = z.object({
-  id: z.string(),
-  type: z.string(),
-  enabled: z.boolean(),
-  params: z.record(z.string(), z.number()),
-});
+const effectConfigSchema = z
+  .object({
+    id: z.string(),
+    type: z.string(),
+    enabled: z.boolean(),
+    order: z.number(),
+    dryWet: z.number(),
+    inputGain: z.number(),
+    outputGain: z.number(),
+  })
+  .passthrough();
 
 const deckStateSchema = z.object({
   id: z.string(),

@@ -4,6 +4,8 @@
     "ignoreUnknown": false,
     "includes": [
       "!**/.next",
+      "!**/.astro",
+      "!**/*.astro",
       "!**/dist",
       "!**/.turbo",
       "!**/dev-dist",
@@ -90,7 +92,6 @@
     "ultracite/biome/core",
     "ultracite/biome/react",
     "ultracite/biome/remix",
-    "ultracite/biome/next",
-    "ultracite/biome/astro"
+    "ultracite/biome/next"
   ]
 }

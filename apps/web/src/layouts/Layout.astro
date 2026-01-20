@@ -1,0 +1,46 @@
+---
+import "../styles/global.css";
+
+type Props = {
+  title?: string;
+  description?: string;
+};
+
+const { title = "avoid.quest", description = "avoid.quest" } = Astro.props;
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <meta name="apple-mobile-web-app-title" content="avoid.quest" />
+    <link rel="manifest" href="https://avoid.quest/manifest.json" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <link rel="icon" type="image/svg+xml" href="/icon0.svg" />
+    <link rel="icon" type="image/png" href="/icon1.png" />
+    <link rel="apple-touch-icon" href="/apple-icon.png" />
+    <script is:inline>
+      const theme = (() => {
+        const stored = localStorage?.getItem("theme") ?? "";
+        if (stored === "dark" || stored === "light") return stored;
+        return window.matchMedia("(prefers-color-scheme: dark)").matches
+          ? "dark"
+          : "light";
+      })();
+      if (theme === "dark") {
+        document.documentElement.classList.add("dark");
+      }
+      localStorage.setItem("theme", theme);
+    </script>
+  </head>
+  <body class="font-sans antialiased">
+    <div class="grid h-svh grid-rows-[1fr_auto]">
+      <main class="h-full w-full">
+        <slot />
+      </main>
+      <slot name="footer" />
+    </div>
+  </body>
+</html>

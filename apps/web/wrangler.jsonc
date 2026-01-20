@@ -1,6 +1,6 @@
 {
 	"$schema": "./node_modules/wrangler/config-schema.json",
-	"main": ".open-next/worker.js",
+	"main": "dist/_worker.js/index.js",
 	"name": "avoid-quest",
 	"compatibility_date": "2025-11-17",
 	"compatibility_flags": [
@@ -11,15 +11,9 @@
 	"preview_urls": true,
 	"assets": {
 		"binding": "ASSETS",
-		"directory": ".open-next/assets"
+		"directory": "./dist"
 	},
 	"observability": {
 		"enabled": true
-	},
-	"r2_buckets": [
-		{
-			"binding": "NEXT_INC_CACHE_R2_BUCKET",
-			"bucket_name": "avoid-cache"
-		}
-	]
+	}
 }

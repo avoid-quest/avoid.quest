@@ -90,6 +90,7 @@
     "ultracite/biome/core",
     "ultracite/biome/react",
     "ultracite/biome/remix",
-    "ultracite/biome/next"
+    "ultracite/biome/next",
+    "ultracite/biome/astro"
   ]
 }

@@ -1,13 +1,13 @@
 import { now } from "@workspace/backend/convex/lib/dateUtils";
 import { Cron } from "croner";
+import { fetchOnce } from "../adapter/adapter";
 import { createLogger } from "../infra/logger";
-import { scrapeOnce } from "../scraping/scraper";
 import { getEffectiveSettings } from "../settings";
 import { runTelegramOnce } from "../telegram";
 
-let scrapeCron: Cron | null = null;
+const instagramCron: Cron | null = null;
 let telegramCron: Cron | null = null;
-let scrapeCronExpression: string | undefined;
+let instagramCronExpression: string | undefined;
 let telegramCronExpression: string | undefined;
 
 function formatNextRun(nextRun: Date | null): string {
@@ -68,47 +68,49 @@ function logErrorWithStack(
   }
 }
 
-function createScraperCronJob(
+function createInstagramCronJob(
   cronExpression: string,
   isLoggingEnabled: boolean,
   logger: ReturnType<typeof createLogger>
 ): void {
-  scrapeCron?.stop();
-  scrapeCronExpression = cronExpression;
+  instagramCron?.stop();
+  instagramCronExpression = cronExpression;
   try {
-    scrapeCron = new Cron(cronExpression, async () => {
+    instagramCron = new Cron(cronExpression, async () => {
       const jobLogger = createJobLogger(isLoggingEnabled);
-      jobLogger.info("🔄 Scraper cron job started");
+      jobLogger.info("🔄 Instagram cron job started");
       try {
-        await scrapeOnce();
-        jobLogger.info("✅ Scraper cron job completed");
+        await fetchOnce();
+        jobLogger.info("✅ Instagram cron job completed");
       } catch (error) {
-        logErrorWithStack(jobLogger, error, "❌ Scraper cron job failed");
+        logErrorWithStack(jobLogger, error, "❌ Instagram cron job failed");
       }
     });
-    const nextRun = scrapeCron.nextRun();
+    const nextRun = instagramCron.nextRun();
     logger.info(
-      `✅ Scraper cron job created successfully. Next run: ${formatNextRunHuman(nextRun)}`
+      `✅ Instagram cron job created successfully. Next run: ${formatNextRunHuman(nextRun)}`
     );
-    logger.debug(`Scraper next run (ISO): ${formatNextRun(nextRun)}`);
+    logger.debug(`Instagram next run (ISO): ${formatNextRun(nextRun)}`);
   } catch (error) {
-    logErrorWithStack(logger, error, "❌ Failed to create scraper cron job");
-    scrapeCron = null;
-    scrapeCronExpression = undefined;
+    logErrorWithStack(logger, error, "❌ Failed to create Instagram cron job");
+    instagramCron = null;
+    instagramCronExpression = undefined;
   }
 }
 
-function stopScraperCron(
+function stopInstagramCron(
   logger: ReturnType<typeof createLogger>,
   settings: { active: boolean; cron_expression?: string }
 ): void {
-  scrapeCron?.stop();
-  scrapeCron = null;
-  scrapeCronExpression = undefined;
+  instagramCron?.stop();
+  instagramCron = null;
+  instagramCronExpression = undefined;
   if (!settings.active) {
-    logger.debug("Scraper cron job not created: scraper is not active");
+    logger.debug(
+      "Instagram cron job not created: Instagram adapter is not active"
+    );
   } else if (!settings.cron_expression) {
-    logger.debug("Scraper cron job not created: cron_expression is not set");
+    logger.debug("Instagram cron job not created: cron_expression is not set");
   }
 }
 
@@ -163,16 +165,20 @@ export async function startScheduler(): Promise<void> {
 
   logger.debug("Loading settings for scheduler");
   logger.debug(
-    `Scraper settings: active=${s.scraper.active}, cron=${s.scraper.cron_expression ?? "not set"}`
+    `Instagram settings: active=${s.instagram.active}, cron=${s.instagram.cron_expression ?? "not set"}`
   );
   logger.debug(
     `Telegram settings: active=${s.telegram.active}, cron=${s.telegram.cron_expression ?? "not set"}`
   );
 
-  if (s.scraper.active && s.scraper.cron_expression) {
-    createScraperCronJob(s.scraper.cron_expression, isLoggingEnabled, logger);
+  if (s.instagram.active && s.instagram.cron_expression) {
+    createInstagramCronJob(
+      s.instagram.cron_expression,
+      isLoggingEnabled,
+      logger
+    );
   } else {
-    stopScraperCron(logger, s.scraper);
+    stopInstagramCron(logger, s.instagram);
   }
 
   if (s.telegram.active && s.telegram.cron_expression) {
@@ -181,22 +187,22 @@ export async function startScheduler(): Promise<void> {
     stopTelegramCron(logger, s.telegram);
   }
 
-  if (!(scrapeCron || telegramCron)) {
+  if (!(instagramCron || telegramCron)) {
     logger.warn("⚠️  No cron jobs are scheduled. Check your settings.");
   }
 }
 
 export function stopScheduler(): void {
-  scrapeCron?.stop();
+  instagramCron?.stop();
   telegramCron?.stop();
-  scrapeCron = null;
+  instagramCron = null;
   telegramCron = null;
-  scrapeCronExpression = undefined;
+  instagramCronExpression = undefined;
   telegramCronExpression = undefined;
 }
 
-export function getScraperNextRun(): Date | null {
-  return scrapeCron?.nextRun() ?? null;
+export function getInstagramNextRun(): Date | null {
+  return instagramCron?.nextRun() ?? null;
 }
 
 export function getTelegramNextRun(): Date | null {
@@ -204,7 +210,7 @@ export function getTelegramNextRun(): Date | null {
 }
 
 export function getSchedulerStatus(): {
-  scraper: {
+  instagram: {
     active: boolean;
     nextRun: Date | null;
     cronExpression: string | undefined;
@@ -216,10 +222,10 @@ export function getSchedulerStatus(): {
   };
 } {
   return {
-    scraper: {
-      active: scrapeCron !== null,
-      nextRun: scrapeCron?.nextRun() ?? null,
-      cronExpression: scrapeCronExpression,
+    instagram: {
+      active: instagramCron !== null,
+      nextRun: instagramCron?.nextRun() ?? null,
+      cronExpression: instagramCronExpression,
     },
     telegram: {
       active: telegramCron !== null,

@@ -5,12 +5,12 @@ import { api, getHttpClient } from "../convex/client";
 import { createLogger } from "../infra/logger";
 import { TokenBucketLimiter } from "../infra/rate-limiter";
 import { getEffectiveSettings } from "../settings";
-import { InstagramScraper, type SinglePostResponse } from "./instagram";
+import type { InstagramAdapter, SinglePostResponse } from "./instagram";
 
 type MediaItemLike = Omit<Doc<"media_items">, "_id" | "_creationTime">;
 type PostLike = Omit<Doc<"posts">, "_id" | "_creationTime">;
 
-export async function loadUsersToBeScraped(
+export async function loadUsersToBeFetched(
   limit?: number
 ): Promise<Doc<"users">[]> {
   return await getHttpClient().query(api.users.listToBeScraped, { limit });
@@ -44,7 +44,7 @@ export async function updateUserLastScraped(
 /**
  * Optionally trigger metadata extraction for a newly created post
  * Only triggers if AI metadata extraction is enabled in settings
- * Errors are logged but don't fail the scraping process
+ * Errors are logged but don't fail the fetching process
  */
 async function optionallyTriggerMetadataExtraction(
   postId: Id<"posts">,
@@ -79,7 +79,7 @@ async function optionallyTriggerMetadataExtraction(
     );
     logger.debug(`Metadata extraction workflow triggered for post ${postId}`);
   } catch (error) {
-    // Log error but don't fail scraping - metadata will be processed by cron job
+    // Log error but don't fail fetching - metadata will be processed by cron job
     logger.warn(
       `Failed to trigger immediate metadata extraction for post ${postId}: ${
         error instanceof Error ? error.message : String(error)
@@ -125,7 +125,7 @@ async function processPost(
     display_url: post.display_url,
     video_url: post.video_url,
     thumbnail_url: post.thumbnail_url,
-    caption: post.caption, // Caption is updated when re-scraping
+    caption: post.caption, // Caption is updated when re-fetching
     is_video: post.is_video,
     url: post.url,
     media_type: post.media_type,
@@ -139,7 +139,7 @@ async function processPost(
   });
 
   // Sync media items: updates existing, adds new, removes deleted ones
-  // This ensures media items stay in sync with the scraped data
+  // This ensures media items stay in sync with the fetched data
   await getHttpClient().mutation(api.media_items.syncMediaItemsForPost, {
     post_id: postId,
     media_items: post.media_items,
@@ -155,12 +155,12 @@ async function processUser(
   opts: {
     postsPerUser: number;
     minIntervalMs: number;
-    scraper: InstagramScraper;
+    adapter: InstagramAdapter;
     logger: ReturnType<typeof createLogger>;
     msPerMinute: number;
   }
 ): Promise<boolean> {
-  const { postsPerUser, minIntervalMs, scraper, logger, msPerMinute } = opts;
+  const { postsPerUser, minIntervalMs, adapter, logger, msPerMinute } = opts;
   if (!user.username) {
     return false;
   }
@@ -169,12 +169,12 @@ async function processUser(
   const currentTime = now();
   if (last > 0 && currentTime - last < minIntervalMs) {
     const minutesAgo = Math.round((currentTime - last) / msPerMinute);
-    logger.debug(`Skip @${user.username} (scraped ${minutesAgo}m ago)`);
+    logger.debug(`Skip @${user.username} (fetched ${minutesAgo}m ago)`);
     return false;
   }
 
-  logger.info(`Scraping @${user.username}`);
-  const posts = await scraper.getRecent(user.username, postsPerUser);
+  logger.info(`Fetching @${user.username}`);
+  const posts = await adapter.getRecent(user.username, postsPerUser);
   logger.debug(`Fetched ${posts.length} posts for @${user.username}`);
 
   const cvxUser = await getHttpClient().query(api.users.getUserByUsername, {
@@ -194,9 +194,9 @@ async function processUser(
   return true;
 }
 
-export async function scrapeOnce(): Promise<void> {
+export async function fetchOnce(): Promise<void> {
   const settings = await getEffectiveSettings();
-  if (!settings.scraper.active) {
+  if (!settings.instagram.active) {
     return;
   }
 
@@ -211,17 +211,18 @@ export async function scrapeOnce(): Promise<void> {
   const MIN_USER_DELAY_SECONDS = 10;
   const MAX_USER_DELAY_SECONDS = 30;
 
-  const usersPerSession = settings.scraper.limit ?? DEFAULT_USERS_PER_SESSION;
-  const postsPerUser = settings.scraper.post_per_user ?? DEFAULT_POSTS_PER_USER;
+  const usersPerSession = settings.instagram.limit ?? DEFAULT_USERS_PER_SESSION;
+  const postsPerUser =
+    settings.instagram.post_per_user ?? DEFAULT_POSTS_PER_USER;
   const minIntervalMs = DEFAULT_MIN_INTERVAL_MINUTES * MS_PER_MINUTE;
 
-  const users = await loadUsersToBeScraped();
+  const users = await loadUsersToBeFetched();
   const logger = createLogger(
     !!(settings.logging?.active || process.env.DEBUG),
     process.env.DEBUG ? "debug" : "info"
   );
   const limiter = new TokenBucketLimiter(DEFAULT_BURST, DEFAULT_RPS);
-  const scraper = new InstagramScraper(
+  const adapter = new InstagramAdapter(
     {
       minDelayMs: 2000,
       maxDelayMs: 5000,
@@ -233,7 +234,7 @@ export async function scrapeOnce(): Promise<void> {
   );
 
   logger.info(
-    `Scraping up to ${usersPerSession} users (${postsPerUser} posts per user) from ${users.length} candidates`
+    `Fetching up to ${usersPerSession} users (${postsPerUser} posts per user) from ${users.length} candidates`
   );
 
   let skippedNoUsername = 0;
@@ -254,7 +255,7 @@ export async function scrapeOnce(): Promise<void> {
     const wasProcessed = await processUser(user, {
       postsPerUser,
       minIntervalMs,
-      scraper,
+      adapter,
       logger,
       msPerMinute: MS_PER_MINUTE,
     });
@@ -276,7 +277,7 @@ export async function scrapeOnce(): Promise<void> {
   }
 
   logger.info(
-    `Scrape finished. Processed: ${processedUsers}, Skipped: ${skippedNoUsername} no username, ${skippedRecently} recently scraped`
+    `Fetch finished. Processed: ${processedUsers}, Skipped: ${skippedNoUsername} no username, ${skippedRecently} recently fetched`
   );
 }
 
@@ -292,7 +293,7 @@ function extractUsernameFromUrl(url: string): string | null {
   return username === "p" ? null : username;
 }
 
-export async function scrapeAndSaveSinglePost(
+export async function fetchAndSaveSinglePost(
   postUrl: string
 ): Promise<{ success: boolean; postId?: string; error?: string }> {
   const settings = await getEffectiveSettings();
@@ -302,11 +303,11 @@ export async function scrapeAndSaveSinglePost(
   );
 
   try {
-    // Initialize scraper
+    // Initialize adapter
     const DEFAULT_BURST = 3;
     const DEFAULT_RPS = 0.5;
     const limiter = new TokenBucketLimiter(DEFAULT_BURST, DEFAULT_RPS);
-    const scraper = new InstagramScraper(
+    const adapter = new InstagramAdapter(
       {
         minDelayMs: 2000,
         maxDelayMs: 5000,
@@ -317,13 +318,13 @@ export async function scrapeAndSaveSinglePost(
       { limiter, logger }
     );
 
-    // Scrape the post
-    const result: SinglePostResponse = await scraper.getSinglePost(postUrl);
+    // Fetch the post
+    const result: SinglePostResponse = await adapter.getSinglePost(postUrl);
 
     if (!result.success) {
       return {
         success: false,
-        error: result.error ?? "Failed to scrape post",
+        error: result.error ?? "Failed to fetch post",
       };
     }
 
@@ -375,7 +376,7 @@ export async function scrapeAndSaveSinglePost(
       display_url: post.display_url,
       video_url: post.video_url,
       thumbnail_url: post.thumbnail_url,
-      caption: post.caption, // Caption is updated when re-scraping
+      caption: post.caption, // Caption is updated when re-fetching
       is_video: post.is_video,
       url: post.url,
       media_type: post.media_type,
@@ -404,7 +405,7 @@ export async function scrapeAndSaveSinglePost(
       postId,
     };
   } catch (error) {
-    logger.error(`Error in scrapeAndSaveSinglePost: ${error}`);
+    logger.error(`Error in fetchAndSaveSinglePost: ${error}`);
     return {
       success: false,
       error: error instanceof Error ? error.message : "Unknown error",

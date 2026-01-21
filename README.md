@@ -11,7 +11,7 @@ Monorepo for avoid.quest apps. Next.js + Convex + Cloudflare.
 ## Packages
 
 - **backend**: Convex database, posts/users/media_items/post_metadata tables, AI metadata extraction via Groq
-- **scraper**: Instagram scraper CLI, cron scheduler, Telegram bot, compiles to native binaries
+- **instagram-adapter**: Instagram metadata adapter CLI, cron scheduler, Telegram bot, compiles to native binaries
 - **bandcamp**: Bandcamp metadata scraper, extracts tracks/albums/stream URLs
 - **soundcloud**: SoundCloud metadata scraper, extracts tracks/playlists/stream URLs
 - **ui**: Shared component library, shadcn/ui + Radix UI, theme support
@@ -27,7 +27,7 @@ Monorepo for avoid.quest apps. Next.js + Convex + Cloudflare.
 
 ## Connections
 
-- `scraper` → writes to `backend` → displayed in `instarip`
+- `instagram-adapter` → writes to `backend` → displayed in `instarip`
 - All apps use `ui` components
 - All packages use `typescript-config`
 
@@ -47,22 +47,22 @@ bun run fix          # Auto-fix linting
 bun run cleanup      # Clean all node_modules and build artifacts
 ```
 
-### Scraper
+### Instagram Adapter
 
 ```bash
-bun scraper          # Run scraper CLI (pass commands after)
-bun scraper start    # Start full system (scraper + telegram)
-bun scraper scrape   # Run scraping once
-bun scraper telegram # Send telegram messages once
-bun scraper start-both # Run both jobs in sequence
-bun scraper cron:start # Start cron scheduler
-bun scraper cron:status # Check cron status
+bun instagram-adapter          # Run adapter CLI (pass commands after)
+bun instagram-adapter start    # Start full system (adapter + telegram)
+bun instagram-adapter fetch   # Run fetching once
+bun instagram-adapter telegram # Send telegram messages once
+bun instagram-adapter start-both # Run both jobs in sequence
+bun instagram-adapter cron:start # Start cron scheduler
+bun instagram-adapter cron:status # Check cron status
 ```
 
-### Scraper Build (packages/scraper)
+### Instagram Adapter Build (packages/instagram-adapter)
 
 ```bash
-cd packages/scraper
+cd packages/instagram-adapter
 bun run build        # Build for current platform
 bun run build:linux  # Build Linux binary
 bun run build:macos-x64 # Build macOS Intel binary

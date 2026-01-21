@@ -184,7 +184,7 @@ export const upsertPost = mutation({
 		},
 	) => {
 		// Convert timestamp from seconds (Instagram API format) to milliseconds (internal standard)
-		// The scraper sends timestamps in seconds, but we store them in milliseconds
+		// The adapter sends timestamps in seconds, but we store them in milliseconds
 		const timestampMs = secondsToMilliseconds(timestamp);
 		const eventDateMs = event_date
 			? secondsToMilliseconds(event_date)

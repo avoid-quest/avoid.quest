@@ -157,8 +157,8 @@
         "typescript": "catalog:",
       },
     },
-    "packages/scraper": {
-      "name": "@workspace/scraper",
+    "packages/instagram-adapter": {
+      "name": "@workspace/instagram-adapter",
       "version": "3.2.3",
       "dependencies": {
         "@grammyjs/auto-retry": "^2.0.2",
@@ -1383,7 +1383,7 @@
 
     "@workspace/backend": ["@workspace/backend@workspace:packages/backend"],
 
-    "@workspace/scraper": ["@workspace/scraper@workspace:packages/scraper"],
+    "@workspace/instagram-adapter": ["@workspace/instagram-adapter@workspace:packages/instagram-adapter"],
 
     "@workspace/typescript-config": ["@workspace/typescript-config@workspace:packages/typescript-config"],
 

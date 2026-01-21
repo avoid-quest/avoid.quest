@@ -1,11 +1,11 @@
 /** biome-ignore-all lint/complexity/noExcessiveCognitiveComplexity: just complex */
 
 import { now } from "@workspace/backend/convex/lib/dateUtils";
+import { fetchAndSaveSinglePost, fetchOnce } from "../adapter/adapter";
+import { InstagramAdapter } from "../adapter/instagram";
 import { createLogger } from "../infra/logger";
 import { TokenBucketLimiter } from "../infra/rate-limiter";
 import { getSchedulerStatus, startScheduler } from "../scheduler";
-import { InstagramScraper } from "../scraping/instagram";
-import { scrapeAndSaveSinglePost, scrapeOnce } from "../scraping/scraper";
 import { getEffectiveSettings } from "../settings";
 import { runTelegramOnce } from "../telegram";
 import type { AdminOptions, SinglePostOptions, StartOptions } from "./types";
@@ -19,12 +19,12 @@ const CLEAN_UP_DELAY_MS = 500;
  * Handle start command - start scheduler
  */
 export async function handleStartCommand(options: StartOptions): Promise<void> {
-  console.log("🚀 Starting Scraper - Full System");
+  console.log("🚀 Starting Instagram Adapter - Full System");
 
   if (options.verbose) {
     console.log("📊 Configuration:");
     console.log("  Mode: Full system (cron scheduler)");
-    console.log("  Cron: Automated scraping and telegram jobs");
+    console.log("  Cron: Automated fetching and telegram jobs");
   }
 
   try {
@@ -61,7 +61,7 @@ export async function handleStartCommand(options: StartOptions): Promise<void> {
       );
     }
 
-    console.log("\n✅ Scraper is now running!");
+    console.log("\n✅ Instagram Adapter is now running!");
     console.log("📋 Services running:");
     console.log("  • Cron scheduler (automated jobs)");
     if (adminBotRunning) {
@@ -70,8 +70,8 @@ export async function handleStartCommand(options: StartOptions): Promise<void> {
 
     // Display "Next Runs" section
     console.log("\n⏰ Next Runs:");
-    if (status.scraper.active && status.scraper.nextRun) {
-      const nextRun = status.scraper.nextRun;
+    if (status.instagram.active && status.instagram.nextRun) {
+      const nextRun = status.instagram.nextRun;
       const currentTime = now();
       const diff = nextRun.getTime() - currentTime;
       const minutes = Math.floor(diff / MS_PER_MINUTE);
@@ -88,15 +88,15 @@ export async function handleStartCommand(options: StartOptions): Promise<void> {
       } else {
         timeStr = "now";
       }
-      console.log(`  🔍 Scraper: ${timeStr} (${nextRun.toLocaleString()})`);
-      if (status.scraper.cronExpression) {
-        logger.debug(`    Cron expression: ${status.scraper.cronExpression}`);
+      console.log(`  📸 Instagram: ${timeStr} (${nextRun.toLocaleString()})`);
+      if (status.instagram.cronExpression) {
+        logger.debug(`    Cron expression: ${status.instagram.cronExpression}`);
       }
     } else {
-      console.log("  🔍 Scraper: Not scheduled");
-      if (!settings.scraper.active) {
-        logger.debug("    Reason: Scraper is not active in settings");
-      } else if (!settings.scraper.cron_expression) {
+      console.log("  📸 Instagram: Not scheduled");
+      if (!settings.instagram.active) {
+        logger.debug("    Reason: Instagram adapter is not active in settings");
+      } else if (!settings.instagram.cron_expression) {
         logger.debug("    Reason: Cron expression is not set");
       }
     }
@@ -176,21 +176,21 @@ export async function handleStartCommand(options: StartOptions): Promise<void> {
       await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
     }
   } catch (error) {
-    console.error("💥 Failed to start Scraper:", error);
+    console.error("💥 Failed to start Instagram Adapter:", error);
     process.exit(1);
   }
 }
 
 /**
- * Handle scrape command
+ * Handle fetch command
  */
-export async function handleScrapeCommand(): Promise<void> {
-  console.log("🚀 Starting Instagram scraper");
+export async function handleFetchCommand(): Promise<void> {
+  console.log("🚀 Starting Instagram adapter");
   try {
-    await scrapeOnce();
-    console.log("✅ Scraping completed!");
+    await fetchOnce();
+    console.log("✅ Fetching completed!");
   } catch (error) {
-    console.error("💥 Fatal error during scraping:", error);
+    console.error("💥 Fatal error during fetching:", error);
     process.exit(1);
   }
 }
@@ -213,13 +213,13 @@ export async function handleTelegramCommand(): Promise<void> {
  * Handle start-both command
  */
 export async function handleStartBothCommand(): Promise<void> {
-  console.log("🚀 Starting both scrape and telegram jobs");
+  console.log("🚀 Starting both fetch and telegram jobs");
 
   try {
-    // First, run the scrape job
-    console.log("\n🔍 Starting scrape job...");
-    await scrapeOnce();
-    console.log("✅ Scrape completed!");
+    // First, run the fetch job
+    console.log("\n🔍 Starting fetch job...");
+    await fetchOnce();
+    console.log("✅ Fetch completed!");
 
     // Then, run the telegram job
     console.log("\n📤 Starting telegram job...");
@@ -239,7 +239,7 @@ export async function handleStartBothCommand(): Promise<void> {
 export async function handleSinglePostCommand(
   options: SinglePostOptions
 ): Promise<void> {
-  console.log("📱 Starting single post scraper");
+  console.log("📱 Starting single post fetcher");
 
   if (!options.url) {
     console.log("❌ Please provide an Instagram post URL");
@@ -260,23 +260,23 @@ export async function handleSinglePostCommand(
 
   try {
     if (options.save !== false) {
-      // Scrape and save to database
-      console.log("⏳ Scraping post and saving to database...");
-      const result = await scrapeAndSaveSinglePost(options.url);
+      // Fetch and save to database
+      console.log("⏳ Fetching post and saving to database...");
+      const result = await fetchAndSaveSinglePost(options.url);
 
       if (result.success) {
-        console.log("✅ Successfully scraped and saved post to database!");
+        console.log("✅ Successfully fetched and saved post to database!");
         if (result.postId) {
           console.log(`📊 Database Post ID: ${result.postId}`);
         }
       } else {
-        console.log("❌ Failed to scrape and save post:");
+        console.log("❌ Failed to fetch and save post:");
         console.log(`   Error: ${result.error}`);
         process.exit(1);
       }
     } else {
-      // Just scrape without saving
-      console.log("⏳ Scraping post (not saving to database)...");
+      // Just fetch without saving
+      console.log("⏳ Fetching post (not saving to database)...");
       const settings = await getEffectiveSettings();
       const logger = createLogger(
         !!(settings.logging?.active || process.env.DEBUG),
@@ -285,7 +285,7 @@ export async function handleSinglePostCommand(
       const DEFAULT_BURST = 3;
       const DEFAULT_RPS = 0.5;
       const limiter = new TokenBucketLimiter(DEFAULT_BURST, DEFAULT_RPS);
-      const scraper = new InstagramScraper(
+      const adapter = new InstagramAdapter(
         {
           minDelayMs: 2000,
           maxDelayMs: 5000,
@@ -296,10 +296,10 @@ export async function handleSinglePostCommand(
         { limiter, logger }
       );
 
-      const result = await scraper.getSinglePost(options.url);
+      const result = await adapter.getSinglePost(options.url);
 
       if (result.success && result.post) {
-        console.log("✅ Successfully scraped post!");
+        console.log("✅ Successfully fetched post!");
         console.log("📊 Post Data:");
         console.log(`   ID: ${result.post.id}`);
         console.log(`   Shortcode: ${result.post.shortcode}`);
@@ -315,7 +315,7 @@ export async function handleSinglePostCommand(
         console.log(`   Display URL: ${result.post.display_url}`);
         console.log(`   Media Items: ${result.post.media_items.length}`);
         if (result.scraped_at) {
-          console.log(`   Scraped At: ${result.scraped_at}`);
+          console.log(`   Fetched At: ${result.scraped_at}`);
         }
 
         if (result.post.media_items.length > 0) {
@@ -328,7 +328,7 @@ export async function handleSinglePostCommand(
           });
         }
       } else {
-        console.log("❌ Failed to scrape post:");
+        console.log("❌ Failed to fetch post:");
         console.log(`   Error: ${result.error}`);
         if (result.code) {
           console.log(`   Code: ${result.code}`);
@@ -340,7 +340,7 @@ export async function handleSinglePostCommand(
       }
     }
   } catch (error) {
-    console.error("💥 Fatal error during single post scraping:", error);
+    console.error("💥 Fatal error during single post fetching:", error);
     process.exit(1);
   }
 }

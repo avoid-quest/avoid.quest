@@ -1,4 +1,4 @@
-# @workspace/scraper
+# @workspace/instagram-adapter
 
 ## 3.2.3
 
@@ -49,7 +49,7 @@
 
   ### Dependency Updates
 
-  - **Convex** - Updated to `^1.30.0` across backend and scraper packages
+  - **Convex** - Updated to `^1.30.0` across backend and instagram-adapter packages
   - **Workflow** - Updated `@convex-dev/workflow` to `^0.3.3`
   - **AI SDK** - Updated `ai` package to `^5.0.106`
   - **Cloudflare Types** - Updated `@cloudflare/workers-types` to `^4.20251202.0`
@@ -127,9 +127,9 @@
   - **Conversion utilities** - Helper functions for seconds/milliseconds conversion (for Instagram API compatibility)
   - **Multiple formatting functions** - Support for AI context, logging, event display, and short date formats
 
-  ### Scraper Improvements
+  ### Instagram Adapter Improvements
 
-  - **Updated to use centralized date utilities** - Consistent timestamp handling throughout scraper codebase
+  - **Updated to use centralized date utilities** - Consistent timestamp handling throughout adapter codebase
   - **Improved timestamp accuracy** - Proper conversion from Instagram API seconds to internal milliseconds format
 
 ## 3.1.1
@@ -264,11 +264,11 @@
   ## Added
 
   - **Logging system integration**: Scheduler now uses the logger infrastructure with `DEBUG=1` environment variable support
-  - **Settings visibility**: Logs loaded settings at debug level (scraper/telegram active status, cron expressions)
+  - **Settings visibility**: Logs loaded settings at debug level (instagram/telegram active status, cron expressions)
   - **Job creation logging**: Logs success/failure when creating cron jobs with next run times
   - **Error handling**: Added try-catch blocks in cron job callbacks with detailed error logging and stack traces
-  - **Next runs display**: Added "Next Runs" section in `start` command showing when scraper and telegram jobs are scheduled
-  - **Status API**: Exported `getSchedulerStatus()`, `getScraperNextRun()`, and `getTelegramNextRun()` functions for status queries
+  - **Next runs display**: Added "Next Runs" section in `start` command showing when instagram and telegram jobs are scheduled
+  - **Status API**: Exported `getSchedulerStatus()`, `getInstagramNextRun()`, and `getTelegramNextRun()` functions for status queries
 
   ## Improved
 

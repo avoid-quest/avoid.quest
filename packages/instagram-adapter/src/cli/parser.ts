@@ -4,9 +4,9 @@ import type {
   Command,
   CronOptions,
   CronSubcommand,
+  FetchOptions,
   GlobalOptions,
   ParsedArgs,
-  ScrapeOptions,
   SinglePostOptions,
   StartBothOptions,
   StartOptions,
@@ -39,7 +39,7 @@ type ParsedValues = {
   "no-save"?: boolean;
 };
 
-function parseScrapeOptions(values: ParsedValues): ScrapeOptions {
+function parseFetchOptions(values: ParsedValues): FetchOptions {
   return {
     postsPerProfile: values["posts-per-profile"]
       ? Number.parseInt(values["posts-per-profile"], 10)
@@ -112,7 +112,7 @@ function parseOptionsForCommand(
   command: Command,
   values: ParsedValues
 ):
-  | ScrapeOptions
+  | FetchOptions
   | TelegramOptions
   | CronOptions
   | StartBothOptions
@@ -121,8 +121,8 @@ function parseOptionsForCommand(
   | StartOptions
   | GlobalOptions {
   switch (command) {
-    case "scrape":
-      return parseScrapeOptions(values);
+    case "fetch":
+      return parseFetchOptions(values);
     case "telegram":
       return parseTelegramOptions(values);
     case "cron":
@@ -155,7 +155,7 @@ export function parseCommandLineArgs(): ParsedArgs {
       help: { type: "boolean", short: "h" },
       version: { type: "boolean" },
 
-      // Scrape options
+      // Fetch options
       "posts-per-profile": { type: "string" },
       "continue-on-error": { type: "boolean" },
       "use-smart-selection": { type: "boolean" },
@@ -213,7 +213,7 @@ function validateMainCommand(command: string): {
 } {
   const validCommands: Command[] = [
     "start",
-    "scrape",
+    "fetch",
     "telegram",
     "cron",
     "start-both",
@@ -256,7 +256,7 @@ function validateCronSubcommand(subcommand: string | undefined): {
   return { isValid: true };
 }
 
-function validateScrapeCommand(options: ScrapeOptions): {
+function validateFetchCommand(options: FetchOptions): {
   isValid: boolean;
   error?: string;
 } {
@@ -328,8 +328,8 @@ function validateCommandOptions(
   options: ParsedArgs["options"]
 ): { isValid: boolean; error?: string } {
   switch (command) {
-    case "scrape":
-      return validateScrapeCommand(options as ScrapeOptions);
+    case "fetch":
+      return validateFetchCommand(options as FetchOptions);
     case "telegram":
       return validateTelegramCommand(options as TelegramOptions);
     case "start-both":

@@ -33,7 +33,7 @@
     }
   },
   "scripts": {
-    "scraper": "cd packages/scraper && bun run",
+    "instagram-adapter": "cd packages/instagram-adapter && bun run",
     "cf-build": "turbo cf-build",
     "cf-deploy": "turbo cf-deploy",
     "cf-upload": "turbo cf-upload",
@@ -49,10 +49,10 @@
     "typecheck": "turbo typecheck",
     "preview": "turbo preview",
     "test": "turbo test",
-    "cleanup": "rm -rf bun.lock .turbo node_modules apps/instarip/node_modules apps/instarip/.next apps/instarip/.open-next apps/web/node_modules apps/web/.next apps/web/.open-next apps/radio/node_modules apps/radio/.tanstack apps/radio/dist apps/radio/.wrangler packages/ui/node_modules packages/backend/node_modules packages/scraper/node_modules",
+    "cleanup": "rm -rf bun.lock .turbo node_modules apps/instarip/node_modules apps/instarip/.next apps/instarip/.open-next apps/web/node_modules apps/web/.next apps/web/.open-next apps/radio/node_modules apps/radio/.tanstack apps/radio/dist apps/radio/.wrangler packages/ui/node_modules packages/backend/node_modules packages/instagram-adapter/node_modules",
     "changeset": "changeset",
     "version-packages": "changeset version",
-    "release:scraper": "cd packages/scraper && bun run build:all && cd ../.. && bunx changeset tag && git push --follow-tags"
+    "release:instagram-adapter": "cd packages/instagram-adapter && bun run build:all && cd ../.. && bunx changeset tag && git push --follow-tags"
   },
   "devDependencies": {
     "@biomejs/biome": "2.3.11",

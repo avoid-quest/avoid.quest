@@ -1,6 +1,6 @@
 // CLI Types and Interfaces
 
-export type ScrapeOptions = {
+export type FetchOptions = {
   postsPerProfile?: number;
   continueOnError?: boolean;
   useSmartSelection?: boolean;
@@ -64,7 +64,7 @@ export type ParsedArgs = {
   command: string;
   subcommand?: string;
   options:
-    | ScrapeOptions
+    | FetchOptions
     | TelegramOptions
     | CronOptions
     | StartBothOptions
@@ -77,7 +77,7 @@ export type ParsedArgs = {
 
 export type Command =
   | "start"
-  | "scrape"
+  | "fetch"
   | "telegram"
   | "cron"
   | "start-both"

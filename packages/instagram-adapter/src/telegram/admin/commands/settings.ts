@@ -64,11 +64,11 @@ async function updateSettingsBySection(
       },
     });
     clearAdminChatIdCache();
-  } else if (section === "scraper") {
+  } else if (section === "instagram") {
     await getHttpClient().mutation(api.settings.upsertSettings, {
       id: settingsId,
-      scraper: {
-        ...settings.scraper,
+      instagram: {
+        ...settings.instagram,
         [key]: value,
       },
     });

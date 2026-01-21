@@ -5,7 +5,7 @@ declare const PACKAGE_VERSION: string;
 
 import {
   handleAdminCommand,
-  handleScrapeCommand,
+  handleFetchCommand,
   handleSinglePostCommand,
   handleStartBothCommand,
   handleStartCommand,
@@ -51,7 +51,7 @@ export async function runCli(): Promise<number> {
       // Version is injected at build time via --define PACKAGE_VERSION
       const version =
         typeof PACKAGE_VERSION !== "undefined" ? PACKAGE_VERSION : "unknown";
-      console.log(`Scraper v${version}`);
+      console.log(`Instagram Adapter v${version}`);
       return 0;
     }
 
@@ -61,8 +61,8 @@ export async function runCli(): Promise<number> {
         await handleStartCommand(args.options as StartOptions);
         return 0;
 
-      case "scrape":
-        await handleScrapeCommand();
+      case "fetch":
+        await handleFetchCommand();
         return 0;
 
       case "telegram":
@@ -284,7 +284,7 @@ function handleSettingsCommand(
   }
 }
 
-// Run when executed directly: `bun run ./packages/scraper/src/cli/index.ts <command>`
+// Run when executed directly: `bun run ./packages/instagram-adapter/src/cli/index.ts <command>`
 if (import.meta.main) {
   runCli().then((code) => {
     if (code !== 0) {

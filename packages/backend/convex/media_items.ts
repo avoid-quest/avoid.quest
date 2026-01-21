@@ -94,7 +94,7 @@ export const deleteMediaItem = mutation({
  * - Adds new media items
  * - Deletes media items that are no longer in the provided list
  *
- * This ensures the database stays in sync with the scraped data.
+ * This ensures the database stays in sync with the retrieved data.
  */
 export const syncMediaItemsForPost = mutation({
 	args: {

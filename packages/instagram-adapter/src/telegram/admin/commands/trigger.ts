@@ -1,23 +1,25 @@
-import { scrapeOnce } from "../../../scraping/scraper";
+import { fetchOnce } from "../../../adapter/adapter";
 import { runTelegramOnce } from "../../../telegram";
 import type { AdminContext } from "../types";
 
-export async function handleTriggerScraperCommand(
+export async function handleTriggerInstagramCommand(
   ctx: AdminContext
 ): Promise<void> {
-  await ctx.reply("⏳ Triggering scraper job...", { parse_mode: "HTML" });
+  await ctx.reply("⏳ Triggering Instagram adapter job...", {
+    parse_mode: "HTML",
+  });
 
   try {
-    await scrapeOnce();
-    await ctx.reply("✅ Scraper job completed successfully!", {
+    await fetchOnce();
+    await ctx.reply("✅ Instagram adapter job completed successfully!", {
       parse_mode: "HTML",
     });
   } catch (error) {
     ctx.logger.error(
-      `Error triggering scraper: ${error instanceof Error ? error.message : String(error)}`
+      `Error triggering Instagram adapter: ${error instanceof Error ? error.message : String(error)}`
     );
     await ctx.reply(
-      `❌ Scraper job failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+      `❌ Instagram adapter job failed: ${error instanceof Error ? error.message : "Unknown error"}`,
       { parse_mode: "HTML" }
     );
   }

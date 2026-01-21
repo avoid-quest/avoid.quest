@@ -24,7 +24,7 @@ export const getSettingsInternal = internalQuery({
 					report_cron_expression: v.optional(v.string()),
 				}),
 			),
-			scraper: v.optional(
+			instagram: v.optional(
 				v.object({
 					active: v.boolean(),
 					cron_expression: v.optional(v.string()),
@@ -74,11 +74,12 @@ export const upsertSettings = mutation({
 				report_cron_expression: v.optional(v.string()),
 			}),
 		),
-		scraper: v.optional(
+		instagram: v.optional(
 			v.object({
 				active: v.boolean(),
 				cron_expression: v.optional(v.string()),
 				limit: v.optional(v.number()),
+				post_per_user: v.optional(v.number()),
 				last_scraped_at: v.optional(v.number()),
 			}),
 		),
@@ -104,12 +105,12 @@ export const upsertSettings = mutation({
 	returns: v.id("settings"),
 	handler: async (
 		ctx,
-		{ id, telegram, scraper, logging, ai_metadata_extraction },
+		{ id, telegram, instagram, logging, ai_metadata_extraction },
 	) => {
 		if (id) {
 			await ctx.db.patch(id, {
 				telegram,
-				scraper,
+				instagram,
 				logging,
 				ai_metadata_extraction,
 			});
@@ -117,7 +118,7 @@ export const upsertSettings = mutation({
 		}
 		return await ctx.db.insert("settings", {
 			telegram,
-			scraper,
+			instagram,
 			logging,
 			ai_metadata_extraction,
 		});

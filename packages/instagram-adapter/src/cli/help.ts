@@ -4,8 +4,8 @@ import type { Command } from "./types";
  * Display help information for the application
  */
 export function showHelp(command?: Command): void {
-  if (command === "scrape") {
-    showScrapeHelp();
+  if (command === "fetch") {
+    showFetchHelp();
   } else if (command === "telegram") {
     showTelegramHelp();
   } else if (command === "cron") {
@@ -27,7 +27,7 @@ function showStartHelp(): void {
   console.log(`
 🚀 Start Command - FULL SYSTEM
 
-Starts the complete scraper system with cron scheduler.
+Starts the complete Instagram adapter system with cron scheduler.
 
 USAGE:
   bun run src/cli/index.ts start [options]
@@ -38,10 +38,10 @@ OPTIONS:
 
 WHAT IT STARTS:
   🕐 Cron Scheduler:
-    • Automated scraping jobs (based on settings)
+    • Automated fetching jobs (based on settings)
     • Automated telegram jobs (based on settings)
   🤖 Admin Bot (if TELEGRAM_BOT_TOKEN is set):
-    • Telegram admin bot for managing the scraper
+    • Telegram admin bot for managing the adapter
 
 EXAMPLES:
   bun run src/cli/index.ts start
@@ -53,7 +53,7 @@ EXAMPLES:
 
 function showMainHelp(): void {
   console.log(`
-🚀 Scraper - Instagram Scraper & Telegram Bot
+🚀 Instagram Adapter - Instagram Metadata Retriever & Telegram Bot
 
 USAGE:
   bun run src/cli/index.ts <command> [options]
@@ -62,10 +62,10 @@ MAIN COMMANDS:
   start       🚀 Start FULL SYSTEM (cron scheduler) - RECOMMENDED for production
 
 DEVELOPMENT/TESTING COMMANDS:
-  scrape      🔍 Run scraping job IMMEDIATELY (manual execution)
+  fetch       🔍 Run fetching job IMMEDIATELY (manual execution)
   telegram    📤 Run telegram job IMMEDIATELY (manual execution)
   start-both  🚀 Run BOTH jobs IMMEDIATELY in sequence (manual execution)
-  single-post 📱 Scrape a single Instagram post by URL
+  single-post 📱 Fetch a single Instagram post by URL
   cron        ⏰ Manage SCHEDULED jobs (automated execution)
   user        👥 Manage users in database
   settings    ⚙️  Manage application settings
@@ -77,8 +77,8 @@ EXAMPLES:
   # Start full system
   bun run src/cli/index.ts start
 
-  # Manual scraping
-  bun run src/cli/index.ts scrape
+  # Manual fetching
+  bun run src/cli/index.ts fetch
   bun run src/cli/index.ts telegram
 
   # Single post
@@ -94,24 +94,24 @@ For more information about a specific command, run:
 `);
 }
 
-function showScrapeHelp(): void {
+function showFetchHelp(): void {
   console.log(`
-🔍 Scrape Command - IMMEDIATE EXECUTION
+🔍 Fetch Command - IMMEDIATE EXECUTION
 
-Scrapes Instagram profiles and saves posts to the database RIGHT NOW.
+Fetches Instagram profiles and saves posts to the database RIGHT NOW.
 
 USAGE:
-  bun run src/cli/index.ts scrape [options]
+  bun run src/cli/index.ts fetch [options]
 
 OPTIONS:
   -v, --verbose              Enable verbose output
   -h, --help                 Show this help message
 
 EXAMPLES:
-  bun run src/cli/index.ts scrape
-  bun run src/cli/index.ts scrape --verbose
+  bun run src/cli/index.ts fetch
+  bun run src/cli/index.ts fetch --verbose
 
-💡 TIP: Use this when you want to run scraping immediately!
+💡 TIP: Use this when you want to run fetching immediately!
 `);
 }
 
@@ -153,7 +153,7 @@ EXAMPLES:
   bun run src/cli/index.ts cron start
   bun run src/cli/index.ts cron status
 
-💡 TIP: Use 'scrape', 'telegram', or 'start-both' commands for immediate execution!
+💡 TIP: Use 'fetch', 'telegram', or 'start-both' commands for immediate execution!
 `);
 }
 
@@ -161,7 +161,7 @@ function showStartBothHelp(): void {
   console.log(`
 🚀 Start Both Command - IMMEDIATE EXECUTION
 
-Runs both scrape and telegram jobs RIGHT NOW in sequence.
+Runs both fetch and telegram jobs RIGHT NOW in sequence.
 
 USAGE:
   bun run src/cli/index.ts start-both [options]
@@ -182,7 +182,7 @@ function showAdminHelp(): void {
   console.log(`
 🤖 Admin Command - TELEGRAM ADMIN BOT
 
-Starts an interactive Telegram admin bot for managing the scraper.
+Starts an interactive Telegram admin bot for managing the adapter.
 
 USAGE:
   bun run src/cli/index.ts admin [options]
@@ -198,7 +198,7 @@ FEATURES:
   👥 Manage users (list, toggle, rename, delete)
   👀 Preview post messages before sending
   📈 View database statistics
-  🚀 Manually trigger scraper/telegram jobs
+  🚀 Manually trigger adapter/telegram jobs
 
 REQUIREMENTS:
   • TELEGRAM_BOT_TOKEN environment variable must be set
@@ -209,15 +209,15 @@ EXAMPLES:
   bun run src/cli/index.ts admin
   bun run src/cli/index.ts admin --verbose
 
-💡 TIP: Run this in a separate process to manage the scraper via Telegram!
+💡 TIP: Run this in a separate process to manage the adapter via Telegram!
 `);
 }
 
 function showSinglePostHelp(): void {
   console.log(`
-📱 Single Post Command - SCRAPE INDIVIDUAL POSTS
+📱 Single Post Command - FETCH INDIVIDUAL POSTS
 
-Scrapes a single Instagram post by URL and optionally saves it to the database.
+Fetches a single Instagram post by URL and optionally saves it to the database.
 
 USAGE:
   bun run src/cli/index.ts single-post --url <instagram_post_url> [options]
@@ -230,10 +230,10 @@ OPTIONS:
   -h, --help               Show this help message
 
 EXAMPLES:
-  # Scrape and save to database
+  # Fetch and save to database
   bun run src/cli/index.ts single-post --url https://www.instagram.com/p/ABC123/
   
-  # Scrape but don't save to database
+  # Fetch but don't save to database
   bun run src/cli/index.ts single-post --url https://www.instagram.com/p/ABC123/ --no-save
 
 URL FORMAT:
@@ -246,6 +246,6 @@ FEATURES:
   📸 Captures media items (images, videos, thumbnails)
   💾 Optionally saves to database with full media relationships
 
-💡 TIP: Use this for testing or when you need to scrape specific posts!
+💡 TIP: Use this for testing or when you need to fetch specific posts!
 `);
 }

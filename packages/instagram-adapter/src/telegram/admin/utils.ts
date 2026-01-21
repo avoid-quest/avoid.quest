@@ -10,7 +10,7 @@ import type { AdminContext } from "./types";
  * Format scheduler status for display
  */
 export function formatSchedulerStatus(status: {
-  scraper: {
+  instagram: {
     active: boolean;
     nextRun: Date | null;
     cronExpression: string | undefined;
@@ -54,12 +54,12 @@ export function formatSchedulerStatus(status: {
 
   let text = "<b>📊 Scheduler Status</b>\n\n";
 
-  text += "<b>Scraper:</b>\n";
-  text += `  Active: ${status.scraper.active ? "✅" : "❌"}\n`;
-  if (status.scraper.active && status.scraper.nextRun) {
-    text += `  Next run: ${formatNextRun(status.scraper.nextRun)}\n`;
-    if (status.scraper.cronExpression) {
-      text += `  Cron: <code>${escapeHtml(status.scraper.cronExpression)}</code>\n`;
+  text += "<b>Instagram:</b>\n";
+  text += `  Active: ${status.instagram.active ? "✅" : "❌"}\n`;
+  if (status.instagram.active && status.instagram.nextRun) {
+    text += `  Next run: ${formatNextRun(status.instagram.nextRun)}\n`;
+    if (status.instagram.cronExpression) {
+      text += `  Cron: <code>${escapeHtml(status.instagram.cronExpression)}</code>\n`;
     }
   }
 
@@ -80,7 +80,7 @@ export function formatSchedulerStatus(status: {
  */
 export function formatSettings(settings: {
   telegram: NonNullable<Doc<"settings">["telegram"]>;
-  scraper: NonNullable<Doc<"settings">["scraper"]>;
+  instagram: NonNullable<Doc<"settings">["instagram"]>;
   logging: NonNullable<Doc<"settings">["logging"]>;
 }): string {
   let text = "<b>⚙️ Settings</b>\n\n";
@@ -93,10 +93,10 @@ export function formatSettings(settings: {
   text += `  Cron: ${settings.telegram.cron_expression ? `<code>${escapeHtml(settings.telegram.cron_expression)}</code>` : "Not set"}\n`;
   text += `  Send Report: ${settings.telegram.send_report ? "✅" : "❌"}\n`;
 
-  text += "\n<b>Scraper:</b>\n";
-  text += `  Active: ${settings.scraper.active ? "✅" : "❌"}\n`;
-  text += `  Limit: ${settings.scraper.limit ?? "Not set"}\n`;
-  text += `  Cron: ${settings.scraper.cron_expression ? `<code>${escapeHtml(settings.scraper.cron_expression)}</code>` : "Not set"}\n`;
+  text += "\n<b>Instagram:</b>\n";
+  text += `  Active: ${settings.instagram.active ? "✅" : "❌"}\n`;
+  text += `  Limit: ${settings.instagram.limit ?? "Not set"}\n`;
+  text += `  Cron: ${settings.instagram.cron_expression ? `<code>${escapeHtml(settings.instagram.cron_expression)}</code>` : "Not set"}\n`;
 
   text += "\n<b>Logging:</b>\n";
   text += `  Active: ${settings.logging.active ? "✅" : "❌"}\n`;
@@ -174,7 +174,7 @@ export function buildSettingsKeyboard(currentSection?: string): InlineKeyboard {
     keyboard
       .text("📱 Telegram", "settings:nav:telegram")
       .row()
-      .text("🔍 Scraper", "settings:nav:scraper")
+      .text("📸 Instagram", "settings:nav:instagram")
       .row()
       .text("📝 Logging", "settings:nav:logging");
   }
@@ -186,10 +186,10 @@ export function buildSettingsKeyboard(currentSection?: string): InlineKeyboard {
  * Build section settings keyboard
  */
 export function buildSectionKeyboard(
-  section: "telegram" | "scraper" | "logging",
+  section: "telegram" | "instagram" | "logging",
   settings: {
     telegram: NonNullable<Doc<"settings">["telegram"]>;
-    scraper: NonNullable<Doc<"settings">["scraper"]>;
+    instagram: NonNullable<Doc<"settings">["instagram"]>;
     logging: NonNullable<Doc<"settings">["logging"]>;
   }
 ): InlineKeyboard {
@@ -212,16 +212,16 @@ export function buildSectionKeyboard(
       )
       .row()
       .text("⬅️ Back", "settings:back");
-  } else if (section === "scraper") {
+  } else if (section === "instagram") {
     keyboard
       .text(
-        `Active: ${settings.scraper.active ? "✅" : "❌"}`,
-        "settings:scraper:active:toggle"
+        `Active: ${settings.instagram.active ? "✅" : "❌"}`,
+        "settings:instagram:active:toggle"
       )
       .row()
-      .text("Edit Limit", "settings:scraper:limit:edit")
+      .text("Edit Limit", "settings:instagram:limit:edit")
       .row()
-      .text("Edit Cron", "settings:scraper:cron_expression:edit")
+      .text("Edit Cron", "settings:instagram:cron_expression:edit")
       .row()
       .text("⬅️ Back", "settings:back");
   } else if (section === "logging") {
@@ -252,8 +252,8 @@ function formatTelegramSettings(
   return text;
 }
 
-function formatScraperSettings(
-  settings: NonNullable<Doc<"settings">["scraper"]>
+function formatInstagramSettings(
+  settings: NonNullable<Doc<"settings">["instagram"]>
 ): string {
   let text = "";
   text += `Active: ${settings.active ? "✅" : "❌"}\n`;
@@ -275,10 +275,10 @@ function formatLoggingSettings(
  * Format section settings for display
  */
 export function formatSectionSettings(
-  section: "telegram" | "scraper" | "logging",
+  section: "telegram" | "instagram" | "logging",
   settings: {
     telegram: NonNullable<Doc<"settings">["telegram"]>;
-    scraper: NonNullable<Doc<"settings">["scraper"]>;
+    instagram: NonNullable<Doc<"settings">["instagram"]>;
     logging: NonNullable<Doc<"settings">["logging"]>;
   }
 ): string {
@@ -287,8 +287,8 @@ export function formatSectionSettings(
 
   if (section === "telegram") {
     text += formatTelegramSettings(settings.telegram);
-  } else if (section === "scraper") {
-    text += formatScraperSettings(settings.scraper);
+  } else if (section === "instagram") {
+    text += formatInstagramSettings(settings.instagram);
   } else if (section === "logging") {
     text += formatLoggingSettings(settings.logging);
   }

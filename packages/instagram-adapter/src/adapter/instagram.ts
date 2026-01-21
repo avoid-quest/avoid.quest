@@ -10,7 +10,7 @@ type MediaItem = {
   height?: number;
 };
 
-export type ScrapedPost = {
+export type FetchedPost = {
   id: string;
   shortcode: string;
   timestampSec: number;
@@ -24,7 +24,7 @@ export type ScrapedPost = {
   thumbnail_url?: string;
 };
 
-export type ScraperConfig = {
+export type AdapterConfig = {
   minDelayMs: number;
   maxDelayMs: number;
   timeoutMs: number;
@@ -127,7 +127,7 @@ type InstagramOEmbedResponse = {
 
 export type SinglePostResponse = {
   success: boolean;
-  post?: ScrapedPost;
+  post?: FetchedPost;
   username?: string;
   scraped_at?: string;
   error?: string;
@@ -135,13 +135,13 @@ export type SinglePostResponse = {
   statusCode?: number;
 };
 
-export class InstagramScraper {
-  private readonly config: ScraperConfig;
+export class InstagramAdapter {
+  private readonly config: AdapterConfig;
   private readonly limiter: TokenBucketLimiter;
   private readonly logger?: Logger;
 
   constructor(
-    config?: Partial<ScraperConfig>,
+    config?: Partial<AdapterConfig>,
     opts?: { limiter?: TokenBucketLimiter; logger?: Logger }
   ) {
     this.config = {
@@ -151,7 +151,7 @@ export class InstagramScraper {
       postProcessingDelayMs: DEFAULT_POST_PROCESSING_DELAY_MS,
       postProcessingMaxDelayMs: DEFAULT_POST_PROCESSING_MAX_DELAY_MS,
       ...config,
-    } as ScraperConfig;
+    } as AdapterConfig;
     this.limiter =
       opts?.limiter ??
       new TokenBucketLimiter(DEFAULT_BURST_CAPACITY, DEFAULT_REFILL_RPS);
@@ -302,7 +302,7 @@ export class InstagramScraper {
     );
   }
 
-  private processNode(node: InstagramPostNode): ScrapedPost {
+  private processNode(node: InstagramPostNode): FetchedPost {
     const mediaItems = this.extractMediaItems(node);
     const mediaType = this.determineMediaType(node, mediaItems.length);
     const caption = this.extractCaption(node);
@@ -311,7 +311,7 @@ export class InstagramScraper {
     const displayUrl =
       node.display_url || node.image_versions2?.candidates?.[0]?.url || "";
 
-    const post: ScrapedPost = {
+    const post: FetchedPost = {
       id: String(node.id),
       shortcode,
       timestampSec,
@@ -335,7 +335,7 @@ export class InstagramScraper {
     return post;
   }
 
-  async getRecent(username: string, limit: number): Promise<ScrapedPost[]> {
+  async getRecent(username: string, limit: number): Promise<FetchedPost[]> {
     await this.delay(this.config.minDelayMs, this.config.maxDelayMs);
     let data: InstagramApiData;
     try {
@@ -354,7 +354,7 @@ export class InstagramScraper {
       data?.data?.user?.edge_owner_to_timeline_media?.edges?.map(
         (e) => e.node
       ) || [];
-    const posts: ScrapedPost[] = [];
+    const posts: FetchedPost[] = [];
     const postDelayMin =
       this.config.postProcessingDelayMs ?? DEFAULT_POST_PROCESSING_DELAY_MS;
     const postDelayMax =
@@ -383,7 +383,7 @@ export class InstagramScraper {
   private processOEmbedData(
     oembedData: InstagramOEmbedResponse,
     shortcode: string
-  ): ScrapedPost {
+  ): FetchedPost {
     const mediaItems: MediaItem[] = [];
 
     // Extract thumbnail as the main media item
@@ -406,7 +406,7 @@ export class InstagramScraper {
     const timestamp = Math.floor(now() / MS_PER_SECOND);
     const isVideo = oembedData.type === "video";
 
-    const post: ScrapedPost = {
+    const post: FetchedPost = {
       id: shortcode,
       shortcode,
       timestampSec: timestamp,

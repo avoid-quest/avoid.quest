@@ -9,7 +9,7 @@ export async function loadSettings(): Promise<SettingsDoc | null> {
 
 export type EffectiveSettings = {
   telegram: NonNullable<Doc<"settings">["telegram"]>;
-  scraper: NonNullable<Doc<"settings">["scraper"]>;
+  instagram: NonNullable<Doc<"settings">["instagram"]>;
   logging: NonNullable<Doc<"settings">["logging"]>;
 };
 
@@ -26,11 +26,12 @@ function defaultTelegram(): NonNullable<Doc<"settings">["telegram"]> {
   };
 }
 
-function defaultScraper(): NonNullable<Doc<"settings">["scraper"]> {
+function defaultInstagram(): NonNullable<Doc<"settings">["instagram"]> {
   return {
     active: false,
     cron_expression: undefined,
     limit: 5,
+    post_per_user: undefined,
     last_scraped_at: undefined,
   };
 }
@@ -51,13 +52,13 @@ export async function getEffectiveSettings(): Promise<EffectiveSettings> {
     ...defaultTelegram(),
     ...(doc?.telegram ?? {}),
   };
-  const scraper: NonNullable<Doc<"settings">["scraper"]> = {
-    ...defaultScraper(),
-    ...(doc?.scraper ?? {}),
+  const instagram: NonNullable<Doc<"settings">["instagram"]> = {
+    ...defaultInstagram(),
+    ...(doc?.instagram ?? {}),
   };
   const logging: NonNullable<Doc<"settings">["logging"]> = {
     ...defaultLogging(),
     ...(doc?.logging ?? {}),
   };
-  return { telegram, scraper, logging };
+  return { telegram, instagram, logging };
 }

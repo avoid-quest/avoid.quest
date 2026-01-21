@@ -2,9 +2,9 @@
 import { mainMenu } from "./main-menu";
 import { postDetailMenu, postsMenu } from "./posts-menu";
 import {
+  settingsInstagramMenu,
   settingsLoggingMenu,
   settingsMenu,
-  settingsScraperMenu,
   settingsTelegramMenu,
 } from "./settings-menu";
 import { userDeleteConfirmMenu, userDetailMenu, usersMenu } from "./users-menu";
@@ -20,7 +20,7 @@ usersMenu.register(userDeleteConfirmMenu);
 postsMenu.register(postDetailMenu);
 
 settingsMenu.register(settingsTelegramMenu);
-settingsMenu.register(settingsScraperMenu);
+settingsMenu.register(settingsInstagramMenu);
 settingsMenu.register(settingsLoggingMenu);
 
 // Re-export all menus and update functions
@@ -28,9 +28,9 @@ settingsMenu.register(settingsLoggingMenu);
 export { mainMenu };
 export { postsMenu, updatePostsMenuMessage } from "./posts-menu";
 export {
+  settingsInstagramMenu,
   settingsLoggingMenu,
   settingsMenu,
-  settingsScraperMenu,
   settingsTelegramMenu,
 } from "./settings-menu";
 export {

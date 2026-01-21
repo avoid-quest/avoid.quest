@@ -1,5 +1,5 @@
+import { fetchAndSaveSinglePost } from "../../../adapter/adapter";
 import { api, getHttpClient } from "../../../convex/client";
-import { scrapeAndSaveSinglePost } from "../../../scraping/scraper";
 import type { AdminContext } from "../types";
 import { formatPost } from "../utils";
 
@@ -15,21 +15,21 @@ export async function handlePostAddCommand(
     return;
   }
 
-  await ctx.reply("⏳ Scraping post...", { parse_mode: "HTML" });
+  await ctx.reply("⏳ Fetching post...", { parse_mode: "HTML" });
 
   try {
-    const result = await scrapeAndSaveSinglePost(url);
+    const result = await fetchAndSaveSinglePost(url);
 
     if (!result.success) {
       await ctx.reply(
-        `❌ Failed to scrape post: ${result.error ?? "Unknown error"}`,
+        `❌ Failed to fetch post: ${result.error ?? "Unknown error"}`,
         { parse_mode: "HTML" }
       );
       return;
     }
 
     if (!result.postId) {
-      await ctx.reply("❌ Post scraped but no ID returned", {
+      await ctx.reply("❌ Post fetched but no ID returned", {
         parse_mode: "HTML",
       });
       return;
@@ -72,24 +72,24 @@ export async function handlePostPreviewCommand(
     return;
   }
 
-  await ctx.reply("⏳ Scraping post for preview...", { parse_mode: "HTML" });
+  await ctx.reply("⏳ Fetching post for preview...", { parse_mode: "HTML" });
 
   try {
-    // Use scrapeAndSaveSinglePost but we'll just show the result without saving
-    // Actually, we need to scrape without saving - let me check the scraper
-    // For now, we'll scrape and save, then show it
-    const result = await scrapeAndSaveSinglePost(url);
+    // Use fetchAndSaveSinglePost but we'll just show the result without saving
+    // Actually, we need to fetch without saving - let me check the adapter
+    // For now, we'll fetch and save, then show it
+    const result = await fetchAndSaveSinglePost(url);
 
     if (!result.success) {
       await ctx.reply(
-        `❌ Failed to scrape post: ${result.error ?? "Unknown error"}`,
+        `❌ Failed to fetch post: ${result.error ?? "Unknown error"}`,
         { parse_mode: "HTML" }
       );
       return;
     }
 
     if (!result.postId) {
-      await ctx.reply("❌ Post scraped but no ID returned", {
+      await ctx.reply("❌ Post fetched but no ID returned", {
         parse_mode: "HTML",
       });
       return;
@@ -99,7 +99,7 @@ export async function handlePostPreviewCommand(
       id: result.postId,
     });
     if (!post) {
-      await ctx.reply("✅ Post scraped but could not retrieve details", {
+      await ctx.reply("✅ Post fetched but could not retrieve details", {
         parse_mode: "HTML",
       });
       return;

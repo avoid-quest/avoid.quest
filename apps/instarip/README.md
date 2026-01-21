@@ -1,6 +1,6 @@
 # instarip
 
-Instagram post viewer. Browse scraped IG content without Instagram account.
+Instagram post viewer.
 
 ## Features
 
@@ -15,5 +15,5 @@ Instagram post viewer. Browse scraped IG content without Instagram account.
 
 - Uses `@workspace/backend` (Convex): posts/users/media_items queries
 - Uses `@workspace/ui`: shared component library (cards, buttons, carousel)
-- Data source: `packages/scraper` writes Instagram posts to backend
+- Data source: `packages/instagram-adapter` writes Instagram posts to backend
 - Deploy: Cloudflare Pages via OpenNext

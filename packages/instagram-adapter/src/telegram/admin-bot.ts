@@ -9,7 +9,7 @@ import {
 import { handlePreviewCommand } from "./admin/commands/preview";
 import { handleSettingsInput } from "./admin/commands/settings";
 import {
-  handleTriggerScraperCommand,
+  handleTriggerInstagramCommand,
   handleTriggerTelegramCommand,
 } from "./admin/commands/trigger";
 // Import menu at the top level - it will be initialized when the module loads
@@ -164,12 +164,12 @@ export async function startAdminBot(): Promise<void> {
       const args = ctx.message?.text?.split(" ").slice(1) ?? [];
       const job = args[0];
 
-      if (job === "scraper") {
-        await handleTriggerScraperCommand(ctx);
+      if (job === "instagram") {
+        await handleTriggerInstagramCommand(ctx);
       } else if (job === "telegram") {
         await handleTriggerTelegramCommand(ctx);
       } else {
-        await ctx.reply("Usage: /trigger scraper | /trigger telegram", {
+        await ctx.reply("Usage: /trigger instagram | /trigger telegram", {
           parse_mode: "HTML",
         });
       }

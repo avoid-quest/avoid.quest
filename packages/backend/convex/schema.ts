@@ -129,13 +129,13 @@ export default defineSchema({
 				report_cron_expression: v.optional(v.string()),
 			}),
 		),
-		scraper: v.optional(
+		instagram: v.optional(
 			v.object({
 				active: v.boolean(),
 				cron_expression: v.optional(v.string()),
 				limit: v.optional(v.number()),
 				post_per_user: v.optional(v.number()),
-				/** Timestamp in milliseconds (UTC) - when scraping last ran */
+				/** Timestamp in milliseconds (UTC) - when fetching last ran */
 				last_scraped_at: v.optional(v.number()),
 			}),
 		),

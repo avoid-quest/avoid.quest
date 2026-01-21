@@ -18,12 +18,12 @@ export const settingsMenu = new Menu<AdminContext>("settings-menu")
     });
   })
   .row()
-  .text("🔍 Scraper", async (ctx) => {
+  .text("📸 Instagram", async (ctx) => {
     const settings = await getEffectiveSettings();
-    const text = formatSectionSettings("scraper", settings);
+    const text = formatSectionSettings("instagram", settings);
     await ctx.editMessageText(text, {
       parse_mode: "HTML",
-      reply_markup: settingsScraperMenu,
+      reply_markup: settingsInstagramMenu,
     });
   })
   .row()
@@ -134,15 +134,15 @@ export const settingsTelegramMenu = new Menu<AdminContext>(
   .back("⬅️ Back");
 
 /**
- * Scraper settings menu
+ * Instagram settings menu
  */
-export const settingsScraperMenu = new Menu<AdminContext>(
-  "settings-scraper-menu"
+export const settingsInstagramMenu = new Menu<AdminContext>(
+  "settings-instagram-menu"
 )
   .text(
     async () => {
       const settings = await getEffectiveSettings();
-      return `Active: ${settings.scraper.active ? "✅" : "❌"}`;
+      return `Active: ${settings.instagram.active ? "✅" : "❌"}`;
     },
     async (ctx) => {
       const settings = await getEffectiveSettings();
@@ -152,11 +152,11 @@ export const settingsScraperMenu = new Menu<AdminContext>(
       );
       const settingsId = settingsDoc?._id;
 
-      const newValue = !settings.scraper.active;
+      const newValue = !settings.instagram.active;
       await getHttpClient().mutation(api.settings.upsertSettings, {
         id: settingsId,
-        scraper: {
-          ...settings.scraper,
+        instagram: {
+          ...settings.instagram,
           active: newValue,
         },
       });
@@ -171,7 +171,7 @@ export const settingsScraperMenu = new Menu<AdminContext>(
   .text("Edit Limit", async (ctx) => {
     ctx.session.pendingInput = {
       type: "edit",
-      section: "scraper",
+      section: "instagram",
       key: "limit",
     };
     await ctx.reply("Enter new limit (number):", { parse_mode: "HTML" });
@@ -180,7 +180,7 @@ export const settingsScraperMenu = new Menu<AdminContext>(
   .text("Edit Cron", async (ctx) => {
     ctx.session.pendingInput = {
       type: "edit",
-      section: "scraper",
+      section: "instagram",
       key: "cron_expression",
     };
     await ctx.reply(

@@ -6,6 +6,7 @@
 import { httpRouter } from "convex/server";
 import { internal } from "./_generated/api";
 import { httpAction } from "./_generated/server";
+import { mediaHandler } from "./httpHandlers/media";
 
 const http = httpRouter();
 
@@ -86,6 +87,17 @@ http.route({
 			headers: { "Content-Type": "application/json" },
 		});
 	}),
+});
+
+/**
+ * Media proxy endpoint
+ * Returns media files with aggressive caching headers
+ * URL format: /media?id=<media_item_id>
+ */
+http.route({
+	path: "/media",
+	method: "GET",
+	handler: mediaHandler,
 });
 
 export default http;

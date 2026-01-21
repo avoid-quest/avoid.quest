@@ -12,6 +12,7 @@ import type * as bootstrap from "../bootstrap.js";
 import type * as crons from "../crons.js";
 import type * as healthCheck from "../healthCheck.js";
 import type * as http from "../http.js";
+import type * as httpHandlers_media from "../httpHandlers/media.js";
 import type * as lib_config_defaults from "../lib/config/defaults.js";
 import type * as lib_config_index from "../lib/config/index.js";
 import type * as lib_config_validators from "../lib/config/validators.js";
@@ -50,6 +51,7 @@ declare const fullApi: ApiFromModules<{
   crons: typeof crons;
   healthCheck: typeof healthCheck;
   http: typeof http;
+  "httpHandlers/media": typeof httpHandlers_media;
   "lib/config/defaults": typeof lib_config_defaults;
   "lib/config/index": typeof lib_config_index;
   "lib/config/validators": typeof lib_config_validators;

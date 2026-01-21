@@ -1,25 +1,16 @@
 {
-	"$schema": "./node_modules/wrangler/config-schema.json",
-	"main": ".open-next/worker.js",
-	"name": "avoid-quest",
-	"compatibility_date": "2025-11-17",
-	"compatibility_flags": [
-		"nodejs_compat",
-		"global_fetch_strictly_public"
-	],
-	"workers_dev": true,
-	"preview_urls": true,
-	"assets": {
-		"binding": "ASSETS",
-		"directory": ".open-next/assets"
-	},
-	"observability": {
-		"enabled": true
-	},
-	"r2_buckets": [
-		{
-			"binding": "NEXT_INC_CACHE_R2_BUCKET",
-			"bucket_name": "avoid-cache"
-		}
-	]
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "main": "dist/_worker.js/index.js",
+  "name": "avoid-quest",
+  "compatibility_date": "2026-01-21",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "workers_dev": true,
+  "preview_urls": true,
+  "assets": {
+    "binding": "ASSETS",
+    "directory": "./dist"
+  },
+  "observability": {
+    "enabled": true
+  }
 }

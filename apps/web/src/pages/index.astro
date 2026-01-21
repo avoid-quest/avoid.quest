@@ -1,0 +1,36 @@
+---
+import AvoidLogo from "@workspace/ui/components/avoid-logo";
+import ThemeToggle from "../components/ThemeToggle.astro";
+import Layout from "../layouts/Layout.astro";
+export const prerender = true;
+---
+
+<Layout>
+  <div class="flex h-full flex-col items-center justify-center">
+    <AvoidLogo className="-mb-10 size-64" />
+    <small class="font-mono text-muted-foreground text-xs"> avoid.quest </small>
+
+    <div class="mt-10 flex flex-row items-center justify-center gap-4">
+      <a
+        href="https://instarip.avoid.quest"
+        target="_blank"
+        rel="noopener"
+        class="text-primary underline-offset-4 hover:underline"
+      >
+        instarip
+      </a>
+      <a
+        href="https://radio.avoid.quest"
+        target="_blank"
+        rel="noopener"
+        class="text-primary underline-offset-4 hover:underline"
+      >
+        radio
+      </a>
+    </div>
+  </div>
+
+  <footer slot="footer" class="flex h-16 w-full items-center justify-end p-4">
+    <ThemeToggle />
+  </footer>
+</Layout>

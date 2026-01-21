@@ -2,35 +2,38 @@
   "name": "web",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
-    "dev": "next dev --turbo",
-    "build": "next build",
-    "start": "next start",
-    "typecheck": "tsc --noEmit",
-    "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
-    "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
-    "cf-build": "opennextjs-cloudflare build",
-    "cf-deploy": "opennextjs-cloudflare deploy",
-    "cf-upload": "opennextjs-cloudflare upload",
-    "cf-typegen": "wrangler types --env-interface CloudflareEnv ./cloudflare-env.d.ts"
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "typecheck": "astro check && tsc --noEmit",
+    "deploy": "astro build && bunx wrangler@latest deploy",
+    "cf-build": "astro build",
+    "cf-deploy": "npx wrangler@latest deploy",
+    "cf-upload": "npx wrangler@latest versions upload"
   },
   "dependencies": {
-    "@opennextjs/cloudflare": "^1.14.10",
+    "@astrojs/cloudflare": "^12.6.12",
+    "@astrojs/react": "^4.4.2",
+    "@fontsource/geist-mono": "^5.2.7",
+    "@fontsource/geist-sans": "^5.2.5",
     "@workspace/typescript-config": "workspace:*",
     "@workspace/ui": "workspace:*",
-    "babel-plugin-react-compiler": "^1.0.0",
-    "next": "catalog:",
-    "next-themes": "catalog:",
+    "astro": "^5.16.11",
     "react": "catalog:",
     "react-dom": "catalog:",
-    "zod": "catalog:"
+    "tailwindcss": "catalog:"
   },
   "devDependencies": {
+    "@astrojs/check": "^0.9.6",
     "@cloudflare/workers-types": "catalog:",
+    "@tailwindcss/vite": "catalog:",
     "@types/node": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "typescript": "catalog:",
+    "vite": "catalog:",
     "wrangler": "catalog:"
   }
 }

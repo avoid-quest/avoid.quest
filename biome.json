@@ -4,6 +4,8 @@
     "ignoreUnknown": false,
     "includes": [
       "!**/.next",
+      "!**/.astro",
+      "!**/*.astro",
       "!**/dist",
       "!**/.turbo",
       "!**/dev-dist",

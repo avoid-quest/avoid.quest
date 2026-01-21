@@ -1,10 +1,5 @@
 import { v } from "convex/values";
-import {
-	internalMutation,
-	internalQuery,
-	mutation,
-	query,
-} from "./_generated/server";
+import { internalMutation, internalQuery } from "./_generated/server";
 import { LOCALE_DEFAULTS } from "./lib/config/defaults";
 import {
 	instagramSettingsValidator,
@@ -13,7 +8,7 @@ import {
 	telegramSettingsValidator,
 } from "./lib/config/validators";
 
-export const getSettings = query({
+export const getSettings = internalQuery({
 	args: {},
 	handler: async (ctx) => await ctx.db.query("settings").first(),
 });
@@ -37,7 +32,7 @@ export const getSettingsInternal = internalQuery({
 	},
 });
 
-export const upsertSettings = mutation({
+export const upsertSettings = internalMutation({
 	args: {
 		id: v.optional(v.id("settings")),
 		telegram: v.optional(telegramSettingsValidator),
@@ -65,7 +60,7 @@ export const upsertSettings = mutation({
 	},
 });
 
-export const deleteSettings = mutation({
+export const deleteSettings = internalMutation({
 	args: { id: v.id("settings") },
 	handler: async (ctx, { id }) => await ctx.db.delete(id),
 });

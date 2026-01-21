@@ -1,22 +1,17 @@
 import { v } from "convex/values";
-import {
-	internalMutation,
-	internalQuery,
-	mutation,
-	query,
-} from "./_generated/server";
+import { internalMutation, internalQuery, query } from "./_generated/server";
 import {
 	instagramMediaItemValidator,
 	mediaTypeValidator,
 	telegramFileIdItemValidator,
 } from "./lib/validators";
 
-export const getMediaItems = query({
+export const getMediaItems = internalQuery({
 	args: {},
 	handler: async (ctx) => await ctx.db.query("media_items").collect(),
 });
 
-export const getMediaItemById = query({
+export const getMediaItemById = internalQuery({
 	args: { id: v.id("media_items") },
 	handler: async (ctx, { id }) => await ctx.db.get(id),
 });
@@ -30,7 +25,7 @@ export const getMediaItemsByPostId = query({
 			.collect(),
 });
 
-export const getMediaItemByUrlAndPostId = query({
+export const getMediaItemByUrlAndPostId = internalQuery({
 	args: { url: v.string(), postId: v.id("posts") },
 	handler: async (ctx, { url, postId }) => {
 		// Query by post_id first (indexed), then filter by URL
@@ -42,7 +37,7 @@ export const getMediaItemByUrlAndPostId = query({
 	},
 });
 
-export const upsertMediaItem = mutation({
+export const upsertMediaItem = internalMutation({
 	args: {
 		id: v.optional(v.id("media_items")),
 		url: v.optional(v.string()),
@@ -113,7 +108,7 @@ export const upsertMediaItem = mutation({
 	},
 });
 
-export const deleteMediaItem = mutation({
+export const deleteMediaItem = internalMutation({
 	args: { id: v.id("media_items") },
 	handler: async (ctx, { id }) => await ctx.db.delete(id),
 });
@@ -127,7 +122,7 @@ export const deleteMediaItem = mutation({
  * This ensures the database stays in sync with the retrieved data.
  * @deprecated Use syncTelegramMediaItemsForPost for file_id-based media
  */
-export const syncMediaItemsForPost = mutation({
+export const syncMediaItemsForPost = internalMutation({
 	args: {
 		post_id: v.id("posts"),
 		media_items: v.array(instagramMediaItemValidator),
@@ -189,7 +184,7 @@ export const syncMediaItemsForPost = mutation({
  * - Adds new media items
  * - Deletes media items that are no longer in the provided list
  */
-export const syncTelegramMediaItemsForPost = mutation({
+export const syncTelegramMediaItemsForPost = internalMutation({
 	args: {
 		post_id: v.id("posts"),
 		media_items: v.array(telegramFileIdItemValidator),
@@ -260,7 +255,7 @@ export const syncTelegramMediaItemsForPost = mutation({
  * This is used when processing forwarded messages to extract file_ids
  * from already-sent posts.
  */
-export const updateMediaItemWithFileId = mutation({
+export const updateMediaItemWithFileId = internalMutation({
 	args: {
 		id: v.id("media_items"),
 		file_id: v.string(),
@@ -274,7 +269,7 @@ export const updateMediaItemWithFileId = mutation({
 /**
  * Get media items for a post that are missing file_ids (need backfill)
  */
-export const getMediaItemsNeedingBackfill = query({
+export const getMediaItemsNeedingBackfill = internalQuery({
 	args: { postId: v.id("posts") },
 	handler: async (ctx, { postId }) => {
 		const items = await ctx.db

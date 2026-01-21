@@ -1,11 +1,6 @@
 import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
-import {
-	internalMutation,
-	internalQuery,
-	mutation,
-	query,
-} from "./_generated/server";
+import { internalMutation, internalQuery, query } from "./_generated/server";
 
 export const getUsers = query({
 	args: {},
@@ -13,7 +8,7 @@ export const getUsers = query({
 		await ctx.db.query("users").withIndex("by_username").order("asc").collect(),
 });
 
-export const getUsersPaginated = query({
+export const getUsersPaginated = internalQuery({
 	args: { paginationOpts: paginationOptsValidator },
 	returns: v.object({
 		page: v.array(
@@ -43,7 +38,7 @@ export const getUsersPaginated = query({
 	},
 });
 
-export const getUserById = query({
+export const getUserById = internalQuery({
 	args: { id: v.id("users") },
 	handler: async (ctx, { id }) => await ctx.db.get(id),
 });
@@ -65,7 +60,7 @@ export const getUserByUsername = query({
 
 const DEFAULT_TO_BE_SCRAPED_LIMIT = 100;
 
-export const listToBeScraped = query({
+export const listToBeScraped = internalQuery({
 	args: { limit: v.optional(v.number()) },
 	handler: async (ctx, { limit }) =>
 		await ctx.db
@@ -77,7 +72,7 @@ export const listToBeScraped = query({
 			.take(limit ?? DEFAULT_TO_BE_SCRAPED_LIMIT),
 });
 
-export const upsertUser = mutation({
+export const upsertUser = internalMutation({
 	args: {
 		id: v.optional(v.id("users")),
 		username: v.optional(v.string()),
@@ -126,7 +121,7 @@ export const upsertUser = mutation({
 	},
 });
 
-export const deleteUser = mutation({
+export const deleteUser = internalMutation({
 	args: { id: v.id("users") },
 	handler: async (ctx, { id }) => await ctx.db.delete(id),
 });

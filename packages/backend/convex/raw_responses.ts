@@ -9,7 +9,7 @@
  */
 
 import { v } from "convex/values";
-import { internalMutation, mutation, query } from "./_generated/server";
+import { internalMutation, internalQuery } from "./_generated/server";
 
 const responseTypeValidator = v.union(
 	v.literal("user_posts"),
@@ -20,7 +20,7 @@ const responseTypeValidator = v.union(
 /**
  * Query raw response by shortcode
  */
-export const getRawResponseByShortcode = query({
+export const getRawResponseByShortcode = internalQuery({
 	args: { shortcode: v.string() },
 	handler: async (ctx, { shortcode }) => {
 		return await ctx.db
@@ -33,7 +33,7 @@ export const getRawResponseByShortcode = query({
 /**
  * Query all raw responses for a username
  */
-export const getRawResponsesByUsername = query({
+export const getRawResponsesByUsername = internalQuery({
 	args: { username: v.string(), limit: v.optional(v.number()) },
 	handler: async (ctx, { username, limit = 10 }) => {
 		return await ctx.db
@@ -46,7 +46,7 @@ export const getRawResponsesByUsername = query({
 /**
  * Query recent raw responses (for debugging)
  */
-export const getRecentRawResponses = query({
+export const getRecentRawResponses = internalQuery({
 	args: { limit: v.optional(v.number()) },
 	handler: async (ctx, { limit = 10 }) => {
 		return await ctx.db
@@ -60,7 +60,7 @@ export const getRecentRawResponses = query({
 /**
  * Store a raw response (public mutation for manual storage)
  */
-export const storeRawResponse = mutation({
+export const storeRawResponse = internalMutation({
 	args: {
 		shortcode: v.string(),
 		username: v.string(),
@@ -142,7 +142,7 @@ export const storeRawResponseInternal = internalMutation({
 /**
  * Delete a raw response by shortcode
  */
-export const deleteRawResponse = mutation({
+export const deleteRawResponse = internalMutation({
 	args: { shortcode: v.string() },
 	handler: async (ctx, { shortcode }) => {
 		const existing = await ctx.db

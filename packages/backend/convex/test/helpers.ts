@@ -116,7 +116,7 @@ export async function createMediaItem(
 ): Promise<Id<"media_items">> {
 	const now = Date.now();
 
-	return await t.mutation(api.media_items.upsertMediaItem, {
+	return await t.mutation(internal.media_items.upsertMediaItem, {
 		url: options.url ?? `https://example.com/media/${now}.jpg`,
 		file_id: options.file_id,
 		file_unique_id: options.file_unique_id,

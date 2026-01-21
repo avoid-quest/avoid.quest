@@ -1,12 +1,7 @@
 import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
-import {
-	internalMutation,
-	internalQuery,
-	mutation,
-	query,
-} from "./_generated/server";
+import { internalMutation, internalQuery, query } from "./_generated/server";
 import { secondsToMilliseconds } from "./lib/dateUtils";
 import { postMediaTypeValidator } from "./lib/validators";
 
@@ -42,7 +37,7 @@ const paginatedPostValidator = v.object({
 	sentAt: v.optional(v.number()),
 });
 
-export const getPostById = query({
+export const getPostById = internalQuery({
 	args: { id: v.id("posts") },
 	handler: async (ctx, { id }) => await ctx.db.get(id),
 });
@@ -65,7 +60,7 @@ export const getPostByShortcode = query({
 			.first(),
 });
 
-export const getUnsent = query({
+export const getUnsent = internalQuery({
 	args: { limit: v.number() },
 	handler: async (ctx, { limit }) =>
 		await ctx.db
@@ -74,7 +69,7 @@ export const getUnsent = query({
 			.take(limit),
 });
 
-export const getPostsPaginated = query({
+export const getPostsPaginated = internalQuery({
 	args: { paginationOpts: paginationOptsValidator },
 	returns: v.object({
 		page: v.array(paginatedPostValidator),
@@ -95,7 +90,7 @@ export const getPostsPaginated = query({
 	},
 });
 
-export const getUnsentPaginated = query({
+export const getUnsentPaginated = internalQuery({
 	args: { paginationOpts: paginationOptsValidator },
 	returns: v.object({
 		page: v.array(paginatedPostValidator),
@@ -116,7 +111,7 @@ export const getUnsentPaginated = query({
 	},
 });
 
-export const upsertPost = mutation({
+export const upsertPost = internalMutation({
 	args: {
 		id: v.optional(v.id("posts")),
 		ig_id: v.string(),
@@ -236,7 +231,7 @@ export const upsertPost = mutation({
 	},
 });
 
-export const deletePost = mutation({
+export const deletePost = internalMutation({
 	args: { id: v.id("posts") },
 	handler: async (ctx, { id }) => await ctx.db.delete(id),
 });
@@ -250,7 +245,7 @@ export const deletePost = mutation({
  * NOTE: Unlike upsertPost which expects seconds from Instagram API,
  * this function expects milliseconds directly (Date.now() format).
  */
-export const markSent = mutation({
+export const markSent = internalMutation({
 	args: { id: v.id("posts"), sentAt: v.number() },
 	handler: async (ctx, { id, sentAt }) => {
 		// Validate post exists
@@ -273,7 +268,7 @@ export const markSent = mutation({
  * Optimized to avoid N+1 queries by fetching all media items in one query
  * and grouping them by post_id.
  */
-export const getBackfillStats = query({
+export const getBackfillStats = internalQuery({
 	handler: async (ctx) => {
 		// Get all sent posts
 		const sentPosts = await ctx.db

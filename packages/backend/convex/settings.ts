@@ -1,5 +1,11 @@
 import { v } from "convex/values";
-import { internalQuery, mutation, query } from "./_generated/server";
+import {
+	internalMutation,
+	internalQuery,
+	mutation,
+	query,
+} from "./_generated/server";
+import { LOCALE_DEFAULTS } from "./lib/config/defaults";
 import {
 	instagramSettingsValidator,
 	localeSettingsValidator,
@@ -62,4 +68,37 @@ export const upsertSettings = mutation({
 export const deleteSettings = mutation({
 	args: { id: v.id("settings") },
 	handler: async (ctx, { id }) => await ctx.db.delete(id),
+});
+
+export const ensureSettings = internalMutation({
+	args: {},
+	returns: v.union(
+		v.object({
+			_id: v.id("settings"),
+			_creationTime: v.number(),
+			telegram: v.optional(telegramSettingsValidator),
+			instagram: v.optional(instagramSettingsValidator),
+			locale: v.optional(localeSettingsValidator),
+			logging: v.optional(loggingSettingsValidator),
+		}),
+		v.null(),
+	),
+	handler: async (ctx) => {
+		const existing = await ctx.db.query("settings").first();
+		if (existing) {
+			return existing;
+		}
+
+		const id = await ctx.db.insert("settings", {
+			telegram: { active: false, send_report: false },
+			instagram: { active: false },
+			locale: {
+				timezone: LOCALE_DEFAULTS.TIMEZONE,
+				locale: LOCALE_DEFAULTS.LOCALE,
+			},
+			logging: { active: false },
+		});
+
+		return await ctx.db.get(id);
+	},
 });

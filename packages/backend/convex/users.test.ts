@@ -1,6 +1,7 @@
 import { convexTest } from "convex-test";
 import { describe, expect, it } from "vitest";
 import { internal } from "./_generated/api";
+import type { Doc } from "./_generated/dataModel";
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
@@ -115,7 +116,7 @@ describe("users", () => {
 			});
 
 			expect(
-				users.find((u) => u.username === "recentlyscraped"),
+				users.find((u: Doc<"users">) => u.username === "recentlyscraped"),
 			).toBeUndefined();
 		});
 
@@ -139,7 +140,9 @@ describe("users", () => {
 				minIntervalMs: 30 * 60 * 1000, // 30 minutes
 			});
 
-			expect(users.find((u) => u.username === "oldscraped")).toBeDefined();
+			expect(
+				users.find((u: Doc<"users">) => u.username === "oldscraped"),
+			).toBeDefined();
 		});
 
 		it("returns users with no last_scraped_at when minIntervalMs is set", async () => {
@@ -155,7 +158,9 @@ describe("users", () => {
 				minIntervalMs: 30 * 60 * 1000,
 			});
 
-			expect(users.find((u) => u.username === "neverscraped")).toBeDefined();
+			expect(
+				users.find((u: Doc<"users">) => u.username === "neverscraped"),
+			).toBeDefined();
 		});
 	});
 
@@ -175,7 +180,7 @@ describe("users", () => {
 
 			// Verify the update by fetching directly
 			const updatedUser = await t.run(async (ctx) => {
-				return await ctx.db.get(user!._id);
+				return (await ctx.db.get(user!._id)) as Doc<"users"> | null;
 			});
 
 			expect(updatedUser?.last_scraped_at).toBe(timestamp);
@@ -201,7 +206,7 @@ describe("users", () => {
 			});
 
 			const updatedUser = await t.run(async (ctx) => {
-				return await ctx.db.get(user!._id);
+				return (await ctx.db.get(user!._id)) as Doc<"users"> | null;
 			});
 
 			expect(updatedUser?.last_scraped_at).toBe(secondTimestamp);

@@ -16,6 +16,9 @@ bun install
 
 # First-time Convex configuration (creates project and sets up deployment)
 bun run dev:setup
+
+# Initialize default settings (idempotent - safe to run multiple times)
+bunx convex run bootstrap
 ```
 
 ## Environment Variables
@@ -23,7 +26,7 @@ bun run dev:setup
 Set environment variables in your Convex deployment:
 
 ```bash
-npx convex env set VARIABLE_NAME value
+bunx convex env set VARIABLE_NAME value
 ```
 
 | Variable | Required | Purpose |
@@ -81,6 +84,20 @@ Tests use `vitest` with `convex-test` for database integration testing.
 ## Settings Management
 
 Settings are stored in the `settings` table and provide runtime configuration for all services. Values merge with compile-time defaults from `lib/config/defaults.ts`.
+
+### Initializing Default Settings
+
+Run the bootstrap action to create default settings:
+
+```bash
+# Manual initialization
+bunx convex run bootstrap
+
+# On deploy (preview environments)
+bunx convex deploy --preview-run "bootstrap"
+```
+
+The bootstrap action is idempotent - it creates settings only if none exist, otherwise returns the existing settings.
 
 ### Configuration Hierarchy
 
@@ -222,6 +239,12 @@ All timestamp fields are stored in **milliseconds (UTC)**.
 | `upsertUser` | Create or update a user |
 | `deleteUser` | Delete a user by ID |
 | `upsertSettings` | Update system settings |
+
+### Actions
+
+| Action | Description |
+|--------|-------------|
+| `bootstrap` | Initialize default settings (idempotent) |
 
 ## Cron Jobs
 

@@ -3,7 +3,6 @@ import { buildMediaGroup, validateMediaGroup } from "./media-handler";
 import type { MediaItem } from "./types";
 import { MAX_MEDIA_GROUP_SIZE } from "./types";
 
-const LONG_CAPTION_LENGTH = 2000;
 const EXPECTED_MEDIA_GROUP_LENGTH = 3;
 
 describe("media-handler", () => {
@@ -13,7 +12,7 @@ describe("media-handler", () => {
         { url: "https://example.com/image1.jpg", type: "image" },
         { url: "https://example.com/image2.jpg", type: "image" },
       ];
-      const result = validateMediaGroup(media, "Test caption");
+      const result = validateMediaGroup(media);
       expect(result.isValid).toBe(true);
       expect(result.errors).toHaveLength(0);
     });
@@ -22,7 +21,7 @@ describe("media-handler", () => {
       const media: MediaItem[] = [
         { url: "https://example.com/image1.jpg", type: "image" },
       ];
-      const result = validateMediaGroup(media, "Test caption");
+      const result = validateMediaGroup(media);
       expect(result.isValid).toBe(false);
       expect(result.errors.length).toBeGreaterThan(0);
       expect(result.errors[0]).toContain("at least");
@@ -36,7 +35,7 @@ describe("media-handler", () => {
           type: "image" as const,
         })
       );
-      const result = validateMediaGroup(media, "Test caption");
+      const result = validateMediaGroup(media);
       expect(result.isValid).toBe(false);
       expect(result.errors.length).toBeGreaterThan(0);
       expect(result.errors[0]).toContain("exceeds maximum");
@@ -47,7 +46,7 @@ describe("media-handler", () => {
         { url: "not-a-url", type: "image" },
         { url: "https://example.com/image2.jpg", type: "image" },
       ];
-      const result = validateMediaGroup(media, "Test caption");
+      const result = validateMediaGroup(media);
       expect(result.isValid).toBe(false);
       expect(result.errors.length).toBeGreaterThan(0);
     });
@@ -57,7 +56,7 @@ describe("media-handler", () => {
         { url: "https://example.com/image1.jpg", type: "image" },
         { url: "https://example.com/image2.jpg", type: "invalid" as any },
       ];
-      const result = validateMediaGroup(media, "Test caption");
+      const result = validateMediaGroup(media);
       expect(result.isValid).toBe(false);
       expect(result.errors.length).toBeGreaterThan(0);
     });
@@ -67,21 +66,19 @@ describe("media-handler", () => {
         { url: "https://example.com/image.jpg", type: "image" },
         { url: "https://example.com/video.mp4", type: "video" },
       ];
-      const result = validateMediaGroup(media, "Test caption");
+      const result = validateMediaGroup(media);
       expect(result.warnings.length).toBeGreaterThan(0);
       expect(result.warnings[0]).toContain("both videos and images");
     });
 
-    test("validates caption length (note: validation happens in caption-builder)", () => {
-      // Note: validateMediaGroup doesn't check caption length,
-      // that's handled by caption-builder.createCaption()
+    test("validates media group only (caption validation happens in caption-builder)", () => {
+      // Note: validateMediaGroup only validates media constraints,
+      // caption validation is handled by caption-builder.createCaption()
       const media: MediaItem[] = [
         { url: "https://example.com/image1.jpg", type: "image" },
         { url: "https://example.com/image2.jpg", type: "image" },
       ];
-      const longCaption = "A".repeat(LONG_CAPTION_LENGTH);
-      const result = validateMediaGroup(media, longCaption);
-      // Media group validation passes, caption truncation happens elsewhere
+      const result = validateMediaGroup(media);
       expect(result.isValid).toBe(true);
     });
   });

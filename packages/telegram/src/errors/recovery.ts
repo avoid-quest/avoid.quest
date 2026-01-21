@@ -7,7 +7,37 @@ const HTTP_SERVER_ERROR_START = 500;
 const HTTP_SERVER_ERROR_END = 600;
 
 /**
+ * Patterns indicating permanent network errors that should not be retried
+ * These typically indicate configuration issues or infrastructure problems
+ */
+const PERMANENT_NETWORK_ERROR_PATTERNS = [
+  "enotfound", // DNS resolution failure
+  "getaddrinfo", // DNS lookup failed
+  "certificate", // TLS/SSL certificate issues
+  "self signed", // Self-signed certificate
+  "unable to verify", // Certificate verification failed
+] as const;
+
+/**
+ * Check if a network error is transient (should retry) or permanent (should not retry)
+ */
+function isTransientNetworkError(error: HttpError): boolean {
+  const message = error.message.toLowerCase();
+
+  // Check if error matches any permanent error pattern
+  for (const pattern of PERMANENT_NETWORK_ERROR_PATTERNS) {
+    if (message.includes(pattern)) {
+      return false; // Permanent error, don't retry
+    }
+  }
+
+  // Assume other network errors are transient (timeouts, connection resets, etc.)
+  return true;
+}
+
+/**
  * Check if error is recoverable (should retry)
+ * Differentiates between transient network errors (retry) and permanent ones (don't retry)
  */
 export function isRecoverableError(error: unknown): boolean {
   if (isGrammyError(error)) {
@@ -20,8 +50,8 @@ export function isRecoverableError(error: unknown): boolean {
     );
   }
   if (error instanceof HttpError) {
-    // Network errors are recoverable
-    return true;
+    // Only transient network errors are recoverable
+    return isTransientNetworkError(error);
   }
   return false;
 }
@@ -72,12 +102,16 @@ export function isPermanentError(error: GrammyError): boolean {
 
 /**
  * Get retry delay in seconds for rate-limited errors
- * Returns undefined if error doesn't contain retry_after
+ * Returns undefined if error doesn't contain a valid retry_after value
  */
 export function getRetryAfter(error: GrammyError): number | undefined {
   const params = error.parameters;
   if (params && typeof params === "object" && "retry_after" in params) {
-    return params.retry_after as number;
+    const retryAfter = params.retry_after;
+    // Validate retry_after is a positive number before returning
+    if (typeof retryAfter === "number" && retryAfter > 0) {
+      return retryAfter;
+    }
   }
   return undefined;
 }

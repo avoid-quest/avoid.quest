@@ -1,3 +1,5 @@
+import type { Logger } from "../logger/types";
+
 /**
  * Telegram API constraints for media groups
  */
@@ -65,10 +67,6 @@ export type UrlValidationResult = {
 
 /**
  * Logger interface for media operations
+ * Uses the standard Logger interface for consistency across the package
  */
-export type MediaLogger = {
-  debug: (message: string) => void;
-  info: (message: string) => void;
-  warn: (message: string) => void;
-  error: (message: string) => void;
-};
+export type MediaLogger = Logger;

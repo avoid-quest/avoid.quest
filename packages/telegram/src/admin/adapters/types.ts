@@ -1,3 +1,5 @@
+import type { Logger } from "../../logger/types";
+
 /**
  * Authentication provider interface
  * Implement this to connect admin authentication to your backend
@@ -51,10 +53,6 @@ export type DataProvider<T> = {
 
 /**
  * Logger interface for admin operations
+ * Uses the standard Logger interface for consistency across the package
  */
-export type AdminLogger = {
-  debug: (message: string) => void;
-  warn: (message: string) => void;
-  error: (message: string) => void;
-  info: (message: string) => void;
-};
+export type AdminLogger = Logger;

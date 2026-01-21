@@ -1,13 +1,11 @@
 import type { GrammyError } from "grammy";
+import type { Logger } from "../logger/types";
 
 /**
  * Logger interface for error operations
+ * Uses the standard Logger interface for consistency across the package
  */
-export type ErrorLogger = {
-  debug: (message: string) => void;
-  warn: (message: string) => void;
-  error: (message: string) => void;
-};
+export type ErrorLogger = Logger;
 
 const HTTP_BAD_REQUEST = 400;
 const HTTP_FORBIDDEN = 403;
@@ -52,23 +50,25 @@ export type TelegramErrorType =
 
 /**
  * Classify a Telegram API error
+ * Uses case-insensitive matching to handle variations in Telegram error format
  */
 export function classifyError(error: GrammyError): TelegramErrorType {
   const errorCode = error.error_code;
-  const description = error.description || "";
+  // Normalize description to lowercase for case-insensitive matching
+  const description = (error.description || "").toLowerCase();
 
   switch (errorCode) {
     case HTTP_BAD_REQUEST:
-      if (description.includes("MEDIA_INVALID")) {
+      if (description.includes("media_invalid")) {
         return "media_invalid";
       }
-      if (description.includes("CAPTION_TOO_LONG")) {
+      if (description.includes("caption_too_long")) {
         return "caption_too_long";
       }
-      if (description.includes("MEDIA_GROUP_INVALID")) {
+      if (description.includes("media_group_invalid")) {
         return "media_group_invalid";
       }
-      if (description.includes("FILE_TOO_BIG")) {
+      if (description.includes("file_too_big")) {
         return "file_too_big";
       }
       return "bad_request";

@@ -65,12 +65,9 @@ function checkMixedMediaTypes(media: MediaItem[], warnings: string[]): void {
 }
 
 /**
- * Validate media group constraints
+ * Validate media group constraints (count, URLs, types)
  */
-export function validateMediaGroup(
-  media: MediaItem[],
-  _caption: string
-): MediaValidationResult {
+export function validateMediaGroup(media: MediaItem[]): MediaValidationResult {
   const errors: string[] = [];
   const warnings: string[] = [];
 

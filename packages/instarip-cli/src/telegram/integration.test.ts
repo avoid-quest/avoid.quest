@@ -405,7 +405,7 @@ describe("telegram integration (requires CONVEX_URL)", () => {
 
         if (validMedia.length >= 2) {
           const caption = createCaption(post);
-          const validation = validateMediaGroup(validMedia, caption);
+          const validation = validateMediaGroup(validMedia);
 
           // Should pass validation if we have valid media
           if (validation.isValid) {
@@ -465,7 +465,7 @@ describe("telegram integration (requires CONVEX_URL)", () => {
 
         // If we have multiple valid media items, test media group
         if (validMedia.length > 1) {
-          const validation = validateMediaGroup(validMedia, caption);
+          const validation = validateMediaGroup(validMedia);
 
           if (validation.isValid) {
             const mediaGroup = buildMediaGroup(validMedia, caption);

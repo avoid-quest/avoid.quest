@@ -15,6 +15,7 @@ import type * as ai_telegramMessageGenerator from "../ai/telegramMessageGenerato
 import type * as crons from "../crons.js";
 import type * as healthCheck from "../healthCheck.js";
 import type * as lib_dateUtils from "../lib/dateUtils.js";
+import type * as lib_logger from "../lib/logger.js";
 import type * as media_items from "../media_items.js";
 import type * as post_metadata from "../post_metadata.js";
 import type * as posts from "../posts.js";
@@ -38,6 +39,7 @@ declare const fullApi: ApiFromModules<{
   crons: typeof crons;
   healthCheck: typeof healthCheck;
   "lib/dateUtils": typeof lib_dateUtils;
+  "lib/logger": typeof lib_logger;
   media_items: typeof media_items;
   post_metadata: typeof post_metadata;
   posts: typeof posts;

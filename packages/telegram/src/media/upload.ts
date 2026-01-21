@@ -103,9 +103,17 @@ export function createMediaUploadService(
     const inputFile =
       typeof source === "string" ? source : new InputFile(source);
 
-    const message = await api.sendPhoto(chatId, inputFile, {
-      disable_notification: true,
-    });
+    const message = await api
+      .sendPhoto(chatId, inputFile, {
+        disable_notification: true,
+      })
+      .catch((error: unknown) => {
+        const sourceDesc =
+          typeof source === "string" ? source.slice(0, 100) : "[Buffer]";
+        throw new Error(
+          `Failed to upload photo to chat ${chatId} (source: ${sourceDesc}): ${error instanceof Error ? error.message : String(error)}`
+        );
+      });
 
     // Get the largest photo size (last in array)
     const photo = message.photo;
@@ -150,9 +158,17 @@ export function createMediaUploadService(
     const inputFile =
       typeof source === "string" ? source : new InputFile(source);
 
-    const message = await api.sendVideo(chatId, inputFile, {
-      disable_notification: true,
-    });
+    const message = await api
+      .sendVideo(chatId, inputFile, {
+        disable_notification: true,
+      })
+      .catch((error: unknown) => {
+        const sourceDesc =
+          typeof source === "string" ? source.slice(0, 100) : "[Buffer]";
+        throw new Error(
+          `Failed to upload video to chat ${chatId} (source: ${sourceDesc}): ${error instanceof Error ? error.message : String(error)}`
+        );
+      });
 
     const video = message.video;
     if (!video) {

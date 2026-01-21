@@ -347,6 +347,7 @@ export async function handleSinglePostCommand(
 
 /**
  * Handle admin command - start admin bot
+ * The bot handles its own graceful shutdown via SIGINT/SIGTERM handlers
  */
 export async function handleAdminCommand(options: AdminOptions): Promise<void> {
   console.log("🤖 Starting Admin Bot");
@@ -358,17 +359,16 @@ export async function handleAdminCommand(options: AdminOptions): Promise<void> {
 
   try {
     const { startAdminBot } = await import("../telegram/admin-bot");
-    await startAdminBot();
 
-    console.log("\n✅ Admin bot is now running!");
     console.log("🛑 Press Ctrl+C to stop");
 
-    // Keep the process alive
-    const POLL_INTERVAL_MS = 1000;
-    // eslint-disable-next-line no-constant-condition
-    while (true) {
-      await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
-    }
+    // startAdminBot() calls bot.start() which blocks until bot.stop() is called
+    // The admin-bot.ts sets up SIGINT/SIGTERM handlers that call bot.stop()
+    await startAdminBot();
+
+    // If we reach here, the bot has been stopped (e.g., via Ctrl+C)
+    console.log("👋 Admin bot stopped. Goodbye!");
+    process.exit(0);
   } catch (error) {
     console.error("💥 Failed to start Admin Bot:", error);
     process.exit(1);

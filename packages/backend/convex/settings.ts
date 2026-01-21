@@ -33,6 +33,16 @@ export const getSettingsInternal = internalQuery({
 					last_scraped_at: v.optional(v.number()),
 				}),
 			),
+			// Deprecated: use 'instagram' instead. Kept for backwards compatibility with existing data.
+			scraper: v.optional(
+				v.object({
+					active: v.boolean(),
+					cron_expression: v.optional(v.string()),
+					limit: v.optional(v.number()),
+					post_per_user: v.optional(v.number()),
+					last_scraped_at: v.optional(v.number()),
+				}),
+			),
 			logging: v.optional(
 				v.object({
 					active: v.boolean(),

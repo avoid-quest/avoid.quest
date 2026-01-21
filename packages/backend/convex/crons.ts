@@ -4,6 +4,7 @@ import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { internalAction, internalQuery } from "./_generated/server";
 import { now } from "./lib/dateUtils";
+import { createLogger } from "./lib/logger";
 import { workflow } from "./workflows/workflow";
 
 const SECONDS_PER_MINUTE = 60;
@@ -29,11 +30,11 @@ export const getPostsWithoutMetadata = internalQuery({
 });
 
 /**
- * Internal query to check if metadata exists and is completed for a post
- * Returns true if we should skip processing (metadata is completed)
+ * Check if metadata processing should be skipped for a post
+ * Returns true if we should skip processing (metadata is completed or actively processing)
  * Returns false if we should process (no metadata, failed, or stuck processing)
  */
-export const checkMetadataExists = internalQuery({
+export const shouldSkipMetadataProcessing = internalQuery({
 	args: { postId: v.id("posts") },
 	returns: v.boolean(),
 	handler: async (ctx, { postId }) => {
@@ -77,10 +78,8 @@ export const checkMetadataExists = internalQuery({
 			const isStuck = processingDuration > ONE_HOUR_MS + STUCK_BUFFER_MS;
 
 			if (isStuck) {
-				console.log(
-					`Metadata for post ${postId} is stuck in processing (started ${processingDuration}ms ago), will retry`,
-				);
-				return false; // Stuck, should retry
+				// Stuck processing - should retry
+				return false;
 			}
 
 			// Still processing and not stuck, skip for now
@@ -105,6 +104,8 @@ export const processMetadataBacklog = internalAction({
 		failedPostIds: v.array(v.string()),
 	}),
 	handler: async (ctx) => {
+		const logger = createLogger("metadata-backlog");
+
 		// Get settings to check if enabled and get batch size
 		const settings = await ctx.runQuery(internal.settings.getSettingsInternal);
 		const aiSettings = settings?.ai_metadata_extraction;
@@ -115,7 +116,7 @@ export const processMetadataBacklog = internalAction({
 		const DEFAULT_MAX_CONCURRENT_WORKFLOWS = 1; // Reduced from 3 to avoid quota issues
 
 		if (!aiSettings?.active) {
-			console.log("AI metadata extraction is disabled in settings");
+			logger.info("AI metadata extraction is disabled in settings");
 			return { processed: 0, skipped: 0, errors: 0, failedPostIds: [] };
 		}
 
@@ -123,7 +124,7 @@ export const processMetadataBacklog = internalAction({
 		const maxConcurrent =
 			aiSettings.max_concurrent_workflows ?? DEFAULT_MAX_CONCURRENT_WORKFLOWS;
 
-		console.log(
+		logger.info(
 			`Processing metadata backlog: batchSize=${batchSize}, maxConcurrent=${maxConcurrent}`,
 		);
 
@@ -133,7 +134,7 @@ export const processMetadataBacklog = internalAction({
 			{ limit: batchSize },
 		);
 
-		console.log(
+		logger.info(
 			`Found ${postsWithoutMetadata.length} posts without metadata_id`,
 		);
 
@@ -155,7 +156,7 @@ export const processMetadataBacklog = internalAction({
 					try {
 						// Check if metadata already exists for this post
 						const hasMetadata = await ctx.runQuery(
-							internal.crons.checkMetadataExists,
+							internal.crons.shouldSkipMetadataProcessing,
 							{ postId },
 						);
 
@@ -177,7 +178,9 @@ export const processMetadataBacklog = internalAction({
 						);
 						processed++;
 					} catch (error) {
-						console.error(`Error processing post ${postId}:`, error);
+						logger.error(
+							`Error processing post ${postId}: ${error instanceof Error ? error.message : String(error)}`,
+						);
 						errors++;
 						failedPostIds.push(postId);
 					}
@@ -188,7 +191,9 @@ export const processMetadataBacklog = internalAction({
 			for (const [index, result] of results.entries()) {
 				if (result.status === "rejected") {
 					const postId = batch[index];
-					console.error(`Failed to process post ${postId}:`, result.reason);
+					logger.error(
+						`Failed to process post ${postId}: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`,
+					);
 					// Avoid duplicate tracking - only add if not already tracked via catch
 					if (postId && !failedPostIds.includes(postId)) {
 						failedPostIds.push(postId);
@@ -200,19 +205,19 @@ export const processMetadataBacklog = internalAction({
 			// Add delay between batches to respect rate limits (only if not last batch)
 			if (i + maxConcurrent < postsWithoutMetadata.length) {
 				const BATCH_DELAY_SECONDS = 5; // 5 seconds between batches
-				console.log(`Waiting ${BATCH_DELAY_SECONDS}s before next batch...`);
+				logger.debug(`Waiting ${BATCH_DELAY_SECONDS}s before next batch...`);
 				await new Promise((resolve) =>
 					setTimeout(resolve, BATCH_DELAY_SECONDS * MS_PER_SECOND),
 				);
 			}
 		}
 
-		console.log(
+		logger.info(
 			`Metadata backlog processing complete: processed=${processed}, skipped=${skipped}, errors=${errors}`,
 		);
 
 		if (failedPostIds.length > 0) {
-			console.log(`Failed post IDs: ${failedPostIds.join(", ")}`);
+			logger.warn(`Failed post IDs: ${failedPostIds.join(", ")}`);
 		}
 
 		return { processed, skipped, errors, failedPostIds };

@@ -27,8 +27,9 @@ export function buildPaginationButtons<C extends Context>(opts: {
 
 /**
  * Format paginated list text
+ * Works with any item type - the itemFormatter handles display logic
  */
-export function formatPaginatedList<T extends { _id: string }>(opts: {
+export function formatPaginatedList<T>(opts: {
   items: T[];
   currentPage: number;
   isDone: boolean;

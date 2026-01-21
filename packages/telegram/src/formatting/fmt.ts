@@ -31,9 +31,15 @@ export function instagramMention(username: string) {
 /**
  * Convert Instagram @ mentions in text to clickable links
  * Returns a FormattedString that can be used with ctx.replyFmt
+ *
+ * Uses fmt function form to properly compose FormattedString objects:
+ * fmt(templateStrings, ...values) where templateStrings are the text
+ * between mentions and values are the instagramMention() links.
  */
 export function linkInstagramMentions(text: string) {
-  const parts: Array<string | ReturnType<typeof link>> = [];
+  // Build template strings array (text between mentions) and values (mention links)
+  const strings: string[] = [];
+  const values: ReturnType<typeof link>[] = [];
   let lastIndex = 0;
 
   for (const match of text.matchAll(MENTION_REGEX)) {
@@ -41,27 +47,29 @@ export function linkInstagramMentions(text: string) {
       continue;
     }
 
-    // Add text before the mention
-    if (match.index > lastIndex) {
-      parts.push(text.substring(lastIndex, match.index));
-    }
+    // Add text before the mention as a template string part
+    strings.push(text.substring(lastIndex, match.index));
 
-    // Add the mention as a link
+    // Add the mention as a link value
     const username = match[1];
     if (username) {
-      parts.push(instagramMention(username));
+      values.push(instagramMention(username));
     }
 
     lastIndex = match.index + match[0].length;
   }
 
-  // Add remaining text
-  if (lastIndex < text.length) {
-    parts.push(text.substring(lastIndex));
+  // Add remaining text as final template string part
+  strings.push(text.substring(lastIndex));
+
+  // If no mentions found, return plain text wrapped in fmt
+  if (values.length === 0) {
+    return fmt`${text}`;
   }
 
-  // Use fmt to combine all parts with proper escaping
-  return fmt`${parts.map((p) => (typeof p === "string" ? p : p)).join("")}`;
+  // Use fmt function form: fmt(templateStrings, ...values)
+  // This properly composes FormattedString objects instead of joining them
+  return fmt(strings as unknown as TemplateStringsArray, ...values);
 }
 
 /**

@@ -414,7 +414,7 @@ async function tryMediaGroupStrategy(
   }
 
   // Validate media group before attempting to send
-  const validation = validateMediaGroup(validMedia, caption);
+  const validation = validateMediaGroup(validMedia);
 
   if (validation.warnings.length > 0) {
     logger.warn(

@@ -1,0 +1,136 @@
+"use node";
+
+/**
+ * Text Input Handler
+ * State machine for handling user text input (add user, edit username, edit setting)
+ */
+
+import { internal } from "../../_generated/api";
+import type { BotContext } from "../bot";
+
+/**
+ * Handle text messages based on awaiting input state
+ */
+export async function handleTextInput(ctx: BotContext): Promise<void> {
+	const awaiting = ctx.session.awaitingInput;
+	if (!awaiting) return; // No input expected, ignore
+
+	const text = ctx.message?.text?.trim();
+	if (!text) return;
+
+	try {
+		switch (awaiting.type) {
+			case "add_user":
+				await handleAddUser(ctx, text);
+				break;
+			case "edit_username":
+				await handleEditUsername(ctx, text, awaiting.userId!);
+				break;
+			case "edit_setting":
+				await handleEditSetting(ctx, text, awaiting.settingPath!);
+				break;
+		}
+	} catch (error) {
+		const msg = error instanceof Error ? error.message : "Unknown error";
+		await ctx.reply(`❌ Error: ${msg}`);
+	}
+
+	// Clear awaiting state
+	ctx.session.awaitingInput = undefined;
+}
+
+/**
+ * Handle adding a new user
+ */
+async function handleAddUser(ctx: BotContext, username: string): Promise<void> {
+	// Validate format (alphanumeric, dots, underscores)
+	const cleanUsername = username.replace(/^@/, "");
+
+	if (!/^[a-zA-Z0-9._]+$/.test(cleanUsername)) {
+		await ctx.reply(
+			"❌ Invalid username format. Only letters, numbers, dots and underscores allowed.\n\nUse /start to try again.",
+		);
+		return;
+	}
+
+	if (cleanUsername.length < 1 || cleanUsername.length > 30) {
+		await ctx.reply(
+			"❌ Username must be between 1 and 30 characters.\n\nUse /start to try again.",
+		);
+		return;
+	}
+
+	try {
+		await ctx.convex.runMutation(internal.users.createUserInternal, {
+			username: cleanUsername,
+		});
+		await ctx.reply(`✅ User @${cleanUsername} added successfully!`);
+	} catch (error) {
+		const msg = error instanceof Error ? error.message : "Unknown error";
+		if (msg.includes("already exists")) {
+			await ctx.reply(`❌ User @${cleanUsername} already exists.`);
+		} else {
+			await ctx.reply(`❌ Failed to add user: ${msg}`);
+		}
+	}
+}
+
+/**
+ * Handle editing a username
+ */
+async function handleEditUsername(
+	ctx: BotContext,
+	username: string,
+	userId: string,
+): Promise<void> {
+	const cleanUsername = username.replace(/^@/, "");
+
+	if (!/^[a-zA-Z0-9._]+$/.test(cleanUsername)) {
+		await ctx.reply(
+			"❌ Invalid username format. Only letters, numbers, dots and underscores allowed.\n\nUse /start to try again.",
+		);
+		return;
+	}
+
+	if (cleanUsername.length < 1 || cleanUsername.length > 30) {
+		await ctx.reply(
+			"❌ Username must be between 1 and 30 characters.\n\nUse /start to try again.",
+		);
+		return;
+	}
+
+	try {
+		await ctx.convex.runMutation(internal.users.updateUsernameInternal, {
+			id: userId as never,
+			username: cleanUsername,
+		});
+		await ctx.reply(`✅ Username updated to @${cleanUsername}!`);
+	} catch (error) {
+		const msg = error instanceof Error ? error.message : "Unknown error";
+		if (msg.includes("already exists")) {
+			await ctx.reply(`❌ User @${cleanUsername} already exists.`);
+		} else {
+			await ctx.reply(`❌ Failed to update username: ${msg}`);
+		}
+	}
+}
+
+/**
+ * Handle editing a setting
+ */
+async function handleEditSetting(
+	ctx: BotContext,
+	value: string,
+	settingPath: string,
+): Promise<void> {
+	try {
+		await ctx.convex.runMutation(internal.settings.updateSettingInternal, {
+			path: settingPath,
+			value,
+		});
+		await ctx.reply(`✅ Setting updated!`);
+	} catch (error) {
+		const msg = error instanceof Error ? error.message : "Unknown error";
+		await ctx.reply(`❌ Failed to update setting: ${msg}`);
+	}
+}

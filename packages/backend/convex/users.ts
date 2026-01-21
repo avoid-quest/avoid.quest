@@ -195,3 +195,81 @@ export const updateLastScrapedAtInternal = internalMutation({
 		await ctx.db.patch(id, { last_scraped_at: lastScrapedAt });
 	},
 });
+
+/**
+ * Internal query to get all users (for bot menu)
+ */
+export const getUsersInternal = internalQuery({
+	args: {},
+	handler: async (ctx) =>
+		await ctx.db.query("users").withIndex("by_username").order("asc").collect(),
+});
+
+/**
+ * Internal query to get user by ID (for bot menu)
+ */
+export const getUserByIdInternal = internalQuery({
+	args: { id: v.id("users") },
+	handler: async (ctx, { id }) => await ctx.db.get(id),
+});
+
+/**
+ * Internal mutation to toggle user's to_be_scraped status (for bot menu)
+ */
+export const toggleScrapingInternal = internalMutation({
+	args: { id: v.id("users") },
+	handler: async (ctx, { id }) => {
+		const user = await ctx.db.get(id);
+		if (!user) throw new Error("User not found");
+		await ctx.db.patch(id, { to_be_scraped: !user.to_be_scraped });
+	},
+});
+
+/**
+ * Internal mutation to delete user (for bot menu)
+ */
+export const deleteUserInternal = internalMutation({
+	args: { id: v.id("users") },
+	handler: async (ctx, { id }) => await ctx.db.delete(id),
+});
+
+/**
+ * Internal mutation to create a new user (for bot menu)
+ */
+export const createUserInternal = internalMutation({
+	args: { username: v.string() },
+	handler: async (ctx, { username }) => {
+		const existing = await ctx.db
+			.query("users")
+			.withIndex("by_username", (q) => q.eq("username", username))
+			.first();
+
+		if (existing) {
+			throw new Error(`User @${username} already exists`);
+		}
+
+		return await ctx.db.insert("users", {
+			username,
+			to_be_scraped: true,
+		});
+	},
+});
+
+/**
+ * Internal mutation to update username (for bot menu)
+ */
+export const updateUsernameInternal = internalMutation({
+	args: { id: v.id("users"), username: v.string() },
+	handler: async (ctx, { id, username }) => {
+		const existing = await ctx.db
+			.query("users")
+			.withIndex("by_username", (q) => q.eq("username", username))
+			.first();
+
+		if (existing && existing._id !== id) {
+			throw new Error(`User @${username} already exists`);
+		}
+
+		await ctx.db.patch(id, { username });
+	},
+});

@@ -88,6 +88,12 @@ export default defineSchema({
 	})
 		.index("by_post_id", ["post_id"])
 		.index("by_message_id_chat_id", ["message_id", "chat_id"]),
+	bot_sessions: defineTable({
+		/** Chat ID as string (session key) */
+		key: v.string(),
+		/** JSON-serialized session data */
+		data: v.string(),
+	}).index("by_key", ["key"]),
 	settings: defineTable({
 		telegram: v.optional(telegramSettingsValidator),
 		instagram: v.optional(instagramSettingsValidator),

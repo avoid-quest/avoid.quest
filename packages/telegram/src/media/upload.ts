@@ -31,16 +31,26 @@ export type MediaUploadServiceOptions = {
    */
   deleteAfterUpload?: boolean;
   /**
-   * Delay in ms between uploads to respect rate limits
+   * Delay in ms between individual uploads to respect rate limits
    * Default: 500ms
    */
   uploadDelayMs?: number;
+  /**
+   * Optional delay in ms after completing a batch upload
+   * Useful for rate limit management when uploading multiple batches
+   */
+  delayAfterBatchMs?: number;
   /**
    * Logger for debug output
    */
   logger?: MediaLogger;
 };
 
+/**
+ * Delay between individual uploads to respect Telegram rate limits.
+ * 500ms provides a safe margin under Telegram's 30 messages/second limit
+ * while maintaining reasonable upload speeds for media groups.
+ */
 const DEFAULT_UPLOAD_DELAY_MS = 500;
 
 /**
@@ -76,10 +86,11 @@ export function createMediaUploadService(
   const {
     deleteAfterUpload = false,
     uploadDelayMs = DEFAULT_UPLOAD_DELAY_MS,
+    delayAfterBatchMs,
     logger,
   } = options;
 
-  async function sleep(ms: number): Promise<void> {
+  function sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
@@ -175,6 +186,17 @@ export function createMediaUploadService(
     chatId: string,
     items: MediaUploadItem[]
   ): Promise<UploadResult[]> {
+    // Input validation
+    if (items.length === 0) {
+      throw new Error("Cannot upload empty media items array");
+    }
+
+    for (const [index, item] of items.entries()) {
+      if (item.type !== "image" && item.type !== "video") {
+        throw new Error(`Invalid media type at index ${index}: ${item.type}`);
+      }
+    }
+
     const results: UploadResult[] = [];
 
     for (const [index, item] of items.entries()) {
@@ -188,6 +210,11 @@ export function createMediaUploadService(
       if (index < items.length - 1) {
         await sleep(uploadDelayMs);
       }
+    }
+
+    // Optional delay after completing the batch (useful for rate limit management)
+    if (delayAfterBatchMs) {
+      await sleep(delayAfterBatchMs);
     }
 
     return results;

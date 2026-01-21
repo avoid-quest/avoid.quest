@@ -38,10 +38,16 @@ export const recordMessage = mutation({
 		post_id: v.id("posts"),
 		message_id: v.number(),
 		chat_id: v.string(),
-		sent_at: v.number(),
+		sentAt: v.number(),
 	},
-	handler: async (ctx, { post_id, message_id, chat_id, sent_at }) => {
-		// Check if message already recorded
+	handler: async (ctx, { post_id, message_id, chat_id, sentAt }) => {
+		// Validate that the post exists
+		const post = await ctx.db.get(post_id);
+		if (!post) {
+			throw new Error(`Post ${post_id} not found`);
+		}
+
+		// Check if message already recorded (idempotency)
 		const existing = await ctx.db
 			.query("telegram_messages")
 			.withIndex("by_message_id_chat_id", (q) =>
@@ -57,7 +63,7 @@ export const recordMessage = mutation({
 			post_id,
 			message_id,
 			chat_id,
-			sent_at,
+			sentAt,
 		});
 	},
 });

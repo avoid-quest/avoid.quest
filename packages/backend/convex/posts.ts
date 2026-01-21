@@ -270,9 +270,24 @@ export const deletePost = mutation({
 	handler: async (ctx, { id }) => await ctx.db.delete(id),
 });
 
+/**
+ * Mark a post as sent to Telegram.
+ *
+ * @param id - The post ID to mark as sent
+ * @param sentAt - Timestamp in MILLISECONDS (use Date.now())
+ *
+ * NOTE: Unlike upsertPost which expects seconds from Instagram API,
+ * this function expects milliseconds directly (Date.now() format).
+ */
 export const markSent = mutation({
 	args: { id: v.id("posts"), sentAt: v.number() },
 	handler: async (ctx, { id, sentAt }) => {
+		// Validate post exists
+		const post = await ctx.db.get(id);
+		if (!post) {
+			throw new Error(`Post ${id} not found`);
+		}
+
 		// sentAt is already in milliseconds (Date.now() returns milliseconds)
 		// Store directly without conversion
 		await ctx.db.patch(id, { sent: true, sentAt });
@@ -283,30 +298,64 @@ export const markSent = mutation({
 /**
  * Get statistics for backfill progress.
  * Returns counts of posts with and without file_ids in their media items.
+ *
+ * Optimized to avoid N+1 queries by fetching all media items in one query
+ * and grouping them by post_id.
  */
 export const getBackfillStats = query({
 	handler: async (ctx) => {
+		// Get all sent posts
 		const sentPosts = await ctx.db
 			.query("posts")
 			.withIndex("by_sent", (q) => q.eq("sent", true))
 			.collect();
 
+		if (sentPosts.length === 0) {
+			return { totalSent: 0, withFileIds: 0, needsBackfill: 0 };
+		}
+
+		// Create a Set of sent post IDs for fast lookup
+		const sentPostIds = new Set(sentPosts.map((p) => p._id));
+
+		// Get all media items in one query and group by post_id
+		const allMediaItems = await ctx.db.query("media_items").collect();
+
+		// Group media items by post_id and track file_id status
+		const mediaByPost = new Map<
+			Id<"posts">,
+			{ total: number; withFileId: number }
+		>();
+
+		for (const item of allMediaItems) {
+			// Only process media items for sent posts
+			if (!sentPostIds.has(item.post_id)) {
+				continue;
+			}
+
+			const current = mediaByPost.get(item.post_id) ?? {
+				total: 0,
+				withFileId: 0,
+			};
+			current.total++;
+			if (item.file_id) {
+				current.withFileId++;
+			}
+			mediaByPost.set(item.post_id, current);
+		}
+
+		// Count posts by their media status
 		let withFileIds = 0;
 		let needsBackfill = 0;
 
 		for (const post of sentPosts) {
-			const mediaItems = await ctx.db
-				.query("media_items")
-				.withIndex("by_post_id", (q) => q.eq("post_id", post._id))
-				.collect();
-
-			// A post has file_ids if all its media items have file_id
-			const hasAllFileIds =
-				mediaItems.length > 0 && mediaItems.every((m) => m.file_id);
-
-			if (hasAllFileIds) {
+			const media = mediaByPost.get(post._id);
+			if (!media || media.total === 0) {
+				// Post has no media items - not counted as needing backfill
+				continue;
+			}
+			if (media.withFileId === media.total) {
 				withFileIds++;
-			} else if (mediaItems.length > 0) {
+			} else {
 				needsBackfill++;
 			}
 		}

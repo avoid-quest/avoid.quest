@@ -86,17 +86,19 @@ function createAdminBot(): Bot<AdminContext> {
  * Start the admin bot
  */
 export async function startAdminBot(): Promise<void> {
-  try {
-    console.log("🔧 Creating bot instance...");
-    const bot = createAdminBot();
-    console.log("✅ Bot instance created");
+  const logger = createLogger(!!process.env.DEBUG);
 
-    console.log("🔧 Registering middleware...");
+  try {
+    logger.info("Creating bot instance...");
+    const bot = createAdminBot();
+    logger.info("Bot instance created");
+
+    logger.info("Registering middleware...");
     // SECURITY: Apply auth middleware FIRST to ensure ALL updates (messages, callbacks, etc.)
     // are authenticated before any other middleware or handlers can process them.
     // This middleware checks chat ID against admin_chat_id from database settings.
     bot.use(adminAuthMiddleware);
-    console.log("✅ Auth middleware registered");
+    logger.info("Auth middleware registered");
 
     // Install session middleware
     function initial(): SessionData {
@@ -117,7 +119,7 @@ export async function startAdminBot(): Promise<void> {
     bot.use(
       session({ initial, getSessionKey: (ctx) => ctx.chat?.id.toString() })
     );
-    console.log("✅ Session middleware registered");
+    logger.info("Session middleware registered");
 
     // Install menu middleware (must be before other handlers that use callbacks)
     // Menu is already initialized with all submenus registered when module loads
@@ -125,20 +127,17 @@ export async function startAdminBot(): Promise<void> {
     if (!mainMenu || typeof mainMenu !== "object") {
       throw new Error("mainMenu is not a valid menu object");
     }
-    console.log(
-      "Menu object type:",
-      typeof mainMenu,
-      "Constructor:",
-      mainMenu.constructor?.name
+    logger.debug(
+      `Menu object type: ${typeof mainMenu}, Constructor: ${mainMenu.constructor?.name}`
     );
 
     // Apply error handling middleware BEFORE menu to catch menu errors properly
     bot.use(adminErrorMiddleware);
-    console.log("✅ Error middleware registered");
+    logger.info("Error middleware registered");
 
     // Install menu after error middleware so errors are caught
     bot.use(mainMenu);
-    console.log("✅ Menu middleware registered");
+    logger.info("Menu middleware registered");
 
     // Post commands (for quick actions not in menu)
     bot.command("post", async (ctx) => {
@@ -230,25 +229,24 @@ export async function startAdminBot(): Promise<void> {
 
     // Handle graceful shutdown
     process.once("SIGINT", () => {
-      console.log("\n🛑 Shutting down admin bot...");
+      logger.info("Shutting down admin bot...");
       bot.stop();
     });
     process.once("SIGTERM", () => {
-      console.log("\n🛑 Shutting down admin bot...");
+      logger.info("Shutting down admin bot...");
       bot.stop();
     });
 
     // Start bot (this will keep the process alive with long polling)
-    console.log("✅ Admin bot started and listening for updates...");
-    console.log("💡 Send /start to your bot in Telegram to begin");
+    logger.info("Admin bot started and listening for updates...");
+    logger.info("Send /start to your bot in Telegram to begin");
     await bot.start();
   } catch (error) {
-    console.error("💥 Failed to start admin bot:", error);
-    if (error instanceof Error) {
-      console.error(`   Error: ${error.message}`);
-      if (error.stack) {
-        console.error(`   Stack: ${error.stack}`);
-      }
+    logger.error(
+      `Failed to start admin bot: ${error instanceof Error ? error.message : String(error)}`
+    );
+    if (error instanceof Error && error.stack) {
+      logger.error(`Stack: ${error.stack}`);
     }
     throw error;
   }

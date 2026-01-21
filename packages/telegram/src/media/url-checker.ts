@@ -99,12 +99,16 @@ async function validateSingleMediaUrl(
   logger: MediaLogger,
   retries: number
 ): Promise<{ success: boolean; error: string | null }> {
+  let lastError: string | null = null;
+
   for (let attempt = 0; attempt <= retries; attempt++) {
     const result = await attemptUrlValidation(item, index, logger);
 
     if (result.success) {
       return { success: true, error: null };
     }
+
+    lastError = result.error;
 
     if (result.isPermanent) {
       return { success: false, error: result.error };
@@ -118,7 +122,10 @@ async function validateSingleMediaUrl(
     return { success: false, error: result.error };
   }
 
-  return { success: false, error: "Max retries exceeded" };
+  return {
+    success: false,
+    error: `Max retries exceeded for ${item.url}: ${lastError ?? "unknown error"}`,
+  };
 }
 
 /**

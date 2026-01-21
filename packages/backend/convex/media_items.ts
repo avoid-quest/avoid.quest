@@ -65,6 +65,9 @@ export const upsertMediaItem = mutation({
 		}
 
 		// Check for existing item - prefer file_unique_id match, then url match
+		// Note: Uses by_post_id index then in-memory search. This is efficient because
+		// posts typically have < 10 media items. Adding indexes on file_unique_id/url
+		// would complicate the schema for minimal benefit.
 		const items = await ctx.db
 			.query("media_items")
 			.withIndex("by_post_id", (q) => q.eq("post_id", post_id))
@@ -252,12 +255,17 @@ export const syncTelegramMediaItemsForPost = mutation({
 		}
 
 		// Delete items that are no longer in the provided list
-		// Only delete items that have file_unique_id set (migrated items)
+		// This includes:
+		// 1. Migrated items (with file_unique_id) not in the new list
+		// 2. Legacy URL-only items (without file_unique_id) - cleanup during migration
 		for (const existing of existingItems) {
-			if (
-				existing.file_unique_id &&
-				!processedUniqueIds.has(existing.file_unique_id)
-			) {
+			if (existing.file_unique_id) {
+				// Migrated item - delete if not in new list
+				if (!processedUniqueIds.has(existing.file_unique_id)) {
+					await ctx.db.delete(existing._id);
+				}
+			} else {
+				// Legacy URL-only item - delete to clean up
 				await ctx.db.delete(existing._id);
 			}
 		}

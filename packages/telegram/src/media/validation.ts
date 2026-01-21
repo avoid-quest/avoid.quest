@@ -91,12 +91,14 @@ export function validateMediaGroup(
 
 /**
  * Check if URL is valid for Telegram media
+ * Telegram accepts both HTTP and HTTPS URLs for media
  */
 export function isValidMediaUrl(url: string): boolean {
   try {
     const parsedUrl = new URL(url);
 
-    if (parsedUrl.protocol !== "https:") {
+    // Telegram accepts both HTTP and HTTPS for media URLs
+    if (parsedUrl.protocol !== "https:" && parsedUrl.protocol !== "http:") {
       return false;
     }
 

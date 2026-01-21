@@ -5,6 +5,11 @@ import type { MediaItem, TelegramMediaItem } from "./types";
 /**
  * Build InputMedia array for media group (URL-based)
  * Caption is added to the last item in the group
+ *
+ * @param mediaItems - Array of media items (returns empty array if empty)
+ * @param caption - Caption for the group (added to last item only)
+ * @returns Array of InputMedia objects ready for sendMediaGroup
+ *
  * @deprecated Use buildTelegramMediaGroup for file_id-based media
  */
 export function buildMediaGroup(
@@ -52,6 +57,10 @@ export function buildMediaItem(
  * Build InputMedia array for media group using Telegram file_ids
  * Caption is added to the last item in the group
  * file_ids never expire and are the preferred method
+ *
+ * @param mediaItems - Array of media items (returns empty array if empty)
+ * @param caption - Caption for the group (added to last item only)
+ * @returns Array of InputMedia objects ready for sendMediaGroup
  */
 export function buildTelegramMediaGroup(
   mediaItems: TelegramMediaItem[],

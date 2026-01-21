@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, test } from "bun:test";
-import type { Doc } from "@workspace/backend/convex/_generated/dataModel";
+import type { Doc, Id } from "@workspace/backend/convex/_generated/dataModel";
 import { api, getHttpClient } from "../convex/client";
 import { createLogger } from "../infra/logger";
 import { createCaption } from "./caption-builder";
@@ -93,7 +93,7 @@ async function fetchMediaItemsForPost(
   }
   const client = getHttpClient();
   return await client.query(api.media_items.getMediaItemsByPostId, {
-    postId: postId as any,
+    postId: postId as Id<"posts">,
   });
 }
 
@@ -507,7 +507,6 @@ describe("telegram integration (requires CONVEX_URL)", () => {
         expect(openTags).toBe(closeTags);
 
         // Should not have orphaned closing tags
-        const _beforeOpen = caption.substring(0, caption.indexOf("<a"));
         const afterOpen = caption.substring(caption.indexOf("<a"));
         if (afterOpen.includes("</a>")) {
           // If we have closing tags, they should come after opening tags

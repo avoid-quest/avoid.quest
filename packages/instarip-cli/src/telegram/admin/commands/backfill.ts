@@ -79,6 +79,7 @@ export async function handleBackfillStatusCommand(
 export async function handleForwardedMessage(ctx: AdminContext): Promise<void> {
   const message = ctx.message;
   if (!message) {
+    ctx.logger.debug("handleForwardedMessage: No message in context, skipping");
     return;
   }
 

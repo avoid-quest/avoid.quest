@@ -68,6 +68,7 @@ export type UrlValidationResult = {
  */
 export type MediaLogger = {
   debug: (message: string) => void;
+  info: (message: string) => void;
   warn: (message: string) => void;
   error: (message: string) => void;
 };

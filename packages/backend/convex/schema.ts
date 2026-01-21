@@ -130,7 +130,7 @@ export default defineSchema({
 		/** Telegram chat ID */
 		chat_id: v.string(),
 		/** Timestamp in milliseconds (UTC) - when the message was sent */
-		sent_at: v.number(),
+		sentAt: v.number(),
 	})
 		.index("by_post_id", ["post_id"])
 		.index("by_message_id_chat_id", ["message_id", "chat_id"]),

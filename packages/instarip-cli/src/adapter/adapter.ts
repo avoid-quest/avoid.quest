@@ -594,7 +594,9 @@ export async function fetchAndSaveSinglePost(
       postId,
     };
   } catch (error) {
-    logger.error(`Error in fetchAndSaveSinglePost: ${error}`);
+    logger.error(
+      `Error in fetchAndSaveSinglePost: ${error instanceof Error ? error.message : String(error)}`
+    );
     return {
       success: false,
       error: error instanceof Error ? error.message : "Unknown error",

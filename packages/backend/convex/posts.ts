@@ -412,6 +412,14 @@ export const getPostByShortcodeInternal = internalQuery({
 });
 
 /**
+ * Internal query to get post by ID (for cron retry use)
+ */
+export const getPostByIdInternal = internalQuery({
+	args: { id: v.id("posts") },
+	handler: async (ctx, { id }) => await ctx.db.get(id),
+});
+
+/**
  * Internal mutation to upsert a post (for cron use)
  * Timestamps should be in MILLISECONDS
  */

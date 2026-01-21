@@ -27,11 +27,18 @@ const mediaItemValidator = v.object({
 	height: v.optional(v.number()),
 });
 
+export type FileIdInfo = {
+	file_id: string;
+	file_unique_id: string;
+	type: "image" | "video";
+};
+
 export type SendResult = {
 	success: boolean;
 	messageId?: number;
 	error?: string;
 	retryAfterMs?: number;
+	fileIds?: FileIdInfo[];
 };
 
 /**
@@ -50,6 +57,15 @@ export const sendMessage = action({
 		messageId: v.optional(v.number()),
 		error: v.optional(v.string()),
 		retryAfterMs: v.optional(v.number()),
+		fileIds: v.optional(
+			v.array(
+				v.object({
+					file_id: v.string(),
+					file_unique_id: v.string(),
+					type: v.union(v.literal("image"), v.literal("video")),
+				}),
+			),
+		),
 	}),
 	handler: async (
 		_ctx,
@@ -101,7 +117,23 @@ export const sendMessage = action({
 						return handleApiError(response);
 					}
 
-					return { success: true, messageId: response.result.message_id };
+					// Extract file_id from the largest photo size
+					const fileIds: FileIdInfo[] = [];
+					const photos = response.result.photo;
+					if (photos && photos.length > 0) {
+						const largest = photos[photos.length - 1];
+						fileIds.push({
+							file_id: largest.file_id,
+							file_unique_id: largest.file_unique_id,
+							type: "image",
+						});
+					}
+
+					return {
+						success: true,
+						messageId: response.result.message_id,
+						fileIds: fileIds.length > 0 ? fileIds : undefined,
+					};
 				}
 
 				// Video
@@ -119,7 +151,22 @@ export const sendMessage = action({
 					return handleApiError(response);
 				}
 
-				return { success: true, messageId: response.result.message_id };
+				// Extract file_id from video
+				const fileIds: FileIdInfo[] = [];
+				const videoInfo = response.result.video;
+				if (videoInfo) {
+					fileIds.push({
+						file_id: videoInfo.file_id,
+						file_unique_id: videoInfo.file_unique_id,
+						type: "video",
+					});
+				}
+
+				return {
+					success: true,
+					messageId: response.result.message_id,
+					fileIds: fileIds.length > 0 ? fileIds : undefined,
+				};
 			}
 
 			// Media group
@@ -137,8 +184,32 @@ export const sendMessage = action({
 				return handleApiError(response);
 			}
 
+			// Extract file_ids from all messages in the group
+			const fileIds: FileIdInfo[] = [];
+			for (const msg of response.result) {
+				if (msg.photo && msg.photo.length > 0) {
+					// Get the largest photo size
+					const largest = msg.photo[msg.photo.length - 1];
+					fileIds.push({
+						file_id: largest.file_id,
+						file_unique_id: largest.file_unique_id,
+						type: "image",
+					});
+				} else if (msg.video) {
+					fileIds.push({
+						file_id: msg.video.file_id,
+						file_unique_id: msg.video.file_unique_id,
+						type: "video",
+					});
+				}
+			}
+
 			// Return first message ID for tracking
-			return { success: true, messageId: response.result[0]?.message_id };
+			return {
+				success: true,
+				messageId: response.result[0]?.message_id,
+				fileIds: fileIds.length > 0 ? fileIds : undefined,
+			};
 		} catch (error) {
 			const message = error instanceof Error ? error.message : "Unknown error";
 			return { success: false, error: message };

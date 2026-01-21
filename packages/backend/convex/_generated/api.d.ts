@@ -234,6 +234,11 @@ export declare const components: {
         },
         {
           error?: string;
+          fileIds?: Array<{
+            file_id: string;
+            file_unique_id: string;
+            type: "image" | "video";
+          }>;
           messageId?: number;
           retryAfterMs?: number;
           success: boolean;

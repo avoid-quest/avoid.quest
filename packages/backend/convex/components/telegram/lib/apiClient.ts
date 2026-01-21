@@ -4,6 +4,7 @@
  */
 
 const TELEGRAM_API_BASE = "https://api.telegram.org/bot";
+const REQUEST_TIMEOUT_MS = 30000;
 
 export type TelegramApiError = {
 	ok: false;
@@ -91,17 +92,24 @@ export function createTelegramClient(botToken: string) {
 		params: Record<string, unknown>,
 	): Promise<TelegramApiResponse<T>> {
 		const url = `${baseUrl}/${method}`;
+		const controller = new AbortController();
+		const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
-		const response = await fetch(url, {
-			method: "POST",
-			headers: {
-				"Content-Type": "application/json",
-			},
-			body: JSON.stringify(params),
-		});
+		try {
+			const response = await fetch(url, {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify(params),
+				signal: controller.signal,
+			});
 
-		const data = (await response.json()) as TelegramApiResponse<T>;
-		return data;
+			const data = (await response.json()) as TelegramApiResponse<T>;
+			return data;
+		} finally {
+			clearTimeout(timeoutId);
+		}
 	}
 
 	return {

@@ -321,6 +321,31 @@ export const getMediaItemsByPostIdInternal = internalQuery({
 });
 
 /**
+ * Internal mutation to update a media item with Telegram file_id (for cron use)
+ * Updates by matching post_id and URL (since URLs are stored in order)
+ */
+export const updateMediaItemWithFileIdInternal = internalMutation({
+	args: {
+		post_id: v.id("posts"),
+		url: v.string(),
+		file_id: v.string(),
+		file_unique_id: v.string(),
+	},
+	handler: async (ctx, { post_id, url, file_id, file_unique_id }) => {
+		// Find the media item by post_id and url
+		const items = await ctx.db
+			.query("media_items")
+			.withIndex("by_post_id", (q) => q.eq("post_id", post_id))
+			.collect();
+
+		const item = items.find((i) => i.url === url);
+		if (item) {
+			await ctx.db.patch(item._id, { file_id, file_unique_id });
+		}
+	},
+});
+
+/**
  * Internal mutation to sync media items for a post (for cron use)
  * URL-based media items from Instagram
  */

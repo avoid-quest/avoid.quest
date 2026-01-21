@@ -90,10 +90,46 @@ export const runTelegramSend = internalAction({
 					id: post._id,
 					sentAt: Date.now(),
 				});
+
+				// Save file_ids for each media item (matched by position)
+				if (result.fileIds && result.fileIds.length > 0) {
+					// Filter to get only the media items we sent (exclude thumbnails)
+					const sentMediaItems = mediaItems.filter(
+						(item) => item.type !== "thumbnail" && item.url,
+					);
+
+					for (let i = 0; i < result.fileIds.length; i++) {
+						const fileInfo = result.fileIds[i];
+						const mediaItem = sentMediaItems[i];
+						if (mediaItem?.url) {
+							await ctx.runMutation(
+								internal.media_items.updateMediaItemWithFileIdInternal,
+								{
+									post_id: post._id,
+									url: mediaItem.url,
+									file_id: fileInfo.file_id,
+									file_unique_id: fileInfo.file_unique_id,
+								},
+							);
+						}
+					}
+				}
+
 				sent++;
 			} else {
-				failed++;
-				errors.push(`Post ${post.shortcode}: ${result.error}`);
+				// If rate limited, schedule retry after the specified delay
+				if (result.retryAfterMs) {
+					await ctx.scheduler.runAfter(
+						result.retryAfterMs,
+						internal.crons.retrySinglePost,
+						{ postId: post._id, chatId },
+					);
+					// Don't count as failed - it's queued for retry
+					errors.push(`Post ${post.shortcode}: Rate limited, scheduled retry`);
+				} else {
+					failed++;
+					errors.push(`Post ${post.shortcode}: ${result.error}`);
+				}
 			}
 
 			// Small delay between posts to avoid rate limiting
@@ -233,5 +269,79 @@ export const runInstagramFetch = internalAction({
 			newPosts,
 			errors: errors.length > 0 ? errors : undefined,
 		};
+	},
+});
+
+/**
+ * Retry sending a single post to Telegram
+ * Called by scheduler when rate-limited posts need to be retried
+ */
+export const retrySinglePost = internalAction({
+	args: {
+		postId: v.id("posts"),
+		chatId: v.string(),
+	},
+	handler: async (ctx, { postId, chatId }) => {
+		// Get the post
+		const post = await ctx.runQuery(internal.posts.getPostByIdInternal, {
+			id: postId,
+		});
+
+		// Skip if post doesn't exist or already sent
+		if (!post || post.sent) {
+			return;
+		}
+
+		// Get media items for this post
+		const mediaItems = await ctx.runQuery(
+			internal.media_items.getMediaItemsByPostIdInternal,
+			{ postId },
+		);
+
+		// Send via Telegram component
+		const result = await ctx.runAction(components.telegram.sender.sendMessage, {
+			chatId,
+			caption: post.caption,
+			mediaItems: mediaItems.map((item) => ({
+				url: item.url,
+				file_id: item.file_id,
+				type: item.type,
+				width: item.width,
+				height: item.height,
+			})),
+			postUrl: post.url,
+		});
+
+		if (result.success) {
+			// Mark post as sent
+			await ctx.runMutation(internal.posts.markSentInternal, {
+				id: postId,
+				sentAt: Date.now(),
+			});
+
+			// Save file_ids for each media item (matched by position)
+			if (result.fileIds && result.fileIds.length > 0) {
+				const sentMediaItems = mediaItems.filter(
+					(item) => item.type !== "thumbnail" && item.url,
+				);
+
+				for (let i = 0; i < result.fileIds.length; i++) {
+					const fileInfo = result.fileIds[i];
+					const mediaItem = sentMediaItems[i];
+					if (mediaItem?.url) {
+						await ctx.runMutation(
+							internal.media_items.updateMediaItemWithFileIdInternal,
+							{
+								post_id: postId,
+								url: mediaItem.url,
+								file_id: fileInfo.file_id,
+								file_unique_id: fileInfo.file_unique_id,
+							},
+						);
+					}
+				}
+			}
+		}
+		// If still failing, the next cron run will pick it up
 	},
 });

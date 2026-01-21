@@ -76,10 +76,15 @@ http.route({
 			return new Response("Bot token not configured", { status: 500 });
 		}
 
-		// Verify webhook secret if configured
+		// Verify webhook secret (mandatory for security)
 		const secret = request.headers.get("X-Telegram-Bot-Api-Secret-Token");
 		const expectedSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
-		if (expectedSecret && secret !== expectedSecret) {
+		if (!expectedSecret) {
+			return new Response("TELEGRAM_WEBHOOK_SECRET not configured", {
+				status: 500,
+			});
+		}
+		if (secret !== expectedSecret) {
 			return new Response("Unauthorized", { status: 401 });
 		}
 
@@ -155,8 +160,9 @@ http.route({
 			}
 
 			return new Response("OK", { status: 200 });
-		} catch (error) {
-			console.error("Webhook error:", error);
+		} catch (_error) {
+			// Error handling: return OK to prevent Telegram from retrying
+			// The webhook should not expose internal errors
 			return new Response("OK", { status: 200 });
 		}
 	}),
@@ -251,12 +257,12 @@ async function handleStats(
 	chatId: string,
 ): Promise<void> {
 	try {
-		const unsent = (await ctx.runQuery(internal.posts.getUnsentInternal, {
+		const unsent = await ctx.runQuery(internal.posts.getUnsentInternal, {
 			limit: 1000,
-		})) as unknown[];
-		const users = (await ctx.runQuery(internal.users.listToBeScrapedInternal, {
+		});
+		const users = await ctx.runQuery(internal.users.listToBeScrapedInternal, {
 			limit: 1000,
-		})) as unknown[];
+		});
 
 		await sendMessage(
 			botToken,
@@ -391,8 +397,24 @@ async function handlePost(
 		return;
 	}
 
-	if (!url.includes("instagram.com/")) {
-		await sendMessage(botToken, chatId, "⚠️ Invalid Instagram URL");
+	if (subcommand !== "add" && subcommand !== "preview") {
+		await sendMessage(
+			botToken,
+			chatId,
+			"⚠️ Usage: /post add <url> or /post preview <url>",
+		);
+		return;
+	}
+
+	// Validate Instagram URL more strictly
+	try {
+		const parsedUrl = new URL(url);
+		if (!parsedUrl.hostname.endsWith("instagram.com")) {
+			await sendMessage(botToken, chatId, "⚠️ Invalid Instagram URL");
+			return;
+		}
+	} catch {
+		await sendMessage(botToken, chatId, "⚠️ Invalid URL format");
 		return;
 	}
 
@@ -405,10 +427,22 @@ async function handlePost(
 		)) as {
 			success: boolean;
 			post?: {
+				id: string;
 				shortcode: string;
+				timestampSec: number;
+				display_url: string;
 				caption: string;
-				media_type: string;
-				media_items: unknown[];
+				is_video: boolean;
+				url: string;
+				media_type: "image" | "video" | "carousel";
+				media_items: Array<{
+					url: string;
+					type: "image" | "video" | "thumbnail";
+					width?: number;
+					height?: number;
+				}>;
+				video_url?: string;
+				thumbnail_url?: string;
 			};
 			error?: string;
 		};
@@ -423,6 +457,55 @@ async function handlePost(
 		}
 
 		const post = result.post;
+
+		// If "add" subcommand, save the post to database
+		if (subcommand === "add") {
+			// Convert timestamp from seconds to milliseconds
+			const timestampMs = post.timestampSec * 1000;
+
+			// Upsert the post (empty users array for manually added posts)
+			const postId = await ctx.runMutation(internal.posts.upsertPostInternal, {
+				ig_id: post.id,
+				shortcode: post.shortcode,
+				display_url: post.display_url,
+				video_url: post.video_url,
+				thumbnail_url: post.thumbnail_url,
+				caption: post.caption,
+				is_video: post.is_video,
+				url: post.url,
+				media_type: post.media_type,
+				users: [],
+				timestamp: timestampMs,
+			});
+
+			// Sync media items
+			await ctx.runMutation(
+				internal.media_items.syncMediaItemsForPostInternal,
+				{
+					post_id: postId,
+					media_items: post.media_items,
+				},
+			);
+
+			const caption =
+				post.caption.length > 80
+					? `${post.caption.slice(0, 80)}...`
+					: post.caption;
+
+			await sendMessage(
+				botToken,
+				chatId,
+				`<b>✅ Post Saved</b>
+
+ID: ${post.shortcode}
+Type: ${post.media_type}
+Media: ${post.media_items.length} items
+Caption: ${caption}`,
+			);
+			return;
+		}
+
+		// Preview subcommand - just show info
 		const caption =
 			post.caption.length > 80
 				? `${post.caption.slice(0, 80)}...`
@@ -431,7 +514,7 @@ async function handlePost(
 		await sendMessage(
 			botToken,
 			chatId,
-			`<b>📸 Post ${subcommand === "add" ? "Fetched" : "Preview"}</b>
+			`<b>📸 Post Preview</b>
 
 ID: ${post.shortcode}
 Type: ${post.media_type}

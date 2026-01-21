@@ -1,6 +1,11 @@
 import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import {
+	internalMutation,
+	internalQuery,
+	mutation,
+	query,
+} from "./_generated/server";
 
 export const getUsers = query({
 	args: {},
@@ -124,4 +129,69 @@ export const upsertUser = mutation({
 export const deleteUser = mutation({
 	args: { id: v.id("users") },
 	handler: async (ctx, { id }) => await ctx.db.delete(id),
+});
+
+/**
+ * Internal query to list users to be scraped (for cron use)
+ * Filters out users scraped recently (within minIntervalMs)
+ */
+export const listToBeScrapedInternal = internalQuery({
+	args: {
+		limit: v.number(),
+		minIntervalMs: v.optional(v.number()),
+	},
+	handler: async (ctx, { limit, minIntervalMs }) => {
+		const users = await ctx.db
+			.query("users")
+			.withIndex("by_to_be_scraped_last_scraped_at", (q) =>
+				q.eq("to_be_scraped", true),
+			)
+			.order("asc")
+			.take(limit * 2); // Fetch extra to filter
+
+		// Filter out recently scraped users if minIntervalMs is provided
+		if (minIntervalMs) {
+			const cutoff = Date.now() - minIntervalMs;
+			const filtered = users.filter(
+				(u) => !u.last_scraped_at || u.last_scraped_at < cutoff,
+			);
+			return filtered.slice(0, limit);
+		}
+
+		return users.slice(0, limit);
+	},
+});
+
+/**
+ * Internal query to get or create a user by username (for cron use)
+ */
+export const getOrCreateUserInternal = internalMutation({
+	args: { username: v.string() },
+	handler: async (ctx, { username }) => {
+		const existing = await ctx.db
+			.query("users")
+			.withIndex("by_username", (q) => q.eq("username", username))
+			.first();
+
+		if (existing) {
+			return existing;
+		}
+
+		const id = await ctx.db.insert("users", {
+			username,
+			to_be_scraped: true,
+		});
+
+		return await ctx.db.get(id);
+	},
+});
+
+/**
+ * Internal mutation to update user's last_scraped_at timestamp (for cron use)
+ */
+export const updateLastScrapedAtInternal = internalMutation({
+	args: { id: v.id("users"), lastScrapedAt: v.number() },
+	handler: async (ctx, { id, lastScrapedAt }) => {
+		await ctx.db.patch(id, { last_scraped_at: lastScrapedAt });
+	},
 });

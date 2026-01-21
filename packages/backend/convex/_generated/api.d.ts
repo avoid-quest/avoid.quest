@@ -10,6 +10,7 @@
 
 import type * as crons from "../crons.js";
 import type * as healthCheck from "../healthCheck.js";
+import type * as http from "../http.js";
 import type * as lib_dateUtils from "../lib/dateUtils.js";
 import type * as lib_logger from "../lib/logger.js";
 import type * as media_items from "../media_items.js";
@@ -27,6 +28,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   crons: typeof crons;
   healthCheck: typeof healthCheck;
+  http: typeof http;
   "lib/dateUtils": typeof lib_dateUtils;
   "lib/logger": typeof lib_logger;
   media_items: typeof media_items;
@@ -146,6 +148,108 @@ export declare const components: {
           processed: number;
           state: "inProgress" | "success" | "failed" | "canceled" | "unknown";
         }
+      >;
+    };
+  };
+  instagram: {
+    fetcher: {
+      fetchPost: FunctionReference<
+        "action",
+        "internal",
+        { postUrl: string },
+        {
+          error?: string;
+          post?: {
+            caption: string;
+            display_url: string;
+            id: string;
+            is_video: boolean;
+            media_items: Array<{
+              height?: number;
+              type: "image" | "video" | "thumbnail";
+              url: string;
+              width?: number;
+            }>;
+            media_type: "image" | "video" | "carousel";
+            shortcode: string;
+            thumbnail_url?: string;
+            timestampSec: number;
+            url: string;
+            video_url?: string;
+          };
+          success: boolean;
+        }
+      >;
+      fetchUser: FunctionReference<
+        "action",
+        "internal",
+        { limit?: number; username: string },
+        {
+          error?: string;
+          posts: Array<{
+            caption: string;
+            display_url: string;
+            id: string;
+            is_video: boolean;
+            media_items: Array<{
+              height?: number;
+              type: "image" | "video" | "thumbnail";
+              url: string;
+              width?: number;
+            }>;
+            media_type: "image" | "video" | "carousel";
+            shortcode: string;
+            thumbnail_url?: string;
+            timestampSec: number;
+            url: string;
+            video_url?: string;
+          }>;
+          success: boolean;
+        }
+      >;
+      testConnectivity: FunctionReference<
+        "action",
+        "internal",
+        {},
+        { message: string; success: boolean }
+      >;
+    };
+  };
+  telegram: {
+    sender: {
+      sendMessage: FunctionReference<
+        "action",
+        "internal",
+        {
+          caption: string;
+          chatId: string;
+          mediaItems: Array<{
+            file_id?: string;
+            height?: number;
+            type: "image" | "video" | "thumbnail";
+            url?: string;
+            width?: number;
+          }>;
+          postUrl: string;
+        },
+        {
+          error?: string;
+          messageId?: number;
+          retryAfterMs?: number;
+          success: boolean;
+        }
+      >;
+      sendTextMessage: FunctionReference<
+        "action",
+        "internal",
+        { chatId: string; disableNotification?: boolean; text: string },
+        { error?: string; messageId?: number; success: boolean }
+      >;
+      verifyBotToken: FunctionReference<
+        "action",
+        "internal",
+        {},
+        { botUsername?: string; error?: string; success: boolean }
       >;
     };
   };

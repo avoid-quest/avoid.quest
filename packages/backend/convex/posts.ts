@@ -1,7 +1,12 @@
 import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
-import { mutation, query } from "./_generated/server";
+import {
+	internalMutation,
+	internalQuery,
+	mutation,
+	query,
+} from "./_generated/server";
 import { secondsToMilliseconds } from "./lib/dateUtils";
 
 export const getPosts = query({
@@ -365,5 +370,94 @@ export const getBackfillStats = query({
 			withFileIds,
 			needsBackfill,
 		};
+	},
+});
+
+/**
+ * Internal query to get unsent posts for the Telegram cron
+ */
+export const getUnsentInternal = internalQuery({
+	args: { limit: v.number() },
+	handler: async (ctx, { limit }) =>
+		await ctx.db
+			.query("posts")
+			.withIndex("by_sent", (q) => q.eq("sent", false))
+			.take(limit),
+});
+
+/**
+ * Internal mutation to mark a post as sent (for cron use)
+ */
+export const markSentInternal = internalMutation({
+	args: { id: v.id("posts"), sentAt: v.number() },
+	handler: async (ctx, { id, sentAt }) => {
+		const post = await ctx.db.get(id);
+		if (!post) {
+			throw new Error(`Post ${id} not found`);
+		}
+		await ctx.db.patch(id, { sent: true, sentAt });
+	},
+});
+
+/**
+ * Internal query to get post by shortcode (for cron use)
+ */
+export const getPostByShortcodeInternal = internalQuery({
+	args: { shortcode: v.string() },
+	handler: async (ctx, { shortcode }) =>
+		await ctx.db
+			.query("posts")
+			.withIndex("by_shortcode", (q) => q.eq("shortcode", shortcode))
+			.first(),
+});
+
+/**
+ * Internal mutation to upsert a post (for cron use)
+ * Timestamps should be in MILLISECONDS
+ */
+export const upsertPostInternal = internalMutation({
+	args: {
+		id: v.optional(v.id("posts")),
+		ig_id: v.string(),
+		shortcode: v.string(),
+		display_url: v.string(),
+		video_url: v.optional(v.string()),
+		thumbnail_url: v.optional(v.string()),
+		caption: v.string(),
+		is_video: v.boolean(),
+		url: v.string(),
+		media_type: v.union(
+			v.literal("image"),
+			v.literal("video"),
+			v.literal("carousel"),
+		),
+		users: v.array(v.id("users")),
+		timestamp: v.number(),
+		event_date: v.optional(v.number()),
+	},
+	handler: async (ctx, args) => {
+		const { id, ...data } = args;
+
+		if (id) {
+			const existing = await ctx.db.get(id);
+			if (!existing) {
+				throw new Error(`Post with id ${id} not found`);
+			}
+
+			// Merge users arrays
+			const existingUsers = existing.users ?? [];
+			const mergedUsers = [...new Set([...existingUsers, ...data.users])];
+
+			await ctx.db.patch(id, {
+				...data,
+				users: mergedUsers,
+			});
+			return id;
+		}
+
+		return await ctx.db.insert("posts", {
+			...data,
+			sent: false,
+		});
 	},
 });

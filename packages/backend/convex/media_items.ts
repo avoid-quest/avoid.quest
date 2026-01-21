@@ -1,5 +1,10 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import {
+	internalMutation,
+	internalQuery,
+	mutation,
+	query,
+} from "./_generated/server";
 
 export const getMediaItems = query({
 	args: {},
@@ -300,5 +305,79 @@ export const getMediaItemsNeedingBackfill = query({
 			.collect();
 
 		return items.filter((item) => !item.file_id);
+	},
+});
+
+/**
+ * Internal query to get media items by post ID (for cron use)
+ */
+export const getMediaItemsByPostIdInternal = internalQuery({
+	args: { postId: v.id("posts") },
+	handler: async (ctx, { postId }) =>
+		await ctx.db
+			.query("media_items")
+			.withIndex("by_post_id", (q) => q.eq("post_id", postId))
+			.collect(),
+});
+
+/**
+ * Internal mutation to sync media items for a post (for cron use)
+ * URL-based media items from Instagram
+ */
+export const syncMediaItemsForPostInternal = internalMutation({
+	args: {
+		post_id: v.id("posts"),
+		media_items: v.array(
+			v.object({
+				url: v.string(),
+				type: v.union(
+					v.literal("image"),
+					v.literal("video"),
+					v.literal("thumbnail"),
+				),
+				width: v.optional(v.number()),
+				height: v.optional(v.number()),
+			}),
+		),
+	},
+	handler: async (ctx, { post_id, media_items }) => {
+		// Get existing media items
+		const existingItems = await ctx.db
+			.query("media_items")
+			.withIndex("by_post_id", (q) => q.eq("post_id", post_id))
+			.collect();
+
+		const existingByUrl = new Map(
+			existingItems.map((item) => [item.url, item]),
+		);
+		const processedUrls = new Set<string>();
+
+		for (const item of media_items) {
+			processedUrls.add(item.url);
+			const existing = existingByUrl.get(item.url);
+
+			if (existing) {
+				await ctx.db.patch(existing._id, {
+					type: item.type,
+					width: item.width,
+					height: item.height,
+				});
+			} else {
+				await ctx.db.insert("media_items", {
+					url: item.url,
+					type: item.type,
+					width: item.width,
+					height: item.height,
+					post_id,
+				});
+			}
+		}
+
+		// Delete items no longer present
+		for (const existing of existingItems) {
+			if (existing.url && !processedUrls.has(existing.url)) {
+				await ctx.db.delete(existing._id);
+			}
+		}
 	},
 });

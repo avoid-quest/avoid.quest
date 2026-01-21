@@ -40,7 +40,7 @@ export function italic(text: string): string {
  * Create a hyperlink
  */
 export function link(text: string, url: string): string {
-	return `<a href="${escapeHtml(url)}">${escapeHtml(text)}</a>`;
+	return `<a href="${url}">${escapeHtml(text)}</a>`;
 }
 
 /**
@@ -109,6 +109,9 @@ export function truncateWithFooter(
 /**
  * Build a complete caption for a post
  * Handles Instagram mentions and truncation
+ *
+ * IMPORTANT: Truncation must happen BEFORE adding HTML links,
+ * otherwise we risk cutting through <a> tags which Telegram rejects.
  */
 export function buildCaption(options: {
 	caption: string;
@@ -117,17 +120,43 @@ export function buildCaption(options: {
 }): string {
 	const { caption, postUrl, maxLength = MAX_CAPTION_LENGTH } = options;
 
-	// Escape HTML but preserve our formatting
+	const footer = instagramFooter(postUrl);
 	const escapedCaption = escapeHtml(caption);
 
-	// Convert @mentions to Instagram links
+	// First check: if full caption with mentions fits, return it
 	const withMentions = linkInstagramMentions(escapedCaption);
+	if (withMentions.length + footer.length <= maxLength) {
+		return withMentions + footer;
+	}
 
-	// Add footer
-	const footer = instagramFooter(postUrl);
+	// Need truncation - MUST truncate BEFORE adding HTML links
+	// to avoid cutting through <a> tags
 
-	// Truncate if needed while preserving footer
-	return truncateWithFooter(withMentions, footer, maxLength);
+	// Count mentions to estimate expansion buffer
+	const mentionPattern = /@[a-zA-Z0-9_.]+/g;
+	const mentions = escapedCaption.match(mentionPattern) || [];
+	// Each mention adds ~43 chars for HTML wrapper
+	// Use conservative estimate: assume half survive truncation
+	const expansionBuffer = Math.ceil(mentions.length / 2) * 43;
+
+	// Truncate escaped text (no HTML tags yet, safe to cut)
+	const availableForContent = maxLength - footer.length - expansionBuffer - 3;
+	const truncatedEscaped = truncateAtWordBoundary(
+		escapedCaption,
+		Math.max(availableForContent, 100),
+	);
+
+	// Now add mentions to the already-truncated text
+	const truncatedWithMentions = linkInstagramMentions(truncatedEscaped);
+
+	// Final safety check - if still over, truncate more without mentions
+	if (truncatedWithMentions.length + footer.length > maxLength) {
+		const safeLength = maxLength - footer.length - 3;
+		const safeTruncated = truncateAtWordBoundary(escapedCaption, safeLength);
+		return safeTruncated + footer;
+	}
+
+	return truncatedWithMentions + footer;
 }
 
 /**

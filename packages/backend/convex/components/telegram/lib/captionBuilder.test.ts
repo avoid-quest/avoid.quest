@@ -83,9 +83,9 @@ describe("link", () => {
 		);
 	});
 
-	it("escapes URL in link", () => {
+	it("preserves URL without escaping", () => {
 		expect(link("Link", "https://example.com?a=1&b=2")).toBe(
-			'<a href="https://example.com?a=1&amp;b=2">Link</a>',
+			'<a href="https://example.com?a=1&b=2">Link</a>',
 		);
 	});
 });
@@ -225,6 +225,51 @@ describe("buildCaption", () => {
 		});
 
 		expect(result).toContain("Tom &amp; Jerry &lt;3");
+	});
+
+	it("handles captions with angle brackets and mentions", () => {
+		const result = buildCaption({
+			caption: "I <3 this! Check out @photographer",
+			postUrl: "https://instagram.com/p/ABC123/",
+		});
+
+		expect(result).toContain("I &lt;3 this!");
+		expect(result).toContain(
+			'<a href="https://instagram.com/photographer">@photographer</a>',
+		);
+	});
+
+	it("truncates long captions with many mentions without cutting through HTML tags", () => {
+		// This tests the exact scenario that was causing Telegram API errors
+		const longCaption = `Check out @user1 and @user2 for amazing content!
+@artist1 @artist2 @artist3 @artist4 @artist5
+@creator1 @creator2 @creator3 @creator4 @creator5
+@photographer1 @photographer2 @photographer3
+Some more text here to make it longer...
+@brand1 @brand2 @brand3 @brand4 @brand5
+And even more text to push it over the limit.
+@final1 @final2 @final3 @final4 @final5
+${"More padding text. ".repeat(50)}`;
+
+		const result = buildCaption({
+			caption: longCaption,
+			postUrl: "https://instagram.com/p/ABC123/",
+		});
+
+		// Must not exceed max length
+		expect(result.length).toBeLessThanOrEqual(1024);
+
+		// Must have proper footer
+		expect(result).toContain("View on Instagram");
+
+		// Must NOT have incomplete/cut-off HTML tags
+		// Check for balanced <a> tags
+		const openTags = (result.match(/<a /g) || []).length;
+		const closeTags = (result.match(/<\/a>/g) || []).length;
+		expect(openTags).toBe(closeTags);
+
+		// No partial tags like '<a href="...' without closing
+		expect(result).not.toMatch(/<a [^>]*$/);
 	});
 
 	it("truncates long captions while preserving footer", () => {

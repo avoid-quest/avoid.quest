@@ -1,0 +1,26 @@
+{
+  "name": "@avoid.quest/telegram",
+  "version": "1.0.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./formatting": "./src/formatting/index.ts",
+    "./media": "./src/media/index.ts",
+    "./errors": "./src/errors/index.ts",
+    "./bot": "./src/bot/index.ts",
+    "./admin": "./src/admin/index.ts"
+  },
+  "dependencies": {
+    "@grammyjs/auto-retry": "^2.0.2",
+    "@grammyjs/menu": "^1.2.2",
+    "@grammyjs/parse-mode": "^1.10.0",
+    "grammy": "^1.35.0"
+  },
+  "peerDependencies": {
+    "grammy": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/bun": "catalog:",
+    "typescript": "catalog:"
+  }
+}

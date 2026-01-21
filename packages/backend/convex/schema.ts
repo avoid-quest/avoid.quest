@@ -100,4 +100,27 @@ export default defineSchema({
 		locale: v.optional(localeSettingsValidator),
 		logging: v.optional(loggingSettingsValidator),
 	}),
+	/**
+	 * Raw Instagram API responses for debugging and testing
+	 * Stores the raw JSON response from Instagram API calls
+	 */
+	raw_instagram_responses: defineTable({
+		/** Instagram post shortcode */
+		shortcode: v.string(),
+		/** Instagram username associated with the response */
+		username: v.string(),
+		/** JSON stringified raw API response */
+		raw_response: v.string(),
+		/** Timestamp in milliseconds when the response was fetched */
+		fetched_at: v.number(),
+		/** Type of API response */
+		response_type: v.union(
+			v.literal("user_posts"),
+			v.literal("single_post"),
+			v.literal("oembed"),
+		),
+	})
+		.index("by_shortcode", ["shortcode"])
+		.index("by_username", ["username"])
+		.index("by_fetched_at", ["fetched_at"]),
 });

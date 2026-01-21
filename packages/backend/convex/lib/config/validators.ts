@@ -5,6 +5,7 @@
  * consistency and avoid duplication.
  */
 
+import type { Infer } from "convex/values";
 import { v } from "convex/values";
 
 /**
@@ -57,3 +58,9 @@ export const loggingSettingsValidator = v.object({
 	log_file: v.optional(v.string()),
 	log_level: v.optional(v.string()),
 });
+
+// Inferred types for TypeScript usage
+export type TelegramSettings = Infer<typeof telegramSettingsValidator>;
+export type InstagramSettings = Infer<typeof instagramSettingsValidator>;
+export type LocaleSettings = Infer<typeof localeSettingsValidator>;
+export type LoggingSettings = Infer<typeof loggingSettingsValidator>;

@@ -2,7 +2,15 @@
  * Test data factories for generating test fixtures
  */
 
-import type { Id } from "../_generated/dataModel";
+import type { Infer } from "convex/values";
+import type { Doc, Id } from "../_generated/dataModel";
+import type {
+	instagramSettingsValidator,
+	localeSettingsValidator,
+	loggingSettingsValidator,
+	telegramSettingsValidator,
+} from "../lib/config/validators";
+import type { FileIdInfo } from "../lib/validators/media";
 
 /**
  * Create a mock post ID for testing
@@ -45,22 +53,7 @@ export function createTestPost(overrides?: Partial<TestPost>): TestPost {
 	};
 }
 
-type TestPost = {
-	ig_id: string;
-	shortcode: string;
-	display_url: string;
-	caption: string;
-	is_video: boolean;
-	url: string;
-	media_type: "image" | "video" | "carousel";
-	timestamp: number;
-	event_date?: number;
-	users: Id<"users">[];
-	sent: boolean;
-	sentAt?: number;
-	video_url?: string;
-	thumbnail_url?: string;
-};
+type TestPost = Omit<Doc<"posts">, "_id" | "_creationTime">;
 
 /**
  * User factory for test data
@@ -74,12 +67,7 @@ export function createTestUser(overrides?: Partial<TestUser>): TestUser {
 	};
 }
 
-type TestUser = {
-	username: string;
-	profile_url?: string;
-	to_be_scraped: boolean;
-	last_scraped_at?: number;
-};
+type TestUser = Omit<Doc<"users">, "_id" | "_creationTime">;
 
 /**
  * Media item factory for test data
@@ -96,15 +84,7 @@ export function createTestMediaItem(
 	};
 }
 
-type TestMediaItem = {
-	url?: string;
-	file_id?: string;
-	file_unique_id?: string;
-	type: "image" | "video" | "thumbnail";
-	width?: number;
-	height?: number;
-	post_id: Id<"posts">;
-};
+type TestMediaItem = Omit<Doc<"media_items">, "_id" | "_creationTime">;
 
 /**
  * Settings factory for test data
@@ -132,30 +112,10 @@ export function createTestSettings(
 }
 
 type TestSettings = {
-	telegram?: {
-		active: boolean;
-		group_chat_id?: string;
-		send_limit?: number;
-		send_report: boolean;
-		request_timeout_ms?: number;
-		delay_between_posts_ms?: number;
-	};
-	instagram?: {
-		active: boolean;
-		limit?: number;
-		post_per_user?: number;
-		request_timeout_ms?: number;
-		min_scrape_interval_ms?: number;
-	};
-	locale?: {
-		timezone?: string;
-		locale?: string;
-	};
-	logging?: {
-		active: boolean;
-		max_retention_days?: number;
-		log_level?: string;
-	};
+	telegram?: Infer<typeof telegramSettingsValidator>;
+	instagram?: Infer<typeof instagramSettingsValidator>;
+	locale?: Infer<typeof localeSettingsValidator>;
+	logging?: Infer<typeof loggingSettingsValidator>;
 };
 
 /**
@@ -225,11 +185,7 @@ export function createFileIdInfo(
 	};
 }
 
-type TestFileIdInfo = {
-	file_id: string;
-	file_unique_id: string;
-	type: "image" | "video";
-};
+type TestFileIdInfo = FileIdInfo;
 
 /**
  * Create a mock Telegram message response with photo

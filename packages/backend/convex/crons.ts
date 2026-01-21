@@ -7,6 +7,8 @@ import {
 	resolveInstagramConfig,
 	resolveTelegramConfig,
 } from "./lib/config";
+import { secondsToMilliseconds } from "./lib/dateUtils";
+import { saveFileIdsForPost } from "./lib/fileIdMatcher";
 
 const crons = cronJobs();
 
@@ -106,26 +108,7 @@ export const runTelegramSend = internalAction({
 
 				// Save file_ids for each media item (matched by position)
 				if (result.fileIds && result.fileIds.length > 0) {
-					// Filter to get only the media items we sent (exclude thumbnails)
-					const sentMediaItems = mediaItems.filter(
-						(item) => item.type !== "thumbnail" && item.url,
-					);
-
-					for (let i = 0; i < result.fileIds.length; i++) {
-						const fileInfo = result.fileIds[i];
-						const mediaItem = sentMediaItems[i];
-						if (fileInfo && mediaItem?.url) {
-							await ctx.runMutation(
-								internal.media_items.updateMediaItemWithFileIdInternal,
-								{
-									post_id: post._id,
-									url: mediaItem.url,
-									file_id: fileInfo.file_id,
-									file_unique_id: fileInfo.file_unique_id,
-								},
-							);
-						}
-					}
+					await saveFileIdsForPost(ctx, post._id, mediaItems, result.fileIds);
 				}
 
 				sent++;
@@ -154,11 +137,6 @@ export const runTelegramSend = internalAction({
 		return { sent, failed, errors: errors.length > 0 ? errors : undefined };
 	},
 });
-
-/** Convert seconds to milliseconds for timestamp storage */
-function secondsToMilliseconds(seconds: number): number {
-	return seconds * 1000;
-}
 
 /**
  * Orchestration layer for Instagram fetching
@@ -338,25 +316,7 @@ export const retrySinglePost = internalAction({
 
 			// Save file_ids for each media item (matched by position)
 			if (result.fileIds && result.fileIds.length > 0) {
-				const sentMediaItems = mediaItems.filter(
-					(item) => item.type !== "thumbnail" && item.url,
-				);
-
-				for (let i = 0; i < result.fileIds.length; i++) {
-					const fileInfo = result.fileIds[i];
-					const mediaItem = sentMediaItems[i];
-					if (fileInfo && mediaItem?.url) {
-						await ctx.runMutation(
-							internal.media_items.updateMediaItemWithFileIdInternal,
-							{
-								post_id: postId,
-								url: mediaItem.url,
-								file_id: fileInfo.file_id,
-								file_unique_id: fileInfo.file_unique_id,
-							},
-						);
-					}
-				}
+				await saveFileIdsForPost(ctx, postId, mediaItems, result.fileIds);
 			}
 		}
 		// If still failing, the next cron run will pick it up

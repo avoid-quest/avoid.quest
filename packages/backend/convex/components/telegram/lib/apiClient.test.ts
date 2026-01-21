@@ -249,3 +249,285 @@ describe("error classification completeness", () => {
 		expect(isPermanentError(error)).toBe(false);
 	});
 });
+
+/**
+ * Tests for file_id extraction from Telegram API responses
+ * These tests document the expected structure of Telegram responses
+ */
+describe("file_id extraction from API responses", () => {
+	// Helper types matching Telegram API response structure
+	type PhotoSize = {
+		file_id: string;
+		file_unique_id: string;
+		width: number;
+		height: number;
+		file_size?: number;
+	};
+
+	type VideoInfo = {
+		file_id: string;
+		file_unique_id: string;
+		width: number;
+		height: number;
+		duration: number;
+		file_size?: number;
+	};
+
+	type TelegramMessage = {
+		message_id: number;
+		photo?: PhotoSize[];
+		video?: VideoInfo;
+	};
+
+	function extractLargestPhoto(photos: PhotoSize[]): PhotoSize | null {
+		if (!photos || photos.length === 0) return null;
+		// Telegram orders photos from smallest to largest
+		return photos[photos.length - 1];
+	}
+
+	function extractFileIdsFromMediaGroup(messages: TelegramMessage[]): Array<{
+		file_id: string;
+		file_unique_id: string;
+		type: "image" | "video";
+	}> {
+		const fileIds: Array<{
+			file_id: string;
+			file_unique_id: string;
+			type: "image" | "video";
+		}> = [];
+
+		for (const msg of messages) {
+			if (msg.photo && msg.photo.length > 0) {
+				const largest = extractLargestPhoto(msg.photo);
+				if (largest) {
+					fileIds.push({
+						file_id: largest.file_id,
+						file_unique_id: largest.file_unique_id,
+						type: "image",
+					});
+				}
+			} else if (msg.video) {
+				fileIds.push({
+					file_id: msg.video.file_id,
+					file_unique_id: msg.video.file_unique_id,
+					type: "video",
+				});
+			}
+		}
+
+		return fileIds;
+	}
+
+	it("extracts largest photo from multiple sizes", () => {
+		const photos: PhotoSize[] = [
+			{
+				file_id: "AgACSmall",
+				file_unique_id: "uniqueSmall",
+				width: 320,
+				height: 320,
+				file_size: 10000,
+			},
+			{
+				file_id: "AgACMedium",
+				file_unique_id: "uniqueMedium",
+				width: 800,
+				height: 800,
+				file_size: 50000,
+			},
+			{
+				file_id: "AgACLarge",
+				file_unique_id: "uniqueLarge",
+				width: 1280,
+				height: 1280,
+				file_size: 100000,
+			},
+		];
+
+		const largest = extractLargestPhoto(photos);
+
+		expect(largest?.file_id).toBe("AgACLarge");
+		expect(largest?.file_unique_id).toBe("uniqueLarge");
+		expect(largest?.width).toBe(1280);
+	});
+
+	it("handles empty photo array", () => {
+		const largest = extractLargestPhoto([]);
+		expect(largest).toBeNull();
+	});
+
+	it("handles single photo size", () => {
+		const photos: PhotoSize[] = [
+			{
+				file_id: "AgACOnly",
+				file_unique_id: "uniqueOnly",
+				width: 800,
+				height: 600,
+			},
+		];
+
+		const largest = extractLargestPhoto(photos);
+
+		expect(largest?.file_id).toBe("AgACOnly");
+	});
+
+	it("extracts video file_id directly", () => {
+		const video: VideoInfo = {
+			file_id: "BAACVideo",
+			file_unique_id: "uniqueVideo",
+			width: 1920,
+			height: 1080,
+			duration: 30,
+			file_size: 5000000,
+		};
+
+		expect(video.file_id).toBe("BAACVideo");
+		expect(video.file_unique_id).toBe("uniqueVideo");
+	});
+
+	it("extracts file_ids from media group in order", () => {
+		const messages: TelegramMessage[] = [
+			{
+				message_id: 1,
+				photo: [
+					{
+						file_id: "AgAC1Small",
+						file_unique_id: "unique1s",
+						width: 320,
+						height: 320,
+					},
+					{
+						file_id: "AgAC1Large",
+						file_unique_id: "unique1l",
+						width: 1280,
+						height: 1280,
+					},
+				],
+			},
+			{
+				message_id: 2,
+				video: {
+					file_id: "BAACVideo",
+					file_unique_id: "uniqueVid",
+					width: 1920,
+					height: 1080,
+					duration: 30,
+				},
+			},
+			{
+				message_id: 3,
+				photo: [
+					{
+						file_id: "AgAC3Large",
+						file_unique_id: "unique3l",
+						width: 1280,
+						height: 1280,
+					},
+				],
+			},
+		];
+
+		const fileIds = extractFileIdsFromMediaGroup(messages);
+
+		expect(fileIds).toHaveLength(3);
+		// First message - photo, should get largest
+		expect(fileIds[0].file_id).toBe("AgAC1Large");
+		expect(fileIds[0].type).toBe("image");
+		// Second message - video
+		expect(fileIds[1].file_id).toBe("BAACVideo");
+		expect(fileIds[1].type).toBe("video");
+		// Third message - photo
+		expect(fileIds[2].file_id).toBe("AgAC3Large");
+		expect(fileIds[2].type).toBe("image");
+	});
+
+	it("handles media group response order matches send order", () => {
+		// Telegram returns messages in the same order they were sent
+		// This is critical for position-based matching
+		const messages: TelegramMessage[] = [
+			{
+				message_id: 100,
+				photo: [
+					{ file_id: "A", file_unique_id: "uA", width: 100, height: 100 },
+				],
+			},
+			{
+				message_id: 101,
+				photo: [
+					{ file_id: "B", file_unique_id: "uB", width: 100, height: 100 },
+				],
+			},
+			{
+				message_id: 102,
+				photo: [
+					{ file_id: "C", file_unique_id: "uC", width: 100, height: 100 },
+				],
+			},
+		];
+
+		const fileIds = extractFileIdsFromMediaGroup(messages);
+
+		// Order should be preserved: A, B, C
+		expect(fileIds[0].file_id).toBe("A");
+		expect(fileIds[1].file_id).toBe("B");
+		expect(fileIds[2].file_id).toBe("C");
+	});
+
+	it("handles missing file_id gracefully", () => {
+		const messages: TelegramMessage[] = [
+			{
+				message_id: 1,
+				photo: [
+					{
+						file_id: "AgAC1",
+						file_unique_id: "unique1",
+						width: 1280,
+						height: 1280,
+					},
+				],
+			},
+			{
+				message_id: 2,
+				// No photo or video - shouldn't happen but handle gracefully
+			},
+			{
+				message_id: 3,
+				photo: [
+					{
+						file_id: "AgAC3",
+						file_unique_id: "unique3",
+						width: 1280,
+						height: 1280,
+					},
+				],
+			},
+		];
+
+		const fileIds = extractFileIdsFromMediaGroup(messages);
+
+		// Should only have 2 entries, skipping the empty message
+		expect(fileIds).toHaveLength(2);
+		expect(fileIds[0].file_id).toBe("AgAC1");
+		expect(fileIds[1].file_id).toBe("AgAC3");
+	});
+
+	it("handles video with thumbnail correctly", () => {
+		// Videos in Telegram can have thumbnail photos, but we want the video file_id
+		const message: TelegramMessage = {
+			message_id: 1,
+			video: {
+				file_id: "BAACMainVideo",
+				file_unique_id: "uniqueMainVideo",
+				width: 1920,
+				height: 1080,
+				duration: 60,
+			},
+			// Note: thumbnails are in a separate 'thumb' field, not in 'photo'
+		};
+
+		const fileIds = extractFileIdsFromMediaGroup([message]);
+
+		expect(fileIds).toHaveLength(1);
+		expect(fileIds[0].file_id).toBe("BAACMainVideo");
+		expect(fileIds[0].type).toBe("video");
+	});
+});

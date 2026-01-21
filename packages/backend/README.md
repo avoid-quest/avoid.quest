@@ -66,6 +66,113 @@ bun run dev
 bun run deploy
 ```
 
+## Testing
+
+```bash
+# Run tests
+bun run test
+
+# Run tests in watch mode
+bun run test:watch
+```
+
+Tests use `vitest` with `convex-test` for database integration testing.
+
+## Settings Management
+
+Settings are stored in the `settings` table and provide runtime configuration for all services. Values merge with compile-time defaults from `lib/config/defaults.ts`.
+
+### Configuration Hierarchy
+
+```
+defaults.ts (compile-time) → database settings (runtime) → env vars (secrets only)
+```
+
+### Telegram Settings
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `active` | boolean | `false` | Enable/disable Telegram sending |
+| `admin_chat_id` | string? | - | Chat ID for admin notifications |
+| `group_chat_id` | string? | - | Chat ID for post delivery |
+| `send_limit` | number? | `3` | Max posts per cron run |
+| `send_report` | boolean | `false` | Send summary report after batch |
+| `request_timeout_ms` | number? | `30000` | API request timeout |
+| `delay_between_posts_ms` | number? | `500` | Delay between sending posts |
+| `last_sent_at` | number? | - | Timestamp of last send (auto-updated) |
+
+### Instagram Settings
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `active` | boolean | `false` | Enable/disable Instagram scraping |
+| `limit` | number? | `5` | Max users to scrape per cron run |
+| `post_per_user` | number? | `20` | Max posts to fetch per user |
+| `request_timeout_ms` | number? | `10000` | API request timeout |
+| `min_scrape_interval_ms` | number? | `1800000` | Min interval between user scrapes (30 min) |
+| `delay_between_users_min_ms` | number? | `10000` | Min delay between users |
+| `delay_between_users_max_ms` | number? | `30000` | Max delay between users |
+| `rate_limit_max_tokens` | number? | `3` | Rate limiter burst capacity |
+| `rate_limit_refill_rate` | number? | `0.5` | Rate limiter refill per second |
+| `last_scraped_at` | number? | - | Timestamp of last scrape (auto-updated) |
+
+### Locale Settings
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `timezone` | string? | `Europe/Rome` | Timezone for date formatting |
+| `locale` | string? | `it-IT` | Locale for date/number formatting |
+
+### Logging Settings
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `active` | boolean | `false` | Enable/disable logging |
+| `max_retention_days` | number? | - | Log retention period |
+| `log_file` | string? | - | Log file path |
+| `log_level` | string? | - | Log level (debug, info, warn, error) |
+| `last_logged_at` | number? | - | Timestamp of last log (auto-updated) |
+
+### Updating Settings
+
+Use the `upsertSettings` mutation:
+
+```typescript
+// Enable Telegram sending with custom limit
+await ctx.runMutation(api.settings.upsertSettings, {
+  telegram: {
+    active: true,
+    send_limit: 5,
+    send_report: true,
+  },
+});
+
+// Update existing settings (pass the settings ID)
+await ctx.runMutation(api.settings.upsertSettings, {
+  id: existingSettingsId,
+  instagram: {
+    active: true,
+    limit: 10,
+  },
+});
+```
+
+### Resolving Configuration
+
+Use the config resolver functions to merge database settings with defaults:
+
+```typescript
+import { resolveConfig, resolveTelegramConfig } from "./lib/config";
+
+// Get full resolved config
+const settings = await ctx.runQuery(internal.settings.getSettingsInternal);
+const config = resolveConfig(settings);
+
+// Or resolve individual sections
+const telegramConfig = resolveTelegramConfig(settings?.telegram);
+console.log(telegramConfig.sendLimit); // Returns DB value or default (3)
+```
+
 ## Database Schema
 
 All timestamp fields are stored in **milliseconds (UTC)**.
@@ -76,7 +183,7 @@ All timestamp fields are stored in **milliseconds (UTC)**.
 | `media_items` | Media files (images/videos) linked to posts, with Telegram file_ids for persistence |
 | `users` | Instagram accounts to monitor (username, scraping flags, last scraped timestamp) |
 | `telegram_messages` | Sent message tracking (message_id, chat_id, post reference) |
-| `settings` | System configuration (telegram, instagram, logging settings) |
+| `settings` | System configuration (telegram, instagram, locale, logging settings) |
 
 ### Key Indexes
 

@@ -5,14 +5,19 @@
 	"scripts": {
 		"dev": "convex dev",
 		"dev:setup": "convex dev --configure --until-success",
-		"deploy": "bunx convex deploy"
+		"deploy": "bunx convex deploy",
+		"test": "vitest run",
+		"test:watch": "vitest"
 	},
 	"author": "",
 	"license": "ISC",
 	"description": "",
 	"devDependencies": {
+		"@edge-runtime/vm": "^5.0.0",
 		"@types/node": "catalog:",
-		"typescript": "catalog:"
+		"convex-test": "^0.0.41",
+		"typescript": "catalog:",
+		"vitest": "^4.0.17"
 	},
 	"dependencies": {
 		"@convex-dev/migrations": "^0.3.1",

@@ -172,3 +172,144 @@ export function createTelegramErrorResponse(
 ) {
 	return { ok: false as const, error_code, description, parameters };
 }
+
+/**
+ * Create a media item with Telegram file_id (migrated item)
+ */
+export function createTestMediaItemWithFileId(
+	overrides?: Partial<TestMediaItem>,
+): TestMediaItem {
+	const uniqueId =
+		Date.now().toString(36) + Math.random().toString(36).slice(2);
+	return {
+		file_id: `AgACAgIAAxk${uniqueId}`,
+		file_unique_id: `AQADAgAT${uniqueId.slice(0, 16)}`,
+		type: "image",
+		post_id: createMockPostId(),
+		width: 1080,
+		height: 1080,
+		...overrides,
+	};
+}
+
+/**
+ * Create a legacy media item with only URL (needs backfill)
+ */
+export function createTestMediaItemUrlOnly(
+	overrides?: Partial<TestMediaItem>,
+): TestMediaItem {
+	const now = Date.now();
+	return {
+		url: `https://instagram.com/media/${now}.jpg`,
+		type: "image",
+		post_id: createMockPostId(),
+		width: 1080,
+		height: 1080,
+		...overrides,
+	};
+}
+
+/**
+ * Create file_id info as returned from Telegram sender
+ */
+export function createFileIdInfo(
+	overrides?: Partial<TestFileIdInfo>,
+): TestFileIdInfo {
+	const uniqueId =
+		Date.now().toString(36) + Math.random().toString(36).slice(2);
+	return {
+		file_id: `AgACAgIAAxk${uniqueId}`,
+		file_unique_id: `AQADAgAT${uniqueId.slice(0, 16)}`,
+		type: "image",
+		...overrides,
+	};
+}
+
+type TestFileIdInfo = {
+	file_id: string;
+	file_unique_id: string;
+	type: "image" | "video";
+};
+
+/**
+ * Create a mock Telegram message response with photo
+ */
+export function createTelegramPhotoMessage(
+	messageId: number,
+	overrides?: { fileId?: string; fileUniqueId?: string },
+) {
+	const uniqueId =
+		Date.now().toString(36) + Math.random().toString(36).slice(2);
+	return {
+		message_id: messageId,
+		chat: { id: -1001234567890, type: "supergroup" as const },
+		date: Math.floor(Date.now() / 1000),
+		photo: [
+			{
+				file_id: overrides?.fileId ?? `AgACAgIAAxksmall${uniqueId}`,
+				file_unique_id:
+					overrides?.fileUniqueId ?? `AQADsmall${uniqueId.slice(0, 12)}`,
+				width: 320,
+				height: 320,
+				file_size: 10000,
+			},
+			{
+				file_id: overrides?.fileId ?? `AgACAgIAAxkmed${uniqueId}`,
+				file_unique_id:
+					overrides?.fileUniqueId ?? `AQADmed${uniqueId.slice(0, 12)}`,
+				width: 800,
+				height: 800,
+				file_size: 50000,
+			},
+			{
+				file_id: overrides?.fileId ?? `AgACAgIAAxk${uniqueId}`,
+				file_unique_id:
+					overrides?.fileUniqueId ?? `AQADAgAT${uniqueId.slice(0, 12)}`,
+				width: 1280,
+				height: 1280,
+				file_size: 100000,
+			},
+		],
+	};
+}
+
+/**
+ * Create a mock Telegram message response with video
+ */
+export function createTelegramVideoMessage(
+	messageId: number,
+	overrides?: { fileId?: string; fileUniqueId?: string },
+) {
+	const uniqueId =
+		Date.now().toString(36) + Math.random().toString(36).slice(2);
+	return {
+		message_id: messageId,
+		chat: { id: -1001234567890, type: "supergroup" as const },
+		date: Math.floor(Date.now() / 1000),
+		video: {
+			file_id: overrides?.fileId ?? `BAACAgIAAxk${uniqueId}`,
+			file_unique_id:
+				overrides?.fileUniqueId ?? `AQADBAATvid${uniqueId.slice(0, 10)}`,
+			width: 1920,
+			height: 1080,
+			duration: 30,
+			file_size: 5000000,
+		},
+	};
+}
+
+/**
+ * Create a mock Telegram media group response (array of messages)
+ */
+export function createTelegramMediaGroupResponse(
+	startMessageId: number,
+	items: Array<{ type: "photo" | "video" }>,
+) {
+	return items.map((item, index) => {
+		const messageId = startMessageId + index;
+		if (item.type === "video") {
+			return createTelegramVideoMessage(messageId);
+		}
+		return createTelegramPhotoMessage(messageId);
+	});
+}

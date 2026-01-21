@@ -9,7 +9,10 @@ import type { GenericActionCtx } from "convex/server";
 import { Bot, type Context, type SessionFlavor, session } from "grammy";
 import type { MenuMiddleware } from "grammy-inline-menu";
 import type { DataModel } from "../_generated/dataModel";
+import { createLogger } from "../lib/logger";
 import { createStorageAdapter, type SessionData } from "./lib/storageAdapter";
+
+const logger = createLogger("telegram:bot");
 
 type ActionCtx = GenericActionCtx<DataModel>;
 
@@ -69,7 +72,7 @@ export function createBot(
 
 	// Error handler
 	bot.catch((err) => {
-		console.error("Bot error:", err.error);
+		logger.error(`Bot error: ${err.error}`);
 	});
 
 	return bot;

@@ -5,6 +5,11 @@ import {
 	mutation,
 	query,
 } from "./_generated/server";
+import {
+	instagramMediaItemValidator,
+	mediaTypeValidator,
+	telegramFileIdItemValidator,
+} from "./lib/validators";
 
 export const getMediaItems = query({
 	args: {},
@@ -43,11 +48,7 @@ export const upsertMediaItem = mutation({
 		url: v.optional(v.string()),
 		file_id: v.optional(v.string()),
 		file_unique_id: v.optional(v.string()),
-		type: v.union(
-			v.literal("image"),
-			v.literal("video"),
-			v.literal("thumbnail"),
-		),
+		type: mediaTypeValidator,
 		width: v.optional(v.number()),
 		height: v.optional(v.number()),
 		post_id: v.id("posts"),
@@ -129,18 +130,7 @@ export const deleteMediaItem = mutation({
 export const syncMediaItemsForPost = mutation({
 	args: {
 		post_id: v.id("posts"),
-		media_items: v.array(
-			v.object({
-				url: v.string(),
-				type: v.union(
-					v.literal("image"),
-					v.literal("video"),
-					v.literal("thumbnail"),
-				),
-				width: v.optional(v.number()),
-				height: v.optional(v.number()),
-			}),
-		),
+		media_items: v.array(instagramMediaItemValidator),
 	},
 	handler: async (ctx, { post_id, media_items }) => {
 		// Get all existing media items for this post
@@ -202,19 +192,7 @@ export const syncMediaItemsForPost = mutation({
 export const syncTelegramMediaItemsForPost = mutation({
 	args: {
 		post_id: v.id("posts"),
-		media_items: v.array(
-			v.object({
-				file_id: v.string(),
-				file_unique_id: v.string(),
-				type: v.union(
-					v.literal("image"),
-					v.literal("video"),
-					v.literal("thumbnail"),
-				),
-				width: v.optional(v.number()),
-				height: v.optional(v.number()),
-			}),
-		),
+		media_items: v.array(telegramFileIdItemValidator),
 	},
 	handler: async (ctx, { post_id, media_items }) => {
 		// Get all existing media items for this post
@@ -352,18 +330,7 @@ export const updateMediaItemWithFileIdInternal = internalMutation({
 export const syncMediaItemsForPostInternal = internalMutation({
 	args: {
 		post_id: v.id("posts"),
-		media_items: v.array(
-			v.object({
-				url: v.string(),
-				type: v.union(
-					v.literal("image"),
-					v.literal("video"),
-					v.literal("thumbnail"),
-				),
-				width: v.optional(v.number()),
-				height: v.optional(v.number()),
-			}),
-		),
+		media_items: v.array(instagramMediaItemValidator),
 	},
 	handler: async (ctx, { post_id, media_items }) => {
 		// Get existing media items

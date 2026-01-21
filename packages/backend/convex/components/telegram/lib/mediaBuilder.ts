@@ -3,6 +3,7 @@
  * Handles both URL-based and file_id-based media
  */
 
+import type { TelegramMediaItem } from "../../../lib/validators";
 import type { InputMedia, InputMediaPhoto, InputMediaVideo } from "./apiClient";
 
 /** Maximum items in a Telegram media group */
@@ -13,14 +14,9 @@ export const MIN_MEDIA_GROUP_SIZE = 2;
 
 /**
  * Media item from database (may have URL or file_id)
+ * Alias for TelegramMediaItem for backwards compatibility
  */
-export type MediaItemInput = {
-	url?: string;
-	file_id?: string;
-	type: "image" | "video" | "thumbnail";
-	width?: number;
-	height?: number;
-};
+export type MediaItemInput = TelegramMediaItem;
 
 /**
  * Filter and validate media items for sending

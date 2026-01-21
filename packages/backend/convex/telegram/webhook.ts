@@ -6,7 +6,6 @@
  */
 
 import { v } from "convex/values";
-import { webhookCallback } from "grammy";
 import { internalAction } from "../_generated/server";
 import { createBot } from "./bot";
 import { handleTextInput } from "./handlers/textInput";

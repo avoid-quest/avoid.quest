@@ -5,6 +5,7 @@
 
 import type { Infer } from "convex/values";
 import { v } from "convex/values";
+import { instagramMediaItemValidator } from "../../lib/validators";
 import { getInstagramHeaders, randomSleep } from "./lib/userAgents";
 
 const INSTAGRAM_API_BASE = "https://www.instagram.com/api/v1";
@@ -27,18 +28,7 @@ export const fetchedPostValidator = v.object({
 		v.literal("video"),
 		v.literal("carousel"),
 	),
-	media_items: v.array(
-		v.object({
-			url: v.string(),
-			type: v.union(
-				v.literal("image"),
-				v.literal("video"),
-				v.literal("thumbnail"),
-			),
-			width: v.optional(v.number()),
-			height: v.optional(v.number()),
-		}),
-	),
+	media_items: v.array(instagramMediaItemValidator),
 	video_url: v.optional(v.string()),
 	thumbnail_url: v.optional(v.string()),
 });

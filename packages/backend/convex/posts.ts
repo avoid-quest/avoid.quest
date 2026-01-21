@@ -8,6 +8,7 @@ import {
 	query,
 } from "./_generated/server";
 import { secondsToMilliseconds } from "./lib/dateUtils";
+import { postMediaTypeValidator } from "./lib/validators";
 
 export const getPosts = query({
 	args: { limit: v.number() },
@@ -33,11 +34,7 @@ const paginatedPostValidator = v.object({
 	caption: v.string(),
 	is_video: v.boolean(),
 	url: v.string(),
-	media_type: v.union(
-		v.literal("image"),
-		v.literal("video"),
-		v.literal("carousel"),
-	),
+	media_type: postMediaTypeValidator,
 	users: v.array(v.id("users")),
 	timestamp: v.number(),
 	event_date: v.optional(v.number()),
@@ -130,11 +127,7 @@ export const upsertPost = mutation({
 		caption: v.string(),
 		is_video: v.boolean(),
 		url: v.string(),
-		media_type: v.union(
-			v.literal("image"),
-			v.literal("video"),
-			v.literal("carousel"),
-		),
+		media_type: postMediaTypeValidator,
 		users: v.array(v.id("users")),
 		timestamp: v.number(),
 		event_date: v.optional(v.number()),
@@ -407,11 +400,7 @@ export const upsertPostInternal = internalMutation({
 		caption: v.string(),
 		is_video: v.boolean(),
 		url: v.string(),
-		media_type: v.union(
-			v.literal("image"),
-			v.literal("video"),
-			v.literal("carousel"),
-		),
+		media_type: postMediaTypeValidator,
 		users: v.array(v.id("users")),
 		timestamp: v.number(),
 		event_date: v.optional(v.number()),

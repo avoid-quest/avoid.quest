@@ -24,10 +24,18 @@ export async function handleTextInput(ctx: BotContext): Promise<void> {
 				await handleAddUser(ctx, text);
 				break;
 			case "edit_username":
-				await handleEditUsername(ctx, text, awaiting.userId!);
+				if (!awaiting.userId) {
+					await ctx.reply("❌ Missing user ID. Use /start to try again.");
+					return;
+				}
+				await handleEditUsername(ctx, text, awaiting.userId);
 				break;
 			case "edit_setting":
-				await handleEditSetting(ctx, text, awaiting.settingPath!);
+				if (!awaiting.settingPath) {
+					await ctx.reply("❌ Missing setting path. Use /start to try again.");
+					return;
+				}
+				await handleEditSetting(ctx, text, awaiting.settingPath);
 				break;
 		}
 	} catch (error) {

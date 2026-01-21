@@ -4,6 +4,16 @@
  */
 
 import { v } from "convex/values";
+import {
+	fileIdInfoValidator,
+	telegramMediaItemValidator,
+} from "../../lib/validators";
+
+// Re-export FileIdInfo for backwards compatibility
+export type { FileIdInfo } from "../../lib/validators";
+
+// Local import for use in this file
+import type { FileIdInfo } from "../../lib/validators";
 import { action } from "./_generated/server";
 import {
 	createTelegramClient,
@@ -18,20 +28,6 @@ import {
 	determineSendStrategy,
 	type MediaItemInput,
 } from "./lib/mediaBuilder";
-
-const mediaItemValidator = v.object({
-	url: v.optional(v.string()),
-	file_id: v.optional(v.string()),
-	type: v.union(v.literal("image"), v.literal("video"), v.literal("thumbnail")),
-	width: v.optional(v.number()),
-	height: v.optional(v.number()),
-});
-
-export type FileIdInfo = {
-	file_id: string;
-	file_unique_id: string;
-	type: "image" | "video";
-};
 
 export type SendResult = {
 	success: boolean;
@@ -50,7 +46,7 @@ export const sendMessage = action({
 		botToken: v.string(),
 		chatId: v.string(),
 		caption: v.string(),
-		mediaItems: v.array(mediaItemValidator),
+		mediaItems: v.array(telegramMediaItemValidator),
 		postUrl: v.string(),
 	},
 	returns: v.object({
@@ -58,15 +54,7 @@ export const sendMessage = action({
 		messageId: v.optional(v.number()),
 		error: v.optional(v.string()),
 		retryAfterMs: v.optional(v.number()),
-		fileIds: v.optional(
-			v.array(
-				v.object({
-					file_id: v.string(),
-					file_unique_id: v.string(),
-					type: v.union(v.literal("image"), v.literal("video")),
-				}),
-			),
-		),
+		fileIds: v.optional(v.array(fileIdInfoValidator)),
 	}),
 	handler: async (
 		_ctx,

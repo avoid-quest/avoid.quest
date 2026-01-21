@@ -446,4 +446,239 @@ describe("media_items", () => {
 			expect(item).toBeNull();
 		});
 	});
+
+	describe("file_id field preservation", () => {
+		it("preserves existing fields when adding file_id", async () => {
+			const t = convexTest(schema, modules);
+
+			const postId = await t.mutation(api.posts.upsertPost, {
+				ig_id: "test_123",
+				shortcode: "ABC123",
+				display_url: "https://example.com/image.jpg",
+				caption: "Test",
+				is_video: false,
+				url: "https://instagram.com/p/ABC123/",
+				media_type: "image",
+				users: [],
+				timestamp: Math.floor(Date.now() / 1000),
+			});
+
+			// Create item with URL and dimensions
+			await t.mutation(api.media_items.upsertMediaItem, {
+				url: "https://example.com/media.jpg",
+				type: "video",
+				width: 1920,
+				height: 1080,
+				post_id: postId,
+			});
+
+			// Update with file_id via internal mutation
+			await t.mutation(internal.media_items.updateMediaItemWithFileIdInternal, {
+				post_id: postId,
+				url: "https://example.com/media.jpg",
+				file_id: "AgACAgIAAxk",
+				file_unique_id: "AQADAgATq",
+			});
+
+			const items = await t.query(api.media_items.getMediaItemsByPostId, {
+				postId,
+			});
+			expect(items).toHaveLength(1);
+			// Original fields preserved
+			expect(items[0].url).toBe("https://example.com/media.jpg");
+			expect(items[0].type).toBe("video");
+			expect(items[0].width).toBe(1920);
+			expect(items[0].height).toBe(1080);
+			// New file_id fields added
+			expect(items[0].file_id).toBe("AgACAgIAAxk");
+			expect(items[0].file_unique_id).toBe("AQADAgATq");
+		});
+	});
+
+	describe("media source scenarios", () => {
+		it("handles URL-only media item (legacy)", async () => {
+			const t = convexTest(schema, modules);
+
+			const postId = await t.mutation(api.posts.upsertPost, {
+				ig_id: "test_123",
+				shortcode: "ABC123",
+				display_url: "https://example.com/image.jpg",
+				caption: "Test",
+				is_video: false,
+				url: "https://instagram.com/p/ABC123/",
+				media_type: "image",
+				users: [],
+				timestamp: Math.floor(Date.now() / 1000),
+			});
+
+			const itemId = await t.mutation(api.media_items.upsertMediaItem, {
+				url: "https://example.com/url-only.jpg",
+				type: "image",
+				post_id: postId,
+			});
+
+			const item = await t.query(api.media_items.getMediaItemById, {
+				id: itemId,
+			});
+			expect(item?.url).toBe("https://example.com/url-only.jpg");
+			expect(item?.file_id).toBeUndefined();
+			expect(item?.file_unique_id).toBeUndefined();
+		});
+
+		it("handles file_id-only media item (Telegram native)", async () => {
+			const t = convexTest(schema, modules);
+
+			const postId = await t.mutation(api.posts.upsertPost, {
+				ig_id: "test_123",
+				shortcode: "ABC123",
+				display_url: "https://example.com/image.jpg",
+				caption: "Test",
+				is_video: false,
+				url: "https://instagram.com/p/ABC123/",
+				media_type: "image",
+				users: [],
+				timestamp: Math.floor(Date.now() / 1000),
+			});
+
+			const itemId = await t.mutation(api.media_items.upsertMediaItem, {
+				file_id: "AgACAgIAAxkFileOnly",
+				file_unique_id: "AQADAgATqFileOnly",
+				type: "image",
+				post_id: postId,
+			});
+
+			const item = await t.query(api.media_items.getMediaItemById, {
+				id: itemId,
+			});
+			expect(item?.url).toBeUndefined();
+			expect(item?.file_id).toBe("AgACAgIAAxkFileOnly");
+			expect(item?.file_unique_id).toBe("AQADAgATqFileOnly");
+		});
+
+		it("handles media item with both URL and file_id (migrated)", async () => {
+			const t = convexTest(schema, modules);
+
+			const postId = await t.mutation(api.posts.upsertPost, {
+				ig_id: "test_123",
+				shortcode: "ABC123",
+				display_url: "https://example.com/image.jpg",
+				caption: "Test",
+				is_video: false,
+				url: "https://instagram.com/p/ABC123/",
+				media_type: "image",
+				users: [],
+				timestamp: Math.floor(Date.now() / 1000),
+			});
+
+			const itemId = await t.mutation(api.media_items.upsertMediaItem, {
+				url: "https://example.com/both.jpg",
+				file_id: "AgACAgIAAxkBoth",
+				file_unique_id: "AQADAgATqBoth",
+				type: "image",
+				post_id: postId,
+			});
+
+			const item = await t.query(api.media_items.getMediaItemById, {
+				id: itemId,
+			});
+			expect(item?.url).toBe("https://example.com/both.jpg");
+			expect(item?.file_id).toBe("AgACAgIAAxkBoth");
+			expect(item?.file_unique_id).toBe("AQADAgATqBoth");
+		});
+	});
+
+	describe("syncTelegramMediaItemsForPost cleanup", () => {
+		it("removes legacy URL-only items during sync", async () => {
+			const t = convexTest(schema, modules);
+
+			const postId = await t.mutation(api.posts.upsertPost, {
+				ig_id: "test_123",
+				shortcode: "ABC123",
+				display_url: "https://example.com/image.jpg",
+				caption: "Test",
+				is_video: false,
+				url: "https://instagram.com/p/ABC123/",
+				media_type: "carousel",
+				users: [],
+				timestamp: Math.floor(Date.now() / 1000),
+			});
+
+			// Create a legacy URL-only item (no file_unique_id)
+			await t.mutation(api.media_items.upsertMediaItem, {
+				url: "https://example.com/legacy.jpg",
+				type: "image",
+				post_id: postId,
+			});
+
+			// Verify legacy item exists
+			const beforeSync = await t.query(api.media_items.getMediaItemsByPostId, {
+				postId,
+			});
+			expect(beforeSync).toHaveLength(1);
+			expect(beforeSync[0].file_unique_id).toBeUndefined();
+
+			// Sync with new Telegram file_id items
+			await t.mutation(api.media_items.syncTelegramMediaItemsForPost, {
+				post_id: postId,
+				media_items: [
+					{ file_id: "AgAC1", file_unique_id: "unique1", type: "image" },
+				],
+			});
+
+			// Legacy item should be removed, new item should exist
+			const afterSync = await t.query(api.media_items.getMediaItemsByPostId, {
+				postId,
+			});
+			expect(afterSync).toHaveLength(1);
+			expect(afterSync[0].file_unique_id).toBe("unique1");
+		});
+
+		it("preserves migrated items with matching file_unique_id", async () => {
+			const t = convexTest(schema, modules);
+
+			const postId = await t.mutation(api.posts.upsertPost, {
+				ig_id: "test_123",
+				shortcode: "ABC123",
+				display_url: "https://example.com/image.jpg",
+				caption: "Test",
+				is_video: false,
+				url: "https://instagram.com/p/ABC123/",
+				media_type: "image",
+				users: [],
+				timestamp: Math.floor(Date.now() / 1000),
+			});
+
+			// Create an already-migrated item
+			await t.mutation(api.media_items.upsertMediaItem, {
+				url: "https://example.com/migrated.jpg",
+				file_id: "AgACOld",
+				file_unique_id: "uniquePreserve",
+				type: "image",
+				width: 1080,
+				height: 1080,
+				post_id: postId,
+			});
+
+			// Sync with updated file_id but same file_unique_id
+			await t.mutation(api.media_items.syncTelegramMediaItemsForPost, {
+				post_id: postId,
+				media_items: [
+					{
+						file_id: "AgACNew",
+						file_unique_id: "uniquePreserve",
+						type: "image",
+					},
+				],
+			});
+
+			const items = await t.query(api.media_items.getMediaItemsByPostId, {
+				postId,
+			});
+			expect(items).toHaveLength(1);
+			// file_id updated
+			expect(items[0].file_id).toBe("AgACNew");
+			// file_unique_id preserved (same)
+			expect(items[0].file_unique_id).toBe("uniquePreserve");
+		});
+	});
 });

@@ -17,6 +17,8 @@ import type * as lib_config_index from "../lib/config/index.js";
 import type * as lib_config_validators from "../lib/config/validators.js";
 import type * as lib_dateUtils from "../lib/dateUtils.js";
 import type * as lib_logger from "../lib/logger.js";
+import type * as lib_validators_index from "../lib/validators/index.js";
+import type * as lib_validators_media from "../lib/validators/media.js";
 import type * as media_items from "../media_items.js";
 import type * as posts from "../posts.js";
 import type * as sessions from "../sessions.js";
@@ -32,6 +34,7 @@ import type * as telegram_menus_usersMenu from "../telegram/menus/usersMenu.js";
 import type * as telegram_webhook from "../telegram/webhook.js";
 import type * as telegram_messages from "../telegram_messages.js";
 import type * as test_factories from "../test/factories.js";
+import type * as test_helpers from "../test/helpers.js";
 import type * as users from "../users.js";
 
 import type {
@@ -50,6 +53,8 @@ declare const fullApi: ApiFromModules<{
   "lib/config/validators": typeof lib_config_validators;
   "lib/dateUtils": typeof lib_dateUtils;
   "lib/logger": typeof lib_logger;
+  "lib/validators/index": typeof lib_validators_index;
+  "lib/validators/media": typeof lib_validators_media;
   media_items: typeof media_items;
   posts: typeof posts;
   sessions: typeof sessions;
@@ -65,6 +70,7 @@ declare const fullApi: ApiFromModules<{
   "telegram/webhook": typeof telegram_webhook;
   telegram_messages: typeof telegram_messages;
   "test/factories": typeof test_factories;
+  "test/helpers": typeof test_helpers;
   users: typeof users;
 }>;
 

@@ -52,14 +52,6 @@ export const getSettingsInternal = internalQuery({
 					log_level: v.optional(v.string()),
 				}),
 			),
-			ai_metadata_extraction: v.optional(
-				v.object({
-					active: v.boolean(),
-					batch_size: v.optional(v.number()),
-					backlog_interval_minutes: v.optional(v.number()),
-					max_concurrent_workflows: v.optional(v.number()),
-				}),
-			),
 		}),
 		v.null(),
 	),
@@ -102,27 +94,14 @@ export const upsertSettings = mutation({
 				log_level: v.optional(v.string()),
 			}),
 		),
-		ai_metadata_extraction: v.optional(
-			v.object({
-				active: v.boolean(),
-				model: v.optional(v.string()),
-				batch_size: v.optional(v.number()),
-				backlog_interval_minutes: v.optional(v.number()),
-				max_concurrent_workflows: v.optional(v.number()),
-			}),
-		),
 	},
 	returns: v.id("settings"),
-	handler: async (
-		ctx,
-		{ id, telegram, instagram, logging, ai_metadata_extraction },
-	) => {
+	handler: async (ctx, { id, telegram, instagram, logging }) => {
 		if (id) {
 			await ctx.db.patch(id, {
 				telegram,
 				instagram,
 				logging,
-				ai_metadata_extraction,
 			});
 			return id;
 		}
@@ -130,7 +109,6 @@ export const upsertSettings = mutation({
 			telegram,
 			instagram,
 			logging,
-			ai_metadata_extraction,
 		});
 	},
 });

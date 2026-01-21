@@ -14,23 +14,27 @@ import type { BotContext } from "../bot";
  */
 const userDetailMenu = new MenuTemplate<BotContext>(async (ctx) => {
 	const userId = ctx.match?.[1];
-	if (!userId) return "❌ User not found";
+	if (!userId)
+		return { text: "❌ User not found", parse_mode: "HTML" as const };
 
 	const user = await ctx.convex.runQuery(internal.users.getUserByIdInternal, {
 		id: userId as never,
 	});
 
-	if (!user) return "❌ User not found";
+	if (!user) return { text: "❌ User not found", parse_mode: "HTML" as const };
 
 	const scrapingStatus = user.to_be_scraped ? "✅ Active" : "❌ Inactive";
 	const lastScraped = user.last_scraped_at
 		? new Date(user.last_scraped_at).toLocaleString()
 		: "Never";
 
-	return `<b>👤 @${user.username}</b>
+	return {
+		text: `<b>👤 @${user.username}</b>
 
 Scraping: ${scrapingStatus}
-Last Scraped: ${lastScraped}`;
+Last Scraped: ${lastScraped}`,
+		parse_mode: "HTML" as const,
+	};
 });
 
 /**
@@ -143,9 +147,10 @@ userDetailMenu.interact("back", {
 /**
  * Users menu
  */
-export const usersMenu = new MenuTemplate<BotContext>(
-	"👥 <b>Users</b>\n\nManage Instagram accounts:",
-);
+export const usersMenu = new MenuTemplate<BotContext>({
+	text: "👥 <b>Users</b>\n\nManage Instagram accounts:",
+	parse_mode: "HTML",
+});
 
 /**
  * Add user button

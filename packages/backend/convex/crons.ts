@@ -51,6 +51,11 @@ export const runTelegramSend = internalAction({
 			return { skipped: true, errors: ["No group_chat_id configured"] };
 		}
 
+		const botToken = process.env.TELEGRAM_BOT_TOKEN;
+		if (!botToken) {
+			return { skipped: true, errors: ["TELEGRAM_BOT_TOKEN not configured"] };
+		}
+
 		const chatId = config.groupChatId;
 		const limit = config.sendLimit;
 
@@ -78,6 +83,7 @@ export const runTelegramSend = internalAction({
 			const result = await ctx.runAction(
 				components.telegram.sender.sendMessage,
 				{
+					botToken,
 					chatId,
 					caption: post.caption,
 					mediaItems: mediaItems.map((item) => ({
@@ -287,6 +293,11 @@ export const retrySinglePost = internalAction({
 		chatId: v.string(),
 	},
 	handler: async (ctx, { postId, chatId }) => {
+		const botToken = process.env.TELEGRAM_BOT_TOKEN;
+		if (!botToken) {
+			return; // Can't send without token
+		}
+
 		// Get the post
 		const post = await ctx.runQuery(internal.posts.getPostByIdInternal, {
 			id: postId,
@@ -305,6 +316,7 @@ export const retrySinglePost = internalAction({
 
 		// Send via Telegram component
 		const result = await ctx.runAction(components.telegram.sender.sendMessage, {
+			botToken,
 			chatId,
 			caption: post.caption,
 			mediaItems: mediaItems.map((item) => ({

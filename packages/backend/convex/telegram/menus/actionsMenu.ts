@@ -9,9 +9,10 @@ import { MenuTemplate } from "grammy-inline-menu";
 import { internal } from "../../_generated/api";
 import type { BotContext } from "../bot";
 
-export const actionsMenu = new MenuTemplate<BotContext>(
-	"⚡ <b>Quick Actions</b>\n\nTrigger jobs manually:",
-);
+export const actionsMenu = new MenuTemplate<BotContext>({
+	text: "⚡ <b>Quick Actions</b>\n\nTrigger jobs manually:",
+	parse_mode: "HTML",
+});
 
 /**
  * Trigger Instagram fetch

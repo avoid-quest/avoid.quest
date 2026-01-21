@@ -28,6 +28,9 @@ export const processUpdate = internalAction({
 		// Create bot instance with all middleware
 		const bot = createBot(botToken, ctx, menuMiddleware, handleTextInput);
 
+		// Initialize bot (fetches bot info from Telegram API)
+		await bot.init();
+
 		// Process the update
 		await bot.handleUpdate(update);
 	},

@@ -28,6 +28,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "action",
         "internal",
         {
+          botToken: string;
           caption: string;
           chatId: string;
           mediaItems: Array<{
@@ -55,14 +56,19 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
       sendTextMessage: FunctionReference<
         "action",
         "internal",
-        { chatId: string; disableNotification?: boolean; text: string },
+        {
+          botToken: string;
+          chatId: string;
+          disableNotification?: boolean;
+          text: string;
+        },
         { error?: string; messageId?: number; success: boolean },
         Name
       >;
       verifyBotToken: FunctionReference<
         "action",
         "internal",
-        {},
+        { botToken: string },
         { botUsername?: string; error?: string; success: boolean },
         Name
       >;

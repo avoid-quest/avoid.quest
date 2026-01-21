@@ -22,14 +22,17 @@ const telegramSettingsMenu = new MenuTemplate<BotContext>(async (ctx) => {
 	const status = telegram?.active ? "✅ Active" : "❌ Inactive";
 	const reportStatus = telegram?.send_report ? "✅ On" : "❌ Off";
 
-	return `<b>📱 Telegram Settings</b>
+	return {
+		text: `<b>📱 Telegram Settings</b>
 
 Status: ${status}
 Send Report: ${reportStatus}
 Group Chat ID: ${telegram?.group_chat_id ?? "Not set"}
 Send Limit: ${telegram?.send_limit ?? 3}
 Request Timeout: ${telegram?.request_timeout_ms ?? 30000}ms
-Delay Between Posts: ${telegram?.delay_between_posts_ms ?? 1000}ms`;
+Delay Between Posts: ${telegram?.delay_between_posts_ms ?? 1000}ms`,
+		parse_mode: "HTML" as const,
+	};
 });
 
 telegramSettingsMenu.interact("toggle_active", {
@@ -92,13 +95,16 @@ const instagramSettingsMenu = new MenuTemplate<BotContext>(async (ctx) => {
 
 	const status = instagram?.active ? "✅ Active" : "❌ Inactive";
 
-	return `<b>📸 Instagram Settings</b>
+	return {
+		text: `<b>📸 Instagram Settings</b>
 
 Status: ${status}
 User Limit: ${instagram?.limit ?? 5}
 Posts Per User: ${instagram?.post_per_user ?? 20}
 Request Timeout: ${instagram?.request_timeout_ms ?? 30000}ms
-Min Scrape Interval: ${instagram?.min_scrape_interval_ms ?? 3600000}ms`;
+Min Scrape Interval: ${instagram?.min_scrape_interval_ms ?? 3600000}ms`,
+		parse_mode: "HTML" as const,
+	};
 });
 
 instagramSettingsMenu.interact("toggle_active", {
@@ -148,10 +154,13 @@ const localeSettingsMenu = new MenuTemplate<BotContext>(async (ctx) => {
 	);
 	const locale = settings?.locale;
 
-	return `<b>🌍 Locale Settings</b>
+	return {
+		text: `<b>🌍 Locale Settings</b>
 
 Timezone: ${locale?.timezone ?? "Europe/Rome"}
-Locale: ${locale?.locale ?? "it-IT"}`;
+Locale: ${locale?.locale ?? "it-IT"}`,
+		parse_mode: "HTML" as const,
+	};
 });
 
 localeSettingsMenu.interact("edit_timezone", {
@@ -194,11 +203,14 @@ const loggingSettingsMenu = new MenuTemplate<BotContext>(async (ctx) => {
 
 	const status = logging?.active ? "✅ Active" : "❌ Inactive";
 
-	return `<b>📋 Logging Settings</b>
+	return {
+		text: `<b>📋 Logging Settings</b>
 
 Status: ${status}
 Log Level: ${logging?.log_level ?? "info"}
-Max Retention: ${logging?.max_retention_days ?? 30} days`;
+Max Retention: ${logging?.max_retention_days ?? 30} days`,
+		parse_mode: "HTML" as const,
+	};
 });
 
 loggingSettingsMenu.interact("toggle_active", {
@@ -229,9 +241,10 @@ loggingSettingsMenu.navigate("..", { text: "⬅️ Back" });
 /**
  * Main settings menu
  */
-export const settingsMenu = new MenuTemplate<BotContext>(
-	"⚙️ <b>Settings</b>\n\nConfigure bot behavior:",
-);
+export const settingsMenu = new MenuTemplate<BotContext>({
+	text: "⚙️ <b>Settings</b>\n\nConfigure bot behavior:",
+	parse_mode: "HTML",
+});
 
 settingsMenu.submenu("telegram", telegramSettingsMenu, {
 	text: "📱 Telegram",

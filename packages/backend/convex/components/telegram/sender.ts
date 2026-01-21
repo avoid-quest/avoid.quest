@@ -47,6 +47,7 @@ export type SendResult = {
  */
 export const sendMessage = action({
 	args: {
+		botToken: v.string(),
 		chatId: v.string(),
 		caption: v.string(),
 		mediaItems: v.array(mediaItemValidator),
@@ -69,11 +70,10 @@ export const sendMessage = action({
 	}),
 	handler: async (
 		_ctx,
-		{ chatId, caption, mediaItems, postUrl },
+		{ botToken, chatId, caption, mediaItems, postUrl },
 	): Promise<SendResult> => {
-		const botToken = process.env.TELEGRAM_BOT_TOKEN;
 		if (!botToken) {
-			return { success: false, error: "TELEGRAM_BOT_TOKEN not configured" };
+			return { success: false, error: "botToken is required" };
 		}
 
 		const client = createTelegramClient(botToken);
@@ -249,6 +249,7 @@ function handleApiError(error: {
  */
 export const sendTextMessage = action({
 	args: {
+		botToken: v.string(),
 		chatId: v.string(),
 		text: v.string(),
 		disableNotification: v.optional(v.boolean()),
@@ -258,10 +259,9 @@ export const sendTextMessage = action({
 		messageId: v.optional(v.number()),
 		error: v.optional(v.string()),
 	}),
-	handler: async (_ctx, { chatId, text, disableNotification }) => {
-		const botToken = process.env.TELEGRAM_BOT_TOKEN;
+	handler: async (_ctx, { botToken, chatId, text, disableNotification }) => {
 		if (!botToken) {
-			return { success: false, error: "TELEGRAM_BOT_TOKEN not configured" };
+			return { success: false, error: "botToken is required" };
 		}
 
 		const client = createTelegramClient(botToken);
@@ -293,16 +293,17 @@ export const sendTextMessage = action({
  * Verify bot token is valid
  */
 export const verifyBotToken = action({
-	args: {},
+	args: {
+		botToken: v.string(),
+	},
 	returns: v.object({
 		success: v.boolean(),
 		botUsername: v.optional(v.string()),
 		error: v.optional(v.string()),
 	}),
-	handler: async () => {
-		const botToken = process.env.TELEGRAM_BOT_TOKEN;
+	handler: async (_ctx, { botToken }) => {
 		if (!botToken) {
-			return { success: false, error: "TELEGRAM_BOT_TOKEN not configured" };
+			return { success: false, error: "botToken is required" };
 		}
 
 		const client = createTelegramClient(botToken);

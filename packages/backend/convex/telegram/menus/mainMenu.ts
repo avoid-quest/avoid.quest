@@ -12,9 +12,10 @@ import { actionsMenu } from "./actionsMenu";
 import { settingsMenu } from "./settingsMenu";
 import { usersMenu } from "./usersMenu";
 
-export const mainMenu = new MenuTemplate<BotContext>(
-	"🤖 <b>Admin Panel</b>\n\nSelect an option:",
-);
+export const mainMenu = new MenuTemplate<BotContext>({
+	text: "🤖 <b>Admin Panel</b>\n\nSelect an option:",
+	parse_mode: "HTML",
+});
 
 /**
  * Status button - shows system status

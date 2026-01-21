@@ -249,6 +249,7 @@ export declare const components: {
         "action",
         "internal",
         {
+          botToken: string;
           caption: string;
           chatId: string;
           mediaItems: Array<{
@@ -275,13 +276,18 @@ export declare const components: {
       sendTextMessage: FunctionReference<
         "action",
         "internal",
-        { chatId: string; disableNotification?: boolean; text: string },
+        {
+          botToken: string;
+          chatId: string;
+          disableNotification?: boolean;
+          text: string;
+        },
         { error?: string; messageId?: number; success: boolean }
       >;
       verifyBotToken: FunctionReference<
         "action",
         "internal",
-        {},
+        { botToken: string },
         { botUsername?: string; error?: string; success: boolean }
       >;
     };

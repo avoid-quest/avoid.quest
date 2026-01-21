@@ -102,10 +102,11 @@ describe("users", () => {
 			const user = await t.mutation(internal.users.getOrCreateUserInternal, {
 				username: "recentlyscraped",
 			});
+			if (!user) throw new Error("User should be created");
 
 			// Update last_scraped_at to recent time
 			await t.mutation(internal.users.updateLastScrapedAtInternal, {
-				id: user!._id,
+				id: user._id,
 				lastScrapedAt: Date.now(),
 			});
 
@@ -127,10 +128,11 @@ describe("users", () => {
 			const user = await t.mutation(internal.users.getOrCreateUserInternal, {
 				username: "oldscraped",
 			});
+			if (!user) throw new Error("User should be created");
 
 			// Update last_scraped_at to 1 hour ago
 			await t.mutation(internal.users.updateLastScrapedAtInternal, {
-				id: user!._id,
+				id: user._id,
 				lastScrapedAt: Date.now() - 60 * 60 * 1000,
 			});
 
@@ -171,16 +173,17 @@ describe("users", () => {
 			const user = await t.mutation(internal.users.getOrCreateUserInternal, {
 				username: "testuser",
 			});
+			if (!user) throw new Error("User should be created");
 
 			const timestamp = Date.now();
 			await t.mutation(internal.users.updateLastScrapedAtInternal, {
-				id: user!._id,
+				id: user._id,
 				lastScrapedAt: timestamp,
 			});
 
 			// Verify the update by fetching directly
 			const updatedUser = await t.run(async (ctx) => {
-				return (await ctx.db.get(user!._id)) as Doc<"users"> | null;
+				return (await ctx.db.get(user._id)) as Doc<"users"> | null;
 			});
 
 			expect(updatedUser?.last_scraped_at).toBe(timestamp);
@@ -192,21 +195,22 @@ describe("users", () => {
 			const user = await t.mutation(internal.users.getOrCreateUserInternal, {
 				username: "testuser",
 			});
+			if (!user) throw new Error("User should be created");
 
 			const firstTimestamp = Date.now();
 			await t.mutation(internal.users.updateLastScrapedAtInternal, {
-				id: user!._id,
+				id: user._id,
 				lastScrapedAt: firstTimestamp,
 			});
 
 			const secondTimestamp = Date.now() + 1000;
 			await t.mutation(internal.users.updateLastScrapedAtInternal, {
-				id: user!._id,
+				id: user._id,
 				lastScrapedAt: secondTimestamp,
 			});
 
 			const updatedUser = await t.run(async (ctx) => {
-				return (await ctx.db.get(user!._id)) as Doc<"users"> | null;
+				return (await ctx.db.get(user._id)) as Doc<"users"> | null;
 			});
 
 			expect(updatedUser?.last_scraped_at).toBe(secondTimestamp);

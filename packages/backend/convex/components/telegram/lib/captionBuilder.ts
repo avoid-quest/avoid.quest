@@ -55,7 +55,7 @@ export function instagramMention(username: string): string {
  * Convert @mentions in text to clickable Instagram links
  */
 export function linkInstagramMentions(text: string): string {
-	return text.replace(/@([a-zA-Z0-9_.]+)/g, (match, username) => {
+	return text.replace(/@([a-zA-Z0-9_.]+)/g, (_match, username) => {
 		return instagramMention(username);
 	});
 }

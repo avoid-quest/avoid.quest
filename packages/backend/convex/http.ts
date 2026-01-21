@@ -39,7 +39,10 @@ function parseCommand(text: string): { command: string; args: string } | null {
 	const trimmed = text.trim();
 	if (!trimmed.startsWith("/")) return null;
 	const parts = trimmed.split(/\s+/);
-	const command = parts[0].toLowerCase().split("@")[0];
+	const firstPart = parts[0];
+	if (!firstPart) return null;
+	const command = firstPart.toLowerCase().split("@")[0];
+	if (!command) return null;
 	const args = parts.slice(1).join(" ");
 	return { command, args };
 }

@@ -108,7 +108,7 @@ export const runTelegramSend = internalAction({
 					for (let i = 0; i < result.fileIds.length; i++) {
 						const fileInfo = result.fileIds[i];
 						const mediaItem = sentMediaItems[i];
-						if (mediaItem?.url) {
+						if (fileInfo && mediaItem?.url) {
 							await ctx.runMutation(
 								internal.media_items.updateMediaItemWithFileIdInternal,
 								{
@@ -333,7 +333,7 @@ export const retrySinglePost = internalAction({
 				for (let i = 0; i < result.fileIds.length; i++) {
 					const fileInfo = result.fileIds[i];
 					const mediaItem = sentMediaItems[i];
-					if (mediaItem?.url) {
+					if (fileInfo && mediaItem?.url) {
 						await ctx.runMutation(
 							internal.media_items.updateMediaItemWithFileIdInternal,
 							{

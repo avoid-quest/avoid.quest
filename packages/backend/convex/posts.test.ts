@@ -22,6 +22,7 @@ describe("posts", () => {
 			const user = await t.mutation(internal.users.getOrCreateUserInternal, {
 				username: "testuser",
 			});
+			if (!user) throw new Error("User should be created");
 
 			// Create an unsent post
 			await t.mutation(internal.posts.upsertPostInternal, {
@@ -32,7 +33,7 @@ describe("posts", () => {
 				is_video: false,
 				url: "https://instagram.com/p/ABC123",
 				media_type: "image",
-				users: [user!._id],
+				users: [user._id],
 				timestamp: Date.now(),
 			});
 
@@ -50,6 +51,7 @@ describe("posts", () => {
 			const user = await t.mutation(internal.users.getOrCreateUserInternal, {
 				username: "testuser",
 			});
+			if (!user) throw new Error("User should be created");
 
 			// Create a post
 			const postId = await t.mutation(internal.posts.upsertPostInternal, {
@@ -60,7 +62,7 @@ describe("posts", () => {
 				is_video: false,
 				url: "https://instagram.com/p/ABC123",
 				media_type: "image",
-				users: [user!._id],
+				users: [user._id],
 				timestamp: Date.now(),
 			});
 
@@ -82,6 +84,7 @@ describe("posts", () => {
 			const user = await t.mutation(internal.users.getOrCreateUserInternal, {
 				username: "testuser",
 			});
+			if (!user) throw new Error("User should be created");
 
 			// Create 5 posts
 			for (let i = 0; i < 5; i++) {
@@ -93,7 +96,7 @@ describe("posts", () => {
 					is_video: false,
 					url: `https://instagram.com/p/POST${i}`,
 					media_type: "image",
-					users: [user!._id],
+					users: [user._id],
 					timestamp: Date.now() + i,
 				});
 			}
@@ -112,6 +115,7 @@ describe("posts", () => {
 			const user = await t.mutation(internal.users.getOrCreateUserInternal, {
 				username: "testuser",
 			});
+			if (!user) throw new Error("User should be created");
 
 			const postId = await t.mutation(internal.posts.upsertPostInternal, {
 				ig_id: "1",
@@ -121,7 +125,7 @@ describe("posts", () => {
 				is_video: false,
 				url: "https://instagram.com/p/ABC123",
 				media_type: "image",
-				users: [user!._id],
+				users: [user._id],
 				timestamp: Date.now(),
 			});
 
@@ -152,6 +156,7 @@ describe("posts", () => {
 			const user = await t.mutation(internal.users.getOrCreateUserInternal, {
 				username: "testuser",
 			});
+			if (!user) throw new Error("User should be created");
 
 			const postId = await t.mutation(internal.posts.upsertPostInternal, {
 				ig_id: "temp",
@@ -161,7 +166,7 @@ describe("posts", () => {
 				is_video: false,
 				url: "https://instagram.com/p/TEMP",
 				media_type: "image",
-				users: [user!._id],
+				users: [user._id],
 				timestamp: Date.now(),
 			});
 
@@ -187,6 +192,7 @@ describe("posts", () => {
 			const user = await t.mutation(internal.users.getOrCreateUserInternal, {
 				username: "testuser",
 			});
+			if (!user) throw new Error("User should be created");
 
 			await t.mutation(internal.posts.upsertPostInternal, {
 				ig_id: "1",
@@ -196,7 +202,7 @@ describe("posts", () => {
 				is_video: false,
 				url: "https://instagram.com/p/UNIQUE123",
 				media_type: "image",
-				users: [user!._id],
+				users: [user._id],
 				timestamp: Date.now(),
 			});
 
@@ -226,6 +232,7 @@ describe("posts", () => {
 			const user = await t.mutation(internal.users.getOrCreateUserInternal, {
 				username: "testuser",
 			});
+			if (!user) throw new Error("User should be created");
 
 			const postId = await t.mutation(internal.posts.upsertPostInternal, {
 				ig_id: "1",
@@ -235,7 +242,7 @@ describe("posts", () => {
 				is_video: false,
 				url: "https://instagram.com/p/NEW123",
 				media_type: "image",
-				users: [user!._id],
+				users: [user._id],
 				timestamp: Date.now(),
 			});
 
@@ -252,9 +259,11 @@ describe("posts", () => {
 			const user1 = await t.mutation(internal.users.getOrCreateUserInternal, {
 				username: "user1",
 			});
+			if (!user1) throw new Error("User1 should be created");
 			const user2 = await t.mutation(internal.users.getOrCreateUserInternal, {
 				username: "user2",
 			});
+			if (!user2) throw new Error("User2 should be created");
 
 			// Create post with user1
 			const postId = await t.mutation(internal.posts.upsertPostInternal, {
@@ -265,7 +274,7 @@ describe("posts", () => {
 				is_video: false,
 				url: "https://instagram.com/p/MERGE123",
 				media_type: "image",
-				users: [user1!._id],
+				users: [user1._id],
 				timestamp: Date.now(),
 			});
 
@@ -279,7 +288,7 @@ describe("posts", () => {
 				is_video: false,
 				url: "https://instagram.com/p/MERGE123",
 				media_type: "image",
-				users: [user2!._id],
+				users: [user2._id],
 				timestamp: Date.now(),
 			});
 
@@ -288,8 +297,8 @@ describe("posts", () => {
 			});
 			expect(post?.caption).toBe("Updated");
 			expect(post?.users).toHaveLength(2);
-			expect(post?.users).toContain(user1!._id);
-			expect(post?.users).toContain(user2!._id);
+			expect(post?.users).toContain(user1._id);
+			expect(post?.users).toContain(user2._id);
 		});
 
 		it("handles video posts", async () => {
@@ -298,6 +307,7 @@ describe("posts", () => {
 			const user = await t.mutation(internal.users.getOrCreateUserInternal, {
 				username: "testuser",
 			});
+			if (!user) throw new Error("User should be created");
 
 			const postId = await t.mutation(internal.posts.upsertPostInternal, {
 				ig_id: "1",
@@ -309,7 +319,7 @@ describe("posts", () => {
 				is_video: true,
 				url: "https://instagram.com/p/VIDEO123",
 				media_type: "video",
-				users: [user!._id],
+				users: [user._id],
 				timestamp: Date.now(),
 			});
 
@@ -327,6 +337,7 @@ describe("posts", () => {
 			const user = await t.mutation(internal.users.getOrCreateUserInternal, {
 				username: "testuser",
 			});
+			if (!user) throw new Error("User should be created");
 
 			const postId = await t.mutation(internal.posts.upsertPostInternal, {
 				ig_id: "1",
@@ -336,7 +347,7 @@ describe("posts", () => {
 				is_video: false,
 				url: "https://instagram.com/p/CAROUSEL123",
 				media_type: "carousel",
-				users: [user!._id],
+				users: [user._id],
 				timestamp: Date.now(),
 			});
 
@@ -352,6 +363,7 @@ describe("posts", () => {
 			const user = await t.mutation(internal.users.getOrCreateUserInternal, {
 				username: "testuser",
 			});
+			if (!user) throw new Error("User should be created");
 
 			const eventDate = Date.now() + 86400000; // Tomorrow
 			const postId = await t.mutation(internal.posts.upsertPostInternal, {
@@ -362,7 +374,7 @@ describe("posts", () => {
 				is_video: false,
 				url: "https://instagram.com/p/EVENT123",
 				media_type: "image",
-				users: [user!._id],
+				users: [user._id],
 				timestamp: Date.now(),
 				event_date: eventDate,
 			});

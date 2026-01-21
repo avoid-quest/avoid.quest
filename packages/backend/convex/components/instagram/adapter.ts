@@ -3,33 +3,51 @@
  * Handles fetching posts from Instagram's web API
  */
 
+import type { Infer } from "convex/values";
+import { v } from "convex/values";
 import { getInstagramHeaders, randomSleep } from "./lib/userAgents";
 
 const INSTAGRAM_API_BASE = "https://www.instagram.com/api/v1";
 const REQUEST_TIMEOUT_MS = 10000;
 
 /**
- * Fetched post from Instagram
+ * Convex validator for fetched post from Instagram
  * Timestamps are in SECONDS (Instagram API format)
  */
-export type FetchedPost = {
-	id: string;
-	shortcode: string;
-	timestampSec: number;
-	display_url: string;
-	caption: string;
-	is_video: boolean;
-	url: string;
-	media_type: "image" | "video" | "carousel";
-	media_items: Array<{
-		url: string;
-		type: "image" | "video" | "thumbnail";
-		width?: number;
-		height?: number;
-	}>;
-	video_url?: string;
-	thumbnail_url?: string;
-};
+export const fetchedPostValidator = v.object({
+	id: v.string(),
+	shortcode: v.string(),
+	timestampSec: v.number(),
+	display_url: v.string(),
+	caption: v.string(),
+	is_video: v.boolean(),
+	url: v.string(),
+	media_type: v.union(
+		v.literal("image"),
+		v.literal("video"),
+		v.literal("carousel"),
+	),
+	media_items: v.array(
+		v.object({
+			url: v.string(),
+			type: v.union(
+				v.literal("image"),
+				v.literal("video"),
+				v.literal("thumbnail"),
+			),
+			width: v.optional(v.number()),
+			height: v.optional(v.number()),
+		}),
+	),
+	video_url: v.optional(v.string()),
+	thumbnail_url: v.optional(v.string()),
+});
+
+/**
+ * Fetched post from Instagram
+ * Type derived from validator using Infer<>
+ */
+export type FetchedPost = Infer<typeof fetchedPostValidator>;
 
 export type FetchResult = {
 	success: boolean;

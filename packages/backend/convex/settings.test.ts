@@ -135,7 +135,6 @@ describe("settings", () => {
 				telegram: {
 					active: true,
 					send_report: false,
-					admin_chat_id: "123456",
 					group_chat_id: "789012",
 					request_timeout_ms: 60000,
 					delay_between_posts_ms: 1000,
@@ -143,7 +142,6 @@ describe("settings", () => {
 			});
 
 			const settings = await t.query(internal.settings.getSettingsInternal);
-			expect(settings?.telegram?.admin_chat_id).toBe("123456");
 			expect(settings?.telegram?.group_chat_id).toBe("789012");
 			expect(settings?.telegram?.request_timeout_ms).toBe(60000);
 			expect(settings?.telegram?.delay_between_posts_ms).toBe(1000);

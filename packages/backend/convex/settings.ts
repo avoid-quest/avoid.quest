@@ -241,7 +241,7 @@ export const updateSettingInternal = internalMutation({
 				active: settings.telegram?.active ?? false,
 				send_report: settings.telegram?.send_report ?? false,
 			};
-			if (field === "group_chat_id" || field === "admin_chat_id") {
+			if (field === "group_chat_id") {
 				(telegram as Record<string, unknown>)[field] = value;
 			} else if (
 				field === "send_limit" ||

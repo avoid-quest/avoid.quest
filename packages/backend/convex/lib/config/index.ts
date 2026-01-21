@@ -35,10 +35,8 @@ export {
  */
 type TelegramDbSettings = {
 	active: boolean;
-	admin_chat_id?: string;
 	group_chat_id?: string;
 	send_limit?: number;
-	last_sent_at?: number;
 	send_report: boolean;
 	request_timeout_ms?: number;
 	delay_between_posts_ms?: number;
@@ -48,7 +46,6 @@ type InstagramDbSettings = {
 	active: boolean;
 	limit?: number;
 	post_per_user?: number;
-	last_scraped_at?: number;
 	request_timeout_ms?: number;
 	min_scrape_interval_ms?: number;
 	delay_between_users_min_ms?: number;
@@ -67,10 +64,8 @@ type LocaleDbSettings = {
  */
 export type ResolvedTelegramConfig = {
 	active: boolean;
-	adminChatId?: string;
 	groupChatId?: string;
 	sendLimit: number;
-	lastSentAt?: number;
 	sendReport: boolean;
 	requestTimeoutMs: number;
 	delayBetweenPostsMs: number;
@@ -80,7 +75,6 @@ export type ResolvedInstagramConfig = {
 	active: boolean;
 	userLimit: number;
 	postsPerUser: number;
-	lastScrapedAt?: number;
 	requestTimeoutMs: number;
 	minScrapeIntervalMs: number;
 	delayBetweenUsersMinMs: number;
@@ -109,10 +103,8 @@ export function resolveTelegramConfig(
 ): ResolvedTelegramConfig {
 	return {
 		active: dbSettings?.active ?? false,
-		adminChatId: dbSettings?.admin_chat_id,
 		groupChatId: dbSettings?.group_chat_id,
 		sendLimit: dbSettings?.send_limit ?? TELEGRAM_DEFAULTS.SEND_LIMIT,
-		lastSentAt: dbSettings?.last_sent_at,
 		sendReport: dbSettings?.send_report ?? false,
 		requestTimeoutMs:
 			dbSettings?.request_timeout_ms ?? TELEGRAM_DEFAULTS.REQUEST_TIMEOUT_MS,
@@ -134,7 +126,6 @@ export function resolveInstagramConfig(
 		userLimit: dbSettings?.limit ?? INSTAGRAM_DEFAULTS.USER_LIMIT,
 		postsPerUser:
 			dbSettings?.post_per_user ?? INSTAGRAM_DEFAULTS.POSTS_PER_USER,
-		lastScrapedAt: dbSettings?.last_scraped_at,
 		requestTimeoutMs:
 			dbSettings?.request_timeout_ms ?? INSTAGRAM_DEFAULTS.REQUEST_TIMEOUT_MS,
 		minScrapeIntervalMs:

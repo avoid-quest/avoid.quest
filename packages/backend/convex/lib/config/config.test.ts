@@ -43,23 +43,11 @@ describe("resolveTelegramConfig", () => {
 	it("handles optional fields", () => {
 		const config = resolveTelegramConfig({
 			active: true,
-			admin_chat_id: "123",
 			group_chat_id: "456",
 			send_report: true,
 		});
-		expect(config.adminChatId).toBe("123");
 		expect(config.groupChatId).toBe("456");
 		expect(config.sendReport).toBe(true);
-	});
-
-	it("handles last_sent_at timestamp", () => {
-		const timestamp = Date.now();
-		const config = resolveTelegramConfig({
-			active: true,
-			send_report: false,
-			last_sent_at: timestamp,
-		});
-		expect(config.lastSentAt).toBe(timestamp);
 	});
 
 	it("handles custom timeouts and delays", () => {
@@ -136,15 +124,6 @@ describe("resolveInstagramConfig", () => {
 		});
 		expect(config.rateLimitMaxTokens).toBe(5);
 		expect(config.rateLimitRefillRate).toBe(1.0);
-	});
-
-	it("handles last_scraped_at timestamp", () => {
-		const timestamp = Date.now();
-		const config = resolveInstagramConfig({
-			active: true,
-			last_scraped_at: timestamp,
-		});
-		expect(config.lastScrapedAt).toBe(timestamp);
 	});
 });
 

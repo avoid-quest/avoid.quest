@@ -19,12 +19,31 @@ export const getPosts = query({
 			.take(limit ?? 10),
 });
 
-export type Identity<T> = { [P in keyof T]: T[P] };
-export type Replace<T, K extends keyof T, TReplace> = Identity<
-	Pick<T, Exclude<keyof T, K>> & {
-		[P in K]: TReplace;
-	}
->;
+/**
+ * Shared validator for paginated post results
+ */
+const paginatedPostValidator = v.object({
+	_id: v.id("posts"),
+	_creationTime: v.number(),
+	ig_id: v.string(),
+	shortcode: v.string(),
+	display_url: v.string(),
+	video_url: v.optional(v.string()),
+	thumbnail_url: v.optional(v.string()),
+	caption: v.string(),
+	is_video: v.boolean(),
+	url: v.string(),
+	media_type: v.union(
+		v.literal("image"),
+		v.literal("video"),
+		v.literal("carousel"),
+	),
+	users: v.array(v.id("users")),
+	timestamp: v.number(),
+	event_date: v.optional(v.number()),
+	sent: v.optional(v.boolean()),
+	sentAt: v.optional(v.number()),
+});
 
 export const getPostById = query({
 	args: { id: v.id("posts") },
@@ -61,30 +80,7 @@ export const getUnsent = query({
 export const getPostsPaginated = query({
 	args: { paginationOpts: paginationOptsValidator },
 	returns: v.object({
-		page: v.array(
-			v.object({
-				_id: v.id("posts"),
-				_creationTime: v.number(),
-				ig_id: v.string(),
-				shortcode: v.string(),
-				display_url: v.string(),
-				video_url: v.optional(v.string()),
-				thumbnail_url: v.optional(v.string()),
-				caption: v.string(),
-				is_video: v.boolean(),
-				url: v.string(),
-				media_type: v.union(
-					v.literal("image"),
-					v.literal("video"),
-					v.literal("carousel"),
-				),
-				users: v.array(v.id("users")),
-				timestamp: v.number(),
-				event_date: v.optional(v.number()),
-				sent: v.optional(v.boolean()),
-				sentAt: v.optional(v.number()),
-			}),
-		),
+		page: v.array(paginatedPostValidator),
 		isDone: v.boolean(),
 		continueCursor: v.union(v.string(), v.null()),
 	}),
@@ -105,30 +101,7 @@ export const getPostsPaginated = query({
 export const getUnsentPaginated = query({
 	args: { paginationOpts: paginationOptsValidator },
 	returns: v.object({
-		page: v.array(
-			v.object({
-				_id: v.id("posts"),
-				_creationTime: v.number(),
-				ig_id: v.string(),
-				shortcode: v.string(),
-				display_url: v.string(),
-				video_url: v.optional(v.string()),
-				thumbnail_url: v.optional(v.string()),
-				caption: v.string(),
-				is_video: v.boolean(),
-				url: v.string(),
-				media_type: v.union(
-					v.literal("image"),
-					v.literal("video"),
-					v.literal("carousel"),
-				),
-				users: v.array(v.id("users")),
-				timestamp: v.number(),
-				event_date: v.optional(v.number()),
-				sent: v.optional(v.boolean()),
-				sentAt: v.optional(v.number()),
-			}),
-		),
+		page: v.array(paginatedPostValidator),
 		isDone: v.boolean(),
 		continueCursor: v.union(v.string(), v.null()),
 	}),

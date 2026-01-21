@@ -13,11 +13,8 @@ import { v } from "convex/values";
  */
 export const telegramSettingsValidator = v.object({
 	active: v.boolean(),
-	admin_chat_id: v.optional(v.string()),
 	group_chat_id: v.optional(v.string()),
 	send_limit: v.optional(v.number()),
-	/** Timestamp in milliseconds (UTC) - when posts were last sent */
-	last_sent_at: v.optional(v.number()),
 	send_report: v.boolean(),
 	// Runtime-configurable timeouts/delays
 	request_timeout_ms: v.optional(v.number()),
@@ -32,8 +29,6 @@ export const instagramSettingsValidator = v.object({
 	active: v.boolean(),
 	limit: v.optional(v.number()),
 	post_per_user: v.optional(v.number()),
-	/** Timestamp in milliseconds (UTC) - when fetching last ran */
-	last_scraped_at: v.optional(v.number()),
 	// Runtime-configurable timeouts/delays
 	request_timeout_ms: v.optional(v.number()),
 	min_scrape_interval_ms: v.optional(v.number()),
@@ -58,8 +53,6 @@ export const localeSettingsValidator = v.object({
  */
 export const loggingSettingsValidator = v.object({
 	active: v.boolean(),
-	/** Timestamp in milliseconds (UTC) - when logging last ran */
-	last_logged_at: v.optional(v.number()),
 	max_retention_days: v.optional(v.number()),
 	log_file: v.optional(v.string()),
 	log_level: v.optional(v.string()),

@@ -1,0 +1,174 @@
+/**
+ * Test data factories for generating test fixtures
+ */
+
+import type { Id } from "../_generated/dataModel";
+
+/**
+ * Create a mock post ID for testing
+ */
+export function createMockPostId(): Id<"posts"> {
+	return `posts:${Date.now()}_${Math.random().toString(36).slice(2)}` as Id<"posts">;
+}
+
+/**
+ * Create a mock user ID for testing
+ */
+export function createMockUserId(): Id<"users"> {
+	return `users:${Date.now()}_${Math.random().toString(36).slice(2)}` as Id<"users">;
+}
+
+/**
+ * Create a mock media item ID for testing
+ */
+export function createMockMediaItemId(): Id<"media_items"> {
+	return `media_items:${Date.now()}_${Math.random().toString(36).slice(2)}` as Id<"media_items">;
+}
+
+/**
+ * Post factory for test data
+ */
+export function createTestPost(overrides?: Partial<TestPost>): TestPost {
+	const now = Date.now();
+	return {
+		ig_id: `post_${now}`,
+		shortcode: `ABC${now.toString(36).toUpperCase()}`,
+		display_url: `https://instagram.com/p/test/${now}`,
+		caption: "Test caption",
+		is_video: false,
+		url: `https://instagram.com/p/test_${now}/`,
+		media_type: "image",
+		timestamp: now,
+		users: [],
+		sent: false,
+		...overrides,
+	};
+}
+
+type TestPost = {
+	ig_id: string;
+	shortcode: string;
+	display_url: string;
+	caption: string;
+	is_video: boolean;
+	url: string;
+	media_type: "image" | "video" | "carousel";
+	timestamp: number;
+	event_date?: number;
+	users: Id<"users">[];
+	sent: boolean;
+	sentAt?: number;
+	video_url?: string;
+	thumbnail_url?: string;
+};
+
+/**
+ * User factory for test data
+ */
+export function createTestUser(overrides?: Partial<TestUser>): TestUser {
+	const now = Date.now();
+	return {
+		username: `testuser_${now}`,
+		to_be_scraped: true,
+		...overrides,
+	};
+}
+
+type TestUser = {
+	username: string;
+	profile_url?: string;
+	to_be_scraped: boolean;
+	last_scraped_at?: number;
+};
+
+/**
+ * Media item factory for test data
+ */
+export function createTestMediaItem(
+	overrides?: Partial<TestMediaItem>,
+): TestMediaItem {
+	const now = Date.now();
+	return {
+		url: `https://instagram.com/media/${now}.jpg`,
+		type: "image",
+		post_id: createMockPostId(),
+		...overrides,
+	};
+}
+
+type TestMediaItem = {
+	url?: string;
+	file_id?: string;
+	file_unique_id?: string;
+	type: "image" | "video" | "thumbnail";
+	width?: number;
+	height?: number;
+	post_id: Id<"posts">;
+};
+
+/**
+ * Settings factory for test data
+ */
+export function createTestSettings(
+	overrides?: Partial<TestSettings>,
+): TestSettings {
+	return {
+		telegram: {
+			active: false,
+			send_report: false,
+		},
+		instagram: {
+			active: false,
+		},
+		locale: {
+			timezone: "Europe/Rome",
+			locale: "it-IT",
+		},
+		logging: {
+			active: false,
+		},
+		...overrides,
+	};
+}
+
+type TestSettings = {
+	telegram?: {
+		active: boolean;
+		group_chat_id?: string;
+		send_limit?: number;
+		send_report: boolean;
+		request_timeout_ms?: number;
+		delay_between_posts_ms?: number;
+	};
+	instagram?: {
+		active: boolean;
+		limit?: number;
+		post_per_user?: number;
+		request_timeout_ms?: number;
+		min_scrape_interval_ms?: number;
+	};
+	locale?: {
+		timezone?: string;
+		locale?: string;
+	};
+	logging?: {
+		active: boolean;
+		max_retention_days?: number;
+		log_level?: string;
+	};
+};
+
+/**
+ * Telegram API response factory
+ */
+export function createTelegramSuccessResponse<T>(result: T) {
+	return { ok: true as const, result };
+}
+
+export function createTelegramErrorResponse(
+	error_code: number,
+	description: string,
+	parameters?: { retry_after?: number },
+) {
+	return { ok: false as const, error_code, description, parameters };
+}

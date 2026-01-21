@@ -5,36 +5,12 @@
 
 import { v } from "convex/values";
 import { action } from "./_generated/server";
-import { type FetchedPost, fetchSinglePost, fetchUserPosts } from "./adapter";
-
-const fetchedPostValidator = v.object({
-	id: v.string(),
-	shortcode: v.string(),
-	timestampSec: v.number(),
-	display_url: v.string(),
-	caption: v.string(),
-	is_video: v.boolean(),
-	url: v.string(),
-	media_type: v.union(
-		v.literal("image"),
-		v.literal("video"),
-		v.literal("carousel"),
-	),
-	media_items: v.array(
-		v.object({
-			url: v.string(),
-			type: v.union(
-				v.literal("image"),
-				v.literal("video"),
-				v.literal("thumbnail"),
-			),
-			width: v.optional(v.number()),
-			height: v.optional(v.number()),
-		}),
-	),
-	video_url: v.optional(v.string()),
-	thumbnail_url: v.optional(v.string()),
-});
+import {
+	type FetchedPost,
+	fetchedPostValidator,
+	fetchSinglePost,
+	fetchUserPosts,
+} from "./adapter";
 
 export type FetchUserResult = {
 	success: boolean;

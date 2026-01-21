@@ -40,12 +40,6 @@ mainMenu.interact("status", {
 			const instagramStatus = settings.instagram?.active
 				? "✅ Active"
 				: "❌ Inactive";
-			const lastSentAt = settings.telegram?.last_sent_at
-				? new Date(settings.telegram.last_sent_at).toLocaleString()
-				: "Never";
-			const lastScrapedAt = settings.instagram?.last_scraped_at
-				? new Date(settings.instagram.last_scraped_at).toLocaleString()
-				: "Never";
 
 			await ctx.reply(
 				`<b>📊 System Status</b>
@@ -54,13 +48,11 @@ mainMenu.interact("status", {
 Status: ${telegramStatus}
 Group: ${settings.telegram?.group_chat_id ?? "Not set"}
 Limit: ${settings.telegram?.send_limit ?? 3}
-Last Sent: ${lastSentAt}
 
 <b>📸 Instagram</b>
 Status: ${instagramStatus}
 Users: ${settings.instagram?.limit ?? 5}
-Posts/User: ${settings.instagram?.post_per_user ?? 20}
-Last Scraped: ${lastScrapedAt}`,
+Posts/User: ${settings.instagram?.post_per_user ?? 20}`,
 				{ parse_mode: "HTML" },
 			);
 		} catch (error) {

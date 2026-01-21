@@ -5,9 +5,49 @@
  * Manage all bot settings (Telegram, Instagram, Locale, Logging)
  */
 
+import type { FunctionReference } from "convex/server";
 import { MenuTemplate } from "grammy-inline-menu";
 import { internal } from "../../_generated/api";
 import type { BotContext } from "../bot";
+
+/**
+ * Helper to add an edit field interaction to a menu
+ */
+function addEditField(
+	menu: MenuTemplate<BotContext>,
+	id: string,
+	label: string,
+	settingPath: string,
+	prompt: string,
+) {
+	menu.interact(id, {
+		text: `✏️ ${label}`,
+		do: async (ctx) => {
+			ctx.session.awaitingInput = { type: "edit_setting", settingPath };
+			await ctx.reply(prompt);
+			return false;
+		},
+	});
+}
+
+/**
+ * Helper to add a toggle interaction to a menu
+ */
+function addToggle(
+	menu: MenuTemplate<BotContext>,
+	id: string,
+	label: string,
+	// biome-ignore lint/suspicious/noExplicitAny: Convex mutation reference type
+	mutation: FunctionReference<"mutation", any>,
+) {
+	menu.interact(id, {
+		text: `🔄 ${label}`,
+		do: async (ctx) => {
+			await ctx.convex.runMutation(mutation, {});
+			return true;
+		},
+	});
+}
 
 /**
  * Telegram settings submenu
@@ -35,52 +75,32 @@ Delay Between Posts: ${telegram?.delay_between_posts_ms ?? 1000}ms`,
 	};
 });
 
-telegramSettingsMenu.interact("toggle_active", {
-	text: (ctx) => "🔄 Toggle Active",
-	do: async (ctx) => {
-		await ctx.convex.runMutation(
-			internal.settings.toggleTelegramActiveInternal,
-			{},
-		);
-		return true;
-	},
-});
-
-telegramSettingsMenu.interact("toggle_report", {
-	text: "🔄 Toggle Report",
-	do: async (ctx) => {
-		await ctx.convex.runMutation(
-			internal.settings.toggleTelegramReportInternal,
-			{},
-		);
-		return true;
-	},
-});
-
-telegramSettingsMenu.interact("edit_group_id", {
-	text: "✏️ Edit Group ID",
-	do: async (ctx) => {
-		ctx.session.awaitingInput = {
-			type: "edit_setting",
-			settingPath: "telegram.group_chat_id",
-		};
-		await ctx.reply("Enter the Telegram group chat ID:");
-		return false;
-	},
-});
-
-telegramSettingsMenu.interact("edit_send_limit", {
-	text: "✏️ Edit Send Limit",
-	do: async (ctx) => {
-		ctx.session.awaitingInput = {
-			type: "edit_setting",
-			settingPath: "telegram.send_limit",
-		};
-		await ctx.reply("Enter the send limit (number of posts per batch):");
-		return false;
-	},
-});
-
+addToggle(
+	telegramSettingsMenu,
+	"toggle_active",
+	"Toggle Active",
+	internal.settings.toggleTelegramActiveInternal,
+);
+addToggle(
+	telegramSettingsMenu,
+	"toggle_report",
+	"Toggle Report",
+	internal.settings.toggleTelegramReportInternal,
+);
+addEditField(
+	telegramSettingsMenu,
+	"edit_group_id",
+	"Edit Group ID",
+	"telegram.group_chat_id",
+	"Enter the Telegram group chat ID:",
+);
+addEditField(
+	telegramSettingsMenu,
+	"edit_send_limit",
+	"Edit Send Limit",
+	"telegram.send_limit",
+	"Enter the send limit (number of posts per batch):",
+);
 telegramSettingsMenu.navigate("..", { text: "⬅️ Back" });
 
 /**
@@ -107,41 +127,26 @@ Min Scrape Interval: ${instagram?.min_scrape_interval_ms ?? 3600000}ms`,
 	};
 });
 
-instagramSettingsMenu.interact("toggle_active", {
-	text: "🔄 Toggle Active",
-	do: async (ctx) => {
-		await ctx.convex.runMutation(
-			internal.settings.toggleInstagramActiveInternal,
-			{},
-		);
-		return true;
-	},
-});
-
-instagramSettingsMenu.interact("edit_limit", {
-	text: "✏️ Edit User Limit",
-	do: async (ctx) => {
-		ctx.session.awaitingInput = {
-			type: "edit_setting",
-			settingPath: "instagram.limit",
-		};
-		await ctx.reply("Enter the user limit (number of users to scrape):");
-		return false;
-	},
-});
-
-instagramSettingsMenu.interact("edit_posts_per_user", {
-	text: "✏️ Edit Posts/User",
-	do: async (ctx) => {
-		ctx.session.awaitingInput = {
-			type: "edit_setting",
-			settingPath: "instagram.post_per_user",
-		};
-		await ctx.reply("Enter posts per user limit:");
-		return false;
-	},
-});
-
+addToggle(
+	instagramSettingsMenu,
+	"toggle_active",
+	"Toggle Active",
+	internal.settings.toggleInstagramActiveInternal,
+);
+addEditField(
+	instagramSettingsMenu,
+	"edit_limit",
+	"Edit User Limit",
+	"instagram.limit",
+	"Enter the user limit (number of users to scrape):",
+);
+addEditField(
+	instagramSettingsMenu,
+	"edit_posts_per_user",
+	"Edit Posts/User",
+	"instagram.post_per_user",
+	"Enter posts per user limit:",
+);
 instagramSettingsMenu.navigate("..", { text: "⬅️ Back" });
 
 /**
@@ -163,32 +168,20 @@ Locale: ${locale?.locale ?? "it-IT"}`,
 	};
 });
 
-localeSettingsMenu.interact("edit_timezone", {
-	text: "✏️ Edit Timezone",
-	do: async (ctx) => {
-		ctx.session.awaitingInput = {
-			type: "edit_setting",
-			settingPath: "locale.timezone",
-		};
-		await ctx.reply(
-			"Enter the timezone (e.g., Europe/Rome, America/New_York):",
-		);
-		return false;
-	},
-});
-
-localeSettingsMenu.interact("edit_locale", {
-	text: "✏️ Edit Locale",
-	do: async (ctx) => {
-		ctx.session.awaitingInput = {
-			type: "edit_setting",
-			settingPath: "locale.locale",
-		};
-		await ctx.reply("Enter the locale (e.g., it-IT, en-US):");
-		return false;
-	},
-});
-
+addEditField(
+	localeSettingsMenu,
+	"edit_timezone",
+	"Edit Timezone",
+	"locale.timezone",
+	"Enter the timezone (e.g., Europe/Rome, America/New_York):",
+);
+addEditField(
+	localeSettingsMenu,
+	"edit_locale",
+	"Edit Locale",
+	"locale.locale",
+	"Enter the locale (e.g., it-IT, en-US):",
+);
 localeSettingsMenu.navigate("..", { text: "⬅️ Back" });
 
 /**
@@ -213,29 +206,19 @@ Max Retention: ${logging?.max_retention_days ?? 30} days`,
 	};
 });
 
-loggingSettingsMenu.interact("toggle_active", {
-	text: "🔄 Toggle Active",
-	do: async (ctx) => {
-		await ctx.convex.runMutation(
-			internal.settings.toggleLoggingActiveInternal,
-			{},
-		);
-		return true;
-	},
-});
-
-loggingSettingsMenu.interact("edit_log_level", {
-	text: "✏️ Edit Log Level",
-	do: async (ctx) => {
-		ctx.session.awaitingInput = {
-			type: "edit_setting",
-			settingPath: "logging.log_level",
-		};
-		await ctx.reply("Enter log level (debug, info, warn, error):");
-		return false;
-	},
-});
-
+addToggle(
+	loggingSettingsMenu,
+	"toggle_active",
+	"Toggle Active",
+	internal.settings.toggleLoggingActiveInternal,
+);
+addEditField(
+	loggingSettingsMenu,
+	"edit_log_level",
+	"Edit Log Level",
+	"logging.log_level",
+	"Enter log level (debug, info, warn, error):",
+);
 loggingSettingsMenu.navigate("..", { text: "⬅️ Back" });
 
 /**

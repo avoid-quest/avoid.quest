@@ -34,7 +34,6 @@ bunx convex env set VARIABLE_NAME value
 | `TELEGRAM_BOT_TOKEN` | Yes | Telegram bot authentication token from BotFather |
 | `TELEGRAM_WEBHOOK_SECRET` | Yes | Secret token for webhook validation (see below) |
 | `TELEGRAM_ADMIN_CHAT_ID` | Yes | Chat ID authorized to use admin commands |
-| `GROQ_API_KEY` | Optional | [Groq API key](https://console.groq.com/) for AI metadata extraction |
 
 ### Generating TELEGRAM_WEBHOOK_SECRET
 
@@ -110,13 +109,11 @@ defaults.ts (compile-time) → database settings (runtime) → env vars (secrets
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `active` | boolean | `false` | Enable/disable Telegram sending |
-| `admin_chat_id` | string? | - | Chat ID for admin notifications |
 | `group_chat_id` | string? | - | Chat ID for post delivery |
 | `send_limit` | number? | `3` | Max posts per cron run |
 | `send_report` | boolean | `false` | Send summary report after batch |
 | `request_timeout_ms` | number? | `30000` | API request timeout |
 | `delay_between_posts_ms` | number? | `500` | Delay between sending posts |
-| `last_sent_at` | number? | - | Timestamp of last send (auto-updated) |
 
 ### Instagram Settings
 
@@ -131,7 +128,6 @@ defaults.ts (compile-time) → database settings (runtime) → env vars (secrets
 | `delay_between_users_max_ms` | number? | `30000` | Max delay between users |
 | `rate_limit_max_tokens` | number? | `3` | Rate limiter burst capacity |
 | `rate_limit_refill_rate` | number? | `0.5` | Rate limiter refill per second |
-| `last_scraped_at` | number? | - | Timestamp of last scrape (auto-updated) |
 
 ### Locale Settings
 
@@ -148,7 +144,6 @@ defaults.ts (compile-time) → database settings (runtime) → env vars (secrets
 | `max_retention_days` | number? | - | Log retention period |
 | `log_file` | string? | - | Log file path |
 | `log_level` | string? | - | Log level (debug, info, warn, error) |
-| `last_logged_at` | number? | - | Timestamp of last log (auto-updated) |
 
 ### Updating Settings
 

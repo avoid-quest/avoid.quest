@@ -31,6 +31,7 @@ import type * as telegram_menus_settingsMenu from "../telegram/menus/settingsMen
 import type * as telegram_menus_usersMenu from "../telegram/menus/usersMenu.js";
 import type * as telegram_webhook from "../telegram/webhook.js";
 import type * as telegram_messages from "../telegram_messages.js";
+import type * as test_factories from "../test/factories.js";
 import type * as users from "../users.js";
 
 import type {
@@ -63,6 +64,7 @@ declare const fullApi: ApiFromModules<{
   "telegram/menus/usersMenu": typeof telegram_menus_usersMenu;
   "telegram/webhook": typeof telegram_webhook;
   telegram_messages: typeof telegram_messages;
+  "test/factories": typeof test_factories;
   users: typeof users;
 }>;
 

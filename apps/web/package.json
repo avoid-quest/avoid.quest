@@ -10,7 +10,8 @@
     "typecheck": "astro check && tsc --noEmit",
     "deploy": "astro build && bunx wrangler@latest deploy",
     "cf-build": "astro build",
-    "cf-deploy": "bunx wrangler@latest deploy"
+    "cf-deploy": "npx wrangler@latest deploy",
+    "cf-upload": "npx wrangler@latest versions upload"
   },
   "dependencies": {
     "@astrojs/cloudflare": "^12.6.12",

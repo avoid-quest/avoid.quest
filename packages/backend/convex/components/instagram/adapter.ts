@@ -333,9 +333,9 @@ export async function fetchUserPosts(
  */
 export function extractShortcode(url: string): string | null {
 	const patterns = [
-		/instagram\.com\/p\/([A-Za-z0-9_-]+)/,
-		/instagram\.com\/reel\/([A-Za-z0-9_-]+)/,
-		/instagram\.com\/tv\/([A-Za-z0-9_-]+)/,
+		/instagram\.com\/(?:[^/]+\/)?p\/([A-Za-z0-9_-]+)/,
+		/instagram\.com\/(?:[^/]+\/)?reel\/([A-Za-z0-9_-]+)/,
+		/instagram\.com\/(?:[^/]+\/)?tv\/([A-Za-z0-9_-]+)/,
 	];
 
 	for (const pattern of patterns) {

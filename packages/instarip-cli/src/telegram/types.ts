@@ -8,6 +8,7 @@ export {
   type MediaItemWithThumbnail,
   type MediaValidationResult,
   MIN_MEDIA_GROUP_SIZE,
+  type TelegramMediaItem,
   type UrlValidationResult,
 } from "@avoid.quest/telegram";
 

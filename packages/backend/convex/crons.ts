@@ -20,8 +20,7 @@ export const getPostsWithoutMetadata = internalQuery({
 	handler: async (ctx, { limit }) => {
 		const posts = await ctx.db
 			.query("posts")
-			.filter((q) => q.eq(q.field("metadata_id"), undefined))
-			.order("desc")
+			.withIndex("by_metadata_id", (q) => q.eq("metadata_id", undefined))
 			.take(limit);
 		return posts.map((post) => post._id);
 	},

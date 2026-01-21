@@ -313,14 +313,18 @@ describe("telegram integration (requires CONVEX_URL)", () => {
           continue; // Skip posts without media items
         }
 
-        // Convert to MediaItem format
+        // Convert to MediaItem format - filter to items with url
         const mediaItemsWithThumbnail = mediaItems
           .filter(
             (m) =>
-              m.type === "image" || m.type === "video" || m.type === "thumbnail"
+              (m.type === "image" ||
+                m.type === "video" ||
+                m.type === "thumbnail") &&
+              m.url
           )
           .map((m) => ({
-            url: m.url,
+            // biome-ignore lint/style/noNonNullAssertion: filtered above
+            url: m.url!,
             type: m.type as "image" | "video" | "thumbnail",
             width: m.width,
             height: m.height,
@@ -380,10 +384,14 @@ describe("telegram integration (requires CONVEX_URL)", () => {
         const mediaItemsWithThumbnail = mediaItems
           .filter(
             (m) =>
-              m.type === "image" || m.type === "video" || m.type === "thumbnail"
+              (m.type === "image" ||
+                m.type === "video" ||
+                m.type === "thumbnail") &&
+              m.url
           )
           .map((m) => ({
-            url: m.url,
+            // biome-ignore lint/style/noNonNullAssertion: filtered above
+            url: m.url!,
             type: m.type as "image" | "video" | "thumbnail",
             width: m.width,
             height: m.height,
@@ -436,10 +444,14 @@ describe("telegram integration (requires CONVEX_URL)", () => {
         const mediaItemsWithThumbnail = mediaItems
           .filter(
             (m) =>
-              m.type === "image" || m.type === "video" || m.type === "thumbnail"
+              (m.type === "image" ||
+                m.type === "video" ||
+                m.type === "thumbnail") &&
+              m.url
           )
           .map((m) => ({
-            url: m.url,
+            // biome-ignore lint/style/noNonNullAssertion: filtered above
+            url: m.url!,
             type: m.type as "image" | "video" | "thumbnail",
             width: m.width,
             height: m.height,

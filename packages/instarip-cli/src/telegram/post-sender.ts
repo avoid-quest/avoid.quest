@@ -1,16 +1,19 @@
+import {
+  buildMediaGroup,
+  buildTelegramMediaGroup,
+  type MediaItem,
+  type MediaItemWithThumbnail,
+  type TelegramMediaItem,
+  validateAndFilterMediaItems,
+  validateMediaGroup,
+  validateMediaUrls,
+} from "@avoid.quest/telegram";
 import type { Doc } from "@workspace/backend/convex/_generated/dataModel";
 import { type Bot, GrammyError } from "grammy";
 import { api, getHttpClient } from "../convex/client";
 import type { createLogger } from "../infra/logger";
 import { createCaption } from "./caption-builder";
 import { handleTelegramApiError, logGrammyError } from "./error-handler";
-import {
-  buildMediaGroup,
-  validateAndFilterMediaItems,
-  validateMediaGroup,
-  validateMediaUrls,
-} from "./media-handler";
-import type { MediaItem, MediaItemWithThumbnail } from "./types";
 
 type Logger = ReturnType<typeof createLogger>;
 
@@ -112,45 +115,141 @@ function prepareCaption(
 }
 
 /**
- * Load and validate media items for post
+ * Result of loading media - either file_id-based (preferred) or URL-based (fallback)
  */
-async function loadAndValidateMedia(
+type LoadedMedia =
+  | { mode: "file_id"; items: TelegramMediaItem[] }
+  | { mode: "url"; items: MediaItem[] };
+
+/**
+ * Load media items for post
+ * - If all items have file_ids → use file_id mode (simple, no validation needed)
+ * - If any items lack file_ids → fall back to URL mode (with validation)
+ */
+async function loadMedia(
   post: Doc<"posts">,
   logger: Logger
-): Promise<MediaItem[]> {
+): Promise<LoadedMedia> {
   const mediaItems = await getHttpClient().query(
     api.media_items.getMediaItemsByPostId,
     { postId: post._id }
   );
 
-  const mediaItemsWithThumbnail = mediaItems
+  // Filter to image/video only (exclude thumbnails for sending)
+  const sendableItems = mediaItems.filter(
+    (m) => m.type === "image" || m.type === "video"
+  );
+
+  // Check if all items have file_ids (preferred path)
+  const allHaveFileIds = sendableItems.every(
+    (m) => m.file_id && m.file_unique_id
+  );
+
+  if (allHaveFileIds && sendableItems.length > 0) {
+    logger.debug(
+      `Using file_id mode for post ${post._id} with ${sendableItems.length} items`
+    );
+    return {
+      mode: "file_id",
+      items: sendableItems.map((m) => ({
+        // biome-ignore lint/style/noNonNullAssertion: checked above
+        file_id: m.file_id!,
+        // biome-ignore lint/style/noNonNullAssertion: checked above
+        file_unique_id: m.file_unique_id!,
+        type: m.type as "image" | "video",
+        width: m.width,
+        height: m.height,
+      })),
+    };
+  }
+
+  // Fall back to URL mode - filter to items with urls and validate
+  const itemsWithUrls: MediaItemWithThumbnail[] = mediaItems
     .filter(
-      (m) => m.type === "image" || m.type === "video" || m.type === "thumbnail"
+      (m) =>
+        (m.type === "image" || m.type === "video" || m.type === "thumbnail") &&
+        m.url
     )
     .map((m) => ({
-      url: m.url,
-      type: m.type as
-        | "image"
-        | "video"
-        | "thumbnail" as MediaItemWithThumbnail["type"],
+      // biome-ignore lint/style/noNonNullAssertion: filtered above
+      url: m.url!,
+      type: m.type as MediaItemWithThumbnail["type"],
       width: m.width,
       height: m.height,
     }));
 
   const validMedia = validateAndFilterMediaItems(
-    mediaItemsWithThumbnail,
+    itemsWithUrls,
     logger,
     !!process.env.DEBUG
   );
 
   logger.debug(
-    `Sending post ${post._id} with ${validMedia.length} media items (total: ${mediaItems.length})`
+    `Using URL mode for post ${post._id} with ${validMedia.length} valid items (total: ${mediaItems.length})`
   );
 
-  return validMedia;
+  return { mode: "url", items: validMedia };
 }
 
-type ExecuteSendStrategiesOptions = {
+// ============================================================================
+// FILE_ID-BASED SENDING (Simple path - no validation needed)
+// ============================================================================
+
+type SendWithFileIdsOptions = {
+  bot: Bot;
+  chatId: string;
+  media: TelegramMediaItem[];
+  caption: string;
+  logger: Logger;
+  postId: string;
+};
+
+/**
+ * Send media using file_ids (simple path)
+ * file_ids are permanent and never expire, so no validation is needed
+ */
+async function sendWithFileIds(options: SendWithFileIdsOptions): Promise<void> {
+  const { bot, chatId, media, caption, logger, postId } = options;
+
+  if (media.length === 0) {
+    logger.info(`No media items, sending text-only for post ${postId}`);
+    await bot.api.sendMessage(chatId, caption, { parse_mode: "HTML" });
+    return;
+  }
+
+  if (media.length === 1) {
+    const item = media[0];
+    if (!item) {
+      throw new Error("Media item is undefined");
+    }
+    logger.debug(`Sending single ${item.type} with file_id for post ${postId}`);
+    if (item.type === "video") {
+      await bot.api.sendVideo(chatId, item.file_id, {
+        caption,
+        parse_mode: "HTML",
+      });
+    } else {
+      await bot.api.sendPhoto(chatId, item.file_id, {
+        caption,
+        parse_mode: "HTML",
+      });
+    }
+    return;
+  }
+
+  // Multiple items - send as media group
+  logger.debug(
+    `Sending media group with ${media.length} items using file_ids for post ${postId}`
+  );
+  const mediaGroup = buildTelegramMediaGroup(media, caption);
+  await bot.api.sendMediaGroup(chatId, mediaGroup);
+}
+
+// ============================================================================
+// URL-BASED SENDING (Legacy path with validation - for unbackfilled posts)
+// ============================================================================
+
+type ExecuteUrlSendStrategiesOptions = {
   bot: Bot;
   chatId: string;
   post: Doc<"posts">;
@@ -160,10 +259,10 @@ type ExecuteSendStrategiesOptions = {
 };
 
 /**
- * Try media group strategy
+ * Try media group strategy (URL-based)
  */
 async function tryMediaGroupStrategyWithFallback(
-  options: ExecuteSendStrategiesOptions
+  options: ExecuteUrlSendStrategiesOptions
 ): Promise<boolean> {
   const { bot, chatId, validMedia, caption, logger, post } = options;
   try {
@@ -188,37 +287,10 @@ async function tryMediaGroupStrategyWithFallback(
 }
 
 /**
- * Try primary media strategy
- */
-async function tryPrimaryMediaStrategyWithFallback(
-  options: ExecuteSendStrategiesOptions
-): Promise<boolean> {
-  const { bot, chatId, post, caption, logger } = options;
-  try {
-    if (
-      await tryPrimaryMedia({
-        bot,
-        chatId,
-        post,
-        caption,
-        logger,
-      })
-    ) {
-      return true;
-    }
-  } catch (error) {
-    logger.warn(
-      `Primary media strategy failed, trying next strategy: ${error instanceof Error ? error.message : String(error)}`
-    );
-  }
-  return false;
-}
-
-/**
- * Try single media item strategy
+ * Try single media item strategy (URL-based)
  */
 async function trySingleMediaStrategyWithFallback(
-  options: ExecuteSendStrategiesOptions
+  options: ExecuteUrlSendStrategiesOptions
 ): Promise<boolean> {
   const { bot, chatId, validMedia, caption, logger } = options;
   if (validMedia.length !== 1) {
@@ -231,7 +303,7 @@ async function trySingleMediaStrategyWithFallback(
   }
 
   try {
-    await sendSingleMedia({ bot, chatId, media, caption, logger });
+    await sendSingleMediaUrl({ bot, chatId, media, caption, logger });
     return true;
   } catch (error) {
     logger.warn(
@@ -242,10 +314,10 @@ async function trySingleMediaStrategyWithFallback(
 }
 
 /**
- * Execute sending strategies with fallback
+ * Execute URL-based sending strategies with fallback
  */
-async function executeSendStrategies(
-  options: ExecuteSendStrategiesOptions
+async function executeUrlSendStrategies(
+  options: ExecuteUrlSendStrategiesOptions
 ): Promise<void> {
   const { bot, chatId, post, caption, logger } = options;
 
@@ -253,23 +325,22 @@ async function executeSendStrategies(
     return;
   }
 
-  if (await tryPrimaryMediaStrategyWithFallback(options)) {
-    return;
-  }
-
   if (await trySingleMediaStrategyWithFallback(options)) {
     return;
   }
 
-  // Strategy 4: Fallback to text-only message
+  // Fallback to text-only message
   logger.info(
-    `All media strategies failed or no valid media found, sending text-only message for post ${post._id}`
+    `All URL media strategies failed or no valid media found, sending text-only message for post ${post._id}`
   );
   await bot.api.sendMessage(chatId, caption, { parse_mode: "HTML" });
 }
 
 /**
  * Send a single post to Telegram with progressive fallback strategies
+ * Supports two modes:
+ * - file_id mode: Simple path using permanent Telegram file_ids
+ * - URL mode: Legacy path with validation for unbackfilled posts
  */
 export async function sendPost(
   bot: Bot,
@@ -280,17 +351,30 @@ export async function sendPost(
   const currentPost = await refreshPost(post, logger);
   const metadata = await fetchPostMetadata(currentPost, logger);
   const caption = prepareCaption(currentPost, metadata, logger);
-  const validMedia = await loadAndValidateMedia(currentPost, logger);
+  const loadedMedia = await loadMedia(currentPost, logger);
 
   try {
-    await executeSendStrategies({
-      bot,
-      chatId,
-      post: currentPost,
-      validMedia,
-      caption,
-      logger,
-    });
+    if (loadedMedia.mode === "file_id") {
+      // Simple path - use permanent file_ids
+      await sendWithFileIds({
+        bot,
+        chatId,
+        media: loadedMedia.items,
+        caption,
+        logger,
+        postId: currentPost._id,
+      });
+    } else {
+      // Legacy path - use URLs with validation
+      await executeUrlSendStrategies({
+        bot,
+        chatId,
+        post: currentPost,
+        validMedia: loadedMedia.items,
+        caption,
+        logger,
+      });
+    }
   } catch (error) {
     if (error instanceof GrammyError) {
       handleTelegramApiError(
@@ -302,9 +386,8 @@ export async function sendPost(
         `Post details: ${JSON.stringify({
           postId: currentPost._id,
           mediaType: currentPost.media_type,
-          mediaCount: validMedia.length,
-          hasVideoUrl: !!currentPost.video_url,
-          hasDisplayUrl: !!currentPost.display_url,
+          mediaCount: loadedMedia.items.length,
+          mediaMode: loadedMedia.mode,
         })}`
       );
     }
@@ -472,7 +555,7 @@ async function sendSingleBestMediaItem(
   logger.debug(`Selected best media item: ${bestItem.type} - ${bestItem.url}`);
 
   try {
-    await sendSingleMedia({
+    await sendSingleMediaUrl({
       bot,
       chatId,
       media: bestItem,
@@ -488,7 +571,7 @@ async function sendSingleBestMediaItem(
   }
 }
 
-type SendSingleMediaOptions = {
+type SendSingleMediaUrlOptions = {
   bot: Bot;
   chatId: string;
   media: MediaItem;
@@ -497,10 +580,10 @@ type SendSingleMediaOptions = {
 };
 
 /**
- * Send single media item (photo or video)
+ * Send single media item using URL (photo or video)
  */
-export async function sendSingleMedia(
-  options: SendSingleMediaOptions
+async function sendSingleMediaUrl(
+  options: SendSingleMediaUrlOptions
 ): Promise<void> {
   const { bot, chatId, media, caption, logger } = options;
 
@@ -537,139 +620,4 @@ export async function sendSingleMedia(
     // Re-throw other errors
     throw error;
   }
-}
-
-type TryPrimaryMediaOptions = {
-  bot: Bot;
-  chatId: string;
-  post: Doc<"posts">;
-  caption: string;
-  logger: Logger;
-};
-
-type TrySendVideoOptions = {
-  bot: Bot;
-  chatId: string;
-  videoUrl: string;
-  caption: string;
-  thumbnailUrl: string | undefined;
-  logger: Logger;
-};
-
-async function trySendVideo(options: TrySendVideoOptions): Promise<boolean> {
-  const { bot, chatId, videoUrl, caption, thumbnailUrl, logger } = options;
-  logger.debug(`Trying primary video URL: ${videoUrl}`);
-  try {
-    const videoOptions: Parameters<typeof bot.api.sendVideo>[2] = {
-      caption,
-      parse_mode: "HTML",
-    };
-    if (thumbnailUrl) {
-      // Grammy accepts string URLs for thumbnails, but TypeScript types are strict
-      (videoOptions as { thumbnail?: string }).thumbnail = thumbnailUrl;
-    }
-    await bot.api.sendVideo(chatId, videoUrl, videoOptions);
-    return true;
-  } catch (error) {
-    // Check if it's a media-related error (expired URL, wrong content type, etc.)
-    if (error instanceof GrammyError) {
-      const isMediaError =
-        error.error_code === 400 &&
-        (error.description?.includes("wrong type") ||
-          error.description?.includes("Bad Request") ||
-          error.description?.includes("file"));
-
-      if (isMediaError) {
-        logger.warn(
-          `Primary video URL failed (likely expired or invalid): ${error.description}`
-        );
-      } else {
-        logger.warn(
-          `Primary video URL failed: ${error.description || error.message}`
-        );
-      }
-    } else {
-      logger.warn(
-        `Primary video URL failed: ${error instanceof Error ? error.message : String(error)}`
-      );
-    }
-    return false;
-  }
-}
-
-type TrySendImageOptions = {
-  bot: Bot;
-  chatId: string;
-  imageUrl: string;
-  caption: string;
-  logger: Logger;
-};
-
-async function trySendImage(options: TrySendImageOptions): Promise<boolean> {
-  const { bot, chatId, imageUrl, caption, logger } = options;
-  logger.debug(`Trying primary image URL: ${imageUrl}`);
-  try {
-    await bot.api.sendPhoto(chatId, imageUrl, {
-      caption,
-      parse_mode: "HTML",
-    });
-    return true;
-  } catch (error) {
-    // Check if it's a media-related error (expired URL, wrong content type, etc.)
-    if (error instanceof GrammyError) {
-      const isMediaError =
-        error.error_code === 400 &&
-        (error.description?.includes("wrong type") ||
-          error.description?.includes("Bad Request") ||
-          error.description?.includes("file") ||
-          error.description?.includes("web page content"));
-
-      if (isMediaError) {
-        logger.warn(
-          `Primary image URL failed (likely expired or invalid): ${error.description}`
-        );
-      } else {
-        logger.warn(
-          `Primary image URL failed: ${error.description || error.message}`
-        );
-      }
-    } else {
-      logger.warn(
-        `Primary image URL failed: ${error instanceof Error ? error.message : String(error)}`
-      );
-    }
-    return false;
-  }
-}
-
-/**
- * Try sending using post's primary media URLs
- */
-async function tryPrimaryMedia(
-  options: TryPrimaryMediaOptions
-): Promise<boolean> {
-  const { bot, chatId, post, caption, logger } = options;
-
-  if (post.media_type === "video" && post.video_url) {
-    return await trySendVideo({
-      bot,
-      chatId,
-      videoUrl: post.video_url,
-      caption,
-      thumbnailUrl: post.thumbnail_url,
-      logger,
-    });
-  }
-
-  if (post.media_type === "image" && post.display_url) {
-    return await trySendImage({
-      bot,
-      chatId,
-      imageUrl: post.display_url,
-      caption,
-      logger,
-    });
-  }
-
-  return false;
 }

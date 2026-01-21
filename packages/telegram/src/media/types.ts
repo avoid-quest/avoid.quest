@@ -12,10 +12,21 @@ export const MAX_VIDEO_SIZE_MB = 50;
 export const MAX_DIMENSION = 4096;
 
 /**
- * A media item for Telegram
+ * A media item for Telegram (URL-based, for backwards compatibility)
  */
 export type MediaItem = {
   url: string;
+  type: "image" | "video";
+  width?: number;
+  height?: number;
+};
+
+/**
+ * A media item stored with Telegram file_id (permanent storage)
+ */
+export type TelegramMediaItem = {
+  file_id: string;
+  file_unique_id: string;
   type: "image" | "video";
   width?: number;
   height?: number;

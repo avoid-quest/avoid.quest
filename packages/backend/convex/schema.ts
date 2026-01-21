@@ -38,9 +38,15 @@ export default defineSchema({
 		.index("by_event_date", ["event_date"])
 		.index("by_shortcode", ["shortcode"])
 		.index("by_user_id", ["users"])
-		.index("by_sent", ["sent"]),
+		.index("by_sent", ["sent"])
+		.index("by_metadata_id", ["metadata_id"]),
 	media_items: defineTable({
-		url: v.string(),
+		// Instagram URL (temporary - will be removed after migration)
+		url: v.optional(v.string()),
+		// Telegram file_id (permanent) - added during migration
+		file_id: v.optional(v.string()),
+		// Telegram file_unique_id (for deduplication) - added during migration
+		file_unique_id: v.optional(v.string()),
 		type: v.union(
 			v.literal("image"),
 			v.literal("video"),
@@ -51,6 +57,8 @@ export default defineSchema({
 		post_id: v.id("posts"),
 	})
 		.index("by_url", ["url"])
+		.index("by_file_id", ["file_id"])
+		.index("by_file_unique_id", ["file_unique_id"])
 		.index("by_type", ["type"])
 		.index("by_post_id", ["post_id"]),
 	users: defineTable({
@@ -115,6 +123,17 @@ export default defineSchema({
 		.index("by_event_date_start", ["event_date_start"])
 		.index("by_processing_status", ["processing_status"])
 		.index("by_event_type", ["event_type"]),
+	telegram_messages: defineTable({
+		post_id: v.id("posts"),
+		/** Telegram message ID */
+		message_id: v.number(),
+		/** Telegram chat ID */
+		chat_id: v.string(),
+		/** Timestamp in milliseconds (UTC) - when the message was sent */
+		sent_at: v.number(),
+	})
+		.index("by_post_id", ["post_id"])
+		.index("by_message_id_chat_id", ["message_id", "chat_id"]),
 	settings: defineTable({
 		telegram: v.optional(
 			v.object({
@@ -136,6 +155,16 @@ export default defineSchema({
 				limit: v.optional(v.number()),
 				post_per_user: v.optional(v.number()),
 				/** Timestamp in milliseconds (UTC) - when fetching last ran */
+				last_scraped_at: v.optional(v.number()),
+			}),
+		),
+		/** @deprecated Use instagram instead - kept for backwards compatibility */
+		scraper: v.optional(
+			v.object({
+				active: v.boolean(),
+				cron_expression: v.optional(v.string()),
+				limit: v.optional(v.number()),
+				post_per_user: v.optional(v.number()),
 				last_scraped_at: v.optional(v.number()),
 			}),
 		),

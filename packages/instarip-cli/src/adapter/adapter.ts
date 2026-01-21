@@ -1,14 +1,28 @@
 import { now } from "@avoid.quest/shared";
+import {
+  createMediaUploadService,
+  type MediaUploadService,
+  type UploadResult,
+} from "@avoid.quest/telegram/media";
 import type { Doc, Id } from "@workspace/backend/convex/_generated/dataModel";
 import { sleep } from "bun";
 import { api, getHttpClient } from "../convex/client";
 import { createLogger } from "../infra/logger";
 import { TokenBucketLimiter } from "../infra/rate-limiter";
 import { getEffectiveSettings } from "../settings";
+import { createBot } from "../telegram/bot";
 import { InstagramAdapter, type SinglePostResponse } from "./instagram";
 
 type MediaItemLike = Omit<Doc<"media_items">, "_id" | "_creationTime">;
 type PostLike = Omit<Doc<"posts">, "_id" | "_creationTime">;
+
+/**
+ * Upload context for media during fetch
+ */
+type UploadContext = {
+  uploader: MediaUploadService;
+  chatId: string;
+} | null;
 
 export async function loadUsersToBeFetched(
   limit?: number
@@ -88,6 +102,62 @@ async function optionallyTriggerMetadataExtraction(
   }
 }
 
+/**
+ * Upload media items to Telegram and return the upload results
+ */
+async function uploadMediaToTelegram(
+  mediaItems: Array<{
+    url: string;
+    type: "image" | "video" | "thumbnail";
+    width?: number;
+    height?: number;
+  }>,
+  uploadContext: UploadContext,
+  logger: ReturnType<typeof createLogger>
+): Promise<UploadResult[]> {
+  if (!uploadContext) {
+    return [];
+  }
+
+  const { uploader, chatId } = uploadContext;
+  const uploadResults: UploadResult[] = [];
+  const UPLOAD_DELAY_MS = 500;
+
+  // Filter out thumbnails - we only upload images and videos
+  const uploadableMedia = mediaItems.filter(
+    (m) => m.type === "image" || m.type === "video"
+  );
+
+  for (const [index, item] of uploadableMedia.entries()) {
+    try {
+      logger.debug(
+        `Uploading ${item.type} ${index + 1}/${uploadableMedia.length}...`
+      );
+
+      let result: UploadResult;
+      if (item.type === "video") {
+        result = await uploader.uploadVideo(chatId, item.url);
+      } else {
+        result = await uploader.uploadPhoto(chatId, item.url);
+      }
+
+      uploadResults.push(result);
+
+      // Add delay between uploads to respect rate limits (except after last item)
+      if (index < uploadableMedia.length - 1) {
+        await sleep(UPLOAD_DELAY_MS);
+      }
+    } catch (error) {
+      logger.warn(
+        `Failed to upload media item: ${error instanceof Error ? error.message : String(error)}`
+      );
+      // Continue with other items even if one fails
+    }
+  }
+
+  return uploadResults;
+}
+
 async function processPost(
   post: {
     shortcode: string;
@@ -108,13 +178,28 @@ async function processPost(
     }>;
   },
   userId: Id<"users">,
-  logger: ReturnType<typeof createLogger>
+  logger: ReturnType<typeof createLogger>,
+  uploadContext: UploadContext
 ): Promise<void> {
   const existing = await getHttpClient().query(api.posts.getPostByShortcode, {
     shortcode: post.shortcode,
   });
 
   const isNewPost = !existing?._id;
+
+  // For new posts, upload media to Telegram FIRST while Instagram URLs are still fresh
+  let telegramMedia: UploadResult[] = [];
+  if (isNewPost && uploadContext) {
+    logger.debug(`Uploading media to Telegram for new post ${post.shortcode}`);
+    telegramMedia = await uploadMediaToTelegram(
+      post.media_items,
+      uploadContext,
+      logger
+    );
+    logger.debug(
+      `Uploaded ${telegramMedia.length}/${post.media_items.filter((m) => m.type !== "thumbnail").length} media items to Telegram`
+    );
+  }
 
   // When updating existing posts, don't overwrite sent, sentAt, or event_date
   // Only pass these fields when creating new posts
@@ -138,12 +223,29 @@ async function processPost(
       : {}),
   });
 
-  // Sync media items: updates existing, adds new, removes deleted ones
-  // This ensures media items stay in sync with the fetched data
-  await getHttpClient().mutation(api.media_items.syncMediaItemsForPost, {
-    post_id: postId,
-    media_items: post.media_items,
-  });
+  // Sync media items based on what we have
+  if (telegramMedia.length > 0) {
+    // Use Telegram file_ids for new posts that were successfully uploaded
+    await getHttpClient().mutation(
+      api.media_items.syncTelegramMediaItemsForPost,
+      {
+        post_id: postId,
+        media_items: telegramMedia.map((m) => ({
+          file_id: m.file_id,
+          file_unique_id: m.file_unique_id,
+          type: m.type,
+          width: m.width,
+          height: m.height,
+        })),
+      }
+    );
+  } else {
+    // Fallback: sync with Instagram URLs (for existing posts or when upload fails)
+    await getHttpClient().mutation(api.media_items.syncMediaItemsForPost, {
+      post_id: postId,
+      media_items: post.media_items,
+    });
+  }
 
   // Optionally trigger immediate metadata extraction for new posts
   // This is rate-limit aware and respects settings
@@ -158,9 +260,17 @@ async function processUser(
     adapter: InstagramAdapter;
     logger: ReturnType<typeof createLogger>;
     msPerMinute: number;
+    uploadContext: UploadContext;
   }
 ): Promise<boolean> {
-  const { postsPerUser, minIntervalMs, adapter, logger, msPerMinute } = opts;
+  const {
+    postsPerUser,
+    minIntervalMs,
+    adapter,
+    logger,
+    msPerMinute,
+    uploadContext,
+  } = opts;
   if (!user.username) {
     return false;
   }
@@ -186,7 +296,7 @@ async function processUser(
   }
 
   for (const p of posts) {
-    await processPost(p, cvxUser._id, logger);
+    await processPost(p, cvxUser._id, logger, uploadContext);
   }
 
   await updateUserLastScraped(user._id, now());
@@ -233,6 +343,33 @@ export async function fetchOnce(): Promise<void> {
     { limiter, logger }
   );
 
+  // Initialize upload context for Telegram media uploads
+  let uploadContext: UploadContext = null;
+  const chatId =
+    settings.telegram.group_chat_id || settings.telegram.admin_chat_id;
+
+  if (settings.telegram.active && chatId) {
+    const bot = createBot();
+    if (bot) {
+      uploadContext = {
+        uploader: createMediaUploadService(bot.api, {
+          deleteAfterUpload: true, // Delete temporary upload messages
+          logger,
+        }),
+        chatId,
+      };
+      logger.info("Telegram media upload enabled during fetch");
+    } else {
+      logger.warn(
+        "TELEGRAM_BOT_TOKEN not set, media will be stored with Instagram URLs (may expire)"
+      );
+    }
+  } else {
+    logger.debug(
+      "Telegram not active or no chat ID configured, media will be stored with Instagram URLs"
+    );
+  }
+
   logger.info(
     `Fetching up to ${usersPerSession} users (${postsPerUser} posts per user) from ${users.length} candidates`
   );
@@ -258,6 +395,7 @@ export async function fetchOnce(): Promise<void> {
       adapter,
       logger,
       msPerMinute: MS_PER_MINUTE,
+      uploadContext,
     });
 
     if (wasProcessed) {
@@ -318,6 +456,24 @@ export async function fetchAndSaveSinglePost(
       { limiter, logger }
     );
 
+    // Initialize upload context for Telegram media uploads
+    let uploadContext: UploadContext = null;
+    const chatId =
+      settings.telegram.group_chat_id || settings.telegram.admin_chat_id;
+
+    if (settings.telegram.active && chatId) {
+      const bot = createBot();
+      if (bot) {
+        uploadContext = {
+          uploader: createMediaUploadService(bot.api, {
+            deleteAfterUpload: true,
+            logger,
+          }),
+          chatId,
+        };
+      }
+    }
+
     // Fetch the post
     const result: SinglePostResponse = await adapter.getSinglePost(postUrl);
 
@@ -367,6 +523,22 @@ export async function fetchAndSaveSinglePost(
       last_scraped_at: user?.last_scraped_at,
     });
 
+    // For new posts, upload media to Telegram FIRST while Instagram URLs are still fresh
+    let telegramMedia: UploadResult[] = [];
+    if (isNewPost && uploadContext) {
+      logger.debug(
+        `Uploading media to Telegram for new post ${post.shortcode}`
+      );
+      telegramMedia = await uploadMediaToTelegram(
+        post.media_items,
+        uploadContext,
+        logger
+      );
+      logger.debug(
+        `Uploaded ${telegramMedia.length}/${post.media_items.filter((m) => m.type !== "thumbnail").length} media items to Telegram`
+      );
+    }
+
     // Save post to database
     // When updating existing posts, don't overwrite sent, sentAt, or event_date
     const postId = await getHttpClient().mutation(api.posts.upsertPost, {
@@ -389,12 +561,29 @@ export async function fetchAndSaveSinglePost(
         : {}),
     });
 
-    // Sync media items: updates existing, adds new, removes deleted ones
-    // This ensures media items stay in sync with the scraped data
-    await getHttpClient().mutation(api.media_items.syncMediaItemsForPost, {
-      post_id: postId,
-      media_items: post.media_items,
-    });
+    // Sync media items based on what we have
+    if (telegramMedia.length > 0) {
+      // Use Telegram file_ids for new posts that were successfully uploaded
+      await getHttpClient().mutation(
+        api.media_items.syncTelegramMediaItemsForPost,
+        {
+          post_id: postId,
+          media_items: telegramMedia.map((m) => ({
+            file_id: m.file_id,
+            file_unique_id: m.file_unique_id,
+            type: m.type,
+            width: m.width,
+            height: m.height,
+          })),
+        }
+      );
+    } else {
+      // Fallback: sync with Instagram URLs (for existing posts or when upload fails)
+      await getHttpClient().mutation(api.media_items.syncMediaItemsForPost, {
+        post_id: postId,
+        media_items: post.media_items,
+      });
+    }
 
     // Optionally trigger immediate metadata extraction for new posts
     // This is rate-limit aware and respects settings

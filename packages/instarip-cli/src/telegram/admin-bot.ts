@@ -3,6 +3,11 @@ import type { BotError } from "grammy";
 import { Bot, GrammyError, HttpError, session } from "grammy";
 import { createLogger } from "../infra/logger";
 import {
+  handleBackfillStatusCommand,
+  handleForwardedMessage,
+  isForwardedMessage,
+} from "./admin/commands/backfill";
+import {
   handlePostAddCommand,
   handlePostPreviewCommand,
 } from "./admin/commands/post";
@@ -175,6 +180,9 @@ export async function startAdminBot(): Promise<void> {
       }
     });
 
+    // Backfill status command - show how many posts need backfilling
+    bot.command("backfill_status", handleBackfillStatusCommand);
+
     // Start command - show main menu (only required command)
     bot.command("start", async (ctx) => {
       await ctx.reply("👋 Welcome to Admin Bot!\n\nSelect an option:", {
@@ -209,6 +217,15 @@ export async function startAdminBot(): Promise<void> {
       }
 
       // Otherwise, ignore (we only handle commands and settings input)
+    });
+
+    // Handle forwarded messages for backfill (photos and videos)
+    // This allows admins to forward channel messages to extract file_ids
+    bot.on(["message:photo", "message:video"], async (ctx) => {
+      // Only process forwarded messages
+      if (isForwardedMessage(ctx.message)) {
+        await handleForwardedMessage(ctx);
+      }
     });
 
     // Handle graceful shutdown

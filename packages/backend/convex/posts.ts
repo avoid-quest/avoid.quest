@@ -279,3 +279,42 @@ export const markSent = mutation({
 		return null;
 	},
 });
+
+/**
+ * Get statistics for backfill progress.
+ * Returns counts of posts with and without file_ids in their media items.
+ */
+export const getBackfillStats = query({
+	handler: async (ctx) => {
+		const sentPosts = await ctx.db
+			.query("posts")
+			.withIndex("by_sent", (q) => q.eq("sent", true))
+			.collect();
+
+		let withFileIds = 0;
+		let needsBackfill = 0;
+
+		for (const post of sentPosts) {
+			const mediaItems = await ctx.db
+				.query("media_items")
+				.withIndex("by_post_id", (q) => q.eq("post_id", post._id))
+				.collect();
+
+			// A post has file_ids if all its media items have file_id
+			const hasAllFileIds =
+				mediaItems.length > 0 && mediaItems.every((m) => m.file_id);
+
+			if (hasAllFileIds) {
+				withFileIds++;
+			} else if (mediaItems.length > 0) {
+				needsBackfill++;
+			}
+		}
+
+		return {
+			totalSent: sentPosts.length,
+			withFileIds,
+			needsBackfill,
+		};
+	},
+});

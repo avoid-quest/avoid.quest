@@ -3,8 +3,7 @@
  * Uses native fetch instead of grammy since we're in a serverless context
  */
 
-const TELEGRAM_API_BASE = "https://api.telegram.org/bot";
-const REQUEST_TIMEOUT_MS = 30000;
+import { TELEGRAM_DEFAULTS } from "../../../lib/config";
 
 export type TelegramApiError = {
 	ok: false;
@@ -84,8 +83,17 @@ export type SendVideoParams = {
 	disable_notification?: boolean;
 };
 
-export function createTelegramClient(botToken: string) {
-	const baseUrl = `${TELEGRAM_API_BASE}${botToken}`;
+export type TelegramClientOptions = {
+	requestTimeoutMs?: number;
+};
+
+export function createTelegramClient(
+	botToken: string,
+	options?: TelegramClientOptions,
+) {
+	const baseUrl = `${TELEGRAM_DEFAULTS.API_BASE}${botToken}`;
+	const requestTimeoutMs =
+		options?.requestTimeoutMs ?? TELEGRAM_DEFAULTS.REQUEST_TIMEOUT_MS;
 
 	async function callApi<T>(
 		method: string,
@@ -93,7 +101,7 @@ export function createTelegramClient(botToken: string) {
 	): Promise<TelegramApiResponse<T>> {
 		const url = `${baseUrl}/${method}`;
 		const controller = new AbortController();
-		const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+		const timeoutId = setTimeout(() => controller.abort(), requestTimeoutMs);
 
 		try {
 			const response = await fetch(url, {

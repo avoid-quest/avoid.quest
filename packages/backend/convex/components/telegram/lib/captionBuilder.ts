@@ -3,11 +3,13 @@
  * Uses HTML parse mode for Instagram-style formatting
  */
 
+import { TELEGRAM_DEFAULTS } from "../../../lib/config";
+
 /** Maximum caption length for Telegram media */
-export const MAX_CAPTION_LENGTH = 1024;
+export const MAX_CAPTION_LENGTH = TELEGRAM_DEFAULTS.MAX_CAPTION_LENGTH;
 
 /** Maximum message length for Telegram text messages */
-export const MAX_MESSAGE_LENGTH = 4096;
+export const MAX_MESSAGE_LENGTH = TELEGRAM_DEFAULTS.MAX_MESSAGE_LENGTH;
 
 /**
  * Escape HTML special characters for Telegram HTML parse mode

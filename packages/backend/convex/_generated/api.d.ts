@@ -11,6 +11,9 @@
 import type * as crons from "../crons.js";
 import type * as healthCheck from "../healthCheck.js";
 import type * as http from "../http.js";
+import type * as lib_config_defaults from "../lib/config/defaults.js";
+import type * as lib_config_index from "../lib/config/index.js";
+import type * as lib_config_validators from "../lib/config/validators.js";
 import type * as lib_dateUtils from "../lib/dateUtils.js";
 import type * as lib_logger from "../lib/logger.js";
 import type * as media_items from "../media_items.js";
@@ -29,6 +32,9 @@ declare const fullApi: ApiFromModules<{
   crons: typeof crons;
   healthCheck: typeof healthCheck;
   http: typeof http;
+  "lib/config/defaults": typeof lib_config_defaults;
+  "lib/config/index": typeof lib_config_index;
+  "lib/config/validators": typeof lib_config_validators;
   "lib/dateUtils": typeof lib_dateUtils;
   "lib/logger": typeof lib_logger;
   media_items: typeof media_items;

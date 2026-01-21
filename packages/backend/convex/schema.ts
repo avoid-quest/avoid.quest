@@ -1,5 +1,11 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import {
+	instagramSettingsValidator,
+	localeSettingsValidator,
+	loggingSettingsValidator,
+	telegramSettingsValidator,
+} from "./lib/config/validators";
 
 /**
  * Database schema for the backend
@@ -83,48 +89,9 @@ export default defineSchema({
 		.index("by_post_id", ["post_id"])
 		.index("by_message_id_chat_id", ["message_id", "chat_id"]),
 	settings: defineTable({
-		telegram: v.optional(
-			v.object({
-				active: v.boolean(),
-				admin_chat_id: v.optional(v.string()),
-				group_chat_id: v.optional(v.string()),
-				cron_expression: v.optional(v.string()),
-				send_limit: v.optional(v.number()),
-				/** Timestamp in milliseconds (UTC) - when posts were last sent to Telegram */
-				last_sent_at: v.optional(v.number()),
-				send_report: v.boolean(),
-				report_cron_expression: v.optional(v.string()),
-			}),
-		),
-		instagram: v.optional(
-			v.object({
-				active: v.boolean(),
-				cron_expression: v.optional(v.string()),
-				limit: v.optional(v.number()),
-				post_per_user: v.optional(v.number()),
-				/** Timestamp in milliseconds (UTC) - when fetching last ran */
-				last_scraped_at: v.optional(v.number()),
-			}),
-		),
-		/** @deprecated Use instagram instead - kept for backwards compatibility */
-		scraper: v.optional(
-			v.object({
-				active: v.boolean(),
-				cron_expression: v.optional(v.string()),
-				limit: v.optional(v.number()),
-				post_per_user: v.optional(v.number()),
-				last_scraped_at: v.optional(v.number()),
-			}),
-		),
-		logging: v.optional(
-			v.object({
-				active: v.boolean(),
-				/** Timestamp in milliseconds (UTC) - when logging last ran */
-				last_logged_at: v.optional(v.number()),
-				max_retention_days: v.optional(v.number()),
-				log_file: v.optional(v.string()),
-				log_level: v.optional(v.string()),
-			}),
-		),
+		telegram: v.optional(telegramSettingsValidator),
+		instagram: v.optional(instagramSettingsValidator),
+		locale: v.optional(localeSettingsValidator),
+		logging: v.optional(loggingSettingsValidator),
 	}),
 });

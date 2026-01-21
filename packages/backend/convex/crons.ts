@@ -2,6 +2,11 @@ import { cronJobs } from "convex/server";
 import { v } from "convex/values";
 import { components, internal } from "./_generated/api";
 import { internalAction } from "./_generated/server";
+import {
+	getRandomDelayBetweenUsers,
+	resolveInstagramConfig,
+	resolveTelegramConfig,
+} from "./lib/config";
 
 const crons = cronJobs();
 
@@ -34,18 +39,20 @@ export const runTelegramSend = internalAction({
 		errors: v.optional(v.array(v.string())),
 	}),
 	handler: async (ctx) => {
-		// Get settings
+		// Get settings and resolve config with defaults
 		const settings = await ctx.runQuery(internal.settings.getSettingsInternal);
-		if (!settings?.telegram?.active) {
+		const config = resolveTelegramConfig(settings?.telegram);
+
+		if (!config.active) {
 			return { skipped: true };
 		}
 
-		const chatId = settings.telegram.group_chat_id;
-		if (!chatId) {
+		if (!config.groupChatId) {
 			return { skipped: true, errors: ["No group_chat_id configured"] };
 		}
 
-		const limit = settings.telegram.send_limit ?? 3;
+		const chatId = config.groupChatId;
+		const limit = config.sendLimit;
 
 		// Get unsent posts
 		const posts = await ctx.runQuery(internal.posts.getUnsentInternal, {
@@ -133,15 +140,14 @@ export const runTelegramSend = internalAction({
 			}
 
 			// Small delay between posts to avoid rate limiting
-			await new Promise((resolve) => setTimeout(resolve, 500));
+			await new Promise((resolve) =>
+				setTimeout(resolve, config.delayBetweenPostsMs),
+			);
 		}
 
 		return { sent, failed, errors: errors.length > 0 ? errors : undefined };
 	},
 });
-
-/** Minimum interval between scrapes for the same user (30 minutes) */
-const MIN_SCRAPE_INTERVAL_MS = 30 * 60 * 1000;
 
 /** Convert seconds to milliseconds for timestamp storage */
 function secondsToMilliseconds(seconds: number): number {
@@ -161,19 +167,18 @@ export const runInstagramFetch = internalAction({
 		errors: v.optional(v.array(v.string())),
 	}),
 	handler: async (ctx) => {
-		// Get settings
+		// Get settings and resolve config with defaults
 		const settings = await ctx.runQuery(internal.settings.getSettingsInternal);
-		if (!settings?.instagram?.active) {
+		const config = resolveInstagramConfig(settings?.instagram);
+
+		if (!config.active) {
 			return { skipped: true };
 		}
 
-		const userLimit = settings.instagram.limit ?? 5;
-		const postsPerUser = settings.instagram.post_per_user ?? 20;
-
 		// Get users to scrape (respecting minimum interval)
 		const users = await ctx.runQuery(internal.users.listToBeScrapedInternal, {
-			limit: userLimit,
-			minIntervalMs: MIN_SCRAPE_INTERVAL_MS,
+			limit: config.userLimit,
+			minIntervalMs: config.minScrapeIntervalMs,
 		});
 
 		if (users.length === 0) {
@@ -191,7 +196,7 @@ export const runInstagramFetch = internalAction({
 					components.instagram.fetcher.fetchUser,
 					{
 						username: user.username,
-						limit: postsPerUser,
+						limit: config.postsPerUser,
 					},
 				);
 
@@ -254,8 +259,8 @@ export const runInstagramFetch = internalAction({
 
 				usersProcessed++;
 
-				// Delay between users (10-30 seconds)
-				const delay = Math.floor(Math.random() * 20000) + 10000;
+				// Delay between users (configurable, default 10-30 seconds)
+				const delay = getRandomDelayBetweenUsers(config);
 				await new Promise((resolve) => setTimeout(resolve, delay));
 			} catch (error) {
 				const message =

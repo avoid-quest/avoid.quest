@@ -10,8 +10,10 @@
  * that use seconds (e.g., Instagram API).
  */
 
-const TIMEZONE = "Europe/Rome";
-const LOCALE = "it-IT";
+import { LOCALE_DEFAULTS } from "./config";
+
+const TIMEZONE = LOCALE_DEFAULTS.TIMEZONE;
+const LOCALE = LOCALE_DEFAULTS.LOCALE;
 const MS_PER_SECOND = 1000;
 
 /**

@@ -1,5 +1,11 @@
 import { v } from "convex/values";
 import { internalQuery, mutation, query } from "./_generated/server";
+import {
+	instagramSettingsValidator,
+	localeSettingsValidator,
+	loggingSettingsValidator,
+	telegramSettingsValidator,
+} from "./lib/config/validators";
 
 export const getSettings = query({
 	args: {},
@@ -12,46 +18,10 @@ export const getSettingsInternal = internalQuery({
 		v.object({
 			_id: v.id("settings"),
 			_creationTime: v.number(),
-			telegram: v.optional(
-				v.object({
-					active: v.boolean(),
-					admin_chat_id: v.optional(v.string()),
-					group_chat_id: v.optional(v.string()),
-					cron_expression: v.optional(v.string()),
-					send_limit: v.optional(v.number()),
-					last_sent_at: v.optional(v.number()),
-					send_report: v.boolean(),
-					report_cron_expression: v.optional(v.string()),
-				}),
-			),
-			instagram: v.optional(
-				v.object({
-					active: v.boolean(),
-					cron_expression: v.optional(v.string()),
-					limit: v.optional(v.number()),
-					post_per_user: v.optional(v.number()),
-					last_scraped_at: v.optional(v.number()),
-				}),
-			),
-			// Deprecated: use 'instagram' instead. Kept for backwards compatibility with existing data.
-			scraper: v.optional(
-				v.object({
-					active: v.boolean(),
-					cron_expression: v.optional(v.string()),
-					limit: v.optional(v.number()),
-					post_per_user: v.optional(v.number()),
-					last_scraped_at: v.optional(v.number()),
-				}),
-			),
-			logging: v.optional(
-				v.object({
-					active: v.boolean(),
-					last_logged_at: v.optional(v.number()),
-					max_retention_days: v.optional(v.number()),
-					log_file: v.optional(v.string()),
-					log_level: v.optional(v.string()),
-				}),
-			),
+			telegram: v.optional(telegramSettingsValidator),
+			instagram: v.optional(instagramSettingsValidator),
+			locale: v.optional(localeSettingsValidator),
+			logging: v.optional(loggingSettingsValidator),
 		}),
 		v.null(),
 	),
@@ -64,43 +34,18 @@ export const getSettingsInternal = internalQuery({
 export const upsertSettings = mutation({
 	args: {
 		id: v.optional(v.id("settings")),
-		telegram: v.optional(
-			v.object({
-				active: v.boolean(),
-				admin_chat_id: v.optional(v.string()),
-				group_chat_id: v.optional(v.string()),
-				cron_expression: v.optional(v.string()),
-				send_limit: v.optional(v.number()),
-				last_sent_at: v.optional(v.number()),
-				send_report: v.boolean(),
-				report_cron_expression: v.optional(v.string()),
-			}),
-		),
-		instagram: v.optional(
-			v.object({
-				active: v.boolean(),
-				cron_expression: v.optional(v.string()),
-				limit: v.optional(v.number()),
-				post_per_user: v.optional(v.number()),
-				last_scraped_at: v.optional(v.number()),
-			}),
-		),
-		logging: v.optional(
-			v.object({
-				active: v.boolean(),
-				last_logged_at: v.optional(v.number()),
-				max_retention_days: v.optional(v.number()),
-				log_file: v.optional(v.string()),
-				log_level: v.optional(v.string()),
-			}),
-		),
+		telegram: v.optional(telegramSettingsValidator),
+		instagram: v.optional(instagramSettingsValidator),
+		locale: v.optional(localeSettingsValidator),
+		logging: v.optional(loggingSettingsValidator),
 	},
 	returns: v.id("settings"),
-	handler: async (ctx, { id, telegram, instagram, logging }) => {
+	handler: async (ctx, { id, telegram, instagram, locale, logging }) => {
 		if (id) {
 			await ctx.db.patch(id, {
 				telegram,
 				instagram,
+				locale,
 				logging,
 			});
 			return id;
@@ -108,6 +53,7 @@ export const upsertSettings = mutation({
 		return await ctx.db.insert("settings", {
 			telegram,
 			instagram,
+			locale,
 			logging,
 		});
 	},

@@ -346,11 +346,10 @@ export declare const components: {
         "mutation",
         "internal",
         {
-          file_id?: string;
-          file_unique_id?: string;
           height?: number;
           id?: string;
           post_id: string;
+          telegram_file?: { file_id: string; file_unique_id: string };
           type: "image" | "video" | "thumbnail";
           width?: number;
         },
@@ -532,7 +531,7 @@ export declare const components: {
           logging?: {
             active: boolean;
             log_file?: string;
-            log_level?: string;
+            log_level?: "debug" | "info" | "warn" | "error";
             max_retention_days?: number;
           };
           telegram?: {
@@ -567,7 +566,7 @@ export declare const components: {
           logging?: {
             active: boolean;
             log_file?: string;
-            log_level?: string;
+            log_level?: "debug" | "info" | "warn" | "error";
             max_retention_days?: number;
           };
           telegram?: {
@@ -610,7 +609,7 @@ export declare const components: {
           logging?: {
             active: boolean;
             log_file?: string;
-            log_level?: string;
+            log_level?: "debug" | "info" | "warn" | "error";
             max_retention_days?: number;
           };
           telegram?: {

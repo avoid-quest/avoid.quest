@@ -306,7 +306,7 @@ export const incrementRetryCount = mutation({
 
 /**
  * Get statistics for backfill progress.
- * Returns counts of posts with and without file_ids in their media items.
+ * Returns counts of posts with and without telegram_file in their media items.
  *
  * @note This query collects all sent posts and media items into memory.
  * For very large datasets, consider implementing incremental stats tracking.
@@ -329,10 +329,10 @@ export const getBackfillStats = query({
 		// Get all media items in one query and group by post_id
 		const allMediaItems = await ctx.db.query("media_items").collect();
 
-		// Group media items by post_id and track file_id status
+		// Group media items by post_id and track telegram_file status
 		const mediaByPost = new Map<
 			Id<"posts">,
-			{ total: number; withFileId: number }
+			{ total: number; withTelegramFile: number }
 		>();
 
 		for (const item of allMediaItems) {
@@ -343,11 +343,11 @@ export const getBackfillStats = query({
 
 			const current = mediaByPost.get(item.post_id) ?? {
 				total: 0,
-				withFileId: 0,
+				withTelegramFile: 0,
 			};
 			current.total++;
-			if (item.file_id) {
-				current.withFileId++;
+			if (item.telegram_file) {
+				current.withTelegramFile++;
 			}
 			mediaByPost.set(item.post_id, current);
 		}
@@ -362,7 +362,7 @@ export const getBackfillStats = query({
 				// Post has no media items - not counted as needing backfill
 				continue;
 			}
-			if (media.withFileId === media.total) {
+			if (media.withTelegramFile === media.total) {
 				withFileIds++;
 			} else {
 				needsBackfill++;

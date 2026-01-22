@@ -219,11 +219,10 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "mutation",
         "internal",
         {
-          file_id?: string;
-          file_unique_id?: string;
           height?: number;
           id?: string;
           post_id: string;
+          telegram_file?: { file_id: string; file_unique_id: string };
           type: "image" | "video" | "thumbnail";
           width?: number;
         },
@@ -436,7 +435,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           logging?: {
             active: boolean;
             log_file?: string;
-            log_level?: string;
+            log_level?: "debug" | "info" | "warn" | "error";
             max_retention_days?: number;
           };
           telegram?: {
@@ -472,7 +471,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           logging?: {
             active: boolean;
             log_file?: string;
-            log_level?: string;
+            log_level?: "debug" | "info" | "warn" | "error";
             max_retention_days?: number;
           };
           telegram?: {
@@ -541,7 +540,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           logging?: {
             active: boolean;
             log_file?: string;
-            log_level?: string;
+            log_level?: "debug" | "info" | "warn" | "error";
             max_retention_days?: number;
           };
           telegram?: {

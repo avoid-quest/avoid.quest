@@ -61,22 +61,22 @@ async function sendPostToTelegram(
 	)) as MediaItem[];
 
 	// Build media items for Telegram
-	// For items with file_id, use file_id-based sending
-	// For items without file_id, use post's display_url/video_url for single-item posts
+	// For items with telegram_file, use file_id-based sending
+	// For items without telegram_file, use post's display_url/video_url for single-item posts
 	const telegramMediaItems = mediaItems
 		.filter((item) => item.type !== "thumbnail")
 		.map((item: MediaItem) => {
-			// If we have complete file_id data, use it (preferred)
-			if (item.file_id && item.file_unique_id) {
+			// If we have complete telegram_file data, use it (preferred)
+			if (item.telegram_file) {
 				return {
-					file_id: item.file_id,
-					file_unique_id: item.file_unique_id,
+					file_id: item.telegram_file.file_id,
+					file_unique_id: item.telegram_file.file_unique_id,
 					type: item.type as "image" | "video",
 					width: item.width,
 					height: item.height,
 				};
 			}
-			// For single-item posts without file_id, use post's media URLs
+			// For single-item posts without telegram_file, use post's media URLs
 			if (post.media_type !== "carousel") {
 				const url =
 					item.type === "video"
@@ -89,7 +89,7 @@ async function sendPostToTelegram(
 					height: item.height,
 				};
 			}
-			// For carousel items without file_id, we can't send them (URLs not stored)
+			// For carousel items without telegram_file, we can't send them (URLs not stored)
 			// Return null and filter out below
 			return null;
 		})

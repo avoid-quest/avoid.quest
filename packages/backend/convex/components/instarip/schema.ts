@@ -8,21 +8,32 @@ import { v } from "convex/values";
 const telegramSettingsValidator = v.object({
 	active: v.boolean(),
 	group_chat_id: v.optional(v.string()),
+	/** Send limit per cron run. Valid range: 1-100 */
 	send_limit: v.optional(v.number()),
 	send_report: v.boolean(),
+	/** Request timeout in milliseconds. Valid range: 1000-300000ms */
 	request_timeout_ms: v.optional(v.number()),
+	/** Delay between posts in milliseconds. Valid range: 0-3600000ms */
 	delay_between_posts_ms: v.optional(v.number()),
 });
 
 const instagramSettingsValidator = v.object({
 	active: v.boolean(),
+	/** User limit per cron run. Valid range: 1-100 */
 	limit: v.optional(v.number()),
+	/** Posts to fetch per user. Valid range: 1-100 */
 	post_per_user: v.optional(v.number()),
+	/** Request timeout in milliseconds. Valid range: 1000-300000ms */
 	request_timeout_ms: v.optional(v.number()),
+	/** Minimum interval between scrapes in milliseconds. Valid range: 0-3600000ms */
 	min_scrape_interval_ms: v.optional(v.number()),
+	/** Minimum delay between users in milliseconds. Valid range: 0-3600000ms */
 	delay_between_users_min_ms: v.optional(v.number()),
+	/** Maximum delay between users in milliseconds. Valid range: 0-3600000ms */
 	delay_between_users_max_ms: v.optional(v.number()),
+	/** Rate limiter max tokens. Valid range: 1-100 */
 	rate_limit_max_tokens: v.optional(v.number()),
+	/** Rate limiter refill rate (tokens per second). Valid range: 0.01-10 */
 	rate_limit_refill_rate: v.optional(v.number()),
 });
 
@@ -33,9 +44,17 @@ const localeSettingsValidator = v.object({
 
 const loggingSettingsValidator = v.object({
 	active: v.boolean(),
+	/** Maximum retention in days. Valid range: 1-365 */
 	max_retention_days: v.optional(v.number()),
 	log_file: v.optional(v.string()),
-	log_level: v.optional(v.string()),
+	log_level: v.optional(
+		v.union(
+			v.literal("debug"),
+			v.literal("info"),
+			v.literal("warn"),
+			v.literal("error"),
+		),
+	),
 });
 
 /**
@@ -92,10 +111,18 @@ export default defineSchema({
 		.index("by_status", ["status"]),
 
 	media_items: defineTable({
-		// Telegram file_id (permanent)
-		file_id: v.optional(v.string()),
-		// Telegram file_unique_id (for deduplication)
-		file_unique_id: v.optional(v.string()),
+		/**
+		 * Telegram file information (grouped for atomicity)
+		 * Both file_id and file_unique_id are set together when media is uploaded to Telegram
+		 */
+		telegram_file: v.optional(
+			v.object({
+				/** Telegram file_id (permanent, used for re-sending) */
+				file_id: v.string(),
+				/** Telegram file_unique_id (for deduplication) */
+				file_unique_id: v.string(),
+			}),
+		),
 		type: v.union(
 			v.literal("image"),
 			v.literal("video"),
@@ -105,8 +132,6 @@ export default defineSchema({
 		height: v.optional(v.number()),
 		post_id: v.id("posts"),
 	})
-		.index("by_file_id", ["file_id"])
-		.index("by_file_unique_id", ["file_unique_id"])
 		.index("by_type", ["type"])
 		.index("by_post_id", ["post_id"]),
 

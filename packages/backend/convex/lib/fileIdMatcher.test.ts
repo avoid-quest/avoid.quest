@@ -12,10 +12,13 @@ import type { FileIdInfo } from "./validators/media";
 
 const MAX_MEDIA_GROUP_SIZE = 10;
 
+// Helper type for mock media items with url field (for testing)
+type MockMediaItem = Doc<"media_items"> & { url?: string };
+
 // Helper to create mock media items
 function createMockMediaItem(
-	overrides: Partial<Doc<"media_items">> = {},
-): Doc<"media_items"> {
+	overrides: Partial<MockMediaItem> = {},
+): MockMediaItem {
 	return {
 		_id: `media_items:${Date.now()}_${Math.random().toString(36).slice(2)}` as Id<"media_items">,
 		_creationTime: Date.now(),
@@ -30,21 +33,19 @@ function createMockMediaItem(
  * Filter media items using the same logic as the Telegram mediaBuilder
  * This ensures consistency between what we send and what we try to match.
  */
-function filterSentMediaItems(
-	mediaItems: Doc<"media_items">[],
-): Doc<"media_items">[] {
+function filterSentMediaItems(mediaItems: MockMediaItem[]): MockMediaItem[] {
 	return mediaItems
 		.filter((item) => item.type !== "thumbnail")
-		.filter((item) => item.file_id || item.url)
+		.filter((item) => item.telegram_file || item.url)
 		.slice(0, MAX_MEDIA_GROUP_SIZE);
 }
 
 // Since we can't easily import the actual function due to Convex internals,
 // we test the logic by recreating the matching algorithm
 function matchFileIds(
-	mediaItems: Doc<"media_items">[],
+	mediaItems: MockMediaItem[],
 	fileIds: FileIdInfo[],
-): Array<{ mediaItem: Doc<"media_items">; fileInfo: FileIdInfo } | null> {
+): Array<{ mediaItem: MockMediaItem; fileInfo: FileIdInfo } | null> {
 	if (fileIds.length === 0) {
 		return [];
 	}
@@ -53,7 +54,7 @@ function matchFileIds(
 	const sentMediaItems = filterSentMediaItems(mediaItems);
 
 	const results: Array<{
-		mediaItem: Doc<"media_items">;
+		mediaItem: MockMediaItem;
 		fileInfo: FileIdInfo;
 	} | null> = [];
 
@@ -73,7 +74,7 @@ function matchFileIds(
 describe("file_id position matching", () => {
 	describe("basic matching", () => {
 		it("correctly matches file_ids for carousel with multiple items", () => {
-			const mediaItems: Doc<"media_items">[] = [
+			const mediaItems: MockMediaItem[] = [
 				createMockMediaItem({
 					url: "https://example.com/1.jpg",
 					type: "image",
@@ -106,7 +107,7 @@ describe("file_id position matching", () => {
 		});
 
 		it("handles fewer file_ids than media items", () => {
-			const mediaItems: Doc<"media_items">[] = [
+			const mediaItems: MockMediaItem[] = [
 				createMockMediaItem({ url: "https://example.com/1.jpg" }),
 				createMockMediaItem({ url: "https://example.com/2.jpg" }),
 				createMockMediaItem({ url: "https://example.com/3.jpg" }),
@@ -124,7 +125,7 @@ describe("file_id position matching", () => {
 		});
 
 		it("handles more file_ids than media items", () => {
-			const mediaItems: Doc<"media_items">[] = [
+			const mediaItems: MockMediaItem[] = [
 				createMockMediaItem({ url: "https://example.com/1.jpg" }),
 			];
 
@@ -145,7 +146,7 @@ describe("file_id position matching", () => {
 
 	describe("thumbnail filtering", () => {
 		it("excludes thumbnails from position matching", () => {
-			const mediaItems: Doc<"media_items">[] = [
+			const mediaItems: MockMediaItem[] = [
 				createMockMediaItem({
 					url: "https://example.com/thumb.jpg",
 					type: "thumbnail",
@@ -176,7 +177,7 @@ describe("file_id position matching", () => {
 		});
 
 		it("handles post with only thumbnails (becomes text-only)", () => {
-			const mediaItems: Doc<"media_items">[] = [
+			const mediaItems: MockMediaItem[] = [
 				createMockMediaItem({
 					url: "https://example.com/thumb1.jpg",
 					type: "thumbnail",
@@ -196,9 +197,12 @@ describe("file_id position matching", () => {
 	});
 
 	describe("URL handling", () => {
-		it("includes media items with file_id but no URL", () => {
-			const mediaItems: Doc<"media_items">[] = [
-				createMockMediaItem({ url: undefined, file_id: "existing1" }),
+		it("includes media items with telegram_file but no URL", () => {
+			const mediaItems: MockMediaItem[] = [
+				createMockMediaItem({
+					url: undefined,
+					telegram_file: { file_id: "existing1", file_unique_id: "existing1u" },
+				}),
 				createMockMediaItem({ url: "https://example.com/2.jpg" }),
 				createMockMediaItem({ url: "https://example.com/3.jpg" }),
 			];
@@ -211,17 +215,17 @@ describe("file_id position matching", () => {
 
 			const matches = matchFileIds(mediaItems, fileIds);
 
-			// First item has file_id so it's included (matches mediaBuilder behavior)
+			// First item has telegram_file so it's included (matches mediaBuilder behavior)
 			expect(matches).toHaveLength(3);
-			expect(matches[0]?.mediaItem.file_id).toBe("existing1");
+			expect(matches[0]?.mediaItem.telegram_file?.file_id).toBe("existing1");
 			expect(matches[0]?.fileInfo.file_id).toBe("AgAC1");
 			expect(matches[1]?.mediaItem.url).toBe("https://example.com/2.jpg");
 			expect(matches[1]?.fileInfo.file_id).toBe("AgAC2");
 		});
 
-		it("skips media items without URL or file_id", () => {
-			const mediaItems: Doc<"media_items">[] = [
-				createMockMediaItem({ url: undefined, file_id: undefined }),
+		it("skips media items without URL or telegram_file", () => {
+			const mediaItems: MockMediaItem[] = [
+				createMockMediaItem({ url: undefined, telegram_file: undefined }),
 				createMockMediaItem({ url: "https://example.com/2.jpg" }),
 				createMockMediaItem({ url: "https://example.com/3.jpg" }),
 			];
@@ -233,7 +237,7 @@ describe("file_id position matching", () => {
 
 			const matches = matchFileIds(mediaItems, fileIds);
 
-			// First item has no URL or file_id, so it's skipped
+			// First item has no URL or telegram_file, so it's skipped
 			expect(matches).toHaveLength(2);
 			expect(matches[0]?.mediaItem.url).toBe("https://example.com/2.jpg");
 			expect(matches[0]?.fileInfo.file_id).toBe("AgAC1");
@@ -252,7 +256,7 @@ describe("file_id position matching", () => {
 		});
 
 		it("handles empty file_id list", () => {
-			const mediaItems: Doc<"media_items">[] = [
+			const mediaItems: MockMediaItem[] = [
 				createMockMediaItem({ url: "https://example.com/1.jpg" }),
 			];
 
@@ -262,7 +266,7 @@ describe("file_id position matching", () => {
 		});
 
 		it("handles single item correctly", () => {
-			const mediaItems: Doc<"media_items">[] = [
+			const mediaItems: MockMediaItem[] = [
 				createMockMediaItem({ url: "https://example.com/single.jpg" }),
 			];
 
@@ -282,9 +286,8 @@ describe("file_id position matching", () => {
 		});
 
 		it("handles exactly 10 items (maximum media group)", () => {
-			const mediaItems: Doc<"media_items">[] = Array.from(
-				{ length: 10 },
-				(_, i) => createMockMediaItem({ url: `https://example.com/${i}.jpg` }),
+			const mediaItems: MockMediaItem[] = Array.from({ length: 10 }, (_, i) =>
+				createMockMediaItem({ url: `https://example.com/${i}.jpg` }),
 			);
 
 			const fileIds: FileIdInfo[] = Array.from({ length: 10 }, (_, i) => ({
@@ -304,9 +307,8 @@ describe("file_id position matching", () => {
 
 		it("limits to MAX_MEDIA_GROUP_SIZE (10) items", () => {
 			// Create 15 media items - more than max
-			const mediaItems: Doc<"media_items">[] = Array.from(
-				{ length: 15 },
-				(_, i) => createMockMediaItem({ url: `https://example.com/${i}.jpg` }),
+			const mediaItems: MockMediaItem[] = Array.from({ length: 15 }, (_, i) =>
+				createMockMediaItem({ url: `https://example.com/${i}.jpg` }),
 			);
 
 			// Only 10 file IDs (Telegram would only send 10)
@@ -327,7 +329,7 @@ describe("file_id position matching", () => {
 		});
 
 		it("handles mixed content (images + videos)", () => {
-			const mediaItems: Doc<"media_items">[] = [
+			const mediaItems: MockMediaItem[] = [
 				createMockMediaItem({
 					url: "https://example.com/image1.jpg",
 					type: "image",
@@ -359,27 +361,29 @@ describe("file_id position matching", () => {
 });
 
 describe("URL expiration fallback", () => {
-	it("media item with file_id should be preferred over URL", () => {
+	it("media item with telegram_file should be preferred over URL", () => {
 		const mediaItem = createMockMediaItem({
 			url: "https://example.com/image.jpg",
-			file_id: "AgACPreferred",
-			file_unique_id: "uniquePreferred",
+			telegram_file: {
+				file_id: "AgACPreferred",
+				file_unique_id: "uniquePreferred",
+			},
 		});
 
-		// When both URL and file_id present, file_id should be used
+		// When both URL and telegram_file present, telegram_file should be used
 		// This is verified in the Telegram sender, but we document the expectation
-		expect(mediaItem.file_id).toBe("AgACPreferred");
+		expect(mediaItem.telegram_file?.file_id).toBe("AgACPreferred");
 		expect(mediaItem.url).toBe("https://example.com/image.jpg");
 	});
 
 	it("media item with only URL falls back correctly", () => {
 		const mediaItem = createMockMediaItem({
 			url: "https://example.com/image.jpg",
-			file_id: undefined,
+			telegram_file: undefined,
 		});
 
-		// No file_id, URL should be used
-		expect(mediaItem.file_id).toBeUndefined();
+		// No telegram_file, URL should be used
+		expect(mediaItem.telegram_file).toBeUndefined();
 		expect(mediaItem.url).toBe("https://example.com/image.jpg");
 	});
 });
@@ -393,11 +397,13 @@ describe("migration path", () => {
 			height: 1080,
 		});
 
-		// Simulate backfill: only file_id fields are added
+		// Simulate backfill: telegram_file is added
 		const backfilledItem = {
 			...originalItem,
-			file_id: "AgACBackfilled",
-			file_unique_id: "uniqueBackfilled",
+			telegram_file: {
+				file_id: "AgACBackfilled",
+				file_unique_id: "uniqueBackfilled",
+			},
 		};
 
 		// All original fields preserved
@@ -405,22 +411,24 @@ describe("migration path", () => {
 		expect(backfilledItem.type).toBe("video");
 		expect(backfilledItem.width).toBe(1920);
 		expect(backfilledItem.height).toBe(1080);
-		// New fields added
-		expect(backfilledItem.file_id).toBe("AgACBackfilled");
-		expect(backfilledItem.file_unique_id).toBe("uniqueBackfilled");
+		// New telegram_file added
+		expect(backfilledItem.telegram_file?.file_id).toBe("AgACBackfilled");
+		expect(backfilledItem.telegram_file?.file_unique_id).toBe(
+			"uniqueBackfilled",
+		);
 	});
 
 	it("identifies items needing backfill correctly", () => {
-		const items: Doc<"media_items">[] = [
+		const items: MockMediaItem[] = [
 			createMockMediaItem({ url: "https://example.com/1.jpg" }), // needs backfill
 			createMockMediaItem({
 				url: "https://example.com/2.jpg",
-				file_id: "AgAC2",
-			}), // already has file_id
+				telegram_file: { file_id: "AgAC2", file_unique_id: "unique2" },
+			}), // already has telegram_file
 			createMockMediaItem({ url: "https://example.com/3.jpg" }), // needs backfill
 		];
 
-		const needingBackfill = items.filter((item) => !item.file_id);
+		const needingBackfill = items.filter((item) => !item.telegram_file);
 
 		expect(needingBackfill).toHaveLength(2);
 		expect(needingBackfill[0].url).toBe("https://example.com/1.jpg");

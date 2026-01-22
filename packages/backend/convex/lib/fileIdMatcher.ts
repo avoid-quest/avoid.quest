@@ -22,7 +22,7 @@ function filterSentMediaItems(
 ): Doc<"media_items">[] {
 	return mediaItems
 		.filter((item) => item.type !== "thumbnail")
-		.filter((item) => item.file_id !== undefined)
+		.filter((item) => item.telegram_file !== undefined)
 		.slice(0, MAX_MEDIA_GROUP_SIZE);
 }
 
@@ -89,12 +89,12 @@ export async function saveFileIdsForPost(
 
 		// If media item already has a file_unique_id, validate it matches
 		if (
-			mediaItem.file_unique_id &&
-			fileInfo.file_unique_id !== mediaItem.file_unique_id
+			mediaItem.telegram_file?.file_unique_id &&
+			fileInfo.file_unique_id !== mediaItem.telegram_file.file_unique_id
 		) {
 			console.warn(
 				`saveFileIdsForPost: file_unique_id mismatch at position ${i} for post ${postId}: ` +
-					`existing ${mediaItem.file_unique_id} vs new ${fileInfo.file_unique_id}`,
+					`existing ${mediaItem.telegram_file.file_unique_id} vs new ${fileInfo.file_unique_id}`,
 			);
 			// This is unusual but not necessarily wrong - file might have been re-uploaded
 		}

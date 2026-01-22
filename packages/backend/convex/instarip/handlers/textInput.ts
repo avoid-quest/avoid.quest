@@ -29,6 +29,13 @@ function getUserFriendlyError(error: unknown): string {
 }
 
 /**
+ * Instagram username validation constants
+ */
+const INSTAGRAM_MIN_USERNAME_LENGTH = 1;
+const INSTAGRAM_MAX_USERNAME_LENGTH = 30;
+const INSTAGRAM_USERNAME_PATTERN = /^[a-zA-Z0-9._]+$/;
+
+/**
  * Validate Instagram username format
  * Rules:
  * - Only letters (a-z), numbers (0-9), periods (.), and underscores (_)
@@ -40,14 +47,17 @@ function isValidInstagramUsername(username: string): {
 	valid: boolean;
 	error?: string;
 } {
-	if (username.length < 1 || username.length > 30) {
+	if (
+		username.length < INSTAGRAM_MIN_USERNAME_LENGTH ||
+		username.length > INSTAGRAM_MAX_USERNAME_LENGTH
+	) {
 		return {
 			valid: false,
-			error: "Username must be between 1 and 30 characters",
+			error: `Username must be between ${INSTAGRAM_MIN_USERNAME_LENGTH} and ${INSTAGRAM_MAX_USERNAME_LENGTH} characters`,
 		};
 	}
 
-	if (!/^[a-zA-Z0-9._]+$/.test(username)) {
+	if (!INSTAGRAM_USERNAME_PATTERN.test(username)) {
 		return {
 			valid: false,
 			error: "Only letters, numbers, dots and underscores allowed",

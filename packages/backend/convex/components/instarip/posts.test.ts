@@ -738,7 +738,7 @@ describe("posts", () => {
 			expect(stats.needsBackfill).toBe(0);
 		});
 
-		it("counts posts with all file_ids as withFileIds", async () => {
+		it("counts posts with all telegram_file as withFileIds", async () => {
 			const t = convexTest(schema, modules);
 
 			const user = await t.mutation(api.users.getOrCreateUser, {
@@ -762,12 +762,14 @@ describe("posts", () => {
 			// Mark as sent
 			await t.mutation(api.posts.markSent, { id: postId, sentAt: Date.now() });
 
-			// Create media item with file_id
+			// Create media item with telegram_file
 			await t.mutation(api.mediaItems.upsertMediaItem, {
 				post_id: postId,
 				type: "image",
-				file_id: "test_file_id",
-				file_unique_id: "test_unique_id",
+				telegram_file: {
+					file_id: "test_file_id",
+					file_unique_id: "test_unique_id",
+				},
 			});
 
 			const stats = await t.query(api.posts.getBackfillStats, {});
@@ -777,7 +779,7 @@ describe("posts", () => {
 			expect(stats.needsBackfill).toBe(0);
 		});
 
-		it("counts posts with missing file_ids as needsBackfill", async () => {
+		it("counts posts with missing telegram_file as needsBackfill", async () => {
 			const t = convexTest(schema, modules);
 
 			const user = await t.mutation(api.users.getOrCreateUser, {
@@ -801,7 +803,7 @@ describe("posts", () => {
 			// Mark as sent
 			await t.mutation(api.posts.markSent, { id: postId, sentAt: Date.now() });
 
-			// Create media item WITHOUT file_id
+			// Create media item WITHOUT telegram_file
 			await t.mutation(api.mediaItems.upsertMediaItem, {
 				post_id: postId,
 				type: "image",
@@ -822,7 +824,7 @@ describe("posts", () => {
 			});
 			if (!user) throw new Error("User should be created");
 
-			// Post 1: Sent with all file_ids
+			// Post 1: Sent with telegram_file
 			const post1Id = await t.mutation(api.posts.upsertPost, {
 				ig_id: "1",
 				shortcode: "COMPLETE1",
@@ -838,11 +840,13 @@ describe("posts", () => {
 			await t.mutation(api.mediaItems.upsertMediaItem, {
 				post_id: post1Id,
 				type: "image",
-				file_id: "file_1",
-				file_unique_id: "unique_1",
+				telegram_file: {
+					file_id: "file_1",
+					file_unique_id: "unique_1",
+				},
 			});
 
-			// Post 2: Sent with all file_ids
+			// Post 2: Sent with all telegram_file
 			const post2Id = await t.mutation(api.posts.upsertPost, {
 				ig_id: "2",
 				shortcode: "COMPLETE2",
@@ -858,8 +862,10 @@ describe("posts", () => {
 			await t.mutation(api.mediaItems.upsertMediaItem, {
 				post_id: post2Id,
 				type: "image",
-				file_id: "file_2",
-				file_unique_id: "unique_2",
+				telegram_file: {
+					file_id: "file_2",
+					file_unique_id: "unique_2",
+				},
 			});
 
 			// Post 3: Sent needing backfill
@@ -878,7 +884,7 @@ describe("posts", () => {
 			await t.mutation(api.mediaItems.upsertMediaItem, {
 				post_id: post3Id,
 				type: "image",
-				// No file_id
+				// No telegram_file
 			});
 
 			// Post 4: Unsent (should not be counted)

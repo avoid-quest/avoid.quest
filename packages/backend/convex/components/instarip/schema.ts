@@ -67,21 +67,29 @@ export default defineSchema({
 		/** Event date in milliseconds (UTC) - when the event occurs (if applicable) */
 		event_date: v.optional(v.number()),
 		users: v.array(v.id("users")),
-		sent: v.boolean(),
+		/**
+		 * Post sending status - state machine pattern
+		 * - "pending": Not yet sent, ready to be sent
+		 * - "sending": Currently being sent (prevents concurrent sends)
+		 * - "sent": Successfully sent to Telegram
+		 * - "failed": Permanently failed after max retries
+		 */
+		status: v.union(
+			v.literal("pending"),
+			v.literal("sending"),
+			v.literal("sent"),
+			v.literal("failed"),
+		),
 		/** Timestamp in milliseconds (UTC) - when the post was sent to Telegram */
 		sentAt: v.optional(v.number()),
-		/** Whether this post is currently being sent (prevents concurrent sends) */
-		sending: v.optional(v.boolean()),
 		/** Number of retry attempts for failed sends */
 		retry_count: v.optional(v.number()),
-		/** Whether this post has permanently failed to send */
-		send_failed: v.optional(v.boolean()),
 	})
 		.index("by_timestamp", ["timestamp"])
 		.index("by_event_date", ["event_date"])
 		.index("by_shortcode", ["shortcode"])
 		.index("by_user_id", ["users"])
-		.index("by_sent", ["sent"]),
+		.index("by_status", ["status"]),
 
 	media_items: defineTable({
 		// Telegram file_id (permanent)

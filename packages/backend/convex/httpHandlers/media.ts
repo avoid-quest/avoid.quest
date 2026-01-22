@@ -35,7 +35,7 @@ function corsResponse(
 	origin: string | null,
 ): Response {
 	const headers = new Headers(init.headers);
-	headers.set("Access-Control-Allow-Origin", origin || "*");
+	headers.set("Access-Control-Allow-Origin", origin ?? "*");
 	return new Response(body, { ...init, headers });
 }
 
@@ -51,7 +51,7 @@ export const mediaHandler = httpAction(async (ctx, request) => {
 		return new Response(null, {
 			status: 204,
 			headers: {
-				"Access-Control-Allow-Origin": origin || "*",
+				"Access-Control-Allow-Origin": origin ?? "*",
 				"Access-Control-Allow-Methods": "GET, OPTIONS",
 				"Access-Control-Allow-Headers": "Content-Type",
 				"Access-Control-Max-Age": "86400",
@@ -144,7 +144,7 @@ export const mediaHandler = httpAction(async (ctx, request) => {
 			headers: {
 				"Content-Type": contentType,
 				"Cache-Control": "public, max-age=31536000, immutable",
-				"Access-Control-Allow-Origin": origin || "*",
+				"Access-Control-Allow-Origin": origin ?? "*",
 			},
 		});
 	} catch (error) {

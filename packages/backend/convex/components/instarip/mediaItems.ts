@@ -33,6 +33,8 @@ const telegramFileIdItemValidator = v.object({
 
 /**
  * Get all media items
+ * @deprecated This query loads all media items into memory and may cause OOM errors.
+ * Use `getMediaItemsByPostId` for specific posts or implement pagination for large datasets.
  */
 export const getMediaItems = query({
 	args: {},

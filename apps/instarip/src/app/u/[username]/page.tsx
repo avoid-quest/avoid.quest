@@ -14,8 +14,21 @@ type UserPageProps = {
 };
 
 export async function generateStaticParams() {
-  const users = await fetchQuery(api.users.getUsers, {});
-  return users.map((user: Doc<"users">) => ({
+  // Use paginated query to avoid OOM with large user counts
+  const allUsers: Doc<"users">[] = [];
+  let cursor: string | null = null;
+  let isDone = false;
+
+  while (!isDone) {
+    const result = await fetchQuery(api.users.getUsersPaginated, {
+      paginationOpts: { numItems: 100, cursor },
+    });
+    allUsers.push(...result.page);
+    isDone = result.isDone;
+    cursor = result.continueCursor;
+  }
+
+  return allUsers.map((user) => ({
     username: user.username,
   }));
 }

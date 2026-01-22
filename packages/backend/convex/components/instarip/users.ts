@@ -6,11 +6,28 @@ const DEFAULT_TO_BE_SCRAPED_LIMIT = 100;
 
 /**
  * Get all users ordered by username
+ * @deprecated Use `getUsersPaginated` for large datasets or `getUsersLimited` for bounded queries.
+ * This query loads all users into memory and may cause OOM errors with large user counts.
  */
 export const getUsers = query({
 	args: {},
 	handler: async (ctx) =>
 		await ctx.db.query("users").withIndex("by_username").order("asc").collect(),
+});
+
+const DEFAULT_USERS_LIMIT = 100;
+
+/**
+ * Get users with a configurable limit (bounded query to prevent OOM)
+ */
+export const getUsersLimited = query({
+	args: { limit: v.optional(v.number()) },
+	handler: async (ctx, { limit }) =>
+		await ctx.db
+			.query("users")
+			.withIndex("by_username")
+			.order("asc")
+			.take(limit ?? DEFAULT_USERS_LIMIT),
 });
 
 /**

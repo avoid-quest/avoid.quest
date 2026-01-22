@@ -12,6 +12,9 @@ import {
 	fetchUserPosts,
 } from "./adapter";
 
+const DEFAULT_LOG_RETENTION_DAYS = 30;
+const CLEANUP_BATCH_SIZE = 100;
+
 export type FetchUserResult = {
 	success: boolean;
 	posts: FetchedPost[];
@@ -151,5 +154,40 @@ export const getFetchLogsByUsername = query({
 			.withIndex("by_username", (q) => q.eq("username", username))
 			.order("desc")
 			.take(limit ?? 20);
+	},
+});
+
+/**
+ * Cleanup old fetch logs based on retention settings.
+ * Deletes logs older than max_retention_days (default: 30 days).
+ * Uses batching to avoid memory issues with large datasets.
+ *
+ * Note: This is a public mutation so it can be called from cron jobs
+ * in the main app. Consider access control if needed.
+ */
+export const cleanupOldLogs = mutation({
+	args: {},
+	returns: v.number(),
+	handler: async (ctx) => {
+		// Get logging settings for retention days
+		const settings = await ctx.db.query("settings").first();
+		const retentionDays =
+			settings?.logging?.max_retention_days ?? DEFAULT_LOG_RETENTION_DAYS;
+
+		// Calculate cutoff timestamp
+		const cutoffMs = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
+
+		// Query logs older than cutoff in batches to avoid OOM
+		const oldLogs = await ctx.db
+			.query("fetch_logs")
+			.withIndex("by_fetched_at", (q) => q.lt("fetched_at", cutoffMs))
+			.take(CLEANUP_BATCH_SIZE);
+
+		// Delete old logs
+		for (const log of oldLogs) {
+			await ctx.db.delete(log._id);
+		}
+
+		return oldLogs.length;
 	},
 });

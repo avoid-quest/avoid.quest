@@ -42,7 +42,7 @@ describe("posts", () => {
 			});
 			expect(unsent).toHaveLength(1);
 			expect(unsent[0].shortcode).toBe("ABC123");
-			expect(unsent[0].sent).toBe(false);
+			expect(unsent[0].status).toBe("pending");
 		});
 
 		it("excludes sent posts", async () => {
@@ -145,7 +145,7 @@ describe("posts", () => {
 			const post = await t.query(api.posts.getPostById, {
 				id: postId,
 			});
-			expect(post?.sent).toBe(true);
+			expect(post?.status).toBe("sent");
 			expect(post?.sentAt).toBe(sentAt);
 		});
 
@@ -247,7 +247,7 @@ describe("posts", () => {
 			const post = await t.query(api.posts.getPostById, {
 				id: postId,
 			});
-			expect(post?.sent).toBe(false);
+			expect(post?.status).toBe("pending");
 			expect(post?.shortcode).toBe("NEW123");
 		});
 
@@ -411,7 +411,7 @@ describe("posts", () => {
 			expect(claimed).toBe(true);
 
 			const post = await t.query(api.posts.getPostById, { id: postId });
-			expect(post?.sending).toBe(true);
+			expect(post?.status).toBe("sending");
 		});
 
 		it("returns false for already claimed post", async () => {
@@ -498,12 +498,12 @@ describe("posts", () => {
 			await t.mutation(api.posts.clearSending, { id: postId });
 
 			const post = await t.query(api.posts.getPostById, { id: postId });
-			expect(post?.sending).toBe(false);
+			expect(post?.status).toBe("pending");
 		});
 	});
 
 	describe("markSendFailed", () => {
-		it("sets send_failed flag and clears sending", async () => {
+		it("transitions post to failed status", async () => {
 			const t = convexTest(schema, modules);
 
 			const user = await t.mutation(api.users.getOrCreateUser, {
@@ -523,15 +523,14 @@ describe("posts", () => {
 				timestamp: Date.now(),
 			});
 
-			// First claim the post (sets sending=true)
+			// First claim the post (sets status to "sending")
 			await t.mutation(api.posts.claimForSending, { id: postId });
 
 			// Mark as failed
 			await t.mutation(api.posts.markSendFailed, { id: postId });
 
 			const post = await t.query(api.posts.getPostById, { id: postId });
-			expect(post?.send_failed).toBe(true);
-			expect(post?.sending).toBe(false);
+			expect(post?.status).toBe("failed");
 		});
 
 		it("claimForSending returns false for permanently failed post", async () => {
@@ -697,6 +696,240 @@ describe("posts", () => {
 			const unsent = await t.query(api.posts.getUnsent, { limit: 10 });
 			expect(unsent).toHaveLength(1);
 			expect(unsent[0].shortcode).toBe("NORMAL");
+		});
+	});
+
+	describe("getBackfillStats", () => {
+		it("returns zeros for empty database", async () => {
+			const t = convexTest(schema, modules);
+
+			const stats = await t.query(api.posts.getBackfillStats, {});
+
+			expect(stats.totalSent).toBe(0);
+			expect(stats.withFileIds).toBe(0);
+			expect(stats.needsBackfill).toBe(0);
+		});
+
+		it("returns zeros when no sent posts", async () => {
+			const t = convexTest(schema, modules);
+
+			const user = await t.mutation(api.users.getOrCreateUser, {
+				username: "testuser",
+			});
+			if (!user) throw new Error("User should be created");
+
+			// Create unsent post
+			await t.mutation(api.posts.upsertPost, {
+				ig_id: "1",
+				shortcode: "UNSENT123",
+				display_url: "https://example.com/1.jpg",
+				caption: "Unsent post",
+				is_video: false,
+				url: "https://instagram.com/p/UNSENT123",
+				media_type: "image",
+				users: [user._id],
+				timestamp: Date.now(),
+			});
+
+			const stats = await t.query(api.posts.getBackfillStats, {});
+
+			expect(stats.totalSent).toBe(0);
+			expect(stats.withFileIds).toBe(0);
+			expect(stats.needsBackfill).toBe(0);
+		});
+
+		it("counts posts with all file_ids as withFileIds", async () => {
+			const t = convexTest(schema, modules);
+
+			const user = await t.mutation(api.users.getOrCreateUser, {
+				username: "testuser",
+			});
+			if (!user) throw new Error("User should be created");
+
+			// Create sent post
+			const postId = await t.mutation(api.posts.upsertPost, {
+				ig_id: "1",
+				shortcode: "SENT123",
+				display_url: "https://example.com/1.jpg",
+				caption: "Sent post",
+				is_video: false,
+				url: "https://instagram.com/p/SENT123",
+				media_type: "image",
+				users: [user._id],
+				timestamp: Date.now(),
+			});
+
+			// Mark as sent
+			await t.mutation(api.posts.markSent, { id: postId, sentAt: Date.now() });
+
+			// Create media item with file_id
+			await t.mutation(api.mediaItems.upsertMediaItem, {
+				post_id: postId,
+				type: "image",
+				file_id: "test_file_id",
+				file_unique_id: "test_unique_id",
+			});
+
+			const stats = await t.query(api.posts.getBackfillStats, {});
+
+			expect(stats.totalSent).toBe(1);
+			expect(stats.withFileIds).toBe(1);
+			expect(stats.needsBackfill).toBe(0);
+		});
+
+		it("counts posts with missing file_ids as needsBackfill", async () => {
+			const t = convexTest(schema, modules);
+
+			const user = await t.mutation(api.users.getOrCreateUser, {
+				username: "testuser",
+			});
+			if (!user) throw new Error("User should be created");
+
+			// Create sent post
+			const postId = await t.mutation(api.posts.upsertPost, {
+				ig_id: "1",
+				shortcode: "BACKFILL123",
+				display_url: "https://example.com/1.jpg",
+				caption: "Backfill needed post",
+				is_video: false,
+				url: "https://instagram.com/p/BACKFILL123",
+				media_type: "image",
+				users: [user._id],
+				timestamp: Date.now(),
+			});
+
+			// Mark as sent
+			await t.mutation(api.posts.markSent, { id: postId, sentAt: Date.now() });
+
+			// Create media item WITHOUT file_id
+			await t.mutation(api.mediaItems.upsertMediaItem, {
+				post_id: postId,
+				type: "image",
+			});
+
+			const stats = await t.query(api.posts.getBackfillStats, {});
+
+			expect(stats.totalSent).toBe(1);
+			expect(stats.withFileIds).toBe(0);
+			expect(stats.needsBackfill).toBe(1);
+		});
+
+		it("handles mixed scenarios correctly", async () => {
+			const t = convexTest(schema, modules);
+
+			const user = await t.mutation(api.users.getOrCreateUser, {
+				username: "testuser",
+			});
+			if (!user) throw new Error("User should be created");
+
+			// Post 1: Sent with all file_ids
+			const post1Id = await t.mutation(api.posts.upsertPost, {
+				ig_id: "1",
+				shortcode: "COMPLETE1",
+				display_url: "https://example.com/1.jpg",
+				caption: "Complete post 1",
+				is_video: false,
+				url: "https://instagram.com/p/COMPLETE1",
+				media_type: "image",
+				users: [user._id],
+				timestamp: Date.now(),
+			});
+			await t.mutation(api.posts.markSent, { id: post1Id, sentAt: Date.now() });
+			await t.mutation(api.mediaItems.upsertMediaItem, {
+				post_id: post1Id,
+				type: "image",
+				file_id: "file_1",
+				file_unique_id: "unique_1",
+			});
+
+			// Post 2: Sent with all file_ids
+			const post2Id = await t.mutation(api.posts.upsertPost, {
+				ig_id: "2",
+				shortcode: "COMPLETE2",
+				display_url: "https://example.com/2.jpg",
+				caption: "Complete post 2",
+				is_video: false,
+				url: "https://instagram.com/p/COMPLETE2",
+				media_type: "image",
+				users: [user._id],
+				timestamp: Date.now() + 1,
+			});
+			await t.mutation(api.posts.markSent, { id: post2Id, sentAt: Date.now() });
+			await t.mutation(api.mediaItems.upsertMediaItem, {
+				post_id: post2Id,
+				type: "image",
+				file_id: "file_2",
+				file_unique_id: "unique_2",
+			});
+
+			// Post 3: Sent needing backfill
+			const post3Id = await t.mutation(api.posts.upsertPost, {
+				ig_id: "3",
+				shortcode: "NEEDSBACKFILL",
+				display_url: "https://example.com/3.jpg",
+				caption: "Needs backfill",
+				is_video: false,
+				url: "https://instagram.com/p/NEEDSBACKFILL",
+				media_type: "image",
+				users: [user._id],
+				timestamp: Date.now() + 2,
+			});
+			await t.mutation(api.posts.markSent, { id: post3Id, sentAt: Date.now() });
+			await t.mutation(api.mediaItems.upsertMediaItem, {
+				post_id: post3Id,
+				type: "image",
+				// No file_id
+			});
+
+			// Post 4: Unsent (should not be counted)
+			await t.mutation(api.posts.upsertPost, {
+				ig_id: "4",
+				shortcode: "UNSENT",
+				display_url: "https://example.com/4.jpg",
+				caption: "Unsent post",
+				is_video: false,
+				url: "https://instagram.com/p/UNSENT",
+				media_type: "image",
+				users: [user._id],
+				timestamp: Date.now() + 3,
+			});
+
+			const stats = await t.query(api.posts.getBackfillStats, {});
+
+			expect(stats.totalSent).toBe(3);
+			expect(stats.withFileIds).toBe(2);
+			expect(stats.needsBackfill).toBe(1);
+		});
+
+		it("handles sent posts with no media items", async () => {
+			const t = convexTest(schema, modules);
+
+			const user = await t.mutation(api.users.getOrCreateUser, {
+				username: "testuser",
+			});
+			if (!user) throw new Error("User should be created");
+
+			// Create sent post without media items
+			const postId = await t.mutation(api.posts.upsertPost, {
+				ig_id: "1",
+				shortcode: "NOMEDIA",
+				display_url: "https://example.com/1.jpg",
+				caption: "No media items",
+				is_video: false,
+				url: "https://instagram.com/p/NOMEDIA",
+				media_type: "image",
+				users: [user._id],
+				timestamp: Date.now(),
+			});
+			await t.mutation(api.posts.markSent, { id: postId, sentAt: Date.now() });
+
+			const stats = await t.query(api.posts.getBackfillStats, {});
+
+			// Post with no media items should be counted as totalSent
+			// but not counted in withFileIds or needsBackfill
+			expect(stats.totalSent).toBe(1);
+			expect(stats.withFileIds).toBe(0);
+			expect(stats.needsBackfill).toBe(0);
 		});
 	});
 });

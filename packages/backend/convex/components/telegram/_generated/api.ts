@@ -10,6 +10,7 @@
 
 import type * as lib_apiClient from "../lib/apiClient.js";
 import type * as lib_captionBuilder from "../lib/captionBuilder.js";
+import type * as lib_defaults from "../lib/defaults.js";
 import type * as lib_mediaBuilder from "../lib/mediaBuilder.js";
 import type * as lib_storageAdapter from "../lib/storageAdapter.js";
 import type * as menu_index from "../menu/index.js";
@@ -26,6 +27,7 @@ import { anyApi, componentsGeneric } from "convex/server";
 const fullApi: ApiFromModules<{
   "lib/apiClient": typeof lib_apiClient;
   "lib/captionBuilder": typeof lib_captionBuilder;
+  "lib/defaults": typeof lib_defaults;
   "lib/mediaBuilder": typeof lib_mediaBuilder;
   "lib/storageAdapter": typeof lib_storageAdapter;
   "menu/index": typeof menu_index;

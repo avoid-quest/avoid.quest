@@ -44,7 +44,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             media_type: "image" | "video" | "carousel";
             shortcode: string;
             thumbnail_url?: string;
-            timestampSec: number;
+            timestamp: number;
             url: string;
             video_url?: string;
           };
@@ -72,7 +72,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             media_type: "image" | "video" | "carousel";
             shortcode: string;
             thumbnail_url?: string;
-            timestampSec: number;
+            timestamp: number;
             url: string;
             video_url?: string;
           }>;
@@ -129,10 +129,10 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         any,
         Name
       >;
-      getMediaItemByUrlAndPostId: FunctionReference<
+      getMediaItemByTypeAndPostId: FunctionReference<
         "query",
         "internal",
-        { postId: string; url: string },
+        { postId: string; type: "image" | "video" | "thumbnail" },
         any,
         Name
       >;
@@ -196,14 +196,14 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         any,
         Name
       >;
-      updateMediaItemWithFileIdByUrl: FunctionReference<
+      updateMediaItemWithFileIdByPosition: FunctionReference<
         "mutation",
         "internal",
         {
           file_id: string;
           file_unique_id: string;
+          position: number;
           post_id: string;
-          url: string;
         },
         any,
         Name
@@ -218,7 +218,6 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           id?: string;
           post_id: string;
           type: "image" | "video" | "thumbnail";
-          url?: string;
           width?: number;
         },
         any,

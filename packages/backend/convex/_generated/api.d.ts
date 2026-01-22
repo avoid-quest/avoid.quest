@@ -10,7 +10,6 @@
 
 import type * as bootstrap from "../bootstrap.js";
 import type * as crons from "../crons.js";
-import type * as healthCheck from "../healthCheck.js";
 import type * as http from "../http.js";
 import type * as httpHandlers_media from "../httpHandlers/media.js";
 import type * as instarip_bot from "../instarip/bot.js";
@@ -23,8 +22,6 @@ import type * as instarip_menu_usersMenu from "../instarip/menu/usersMenu.js";
 import type * as instarip_webhook from "../instarip/webhook.js";
 import type * as lib_config_defaults from "../lib/config/defaults.js";
 import type * as lib_config_index from "../lib/config/index.js";
-import type * as lib_config_validators from "../lib/config/validators.js";
-import type * as lib_dateUtils from "../lib/dateUtils.js";
 import type * as lib_fileIdMatcher from "../lib/fileIdMatcher.js";
 import type * as lib_logger from "../lib/logger.js";
 import type * as lib_security from "../lib/security.js";
@@ -41,7 +38,6 @@ import type {
 declare const fullApi: ApiFromModules<{
   bootstrap: typeof bootstrap;
   crons: typeof crons;
-  healthCheck: typeof healthCheck;
   http: typeof http;
   "httpHandlers/media": typeof httpHandlers_media;
   "instarip/bot": typeof instarip_bot;
@@ -54,8 +50,6 @@ declare const fullApi: ApiFromModules<{
   "instarip/webhook": typeof instarip_webhook;
   "lib/config/defaults": typeof lib_config_defaults;
   "lib/config/index": typeof lib_config_index;
-  "lib/config/validators": typeof lib_config_validators;
-  "lib/dateUtils": typeof lib_dateUtils;
   "lib/fileIdMatcher": typeof lib_fileIdMatcher;
   "lib/logger": typeof lib_logger;
   "lib/security": typeof lib_security;
@@ -199,7 +193,7 @@ export declare const components: {
             media_type: "image" | "video" | "carousel";
             shortcode: string;
             thumbnail_url?: string;
-            timestampSec: number;
+            timestamp: number;
             url: string;
             video_url?: string;
           };
@@ -226,7 +220,7 @@ export declare const components: {
             media_type: "image" | "video" | "carousel";
             shortcode: string;
             thumbnail_url?: string;
-            timestampSec: number;
+            timestamp: number;
             url: string;
             video_url?: string;
           }>;
@@ -276,10 +270,10 @@ export declare const components: {
         { id: string },
         any
       >;
-      getMediaItemByUrlAndPostId: FunctionReference<
+      getMediaItemByTypeAndPostId: FunctionReference<
         "query",
         "internal",
-        { postId: string; url: string },
+        { postId: string; type: "image" | "video" | "thumbnail" },
         any
       >;
       getMediaItems: FunctionReference<"query", "internal", {}, any>;
@@ -336,14 +330,14 @@ export declare const components: {
         { file_id: string; file_unique_id: string; id: string },
         any
       >;
-      updateMediaItemWithFileIdByUrl: FunctionReference<
+      updateMediaItemWithFileIdByPosition: FunctionReference<
         "mutation",
         "internal",
         {
           file_id: string;
           file_unique_id: string;
+          position: number;
           post_id: string;
-          url: string;
         },
         any
       >;
@@ -357,7 +351,6 @@ export declare const components: {
           id?: string;
           post_id: string;
           type: "image" | "video" | "thumbnail";
-          url?: string;
           width?: number;
         },
         any

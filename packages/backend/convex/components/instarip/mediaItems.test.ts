@@ -19,46 +19,6 @@ describe("media_items", () => {
 	});
 
 	describe("upsertMediaItem", () => {
-		it("creates new media item with URL", async () => {
-			const t = convexTest(schema, modules);
-
-			// Create a user and post first
-			const user = await t.mutation(api.users.getOrCreateUser, {
-				username: "testuser",
-			});
-			if (!user) throw new Error("User should be created");
-
-			const postId = await t.mutation(api.posts.upsertPost, {
-				ig_id: "test_123",
-				shortcode: "ABC123",
-				display_url: "https://example.com/image.jpg",
-				caption: "Test",
-				is_video: false,
-				url: "https://instagram.com/p/ABC123/",
-				media_type: "image",
-				users: [user._id],
-				timestamp: Date.now(),
-			});
-
-			const itemId = await t.mutation(api.mediaItems.upsertMediaItem, {
-				url: "https://example.com/media.jpg",
-				type: "image",
-				width: 1920,
-				height: 1080,
-				post_id: postId,
-			});
-
-			expect(itemId).toBeDefined();
-
-			const item = await t.query(api.mediaItems.getMediaItemById, {
-				id: itemId,
-			});
-			expect(item?.url).toBe("https://example.com/media.jpg");
-			expect(item?.type).toBe("image");
-			expect(item?.width).toBe(1920);
-			expect(item?.height).toBe(1080);
-		});
-
 		it("creates new media item with file_id", async () => {
 			const t = convexTest(schema, modules);
 
@@ -93,6 +53,44 @@ describe("media_items", () => {
 			expect(item?.file_unique_id).toBe("AQADAgATq1234");
 		});
 
+		it("creates new media item without file_id", async () => {
+			const t = convexTest(schema, modules);
+
+			const user = await t.mutation(api.users.getOrCreateUser, {
+				username: "testuser",
+			});
+			if (!user) throw new Error("User should be created");
+
+			const postId = await t.mutation(api.posts.upsertPost, {
+				ig_id: "test_123",
+				shortcode: "ABC123",
+				display_url: "https://example.com/image.jpg",
+				caption: "Test",
+				is_video: false,
+				url: "https://instagram.com/p/ABC123/",
+				media_type: "image",
+				users: [user._id],
+				timestamp: Date.now(),
+			});
+
+			const itemId = await t.mutation(api.mediaItems.upsertMediaItem, {
+				type: "image",
+				width: 1920,
+				height: 1080,
+				post_id: postId,
+			});
+
+			expect(itemId).toBeDefined();
+
+			const item = await t.query(api.mediaItems.getMediaItemById, {
+				id: itemId,
+			});
+			expect(item?.type).toBe("image");
+			expect(item?.width).toBe(1920);
+			expect(item?.height).toBe(1080);
+			expect(item?.file_id).toBeUndefined();
+		});
+
 		it("updates existing item when ID provided", async () => {
 			const t = convexTest(schema, modules);
 
@@ -114,7 +112,6 @@ describe("media_items", () => {
 			});
 
 			const itemId = await t.mutation(api.mediaItems.upsertMediaItem, {
-				url: "https://example.com/old.jpg",
 				type: "image",
 				post_id: postId,
 			});
@@ -122,7 +119,8 @@ describe("media_items", () => {
 			// Update with ID
 			await t.mutation(api.mediaItems.upsertMediaItem, {
 				id: itemId,
-				url: "https://example.com/new.jpg",
+				file_id: "new_file_id",
+				file_unique_id: "new_unique_id",
 				type: "image",
 				post_id: postId,
 			});
@@ -130,7 +128,8 @@ describe("media_items", () => {
 			const item = await t.query(api.mediaItems.getMediaItemById, {
 				id: itemId,
 			});
-			expect(item?.url).toBe("https://example.com/new.jpg");
+			expect(item?.file_id).toBe("new_file_id");
+			expect(item?.file_unique_id).toBe("new_unique_id");
 		});
 
 		it("finds existing by file_unique_id and updates", async () => {
@@ -200,12 +199,10 @@ describe("media_items", () => {
 
 			// Add multiple media items
 			await t.mutation(api.mediaItems.upsertMediaItem, {
-				url: "https://example.com/1.jpg",
 				type: "image",
 				post_id: postId,
 			});
 			await t.mutation(api.mediaItems.upsertMediaItem, {
-				url: "https://example.com/2.jpg",
 				type: "image",
 				post_id: postId,
 			});
@@ -375,12 +372,10 @@ describe("media_items", () => {
 
 			// Create items - one with file_id, one without
 			await t.mutation(api.mediaItems.upsertMediaItem, {
-				url: "https://example.com/1.jpg",
 				type: "image",
 				post_id: postId,
 			});
 			await t.mutation(api.mediaItems.upsertMediaItem, {
-				url: "https://example.com/2.jpg",
 				file_id: "AgACAgIAAxk",
 				type: "image",
 				post_id: postId,
@@ -391,7 +386,7 @@ describe("media_items", () => {
 				{ postId },
 			);
 			expect(needingBackfill).toHaveLength(1);
-			expect(needingBackfill[0].url).toBe("https://example.com/1.jpg");
+			expect(needingBackfill[0].file_id).toBeUndefined();
 		});
 
 		it("returns empty when all have file_ids", async () => {
@@ -415,7 +410,6 @@ describe("media_items", () => {
 			});
 
 			await t.mutation(api.mediaItems.upsertMediaItem, {
-				url: "https://example.com/1.jpg",
 				file_id: "AgACAgIAAxk",
 				type: "image",
 				post_id: postId,
@@ -429,8 +423,8 @@ describe("media_items", () => {
 		});
 	});
 
-	describe("updateMediaItemWithFileIdByUrl", () => {
-		it("updates media item by URL match", async () => {
+	describe("updateMediaItemWithFileIdByPosition", () => {
+		it("updates media item by position", async () => {
 			const t = convexTest(schema, modules);
 
 			const user = await t.mutation(api.users.getOrCreateUser, {
@@ -445,20 +439,25 @@ describe("media_items", () => {
 				caption: "Test",
 				is_video: false,
 				url: "https://instagram.com/p/ABC123/",
-				media_type: "image",
+				media_type: "carousel",
 				users: [user._id],
 				timestamp: Date.now(),
 			});
 
+			// Create two items
 			await t.mutation(api.mediaItems.upsertMediaItem, {
-				url: "https://example.com/target.jpg",
 				type: "image",
 				post_id: postId,
 			});
-
-			await t.mutation(api.mediaItems.updateMediaItemWithFileIdByUrl, {
+			await t.mutation(api.mediaItems.upsertMediaItem, {
+				type: "video",
 				post_id: postId,
-				url: "https://example.com/target.jpg",
+			});
+
+			// Update the second item (position 1)
+			await t.mutation(api.mediaItems.updateMediaItemWithFileIdByPosition, {
+				post_id: postId,
+				position: 1,
 				file_id: "AgACAgIAAxk",
 				file_unique_id: "AQADAgATq",
 			});
@@ -466,8 +465,13 @@ describe("media_items", () => {
 			const items = await t.query(api.mediaItems.getMediaItemsByPostId, {
 				postId,
 			});
-			expect(items[0].file_id).toBe("AgACAgIAAxk");
-			expect(items[0].file_unique_id).toBe("AQADAgATq");
+			// Sort by creation time to get consistent ordering
+			const sortedItems = items.sort(
+				(a, b) => a._creationTime - b._creationTime,
+			);
+			expect(sortedItems[0].file_id).toBeUndefined();
+			expect(sortedItems[1].file_id).toBe("AgACAgIAAxk");
+			expect(sortedItems[1].file_unique_id).toBe("AQADAgATq");
 		});
 	});
 
@@ -493,7 +497,6 @@ describe("media_items", () => {
 			});
 
 			const itemId = await t.mutation(api.mediaItems.upsertMediaItem, {
-				url: "https://example.com/image.jpg",
 				type: "image",
 				post_id: postId,
 			});
@@ -508,7 +511,7 @@ describe("media_items", () => {
 	});
 
 	describe("file_id field preservation", () => {
-		it("preserves existing fields when adding file_id", async () => {
+		it("preserves existing fields when updating with file_id", async () => {
 			const t = convexTest(schema, modules);
 
 			const user = await t.mutation(api.users.getOrCreateUser, {
@@ -528,19 +531,17 @@ describe("media_items", () => {
 				timestamp: Date.now(),
 			});
 
-			// Create item with URL and dimensions
-			await t.mutation(api.mediaItems.upsertMediaItem, {
-				url: "https://example.com/media.jpg",
+			// Create item with dimensions
+			const itemId = await t.mutation(api.mediaItems.upsertMediaItem, {
 				type: "video",
 				width: 1920,
 				height: 1080,
 				post_id: postId,
 			});
 
-			// Update with file_id
-			await t.mutation(api.mediaItems.updateMediaItemWithFileIdByUrl, {
-				post_id: postId,
-				url: "https://example.com/media.jpg",
+			// Update with file_id using ID
+			await t.mutation(api.mediaItems.updateMediaItemFileIdById, {
+				id: itemId,
 				file_id: "AgACAgIAAxk",
 				file_unique_id: "AQADAgATq",
 			});
@@ -550,7 +551,6 @@ describe("media_items", () => {
 			});
 			expect(items).toHaveLength(1);
 			// Original fields preserved
-			expect(items[0].url).toBe("https://example.com/media.jpg");
 			expect(items[0].type).toBe("video");
 			expect(items[0].width).toBe(1920);
 			expect(items[0].height).toBe(1080);
@@ -561,40 +561,6 @@ describe("media_items", () => {
 	});
 
 	describe("media source scenarios", () => {
-		it("handles URL-only media item (legacy)", async () => {
-			const t = convexTest(schema, modules);
-
-			const user = await t.mutation(api.users.getOrCreateUser, {
-				username: "testuser",
-			});
-			if (!user) throw new Error("User should be created");
-
-			const postId = await t.mutation(api.posts.upsertPost, {
-				ig_id: "test_123",
-				shortcode: "ABC123",
-				display_url: "https://example.com/image.jpg",
-				caption: "Test",
-				is_video: false,
-				url: "https://instagram.com/p/ABC123/",
-				media_type: "image",
-				users: [user._id],
-				timestamp: Date.now(),
-			});
-
-			const itemId = await t.mutation(api.mediaItems.upsertMediaItem, {
-				url: "https://example.com/url-only.jpg",
-				type: "image",
-				post_id: postId,
-			});
-
-			const item = await t.query(api.mediaItems.getMediaItemById, {
-				id: itemId,
-			});
-			expect(item?.url).toBe("https://example.com/url-only.jpg");
-			expect(item?.file_id).toBeUndefined();
-			expect(item?.file_unique_id).toBeUndefined();
-		});
-
 		it("handles file_id-only media item (Telegram native)", async () => {
 			const t = convexTest(schema, modules);
 
@@ -625,12 +591,11 @@ describe("media_items", () => {
 			const item = await t.query(api.mediaItems.getMediaItemById, {
 				id: itemId,
 			});
-			expect(item?.url).toBeUndefined();
 			expect(item?.file_id).toBe("AgACAgIAAxkFileOnly");
 			expect(item?.file_unique_id).toBe("AQADAgATqFileOnly");
 		});
 
-		it("handles media item with both URL and file_id (migrated)", async () => {
+		it("handles media item without file_id (pending backfill)", async () => {
 			const t = convexTest(schema, modules);
 
 			const user = await t.mutation(api.users.getOrCreateUser, {
@@ -651,19 +616,19 @@ describe("media_items", () => {
 			});
 
 			const itemId = await t.mutation(api.mediaItems.upsertMediaItem, {
-				url: "https://example.com/both.jpg",
-				file_id: "AgACAgIAAxkBoth",
-				file_unique_id: "AQADAgATqBoth",
 				type: "image",
+				width: 1920,
+				height: 1080,
 				post_id: postId,
 			});
 
 			const item = await t.query(api.mediaItems.getMediaItemById, {
 				id: itemId,
 			});
-			expect(item?.url).toBe("https://example.com/both.jpg");
-			expect(item?.file_id).toBe("AgACAgIAAxkBoth");
-			expect(item?.file_unique_id).toBe("AQADAgATqBoth");
+			expect(item?.file_id).toBeUndefined();
+			expect(item?.file_unique_id).toBeUndefined();
+			expect(item?.type).toBe("image");
+			expect(item?.width).toBe(1920);
 		});
 	});
 });

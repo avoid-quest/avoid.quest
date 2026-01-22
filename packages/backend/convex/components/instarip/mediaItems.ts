@@ -60,17 +60,16 @@ export const getMediaItemsByPostId = query({
 });
 
 /**
- * Get media item by URL and post ID
+ * Get media item by type and post ID
  */
-export const getMediaItemByUrlAndPostId = query({
-	args: { url: v.string(), postId: v.id("posts") },
-	handler: async (ctx, { url, postId }) => {
-		// Query by post_id first (indexed), then filter by URL
+export const getMediaItemByTypeAndPostId = query({
+	args: { type: mediaTypeValidator, postId: v.id("posts") },
+	handler: async (ctx, { type, postId }) => {
 		const items = await ctx.db
 			.query("media_items")
 			.withIndex("by_post_id", (q) => q.eq("post_id", postId))
 			.collect();
-		return items.find((item) => item.url === url) ?? null;
+		return items.find((item) => item.type === type) ?? null;
 	},
 });
 
@@ -80,7 +79,6 @@ export const getMediaItemByUrlAndPostId = query({
 export const upsertMediaItem = mutation({
 	args: {
 		id: v.optional(v.id("media_items")),
-		url: v.optional(v.string()),
 		file_id: v.optional(v.string()),
 		file_unique_id: v.optional(v.string()),
 		type: mediaTypeValidator,
@@ -90,12 +88,11 @@ export const upsertMediaItem = mutation({
 	},
 	handler: async (
 		ctx,
-		{ id, url, file_id, file_unique_id, type, width, height, post_id },
+		{ id, file_id, file_unique_id, type, width, height, post_id },
 	) => {
 		if (id) {
 			// Update existing media item by ID
 			await ctx.db.patch(id, {
-				url,
 				file_id,
 				file_unique_id,
 				type,
@@ -105,7 +102,7 @@ export const upsertMediaItem = mutation({
 			return id;
 		}
 
-		// Check for existing item - prefer file_unique_id match, then url match
+		// Check for existing item by file_unique_id
 		const items = await ctx.db
 			.query("media_items")
 			.withIndex("by_post_id", (q) => q.eq("post_id", post_id))
@@ -115,9 +112,6 @@ export const upsertMediaItem = mutation({
 		if (file_unique_id) {
 			existing = items.find((item) => item.file_unique_id === file_unique_id);
 		}
-		if (!existing && url) {
-			existing = items.find((item) => item.url === url);
-		}
 
 		if (existing) {
 			// Update existing media item
@@ -125,7 +119,6 @@ export const upsertMediaItem = mutation({
 				type,
 				width,
 				height,
-				...(url && { url }),
 				...(file_id && { file_id }),
 				...(file_unique_id && { file_unique_id }),
 			});
@@ -134,7 +127,6 @@ export const upsertMediaItem = mutation({
 
 		// Insert new media item
 		return await ctx.db.insert("media_items", {
-			url,
 			file_id,
 			file_unique_id,
 			type,
@@ -154,10 +146,9 @@ export const deleteMediaItem = mutation({
 });
 
 /**
- * Sync media items for a post (URL-based from Instagram)
- * - Updates existing media items that match by URL
- * - Adds new media items
- * - Deletes media items that are no longer in the provided list
+ * Sync media items for a post from Instagram
+ * - Creates media items with type and dimensions
+ * - Media items will be updated with file_ids when sent to Telegram
  */
 export const syncMediaItemsForPost = mutation({
 	args: {
@@ -171,43 +162,19 @@ export const syncMediaItemsForPost = mutation({
 			.withIndex("by_post_id", (q) => q.eq("post_id", post_id))
 			.collect();
 
-		// Create a map of existing items by URL for quick lookup
-		const existingByUrl = new Map(
-			existingItems.map((item) => [item.url, item]),
-		);
-
-		// Track which URLs we've processed
-		const processedUrls = new Set<string>();
-
-		// Upsert all provided media items
-		for (const item of media_items) {
-			processedUrls.add(item.url);
-			const existing = existingByUrl.get(item.url);
-
-			if (existing) {
-				// Update existing item if any properties changed
-				await ctx.db.patch(existing._id, {
-					type: item.type,
-					width: item.width,
-					height: item.height,
-				});
-			} else {
-				// Insert new item
-				await ctx.db.insert("media_items", {
-					url: item.url,
-					type: item.type,
-					width: item.width,
-					height: item.height,
-					post_id,
-				});
-			}
+		// Delete existing items (fresh sync)
+		for (const existing of existingItems) {
+			await ctx.db.delete(existing._id);
 		}
 
-		// Delete items that are no longer in the provided list
-		for (const existing of existingItems) {
-			if (existing.url && !processedUrls.has(existing.url)) {
-				await ctx.db.delete(existing._id);
-			}
+		// Insert new items (without URL storage)
+		for (const item of media_items) {
+			await ctx.db.insert("media_items", {
+				type: item.type,
+				width: item.width,
+				height: item.height,
+				post_id,
+			});
 		}
 	},
 });
@@ -309,23 +276,25 @@ export const getMediaItemsNeedingBackfill = query({
 });
 
 /**
- * Update a media item with Telegram file_id by matching post_id and URL
+ * Update a media item with Telegram file_id by matching post_id and position
  */
-export const updateMediaItemWithFileIdByUrl = mutation({
+export const updateMediaItemWithFileIdByPosition = mutation({
 	args: {
 		post_id: v.id("posts"),
-		url: v.string(),
+		position: v.number(),
 		file_id: v.string(),
 		file_unique_id: v.string(),
 	},
-	handler: async (ctx, { post_id, url, file_id, file_unique_id }) => {
-		// Find the media item by post_id and url
+	handler: async (ctx, { post_id, position, file_id, file_unique_id }) => {
+		// Find media items by post_id and use position to match
 		const items = await ctx.db
 			.query("media_items")
 			.withIndex("by_post_id", (q) => q.eq("post_id", post_id))
 			.collect();
 
-		const item = items.find((i) => i.url === url);
+		// Sort by creation time to get consistent ordering
+		const sortedItems = items.sort((a, b) => a._creationTime - b._creationTime);
+		const item = sortedItems[position];
 		if (item) {
 			await ctx.db.patch(item._id, { file_id, file_unique_id });
 		}

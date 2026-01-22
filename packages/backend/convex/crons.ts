@@ -8,7 +8,6 @@ import {
 	resolveInstagramConfig,
 	resolveTelegramConfig,
 } from "./lib/config";
-import { secondsToMilliseconds } from "./lib/dateUtils";
 import { saveFileIdsForPost } from "./lib/fileIdMatcher";
 
 /**
@@ -114,7 +113,6 @@ export const runTelegramSend = internalAction({
 						chatId,
 						caption: post.caption,
 						mediaItems: mediaItems.map((item: MediaItem) => ({
-							url: item.url,
 							file_id: item.file_id,
 							type: item.type,
 							width: item.width,
@@ -269,10 +267,7 @@ export const runInstagramFetch = internalAction({
 							continue;
 						}
 
-						// Convert timestamp from seconds to milliseconds
-						const timestampMs = secondsToMilliseconds(post.timestampSec);
-
-						// Upsert the post
+						// Upsert the post (timestamp already in ms from adapter)
 						const postId = await ctx.runMutation(
 							components.instarip.posts.upsertPost,
 							{
@@ -286,7 +281,7 @@ export const runInstagramFetch = internalAction({
 								url: post.url,
 								media_type: post.media_type,
 								users: [user._id],
-								timestamp: timestampMs,
+								timestamp: post.timestamp,
 							},
 						);
 
@@ -418,7 +413,6 @@ export const retrySinglePost = internalAction({
 					chatId,
 					caption: post.caption,
 					mediaItems: mediaItems.map((item: MediaItem) => ({
-						url: item.url,
 						file_id: item.file_id,
 						type: item.type,
 						width: item.width,

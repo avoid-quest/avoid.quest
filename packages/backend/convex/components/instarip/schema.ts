@@ -3,8 +3,7 @@ import { v } from "convex/values";
 
 /**
  * Settings validators for the instarip component
- * These are copied from the main app's lib/config/validators.ts
- * to maintain component isolation
+ * These are the canonical validators for component isolation
  */
 const telegramSettingsValidator = v.object({
 	active: v.boolean(),
@@ -85,11 +84,9 @@ export default defineSchema({
 		.index("by_sent", ["sent"]),
 
 	media_items: defineTable({
-		// Instagram URL (temporary - will be removed after migration)
-		url: v.optional(v.string()),
-		// Telegram file_id (permanent) - added during migration
+		// Telegram file_id (permanent)
 		file_id: v.optional(v.string()),
-		// Telegram file_unique_id (for deduplication) - added during migration
+		// Telegram file_unique_id (for deduplication)
 		file_unique_id: v.optional(v.string()),
 		type: v.union(
 			v.literal("image"),
@@ -100,7 +97,6 @@ export default defineSchema({
 		height: v.optional(v.number()),
 		post_id: v.id("posts"),
 	})
-		.index("by_url", ["url"])
 		.index("by_file_id", ["file_id"])
 		.index("by_file_unique_id", ["file_unique_id"])
 		.index("by_type", ["type"])

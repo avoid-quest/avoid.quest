@@ -3,8 +3,7 @@
  *
  * This module provides:
  * 1. Default values (compile-time constants)
- * 2. Shared validators (for schema and settings)
- * 3. Resolver functions (merge defaults with database settings)
+ * 2. Resolver functions (merge defaults with database settings)
  *
  * Configuration layering:
  * - defaults.ts (compile-time) -> database (runtime) -> env vars (secrets only)
@@ -16,19 +15,13 @@ import {
 	TELEGRAM_DEFAULTS,
 } from "./defaults";
 
-// Re-export defaults and validators
+// Re-export defaults
 export {
 	CRON_DEFAULTS,
 	INSTAGRAM_DEFAULTS,
 	LOCALE_DEFAULTS,
 	TELEGRAM_DEFAULTS,
 } from "./defaults";
-export {
-	instagramSettingsValidator,
-	localeSettingsValidator,
-	loggingSettingsValidator,
-	telegramSettingsValidator,
-} from "./validators";
 
 /**
  * Database settings type (matches schema)

@@ -22,7 +22,7 @@ function filterSentMediaItems(
 ): Doc<"media_items">[] {
 	return mediaItems
 		.filter((item) => item.type !== "thumbnail")
-		.filter((item) => item.file_id || item.url)
+		.filter((item) => item.file_id !== undefined)
 		.slice(0, MAX_MEDIA_GROUP_SIZE);
 }
 
@@ -99,27 +99,14 @@ export async function saveFileIdsForPost(
 			// This is unusual but not necessarily wrong - file might have been re-uploaded
 		}
 
-		// Update with URL if available, otherwise by ID
-		if (mediaItem.url) {
-			await ctx.runMutation(
-				components.instarip.mediaItems.updateMediaItemWithFileIdByUrl,
-				{
-					post_id: postId,
-					url: mediaItem.url,
-					file_id: fileInfo.file_id,
-					file_unique_id: fileInfo.file_unique_id,
-				},
-			);
-		} else {
-			// Fallback: update by ID if no URL (shouldn't happen in normal flow)
-			await ctx.runMutation(
-				components.instarip.mediaItems.updateMediaItemFileIdById,
-				{
-					id: mediaItem._id,
-					file_id: fileInfo.file_id,
-					file_unique_id: fileInfo.file_unique_id,
-				},
-			);
-		}
+		// Update by ID
+		await ctx.runMutation(
+			components.instarip.mediaItems.updateMediaItemFileIdById,
+			{
+				id: mediaItem._id,
+				file_id: fileInfo.file_id,
+				file_unique_id: fileInfo.file_unique_id,
+			},
+		);
 	}
 }

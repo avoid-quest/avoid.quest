@@ -3,7 +3,7 @@
  * Uses HTML parse mode for Instagram-style formatting
  */
 
-import { TELEGRAM_DEFAULTS } from "../../../lib/config";
+import { TELEGRAM_DEFAULTS } from "./defaults";
 
 /** Maximum caption length for Telegram media */
 export const MAX_CAPTION_LENGTH = TELEGRAM_DEFAULTS.MAX_CAPTION_LENGTH;

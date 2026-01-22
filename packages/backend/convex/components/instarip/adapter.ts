@@ -13,12 +13,12 @@ const REQUEST_TIMEOUT_MS = 10000;
 
 /**
  * Convex validator for fetched post from Instagram
- * Timestamps are in SECONDS (Instagram API format)
+ * Timestamps are in MILLISECONDS (converted from Instagram's seconds format)
  */
 export const fetchedPostValidator = v.object({
 	id: v.string(),
 	shortcode: v.string(),
-	timestampSec: v.number(),
+	timestamp: v.number(),
 	display_url: v.string(),
 	caption: v.string(),
 	is_video: v.boolean(),
@@ -211,7 +211,9 @@ function parseMediaNode(node: InstagramMediaNode): FetchedPost | null {
 	const shortcode = node.shortcode ?? node.code;
 	if (!shortcode) return null;
 
-	const timestamp = node.taken_at_timestamp ?? Math.floor(Date.now() / 1000);
+	// Convert Instagram's seconds timestamp to milliseconds
+	const timestampSec = node.taken_at_timestamp ?? Math.floor(Date.now() / 1000);
+	const timestamp = timestampSec * 1000;
 	const caption = extractCaption(node);
 	const displayUrl = getBestImageUrl(node);
 
@@ -243,7 +245,7 @@ function parseMediaNode(node: InstagramMediaNode): FetchedPost | null {
 	return {
 		id: node.id,
 		shortcode,
-		timestampSec: timestamp,
+		timestamp,
 		display_url: displayUrl,
 		caption,
 		is_video: node.is_video ?? false,
@@ -396,7 +398,7 @@ export async function fetchSinglePost(postUrl: string): Promise<FetchResult> {
 		const post: FetchedPost = {
 			id: shortcode,
 			shortcode,
-			timestampSec: Math.floor(Date.now() / 1000),
+			timestamp: Date.now(),
 			display_url: data.thumbnail_url ?? "",
 			caption: data.title ?? "",
 			is_video: false,

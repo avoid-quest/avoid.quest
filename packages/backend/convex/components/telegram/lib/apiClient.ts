@@ -3,7 +3,7 @@
  * Uses native fetch instead of grammy since we're in a serverless context
  */
 
-import { TELEGRAM_DEFAULTS } from "../../../lib/config";
+import { TELEGRAM_DEFAULTS } from "./defaults";
 
 export type TelegramApiError = {
 	ok: false;

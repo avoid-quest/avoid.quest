@@ -4,7 +4,6 @@
  *
  * Webhook routes are organized by app:
  * - /telegram/instarip/webhook - Instarip bot webhook
- * - /telegram/webhook - Legacy route (redirects to Instarip)
  */
 
 import { httpRouter } from "convex/server";
@@ -104,17 +103,6 @@ const createTelegramWebhookHandler = (
  */
 http.route({
 	path: "/telegram/instarip/webhook",
-	method: "POST",
-	handler: createTelegramWebhookHandler(instaripWebhook),
-});
-
-/**
- * Legacy Telegram webhook endpoint
- * Routes to Instarip for backward compatibility
- * @deprecated Use /telegram/instarip/webhook instead
- */
-http.route({
-	path: "/telegram/webhook",
 	method: "POST",
 	handler: createTelegramWebhookHandler(instaripWebhook),
 });

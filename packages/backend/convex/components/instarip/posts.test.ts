@@ -1,15 +1,15 @@
 import { convexTest } from "convex-test";
 import { describe, expect, it } from "vitest";
-import { internal } from "./_generated/api";
+import { api } from "./_generated/api";
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
 
 describe("posts", () => {
-	describe("getUnsentInternal", () => {
+	describe("getUnsent", () => {
 		it("returns empty array when no posts", async () => {
 			const t = convexTest(schema, modules);
-			const posts = await t.query(internal.posts.getUnsentInternal, {
+			const posts = await t.query(api.posts.getUnsent, {
 				limit: 10,
 			});
 			expect(posts).toEqual([]);
@@ -19,13 +19,13 @@ describe("posts", () => {
 			const t = convexTest(schema, modules);
 
 			// Create a user first
-			const user = await t.mutation(internal.users.getOrCreateUserInternal, {
+			const user = await t.mutation(api.users.getOrCreateUser, {
 				username: "testuser",
 			});
 			if (!user) throw new Error("User should be created");
 
 			// Create an unsent post
-			await t.mutation(internal.posts.upsertPostInternal, {
+			await t.mutation(api.posts.upsertPost, {
 				ig_id: "1",
 				shortcode: "ABC123",
 				display_url: "https://example.com/1.jpg",
@@ -37,7 +37,7 @@ describe("posts", () => {
 				timestamp: Date.now(),
 			});
 
-			const unsent = await t.query(internal.posts.getUnsentInternal, {
+			const unsent = await t.query(api.posts.getUnsent, {
 				limit: 10,
 			});
 			expect(unsent).toHaveLength(1);
@@ -48,13 +48,13 @@ describe("posts", () => {
 		it("excludes sent posts", async () => {
 			const t = convexTest(schema, modules);
 
-			const user = await t.mutation(internal.users.getOrCreateUserInternal, {
+			const user = await t.mutation(api.users.getOrCreateUser, {
 				username: "testuser",
 			});
 			if (!user) throw new Error("User should be created");
 
 			// Create a post
-			const postId = await t.mutation(internal.posts.upsertPostInternal, {
+			const postId = await t.mutation(api.posts.upsertPost, {
 				ig_id: "1",
 				shortcode: "ABC123",
 				display_url: "https://example.com/1.jpg",
@@ -67,12 +67,12 @@ describe("posts", () => {
 			});
 
 			// Mark it as sent
-			await t.mutation(internal.posts.markSentInternal, {
+			await t.mutation(api.posts.markSent, {
 				id: postId,
 				sentAt: Date.now(),
 			});
 
-			const unsent = await t.query(internal.posts.getUnsentInternal, {
+			const unsent = await t.query(api.posts.getUnsent, {
 				limit: 10,
 			});
 			expect(unsent).toHaveLength(0);
@@ -81,14 +81,14 @@ describe("posts", () => {
 		it("respects limit parameter", async () => {
 			const t = convexTest(schema, modules);
 
-			const user = await t.mutation(internal.users.getOrCreateUserInternal, {
+			const user = await t.mutation(api.users.getOrCreateUser, {
 				username: "testuser",
 			});
 			if (!user) throw new Error("User should be created");
 
 			// Create 5 posts
 			for (let i = 0; i < 5; i++) {
-				await t.mutation(internal.posts.upsertPostInternal, {
+				await t.mutation(api.posts.upsertPost, {
 					ig_id: `${i}`,
 					shortcode: `POST${i}`,
 					display_url: `https://example.com/${i}.jpg`,
@@ -101,23 +101,23 @@ describe("posts", () => {
 				});
 			}
 
-			const unsent = await t.query(internal.posts.getUnsentInternal, {
+			const unsent = await t.query(api.posts.getUnsent, {
 				limit: 3,
 			});
 			expect(unsent).toHaveLength(3);
 		});
 	});
 
-	describe("markSentInternal", () => {
+	describe("markSent", () => {
 		it("marks post as sent with timestamp", async () => {
 			const t = convexTest(schema, modules);
 
-			const user = await t.mutation(internal.users.getOrCreateUserInternal, {
+			const user = await t.mutation(api.users.getOrCreateUser, {
 				username: "testuser",
 			});
 			if (!user) throw new Error("User should be created");
 
-			const postId = await t.mutation(internal.posts.upsertPostInternal, {
+			const postId = await t.mutation(api.posts.upsertPost, {
 				ig_id: "1",
 				shortcode: "ABC123",
 				display_url: "https://example.com/1.jpg",
@@ -130,19 +130,19 @@ describe("posts", () => {
 			});
 
 			const sentAt = Date.now();
-			await t.mutation(internal.posts.markSentInternal, {
+			await t.mutation(api.posts.markSent, {
 				id: postId,
 				sentAt,
 			});
 
 			// Verify post is no longer in unsent
-			const unsent = await t.query(internal.posts.getUnsentInternal, {
+			const unsent = await t.query(api.posts.getUnsent, {
 				limit: 10,
 			});
 			expect(unsent).toHaveLength(0);
 
 			// Verify post has correct sentAt timestamp
-			const post = await t.query(internal.posts.getPostByIdInternal, {
+			const post = await t.query(api.posts.getPostById, {
 				id: postId,
 			});
 			expect(post?.sent).toBe(true);
@@ -153,12 +153,12 @@ describe("posts", () => {
 			const t = convexTest(schema, modules);
 
 			// Use a fake ID - we need to create and delete a post to get a valid but non-existent ID format
-			const user = await t.mutation(internal.users.getOrCreateUserInternal, {
+			const user = await t.mutation(api.users.getOrCreateUser, {
 				username: "testuser",
 			});
 			if (!user) throw new Error("User should be created");
 
-			const postId = await t.mutation(internal.posts.upsertPostInternal, {
+			const postId = await t.mutation(api.posts.upsertPost, {
 				ig_id: "temp",
 				shortcode: "TEMP",
 				display_url: "https://example.com/temp.jpg",
@@ -171,13 +171,11 @@ describe("posts", () => {
 			});
 
 			// Delete the post
-			await t.run(async (ctx) => {
-				await ctx.db.delete(postId);
-			});
+			await t.mutation(api.posts.deletePost, { id: postId });
 
 			// Try to mark deleted post as sent
 			await expect(
-				t.mutation(internal.posts.markSentInternal, {
+				t.mutation(api.posts.markSent, {
 					id: postId,
 					sentAt: Date.now(),
 				}),
@@ -185,16 +183,16 @@ describe("posts", () => {
 		});
 	});
 
-	describe("getPostByShortcodeInternal", () => {
+	describe("getPostByShortcode", () => {
 		it("returns post by shortcode", async () => {
 			const t = convexTest(schema, modules);
 
-			const user = await t.mutation(internal.users.getOrCreateUserInternal, {
+			const user = await t.mutation(api.users.getOrCreateUser, {
 				username: "testuser",
 			});
 			if (!user) throw new Error("User should be created");
 
-			await t.mutation(internal.posts.upsertPostInternal, {
+			await t.mutation(api.posts.upsertPost, {
 				ig_id: "1",
 				shortcode: "UNIQUE123",
 				display_url: "https://example.com/1.jpg",
@@ -206,7 +204,7 @@ describe("posts", () => {
 				timestamp: Date.now(),
 			});
 
-			const post = await t.query(internal.posts.getPostByShortcodeInternal, {
+			const post = await t.query(api.posts.getPostByShortcode, {
 				shortcode: "UNIQUE123",
 			});
 
@@ -217,7 +215,7 @@ describe("posts", () => {
 		it("returns null for non-existent shortcode", async () => {
 			const t = convexTest(schema, modules);
 
-			const post = await t.query(internal.posts.getPostByShortcodeInternal, {
+			const post = await t.query(api.posts.getPostByShortcode, {
 				shortcode: "NONEXISTENT",
 			});
 
@@ -225,16 +223,16 @@ describe("posts", () => {
 		});
 	});
 
-	describe("upsertPostInternal", () => {
+	describe("upsertPost", () => {
 		it("creates new post with sent=false", async () => {
 			const t = convexTest(schema, modules);
 
-			const user = await t.mutation(internal.users.getOrCreateUserInternal, {
+			const user = await t.mutation(api.users.getOrCreateUser, {
 				username: "testuser",
 			});
 			if (!user) throw new Error("User should be created");
 
-			const postId = await t.mutation(internal.posts.upsertPostInternal, {
+			const postId = await t.mutation(api.posts.upsertPost, {
 				ig_id: "1",
 				shortcode: "NEW123",
 				display_url: "https://example.com/1.jpg",
@@ -246,7 +244,7 @@ describe("posts", () => {
 				timestamp: Date.now(),
 			});
 
-			const post = await t.query(internal.posts.getPostByIdInternal, {
+			const post = await t.query(api.posts.getPostById, {
 				id: postId,
 			});
 			expect(post?.sent).toBe(false);
@@ -256,17 +254,17 @@ describe("posts", () => {
 		it("updates existing post and merges users", async () => {
 			const t = convexTest(schema, modules);
 
-			const user1 = await t.mutation(internal.users.getOrCreateUserInternal, {
+			const user1 = await t.mutation(api.users.getOrCreateUser, {
 				username: "user1",
 			});
 			if (!user1) throw new Error("User1 should be created");
-			const user2 = await t.mutation(internal.users.getOrCreateUserInternal, {
+			const user2 = await t.mutation(api.users.getOrCreateUser, {
 				username: "user2",
 			});
 			if (!user2) throw new Error("User2 should be created");
 
 			// Create post with user1
-			const postId = await t.mutation(internal.posts.upsertPostInternal, {
+			const postId = await t.mutation(api.posts.upsertPost, {
 				ig_id: "1",
 				shortcode: "MERGE123",
 				display_url: "https://example.com/1.jpg",
@@ -279,7 +277,7 @@ describe("posts", () => {
 			});
 
 			// Update with user2
-			await t.mutation(internal.posts.upsertPostInternal, {
+			await t.mutation(api.posts.upsertPost, {
 				id: postId,
 				ig_id: "1",
 				shortcode: "MERGE123",
@@ -292,7 +290,7 @@ describe("posts", () => {
 				timestamp: Date.now(),
 			});
 
-			const post = await t.query(internal.posts.getPostByIdInternal, {
+			const post = await t.query(api.posts.getPostById, {
 				id: postId,
 			});
 			expect(post?.caption).toBe("Updated");
@@ -304,12 +302,12 @@ describe("posts", () => {
 		it("handles video posts", async () => {
 			const t = convexTest(schema, modules);
 
-			const user = await t.mutation(internal.users.getOrCreateUserInternal, {
+			const user = await t.mutation(api.users.getOrCreateUser, {
 				username: "testuser",
 			});
 			if (!user) throw new Error("User should be created");
 
-			const postId = await t.mutation(internal.posts.upsertPostInternal, {
+			const postId = await t.mutation(api.posts.upsertPost, {
 				ig_id: "1",
 				shortcode: "VIDEO123",
 				display_url: "https://example.com/thumb.jpg",
@@ -323,7 +321,7 @@ describe("posts", () => {
 				timestamp: Date.now(),
 			});
 
-			const post = await t.query(internal.posts.getPostByIdInternal, {
+			const post = await t.query(api.posts.getPostById, {
 				id: postId,
 			});
 			expect(post?.is_video).toBe(true);
@@ -334,12 +332,12 @@ describe("posts", () => {
 		it("handles carousel posts", async () => {
 			const t = convexTest(schema, modules);
 
-			const user = await t.mutation(internal.users.getOrCreateUserInternal, {
+			const user = await t.mutation(api.users.getOrCreateUser, {
 				username: "testuser",
 			});
 			if (!user) throw new Error("User should be created");
 
-			const postId = await t.mutation(internal.posts.upsertPostInternal, {
+			const postId = await t.mutation(api.posts.upsertPost, {
 				ig_id: "1",
 				shortcode: "CAROUSEL123",
 				display_url: "https://example.com/1.jpg",
@@ -351,7 +349,7 @@ describe("posts", () => {
 				timestamp: Date.now(),
 			});
 
-			const post = await t.query(internal.posts.getPostByIdInternal, {
+			const post = await t.query(api.posts.getPostById, {
 				id: postId,
 			});
 			expect(post?.media_type).toBe("carousel");
@@ -360,13 +358,13 @@ describe("posts", () => {
 		it("handles event_date", async () => {
 			const t = convexTest(schema, modules);
 
-			const user = await t.mutation(internal.users.getOrCreateUserInternal, {
+			const user = await t.mutation(api.users.getOrCreateUser, {
 				username: "testuser",
 			});
 			if (!user) throw new Error("User should be created");
 
 			const eventDate = Date.now() + 86400000; // Tomorrow
-			const postId = await t.mutation(internal.posts.upsertPostInternal, {
+			const postId = await t.mutation(api.posts.upsertPost, {
 				ig_id: "1",
 				shortcode: "EVENT123",
 				display_url: "https://example.com/1.jpg",
@@ -379,10 +377,128 @@ describe("posts", () => {
 				event_date: eventDate,
 			});
 
-			const post = await t.query(internal.posts.getPostByIdInternal, {
+			const post = await t.query(api.posts.getPostById, {
 				id: postId,
 			});
 			expect(post?.event_date).toBe(eventDate);
+		});
+	});
+
+	describe("claimForSending", () => {
+		it("returns true when claiming unclaimed post", async () => {
+			const t = convexTest(schema, modules);
+
+			const user = await t.mutation(api.users.getOrCreateUser, {
+				username: "testuser",
+			});
+			if (!user) throw new Error("User should be created");
+
+			const postId = await t.mutation(api.posts.upsertPost, {
+				ig_id: "1",
+				shortcode: "CLAIM123",
+				display_url: "https://example.com/1.jpg",
+				caption: "Test",
+				is_video: false,
+				url: "https://instagram.com/p/CLAIM123",
+				media_type: "image",
+				users: [user._id],
+				timestamp: Date.now(),
+			});
+
+			const claimed = await t.mutation(api.posts.claimForSending, {
+				id: postId,
+			});
+			expect(claimed).toBe(true);
+
+			const post = await t.query(api.posts.getPostById, { id: postId });
+			expect(post?.sending).toBe(true);
+		});
+
+		it("returns false for already claimed post", async () => {
+			const t = convexTest(schema, modules);
+
+			const user = await t.mutation(api.users.getOrCreateUser, {
+				username: "testuser",
+			});
+			if (!user) throw new Error("User should be created");
+
+			const postId = await t.mutation(api.posts.upsertPost, {
+				ig_id: "1",
+				shortcode: "CLAIM123",
+				display_url: "https://example.com/1.jpg",
+				caption: "Test",
+				is_video: false,
+				url: "https://instagram.com/p/CLAIM123",
+				media_type: "image",
+				users: [user._id],
+				timestamp: Date.now(),
+			});
+
+			// First claim succeeds
+			await t.mutation(api.posts.claimForSending, { id: postId });
+
+			// Second claim fails
+			const secondClaim = await t.mutation(api.posts.claimForSending, {
+				id: postId,
+			});
+			expect(secondClaim).toBe(false);
+		});
+
+		it("returns false for sent post", async () => {
+			const t = convexTest(schema, modules);
+
+			const user = await t.mutation(api.users.getOrCreateUser, {
+				username: "testuser",
+			});
+			if (!user) throw new Error("User should be created");
+
+			const postId = await t.mutation(api.posts.upsertPost, {
+				ig_id: "1",
+				shortcode: "CLAIM123",
+				display_url: "https://example.com/1.jpg",
+				caption: "Test",
+				is_video: false,
+				url: "https://instagram.com/p/CLAIM123",
+				media_type: "image",
+				users: [user._id],
+				timestamp: Date.now(),
+			});
+
+			await t.mutation(api.posts.markSent, { id: postId, sentAt: Date.now() });
+
+			const claimed = await t.mutation(api.posts.claimForSending, {
+				id: postId,
+			});
+			expect(claimed).toBe(false);
+		});
+	});
+
+	describe("clearSending", () => {
+		it("clears the sending flag", async () => {
+			const t = convexTest(schema, modules);
+
+			const user = await t.mutation(api.users.getOrCreateUser, {
+				username: "testuser",
+			});
+			if (!user) throw new Error("User should be created");
+
+			const postId = await t.mutation(api.posts.upsertPost, {
+				ig_id: "1",
+				shortcode: "CLEAR123",
+				display_url: "https://example.com/1.jpg",
+				caption: "Test",
+				is_video: false,
+				url: "https://instagram.com/p/CLEAR123",
+				media_type: "image",
+				users: [user._id],
+				timestamp: Date.now(),
+			});
+
+			await t.mutation(api.posts.claimForSending, { id: postId });
+			await t.mutation(api.posts.clearSending, { id: postId });
+
+			const post = await t.query(api.posts.getPostById, { id: postId });
+			expect(post?.sending).toBe(false);
 		});
 	});
 });

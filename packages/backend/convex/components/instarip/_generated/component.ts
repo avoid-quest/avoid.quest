@@ -1,6 +1,6 @@
 /* eslint-disable */
 /**
- * Generated `api` utility.
+ * Generated `ComponentApi` utility.
  *
  * THIS CODE IS AUTOMATICALLY GENERATED.
  *
@@ -8,176 +8,21 @@
  * @module
  */
 
-import type * as bootstrap from "../bootstrap.js";
-import type * as crons from "../crons.js";
-import type * as healthCheck from "../healthCheck.js";
-import type * as http from "../http.js";
-import type * as httpHandlers_media from "../httpHandlers/media.js";
-import type * as instarip_bot from "../instarip/bot.js";
-import type * as instarip_handlers_textInput from "../instarip/handlers/textInput.js";
-import type * as instarip_menu_actionsMenu from "../instarip/menu/actionsMenu.js";
-import type * as instarip_menu_index from "../instarip/menu/index.js";
-import type * as instarip_menu_mainMenu from "../instarip/menu/mainMenu.js";
-import type * as instarip_menu_settingsMenu from "../instarip/menu/settingsMenu.js";
-import type * as instarip_menu_usersMenu from "../instarip/menu/usersMenu.js";
-import type * as instarip_webhook from "../instarip/webhook.js";
-import type * as lib_config_defaults from "../lib/config/defaults.js";
-import type * as lib_config_index from "../lib/config/index.js";
-import type * as lib_config_validators from "../lib/config/validators.js";
-import type * as lib_dateUtils from "../lib/dateUtils.js";
-import type * as lib_fileIdMatcher from "../lib/fileIdMatcher.js";
-import type * as lib_logger from "../lib/logger.js";
-import type * as lib_security from "../lib/security.js";
-import type * as lib_validators_index from "../lib/validators/index.js";
-import type * as lib_validators_media from "../lib/validators/media.js";
-import type * as sessions from "../sessions.js";
-
-import type {
-  ApiFromModules,
-  FilterApi,
-  FunctionReference,
-} from "convex/server";
-
-declare const fullApi: ApiFromModules<{
-  bootstrap: typeof bootstrap;
-  crons: typeof crons;
-  healthCheck: typeof healthCheck;
-  http: typeof http;
-  "httpHandlers/media": typeof httpHandlers_media;
-  "instarip/bot": typeof instarip_bot;
-  "instarip/handlers/textInput": typeof instarip_handlers_textInput;
-  "instarip/menu/actionsMenu": typeof instarip_menu_actionsMenu;
-  "instarip/menu/index": typeof instarip_menu_index;
-  "instarip/menu/mainMenu": typeof instarip_menu_mainMenu;
-  "instarip/menu/settingsMenu": typeof instarip_menu_settingsMenu;
-  "instarip/menu/usersMenu": typeof instarip_menu_usersMenu;
-  "instarip/webhook": typeof instarip_webhook;
-  "lib/config/defaults": typeof lib_config_defaults;
-  "lib/config/index": typeof lib_config_index;
-  "lib/config/validators": typeof lib_config_validators;
-  "lib/dateUtils": typeof lib_dateUtils;
-  "lib/fileIdMatcher": typeof lib_fileIdMatcher;
-  "lib/logger": typeof lib_logger;
-  "lib/security": typeof lib_security;
-  "lib/validators/index": typeof lib_validators_index;
-  "lib/validators/media": typeof lib_validators_media;
-  sessions: typeof sessions;
-}>;
+import type { FunctionReference } from "convex/server";
 
 /**
- * A utility for referencing Convex functions in your app's public API.
+ * A utility for referencing a Convex component's exposed API.
  *
+ * Useful when expecting a parameter like `components.myComponent`.
  * Usage:
- * ```js
- * const myFunctionReference = api.myModule.myFunction;
+ * ```ts
+ * async function myFunction(ctx: QueryCtx, component: ComponentApi) {
+ *   return ctx.runQuery(component.someFile.someQuery, { ...args });
+ * }
  * ```
  */
-export declare const api: FilterApi<
-  typeof fullApi,
-  FunctionReference<any, "public">
->;
-
-/**
- * A utility for referencing Convex functions in your app's internal API.
- *
- * Usage:
- * ```js
- * const myFunctionReference = internal.myModule.myFunction;
- * ```
- */
-export declare const internal: FilterApi<
-  typeof fullApi,
-  FunctionReference<any, "internal">
->;
-
-export declare const components: {
-  migrations: {
-    lib: {
-      cancel: FunctionReference<
-        "mutation",
-        "internal",
-        { name: string },
-        {
-          batchSize?: number;
-          cursor?: string | null;
-          error?: string;
-          isDone: boolean;
-          latestEnd?: number;
-          latestStart: number;
-          name: string;
-          next?: Array<string>;
-          processed: number;
-          state: "inProgress" | "success" | "failed" | "canceled" | "unknown";
-        }
-      >;
-      cancelAll: FunctionReference<
-        "mutation",
-        "internal",
-        { sinceTs?: number },
-        Array<{
-          batchSize?: number;
-          cursor?: string | null;
-          error?: string;
-          isDone: boolean;
-          latestEnd?: number;
-          latestStart: number;
-          name: string;
-          next?: Array<string>;
-          processed: number;
-          state: "inProgress" | "success" | "failed" | "canceled" | "unknown";
-        }>
-      >;
-      clearAll: FunctionReference<
-        "mutation",
-        "internal",
-        { before?: number },
-        null
-      >;
-      getStatus: FunctionReference<
-        "query",
-        "internal",
-        { limit?: number; names?: Array<string> },
-        Array<{
-          batchSize?: number;
-          cursor?: string | null;
-          error?: string;
-          isDone: boolean;
-          latestEnd?: number;
-          latestStart: number;
-          name: string;
-          next?: Array<string>;
-          processed: number;
-          state: "inProgress" | "success" | "failed" | "canceled" | "unknown";
-        }>
-      >;
-      migrate: FunctionReference<
-        "mutation",
-        "internal",
-        {
-          batchSize?: number;
-          cursor?: string | null;
-          dryRun: boolean;
-          fnHandle: string;
-          name: string;
-          next?: Array<{ fnHandle: string; name: string }>;
-          oneBatchOnly?: boolean;
-        },
-        {
-          batchSize?: number;
-          cursor?: string | null;
-          error?: string;
-          isDone: boolean;
-          latestEnd?: number;
-          latestStart: number;
-          name: string;
-          next?: Array<string>;
-          processed: number;
-          state: "inProgress" | "success" | "failed" | "canceled" | "unknown";
-        }
-      >;
-    };
-  };
-  instarip: {
+export type ComponentApi<Name extends string | undefined = string | undefined> =
+  {
     fetcher: {
       fetchPost: FunctionReference<
         "action",
@@ -204,7 +49,8 @@ export declare const components: {
             video_url?: string;
           };
           success: boolean;
-        }
+        },
+        Name
       >;
       fetchUser: FunctionReference<
         "action",
@@ -231,19 +77,22 @@ export declare const components: {
             video_url?: string;
           }>;
           success: boolean;
-        }
+        },
+        Name
       >;
       getFetchLogs: FunctionReference<
         "query",
         "internal",
         { limit?: number },
-        any
+        any,
+        Name
       >;
       getFetchLogsByUsername: FunctionReference<
         "query",
         "internal",
         { limit?: number; username: string },
-        any
+        any,
+        Name
       >;
       logFetch: FunctionReference<
         "mutation",
@@ -254,13 +103,15 @@ export declare const components: {
           success: boolean;
           username: string;
         },
-        any
+        any,
+        Name
       >;
       testConnectivity: FunctionReference<
         "action",
         "internal",
         {},
-        { message: string; success: boolean }
+        { message: string; success: boolean },
+        Name
       >;
     };
     mediaItems: {
@@ -268,32 +119,37 @@ export declare const components: {
         "mutation",
         "internal",
         { id: string },
-        any
+        any,
+        Name
       >;
       getMediaItemById: FunctionReference<
         "query",
         "internal",
         { id: string },
-        any
+        any,
+        Name
       >;
       getMediaItemByUrlAndPostId: FunctionReference<
         "query",
         "internal",
         { postId: string; url: string },
-        any
+        any,
+        Name
       >;
-      getMediaItems: FunctionReference<"query", "internal", {}, any>;
+      getMediaItems: FunctionReference<"query", "internal", {}, any, Name>;
       getMediaItemsByPostId: FunctionReference<
         "query",
         "internal",
         { postId: string },
-        any
+        any,
+        Name
       >;
       getMediaItemsNeedingBackfill: FunctionReference<
         "query",
         "internal",
         { postId: string },
-        any
+        any,
+        Name
       >;
       syncMediaItemsForPost: FunctionReference<
         "mutation",
@@ -307,7 +163,8 @@ export declare const components: {
           }>;
           post_id: string;
         },
-        any
+        any,
+        Name
       >;
       syncTelegramMediaItemsForPost: FunctionReference<
         "mutation",
@@ -322,19 +179,22 @@ export declare const components: {
           }>;
           post_id: string;
         },
-        any
+        any,
+        Name
       >;
       updateMediaItemFileIdById: FunctionReference<
         "mutation",
         "internal",
         { file_id: string; file_unique_id: string; id: string },
-        any
+        any,
+        Name
       >;
       updateMediaItemWithFileId: FunctionReference<
         "mutation",
         "internal",
         { file_id: string; file_unique_id: string; id: string },
-        any
+        any,
+        Name
       >;
       updateMediaItemWithFileIdByUrl: FunctionReference<
         "mutation",
@@ -345,7 +205,8 @@ export declare const components: {
           post_id: string;
           url: string;
         },
-        any
+        any,
+        Name
       >;
       upsertMediaItem: FunctionReference<
         "mutation",
@@ -360,7 +221,8 @@ export declare const components: {
           url?: string;
           width?: number;
         },
-        any
+        any,
+        Name
       >;
     };
     posts: {
@@ -368,34 +230,51 @@ export declare const components: {
         "mutation",
         "internal",
         { id: string },
-        boolean
+        boolean,
+        Name
       >;
       clearSending: FunctionReference<
         "mutation",
         "internal",
         { id: string },
-        any
+        any,
+        Name
       >;
       deletePost: FunctionReference<
         "mutation",
         "internal",
         { id: string },
-        any
+        any,
+        Name
       >;
-      getBackfillStats: FunctionReference<"query", "internal", any, any>;
-      getPostById: FunctionReference<"query", "internal", { id: string }, any>;
+      getBackfillStats: FunctionReference<"query", "internal", any, any, Name>;
+      getPostById: FunctionReference<
+        "query",
+        "internal",
+        { id: string },
+        any,
+        Name
+      >;
       getPostByShortcode: FunctionReference<
         "query",
         "internal",
         { shortcode: string },
-        any
+        any,
+        Name
       >;
-      getPosts: FunctionReference<"query", "internal", { limit: number }, any>;
+      getPosts: FunctionReference<
+        "query",
+        "internal",
+        { limit: number },
+        any,
+        Name
+      >;
       getPostsByUserId: FunctionReference<
         "query",
         "internal",
         { userId: string },
-        any
+        any,
+        Name
       >;
       getPostsPaginated: FunctionReference<
         "query",
@@ -431,9 +310,16 @@ export declare const components: {
             users: Array<string>;
             video_url?: string;
           }>;
-        }
+        },
+        Name
       >;
-      getUnsent: FunctionReference<"query", "internal", { limit: number }, any>;
+      getUnsent: FunctionReference<
+        "query",
+        "internal",
+        { limit: number },
+        any,
+        Name
+      >;
       getUnsentPaginated: FunctionReference<
         "query",
         "internal",
@@ -468,25 +354,29 @@ export declare const components: {
             users: Array<string>;
             video_url?: string;
           }>;
-        }
+        },
+        Name
       >;
       incrementRetryCount: FunctionReference<
         "mutation",
         "internal",
         { id: string },
-        number
+        number,
+        Name
       >;
       markSendFailed: FunctionReference<
         "mutation",
         "internal",
         { id: string },
-        any
+        any,
+        Name
       >;
       markSent: FunctionReference<
         "mutation",
         "internal",
         { id: string; sentAt: number },
-        any
+        any,
+        Name
       >;
       upsertPost: FunctionReference<
         "mutation",
@@ -506,7 +396,8 @@ export declare const components: {
           users: Array<string>;
           video_url?: string;
         },
-        any
+        any,
+        Name
       >;
     };
     settings: {
@@ -514,7 +405,8 @@ export declare const components: {
         "mutation",
         "internal",
         { id: string },
-        any
+        any,
+        Name
       >;
       ensureSettings: FunctionReference<
         "mutation",
@@ -549,7 +441,8 @@ export declare const components: {
             send_limit?: number;
             send_report: boolean;
           };
-        } | null
+        } | null,
+        Name
       >;
       getSettings: FunctionReference<
         "query",
@@ -584,17 +477,43 @@ export declare const components: {
             send_limit?: number;
             send_report: boolean;
           };
-        } | null
+        } | null,
+        Name
       >;
-      toggleInstagramActive: FunctionReference<"mutation", "internal", {}, any>;
-      toggleLoggingActive: FunctionReference<"mutation", "internal", {}, any>;
-      toggleTelegramActive: FunctionReference<"mutation", "internal", {}, any>;
-      toggleTelegramReport: FunctionReference<"mutation", "internal", {}, any>;
+      toggleInstagramActive: FunctionReference<
+        "mutation",
+        "internal",
+        {},
+        any,
+        Name
+      >;
+      toggleLoggingActive: FunctionReference<
+        "mutation",
+        "internal",
+        {},
+        any,
+        Name
+      >;
+      toggleTelegramActive: FunctionReference<
+        "mutation",
+        "internal",
+        {},
+        any,
+        Name
+      >;
+      toggleTelegramReport: FunctionReference<
+        "mutation",
+        "internal",
+        {},
+        any,
+        Name
+      >;
       updateSetting: FunctionReference<
         "mutation",
         "internal",
         { path: string; value: string },
-        any
+        any,
+        Name
       >;
       upsertSettings: FunctionReference<
         "mutation",
@@ -628,7 +547,8 @@ export declare const components: {
             send_report: boolean;
           };
         },
-        string
+        string,
+        Name
       >;
     };
     telegramMessages: {
@@ -636,19 +556,22 @@ export declare const components: {
         "mutation",
         "internal",
         { id: string },
-        any
+        any,
+        Name
       >;
       getMessageByIdAndChat: FunctionReference<
         "query",
         "internal",
         { chat_id: string; message_id: number },
-        any
+        any,
+        Name
       >;
       getMessagesByPostId: FunctionReference<
         "query",
         "internal",
         { postId: string },
-        any
+        any,
+        Name
       >;
       recordMessage: FunctionReference<
         "mutation",
@@ -659,7 +582,8 @@ export declare const components: {
           post_id: string;
           sentAt: number;
         },
-        any
+        any,
+        Name
       >;
     };
     users: {
@@ -667,33 +591,44 @@ export declare const components: {
         "mutation",
         "internal",
         { username: string },
-        any
+        any,
+        Name
       >;
       deleteUser: FunctionReference<
         "mutation",
         "internal",
         { id: string },
-        any
+        any,
+        Name
       >;
       getOrCreateUser: FunctionReference<
         "mutation",
         "internal",
         { username: string },
-        any
+        any,
+        Name
       >;
-      getUserById: FunctionReference<"query", "internal", { id: string }, any>;
+      getUserById: FunctionReference<
+        "query",
+        "internal",
+        { id: string },
+        any,
+        Name
+      >;
       getUserByUsername: FunctionReference<
         "query",
         "internal",
         { username: string },
-        any
+        any,
+        Name
       >;
-      getUsers: FunctionReference<"query", "internal", {}, any>;
+      getUsers: FunctionReference<"query", "internal", {}, any, Name>;
       getUsersByIds: FunctionReference<
         "query",
         "internal",
         { ids: Array<string> },
-        any
+        any,
+        Name
       >;
       getUsersPaginated: FunctionReference<
         "query",
@@ -719,37 +654,43 @@ export declare const components: {
             to_be_scraped: boolean;
             username: string;
           }>;
-        }
+        },
+        Name
       >;
       listToBeScraped: FunctionReference<
         "query",
         "internal",
         { limit?: number },
-        any
+        any,
+        Name
       >;
       listToBeScrapedWithInterval: FunctionReference<
         "query",
         "internal",
         { limit: number; minIntervalMs?: number },
-        any
+        any,
+        Name
       >;
       toggleScraping: FunctionReference<
         "mutation",
         "internal",
         { id: string },
-        any
+        any,
+        Name
       >;
       updateLastScrapedAt: FunctionReference<
         "mutation",
         "internal",
         { id: string; lastScrapedAt: number },
-        any
+        any,
+        Name
       >;
       updateUsername: FunctionReference<
         "mutation",
         "internal",
         { id: string; username: string },
-        any
+        any,
+        Name
       >;
       upsertUser: FunctionReference<
         "mutation",
@@ -761,57 +702,8 @@ export declare const components: {
           to_be_scraped: boolean;
           username?: string;
         },
-        any
+        any,
+        Name
       >;
     };
   };
-  telegram: {
-    sender: {
-      sendMessage: FunctionReference<
-        "action",
-        "internal",
-        {
-          botToken: string;
-          caption: string;
-          chatId: string;
-          mediaItems: Array<{
-            file_id?: string;
-            height?: number;
-            type: "image" | "video" | "thumbnail";
-            url?: string;
-            width?: number;
-          }>;
-          postUrl: string;
-        },
-        {
-          error?: string;
-          fileIds?: Array<{
-            file_id: string;
-            file_unique_id: string;
-            type: "image" | "video";
-          }>;
-          messageId?: number;
-          retryAfterMs?: number;
-          success: boolean;
-        }
-      >;
-      sendTextMessage: FunctionReference<
-        "action",
-        "internal",
-        {
-          botToken: string;
-          chatId: string;
-          disableNotification?: boolean;
-          text: string;
-        },
-        { error?: string; messageId?: number; success: boolean }
-      >;
-      verifyBotToken: FunctionReference<
-        "action",
-        "internal",
-        { botToken: string },
-        { botUsername?: string; error?: string; success: boolean }
-      >;
-    };
-  };
-};

@@ -1,15 +1,15 @@
 "use node";
 
 /**
- * Quick Actions Menu Template
+ * Instarip Quick Actions Menu Template
  * Trigger Instagram fetch and Telegram send manually
  */
 
 import { MenuTemplate } from "grammy-inline-menu";
 import { internal } from "../../_generated/api";
-import type { BotContext } from "../bot";
+import type { InstaripBotContext } from "../bot";
 
-export const actionsMenu = new MenuTemplate<BotContext>({
+export const actionsMenu = new MenuTemplate<InstaripBotContext>({
 	text: "⚡ <b>Quick Actions</b>\n\nTrigger jobs manually:",
 	parse_mode: "HTML",
 });

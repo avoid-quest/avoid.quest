@@ -1,19 +1,24 @@
 import { v } from "convex/values";
-import { internalMutation, internalQuery } from "./_generated/server";
-import { LOCALE_DEFAULTS } from "./lib/config/defaults";
+import { mutation, query } from "./_generated/server";
 import {
 	instagramSettingsValidator,
 	localeSettingsValidator,
 	loggingSettingsValidator,
 	telegramSettingsValidator,
-} from "./lib/config/validators";
+} from "./schema";
 
-export const getSettings = internalQuery({
-	args: {},
-	handler: async (ctx) => await ctx.db.query("settings").first(),
-});
+/**
+ * Default locale settings
+ */
+const LOCALE_DEFAULTS = {
+	TIMEZONE: "Europe/Rome",
+	LOCALE: "it-IT",
+};
 
-export const getSettingsInternal = internalQuery({
+/**
+ * Get settings
+ */
+export const getSettings = query({
 	args: {},
 	returns: v.union(
 		v.object({
@@ -32,7 +37,10 @@ export const getSettingsInternal = internalQuery({
 	},
 });
 
-export const upsertSettings = internalMutation({
+/**
+ * Upsert settings
+ */
+export const upsertSettings = mutation({
 	args: {
 		id: v.optional(v.id("settings")),
 		telegram: v.optional(telegramSettingsValidator),
@@ -60,12 +68,18 @@ export const upsertSettings = internalMutation({
 	},
 });
 
-export const deleteSettings = internalMutation({
+/**
+ * Delete settings
+ */
+export const deleteSettings = mutation({
 	args: { id: v.id("settings") },
 	handler: async (ctx, { id }) => await ctx.db.delete(id),
 });
 
-export const ensureSettings = internalMutation({
+/**
+ * Ensure settings exist (create with defaults if not)
+ */
+export const ensureSettings = mutation({
 	args: {},
 	returns: v.union(
 		v.object({
@@ -99,9 +113,9 @@ export const ensureSettings = internalMutation({
 });
 
 /**
- * Toggle Telegram active status (for bot menu)
+ * Toggle Telegram active status
  */
-export const toggleTelegramActiveInternal = internalMutation({
+export const toggleTelegramActive = mutation({
 	args: {},
 	handler: async (ctx) => {
 		const settings = await ctx.db.query("settings").first();
@@ -130,9 +144,9 @@ export const toggleTelegramActiveInternal = internalMutation({
 });
 
 /**
- * Toggle Telegram send_report status (for bot menu)
+ * Toggle Telegram send_report status
  */
-export const toggleTelegramReportInternal = internalMutation({
+export const toggleTelegramReport = mutation({
 	args: {},
 	handler: async (ctx) => {
 		const settings = await ctx.db.query("settings").first();
@@ -161,9 +175,9 @@ export const toggleTelegramReportInternal = internalMutation({
 });
 
 /**
- * Toggle Instagram active status (for bot menu)
+ * Toggle Instagram active status
  */
-export const toggleInstagramActiveInternal = internalMutation({
+export const toggleInstagramActive = mutation({
 	args: {},
 	handler: async (ctx) => {
 		const settings = await ctx.db.query("settings").first();
@@ -188,9 +202,9 @@ export const toggleInstagramActiveInternal = internalMutation({
 });
 
 /**
- * Toggle Logging active status (for bot menu)
+ * Toggle Logging active status
  */
-export const toggleLoggingActiveInternal = internalMutation({
+export const toggleLoggingActive = mutation({
 	args: {},
 	handler: async (ctx) => {
 		const settings = await ctx.db.query("settings").first();
@@ -215,7 +229,7 @@ export const toggleLoggingActiveInternal = internalMutation({
 });
 
 /**
- * Update a specific setting field (for bot menu)
+ * Valid settings sections
  */
 const VALID_SETTINGS_SECTIONS = [
 	"telegram",
@@ -224,7 +238,10 @@ const VALID_SETTINGS_SECTIONS = [
 	"logging",
 ] as const;
 
-export const updateSettingInternal = internalMutation({
+/**
+ * Update a specific setting field
+ */
+export const updateSetting = mutation({
 	args: {
 		path: v.string(),
 		value: v.string(),

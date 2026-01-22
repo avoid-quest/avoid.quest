@@ -3,7 +3,16 @@
  * Prevents hitting Instagram's rate limits
  */
 
-import { INSTAGRAM_DEFAULTS } from "../../../lib/config";
+/**
+ * Default rate limiter configuration
+ * 3 burst capacity, 0.5 tokens per second (1 request every 2 seconds on average)
+ */
+export const INSTAGRAM_RATE_LIMIT_DEFAULTS = {
+	/** Rate limiter: maximum burst tokens */
+	MAX_TOKENS: 3,
+	/** Rate limiter: tokens refill rate per second */
+	REFILL_RATE: 0.5,
+} as const;
 
 export type RateLimiterState = {
 	tokens: number;
@@ -14,11 +23,10 @@ export type RateLimiterState = {
 
 /**
  * Default rate limiter configuration
- * 3 burst capacity, 0.5 tokens per second (1 request every 2 seconds on average)
  */
 export const DEFAULT_RATE_LIMITER_CONFIG = {
-	maxTokens: INSTAGRAM_DEFAULTS.RATE_LIMIT_MAX_TOKENS,
-	refillRate: INSTAGRAM_DEFAULTS.RATE_LIMIT_REFILL_RATE,
+	maxTokens: INSTAGRAM_RATE_LIMIT_DEFAULTS.MAX_TOKENS,
+	refillRate: INSTAGRAM_RATE_LIMIT_DEFAULTS.REFILL_RATE,
 };
 
 /**

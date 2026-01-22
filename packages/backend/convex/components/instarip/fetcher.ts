@@ -4,7 +4,7 @@
  */
 
 import { v } from "convex/values";
-import { action } from "./_generated/server";
+import { action, mutation, query } from "./_generated/server";
 import {
 	type FetchedPost,
 	fetchedPostValidator,
@@ -97,5 +97,59 @@ export const testConnectivity = action({
 			success: false,
 			message: result.error ?? "Failed to connect to Instagram API",
 		};
+	},
+});
+
+/**
+ * Log a fetch operation to the database
+ */
+export const logFetch = mutation({
+	args: {
+		username: v.string(),
+		posts_fetched: v.number(),
+		success: v.boolean(),
+		error: v.optional(v.string()),
+	},
+	handler: async (ctx, { username, posts_fetched, success, error }) => {
+		return await ctx.db.insert("fetch_logs", {
+			username,
+			fetched_at: Date.now(),
+			posts_fetched,
+			success,
+			error,
+		});
+	},
+});
+
+/**
+ * Get recent fetch logs
+ */
+export const getFetchLogs = query({
+	args: {
+		limit: v.optional(v.number()),
+	},
+	handler: async (ctx, { limit }) => {
+		return await ctx.db
+			.query("fetch_logs")
+			.withIndex("by_fetched_at")
+			.order("desc")
+			.take(limit ?? 50);
+	},
+});
+
+/**
+ * Get fetch logs for a specific user
+ */
+export const getFetchLogsByUsername = query({
+	args: {
+		username: v.string(),
+		limit: v.optional(v.number()),
+	},
+	handler: async (ctx, { username, limit }) => {
+		return await ctx.db
+			.query("fetch_logs")
+			.withIndex("by_username", (q) => q.eq("username", username))
+			.order("desc")
+			.take(limit ?? 20);
 	},
 });

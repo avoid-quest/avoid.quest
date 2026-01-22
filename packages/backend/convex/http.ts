@@ -1,6 +1,10 @@
 /**
  * HTTP router for Convex
  * Handles external webhook requests
+ *
+ * Webhook routes are organized by app:
+ * - /telegram/instarip/webhook - Instarip bot webhook
+ * - /telegram/webhook - Legacy route (redirects to Instarip)
  */
 
 import { httpRouter } from "convex/server";
@@ -10,6 +14,9 @@ import { mediaHandler } from "./httpHandlers/media";
 import { secureCompare } from "./lib/security";
 
 const http = httpRouter();
+
+// Reference internal to keep it as a runtime import
+const instaripWebhook = internal.instarip.webhook.processUpdate;
 
 /**
  * Telegram Update type (simplified for admin check)
@@ -25,13 +32,13 @@ type TelegramUpdate = {
 };
 
 /**
- * Telegram webhook endpoint
- * Receives updates from Telegram Bot API and processes them via grammY
+ * Shared webhook handler for Telegram updates
+ * Validates the request and routes to the appropriate app handler
  */
-http.route({
-	path: "/telegram/webhook",
-	method: "POST",
-	handler: httpAction(async (ctx, request) => {
+const createTelegramWebhookHandler = (
+	processUpdateAction: typeof instaripWebhook,
+) =>
+	httpAction(async (ctx, request) => {
 		// Verify webhook secret (mandatory for security)
 		const secret = request.headers.get("X-Telegram-Bot-Api-Secret-Token");
 		const expectedSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
@@ -70,8 +77,8 @@ http.route({
 				return new Response("OK", { status: 200 });
 			}
 
-			// Process the update via grammY (runs in Node.js runtime)
-			await ctx.runAction(internal.telegram.webhook.processUpdate, {
+			// Process the update via the app's webhook handler (runs in Node.js runtime)
+			await ctx.runAction(processUpdateAction, {
 				update,
 			});
 
@@ -89,7 +96,27 @@ http.route({
 			});
 			return new Response("OK", { status: 200 });
 		}
-	}),
+	});
+
+/**
+ * Instarip Telegram webhook endpoint
+ * Primary endpoint for the Instarip bot
+ */
+http.route({
+	path: "/telegram/instarip/webhook",
+	method: "POST",
+	handler: createTelegramWebhookHandler(instaripWebhook),
+});
+
+/**
+ * Legacy Telegram webhook endpoint
+ * Routes to Instarip for backward compatibility
+ * @deprecated Use /telegram/instarip/webhook instead
+ */
+http.route({
+	path: "/telegram/webhook",
+	method: "POST",
+	handler: createTelegramWebhookHandler(instaripWebhook),
 });
 
 /**

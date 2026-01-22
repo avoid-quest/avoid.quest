@@ -1,5 +1,4 @@
-import { internal } from "../_generated/api";
-import type { Id } from "../_generated/dataModel";
+import { components } from "../_generated/api";
 import { httpAction } from "../_generated/server";
 import { isOriginAllowed } from "../lib/security";
 
@@ -64,10 +63,13 @@ export const mediaHandler = httpAction(async (ctx, request) => {
 		return corsResponse("Missing media id", { status: 400 }, origin);
 	}
 
-	// Get media item from database
-	const mediaItem = await ctx.runQuery(internal.media_items.getMediaItemById, {
-		id: mediaId as Id<"media_items">,
-	});
+	// Get media item from database via component
+	const mediaItem = await ctx.runQuery(
+		components.instarip.mediaItems.getMediaItemById,
+		{
+			id: mediaId as never,
+		},
+	);
 
 	if (!mediaItem) {
 		return corsResponse("Media not found", { status: 404 }, origin);

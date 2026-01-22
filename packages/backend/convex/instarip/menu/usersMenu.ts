@@ -1,25 +1,28 @@
 "use node";
 
 /**
- * Users Menu Template
+ * Instarip Users Menu Template
  * Manage Instagram users (add, view, edit, delete)
  */
 
 import { MenuTemplate } from "grammy-inline-menu";
-import { internal } from "../../_generated/api";
-import type { BotContext } from "../bot";
+import { components } from "../../_generated/api";
+import type { InstaripBotContext } from "../bot";
 
 /**
  * User detail submenu
  */
-const userDetailMenu = new MenuTemplate<BotContext>(async (ctx) => {
+const userDetailMenu = new MenuTemplate<InstaripBotContext>(async (ctx) => {
 	const userId = ctx.match?.[1];
 	if (!userId)
 		return { text: "❌ User not found", parse_mode: "HTML" as const };
 
-	const user = await ctx.convex.runQuery(internal.users.getUserByIdInternal, {
-		id: userId as never,
-	});
+	const user = await ctx.convex.runQuery(
+		components.instarip.users.getUserById,
+		{
+			id: userId as never,
+		},
+	);
 
 	if (!user) return { text: "❌ User not found", parse_mode: "HTML" as const };
 
@@ -47,16 +50,19 @@ userDetailMenu.interact("toggle", {
 		const userId = ctx.match?.[1];
 		if (!userId) return false;
 
-		const user = await ctx.convex.runQuery(internal.users.getUserByIdInternal, {
-			id: userId as never,
-		});
+		const user = await ctx.convex.runQuery(
+			components.instarip.users.getUserById,
+			{
+				id: userId as never,
+			},
+		);
 
 		if (!user) {
 			await ctx.reply("❌ User not found");
 			return false;
 		}
 
-		await ctx.convex.runMutation(internal.users.toggleScrapingInternal, {
+		await ctx.convex.runMutation(components.instarip.users.toggleScraping, {
 			id: userId as never,
 		});
 
@@ -94,7 +100,7 @@ userDetailMenu.interact("delete", {
 
 		// If already pending, execute delete
 		if (ctx.session.pendingDelete?.userId === userId) {
-			await ctx.convex.runMutation(internal.users.deleteUserInternal, {
+			await ctx.convex.runMutation(components.instarip.users.deleteUser, {
 				id: userId as never,
 			});
 			ctx.session.pendingDelete = undefined;
@@ -103,9 +109,12 @@ userDetailMenu.interact("delete", {
 		}
 
 		// Set pending delete
-		const user = await ctx.convex.runQuery(internal.users.getUserByIdInternal, {
-			id: userId as never,
-		});
+		const user = await ctx.convex.runQuery(
+			components.instarip.users.getUserById,
+			{
+				id: userId as never,
+			},
+		);
 
 		if (!user) {
 			await ctx.reply("❌ User not found");
@@ -147,7 +156,7 @@ userDetailMenu.interact("back", {
 /**
  * Users menu
  */
-export const usersMenu = new MenuTemplate<BotContext>({
+export const usersMenu = new MenuTemplate<InstaripBotContext>({
 	text: "👥 <b>Users</b>\n\nManage Instagram accounts:",
 	parse_mode: "HTML",
 });
@@ -172,7 +181,7 @@ usersMenu.chooseIntoSubmenu("user", userDetailMenu, {
 	maxRows: 5,
 	choices: async (ctx) => {
 		const users = await ctx.convex.runQuery(
-			internal.users.getUsersInternal,
+			components.instarip.users.getUsers,
 			{},
 		);
 		const choices: Record<string, string> = {};

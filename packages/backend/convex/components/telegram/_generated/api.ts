@@ -11,6 +11,9 @@
 import type * as lib_apiClient from "../lib/apiClient.js";
 import type * as lib_captionBuilder from "../lib/captionBuilder.js";
 import type * as lib_mediaBuilder from "../lib/mediaBuilder.js";
+import type * as lib_storageAdapter from "../lib/storageAdapter.js";
+import type * as menu_index from "../menu/index.js";
+import type * as menu_types from "../menu/types.js";
 import type * as sender from "../sender.js";
 
 import type {
@@ -24,6 +27,9 @@ const fullApi: ApiFromModules<{
   "lib/apiClient": typeof lib_apiClient;
   "lib/captionBuilder": typeof lib_captionBuilder;
   "lib/mediaBuilder": typeof lib_mediaBuilder;
+  "lib/storageAdapter": typeof lib_storageAdapter;
+  "menu/index": typeof menu_index;
+  "menu/types": typeof menu_types;
   sender: typeof sender;
 }> = anyApi as any;
 

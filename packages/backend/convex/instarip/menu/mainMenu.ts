@@ -1,19 +1,19 @@
 "use node";
 
 /**
- * Main Menu Template
- * Root menu for the Telegram bot admin interface
+ * Instarip Main Menu Template
+ * Root menu for the Instarip Telegram bot admin interface
  */
 
 import { MenuTemplate } from "grammy-inline-menu";
-import { internal } from "../../_generated/api";
-import type { BotContext } from "../bot";
+import { components } from "../../_generated/api";
+import type { InstaripBotContext } from "../bot";
 import { actionsMenu } from "./actionsMenu";
 import { settingsMenu } from "./settingsMenu";
 import { usersMenu } from "./usersMenu";
 
-export const mainMenu = new MenuTemplate<BotContext>({
-	text: "🤖 <b>Admin Panel</b>\n\nSelect an option:",
+export const mainMenu = new MenuTemplate<InstaripBotContext>({
+	text: "🤖 <b>Instarip Admin Panel</b>\n\nSelect an option:",
 	parse_mode: "HTML",
 });
 
@@ -25,7 +25,7 @@ mainMenu.interact("status", {
 	do: async (ctx) => {
 		try {
 			const settings = await ctx.convex.runQuery(
-				internal.settings.getSettingsInternal,
+				components.instarip.settings.getSettings,
 				{},
 			);
 
@@ -86,11 +86,11 @@ mainMenu.interact("stats", {
 	do: async (ctx) => {
 		try {
 			const unsent = await ctx.convex.runQuery(
-				internal.posts.getUnsentInternal,
+				components.instarip.posts.getUnsent,
 				{ limit: 1000 },
 			);
 			const users = await ctx.convex.runQuery(
-				internal.users.listToBeScrapedInternal,
+				components.instarip.users.listToBeScraped,
 				{ limit: 1000 },
 			);
 

@@ -1,5 +1,5 @@
 import { defineComponent } from "convex/server";
 
-const component = defineComponent("instagram");
+const component = defineComponent("instarip");
 
 export default component;

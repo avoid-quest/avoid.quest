@@ -5,8 +5,8 @@
 
 import type { Infer } from "convex/values";
 import { v } from "convex/values";
-import { instagramMediaItemValidator } from "../../lib/validators";
 import { getInstagramHeaders, randomSleep } from "./lib/userAgents";
+import { instagramMediaItemValidator } from "./lib/validators";
 
 const INSTAGRAM_API_BASE = "https://www.instagram.com/api/v1";
 const REQUEST_TIMEOUT_MS = 10000;

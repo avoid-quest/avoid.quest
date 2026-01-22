@@ -1,12 +1,12 @@
 "use node";
 
 /**
- * Text Input Handler
+ * Instarip Text Input Handler
  * State machine for handling user text input (add user, edit username, edit setting)
  */
 
-import { internal } from "../../_generated/api";
-import type { BotContext } from "../bot";
+import { components } from "../../_generated/api";
+import type { InstaripBotContext } from "../bot";
 
 /**
  * Validate Instagram username format
@@ -51,7 +51,7 @@ function isValidInstagramUsername(username: string): {
 /**
  * Handle text messages based on awaiting input state
  */
-export async function handleTextInput(ctx: BotContext): Promise<void> {
+export async function handleTextInput(ctx: InstaripBotContext): Promise<void> {
 	const awaiting = ctx.session.awaitingInput;
 	if (!awaiting) return; // No input expected, ignore
 
@@ -90,7 +90,10 @@ export async function handleTextInput(ctx: BotContext): Promise<void> {
 /**
  * Handle adding a new user
  */
-async function handleAddUser(ctx: BotContext, username: string): Promise<void> {
+async function handleAddUser(
+	ctx: InstaripBotContext,
+	username: string,
+): Promise<void> {
 	const cleanUsername = username.replace(/^@/, "");
 
 	const validation = isValidInstagramUsername(cleanUsername);
@@ -100,7 +103,7 @@ async function handleAddUser(ctx: BotContext, username: string): Promise<void> {
 	}
 
 	try {
-		await ctx.convex.runMutation(internal.users.createUserInternal, {
+		await ctx.convex.runMutation(components.instarip.users.createUser, {
 			username: cleanUsername,
 		});
 		await ctx.reply(`✅ User @${cleanUsername} added successfully!`);
@@ -118,7 +121,7 @@ async function handleAddUser(ctx: BotContext, username: string): Promise<void> {
  * Handle editing a username
  */
 async function handleEditUsername(
-	ctx: BotContext,
+	ctx: InstaripBotContext,
 	username: string,
 	userId: string,
 ): Promise<void> {
@@ -131,7 +134,7 @@ async function handleEditUsername(
 	}
 
 	try {
-		await ctx.convex.runMutation(internal.users.updateUsernameInternal, {
+		await ctx.convex.runMutation(components.instarip.users.updateUsername, {
 			id: userId as never,
 			username: cleanUsername,
 		});
@@ -150,12 +153,12 @@ async function handleEditUsername(
  * Handle editing a setting
  */
 async function handleEditSetting(
-	ctx: BotContext,
+	ctx: InstaripBotContext,
 	value: string,
 	settingPath: string,
 ): Promise<void> {
 	try {
-		await ctx.convex.runMutation(internal.settings.updateSettingInternal, {
+		await ctx.convex.runMutation(components.instarip.settings.updateSetting, {
 			path: settingPath,
 			value,
 		});

@@ -1,18 +1,18 @@
 "use node";
 
 /**
- * Telegram Webhook Handler
- * Processes incoming Telegram updates using grammY
+ * Instarip Webhook Handler
+ * Processes incoming Telegram updates for Instarip app using grammY
  */
 
 import { v } from "convex/values";
 import { internalAction } from "../_generated/server";
-import { createBot } from "./bot";
+import { createInstaripBot } from "./bot";
 import { handleTextInput } from "./handlers/textInput";
-import { menuMiddleware } from "./menus";
+import { menuMiddleware } from "./menu";
 
 /**
- * Process a Telegram webhook update using grammY
+ * Process a Telegram webhook update for Instarip app
  */
 export const processUpdate = internalAction({
 	args: {
@@ -25,7 +25,12 @@ export const processUpdate = internalAction({
 		}
 
 		// Create bot instance with all middleware
-		const bot = createBot(botToken, ctx, menuMiddleware, handleTextInput);
+		const bot = createInstaripBot(
+			botToken,
+			ctx,
+			menuMiddleware,
+			handleTextInput,
+		);
 
 		// Initialize bot (fetches bot info from Telegram API)
 		await bot.init();

@@ -6,9 +6,9 @@
  * and file_unique_id for deduplication.
  */
 
-import { internal } from "../_generated/api";
-import type { Doc, Id } from "../_generated/dataModel";
+import { components } from "../_generated/api";
 import type { ActionCtx } from "../_generated/server";
+import type { Doc, Id } from "../components/instarip/_generated/dataModel";
 import type { FileIdInfo } from "./validators/media";
 
 const MAX_MEDIA_GROUP_SIZE = 10;
@@ -102,7 +102,7 @@ export async function saveFileIdsForPost(
 		// Update with URL if available, otherwise by ID
 		if (mediaItem.url) {
 			await ctx.runMutation(
-				internal.media_items.updateMediaItemWithFileIdInternal,
+				components.instarip.mediaItems.updateMediaItemWithFileIdByUrl,
 				{
 					post_id: postId,
 					url: mediaItem.url,
@@ -113,7 +113,7 @@ export async function saveFileIdsForPost(
 		} else {
 			// Fallback: update by ID if no URL (shouldn't happen in normal flow)
 			await ctx.runMutation(
-				internal.media_items.updateMediaItemFileIdByIdInternal,
+				components.instarip.mediaItems.updateMediaItemFileIdById,
 				{
 					id: mediaItem._id,
 					file_id: fileInfo.file_id,

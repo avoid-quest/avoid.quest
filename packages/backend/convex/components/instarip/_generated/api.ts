@@ -12,6 +12,12 @@ import type * as adapter from "../adapter.js";
 import type * as fetcher from "../fetcher.js";
 import type * as lib_rateLimiter from "../lib/rateLimiter.js";
 import type * as lib_userAgents from "../lib/userAgents.js";
+import type * as lib_validators from "../lib/validators.js";
+import type * as mediaItems from "../mediaItems.js";
+import type * as posts from "../posts.js";
+import type * as settings from "../settings.js";
+import type * as telegramMessages from "../telegramMessages.js";
+import type * as users from "../users.js";
 
 import type {
   ApiFromModules,
@@ -25,6 +31,12 @@ const fullApi: ApiFromModules<{
   fetcher: typeof fetcher;
   "lib/rateLimiter": typeof lib_rateLimiter;
   "lib/userAgents": typeof lib_userAgents;
+  "lib/validators": typeof lib_validators;
+  mediaItems: typeof mediaItems;
+  posts: typeof posts;
+  settings: typeof settings;
+  telegramMessages: typeof telegramMessages;
+  users: typeof users;
 }> = anyApi as any;
 
 /**

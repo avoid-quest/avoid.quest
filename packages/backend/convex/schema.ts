@@ -1,132 +1,19 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
-import {
-	instagramSettingsValidator,
-	localeSettingsValidator,
-	loggingSettingsValidator,
-	telegramSettingsValidator,
-} from "./lib/config/validators";
 
 /**
- * Database schema for the backend
+ * Main app schema - shared tables only
  *
- * IMPORTANT: All timestamp fields (timestamp, event_date, sentAt, *_at, etc.)
- * are stored in MILLISECONDS (JavaScript standard, UTC).
- * Timestamps are timezone-agnostic (stored in UTC) and converted to
- * Europe/Rome timezone for display purposes.
+ * All Instarip-specific tables (posts, users, media_items, settings, telegram_messages, fetch_logs)
+ * are now in the instarip component namespace.
+ *
+ * This schema contains only shared tables used across the application.
  */
 export default defineSchema({
-	posts: defineTable({
-		ig_id: v.string(),
-		shortcode: v.string(),
-		display_url: v.string(),
-		video_url: v.optional(v.string()),
-		thumbnail_url: v.optional(v.string()),
-		caption: v.string(),
-		is_video: v.boolean(),
-		url: v.string(),
-		media_type: v.union(
-			v.literal("image"),
-			v.literal("video"),
-			v.literal("carousel"),
-		),
-		/** Timestamp in milliseconds (UTC) - when the post was published on Instagram */
-		timestamp: v.number(),
-		/** Event date in milliseconds (UTC) - when the event occurs (if applicable) */
-		event_date: v.optional(v.number()),
-		users: v.array(v.id("users")),
-		sent: v.boolean(),
-		/** Timestamp in milliseconds (UTC) - when the post was sent to Telegram */
-		sentAt: v.optional(v.number()),
-		/** Whether this post is currently being sent (prevents concurrent sends) */
-		sending: v.optional(v.boolean()),
-		/** Number of retry attempts for failed sends */
-		retry_count: v.optional(v.number()),
-		/** Whether this post has permanently failed to send */
-		send_failed: v.optional(v.boolean()),
-	})
-		.index("by_timestamp", ["timestamp"])
-		.index("by_event_date", ["event_date"])
-		.index("by_shortcode", ["shortcode"])
-		.index("by_user_id", ["users"])
-		.index("by_sent", ["sent"]),
-	media_items: defineTable({
-		// Instagram URL (temporary - will be removed after migration)
-		url: v.optional(v.string()),
-		// Telegram file_id (permanent) - added during migration
-		file_id: v.optional(v.string()),
-		// Telegram file_unique_id (for deduplication) - added during migration
-		file_unique_id: v.optional(v.string()),
-		type: v.union(
-			v.literal("image"),
-			v.literal("video"),
-			v.literal("thumbnail"),
-		),
-		width: v.optional(v.number()),
-		height: v.optional(v.number()),
-		post_id: v.id("posts"),
-	})
-		.index("by_url", ["url"])
-		.index("by_file_id", ["file_id"])
-		.index("by_file_unique_id", ["file_unique_id"])
-		.index("by_type", ["type"])
-		.index("by_post_id", ["post_id"]),
-	users: defineTable({
-		username: v.string(),
-		profile_url: v.optional(v.string()),
-		to_be_scraped: v.boolean(),
-		/** Timestamp in milliseconds (UTC) - when the user was last scraped */
-		last_scraped_at: v.optional(v.number()),
-	})
-		.index("by_username", ["username"])
-		.index("by_to_be_scraped_last_scraped_at", [
-			"to_be_scraped",
-			"last_scraped_at",
-		]),
-	telegram_messages: defineTable({
-		post_id: v.id("posts"),
-		/** Telegram message ID */
-		message_id: v.number(),
-		/** Telegram chat ID */
-		chat_id: v.string(),
-		/** Timestamp in milliseconds (UTC) - when the message was sent */
-		sentAt: v.number(),
-	})
-		.index("by_post_id", ["post_id"])
-		.index("by_message_id_chat_id", ["message_id", "chat_id"]),
 	bot_sessions: defineTable({
 		/** Chat ID as string (session key) */
 		key: v.string(),
 		/** JSON-serialized session data */
 		data: v.string(),
 	}).index("by_key", ["key"]),
-	settings: defineTable({
-		telegram: v.optional(telegramSettingsValidator),
-		instagram: v.optional(instagramSettingsValidator),
-		locale: v.optional(localeSettingsValidator),
-		logging: v.optional(loggingSettingsValidator),
-	}),
-	/**
-	 * Raw Instagram API responses for debugging and testing
-	 * Stores the raw JSON response from Instagram API calls
-	 */
-	raw_instagram_responses: defineTable({
-		/** Instagram post shortcode */
-		shortcode: v.string(),
-		/** Instagram username associated with the response */
-		username: v.string(),
-		/** JSON stringified raw API response */
-		raw_response: v.string(),
-		/** Timestamp in milliseconds when the response was fetched */
-		fetched_at: v.number(),
-		/** Type of API response */
-		response_type: v.union(
-			v.literal("user_posts"),
-			v.literal("single_post"),
-			v.literal("oembed"),
-		),
-	})
-		.index("by_shortcode", ["shortcode"])
-		.index("by_username", ["username"])
-		.index("by_fetched_at", ["fetched_at"]),
 });

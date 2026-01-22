@@ -1,14 +1,22 @@
 import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
-import { internalMutation, internalQuery, query } from "./_generated/server";
+import { mutation, query } from "./_generated/server";
 
+const DEFAULT_TO_BE_SCRAPED_LIMIT = 100;
+
+/**
+ * Get all users ordered by username
+ */
 export const getUsers = query({
 	args: {},
 	handler: async (ctx) =>
 		await ctx.db.query("users").withIndex("by_username").order("asc").collect(),
 });
 
-export const getUsersPaginated = internalQuery({
+/**
+ * Get users with pagination
+ */
+export const getUsersPaginated = query({
 	args: { paginationOpts: paginationOptsValidator },
 	returns: v.object({
 		page: v.array(
@@ -38,17 +46,26 @@ export const getUsersPaginated = internalQuery({
 	},
 });
 
-export const getUserById = internalQuery({
+/**
+ * Get user by ID
+ */
+export const getUserById = query({
 	args: { id: v.id("users") },
 	handler: async (ctx, { id }) => await ctx.db.get(id),
 });
 
+/**
+ * Get users by IDs
+ */
 export const getUsersByIds = query({
 	args: { ids: v.array(v.id("users")) },
 	handler: async (ctx, { ids }) =>
 		await Promise.all(ids.map(async (id) => await ctx.db.get(id))),
 });
 
+/**
+ * Get user by username
+ */
 export const getUserByUsername = query({
 	args: { username: v.string() },
 	handler: async (ctx, { username }) =>
@@ -58,9 +75,10 @@ export const getUserByUsername = query({
 			.first(),
 });
 
-const DEFAULT_TO_BE_SCRAPED_LIMIT = 100;
-
-export const listToBeScraped = internalQuery({
+/**
+ * List users to be scraped (basic)
+ */
+export const listToBeScraped = query({
 	args: { limit: v.optional(v.number()) },
 	handler: async (ctx, { limit }) =>
 		await ctx.db
@@ -72,7 +90,41 @@ export const listToBeScraped = internalQuery({
 			.take(limit ?? DEFAULT_TO_BE_SCRAPED_LIMIT),
 });
 
-export const upsertUser = internalMutation({
+/**
+ * List users to be scraped with interval filtering
+ * Filters out users scraped recently (within minIntervalMs)
+ */
+export const listToBeScrapedWithInterval = query({
+	args: {
+		limit: v.number(),
+		minIntervalMs: v.optional(v.number()),
+	},
+	handler: async (ctx, { limit, minIntervalMs }) => {
+		const users = await ctx.db
+			.query("users")
+			.withIndex("by_to_be_scraped_last_scraped_at", (q) =>
+				q.eq("to_be_scraped", true),
+			)
+			.order("asc")
+			.take(limit * 2); // Fetch extra to filter
+
+		// Filter out recently scraped users if minIntervalMs is provided
+		if (minIntervalMs) {
+			const cutoff = Date.now() - minIntervalMs;
+			const filtered = users.filter(
+				(u) => !u.last_scraped_at || u.last_scraped_at < cutoff,
+			);
+			return filtered.slice(0, limit);
+		}
+
+		return users.slice(0, limit);
+	},
+});
+
+/**
+ * Upsert a user
+ */
+export const upsertUser = mutation({
 	args: {
 		id: v.optional(v.id("users")),
 		username: v.optional(v.string()),
@@ -121,46 +173,18 @@ export const upsertUser = internalMutation({
 	},
 });
 
-export const deleteUser = internalMutation({
+/**
+ * Delete a user
+ */
+export const deleteUser = mutation({
 	args: { id: v.id("users") },
 	handler: async (ctx, { id }) => await ctx.db.delete(id),
 });
 
 /**
- * Internal query to list users to be scraped (for cron use)
- * Filters out users scraped recently (within minIntervalMs)
+ * Get or create a user by username
  */
-export const listToBeScrapedInternal = internalQuery({
-	args: {
-		limit: v.number(),
-		minIntervalMs: v.optional(v.number()),
-	},
-	handler: async (ctx, { limit, minIntervalMs }) => {
-		const users = await ctx.db
-			.query("users")
-			.withIndex("by_to_be_scraped_last_scraped_at", (q) =>
-				q.eq("to_be_scraped", true),
-			)
-			.order("asc")
-			.take(limit * 2); // Fetch extra to filter
-
-		// Filter out recently scraped users if minIntervalMs is provided
-		if (minIntervalMs) {
-			const cutoff = Date.now() - minIntervalMs;
-			const filtered = users.filter(
-				(u) => !u.last_scraped_at || u.last_scraped_at < cutoff,
-			);
-			return filtered.slice(0, limit);
-		}
-
-		return users.slice(0, limit);
-	},
-});
-
-/**
- * Internal query to get or create a user by username (for cron use)
- */
-export const getOrCreateUserInternal = internalMutation({
+export const getOrCreateUser = mutation({
 	args: { username: v.string() },
 	handler: async (ctx, { username }) => {
 		const existing = await ctx.db
@@ -182,9 +206,9 @@ export const getOrCreateUserInternal = internalMutation({
 });
 
 /**
- * Internal mutation to update user's last_scraped_at timestamp (for cron use)
+ * Update user's last_scraped_at timestamp
  */
-export const updateLastScrapedAtInternal = internalMutation({
+export const updateLastScrapedAt = mutation({
 	args: { id: v.id("users"), lastScrapedAt: v.number() },
 	handler: async (ctx, { id, lastScrapedAt }) => {
 		await ctx.db.patch(id, { last_scraped_at: lastScrapedAt });
@@ -192,26 +216,9 @@ export const updateLastScrapedAtInternal = internalMutation({
 });
 
 /**
- * Internal query to get all users (for bot menu)
+ * Toggle user's to_be_scraped status
  */
-export const getUsersInternal = internalQuery({
-	args: {},
-	handler: async (ctx) =>
-		await ctx.db.query("users").withIndex("by_username").order("asc").collect(),
-});
-
-/**
- * Internal query to get user by ID (for bot menu)
- */
-export const getUserByIdInternal = internalQuery({
-	args: { id: v.id("users") },
-	handler: async (ctx, { id }) => await ctx.db.get(id),
-});
-
-/**
- * Internal mutation to toggle user's to_be_scraped status (for bot menu)
- */
-export const toggleScrapingInternal = internalMutation({
+export const toggleScraping = mutation({
 	args: { id: v.id("users") },
 	handler: async (ctx, { id }) => {
 		const user = await ctx.db.get(id);
@@ -221,17 +228,9 @@ export const toggleScrapingInternal = internalMutation({
 });
 
 /**
- * Internal mutation to delete user (for bot menu)
+ * Create a new user
  */
-export const deleteUserInternal = internalMutation({
-	args: { id: v.id("users") },
-	handler: async (ctx, { id }) => await ctx.db.delete(id),
-});
-
-/**
- * Internal mutation to create a new user (for bot menu)
- */
-export const createUserInternal = internalMutation({
+export const createUser = mutation({
 	args: { username: v.string() },
 	handler: async (ctx, { username }) => {
 		const existing = await ctx.db
@@ -251,9 +250,9 @@ export const createUserInternal = internalMutation({
 });
 
 /**
- * Internal mutation to update username (for bot menu)
+ * Update username
  */
-export const updateUsernameInternal = internalMutation({
+export const updateUsername = mutation({
 	args: { id: v.id("users"), username: v.string() },
 	handler: async (ctx, { id, username }) => {
 		const existing = await ctx.db

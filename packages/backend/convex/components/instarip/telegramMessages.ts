@@ -1,10 +1,10 @@
 import { v } from "convex/values";
-import { internalMutation, internalQuery } from "./_generated/server";
+import { mutation, query } from "./_generated/server";
 
 /**
  * Get all Telegram messages for a post
  */
-export const getMessagesByPostId = internalQuery({
+export const getMessagesByPostId = query({
 	args: { postId: v.id("posts") },
 	handler: async (ctx, { postId }) =>
 		await ctx.db
@@ -16,7 +16,7 @@ export const getMessagesByPostId = internalQuery({
 /**
  * Get a Telegram message by message_id and chat_id
  */
-export const getMessageByIdAndChat = internalQuery({
+export const getMessageByIdAndChat = query({
 	args: {
 		message_id: v.number(),
 		chat_id: v.string(),
@@ -33,7 +33,7 @@ export const getMessageByIdAndChat = internalQuery({
 /**
  * Record a sent Telegram message
  */
-export const recordMessage = internalMutation({
+export const recordMessage = mutation({
 	args: {
 		post_id: v.id("posts"),
 		message_id: v.number(),
@@ -71,7 +71,7 @@ export const recordMessage = internalMutation({
 /**
  * Delete a Telegram message record
  */
-export const deleteMessage = internalMutation({
+export const deleteMessage = mutation({
 	args: { id: v.id("telegram_messages") },
 	handler: async (ctx, { id }) => await ctx.db.delete(id),
 });

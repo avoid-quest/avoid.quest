@@ -2,6 +2,7 @@ import { cronJobs } from "convex/server";
 import { v } from "convex/values";
 import { components, internal } from "./_generated/api";
 import { internalAction } from "./_generated/server";
+import type { Doc, Id } from "./components/instarip/_generated/dataModel";
 import {
 	getRandomDelayBetweenUsers,
 	resolveInstagramConfig,
@@ -9,6 +10,12 @@ import {
 } from "./lib/config";
 import { secondsToMilliseconds } from "./lib/dateUtils";
 import { saveFileIdsForPost } from "./lib/fileIdMatcher";
+
+/**
+ * Type aliases for component document types
+ */
+type MediaItem = Doc<"media_items">;
+type Post = Doc<"posts">;
 
 const MAX_RETRY_COUNT = 3;
 
@@ -44,7 +51,10 @@ export const runTelegramSend = internalAction({
 	}),
 	handler: async (ctx) => {
 		// Get settings and resolve config with defaults
-		const settings = await ctx.runQuery(internal.settings.getSettingsInternal);
+		const settings = await ctx.runQuery(
+			components.instarip.settings.getSettings,
+			{},
+		);
 		const config = resolveTelegramConfig(settings?.telegram);
 
 		if (!config.active) {
@@ -64,7 +74,7 @@ export const runTelegramSend = internalAction({
 		const limit = config.sendLimit;
 
 		// Get unsent posts
-		const posts = await ctx.runQuery(internal.posts.getUnsentInternal, {
+		const posts = await ctx.runQuery(components.instarip.posts.getUnsent, {
 			limit,
 		});
 
@@ -81,7 +91,7 @@ export const runTelegramSend = internalAction({
 
 			// Claim the post for sending (prevents concurrent sends)
 			const claimed = await ctx.runMutation(
-				internal.posts.claimForSendingInternal,
+				components.instarip.posts.claimForSending,
 				{ id: post._id },
 			);
 			if (!claimed) {
@@ -92,7 +102,7 @@ export const runTelegramSend = internalAction({
 			try {
 				// Get media items for this post
 				const mediaItems = await ctx.runQuery(
-					internal.media_items.getMediaItemsByPostIdInternal,
+					components.instarip.mediaItems.getMediaItemsByPostId,
 					{ postId: post._id },
 				);
 
@@ -103,7 +113,7 @@ export const runTelegramSend = internalAction({
 						botToken,
 						chatId,
 						caption: post.caption,
-						mediaItems: mediaItems.map((item) => ({
+						mediaItems: mediaItems.map((item: MediaItem) => ({
 							url: item.url,
 							file_id: item.file_id,
 							type: item.type,
@@ -116,12 +126,12 @@ export const runTelegramSend = internalAction({
 
 				if (result.success) {
 					// Mark post as sent (also clears sending flag)
-					await ctx.runMutation(internal.posts.markSentInternal, {
+					await ctx.runMutation(components.instarip.posts.markSent, {
 						id: post._id,
 						sentAt: Date.now(),
 					});
 					// Clear sending flag explicitly for safety
-					await ctx.runMutation(internal.posts.clearSendingInternal, {
+					await ctx.runMutation(components.instarip.posts.clearSending, {
 						id: post._id,
 					});
 
@@ -133,7 +143,7 @@ export const runTelegramSend = internalAction({
 					sent++;
 				} else {
 					// Clear sending flag on failure
-					await ctx.runMutation(internal.posts.clearSendingInternal, {
+					await ctx.runMutation(components.instarip.posts.clearSending, {
 						id: post._id,
 					});
 
@@ -153,7 +163,7 @@ export const runTelegramSend = internalAction({
 								result.retryAfterMs,
 								internal.crons.retryBatch,
 								{
-									postIds: remainingPosts.map((p) => p._id),
+									postIds: remainingPosts.map((p: Post) => p._id),
 									chatId,
 								},
 							);
@@ -169,7 +179,7 @@ export const runTelegramSend = internalAction({
 				}
 			} catch (error) {
 				// Clear sending flag on error
-				await ctx.runMutation(internal.posts.clearSendingInternal, {
+				await ctx.runMutation(components.instarip.posts.clearSending, {
 					id: post._id,
 				});
 				failed++;
@@ -190,7 +200,7 @@ export const runTelegramSend = internalAction({
 
 /**
  * Orchestration layer for Instagram fetching
- * Fetches posts for users marked as to_be_scraped via the Instagram component
+ * Fetches posts for users marked as to_be_scraped via the Instarip component
  */
 export const runInstagramFetch = internalAction({
 	args: {},
@@ -202,7 +212,10 @@ export const runInstagramFetch = internalAction({
 	}),
 	handler: async (ctx) => {
 		// Get settings and resolve config with defaults
-		const settings = await ctx.runQuery(internal.settings.getSettingsInternal);
+		const settings = await ctx.runQuery(
+			components.instarip.settings.getSettings,
+			{},
+		);
 		const config = resolveInstagramConfig(settings?.instagram);
 
 		if (!config.active) {
@@ -210,10 +223,13 @@ export const runInstagramFetch = internalAction({
 		}
 
 		// Get users to scrape (respecting minimum interval)
-		const users = await ctx.runQuery(internal.users.listToBeScrapedInternal, {
-			limit: config.userLimit,
-			minIntervalMs: config.minScrapeIntervalMs,
-		});
+		const users = await ctx.runQuery(
+			components.instarip.users.listToBeScrapedWithInterval,
+			{
+				limit: config.userLimit,
+				minIntervalMs: config.minScrapeIntervalMs,
+			},
+		);
 
 		if (users.length === 0) {
 			return { usersProcessed: 0, newPosts: 0 };
@@ -225,9 +241,9 @@ export const runInstagramFetch = internalAction({
 
 		for (const user of users) {
 			try {
-				// Fetch posts via Instagram component
+				// Fetch posts via Instarip component fetcher
 				const result = await ctx.runAction(
-					components.instagram.fetcher.fetchUser,
+					components.instarip.fetcher.fetchUser,
 					{
 						username: user.username,
 						limit: config.postsPerUser,
@@ -244,7 +260,7 @@ export const runInstagramFetch = internalAction({
 					try {
 						// Check if post already exists
 						const existing = await ctx.runQuery(
-							internal.posts.getPostByShortcodeInternal,
+							components.instarip.posts.getPostByShortcode,
 							{ shortcode: post.shortcode },
 						);
 
@@ -258,7 +274,7 @@ export const runInstagramFetch = internalAction({
 
 						// Upsert the post
 						const postId = await ctx.runMutation(
-							internal.posts.upsertPostInternal,
+							components.instarip.posts.upsertPost,
 							{
 								ig_id: post.id,
 								shortcode: post.shortcode,
@@ -276,7 +292,7 @@ export const runInstagramFetch = internalAction({
 
 						// Sync media items
 						await ctx.runMutation(
-							internal.media_items.syncMediaItemsForPostInternal,
+							components.instarip.mediaItems.syncMediaItemsForPost,
 							{
 								post_id: postId,
 								media_items: post.media_items,
@@ -295,7 +311,7 @@ export const runInstagramFetch = internalAction({
 				}
 
 				// Update user's last_scraped_at
-				await ctx.runMutation(internal.users.updateLastScrapedAtInternal, {
+				await ctx.runMutation(components.instarip.users.updateLastScrapedAt, {
 					id: user._id,
 					lastScrapedAt: Date.now(),
 				});
@@ -326,7 +342,7 @@ export const runInstagramFetch = internalAction({
  */
 export const retrySinglePost = internalAction({
 	args: {
-		postId: v.id("posts"),
+		postId: v.string(),
 		chatId: v.string(),
 	},
 	handler: async (ctx, { postId, chatId }) => {
@@ -337,7 +353,7 @@ export const retrySinglePost = internalAction({
 		}
 
 		// Get the post
-		const post = await ctx.runQuery(internal.posts.getPostByIdInternal, {
+		const post = await ctx.runQuery(components.instarip.posts.getPostById, {
 			id: postId,
 		});
 
@@ -362,13 +378,13 @@ export const retrySinglePost = internalAction({
 
 		// Increment retry count and check if we've exceeded max retries
 		const retryCount = await ctx.runMutation(
-			internal.posts.incrementRetryCountInternal,
+			components.instarip.posts.incrementRetryCount,
 			{ id: postId },
 		);
 
 		if (retryCount > MAX_RETRY_COUNT) {
 			// Mark as permanently failed
-			await ctx.runMutation(internal.posts.markSendFailedInternal, {
+			await ctx.runMutation(components.instarip.posts.markSendFailed, {
 				id: postId,
 			});
 			console.warn(
@@ -379,7 +395,7 @@ export const retrySinglePost = internalAction({
 
 		// Claim the post for sending (prevents concurrent sends)
 		const claimed = await ctx.runMutation(
-			internal.posts.claimForSendingInternal,
+			components.instarip.posts.claimForSending,
 			{ id: postId },
 		);
 		if (!claimed) {
@@ -390,7 +406,7 @@ export const retrySinglePost = internalAction({
 		try {
 			// Get media items for this post
 			const mediaItems = await ctx.runQuery(
-				internal.media_items.getMediaItemsByPostIdInternal,
+				components.instarip.mediaItems.getMediaItemsByPostId,
 				{ postId },
 			);
 
@@ -401,7 +417,7 @@ export const retrySinglePost = internalAction({
 					botToken,
 					chatId,
 					caption: post.caption,
-					mediaItems: mediaItems.map((item) => ({
+					mediaItems: mediaItems.map((item: MediaItem) => ({
 						url: item.url,
 						file_id: item.file_id,
 						type: item.type,
@@ -414,22 +430,27 @@ export const retrySinglePost = internalAction({
 
 			if (result.success) {
 				// Mark post as sent
-				await ctx.runMutation(internal.posts.markSentInternal, {
+				await ctx.runMutation(components.instarip.posts.markSent, {
 					id: postId,
 					sentAt: Date.now(),
 				});
 				// Clear sending flag explicitly
-				await ctx.runMutation(internal.posts.clearSendingInternal, {
+				await ctx.runMutation(components.instarip.posts.clearSending, {
 					id: postId,
 				});
 
 				// Save file_ids for each media item (matched by position)
 				if (result.fileIds && result.fileIds.length > 0) {
-					await saveFileIdsForPost(ctx, postId, mediaItems, result.fileIds);
+					await saveFileIdsForPost(
+						ctx,
+						postId as Id<"posts">,
+						mediaItems,
+						result.fileIds,
+					);
 				}
 			} else {
 				// Clear sending flag on failure
-				await ctx.runMutation(internal.posts.clearSendingInternal, {
+				await ctx.runMutation(components.instarip.posts.clearSending, {
 					id: postId,
 				});
 
@@ -451,7 +472,7 @@ export const retrySinglePost = internalAction({
 			}
 		} catch (error) {
 			// Clear sending flag on error
-			await ctx.runMutation(internal.posts.clearSendingInternal, {
+			await ctx.runMutation(components.instarip.posts.clearSending, {
 				id: postId,
 			});
 			console.error(
@@ -468,7 +489,7 @@ export const retrySinglePost = internalAction({
  */
 export const retryBatch = internalAction({
 	args: {
-		postIds: v.array(v.id("posts")),
+		postIds: v.array(v.string()),
 		chatId: v.string(),
 	},
 	handler: async (ctx, { postIds, chatId }) => {
@@ -478,7 +499,10 @@ export const retryBatch = internalAction({
 			return;
 		}
 
-		const settings = await ctx.runQuery(internal.settings.getSettingsInternal);
+		const settings = await ctx.runQuery(
+			components.instarip.settings.getSettings,
+			{},
+		);
 		const config = resolveTelegramConfig(settings?.telegram);
 
 		for (const postId of postIds) {

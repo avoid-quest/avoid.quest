@@ -9,20 +9,22 @@
  */
 
 import { v } from "convex/values";
-import { internal } from "./_generated/api";
-import type { Id } from "./_generated/dataModel";
+import { components } from "./_generated/api";
 import { action } from "./_generated/server";
 
 export const bootstrap = action({
 	args: {},
 	returns: v.object({
 		initialized: v.boolean(),
-		settingsId: v.optional(v.id("settings")),
+		settingsId: v.optional(v.string()),
 	}),
 	handler: async (
 		ctx,
-	): Promise<{ initialized: boolean; settingsId?: Id<"settings"> }> => {
-		const settings = await ctx.runMutation(internal.settings.ensureSettings);
+	): Promise<{ initialized: boolean; settingsId?: string }> => {
+		const settings = await ctx.runMutation(
+			components.instarip.settings.ensureSettings,
+			{},
+		);
 		return {
 			initialized: true,
 			settingsId: settings?._id,

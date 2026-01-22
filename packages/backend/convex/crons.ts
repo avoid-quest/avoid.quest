@@ -5,12 +5,16 @@ import type { ActionCtx } from "./_generated/server";
 import { internalAction } from "./_generated/server";
 import type { Doc, Id } from "./components/instarip/_generated/dataModel";
 import { InMemoryRateLimiter } from "./components/instarip/lib/rateLimiter";
+import type { SendResult } from "./components/telegram/sender";
 import {
 	getRandomDelayBetweenUsers,
 	resolveInstagramConfig,
 	resolveTelegramConfig,
 } from "./lib/config";
 import { saveFileIdsForPost } from "./lib/fileIdMatcher";
+import { createLogger } from "./lib/logger";
+
+const logger = createLogger("crons");
 
 /**
  * Type aliases for component document types
@@ -55,23 +59,28 @@ async function sendPostToTelegram(
 	chatId: string,
 ): Promise<SendPostResult> {
 	// Get media items for this post
-	const mediaItems = (await ctx.runQuery(
+	const mediaItems: MediaItem[] = await ctx.runQuery(
 		components.instarip.mediaItems.getMediaItemsByPostId,
 		{ postId },
-	)) as MediaItem[];
+	);
 
 	// Build media items for Telegram
 	// For items with telegram_file, use file_id-based sending
 	// For items without telegram_file, use post's display_url/video_url for single-item posts
+	const isSendableMedia = (
+		item: MediaItem,
+	): item is MediaItem & { type: "image" | "video" } =>
+		item.type === "image" || item.type === "video";
+
 	const telegramMediaItems = mediaItems
-		.filter((item) => item.type !== "thumbnail")
-		.map((item: MediaItem) => {
+		.filter(isSendableMedia)
+		.map((item) => {
 			// If we have complete telegram_file data, use it (preferred)
 			if (item.telegram_file) {
 				return {
 					file_id: item.telegram_file.file_id,
 					file_unique_id: item.telegram_file.file_unique_id,
-					type: item.type as "image" | "video",
+					type: item.type,
 					width: item.width,
 					height: item.height,
 				};
@@ -84,7 +93,7 @@ async function sendPostToTelegram(
 						: post.display_url;
 				return {
 					url,
-					type: item.type as "image" | "video",
+					type: item.type,
 					width: item.width,
 					height: item.height,
 				};
@@ -96,42 +105,27 @@ async function sendPostToTelegram(
 		.filter((item): item is NonNullable<typeof item> => item !== null);
 
 	// Send via Telegram component
-	const result = (await ctx.runAction(components.telegram.sender.sendMessage, {
-		botToken,
-		chatId,
-		caption: post.caption,
-		mediaItems: telegramMediaItems,
-		postUrl: post.url,
-	})) as {
-		success: boolean;
-		error?: string;
-		retryAfterMs?: number;
-		fileIds?: Array<{
-			file_id: string;
-			file_unique_id: string;
-			type: "image" | "video";
-		}>;
-	};
+	const result: SendResult = await ctx.runAction(
+		components.telegram.sender.sendMessage,
+		{
+			botToken,
+			chatId,
+			caption: post.caption,
+			mediaItems: telegramMediaItems,
+			postUrl: post.url,
+		},
+	);
 
 	if (result.success) {
-		// Mark post as sent
+		// Mark post as sent (transitions from "sending" to "sent")
 		await ctx.runMutation(components.instarip.posts.markSent, {
 			id: postId,
 			sentAt: Date.now(),
 		});
-		// Clear sending flag explicitly for safety
-		await ctx.runMutation(components.instarip.posts.clearSending, {
-			id: postId,
-		});
 
 		// Save file_ids for each media item (matched by position)
 		if (result.fileIds && result.fileIds.length > 0) {
-			await saveFileIdsForPost(
-				ctx as Parameters<typeof saveFileIdsForPost>[0],
-				postId as Id<"posts">,
-				mediaItems,
-				result.fileIds,
-			);
+			await saveFileIdsForPost(ctx, postId, mediaItems, result.fileIds);
 		}
 
 		return { success: true };
@@ -459,7 +453,7 @@ export const retrySinglePost = internalAction({
 	handler: async (ctx, { postId, chatId }) => {
 		const botToken = process.env.TELEGRAM_BOT_TOKEN;
 		if (!botToken) {
-			console.error("retrySinglePost: TELEGRAM_BOT_TOKEN not configured");
+			logger.error("retrySinglePost: TELEGRAM_BOT_TOKEN not configured");
 			return;
 		}
 
@@ -470,7 +464,7 @@ export const retrySinglePost = internalAction({
 
 		// Skip if post doesn't exist or already sent
 		if (!post) {
-			console.warn(`retrySinglePost: Post ${postId} not found`);
+			logger.warn(`retrySinglePost: Post ${postId} not found`);
 			return;
 		}
 
@@ -481,7 +475,7 @@ export const retrySinglePost = internalAction({
 
 		if (post.status === "failed") {
 			// Permanently failed, don't retry
-			console.warn(
+			logger.warn(
 				`retrySinglePost: Post ${post.shortcode} permanently failed, skipping`,
 			);
 			return;
@@ -498,7 +492,7 @@ export const retrySinglePost = internalAction({
 			await ctx.runMutation(components.instarip.posts.markSendFailed, {
 				id: postId,
 			});
-			console.warn(
+			logger.warn(
 				`retrySinglePost: Post ${post.shortcode} permanently failed after ${MAX_RETRY_COUNT} attempts`,
 			);
 			return;
@@ -539,11 +533,11 @@ export const retrySinglePost = internalAction({
 						internal.crons.retrySinglePost,
 						{ postId, chatId },
 					);
-					console.info(
+					logger.info(
 						`retrySinglePost: Post ${post.shortcode} rate limited, retry ${retryCount}/${MAX_RETRY_COUNT} scheduled`,
 					);
 				} else {
-					console.warn(
+					logger.warn(
 						`retrySinglePost: Failed to send post ${post.shortcode} (attempt ${retryCount}): ${result.error}`,
 					);
 				}
@@ -553,9 +547,8 @@ export const retrySinglePost = internalAction({
 			await ctx.runMutation(components.instarip.posts.clearSending, {
 				id: postId,
 			});
-			console.error(
-				`retrySinglePost: Error sending post ${post.shortcode}:`,
-				error instanceof Error ? error.message : String(error),
+			logger.error(
+				`retrySinglePost: Error sending post ${post.shortcode}: ${error instanceof Error ? error.message : String(error)}`,
 			);
 		}
 	},
@@ -573,7 +566,7 @@ export const retryBatch = internalAction({
 	handler: async (ctx, { postIds, chatId }) => {
 		const botToken = process.env.TELEGRAM_BOT_TOKEN;
 		if (!botToken) {
-			console.error("retryBatch: TELEGRAM_BOT_TOKEN not configured");
+			logger.error("retryBatch: TELEGRAM_BOT_TOKEN not configured");
 			return;
 		}
 
@@ -618,7 +611,7 @@ export const runLogCleanup = internalAction({
 		} while (deletedBatch > 0);
 
 		if (deletedTotal > 0) {
-			console.info(`runLogCleanup: Deleted ${deletedTotal} old fetch logs`);
+			logger.info(`runLogCleanup: Deleted ${deletedTotal} old fetch logs`);
 		}
 
 		return { deletedTotal };

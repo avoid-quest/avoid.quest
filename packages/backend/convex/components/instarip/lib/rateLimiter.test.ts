@@ -308,7 +308,7 @@ describe("InMemoryRateLimiter", () => {
 	});
 });
 
-describe("concurrent token consumption", () => {
+describe("sequential token consumption", () => {
 	beforeEach(() => {
 		vi.useFakeTimers();
 		vi.setSystemTime(new Date("2024-03-15T12:00:00Z"));
@@ -318,12 +318,13 @@ describe("concurrent token consumption", () => {
 		vi.useRealTimers();
 	});
 
-	it("handles concurrent consume attempts without over-allocation", async () => {
+	it("limits sequential consume attempts to max tokens", () => {
 		// Use a rate limiter with 5 tokens and no refill
 		const limiter = new InMemoryRateLimiter(5, 0);
 
-		// Attempt 10 concurrent consumes
-		const consumePromises = Array(10)
+		// Attempt 10 sequential consumes using independent state reads
+		// Note: This tests state isolation, not true concurrency
+		const results = Array(10)
 			.fill(null)
 			.map(() => {
 				const result = tryConsumeToken(limiter.getState());
@@ -333,7 +334,7 @@ describe("concurrent token consumption", () => {
 				return result;
 			});
 
-		const successCount = consumePromises.filter((r) => r.success).length;
+		const successCount = results.filter((r) => r.success).length;
 
 		// Should only allow 5 successful consumes (max tokens)
 		expect(successCount).toBeLessThanOrEqual(5);

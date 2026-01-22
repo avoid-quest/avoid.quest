@@ -9,8 +9,10 @@
 import { components } from "../_generated/api";
 import type { ActionCtx } from "../_generated/server";
 import type { Doc, Id } from "../components/instarip/_generated/dataModel";
+import { createLogger } from "./logger";
 import type { FileIdInfo } from "./validators/media";
 
+const logger = createLogger("fileIdMatcher");
 const MAX_MEDIA_GROUP_SIZE = 10;
 
 /**
@@ -43,7 +45,7 @@ function filterSentMediaItems(
  */
 export async function saveFileIdsForPost(
 	ctx: ActionCtx,
-	postId: Id<"posts">,
+	postId: Id<"posts"> | string,
 	mediaItems: Doc<"media_items">[],
 	fileIds: FileIdInfo[],
 ): Promise<void> {
@@ -56,7 +58,7 @@ export async function saveFileIdsForPost(
 
 	// Warn if array lengths don't match
 	if (fileIds.length !== sentMediaItems.length) {
-		console.warn(
+		logger.warn(
 			`saveFileIdsForPost: File ID count mismatch for post ${postId}: ` +
 				`expected ${sentMediaItems.length} file IDs but got ${fileIds.length}. ` +
 				`This may indicate an ordering issue.`,
@@ -72,7 +74,7 @@ export async function saveFileIdsForPost(
 		}
 
 		if (!mediaItem) {
-			console.warn(
+			logger.warn(
 				`saveFileIdsForPost: No media item at position ${i} for post ${postId}`,
 			);
 			continue;
@@ -80,7 +82,7 @@ export async function saveFileIdsForPost(
 
 		// Validate type match
 		if (fileInfo.type !== mediaItem.type) {
-			console.warn(
+			logger.warn(
 				`saveFileIdsForPost: Type mismatch at position ${i} for post ${postId}: ` +
 					`expected ${mediaItem.type} but got ${fileInfo.type}`,
 			);
@@ -92,7 +94,7 @@ export async function saveFileIdsForPost(
 			mediaItem.telegram_file?.file_unique_id &&
 			fileInfo.file_unique_id !== mediaItem.telegram_file.file_unique_id
 		) {
-			console.warn(
+			logger.warn(
 				`saveFileIdsForPost: file_unique_id mismatch at position ${i} for post ${postId}: ` +
 					`existing ${mediaItem.telegram_file.file_unique_id} vs new ${fileInfo.file_unique_id}`,
 			);

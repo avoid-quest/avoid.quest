@@ -2,6 +2,10 @@
  * Security utilities for HTTP handlers
  */
 
+import { createLogger } from "./logger";
+
+const logger = createLogger("security");
+
 /**
  * Timing-safe string comparison using Web Crypto API
  * Uses HMAC comparison to ensure constant-time operation,
@@ -38,8 +42,11 @@ export async function secureCompare(a: string, b: string): Promise<boolean> {
 			result |= viewA[i] ^ viewB[i];
 		}
 		return result === 0;
-	} catch {
-		// Crypto operation failed - return false as safe default
+	} catch (error) {
+		// Crypto operation failed - log error and return false as safe default
+		logger.error(
+			`secureCompare: Crypto operation failed - ${error instanceof Error ? error.message : "Unknown error"}`,
+		);
 		return false;
 	}
 }

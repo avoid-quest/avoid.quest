@@ -491,6 +491,50 @@ describe("media_items", () => {
 			expect(sortedItems[1].telegram_file?.file_id).toBe("AgACAgIAAxk");
 			expect(sortedItems[1].telegram_file?.file_unique_id).toBe("AQADAgATq");
 		});
+
+		it("handles out-of-bounds position silently (no-op)", async () => {
+			const t = convexTest(schema, modules);
+
+			const user = await t.mutation(api.users.getOrCreateUser, {
+				username: "testuser",
+			});
+			if (!user) throw new Error("User should be created");
+
+			const postId = await t.mutation(api.posts.upsertPost, {
+				ig_id: "test_123",
+				shortcode: "ABC123",
+				display_url: "https://example.com/image.jpg",
+				caption: "Test",
+				is_video: false,
+				url: "https://instagram.com/p/ABC123/",
+				media_type: "carousel",
+				users: [user._id],
+				timestamp: Date.now(),
+			});
+
+			// Create only one item
+			await t.mutation(api.mediaItems.upsertMediaItem, {
+				type: "image",
+				post_id: postId,
+			});
+
+			// Try to update at out-of-bounds position (position 5 when only 1 item exists)
+			await expect(
+				t.mutation(api.mediaItems.updateMediaItemWithFileIdByPosition, {
+					post_id: postId,
+					position: 5,
+					file_id: "AgACAgIAAxk",
+					file_unique_id: "AQADAgATq",
+				}),
+			).resolves.toBeNull();
+
+			// Verify the single item was not affected
+			const items = await t.query(api.mediaItems.getMediaItemsByPostId, {
+				postId,
+			});
+			expect(items).toHaveLength(1);
+			expect(items[0].telegram_file).toBeUndefined();
+		});
 	});
 
 	describe("deleteMediaItem", () => {

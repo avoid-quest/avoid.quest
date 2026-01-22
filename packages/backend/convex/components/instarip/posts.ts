@@ -209,6 +209,10 @@ export const deletePost = mutation({
 /**
  * Mark a post as sent to Telegram.
  *
+ * State transitions:
+ * - sending → sent (success)
+ * - other states → error (invalid transition)
+ *
  * @param id - The post ID to mark as sent
  * @param sentAt - Timestamp in MILLISECONDS (use Date.now())
  */
@@ -218,6 +222,11 @@ export const markSent = mutation({
 		const post = await ctx.db.get(id);
 		if (!post) {
 			throw new Error(`Post ${id} not found`);
+		}
+		if (post.status !== "sending") {
+			throw new Error(
+				`Cannot mark as sent: expected "sending", got "${post.status}"`,
+			);
 		}
 		await ctx.db.patch(id, { status: "sent", sentAt });
 		return null;
@@ -275,15 +284,28 @@ export const clearSending = mutation({
  * Mark a post as permanently failed (after max retries exceeded)
  *
  * State transitions:
- * - any state → failed (permanent failure)
+ * - pending → failed (permanent failure)
+ * - sending → failed (permanent failure)
+ * - sent → error (already succeeded, cannot fail)
+ * - failed → no-op (already failed)
  */
 export const markSendFailed = mutation({
 	args: { id: v.id("posts") },
 	handler: async (ctx, { id }) => {
 		const post = await ctx.db.get(id);
-		if (post) {
-			await ctx.db.patch(id, { status: "failed" });
+		if (!post) {
+			return;
 		}
+		if (post.status === "sent") {
+			throw new Error(
+				`Cannot mark as failed: post "${id}" has already been sent`,
+			);
+		}
+		if (post.status === "failed") {
+			// Already failed, no-op
+			return;
+		}
+		await ctx.db.patch(id, { status: "failed" });
 	},
 });
 

@@ -78,8 +78,11 @@ export function createInstaripBot(
 		logger.error(`Instarip bot error: ${err.error}`);
 		try {
 			await err.ctx.reply("❌ Something went wrong. Please try again later.");
-		} catch {
-			// Ignore if we can't send the error message
+		} catch (replyError) {
+			// Log when we can't send the error message
+			logger.warn(
+				`Failed to send error notification: ${replyError instanceof Error ? replyError.message : "Unknown error"}`,
+			);
 		}
 	});
 

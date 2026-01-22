@@ -91,7 +91,7 @@ export function tryConsumeToken(
 
 /**
  * In-memory rate limiter class for use within a single action
- * For persistent rate limiting across actions, use the component's rate_limits table
+ * For persistent rate limiting across actions, use @convex-dev/rate-limiter
  */
 export class InMemoryRateLimiter {
 	private state: RateLimiterState;

@@ -10,6 +10,8 @@ import {
 import { secondsToMilliseconds } from "./lib/dateUtils";
 import { saveFileIdsForPost } from "./lib/fileIdMatcher";
 
+const MAX_RETRY_COUNT = 3;
+
 const crons = cronJobs();
 
 // Telegram sending cron - runs every 30 minutes
@@ -74,58 +76,106 @@ export const runTelegramSend = internalAction({
 		let failed = 0;
 		const errors: string[] = [];
 
-		for (const post of posts) {
-			// Get media items for this post
-			const mediaItems = await ctx.runQuery(
-				internal.media_items.getMediaItemsByPostIdInternal,
-				{ postId: post._id },
+		for (let i = 0; i < posts.length; i++) {
+			const post = posts[i];
+
+			// Claim the post for sending (prevents concurrent sends)
+			const claimed = await ctx.runMutation(
+				internal.posts.claimForSendingInternal,
+				{ id: post._id },
 			);
+			if (!claimed) {
+				// Already being sent by another process, skip
+				continue;
+			}
 
-			// Send via Telegram component
-			const result = await ctx.runAction(
-				components.telegram.sender.sendMessage,
-				{
-					botToken,
-					chatId,
-					caption: post.caption,
-					mediaItems: mediaItems.map((item) => ({
-						url: item.url,
-						file_id: item.file_id,
-						type: item.type,
-						width: item.width,
-						height: item.height,
-					})),
-					postUrl: post.url,
-				},
-			);
+			try {
+				// Get media items for this post
+				const mediaItems = await ctx.runQuery(
+					internal.media_items.getMediaItemsByPostIdInternal,
+					{ postId: post._id },
+				);
 
-			if (result.success) {
-				// Mark post as sent
-				await ctx.runMutation(internal.posts.markSentInternal, {
-					id: post._id,
-					sentAt: Date.now(),
-				});
+				// Send via Telegram component
+				const result = await ctx.runAction(
+					components.telegram.sender.sendMessage,
+					{
+						botToken,
+						chatId,
+						caption: post.caption,
+						mediaItems: mediaItems.map((item) => ({
+							url: item.url,
+							file_id: item.file_id,
+							type: item.type,
+							width: item.width,
+							height: item.height,
+						})),
+						postUrl: post.url,
+					},
+				);
 
-				// Save file_ids for each media item (matched by position)
-				if (result.fileIds && result.fileIds.length > 0) {
-					await saveFileIdsForPost(ctx, post._id, mediaItems, result.fileIds);
-				}
+				if (result.success) {
+					// Mark post as sent (also clears sending flag)
+					await ctx.runMutation(internal.posts.markSentInternal, {
+						id: post._id,
+						sentAt: Date.now(),
+					});
+					// Clear sending flag explicitly for safety
+					await ctx.runMutation(internal.posts.clearSendingInternal, {
+						id: post._id,
+					});
 
-				sent++;
-			} else {
-				// If rate limited, schedule retry after the specified delay
-				if (result.retryAfterMs) {
-					await ctx.scheduler.runAfter(
-						result.retryAfterMs,
-						internal.crons.retrySinglePost,
-						{ postId: post._id, chatId },
-					);
-					// Don't count as failed - it's queued for retry
-					errors.push(`Post ${post.shortcode}: Rate limited, scheduled retry`);
+					// Save file_ids for each media item (matched by position)
+					if (result.fileIds && result.fileIds.length > 0) {
+						await saveFileIdsForPost(ctx, post._id, mediaItems, result.fileIds);
+					}
+
+					sent++;
 				} else {
+					// Clear sending flag on failure
+					await ctx.runMutation(internal.posts.clearSendingInternal, {
+						id: post._id,
+					});
+
+					// If rate limited, break the loop and schedule retry for remaining posts
+					if (result.retryAfterMs) {
+						// Schedule retry for THIS post
+						await ctx.scheduler.runAfter(
+							result.retryAfterMs,
+							internal.crons.retrySinglePost,
+							{ postId: post._id, chatId },
+						);
+
+						// Schedule retry for REMAINING posts (don't continue loop)
+						const remainingPosts = posts.slice(i + 1);
+						if (remainingPosts.length > 0) {
+							await ctx.scheduler.runAfter(
+								result.retryAfterMs,
+								internal.crons.retryBatch,
+								{
+									postIds: remainingPosts.map((p) => p._id),
+									chatId,
+								},
+							);
+						}
+
+						errors.push(
+							`Post ${post.shortcode}: Rate limited, scheduled retry for ${remainingPosts.length + 1} posts`,
+						);
+						break; // Exit loop
+					}
 					failed++;
 					errors.push(`Post ${post.shortcode}: ${result.error}`);
 				}
+			} catch (error) {
+				// Clear sending flag on error
+				await ctx.runMutation(internal.posts.clearSendingInternal, {
+					id: post._id,
+				});
+				failed++;
+				errors.push(
+					`Post ${post.shortcode}: ${error instanceof Error ? error.message : String(error)}`,
+				);
 			}
 
 			// Small delay between posts to avoid rate limiting
@@ -302,42 +352,142 @@ export const retrySinglePost = internalAction({
 			return;
 		}
 
-		// Get media items for this post
-		const mediaItems = await ctx.runQuery(
-			internal.media_items.getMediaItemsByPostIdInternal,
-			{ postId },
+		if (post.send_failed) {
+			// Permanently failed, don't retry
+			console.warn(
+				`retrySinglePost: Post ${post.shortcode} permanently failed, skipping`,
+			);
+			return;
+		}
+
+		// Increment retry count and check if we've exceeded max retries
+		const retryCount = await ctx.runMutation(
+			internal.posts.incrementRetryCountInternal,
+			{ id: postId },
 		);
 
-		// Send via Telegram component
-		const result = await ctx.runAction(components.telegram.sender.sendMessage, {
-			botToken,
-			chatId,
-			caption: post.caption,
-			mediaItems: mediaItems.map((item) => ({
-				url: item.url,
-				file_id: item.file_id,
-				type: item.type,
-				width: item.width,
-				height: item.height,
-			})),
-			postUrl: post.url,
-		});
-
-		if (result.success) {
-			// Mark post as sent
-			await ctx.runMutation(internal.posts.markSentInternal, {
+		if (retryCount > MAX_RETRY_COUNT) {
+			// Mark as permanently failed
+			await ctx.runMutation(internal.posts.markSendFailedInternal, {
 				id: postId,
-				sentAt: Date.now(),
 			});
-
-			// Save file_ids for each media item (matched by position)
-			if (result.fileIds && result.fileIds.length > 0) {
-				await saveFileIdsForPost(ctx, postId, mediaItems, result.fileIds);
-			}
-		} else {
-			// Log retry failure - will be picked up by next cron run
 			console.warn(
-				`retrySinglePost: Failed to send post ${post.shortcode}: ${result.error}`,
+				`retrySinglePost: Post ${post.shortcode} permanently failed after ${MAX_RETRY_COUNT} attempts`,
+			);
+			return;
+		}
+
+		// Claim the post for sending (prevents concurrent sends)
+		const claimed = await ctx.runMutation(
+			internal.posts.claimForSendingInternal,
+			{ id: postId },
+		);
+		if (!claimed) {
+			// Already being sent by another process
+			return;
+		}
+
+		try {
+			// Get media items for this post
+			const mediaItems = await ctx.runQuery(
+				internal.media_items.getMediaItemsByPostIdInternal,
+				{ postId },
+			);
+
+			// Send via Telegram component
+			const result = await ctx.runAction(
+				components.telegram.sender.sendMessage,
+				{
+					botToken,
+					chatId,
+					caption: post.caption,
+					mediaItems: mediaItems.map((item) => ({
+						url: item.url,
+						file_id: item.file_id,
+						type: item.type,
+						width: item.width,
+						height: item.height,
+					})),
+					postUrl: post.url,
+				},
+			);
+
+			if (result.success) {
+				// Mark post as sent
+				await ctx.runMutation(internal.posts.markSentInternal, {
+					id: postId,
+					sentAt: Date.now(),
+				});
+				// Clear sending flag explicitly
+				await ctx.runMutation(internal.posts.clearSendingInternal, {
+					id: postId,
+				});
+
+				// Save file_ids for each media item (matched by position)
+				if (result.fileIds && result.fileIds.length > 0) {
+					await saveFileIdsForPost(ctx, postId, mediaItems, result.fileIds);
+				}
+			} else {
+				// Clear sending flag on failure
+				await ctx.runMutation(internal.posts.clearSendingInternal, {
+					id: postId,
+				});
+
+				// If rate limited, schedule another retry
+				if (result.retryAfterMs) {
+					await ctx.scheduler.runAfter(
+						result.retryAfterMs,
+						internal.crons.retrySinglePost,
+						{ postId, chatId },
+					);
+					console.info(
+						`retrySinglePost: Post ${post.shortcode} rate limited, retry ${retryCount}/${MAX_RETRY_COUNT} scheduled`,
+					);
+				} else {
+					console.warn(
+						`retrySinglePost: Failed to send post ${post.shortcode} (attempt ${retryCount}): ${result.error}`,
+					);
+				}
+			}
+		} catch (error) {
+			// Clear sending flag on error
+			await ctx.runMutation(internal.posts.clearSendingInternal, {
+				id: postId,
+			});
+			console.error(
+				`retrySinglePost: Error sending post ${post.shortcode}:`,
+				error instanceof Error ? error.message : String(error),
+			);
+		}
+	},
+});
+
+/**
+ * Retry sending a batch of posts to Telegram
+ * Called by scheduler when rate limiting causes early exit from the main loop
+ */
+export const retryBatch = internalAction({
+	args: {
+		postIds: v.array(v.id("posts")),
+		chatId: v.string(),
+	},
+	handler: async (ctx, { postIds, chatId }) => {
+		const botToken = process.env.TELEGRAM_BOT_TOKEN;
+		if (!botToken) {
+			console.error("retryBatch: TELEGRAM_BOT_TOKEN not configured");
+			return;
+		}
+
+		const settings = await ctx.runQuery(internal.settings.getSettingsInternal);
+		const config = resolveTelegramConfig(settings?.telegram);
+
+		for (const postId of postIds) {
+			// Delegate to retrySinglePost (which handles claiming, retry counting, etc.)
+			await ctx.runAction(internal.crons.retrySinglePost, { postId, chatId });
+
+			// Small delay between posts to avoid rate limiting
+			await new Promise((resolve) =>
+				setTimeout(resolve, config.delayBetweenPostsMs),
 			);
 		}
 	},

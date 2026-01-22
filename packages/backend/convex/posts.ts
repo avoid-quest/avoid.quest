@@ -336,14 +336,21 @@ export const getBackfillStats = internalQuery({
 
 /**
  * Internal query to get unsent posts for the Telegram cron
+ * Excludes posts that are currently being sent or have permanently failed
  */
 export const getUnsentInternal = internalQuery({
 	args: { limit: v.number() },
-	handler: async (ctx, { limit }) =>
-		await ctx.db
+	handler: async (ctx, { limit }) => {
+		const posts = await ctx.db
 			.query("posts")
 			.withIndex("by_sent", (q) => q.eq("sent", false))
-			.take(limit),
+			.take(limit * 2); // Fetch extra to account for filtered posts
+
+		// Filter out posts that are being sent or have permanently failed
+		return posts
+			.filter((post) => !post.sending && !post.send_failed)
+			.slice(0, limit);
+	},
 });
 
 /**
@@ -378,6 +385,83 @@ export const getPostByShortcodeInternal = internalQuery({
 export const getPostByIdInternal = internalQuery({
 	args: { id: v.id("posts") },
 	handler: async (ctx, { id }) => await ctx.db.get(id),
+});
+
+/**
+ * Atomically claim a post for sending (prevents concurrent sends)
+ * Returns true if the post was successfully claimed, false if already being sent
+ */
+export const claimForSendingInternal = internalMutation({
+	args: { id: v.id("posts") },
+	returns: v.boolean(),
+	handler: async (ctx, { id }) => {
+		const post = await ctx.db.get(id);
+		if (!post) {
+			return false;
+		}
+
+		// Already sent, don't claim
+		if (post.sent) {
+			return false;
+		}
+
+		// Already being sent by another process
+		if (post.sending) {
+			return false;
+		}
+
+		// Permanently failed, don't retry
+		if (post.send_failed) {
+			return false;
+		}
+
+		// Claim the post
+		await ctx.db.patch(id, { sending: true });
+		return true;
+	},
+});
+
+/**
+ * Clear the sending flag (called after send success or failure)
+ */
+export const clearSendingInternal = internalMutation({
+	args: { id: v.id("posts") },
+	handler: async (ctx, { id }) => {
+		const post = await ctx.db.get(id);
+		if (post) {
+			await ctx.db.patch(id, { sending: false });
+		}
+	},
+});
+
+/**
+ * Mark a post as permanently failed (after max retries exceeded)
+ */
+export const markSendFailedInternal = internalMutation({
+	args: { id: v.id("posts") },
+	handler: async (ctx, { id }) => {
+		const post = await ctx.db.get(id);
+		if (post) {
+			await ctx.db.patch(id, { send_failed: true, sending: false });
+		}
+	},
+});
+
+/**
+ * Increment retry count and return the new count
+ */
+export const incrementRetryCountInternal = internalMutation({
+	args: { id: v.id("posts") },
+	returns: v.number(),
+	handler: async (ctx, { id }) => {
+		const post = await ctx.db.get(id);
+		if (!post) {
+			return 0;
+		}
+		const newCount = (post.retry_count ?? 0) + 1;
+		await ctx.db.patch(id, { retry_count: newCount });
+		return newCount;
+	},
 });
 
 /**

@@ -319,6 +319,24 @@ export const updateMediaItemWithFileIdInternal = internalMutation({
 });
 
 /**
+ * Internal mutation to update a media item's file_id by document ID
+ * Fallback for when URL-based matching isn't possible
+ */
+export const updateMediaItemFileIdByIdInternal = internalMutation({
+	args: {
+		id: v.id("media_items"),
+		file_id: v.string(),
+		file_unique_id: v.string(),
+	},
+	handler: async (ctx, { id, file_id, file_unique_id }) => {
+		const item = await ctx.db.get(id);
+		if (item) {
+			await ctx.db.patch(id, { file_id, file_unique_id });
+		}
+	},
+});
+
+/**
  * Internal mutation to sync media items for a post (for cron use)
  * URL-based media items from Instagram
  */

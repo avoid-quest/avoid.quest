@@ -38,6 +38,12 @@ export default defineSchema({
 		sent: v.boolean(),
 		/** Timestamp in milliseconds (UTC) - when the post was sent to Telegram */
 		sentAt: v.optional(v.number()),
+		/** Whether this post is currently being sent (prevents concurrent sends) */
+		sending: v.optional(v.boolean()),
+		/** Number of retry attempts for failed sends */
+		retry_count: v.optional(v.number()),
+		/** Whether this post has permanently failed to send */
+		send_failed: v.optional(v.boolean()),
 	})
 		.index("by_timestamp", ["timestamp"])
 		.index("by_event_date", ["event_date"])

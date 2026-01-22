@@ -1,14 +1,30 @@
 /**
  * File ID matching utilities for Telegram media items
  *
- * Handles the position-based matching between sent media items and
- * the file_ids returned from Telegram API responses.
+ * Handles the matching between sent media items and the file_ids returned
+ * from Telegram API responses. Uses position-based matching with validation
+ * and file_unique_id for deduplication.
  */
 
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 import type { FileIdInfo } from "./validators/media";
+
+const MAX_MEDIA_GROUP_SIZE = 10;
+
+/**
+ * Filter media items using the same logic as the Telegram mediaBuilder
+ * This ensures consistency between what we send and what we try to match.
+ */
+function filterSentMediaItems(
+	mediaItems: Doc<"media_items">[],
+): Doc<"media_items">[] {
+	return mediaItems
+		.filter((item) => item.type !== "thumbnail")
+		.filter((item) => item.file_id || item.url)
+		.slice(0, MAX_MEDIA_GROUP_SIZE);
+}
 
 /**
  * Save file_ids for media items after successful Telegram send
@@ -17,8 +33,8 @@ import type { FileIdInfo } from "./validators/media";
  * returns file_ids in the same order as the media items were sent, so we can
  * use array index to correlate them.
  *
- * IMPORTANT: This relies on position-based matching which is fragile.
- * The order of mediaItems and fileIds MUST correspond.
+ * Uses file_unique_id to validate matches when available, which helps detect
+ * mismatches early.
  *
  * @param ctx - Convex action context
  * @param postId - ID of the post these media items belong to
@@ -35,28 +51,71 @@ export async function saveFileIdsForPost(
 		return;
 	}
 
-	// Filter to get only the media items we sent (exclude thumbnails and items without URL)
-	const sentMediaItems = mediaItems.filter(
-		(item) => item.type !== "thumbnail" && item.url,
-	);
+	// Filter using same logic as mediaBuilder to ensure consistency
+	const sentMediaItems = filterSentMediaItems(mediaItems);
 
-	// Warn if array lengths don't match - position-based matching is fragile
+	// Warn if array lengths don't match
 	if (fileIds.length !== sentMediaItems.length) {
 		console.warn(
 			`saveFileIdsForPost: File ID count mismatch for post ${postId}: ` +
-				`expected ${sentMediaItems.length} file IDs but got ${fileIds.length}`,
+				`expected ${sentMediaItems.length} file IDs but got ${fileIds.length}. ` +
+				`This may indicate an ordering issue.`,
 		);
 	}
 
 	for (let i = 0; i < fileIds.length; i++) {
 		const fileInfo = fileIds[i];
 		const mediaItem = sentMediaItems[i];
-		if (fileInfo && mediaItem?.url) {
+
+		if (!fileInfo) {
+			continue;
+		}
+
+		if (!mediaItem) {
+			console.warn(
+				`saveFileIdsForPost: No media item at position ${i} for post ${postId}`,
+			);
+			continue;
+		}
+
+		// Validate type match
+		if (fileInfo.type !== mediaItem.type) {
+			console.warn(
+				`saveFileIdsForPost: Type mismatch at position ${i} for post ${postId}: ` +
+					`expected ${mediaItem.type} but got ${fileInfo.type}`,
+			);
+			// Continue anyway - Telegram is the source of truth for file_id
+		}
+
+		// If media item already has a file_unique_id, validate it matches
+		if (
+			mediaItem.file_unique_id &&
+			fileInfo.file_unique_id !== mediaItem.file_unique_id
+		) {
+			console.warn(
+				`saveFileIdsForPost: file_unique_id mismatch at position ${i} for post ${postId}: ` +
+					`existing ${mediaItem.file_unique_id} vs new ${fileInfo.file_unique_id}`,
+			);
+			// This is unusual but not necessarily wrong - file might have been re-uploaded
+		}
+
+		// Update with URL if available, otherwise by ID
+		if (mediaItem.url) {
 			await ctx.runMutation(
 				internal.media_items.updateMediaItemWithFileIdInternal,
 				{
 					post_id: postId,
 					url: mediaItem.url,
+					file_id: fileInfo.file_id,
+					file_unique_id: fileInfo.file_unique_id,
+				},
+			);
+		} else {
+			// Fallback: update by ID if no URL (shouldn't happen in normal flow)
+			await ctx.runMutation(
+				internal.media_items.updateMediaItemFileIdByIdInternal,
+				{
+					id: mediaItem._id,
 					file_id: fileInfo.file_id,
 					file_unique_id: fileInfo.file_unique_id,
 				},

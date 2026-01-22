@@ -24,6 +24,19 @@ function getAllowedOrigins(): string[] {
 	return origins;
 }
 
+/**
+ * Create a response with CORS headers
+ */
+function corsResponse(
+	body: BodyInit | null,
+	init: ResponseInit,
+	origin: string | null,
+): Response {
+	const headers = new Headers(init.headers);
+	headers.set("Access-Control-Allow-Origin", origin || "*");
+	return new Response(body, { ...init, headers });
+}
+
 export const mediaHandler = httpAction(async (ctx, request) => {
 	// Origin validation for cross-origin requests
 	const origin = request.headers.get("Origin");
@@ -31,11 +44,24 @@ export const mediaHandler = httpAction(async (ctx, request) => {
 		return new Response("Forbidden", { status: 403 });
 	}
 
+	// Handle OPTIONS preflight requests
+	if (request.method === "OPTIONS") {
+		return new Response(null, {
+			status: 204,
+			headers: {
+				"Access-Control-Allow-Origin": origin || "*",
+				"Access-Control-Allow-Methods": "GET, OPTIONS",
+				"Access-Control-Allow-Headers": "Content-Type",
+				"Access-Control-Max-Age": "86400",
+			},
+		});
+	}
+
 	const { searchParams } = new URL(request.url);
 	const mediaId = searchParams.get("id");
 
 	if (!mediaId) {
-		return new Response("Missing media id", { status: 400 });
+		return corsResponse("Missing media id", { status: 400 }, origin);
 	}
 
 	// Get media item from database
@@ -44,17 +70,21 @@ export const mediaHandler = httpAction(async (ctx, request) => {
 	});
 
 	if (!mediaItem) {
-		return new Response("Media not found", { status: 404 });
+		return corsResponse("Media not found", { status: 404 }, origin);
 	}
 
 	if (!mediaItem.file_id) {
-		return new Response("Media not yet uploaded to Telegram", { status: 404 });
+		return corsResponse(
+			"Media not yet uploaded to Telegram",
+			{ status: 404 },
+			origin,
+		);
 	}
 
 	// Get Telegram download URL
 	const botToken = process.env.TELEGRAM_BOT_TOKEN;
 	if (!botToken) {
-		return new Response("Server configuration error", { status: 500 });
+		return corsResponse("Server configuration error", { status: 500 }, origin);
 	}
 
 	// Create AbortController for timeout handling
@@ -73,7 +103,11 @@ export const mediaHandler = httpAction(async (ctx, request) => {
 
 		if (!fileInfo.ok || !fileInfo.result?.file_path) {
 			console.error("Telegram getFile failed:", fileInfo.description);
-			return new Response("Failed to get file from Telegram", { status: 502 });
+			return corsResponse(
+				"Failed to get file from Telegram",
+				{ status: 502 },
+				origin,
+			);
 		}
 
 		// Fetch the actual file from Telegram CDN
@@ -81,9 +115,11 @@ export const mediaHandler = httpAction(async (ctx, request) => {
 		const fileResponse = await fetch(fileUrl, { signal: controller.signal });
 
 		if (!fileResponse.ok) {
-			return new Response("Failed to download file from Telegram", {
-				status: 502,
-			});
+			return corsResponse(
+				"Failed to download file from Telegram",
+				{ status: 502 },
+				origin,
+			);
 		}
 
 		// Determine content type based on media type
@@ -101,14 +137,15 @@ export const mediaHandler = httpAction(async (ctx, request) => {
 			headers: {
 				"Content-Type": contentType,
 				"Cache-Control": "public, max-age=31536000, immutable",
+				"Access-Control-Allow-Origin": origin || "*",
 			},
 		});
 	} catch (error) {
 		if (error instanceof Error && error.name === "AbortError") {
-			return new Response("Request timeout", { status: 504 });
+			return corsResponse("Request timeout", { status: 504 }, origin);
 		}
 		console.error("Media fetch error:", error);
-		return new Response("Internal server error", { status: 500 });
+		return corsResponse("Internal server error", { status: 500 }, origin);
 	} finally {
 		clearTimeout(timeoutId);
 	}

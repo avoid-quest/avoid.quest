@@ -4,6 +4,9 @@ import { v } from "convex/values";
 /**
  * Instagram component schema
  * Tables are isolated within the component namespace
+ *
+ * Note: Rate limiting is handled in-memory within actions (see lib/rateLimiter.ts).
+ * For persistent rate limiting, consider using @convex-dev/rate-limiter.
  */
 export default defineSchema({
 	fetch_logs: defineTable({
@@ -16,17 +19,4 @@ export default defineSchema({
 	})
 		.index("by_username", ["username"])
 		.index("by_fetched_at", ["fetched_at"]),
-
-	rate_limits: defineTable({
-		/** Token bucket identifier */
-		bucket_id: v.string(),
-		/** Current number of tokens */
-		tokens: v.number(),
-		/** Last refill timestamp in milliseconds (UTC) */
-		last_refill_at: v.number(),
-		/** Maximum tokens (burst capacity) */
-		max_tokens: v.number(),
-		/** Tokens added per second */
-		refill_rate: v.number(),
-	}).index("by_bucket_id", ["bucket_id"]),
 });

@@ -44,12 +44,16 @@ http.route({
 			return new Response("Unauthorized", { status: 401 });
 		}
 
+		// Declare outside try for error logging access
+		let update: TelegramUpdate | undefined;
+		let chatId: string | undefined;
+
 		try {
-			const update = (await request.json()) as TelegramUpdate;
+			update = (await request.json()) as TelegramUpdate;
 			const adminChatId = process.env.TELEGRAM_ADMIN_CHAT_ID;
 
 			// Get chat ID from message or callback
-			const chatId =
+			chatId =
 				update.message?.chat.id.toString() ??
 				update.callback_query?.message?.chat.id.toString();
 
@@ -59,6 +63,10 @@ http.route({
 
 			// Check admin authorization - silently ignore non-admin messages
 			if (adminChatId && chatId !== adminChatId) {
+				console.info("Telegram webhook: ignoring non-admin message", {
+					chatId,
+					updateId: update.update_id,
+				});
 				return new Response("OK", { status: 200 });
 			}
 
@@ -71,10 +79,14 @@ http.route({
 		} catch (error) {
 			// Error handling: return OK to prevent Telegram from retrying
 			// Log error for debugging but don't expose internal errors to Telegram
-			console.error(
-				"Telegram webhook error:",
-				error instanceof Error ? error.message : error,
-			);
+			console.error("Telegram webhook error:", {
+				updateId: update?.update_id,
+				chatId,
+				error:
+					error instanceof Error
+						? { message: error.message, stack: error.stack }
+						: String(error),
+			});
 			return new Response("OK", { status: 200 });
 		}
 	}),
@@ -102,6 +114,15 @@ http.route({
 http.route({
 	path: "/media",
 	method: "GET",
+	handler: mediaHandler,
+});
+
+/**
+ * Media proxy OPTIONS endpoint for CORS preflight
+ */
+http.route({
+	path: "/media",
+	method: "OPTIONS",
 	handler: mediaHandler,
 });
 

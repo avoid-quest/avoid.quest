@@ -10,6 +10,8 @@ import { describe, expect, it } from "vitest";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { FileIdInfo } from "./validators/media";
 
+const MAX_MEDIA_GROUP_SIZE = 10;
+
 // Helper to create mock media items
 function createMockMediaItem(
 	overrides: Partial<Doc<"media_items">> = {},
@@ -24,6 +26,19 @@ function createMockMediaItem(
 	};
 }
 
+/**
+ * Filter media items using the same logic as the Telegram mediaBuilder
+ * This ensures consistency between what we send and what we try to match.
+ */
+function filterSentMediaItems(
+	mediaItems: Doc<"media_items">[],
+): Doc<"media_items">[] {
+	return mediaItems
+		.filter((item) => item.type !== "thumbnail")
+		.filter((item) => item.file_id || item.url)
+		.slice(0, MAX_MEDIA_GROUP_SIZE);
+}
+
 // Since we can't easily import the actual function due to Convex internals,
 // we test the logic by recreating the matching algorithm
 function matchFileIds(
@@ -34,10 +49,8 @@ function matchFileIds(
 		return [];
 	}
 
-	// Filter to get only the media items we sent (exclude thumbnails and items without URL)
-	const sentMediaItems = mediaItems.filter(
-		(item) => item.type !== "thumbnail" && item.url,
-	);
+	// Filter using same logic as mediaBuilder to ensure consistency
+	const sentMediaItems = filterSentMediaItems(mediaItems);
 
 	const results: Array<{
 		mediaItem: Doc<"media_items">;
@@ -47,7 +60,7 @@ function matchFileIds(
 	for (let i = 0; i < fileIds.length; i++) {
 		const fileInfo = fileIds[i];
 		const mediaItem = sentMediaItems[i];
-		if (fileInfo && mediaItem?.url) {
+		if (fileInfo && mediaItem) {
 			results.push({ mediaItem, fileInfo });
 		} else {
 			results.push(null);
@@ -183,9 +196,32 @@ describe("file_id position matching", () => {
 	});
 
 	describe("URL handling", () => {
-		it("skips media items without URL during matching", () => {
+		it("includes media items with file_id but no URL", () => {
 			const mediaItems: Doc<"media_items">[] = [
 				createMockMediaItem({ url: undefined, file_id: "existing1" }),
+				createMockMediaItem({ url: "https://example.com/2.jpg" }),
+				createMockMediaItem({ url: "https://example.com/3.jpg" }),
+			];
+
+			const fileIds: FileIdInfo[] = [
+				{ file_id: "AgAC1", file_unique_id: "unique1", type: "image" },
+				{ file_id: "AgAC2", file_unique_id: "unique2", type: "image" },
+				{ file_id: "AgAC3", file_unique_id: "unique3", type: "image" },
+			];
+
+			const matches = matchFileIds(mediaItems, fileIds);
+
+			// First item has file_id so it's included (matches mediaBuilder behavior)
+			expect(matches).toHaveLength(3);
+			expect(matches[0]?.mediaItem.file_id).toBe("existing1");
+			expect(matches[0]?.fileInfo.file_id).toBe("AgAC1");
+			expect(matches[1]?.mediaItem.url).toBe("https://example.com/2.jpg");
+			expect(matches[1]?.fileInfo.file_id).toBe("AgAC2");
+		});
+
+		it("skips media items without URL or file_id", () => {
+			const mediaItems: Doc<"media_items">[] = [
+				createMockMediaItem({ url: undefined, file_id: undefined }),
 				createMockMediaItem({ url: "https://example.com/2.jpg" }),
 				createMockMediaItem({ url: "https://example.com/3.jpg" }),
 			];
@@ -197,7 +233,7 @@ describe("file_id position matching", () => {
 
 			const matches = matchFileIds(mediaItems, fileIds);
 
-			// First item (no URL) is skipped, so position 0 file_id matches item with URL
+			// First item has no URL or file_id, so it's skipped
 			expect(matches).toHaveLength(2);
 			expect(matches[0]?.mediaItem.url).toBe("https://example.com/2.jpg");
 			expect(matches[0]?.fileInfo.file_id).toBe("AgAC1");
@@ -259,6 +295,30 @@ describe("file_id position matching", () => {
 
 			const matches = matchFileIds(mediaItems, fileIds);
 
+			expect(matches).toHaveLength(10);
+			for (let i = 0; i < 10; i++) {
+				expect(matches[i]?.mediaItem.url).toBe(`https://example.com/${i}.jpg`);
+				expect(matches[i]?.fileInfo.file_id).toBe(`AgAC${i}`);
+			}
+		});
+
+		it("limits to MAX_MEDIA_GROUP_SIZE (10) items", () => {
+			// Create 15 media items - more than max
+			const mediaItems: Doc<"media_items">[] = Array.from(
+				{ length: 15 },
+				(_, i) => createMockMediaItem({ url: `https://example.com/${i}.jpg` }),
+			);
+
+			// Only 10 file IDs (Telegram would only send 10)
+			const fileIds: FileIdInfo[] = Array.from({ length: 10 }, (_, i) => ({
+				file_id: `AgAC${i}`,
+				file_unique_id: `unique${i}`,
+				type: "image" as const,
+			}));
+
+			const matches = matchFileIds(mediaItems, fileIds);
+
+			// Should only match the first 10 items
 			expect(matches).toHaveLength(10);
 			for (let i = 0; i < 10; i++) {
 				expect(matches[i]?.mediaItem.url).toBe(`https://example.com/${i}.jpg`);

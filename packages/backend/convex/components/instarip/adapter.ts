@@ -5,8 +5,11 @@
 
 import type { Infer } from "convex/values";
 import { v } from "convex/values";
+import { createLogger } from "../../lib/logger";
 import { getInstagramHeaders, randomSleep } from "./lib/userAgents";
 import { instagramMediaItemValidator } from "./lib/validators";
+
+const logger = createLogger("instarip:adapter");
 
 const INSTAGRAM_API_BASE = "https://www.instagram.com/api/v1";
 const REQUEST_TIMEOUT_MS = 10000;
@@ -209,7 +212,10 @@ function processMediaNode(node: InstagramMediaNode): Array<{
  */
 function parseMediaNode(node: InstagramMediaNode): FetchedPost | null {
 	const shortcode = node.shortcode ?? node.code;
-	if (!shortcode) return null;
+	if (!shortcode) {
+		logger.warn(`parseMediaNode: missing shortcode for node id=${node.id}`);
+		return null;
+	}
 
 	// Convert Instagram's seconds timestamp to milliseconds
 	const timestampSec = node.taken_at_timestamp ?? Math.floor(Date.now() / 1000);

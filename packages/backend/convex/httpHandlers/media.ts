@@ -1,6 +1,9 @@
 import { components } from "../_generated/api";
 import { httpAction } from "../_generated/server";
+import { createLogger } from "../lib/logger";
 import { isOriginAllowed } from "../lib/security";
+
+const logger = createLogger("media:proxy");
 
 type TelegramFileResponse = {
 	ok: boolean;
@@ -104,7 +107,9 @@ export const mediaHandler = httpAction(async (ctx, request) => {
 		const fileInfo = (await getFileResponse.json()) as TelegramFileResponse;
 
 		if (!fileInfo.ok || !fileInfo.result?.file_path) {
-			console.error("Telegram getFile failed:", fileInfo.description);
+			logger.error(
+				`Telegram getFile failed - file_id: ${mediaItem.file_id}, type: ${mediaItem.type}, error: ${fileInfo.description}`,
+			);
 			return corsResponse(
 				"Failed to get file from Telegram",
 				{ status: 502 },
@@ -146,7 +151,9 @@ export const mediaHandler = httpAction(async (ctx, request) => {
 		if (error instanceof Error && error.name === "AbortError") {
 			return corsResponse("Request timeout", { status: 504 }, origin);
 		}
-		console.error("Media fetch error:", error);
+		logger.error(
+			`Media fetch failed - file_id: ${mediaItem.file_id}, type: ${mediaItem.type}, error: ${error instanceof Error ? error.message : "Unknown"}`,
+		);
 		return corsResponse("Internal server error", { status: 500 }, origin);
 	} finally {
 		clearTimeout(timeoutId);

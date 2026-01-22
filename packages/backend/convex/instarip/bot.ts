@@ -74,8 +74,13 @@ export function createInstaripBot(
 	bot.on("message:text", textInputHandler);
 
 	// Error handler
-	bot.catch((err) => {
+	bot.catch(async (err) => {
 		logger.error(`Instarip bot error: ${err.error}`);
+		try {
+			await err.ctx.reply("❌ Something went wrong. Please try again later.");
+		} catch {
+			// Ignore if we can't send the error message
+		}
 	});
 
 	return bot;

@@ -10,6 +10,25 @@ import type { Id } from "../../components/instarip/_generated/dataModel";
 import type { InstaripBotContext } from "../bot";
 
 /**
+ * Map errors to user-friendly messages
+ */
+function getUserFriendlyError(error: unknown): string {
+	const msg = error instanceof Error ? error.message : "";
+	const lowerMsg = msg.toLowerCase();
+
+	if (lowerMsg.includes("rate limit"))
+		return "Too many requests. Please wait a moment.";
+	if (lowerMsg.includes("not found")) return "User or post not found.";
+	if (lowerMsg.includes("private")) return "This account is private.";
+	if (lowerMsg.includes("timeout"))
+		return "Request timed out. Please try again.";
+	if (lowerMsg.includes("network") || lowerMsg.includes("fetch"))
+		return "Network error. Please try again.";
+
+	return "Something went wrong. Please try again later.";
+}
+
+/**
  * Validate Instagram username format
  * Rules:
  * - Only letters (a-z), numbers (0-9), periods (.), and underscores (_)
@@ -80,8 +99,7 @@ export async function handleTextInput(ctx: InstaripBotContext): Promise<void> {
 				break;
 		}
 	} catch (error) {
-		const msg = error instanceof Error ? error.message : "Unknown error";
-		await ctx.reply(`❌ Error: ${msg}`);
+		await ctx.reply(`❌ ${getUserFriendlyError(error)}`);
 	}
 
 	// Clear awaiting state
@@ -109,11 +127,11 @@ async function handleAddUser(
 		});
 		await ctx.reply(`✅ User @${cleanUsername} added successfully!`);
 	} catch (error) {
-		const msg = error instanceof Error ? error.message : "Unknown error";
+		const msg = error instanceof Error ? error.message : "";
 		if (msg.includes("already exists")) {
 			await ctx.reply(`❌ User @${cleanUsername} already exists.`);
 		} else {
-			await ctx.reply(`❌ Failed to add user: ${msg}`);
+			await ctx.reply(`❌ ${getUserFriendlyError(error)}`);
 		}
 	}
 }
@@ -141,11 +159,11 @@ async function handleEditUsername(
 		});
 		await ctx.reply(`✅ Username updated to @${cleanUsername}!`);
 	} catch (error) {
-		const msg = error instanceof Error ? error.message : "Unknown error";
+		const msg = error instanceof Error ? error.message : "";
 		if (msg.includes("already exists")) {
 			await ctx.reply(`❌ User @${cleanUsername} already exists.`);
 		} else {
-			await ctx.reply(`❌ Failed to update username: ${msg}`);
+			await ctx.reply(`❌ ${getUserFriendlyError(error)}`);
 		}
 	}
 }
@@ -165,7 +183,6 @@ async function handleEditSetting(
 		});
 		await ctx.reply(`✅ Setting updated!`);
 	} catch (error) {
-		const msg = error instanceof Error ? error.message : "Unknown error";
-		await ctx.reply(`❌ Failed to update setting: ${msg}`);
+		await ctx.reply(`❌ ${getUserFriendlyError(error)}`);
 	}
 }

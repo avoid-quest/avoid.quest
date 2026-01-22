@@ -1,5 +1,6 @@
 {
-		"$schema": "./node_modules/wrangler/config-schema.json",
+	"$schema": "./node_modules/wrangler/config-schema.json",
+	"name": "instarip",
 	"main": ".open-next/worker.js",
 	"compatibility_date": "2026-01-22",
 	"compatibility_flags": [

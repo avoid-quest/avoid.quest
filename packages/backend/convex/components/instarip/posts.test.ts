@@ -42,7 +42,7 @@ describe("posts", () => {
 			});
 			expect(unsent).toHaveLength(1);
 			expect(unsent[0].shortcode).toBe("ABC123");
-			expect(unsent[0].sent).toBe(false);
+			expect(unsent[0].status).toBe("pending");
 		});
 
 		it("excludes sent posts", async () => {
@@ -66,7 +66,8 @@ describe("posts", () => {
 				timestamp: Date.now(),
 			});
 
-			// Mark it as sent
+			// Claim and mark it as sent
+			await t.mutation(api.posts.claimForSending, { id: postId });
 			await t.mutation(api.posts.markSent, {
 				id: postId,
 				sentAt: Date.now(),
@@ -129,6 +130,9 @@ describe("posts", () => {
 				timestamp: Date.now(),
 			});
 
+			// Claim the post first (required before markSent)
+			await t.mutation(api.posts.claimForSending, { id: postId });
+
 			const sentAt = Date.now();
 			await t.mutation(api.posts.markSent, {
 				id: postId,
@@ -145,7 +149,7 @@ describe("posts", () => {
 			const post = await t.query(api.posts.getPostById, {
 				id: postId,
 			});
-			expect(post?.sent).toBe(true);
+			expect(post?.status).toBe("sent");
 			expect(post?.sentAt).toBe(sentAt);
 		});
 
@@ -180,6 +184,37 @@ describe("posts", () => {
 					sentAt: Date.now(),
 				}),
 			).rejects.toThrow();
+		});
+
+		it("throws error when post is not in sending state", async () => {
+			const t = convexTest(schema, modules);
+
+			const user = await t.mutation(api.users.getOrCreateUser, {
+				username: "testuser",
+			});
+			if (!user) throw new Error("User should be created");
+
+			const postId = await t.mutation(api.posts.upsertPost, {
+				ig_id: "1",
+				shortcode: "PENDING123",
+				display_url: "https://example.com/1.jpg",
+				caption: "Test",
+				is_video: false,
+				url: "https://instagram.com/p/PENDING123",
+				media_type: "image",
+				users: [user._id],
+				timestamp: Date.now(),
+			});
+
+			// Try to mark as sent without claiming first (post is in "pending" state)
+			await expect(
+				t.mutation(api.posts.markSent, {
+					id: postId,
+					sentAt: Date.now(),
+				}),
+			).rejects.toThrow(
+				'Cannot mark as sent: expected "sending", got "pending"',
+			);
 		});
 	});
 
@@ -247,7 +282,7 @@ describe("posts", () => {
 			const post = await t.query(api.posts.getPostById, {
 				id: postId,
 			});
-			expect(post?.sent).toBe(false);
+			expect(post?.status).toBe("pending");
 			expect(post?.shortcode).toBe("NEW123");
 		});
 
@@ -382,6 +417,46 @@ describe("posts", () => {
 			});
 			expect(post?.event_date).toBe(eventDate);
 		});
+
+		it("throws error when updating with non-existent ID", async () => {
+			const t = convexTest(schema, modules);
+
+			// Create and delete a post to get a valid but non-existent ID format
+			const user = await t.mutation(api.users.getOrCreateUser, {
+				username: "testuser",
+			});
+			if (!user) throw new Error("User should be created");
+
+			const postId = await t.mutation(api.posts.upsertPost, {
+				ig_id: "temp",
+				shortcode: "TEMP",
+				display_url: "https://example.com/temp.jpg",
+				caption: "Temp",
+				is_video: false,
+				url: "https://instagram.com/p/TEMP",
+				media_type: "image",
+				users: [user._id],
+				timestamp: Date.now(),
+			});
+
+			await t.mutation(api.posts.deletePost, { id: postId });
+
+			// Try to update a non-existent post
+			await expect(
+				t.mutation(api.posts.upsertPost, {
+					id: postId,
+					ig_id: "updated",
+					shortcode: "UPDATED",
+					display_url: "https://example.com/updated.jpg",
+					caption: "Updated",
+					is_video: false,
+					url: "https://instagram.com/p/UPDATED",
+					media_type: "image",
+					users: [user._id],
+					timestamp: Date.now(),
+				}),
+			).rejects.toThrow(`Post with id ${postId} not found`);
+		});
 	});
 
 	describe("claimForSending", () => {
@@ -411,7 +486,7 @@ describe("posts", () => {
 			expect(claimed).toBe(true);
 
 			const post = await t.query(api.posts.getPostById, { id: postId });
-			expect(post?.sending).toBe(true);
+			expect(post?.status).toBe("sending");
 		});
 
 		it("returns false for already claimed post", async () => {
@@ -464,7 +539,38 @@ describe("posts", () => {
 				timestamp: Date.now(),
 			});
 
+			// Claim first, then mark as sent
+			await t.mutation(api.posts.claimForSending, { id: postId });
 			await t.mutation(api.posts.markSent, { id: postId, sentAt: Date.now() });
+
+			const claimed = await t.mutation(api.posts.claimForSending, {
+				id: postId,
+			});
+			expect(claimed).toBe(false);
+		});
+
+		it("returns false for non-existent post", async () => {
+			const t = convexTest(schema, modules);
+
+			// Create and delete a post to get a valid but non-existent ID format
+			const user = await t.mutation(api.users.getOrCreateUser, {
+				username: "testuser",
+			});
+			if (!user) throw new Error("User should be created");
+
+			const postId = await t.mutation(api.posts.upsertPost, {
+				ig_id: "temp",
+				shortcode: "TEMP",
+				display_url: "https://example.com/temp.jpg",
+				caption: "Temp",
+				is_video: false,
+				url: "https://instagram.com/p/TEMP",
+				media_type: "image",
+				users: [user._id],
+				timestamp: Date.now(),
+			});
+
+			await t.mutation(api.posts.deletePost, { id: postId });
 
 			const claimed = await t.mutation(api.posts.claimForSending, {
 				id: postId,
@@ -498,12 +604,100 @@ describe("posts", () => {
 			await t.mutation(api.posts.clearSending, { id: postId });
 
 			const post = await t.query(api.posts.getPostById, { id: postId });
-			expect(post?.sending).toBe(false);
+			expect(post?.status).toBe("pending");
+		});
+
+		it("is idempotent for pending state (no-op)", async () => {
+			const t = convexTest(schema, modules);
+
+			const user = await t.mutation(api.users.getOrCreateUser, {
+				username: "testuser",
+			});
+			if (!user) throw new Error("User should be created");
+
+			const postId = await t.mutation(api.posts.upsertPost, {
+				ig_id: "1",
+				shortcode: "IDEMPOTENT1",
+				display_url: "https://example.com/1.jpg",
+				caption: "Test",
+				is_video: false,
+				url: "https://instagram.com/p/IDEMPOTENT1",
+				media_type: "image",
+				users: [user._id],
+				timestamp: Date.now(),
+			});
+
+			// Post is in "pending" state, clearSending should be a no-op
+			await t.mutation(api.posts.clearSending, { id: postId });
+
+			const post = await t.query(api.posts.getPostById, { id: postId });
+			expect(post?.status).toBe("pending");
+		});
+
+		it("is idempotent for sent state (no-op)", async () => {
+			const t = convexTest(schema, modules);
+
+			const user = await t.mutation(api.users.getOrCreateUser, {
+				username: "testuser",
+			});
+			if (!user) throw new Error("User should be created");
+
+			const postId = await t.mutation(api.posts.upsertPost, {
+				ig_id: "1",
+				shortcode: "IDEMPOTENT2",
+				display_url: "https://example.com/1.jpg",
+				caption: "Test",
+				is_video: false,
+				url: "https://instagram.com/p/IDEMPOTENT2",
+				media_type: "image",
+				users: [user._id],
+				timestamp: Date.now(),
+			});
+
+			// Claim and mark as sent
+			await t.mutation(api.posts.claimForSending, { id: postId });
+			await t.mutation(api.posts.markSent, { id: postId, sentAt: Date.now() });
+
+			// Post is in "sent" state, clearSending should be a no-op
+			await t.mutation(api.posts.clearSending, { id: postId });
+
+			const post = await t.query(api.posts.getPostById, { id: postId });
+			expect(post?.status).toBe("sent");
+		});
+
+		it("is idempotent for failed state (no-op)", async () => {
+			const t = convexTest(schema, modules);
+
+			const user = await t.mutation(api.users.getOrCreateUser, {
+				username: "testuser",
+			});
+			if (!user) throw new Error("User should be created");
+
+			const postId = await t.mutation(api.posts.upsertPost, {
+				ig_id: "1",
+				shortcode: "IDEMPOTENT3",
+				display_url: "https://example.com/1.jpg",
+				caption: "Test",
+				is_video: false,
+				url: "https://instagram.com/p/IDEMPOTENT3",
+				media_type: "image",
+				users: [user._id],
+				timestamp: Date.now(),
+			});
+
+			// Mark as failed
+			await t.mutation(api.posts.markSendFailed, { id: postId });
+
+			// Post is in "failed" state, clearSending should be a no-op
+			await t.mutation(api.posts.clearSending, { id: postId });
+
+			const post = await t.query(api.posts.getPostById, { id: postId });
+			expect(post?.status).toBe("failed");
 		});
 	});
 
 	describe("markSendFailed", () => {
-		it("sets send_failed flag and clears sending", async () => {
+		it("transitions post to failed status", async () => {
 			const t = convexTest(schema, modules);
 
 			const user = await t.mutation(api.users.getOrCreateUser, {
@@ -523,15 +717,14 @@ describe("posts", () => {
 				timestamp: Date.now(),
 			});
 
-			// First claim the post (sets sending=true)
+			// First claim the post (sets status to "sending")
 			await t.mutation(api.posts.claimForSending, { id: postId });
 
 			// Mark as failed
 			await t.mutation(api.posts.markSendFailed, { id: postId });
 
 			const post = await t.query(api.posts.getPostById, { id: postId });
-			expect(post?.send_failed).toBe(true);
-			expect(post?.sending).toBe(false);
+			expect(post?.status).toBe("failed");
 		});
 
 		it("claimForSending returns false for permanently failed post", async () => {
@@ -562,6 +755,95 @@ describe("posts", () => {
 				id: postId,
 			});
 			expect(claimed).toBe(false);
+		});
+
+		it("handles non-existent post silently (no-op)", async () => {
+			const t = convexTest(schema, modules);
+
+			// Create and delete a post to get a valid but non-existent ID format
+			const user = await t.mutation(api.users.getOrCreateUser, {
+				username: "testuser",
+			});
+			if (!user) throw new Error("User should be created");
+
+			const postId = await t.mutation(api.posts.upsertPost, {
+				ig_id: "temp",
+				shortcode: "TEMP",
+				display_url: "https://example.com/temp.jpg",
+				caption: "Temp",
+				is_video: false,
+				url: "https://instagram.com/p/TEMP",
+				media_type: "image",
+				users: [user._id],
+				timestamp: Date.now(),
+			});
+
+			await t.mutation(api.posts.deletePost, { id: postId });
+
+			// markSendFailed should not throw for non-existent post
+			await expect(
+				t.mutation(api.posts.markSendFailed, { id: postId }),
+			).resolves.toBeNull();
+		});
+
+		it("throws error when trying to mark sent post as failed", async () => {
+			const t = convexTest(schema, modules);
+
+			const user = await t.mutation(api.users.getOrCreateUser, {
+				username: "testuser",
+			});
+			if (!user) throw new Error("User should be created");
+
+			const postId = await t.mutation(api.posts.upsertPost, {
+				ig_id: "1",
+				shortcode: "SENTFAIL",
+				display_url: "https://example.com/1.jpg",
+				caption: "Test",
+				is_video: false,
+				url: "https://instagram.com/p/SENTFAIL",
+				media_type: "image",
+				users: [user._id],
+				timestamp: Date.now(),
+			});
+
+			// Claim and mark as sent
+			await t.mutation(api.posts.claimForSending, { id: postId });
+			await t.mutation(api.posts.markSent, { id: postId, sentAt: Date.now() });
+
+			// Try to mark as failed - should throw
+			await expect(
+				t.mutation(api.posts.markSendFailed, { id: postId }),
+			).rejects.toThrow(
+				`Cannot mark as failed: post "${postId}" has already been sent`,
+			);
+		});
+
+		it("is idempotent for already failed post (no-op)", async () => {
+			const t = convexTest(schema, modules);
+
+			const user = await t.mutation(api.users.getOrCreateUser, {
+				username: "testuser",
+			});
+			if (!user) throw new Error("User should be created");
+
+			const postId = await t.mutation(api.posts.upsertPost, {
+				ig_id: "1",
+				shortcode: "DOUBLEFAIL",
+				display_url: "https://example.com/1.jpg",
+				caption: "Test",
+				is_video: false,
+				url: "https://instagram.com/p/DOUBLEFAIL",
+				media_type: "image",
+				users: [user._id],
+				timestamp: Date.now(),
+			});
+
+			// Mark as failed twice
+			await t.mutation(api.posts.markSendFailed, { id: postId });
+			await t.mutation(api.posts.markSendFailed, { id: postId });
+
+			const post = await t.query(api.posts.getPostById, { id: postId });
+			expect(post?.status).toBe("failed");
 		});
 	});
 
@@ -697,6 +979,253 @@ describe("posts", () => {
 			const unsent = await t.query(api.posts.getUnsent, { limit: 10 });
 			expect(unsent).toHaveLength(1);
 			expect(unsent[0].shortcode).toBe("NORMAL");
+		});
+	});
+
+	describe("getBackfillStats", () => {
+		it("returns zeros for empty database", async () => {
+			const t = convexTest(schema, modules);
+
+			const stats = await t.query(api.posts.getBackfillStats, {});
+
+			expect(stats.totalSent).toBe(0);
+			expect(stats.withFileIds).toBe(0);
+			expect(stats.needsBackfill).toBe(0);
+		});
+
+		it("returns zeros when no sent posts", async () => {
+			const t = convexTest(schema, modules);
+
+			const user = await t.mutation(api.users.getOrCreateUser, {
+				username: "testuser",
+			});
+			if (!user) throw new Error("User should be created");
+
+			// Create unsent post
+			await t.mutation(api.posts.upsertPost, {
+				ig_id: "1",
+				shortcode: "UNSENT123",
+				display_url: "https://example.com/1.jpg",
+				caption: "Unsent post",
+				is_video: false,
+				url: "https://instagram.com/p/UNSENT123",
+				media_type: "image",
+				users: [user._id],
+				timestamp: Date.now(),
+			});
+
+			const stats = await t.query(api.posts.getBackfillStats, {});
+
+			expect(stats.totalSent).toBe(0);
+			expect(stats.withFileIds).toBe(0);
+			expect(stats.needsBackfill).toBe(0);
+		});
+
+		it("counts posts with all telegram_file as withFileIds", async () => {
+			const t = convexTest(schema, modules);
+
+			const user = await t.mutation(api.users.getOrCreateUser, {
+				username: "testuser",
+			});
+			if (!user) throw new Error("User should be created");
+
+			// Create sent post
+			const postId = await t.mutation(api.posts.upsertPost, {
+				ig_id: "1",
+				shortcode: "SENT123",
+				display_url: "https://example.com/1.jpg",
+				caption: "Sent post",
+				is_video: false,
+				url: "https://instagram.com/p/SENT123",
+				media_type: "image",
+				users: [user._id],
+				timestamp: Date.now(),
+			});
+
+			// Claim and mark as sent
+			await t.mutation(api.posts.claimForSending, { id: postId });
+			await t.mutation(api.posts.markSent, { id: postId, sentAt: Date.now() });
+
+			// Create media item with telegram_file
+			await t.mutation(api.mediaItems.upsertMediaItem, {
+				post_id: postId,
+				type: "image",
+				telegram_file: {
+					file_id: "test_file_id",
+					file_unique_id: "test_unique_id",
+				},
+			});
+
+			const stats = await t.query(api.posts.getBackfillStats, {});
+
+			expect(stats.totalSent).toBe(1);
+			expect(stats.withFileIds).toBe(1);
+			expect(stats.needsBackfill).toBe(0);
+		});
+
+		it("counts posts with missing telegram_file as needsBackfill", async () => {
+			const t = convexTest(schema, modules);
+
+			const user = await t.mutation(api.users.getOrCreateUser, {
+				username: "testuser",
+			});
+			if (!user) throw new Error("User should be created");
+
+			// Create sent post
+			const postId = await t.mutation(api.posts.upsertPost, {
+				ig_id: "1",
+				shortcode: "BACKFILL123",
+				display_url: "https://example.com/1.jpg",
+				caption: "Backfill needed post",
+				is_video: false,
+				url: "https://instagram.com/p/BACKFILL123",
+				media_type: "image",
+				users: [user._id],
+				timestamp: Date.now(),
+			});
+
+			// Claim and mark as sent
+			await t.mutation(api.posts.claimForSending, { id: postId });
+			await t.mutation(api.posts.markSent, { id: postId, sentAt: Date.now() });
+
+			// Create media item WITHOUT telegram_file
+			await t.mutation(api.mediaItems.upsertMediaItem, {
+				post_id: postId,
+				type: "image",
+			});
+
+			const stats = await t.query(api.posts.getBackfillStats, {});
+
+			expect(stats.totalSent).toBe(1);
+			expect(stats.withFileIds).toBe(0);
+			expect(stats.needsBackfill).toBe(1);
+		});
+
+		it("handles mixed scenarios correctly", async () => {
+			const t = convexTest(schema, modules);
+
+			const user = await t.mutation(api.users.getOrCreateUser, {
+				username: "testuser",
+			});
+			if (!user) throw new Error("User should be created");
+
+			// Post 1: Sent with telegram_file
+			const post1Id = await t.mutation(api.posts.upsertPost, {
+				ig_id: "1",
+				shortcode: "COMPLETE1",
+				display_url: "https://example.com/1.jpg",
+				caption: "Complete post 1",
+				is_video: false,
+				url: "https://instagram.com/p/COMPLETE1",
+				media_type: "image",
+				users: [user._id],
+				timestamp: Date.now(),
+			});
+			await t.mutation(api.posts.claimForSending, { id: post1Id });
+			await t.mutation(api.posts.markSent, { id: post1Id, sentAt: Date.now() });
+			await t.mutation(api.mediaItems.upsertMediaItem, {
+				post_id: post1Id,
+				type: "image",
+				telegram_file: {
+					file_id: "file_1",
+					file_unique_id: "unique_1",
+				},
+			});
+
+			// Post 2: Sent with all telegram_file
+			const post2Id = await t.mutation(api.posts.upsertPost, {
+				ig_id: "2",
+				shortcode: "COMPLETE2",
+				display_url: "https://example.com/2.jpg",
+				caption: "Complete post 2",
+				is_video: false,
+				url: "https://instagram.com/p/COMPLETE2",
+				media_type: "image",
+				users: [user._id],
+				timestamp: Date.now() + 1,
+			});
+			await t.mutation(api.posts.claimForSending, { id: post2Id });
+			await t.mutation(api.posts.markSent, { id: post2Id, sentAt: Date.now() });
+			await t.mutation(api.mediaItems.upsertMediaItem, {
+				post_id: post2Id,
+				type: "image",
+				telegram_file: {
+					file_id: "file_2",
+					file_unique_id: "unique_2",
+				},
+			});
+
+			// Post 3: Sent needing backfill
+			const post3Id = await t.mutation(api.posts.upsertPost, {
+				ig_id: "3",
+				shortcode: "NEEDSBACKFILL",
+				display_url: "https://example.com/3.jpg",
+				caption: "Needs backfill",
+				is_video: false,
+				url: "https://instagram.com/p/NEEDSBACKFILL",
+				media_type: "image",
+				users: [user._id],
+				timestamp: Date.now() + 2,
+			});
+			await t.mutation(api.posts.claimForSending, { id: post3Id });
+			await t.mutation(api.posts.markSent, { id: post3Id, sentAt: Date.now() });
+			await t.mutation(api.mediaItems.upsertMediaItem, {
+				post_id: post3Id,
+				type: "image",
+				// No telegram_file
+			});
+
+			// Post 4: Unsent (should not be counted)
+			await t.mutation(api.posts.upsertPost, {
+				ig_id: "4",
+				shortcode: "UNSENT",
+				display_url: "https://example.com/4.jpg",
+				caption: "Unsent post",
+				is_video: false,
+				url: "https://instagram.com/p/UNSENT",
+				media_type: "image",
+				users: [user._id],
+				timestamp: Date.now() + 3,
+			});
+
+			const stats = await t.query(api.posts.getBackfillStats, {});
+
+			expect(stats.totalSent).toBe(3);
+			expect(stats.withFileIds).toBe(2);
+			expect(stats.needsBackfill).toBe(1);
+		});
+
+		it("handles sent posts with no media items", async () => {
+			const t = convexTest(schema, modules);
+
+			const user = await t.mutation(api.users.getOrCreateUser, {
+				username: "testuser",
+			});
+			if (!user) throw new Error("User should be created");
+
+			// Create sent post without media items
+			const postId = await t.mutation(api.posts.upsertPost, {
+				ig_id: "1",
+				shortcode: "NOMEDIA",
+				display_url: "https://example.com/1.jpg",
+				caption: "No media items",
+				is_video: false,
+				url: "https://instagram.com/p/NOMEDIA",
+				media_type: "image",
+				users: [user._id],
+				timestamp: Date.now(),
+			});
+			// Claim and mark as sent
+			await t.mutation(api.posts.claimForSending, { id: postId });
+			await t.mutation(api.posts.markSent, { id: postId, sentAt: Date.now() });
+
+			const stats = await t.query(api.posts.getBackfillStats, {});
+
+			// Post with no media items should be counted as totalSent
+			// but not counted in withFileIds or needsBackfill
+			expect(stats.totalSent).toBe(1);
+			expect(stats.withFileIds).toBe(0);
+			expect(stats.needsBackfill).toBe(0);
 		});
 	});
 });

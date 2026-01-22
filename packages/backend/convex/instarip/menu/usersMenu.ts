@@ -182,8 +182,8 @@ usersMenu.chooseIntoSubmenu("user", userDetailMenu, {
 	maxRows: 5,
 	choices: async (ctx) => {
 		const users = await ctx.convex.runQuery(
-			components.instarip.users.getUsers,
-			{},
+			components.instarip.users.getUsersLimited,
+			{ limit: 100 },
 		);
 		const choices: Record<string, string> = {};
 		for (const user of users) {

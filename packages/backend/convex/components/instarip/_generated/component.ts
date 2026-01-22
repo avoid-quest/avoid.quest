@@ -24,6 +24,13 @@ import type { FunctionReference } from "convex/server";
 export type ComponentApi<Name extends string | undefined = string | undefined> =
   {
     fetcher: {
+      cleanupOldLogs: FunctionReference<
+        "mutation",
+        "internal",
+        {},
+        number,
+        Name
+      >;
       fetchPost: FunctionReference<
         "action",
         "internal",
@@ -212,11 +219,10 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "mutation",
         "internal",
         {
-          file_id?: string;
-          file_unique_id?: string;
           height?: number;
           id?: string;
           post_id: string;
+          telegram_file?: { file_id: string; file_unique_id: string };
           type: "image" | "video" | "thumbnail";
           width?: number;
         },
@@ -300,9 +306,9 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             ig_id: string;
             is_video: boolean;
             media_type: "image" | "video" | "carousel";
-            sent?: boolean;
             sentAt?: number;
             shortcode: string;
+            status: "pending" | "sending" | "sent" | "failed";
             thumbnail_url?: string;
             timestamp: number;
             url: string;
@@ -344,9 +350,9 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             ig_id: string;
             is_video: boolean;
             media_type: "image" | "video" | "carousel";
-            sent?: boolean;
             sentAt?: number;
             shortcode: string;
+            status: "pending" | "sending" | "sent" | "failed";
             thumbnail_url?: string;
             timestamp: number;
             url: string;
@@ -429,7 +435,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           logging?: {
             active: boolean;
             log_file?: string;
-            log_level?: string;
+            log_level?: "debug" | "info" | "warn" | "error";
             max_retention_days?: number;
           };
           telegram?: {
@@ -465,7 +471,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           logging?: {
             active: boolean;
             log_file?: string;
-            log_level?: string;
+            log_level?: "debug" | "info" | "warn" | "error";
             max_retention_days?: number;
           };
           telegram?: {
@@ -534,7 +540,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           logging?: {
             active: boolean;
             log_file?: string;
-            log_level?: string;
+            log_level?: "debug" | "info" | "warn" | "error";
             max_retention_days?: number;
           };
           telegram?: {
@@ -626,6 +632,13 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "query",
         "internal",
         { ids: Array<string> },
+        any,
+        Name
+      >;
+      getUsersLimited: FunctionReference<
+        "query",
+        "internal",
+        { limit?: number },
         any,
         Name
       >;

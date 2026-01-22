@@ -13,6 +13,16 @@ const postMediaTypeValidator = v.union(
 );
 
 /**
+ * Post status validator - state machine for sending lifecycle
+ */
+const postStatusValidator = v.union(
+	v.literal("pending"),
+	v.literal("sending"),
+	v.literal("sent"),
+	v.literal("failed"),
+);
+
+/**
  * Shared validator for paginated post results
  */
 const paginatedPostValidator = v.object({
@@ -30,7 +40,7 @@ const paginatedPostValidator = v.object({
 	users: v.array(v.id("users")),
 	timestamp: v.number(),
 	event_date: v.optional(v.number()),
-	sent: v.optional(v.boolean()),
+	status: postStatusValidator,
 	sentAt: v.optional(v.number()),
 });
 
@@ -80,20 +90,16 @@ export const getPostByShortcode = query({
 });
 
 /**
- * Get unsent posts (excludes sending or permanently failed posts)
+ * Get unsent posts (only pending posts, excludes sending or failed)
  */
 export const getUnsent = query({
 	args: { limit: v.number() },
 	handler: async (ctx, { limit }) => {
-		const posts = await ctx.db
+		// Using the status index, only fetch posts with status="pending"
+		return await ctx.db
 			.query("posts")
-			.withIndex("by_sent", (q) => q.eq("sent", false))
-			.take(limit * 2); // Fetch extra to account for filtered posts
-
-		// Filter out posts that are being sent or have permanently failed
-		return posts
-			.filter((post) => !post.sending && !post.send_failed)
-			.slice(0, limit);
+			.withIndex("by_status", (q) => q.eq("status", "pending"))
+			.take(limit);
 	},
 });
 
@@ -134,7 +140,7 @@ export const getUnsentPaginated = query({
 	handler: async (ctx, { paginationOpts }) => {
 		const result = await ctx.db
 			.query("posts")
-			.withIndex("by_sent", (q) => q.eq("sent", false))
+			.withIndex("by_status", (q) => q.eq("status", "pending"))
 			.order("desc")
 			.paginate(paginationOpts);
 		return {
@@ -187,7 +193,7 @@ export const upsertPost = mutation({
 
 		return await ctx.db.insert("posts", {
 			...data,
-			sent: false,
+			status: "pending",
 		});
 	},
 });
@@ -203,6 +209,10 @@ export const deletePost = mutation({
 /**
  * Mark a post as sent to Telegram.
  *
+ * State transitions:
+ * - sending → sent (success)
+ * - other states → error (invalid transition)
+ *
  * @param id - The post ID to mark as sent
  * @param sentAt - Timestamp in MILLISECONDS (use Date.now())
  */
@@ -213,7 +223,12 @@ export const markSent = mutation({
 		if (!post) {
 			throw new Error(`Post ${id} not found`);
 		}
-		await ctx.db.patch(id, { sent: true, sentAt });
+		if (post.status !== "sending") {
+			throw new Error(
+				`Cannot mark as sent: expected "sending", got "${post.status}"`,
+			);
+		}
+		await ctx.db.patch(id, { status: "sent", sentAt });
 		return null;
 	},
 });
@@ -221,6 +236,12 @@ export const markSent = mutation({
 /**
  * Atomically claim a post for sending (prevents concurrent sends)
  * Returns true if the post was successfully claimed, false if already being sent
+ *
+ * State transitions:
+ * - pending → sending (success, returns true)
+ * - sending → (no change, returns false - already claimed)
+ * - sent → (no change, returns false - already sent)
+ * - failed → (no change, returns false - permanently failed)
  */
 export const claimForSending = mutation({
 	args: { id: v.id("posts") },
@@ -231,50 +252,60 @@ export const claimForSending = mutation({
 			return false;
 		}
 
-		// Already sent, don't claim
-		if (post.sent) {
+		// Only pending posts can be claimed
+		if (post.status !== "pending") {
 			return false;
 		}
 
-		// Already being sent by another process
-		if (post.sending) {
-			return false;
-		}
-
-		// Permanently failed, don't retry
-		if (post.send_failed) {
-			return false;
-		}
-
-		// Claim the post
-		await ctx.db.patch(id, { sending: true });
+		// Claim the post by transitioning to "sending" state
+		await ctx.db.patch(id, { status: "sending" });
 		return true;
 	},
 });
 
 /**
- * Clear the sending flag (called after send success or failure)
+ * Clear the sending state (called after send failure to allow retry)
+ *
+ * State transitions:
+ * - sending → pending (allows retry)
+ * - other states → (no change)
  */
 export const clearSending = mutation({
 	args: { id: v.id("posts") },
 	handler: async (ctx, { id }) => {
 		const post = await ctx.db.get(id);
-		if (post) {
-			await ctx.db.patch(id, { sending: false });
+		if (post && post.status === "sending") {
+			await ctx.db.patch(id, { status: "pending" });
 		}
 	},
 });
 
 /**
  * Mark a post as permanently failed (after max retries exceeded)
+ *
+ * State transitions:
+ * - pending → failed (permanent failure)
+ * - sending → failed (permanent failure)
+ * - sent → error (already succeeded, cannot fail)
+ * - failed → no-op (already failed)
  */
 export const markSendFailed = mutation({
 	args: { id: v.id("posts") },
 	handler: async (ctx, { id }) => {
 		const post = await ctx.db.get(id);
-		if (post) {
-			await ctx.db.patch(id, { send_failed: true, sending: false });
+		if (!post) {
+			return;
 		}
+		if (post.status === "sent") {
+			throw new Error(
+				`Cannot mark as failed: post "${id}" has already been sent`,
+			);
+		}
+		if (post.status === "failed") {
+			// Already failed, no-op
+			return;
+		}
+		await ctx.db.patch(id, { status: "failed" });
 	},
 });
 
@@ -297,14 +328,17 @@ export const incrementRetryCount = mutation({
 
 /**
  * Get statistics for backfill progress.
- * Returns counts of posts with and without file_ids in their media items.
+ * Returns counts of posts with and without telegram_file in their media items.
+ *
+ * @note This query collects all sent posts and media items into memory.
+ * For very large datasets, consider implementing incremental stats tracking.
  */
 export const getBackfillStats = query({
 	handler: async (ctx) => {
-		// Get all sent posts
+		// Get all sent posts - potential OOM risk with very large datasets
 		const sentPosts = await ctx.db
 			.query("posts")
-			.withIndex("by_sent", (q) => q.eq("sent", true))
+			.withIndex("by_status", (q) => q.eq("status", "sent"))
 			.collect();
 
 		if (sentPosts.length === 0) {
@@ -317,10 +351,10 @@ export const getBackfillStats = query({
 		// Get all media items in one query and group by post_id
 		const allMediaItems = await ctx.db.query("media_items").collect();
 
-		// Group media items by post_id and track file_id status
+		// Group media items by post_id and track telegram_file status
 		const mediaByPost = new Map<
 			Id<"posts">,
-			{ total: number; withFileId: number }
+			{ total: number; withTelegramFile: number }
 		>();
 
 		for (const item of allMediaItems) {
@@ -331,11 +365,11 @@ export const getBackfillStats = query({
 
 			const current = mediaByPost.get(item.post_id) ?? {
 				total: 0,
-				withFileId: 0,
+				withTelegramFile: 0,
 			};
 			current.total++;
-			if (item.file_id) {
-				current.withFileId++;
+			if (item.telegram_file) {
+				current.withTelegramFile++;
 			}
 			mediaByPost.set(item.post_id, current);
 		}
@@ -350,7 +384,7 @@ export const getBackfillStats = query({
 				// Post has no media items - not counted as needing backfill
 				continue;
 			}
-			if (media.withFileId === media.total) {
+			if (media.withTelegramFile === media.total) {
 				withFileIds++;
 			} else {
 				needsBackfill++;

@@ -19,7 +19,7 @@ describe("media_items", () => {
 	});
 
 	describe("upsertMediaItem", () => {
-		it("creates new media item with file_id", async () => {
+		it("creates new media item with telegram_file", async () => {
 			const t = convexTest(schema, modules);
 
 			const user = await t.mutation(api.users.getOrCreateUser, {
@@ -40,8 +40,10 @@ describe("media_items", () => {
 			});
 
 			const itemId = await t.mutation(api.mediaItems.upsertMediaItem, {
-				file_id: "AgACAgIAAxk123",
-				file_unique_id: "AQADAgATq1234",
+				telegram_file: {
+					file_id: "AgACAgIAAxk123",
+					file_unique_id: "AQADAgATq1234",
+				},
 				type: "video",
 				post_id: postId,
 			});
@@ -49,11 +51,11 @@ describe("media_items", () => {
 			const item = await t.query(api.mediaItems.getMediaItemById, {
 				id: itemId,
 			});
-			expect(item?.file_id).toBe("AgACAgIAAxk123");
-			expect(item?.file_unique_id).toBe("AQADAgATq1234");
+			expect(item?.telegram_file?.file_id).toBe("AgACAgIAAxk123");
+			expect(item?.telegram_file?.file_unique_id).toBe("AQADAgATq1234");
 		});
 
-		it("creates new media item without file_id", async () => {
+		it("creates new media item without telegram_file", async () => {
 			const t = convexTest(schema, modules);
 
 			const user = await t.mutation(api.users.getOrCreateUser, {
@@ -88,7 +90,7 @@ describe("media_items", () => {
 			expect(item?.type).toBe("image");
 			expect(item?.width).toBe(1920);
 			expect(item?.height).toBe(1080);
-			expect(item?.file_id).toBeUndefined();
+			expect(item?.telegram_file).toBeUndefined();
 		});
 
 		it("updates existing item when ID provided", async () => {
@@ -119,8 +121,10 @@ describe("media_items", () => {
 			// Update with ID
 			await t.mutation(api.mediaItems.upsertMediaItem, {
 				id: itemId,
-				file_id: "new_file_id",
-				file_unique_id: "new_unique_id",
+				telegram_file: {
+					file_id: "new_file_id",
+					file_unique_id: "new_unique_id",
+				},
 				type: "image",
 				post_id: postId,
 			});
@@ -128,8 +132,8 @@ describe("media_items", () => {
 			const item = await t.query(api.mediaItems.getMediaItemById, {
 				id: itemId,
 			});
-			expect(item?.file_id).toBe("new_file_id");
-			expect(item?.file_unique_id).toBe("new_unique_id");
+			expect(item?.telegram_file?.file_id).toBe("new_file_id");
+			expect(item?.telegram_file?.file_unique_id).toBe("new_unique_id");
 		});
 
 		it("finds existing by file_unique_id and updates", async () => {
@@ -154,16 +158,20 @@ describe("media_items", () => {
 
 			// Create initial item
 			await t.mutation(api.mediaItems.upsertMediaItem, {
-				file_id: "old_file_id",
-				file_unique_id: "unique123",
+				telegram_file: {
+					file_id: "old_file_id",
+					file_unique_id: "unique123",
+				},
 				type: "image",
 				post_id: postId,
 			});
 
 			// Upsert with same file_unique_id
 			await t.mutation(api.mediaItems.upsertMediaItem, {
-				file_id: "new_file_id",
-				file_unique_id: "unique123",
+				telegram_file: {
+					file_id: "new_file_id",
+					file_unique_id: "unique123",
+				},
 				type: "image",
 				post_id: postId,
 			});
@@ -172,7 +180,7 @@ describe("media_items", () => {
 				postId,
 			});
 			expect(items).toHaveLength(1);
-			expect(items[0].file_id).toBe("new_file_id");
+			expect(items[0].telegram_file?.file_id).toBe("new_file_id");
 		});
 	});
 
@@ -257,8 +265,12 @@ describe("media_items", () => {
 				postId,
 			});
 			expect(items).toHaveLength(2);
-			expect(items.some((i) => i.file_unique_id === "unique1")).toBe(true);
-			expect(items.some((i) => i.file_unique_id === "unique2")).toBe(true);
+			expect(
+				items.some((i) => i.telegram_file?.file_unique_id === "unique1"),
+			).toBe(true);
+			expect(
+				items.some((i) => i.telegram_file?.file_unique_id === "unique2"),
+			).toBe(true);
 		});
 
 		it("updates existing items by file_unique_id", async () => {
@@ -301,7 +313,7 @@ describe("media_items", () => {
 				postId,
 			});
 			expect(items).toHaveLength(1);
-			expect(items[0].file_id).toBe("new_id");
+			expect(items[0].telegram_file?.file_id).toBe("new_id");
 		});
 
 		it("deletes items not in sync list", async () => {
@@ -345,12 +357,12 @@ describe("media_items", () => {
 				postId,
 			});
 			expect(items).toHaveLength(1);
-			expect(items[0].file_unique_id).toBe("unique1");
+			expect(items[0].telegram_file?.file_unique_id).toBe("unique1");
 		});
 	});
 
 	describe("getMediaItemsNeedingBackfill", () => {
-		it("returns items without file_id", async () => {
+		it("returns items without telegram_file", async () => {
 			const t = convexTest(schema, modules);
 
 			const user = await t.mutation(api.users.getOrCreateUser, {
@@ -370,13 +382,16 @@ describe("media_items", () => {
 				timestamp: Date.now(),
 			});
 
-			// Create items - one with file_id, one without
+			// Create items - one with telegram_file, one without
 			await t.mutation(api.mediaItems.upsertMediaItem, {
 				type: "image",
 				post_id: postId,
 			});
 			await t.mutation(api.mediaItems.upsertMediaItem, {
-				file_id: "AgACAgIAAxk",
+				telegram_file: {
+					file_id: "AgACAgIAAxk",
+					file_unique_id: "AQADAgATq",
+				},
 				type: "image",
 				post_id: postId,
 			});
@@ -386,10 +401,10 @@ describe("media_items", () => {
 				{ postId },
 			);
 			expect(needingBackfill).toHaveLength(1);
-			expect(needingBackfill[0].file_id).toBeUndefined();
+			expect(needingBackfill[0].telegram_file).toBeUndefined();
 		});
 
-		it("returns empty when all have file_ids", async () => {
+		it("returns empty when all have telegram_file", async () => {
 			const t = convexTest(schema, modules);
 
 			const user = await t.mutation(api.users.getOrCreateUser, {
@@ -410,7 +425,10 @@ describe("media_items", () => {
 			});
 
 			await t.mutation(api.mediaItems.upsertMediaItem, {
-				file_id: "AgACAgIAAxk",
+				telegram_file: {
+					file_id: "AgACAgIAAxk",
+					file_unique_id: "AQADAgATq",
+				},
 				type: "image",
 				post_id: postId,
 			});
@@ -469,9 +487,53 @@ describe("media_items", () => {
 			const sortedItems = items.sort(
 				(a, b) => a._creationTime - b._creationTime,
 			);
-			expect(sortedItems[0].file_id).toBeUndefined();
-			expect(sortedItems[1].file_id).toBe("AgACAgIAAxk");
-			expect(sortedItems[1].file_unique_id).toBe("AQADAgATq");
+			expect(sortedItems[0].telegram_file).toBeUndefined();
+			expect(sortedItems[1].telegram_file?.file_id).toBe("AgACAgIAAxk");
+			expect(sortedItems[1].telegram_file?.file_unique_id).toBe("AQADAgATq");
+		});
+
+		it("handles out-of-bounds position silently (no-op)", async () => {
+			const t = convexTest(schema, modules);
+
+			const user = await t.mutation(api.users.getOrCreateUser, {
+				username: "testuser",
+			});
+			if (!user) throw new Error("User should be created");
+
+			const postId = await t.mutation(api.posts.upsertPost, {
+				ig_id: "test_123",
+				shortcode: "ABC123",
+				display_url: "https://example.com/image.jpg",
+				caption: "Test",
+				is_video: false,
+				url: "https://instagram.com/p/ABC123/",
+				media_type: "carousel",
+				users: [user._id],
+				timestamp: Date.now(),
+			});
+
+			// Create only one item
+			await t.mutation(api.mediaItems.upsertMediaItem, {
+				type: "image",
+				post_id: postId,
+			});
+
+			// Try to update at out-of-bounds position (position 5 when only 1 item exists)
+			await expect(
+				t.mutation(api.mediaItems.updateMediaItemWithFileIdByPosition, {
+					post_id: postId,
+					position: 5,
+					file_id: "AgACAgIAAxk",
+					file_unique_id: "AQADAgATq",
+				}),
+			).resolves.toBeNull();
+
+			// Verify the single item was not affected
+			const items = await t.query(api.mediaItems.getMediaItemsByPostId, {
+				postId,
+			});
+			expect(items).toHaveLength(1);
+			expect(items[0].telegram_file).toBeUndefined();
 		});
 	});
 
@@ -510,8 +572,8 @@ describe("media_items", () => {
 		});
 	});
 
-	describe("file_id field preservation", () => {
-		it("preserves existing fields when updating with file_id", async () => {
+	describe("telegram_file field preservation", () => {
+		it("preserves existing fields when updating with telegram_file", async () => {
 			const t = convexTest(schema, modules);
 
 			const user = await t.mutation(api.users.getOrCreateUser, {
@@ -539,7 +601,7 @@ describe("media_items", () => {
 				post_id: postId,
 			});
 
-			// Update with file_id using ID
+			// Update with telegram_file using ID
 			await t.mutation(api.mediaItems.updateMediaItemFileIdById, {
 				id: itemId,
 				file_id: "AgACAgIAAxk",
@@ -554,14 +616,14 @@ describe("media_items", () => {
 			expect(items[0].type).toBe("video");
 			expect(items[0].width).toBe(1920);
 			expect(items[0].height).toBe(1080);
-			// New file_id fields added
-			expect(items[0].file_id).toBe("AgACAgIAAxk");
-			expect(items[0].file_unique_id).toBe("AQADAgATq");
+			// New telegram_file fields added
+			expect(items[0].telegram_file?.file_id).toBe("AgACAgIAAxk");
+			expect(items[0].telegram_file?.file_unique_id).toBe("AQADAgATq");
 		});
 	});
 
 	describe("media source scenarios", () => {
-		it("handles file_id-only media item (Telegram native)", async () => {
+		it("handles telegram_file-only media item (Telegram native)", async () => {
 			const t = convexTest(schema, modules);
 
 			const user = await t.mutation(api.users.getOrCreateUser, {
@@ -582,8 +644,10 @@ describe("media_items", () => {
 			});
 
 			const itemId = await t.mutation(api.mediaItems.upsertMediaItem, {
-				file_id: "AgACAgIAAxkFileOnly",
-				file_unique_id: "AQADAgATqFileOnly",
+				telegram_file: {
+					file_id: "AgACAgIAAxkFileOnly",
+					file_unique_id: "AQADAgATqFileOnly",
+				},
 				type: "image",
 				post_id: postId,
 			});
@@ -591,11 +655,11 @@ describe("media_items", () => {
 			const item = await t.query(api.mediaItems.getMediaItemById, {
 				id: itemId,
 			});
-			expect(item?.file_id).toBe("AgACAgIAAxkFileOnly");
-			expect(item?.file_unique_id).toBe("AQADAgATqFileOnly");
+			expect(item?.telegram_file?.file_id).toBe("AgACAgIAAxkFileOnly");
+			expect(item?.telegram_file?.file_unique_id).toBe("AQADAgATqFileOnly");
 		});
 
-		it("handles media item without file_id (pending backfill)", async () => {
+		it("handles media item without telegram_file (pending backfill)", async () => {
 			const t = convexTest(schema, modules);
 
 			const user = await t.mutation(api.users.getOrCreateUser, {
@@ -625,8 +689,7 @@ describe("media_items", () => {
 			const item = await t.query(api.mediaItems.getMediaItemById, {
 				id: itemId,
 			});
-			expect(item?.file_id).toBeUndefined();
-			expect(item?.file_unique_id).toBeUndefined();
+			expect(item?.telegram_file).toBeUndefined();
 			expect(item?.type).toBe("image");
 			expect(item?.width).toBe(1920);
 		});

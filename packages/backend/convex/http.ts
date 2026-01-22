@@ -10,7 +10,10 @@ import { httpRouter } from "convex/server";
 import { internal } from "./_generated/api";
 import { httpAction } from "./_generated/server";
 import { mediaHandler } from "./httpHandlers/media";
+import { createLogger } from "./lib/logger";
 import { secureCompare } from "./lib/security";
+
+const logger = createLogger("http");
 
 const http = httpRouter();
 
@@ -69,10 +72,9 @@ const createTelegramWebhookHandler = (
 
 			// Check admin authorization - silently ignore non-admin messages
 			if (adminChatId && chatId !== adminChatId) {
-				console.info("Telegram webhook: ignoring non-admin message", {
-					chatId,
-					updateId: update.update_id,
-				});
+				logger.info(
+					`Telegram webhook: ignoring non-admin message chatId=${chatId} updateId=${update.update_id}`,
+				);
 				return new Response("OK", { status: 200 });
 			}
 
@@ -85,14 +87,10 @@ const createTelegramWebhookHandler = (
 		} catch (error) {
 			// Error handling: return OK to prevent Telegram from retrying
 			// Log error for debugging but don't expose internal errors to Telegram
-			console.error("Telegram webhook error:", {
-				updateId: update?.update_id,
-				chatId,
-				error:
-					error instanceof Error
-						? { message: error.message, stack: error.stack }
-						: String(error),
-			});
+			const errorMsg = error instanceof Error ? error.message : String(error);
+			logger.error(
+				`Telegram webhook error: updateId=${update?.update_id} chatId=${chatId} error=${errorMsg}`,
+			);
 			return new Response("OK", { status: 200 });
 		}
 	});

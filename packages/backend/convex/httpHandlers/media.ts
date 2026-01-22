@@ -1,6 +1,9 @@
 import { components } from "../_generated/api";
 import { httpAction } from "../_generated/server";
+import { createLogger } from "../lib/logger";
 import { isOriginAllowed } from "../lib/security";
+
+const logger = createLogger("media:proxy");
 
 type TelegramFileResponse = {
 	ok: boolean;
@@ -32,7 +35,7 @@ function corsResponse(
 	origin: string | null,
 ): Response {
 	const headers = new Headers(init.headers);
-	headers.set("Access-Control-Allow-Origin", origin || "*");
+	headers.set("Access-Control-Allow-Origin", origin ?? "*");
 	return new Response(body, { ...init, headers });
 }
 
@@ -48,7 +51,7 @@ export const mediaHandler = httpAction(async (ctx, request) => {
 		return new Response(null, {
 			status: 204,
 			headers: {
-				"Access-Control-Allow-Origin": origin || "*",
+				"Access-Control-Allow-Origin": origin ?? "*",
 				"Access-Control-Allow-Methods": "GET, OPTIONS",
 				"Access-Control-Allow-Headers": "Content-Type",
 				"Access-Control-Max-Age": "86400",
@@ -75,7 +78,7 @@ export const mediaHandler = httpAction(async (ctx, request) => {
 		return corsResponse("Media not found", { status: 404 }, origin);
 	}
 
-	if (!mediaItem.file_id) {
+	if (!mediaItem.telegram_file?.file_id) {
 		return corsResponse(
 			"Media not yet uploaded to Telegram",
 			{ status: 404 },
@@ -98,13 +101,15 @@ export const mediaHandler = httpAction(async (ctx, request) => {
 
 	try {
 		const getFileResponse = await fetch(
-			`https://api.telegram.org/bot${botToken}/getFile?file_id=${encodeURIComponent(mediaItem.file_id)}`,
+			`https://api.telegram.org/bot${botToken}/getFile?file_id=${encodeURIComponent(mediaItem.telegram_file.file_id)}`,
 			{ signal: controller.signal },
 		);
 		const fileInfo = (await getFileResponse.json()) as TelegramFileResponse;
 
 		if (!fileInfo.ok || !fileInfo.result?.file_path) {
-			console.error("Telegram getFile failed:", fileInfo.description);
+			logger.error(
+				`Telegram getFile failed - file_id: ${mediaItem.telegram_file.file_id}, type: ${mediaItem.type}, error: ${fileInfo.description}`,
+			);
 			return corsResponse(
 				"Failed to get file from Telegram",
 				{ status: 502 },
@@ -139,14 +144,16 @@ export const mediaHandler = httpAction(async (ctx, request) => {
 			headers: {
 				"Content-Type": contentType,
 				"Cache-Control": "public, max-age=31536000, immutable",
-				"Access-Control-Allow-Origin": origin || "*",
+				"Access-Control-Allow-Origin": origin ?? "*",
 			},
 		});
 	} catch (error) {
 		if (error instanceof Error && error.name === "AbortError") {
 			return corsResponse("Request timeout", { status: 504 }, origin);
 		}
-		console.error("Media fetch error:", error);
+		logger.error(
+			`Media fetch failed - file_id: ${mediaItem.telegram_file?.file_id}, type: ${mediaItem.type}, error: ${error instanceof Error ? error.message : "Unknown"}`,
+		);
 		return corsResponse("Internal server error", { status: 500 }, origin);
 	} finally {
 		clearTimeout(timeoutId);

@@ -63,6 +63,34 @@ describe("secureCompare", () => {
 			expect(await secureCompare("secret", "secret123")).toBe(false);
 		});
 	});
+
+	describe("timing-safe comparison properties", () => {
+		it("compares full length regardless of mismatch position", async () => {
+			// Early mismatch (first char different)
+			expect(await secureCompare("Xbcdefghij", "abcdefghij")).toBe(false);
+
+			// Late mismatch (last char different)
+			expect(await secureCompare("abcdefghiX", "abcdefghij")).toBe(false);
+
+			// Middle mismatch
+			expect(await secureCompare("abcdXfghij", "abcdefghij")).toBe(false);
+		});
+
+		it("does not short-circuit on partial matches", async () => {
+			// If it short-circuited, these would all behave differently
+			const base = "a".repeat(1000);
+			expect(await secureCompare(base, base)).toBe(true);
+			expect(await secureCompare(`X${base.slice(1)}`, base)).toBe(false);
+			expect(await secureCompare(`${base.slice(0, -1)}X`, base)).toBe(false);
+		});
+
+		it("handles strings with null bytes correctly", async () => {
+			// Null bytes should not cause early termination
+			expect(await secureCompare("a\0b", "a\0b")).toBe(true);
+			expect(await secureCompare("a\0b", "a\0c")).toBe(false);
+			expect(await secureCompare("a\0b", "a")).toBe(false);
+		});
+	});
 });
 
 describe("isOriginAllowed", () => {

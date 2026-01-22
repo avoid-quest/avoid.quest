@@ -307,3 +307,68 @@ describe("InMemoryRateLimiter", () => {
 		expect(state.tokens).toBe(1);
 	});
 });
+
+describe("sequential token consumption", () => {
+	beforeEach(() => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date("2024-03-15T12:00:00Z"));
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it("limits sequential consume attempts to max tokens", () => {
+		// Use a rate limiter with 5 tokens and no refill
+		const limiter = new InMemoryRateLimiter(5, 0);
+
+		// Attempt 10 sequential consumes using independent state reads
+		// Note: This tests state isolation, not true concurrency
+		const results = Array(10)
+			.fill(null)
+			.map(() => {
+				const result = tryConsumeToken(limiter.getState());
+				if (result.success) {
+					limiter.restoreState(result.state);
+				}
+				return result;
+			});
+
+		const successCount = results.filter((r) => r.success).length;
+
+		// Should only allow 5 successful consumes (max tokens)
+		expect(successCount).toBeLessThanOrEqual(5);
+	});
+
+	it("prevents double consumption when state is shared", () => {
+		const state = createRateLimiterState(2, 0);
+
+		// Two attempts against the same state should both succeed in isolation
+		const result1 = tryConsumeToken(state);
+		expect(result1.success).toBe(true);
+
+		// But if we update state after first consume, second should still work
+		const result2 = tryConsumeToken(result1.state);
+		expect(result2.success).toBe(true);
+
+		// Third should fail
+		const result3 = tryConsumeToken(result2.state);
+		expect(result3.success).toBe(false);
+	});
+
+	it("maintains consistency across sequential operations", () => {
+		const limiter = new InMemoryRateLimiter(3, 0);
+
+		// Sequential consumes
+		let state = limiter.getState();
+		for (let i = 0; i < 3; i++) {
+			const result = tryConsumeToken(state);
+			expect(result.success).toBe(true);
+			state = result.state;
+		}
+
+		// Fourth should fail
+		const result = tryConsumeToken(state);
+		expect(result.success).toBe(false);
+	});
+});

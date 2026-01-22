@@ -12,6 +12,25 @@ export const MAX_CAPTION_LENGTH = TELEGRAM_DEFAULTS.MAX_CAPTION_LENGTH;
 export const MAX_MESSAGE_LENGTH = TELEGRAM_DEFAULTS.MAX_MESSAGE_LENGTH;
 
 /**
+ * Truncation threshold ratio - if the last space is after this percentage
+ * of the max length, we truncate at the word boundary instead of hard cutting
+ */
+const TRUNCATION_WORD_BOUNDARY_THRESHOLD = 0.7;
+
+/**
+ * Estimated character count added per Instagram mention when converted to HTML link.
+ * Format: <a href="https://instagram.com/username">@username</a>
+ * This adds approximately 43 characters beyond the original @username text.
+ */
+const HTML_MENTION_WRAPPER_SIZE = 43;
+
+/**
+ * Minimum content length to preserve when truncating captions.
+ * Ensures captions don't become meaninglessly short after truncation.
+ */
+const MINIMUM_CONTENT_LENGTH = 100;
+
+/**
  * Escape HTML special characters for Telegram HTML parse mode
  */
 export function escapeHtml(text: string): string {
@@ -79,7 +98,7 @@ export function truncateAtWordBoundary(
 	const truncated = text.slice(0, maxLength);
 	const lastSpace = truncated.lastIndexOf(" ");
 
-	if (lastSpace > maxLength * 0.7) {
+	if (lastSpace > maxLength * TRUNCATION_WORD_BOUNDARY_THRESHOLD) {
 		return `${truncated.slice(0, lastSpace)}...`;
 	}
 
@@ -135,15 +154,16 @@ export function buildCaption(options: {
 	// Count mentions to estimate expansion buffer
 	const mentionPattern = /@[a-zA-Z0-9_.]+/g;
 	const mentions = escapedCaption.match(mentionPattern) || [];
-	// Each mention adds ~43 chars for HTML wrapper
+	// Each mention adds ~HTML_MENTION_WRAPPER_SIZE chars for HTML wrapper
 	// Use conservative estimate: assume half survive truncation
-	const expansionBuffer = Math.ceil(mentions.length / 2) * 43;
+	const expansionBuffer =
+		Math.ceil(mentions.length / 2) * HTML_MENTION_WRAPPER_SIZE;
 
 	// Truncate escaped text (no HTML tags yet, safe to cut)
 	const availableForContent = maxLength - footer.length - expansionBuffer - 3;
 	const truncatedEscaped = truncateAtWordBoundary(
 		escapedCaption,
-		Math.max(availableForContent, 100),
+		Math.max(availableForContent, MINIMUM_CONTENT_LENGTH),
 	);
 
 	// Now add mentions to the already-truncated text

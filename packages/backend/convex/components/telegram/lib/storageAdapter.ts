@@ -26,16 +26,35 @@ export interface BaseSessionData {
 }
 
 /**
+ * Awaiting input state types - discriminated union for type safety
+ */
+type AwaitingAddUser = {
+	type: "add_user";
+};
+
+type AwaitingEditUsername = {
+	type: "edit_username";
+	/** User ID is required when editing username */
+	userId: string;
+};
+
+type AwaitingEditSetting = {
+	type: "edit_setting";
+	settingPath?: string;
+};
+
+type AwaitingInput =
+	| AwaitingAddUser
+	| AwaitingEditUsername
+	| AwaitingEditSetting;
+
+/**
  * Session data structure for Instarip bot
  * Extends BaseSessionData with Instarip-specific fields
  */
 export interface SessionData extends BaseSessionData {
 	/** Input awaiting state machine */
-	awaitingInput?: {
-		type: "add_user" | "edit_username" | "edit_setting";
-		userId?: string;
-		settingPath?: string;
-	};
+	awaitingInput?: AwaitingInput;
 	/** Confirmation state for delete */
 	pendingDelete?: {
 		userId: string;

@@ -33,6 +33,8 @@ const telegramFileIdItemValidator = v.object({
 
 /**
  * Get all media items
+ * @deprecated This query loads all media items into memory and may cause OOM errors.
+ * Use `getMediaItemsByPostId` for specific posts or implement pagination for large datasets.
  */
 export const getMediaItems = query({
 	args: {},
@@ -79,22 +81,22 @@ export const getMediaItemByTypeAndPostId = query({
 export const upsertMediaItem = mutation({
 	args: {
 		id: v.optional(v.id("media_items")),
-		file_id: v.optional(v.string()),
-		file_unique_id: v.optional(v.string()),
+		telegram_file: v.optional(
+			v.object({
+				file_id: v.string(),
+				file_unique_id: v.string(),
+			}),
+		),
 		type: mediaTypeValidator,
 		width: v.optional(v.number()),
 		height: v.optional(v.number()),
 		post_id: v.id("posts"),
 	},
-	handler: async (
-		ctx,
-		{ id, file_id, file_unique_id, type, width, height, post_id },
-	) => {
+	handler: async (ctx, { id, telegram_file, type, width, height, post_id }) => {
 		if (id) {
 			// Update existing media item by ID
 			await ctx.db.patch(id, {
-				file_id,
-				file_unique_id,
+				telegram_file,
 				type,
 				width,
 				height,
@@ -109,8 +111,11 @@ export const upsertMediaItem = mutation({
 			.collect();
 
 		let existing = null;
-		if (file_unique_id) {
-			existing = items.find((item) => item.file_unique_id === file_unique_id);
+		if (telegram_file?.file_unique_id) {
+			existing = items.find(
+				(item) =>
+					item.telegram_file?.file_unique_id === telegram_file.file_unique_id,
+			);
 		}
 
 		if (existing) {
@@ -119,16 +124,14 @@ export const upsertMediaItem = mutation({
 				type,
 				width,
 				height,
-				...(file_id && { file_id }),
-				...(file_unique_id && { file_unique_id }),
+				...(telegram_file && { telegram_file }),
 			});
 			return existing._id;
 		}
 
 		// Insert new media item
 		return await ctx.db.insert("media_items", {
-			file_id,
-			file_unique_id,
+			telegram_file,
 			type,
 			width,
 			height,
@@ -198,8 +201,8 @@ export const syncTelegramMediaItemsForPost = mutation({
 		// Create a map of existing items by file_unique_id for quick lookup
 		const existingByUniqueId = new Map(
 			existingItems
-				.filter((item) => item.file_unique_id)
-				.map((item) => [item.file_unique_id, item]),
+				.filter((item) => item.telegram_file?.file_unique_id)
+				.map((item) => [item.telegram_file?.file_unique_id, item]),
 		);
 
 		// Track which file_unique_ids we've processed
@@ -213,7 +216,10 @@ export const syncTelegramMediaItemsForPost = mutation({
 			if (existing) {
 				// Update existing item - file_id might change but file_unique_id stays same
 				await ctx.db.patch(existing._id, {
-					file_id: item.file_id,
+					telegram_file: {
+						file_id: item.file_id,
+						file_unique_id: item.file_unique_id,
+					},
 					type: item.type,
 					width: item.width,
 					height: item.height,
@@ -221,8 +227,10 @@ export const syncTelegramMediaItemsForPost = mutation({
 			} else {
 				// Insert new item
 				await ctx.db.insert("media_items", {
-					file_id: item.file_id,
-					file_unique_id: item.file_unique_id,
+					telegram_file: {
+						file_id: item.file_id,
+						file_unique_id: item.file_unique_id,
+					},
 					type: item.type,
 					width: item.width,
 					height: item.height,
@@ -233,9 +241,9 @@ export const syncTelegramMediaItemsForPost = mutation({
 
 		// Delete items that are no longer in the provided list
 		for (const existing of existingItems) {
-			if (existing.file_unique_id) {
+			if (existing.telegram_file?.file_unique_id) {
 				// Migrated item - delete if not in new list
-				if (!processedUniqueIds.has(existing.file_unique_id)) {
+				if (!processedUniqueIds.has(existing.telegram_file.file_unique_id)) {
 					await ctx.db.delete(existing._id);
 				}
 			} else {
@@ -256,7 +264,9 @@ export const updateMediaItemWithFileId = mutation({
 		file_unique_id: v.string(),
 	},
 	handler: async (ctx, { id, file_id, file_unique_id }) => {
-		await ctx.db.patch(id, { file_id, file_unique_id });
+		await ctx.db.patch(id, {
+			telegram_file: { file_id, file_unique_id },
+		});
 	},
 });
 
@@ -271,7 +281,7 @@ export const getMediaItemsNeedingBackfill = query({
 			.withIndex("by_post_id", (q) => q.eq("post_id", postId))
 			.collect();
 
-		return items.filter((item) => !item.file_id);
+		return items.filter((item) => !item.telegram_file);
 	},
 });
 
@@ -296,7 +306,9 @@ export const updateMediaItemWithFileIdByPosition = mutation({
 		const sortedItems = items.sort((a, b) => a._creationTime - b._creationTime);
 		const item = sortedItems[position];
 		if (item) {
-			await ctx.db.patch(item._id, { file_id, file_unique_id });
+			await ctx.db.patch(item._id, {
+				telegram_file: { file_id, file_unique_id },
+			});
 		}
 	},
 });
@@ -314,7 +326,9 @@ export const updateMediaItemFileIdById = mutation({
 	handler: async (ctx, { id, file_id, file_unique_id }) => {
 		const item = await ctx.db.get(id);
 		if (item) {
-			await ctx.db.patch(id, { file_id, file_unique_id });
+			await ctx.db.patch(id, {
+				telegram_file: { file_id, file_unique_id },
+			});
 		}
 	},
 });

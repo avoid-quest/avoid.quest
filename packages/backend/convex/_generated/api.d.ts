@@ -173,6 +173,7 @@ export declare const components: {
   };
   instarip: {
     fetcher: {
+      cleanupOldLogs: FunctionReference<"mutation", "internal", {}, number>;
       fetchPost: FunctionReference<
         "action",
         "internal",
@@ -345,11 +346,10 @@ export declare const components: {
         "mutation",
         "internal",
         {
-          file_id?: string;
-          file_unique_id?: string;
           height?: number;
           id?: string;
           post_id: string;
+          telegram_file?: { file_id: string; file_unique_id: string };
           type: "image" | "video" | "thumbnail";
           width?: number;
         },
@@ -415,9 +415,9 @@ export declare const components: {
             ig_id: string;
             is_video: boolean;
             media_type: "image" | "video" | "carousel";
-            sent?: boolean;
             sentAt?: number;
             shortcode: string;
+            status: "pending" | "sending" | "sent" | "failed";
             thumbnail_url?: string;
             timestamp: number;
             url: string;
@@ -452,9 +452,9 @@ export declare const components: {
             ig_id: string;
             is_video: boolean;
             media_type: "image" | "video" | "carousel";
-            sent?: boolean;
             sentAt?: number;
             shortcode: string;
+            status: "pending" | "sending" | "sent" | "failed";
             thumbnail_url?: string;
             timestamp: number;
             url: string;
@@ -531,7 +531,7 @@ export declare const components: {
           logging?: {
             active: boolean;
             log_file?: string;
-            log_level?: string;
+            log_level?: "debug" | "info" | "warn" | "error";
             max_retention_days?: number;
           };
           telegram?: {
@@ -566,7 +566,7 @@ export declare const components: {
           logging?: {
             active: boolean;
             log_file?: string;
-            log_level?: string;
+            log_level?: "debug" | "info" | "warn" | "error";
             max_retention_days?: number;
           };
           telegram?: {
@@ -609,7 +609,7 @@ export declare const components: {
           logging?: {
             active: boolean;
             log_file?: string;
-            log_level?: string;
+            log_level?: "debug" | "info" | "warn" | "error";
             max_retention_days?: number;
           };
           telegram?: {
@@ -686,6 +686,12 @@ export declare const components: {
         "query",
         "internal",
         { ids: Array<string> },
+        any
+      >;
+      getUsersLimited: FunctionReference<
+        "query",
+        "internal",
+        { limit?: number },
         any
       >;
       getUsersPaginated: FunctionReference<

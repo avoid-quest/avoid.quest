@@ -395,6 +395,49 @@ describe("fetchUserPosts", () => {
 		expect(result.success).toBe(true);
 		expect(result.posts).toHaveLength(3);
 	});
+
+	it("handles network errors gracefully", async () => {
+		mockFetch.mockRejectedValueOnce(new Error("Network error"));
+
+		const result = await fetchUserPosts("testuser", 10);
+
+		expect(result.success).toBe(false);
+		expect(result.posts).toEqual([]);
+		expect(result.error).toBe("Network error");
+	});
+
+	it("handles malformed JSON response", async () => {
+		mockFetch.mockResolvedValueOnce({
+			ok: true,
+			json: () => Promise.reject(new SyntaxError("Unexpected token '<'")),
+		});
+
+		const result = await fetchUserPosts("testuser", 10);
+
+		expect(result.success).toBe(false);
+		expect(result.posts).toEqual([]);
+		expect(result.error).toContain("Unexpected token");
+	});
+
+	it("handles HTML rate limit page response", async () => {
+		// Simulate when Instagram returns HTML instead of JSON (often happens with rate limiting)
+		mockFetch.mockResolvedValueOnce({
+			ok: true,
+			json: () =>
+				Promise.reject(
+					new SyntaxError(
+						"Unexpected token '<', \"<!DOCTYPE \"... is not valid JSON",
+					),
+				),
+		});
+
+		const result = await fetchUserPosts("testuser", 10);
+
+		expect(result.success).toBe(false);
+		expect(result.posts).toEqual([]);
+		// The error should indicate JSON parsing failure
+		expect(result.error).toBeDefined();
+	});
 });
 
 describe("fetchSinglePost", () => {

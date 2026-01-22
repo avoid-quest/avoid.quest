@@ -15,5 +15,4 @@ Instagram post viewer.
 
 - Uses `@workspace/backend` (Convex): posts/users/media_items queries
 - Uses `@workspace/ui`: shared component library (cards, buttons, carousel)
-- Data source: `packages/instagram-adapter` writes Instagram posts to backend
 - Deploy: Cloudflare Pages via OpenNext

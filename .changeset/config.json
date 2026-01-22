@@ -8,7 +8,7 @@
   "baseBranch": "main",
   "updateInternalDependents": "always",
   "updateInternalDependencies": "patch",
-  "ignore": ["web", "instarip-web"],
+  "ignore": ["@avoid.quest/web", "@avoid.quest/instarip"],
   "privatePackages": {
     "version": true,
     "tag": false

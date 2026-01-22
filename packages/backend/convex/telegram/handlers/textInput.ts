@@ -9,6 +9,46 @@ import { internal } from "../../_generated/api";
 import type { BotContext } from "../bot";
 
 /**
+ * Validate Instagram username format
+ * Rules:
+ * - Only letters (a-z), numbers (0-9), periods (.), and underscores (_)
+ * - Cannot start or end with a period
+ * - Cannot have consecutive periods
+ * - Length: 1-30 characters
+ */
+function isValidInstagramUsername(username: string): {
+	valid: boolean;
+	error?: string;
+} {
+	if (username.length < 1 || username.length > 30) {
+		return {
+			valid: false,
+			error: "Username must be between 1 and 30 characters",
+		};
+	}
+
+	if (!/^[a-zA-Z0-9._]+$/.test(username)) {
+		return {
+			valid: false,
+			error: "Only letters, numbers, dots and underscores allowed",
+		};
+	}
+
+	if (username.startsWith(".") || username.endsWith(".")) {
+		return {
+			valid: false,
+			error: "Username cannot start or end with a period",
+		};
+	}
+
+	if (username.includes("..")) {
+		return { valid: false, error: "Username cannot have consecutive periods" };
+	}
+
+	return { valid: true };
+}
+
+/**
  * Handle text messages based on awaiting input state
  */
 export async function handleTextInput(ctx: BotContext): Promise<void> {
@@ -51,20 +91,11 @@ export async function handleTextInput(ctx: BotContext): Promise<void> {
  * Handle adding a new user
  */
 async function handleAddUser(ctx: BotContext, username: string): Promise<void> {
-	// Validate format (alphanumeric, dots, underscores)
 	const cleanUsername = username.replace(/^@/, "");
 
-	if (!/^[a-zA-Z0-9._]+$/.test(cleanUsername)) {
-		await ctx.reply(
-			"❌ Invalid username format. Only letters, numbers, dots and underscores allowed.\n\nUse /start to try again.",
-		);
-		return;
-	}
-
-	if (cleanUsername.length < 1 || cleanUsername.length > 30) {
-		await ctx.reply(
-			"❌ Username must be between 1 and 30 characters.\n\nUse /start to try again.",
-		);
+	const validation = isValidInstagramUsername(cleanUsername);
+	if (!validation.valid) {
+		await ctx.reply(`❌ ${validation.error}\n\nUse /start to try again.`);
 		return;
 	}
 
@@ -93,17 +124,9 @@ async function handleEditUsername(
 ): Promise<void> {
 	const cleanUsername = username.replace(/^@/, "");
 
-	if (!/^[a-zA-Z0-9._]+$/.test(cleanUsername)) {
-		await ctx.reply(
-			"❌ Invalid username format. Only letters, numbers, dots and underscores allowed.\n\nUse /start to try again.",
-		);
-		return;
-	}
-
-	if (cleanUsername.length < 1 || cleanUsername.length > 30) {
-		await ctx.reply(
-			"❌ Username must be between 1 and 30 characters.\n\nUse /start to try again.",
-		);
+	const validation = isValidInstagramUsername(cleanUsername);
+	if (!validation.valid) {
+		await ctx.reply(`❌ ${validation.error}\n\nUse /start to try again.`);
 		return;
 	}
 

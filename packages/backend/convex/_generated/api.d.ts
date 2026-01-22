@@ -19,6 +19,7 @@ import type * as lib_config_validators from "../lib/config/validators.js";
 import type * as lib_dateUtils from "../lib/dateUtils.js";
 import type * as lib_fileIdMatcher from "../lib/fileIdMatcher.js";
 import type * as lib_logger from "../lib/logger.js";
+import type * as lib_security from "../lib/security.js";
 import type * as lib_validators_index from "../lib/validators/index.js";
 import type * as lib_validators_media from "../lib/validators/media.js";
 import type * as media_items from "../media_items.js";
@@ -58,6 +59,7 @@ declare const fullApi: ApiFromModules<{
   "lib/dateUtils": typeof lib_dateUtils;
   "lib/fileIdMatcher": typeof lib_fileIdMatcher;
   "lib/logger": typeof lib_logger;
+  "lib/security": typeof lib_security;
   "lib/validators/index": typeof lib_validators_index;
   "lib/validators/media": typeof lib_validators_media;
   media_items: typeof media_items;

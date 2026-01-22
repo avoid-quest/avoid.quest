@@ -113,8 +113,17 @@ export function createTelegramClient(
 				signal: controller.signal,
 			});
 
-			const data = (await response.json()) as TelegramApiResponse<T>;
-			return data;
+			try {
+				const data = (await response.json()) as TelegramApiResponse<T>;
+				return data;
+			} catch (parseError) {
+				// Handle JSON parse errors (can occur during Telegram outages)
+				return {
+					ok: false,
+					error_code: 0,
+					description: `JSON parse error: ${parseError instanceof Error ? parseError.message : "Unknown parse error"}`,
+				};
+			}
 		} finally {
 			clearTimeout(timeoutId);
 		}

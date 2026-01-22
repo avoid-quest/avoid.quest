@@ -191,48 +191,57 @@ export const runInstagramFetch = internalAction({
 
 				// Process each fetched post
 				for (const post of result.posts) {
-					// Check if post already exists
-					const existing = await ctx.runQuery(
-						internal.posts.getPostByShortcodeInternal,
-						{ shortcode: post.shortcode },
-					);
+					try {
+						// Check if post already exists
+						const existing = await ctx.runQuery(
+							internal.posts.getPostByShortcodeInternal,
+							{ shortcode: post.shortcode },
+						);
 
-					if (existing) {
-						// Post already exists, skip
-						continue;
+						if (existing) {
+							// Post already exists, skip
+							continue;
+						}
+
+						// Convert timestamp from seconds to milliseconds
+						const timestampMs = secondsToMilliseconds(post.timestampSec);
+
+						// Upsert the post
+						const postId = await ctx.runMutation(
+							internal.posts.upsertPostInternal,
+							{
+								ig_id: post.id,
+								shortcode: post.shortcode,
+								display_url: post.display_url,
+								video_url: post.video_url,
+								thumbnail_url: post.thumbnail_url,
+								caption: post.caption,
+								is_video: post.is_video,
+								url: post.url,
+								media_type: post.media_type,
+								users: [user._id],
+								timestamp: timestampMs,
+							},
+						);
+
+						// Sync media items
+						await ctx.runMutation(
+							internal.media_items.syncMediaItemsForPostInternal,
+							{
+								post_id: postId,
+								media_items: post.media_items,
+							},
+						);
+
+						newPosts++;
+					} catch (postError) {
+						// Log individual post failure but continue processing other posts
+						const message =
+							postError instanceof Error ? postError.message : "Unknown error";
+						errors.push(
+							`User ${user.username} post ${post.shortcode}: ${message}`,
+						);
 					}
-
-					// Convert timestamp from seconds to milliseconds
-					const timestampMs = secondsToMilliseconds(post.timestampSec);
-
-					// Upsert the post
-					const postId = await ctx.runMutation(
-						internal.posts.upsertPostInternal,
-						{
-							ig_id: post.id,
-							shortcode: post.shortcode,
-							display_url: post.display_url,
-							video_url: post.video_url,
-							thumbnail_url: post.thumbnail_url,
-							caption: post.caption,
-							is_video: post.is_video,
-							url: post.url,
-							media_type: post.media_type,
-							users: [user._id],
-							timestamp: timestampMs,
-						},
-					);
-
-					// Sync media items
-					await ctx.runMutation(
-						internal.media_items.syncMediaItemsForPostInternal,
-						{
-							post_id: postId,
-							media_items: post.media_items,
-						},
-					);
-
-					newPosts++;
 				}
 
 				// Update user's last_scraped_at
@@ -273,7 +282,8 @@ export const retrySinglePost = internalAction({
 	handler: async (ctx, { postId, chatId }) => {
 		const botToken = process.env.TELEGRAM_BOT_TOKEN;
 		if (!botToken) {
-			return; // Can't send without token
+			console.error("retrySinglePost: TELEGRAM_BOT_TOKEN not configured");
+			return;
 		}
 
 		// Get the post
@@ -282,7 +292,13 @@ export const retrySinglePost = internalAction({
 		});
 
 		// Skip if post doesn't exist or already sent
-		if (!post || post.sent) {
+		if (!post) {
+			console.warn(`retrySinglePost: Post ${postId} not found`);
+			return;
+		}
+
+		if (post.sent) {
+			// Already sent, no action needed (not an error)
 			return;
 		}
 
@@ -318,7 +334,11 @@ export const retrySinglePost = internalAction({
 			if (result.fileIds && result.fileIds.length > 0) {
 				await saveFileIdsForPost(ctx, postId, mediaItems, result.fileIds);
 			}
+		} else {
+			// Log retry failure - will be picked up by next cron run
+			console.warn(
+				`retrySinglePost: Failed to send post ${post.shortcode}: ${result.error}`,
+			);
 		}
-		// If still failing, the next cron run will pick it up
 	},
 });

@@ -7,6 +7,7 @@ import { httpRouter } from "convex/server";
 import { internal } from "./_generated/api";
 import { httpAction } from "./_generated/server";
 import { mediaHandler } from "./httpHandlers/media";
+import { secureCompare } from "./lib/security";
 
 const http = httpRouter();
 
@@ -39,7 +40,7 @@ http.route({
 				status: 500,
 			});
 		}
-		if (secret !== expectedSecret) {
+		if (!secret || !(await secureCompare(secret, expectedSecret))) {
 			return new Response("Unauthorized", { status: 401 });
 		}
 
@@ -67,9 +68,13 @@ http.route({
 			});
 
 			return new Response("OK", { status: 200 });
-		} catch (_error) {
+		} catch (error) {
 			// Error handling: return OK to prevent Telegram from retrying
-			// The webhook should not expose internal errors
+			// Log error for debugging but don't expose internal errors to Telegram
+			console.error(
+				"Telegram webhook error:",
+				error instanceof Error ? error.message : error,
+			);
 			return new Response("OK", { status: 200 });
 		}
 	}),

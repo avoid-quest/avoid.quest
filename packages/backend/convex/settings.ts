@@ -217,6 +217,13 @@ export const toggleLoggingActiveInternal = internalMutation({
 /**
  * Update a specific setting field (for bot menu)
  */
+const VALID_SETTINGS_SECTIONS = [
+	"telegram",
+	"instagram",
+	"locale",
+	"logging",
+] as const;
+
 export const updateSettingInternal = internalMutation({
 	args: {
 		path: v.string(),
@@ -229,6 +236,22 @@ export const updateSettingInternal = internalMutation({
 		}
 
 		const [section, field] = path.split(".") as [string, string];
+
+		// Validate section
+		if (
+			!section ||
+			!VALID_SETTINGS_SECTIONS.includes(
+				section as (typeof VALID_SETTINGS_SECTIONS)[number],
+			)
+		) {
+			throw new Error(
+				`Invalid settings section: ${section}. Valid sections: ${VALID_SETTINGS_SECTIONS.join(", ")}`,
+			);
+		}
+
+		if (!field) {
+			throw new Error(`Missing field in path: ${path}`);
+		}
 
 		if (section === "telegram" && field) {
 			const telegram = {

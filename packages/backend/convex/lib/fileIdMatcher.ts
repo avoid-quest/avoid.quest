@@ -40,6 +40,14 @@ export async function saveFileIdsForPost(
 		(item) => item.type !== "thumbnail" && item.url,
 	);
 
+	// Warn if array lengths don't match - position-based matching is fragile
+	if (fileIds.length !== sentMediaItems.length) {
+		console.warn(
+			`saveFileIdsForPost: File ID count mismatch for post ${postId}: ` +
+				`expected ${sentMediaItems.length} file IDs but got ${fileIds.length}`,
+		);
+	}
+
 	for (let i = 0; i < fileIds.length; i++) {
 		const fileInfo = fileIds[i];
 		const mediaItem = sentMediaItems[i];

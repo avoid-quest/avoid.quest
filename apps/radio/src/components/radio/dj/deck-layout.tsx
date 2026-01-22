@@ -3,18 +3,18 @@ import {
   AccordionContent,
   AccordionItem,
   AccordionTrigger,
-} from "@workspace/ui/components/accordion";
-import { Button } from "@workspace/ui/components/button";
-import { ScrollArea } from "@workspace/ui/components/scroll-area";
-import { Slider } from "@workspace/ui/components/slider";
+} from "@avoid.quest/ui/components/accordion";
+import { Button } from "@avoid.quest/ui/components/button";
+import { ScrollArea } from "@avoid.quest/ui/components/scroll-area";
+import { Slider } from "@avoid.quest/ui/components/slider";
 import {
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
-} from "@workspace/ui/components/tabs";
-import { useIsMobile } from "@workspace/ui/hooks/use-mobile";
-import { cn } from "@workspace/ui/lib/utils";
+} from "@avoid.quest/ui/components/tabs";
+import { useIsMobile } from "@avoid.quest/ui/hooks/use-mobile";
+import { cn } from "@avoid.quest/ui/lib/utils";
 import {
   ChevronLeftIcon,
   ChevronRightIcon,

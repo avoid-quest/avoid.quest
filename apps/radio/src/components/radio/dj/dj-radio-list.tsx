@@ -1,13 +1,13 @@
-import { useDraggable } from "@dnd-kit/core";
-import { Button } from "@workspace/ui/components/button";
-import { Input } from "@workspace/ui/components/input";
+import { Button } from "@avoid.quest/ui/components/button";
+import { Input } from "@avoid.quest/ui/components/input";
 import {
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
-} from "@workspace/ui/components/tabs";
-import { useIsMobile } from "@workspace/ui/hooks/use-mobile";
+} from "@avoid.quest/ui/components/tabs";
+import { useIsMobile } from "@avoid.quest/ui/hooks/use-mobile";
+import { useDraggable } from "@dnd-kit/core";
 import {
   ChevronLeftIcon,
   ChevronRightIcon,

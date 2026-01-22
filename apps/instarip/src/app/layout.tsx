@@ -1,9 +1,9 @@
-import { Toaster } from "@workspace/ui/components/sonner";
+import { Toaster } from "@avoid.quest/ui/components/sonner";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Header } from "@/components/layout/header";
 
-import "@workspace/ui/globals.css";
+import "@avoid.quest/ui/globals.css";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -15,10 +15,10 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-import appleIcon from "@workspace/ui/assets/favicon/apple-icon.png";
-import favicon from "@workspace/ui/assets/favicon/favicon.ico";
-import icon0 from "@workspace/ui/assets/favicon/icon0.svg";
-import icon1 from "@workspace/ui/assets/favicon/icon1.png";
+import appleIcon from "@avoid.quest/ui/assets/favicon/apple-icon.png";
+import favicon from "@avoid.quest/ui/assets/favicon/favicon.ico";
+import icon0 from "@avoid.quest/ui/assets/favicon/icon0.svg";
+import icon1 from "@avoid.quest/ui/assets/favicon/icon1.png";
 import { Providers } from "@/components/layout/providers";
 
 export const metadata: Metadata = {

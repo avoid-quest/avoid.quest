@@ -8,7 +8,7 @@ const nextConfig: NextConfig = {
   /* config options here */
   typedRoutes: true,
   reactCompiler: true,
-  transpilePackages: ["@workspace/ui"],
+  transpilePackages: ["@avoid.quest/ui"],
   serverExternalPackages: ["@libsql/isomorphic-ws"],
   images: {
     remotePatterns: [

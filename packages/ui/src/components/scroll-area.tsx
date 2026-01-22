@@ -1,5 +1,6 @@
 "use client";
 
+import { cn } from "@avoid.quest/ui/lib/utils";
 import {
   Corner,
   Root,
@@ -7,7 +8,6 @@ import {
   ScrollAreaThumb,
   Viewport,
 } from "@radix-ui/react-scroll-area";
-import { cn } from "@workspace/ui/lib/utils";
 import type * as React from "react";
 
 function ScrollArea({

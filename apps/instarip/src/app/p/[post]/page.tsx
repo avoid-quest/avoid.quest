@@ -1,6 +1,6 @@
-import { api } from "@workspace/backend/convex/_generated/api";
-import { Button } from "@workspace/ui/components/button";
-import { Skeleton } from "@workspace/ui/components/skeleton";
+import { api } from "@avoid.quest/backend/convex/_generated/api";
+import { Button } from "@avoid.quest/ui/components/button";
+import { Skeleton } from "@avoid.quest/ui/components/skeleton";
 import { fetchQuery } from "convex/nextjs";
 import { ArrowLeftIcon } from "lucide-react";
 import Link from "next/link";

@@ -1,5 +1,5 @@
 {
-  "name": "@workspace/ui",
+  "name": "@avoid.quest/ui",
   "version": "0.0.0",
   "type": "module",
   "private": true,
@@ -46,7 +46,7 @@
   "devDependencies": {
     "@tailwindcss/postcss": "catalog:",
     "@turbo/gen": "^2.7.5",
-    "@workspace/typescript-config": "workspace:*",
+    "@avoid.quest/typescript-config": "workspace:*",
     "tailwindcss": "catalog:",
     "typescript": "catalog:"
   },

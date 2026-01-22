@@ -4,7 +4,7 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
-} from "@workspace/ui/components/card";
+} from "@avoid.quest/ui/components/card";
 import type { Radio } from "@/lib/audio";
 import { useSettings } from "@/lib/hooks/use-settings";
 import { CustomPlayer } from "./custom-player";

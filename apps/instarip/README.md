@@ -13,6 +13,6 @@ Instagram post viewer.
 
 ## Connections
 
-- Uses `@workspace/backend` (Convex): posts/users/media_items queries
-- Uses `@workspace/ui`: shared component library (cards, buttons, carousel)
+- Uses `@avoid.quest/backend` (Convex): posts/users/media_items queries
+- Uses `@avoid.quest/ui`: shared component library (cards, buttons, carousel)
 - Deploy: Cloudflare Pages via OpenNext

@@ -5,7 +5,7 @@
  * Shows threshold, ratio, knee, and optional gain reduction meter.
  */
 
-import { cn } from "@workspace/ui/lib/utils";
+import { cn } from "@avoid.quest/ui/lib/utils";
 import { memo, useEffect, useRef } from "react";
 import type { CompressorConfig } from "@/lib/audio/dsp/effects/types";
 

@@ -1,6 +1,6 @@
-import { ModeToggle } from "@workspace/ui/components/mode-toggle";
-import { SiteLogo } from "@workspace/ui/components/site-logo";
-import { Skeleton } from "@workspace/ui/components/skeleton";
+import { ModeToggle } from "@avoid.quest/ui/components/mode-toggle";
+import { SiteLogo } from "@avoid.quest/ui/components/site-logo";
+import { Skeleton } from "@avoid.quest/ui/components/skeleton";
 import { ClientOnly } from "../client-only";
 import { ModeSelect } from "../settings/mode-select";
 import { SettingsButton } from "../settings/settings-button";

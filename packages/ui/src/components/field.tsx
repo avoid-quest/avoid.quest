@@ -2,10 +2,10 @@
 /** biome-ignore-all lint/suspicious/noArrayIndexKey: shadcn */
 "use client";
 
-import { Label } from "@workspace/ui/components/label";
-import { Separator } from "@workspace/ui/components/separator";
+import { Label } from "@avoid.quest/ui/components/label";
+import { Separator } from "@avoid.quest/ui/components/separator";
 
-import { cn } from "@workspace/ui/lib/utils";
+import { cn } from "@avoid.quest/ui/lib/utils";
 import { cva, type VariantProps } from "class-variance-authority";
 import { useMemo } from "react";
 

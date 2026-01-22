@@ -1,7 +1,7 @@
-import { api } from "@workspace/backend/convex/_generated/api";
-import type { Doc } from "@workspace/backend/convex/_generated/dataModel";
-import { Button } from "@workspace/ui/components/button";
-import { PostsGridSkeleton } from "@workspace/ui/components/skeletons";
+import { api } from "@avoid.quest/backend/convex/_generated/api";
+import type { Doc } from "@avoid.quest/backend/convex/_generated/dataModel";
+import { Button } from "@avoid.quest/ui/components/button";
+import { PostsGridSkeleton } from "@avoid.quest/ui/components/skeletons";
 import { fetchQuery } from "convex/nextjs";
 import { ArrowLeftIcon } from "lucide-react";
 import type { Metadata } from "next";

@@ -1,3 +1,6 @@
+import { Button } from "@avoid.quest/ui/components/button";
+import { useIsMobile } from "@avoid.quest/ui/hooks/use-mobile";
+import { cn } from "@avoid.quest/ui/lib/utils";
 import type { DragEndEvent, DragStartEvent } from "@dnd-kit/core";
 import {
   DndContext,
@@ -7,9 +10,6 @@ import {
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
-import { Button } from "@workspace/ui/components/button";
-import { useIsMobile } from "@workspace/ui/hooks/use-mobile";
-import { cn } from "@workspace/ui/lib/utils";
 import { Volume2Icon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { Radio } from "@/lib/audio";

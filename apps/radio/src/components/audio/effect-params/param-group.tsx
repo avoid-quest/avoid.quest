@@ -2,9 +2,9 @@ import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
-} from "@workspace/ui/components/collapsible";
-import { Separator } from "@workspace/ui/components/separator";
-import { cn } from "@workspace/ui/lib/utils";
+} from "@avoid.quest/ui/components/collapsible";
+import { Separator } from "@avoid.quest/ui/components/separator";
+import { cn } from "@avoid.quest/ui/lib/utils";
 import { ChevronDownIcon } from "lucide-react";
 import { useState } from "react";
 

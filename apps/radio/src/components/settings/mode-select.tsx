@@ -1,8 +1,8 @@
 import {
   ToggleGroup,
   ToggleGroupItem,
-} from "@workspace/ui/components/toggle-group";
-import { cn } from "@workspace/ui/lib/utils";
+} from "@avoid.quest/ui/components/toggle-group";
+import { cn } from "@avoid.quest/ui/lib/utils";
 import { LayersIcon, ListMusicIcon, SwordsIcon } from "lucide-react";
 import { toast } from "sonner";
 import { cleanupAudioOnly } from "src/lib/dj-actions";

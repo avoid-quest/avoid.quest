@@ -1,4 +1,4 @@
-import { Button } from "@workspace/ui/components/button";
+import { Button } from "@avoid.quest/ui/components/button";
 import {
   Drawer,
   DrawerContent,
@@ -6,7 +6,7 @@ import {
   DrawerHeader,
   DrawerTitle,
   DrawerTrigger,
-} from "@workspace/ui/components/drawer";
+} from "@avoid.quest/ui/components/drawer";
 import { Settings2Icon } from "lucide-react";
 import { useState } from "react";
 import { SettingsForm } from "./settings-form";

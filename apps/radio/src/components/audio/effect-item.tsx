@@ -1,13 +1,13 @@
-import { useDraggable } from "@dnd-kit/core";
-import { Button } from "@workspace/ui/components/button";
+import { Button } from "@avoid.quest/ui/components/button";
 import {
   Card,
   CardContent,
   CardHeader,
   CardTitle,
-} from "@workspace/ui/components/card";
-import { Toggle } from "@workspace/ui/components/toggle";
-import { cn } from "@workspace/ui/lib/utils";
+} from "@avoid.quest/ui/components/card";
+import { Toggle } from "@avoid.quest/ui/components/toggle";
+import { cn } from "@avoid.quest/ui/lib/utils";
+import { useDraggable } from "@dnd-kit/core";
 import {
   FilterIcon,
   GripVerticalIcon,

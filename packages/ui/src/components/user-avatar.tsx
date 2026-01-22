@@ -4,7 +4,7 @@ import {
   Avatar,
   AvatarFallback,
   AvatarImage,
-} from "@workspace/ui/components/avatar";
+} from "@avoid.quest/ui/components/avatar";
 import { UserIcon } from "lucide-react";
 
 type UserAvatarProps = {

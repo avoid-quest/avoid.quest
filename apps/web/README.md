@@ -9,6 +9,6 @@ Landing page for avoid.quest. Links to all apps.
 
 ## Connections
 
-- Uses `@workspace/ui`: avoid logo component, button components
+- Uses `@avoid.quest/ui`: avoid logo component, button components
 - Deploy: Cloudflare Pages via OpenNext
 

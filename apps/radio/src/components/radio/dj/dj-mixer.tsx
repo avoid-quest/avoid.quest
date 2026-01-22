@@ -1,7 +1,7 @@
-import { Card, CardContent } from "@workspace/ui/components/card";
-import { Slider } from "@workspace/ui/components/slider";
-import { useIsMobile } from "@workspace/ui/hooks/use-mobile";
-import { cn } from "@workspace/ui/lib/utils";
+import { Card, CardContent } from "@avoid.quest/ui/components/card";
+import { Slider } from "@avoid.quest/ui/components/slider";
+import { useIsMobile } from "@avoid.quest/ui/hooks/use-mobile";
+import { cn } from "@avoid.quest/ui/lib/utils";
 import { Volume2Icon } from "lucide-react";
 import type { Radio } from "@/lib/audio";
 import { useDjError } from "@/lib/hooks/use-dj-state";

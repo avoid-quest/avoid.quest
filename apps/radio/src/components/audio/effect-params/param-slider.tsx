@@ -1,5 +1,5 @@
-import { Label } from "@workspace/ui/components/label";
-import { Slider } from "@workspace/ui/components/slider";
+import { Label } from "@avoid.quest/ui/components/label";
+import { Slider } from "@avoid.quest/ui/components/slider";
 import { useThrottledParam } from "@/lib/hooks/use-throttled-param";
 import { formatParam, type ParamFormatter } from "./param-definitions";
 

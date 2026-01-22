@@ -18,7 +18,7 @@
     "html-entities": "^2.6.0"
   },
   "devDependencies": {
-    "@workspace/typescript-config": "workspace:*",
+    "@avoid.quest/typescript-config": "workspace:*",
     "typescript": "catalog:"
   }
 }

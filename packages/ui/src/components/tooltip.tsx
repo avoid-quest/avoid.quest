@@ -1,5 +1,6 @@
 "use client";
 
+import { cn } from "@avoid.quest/ui/lib/utils";
 import {
   Arrow,
   Content,
@@ -8,7 +9,6 @@ import {
   Root,
   Trigger,
 } from "@radix-ui/react-tooltip";
-import { cn } from "@workspace/ui/lib/utils";
 import type * as React from "react";
 
 function TooltipProvider({

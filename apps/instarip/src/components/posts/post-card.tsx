@@ -1,7 +1,7 @@
 "use client";
 
-import { api } from "@workspace/backend/convex/_generated/api";
-import type { Doc } from "@workspace/backend/convex/_generated/dataModel";
+import { api } from "@avoid.quest/backend/convex/_generated/api";
+import type { Doc } from "@avoid.quest/backend/convex/_generated/dataModel";
 import { useQuery } from "convex/react";
 import MediaCard from "./media-card";
 

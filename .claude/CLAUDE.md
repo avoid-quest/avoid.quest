@@ -22,8 +22,8 @@ bun run ui add button          # Install shadcn components
 
 ## Shared Packages
 
-- **`@workspace/ui`** - Design system (shadcn/ui + Tailwind v4). Always use instead of custom components.
-- **`@workspace/shared`** - Utilities (date formatting, error handling, logging). Import, don't recreate.
+- **`@avoid.quest/ui`** - Design system (shadcn/ui + Tailwind v4). Always use instead of custom components.
+- **`@avoid.quest/shared`** - Utilities (date formatting, error handling, logging). Import, don't recreate.
 
 ## Types
 

@@ -93,7 +93,7 @@ apps/instarip/
   "@tanstack/react-store": "latest",
   "@tanstack/react-virtual": "latest",
   "convex": "existing",
-  "@workspace/ui": "workspace:*",
+  "@avoid.quest/ui": "workspace:*",
   "embla-carousel-react": "existing in ui",
   "use-gesture": "for swipe/pinch",
   "photoswipe": "or similar for lightbox"
@@ -222,7 +222,7 @@ api.posts.searchPosts({
 
 ---
 
-## UI Components to Use (from @workspace/ui)
+## UI Components to Use (from @avoid.quest/ui)
 
 | Component | Usage |
 |-----------|-------|

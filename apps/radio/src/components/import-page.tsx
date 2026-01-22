@@ -1,13 +1,13 @@
-import { useNavigate } from "@tanstack/react-router";
-import { Button } from "@workspace/ui/components/button";
-import { Card } from "@workspace/ui/components/card";
-import { Label } from "@workspace/ui/components/label";
+import { Button } from "@avoid.quest/ui/components/button";
+import { Card } from "@avoid.quest/ui/components/card";
+import { Label } from "@avoid.quest/ui/components/label";
 import {
   RadioGroup,
   RadioGroupItem,
-} from "@workspace/ui/components/radio-group";
-import { Separator } from "@workspace/ui/components/separator";
-import { Spinner } from "@workspace/ui/components/spinner";
+} from "@avoid.quest/ui/components/radio-group";
+import { Separator } from "@avoid.quest/ui/components/separator";
+import { Spinner } from "@avoid.quest/ui/components/spinner";
+import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import {

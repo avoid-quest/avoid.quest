@@ -1,4 +1,4 @@
-import { Skeleton } from "@workspace/ui/components/skeleton";
+import { Skeleton } from "@avoid.quest/ui/components/skeleton";
 
 export function RadioSkeleton() {
   return (

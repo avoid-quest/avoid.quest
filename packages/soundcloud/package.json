@@ -16,7 +16,7 @@
   "dependencies": {},
   "devDependencies": {
     "@types/node": "catalog:",
-    "@workspace/typescript-config": "workspace:*",
+    "@avoid.quest/typescript-config": "workspace:*",
     "typescript": "catalog:"
   }
 }

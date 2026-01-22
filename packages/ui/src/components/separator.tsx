@@ -1,7 +1,7 @@
 "use client";
 
+import { cn } from "@avoid.quest/ui/lib/utils";
 import { Root } from "@radix-ui/react-separator";
-import { cn } from "@workspace/ui/lib/utils";
 import type * as React from "react";
 
 function Separator({

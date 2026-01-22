@@ -4,7 +4,7 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "@workspace/ui/components/dialog";
+} from "@avoid.quest/ui/components/dialog";
 import { useState } from "react";
 import type { Radio } from "@/lib/audio";
 import type { RadioMetadata } from "@/lib/platform-types";

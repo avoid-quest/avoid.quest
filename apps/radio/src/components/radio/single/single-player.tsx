@@ -1,10 +1,10 @@
-import { Button } from "@workspace/ui/components/button";
+import { Button } from "@avoid.quest/ui/components/button";
 import {
   Card,
   CardContent,
   CardHeader,
   CardTitle,
-} from "@workspace/ui/components/card";
+} from "@avoid.quest/ui/components/card";
 import {
   Item,
   ItemActions,
@@ -13,9 +13,9 @@ import {
   ItemGroup,
   ItemMedia,
   ItemTitle,
-} from "@workspace/ui/components/item";
-import { PlayPauseButton } from "@workspace/ui/components/play-pause-button";
-import { Slider } from "@workspace/ui/components/slider";
+} from "@avoid.quest/ui/components/item";
+import { PlayPauseButton } from "@avoid.quest/ui/components/play-pause-button";
+import { Slider } from "@avoid.quest/ui/components/slider";
 import { AudioLinesIcon, Volume2Icon, VolumeXIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { type Radio, useSingleAudio } from "@/lib/audio";

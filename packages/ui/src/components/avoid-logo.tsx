@@ -1,4 +1,4 @@
-import { cn } from "@workspace/ui/lib/utils";
+import { cn } from "@avoid.quest/ui/lib/utils";
 import type { SVGProps } from "react";
 
 const AvoidLogo = ({ className, ...props }: SVGProps<SVGSVGElement>) => (

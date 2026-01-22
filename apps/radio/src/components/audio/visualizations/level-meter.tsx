@@ -4,7 +4,7 @@
  * Displays stereo audio levels with optional peak indicators.
  */
 
-import { cn } from "@workspace/ui/lib/utils";
+import { cn } from "@avoid.quest/ui/lib/utils";
 import { memo } from "react";
 
 export type LevelMeterProps = {

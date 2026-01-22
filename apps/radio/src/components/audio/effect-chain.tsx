@@ -1,3 +1,5 @@
+import { Button } from "@avoid.quest/ui/components/button";
+import { cn } from "@avoid.quest/ui/lib/utils";
 import type { DragEndEvent, DragStartEvent } from "@dnd-kit/core";
 import {
   closestCenter,
@@ -16,8 +18,6 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Button } from "@workspace/ui/components/button";
-import { cn } from "@workspace/ui/lib/utils";
 import { PlusIcon } from "lucide-react";
 import { useState } from "react";
 import type { EffectConfig, EffectType } from "@/lib/audio";

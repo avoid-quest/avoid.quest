@@ -3,18 +3,18 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
-} from "@workspace/ui/components/card";
-import { Label } from "@workspace/ui/components/label";
+} from "@avoid.quest/ui/components/card";
+import { Label } from "@avoid.quest/ui/components/label";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@workspace/ui/components/select";
-import { Slider } from "@workspace/ui/components/slider";
-import { Toggle } from "@workspace/ui/components/toggle";
-import { cn } from "@workspace/ui/lib/utils";
+} from "@avoid.quest/ui/components/select";
+import { Slider } from "@avoid.quest/ui/components/slider";
+import { Toggle } from "@avoid.quest/ui/components/toggle";
+import { cn } from "@avoid.quest/ui/lib/utils";
 // BiquadFilterNode is a Web Audio API type, not exported by cacophony
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FilterConfig, FilterType } from "@/lib/audio";

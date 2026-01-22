@@ -1,5 +1,5 @@
-import { Card, CardContent, CardHeader } from "@workspace/ui/components/card";
-import { Skeleton } from "@workspace/ui/components/skeleton";
+import { Card, CardContent, CardHeader } from "@avoid.quest/ui/components/card";
+import { Skeleton } from "@avoid.quest/ui/components/skeleton";
 
 /**
  * Unified skeleton for all post cards (image, video, carousel)

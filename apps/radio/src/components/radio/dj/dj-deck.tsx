@@ -1,25 +1,25 @@
-import { useDroppable } from "@dnd-kit/core";
-import { Button } from "@workspace/ui/components/button";
+import { Button } from "@avoid.quest/ui/components/button";
 import {
   Card,
   CardContent,
   CardHeader,
   CardTitle,
-} from "@workspace/ui/components/card";
+} from "@avoid.quest/ui/components/card";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@workspace/ui/components/dropdown-menu";
+} from "@avoid.quest/ui/components/dropdown-menu";
 import {
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
-} from "@workspace/ui/components/tabs";
-import { useIsMobile } from "@workspace/ui/hooks/use-mobile";
-import { cn } from "@workspace/ui/lib/utils";
+} from "@avoid.quest/ui/components/tabs";
+import { useIsMobile } from "@avoid.quest/ui/hooks/use-mobile";
+import { cn } from "@avoid.quest/ui/lib/utils";
+import { useDroppable } from "@dnd-kit/core";
 import {
   CopyIcon,
   ExternalLinkIcon,

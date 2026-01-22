@@ -1,7 +1,8 @@
 /** biome-ignore-all lint/a11y/useSemanticElements: shadcn */
+
+import { Separator } from "@avoid.quest/ui/components/separator";
+import { cn } from "@avoid.quest/ui/lib/utils";
 import { Slot } from "@radix-ui/react-slot";
-import { Separator } from "@workspace/ui/components/separator";
-import { cn } from "@workspace/ui/lib/utils";
 import { cva, type VariantProps } from "class-variance-authority";
 import type * as React from "react";
 

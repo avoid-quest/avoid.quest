@@ -1,7 +1,7 @@
-import { Button } from "@workspace/ui/components/button";
-import { Input } from "@workspace/ui/components/input";
-import { Label } from "@workspace/ui/components/label";
-import { Spinner } from "@workspace/ui/components/spinner";
+import { Button } from "@avoid.quest/ui/components/button";
+import { Input } from "@avoid.quest/ui/components/input";
+import { Label } from "@avoid.quest/ui/components/label";
+import { Spinner } from "@avoid.quest/ui/components/spinner";
 import { useState } from "react";
 import type { RadioMetadata } from "@/lib/platform-types";
 import { scrapeRadioMetadata } from "@/lib/radio-scraper";

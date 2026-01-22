@@ -1,4 +1,4 @@
-import { cn } from "@workspace/ui/lib/utils";
+import { cn } from "@avoid.quest/ui/lib/utils";
 import type * as React from "react";
 
 function Card({ className, ...props }: React.ComponentProps<"div">) {

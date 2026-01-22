@@ -4,7 +4,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@workspace/ui/components/select";
+} from "@avoid.quest/ui/components/select";
 import { toast } from "sonner";
 import { setPlayerType } from "@/lib/collections";
 import { useSettings } from "@/lib/hooks/use-settings";

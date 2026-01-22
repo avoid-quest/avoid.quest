@@ -1,8 +1,8 @@
 "use client";
 
-import { Button } from "@workspace/ui/components/button";
-import { Spinner } from "@workspace/ui/components/spinner";
-import { cn } from "@workspace/ui/lib/utils";
+import { Button } from "@avoid.quest/ui/components/button";
+import { Spinner } from "@avoid.quest/ui/components/spinner";
+import { cn } from "@avoid.quest/ui/lib/utils";
 import { PauseIcon, PlayIcon } from "lucide-react";
 
 type PlayPauseButtonProps = {

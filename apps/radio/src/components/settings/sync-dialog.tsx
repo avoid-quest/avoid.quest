@@ -1,5 +1,5 @@
-import { Button } from "@workspace/ui/components/button";
-import { Checkbox } from "@workspace/ui/components/checkbox";
+import { Button } from "@avoid.quest/ui/components/button";
+import { Checkbox } from "@avoid.quest/ui/components/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -7,9 +7,9 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@workspace/ui/components/dialog";
-import { Label } from "@workspace/ui/components/label";
-import { ScrollArea } from "@workspace/ui/components/scroll-area";
+} from "@avoid.quest/ui/components/dialog";
+import { Label } from "@avoid.quest/ui/components/label";
+import { ScrollArea } from "@avoid.quest/ui/components/scroll-area";
 import { PlusIcon, RefreshCwIcon } from "lucide-react";
 import { useState } from "react";
 import { addDismissedRadios, type SyncChanges } from "@/lib/collections";

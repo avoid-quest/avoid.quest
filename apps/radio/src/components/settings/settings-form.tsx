@@ -1,4 +1,4 @@
-import { Button } from "@workspace/ui/components/button";
+import { Button } from "@avoid.quest/ui/components/button";
 import {
   Dialog,
   DialogContent,
@@ -7,15 +7,15 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@workspace/ui/components/dialog";
-import { DrawerClose } from "@workspace/ui/components/drawer";
-import { Slider } from "@workspace/ui/components/slider";
+} from "@avoid.quest/ui/components/dialog";
+import { DrawerClose } from "@avoid.quest/ui/components/drawer";
+import { Slider } from "@avoid.quest/ui/components/slider";
 import {
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
-} from "@workspace/ui/components/tabs";
+} from "@avoid.quest/ui/components/tabs";
 import {
   DatabaseIcon,
   RadioIcon,

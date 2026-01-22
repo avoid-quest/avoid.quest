@@ -1,4 +1,4 @@
-import AvoidLogo from "@workspace/ui/components/avoid-logo";
+import AvoidLogo from "@avoid.quest/ui/components/avoid-logo";
 
 export function SiteLogo({
   href = "/",

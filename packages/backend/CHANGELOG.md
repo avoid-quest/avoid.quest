@@ -1,4 +1,4 @@
-# @workspace/backend
+# @avoid.quest/backend
 
 ## 0.1.1
 

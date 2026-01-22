@@ -1,5 +1,5 @@
 {
-  "name": "instarip-web",
+  "name": "@avoid.quest/instarip",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -15,11 +15,11 @@
     "cf-typegen": "wrangler types --env-interface CloudflareEnv ./cloudflare-env.d.ts"
   },
   "dependencies": {
-    "@opennextjs/cloudflare": "^1.14.10",
+    "@opennextjs/cloudflare": "^1.15.1",
     "@tanstack/react-virtual": "^3.13.18",
-    "@workspace/backend": "workspace:*",
-    "@workspace/typescript-config": "workspace:*",
-    "@workspace/ui": "workspace:*",
+    "@avoid.quest/backend": "workspace:*",
+    "@avoid.quest/typescript-config": "workspace:*",
+    "@avoid.quest/ui": "workspace:*",
     "babel-plugin-react-compiler": "^1.0.0",
     "convex": "catalog:",
     "lucide-react": "catalog:",

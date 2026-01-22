@@ -1,7 +1,7 @@
-import { Button } from "@workspace/ui/components/button";
-import { Slider } from "@workspace/ui/components/slider";
-import { Spinner } from "@workspace/ui/components/spinner";
-import { cn } from "@workspace/ui/lib/utils";
+import { Button } from "@avoid.quest/ui/components/button";
+import { Slider } from "@avoid.quest/ui/components/slider";
+import { Spinner } from "@avoid.quest/ui/components/spinner";
+import { cn } from "@avoid.quest/ui/lib/utils";
 import {
   PauseIcon,
   PlayIcon,

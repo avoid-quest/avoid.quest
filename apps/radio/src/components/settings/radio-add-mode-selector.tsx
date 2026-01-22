@@ -1,4 +1,4 @@
-import { Button } from "@workspace/ui/components/button";
+import { Button } from "@avoid.quest/ui/components/button";
 import { FileTextIcon, Wand2Icon } from "lucide-react";
 
 type RadioAddModeSelectorProps = {

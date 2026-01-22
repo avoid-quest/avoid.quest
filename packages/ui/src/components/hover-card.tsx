@@ -1,7 +1,7 @@
 "use client";
 
+import { cn } from "@avoid.quest/ui/lib/utils";
 import { Content, Portal, Root, Trigger } from "@radix-ui/react-hover-card";
-import { cn } from "@workspace/ui/lib/utils";
 import type * as React from "react";
 
 function HoverCard({ ...props }: React.ComponentProps<typeof Root>) {

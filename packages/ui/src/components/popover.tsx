@@ -1,5 +1,6 @@
 "use client";
 
+import { cn } from "@avoid.quest/ui/lib/utils";
 import {
   Anchor,
   Content,
@@ -7,7 +8,6 @@ import {
   Root,
   Trigger,
 } from "@radix-ui/react-popover";
-import { cn } from "@workspace/ui/lib/utils";
 import type * as React from "react";
 
 function Popover({ ...props }: React.ComponentProps<typeof Root>) {

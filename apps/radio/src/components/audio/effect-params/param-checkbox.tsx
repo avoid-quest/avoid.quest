@@ -1,5 +1,5 @@
-import { Checkbox } from "@workspace/ui/components/checkbox";
-import { Label } from "@workspace/ui/components/label";
+import { Checkbox } from "@avoid.quest/ui/components/checkbox";
+import { Label } from "@avoid.quest/ui/components/label";
 
 type ParamCheckboxProps = {
   id: string;

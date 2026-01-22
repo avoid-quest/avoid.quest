@@ -1,4 +1,4 @@
-import { PostsGridSkeleton } from "@workspace/ui/components/skeletons";
+import { PostsGridSkeleton } from "@avoid.quest/ui/components/skeletons";
 
 export default function Loading() {
   return (

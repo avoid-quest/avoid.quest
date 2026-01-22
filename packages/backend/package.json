@@ -1,27 +1,30 @@
 {
-	"name": "@workspace/backend",
+	"name": "@avoid.quest/backend",
 	"version": "0.1.1",
 	"private": true,
 	"scripts": {
 		"dev": "convex dev",
 		"dev:setup": "convex dev --configure --until-success",
-		"deploy": "bunx convex deploy"
+		"deploy": "bunx convex deploy",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"typecheck": "cd convex && tsc --noEmit --project tsconfig.json"
 	},
 	"author": "",
 	"license": "ISC",
 	"description": "",
 	"devDependencies": {
+		"@edge-runtime/vm": "^5.0.0",
 		"@types/node": "catalog:",
-		"typescript": "catalog:"
+		"convex-test": "^0.0.41",
+		"typescript": "catalog:",
+		"vitest": "^4.0.17"
 	},
 	"dependencies": {
-		"@ai-sdk/groq": "^3.0.12",
-		"@convex-dev/agent": "^0.3.2",
 		"@convex-dev/migrations": "^0.3.1",
-		"@convex-dev/workflow": "^0.3.3",
-		"@convex-dev/workpool": "^0.3.1",
-		"ai": "^6.0.42",
 		"convex": "catalog:",
+		"grammy": "^1.39.3",
+		"grammy-inline-menu": "^9.2.0",
 		"zod": "catalog:"
 	}
 }

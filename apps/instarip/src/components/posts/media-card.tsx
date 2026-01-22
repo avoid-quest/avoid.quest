@@ -1,17 +1,17 @@
 "use client";
 
-import { api } from "@workspace/backend/convex/_generated/api";
-import type { Doc } from "@workspace/backend/convex/_generated/dataModel";
-import { Button } from "@workspace/ui/components/button";
-import { Card, CardContent, CardHeader } from "@workspace/ui/components/card";
+import { api } from "@avoid.quest/backend/convex/_generated/api";
+import type { Doc } from "@avoid.quest/backend/convex/_generated/dataModel";
+import { Button } from "@avoid.quest/ui/components/button";
+import { Card, CardContent, CardHeader } from "@avoid.quest/ui/components/card";
 import {
   Carousel,
   CarouselContent,
   CarouselItem,
   CarouselNext,
   CarouselPrevious,
-} from "@workspace/ui/components/carousel";
-import { cn } from "@workspace/ui/lib/utils";
+} from "@avoid.quest/ui/components/carousel";
+import { cn } from "@avoid.quest/ui/lib/utils";
 import { useQuery } from "convex/react";
 import { PlayIcon } from "lucide-react";
 import Image from "next/image";

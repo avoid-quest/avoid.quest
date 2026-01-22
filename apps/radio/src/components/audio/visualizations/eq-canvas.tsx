@@ -4,7 +4,7 @@
  * Visualizes the 7-band EQ frequency response curve.
  */
 
-import { cn } from "@workspace/ui/lib/utils";
+import { cn } from "@avoid.quest/ui/lib/utils";
 import { memo, useEffect, useMemo, useRef } from "react";
 import type { RevampConfig } from "@/lib/audio/dsp/effects/types";
 import {

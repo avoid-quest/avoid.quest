@@ -1,8 +1,8 @@
 "use client";
 
-import { api } from "@workspace/backend/convex/_generated/api";
-import type { Doc } from "@workspace/backend/convex/_generated/dataModel";
-import { Button } from "@workspace/ui/components/button";
+import { api } from "@avoid.quest/backend/convex/_generated/api";
+import type { Doc } from "@avoid.quest/backend/convex/_generated/dataModel";
+import { Button } from "@avoid.quest/ui/components/button";
 import { useQuery } from "convex/react";
 import { ExternalLinkIcon, PlayIcon } from "lucide-react";
 import Link from "next/link";

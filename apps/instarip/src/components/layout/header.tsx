@@ -1,4 +1,4 @@
-import { SiteLogo } from "@workspace/ui/components/site-logo";
+import { SiteLogo } from "@avoid.quest/ui/components/site-logo";
 
 export function Header() {
   return (

@@ -1,11 +1,11 @@
-import { Label } from "@workspace/ui/components/label";
+import { Label } from "@avoid.quest/ui/components/label";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@workspace/ui/components/select";
+} from "@avoid.quest/ui/components/select";
 
 type SelectOption = {
   value: string;

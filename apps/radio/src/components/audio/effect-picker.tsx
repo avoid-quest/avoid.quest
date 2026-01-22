@@ -1,13 +1,13 @@
-import { Card, CardContent } from "@workspace/ui/components/card";
+import { Card, CardContent } from "@avoid.quest/ui/components/card";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "@workspace/ui/components/dialog";
-import { Input } from "@workspace/ui/components/input";
-import { cn } from "@workspace/ui/lib/utils";
+} from "@avoid.quest/ui/components/dialog";
+import { Input } from "@avoid.quest/ui/components/input";
+import { cn } from "@avoid.quest/ui/lib/utils";
 import { FilterIcon, SearchIcon } from "lucide-react";
 import { useState } from "react";
 import { AVAILABLE_EFFECTS, type EffectType } from "@/lib/audio";

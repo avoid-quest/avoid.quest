@@ -1,222 +1,512 @@
 import { cronJobs } from "convex/server";
 import { v } from "convex/values";
-import { internal } from "./_generated/api";
-import type { Id } from "./_generated/dataModel";
-import { internalAction, internalQuery } from "./_generated/server";
-import { now } from "./lib/dateUtils";
-import { workflow } from "./workflows/workflow";
-
-const SECONDS_PER_MINUTE = 60;
-const MINUTES_PER_HOUR = 60;
-const MS_PER_SECOND = 1000;
-const ONE_HOUR_MS = SECONDS_PER_MINUTE * MINUTES_PER_HOUR * MS_PER_SECOND;
-
-/**
- * Internal query to get posts without metadata_id
- */
-export const getPostsWithoutMetadata = internalQuery({
-	args: { limit: v.number() },
-	returns: v.array(v.id("posts")),
-	handler: async (ctx, { limit }) => {
-		const posts = await ctx.db
-			.query("posts")
-			.filter((q) => q.eq(q.field("metadata_id"), undefined))
-			.order("desc")
-			.take(limit);
-		return posts.map((post) => post._id);
-	},
-});
+import { components, internal } from "./_generated/api";
+import { internalAction } from "./_generated/server";
+import type { Doc, Id } from "./components/instarip/_generated/dataModel";
+import {
+	getRandomDelayBetweenUsers,
+	resolveInstagramConfig,
+	resolveTelegramConfig,
+} from "./lib/config";
+import { saveFileIdsForPost } from "./lib/fileIdMatcher";
 
 /**
- * Internal query to check if metadata exists and is completed for a post
- * Returns true if we should skip processing (metadata is completed)
- * Returns false if we should process (no metadata, failed, or stuck processing)
+ * Type aliases for component document types
  */
-export const checkMetadataExists = internalQuery({
-	args: { postId: v.id("posts") },
-	returns: v.boolean(),
-	handler: async (ctx, { postId }) => {
-		const post = await ctx.db.get(postId);
-		if (!post) {
-			return true; // Post doesn't exist, skip
-		}
+type MediaItem = Doc<"media_items">;
+type Post = Doc<"posts">;
 
-		// If post has metadata_id linked, check if it's completed
-		if (post.metadata_id) {
-			const metadata = await ctx.db.get(post.metadata_id);
-			if (metadata?.processing_status === "completed") {
-				return true; // Already completed, skip
-			}
-			// If linked but not completed, we should retry
-			return false;
-		}
-
-		// Check if metadata record exists (in case post.metadata_id is not set but record exists)
-		const existingMetadata = await ctx.db
-			.query("post_metadata")
-			.withIndex("by_post_id", (q) => q.eq("post_id", postId))
-			.first();
-
-		if (!existingMetadata) {
-			return false; // No metadata record, should process
-		}
-
-		// Only skip if metadata is completed
-		// Retry if failed, processing, or pending
-		if (existingMetadata.processing_status === "completed") {
-			return true; // Completed, skip
-		}
-
-		// Check if processing is stuck (processing for more than 1 hour)
-		if (existingMetadata.processing_status === "processing") {
-			const processingStartedAt = existingMetadata.processing_started_at ?? 0;
-			const currentTime = now();
-			const isStuck = currentTime - processingStartedAt > ONE_HOUR_MS;
-
-			if (isStuck) {
-				console.log(
-					`Metadata for post ${postId} is stuck in processing (started ${currentTime - processingStartedAt}ms ago), will retry`,
-				);
-				return false; // Stuck, should retry
-			}
-
-			// Still processing and not stuck, skip for now
-			return true;
-		}
-
-		// Failed or pending, should retry
-		return false;
-	},
-});
-
-/**
- * Process backlog of posts without metadata extraction
- * Finds posts without metadata_id and starts workflows for them
- */
-export const processMetadataBacklog = internalAction({
-	args: {},
-	returns: v.object({
-		processed: v.number(),
-		skipped: v.number(),
-		errors: v.number(),
-	}),
-	handler: async (ctx) => {
-		// Get settings to check if enabled and get batch size
-		const settings = await ctx.runQuery(internal.settings.getSettingsInternal);
-		const aiSettings = settings?.ai_metadata_extraction;
-
-		// Default values for AI metadata extraction settings
-		// Reduced defaults to respect Groq API rate limits
-		const DEFAULT_BATCH_SIZE = 1;
-		const DEFAULT_MAX_CONCURRENT_WORKFLOWS = 1; // Reduced from 3 to avoid quota issues
-
-		if (!aiSettings?.active) {
-			console.log("AI metadata extraction is disabled in settings");
-			return { processed: 0, skipped: 0, errors: 0 };
-		}
-
-		const batchSize = aiSettings.batch_size ?? DEFAULT_BATCH_SIZE;
-		const maxConcurrent =
-			aiSettings.max_concurrent_workflows ?? DEFAULT_MAX_CONCURRENT_WORKFLOWS;
-
-		console.log(
-			`Processing metadata backlog: batchSize=${batchSize}, maxConcurrent=${maxConcurrent}`,
-		);
-
-		// Find posts without metadata_id
-		const postsWithoutMetadata = await ctx.runQuery(
-			internal.crons.getPostsWithoutMetadata,
-			{ limit: batchSize },
-		);
-
-		console.log(
-			`Found ${postsWithoutMetadata.length} posts without metadata_id`,
-		);
-
-		if (postsWithoutMetadata.length === 0) {
-			return { processed: 0, skipped: 0, errors: 0 };
-		}
-
-		let processed = 0;
-		let skipped = 0;
-		let errors = 0;
-
-		// Process posts in batches respecting max concurrent workflows
-		for (let i = 0; i < postsWithoutMetadata.length; i += maxConcurrent) {
-			const batch = postsWithoutMetadata.slice(i, i + maxConcurrent);
-
-			const results = await Promise.allSettled(
-				batch.map(async (postId: Id<"posts">) => {
-					try {
-						// Check if metadata already exists for this post
-						const hasMetadata = await ctx.runQuery(
-							internal.crons.checkMetadataExists,
-							{ postId },
-						);
-
-						if (hasMetadata) {
-							skipped++;
-							return;
-						}
-
-						// Start workflow for this post with completion handler
-						await workflow.start(
-							ctx,
-							internal.workflows.postMetadata.processPostMetadata,
-							{ postId },
-							{
-								onComplete:
-									internal.workflows.postMetadata.handlePostMetadataCompletion,
-								context: { postId },
-							},
-						);
-						processed++;
-					} catch (error) {
-						console.error(`Error processing post ${postId}:`, error);
-						errors++;
-					}
-				}),
-			);
-
-			// Log any failures
-			results.forEach((result: PromiseSettledResult<void>, index: number) => {
-				if (result.status === "rejected") {
-					console.error(
-						`Failed to process post ${batch[index]}:`,
-						result.reason,
-					);
-				}
-			});
-
-			// Add delay between batches to respect rate limits (only if not last batch)
-			if (i + maxConcurrent < postsWithoutMetadata.length) {
-				const BATCH_DELAY_SECONDS = 5; // 5 seconds between batches
-				console.log(`Waiting ${BATCH_DELAY_SECONDS}s before next batch...`);
-				await new Promise((resolve) =>
-					setTimeout(resolve, BATCH_DELAY_SECONDS * MS_PER_SECOND),
-				);
-			}
-		}
-
-		console.log(
-			`Metadata backlog processing complete: processed=${processed}, skipped=${skipped}, errors=${errors}`,
-		);
-
-		return { processed, skipped, errors };
-	},
-});
+const MAX_RETRY_COUNT = 3;
 
 const crons = cronJobs();
 
-// Run every 15 minutes (hardcoded interval to respect Groq API rate limits)
-// Note: Convex cron jobs require static intervals, so the interval cannot be
-// dynamically configured via settings. The settings.backlog_interval_minutes
-// value is reserved for future use if Convex adds support for dynamic intervals.
+// Telegram sending cron - runs every 30 minutes
 crons.interval(
-	"process-metadata-backlog",
-	{ minutes: 15 },
-	internal.crons.processMetadataBacklog,
-	{},
+	"send telegram posts",
+	{ minutes: 30 },
+	internal.crons.runTelegramSend,
+);
+
+// Instagram fetch cron - runs every hour
+crons.interval(
+	"fetch instagram posts",
+	{ hours: 1 },
+	internal.crons.runInstagramFetch,
 );
 
 export default crons;
+
+/**
+ * Orchestration layer for Telegram sending
+ * Fetches unsent posts and sends them via the Telegram component
+ */
+export const runTelegramSend = internalAction({
+	args: {},
+	returns: v.object({
+		skipped: v.optional(v.boolean()),
+		sent: v.optional(v.number()),
+		failed: v.optional(v.number()),
+		errors: v.optional(v.array(v.string())),
+	}),
+	handler: async (ctx) => {
+		// Get settings and resolve config with defaults
+		const settings = await ctx.runQuery(
+			components.instarip.settings.getSettings,
+			{},
+		);
+		const config = resolveTelegramConfig(settings?.telegram);
+
+		if (!config.active) {
+			return { skipped: true };
+		}
+
+		if (!config.groupChatId) {
+			return { skipped: true, errors: ["No group_chat_id configured"] };
+		}
+
+		const botToken = process.env.TELEGRAM_BOT_TOKEN;
+		if (!botToken) {
+			return { skipped: true, errors: ["TELEGRAM_BOT_TOKEN not configured"] };
+		}
+
+		const chatId = config.groupChatId;
+		const limit = config.sendLimit;
+
+		// Get unsent posts
+		const posts = await ctx.runQuery(components.instarip.posts.getUnsent, {
+			limit,
+		});
+
+		if (posts.length === 0) {
+			return { sent: 0, failed: 0 };
+		}
+
+		let sent = 0;
+		let failed = 0;
+		const errors: string[] = [];
+
+		for (let i = 0; i < posts.length; i++) {
+			const post = posts[i];
+
+			// Claim the post for sending (prevents concurrent sends)
+			const claimed = await ctx.runMutation(
+				components.instarip.posts.claimForSending,
+				{ id: post._id },
+			);
+			if (!claimed) {
+				// Already being sent by another process, skip
+				continue;
+			}
+
+			try {
+				// Get media items for this post
+				const mediaItems = await ctx.runQuery(
+					components.instarip.mediaItems.getMediaItemsByPostId,
+					{ postId: post._id },
+				);
+
+				// Send via Telegram component
+				const result = await ctx.runAction(
+					components.telegram.sender.sendMessage,
+					{
+						botToken,
+						chatId,
+						caption: post.caption,
+						mediaItems: mediaItems.map((item: MediaItem) => ({
+							file_id: item.file_id,
+							type: item.type,
+							width: item.width,
+							height: item.height,
+						})),
+						postUrl: post.url,
+					},
+				);
+
+				if (result.success) {
+					// Mark post as sent (also clears sending flag)
+					await ctx.runMutation(components.instarip.posts.markSent, {
+						id: post._id,
+						sentAt: Date.now(),
+					});
+					// Clear sending flag explicitly for safety
+					await ctx.runMutation(components.instarip.posts.clearSending, {
+						id: post._id,
+					});
+
+					// Save file_ids for each media item (matched by position)
+					if (result.fileIds && result.fileIds.length > 0) {
+						await saveFileIdsForPost(ctx, post._id, mediaItems, result.fileIds);
+					}
+
+					sent++;
+				} else {
+					// Clear sending flag on failure
+					await ctx.runMutation(components.instarip.posts.clearSending, {
+						id: post._id,
+					});
+
+					// If rate limited, break the loop and schedule retry for remaining posts
+					if (result.retryAfterMs) {
+						// Schedule retry for THIS post
+						await ctx.scheduler.runAfter(
+							result.retryAfterMs,
+							internal.crons.retrySinglePost,
+							{ postId: post._id, chatId },
+						);
+
+						// Schedule retry for REMAINING posts (don't continue loop)
+						const remainingPosts = posts.slice(i + 1);
+						if (remainingPosts.length > 0) {
+							await ctx.scheduler.runAfter(
+								result.retryAfterMs,
+								internal.crons.retryBatch,
+								{
+									postIds: remainingPosts.map((p: Post) => p._id),
+									chatId,
+								},
+							);
+						}
+
+						errors.push(
+							`Post ${post.shortcode}: Rate limited, scheduled retry for ${remainingPosts.length + 1} posts`,
+						);
+						break; // Exit loop
+					}
+					failed++;
+					errors.push(`Post ${post.shortcode}: ${result.error}`);
+				}
+			} catch (error) {
+				// Clear sending flag on error
+				await ctx.runMutation(components.instarip.posts.clearSending, {
+					id: post._id,
+				});
+				failed++;
+				errors.push(
+					`Post ${post.shortcode}: ${error instanceof Error ? error.message : String(error)}`,
+				);
+			}
+
+			// Small delay between posts to avoid rate limiting
+			await new Promise((resolve) =>
+				setTimeout(resolve, config.delayBetweenPostsMs),
+			);
+		}
+
+		return { sent, failed, errors: errors.length > 0 ? errors : undefined };
+	},
+});
+
+/**
+ * Orchestration layer for Instagram fetching
+ * Fetches posts for users marked as to_be_scraped via the Instarip component
+ */
+export const runInstagramFetch = internalAction({
+	args: {},
+	returns: v.object({
+		skipped: v.optional(v.boolean()),
+		usersProcessed: v.optional(v.number()),
+		newPosts: v.optional(v.number()),
+		errors: v.optional(v.array(v.string())),
+	}),
+	handler: async (ctx) => {
+		// Get settings and resolve config with defaults
+		const settings = await ctx.runQuery(
+			components.instarip.settings.getSettings,
+			{},
+		);
+		const config = resolveInstagramConfig(settings?.instagram);
+
+		if (!config.active) {
+			return { skipped: true };
+		}
+
+		// Get users to scrape (respecting minimum interval)
+		const users = await ctx.runQuery(
+			components.instarip.users.listToBeScrapedWithInterval,
+			{
+				limit: config.userLimit,
+				minIntervalMs: config.minScrapeIntervalMs,
+			},
+		);
+
+		if (users.length === 0) {
+			return { usersProcessed: 0, newPosts: 0 };
+		}
+
+		let usersProcessed = 0;
+		let newPosts = 0;
+		const errors: string[] = [];
+
+		for (const user of users) {
+			try {
+				// Fetch posts via Instarip component fetcher
+				const result = await ctx.runAction(
+					components.instarip.fetcher.fetchUser,
+					{
+						username: user.username,
+						limit: config.postsPerUser,
+					},
+				);
+
+				if (!result.success) {
+					errors.push(`User ${user.username}: ${result.error}`);
+					continue;
+				}
+
+				// Process each fetched post
+				for (const post of result.posts) {
+					try {
+						// Check if post already exists
+						const existing = await ctx.runQuery(
+							components.instarip.posts.getPostByShortcode,
+							{ shortcode: post.shortcode },
+						);
+
+						if (existing) {
+							// Post already exists, skip
+							continue;
+						}
+
+						// Upsert the post (timestamp already in ms from adapter)
+						const postId = await ctx.runMutation(
+							components.instarip.posts.upsertPost,
+							{
+								ig_id: post.id,
+								shortcode: post.shortcode,
+								display_url: post.display_url,
+								video_url: post.video_url,
+								thumbnail_url: post.thumbnail_url,
+								caption: post.caption,
+								is_video: post.is_video,
+								url: post.url,
+								media_type: post.media_type,
+								users: [user._id],
+								timestamp: post.timestamp,
+							},
+						);
+
+						// Sync media items
+						await ctx.runMutation(
+							components.instarip.mediaItems.syncMediaItemsForPost,
+							{
+								post_id: postId,
+								media_items: post.media_items,
+							},
+						);
+
+						newPosts++;
+					} catch (postError) {
+						// Log individual post failure but continue processing other posts
+						const message =
+							postError instanceof Error ? postError.message : "Unknown error";
+						errors.push(
+							`User ${user.username} post ${post.shortcode}: ${message}`,
+						);
+					}
+				}
+
+				// Update user's last_scraped_at
+				await ctx.runMutation(components.instarip.users.updateLastScrapedAt, {
+					id: user._id,
+					lastScrapedAt: Date.now(),
+				});
+
+				usersProcessed++;
+
+				// Delay between users (configurable, default 10-30 seconds)
+				const delay = getRandomDelayBetweenUsers(config);
+				await new Promise((resolve) => setTimeout(resolve, delay));
+			} catch (error) {
+				const message =
+					error instanceof Error ? error.message : "Unknown error";
+				errors.push(`User ${user.username}: ${message}`);
+			}
+		}
+
+		return {
+			usersProcessed,
+			newPosts,
+			errors: errors.length > 0 ? errors : undefined,
+		};
+	},
+});
+
+/**
+ * Retry sending a single post to Telegram
+ * Called by scheduler when rate-limited posts need to be retried
+ */
+export const retrySinglePost = internalAction({
+	args: {
+		postId: v.string(),
+		chatId: v.string(),
+	},
+	handler: async (ctx, { postId, chatId }) => {
+		const botToken = process.env.TELEGRAM_BOT_TOKEN;
+		if (!botToken) {
+			console.error("retrySinglePost: TELEGRAM_BOT_TOKEN not configured");
+			return;
+		}
+
+		// Get the post
+		const post = await ctx.runQuery(components.instarip.posts.getPostById, {
+			id: postId,
+		});
+
+		// Skip if post doesn't exist or already sent
+		if (!post) {
+			console.warn(`retrySinglePost: Post ${postId} not found`);
+			return;
+		}
+
+		if (post.sent) {
+			// Already sent, no action needed (not an error)
+			return;
+		}
+
+		if (post.send_failed) {
+			// Permanently failed, don't retry
+			console.warn(
+				`retrySinglePost: Post ${post.shortcode} permanently failed, skipping`,
+			);
+			return;
+		}
+
+		// Increment retry count and check if we've exceeded max retries
+		const retryCount = await ctx.runMutation(
+			components.instarip.posts.incrementRetryCount,
+			{ id: postId },
+		);
+
+		if (retryCount > MAX_RETRY_COUNT) {
+			// Mark as permanently failed
+			await ctx.runMutation(components.instarip.posts.markSendFailed, {
+				id: postId,
+			});
+			console.warn(
+				`retrySinglePost: Post ${post.shortcode} permanently failed after ${MAX_RETRY_COUNT} attempts`,
+			);
+			return;
+		}
+
+		// Claim the post for sending (prevents concurrent sends)
+		const claimed = await ctx.runMutation(
+			components.instarip.posts.claimForSending,
+			{ id: postId },
+		);
+		if (!claimed) {
+			// Already being sent by another process
+			return;
+		}
+
+		try {
+			// Get media items for this post
+			const mediaItems = await ctx.runQuery(
+				components.instarip.mediaItems.getMediaItemsByPostId,
+				{ postId },
+			);
+
+			// Send via Telegram component
+			const result = await ctx.runAction(
+				components.telegram.sender.sendMessage,
+				{
+					botToken,
+					chatId,
+					caption: post.caption,
+					mediaItems: mediaItems.map((item: MediaItem) => ({
+						file_id: item.file_id,
+						type: item.type,
+						width: item.width,
+						height: item.height,
+					})),
+					postUrl: post.url,
+				},
+			);
+
+			if (result.success) {
+				// Mark post as sent
+				await ctx.runMutation(components.instarip.posts.markSent, {
+					id: postId,
+					sentAt: Date.now(),
+				});
+				// Clear sending flag explicitly
+				await ctx.runMutation(components.instarip.posts.clearSending, {
+					id: postId,
+				});
+
+				// Save file_ids for each media item (matched by position)
+				if (result.fileIds && result.fileIds.length > 0) {
+					await saveFileIdsForPost(
+						ctx,
+						postId as Id<"posts">,
+						mediaItems,
+						result.fileIds,
+					);
+				}
+			} else {
+				// Clear sending flag on failure
+				await ctx.runMutation(components.instarip.posts.clearSending, {
+					id: postId,
+				});
+
+				// If rate limited, schedule another retry
+				if (result.retryAfterMs) {
+					await ctx.scheduler.runAfter(
+						result.retryAfterMs,
+						internal.crons.retrySinglePost,
+						{ postId, chatId },
+					);
+					console.info(
+						`retrySinglePost: Post ${post.shortcode} rate limited, retry ${retryCount}/${MAX_RETRY_COUNT} scheduled`,
+					);
+				} else {
+					console.warn(
+						`retrySinglePost: Failed to send post ${post.shortcode} (attempt ${retryCount}): ${result.error}`,
+					);
+				}
+			}
+		} catch (error) {
+			// Clear sending flag on error
+			await ctx.runMutation(components.instarip.posts.clearSending, {
+				id: postId,
+			});
+			console.error(
+				`retrySinglePost: Error sending post ${post.shortcode}:`,
+				error instanceof Error ? error.message : String(error),
+			);
+		}
+	},
+});
+
+/**
+ * Retry sending a batch of posts to Telegram
+ * Called by scheduler when rate limiting causes early exit from the main loop
+ */
+export const retryBatch = internalAction({
+	args: {
+		postIds: v.array(v.string()),
+		chatId: v.string(),
+	},
+	handler: async (ctx, { postIds, chatId }) => {
+		const botToken = process.env.TELEGRAM_BOT_TOKEN;
+		if (!botToken) {
+			console.error("retryBatch: TELEGRAM_BOT_TOKEN not configured");
+			return;
+		}
+
+		const settings = await ctx.runQuery(
+			components.instarip.settings.getSettings,
+			{},
+		);
+		const config = resolveTelegramConfig(settings?.telegram);
+
+		for (const postId of postIds) {
+			// Delegate to retrySinglePost (which handles claiming, retry counting, etc.)
+			await ctx.runAction(internal.crons.retrySinglePost, { postId, chatId });
+
+			// Small delay between posts to avoid rate limiting
+			await new Promise((resolve) =>
+				setTimeout(resolve, config.delayBetweenPostsMs),
+			);
+		}
+	},
+});

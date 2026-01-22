@@ -1,5 +1,6 @@
 "use client";
 
+import { cn } from "@avoid.quest/ui/lib/utils";
 import {
   Content,
   Group,
@@ -17,7 +18,6 @@ import {
   Value,
   Viewport,
 } from "@radix-ui/react-select";
-import { cn } from "@workspace/ui/lib/utils";
 import { CheckIcon, ChevronDownIcon, ChevronUpIcon } from "lucide-react";
 import type * as React from "react";
 

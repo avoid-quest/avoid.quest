@@ -1,4 +1,4 @@
-import { cn } from "@workspace/ui/lib/utils";
+import { cn } from "@avoid.quest/ui/lib/utils";
 import { AudioLinesIcon } from "lucide-react";
 import { useState } from "react";
 

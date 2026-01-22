@@ -1,7 +1,7 @@
 "use client";
 
+import { cn } from "@avoid.quest/ui/lib/utils";
 import { Content, List, Root, Trigger } from "@radix-ui/react-tabs";
-import { cn } from "@workspace/ui/lib/utils";
 import type * as React from "react";
 
 function Tabs({ className, ...props }: React.ComponentProps<typeof Root>) {

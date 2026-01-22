@@ -1,3 +1,12 @@
+import { Button } from "@avoid.quest/ui/components/button";
+import { Checkbox } from "@avoid.quest/ui/components/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@avoid.quest/ui/components/dialog";
 import type { DragEndEvent } from "@dnd-kit/core";
 import {
   closestCenter,
@@ -15,15 +24,6 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Button } from "@workspace/ui/components/button";
-import { Checkbox } from "@workspace/ui/components/checkbox";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@workspace/ui/components/dialog";
 import { GripVerticalIcon, PlusIcon, Volume2Icon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";

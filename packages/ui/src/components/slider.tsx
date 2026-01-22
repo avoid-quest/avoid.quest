@@ -1,7 +1,7 @@
 "use client";
 
+import { cn } from "@avoid.quest/ui/lib/utils";
 import { Range, Root, Thumb, Track } from "@radix-ui/react-slider";
-import { cn } from "@workspace/ui/lib/utils";
 import { type ComponentProps, useMemo } from "react";
 
 function Slider({

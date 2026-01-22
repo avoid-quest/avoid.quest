@@ -35,4 +35,4 @@ PWA internet radio player with advanced audio mixing and 3 playback modes.
 
 - Uses `@avoid.quest/bandcamp`: Bandcamp metadata extraction
 - Uses `@avoid.quest/soundcloud`: SoundCloud metadata extraction
-- Uses `@workspace/ui`: form inputs, dialogs, sliders, buttons
+- Uses `@avoid.quest/ui`: form inputs, dialogs, sliders, buttons

@@ -1,5 +1,5 @@
 {
-  "name": "web",
+  "name": "@avoid.quest/web",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -18,9 +18,9 @@
     "@astrojs/react": "^4.4.2",
     "@fontsource/geist-mono": "^5.2.7",
     "@fontsource/geist-sans": "^5.2.5",
-    "@workspace/typescript-config": "workspace:*",
-    "@workspace/ui": "workspace:*",
-    "astro": "^5.16.11",
+    "@avoid.quest/typescript-config": "workspace:*",
+    "@avoid.quest/ui": "workspace:*",
+    "astro": "^5.16.13",
     "react": "catalog:",
     "react-dom": "catalog:",
     "tailwindcss": "catalog:"

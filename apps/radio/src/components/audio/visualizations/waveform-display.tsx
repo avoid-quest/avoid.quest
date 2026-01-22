@@ -4,7 +4,7 @@
  * Canvas-based oscilloscope-style waveform visualization.
  */
 
-import { cn } from "@workspace/ui/lib/utils";
+import { cn } from "@avoid.quest/ui/lib/utils";
 import { memo, useEffect, useRef } from "react";
 
 const RGBA_REGEX = /rgba?\(([^)]+)\)/;

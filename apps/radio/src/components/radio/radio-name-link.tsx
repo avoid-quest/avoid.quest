@@ -3,7 +3,7 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@workspace/ui/components/tooltip";
+} from "@avoid.quest/ui/components/tooltip";
 import { ExternalLinkIcon } from "lucide-react";
 import { useState } from "react";
 import type { Radio } from "@/lib/audio";

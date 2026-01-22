@@ -1,6 +1,6 @@
 "use client";
 
-import { api } from "@workspace/backend/convex/_generated/api";
+import { api } from "@avoid.quest/backend/convex/_generated/api";
 import { useQuery } from "convex/react";
 import PostCard from "./post-card";
 

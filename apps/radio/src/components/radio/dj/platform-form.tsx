@@ -1,7 +1,7 @@
-import { Button } from "@workspace/ui/components/button";
-import { Input } from "@workspace/ui/components/input";
-import { Label } from "@workspace/ui/components/label";
-import { Tabs, TabsList, TabsTrigger } from "@workspace/ui/components/tabs";
+import { Button } from "@avoid.quest/ui/components/button";
+import { Input } from "@avoid.quest/ui/components/input";
+import { Label } from "@avoid.quest/ui/components/label";
+import { Tabs, TabsList, TabsTrigger } from "@avoid.quest/ui/components/tabs";
 import { Loader2Icon, MusicIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { Radio } from "@/lib/audio";

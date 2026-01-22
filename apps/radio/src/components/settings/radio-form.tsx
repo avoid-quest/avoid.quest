@@ -1,14 +1,14 @@
-import { zodResolver } from "@hookform/resolvers/zod";
-import { Button } from "@workspace/ui/components/button";
+import { Button } from "@avoid.quest/ui/components/button";
 import {
   Field,
   FieldError,
   FieldGroup,
   FieldLabel,
   FieldSet,
-} from "@workspace/ui/components/field";
-import { Input } from "@workspace/ui/components/input";
-import { Textarea } from "@workspace/ui/components/textarea";
+} from "@avoid.quest/ui/components/field";
+import { Input } from "@avoid.quest/ui/components/input";
+import { Textarea } from "@avoid.quest/ui/components/textarea";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { CheckCircleIcon } from "lucide-react";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";

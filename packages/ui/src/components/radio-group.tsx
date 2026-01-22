@@ -1,7 +1,7 @@
 "use client";
 
+import { cn } from "@avoid.quest/ui/lib/utils";
 import { Indicator, Item, Root } from "@radix-ui/react-radio-group";
-import { cn } from "@workspace/ui/lib/utils";
 import { CircleIcon } from "lucide-react";
 import type * as React from "react";
 

@@ -1,11 +1,11 @@
-import { Button } from "@workspace/ui/components/button";
-import { Input } from "@workspace/ui/components/input";
-import { Label } from "@workspace/ui/components/label";
+import { Button } from "@avoid.quest/ui/components/button";
+import { Input } from "@avoid.quest/ui/components/input";
+import { Label } from "@avoid.quest/ui/components/label";
 import {
   RadioGroup,
   RadioGroupItem,
-} from "@workspace/ui/components/radio-group";
-import { Textarea } from "@workspace/ui/components/textarea";
+} from "@avoid.quest/ui/components/radio-group";
+import { Textarea } from "@avoid.quest/ui/components/textarea";
 import { Volume2Icon } from "lucide-react";
 import { useState } from "react";
 import type { RadioMetadata, ScrapedOption } from "@/lib/platform-types";

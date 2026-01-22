@@ -1,5 +1,6 @@
 "use client";
 
+import { cn } from "@avoid.quest/ui/lib/utils";
 import {
   CheckboxItem,
   Content,
@@ -17,7 +18,6 @@ import {
   SubTrigger,
   Trigger,
 } from "@radix-ui/react-dropdown-menu";
-import { cn } from "@workspace/ui/lib/utils";
 import { CheckIcon, ChevronRightIcon, CircleIcon } from "lucide-react";
 import type * as React from "react";
 

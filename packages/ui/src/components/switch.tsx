@@ -1,7 +1,7 @@
 "use client";
 
+import { cn } from "@avoid.quest/ui/lib/utils";
 import { Root, Thumb } from "@radix-ui/react-switch";
-import { cn } from "@workspace/ui/lib/utils";
 import type * as React from "react";
 
 function Switch({ className, ...props }: React.ComponentProps<typeof Root>) {

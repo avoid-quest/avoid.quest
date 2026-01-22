@@ -1,11 +1,15 @@
-import agent from "@convex-dev/agent/convex.config";
 import migrations from "@convex-dev/migrations/convex.config";
-import workflow from "@convex-dev/workflow/convex.config";
 import { defineApp } from "convex/server";
+import instarip from "./components/instarip/convex.config";
+import telegram from "./components/telegram/convex.config";
 
 const app = defineApp();
-app.use(agent);
+
+// External components
 app.use(migrations);
-app.use(workflow);
+
+// Local components
+app.use(instarip);
+app.use(telegram);
 
 export default app;

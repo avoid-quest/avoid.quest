@@ -1,4 +1,4 @@
-import { Button } from "@workspace/ui/components/button";
+import { Button } from "@avoid.quest/ui/components/button";
 import { DownloadIcon, XIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 

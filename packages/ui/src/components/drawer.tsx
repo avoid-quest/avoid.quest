@@ -1,6 +1,6 @@
 "use client";
 
-import { cn } from "@workspace/ui/lib/utils";
+import { cn } from "@avoid.quest/ui/lib/utils";
 import type { ComponentProps } from "react";
 import { Drawer as DrawerPrimitive } from "vaul";
 

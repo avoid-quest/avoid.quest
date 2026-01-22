@@ -1,5 +1,6 @@
 "use client";
 
+import { cn } from "@avoid.quest/ui/lib/utils";
 import {
   Content,
   Header,
@@ -7,7 +8,6 @@ import {
   Root,
   Trigger,
 } from "@radix-ui/react-accordion";
-import { cn } from "@workspace/ui/lib/utils";
 import { ChevronDownIcon } from "lucide-react";
 import type * as React from "react";
 

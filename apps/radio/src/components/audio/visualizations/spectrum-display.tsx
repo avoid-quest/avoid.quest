@@ -4,7 +4,7 @@
  * Canvas-based frequency spectrum visualization.
  */
 
-import { cn } from "@workspace/ui/lib/utils";
+import { cn } from "@avoid.quest/ui/lib/utils";
 import { memo, useEffect, useRef } from "react";
 
 export type SpectrumDisplayProps = {

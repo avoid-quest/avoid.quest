@@ -1,3 +1,11 @@
+import appleIcon from "@avoid.quest/ui/assets/favicon/apple-icon.png";
+import favicon from "@avoid.quest/ui/assets/favicon/favicon.ico";
+import icon0 from "@avoid.quest/ui/assets/favicon/icon0.svg";
+import icon1 from "@avoid.quest/ui/assets/favicon/icon1.png";
+import { Button } from "@avoid.quest/ui/components/button";
+import { Toaster } from "@avoid.quest/ui/components/sonner";
+import globalsCss from "@avoid.quest/ui/globals.css?url";
+import { cn } from "@avoid.quest/ui/lib/utils";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   createRootRoute,
@@ -5,14 +13,6 @@ import {
   Link,
   Scripts,
 } from "@tanstack/react-router";
-import appleIcon from "@workspace/ui/assets/favicon/apple-icon.png";
-import favicon from "@workspace/ui/assets/favicon/favicon.ico";
-import icon0 from "@workspace/ui/assets/favicon/icon0.svg";
-import icon1 from "@workspace/ui/assets/favicon/icon1.png";
-import { Button } from "@workspace/ui/components/button";
-import { Toaster } from "@workspace/ui/components/sonner";
-import globalsCss from "@workspace/ui/globals.css?url";
-import { cn } from "@workspace/ui/lib/utils";
 import { HomeIcon } from "lucide-react";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { InstallPrompt } from "@/components/pwa/install-prompt";

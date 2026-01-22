@@ -23,7 +23,10 @@
       "!**/cloudflare-env.d.ts",
       "!**/*-bundle.js",
       "!**/*-bundle.d.ts",
-      "!**/packages/backend/convex/_generated/server.js"
+      "!**/packages/backend/convex/_generated/server.js",
+      "!**/_generated/**/*.ts",
+      "!**/_generated/**/*.js",
+      "!**/packages/_archived"
     ]
   },
   "overrides": [
@@ -41,6 +44,21 @@
             "noUnusedPrivateClassMembers": "off"
           }
         }
+      }
+    },
+    {
+      "includes": ["**/_generated/**"],
+      "linter": {
+        "enabled": false
+      },
+      "formatter": {
+        "enabled": false
+      }
+    },
+    {
+      "includes": ["**/packages/_archived/**"],
+      "linter": {
+        "enabled": false
       }
     }
   ],

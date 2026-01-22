@@ -1,7 +1,7 @@
 "use client";
 
+import { cn } from "@avoid.quest/ui/lib/utils";
 import { Fallback, Image, Root } from "@radix-ui/react-avatar";
-import { cn } from "@workspace/ui/lib/utils";
 import type * as React from "react";
 
 function Avatar({ className, ...props }: React.ComponentProps<typeof Root>) {

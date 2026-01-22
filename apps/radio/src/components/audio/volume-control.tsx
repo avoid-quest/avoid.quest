@@ -1,6 +1,6 @@
-import { Button } from "@workspace/ui/components/button";
-import { Slider } from "@workspace/ui/components/slider";
-import { cn } from "@workspace/ui/lib/utils";
+import { Button } from "@avoid.quest/ui/components/button";
+import { Slider } from "@avoid.quest/ui/components/slider";
+import { cn } from "@avoid.quest/ui/lib/utils";
 import { Volume1Icon, Volume2Icon, VolumeXIcon } from "lucide-react";
 
 const MAX_VOLUME = 100;

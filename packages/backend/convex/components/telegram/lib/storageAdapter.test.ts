@@ -2,7 +2,9 @@
  * Tests for grammY storage adapter
  */
 
+import type { GenericActionCtx } from "convex/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { DataModel } from "../../../_generated/dataModel";
 import type { BaseSessionData } from "./storageAdapter";
 import { createStorageAdapter } from "./storageAdapter";
 
@@ -42,8 +44,9 @@ describe("createStorageAdapter", () => {
 
 	beforeEach(() => {
 		mockCtx = createMockCtx();
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		adapter = createStorageAdapter<TestSessionData>(mockCtx as any);
+		adapter = createStorageAdapter<TestSessionData>(
+			mockCtx as unknown as GenericActionCtx<DataModel>,
+		);
 	});
 
 	describe("read", () => {
@@ -141,7 +144,10 @@ describe("createStorageAdapter", () => {
 			);
 
 			// Verify the JSON can be parsed back correctly
-			const [, args] = mockCtx.runMutation.mock.calls[0];
+			const [, args] = mockCtx.runMutation.mock.calls[0] as [
+				string,
+				{ data: string },
+			];
 			expect(JSON.parse(args.data)).toEqual(complexSession);
 		});
 

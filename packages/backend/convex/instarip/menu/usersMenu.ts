@@ -7,6 +7,7 @@
 
 import { MenuTemplate } from "grammy-inline-menu";
 import { components } from "../../_generated/api";
+import type { Id } from "../../components/instarip/_generated/dataModel";
 import type { InstaripBotContext } from "../bot";
 
 /**
@@ -20,7 +21,7 @@ const userDetailMenu = new MenuTemplate<InstaripBotContext>(async (ctx) => {
 	const user = await ctx.convex.runQuery(
 		components.instarip.users.getUserById,
 		{
-			id: userId as never,
+			id: userId as Id<"users">,
 		},
 	);
 
@@ -53,7 +54,7 @@ userDetailMenu.interact("toggle", {
 		const user = await ctx.convex.runQuery(
 			components.instarip.users.getUserById,
 			{
-				id: userId as never,
+				id: userId as Id<"users">,
 			},
 		);
 
@@ -63,7 +64,7 @@ userDetailMenu.interact("toggle", {
 		}
 
 		await ctx.convex.runMutation(components.instarip.users.toggleScraping, {
-			id: userId as never,
+			id: userId as Id<"users">,
 		});
 
 		return true; // Refresh menu
@@ -101,7 +102,7 @@ userDetailMenu.interact("delete", {
 		// If already pending, execute delete
 		if (ctx.session.pendingDelete?.userId === userId) {
 			await ctx.convex.runMutation(components.instarip.users.deleteUser, {
-				id: userId as never,
+				id: userId as Id<"users">,
 			});
 			ctx.session.pendingDelete = undefined;
 			await ctx.reply("✅ User deleted");
@@ -112,7 +113,7 @@ userDetailMenu.interact("delete", {
 		const user = await ctx.convex.runQuery(
 			components.instarip.users.getUserById,
 			{
-				id: userId as never,
+				id: userId as Id<"users">,
 			},
 		);
 

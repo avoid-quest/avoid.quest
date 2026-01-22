@@ -6,6 +6,7 @@
  */
 
 import { components } from "../../_generated/api";
+import type { Id } from "../../components/instarip/_generated/dataModel";
 import type { InstaripBotContext } from "../bot";
 
 /**
@@ -135,7 +136,7 @@ async function handleEditUsername(
 
 	try {
 		await ctx.convex.runMutation(components.instarip.users.updateUsername, {
-			id: userId as never,
+			id: userId as Id<"users">,
 			username: cleanUsername,
 		});
 		await ctx.reply(`✅ Username updated to @${cleanUsername}!`);

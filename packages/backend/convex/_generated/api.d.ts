@@ -767,13 +767,24 @@ export declare const components: {
           botToken: string;
           caption: string;
           chatId: string;
-          mediaItems: Array<{
-            file_id?: string;
-            height?: number;
-            type: "image" | "video" | "thumbnail";
-            url?: string;
-            width?: number;
-          }>;
+          mediaItems: Array<
+            | {
+                file_id?: string;
+                file_unique_id?: string;
+                height?: number;
+                type: "image" | "video" | "thumbnail";
+                url: string;
+                width?: number;
+              }
+            | {
+                file_id: string;
+                file_unique_id: string;
+                height?: number;
+                type: "image" | "video" | "thumbnail";
+                url?: string;
+                width?: number;
+              }
+          >;
           postUrl: string;
         },
         {

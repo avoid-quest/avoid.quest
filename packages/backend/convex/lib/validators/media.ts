@@ -44,16 +44,29 @@ export const instagramMediaItemValidator = v.object({
 });
 
 /**
- * Telegram media for sending - both optional, prefers file_id
+ * Telegram media for sending - requires either url or file_id
  * Used when building Telegram API requests
  */
-export const telegramMediaItemValidator = v.object({
-	url: v.optional(v.string()),
-	file_id: v.optional(v.string()),
-	type: mediaTypeValidator,
-	width: v.optional(v.number()),
-	height: v.optional(v.number()),
-});
+export const telegramMediaItemValidator = v.union(
+	// URL-based media (from Instagram, no file_id yet)
+	v.object({
+		url: v.string(),
+		file_id: v.optional(v.string()),
+		file_unique_id: v.optional(v.string()),
+		type: mediaTypeValidator,
+		width: v.optional(v.number()),
+		height: v.optional(v.number()),
+	}),
+	// File ID-based media (cached in Telegram)
+	v.object({
+		url: v.optional(v.string()),
+		file_id: v.string(),
+		file_unique_id: v.string(),
+		type: mediaTypeValidator,
+		width: v.optional(v.number()),
+		height: v.optional(v.number()),
+	}),
+);
 
 /**
  * Telegram file_id for storage - file_id required

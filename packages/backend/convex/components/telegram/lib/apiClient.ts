@@ -124,6 +124,16 @@ export function createTelegramClient(
 					description: `JSON parse error: ${parseError instanceof Error ? parseError.message : "Unknown parse error"}`,
 				};
 			}
+		} catch (error) {
+			// Handle AbortError (timeout) and network errors
+			if (error instanceof Error && error.name === "AbortError") {
+				return { ok: false, error_code: 408, description: "Request timeout" };
+			}
+			return {
+				ok: false,
+				error_code: 0,
+				description: error instanceof Error ? error.message : "Network error",
+			};
 		} finally {
 			clearTimeout(timeoutId);
 		}

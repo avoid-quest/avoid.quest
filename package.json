@@ -5,6 +5,7 @@
   "workspaces": {
     "packages": [
       "apps/*",
+      "!apps/cwavasape_legacy",
       "packages/*"
     ],
     "catalog": {

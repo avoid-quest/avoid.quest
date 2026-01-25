@@ -5,7 +5,7 @@ import {
   useVirtualizer,
   type Virtualizer,
 } from "@tanstack/react-virtual";
-import { useCallback, useMemo, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { usePins } from "@/lib/hooks/use-pins";
 import { useImageSize } from "@/lib/hooks/use-settings";
 import { PinImage } from "./pin-image";
@@ -15,7 +15,18 @@ const OVERSCAN_COUNT = 5;
 export function VirtualGallery() {
   const parentRef = useRef<HTMLDivElement>(null);
   const activeStickyIndexRef = useRef(0);
+  const itemHeightRef = useRef(
+    typeof window !== "undefined" ? window.innerHeight : 800
+  );
   const imageSize = useImageSize();
+
+  useEffect(() => {
+    const updateHeight = () => {
+      itemHeightRef.current = window.innerHeight;
+    };
+    window.addEventListener("resize", updateHeight);
+    return () => window.removeEventListener("resize", updateHeight);
+  }, []);
 
   const {
     data,
@@ -28,66 +39,52 @@ export function VirtualGallery() {
     isLoading,
   } = usePins();
 
-  const allPins = useMemo(
-    () => data?.pages.flatMap((page) => page.pins) ?? [],
-    [data?.pages]
-  );
+  const allPins = data?.pages.flatMap((page) => page.pins) ?? [];
 
-  const itemHeight = typeof window !== "undefined" ? window.innerHeight : 800;
+  const itemHeight = itemHeightRef.current;
 
   const virtualizer = useVirtualizer({
     count: allPins.length || 0,
     getScrollElement: () => parentRef.current,
     estimateSize: () => itemHeight,
     overscan: OVERSCAN_COUNT,
-    rangeExtractor: useCallback(
-      (range: Range) => {
-        const scrollTop = parentRef.current?.scrollTop ?? 0;
-        const currentIndex = Math.floor(scrollTop / itemHeight);
-        activeStickyIndexRef.current = currentIndex;
+    rangeExtractor: (range: Range) => {
+      const scrollTop = parentRef.current?.scrollTop ?? 0;
+      const currentIndex = Math.floor(scrollTop / itemHeightRef.current);
+      activeStickyIndexRef.current = currentIndex;
 
-        const extendedRange = {
-          ...range,
-          startIndex: Math.max(0, currentIndex - OVERSCAN_COUNT),
-          endIndex: Math.min(
-            currentIndex + OVERSCAN_COUNT * 2,
-            range.count - 1
-          ),
-        };
+      const extendedRange = {
+        ...range,
+        startIndex: Math.max(0, currentIndex - OVERSCAN_COUNT),
+        endIndex: Math.min(currentIndex + OVERSCAN_COUNT * 2, range.count - 1),
+      };
 
-        const visibleRange = defaultRangeExtractor(extendedRange);
-        return [
-          ...new Set([activeStickyIndexRef.current, ...visibleRange]),
-        ].sort((a, b) => a - b);
-      },
-      [itemHeight]
-    ),
-    onChange: useCallback(
-      (instance: Virtualizer<HTMLDivElement, HTMLDivElement>) => {
-        if (!hasNextPage || isFetchingNextPage) {
+      const visibleRange = defaultRangeExtractor(extendedRange);
+      return [...new Set([activeStickyIndexRef.current, ...visibleRange])].sort(
+        (a, b) => a - b
+      );
+    },
+    onChange: (instance: Virtualizer<HTMLDivElement, HTMLDivElement>) => {
+      if (!hasNextPage || isFetchingNextPage) {
+        return;
+      }
+
+      if (instance.isScrolling && instance.scrollDirection === "forward") {
+        const lastItem = instance.getVirtualItems().at(-1);
+        if (!lastItem) {
           return;
         }
 
-        if (instance.isScrolling && instance.scrollDirection === "forward") {
-          const lastItem = instance.getVirtualItems().at(-1);
-          if (!lastItem) {
-            return;
-          }
-
-          const remainingItems = allPins.length - lastItem.index;
-          if (remainingItems <= OVERSCAN_COUNT * 2) {
-            fetchNextPage();
-          }
+        const remainingItems = allPins.length - lastItem.index;
+        if (remainingItems <= OVERSCAN_COUNT * 2) {
+          fetchNextPage();
         }
-      },
-      [allPins.length, hasNextPage, isFetchingNextPage, fetchNextPage]
-    ),
+      }
+    },
   });
 
-  const isActiveSticky = useCallback(
-    (index: number) => activeStickyIndexRef.current === index,
-    []
-  );
+  const isActiveSticky = (index: number) =>
+    activeStickyIndexRef.current === index;
 
   if (isLoading) {
     return (

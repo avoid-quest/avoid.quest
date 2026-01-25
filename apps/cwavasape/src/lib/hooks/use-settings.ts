@@ -1,5 +1,10 @@
 import { eq, useLiveQuery } from "@tanstack/react-db";
-import { type Settings, settingsCollection } from "@/lib/collections";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  type Settings,
+  settingsCollection,
+  setUsername,
+} from "@/lib/collections";
 import { DEFAULT_IMAGE_SIZE, DEFAULT_USERNAME } from "@/lib/const";
 
 const SETTINGS_ID = "app-settings";
@@ -31,6 +36,18 @@ export function useUsername() {
 export function useImageSize() {
   const { data } = useSettings();
   return data?.imageSize ?? DEFAULT_IMAGE_SIZE;
+}
+
+/**
+ * Hook that returns a function to set username and invalidate pins query.
+ * Use this instead of setUsername when you need automatic query invalidation.
+ */
+export function useSetUsername() {
+  const queryClient = useQueryClient();
+  return (username: string) => {
+    setUsername(username);
+    queryClient.invalidateQueries({ queryKey: ["pins"] });
+  };
 }
 
 // Re-export mutations

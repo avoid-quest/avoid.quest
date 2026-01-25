@@ -2,15 +2,15 @@ import { Button } from "@avoid.quest/ui/components/button";
 import { Input } from "@avoid.quest/ui/components/input";
 import { Label } from "@avoid.quest/ui/components/label";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { useQueryClient } from "@tanstack/react-query";
-import { Check, Pencil } from "lucide-react";
+import Check from "lucide-react/dist/esm/icons/check";
+import Pencil from "lucide-react/dist/esm/icons/pencil";
 import { useEffect, useState } from "react";
 import { DEFAULT_USERNAME } from "@/lib/const";
-import { setUsername, useUsername } from "@/lib/hooks/use-settings";
+import { useSetUsername, useUsername } from "@/lib/hooks/use-settings";
 
 export function UsernameField() {
   const username = useUsername();
-  const queryClient = useQueryClient();
+  const setUsername = useSetUsername();
   const [tempUsername, setTempUsername] = useState(username);
   const [isEditing, setIsEditing] = useState(false);
 
@@ -26,7 +26,6 @@ export function UsernameField() {
     const usernameToSave = tempUsername.trim() || DEFAULT_USERNAME;
     setUsername(usernameToSave);
     setIsEditing(false);
-    queryClient.invalidateQueries({ queryKey: ["pins"] });
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {

@@ -1,4 +1,5 @@
 import type { ImageSize, PinResponse } from "@avoid.quest/pinterest";
+import { memo } from "react";
 
 type PinImageProps = {
   pin: PinResponse;
@@ -6,7 +7,11 @@ type PinImageProps = {
   imageSize: ImageSize;
 };
 
-export function PinImage({ pin, index, imageSize }: PinImageProps) {
+export const PinImage = memo(function PinImage({
+  pin,
+  index,
+  imageSize,
+}: PinImageProps) {
   const image = pin.images[imageSize];
 
   return (
@@ -27,4 +32,4 @@ export function PinImage({ pin, index, imageSize }: PinImageProps) {
       />
     </div>
   );
-}
+});

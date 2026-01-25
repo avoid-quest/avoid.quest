@@ -1,8 +1,9 @@
-import type { PinResponse } from "@avoid.quest/pinterest";
-import { Application, Sprite, Texture } from "pixi.js";
-import { memo, useEffect, useRef, useState } from "react";
+import { Application, Container, Sprite, Texture } from "pixi.js";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
+import type { AnalysisEffectsSettings } from "@/lib/collections/settings";
 import { canRenderEffects, useCapabilities } from "@/lib/effects";
-import type { ScrollState } from "@/lib/effects/types";
+import type { ImageFeatures } from "@/lib/effects/feature-types";
+import type { EffectPipeline } from "@/lib/effects/pipeline/effect-pipeline";
 import { useSettings } from "@/lib/hooks/use-settings";
 import { getProxiedImageUrl } from "@/lib/image-proxy";
 
@@ -28,40 +29,90 @@ function fitSpriteToScreen(
 }
 
 type EffectsCanvasProps = {
-  pins: PinResponse[];
-  scrollState: ScrollState;
-  imageSize: string;
+  prevImageUrl?: string;
+  currentImageUrl?: string;
+  nextImageUrl?: string;
+  currentIndex: number;
+  scrollProgress: number;
+  analysisEffects?: AnalysisEffectsSettings;
 };
 
 export const EffectsCanvas = memo(function EffectsCanvas({
-  pins,
-  scrollState,
-  imageSize,
+  prevImageUrl,
+  currentImageUrl,
+  nextImageUrl,
+  currentIndex,
+  scrollProgress,
+  analysisEffects,
 }: EffectsCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const appRef = useRef<Application | null>(null);
+  const spriteContainerRef = useRef<Container | null>(null);
   const spriteFromRef = useRef<Sprite | null>(null);
   const spriteToRef = useRef<Sprite | null>(null);
   const textureCache = useRef<Map<string, Texture>>(new Map());
-  const [isReady, setIsReady] = useState(false);
+  const featureCache = useRef<Map<string, ImageFeatures>>(new Map());
+  const pipelineRef = useRef<EffectPipeline | null>(null);
 
-  // Track loaded texture indices to avoid redundant loads
-  const loadedFromIndex = useRef<number>(-1);
-  const loadedToIndex = useRef<number>(-1);
+  // Track load requests to handle race conditions during rapid scrolling
+  // Each new load increments the version, stale loads check before applying
+  const loadVersionRef = useRef<{ from: number; to: number }>({
+    from: 0,
+    to: 0,
+  });
+  const loadedFromIndexRef = useRef<number>(-1);
+  const loadedToIndexRef = useRef<number>(-1);
+
+  const [isReady, setIsReady] = useState(false);
 
   const capabilities = useCapabilities();
   const { data: settings } = useSettings();
   const effectsEnabled = settings?.effectsEnabled ?? false;
   const snapEnabled = settings?.snapEnabled ?? false;
-
   const shouldRender = effectsEnabled && canRenderEffects(capabilities);
 
-  // Initialize PixiJS application
+  // Async texture loader (loads and caches)
+  const loadTexture = useCallback(
+    async (url: string): Promise<Texture | null> => {
+      if (textureCache.current.has(url)) {
+        return textureCache.current.get(url) ?? null;
+      }
+
+      try {
+        const proxiedUrl = getProxiedImageUrl(url);
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+
+        const texture = await new Promise<Texture>((resolve, reject) => {
+          img.onload = () => resolve(Texture.from(img));
+          img.onerror = () => reject(new Error("Failed to load image"));
+          img.src = proxiedUrl;
+        });
+
+        textureCache.current.set(url, texture);
+
+        // Background feature extraction
+        const app = appRef.current;
+        if (app && !featureCache.current.has(url)) {
+          import("@/lib/effects/feature-extractor")
+            .then(({ extractFeatures }) => extractFeatures(app, texture, url))
+            .then((features) => featureCache.current.set(url, features))
+            .catch(() => undefined);
+        }
+
+        return texture;
+      } catch {
+        return null;
+      }
+    },
+    []
+  );
+
+  // Initialize PixiJS
   useEffect(() => {
     if (!(containerRef.current && shouldRender)) {
       return;
     }
-
     if (appRef.current) {
       return;
     }
@@ -69,7 +120,6 @@ export const EffectsCanvas = memo(function EffectsCanvas({
     const initApp = async () => {
       try {
         const app = new Application();
-
         await app.init({
           background: 0x00_00_00,
           resizeTo: window,
@@ -84,22 +134,34 @@ export const EffectsCanvas = memo(function EffectsCanvas({
           return;
         }
 
+        // Ensure canvas doesn't capture pointer events (allows scrolling through)
+        app.canvas.style.pointerEvents = "none";
         containerRef.current.appendChild(app.canvas);
         appRef.current = app;
 
-        // Create two sprites for crossfade
-        // spriteFrom = background (current image)
-        // spriteTo = foreground (next image, fades in)
+        // Create a container to hold both sprites - effects apply to the container
+        const spriteContainer = new Container();
+        app.stage.addChild(spriteContainer);
+        spriteContainerRef.current = spriteContainer;
+
         const spriteFrom = new Sprite();
         spriteFrom.anchor.set(0.5);
-        app.stage.addChild(spriteFrom);
+        spriteContainer.addChild(spriteFrom);
         spriteFromRef.current = spriteFrom;
 
         const spriteTo = new Sprite();
         spriteTo.anchor.set(0.5);
         spriteTo.alpha = 0;
-        app.stage.addChild(spriteTo);
+        spriteContainer.addChild(spriteTo);
         spriteToRef.current = spriteTo;
+
+        const { EffectPipeline } = await import(
+          "@/lib/effects/pipeline/effect-pipeline"
+        );
+        const pipeline = new EffectPipeline();
+        // Attach to container so effects apply to both sprites combined
+        pipeline.attach(spriteContainer);
+        pipelineRef.current = pipeline;
 
         setIsReady(true);
       } catch (err) {
@@ -110,51 +172,25 @@ export const EffectsCanvas = memo(function EffectsCanvas({
     initApp();
 
     return () => {
-      if (appRef.current) {
-        appRef.current.destroy(true, { children: true });
-        appRef.current = null;
-        setIsReady(false);
-      }
+      pipelineRef.current?.detach();
+      pipelineRef.current = null;
+      spriteContainerRef.current = null;
+      appRef.current?.destroy(true, { children: true });
+      appRef.current = null;
+      setIsReady(false);
       textureCache.current.clear();
-      loadedFromIndex.current = -1;
-      loadedToIndex.current = -1;
+      featureCache.current.clear();
+      loadedFromIndexRef.current = -1;
+      loadedToIndexRef.current = -1;
+      // Reset load versions to invalidate any in-flight requests
+      loadVersionRef.current = { from: 0, to: 0 };
     };
   }, [shouldRender]);
 
-  // Load texture via proxy
-  const loadTexture = async (url: string): Promise<Texture | null> => {
-    if (textureCache.current.has(url)) {
-      return textureCache.current.get(url) ?? null;
-    }
-
-    try {
-      const proxiedUrl = getProxiedImageUrl(url);
-
-      const img = new Image();
-      img.crossOrigin = "anonymous";
-
-      const texture = await new Promise<Texture>((resolve, reject) => {
-        img.onload = () => resolve(Texture.from(img));
-        img.onerror = () => reject(new Error("Failed to load image"));
-        img.src = proxiedUrl;
-      });
-
-      textureCache.current.set(url, texture);
-      return texture;
-    } catch (err) {
-      console.error("Failed to load texture:", url, err);
-      return null;
-    }
-  };
-
-  // Get image URL for a pin
-  const getImageUrl = (pin: PinResponse): string | undefined => {
-    return pin.images[imageSize as keyof typeof pin.images]?.url;
-  };
-
-  // Update sprites based on scroll state
+  // Load textures when index changes (NOT on every scroll)
+  // Uses version tracking to prevent race conditions during rapid scrolling
   useEffect(() => {
-    if (!(isReady && appRef.current) || pins.length === 0) {
+    if (!isReady) {
       return;
     }
 
@@ -165,60 +201,93 @@ export const EffectsCanvas = memo(function EffectsCanvas({
       return;
     }
 
-    const { currentIndex, nextIndex, progress } = scrollState;
     const screenWidth = app.screen.width;
     const screenHeight = app.screen.height;
 
-    const currentPin = pins[currentIndex];
-    const nextPin = pins[nextIndex];
+    // Load current texture with version tracking
+    if (currentImageUrl && loadedFromIndexRef.current !== currentIndex) {
+      // Increment version to mark this as the latest request
+      const loadVersion = ++loadVersionRef.current.from;
 
-    if (!currentPin) {
+      loadTexture(currentImageUrl).then((texture) => {
+        // Only apply if this is still the latest request (not stale)
+        if (
+          texture &&
+          spriteFromRef.current &&
+          loadVersionRef.current.from === loadVersion
+        ) {
+          spriteFromRef.current.texture = texture;
+          fitSpriteToScreen(spriteFromRef.current, screenWidth, screenHeight);
+          loadedFromIndexRef.current = currentIndex;
+        }
+      });
+    }
+
+    // Load next texture with version tracking
+    const nextIndex = currentIndex + 1;
+    if (nextImageUrl && loadedToIndexRef.current !== nextIndex) {
+      const loadVersion = ++loadVersionRef.current.to;
+
+      loadTexture(nextImageUrl).then((texture) => {
+        // Only apply if this is still the latest request (not stale)
+        if (
+          texture &&
+          spriteToRef.current &&
+          loadVersionRef.current.to === loadVersion
+        ) {
+          spriteToRef.current.texture = texture;
+          fitSpriteToScreen(spriteToRef.current, screenWidth, screenHeight);
+          loadedToIndexRef.current = nextIndex;
+        }
+      });
+    }
+
+    // Preload prev (no version check needed - just warming cache)
+    if (prevImageUrl) {
+      loadTexture(prevImageUrl);
+    }
+  }, [
+    isReady,
+    currentIndex,
+    currentImageUrl,
+    nextImageUrl,
+    prevImageUrl,
+    loadTexture,
+  ]);
+
+  // Update alpha on every scroll (fast, synchronous)
+  useEffect(() => {
+    const spriteFrom = spriteFromRef.current;
+    const spriteTo = spriteToRef.current;
+    if (!(spriteFrom && spriteTo)) {
       return;
     }
 
-    const updateSprites = async () => {
-      // Load current image into spriteFrom (if not already loaded)
-      if (loadedFromIndex.current !== currentIndex) {
-        const currentUrl = getImageUrl(currentPin);
-        if (currentUrl) {
-          const texture = await loadTexture(currentUrl);
-          if (texture) {
-            spriteFrom.texture = texture;
-            fitSpriteToScreen(spriteFrom, screenWidth, screenHeight);
-            loadedFromIndex.current = currentIndex;
-          }
-        }
-      }
+    if (snapEnabled) {
+      const showNext = scrollProgress >= 0.5;
+      spriteFrom.alpha = showNext ? 0 : 1;
+      spriteTo.alpha = showNext ? 1 : 0;
+    } else {
+      spriteFrom.alpha = 1 - scrollProgress;
+      spriteTo.alpha = scrollProgress;
+    }
+  }, [scrollProgress, snapEnabled]);
 
-      // Load next image into spriteTo (if not already loaded)
-      if (nextPin && loadedToIndex.current !== nextIndex) {
-        const nextUrl = getImageUrl(nextPin);
-        if (nextUrl) {
-          const texture = await loadTexture(nextUrl);
-          if (texture) {
-            spriteTo.texture = texture;
-            fitSpriteToScreen(spriteTo, screenWidth, screenHeight);
-            loadedToIndex.current = nextIndex;
-          }
-        }
-      }
+  // Apply analysis effects to the sprite container (affects both sprites)
+  useEffect(() => {
+    const pipeline = pipelineRef.current;
+    if (!(pipeline && isReady)) {
+      return;
+    }
 
-      // Apply transition effect
-      if (snapEnabled) {
-        // Instant swap at 50% threshold
-        const showNext = progress >= 0.5;
-        spriteFrom.alpha = showNext ? 0 : 1;
-        spriteTo.alpha = showNext ? 1 : 0;
-      } else {
-        // Smooth crossfade
-        spriteTo.alpha = progress;
-      }
-    };
+    if (analysisEffects) {
+      pipeline.update(analysisEffects);
+    } else {
+      pipeline.clear();
+    }
+  }, [isReady, analysisEffects]);
 
-    updateSprites();
-  }, [isReady, pins, scrollState, imageSize, snapEnabled]);
-
-  // Handle window resize
+  // Resize handler
   useEffect(() => {
     const handleResize = () => {
       const app = appRef.current;
@@ -228,14 +297,13 @@ export const EffectsCanvas = memo(function EffectsCanvas({
         return;
       }
 
-      const screenWidth = app.screen.width;
-      const screenHeight = app.screen.height;
-
+      const w = app.screen.width;
+      const h = app.screen.height;
       if (spriteFrom?.texture) {
-        fitSpriteToScreen(spriteFrom, screenWidth, screenHeight);
+        fitSpriteToScreen(spriteFrom, w, h);
       }
       if (spriteTo?.texture) {
-        fitSpriteToScreen(spriteTo, screenWidth, screenHeight);
+        fitSpriteToScreen(spriteTo, w, h);
       }
     };
 
@@ -249,12 +317,9 @@ export const EffectsCanvas = memo(function EffectsCanvas({
 
   return (
     <div
-      className="pointer-events-none fixed inset-0 z-20"
+      className="pointer-events-none fixed inset-0 z-40"
       ref={containerRef}
-      style={{
-        opacity: isReady ? 1 : 0,
-        transition: "opacity 0.3s ease-in-out",
-      }}
+      style={{ opacity: isReady ? 1 : 0 }}
     />
   );
 });

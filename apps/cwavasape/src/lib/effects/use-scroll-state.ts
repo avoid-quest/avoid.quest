@@ -21,49 +21,63 @@ export function useScrollState({
   const [scrollState, setScrollState] =
     useState<ScrollState>(DEFAULT_SCROLL_STATE);
   const lastScrollTop = useRef(0);
-  const lastUpdateTime = useRef(0);
+  const rafIdRef = useRef<number | null>(null);
+  const pendingScrollTop = useRef<number | null>(null);
 
   const updateScrollState = useCallback(
     (scrollTop: number) => {
-      const now = performance.now();
+      // Store the latest scroll position
+      pendingScrollTop.current = scrollTop;
 
-      // Throttle updates to ~60fps
-      if (now - lastUpdateTime.current < 16) {
+      // If we already have a RAF scheduled, skip
+      if (rafIdRef.current !== null) {
         return;
       }
-      lastUpdateTime.current = now;
 
-      // Calculate which image we're on and the progress between images
-      const exactPosition = scrollTop / itemHeight;
-      const currentIndex = Math.floor(exactPosition);
-      const progress = exactPosition - currentIndex;
+      // Schedule update on next animation frame
+      rafIdRef.current = requestAnimationFrame(() => {
+        rafIdRef.current = null;
+        const currentScrollTop = pendingScrollTop.current;
+        if (currentScrollTop === null) return;
 
-      // Determine scroll direction
-      let direction: ScrollState["direction"] = "idle";
-      if (scrollTop > lastScrollTop.current + 1) {
-        direction = "forward";
-      } else if (scrollTop < lastScrollTop.current - 1) {
-        direction = "backward";
-      }
-      lastScrollTop.current = scrollTop;
+        // Calculate which image we're on and the progress between images
+        const exactPosition = currentScrollTop / itemHeight;
+        const currentIndex = Math.floor(exactPosition);
+        const progress = exactPosition - currentIndex;
 
-      // Calculate prev/next indices with bounds checking
-      const prevIndex = Math.max(0, currentIndex - 1);
-      const nextIndex = Math.min(totalItems - 1, currentIndex + 1);
+        // Determine scroll direction
+        let direction: ScrollState["direction"] = "idle";
+        if (currentScrollTop > lastScrollTop.current + 1) {
+          direction = "forward";
+        } else if (currentScrollTop < lastScrollTop.current - 1) {
+          direction = "backward";
+        }
+        lastScrollTop.current = currentScrollTop;
 
-      setScrollState({
-        currentIndex: Math.min(Math.max(0, currentIndex), totalItems - 1),
-        prevIndex,
-        nextIndex,
-        progress,
-        direction,
+        // Calculate prev/next indices with bounds checking
+        const prevIndex = Math.max(0, currentIndex - 1);
+        const nextIndex = Math.min(totalItems - 1, currentIndex + 1);
+
+        setScrollState({
+          currentIndex: Math.min(Math.max(0, currentIndex), totalItems - 1),
+          prevIndex,
+          nextIndex,
+          progress,
+          direction,
+        });
       });
     },
     [itemHeight, totalItems]
   );
 
+  // Flush is a no-op now since RAF handles it
+  const flushScrollState = useCallback(() => {
+    // No-op - RAF will handle the pending update
+  }, []);
+
   return {
     scrollState,
     updateScrollState,
+    flushScrollState,
   };
 }

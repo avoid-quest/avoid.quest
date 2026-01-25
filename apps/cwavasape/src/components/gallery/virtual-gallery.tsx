@@ -1,3 +1,4 @@
+import type { PinResponse } from "@avoid.quest/pinterest";
 import { Spinner } from "@avoid.quest/ui/components/spinner";
 import {
   defaultRangeExtractor,
@@ -5,7 +6,7 @@ import {
   useVirtualizer,
   type Virtualizer,
 } from "@tanstack/react-virtual";
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { DEFAULT_IMAGE_SIZE, DEFAULT_SCROLL_SENSITIVITY } from "@/lib/const";
 import {
   canRenderEffects,
@@ -75,6 +76,15 @@ export function VirtualGallery() {
 
   const allPins = data?.pages.flatMap((page) => page.pins) ?? [];
 
+  // Helper to get image URL for a pin at given index
+  const getImageUrl = useCallback(
+    (index: number): string | undefined => {
+      const pin: PinResponse | undefined = allPins[index];
+      return pin?.images[imageSize as keyof typeof pin.images]?.url;
+    },
+    [allPins, imageSize]
+  );
+
   const itemHeight = itemHeightRef.current;
 
   // Scroll state for effects canvas
@@ -95,7 +105,9 @@ export function VirtualGallery() {
     };
 
     scrollElement.addEventListener("scroll", handleScroll, { passive: true });
-    return () => scrollElement.removeEventListener("scroll", handleScroll);
+    return () => {
+      scrollElement.removeEventListener("scroll", handleScroll);
+    };
   }, [updateScrollState]);
 
   const virtualizer = useVirtualizer({
@@ -217,7 +229,10 @@ export function VirtualGallery() {
                   zIndex: activeSticky ? 1 : 0,
                 }}
               >
-                {!effectsActive && (
+                {effectsActive ? (
+                  // Empty placeholder to maintain scroll height when effects handle rendering
+                  <div className="h-full w-full" />
+                ) : (
                   <PinImage
                     imageSize={imageSize}
                     index={virtualItem.index}
@@ -237,9 +252,12 @@ export function VirtualGallery() {
       )}
 
       <EffectsCanvas
-        imageSize={imageSize}
-        pins={allPins}
-        scrollState={scrollState}
+        analysisEffects={settings?.analysisEffects}
+        currentImageUrl={getImageUrl(scrollState.currentIndex)}
+        currentIndex={scrollState.currentIndex}
+        nextImageUrl={getImageUrl(scrollState.nextIndex)}
+        prevImageUrl={getImageUrl(scrollState.prevIndex)}
+        scrollProgress={scrollState.progress}
       />
     </div>
   );

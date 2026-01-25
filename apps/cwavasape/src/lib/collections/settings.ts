@@ -4,8 +4,10 @@ import {
 } from "@tanstack/react-db";
 import { z } from "zod";
 import {
+  DEFAULT_EFFECTS_ENABLED,
   DEFAULT_IMAGE_SIZE,
   DEFAULT_SCROLL_SENSITIVITY,
+  DEFAULT_SNAP_ENABLED,
   DEFAULT_USERNAME,
 } from "../const";
 
@@ -20,6 +22,8 @@ const settingsSchema = z.object({
     .min(0.1)
     .max(4.0)
     .default(DEFAULT_SCROLL_SENSITIVITY),
+  effectsEnabled: z.boolean().default(DEFAULT_EFFECTS_ENABLED),
+  snapEnabled: z.boolean().default(DEFAULT_SNAP_ENABLED),
 });
 
 export type Settings = z.infer<typeof settingsSchema>;
@@ -48,13 +52,23 @@ export async function initializeSettings(): Promise<void> {
       username: DEFAULT_USERNAME,
       imageSize: DEFAULT_IMAGE_SIZE,
       scrollSensitivity: DEFAULT_SCROLL_SENSITIVITY,
+      effectsEnabled: DEFAULT_EFFECTS_ENABLED,
+      snapEnabled: DEFAULT_SNAP_ENABLED,
     });
   } else {
     // Migrate existing settings to add new fields
     const settings = existing.get(SETTINGS_ID);
-    if (settings && settings.scrollSensitivity === undefined) {
+    if (settings) {
       settingsCollection.update(SETTINGS_ID, (draft) => {
-        draft.scrollSensitivity = DEFAULT_SCROLL_SENSITIVITY;
+        if (draft.scrollSensitivity === undefined) {
+          draft.scrollSensitivity = DEFAULT_SCROLL_SENSITIVITY;
+        }
+        if (draft.effectsEnabled === undefined) {
+          draft.effectsEnabled = DEFAULT_EFFECTS_ENABLED;
+        }
+        if (draft.snapEnabled === undefined) {
+          draft.snapEnabled = DEFAULT_SNAP_ENABLED;
+        }
       });
     }
   }
@@ -99,6 +113,30 @@ export function setScrollSensitivity(sensitivity: number): void {
   if (existing) {
     settingsCollection.update(SETTINGS_ID, (draft) => {
       draft.scrollSensitivity = Math.max(0.1, Math.min(4.0, sensitivity));
+    });
+  }
+}
+
+/**
+ * Update effects enabled state
+ */
+export function setEffectsEnabled(enabled: boolean): void {
+  const existing = getSettings();
+  if (existing) {
+    settingsCollection.update(SETTINGS_ID, (draft) => {
+      draft.effectsEnabled = enabled;
+    });
+  }
+}
+
+/**
+ * Update snap enabled state
+ */
+export function setSnapEnabled(enabled: boolean): void {
+  const existing = getSettings();
+  if (existing) {
+    settingsCollection.update(SETTINGS_ID, (draft) => {
+      draft.snapEnabled = enabled;
     });
   }
 }

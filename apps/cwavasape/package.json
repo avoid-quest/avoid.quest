@@ -33,7 +33,8 @@
     "sonner": "catalog:",
     "tailwindcss": "catalog:",
     "vite-tsconfig-paths": "^6.0.5",
-    "zod": "catalog:"
+    "zod": "catalog:",
+    "pixi.js": "^8.15.0"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "catalog:",

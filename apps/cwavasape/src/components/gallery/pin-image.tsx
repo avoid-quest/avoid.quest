@@ -1,5 +1,6 @@
 import type { ImageSize, PinResponse } from "@avoid.quest/pinterest";
 import { memo } from "react";
+import { getProxiedImageUrl } from "@/lib/image-proxy";
 
 type PinImageProps = {
   pin: PinResponse;
@@ -27,7 +28,7 @@ export const PinImage = memo(function PinImage({
         className="h-screen w-screen object-contain"
         height={image.height}
         loading="lazy"
-        src={image.url}
+        src={getProxiedImageUrl(image.url)}
         width={image.width}
       />
     </div>

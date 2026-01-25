@@ -7,8 +7,14 @@ import {
 } from "@tanstack/react-virtual";
 import { useEffect, useRef } from "react";
 import { DEFAULT_IMAGE_SIZE, DEFAULT_SCROLL_SENSITIVITY } from "@/lib/const";
+import {
+  canRenderEffects,
+  useCapabilities,
+  useScrollState,
+} from "@/lib/effects";
 import { usePins } from "@/lib/hooks/use-pins";
 import { useSettings } from "@/lib/hooks/use-settings";
+import { EffectsCanvas } from "./effects-canvas";
 import { PinImage } from "./pin-image";
 
 const OVERSCAN_COUNT = 5;
@@ -24,6 +30,9 @@ export function VirtualGallery() {
   const imageSize = settings?.imageSize ?? DEFAULT_IMAGE_SIZE;
   const scrollSensitivity =
     settings?.scrollSensitivity ?? DEFAULT_SCROLL_SENSITIVITY;
+  const capabilities = useCapabilities();
+  const effectsActive =
+    (settings?.effectsEnabled ?? false) && canRenderEffects(capabilities);
 
   useEffect(() => {
     const updateHeight = () => {
@@ -67,6 +76,27 @@ export function VirtualGallery() {
   const allPins = data?.pages.flatMap((page) => page.pins) ?? [];
 
   const itemHeight = itemHeightRef.current;
+
+  // Scroll state for effects canvas
+  const { scrollState, updateScrollState } = useScrollState({
+    itemHeight,
+    totalItems: allPins.length,
+  });
+
+  // Update scroll state on scroll
+  useEffect(() => {
+    const scrollElement = parentRef.current;
+    if (!scrollElement) {
+      return;
+    }
+
+    const handleScroll = () => {
+      updateScrollState(scrollElement.scrollTop);
+    };
+
+    scrollElement.addEventListener("scroll", handleScroll, { passive: true });
+    return () => scrollElement.removeEventListener("scroll", handleScroll);
+  }, [updateScrollState]);
 
   const virtualizer = useVirtualizer({
     count: allPins.length || 0,
@@ -187,11 +217,13 @@ export function VirtualGallery() {
                   zIndex: activeSticky ? 1 : 0,
                 }}
               >
-                <PinImage
-                  imageSize={imageSize}
-                  index={virtualItem.index}
-                  pin={pin}
-                />
+                {!effectsActive && (
+                  <PinImage
+                    imageSize={imageSize}
+                    index={virtualItem.index}
+                    pin={pin}
+                  />
+                )}
               </div>
             );
           })}
@@ -203,6 +235,12 @@ export function VirtualGallery() {
           <Spinner className="size-5 text-white" />
         </div>
       )}
+
+      <EffectsCanvas
+        imageSize={imageSize}
+        pins={allPins}
+        scrollState={scrollState}
+      />
     </div>
   );
 }

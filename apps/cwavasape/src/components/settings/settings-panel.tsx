@@ -4,7 +4,9 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@avoid.quest/ui/components/popover";
+import { Separator } from "@avoid.quest/ui/components/separator";
 import { Settings } from "lucide-react";
+import { EffectsTab } from "./effects-tab";
 import { QualitySelect } from "./quality-select";
 import { ScrollSensitivitySlider } from "./scroll-sensitivity-slider";
 import { UsernameField } from "./username-field";
@@ -28,6 +30,8 @@ export function SettingsPanel() {
           <UsernameField />
           <QualitySelect />
           <ScrollSensitivitySlider />
+          <Separator />
+          <EffectsTab />
         </div>
       </PopoverContent>
     </Popover>

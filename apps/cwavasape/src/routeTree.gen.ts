@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiPinterestRouteImport } from './routes/api/pinterest'
+import { Route as ApiImageProxyRouteImport } from './routes/api/image-proxy'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -22,30 +23,39 @@ const ApiPinterestRoute = ApiPinterestRouteImport.update({
   path: '/api/pinterest',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiImageProxyRoute = ApiImageProxyRouteImport.update({
+  id: '/api/image-proxy',
+  path: '/api/image-proxy',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/api/image-proxy': typeof ApiImageProxyRoute
   '/api/pinterest': typeof ApiPinterestRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/api/image-proxy': typeof ApiImageProxyRoute
   '/api/pinterest': typeof ApiPinterestRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/api/image-proxy': typeof ApiImageProxyRoute
   '/api/pinterest': typeof ApiPinterestRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/api/pinterest'
+  fullPaths: '/' | '/api/image-proxy' | '/api/pinterest'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/api/pinterest'
-  id: '__root__' | '/' | '/api/pinterest'
+  to: '/' | '/api/image-proxy' | '/api/pinterest'
+  id: '__root__' | '/' | '/api/image-proxy' | '/api/pinterest'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ApiImageProxyRoute: typeof ApiImageProxyRoute
   ApiPinterestRoute: typeof ApiPinterestRoute
 }
 
@@ -65,11 +75,19 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPinterestRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/image-proxy': {
+      id: '/api/image-proxy'
+      path: '/api/image-proxy'
+      fullPath: '/api/image-proxy'
+      preLoaderRoute: typeof ApiImageProxyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ApiImageProxyRoute: ApiImageProxyRoute,
   ApiPinterestRoute: ApiPinterestRoute,
 }
 export const routeTree = rootRouteImport

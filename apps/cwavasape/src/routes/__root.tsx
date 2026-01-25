@@ -6,12 +6,7 @@ import { Toaster } from "@avoid.quest/ui/components/sonner";
 import globalsCss from "@avoid.quest/ui/globals.css?url";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import {
-  createRootRoute,
-  HeadContent,
-  Outlet,
-  Scripts,
-} from "@tanstack/react-router";
+import { createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { ThemeProvider } from "@/components/theme/theme-provider";
 import { initializeSettings } from "@/lib/collections";
@@ -101,10 +96,10 @@ export const Route = createRootRoute({
     ],
   }),
 
-  component: RootDocument,
+  shellComponent: RootDocument,
 });
 
-function RootDocument() {
+function RootDocument({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
     () =>
       new QueryClient({
@@ -138,7 +133,7 @@ function RootDocument() {
           >
             <div className="relative flex h-screen flex-col bg-black">
               <main className="relative z-10 flex min-h-0 flex-1 flex-col overflow-hidden">
-                <Outlet />
+                {children}
               </main>
               <Toaster />
             </div>

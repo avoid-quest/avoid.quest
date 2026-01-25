@@ -5,13 +5,12 @@ import {
   settingsCollection,
   setUsername,
 } from "@/lib/collections";
-import { DEFAULT_IMAGE_SIZE, DEFAULT_USERNAME } from "@/lib/const";
 
 const SETTINGS_ID = "app-settings";
 
 /**
- * Get current settings.
- * NOTE: This hook uses useLiveQuery which doesn't support SSR.
+ * Get current settings reactively via TanStack DB.
+ * NOTE: Uses useLiveQuery which doesn't support SSR.
  * Components using this hook must be wrapped in <ClientOnly>.
  */
 export function useSettings() {
@@ -28,19 +27,8 @@ export function useSettings() {
   };
 }
 
-export function useUsername() {
-  const { data } = useSettings();
-  return data?.username ?? DEFAULT_USERNAME;
-}
-
-export function useImageSize() {
-  const { data } = useSettings();
-  return data?.imageSize ?? DEFAULT_IMAGE_SIZE;
-}
-
 /**
- * Hook that returns a function to set username and invalidate pins query.
- * Use this instead of setUsername when you need automatic query invalidation.
+ * Returns a function to set username and invalidate pins query.
  */
 export function useSetUsername() {
   const queryClient = useQueryClient();
@@ -50,5 +38,9 @@ export function useSetUsername() {
   };
 }
 
-// Re-export mutations
-export { setImageSize, setUsername } from "@/lib/collections";
+// Re-export mutations for direct use
+export {
+  setImageSize,
+  setScrollSensitivity,
+  setUsername,
+} from "@/lib/collections";

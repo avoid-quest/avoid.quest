@@ -6,10 +6,11 @@ import Check from "lucide-react/dist/esm/icons/check";
 import Pencil from "lucide-react/dist/esm/icons/pencil";
 import { useEffect, useState } from "react";
 import { DEFAULT_USERNAME } from "@/lib/const";
-import { useSetUsername, useUsername } from "@/lib/hooks/use-settings";
+import { useSettings, useSetUsername } from "@/lib/hooks/use-settings";
 
 export function UsernameField() {
-  const username = useUsername();
+  const { data: settings } = useSettings();
+  const username = settings?.username ?? DEFAULT_USERNAME;
   const setUsername = useSetUsername();
   const [tempUsername, setTempUsername] = useState(username);
   const [isEditing, setIsEditing] = useState(false);

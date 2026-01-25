@@ -1,9 +1,11 @@
 import { fetchPins, PinterestError } from "@avoid.quest/pinterest";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
-import { useUsername } from "./use-settings";
+import { DEFAULT_USERNAME } from "@/lib/const";
+import { useSettings } from "./use-settings";
 
 export function usePins() {
-  const username = useUsername();
+  const { data: settings } = useSettings();
+  const username = settings?.username ?? DEFAULT_USERNAME;
 
   return useInfiniteQuery({
     queryKey: ["pins", username],

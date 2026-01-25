@@ -1,20 +1,18 @@
 import { Button } from "@avoid.quest/ui/components/button";
 import {
-  Drawer,
-  DrawerContent,
-  DrawerDescription,
-  DrawerHeader,
-  DrawerTitle,
-  DrawerTrigger,
-} from "@avoid.quest/ui/components/drawer";
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@avoid.quest/ui/components/popover";
 import { Settings } from "lucide-react";
 import { QualitySelect } from "./quality-select";
+import { ScrollSensitivitySlider } from "./scroll-sensitivity-slider";
 import { UsernameField } from "./username-field";
 
-export function SettingsDrawer() {
+export function SettingsPanel() {
   return (
-    <Drawer direction="right">
-      <DrawerTrigger asChild>
+    <Popover>
+      <PopoverTrigger asChild>
         <Button
           className="fixed top-4 right-4 z-50 bg-black/50 backdrop-blur hover:bg-black/70"
           size="icon"
@@ -23,17 +21,15 @@ export function SettingsDrawer() {
           <Settings className="h-5 w-5" />
           <span className="sr-only">Settings</span>
         </Button>
-      </DrawerTrigger>
-      <DrawerContent>
-        <DrawerHeader>
-          <DrawerTitle>Settings</DrawerTitle>
-          <DrawerDescription>Configure gallery options</DrawerDescription>
-        </DrawerHeader>
-        <div className="flex flex-col gap-6 p-4">
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-80">
+        <div className="flex flex-col gap-4">
+          <h3 className="font-medium">Settings</h3>
           <UsernameField />
           <QualitySelect />
+          <ScrollSensitivitySlider />
         </div>
-      </DrawerContent>
-    </Drawer>
+      </PopoverContent>
+    </Popover>
   );
 }

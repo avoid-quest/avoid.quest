@@ -11,10 +11,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@avoid.quest/ui/components/select";
-import { setImageSize, useImageSize } from "@/lib/hooks/use-settings";
+import { DEFAULT_IMAGE_SIZE } from "@/lib/const";
+import { setImageSize, useSettings } from "@/lib/hooks/use-settings";
 
 export function QualitySelect() {
-  const imageSize = useImageSize();
+  const { data: settings } = useSettings();
+  const imageSize = settings?.imageSize ?? DEFAULT_IMAGE_SIZE;
 
   return (
     <div className="flex flex-col gap-2">

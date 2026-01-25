@@ -6,8 +6,9 @@ import {
   type Virtualizer,
 } from "@tanstack/react-virtual";
 import { useEffect, useRef } from "react";
+import { DEFAULT_IMAGE_SIZE, DEFAULT_SCROLL_SENSITIVITY } from "@/lib/const";
 import { usePins } from "@/lib/hooks/use-pins";
-import { useImageSize } from "@/lib/hooks/use-settings";
+import { useSettings } from "@/lib/hooks/use-settings";
 import { PinImage } from "./pin-image";
 
 const OVERSCAN_COUNT = 5;
@@ -18,7 +19,11 @@ export function VirtualGallery() {
   const itemHeightRef = useRef(
     typeof window !== "undefined" ? window.innerHeight : 800
   );
-  const imageSize = useImageSize();
+
+  const { data: settings } = useSettings();
+  const imageSize = settings?.imageSize ?? DEFAULT_IMAGE_SIZE;
+  const scrollSensitivity =
+    settings?.scrollSensitivity ?? DEFAULT_SCROLL_SENSITIVITY;
 
   useEffect(() => {
     const updateHeight = () => {
@@ -27,6 +32,26 @@ export function VirtualGallery() {
     window.addEventListener("resize", updateHeight);
     return () => window.removeEventListener("resize", updateHeight);
   }, []);
+
+  useEffect(() => {
+    const scrollElement = parentRef.current;
+    if (!scrollElement) {
+      return;
+    }
+
+    // Skip custom handling when sensitivity is default
+    if (scrollSensitivity === 1.0) {
+      return;
+    }
+
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      scrollElement.scrollTop += e.deltaY * scrollSensitivity;
+    };
+
+    scrollElement.addEventListener("wheel", handleWheel, { passive: false });
+    return () => scrollElement.removeEventListener("wheel", handleWheel);
+  }, [scrollSensitivity]);
 
   const {
     data,

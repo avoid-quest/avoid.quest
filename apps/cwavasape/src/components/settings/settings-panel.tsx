@@ -25,7 +25,7 @@ export function SettingsPanel() {
           <span className="sr-only">Settings</span>
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-80 max-h-[80vh] overflow-y-auto">
+      <PopoverContent align="end" className="max-h-[80vh] w-80 overflow-y-auto">
         <div className="flex flex-col gap-4">
           <h3 className="font-medium">Settings</h3>
           <UsernameField />

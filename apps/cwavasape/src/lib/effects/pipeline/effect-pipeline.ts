@@ -1,3 +1,4 @@
+import { isEnabled } from "@avoid.quest/shared";
 import type { Container, Filter } from "pixi.js";
 import type { AnalysisEffectsSettings } from "@/lib/collections/settings";
 import { REGION_PAINT_PALETTES } from "@/lib/const";
@@ -53,8 +54,8 @@ export class EffectPipeline {
 
     const filters: Filter[] = [];
 
-    // Sobel Edge Detection
-    if (settings.sobel.enabled) {
+    // Sobel Edge Detection - check feature flag
+    if (settings.sobel.enabled && isEnabled("cwavasape.effects.sobel")) {
       if (this.activeFilters.sobel) {
         sobelEdgeFactory.updateUniforms(this.activeFilters.sobel, {
           threshold: settings.sobel.threshold,
@@ -73,8 +74,8 @@ export class EffectPipeline {
       this.activeFilters.sobel = null;
     }
 
-    // Gaussian Blur
-    if (settings.blur.enabled) {
+    // Gaussian Blur - check feature flag
+    if (settings.blur.enabled && isEnabled("cwavasape.effects.blur")) {
       if (this.activeFilters.blur) {
         gaussianBlurFactory.updateUniforms(this.activeFilters.blur, {
           radius: settings.blur.radius,
@@ -89,8 +90,11 @@ export class EffectPipeline {
       this.activeFilters.blur = null;
     }
 
-    // Region Paint
-    if (settings.regionPaint.enabled) {
+    // Region Paint - check feature flag
+    if (
+      settings.regionPaint.enabled &&
+      isEnabled("cwavasape.effects.regionPaint")
+    ) {
       const palette =
         REGION_PAINT_PALETTES[settings.regionPaint.paletteId]?.colors;
 

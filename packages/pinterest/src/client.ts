@@ -52,7 +52,9 @@ export async function fetchPins(options: FetchPinsOptions): Promise<PinsPage> {
     );
   }
 
-  const json = await response.json();
+  const json: {
+    resource_response: { data: PinResponse[]; bookmark: string | null };
+  } = await response.json();
   const data = json.resource_response;
 
   return {

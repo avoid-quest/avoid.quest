@@ -21,6 +21,7 @@
       "version": "0.1.0",
       "dependencies": {
         "@avoid.quest/pinterest": "workspace:*",
+        "@avoid.quest/shared": "workspace:*",
         "@avoid.quest/typescript-config": "workspace:*",
         "@avoid.quest/ui": "workspace:*",
         "@cloudflare/vite-plugin": "^1.21.2",

@@ -6,6 +6,7 @@ import {
 } from "@avoid.quest/ui/components/popover";
 import { Separator } from "@avoid.quest/ui/components/separator";
 import { Settings } from "lucide-react";
+import { AITab } from "./ai-tab";
 import { EffectsTab } from "./effects-tab";
 import { QualitySelect } from "./quality-select";
 import { ScrollSensitivitySlider } from "./scroll-sensitivity-slider";
@@ -24,7 +25,7 @@ export function SettingsPanel() {
           <span className="sr-only">Settings</span>
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-80">
+      <PopoverContent align="end" className="w-80 max-h-[80vh] overflow-y-auto">
         <div className="flex flex-col gap-4">
           <h3 className="font-medium">Settings</h3>
           <UsernameField />
@@ -32,6 +33,8 @@ export function SettingsPanel() {
           <ScrollSensitivitySlider />
           <Separator />
           <EffectsTab />
+          <Separator />
+          <AITab />
         </div>
       </PopoverContent>
     </Popover>

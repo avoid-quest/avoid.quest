@@ -14,6 +14,10 @@ import {
 import { DEFAULT_IMAGE_SIZE } from "@/lib/const";
 import { setImageSize, useSettings } from "@/lib/hooks/use-settings";
 
+function isImageSize(value: string): value is ImageSize {
+  return (IMAGE_SIZES as readonly string[]).includes(value);
+}
+
 export function QualitySelect() {
   const { data: settings } = useSettings();
   const imageSize = settings?.imageSize ?? DEFAULT_IMAGE_SIZE;
@@ -22,7 +26,11 @@ export function QualitySelect() {
     <div className="flex flex-col gap-2">
       <Label htmlFor="quality">Image Quality</Label>
       <Select
-        onValueChange={(value) => setImageSize(value as ImageSize)}
+        onValueChange={(value) => {
+          if (isImageSize(value)) {
+            setImageSize(value);
+          }
+        }}
         value={imageSize}
       >
         <SelectTrigger id="quality">

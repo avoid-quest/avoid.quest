@@ -26,12 +26,12 @@ export const BLUR_HORIZONTAL_FRAGMENT = /* glsl */ `
     float twoSigmaSq = 2.0 * sigma * sigma;
 
     for (float i = -20.0; i <= 20.0; i += 1.0) {
-      if (abs(i) > uRadius) continue;
-
-      float weight = exp(-(i * i) / twoSigmaSq);
-      vec2 offset = vec2(i * texelSize.x, 0.0);
-      color += texture2D(uTexture, uv + offset) * weight;
-      total += weight;
+      if (abs(i) <= uRadius) {
+        float weight = exp(-(i * i) / twoSigmaSq);
+        vec2 offset = vec2(i * texelSize.x, 0.0);
+        color += texture2D(uTexture, uv + offset) * weight;
+        total += weight;
+      }
     }
 
     gl_FragColor = color / total;
@@ -64,12 +64,12 @@ export const BLUR_VERTICAL_FRAGMENT = /* glsl */ `
     float twoSigmaSq = 2.0 * sigma * sigma;
 
     for (float i = -20.0; i <= 20.0; i += 1.0) {
-      if (abs(i) > uRadius) continue;
-
-      float weight = exp(-(i * i) / twoSigmaSq);
-      vec2 offset = vec2(0.0, i * texelSize.y);
-      color += texture2D(uTexture, uv + offset) * weight;
-      total += weight;
+      if (abs(i) <= uRadius) {
+        float weight = exp(-(i * i) / twoSigmaSq);
+        vec2 offset = vec2(0.0, i * texelSize.y);
+        color += texture2D(uTexture, uv + offset) * weight;
+        total += weight;
+      }
     }
 
     gl_FragColor = color / total;

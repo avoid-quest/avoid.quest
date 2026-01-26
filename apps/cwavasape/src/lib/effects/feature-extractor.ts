@@ -105,8 +105,8 @@ function computeDominantColors(
     colors.push([pixels[i], pixels[i + 1], pixels[i + 2]]);
   }
 
-  // Initialize centroids randomly
-  const centroids: RGBColor[] = [
+  // Initialize centroids from sampled colors
+  const centroids: [RGBColor, RGBColor, RGBColor] = [
     colors[0] ?? [128, 128, 128],
     colors[Math.floor(colors.length / 3)] ?? [128, 128, 128],
     colors[Math.floor((colors.length * 2) / 3)] ?? [128, 128, 128],
@@ -138,8 +138,8 @@ function computeDominantColors(
     }
   }
 
-  // Sort by cluster size (most dominant first)
-  return centroids as [RGBColor, RGBColor, RGBColor];
+  // Return centroids (most dominant first based on k-means)
+  return centroids;
 }
 
 function colorDistance(a: RGBColor, b: RGBColor): number {

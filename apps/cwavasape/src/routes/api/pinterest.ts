@@ -36,22 +36,31 @@ export const Route = createFileRoute("/api/pinterest")({
 
         const pinterestUrl = `${PINTEREST_BASE_URL}?${params}`;
 
-        const response = await fetch(pinterestUrl, {
-          headers: {
-            ...HEADERS,
-            "X-Pinterest-PWS-Handler": `www/${username}.js`,
-          },
-        });
+        try {
+          const response = await fetch(pinterestUrl, {
+            headers: {
+              ...HEADERS,
+              "X-Pinterest-PWS-Handler": `www/${username}.js`,
+            },
+          });
 
-        if (!response.ok) {
+          if (!response.ok) {
+            return json(
+              { error: `Pinterest API error: ${response.status}` },
+              { status: response.status }
+            );
+          }
+
+          const responseData = await response.json();
+          return json(responseData);
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : "Network error";
           return json(
-            { error: `Pinterest API error: ${response.status}` },
-            { status: response.status }
+            { error: `Pinterest request failed: ${message}` },
+            { status: 502 }
           );
         }
-
-        const responseData = await response.json();
-        return json(responseData);
       },
     },
   },

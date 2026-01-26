@@ -30,8 +30,11 @@ function detectCapabilities(): Capabilities {
         gl.getExtension("EXT_color_buffer_float") !== null ||
         gl.getExtension("OES_texture_float") !== null;
     }
-  } catch {
-    // WebGL2 not available
+  } catch (err) {
+    // WebGL2 not available - graceful fallback
+    if (import.meta.env.DEV) {
+      console.warn("WebGL2 capability detection failed:", err);
+    }
   }
 
   // Determine tier

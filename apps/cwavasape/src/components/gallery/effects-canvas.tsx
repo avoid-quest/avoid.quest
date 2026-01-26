@@ -141,11 +141,18 @@ export const EffectsCanvas = memo(function EffectsCanvas({
           import("@/lib/effects/feature-extractor")
             .then(({ extractFeatures }) => extractFeatures(app, texture, url))
             .then((features) => featureCache.current.set(url, features))
-            .catch(() => undefined);
+            .catch((err) => {
+              if (import.meta.env.DEV) {
+                console.warn("Feature extraction failed for", url, err);
+              }
+            });
         }
 
         return texture;
-      } catch {
+      } catch (err) {
+        if (import.meta.env.DEV) {
+          console.warn("Texture load failed for", url, err);
+        }
         return null;
       }
     },
@@ -209,7 +216,10 @@ export const EffectsCanvas = memo(function EffectsCanvas({
 
         setIsReady(true);
       } catch (err) {
-        console.error("Failed to initialize PixiJS:", err);
+        if (import.meta.env.DEV) {
+          console.error("Failed to initialize PixiJS:", err);
+        }
+        // Effects will gracefully degrade - shouldRender check prevents broken UI
       }
     };
 

@@ -1,4 +1,4 @@
-import type { PinResponse } from "@avoid.quest/pinterest";
+import type { ImageSize, PinResponse } from "@avoid.quest/pinterest";
 import { Spinner } from "@avoid.quest/ui/components/spinner";
 import { useThrottledCallback } from "@tanstack/react-pacer";
 import {
@@ -134,7 +134,9 @@ export function VirtualGallery() {
   const getImageUrl = useCallback(
     (index: number): string | undefined => {
       const pin: PinResponse | undefined = allPins[index];
-      return pin?.images[imageSize as keyof typeof pin.images]?.url;
+      // imageSize from settings is compatible with ImageSize from pinterest
+      const size: ImageSize = imageSize;
+      return pin?.images[size]?.url;
     },
     [allPins, imageSize]
   );

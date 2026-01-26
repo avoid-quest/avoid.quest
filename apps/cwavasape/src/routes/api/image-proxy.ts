@@ -44,8 +44,9 @@ export const Route = createFileRoute("/api/image-proxy")({
             },
           });
         } catch (error) {
-          console.error("Image proxy error:", error);
-          return new Response("Failed to fetch image", { status: 500 });
+          const message =
+            error instanceof Error ? error.message : "Unknown error";
+          return new Response(`Image proxy error: ${message}`, { status: 500 });
         }
       },
     },

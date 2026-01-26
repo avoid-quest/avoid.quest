@@ -18,7 +18,7 @@
 		"@types/node": "catalog:",
 		"convex-test": "^0.0.41",
 		"typescript": "catalog:",
-		"vitest": "^4.0.17"
+		"vitest": "^4.0.18"
 	},
 	"dependencies": {
 		"@convex-dev/migrations": "^0.3.1",

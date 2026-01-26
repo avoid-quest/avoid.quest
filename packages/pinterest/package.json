@@ -1,5 +1,5 @@
 {
-  "name": "@avoid.quest/bandcamp",
+  "name": "@avoid.quest/pinterest",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -12,10 +12,6 @@
     "check": "bunx ultracite check",
     "fix": "bunx ultracite fix",
     "typecheck": "tsc --noEmit"
-  },
-  "dependencies": {
-    "cheerio": "^1.2.0",
-    "html-entities": "^2.6.0"
   },
   "devDependencies": {
     "@avoid.quest/typescript-config": "workspace:*",

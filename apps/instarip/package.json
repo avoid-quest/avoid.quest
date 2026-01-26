@@ -15,11 +15,11 @@
     "cf-typegen": "wrangler types --env-interface CloudflareEnv ./cloudflare-env.d.ts"
   },
   "dependencies": {
-    "@opennextjs/cloudflare": "^1.15.1",
-    "@tanstack/react-virtual": "^3.13.18",
     "@avoid.quest/backend": "workspace:*",
     "@avoid.quest/typescript-config": "workspace:*",
     "@avoid.quest/ui": "workspace:*",
+    "@opennextjs/cloudflare": "^1.15.1",
+    "@tanstack/react-virtual": "^3.13.18",
     "babel-plugin-react-compiler": "^1.0.0",
     "convex": "catalog:",
     "lucide-react": "catalog:",

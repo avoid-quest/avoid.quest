@@ -1,6 +1,6 @@
-import { LUMINANCE_FUNCTION, VERTEX_SHADER } from "./common.glsl";
+import { LUMINANCE_FUNCTION } from "./common.glsl";
 
-export { VERTEX_SHADER as SOBEL_VERTEX };
+export { VERTEX_SHADER as SOBEL_VERTEX } from "./common.glsl";
 
 /**
  * Sobel edge detection fragment shader

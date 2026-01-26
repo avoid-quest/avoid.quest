@@ -11,18 +11,21 @@ const featureCache = new Map<string, ImageFeatures>();
 /**
  * Extract features from a texture for smart transitions
  */
-export async function extractFeatures(
+export function extractFeatures(
   app: Application,
   texture: Texture,
   cacheKey?: string
-): Promise<ImageFeatures> {
+): ImageFeatures {
   // Check cache first
-  if (cacheKey && featureCache.has(cacheKey)) {
-    return featureCache.get(cacheKey)!;
+  if (cacheKey) {
+    const cached = featureCache.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
   }
 
   // Extract pixel data from texture
-  const pixels = await extractPixelData(app, texture);
+  const pixels = extractPixelData(app, texture);
 
   // Compute all features
   const features: ImageFeatures = {
@@ -53,10 +56,10 @@ export function clearFeatureCache(): void {
 /**
  * Extract pixel data from texture as RGBA array
  */
-async function extractPixelData(
+function extractPixelData(
   app: Application,
   texture: Texture
-): Promise<Uint8ClampedArray> {
+): Uint8ClampedArray {
   // Create a canvas to render the texture at sample size
   const canvas = document.createElement("canvas");
   canvas.width = SAMPLE_SIZE;

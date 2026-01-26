@@ -71,6 +71,50 @@ export const EffectsCanvas = memo(function EffectsCanvas({
   const snapEnabled = settings?.snapEnabled ?? false;
   const shouldRender = effectsEnabled && canRenderEffects(capabilities);
 
+  // Helper to update sprite alphas based on current state
+  // Called both from scroll handler and after texture loads
+  const updateSpriteAlphas = useCallback(
+    (targetIndex: number, progress: number) => {
+      const spriteFrom = spriteFromRef.current;
+      const spriteTo = spriteToRef.current;
+      const spriteContainer = spriteContainerRef.current;
+      if (!(spriteFrom && spriteTo && spriteContainer)) {
+        return;
+      }
+
+      const fromReady = loadedFromIndexRef.current === targetIndex;
+      const toReady = loadedToIndexRef.current === targetIndex + 1;
+
+      if (!fromReady) {
+        // Textures not ready - fade out to hide wrong textures
+        spriteContainer.alpha = 0.3;
+        spriteFrom.alpha = 1;
+        spriteTo.alpha = 0;
+        return;
+      }
+
+      spriteContainer.alpha = 1;
+
+      if (!toReady) {
+        // Only from texture ready - no crossfade
+        spriteFrom.alpha = 1;
+        spriteTo.alpha = 0;
+        return;
+      }
+
+      // Both textures ready - apply crossfade
+      if (snapEnabled) {
+        const showNext = progress >= 0.5;
+        spriteFrom.alpha = showNext ? 0 : 1;
+        spriteTo.alpha = showNext ? 1 : 0;
+      } else {
+        spriteFrom.alpha = 1 - progress;
+        spriteTo.alpha = progress;
+      }
+    },
+    [snapEnabled]
+  );
+
   // Async texture loader (loads and caches)
   const loadTexture = useCallback(
     async (url: string): Promise<Texture | null> => {
@@ -187,62 +231,80 @@ export const EffectsCanvas = memo(function EffectsCanvas({
     };
   }, [shouldRender]);
 
-  // Load textures when index changes (NOT on every scroll)
-  // Uses version tracking to prevent race conditions during rapid scrolling
-  useEffect(() => {
-    if (!isReady) {
-      return;
-    }
+  // Store current scroll progress in ref for texture load callbacks
+  const scrollProgressRef = useRef(scrollProgress);
+  scrollProgressRef.current = scrollProgress;
 
+  // Load textures when index changes (NOT on every scroll)
+  // Implements texture swapping: when index advances, spriteTo becomes spriteFrom
+  useEffect(() => {
     const app = appRef.current;
     const spriteFrom = spriteFromRef.current;
     const spriteTo = spriteToRef.current;
-    if (!(app && spriteFrom && spriteTo)) {
+    if (!(isReady && app && spriteFrom && spriteTo)) {
       return;
     }
 
     const screenWidth = app.screen.width;
     const screenHeight = app.screen.height;
-
-    // Load current texture with version tracking
-    if (currentImageUrl && loadedFromIndexRef.current !== currentIndex) {
-      // Increment version to mark this as the latest request
-      const loadVersion = ++loadVersionRef.current.from;
-
-      loadTexture(currentImageUrl).then((texture) => {
-        // Only apply if this is still the latest request (not stale)
-        if (
-          texture &&
-          spriteFromRef.current &&
-          loadVersionRef.current.from === loadVersion
-        ) {
-          spriteFromRef.current.texture = texture;
-          fitSpriteToScreen(spriteFromRef.current, screenWidth, screenHeight);
-          loadedFromIndexRef.current = currentIndex;
-        }
-      });
-    }
-
-    // Load next texture with version tracking
     const nextIndex = currentIndex + 1;
-    if (nextImageUrl && loadedToIndexRef.current !== nextIndex) {
-      const loadVersion = ++loadVersionRef.current.to;
 
-      loadTexture(nextImageUrl).then((texture) => {
-        // Only apply if this is still the latest request (not stale)
-        if (
-          texture &&
-          spriteToRef.current &&
-          loadVersionRef.current.to === loadVersion
-        ) {
-          spriteToRef.current.texture = texture;
-          fitSpriteToScreen(spriteToRef.current, screenWidth, screenHeight);
-          loadedToIndexRef.current = nextIndex;
+    // Helper to create texture load callback with version tracking
+    const createTextureCallback = (
+      sprite: Sprite,
+      indexRef: { current: number },
+      targetIndex: number,
+      versionKey: "from" | "to"
+    ) => {
+      const version = ++loadVersionRef.current[versionKey];
+      return (tex: Texture | null) => {
+        if (!tex || loadVersionRef.current[versionKey] !== version) {
+          return;
         }
-      });
+        sprite.texture = tex;
+        fitSpriteToScreen(sprite, screenWidth, screenHeight);
+        indexRef.current = targetIndex;
+        updateSpriteAlphas(currentIndex, scrollProgressRef.current);
+      };
+    };
+
+    // Check if we can swap textures (scrolling forward one step)
+    const canSwap =
+      loadedToIndexRef.current === currentIndex &&
+      loadedFromIndexRef.current === currentIndex - 1 &&
+      spriteTo.texture;
+
+    if (canSwap) {
+      // Swap: reuse spriteTo texture for spriteFrom
+      spriteFrom.texture = spriteTo.texture;
+      fitSpriteToScreen(spriteFrom, screenWidth, screenHeight);
+      loadedFromIndexRef.current = currentIndex;
+      // Load new next texture
+      if (nextImageUrl) {
+        loadTexture(nextImageUrl).then(
+          createTextureCallback(spriteTo, loadedToIndexRef, nextIndex, "to")
+        );
+      }
+      return;
     }
 
-    // Preload prev (no version check needed - just warming cache)
+    // Full reload needed
+    if (currentImageUrl && loadedFromIndexRef.current !== currentIndex) {
+      loadTexture(currentImageUrl).then(
+        createTextureCallback(
+          spriteFrom,
+          loadedFromIndexRef,
+          currentIndex,
+          "from"
+        )
+      );
+    }
+    if (nextImageUrl && loadedToIndexRef.current !== nextIndex) {
+      loadTexture(nextImageUrl).then(
+        createTextureCallback(spriteTo, loadedToIndexRef, nextIndex, "to")
+      );
+    }
+    // Preload prev (cache warming only)
     if (prevImageUrl) {
       loadTexture(prevImageUrl);
     }
@@ -253,25 +315,13 @@ export const EffectsCanvas = memo(function EffectsCanvas({
     nextImageUrl,
     prevImageUrl,
     loadTexture,
+    updateSpriteAlphas,
   ]);
 
-  // Update alpha on every scroll (fast, synchronous)
+  // Update alpha on every scroll
   useEffect(() => {
-    const spriteFrom = spriteFromRef.current;
-    const spriteTo = spriteToRef.current;
-    if (!(spriteFrom && spriteTo)) {
-      return;
-    }
-
-    if (snapEnabled) {
-      const showNext = scrollProgress >= 0.5;
-      spriteFrom.alpha = showNext ? 0 : 1;
-      spriteTo.alpha = showNext ? 1 : 0;
-    } else {
-      spriteFrom.alpha = 1 - scrollProgress;
-      spriteTo.alpha = scrollProgress;
-    }
-  }, [scrollProgress, snapEnabled]);
+    updateSpriteAlphas(currentIndex, scrollProgress);
+  }, [scrollProgress, currentIndex, updateSpriteAlphas]);
 
   // Apply analysis effects to the sprite container (affects both sprites)
   useEffect(() => {

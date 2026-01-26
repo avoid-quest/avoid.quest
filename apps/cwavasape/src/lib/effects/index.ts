@@ -3,7 +3,5 @@ export * from "./feature-extractor";
 export * from "./feature-types";
 export * from "./filters";
 export * from "./pipeline/effect-pipeline";
-export * from "./registry";
-export * from "./transition-selector";
 export * from "./types";
 export * from "./use-scroll-state";

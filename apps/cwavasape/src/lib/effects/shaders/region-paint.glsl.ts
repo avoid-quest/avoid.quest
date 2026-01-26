@@ -1,6 +1,6 @@
-import { LUMINANCE_FUNCTION, VERTEX_SHADER } from "./common.glsl";
+import { LUMINANCE_FUNCTION } from "./common.glsl";
 
-export { VERTEX_SHADER as REGION_PAINT_VERTEX };
+export { VERTEX_SHADER as REGION_PAINT_VERTEX } from "./common.glsl";
 
 /**
  * Region paint fragment shader
@@ -47,13 +47,8 @@ export const REGION_PAINT_FRAGMENT = /* glsl */ `
     else if (idx == 6) bandColor = uPalette[6];
     else bandColor = uPalette[7];
 
-    // Smooth transition at band edges
-    float edgeDist = mod(lum, bandSize);
-    float smoothFactor = smoothstep(0.0, uThreshold, edgeDist) *
-                         smoothstep(bandSize, bandSize - uThreshold, edgeDist);
-
     // Blend with original based on opacity
-    vec3 result = mix(original.rgb, bandColor * smoothFactor + bandColor * (1.0 - smoothFactor), uOverlayOpacity);
+    vec3 result = mix(original.rgb, bandColor, uOverlayOpacity);
 
     gl_FragColor = vec4(result, original.a);
   }

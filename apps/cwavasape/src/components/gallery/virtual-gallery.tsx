@@ -1,5 +1,6 @@
 import type { PinResponse } from "@avoid.quest/pinterest";
 import { Spinner } from "@avoid.quest/ui/components/spinner";
+import { useThrottledCallback } from "@tanstack/react-pacer";
 import {
   defaultRangeExtractor,
   type Range,
@@ -7,7 +8,12 @@ import {
   type Virtualizer,
 } from "@tanstack/react-virtual";
 import { useCallback, useEffect, useRef } from "react";
-import { DEFAULT_IMAGE_SIZE, DEFAULT_SCROLL_SENSITIVITY } from "@/lib/const";
+import {
+  DEFAULT_IMAGE_SIZE,
+  DEFAULT_SCROLL_SENSITIVITY,
+  FETCH_THROTTLE_MS,
+  WHEEL_THROTTLE_MS,
+} from "@/lib/const";
 import {
   canRenderEffects,
   useCapabilities,
@@ -32,36 +38,6 @@ export function VirtualGallery() {
   const scrollSensitivity =
     settings?.scrollSensitivity ?? DEFAULT_SCROLL_SENSITIVITY;
   const capabilities = useCapabilities();
-  const effectsActive =
-    (settings?.effectsEnabled ?? false) && canRenderEffects(capabilities);
-
-  useEffect(() => {
-    const updateHeight = () => {
-      itemHeightRef.current = window.innerHeight;
-    };
-    window.addEventListener("resize", updateHeight);
-    return () => window.removeEventListener("resize", updateHeight);
-  }, []);
-
-  useEffect(() => {
-    const scrollElement = parentRef.current;
-    if (!scrollElement) {
-      return;
-    }
-
-    // Skip custom handling when sensitivity is default
-    if (scrollSensitivity === 1.0) {
-      return;
-    }
-
-    const handleWheel = (e: WheelEvent) => {
-      e.preventDefault();
-      scrollElement.scrollTop += e.deltaY * scrollSensitivity;
-    };
-
-    scrollElement.addEventListener("wheel", handleWheel, { passive: false });
-    return () => scrollElement.removeEventListener("wheel", handleWheel);
-  }, [scrollSensitivity]);
 
   const {
     data,
@@ -75,6 +51,84 @@ export function VirtualGallery() {
   } = usePins();
 
   const allPins = data?.pages.flatMap((page) => page.pins) ?? [];
+
+  // Gate effects on data availability to prevent race condition on hard refresh
+  const effectsActive =
+    (settings?.effectsEnabled ?? false) &&
+    canRenderEffects(capabilities) &&
+    allPins.length > 0;
+
+  useEffect(() => {
+    const updateHeight = () => {
+      itemHeightRef.current = window.innerHeight;
+    };
+    // Set correct height on mount (SSR may have different value)
+    updateHeight();
+    window.addEventListener("resize", updateHeight);
+    return () => window.removeEventListener("resize", updateHeight);
+  }, []);
+
+  // Throttled wheel handler for custom scroll sensitivity (when effects off)
+  const throttledWheelHandler = useThrottledCallback(
+    (deltaY: number) => {
+      if (parentRef.current) {
+        parentRef.current.scrollTop += deltaY * scrollSensitivity;
+      }
+    },
+    { wait: WHEEL_THROTTLE_MS, leading: true, trailing: true }
+  );
+
+  // When effects are active, we need to manually forward wheel events
+  // because the canvas overlay intercepts them
+  // Also directly update scroll state to ensure EffectsCanvas updates
+  useEffect(() => {
+    if (!effectsActive) {
+      return;
+    }
+
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const scrollElement = parentRef.current;
+      if (scrollElement) {
+        scrollElement.scrollTop += e.deltaY * scrollSensitivity;
+        // Directly update scroll state since scroll events may not fire reliably
+        updateScrollStateRef.current(scrollElement.scrollTop);
+      }
+    };
+
+    window.addEventListener("wheel", handleWheel, { passive: false });
+    return () => window.removeEventListener("wheel", handleWheel);
+  }, [effectsActive, scrollSensitivity]);
+
+  // Custom scroll sensitivity when effects are off
+  useEffect(() => {
+    if (effectsActive || scrollSensitivity === 1.0) {
+      return;
+    }
+
+    const scrollElement = parentRef.current;
+    if (!scrollElement) {
+      return;
+    }
+
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      throttledWheelHandler(e.deltaY);
+    };
+
+    scrollElement.addEventListener("wheel", handleWheel, { passive: false });
+    return () => scrollElement.removeEventListener("wheel", handleWheel);
+  }, [effectsActive, scrollSensitivity, throttledWheelHandler]);
+
+  // Throttle fetchNextPage to prevent rapid pagination calls during fast scrolling
+  const throttledFetchNextPage = useThrottledCallback(
+    () => {
+      if (hasNextPage && !isFetchingNextPage) {
+        fetchNextPage();
+      }
+    },
+    { wait: FETCH_THROTTLE_MS, leading: true, trailing: false }
+  );
 
   // Helper to get image URL for a pin at given index
   const getImageUrl = useCallback(
@@ -93,6 +147,10 @@ export function VirtualGallery() {
     totalItems: allPins.length,
   });
 
+  // Use ref to avoid re-attaching listener when callback changes
+  const updateScrollStateRef = useRef(updateScrollState);
+  updateScrollStateRef.current = updateScrollState;
+
   // Update scroll state on scroll
   useEffect(() => {
     const scrollElement = parentRef.current;
@@ -101,14 +159,14 @@ export function VirtualGallery() {
     }
 
     const handleScroll = () => {
-      updateScrollState(scrollElement.scrollTop);
+      updateScrollStateRef.current(scrollElement.scrollTop);
     };
 
     scrollElement.addEventListener("scroll", handleScroll, { passive: true });
     return () => {
       scrollElement.removeEventListener("scroll", handleScroll);
     };
-  }, [updateScrollState]);
+  }, []);
 
   const virtualizer = useVirtualizer({
     count: allPins.length || 0,
@@ -144,7 +202,7 @@ export function VirtualGallery() {
 
         const remainingItems = allPins.length - lastItem.index;
         if (remainingItems <= OVERSCAN_COUNT * 2) {
-          fetchNextPage();
+          throttledFetchNextPage();
         }
       }
     },
@@ -189,13 +247,8 @@ export function VirtualGallery() {
   return (
     <div className="relative h-screen w-full">
       <div
-        className="h-full w-full overflow-auto"
+        className="relative z-0 h-full w-full touch-pan-y overflow-y-scroll"
         ref={parentRef}
-        style={{
-          contain: "strict",
-          scrollBehavior: "auto",
-          WebkitOverflowScrolling: "touch",
-        }}
       >
         <div
           style={{
@@ -229,10 +282,7 @@ export function VirtualGallery() {
                   zIndex: activeSticky ? 1 : 0,
                 }}
               >
-                {effectsActive ? (
-                  // Empty placeholder to maintain scroll height when effects handle rendering
-                  <div className="h-full w-full" />
-                ) : (
+                {effectsActive ? null : (
                   <PinImage
                     imageSize={imageSize}
                     index={virtualItem.index}
@@ -251,14 +301,16 @@ export function VirtualGallery() {
         </div>
       )}
 
-      <EffectsCanvas
-        analysisEffects={settings?.analysisEffects}
-        currentImageUrl={getImageUrl(scrollState.currentIndex)}
-        currentIndex={scrollState.currentIndex}
-        nextImageUrl={getImageUrl(scrollState.nextIndex)}
-        prevImageUrl={getImageUrl(scrollState.prevIndex)}
-        scrollProgress={scrollState.progress}
-      />
+      {effectsActive && (
+        <EffectsCanvas
+          analysisEffects={settings?.analysisEffects}
+          currentImageUrl={getImageUrl(scrollState.currentIndex)}
+          currentIndex={scrollState.currentIndex}
+          nextImageUrl={getImageUrl(scrollState.nextIndex)}
+          prevImageUrl={getImageUrl(scrollState.prevIndex)}
+          scrollProgress={scrollState.progress}
+        />
+      )}
     </div>
   );
 }

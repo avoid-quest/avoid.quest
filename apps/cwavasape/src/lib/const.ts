@@ -7,6 +7,12 @@ export const DEFAULT_SCROLL_SENSITIVITY = 1.0;
 export const DEFAULT_EFFECTS_ENABLED = false;
 export const DEFAULT_SNAP_ENABLED = false;
 
+// Scroll throttle constants
+export const SCROLL_THROTTLE_MS = 16; // ~60fps
+export const FETCH_THROTTLE_MS = 500; // Prevent rapid pagination calls
+export const WHEEL_THROTTLE_MS = 8; // ~120fps for smooth custom scroll
+export const DIRECTION_VELOCITY_THRESHOLD = 0.5; // px/ms - threshold for direction detection
+
 // Analysis Effects Defaults
 export const DEFAULT_OVERLAY_OPACITY = 0.5;
 

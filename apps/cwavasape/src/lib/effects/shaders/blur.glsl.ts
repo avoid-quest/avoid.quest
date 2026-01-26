@@ -1,6 +1,4 @@
-import { VERTEX_SHADER } from "./common.glsl";
-
-export { VERTEX_SHADER as BLUR_VERTEX };
+export { VERTEX_SHADER as BLUR_VERTEX } from "./common.glsl";
 
 /**
  * Horizontal Gaussian blur fragment shader

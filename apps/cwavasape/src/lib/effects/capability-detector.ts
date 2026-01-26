@@ -8,6 +8,7 @@ export type Capabilities = {
   webgl2: boolean;
   maxTextureSize: number;
   supportsFloat: boolean;
+  isDetected: boolean;
 };
 
 function detectCapabilities(): Capabilities {
@@ -47,6 +48,7 @@ function detectCapabilities(): Capabilities {
     webgl2,
     maxTextureSize,
     supportsFloat,
+    isDetected: true,
   };
 }
 
@@ -56,6 +58,7 @@ const defaultCapabilities: Capabilities = {
   webgl2: false,
   maxTextureSize: 2048,
   supportsFloat: false,
+  isDetected: false,
 };
 
 export function useCapabilities(): Capabilities {
@@ -63,6 +66,7 @@ export function useCapabilities(): Capabilities {
     useState<Capabilities>(defaultCapabilities);
 
   useEffect(() => {
+    // Detect capabilities on client after hydration
     setCapabilities(detectCapabilities());
   }, []);
 
@@ -70,8 +74,8 @@ export function useCapabilities(): Capabilities {
 }
 
 /**
- * Check if effects can be rendered (WebGL2 or WebGPU available)
+ * Check if effects can be rendered (capabilities detected and WebGL2 or WebGPU available)
  */
 export function canRenderEffects(capabilities: Capabilities): boolean {
-  return capabilities.tier !== "fallback";
+  return capabilities.isDetected && capabilities.tier !== "fallback";
 }

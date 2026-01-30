@@ -9,6 +9,7 @@
  */
 
 import type * as api_admin from "../api/admin.js";
+import type * as api_backfill from "../api/backfill.js";
 import type * as api_media from "../api/media.js";
 import type * as api_posts from "../api/posts.js";
 import type * as api_users from "../api/users.js";
@@ -46,6 +47,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   "api/admin": typeof api_admin;
+  "api/backfill": typeof api_backfill;
   "api/media": typeof api_media;
   "api/posts": typeof api_posts;
   "api/users": typeof api_users;

@@ -13,6 +13,10 @@ export type FilterState = {
   startDate: number | null;
   /** Custom end date (timestamp in ms) */
   endDate: number | null;
+  /** Location ID filter (Instagram location ig_id) */
+  locationId: string | null;
+  /** Collaborator username filter */
+  collaborator: string | null;
 };
 
 const initialState: FilterState = {
@@ -21,6 +25,8 @@ const initialState: FilterState = {
   datePreset: "all",
   startDate: null,
   endDate: null,
+  locationId: null,
+  collaborator: null,
 };
 
 export const filterStore = new Store<FilterState>(initialState);
@@ -82,12 +88,24 @@ export function setCustomDateRange(
   }));
 }
 
+export function setLocationId(locationId: string | null) {
+  filterStore.setState((state) => ({ ...state, locationId }));
+}
+
+export function setCollaborator(collaborator: string | null) {
+  filterStore.setState((state) => ({ ...state, collaborator }));
+}
+
 export function clearFilters() {
   filterStore.setState(() => initialState);
 }
 
 export function hasActiveFilters(state: FilterState): boolean {
   return (
-    state.search !== "" || state.userId !== null || state.datePreset !== "all"
+    state.search !== "" ||
+    state.userId !== null ||
+    state.datePreset !== "all" ||
+    state.locationId !== null ||
+    state.collaborator !== null
   );
 }

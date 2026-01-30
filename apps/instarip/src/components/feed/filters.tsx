@@ -14,14 +14,21 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@avoid.quest/ui/components/select";
-import { CalendarIcon, SearchIcon, XIcon } from "lucide-react";
-import { useFilterState, useHasActiveFilters } from "@/lib/hooks/use-filters";
+import { CalendarIcon, MapPinIcon, SearchIcon, UsersIcon, XIcon } from "lucide-react";
+import {
+  useCollaborators,
+  useFilterState,
+  useHasActiveFilters,
+  useLocations,
+} from "@/lib/hooks/use-filters";
 import { useUsers } from "@/lib/hooks/use-users";
 import {
   clearFilters,
   type DatePreset,
+  setCollaborator,
   setCustomDateRange,
   setDatePreset,
+  setLocationId,
   setSearch,
   setUserId,
 } from "@/lib/stores/filter-store";
@@ -38,6 +45,8 @@ export function Filters() {
   const state = useFilterState();
   const hasFilters = useHasActiveFilters();
   const users = useUsers(100);
+  const locations = useLocations();
+  const collaborators = useCollaborators();
 
   const formatDateForInput = (timestamp: number | null) => {
     if (!timestamp) {
@@ -84,6 +93,48 @@ export function Filters() {
           ))}
         </SelectContent>
       </Select>
+
+      {/* Location filter */}
+      {locations && locations.length > 0 && (
+        <Select
+          onValueChange={(value) => setLocationId(value === "all" ? null : value)}
+          value={state.locationId ?? "all"}
+        >
+          <SelectTrigger className="w-[180px]">
+            <MapPinIcon className="mr-2 size-4" />
+            <SelectValue placeholder="All locations" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All locations</SelectItem>
+            {locations.map((loc) => (
+              <SelectItem key={loc.ig_id} value={loc.ig_id}>
+                {loc.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
+
+      {/* Collaborator filter */}
+      {collaborators && collaborators.length > 0 && (
+        <Select
+          onValueChange={(value) => setCollaborator(value === "all" ? null : value)}
+          value={state.collaborator ?? "all"}
+        >
+          <SelectTrigger className="w-[180px]">
+            <UsersIcon className="mr-2 size-4" />
+            <SelectValue placeholder="All collabs" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All collabs</SelectItem>
+            {collaborators.map((collab) => (
+              <SelectItem key={collab} value={collab}>
+                @{collab}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
 
       {/* Date preset */}
       <Select

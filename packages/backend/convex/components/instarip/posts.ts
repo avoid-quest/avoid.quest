@@ -24,6 +24,15 @@ const postStatusValidator = v.union(
 );
 
 /**
+ * Location validator
+ */
+const locationValidator = v.object({
+	ig_id: v.string(),
+	name: v.string(),
+	slug: v.string(),
+});
+
+/**
  * Shared validator for paginated post results
  */
 const paginatedPostValidator = v.object({
@@ -41,6 +50,8 @@ const paginatedPostValidator = v.object({
 	users: v.array(v.id("users")),
 	timestamp: v.number(),
 	event_date: v.optional(v.number()),
+	location: v.optional(locationValidator),
+	collaborators: v.optional(v.array(v.string())),
 	status: postStatusValidator,
 	sentAt: v.optional(v.number()),
 });
@@ -145,31 +156,83 @@ export const getPostsWithFilters = query({
 		userId: v.optional(v.id("users")),
 		startDate: v.optional(v.number()),
 		endDate: v.optional(v.number()),
+		locationId: v.optional(v.string()),
+		collaborator: v.optional(v.string()),
 	},
 	returns: v.array(paginatedPostValidator),
-	handler: async (ctx, { limit, userId, startDate, endDate }) => {
+	handler: async (ctx, { limit, userId, startDate, endDate, locationId, collaborator }) => {
 		// If filtering by user, use the user index
 		const posts = userId
 			? await ctx.db
 					.query("posts")
 					.withIndex("by_user_id", (q) => q.eq("users", [userId]))
 					.order("desc")
-					.take((limit ?? 50) * 3)
+					.take((limit ?? 50) * 5) // Fetch more to account for filtering
 			: await ctx.db
 					.query("posts")
 					.withIndex("by_event_date")
 					.order("desc")
-					.take((limit ?? 50) * 3);
+					.take((limit ?? 50) * 5);
 
-		// Apply date filters in memory
+		// Apply filters in memory
 		const filtered = posts.filter((post) => {
 			const postDate = post.event_date ?? post.timestamp;
 			if (startDate && postDate < startDate) return false;
 			if (endDate && postDate > endDate) return false;
+			if (locationId && post.location?.ig_id !== locationId) return false;
+			if (collaborator && !post.collaborators?.includes(collaborator)) return false;
 			return true;
 		});
 
 		return filtered.slice(0, limit ?? 50);
+	},
+});
+
+/**
+ * Get all unique locations from posts (for filter dropdown)
+ */
+export const getLocations = query({
+	returns: v.array(locationValidator),
+	handler: async (ctx) => {
+		const posts = await ctx.db
+			.query("posts")
+			.collect();
+		
+		// Deduplicate by ig_id
+		const locationsMap = new Map<string, { ig_id: string; name: string; slug: string }>();
+		for (const post of posts) {
+			if (post.location) {
+				locationsMap.set(post.location.ig_id, post.location);
+			}
+		}
+		
+		// Sort by name
+		return Array.from(locationsMap.values()).sort((a, b) => 
+			a.name.localeCompare(b.name)
+		);
+	},
+});
+
+/**
+ * Get all unique collaborators from posts (for filter dropdown)
+ */
+export const getCollaborators = query({
+	returns: v.array(v.string()),
+	handler: async (ctx) => {
+		const posts = await ctx.db
+			.query("posts")
+			.collect();
+		
+		// Collect all unique collaborators
+		const collaboratorsSet = new Set<string>();
+		for (const post of posts) {
+			for (const collab of post.collaborators ?? []) {
+				collaboratorsSet.add(collab);
+			}
+		}
+		
+		// Sort alphabetically
+		return Array.from(collaboratorsSet).sort();
 	},
 });
 
@@ -249,6 +312,8 @@ export const upsertPost = mutation({
 		users: v.array(v.id("users")),
 		timestamp: v.number(),
 		event_date: v.optional(v.number()),
+		location: v.optional(locationValidator),
+		collaborators: v.optional(v.array(v.string())),
 	},
 	handler: async (ctx, args) => {
 		const { id, ...data } = args;

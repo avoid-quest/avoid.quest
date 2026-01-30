@@ -10,6 +10,15 @@ import type { QueryCtx } from "../_generated/server";
 import { query } from "../_generated/server";
 
 /**
+ * Location data from Instagram
+ */
+type Location = {
+	ig_id: string;
+	name: string;
+	slug: string;
+};
+
+/**
  * Full post type matching the component schema
  */
 type Post = {
@@ -27,6 +36,10 @@ type Post = {
 	users: string[];
 	timestamp: number;
 	event_date?: number;
+	/** Instagram location data */
+	location?: Location;
+	/** Collaborator usernames */
+	collaborators?: string[];
 	status: "pending" | "sending" | "sent" | "failed";
 	sentAt?: number;
 	retry_count?: number;
@@ -200,8 +213,10 @@ export const getFiltered = query({
 		userId: v.optional(v.string()),
 		startDate: v.optional(v.number()),
 		endDate: v.optional(v.number()),
+		locationId: v.optional(v.string()),
+		collaborator: v.optional(v.string()),
 	},
-	handler: async (ctx, { limit, userId, startDate, endDate }) => {
+	handler: async (ctx, { limit, userId, startDate, endDate, locationId, collaborator }) => {
 		const posts = await ctx.runQuery(
 			components.instarip.posts.getPostsWithFilters,
 			{
@@ -210,9 +225,29 @@ export const getFiltered = query({
 				userId: userId as any,
 				startDate,
 				endDate,
+				locationId,
+				collaborator,
 			},
 		);
 		return enrichPostsWithMedia(ctx, posts as Post[]);
+	},
+});
+
+/**
+ * Get all unique locations (for filter dropdown)
+ */
+export const getLocations = query({
+	handler: async (ctx) => {
+		return await ctx.runQuery(components.instarip.posts.getLocations, {});
+	},
+});
+
+/**
+ * Get all unique collaborators (for filter dropdown)
+ */
+export const getCollaborators = query({
+	handler: async (ctx) => {
+		return await ctx.runQuery(components.instarip.posts.getCollaborators, {});
 	},
 });
 

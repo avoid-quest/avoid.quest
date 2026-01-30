@@ -55,9 +55,11 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           error?: string;
           post?: {
             caption: string;
+            collaborators: Array<string>;
             display_url: string;
             id: string;
             is_video: boolean;
+            location?: { ig_id: string; name: string; slug: string };
             media_items: Array<{
               height?: number;
               type: "image" | "video" | "thumbnail";
@@ -83,9 +85,11 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           error?: string;
           posts: Array<{
             caption: string;
+            collaborators: Array<string>;
             display_url: string;
             id: string;
             is_video: boolean;
+            location?: { ig_id: string; name: string; slug: string };
             media_items: Array<{
               height?: number;
               type: "image" | "video" | "thumbnail";
@@ -269,6 +273,20 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         Name
       >;
       getBackfillStats: FunctionReference<"query", "internal", any, any, Name>;
+      getCollaborators: FunctionReference<
+        "query",
+        "internal",
+        any,
+        Array<string>,
+        Name
+      >;
+      getLocations: FunctionReference<
+        "query",
+        "internal",
+        any,
+        Array<{ ig_id: string; name: string; slug: string }>,
+        Name
+      >;
       getPostById: FunctionReference<
         "query",
         "internal",
@@ -308,10 +326,12 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             _creationTime: number;
             _id: string;
             caption: string;
+            collaborators?: Array<string>;
             display_url: string;
             event_date?: number;
             ig_id: string;
             is_video: boolean;
+            location?: { ig_id: string; name: string; slug: string };
             media_type: "image" | "video" | "carousel";
             sentAt?: number;
             shortcode: string;
@@ -329,8 +349,10 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "query",
         "internal",
         {
+          collaborator?: string;
           endDate?: number;
           limit?: number;
+          locationId?: string;
           startDate?: number;
           userId?: string;
         },
@@ -338,10 +360,12 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           _creationTime: number;
           _id: string;
           caption: string;
+          collaborators?: Array<string>;
           display_url: string;
           event_date?: number;
           ig_id: string;
           is_video: boolean;
+          location?: { ig_id: string; name: string; slug: string };
           media_type: "image" | "video" | "carousel";
           sentAt?: number;
           shortcode: string;
@@ -372,10 +396,12 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             _creationTime: number;
             _id: string;
             caption: string;
+            collaborators?: Array<string>;
             display_url: string;
             event_date?: number;
             ig_id: string;
             is_video: boolean;
+            location?: { ig_id: string; name: string; slug: string };
             media_type: "image" | "video" | "carousel";
             sentAt?: number;
             shortcode: string;
@@ -418,10 +444,12 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           _creationTime: number;
           _id: string;
           caption: string;
+          collaborators?: Array<string>;
           display_url: string;
           event_date?: number;
           ig_id: string;
           is_video: boolean;
+          location?: { ig_id: string; name: string; slug: string };
           media_type: "image" | "video" | "carousel";
           sentAt?: number;
           shortcode: string;
@@ -439,11 +467,13 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "internal",
         {
           caption: string;
+          collaborators?: Array<string>;
           display_url: string;
           event_date?: number;
           id?: string;
           ig_id: string;
           is_video: boolean;
+          location?: { ig_id: string; name: string; slug: string };
           media_type: "image" | "video" | "carousel";
           shortcode: string;
           thumbnail_url?: string;

@@ -204,9 +204,11 @@ export declare const components: {
           error?: string;
           post?: {
             caption: string;
+            collaborators: Array<string>;
             display_url: string;
             id: string;
             is_video: boolean;
+            location?: { ig_id: string; name: string; slug: string };
             media_items: Array<{
               height?: number;
               type: "image" | "video" | "thumbnail";
@@ -231,9 +233,11 @@ export declare const components: {
           error?: string;
           posts: Array<{
             caption: string;
+            collaborators: Array<string>;
             display_url: string;
             id: string;
             is_video: boolean;
+            location?: { ig_id: string; name: string; slug: string };
             media_items: Array<{
               height?: number;
               type: "image" | "video" | "thumbnail";
@@ -398,6 +402,18 @@ export declare const components: {
         any
       >;
       getBackfillStats: FunctionReference<"query", "internal", any, any>;
+      getCollaborators: FunctionReference<
+        "query",
+        "internal",
+        any,
+        Array<string>
+      >;
+      getLocations: FunctionReference<
+        "query",
+        "internal",
+        any,
+        Array<{ ig_id: string; name: string; slug: string }>
+      >;
       getPostById: FunctionReference<"query", "internal", { id: string }, any>;
       getPostByShortcode: FunctionReference<
         "query",
@@ -423,10 +439,12 @@ export declare const components: {
             _creationTime: number;
             _id: string;
             caption: string;
+            collaborators?: Array<string>;
             display_url: string;
             event_date?: number;
             ig_id: string;
             is_video: boolean;
+            location?: { ig_id: string; name: string; slug: string };
             media_type: "image" | "video" | "carousel";
             sentAt?: number;
             shortcode: string;
@@ -443,8 +461,10 @@ export declare const components: {
         "query",
         "internal",
         {
+          collaborator?: string;
           endDate?: number;
           limit?: number;
+          locationId?: string;
           startDate?: number;
           userId?: string;
         },
@@ -452,10 +472,12 @@ export declare const components: {
           _creationTime: number;
           _id: string;
           caption: string;
+          collaborators?: Array<string>;
           display_url: string;
           event_date?: number;
           ig_id: string;
           is_video: boolean;
+          location?: { ig_id: string; name: string; slug: string };
           media_type: "image" | "video" | "carousel";
           sentAt?: number;
           shortcode: string;
@@ -479,10 +501,12 @@ export declare const components: {
             _creationTime: number;
             _id: string;
             caption: string;
+            collaborators?: Array<string>;
             display_url: string;
             event_date?: number;
             ig_id: string;
             is_video: boolean;
+            location?: { ig_id: string; name: string; slug: string };
             media_type: "image" | "video" | "carousel";
             sentAt?: number;
             shortcode: string;
@@ -521,10 +545,12 @@ export declare const components: {
           _creationTime: number;
           _id: string;
           caption: string;
+          collaborators?: Array<string>;
           display_url: string;
           event_date?: number;
           ig_id: string;
           is_video: boolean;
+          location?: { ig_id: string; name: string; slug: string };
           media_type: "image" | "video" | "carousel";
           sentAt?: number;
           shortcode: string;
@@ -541,11 +567,13 @@ export declare const components: {
         "internal",
         {
           caption: string;
+          collaborators?: Array<string>;
           display_url: string;
           event_date?: number;
           id?: string;
           ig_id: string;
           is_video: boolean;
+          location?: { ig_id: string; name: string; slug: string };
           media_type: "image" | "video" | "carousel";
           shortcode: string;
           thumbnail_url?: string;

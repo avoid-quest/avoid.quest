@@ -1,6 +1,6 @@
 import { Card, CardContent } from "@avoid.quest/ui/components/card";
 import { Link } from "@tanstack/react-router";
-import { ImageIcon, ImagesIcon, VideoIcon } from "lucide-react";
+import { ImageIcon, ImagesIcon, MapPinIcon, UsersIcon, VideoIcon } from "lucide-react";
 import { getPostImageUrl } from "@/lib/utils/media";
 
 type PostCardProps = {
@@ -14,6 +14,12 @@ type PostCardProps = {
     is_video: boolean;
     media_type: "image" | "video" | "carousel";
     timestamp: number;
+    location?: {
+      ig_id: string;
+      name: string;
+      slug: string;
+    };
+    collaborators?: string[];
   };
 };
 
@@ -44,11 +50,48 @@ export function PostCard({ post }: PostCardProps) {
             <MediaTypeIcon className="size-4 text-white" />
           </div>
 
+          {/* Location indicator */}
+          {post.location && (
+            <div className="absolute top-2 left-2 flex items-center gap-1 rounded-full bg-black/60 px-2 py-1">
+              <MapPinIcon className="size-3 text-white" />
+              <span className="max-w-[100px] truncate text-xs text-white">
+                {post.location.name}
+              </span>
+            </div>
+          )}
+
+          {/* Collaborators indicator */}
+          {post.collaborators && post.collaborators.length > 0 && (
+            <div className="absolute top-2 left-2 mt-7 flex items-center gap-1 rounded-full bg-black/60 px-2 py-1">
+              <UsersIcon className="size-3 text-white" />
+              <span className="text-xs text-white">
+                {post.collaborators.length}
+              </span>
+            </div>
+          )}
+
           {/* Caption preview on hover */}
           <div className="absolute inset-x-0 bottom-0 translate-y-full bg-gradient-to-t from-black/80 to-transparent p-3 transition-transform group-hover:translate-y-0">
             <p className="line-clamp-2 text-sm text-white">
               {post.caption || "No caption"}
             </p>
+            {/* Location and collaborators in hover state */}
+            {(post.location || (post.collaborators && post.collaborators.length > 0)) && (
+              <div className="mt-1 flex flex-wrap gap-2 text-xs text-white/80">
+                {post.location && (
+                  <span className="flex items-center gap-1">
+                    <MapPinIcon className="size-3" />
+                    {post.location.name}
+                  </span>
+                )}
+                {post.collaborators && post.collaborators.length > 0 && (
+                  <span className="flex items-center gap-1">
+                    <UsersIcon className="size-3" />
+                    {post.collaborators.map(c => `@${c}`).join(", ")}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>

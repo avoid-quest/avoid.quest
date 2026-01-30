@@ -6,6 +6,20 @@ import { api } from "@/lib/convex";
 import { filterStore, hasActiveFilters } from "@/lib/stores/filter-store";
 
 /**
+ * Hook to get all locations for filter dropdown
+ */
+export function useLocations() {
+  return useQuery(api.api.posts.getLocations);
+}
+
+/**
+ * Hook to get all collaborators for filter dropdown
+ */
+export function useCollaborators() {
+  return useQuery(api.api.posts.getCollaborators);
+}
+
+/**
  * Hook to access filter state
  */
 export function useFilterState() {
@@ -45,7 +59,11 @@ export function useFilteredPosts(initialNumItems = 12) {
   const state = useStore(filterStore);
   const debouncedSearch = useDebouncedValue(state.search, 300);
   const isSearching = debouncedSearch.trim().length > 0;
-  const hasFilters = state.userId !== null || state.datePreset !== "all";
+  const hasFilters =
+    state.userId !== null ||
+    state.datePreset !== "all" ||
+    state.locationId !== null ||
+    state.collaborator !== null;
 
   // Search results (when search is active) - not paginated
   const searchResults = useQuery(
@@ -62,6 +80,8 @@ export function useFilteredPosts(initialNumItems = 12) {
           userId: state.userId ?? undefined,
           startDate: state.startDate ?? undefined,
           endDate: state.endDate ?? undefined,
+          locationId: state.locationId ?? undefined,
+          collaborator: state.collaborator ?? undefined,
         }
       : "skip"
   );

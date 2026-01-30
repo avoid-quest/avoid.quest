@@ -15,6 +15,15 @@ const INSTAGRAM_API_BASE = "https://www.instagram.com/api/v1";
 const REQUEST_TIMEOUT_MS = 10000;
 
 /**
+ * Convex validator for location data from Instagram
+ */
+export const locationValidator = v.object({
+	ig_id: v.string(),
+	name: v.string(),
+	slug: v.string(),
+});
+
+/**
  * Convex validator for fetched post from Instagram
  * Timestamps are in MILLISECONDS (converted from Instagram's seconds format)
  */
@@ -34,6 +43,10 @@ export const fetchedPostValidator = v.object({
 	media_items: v.array(instagramMediaItemValidator),
 	video_url: v.optional(v.string()),
 	thumbnail_url: v.optional(v.string()),
+	/** Location data (optional - null if post has no location tag) */
+	location: v.optional(locationValidator),
+	/** Collaborator usernames from coauthor_producers */
+	collaborators: v.array(v.string()),
 });
 
 /**
@@ -73,6 +86,19 @@ type InstagramMediaNode = {
 	image_versions2?: {
 		candidates: Array<{ url: string; width: number; height: number }>;
 	};
+	/** Location data from Instagram */
+	location?: {
+		id: string;
+		has_public_page?: boolean;
+		name: string;
+		slug: string;
+	};
+	/** Collaborators/co-authors on the post */
+	coauthor_producers?: Array<{
+		id: string;
+		is_verified?: boolean;
+		username: string;
+	}>;
 };
 
 type InstagramApiResponse = {
@@ -248,6 +274,20 @@ function parseMediaNode(node: InstagramMediaNode): FetchedPost | null {
 		mediaItems = processMediaNode(node);
 	}
 
+	// Extract location if present
+	const location = node.location
+		? {
+				ig_id: node.location.id,
+				name: node.location.name,
+				slug: node.location.slug,
+			}
+		: undefined;
+
+	// Extract collaborator usernames
+	const collaborators = (node.coauthor_producers ?? [])
+		.map((c) => c.username)
+		.filter(Boolean);
+
 	return {
 		id: node.id,
 		shortcode,
@@ -260,6 +300,8 @@ function parseMediaNode(node: InstagramMediaNode): FetchedPost | null {
 		media_items: mediaItems,
 		video_url: videoUrl,
 		thumbnail_url: thumbnailUrl,
+		location,
+		collaborators,
 	};
 }
 
@@ -413,6 +455,9 @@ export async function fetchSinglePost(postUrl: string): Promise<FetchResult> {
 			media_items: data.thumbnail_url
 				? [{ url: data.thumbnail_url, type: "image" }]
 				: [],
+			// oEmbed doesn't provide location or collaborators
+			location: undefined,
+			collaborators: [],
 		};
 
 		return { success: true, posts: [post] };

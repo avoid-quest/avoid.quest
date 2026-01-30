@@ -85,6 +85,16 @@ export default defineSchema({
 		timestamp: v.number(),
 		/** Event date in milliseconds (UTC) - when the event occurs (if applicable) */
 		event_date: v.optional(v.number()),
+		/** Instagram location data (optional - null if post has no location tag) */
+		location: v.optional(
+			v.object({
+				ig_id: v.string(),
+				name: v.string(),
+				slug: v.string(),
+			}),
+		),
+		/** Collaborator usernames from coauthor_producers (empty array if none) */
+		collaborators: v.optional(v.array(v.string())),
 		users: v.array(v.id("users")),
 		/**
 		 * Post sending status - state machine pattern

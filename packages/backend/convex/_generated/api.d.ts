@@ -26,6 +26,11 @@ import type * as instarip_menu_usersMenu from "../instarip/menu/usersMenu.js";
 import type * as instarip_webhook from "../instarip/webhook.js";
 import type * as lib_config_defaults from "../lib/config/defaults.js";
 import type * as lib_config_index from "../lib/config/index.js";
+import type * as lib_dateExtractor_extractor from "../lib/dateExtractor/extractor.js";
+import type * as lib_dateExtractor_index from "../lib/dateExtractor/index.js";
+import type * as lib_dateExtractor_parsers_ITWeekendParser from "../lib/dateExtractor/parsers/ITWeekendParser.js";
+import type * as lib_dateExtractor_parsers_index from "../lib/dateExtractor/parsers/index.js";
+import type * as lib_dateExtractor_types from "../lib/dateExtractor/types.js";
 import type * as lib_fileIdMatcher from "../lib/fileIdMatcher.js";
 import type * as lib_logger from "../lib/logger.js";
 import type * as lib_security from "../lib/security.js";
@@ -58,6 +63,11 @@ declare const fullApi: ApiFromModules<{
   "instarip/webhook": typeof instarip_webhook;
   "lib/config/defaults": typeof lib_config_defaults;
   "lib/config/index": typeof lib_config_index;
+  "lib/dateExtractor/extractor": typeof lib_dateExtractor_extractor;
+  "lib/dateExtractor/index": typeof lib_dateExtractor_index;
+  "lib/dateExtractor/parsers/ITWeekendParser": typeof lib_dateExtractor_parsers_ITWeekendParser;
+  "lib/dateExtractor/parsers/index": typeof lib_dateExtractor_parsers_index;
+  "lib/dateExtractor/types": typeof lib_dateExtractor_types;
   "lib/fileIdMatcher": typeof lib_fileIdMatcher;
   "lib/logger": typeof lib_logger;
   "lib/security": typeof lib_security;
@@ -408,6 +418,12 @@ export declare const components: {
         any,
         Array<string>
       >;
+      getEventDateBackfillStats: FunctionReference<
+        "query",
+        "internal",
+        any,
+        any
+      >;
       getLocations: FunctionReference<
         "query",
         "internal",
@@ -427,6 +443,17 @@ export declare const components: {
         "internal",
         { userId: string },
         any
+      >;
+      getPostsNeedingDateBackfill: FunctionReference<
+        "query",
+        "internal",
+        { limit?: number },
+        Array<{
+          _id: string;
+          caption: string;
+          event_date?: number;
+          timestamp: number;
+        }>
       >;
       getPostsPaginated: FunctionReference<
         "query",
@@ -561,6 +588,12 @@ export declare const components: {
           users: Array<string>;
           video_url?: string;
         }>
+      >;
+      updateEventDate: FunctionReference<
+        "mutation",
+        "internal",
+        { event_date: number; id: string },
+        any
       >;
       upsertPost: FunctionReference<
         "mutation",

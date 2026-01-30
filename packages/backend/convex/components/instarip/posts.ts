@@ -545,3 +545,95 @@ export const getBackfillStats = query({
 		};
 	},
 });
+
+/**
+ * Update event_date for a post
+ * Used by backfill operations
+ */
+export const updateEventDate = mutation({
+	args: {
+		id: v.id("posts"),
+		event_date: v.number(),
+	},
+	handler: async (ctx, { id, event_date }) => {
+		const post = await ctx.db.get(id);
+		if (!post) {
+			throw new Error(`Post ${id} not found`);
+		}
+		await ctx.db.patch(id, { event_date });
+	},
+});
+
+/**
+ * Get posts that need event_date backfill
+ * Returns posts where event_date equals timestamp (fallback value)
+ * or event_date is undefined
+ *
+ * @param limit - Maximum number of posts to return
+ */
+export const getPostsNeedingDateBackfill = query({
+	args: { limit: v.optional(v.number()) },
+	returns: v.array(
+		v.object({
+			_id: v.id("posts"),
+			caption: v.string(),
+			timestamp: v.number(),
+			event_date: v.optional(v.number()),
+		}),
+	),
+	handler: async (ctx, { limit }) => {
+		// Get all posts and filter in memory
+		// For large datasets, consider adding an index on event_date
+		const posts = await ctx.db
+			.query("posts")
+			.withIndex("by_timestamp")
+			.order("desc")
+			.take((limit ?? 100) * 2);
+
+		// Filter posts where event_date is undefined or equals timestamp
+		const needsBackfill = posts.filter(
+			(post) =>
+				post.event_date === undefined || post.event_date === post.timestamp,
+		);
+
+		return needsBackfill.slice(0, limit ?? 100).map((post) => ({
+			_id: post._id,
+			caption: post.caption,
+			timestamp: post.timestamp,
+			event_date: post.event_date,
+		}));
+	},
+});
+
+/**
+ * Get event date backfill statistics
+ */
+export const getEventDateBackfillStats = query({
+	handler: async (ctx) => {
+		const posts = await ctx.db.query("posts").collect();
+
+		let total = 0;
+		let withExtractedDate = 0;
+		let usingFallback = 0;
+		let noEventDate = 0;
+
+		for (const post of posts) {
+			total++;
+			if (post.event_date === undefined) {
+				noEventDate++;
+			} else if (post.event_date === post.timestamp) {
+				usingFallback++;
+			} else {
+				withExtractedDate++;
+			}
+		}
+
+		return {
+			total,
+			withExtractedDate,
+			usingFallback,
+			noEventDate,
+			needsBackfill: noEventDate,
+		};
+	},
+});

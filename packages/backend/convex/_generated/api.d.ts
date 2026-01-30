@@ -8,6 +8,10 @@
  * @module
  */
 
+import type * as api_admin from "../api/admin.js";
+import type * as api_media from "../api/media.js";
+import type * as api_posts from "../api/posts.js";
+import type * as api_users from "../api/users.js";
 import type * as bootstrap from "../bootstrap.js";
 import type * as crons from "../crons.js";
 import type * as http from "../http.js";
@@ -36,6 +40,10 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  "api/admin": typeof api_admin;
+  "api/media": typeof api_media;
+  "api/posts": typeof api_posts;
+  "api/users": typeof api_users;
   bootstrap: typeof bootstrap;
   crons: typeof crons;
   http: typeof http;

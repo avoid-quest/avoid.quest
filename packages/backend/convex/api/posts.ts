@@ -30,6 +30,7 @@ export const getPaginated = query({
 		paginationOpts: v.object({
 			cursor: v.union(v.string(), v.null()),
 			numItems: v.number(),
+			endCursor: v.optional(v.union(v.string(), v.null())),
 		}),
 	},
 	handler: async (ctx, { paginationOpts }) => {

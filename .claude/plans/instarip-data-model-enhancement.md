@@ -1,6 +1,6 @@
 # Instarip Data Model Enhancement Plan
 
-**Status:** Planning  
+**Status:** ✅ Complete  
 **Created:** 2025-01-30  
 **Goal:** Add location and collab support to the data model and frontend
 
@@ -192,10 +192,15 @@ packages/backend/convex/components/telegram/
 
 ## Acceptance Criteria
 
-- [ ] Posts table supports location (optional object) and collaborators (string array)
-- [ ] Instagram fetcher extracts and stores location/collab data
-- [ ] Frontend displays location and collaborators on post cards
-- [ ] Frontend filters by location and collaborator work
-- [ ] Existing posts without data continue to work (backward compatible)
-- [ ] No breaking changes to existing API consumers
-- [ ] Telegram messages unchanged (no location/collab in captions)
+- [x] Posts table supports location (optional object) and collaborators (string array)
+- [x] Instagram fetcher extracts and stores location/collab data
+- [x] Frontend displays location and collaborators on post cards
+- [x] Frontend filters by location and collaborator work
+- [x] Existing posts without data continue to work (backward compatible)
+- [x] No breaking changes to existing API consumers
+- [x] Telegram messages unchanged (no location/collab in captions)
+
+## Completed
+
+**Date:** 2025-01-30
+**Commit:** 89c54f2

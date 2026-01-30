@@ -17,6 +17,8 @@ import { ConvexProvider, ConvexReactClient } from "convex/react";
 import { HomeIcon } from "lucide-react";
 import { useState } from "react";
 import { Header } from "@/components/layout/header";
+import { InstallPrompt } from "@/components/pwa/install-prompt";
+import { SWRegister } from "@/components/pwa/sw-register";
 import { ThemeProvider } from "@/components/theme/theme-provider";
 
 export const Route = createRootRoute({
@@ -24,12 +26,18 @@ export const Route = createRootRoute({
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "instarip - avoid.quest" },
-      { name: "description", content: "Instagram post viewer" },
+      { title: "InstaRip - avoid.quest" },
+      { name: "description", content: "Instagram post viewer and organizer" },
       { name: "theme-color", content: "#000000" },
+      { name: "apple-mobile-web-app-title", content: "InstaRip" },
+      { name: "mobile-web-app-capable", content: "yes" },
+      { name: "apple-mobile-web-app-status-bar-style", content: "black" },
+      { name: "application-name", content: "InstaRip - avoid.quest" },
+      { name: "msapplication-TileColor", content: "#000000" },
     ],
     links: [
       { rel: "stylesheet", href: globalsCss, precedence: "default" },
+      { rel: "manifest", href: "/manifest.json" },
       { rel: "icon", type: "image/x-icon", href: favicon },
       { rel: "apple-touch-icon", href: appleIcon },
       { rel: "icon", type: "image/svg+xml", href: icon0 },
@@ -86,6 +94,8 @@ function RootComponent() {
             disableTransitionOnChange
             enableSystem
           >
+            <SWRegister />
+            <InstallPrompt />
             <div className="relative flex min-h-screen flex-col bg-background">
               <Header />
               <main className="flex-1">

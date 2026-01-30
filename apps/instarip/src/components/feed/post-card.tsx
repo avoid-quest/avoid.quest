@@ -1,6 +1,7 @@
 import { Card, CardContent } from "@avoid.quest/ui/components/card";
 import { Link } from "@tanstack/react-router";
 import { ImageIcon, ImagesIcon, VideoIcon } from "lucide-react";
+import { getPostImageUrl } from "@/lib/utils/media";
 
 type PostCardProps = {
   post: {
@@ -8,6 +9,7 @@ type PostCardProps = {
     shortcode: string;
     display_url: string;
     thumbnail_url?: string;
+    proxyImageId?: string;
     caption: string;
     is_video: boolean;
     media_type: "image" | "video" | "carousel";
@@ -16,7 +18,7 @@ type PostCardProps = {
 };
 
 export function PostCard({ post }: PostCardProps) {
-  const imageUrl = post.thumbnail_url || post.display_url;
+  const imageUrl = getPostImageUrl(post);
 
   const MediaTypeIcon = {
     image: ImageIcon,

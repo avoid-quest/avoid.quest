@@ -6,7 +6,50 @@
  */
 import { v } from "convex/values";
 import { components } from "../_generated/api";
+import type { QueryCtx } from "../_generated/server";
 import { query } from "../_generated/server";
+
+type Post = {
+	_id: string;
+	[key: string]: unknown;
+};
+
+type MediaItem = {
+	_id: string;
+	type: "image" | "video" | "thumbnail";
+	telegram_file?: { file_id: string; file_unique_id: string };
+};
+
+/**
+ * Enrich a post with proxy media IDs (for Telegram-served media)
+ */
+async function enrichPostWithMedia(ctx: QueryCtx, post: Post) {
+	const mediaItems: MediaItem[] = await ctx.runQuery(
+		components.instarip.mediaItems.getMediaItemsByPostId,
+		// biome-ignore lint/suspicious/noExplicitAny: Cross-component Id type
+		{ postId: post._id as any },
+	);
+
+	const imageItem = mediaItems.find(
+		(item: MediaItem) => item.type === "image" && item.telegram_file,
+	);
+	const videoItem = mediaItems.find(
+		(item: MediaItem) => item.type === "video" && item.telegram_file,
+	);
+
+	return {
+		...post,
+		proxyImageId: imageItem?._id,
+		proxyVideoId: videoItem?._id,
+	};
+}
+
+/**
+ * Enrich multiple posts with proxy media IDs
+ */
+async function enrichPostsWithMedia(ctx: QueryCtx, posts: Post[]) {
+	return Promise.all(posts.map((post) => enrichPostWithMedia(ctx, post)));
+}
 
 /**
  * Get posts ordered by event date (with limit, no pagination)
@@ -14,9 +57,10 @@ import { query } from "../_generated/server";
 export const getPosts = query({
 	args: { limit: v.optional(v.number()) },
 	handler: async (ctx, { limit }) => {
-		return await ctx.runQuery(components.instarip.posts.getPosts, {
+		const posts = await ctx.runQuery(components.instarip.posts.getPosts, {
 			limit: limit ?? 50,
 		});
+		return enrichPostsWithMedia(ctx, posts);
 	},
 });
 
@@ -24,6 +68,7 @@ export const getPosts = query({
  * Get paginated posts ordered by event date
  * Uses convex-helpers paginator (works in components)
  * Accepts paginationOpts wrapper from usePaginatedQuery hook
+ * Enriches posts with proxy media IDs when available
  */
 export const getPaginated = query({
 	args: {
@@ -34,10 +79,18 @@ export const getPaginated = query({
 		}),
 	},
 	handler: async (ctx, { paginationOpts }) => {
-		return await ctx.runQuery(components.instarip.posts.getPostsPaginated, {
-			cursor: paginationOpts.cursor,
-			numItems: paginationOpts.numItems,
-		});
+		const result = await ctx.runQuery(
+			components.instarip.posts.getPostsPaginated,
+			{
+				cursor: paginationOpts.cursor,
+				numItems: paginationOpts.numItems,
+			},
+		);
+
+		return {
+			...result,
+			page: await enrichPostsWithMedia(ctx, result.page),
+		};
 	},
 });
 
@@ -88,10 +141,11 @@ export const search = query({
 		limit: v.optional(v.number()),
 	},
 	handler: async (ctx, { query: searchQuery, limit }) => {
-		return await ctx.runQuery(components.instarip.posts.searchPosts, {
+		const posts = await ctx.runQuery(components.instarip.posts.searchPosts, {
 			query: searchQuery,
 			limit,
 		});
+		return enrichPostsWithMedia(ctx, posts);
 	},
 });
 
@@ -106,12 +160,16 @@ export const getFiltered = query({
 		endDate: v.optional(v.number()),
 	},
 	handler: async (ctx, { limit, userId, startDate, endDate }) => {
-		return await ctx.runQuery(components.instarip.posts.getPostsWithFilters, {
-			limit,
-			// biome-ignore lint/suspicious/noExplicitAny: Cross-component Id type
-			userId: userId as any,
-			startDate,
-			endDate,
-		});
+		const posts = await ctx.runQuery(
+			components.instarip.posts.getPostsWithFilters,
+			{
+				limit,
+				// biome-ignore lint/suspicious/noExplicitAny: Cross-component Id type
+				userId: userId as any,
+				startDate,
+				endDate,
+			},
+		);
+		return enrichPostsWithMedia(ctx, posts);
 	},
 });

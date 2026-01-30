@@ -2,22 +2,37 @@
  * Public API for posts - used by instarip web frontend
  * Wraps the internal component functions for public access
  *
- * NOTE: Convex components don't support paginate().
- * All queries use take() with limits instead.
+ * NOTE: Uses convex-helpers paginator for pagination in components.
  */
 import { v } from "convex/values";
 import { components } from "../_generated/api";
 import { query } from "../_generated/server";
 
 /**
- * Get posts ordered by event date (with limit)
- * No pagination - components don't support it
+ * Get posts ordered by event date (with limit, no pagination)
  */
 export const getPosts = query({
 	args: { limit: v.optional(v.number()) },
 	handler: async (ctx, { limit }) => {
 		return await ctx.runQuery(components.instarip.posts.getPosts, {
 			limit: limit ?? 50,
+		});
+	},
+});
+
+/**
+ * Get paginated posts ordered by event date
+ * Uses convex-helpers paginator (works in components)
+ */
+export const getPaginated = query({
+	args: {
+		cursor: v.optional(v.union(v.string(), v.null())),
+		numItems: v.optional(v.number()),
+	},
+	handler: async (ctx, { cursor, numItems }) => {
+		return await ctx.runQuery(components.instarip.posts.getPostsPaginated, {
+			cursor,
+			numItems,
 		});
 	},
 });

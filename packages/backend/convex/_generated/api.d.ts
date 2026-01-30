@@ -401,16 +401,7 @@ export declare const components: {
       getPostsPaginated: FunctionReference<
         "query",
         "internal",
-        {
-          paginationOpts: {
-            cursor: string | null;
-            endCursor?: string | null;
-            id?: number;
-            maximumBytesRead?: number;
-            maximumRowsRead?: number;
-            numItems: number;
-          };
-        },
+        { cursor?: string | null; numItems?: number },
         {
           continueCursor: string | null;
           isDone: boolean;
@@ -466,16 +457,7 @@ export declare const components: {
       getUnsentPaginated: FunctionReference<
         "query",
         "internal",
-        {
-          paginationOpts: {
-            cursor: string | null;
-            endCursor?: string | null;
-            id?: number;
-            maximumBytesRead?: number;
-            maximumRowsRead?: number;
-            numItems: number;
-          };
-        },
+        { cursor?: string | null; numItems?: number },
         {
           continueCursor: string | null;
           isDone: boolean;

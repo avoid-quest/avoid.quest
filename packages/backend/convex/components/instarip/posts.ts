@@ -1,7 +1,8 @@
-import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
+import { paginator } from "convex-helpers/server/pagination";
 import type { Id } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
+import schema from "./schema";
 
 /**
  * Media type validator for posts
@@ -104,21 +105,28 @@ export const getUnsent = query({
 });
 
 /**
- * Get posts with pagination
+ * Get posts with pagination using convex-helpers paginator
+ * (built-in .paginate() doesn't work in components)
  */
 export const getPostsPaginated = query({
-	args: { paginationOpts: paginationOptsValidator },
+	args: {
+		cursor: v.optional(v.union(v.string(), v.null())),
+		numItems: v.optional(v.number()),
+	},
 	returns: v.object({
 		page: v.array(paginatedPostValidator),
 		isDone: v.boolean(),
 		continueCursor: v.union(v.string(), v.null()),
 	}),
-	handler: async (ctx, { paginationOpts }) => {
-		const result = await ctx.db
+	handler: async (ctx, { cursor, numItems }) => {
+		const result = await paginator(ctx.db, schema)
 			.query("posts")
 			.withIndex("by_event_date")
 			.order("desc")
-			.paginate(paginationOpts);
+			.paginate({
+				cursor: cursor ?? null,
+				numItems: numItems ?? 20,
+			});
 		return {
 			page: result.page,
 			isDone: result.isDone,
@@ -141,20 +149,17 @@ export const getPostsWithFilters = query({
 	returns: v.array(paginatedPostValidator),
 	handler: async (ctx, { limit, userId, startDate, endDate }) => {
 		// If filtering by user, use the user index
-		let posts;
-		if (userId) {
-			posts = await ctx.db
-				.query("posts")
-				.withIndex("by_user_id", (q) => q.eq("users", [userId]))
-				.order("desc")
-				.take((limit ?? 50) * 3); // Fetch extra to filter by date
-		} else {
-			posts = await ctx.db
-				.query("posts")
-				.withIndex("by_event_date")
-				.order("desc")
-				.take((limit ?? 50) * 3);
-		}
+		const posts = userId
+			? await ctx.db
+					.query("posts")
+					.withIndex("by_user_id", (q) => q.eq("users", [userId]))
+					.order("desc")
+					.take((limit ?? 50) * 3)
+			: await ctx.db
+					.query("posts")
+					.withIndex("by_event_date")
+					.order("desc")
+					.take((limit ?? 50) * 3);
 
 		// Apply date filters in memory
 		const filtered = posts.filter((post) => {
@@ -196,20 +201,27 @@ export const searchPosts = query({
 
 /**
  * Get unsent posts with pagination
+ * Uses convex-helpers paginator (built-in .paginate() doesn't work in components)
  */
 export const getUnsentPaginated = query({
-	args: { paginationOpts: paginationOptsValidator },
+	args: {
+		cursor: v.optional(v.union(v.string(), v.null())),
+		numItems: v.optional(v.number()),
+	},
 	returns: v.object({
 		page: v.array(paginatedPostValidator),
 		isDone: v.boolean(),
 		continueCursor: v.union(v.string(), v.null()),
 	}),
-	handler: async (ctx, { paginationOpts }) => {
-		const result = await ctx.db
+	handler: async (ctx, { cursor, numItems }) => {
+		const result = await paginator(ctx.db, schema)
 			.query("posts")
 			.withIndex("by_status", (q) => q.eq("status", "pending"))
 			.order("desc")
-			.paginate(paginationOpts);
+			.paginate({
+				cursor: cursor ?? null,
+				numItems: numItems ?? 20,
+			});
 		return {
 			page: result.page,
 			isDone: result.isDone,

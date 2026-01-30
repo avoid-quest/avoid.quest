@@ -284,16 +284,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
       getPostsPaginated: FunctionReference<
         "query",
         "internal",
-        {
-          paginationOpts: {
-            cursor: string | null;
-            endCursor?: string | null;
-            id?: number;
-            maximumBytesRead?: number;
-            maximumRowsRead?: number;
-            numItems: number;
-          };
-        },
+        { cursor?: string | null; numItems?: number },
         {
           continueCursor: string | null;
           isDone: boolean;
@@ -357,16 +348,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
       getUnsentPaginated: FunctionReference<
         "query",
         "internal",
-        {
-          paginationOpts: {
-            cursor: string | null;
-            endCursor?: string | null;
-            id?: number;
-            maximumBytesRead?: number;
-            maximumRowsRead?: number;
-            numItems: number;
-          };
-        },
+        { cursor?: string | null; numItems?: number },
         {
           continueCursor: string | null;
           isDone: boolean;

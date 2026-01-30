@@ -1,5 +1,6 @@
 import { useStore } from "@tanstack/react-store";
 import { useQuery } from "convex/react";
+import { usePaginatedQuery } from "convex-helpers/react";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/convex";
 import { filterStore, hasActiveFilters } from "@/lib/stores/filter-store";
@@ -38,29 +39,26 @@ export function useDebouncedValue<T>(value: T, delay: number): T {
 
 /**
  * Hook for filtered/searched posts
- * Uses search endpoint when search is active, filtered query otherwise
- *
- * NOTE: No pagination - Convex components don't support it.
- * All queries return up to `limit` results.
+ * Uses convex-helpers pagination for infinite scroll
  */
-export function useFilteredPosts(limit = 50) {
+export function useFilteredPosts(initialNumItems = 12) {
   const state = useStore(filterStore);
   const debouncedSearch = useDebouncedValue(state.search, 300);
   const isSearching = debouncedSearch.trim().length > 0;
   const hasFilters = state.userId !== null || state.datePreset !== "all";
 
-  // Search results (when search is active)
+  // Search results (when search is active) - not paginated
   const searchResults = useQuery(
     api.api.posts.search,
-    isSearching ? { query: debouncedSearch, limit } : "skip"
+    isSearching ? { query: debouncedSearch, limit: 50 } : "skip"
   );
 
-  // Filtered results (when filters active but not searching)
+  // Filtered results (when filters active but not searching) - not paginated
   const filteredResults = useQuery(
     api.api.posts.getFiltered,
     !isSearching && hasFilters
       ? {
-          limit,
+          limit: 100,
           userId: state.userId ?? undefined,
           startDate: state.startDate ?? undefined,
           endDate: state.endDate ?? undefined,
@@ -68,10 +66,12 @@ export function useFilteredPosts(limit = 50) {
       : "skip"
   );
 
-  // Default results (no search, no filters)
-  const defaultResults = useQuery(
-    api.api.posts.getPosts,
-    isSearching || hasFilters ? "skip" : { limit }
+  // Default paginated results (no search, no filters)
+  // Uses convex-helpers usePaginatedQuery for proper infinite scroll
+  const paginatedResults = usePaginatedQuery(
+    api.api.posts.getPaginated,
+    isSearching || hasFilters ? "skip" : {},
+    { initialNumItems }
   );
 
   // Return appropriate results based on mode
@@ -79,6 +79,10 @@ export function useFilteredPosts(limit = 50) {
     return {
       results: searchResults ?? [],
       isLoading: searchResults === undefined,
+      loadMore: () => {
+        /* no-op: search not paginated */
+      },
+      status: searchResults === undefined ? "LoadingFirstPage" : "Exhausted",
       isSearchMode: true,
     };
   }
@@ -87,13 +91,19 @@ export function useFilteredPosts(limit = 50) {
     return {
       results: filteredResults ?? [],
       isLoading: filteredResults === undefined,
+      loadMore: () => {
+        /* no-op: filters not paginated */
+      },
+      status: filteredResults === undefined ? "LoadingFirstPage" : "Exhausted",
       isSearchMode: false,
     };
   }
 
   return {
-    results: defaultResults ?? [],
-    isLoading: defaultResults === undefined,
+    results: paginatedResults.results,
+    isLoading: paginatedResults.status === "LoadingFirstPage",
+    loadMore: paginatedResults.loadMore,
+    status: paginatedResults.status,
     isSearchMode: false,
   };
 }

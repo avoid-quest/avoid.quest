@@ -23,16 +23,19 @@ export const getPosts = query({
 /**
  * Get paginated posts ordered by event date
  * Uses convex-helpers paginator (works in components)
+ * Accepts paginationOpts wrapper from usePaginatedQuery hook
  */
 export const getPaginated = query({
 	args: {
-		cursor: v.optional(v.union(v.string(), v.null())),
-		numItems: v.optional(v.number()),
+		paginationOpts: v.object({
+			cursor: v.union(v.string(), v.null()),
+			numItems: v.number(),
+		}),
 	},
-	handler: async (ctx, { cursor, numItems }) => {
+	handler: async (ctx, { paginationOpts }) => {
 		return await ctx.runQuery(components.instarip.posts.getPostsPaginated, {
-			cursor,
-			numItems,
+			cursor: paginationOpts.cursor,
+			numItems: paginationOpts.numItems,
 		});
 	},
 });

@@ -185,7 +185,9 @@ export const searchPosts = query({
 
 		const results = await ctx.db
 			.query("posts")
-			.withSearchIndex("search_caption", (q) => q.search("caption", searchQuery))
+			.withSearchIndex("search_caption", (q) =>
+				q.search("caption", searchQuery),
+			)
 			.take(limit ?? 50);
 
 		return results;

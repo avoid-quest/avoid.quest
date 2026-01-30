@@ -1,4 +1,3 @@
-import { Button } from "@avoid.quest/ui/components/button";
 import { createFileRoute } from "@tanstack/react-router";
 import { Filters } from "@/components/feed/filters";
 import { PostGrid } from "@/components/feed/post-grid";
@@ -9,11 +8,8 @@ export const Route = createFileRoute("/")({
 });
 
 function HomePage() {
-  const { results, status, loadMore, isSearchMode } = useFilteredPosts(20);
+  const { results, isLoading, isSearchMode } = useFilteredPosts(100);
   const hasFilters = useHasActiveFilters();
-
-  const isLoading = status === "LoadingFirstPage";
-  const canLoadMore = status === "CanLoadMore";
 
   return (
     <div className="container py-6">
@@ -36,19 +32,6 @@ function HomePage() {
 
       {/* Post grid */}
       <PostGrid isLoading={isLoading} posts={results} />
-
-      {/* Load more */}
-      {canLoadMore && !isSearchMode && (
-        <div className="mt-6 flex justify-center">
-          <Button
-            onClick={() => loadMore(20)}
-            size="lg"
-            variant="outline"
-          >
-            Load more
-          </Button>
-        </div>
-      )}
     </div>
   );
 }

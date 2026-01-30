@@ -1,11 +1,8 @@
-import { usePaginatedQuery, useQuery } from "convex/react";
 import { useStore } from "@tanstack/react-store";
+import { useQuery } from "convex/react";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/convex";
-import {
-  filterStore,
-  hasActiveFilters,
-} from "@/lib/stores/filter-store";
+import { filterStore, hasActiveFilters } from "@/lib/stores/filter-store";
 
 /**
  * Hook to access filter state
@@ -42,6 +39,9 @@ export function useDebouncedValue<T>(value: T, delay: number): T {
 /**
  * Hook for filtered/searched posts
  * Uses search endpoint when search is active, filtered query otherwise
+ *
+ * NOTE: No pagination - Convex components don't support it.
+ * All queries return up to `limit` results.
  */
 export function useFilteredPosts(limit = 50) {
   const state = useStore(filterStore);
@@ -68,19 +68,17 @@ export function useFilteredPosts(limit = 50) {
       : "skip"
   );
 
-  // Default paginated results (no search, no filters)
-  const defaultResults = usePaginatedQuery(
-    api.api.posts.getPaginated,
-    !isSearching && !hasFilters ? {} : "skip",
-    { initialNumItems: limit }
+  // Default results (no search, no filters)
+  const defaultResults = useQuery(
+    api.api.posts.getPosts,
+    isSearching || hasFilters ? "skip" : { limit }
   );
 
   // Return appropriate results based on mode
   if (isSearching) {
     return {
       results: searchResults ?? [],
-      status: searchResults === undefined ? "LoadingFirstPage" : "Exhausted",
-      loadMore: () => {},
+      isLoading: searchResults === undefined,
       isSearchMode: true,
     };
   }
@@ -88,16 +86,14 @@ export function useFilteredPosts(limit = 50) {
   if (hasFilters) {
     return {
       results: filteredResults ?? [],
-      status: filteredResults === undefined ? "LoadingFirstPage" : "Exhausted",
-      loadMore: () => {},
+      isLoading: filteredResults === undefined,
       isSearchMode: false,
     };
   }
 
   return {
-    results: defaultResults.results,
-    status: defaultResults.status,
-    loadMore: defaultResults.loadMore,
+    results: defaultResults ?? [],
+    isLoading: defaultResults === undefined,
     isSearchMode: false,
   };
 }

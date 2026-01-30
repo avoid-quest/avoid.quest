@@ -3,30 +3,27 @@
 import { Button } from "@avoid.quest/ui/components/button";
 import { Input } from "@avoid.quest/ui/components/input";
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@avoid.quest/ui/components/popover";
+import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@avoid.quest/ui/components/select";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@avoid.quest/ui/components/popover";
 import { CalendarIcon, SearchIcon, XIcon } from "lucide-react";
+import { useFilterState, useHasActiveFilters } from "@/lib/hooks/use-filters";
 import { useUsers } from "@/lib/hooks/use-users";
 import {
-  useFilterState,
-  useHasActiveFilters,
-} from "@/lib/hooks/use-filters";
-import {
-  setSearch,
-  setUserId,
-  setDatePreset,
-  setCustomDateRange,
   clearFilters,
   type DatePreset,
+  setCustomDateRange,
+  setDatePreset,
+  setSearch,
+  setUserId,
 } from "@/lib/stores/filter-store";
 
 const datePresets: { value: DatePreset; label: string }[] = [
@@ -43,12 +40,16 @@ export function Filters() {
   const users = useUsers(100);
 
   const formatDateForInput = (timestamp: number | null) => {
-    if (!timestamp) return "";
+    if (!timestamp) {
+      return "";
+    }
     return new Date(timestamp).toISOString().split("T")[0];
   };
 
   const parseDateInput = (dateStr: string): number | null => {
-    if (!dateStr) return null;
+    if (!dateStr) {
+      return null;
+    }
     return new Date(dateStr).getTime();
   };
 
@@ -115,8 +116,14 @@ export function Filters() {
           <PopoverContent align="start" className="w-auto p-4">
             <div className="flex flex-col gap-3">
               <div className="flex flex-col gap-1">
-                <label className="text-sm font-medium">From</label>
+                <label
+                  className="font-medium text-sm"
+                  htmlFor="filter-start-date"
+                >
+                  From
+                </label>
                 <Input
+                  id="filter-start-date"
                   onChange={(e) =>
                     setCustomDateRange(
                       parseDateInput(e.target.value),
@@ -128,8 +135,14 @@ export function Filters() {
                 />
               </div>
               <div className="flex flex-col gap-1">
-                <label className="text-sm font-medium">To</label>
+                <label
+                  className="font-medium text-sm"
+                  htmlFor="filter-end-date"
+                >
+                  To
+                </label>
                 <Input
+                  id="filter-end-date"
                   onChange={(e) =>
                     setCustomDateRange(
                       state.startDate,

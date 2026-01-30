@@ -54,7 +54,7 @@ function ZoomControls() {
         <ZoomOutIcon className="size-5" />
       </Button>
       <Button
-        className="text-white hover:bg-white/20 text-xs px-2"
+        className="px-2 text-white text-xs hover:bg-white/20"
         onClick={() => resetTransform()}
         size="sm"
         variant="ghost"
@@ -135,7 +135,7 @@ export function Lightbox({
       return;
     }
 
-    if (!touchStartX.current || !touchEndX.current) {
+    if (!(touchStartX.current && touchEndX.current)) {
       return;
     }
 

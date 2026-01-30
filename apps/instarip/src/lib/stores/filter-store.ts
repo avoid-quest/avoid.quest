@@ -57,8 +57,8 @@ export function setDatePreset(preset: DatePreset) {
         ...state,
         datePreset: preset,
       }));
-    case "all":
     default:
+      // "all" or any other - clear dates
       break;
   }
 
@@ -70,7 +70,10 @@ export function setDatePreset(preset: DatePreset) {
   }));
 }
 
-export function setCustomDateRange(startDate: number | null, endDate: number | null) {
+export function setCustomDateRange(
+  startDate: number | null,
+  endDate: number | null
+) {
   filterStore.setState((state) => ({
     ...state,
     datePreset: "custom",
@@ -85,8 +88,6 @@ export function clearFilters() {
 
 export function hasActiveFilters(state: FilterState): boolean {
   return (
-    state.search !== "" ||
-    state.userId !== null ||
-    state.datePreset !== "all"
+    state.search !== "" || state.userId !== null || state.datePreset !== "all"
   );
 }

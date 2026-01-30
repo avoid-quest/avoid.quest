@@ -1,22 +1,19 @@
-import { usePaginatedQuery, useQuery } from "convex/react";
+import { useQuery } from "convex/react";
 import { api } from "@/lib/convex";
 
 /**
- * Hook for paginated posts
+ * Hook for posts (limit-based, no pagination)
+ * Convex components don't support pagination
  */
-export function usePaginatedPosts(pageSize = 20) {
-  return usePaginatedQuery(
-    api.api.posts.getPaginated,
-    {},
-    { initialNumItems: pageSize }
-  );
+export function usePosts(limit = 50) {
+  return useQuery(api.api.posts.getPosts, { limit });
 }
 
 /**
- * Hook for recent posts (simple limit-based)
+ * Hook for recent posts (alias for usePosts)
  */
-export function useRecentPosts(limit = 20) {
-  return useQuery(api.api.posts.getRecent, { limit });
+export function useRecentPosts(limit = 50) {
+  return useQuery(api.api.posts.getPosts, { limit });
 }
 
 /**

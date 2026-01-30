@@ -13,6 +13,11 @@ import {
 import { MediaViewer } from "@/components/media/media-viewer";
 import { useMediaByPostId } from "@/lib/hooks/use-media";
 import { usePostByShortcode } from "@/lib/hooks/use-posts";
+import {
+  getMediaProxyUrl,
+  getPostImageUrl,
+  getPostVideoUrl,
+} from "@/lib/utils/media";
 
 export const Route = createFileRoute("/p/$shortcode")({
   component: PostDetailPage,
@@ -57,16 +62,23 @@ function PostDetailPage() {
     day: "numeric",
   });
 
-  // Build media items for the viewer
-  type MediaItem = { type: string; width?: number; height?: number };
+  // Get proxy URLs for consistent loading
+  const imageUrl = getPostImageUrl(post);
+  const videoUrl = getPostVideoUrl(post);
+
+  // Build media items for the viewer using proxy URLs
+  type MediaItemType = {
+    _id: string;
+    type: string;
+    width?: number;
+    height?: number;
+  };
   const viewerItems = (mediaItems ?? [])
-    .filter((item: MediaItem) => item.type === "image" || item.type === "video")
-    .map((item: MediaItem) => ({
-      // For now, use display_url since we don't store URLs in media_items
-      url:
-        item.type === "video"
-          ? (post.video_url ?? post.display_url)
-          : post.display_url,
+    .filter(
+      (item: MediaItemType) => item.type === "image" || item.type === "video"
+    )
+    .map((item: MediaItemType) => ({
+      url: getMediaProxyUrl(item._id),
       type: item.type as "image" | "video",
       width: item.width,
       height: item.height,
@@ -86,12 +98,12 @@ function PostDetailPage() {
         {/* Media */}
         <MediaViewer
           className="aspect-square"
-          displayUrl={post.display_url}
+          displayUrl={imageUrl}
           isVideo={post.is_video}
           items={viewerItems}
           mediaType={post.media_type}
-          thumbnailUrl={post.thumbnail_url}
-          videoUrl={post.video_url}
+          thumbnailUrl={imageUrl}
+          videoUrl={videoUrl}
         />
 
         {/* Details */}
@@ -126,7 +138,7 @@ function PostDetailPage() {
             </a>
             <Button
               onClick={() => {
-                const url = post.is_video ? post.video_url : post.display_url;
+                const url = post.is_video ? videoUrl : imageUrl;
                 if (url) {
                   window.open(url, "_blank");
                 }

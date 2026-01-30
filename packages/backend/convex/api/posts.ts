@@ -33,12 +33,8 @@ async function enrichPostWithMedia(ctx: QueryCtx, post: Post) {
 	);
 
 	// Find first image and video items (regardless of telegram_file status)
-	const imageItem = mediaItems.find(
-		(item: MediaItem) => item.type === "image",
-	);
-	const videoItem = mediaItems.find(
-		(item: MediaItem) => item.type === "video",
-	);
+	const imageItem = mediaItems.find((item: MediaItem) => item.type === "image");
+	const videoItem = mediaItems.find((item: MediaItem) => item.type === "video");
 
 	return {
 		...post,
@@ -103,9 +99,12 @@ export const getPaginated = query({
 export const getByShortcode = query({
 	args: { shortcode: v.string() },
 	handler: async (ctx, { shortcode }) => {
-		return await ctx.runQuery(components.instarip.posts.getPostByShortcode, {
-			shortcode,
-		});
+		const post = await ctx.runQuery(
+			components.instarip.posts.getPostByShortcode,
+			{ shortcode },
+		);
+		if (!post) return null;
+		return enrichPostWithMedia(ctx, post);
 	},
 });
 
@@ -116,10 +115,12 @@ export const getByShortcode = query({
 export const getById = query({
 	args: { id: v.id("posts") },
 	handler: async (ctx, { id }) => {
-		return await ctx.runQuery(components.instarip.posts.getPostById, {
+		const post = await ctx.runQuery(components.instarip.posts.getPostById, {
 			// biome-ignore lint/suspicious/noExplicitAny: Cross-component Id type
 			id: id as any,
 		});
+		if (!post) return null;
+		return enrichPostWithMedia(ctx, post);
 	},
 });
 
@@ -129,9 +130,10 @@ export const getById = query({
 export const getRecent = query({
 	args: { limit: v.optional(v.number()) },
 	handler: async (ctx, { limit }) => {
-		return await ctx.runQuery(components.instarip.posts.getPosts, {
+		const posts = await ctx.runQuery(components.instarip.posts.getPosts, {
 			limit: limit ?? 20,
 		});
+		return enrichPostsWithMedia(ctx, posts);
 	},
 });
 

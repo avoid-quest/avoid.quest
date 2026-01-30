@@ -1,0 +1,47 @@
+{
+  "name": "@avoid.quest/instarip",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite dev --port 3001",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "cf-deploy": "wrangler deploy",
+    "cf-upload": "wrangler versions upload",
+    "preview": "vite preview",
+    "cf-typegen": "wrangler types --env-interface CloudflareEnv ./cloudflare-env.d.ts"
+  },
+  "dependencies": {
+    "@avoid.quest/backend": "workspace:*",
+    "@avoid.quest/ui": "workspace:*",
+    "@cloudflare/vite-plugin": "^1.21.2",
+    "@tailwindcss/vite": "catalog:",
+    "@tanstack/react-query": "^5.90.19",
+    "@tanstack/react-router": "^1.154.7",
+    "@tanstack/react-start": "^1.154.7",
+    "@tanstack/react-store": "^0.8.0",
+    "@tanstack/router-plugin": "^1.154.7",
+    "convex": "catalog:",
+    "lucide-react": "catalog:",
+    "next-themes": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "sonner": "catalog:",
+    "tailwindcss": "catalog:",
+    "vite-tsconfig-paths": "^6.0.4",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "catalog:",
+    "@tanstack/react-query-devtools": "^5.91.2",
+    "@types/bun": "catalog:",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@vitejs/plugin-react": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "wrangler": "catalog:"
+  }
+}

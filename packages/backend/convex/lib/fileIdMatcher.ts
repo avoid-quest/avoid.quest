@@ -18,13 +18,13 @@ const MAX_MEDIA_GROUP_SIZE = 10;
 /**
  * Filter media items using the same logic as the Telegram mediaBuilder
  * This ensures consistency between what we send and what we try to match.
+ * Returns items that were sent (image/video, no existing telegram_file)
  */
 function filterSentMediaItems(
 	mediaItems: Doc<"media_items">[],
 ): Doc<"media_items">[] {
 	return mediaItems
-		.filter((item) => item.type !== "thumbnail")
-		.filter((item) => item.telegram_file !== undefined)
+		.filter((item) => item.type === "image" || item.type === "video")
 		.slice(0, MAX_MEDIA_GROUP_SIZE);
 }
 

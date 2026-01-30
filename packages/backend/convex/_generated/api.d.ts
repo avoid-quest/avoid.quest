@@ -8,6 +8,10 @@
  * @module
  */
 
+import type * as api_admin from "../api/admin.js";
+import type * as api_media from "../api/media.js";
+import type * as api_posts from "../api/posts.js";
+import type * as api_users from "../api/users.js";
 import type * as bootstrap from "../bootstrap.js";
 import type * as crons from "../crons.js";
 import type * as http from "../http.js";
@@ -36,6 +40,10 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  "api/admin": typeof api_admin;
+  "api/media": typeof api_media;
+  "api/posts": typeof api_posts;
+  "api/users": typeof api_users;
   bootstrap: typeof bootstrap;
   crons: typeof crons;
   http: typeof http;
@@ -172,6 +180,20 @@ export declare const components: {
     };
   };
   instarip: {
+    admin: {
+      getTelegramMessageIds: FunctionReference<
+        "mutation",
+        "internal",
+        { chatId?: string },
+        any
+      >;
+      wipePostData: FunctionReference<
+        "mutation",
+        "internal",
+        { confirm: boolean },
+        any
+      >;
+    };
     fetcher: {
       cleanupOldLogs: FunctionReference<"mutation", "internal", {}, number>;
       fetchPost: FunctionReference<
@@ -182,9 +204,11 @@ export declare const components: {
           error?: string;
           post?: {
             caption: string;
+            collaborators: Array<string>;
             display_url: string;
             id: string;
             is_video: boolean;
+            location?: { ig_id: string; name: string; slug: string };
             media_items: Array<{
               height?: number;
               type: "image" | "video" | "thumbnail";
@@ -209,9 +233,11 @@ export declare const components: {
           error?: string;
           posts: Array<{
             caption: string;
+            collaborators: Array<string>;
             display_url: string;
             id: string;
             is_video: boolean;
+            location?: { ig_id: string; name: string; slug: string };
             media_items: Array<{
               height?: number;
               type: "image" | "video" | "thumbnail";
@@ -376,6 +402,18 @@ export declare const components: {
         any
       >;
       getBackfillStats: FunctionReference<"query", "internal", any, any>;
+      getCollaborators: FunctionReference<
+        "query",
+        "internal",
+        any,
+        Array<string>
+      >;
+      getLocations: FunctionReference<
+        "query",
+        "internal",
+        any,
+        Array<{ ig_id: string; name: string; slug: string }>
+      >;
       getPostById: FunctionReference<"query", "internal", { id: string }, any>;
       getPostByShortcode: FunctionReference<
         "query",
@@ -393,16 +431,7 @@ export declare const components: {
       getPostsPaginated: FunctionReference<
         "query",
         "internal",
-        {
-          paginationOpts: {
-            cursor: string | null;
-            endCursor?: string | null;
-            id?: number;
-            maximumBytesRead?: number;
-            maximumRowsRead?: number;
-            numItems: number;
-          };
-        },
+        { cursor?: string | null; numItems?: number },
         {
           continueCursor: string | null;
           isDone: boolean;
@@ -410,10 +439,12 @@ export declare const components: {
             _creationTime: number;
             _id: string;
             caption: string;
+            collaborators?: Array<string>;
             display_url: string;
             event_date?: number;
             ig_id: string;
             is_video: boolean;
+            location?: { ig_id: string; name: string; slug: string };
             media_type: "image" | "video" | "carousel";
             sentAt?: number;
             shortcode: string;
@@ -426,20 +457,43 @@ export declare const components: {
           }>;
         }
       >;
+      getPostsWithFilters: FunctionReference<
+        "query",
+        "internal",
+        {
+          collaborator?: string;
+          endDate?: number;
+          limit?: number;
+          locationId?: string;
+          startDate?: number;
+          userId?: string;
+        },
+        Array<{
+          _creationTime: number;
+          _id: string;
+          caption: string;
+          collaborators?: Array<string>;
+          display_url: string;
+          event_date?: number;
+          ig_id: string;
+          is_video: boolean;
+          location?: { ig_id: string; name: string; slug: string };
+          media_type: "image" | "video" | "carousel";
+          sentAt?: number;
+          shortcode: string;
+          status: "pending" | "sending" | "sent" | "failed";
+          thumbnail_url?: string;
+          timestamp: number;
+          url: string;
+          users: Array<string>;
+          video_url?: string;
+        }>
+      >;
       getUnsent: FunctionReference<"query", "internal", { limit: number }, any>;
       getUnsentPaginated: FunctionReference<
         "query",
         "internal",
-        {
-          paginationOpts: {
-            cursor: string | null;
-            endCursor?: string | null;
-            id?: number;
-            maximumBytesRead?: number;
-            maximumRowsRead?: number;
-            numItems: number;
-          };
-        },
+        { cursor?: string | null; numItems?: number },
         {
           continueCursor: string | null;
           isDone: boolean;
@@ -447,10 +501,12 @@ export declare const components: {
             _creationTime: number;
             _id: string;
             caption: string;
+            collaborators?: Array<string>;
             display_url: string;
             event_date?: number;
             ig_id: string;
             is_video: boolean;
+            location?: { ig_id: string; name: string; slug: string };
             media_type: "image" | "video" | "carousel";
             sentAt?: number;
             shortcode: string;
@@ -481,16 +537,43 @@ export declare const components: {
         { id: string; sentAt: number },
         any
       >;
+      searchPosts: FunctionReference<
+        "query",
+        "internal",
+        { limit?: number; query: string },
+        Array<{
+          _creationTime: number;
+          _id: string;
+          caption: string;
+          collaborators?: Array<string>;
+          display_url: string;
+          event_date?: number;
+          ig_id: string;
+          is_video: boolean;
+          location?: { ig_id: string; name: string; slug: string };
+          media_type: "image" | "video" | "carousel";
+          sentAt?: number;
+          shortcode: string;
+          status: "pending" | "sending" | "sent" | "failed";
+          thumbnail_url?: string;
+          timestamp: number;
+          url: string;
+          users: Array<string>;
+          video_url?: string;
+        }>
+      >;
       upsertPost: FunctionReference<
         "mutation",
         "internal",
         {
           caption: string;
+          collaborators?: Array<string>;
           display_url: string;
           event_date?: number;
           id?: string;
           ig_id: string;
           is_video: boolean;
+          location?: { ig_id: string; name: string; slug: string };
           media_type: "image" | "video" | "carousel";
           shortcode: string;
           thumbnail_url?: string;
@@ -765,6 +848,24 @@ export declare const components: {
     };
   };
   telegram: {
+    admin: {
+      deleteMessages: FunctionReference<
+        "action",
+        "internal",
+        {
+          botToken: string;
+          chatId: string;
+          delayMs?: number;
+          messageIds: Array<number>;
+        },
+        {
+          deleted: number;
+          errors: Array<string>;
+          failed: number;
+          success: boolean;
+        }
+      >;
+    };
     sender: {
       sendMessage: FunctionReference<
         "action",

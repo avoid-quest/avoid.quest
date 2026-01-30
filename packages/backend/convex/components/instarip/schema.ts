@@ -85,6 +85,16 @@ export default defineSchema({
 		timestamp: v.number(),
 		/** Event date in milliseconds (UTC) - when the event occurs (if applicable) */
 		event_date: v.optional(v.number()),
+		/** Instagram location data (optional - null if post has no location tag) */
+		location: v.optional(
+			v.object({
+				ig_id: v.string(),
+				name: v.string(),
+				slug: v.string(),
+			}),
+		),
+		/** Collaborator usernames from coauthor_producers (empty array if none) */
+		collaborators: v.optional(v.array(v.string())),
 		users: v.array(v.id("users")),
 		/**
 		 * Post sending status - state machine pattern
@@ -108,9 +118,12 @@ export default defineSchema({
 		.index("by_event_date", ["event_date"])
 		.index("by_shortcode", ["shortcode"])
 		.index("by_user_id", ["users"])
-		.index("by_status", ["status"]),
+		.index("by_status", ["status"])
+		.searchIndex("search_caption", { searchField: "caption" }),
 
 	media_items: defineTable({
+		/** Original Instagram URL for this media item */
+		url: v.optional(v.string()),
 		/**
 		 * Telegram file information (grouped for atomicity)
 		 * Both file_id and file_unique_id are set together when media is uploaded to Telegram

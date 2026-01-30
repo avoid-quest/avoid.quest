@@ -78,12 +78,81 @@ export const mediaHandler = httpAction(async (ctx, request) => {
 		return corsResponse("Media not found", { status: 404 }, origin);
 	}
 
+	// If no Telegram file yet, proxy from Instagram URL as fallback
 	if (!mediaItem.telegram_file?.file_id) {
-		return corsResponse(
-			"Media not yet uploaded to Telegram",
-			{ status: 404 },
-			origin,
-		);
+		// First try the URL stored on the media item itself (for carousel items)
+		let fallbackUrl = mediaItem.url;
+
+		// If no URL on media item, fall back to post URLs
+		if (!fallbackUrl) {
+			const post = await ctx.runQuery(components.instarip.posts.getPostById, {
+				id: mediaItem.post_id as never,
+			});
+
+			if (post) {
+				// Use video_url for videos, display_url for images
+				fallbackUrl =
+					mediaItem.type === "video"
+						? (post.video_url ?? post.display_url)
+						: (post.thumbnail_url ?? post.display_url);
+			}
+		}
+
+		if (fallbackUrl) {
+			const controller = new AbortController();
+			const timeoutId = setTimeout(
+				() => controller.abort(),
+				MEDIA_FETCH_TIMEOUT_MS,
+			);
+
+			try {
+				const igResponse = await fetch(fallbackUrl, {
+					signal: controller.signal,
+				});
+
+				if (!igResponse.ok) {
+					return corsResponse(
+						"Instagram media unavailable",
+						{ status: 502 },
+						origin,
+					);
+				}
+
+				// Determine content type
+				const contentType =
+					igResponse.headers.get("Content-Type") ||
+					(mediaItem.type === "video" ? "video/mp4" : "image/jpeg");
+
+				// Shorter cache for Instagram URLs (they expire)
+				return new Response(igResponse.body, {
+					headers: {
+						"Content-Type": contentType,
+						"Cache-Control": "public, max-age=3600", // 1 hour
+						"Access-Control-Allow-Origin": origin ?? "*",
+					},
+				});
+			} catch (error) {
+				if (error instanceof Error && error.name === "AbortError") {
+					return corsResponse(
+						"Instagram request timeout",
+						{ status: 504 },
+						origin,
+					);
+				}
+				logger.error(
+					`Instagram fetch failed: ${error instanceof Error ? error.message : "Unknown"}`,
+				);
+				return corsResponse(
+					"Failed to fetch from Instagram",
+					{ status: 502 },
+					origin,
+				);
+			} finally {
+				clearTimeout(timeoutId);
+			}
+		}
+
+		return corsResponse("Media not available", { status: 404 }, origin);
 	}
 
 	// Get Telegram download URL

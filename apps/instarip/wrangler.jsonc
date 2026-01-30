@@ -1,19 +1,17 @@
 {
-	"$schema": "./node_modules/wrangler/config-schema.json",
-	"name": "instarip",
-	"main": ".open-next/worker.js",
-	"compatibility_date": "2026-01-22",
-	"compatibility_flags": [
-		"nodejs_compat",
-		"global_fetch_strictly_public"
-	],
-	"workers_dev": true,
-	"preview_urls": true,
-	"assets": {
-		"binding": "ASSETS",
-		"directory": ".open-next/assets"
-	},
-	"observability": {
-		"enabled": true
-	}
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "instarip",
+  "compatibility_date": "2026-01-20",
+  "compatibility_flags": [
+    "nodejs_compat",
+    "enable_nodejs_http_modules"
+  ],
+  "main": "@tanstack/react-start/server-entry",
+  "workers_dev": true,
+  "preview_urls": true,
+  "observability": {
+    "logs": {
+      "enabled": true
+    }
+  }
 }

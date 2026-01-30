@@ -20,7 +20,7 @@
     "@avoid.quest/ui": "workspace:*",
     "@fontsource/geist-mono": "^5.2.7",
     "@fontsource/geist-sans": "^5.2.5",
-    "astro": "^5.16.15",
+    "astro": "^5.17.1",
     "react": "catalog:",
     "react-dom": "catalog:",
     "tailwindcss": "catalog:"

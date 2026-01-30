@@ -23,6 +23,25 @@ import type { FunctionReference } from "convex/server";
  */
 export type ComponentApi<Name extends string | undefined = string | undefined> =
   {
+    admin: {
+      deleteMessages: FunctionReference<
+        "action",
+        "internal",
+        {
+          botToken: string;
+          chatId: string;
+          delayMs?: number;
+          messageIds: Array<number>;
+        },
+        {
+          deleted: number;
+          errors: Array<string>;
+          failed: number;
+          success: boolean;
+        },
+        Name
+      >;
+    };
     sender: {
       sendMessage: FunctionReference<
         "action",

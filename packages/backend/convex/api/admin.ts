@@ -3,8 +3,8 @@
  * Used for development/testing - not for production use
  */
 import { v } from "convex/values";
-import { mutation, query, action } from "../_generated/server";
 import { components } from "../_generated/api";
+import { action, mutation, query } from "../_generated/server";
 
 /**
  * Add or update a user
@@ -69,13 +69,18 @@ export const fetchUserPosts = action({
 		let user = await ctx.runQuery(components.instarip.users.getUserByUsername, {
 			username,
 		});
-		
+
 		if (!user) {
-			const userId = await ctx.runMutation(components.instarip.users.upsertUser, {
-				username,
-				to_be_scraped: true,
+			const userId = await ctx.runMutation(
+				components.instarip.users.upsertUser,
+				{
+					username,
+					to_be_scraped: true,
+				},
+			);
+			user = await ctx.runQuery(components.instarip.users.getUserById, {
+				id: userId,
 			});
-			user = await ctx.runQuery(components.instarip.users.getUserById, { id: userId });
 		}
 
 		if (!user) {
@@ -88,35 +93,41 @@ export const fetchUserPosts = action({
 			// Check if exists
 			const existing = await ctx.runQuery(
 				components.instarip.posts.getPostByShortcode,
-				{ shortcode: post.shortcode }
+				{ shortcode: post.shortcode },
 			);
 			if (existing) continue;
 
 			// Save post
-			const postId = await ctx.runMutation(components.instarip.posts.upsertPost, {
-				ig_id: post.id,
-				shortcode: post.shortcode,
-				display_url: post.display_url,
-				video_url: post.video_url,
-				thumbnail_url: post.thumbnail_url,
-				caption: post.caption,
-				is_video: post.is_video,
-				url: post.url,
-				media_type: post.media_type,
-				timestamp: post.timestamp,
-				users: [user._id],
-			});
+			const postId = await ctx.runMutation(
+				components.instarip.posts.upsertPost,
+				{
+					ig_id: post.id,
+					shortcode: post.shortcode,
+					display_url: post.display_url,
+					video_url: post.video_url,
+					thumbnail_url: post.thumbnail_url,
+					caption: post.caption,
+					is_video: post.is_video,
+					url: post.url,
+					media_type: post.media_type,
+					timestamp: post.timestamp,
+					users: [user._id],
+				},
+			);
 
 			// Save media items
-			await ctx.runMutation(components.instarip.mediaItems.syncMediaItemsForPost, {
-				post_id: postId,
-				media_items: post.media_items.map((item) => ({
-					url: item.url,
-					type: item.type,
-					width: item.width,
-					height: item.height,
-				})),
-			});
+			await ctx.runMutation(
+				components.instarip.mediaItems.syncMediaItemsForPost,
+				{
+					post_id: postId,
+					media_items: post.media_items.map((item) => ({
+						url: item.url,
+						type: item.type,
+						width: item.width,
+						height: item.height,
+					})),
+				},
+			);
 
 			saved++;
 		}

@@ -62,9 +62,15 @@ function NotFoundComponent() {
 
 function RootComponent() {
   // Create Convex client - URL from environment variable
-  const [convex] = useState(
-    () => new ConvexReactClient(import.meta.env.VITE_CONVEX_URL as string)
-  );
+  const [convex] = useState(() => {
+    const url = import.meta.env.VITE_CONVEX_URL;
+    if (!url) {
+      throw new Error(
+        "VITE_CONVEX_URL is not set. Please configure it in Cloudflare dashboard or .env file."
+      );
+    }
+    return new ConvexReactClient(url);
+  });
 
   return (
     <html lang="en" suppressHydrationWarning>

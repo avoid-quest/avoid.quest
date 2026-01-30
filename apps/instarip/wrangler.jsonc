@@ -1,3 +1,13 @@
+/**
+ * Wrangler configuration for instarip
+ * 
+ * IMPORTANT: Set environment variables in Cloudflare dashboard:
+ * 1. Go to Workers & Pages > instarip > Settings > Variables
+ * 2. Add the following variables:
+ *    - VITE_CONVEX_URL: https://your-deployment.convex.cloud
+ *    - VITE_CONVEX_SITE_URL: https://your-deployment.convex.site
+ *    - ALLOWED_HOSTS: instarip.avoid.quest (optional)
+ */
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "instarip",

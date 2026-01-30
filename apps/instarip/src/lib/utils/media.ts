@@ -2,7 +2,7 @@
  * Media URL utilities for instarip
  */
 
-const CONVEX_SITE_URL = import.meta.env.VITE_CONVEX_SITE_URL as string;
+const CONVEX_SITE_URL = import.meta.env.VITE_CONVEX_SITE_URL || "";
 
 /**
  * Build a media proxy URL from a media item ID

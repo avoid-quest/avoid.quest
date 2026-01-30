@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as admin from "../admin.js";
 import type * as lib_apiClient from "../lib/apiClient.js";
 import type * as lib_captionBuilder from "../lib/captionBuilder.js";
 import type * as lib_defaults from "../lib/defaults.js";
@@ -25,6 +26,7 @@ import type {
 import { anyApi, componentsGeneric } from "convex/server";
 
 const fullApi: ApiFromModules<{
+  admin: typeof admin;
   "lib/apiClient": typeof lib_apiClient;
   "lib/captionBuilder": typeof lib_captionBuilder;
   "lib/defaults": typeof lib_defaults;

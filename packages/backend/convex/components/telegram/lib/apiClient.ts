@@ -169,6 +169,13 @@ export function createTelegramClient(
 		> {
 			return callApi("getMe", {});
 		},
+
+		async deleteMessage(params: {
+			chat_id: string | number;
+			message_id: number;
+		}): Promise<TelegramApiResponse<boolean>> {
+			return callApi<boolean>("deleteMessage", params);
+		},
 	};
 }
 

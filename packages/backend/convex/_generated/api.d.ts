@@ -180,6 +180,20 @@ export declare const components: {
     };
   };
   instarip: {
+    admin: {
+      getTelegramMessageIds: FunctionReference<
+        "mutation",
+        "internal",
+        { chatId?: string },
+        any
+      >;
+      wipePostData: FunctionReference<
+        "mutation",
+        "internal",
+        { confirm: boolean },
+        any
+      >;
+    };
     fetcher: {
       cleanupOldLogs: FunctionReference<"mutation", "internal", {}, number>;
       fetchPost: FunctionReference<
@@ -806,6 +820,24 @@ export declare const components: {
     };
   };
   telegram: {
+    admin: {
+      deleteMessages: FunctionReference<
+        "action",
+        "internal",
+        {
+          botToken: string;
+          chatId: string;
+          delayMs?: number;
+          messageIds: Array<number>;
+        },
+        {
+          deleted: number;
+          errors: Array<string>;
+          failed: number;
+          success: boolean;
+        }
+      >;
+    };
     sender: {
       sendMessage: FunctionReference<
         "action",

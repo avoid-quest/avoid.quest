@@ -9,6 +9,7 @@
  */
 
 import type * as adapter from "../adapter.js";
+import type * as admin from "../admin.js";
 import type * as fetcher from "../fetcher.js";
 import type * as lib_rateLimiter from "../lib/rateLimiter.js";
 import type * as lib_userAgents from "../lib/userAgents.js";
@@ -28,6 +29,7 @@ import { anyApi, componentsGeneric } from "convex/server";
 
 const fullApi: ApiFromModules<{
   adapter: typeof adapter;
+  admin: typeof admin;
   fetcher: typeof fetcher;
   "lib/rateLimiter": typeof lib_rateLimiter;
   "lib/userAgents": typeof lib_userAgents;

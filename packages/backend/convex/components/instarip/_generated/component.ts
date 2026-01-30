@@ -23,6 +23,22 @@ import type { FunctionReference } from "convex/server";
  */
 export type ComponentApi<Name extends string | undefined = string | undefined> =
   {
+    admin: {
+      getTelegramMessageIds: FunctionReference<
+        "mutation",
+        "internal",
+        { chatId?: string },
+        any,
+        Name
+      >;
+      wipePostData: FunctionReference<
+        "mutation",
+        "internal",
+        { confirm: boolean },
+        any,
+        Name
+      >;
+    };
     fetcher: {
       cleanupOldLogs: FunctionReference<
         "mutation",

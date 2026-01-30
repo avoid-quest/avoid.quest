@@ -27,6 +27,7 @@
     "next-themes": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
+    "react-zoom-pan-pinch": "^3.7.0",
     "sonner": "catalog:",
     "tailwindcss": "catalog:",
     "vite-tsconfig-paths": "^6.0.4",

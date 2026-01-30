@@ -193,17 +193,18 @@ export default defineConfig({
 - `components.instarip.users.getUserByUsername`
 - `components.instarip.mediaItems.getMediaItemsByPostId`
 
-### Phase 3: Enhanced Media
+### Phase 3: Enhanced Media ✅
 **Goal:** Rich media experience with lightbox and gestures
 
 **Tasks:**
-- [ ] Media viewer component (handles image/video/carousel)
-- [ ] Fullscreen lightbox with Dialog
-- [ ] Keyboard navigation (Esc, arrows)
-- [ ] Swipeable carousel (embla-carousel from UI package)
-- [ ] Pinch-to-zoom on images
-- [ ] Download button for media
-- [ ] Video player with controls
+- [x] Media viewer component (handles image/video/carousel)
+- [x] Fullscreen lightbox with Dialog
+- [x] Keyboard navigation (Esc, arrows)
+- [x] Swipeable carousel (embla-carousel from UI package)
+- [x] Pinch-to-zoom on images (react-zoom-pan-pinch)
+- [x] Mobile swipe gestures in lightbox
+- [x] Download button for media
+- [x] Video player with controls
 
 ### Phase 4: Search & Filtering
 **Goal:** Find posts by caption, user, or date

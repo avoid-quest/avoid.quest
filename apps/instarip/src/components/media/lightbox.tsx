@@ -8,8 +8,15 @@ import {
   ChevronRightIcon,
   DownloadIcon,
   XIcon,
+  ZoomInIcon,
+  ZoomOutIcon,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  TransformComponent,
+  TransformWrapper,
+  useControls,
+} from "react-zoom-pan-pinch";
 
 type MediaItem = {
   url: string;
@@ -25,6 +32,39 @@ type LightboxProps = {
   onOpenChange: (open: boolean) => void;
 };
 
+// Zoom controls component
+function ZoomControls() {
+  const { zoomIn, zoomOut, resetTransform } = useControls();
+  return (
+    <div className="absolute top-4 left-4 z-50 flex gap-1">
+      <Button
+        className="text-white hover:bg-white/20"
+        onClick={() => zoomIn()}
+        size="icon"
+        variant="ghost"
+      >
+        <ZoomInIcon className="size-5" />
+      </Button>
+      <Button
+        className="text-white hover:bg-white/20"
+        onClick={() => zoomOut()}
+        size="icon"
+        variant="ghost"
+      >
+        <ZoomOutIcon className="size-5" />
+      </Button>
+      <Button
+        className="text-white hover:bg-white/20 text-xs px-2"
+        onClick={() => resetTransform()}
+        size="sm"
+        variant="ghost"
+      >
+        Reset
+      </Button>
+    </div>
+  );
+}
+
 export function Lightbox({
   items,
   initialIndex = 0,
@@ -32,6 +72,9 @@ export function Lightbox({
   onOpenChange,
 }: LightboxProps) {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
+  const touchStartX = useRef<number | null>(null);
+  const touchEndX = useRef<number | null>(null);
+  const isZoomed = useRef(false);
 
   // Reset index when opening
   useEffect(() => {
@@ -76,6 +119,42 @@ export function Lightbox({
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [open, goToPrevious, goToNext, onOpenChange]);
+
+  // Touch swipe handlers
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX;
+  }, []);
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    touchEndX.current = e.touches[0].clientX;
+  }, []);
+
+  const handleTouchEnd = useCallback(() => {
+    // Don't swipe if zoomed in
+    if (isZoomed.current) {
+      return;
+    }
+
+    if (!touchStartX.current || !touchEndX.current) {
+      return;
+    }
+
+    const diff = touchStartX.current - touchEndX.current;
+    const minSwipeDistance = 50;
+
+    if (Math.abs(diff) > minSwipeDistance) {
+      if (diff > 0) {
+        // Swipe left -> next
+        goToNext();
+      } else {
+        // Swipe right -> previous
+        goToPrevious();
+      }
+    }
+
+    touchStartX.current = null;
+    touchEndX.current = null;
+  }, [goToNext, goToPrevious]);
 
   const handleDownload = async () => {
     if (!currentItem) {
@@ -147,24 +226,58 @@ export function Lightbox({
           </>
         )}
 
-        {/* Media content */}
-        <div className="flex h-[90vh] w-full items-center justify-center">
+        {/* Media content with touch handlers */}
+        <div
+          className="flex h-[90vh] w-full items-center justify-center"
+          onTouchEnd={handleTouchEnd}
+          onTouchMove={handleTouchMove}
+          onTouchStart={handleTouchStart}
+        >
           {currentItem.type === "video" ? (
             // biome-ignore lint/a11y/useMediaCaption: User-generated content
             <video
               autoPlay
               className="max-h-full max-w-full object-contain"
               controls
+              key={currentItem.url}
               src={currentItem.url}
             />
           ) : (
-            <img
-              alt=""
-              className="max-h-full max-w-full object-contain"
-              height={currentItem.height ?? 800}
-              src={currentItem.url}
-              width={currentItem.width ?? 800}
-            />
+            <TransformWrapper
+              centerOnInit
+              initialScale={1}
+              key={currentItem.url}
+              maxScale={5}
+              minScale={0.5}
+              onTransformed={(ref) => {
+                isZoomed.current = ref.state.scale > 1.05;
+              }}
+              wheel={{ step: 0.2 }}
+            >
+              <ZoomControls />
+              <TransformComponent
+                contentStyle={{
+                  width: "100%",
+                  height: "100%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+                wrapperStyle={{
+                  width: "100%",
+                  height: "100%",
+                }}
+              >
+                <img
+                  alt=""
+                  className="max-h-[90vh] max-w-[95vw] object-contain"
+                  draggable={false}
+                  height={currentItem.height ?? 800}
+                  src={currentItem.url}
+                  width={currentItem.width ?? 800}
+                />
+              </TransformComponent>
+            </TransformWrapper>
           )}
         </div>
 

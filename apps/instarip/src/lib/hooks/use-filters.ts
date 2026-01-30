@@ -1,7 +1,8 @@
 import { useStore } from "@tanstack/react-store";
-import { useQuery } from "convex/react";
 import { usePaginatedQuery } from "convex-helpers/react";
+import { useQuery } from "convex/react";
 import { useEffect, useState } from "react";
+import type { Id } from "@avoid.quest/backend/convex/_generated/dataModel";
 import { api } from "@/lib/convex";
 import { filterStore, hasActiveFilters } from "@/lib/stores/filter-store";
 
@@ -59,7 +60,7 @@ export function useFilteredPosts(initialNumItems = 12) {
     !isSearching && hasFilters
       ? {
           limit: 100,
-          userId: state.userId ?? undefined,
+          userId: (state.userId as Id<"users">) ?? undefined,
           startDate: state.startDate ?? undefined,
           endDate: state.endDate ?? undefined,
         }

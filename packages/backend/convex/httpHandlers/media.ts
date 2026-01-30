@@ -78,7 +78,33 @@ export const mediaHandler = httpAction(async (ctx, request) => {
 		return corsResponse("Media not found", { status: 404 }, origin);
 	}
 
+	// If no Telegram file yet, try to redirect to Instagram URL as fallback
 	if (!mediaItem.telegram_file?.file_id) {
+		// Get the associated post to find the Instagram URL
+		const post = await ctx.runQuery(
+			components.instarip.posts.getPostById,
+			{ id: mediaItem.post_id as never },
+		);
+
+		if (post) {
+			// Use video_url for videos, display_url for images
+			const fallbackUrl = mediaItem.type === "video" 
+				? (post.video_url ?? post.display_url)
+				: (post.thumbnail_url ?? post.display_url);
+			
+			if (fallbackUrl) {
+				// Redirect to Instagram URL (shorter cache since these expire)
+				return new Response(null, {
+					status: 302,
+					headers: {
+						"Location": fallbackUrl,
+						"Cache-Control": "public, max-age=3600", // 1 hour cache for IG URLs
+						"Access-Control-Allow-Origin": origin ?? "*",
+					},
+				});
+			}
+		}
+
 		return corsResponse(
 			"Media not yet uploaded to Telegram",
 			{ status: 404 },

@@ -21,7 +21,9 @@ type MediaItem = {
 };
 
 /**
- * Enrich a post with proxy media IDs (for Telegram-served media)
+ * Enrich a post with proxy media IDs
+ * Always returns media IDs if available - the HTTP handler will
+ * redirect to Instagram URLs as fallback if not yet on Telegram
  */
 async function enrichPostWithMedia(ctx: QueryCtx, post: Post) {
 	const mediaItems: MediaItem[] = await ctx.runQuery(
@@ -30,11 +32,12 @@ async function enrichPostWithMedia(ctx: QueryCtx, post: Post) {
 		{ postId: post._id as any },
 	);
 
+	// Find first image and video items (regardless of telegram_file status)
 	const imageItem = mediaItems.find(
-		(item: MediaItem) => item.type === "image" && item.telegram_file,
+		(item: MediaItem) => item.type === "image",
 	);
 	const videoItem = mediaItems.find(
-		(item: MediaItem) => item.type === "video" && item.telegram_file,
+		(item: MediaItem) => item.type === "video",
 	);
 
 	return {
@@ -171,5 +174,24 @@ export const getFiltered = query({
 			},
 		);
 		return enrichPostsWithMedia(ctx, posts);
+	},
+});
+
+/**
+ * Get posts by user ID
+ */
+export const getByUserId = query({
+	args: {
+		userId: v.id("users"),
+		limit: v.optional(v.number()),
+	},
+	handler: async (ctx, { userId, limit }) => {
+		const posts = await ctx.runQuery(
+			components.instarip.posts.getPostsByUserId,
+			// biome-ignore lint/suspicious/noExplicitAny: Cross-component Id type
+			{ userId: userId as any },
+		);
+		const limited = posts.slice(0, limit ?? 50);
+		return enrichPostsWithMedia(ctx, limited);
 	},
 });

@@ -44,11 +44,12 @@ function PostDetailPage() {
     );
   }
 
-  const MediaTypeIcon = {
+  const mediaTypeIcons: Record<string, typeof ImageIcon> = {
     image: ImageIcon,
     video: VideoIcon,
     carousel: ImagesIcon,
-  }[post.media_type];
+  };
+  const MediaTypeIcon = mediaTypeIcons[post.media_type] ?? ImageIcon;
 
   const formattedDate = new Date(post.timestamp).toLocaleDateString("it-IT", {
     year: "numeric",
@@ -57,9 +58,10 @@ function PostDetailPage() {
   });
 
   // Build media items for the viewer
+  type MediaItem = { type: string; width?: number; height?: number };
   const viewerItems = (mediaItems ?? [])
-    .filter((item) => item.type === "image" || item.type === "video")
-    .map((item) => ({
+    .filter((item: MediaItem) => item.type === "image" || item.type === "video")
+    .map((item: MediaItem) => ({
       // For now, use display_url since we don't store URLs in media_items
       url:
         item.type === "video"

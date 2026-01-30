@@ -77,7 +77,7 @@ export function Filters() {
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="all">All users</SelectItem>
-          {users?.map((user) => (
+          {users?.map((user: { _id: string; username: string }) => (
             <SelectItem key={user._id} value={user._id}>
               @{user.username}
             </SelectItem>

@@ -109,27 +109,18 @@ Display:
 - 📍 Location name (if present)
 - 👥 Collaborators (if present) - e.g., "with @username, @username2"
 
-### Task 4.3: Update Filters (Optional)
+### Task 4.3: Update Filters
 **File:** `apps/instarip/src/components/feed/filters.tsx`
 
-Consider adding:
+Add:
 - Filter by location (dropdown of known locations)
-- Filter by collaborator
-
-**Note:** This may be out of scope for initial implementation.
+- Filter by collaborator (dropdown or search)
 
 ---
 
 ## Phase 5: Telegram Integration
 
-### Task 5.1: Update Message Formatting
-**File:** `packages/backend/convex/components/telegram/sender.ts` (or formatting logic)
-
-Include in Telegram message:
-```
-📍 Fontana Di Trevi
-👥 with @turismoromaweb, @museiincomuneroma
-```
+~~**SKIPPED** - Telegram media captions limited to 1024 chars. Keep captions focused on existing content (caption text). Location/collab data available in DB but not shown in Telegram.~~
 
 ---
 
@@ -149,9 +140,9 @@ If we have existing posts without location/collabs:
 1. **Phase 1** - Schema (foundation)
 2. **Phase 2** - Adapter (data extraction)
 3. **Phase 3** - API (wire it up)
-4. **Phase 4** - Frontend (display)
-5. **Phase 5** - Telegram (optional, can defer)
-6. **Phase 6** - Migration (likely skip)
+4. **Phase 4** - Frontend (display + filters)
+5. ~~Phase 5~~ - Telegram (SKIPPED - caption length limits)
+6. ~~Phase 6~~ - Migration (SKIPPED - fields optional)
 
 ---
 
@@ -161,22 +152,18 @@ If we have existing posts without location/collabs:
 |-------|-------|----------|
 | 1. Schema | 2 | 15 min |
 | 2. Adapter | 2 | 20 min |
-| 3. API | 2 | 10 min |
-| 4. Frontend | 3 | 30 min |
-| 5. Telegram | 1 | 15 min |
-| 6. Migration | 1 | Skip |
+| 3. API | 2 | 15 min |
+| 4. Frontend | 3 | 45 min |
 
 **Total:** ~1.5 hours
 
 ---
 
-## Open Questions
+## Decisions Made
 
-1. **Collab user auto-discovery:** Should we automatically add collab usernames to our users table for future tracking? (Probably not - keep it simple)
-
-2. **Location linking:** Should clicking a location filter posts by that location? (Nice to have, not MVP)
-
-3. **Telegram format:** How verbose should location/collab info be in Telegram messages?
+1. **Collab user auto-discovery:** No - keep it simple, just store usernames
+2. **Location/collab filters:** Yes - implement in this batch
+3. **Telegram format:** No changes - keep captions focused (1024 char limit)
 
 ---
 
@@ -208,5 +195,7 @@ packages/backend/convex/components/telegram/
 - [ ] Posts table supports location (optional object) and collaborators (string array)
 - [ ] Instagram fetcher extracts and stores location/collab data
 - [ ] Frontend displays location and collaborators on post cards
+- [ ] Frontend filters by location and collaborator work
 - [ ] Existing posts without data continue to work (backward compatible)
 - [ ] No breaking changes to existing API consumers
+- [ ] Telegram messages unchanged (no location/collab in captions)

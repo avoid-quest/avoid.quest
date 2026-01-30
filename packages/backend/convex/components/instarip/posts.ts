@@ -566,8 +566,9 @@ export const updateEventDate = mutation({
 
 /**
  * Get posts that need event_date backfill
- * Returns posts where event_date equals timestamp (fallback value)
- * or event_date is undefined
+ * Returns posts where event_date is undefined
+ *
+ * Note: Posts with event_date = timestamp are intentional (no date in caption)
  *
  * @param limit - Maximum number of posts to return
  */
@@ -590,11 +591,8 @@ export const getPostsNeedingDateBackfill = query({
 			.order("desc")
 			.take((limit ?? 100) * 2);
 
-		// Filter posts where event_date is undefined or equals timestamp
-		const needsBackfill = posts.filter(
-			(post) =>
-				post.event_date === undefined || post.event_date === post.timestamp,
-		);
+		// Filter posts where event_date is undefined (not yet processed)
+		const needsBackfill = posts.filter((post) => post.event_date === undefined);
 
 		return needsBackfill.slice(0, limit ?? 100).map((post) => ({
 			_id: post._id,
@@ -614,7 +612,7 @@ export const getEventDateBackfillStats = query({
 
 		let total = 0;
 		let withExtractedDate = 0;
-		let usingFallback = 0;
+		let usingPostTimestamp = 0;
 		let noEventDate = 0;
 
 		for (const post of posts) {
@@ -622,8 +620,10 @@ export const getEventDateBackfillStats = query({
 			if (post.event_date === undefined) {
 				noEventDate++;
 			} else if (post.event_date === post.timestamp) {
-				usingFallback++;
+				// Post timestamp used as fallback (no date found in caption)
+				usingPostTimestamp++;
 			} else {
+				// Date was extracted from caption
 				withExtractedDate++;
 			}
 		}
@@ -631,7 +631,7 @@ export const getEventDateBackfillStats = query({
 		return {
 			total,
 			withExtractedDate,
-			usingFallback,
+			usingPostTimestamp,
 			noEventDate,
 			needsBackfill: noEventDate,
 		};

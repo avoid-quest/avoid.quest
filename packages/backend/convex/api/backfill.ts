@@ -57,9 +57,10 @@ export const backfillEventDates = action({
 				extracted,
 			});
 
-			// Only update if we found a real date (not fallback)
-			// and not in dry run mode
-			if (extracted && !dryRun) {
+			// Update event_date:
+			// - If date was extracted from caption, use it
+			// - If no date found, use post timestamp as fallback (for consistent sorting)
+			if (!dryRun) {
 				await ctx.runMutation(components.instarip.posts.updateEventDate, {
 					id: post._id,
 					event_date: eventDate,

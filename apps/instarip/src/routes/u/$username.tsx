@@ -2,6 +2,8 @@ import { Button } from "@avoid.quest/ui/components/button";
 import { Skeleton } from "@avoid.quest/ui/components/skeleton";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowLeftIcon, UserIcon } from "lucide-react";
+import { PostGrid } from "@/components/feed/post-grid";
+import { usePostsByUserId } from "@/lib/hooks/use-posts";
 import { useUserByUsername } from "@/lib/hooks/use-users";
 
 export const Route = createFileRoute("/u/$username")({
@@ -11,6 +13,7 @@ export const Route = createFileRoute("/u/$username")({
 function UserProfilePage() {
   const { username } = Route.useParams();
   const user = useUserByUsername(username);
+  const posts = usePostsByUserId(user?._id);
 
   if (user === undefined) {
     return <UserProfileSkeleton />;
@@ -64,11 +67,10 @@ function UserProfilePage() {
       </div>
 
       {/* Posts grid */}
-      <h2 className="mb-4 font-semibold text-lg">Posts</h2>
-      <p className="text-muted-foreground">
-        User posts will be loaded here (requires backend query for posts by
-        user)
-      </p>
+      <h2 className="mb-4 font-semibold text-lg">
+        Posts {posts && `(${posts.length})`}
+      </h2>
+      <PostGrid isLoading={posts === undefined} posts={posts} />
     </div>
   );
 }

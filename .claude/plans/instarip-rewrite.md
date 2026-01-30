@@ -153,45 +153,45 @@ export default defineConfig({
 
 ## Implementation Phases
 
-### Phase 1: Project Setup
+### Phase 1: Project Setup ✅
 **Goal:** Fresh TanStack Start app that builds and deploys
 
 **Tasks:**
-- [ ] Create branch `refactor/instarip-migration`
-- [ ] Delete `apps/instarip/` (entire Next.js app)
-- [ ] Create new `apps/instarip/` with TanStack Start structure
-- [ ] Copy vite.config.ts pattern from radio
-- [ ] Set up wrangler.jsonc for Cloudflare Workers
-- [ ] Configure Convex client (ConvexProvider)
-- [ ] Set up shared UI imports (@avoid.quest/ui)
-- [ ] Add Tailwind v4 config
-- [ ] Create minimal `__root.tsx` with providers
-- [ ] Create placeholder `index.tsx` route
-- [ ] Verify `bun run dev` works
-- [ ] Verify `bun run build` succeeds
+- [x] Create branch `refactor/instarip-migration`
+- [x] Delete `apps/instarip/` (entire Next.js app)
+- [x] Create new `apps/instarip/` with TanStack Start structure
+- [x] Copy vite.config.ts pattern from radio
+- [x] Set up wrangler.jsonc for Cloudflare Workers
+- [x] Configure Convex client (ConvexProvider)
+- [x] Set up shared UI imports (@avoid.quest/ui)
+- [x] Add Tailwind v4 config
+- [x] Create minimal `__root.tsx` with providers
+- [x] Create placeholder `index.tsx` route
+- [x] Verify `bun run dev` works
+- [x] Verify `bun run build` succeeds
 
 **Deliverables:**
-- Working dev server at localhost:3000
+- Working dev server at localhost:3001
 - Successful build output
-- Basic "Hello World" page with theme support
+- Basic page with theme support
 
-### Phase 2: Core Pages (MVP)
+### Phase 2: Core Pages (MVP) ✅
 **Goal:** Functional feed, post detail, and user profile pages
 
 **Tasks:**
-- [ ] Home feed with post grid (using existing `getPostsPaginated`)
-- [ ] Post card component (image/video thumbnail)
-- [ ] Post detail page (`/p/$shortcode`)
-- [ ] User profile page (`/u/$username`)
-- [ ] Header with navigation
-- [ ] Basic responsive layout
-- [ ] Loading states (Skeleton)
+- [x] Home feed with post grid (using existing `getPostsPaginated`)
+- [x] Post card component (image/video thumbnail)
+- [x] Post detail page (`/p/$shortcode`)
+- [x] User profile page (`/u/$username`) - now loading posts!
+- [x] Header with navigation (uses shared SiteLogo and ModeToggle)
+- [x] Basic responsive layout
+- [x] Loading states (Skeleton)
 
-**Backend:** No changes needed — use existing component queries:
-- `components.instarip.posts.getPostsPaginated`
-- `components.instarip.posts.getPostByShortcode`
-- `components.instarip.users.getUserByUsername`
-- `components.instarip.mediaItems.getMediaItemsByPostId`
+**Backend:** Using API wrapper layer in `api/posts.ts`:
+- `api.api.posts.getPaginated` - paginated posts with proxy media IDs
+- `api.api.posts.getByShortcode` - single post lookup
+- `api.api.posts.getByUserId` - posts by user
+- `api.api.users.getByUsername` - user lookup
 
 ### Phase 3: Enhanced Media ✅
 **Goal:** Rich media experience with lightbox and gestures
@@ -224,26 +224,27 @@ export default defineConfig({
 - [x] `useFilteredPosts` hook with search/filter mode switching
 - [ ] URL param persistence for filters (deferred)
 
-### Phase 5: Infinite Scroll & Performance
+### Phase 5: Infinite Scroll & Performance (Partial)
 **Goal:** Smooth scrolling with large datasets
 
 **Tasks:**
-- [ ] Infinite scroll with TanStack Virtual
-- [ ] Virtualized grid for performance
-- [ ] Skeleton loading states
-- [ ] Image lazy loading
-- [ ] Prefetch on hover
+- [x] Infinite scroll with intersection observer (basic)
+- [ ] Virtualized grid with TanStack Virtual (optional - for very large datasets)
+- [x] Skeleton loading states
+- [x] Image lazy loading
+- [ ] Prefetch on hover (nice-to-have)
 
 ### Phase 6: Polish & Deploy
 **Goal:** Production-ready app
 
 **Tasks:**
-- [ ] SEO metadata (title, description, OG tags)
-- [ ] Error boundaries and fallbacks
-- [ ] 404 page
-- [ ] Loading states throughout
-- [ ] Mobile responsive testing
-- [ ] Deploy to Cloudflare Workers (reuse existing worker)
+- [x] SEO metadata (title, description)
+- [ ] OG tags for social sharing
+- [x] Error boundaries and fallbacks (via TanStack Router)
+- [x] 404 page (notFoundComponent)
+- [x] Loading states throughout
+- [ ] Mobile responsive testing (manual)
+- [ ] Deploy to Cloudflare Workers
 
 **Cloudflare Dashboard:**
 - Update worker to point to new build output

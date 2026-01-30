@@ -6,6 +6,8 @@ type Post = {
   shortcode: string;
   display_url: string;
   thumbnail_url?: string;
+  proxyImageId?: string;
+  proxyVideoId?: string;
   caption: string;
   is_video: boolean;
   media_type: "image" | "video" | "carousel";

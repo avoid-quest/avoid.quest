@@ -30,3 +30,13 @@ export function usePostById(id: string) {
   // biome-ignore lint/suspicious/noExplicitAny: Dynamic ID type from Convex
   return useQuery(api.api.posts.getById, { id } as any);
 }
+
+/**
+ * Hook for posts by user ID
+ */
+export function usePostsByUserId(userId: string | undefined, limit = 50) {
+  return useQuery(
+    api.api.posts.getByUserId,
+    userId ? { userId, limit } : "skip"
+  );
+}

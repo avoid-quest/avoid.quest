@@ -9,9 +9,35 @@ import { components } from "../_generated/api";
 import type { QueryCtx } from "../_generated/server";
 import { query } from "../_generated/server";
 
+/**
+ * Full post type matching the component schema
+ */
 type Post = {
 	_id: string;
-	[key: string]: unknown;
+	_creationTime: number;
+	ig_id: string;
+	shortcode: string;
+	display_url: string;
+	video_url?: string;
+	thumbnail_url?: string;
+	caption: string;
+	is_video: boolean;
+	url: string;
+	media_type: "image" | "video" | "carousel";
+	users: string[];
+	timestamp: number;
+	event_date?: number;
+	status: "pending" | "sending" | "sent" | "failed";
+	sentAt?: number;
+	retry_count?: number;
+};
+
+/**
+ * Post enriched with proxy media IDs for the frontend
+ */
+export type EnrichedPost = Post & {
+	proxyImageId?: string;
+	proxyVideoId?: string;
 };
 
 type MediaItem = {
@@ -25,7 +51,10 @@ type MediaItem = {
  * Always returns media IDs if available - the HTTP handler will
  * redirect to Instagram URLs as fallback if not yet on Telegram
  */
-async function enrichPostWithMedia(ctx: QueryCtx, post: Post) {
+async function enrichPostWithMedia(
+	ctx: QueryCtx,
+	post: Post,
+): Promise<EnrichedPost> {
 	const mediaItems: MediaItem[] = await ctx.runQuery(
 		components.instarip.mediaItems.getMediaItemsByPostId,
 		// biome-ignore lint/suspicious/noExplicitAny: Cross-component Id type
@@ -46,7 +75,10 @@ async function enrichPostWithMedia(ctx: QueryCtx, post: Post) {
 /**
  * Enrich multiple posts with proxy media IDs
  */
-async function enrichPostsWithMedia(ctx: QueryCtx, posts: Post[]) {
+async function enrichPostsWithMedia(
+	ctx: QueryCtx,
+	posts: Post[],
+): Promise<EnrichedPost[]> {
 	return Promise.all(posts.map((post) => enrichPostWithMedia(ctx, post)));
 }
 
@@ -59,7 +91,7 @@ export const getPosts = query({
 		const posts = await ctx.runQuery(components.instarip.posts.getPosts, {
 			limit: limit ?? 50,
 		});
-		return enrichPostsWithMedia(ctx, posts);
+		return enrichPostsWithMedia(ctx, posts as Post[]);
 	},
 });
 
@@ -68,6 +100,9 @@ export const getPosts = query({
  * Uses convex-helpers paginator (works in components)
  * Accepts paginationOpts wrapper from usePaginatedQuery hook
  * Enriches posts with proxy media IDs when available
+ *
+ * NOTE: continueCursor returns empty string ("") instead of null
+ * to match convex-helpers usePaginatedQuery expectations.
  */
 export const getPaginated = query({
 	args: {
@@ -87,8 +122,10 @@ export const getPaginated = query({
 		);
 
 		return {
-			...result,
-			page: await enrichPostsWithMedia(ctx, result.page),
+			isDone: result.isDone,
+			// Convert null to empty string for convex-helpers compatibility
+			continueCursor: result.continueCursor ?? "",
+			page: await enrichPostsWithMedia(ctx, result.page as Post[]),
 		};
 	},
 });
@@ -104,7 +141,7 @@ export const getByShortcode = query({
 			{ shortcode },
 		);
 		if (!post) return null;
-		return enrichPostWithMedia(ctx, post);
+		return enrichPostWithMedia(ctx, post as Post);
 	},
 });
 
@@ -120,7 +157,7 @@ export const getById = query({
 			id: id as any,
 		});
 		if (!post) return null;
-		return enrichPostWithMedia(ctx, post);
+		return enrichPostWithMedia(ctx, post as Post);
 	},
 });
 
@@ -133,7 +170,7 @@ export const getRecent = query({
 		const posts = await ctx.runQuery(components.instarip.posts.getPosts, {
 			limit: limit ?? 20,
 		});
-		return enrichPostsWithMedia(ctx, posts);
+		return enrichPostsWithMedia(ctx, posts as Post[]);
 	},
 });
 
@@ -150,7 +187,7 @@ export const search = query({
 			query: searchQuery,
 			limit,
 		});
-		return enrichPostsWithMedia(ctx, posts);
+		return enrichPostsWithMedia(ctx, posts as Post[]);
 	},
 });
 
@@ -160,7 +197,7 @@ export const search = query({
 export const getFiltered = query({
 	args: {
 		limit: v.optional(v.number()),
-		userId: v.optional(v.id("users")),
+		userId: v.optional(v.string()),
 		startDate: v.optional(v.number()),
 		endDate: v.optional(v.number()),
 	},
@@ -175,7 +212,7 @@ export const getFiltered = query({
 				endDate,
 			},
 		);
-		return enrichPostsWithMedia(ctx, posts);
+		return enrichPostsWithMedia(ctx, posts as Post[]);
 	},
 });
 
@@ -184,7 +221,7 @@ export const getFiltered = query({
  */
 export const getByUserId = query({
 	args: {
-		userId: v.id("users"),
+		userId: v.string(),
 		limit: v.optional(v.number()),
 	},
 	handler: async (ctx, { userId, limit }) => {
@@ -194,6 +231,6 @@ export const getByUserId = query({
 			{ userId: userId as any },
 		);
 		const limited = posts.slice(0, limit ?? 50);
-		return enrichPostsWithMedia(ctx, limited);
+		return enrichPostsWithMedia(ctx, limited as Post[]);
 	},
 });

@@ -1,0 +1,178 @@
+{
+  "locationExamples": [
+    {
+      "username": "visitrome",
+      "shortcode": "DMFj5BeoAdG",
+      "location": {
+        "id": "214519807",
+        "has_public_page": true,
+        "name": "Altare della Patria",
+        "slug": "altare-della-patria"
+      }
+    },
+    {
+      "username": "visitrome",
+      "shortcode": "DMCmwWOoEeY",
+      "location": {
+        "id": "1315291",
+        "has_public_page": true,
+        "name": "Musei Capitolini",
+        "slug": "musei-capitolini"
+      }
+    },
+    {
+      "username": "visitrome",
+      "shortcode": "DMBBBxboOR9",
+      "location": {
+        "id": "492028051001091",
+        "has_public_page": true,
+        "name": "Villa Borghese",
+        "slug": "villa-borghese"
+      }
+    },
+    {
+      "username": "visitrome",
+      "shortcode": "DMBAEVdofWo",
+      "location": {
+        "id": "371603",
+        "has_public_page": true,
+        "name": "Piazza Del Campidoglio",
+        "slug": "piazza-del-campidoglio"
+      }
+    },
+    {
+      "username": "visitrome",
+      "shortcode": "DMA_Ri8oxNV",
+      "location": {
+        "id": "2363604517203997",
+        "has_public_page": true,
+        "name": "Fontana Di Trevi",
+        "slug": "fontana-di-trevi"
+      }
+    },
+    {
+      "username": "visitrome",
+      "shortcode": "DMA-q-TIhGV",
+      "location": {
+        "id": "1069279346553504",
+        "has_public_page": true,
+        "name": "Piazza Navona",
+        "slug": "piazza-navona"
+      }
+    },
+    {
+      "username": "visitrome",
+      "shortcode": "DMA7_9bIvfQ",
+      "location": {
+        "id": "987349582",
+        "has_public_page": true,
+        "name": "Colosseo",
+        "slug": "colosseo"
+      }
+    },
+    {
+      "username": "visitrome",
+      "shortcode": "DGleaMsNQYF",
+      "location": {
+        "id": "253948498642961",
+        "has_public_page": true,
+        "name": "Colosseo, Roma",
+        "slug": "colosseo-roma"
+      }
+    },
+    {
+      "username": "roma",
+      "shortcode": "DUIsB4cjSY1",
+      "location": {
+        "id": "1315291",
+        "has_public_page": true,
+        "name": "Musei Capitolini",
+        "slug": "musei-capitolini"
+      }
+    },
+    {
+      "username": "roma",
+      "shortcode": "DUH_RTUDjhm",
+      "location": {
+        "id": "226056363",
+        "has_public_page": true,
+        "name": "Fontana di Trevi",
+        "slug": "fontana-di-trevi"
+      }
+    }
+  ],
+  "collabExamples": [
+    {
+      "username": "visitrome",
+      "shortcode": "DGleaMsNQYF",
+      "collabs": [
+        {
+          "id": "60243162407",
+          "is_verified": false,
+          "profile_pic_url": "https://scontent-fco2-1.cdninstagram.com/v/t51.2885-19/504515536_17942959461010408_2486653902312594897_n.jpg?stp=dst-jpg_s150x150_tt6&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby4xMDgwLmMyIn0&_nc_ht=scontent-fco2-1.cdninstagram.com&_nc_cat=104&_nc_oc=Q6cZ2QFQRnXoN1x93m3t8NfxNswwIZUU5FDApmOnnfLgSWb7tajvqAgexVYS0HR-vjZEcUo&_nc_ohc=GF0mGt5dsMUQ7kNvwERIK2M&_nc_gid=n6TY8NCvrUaTYPQnXg_V5g&edm=AOQ1c0wBAAAA&ccb=7-5&oh=00_AfpuOeHRIULyGsU-eNejn8R8T3TcOMNokLn3jHsAyire2A&oe=69828BE8&_nc_sid=8b3546",
+          "username": "visitrome"
+        }
+      ]
+    },
+    {
+      "username": "roma",
+      "shortcode": "DUIsB4cjSY1",
+      "collabs": [
+        {
+          "id": "959351679",
+          "is_verified": true,
+          "profile_pic_url": "https://scontent-fco2-1.cdninstagram.com/v/t51.2885-19/429570705_1840654299786651_3621070933306053206_n.jpg?stp=dst-jpg_s150x150_tt6&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby4xMDgwLmMyIn0&_nc_ht=scontent-fco2-1.cdninstagram.com&_nc_cat=103&_nc_oc=Q6cZ2QGSsQxQAHUuzpLUkxQNv6n6bxP4hML-78rcZznaaNqbUM-u2TgLkiWuhOtyfpAfJaA&_nc_ohc=MZrQM1i7hAsQ7kNvwFB-MCx&_nc_gid=KeJpxYSzinUWIdUjDutsMQ&edm=AOQ1c0wBAAAA&ccb=7-5&oh=00_AfrPHvzn_jzv7cHQf9JA9rMdSE0lJ8hcZFrSAMMjuubhWQ&oe=6982B940&_nc_sid=8b3546",
+          "username": "turismoromaweb"
+        },
+        {
+          "id": "244774155",
+          "is_verified": true,
+          "profile_pic_url": "https://scontent-fco2-1.cdninstagram.com/v/t51.2885-19/405553604_896471534927275_3973022458993355620_n.jpg?stp=dst-jpg_s150x150_tt6&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby4xMDgwLmMyIn0&_nc_ht=scontent-fco2-1.cdninstagram.com&_nc_cat=107&_nc_oc=Q6cZ2QGSsQxQAHUuzpLUkxQNv6n6bxP4hML-78rcZznaaNqbUM-u2TgLkiWuhOtyfpAfJaA&_nc_ohc=xkQkXNjsXOgQ7kNvwHxx3L4&_nc_gid=KeJpxYSzinUWIdUjDutsMQ&edm=AOQ1c0wBAAAA&ccb=7-5&oh=00_Afq_XTLAwtXWj_XxTb_z9jJThP17jFQ2yTGx0PLFlzAjBA&oe=6982B324&_nc_sid=8b3546",
+          "username": "museiincomuneroma"
+        },
+        {
+          "id": "1813799236",
+          "is_verified": true,
+          "profile_pic_url": "https://scontent-fco2-1.cdninstagram.com/v/t51.2885-19/573146735_18537821689039237_4125054775270205566_n.jpg?stp=dst-jpg_s150x150_tt6&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby45NjAuYzIifQ&_nc_ht=scontent-fco2-1.cdninstagram.com&_nc_cat=101&_nc_oc=Q6cZ2QGSsQxQAHUuzpLUkxQNv6n6bxP4hML-78rcZznaaNqbUM-u2TgLkiWuhOtyfpAfJaA&_nc_ohc=6N7iTvGSxa8Q7kNvwGYXL-P&_nc_gid=KeJpxYSzinUWIdUjDutsMQ&edm=AOQ1c0wBAAAA&ccb=7-5&oh=00_Afp7UAPzT-sKyt7phBRVs9vnioU8YVNNcZU8QMS8CFek2A&oe=69828DF4&_nc_sid=8b3546",
+          "username": "roma"
+        }
+      ]
+    },
+    {
+      "username": "roma",
+      "shortcode": "DUGdZK3DCqY",
+      "collabs": [
+        {
+          "id": "316743949",
+          "is_verified": true,
+          "profile_pic_url": "https://scontent-fco2-1.cdninstagram.com/v/t51.2885-19/553086917_18528188122007950_2583059132805431869_n.jpg?stp=dst-jpg_s150x150_tt6&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby4xMDgwLmMyIn0&_nc_ht=scontent-fco2-1.cdninstagram.com&_nc_cat=110&_nc_oc=Q6cZ2QGSsQxQAHUuzpLUkxQNv6n6bxP4hML-78rcZznaaNqbUM-u2TgLkiWuhOtyfpAfJaA&_nc_ohc=jbf0o8Oe2KkQ7kNvwE12UFK&_nc_gid=KeJpxYSzinUWIdUjDutsMQ&edm=AOQ1c0wBAAAA&ccb=7-5&oh=00_AfolLPVPqpZdyE_PZPFUBuAsvyc3E86Lpbif5poUBKmXwA&oe=6982ADE8&_nc_sid=8b3546",
+          "username": "paris_maville"
+        }
+      ]
+    },
+    {
+      "username": "roma",
+      "shortcode": "DUGTgzLClSM",
+      "collabs": [
+        {
+          "id": "1813799236",
+          "is_verified": true,
+          "profile_pic_url": "https://scontent-fco2-1.cdninstagram.com/v/t51.2885-19/573146735_18537821689039237_4125054775270205566_n.jpg?stp=dst-jpg_s150x150_tt6&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby45NjAuYzIifQ&_nc_ht=scontent-fco2-1.cdninstagram.com&_nc_cat=101&_nc_oc=Q6cZ2QGSsQxQAHUuzpLUkxQNv6n6bxP4hML-78rcZznaaNqbUM-u2TgLkiWuhOtyfpAfJaA&_nc_ohc=6N7iTvGSxa8Q7kNvwGYXL-P&_nc_gid=KeJpxYSzinUWIdUjDutsMQ&edm=AOQ1c0wBAAAA&ccb=7-5&oh=00_Afp7UAPzT-sKyt7phBRVs9vnioU8YVNNcZU8QMS8CFek2A&oe=69828DF4&_nc_sid=8b3546",
+          "username": "roma"
+        }
+      ]
+    },
+    {
+      "username": "roma",
+      "shortcode": "DUD98cTmB8L",
+      "collabs": [
+        {
+          "id": "959351679",
+          "is_verified": true,
+          "profile_pic_url": "https://scontent-fco2-1.cdninstagram.com/v/t51.2885-19/429570705_1840654299786651_3621070933306053206_n.jpg?stp=dst-jpg_s150x150_tt6&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby4xMDgwLmMyIn0&_nc_ht=scontent-fco2-1.cdninstagram.com&_nc_cat=103&_nc_oc=Q6cZ2QGSsQxQAHUuzpLUkxQNv6n6bxP4hML-78rcZznaaNqbUM-u2TgLkiWuhOtyfpAfJaA&_nc_ohc=MZrQM1i7hAsQ7kNvwFB-MCx&_nc_gid=KeJpxYSzinUWIdUjDutsMQ&edm=AOQ1c0wBAAAA&ccb=7-5&oh=00_AfrPHvzn_jzv7cHQf9JA9rMdSE0lJ8hcZFrSAMMjuubhWQ&oe=6982B940&_nc_sid=8b3546",
+          "username": "turismoromaweb"
+        }
+      ]
+    }
+  ]
+}

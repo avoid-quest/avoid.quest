@@ -183,7 +183,10 @@ export function Lightbox({
 
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
-      <DialogContent className="max-h-[95vh] max-w-[95vw] border-none bg-black/95 p-0">
+      <DialogContent
+        className="h-[95vh] max-h-[95vh] w-[95vw] max-w-[95vw] border-none bg-black/95 p-0"
+        showCloseButton={false}
+      >
         {/* Close button */}
         <Button
           className="absolute top-4 right-4 z-50 text-white hover:bg-white/20"
@@ -228,7 +231,7 @@ export function Lightbox({
 
         {/* Media content with touch handlers */}
         <div
-          className="flex h-[90vh] w-full items-center justify-center"
+          className="flex h-full w-full flex-1 items-center justify-center"
           onTouchEnd={handleTouchEnd}
           onTouchMove={handleTouchMove}
           onTouchStart={handleTouchStart}
@@ -270,7 +273,7 @@ export function Lightbox({
               >
                 <img
                   alt=""
-                  className="max-h-[90vh] max-w-[95vw] object-contain"
+                  className="max-h-full max-w-full object-contain"
                   draggable={false}
                   height={currentItem.height ?? 800}
                   src={currentItem.url}

@@ -1,18 +1,19 @@
-import { Skeleton } from "@avoid.quest/ui/components/skeleton";
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { useInView } from "react-intersection-observer";
 import { Filters } from "@/components/feed/filters";
-import { PostGrid } from "@/components/feed/post-grid";
+import { PostGrid, PostGridSkeleton } from "@/components/feed/post-grid";
 import { useFilteredPosts, useHasActiveFilters } from "@/lib/hooks/use-filters";
 
 export const Route = createFileRoute("/")({
   component: HomePage,
 });
 
+const BATCH_SIZE = 20;
+
 function HomePage() {
   const { results, isLoading, loadMore, status, isSearchMode } =
-    useFilteredPosts(12);
+    useFilteredPosts(BATCH_SIZE);
   const hasFilters = useHasActiveFilters();
   const canLoadMore = status === "CanLoadMore";
   const isLoadingMore = status === "LoadingMore";
@@ -20,12 +21,12 @@ function HomePage() {
   // Auto-load when scrolling to bottom
   const { ref: loadMoreRef, inView } = useInView({
     threshold: 0,
-    rootMargin: "200px", // Start loading 200px before reaching the element
+    rootMargin: "400px", // Start loading 400px before reaching the element
   });
 
   useEffect(() => {
     if (inView && canLoadMore && !isLoadingMore) {
-      loadMore(12);
+      loadMore(BATCH_SIZE);
     }
   }, [inView, canLoadMore, isLoadingMore, loadMore]);
 
@@ -51,25 +52,17 @@ function HomePage() {
       {/* Post grid */}
       <PostGrid isLoading={isLoading} posts={results} />
 
-      {/* Infinite scroll trigger */}
+      {/* Infinite scroll trigger with skeleton preview */}
       {canLoadMore && (
-        <div className="mt-8 flex justify-center" ref={loadMoreRef}>
-          <div className="grid w-full grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <Skeleton
-                className="aspect-square rounded-lg"
-                // biome-ignore lint/suspicious/noArrayIndexKey: Static skeleton
-                key={`loader-${i}`}
-              />
-            ))}
-          </div>
+        <div className="mt-4" ref={loadMoreRef}>
+          <PostGridSkeleton count={BATCH_SIZE} />
         </div>
       )}
 
       {/* Loading more indicator */}
       {isLoadingMore && (
-        <div className="mt-4 flex justify-center">
-          <p className="text-muted-foreground text-sm">Loading more...</p>
+        <div className="mt-4">
+          <PostGridSkeleton count={BATCH_SIZE} />
         </div>
       )}
     </div>

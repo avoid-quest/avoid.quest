@@ -7,6 +7,7 @@ import {
   CarouselNext,
   CarouselPrevious,
 } from "@avoid.quest/ui/components/carousel";
+import { Skeleton } from "@avoid.quest/ui/components/skeleton";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import { useState } from "react";
 import { Lightbox } from "./lightbox";
@@ -39,6 +40,7 @@ export function MediaViewer({
 }: MediaViewerProps) {
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(0);
+  const [isLoaded, setIsLoaded] = useState(false);
 
   // Build media items from props if not provided
   const buildDefaultItems = (): MediaItem[] => {
@@ -62,16 +64,21 @@ export function MediaViewer({
       <>
         <button
           className={cn(
-            "block w-full cursor-pointer overflow-hidden rounded-lg",
+            "relative block w-full cursor-pointer overflow-hidden rounded-lg bg-muted",
             className
           )}
           onClick={() => openLightbox(0)}
           type="button"
         >
+          {/* Loading skeleton */}
+          {!isLoaded && !isVideo && (
+            <Skeleton className="absolute inset-0 rounded-lg" />
+          )}
+
           {isVideo ? (
             // biome-ignore lint/a11y/useMediaCaption: User-generated content
             <video
-              className="aspect-square w-full bg-black object-contain"
+              className="w-full bg-black"
               controls
               onClick={(e) => e.stopPropagation()}
               poster={thumbnailUrl || displayUrl}
@@ -80,10 +87,9 @@ export function MediaViewer({
           ) : (
             <img
               alt=""
-              className="aspect-square w-full bg-muted object-contain"
-              height={600}
+              className="w-full bg-muted"
+              onLoad={() => setIsLoaded(true)}
               src={displayUrl}
-              width={600}
             />
           )}
         </button>
@@ -107,14 +113,14 @@ export function MediaViewer({
             // biome-ignore lint/suspicious/noArrayIndexKey: Carousel items are static
             <CarouselItem key={index}>
               <button
-                className="block w-full cursor-pointer overflow-hidden rounded-lg"
+                className="relative block w-full cursor-pointer overflow-hidden rounded-lg bg-muted"
                 onClick={() => openLightbox(index)}
                 type="button"
               >
                 {item.type === "video" ? (
                   // biome-ignore lint/a11y/useMediaCaption: User-generated content
                   <video
-                    className="aspect-square w-full bg-black object-contain"
+                    className="w-full bg-black"
                     controls
                     onClick={(e) => e.stopPropagation()}
                     src={item.url}
@@ -122,10 +128,8 @@ export function MediaViewer({
                 ) : (
                   <img
                     alt=""
-                    className="aspect-square w-full bg-muted object-contain"
-                    height={600}
+                    className="w-full bg-muted"
                     src={item.url}
-                    width={600}
                   />
                 )}
               </button>

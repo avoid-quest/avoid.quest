@@ -2,7 +2,7 @@ import { Button } from "@avoid.quest/ui/components/button";
 import { Skeleton } from "@avoid.quest/ui/components/skeleton";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowLeftIcon, UserIcon } from "lucide-react";
-import { PostGrid } from "@/components/feed/post-grid";
+import { PostGrid, PostGridSkeleton } from "@/components/feed/post-grid";
 import { usePostsByUserId } from "@/lib/hooks/use-posts";
 import { useUserByUsername } from "@/lib/hooks/use-users";
 
@@ -87,12 +87,7 @@ function UserProfileSkeleton() {
         </div>
       </div>
       <Skeleton className="mb-4 h-6 w-24" />
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
-        {Array.from({ length: 8 }).map((_, i) => (
-          // biome-ignore lint/suspicious/noArrayIndexKey: Static skeleton loading state
-          <Skeleton className="aspect-square rounded-lg" key={i} />
-        ))}
-      </div>
+      <PostGridSkeleton count={20} />
     </div>
   );
 }

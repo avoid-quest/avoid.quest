@@ -280,6 +280,13 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         Array<string>,
         Name
       >;
+      getEventDateBackfillStats: FunctionReference<
+        "query",
+        "internal",
+        any,
+        any,
+        Name
+      >;
       getLocations: FunctionReference<
         "query",
         "internal",
@@ -313,6 +320,18 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "internal",
         { userId: string },
         any,
+        Name
+      >;
+      getPostsNeedingDateBackfill: FunctionReference<
+        "query",
+        "internal",
+        { limit?: number },
+        Array<{
+          _id: string;
+          caption: string;
+          event_date?: number;
+          timestamp: number;
+        }>,
         Name
       >;
       getPostsPaginated: FunctionReference<
@@ -460,6 +479,13 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           users: Array<string>;
           video_url?: string;
         }>,
+        Name
+      >;
+      updateEventDate: FunctionReference<
+        "mutation",
+        "internal",
+        { event_date: number; id: string },
+        any,
         Name
       >;
       upsertPost: FunctionReference<

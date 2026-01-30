@@ -6,6 +6,9 @@ import { v } from "convex/values";
 import { components } from "../_generated/api";
 import { action, mutation, query } from "../_generated/server";
 
+// Note: dateExtractor is imported dynamically in actions that need it
+// to avoid Convex bundling issues with chrono-node
+
 /**
  * Add or update a user
  */
@@ -97,6 +100,11 @@ export const fetchUserPosts = action({
 			);
 			if (existing) continue;
 
+			// Extract event date from caption
+			// Uses post's Instagram timestamp as reference for relative dates
+			const { getEventTimestamp } = await import("../lib/dateExtractor");
+			const eventDate = getEventTimestamp(post.caption, post.timestamp);
+
 			// Save post
 			const postId = await ctx.runMutation(
 				components.instarip.posts.upsertPost,
@@ -111,6 +119,7 @@ export const fetchUserPosts = action({
 					url: post.url,
 					media_type: post.media_type,
 					timestamp: post.timestamp,
+					event_date: eventDate,
 					users: [user._id],
 				},
 			);
@@ -135,3 +144,5 @@ export const fetchUserPosts = action({
 		return { success: true, fetched: result.posts.length, saved };
 	},
 });
+
+// Backfill functions moved to api/backfill.ts

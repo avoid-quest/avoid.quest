@@ -1,39 +1,59 @@
 # Instarip Rewrite Plan
 
+> **Last Updated:** 2026-01-30
+> **Status:** Ready for Phase 1
+> **Branch:** `refactor/instarip-migration`
+
 ## Overview
-Rewrite instarip-web from scratch using **TanStack Start + React** to align with the radio app architecture. Rename to simply `instarip`. Keep Convex backend, use existing media proxy, leverage shared UI package.
+
+Rewrite instarip from Next.js to **TanStack Start + React** to align with the radio app architecture. Delete existing Next.js app, start fresh. Keep Convex backend (already componentized), use existing media proxy, leverage shared UI package.
+
+**Reference Implementation:** `apps/radio/` — copy structure and config patterns from here.
+
+---
+
+## Pre-Migration Setup ✅
+
+- [x] Skills created (`.claude/skills/`)
+  - `convex-expert/` — Convex coding rules + project patterns
+  - `tanstack-mcp/` — TanStack MCP tool reference
+  - `context7-mcp/` — Context7 MCP tool reference
+- [x] MCP servers configured (user scope)
+  - `tanstack` — TanStack docs + project creation
+  - `context7` — Any other library docs
+- [x] `.claude/CLAUDE.md` updated with auto-invoke rules
 
 ---
 
 ## Target Features
 
 ### Core Pages
-1. **Home Feed** (`/`) - Chronological grid with infinite scroll
-2. **Post Detail** (`/p/[shortcode]`) - Fullscreen media viewer with sidebar
-3. **User Profile** (`/u/[username]`) - All posts from specific user
+1. **Home Feed** (`/`) — Chronological grid with infinite scroll
+2. **Post Detail** (`/p/$shortcode`) — Fullscreen media viewer with sidebar
+3. **User Profile** (`/u/$username`) — All posts from specific user
 
 ### Search & Filtering
-- **Caption text search** - Full-text search through captions
-- **User filter** - Dropdown/autocomplete to filter by creator
-- **Date range filter** - Presets (last week, month) + custom range
-- **Location filter** - Future enhancement (requires schema changes)
+- **Caption text search** — Full-text search through captions
+- **User filter** — Dropdown/autocomplete to filter by creator
+- **Date range filter** — Presets (last week, month) + custom range
 
 ### Enhanced Media Experience
-- **Fullscreen gallery** - Lightbox with keyboard navigation (Esc, arrows)
-- **Swipe gestures** - Mobile-friendly carousel/gallery navigation
-- **Pinch-to-zoom** - Touch zoom for image detail viewing
-- **Download button** - Save images/videos locally
+- **Fullscreen gallery** — Lightbox with keyboard navigation (Esc, arrows)
+- **Swipe gestures** — Mobile-friendly carousel/gallery navigation
+- **Pinch-to-zoom** — Touch zoom for image detail viewing
+- **Download button** — Save images/videos locally
 
 ### Technical
-- **Public access** - No authentication required
-- **Media proxy** - Use existing Convex HTTP endpoint (`/media?id=...`)
-- **Cloudflare Workers** - Deploy via TanStack Start adapter
+- **Public access** — No authentication required
+- **Media proxy** — Use existing Convex HTTP endpoint (`/media?id=...`)
+- **Cloudflare Workers** — Deploy via `@cloudflare/vite-plugin`
 
 ---
 
 ## Architecture
 
-### Directory Structure
+### Directory Structure (matches radio app)
+
 ```
 apps/instarip/
 ├── src/
@@ -42,62 +62,91 @@ apps/instarip/
 │   │   ├── index.tsx           # Home feed with infinite scroll
 │   │   ├── p/
 │   │   │   └── $shortcode.tsx  # Post detail page
-│   │   ├── u/
-│   │   │   └── $username.tsx   # User profile page
-│   │   └── api/                # Server routes (if needed)
+│   │   └── u/
+│   │       └── $username.tsx   # User profile page
 │   ├── components/
 │   │   ├── feed/
-│   │   │   ├── post-grid.tsx   # Infinite scroll grid
-│   │   │   ├── post-card.tsx   # Individual post card
-│   │   │   └── filters.tsx     # Search/filter controls
+│   │   │   ├── post-grid.tsx
+│   │   │   ├── post-card.tsx
+│   │   │   └── filters.tsx
 │   │   ├── media/
-│   │   │   ├── media-viewer.tsx    # Main media display
-│   │   │   ├── lightbox.tsx        # Fullscreen gallery
-│   │   │   ├── carousel.tsx        # Swipeable carousel
-│   │   │   └── video-player.tsx    # Video with controls
+│   │   │   ├── media-viewer.tsx
+│   │   │   ├── lightbox.tsx
+│   │   │   ├── carousel.tsx
+│   │   │   └── video-player.tsx
 │   │   ├── post/
-│   │   │   ├── post-detail.tsx     # Detail page layout
-│   │   │   └── post-sidebar.tsx    # Caption + metadata
+│   │   │   ├── post-detail.tsx
+│   │   │   └── post-sidebar.tsx
 │   │   └── layout/
-│   │       ├── header.tsx
-│   │       └── footer.tsx
+│   │       └── header.tsx
 │   ├── lib/
 │   │   ├── hooks/
-│   │   │   ├── use-posts.ts        # TanStack Query for posts
-│   │   │   ├── use-users.ts        # TanStack Query for users
-│   │   │   ├── use-infinite-posts.ts
-│   │   │   └── use-filters.ts      # Filter state management
+│   │   │   ├── use-posts.ts
+│   │   │   ├── use-users.ts
+│   │   │   └── use-filters.ts
 │   │   ├── stores/
-│   │   │   └── filter-store.ts     # TanStack Store for UI state
-│   │   ├── utils/
-│   │   │   ├── date.ts             # Date formatting
-│   │   │   └── media.ts            # Media URL helpers
-│   │   └── convex.ts               # Convex client setup
+│   │   │   └── filter-store.ts
+│   │   └── utils/
+│   │       ├── date.ts
+│   │       └── media.ts
 │   └── styles/
 │       └── globals.css
-├── app.config.ts                   # TanStack Start config
+├── vite.config.ts              # TanStack Start + Cloudflare config
+├── wrangler.jsonc              # Cloudflare Workers config
 ├── package.json
 └── tsconfig.json
 ```
 
-### State Management
-- **TanStack Query** - Server state (posts, users, media)
-- **TanStack Store** - UI state (filters, lightbox open, scroll position)
-- **Convex** - Backend queries (keep existing, add search index)
+### Key Dependencies (from radio app)
 
-### Key Dependencies
 ```json
 {
-  "@tanstack/react-start": "latest",
-  "@tanstack/react-query": "^5",
-  "@tanstack/react-store": "latest",
-  "@tanstack/react-virtual": "latest",
-  "convex": "existing",
+  "@cloudflare/vite-plugin": "^1.21.2",
+  "@tailwindcss/vite": "catalog:",
+  "@tanstack/react-query": "^5.90.19",
+  "@tanstack/react-router": "^1.154.7",
+  "@tanstack/react-start": "^1.154.7",
+  "@tanstack/react-store": "^0.8.0",
+  "@tanstack/react-virtual": "catalog:",
+  "@tanstack/router-plugin": "^1.154.7",
+  "@avoid.quest/backend": "workspace:*",
   "@avoid.quest/ui": "workspace:*",
-  "embla-carousel-react": "existing in ui",
-  "use-gesture": "for swipe/pinch",
-  "photoswipe": "or similar for lightbox"
+  "convex": "catalog:",
+  "lucide-react": "catalog:",
+  "next-themes": "catalog:",
+  "react": "catalog:",
+  "react-dom": "catalog:",
+  "sonner": "catalog:",
+  "tailwindcss": "catalog:",
+  "vite-tsconfig-paths": "^6.0.4",
+  "zod": "catalog:"
 }
+```
+
+### Vite Config Pattern (from radio app)
+
+```typescript
+// vite.config.ts
+import { cloudflare } from "@cloudflare/vite-plugin";
+import tailwindcss from "@tailwindcss/vite";
+import { tanstackStart } from "@tanstack/react-start/plugin/vite";
+import viteReact from "@vitejs/plugin-react";
+import { defineConfig } from "vite";
+import tsConfigPaths from "vite-tsconfig-paths";
+
+export default defineConfig({
+  plugins: [
+    cloudflare({ viteEnvironment: { name: "ssr" } }),
+    tailwindcss(),
+    tsConfigPaths(),
+    tanstackStart(),
+    viteReact(),
+  ],
+  build: {
+    minify: "esbuild",
+    sourcemap: false,
+  },
+});
 ```
 
 ---
@@ -105,71 +154,75 @@ apps/instarip/
 ## Implementation Phases
 
 ### Phase 1: Project Setup
-**Files to create:**
-- `apps/instarip/package.json`
-- `apps/instarip/app.config.ts`
-- `apps/instarip/tsconfig.json`
-- `apps/instarip/src/routes/__root.tsx`
-- `apps/instarip/src/lib/convex.ts`
+**Goal:** Fresh TanStack Start app that builds and deploys
 
 **Tasks:**
-- [ ] Initialize TanStack Start project
-- [ ] Configure Convex provider
-- [ ] Set up shared UI imports
-- [ ] Configure Cloudflare Workers adapter
-- [ ] Add to workspace
+- [ ] Create branch `refactor/instarip-migration`
+- [ ] Delete `apps/instarip/` (entire Next.js app)
+- [ ] Create new `apps/instarip/` with TanStack Start structure
+- [ ] Copy vite.config.ts pattern from radio
+- [ ] Set up wrangler.jsonc for Cloudflare Workers
+- [ ] Configure Convex client (ConvexProvider)
+- [ ] Set up shared UI imports (@avoid.quest/ui)
+- [ ] Add Tailwind v4 config
+- [ ] Create minimal `__root.tsx` with providers
+- [ ] Create placeholder `index.tsx` route
+- [ ] Verify `bun run dev` works
+- [ ] Verify `bun run build` succeeds
+
+**Deliverables:**
+- Working dev server at localhost:3000
+- Successful build output
+- Basic "Hello World" page with theme support
 
 ### Phase 2: Core Pages (MVP)
-**Files to create:**
-- `src/routes/index.tsx` - Home feed
-- `src/routes/p/$shortcode.tsx` - Post detail
-- `src/routes/u/$username.tsx` - User profile
-- `src/components/feed/post-grid.tsx`
-- `src/components/feed/post-card.tsx`
-- `src/components/media/media-viewer.tsx`
-- `src/components/post/post-detail.tsx`
-- `src/components/post/post-sidebar.tsx`
-- `src/components/layout/header.tsx`
+**Goal:** Functional feed, post detail, and user profile pages
 
 **Tasks:**
-- [ ] Home page with basic post grid
-- [ ] Post detail page with media + sidebar
-- [ ] User profile page
+- [ ] Home feed with post grid (using existing `getPostsPaginated`)
+- [ ] Post card component (image/video thumbnail)
+- [ ] Post detail page (`/p/$shortcode`)
+- [ ] User profile page (`/u/$username`)
 - [ ] Header with navigation
 - [ ] Basic responsive layout
+- [ ] Loading states (Skeleton)
+
+**Backend:** No changes needed — use existing component queries:
+- `components.instarip.posts.getPostsPaginated`
+- `components.instarip.posts.getPostByShortcode`
+- `components.instarip.users.getUserByUsername`
+- `components.instarip.mediaItems.getMediaItemsByPostId`
 
 ### Phase 3: Enhanced Media
-**Files to create:**
-- `src/components/media/lightbox.tsx`
-- `src/components/media/carousel.tsx`
-- `src/components/media/video-player.tsx`
+**Goal:** Rich media experience with lightbox and gestures
 
 **Tasks:**
-- [ ] Fullscreen lightbox with keyboard nav
-- [ ] Swipeable carousel (embla + use-gesture)
+- [ ] Media viewer component (handles image/video/carousel)
+- [ ] Fullscreen lightbox with Dialog
+- [ ] Keyboard navigation (Esc, arrows)
+- [ ] Swipeable carousel (embla-carousel from UI package)
 - [ ] Pinch-to-zoom on images
 - [ ] Download button for media
 - [ ] Video player with controls
 
 ### Phase 4: Search & Filtering
-**Backend changes needed:**
-- Add search index to Convex posts table (caption full-text)
+**Goal:** Find posts by caption, user, or date
 
-**Files to create:**
-- `src/components/feed/filters.tsx`
-- `src/lib/stores/filter-store.ts`
-- `src/lib/hooks/use-filters.ts`
+**Backend changes (in `components/instarip/`):**
+- [ ] Add search index to posts schema: `.searchIndex("search_caption", { searchField: "caption" })`
+- [ ] Add `searchPosts` query using `withSearchIndex`
+- [ ] Extend `getPostsPaginated` with optional filters (userId, dateRange)
 
-**Tasks:**
+**Frontend:**
+- [ ] Filter bar component
 - [ ] Caption search input with debounce
 - [ ] User filter dropdown (autocomplete)
 - [ ] Date range picker (presets + custom)
-- [ ] Filter state persistence (URL params)
-- [ ] Update Convex queries to support filtering
+- [ ] URL param persistence for filters
+- [ ] TanStack Store for filter state
 
 ### Phase 5: Infinite Scroll & Performance
-**Files to create:**
-- `src/lib/hooks/use-infinite-posts.ts`
+**Goal:** Smooth scrolling with large datasets
 
 **Tasks:**
 - [ ] Infinite scroll with TanStack Virtual
@@ -179,56 +232,59 @@ apps/instarip/
 - [ ] Prefetch on hover
 
 ### Phase 6: Polish & Deploy
+**Goal:** Production-ready app
+
 **Tasks:**
 - [ ] SEO metadata (title, description, OG tags)
 - [ ] Error boundaries and fallbacks
-- [ ] 404 pages
+- [ ] 404 page
 - [ ] Loading states throughout
 - [ ] Mobile responsive testing
-- [ ] Deploy to Cloudflare Workers
+- [ ] Deploy to Cloudflare Workers (reuse existing worker)
+
+**Cloudflare Dashboard:**
+- Update worker to point to new build output
+- No config changes needed if reusing existing setup
 
 ---
 
-## Backend Changes Required
+## Backend Component Structure (Current)
 
-### Convex Schema Updates
-```typescript
-// Add search index for captions
-posts: defineTable({
-  // existing fields...
-})
-  .index("by_timestamp", ["timestamp"])
-  .searchIndex("search_caption", { searchField: "caption" })
+The backend is already componentized. **Do not restructure** — use existing patterns:
+
+```
+packages/backend/convex/
+├── components/
+│   └── instarip/           # All instarip data
+│       ├── posts.ts        # getPostsPaginated, getPostByShortcode, etc.
+│       ├── users.ts        # getUserByUsername, etc.
+│       ├── mediaItems.ts   # getMediaItemsByPostId
+│       ├── settings.ts     # App settings
+│       ├── fetcher.ts      # Instagram fetching
+│       └── schema.ts       # Component schema
+├── instarip/               # Telegram bot (separate from web app)
+└── http.ts                 # /media proxy endpoint
 ```
 
-### New/Modified Queries
+**Accessing from frontend:**
 ```typescript
-// Paginated posts with filters
-api.posts.getPostsPaginated({
-  cursor?: string,
-  limit: number,
-  search?: string,      // caption search
-  userId?: Id<"users">, // filter by user
-  startDate?: number,   // date range start
-  endDate?: number,     // date range end
-})
+import { components } from "@avoid.quest/backend/convex/_generated/api";
 
-// Search posts by caption
-api.posts.searchPosts({
-  query: string,
-  limit: number,
-})
+// In TanStack Query or loader
+const posts = await convex.query(components.instarip.posts.getPostsPaginated, {
+  paginationOpts: { numItems: 20, cursor: null }
+});
 ```
 
 ---
 
-## UI Components to Use (from @avoid.quest/ui)
+## UI Components from @avoid.quest/ui
 
 | Component | Usage |
 |-----------|-------|
 | Card | Post cards in grid |
 | Button | Actions, download, navigation |
-| Carousel | Multi-image posts |
+| Carousel | Multi-image posts (embla-carousel) |
 | Skeleton | Loading states |
 | Dialog | Lightbox container |
 | Input | Search input |
@@ -238,48 +294,52 @@ api.posts.searchPosts({
 
 ---
 
-## Media Handling Strategy
+## Media Handling
 
 ### URLs
-1. **Primary**: Use Convex media proxy (`/media?id=<media_item_id>`)
-2. **Fallback**: Direct URLs if file_id not available
-3. **Thumbnails**: Lower quality for grid, full quality for viewer
+1. **Primary:** Convex media proxy (`https://<deployment>.convex.site/media?id=<media_item_id>`)
+2. **Fallback:** Direct Instagram URLs if `telegram_file` not available
 
-### Lightbox
-- PhotoSwipe or similar library
-- Keyboard navigation (Esc, left/right arrows)
-- Swipe gestures on mobile
-- Pinch-to-zoom touch support
-- Share and download buttons
-
-### Download
-- Fetch blob from proxy endpoint
-- Create download link with proper filename
-- Support both images and videos
+### Media Item Structure
+```typescript
+{
+  _id: Id<"media_items">,
+  post_id: Id<"posts">,
+  type: "image" | "video" | "thumbnail",
+  telegram_file?: {
+    file_id: string,
+    file_unique_id: string,
+  },
+  width?: number,
+  height?: number,
+}
+```
 
 ---
 
-## Verification Plan
+## Verification Checklist
 
-### Manual Testing
-1. Navigate to home, verify posts load in grid
-2. Scroll down, verify infinite scroll loads more
-3. Use search, verify results filter correctly
-4. Click post, verify detail page with media
-5. Open lightbox, verify fullscreen + gestures
-6. Download media, verify file saves correctly
-7. Visit user profile, verify posts filtered
-8. Test on mobile, verify responsive + touch
+### Per-Phase
+- [ ] `bun run dev` works
+- [ ] `bun run build` succeeds
+- [ ] `bun run check` passes (types + lint)
+- [ ] Manual smoke test of new features
 
-### Automated Testing
-- Unit tests for date formatting utilities
-- Integration tests for Convex queries
-- E2E tests for critical user flows (optional)
+### Final
+- [ ] All routes work (/, /p/$shortcode, /u/$username)
+- [ ] Infinite scroll loads more posts
+- [ ] Search/filters work correctly
+- [ ] Lightbox opens and navigates
+- [ ] Download works for images/videos
+- [ ] Mobile responsive
+- [ ] Deployed to Cloudflare Workers
 
 ---
 
 ## Notes
 
-- **Location filtering**: Not currently available in schema. Would require fetching location from Instagram API and adding to posts table. Can be added as future enhancement.
-- **Media migration**: System is transitioning from Instagram URLs to Telegram file_ids. New code should prefer file_id-based proxy.
-- **Performance**: Use TanStack Virtual for grid to handle large datasets efficiently.
+- **Reference radio app** for patterns — it's the canonical TanStack Start implementation
+- **Use TanStack MCP** for up-to-date Router/Start docs
+- **Use Context7 MCP** for other library docs (React, Tailwind, etc.)
+- **Read convex-expert skill** before writing backend code
+- **Timestamps in MILLISECONDS** — match existing backend convention

@@ -35,8 +35,23 @@ bun run ui add button          # Install shadcn components
 ## Documentation
 
 Use MCP servers for up-to-date docs instead of training data:
-- **TanStack MCP** - Router, Query, Start, Table, Form
-- **Context7** - Convex, Bun, React, any library
+- **TanStack MCP** — Router, Query, Start, Table, Form, Virtual, Store
+- **Context7 MCP** — Any other library (React, Tailwind, Zod, Drizzle, etc.)
+
+### Auto-Invoke Rules
+
+When working with these libraries, **always use MCP tools first**:
+
+1. **TanStack libraries** → Use `tanstack_search_docs` or `tanstack_doc` 
+2. **Other libraries** → Add `use context7` to your query or use `get-library-docs`
+3. **Convex code** → Read `.claude/skills/convex-expert/SKILL.md` first
+
+### Skills
+
+Located in `.claude/skills/`:
+- **convex-expert** — Convex coding rules + project-specific patterns
+- **tanstack-mcp** — TanStack MCP tool reference
+- **context7-mcp** — Context7 MCP tool reference
 
 ## Code Style
 

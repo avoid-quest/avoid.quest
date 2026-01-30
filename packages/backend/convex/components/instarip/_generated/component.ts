@@ -281,46 +281,6 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         any,
         Name
       >;
-      getPostsFiltered: FunctionReference<
-        "query",
-        "internal",
-        {
-          endDate?: number;
-          paginationOpts: {
-            cursor: string | null;
-            endCursor?: string | null;
-            id?: number;
-            maximumBytesRead?: number;
-            maximumRowsRead?: number;
-            numItems: number;
-          };
-          startDate?: number;
-          userId?: string;
-        },
-        {
-          continueCursor: string | null;
-          isDone: boolean;
-          page: Array<{
-            _creationTime: number;
-            _id: string;
-            caption: string;
-            display_url: string;
-            event_date?: number;
-            ig_id: string;
-            is_video: boolean;
-            media_type: "image" | "video" | "carousel";
-            sentAt?: number;
-            shortcode: string;
-            status: "pending" | "sending" | "sent" | "failed";
-            thumbnail_url?: string;
-            timestamp: number;
-            url: string;
-            users: Array<string>;
-            video_url?: string;
-          }>;
-        },
-        Name
-      >;
       getPostsPaginated: FunctionReference<
         "query",
         "internal",
@@ -356,6 +316,35 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             video_url?: string;
           }>;
         },
+        Name
+      >;
+      getPostsWithFilters: FunctionReference<
+        "query",
+        "internal",
+        {
+          endDate?: number;
+          limit?: number;
+          startDate?: number;
+          userId?: string;
+        },
+        Array<{
+          _creationTime: number;
+          _id: string;
+          caption: string;
+          display_url: string;
+          event_date?: number;
+          ig_id: string;
+          is_video: boolean;
+          media_type: "image" | "video" | "carousel";
+          sentAt?: number;
+          shortcode: string;
+          status: "pending" | "sending" | "sent" | "failed";
+          thumbnail_url?: string;
+          timestamp: number;
+          url: string;
+          users: Array<string>;
+          video_url?: string;
+        }>,
         Name
       >;
       getUnsent: FunctionReference<

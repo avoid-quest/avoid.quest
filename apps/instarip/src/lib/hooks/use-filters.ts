@@ -5,7 +5,6 @@ import { api } from "@/lib/convex";
 import {
   filterStore,
   hasActiveFilters,
-  type FilterState,
 } from "@/lib/stores/filter-store";
 
 /**
@@ -42,46 +41,63 @@ export function useDebouncedValue<T>(value: T, delay: number): T {
 
 /**
  * Hook for filtered/searched posts
- * Uses search endpoint when search is active, filtered pagination otherwise
+ * Uses search endpoint when search is active, filtered query otherwise
  */
-export function useFilteredPosts(pageSize = 20) {
+export function useFilteredPosts(limit = 50) {
   const state = useStore(filterStore);
   const debouncedSearch = useDebouncedValue(state.search, 300);
   const isSearching = debouncedSearch.trim().length > 0;
+  const hasFilters = state.userId !== null || state.datePreset !== "all";
 
   // Search results (when search is active)
   const searchResults = useQuery(
     api.api.posts.search,
-    isSearching ? { query: debouncedSearch, limit: 50 } : "skip"
+    isSearching ? { query: debouncedSearch, limit } : "skip"
   );
 
-  // Filtered paginated results (when not searching)
-  const filteredResults = usePaginatedQuery(
+  // Filtered results (when filters active but not searching)
+  const filteredResults = useQuery(
     api.api.posts.getFiltered,
-    !isSearching
+    !isSearching && hasFilters
       ? {
+          limit,
           userId: state.userId ?? undefined,
           startDate: state.startDate ?? undefined,
           endDate: state.endDate ?? undefined,
         }
-      : "skip",
-    { initialNumItems: pageSize }
+      : "skip"
+  );
+
+  // Default paginated results (no search, no filters)
+  const defaultResults = usePaginatedQuery(
+    api.api.posts.getPaginated,
+    !isSearching && !hasFilters ? {} : "skip",
+    { initialNumItems: limit }
   );
 
   // Return appropriate results based on mode
   if (isSearching) {
     return {
       results: searchResults ?? [],
-      status: searchResults === undefined ? "LoadingFirstPage" : "CanLoadMore",
+      status: searchResults === undefined ? "LoadingFirstPage" : "Exhausted",
       loadMore: () => {},
       isSearchMode: true,
     };
   }
 
+  if (hasFilters) {
+    return {
+      results: filteredResults ?? [],
+      status: filteredResults === undefined ? "LoadingFirstPage" : "Exhausted",
+      loadMore: () => {},
+      isSearchMode: false,
+    };
+  }
+
   return {
-    results: filteredResults.results,
-    status: filteredResults.status,
-    loadMore: filteredResults.loadMore,
+    results: defaultResults.results,
+    status: defaultResults.status,
+    loadMore: defaultResults.loadMore,
     isSearchMode: false,
   };
 }

@@ -75,19 +75,19 @@ export const search = query({
 });
 
 /**
- * Get filtered posts with pagination
+ * Get filtered posts (non-paginated, returns up to limit)
  */
 export const getFiltered = query({
 	args: {
-		paginationOpts: paginationOptsValidator,
+		limit: v.optional(v.number()),
 		userId: v.optional(v.id("users")),
 		startDate: v.optional(v.number()),
 		endDate: v.optional(v.number()),
 	},
-	handler: async (ctx, { paginationOpts, userId, startDate, endDate }) => {
+	handler: async (ctx, { limit, userId, startDate, endDate }) => {
 		// biome-ignore lint/suspicious/noExplicitAny: Cross-component Id type casting
-		return await ctx.runQuery(components.instarip.posts.getPostsFiltered, {
-			paginationOpts,
+		return await ctx.runQuery(components.instarip.posts.getPostsWithFilters, {
+			limit,
 			userId: userId as any,
 			startDate,
 			endDate,

@@ -128,48 +128,43 @@ export const getPostsPaginated = query({
 });
 
 /**
- * Get posts with pagination and filters (userId, dateRange)
+ * Get posts with filters (no pagination - used by API wrapper)
+ * Returns up to `limit` posts matching the filters
  */
-export const getPostsFiltered = query({
+export const getPostsWithFilters = query({
 	args: {
-		paginationOpts: paginationOptsValidator,
+		limit: v.optional(v.number()),
 		userId: v.optional(v.id("users")),
 		startDate: v.optional(v.number()),
 		endDate: v.optional(v.number()),
 	},
-	returns: v.object({
-		page: v.array(paginatedPostValidator),
-		isDone: v.boolean(),
-		continueCursor: v.union(v.string(), v.null()),
-	}),
-	handler: async (ctx, { paginationOpts, userId, startDate, endDate }) => {
-		let query = ctx.db.query("posts").withIndex("by_event_date").order("desc");
+	returns: v.array(paginatedPostValidator),
+	handler: async (ctx, { limit, userId, startDate, endDate }) => {
+		// If filtering by user, use the user index
+		let posts;
+		if (userId) {
+			posts = await ctx.db
+				.query("posts")
+				.withIndex("by_user_id", (q) => q.eq("users", [userId]))
+				.order("desc")
+				.take((limit ?? 50) * 3); // Fetch extra to filter by date
+		} else {
+			posts = await ctx.db
+				.query("posts")
+				.withIndex("by_event_date")
+				.order("desc")
+				.take((limit ?? 50) * 3);
+		}
 
-		// Apply in-memory filters since Convex doesn't support multiple index conditions
-		// For large datasets, consider more specific indexes
-		const result = await query.paginate(paginationOpts);
-
-		const filteredPage = result.page.filter((post) => {
-			// Filter by user
-			if (userId && !post.users.includes(userId)) {
-				return false;
-			}
-			// Filter by date range (using event_date or fallback to timestamp)
+		// Apply date filters in memory
+		const filtered = posts.filter((post) => {
 			const postDate = post.event_date ?? post.timestamp;
-			if (startDate && postDate < startDate) {
-				return false;
-			}
-			if (endDate && postDate > endDate) {
-				return false;
-			}
+			if (startDate && postDate < startDate) return false;
+			if (endDate && postDate > endDate) return false;
 			return true;
 		});
 
-		return {
-			page: filteredPage,
-			isDone: result.isDone,
-			continueCursor: result.continueCursor,
-		};
+		return filtered.slice(0, limit ?? 50);
 	},
 });
 

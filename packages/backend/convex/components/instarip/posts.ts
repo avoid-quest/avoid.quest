@@ -128,6 +128,76 @@ export const getPostsPaginated = query({
 });
 
 /**
+ * Get posts with pagination and filters (userId, dateRange)
+ */
+export const getPostsFiltered = query({
+	args: {
+		paginationOpts: paginationOptsValidator,
+		userId: v.optional(v.id("users")),
+		startDate: v.optional(v.number()),
+		endDate: v.optional(v.number()),
+	},
+	returns: v.object({
+		page: v.array(paginatedPostValidator),
+		isDone: v.boolean(),
+		continueCursor: v.union(v.string(), v.null()),
+	}),
+	handler: async (ctx, { paginationOpts, userId, startDate, endDate }) => {
+		let query = ctx.db.query("posts").withIndex("by_event_date").order("desc");
+
+		// Apply in-memory filters since Convex doesn't support multiple index conditions
+		// For large datasets, consider more specific indexes
+		const result = await query.paginate(paginationOpts);
+
+		const filteredPage = result.page.filter((post) => {
+			// Filter by user
+			if (userId && !post.users.includes(userId)) {
+				return false;
+			}
+			// Filter by date range (using event_date or fallback to timestamp)
+			const postDate = post.event_date ?? post.timestamp;
+			if (startDate && postDate < startDate) {
+				return false;
+			}
+			if (endDate && postDate > endDate) {
+				return false;
+			}
+			return true;
+		});
+
+		return {
+			page: filteredPage,
+			isDone: result.isDone,
+			continueCursor: result.continueCursor,
+		};
+	},
+});
+
+/**
+ * Search posts by caption text
+ * Uses Convex full-text search index
+ */
+export const searchPosts = query({
+	args: {
+		query: v.string(),
+		limit: v.optional(v.number()),
+	},
+	returns: v.array(paginatedPostValidator),
+	handler: async (ctx, { query: searchQuery, limit }) => {
+		if (!searchQuery.trim()) {
+			return [];
+		}
+
+		const results = await ctx.db
+			.query("posts")
+			.withSearchIndex("search_caption", (q) => q.search("caption", searchQuery))
+			.take(limit ?? 50);
+
+		return results;
+	},
+});
+
+/**
  * Get unsent posts with pagination
  */
 export const getUnsentPaginated = query({

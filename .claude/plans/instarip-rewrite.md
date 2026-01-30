@@ -206,21 +206,23 @@ export default defineConfig({
 - [x] Download button for media
 - [x] Video player with controls
 
-### Phase 4: Search & Filtering
+### Phase 4: Search & Filtering ✅
 **Goal:** Find posts by caption, user, or date
 
 **Backend changes (in `components/instarip/`):**
-- [ ] Add search index to posts schema: `.searchIndex("search_caption", { searchField: "caption" })`
-- [ ] Add `searchPosts` query using `withSearchIndex`
-- [ ] Extend `getPostsPaginated` with optional filters (userId, dateRange)
+- [x] Add search index to posts schema: `.searchIndex("search_caption", { searchField: "caption" })`
+- [x] Add `searchPosts` query using `withSearchIndex`
+- [x] Add `getPostsFiltered` with optional filters (userId, dateRange)
+- [x] Add API wrappers (`api/posts.ts`: `search`, `getFiltered`)
 
 **Frontend:**
-- [ ] Filter bar component
-- [ ] Caption search input with debounce
-- [ ] User filter dropdown (autocomplete)
-- [ ] Date range picker (presets + custom)
-- [ ] URL param persistence for filters
-- [ ] TanStack Store for filter state
+- [x] Filter bar component (`components/feed/filters.tsx`)
+- [x] Caption search input with debounce (300ms)
+- [x] User filter dropdown
+- [x] Date range picker (presets: all/week/month/year + custom)
+- [x] TanStack Store for filter state (`lib/stores/filter-store.ts`)
+- [x] `useFilteredPosts` hook with search/filter mode switching
+- [ ] URL param persistence for filters (deferred)
 
 ### Phase 5: Infinite Scroll & Performance
 **Goal:** Smooth scrolling with large datasets

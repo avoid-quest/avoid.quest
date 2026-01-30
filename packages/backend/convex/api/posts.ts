@@ -57,3 +57,40 @@ export const getRecent = query({
 		});
 	},
 });
+
+/**
+ * Search posts by caption text (full-text search)
+ */
+export const search = query({
+	args: {
+		query: v.string(),
+		limit: v.optional(v.number()),
+	},
+	handler: async (ctx, { query: searchQuery, limit }) => {
+		return await ctx.runQuery(components.instarip.posts.searchPosts, {
+			query: searchQuery,
+			limit,
+		});
+	},
+});
+
+/**
+ * Get filtered posts with pagination
+ */
+export const getFiltered = query({
+	args: {
+		paginationOpts: paginationOptsValidator,
+		userId: v.optional(v.id("users")),
+		startDate: v.optional(v.number()),
+		endDate: v.optional(v.number()),
+	},
+	handler: async (ctx, { paginationOpts, userId, startDate, endDate }) => {
+		// biome-ignore lint/suspicious/noExplicitAny: Cross-component Id type casting
+		return await ctx.runQuery(components.instarip.posts.getPostsFiltered, {
+			paginationOpts,
+			userId: userId as any,
+			startDate,
+			endDate,
+		});
+	},
+});

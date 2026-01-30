@@ -108,7 +108,8 @@ export default defineSchema({
 		.index("by_event_date", ["event_date"])
 		.index("by_shortcode", ["shortcode"])
 		.index("by_user_id", ["users"])
-		.index("by_status", ["status"]),
+		.index("by_status", ["status"])
+		.searchIndex("search_caption", { searchField: "caption" }),
 
 	media_items: defineTable({
 		/**

@@ -62,7 +62,10 @@ export const deleteMessages = action({
 
 				if (isApiError(response)) {
 					// Message might already be deleted or not found - not a critical error
-					if (response.error_code === 400 && response.description.includes("message to delete not found")) {
+					if (
+						response.error_code === 400 &&
+						response.description.includes("message to delete not found")
+					) {
 						// Already deleted, count as success
 						deleted++;
 					} else {

@@ -123,7 +123,7 @@ export const getTelegramMessageIds = mutation({
 		chatId: v.optional(v.string()),
 	},
 	handler: async (ctx, { chatId }) => {
-		let query = ctx.db.query("telegram_messages");
+		const query = ctx.db.query("telegram_messages");
 
 		const messages = await query.collect();
 

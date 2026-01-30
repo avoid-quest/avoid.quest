@@ -14,7 +14,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@avoid.quest/ui/components/select";
-import { CalendarIcon, MapPinIcon, SearchIcon, UsersIcon, XIcon } from "lucide-react";
+import {
+  CalendarIcon,
+  MapPinIcon,
+  SearchIcon,
+  UsersIcon,
+  XIcon,
+} from "lucide-react";
 import {
   useCollaborators,
   useFilterState,
@@ -97,7 +103,9 @@ export function Filters() {
       {/* Location filter */}
       {locations && locations.length > 0 && (
         <Select
-          onValueChange={(value) => setLocationId(value === "all" ? null : value)}
+          onValueChange={(value) =>
+            setLocationId(value === "all" ? null : value)
+          }
           value={state.locationId ?? "all"}
         >
           <SelectTrigger className="w-[180px]">
@@ -118,7 +126,9 @@ export function Filters() {
       {/* Collaborator filter */}
       {collaborators && collaborators.length > 0 && (
         <Select
-          onValueChange={(value) => setCollaborator(value === "all" ? null : value)}
+          onValueChange={(value) =>
+            setCollaborator(value === "all" ? null : value)
+          }
           value={state.collaborator ?? "all"}
         >
           <SelectTrigger className="w-[180px]">

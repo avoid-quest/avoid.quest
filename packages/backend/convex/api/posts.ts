@@ -216,7 +216,10 @@ export const getFiltered = query({
 		locationId: v.optional(v.string()),
 		collaborator: v.optional(v.string()),
 	},
-	handler: async (ctx, { limit, userId, startDate, endDate, locationId, collaborator }) => {
+	handler: async (
+		ctx,
+		{ limit, userId, startDate, endDate, locationId, collaborator },
+	) => {
 		const posts = await ctx.runQuery(
 			components.instarip.posts.getPostsWithFilters,
 			{

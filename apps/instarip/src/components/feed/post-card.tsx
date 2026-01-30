@@ -1,6 +1,12 @@
 import { Card, CardContent } from "@avoid.quest/ui/components/card";
 import { Link } from "@tanstack/react-router";
-import { ImageIcon, ImagesIcon, MapPinIcon, UsersIcon, VideoIcon } from "lucide-react";
+import {
+  ImageIcon,
+  ImagesIcon,
+  MapPinIcon,
+  UsersIcon,
+  VideoIcon,
+} from "lucide-react";
 import { getPostImageUrl } from "@/lib/utils/media";
 
 type PostCardProps = {
@@ -54,7 +60,7 @@ export function PostCard({ post }: PostCardProps) {
           {post.location && (
             <div className="absolute top-2 left-2 flex items-center gap-1 rounded-full bg-black/60 px-2 py-1">
               <MapPinIcon className="size-3 text-white" />
-              <span className="max-w-[100px] truncate text-xs text-white">
+              <span className="max-w-[100px] truncate text-white text-xs">
                 {post.location.name}
               </span>
             </div>
@@ -64,7 +70,7 @@ export function PostCard({ post }: PostCardProps) {
           {post.collaborators && post.collaborators.length > 0 && (
             <div className="absolute top-2 left-2 mt-7 flex items-center gap-1 rounded-full bg-black/60 px-2 py-1">
               <UsersIcon className="size-3 text-white" />
-              <span className="text-xs text-white">
+              <span className="text-white text-xs">
                 {post.collaborators.length}
               </span>
             </div>
@@ -76,8 +82,9 @@ export function PostCard({ post }: PostCardProps) {
               {post.caption || "No caption"}
             </p>
             {/* Location and collaborators in hover state */}
-            {(post.location || (post.collaborators && post.collaborators.length > 0)) && (
-              <div className="mt-1 flex flex-wrap gap-2 text-xs text-white/80">
+            {(post.location ||
+              (post.collaborators && post.collaborators.length > 0)) && (
+              <div className="mt-1 flex flex-wrap gap-2 text-white/80 text-xs">
                 {post.location && (
                   <span className="flex items-center gap-1">
                     <MapPinIcon className="size-3" />
@@ -87,7 +94,7 @@ export function PostCard({ post }: PostCardProps) {
                 {post.collaborators && post.collaborators.length > 0 && (
                   <span className="flex items-center gap-1">
                     <UsersIcon className="size-3" />
-                    {post.collaborators.map(c => `@${c}`).join(", ")}
+                    {post.collaborators.map((c) => `@${c}`).join(", ")}
                   </span>
                 )}
               </div>

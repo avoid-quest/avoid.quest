@@ -160,7 +160,10 @@ export const getPostsWithFilters = query({
 		collaborator: v.optional(v.string()),
 	},
 	returns: v.array(paginatedPostValidator),
-	handler: async (ctx, { limit, userId, startDate, endDate, locationId, collaborator }) => {
+	handler: async (
+		ctx,
+		{ limit, userId, startDate, endDate, locationId, collaborator },
+	) => {
 		// If filtering by user, use the user index
 		const posts = userId
 			? await ctx.db
@@ -180,7 +183,8 @@ export const getPostsWithFilters = query({
 			if (startDate && postDate < startDate) return false;
 			if (endDate && postDate > endDate) return false;
 			if (locationId && post.location?.ig_id !== locationId) return false;
-			if (collaborator && !post.collaborators?.includes(collaborator)) return false;
+			if (collaborator && !post.collaborators?.includes(collaborator))
+				return false;
 			return true;
 		});
 
@@ -194,21 +198,22 @@ export const getPostsWithFilters = query({
 export const getLocations = query({
 	returns: v.array(locationValidator),
 	handler: async (ctx) => {
-		const posts = await ctx.db
-			.query("posts")
-			.collect();
-		
+		const posts = await ctx.db.query("posts").collect();
+
 		// Deduplicate by ig_id
-		const locationsMap = new Map<string, { ig_id: string; name: string; slug: string }>();
+		const locationsMap = new Map<
+			string,
+			{ ig_id: string; name: string; slug: string }
+		>();
 		for (const post of posts) {
 			if (post.location) {
 				locationsMap.set(post.location.ig_id, post.location);
 			}
 		}
-		
+
 		// Sort by name
-		return Array.from(locationsMap.values()).sort((a, b) => 
-			a.name.localeCompare(b.name)
+		return Array.from(locationsMap.values()).sort((a, b) =>
+			a.name.localeCompare(b.name),
 		);
 	},
 });
@@ -219,10 +224,8 @@ export const getLocations = query({
 export const getCollaborators = query({
 	returns: v.array(v.string()),
 	handler: async (ctx) => {
-		const posts = await ctx.db
-			.query("posts")
-			.collect();
-		
+		const posts = await ctx.db.query("posts").collect();
+
 		// Collect all unique collaborators
 		const collaboratorsSet = new Set<string>();
 		for (const post of posts) {
@@ -230,7 +233,7 @@ export const getCollaborators = query({
 				collaboratorsSet.add(collab);
 			}
 		}
-		
+
 		// Sort alphabetically
 		return Array.from(collaboratorsSet).sort();
 	},

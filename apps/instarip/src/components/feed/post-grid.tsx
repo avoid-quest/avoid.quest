@@ -1,5 +1,4 @@
-import { Skeleton } from "@avoid.quest/ui/components/skeleton";
-import { PostCard } from "./post-card";
+import { PostCard, PostCardSkeleton } from "./post-card";
 
 type Post = {
   _id: string;
@@ -12,6 +11,12 @@ type Post = {
   is_video: boolean;
   media_type: "image" | "video" | "carousel";
   timestamp: number;
+  location?: {
+    ig_id: string;
+    name: string;
+    slug: string;
+  };
+  collaborators?: string[];
 };
 
 type PostGridProps = {
@@ -19,16 +24,11 @@ type PostGridProps = {
   isLoading?: boolean;
 };
 
+const SKELETON_COUNT = 20;
+
 export function PostGrid({ posts, isLoading }: PostGridProps) {
   if (isLoading) {
-    return (
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-        {Array.from({ length: 20 }).map((_, i) => (
-          // biome-ignore lint/suspicious/noArrayIndexKey: Static skeleton loading state
-          <Skeleton className="aspect-square rounded-lg" key={i} />
-        ))}
-      </div>
-    );
+    return <PostGridSkeleton count={SKELETON_COUNT} />;
   }
 
   if (!posts || posts.length === 0) {
@@ -43,6 +43,17 @@ export function PostGrid({ posts, isLoading }: PostGridProps) {
     <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
       {posts.map((post) => (
         <PostCard key={post._id} post={post} />
+      ))}
+    </div>
+  );
+}
+
+export function PostGridSkeleton({ count = SKELETON_COUNT }: { count?: number }) {
+  return (
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+      {Array.from({ length: count }).map((_, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: Static skeleton loading state
+        <PostCardSkeleton key={i} />
       ))}
     </div>
   );

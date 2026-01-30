@@ -8,6 +8,8 @@ import {
   ExternalLinkIcon,
   ImageIcon,
   ImagesIcon,
+  MapPinIcon,
+  UsersIcon,
   VideoIcon,
 } from "lucide-react";
 import { MediaViewer } from "@/components/media/media-viewer";
@@ -84,8 +86,29 @@ function PostDetailPage() {
       height: item.height,
     }));
 
+  const handleDownload = async () => {
+    const url = post.is_video ? videoUrl : imageUrl;
+    if (!url) return;
+
+    try {
+      const response = await fetch(url);
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = `${post.shortcode}.${post.is_video ? "mp4" : "jpg"}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(blobUrl);
+    } catch (error) {
+      // Fallback: open in new tab
+      window.open(url, "_blank");
+    }
+  };
+
   return (
-    <div className="container max-w-5xl py-6">
+    <div className="container max-w-6xl py-6">
       {/* Back button */}
       <Link className="mb-4 inline-block" to="/">
         <Button size="sm" variant="ghost">
@@ -94,58 +117,66 @@ function PostDetailPage() {
         </Button>
       </Link>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        {/* Media */}
-        <MediaViewer
-          className="aspect-square"
-          displayUrl={imageUrl}
-          isVideo={post.is_video}
-          items={viewerItems}
-          mediaType={post.media_type}
-          thumbnailUrl={imageUrl}
-          videoUrl={videoUrl}
-        />
+      <div className="grid gap-8 lg:grid-cols-[1fr,400px]">
+        {/* Media - takes more space now */}
+        <div className="flex items-start justify-center">
+          <MediaViewer
+            className="w-full max-w-3xl"
+            displayUrl={imageUrl}
+            isVideo={post.is_video}
+            items={viewerItems}
+            mediaType={post.media_type}
+            thumbnailUrl={imageUrl}
+            videoUrl={videoUrl}
+          />
+        </div>
 
-        {/* Details */}
+        {/* Details sidebar */}
         <div className="space-y-4">
           {/* Meta info */}
-          <div className="flex flex-wrap items-center gap-2 text-muted-foreground">
-            <div className="flex items-center gap-1">
+          <div className="flex flex-wrap items-center gap-3 text-muted-foreground text-sm">
+            <div className="flex items-center gap-1.5 rounded-full bg-muted px-3 py-1">
               <MediaTypeIcon className="size-4" />
               <span className="capitalize">{post.media_type}</span>
             </div>
-            <span>•</span>
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1.5 rounded-full bg-muted px-3 py-1">
               <CalendarIcon className="size-4" />
               <span>{formattedDate}</span>
             </div>
           </div>
 
+          {/* Location */}
+          {post.location && (
+            <div className="flex items-center gap-2 text-muted-foreground text-sm">
+              <MapPinIcon className="size-4" />
+              <span>{post.location.name}</span>
+            </div>
+          )}
+
+          {/* Collaborators */}
+          {post.collaborators && post.collaborators.length > 0 && (
+            <div className="flex items-center gap-2 text-muted-foreground text-sm">
+              <UsersIcon className="size-4" />
+              <span>{post.collaborators.map((c) => `@${c}`).join(", ")}</span>
+            </div>
+          )}
+
           {/* Caption */}
-          <div className="prose dark:prose-invert max-w-none">
+          <div className="rounded-lg border bg-card p-4">
             <p className="whitespace-pre-wrap text-sm leading-relaxed">
               {post.caption || "No caption"}
             </p>
           </div>
 
           {/* Actions */}
-          <div className="flex flex-wrap gap-2 pt-4">
+          <div className="flex flex-wrap gap-2 pt-2">
             <a href={post.url} rel="noopener noreferrer" target="_blank">
               <Button size="sm" variant="outline">
                 <ExternalLinkIcon className="mr-2 size-4" />
                 View on Instagram
               </Button>
             </a>
-            <Button
-              onClick={() => {
-                const url = post.is_video ? videoUrl : imageUrl;
-                if (url) {
-                  window.open(url, "_blank");
-                }
-              }}
-              size="sm"
-              variant="outline"
-            >
+            <Button onClick={handleDownload} size="sm" variant="outline">
               <DownloadIcon className="mr-2 size-4" />
               Download
             </Button>
@@ -167,14 +198,20 @@ function PostDetailPage() {
 
 function PostDetailSkeleton() {
   return (
-    <div className="container max-w-5xl py-6">
+    <div className="container max-w-6xl py-6">
       <Skeleton className="mb-4 h-10 w-24" />
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Skeleton className="aspect-square w-full rounded-lg" />
+      <div className="grid gap-8 lg:grid-cols-[1fr,400px]">
+        <Skeleton className="aspect-square max-w-3xl rounded-lg" />
         <div className="space-y-4">
-          <Skeleton className="h-6 w-48" />
-          <Skeleton className="h-32 w-full" />
-          <Skeleton className="h-10 w-32" />
+          <div className="flex gap-2">
+            <Skeleton className="h-8 w-24 rounded-full" />
+            <Skeleton className="h-8 w-32 rounded-full" />
+          </div>
+          <Skeleton className="h-40 w-full rounded-lg" />
+          <div className="flex gap-2">
+            <Skeleton className="h-9 w-36" />
+            <Skeleton className="h-9 w-28" />
+          </div>
         </div>
       </div>
     </div>

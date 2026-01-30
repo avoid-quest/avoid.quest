@@ -78,7 +78,7 @@ export const mediaHandler = httpAction(async (ctx, request) => {
 		return corsResponse("Media not found", { status: 404 }, origin);
 	}
 
-	// If no Telegram file yet, try to redirect to Instagram URL as fallback
+	// If no Telegram file yet, proxy from Instagram URL as fallback
 	if (!mediaItem.telegram_file?.file_id) {
 		// Get the associated post to find the Instagram URL
 		const post = await ctx.runQuery(
@@ -93,20 +93,42 @@ export const mediaHandler = httpAction(async (ctx, request) => {
 				: (post.thumbnail_url ?? post.display_url);
 			
 			if (fallbackUrl) {
-				// Redirect to Instagram URL (shorter cache since these expire)
-				return new Response(null, {
-					status: 302,
-					headers: {
-						"Location": fallbackUrl,
-						"Cache-Control": "public, max-age=3600", // 1 hour cache for IG URLs
-						"Access-Control-Allow-Origin": origin ?? "*",
-					},
-				});
+				const controller = new AbortController();
+				const timeoutId = setTimeout(() => controller.abort(), MEDIA_FETCH_TIMEOUT_MS);
+				
+				try {
+					const igResponse = await fetch(fallbackUrl, { signal: controller.signal });
+					
+					if (!igResponse.ok) {
+						return corsResponse("Instagram media unavailable", { status: 502 }, origin);
+					}
+
+					// Determine content type
+					const contentType = igResponse.headers.get("Content-Type") 
+						|| (mediaItem.type === "video" ? "video/mp4" : "image/jpeg");
+
+					// Shorter cache for Instagram URLs (they expire)
+					return new Response(igResponse.body, {
+						headers: {
+							"Content-Type": contentType,
+							"Cache-Control": "public, max-age=3600", // 1 hour
+							"Access-Control-Allow-Origin": origin ?? "*",
+						},
+					});
+				} catch (error) {
+					if (error instanceof Error && error.name === "AbortError") {
+						return corsResponse("Instagram request timeout", { status: 504 }, origin);
+					}
+					logger.error(`Instagram fetch failed: ${error instanceof Error ? error.message : "Unknown"}`);
+					return corsResponse("Failed to fetch from Instagram", { status: 502 }, origin);
+				} finally {
+					clearTimeout(timeoutId);
+				}
 			}
 		}
 
 		return corsResponse(
-			"Media not yet uploaded to Telegram",
+			"Media not available",
 			{ status: 404 },
 			origin,
 		);

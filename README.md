@@ -1,62 +1,69 @@
 # avoid.quest
 
-Monorepo for avoid.quest apps. Next.js + Convex + Cloudflare.
+Monorepo for avoid.quest apps. TanStack Start + Convex + Cloudflare.
 
 ## Apps
 
-- **instarip**: Instagram post viewer, browse scraped IG content without account
-- **radio**: PWA internet radio player, 3 modes (Multiple/Single/DJ), audio mixing
-- **web**: Landing page, links to instarip and radio
+- **instarip**: Instagram post viewer - browse scraped IG content without an account
+- **radio**: PWA internet radio player - 3 modes (Multiple/Single/DJ), audio mixing
+- **cwavasape**: Pinterest visual gallery with AI effects and GPU shaders
+- **web**: Landing page and links hub
 
 ## Packages
 
-- **backend**: Convex database, posts/users/media_items/post_metadata tables, AI metadata extraction via Groq
-- **bandcamp**: Bandcamp metadata scraper, extracts tracks/albums/stream URLs
-- **soundcloud**: SoundCloud metadata scraper, extracts tracks/playlists/stream URLs
-- **ui**: Shared component library, shadcn/ui + Radix UI, theme support
-- **typescript-config**: Shared TS configs for all packages
+- **backend**: Convex database + API for posts, users, media items, Telegram integration
+- **bandcamp**: Bandcamp metadata scraper - tracks, albums, stream URLs
+- **soundcloud**: SoundCloud metadata scraper - tracks, playlists, stream URLs
+- **pinterest**: Pinterest board/pin scraper
+- **shared**: Shared utilities and feature flags
+- **ui**: Component library (shadcn/ui + Radix UI)
+- **typescript-config**: Shared TypeScript configs
 
 ## Tech Stack
 
-- Next.js 16, React 19, TypeScript
-- Convex (backend)
+- TanStack Start, TanStack Router, React 19, TypeScript
+- Convex (backend database + real-time)
 - Tailwind CSS v4, shadcn/ui
-- Bun, Turbo (monorepo)
-- Cloudflare Pages (deploy)
+- Bun, Turborepo
+- Cloudflare Workers (deploy)
 
-### Development
+## Development
 
 ```bash
 bun install          # Install dependencies
-bun run dev          # Start all apps
-bun run dev:server   # Start Convex backend
-bun run dev:setup    # Setup Convex backend
-bun run build        # Build all
-bun run check        # Lint + type check
-bun run typecheck  # Type check only
-bun run fix          # Auto-fix linting
-bun run cleanup      # Clean all node_modules and build artifacts
+bun run dev          # Start all apps in dev mode
+bun run dev:backend  # Start Convex backend only
+bun run dev:setup    # First-time Convex setup
+bun run build        # Build all apps
+bun run typecheck    # Type check all packages
+bun run check        # Lint (ultracite/biome)
+bun run fix          # Auto-fix lint issues
+bun run cleanup      # Clean node_modules and build artifacts
 ```
 
-### Cloudflare
+## Cloudflare Deployment
 
 ```bash
-bun run cf-build     # Build all apps for Cloudflare
-bun run cf-deploy    # Deploy all apps to Cloudflare
-bun run cf-upload    # Upload all apps to Cloudflare
+bun run cf-build     # Build for Cloudflare
+bun run cf-deploy    # Deploy to Cloudflare
 bun run cf-typegen   # Generate Cloudflare types
 ```
 
-### Changesets
+## Backend
 
 ```bash
-bun changeset add     # Create new changeset
-bun changeset version # Version packages
-bun changeset tag    # Create git tags for releases
+bun run deploy:backend  # Deploy Convex to production
 ```
 
-### UI Components
+## UI Components
 
 ```bash
-bun run ui           # Open shadcn/ui CLI
+bun run ui           # Open shadcn/ui CLI for adding components
+```
+
+## Changesets
+
+```bash
+bun changeset        # Create a changeset
+bun version-packages # Version packages from changesets
 ```

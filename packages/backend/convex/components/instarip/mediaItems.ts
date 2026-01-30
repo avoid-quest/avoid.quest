@@ -170,9 +170,10 @@ export const syncMediaItemsForPost = mutation({
 			await ctx.db.delete(existing._id);
 		}
 
-		// Insert new items (without URL storage)
+		// Insert new items with URL storage
 		for (const item of media_items) {
 			await ctx.db.insert("media_items", {
+				url: item.url,
 				type: item.type,
 				width: item.width,
 				height: item.height,

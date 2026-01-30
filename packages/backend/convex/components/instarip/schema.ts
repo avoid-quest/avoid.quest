@@ -112,6 +112,8 @@ export default defineSchema({
 		.searchIndex("search_caption", { searchField: "caption" }),
 
 	media_items: defineTable({
+		/** Original Instagram URL for this media item */
+		url: v.optional(v.string()),
 		/**
 		 * Telegram file information (grouped for atomicity)
 		 * Both file_id and file_unique_id are set together when media is uploaded to Telegram

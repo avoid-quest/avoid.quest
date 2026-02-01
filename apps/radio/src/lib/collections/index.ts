@@ -35,13 +35,17 @@ export {
   syncRadios,
 } from "./radios";
 export {
+  getAudioSettings,
   getSettings,
   initializeSettings,
-  type SettingsRecord,
+  setCueOutputDevice,
+  setInputDevice,
+  setMainOutputDevice,
   setPlayerMode,
   setPlayerType,
   setRestoreStateOnLoad,
   setSingleModeTransitionDuration,
+  type SettingsRecord,
   settingsCollection,
   updatePlayerSettings,
 } from "./settings";

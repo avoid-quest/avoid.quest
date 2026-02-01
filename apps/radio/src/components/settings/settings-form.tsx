@@ -18,6 +18,7 @@ import {
 } from "@avoid.quest/ui/components/tabs";
 import {
   DatabaseIcon,
+  HeadphonesIcon,
   RadioIcon,
   RotateCcwIcon,
   Settings2Icon,
@@ -49,6 +50,10 @@ function handleRestoreStateToggle(checked: boolean): void {
 // Lazy import for browser-only APIs
 const ImportExport = lazy(() =>
   import("./import-export").then((mod) => ({ default: mod.ImportExport }))
+);
+
+const AudioSettings = lazy(() =>
+  import("./audio-settings").then((mod) => ({ default: mod.AudioSettings }))
 );
 
 export function SettingsForm({
@@ -128,6 +133,13 @@ export function SettingsForm({
           >
             <Settings2Icon className="size-4 shrink-0" />
             <span className="truncate">Player</span>
+          </TabsTrigger>
+          <TabsTrigger
+            className="flex-1 justify-start gap-1.5 text-xs md:w-full md:gap-2 md:text-sm"
+            value="audio"
+          >
+            <HeadphonesIcon className="size-4 shrink-0" />
+            <span className="truncate">Audio</span>
           </TabsTrigger>
           <TabsTrigger
             className="flex-1 justify-start gap-1.5 text-xs md:w-full md:gap-2 md:text-sm"
@@ -221,6 +233,25 @@ export function SettingsForm({
                 </div>
               )}
             </div>
+          </TabsContent>
+
+          <TabsContent
+            className="mt-0 flex min-h-0 flex-1 flex-col space-y-4 overflow-y-auto p-4"
+            value="audio"
+          >
+            <div className="mb-4">
+              <h3 className="font-medium text-lg">Audio Devices</h3>
+              <p className="text-muted-foreground text-sm">
+                Configure input and output devices for DJ mode.
+              </p>
+            </div>
+            <Suspense
+              fallback={
+                <div className="text-muted-foreground text-sm">Loading...</div>
+              }
+            >
+              <AudioSettings />
+            </Suspense>
           </TabsContent>
 
           <TabsContent

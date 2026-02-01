@@ -19,9 +19,16 @@ const playerSettingsSchema = z.object({
   single: singleModeSettingsSchema.optional(),
 });
 
+const audioSettingsSchema = z.object({
+  mainOutputId: z.string().default("default"),
+  cueOutputId: z.string().nullable().default(null),
+  inputDeviceId: z.string().nullable().default(null),
+});
+
 const settingsSchema = z.object({
   id: z.string(),
   player: playerSettingsSchema,
+  audio: audioSettingsSchema.optional(),
 });
 
 export type SettingsRecord = z.infer<typeof settingsSchema>;
@@ -153,6 +160,84 @@ export function updatePlayerSettings(
       }
       if (updates.single !== undefined) {
         draft.player.single = updates.single;
+      }
+    });
+  }
+}
+
+// ============================================
+// Audio Settings
+// ============================================
+
+/**
+ * Get audio settings with defaults
+ */
+export function getAudioSettings(): NonNullable<SettingsRecord["audio"]> {
+  const settings = getSettings();
+  return (
+    settings?.audio ?? {
+      mainOutputId: "default",
+      cueOutputId: null,
+      inputDeviceId: null,
+    }
+  );
+}
+
+/**
+ * Set main output device
+ */
+export function setMainOutputDevice(deviceId: string): void {
+  const existing = getSettings();
+  if (existing) {
+    settingsCollection.update(SETTINGS_ID, (draft) => {
+      if (draft.audio) {
+        draft.audio.mainOutputId = deviceId;
+      } else {
+        draft.audio = {
+          mainOutputId: deviceId,
+          cueOutputId: null,
+          inputDeviceId: null,
+        };
+      }
+    });
+  }
+}
+
+/**
+ * Set CUE/headphone output device
+ */
+export function setCueOutputDevice(deviceId: string | null): void {
+  const existing = getSettings();
+  if (existing) {
+    settingsCollection.update(SETTINGS_ID, (draft) => {
+      if (draft.audio) {
+        draft.audio.cueOutputId = deviceId;
+      } else {
+        draft.audio = {
+          mainOutputId: "default",
+          cueOutputId: deviceId,
+          inputDeviceId: null,
+        };
+      }
+    });
+  }
+}
+
+/**
+ * Set input device
+ */
+export function setInputDevice(deviceId: string | null): void {
+  const existing = getSettings();
+  if (existing) {
+    settingsCollection.update(SETTINGS_ID, (draft) => {
+      if (draft.audio) {
+        draft.audio.inputDeviceId = deviceId;
+      } else {
+        draft.audio = {
+          mainOutputId: "default",
+          cueOutputId: null,
+          inputDeviceId: deviceId,
+        };
       }
     });
   }

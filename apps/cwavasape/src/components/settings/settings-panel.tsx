@@ -6,7 +6,6 @@ import {
 } from "@avoid.quest/ui/components/popover";
 import { Separator } from "@avoid.quest/ui/components/separator";
 import { Settings } from "lucide-react";
-import { AITab } from "./ai-tab";
 import { EffectsTab } from "./effects-tab";
 import { QualitySelect } from "./quality-select";
 import { ScrollSensitivitySlider } from "./scroll-sensitivity-slider";
@@ -33,8 +32,6 @@ export function SettingsPanel() {
           <ScrollSensitivitySlider />
           <Separator />
           <EffectsTab />
-          <Separator />
-          <AITab />
         </div>
       </PopoverContent>
     </Popover>

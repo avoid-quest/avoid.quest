@@ -18,7 +18,6 @@
     "@avoid.quest/typescript-config": "workspace:*",
     "@avoid.quest/ui": "workspace:*",
     "@cloudflare/vite-plugin": "^1.22.1",
-    "@huggingface/transformers": "^3.8.1",
     "@tailwindcss/vite": "catalog:",
     "@tanstack/pacer": "^0.18.0",
     "@tanstack/react-db": "^0.1.69",

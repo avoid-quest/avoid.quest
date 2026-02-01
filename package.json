@@ -23,7 +23,7 @@
       "@types/react-dom": "^19.2.3",
       "@types/node": "^22.19.7",
       "@types/bun": "latest",
-      "@cloudflare/workers-types": "^4.20260130.0",
+      "@cloudflare/workers-types": "^4.20260131.0",
       "wrangler": "^4.61.1",
       "vite": "^7.3.1",
       "vitest": "^4.0.18",
@@ -55,7 +55,7 @@
     "@changesets/cli": "^2.29.8",
     "@types/bun": "^1.3.8",
     "@types/node": "^25.1.0",
-    "turbo": "^2.8.0",
+    "turbo": "^2.8.1",
     "ultracite": "7.0.11"
   },
   "packageManager": "bun@1.3.8",

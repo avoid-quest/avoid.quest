@@ -63,6 +63,7 @@ export type FilterConfig = {
  * Native audio nodes for a sound instance
  */
 type AudioNodes = {
+  preFaderSend: GainNode; // Tap point for CUE (pre-fader monitoring)
   gain: GainNode;
   pan: StereoPannerNode;
   filter: BiquadFilterNode;
@@ -347,6 +348,10 @@ export class AudioManager {
    * Create native audio nodes for a sound
    */
   private createAudioNodes(context: AudioContext): AudioNodes {
+    // Pre-fader send for CUE monitoring (unity gain, always passing audio)
+    const preFaderSend = context.createGain();
+    preFaderSend.gain.value = 1;
+
     const gain = context.createGain();
     const pan = context.createStereoPanner();
     const filter = context.createBiquadFilter();
@@ -360,7 +365,7 @@ export class AudioManager {
     analyser.fftSize = 2048;
     analyser.smoothingTimeConstant = 0.8;
 
-    return { gain, pan, filter, analyser };
+    return { preFaderSend, gain, pan, filter, analyser };
   }
 
   /**
@@ -386,11 +391,12 @@ export class AudioManager {
       return false;
     }
 
-    const { gain, pan, filter, analyser } = instance.nodes;
+    const { preFaderSend, gain, pan, filter, analyser } = instance.nodes;
     const sourceOutput = instance.html5Source.output;
 
     // Disconnect any existing connections (may already be disconnected)
     safeDisconnect(sourceOutput, "AudioManager.connectAudioGraph");
+    safeDisconnect(preFaderSend, "AudioManager.connectAudioGraph");
     safeDisconnect(gain, "AudioManager.connectAudioGraph");
     safeDisconnect(pan, "AudioManager.connectAudioGraph");
     safeDisconnect(filter, "AudioManager.connectAudioGraph");
@@ -404,8 +410,10 @@ export class AudioManager {
     wm.startSource(instance.sourceId);
 
     // Connect the graph
-    // Source → Gain → Pan → Filter
-    sourceOutput.connect(gain);
+    // Source → PreFaderSend → Gain → Pan → Filter
+    // The preFaderSend is a tap point for CUE monitoring
+    sourceOutput.connect(preFaderSend);
+    preFaderSend.connect(gain);
     gain.connect(pan);
     pan.connect(filter);
 
@@ -939,6 +947,20 @@ export class AudioManager {
       position: instance.html5Source.currentTime,
       duration: instance.html5Source.duration,
     };
+  }
+
+  // ============================================
+  // CUE Pre-Fader Access
+  // ============================================
+
+  /**
+   * Get the pre-fader audio node for a sound
+   * This is a tap point BEFORE the channel fader, used for CUE/PFL monitoring
+   * Returns null if the sound doesn't exist or hasn't been initialized
+   */
+  getPreFaderNode(soundId: string): GainNode | null {
+    const instance = this.sounds.get(soundId);
+    return instance?.nodes?.preFaderSend ?? null;
   }
 
   // ============================================

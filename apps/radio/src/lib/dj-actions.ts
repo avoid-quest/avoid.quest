@@ -236,6 +236,67 @@ function applyStoredChannelStrip(
   }
 }
 
+// Track CueBus connections to avoid duplicate connections
+const cueBusConnections = new Map<string, GainNode>();
+
+/**
+ * Connect a deck's pre-fader audio to the CueBus for CUE monitoring
+ * This should be called after audio starts playing
+ */
+function connectDeckToCueBus(deckId: DeckId, soundId: string): void {
+  const bus = ensureCueBus();
+  if (!bus) {
+    return;
+  }
+
+  const manager = getAudioManager();
+  const preFaderNode = manager.getPreFaderNode(soundId);
+  if (!preFaderNode) {
+    return;
+  }
+
+  // Check if already connected
+  if (cueBusConnections.has(soundId)) {
+    return;
+  }
+
+  // Get or register the deck's CUE input
+  const cueInput = bus.registerDeck(deckId);
+
+  // Connect pre-fader output to CUE input
+  preFaderNode.connect(cueInput);
+  cueBusConnections.set(soundId, cueInput);
+
+  // Restore CUE enabled state from mixer
+  const mixer = getMixer();
+  if (mixer) {
+    const enabled =
+      deckId === "deck-a" ? mixer.deckACueEnabled : mixer.deckBCueEnabled;
+    if (enabled) {
+      bus.setCueEnabled(deckId, true);
+    }
+  }
+}
+
+/**
+ * Disconnect a deck from the CueBus
+ */
+function disconnectDeckFromCueBus(soundId: string): void {
+  const cueInput = cueBusConnections.get(soundId);
+  if (cueInput) {
+    const manager = getAudioManager();
+    const preFaderNode = manager.getPreFaderNode(soundId);
+    if (preFaderNode) {
+      try {
+        preFaderNode.disconnect(cueInput);
+      } catch {
+        // May already be disconnected
+      }
+    }
+    cueBusConnections.delete(soundId);
+  }
+}
+
 // Apply crossfade based on current mixer position
 export function applyCrossfade() {
   if (typeof window === "undefined") {
@@ -288,6 +349,7 @@ async function setDeckRadio(deckId: DeckId, radio: Radio | null) {
 
   // Cleanup existing sound
   if (runtime.soundId) {
+    disconnectDeckFromCueBus(runtime.soundId);
     await getAudioManager().cleanupSound(runtime.soundId);
   }
 
@@ -322,7 +384,7 @@ async function setDeckRadio(deckId: DeckId, radio: Radio | null) {
       const currentDeck = config.getDeck();
       const currentRuntime = config.getRuntime();
 
-      // Apply stored settings on first play
+      // Apply stored settings on first play and connect to CueBus
       if (
         audioState.isPlaying &&
         !audioState.isLoading &&
@@ -343,6 +405,9 @@ async function setDeckRadio(deckId: DeckId, radio: Radio | null) {
           currentDeck.channelFilter,
           currentDeck.effectsDryWet
         );
+
+        // Connect to CueBus for pre-fader monitoring
+        connectDeckToCueBus(deckId, soundId);
       }
 
       // Detect track end

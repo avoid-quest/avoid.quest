@@ -7,6 +7,7 @@ import {
 } from "@avoid.quest/ui/components/tooltip";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import { HeadphonesIcon } from "lucide-react";
+import { DeviceSelector } from "@/components/audio/device-selector";
 
 type CueControlsProps = {
   className?: string;
@@ -22,6 +23,7 @@ type CueControlsProps = {
  * CUE monitoring controls for DJ headphone preview.
  * - CUE buttons enable pre-fader listening for each deck
  * - CUE/MIX blend slider controls the mix in headphones
+ * - Device selector for configuring audio I/O
  */
 export function CueControls({
   className,
@@ -89,6 +91,9 @@ export function CueControls({
           <p>CUE Deck B (pre-fader listen)</p>
         </TooltipContent>
       </Tooltip>
+
+      {/* Audio Device Selector */}
+      <DeviceSelector className="h-7" />
     </div>
   );
 }

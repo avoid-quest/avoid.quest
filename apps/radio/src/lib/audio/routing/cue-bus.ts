@@ -184,10 +184,14 @@ export class CueBus {
   /**
    * Register a deck for CUE monitoring
    * Returns the input node that the deck should connect its pre-fader output to
+   * If deck is already registered, returns existing input node (preserves CUE state)
    */
   registerDeck(deckId: string): GainNode {
-    // Clean up existing if any
-    this.unregisterDeck(deckId);
+    // Return existing input node if already registered (preserves CUE state)
+    const existing = this.deckSends.get(deckId);
+    if (existing) {
+      return existing.inputNode;
+    }
 
     // Create input node for the deck to connect to
     const inputNode = this.context.createGain();

@@ -85,11 +85,14 @@ export function MediaViewer({
               src={videoUrl}
             />
           ) : (
+            // biome-ignore lint/a11y/noNoninteractiveElementInteractions: onLoad is for loading state
             <img
               alt=""
               className="w-full bg-muted"
+              height={400}
               onLoad={() => setIsLoaded(true)}
               src={displayUrl}
+              width={400}
             />
           )}
         </button>
@@ -126,7 +129,13 @@ export function MediaViewer({
                     src={item.url}
                   />
                 ) : (
-                  <img alt="" className="w-full bg-muted" src={item.url} />
+                  <img
+                    alt=""
+                    className="w-full bg-muted"
+                    height={400}
+                    src={item.url}
+                    width={400}
+                  />
                 )}
               </button>
             </CarouselItem>

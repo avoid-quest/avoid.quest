@@ -22,7 +22,7 @@ describe("extractEventDate", () => {
 			expect(result.date?.matchedText.toLowerCase()).toContain("oggi");
 
 			// Should be same day as reference
-			const extracted = new Date(result.date!.start);
+			const extracted = new Date(result.date?.start);
 			expect(extracted.getDate()).toBe(REF_DATE.getDate());
 		});
 
@@ -32,7 +32,7 @@ describe("extractEventDate", () => {
 			});
 
 			expect(result.found).toBe(true);
-			const extracted = new Date(result.date!.start);
+			const extracted = new Date(result.date?.start);
 			expect(extracted.getDate()).toBe(16); // Jan 16
 		});
 
@@ -62,7 +62,7 @@ describe("extractEventDate", () => {
 			});
 
 			expect(result.found).toBe(true);
-			const extracted = new Date(result.date!.start);
+			const extracted = new Date(result.date?.start);
 			expect(extracted.getDay()).toBe(5); // Friday
 		});
 
@@ -72,7 +72,7 @@ describe("extractEventDate", () => {
 			});
 
 			expect(result.found).toBe(true);
-			const extracted = new Date(result.date!.start);
+			const extracted = new Date(result.date?.start);
 			expect(extracted.getDay()).toBe(6); // Saturday
 		});
 	});
@@ -84,7 +84,7 @@ describe("extractEventDate", () => {
 			});
 
 			expect(result.found).toBe(true);
-			const extracted = new Date(result.date!.start);
+			const extracted = new Date(result.date?.start);
 			expect(extracted.getDate()).toBe(20);
 			expect(extracted.getMonth()).toBe(0); // January
 		});
@@ -95,7 +95,7 @@ describe("extractEventDate", () => {
 			});
 
 			expect(result.found).toBe(true);
-			const extracted = new Date(result.date!.start);
+			const extracted = new Date(result.date?.start);
 			expect(extracted.getDate()).toBe(20);
 		});
 	});
@@ -110,8 +110,8 @@ describe("extractEventDate", () => {
 			expect(result.date?.isRange).toBe(true);
 
 			// Weekend should be Saturday-Sunday
-			const start = new Date(result.date!.start);
-			const end = new Date(result.date!.end);
+			const start = new Date(result.date?.start);
+			const end = new Date(result.date?.end);
 			expect(start.getDay()).toBe(6); // Saturday
 			expect(end.getDay()).toBe(0); // Sunday
 		});
@@ -151,7 +151,7 @@ describe("extractEventDate", () => {
 			});
 
 			expect(result.found).toBe(true);
-			const extracted = new Date(result.date!.start);
+			const extracted = new Date(result.date?.start);
 			expect(extracted.getDate()).toBe(16);
 		});
 
@@ -169,7 +169,7 @@ describe("extractEventDate", () => {
 			});
 
 			expect(result.found).toBe(true);
-			const extracted = new Date(result.date!.start);
+			const extracted = new Date(result.date?.start);
 			expect(extracted.getDate()).toBe(20);
 			expect(extracted.getMonth()).toBe(0);
 		});
@@ -259,7 +259,7 @@ describe("getEventDateRange", () => {
 		const range = getEventDateRange("Evento questo weekend", REF_TIMESTAMP);
 
 		expect(range).not.toBeNull();
-		expect(range!.end).toBeGreaterThan(range!.start);
+		expect(range?.end).toBeGreaterThan(range?.start);
 	});
 
 	it("returns same start/end for single dates", () => {
@@ -267,7 +267,7 @@ describe("getEventDateRange", () => {
 
 		expect(range).not.toBeNull();
 		// For single dates, start and end should be the same
-		expect(range!.start).toBe(range!.end);
+		expect(range?.start).toBe(range?.end);
 	});
 
 	it("returns null when no date found", () => {

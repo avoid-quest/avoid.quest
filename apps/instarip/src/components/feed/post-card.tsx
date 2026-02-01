@@ -48,13 +48,16 @@ export function PostCard({ post }: PostCardProps) {
           {/* Skeleton while loading */}
           {!isLoaded && <Skeleton className="absolute inset-0 rounded-none" />}
 
+          {/* biome-ignore lint/a11y/noNoninteractiveElementInteractions: onLoad is for loading state */}
           <img
             alt={post.caption.slice(0, 100)}
             className="w-full object-cover transition-transform group-hover:scale-105"
+            height={300}
             loading="lazy"
             onLoad={() => setIsLoaded(true)}
             src={imageUrl}
             style={{ aspectRatio: "1 / 1" }}
+            width={300}
           />
 
           {/* Media type indicator - always visible */}

@@ -12,6 +12,7 @@ import {
   type CueBus,
   createCueBus,
   createDefaultEffectConfig,
+  getAudioContext,
   type Radio,
 } from "@/lib/audio";
 import {
@@ -811,14 +812,42 @@ export function reorderDeckBEffects(effectIds: string[]) {
 // ============================================
 
 /**
+ * Ensure CueBus is initialized, creating it if necessary
+ * Returns the CueBus instance or null if AudioContext isn't available yet
+ */
+function ensureCueBus(): CueBus | null {
+  if (cueBus) {
+    return cueBus;
+  }
+
+  // Try to get AudioContext (requires user gesture to have happened)
+  const context = getAudioContext();
+  if (!context) {
+    // AudioContext not yet available - will be initialized on first play
+    return null;
+  }
+
+  // Initialize CueBus
+  return getCueBus(context);
+}
+
+/**
  * Enable/disable CUE monitoring for a deck (pre-fader listen)
  */
 function setDeckCueEnabled(deckId: DeckId, enabled: boolean) {
-  if (!cueBus) {
-    console.warn("[DjActions] CueBus not initialized");
+  const bus = ensureCueBus();
+  if (!bus) {
+    // Still update the mixer state so it persists
+    updateMixer((draft) => {
+      if (deckId === "deck-a") {
+        draft.deckACueEnabled = enabled;
+      } else {
+        draft.deckBCueEnabled = enabled;
+      }
+    });
     return;
   }
-  cueBus.setCueEnabled(deckId, enabled);
+  bus.setCueEnabled(deckId, enabled);
   updateMixer((draft) => {
     if (deckId === "deck-a") {
       draft.deckACueEnabled = enabled;
@@ -856,14 +885,14 @@ export function toggleDeckBCue() {
  * 1 = only MIX (main program audio)
  */
 export function setCueMixBlend(blend: number) {
-  if (!cueBus) {
-    console.warn("[DjActions] CueBus not initialized");
-    return;
-  }
-  cueBus.setCueMixBlend(blend);
+  const bus = ensureCueBus();
+  // Always update mixer state for persistence
   updateMixer((draft) => {
     draft.cueBlend = blend;
   });
+  if (bus) {
+    bus.setCueMixBlend(blend);
+  }
 }
 
 /**

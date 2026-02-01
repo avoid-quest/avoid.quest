@@ -38,6 +38,7 @@ export {
   getAudioSettings,
   getSettings,
   initializeSettings,
+  type SettingsRecord,
   setCueOutputDevice,
   setInputDevice,
   setMainOutputDevice,
@@ -45,7 +46,6 @@ export {
   setPlayerType,
   setRestoreStateOnLoad,
   setSingleModeTransitionDuration,
-  type SettingsRecord,
   settingsCollection,
   updatePlayerSettings,
 } from "./settings";

@@ -238,6 +238,24 @@ export class CueBus {
       this._mediaStreamDest = this.context.createMediaStreamDestination();
       console.info("[CueBus] Created MediaStreamDestination");
 
+      // TEST: Create oscillator to verify MediaStream routing works
+      const testOsc = this.context.createOscillator();
+      const testGain = this.context.createGain();
+      testOsc.frequency.value = 440; // A4 note
+      testGain.gain.value = 0.1; // Quiet
+      testOsc.connect(testGain);
+      testGain.connect(this._mediaStreamDest);
+      testOsc.start();
+      console.info("[CueBus] TEST: Started 440Hz oscillator → MediaStreamDest");
+
+      // Stop oscillator after 2 seconds
+      setTimeout(() => {
+        testOsc.stop();
+        testOsc.disconnect();
+        testGain.disconnect();
+        console.info("[CueBus] TEST: Stopped oscillator");
+      }, 2000);
+
       // Connect all deck gain nodes to MediaStreamDest
       for (const [deckId, cue] of this.deckCues) {
         cue.gainNode.connect(this._mediaStreamDest);
@@ -249,6 +267,8 @@ export class CueBus {
       // Create Audio element for playback
       this._audioElement = new Audio();
       this._audioElement.srcObject = this._mediaStreamDest.stream;
+      this._audioElement.volume = 1;
+      console.info("[CueBus] Audio element volume:", this._audioElement.volume);
 
       // Set output device
       console.info("[CueBus] Setting sinkId:", deviceId);
@@ -261,11 +281,22 @@ export class CueBus {
 
       // Start playback
       await this._audioElement.play();
-      console.info("[CueBus] Audio element playing");
+      console.info(
+        "[CueBus] Audio element playing, paused:",
+        this._audioElement.paused,
+        "muted:",
+        this._audioElement.muted
+      );
 
       // Log MediaStream info
       const tracks = this._mediaStreamDest.stream.getAudioTracks();
-      console.info(`[CueBus] MediaStream tracks: ${tracks.length}`);
+      console.info(
+        `[CueBus] MediaStream tracks: ${tracks.length}, enabled:`,
+        tracks.map((t) => t.enabled)
+      );
+
+      // Log AudioContext state
+      console.info("[CueBus] AudioContext state:", this.context.state);
 
       this.callbacks.onModeChange?.("dual");
     } catch (error) {

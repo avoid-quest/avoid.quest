@@ -8,11 +8,21 @@
  * Features:
  * - Per-deck CUE send (pre-fader tap point)
  * - CUE/MIX blend control (0 = only cue, 1 = only mix)
- * - Dual output support (main + headphones via OutputRouter)
+ * - Dual output support via MediaStream bridge
  * - Split cue fallback (L=CUE, R=MIX for single stereo output)
  */
 
 import { safeDisconnect } from "../manager/audio-manager.js";
+
+/**
+ * Check if setSinkId is supported
+ */
+function isSinkIdSupported(): boolean {
+  if (typeof AudioContext === "undefined") {
+    return false;
+  }
+  return "setSinkId" in AudioContext.prototype;
+}
 
 /**
  * CUE send for a single deck
@@ -86,9 +96,15 @@ export class CueBus {
   private readonly deckSends = new Map<string, DeckCueSend>();
 
   // State
-  private readonly _mode: CueMode;
+  private _mode: CueMode;
   private _cueBlend = 0.5; // Default: 50% CUE, 50% MIX
   private _mainMixInput: AudioNode | null = null;
+
+  // For dynamic CUE output device (MediaStream bridge)
+  private _cueDeviceId: string | null = null;
+  private _cueMediaStreamDest: MediaStreamAudioDestinationNode | null = null;
+  private _cueAudioElement: HTMLAudioElement | null = null;
+  private _cueOutputContext: AudioContext | null = null;
 
   constructor(
     mainContext: AudioContext,
@@ -258,19 +274,106 @@ export class CueBus {
 
     this._mainMixInput = mainMixNode;
 
-    // Route to the mix gain for blending
-    if (this._mode === "dual" && this.cueContext) {
-      // For dual mode, we need to somehow get the main mix to the CUE context
-      // This is tricky - we can't directly connect nodes between contexts
-      // The OutputRouter should handle this by having a separate connection path
-      // For now, we'll just note this limitation
-      console.info(
-        "[CueBus] Dual mode: main mix routing handled externally via OutputRouter"
-      );
-    } else {
-      // Split mode: connect to mix gain
-      mainMixNode.connect(this.mixGain);
+    // Route to the mix gain for blending (for CUE/MIX blend in headphones)
+    mainMixNode.connect(this.mixGain);
+  }
+
+  /**
+   * Set CUE output device for separate headphone monitoring
+   * This creates a MediaStream bridge to route CUE audio to a different device
+   * @param deviceId - The output device ID, or null to use split cue mode
+   */
+  async setCueOutputDevice(deviceId: string | null): Promise<void> {
+    // Cleanup existing CUE output
+    this.cleanupCueOutput();
+
+    if (!(deviceId && isSinkIdSupported())) {
+      // No separate CUE device - use split cue mode
+      this._cueDeviceId = null;
+      this._mode = "split";
+      this.reconnectOutputGraph();
+      return;
     }
+
+    this._cueDeviceId = deviceId;
+    this._mode = "dual";
+
+    try {
+      // Create MediaStreamDestination for CUE audio
+      this._cueMediaStreamDest = this.context.createMediaStreamDestination();
+
+      // Route CUE bus to MediaStream
+      // Disconnect from previous destination first
+      safeDisconnect(this.cueGain, "CueBus.setCueOutputDevice");
+      this.cueSumNode.connect(this.cueGain);
+      this.cueGain.connect(this._cueMediaStreamDest);
+
+      // Also route MIX to MediaStream for CUE/MIX blend
+      safeDisconnect(this.mixGain, "CueBus.setCueOutputDevice");
+      this.mixGain.connect(this._cueMediaStreamDest);
+
+      // Create audio element to play the MediaStream
+      this._cueAudioElement = new Audio();
+      this._cueAudioElement.srcObject = this._cueMediaStreamDest.stream;
+
+      // Set the output device on the audio element
+      if ("setSinkId" in this._cueAudioElement) {
+        await (
+          this._cueAudioElement as HTMLAudioElement & {
+            setSinkId: (id: string) => Promise<void>;
+          }
+        ).setSinkId(deviceId);
+      }
+
+      // Start playback
+      await this._cueAudioElement.play();
+
+      this.callbacks.onModeChange?.("dual");
+    } catch (error) {
+      console.error("[CueBus] Failed to set CUE output device:", error);
+      this.cleanupCueOutput();
+      this._mode = "split";
+      this.reconnectOutputGraph();
+      this.callbacks.onError?.(
+        error instanceof Error ? error : new Error("Failed to set CUE output")
+      );
+    }
+  }
+
+  /**
+   * Clean up CUE output resources
+   */
+  private cleanupCueOutput(): void {
+    if (this._cueAudioElement) {
+      this._cueAudioElement.pause();
+      this._cueAudioElement.srcObject = null;
+      this._cueAudioElement = null;
+    }
+    if (this._cueMediaStreamDest) {
+      safeDisconnect(this._cueMediaStreamDest, "CueBus.cleanupCueOutput");
+      this._cueMediaStreamDest = null;
+    }
+    if (this._cueOutputContext) {
+      this._cueOutputContext.close().catch((e) => {
+        console.warn("[CueBus] Error closing CUE context:", e);
+      });
+      this._cueOutputContext = null;
+    }
+  }
+
+  /**
+   * Reconnect the output graph after mode change
+   */
+  private reconnectOutputGraph(): void {
+    // Disconnect current connections
+    safeDisconnect(this.cueGain, "CueBus.reconnectOutputGraph");
+    safeDisconnect(this.mixGain, "CueBus.reconnectOutputGraph");
+    if (this.merger) {
+      safeDisconnect(this.merger, "CueBus.reconnectOutputGraph");
+    }
+
+    // Reconnect based on mode
+    this.connectOutputGraph();
   }
 
   /**
@@ -292,6 +395,8 @@ export class CueBus {
    * Clean up resources
    */
   cleanup(): void {
+    this.cleanupCueOutput();
+
     for (const deckId of this.deckSends.keys()) {
       this.unregisterDeck(deckId);
     }
@@ -306,6 +411,13 @@ export class CueBus {
     if (this.merger) {
       safeDisconnect(this.merger, "CueBus.cleanup");
     }
+  }
+
+  /**
+   * Get the current CUE output device ID
+   */
+  get cueDeviceId(): string | null {
+    return this._cueDeviceId;
   }
 
   /**

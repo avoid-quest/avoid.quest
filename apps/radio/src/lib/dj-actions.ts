@@ -156,13 +156,21 @@ export async function applyMainOutputDevice(deviceId: string): Promise<void> {
 /**
  * Apply CUE output device setting
  * Called when user changes the CUE output in settings
+ * Routes CUE audio to the specified device via MediaStream bridge
  */
 export async function applyCueOutputDevice(
   deviceId: string | null
 ): Promise<void> {
+  // Apply to OutputRouter for tracking
   const router = getOutputRouter();
   if (router) {
     await router.setCueOutput(deviceId);
+  }
+
+  // Apply to CueBus for actual audio routing
+  const bus = ensureCueBus();
+  if (bus) {
+    await bus.setCueOutputDevice(deviceId);
   }
 }
 
@@ -191,6 +199,11 @@ async function initializeAudioDevices(): Promise<void> {
   }
   if (settings.cueOutputId) {
     await router.setCueOutput(settings.cueOutputId);
+    // Also set up CueBus for CUE output
+    const bus = ensureCueBus();
+    if (bus) {
+      await bus.setCueOutputDevice(settings.cueOutputId);
+    }
   }
 }
 

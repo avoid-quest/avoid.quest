@@ -7,15 +7,18 @@
 
 import * as chrono from "chrono-node";
 import type { ParsedResult } from "chrono-node";
-import { ITWeekendParser } from "./parsers";
+import { ITWeekendParser, ITEuropeanDateParser } from "./parsers";
 import type {
 	ExtractedDate,
 	ExtractOptions,
 	ExtractionResult,
 } from "./types";
 
-// Create Italian parser with custom weekend support
+// Create Italian parser with custom parsers
 const italianParser = chrono.it.casual.clone();
+// Add European date format parser FIRST (higher priority than built-in slash parser)
+italianParser.parsers.unshift(new ITEuropeanDateParser());
+// Add weekend parser for "questo weekend", "fine settimana", etc.
 italianParser.parsers.push(new ITWeekendParser());
 
 // English parser (casual mode for "tonight", "this weekend", etc.)

@@ -29,6 +29,7 @@ import type * as lib_config_defaults from "../lib/config/defaults.js";
 import type * as lib_config_index from "../lib/config/index.js";
 import type * as lib_dateExtractor_extractor from "../lib/dateExtractor/extractor.js";
 import type * as lib_dateExtractor_index from "../lib/dateExtractor/index.js";
+import type * as lib_dateExtractor_parsers_ITEuropeanDateParser from "../lib/dateExtractor/parsers/ITEuropeanDateParser.js";
 import type * as lib_dateExtractor_parsers_ITWeekendParser from "../lib/dateExtractor/parsers/ITWeekendParser.js";
 import type * as lib_dateExtractor_parsers_index from "../lib/dateExtractor/parsers/index.js";
 import type * as lib_dateExtractor_types from "../lib/dateExtractor/types.js";
@@ -67,6 +68,7 @@ declare const fullApi: ApiFromModules<{
   "lib/config/index": typeof lib_config_index;
   "lib/dateExtractor/extractor": typeof lib_dateExtractor_extractor;
   "lib/dateExtractor/index": typeof lib_dateExtractor_index;
+  "lib/dateExtractor/parsers/ITEuropeanDateParser": typeof lib_dateExtractor_parsers_ITEuropeanDateParser;
   "lib/dateExtractor/parsers/ITWeekendParser": typeof lib_dateExtractor_parsers_ITWeekendParser;
   "lib/dateExtractor/parsers/index": typeof lib_dateExtractor_parsers_index;
   "lib/dateExtractor/types": typeof lib_dateExtractor_types;

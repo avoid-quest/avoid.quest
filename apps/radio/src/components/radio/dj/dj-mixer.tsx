@@ -5,6 +5,7 @@ import { cn } from "@avoid.quest/ui/lib/utils";
 import { Volume2Icon } from "lucide-react";
 import type { Radio } from "@/lib/audio";
 import { useDjError } from "@/lib/hooks/use-dj-state";
+import { CueControls } from "./cue-controls";
 import { DjRadioList } from "./dj-radio-list";
 
 type DjMixerProps = {
@@ -12,8 +13,14 @@ type DjMixerProps = {
   radios?: Radio[];
   crossfadePosition: number;
   masterVolume: number;
+  cueBlend: number;
+  deckACueEnabled: boolean;
+  deckBCueEnabled: boolean;
   onCrossfadeChange: (position: number) => void;
   onMasterVolumeChange: (volume: number) => void;
+  onCueBlendChange: (blend: number) => void;
+  onDeckACueChange: (enabled: boolean) => void;
+  onDeckBCueChange: (enabled: boolean) => void;
 };
 
 /**
@@ -24,8 +31,14 @@ export function DjMixer({
   radios = [],
   crossfadePosition,
   masterVolume,
+  cueBlend,
+  deckACueEnabled,
+  deckBCueEnabled,
   onCrossfadeChange,
   onMasterVolumeChange,
+  onCueBlendChange,
+  onDeckACueChange,
+  onDeckBCueChange,
 }: DjMixerProps) {
   const error = useDjError();
   const isMobile = useIsMobile();
@@ -67,6 +80,16 @@ export function DjMixer({
             {Math.round(masterVolume * 100)}%
           </span>
         </div>
+
+        {/* CUE Controls */}
+        <CueControls
+          cueBlend={cueBlend}
+          deckACueEnabled={deckACueEnabled}
+          deckBCueEnabled={deckBCueEnabled}
+          onCueBlendChange={onCueBlendChange}
+          onDeckACueChange={onDeckACueChange}
+          onDeckBCueChange={onDeckBCueChange}
+        />
 
         {/* Divider */}
         <div className="h-px bg-border" />

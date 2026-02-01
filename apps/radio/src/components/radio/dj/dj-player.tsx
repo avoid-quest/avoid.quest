@@ -20,7 +20,10 @@ import {
 } from "@/lib/collections";
 import {
   setCrossfadePosition,
+  setCueMixBlend,
+  setDeckACueEnabled,
   setDeckARadio,
+  setDeckBCueEnabled,
   setDeckBRadio,
   setMasterVolume,
 } from "@/lib/dj-actions";
@@ -122,12 +125,18 @@ type DjPlayerMobileViewProps = {
   radios: Radio[];
   crossfadePosition: number;
   masterVolume: number;
+  cueBlend: number;
+  deckACueEnabled: boolean;
+  deckBCueEnabled: boolean;
 };
 
 function DjPlayerMobileView({
   radios,
   crossfadePosition,
   masterVolume,
+  cueBlend,
+  deckACueEnabled,
+  deckBCueEnabled,
 }: DjPlayerMobileViewProps) {
   const [mobileTab, setMobileTab] = useState<"left" | "mixer" | "right">(
     "mixer"
@@ -175,8 +184,14 @@ function DjPlayerMobileView({
         >
           <DjMixer
             crossfadePosition={crossfadePosition}
+            cueBlend={cueBlend}
+            deckACueEnabled={deckACueEnabled}
+            deckBCueEnabled={deckBCueEnabled}
             masterVolume={masterVolume}
             onCrossfadeChange={setCrossfadePosition}
+            onCueBlendChange={setCueMixBlend}
+            onDeckACueChange={setDeckACueEnabled}
+            onDeckBCueChange={setDeckBCueEnabled}
             onMasterVolumeChange={setMasterVolume}
             radios={radios}
           />
@@ -195,12 +210,18 @@ type DjPlayerDesktopViewProps = {
   radios: Radio[];
   crossfadePosition: number;
   masterVolume: number;
+  cueBlend: number;
+  deckACueEnabled: boolean;
+  deckBCueEnabled: boolean;
 };
 
 function DjPlayerDesktopView({
   radios,
   crossfadePosition,
   masterVolume,
+  cueBlend,
+  deckACueEnabled,
+  deckBCueEnabled,
 }: DjPlayerDesktopViewProps) {
   return (
     <div className="grid h-full min-h-0 w-full grid-cols-1 gap-2 lg:grid-cols-[1fr_20rem_1fr]">
@@ -211,8 +232,14 @@ function DjPlayerDesktopView({
       <DjMixer
         className="order-1 lg:order-2"
         crossfadePosition={crossfadePosition}
+        cueBlend={cueBlend}
+        deckACueEnabled={deckACueEnabled}
+        deckBCueEnabled={deckBCueEnabled}
         masterVolume={masterVolume}
         onCrossfadeChange={setCrossfadePosition}
+        onCueBlendChange={setCueMixBlend}
+        onDeckACueChange={setDeckACueEnabled}
+        onDeckBCueChange={setDeckBCueEnabled}
         onMasterVolumeChange={setMasterVolume}
         radios={radios}
       />
@@ -266,6 +293,9 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
 
   const crossfadePosition = mixer?.crossfadePosition ?? 0.5;
   const masterVolume = mixer?.masterVolume ?? 1;
+  const cueBlend = mixer?.cueBlend ?? 0.5;
+  const deckACueEnabled = mixer?.deckACueEnabled ?? false;
+  const deckBCueEnabled = mixer?.deckBCueEnabled ?? false;
 
   // Configure sensors for both mouse and touch interactions
   // Enhanced mobile support with better touch handling
@@ -343,12 +373,18 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
         {isMobile ? (
           <DjPlayerMobileView
             crossfadePosition={crossfadePosition}
+            cueBlend={cueBlend}
+            deckACueEnabled={deckACueEnabled}
+            deckBCueEnabled={deckBCueEnabled}
             masterVolume={masterVolume}
             radios={radios}
           />
         ) : (
           <DjPlayerDesktopView
             crossfadePosition={crossfadePosition}
+            cueBlend={cueBlend}
+            deckACueEnabled={deckACueEnabled}
+            deckBCueEnabled={deckBCueEnabled}
             masterVolume={masterVolume}
             radios={radios}
           />

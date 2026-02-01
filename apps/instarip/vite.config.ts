@@ -1,7 +1,7 @@
 import { cloudflare } from "@cloudflare/vite-plugin";
 import tailwindcss from "@tailwindcss/vite";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
-import viteReact from "@vitejs/plugin-react";
+import react from "@vitejs/plugin-react";
 import { defineConfig, loadEnv } from "vite";
 import tsConfigPaths from "vite-tsconfig-paths";
 
@@ -15,11 +15,18 @@ export default defineConfig(({ mode }) => {
       tailwindcss(),
       tsConfigPaths(),
       tanstackStart(),
-      viteReact(),
+      react({
+        babel: {
+          plugins: ["babel-plugin-react-compiler"],
+        },
+      }),
     ],
     build: {
       minify: "esbuild",
       sourcemap: false,
+    },
+    optimizeDeps: {
+      exclude: ["@tanstack/react-devtools", "@tanstack/react-router-devtools"],
     },
     server: {
       allowedHosts: env.ALLOWED_HOSTS?.split(",").filter(Boolean) || [],

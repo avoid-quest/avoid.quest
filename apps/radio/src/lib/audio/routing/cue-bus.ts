@@ -143,13 +143,32 @@ export class CueBus {
       } catch {
         // May already be disconnected
       }
+      // Also try disconnecting from MediaStreamDest directly
+      if (this._mediaStreamDest) {
+        try {
+          cue.preFaderNode.disconnect(this._mediaStreamDest);
+        } catch {
+          // May not be connected
+        }
+      }
     }
 
-    // Connect: preFaderNode → gainNode
-    preFaderNode.connect(cue.gainNode);
+    // Store reference
     cue.preFaderNode = preFaderNode;
 
-    // If MediaStreamDest exists, ensure gainNode is connected
+    // Connect: preFaderNode → gainNode (for CUE on/off control)
+    preFaderNode.connect(cue.gainNode);
+
+    // ALSO connect preFaderNode DIRECTLY to MediaStreamDest (bypass gainNode)
+    // This is a test to see if audio flows
+    if (this._mediaStreamDest) {
+      preFaderNode.connect(this._mediaStreamDest);
+      console.info(
+        `[CueBus] Connected ${deckId} preFader DIRECTLY to MediaStreamDest (bypass test)`
+      );
+    }
+
+    // If MediaStreamDest exists, ensure gainNode is also connected
     if (this._mediaStreamDest) {
       try {
         cue.gainNode.connect(this._mediaStreamDest);
@@ -159,7 +178,7 @@ export class CueBus {
     }
 
     console.info(
-      `[CueBus] Connected ${deckId} preFader → gainNode → MediaStreamDest`
+      `[CueBus] Connected ${deckId} preFader → gainNode, gainNode gain=${cue.gainNode.gain.value}`
     );
   }
 
@@ -257,8 +276,16 @@ export class CueBus {
       }, 2000);
 
       // Connect all deck gain nodes to MediaStreamDest
+      // ALSO connect preFaderNode directly (bypass test)
       for (const [deckId, cue] of this.deckCues) {
         cue.gainNode.connect(this._mediaStreamDest);
+        // Direct connection test - bypass gainNode
+        if (cue.preFaderNode) {
+          cue.preFaderNode.connect(this._mediaStreamDest);
+          console.info(
+            `[CueBus] Connected ${deckId} preFader DIRECTLY to MediaStreamDest`
+          );
+        }
         console.info(
           `[CueBus] Connected ${deckId} gainNode to MediaStreamDest, gain=${cue.gainNode.gain.value}`
         );

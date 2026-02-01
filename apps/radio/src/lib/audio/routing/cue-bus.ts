@@ -244,12 +244,13 @@ export class CueBus {
 
     send.enabled = enabled;
 
-    // Smoothly ramp gain to avoid clicks
-    const now = this.context.currentTime;
-    send.gain.gain.setTargetAtTime(enabled ? 1 : 0, now, 0.01);
+    // Set gain immediately - the ramp time is too short to matter and
+    // setTargetAtTime doesn't work reliably when context was just created
+    const targetGain = enabled ? 1 : 0;
+    send.gain.gain.value = targetGain;
 
     console.info(
-      `[CueBus] CUE ${enabled ? "enabled" : "disabled"} for ${deckId}, mode: ${this._mode}, cueDeviceId: ${this._cueDeviceId}`
+      `[CueBus] CUE ${enabled ? "enabled" : "disabled"} for ${deckId}, gain set to ${targetGain}, mode: ${this._mode}`
     );
 
     this.callbacks.onDeckCueChange?.(deckId, enabled);

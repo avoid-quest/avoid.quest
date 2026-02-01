@@ -5,8 +5,6 @@
  * Direct connection from preFaderSend to CUE output device.
  */
 
-import { safeDisconnect } from "../manager/audio-manager.js";
-
 /**
  * Check if setSinkId is supported
  */
@@ -22,8 +20,7 @@ function isSinkIdSupported(): boolean {
  */
 type DeckCue = {
   enabled: boolean;
-  preFaderNode: AudioNode | null; // Reference to the deck's preFaderSend
-  gainNode: GainNode; // Controls CUE on/off (0 or 1)
+  preFaderNode: AudioNode | null;
 };
 
 export type CueMode = "dual" | "split";
@@ -44,8 +41,10 @@ export type CueBusCallbacks = {
 /**
  * Simplified CueBus
  *
- * Audio routing:
- * preFaderSend → gainNode (0/1) → MediaStreamDest → Audio element (with setSinkId)
+ * Audio routing (when CUE enabled):
+ * preFaderSend → MediaStreamDest → Audio element (with setSinkId)
+ *
+ * CUE is controlled by connect/disconnect, not gain.
  */
 export class CueBus {
   private readonly context: AudioContext;
@@ -63,12 +62,12 @@ export class CueBus {
 
   constructor(
     mainContext: AudioContext,
-    _cueContext: AudioContext | null, // Ignored, kept for API compat
+    _cueContext: AudioContext | null,
     callbacks: CueBusCallbacks = {}
   ) {
     this.context = mainContext;
     this.callbacks = callbacks;
-    console.info("[CueBus] Created (simplified version)");
+    console.info("[CueBus] Created");
   }
 
   get mode(): CueMode {
@@ -97,89 +96,56 @@ export class CueBus {
 
   /**
    * Register a deck for CUE monitoring
-   * Returns a dummy node for API compatibility
    */
   registerDeck(deckId: string): GainNode {
     const existing = this.deckCues.get(deckId);
     if (existing) {
-      console.info(`[CueBus] Deck ${deckId} already registered`);
-      return existing.gainNode;
+      return this.context.createGain(); // Dummy for API compat
     }
-
-    // Create gain node for CUE on/off control
-    const gainNode = this.context.createGain();
-    gainNode.gain.value = 0; // CUE off by default
 
     this.deckCues.set(deckId, {
       enabled: false,
       preFaderNode: null,
-      gainNode,
     });
 
-    console.info(`[CueBus] Registered deck ${deckId}`);
-    return gainNode;
+    console.info(`[CueBus] Registered ${deckId}`);
+    return this.context.createGain(); // Dummy for API compat
   }
 
   /**
-   * Connect a deck's preFaderSend to CUE
-   * This is the key method - directly connects audio to CUE output
+   * Connect a deck's preFaderSend
    */
   connectPreFader(deckId: string, preFaderNode: AudioNode): void {
     let cue = this.deckCues.get(deckId);
     if (!cue) {
-      // Auto-register if not exists
       this.registerDeck(deckId);
       cue = this.deckCues.get(deckId);
       if (!cue) {
-        console.error(`[CueBus] Failed to register deck ${deckId}`);
         return;
       }
     }
 
-    // Disconnect previous if any
-    if (cue.preFaderNode) {
+    // Disconnect old preFaderNode if any
+    if (cue.preFaderNode && this._mediaStreamDest && cue.enabled) {
       try {
-        cue.preFaderNode.disconnect(cue.gainNode);
+        cue.preFaderNode.disconnect(this._mediaStreamDest);
       } catch {
-        // May already be disconnected
-      }
-      // Also try disconnecting from MediaStreamDest directly
-      if (this._mediaStreamDest) {
-        try {
-          cue.preFaderNode.disconnect(this._mediaStreamDest);
-        } catch {
-          // May not be connected
-        }
+        // May not be connected
       }
     }
 
-    // Store reference
+    // Store new preFaderNode
     cue.preFaderNode = preFaderNode;
 
-    // Connect: preFaderNode → gainNode (for CUE on/off control)
-    preFaderNode.connect(cue.gainNode);
-
-    // ALSO connect preFaderNode DIRECTLY to MediaStreamDest (bypass gainNode)
-    // This is a test to see if audio flows
-    if (this._mediaStreamDest) {
+    // If CUE is enabled and MediaStreamDest exists, connect
+    if (cue.enabled && this._mediaStreamDest) {
       preFaderNode.connect(this._mediaStreamDest);
+      console.info(`[CueBus] ${deckId}: preFader → MediaStreamDest (CUE ON)`);
+    } else {
       console.info(
-        `[CueBus] Connected ${deckId} preFader DIRECTLY to MediaStreamDest (bypass test)`
+        `[CueBus] ${deckId}: preFader stored (CUE ${cue.enabled ? "ON" : "OFF"}, device ${this._mediaStreamDest ? "ready" : "not ready"})`
       );
     }
-
-    // If MediaStreamDest exists, ensure gainNode is also connected
-    if (this._mediaStreamDest) {
-      try {
-        cue.gainNode.connect(this._mediaStreamDest);
-      } catch {
-        // May already be connected
-      }
-    }
-
-    console.info(
-      `[CueBus] Connected ${deckId} preFader → gainNode, gainNode gain=${cue.gainNode.gain.value}`
-    );
   }
 
   /**
@@ -187,28 +153,50 @@ export class CueBus {
    */
   unregisterDeck(deckId: string): void {
     const cue = this.deckCues.get(deckId);
-    if (cue) {
-      safeDisconnect(cue.gainNode, "CueBus.unregisterDeck");
-      this.deckCues.delete(deckId);
+    if (cue?.preFaderNode && this._mediaStreamDest) {
+      try {
+        cue.preFaderNode.disconnect(this._mediaStreamDest);
+      } catch {
+        // May not be connected
+      }
     }
+    this.deckCues.delete(deckId);
   }
 
   /**
    * Enable/disable CUE for a deck
+   * Controls connect/disconnect to MediaStreamDest
    */
   setCueEnabled(deckId: string, enabled: boolean): void {
     const cue = this.deckCues.get(deckId);
     if (!cue) {
-      console.warn(`[CueBus] Deck ${deckId} not registered`);
+      console.warn(`[CueBus] ${deckId} not registered`);
       return;
     }
 
+    const wasEnabled = cue.enabled;
     cue.enabled = enabled;
-    cue.gainNode.gain.value = enabled ? 1 : 0;
 
-    console.info(
-      `[CueBus] ${deckId} CUE ${enabled ? "ON" : "OFF"}, gain=${cue.gainNode.gain.value}`
-    );
+    // Only act if state changed and we have MediaStreamDest
+    if (wasEnabled !== enabled && this._mediaStreamDest && cue.preFaderNode) {
+      if (enabled) {
+        cue.preFaderNode.connect(this._mediaStreamDest);
+        console.info(
+          `[CueBus] ${deckId}: CUE ON → connected to MediaStreamDest`
+        );
+      } else {
+        try {
+          cue.preFaderNode.disconnect(this._mediaStreamDest);
+          console.info(`[CueBus] ${deckId}: CUE OFF → disconnected`);
+        } catch {
+          // May already be disconnected
+        }
+      }
+    } else {
+      console.info(
+        `[CueBus] ${deckId}: CUE ${enabled ? "ON" : "OFF"} (no action: device=${!!this._mediaStreamDest}, preFader=${!!cue.preFaderNode})`
+      );
+    }
 
     this.callbacks.onDeckCueChange?.(deckId, enabled);
   }
@@ -218,7 +206,7 @@ export class CueBus {
   }
 
   /**
-   * Set CUE/MIX blend (kept for API compat, not used in simplified version)
+   * Set CUE/MIX blend (API compat)
    */
   setCueMixBlend(blend: number): void {
     this._cueBlend = Math.max(0, Math.min(1, blend));
@@ -226,20 +214,18 @@ export class CueBus {
   }
 
   /**
-   * Connect main mix (kept for API compat, not used in simplified version)
+   * Connect main mix (API compat - not used in simplified version)
    */
   connectMainMix(_mainMixNode: AudioNode): void {
-    // Not used in simplified version
+    // Not used in simplified version - kept for API compatibility
   }
 
   /**
    * Set CUE output device
-   * Creates MediaStreamDestination and routes all deck CUE gains to it
    */
   async setCueOutputDevice(deviceId: string | null): Promise<void> {
     console.info("[CueBus] setCueOutputDevice:", deviceId);
 
-    // Cleanup existing
     this.cleanupCueOutput();
 
     if (!(deviceId && isSinkIdSupported())) {
@@ -257,48 +243,20 @@ export class CueBus {
       this._mediaStreamDest = this.context.createMediaStreamDestination();
       console.info("[CueBus] Created MediaStreamDestination");
 
-      // TEST: Create oscillator to verify MediaStream routing works
-      const testOsc = this.context.createOscillator();
-      const testGain = this.context.createGain();
-      testOsc.frequency.value = 440; // A4 note
-      testGain.gain.value = 0.1; // Quiet
-      testOsc.connect(testGain);
-      testGain.connect(this._mediaStreamDest);
-      testOsc.start();
-      console.info("[CueBus] TEST: Started 440Hz oscillator → MediaStreamDest");
-
-      // Stop oscillator after 2 seconds
-      setTimeout(() => {
-        testOsc.stop();
-        testOsc.disconnect();
-        testGain.disconnect();
-        console.info("[CueBus] TEST: Stopped oscillator");
-      }, 2000);
-
-      // Connect all deck gain nodes to MediaStreamDest
-      // ALSO connect preFaderNode directly (bypass test)
+      // Connect all decks that have CUE enabled
       for (const [deckId, cue] of this.deckCues) {
-        cue.gainNode.connect(this._mediaStreamDest);
-        // Direct connection test - bypass gainNode
-        if (cue.preFaderNode) {
+        if (cue.enabled && cue.preFaderNode) {
           cue.preFaderNode.connect(this._mediaStreamDest);
-          console.info(
-            `[CueBus] Connected ${deckId} preFader DIRECTLY to MediaStreamDest`
-          );
+          console.info(`[CueBus] ${deckId}: connected (CUE was ON)`);
         }
-        console.info(
-          `[CueBus] Connected ${deckId} gainNode to MediaStreamDest, gain=${cue.gainNode.gain.value}`
-        );
       }
 
-      // Create Audio element for playback
+      // Create Audio element
       this._audioElement = new Audio();
       this._audioElement.srcObject = this._mediaStreamDest.stream;
       this._audioElement.volume = 1;
-      console.info("[CueBus] Audio element volume:", this._audioElement.volume);
 
       // Set output device
-      console.info("[CueBus] Setting sinkId:", deviceId);
       await (
         this._audioElement as HTMLAudioElement & {
           setSinkId: (id: string) => Promise<void>;
@@ -308,26 +266,11 @@ export class CueBus {
 
       // Start playback
       await this._audioElement.play();
-      console.info(
-        "[CueBus] Audio element playing, paused:",
-        this._audioElement.paused,
-        "muted:",
-        this._audioElement.muted
-      );
-
-      // Log MediaStream info
-      const tracks = this._mediaStreamDest.stream.getAudioTracks();
-      console.info(
-        `[CueBus] MediaStream tracks: ${tracks.length}, enabled:`,
-        tracks.map((t) => t.enabled)
-      );
-
-      // Log AudioContext state
-      console.info("[CueBus] AudioContext state:", this.context.state);
+      console.info("[CueBus] Audio element playing");
 
       this.callbacks.onModeChange?.("dual");
     } catch (error) {
-      console.error("[CueBus] Failed to set CUE output:", error);
+      console.error("[CueBus] Failed:", error);
       this.cleanupCueOutput();
       this._mode = "split";
       this.callbacks.onError?.(
@@ -337,36 +280,35 @@ export class CueBus {
   }
 
   private cleanupCueOutput(): void {
+    // Disconnect all preFaderNodes from MediaStreamDest
+    if (this._mediaStreamDest) {
+      for (const [, cue] of this.deckCues) {
+        if (cue.preFaderNode) {
+          try {
+            cue.preFaderNode.disconnect(this._mediaStreamDest);
+          } catch {
+            // May not be connected
+          }
+        }
+      }
+    }
+
     if (this._audioElement) {
       this._audioElement.pause();
       this._audioElement.srcObject = null;
       this._audioElement = null;
     }
-    if (this._mediaStreamDest) {
-      // Disconnect all deck gains from MediaStreamDest
-      for (const [, cue] of this.deckCues) {
-        try {
-          cue.gainNode.disconnect(this._mediaStreamDest);
-        } catch {
-          // May not be connected
-        }
-      }
-      this._mediaStreamDest = null;
-    }
+    this._mediaStreamDest = null;
   }
 
   cleanup(): void {
     this.cleanupCueOutput();
-    for (const deckId of this.deckCues.keys()) {
-      this.unregisterDeck(deckId);
-    }
+    this.deckCues.clear();
   }
 
-  // API compat getters
+  // API compat
   get cueSumOutput(): GainNode {
-    // Return first deck's gain node or create dummy
-    const firstCue = this.deckCues.values().next().value;
-    return firstCue?.gainNode ?? this.context.createGain();
+    return this.context.createGain();
   }
 
   get destination(): AudioNode {

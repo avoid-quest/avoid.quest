@@ -521,13 +521,321 @@ const ADDITIONAL_EFFECTS = [
 | Phase 5: Extended Effects | 3-4h | 🟢 Bassa |
 | **Totale** | **14-19h** | |
 
-## Domande Aperte
+## Decisioni Finali
 
-1. **YouTube:** Vuoi comunque un iframe embed (solo visualizzazione, no mixing)?
-2. **Mixcloud:** Aggiungere supporto streaming?
-3. **Recording:** Aggiungere registrazione mix output?
-4. **MIDI:** Supporto controller MIDI per DJ hardware?
+- ❌ **YouTube:** Skippato completamente (ToS, no audio routing)
+- ❌ **Recording:** Non implementare
+- ✅ **MIDI:** Supporto controller DJ hardware
+- ✅ **Mixcloud:** Aggiungere come piattaforma streaming
 
 ---
 
-*RFC v1.0 - 2026-02-01*
+## MIDI Controller Support
+
+### Web MIDI API
+
+```typescript
+// lib/midi/midi-controller.ts
+
+export type MidiMapping = {
+  channel: number;
+  control: number;
+  action: MidiAction;
+  deckId?: 'deck-a' | 'deck-b';
+};
+
+export type MidiAction = 
+  | 'play' | 'pause' | 'cue' | 'sync'
+  | 'volume' | 'crossfader' | 'pitch'
+  | 'eq-low' | 'eq-mid' | 'eq-high'
+  | 'filter' | 'effect-1' | 'effect-2';
+
+export class MidiController {
+  private midiAccess: MIDIAccess | null = null;
+  private mappings: Map<string, MidiMapping> = new Map();
+  
+  async init(): Promise<boolean> {
+    if (!navigator.requestMIDIAccess) {
+      console.warn('Web MIDI not supported');
+      return false;
+    }
+    
+    try {
+      this.midiAccess = await navigator.requestMIDIAccess();
+      this.setupInputListeners();
+      return true;
+    } catch (e) {
+      console.error('MIDI access denied:', e);
+      return false;
+    }
+  }
+  
+  private setupInputListeners(): void {
+    if (!this.midiAccess) return;
+    
+    for (const input of this.midiAccess.inputs.values()) {
+      input.onmidimessage = this.handleMidiMessage.bind(this);
+    }
+  }
+  
+  private handleMidiMessage(event: MIDIMessageEvent): void {
+    const [status, control, value] = event.data;
+    const channel = status & 0x0F;
+    const messageType = status & 0xF0;
+    
+    // CC message (0xB0)
+    if (messageType === 0xB0) {
+      const key = `${channel}:${control}`;
+      const mapping = this.mappings.get(key);
+      if (mapping) {
+        this.executeAction(mapping.action, value / 127, mapping.deckId);
+      }
+    }
+    
+    // Note On (0x90) - buttons
+    if (messageType === 0x90 && value > 0) {
+      const key = `note:${channel}:${control}`;
+      const mapping = this.mappings.get(key);
+      if (mapping) {
+        this.executeAction(mapping.action, 1, mapping.deckId);
+      }
+    }
+  }
+  
+  private executeAction(action: MidiAction, value: number, deckId?: string): void {
+    // Dispatch to DJ actions
+    switch (action) {
+      case 'crossfader':
+        setCrossfader(value);
+        break;
+      case 'volume':
+        if (deckId) setDeckVolume(deckId, value);
+        break;
+      case 'play':
+        if (deckId) togglePlay(deckId);
+        break;
+      // ... etc
+    }
+  }
+  
+  /**
+   * MIDI Learn mode - next incoming CC gets mapped
+   */
+  startLearn(action: MidiAction, deckId?: string): void {
+    this.learningAction = { action, deckId };
+  }
+}
+```
+
+### Common DJ Controller Mappings
+
+```typescript
+// Preset mappings per controller comuni
+const CONTROLLER_PRESETS = {
+  'Pioneer DDJ-200': {
+    crossfader: { channel: 0, control: 8 },
+    deckA: {
+      play: { channel: 0, note: 11 },
+      cue: { channel: 0, note: 12 },
+      volume: { channel: 0, control: 19 },
+      pitch: { channel: 0, control: 9 },
+    },
+    deckB: {
+      play: { channel: 1, note: 11 },
+      cue: { channel: 1, note: 12 },
+      volume: { channel: 1, control: 19 },
+      pitch: { channel: 1, control: 9 },
+    }
+  },
+  'Numark DJ2GO2': { /* ... */ },
+  'Native Instruments Traktor S2': { /* ... */ }
+};
+```
+
+### MIDI Settings UI
+
+```tsx
+// components/settings/midi-settings.tsx
+
+export function MidiSettings() {
+  const [devices, setDevices] = useState<MIDIInput[]>([]);
+  const [learning, setLearning] = useState<MidiAction | null>(null);
+  
+  return (
+    <div className="space-y-4">
+      <h3>MIDI Controller</h3>
+      
+      {/* Device list */}
+      <div>
+        <Label>Connected Devices</Label>
+        {devices.map(d => (
+          <div key={d.id} className="flex items-center gap-2">
+            <span className="size-2 rounded-full bg-green-500" />
+            {d.name}
+          </div>
+        ))}
+      </div>
+      
+      {/* Mappings */}
+      <div>
+        <Label>Mappings</Label>
+        <Table>
+          <TableBody>
+            {MIDI_ACTIONS.map(action => (
+              <TableRow key={action}>
+                <TableCell>{action}</TableCell>
+                <TableCell>{getMappingDisplay(action)}</TableCell>
+                <TableCell>
+                  <Button 
+                    size="sm" 
+                    variant="outline"
+                    onClick={() => startLearn(action)}
+                  >
+                    {learning === action ? 'Waiting...' : 'Learn'}
+                  </Button>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+      
+      {/* Presets */}
+      <div>
+        <Label>Controller Preset</Label>
+        <Select onValueChange={loadPreset}>
+          <SelectItem value="custom">Custom</SelectItem>
+          <SelectItem value="ddj-200">Pioneer DDJ-200</SelectItem>
+          <SelectItem value="dj2go2">Numark DJ2GO2</SelectItem>
+        </Select>
+      </div>
+    </div>
+  );
+}
+```
+
+---
+
+## Mixcloud Integration
+
+### API Research
+
+Mixcloud ha un'API pubblica ma con limitazioni:
+- **Widget embed:** Disponibile, audio controllabile
+- **Streaming diretto:** Richiede OAuth + partnership per stream URL
+- **Workaround:** Usare widget embed + postMessage per controllo
+
+```typescript
+// packages/mixcloud/src/index.ts
+
+export function isMixcloudUrl(url: string): boolean {
+  return /^https?:\/\/(www\.)?mixcloud\.com\//.test(url);
+}
+
+export type MixcloudMetadata = {
+  platform: 'mixcloud';
+  itemType: 'show' | 'playlist';
+  slug: string;
+  title: string;
+  artist: string;
+  duration: number;
+  artworkUrl: string;
+  embedUrl: string;
+};
+
+export async function getMixcloudMetadata(url: string): Promise<MixcloudMetadata> {
+  // Parse URL to get username/show-slug
+  const match = url.match(/mixcloud\.com\/([^\/]+)\/([^\/]+)/);
+  if (!match) throw new Error('Invalid Mixcloud URL');
+  
+  const [, username, slug] = match;
+  
+  // Use oEmbed API (no auth required)
+  const oembedUrl = `https://www.mixcloud.com/oembed/?url=${encodeURIComponent(url)}&format=json`;
+  const res = await fetch(oembedUrl);
+  const data = await res.json();
+  
+  return {
+    platform: 'mixcloud',
+    itemType: 'show',
+    slug: `${username}/${slug}`,
+    title: data.title,
+    artist: data.author_name,
+    duration: 0, // Not in oEmbed, need separate API call
+    artworkUrl: data.thumbnail_url,
+    embedUrl: `https://www.mixcloud.com/widget/iframe/?feed=${encodeURIComponent(`/${username}/${slug}/`)}`,
+  };
+}
+```
+
+### Mixcloud Widget Integration
+
+Per il DJ mode, Mixcloud è più complesso perché:
+1. Non espone stream URL diretto
+2. Widget ha controlli limitati via postMessage
+
+**Approccio:** Usare Mixcloud in "single player mode" (non DJ mixing), o come source di discovery.
+
+---
+
+## Piano di Implementazione Finale
+
+### Phase 1: Core Audio Infrastructure (4-5h)
+- [ ] `FileSource` - caricamento file locali
+- [ ] `DeviceSource` - input scheda audio con selezione device
+- [ ] `OutputRouter` - selezione output device (main + cue)
+- [ ] Unit tests per nuovi source types
+
+### Phase 2: CUE System (4-5h)
+- [ ] `CueBus` class con dual AudioContext
+- [ ] CUE send per ogni deck
+- [ ] CUE/MIX blend control
+- [ ] Split cue fallback (L=CUE, R=MIX)
+
+### Phase 3: UI Components (3-4h)
+- [ ] Device selector dialog
+- [ ] File drop zone per deck
+- [ ] CUE buttons + blend slider
+- [ ] Settings page section per audio routing
+
+### Phase 4: MIDI Controller (4-5h)
+- [ ] `MidiController` class
+- [ ] MIDI Learn mode
+- [ ] Preset mappings per controller comuni
+- [ ] MIDI settings UI
+
+### Phase 5: Mixcloud Package (2-3h)
+- [ ] Creare `packages/mixcloud`
+- [ ] URL detection + metadata fetching
+- [ ] Integration in radio app (single mode only)
+
+### Phase 6: Polish & Testing (2-3h)
+- [ ] Keyboard shortcuts
+- [ ] Mobile-friendly adjustments
+- [ ] Error handling + fallbacks
+- [ ] Documentation
+
+---
+
+## Ordine di Esecuzione
+
+```
+Phase 1 (FileSource + DeviceSource + OutputRouter)
+    ↓
+Phase 2 (CUE System)
+    ↓
+Phase 3 (UI Components)
+    ↓
+Phase 4 (MIDI) ←── può essere parallelo
+    ↓
+Phase 5 (Mixcloud) ←── può essere parallelo
+    ↓
+Phase 6 (Polish)
+```
+
+**Effort totale stimato: 19-25 ore**
+
+---
+
+*RFC v2.0 - 2026-02-01*
+*Decisioni: Skip YouTube, No Recording, Yes MIDI, Yes Mixcloud*

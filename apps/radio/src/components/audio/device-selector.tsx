@@ -74,6 +74,18 @@ export function DeviceSelector({
       ]);
       setInputDevices(inputs);
       setOutputDevices(outputs);
+
+      // Check if we have real labels (not just fallback "Input/Output xxx")
+      // Empty labels indicate permission not granted
+      const hasRealLabels = [...inputs, ...outputs].some(
+        (d) =>
+          d.label &&
+          !d.label.startsWith("Input ") &&
+          !d.label.startsWith("Output ")
+      );
+      if (hasRealLabels) {
+        setPermissionState("granted");
+      }
     } catch (error) {
       console.error("[DeviceSelector] Failed to enumerate devices:", error);
     }
@@ -151,24 +163,22 @@ export function DeviceSelector({
 
         <div className="space-y-6 py-4">
           {/* Permission request if needed */}
-          {permissionState !== "granted" &&
-            inputDevices.length === 0 &&
-            outputDevices.length === 0 && (
-              <div className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-4">
-                <p className="mb-3 text-sm">
-                  Grant microphone permission to see device names and select
-                  audio devices.
-                </p>
-                <Button
-                  disabled={isLoading}
-                  onClick={requestPermission}
-                  size="sm"
-                  variant="outline"
-                >
-                  {isLoading ? "Requesting..." : "Grant Permission"}
-                </Button>
-              </div>
-            )}
+          {permissionState !== "granted" && (
+            <div className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-4">
+              <p className="mb-3 text-sm">
+                Grant microphone permission to see device names and select audio
+                devices.
+              </p>
+              <Button
+                disabled={isLoading}
+                onClick={requestPermission}
+                size="sm"
+                variant="outline"
+              >
+                {isLoading ? "Requesting..." : "Grant Permission"}
+              </Button>
+            </div>
+          )}
 
           {/* Input Device Selection */}
           <div className="space-y-2">

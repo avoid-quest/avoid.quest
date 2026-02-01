@@ -337,55 +337,34 @@ function applyStoredChannelStrip(
   }
 }
 
-// Track CueBus connections to avoid duplicate connections
-const cueBusConnections = new Map<string, GainNode>();
-
 /**
  * Connect a deck's pre-fader audio to the CueBus for CUE monitoring
  * This should be called after audio starts playing
  */
 function connectDeckToCueBus(deckId: DeckId, soundId: string): void {
-  console.info(
-    `[DjActions] connectDeckToCueBus: ${deckId}, soundId: ${soundId}`
-  );
+  console.info(`[DjActions] connectDeckToCueBus: ${deckId}, ${soundId}`);
 
   const bus = ensureCueBus();
   if (!bus) {
-    console.warn("[DjActions] CueBus not available yet");
+    console.warn("[DjActions] CueBus not available");
     return;
   }
 
   const manager = getAudioManager();
   const preFaderNode = manager.getPreFaderNode(soundId);
   if (!preFaderNode) {
-    console.warn(`[DjActions] No preFaderNode for soundId: ${soundId}`);
+    console.warn(`[DjActions] No preFaderNode for ${soundId}`);
     return;
   }
 
-  // Check if already connected
-  if (cueBusConnections.has(soundId)) {
-    console.info(`[DjActions] Already connected to CueBus: ${soundId}`);
-    return;
-  }
-
-  // Get or register the deck's CUE input
-  const cueInput = bus.registerDeck(deckId);
-
-  // Connect pre-fader output to CUE input
-  preFaderNode.connect(cueInput);
-  cueBusConnections.set(soundId, cueInput);
-  console.info(
-    `[DjActions] Connected ${deckId} preFader(gain=${preFaderNode.gain.value}) → CueBus cueInput`
-  );
+  // Use the simplified connectPreFader method
+  bus.connectPreFader(deckId, preFaderNode);
 
   // Restore CUE enabled state from mixer
   const mixer = getMixer();
   if (mixer) {
     const enabled =
       deckId === "deck-a" ? mixer.deckACueEnabled : mixer.deckBCueEnabled;
-    console.info(
-      `[DjActions] Restoring CUE state for ${deckId}: enabled=${enabled}`
-    );
     if (enabled) {
       bus.setCueEnabled(deckId, true);
     }
@@ -393,22 +372,11 @@ function connectDeckToCueBus(deckId: DeckId, soundId: string): void {
 }
 
 /**
- * Disconnect a deck from the CueBus
+ * Disconnect a deck from the CueBus (no-op, CueBus handles connections internally)
  */
-function disconnectDeckFromCueBus(soundId: string): void {
-  const cueInput = cueBusConnections.get(soundId);
-  if (cueInput) {
-    const manager = getAudioManager();
-    const preFaderNode = manager.getPreFaderNode(soundId);
-    if (preFaderNode) {
-      try {
-        preFaderNode.disconnect(cueInput);
-      } catch {
-        // May already be disconnected
-      }
-    }
-    cueBusConnections.delete(soundId);
-  }
+function disconnectDeckFromCueBus(_soundId: string): void {
+  // CueBus now handles connections internally via connectPreFader
+  // Old connections are automatically replaced when new track loads
 }
 
 // Apply crossfade based on current mixer position

@@ -6,6 +6,14 @@
  */
 
 export {
+  CueBus,
+  type CueBusCallbacks,
+  type CueBusState,
+  type CueMode,
+  createCueBus,
+} from "./cue-bus.js";
+
+export {
   createOutputRouter,
   isSinkIdSupported,
   OutputRouter,

@@ -129,8 +129,13 @@ export {
   type Unsubscribe,
   WorkletManager,
 } from "./playback/index.js";
-// Routing (output device selection)
+// Routing (output device selection, CUE monitoring)
 export {
+  CueBus,
+  type CueBusCallbacks,
+  type CueBusState,
+  type CueMode,
+  createCueBus,
   createOutputRouter,
   isSinkIdSupported,
   OutputRouter,

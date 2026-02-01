@@ -9,6 +9,8 @@
 import type { EffectConfig, EffectType, FilterConfig } from "@/lib/audio";
 import {
   AudioManager,
+  type CueBus,
+  createCueBus,
   createDefaultEffectConfig,
   type Radio,
 } from "@/lib/audio";
@@ -52,6 +54,61 @@ const getAudioManager = (): AudioManager => {
   }
   return audioManager;
 };
+
+// Lazy initialization of CueBus for pre-fader monitoring
+let cueBus: CueBus | null = null;
+
+/**
+ * Get or create the CueBus instance
+ * Requires AudioContext to be available (user gesture)
+ */
+export const getCueBus = (audioContext: AudioContext): CueBus => {
+  if (typeof window === "undefined") {
+    throw new Error("CueBus can only be used in browser environment");
+  }
+  if (!cueBus) {
+    // For now, use split cue mode (L=CUE, R=MIX)
+    // Dual output mode requires OutputRouter integration
+    cueBus = createCueBus(audioContext, null, {
+      onCueBlendChange: (blend) => {
+        updateMixer((draft) => {
+          draft.cueBlend = blend;
+        });
+      },
+      onDeckCueChange: (deckId, enabled) => {
+        updateMixer((draft) => {
+          if (deckId === "deck-a") {
+            draft.deckACueEnabled = enabled;
+          } else if (deckId === "deck-b") {
+            draft.deckBCueEnabled = enabled;
+          }
+        });
+      },
+    });
+
+    // Register both decks
+    cueBus.registerDeck("deck-a");
+    cueBus.registerDeck("deck-b");
+
+    // Restore state from persisted mixer
+    const mixer = getMixer();
+    if (mixer) {
+      cueBus.setCueMixBlend(mixer.cueBlend);
+      if (mixer.deckACueEnabled) {
+        cueBus.setCueEnabled("deck-a", true);
+      }
+      if (mixer.deckBCueEnabled) {
+        cueBus.setCueEnabled("deck-b", true);
+      }
+    }
+  }
+  return cueBus;
+};
+
+/**
+ * Check if CueBus is initialized
+ */
+export const isCueBusInitialized = (): boolean => cueBus !== null;
 
 const getSoundId = (radio: Radio, side: DeckSide): string =>
   `${side}_${radio.id}`;
@@ -747,4 +804,74 @@ export function reorderDeckAEffects(effectIds: string[]) {
 
 export function reorderDeckBEffects(effectIds: string[]) {
   reorderDeckEffects("deck-b", effectIds);
+}
+
+// ============================================
+// CUE Monitoring Actions
+// ============================================
+
+/**
+ * Enable/disable CUE monitoring for a deck (pre-fader listen)
+ */
+function setDeckCueEnabled(deckId: DeckId, enabled: boolean) {
+  if (!cueBus) {
+    console.warn("[DjActions] CueBus not initialized");
+    return;
+  }
+  cueBus.setCueEnabled(deckId, enabled);
+  updateMixer((draft) => {
+    if (deckId === "deck-a") {
+      draft.deckACueEnabled = enabled;
+    } else {
+      draft.deckBCueEnabled = enabled;
+    }
+  });
+}
+
+export function setDeckACueEnabled(enabled: boolean) {
+  setDeckCueEnabled("deck-a", enabled);
+}
+
+export function setDeckBCueEnabled(enabled: boolean) {
+  setDeckCueEnabled("deck-b", enabled);
+}
+
+/**
+ * Toggle CUE monitoring for a deck
+ */
+export function toggleDeckACue() {
+  const mixer = getMixer();
+  setDeckACueEnabled(!mixer?.deckACueEnabled);
+}
+
+export function toggleDeckBCue() {
+  const mixer = getMixer();
+  setDeckBCueEnabled(!mixer?.deckBCueEnabled);
+}
+
+/**
+ * Set CUE/MIX blend for headphones
+ * 0 = only CUE (pre-fader deck audio)
+ * 0.5 = both (default)
+ * 1 = only MIX (main program audio)
+ */
+export function setCueMixBlend(blend: number) {
+  if (!cueBus) {
+    console.warn("[DjActions] CueBus not initialized");
+    return;
+  }
+  cueBus.setCueMixBlend(blend);
+  updateMixer((draft) => {
+    draft.cueBlend = blend;
+  });
+}
+
+/**
+ * Cleanup CueBus resources
+ */
+export function cleanupCueBus() {
+  if (cueBus) {
+    cueBus.cleanup();
+    cueBus = null;
+  }
 }

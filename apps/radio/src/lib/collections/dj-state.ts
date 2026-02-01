@@ -68,6 +68,10 @@ const mixerStateSchema = z.object({
   id: z.string(),
   crossfadePosition: z.number(),
   masterVolume: z.number(),
+  // CUE monitoring
+  cueBlend: z.number(), // 0 = only CUE, 0.5 = both, 1 = only MIX
+  deckACueEnabled: z.boolean(),
+  deckBCueEnabled: z.boolean(),
 });
 
 export type DeckRecord = z.infer<typeof deckStateSchema>;
@@ -136,6 +140,9 @@ export async function initializeDjState(): Promise<void> {
       id: MIXER_ID,
       crossfadePosition: 0.5,
       masterVolume: 1,
+      cueBlend: 0.5,
+      deckACueEnabled: false,
+      deckBCueEnabled: false,
     });
   }
 }
@@ -214,5 +221,8 @@ export function resetAllDjState(): void {
   mixerCollection.update(MIXER_ID, (draft) => {
     draft.crossfadePosition = 0.5;
     draft.masterVolume = 1;
+    draft.cueBlend = 0.5;
+    draft.deckACueEnabled = false;
+    draft.deckBCueEnabled = false;
   });
 }

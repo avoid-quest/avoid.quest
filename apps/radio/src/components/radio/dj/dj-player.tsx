@@ -27,6 +27,7 @@ import {
   setDeckBRadio,
   setMasterVolume,
 } from "@/lib/dj-actions";
+import { useDjKeyboard } from "@/lib/hooks/use-dj-keyboard";
 import {
   setActiveDragRadio,
   setPendingPlatformItem,
@@ -286,6 +287,9 @@ function DjPlayerDragOverlay({ activeDragRadio }: DjPlayerDragOverlayProps) {
 export function DjPlayer({ radios = [] }: DjPlayerProps) {
   // Conditionally hydrate the DJ state based on user settings
   useDjStateHydration();
+
+  // Enable keyboard shortcuts for DJ mode (Q=Deck A CUE, W=Deck B CUE)
+  useDjKeyboard();
 
   // Get UI state from the runtime store
   const activeDragRadio = useActiveDragRadio();

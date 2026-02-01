@@ -88,9 +88,9 @@ export class CueBus {
   private readonly cueGain: GainNode; // CUE level in headphones
   private readonly mixGain: GainNode; // MIX level in headphones
 
-  // For split cue mode (mono L/R)
-  private readonly splitter: ChannelSplitterNode | null = null;
-  private readonly merger: ChannelMergerNode | null = null;
+  // Reserved for future split cue implementation
+  // private readonly splitter: ChannelSplitterNode | null = null;
+  // private readonly merger: ChannelMergerNode | null = null;
 
   // Per-deck CUE sends
   private readonly deckSends = new Map<string, DeckCueSend>();
@@ -130,17 +130,7 @@ export class CueBus {
     // Set initial blend (50/50)
     this.applyBlend();
 
-    // Set up routing based on mode
-    if (this._mode === "split") {
-      // Split cue: L=CUE, R=MIX through channel manipulation
-      this.splitter = this.context.createChannelSplitter(2);
-      this.merger = this.context.createChannelMerger(2);
-
-      // CUE (mono) → left channel
-      // MIX (mono) → right channel
-      // This requires mono downmix, which we'll handle via gain nodes
-    }
-
+    // Set up output routing
     this.connectOutputGraph();
   }
 
@@ -372,9 +362,6 @@ export class CueBus {
     // Disconnect current connections
     safeDisconnect(this.cueGain, "CueBus.reconnectOutputGraph");
     safeDisconnect(this.mixGain, "CueBus.reconnectOutputGraph");
-    if (this.merger) {
-      safeDisconnect(this.merger, "CueBus.reconnectOutputGraph");
-    }
 
     // Reconnect based on mode
     this.connectOutputGraph();
@@ -382,15 +369,10 @@ export class CueBus {
 
   /**
    * Get the CUE output destination node
-   * In dual mode, this goes to the CUE context destination
-   * In split mode, this is the merged L/R output
    */
   get destination(): AudioNode {
     if (this._mode === "dual" && this.cueContext) {
       return this.cueContext.destination;
-    }
-    if (this.merger) {
-      return this.merger;
     }
     return this.context.destination;
   }
@@ -408,13 +390,6 @@ export class CueBus {
     safeDisconnect(this.cueSumNode, "CueBus.cleanup");
     safeDisconnect(this.cueGain, "CueBus.cleanup");
     safeDisconnect(this.mixGain, "CueBus.cleanup");
-
-    if (this.splitter) {
-      safeDisconnect(this.splitter, "CueBus.cleanup");
-    }
-    if (this.merger) {
-      safeDisconnect(this.merger, "CueBus.cleanup");
-    }
   }
 
   /**
@@ -444,51 +419,21 @@ export class CueBus {
    * Set up the output routing graph
    */
   private connectOutputGraph(): void {
-    if (this._mode === "dual" && this.cueContext) {
-      // Dual mode: CUE sum → cueGain → CUE destination
-      // Main mix is routed separately to CUE context via OutputRouter
+    // Simple and direct routing: CUE + MIX blend to destination
+    // For split/single output mode, this goes to the main AudioContext destination
+    // For dual mode, setCueOutputDevice handles routing to separate device
 
-      // Note: We can't directly connect from mainContext to cueContext
-      // The CueBus operates in mainContext for deck taps
-      // The actual CUE output routing must be handled by duplicating the audio
-      // or using MediaStreamDestination/MediaStreamSource bridge
+    this.cueSumNode.connect(this.cueGain);
+    this.cueGain.connect(this.context.destination);
 
-      // For now, we'll connect to main destination as fallback
-      // Real dual output requires OutputRouter integration
-      this.cueSumNode.connect(this.cueGain);
-      this.cueGain.connect(this.cueContext.destination);
+    // MIX gain also connects to destination for blending
+    // (mainMix is connected to mixGain via connectMainMix when available)
+    this.mixGain.connect(this.context.destination);
 
-      // Mix gain connects to CUE context destination too
-      this.mixGain.connect(this.cueContext.destination);
-    } else if (this.splitter && this.merger) {
-      // Split mode: L=CUE, R=MIX
-
-      // Create mono downmix for CUE
-      const cueMono = this.context.createGain();
-      cueMono.gain.value = 1;
-
-      // Create mono downmix for MIX
-      const mixMono = this.context.createGain();
-      mixMono.gain.value = 1;
-
-      // CUE sum → cueGain → cueMono → left channel
-      this.cueSumNode.connect(this.cueGain);
-      this.cueGain.connect(cueMono);
-      cueMono.connect(this.merger, 0, 0); // Left
-
-      // MIX input → mixGain → mixMono → right channel
-      // (mainMix is connected later via connectMainMix)
-      this.mixGain.connect(mixMono);
-      mixMono.connect(this.merger, 0, 1); // Right
-
-      // Merger output goes to destination
-      this.merger.connect(this.context.destination);
-    } else {
-      // Fallback: simple blend to main destination
-      this.cueSumNode.connect(this.cueGain);
-      this.cueGain.connect(this.context.destination);
-      this.mixGain.connect(this.context.destination);
-    }
+    console.info(
+      "[CueBus] Output graph connected to destination, mode:",
+      this._mode
+    );
   }
 }
 

@@ -1,14 +1,11 @@
 import { Application, Container, Sprite, Texture } from "pixi.js";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
-import type { AIAnalysis, AnalysisType } from "@/lib/ai/types";
-import { useAI } from "@/lib/ai/use-ai";
 import type { AnalysisEffectsSettings } from "@/lib/collections/settings";
 import { canRenderEffects, useCapabilities } from "@/lib/effects";
 import type { ImageFeatures } from "@/lib/effects/feature-types";
 import type { EffectPipeline } from "@/lib/effects/pipeline/effect-pipeline";
 import { useSettings } from "@/lib/hooks/use-settings";
 import { getProxiedImageUrl } from "@/lib/image-proxy";
-import { AIOverlay } from "./ai-overlay";
 
 /**
  * Scale and position a sprite to fit the screen (contain mode)
@@ -67,25 +64,12 @@ export const EffectsCanvas = memo(function EffectsCanvas({
   const loadedToIndexRef = useRef<number>(-1);
 
   const [isReady, setIsReady] = useState(false);
-  const [currentAnalysis, setCurrentAnalysis] = useState<
-    AIAnalysis | undefined
-  >();
-  const [imageDimensions, setImageDimensions] = useState<{
-    width: number;
-    height: number;
-    x: number;
-    y: number;
-  }>({ width: 0, height: 0, x: 0, y: 0 });
 
   const capabilities = useCapabilities();
   const { data: settings } = useSettings();
   const effectsEnabled = settings?.effectsEnabled ?? false;
   const snapEnabled = settings?.snapEnabled ?? false;
-  const aiSettings = settings?.aiSettings;
   const shouldRender = effectsEnabled && canRenderEffects(capabilities);
-
-  // AI analysis hook
-  const { analyze, getAnalysis } = useAI();
 
   // Helper to update sprite alphas based on current state
   // Called both from scroll handler and after texture loads
@@ -164,30 +148,6 @@ export const EffectsCanvas = memo(function EffectsCanvas({
             });
         }
 
-        // AI analysis (if enabled and autoAnalyze is on)
-        if (aiSettings?.enabled && aiSettings.autoAnalyze) {
-          const typesToAnalyze: AnalysisType[] = [];
-          if (aiSettings.detection.enabled) {
-            typesToAnalyze.push("detect");
-          }
-          if (aiSettings.segmentation.enabled) {
-            typesToAnalyze.push("segment");
-          }
-          if (aiSettings.ocr.enabled) {
-            typesToAnalyze.push("ocr");
-          }
-
-          if (typesToAnalyze.length > 0) {
-            analyze(proxiedUrl, typesToAnalyze, {
-              detectionThreshold: aiSettings.detection.threshold,
-            }).catch((err) => {
-              if (import.meta.env.DEV) {
-                console.warn("AI analysis failed for", url, err);
-              }
-            });
-          }
-        }
-
         return texture;
       } catch (err) {
         if (import.meta.env.DEV) {
@@ -196,7 +156,7 @@ export const EffectsCanvas = memo(function EffectsCanvas({
         return null;
       }
     },
-    [aiSettings, analyze]
+    []
   );
 
   // Initialize PixiJS
@@ -411,87 +371,15 @@ export const EffectsCanvas = memo(function EffectsCanvas({
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  // Update AI analysis and image dimensions when current image changes
-  useEffect(() => {
-    if (!(currentImageUrl && aiSettings?.enabled)) {
-      setCurrentAnalysis(undefined);
-      return;
-    }
-
-    // Get proxied URL for analysis lookup
-    const proxiedUrl = getProxiedImageUrl(currentImageUrl);
-    const analysis = getAnalysis(proxiedUrl);
-    setCurrentAnalysis(analysis);
-
-    // Poll for analysis updates (since analysis runs async)
-    const interval = setInterval(() => {
-      const latestAnalysis = getAnalysis(proxiedUrl);
-      if (latestAnalysis && latestAnalysis !== analysis) {
-        setCurrentAnalysis(latestAnalysis);
-      }
-    }, 500);
-
-    return () => clearInterval(interval);
-  }, [currentImageUrl, aiSettings?.enabled, getAnalysis]);
-
-  // Calculate image dimensions from sprite
-  // biome-ignore lint/correctness/useExhaustiveDependencies: currentImageUrl triggers dimension recalc
-  useEffect(() => {
-    const sprite = spriteFromRef.current;
-    const app = appRef.current;
-    if (!(sprite?.texture && app && isReady)) {
-      return;
-    }
-
-    const updateDimensions = () => {
-      const texture = sprite.texture;
-      if (!texture || texture.width === 0) {
-        return;
-      }
-
-      const screenWidth = app.screen.width;
-      const screenHeight = app.screen.height;
-      const scale = Math.min(
-        screenWidth / texture.width,
-        screenHeight / texture.height
-      );
-
-      const width = texture.width * scale;
-      const height = texture.height * scale;
-      const x = (screenWidth - width) / 2;
-      const y = (screenHeight - height) / 2;
-
-      setImageDimensions({ width, height, x, y });
-    };
-
-    updateDimensions();
-
-    // Also update on resize
-    window.addEventListener("resize", updateDimensions);
-    return () => window.removeEventListener("resize", updateDimensions);
-  }, [isReady, currentImageUrl]); // currentImageUrl triggers dimension recalc on image change
-
   if (!shouldRender) {
     return null;
   }
 
   return (
-    <>
-      <div
-        className="pointer-events-none fixed inset-0 z-40"
-        ref={containerRef}
-        style={{ opacity: isReady ? 1 : 0 }}
-      />
-      {aiSettings?.enabled && (
-        <AIOverlay
-          analysis={currentAnalysis}
-          imageHeight={imageDimensions.height}
-          imageWidth={imageDimensions.width}
-          imageX={imageDimensions.x}
-          imageY={imageDimensions.y}
-          settings={aiSettings}
-        />
-      )}
-    </>
+    <div
+      className="pointer-events-none fixed inset-0 z-40"
+      ref={containerRef}
+      style={{ opacity: isReady ? 1 : 0 }}
+    />
   );
 });

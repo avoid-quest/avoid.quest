@@ -31,17 +31,6 @@ export const DEFAULT_REGION_PAINT_THRESHOLD = 0.02;
 export const DEFAULT_REGION_PAINT_BAND_COUNT = 6;
 export const DEFAULT_REGION_PAINT_PALETTE_ID = "heat" as const;
 
-// AI Analysis defaults
-export const DEFAULT_AI_ENABLED = false;
-export const DEFAULT_AI_AUTO_ANALYZE = true;
-export const DEFAULT_AI_DETECTION_ENABLED = true;
-export const DEFAULT_AI_DETECTION_THRESHOLD = 0.5;
-export const DEFAULT_AI_DETECTION_SHOW_OVERLAY = true;
-export const DEFAULT_AI_SEGMENTATION_ENABLED = false;
-export const DEFAULT_AI_SEGMENTATION_SHOW_OVERLAY = true;
-export const DEFAULT_AI_OCR_ENABLED = false;
-export const DEFAULT_AI_OCR_SHOW_OVERLAY = true;
-
 // Palette presets for region paint effect
 export const REGION_PAINT_PALETTES: Record<
   string,

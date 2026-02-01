@@ -187,7 +187,9 @@ export class CueBus {
     // Return existing input node if already registered (preserves CUE state)
     const existing = this.deckSends.get(deckId);
     if (existing) {
-      console.info(`[CueBus] Deck ${deckId} already registered, reusing input`);
+      console.info(
+        `[CueBus] Deck ${deckId} already registered, reusing input (enabled=${existing.enabled}, gain=${existing.gain.gain.value})`
+      );
       return existing.inputNode;
     }
 
@@ -211,7 +213,9 @@ export class CueBus {
 
     this.deckSends.set(deckId, send);
 
-    console.info(`[CueBus] Registered deck ${deckId} for CUE monitoring`);
+    console.info(
+      `[CueBus] Registered deck ${deckId}: inputNode → gain(0) → cueSumNode`
+    );
 
     return inputNode;
   }
@@ -294,7 +298,7 @@ export class CueBus {
   async setCueOutputDevice(deviceId: string | null): Promise<void> {
     console.info("[CueBus] setCueOutputDevice called with:", deviceId);
 
-    // Cleanup existing CUE output
+    // Cleanup existing CUE output (but don't disconnect deck sends)
     this.cleanupCueOutput();
 
     if (!(deviceId && isSinkIdSupported())) {
@@ -315,13 +319,20 @@ export class CueBus {
       this._cueMediaStreamDest = this.context.createMediaStreamDestination();
       console.info("[CueBus] Created MediaStreamDestination");
 
-      // Disconnect CUE sum from any previous connections
-      safeDisconnect(this.cueSumNode, "CueBus.setCueOutputDevice.cueSumNode");
+      // Log current deck send states before reconnecting
+      for (const [deckId, send] of this.deckSends) {
+        console.info(
+          `[CueBus] Deck ${deckId} send state: enabled=${send.enabled}, gain=${send.gain.gain.value}`
+        );
+      }
 
-      // Route CUE bus directly to MediaStream (simple path, no blend for now)
-      // This ensures CUE audio gets to the headphone output
+      // DON'T disconnect cueSumNode - that would break the deck send connections!
+      // Instead, just add a new connection to MediaStreamDest
+      // The Web Audio API allows multiple outputs from the same node
       this.cueSumNode.connect(this._cueMediaStreamDest);
-      console.info("[CueBus] Connected cueSumNode to MediaStreamDestination");
+      console.info(
+        "[CueBus] Connected cueSumNode to MediaStreamDestination (additive)"
+      );
 
       // Create audio element to play the MediaStream
       this._cueAudioElement = new Audio();
@@ -341,6 +352,12 @@ export class CueBus {
       // Start playback
       await this._cueAudioElement.play();
       console.info("[CueBus] CUE audio element playing");
+
+      // Debug: Check MediaStream tracks
+      const tracks = this._cueMediaStreamDest.stream.getAudioTracks();
+      console.info(
+        `[CueBus] MediaStream has ${tracks.length} audio track(s), enabled: ${tracks.map((t) => t.enabled)}`
+      );
 
       this.callbacks.onModeChange?.("dual");
     } catch (error) {

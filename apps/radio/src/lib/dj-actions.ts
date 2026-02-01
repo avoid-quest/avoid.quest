@@ -374,13 +374,18 @@ function connectDeckToCueBus(deckId: DeckId, soundId: string): void {
   // Connect pre-fader output to CUE input
   preFaderNode.connect(cueInput);
   cueBusConnections.set(soundId, cueInput);
-  console.info(`[DjActions] Connected ${deckId} preFader to CueBus input`);
+  console.info(
+    `[DjActions] Connected ${deckId} preFader(gain=${preFaderNode.gain.value}) → CueBus cueInput`
+  );
 
   // Restore CUE enabled state from mixer
   const mixer = getMixer();
   if (mixer) {
     const enabled =
       deckId === "deck-a" ? mixer.deckACueEnabled : mixer.deckBCueEnabled;
+    console.info(
+      `[DjActions] Restoring CUE state for ${deckId}: enabled=${enabled}`
+    );
     if (enabled) {
       bus.setCueEnabled(deckId, true);
     }

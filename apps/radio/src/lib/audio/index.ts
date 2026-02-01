@@ -97,19 +97,30 @@ export {
 // Playback infrastructure
 export {
   AudioContextManager,
+  type AudioDeviceInfo,
   type AudioError,
   type AudioErrorCode,
   type AudioState,
   type AudioStateCallback,
+  createDeviceSource,
+  createFileSource,
   createHtml5AudioSource,
   createMicSource,
   createWorkletManager,
+  type DeviceAudioConstraints,
+  type DevicePermissionState,
+  DeviceSource,
+  type DeviceSourceCallbacks,
   defaultStreamBufferConfig,
+  type FileMetadata,
+  FileSource,
+  type FileSourceCallbacks,
   getAudioContext,
   getAudioContextManager,
   Html5AudioSource,
   type Html5AudioSourceCallbacks,
   initialAudioState,
+  isAudioFile,
   MicSource,
   type MicSourceCallbacks,
   type Radio,
@@ -118,3 +129,11 @@ export {
   type Unsubscribe,
   WorkletManager,
 } from "./playback/index.js";
+// Routing (output device selection)
+export {
+  createOutputRouter,
+  isSinkIdSupported,
+  OutputRouter,
+  type OutputRouterCallbacks,
+  type OutputRouterState,
+} from "./routing/index.js";

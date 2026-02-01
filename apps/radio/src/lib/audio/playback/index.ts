@@ -14,14 +14,29 @@ export {
   resumeAudioContext,
   suspendAudioContext,
 } from "./audio-context.js";
-
+// Device Source (audio input devices)
+export {
+  type AudioDeviceInfo,
+  createDeviceSource,
+  type DeviceAudioConstraints,
+  type DevicePermissionState,
+  DeviceSource,
+  type DeviceSourceCallbacks,
+} from "./device-source.js";
+// File Source (local audio files)
+export {
+  createFileSource,
+  type FileMetadata,
+  FileSource,
+  type FileSourceCallbacks,
+  isAudioFile,
+} from "./file-source.js";
 // HTML5 Audio Source (primary - uses native <audio> element)
 export {
   createHtml5AudioSource,
   Html5AudioSource,
   type Html5AudioSourceCallbacks,
 } from "./html5-source.js";
-
 // Microphone Source (for future live looper)
 export {
   createMicSource,

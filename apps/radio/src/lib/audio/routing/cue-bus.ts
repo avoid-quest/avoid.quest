@@ -327,13 +327,15 @@ export class CueBus {
         );
       }
 
-      // DON'T disconnect cueSumNode - that would break the deck send connections!
-      // Instead, just add a new connection to MediaStreamDest
-      // The Web Audio API allows multiple outputs from the same node
+      // Disconnect cueSumNode's OUTPUTS (split cue connections to destination)
+      // This does NOT affect INPUTS (deck sends → cueSumNode)
+      // disconnect() only removes outgoing connections, not incoming ones
+      safeDisconnect(this.cueSumNode, "CueBus.setCueOutputDevice");
+      console.info("[CueBus] Disconnected cueSumNode outputs (split mode)");
+
+      // Connect cueSumNode to MediaStreamDest for CUE output
       this.cueSumNode.connect(this._cueMediaStreamDest);
-      console.info(
-        "[CueBus] Connected cueSumNode to MediaStreamDestination (additive)"
-      );
+      console.info("[CueBus] Connected cueSumNode to MediaStreamDestination");
 
       // Create audio element to play the MediaStream
       this._cueAudioElement = new Audio();

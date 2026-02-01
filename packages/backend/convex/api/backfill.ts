@@ -154,9 +154,7 @@ export const reprocessAllEventDates = action({
 				const newDateStr = new Date(newEventDate).toISOString().split("T")[0];
 
 				// Calculate difference in days
-				const diffMs = oldEventDate
-					? newEventDate - oldEventDate
-					: 0;
+				const diffMs = oldEventDate ? newEventDate - oldEventDate : 0;
 				const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
 
 				changes.push({

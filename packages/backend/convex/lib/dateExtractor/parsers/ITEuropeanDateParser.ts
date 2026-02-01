@@ -4,8 +4,12 @@
  * Also handles abbreviated patterns like "DOM. 01/02" (Domenica 1 Febbraio)
  */
 
-import type { ParsingContext, Parser } from "chrono-node";
-import type { ParsingComponents, ParsingResult } from "chrono-node";
+import type {
+	Parser,
+	ParsingComponents,
+	ParsingContext,
+	ParsingResult,
+} from "chrono-node";
 
 /**
  * Pattern matches European date formats:
@@ -14,16 +18,15 @@ import type { ParsingComponents, ParsingResult } from "chrono-node";
  * - 8.3.2026 (D.M.YYYY)
  * - 8.3 (D.M - year inferred)
  * - 01-02-2026 (DD-MM-YYYY)
- * 
+ *
  * Optionally preceded by Italian weekday abbreviations:
  * - DOM. 01/02 (Domenica)
  * - SAB. 15/03 (Sabato)
  * - LUN 22/04 (Lunedì)
  */
 const PATTERN =
-	/(?:(?:DOM|LUN|MAR|MER|GIO|VEN|SAB)\.?\s*)?(\d{1,2})[\/.\-](\d{1,2})(?:[\/.\-](\d{2,4}))?/i;
+	/(?:(?:DOM|LUN|MAR|MER|GIO|VEN|SAB)\.?\s*)?(\d{1,2})[/.-](\d{1,2})(?:[/.-](\d{2,4}))?/i;
 
-const WEEKDAY_GROUP = 0; // Full match includes weekday
 const DAY_GROUP = 1;
 const MONTH_GROUP = 2;
 const YEAR_GROUP = 3;
@@ -66,10 +69,7 @@ export default class ITEuropeanDateParser implements Parser {
 			}
 		}
 
-		const result = context.createParsingResult(
-			match.index ?? 0,
-			match[0],
-		);
+		const result = context.createParsingResult(match.index ?? 0, match[0]);
 
 		result.start.assign("day", day);
 		result.start.assign("month", month);

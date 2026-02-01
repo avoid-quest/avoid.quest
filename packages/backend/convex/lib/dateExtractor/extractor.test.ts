@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
-	extractEventDate,
 	extractAllDates,
-	getEventTimestamp,
+	extractEventDate,
 	getEventDateRange,
+	getEventTimestamp,
 } from "./extractor";
 
 // Fixed reference date for consistent tests: January 15, 2026, Wednesday, 14:00 UTC

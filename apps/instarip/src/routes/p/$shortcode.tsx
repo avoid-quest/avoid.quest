@@ -88,7 +88,9 @@ function PostDetailPage() {
 
   const handleDownload = async () => {
     const url = post.is_video ? videoUrl : imageUrl;
-    if (!url) return;
+    if (!url) {
+      return;
+    }
 
     try {
       const response = await fetch(url);
@@ -101,7 +103,7 @@ function PostDetailPage() {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(blobUrl);
-    } catch (error) {
+    } catch (_error) {
       // Fallback: open in new tab
       window.open(url, "_blank");
     }

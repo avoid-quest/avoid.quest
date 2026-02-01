@@ -46,9 +46,7 @@ export function PostCard({ post }: PostCardProps) {
       <Card className="group overflow-hidden transition-all hover:ring-2 hover:ring-primary/50">
         <CardContent className="relative p-0">
           {/* Skeleton while loading */}
-          {!isLoaded && (
-            <Skeleton className="absolute inset-0 rounded-none" />
-          )}
+          {!isLoaded && <Skeleton className="absolute inset-0 rounded-none" />}
 
           <img
             alt={post.caption.slice(0, 100)}

@@ -5,14 +5,10 @@
  * plus custom parsers for patterns like "questo weekend"
  */
 
-import * as chrono from "chrono-node";
 import type { ParsedResult } from "chrono-node";
-import { ITWeekendParser, ITEuropeanDateParser } from "./parsers";
-import type {
-	ExtractedDate,
-	ExtractOptions,
-	ExtractionResult,
-} from "./types";
+import * as chrono from "chrono-node";
+import { ITEuropeanDateParser, ITWeekendParser } from "./parsers";
+import type { ExtractedDate, ExtractionResult, ExtractOptions } from "./types";
 
 // Create Italian parser with custom parsers
 const italianParser = chrono.it.casual.clone();
@@ -222,12 +218,7 @@ export function extractEventDate(
 	const allResults: ParsedResult[] = [];
 
 	for (const locale of opts.localePriority) {
-		const results = parseWithLocale(
-			caption,
-			locale,
-			refDate,
-			opts.forwardDate,
-		);
+		const results = parseWithLocale(caption, locale, refDate, opts.forwardDate);
 		allResults.push(...results);
 	}
 
@@ -271,12 +262,7 @@ export function extractAllDates(
 	const seenIndices = new Set<number>();
 
 	for (const locale of opts.localePriority) {
-		const results = parseWithLocale(
-			caption,
-			locale,
-			refDate,
-			opts.forwardDate,
-		);
+		const results = parseWithLocale(caption, locale, refDate, opts.forwardDate);
 
 		for (const result of results) {
 			// Avoid duplicates from different locales matching the same text

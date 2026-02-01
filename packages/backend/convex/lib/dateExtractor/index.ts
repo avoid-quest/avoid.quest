@@ -25,14 +25,14 @@
  */
 
 export {
-	extractEventDate,
 	extractAllDates,
-	getEventTimestamp,
+	extractEventDate,
 	getEventDateRange,
+	getEventTimestamp,
 } from "./extractor";
 
 export type {
 	ExtractedDate,
-	ExtractOptions,
 	ExtractionResult,
+	ExtractOptions,
 } from "./types";

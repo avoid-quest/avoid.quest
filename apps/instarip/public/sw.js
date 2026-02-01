@@ -14,13 +14,15 @@ self.addEventListener("activate", (event) => {
     Promise.all([
       self.clients.claim(),
       // Clean up old caches
-      caches.keys().then((cacheNames) => {
-        return Promise.all(
-          cacheNames
-            .filter((name) => name !== CACHE_NAME)
-            .map((name) => caches.delete(name))
-        );
-      }),
+      caches
+        .keys()
+        .then((cacheNames) => {
+          return Promise.all(
+            cacheNames
+              .filter((name) => name !== CACHE_NAME)
+              .map((name) => caches.delete(name))
+          );
+        }),
     ])
   );
 });

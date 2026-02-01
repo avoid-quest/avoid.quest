@@ -3,8 +3,12 @@
  * Handles patterns like "questo weekend", "fine settimana", "questo fine settimana"
  */
 
-import type { ParsingContext, Parser } from "chrono-node";
-import type { ParsingComponents, ParsingResult } from "chrono-node";
+import type {
+	Parser,
+	ParsingComponents,
+	ParsingContext,
+	ParsingResult,
+} from "chrono-node";
 
 /**
  * Pattern matches:

@@ -71,7 +71,7 @@ export function MediaViewer({
           type="button"
         >
           {/* Loading skeleton */}
-          {!isLoaded && !isVideo && (
+          {!(isLoaded || isVideo) && (
             <Skeleton className="absolute inset-0 rounded-lg" />
           )}
 
@@ -126,11 +126,7 @@ export function MediaViewer({
                     src={item.url}
                   />
                 ) : (
-                  <img
-                    alt=""
-                    className="w-full bg-muted"
-                    src={item.url}
-                  />
+                  <img alt="" className="w-full bg-muted" src={item.url} />
                 )}
               </button>
             </CarouselItem>

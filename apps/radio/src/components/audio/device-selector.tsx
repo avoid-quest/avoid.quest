@@ -185,11 +185,13 @@ export function DeviceSelector({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">None (Disabled)</SelectItem>
-                {inputDevices.map((device) => (
-                  <SelectItem key={device.deviceId} value={device.deviceId}>
-                    {device.label}
-                  </SelectItem>
-                ))}
+                {inputDevices
+                  .filter((device) => device.deviceId)
+                  .map((device) => (
+                    <SelectItem key={device.deviceId} value={device.deviceId}>
+                      {device.label}
+                    </SelectItem>
+                  ))}
               </SelectContent>
             </Select>
             <p className="text-muted-foreground text-xs">
@@ -214,11 +216,16 @@ export function DeviceSelector({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="default">System Default</SelectItem>
-                    {outputDevices.map((device) => (
-                      <SelectItem key={device.deviceId} value={device.deviceId}>
-                        {device.label}
-                      </SelectItem>
-                    ))}
+                    {outputDevices
+                      .filter((device) => device.deviceId)
+                      .map((device) => (
+                        <SelectItem
+                          key={device.deviceId}
+                          value={device.deviceId}
+                        >
+                          {device.label}
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
                 <p className="text-muted-foreground text-xs">
@@ -252,11 +259,16 @@ export function DeviceSelector({
                     <SelectItem value="same">
                       Same as Main (Split Cue)
                     </SelectItem>
-                    {outputDevices.map((device) => (
-                      <SelectItem key={device.deviceId} value={device.deviceId}>
-                        {device.label}
-                      </SelectItem>
-                    ))}
+                    {outputDevices
+                      .filter((device) => device.deviceId)
+                      .map((device) => (
+                        <SelectItem
+                          key={device.deviceId}
+                          value={device.deviceId}
+                        >
+                          {device.label}
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
                 <p className="text-muted-foreground text-xs">

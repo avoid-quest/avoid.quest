@@ -17,5 +17,11 @@
 		"logs": {
 			"enabled": true
 		}
-	}
+	},
+	"kv_namespaces": [
+		{
+			"binding": "CACHE",
+			"id": "TO_BE_CREATED"
+		}
+	]
 }

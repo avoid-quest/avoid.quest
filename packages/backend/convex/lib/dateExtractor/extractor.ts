@@ -96,6 +96,97 @@ function toExtractedDate(result: ParsedResult): ExtractedDate {
 }
 
 /**
+ * Check if a match looks like a duration rather than an event date
+ * Durations like "due anni", "tre mesi", "una settimana" in narrative context
+ * should not be interpreted as event dates
+ */
+function isDurationPattern(matchedText: string): boolean {
+	const lowerText = matchedText.toLowerCase().trim();
+
+	// Italian duration patterns (when used as narrative, not as event dates)
+	// "due anni" (two years), "tre mesi" (three months), etc.
+	const durationPatterns = [
+		/^(un|uno|una|due|tre|quattro|cinque|sei|sette|otto|nove|dieci|\d+)\s*(ann[oi]|mes[ei]|settiman[ae]|giorn[oi])$/i,
+		// Also catch "circa due anni", "quasi tre mesi"
+		/^(circa|quasi|oltre|più di|meno di)?\s*(un|uno|una|due|tre|quattro|cinque|sei|sette|otto|nove|dieci|\d+)\s*(ann[oi]|mes[ei]|settiman[ae]|giorn[oi])$/i,
+	];
+
+	for (const pattern of durationPatterns) {
+		if (pattern.test(lowerText)) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+/**
+ * Score a parsed result to determine how likely it is to be an actual event date
+ * Higher score = more likely to be an event date
+ */
+function scoreEventDate(result: ParsedResult): number {
+	let score = 0;
+	const text = result.text.toLowerCase();
+
+	// Explicit day + month is very likely an event date
+	const hasDay = result.start.isCertain("day");
+	const hasMonth = result.start.isCertain("month");
+	const hasWeekday = result.start.isCertain("weekday");
+
+	if (hasDay && hasMonth) score += 100; // "29 gennaio", "15/02"
+	if (hasWeekday && hasDay) score += 80; // "giovedì 29"
+	if (hasWeekday) score += 50; // "giovedì", "sabato"
+	if (hasMonth) score += 30; // month mentioned
+
+	// Event-related keywords boost score
+	const eventKeywords = [
+		"h\\s*\\d", // "h 18:30", "h18"
+		"ore\\s*\\d", // "ore 21"
+		"alle\\s*\\d", // "alle 21"
+		"dalle\\s*\\d", // "dalle 18"
+	];
+	for (const kw of eventKeywords) {
+		if (new RegExp(kw, "i").test(text)) {
+			score += 20;
+		}
+	}
+
+	// Penalize pure duration patterns heavily
+	if (isDurationPattern(result.text)) {
+		score -= 200;
+	}
+
+	return score;
+}
+
+/**
+ * Filter and sort parsed results to find the best event date
+ */
+function selectBestEventDate(results: ParsedResult[]): ParsedResult | null {
+	if (results.length === 0) return null;
+
+	// Filter out clear duration patterns
+	const filtered = results.filter((r) => !isDurationPattern(r.text));
+
+	if (filtered.length === 0) {
+		// All results were durations, fall back to original results
+		// but still try to find the best one
+		const scored = results
+			.map((r) => ({ result: r, score: scoreEventDate(r) }))
+			.filter((s) => s.score > -100) // Filter out heavily penalized
+			.sort((a, b) => b.score - a.score);
+		return scored[0]?.result ?? null;
+	}
+
+	// Score remaining results and pick the best
+	const scored = filtered
+		.map((r) => ({ result: r, score: scoreEventDate(r) }))
+		.sort((a, b) => b.score - a.score);
+
+	return scored[0]?.result ?? filtered[0];
+}
+
+/**
  * Extract event date from Instagram caption text
  *
  * @param caption - The Instagram post caption
@@ -124,7 +215,9 @@ export function extractEventDate(
 			: new Date(opts.referenceDate);
 	const fallbackTimestamp = toTimestamp(opts.referenceDate);
 
-	// Try each locale in priority order
+	// Collect all results from all locales
+	const allResults: ParsedResult[] = [];
+
 	for (const locale of opts.localePriority) {
 		const results = parseWithLocale(
 			caption,
@@ -132,16 +225,18 @@ export function extractEventDate(
 			refDate,
 			opts.forwardDate,
 		);
+		allResults.push(...results);
+	}
 
-		if (results.length > 0) {
-			// Return the first result (earliest in text)
-			const firstResult = results[0];
-			return {
-				found: true,
-				date: toExtractedDate(firstResult),
-				fallback: fallbackTimestamp,
-			};
-		}
+	// Select the best event date (filters durations, prefers explicit dates)
+	const bestResult = selectBestEventDate(allResults);
+
+	if (bestResult) {
+		return {
+			found: true,
+			date: toExtractedDate(bestResult),
+			fallback: fallbackTimestamp,
+		};
 	}
 
 	// No date found - return fallback

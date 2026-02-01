@@ -90,3 +90,104 @@ export const getEventDateStats = query({
 		);
 	},
 });
+
+/**
+ * Reprocess ALL posts to fix incorrect event_dates
+ * Use this when existing event_date values are wrong and need recalculation
+ *
+ * @param limit - Maximum number of posts to process per run
+ * @param dryRun - If true, only report what would be changed
+ * @param cursor - Pagination cursor for processing large datasets
+ */
+export const reprocessAllEventDates = action({
+	args: {
+		limit: v.optional(v.number()),
+		dryRun: v.optional(v.boolean()),
+		cursor: v.optional(v.union(v.string(), v.null())),
+	},
+	handler: async (ctx, { limit = 50, dryRun = false, cursor }) => {
+		// Get all posts with pagination
+		const result = await ctx.runQuery(
+			components.instarip.posts.getPostsPaginated,
+			{ cursor: cursor ?? null, numItems: limit },
+		);
+
+		if (result.page.length === 0) {
+			return {
+				processed: 0,
+				updated: 0,
+				changed: 0,
+				isDone: true,
+				continueCursor: null,
+				message: "No posts to process",
+			};
+		}
+
+		let updated = 0;
+		let changed = 0;
+		const changes: Array<{
+			id: string;
+			shortcode: string;
+			oldDate: number | undefined;
+			newDate: number;
+			oldDateStr: string;
+			newDateStr: string;
+			diff: string;
+		}> = [];
+
+		// Import date extractor dynamically
+		const { getEventTimestamp } = await import("../lib/dateExtractor");
+
+		for (const post of result.page) {
+			// Extract event date from caption using post timestamp as reference
+			const newEventDate = getEventTimestamp(post.caption, post.timestamp);
+			const oldEventDate = post.event_date;
+
+			// Check if the date changed
+			const dateChanged = oldEventDate !== newEventDate;
+
+			if (dateChanged) {
+				changed++;
+				const oldDateStr = oldEventDate
+					? new Date(oldEventDate).toISOString().split("T")[0]
+					: "undefined";
+				const newDateStr = new Date(newEventDate).toISOString().split("T")[0];
+
+				// Calculate difference in days
+				const diffMs = oldEventDate
+					? newEventDate - oldEventDate
+					: 0;
+				const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+
+				changes.push({
+					id: post._id,
+					shortcode: post.shortcode,
+					oldDate: oldEventDate,
+					newDate: newEventDate,
+					oldDateStr,
+					newDateStr,
+					diff: diffDays !== 0 ? `${diffDays} days` : "new",
+				});
+
+				if (!dryRun) {
+					await ctx.runMutation(components.instarip.posts.updateEventDate, {
+						id: post._id,
+						event_date: newEventDate,
+					});
+					updated++;
+				}
+			}
+		}
+
+		return {
+			processed: result.page.length,
+			updated,
+			changed,
+			dryRun,
+			isDone: result.isDone,
+			continueCursor: result.continueCursor,
+			// Only return detailed changes on dry run to avoid JSON issues
+			changes: dryRun ? changes.slice(0, 20) : [],
+		};
+	},
+});

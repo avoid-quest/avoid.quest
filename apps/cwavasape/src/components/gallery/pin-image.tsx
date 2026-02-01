@@ -20,9 +20,11 @@ export const PinImage = memo(function PinImage({
       className="flex h-screen w-full items-center justify-center bg-black"
       data-pin-index={index}
     >
-      <span className="absolute top-4 left-4 z-10 rounded-lg bg-white/90 px-3 py-1.5 font-mono text-black text-sm">
-        {index + 1}
-      </span>
+      {import.meta.env.DEV && (
+        <span className="absolute top-4 left-4 z-10 rounded-lg bg-white/90 px-3 py-1.5 font-mono text-black text-sm">
+          {index + 1}
+        </span>
+      )}
       <img
         alt={pin.alt_text || pin.title || `Pin ${index + 1}`}
         className="h-screen w-screen object-contain"

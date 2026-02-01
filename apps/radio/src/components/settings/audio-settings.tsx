@@ -27,6 +27,7 @@ import {
   setInputDevice,
   setMainOutputDevice,
 } from "@/lib/collections";
+import { applyCueOutputDevice, applyMainOutputDevice } from "@/lib/dj-actions";
 
 /**
  * Audio settings panel for the main settings form.
@@ -116,21 +117,26 @@ export function AudioSettings() {
     }
   }, [loadDevices]);
 
-  const handleMainOutputChange = (value: string) => {
+  const handleMainOutputChange = async (value: string) => {
     setMainOutputId(value);
     setMainOutputDevice(value);
+    // Apply to audio routing
+    await applyMainOutputDevice(value);
   };
 
-  const handleCueOutputChange = (value: string) => {
+  const handleCueOutputChange = async (value: string) => {
     const newValue = value === "same" ? null : value;
     setCueOutputId(newValue);
     setCueOutputDevice(newValue);
+    // Apply to audio routing
+    await applyCueOutputDevice(newValue);
   };
 
   const handleInputDeviceChange = (value: string) => {
     const newValue = value === "none" ? null : value;
     setInputDeviceId(newValue);
     setInputDevice(newValue);
+    // Input device selection will be used when starting device source
   };
 
   return (

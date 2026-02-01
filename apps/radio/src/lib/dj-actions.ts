@@ -12,10 +12,13 @@ import {
   type CueBus,
   createCueBus,
   createDefaultEffectConfig,
+  createOutputRouter,
   getAudioContext,
+  type OutputRouter,
   type Radio,
 } from "@/lib/audio";
 import {
+  getAudioSettings,
   getDeckA,
   getDeckB,
   getMixer,
@@ -110,6 +113,86 @@ export const getCueBus = (audioContext: AudioContext): CueBus => {
  * Check if CueBus is initialized
  */
 export const isCueBusInitialized = (): boolean => cueBus !== null;
+
+// Lazy initialization of OutputRouter for device selection
+let outputRouter: OutputRouter | null = null;
+
+/**
+ * Get or create the OutputRouter instance
+ */
+const getOutputRouter = (): OutputRouter | null => {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const context = getAudioContext();
+  if (!context) {
+    return null;
+  }
+
+  if (!outputRouter) {
+    outputRouter = createOutputRouter(context, {
+      onError: (error) => {
+        console.error("[DjActions] OutputRouter error:", error);
+        setDjError(error.message);
+      },
+    });
+  }
+
+  return outputRouter;
+};
+
+/**
+ * Apply main output device setting
+ * Called when user changes the main output in settings
+ */
+export async function applyMainOutputDevice(deviceId: string): Promise<void> {
+  const router = getOutputRouter();
+  if (router) {
+    await router.setMainOutput(deviceId);
+  }
+}
+
+/**
+ * Apply CUE output device setting
+ * Called when user changes the CUE output in settings
+ */
+export async function applyCueOutputDevice(
+  deviceId: string | null
+): Promise<void> {
+  const router = getOutputRouter();
+  if (router) {
+    await router.setCueOutput(deviceId);
+  }
+}
+
+// Track if we've initialized audio devices from settings
+let audioDevicesInitialized = false;
+
+/**
+ * Initialize audio output devices from saved settings
+ * Called once when audio first plays
+ */
+async function initializeAudioDevices(): Promise<void> {
+  if (audioDevicesInitialized) {
+    return;
+  }
+
+  const router = getOutputRouter();
+  if (!router) {
+    return;
+  }
+
+  audioDevicesInitialized = true;
+
+  const settings = getAudioSettings();
+  if (settings.mainOutputId && settings.mainOutputId !== "default") {
+    await router.setMainOutput(settings.mainOutputId);
+  }
+  if (settings.cueOutputId) {
+    await router.setCueOutput(settings.cueOutputId);
+  }
+}
 
 const getSoundId = (radio: Radio, side: DeckSide): string =>
   `${side}_${radio.id}`;
@@ -408,6 +491,9 @@ async function setDeckRadio(deckId: DeckId, radio: Radio | null) {
 
         // Connect to CueBus for pre-fader monitoring
         connectDeckToCueBus(deckId, soundId);
+
+        // Initialize audio output devices from saved settings
+        initializeAudioDevices();
       }
 
       // Detect track end

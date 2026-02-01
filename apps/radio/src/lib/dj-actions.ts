@@ -161,6 +161,8 @@ export async function applyMainOutputDevice(deviceId: string): Promise<void> {
 export async function applyCueOutputDevice(
   deviceId: string | null
 ): Promise<void> {
+  console.info("[DjActions] applyCueOutputDevice:", deviceId);
+
   // Apply to OutputRouter for tracking
   const router = getOutputRouter();
   if (router) {
@@ -170,7 +172,10 @@ export async function applyCueOutputDevice(
   // Apply to CueBus for actual audio routing
   const bus = ensureCueBus();
   if (bus) {
+    console.info("[DjActions] Applying CUE output to CueBus");
     await bus.setCueOutputDevice(deviceId);
+  } else {
+    console.warn("[DjActions] CueBus not available for CUE output");
   }
 }
 
@@ -340,19 +345,26 @@ const cueBusConnections = new Map<string, GainNode>();
  * This should be called after audio starts playing
  */
 function connectDeckToCueBus(deckId: DeckId, soundId: string): void {
+  console.info(
+    `[DjActions] connectDeckToCueBus: ${deckId}, soundId: ${soundId}`
+  );
+
   const bus = ensureCueBus();
   if (!bus) {
+    console.warn("[DjActions] CueBus not available yet");
     return;
   }
 
   const manager = getAudioManager();
   const preFaderNode = manager.getPreFaderNode(soundId);
   if (!preFaderNode) {
+    console.warn(`[DjActions] No preFaderNode for soundId: ${soundId}`);
     return;
   }
 
   // Check if already connected
   if (cueBusConnections.has(soundId)) {
+    console.info(`[DjActions] Already connected to CueBus: ${soundId}`);
     return;
   }
 
@@ -362,6 +374,7 @@ function connectDeckToCueBus(deckId: DeckId, soundId: string): void {
   // Connect pre-fader output to CUE input
   preFaderNode.connect(cueInput);
   cueBusConnections.set(soundId, cueInput);
+  console.info(`[DjActions] Connected ${deckId} preFader to CueBus input`);
 
   // Restore CUE enabled state from mixer
   const mixer = getMixer();

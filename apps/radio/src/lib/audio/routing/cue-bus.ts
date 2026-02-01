@@ -88,9 +88,10 @@ export class CueBus {
   private readonly cueGain: GainNode; // CUE level in headphones
   private readonly mixGain: GainNode; // MIX level in headphones
 
-  // Reserved for future split cue implementation
-  // private readonly splitter: ChannelSplitterNode | null = null;
-  // private readonly merger: ChannelMergerNode | null = null;
+  // Split cue mode nodes (L=CUE, R=MIX)
+  private readonly splitMerger: ChannelMergerNode;
+  private readonly cueMono: GainNode; // Mono CUE for left channel
+  private readonly mixMono: GainNode; // Mono MIX for right channel
 
   // Per-deck CUE sends
   private readonly deckSends = new Map<string, DeckCueSend>();
@@ -126,6 +127,12 @@ export class CueBus {
     const outputContext = cueContext ?? mainContext;
     this.cueGain = outputContext.createGain();
     this.mixGain = outputContext.createGain();
+
+    // Create split cue nodes (for L=CUE, R=MIX mode)
+    // Merger combines two mono signals into stereo (input 0 = L, input 1 = R)
+    this.splitMerger = mainContext.createChannelMerger(2);
+    this.cueMono = mainContext.createGain();
+    this.mixMono = mainContext.createGain();
 
     // Set initial blend (50/50)
     this.applyBlend();
@@ -180,6 +187,7 @@ export class CueBus {
     // Return existing input node if already registered (preserves CUE state)
     const existing = this.deckSends.get(deckId);
     if (existing) {
+      console.info(`[CueBus] Deck ${deckId} already registered, reusing input`);
       return existing.inputNode;
     }
 
@@ -202,6 +210,8 @@ export class CueBus {
     };
 
     this.deckSends.set(deckId, send);
+
+    console.info(`[CueBus] Registered deck ${deckId} for CUE monitoring`);
 
     return inputNode;
   }
@@ -233,6 +243,10 @@ export class CueBus {
     // Smoothly ramp gain to avoid clicks
     const now = this.context.currentTime;
     send.gain.gain.setTargetAtTime(enabled ? 1 : 0, now, 0.01);
+
+    console.info(
+      `[CueBus] CUE ${enabled ? "enabled" : "disabled"} for ${deckId}, mode: ${this._mode}, cueDeviceId: ${this._cueDeviceId}`
+    );
 
     this.callbacks.onDeckCueChange?.(deckId, enabled);
   }
@@ -278,11 +292,15 @@ export class CueBus {
    * @param deviceId - The output device ID, or null to use split cue mode
    */
   async setCueOutputDevice(deviceId: string | null): Promise<void> {
+    console.info("[CueBus] setCueOutputDevice called with:", deviceId);
+
     // Cleanup existing CUE output
     this.cleanupCueOutput();
 
     if (!(deviceId && isSinkIdSupported())) {
-      // No separate CUE device - use split cue mode
+      console.info(
+        "[CueBus] No deviceId or setSinkId not supported, using split mode"
+      );
       this._cueDeviceId = null;
       this._mode = "split";
       this.reconnectOutputGraph();
@@ -295,16 +313,15 @@ export class CueBus {
     try {
       // Create MediaStreamDestination for CUE audio
       this._cueMediaStreamDest = this.context.createMediaStreamDestination();
+      console.info("[CueBus] Created MediaStreamDestination");
 
-      // Route CUE bus to MediaStream
-      // Disconnect from previous destination first
-      safeDisconnect(this.cueGain, "CueBus.setCueOutputDevice");
-      this.cueSumNode.connect(this.cueGain);
-      this.cueGain.connect(this._cueMediaStreamDest);
+      // Disconnect CUE sum from any previous connections
+      safeDisconnect(this.cueSumNode, "CueBus.setCueOutputDevice.cueSumNode");
 
-      // Also route MIX to MediaStream for CUE/MIX blend
-      safeDisconnect(this.mixGain, "CueBus.setCueOutputDevice");
-      this.mixGain.connect(this._cueMediaStreamDest);
+      // Route CUE bus directly to MediaStream (simple path, no blend for now)
+      // This ensures CUE audio gets to the headphone output
+      this.cueSumNode.connect(this._cueMediaStreamDest);
+      console.info("[CueBus] Connected cueSumNode to MediaStreamDestination");
 
       // Create audio element to play the MediaStream
       this._cueAudioElement = new Audio();
@@ -312,15 +329,18 @@ export class CueBus {
 
       // Set the output device on the audio element
       if ("setSinkId" in this._cueAudioElement) {
+        console.info("[CueBus] Setting sinkId to:", deviceId);
         await (
           this._cueAudioElement as HTMLAudioElement & {
             setSinkId: (id: string) => Promise<void>;
           }
         ).setSinkId(deviceId);
+        console.info("[CueBus] setSinkId success");
       }
 
       // Start playback
       await this._cueAudioElement.play();
+      console.info("[CueBus] CUE audio element playing");
 
       this.callbacks.onModeChange?.("dual");
     } catch (error) {
@@ -360,8 +380,12 @@ export class CueBus {
    */
   private reconnectOutputGraph(): void {
     // Disconnect current connections
+    safeDisconnect(this.cueSumNode, "CueBus.reconnectOutputGraph");
     safeDisconnect(this.cueGain, "CueBus.reconnectOutputGraph");
     safeDisconnect(this.mixGain, "CueBus.reconnectOutputGraph");
+    safeDisconnect(this.cueMono, "CueBus.reconnectOutputGraph");
+    safeDisconnect(this.mixMono, "CueBus.reconnectOutputGraph");
+    safeDisconnect(this.splitMerger, "CueBus.reconnectOutputGraph");
 
     // Reconnect based on mode
     this.connectOutputGraph();
@@ -390,6 +414,9 @@ export class CueBus {
     safeDisconnect(this.cueSumNode, "CueBus.cleanup");
     safeDisconnect(this.cueGain, "CueBus.cleanup");
     safeDisconnect(this.mixGain, "CueBus.cleanup");
+    safeDisconnect(this.cueMono, "CueBus.cleanup");
+    safeDisconnect(this.mixMono, "CueBus.cleanup");
+    safeDisconnect(this.splitMerger, "CueBus.cleanup");
   }
 
   /**
@@ -419,21 +446,38 @@ export class CueBus {
    * Set up the output routing graph
    */
   private connectOutputGraph(): void {
-    // Simple and direct routing: CUE + MIX blend to destination
-    // For split/single output mode, this goes to the main AudioContext destination
-    // For dual mode, setCueOutputDevice handles routing to separate device
+    if (this._mode === "split") {
+      // Split cue mode: L=CUE, R=MIX on single stereo output
+      // Route CUE (pre-fader deck audio) to left channel
+      this.cueSumNode.connect(this.cueMono);
+      this.cueMono.connect(this.splitMerger, 0, 0); // Input 0 to merger channel 0 (L)
 
-    this.cueSumNode.connect(this.cueGain);
-    this.cueGain.connect(this.context.destination);
+      // Route MIX to right channel (via mixMono which will get input from connectMainMix)
+      this.mixMono.connect(this.splitMerger, 0, 1); // Input 0 to merger channel 1 (R)
 
-    // MIX gain also connects to destination for blending
-    // (mainMix is connected to mixGain via connectMainMix when available)
-    this.mixGain.connect(this.context.destination);
+      // Merger to destination
+      this.splitMerger.connect(this.context.destination);
 
-    console.info(
-      "[CueBus] Output graph connected to destination, mode:",
-      this._mode
-    );
+      console.info("[CueBus] Split cue mode: L=CUE, R=MIX");
+    } else {
+      // Dual mode: separate CUE output device handled by setCueOutputDevice
+      // This path is for when we have a separate AudioContext for CUE
+      this.cueSumNode.connect(this.cueGain);
+      this.cueGain.connect(this.context.destination);
+
+      // MIX gain also connects to destination for blending
+      this.mixGain.connect(this.context.destination);
+
+      console.info("[CueBus] Dual output mode connected");
+    }
+  }
+
+  /**
+   * Get the mix input node for split cue mode
+   * Connect the main mix output here for split cue (R channel)
+   */
+  get mixInput(): GainNode {
+    return this.mixMono;
   }
 }
 

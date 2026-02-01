@@ -92,8 +92,8 @@ export const getEventDateStats = query({
 });
 
 /**
- * Reprocess ALL posts to fix incorrect event_dates
- * Use this when existing event_date values are wrong and need recalculation
+ * Reprocess ALL posts with multi-date extraction
+ * Extracts all event dates from captions and updates posts
  *
  * @param limit - Maximum number of posts to process per run
  * @param dryRun - If true, only report what would be changed
@@ -117,6 +117,7 @@ export const reprocessAllEventDates = action({
 				processed: 0,
 				updated: 0,
 				changed: 0,
+				multiDatePosts: 0,
 				isDone: true,
 				continueCursor: null,
 				message: "No posts to process",
@@ -125,52 +126,48 @@ export const reprocessAllEventDates = action({
 
 		let updated = 0;
 		let changed = 0;
+		let multiDatePosts = 0;
 		const changes: Array<{
 			id: string;
 			shortcode: string;
-			oldDate: number | undefined;
-			newDate: number;
-			oldDateStr: string;
-			newDateStr: string;
-			diff: string;
+			dateCount: number;
+			dates: string[];
 		}> = [];
 
 		// Import date extractor dynamically
-		const { getEventTimestamp } = await import("../lib/dateExtractor");
+		const { extractAllEventDates } = await import("../lib/dateExtractor");
 
 		for (const post of result.page) {
-			// Extract event date from caption using post timestamp as reference
-			const newEventDate = getEventTimestamp(post.caption, post.timestamp);
+			// Extract ALL event dates from caption
+			const extraction = extractAllEventDates(post.caption, post.timestamp);
 			const oldEventDate = post.event_date;
 
-			// Check if the date changed
-			const dateChanged = oldEventDate !== newEventDate;
+			// Check if anything changed
+			const primaryChanged = oldEventDate !== extraction.primaryDate;
+			const hasMultipleDates = extraction.dates.length > 1;
 
-			if (dateChanged) {
+			if (hasMultipleDates) {
+				multiDatePosts++;
+			}
+
+			if (primaryChanged || hasMultipleDates) {
 				changed++;
-				const oldDateStr = oldEventDate
-					? new Date(oldEventDate).toISOString().split("T")[0]
-					: "undefined";
-				const newDateStr = new Date(newEventDate).toISOString().split("T")[0];
-
-				// Calculate difference in days
-				const diffMs = oldEventDate ? newEventDate - oldEventDate : 0;
-				const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
 
 				changes.push({
 					id: post._id,
 					shortcode: post.shortcode,
-					oldDate: oldEventDate,
-					newDate: newEventDate,
-					oldDateStr,
-					newDateStr,
-					diff: diffDays !== 0 ? `${diffDays} days` : "new",
+					dateCount: extraction.dates.length,
+					dates: extraction.dates.map(
+						(ts) => new Date(ts).toISOString().split("T")[0],
+					),
 				});
 
 				if (!dryRun) {
-					await ctx.runMutation(components.instarip.posts.updateEventDate, {
+					await ctx.runMutation(components.instarip.posts.updateEventDates, {
 						id: post._id,
-						event_date: newEventDate,
+						event_date: extraction.primaryDate,
+						event_dates: extraction.dates,
+						event_period: extraction.period ?? undefined,
 					});
 					updated++;
 				}
@@ -181,6 +178,7 @@ export const reprocessAllEventDates = action({
 			processed: result.page.length,
 			updated,
 			changed,
+			multiDatePosts,
 			dryRun,
 			isDone: result.isDone,
 			continueCursor: result.continueCursor,

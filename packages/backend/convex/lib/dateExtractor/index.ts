@@ -24,8 +24,10 @@
  * ```
  */
 
+export type { MultiDateResult } from "./extractor";
 export {
 	extractAllDates,
+	extractAllEventDates,
 	extractEventDate,
 	getEventDateRange,
 	getEventTimestamp,

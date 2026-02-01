@@ -488,6 +488,18 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         any,
         Name
       >;
+      updateEventDates: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          event_date: number;
+          event_dates: Array<number>;
+          event_period?: { end: number; start: number };
+          id: string;
+        },
+        any,
+        Name
+      >;
       upsertPost: FunctionReference<
         "mutation",
         "internal",

@@ -565,6 +565,31 @@ export const updateEventDate = mutation({
 });
 
 /**
+ * Update all event date fields for a post (multi-date support)
+ * Used by backfill operations
+ */
+export const updateEventDates = mutation({
+	args: {
+		id: v.id("posts"),
+		event_date: v.number(),
+		event_dates: v.array(v.number()),
+		event_period: v.optional(
+			v.object({
+				start: v.number(),
+				end: v.number(),
+			}),
+		),
+	},
+	handler: async (ctx, { id, event_date, event_dates, event_period }) => {
+		const post = await ctx.db.get(id);
+		if (!post) {
+			throw new Error(`Post ${id} not found`);
+		}
+		await ctx.db.patch(id, { event_date, event_dates, event_period });
+	},
+});
+
+/**
  * Get posts that need event_date backfill
  * Returns posts where event_date is undefined
  *

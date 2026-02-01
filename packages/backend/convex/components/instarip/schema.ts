@@ -83,8 +83,17 @@ export default defineSchema({
 		),
 		/** Timestamp in milliseconds (UTC) - when the post was published on Instagram */
 		timestamp: v.number(),
-		/** Event date in milliseconds (UTC) - when the event occurs (if applicable) */
+		/** Event date in milliseconds (UTC) - primary event date (first/main) */
 		event_date: v.optional(v.number()),
+		/** All event dates in milliseconds (UTC) - for multi-event posts */
+		event_dates: v.optional(v.array(v.number())),
+		/** Event period spanning all dates (start = first, end = last) */
+		event_period: v.optional(
+			v.object({
+				start: v.number(),
+				end: v.number(),
+			}),
+		),
 		/** Instagram location data (optional - null if post has no location tag) */
 		location: v.optional(
 			v.object({

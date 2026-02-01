@@ -599,6 +599,17 @@ export declare const components: {
         { event_date: number; id: string },
         any
       >;
+      updateEventDates: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          event_date: number;
+          event_dates: Array<number>;
+          event_period?: { end: number; start: number };
+          id: string;
+        },
+        any
+      >;
       upsertPost: FunctionReference<
         "mutation",
         "internal",

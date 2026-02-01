@@ -321,3 +321,196 @@ export function getEventDateRange(
 		end: result.date.end,
 	};
 }
+
+/**
+ * Multi-date extraction result
+ */
+export type MultiDateResult = {
+	/** All extracted event dates (sorted chronologically) */
+	dates: number[];
+	/** Primary date for backward compatibility (first date or fallback) */
+	primaryDate: number;
+	/** Event period spanning all dates */
+	period: { start: number; end: number } | null;
+};
+
+/**
+ * Clean caption by removing time patterns and opening hours
+ * This prevents false positives like "10.00–18.00" being parsed as dates
+ */
+function cleanCaptionForDateExtraction(caption: string): string {
+	return (
+		caption
+			// Time ranges: 10.00–18.00, 18:30-22:00
+			.replace(/\d{1,2}[.:]\d{2}\s*[–-]\s*\d{1,2}[.:]\d{2}/g, " ")
+			// Weekday abbreviations + times: Mar.-Dom. 10.00, Lun-Ven 9:00
+			.replace(
+				/\b(lun|mar|mer|gio|ven|sab|dom)\.?\s*[–-]?\s*(lun|mar|mer|gio|ven|sab|dom)?\.?\s+\d{1,2}[.:]/gi,
+				" ",
+			)
+			// Time mentions: h18:30, alle 21.00, ore 22
+			.replace(/\b(h|ore|alle)\s*\d{1,2}([.:]\d{2})?/gi, " ")
+	);
+}
+
+/**
+ * Check if text should be blacklisted from date extraction
+ */
+function isBlacklistedDateText(text: string): boolean {
+	const t = text.trim().toLowerCase();
+	// Standalone months
+	if (
+		/^(gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre)\s*$/.test(
+			t,
+		)
+	) {
+		return true;
+	}
+	// Duration patterns
+	if (/^(un|due|tre|circa)?\s*(ann|mes|settiman)/i.test(t)) return true;
+	// Pure times
+	if (/^\d{1,2}[.:]\d{2}/.test(t)) return true;
+	// Standalone weekday abbreviations
+	if (/^(lun|mar|mer|gio|ven|sab|dom)\.?\s*$/.test(t)) return true;
+	// Standalone years
+	if (/^\d{4}\s*$/.test(t)) return true;
+	return false;
+}
+
+/**
+ * Extract ALL event dates from a caption (for multi-event posts)
+ *
+ * This function handles:
+ * - Multiple events in same post (e.g., "GIOVEDÌ 22" and "GIOVEDÌ 29")
+ * - Calendar-style posts with multiple dates
+ * - European date formats (DD/MM/YYYY)
+ * - Deadline patterns ("fino al 28/06/2026")
+ *
+ * @param caption - The Instagram post caption
+ * @param postTimestamp - The Instagram post timestamp (milliseconds)
+ * @returns MultiDateResult with all dates, primary date, and period
+ *
+ * @example
+ * ```ts
+ * const result = extractAllEventDates(
+ *   "GIOVEDÌ 22 alle 18:30\nGIOVEDÌ 29 alle 18:30",
+ *   postTimestamp
+ * );
+ * // result.dates = [timestamp_jan22, timestamp_jan29]
+ * // result.primaryDate = timestamp_jan22
+ * // result.period = { start: timestamp_jan22, end: timestamp_jan29 }
+ * ```
+ */
+export function extractAllEventDates(
+	caption: string,
+	postTimestamp: number,
+): MultiDateResult {
+	const ref = new Date(postTimestamp);
+	const dates: number[] = [];
+	const seen = new Set<string>();
+
+	const cleaned = cleanCaptionForDateExtraction(caption);
+
+	// 1. Full pattern: weekday + number + month name
+	// e.g., "domenica 8 febbraio", "sabato 21 marzo"
+	const fullDatePattern =
+		/(lunedì|martedì|mercoledì|giovedì|venerdì|sabato|domenica)\s+(\d{1,2})\s+(gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre)/gi;
+
+	for (const m of cleaned.matchAll(fullDatePattern)) {
+		const result = italianParser.parse(m[0], ref, { forwardDate: true })[0];
+		if (result) {
+			const ts = result.start.date().getTime();
+			const key = new Date(ts).toISOString().split("T")[0];
+			if (!seen.has(key)) {
+				seen.add(key);
+				dates.push(ts);
+			}
+		}
+	}
+
+	// 2. Short pattern: weekday + number (use month context from caption)
+	// e.g., "GIOVEDÌ 22", "GIOVEDÌ 29" with "GENNAIO" somewhere in text
+	if (dates.length === 0) {
+		const monthMatch = cleaned.match(
+			/(gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre)/i,
+		);
+		const monthContext = monthMatch?.[0] ?? "";
+
+		const shortPattern =
+			/(lunedì|martedì|mercoledì|giovedì|venerdì|sabato|domenica)\s+(\d{1,2})/gi;
+
+		for (const m of cleaned.matchAll(shortPattern)) {
+			let text = m[0];
+			if (monthContext) {
+				text += ` ${monthContext}`;
+			}
+
+			const result = italianParser.parse(text, ref, { forwardDate: true })[0];
+			if (result) {
+				const ts = result.start.date().getTime();
+				const key = new Date(ts).toISOString().split("T")[0];
+				if (!seen.has(key)) {
+					seen.add(key);
+					dates.push(ts);
+				}
+			}
+		}
+	}
+
+	// 3. European date format: DD/MM/YYYY or DD.MM.YYYY
+	const euroDatePattern = /(\d{1,2})[/.](\d{1,2})[/.](\d{4})/g;
+
+	for (const m of caption.matchAll(euroDatePattern)) {
+		const day = Number.parseInt(m[1], 10);
+		const month = Number.parseInt(m[2], 10);
+		const year = Number.parseInt(m[3], 10);
+
+		if (day >= 1 && day <= 31 && month >= 1 && month <= 12) {
+			const date = new Date(year, month - 1, day, 12);
+			const ts = date.getTime();
+			const key = date.toISOString().split("T")[0];
+			if (!seen.has(key)) {
+				seen.add(key);
+				dates.push(ts);
+			}
+		}
+	}
+
+	// 4. Chrono fallback for other patterns (only certain dates)
+	const chronoResults = italianParser.parse(cleaned, ref, {
+		forwardDate: true,
+	});
+
+	for (const r of chronoResults) {
+		if (isBlacklistedDateText(r.text)) continue;
+		if (!r.start.isCertain("day") || !r.start.isCertain("month")) continue;
+
+		const ts = r.start.date().getTime();
+		const key = new Date(ts).toISOString().split("T")[0];
+		if (!seen.has(key)) {
+			seen.add(key);
+			dates.push(ts);
+		}
+	}
+
+	// Sort chronologically
+	dates.sort((a, b) => a - b);
+
+	// Calculate period
+	const period =
+		dates.length > 0
+			? {
+					start: dates[0],
+					end: dates[dates.length - 1],
+				}
+			: null;
+
+	// Primary date is the first one, or fallback to post timestamp
+	const primaryDate = dates[0] ?? postTimestamp;
+
+	return {
+		dates,
+		primaryDate,
+		period,
+	};
+}

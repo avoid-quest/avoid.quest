@@ -963,6 +963,26 @@ export class AudioManager {
     return instance?.nodes?.preFaderSend ?? null;
   }
 
+  /**
+   * Get the post-fader (post-crossfader) audio node for a sound
+   * This is the gain node where channel volume and crossfader are applied
+   * Used for MIX monitoring in headphones (hear what the audience hears)
+   * Returns null if the sound doesn't exist or hasn't been initialized
+   */
+  getPostFaderNode(soundId: string): GainNode | null {
+    const instance = this.sounds.get(soundId);
+    return instance?.nodes?.gain ?? null;
+  }
+
+  /**
+   * Get the WorkletManager for a sound
+   * This provides access to the master output node for CUE/MIX monitoring
+   * Returns null if the sound doesn't exist or worklet isn't initialized
+   */
+  getWorkletManager(soundId: string): WorkletManager | null {
+    return this.workletManagers.get(soundId) ?? null;
+  }
+
   // ============================================
   // Cleanup
   // ============================================

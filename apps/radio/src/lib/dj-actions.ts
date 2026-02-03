@@ -71,12 +71,10 @@ export const getCueBus = (audioContext: AudioContext): CueBus => {
     throw new Error("CueBus can only be used in browser environment");
   }
   if (!cueBus) {
-    // For now, use split cue mode (L=CUE, R=MIX)
-    // Dual output mode requires OutputRouter integration
-    cueBus = createCueBus(audioContext, null, {
-      onCueBlendChange: (blend) => {
+    cueBus = createCueBus(audioContext, {
+      onHeadphoneVolumeChange: (volume) => {
         updateMixer((draft) => {
-          draft.cueBlend = blend;
+          draft.headphoneVolume = volume;
         });
       },
       onDeckCueChange: (deckId, enabled) => {
@@ -97,7 +95,9 @@ export const getCueBus = (audioContext: AudioContext): CueBus => {
     // Restore state from persisted mixer
     const mixer = getMixer();
     if (mixer) {
-      cueBus.setCueMixBlend(mixer.cueBlend);
+      if (mixer.headphoneVolume !== undefined) {
+        cueBus.setHeadphoneVolume(mixer.headphoneVolume);
+      }
       if (mixer.deckACueEnabled) {
         cueBus.setCueEnabled("deck-a", true);
       }
@@ -187,28 +187,40 @@ let audioDevicesInitialized = false;
  * Called once when audio first plays
  */
 async function initializeAudioDevices(): Promise<void> {
+  // Set flag immediately to prevent re-entrancy race condition
   if (audioDevicesInitialized) {
     return;
   }
+  audioDevicesInitialized = true;
 
   const router = getOutputRouter();
   if (!router) {
+    // Reset flag on early return so we can retry later
+    audioDevicesInitialized = false;
     return;
   }
 
-  audioDevicesInitialized = true;
-
-  const settings = getAudioSettings();
-  if (settings.mainOutputId && settings.mainOutputId !== "default") {
-    await router.setMainOutput(settings.mainOutputId);
-  }
-  if (settings.cueOutputId) {
-    await router.setCueOutput(settings.cueOutputId);
-    // Also set up CueBus for CUE output
-    const bus = ensureCueBus();
-    if (bus) {
-      await bus.setCueOutputDevice(settings.cueOutputId);
+  try {
+    const settings = getAudioSettings();
+    if (settings.mainOutputId && settings.mainOutputId !== "default") {
+      await router.setMainOutput(settings.mainOutputId);
     }
+    if (settings.cueOutputId) {
+      await router.setCueOutput(settings.cueOutputId);
+      // Also set up CueBus for CUE output
+      const bus = ensureCueBus();
+      if (bus) {
+        await bus.setCueOutputDevice(settings.cueOutputId);
+      }
+    }
+  } catch (error) {
+    // Surface initialization errors to user
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Failed to initialize audio devices";
+    console.error("[DjActions] initializeAudioDevices error:", error);
+    setDjError(message);
   }
 }
 
@@ -338,27 +350,22 @@ function applyStoredChannelStrip(
 }
 
 /**
- * Connect a deck's pre-fader audio to the CueBus for CUE monitoring
+ * Connect a deck's pre-fader audio node to the CueBus for CUE monitoring
  * This should be called after audio starts playing
  */
 function connectDeckToCueBus(deckId: DeckId, soundId: string): void {
-  console.info(`[DjActions] connectDeckToCueBus: ${deckId}, ${soundId}`);
-
   const bus = ensureCueBus();
   if (!bus) {
-    console.warn("[DjActions] CueBus not available");
     return;
   }
 
   const manager = getAudioManager();
-  const preFaderNode = manager.getPreFaderNode(soundId);
-  if (!preFaderNode) {
-    console.warn(`[DjActions] No preFaderNode for ${soundId}`);
-    return;
-  }
 
-  // Use the simplified connectPreFader method
-  bus.connectPreFader(deckId, preFaderNode);
+  // Connect pre-fader for CUE monitoring (raw audio, unaffected by crossfader)
+  const preFaderNode = manager.getPreFaderNode(soundId);
+  if (preFaderNode) {
+    bus.connectPreFader(deckId, preFaderNode);
+  }
 
   // Restore CUE enabled state from mixer
   const mixer = getMixer();
@@ -369,14 +376,6 @@ function connectDeckToCueBus(deckId: DeckId, soundId: string): void {
       bus.setCueEnabled(deckId, true);
     }
   }
-}
-
-/**
- * Disconnect a deck from the CueBus (no-op, CueBus handles connections internally)
- */
-function disconnectDeckFromCueBus(_soundId: string): void {
-  // CueBus now handles connections internally via connectPreFader
-  // Old connections are automatically replaced when new track loads
 }
 
 // Apply crossfade based on current mixer position
@@ -429,9 +428,8 @@ async function setDeckRadio(deckId: DeckId, radio: Radio | null) {
     config.setSubscriptionCleanup(null);
   }
 
-  // Cleanup existing sound
+  // Cleanup existing sound (CueBus handles disconnect internally via connectPreFader)
   if (runtime.soundId) {
-    disconnectDeckFromCueBus(runtime.soundId);
     await getAudioManager().cleanupSound(runtime.soundId);
   }
 
@@ -492,7 +490,9 @@ async function setDeckRadio(deckId: DeckId, radio: Radio | null) {
         connectDeckToCueBus(deckId, soundId);
 
         // Initialize audio output devices from saved settings
-        initializeAudioDevices();
+        initializeAudioDevices().catch((err) => {
+          console.error("[DjActions] initializeAudioDevices failed:", err);
+        });
       }
 
       // Detect track end
@@ -1029,19 +1029,16 @@ export function toggleDeckBCue() {
 }
 
 /**
- * Set CUE/MIX blend for headphones
- * 0 = only CUE (pre-fader deck audio)
- * 0.5 = both (default)
- * 1 = only MIX (main program audio)
+ * Set headphone volume (0-1)
+ * Independent volume control for CUE headphone output
  */
-export function setCueMixBlend(blend: number) {
+export function setHeadphoneVolume(volume: number) {
   const bus = ensureCueBus();
-  // Always update mixer state for persistence
   updateMixer((draft) => {
-    draft.cueBlend = blend;
+    draft.headphoneVolume = volume;
   });
   if (bus) {
-    bus.setCueMixBlend(blend);
+    bus.setHeadphoneVolume(volume);
   }
 }
 

@@ -13,12 +13,12 @@ type DjMixerProps = {
   radios?: Radio[];
   crossfadePosition: number;
   masterVolume: number;
-  cueBlend: number;
+  headphoneVolume: number;
   deckACueEnabled: boolean;
   deckBCueEnabled: boolean;
   onCrossfadeChange: (position: number) => void;
   onMasterVolumeChange: (volume: number) => void;
-  onCueBlendChange: (blend: number) => void;
+  onHeadphoneVolumeChange: (volume: number) => void;
   onDeckACueChange: (enabled: boolean) => void;
   onDeckBCueChange: (enabled: boolean) => void;
 };
@@ -31,12 +31,12 @@ export function DjMixer({
   radios = [],
   crossfadePosition,
   masterVolume,
-  cueBlend,
+  headphoneVolume,
   deckACueEnabled,
   deckBCueEnabled,
   onCrossfadeChange,
   onMasterVolumeChange,
-  onCueBlendChange,
+  onHeadphoneVolumeChange,
   onDeckACueChange,
   onDeckBCueChange,
 }: DjMixerProps) {
@@ -83,12 +83,12 @@ export function DjMixer({
 
         {/* CUE Controls */}
         <CueControls
-          cueBlend={cueBlend}
           deckACueEnabled={deckACueEnabled}
           deckBCueEnabled={deckBCueEnabled}
-          onCueBlendChange={onCueBlendChange}
+          headphoneVolume={headphoneVolume}
           onDeckACueChange={onDeckACueChange}
           onDeckBCueChange={onDeckBCueChange}
+          onHeadphoneVolumeChange={onHeadphoneVolumeChange}
         />
 
         {/* Divider */}

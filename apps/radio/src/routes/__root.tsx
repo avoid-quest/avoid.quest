@@ -14,7 +14,7 @@ import {
   Scripts,
 } from "@tanstack/react-router";
 import { HomeIcon } from "lucide-react";
-import { lazy, Suspense, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { InstallPrompt } from "@/components/pwa/install-prompt";
 import { SWRegister } from "@/components/pwa/sw-register";
 import { SyncDialog } from "@/components/settings/sync-dialog";
@@ -25,40 +25,6 @@ import {
   initializeCollections,
   type SyncChanges,
 } from "@/lib/collections";
-
-// Lazy load devtools only in development to avoid bundling in production
-const Devtools = lazy(async () => {
-  if (process.env.NODE_ENV !== "development") {
-    return { default: () => null as React.ReactElement | null };
-  }
-  const [
-    { TanStackDevtools },
-    { TanStackRouterDevtoolsPanel },
-    { ReactQueryDevtools },
-  ] = await Promise.all([
-    import("@tanstack/react-devtools"),
-    import("@tanstack/react-router-devtools"),
-    import("@tanstack/react-query-devtools"),
-  ]);
-  return {
-    default: () => (
-      <>
-        <TanStackDevtools
-          config={{
-            position: "bottom-right",
-          }}
-          plugins={[
-            {
-              name: "Tanstack Router",
-              render: <TanStackRouterDevtoolsPanel />,
-            },
-          ]}
-        />
-        <ReactQueryDevtools initialIsOpen={false} />
-      </>
-    ),
-  };
-});
 
 export const Route = createRootRoute({
   ssr: false,
@@ -231,11 +197,6 @@ function RootDocument({ children }: { children: React.ReactNode }) {
               )}
             </div>
           </ThemeProvider>
-          {process.env.NODE_ENV === "development" && (
-            <Suspense fallback={null}>
-              <Devtools />
-            </Suspense>
-          )}
         </QueryClientProvider>
         <Scripts />
       </body>

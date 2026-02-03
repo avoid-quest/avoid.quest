@@ -5,6 +5,7 @@
  * and CUE (headphone) output for DJ functionality.
  */
 
+export { isSinkIdSupported, safeDisconnectFrom } from "../utils.js";
 export {
   CueBus,
   type CueBusCallbacks,
@@ -12,10 +13,8 @@ export {
   type CueMode,
   createCueBus,
 } from "./cue-bus.js";
-
 export {
   createOutputRouter,
-  isSinkIdSupported,
   OutputRouter,
   type OutputRouterCallbacks,
   type OutputRouterState,

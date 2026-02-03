@@ -93,8 +93,4 @@ export default defineConfig({
     minify: "esbuild",
     sourcemap: false,
   },
-  // Optimize dependencies - exclude devtools from production builds
-  optimizeDeps: {
-    exclude: ["@tanstack/react-devtools", "@tanstack/react-router-devtools"],
-  },
 });

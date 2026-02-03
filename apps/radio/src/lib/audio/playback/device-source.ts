@@ -236,9 +236,12 @@ export class DeviceSource {
     const mergedConstraints = { ...DEFAULT_CONSTRAINTS, ...constraints };
 
     try {
+      // Use 'ideal' instead of 'exact' for device selection
+      // 'exact' throws NotFoundError if device is disconnected between enumeration and selection
+      // 'ideal' falls back to default device gracefully
       this.stream = await navigator.mediaDevices.getUserMedia({
         audio: {
-          deviceId: deviceId ? { exact: deviceId } : undefined,
+          deviceId: deviceId ? { ideal: deviceId } : undefined,
           echoCancellation: mergedConstraints.echoCancellation,
           noiseSuppression: mergedConstraints.noiseSuppression,
           autoGainControl: mergedConstraints.autoGainControl,

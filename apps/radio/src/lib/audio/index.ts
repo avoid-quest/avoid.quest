@@ -141,4 +141,5 @@ export {
   OutputRouter,
   type OutputRouterCallbacks,
   type OutputRouterState,
+  safeDisconnectFrom,
 } from "./routing/index.js";

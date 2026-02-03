@@ -1,94 +1,74 @@
 import { Button } from "@avoid.quest/ui/components/button";
 import { Slider } from "@avoid.quest/ui/components/slider";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@avoid.quest/ui/components/tooltip";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import { HeadphonesIcon } from "lucide-react";
+import { SettingsButton } from "@/components/settings/settings-button";
 
 type CueControlsProps = {
-  className?: string;
+  headphoneVolume: number;
   deckACueEnabled: boolean;
   deckBCueEnabled: boolean;
-  cueBlend: number;
+  onHeadphoneVolumeChange: (volume: number) => void;
   onDeckACueChange: (enabled: boolean) => void;
   onDeckBCueChange: (enabled: boolean) => void;
-  onCueBlendChange: (blend: number) => void;
 };
 
 /**
- * CUE monitoring controls for DJ headphone preview.
- * - CUE buttons enable pre-fader listening for each deck
- * - CUE/MIX blend slider controls the mix in headphones
+ * CUE controls - deck CUE buttons and headphone volume
  */
 export function CueControls({
-  className,
+  headphoneVolume,
   deckACueEnabled,
   deckBCueEnabled,
-  cueBlend,
+  onHeadphoneVolumeChange,
   onDeckACueChange,
   onDeckBCueChange,
-  onCueBlendChange,
 }: CueControlsProps) {
   return (
-    <div className={cn("flex items-center gap-2", className)}>
-      {/* Deck A CUE button */}
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            className={cn(
-              "h-7 gap-1 px-2",
-              deckACueEnabled && "bg-amber-600 hover:bg-amber-700"
-            )}
-            onClick={() => onDeckACueChange(!deckACueEnabled)}
-            size="sm"
-            variant={deckACueEnabled ? "default" : "outline"}
-          >
-            <HeadphonesIcon className="size-3.5" />
-            <span className="font-bold text-xs">A</span>
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">
-          <p>CUE Deck A (pre-fader listen)</p>
-        </TooltipContent>
-      </Tooltip>
-
-      {/* CUE/MIX blend slider */}
-      <div className="flex flex-1 items-center gap-1.5">
-        <span className="text-[10px] text-muted-foreground">CUE</span>
-        <Slider
-          className="h-1.5 flex-1"
-          max={100}
-          min={0}
-          onValueChange={([v]) => onCueBlendChange(v / 100)}
-          step={1}
-          value={[cueBlend * 100]}
-        />
-        <span className="text-[10px] text-muted-foreground">MIX</span>
+    <div className="flex flex-col gap-2">
+      {/* CUE Buttons */}
+      <div className="flex items-center justify-center gap-4">
+        <Button
+          className={cn(
+            "h-8 w-16 font-bold text-xs",
+            deckACueEnabled && "bg-orange-500 hover:bg-orange-600"
+          )}
+          onClick={() => onDeckACueChange(!deckACueEnabled)}
+          size="sm"
+          variant={deckACueEnabled ? "default" : "outline"}
+        >
+          CUE A
+        </Button>
+        <Button
+          className={cn(
+            "h-8 w-16 font-bold text-xs",
+            deckBCueEnabled && "bg-orange-500 hover:bg-orange-600"
+          )}
+          onClick={() => onDeckBCueChange(!deckBCueEnabled)}
+          size="sm"
+          variant={deckBCueEnabled ? "default" : "outline"}
+        >
+          CUE B
+        </Button>
+        <SettingsButton />
       </div>
 
-      {/* Deck B CUE button */}
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            className={cn(
-              "h-7 gap-1 px-2",
-              deckBCueEnabled && "bg-amber-600 hover:bg-amber-700"
-            )}
-            onClick={() => onDeckBCueChange(!deckBCueEnabled)}
-            size="sm"
-            variant={deckBCueEnabled ? "default" : "outline"}
-          >
-            <HeadphonesIcon className="size-3.5" />
-            <span className="font-bold text-xs">B</span>
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">
-          <p>CUE Deck B (pre-fader listen)</p>
-        </TooltipContent>
-      </Tooltip>
+      {/* Headphone Volume */}
+      <div className="flex items-center gap-2">
+        <HeadphonesIcon className="size-4 shrink-0 text-muted-foreground" />
+        <span className="shrink-0 text-muted-foreground text-xs">Phones</span>
+        <Slider
+          className="h-2 flex-1"
+          max={100}
+          min={0}
+          onValueChange={([v]) => onHeadphoneVolumeChange(v / 100)}
+          step={1}
+          value={[headphoneVolume * 100]}
+        />
+        <span className="w-9 shrink-0 text-right font-mono text-muted-foreground text-xs">
+          {Math.round(headphoneVolume * 100)}%
+        </span>
+      </div>
     </div>
   );
 }

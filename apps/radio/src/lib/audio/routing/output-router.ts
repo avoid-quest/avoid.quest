@@ -10,16 +10,7 @@ import {
   type AudioDeviceInfo,
   DeviceSource,
 } from "../playback/device-source.js";
-
-/**
- * Check if setSinkId is supported in the current browser
- */
-export function isSinkIdSupported(): boolean {
-  if (typeof AudioContext === "undefined") {
-    return false;
-  }
-  return "setSinkId" in AudioContext.prototype;
-}
+import { isSinkIdSupported } from "../utils.js";
 
 /**
  * Output routing state
@@ -54,6 +45,9 @@ export class OutputRouter {
   private _mainDeviceId = "default";
   private _cueDeviceId: string | null = null;
   private readonly _isSupported: boolean;
+
+  // Track pending close operation to prevent race conditions
+  private _cueContextClosePromise: Promise<void> | null = null;
 
   constructor(
     mainContext: AudioContext,
@@ -119,13 +113,15 @@ export class OutputRouter {
 
   /**
    * Set main output device (speakers/PA)
+   * Throws if the operation fails
    */
   async setMainOutput(deviceId: string): Promise<void> {
     if (!this._isSupported) {
-      this.callbacks.onError?.(
-        new Error("Output device selection not supported in this browser")
+      const error = new Error(
+        "Output device selection not supported in this browser (setSinkId unavailable)"
       );
-      return;
+      this.callbacks.onError?.(error);
+      throw error;
     }
 
     try {
@@ -139,6 +135,7 @@ export class OutputRouter {
       this.callbacks.onMainOutputChange?.(deviceId);
     } catch (error) {
       this.handleError("Failed to set main output device", error);
+      throw error;
     }
   }
 
@@ -149,17 +146,23 @@ export class OutputRouter {
   async setCueOutput(deviceId: string | null): Promise<void> {
     // Setting to null removes CUE output (same as main)
     if (deviceId === null) {
-      this.destroyCueContext();
+      await this.destroyCueContext();
       this._cueDeviceId = null;
       this.callbacks.onCueOutputChange?.(null);
       return;
     }
 
     if (!this._isSupported) {
-      this.callbacks.onError?.(
-        new Error("Output device selection not supported in this browser")
+      const error = new Error(
+        "Output device selection not supported in this browser (setSinkId unavailable). CUE output requires Chrome or Edge."
       );
-      return;
+      this.callbacks.onError?.(error);
+      throw error;
+    }
+
+    // Wait for any pending close operation before creating new context
+    if (this._cueContextClosePromise) {
+      await this._cueContextClosePromise;
     }
 
     try {
@@ -211,21 +214,33 @@ export class OutputRouter {
 
   /**
    * Destroy CUE context
+   * Returns a promise that resolves when the context is closed
    */
-  private destroyCueContext(): void {
+  private async destroyCueContext(): Promise<void> {
+    // Wait for any pending close operation to complete
+    if (this._cueContextClosePromise) {
+      await this._cueContextClosePromise;
+    }
+
     if (this.cueContext) {
-      this.cueContext.close().catch((e) => {
+      const contextToClose = this.cueContext;
+      this.cueContext = null;
+
+      // Track the close promise to prevent race conditions
+      this._cueContextClosePromise = contextToClose.close().catch((e) => {
         console.warn("[OutputRouter] Error closing CUE context:", e);
       });
-      this.cueContext = null;
+
+      await this._cueContextClosePromise;
+      this._cueContextClosePromise = null;
     }
   }
 
   /**
    * Cleanup resources
    */
-  cleanup(): void {
-    this.destroyCueContext();
+  async cleanup(): Promise<void> {
+    await this.destroyCueContext();
     this._mainDeviceId = "default";
     this._cueDeviceId = null;
   }

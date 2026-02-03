@@ -162,11 +162,9 @@ export class FileSource {
    */
   get isActive(): boolean {
     return (
-      this._status === "streaming" ||
-      this._status === "buffering" ||
-      (this._status !== "idle" &&
-        this._status !== "ended" &&
-        this._status !== "error")
+      this._status !== "idle" &&
+      this._status !== "ended" &&
+      this._status !== "error"
     );
   }
 
@@ -231,7 +229,18 @@ export class FileSource {
     this._status = "connecting";
 
     // Create MediaElementSource
-    this.source = this.context.createMediaElementSource(this.audio);
+    try {
+      this.source = this.context.createMediaElementSource(this.audio);
+    } catch (error) {
+      // InvalidStateError if the element already has a source, or other errors
+      this._status = "error";
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Failed to create media element source";
+      this.callbacks.onError?.(new Error(errorMessage));
+      throw error;
+    }
 
     // Wait for metadata to load
     await this.waitForMetadata(file);
@@ -282,6 +291,11 @@ export class FileSource {
   async play(): Promise<void> {
     if (this._status === "idle" || this._status === "error") {
       throw new Error("No file loaded - call loadFile() first");
+    }
+
+    // Reset position when playing from ended state
+    if (this._status === "ended") {
+      this.audio.currentTime = 0;
     }
 
     await this.audio.play();

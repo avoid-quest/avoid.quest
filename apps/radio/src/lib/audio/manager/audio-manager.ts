@@ -32,29 +32,7 @@ import {
   type Unsubscribe,
   WorkletManager,
 } from "../playback/index.js";
-
-/**
- * Safely disconnect an AudioNode, ignoring "already disconnected" errors
- * but logging unexpected errors.
- */
-export function safeDisconnect(node: AudioNode | null, context?: string): void {
-  if (!node) {
-    return;
-  }
-  try {
-    node.disconnect();
-  } catch (error) {
-    // Only ignore InvalidAccessError (already disconnected)
-    if (
-      !(error instanceof DOMException && error.name === "InvalidAccessError")
-    ) {
-      console.warn(
-        `[${context ?? "Audio"}] Unexpected disconnect error:`,
-        error
-      );
-    }
-  }
-}
+import { safeDisconnect } from "../utils.js";
 
 /**
  * Filter configuration for simple biquad filtering
@@ -471,10 +449,10 @@ export class AudioManager {
       },
     });
 
-    // Start capture
+    // Start capture (onActive callback fires when stream is ready)
     await instance.deviceSource.start(deviceId, constraints);
 
-    // Connect through the full audio graph
+    // Connect through the full audio graph (after start so output node exists)
     const graphConnected = await this.connectAudioGraph(instance);
     if (!graphConnected) {
       console.warn(
@@ -482,20 +460,8 @@ export class AudioManager {
       );
     }
 
-    // Set initial volume
+    // Set initial volume (after graph connection)
     this.setVolume(soundId, instance.volume);
-
-    // Mark as playing
-    instance.playing = true;
-    instance.loading = false;
-    this.notifyListeners(soundId, {
-      isPlaying: true,
-      isLoading: false,
-      isBuffering: false,
-      volume: instance.volume,
-      error: null,
-      hasEnded: false,
-    });
   }
 
   /**

@@ -670,7 +670,7 @@ function MobileDeckLayout({
   className,
 }: MobileDeckLayoutProps) {
   const tracks = isStreamingMetadata(metadata ?? undefined)
-    ? (metadata as BandcampMetadata | SoundCloudMetadata).tracks
+    ? metadata.tracks
     : undefined;
   return (
     <div className={cn("flex h-full min-h-0 flex-col", className)}>

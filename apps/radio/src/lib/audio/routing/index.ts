@@ -14,12 +14,6 @@ export {
   createCueBus,
 } from "./cue-bus.js";
 export {
-  createOutputDelay,
-  defaultOutputDelayConfig,
-  OutputDelay,
-  type OutputDelayConfig,
-} from "./output-delay.js";
-export {
   createOutputRouter,
   OutputRouter,
   type OutputRouterCallbacks,

@@ -16,8 +16,31 @@ export function isSinkIdSupported(): boolean {
 }
 
 /**
- * Safely disconnect an AudioNode, catching "not connected" errors
- * Re-throws unexpected errors for proper error handling
+ * Safely disconnect an AudioNode from all destinations,
+ * ignoring "already disconnected" errors.
+ */
+export function safeDisconnect(node: AudioNode | null, context?: string): void {
+  if (!node) {
+    return;
+  }
+  try {
+    node.disconnect();
+  } catch (error) {
+    if (
+      !(error instanceof DOMException && error.name === "InvalidAccessError")
+    ) {
+      console.warn(
+        `[${context ?? "Audio"}] Unexpected disconnect error:`,
+        error
+      );
+    }
+  }
+}
+
+/**
+ * Safely disconnect an AudioNode from a specific destination,
+ * catching "not connected" errors.
+ * Re-throws unexpected errors for proper error handling.
  *
  * @param source - The source AudioNode to disconnect
  * @param destination - The destination AudioNode to disconnect from

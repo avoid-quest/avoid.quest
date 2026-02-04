@@ -8,7 +8,6 @@
 
 import type {
   ChannelSelection,
-  DevicePermissionState,
   EffectConfig,
   EffectType,
   FilterConfig,
@@ -19,7 +18,6 @@ import {
   createCueBus,
   createDefaultEffectConfig,
   createOutputRouter,
-  DeviceSource,
   getAudioContext,
   type OutputRouter,
   type Radio,
@@ -37,7 +35,8 @@ import {
   updateDeckB,
   updateMixer,
 } from "@/lib/collections";
-import type { DeviceInputMetadata } from "@/lib/platform-types";
+import type { DeckRecord } from "@/lib/collections/dj-state";
+import { isDeviceInputMetadata } from "@/lib/platform-types";
 import {
   getDeckARuntime,
   getDeckASubscriptionCleanup,
@@ -56,6 +55,22 @@ import {
 
 export type DeckSide = "left" | "right";
 type DeckId = "deck-a" | "deck-b";
+
+/**
+ * Typed accessor for DeckRecord.effects.
+ * The Zod schema uses `type: z.string()` + `.passthrough()`, so the inferred type
+ * has `type: string` instead of `EffectType`. At runtime the values are valid
+ * EffectConfig objects — this helper bridges the type gap without `as` casts.
+ */
+function getDeckEffects(deck: DeckRecord): EffectConfig[] {
+  // @ts-expect-error -- Zod infers `type: string` but runtime values are valid EffectType
+  return deck.effects;
+}
+
+function getDeckRadio(deck: DeckRecord): Radio | null {
+  // @ts-expect-error -- Zod-inferred type is close but not identical to Radio
+  return deck.radio;
+}
 
 // Lazy initialization of AudioManager to avoid SSR issues
 let audioManager: AudioManager | null = null;
@@ -249,9 +264,22 @@ const getSoundId = (radio: Radio, side: DeckSide): string =>
   `${side}_${radio.id}`;
 
 // Deck-specific function mappings
-const deckConfig = {
+const deckConfig: Record<
+  DeckId,
+  {
+    side: DeckSide;
+    getDeck: typeof getDeckA;
+    getRuntime: typeof getDeckARuntime;
+    getSubscriptionCleanup: typeof getDeckASubscriptionCleanup;
+    setSubscriptionCleanup: typeof setDeckASubscriptionCleanup;
+    setSoundId: typeof setDeckASoundId;
+    setRuntimeState: typeof setDeckARuntimeState;
+    resetRuntime: typeof resetDeckARuntime;
+    updateDeck: typeof updateDeckA;
+  }
+> = {
   "deck-a": {
-    side: "left" as DeckSide,
+    side: "left",
     getDeck: getDeckA,
     getRuntime: getDeckARuntime,
     getSubscriptionCleanup: getDeckASubscriptionCleanup,
@@ -262,7 +290,7 @@ const deckConfig = {
     updateDeck: updateDeckA,
   },
   "deck-b": {
-    side: "right" as DeckSide,
+    side: "right",
     getDeck: getDeckB,
     getRuntime: getDeckBRuntime,
     getSubscriptionCleanup: getDeckBSubscriptionCleanup,
@@ -272,7 +300,7 @@ const deckConfig = {
     resetRuntime: resetDeckBRuntime,
     updateDeck: updateDeckB,
   },
-} as const;
+};
 
 // Helper to find next track in a platform playlist/album
 export const findNextTrack = (
@@ -503,8 +531,8 @@ async function setDeckRadio(deckId: DeckId, radio: Radio | null) {
         hasAppliedChannelStrip = true;
         applyStoredEffectsAndFilters(
           soundId,
-          currentDeck.effects as unknown as EffectConfig[],
-          currentDeck.filter as FilterConfig
+          getDeckEffects(currentDeck),
+          currentDeck.filter
         );
         applyStoredChannelStrip(
           soundId,
@@ -547,12 +575,13 @@ async function setDeckRadio(deckId: DeckId, radio: Radio | null) {
 
       // Handle track end - auto-advance to next track
       if (trackEnded && currentDeck?.radio) {
-        const nextTrack = findNextTrack(currentDeck.radio as Radio);
-        if (nextTrack) {
+        const deckRadio = getDeckRadio(currentDeck);
+        const nextTrack = findNextTrack(deckRadio);
+        if (nextTrack && deckRadio) {
           loadTrack(
             config.side,
             {
-              ...(currentDeck.radio as Radio),
+              ...deckRadio,
               streamUrl: nextTrack.streamUrl,
             },
             true // auto-play
@@ -579,8 +608,11 @@ async function setDeckRadio(deckId: DeckId, radio: Radio | null) {
       }
       try {
         getAudioManager().cleanupSound(soundId);
-      } catch {
-        // Ignore cleanup errors during error recovery
+      } catch (cleanupErr) {
+        console.error(
+          `[DjActions] Cleanup failed for ${soundId} during error recovery:`,
+          cleanupErr
+        );
       }
       config.resetRuntime();
     }
@@ -662,7 +694,8 @@ async function resetDeck(deckId: DeckId) {
         enabled: false,
       };
     });
-    await setDeckRadio(deckId, deck.radio as Radio);
+    const radio = getDeckRadio(deck);
+    await setDeckRadio(deckId, radio);
   }
 }
 
@@ -904,7 +937,8 @@ function addDeckEffect(deckId: DeckId, type: EffectType) {
     effects.length
   );
   config.updateDeck((draft) => {
-    (draft.effects as unknown as EffectConfig[]).push(effect);
+    // @ts-expect-error -- EffectConfig is compatible with Zod-inferred effect schema at runtime
+    draft.effects.push(effect);
   });
   if (runtime.soundId) {
     getAudioManager().addEffect(runtime.soundId, effect);
@@ -927,12 +961,11 @@ function updateDeckEffect(
   const config = deckConfig[deckId];
   const runtime = config.getRuntime();
   config.updateDeck((draft) => {
-    const effects = draft.effects as unknown as EffectConfig[];
-    const idx = effects.findIndex((e) => e.id === effectId);
+    const idx = draft.effects.findIndex((e) => e.id === effectId);
     if (idx !== -1) {
-      const effect = effects[idx];
+      const effect = draft.effects[idx];
       if (effect) {
-        effects[idx] = { ...effect, ...effectConfig } as EffectConfig;
+        draft.effects[idx] = { ...effect, ...effectConfig };
       }
     }
   });
@@ -981,12 +1014,11 @@ function reorderDeckEffects(deckId: DeckId, effectIds: string[]) {
   if (!deck) {
     return;
   }
-  const effects = deck.effects as unknown as EffectConfig[];
   const reorderedEffects = effectIds
-    .map((id) => effects.find((e) => e.id === id))
-    .filter((e): e is EffectConfig => e !== undefined);
+    .map((id) => deck.effects.find((e) => e.id === id))
+    .filter((e) => e !== undefined);
   config.updateDeck((draft) => {
-    draft.effects = reorderedEffects as unknown as typeof draft.effects;
+    draft.effects = reorderedEffects;
   });
   if (runtime.soundId) {
     getAudioManager().reorderEffects(runtime.soundId, effectIds);
@@ -1164,8 +1196,7 @@ export function detectSystemLatency(): number | null {
 
   // outputLatency: time from audio graph to speaker (device-specific)
   // baseLatency: processing latency of the audio context
-  const outputLatency =
-    "outputLatency" in context ? (context.outputLatency as number) : 0;
+  const outputLatency = context.outputLatency ?? 0;
   const baseLatency = context.baseLatency ?? 0;
 
   const totalLatencySeconds = outputLatency + baseLatency;
@@ -1285,8 +1316,8 @@ async function setDeckDeviceSource(
         hasAppliedChannelStrip = true;
         applyStoredEffectsAndFilters(
           soundId,
-          currentDeck.effects as unknown as EffectConfig[],
-          currentDeck.filter as FilterConfig
+          getDeckEffects(currentDeck),
+          currentDeck.filter
         );
         applyStoredChannelStrip(
           soundId,
@@ -1336,8 +1367,8 @@ async function setDeckDeviceSource(
       const actualChannelCount = deviceSource.channelCount;
       config.updateDeck((draft) => {
         const meta = draft.radio?.platformMetadata;
-        if (meta && meta.platform === "device-input") {
-          (meta as DeviceInputMetadata).channelCount = actualChannelCount;
+        if (isDeviceInputMetadata(meta)) {
+          meta.channelCount = actualChannelCount;
         }
       });
     }
@@ -1352,7 +1383,14 @@ async function setDeckDeviceSource(
         existingCleanup();
         config.setSubscriptionCleanup(null);
       }
-      getAudioManager().cleanupSound(soundId);
+      try {
+        getAudioManager().cleanupSound(soundId);
+      } catch (cleanupErr) {
+        console.error(
+          `[DjActions] Cleanup failed for ${soundId} during error recovery:`,
+          cleanupErr
+        );
+      }
       config.resetRuntime();
     }
     const msg =
@@ -1386,8 +1424,8 @@ function setDeckChannelSelection(
   }
   deckConfig[deckId].updateDeck((draft) => {
     const meta = draft.radio?.platformMetadata;
-    if (meta && meta.platform === "device-input") {
-      (meta as DeviceInputMetadata).channelSelection = selection;
+    if (isDeviceInputMetadata(meta)) {
+      meta.channelSelection = selection;
     }
   });
 }
@@ -1398,25 +1436,4 @@ export function setDeckAChannelSelection(selection: ChannelSelection): void {
 
 export function setDeckBChannelSelection(selection: ChannelSelection): void {
   setDeckChannelSelection("deck-b", selection);
-}
-
-// ============================================
-// Device Input Utilities
-// ============================================
-
-/**
- * Get input devices list
- */
-export async function getInputDevices(): Promise<
-  Array<{ deviceId: string; label: string }>
-> {
-  const devices = await DeviceSource.getInputDevices();
-  return devices.map((d) => ({ deviceId: d.deviceId, label: d.label }));
-}
-
-/**
- * Request microphone permission
- */
-export async function requestInputPermission(): Promise<DevicePermissionState> {
-  return await DeviceSource.requestPermission();
 }

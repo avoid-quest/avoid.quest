@@ -56,6 +56,10 @@ type InputDeckLayoutProps = {
   className?: string;
 };
 
+// ============================================================================
+// Shared sub-components
+// ============================================================================
+
 function formatPan(pan: number): string {
   if (Math.abs(pan) < 0.05) {
     return "C";
@@ -137,7 +141,6 @@ function deserializeSelection(key: string): ChannelSelection {
 function buildChannelOptions(channelCount: number): ChannelOption[] {
   const options: ChannelOption[] = [];
 
-  // Stereo pairs: "Ch 1+2", "Ch 3+4", etc.
   for (let i = 0; i + 1 < channelCount; i += 2) {
     const selection = { left: i, right: i + 1 };
     options.push({
@@ -147,7 +150,6 @@ function buildChannelOptions(channelCount: number): ChannelOption[] {
     });
   }
 
-  // Individual mono channels: "Ch 1", "Ch 2", etc.
   for (let i = 0; i < channelCount; i++) {
     const selection = { left: i, right: i };
     options.push({
@@ -159,6 +161,223 @@ function buildChannelOptions(channelCount: number): ChannelOption[] {
 
   return options;
 }
+
+function DeviceInfoHeader({
+  deviceLabel,
+  isPlaying,
+}: {
+  deviceLabel: string;
+  isPlaying: boolean;
+}) {
+  return (
+    <div className="flex items-center gap-2 rounded-lg border bg-muted/40 p-2">
+      <MicIcon className="size-4 shrink-0 text-muted-foreground" />
+      <span className="min-w-0 flex-1 truncate font-semibold text-sm">
+        {deviceLabel}
+      </span>
+      <Badge className="shrink-0" variant={isPlaying ? "default" : "secondary"}>
+        {isPlaying ? "LIVE" : "MUTED"}
+      </Badge>
+    </div>
+  );
+}
+
+function ChannelSelectionRow({
+  channelCount,
+  channelOptions,
+  selectedKey,
+  onChannelSelectionChange,
+}: {
+  channelCount: number;
+  channelOptions: ChannelOption[];
+  selectedKey: string;
+  onChannelSelectionChange: (selection: ChannelSelection) => void;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="flex w-16 shrink-0 items-center gap-1 font-medium text-muted-foreground text-xs">
+        Channel
+        {channelCount <= 2 && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <InfoIcon className="size-3 cursor-help" />
+            </TooltipTrigger>
+            <TooltipContent className="max-w-56" side="top">
+              Browsers limit audio input to 2 channels per device. To route
+              other channels, create an Aggregate Device in macOS Audio MIDI
+              Setup or use virtual audio routing software.
+            </TooltipContent>
+          </Tooltip>
+        )}
+      </span>
+      <Select
+        onValueChange={(v) => onChannelSelectionChange(deserializeSelection(v))}
+        value={selectedKey}
+      >
+        <SelectTrigger className="h-7 flex-1 text-xs">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {channelOptions.map((opt) => (
+            <SelectItem key={opt.key} value={opt.key}>
+              {opt.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
+function MuteToggleButton({
+  isPlaying,
+  isLoading,
+  onToggleMute,
+}: {
+  isPlaying: boolean;
+  isLoading: boolean;
+  onToggleMute: () => void;
+}) {
+  return (
+    <Button
+      className="w-full"
+      disabled={isLoading}
+      onClick={onToggleMute}
+      size="sm"
+      variant={isPlaying ? "destructive" : "default"}
+    >
+      {isPlaying ? (
+        <>
+          <MicOffIcon className="mr-2 size-4" />
+          Mute
+        </>
+      ) : (
+        <>
+          <MicIcon className="mr-2 size-4" />
+          Go Live
+        </>
+      )}
+    </Button>
+  );
+}
+
+function LevelMeterRow({
+  peakLevel,
+}: {
+  peakLevel?: { left: number; right: number };
+}) {
+  return (
+    <div className="space-y-1">
+      <span className="font-medium text-[10px] text-muted-foreground uppercase tracking-wide">
+        Level
+      </span>
+      <div className="space-y-0.5">
+        <HorizontalPeakMeter level={peakLevel?.left ?? 0} />
+        <HorizontalPeakMeter level={peakLevel?.right ?? 0} />
+      </div>
+    </div>
+  );
+}
+
+function ChannelStrip({
+  volume,
+  pan,
+  channelFilter,
+  effectsDryWet,
+  onVolumeChange,
+  onPanChange,
+  onChannelFilterChange,
+  onEffectsDryWetChange,
+}: {
+  volume: number;
+  pan: number;
+  channelFilter: number;
+  effectsDryWet: number;
+  onVolumeChange: (value: number[]) => void;
+  onPanChange: (value: number) => void;
+  onChannelFilterChange: (value: number) => void;
+  onEffectsDryWetChange: (value: number) => void;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <InputChannelSlider
+        defaultValue={1}
+        formatValue={formatPercent}
+        label="VOL"
+        max={1.585}
+        min={0}
+        onChange={(v) => onVolumeChange([v])}
+        step={0.01}
+        value={volume}
+      />
+      <InputChannelSlider
+        defaultValue={0}
+        formatValue={formatPan}
+        label="PAN"
+        max={1}
+        min={-1}
+        onChange={onPanChange}
+        step={0.01}
+        value={pan}
+      />
+      <InputChannelSlider
+        defaultValue={0}
+        formatValue={formatChannelFilter}
+        label="FILT"
+        max={1}
+        min={-1}
+        onChange={onChannelFilterChange}
+        step={0.01}
+        value={channelFilter}
+      />
+      <InputChannelSlider
+        defaultValue={0}
+        formatValue={formatPercent}
+        label="FX"
+        max={1}
+        min={0}
+        onChange={onEffectsDryWetChange}
+        step={0.01}
+        value={effectsDryWet}
+      />
+    </div>
+  );
+}
+
+function DeckFooter({
+  onChangeDevice,
+  onClear,
+}: {
+  onChangeDevice: () => void;
+  onClear: () => void;
+}) {
+  return (
+    <div className="flex gap-1 border-t pt-1.5">
+      <Button
+        className="h-7 flex-1 text-xs"
+        onClick={onChangeDevice}
+        size="sm"
+        variant="ghost"
+      >
+        <Link2Icon className="mr-1.5 size-3" />
+        Change Device
+      </Button>
+      <Button
+        className="h-7 flex-1 text-xs hover:bg-destructive/10 hover:text-destructive"
+        onClick={onClear}
+        size="sm"
+        variant="ghost"
+      >
+        <XIcon className="mr-1.5 size-3" />
+        Eject
+      </Button>
+    </div>
+  );
+}
+
+// ============================================================================
+// Main layout
+// ============================================================================
 
 export function InputDeckLayout({
   deviceLabel,
@@ -194,35 +413,79 @@ export function InputDeckLayout({
   );
   const selectedKey = serializeSelection(channelSelection);
 
-  if (isMobile) {
-    return (
-      <MobileInputDeckLayout
+  const sharedControls = (
+    <>
+      <DeviceInfoHeader deviceLabel={deviceLabel} isPlaying={isPlaying} />
+      <ChannelSelectionRow
         channelCount={channelCount}
-        channelFilter={channelFilter}
         channelOptions={channelOptions}
-        channelSelection={channelSelection}
-        className={className}
-        deviceLabel={deviceLabel}
-        effects={effects}
-        effectsDryWet={effectsDryWet}
+        onChannelSelectionChange={onChannelSelectionChange}
+        selectedKey={selectedKey}
+      />
+      <MuteToggleButton
         isLoading={isLoading}
         isPlaying={isPlaying}
-        onAddEffect={onAddEffect}
-        onChangeDevice={onChangeDevice}
+        onToggleMute={onToggleMute}
+      />
+      <LevelMeterRow peakLevel={peakLevel} />
+      <ChannelStrip
+        channelFilter={channelFilter}
+        effectsDryWet={effectsDryWet}
         onChannelFilterChange={onChannelFilterChange}
-        onChannelSelectionChange={onChannelSelectionChange}
-        onClear={onClear}
         onEffectsDryWetChange={onEffectsDryWetChange}
         onPanChange={onPanChange}
-        onRemoveEffect={onRemoveEffect}
-        onReorderEffects={onReorderEffects}
-        onToggleMute={onToggleMute}
-        onUpdateEffect={onUpdateEffect}
         onVolumeChange={onVolumeChange}
         pan={pan}
-        peakLevel={peakLevel}
         volume={volume}
       />
+    </>
+  );
+
+  const effectChain = onAddEffect &&
+    onUpdateEffect &&
+    onRemoveEffect &&
+    onReorderEffects && (
+      <EffectChain
+        effects={effects}
+        onAddEffect={onAddEffect}
+        onRemoveEffect={onRemoveEffect}
+        onReorderEffects={onReorderEffects}
+        onUpdateEffect={onUpdateEffect}
+      />
+    );
+
+  if (isMobile) {
+    return (
+      <div className={cn("flex h-full min-h-0 flex-col", className)}>
+        <Tabs className="flex h-full min-h-0 flex-col" defaultValue="source">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="source">Source</TabsTrigger>
+            <TabsTrigger value="effects">Effects</TabsTrigger>
+          </TabsList>
+
+          <TabsContent
+            className="mt-3 flex min-h-0 flex-1 flex-col gap-2 overflow-hidden"
+            value="source"
+          >
+            <ScrollArea className="min-h-0 flex-1">
+              <div className="flex flex-col gap-3 pr-3">{sharedControls}</div>
+            </ScrollArea>
+          </TabsContent>
+
+          <TabsContent
+            className="mt-3 flex min-h-0 flex-1 flex-col overflow-hidden"
+            value="effects"
+          >
+            {effectChain && (
+              <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+                {effectChain}
+              </div>
+            )}
+          </TabsContent>
+        </Tabs>
+
+        <DeckFooter onChangeDevice={onChangeDevice} onClear={onClear} />
+      </div>
     );
   }
 
@@ -231,424 +494,17 @@ export function InputDeckLayout({
       {deckSide === "left" && <DeckPeakMeter peakLevel={peakLevel} />}
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 px-2">
-        {/* Device info + status */}
-        <div className="flex items-center gap-2 rounded-lg border bg-muted/40 p-2">
-          <MicIcon className="size-4 shrink-0 text-muted-foreground" />
-          <span className="min-w-0 flex-1 truncate font-semibold text-sm">
-            {deviceLabel}
-          </span>
-          <Badge
-            className="shrink-0"
-            variant={isPlaying ? "default" : "secondary"}
-          >
-            {isPlaying ? "LIVE" : "MUTED"}
-          </Badge>
-        </div>
-
         <ScrollArea className="min-h-0 flex-1">
           <div className="flex flex-col gap-3 pr-3">
-            {/* Channel selection */}
-            <div className="flex items-center gap-2">
-              <span className="flex w-16 shrink-0 items-center gap-1 font-medium text-muted-foreground text-xs">
-                Channel
-                {channelCount <= 2 && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <InfoIcon className="size-3 cursor-help" />
-                    </TooltipTrigger>
-                    <TooltipContent className="max-w-56" side="top">
-                      Browsers limit audio input to 2 channels per device. To
-                      route other channels, create an Aggregate Device in macOS
-                      Audio MIDI Setup or use virtual audio routing software.
-                    </TooltipContent>
-                  </Tooltip>
-                )}
-              </span>
-              <Select
-                onValueChange={(v) =>
-                  onChannelSelectionChange(deserializeSelection(v))
-                }
-                value={selectedKey}
-              >
-                <SelectTrigger className="h-7 flex-1 text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {channelOptions.map((opt) => (
-                    <SelectItem key={opt.key} value={opt.key}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Mute toggle */}
-            <Button
-              className="w-full"
-              disabled={isLoading}
-              onClick={onToggleMute}
-              size="sm"
-              variant={isPlaying ? "destructive" : "default"}
-            >
-              {isPlaying ? (
-                <>
-                  <MicOffIcon className="mr-2 size-4" />
-                  Mute
-                </>
-              ) : (
-                <>
-                  <MicIcon className="mr-2 size-4" />
-                  Go Live
-                </>
-              )}
-            </Button>
-
-            {/* VU meter (horizontal) */}
-            <div className="space-y-1">
-              <span className="font-medium text-[10px] text-muted-foreground uppercase tracking-wide">
-                Level
-              </span>
-              <div className="space-y-0.5">
-                <HorizontalPeakMeter level={peakLevel?.left ?? 0} />
-                <HorizontalPeakMeter level={peakLevel?.right ?? 0} />
-              </div>
-            </div>
-
-            {/* Channel strip */}
-            <div className="space-y-1.5">
-              <InputChannelSlider
-                defaultValue={1}
-                formatValue={formatPercent}
-                label="VOL"
-                max={1.585}
-                min={0}
-                onChange={(v) => onVolumeChange([v])}
-                step={0.01}
-                value={volume}
-              />
-              <InputChannelSlider
-                defaultValue={0}
-                formatValue={formatPan}
-                label="PAN"
-                max={1}
-                min={-1}
-                onChange={onPanChange}
-                step={0.01}
-                value={pan}
-              />
-              <InputChannelSlider
-                defaultValue={0}
-                formatValue={formatChannelFilter}
-                label="FILT"
-                max={1}
-                min={-1}
-                onChange={onChannelFilterChange}
-                step={0.01}
-                value={channelFilter}
-              />
-              <InputChannelSlider
-                defaultValue={0}
-                formatValue={formatPercent}
-                label="FX"
-                max={1}
-                min={0}
-                onChange={onEffectsDryWetChange}
-                step={0.01}
-                value={effectsDryWet}
-              />
-            </div>
-
-            {/* Effects */}
-            {onAddEffect &&
-              onUpdateEffect &&
-              onRemoveEffect &&
-              onReorderEffects && (
-                <EffectChain
-                  effects={effects}
-                  onAddEffect={onAddEffect}
-                  onRemoveEffect={onRemoveEffect}
-                  onReorderEffects={onReorderEffects}
-                  onUpdateEffect={onUpdateEffect}
-                />
-              )}
+            {sharedControls}
+            {effectChain}
           </div>
         </ScrollArea>
 
-        {/* Footer */}
-        <div className="flex gap-1 border-t pt-1.5">
-          <Button
-            className="h-7 flex-1 text-xs"
-            onClick={onChangeDevice}
-            size="sm"
-            variant="ghost"
-          >
-            <Link2Icon className="mr-1.5 size-3" />
-            Change Device
-          </Button>
-          <Button
-            className="h-7 flex-1 text-xs hover:bg-destructive/10 hover:text-destructive"
-            onClick={onClear}
-            size="sm"
-            variant="ghost"
-          >
-            <XIcon className="mr-1.5 size-3" />
-            Eject
-          </Button>
-        </div>
+        <DeckFooter onChangeDevice={onChangeDevice} onClear={onClear} />
       </div>
 
       {deckSide === "right" && <DeckPeakMeter peakLevel={peakLevel} />}
-    </div>
-  );
-}
-
-// ============================================================================
-// Mobile Layout
-// ============================================================================
-
-type MobileInputDeckLayoutProps = {
-  deviceLabel: string;
-  channelSelection: ChannelSelection;
-  channelCount: number;
-  channelOptions: ChannelOption[];
-  isPlaying: boolean;
-  isLoading: boolean;
-  volume: number;
-  pan: number;
-  channelFilter: number;
-  effectsDryWet: number;
-  peakLevel?: { left: number; right: number };
-  effects: EffectConfig[];
-  onToggleMute: () => void;
-  onVolumeChange: (value: number[]) => void;
-  onPanChange: (value: number) => void;
-  onChannelFilterChange: (value: number) => void;
-  onEffectsDryWetChange: (value: number) => void;
-  onChannelSelectionChange: (selection: ChannelSelection) => void;
-  onChangeDevice: () => void;
-  onClear: () => void;
-  onAddEffect?: (type: EffectType) => void;
-  onUpdateEffect?: (effectId: string, config: Partial<EffectConfig>) => void;
-  onRemoveEffect?: (effectId: string) => void;
-  onReorderEffects?: (effectIds: string[]) => void;
-  className?: string;
-};
-
-function MobileInputDeckLayout({
-  deviceLabel,
-  channelSelection,
-  channelCount,
-  channelOptions,
-  isPlaying,
-  isLoading,
-  volume,
-  pan,
-  channelFilter,
-  effectsDryWet,
-  peakLevel,
-  effects,
-  onToggleMute,
-  onVolumeChange,
-  onPanChange,
-  onChannelFilterChange,
-  onEffectsDryWetChange,
-  onChannelSelectionChange,
-  onChangeDevice,
-  onClear,
-  onAddEffect,
-  onUpdateEffect,
-  onRemoveEffect,
-  onReorderEffects,
-  className,
-}: MobileInputDeckLayoutProps) {
-  const selectedKey = serializeSelection(channelSelection);
-  return (
-    <div className={cn("flex h-full min-h-0 flex-col", className)}>
-      <Tabs className="flex h-full min-h-0 flex-col" defaultValue="source">
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="source">Source</TabsTrigger>
-          <TabsTrigger value="effects">Effects</TabsTrigger>
-        </TabsList>
-
-        <TabsContent
-          className="mt-3 flex min-h-0 flex-1 flex-col gap-2 overflow-hidden"
-          value="source"
-        >
-          <ScrollArea className="min-h-0 flex-1">
-            <div className="flex flex-col gap-3 pr-3">
-              {/* Device info + status */}
-              <div className="flex items-center gap-2 rounded-lg border bg-muted/40 p-2">
-                <MicIcon className="size-4 shrink-0 text-muted-foreground" />
-                <span className="min-w-0 flex-1 truncate font-semibold text-sm">
-                  {deviceLabel}
-                </span>
-                <Badge
-                  className="shrink-0"
-                  variant={isPlaying ? "default" : "secondary"}
-                >
-                  {isPlaying ? "LIVE" : "MUTED"}
-                </Badge>
-              </div>
-
-              {/* Channel selection */}
-              <div className="flex items-center gap-2">
-                <span className="flex w-16 shrink-0 items-center gap-1 font-medium text-muted-foreground text-xs">
-                  Channel
-                  {channelCount <= 2 && (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <InfoIcon className="size-3 cursor-help" />
-                      </TooltipTrigger>
-                      <TooltipContent className="max-w-56" side="top">
-                        Browsers limit audio input to 2 channels per device. To
-                        route other channels, create an Aggregate Device in
-                        macOS Audio MIDI Setup or use virtual audio routing
-                        software.
-                      </TooltipContent>
-                    </Tooltip>
-                  )}
-                </span>
-                <Select
-                  onValueChange={(v) =>
-                    onChannelSelectionChange(deserializeSelection(v))
-                  }
-                  value={selectedKey}
-                >
-                  <SelectTrigger className="h-7 flex-1 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {channelOptions.map((opt) => (
-                      <SelectItem key={opt.key} value={opt.key}>
-                        {opt.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Mute toggle */}
-              <Button
-                className="w-full"
-                disabled={isLoading}
-                onClick={onToggleMute}
-                size="sm"
-                variant={isPlaying ? "destructive" : "default"}
-              >
-                {isPlaying ? (
-                  <>
-                    <MicOffIcon className="mr-2 size-4" />
-                    Mute
-                  </>
-                ) : (
-                  <>
-                    <MicIcon className="mr-2 size-4" />
-                    Go Live
-                  </>
-                )}
-              </Button>
-
-              {/* VU meter */}
-              <div className="space-y-1">
-                <span className="font-medium text-[10px] text-muted-foreground uppercase tracking-wide">
-                  Level
-                </span>
-                <div className="space-y-0.5">
-                  <HorizontalPeakMeter level={peakLevel?.left ?? 0} />
-                  <HorizontalPeakMeter level={peakLevel?.right ?? 0} />
-                </div>
-              </div>
-
-              {/* Channel strip */}
-              <div className="space-y-1.5">
-                <InputChannelSlider
-                  defaultValue={1}
-                  formatValue={formatPercent}
-                  label="VOL"
-                  max={1.585}
-                  min={0}
-                  onChange={(v) => onVolumeChange([v])}
-                  step={0.01}
-                  value={volume}
-                />
-                <InputChannelSlider
-                  defaultValue={0}
-                  formatValue={formatPan}
-                  label="PAN"
-                  max={1}
-                  min={-1}
-                  onChange={onPanChange}
-                  step={0.01}
-                  value={pan}
-                />
-                <InputChannelSlider
-                  defaultValue={0}
-                  formatValue={formatChannelFilter}
-                  label="FILT"
-                  max={1}
-                  min={-1}
-                  onChange={onChannelFilterChange}
-                  step={0.01}
-                  value={channelFilter}
-                />
-                <InputChannelSlider
-                  defaultValue={0}
-                  formatValue={formatPercent}
-                  label="FX"
-                  max={1}
-                  min={0}
-                  onChange={onEffectsDryWetChange}
-                  step={0.01}
-                  value={effectsDryWet}
-                />
-              </div>
-            </div>
-          </ScrollArea>
-        </TabsContent>
-
-        <TabsContent
-          className="mt-3 flex min-h-0 flex-1 flex-col overflow-hidden"
-          value="effects"
-        >
-          {onAddEffect &&
-            onUpdateEffect &&
-            onRemoveEffect &&
-            onReorderEffects && (
-              <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-                <EffectChain
-                  effects={effects}
-                  onAddEffect={onAddEffect}
-                  onRemoveEffect={onRemoveEffect}
-                  onReorderEffects={onReorderEffects}
-                  onUpdateEffect={onUpdateEffect}
-                />
-              </div>
-            )}
-        </TabsContent>
-      </Tabs>
-
-      {/* Footer */}
-      <div className="flex gap-1 border-t pt-1.5">
-        <Button
-          className="h-7 flex-1 text-xs"
-          onClick={onChangeDevice}
-          size="sm"
-          variant="ghost"
-        >
-          <Link2Icon className="mr-1.5 size-3" />
-          Change Device
-        </Button>
-        <Button
-          className="h-7 flex-1 text-xs hover:bg-destructive/10 hover:text-destructive"
-          onClick={onClear}
-          size="sm"
-          variant="ghost"
-        >
-          <XIcon className="mr-1.5 size-3" />
-          Eject
-        </Button>
-      </div>
     </div>
   );
 }

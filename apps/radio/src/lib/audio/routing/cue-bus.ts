@@ -252,6 +252,7 @@ export class CueBus {
     if (!(deviceId && isSinkIdSupported())) {
       this._cueDeviceId = null;
       this._mode = "split";
+      this.callbacks.onModeChange?.("split");
       return;
     }
 
@@ -271,11 +272,7 @@ export class CueBus {
       this._audioElement.volume = 1;
 
       // Set output device
-      await (
-        this._audioElement as HTMLAudioElement & {
-          setSinkId: (id: string) => Promise<void>;
-        }
-      ).setSinkId(deviceId);
+      await this._audioElement.setSinkId(deviceId);
 
       // Start playback
       await this._audioElement.play();
@@ -284,8 +281,11 @@ export class CueBus {
     } catch (error) {
       this.cleanupCueOutput();
       this._mode = "split";
+      this.callbacks.onModeChange?.("split");
       this.callbacks.onError?.(
-        error instanceof Error ? error : new Error("CUE output failed")
+        error instanceof Error
+          ? error
+          : new Error(`CUE output failed: ${String(error)}`)
       );
     }
   }

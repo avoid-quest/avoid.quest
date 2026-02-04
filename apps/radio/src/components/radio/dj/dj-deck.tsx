@@ -57,7 +57,7 @@ import { usePeakLevel } from "@/lib/hooks/use-peak-level";
 import { usePlatformMetadata } from "@/lib/hooks/use-platform-metadata";
 import { useThrottledParam } from "@/lib/hooks/use-throttled-param";
 import { useTrackProgress } from "@/lib/hooks/use-track-progress";
-import type { DeviceInputMetadata, Platform } from "@/lib/platform-types";
+import { isDeviceInputMetadata, type Platform } from "@/lib/platform-types";
 import { DeckLayout } from "./deck-layout";
 import { DeviceForm } from "./device-form";
 import { DjRadioList } from "./dj-radio-list";
@@ -226,8 +226,8 @@ export function DjDeck({ className, deckId, radios = [] }: DjDeckProps) {
           onLoad={handleLoadDeviceInput}
         />
       );
-    } else if (isDeviceInput) {
-      const deviceMeta = radio.platformMetadata as DeviceInputMetadata;
+    } else if (isDeviceInputMetadata(radio?.platformMetadata)) {
+      const deviceMeta = radio.platformMetadata;
       content = (
         <InputDeckLayout
           channelCount={deviceMeta.channelCount ?? 2}

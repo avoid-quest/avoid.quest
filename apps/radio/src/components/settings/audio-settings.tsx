@@ -16,12 +16,8 @@ import {
   RefreshCwIcon,
   Volume2Icon,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
-import {
-  type AudioDeviceInfo,
-  DeviceSource,
-  isSinkIdSupported,
-} from "@/lib/audio";
+import { useState } from "react";
+import { isSinkIdSupported, useAudioDevices } from "@/lib/audio";
 import {
   getAudioSettings,
   getDelaySettings,
@@ -41,13 +37,15 @@ import {
  * Manages input/output device selection with persistence.
  */
 export function AudioSettings() {
-  const [outputDevices, setOutputDevices] = useState<AudioDeviceInfo[]>([]);
-  const [permissionState, setPermissionState] = useState<
-    "prompt" | "granted" | "denied" | "error"
-  >("prompt");
-  const [isLoading, setIsLoading] = useState(false);
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const sinkIdSupported = isSinkIdSupported();
+
+  const {
+    outputDevices,
+    permissionState,
+    isLoading,
+    requestPermission,
+    refreshDevices,
+  } = useAudioDevices();
 
   // Get current settings
   const audioSettings = getAudioSettings();
@@ -62,67 +60,6 @@ export function AudioSettings() {
     delaySettings.mainDelayMs
   );
   const [cueDelayMs, setCueDelayMsState] = useState(delaySettings.cueDelayMs);
-
-  const loadDevices = useCallback(async () => {
-    try {
-      const [inputs, outputs] = await Promise.all([
-        DeviceSource.getInputDevices(),
-        DeviceSource.getOutputDevices(),
-      ]);
-      setOutputDevices(outputs);
-
-      // Check if we have real labels (not just fallback)
-      const hasRealLabels = [...inputs, ...outputs].some(
-        (d) =>
-          d.label &&
-          !d.label.startsWith("Input ") &&
-          !d.label.startsWith("Output ")
-      );
-      if (hasRealLabels) {
-        setPermissionState("granted");
-      }
-    } catch (error) {
-      console.error("[AudioSettings] Failed to enumerate devices:", error);
-    }
-  }, []);
-
-  const requestPermission = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const state = await DeviceSource.requestPermission();
-      setPermissionState(state);
-      if (state === "granted") {
-        await loadDevices();
-      }
-    } catch (error) {
-      console.error("[AudioSettings] Permission request failed:", error);
-      setPermissionState("error");
-    } finally {
-      setIsLoading(false);
-    }
-  }, [loadDevices]);
-
-  const refreshDevices = useCallback(async () => {
-    setIsRefreshing(true);
-    await loadDevices();
-    setIsRefreshing(false);
-  }, [loadDevices]);
-
-  // Load devices on mount
-  useEffect(() => {
-    loadDevices();
-  }, [loadDevices]);
-
-  // Listen for device changes
-  useEffect(() => {
-    if (typeof navigator !== "undefined" && navigator.mediaDevices) {
-      const handler = () => loadDevices();
-      navigator.mediaDevices.addEventListener("devicechange", handler);
-      return () => {
-        navigator.mediaDevices.removeEventListener("devicechange", handler);
-      };
-    }
-  }, [loadDevices]);
 
   const handleMainOutputChange = async (value: string) => {
     setMainOutputId(value);
@@ -173,13 +110,13 @@ export function AudioSettings() {
       {permissionState === "granted" && (
         <div className="flex justify-end">
           <Button
-            disabled={isRefreshing}
+            disabled={isLoading}
             onClick={refreshDevices}
             size="sm"
             variant="ghost"
           >
             <RefreshCwIcon
-              className={`mr-1.5 size-4 ${isRefreshing ? "animate-spin" : ""}`}
+              className={`mr-1.5 size-4 ${isLoading ? "animate-spin" : ""}`}
             />
             Refresh Devices
           </Button>

@@ -24,12 +24,8 @@ import {
   SettingsIcon,
   Volume2Icon,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
-import {
-  type AudioDeviceInfo,
-  DeviceSource,
-  isSinkIdSupported,
-} from "@/lib/audio";
+import { useState } from "react";
+import { isSinkIdSupported, useAudioDevices } from "@/lib/audio";
 
 type DeviceSelectorProps = {
   className?: string;
@@ -58,76 +54,15 @@ export function DeviceSelector({
   onInputDeviceChange,
 }: DeviceSelectorProps) {
   const [open, setOpen] = useState(false);
-  const [inputDevices, setInputDevices] = useState<AudioDeviceInfo[]>([]);
-  const [outputDevices, setOutputDevices] = useState<AudioDeviceInfo[]>([]);
-  const [permissionState, setPermissionState] = useState<
-    "prompt" | "granted" | "denied" | "error"
-  >("prompt");
-  const [isLoading, setIsLoading] = useState(false);
   const sinkIdSupported = isSinkIdSupported();
 
-  const loadDevices = useCallback(async () => {
-    try {
-      const [inputs, outputs] = await Promise.all([
-        DeviceSource.getInputDevices(),
-        DeviceSource.getOutputDevices(),
-      ]);
-      setInputDevices(inputs);
-      setOutputDevices(outputs);
-
-      // Check if we have real labels (not just fallback "Input/Output xxx")
-      // Empty labels indicate permission not granted
-      const hasRealLabels = [...inputs, ...outputs].some(
-        (d) =>
-          d.label &&
-          !d.label.startsWith("Input ") &&
-          !d.label.startsWith("Output ")
-      );
-      if (hasRealLabels) {
-        setPermissionState("granted");
-      }
-    } catch (error) {
-      console.error("[DeviceSelector] Failed to enumerate devices:", error);
-    }
-  }, []);
-
-  const requestPermission = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const state = await DeviceSource.requestPermission();
-      setPermissionState(state);
-      if (state === "granted") {
-        await loadDevices();
-      }
-    } catch (error) {
-      console.error("[DeviceSelector] Permission request failed:", error);
-      setPermissionState("error");
-    } finally {
-      setIsLoading(false);
-    }
-  }, [loadDevices]);
-
-  // Load devices when dialog opens
-  useEffect(() => {
-    if (open) {
-      loadDevices();
-    }
-  }, [open, loadDevices]);
-
-  // Listen for device changes
-  useEffect(() => {
-    if (typeof navigator !== "undefined" && navigator.mediaDevices) {
-      const handler = () => {
-        if (open) {
-          loadDevices();
-        }
-      };
-      navigator.mediaDevices.addEventListener("devicechange", handler);
-      return () => {
-        navigator.mediaDevices.removeEventListener("devicechange", handler);
-      };
-    }
-  }, [open, loadDevices]);
+  const {
+    inputDevices,
+    outputDevices,
+    permissionState,
+    isLoading,
+    requestPermission,
+  } = useAudioDevices({ enabled: open });
 
   const handleMainOutputChange = (value: string) => {
     onMainOutputChange?.(value);

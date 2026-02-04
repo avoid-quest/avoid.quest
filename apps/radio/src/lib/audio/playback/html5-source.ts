@@ -5,7 +5,7 @@
  * Uses MediaElementAudioSourceNode to connect to Web Audio graph.
  */
 
-import { safeDisconnect } from "../manager/audio-manager.js";
+import { safeDisconnect } from "../utils.js";
 import type { StreamStatus } from "./types.js";
 
 /**

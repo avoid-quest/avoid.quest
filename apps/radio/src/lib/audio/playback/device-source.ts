@@ -6,7 +6,7 @@
  * Supports enumerating both input and output devices.
  */
 
-import { safeDisconnect } from "../manager/audio-manager.js";
+import { safeDisconnect } from "../utils.js";
 
 /**
  * Channel selection for routing device input channels to stereo output.
@@ -16,11 +16,6 @@ export type ChannelSelection = {
   left: number; // 0-based channel index for left output
   right: number; // 0-based channel index for right output (same as left = mono)
 };
-
-/**
- * @deprecated Use ChannelSelection instead. Kept for backward compatibility.
- */
-export type ChannelMode = "stereo" | "mono-left" | "mono-right" | "mono-mix";
 
 /**
  * Audio device information
@@ -186,30 +181,6 @@ export class DeviceSource {
   }
 
   /**
-   * @deprecated Use setChannelSelection instead. Maps old ChannelMode to ChannelSelection.
-   */
-  setChannelMode(mode: ChannelMode): void {
-    switch (mode) {
-      case "stereo":
-        this.setChannelSelection({ left: 0, right: 1 });
-        break;
-      case "mono-left":
-        this.setChannelSelection({ left: 0, right: 0 });
-        break;
-      case "mono-right":
-        this.setChannelSelection({ left: 1, right: 1 });
-        break;
-      case "mono-mix":
-        // Mono mix maps both channels to both outputs — approximate with stereo passthrough
-        this.setChannelSelection({ left: 0, right: 1 });
-        break;
-      default:
-        this.setChannelSelection({ left: 0, right: 1 });
-        break;
-    }
-  }
-
-  /**
    * Apply current channel routing by wiring splitter/merger nodes.
    * Routes selected device channels to stereo (2-channel) output.
    */
@@ -245,8 +216,8 @@ export class DeviceSource {
     this.source.connect(this.splitter);
 
     // Clamp indices to available channels
-    const safeLeft = Math.min(left, count - 1);
-    const safeRight = Math.min(right, count - 1);
+    const safeLeft = Math.max(0, Math.min(left, count - 1));
+    const safeRight = Math.max(0, Math.min(right, count - 1));
 
     // Route selected channels to stereo output
     this.splitter.connect(this.merger, safeLeft, 0); // → left output
@@ -267,13 +238,16 @@ export class DeviceSource {
     const devices = await navigator.mediaDevices.enumerateDevices();
 
     return devices
-      .filter((d) => d.kind === "audioinput" || d.kind === "audiooutput")
+      .filter(
+        (d): d is MediaDeviceInfo & { kind: "audioinput" | "audiooutput" } =>
+          d.kind === "audioinput" || d.kind === "audiooutput"
+      )
       .map((d) => ({
         deviceId: d.deviceId,
         label:
           d.label ||
           `${d.kind === "audioinput" ? "Input" : "Output"} ${d.deviceId.slice(0, 8)}`,
-        kind: d.kind as "audioinput" | "audiooutput",
+        kind: d.kind,
         groupId: d.groupId,
       }));
   }
@@ -324,11 +298,16 @@ export class DeviceSource {
   async checkPermission(): Promise<DevicePermissionState> {
     try {
       if (typeof navigator !== "undefined" && navigator.permissions) {
+        // @ts-expect-error -- "microphone" is valid but not in all TS PermissionName definitions
         const result = await navigator.permissions.query({
-          name: "microphone" as PermissionName,
+          name: "microphone",
         });
-        this._permissionState = result.state as DevicePermissionState;
-        return this._permissionState;
+        const state = result.state;
+        if (state === "granted" || state === "denied" || state === "prompt") {
+          this._permissionState = state;
+          return state;
+        }
+        return "prompt";
       }
       return "prompt";
     } catch {

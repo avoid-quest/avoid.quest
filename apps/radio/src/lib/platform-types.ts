@@ -44,6 +44,12 @@ export type DeviceInputMetadata = {
   channelMode?: string; // deprecated, backward compat
 };
 
+export function isDeviceInputMetadata(
+  metadata: PlatformMetadata | undefined | null
+): metadata is DeviceInputMetadata {
+  return metadata?.platform === "device-input";
+}
+
 // Unified platform types
 export type Platform = "bandcamp" | "soundcloud" | "device-input";
 export type PlatformMetadata =

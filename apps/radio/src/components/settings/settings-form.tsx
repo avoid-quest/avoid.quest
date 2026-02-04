@@ -41,8 +41,7 @@ const MAX_TRANSITION_DURATION = 10_000;
 function handleRestoreStateToggle(checked: boolean): void {
   try {
     setRestoreStateOnLoad(checked);
-  } catch (error) {
-    console.error("Failed to update restore state setting:", error);
+  } catch {
     toast.error("Failed to update setting");
   }
 }
@@ -82,10 +81,9 @@ export function SettingsForm({
 
     try {
       setSingleModeTransitionDuration(newValue ?? 0);
-    } catch (error) {
+    } catch {
       // Rollback to previous value on error
       setTransitionDuration(previousValue);
-      console.error("Failed to update transition duration:", error);
       toast.error("Failed to update transition duration. Changes reverted.");
     }
   };
@@ -96,8 +94,7 @@ export function SettingsForm({
       await resetAllSettings();
       setShowResetDialog(false);
       toast.success("All settings reset to defaults");
-    } catch (error) {
-      console.error("Failed to reset all settings:", error);
+    } catch {
       toast.error("Failed to reset all settings");
     } finally {
       setIsResetting(false);

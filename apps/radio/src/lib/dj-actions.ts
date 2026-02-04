@@ -36,7 +36,10 @@ import {
   updateMixer,
 } from "@/lib/collections";
 import type { DeckRecord } from "@/lib/collections/dj-state";
-import { isDeviceInputMetadata } from "@/lib/platform-types";
+import {
+  type DeviceInputMetadata,
+  isDeviceInputMetadata,
+} from "@/lib/platform-types";
 import {
   getDeckARuntime,
   getDeckASubscriptionCleanup,
@@ -63,12 +66,10 @@ type DeckId = "deck-a" | "deck-b";
  * EffectConfig objects — this helper bridges the type gap without `as` casts.
  */
 function getDeckEffects(deck: DeckRecord): EffectConfig[] {
-  // @ts-expect-error -- Zod infers `type: string` but runtime values are valid EffectType
-  return deck.effects;
+  return deck.effects as unknown as EffectConfig[];
 }
 
 function getDeckRadio(deck: DeckRecord): Radio | null {
-  // @ts-expect-error -- Zod-inferred type is close but not identical to Radio
   return deck.radio;
 }
 

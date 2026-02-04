@@ -6,7 +6,6 @@
 
 export { useAudio } from "./use-audio.js";
 export { useAudioDevices } from "./use-audio-devices.js";
-export { useDjAudio } from "./use-dj-audio.js";
 export {
   type MultipleAudioSettings,
   type MultipleAudioState,

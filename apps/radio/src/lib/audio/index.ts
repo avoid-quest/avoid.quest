@@ -66,7 +66,6 @@ export {
   type MultipleAudioState,
   useAudio,
   useAudioDevices,
-  useDjAudio,
   useMultipleAudio,
   useSingleAudio,
 } from "./hooks/index.js";

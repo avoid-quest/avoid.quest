@@ -298,7 +298,6 @@ export class DeviceSource {
   async checkPermission(): Promise<DevicePermissionState> {
     try {
       if (typeof navigator !== "undefined" && navigator.permissions) {
-        // @ts-expect-error -- "microphone" is valid but not in all TS PermissionName definitions
         const result = await navigator.permissions.query({
           name: "microphone",
         });

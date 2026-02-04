@@ -46,11 +46,9 @@ import {
   updateDeckBEffect,
 } from "@/lib/dj-actions";
 import { isPlatformRadio } from "@/lib/external-url";
-import { useDeckState } from "@/lib/hooks/use-deck-state";
+import { useDeckAState, useDeckBState } from "@/lib/hooks/use-deck-state";
 import {
   setPendingPlatformItem,
-  useDeckA,
-  useDeckB,
   usePendingPlatformItem,
 } from "@/lib/hooks/use-dj-state";
 import { usePeakLevel } from "@/lib/hooks/use-peak-level";
@@ -70,13 +68,44 @@ type DjDeckProps = {
   radios?: Radio[];
 };
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: deck component handles multiple render states (empty, loading, device input, streaming, platform forms)
 export function DjDeck({ className, deckId, radios = [] }: DjDeckProps) {
+  if (deckId === "deck-a") {
+    return <DjDeckA className={className} radios={radios} />;
+  }
+  return <DjDeckB className={className} radios={radios} />;
+}
+
+type DjDeckSideProps = {
+  className?: string;
+  radios: Radio[];
+};
+
+function DjDeckA(props: DjDeckSideProps) {
+  const deckState = useDeckAState();
+  return <DjDeckContent {...props} deckId="deck-a" deckState={deckState} />;
+}
+
+function DjDeckB(props: DjDeckSideProps) {
+  const deckState = useDeckBState();
+  return <DjDeckContent {...props} deckId="deck-b" deckState={deckState} />;
+}
+
+type DjDeckContentProps = DjDeckSideProps & {
+  deckId: "deck-a" | "deck-b";
+  deckState: ReturnType<typeof useDeckAState>;
+};
+
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: deck component handles multiple render states (empty, loading, device input, streaming, platform forms)
+function DjDeckContent({
+  className,
+  deckId,
+  radios,
+  deckState,
+}: DjDeckContentProps) {
   const { isOver, setNodeRef } = useDroppable({
     id: deckId,
   });
 
-  // Use custom hooks for state management
   const {
     radio,
     isPlaying,
@@ -89,16 +118,16 @@ export function DjDeck({ className, deckId, radios = [] }: DjDeckProps) {
     loadTrack,
     soundId,
     reset,
-    // Channel strip state
     pan,
     speed,
     channelFilter,
     effectsDryWet,
+    effects,
     setPan,
     setSpeed,
     setChannelFilter,
     setEffectsDryWet,
-  } = useDeckState(deckId);
+  } = deckState;
 
   const { currentTrackIndex, metadata } = usePlatformMetadata(radio);
   const trackProgress = useTrackProgress(soundId);
@@ -110,12 +139,6 @@ export function DjDeck({ className, deckId, radios = [] }: DjDeckProps) {
   const throttledSetChannelFilter = useThrottledParam(setChannelFilter);
   const throttledSetEffectsDryWet = useThrottledParam(setEffectsDryWet);
   const throttledSetVolume = useThrottledParam(setVolume);
-
-  // Get effects from the deck state
-  const deckA = useDeckA();
-  const deckB = useDeckB();
-  const effects =
-    deckId === "deck-a" ? (deckA?.effects ?? []) : (deckB?.effects ?? []);
 
   // Get effects actions based on deck
   const addEffect = deckId === "deck-a" ? addDeckAEffect : addDeckBEffect;
@@ -400,8 +423,7 @@ function DeckHeader({ deckId, radio, onReset }: DeckHeaderProps) {
     try {
       await navigator.clipboard.writeText(radio.streamUrl);
       toast.success("Stream link copied to clipboard");
-    } catch (error) {
-      console.error("Failed to copy stream link:", error);
+    } catch {
       toast.error("Failed to copy stream link");
     }
   };

@@ -55,8 +55,8 @@ export function ImportExport() {
       // Generate the URL for display
       const url = await generateShareUrl();
       setShareUrl(url);
-    } catch (error) {
-      console.error("Failed to generate share URL:", error);
+    } catch {
+      toast.error("Failed to generate share URL");
     } finally {
       setIsExporting(false);
     }
@@ -80,8 +80,7 @@ export function ImportExport() {
       (
         window as Window & { pendingImportData?: DatabaseExport }
       ).pendingImportData = importData;
-    } catch (error) {
-      console.error("File import failed:", error);
+    } catch {
       toast.error("Failed to read import file");
     } finally {
       setIsImporting(false);
@@ -106,8 +105,7 @@ export function ImportExport() {
       (
         window as Window & { pendingImportData?: DatabaseExport }
       ).pendingImportData = importData;
-    } catch (error) {
-      console.error("URL import failed:", error);
+    } catch {
       toast.error("Failed to import from URL");
     } finally {
       setIsImporting(false);
@@ -141,8 +139,7 @@ export function ImportExport() {
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
-    } catch (error) {
-      console.error("Apply import failed:", error);
+    } catch {
       toast.error("Failed to apply import");
     } finally {
       setIsImporting(false);

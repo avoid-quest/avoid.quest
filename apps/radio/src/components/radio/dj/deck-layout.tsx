@@ -669,8 +669,9 @@ function MobileDeckLayout({
   onPreviousTrack,
   className,
 }: MobileDeckLayoutProps) {
-  const tracks = isStreamingMetadata(metadata ?? undefined)
-    ? metadata.tracks
+  const streamingMeta = metadata ?? undefined;
+  const tracks = isStreamingMetadata(streamingMeta)
+    ? streamingMeta.tracks
     : undefined;
   return (
     <div className={cn("flex h-full min-h-0 flex-col", className)}>

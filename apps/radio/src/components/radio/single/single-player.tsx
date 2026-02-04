@@ -18,6 +18,7 @@ import { PlayPauseButton } from "@avoid.quest/ui/components/play-pause-button";
 import { Slider } from "@avoid.quest/ui/components/slider";
 import { AudioLinesIcon, Volume2Icon, VolumeXIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import { type Radio, useSingleAudio } from "@/lib/audio";
 import { deleteRadio } from "@/lib/hooks/use-radios";
 import { useSettings } from "@/lib/hooks/use-settings";
@@ -146,8 +147,8 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
     try {
       deleteRadio(String(deleteConfirm.id));
       setDeleteConfirm(null);
-    } catch (deleteError) {
-      console.error("Failed to delete radio:", deleteError);
+    } catch {
+      toast.error("Failed to delete radio");
     }
   };
 

@@ -152,8 +152,7 @@ export function RadioManagement() {
     try {
       updateRadio(String(radio.id), { enabled });
       toast.success(`${radio.name} ${enabled ? "enabled" : "disabled"}`);
-    } catch (error) {
-      console.error("Failed to update radio:", error);
+    } catch {
       toast.error("Failed to update radio");
     } finally {
       setIsUpdating(false);
@@ -190,8 +189,7 @@ export function RadioManagement() {
 
       reorderRadios(orderedIds);
       toast.success("Radio order updated");
-    } catch (error) {
-      console.error("Failed to reorder radios:", error);
+    } catch {
       toast.error("Failed to reorder radios");
     } finally {
       setIsUpdating(false);
@@ -223,8 +221,7 @@ export function RadioManagement() {
     try {
       deleteRadio(String(deleteConfirm.id));
       toast.success(`"${deleteConfirm.name}" deleted successfully`);
-    } catch (error) {
-      console.error("Failed to delete radio:", error);
+    } catch {
       toast.error("Failed to delete radio");
     } finally {
       setIsUpdating(false);

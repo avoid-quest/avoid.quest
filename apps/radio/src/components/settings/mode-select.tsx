@@ -39,8 +39,7 @@ export function ModeSelect({ className }: { className?: string }) {
             player.single?.transitionDuration ?? DEFAULT_TRANSITION_DURATION,
         },
       }));
-    } catch (error) {
-      console.error("Failed to update mode:", error);
+    } catch {
       toast.error("Failed to update mode");
     }
   };

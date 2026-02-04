@@ -18,7 +18,7 @@ export function usePlatformMetadata(radio: Radio | null) {
     } else {
       setCurrentTrackIndex(0);
     }
-  }, [radio]);
+  }, [radio?.platformMetadata, radio?.streamUrl]);
 
   const isPlatformItem = !!radio?.platformMetadata;
   const isPlaylistOrAlbum = radio?.platformMetadata

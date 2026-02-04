@@ -21,8 +21,7 @@ export function SettingsSelect() {
 
     try {
       setPlayerType(value as "default" | "browser");
-    } catch (error) {
-      console.error("Failed to update player type:", error);
+    } catch {
       toast.error("Failed to update player type");
     }
   };

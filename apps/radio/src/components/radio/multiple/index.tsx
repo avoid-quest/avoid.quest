@@ -8,6 +8,7 @@ import {
 import { Slider } from "@avoid.quest/ui/components/slider";
 import { PauseIcon, PlayIcon, Volume2Icon, VolumeXIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import { type Radio, useMultipleAudio } from "@/lib/audio";
 import { deleteRadio } from "@/lib/hooks/use-radios";
 import { RadioDialog } from "../../settings/radio-dialog";
@@ -118,8 +119,8 @@ export function MultipleRadios({ radios }: { radios?: Radio[] }) {
     try {
       deleteRadio(String(deleteConfirm.id));
       setDeleteConfirm(null);
-    } catch (error) {
-      console.error("Failed to delete radio:", error);
+    } catch {
+      toast.error("Failed to delete radio");
     }
   };
 

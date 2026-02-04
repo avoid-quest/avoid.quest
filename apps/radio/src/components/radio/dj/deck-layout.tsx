@@ -12,6 +12,7 @@ import { cn } from "@avoid.quest/ui/lib/utils";
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
+  FileAudioIcon,
   Link2Icon,
   PlayIcon,
   XIcon,
@@ -33,6 +34,7 @@ type DeckLayoutProps = {
   isPlaying: boolean;
   isLoading: boolean;
   isBuffering?: boolean;
+  isFileSource?: boolean;
   volume: number;
   metadata?: PlatformMetadata;
   trackProgress?: {
@@ -117,6 +119,7 @@ export function DeckLayout({
   isPlaying,
   isLoading,
   isBuffering = false,
+  isFileSource = false,
   volume,
   metadata,
   trackProgress,
@@ -181,6 +184,7 @@ export function DeckLayout({
         effectsDryWet={effectsDryWet}
         hasTracklist={hasTracklist}
         isBuffering={isBuffering}
+        isFileSource={isFileSource}
         isLoading={isLoading}
         isPlaying={isPlaying}
         metadata={metadata || null}
@@ -289,7 +293,11 @@ export function DeckLayout({
 
         {/* Footer Actions */}
         <div className="mt-auto">
-          <DeckFooterActions onChangeUrl={onChangeUrl} onClear={onClear} />
+          <DeckFooterActions
+            isFileSource={isFileSource}
+            onChangeUrl={onChangeUrl}
+            onClear={onClear}
+          />
         </div>
       </div>
 
@@ -306,9 +314,11 @@ export function DeckLayout({
 function DeckFooterActions({
   onChangeUrl,
   onClear,
+  isFileSource = false,
 }: {
   onChangeUrl?: () => void;
   onClear: () => void;
+  isFileSource?: boolean;
 }) {
   return (
     <div className="flex gap-1 border-t pt-1.5">
@@ -319,8 +329,12 @@ function DeckFooterActions({
           size="sm"
           variant="ghost"
         >
-          <Link2Icon className="mr-1.5 size-3" />
-          Change URL
+          {isFileSource ? (
+            <FileAudioIcon className="mr-1.5 size-3" />
+          ) : (
+            <Link2Icon className="mr-1.5 size-3" />
+          )}
+          {isFileSource ? "Change File" : "Change URL"}
         </Button>
       )}
       <Button
@@ -619,6 +633,7 @@ type MobileDeckLayoutProps = {
   isPlaying: boolean;
   isLoading: boolean;
   isBuffering: boolean;
+  isFileSource?: boolean;
   volume: number;
   trackProgress?: { position: number; duration: number };
   metadata: PlatformMetadata | null;
@@ -654,6 +669,7 @@ function MobileDeckLayout({
   isPlaying,
   isLoading,
   isBuffering,
+  isFileSource = false,
   volume,
   trackProgress,
   metadata,
@@ -760,7 +776,11 @@ function MobileDeckLayout({
       </ScrollArea>
 
       {/* Footer Actions */}
-      <DeckFooterActions onChangeUrl={onChangeUrl} onClear={onClear} />
+      <DeckFooterActions
+        isFileSource={isFileSource}
+        onChangeUrl={onChangeUrl}
+        onClear={onClear}
+      />
     </div>
   );
 }

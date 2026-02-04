@@ -16,6 +16,7 @@ import type { Radio } from "@/lib/audio";
 import {
   deckCollection,
   mixerCollection,
+  resetDeck,
   settingsCollection,
 } from "@/lib/collections";
 import {
@@ -119,17 +120,15 @@ function useDjStateHydration() {
 
       // Re-init audio for decks that have radios (audio needs component context)
       // This also applies channel strip settings (pan, speed, filter, etc.)
-      // Skip local-file decks — blob URLs are session-scoped and invalid after reload
-      if (
-        deckA?.radio &&
-        deckA.radio.platformMetadata?.platform !== "local-file"
-      ) {
+      // Clear local-file decks — blob URLs are session-scoped and invalid after reload
+      if (deckA?.radio?.platformMetadata?.platform === "local-file") {
+        resetDeck("deck-a");
+      } else if (deckA?.radio) {
         await setDeckARadio(deckA.radio as Radio);
       }
-      if (
-        deckB?.radio &&
-        deckB.radio.platformMetadata?.platform !== "local-file"
-      ) {
+      if (deckB?.radio?.platformMetadata?.platform === "local-file") {
+        resetDeck("deck-b");
+      } else if (deckB?.radio) {
         await setDeckBRadio(deckB.radio as Radio);
       }
 

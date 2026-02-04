@@ -53,7 +53,11 @@ import { usePeakLevel } from "@/lib/hooks/use-peak-level";
 import { usePlatformMetadata } from "@/lib/hooks/use-platform-metadata";
 import { useThrottledParam } from "@/lib/hooks/use-throttled-param";
 import { useTrackProgress } from "@/lib/hooks/use-track-progress";
-import { isDeviceInputMetadata, type Platform } from "@/lib/platform-types";
+import {
+  isDeviceInputMetadata,
+  isFileMetadata,
+  type Platform,
+} from "@/lib/platform-types";
 import {
   setDeckAPeakLevel,
   setDeckBPeakLevel,
@@ -166,6 +170,7 @@ function DjDeckContent({
   const deckSide = deckId === "deck-a" ? "left" : "right";
   const [isChangingUrl, setIsChangingUrl] = useState(false);
   const [isChangingDevice, setIsChangingDevice] = useState(false);
+  const [isChangingFile, setIsChangingFile] = useState(false);
   const isMobile = useIsMobile();
 
   // Check if this deck has a pending platform item
@@ -294,15 +299,36 @@ function DjDeckContent({
     setIsChangingUrl(true);
   }, []);
 
-  const onChangeUrl = useMemo(
-    () => (radio && isPlatformRadio(radio) ? handleChangeUrl : undefined),
-    [radio, handleChangeUrl]
-  );
+  const handleChangeFile = useCallback(() => {
+    setIsChangingFile(true);
+  }, []);
+
+  const isFileSource = isFileMetadata(radio?.platformMetadata);
+
+  const onChangeUrl = useMemo(() => {
+    if (!(radio && isPlatformRadio(radio))) {
+      return undefined;
+    }
+    if (isFileSource) {
+      return handleChangeFile;
+    }
+    return handleChangeUrl;
+  }, [radio, isFileSource, handleChangeUrl, handleChangeFile]);
 
   let content: React.ReactNode;
 
   if (radio) {
-    if (isChangingUrl && isPlatformRadio(radio)) {
+    if (isChangingFile && isFileSource) {
+      content = (
+        <FileForm
+          onCancel={() => setIsChangingFile(false)}
+          onLoad={(file) => {
+            setIsChangingFile(false);
+            handleFileDrop(file);
+          }}
+        />
+      );
+    } else if (isChangingUrl && isPlatformRadio(radio)) {
       content = (
         <PlatformForm
           currentUrl={radio.platformMetadata?.url}
@@ -364,6 +390,7 @@ function DjDeckContent({
           effects={effects}
           effectsDryWet={effectsDryWet}
           isBuffering={isBuffering}
+          isFileSource={isFileSource}
           isLoading={isLoading}
           isPlaying={isPlaying}
           metadata={metadata || radio.platformMetadata}

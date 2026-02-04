@@ -40,7 +40,11 @@ import type { DeckId } from "@/lib/stores/dj-runtime-store";
 import { RadioLogo } from "../radio-logo";
 import { DjDeck } from "./dj-deck";
 import { DjMixer } from "./dj-mixer";
-import { getPlatformFromItem, isPlatformItem } from "./dj-radio-list";
+import {
+  getPlatformFromItem,
+  isAudioInputItem,
+  isPlatformItem,
+} from "./dj-radio-list";
 
 type DjPlayerProps = {
   radios?: Radio[];
@@ -333,6 +337,17 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
     }
   };
 
+  const handleAudioInputDrag = (deckId: string): boolean => {
+    if (deckId === "deck-a" || deckId === "deck-b") {
+      setPendingPlatformItem({
+        deckId: deckId as "deck-a" | "deck-b",
+        platform: "device-input",
+      });
+      return true;
+    }
+    return false;
+  };
+
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     setActiveDragRadio(null);
@@ -344,6 +359,12 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
 
     const radio = active.data.current?.radio as Radio;
     const deckId = over.id as string;
+
+    // Check if it's an audio input item first
+    if (isAudioInputItem(radio)) {
+      handleAudioInputDrag(deckId);
+      return;
+    }
 
     const handled = handlePlatformItemDrag({
       radio,

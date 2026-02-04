@@ -26,6 +26,9 @@ function getDescription(metadata: PlatformMetadata): string | undefined {
 }
 
 function getLogoUrl(metadata: PlatformMetadata): string | undefined {
+  if (metadata.platform === "device-input") {
+    return;
+  }
   if (metadata.artwork) {
     return metadata.artwork;
   }
@@ -44,7 +47,10 @@ export function createPlatformRadio(
 ): Radio {
   return {
     id: Date.now(),
-    name: metadata.name || metadata.artist || "Unknown",
+    name:
+      metadata.platform === "device-input"
+        ? metadata.deviceLabel
+        : metadata.name || metadata.artist || "Unknown",
     streamUrl,
     logoUrl: getLogoUrl(metadata),
     description: getDescription(metadata),

@@ -9,6 +9,20 @@
 import { safeDisconnect } from "../manager/audio-manager.js";
 
 /**
+ * Channel selection for routing device input channels to stereo output.
+ * Uses 0-based channel indices. Setting left === right produces mono.
+ */
+export type ChannelSelection = {
+  left: number; // 0-based channel index for left output
+  right: number; // 0-based channel index for right output (same as left = mono)
+};
+
+/**
+ * @deprecated Use ChannelSelection instead. Kept for backward compatibility.
+ */
+export type ChannelMode = "stereo" | "mono-left" | "mono-right" | "mono-mix";
+
+/**
  * Audio device information
  */
 export type AudioDeviceInfo = {
@@ -53,7 +67,6 @@ const DEFAULT_CONSTRAINTS: DeviceAudioConstraints = {
   noiseSuppression: false,
   autoGainControl: false,
   sampleRate: 48_000,
-  channelCount: 2,
 };
 
 /**
@@ -73,6 +86,13 @@ export class DeviceSource {
   private _permissionState: DevicePermissionState = "prompt";
   private _currentDeviceId: string | null = null;
   private deviceChangeHandler: (() => void) | null = null;
+
+  // Channel routing
+  private _channelSelection: ChannelSelection = { left: 0, right: 1 };
+  private _channelCount = 2;
+  private splitter: ChannelSplitterNode | null = null;
+  private merger: ChannelMergerNode | null = null;
+  private routingOutput: GainNode | null = null;
 
   constructor(
     context: AudioContext,
@@ -132,7 +152,107 @@ export class DeviceSource {
    * Get audio output node for connecting to Web Audio graph
    */
   get output(): AudioNode | null {
-    return this.source;
+    return this.routingOutput ?? this.source;
+  }
+
+  /**
+   * Get actual channel count reported by the device
+   */
+  get channelCount(): number {
+    return this._channelCount;
+  }
+
+  /**
+   * Get current channel selection
+   */
+  get currentChannelSelection(): ChannelSelection {
+    return this._channelSelection;
+  }
+
+  /**
+   * Set channel selection (which device channels route to stereo L/R output)
+   */
+  setChannelSelection(selection: ChannelSelection): void {
+    if (
+      selection.left === this._channelSelection.left &&
+      selection.right === this._channelSelection.right
+    ) {
+      return;
+    }
+    this._channelSelection = selection;
+    if (this._isActive && this.source) {
+      this.applyChannelRouting();
+    }
+  }
+
+  /**
+   * @deprecated Use setChannelSelection instead. Maps old ChannelMode to ChannelSelection.
+   */
+  setChannelMode(mode: ChannelMode): void {
+    switch (mode) {
+      case "stereo":
+        this.setChannelSelection({ left: 0, right: 1 });
+        break;
+      case "mono-left":
+        this.setChannelSelection({ left: 0, right: 0 });
+        break;
+      case "mono-right":
+        this.setChannelSelection({ left: 1, right: 1 });
+        break;
+      case "mono-mix":
+        // Mono mix maps both channels to both outputs — approximate with stereo passthrough
+        this.setChannelSelection({ left: 0, right: 1 });
+        break;
+      default:
+        this.setChannelSelection({ left: 0, right: 1 });
+        break;
+    }
+  }
+
+  /**
+   * Apply current channel routing by wiring splitter/merger nodes.
+   * Routes selected device channels to stereo (2-channel) output.
+   */
+  private applyChannelRouting(): void {
+    if (!this.source) {
+      return;
+    }
+
+    // Disconnect existing routing
+    safeDisconnect(this.source, "DeviceSource.applyChannelRouting");
+    safeDisconnect(this.splitter, "DeviceSource.applyChannelRouting");
+    safeDisconnect(this.merger, "DeviceSource.applyChannelRouting");
+
+    // Ensure routing output exists
+    if (!this.routingOutput) {
+      this.routingOutput = this.context.createGain();
+      this.routingOutput.gain.value = 1;
+    }
+
+    const { left, right } = this._channelSelection;
+    const count = this._channelCount;
+
+    // If default stereo passthrough (ch0 → L, ch1 → R) on a 2-channel device, skip splitter/merger
+    if (left === 0 && right === 1 && count === 2) {
+      this.source.connect(this.routingOutput);
+      return;
+    }
+
+    // Recreate splitter/merger for the actual channel count
+    this.splitter = this.context.createChannelSplitter(count);
+    this.merger = this.context.createChannelMerger(2);
+
+    this.source.connect(this.splitter);
+
+    // Clamp indices to available channels
+    const safeLeft = Math.min(left, count - 1);
+    const safeRight = Math.min(right, count - 1);
+
+    // Route selected channels to stereo output
+    this.splitter.connect(this.merger, safeLeft, 0); // → left output
+    this.splitter.connect(this.merger, safeRight, 1); // → right output
+
+    this.merger.connect(this.routingOutput);
   }
 
   /**
@@ -238,30 +358,39 @@ export class DeviceSource {
     const mergedConstraints = { ...DEFAULT_CONSTRAINTS, ...constraints };
 
     try {
-      // Use 'ideal' instead of 'exact' for device selection
-      // 'exact' throws NotFoundError if device is disconnected between enumeration and selection
-      // 'ideal' falls back to default device gracefully
+      // Use 'exact' for device selection to ensure the correct device is captured
+      // If the device is unavailable, NotFoundError is thrown and handled by handleStartError
       this.stream = await navigator.mediaDevices.getUserMedia({
         audio: {
-          deviceId: deviceId ? { ideal: deviceId } : undefined,
+          deviceId: deviceId ? { exact: deviceId } : undefined,
           echoCancellation: mergedConstraints.echoCancellation,
           noiseSuppression: mergedConstraints.noiseSuppression,
           autoGainControl: mergedConstraints.autoGainControl,
           sampleRate: mergedConstraints.sampleRate,
-          channelCount: mergedConstraints.channelCount,
+          channelCount: mergedConstraints.channelCount ?? { ideal: 32 },
         },
       });
 
       this._permissionState = "granted";
       this.callbacks.onPermissionChange?.("granted");
 
-      // Get actual device ID from track settings
+      // Get actual device ID and channel count from track settings.
+      // Note: browsers currently cap getUserMedia audio input at 2 channels
+      // regardless of hardware capabilities. We request { ideal: 32 } in case
+      // future browser versions lift this restriction.
       const audioTrack = this.stream.getAudioTracks()[0];
       const settings = audioTrack?.getSettings();
       this._currentDeviceId = settings?.deviceId ?? deviceId ?? null;
+      this._channelCount = settings?.channelCount ?? 2;
 
       // Create Web Audio source from stream
       this.source = this.context.createMediaStreamSource(this.stream);
+
+      // Initialize channel routing
+      this.routingOutput = this.context.createGain();
+      this.routingOutput.gain.value = 1;
+      this.applyChannelRouting();
+
       this._isActive = true;
       this.callbacks.onActive?.();
     } catch (error) {
@@ -326,9 +455,15 @@ export class DeviceSource {
       this.stream = null;
     }
 
-    // Disconnect Web Audio node
+    // Disconnect Web Audio nodes
     safeDisconnect(this.source, "DeviceSource.stop");
+    safeDisconnect(this.splitter, "DeviceSource.stop");
+    safeDisconnect(this.merger, "DeviceSource.stop");
+    safeDisconnect(this.routingOutput, "DeviceSource.stop");
     this.source = null;
+    this.splitter = null;
+    this.merger = null;
+    this.routingOutput = null;
 
     this._isActive = false;
     this._currentDeviceId = null;

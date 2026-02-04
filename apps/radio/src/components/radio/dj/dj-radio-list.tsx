@@ -12,6 +12,7 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   GripVerticalIcon,
+  MicIcon,
   MusicIcon,
   SearchIcon,
   Volume2Icon,
@@ -29,9 +30,11 @@ type DjRadioListProps = {
 
 const BANDCAMP_PLATFORM_ID = -1;
 const SOUNDCLOUD_PLATFORM_ID = -2;
+const AUDIO_INPUT_PLATFORM_ID = -3;
 
 const BANDCAMP_COLOR = "#629aa0";
 const SOUNDCLOUD_COLOR = "#ff7700";
+const AUDIO_INPUT_COLOR = "#10b981";
 
 // Platform-specific placeholder items
 const PLATFORM_ITEMS: Radio[] = [
@@ -59,12 +62,34 @@ const PLATFORM_ITEMS: Radio[] = [
       url: "",
     },
   },
+  {
+    id: AUDIO_INPUT_PLATFORM_ID,
+    name: "Audio Input",
+    streamUrl: "",
+    description: "Route mic/line-in from your audio interface",
+    enabled: true,
+    platformMetadata: {
+      platform: "device-input",
+      itemType: "track",
+      url: "",
+      deviceId: "",
+      deviceLabel: "",
+      channelSelection: { left: 0, right: 1 },
+      channelCount: 2,
+    },
+  },
 ];
 
 export function isPlatformItem(radio: Radio): boolean {
   return (
-    radio.id === BANDCAMP_PLATFORM_ID || radio.id === SOUNDCLOUD_PLATFORM_ID
+    radio.id === BANDCAMP_PLATFORM_ID ||
+    radio.id === SOUNDCLOUD_PLATFORM_ID ||
+    radio.id === AUDIO_INPUT_PLATFORM_ID
   );
+}
+
+export function isAudioInputItem(radio: Radio): boolean {
+  return radio.id === AUDIO_INPUT_PLATFORM_ID;
 }
 
 export function getPlatformFromItem(radio: Radio): Platform | null {
@@ -74,14 +99,30 @@ export function getPlatformFromItem(radio: Radio): Platform | null {
   if (radio.id === SOUNDCLOUD_PLATFORM_ID) {
     return "soundcloud";
   }
+  if (radio.id === AUDIO_INPUT_PLATFORM_ID) {
+    return "device-input";
+  }
   return radio.platformMetadata?.platform || null;
+}
+
+function getPlatformColor(platform: Platform | null): string {
+  switch (platform) {
+    case "bandcamp":
+      return BANDCAMP_COLOR;
+    case "soundcloud":
+      return SOUNDCLOUD_COLOR;
+    case "device-input":
+      return AUDIO_INPUT_COLOR;
+    default:
+      return SOUNDCLOUD_COLOR;
+  }
 }
 
 function RadioItemContent({ radio }: { radio: Radio }) {
   const isPlatform = isPlatformItem(radio);
+  const isAudioInput = isAudioInputItem(radio);
   const platform = getPlatformFromItem(radio);
-  const platformColor =
-    platform === "bandcamp" ? BANDCAMP_COLOR : SOUNDCLOUD_COLOR;
+  const platformColor = getPlatformColor(platform);
 
   return (
     <div className="flex min-w-0 flex-1 items-center gap-3">
@@ -93,12 +134,21 @@ function RadioItemContent({ radio }: { radio: Radio }) {
               backgroundColor: `${platformColor}1a`,
             }}
           >
-            <MusicIcon
-              className="size-5"
-              style={{
-                color: platformColor,
-              }}
-            />
+            {isAudioInput ? (
+              <MicIcon
+                className="size-5"
+                style={{
+                  color: platformColor,
+                }}
+              />
+            ) : (
+              <MusicIcon
+                className="size-5"
+                style={{
+                  color: platformColor,
+                }}
+              />
+            )}
           </div>
         ) : (
           <RadioLogo

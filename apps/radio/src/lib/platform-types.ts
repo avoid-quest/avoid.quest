@@ -30,9 +30,26 @@ export type {
   SoundCloudTrackInfo,
 } from "@avoid.quest/soundcloud";
 
+import type { ChannelSelection } from "@/lib/audio";
+
+// Device input metadata
+export type DeviceInputMetadata = {
+  platform: "device-input";
+  itemType: "track";
+  url: "";
+  deviceId: string;
+  deviceLabel: string;
+  channelSelection: ChannelSelection;
+  channelCount: number;
+  channelMode?: string; // deprecated, backward compat
+};
+
 // Unified platform types
-export type Platform = "bandcamp" | "soundcloud";
-export type PlatformMetadata = BandcampMetadata | SoundCloudMetadata;
+export type Platform = "bandcamp" | "soundcloud" | "device-input";
+export type PlatformMetadata =
+  | BandcampMetadata
+  | SoundCloudMetadata
+  | DeviceInputMetadata;
 export type PlatformTrack = BandcampTrackInfo | SoundCloudTrackInfo;
 export type PlatformItemResult = BandcampItemResult | SoundCloudItemResult;
 export type PlatformItemError = BandcampItemError | SoundCloudItemError;

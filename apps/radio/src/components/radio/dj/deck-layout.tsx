@@ -24,7 +24,12 @@ import {
 } from "lucide-react";
 import { EffectChain } from "@/components/audio/effect-chain";
 import type { EffectConfig, EffectType, Radio } from "@/lib/audio";
-import type { PlatformMetadata, PlatformTrack } from "@/lib/platform-types";
+import type {
+  BandcampMetadata,
+  PlatformMetadata,
+  PlatformTrack,
+  SoundCloudMetadata,
+} from "@/lib/platform-types";
 import { DeckTransportBar } from "./deck-transport-bar";
 import { DeckPeakMeter } from "./peak-meter";
 
@@ -65,12 +70,20 @@ type DeckLayoutProps = {
   className?: string;
 };
 
+function isStreamingMetadata(
+  metadata?: PlatformMetadata
+): metadata is BandcampMetadata | SoundCloudMetadata {
+  return metadata !== undefined && metadata.platform !== "device-input";
+}
+
 function calculateHasTracklist(metadata?: PlatformMetadata): boolean {
+  if (!isStreamingMetadata(metadata)) {
+    return false;
+  }
   return Boolean(
-    metadata &&
-      ((metadata.platform === "bandcamp" && metadata.itemType === "album") ||
-        (metadata.platform === "soundcloud" &&
-          metadata.itemType === "playlist")) &&
+    ((metadata.platform === "bandcamp" && metadata.itemType === "album") ||
+      (metadata.platform === "soundcloud" &&
+        metadata.itemType === "playlist")) &&
       metadata.tracks &&
       metadata.tracks.length > 0
   );
@@ -80,12 +93,15 @@ function getDisplayInfo(
   radio: Radio,
   metadata?: PlatformMetadata
 ): { artworkUrl?: string; title: string; artist: string } {
+  if (!isStreamingMetadata(metadata)) {
+    return { title: radio.name, artist: "Radio" };
+  }
   return {
-    artworkUrl: metadata?.artwork || radio.logoUrl,
-    title: metadata?.name || radio.name,
+    artworkUrl: metadata.artwork || radio.logoUrl,
+    title: metadata.name || radio.name,
     artist:
-      metadata?.artist ||
-      (metadata?.platform === "soundcloud" ? "SoundCloud" : "Radio"),
+      metadata.artist ||
+      (metadata.platform === "soundcloud" ? "SoundCloud" : "Radio"),
   };
 }
 
@@ -122,16 +138,14 @@ export function DeckLayout({
 }: DeckLayoutProps) {
   const { artworkUrl, title } = getDisplayInfo(radio, metadata);
   const hasTracklist = calculateHasTracklist(metadata);
+  const streamingMeta = isStreamingMetadata(metadata) ? metadata : null;
+  const tracks = streamingMeta?.tracks;
   const isMobile = useIsMobile();
 
   // Tracklist navigation handlers
   const handleNextTrack = () => {
-    if (
-      hasTracklist &&
-      metadata?.tracks &&
-      currentTrackIndex < metadata.tracks.length - 1
-    ) {
-      const nextTrack = metadata.tracks[currentTrackIndex + 1];
+    if (hasTracklist && tracks && currentTrackIndex < tracks.length - 1) {
+      const nextTrack = tracks[currentTrackIndex + 1];
       if (nextTrack) {
         onPlayTrack?.(nextTrack.streamUrl);
       }
@@ -139,8 +153,8 @@ export function DeckLayout({
   };
 
   const handlePreviousTrack = () => {
-    if (hasTracklist && metadata?.tracks && currentTrackIndex > 0) {
-      const prevTrack = metadata.tracks[currentTrackIndex - 1];
+    if (hasTracklist && tracks && currentTrackIndex > 0) {
+      const prevTrack = tracks[currentTrackIndex - 1];
       if (prevTrack) {
         onPlayTrack?.(prevTrack.streamUrl);
       }
@@ -227,9 +241,9 @@ export function DeckLayout({
               />
             </DeckSection>
 
-            {hasTracklist && metadata?.tracks && onPlayTrack && (
+            {hasTracklist && tracks && onPlayTrack && (
               <DeckSection
-                title={`Tracks (${currentTrackIndex + 1}/${metadata.tracks.length})`}
+                title={`Tracks (${currentTrackIndex + 1}/${tracks.length})`}
                 value="tracks"
               >
                 <TracklistContent
@@ -237,7 +251,7 @@ export function DeckLayout({
                   onNext={handleNextTrack}
                   onPlayTrack={onPlayTrack}
                   onPrevious={handlePreviousTrack}
-                  tracks={metadata.tracks}
+                  tracks={tracks}
                 />
               </DeckSection>
             )}
@@ -389,6 +403,7 @@ function ChannelStrip({
   return (
     <div className="space-y-1.5">
       <ChannelSlider
+        defaultValue={1}
         formatValue={formatPercent}
         label="VOL"
         max={1.585}
@@ -398,6 +413,7 @@ function ChannelStrip({
         value={volume}
       />
       <ChannelSlider
+        defaultValue={0}
         formatValue={formatPan}
         label="PAN"
         max={1}
@@ -407,6 +423,7 @@ function ChannelStrip({
         value={pan}
       />
       <ChannelSlider
+        defaultValue={0}
         formatValue={formatChannelFilter}
         label="FILT"
         max={1}
@@ -416,6 +433,7 @@ function ChannelStrip({
         value={channelFilter}
       />
       <ChannelSlider
+        defaultValue={1}
         formatValue={formatSpeed}
         label="SPD"
         max={2.0}
@@ -425,6 +443,7 @@ function ChannelStrip({
         value={speed}
       />
       <ChannelSlider
+        defaultValue={0}
         formatValue={formatPercent}
         label="FX"
         max={1}
@@ -440,6 +459,7 @@ function ChannelStrip({
 type ChannelSliderProps = {
   label: string;
   value: number;
+  defaultValue?: number;
   min: number;
   max: number;
   step: number;
@@ -450,6 +470,7 @@ type ChannelSliderProps = {
 function ChannelSlider({
   label,
   value,
+  defaultValue,
   min,
   max,
   step,
@@ -463,6 +484,7 @@ function ChannelSlider({
       </span>
       <Slider
         className="min-w-0 flex-1"
+        defaultValue={defaultValue !== undefined ? [defaultValue] : undefined}
         max={max}
         min={min}
         onValueChange={([v]) => onChange(v)}
@@ -647,6 +669,9 @@ function MobileDeckLayout({
   onPreviousTrack,
   className,
 }: MobileDeckLayoutProps) {
+  const tracks = isStreamingMetadata(metadata ?? undefined)
+    ? (metadata as BandcampMetadata | SoundCloudMetadata).tracks
+    : undefined;
   return (
     <div className={cn("flex h-full min-h-0 flex-col", className)}>
       <Tabs className="flex h-full min-h-0 flex-col" defaultValue="source">
@@ -693,9 +718,9 @@ function MobileDeckLayout({
                   />
                 </DeckSection>
 
-                {hasTracklist && metadata?.tracks && onPlayTrack && (
+                {hasTracklist && tracks && onPlayTrack && (
                   <DeckSection
-                    title={`Tracks (${currentTrackIndex + 1}/${metadata.tracks.length})`}
+                    title={`Tracks (${currentTrackIndex + 1}/${tracks.length})`}
                     value="tracks"
                   >
                     <TracklistContent
@@ -703,7 +728,7 @@ function MobileDeckLayout({
                       onNext={onNextTrack}
                       onPlayTrack={onPlayTrack}
                       onPrevious={onPreviousTrack}
-                      tracks={metadata.tracks}
+                      tracks={tracks}
                     />
                   </DeckSection>
                 )}

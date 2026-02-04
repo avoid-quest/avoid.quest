@@ -2,7 +2,7 @@ import { Card, CardContent } from "@avoid.quest/ui/components/card";
 import { Slider } from "@avoid.quest/ui/components/slider";
 import { useIsMobile } from "@avoid.quest/ui/hooks/use-mobile";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { Volume2Icon } from "lucide-react";
+import { HeadphonesIcon, Volume2Icon } from "lucide-react";
 import type { Radio } from "@/lib/audio";
 import { useDjError } from "@/lib/hooks/use-dj-state";
 import { CueControls } from "./cue-controls";
@@ -52,6 +52,7 @@ export function DjMixer({
           <div className="relative flex-1">
             <Slider
               className="h-3"
+              defaultValue={[50]}
               max={100}
               min={0}
               onValueChange={([v]) => onCrossfadeChange(v / 100)}
@@ -70,6 +71,7 @@ export function DjMixer({
           <span className="shrink-0 text-muted-foreground text-xs">Master</span>
           <Slider
             className="h-2 flex-1"
+            defaultValue={[100]}
             max={100}
             min={0}
             onValueChange={([v]) => onMasterVolumeChange(v / 100)}
@@ -81,14 +83,30 @@ export function DjMixer({
           </span>
         </div>
 
+        {/* Headphone Volume */}
+        <div className="flex items-center gap-2">
+          <HeadphonesIcon className="size-4 shrink-0 text-muted-foreground" />
+          <span className="shrink-0 text-muted-foreground text-xs">Phones</span>
+          <Slider
+            className="h-2 flex-1"
+            defaultValue={[100]}
+            max={100}
+            min={0}
+            onValueChange={([v]) => onHeadphoneVolumeChange(v / 100)}
+            step={1}
+            value={[headphoneVolume * 100]}
+          />
+          <span className="w-9 shrink-0 text-right font-mono text-muted-foreground text-xs">
+            {Math.round(headphoneVolume * 100)}%
+          </span>
+        </div>
+
         {/* CUE Controls */}
         <CueControls
           deckACueEnabled={deckACueEnabled}
           deckBCueEnabled={deckBCueEnabled}
-          headphoneVolume={headphoneVolume}
           onDeckACueChange={onDeckACueChange}
           onDeckBCueChange={onDeckBCueChange}
-          onHeadphoneVolumeChange={onHeadphoneVolumeChange}
         />
 
         {/* Divider */}

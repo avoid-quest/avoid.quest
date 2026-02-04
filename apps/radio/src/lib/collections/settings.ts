@@ -24,11 +24,21 @@ const delaySettingsSchema = z.object({
   cueDelayMs: z.number().min(0).max(500).default(0),
 });
 
+const inputDeckSettingsSchema = z.object({
+  deviceId: z.string().nullable(),
+  volume: z.number().min(0).max(1.585),
+  pan: z.number().min(-1).max(1),
+  channelFilter: z.number().min(-1).max(1),
+  effectsDryWet: z.number().min(0).max(1),
+  goLiveOnStart: z.boolean(),
+  collapsed: z.boolean(),
+});
+
 const audioSettingsSchema = z.object({
   mainOutputId: z.string().default("default"),
   cueOutputId: z.string().nullable().default(null),
-  inputDeviceId: z.string().nullable().default(null),
   delay: delaySettingsSchema.optional(),
+  inputDeck: inputDeckSettingsSchema.optional(),
 });
 
 const settingsSchema = z.object({
@@ -184,7 +194,6 @@ export function getAudioSettings(): NonNullable<SettingsRecord["audio"]> {
     settings?.audio ?? {
       mainOutputId: "default",
       cueOutputId: null,
-      inputDeviceId: null,
       delay: {
         mainDelayMs: 0,
         cueDelayMs: 0,
@@ -217,7 +226,6 @@ export function setMainOutputDevice(deviceId: string): void {
         draft.audio = {
           mainOutputId: deviceId,
           cueOutputId: null,
-          inputDeviceId: null,
         };
       }
     });
@@ -237,27 +245,6 @@ export function setCueOutputDevice(deviceId: string | null): void {
         draft.audio = {
           mainOutputId: "default",
           cueOutputId: deviceId,
-          inputDeviceId: null,
-        };
-      }
-    });
-  }
-}
-
-/**
- * Set input device
- */
-export function setInputDevice(deviceId: string | null): void {
-  const existing = getSettings();
-  if (existing) {
-    settingsCollection.update(SETTINGS_ID, (draft) => {
-      if (draft.audio) {
-        draft.audio.inputDeviceId = deviceId;
-      } else {
-        draft.audio = {
-          mainOutputId: "default",
-          cueOutputId: null,
-          inputDeviceId: deviceId,
         };
       }
     });
@@ -281,7 +268,6 @@ export function setMainDelayMs(delayMs: number): void {
         draft.audio = {
           mainOutputId: "default",
           cueOutputId: null,
-          inputDeviceId: null,
           delay: { mainDelayMs: delayMs, cueDelayMs: 0 },
         };
       }
@@ -306,10 +292,108 @@ export function setCueDelayMs(delayMs: number): void {
         draft.audio = {
           mainOutputId: "default",
           cueOutputId: null,
-          inputDeviceId: null,
           delay: { mainDelayMs: 0, cueDelayMs: delayMs },
         };
       }
     });
   }
+}
+
+// ============================================
+// Input Deck Settings
+// ============================================
+
+export type InputDeckSettings = z.infer<typeof inputDeckSettingsSchema>;
+
+const defaultInputDeckSettings: InputDeckSettings = {
+  deviceId: null,
+  volume: 1,
+  pan: 0,
+  channelFilter: 0,
+  effectsDryWet: 1,
+  goLiveOnStart: false,
+  collapsed: true,
+};
+
+/**
+ * Get input deck settings with defaults
+ */
+export function getInputDeckSettings(): InputDeckSettings {
+  const settings = getSettings();
+  return settings?.audio?.inputDeck ?? defaultInputDeckSettings;
+}
+
+/**
+ * Update input deck settings
+ */
+export function updateInputDeckSettings(
+  updater: (settings: InputDeckSettings) => Partial<InputDeckSettings>
+): void {
+  const existing = getSettings();
+  if (existing) {
+    settingsCollection.update(SETTINGS_ID, (draft) => {
+      const currentSettings =
+        draft.audio?.inputDeck ?? defaultInputDeckSettings;
+      const updates = updater(currentSettings);
+
+      if (draft.audio) {
+        draft.audio.inputDeck = { ...currentSettings, ...updates };
+      } else {
+        draft.audio = {
+          mainOutputId: "default",
+          cueOutputId: null,
+          inputDeck: { ...currentSettings, ...updates },
+        };
+      }
+    });
+  }
+}
+
+/**
+ * Set input deck device ID
+ */
+export function setInputDeckDeviceId(deviceId: string | null): void {
+  updateInputDeckSettings(() => ({ deviceId }));
+}
+
+/**
+ * Set input deck volume
+ */
+export function setInputDeckVolume(volume: number): void {
+  updateInputDeckSettings(() => ({ volume }));
+}
+
+/**
+ * Set input deck pan
+ */
+export function setInputDeckPan(pan: number): void {
+  updateInputDeckSettings(() => ({ pan }));
+}
+
+/**
+ * Set input deck channel filter
+ */
+export function setInputDeckChannelFilter(channelFilter: number): void {
+  updateInputDeckSettings(() => ({ channelFilter }));
+}
+
+/**
+ * Set input deck effects dry/wet
+ */
+export function setInputDeckEffectsDryWet(effectsDryWet: number): void {
+  updateInputDeckSettings(() => ({ effectsDryWet }));
+}
+
+/**
+ * Set input deck collapsed state
+ */
+export function setInputDeckCollapsed(collapsed: boolean): void {
+  updateInputDeckSettings(() => ({ collapsed }));
+}
+
+/**
+ * Set input deck go live on start preference
+ */
+export function setInputDeckGoLiveOnStart(goLiveOnStart: boolean): void {
+  updateInputDeckSettings(() => ({ goLiveOnStart }));
 }

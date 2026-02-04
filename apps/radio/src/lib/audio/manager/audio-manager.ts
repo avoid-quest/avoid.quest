@@ -18,6 +18,10 @@ import type { EffectConfig } from "../dsp/effects/types.js";
 import {
   type AudioState,
   type AudioStateCallback,
+  type ChannelSelection,
+  createDeviceSource,
+  type DeviceAudioConstraints,
+  type DeviceSource,
   type FilterType,
   generateErrorId,
   getAudioContext,
@@ -81,6 +85,8 @@ type SoundInstance = {
   radio: Radio;
   sourceId: string;
   html5Source: Html5AudioSource | null;
+  deviceSource: DeviceSource | null;
+  isDeviceInput: boolean;
   nodes: AudioNodes | null;
   volume: number;
   pan: number;
@@ -216,6 +222,8 @@ export class AudioManager {
       radio,
       sourceId: id,
       html5Source: null,
+      deviceSource: null,
+      isDeviceInput: false,
       nodes: null,
       volume: 1,
       pan: 0,
@@ -242,6 +250,27 @@ export class AudioManager {
     const instance = this.sounds.get(soundId);
     if (!instance) {
       throw new Error(`Sound with id ${soundId} not found`);
+    }
+
+    // Device input: unmute by restoring gain (stream stays alive)
+    if (instance.isDeviceInput && instance.deviceSource?.isActive) {
+      const context = getAudioContext();
+      if (context && instance.nodes) {
+        const now = context.currentTime;
+        const targetVolume = Math.max(0.0001, volume * this.globalVolume);
+        instance.nodes.gain.gain.setTargetAtTime(targetVolume, now, 0.02);
+      }
+      instance.volume = volume;
+      instance.playing = true;
+      this.notifyListeners(soundId, {
+        isPlaying: true,
+        isLoading: false,
+        isBuffering: false,
+        volume,
+        error: null,
+        hasEnded: false,
+      });
+      return;
     }
 
     await this.init();
@@ -359,6 +388,139 @@ export class AudioManager {
   }
 
   /**
+   * Play a device input source (mic/line-in) through the full audio graph
+   */
+  async playDeviceSound(
+    soundId: string,
+    deviceId: string,
+    constraints?: DeviceAudioConstraints
+  ): Promise<void> {
+    const instance = this.sounds.get(soundId);
+    if (!instance) {
+      throw new Error(`Sound with id ${soundId} not found`);
+    }
+
+    await this.init();
+    await resumeAudioContext();
+
+    const context = getAudioContext();
+    if (!context) {
+      throw new Error("Audio context not available");
+    }
+
+    instance.isDeviceInput = true;
+    instance.loading = true;
+
+    this.notifyListeners(soundId, {
+      isPlaying: false,
+      isLoading: true,
+      isBuffering: false,
+      volume: instance.volume,
+      error: null,
+      hasEnded: false,
+    });
+
+    // Create audio nodes
+    if (!instance.nodes) {
+      instance.nodes = this.createAudioNodes(context);
+    }
+
+    // Create device source
+    instance.deviceSource = createDeviceSource(context, soundId, {
+      onActive: () => {
+        instance.loading = false;
+        instance.playing = true;
+        this.notifyListeners(soundId, {
+          isPlaying: true,
+          isLoading: false,
+          isBuffering: false,
+          volume: instance.volume,
+          error: null,
+          hasEnded: false,
+        });
+      },
+      onInactive: () => {
+        instance.playing = false;
+        this.notifyListeners(soundId, {
+          isPlaying: false,
+          isLoading: false,
+          isBuffering: false,
+          volume: instance.volume,
+          error: null,
+          hasEnded: false,
+        });
+      },
+      onError: (error) => {
+        instance.playing = false;
+        instance.loading = false;
+        this.notifyListeners(soundId, {
+          isPlaying: false,
+          isLoading: false,
+          isBuffering: false,
+          volume: instance.volume,
+          error: {
+            id: generateErrorId(),
+            message: error.message,
+            code: "PLAYBACK_FAILED",
+            radio: instance.radio,
+            timestamp: Date.now(),
+            sourceId: soundId,
+          },
+          hasEnded: false,
+        });
+      },
+    });
+
+    // Start capture
+    await instance.deviceSource.start(deviceId, constraints);
+
+    // Connect through the full audio graph
+    const graphConnected = await this.connectAudioGraph(instance);
+    if (!graphConnected) {
+      console.warn(
+        `[AudioManager] Audio graph connection failed for device ${soundId}`
+      );
+    }
+
+    // Set initial volume
+    this.setVolume(soundId, instance.volume);
+
+    // Mark as playing
+    instance.playing = true;
+    instance.loading = false;
+    this.notifyListeners(soundId, {
+      isPlaying: true,
+      isLoading: false,
+      isBuffering: false,
+      volume: instance.volume,
+      error: null,
+      hasEnded: false,
+    });
+  }
+
+  /**
+   * Set channel selection for a device input
+   */
+  setDeviceChannelSelection(
+    soundId: string,
+    selection: ChannelSelection
+  ): void {
+    const instance = this.sounds.get(soundId);
+    if (!instance?.deviceSource) {
+      return;
+    }
+    instance.deviceSource.setChannelSelection(selection);
+  }
+
+  /**
+   * Get the DeviceSource for a sound (to read channel count, etc.)
+   */
+  getDeviceSource(soundId: string): DeviceSource | null {
+    const instance = this.sounds.get(soundId);
+    return instance?.deviceSource ?? null;
+  }
+
+  /**
    * Create native audio nodes for a sound
    */
   private createAudioNodes(context: AudioContext): AudioNodes {
@@ -395,7 +557,9 @@ export class AudioManager {
    * @returns true if graph was connected successfully, false otherwise
    */
   private async connectAudioGraph(instance: SoundInstance): Promise<boolean> {
-    if (!(instance.html5Source?.output && instance.nodes)) {
+    const sourceOutput =
+      instance.html5Source?.output ?? instance.deviceSource?.output;
+    if (!(sourceOutput && instance.nodes)) {
       console.warn(
         `[AudioManager] Cannot connect graph: missing source or nodes for ${instance.sourceId}`
       );
@@ -411,7 +575,6 @@ export class AudioManager {
     }
 
     const { preFaderSend, gain, pan, filter, analyser } = instance.nodes;
-    const sourceOutput = instance.html5Source.output;
 
     // Disconnect any existing connections (may already be disconnected)
     safeDisconnect(sourceOutput, "AudioManager.connectAudioGraph");
@@ -486,8 +649,18 @@ export class AudioManager {
     }
 
     instance.playing = false;
-    instance.html5Source?.pause();
-    this.workletManagers.get(soundId)?.pauseSource(soundId);
+
+    // Device input: mute gain instead of stopping stream (instant unmute later)
+    if (instance.isDeviceInput) {
+      const context = getAudioContext();
+      if (context && instance.nodes) {
+        const now = context.currentTime;
+        instance.nodes.gain.gain.setTargetAtTime(0.0001, now, 0.02);
+      }
+    } else {
+      instance.html5Source?.pause();
+      this.workletManagers.get(soundId)?.pauseSource(soundId);
+    }
 
     this.notifyListeners(soundId, {
       isPlaying: false,
@@ -510,6 +683,7 @@ export class AudioManager {
 
     instance.playing = false;
     instance.html5Source?.stop();
+    instance.deviceSource?.stop();
     this.workletManagers.get(soundId)?.stopSource(soundId);
 
     this.notifyListeners(soundId, {
@@ -530,9 +704,11 @@ export class AudioManager {
 
     const instance = this.sounds.get(soundId);
     if (instance) {
-      // Clean up HTML5 source
+      // Clean up sources
       instance.html5Source?.cleanup();
       instance.html5Source = null;
+      instance.deviceSource?.cleanup();
+      instance.deviceSource = null;
 
       // Disconnect nodes (may already be disconnected)
       if (instance.nodes) {
@@ -627,10 +803,19 @@ export class AudioManager {
    */
   setPlaybackRate(soundId: string, rate: number): void {
     const instance = this.sounds.get(soundId);
-    if (!instance?.html5Source) {
+    if (!instance) {
       console.warn(
-        `[AudioManager] setPlaybackRate: sound ${soundId} not found or not initialized`
+        `[AudioManager] setPlaybackRate: sound ${soundId} not found`
       );
+      return;
+    }
+
+    // Can't change speed of live audio
+    if (instance.isDeviceInput) {
+      return;
+    }
+
+    if (!instance.html5Source) {
       return;
     }
 

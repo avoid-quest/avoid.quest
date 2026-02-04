@@ -38,6 +38,10 @@ import {
   removeDeckBEffect,
   reorderDeckAEffects,
   reorderDeckBEffects,
+  setDeckAChannelSelection,
+  setDeckADeviceSource,
+  setDeckBChannelSelection,
+  setDeckBDeviceSource,
   updateDeckAEffect,
   updateDeckBEffect,
 } from "@/lib/dj-actions";
@@ -53,9 +57,11 @@ import { usePeakLevel } from "@/lib/hooks/use-peak-level";
 import { usePlatformMetadata } from "@/lib/hooks/use-platform-metadata";
 import { useThrottledParam } from "@/lib/hooks/use-throttled-param";
 import { useTrackProgress } from "@/lib/hooks/use-track-progress";
-import type { Platform } from "@/lib/platform-types";
+import type { DeviceInputMetadata, Platform } from "@/lib/platform-types";
 import { DeckLayout } from "./deck-layout";
+import { DeviceForm } from "./device-form";
 import { DjRadioList } from "./dj-radio-list";
+import { InputDeckLayout } from "./input-deck-layout";
 import { PlatformForm } from "./platform-form";
 
 type DjDeckProps = {
@@ -64,6 +70,7 @@ type DjDeckProps = {
   radios?: Radio[];
 };
 
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: deck component handles multiple render states (empty, loading, device input, streaming, platform forms)
 export function DjDeck({ className, deckId, radios = [] }: DjDeckProps) {
   const { isOver, setNodeRef } = useDroppable({
     id: deckId,
@@ -124,6 +131,7 @@ export function DjDeck({ className, deckId, radios = [] }: DjDeckProps) {
 
   const deckSide = deckId === "deck-a" ? "left" : "right";
   const [isChangingUrl, setIsChangingUrl] = useState(false);
+  const [isChangingDevice, setIsChangingDevice] = useState(false);
   const isMobile = useIsMobile();
 
   // Check if this deck has a pending platform item
@@ -131,6 +139,9 @@ export function DjDeck({ className, deckId, radios = [] }: DjDeckProps) {
     pendingPlatformItem?.deckId === deckId
       ? pendingPlatformItem.platform
       : undefined;
+
+  // Check if current radio is a device input
+  const isDeviceInput = radio?.platformMetadata?.platform === "device-input";
 
   const handlePlayPause = () => {
     if (isPlaying) {
@@ -166,6 +177,21 @@ export function DjDeck({ className, deckId, radios = [] }: DjDeckProps) {
     setPendingPlatformItem(null);
   };
 
+  const handleLoadDeviceInput = async (
+    deviceId: string,
+    deviceLabel: string
+  ) => {
+    const setDeviceSource =
+      deckId === "deck-a" ? setDeckADeviceSource : setDeckBDeviceSource;
+    await setDeviceSource(deviceId, deviceLabel);
+    setPendingPlatformItem(null);
+    setIsChangingDevice(false);
+  };
+
+  const handleChangeDevice = useCallback(() => {
+    setIsChangingDevice(true);
+  }, []);
+
   const handleUrlChanged = (newRadio: Radio) => {
     setIsChangingUrl(false);
     handleLoadPlatformItem(newRadio);
@@ -191,6 +217,49 @@ export function DjDeck({ className, deckId, radios = [] }: DjDeckProps) {
           initialPlatform={radio.platformMetadata?.platform as Platform}
           onCancel={() => setIsChangingUrl(false)}
           onLoad={handleUrlChanged}
+        />
+      );
+    } else if (isChangingDevice && isDeviceInput) {
+      content = (
+        <DeviceForm
+          onCancel={() => setIsChangingDevice(false)}
+          onLoad={handleLoadDeviceInput}
+        />
+      );
+    } else if (isDeviceInput) {
+      const deviceMeta = radio.platformMetadata as DeviceInputMetadata;
+      content = (
+        <InputDeckLayout
+          channelCount={deviceMeta.channelCount ?? 2}
+          channelFilter={channelFilter}
+          channelSelection={
+            deviceMeta.channelSelection ?? { left: 0, right: 1 }
+          }
+          deckSide={deckSide}
+          deviceLabel={deviceMeta.deviceLabel ?? radio.name}
+          effects={effects}
+          effectsDryWet={effectsDryWet}
+          isLoading={isLoading}
+          isPlaying={isPlaying}
+          onAddEffect={addEffect}
+          onChangeDevice={handleChangeDevice}
+          onChannelFilterChange={throttledSetChannelFilter}
+          onChannelSelectionChange={
+            deckId === "deck-a"
+              ? setDeckAChannelSelection
+              : setDeckBChannelSelection
+          }
+          onClear={handleClear}
+          onEffectsDryWetChange={throttledSetEffectsDryWet}
+          onPanChange={throttledSetPan}
+          onRemoveEffect={removeEffect}
+          onReorderEffects={reorderEffects}
+          onToggleMute={handlePlayPause}
+          onUpdateEffect={updateEffect}
+          onVolumeChange={handleVolumeChange}
+          pan={pan}
+          peakLevel={peakLevel}
+          volume={volume}
         />
       );
     } else {
@@ -227,6 +296,10 @@ export function DjDeck({ className, deckId, radios = [] }: DjDeckProps) {
         />
       );
     }
+  } else if (pendingPlatform === "device-input") {
+    content = (
+      <DeviceForm onCancel={handleClear} onLoad={handleLoadDeviceInput} />
+    );
   } else if (pendingPlatform) {
     content = (
       <PlatformForm

@@ -17,12 +17,15 @@ export function getCurrentTrackIndex(
   metadata: PlatformMetadata,
   currentStreamUrl: string
 ): number {
+  if (metadata.platform === "device-input") {
+    return 0;
+  }
   if (!(isCollection(metadata) && metadata.tracks)) {
     return 0;
   }
 
   const index = metadata.tracks.findIndex(
-    (t) => t.streamUrl === currentStreamUrl
+    (t: { streamUrl: string }) => t.streamUrl === currentStreamUrl
   );
   return index !== -1 ? index : 0;
 }

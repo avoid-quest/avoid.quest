@@ -13,7 +13,6 @@ import { Slider } from "@avoid.quest/ui/components/slider";
 import {
   ClockIcon,
   HeadphonesIcon,
-  MicIcon,
   RefreshCwIcon,
   Volume2Icon,
 } from "lucide-react";
@@ -27,7 +26,6 @@ import {
   getAudioSettings,
   getDelaySettings,
   setCueOutputDevice,
-  setInputDevice,
   setMainOutputDevice,
 } from "@/lib/collections";
 import {
@@ -43,7 +41,6 @@ import {
  * Manages input/output device selection with persistence.
  */
 export function AudioSettings() {
-  const [inputDevices, setInputDevices] = useState<AudioDeviceInfo[]>([]);
   const [outputDevices, setOutputDevices] = useState<AudioDeviceInfo[]>([]);
   const [permissionState, setPermissionState] = useState<
     "prompt" | "granted" | "denied" | "error"
@@ -61,9 +58,6 @@ export function AudioSettings() {
   const [cueOutputId, setCueOutputId] = useState<string | null>(
     audioSettings.cueOutputId
   );
-  const [inputDeviceId, setInputDeviceId] = useState<string | null>(
-    audioSettings.inputDeviceId
-  );
   const [mainDelayMs, setMainDelayMsState] = useState(
     delaySettings.mainDelayMs
   );
@@ -75,7 +69,6 @@ export function AudioSettings() {
         DeviceSource.getInputDevices(),
         DeviceSource.getOutputDevices(),
       ]);
-      setInputDevices(inputs);
       setOutputDevices(outputs);
 
       // Check if we have real labels (not just fallback)
@@ -146,13 +139,6 @@ export function AudioSettings() {
     await applyCueOutputDevice(newValue);
   };
 
-  const handleInputDeviceChange = (value: string) => {
-    const newValue = value === "none" ? null : value;
-    setInputDeviceId(newValue);
-    setInputDevice(newValue);
-    // Input device selection will be used when starting device source
-  };
-
   const handleMainDelayChange = (value: number) => {
     setMainDelayMsState(value);
     setMainOutputDelay(value);
@@ -199,35 +185,6 @@ export function AudioSettings() {
           </Button>
         </div>
       )}
-
-      {/* Input Device Selection */}
-      <div className="space-y-3 rounded-lg border p-4">
-        <Label className="flex items-center gap-2 font-medium">
-          <MicIcon className="size-4" />
-          Audio Input
-        </Label>
-        <Select
-          onValueChange={handleInputDeviceChange}
-          value={inputDeviceId ?? "none"}
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="Select input device" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="none">None (Disabled)</SelectItem>
-            {inputDevices
-              .filter((device) => device.deviceId)
-              .map((device) => (
-                <SelectItem key={device.deviceId} value={device.deviceId}>
-                  {device.label}
-                </SelectItem>
-              ))}
-          </SelectContent>
-        </Select>
-        <p className="text-muted-foreground text-xs">
-          External audio source (turntable, CDJ, audio interface)
-        </p>
-      </div>
 
       {/* Main Output Selection */}
       <div className="space-y-3 rounded-lg border p-4">
@@ -291,6 +248,7 @@ export function AudioSettings() {
           </div>
           <Slider
             className="h-2"
+            defaultValue={[0]}
             max={500}
             min={0}
             onValueChange={([v]) => handleMainDelayChange(v)}
@@ -352,6 +310,7 @@ export function AudioSettings() {
           </div>
           <Slider
             className="h-2"
+            defaultValue={[0]}
             max={500}
             min={0}
             onValueChange={([v]) => handleCueDelayChange(v)}

@@ -190,10 +190,11 @@ export function MultipleRadios({ radios }: { radios?: Radio[] }) {
           </Button>
           <Slider
             className="max-w-[200px]"
+            defaultValue={[1]}
             max={1}
             min={0}
             onValueChange={handleGlobalVolumeChange}
-            step={0.05}
+            step={0.01}
             value={[globalVolume]}
           />
           <span className="text-muted-foreground text-sm">

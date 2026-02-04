@@ -102,6 +102,8 @@ export {
   type AudioErrorCode,
   type AudioState,
   type AudioStateCallback,
+  type ChannelMode,
+  type ChannelSelection,
   createDeviceSource,
   createFileSource,
   createHtml5AudioSource,

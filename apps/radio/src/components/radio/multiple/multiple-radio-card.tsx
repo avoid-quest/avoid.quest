@@ -114,7 +114,7 @@ export function MultipleRadioCard({
             max={1}
             min={0}
             onValueChange={handleVolumeChange}
-            step={0.05}
+            step={0.01}
             value={[volume]}
           />
         </div>

@@ -17,6 +17,8 @@ export {
 // Device Source (audio input devices)
 export {
   type AudioDeviceInfo,
+  type ChannelMode,
+  type ChannelSelection,
   createDeviceSource,
   type DeviceAudioConstraints,
   type DevicePermissionState,

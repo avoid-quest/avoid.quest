@@ -6,13 +6,20 @@
  * TanStack Store for runtime state.
  */
 
-import type { EffectConfig, EffectType, FilterConfig } from "@/lib/audio";
+import type {
+  ChannelSelection,
+  DevicePermissionState,
+  EffectConfig,
+  EffectType,
+  FilterConfig,
+} from "@/lib/audio";
 import {
   AudioManager,
   type CueBus,
   createCueBus,
   createDefaultEffectConfig,
   createOutputRouter,
+  DeviceSource,
   getAudioContext,
   type OutputRouter,
   type Radio,
@@ -30,6 +37,7 @@ import {
   updateDeckB,
   updateMixer,
 } from "@/lib/collections";
+import type { DeviceInputMetadata } from "@/lib/platform-types";
 import {
   getDeckARuntime,
   getDeckASubscriptionCleanup,
@@ -270,11 +278,19 @@ const deckConfig = {
 export const findNextTrack = (
   radio: Radio | null
 ): { streamUrl: string } | null => {
-  if (!radio?.platformMetadata?.tracks) {
+  if (
+    !radio?.platformMetadata ||
+    radio.platformMetadata.platform === "device-input"
+  ) {
     return null;
   }
 
   const { platformMetadata } = radio;
+
+  if (!("tracks" in platformMetadata && platformMetadata.tracks)) {
+    return null;
+  }
+
   const { tracks, platform, itemType } = platformMetadata;
 
   // Only handle collections (albums/playlists)
@@ -561,11 +577,11 @@ async function setDeckRadio(deckId: DeckId, radio: Radio | null) {
         existingCleanup();
         config.setSubscriptionCleanup(null);
       }
-      await getAudioManager()
-        .cleanupSound(soundId)
-        .catch(() => {
-          // Ignore cleanup errors during error recovery
-        });
+      try {
+        getAudioManager().cleanupSound(soundId);
+      } catch {
+        // Ignore cleanup errors during error recovery
+      }
       config.resetRuntime();
     }
     const msg = err instanceof Error ? err.message : `Failed to load ${deckId}`;
@@ -1180,4 +1196,227 @@ export function autoCompensateLatency(): number | null {
   setMainOutputDelay(latencyMs);
 
   return latencyMs;
+}
+
+// ============================================
+// Device Input Source Actions
+// ============================================
+
+/**
+ * Set a deck to use device input (mic/line-in), routed through AudioManager's full graph
+ */
+async function setDeckDeviceSource(
+  deckId: DeckId,
+  deviceId: string,
+  deviceLabel: string
+): Promise<void> {
+  const config = deckConfig[deckId];
+  const deck = config.getDeck();
+  const runtime = config.getRuntime();
+
+  if (!deck) {
+    return;
+  }
+
+  // Unsubscribe from previous subscription
+  const prevCleanup = config.getSubscriptionCleanup();
+  if (prevCleanup) {
+    prevCleanup();
+    config.setSubscriptionCleanup(null);
+  }
+
+  // Cleanup existing sound
+  if (runtime.soundId) {
+    getAudioManager().cleanupSound(runtime.soundId);
+  }
+
+  const side = config.side;
+  const radioId = `device-input-${side}`;
+  const soundId = `${side}_${radioId}`;
+
+  const platformMetadata: DeviceInputMetadata = {
+    platform: "device-input",
+    itemType: "track",
+    url: "",
+    deviceId,
+    deviceLabel,
+    channelSelection: { left: 0, right: 1 },
+    channelCount: 2,
+  };
+
+  const radio: Radio = {
+    id: radioId,
+    name: deviceLabel,
+    streamUrl: "",
+    description: "Device input (mic/line-in)",
+    enabled: true,
+    platformMetadata,
+  };
+
+  try {
+    setDjError(null);
+
+    // Create the sound in AudioManager
+    getAudioManager().createSound(radio, soundId);
+
+    // Update DB with radio
+    config.updateDeck((draft) => {
+      draft.radio = radio;
+    });
+
+    // Update runtime with soundId
+    config.setSoundId(soundId);
+
+    // Track whether we've applied channel strip settings
+    let hasAppliedChannelStrip = false;
+
+    // Subscribe to sound events
+    const cleanup = getAudioManager().subscribe(soundId, (audioState) => {
+      const currentDeck = config.getDeck();
+      const currentRuntime = config.getRuntime();
+
+      // Apply stored settings on first play and connect to CueBus
+      if (
+        audioState.isPlaying &&
+        !audioState.isLoading &&
+        !hasAppliedChannelStrip &&
+        currentDeck
+      ) {
+        hasAppliedChannelStrip = true;
+        applyStoredEffectsAndFilters(
+          soundId,
+          currentDeck.effects as unknown as EffectConfig[],
+          currentDeck.filter as FilterConfig
+        );
+        applyStoredChannelStrip(
+          soundId,
+          currentDeck.muted,
+          currentDeck.pan,
+          currentDeck.speed,
+          currentDeck.channelFilter,
+          currentDeck.effectsDryWet
+        );
+
+        // Connect to CueBus for pre-fader monitoring
+        connectDeckToCueBus(deckId, soundId);
+
+        // Initialize audio output devices from saved settings
+        initializeAudioDevices().catch((err) => {
+          console.error("[DjActions] initializeAudioDevices failed:", err);
+        });
+      }
+
+      // Update runtime state if changed
+      if (
+        currentRuntime.isPlaying !== audioState.isPlaying ||
+        currentRuntime.isLoading !== audioState.isLoading ||
+        currentRuntime.isBuffering !== audioState.isBuffering
+      ) {
+        config.setRuntimeState(() => ({
+          isPlaying: audioState.isPlaying,
+          isLoading: audioState.isLoading,
+          isBuffering: audioState.isBuffering,
+        }));
+      }
+
+      // Set error if present
+      if (audioState.error?.message) {
+        setDjError(audioState.error.message);
+      }
+    });
+
+    config.setSubscriptionCleanup(cleanup);
+
+    // Play via AudioManager's device sound path
+    await getAudioManager().playDeviceSound(soundId, deviceId);
+
+    // Read actual channel count from the opened device and update metadata
+    const deviceSource = getAudioManager().getDeviceSource(soundId);
+    if (deviceSource) {
+      const actualChannelCount = deviceSource.channelCount;
+      config.updateDeck((draft) => {
+        const meta = draft.radio?.platformMetadata;
+        if (meta && meta.platform === "device-input") {
+          (meta as DeviceInputMetadata).channelCount = actualChannelCount;
+        }
+      });
+    }
+
+    applyCrossfade();
+  } catch (err) {
+    // Cleanup partial state on error
+    const currentRuntime = config.getRuntime();
+    if (currentRuntime.soundId === soundId) {
+      const existingCleanup = config.getSubscriptionCleanup();
+      if (existingCleanup) {
+        existingCleanup();
+        config.setSubscriptionCleanup(null);
+      }
+      getAudioManager().cleanupSound(soundId);
+      config.resetRuntime();
+    }
+    const msg =
+      err instanceof Error ? err.message : "Failed to start device input";
+    setDjError(msg);
+  }
+}
+
+export function setDeckADeviceSource(
+  deviceId: string,
+  deviceLabel: string
+): Promise<void> {
+  return setDeckDeviceSource("deck-a", deviceId, deviceLabel);
+}
+
+export function setDeckBDeviceSource(
+  deviceId: string,
+  deviceLabel: string
+): Promise<void> {
+  return setDeckDeviceSource("deck-b", deviceId, deviceLabel);
+}
+
+// Channel selection actions
+function setDeckChannelSelection(
+  deckId: DeckId,
+  selection: ChannelSelection
+): void {
+  const runtime = deckConfig[deckId].getRuntime();
+  if (runtime.soundId) {
+    getAudioManager().setDeviceChannelSelection(runtime.soundId, selection);
+  }
+  deckConfig[deckId].updateDeck((draft) => {
+    const meta = draft.radio?.platformMetadata;
+    if (meta && meta.platform === "device-input") {
+      (meta as DeviceInputMetadata).channelSelection = selection;
+    }
+  });
+}
+
+export function setDeckAChannelSelection(selection: ChannelSelection): void {
+  setDeckChannelSelection("deck-a", selection);
+}
+
+export function setDeckBChannelSelection(selection: ChannelSelection): void {
+  setDeckChannelSelection("deck-b", selection);
+}
+
+// ============================================
+// Device Input Utilities
+// ============================================
+
+/**
+ * Get input devices list
+ */
+export async function getInputDevices(): Promise<
+  Array<{ deviceId: string; label: string }>
+> {
+  const devices = await DeviceSource.getInputDevices();
+  return devices.map((d) => ({ deviceId: d.deviceId, label: d.label }));
+}
+
+/**
+ * Request microphone permission
+ */
+export async function requestInputPermission(): Promise<DevicePermissionState> {
+  return await DeviceSource.requestPermission();
 }

@@ -69,7 +69,7 @@ const mixerStateSchema = z.object({
   crossfadePosition: z.number(),
   masterVolume: z.number(),
   // CUE monitoring
-  headphoneVolume: z.number().default(1), // Headphone output volume
+  headphoneVolume: z.number(),
   deckACueEnabled: z.boolean(),
   deckBCueEnabled: z.boolean(),
 });

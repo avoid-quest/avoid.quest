@@ -222,6 +222,7 @@ export function SettingsForm({
                   </div>
                   <Slider
                     className="w-full"
+                    defaultValue={[DEFAULT_TRANSITION_DURATION]}
                     max={MAX_TRANSITION_DURATION}
                     onValueChange={handleTransitionDurationChange}
                     step={100}

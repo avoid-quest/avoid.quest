@@ -193,6 +193,16 @@ export async function applyCueOutputDevice(
   const bus = ensureCueBus();
   if (bus) {
     await bus.setCueOutputDevice(deviceId);
+
+    // When disabling CUE, reset deck CUE state so no stale state remains
+    if (!deviceId) {
+      bus.setCueEnabled("deck-a", false);
+      bus.setCueEnabled("deck-b", false);
+      updateMixer((draft) => {
+        draft.deckACueEnabled = false;
+        draft.deckBCueEnabled = false;
+      });
+    }
   }
 }
 
@@ -1088,6 +1098,9 @@ export function setDeckBCueEnabled(enabled: boolean) {
  * Toggle CUE monitoring for a deck
  */
 export function toggleDeckACue() {
+  if (!getAudioSettings().cueOutputId) {
+    return;
+  }
   const mixer = getMixer();
   if (!mixer) {
     return;
@@ -1096,6 +1109,9 @@ export function toggleDeckACue() {
 }
 
 export function toggleDeckBCue() {
+  if (!getAudioSettings().cueOutputId) {
+    return;
+  }
   const mixer = getMixer();
   if (!mixer) {
     return;

@@ -21,7 +21,7 @@ type DeckConnection = {
   preFaderNode: AudioNode | null;
 };
 
-export type CueMode = "dual" | "split";
+export type CueMode = "dual" | "single";
 
 export type CueBusState = {
   mode: CueMode;
@@ -58,7 +58,7 @@ export class CueBus {
   private readonly deckConnections = new Map<string, DeckConnection>();
 
   // CUE output state
-  private _mode: CueMode = "split";
+  private _mode: CueMode = "single";
   private _headphoneVolume = 1.0;
   private _cueDelayMs = 0;
   private _cueDeviceId: string | null = null;
@@ -251,8 +251,8 @@ export class CueBus {
 
     if (!(deviceId && isSinkIdSupported())) {
       this._cueDeviceId = null;
-      this._mode = "split";
-      this.callbacks.onModeChange?.("split");
+      this._mode = "single";
+      this.callbacks.onModeChange?.("single");
       return;
     }
 
@@ -280,8 +280,8 @@ export class CueBus {
       this.callbacks.onModeChange?.("dual");
     } catch (error) {
       this.cleanupCueOutput();
-      this._mode = "split";
-      this.callbacks.onModeChange?.("split");
+      this._mode = "single";
+      this.callbacks.onModeChange?.("single");
       this.callbacks.onError?.(
         error instanceof Error
           ? error

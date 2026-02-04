@@ -64,12 +64,18 @@ export function AudioSettings() {
   const handleMainOutputChange = async (value: string) => {
     setMainOutputId(value);
     setMainOutputDevice(value);
+    // If the new main device matches the current CUE device, auto-disable CUE
+    if (cueOutputId && cueOutputId === value) {
+      setCueOutputId(null);
+      setCueOutputDevice(null);
+      await applyCueOutputDevice(null);
+    }
     // Apply to audio routing
     await applyMainOutputDevice(value);
   };
 
   const handleCueOutputChange = async (value: string) => {
-    const newValue = value === "same" ? null : value;
+    const newValue = value === "none" ? null : value;
     setCueOutputId(newValue);
     setCueOutputDevice(newValue);
     // Apply to audio routing
@@ -205,15 +211,18 @@ export function AudioSettings() {
           <>
             <Select
               onValueChange={handleCueOutputChange}
-              value={cueOutputId ?? "same"}
+              value={cueOutputId ?? "none"}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Select CUE output" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="same">Same as Main (Split Cue)</SelectItem>
+                <SelectItem value="none">None (CUE Disabled)</SelectItem>
                 {outputDevices
-                  .filter((device) => device.deviceId)
+                  .filter(
+                    (device) =>
+                      device.deviceId && device.deviceId !== mainOutputId
+                  )
                   .map((device) => (
                     <SelectItem key={device.deviceId} value={device.deviceId}>
                       {device.label}
@@ -222,39 +231,38 @@ export function AudioSettings() {
               </SelectContent>
             </Select>
             <p className="text-muted-foreground text-xs">
-              {cueOutputId
-                ? "Separate output for DJ headphones"
-                : "Split cue mode: L=CUE, R=MIX in single output"}
+              Select a device to enable CUE headphone monitoring
             </p>
           </>
         ) : (
           <p className="text-muted-foreground text-sm">
-            CUE output selection not supported. Using split cue mode (L=CUE,
-            R=MIX).
+            CUE output requires Chrome or Edge for output device selection.
           </p>
         )}
 
-        {/* CUE Output Delay */}
-        <div className="space-y-2 border-t pt-3">
-          <div className="flex items-center justify-between">
-            <Label className="flex items-center gap-2 text-sm">
-              <ClockIcon className="size-3" />
-              Delay
-            </Label>
-            <span className="font-mono text-muted-foreground text-xs">
-              {cueDelayMs}ms
-            </span>
+        {/* CUE Output Delay — only shown when CUE output is configured */}
+        {cueOutputId && (
+          <div className="space-y-2 border-t pt-3">
+            <div className="flex items-center justify-between">
+              <Label className="flex items-center gap-2 text-sm">
+                <ClockIcon className="size-3" />
+                Delay
+              </Label>
+              <span className="font-mono text-muted-foreground text-xs">
+                {cueDelayMs}ms
+              </span>
+            </div>
+            <Slider
+              className="h-2"
+              defaultValue={[0]}
+              max={500}
+              min={0}
+              onValueChange={([v]) => handleCueDelayChange(v)}
+              step={1}
+              value={[cueDelayMs]}
+            />
           </div>
-          <Slider
-            className="h-2"
-            defaultValue={[0]}
-            max={500}
-            min={0}
-            onValueChange={([v]) => handleCueDelayChange(v)}
-            step={1}
-            value={[cueDelayMs]}
-          />
-        </div>
+        )}
       </div>
 
       {/* Browser compatibility note */}

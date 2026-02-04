@@ -34,17 +34,24 @@ import {
   useActiveDragRadio,
   useMixer,
 } from "@/lib/hooks/use-dj-state";
+import { useAudioSettings } from "@/lib/hooks/use-settings";
 import type { Platform } from "@/lib/platform-types";
-import type { DeckId } from "@/lib/stores/dj-runtime-store";
+import {
+  type DeckId,
+  useDeckAPeakLevel,
+  useDeckBPeakLevel,
+} from "@/lib/stores/dj-runtime-store";
 
 import { RadioLogo } from "../radio-logo";
 import { DjDeck } from "./dj-deck";
 import { DjMixer } from "./dj-mixer";
+import { DjRadioBrowser } from "./dj-radio-browser";
 import {
   getPlatformFromItem,
   isAudioInputItem,
   isPlatformItem,
 } from "./dj-radio-list";
+import { MiniMixerBar } from "./mini-mixer-bar";
 
 type DjPlayerProps = {
   radios?: Radio[];
@@ -130,29 +137,44 @@ type DjPlayerMobileViewProps = {
   radios: Radio[];
   crossfadePosition: number;
   masterVolume: number;
-  headphoneVolume: number;
   deckACueEnabled: boolean;
   deckBCueEnabled: boolean;
+  isCueActive: boolean;
 };
 
 function DjPlayerMobileView({
   radios,
   crossfadePosition,
   masterVolume,
-  headphoneVolume,
   deckACueEnabled,
   deckBCueEnabled,
+  isCueActive,
 }: DjPlayerMobileViewProps) {
-  const [mobileTab, setMobileTab] = useState<"left" | "mixer" | "right">(
-    "mixer"
-  );
+  const [mobileTab, setMobileTab] = useState<"left" | "right">("left");
+  const deckAPeakLevel = useDeckAPeakLevel();
+  const deckBPeakLevel = useDeckBPeakLevel();
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-4">
-      {/* Mobile Tab Navigation */}
-      <div className="grid grid-cols-3 gap-2 rounded-lg bg-muted p-1">
+    <div className="flex h-full min-h-0 flex-col gap-2">
+      {/* Mini Mixer Bar — always visible */}
+      <MiniMixerBar
+        crossfadePosition={crossfadePosition}
+        deckACueEnabled={deckACueEnabled}
+        deckAPeakLevel={deckAPeakLevel}
+        deckBCueEnabled={deckBCueEnabled}
+        deckBPeakLevel={deckBPeakLevel}
+        isCueActive={isCueActive}
+        masterVolume={masterVolume}
+        onCrossfadeChange={setCrossfadePosition}
+        onDeckACueChange={setDeckACueEnabled}
+        onDeckBCueChange={setDeckBCueEnabled}
+        onMasterVolumeChange={setMasterVolume}
+      />
+
+      {/* 2-Tab Navigation */}
+      <div className="grid grid-cols-2 gap-2 rounded-lg bg-muted p-1">
         <Button
-          className="w-full"
+          className={cn("w-full", mobileTab === "left" && "text-blue-500")}
           onClick={() => setMobileTab("left")}
           size="sm"
           variant={mobileTab === "left" ? "default" : "ghost"}
@@ -160,15 +182,7 @@ function DjPlayerMobileView({
           Deck A
         </Button>
         <Button
-          className="w-full"
-          onClick={() => setMobileTab("mixer")}
-          size="sm"
-          variant={mobileTab === "mixer" ? "default" : "ghost"}
-        >
-          Mixer
-        </Button>
-        <Button
-          className="w-full"
+          className={cn("w-full", mobileTab === "right" && "text-amber-500")}
           onClick={() => setMobileTab("right")}
           size="sm"
           variant={mobileTab === "right" ? "default" : "ghost"}
@@ -177,29 +191,12 @@ function DjPlayerMobileView({
         </Button>
       </div>
 
-      {/* Mobile Content Area */}
+      {/* Deck Content Area */}
       <div className="min-h-0 flex-1 overflow-hidden">
         <div
           className={cn("h-full", mobileTab === "left" ? "block" : "hidden")}
         >
           <DjDeck deckId="deck-a" radios={radios} />
-        </div>
-        <div
-          className={cn("h-full", mobileTab === "mixer" ? "block" : "hidden")}
-        >
-          <DjMixer
-            crossfadePosition={crossfadePosition}
-            deckACueEnabled={deckACueEnabled}
-            deckBCueEnabled={deckBCueEnabled}
-            headphoneVolume={headphoneVolume}
-            masterVolume={masterVolume}
-            onCrossfadeChange={setCrossfadePosition}
-            onDeckACueChange={setDeckACueEnabled}
-            onDeckBCueChange={setDeckBCueEnabled}
-            onHeadphoneVolumeChange={setHeadphoneVolume}
-            onMasterVolumeChange={setMasterVolume}
-            radios={radios}
-          />
         </div>
         <div
           className={cn("h-full", mobileTab === "right" ? "block" : "hidden")}
@@ -218,6 +215,7 @@ type DjPlayerDesktopViewProps = {
   headphoneVolume: number;
   deckACueEnabled: boolean;
   deckBCueEnabled: boolean;
+  isCueActive: boolean;
 };
 
 function DjPlayerDesktopView({
@@ -227,30 +225,46 @@ function DjPlayerDesktopView({
   headphoneVolume,
   deckACueEnabled,
   deckBCueEnabled,
+  isCueActive,
 }: DjPlayerDesktopViewProps) {
+  const deckAPeakLevel = useDeckAPeakLevel();
+  const deckBPeakLevel = useDeckBPeakLevel();
+
   return (
-    <div className="grid h-full min-h-0 w-full grid-cols-1 gap-2 lg:grid-cols-[1fr_20rem_1fr]">
-      {/* Deck A */}
-      <DjDeck className="order-2 lg:order-1" deckId="deck-a" radios={radios} />
+    <div className="grid h-full min-h-0 w-full grid-rows-[1fr_auto] gap-2">
+      {/* Row 1: Decks + Mixer */}
+      <div className="grid min-h-0 grid-cols-1 gap-2 lg:grid-cols-[1fr_24rem_1fr]">
+        {/* Deck A */}
+        <DjDeck
+          className="order-2 lg:order-1"
+          deckId="deck-a"
+          radios={radios}
+        />
 
-      {/* Center Mixer with crossfader + master + radio list */}
-      <DjMixer
-        className="order-1 lg:order-2"
-        crossfadePosition={crossfadePosition}
-        deckACueEnabled={deckACueEnabled}
-        deckBCueEnabled={deckBCueEnabled}
-        headphoneVolume={headphoneVolume}
-        masterVolume={masterVolume}
-        onCrossfadeChange={setCrossfadePosition}
-        onDeckACueChange={setDeckACueEnabled}
-        onDeckBCueChange={setDeckBCueEnabled}
-        onHeadphoneVolumeChange={setHeadphoneVolume}
-        onMasterVolumeChange={setMasterVolume}
-        radios={radios}
-      />
+        {/* Center Mixer */}
+        <DjMixer
+          className="order-1 lg:order-2"
+          crossfadePosition={crossfadePosition}
+          deckACueEnabled={deckACueEnabled}
+          deckAPeakLevel={deckAPeakLevel}
+          deckBCueEnabled={deckBCueEnabled}
+          deckBPeakLevel={deckBPeakLevel}
+          headphoneVolume={headphoneVolume}
+          isCueActive={isCueActive}
+          masterVolume={masterVolume}
+          onCrossfadeChange={setCrossfadePosition}
+          onDeckACueChange={setDeckACueEnabled}
+          onDeckBCueChange={setDeckBCueEnabled}
+          onHeadphoneVolumeChange={setHeadphoneVolume}
+          onMasterVolumeChange={setMasterVolume}
+        />
 
-      {/* Deck B */}
-      <DjDeck className="order-3" deckId="deck-b" radios={radios} />
+        {/* Deck B */}
+        <DjDeck className="order-3" deckId="deck-b" radios={radios} />
+      </div>
+
+      {/* Row 2: Radio Browser */}
+      <DjRadioBrowser radios={radios} />
     </div>
   );
 }
@@ -298,12 +312,14 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
   // Get UI state from the runtime store
   const activeDragRadio = useActiveDragRadio();
   const mixer = useMixer();
+  const audioSettings = useAudioSettings();
 
   const crossfadePosition = mixer?.crossfadePosition ?? 0.5;
   const masterVolume = mixer?.masterVolume ?? 1;
   const headphoneVolume = mixer?.headphoneVolume ?? 1;
   const deckACueEnabled = mixer?.deckACueEnabled ?? false;
   const deckBCueEnabled = mixer?.deckBCueEnabled ?? false;
+  const isCueActive = !!audioSettings.cueOutputId;
 
   // Configure sensors for both mouse and touch interactions
   // Enhanced mobile support with better touch handling
@@ -400,7 +416,7 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
             crossfadePosition={crossfadePosition}
             deckACueEnabled={deckACueEnabled}
             deckBCueEnabled={deckBCueEnabled}
-            headphoneVolume={headphoneVolume}
+            isCueActive={isCueActive}
             masterVolume={masterVolume}
             radios={radios}
           />
@@ -410,6 +426,7 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
             deckACueEnabled={deckACueEnabled}
             deckBCueEnabled={deckBCueEnabled}
             headphoneVolume={headphoneVolume}
+            isCueActive={isCueActive}
             masterVolume={masterVolume}
             radios={radios}
           />

@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { getAudioSettings } from "@/lib/collections";
 import { toggleDeckACue, toggleDeckBCue } from "@/lib/dj-actions";
 
 /**
@@ -23,6 +24,11 @@ export function useDjKeyboard() {
 
       // Ignore if modifier keys are pressed (except shift for uppercase)
       if (e.ctrlKey || e.metaKey || e.altKey) {
+        return;
+      }
+
+      // CUE shortcuts only work when a CUE output device is configured
+      if (!getAudioSettings().cueOutputId) {
         return;
       }
 

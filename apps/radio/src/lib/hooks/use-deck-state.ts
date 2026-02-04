@@ -7,6 +7,8 @@ import {
   playDeckB,
   resetDeckA,
   resetDeckB,
+  seekDeckA,
+  seekDeckB,
   setDeckAChannelFilter,
   setDeckAEffectsDryWet,
   setDeckAMute,
@@ -41,6 +43,7 @@ const deckAActions = {
   setSpeed: setDeckASpeed,
   setChannelFilter: setDeckAChannelFilter,
   setEffectsDryWet: setDeckAEffectsDryWet,
+  seek: seekDeckA,
 };
 
 const deckBActions = {
@@ -53,6 +56,7 @@ const deckBActions = {
   setSpeed: setDeckBSpeed,
   setChannelFilter: setDeckBChannelFilter,
   setEffectsDryWet: setDeckBEffectsDryWet,
+  seek: seekDeckB,
 };
 
 type DeckStateResult = {
@@ -78,6 +82,7 @@ type DeckStateResult = {
   setSpeed: typeof setDeckASpeed;
   setChannelFilter: typeof setDeckAChannelFilter;
   setEffectsDryWet: typeof setDeckAEffectsDryWet;
+  seek: typeof seekDeckA;
   loadTrack: typeof loadTrack;
 };
 

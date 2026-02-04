@@ -61,6 +61,7 @@ type DeckLayoutProps = {
   onRemoveEffect?: (effectId: string) => void;
   onReorderEffects?: (effectIds: string[]) => void;
   onPlayTrack?: (streamUrl: string) => void;
+  onSeek?: (position: number) => void;
   className?: string;
 };
 
@@ -88,7 +89,7 @@ function getDisplayInfo(
   metadata?: PlatformMetadata
 ): { artworkUrl?: string; title: string; artist: string } {
   if (!isStreamingMetadata(metadata)) {
-    return { title: radio.name, artist: "Radio" };
+    return { artworkUrl: radio.logoUrl, title: radio.name, artist: "Radio" };
   }
   return {
     artworkUrl: metadata.artwork || radio.logoUrl,
@@ -128,6 +129,7 @@ export function DeckLayout({
   onRemoveEffect,
   onReorderEffects,
   onPlayTrack,
+  onSeek,
   className,
 }: DeckLayoutProps) {
   const { artworkUrl, title } = getDisplayInfo(radio, metadata);
@@ -182,6 +184,7 @@ export function DeckLayout({
         onPreviousTrack={handlePreviousTrack}
         onRemoveEffect={onRemoveEffect}
         onReorderEffects={onReorderEffects}
+        onSeek={onSeek}
         onSpeedChange={onSpeedChange}
         onUpdateEffect={onUpdateEffect}
         onVolumeChange={onVolumeChange}
@@ -209,6 +212,7 @@ export function DeckLayout({
           isLoading={isLoading}
           isPlaying={isPlaying}
           onPlayPause={onPlayPause}
+          onSeek={onSeek}
           title={title}
           trackProgress={trackProgress}
         />
@@ -626,6 +630,7 @@ type MobileDeckLayoutProps = {
   onRemoveEffect?: (effectId: string) => void;
   onReorderEffects?: (effectIds: string[]) => void;
   onPlayTrack?: (streamUrl: string) => void;
+  onSeek?: (position: number) => void;
   onNextTrack: () => void;
   onPreviousTrack: () => void;
   className?: string;
@@ -660,6 +665,7 @@ function MobileDeckLayout({
   onRemoveEffect,
   onReorderEffects,
   onPlayTrack,
+  onSeek,
   onNextTrack,
   onPreviousTrack,
   className,
@@ -679,6 +685,7 @@ function MobileDeckLayout({
             isLoading={isLoading}
             isPlaying={isPlaying}
             onPlayPause={onPlayPause}
+            onSeek={onSeek}
             title={title}
             trackProgress={trackProgress}
           />

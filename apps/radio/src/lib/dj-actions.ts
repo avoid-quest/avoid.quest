@@ -881,6 +881,21 @@ export function setDeckBSpeed(speed: number) {
   setDeckSpeed("deck-b", speed);
 }
 
+function seekDeck(deckId: DeckId, position: number) {
+  const runtime = deckConfig[deckId].getRuntime();
+  if (runtime.soundId) {
+    getAudioManager().seekSound(runtime.soundId, position);
+  }
+}
+
+export function seekDeckA(position: number) {
+  seekDeck("deck-a", position);
+}
+
+export function seekDeckB(position: number) {
+  seekDeck("deck-b", position);
+}
+
 function setDeckChannelFilter(deckId: DeckId, value: number) {
   const runtime = deckConfig[deckId].getRuntime();
   deckConfig[deckId].updateDeck((draft) => {

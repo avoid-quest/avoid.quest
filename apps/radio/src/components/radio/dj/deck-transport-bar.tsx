@@ -9,6 +9,7 @@ type DeckTransportBarProps = {
   isBuffering: boolean;
   trackProgress?: { position: number; duration: number };
   onPlayPause: () => void;
+  onSeek?: (position: number) => void;
   className?: string;
 };
 
@@ -112,10 +113,12 @@ function TransportProgress({
   trackProgress,
   isBuffering,
   isPlaying,
+  onSeek,
 }: {
   trackProgress?: { position: number; duration: number };
   isBuffering: boolean;
   isPlaying: boolean;
+  onSeek?: (position: number) => void;
 }) {
   // No progress data yet
   if (!trackProgress) {
@@ -142,17 +145,42 @@ function TransportProgress({
   // Finite track: show progress bar
   const progress = (trackProgress.position / trackProgress.duration) * 100;
 
+  const handleBarClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+    if (!onSeek) {
+      return;
+    }
+    const rect = e.currentTarget.getBoundingClientRect();
+    const clickX = e.clientX - rect.left;
+    const position = (clickX / rect.width) * trackProgress.duration;
+    onSeek(Math.max(0, Math.min(position, trackProgress.duration)));
+  };
+
+  const barClasses =
+    "relative h-1.5 w-full overflow-hidden rounded-full bg-muted-foreground/20";
+  const fillBar = (
+    <div
+      className={cn(
+        "pointer-events-none h-full rounded-full transition-all duration-300 ease-out",
+        getProgressBarColor(isBuffering, isPlaying)
+      )}
+      style={{ width: `${progress}%` }}
+    />
+  );
+
   return (
     <div className="space-y-0.5">
-      <div className="relative h-1.5 w-full overflow-hidden rounded-full bg-muted-foreground/20">
-        <div
-          className={cn(
-            "h-full rounded-full transition-all duration-300 ease-out",
-            getProgressBarColor(isBuffering, isPlaying)
-          )}
-          style={{ width: `${progress}%` }}
-        />
-      </div>
+      {onSeek ? (
+        <button
+          aria-label="Seek position"
+          className={cn(barClasses, "cursor-pointer")}
+          onClick={handleBarClick}
+          type="button"
+        >
+          {fillBar}
+        </button>
+      ) : (
+        <div className={barClasses}>{fillBar}</div>
+      )}
       <div className="flex justify-between font-mono text-[10px] text-muted-foreground">
         <span>{formatTime(trackProgress.position)}</span>
         <span>{formatTime(trackProgress.duration)}</span>
@@ -173,6 +201,7 @@ export function DeckTransportBar({
   isBuffering,
   trackProgress,
   onPlayPause,
+  onSeek,
   className,
 }: DeckTransportBarProps) {
   return (
@@ -202,6 +231,7 @@ export function DeckTransportBar({
         <TransportProgress
           isBuffering={isBuffering}
           isPlaying={isPlaying}
+          onSeek={onSeek}
           trackProgress={trackProgress}
         />
       </div>

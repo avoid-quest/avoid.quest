@@ -125,6 +125,7 @@ function DjDeckContent({
     setSpeed,
     setChannelFilter,
     setEffectsDryWet,
+    seek,
   } = deckState;
 
   const { currentTrackIndex, metadata } = usePlatformMetadata(radio);
@@ -312,6 +313,7 @@ function DjDeckContent({
           onPlayTrack={handleLoadTrack}
           onRemoveEffect={removeEffect}
           onReorderEffects={reorderEffects}
+          onSeek={seek}
           onSpeedChange={throttledSetSpeed}
           onUpdateEffect={updateEffect}
           onVolumeChange={handleVolumeChange}

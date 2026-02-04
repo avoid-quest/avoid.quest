@@ -160,25 +160,15 @@ export async function applyMainOutputDevice(deviceId: string): Promise<void> {
  * Apply CUE output device setting
  * Called when user changes the CUE output in settings
  * Routes CUE audio to the specified device via MediaStream bridge
+ * Note: CueBus handles actual audio routing; OutputRouter CUE is not used
  */
 export async function applyCueOutputDevice(
   deviceId: string | null
 ): Promise<void> {
-  console.info("[DjActions] applyCueOutputDevice:", deviceId);
-
-  // Apply to OutputRouter for tracking
-  const router = getOutputRouter();
-  if (router) {
-    await router.setCueOutput(deviceId);
-  }
-
-  // Apply to CueBus for actual audio routing
+  // CueBus handles actual audio routing via MediaStream bridge
   const bus = ensureCueBus();
   if (bus) {
-    console.info("[DjActions] Applying CUE output to CueBus");
     await bus.setCueOutputDevice(deviceId);
-  } else {
-    console.warn("[DjActions] CueBus not available for CUE output");
   }
 }
 
@@ -186,11 +176,52 @@ export async function applyCueOutputDevice(
 let audioDevicesInitialized = false;
 
 /**
+ * Apply current audio settings (devices and delays)
+ * Reusable function - called on init AND when settings change
+ */
+export async function applyCurrentAudioSettings(): Promise<void> {
+  const router = getOutputRouter();
+  if (!router) {
+    return;
+  }
+
+  try {
+    const settings = getAudioSettings();
+    if (settings.mainOutputId && settings.mainOutputId !== "default") {
+      await router.setMainOutput(settings.mainOutputId);
+    }
+    if (settings.cueOutputId) {
+      // CueBus handles actual audio routing
+      const bus = ensureCueBus();
+      if (bus) {
+        await bus.setCueOutputDevice(settings.cueOutputId);
+      }
+    }
+
+    // Apply output delays from saved settings
+    const delaySettings = getDelaySettings();
+    if (delaySettings.mainDelayMs > 0) {
+      getAudioManager().setMainDelay(delaySettings.mainDelayMs);
+    }
+    if (delaySettings.cueDelayMs > 0) {
+      const bus = ensureCueBus();
+      if (bus) {
+        bus.setCueDelay(delaySettings.cueDelayMs);
+      }
+    }
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Failed to apply audio settings";
+    console.error("[DjActions] applyCurrentAudioSettings error:", error);
+    setDjError(message);
+  }
+}
+
+/**
  * Initialize audio output devices and delays from saved settings
  * Called once when audio first plays
  */
 async function initializeAudioDevices(): Promise<void> {
-  // Set flag immediately to prevent re-entrancy race condition
   if (audioDevicesInitialized) {
     return;
   }
@@ -203,40 +234,7 @@ async function initializeAudioDevices(): Promise<void> {
     return;
   }
 
-  try {
-    const settings = getAudioSettings();
-    if (settings.mainOutputId && settings.mainOutputId !== "default") {
-      await router.setMainOutput(settings.mainOutputId);
-    }
-    if (settings.cueOutputId) {
-      await router.setCueOutput(settings.cueOutputId);
-      // Also set up CueBus for CUE output
-      const bus = ensureCueBus();
-      if (bus) {
-        await bus.setCueOutputDevice(settings.cueOutputId);
-      }
-    }
-
-    // Initialize output delays from saved settings
-    const delaySettings = getDelaySettings();
-    if (delaySettings.mainDelayMs > 0) {
-      getAudioManager().setMainDelay(delaySettings.mainDelayMs);
-    }
-    if (delaySettings.cueDelayMs > 0) {
-      const bus = ensureCueBus();
-      if (bus) {
-        bus.setCueDelay(delaySettings.cueDelayMs);
-      }
-    }
-  } catch (error) {
-    // Surface initialization errors to user
-    const message =
-      error instanceof Error
-        ? error.message
-        : "Failed to initialize audio devices";
-    console.error("[DjActions] initializeAudioDevices error:", error);
-    setDjError(message);
-  }
+  await applyCurrentAudioSettings();
 }
 
 const getSoundId = (radio: Radio, side: DeckSide): string =>
@@ -555,6 +553,21 @@ async function setDeckRadio(deckId: DeckId, radio: Radio | null) {
       applyCrossfade();
     }
   } catch (err) {
+    // Cleanup partial state on error
+    const currentRuntime = config.getRuntime();
+    if (currentRuntime.soundId === soundId) {
+      const existingCleanup = config.getSubscriptionCleanup();
+      if (existingCleanup) {
+        existingCleanup();
+        config.setSubscriptionCleanup(null);
+      }
+      await getAudioManager()
+        .cleanupSound(soundId)
+        .catch(() => {
+          // Ignore cleanup errors during error recovery
+        });
+      config.resetRuntime();
+    }
     const msg = err instanceof Error ? err.message : `Failed to load ${deckId}`;
     setDjError(msg);
   }
@@ -1001,18 +1014,10 @@ function ensureCueBus(): CueBus | null {
  */
 function setDeckCueEnabled(deckId: DeckId, enabled: boolean) {
   const bus = ensureCueBus();
-  if (!bus) {
-    // Still update the mixer state so it persists
-    updateMixer((draft) => {
-      if (deckId === "deck-a") {
-        draft.deckACueEnabled = enabled;
-      } else {
-        draft.deckBCueEnabled = enabled;
-      }
-    });
-    return;
+  if (bus) {
+    bus.setCueEnabled(deckId, enabled);
   }
-  bus.setCueEnabled(deckId, enabled);
+  // Always update mixer state so it persists
   updateMixer((draft) => {
     if (deckId === "deck-a") {
       draft.deckACueEnabled = enabled;
@@ -1035,12 +1040,18 @@ export function setDeckBCueEnabled(enabled: boolean) {
  */
 export function toggleDeckACue() {
   const mixer = getMixer();
-  setDeckACueEnabled(!mixer?.deckACueEnabled);
+  if (!mixer) {
+    return;
+  }
+  setDeckACueEnabled(!mixer.deckACueEnabled);
 }
 
 export function toggleDeckBCue() {
   const mixer = getMixer();
-  setDeckBCueEnabled(!mixer?.deckBCueEnabled);
+  if (!mixer) {
+    return;
+  }
+  setDeckBCueEnabled(!mixer.deckBCueEnabled);
 }
 
 /**

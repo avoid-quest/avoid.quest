@@ -188,6 +188,7 @@ export class OutputRouter {
       this.callbacks.onCueOutputChange?.(deviceId);
     } catch (error) {
       this.handleError("Failed to set CUE output device", error);
+      throw error;
     }
   }
 
@@ -227,12 +228,14 @@ export class OutputRouter {
       this.cueContext = null;
 
       // Track the close promise to prevent race conditions
-      this._cueContextClosePromise = contextToClose.close().catch((e) => {
+      try {
+        this._cueContextClosePromise = contextToClose.close();
+        await this._cueContextClosePromise;
+      } catch (e) {
         console.warn("[OutputRouter] Error closing CUE context:", e);
-      });
-
-      await this._cueContextClosePromise;
-      this._cueContextClosePromise = null;
+      } finally {
+        this._cueContextClosePromise = null;
+      }
     }
   }
 

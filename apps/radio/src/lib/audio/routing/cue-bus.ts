@@ -145,8 +145,8 @@ export class CueBus {
       }
     }
 
-    // Disconnect old preFaderNode if CUE was enabled
-    if (conn.preFaderNode && conn.cueEnabled) {
+    // Disconnect old preFaderNode (defensive: always try disconnect)
+    if (conn.preFaderNode) {
       safeDisconnectFrom(
         conn.preFaderNode,
         this._cueSumNode,

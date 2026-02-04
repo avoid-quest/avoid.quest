@@ -6,6 +6,8 @@
  * Supports enumerating both input and output devices.
  */
 
+import { safeDisconnect } from "../manager/audio-manager.js";
+
 /**
  * Audio device information
  */
@@ -325,7 +327,7 @@ export class DeviceSource {
     }
 
     // Disconnect Web Audio node
-    this.source?.disconnect();
+    safeDisconnect(this.source, "DeviceSource.stop");
     this.source = null;
 
     this._isActive = false;

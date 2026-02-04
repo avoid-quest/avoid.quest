@@ -11,6 +11,7 @@ import { useDraggable } from "@dnd-kit/core";
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
+  FileAudioIcon,
   GripVerticalIcon,
   MicIcon,
   MusicIcon,
@@ -31,10 +32,12 @@ type DjRadioListProps = {
 const BANDCAMP_PLATFORM_ID = -1;
 const SOUNDCLOUD_PLATFORM_ID = -2;
 const AUDIO_INPUT_PLATFORM_ID = -3;
+export const LOCAL_FILE_PLATFORM_ID = -4;
 
 const BANDCAMP_COLOR = "#629aa0";
 const SOUNDCLOUD_COLOR = "#ff7700";
 const AUDIO_INPUT_COLOR = "#10b981";
+const LOCAL_FILE_COLOR = "#8b5cf6";
 
 // Platform-specific placeholder items
 export const PLATFORM_ITEMS: Radio[] = [
@@ -78,18 +81,41 @@ export const PLATFORM_ITEMS: Radio[] = [
       channelCount: 2,
     },
   },
+  {
+    id: LOCAL_FILE_PLATFORM_ID,
+    name: "Local File",
+    streamUrl: "",
+    description: "Load an audio file from your device",
+    enabled: true,
+    platformMetadata: {
+      platform: "local-file",
+      itemType: "track",
+      url: "",
+      fileName: "",
+      displayName: "",
+      duration: 0,
+      fileSize: 0,
+      mimeType: "",
+      objectUrl: "",
+    },
+  },
 ];
 
 export function isPlatformItem(radio: Radio): boolean {
   return (
     radio.id === BANDCAMP_PLATFORM_ID ||
     radio.id === SOUNDCLOUD_PLATFORM_ID ||
-    radio.id === AUDIO_INPUT_PLATFORM_ID
+    radio.id === AUDIO_INPUT_PLATFORM_ID ||
+    radio.id === LOCAL_FILE_PLATFORM_ID
   );
 }
 
 export function isAudioInputItem(radio: Radio): boolean {
   return radio.id === AUDIO_INPUT_PLATFORM_ID;
+}
+
+export function isLocalFileItem(radio: Radio): boolean {
+  return radio.id === LOCAL_FILE_PLATFORM_ID;
 }
 
 export function getPlatformFromItem(radio: Radio): Platform | null {
@@ -102,6 +128,9 @@ export function getPlatformFromItem(radio: Radio): Platform | null {
   if (radio.id === AUDIO_INPUT_PLATFORM_ID) {
     return "device-input";
   }
+  if (radio.id === LOCAL_FILE_PLATFORM_ID) {
+    return "local-file";
+  }
   return radio.platformMetadata?.platform || null;
 }
 
@@ -113,6 +142,8 @@ function getPlatformColor(platform: Platform | null): string {
       return SOUNDCLOUD_COLOR;
     case "device-input":
       return AUDIO_INPUT_COLOR;
+    case "local-file":
+      return LOCAL_FILE_COLOR;
     default:
       return SOUNDCLOUD_COLOR;
   }
@@ -121,8 +152,21 @@ function getPlatformColor(platform: Platform | null): string {
 export function RadioItemContent({ radio }: { radio: Radio }) {
   const isPlatform = isPlatformItem(radio);
   const isAudioInput = isAudioInputItem(radio);
+  const isLocalFile = isLocalFileItem(radio);
   const platform = getPlatformFromItem(radio);
   const platformColor = getPlatformColor(platform);
+
+  const getPlatformIcon = () => {
+    if (isAudioInput) {
+      return <MicIcon className="size-5" style={{ color: platformColor }} />;
+    }
+    if (isLocalFile) {
+      return (
+        <FileAudioIcon className="size-5" style={{ color: platformColor }} />
+      );
+    }
+    return <MusicIcon className="size-5" style={{ color: platformColor }} />;
+  };
 
   return (
     <div className="flex min-w-0 flex-1 items-center gap-3">
@@ -134,21 +178,7 @@ export function RadioItemContent({ radio }: { radio: Radio }) {
               backgroundColor: `${platformColor}1a`,
             }}
           >
-            {isAudioInput ? (
-              <MicIcon
-                className="size-5"
-                style={{
-                  color: platformColor,
-                }}
-              />
-            ) : (
-              <MusicIcon
-                className="size-5"
-                style={{
-                  color: platformColor,
-                }}
-              />
-            )}
+            {getPlatformIcon()}
           </div>
         ) : (
           <RadioLogo

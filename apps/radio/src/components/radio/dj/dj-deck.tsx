@@ -17,14 +17,16 @@ import { useDroppable } from "@dnd-kit/core";
 import {
   CopyIcon,
   ExternalLinkIcon,
+  FileAudioIcon,
   MoreHorizontalIcon,
   RefreshCwIcon,
   Volume2Icon,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { EffectChain } from "@/components/audio/effect-chain";
 import type { Radio } from "@/lib/audio";
+import { isAudioFile } from "@/lib/audio/file-metadata";
 import {
   addDeckAEffect,
   addDeckBEffect,
@@ -34,8 +36,10 @@ import {
   reorderDeckBEffects,
   setDeckAChannelSelection,
   setDeckADeviceSource,
+  setDeckAFileSource,
   setDeckBChannelSelection,
   setDeckBDeviceSource,
+  setDeckBFileSource,
   updateDeckAEffect,
   updateDeckBEffect,
 } from "@/lib/dj-actions";
@@ -57,6 +61,7 @@ import {
 import { DeckLayout } from "./deck-layout";
 import { DeviceForm } from "./device-form";
 import { DjRadioList } from "./dj-radio-list";
+import { FileForm } from "./file-form";
 import { InputDeckLayout } from "./input-deck-layout";
 import { PlatformForm } from "./platform-form";
 
@@ -171,6 +176,65 @@ function DjDeckContent({
 
   // Check if current radio is a device input
   const isDeviceInput = radio?.platformMetadata?.platform === "device-input";
+
+  // Native file drag-and-drop state
+  const [isFileDragOver, setIsFileDragOver] = useState(false);
+  const fileDragCounter = useRef(0);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileDrop = useCallback(
+    (file: File) => {
+      const setFileSource =
+        deckId === "deck-a" ? setDeckAFileSource : setDeckBFileSource;
+      setFileSource(file);
+      setPendingPlatformItem(null);
+    },
+    [deckId]
+  );
+
+  // Native HTML5 drag-and-drop handlers for file drops
+  const handleNativeDragOver = useCallback((e: React.DragEvent) => {
+    if (!e.dataTransfer.types.includes("Files")) {
+      return;
+    }
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+  }, []);
+
+  const handleNativeDragEnter = useCallback((e: React.DragEvent) => {
+    if (!e.dataTransfer.types.includes("Files")) {
+      return;
+    }
+    e.preventDefault();
+    fileDragCounter.current += 1;
+    setIsFileDragOver(true);
+  }, []);
+
+  const handleNativeDragLeave = useCallback((e: React.DragEvent) => {
+    if (!e.dataTransfer.types.includes("Files")) {
+      return;
+    }
+    e.preventDefault();
+    fileDragCounter.current -= 1;
+    if (fileDragCounter.current <= 0) {
+      fileDragCounter.current = 0;
+      setIsFileDragOver(false);
+    }
+  }, []);
+
+  const handleNativeDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      fileDragCounter.current = 0;
+      setIsFileDragOver(false);
+
+      const file = e.dataTransfer.files[0];
+      if (file && isAudioFile(file)) {
+        handleFileDrop(file);
+      }
+    },
+    [handleFileDrop]
+  );
 
   const handlePlayPause = () => {
     if (isPlaying) {
@@ -330,6 +394,8 @@ function DjDeckContent({
     content = (
       <DeviceForm onCancel={handleClear} onLoad={handleLoadDeviceInput} />
     );
+  } else if (pendingPlatform === "local-file") {
+    content = <FileForm onCancel={handleClear} onLoad={handleFileDrop} />;
   } else if (pendingPlatform) {
     content = (
       <PlatformForm
@@ -371,11 +437,32 @@ function DjDeckContent({
           >
             <Volume2Icon className="mx-auto size-8 text-muted-foreground" />
             <p className="mt-2 font-medium text-muted-foreground text-sm">
-              Drop a radio station here
+              Drop a radio station or audio file here
             </p>
             <p className="mt-1 text-muted-foreground/60 text-xs">
               or pick from sources below
             </p>
+            <input
+              accept="audio/*"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file && isAudioFile(file)) {
+                  handleFileDrop(file);
+                }
+              }}
+              ref={fileInputRef}
+              type="file"
+            />
+            <Button
+              className="mt-3"
+              onClick={() => fileInputRef.current?.click()}
+              size="sm"
+              variant="outline"
+            >
+              <FileAudioIcon className="mr-1.5 size-3.5" />
+              Open File
+            </Button>
           </div>
         </div>
 
@@ -404,8 +491,13 @@ function DjDeckContent({
         "flex h-full min-h-0 w-full flex-col py-2 transition-colors",
         deckColorBorder,
         isOver ? "border-primary bg-primary/5" : "",
+        isFileDragOver ? "bg-violet-500/5 ring-2 ring-violet-500/50" : "",
         className
       )}
+      onDragEnter={handleNativeDragEnter}
+      onDragLeave={handleNativeDragLeave}
+      onDragOver={handleNativeDragOver}
+      onDrop={handleNativeDrop}
       ref={setNodeRef}
     >
       <DeckHeader deckId={deckId} onReset={reset} radio={radio} />

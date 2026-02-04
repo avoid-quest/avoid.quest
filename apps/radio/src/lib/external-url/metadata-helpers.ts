@@ -17,7 +17,10 @@ export function getCurrentTrackIndex(
   metadata: PlatformMetadata,
   currentStreamUrl: string
 ): number {
-  if (metadata.platform === "device-input") {
+  if (
+    metadata.platform === "device-input" ||
+    metadata.platform === "local-file"
+  ) {
     return 0;
   }
   if (!(isCollection(metadata) && metadata.tracks)) {

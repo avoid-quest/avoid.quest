@@ -813,7 +813,7 @@ export class AudioManager {
       return;
     }
 
-    instance.html5Source.audio.currentTime = position;
+    instance.html5Source.seek(position);
   }
 
   /**

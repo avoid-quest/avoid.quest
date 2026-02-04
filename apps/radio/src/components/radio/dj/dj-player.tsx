@@ -34,6 +34,7 @@ import {
   useActiveDragRadio,
   useMixer,
 } from "@/lib/hooks/use-dj-state";
+import { useMidi } from "@/lib/hooks/use-midi";
 import { useAudioSettings } from "@/lib/hooks/use-settings";
 import type { Platform } from "@/lib/platform-types";
 import {
@@ -49,6 +50,7 @@ import { DjRadioBrowser } from "./dj-radio-browser";
 import {
   getPlatformFromItem,
   isAudioInputItem,
+  isLocalFileItem,
   isPlatformItem,
 } from "./dj-radio-list";
 import { MiniMixerBar } from "./mini-mixer-bar";
@@ -117,10 +119,17 @@ function useDjStateHydration() {
 
       // Re-init audio for decks that have radios (audio needs component context)
       // This also applies channel strip settings (pan, speed, filter, etc.)
-      if (deckA?.radio) {
+      // Skip local-file decks — blob URLs are session-scoped and invalid after reload
+      if (
+        deckA?.radio &&
+        deckA.radio.platformMetadata?.platform !== "local-file"
+      ) {
         await setDeckARadio(deckA.radio as Radio);
       }
-      if (deckB?.radio) {
+      if (
+        deckB?.radio &&
+        deckB.radio.platformMetadata?.platform !== "local-file"
+      ) {
         await setDeckBRadio(deckB.radio as Radio);
       }
 
@@ -304,6 +313,9 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
   // Enable keyboard shortcuts for DJ mode (Q=Deck A CUE, W=Deck B CUE)
   useDjKeyboard();
 
+  // Enable MIDI controller support
+  useMidi();
+
   // Get UI state from the runtime store
   const activeDragRadio = useActiveDragRadio();
   const mixer = useMixer();
@@ -374,6 +386,17 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
     // Check if it's an audio input item first
     if (isAudioInputItem(radio)) {
       handleAudioInputDrag(deckId);
+      return;
+    }
+
+    // Check if it's a local file item
+    if (isLocalFileItem(radio)) {
+      if (deckId === "deck-a" || deckId === "deck-b") {
+        setPendingPlatformItem({
+          deckId: deckId as "deck-a" | "deck-b",
+          platform: "local-file",
+        });
+      }
       return;
     }
 

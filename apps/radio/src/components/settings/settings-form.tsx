@@ -22,6 +22,7 @@ import {
   RadioIcon,
   RotateCcwIcon,
   Settings2Icon,
+  SlidersHorizontalIcon,
 } from "lucide-react";
 import { lazy, Suspense, useState } from "react";
 import { toast } from "sonner";
@@ -53,6 +54,10 @@ const ImportExport = lazy(() =>
 
 const AudioSettings = lazy(() =>
   import("./audio-settings").then((mod) => ({ default: mod.AudioSettings }))
+);
+
+const MidiSettings = lazy(() =>
+  import("./midi-settings").then((mod) => ({ default: mod.MidiSettings }))
 );
 
 export function SettingsForm({
@@ -139,6 +144,13 @@ export function SettingsForm({
           >
             <HeadphonesIcon className="size-4 shrink-0" />
             <span className="truncate">Audio</span>
+          </TabsTrigger>
+          <TabsTrigger
+            className="flex-1 justify-start gap-1.5 text-xs md:w-full md:gap-2 md:text-sm"
+            value="midi"
+          >
+            <SlidersHorizontalIcon className="size-4 shrink-0" />
+            <span className="truncate">MIDI</span>
           </TabsTrigger>
           <TabsTrigger
             className="flex-1 justify-start gap-1.5 text-xs md:w-full md:gap-2 md:text-sm"
@@ -251,6 +263,25 @@ export function SettingsForm({
               }
             >
               <AudioSettings />
+            </Suspense>
+          </TabsContent>
+
+          <TabsContent
+            className="mt-0 flex min-h-0 flex-1 flex-col space-y-4 overflow-y-auto p-4"
+            value="midi"
+          >
+            <div className="mb-4">
+              <h3 className="font-medium text-lg">MIDI Controller</h3>
+              <p className="text-muted-foreground text-sm">
+                Connect and configure MIDI controllers for DJ mode.
+              </p>
+            </div>
+            <Suspense
+              fallback={
+                <div className="text-muted-foreground text-sm">Loading...</div>
+              }
+            >
+              <MidiSettings />
             </Suspense>
           </TabsContent>
 

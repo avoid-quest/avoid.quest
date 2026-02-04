@@ -23,6 +23,10 @@ import {
   type Radio,
 } from "@/lib/audio";
 import {
+  extractFileMetadata,
+  revokeFileObjectUrl,
+} from "@/lib/audio/file-metadata";
+import {
   getAudioSettings,
   getDeckA,
   getDeckB,
@@ -38,7 +42,9 @@ import {
 import type { DeckRecord } from "@/lib/collections/dj-state";
 import {
   type DeviceInputMetadata,
+  type FileMetadata,
   isDeviceInputMetadata,
+  isFileMetadata,
 } from "@/lib/platform-types";
 import {
   getDeckARuntime,
@@ -319,7 +325,8 @@ export const findNextTrack = (
 ): { streamUrl: string } | null => {
   if (
     !radio?.platformMetadata ||
-    radio.platformMetadata.platform === "device-input"
+    radio.platformMetadata.platform === "device-input" ||
+    radio.platformMetadata.platform === "local-file"
   ) {
     return null;
   }
@@ -494,6 +501,12 @@ async function setDeckRadio(deckId: DeckId, radio: Radio | null) {
   if (prevCleanup) {
     prevCleanup();
     config.setSubscriptionCleanup(null);
+  }
+
+  // Revoke object URL if previous source was a local file
+  const prevRadio = getDeckRadio(deck);
+  if (prevRadio && isFileMetadata(prevRadio.platformMetadata)) {
+    revokeFileObjectUrl(prevRadio.platformMetadata.objectUrl);
   }
 
   // Cleanup existing sound (CueBus handles disconnect internally via connectPreFader)
@@ -1468,4 +1481,57 @@ export function setDeckAChannelSelection(selection: ChannelSelection): void {
 
 export function setDeckBChannelSelection(selection: ChannelSelection): void {
   setDeckChannelSelection("deck-b", selection);
+}
+
+// ============================================
+// Local File Source Actions
+// ============================================
+
+/**
+ * Load a local audio file into a deck.
+ * Creates an object URL and feeds it to Html5AudioSource via setDeckRadio.
+ */
+async function setDeckFileSource(deckId: DeckId, file: File): Promise<void> {
+  const config = deckConfig[deckId];
+  const side = config.side;
+
+  try {
+    setDjError(null);
+    const meta = await extractFileMetadata(file);
+
+    const platformMetadata: FileMetadata = {
+      platform: "local-file",
+      itemType: "track",
+      url: "",
+      fileName: meta.fileName,
+      displayName: meta.displayName,
+      duration: meta.duration,
+      fileSize: meta.fileSize,
+      mimeType: meta.mimeType,
+      objectUrl: meta.objectUrl,
+    };
+
+    const radio: Radio = {
+      id: `local-file-${side}-${Date.now()}`,
+      name: meta.displayName,
+      streamUrl: meta.objectUrl,
+      description: "Local File",
+      enabled: true,
+      platformMetadata,
+    };
+
+    await setDeckRadio(deckId, radio);
+  } catch (err) {
+    const msg =
+      err instanceof Error ? err.message : "Failed to load audio file";
+    setDjError(msg);
+  }
+}
+
+export function setDeckAFileSource(file: File): Promise<void> {
+  return setDeckFileSource("deck-a", file);
+}
+
+export function setDeckBFileSource(file: File): Promise<void> {
+  return setDeckFileSource("deck-b", file);
 }

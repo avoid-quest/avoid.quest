@@ -18,11 +18,12 @@ import {
 } from "lucide-react";
 import { EffectChain } from "@/components/audio/effect-chain";
 import type { EffectConfig, EffectType, Radio } from "@/lib/audio";
-import type {
-  BandcampMetadata,
-  PlatformMetadata,
-  PlatformTrack,
-  SoundCloudMetadata,
+import {
+  type BandcampMetadata,
+  isFileMetadata,
+  type PlatformMetadata,
+  type PlatformTrack,
+  type SoundCloudMetadata,
 } from "@/lib/platform-types";
 import { DeckTransportBar } from "./deck-transport-bar";
 import { DeckPeakMeter } from "./peak-meter";
@@ -68,7 +69,11 @@ type DeckLayoutProps = {
 function isStreamingMetadata(
   metadata?: PlatformMetadata
 ): metadata is BandcampMetadata | SoundCloudMetadata {
-  return metadata !== undefined && metadata.platform !== "device-input";
+  return (
+    metadata !== undefined &&
+    metadata.platform !== "device-input" &&
+    metadata.platform !== "local-file"
+  );
 }
 
 function calculateHasTracklist(metadata?: PlatformMetadata): boolean {
@@ -88,6 +93,13 @@ function getDisplayInfo(
   radio: Radio,
   metadata?: PlatformMetadata
 ): { artworkUrl?: string; title: string; artist: string } {
+  if (isFileMetadata(metadata)) {
+    return {
+      artworkUrl: undefined,
+      title: metadata.displayName || radio.name,
+      artist: "Local File",
+    };
+  }
   if (!isStreamingMetadata(metadata)) {
     return { artworkUrl: radio.logoUrl, title: radio.name, artist: "Radio" };
   }

@@ -304,6 +304,13 @@ export class Html5AudioSource {
   }
 
   /**
+   * Seek to a position in seconds
+   */
+  seek(position: number): void {
+    this.audio.currentTime = position;
+  }
+
+  /**
    * Cleanup resources
    */
   cleanup(): void {

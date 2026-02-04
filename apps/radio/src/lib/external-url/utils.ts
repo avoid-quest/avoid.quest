@@ -26,7 +26,10 @@ function getDescription(metadata: PlatformMetadata): string | undefined {
 }
 
 function getLogoUrl(metadata: PlatformMetadata): string | undefined {
-  if (metadata.platform === "device-input") {
+  if (
+    metadata.platform === "device-input" ||
+    metadata.platform === "local-file"
+  ) {
     return;
   }
   if (metadata.artwork) {
@@ -45,12 +48,19 @@ export function createPlatformRadio(
   streamUrl: string,
   metadata: PlatformMetadata
 ): Radio {
+  const getName = (): string => {
+    if (metadata.platform === "device-input") {
+      return metadata.deviceLabel;
+    }
+    if (metadata.platform === "local-file") {
+      return metadata.displayName || metadata.fileName || "Local File";
+    }
+    return metadata.name || metadata.artist || "Unknown";
+  };
+
   return {
     id: Date.now(),
-    name:
-      metadata.platform === "device-input"
-        ? metadata.deviceLabel
-        : metadata.name || metadata.artist || "Unknown",
+    name: getName(),
     streamUrl,
     logoUrl: getLogoUrl(metadata),
     description: getDescription(metadata),

@@ -50,12 +50,39 @@ export function isDeviceInputMetadata(
   return metadata?.platform === "device-input";
 }
 
+// Local file metadata
+export type FileMetadata = {
+  platform: "local-file";
+  itemType: "track";
+  url: "";
+  fileName: string;
+  displayName: string;
+  duration: number;
+  fileSize: number;
+  mimeType: string;
+  objectUrl: string;
+};
+
+export function isFileMetadata(
+  metadata: PlatformMetadata | undefined | null
+): metadata is FileMetadata {
+  return metadata?.platform === "local-file";
+}
+
+// Re-export for convenience
+export type { FileAudioMetadata } from "@/lib/audio/file-metadata";
+
 // Unified platform types
-export type Platform = "bandcamp" | "soundcloud" | "device-input";
+export type Platform =
+  | "bandcamp"
+  | "soundcloud"
+  | "device-input"
+  | "local-file";
 export type PlatformMetadata =
   | BandcampMetadata
   | SoundCloudMetadata
-  | DeviceInputMetadata;
+  | DeviceInputMetadata
+  | FileMetadata;
 export type PlatformTrack = BandcampTrackInfo | SoundCloudTrackInfo;
 export type PlatformItemResult = BandcampItemResult | SoundCloudItemResult;
 export type PlatformItemError = BandcampItemError | SoundCloudItemError;

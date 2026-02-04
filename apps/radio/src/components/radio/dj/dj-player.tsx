@@ -227,9 +227,6 @@ function DjPlayerDesktopView({
   deckBCueEnabled,
   isCueActive,
 }: DjPlayerDesktopViewProps) {
-  const deckAPeakLevel = useDeckAPeakLevel();
-  const deckBPeakLevel = useDeckBPeakLevel();
-
   return (
     <div className="grid h-full min-h-0 w-full grid-rows-[1fr_auto] gap-2">
       {/* Row 1: Decks + Mixer */}
@@ -246,9 +243,7 @@ function DjPlayerDesktopView({
           className="order-1 lg:order-2"
           crossfadePosition={crossfadePosition}
           deckACueEnabled={deckACueEnabled}
-          deckAPeakLevel={deckAPeakLevel}
           deckBCueEnabled={deckBCueEnabled}
-          deckBPeakLevel={deckBPeakLevel}
           headphoneVolume={headphoneVolume}
           isCueActive={isCueActive}
           masterVolume={masterVolume}

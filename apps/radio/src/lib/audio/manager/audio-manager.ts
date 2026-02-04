@@ -125,6 +125,16 @@ export class AudioManager {
   private mainDelayNode: DelayNode | null = null;
   private mainDelayMs = 0;
 
+  // Master meter nodes (stereo analyser tap on main output)
+  private masterAnalyserL: AnalyserNode | null = null;
+  private masterAnalyserR: AnalyserNode | null = null;
+  private masterSplitter: ChannelSplitterNode | null = null;
+  private readonly masterMeterListeners = new Set<
+    (level: { left: number; right: number }) => void
+  >();
+  private masterMeterRafId: number | null = null;
+  private masterMeterFrame = 0;
+
   private constructor() {}
 
   /**
@@ -789,6 +799,23 @@ export class AudioManager {
     instance.html5Source.setPlaybackRate(clampedRate);
   }
 
+  seekSound(soundId: string, position: number): void {
+    const instance = this.sounds.get(soundId);
+    if (!instance) {
+      return;
+    }
+
+    if (instance.isDeviceInput) {
+      return;
+    }
+
+    if (!instance.html5Source) {
+      return;
+    }
+
+    instance.html5Source.audio.currentTime = position;
+  }
+
   /**
    * Set channel filter (bipolar: -1 = lowpass, 0 = off, 1 = highpass)
    * This is a simple DJ-style one-knob filter that sweeps frequency
@@ -1114,6 +1141,29 @@ export class AudioManager {
   }
 
   /**
+   * Subscribe to master output meter (post-fader, post-crossfader, post-master volume).
+   * Returns left/right RMS levels (0-1) computed from real AnalyserNodes.
+   */
+  subscribeMasterMeter(
+    callback: (level: { left: number; right: number }) => void
+  ): Unsubscribe {
+    this.masterMeterListeners.add(callback);
+
+    // Start rAF loop on first subscriber
+    if (this.masterMeterListeners.size === 1) {
+      this.startMasterMeterLoop();
+    }
+
+    return () => {
+      this.masterMeterListeners.delete(callback);
+      // Stop rAF loop when last subscriber leaves
+      if (this.masterMeterListeners.size === 0) {
+        this.stopMasterMeterLoop();
+      }
+    };
+  }
+
+  /**
    * Subscribe to RMS meter updates for a sound
    * Returns left/right RMS levels (0-1)
    */
@@ -1220,6 +1270,22 @@ export class AudioManager {
     this.workletManagers.clear();
     this.workletModuleLoaded = false;
 
+    // Cleanup master meter
+    this.stopMasterMeterLoop();
+    this.masterMeterListeners.clear();
+    if (this.masterSplitter) {
+      safeDisconnect(this.masterSplitter, "AudioManager.cleanup");
+      this.masterSplitter = null;
+    }
+    if (this.masterAnalyserL) {
+      safeDisconnect(this.masterAnalyserL, "AudioManager.cleanup");
+      this.masterAnalyserL = null;
+    }
+    if (this.masterAnalyserR) {
+      safeDisconnect(this.masterAnalyserR, "AudioManager.cleanup");
+      this.masterAnalyserR = null;
+    }
+
     // Cleanup main delay node
     if (this.mainDelayNode) {
       safeDisconnect(this.mainDelayNode, "AudioManager.cleanup");
@@ -1231,6 +1297,59 @@ export class AudioManager {
   // ============================================
   // Private Methods
   // ============================================
+
+  /**
+   * Start the master meter rAF loop (~30fps, every other frame)
+   */
+  private startMasterMeterLoop(): void {
+    const bufferL = new Float32Array(2048);
+    const bufferR = new Float32Array(2048);
+
+    const tick = () => {
+      this.masterMeterRafId = requestAnimationFrame(tick);
+
+      // Throttle to ~30fps by skipping every other frame
+      this.masterMeterFrame++;
+      if (this.masterMeterFrame % 2 !== 0) {
+        return;
+      }
+
+      if (!(this.masterAnalyserL && this.masterAnalyserR)) {
+        return;
+      }
+
+      this.masterAnalyserL.getFloatTimeDomainData(bufferL);
+      this.masterAnalyserR.getFloatTimeDomainData(bufferR);
+
+      let sumL = 0;
+      let sumR = 0;
+      for (let i = 0; i < bufferL.length; i++) {
+        sumL += bufferL[i] * bufferL[i];
+        sumR += bufferR[i] * bufferR[i];
+      }
+
+      const left = Math.sqrt(sumL / bufferL.length);
+      const right = Math.sqrt(sumR / bufferR.length);
+
+      const level = { left, right };
+      for (const cb of this.masterMeterListeners) {
+        cb(level);
+      }
+    };
+
+    this.masterMeterRafId = requestAnimationFrame(tick);
+  }
+
+  /**
+   * Stop the master meter rAF loop
+   */
+  private stopMasterMeterLoop(): void {
+    if (this.masterMeterRafId !== null) {
+      cancelAnimationFrame(this.masterMeterRafId);
+      this.masterMeterRafId = null;
+    }
+    this.masterMeterFrame = 0;
+  }
 
   /**
    * Initialize audio system (loads worklet module)
@@ -1248,6 +1367,18 @@ export class AudioManager {
     this.mainDelayNode = context.createDelay(MAX_MAIN_DELAY_SECONDS);
     this.mainDelayNode.delayTime.value = 0;
     this.mainDelayNode.connect(context.destination);
+
+    // Create master meter tap (parallel to main path, does not interrupt audio)
+    this.masterSplitter = context.createChannelSplitter(2);
+    this.mainDelayNode.connect(this.masterSplitter);
+
+    this.masterAnalyserL = context.createAnalyser();
+    this.masterAnalyserL.fftSize = 2048;
+    this.masterAnalyserR = context.createAnalyser();
+    this.masterAnalyserR.fftSize = 2048;
+
+    this.masterSplitter.connect(this.masterAnalyserL, 0);
+    this.masterSplitter.connect(this.masterAnalyserR, 1);
 
     // Load the worklet module once (will be used by all per-sound worklet managers)
     await context.audioWorklet.addModule(workletProcessorUrl);

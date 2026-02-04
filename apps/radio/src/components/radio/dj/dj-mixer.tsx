@@ -10,6 +10,7 @@ import {
   useAudioDevices,
 } from "@/lib/audio";
 import { useDjError } from "@/lib/hooks/use-dj-state";
+import { useMasterPeakLevel } from "@/lib/hooks/use-master-peak-level";
 import { useAudioSettings, useDelaySettings } from "@/lib/hooks/use-settings";
 import { CueControls } from "./cue-controls";
 import { HorizontalPeakMeter } from "./peak-meter";
@@ -22,8 +23,6 @@ type DjMixerProps = {
   isCueActive: boolean;
   deckACueEnabled: boolean;
   deckBCueEnabled: boolean;
-  deckAPeakLevel?: { left: number; right: number };
-  deckBPeakLevel?: { left: number; right: number };
   onCrossfadeChange: (position: number) => void;
   onMasterVolumeChange: (volume: number) => void;
   onHeadphoneVolumeChange: (volume: number) => void;
@@ -42,8 +41,6 @@ export function DjMixer({
   isCueActive,
   deckACueEnabled,
   deckBCueEnabled,
-  deckAPeakLevel,
-  deckBPeakLevel,
   onCrossfadeChange,
   onMasterVolumeChange,
   onHeadphoneVolumeChange,
@@ -51,18 +48,7 @@ export function DjMixer({
   onDeckBCueChange,
 }: DjMixerProps) {
   const error = useDjError();
-
-  // Compute combined master peak (max of both decks, scaled by master volume)
-  const masterPeakLeft = Math.min(
-    1,
-    Math.max(deckAPeakLevel?.left ?? 0, deckBPeakLevel?.left ?? 0) *
-      masterVolume
-  );
-  const masterPeakRight = Math.min(
-    1,
-    Math.max(deckAPeakLevel?.right ?? 0, deckBPeakLevel?.right ?? 0) *
-      masterVolume
-  );
+  const masterPeak = useMasterPeakLevel();
 
   return (
     <Card className={cn("flex h-full min-h-0 w-full flex-col", className)}>
@@ -73,8 +59,8 @@ export function DjMixer({
             Master
           </span>
           <div className="space-y-0.5">
-            <HorizontalPeakMeter level={masterPeakLeft} />
-            <HorizontalPeakMeter level={masterPeakRight} />
+            <HorizontalPeakMeter level={masterPeak.left} />
+            <HorizontalPeakMeter level={masterPeak.right} />
           </div>
         </div>
 

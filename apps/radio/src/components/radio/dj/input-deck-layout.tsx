@@ -26,7 +26,7 @@ import { InfoIcon, Link2Icon, MicIcon, MicOffIcon, XIcon } from "lucide-react";
 import { useMemo } from "react";
 import { EffectChain } from "@/components/audio/effect-chain";
 import type { ChannelSelection, EffectConfig, EffectType } from "@/lib/audio";
-import { DeckPeakMeter, HorizontalPeakMeter } from "./peak-meter";
+import { DeckPeakMeter } from "./peak-meter";
 
 type InputDeckLayoutProps = {
   deviceLabel: string;
@@ -261,24 +261,6 @@ function MuteToggleButton({
   );
 }
 
-function LevelMeterRow({
-  peakLevel,
-}: {
-  peakLevel?: { left: number; right: number };
-}) {
-  return (
-    <div className="space-y-1">
-      <span className="font-medium text-[10px] text-muted-foreground uppercase tracking-wide">
-        Level
-      </span>
-      <div className="space-y-0.5">
-        <HorizontalPeakMeter level={peakLevel?.left ?? 0} />
-        <HorizontalPeakMeter level={peakLevel?.right ?? 0} />
-      </div>
-    </div>
-  );
-}
-
 function ChannelStrip({
   volume,
   pan,
@@ -427,7 +409,6 @@ export function InputDeckLayout({
         isPlaying={isPlaying}
         onToggleMute={onToggleMute}
       />
-      <LevelMeterRow peakLevel={peakLevel} />
       <ChannelStrip
         channelFilter={channelFilter}
         effectsDryWet={effectsDryWet}

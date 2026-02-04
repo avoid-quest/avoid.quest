@@ -4,16 +4,13 @@ import { AudioManager } from "@/lib/audio";
 
 type PeakLevel = { left: number; right: number };
 
-// Throttle to ~20fps for peak meter updates (reduces CPU during playback)
 const METER_THROTTLE_MS = 50;
 
 /**
- * Hook to subscribe to peak meter levels for a sound
- *
- * @param soundId - The sound ID to subscribe to
- * @returns The current peak level (left/right channels, 0-1)
+ * Hook to subscribe to the master output meter (post-fader, post-crossfader, post-master volume).
+ * Uses real AnalyserNodes tapped from the main output.
  */
-export function usePeakLevel(soundId: string | null): PeakLevel {
+export function useMasterPeakLevel(): PeakLevel {
   const [level, setLevel] = useState<PeakLevel>({ left: 0, right: 0 });
 
   const throttler = useThrottler(setLevel, {
@@ -23,13 +20,8 @@ export function usePeakLevel(soundId: string | null): PeakLevel {
   });
 
   useEffect(() => {
-    if (!soundId) {
-      setLevel({ left: 0, right: 0 });
-      return;
-    }
-
     const audioManager = AudioManager.getInstance();
-    const unsubscribe = audioManager.subscribeMeter(soundId, (l) => {
+    const unsubscribe = audioManager.subscribeMasterMeter((l) => {
       throttler.maybeExecute(l);
     });
 
@@ -38,7 +30,7 @@ export function usePeakLevel(soundId: string | null): PeakLevel {
       throttler.cancel();
       setLevel({ left: 0, right: 0 });
     };
-  }, [soundId, throttler]);
+  }, [throttler]);
 
   return level;
 }

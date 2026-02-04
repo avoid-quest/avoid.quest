@@ -4,8 +4,12 @@
  * Simplified high-level API for audio playback with effects.
  * Uses HTML5 Audio with native Web Audio nodes for hardware acceleration.
  *
- * Audio routing:
- *   Html5AudioSource → GainNode → StereoPannerNode → BiquadFilterNode → WorkletNode (effects) → MasterGainNode → Destination
+ * Audio routing (post-effects CUE):
+ *   Html5AudioSource → Pan → Filter → WorkletNode (effects) → PreFaderSend (CUE tap) → Gain (fader) → Analyser → MainDelayNode → Destination
+ *
+ * The CUE tap point is now AFTER effects processing, so headphone monitoring
+ * includes the effects but is still independent of the channel fader.
+ * Main delay is applied after all sound processing, before final output.
  */
 
 import { getProxiedBandcampUrl } from "@avoid.quest/bandcamp";
@@ -63,8 +67,8 @@ export type FilterConfig = {
  * Native audio nodes for a sound instance
  */
 type AudioNodes = {
-  preFaderSend: GainNode; // Tap point for CUE (pre-fader monitoring)
-  gain: GainNode;
+  preFaderSend: GainNode; // Tap point for CUE (post-effects, pre-fader monitoring)
+  gain: GainNode; // Channel fader
   pan: StereoPannerNode;
   filter: BiquadFilterNode;
   analyser: AnalyserNode;
@@ -109,6 +113,12 @@ export function setWorkletProcessorUrl(url: string): void {
  * - Filter application
  * - State subscriptions
  */
+/** Maximum main delay in milliseconds */
+const MAX_MAIN_DELAY_MS = 500;
+
+/** Maximum main delay in seconds (for Web Audio API) */
+const MAX_MAIN_DELAY_SECONDS = MAX_MAIN_DELAY_MS / 1000;
+
 export class AudioManager {
   private static instance: AudioManager | null = null;
 
@@ -126,6 +136,10 @@ export class AudioManager {
   private globalMuted = false;
   private lastGlobalVolume = 1;
   private readonly lastSoundVolumes = new Map<string, number>();
+
+  // Main output delay node (shared across all sounds)
+  private mainDelayNode: DelayNode | null = null;
+  private mainDelayMs = 0;
 
   private constructor() {}
 
@@ -348,7 +362,8 @@ export class AudioManager {
    * Create native audio nodes for a sound
    */
   private createAudioNodes(context: AudioContext): AudioNodes {
-    // Pre-fader send for CUE monitoring (unity gain, always passing audio)
+    // Pre-fader send for CUE monitoring (post-effects, unity gain, always passing audio)
+    // This is the tap point between worklet output and channel fader
     const preFaderSend = context.createGain();
     preFaderSend.gain.value = 1;
 
@@ -371,7 +386,11 @@ export class AudioManager {
   /**
    * Connect the audio graph for a sound instance
    *
-   * Routing: Html5Source → Gain → Pan → Filter → Worklet → Analyser → Destination
+   * Routing (post-effects CUE):
+   *   Source → Pan → Filter → Worklet (effects) → PreFaderSend (CUE tap) → Gain (fader) → Analyser → Destination
+   *
+   * The CUE tap is now AFTER effects, so headphone monitoring includes effects
+   * but is still independent of the channel fader volume.
    *
    * @returns true if graph was connected successfully, false otherwise
    */
@@ -409,20 +428,29 @@ export class AudioManager {
     wm.createStreamSource(instance.sourceId);
     wm.startSource(instance.sourceId);
 
-    // Connect the graph
-    // Source → PreFaderSend → Gain → Pan → Filter
-    // The preFaderSend is a tap point for CUE monitoring
-    sourceOutput.connect(preFaderSend);
-    preFaderSend.connect(gain);
-    gain.connect(pan);
+    // Connect the graph (post-effects CUE routing)
+    // Source → Pan → Filter → Worklet (effects)
+    sourceOutput.connect(pan);
     pan.connect(filter);
 
-    // Filter → Worklet → Destination (per-sound effects chain)
-    if (wm.node) {
+    // Determine final destination (main delay node if available, else direct)
+    const finalDestination = this.mainDelayNode ?? context.destination;
+
+    if (wm.node && wm.outputNode) {
+      // Filter → Worklet input
       filter.connect(wm.node);
-      // Worklet's master gain connects to destination in init()
+
+      // Worklet output → PreFaderSend (CUE tap, now post-effects)
+      wm.outputNode.connect(preFaderSend);
+
+      // PreFaderSend → Gain (channel fader)
+      preFaderSend.connect(gain);
+
+      // Gain → Analyser → MainDelay → Destination
+      gain.connect(analyser);
+      analyser.connect(finalDestination);
     } else {
-      // Fallback: direct to analyser/destination - effects will be bypassed
+      // Fallback: direct routing without worklet - effects bypassed
       console.warn(
         `[AudioManager] Worklet unavailable for ${instance.sourceId}, effects bypassed`
       );
@@ -437,8 +465,12 @@ export class AudioManager {
           sourceId: instance.sourceId,
         },
       });
-      filter.connect(analyser);
-      analyser.connect(context.destination);
+
+      // Filter → PreFaderSend → Gain → Analyser → MainDelay → Destination
+      filter.connect(preFaderSend);
+      preFaderSend.connect(gain);
+      gain.connect(analyser);
+      analyser.connect(finalDestination);
     }
 
     return true;
@@ -678,16 +710,14 @@ export class AudioManager {
 
   /**
    * Set global volume (0-1)
+   *
+   * Note: Master volume is applied ONLY to the channel gain nodes (post-CUE tap).
+   * This ensures CUE/headphone monitoring is independent of master volume.
    */
   setGlobalVolume(volume: number): void {
     this.globalVolume = Math.max(0, Math.min(1, volume));
 
-    // Update all per-sound worklet managers
-    for (const wm of this.workletManagers.values()) {
-      wm.setVolume(this.globalVolume);
-    }
-
-    // Update all active sounds
+    // Update all active sounds (channel gain is post-CUE tap, so CUE is unaffected)
     for (const [_soundId, instance] of this.sounds) {
       if (instance.nodes) {
         const context = getAudioContext();
@@ -729,6 +759,37 @@ export class AudioManager {
    */
   isGlobalMuted(): boolean {
     return this.globalMuted;
+  }
+
+  /**
+   * Get current main output delay in milliseconds
+   */
+  getMainDelay(): number {
+    return this.mainDelayMs;
+  }
+
+  /**
+   * Set main output delay (0-500ms)
+   * Applies to all audio going to the main output
+   */
+  setMainDelay(ms: number): void {
+    const clampedMs = Math.max(0, Math.min(MAX_MAIN_DELAY_MS, ms));
+    this.mainDelayMs = clampedMs;
+
+    if (!this.mainDelayNode) {
+      return;
+    }
+
+    const context = getAudioContext();
+    if (!context) {
+      return;
+    }
+
+    const now = context.currentTime;
+    const seconds = clampedMs / 1000;
+
+    // Smooth transition to avoid clicks
+    this.mainDelayNode.delayTime.setTargetAtTime(seconds, now, 0.02);
   }
 
   /**
@@ -955,7 +1016,8 @@ export class AudioManager {
 
   /**
    * Get the pre-fader audio node for a sound
-   * This is a tap point BEFORE the channel fader, used for CUE/PFL monitoring
+   * This is a tap point AFTER effects but BEFORE the channel fader
+   * Used for CUE/PFL monitoring (headphones hear effects but not fader changes)
    * Returns null if the sound doesn't exist or hasn't been initialized
    */
   getPreFaderNode(soundId: string): GainNode | null {
@@ -1006,6 +1068,13 @@ export class AudioManager {
     }
     this.workletManagers.clear();
     this.workletModuleLoaded = false;
+
+    // Cleanup main delay node
+    if (this.mainDelayNode) {
+      safeDisconnect(this.mainDelayNode, "AudioManager.cleanup");
+      this.mainDelayNode = null;
+    }
+    this.mainDelayMs = 0;
   }
 
   // ============================================
@@ -1023,6 +1092,11 @@ export class AudioManager {
 
     // Resume the audio context first
     await resumeAudioContext();
+
+    // Create main delay node for output delay control
+    this.mainDelayNode = context.createDelay(MAX_MAIN_DELAY_SECONDS);
+    this.mainDelayNode.delayTime.value = 0;
+    this.mainDelayNode.connect(context.destination);
 
     // Load the worklet module once (will be used by all per-sound worklet managers)
     await context.audioWorklet.addModule(workletProcessorUrl);
@@ -1103,8 +1177,9 @@ export class AudioManager {
       }
     });
 
-    // Set initial global volume
-    wm.setVolume(this.globalVolume);
+    // Note: We intentionally don't set wm.setVolume() here.
+    // Worklet masterGainNode stays at unity (1.0) so CUE tap gets full signal.
+    // Master volume is applied via channel gain nodes (post-CUE tap).
 
     return wm;
   }

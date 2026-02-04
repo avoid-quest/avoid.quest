@@ -9,7 +9,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@avoid.quest/ui/components/select";
+import { Slider } from "@avoid.quest/ui/components/slider";
 import {
+  ClockIcon,
   HeadphonesIcon,
   MicIcon,
   RefreshCwIcon,
@@ -23,11 +25,18 @@ import {
 } from "@/lib/audio";
 import {
   getAudioSettings,
+  getDelaySettings,
   setCueOutputDevice,
   setInputDevice,
   setMainOutputDevice,
 } from "@/lib/collections";
-import { applyCueOutputDevice, applyMainOutputDevice } from "@/lib/dj-actions";
+import {
+  applyCueOutputDevice,
+  applyMainOutputDevice,
+  autoCompensateLatency,
+  setCueOutputDelay,
+  setMainOutputDelay,
+} from "@/lib/dj-actions";
 
 /**
  * Audio settings panel for the main settings form.
@@ -45,6 +54,7 @@ export function AudioSettings() {
 
   // Get current settings
   const audioSettings = getAudioSettings();
+  const delaySettings = getDelaySettings();
   const [mainOutputId, setMainOutputId] = useState(
     audioSettings.mainOutputId ?? "default"
   );
@@ -54,6 +64,10 @@ export function AudioSettings() {
   const [inputDeviceId, setInputDeviceId] = useState<string | null>(
     audioSettings.inputDeviceId
   );
+  const [mainDelayMs, setMainDelayMsState] = useState(
+    delaySettings.mainDelayMs
+  );
+  const [cueDelayMs, setCueDelayMsState] = useState(delaySettings.cueDelayMs);
 
   const loadDevices = useCallback(async () => {
     try {
@@ -137,6 +151,16 @@ export function AudioSettings() {
     setInputDeviceId(newValue);
     setInputDevice(newValue);
     // Input device selection will be used when starting device source
+  };
+
+  const handleMainDelayChange = (value: number) => {
+    setMainDelayMsState(value);
+    setMainOutputDelay(value);
+  };
+
+  const handleCueDelayChange = (value: number) => {
+    setCueDelayMsState(value);
+    setCueOutputDelay(value);
   };
 
   return (
@@ -238,6 +262,42 @@ export function AudioSettings() {
             play through system default.
           </p>
         )}
+
+        {/* Main Output Delay */}
+        <div className="space-y-2 border-t pt-3">
+          <div className="flex items-center justify-between">
+            <Label className="flex items-center gap-2 text-sm">
+              <ClockIcon className="size-3" />
+              Delay
+            </Label>
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-muted-foreground text-xs">
+                {mainDelayMs}ms
+              </span>
+              <Button
+                onClick={() => {
+                  const detected = autoCompensateLatency();
+                  if (detected !== null) {
+                    setMainDelayMsState(detected);
+                  }
+                }}
+                size="sm"
+                title="Auto-detect system latency"
+                variant="outline"
+              >
+                Auto
+              </Button>
+            </div>
+          </div>
+          <Slider
+            className="h-2"
+            max={500}
+            min={0}
+            onValueChange={([v]) => handleMainDelayChange(v)}
+            step={1}
+            value={[mainDelayMs]}
+          />
+        </div>
       </div>
 
       {/* CUE/Headphone Output Selection */}
@@ -278,6 +338,27 @@ export function AudioSettings() {
             R=MIX).
           </p>
         )}
+
+        {/* CUE Output Delay */}
+        <div className="space-y-2 border-t pt-3">
+          <div className="flex items-center justify-between">
+            <Label className="flex items-center gap-2 text-sm">
+              <ClockIcon className="size-3" />
+              Delay
+            </Label>
+            <span className="font-mono text-muted-foreground text-xs">
+              {cueDelayMs}ms
+            </span>
+          </div>
+          <Slider
+            className="h-2"
+            max={500}
+            min={0}
+            onValueChange={([v]) => handleCueDelayChange(v)}
+            step={1}
+            value={[cueDelayMs]}
+          />
+        </div>
       </div>
 
       {/* Browser compatibility note */}

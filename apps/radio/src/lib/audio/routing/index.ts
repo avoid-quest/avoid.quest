@@ -1,8 +1,8 @@
 /**
  * Routing Module
  *
- * Audio routing utilities for managing output device selection
- * and CUE (headphone) output for DJ functionality.
+ * Audio routing utilities for managing output device selection,
+ * CUE (headphone) output, and output delays for DJ functionality.
  */
 
 export { isSinkIdSupported, safeDisconnectFrom } from "../utils.js";
@@ -13,6 +13,12 @@ export {
   type CueMode,
   createCueBus,
 } from "./cue-bus.js";
+export {
+  createOutputDelay,
+  defaultOutputDelayConfig,
+  OutputDelay,
+  type OutputDelayConfig,
+} from "./output-delay.js";
 export {
   createOutputRouter,
   OutputRouter,

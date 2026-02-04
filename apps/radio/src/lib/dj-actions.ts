@@ -21,8 +21,11 @@ import {
   getAudioSettings,
   getDeckA,
   getDeckB,
+  getDelaySettings,
   getMixer,
   resetDeck as resetDeckDb,
+  setCueDelayMs as setCueDelayMsSetting,
+  setMainDelayMs as setMainDelayMsSetting,
   updateDeckA,
   updateDeckB,
   updateMixer,
@@ -183,7 +186,7 @@ export async function applyCueOutputDevice(
 let audioDevicesInitialized = false;
 
 /**
- * Initialize audio output devices from saved settings
+ * Initialize audio output devices and delays from saved settings
  * Called once when audio first plays
  */
 async function initializeAudioDevices(): Promise<void> {
@@ -211,6 +214,18 @@ async function initializeAudioDevices(): Promise<void> {
       const bus = ensureCueBus();
       if (bus) {
         await bus.setCueOutputDevice(settings.cueOutputId);
+      }
+    }
+
+    // Initialize output delays from saved settings
+    const delaySettings = getDelaySettings();
+    if (delaySettings.mainDelayMs > 0) {
+      getAudioManager().setMainDelay(delaySettings.mainDelayMs);
+    }
+    if (delaySettings.cueDelayMs > 0) {
+      const bus = ensureCueBus();
+      if (bus) {
+        bus.setCueDelay(delaySettings.cueDelayMs);
       }
     }
   } catch (error) {
@@ -1050,4 +1065,108 @@ export function cleanupCueBus() {
     cueBus.cleanup();
     cueBus = null;
   }
+}
+
+// ============================================
+// Output Delay Actions
+// ============================================
+
+/**
+ * Set main output delay (0-500ms)
+ * Applies delay to all audio going to the main speakers
+ */
+export function setMainOutputDelay(ms: number) {
+  // Persist to settings
+  setMainDelayMsSetting(ms);
+
+  // Apply to AudioManager
+  getAudioManager().setMainDelay(ms);
+}
+
+/**
+ * Set CUE output delay (0-500ms)
+ * Applies delay to headphone/CUE output for timing adjustment
+ */
+export function setCueOutputDelay(ms: number) {
+  // Persist to settings
+  setCueDelayMsSetting(ms);
+
+  // Apply to CueBus
+  const bus = ensureCueBus();
+  if (bus) {
+    bus.setCueDelay(ms);
+  }
+}
+
+/**
+ * Get current delay settings
+ */
+export function getOutputDelays(): { mainDelayMs: number; cueDelayMs: number } {
+  return getDelaySettings();
+}
+
+/**
+ * Initialize output delays from saved settings
+ * Called when audio system is ready
+ */
+export function initializeOutputDelays(): void {
+  const { mainDelayMs, cueDelayMs } = getDelaySettings();
+
+  if (mainDelayMs > 0) {
+    getAudioManager().setMainDelay(mainDelayMs);
+  }
+
+  if (cueDelayMs > 0) {
+    const bus = ensureCueBus();
+    if (bus) {
+      bus.setCueDelay(cueDelayMs);
+    }
+  }
+}
+
+/**
+ * Detect system audio output latency
+ * Uses AudioContext.outputLatency and baseLatency to estimate total latency
+ * Returns latency in milliseconds, or null if not available
+ */
+export function detectSystemLatency(): number | null {
+  const context = getAudioContext();
+  if (!context) {
+    return null;
+  }
+
+  // outputLatency: time from audio graph to speaker (device-specific)
+  // baseLatency: processing latency of the audio context
+  const outputLatency =
+    "outputLatency" in context ? (context.outputLatency as number) : 0;
+  const baseLatency = context.baseLatency ?? 0;
+
+  const totalLatencySeconds = outputLatency + baseLatency;
+
+  // Convert to milliseconds and round
+  const totalLatencyMs = Math.round(totalLatencySeconds * 1000);
+
+  // Return null if latency is 0 (browser doesn't support or hasn't measured yet)
+  if (totalLatencyMs === 0) {
+    return null;
+  }
+
+  return totalLatencyMs;
+}
+
+/**
+ * Auto-detect and apply system latency to main output delay
+ * Returns the detected latency in ms, or null if detection failed
+ */
+export function autoCompensateLatency(): number | null {
+  const latencyMs = detectSystemLatency();
+
+  if (latencyMs === null) {
+    return null;
+  }
+
+  // Apply to main output delay
+  setMainOutputDelay(latencyMs);
+
+  return latencyMs;
 }

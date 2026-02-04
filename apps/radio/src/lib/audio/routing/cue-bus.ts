@@ -4,10 +4,11 @@
  * Provides headphone monitoring for DJ - pre-fader listening (PFL).
  *
  * Signal flow:
- * preFaderSends (from decks with CUE enabled) → cueSumNode → headphoneGainNode → MediaStreamDest → Headphones
+ * preFaderSends (from decks with CUE enabled) → cueSumNode → cueDelayNode → headphoneGainNode → MediaStreamDest → Headphones
  *
- * - CUE = pre-fader audio from cued decks only (unaffected by crossfader/channel volume)
+ * - CUE = post-effects, pre-fader audio from cued decks (unaffected by channel volume)
  * - Headphone volume controls the output level independently
+ * - CUE delay allows timing adjustment relative to main output
  */
 
 import { isSinkIdSupported, safeDisconnectFrom } from "../utils.js";
@@ -25,21 +26,29 @@ export type CueMode = "dual" | "split";
 export type CueBusState = {
   mode: CueMode;
   headphoneVolume: number;
+  cueDelayMs: number;
   deckCueEnabled: Record<string, boolean>;
 };
 
 export type CueBusCallbacks = {
   onHeadphoneVolumeChange?: (volume: number) => void;
+  onCueDelayChange?: (delayMs: number) => void;
   onDeckCueChange?: (deckId: string, enabled: boolean) => void;
   onModeChange?: (mode: CueMode) => void;
   onError?: (error: Error) => void;
 };
 
+/** Maximum CUE delay in milliseconds */
+const MAX_CUE_DELAY_MS = 500;
+
+/** Maximum CUE delay in seconds (for Web Audio API) */
+const MAX_CUE_DELAY_SECONDS = MAX_CUE_DELAY_MS / 1000;
+
 /**
  * CueBus - Pre-fader headphone monitoring
  *
  * Audio routing:
- * - Pre-fader from cued decks → cueSumNode → headphoneGainNode → MediaStreamDest → Audio element (setSinkId)
+ * - Pre-fader from cued decks → cueSumNode → cueDelayNode → headphoneGainNode → MediaStreamDest → Audio element (setSinkId)
  */
 export class CueBus {
   private readonly context: AudioContext;
@@ -51,12 +60,14 @@ export class CueBus {
   // CUE output state
   private _mode: CueMode = "split";
   private _headphoneVolume = 1.0;
+  private _cueDelayMs = 0;
   private _cueDeviceId: string | null = null;
   private _mediaStreamDest: MediaStreamAudioDestinationNode | null = null;
   private _audioElement: HTMLAudioElement | null = null;
 
   // Audio nodes
   private readonly _cueSumNode: GainNode; // Sum of pre-fader signals from cued decks
+  private readonly _cueDelayNode: DelayNode; // CUE output delay
   private readonly _headphoneGainNode: GainNode; // Headphone volume control
 
   constructor(mainContext: AudioContext, callbacks: CueBusCallbacks = {}) {
@@ -67,11 +78,15 @@ export class CueBus {
     this._cueSumNode = this.context.createGain();
     this._cueSumNode.gain.value = 1;
 
+    this._cueDelayNode = this.context.createDelay(MAX_CUE_DELAY_SECONDS);
+    this._cueDelayNode.delayTime.value = 0;
+
     this._headphoneGainNode = this.context.createGain();
     this._headphoneGainNode.gain.value = this._headphoneVolume;
 
-    // Connect: cueSumNode → headphoneGainNode
-    this._cueSumNode.connect(this._headphoneGainNode);
+    // Connect: cueSumNode → cueDelayNode → headphoneGainNode
+    this._cueSumNode.connect(this._cueDelayNode);
+    this._cueDelayNode.connect(this._headphoneGainNode);
   }
 
   get mode(): CueMode {
@@ -86,6 +101,10 @@ export class CueBus {
     return this._cueDeviceId;
   }
 
+  get cueDelayMs(): number {
+    return this._cueDelayMs;
+  }
+
   get state(): CueBusState {
     const deckCueEnabled: Record<string, boolean> = {};
     for (const [deckId, conn] of this.deckConnections) {
@@ -94,6 +113,7 @@ export class CueBus {
     return {
       mode: this._mode,
       headphoneVolume: this._headphoneVolume,
+      cueDelayMs: this._cueDelayMs,
       deckCueEnabled,
     };
   }
@@ -205,6 +225,22 @@ export class CueBus {
     );
 
     this.callbacks.onHeadphoneVolumeChange?.(this._headphoneVolume);
+  }
+
+  /**
+   * Set CUE output delay (0-500ms)
+   * Allows timing adjustment relative to main output
+   */
+  setCueDelay(ms: number): void {
+    this._cueDelayMs = Math.max(0, Math.min(MAX_CUE_DELAY_MS, ms));
+
+    const now = this.context.currentTime;
+    const seconds = this._cueDelayMs / 1000;
+
+    // Smooth transition to avoid clicks
+    this._cueDelayNode.delayTime.setTargetAtTime(seconds, now, 0.02);
+
+    this.callbacks.onCueDelayChange?.(this._cueDelayMs);
   }
 
   /**

@@ -19,10 +19,16 @@ const playerSettingsSchema = z.object({
   single: singleModeSettingsSchema.optional(),
 });
 
+const delaySettingsSchema = z.object({
+  mainDelayMs: z.number().min(0).max(500).default(0),
+  cueDelayMs: z.number().min(0).max(500).default(0),
+});
+
 const audioSettingsSchema = z.object({
   mainOutputId: z.string().default("default"),
   cueOutputId: z.string().nullable().default(null),
   inputDeviceId: z.string().nullable().default(null),
+  delay: delaySettingsSchema.optional(),
 });
 
 const settingsSchema = z.object({
@@ -179,8 +185,23 @@ export function getAudioSettings(): NonNullable<SettingsRecord["audio"]> {
       mainOutputId: "default",
       cueOutputId: null,
       inputDeviceId: null,
+      delay: {
+        mainDelayMs: 0,
+        cueDelayMs: 0,
+      },
     }
   );
+}
+
+/**
+ * Get delay settings with defaults
+ */
+export function getDelaySettings(): {
+  mainDelayMs: number;
+  cueDelayMs: number;
+} {
+  const audio = getAudioSettings();
+  return audio.delay ?? { mainDelayMs: 0, cueDelayMs: 0 };
 }
 
 /**
@@ -237,6 +258,56 @@ export function setInputDevice(deviceId: string | null): void {
           mainOutputId: "default",
           cueOutputId: null,
           inputDeviceId: deviceId,
+        };
+      }
+    });
+  }
+}
+
+/**
+ * Set main output delay (0-500ms)
+ */
+export function setMainDelayMs(delayMs: number): void {
+  const existing = getSettings();
+  if (existing) {
+    settingsCollection.update(SETTINGS_ID, (draft) => {
+      if (draft.audio) {
+        if (draft.audio.delay) {
+          draft.audio.delay.mainDelayMs = delayMs;
+        } else {
+          draft.audio.delay = { mainDelayMs: delayMs, cueDelayMs: 0 };
+        }
+      } else {
+        draft.audio = {
+          mainOutputId: "default",
+          cueOutputId: null,
+          inputDeviceId: null,
+          delay: { mainDelayMs: delayMs, cueDelayMs: 0 },
+        };
+      }
+    });
+  }
+}
+
+/**
+ * Set CUE output delay (0-500ms)
+ */
+export function setCueDelayMs(delayMs: number): void {
+  const existing = getSettings();
+  if (existing) {
+    settingsCollection.update(SETTINGS_ID, (draft) => {
+      if (draft.audio) {
+        if (draft.audio.delay) {
+          draft.audio.delay.cueDelayMs = delayMs;
+        } else {
+          draft.audio.delay = { mainDelayMs: 0, cueDelayMs: delayMs };
+        }
+      } else {
+        draft.audio = {
+          mainOutputId: "default",
+          cueOutputId: null,
+          inputDeviceId: null,
+          delay: { mainDelayMs: 0, cueDelayMs: delayMs },
         };
       }
     });

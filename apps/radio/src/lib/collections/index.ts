@@ -36,11 +36,14 @@ export {
 } from "./radios";
 export {
   getAudioSettings,
+  getDelaySettings,
   getSettings,
   initializeSettings,
   type SettingsRecord,
+  setCueDelayMs,
   setCueOutputDevice,
   setInputDevice,
+  setMainDelayMs,
   setMainOutputDevice,
   setPlayerMode,
   setPlayerType,

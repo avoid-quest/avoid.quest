@@ -31,8 +31,21 @@ export function usePlayerMode() {
   return data?.player.mode ?? "multiple";
 }
 
+/**
+ * Get output delay settings
+ */
+export function useDelaySettings(): {
+  mainDelayMs: number;
+  cueDelayMs: number;
+} {
+  const { data } = useSettings();
+  return data?.audio?.delay ?? { mainDelayMs: 0, cueDelayMs: 0 };
+}
+
 // Re-export mutation functions
 export {
+  setCueDelayMs,
+  setMainDelayMs,
   setPlayerMode,
   setPlayerType,
   setRestoreStateOnLoad,

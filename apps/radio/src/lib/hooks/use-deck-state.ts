@@ -13,12 +13,14 @@ import {
   setDeckAEffectsDryWet,
   setDeckAMute,
   setDeckAPan,
+  setDeckARepeat,
   setDeckASpeed,
   setDeckAVolume,
   setDeckBChannelFilter,
   setDeckBEffectsDryWet,
   setDeckBMute,
   setDeckBPan,
+  setDeckBRepeat,
   setDeckBSpeed,
   setDeckBVolume,
 } from "@/lib/dj-actions";
@@ -44,6 +46,7 @@ const deckAActions = {
   setChannelFilter: setDeckAChannelFilter,
   setEffectsDryWet: setDeckAEffectsDryWet,
   seek: seekDeckA,
+  setRepeat: setDeckARepeat,
 };
 
 const deckBActions = {
@@ -57,6 +60,7 @@ const deckBActions = {
   setChannelFilter: setDeckBChannelFilter,
   setEffectsDryWet: setDeckBEffectsDryWet,
   seek: seekDeckB,
+  setRepeat: setDeckBRepeat,
 };
 
 type DeckStateResult = {
@@ -73,6 +77,7 @@ type DeckStateResult = {
   speed: number;
   channelFilter: number;
   effectsDryWet: number;
+  repeat: boolean;
   play: typeof playDeckA;
   pause: typeof pauseDeckA;
   setVolume: typeof setDeckAVolume;
@@ -83,6 +88,7 @@ type DeckStateResult = {
   setChannelFilter: typeof setDeckAChannelFilter;
   setEffectsDryWet: typeof setDeckAEffectsDryWet;
   seek: typeof seekDeckA;
+  setRepeat: typeof setDeckARepeat;
   loadTrack: typeof loadTrack;
 };
 
@@ -104,6 +110,7 @@ function createDeckStateResult(
     speed: deckState?.speed ?? 1,
     channelFilter: deckState?.channelFilter ?? 0,
     effectsDryWet: deckState?.effectsDryWet ?? 1,
+    repeat: deckState?.repeat ?? false,
     ...actions,
     loadTrack,
   };

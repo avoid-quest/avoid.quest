@@ -62,6 +62,8 @@ const deckStateSchema = z.object({
   effects: z.array(effectConfigSchema),
   filter: filterConfigSchema,
   effectsDryWet: z.number(),
+  // Playback
+  repeat: z.boolean().default(false),
 });
 
 const mixerStateSchema = z.object({
@@ -115,6 +117,7 @@ const defaultDeckState: Omit<DeckRecord, "id"> = {
     enabled: false,
   },
   effectsDryWet: 1,
+  repeat: false,
 };
 
 /**
@@ -209,6 +212,7 @@ export function resetDeck(deckId: typeof DECK_A_ID | typeof DECK_B_ID): void {
       enabled: false,
     };
     draft.effectsDryWet = 1;
+    draft.repeat = false;
   });
 }
 

@@ -41,6 +41,7 @@ export type DeckState = {
   effects: EffectConfig[];
   filter: FilterConfig;
   effectsDryWet: number;
+  repeat: boolean;
 };
 
 // Generic hook to get deck persisted state from DB
@@ -94,6 +95,7 @@ function combineDeckState(
     effects: persisted.effects as unknown as EffectConfig[],
     filter: persisted.filter as FilterConfig,
     effectsDryWet: persisted.effectsDryWet,
+    repeat: persisted.repeat,
   };
 }
 
@@ -202,6 +204,7 @@ function getDeckState(
     effects: deck.effects as unknown as EffectConfig[],
     filter: deck.filter as FilterConfig,
     effectsDryWet: deck.effectsDryWet,
+    repeat: deck.repeat,
   };
 }
 

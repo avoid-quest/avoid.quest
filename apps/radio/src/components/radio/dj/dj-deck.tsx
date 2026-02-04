@@ -130,10 +130,12 @@ function DjDeckContent({
     channelFilter,
     effectsDryWet,
     effects,
+    repeat,
     setPan,
     setSpeed,
     setChannelFilter,
     setEffectsDryWet,
+    setRepeat,
     seek,
   } = deckState;
 
@@ -305,6 +307,16 @@ function DjDeckContent({
 
   const isFileSource = isFileMetadata(radio?.platformMetadata);
 
+  // Only show repeat for seekable tracks (finite duration, not live streams)
+  const isSeekable =
+    trackProgress?.duration != null &&
+    Number.isFinite(trackProgress.duration) &&
+    trackProgress.duration > 0;
+
+  const handleRepeatToggle = useCallback(() => {
+    setRepeat(!repeat);
+  }, [setRepeat, repeat]);
+
   const onChangeUrl = useMemo(() => {
     if (!(radio && isPlatformRadio(radio))) {
       return undefined;
@@ -404,6 +416,7 @@ function DjDeckContent({
           onPlayTrack={handleLoadTrack}
           onRemoveEffect={removeEffect}
           onReorderEffects={reorderEffects}
+          onRepeatToggle={isSeekable ? handleRepeatToggle : undefined}
           onSeek={seek}
           onSpeedChange={throttledSetSpeed}
           onUpdateEffect={updateEffect}
@@ -411,6 +424,7 @@ function DjDeckContent({
           pan={pan}
           peakLevel={peakLevel}
           radio={radio}
+          repeat={repeat}
           speed={speed}
           trackProgress={trackProgress}
           volume={volume}

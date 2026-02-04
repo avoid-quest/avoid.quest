@@ -597,8 +597,18 @@ async function setDeckRadio(deckId: DeckId, radio: Radio | null) {
         setDjError(audioState.error.message);
       }
 
-      // Handle track end - auto-advance to next track
+      // Handle track end - repeat or auto-advance to next track
       if (trackEnded && currentDeck?.radio) {
+        if (currentDeck.repeat && currentRuntime.soundId) {
+          getAudioManager().seekSound(currentRuntime.soundId, 0);
+          getAudioManager()
+            .playSound(currentRuntime.soundId, currentDeck.volume)
+            .then(() => applyCrossfade())
+            .catch((err) => {
+              console.error("[DjActions] Repeat playback failed:", err);
+            });
+          return;
+        }
         const deckRadio = getDeckRadio(currentDeck);
         const nextTrack = findNextTrack(deckRadio);
         if (nextTrack && deckRadio) {
@@ -892,6 +902,20 @@ export function setDeckASpeed(speed: number) {
 
 export function setDeckBSpeed(speed: number) {
   setDeckSpeed("deck-b", speed);
+}
+
+function setDeckRepeat(deckId: DeckId, enabled: boolean) {
+  deckConfig[deckId].updateDeck((draft) => {
+    draft.repeat = enabled;
+  });
+}
+
+export function setDeckARepeat(enabled: boolean) {
+  setDeckRepeat("deck-a", enabled);
+}
+
+export function setDeckBRepeat(enabled: boolean) {
+  setDeckRepeat("deck-b", enabled);
 }
 
 function seekDeck(deckId: DeckId, position: number) {

@@ -49,6 +49,8 @@ type DeckLayoutProps = {
   channelFilter: number;
   effectsDryWet: number;
   peakLevel?: { left: number; right: number };
+  // Playback
+  repeat?: boolean;
   // Deck side for peak meter positioning
   deckSide: "left" | "right";
   onPlayPause: () => void;
@@ -57,6 +59,7 @@ type DeckLayoutProps = {
   onSpeedChange: (value: number) => void;
   onChannelFilterChange: (value: number) => void;
   onEffectsDryWetChange: (value: number) => void;
+  onRepeatToggle?: () => void;
   onClear: () => void;
   onChangeUrl?: () => void;
   onAddEffect?: (type: EffectType) => void;
@@ -130,6 +133,7 @@ export function DeckLayout({
   channelFilter,
   effectsDryWet,
   peakLevel,
+  repeat,
   deckSide,
   onPlayPause,
   onVolumeChange,
@@ -137,6 +141,7 @@ export function DeckLayout({
   onSpeedChange,
   onChannelFilterChange,
   onEffectsDryWetChange,
+  onRepeatToggle,
   onClear,
   onChangeUrl,
   onAddEffect,
@@ -200,11 +205,13 @@ export function DeckLayout({
         onPreviousTrack={handlePreviousTrack}
         onRemoveEffect={onRemoveEffect}
         onReorderEffects={onReorderEffects}
+        onRepeatToggle={onRepeatToggle}
         onSeek={onSeek}
         onSpeedChange={onSpeedChange}
         onUpdateEffect={onUpdateEffect}
         onVolumeChange={onVolumeChange}
         pan={pan}
+        repeat={repeat}
         speed={speed}
         title={title}
         trackProgress={trackProgress}
@@ -228,7 +235,9 @@ export function DeckLayout({
           isLoading={isLoading}
           isPlaying={isPlaying}
           onPlayPause={onPlayPause}
+          onRepeatToggle={onRepeatToggle}
           onSeek={onSeek}
+          repeat={repeat}
           title={title}
           trackProgress={trackProgress}
         />
@@ -643,6 +652,7 @@ type MobileDeckLayoutProps = {
   speed: number;
   channelFilter: number;
   effectsDryWet: number;
+  repeat?: boolean;
   hasTracklist: boolean;
   onPlayPause: () => void;
   onVolumeChange: (value: number[]) => void;
@@ -650,6 +660,7 @@ type MobileDeckLayoutProps = {
   onSpeedChange: (value: number) => void;
   onChannelFilterChange: (value: number) => void;
   onEffectsDryWetChange: (value: number) => void;
+  onRepeatToggle?: () => void;
   onClear: () => void;
   onChangeUrl?: () => void;
   onAddEffect?: (type: EffectType) => void;
@@ -679,6 +690,7 @@ function MobileDeckLayout({
   channelFilter,
   speed,
   effectsDryWet,
+  repeat,
   hasTracklist,
   onPlayPause,
   onVolumeChange,
@@ -686,6 +698,7 @@ function MobileDeckLayout({
   onSpeedChange,
   onChannelFilterChange,
   onEffectsDryWetChange,
+  onRepeatToggle,
   onClear,
   onChangeUrl,
   onAddEffect,
@@ -713,7 +726,9 @@ function MobileDeckLayout({
             isLoading={isLoading}
             isPlaying={isPlaying}
             onPlayPause={onPlayPause}
+            onRepeatToggle={onRepeatToggle}
             onSeek={onSeek}
+            repeat={repeat}
             title={title}
             trackProgress={trackProgress}
           />

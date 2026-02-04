@@ -1,5 +1,5 @@
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { Music2Icon, PauseIcon, PlayIcon } from "lucide-react";
+import { Music2Icon, PauseIcon, PlayIcon, Repeat1Icon } from "lucide-react";
 
 type DeckTransportBarProps = {
   artworkUrl?: string;
@@ -8,7 +8,9 @@ type DeckTransportBarProps = {
   isLoading: boolean;
   isBuffering: boolean;
   trackProgress?: { position: number; duration: number };
+  repeat?: boolean;
   onPlayPause: () => void;
+  onRepeatToggle?: () => void;
   onSeek?: (position: number) => void;
   className?: string;
 };
@@ -200,7 +202,9 @@ export function DeckTransportBar({
   isLoading,
   isBuffering,
   trackProgress,
+  repeat,
   onPlayPause,
+  onRepeatToggle,
   onSeek,
   className,
 }: DeckTransportBarProps) {
@@ -213,12 +217,31 @@ export function DeckTransportBar({
     >
       <TransportArtwork artworkUrl={artworkUrl} title={title} />
 
-      <TransportPlayButton
-        isBuffering={isBuffering}
-        isLoading={isLoading}
-        isPlaying={isPlaying}
-        onPlayPause={onPlayPause}
-      />
+      <div className="flex shrink-0 items-center gap-1.5">
+        <TransportPlayButton
+          isBuffering={isBuffering}
+          isLoading={isLoading}
+          isPlaying={isPlaying}
+          onPlayPause={onPlayPause}
+        />
+
+        {onRepeatToggle && (
+          <button
+            aria-label={repeat ? "Disable repeat" : "Enable repeat"}
+            className={cn(
+              "flex size-7 items-center justify-center rounded-full transition-all duration-200",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
+              repeat
+                ? "bg-primary/15 text-primary"
+                : "text-muted-foreground/50 hover:text-muted-foreground"
+            )}
+            onClick={onRepeatToggle}
+            type="button"
+          >
+            <Repeat1Icon className="size-3.5" />
+          </button>
+        )}
+      </div>
 
       <div className="flex min-w-0 flex-1 flex-col justify-center gap-1">
         <span

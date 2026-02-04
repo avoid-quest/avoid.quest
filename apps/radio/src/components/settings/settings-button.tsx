@@ -11,13 +11,18 @@ import { Settings2Icon } from "lucide-react";
 import { useState } from "react";
 import { SettingsForm } from "./settings-form";
 
-export function SettingsButton() {
+type SettingsButtonProps = {
+  defaultTab?: string;
+  className?: string;
+};
+
+export function SettingsButton({ defaultTab, className }: SettingsButtonProps) {
   const [isOpen, setIsOpen] = useState(false);
 
   return (
     <Drawer handleOnly={true} onOpenChange={setIsOpen} open={isOpen}>
       <DrawerTrigger asChild>
-        <Button size="icon" variant="outline">
+        <Button className={className} size="icon" variant="outline">
           <Settings2Icon className="size-4" />
         </Button>
       </DrawerTrigger>
@@ -30,7 +35,7 @@ export function SettingsButton() {
             </DrawerDescription>
           </DrawerHeader>
           <div className="px-4 pb-4">
-            <SettingsForm />
+            <SettingsForm defaultTab={defaultTab} />
           </div>
         </div>
       </DrawerContent>

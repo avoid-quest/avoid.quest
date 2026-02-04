@@ -57,8 +57,10 @@ const AudioSettings = lazy(() =>
 
 export function SettingsForm({
   settings: passedSettings,
+  defaultTab,
 }: {
   settings?: SettingsRecord;
+  defaultTab?: string;
 }) {
   const { data: liveSettings } = useSettings();
   const settings = liveSettings || passedSettings;
@@ -113,7 +115,7 @@ export function SettingsForm({
     <div className="flex h-[70vh] max-h-[85vh] flex-col gap-2 md:flex-row md:gap-4">
       <Tabs
         className="flex h-full w-full flex-col gap-4 md:flex-row"
-        defaultValue="radios"
+        defaultValue={defaultTab ?? "radios"}
         orientation="vertical"
       >
         <TabsList className="flex h-auto w-full flex-row justify-start gap-1 bg-muted/50 p-1.5 md:min-h-[60vh] md:w-48 md:flex-col md:justify-start md:gap-2 md:p-2">

@@ -37,7 +37,7 @@ const SOUNDCLOUD_COLOR = "#ff7700";
 const AUDIO_INPUT_COLOR = "#10b981";
 
 // Platform-specific placeholder items
-const PLATFORM_ITEMS: Radio[] = [
+export const PLATFORM_ITEMS: Radio[] = [
   {
     id: BANDCAMP_PLATFORM_ID,
     name: "Bandcamp",
@@ -118,7 +118,7 @@ function getPlatformColor(platform: Platform | null): string {
   }
 }
 
-function RadioItemContent({ radio }: { radio: Radio }) {
+export function RadioItemContent({ radio }: { radio: Radio }) {
   const isPlatform = isPlatformItem(radio);
   const isAudioInput = isAudioInputItem(radio);
   const platform = getPlatformFromItem(radio);
@@ -177,7 +177,7 @@ type DraggableRadioItemProps = {
   radio: Radio;
 };
 
-function DraggableRadioItem({ radio }: DraggableRadioItemProps) {
+export function DraggableRadioItem({ radio }: DraggableRadioItemProps) {
   const { attributes, listeners, setNodeRef, transform, isDragging } =
     useDraggable({
       id: `radio-${radio.id}`,
@@ -217,7 +217,7 @@ function DraggableRadioItem({ radio }: DraggableRadioItemProps) {
   );
 }
 
-function MobileRadioItem({ radio }: { radio: Radio }) {
+export function MobileRadioItem({ radio }: { radio: Radio }) {
   const handleLoad = (deckId: "deck-a" | "deck-b") => {
     const isPlatform = isPlatformItem(radio);
     const platform = getPlatformFromItem(radio);

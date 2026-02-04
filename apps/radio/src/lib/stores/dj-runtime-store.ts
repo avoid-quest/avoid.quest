@@ -16,6 +16,8 @@ type SubscriptionCleanup = {
   "deck-b": (() => void) | null;
 };
 
+type PeakLevel = { left: number; right: number };
+
 type DjRuntimeState = {
   deckA: DeckRuntimeState;
   deckB: DeckRuntimeState;
@@ -26,6 +28,8 @@ type DjRuntimeState = {
       platform: Platform;
     } | null;
   };
+  deckAPeakLevel: PeakLevel;
+  deckBPeakLevel: PeakLevel;
   error: string | null;
   _subscriptionCleanup: SubscriptionCleanup;
 };
@@ -37,6 +41,8 @@ const initialDeckRuntime: DeckRuntimeState = {
   isBuffering: false,
 };
 
+const initialPeakLevel: PeakLevel = { left: 0, right: 0 };
+
 const initialState: DjRuntimeState = {
   deckA: { ...initialDeckRuntime },
   deckB: { ...initialDeckRuntime },
@@ -44,6 +50,8 @@ const initialState: DjRuntimeState = {
     activeDragRadio: null,
     pendingPlatformItem: null,
   },
+  deckAPeakLevel: { ...initialPeakLevel },
+  deckBPeakLevel: { ...initialPeakLevel },
   error: null,
   _subscriptionCleanup: {
     "deck-a": null,
@@ -86,6 +94,15 @@ export function useDeckBIsLoading() {
 
 export function useDeckBSoundId() {
   return useStore(djRuntimeStore, (state) => state.deckB.soundId);
+}
+
+// Peak level selectors
+export function useDeckAPeakLevel() {
+  return useStore(djRuntimeStore, (state) => state.deckAPeakLevel);
+}
+
+export function useDeckBPeakLevel() {
+  return useStore(djRuntimeStore, (state) => state.deckBPeakLevel);
 }
 
 // UI selectors
@@ -187,6 +204,21 @@ export function setPendingPlatformItem(
   djRuntimeStore.setState((state) => ({
     ...state,
     ui: { ...state.ui, pendingPlatformItem: item },
+  }));
+}
+
+// Peak level setters
+export function setDeckAPeakLevel(level: PeakLevel) {
+  djRuntimeStore.setState((state) => ({
+    ...state,
+    deckAPeakLevel: level,
+  }));
+}
+
+export function setDeckBPeakLevel(level: PeakLevel) {
+  djRuntimeStore.setState((state) => ({
+    ...state,
+    deckBPeakLevel: level,
   }));
 }
 

@@ -1,6 +1,5 @@
 import { Button } from "@avoid.quest/ui/components/button";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { SettingsButton } from "@/components/settings/settings-button";
 
 type CueControlsProps = {
   deckACueEnabled: boolean;
@@ -10,7 +9,7 @@ type CueControlsProps = {
 };
 
 /**
- * CUE controls - deck CUE buttons only
+ * CUE controls - deck CUE buttons with deck-specific colors (blue A, amber B)
  */
 export function CueControls({
   deckACueEnabled,
@@ -23,7 +22,7 @@ export function CueControls({
       <Button
         className={cn(
           "h-8 w-16 font-bold text-xs",
-          deckACueEnabled && "bg-orange-500 hover:bg-orange-600"
+          deckACueEnabled && "bg-blue-500 hover:bg-blue-600"
         )}
         onClick={() => onDeckACueChange(!deckACueEnabled)}
         size="sm"
@@ -34,7 +33,7 @@ export function CueControls({
       <Button
         className={cn(
           "h-8 w-16 font-bold text-xs",
-          deckBCueEnabled && "bg-orange-500 hover:bg-orange-600"
+          deckBCueEnabled && "bg-amber-500 hover:bg-amber-600"
         )}
         onClick={() => onDeckBCueChange(!deckBCueEnabled)}
         size="sm"
@@ -42,7 +41,6 @@ export function CueControls({
       >
         CUE B
       </Button>
-      <SettingsButton />
     </div>
   );
 }

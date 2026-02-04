@@ -7,12 +7,6 @@ import {
 import { Button } from "@avoid.quest/ui/components/button";
 import { ScrollArea } from "@avoid.quest/ui/components/scroll-area";
 import { Slider } from "@avoid.quest/ui/components/slider";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@avoid.quest/ui/components/tabs";
 import { useIsMobile } from "@avoid.quest/ui/hooks/use-mobile";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import {
@@ -200,11 +194,11 @@ export function DeckLayout({
     );
   }
 
-  // Desktop layout with full-height VU meters on external edges
+  // Desktop layout with VU meters on inner edges (adjacent to mixer)
   return (
     <div className={cn("flex h-full min-h-0", className)}>
-      {/* VU Meter on left edge for Deck A (external edge) */}
-      {deckSide === "left" && <DeckPeakMeter peakLevel={peakLevel} />}
+      {/* VU Meter on inner edge for Deck B (left side = inner) */}
+      {deckSide === "right" && <DeckPeakMeter peakLevel={peakLevel} />}
 
       {/* Main deck content */}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 px-2">
@@ -219,28 +213,29 @@ export function DeckLayout({
           trackProgress={trackProgress}
         />
 
+        {/* Channel Strip — always visible */}
+        <div className="rounded-lg border bg-muted/30 px-2 py-2">
+          <ChannelStrip
+            channelFilter={channelFilter}
+            effectsDryWet={effectsDryWet}
+            onChannelFilterChange={onChannelFilterChange}
+            onEffectsDryWetChange={onEffectsDryWetChange}
+            onPanChange={onPanChange}
+            onSpeedChange={onSpeedChange}
+            onVolumeChange={(v) => onVolumeChange([v])}
+            pan={pan}
+            speed={speed}
+            volume={volume}
+          />
+        </div>
+
         {/* Scrollable content area for accordion sections */}
         <ScrollArea className="min-h-0 flex-1">
           <Accordion
             className="space-y-1"
-            defaultValue={["channel-strip"]}
+            defaultValue={["effects"]}
             type="multiple"
           >
-            <DeckSection title="Channel Strip" value="channel-strip">
-              <ChannelStrip
-                channelFilter={channelFilter}
-                effectsDryWet={effectsDryWet}
-                onChannelFilterChange={onChannelFilterChange}
-                onEffectsDryWetChange={onEffectsDryWetChange}
-                onPanChange={onPanChange}
-                onSpeedChange={onSpeedChange}
-                onVolumeChange={(v) => onVolumeChange([v])}
-                pan={pan}
-                speed={speed}
-                volume={volume}
-              />
-            </DeckSection>
-
             {hasTracklist && tracks && onPlayTrack && (
               <DeckSection
                 title={`Tracks (${currentTrackIndex + 1}/${tracks.length})`}
@@ -282,8 +277,8 @@ export function DeckLayout({
         </div>
       </div>
 
-      {/* VU Meter on right edge for Deck B (external edge) */}
-      {deckSide === "right" && <DeckPeakMeter peakLevel={peakLevel} />}
+      {/* VU Meter on inner edge for Deck A (right side = inner) */}
+      {deckSide === "left" && <DeckPeakMeter peakLevel={peakLevel} />}
     </div>
   );
 }
@@ -675,90 +670,75 @@ function MobileDeckLayout({
     : undefined;
   return (
     <div className={cn("flex h-full min-h-0 flex-col", className)}>
-      <Tabs className="flex h-full min-h-0 flex-col" defaultValue="source">
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="source">Source</TabsTrigger>
-          <TabsTrigger value="effects">Effects</TabsTrigger>
-        </TabsList>
+      <ScrollArea className="min-h-0 flex-1">
+        <div className="flex flex-col gap-2 pr-3">
+          {/* Transport Bar */}
+          <DeckTransportBar
+            artworkUrl={artworkUrl}
+            isBuffering={isBuffering}
+            isLoading={isLoading}
+            isPlaying={isPlaying}
+            onPlayPause={onPlayPause}
+            title={title}
+            trackProgress={trackProgress}
+          />
 
-        {/* Source Tab */}
-        <TabsContent
-          className="mt-3 flex min-h-0 flex-1 flex-col gap-2 overflow-hidden"
-          value="source"
-        >
-          <ScrollArea className="min-h-0 flex-1">
-            <div className="flex flex-col gap-2 pr-3">
-              {/* Transport Bar */}
-              <DeckTransportBar
-                artworkUrl={artworkUrl}
-                isBuffering={isBuffering}
-                isLoading={isLoading}
-                isPlaying={isPlaying}
-                onPlayPause={onPlayPause}
-                title={title}
-                trackProgress={trackProgress}
-              />
+          {/* Channel Strip — always visible */}
+          <div className="rounded-lg border bg-muted/30 px-2 py-2">
+            <ChannelStrip
+              channelFilter={channelFilter}
+              effectsDryWet={effectsDryWet}
+              onChannelFilterChange={onChannelFilterChange}
+              onEffectsDryWetChange={onEffectsDryWetChange}
+              onPanChange={onPanChange}
+              onSpeedChange={onSpeedChange}
+              onVolumeChange={(v) => onVolumeChange([v])}
+              pan={pan}
+              speed={speed}
+              volume={volume}
+            />
+          </div>
 
-              <Accordion
-                className="space-y-1"
-                defaultValue={["channel-strip"]}
-                type="multiple"
+          <Accordion
+            className="space-y-1"
+            defaultValue={["effects"]}
+            type="multiple"
+          >
+            {hasTracklist && tracks && onPlayTrack && (
+              <DeckSection
+                title={`Tracks (${currentTrackIndex + 1}/${tracks.length})`}
+                value="tracks"
               >
-                <DeckSection title="Channel Strip" value="channel-strip">
-                  <ChannelStrip
-                    channelFilter={channelFilter}
-                    effectsDryWet={effectsDryWet}
-                    onChannelFilterChange={onChannelFilterChange}
-                    onEffectsDryWetChange={onEffectsDryWetChange}
-                    onPanChange={onPanChange}
-                    onSpeedChange={onSpeedChange}
-                    onVolumeChange={(v) => onVolumeChange([v])}
-                    pan={pan}
-                    speed={speed}
-                    volume={volume}
+                <TracklistContent
+                  currentTrackIndex={currentTrackIndex}
+                  onNext={onNextTrack}
+                  onPlayTrack={onPlayTrack}
+                  onPrevious={onPreviousTrack}
+                  tracks={tracks}
+                />
+              </DeckSection>
+            )}
+
+            {onAddEffect &&
+              onUpdateEffect &&
+              onRemoveEffect &&
+              onReorderEffects && (
+                <DeckSection
+                  title={`Effects${effects.length > 0 ? ` (${effects.length})` : ""}`}
+                  value="effects"
+                >
+                  <EffectChain
+                    effects={effects}
+                    onAddEffect={onAddEffect}
+                    onRemoveEffect={onRemoveEffect}
+                    onReorderEffects={onReorderEffects}
+                    onUpdateEffect={onUpdateEffect}
                   />
                 </DeckSection>
-
-                {hasTracklist && tracks && onPlayTrack && (
-                  <DeckSection
-                    title={`Tracks (${currentTrackIndex + 1}/${tracks.length})`}
-                    value="tracks"
-                  >
-                    <TracklistContent
-                      currentTrackIndex={currentTrackIndex}
-                      onNext={onNextTrack}
-                      onPlayTrack={onPlayTrack}
-                      onPrevious={onPreviousTrack}
-                      tracks={tracks}
-                    />
-                  </DeckSection>
-                )}
-              </Accordion>
-            </div>
-          </ScrollArea>
-        </TabsContent>
-
-        {/* Effects Tab */}
-        <TabsContent
-          className="mt-3 flex min-h-0 flex-1 flex-col overflow-hidden"
-          value="effects"
-        >
-          {onAddEffect &&
-            onUpdateEffect &&
-            onRemoveEffect &&
-            onReorderEffects && (
-              <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-                <EffectChain
-                  effects={effects}
-                  onAddEffect={onAddEffect}
-                  onRemoveEffect={onRemoveEffect}
-                  onReorderEffects={onReorderEffects}
-                  onUpdateEffect={onUpdateEffect}
-                />
-              </div>
-            )}
-        </TabsContent>
-      </Tabs>
+              )}
+          </Accordion>
+        </div>
+      </ScrollArea>
 
       {/* Footer Actions */}
       <DeckFooterActions onChangeUrl={onChangeUrl} onClear={onClear} />

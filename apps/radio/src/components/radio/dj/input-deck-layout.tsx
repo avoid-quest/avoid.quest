@@ -491,7 +491,8 @@ export function InputDeckLayout({
 
   return (
     <div className={cn("flex h-full min-h-0", className)}>
-      {deckSide === "left" && <DeckPeakMeter peakLevel={peakLevel} />}
+      {/* VU Meter on inner edge for Deck B (left side = inner) */}
+      {deckSide === "right" && <DeckPeakMeter peakLevel={peakLevel} />}
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 px-2">
         <ScrollArea className="min-h-0 flex-1">
@@ -504,7 +505,8 @@ export function InputDeckLayout({
         <DeckFooter onChangeDevice={onChangeDevice} onClear={onClear} />
       </div>
 
-      {deckSide === "right" && <DeckPeakMeter peakLevel={peakLevel} />}
+      {/* VU Meter on inner edge for Deck A (right side = inner) */}
+      {deckSide === "left" && <DeckPeakMeter peakLevel={peakLevel} />}
     </div>
   );
 }

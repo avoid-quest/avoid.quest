@@ -11,12 +11,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@avoid.quest/ui/components/dropdown-menu";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@avoid.quest/ui/components/tabs";
 import { useIsMobile } from "@avoid.quest/ui/hooks/use-mobile";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import { useDroppable } from "@dnd-kit/core";
@@ -27,7 +21,7 @@ import {
   RefreshCwIcon,
   Volume2Icon,
 } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { EffectChain } from "@/components/audio/effect-chain";
 import type { Radio } from "@/lib/audio";
@@ -56,6 +50,10 @@ import { usePlatformMetadata } from "@/lib/hooks/use-platform-metadata";
 import { useThrottledParam } from "@/lib/hooks/use-throttled-param";
 import { useTrackProgress } from "@/lib/hooks/use-track-progress";
 import { isDeviceInputMetadata, type Platform } from "@/lib/platform-types";
+import {
+  setDeckAPeakLevel,
+  setDeckBPeakLevel,
+} from "@/lib/stores/dj-runtime-store";
 import { DeckLayout } from "./deck-layout";
 import { DeviceForm } from "./device-form";
 import { DjRadioList } from "./dj-radio-list";
@@ -132,6 +130,13 @@ function DjDeckContent({
   const { currentTrackIndex, metadata } = usePlatformMetadata(radio);
   const trackProgress = useTrackProgress(soundId);
   const peakLevel = usePeakLevel(soundId);
+
+  // Publish peak levels to runtime store for mixer VU meters and mobile mini-mixer
+  const setPeakLevel =
+    deckId === "deck-a" ? setDeckAPeakLevel : setDeckBPeakLevel;
+  useEffect(() => {
+    setPeakLevel(peakLevel);
+  }, [peakLevel, setPeakLevel]);
 
   // Throttle channel strip setters to ~30fps to prevent overwhelming audio manager
   const throttledSetPan = useThrottledParam(setPan);
@@ -332,27 +337,11 @@ function DjDeckContent({
       />
     );
   } else if (isMobile) {
-    // Mobile: Wrap in tabs with empty Source tab
+    // Mobile: Show inline radio list for loading
     content = (
-      <Tabs className="flex h-full min-h-0 flex-col" defaultValue="source">
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="source">Source</TabsTrigger>
-          <TabsTrigger value="effects">Effects</TabsTrigger>
-        </TabsList>
-
-        {/* Source Tab with radio list on mobile */}
-        <TabsContent
-          className="mt-3 flex min-h-0 flex-1 flex-col overflow-hidden"
-          value="source"
-        >
-          <DjRadioList radios={radios} />
-        </TabsContent>
-
-        {/* Effects Tab */}
-        <TabsContent
-          className="mt-3 flex min-h-0 flex-1 flex-col overflow-hidden"
-          value="effects"
-        >
+      <div className="flex h-full min-h-0 flex-col gap-2">
+        <DjRadioList radios={radios} />
+        <div className="border-t pt-2">
           <EffectChain
             effects={effects}
             onAddEffect={addEffect}
@@ -360,19 +349,30 @@ function DjDeckContent({
             onReorderEffects={reorderEffects}
             onUpdateEffect={updateEffect}
           />
-        </TabsContent>
-      </Tabs>
+        </div>
+      </div>
     );
   } else {
-    // Desktop: Minimal empty deck placeholder
+    // Desktop: Empty deck placeholder with deck-colored border
+    const emptyBorderColor =
+      deckId === "deck-a" ? "border-blue-500/30" : "border-amber-500/30";
+
     content = (
       <div className="flex h-full min-h-0 flex-col gap-3">
         {/* Drop Zone */}
         <div className="flex flex-1 flex-col items-center justify-center py-6 text-center">
-          <div className="rounded-lg border-2 border-muted-foreground/25 border-dashed p-4">
+          <div
+            className={cn(
+              "rounded-lg border-2 border-dashed p-6",
+              emptyBorderColor
+            )}
+          >
             <Volume2Icon className="mx-auto size-8 text-muted-foreground" />
-            <p className="mt-2 text-muted-foreground text-sm">
-              Drop a source here
+            <p className="mt-2 font-medium text-muted-foreground text-sm">
+              Drop a radio station here
+            </p>
+            <p className="mt-1 text-muted-foreground/60 text-xs">
+              or pick from sources below
             </p>
           </div>
         </div>
@@ -391,10 +391,16 @@ function DjDeckContent({
     );
   }
 
+  const deckColorBorder =
+    deckId === "deck-a"
+      ? "border-l-2 border-l-blue-500/40"
+      : "border-r-2 border-r-amber-500/40";
+
   return (
     <Card
       className={cn(
         "flex h-full min-h-0 w-full flex-col py-2 transition-colors",
+        deckColorBorder,
         isOver ? "border-primary bg-primary/5" : "",
         className
       )}
@@ -439,7 +445,12 @@ function DeckHeader({ deckId, radio, onReset }: DeckHeaderProps) {
   return (
     <CardHeader className="sm:pb-4">
       <div className="flex items-center justify-between">
-        <CardTitle className="text-center">
+        <CardTitle
+          className={cn(
+            "text-center",
+            deckId === "deck-a" ? "text-blue-500" : "text-amber-500"
+          )}
+        >
           {deckId === "deck-a" ? "Deck A" : "Deck B"}
         </CardTitle>
         {/* Always render button to prevent layout shift, but hide when no radio */}

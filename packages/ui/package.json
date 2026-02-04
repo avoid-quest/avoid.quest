@@ -36,6 +36,7 @@
     "cmdk": "^1.1.1",
     "embla-carousel-react": "^8.6.0",
     "lucide-react": "catalog:",
+    "radix-ui": "^1.4.3",
     "react-resizable-panels": "^4.5.9",
     "sonner": "catalog:",
     "tailwind-merge": "^3.4.0",

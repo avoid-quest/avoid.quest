@@ -6,6 +6,7 @@
  */
 
 import { useMemo } from "react";
+import { MidiControlWrapper } from "@/components/audio/midi-control-wrapper";
 import type { EffectConfig } from "@/lib/audio";
 import { getEffectMetadata } from "@/lib/audio";
 import type {
@@ -26,6 +27,8 @@ type DeclarativeParamsProps = {
   schema: EffectSchema;
   effect: EffectConfig;
   onUpdate: (config: Partial<EffectConfig>) => void;
+  deckId?: "deck-a" | "deck-b";
+  effectId?: string;
 };
 
 function getEffectValue(effect: EffectConfig, key: string): unknown {
@@ -47,6 +50,8 @@ type RenderParamContext = {
   effect: EffectConfig;
   onUpdate: (config: Partial<EffectConfig>) => void;
   defaultConfig: Omit<EffectConfig, "id" | "order"> | undefined;
+  deckId?: "deck-a" | "deck-b";
+  effectId?: string;
 };
 
 function renderSlider(
@@ -58,7 +63,7 @@ function renderSlider(
     return null;
   }
 
-  return (
+  const slider = (
     <ParamSlider
       defaultValue={getDefaultValue(ctx.defaultConfig, param.key)}
       description={param.description}
@@ -72,6 +77,19 @@ function renderSlider(
       value={value}
     />
   );
+
+  if (ctx.deckId && ctx.effectId) {
+    return (
+      <MidiControlWrapper
+        key={param.key}
+        targetId={`${ctx.deckId}:effect:${ctx.effectId}:${param.key}`}
+      >
+        {slider}
+      </MidiControlWrapper>
+    );
+  }
+
+  return slider;
 }
 
 function renderSelect(
@@ -170,6 +188,8 @@ export function DeclarativeParams({
   schema,
   effect,
   onUpdate,
+  deckId,
+  effectId,
 }: DeclarativeParamsProps) {
   const defaultConfig = useMemo(() => {
     const metadata = getEffectMetadata(effect.type);
@@ -180,12 +200,19 @@ export function DeclarativeParams({
     effect,
     onUpdate,
     defaultConfig,
+    deckId,
+    effectId,
   };
 
   return (
     <div className="space-y-4">
       {schema.params.map((param) => renderParam(param, ctx))}
-      <UniversalParams effect={effect} onUpdate={onUpdate} />
+      <UniversalParams
+        deckId={deckId}
+        effect={effect}
+        effectId={effectId}
+        onUpdate={onUpdate}
+      />
     </div>
   );
 }

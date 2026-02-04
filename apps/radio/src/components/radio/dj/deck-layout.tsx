@@ -18,6 +18,7 @@ import {
   XIcon,
 } from "lucide-react";
 import { EffectChain } from "@/components/audio/effect-chain";
+import { MidiControlWrapper } from "@/components/audio/midi-control-wrapper";
 import type { EffectConfig, EffectType, Radio } from "@/lib/audio";
 import {
   type BandcampMetadata,
@@ -51,6 +52,8 @@ type DeckLayoutProps = {
   peakLevel?: { left: number; right: number };
   // Playback
   repeat?: boolean;
+  // Deck identification
+  deckId?: "deck-a" | "deck-b";
   // Deck side for peak meter positioning
   deckSide: "left" | "right";
   onPlayPause: () => void;
@@ -134,6 +137,7 @@ export function DeckLayout({
   effectsDryWet,
   peakLevel,
   repeat,
+  deckId,
   deckSide,
   onPlayPause,
   onVolumeChange,
@@ -185,6 +189,7 @@ export function DeckLayout({
         channelFilter={channelFilter}
         className={className}
         currentTrackIndex={currentTrackIndex}
+        deckId={deckId}
         effects={effects}
         effectsDryWet={effectsDryWet}
         hasTracklist={hasTracklist}
@@ -246,6 +251,7 @@ export function DeckLayout({
         <div className="rounded-lg border bg-muted/30 px-2 py-2">
           <ChannelStrip
             channelFilter={channelFilter}
+            deckId={deckId}
             effectsDryWet={effectsDryWet}
             onChannelFilterChange={onChannelFilterChange}
             onEffectsDryWetChange={onEffectsDryWetChange}
@@ -289,6 +295,7 @@ export function DeckLayout({
                   value="effects"
                 >
                   <EffectChain
+                    deckId={deckId}
                     effects={effects}
                     onAddEffect={onAddEffect}
                     onRemoveEffect={onRemoveEffect}
@@ -390,6 +397,7 @@ type ChannelStripProps = {
   channelFilter: number;
   speed: number;
   effectsDryWet: number;
+  deckId?: "deck-a" | "deck-b";
   onVolumeChange: (value: number) => void;
   onPanChange: (value: number) => void;
   onChannelFilterChange: (value: number) => void;
@@ -428,64 +436,83 @@ function ChannelStrip({
   channelFilter,
   speed,
   effectsDryWet,
+  deckId,
   onVolumeChange,
   onPanChange,
   onChannelFilterChange,
   onSpeedChange,
   onEffectsDryWetChange,
 }: ChannelStripProps) {
+  const slider = (
+    targetSuffix: string,
+    props: Omit<ChannelSliderProps, "label"> & { label: string }
+  ) => {
+    const el = <ChannelSlider {...props} />;
+    if (!deckId) {
+      return el;
+    }
+    return (
+      <MidiControlWrapper
+        key={props.label}
+        targetId={`${deckId}:${targetSuffix}`}
+      >
+        {el}
+      </MidiControlWrapper>
+    );
+  };
+
   return (
     <div className="space-y-1.5">
-      <ChannelSlider
-        defaultValue={1}
-        formatValue={formatPercent}
-        label="VOL"
-        max={1.585}
-        min={0}
-        onChange={onVolumeChange}
-        step={0.01}
-        value={volume}
-      />
-      <ChannelSlider
-        defaultValue={0}
-        formatValue={formatPan}
-        label="PAN"
-        max={1}
-        min={-1}
-        onChange={onPanChange}
-        step={0.01}
-        value={pan}
-      />
-      <ChannelSlider
-        defaultValue={0}
-        formatValue={formatChannelFilter}
-        label="FILT"
-        max={1}
-        min={-1}
-        onChange={onChannelFilterChange}
-        step={0.01}
-        value={channelFilter}
-      />
-      <ChannelSlider
-        defaultValue={1}
-        formatValue={formatSpeed}
-        label="SPD"
-        max={2.0}
-        min={0.5}
-        onChange={onSpeedChange}
-        step={0.01}
-        value={speed}
-      />
-      <ChannelSlider
-        defaultValue={0}
-        formatValue={formatPercent}
-        label="FX"
-        max={1}
-        min={0}
-        onChange={onEffectsDryWetChange}
-        step={0.01}
-        value={effectsDryWet}
-      />
+      {slider("volume", {
+        defaultValue: 1,
+        formatValue: formatPercent,
+        label: "VOL",
+        max: 1.585,
+        min: 0,
+        onChange: onVolumeChange,
+        step: 0.01,
+        value: volume,
+      })}
+      {slider("pan", {
+        defaultValue: 0,
+        formatValue: formatPan,
+        label: "PAN",
+        max: 1,
+        min: -1,
+        onChange: onPanChange,
+        step: 0.01,
+        value: pan,
+      })}
+      {slider("filter", {
+        defaultValue: 0,
+        formatValue: formatChannelFilter,
+        label: "FILT",
+        max: 1,
+        min: -1,
+        onChange: onChannelFilterChange,
+        step: 0.01,
+        value: channelFilter,
+      })}
+      {slider("speed", {
+        defaultValue: 1,
+        formatValue: formatSpeed,
+        label: "SPD",
+        max: 2.0,
+        min: 0.5,
+        onChange: onSpeedChange,
+        step: 0.01,
+        value: speed,
+      })}
+      {slider("effects-drywet", {
+        defaultValue: 0,
+        formatValue: formatPercent,
+        label: "FX",
+        max: 1,
+        min: 0,
+        onChange: onEffectsDryWetChange,
+        step: 0.01,
+        value: effectsDryWet,
+      })}
     </div>
   );
 }
@@ -653,6 +680,7 @@ type MobileDeckLayoutProps = {
   channelFilter: number;
   effectsDryWet: number;
   repeat?: boolean;
+  deckId?: "deck-a" | "deck-b";
   hasTracklist: boolean;
   onPlayPause: () => void;
   onVolumeChange: (value: number[]) => void;
@@ -691,6 +719,7 @@ function MobileDeckLayout({
   speed,
   effectsDryWet,
   repeat,
+  deckId,
   hasTracklist,
   onPlayPause,
   onVolumeChange,
@@ -737,6 +766,7 @@ function MobileDeckLayout({
           <div className="rounded-lg border bg-muted/30 px-2 py-2">
             <ChannelStrip
               channelFilter={channelFilter}
+              deckId={deckId}
               effectsDryWet={effectsDryWet}
               onChannelFilterChange={onChannelFilterChange}
               onEffectsDryWetChange={onEffectsDryWetChange}
@@ -778,6 +808,7 @@ function MobileDeckLayout({
                   value="effects"
                 >
                   <EffectChain
+                    deckId={deckId}
                     effects={effects}
                     onAddEffect={onAddEffect}
                     onRemoveEffect={onRemoveEffect}

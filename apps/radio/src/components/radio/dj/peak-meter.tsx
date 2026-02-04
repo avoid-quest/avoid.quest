@@ -33,7 +33,7 @@ export function PeakMeter({
       return "bg-red-500";
     }
     if (amplified > 0.7) {
-      return "bg-amber-500";
+      return "bg-yellow-500";
     }
     return "bg-emerald-500";
   };
@@ -120,7 +120,7 @@ export function HorizontalPeakMeter({
       return "bg-red-500";
     }
     if (amplified > 0.7) {
-      return "bg-amber-500";
+      return "bg-yellow-500";
     }
     return "bg-emerald-500";
   };

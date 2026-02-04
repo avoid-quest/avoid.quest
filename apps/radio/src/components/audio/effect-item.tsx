@@ -25,6 +25,7 @@ type EffectItemProps = {
   onRemove: () => void;
   onExpand?: () => void;
   isExpanded?: boolean;
+  deckId?: "deck-a" | "deck-b";
 };
 
 export function EffectItem({
@@ -33,6 +34,7 @@ export function EffectItem({
   onRemove,
   onExpand,
   isExpanded = false,
+  deckId,
 }: EffectItemProps) {
   const metadata = getEffectMetadata(effect.type);
   const { attributes, listeners, setNodeRef, transform, isDragging } =
@@ -170,7 +172,12 @@ export function EffectItem({
       {isExpanded.valueOf() && (
         <CardContent className="space-y-4 border-t bg-muted/30 pt-4 pb-4">
           <EffectVisualization effect={effect} />
-          <EffectParams effect={effect} onUpdate={onUpdate} />
+          <EffectParams
+            deckId={deckId}
+            effect={effect}
+            effectId={effect.id}
+            onUpdate={onUpdate}
+          />
         </CardContent>
       )}
     </Card>

@@ -2,226 +2,42 @@
  * MIDI Controller
  *
  * Core class for Web MIDI API integration.
- * Handles device connection, message parsing, action dispatch, and learn mode.
+ * Handles device connection, message parsing, action dispatch, learn mode,
+ * and the action registry (merged from action-registry.ts).
  */
 
+import { useMidiStore } from "./midi-store";
 import {
-  pauseDeckA,
-  pauseDeckB,
-  playDeckA,
-  playDeckB,
-  setCrossfadePosition,
-  setDeckAChannelFilter,
-  setDeckAEffectsDryWet,
-  setDeckAPan,
-  setDeckASpeed,
-  setDeckAVolume,
-  setDeckBChannelFilter,
-  setDeckBEffectsDryWet,
-  setDeckBPan,
-  setDeckBSpeed,
-  setDeckBVolume,
-  setHeadphoneVolume,
-  setMasterVolume,
-  toggleDeckACue,
-  toggleDeckBCue,
-} from "@/lib/dj-actions";
+  applyTransform,
+  type MidiAction,
+  type MidiDeviceInfo,
+  type MidiMapping,
+  type MidiMessageType,
+  type MidiTargetId,
+} from "./types";
 
 // MIDI status bytes
 const NOTE_ON = 0x90;
 const NOTE_OFF = 0x80;
 const CONTROL_CHANGE = 0xb0;
 
-export type MidiMessageType = "cc" | "note";
-
-export type MidiMapping = {
-  channel: number;
-  control: number;
-  type: MidiMessageType;
-  actionId: string;
-};
-
-export type MidiDeviceInfo = {
-  id: string;
-  name: string;
-  manufacturer: string;
-  state: "connected" | "disconnected";
-  type: "input" | "output";
-};
-
-type MidiAction = {
-  id: string;
-  label: string;
-  group: "deck-a" | "deck-b" | "mixer";
-  type: "button" | "continuous";
-  dispatch: (value: number) => void;
-};
-
-const MIDI_ACTIONS: MidiAction[] = [
-  // Deck A
-  {
-    id: "deck-a:play",
-    label: "Play",
-    group: "deck-a",
-    type: "button",
-    dispatch: () => playDeckA(),
-  },
-  {
-    id: "deck-a:pause",
-    label: "Pause",
-    group: "deck-a",
-    type: "button",
-    dispatch: () => pauseDeckA(),
-  },
-  {
-    id: "deck-a:cue",
-    label: "CUE",
-    group: "deck-a",
-    type: "button",
-    dispatch: () => toggleDeckACue(),
-  },
-  {
-    id: "deck-a:volume",
-    label: "Volume",
-    group: "deck-a",
-    type: "continuous",
-    dispatch: (v) => setDeckAVolume(v),
-  },
-  {
-    id: "deck-a:pitch",
-    label: "Pitch/Speed",
-    group: "deck-a",
-    type: "continuous",
-    dispatch: (v) => setDeckASpeed(0.5 + v * 1.5),
-  },
-  {
-    id: "deck-a:filter",
-    label: "Filter",
-    group: "deck-a",
-    type: "continuous",
-    dispatch: (v) => setDeckAChannelFilter(v * 2 - 1),
-  },
-  {
-    id: "deck-a:effect-drywet",
-    label: "FX Dry/Wet",
-    group: "deck-a",
-    type: "continuous",
-    dispatch: (v) => setDeckAEffectsDryWet(v),
-  },
-  {
-    id: "deck-a:pan",
-    label: "Pan",
-    group: "deck-a",
-    type: "continuous",
-    dispatch: (v) => setDeckAPan(v * 2 - 1),
-  },
-
-  // Deck B
-  {
-    id: "deck-b:play",
-    label: "Play",
-    group: "deck-b",
-    type: "button",
-    dispatch: () => playDeckB(),
-  },
-  {
-    id: "deck-b:pause",
-    label: "Pause",
-    group: "deck-b",
-    type: "button",
-    dispatch: () => pauseDeckB(),
-  },
-  {
-    id: "deck-b:cue",
-    label: "CUE",
-    group: "deck-b",
-    type: "button",
-    dispatch: () => toggleDeckBCue(),
-  },
-  {
-    id: "deck-b:volume",
-    label: "Volume",
-    group: "deck-b",
-    type: "continuous",
-    dispatch: (v) => setDeckBVolume(v),
-  },
-  {
-    id: "deck-b:pitch",
-    label: "Pitch/Speed",
-    group: "deck-b",
-    type: "continuous",
-    dispatch: (v) => setDeckBSpeed(0.5 + v * 1.5),
-  },
-  {
-    id: "deck-b:filter",
-    label: "Filter",
-    group: "deck-b",
-    type: "continuous",
-    dispatch: (v) => setDeckBChannelFilter(v * 2 - 1),
-  },
-  {
-    id: "deck-b:effect-drywet",
-    label: "FX Dry/Wet",
-    group: "deck-b",
-    type: "continuous",
-    dispatch: (v) => setDeckBEffectsDryWet(v),
-  },
-  {
-    id: "deck-b:pan",
-    label: "Pan",
-    group: "deck-b",
-    type: "continuous",
-    dispatch: (v) => setDeckBPan(v * 2 - 1),
-  },
-
-  // Mixer
-  {
-    id: "crossfader",
-    label: "Crossfader",
-    group: "mixer",
-    type: "continuous",
-    dispatch: (v) => setCrossfadePosition(v),
-  },
-  {
-    id: "master-volume",
-    label: "Master Volume",
-    group: "mixer",
-    type: "continuous",
-    dispatch: (v) => setMasterVolume(v),
-  },
-  {
-    id: "headphone-volume",
-    label: "Headphone Volume",
-    group: "mixer",
-    type: "continuous",
-    dispatch: (v) => setHeadphoneVolume(v),
-  },
-];
-
-export function getMidiActions(): MidiAction[] {
-  return MIDI_ACTIONS;
-}
-
-export function getMidiActionById(id: string): MidiAction | undefined {
-  return MIDI_ACTIONS.find((a) => a.id === id);
-}
-
-type MidiControllerCallbacks = {
-  onDevicesChanged?: (devices: MidiDeviceInfo[]) => void;
-  onLearnCapture?: (mapping: Omit<MidiMapping, "actionId">) => void;
-};
+type Listener = () => void;
 
 export class MidiController {
   private static instance: MidiController | null = null;
   private access: MIDIAccess | null = null;
-  private mappings: MidiMapping[] = [];
-  private callbacks: MidiControllerCallbacks = {};
-  private learningActionId: string | null = null;
+  private mappings = new Map<string, MidiMapping>();
   private lastCcDispatchTime = 0;
   private pendingRaf: number | null = null;
   private readonly pendingCcValues = new Map<string, number>();
+  private readonly lastButtonDispatch = new Map<string, number>();
   private readonly boundHandleMessage: (e: MIDIMessageEvent) => void;
   private readonly boundHandleStateChange: (e: Event) => void;
+
+  // Action registry (absorbed from MidiActionRegistry)
+  private readonly actions = new Map<MidiTargetId, MidiAction>();
+  private readonly listeners = new Set<Listener>();
+  private snapshot: MidiAction[] = [];
 
   private constructor() {
     this.boundHandleMessage = this.handleMidiMessage.bind(this);
@@ -256,6 +72,7 @@ export class MidiController {
       this.pendingRaf = null;
     }
     this.pendingCcValues.clear();
+    this.lastButtonDispatch.clear();
 
     if (this.access) {
       this.access.removeEventListener(
@@ -270,16 +87,10 @@ export class MidiController {
       }
       this.access = null;
     }
-
-    this.learningActionId = null;
   }
 
-  setCallbacks(callbacks: MidiControllerCallbacks): void {
-    this.callbacks = callbacks;
-  }
-
-  setMappings(mappings: MidiMapping[]): void {
-    this.mappings = mappings;
+  setMappings(mappingsByKey: Map<string, MidiMapping>): void {
+    this.mappings = mappingsByKey;
   }
 
   getDevices(): MidiDeviceInfo[] {
@@ -300,21 +111,57 @@ export class MidiController {
     return devices;
   }
 
-  startLearn(actionId: string): void {
-    this.learningActionId = actionId;
+  // --- Action Registry methods ---
+
+  register(action: MidiAction): () => void {
+    this.actions.set(action.targetId, action);
+    this.notifyListeners();
+    return () => {
+      this.actions.delete(action.targetId);
+      this.notifyListeners();
+    };
   }
 
-  stopLearn(): void {
-    this.learningActionId = null;
+  registerAll(actions: MidiAction[]): () => void {
+    for (const action of actions) {
+      this.actions.set(action.targetId, action);
+    }
+    this.notifyListeners();
+    return () => {
+      for (const action of actions) {
+        this.actions.delete(action.targetId);
+      }
+      this.notifyListeners();
+    };
   }
 
-  get isLearning(): boolean {
-    return this.learningActionId !== null;
+  getAction(targetId: MidiTargetId): MidiAction | undefined {
+    return this.actions.get(targetId);
   }
 
-  get learningTarget(): string | null {
-    return this.learningActionId;
+  getAllActions(): MidiAction[] {
+    return this.snapshot;
   }
+
+  getActionsByGroup(group: string): MidiAction[] {
+    return this.snapshot.filter((a) => a.group === group);
+  }
+
+  subscribeActions(listener: Listener): () => void {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
+
+  private notifyListeners(): void {
+    this.snapshot = [...this.actions.values()];
+    for (const listener of this.listeners) {
+      listener();
+    }
+  }
+
+  // --- MIDI message handling ---
 
   private attachInputListeners(): void {
     if (!this.access) {
@@ -335,7 +182,8 @@ export class MidiController {
   private handleStateChange(_e: Event): void {
     // Re-attach listeners in case new devices were connected
     this.attachInputListeners();
-    this.callbacks.onDevicesChanged?.(this.getDevices());
+    const store = useMidiStore.getState();
+    store.setDevices(this.getDevices());
   }
 
   private handleMidiMessage(e: MIDIMessageEvent): void {
@@ -361,38 +209,70 @@ export class MidiController {
       return;
     }
 
-    // Learn mode: capture the first incoming message
-    if (this.learningActionId) {
-      this.callbacks.onLearnCapture?.({ channel, control, type });
-      this.learningActionId = null;
+    // Learn mode: capture the first incoming message, delegate to store
+    const store = useMidiStore.getState();
+    if (store.learningTarget) {
+      const target = store.learningTarget;
+      store.addMapping({ channel, control, type, targetId: target });
+      store.stopLearn();
       return;
     }
 
-    // Find matching mapping
-    const mapping = this.mappings.find(
-      (m) => m.channel === channel && m.control === control && m.type === type
-    );
+    // O(1) mapping lookup
+    const mapping = this.mappings.get(`${channel}:${control}:${type}`);
     if (!mapping) {
       return;
     }
 
-    const action = getMidiActionById(mapping.actionId);
+    const action = this.actions.get(mapping.targetId);
     if (!action) {
       return;
     }
 
     // Normalize value to 0-1
-    const normalized = value / 127;
+    let normalized = value / 127;
+
+    // Apply per-mapping transform if present
+    if (mapping.transform) {
+      normalized = applyTransform(normalized, mapping.transform);
+    }
 
     if (action.type === "button") {
-      // Dispatch immediately on NoteOn (velocity > 0) or CC value > 0
-      if (value > 0) {
-        action.dispatch(normalized);
-      }
+      this.dispatchButton(
+        mapping.targetId,
+        action,
+        normalized,
+        value,
+        statusType
+      );
     } else {
       // Continuous controls: throttle via RAF (~30fps)
-      this.pendingCcValues.set(mapping.actionId, normalized);
+      this.pendingCcValues.set(mapping.targetId, normalized);
       this.scheduleDispatch();
+    }
+  }
+
+  /**
+   * Dispatch a button action with two guards against double-triggering:
+   * 1. NoteOff filter — key release (0x80) often carries velocity > 0.
+   * 2. Dedup window — contact bounce can send duplicate NoteOn within ~5ms;
+   *    50ms blocks bounce while allowing intentional rapid presses (>100ms).
+   */
+  private dispatchButton(
+    targetId: string,
+    action: { dispatch: (value: number) => void },
+    normalized: number,
+    rawValue: number,
+    statusType: number
+  ): void {
+    if (rawValue === 0 || statusType === NOTE_OFF) {
+      return;
+    }
+    const now = performance.now();
+    const last = this.lastButtonDispatch.get(targetId) ?? 0;
+    if (now - last > 50) {
+      this.lastButtonDispatch.set(targetId, now);
+      action.dispatch(normalized);
     }
   }
 
@@ -414,10 +294,10 @@ export class MidiController {
       }
       this.lastCcDispatchTime = now;
 
-      for (const [actionId, value] of this.pendingCcValues) {
-        const action = getMidiActionById(actionId);
+      for (const [targetId, val] of this.pendingCcValues) {
+        const action = this.actions.get(targetId);
         if (action) {
-          action.dispatch(value);
+          action.dispatch(val);
         }
       }
       this.pendingCcValues.clear();

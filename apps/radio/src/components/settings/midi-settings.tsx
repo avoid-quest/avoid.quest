@@ -15,30 +15,50 @@ import {
 } from "@avoid.quest/ui/components/select";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import { CircleIcon, Trash2Icon, XIcon } from "lucide-react";
-import { useMidi } from "@/lib/hooks/use-midi";
-import { getMidiActions, MIDI_PRESETS, type MidiMapping } from "@/lib/midi";
+import { useSyncExternalStore } from "react";
+import {
+  MIDI_PRESETS,
+  type MidiAction,
+  MidiController,
+  type MidiMapping,
+  useMidiStore,
+} from "@/lib/midi";
+
+const EMPTY_ACTIONS: MidiAction[] = [];
+
+function useActions(): MidiAction[] {
+  const controller = MidiController.getInstance();
+  return useSyncExternalStore(
+    (cb) => controller.subscribeActions(cb),
+    () => controller.getAllActions(),
+    () => EMPTY_ACTIONS
+  );
+}
 
 function formatMapping(mapping: MidiMapping | undefined): string {
   if (!mapping) {
     return "Not mapped";
   }
   const typeLabel = mapping.type === "cc" ? "CC" : "Note";
-  return `${typeLabel} ${mapping.control} ch.${mapping.channel + 1}`;
+  const transformInfo = mapping.transform
+    ? ` ${mapping.transform.invert ? "INV " : ""}${mapping.transform.curve !== "linear" ? mapping.transform.curve : ""}`
+    : "";
+  return `${typeLabel} ${mapping.control} ch.${mapping.channel + 1}${transformInfo}`;
 }
 
 type MappingRowProps = {
-  actionId: string;
+  targetId: string;
   label: string;
   mapping: MidiMapping | undefined;
   isLearning: boolean;
   isLearningTarget: boolean;
-  onStartLearn: (actionId: string) => void;
+  onStartLearn: (targetId: string) => void;
   onStopLearn: () => void;
-  onRemove: (actionId: string) => void;
+  onRemove: (targetId: string) => void;
 };
 
 function MappingRow({
-  actionId,
+  targetId,
   label,
   mapping,
   isLearning,
@@ -52,7 +72,7 @@ function MappingRow({
       <span className="min-w-0 flex-1 truncate text-sm">{label}</span>
       <span
         className={cn(
-          "w-24 shrink-0 truncate text-right font-mono text-xs",
+          "w-28 shrink-0 truncate text-right font-mono text-xs",
           mapping ? "text-foreground" : "text-muted-foreground"
         )}
       >
@@ -71,7 +91,7 @@ function MappingRow({
         <Button
           className="h-7 w-16 text-xs"
           disabled={isLearning}
-          onClick={() => onStartLearn(actionId)}
+          onClick={() => onStartLearn(targetId)}
           size="sm"
           variant="outline"
         >
@@ -81,7 +101,7 @@ function MappingRow({
       <Button
         className="h-7 w-7 p-0"
         disabled={!mapping || isLearning}
-        onClick={() => onRemove(actionId)}
+        onClick={() => onRemove(targetId)}
         size="sm"
         variant="ghost"
       >
@@ -93,19 +113,19 @@ function MappingRow({
 
 type MappingGroupProps = {
   title: string;
-  actionIds: string[];
-  actions: ReturnType<typeof getMidiActions>;
+  targetIds: string[];
+  actions: MidiAction[];
   mappings: MidiMapping[];
   isLearning: boolean;
   learningTarget: string | null;
-  onStartLearn: (actionId: string) => void;
+  onStartLearn: (targetId: string) => void;
   onStopLearn: () => void;
-  onRemove: (actionId: string) => void;
+  onRemove: (targetId: string) => void;
 };
 
 function MappingGroup({
   title,
-  actionIds,
+  targetIds,
   actions,
   mappings,
   isLearning,
@@ -114,21 +134,24 @@ function MappingGroup({
   onStopLearn,
   onRemove,
 }: MappingGroupProps) {
+  if (targetIds.length === 0) {
+    return null;
+  }
+
   return (
     <div className="space-y-1">
       <h4 className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
         {title}
       </h4>
       <div className="rounded-lg border bg-muted/30 px-3 py-1">
-        {actionIds.map((id) => {
-          const action = actions.find((a) => a.id === id);
+        {targetIds.map((id) => {
+          const action = actions.find((a) => a.targetId === id);
           if (!action) {
             return null;
           }
-          const mapping = mappings.find((m) => m.actionId === id);
+          const mapping = mappings.find((m) => m.targetId === id);
           return (
             <MappingRow
-              actionId={id}
               isLearning={isLearning}
               isLearningTarget={learningTarget === id}
               key={id}
@@ -137,6 +160,7 @@ function MappingGroup({
               onRemove={onRemove}
               onStartLearn={onStartLearn}
               onStopLearn={onStopLearn}
+              targetId={id}
             />
           );
         })}
@@ -146,32 +170,37 @@ function MappingGroup({
 }
 
 export function MidiSettings() {
-  const {
-    isSupported,
-    devices,
-    mappings,
-    activePresetId,
-    isLearning,
-    learningTarget,
-    enabled,
-    startLearn,
-    stopLearn,
-    loadPreset,
-    clearMappings,
-    removeMapping,
-    setEnabled,
-  } = useMidi();
+  const isSupported = useMidiStore((s) => s.isSupported);
+  const devices = useMidiStore((s) => s.devices);
+  const mappings = useMidiStore((s) => s.mappings);
+  const activePresetId = useMidiStore((s) => s.activePresetId);
+  const learningTarget = useMidiStore((s) => s.learningTarget);
+  const enabled = useMidiStore((s) => s.enabled);
+  const startLearn = useMidiStore((s) => s.startLearn);
+  const stopLearn = useMidiStore((s) => s.stopLearn);
+  const loadPreset = useMidiStore((s) => s.loadPreset);
+  const clearMappings = useMidiStore((s) => s.clearMappings);
+  const removeMapping = useMidiStore((s) => s.removeMapping);
+  const setEnabled = useMidiStore((s) => s.setEnabled);
 
-  const actions = getMidiActions();
-  const deckAActions = actions
+  const isLearning = learningTarget !== null;
+
+  const actions = useActions();
+  const deckATargets = actions
     .filter((a) => a.group === "deck-a")
-    .map((a) => a.id);
-  const deckBActions = actions
+    .map((a) => a.targetId);
+  const deckBTargets = actions
     .filter((a) => a.group === "deck-b")
-    .map((a) => a.id);
-  const mixerActions = actions
+    .map((a) => a.targetId);
+  const mixerTargets = actions
     .filter((a) => a.group === "mixer")
-    .map((a) => a.id);
+    .map((a) => a.targetId);
+  const deckAEffectTargets = actions
+    .filter((a) => a.group === "deck-a-effects")
+    .map((a) => a.targetId);
+  const deckBEffectTargets = actions
+    .filter((a) => a.group === "deck-b-effects")
+    .map((a) => a.targetId);
 
   if (!isSupported) {
     return (
@@ -287,7 +316,6 @@ export function MidiSettings() {
           </div>
 
           <MappingGroup
-            actionIds={deckAActions}
             actions={actions}
             isLearning={isLearning}
             learningTarget={learningTarget}
@@ -295,11 +323,11 @@ export function MidiSettings() {
             onRemove={removeMapping}
             onStartLearn={startLearn}
             onStopLearn={stopLearn}
+            targetIds={deckATargets}
             title="Deck A"
           />
 
           <MappingGroup
-            actionIds={deckBActions}
             actions={actions}
             isLearning={isLearning}
             learningTarget={learningTarget}
@@ -307,11 +335,11 @@ export function MidiSettings() {
             onRemove={removeMapping}
             onStartLearn={startLearn}
             onStopLearn={stopLearn}
+            targetIds={deckBTargets}
             title="Deck B"
           />
 
           <MappingGroup
-            actionIds={mixerActions}
             actions={actions}
             isLearning={isLearning}
             learningTarget={learningTarget}
@@ -319,7 +347,32 @@ export function MidiSettings() {
             onRemove={removeMapping}
             onStartLearn={startLearn}
             onStopLearn={stopLearn}
+            targetIds={mixerTargets}
             title="Mixer"
+          />
+
+          <MappingGroup
+            actions={actions}
+            isLearning={isLearning}
+            learningTarget={learningTarget}
+            mappings={mappings}
+            onRemove={removeMapping}
+            onStartLearn={startLearn}
+            onStopLearn={stopLearn}
+            targetIds={deckAEffectTargets}
+            title="Deck A Effects"
+          />
+
+          <MappingGroup
+            actions={actions}
+            isLearning={isLearning}
+            learningTarget={learningTarget}
+            mappings={mappings}
+            onRemove={removeMapping}
+            onStartLearn={startLearn}
+            onStopLearn={stopLearn}
+            targetIds={deckBEffectTargets}
+            title="Deck B Effects"
           />
         </div>
       </div>

@@ -33,6 +33,7 @@ type EffectChainProps = {
   title?: string;
   showAddButton?: boolean;
   showEffectsList?: boolean;
+  deckId?: "deck-a" | "deck-b";
 };
 
 export function EffectChain({
@@ -44,6 +45,7 @@ export function EffectChain({
   title,
   showAddButton = true,
   showEffectsList = true,
+  deckId,
 }: EffectChainProps) {
   const [expandedEffectId, setExpandedEffectId] = useState<string | null>(null);
   const [showPicker, setShowPicker] = useState(false);
@@ -112,6 +114,7 @@ export function EffectChain({
             >
               {sortedEffects.map((effect) => (
                 <SortableEffectItem
+                  deckId={deckId}
                   effect={effect}
                   isDraggingAny={activeId !== null}
                   isExpanded={expandedEffectId === effect.id}
@@ -179,6 +182,7 @@ function SortableEffectItem({
   onUpdate,
   onRemove,
   onExpand,
+  deckId,
 }: {
   effect: EffectConfig;
   isExpanded: boolean;
@@ -186,6 +190,7 @@ function SortableEffectItem({
   onUpdate: (config: Partial<EffectConfig>) => void;
   onRemove: () => void;
   onExpand: () => void;
+  deckId?: "deck-a" | "deck-b";
 }) {
   const {
     setNodeRef,
@@ -216,6 +221,7 @@ function SortableEffectItem({
       {...listeners}
     >
       <EffectItem
+        deckId={deckId}
         effect={effect}
         isExpanded={isExpanded}
         onExpand={onExpand}

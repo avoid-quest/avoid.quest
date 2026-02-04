@@ -29,7 +29,7 @@ function formatTime(seconds: number): string {
 
 function getProgressBarColor(isBuffering: boolean, isPlaying: boolean): string {
   if (isBuffering) {
-    return "bg-amber-500/70";
+    return "bg-muted-foreground/70";
   }
   if (isPlaying) {
     return "bg-primary";
@@ -101,7 +101,7 @@ function TransportPlayButton({
       {!(isLoading || isPlaying) && <PlayIcon className="ml-0.5 size-4" />}
 
       {isBuffering && isPlaying && (
-        <span className="pointer-events-none absolute inset-0 animate-pulse rounded-full ring-2 ring-amber-500/60" />
+        <span className="pointer-events-none absolute inset-0 animate-pulse rounded-full ring-2 ring-muted-foreground/40" />
       )}
     </button>
   );

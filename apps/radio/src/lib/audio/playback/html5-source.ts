@@ -203,7 +203,14 @@ export class Html5AudioSource {
       throw new Error("Source not loaded - call load() first");
     }
 
-    await this.audio.play();
+    try {
+      await this.audio.play();
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        return;
+      }
+      throw error;
+    }
   }
 
   /**

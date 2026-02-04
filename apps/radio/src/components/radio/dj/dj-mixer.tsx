@@ -3,6 +3,7 @@ import { Card, CardContent } from "@avoid.quest/ui/components/card";
 import { Slider } from "@avoid.quest/ui/components/slider";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import { ClockIcon, HeadphonesIcon, Volume2Icon } from "lucide-react";
+import { MidiControlWrapper } from "@/components/audio/midi-control-wrapper";
 import { SettingsButton } from "@/components/settings/settings-button";
 import {
   type AudioDeviceInfo,
@@ -65,62 +66,70 @@ export function DjMixer({
         </div>
 
         {/* Crossfader */}
-        <div className="flex items-center gap-3">
-          <span className="shrink-0 font-bold text-blue-500 text-sm">A</span>
-          <div className="relative flex-1">
-            <Slider
-              className="h-3"
-              defaultValue={[50]}
-              max={100}
-              min={0}
-              onValueChange={([v]) => onCrossfadeChange(v / 100)}
-              step={1}
-              value={[crossfadePosition * 100]}
-            />
-            {/* Center indicator */}
-            <div className="pointer-events-none absolute top-1/2 left-1/2 h-1 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-muted-foreground/50" />
+        <MidiControlWrapper targetId="mixer:crossfader">
+          <div className="flex items-center gap-3">
+            <span className="shrink-0 font-bold text-sm">A</span>
+            <div className="relative flex-1">
+              <Slider
+                className="h-3"
+                defaultValue={[50]}
+                max={100}
+                min={0}
+                onValueChange={([v]) => onCrossfadeChange(v / 100)}
+                step={1}
+                value={[crossfadePosition * 100]}
+              />
+              {/* Center indicator */}
+              <div className="pointer-events-none absolute top-1/2 left-1/2 h-1 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-muted-foreground/50" />
+            </div>
+            <span className="shrink-0 font-bold text-sm">B</span>
           </div>
-          <span className="shrink-0 font-bold text-amber-500 text-sm">B</span>
-        </div>
+        </MidiControlWrapper>
 
         {/* Master Volume */}
-        <div className="flex items-center gap-2">
-          <Volume2Icon className="size-4 shrink-0 text-muted-foreground" />
-          <span className="shrink-0 text-muted-foreground text-xs">Master</span>
-          <Slider
-            className="h-2 flex-1"
-            defaultValue={[100]}
-            max={100}
-            min={0}
-            onValueChange={([v]) => onMasterVolumeChange(v / 100)}
-            step={1}
-            value={[masterVolume * 100]}
-          />
-          <span className="w-9 shrink-0 text-right font-mono text-muted-foreground text-xs">
-            {Math.round(masterVolume * 100)}%
-          </span>
-        </div>
-
-        {/* Headphone Volume — only when CUE output is configured */}
-        {isCueActive && (
+        <MidiControlWrapper targetId="mixer:master-volume">
           <div className="flex items-center gap-2">
-            <HeadphonesIcon className="size-4 shrink-0 text-muted-foreground" />
+            <Volume2Icon className="size-4 shrink-0 text-muted-foreground" />
             <span className="shrink-0 text-muted-foreground text-xs">
-              Phones
+              Master
             </span>
             <Slider
               className="h-2 flex-1"
               defaultValue={[100]}
               max={100}
               min={0}
-              onValueChange={([v]) => onHeadphoneVolumeChange(v / 100)}
+              onValueChange={([v]) => onMasterVolumeChange(v / 100)}
               step={1}
-              value={[headphoneVolume * 100]}
+              value={[masterVolume * 100]}
             />
             <span className="w-9 shrink-0 text-right font-mono text-muted-foreground text-xs">
-              {Math.round(headphoneVolume * 100)}%
+              {Math.round(masterVolume * 100)}%
             </span>
           </div>
+        </MidiControlWrapper>
+
+        {/* Headphone Volume — only when CUE output is configured */}
+        {isCueActive && (
+          <MidiControlWrapper targetId="mixer:headphone-volume">
+            <div className="flex items-center gap-2">
+              <HeadphonesIcon className="size-4 shrink-0 text-muted-foreground" />
+              <span className="shrink-0 text-muted-foreground text-xs">
+                Phones
+              </span>
+              <Slider
+                className="h-2 flex-1"
+                defaultValue={[100]}
+                max={100}
+                min={0}
+                onValueChange={([v]) => onHeadphoneVolumeChange(v / 100)}
+                step={1}
+                value={[headphoneVolume * 100]}
+              />
+              <span className="w-9 shrink-0 text-right font-mono text-muted-foreground text-xs">
+                {Math.round(headphoneVolume * 100)}%
+              </span>
+            </div>
+          </MidiControlWrapper>
         )}
 
         {/* CUE Controls */}

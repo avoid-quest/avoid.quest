@@ -1008,14 +1008,11 @@ export class AudioManager {
   /**
    * Add an effect to a sound
    *
-   * @returns true if effect was added successfully, false if worklet not ready
+   * @returns true if effect was added, false if no worklet manager exists
    */
   addEffect(soundId: string, config: EffectConfig): boolean {
     const wm = this.workletManagers.get(soundId);
-    if (!wm?.isReady) {
-      console.warn(
-        `[AudioManager] Cannot add effect: worklet not ready for ${soundId}`
-      );
+    if (!wm) {
       return false;
     }
 
@@ -1035,7 +1032,7 @@ export class AudioManager {
   /**
    * Update an effect's configuration
    *
-   * @returns true if effect was updated successfully, false if worklet not ready
+   * @returns true if effect was updated, false if no worklet manager exists
    */
   updateEffect(
     soundId: string,
@@ -1043,10 +1040,7 @@ export class AudioManager {
     config: Partial<EffectConfig>
   ): boolean {
     const wm = this.workletManagers.get(soundId);
-    if (!wm?.isReady) {
-      console.warn(
-        `[AudioManager] Cannot update effect ${effectId}: worklet not ready for ${soundId}`
-      );
+    if (!wm) {
       return false;
     }
 

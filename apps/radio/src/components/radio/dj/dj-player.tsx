@@ -182,7 +182,7 @@ function DjPlayerMobileView({
       {/* 2-Tab Navigation */}
       <div className="grid grid-cols-2 gap-2 rounded-lg bg-muted p-1">
         <Button
-          className={cn("w-full", mobileTab === "left" && "text-blue-500")}
+          className="w-full"
           onClick={() => setMobileTab("left")}
           size="sm"
           variant={mobileTab === "left" ? "default" : "ghost"}
@@ -190,7 +190,7 @@ function DjPlayerMobileView({
           Deck A
         </Button>
         <Button
-          className={cn("w-full", mobileTab === "right" && "text-amber-500")}
+          className="w-full"
           onClick={() => setMobileTab("right")}
           size="sm"
           variant={mobileTab === "right" ? "default" : "ghost"}

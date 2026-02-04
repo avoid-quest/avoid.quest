@@ -49,6 +49,7 @@ import {
   setPendingPlatformItem,
   usePendingPlatformItem,
 } from "@/lib/hooks/use-dj-state";
+import { useMidiEffectRegistration } from "@/lib/hooks/use-midi-effect-registration";
 import { usePeakLevel } from "@/lib/hooks/use-peak-level";
 import { usePlatformMetadata } from "@/lib/hooks/use-platform-metadata";
 import { useThrottledParam } from "@/lib/hooks/use-throttled-param";
@@ -156,6 +157,9 @@ function DjDeckContent({
   const throttledSetChannelFilter = useThrottledParam(setChannelFilter);
   const throttledSetEffectsDryWet = useThrottledParam(setEffectsDryWet);
   const throttledSetVolume = useThrottledParam(setVolume);
+
+  // Register MIDI actions for deck effects
+  useMidiEffectRegistration(deckId, effects);
 
   // Get effects actions based on deck
   const addEffect = deckId === "deck-a" ? addDeckAEffect : addDeckBEffect;
@@ -398,6 +402,7 @@ function DjDeckContent({
         <DeckLayout
           channelFilter={channelFilter}
           currentTrackIndex={currentTrackIndex}
+          deckId={deckId}
           deckSide={deckSide}
           effects={effects}
           effectsDryWet={effectsDryWet}
@@ -463,8 +468,7 @@ function DjDeckContent({
     );
   } else {
     // Desktop: Empty deck placeholder with deck-colored border
-    const emptyBorderColor =
-      deckId === "deck-a" ? "border-blue-500/30" : "border-amber-500/30";
+    const emptyBorderColor = "border-muted-foreground/20";
 
     content = (
       <div className="flex h-full min-h-0 flex-col gap-3">
@@ -523,8 +527,8 @@ function DjDeckContent({
 
   const deckColorBorder =
     deckId === "deck-a"
-      ? "border-l-2 border-l-blue-500/40"
-      : "border-r-2 border-r-amber-500/40";
+      ? "border-l-2 border-l-muted-foreground/20"
+      : "border-r-2 border-r-muted-foreground/20";
 
   return (
     <Card
@@ -580,12 +584,7 @@ function DeckHeader({ deckId, radio, onReset }: DeckHeaderProps) {
   return (
     <CardHeader className="sm:pb-4">
       <div className="flex items-center justify-between">
-        <CardTitle
-          className={cn(
-            "text-center",
-            deckId === "deck-a" ? "text-blue-500" : "text-amber-500"
-          )}
-        >
+        <CardTitle className="text-center">
           {deckId === "deck-a" ? "Deck A" : "Deck B"}
         </CardTitle>
         {/* Always render button to prevent layout shift, but hide when no radio */}

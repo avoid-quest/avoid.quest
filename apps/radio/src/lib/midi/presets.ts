@@ -4,7 +4,7 @@
  * Built-in controller mappings for common DJ MIDI controllers.
  */
 
-import type { MidiMapping, MidiMessageType } from "./midi-controller";
+import type { MidiMapping, MidiMessageType, MidiTargetId } from "./types";
 
 export type MidiPreset = {
   id: string;
@@ -17,9 +17,9 @@ function mapping(
   channel: number,
   control: number,
   type: MidiMessageType,
-  actionId: string
+  targetId: MidiTargetId
 ): MidiMapping {
-  return { channel, control, type, actionId };
+  return { channel, control, type, targetId };
 }
 
 /**
@@ -34,24 +34,24 @@ const PIONEER_DDJ_200: MidiPreset = {
   vendor: "Pioneer DJ",
   mappings: [
     // Deck A (channel 0)
-    mapping(0, 0x0b, "note", "deck-a:play"),
+    mapping(0, 0x0b, "note", "deck-a:play-pause"),
     mapping(0, 0x0c, "note", "deck-a:cue"),
     mapping(0, 0x13, "cc", "deck-a:volume"),
-    mapping(0, 0x0d, "cc", "deck-a:pitch"),
+    mapping(0, 0x0d, "cc", "deck-a:speed"),
     mapping(0, 0x17, "cc", "deck-a:filter"),
-    mapping(0, 0x1a, "cc", "deck-a:effect-drywet"),
+    mapping(0, 0x1a, "cc", "deck-a:effects-drywet"),
 
     // Deck B (channel 1)
-    mapping(1, 0x0b, "note", "deck-b:play"),
+    mapping(1, 0x0b, "note", "deck-b:play-pause"),
     mapping(1, 0x0c, "note", "deck-b:cue"),
     mapping(1, 0x13, "cc", "deck-b:volume"),
-    mapping(1, 0x0d, "cc", "deck-b:pitch"),
+    mapping(1, 0x0d, "cc", "deck-b:speed"),
     mapping(1, 0x17, "cc", "deck-b:filter"),
-    mapping(1, 0x1a, "cc", "deck-b:effect-drywet"),
+    mapping(1, 0x1a, "cc", "deck-b:effects-drywet"),
 
     // Mixer
-    mapping(0, 0x1f, "cc", "crossfader"),
-    mapping(0, 0x05, "cc", "master-volume"),
+    mapping(0, 0x1f, "cc", "mixer:crossfader"),
+    mapping(0, 0x05, "cc", "mixer:master-volume"),
   ],
 };
 
@@ -67,22 +67,22 @@ const NUMARK_DJ2GO2_TOUCH: MidiPreset = {
   vendor: "Numark",
   mappings: [
     // Deck A
-    mapping(0, 0x3b, "note", "deck-a:play"),
+    mapping(0, 0x3b, "note", "deck-a:play-pause"),
     mapping(0, 0x33, "note", "deck-a:cue"),
     mapping(0, 0x07, "cc", "deck-a:volume"),
-    mapping(0, 0x09, "cc", "deck-a:pitch"),
+    mapping(0, 0x09, "cc", "deck-a:speed"),
     mapping(0, 0x0e, "cc", "deck-a:filter"),
 
     // Deck B
-    mapping(0, 0x42, "note", "deck-b:play"),
+    mapping(0, 0x42, "note", "deck-b:play-pause"),
     mapping(0, 0x3c, "note", "deck-b:cue"),
     mapping(0, 0x08, "cc", "deck-b:volume"),
-    mapping(0, 0x0a, "cc", "deck-b:pitch"),
+    mapping(0, 0x0a, "cc", "deck-b:speed"),
     mapping(0, 0x0f, "cc", "deck-b:filter"),
 
     // Mixer
-    mapping(0, 0x03, "cc", "crossfader"),
-    mapping(0, 0x06, "cc", "master-volume"),
+    mapping(0, 0x03, "cc", "mixer:crossfader"),
+    mapping(0, 0x06, "cc", "mixer:master-volume"),
   ],
 };
 
@@ -98,29 +98,27 @@ const GENERIC_2_DECK: MidiPreset = {
   vendor: "Generic",
   mappings: [
     // Deck A (channel 0)
-    mapping(0, 0x30, "note", "deck-a:play"),
-    mapping(0, 0x31, "note", "deck-a:pause"),
+    mapping(0, 0x30, "note", "deck-a:play-pause"),
     mapping(0, 0x32, "note", "deck-a:cue"),
     mapping(0, 0x07, "cc", "deck-a:volume"),
-    mapping(0, 0x01, "cc", "deck-a:pitch"),
+    mapping(0, 0x01, "cc", "deck-a:speed"),
     mapping(0, 0x4a, "cc", "deck-a:filter"),
-    mapping(0, 0x5b, "cc", "deck-a:effect-drywet"),
+    mapping(0, 0x5b, "cc", "deck-a:effects-drywet"),
     mapping(0, 0x0a, "cc", "deck-a:pan"),
 
     // Deck B (channel 1)
-    mapping(1, 0x30, "note", "deck-b:play"),
-    mapping(1, 0x31, "note", "deck-b:pause"),
+    mapping(1, 0x30, "note", "deck-b:play-pause"),
     mapping(1, 0x32, "note", "deck-b:cue"),
     mapping(1, 0x07, "cc", "deck-b:volume"),
-    mapping(1, 0x01, "cc", "deck-b:pitch"),
+    mapping(1, 0x01, "cc", "deck-b:speed"),
     mapping(1, 0x4a, "cc", "deck-b:filter"),
-    mapping(1, 0x5b, "cc", "deck-b:effect-drywet"),
+    mapping(1, 0x5b, "cc", "deck-b:effects-drywet"),
     mapping(1, 0x0a, "cc", "deck-b:pan"),
 
     // Mixer (channel 0)
-    mapping(0, 0x11, "cc", "crossfader"),
-    mapping(0, 0x0c, "cc", "master-volume"),
-    mapping(0, 0x0d, "cc", "headphone-volume"),
+    mapping(0, 0x11, "cc", "mixer:crossfader"),
+    mapping(0, 0x0c, "cc", "mixer:master-volume"),
+    mapping(0, 0x0d, "cc", "mixer:headphone-volume"),
   ],
 };
 

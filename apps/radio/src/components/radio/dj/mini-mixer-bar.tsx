@@ -1,6 +1,5 @@
 import { Button } from "@avoid.quest/ui/components/button";
 import { Slider } from "@avoid.quest/ui/components/slider";
-import { cn } from "@avoid.quest/ui/lib/utils";
 import { Volume2Icon } from "lucide-react";
 import { SettingsButton } from "@/components/settings/settings-button";
 import { HorizontalPeakMeter } from "./peak-meter";
@@ -36,7 +35,7 @@ export function MiniMixerBar({
     <div className="flex shrink-0 flex-col gap-1.5 rounded-lg border bg-card p-2">
       {/* Row 1: Mini VU meters */}
       <div className="flex items-center gap-2">
-        <span className="w-6 shrink-0 text-center font-bold text-[10px] text-blue-500">
+        <span className="w-6 shrink-0 text-center font-bold text-[10px]">
           A
         </span>
         <div className="flex-1 space-y-0.5">
@@ -47,7 +46,7 @@ export function MiniMixerBar({
           <HorizontalPeakMeter level={deckBPeakLevel.left} />
           <HorizontalPeakMeter level={deckBPeakLevel.right} />
         </div>
-        <span className="w-6 shrink-0 text-center font-bold text-[10px] text-amber-500">
+        <span className="w-6 shrink-0 text-center font-bold text-[10px]">
           B
         </span>
       </div>
@@ -56,10 +55,7 @@ export function MiniMixerBar({
       <div className="flex items-center gap-1.5">
         {isCueActive && (
           <Button
-            className={cn(
-              "h-7 w-12 p-0 font-bold text-[10px]",
-              deckACueEnabled && "bg-blue-500 hover:bg-blue-600"
-            )}
+            className="h-7 w-12 p-0 font-bold text-[10px]"
             onClick={() => onDeckACueChange(!deckACueEnabled)}
             size="sm"
             variant={deckACueEnabled ? "default" : "outline"}
@@ -80,10 +76,7 @@ export function MiniMixerBar({
 
         {isCueActive && (
           <Button
-            className={cn(
-              "h-7 w-12 p-0 font-bold text-[10px]",
-              deckBCueEnabled && "bg-amber-500 hover:bg-amber-600"
-            )}
+            className="h-7 w-12 p-0 font-bold text-[10px]"
             onClick={() => onDeckBCueChange(!deckBCueEnabled)}
             size="sm"
             variant={deckBCueEnabled ? "default" : "outline"}

@@ -19,7 +19,7 @@
       "@tailwindcss/postcss": "^4.1.18",
       "@tailwindcss/vite": "^4.1.18",
       "typescript": "^5.9.3",
-      "@types/react": "^19.2.10",
+      "@types/react": "^19.2.11",
       "@types/react-dom": "^19.2.3",
       "@types/node": "^22.19.8",
       "@types/bun": "latest",
@@ -55,7 +55,7 @@
     "@changesets/cli": "^2.29.8",
     "@types/bun": "^1.3.8",
     "@types/node": "^25.2.0",
-    "turbo": "^2.8.2",
+    "turbo": "^2.8.3",
     "ultracite": "7.0.11"
   },
   "packageManager": "bun@1.3.8",

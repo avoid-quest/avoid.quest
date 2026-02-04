@@ -46,7 +46,7 @@
   "devDependencies": {
     "@avoid.quest/typescript-config": "workspace:*",
     "@tailwindcss/postcss": "catalog:",
-    "@turbo/gen": "^2.8.2",
+    "@turbo/gen": "^2.8.3",
     "tailwindcss": "catalog:",
     "typescript": "catalog:"
   },

@@ -543,8 +543,20 @@ function applyStoredEffectsAndFilters(
     }
 
     // Apply stored effects
+    let allAdded = true;
     for (const effect of effects) {
-      getAudioManager().addEffect(soundId, effect);
+      if (!getAudioManager().addEffect(soundId, effect)) {
+        allAdded = false;
+      }
+    }
+
+    // Retry once if some effects failed (WorkletManager may not be ready yet)
+    if (!allAdded && effects.length > 0) {
+      setTimeout(() => {
+        for (const effect of effects) {
+          getAudioManager().addEffect(soundId, effect);
+        }
+      }, 100);
     }
   } catch {
     // Non-critical: effects will be missing but audio still plays
@@ -1242,11 +1254,14 @@ function reorderDeckEffects(deckId: DeckId, effectIds: string[]) {
   if (!deck) {
     return;
   }
-  const reorderedEffects = effectIds
-    .map((id) => deck.effects.find((e) => e.id === id))
-    .filter((e) => e !== undefined);
   config.updateDeck((draft) => {
-    draft.effects = reorderedEffects;
+    const reordered = effectIds
+      .map((id) => draft.effects.find((e) => e.id === id))
+      .filter((e) => e !== undefined);
+    draft.effects = reordered;
+    for (let i = 0; i < draft.effects.length; i++) {
+      draft.effects[i].order = i;
+    }
   });
   if (runtime.soundId) {
     getAudioManager().reorderEffects(runtime.soundId, effectIds);

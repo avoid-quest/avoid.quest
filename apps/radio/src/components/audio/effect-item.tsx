@@ -7,7 +7,10 @@ import {
 } from "@avoid.quest/ui/components/card";
 import { Toggle } from "@avoid.quest/ui/components/toggle";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { useDraggable } from "@dnd-kit/core";
+import type {
+  DraggableAttributes,
+  DraggableSyntheticListeners,
+} from "@dnd-kit/core";
 import {
   FilterIcon,
   GripVerticalIcon,
@@ -25,7 +28,11 @@ type EffectItemProps = {
   onRemove: () => void;
   onExpand?: () => void;
   isExpanded?: boolean;
+  isDragging?: boolean;
   deckId?: "deck-a" | "deck-b";
+  dragHandleRef?: (node: HTMLElement | null) => void;
+  dragHandleListeners?: DraggableSyntheticListeners;
+  dragHandleAttributes?: DraggableAttributes;
 };
 
 export function EffectItem({
@@ -34,22 +41,15 @@ export function EffectItem({
   onRemove,
   onExpand,
   isExpanded = false,
+  isDragging = false,
   deckId,
+  dragHandleRef,
+  dragHandleListeners,
+  dragHandleAttributes,
 }: EffectItemProps) {
   const metadata = getEffectMetadata(effect.type);
-  const { attributes, listeners, setNodeRef, transform, isDragging } =
-    useDraggable({
-      id: effect.id,
-      data: { effect },
-    });
 
   const Icon = EFFECT_ICONS[effect.type] ?? FilterIcon;
-
-  const style = transform
-    ? {
-        transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
-      }
-    : undefined;
 
   const handleEnabledChange = (enabled: boolean) => {
     onUpdate({ enabled });
@@ -70,14 +70,12 @@ export function EffectItem({
     <Card
       className={cn(
         "w-full gap-0 border py-0 transition-all duration-200",
-        isDragging.valueOf() && "scale-[0.98] opacity-50 shadow-lg",
+        isDragging && "scale-[0.98] opacity-50 shadow-lg",
         effect.enabled.valueOf()
           ? "border-primary/20 bg-primary/5"
           : "opacity-60 grayscale-[30%]",
         isExpanded.valueOf() && "shadow-md"
       )}
-      ref={setNodeRef}
-      style={style}
     >
       <CardHeader className="flex! items-center! justify-between! flex-row! gap-3 pt-4 pb-3">
         <div className="flex min-w-0 flex-1 items-center gap-3">
@@ -85,16 +83,17 @@ export function EffectItem({
           <div
             className={cn(
               "cursor-grab touch-manipulation rounded-md p-1.5 text-muted-foreground transition-all hover:bg-muted/60 hover:text-foreground active:cursor-grabbing",
-              isDragging.valueOf() && "bg-primary/20 text-primary"
+              isDragging && "bg-primary/20 text-primary"
             )}
+            ref={dragHandleRef}
             style={{
               touchAction: "none",
               WebkitTouchCallout: "none",
               WebkitUserSelect: "none",
               userSelect: "none",
             }}
-            {...attributes}
-            {...listeners}
+            {...dragHandleAttributes}
+            {...dragHandleListeners}
           >
             <GripVerticalIcon className="size-4" />
           </div>

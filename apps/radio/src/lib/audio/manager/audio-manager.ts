@@ -1612,6 +1612,7 @@ export class AudioManager {
     if (config.dryWet !== undefined) {
       base.wet = config.dryWet;
       base.dry = 1 - config.dryWet;
+      base.dryWet = config.dryWet;
     }
 
     switch (config.type) {

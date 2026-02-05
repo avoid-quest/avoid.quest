@@ -6,6 +6,7 @@
  */
 
 import { useEffect } from "react";
+import { toast } from "sonner";
 import {
   MidiController,
   registerStaticActions,
@@ -30,6 +31,10 @@ export function useMidi(): void {
     controller.init().then((success) => {
       if (success) {
         useMidiStore.getState().setDevices(controller.getDevices());
+      } else {
+        toast.error("Failed to initialize MIDI controller", {
+          description: "Check browser permissions and try reconnecting",
+        });
       }
     });
 

@@ -166,7 +166,6 @@ const getOutputRouter = (): OutputRouter | null => {
   if (!outputRouter) {
     outputRouter = createOutputRouter(context, {
       onError: (error) => {
-        console.error("[DjActions] OutputRouter error:", error);
         setDjError(error.message);
       },
     });
@@ -252,7 +251,6 @@ export async function applyCurrentAudioSettings(): Promise<void> {
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Failed to apply audio settings";
-    console.error("[DjActions] applyCurrentAudioSettings error:", error);
     setDjError(message);
   }
 }
@@ -380,15 +378,10 @@ function applyStoredEffectsAndFilters(
 
     // Apply stored effects
     for (const effect of effects) {
-      const success = getAudioManager().addEffect(soundId, effect);
-      if (!success) {
-        console.warn(
-          `[DjActions] Failed to apply effect ${effect.type} to ${soundId}`
-        );
-      }
+      getAudioManager().addEffect(soundId, effect);
     }
-  } catch (err) {
-    console.error("[DjActions] Error applying stored effects:", err);
+  } catch {
+    // Non-critical: effects will be missing but audio still plays
   }
 }
 
@@ -419,8 +412,8 @@ function applyStoredChannelStrip(
     if (effectsDryWet !== 1) {
       manager.setEffectsDryWet(soundId, effectsDryWet);
     }
-  } catch (err) {
-    console.error("[DjActions] Error applying channel strip:", err);
+  } catch {
+    // Non-critical: channel strip defaults will be used
   }
 }
 
@@ -571,8 +564,8 @@ async function setDeckRadio(deckId: DeckId, radio: Radio | null) {
         connectDeckToCueBus(deckId, soundId);
 
         // Initialize audio output devices from saved settings
-        initializeAudioDevices().catch((err) => {
-          console.error("[DjActions] initializeAudioDevices failed:", err);
+        initializeAudioDevices().catch(() => {
+          // Non-critical: will use default audio output
         });
       }
 
@@ -604,8 +597,8 @@ async function setDeckRadio(deckId: DeckId, radio: Radio | null) {
           getAudioManager()
             .playSound(currentRuntime.soundId, currentDeck.volume)
             .then(() => applyCrossfade())
-            .catch((err) => {
-              console.error("[DjActions] Repeat playback failed:", err);
+            .catch(() => {
+              setDjError("Failed to repeat track");
             });
           return;
         }
@@ -642,11 +635,8 @@ async function setDeckRadio(deckId: DeckId, radio: Radio | null) {
       }
       try {
         getAudioManager().cleanupSound(soundId);
-      } catch (cleanupErr) {
-        console.error(
-          `[DjActions] Cleanup failed for ${soundId} during error recovery:`,
-          cleanupErr
-        );
+      } catch {
+        // Cleanup failure during error recovery - nothing more to do
       }
       config.resetRuntime();
     }
@@ -1401,8 +1391,8 @@ async function setDeckDeviceSource(
         connectDeckToCueBus(deckId, soundId);
 
         // Initialize audio output devices from saved settings
-        initializeAudioDevices().catch((err) => {
-          console.error("[DjActions] initializeAudioDevices failed:", err);
+        initializeAudioDevices().catch(() => {
+          // Non-critical: will use default audio output
         });
       }
 
@@ -1454,11 +1444,8 @@ async function setDeckDeviceSource(
       }
       try {
         getAudioManager().cleanupSound(soundId);
-      } catch (cleanupErr) {
-        console.error(
-          `[DjActions] Cleanup failed for ${soundId} during error recovery:`,
-          cleanupErr
-        );
+      } catch {
+        // Cleanup failure during error recovery - nothing more to do
       }
       config.resetRuntime();
     }

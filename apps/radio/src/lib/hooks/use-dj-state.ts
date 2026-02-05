@@ -8,11 +8,10 @@ import {
   resetAllDjState as resetAllDjStateDb,
   resetDeck as resetDeckDb,
 } from "@/lib/collections";
-import type { Platform } from "@/lib/platform-types";
 import {
-  type DeckId,
   getDeckARuntime,
   getDeckBRuntime,
+  type PendingPlatformItem,
   resetAllDjRuntime,
   resetDeckARuntime,
   resetDeckBRuntime,
@@ -144,9 +143,7 @@ export function setActiveDragRadio(radio: Radio | null) {
   setActiveDragRadioStore(radio);
 }
 
-export function setPendingPlatformItem(
-  item: { deckId: DeckId; platform: Platform } | null
-) {
+export function setPendingPlatformItem(item: PendingPlatformItem) {
   setPendingPlatformItemStore(item);
 }
 

@@ -68,6 +68,7 @@ import { youtubeResolveStream } from "@/utils/youtube.functions";
 import { DeckLayout } from "./deck-layout";
 import { DeviceForm } from "./device-form";
 import { DjRadioList } from "./dj-radio-list";
+import { ExternalSearch } from "./external-search";
 import { FileForm } from "./file-form";
 import { InputDeckLayout } from "./input-deck-layout";
 import { PlatformForm } from "./platform-form";
@@ -302,16 +303,17 @@ function DjDeckContent({
       return;
     }
 
-    let resolvedUrl = streamUrl;
+    let resolvedUrl: string = streamUrl;
 
     // YouTube playlist tracks need on-demand stream URL resolution
     if (streamUrl.startsWith("yt:")) {
       const videoId = streamUrl.slice(3);
       const tracks = isYouTubeMetadata(metadata) ? metadata.tracks : undefined;
-      resolvedUrl = await resolveYouTubePlaylistTrack(videoId, tracks);
-      if (!resolvedUrl) {
+      const resolved = await resolveYouTubePlaylistTrack(videoId, tracks);
+      if (!resolved) {
         return;
       }
+      resolvedUrl = resolved;
     }
 
     if (resolvedUrl) {
@@ -506,7 +508,12 @@ function DjDeckContent({
     );
   } else if (pendingPlatform === "local-file") {
     content = <FileForm onCancel={handleClear} onLoad={handleFileDrop} />;
+  } else if (pendingPlatform === "external") {
+    content = (
+      <ExternalSearch onCancel={handleClear} onLoad={handleLoadPlatformItem} />
+    );
   } else if (pendingPlatform) {
+    // Legacy: handle direct platform selection (bandcamp, soundcloud, youtube)
     content = (
       <PlatformForm
         initialPlatform={pendingPlatform}

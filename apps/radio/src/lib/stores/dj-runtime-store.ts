@@ -18,15 +18,17 @@ type SubscriptionCleanup = {
 
 type PeakLevel = { left: number; right: number };
 
+export type PendingPlatformItem = {
+  deckId: DeckId;
+  platform: Platform | "external";
+} | null;
+
 type DjRuntimeState = {
   deckA: DeckRuntimeState;
   deckB: DeckRuntimeState;
   ui: {
     activeDragRadio: Radio | null;
-    pendingPlatformItem: {
-      deckId: DeckId;
-      platform: Platform;
-    } | null;
+    pendingPlatformItem: PendingPlatformItem;
   };
   deckAPeakLevel: PeakLevel;
   deckBPeakLevel: PeakLevel;
@@ -198,9 +200,7 @@ export function setActiveDragRadio(radio: Radio | null) {
   }));
 }
 
-export function setPendingPlatformItem(
-  item: { deckId: DeckId; platform: Platform } | null
-) {
+export function setPendingPlatformItem(item: PendingPlatformItem) {
   djRuntimeStore.setState((state) => ({
     ...state,
     ui: { ...state.ui, pendingPlatformItem: item },

@@ -27,6 +27,7 @@ import { toast } from "sonner";
 import { EffectChain } from "@/components/audio/effect-chain";
 import type { Radio } from "@/lib/audio";
 import { isAudioFile } from "@/lib/audio/file-metadata";
+import { getFilenameFromUrl } from "@/lib/audio/remote-url";
 import {
   addDeckAEffect,
   addDeckBEffect,
@@ -44,6 +45,7 @@ import {
   updateDeckBEffect,
 } from "@/lib/dj-actions";
 import { isPlatformRadio } from "@/lib/external-url";
+import { createPlatformRadio } from "@/lib/external-url/utils";
 import { useDeckAState, useDeckBState } from "@/lib/hooks/use-deck-state";
 import {
   setPendingPlatformItem,
@@ -54,6 +56,7 @@ import { usePeakLevel } from "@/lib/hooks/use-peak-level";
 import { usePlatformMetadata } from "@/lib/hooks/use-platform-metadata";
 import { useThrottledParam } from "@/lib/hooks/use-throttled-param";
 import { useTrackProgress } from "@/lib/hooks/use-track-progress";
+import type { StaticAudioMetadata } from "@/lib/platform-types";
 import {
   isDeviceInputMetadata,
   isFileMetadata,
@@ -235,6 +238,29 @@ function DjDeckContent({
     [deckId]
   );
 
+  const handleLoadRemoteUrl = useCallback(
+    (url: string) => {
+      const displayName = getFilenameFromUrl(url);
+      const metadata: StaticAudioMetadata = {
+        platform: "static-audio",
+        itemType: "track",
+        url,
+        fileName: displayName,
+        displayName,
+        duration: 0,
+        fileSize: 0,
+        mimeType: "audio/mpeg",
+        streamUrl: url,
+        isLocal: false,
+        requiresProxy: false,
+      };
+      const radio = createPlatformRadio(url, metadata);
+      loadTrack(deckSide, radio, false);
+      setPendingPlatformItem(null);
+    },
+    [deckSide, loadTrack]
+  );
+
   // Native HTML5 drag-and-drop handlers for file drops
   const handleNativeDragOver = useCallback((e: React.DragEvent) => {
     if (!e.dataTransfer.types.includes("Files")) {
@@ -406,6 +432,10 @@ function DjDeckContent({
             setIsChangingFile(false);
             handleFileDrop(file);
           }}
+          onLoadUrl={(url) => {
+            setIsChangingFile(false);
+            handleLoadRemoteUrl(url);
+          }}
         />
       );
     } else if (isChangingUrl && isPlatformRadio(radio)) {
@@ -507,7 +537,13 @@ function DjDeckContent({
       <DeviceForm onCancel={handleClear} onLoad={handleLoadDeviceInput} />
     );
   } else if (pendingPlatform === "local-file") {
-    content = <FileForm onCancel={handleClear} onLoad={handleFileDrop} />;
+    content = (
+      <FileForm
+        onCancel={handleClear}
+        onLoad={handleFileDrop}
+        onLoadUrl={handleLoadRemoteUrl}
+      />
+    );
   } else if (pendingPlatform === "external") {
     content = (
       <ExternalSearch onCancel={handleClear} onLoad={handleLoadPlatformItem} />

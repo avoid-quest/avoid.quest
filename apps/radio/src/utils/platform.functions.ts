@@ -12,6 +12,7 @@ import { z } from "zod";
 import { detectPlatformFromUrl } from "@/lib/external-url/detect";
 import type { PlatformItemResponse } from "@/lib/platform-types";
 import { rateLimitMiddleware } from "./middleware";
+import { getStaticAudioItem } from "./static-audio.functions";
 
 const LoadPlatformItemSchema = z.object({
   url: z
@@ -78,6 +79,10 @@ export const loadPlatformItem = createServerFn({ method: "POST" })
         auth: env.INVIDIOUS_AUTH || undefined,
       };
       return await getYouTubeItem(url, invidiousOptions);
+    }
+
+    if (platform === "static-audio") {
+      return await getStaticAudioItem({ data: { url } });
     }
 
     return {

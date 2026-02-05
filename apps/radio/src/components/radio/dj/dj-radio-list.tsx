@@ -116,9 +116,7 @@ export function isExternalItem(radio: Radio): boolean {
   return radio.id === EXTERNAL_PLATFORM_ID;
 }
 
-export function getPlatformFromItem(
-  radio: Radio
-): Platform | "external" | null {
+export function getPlatformFromItem(radio: Radio): Platform | null {
   if (radio.id === AUDIO_INPUT_PLATFORM_ID) {
     return "device-input";
   }
@@ -131,7 +129,7 @@ export function getPlatformFromItem(
   return radio.platformMetadata?.platform || null;
 }
 
-function getPlatformColor(platform: Platform | "external" | null): string {
+function getPlatformColor(platform: Platform | null): string {
   switch (platform) {
     case "bandcamp":
       return "#629aa0";

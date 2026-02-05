@@ -142,6 +142,7 @@ export type Platform =
   | "youtube"
   | "device-input"
   | "static-audio"
+  | "external"
   | "local-file"; // deprecated, use "static-audio"
 export type PlatformMetadata =
   | BandcampMetadata
@@ -154,14 +155,28 @@ export type PlatformTrack =
   | BandcampTrackInfo
   | SoundCloudTrackInfo
   | YouTubeTrackInfo;
+export type StaticAudioItemResult = {
+  success: true;
+  metadata: StaticAudioMetadata;
+  streamUrl: string;
+};
+export type StaticAudioItemError = {
+  success: false;
+  error: string;
+};
+export type StaticAudioItemResponse =
+  | StaticAudioItemResult
+  | StaticAudioItemError;
 export type PlatformItemResult =
   | BandcampItemResult
   | SoundCloudItemResult
-  | YouTubeItemResult;
+  | YouTubeItemResult
+  | StaticAudioItemResult;
 export type PlatformItemError =
   | BandcampItemError
   | SoundCloudItemError
-  | YouTubeItemError;
+  | YouTubeItemError
+  | StaticAudioItemError;
 export type PlatformItemResponse = PlatformItemResult | PlatformItemError;
 
 export type ScrapedOption = {

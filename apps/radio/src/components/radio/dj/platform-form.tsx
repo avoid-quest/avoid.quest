@@ -138,6 +138,7 @@ export function PlatformForm({
                     "device-input": "Device Input",
                     "local-file": "Local File",
                     "static-audio": "Audio File",
+                    external: "External",
                   }[detectedPlatform]
                 }
               </p>

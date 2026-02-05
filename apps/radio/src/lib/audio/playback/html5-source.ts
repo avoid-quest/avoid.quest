@@ -187,9 +187,59 @@ export class Html5AudioSource {
     this._isLoadingPhase = true;
     try {
       await this.waitForCanPlay();
+    } catch (error) {
+      // CORS failed: reload through proxy so the caller gets a valid source.
+      // handleError mutates _corsState during the async waitForCanPlay.
+      if (this.isCorsRetryNeeded()) {
+        await this.reloadWithProxy();
+        return;
+      }
+      throw error;
     } finally {
       this._isLoadingPhase = false;
     }
+  }
+
+  /**
+   * Check if CORS retry is needed. Separate method to avoid TS narrowing
+   * issues (handleError mutates _corsState during async waitForCanPlay).
+   */
+  private isCorsRetryNeeded(): boolean {
+    return this._corsState === "cors-failed";
+  }
+
+  /**
+   * Reload audio through proxy after CORS failure.
+   * Replaces audio element and Web Audio nodes inline so the caller's
+   * promise chain stays intact (AudioManager can connect the graph after).
+   */
+  private async reloadWithProxy(): Promise<void> {
+    this.audio.pause();
+    safeDisconnect(this.source, "Html5AudioSource.reloadWithProxy");
+    safeDisconnect(this.analyser, "Html5AudioSource.reloadWithProxy");
+
+    if (this.hls) {
+      this.hls.destroy();
+      this.hls = null;
+    }
+
+    this.audio = new Audio();
+    this.setupAudioElement();
+    this.audio.crossOrigin = "anonymous";
+
+    if (this._isHls) {
+      this.loadHls(this.proxyUrl);
+    } else {
+      this.audio.src = this.proxyUrl;
+    }
+
+    this.source = this.context.createMediaElementSource(this.audio);
+    this.analyser = this.context.createAnalyser();
+    this.analyser.fftSize = 256;
+    this.source.connect(this.analyser);
+
+    this._corsState = "proxied";
+    await this.waitForCanPlay();
   }
 
   /**
@@ -307,58 +357,6 @@ export class Html5AudioSource {
         return;
       }
       throw error;
-    }
-  }
-
-  /**
-   * Retry loading through proxy
-   */
-  private async retryWithProxy(): Promise<void> {
-    // Stop current playback
-    this.audio.pause();
-
-    // Disconnect and cleanup old nodes
-    this.source?.disconnect();
-    this.analyser?.disconnect();
-
-    // Clean up HLS instance if exists
-    if (this.hls) {
-      this.hls.destroy();
-      this.hls = null;
-    }
-
-    // Create new audio element with proxy URL
-    this.audio = new Audio();
-    this.setupAudioElement();
-    this.audio.crossOrigin = "anonymous";
-
-    // Handle HLS streams through proxy
-    if (this._isHls) {
-      this.loadHls(this.proxyUrl);
-    } else {
-      this.audio.src = this.proxyUrl;
-    }
-
-    // Recreate Web Audio nodes
-    this.source = this.context.createMediaElementSource(this.audio);
-    this.analyser = this.context.createAnalyser();
-    this.analyser.fftSize = 256;
-    this.source.connect(this.analyser);
-
-    this._corsState = "proxied";
-
-    this._isLoadingPhase = true;
-    try {
-      await this.waitForCanPlay();
-      await this.audio.play();
-      this._status = "streaming";
-    } catch (error) {
-      this._status = "error";
-      this.callbacks.onError?.(
-        error instanceof Error ? error : new Error("Failed to load via proxy")
-      );
-    } finally {
-      this._isLoadingPhase = false;
     }
   }
 
@@ -555,7 +553,7 @@ export class Html5AudioSource {
 
   private readonly handleError = (): void => {
     // During loading phase, let waitForCanPlay() handle errors
-    // Only exception: trigger proxy retry for CORS errors
+    // Mark CORS failures so load() can retry with proxy inline
     if (this._isLoadingPhase) {
       const error = this.audio.error;
       if (
@@ -563,21 +561,11 @@ export class Html5AudioSource {
         error?.code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED
       ) {
         console.warn(
-          `[Html5AudioSource] MEDIA_ERR_SRC_NOT_SUPPORTED for ${this.currentUrl}, trying proxy`
+          `[Html5AudioSource] CORS failed for ${this.currentUrl}, will retry with proxy`
         );
         this._corsState = "cors-failed";
-        this.retryWithProxy().catch((err) => {
-          console.error(
-            `[Html5AudioSource] Proxy retry failed for ${this.currentUrl}:`,
-            err
-          );
-          this._status = "error";
-          this.callbacks.onError?.(
-            err instanceof Error ? err : new Error("Proxy retry failed")
-          );
-        });
       }
-      // Don't propagate error - waitForCanPlay() will handle it
+      // Don't propagate - waitForCanPlay() rejects, load() handles retry
       return;
     }
 

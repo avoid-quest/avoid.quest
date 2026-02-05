@@ -16,6 +16,7 @@ import {
   isPlaylistUrl,
 } from "@/lib/audio/remote-url";
 import type {
+  StaticAudioItemResponse,
   StaticAudioMetadata,
   StaticAudioTrack,
 } from "@/lib/platform-types";
@@ -30,17 +31,6 @@ export type RemoteAudioProbeResult =
       contentType: string;
       contentLength: number | null;
       filename: string;
-    }
-  | {
-      success: false;
-      error: string;
-    };
-
-export type StaticAudioItemResponse =
-  | {
-      success: true;
-      metadata: StaticAudioMetadata;
-      streamUrl: string;
     }
   | {
       success: false;

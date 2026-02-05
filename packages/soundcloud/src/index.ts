@@ -71,7 +71,11 @@ function getClientId(): Promise<string> {
   return clientIdCache;
 }
 
-async function resolveSoundCloudUrl(url: string, clientId: string) {
+async function resolveSoundCloudUrl(
+  url: string,
+  clientId: string
+  // biome-ignore lint/suspicious/noExplicitAny: External SoundCloud API response shape is dynamic
+): Promise<any> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 10_000);
 
@@ -166,8 +170,7 @@ export async function getSoundCloudItem(
   try {
     const itemType = detectSoundCloudItemType(url);
     const clientId = await getClientId();
-    // biome-ignore lint/suspicious/noExplicitAny: External API response
-    const data = (await resolveSoundCloudUrl(url, clientId)) as any;
+    const data = await resolveSoundCloudUrl(url, clientId);
 
     if (itemType === "track" && data.kind === "track") {
       return await processTrack(data, url, clientId);

@@ -10,6 +10,7 @@ import { validateAuthAndRateLimit } from "@/lib/middleware/rate-limit";
 
 const ALLOWED_SOUNDCLOUD_DOMAINS = [
   "cf-media.sndcdn.com",
+  "cf-hls-media.sndcdn.com",
   "media.soundcloud.com",
   "ec-media.sndcdn.com",
 ] as const;

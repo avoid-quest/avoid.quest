@@ -13,6 +13,12 @@ function getBandcampDescription(
   if (metadata.itemType === "track") {
     return metadata.albumName || "Bandcamp Track";
   }
+  if (metadata.itemType === "artist") {
+    return `${metadata.trackCount ?? 0} tracks`;
+  }
+  if (metadata.itemType === "collection") {
+    return `${metadata.trackCount ?? 0} tracks`;
+  }
 }
 
 function getSoundCloudDescription(
@@ -26,6 +32,9 @@ function getSoundCloudDescription(
   }
   if (metadata.itemType === "playlist") {
     return metadata.artist || "SoundCloud Playlist";
+  }
+  if (metadata.itemType === "user") {
+    return `${metadata.trackCount ?? 0} tracks`;
   }
 }
 
@@ -52,7 +61,8 @@ function getDescription(metadata: PlatformMetadata): string | undefined {
 function getLogoUrl(metadata: PlatformMetadata): string | undefined {
   if (
     metadata.platform === "device-input" ||
-    metadata.platform === "local-file"
+    metadata.platform === "local-file" ||
+    metadata.platform === "static-audio"
   ) {
     return;
   }
@@ -81,6 +91,9 @@ export function createPlatformRadio(
     }
     if (metadata.platform === "local-file") {
       return metadata.displayName || metadata.fileName || "Local File";
+    }
+    if (metadata.platform === "static-audio") {
+      return metadata.displayName || metadata.fileName || "Audio File";
     }
     return metadata.name || metadata.artist || "Unknown";
   };
@@ -114,6 +127,7 @@ export function getPlatformItemTypeLabel(metadata: PlatformMetadata): string {
       track: "Track",
       artist: "Artist",
       label: "Label",
+      collection: "Collection",
     };
     return labels[metadata.itemType];
   }

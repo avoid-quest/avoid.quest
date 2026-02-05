@@ -177,6 +177,7 @@ export function getMixer(): MixerRecord | undefined {
  * Update deck A
  */
 export function updateDeckA(updater: (draft: DeckRecord) => void): void {
+  // @ts-expect-error - WritableObjectDeep is compatible with DeckRecord in practice
   deckCollection.update(DECK_A_ID, updater);
 }
 
@@ -184,6 +185,7 @@ export function updateDeckA(updater: (draft: DeckRecord) => void): void {
  * Update deck B
  */
 export function updateDeckB(updater: (draft: DeckRecord) => void): void {
+  // @ts-expect-error - WritableObjectDeep is compatible with DeckRecord in practice
   deckCollection.update(DECK_B_ID, updater);
 }
 

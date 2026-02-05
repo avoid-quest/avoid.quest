@@ -67,7 +67,46 @@ export function isDeviceInputMetadata(
   return metadata?.platform === "device-input";
 }
 
-// Local file metadata
+// Static audio track (for playlists)
+export type StaticAudioTrack = {
+  title: string;
+  streamUrl: string;
+  duration?: number;
+  requiresProxy: boolean;
+};
+
+// Static audio metadata (local files and remote URLs)
+export type StaticAudioMetadata = {
+  platform: "static-audio";
+  itemType: "track" | "playlist";
+  url: string; // Original URL (empty for local files)
+
+  // Track info
+  fileName: string;
+  displayName: string;
+  duration: number;
+  fileSize: number;
+  mimeType: string;
+
+  // Stream handling
+  streamUrl: string; // Blob URL (local) or HTTP URL (remote)
+  isLocal: boolean;
+  requiresProxy: boolean;
+
+  // Playlist only
+  tracks?: StaticAudioTrack[];
+  playlistName?: string;
+  playlistFormat?: "m3u" | "pls";
+};
+
+export function isStaticAudioMetadata(
+  metadata: PlatformMetadata | undefined | null
+): metadata is StaticAudioMetadata {
+  return metadata?.platform === "static-audio";
+}
+
+// Legacy alias for backward compatibility
+/** @deprecated Use StaticAudioMetadata instead */
 export type FileMetadata = {
   platform: "local-file";
   itemType: "track";
@@ -80,6 +119,7 @@ export type FileMetadata = {
   objectUrl: string;
 };
 
+/** @deprecated Use isStaticAudioMetadata instead */
 export function isFileMetadata(
   metadata: PlatformMetadata | undefined | null
 ): metadata is FileMetadata {
@@ -101,12 +141,14 @@ export type Platform =
   | "soundcloud"
   | "youtube"
   | "device-input"
-  | "local-file";
+  | "static-audio"
+  | "local-file"; // deprecated, use "static-audio"
 export type PlatformMetadata =
   | BandcampMetadata
   | SoundCloudMetadata
   | YouTubeMetadata
   | DeviceInputMetadata
+  | StaticAudioMetadata
   | FileMetadata;
 export type PlatformTrack =
   | BandcampTrackInfo

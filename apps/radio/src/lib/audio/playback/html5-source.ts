@@ -3,10 +3,24 @@
  *
  * Wraps HTMLAudioElement for streaming audio with CORS detection and proxy fallback.
  * Uses MediaElementAudioSourceNode to connect to Web Audio graph.
+ * Supports HLS streams via hls.js for browsers without native HLS support.
  */
 
+import Hls from "hls.js";
 import { safeDisconnect } from "../utils.js";
 import type { StreamStatus } from "./types.js";
+
+/**
+ * Check if a URL is an HLS stream (M3U8 playlist)
+ */
+function isHlsUrl(url: string): boolean {
+  try {
+    const urlObj = new URL(url);
+    return urlObj.pathname.endsWith(".m3u8");
+  } catch {
+    return url.includes(".m3u8");
+  }
+}
 
 /**
  * Callbacks for Html5AudioSource
@@ -37,6 +51,7 @@ export class Html5AudioSource {
   private audio: HTMLAudioElement;
   private source: MediaElementAudioSourceNode | null = null;
   private analyser: AnalyserNode | null = null;
+  private hls: Hls | null = null;
   private readonly context: AudioContext;
   private readonly callbacks: Html5AudioSourceCallbacks;
   private readonly sourceId: string;
@@ -44,6 +59,7 @@ export class Html5AudioSource {
   private _status: StreamStatus = "idle";
   private _corsState: CorsState = "unknown";
   private _isBuffering = false;
+  private _isHls = false;
   private corsCheckTimer: ReturnType<typeof setTimeout> | null = null;
   private currentUrl = "";
   private proxyUrl = "";
@@ -135,7 +151,7 @@ export class Html5AudioSource {
 
   /**
    * Load a stream URL
-   * Automatically handles CORS detection and proxy fallback
+   * Automatically handles CORS detection, proxy fallback, and HLS streams
    */
   async load(url: string): Promise<void> {
     // Clean up previous source
@@ -145,12 +161,19 @@ export class Html5AudioSource {
     this.proxyUrl = Html5AudioSource.PROXY_ROUTE + encodeURIComponent(url);
     this._status = "connecting";
     this._corsState = "checking";
+    this._isHls = isHlsUrl(url);
 
     // Create MediaElementSource (can only be created once per audio element)
     this.audio = new Audio();
     this.setupAudioElement();
     this.audio.crossOrigin = "anonymous";
-    this.audio.src = url;
+
+    // Handle HLS streams
+    if (this._isHls) {
+      this.loadHls(url);
+    } else {
+      this.audio.src = url;
+    }
 
     // Create Web Audio nodes
     this.source = this.context.createMediaElementSource(this.audio);
@@ -167,6 +190,78 @@ export class Html5AudioSource {
     } finally {
       this._isLoadingPhase = false;
     }
+  }
+
+  /**
+   * Load HLS stream using hls.js or native support
+   * Prefers hls.js when available for better cross-origin handling
+   */
+  private loadHls(url: string): void {
+    // Prefer hls.js when available (better CORS and error handling)
+    if (Hls.isSupported()) {
+      console.log("[Html5AudioSource] Using hls.js for HLS playback");
+      this.setupHlsJs(url);
+      return;
+    }
+
+    // Fall back to native HLS support (Safari without MSE, iOS)
+    if (this.audio.canPlayType("application/vnd.apple.mpegurl")) {
+      console.log(
+        "[Html5AudioSource] Using native HLS support (hls.js not available)"
+      );
+      this.audio.src = url;
+      return;
+    }
+
+    throw new Error("HLS is not supported in this browser");
+  }
+
+  /**
+   * Set up hls.js for HLS playback
+   */
+  private setupHlsJs(url: string): void {
+    this.hls = new Hls({
+      // Enable debug in development
+      debug: false,
+      // Start with low quality then adapt
+      startLevel: -1,
+      // Buffer settings optimized for audio
+      maxBufferLength: 30,
+      maxMaxBufferLength: 60,
+    });
+
+    // Set up HLS event handlers
+    this.hls.on(Hls.Events.ERROR, (_event, data) => {
+      if (data.fatal) {
+        console.error("[Html5AudioSource] Fatal HLS error:", data.type, data);
+        switch (data.type) {
+          case Hls.ErrorTypes.NETWORK_ERROR:
+            // Try to recover from network error
+            console.log("[Html5AudioSource] Attempting HLS recovery...");
+            this.hls?.startLoad();
+            break;
+          case Hls.ErrorTypes.MEDIA_ERROR:
+            console.log("[Html5AudioSource] Attempting media recovery...");
+            this.hls?.recoverMediaError();
+            break;
+          default:
+            // Cannot recover
+            this._status = "error";
+            this.callbacks.onError?.(
+              new Error(`HLS error: ${data.type} - ${data.details}`)
+            );
+            break;
+        }
+      }
+    });
+
+    this.hls.on(Hls.Events.MANIFEST_PARSED, () => {
+      console.log("[Html5AudioSource] HLS manifest parsed");
+    });
+
+    // Attach to audio element and load source
+    this.hls.attachMedia(this.audio);
+    this.hls.loadSource(url);
   }
 
   /**
@@ -226,11 +321,23 @@ export class Html5AudioSource {
     this.source?.disconnect();
     this.analyser?.disconnect();
 
+    // Clean up HLS instance if exists
+    if (this.hls) {
+      this.hls.destroy();
+      this.hls = null;
+    }
+
     // Create new audio element with proxy URL
     this.audio = new Audio();
     this.setupAudioElement();
     this.audio.crossOrigin = "anonymous";
-    this.audio.src = this.proxyUrl;
+
+    // Handle HLS streams through proxy
+    if (this._isHls) {
+      this.loadHls(this.proxyUrl);
+    } else {
+      this.audio.src = this.proxyUrl;
+    }
 
     // Recreate Web Audio nodes
     this.source = this.context.createMediaElementSource(this.audio);
@@ -336,12 +443,25 @@ export class Html5AudioSource {
     safeDisconnect(this.source, "Html5AudioSource.refreshUrl");
     safeDisconnect(this.analyser, "Html5AudioSource.refreshUrl");
 
+    // Clean up HLS instance if exists
+    if (this.hls) {
+      this.hls.destroy();
+      this.hls = null;
+    }
+
     // Create new audio element with new URL
     this.audio = new Audio();
     this.setupAudioElement();
     this.audio.crossOrigin = "anonymous";
-    this.audio.src = newUrl;
     this.currentUrl = newUrl;
+    this._isHls = isHlsUrl(newUrl);
+
+    // Handle HLS streams
+    if (this._isHls) {
+      this.loadHls(newUrl);
+    } else {
+      this.audio.src = newUrl;
+    }
 
     // Recreate Web Audio nodes
     this.source = this.context.createMediaElementSource(this.audio);
@@ -386,6 +506,12 @@ export class Html5AudioSource {
       this.corsCheckTimer = null;
     }
 
+    // Clean up HLS instance
+    if (this.hls) {
+      this.hls.destroy();
+      this.hls = null;
+    }
+
     // Remove event listeners to prevent memory leaks
     this.audio.removeEventListener("playing", this.handlePlaying);
     this.audio.removeEventListener("pause", this.handlePaused);
@@ -405,6 +531,7 @@ export class Html5AudioSource {
     this.analyser = null;
     this._status = "idle";
     this._corsState = "unknown";
+    this._isHls = false;
   }
 
   // === Event Handlers ===

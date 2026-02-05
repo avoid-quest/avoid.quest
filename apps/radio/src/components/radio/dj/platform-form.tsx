@@ -130,11 +130,16 @@ export function PlatformForm({
             {detectedPlatform && (
               <p className="text-primary text-xs">
                 Detected:{" "}
-                {{
-                  bandcamp: "Bandcamp",
-                  soundcloud: "SoundCloud",
-                  youtube: "YouTube",
-                }[detectedPlatform] ?? detectedPlatform}
+                {
+                  {
+                    bandcamp: "Bandcamp",
+                    soundcloud: "SoundCloud",
+                    youtube: "YouTube",
+                    "device-input": "Device Input",
+                    "local-file": "Local File",
+                    "static-audio": "Audio File",
+                  }[detectedPlatform]
+                }
               </p>
             )}
           </div>

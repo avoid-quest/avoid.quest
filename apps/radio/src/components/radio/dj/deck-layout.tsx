@@ -92,14 +92,32 @@ function calculateHasTracklist(metadata?: PlatformMetadata): boolean {
   if (!isStreamingMetadata(metadata)) {
     return false;
   }
-  return Boolean(
-    ((metadata.platform === "bandcamp" && metadata.itemType === "album") ||
-      (metadata.platform === "soundcloud" &&
-        metadata.itemType === "playlist") ||
-      (metadata.platform === "youtube" && metadata.itemType === "playlist")) &&
-      metadata.tracks &&
-      metadata.tracks.length > 0
-  );
+  // Check if metadata has a tracks array with items
+  const hasTracks = Boolean(metadata.tracks && metadata.tracks.length > 0);
+  if (!hasTracks) {
+    return false;
+  }
+
+  // Bandcamp: albums, artists, and collections all have tracklists
+  if (metadata.platform === "bandcamp") {
+    return (
+      metadata.itemType === "album" ||
+      metadata.itemType === "artist" ||
+      metadata.itemType === "collection"
+    );
+  }
+
+  // SoundCloud: playlists and users have tracklists
+  if (metadata.platform === "soundcloud") {
+    return metadata.itemType === "playlist" || metadata.itemType === "user";
+  }
+
+  // YouTube: playlists have tracklists
+  if (metadata.platform === "youtube") {
+    return metadata.itemType === "playlist";
+  }
+
+  return false;
 }
 
 function getDisplayInfo(
@@ -649,9 +667,7 @@ function TracklistContent({
                 "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-muted/50",
                 index === currentTrackIndex && "bg-primary/10"
               )}
-              key={
-                track.streamUrl || ("videoId" in track ? track.videoId : index)
-              }
+              key={`${index}-${track.name}`}
               onClick={() =>
                 onPlayTrack(
                   track.streamUrl ||

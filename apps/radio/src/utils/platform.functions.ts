@@ -1,6 +1,11 @@
 import { env } from "cloudflare:workers";
-import { getBandcampItem } from "@avoid.quest/bandcamp";
-import { getSoundCloudItem } from "@avoid.quest/soundcloud";
+import { getBandcampItem, normalizeBandcampUrl } from "@avoid.quest/bandcamp";
+import {
+  getSoundCloudItem,
+  needsResolution,
+  normalizeSoundCloudUrl,
+  resolveShortLink,
+} from "@avoid.quest/soundcloud";
 import { getYouTubeItem } from "@avoid.quest/youtube";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
@@ -30,24 +35,40 @@ export const loadPlatformItem = createServerFn({ method: "POST" })
   .middleware([rateLimitMiddleware("load-platform-item")])
   .inputValidator(LoadPlatformItemSchema)
   .handler(async ({ data }): Promise<PlatformItemResponse> => {
-    const trimmedUrl = data.url.trim();
+    let url = data.url.trim();
 
-    const platform = detectPlatformFromUrl(trimmedUrl);
+    // Resolve SoundCloud short links first
+    if (needsResolution(url)) {
+      try {
+        url = await resolveShortLink(url);
+      } catch {
+        return {
+          success: false,
+          error: "Failed to resolve SoundCloud short link",
+        };
+      }
+    }
+
+    // Normalize mobile URLs
+    url = normalizeSoundCloudUrl(url);
+    url = normalizeBandcampUrl(url);
+
+    const platform = detectPlatformFromUrl(url);
 
     if (!platform) {
       return {
         success: false,
         error:
-          "Unsupported URL. Please enter a Bandcamp, SoundCloud, or YouTube URL.",
+          "Unsupported URL. Please enter a Bandcamp, SoundCloud, YouTube, or audio file URL.",
       };
     }
 
     if (platform === "bandcamp") {
-      return await getBandcampItem(trimmedUrl);
+      return await getBandcampItem(url);
     }
 
     if (platform === "soundcloud") {
-      return await getSoundCloudItem(trimmedUrl);
+      return await getSoundCloudItem(url);
     }
 
     if (platform === "youtube") {
@@ -56,7 +77,7 @@ export const loadPlatformItem = createServerFn({ method: "POST" })
         instanceUrl: env.INVIDIOUS_INSTANCE_URL || undefined,
         auth: env.INVIDIOUS_AUTH || undefined,
       };
-      return await getYouTubeItem(trimmedUrl, invidiousOptions);
+      return await getYouTubeItem(url, invidiousOptions);
     }
 
     return {

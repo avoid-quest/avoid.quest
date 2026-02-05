@@ -13,9 +13,7 @@
     "fix": "bunx ultracite fix",
     "typecheck": "tsc --noEmit"
   },
-  "dependencies": {
-    "youtubei.js": "^16.0.1"
-  },
+  "dependencies": {},
   "devDependencies": {
     "@avoid.quest/typescript-config": "workspace:*",
     "@types/node": "catalog:",

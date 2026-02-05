@@ -16,7 +16,8 @@ type LoadPlatformItemResult =
   | { success: false; error: string };
 
 /**
- * Fetches platform item metadata using server function
+ * Fetches platform item metadata using server function.
+ * For YouTube, Piped API handles n-param transformation server-side.
  */
 async function loadPlatformItem(url: string): Promise<LoadPlatformItemResult> {
   const result = await loadPlatformItemFn({ data: { url: url.trim() } });
@@ -35,7 +36,7 @@ type UsePlatformLoadOptions = {
 };
 
 /**
- * Mutation hook for loading platform items (SoundCloud/Bandcamp)
+ * Mutation hook for loading platform items (SoundCloud/Bandcamp/YouTube)
  *
  * Benefits over raw fetch:
  * - Automatic deduplication of concurrent requests

@@ -9,6 +9,7 @@ import {
   resetDeckB,
   seekDeckA,
   seekDeckB,
+  setDeckAAutoplay,
   setDeckAChannelFilter,
   setDeckAEffectsDryWet,
   setDeckAMute,
@@ -16,6 +17,7 @@ import {
   setDeckARepeat,
   setDeckASpeed,
   setDeckAVolume,
+  setDeckBAutoplay,
   setDeckBChannelFilter,
   setDeckBEffectsDryWet,
   setDeckBMute,
@@ -47,6 +49,7 @@ const deckAActions = {
   setEffectsDryWet: setDeckAEffectsDryWet,
   seek: seekDeckA,
   setRepeat: setDeckARepeat,
+  setAutoplay: setDeckAAutoplay,
 };
 
 const deckBActions = {
@@ -61,6 +64,7 @@ const deckBActions = {
   setEffectsDryWet: setDeckBEffectsDryWet,
   seek: seekDeckB,
   setRepeat: setDeckBRepeat,
+  setAutoplay: setDeckBAutoplay,
 };
 
 type DeckStateResult = {
@@ -78,6 +82,7 @@ type DeckStateResult = {
   channelFilter: number;
   effectsDryWet: number;
   repeat: boolean;
+  autoplay: boolean;
   play: typeof playDeckA;
   pause: typeof pauseDeckA;
   setVolume: typeof setDeckAVolume;
@@ -89,6 +94,7 @@ type DeckStateResult = {
   setEffectsDryWet: typeof setDeckAEffectsDryWet;
   seek: typeof seekDeckA;
   setRepeat: typeof setDeckARepeat;
+  setAutoplay: typeof setDeckAAutoplay;
   loadTrack: typeof loadTrack;
 };
 
@@ -111,6 +117,7 @@ function createDeckStateResult(
     channelFilter: deckState?.channelFilter ?? 0,
     effectsDryWet: deckState?.effectsDryWet ?? 1,
     repeat: deckState?.repeat ?? false,
+    autoplay: deckState?.autoplay ?? true,
     ...actions,
     loadTrack,
   };

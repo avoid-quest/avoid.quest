@@ -3,34 +3,35 @@ import {
   extractPlaylistId,
   extractVideoId,
 } from "./detect.js";
-import { getVideoDataIOS } from "./innertube.js";
 import {
+  fetchInvidiousPlaylist,
+  fetchInvidiousVideo,
   getBestThumbnail,
-  getPlaylistData,
-  getVideoData,
+  type InvidiousOptions,
   selectBestAudioStream,
 } from "./invidious.js";
-import { getPlaylistDataFromPiped, getVideoDataFromPiped } from "./piped.js";
 import type {
   YouTubeItemError,
   YouTubeItemResponse,
   YouTubeItemResult,
-  YouTubeMetadata,
   YouTubeTrackInfo,
 } from "./types.js";
-import {
-  getVideoDataFromYoutubei,
-  resolveStreamUrlFromYoutubei,
-} from "./yt-client.js";
 
 export {
   detectYouTubeItemType,
   extractVideoId,
   isYouTubeUrl,
 } from "./detect.js";
+// Re-export Invidious types for consumers that need them
+export type {
+  InvidiousAdaptiveFormat,
+  InvidiousOptions,
+  InvidiousPlaylistResponse,
+  InvidiousSearchResult,
+  InvidiousVideoResponse,
+} from "./invidious.js";
 export { searchYouTubeMusic } from "./search.js";
 export type {
-  AudioFormat,
   YouTubeItemError,
   YouTubeItemResponse,
   YouTubeItemResult,
@@ -41,312 +42,172 @@ export type {
   YouTubeTrackInfo,
 } from "./types.js";
 
-/** Check if a URL is a raw googlevideo.com stream that needs proxying */
-function isGoogleVideoUrl(url: string): boolean {
-  if (url.startsWith("/api/")) {
-    return false;
-  }
-  try {
-    return new URL(url).hostname.endsWith(".googlevideo.com");
-  } catch {
-    return false;
-  }
-}
+// ============================================
+// URL Handling
+// ============================================
 
-/** Proxies raw googlevideo.com stream URLs through our proxy for CORS */
-export function getProxiedYouTubeUrl(url: string): string {
-  if (isGoogleVideoUrl(url)) {
-    return `/api/youtube-proxy?url=${encodeURIComponent(url)}`;
+const DEFAULT_INSTANCE = "https://yt.avoid.quest";
+
+/**
+ * Get full stream URL.
+ * With local=true, Invidious returns relative URLs that proxy through itself.
+ * We just need to prepend the instance URL.
+ */
+export function getFullStreamUrl(url: string, instanceUrl?: string): string {
+  // If URL is relative (starts with /), prepend instance URL
+  if (url.startsWith("/")) {
+    return `${instanceUrl ?? DEFAULT_INSTANCE}${url}`;
   }
   return url;
 }
 
-function proxyIfNeeded(streamUrl: string): string {
-  if (isGoogleVideoUrl(streamUrl)) {
-    return `/api/youtube-proxy?url=${encodeURIComponent(streamUrl)}`;
-  }
-  // Piped URLs are already proxied with CORS — use directly
-  return streamUrl;
+// ============================================
+// Core Functions
+// ============================================
+
+function createError(message: string): YouTubeItemError {
+  return { success: false, error: message };
 }
 
-function createErrorResponse(message: string): YouTubeItemError {
-  return {
-    success: false,
-    error: message,
-  };
-}
-
-export async function getYouTubeItem(
-  url: string
+/**
+ * Get YouTube item (video or playlist) metadata and stream URL.
+ * Uses Invidious API.
+ *
+ * @param url - YouTube video or playlist URL
+ * @param options - Optional Invidious instance configuration
+ */
+export function getYouTubeItem(
+  url: string,
+  options?: InvidiousOptions
 ): Promise<YouTubeItemResponse> {
-  try {
-    const itemType = detectYouTubeItemType(url);
-
-    if (itemType === "playlist") {
-      return await processPlaylist(url);
-    }
-    return await processVideo(url);
-  } catch (error) {
-    const errorMessage =
-      error instanceof Error ? error.message : "Unknown error occurred";
-    return createErrorResponse(`Failed to get YouTube item: ${errorMessage}`);
+  const itemType = detectYouTubeItemType(url);
+  if (itemType === "playlist") {
+    return processPlaylist(url, options);
   }
+  return processVideo(url, options);
 }
 
+/**
+ * Resolve a stream URL for a video ID.
+ * Returns proxied URL ready for playback.
+ *
+ * @param videoId - YouTube video ID
+ * @param options - Optional Invidious instance configuration
+ */
 export async function resolveStreamUrl(
-  videoId: string
+  videoId: string,
+  options?: InvidiousOptions
 ): Promise<string | null> {
-  // 1. youtubei.js
   try {
-    const url = await resolveStreamUrlFromYoutubei(videoId);
-    return proxyIfNeeded(url);
-  } catch {
-    // Fall through
-  }
-
-  // 2. IOS (no range restrictions)
-  try {
-    const data = await getVideoDataIOS(videoId);
-    const stream = selectBestAudioStream(data.audioFormats);
-    if (stream) {
-      return proxyIfNeeded(stream.url);
-    }
-  } catch {
-    // Fall through
-  }
-
-  // 3. Piped
-  try {
-    const data = await getVideoDataFromPiped(videoId);
-    const stream = selectBestAudioStream(data.audioFormats);
-    if (stream) {
-      return proxyIfNeeded(stream.url);
-    }
-  } catch {
-    // Fall through
-  }
-
-  // 4. Invidious
-  try {
-    const data = await getVideoData(videoId);
+    const data = await fetchInvidiousVideo(videoId, options);
     const stream = selectBestAudioStream(data.adaptiveFormats);
     if (stream) {
-      return proxyIfNeeded(stream.url);
+      return getFullStreamUrl(stream.url, options?.instanceUrl);
     }
   } catch {
     // Fall through
   }
-
   return null;
 }
 
+// ============================================
+// Video Processing
+// ============================================
+
 async function processVideo(
-  url: string
+  url: string,
+  options?: InvidiousOptions
 ): Promise<YouTubeItemResult | YouTubeItemError> {
   const videoId = extractVideoId(url);
   if (!videoId) {
-    return createErrorResponse("Could not extract video ID from URL");
+    return createError("Could not extract video ID from URL");
   }
 
-  // 1. youtubei.js (direct URLs from TV/embedded clients)
   try {
-    const data = await getVideoDataFromYoutubei(videoId);
-    const streamUrl = proxyIfNeeded(data.streamUrl);
+    const data = await fetchInvidiousVideo(videoId, options);
 
-    const metadata: YouTubeMetadata = {
-      platform: "youtube",
-      itemType: "video",
-      url,
-      name: data.title,
-      artist: data.author,
-      artwork: data.thumbnail,
-      videoId: data.videoId,
-      duration: data.lengthSeconds,
-      streamUrl,
-    };
-
-    return { success: true, metadata, streamUrl };
-  } catch {
-    // Fall through
-  }
-
-  // 2. Custom InnerTube IOS — stream URLs have no range restrictions
-  try {
-    const data = await getVideoDataIOS(videoId);
-    const stream = selectBestAudioStream(data.audioFormats);
-    if (stream) {
-      const streamUrl = proxyIfNeeded(stream.url);
-
-      const metadata: YouTubeMetadata = {
-        platform: "youtube",
-        itemType: "video",
-        url,
-        name: data.title,
-        artist: data.author,
-        artwork: getBestThumbnail(data.thumbnails),
-        videoId: data.videoId,
-        duration: data.lengthSeconds,
-        streamUrl,
-      };
-
-      return { success: true, metadata, streamUrl };
+    if (data.liveNow) {
+      return createError("Live streams are not supported");
     }
-  } catch {
-    // Fall through
-  }
 
-  // 3. Piped (pre-proxied URLs, no range restrictions)
-  try {
-    const data = await getVideoDataFromPiped(videoId);
-    const stream = selectBestAudioStream(data.audioFormats);
-    if (stream) {
-      const streamUrl = proxyIfNeeded(stream.url);
-
-      const metadata: YouTubeMetadata = {
-        platform: "youtube",
-        itemType: "video",
-        url,
-        name: data.title,
-        artist: data.author,
-        artwork: data.thumbnail,
-        videoId: data.videoId,
-        duration: data.duration,
-        streamUrl,
-      };
-
-      return { success: true, metadata, streamUrl };
-    }
-  } catch {
-    // Fall through
-  }
-
-  // 4. Invidious
-  try {
-    const data = await getVideoData(videoId);
     const stream = selectBestAudioStream(data.adaptiveFormats);
+    if (!stream) {
+      return createError("No audio stream found");
+    }
 
-    if (stream) {
-      const streamUrl = proxyIfNeeded(stream.url);
-      const artwork = getBestThumbnail(data.videoThumbnails);
+    const streamUrl = getFullStreamUrl(stream.url, options?.instanceUrl);
+    const artwork = getBestThumbnail(
+      data.videoThumbnails,
+      options?.instanceUrl
+    );
 
-      const metadata: YouTubeMetadata = {
+    return {
+      success: true,
+      streamUrl,
+      metadata: {
         platform: "youtube",
         itemType: "video",
         url,
         name: data.title,
         artist: data.author,
         artwork,
-        videoId: data.videoId,
+        videoId,
         duration: data.lengthSeconds,
         streamUrl,
-      };
-
-      return { success: true, metadata, streamUrl };
-    }
-  } catch {
-    // Fall through
+      },
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Unknown error";
+    return createError(msg);
   }
-
-  return createErrorResponse(
-    "This video is not available for streaming right now"
-  );
 }
 
+// ============================================
+// Playlist Processing
+// ============================================
+
 async function processPlaylist(
-  url: string
+  url: string,
+  options?: InvidiousOptions
 ): Promise<YouTubeItemResult | YouTubeItemError> {
   const playlistId = extractPlaylistId(url);
   if (!playlistId) {
-    return createErrorResponse("Could not extract playlist ID from URL");
+    return createError("Could not extract playlist ID from URL");
   }
 
-  // Try Piped first for playlist metadata
   try {
-    const data = await getPlaylistDataFromPiped(playlistId);
+    const data = await fetchInvidiousPlaylist(playlistId, options);
 
-    if (data.videos.length === 0) {
-      return createErrorResponse("No videos found in playlist");
-    }
-
-    const firstVideo = data.videos[0];
-    if (!firstVideo) {
-      return createErrorResponse("No videos found in playlist");
-    }
-
-    const firstStreamUrl = await resolveStreamUrl(firstVideo.videoId);
-    if (!firstStreamUrl) {
-      return createErrorResponse("Failed to resolve first video stream");
-    }
-
-    const tracks: YouTubeTrackInfo[] = data.videos.map((video, index) => ({
+    // Convert Invidious tracks to our format
+    // Note: streamUrl uses yt:{videoId} convention - resolved on play
+    const tracks: YouTubeTrackInfo[] = data.videos.map((video) => ({
       name: video.title,
-      streamUrl: index === 0 ? firstStreamUrl : "",
-      duration: video.duration,
+      streamUrl: `yt:${video.videoId}`,
+      duration: video.lengthSeconds,
       videoId: video.videoId,
-      thumbnail: video.thumbnail,
+      thumbnail: getBestThumbnail(video.videoThumbnails, options?.instanceUrl),
     }));
 
-    const metadata: YouTubeMetadata = {
-      platform: "youtube",
-      itemType: "playlist",
-      url,
-      name: data.title,
-      artist: data.author,
-      artwork: data.thumbnail || tracks[0]?.thumbnail,
-      playlistId,
-      trackCount: data.videoCount,
-      tracks,
-      streamUrl: firstStreamUrl,
+    // Use playlist thumbnail or first track's thumbnail
+    const artwork = data.playlistThumbnail || tracks[0]?.thumbnail || "";
+
+    return {
+      success: true,
+      streamUrl: tracks[0]?.streamUrl ?? "",
+      metadata: {
+        platform: "youtube",
+        itemType: "playlist",
+        url,
+        name: data.title,
+        artist: data.author,
+        artwork,
+        playlistId,
+        trackCount: data.videoCount,
+        tracks,
+      },
     };
-
-    return { success: true, metadata, streamUrl: firstStreamUrl };
-  } catch {
-    // Fall through to Invidious
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Unknown error";
+    return createError(msg);
   }
-
-  // Fallback to Invidious for playlist
-  const data = await getPlaylistData(playlistId);
-
-  if (!data.videos || data.videos.length === 0) {
-    return createErrorResponse("No videos found in playlist");
-  }
-
-  const firstVideo = data.videos[0];
-  if (!firstVideo) {
-    return createErrorResponse("No videos found in playlist");
-  }
-
-  const firstStreamUrl = await resolveStreamUrl(firstVideo.videoId);
-  if (!firstStreamUrl) {
-    return createErrorResponse("Failed to resolve first video stream");
-  }
-
-  const tracks: YouTubeTrackInfo[] = data.videos.map((video, index) => ({
-    name: video.title,
-    streamUrl: index === 0 ? firstStreamUrl : "",
-    duration: video.lengthSeconds,
-    videoId: video.videoId,
-    thumbnail: getBestThumbnail(video.videoThumbnails),
-  }));
-
-  const artwork = data.playlistThumbnail || tracks[0]?.thumbnail;
-
-  const metadata: YouTubeMetadata = {
-    platform: "youtube",
-    itemType: "playlist",
-    url,
-    name: data.title,
-    artist: data.author,
-    artwork,
-    playlistId: data.playlistId,
-    trackCount: data.videoCount,
-    tracks,
-    streamUrl: firstStreamUrl,
-  };
-
-  return {
-    success: true,
-    metadata,
-    streamUrl: firstStreamUrl,
-  };
 }

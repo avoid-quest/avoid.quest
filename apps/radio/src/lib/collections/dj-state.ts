@@ -64,6 +64,7 @@ const deckStateSchema = z.object({
   effectsDryWet: z.number(),
   // Playback
   repeat: z.boolean().default(false),
+  autoplay: z.boolean().default(true),
 });
 
 const mixerStateSchema = z.object({
@@ -118,6 +119,7 @@ const defaultDeckState: Omit<DeckRecord, "id"> = {
   },
   effectsDryWet: 1,
   repeat: false,
+  autoplay: true,
 };
 
 /**
@@ -213,6 +215,7 @@ export function resetDeck(deckId: typeof DECK_A_ID | typeof DECK_B_ID): void {
     };
     draft.effectsDryWet = 1;
     draft.repeat = false;
+    draft.autoplay = true;
   });
 }
 

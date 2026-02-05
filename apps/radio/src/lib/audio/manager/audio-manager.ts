@@ -14,7 +14,6 @@
 
 import { getProxiedBandcampUrl } from "@avoid.quest/bandcamp";
 import { getProxiedSoundCloudUrl } from "@avoid.quest/soundcloud";
-import { getProxiedYouTubeUrl } from "@avoid.quest/youtube";
 import type { EffectConfig } from "../dsp/effects/types.js";
 import {
   type AudioState,
@@ -352,6 +351,28 @@ export class AudioManager {
             volume: instance.volume,
             error: null,
             hasEnded: true,
+          });
+        },
+        onStreamError: (position) => {
+          // Network error during streaming - notify for potential URL refresh
+          console.log(
+            `[AudioManager] Stream error for ${soundId} at position ${position}s`
+          );
+          this.notifyListeners(soundId, {
+            isPlaying: false,
+            isLoading: false,
+            isBuffering: false,
+            volume: instance.volume,
+            error: {
+              id: generateErrorId(),
+              message: `Stream interrupted at ${Math.floor(position)}s - URL may need refresh`,
+              code: "STREAM_INTERRUPTED",
+              radio: instance.radio,
+              timestamp: Date.now(),
+              sourceId: soundId,
+              position, // Include position for refresh
+            },
+            hasEnded: false,
           });
         },
       });
@@ -1207,6 +1228,96 @@ export class AudioManager {
   }
 
   // ============================================
+  // Stream URL Refresh (YouTube 403 recovery)
+  // ============================================
+
+  /**
+   * Refresh the stream URL for a sound, optionally seeking to a position.
+   * Used for YouTube URL refresh when streams get throttled (403 error).
+   *
+   * @param soundId - The sound ID to refresh
+   * @param newUrl - The new stream URL (should already be proxied)
+   * @param seekPosition - Optional position in seconds to seek to after refresh
+   */
+  async refreshStreamUrl(
+    soundId: string,
+    newUrl: string,
+    seekPosition?: number
+  ): Promise<void> {
+    const instance = this.sounds.get(soundId);
+    if (!instance?.html5Source) {
+      console.warn(
+        `[AudioManager] refreshStreamUrl: sound ${soundId} not found or no html5Source`
+      );
+      return;
+    }
+
+    console.log(
+      `[AudioManager] Refreshing stream URL for ${soundId} at position ${seekPosition ?? 0}s`
+    );
+
+    // Update loading state
+    instance.loading = true;
+    this.notifyListeners(soundId, {
+      isPlaying: false,
+      isLoading: true,
+      isBuffering: false,
+      volume: instance.volume,
+      error: null,
+      hasEnded: false,
+    });
+
+    try {
+      // Get proxied URL
+      const proxiedUrl = this.getProxiedUrl(newUrl);
+
+      // Refresh the HTML5 source with new URL
+      await instance.html5Source.refreshUrl(proxiedUrl, seekPosition);
+
+      instance.loading = false;
+      instance.playing = true;
+
+      this.notifyListeners(soundId, {
+        isPlaying: true,
+        isLoading: false,
+        isBuffering: false,
+        volume: instance.volume,
+        error: null,
+        hasEnded: false,
+      });
+    } catch (error) {
+      instance.loading = false;
+      instance.playing = false;
+
+      this.notifyListeners(soundId, {
+        isPlaying: false,
+        isLoading: false,
+        isBuffering: false,
+        volume: instance.volume,
+        error: {
+          id: generateErrorId(),
+          message:
+            error instanceof Error ? error.message : "Failed to refresh stream",
+          code: "STREAM_FETCH_FAILED",
+          radio: instance.radio,
+          timestamp: Date.now(),
+          sourceId: soundId,
+        },
+        hasEnded: false,
+      });
+    }
+  }
+
+  /**
+   * Get the radio configuration for a sound
+   * Useful for re-loading platform metadata to get a fresh URL
+   */
+  getSoundRadio(soundId: string): Radio | null {
+    const instance = this.sounds.get(soundId);
+    return instance?.radio ?? null;
+  }
+
+  // ============================================
   // CUE Pre-Fader Access
   // ============================================
 
@@ -1469,10 +1580,7 @@ export class AudioManager {
     if (bandcampUrl !== url) {
       return bandcampUrl;
     }
-    const youtubeUrl = getProxiedYouTubeUrl(url);
-    if (youtubeUrl !== url) {
-      return youtubeUrl;
-    }
+    // YouTube URLs are already proxied through Invidious (local=true)
     return getProxiedSoundCloudUrl(url);
   }
 

@@ -54,6 +54,7 @@ type DeckLayoutProps = {
   peakLevel?: { left: number; right: number };
   // Playback
   repeat?: boolean;
+  autoplay?: boolean;
   // Deck identification
   deckId?: "deck-a" | "deck-b";
   // Deck side for peak meter positioning
@@ -65,6 +66,7 @@ type DeckLayoutProps = {
   onChannelFilterChange: (value: number) => void;
   onEffectsDryWetChange: (value: number) => void;
   onRepeatToggle?: () => void;
+  onAutoplayToggle?: () => void;
   onClear: () => void;
   onChangeUrl?: () => void;
   onAddEffect?: (type: EffectType) => void;
@@ -143,6 +145,7 @@ export function DeckLayout({
   effectsDryWet,
   peakLevel,
   repeat,
+  autoplay,
   deckId,
   deckSide,
   onPlayPause,
@@ -152,6 +155,7 @@ export function DeckLayout({
   onChannelFilterChange,
   onEffectsDryWetChange,
   onRepeatToggle,
+  onAutoplayToggle,
   onClear,
   onChangeUrl,
   onAddEffect,
@@ -204,6 +208,7 @@ export function DeckLayout({
     return (
       <MobileDeckLayout
         artworkUrl={artworkUrl}
+        autoplay={autoplay}
         channelFilter={channelFilter}
         className={className}
         currentTrackIndex={currentTrackIndex}
@@ -217,6 +222,7 @@ export function DeckLayout({
         isPlaying={isPlaying}
         metadata={metadata || null}
         onAddEffect={onAddEffect}
+        onAutoplayToggle={onAutoplayToggle}
         onChangeUrl={onChangeUrl}
         onChannelFilterChange={onChannelFilterChange}
         onClear={onClear}
@@ -254,9 +260,12 @@ export function DeckLayout({
         {/* Transport Bar: artwork, play, track name, progress */}
         <DeckTransportBar
           artworkUrl={artworkUrl}
+          autoplay={autoplay}
+          hasTracklist={hasTracklist}
           isBuffering={isBuffering}
           isLoading={isLoading}
           isPlaying={isPlaying}
+          onAutoplayToggle={onAutoplayToggle}
           onPlayPause={onPlayPause}
           onRepeatToggle={onRepeatToggle}
           onSeek={onSeek}
@@ -699,6 +708,7 @@ type MobileDeckLayoutProps = {
   channelFilter: number;
   effectsDryWet: number;
   repeat?: boolean;
+  autoplay?: boolean;
   deckId?: "deck-a" | "deck-b";
   hasTracklist: boolean;
   onPlayPause: () => void;
@@ -708,6 +718,7 @@ type MobileDeckLayoutProps = {
   onChannelFilterChange: (value: number) => void;
   onEffectsDryWetChange: (value: number) => void;
   onRepeatToggle?: () => void;
+  onAutoplayToggle?: () => void;
   onClear: () => void;
   onChangeUrl?: () => void;
   onAddEffect?: (type: EffectType) => void;
@@ -738,6 +749,7 @@ function MobileDeckLayout({
   speed,
   effectsDryWet,
   repeat,
+  autoplay,
   deckId,
   hasTracklist,
   onPlayPause,
@@ -747,6 +759,7 @@ function MobileDeckLayout({
   onChannelFilterChange,
   onEffectsDryWetChange,
   onRepeatToggle,
+  onAutoplayToggle,
   onClear,
   onChangeUrl,
   onAddEffect,
@@ -770,9 +783,12 @@ function MobileDeckLayout({
           {/* Transport Bar */}
           <DeckTransportBar
             artworkUrl={artworkUrl}
+            autoplay={autoplay}
+            hasTracklist={hasTracklist}
             isBuffering={isBuffering}
             isLoading={isLoading}
             isPlaying={isPlaying}
+            onAutoplayToggle={onAutoplayToggle}
             onPlayPause={onPlayPause}
             onRepeatToggle={onRepeatToggle}
             onSeek={onSeek}

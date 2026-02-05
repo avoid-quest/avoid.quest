@@ -72,6 +72,33 @@ import { FileForm } from "./file-form";
 import { InputDeckLayout } from "./input-deck-layout";
 import { PlatformForm } from "./platform-form";
 
+/**
+ * Resolve YouTube playlist track stream URL.
+ * Returns proxied URL ready for playback, or null on failure.
+ */
+async function resolveYouTubePlaylistTrack(
+  videoId: string,
+  tracks?: { streamUrl: string; videoId?: string }[]
+): Promise<string | null> {
+  const result = await youtubeResolveStream({ data: { videoId } });
+  const { stream } = result;
+
+  if (!stream) {
+    toast.error("Failed to resolve YouTube stream");
+    return null;
+  }
+
+  // Update the track's streamUrl in metadata so we don't resolve again
+  if (tracks) {
+    const track = tracks.find((t) => "videoId" in t && t.videoId === videoId);
+    if (track) {
+      track.streamUrl = stream.streamUrl;
+    }
+  }
+
+  return stream.streamUrl;
+}
+
 type DjDeckProps = {
   className?: string;
   deckId: "deck-a" | "deck-b";
@@ -134,11 +161,13 @@ function DjDeckContent({
     effectsDryWet,
     effects,
     repeat,
+    autoplay,
     setPan,
     setSpeed,
     setChannelFilter,
     setEffectsDryWet,
     setRepeat,
+    setAutoplay,
     seek,
   } = deckState;
 
@@ -275,20 +304,13 @@ function DjDeckContent({
 
     let resolvedUrl = streamUrl;
 
-    // YouTube playlist tracks may need on-demand stream URL resolution
-    if (streamUrl.startsWith("yt:") && isYouTubeMetadata(metadata)) {
+    // YouTube playlist tracks need on-demand stream URL resolution
+    if (streamUrl.startsWith("yt:")) {
       const videoId = streamUrl.slice(3);
-      const result = await youtubeResolveStream({ data: { videoId } });
-      resolvedUrl = result.streamUrl ?? "";
-
-      // Update the track's streamUrl in metadata so we don't resolve again
-      if (resolvedUrl && metadata.tracks) {
-        const track = metadata.tracks.find(
-          (t) => "videoId" in t && t.videoId === videoId
-        );
-        if (track) {
-          track.streamUrl = resolvedUrl;
-        }
+      const tracks = isYouTubeMetadata(metadata) ? metadata.tracks : undefined;
+      resolvedUrl = await resolveYouTubePlaylistTrack(videoId, tracks);
+      if (!resolvedUrl) {
+        return;
       }
     }
 
@@ -297,8 +319,23 @@ function DjDeckContent({
     }
   };
 
-  const handleLoadPlatformItem = (newRadio: Radio) => {
-    loadTrack(deckSide, newRadio, false);
+  const handleLoadPlatformItem = async (newRadio: Radio) => {
+    let resolvedRadio = newRadio;
+
+    // YouTube playlists have yt:{videoId} as initial streamUrl - resolve it
+    if (newRadio.streamUrl.startsWith("yt:")) {
+      const videoId = newRadio.streamUrl.slice(3);
+      const tracks = isYouTubeMetadata(newRadio.platformMetadata)
+        ? newRadio.platformMetadata.tracks
+        : undefined;
+      const resolvedUrl = await resolveYouTubePlaylistTrack(videoId, tracks);
+      if (!resolvedUrl) {
+        return;
+      }
+      resolvedRadio = { ...newRadio, streamUrl: resolvedUrl };
+    }
+
+    loadTrack(deckSide, resolvedRadio, false);
     setPendingPlatformItem(null);
   };
 
@@ -341,6 +378,10 @@ function DjDeckContent({
   const handleRepeatToggle = useCallback(() => {
     setRepeat(!repeat);
   }, [setRepeat, repeat]);
+
+  const handleAutoplayToggle = useCallback(() => {
+    setAutoplay(!autoplay);
+  }, [setAutoplay, autoplay]);
 
   const onChangeUrl = useMemo(() => {
     if (!(radio && isPlatformRadio(radio))) {
@@ -421,6 +462,7 @@ function DjDeckContent({
     } else {
       content = (
         <DeckLayout
+          autoplay={autoplay}
           channelFilter={channelFilter}
           currentTrackIndex={currentTrackIndex}
           deckId={deckId}
@@ -433,6 +475,7 @@ function DjDeckContent({
           isPlaying={isPlaying}
           metadata={metadata || radio.platformMetadata}
           onAddEffect={addEffect}
+          onAutoplayToggle={handleAutoplayToggle}
           onChangeUrl={onChangeUrl}
           onChannelFilterChange={throttledSetChannelFilter}
           onClear={handleClear}

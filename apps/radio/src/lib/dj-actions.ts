@@ -6,6 +6,7 @@
  * TanStack Store for runtime state.
  */
 
+import { resolveStreamUrl } from "@avoid.quest/youtube";
 import type {
   ChannelSelection,
   EffectConfig,
@@ -45,6 +46,7 @@ import {
   type FileMetadata,
   isDeviceInputMetadata,
   isFileMetadata,
+  isYouTubeMetadata,
 } from "@/lib/platform-types";
 import {
   getDeckARuntime,
@@ -317,6 +319,160 @@ const deckConfig: Record<
   },
 };
 
+/**
+ * Handle track end - repeat current track or auto-advance to next in playlist/album.
+ */
+function handleTrackEnded(
+  config: (typeof deckConfig)["deck-a"],
+  currentDeck: DeckRecord,
+  soundId: string
+): void {
+  // Repeat mode: seek to start and replay
+  if (currentDeck.repeat) {
+    getAudioManager().seekSound(soundId, 0);
+    getAudioManager()
+      .playSound(soundId, currentDeck.volume)
+      .then(() => applyCrossfade())
+      .catch(() => setDjError("Failed to repeat track"));
+    return;
+  }
+
+  // Auto-advance to next track (only if autoplay is enabled)
+  if (!currentDeck.autoplay) {
+    return;
+  }
+
+  const deckRadio = getDeckRadio(currentDeck);
+  const nextTrack = findNextTrack(deckRadio);
+  if (nextTrack && deckRadio) {
+    // Resolve YouTube yt:{videoId} URLs before loading
+    const streamUrl = nextTrack.streamUrl;
+    if (streamUrl.startsWith("yt:")) {
+      const videoId = streamUrl.slice(3);
+      resolveStreamUrl(videoId)
+        .then((resolvedUrl) => {
+          if (resolvedUrl) {
+            // Update the track's streamUrl in metadata for tracklist highlighting
+            if (
+              isYouTubeMetadata(deckRadio.platformMetadata) &&
+              deckRadio.platformMetadata.tracks
+            ) {
+              const track = deckRadio.platformMetadata.tracks.find(
+                (t) => "videoId" in t && t.videoId === videoId
+              );
+              if (track) {
+                track.streamUrl = resolvedUrl;
+              }
+            }
+            loadTrack(
+              config.side,
+              { ...deckRadio, streamUrl: resolvedUrl },
+              true
+            );
+          } else {
+            setDjError("Failed to resolve next track");
+          }
+        })
+        .catch(() => setDjError("Failed to load next track"));
+    } else {
+      loadTrack(
+        config.side,
+        { ...deckRadio, streamUrl },
+        true // auto-play
+      );
+    }
+  }
+}
+
+/**
+ * Handle YouTube stream interruption by fetching a fresh URL and resuming playback.
+ * Called when STREAM_INTERRUPTED error is received for a YouTube stream.
+ */
+function handleYouTubeStreamInterrupted(
+  soundId: string,
+  videoId: string,
+  position: number
+): void {
+  console.log(
+    `[dj-actions] YouTube stream interrupted at ${position}s, attempting refresh`
+  );
+
+  refreshYouTubeStreamUrl(videoId).then((newUrl) => {
+    if (newUrl) {
+      getAudioManager()
+        .refreshStreamUrl(soundId, newUrl, position)
+        .then(() => {
+          setDjError(null); // Clear error on successful refresh
+          applyCrossfade();
+        })
+        .catch((err) => {
+          setDjError(
+            `Stream refresh failed: ${err instanceof Error ? err.message : "Unknown error"}`
+          );
+        });
+    } else {
+      setDjError("Failed to refresh YouTube stream - please reload");
+    }
+  });
+}
+
+/**
+ * Refresh a YouTube stream URL when interrupted.
+ * Uses Piped API which handles n-param transformation server-side.
+ * Returns the proxied URL or null on failure.
+ */
+async function refreshYouTubeStreamUrl(
+  videoId: string
+): Promise<string | null> {
+  try {
+    const streamUrl = await resolveStreamUrl(videoId);
+    if (streamUrl) {
+      return streamUrl;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+// Helper to get stream URL for a track (handles YouTube lazy resolution format)
+function getTrackStreamUrl(
+  track: { streamUrl: string; videoId?: string },
+  platform: string
+): string {
+  if (track.streamUrl) {
+    return track.streamUrl;
+  }
+  // YouTube tracks use yt:{videoId} format for lazy resolution
+  if (platform === "youtube" && "videoId" in track && track.videoId) {
+    return `yt:${track.videoId}`;
+  }
+  return "";
+}
+
+// Helper to find current track index in a playlist
+function findCurrentTrackIndex(
+  tracks: Array<{ streamUrl: string; videoId?: string }>,
+  currentStreamUrl: string,
+  platform: string
+): number {
+  // First try direct streamUrl match
+  let index = tracks.findIndex((t) => t.streamUrl === currentStreamUrl);
+  if (index !== -1) {
+    return index;
+  }
+
+  // For YouTube, also check by videoId since streamUrl might be yt:{id}
+  if (platform === "youtube" && currentStreamUrl.startsWith("yt:")) {
+    const currentVideoId = currentStreamUrl.slice(3);
+    index = tracks.findIndex(
+      (t) => "videoId" in t && t.videoId === currentVideoId
+    );
+  }
+
+  return index;
+}
+
 // Helper to find next track in a platform playlist/album
 export const findNextTrack = (
   radio: Radio | null
@@ -340,24 +496,34 @@ export const findNextTrack = (
   // Only handle collections (albums/playlists)
   const isCollection =
     (platform === "bandcamp" && itemType === "album") ||
-    (platform === "soundcloud" && itemType === "playlist");
+    (platform === "soundcloud" && itemType === "playlist") ||
+    (platform === "youtube" && itemType === "playlist");
 
-  if (!(isCollection && tracks) || tracks.length === 0) {
+  if (!isCollection || tracks.length === 0) {
     return null;
   }
 
-  // Find current track index
-  const currentIndex = tracks.findIndex((t) => t.streamUrl === radio.streamUrl);
+  const currentIndex = findCurrentTrackIndex(tracks, radio.streamUrl, platform);
 
+  // Current track not found, return first track
   if (currentIndex === -1) {
-    // Current track not found, return first track
-    return tracks[0];
+    const firstTrack = tracks[0];
+    if (!firstTrack) {
+      return null;
+    }
+    const streamUrl = getTrackStreamUrl(firstTrack, platform);
+    return streamUrl ? { streamUrl } : null;
   }
 
   // Return next track if available
   const nextIndex = currentIndex + 1;
   if (nextIndex < tracks.length) {
-    return tracks[nextIndex];
+    const nextTrack = tracks[nextIndex];
+    if (!nextTrack) {
+      return null;
+    }
+    const streamUrl = getTrackStreamUrl(nextTrack, platform);
+    return streamUrl ? { streamUrl } : null;
   }
 
   // No more tracks
@@ -585,35 +751,30 @@ async function setDeckRadio(deckId: DeckId, radio: Radio | null) {
         }));
       }
 
-      // Set error if present
+      // Handle STREAM_INTERRUPTED error for YouTube streams (auto-refresh on 403)
+      if (
+        audioState.error?.code === "STREAM_INTERRUPTED" &&
+        currentDeck?.radio &&
+        isYouTubeMetadata(currentDeck.radio.platformMetadata) &&
+        currentDeck.radio.platformMetadata.videoId &&
+        currentRuntime.soundId
+      ) {
+        handleYouTubeStreamInterrupted(
+          currentRuntime.soundId,
+          currentDeck.radio.platformMetadata.videoId,
+          audioState.error.position ?? 0
+        );
+        return; // Don't set error - wait for refresh attempt
+      }
+
+      // Set error if present (skip STREAM_INTERRUPTED - handled above)
       if (audioState.error?.message) {
         setDjError(audioState.error.message);
       }
 
       // Handle track end - repeat or auto-advance to next track
-      if (trackEnded && currentDeck?.radio) {
-        if (currentDeck.repeat && currentRuntime.soundId) {
-          getAudioManager().seekSound(currentRuntime.soundId, 0);
-          getAudioManager()
-            .playSound(currentRuntime.soundId, currentDeck.volume)
-            .then(() => applyCrossfade())
-            .catch(() => {
-              setDjError("Failed to repeat track");
-            });
-          return;
-        }
-        const deckRadio = getDeckRadio(currentDeck);
-        const nextTrack = findNextTrack(deckRadio);
-        if (nextTrack && deckRadio) {
-          loadTrack(
-            config.side,
-            {
-              ...deckRadio,
-              streamUrl: nextTrack.streamUrl,
-            },
-            true // auto-play
-          );
-        }
+      if (trackEnded && currentDeck?.radio && currentRuntime.soundId) {
+        handleTrackEnded(config, currentDeck, currentRuntime.soundId);
       }
     });
 
@@ -906,6 +1067,20 @@ export function setDeckARepeat(enabled: boolean) {
 
 export function setDeckBRepeat(enabled: boolean) {
   setDeckRepeat("deck-b", enabled);
+}
+
+function setDeckAutoplay(deckId: DeckId, enabled: boolean) {
+  deckConfig[deckId].updateDeck((draft) => {
+    draft.autoplay = enabled;
+  });
+}
+
+export function setDeckAAutoplay(enabled: boolean) {
+  setDeckAutoplay("deck-a", enabled);
+}
+
+export function setDeckBAutoplay(enabled: boolean) {
+  setDeckAutoplay("deck-b", enabled);
 }
 
 function seekDeck(deckId: DeckId, position: number) {

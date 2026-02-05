@@ -28,9 +28,31 @@ export function getCurrentTrackIndex(
     return 0;
   }
 
-  const index = metadata.tracks.findIndex(
+  // First try direct streamUrl match
+  let index = metadata.tracks.findIndex(
     (t: { streamUrl: string }) => t.streamUrl === currentStreamUrl
   );
+  if (index !== -1) {
+    return index;
+  }
+
+  // For YouTube, also match by videoId since resolved URLs differ from yt:{id} format
+  if (metadata.platform === "youtube") {
+    // Check if currentStreamUrl is a yt:{videoId} format
+    if (currentStreamUrl.startsWith("yt:")) {
+      const videoId = currentStreamUrl.slice(3);
+      index = metadata.tracks.findIndex(
+        (t) => "videoId" in t && t.videoId === videoId
+      );
+    } else {
+      // Current URL is resolved - find track whose streamUrl was updated to this URL
+      // or whose videoId matches a track that was resolved
+      index = metadata.tracks.findIndex(
+        (t) => t.streamUrl === currentStreamUrl
+      );
+    }
+  }
+
   return index !== -1 ? index : 0;
 }
 

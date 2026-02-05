@@ -1,3 +1,4 @@
+import { env } from "cloudflare:workers";
 import { getBandcampItem } from "@avoid.quest/bandcamp";
 import { getSoundCloudItem } from "@avoid.quest/soundcloud";
 import { getYouTubeItem } from "@avoid.quest/youtube";
@@ -50,7 +51,12 @@ export const loadPlatformItem = createServerFn({ method: "POST" })
     }
 
     if (platform === "youtube") {
-      return await getYouTubeItem(trimmedUrl);
+      // Pass Invidious config from Cloudflare env
+      const invidiousOptions = {
+        instanceUrl: env.INVIDIOUS_INSTANCE_URL || undefined,
+        auth: env.INVIDIOUS_AUTH || undefined,
+      };
+      return await getYouTubeItem(trimmedUrl, invidiousOptions);
     }
 
     return {

@@ -1,218 +1,243 @@
-import type { AudioFormat } from "./types.js";
+/**
+ * Invidious API client for YouTube audio extraction.
+ *
+ * Invidious provides a privacy-friendly YouTube API with direct stream URLs.
+ * Uses invidious-companion for poToken handling.
+ *
+ * Configuration:
+ * - Pass instanceUrl parameter for self-hosted instance
+ */
 
-const INVIDIOUS_INSTANCES_URL =
-  "https://api.invidious.io/instances.json?sort_by=api,type";
+// ============================================
+// Types
+// ============================================
 
-const FALLBACK_INSTANCES = [
-  "https://invidious.fdn.fr",
-  "https://inv.tux.pizza",
-  "https://invidious.privacyredirect.com",
-  "https://invidious.protokolla.fi",
-];
-
-let cachedInstances: string[] | null = null;
-let instanceIndex = 0;
-
-type InvidiousVideoData = {
-  title: string;
-  author: string;
-  videoId: string;
-  videoThumbnails: { url: string; quality: string }[];
-  lengthSeconds: number;
-  adaptiveFormats: AudioFormat[];
+export type InvidiousOptions = {
+  instanceUrl?: string;
+  /** Basic auth credentials in format "username:password" */
+  auth?: string;
 };
 
-type InvidiousPlaylistVideo = {
+export type InvidiousAdaptiveFormat = {
+  url: string;
+  bitrate: string;
+  type: string;
+  clen: string;
+  container: string;
+  encoding: string;
+  audioQuality?: string;
+  audioSampleRate?: number;
+  audioChannels?: number;
+};
+
+export type InvidiousVideoThumbnail = {
+  quality: string;
+  url: string;
+  width: number;
+  height: number;
+};
+
+export type InvidiousVideoResponse = {
+  type: string;
   title: string;
   videoId: string;
   author: string;
+  authorId: string;
   lengthSeconds: number;
-  videoThumbnails: { url: string; quality: string }[];
+  videoThumbnails: InvidiousVideoThumbnail[];
+  adaptiveFormats: InvidiousAdaptiveFormat[];
+  liveNow: boolean;
 };
 
-type InvidiousPlaylistData = {
+export type InvidiousPlaylistVideo = {
   title: string;
+  videoId: string;
   author: string;
+  authorId: string;
+  lengthSeconds: number;
+  videoThumbnails: InvidiousVideoThumbnail[];
+};
+
+export type InvidiousPlaylistResponse = {
+  type: string;
+  title: string;
   playlistId: string;
+  author: string;
+  authorId: string;
   playlistThumbnail: string;
-  videos: InvidiousPlaylistVideo[];
   videoCount: number;
+  videos: InvidiousPlaylistVideo[];
 };
 
-export async function fetchInvidiousInstances(): Promise<string[]> {
-  if (cachedInstances) {
-    return cachedInstances;
-  }
+export type InvidiousSearchResult = {
+  type: string;
+  title: string;
+  videoId: string;
+  author: string;
+  authorId: string;
+  lengthSeconds: number;
+  viewCount: number;
+  videoThumbnails: InvidiousVideoThumbnail[];
+};
 
-  try {
-    const response = await fetch(INVIDIOUS_INSTANCES_URL, {
-      signal: AbortSignal.timeout(5000),
-    });
+// ============================================
+// Instance Management
+// ============================================
 
-    if (!response.ok) {
-      cachedInstances = FALLBACK_INSTANCES;
-      return cachedInstances;
-    }
+const DEFAULT_INSTANCE = "https://yt.avoid.quest";
 
-    const data = (await response.json()) as [
-      string,
-      { uri: string; api: boolean; type: string },
-    ][];
-
-    const instances = data
-      .filter(([, info]) => info.api && info.type === "https")
-      .map(([, info]) => info.uri)
-      .slice(0, 10);
-
-    cachedInstances = instances.length > 0 ? instances : FALLBACK_INSTANCES;
-    return cachedInstances;
-  } catch {
-    cachedInstances = FALLBACK_INSTANCES;
-    return cachedInstances;
-  }
+function getInstanceUrl(options?: InvidiousOptions): string {
+  return options?.instanceUrl ?? DEFAULT_INSTANCE;
 }
 
-function fetchFromInstance(instance: string, path: string): Promise<Response> {
-  return fetch(`${instance}${path}`, {
-    signal: AbortSignal.timeout(10_000),
-    headers: {
-      Accept: "application/json",
-    },
+/**
+ * Fetch from Invidious API
+ */
+async function fetchInvidious<T>(
+  path: string,
+  options?: InvidiousOptions
+): Promise<T> {
+  const instance = getInstanceUrl(options);
+  const url = `${instance}${path}`;
+
+  const headers: HeadersInit = {};
+  if (options?.auth) {
+    headers.Authorization = `Basic ${btoa(options.auth)}`;
+  }
+
+  const response = await fetch(url, {
+    signal: AbortSignal.timeout(15_000),
+    headers,
   });
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+  }
+
+  return (await response.json()) as T;
 }
 
-export async function getVideoData(
+// ============================================
+// API Functions
+// ============================================
+
+/**
+ * Fetch video data (metadata + adaptive formats with stream URLs)
+ * Uses local=true to get proxied URLs through Invidious (avoids IP-locked streams)
+ */
+export function fetchInvidiousVideo(
   videoId: string,
-  instances?: string[]
-): Promise<InvidiousVideoData> {
-  const hosts = instances ?? (await fetchInvidiousInstances());
-  const path = `/api/v1/videos/${videoId}`;
-
-  let lastError: Error | null = null;
-
-  for (let i = 0; i < hosts.length; i++) {
-    const idx = (instanceIndex + i) % hosts.length;
-    const instance = hosts[idx];
-    if (!instance) {
-      continue;
-    }
-
-    try {
-      const response = await fetchFromInstance(instance, path);
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      const contentType = response.headers.get("content-type") ?? "";
-      if (!contentType.includes("json")) {
-        throw new Error(`Non-JSON response: ${contentType}`);
-      }
-
-      const data = (await response.json()) as
-        | InvidiousVideoData
-        | { error: string };
-
-      if ("error" in data) {
-        throw new Error(data.error);
-      }
-
-      if (!data.adaptiveFormats?.length) {
-        throw new Error("No adaptive formats found");
-      }
-
-      instanceIndex = idx;
-      return data;
-    } catch (error) {
-      lastError = error instanceof Error ? error : new Error("Unknown error");
-    }
-  }
-
-  throw lastError ?? new Error("All Invidious instances failed");
+  options?: InvidiousOptions
+): Promise<InvidiousVideoResponse> {
+  return fetchInvidious<InvidiousVideoResponse>(
+    `/api/v1/videos/${videoId}?local=true`,
+    options
+  );
 }
 
-export async function getPlaylistData(
+/**
+ * Fetch playlist data
+ */
+export function fetchInvidiousPlaylist(
   playlistId: string,
-  instances?: string[]
-): Promise<InvidiousPlaylistData> {
-  const hosts = instances ?? (await fetchInvidiousInstances());
-  const path = `/api/v1/playlists/${playlistId}`;
-
-  let lastError: Error | null = null;
-
-  for (let i = 0; i < hosts.length; i++) {
-    const idx = (instanceIndex + i) % hosts.length;
-    const instance = hosts[idx];
-    if (!instance) {
-      continue;
-    }
-
-    try {
-      const response = await fetchFromInstance(instance, path);
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      const contentType = response.headers.get("content-type") ?? "";
-      if (!contentType.includes("json")) {
-        throw new Error(`Non-JSON response: ${contentType}`);
-      }
-
-      const data = (await response.json()) as
-        | InvidiousPlaylistData
-        | { error: string };
-
-      if ("error" in data) {
-        throw new Error(data.error);
-      }
-
-      instanceIndex = idx;
-      return data;
-    } catch (error) {
-      lastError = error instanceof Error ? error : new Error("Unknown error");
-    }
-  }
-
-  throw lastError ?? new Error("All Invidious instances failed");
+  options?: InvidiousOptions
+): Promise<InvidiousPlaylistResponse> {
+  return fetchInvidious<InvidiousPlaylistResponse>(
+    `/api/v1/playlists/${playlistId}`,
+    options
+  );
 }
 
+/**
+ * Search Invidious for videos
+ */
+export async function searchInvidious(
+  query: string,
+  options?: InvidiousOptions
+): Promise<InvidiousSearchResult[]> {
+  const encoded = encodeURIComponent(query);
+  const results = await fetchInvidious<InvidiousSearchResult[]>(
+    `/api/v1/search?q=${encoded}&type=video`,
+    options
+  );
+  // Filter to only video results (search can return channels/playlists)
+  return results.filter((r) => r.type === "video");
+}
+
+// ============================================
+// Audio Stream Selection
+// ============================================
+
+/**
+ * Select best audio stream from Invidious adaptiveFormats.
+ * Prefers Opus codec for better quality at same bitrate.
+ */
 export function selectBestAudioStream(
-  formats: AudioFormat[]
-): AudioFormat | null {
-  const audioFormats = formats.filter((f) => f.type.startsWith("audio"));
+  formats: InvidiousAdaptiveFormat[]
+): InvidiousAdaptiveFormat | null {
+  // Filter to audio-only formats
+  const audioFormats = formats.filter((f) => f.type.startsWith("audio/"));
 
   if (audioFormats.length === 0) {
     return null;
   }
 
-  // Prefer Opus itag 251 (high quality), then AAC itag 140
-  const opus251 = audioFormats.find((f) => f.itag === "251");
-  if (opus251) {
-    return opus251;
-  }
-
-  const aac140 = audioFormats.find((f) => f.itag === "140");
-  if (aac140) {
-    return aac140;
-  }
-
-  // Fallback: sort by bitrate descending
-  audioFormats.sort(
-    (a, b) => Number.parseInt(b.bitrate, 10) - Number.parseInt(a.bitrate, 10)
+  // Prefer Opus (better quality at same bitrate)
+  const opus = audioFormats.filter(
+    (f) => f.encoding === "opus" || f.container === "webm"
   );
+  if (opus.length > 0) {
+    return opus.reduce((best, f) =>
+      Number(f.bitrate) > Number(best.bitrate) ? f : best
+    );
+  }
+
+  // Fallback to AAC
+  const aac = audioFormats.filter(
+    (f) => f.encoding === "aac" || f.container === "m4a"
+  );
+  if (aac.length > 0) {
+    return aac.reduce((best, f) =>
+      Number(f.bitrate) > Number(best.bitrate) ? f : best
+    );
+  }
+
+  // Any audio
   return audioFormats[0] ?? null;
 }
 
+/**
+ * Get the best thumbnail URL from video thumbnails.
+ * Prefers medium/high quality as maxresdefault doesn't exist for all videos.
+ */
 export function getBestThumbnail(
-  thumbnails: { url: string; quality: string }[]
-): string | undefined {
-  const preferred = ["maxres", "sddefault", "high", "medium", "default"];
-  for (const quality of preferred) {
-    const thumb = thumbnails.find((t) => t.quality === quality);
-    if (thumb) {
-      return thumb.url;
+  thumbnails: InvidiousVideoThumbnail[],
+  instanceUrl?: string
+): string {
+  // Quality preference order: sddefault > high > medium > maxresdefault > any
+  // maxresdefault often returns 404 for older/shorter videos
+  const qualityOrder = ["sddefault", "high", "medium", "maxresdefault"];
+
+  let thumbnail: InvidiousVideoThumbnail | undefined;
+  for (const quality of qualityOrder) {
+    thumbnail = thumbnails.find((t) => t.quality === quality);
+    if (thumbnail) {
+      break;
     }
   }
-  return thumbnails[0]?.url;
+
+  // Fallback to first available
+  thumbnail = thumbnail ?? thumbnails[0];
+
+  if (!thumbnail) {
+    return "";
+  }
+
+  // Thumbnail URLs are relative, prepend instance URL
+  if (thumbnail.url.startsWith("/")) {
+    const base = instanceUrl ?? DEFAULT_INSTANCE;
+    return `${base}${thumbnail.url}`;
+  }
+
+  return thumbnail.url;
 }

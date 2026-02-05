@@ -1,3 +1,4 @@
+import { env } from "cloudflare:workers";
 import { resolveStreamUrl, searchYouTubeMusic } from "@avoid.quest/youtube";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
@@ -14,7 +15,16 @@ export const youtubeSearch = createServerFn({ method: "POST" })
   .inputValidator(SearchSchema)
   .handler(async ({ data }): Promise<YouTubeSearchResponse> => {
     try {
-      const results = await searchYouTubeMusic(data.query, data.filter);
+      // Pass Invidious config from Cloudflare env
+      const invidiousOptions = {
+        instanceUrl: env.INVIDIOUS_INSTANCE_URL || undefined,
+        auth: env.INVIDIOUS_AUTH || undefined,
+      };
+      const results = await searchYouTubeMusic(
+        data.query,
+        data.filter,
+        invidiousOptions
+      );
       return { success: true, results };
     } catch (error) {
       const errorMessage =
@@ -27,10 +37,22 @@ const ResolveStreamSchema = z.object({
   videoId: z.string().min(1).max(20),
 });
 
+type ResolveStreamResult = {
+  streamUrl: string;
+} | null;
+
 export const youtubeResolveStream = createServerFn({ method: "POST" })
   .middleware([rateLimitMiddleware("youtube-resolve-stream")])
   .inputValidator(ResolveStreamSchema)
-  .handler(async ({ data }): Promise<{ streamUrl: string | null }> => {
-    const streamUrl = await resolveStreamUrl(data.videoId);
-    return { streamUrl };
+  .handler(async ({ data }): Promise<{ stream: ResolveStreamResult }> => {
+    // Pass Invidious config from Cloudflare env
+    const invidiousOptions = {
+      instanceUrl: env.INVIDIOUS_INSTANCE_URL || undefined,
+      auth: env.INVIDIOUS_AUTH || undefined,
+    };
+    const streamUrl = await resolveStreamUrl(data.videoId, invidiousOptions);
+    if (!streamUrl) {
+      return { stream: null };
+    }
+    return { stream: { streamUrl } };
   });

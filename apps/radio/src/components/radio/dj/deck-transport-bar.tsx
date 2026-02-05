@@ -1,5 +1,11 @@
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { Music2Icon, PauseIcon, PlayIcon, Repeat1Icon } from "lucide-react";
+import {
+  ListMusicIcon,
+  Music2Icon,
+  PauseIcon,
+  PlayIcon,
+  Repeat1Icon,
+} from "lucide-react";
 
 type DeckTransportBarProps = {
   artworkUrl?: string;
@@ -9,8 +15,11 @@ type DeckTransportBarProps = {
   isBuffering: boolean;
   trackProgress?: { position: number; duration: number };
   repeat?: boolean;
+  autoplay?: boolean;
+  hasTracklist?: boolean;
   onPlayPause: () => void;
   onRepeatToggle?: () => void;
+  onAutoplayToggle?: () => void;
   onSeek?: (position: number) => void;
   className?: string;
 };
@@ -203,8 +212,11 @@ export function DeckTransportBar({
   isBuffering,
   trackProgress,
   repeat,
+  autoplay,
+  hasTracklist,
   onPlayPause,
   onRepeatToggle,
+  onAutoplayToggle,
   onSeek,
   className,
 }: DeckTransportBarProps) {
@@ -239,6 +251,24 @@ export function DeckTransportBar({
             type="button"
           >
             <Repeat1Icon className="size-3.5" />
+          </button>
+        )}
+
+        {hasTracklist && onAutoplayToggle && (
+          <button
+            aria-label={autoplay ? "Disable autoplay" : "Enable autoplay"}
+            className={cn(
+              "flex size-7 items-center justify-center rounded-full transition-all duration-200",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
+              autoplay
+                ? "bg-primary/15 text-primary"
+                : "text-muted-foreground/50 hover:text-muted-foreground"
+            )}
+            onClick={onAutoplayToggle}
+            title={autoplay ? "Autoplay enabled" : "Autoplay disabled"}
+            type="button"
+          >
+            <ListMusicIcon className="size-3.5" />
           </button>
         )}
       </div>

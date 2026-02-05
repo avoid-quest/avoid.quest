@@ -18,6 +18,8 @@ export type Html5AudioSourceCallbacks = {
   onReady?: () => void;
   onError?: (error: Error) => void;
   onEnded?: () => void;
+  /** Called when a network error occurs during streaming (e.g., YouTube 403 throttle) */
+  onStreamError?: (position: number) => void;
 };
 
 /**
@@ -318,6 +320,64 @@ export class Html5AudioSource {
   }
 
   /**
+   * Refresh the stream with a new URL, optionally seeking to a position
+   * Used for YouTube URL refresh when throttled
+   */
+  async refreshUrl(newUrl: string, seekPosition?: number): Promise<void> {
+    console.log(
+      `[Html5AudioSource] Refreshing URL, will seek to ${seekPosition ?? 0}s`
+    );
+
+    // Store current state
+    const wasPlaying = this._status === "streaming";
+
+    // Disconnect and cleanup old nodes
+    this.audio.pause();
+    safeDisconnect(this.source, "Html5AudioSource.refreshUrl");
+    safeDisconnect(this.analyser, "Html5AudioSource.refreshUrl");
+
+    // Create new audio element with new URL
+    this.audio = new Audio();
+    this.setupAudioElement();
+    this.audio.crossOrigin = "anonymous";
+    this.audio.src = newUrl;
+    this.currentUrl = newUrl;
+
+    // Recreate Web Audio nodes
+    this.source = this.context.createMediaElementSource(this.audio);
+    this.analyser = this.context.createAnalyser();
+    this.analyser.fftSize = 256;
+    this.source.connect(this.analyser);
+
+    this._status = "connecting";
+    this._isLoadingPhase = true;
+
+    try {
+      await this.waitForCanPlay();
+
+      // Seek to position if specified
+      if (seekPosition !== undefined && seekPosition > 0) {
+        this.audio.currentTime = seekPosition;
+      }
+
+      // Resume playback if we were playing
+      if (wasPlaying) {
+        await this.audio.play();
+        this._status = "streaming";
+      }
+
+      console.log("[Html5AudioSource] URL refresh successful");
+    } catch (error) {
+      this._status = "error";
+      this.callbacks.onError?.(
+        error instanceof Error ? error : new Error("Failed to refresh URL")
+      );
+    } finally {
+      this._isLoadingPhase = false;
+    }
+  }
+
+  /**
    * Cleanup resources
    */
   cleanup(): void {
@@ -394,9 +454,24 @@ export class Html5AudioSource {
       return;
     }
 
-    // After load complete, handle errors normally
+    // After load complete: network errors during streaming (e.g., YouTube 403 throttle)
     const error = this.audio.error;
     const errorMessage = error?.message || "Unknown audio error";
+
+    // Check if this was a streaming error (we were playing and hit a network issue)
+    // MEDIA_ERR_NETWORK (2) indicates network error during fetch
+    if (
+      this._status === "streaming" &&
+      error?.code === MediaError.MEDIA_ERR_NETWORK
+    ) {
+      console.warn(
+        `[Html5AudioSource] Network error during streaming at ${this.audio.currentTime}s`
+      );
+      // Notify about stream error with current position for potential refresh
+      const position = this.audio.currentTime;
+      this.callbacks.onStreamError?.(position);
+    }
+
     this._status = "error";
     this.callbacks.onError?.(new Error(errorMessage));
   };

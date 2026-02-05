@@ -561,15 +561,16 @@ function ChannelSlider({
       <span className="w-8 shrink-0 font-medium text-[10px] text-muted-foreground uppercase tracking-wide">
         {label}
       </span>
-      <Slider
-        className="min-w-0 flex-1"
-        defaultValue={defaultValue !== undefined ? [defaultValue] : undefined}
-        max={max}
-        min={min}
-        onValueChange={([v]) => onChange(v)}
-        step={step}
-        value={[value]}
-      />
+      <div className="min-w-0 flex-1" style={{ touchAction: "none" }}>
+        <Slider
+          defaultValue={defaultValue !== undefined ? [defaultValue] : undefined}
+          max={max}
+          min={min}
+          onValueChange={([v]) => onChange(v)}
+          step={step}
+          value={[value]}
+        />
+      </div>
       <span className="w-12 shrink-0 text-right font-mono text-[10px] text-muted-foreground">
         {formatValue(value)}
       </span>

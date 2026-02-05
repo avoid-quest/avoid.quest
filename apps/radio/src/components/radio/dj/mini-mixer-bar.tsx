@@ -65,14 +65,16 @@ export function MiniMixerBar({
         )}
 
         {/* Crossfader */}
-        <Slider
-          className="h-2 min-w-0 flex-1"
-          max={100}
-          min={0}
-          onValueChange={([v]) => onCrossfadeChange(v / 100)}
-          step={1}
-          value={[crossfadePosition * 100]}
-        />
+        <div className="min-w-0 flex-1" style={{ touchAction: "none" }}>
+          <Slider
+            className="h-2"
+            max={100}
+            min={0}
+            onValueChange={([v]) => onCrossfadeChange(v / 100)}
+            step={1}
+            value={[crossfadePosition * 100]}
+          />
+        </div>
 
         {isCueActive && (
           <Button
@@ -88,14 +90,16 @@ export function MiniMixerBar({
         {/* Master volume mini-slider */}
         <div className="flex w-20 shrink-0 items-center gap-1">
           <Volume2Icon className="size-3 shrink-0 text-muted-foreground" />
-          <Slider
-            className="h-2 flex-1"
-            max={100}
-            min={0}
-            onValueChange={([v]) => onMasterVolumeChange(v / 100)}
-            step={1}
-            value={[masterVolume * 100]}
-          />
+          <div className="flex-1" style={{ touchAction: "none" }}>
+            <Slider
+              className="h-2"
+              max={100}
+              min={0}
+              onValueChange={([v]) => onMasterVolumeChange(v / 100)}
+              step={1}
+              value={[masterVolume * 100]}
+            />
+          </div>
         </div>
 
         <SettingsButton defaultTab="audio" />

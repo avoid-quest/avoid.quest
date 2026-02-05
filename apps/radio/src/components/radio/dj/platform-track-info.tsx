@@ -1,3 +1,5 @@
+import { formatPlatformDuration } from "@/lib/external-url/utils";
+
 type PlatformTrackInfoProps = {
   artist?: string;
   albumName?: string;
@@ -9,12 +11,6 @@ export function PlatformTrackInfo({
   albumName,
   duration,
 }: PlatformTrackInfoProps) {
-  const formatDuration = (seconds: number): string => {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${String(secs).padStart(2, "0")}`;
-  };
-
   const hasContent = artist || albumName || duration !== undefined;
   if (!hasContent) {
     return null;
@@ -33,7 +29,7 @@ export function PlatformTrackInfo({
       )}
       {duration !== undefined && (
         <div className="text-muted-foreground text-xs">
-          Duration: {formatDuration(duration)}
+          Duration: {formatPlatformDuration(duration)}
         </div>
       )}
     </div>

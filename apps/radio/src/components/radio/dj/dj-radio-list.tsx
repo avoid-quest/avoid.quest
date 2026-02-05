@@ -33,14 +33,50 @@ const BANDCAMP_PLATFORM_ID = -1;
 const SOUNDCLOUD_PLATFORM_ID = -2;
 const AUDIO_INPUT_PLATFORM_ID = -3;
 export const LOCAL_FILE_PLATFORM_ID = -4;
+const YOUTUBE_PLATFORM_ID = -5;
 
 const BANDCAMP_COLOR = "#629aa0";
 const SOUNDCLOUD_COLOR = "#ff7700";
 const AUDIO_INPUT_COLOR = "#10b981";
 const LOCAL_FILE_COLOR = "#8b5cf6";
+const YOUTUBE_COLOR = "#ff0000";
 
 // Platform-specific placeholder items
 export const PLATFORM_ITEMS: Radio[] = [
+  {
+    id: LOCAL_FILE_PLATFORM_ID,
+    name: "Local File",
+    streamUrl: "",
+    description: "Load an audio file from your device",
+    enabled: true,
+    platformMetadata: {
+      platform: "local-file",
+      itemType: "track",
+      url: "",
+      fileName: "",
+      displayName: "",
+      duration: 0,
+      fileSize: 0,
+      mimeType: "",
+      objectUrl: "",
+    },
+  },
+  {
+    id: AUDIO_INPUT_PLATFORM_ID,
+    name: "Audio Input",
+    streamUrl: "",
+    description: "Route mic/line-in from your audio interface",
+    enabled: true,
+    platformMetadata: {
+      platform: "device-input",
+      itemType: "track",
+      url: "",
+      deviceId: "",
+      deviceLabel: "",
+      channelSelection: { left: 0, right: 1 },
+      channelCount: 2,
+    },
+  },
   {
     id: BANDCAMP_PLATFORM_ID,
     name: "Bandcamp",
@@ -66,37 +102,15 @@ export const PLATFORM_ITEMS: Radio[] = [
     },
   },
   {
-    id: AUDIO_INPUT_PLATFORM_ID,
-    name: "Audio Input",
+    id: YOUTUBE_PLATFORM_ID,
+    name: "YouTube",
     streamUrl: "",
-    description: "Route mic/line-in from your audio interface",
+    description: "Paste a YouTube URL or search YouTube Music",
     enabled: true,
     platformMetadata: {
-      platform: "device-input",
-      itemType: "track",
+      platform: "youtube",
+      itemType: "video",
       url: "",
-      deviceId: "",
-      deviceLabel: "",
-      channelSelection: { left: 0, right: 1 },
-      channelCount: 2,
-    },
-  },
-  {
-    id: LOCAL_FILE_PLATFORM_ID,
-    name: "Local File",
-    streamUrl: "",
-    description: "Load an audio file from your device",
-    enabled: true,
-    platformMetadata: {
-      platform: "local-file",
-      itemType: "track",
-      url: "",
-      fileName: "",
-      displayName: "",
-      duration: 0,
-      fileSize: 0,
-      mimeType: "",
-      objectUrl: "",
     },
   },
 ];
@@ -105,6 +119,7 @@ export function isPlatformItem(radio: Radio): boolean {
   return (
     radio.id === BANDCAMP_PLATFORM_ID ||
     radio.id === SOUNDCLOUD_PLATFORM_ID ||
+    radio.id === YOUTUBE_PLATFORM_ID ||
     radio.id === AUDIO_INPUT_PLATFORM_ID ||
     radio.id === LOCAL_FILE_PLATFORM_ID
   );
@@ -125,6 +140,9 @@ export function getPlatformFromItem(radio: Radio): Platform | null {
   if (radio.id === SOUNDCLOUD_PLATFORM_ID) {
     return "soundcloud";
   }
+  if (radio.id === YOUTUBE_PLATFORM_ID) {
+    return "youtube";
+  }
   if (radio.id === AUDIO_INPUT_PLATFORM_ID) {
     return "device-input";
   }
@@ -142,6 +160,8 @@ function getPlatformColor(platform: Platform | null): string {
       return SOUNDCLOUD_COLOR;
     case "device-input":
       return AUDIO_INPUT_COLOR;
+    case "youtube":
+      return YOUTUBE_COLOR;
     case "local-file":
       return LOCAL_FILE_COLOR;
     default:

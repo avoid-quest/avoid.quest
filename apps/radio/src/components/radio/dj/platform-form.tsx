@@ -12,6 +12,7 @@ import {
 } from "@/lib/external-url/metadata-helpers";
 import { usePlatformLoad } from "@/lib/hooks/use-platform-query";
 import type { Platform } from "@/lib/platform-types";
+import { YouTubeSearch } from "./youtube-search";
 
 type PlatformFormProps = {
   onLoad: (radio: Radio) => void;
@@ -85,9 +86,10 @@ export function PlatformForm({
             onValueChange={(value) => setSelectedPlatform(value as Platform)}
             value={selectedPlatform}
           >
-            <TabsList className="grid w-full grid-cols-2">
+            <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="bandcamp">Bandcamp</TabsTrigger>
               <TabsTrigger value="soundcloud">SoundCloud</TabsTrigger>
+              <TabsTrigger value="youtube">YouTube</TabsTrigger>
             </TabsList>
           </Tabs>
         )}
@@ -105,7 +107,7 @@ export function PlatformForm({
               onPaste={(e) => {
                 const pastedText = e.clipboardData.getData("text");
                 if (
-                  pastedText?.valueOf()?.trim() !== "" &&
+                  pastedText?.trim() !== "" &&
                   detectPlatformFromUrl(pastedText)
                 ) {
                   e.preventDefault();
@@ -125,10 +127,14 @@ export function PlatformForm({
             <p className="text-muted-foreground text-xs">
               {getUrlExample(selectedPlatform)}
             </p>
-            {detectedPlatform?.valueOf() && (
+            {detectedPlatform && (
               <p className="text-primary text-xs">
                 Detected:{" "}
-                {detectedPlatform === "bandcamp" ? "Bandcamp" : "SoundCloud"}
+                {{
+                  bandcamp: "Bandcamp",
+                  soundcloud: "SoundCloud",
+                  youtube: "YouTube",
+                }[detectedPlatform] ?? detectedPlatform}
               </p>
             )}
           </div>
@@ -140,7 +146,7 @@ export function PlatformForm({
           )}
 
           <div className="flex gap-2">
-            {onCancel?.valueOf() && (
+            {onCancel && (
               <Button
                 className="flex-1"
                 onClick={onCancel}
@@ -155,13 +161,17 @@ export function PlatformForm({
               disabled={isLoading || !url.trim()}
               type="submit"
             >
-              {isLoading.valueOf() && (
+              {isLoading && (
                 <Loader2Icon className="mr-2 size-4 animate-spin" />
               )}
               {editMode ? "Update" : "Load"}
             </Button>
           </div>
         </form>
+
+        {selectedPlatform === "youtube" && !editMode && (
+          <YouTubeSearch onLoad={onLoad} />
+        )}
       </div>
     </div>
   );

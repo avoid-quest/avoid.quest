@@ -20,12 +20,14 @@ import {
 import { EffectChain } from "@/components/audio/effect-chain";
 import { MidiControlWrapper } from "@/components/audio/midi-control-wrapper";
 import type { EffectConfig, EffectType, Radio } from "@/lib/audio";
+import { formatPlatformDuration } from "@/lib/external-url/utils";
 import {
   type BandcampMetadata,
   isFileMetadata,
   type PlatformMetadata,
   type PlatformTrack,
   type SoundCloudMetadata,
+  type YouTubeMetadata,
 } from "@/lib/platform-types";
 import { DeckTransportBar } from "./deck-transport-bar";
 import { DeckPeakMeter } from "./peak-meter";
@@ -76,7 +78,7 @@ type DeckLayoutProps = {
 
 function isStreamingMetadata(
   metadata?: PlatformMetadata
-): metadata is BandcampMetadata | SoundCloudMetadata {
+): metadata is BandcampMetadata | SoundCloudMetadata | YouTubeMetadata {
   return (
     metadata !== undefined &&
     metadata.platform !== "device-input" &&
@@ -91,7 +93,8 @@ function calculateHasTracklist(metadata?: PlatformMetadata): boolean {
   return Boolean(
     ((metadata.platform === "bandcamp" && metadata.itemType === "album") ||
       (metadata.platform === "soundcloud" &&
-        metadata.itemType === "playlist")) &&
+        metadata.itemType === "playlist") ||
+      (metadata.platform === "youtube" && metadata.itemType === "playlist")) &&
       metadata.tracks &&
       metadata.tracks.length > 0
   );
@@ -111,12 +114,15 @@ function getDisplayInfo(
   if (!isStreamingMetadata(metadata)) {
     return { artworkUrl: radio.logoUrl, title: radio.name, artist: "Radio" };
   }
+  const fallbackArtist: Record<string, string> = {
+    soundcloud: "SoundCloud",
+    youtube: "YouTube",
+    bandcamp: "Bandcamp",
+  };
   return {
     artworkUrl: metadata.artwork || radio.logoUrl,
     title: metadata.name || radio.name,
-    artist:
-      metadata.artist ||
-      (metadata.platform === "soundcloud" ? "SoundCloud" : "Radio"),
+    artist: metadata.artist || fallbackArtist[metadata.platform] || "Radio",
   };
 }
 
@@ -162,12 +168,24 @@ export function DeckLayout({
   const tracks = streamingMeta?.tracks;
   const isMobile = useIsMobile();
 
+  // Resolve the effective stream URL for a track (YouTube tracks may need lazy resolution)
+  const getTrackPlayUrl = (track: PlatformTrack): string => {
+    if (track.streamUrl) {
+      return track.streamUrl;
+    }
+    // YouTube tracks have videoId for lazy resolution
+    if ("videoId" in track && track.videoId) {
+      return `yt:${track.videoId}`;
+    }
+    return "";
+  };
+
   // Tracklist navigation handlers
   const handleNextTrack = () => {
     if (hasTracklist && tracks && currentTrackIndex < tracks.length - 1) {
       const nextTrack = tracks[currentTrackIndex + 1];
       if (nextTrack) {
-        onPlayTrack?.(nextTrack.streamUrl);
+        onPlayTrack?.(getTrackPlayUrl(nextTrack));
       }
     }
   };
@@ -176,7 +194,7 @@ export function DeckLayout({
     if (hasTracklist && tracks && currentTrackIndex > 0) {
       const prevTrack = tracks[currentTrackIndex - 1];
       if (prevTrack) {
-        onPlayTrack?.(prevTrack.streamUrl);
+        onPlayTrack?.(getTrackPlayUrl(prevTrack));
       }
     }
   };
@@ -571,15 +589,6 @@ type TracklistContentProps = {
   onPlayTrack: (streamUrl: string) => void;
 };
 
-function formatDuration(seconds?: number): string {
-  if (!seconds) {
-    return "";
-  }
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
-  return `${mins}:${String(secs).padStart(2, "0")}`;
-}
-
 function TracklistContent({
   tracks,
   currentTrackIndex,
@@ -630,8 +639,17 @@ function TracklistContent({
                 "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-muted/50",
                 index === currentTrackIndex && "bg-primary/10"
               )}
-              key={track.streamUrl || index}
-              onClick={() => onPlayTrack(track.streamUrl)}
+              key={
+                track.streamUrl || ("videoId" in track ? track.videoId : index)
+              }
+              onClick={() =>
+                onPlayTrack(
+                  track.streamUrl ||
+                    ("videoId" in track && track.videoId
+                      ? `yt:${track.videoId}`
+                      : "")
+                )
+              }
               type="button"
             >
               <div className="flex size-5 shrink-0 items-center justify-center">
@@ -648,7 +666,7 @@ function TracklistContent({
               </div>
               {track.duration && (
                 <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
-                  {formatDuration(track.duration)}
+                  {formatPlatformDuration(track.duration)}
                 </span>
               )}
             </button>

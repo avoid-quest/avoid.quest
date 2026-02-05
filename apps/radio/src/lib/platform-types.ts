@@ -10,6 +10,12 @@ import type {
   SoundCloudMetadata,
   SoundCloudTrackInfo,
 } from "@avoid.quest/soundcloud";
+import type {
+  YouTubeItemError,
+  YouTubeItemResult,
+  YouTubeMetadata,
+  YouTubeTrackInfo,
+} from "@avoid.quest/youtube";
 
 // Re-export individual platform types for external use
 export type {
@@ -29,6 +35,17 @@ export type {
   SoundCloudMetadata,
   SoundCloudTrackInfo,
 } from "@avoid.quest/soundcloud";
+
+export type {
+  YouTubeItemError,
+  YouTubeItemResponse,
+  YouTubeItemResult,
+  YouTubeItemType,
+  YouTubeMetadata,
+  YouTubeSearchResponse,
+  YouTubeSearchResult,
+  YouTubeTrackInfo,
+} from "@avoid.quest/youtube";
 
 import type { ChannelSelection } from "@/lib/audio";
 
@@ -69,6 +86,12 @@ export function isFileMetadata(
   return metadata?.platform === "local-file";
 }
 
+export function isYouTubeMetadata(
+  metadata: PlatformMetadata | undefined | null
+): metadata is YouTubeMetadata {
+  return metadata?.platform === "youtube";
+}
+
 // Re-export for convenience
 export type { FileAudioMetadata } from "@/lib/audio/file-metadata";
 
@@ -76,16 +99,27 @@ export type { FileAudioMetadata } from "@/lib/audio/file-metadata";
 export type Platform =
   | "bandcamp"
   | "soundcloud"
+  | "youtube"
   | "device-input"
   | "local-file";
 export type PlatformMetadata =
   | BandcampMetadata
   | SoundCloudMetadata
+  | YouTubeMetadata
   | DeviceInputMetadata
   | FileMetadata;
-export type PlatformTrack = BandcampTrackInfo | SoundCloudTrackInfo;
-export type PlatformItemResult = BandcampItemResult | SoundCloudItemResult;
-export type PlatformItemError = BandcampItemError | SoundCloudItemError;
+export type PlatformTrack =
+  | BandcampTrackInfo
+  | SoundCloudTrackInfo
+  | YouTubeTrackInfo;
+export type PlatformItemResult =
+  | BandcampItemResult
+  | SoundCloudItemResult
+  | YouTubeItemResult;
+export type PlatformItemError =
+  | BandcampItemError
+  | SoundCloudItemError
+  | YouTubeItemError;
 export type PlatformItemResponse = PlatformItemResult | PlatformItemError;
 
 export type ScrapedOption = {

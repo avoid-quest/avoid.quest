@@ -16,6 +16,7 @@
   "dependencies": {
     "@avoid.quest/bandcamp": "workspace:*",
     "@avoid.quest/soundcloud": "workspace:*",
+    "@avoid.quest/youtube": "workspace:*",
     "@avoid.quest/typescript-config": "workspace:*",
     "@avoid.quest/ui": "workspace:*",
     "@cloudflare/vite-plugin": "^1.23.0",

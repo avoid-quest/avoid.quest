@@ -57,12 +57,14 @@ import { useTrackProgress } from "@/lib/hooks/use-track-progress";
 import {
   isDeviceInputMetadata,
   isFileMetadata,
+  isYouTubeMetadata,
   type Platform,
 } from "@/lib/platform-types";
 import {
   setDeckAPeakLevel,
   setDeckBPeakLevel,
 } from "@/lib/stores/dj-runtime-store";
+import { youtubeResolveStream } from "@/utils/youtube.functions";
 import { DeckLayout } from "./deck-layout";
 import { DeviceForm } from "./device-form";
 import { DjRadioList } from "./dj-radio-list";
@@ -267,12 +269,31 @@ function DjDeckContent({
   };
 
   const handleLoadTrack = async (streamUrl: string) => {
-    if (radio) {
-      await loadTrack(
-        deckSide,
-        { ...radio, streamUrl },
-        true // auto-play
-      );
+    if (!radio) {
+      return;
+    }
+
+    let resolvedUrl = streamUrl;
+
+    // YouTube playlist tracks may need on-demand stream URL resolution
+    if (streamUrl.startsWith("yt:") && isYouTubeMetadata(metadata)) {
+      const videoId = streamUrl.slice(3);
+      const result = await youtubeResolveStream({ data: { videoId } });
+      resolvedUrl = result.streamUrl ?? "";
+
+      // Update the track's streamUrl in metadata so we don't resolve again
+      if (resolvedUrl && metadata.tracks) {
+        const track = metadata.tracks.find(
+          (t) => "videoId" in t && t.videoId === videoId
+        );
+        if (track) {
+          track.streamUrl = resolvedUrl;
+        }
+      }
+    }
+
+    if (resolvedUrl) {
+      await loadTrack(deckSide, { ...radio, streamUrl: resolvedUrl }, true);
     }
   };
 

@@ -1,28 +1,52 @@
 import type { Radio } from "@/lib/audio";
 import type { PlatformMetadata } from "@/lib/platform-types";
 
+function getBandcampDescription(
+  metadata: PlatformMetadata
+): string | undefined {
+  if (metadata.platform !== "bandcamp") {
+    return;
+  }
+  if (metadata.itemType === "album") {
+    return metadata.artist || "Bandcamp Album";
+  }
+  if (metadata.itemType === "track") {
+    return metadata.albumName || "Bandcamp Track";
+  }
+}
+
+function getSoundCloudDescription(
+  metadata: PlatformMetadata
+): string | undefined {
+  if (metadata.platform !== "soundcloud") {
+    return;
+  }
+  if (metadata.itemType === "track") {
+    return metadata.artist || "SoundCloud Track";
+  }
+  if (metadata.itemType === "playlist") {
+    return metadata.artist || "SoundCloud Playlist";
+  }
+}
+
+function getYouTubeDescription(metadata: PlatformMetadata): string | undefined {
+  if (metadata.platform !== "youtube") {
+    return;
+  }
+  if (metadata.itemType === "video") {
+    return metadata.artist || "YouTube Video";
+  }
+  if (metadata.itemType === "playlist") {
+    return metadata.artist || "YouTube Playlist";
+  }
+}
+
 function getDescription(metadata: PlatformMetadata): string | undefined {
-  if (metadata.platform === "bandcamp") {
-    if (metadata.itemType === "album") {
-      return metadata.artist || "Bandcamp Album";
-    }
-    if (metadata.itemType === "track") {
-      return metadata.albumName || "Bandcamp Track";
-    }
-    return;
-  }
-  if (metadata.platform === "soundcloud") {
-    if (metadata.itemType === "track" || metadata.itemType === "playlist") {
-      return (
-        metadata.artist ||
-        (metadata.itemType === "track"
-          ? "SoundCloud Track"
-          : "SoundCloud Playlist")
-      );
-    }
-    return;
-  }
-  return;
+  return (
+    getBandcampDescription(metadata) ??
+    getSoundCloudDescription(metadata) ??
+    getYouTubeDescription(metadata)
+  );
 }
 
 function getLogoUrl(metadata: PlatformMetadata): string | undefined {
@@ -40,6 +64,9 @@ function getLogoUrl(metadata: PlatformMetadata): string | undefined {
   }
   if (metadata.platform === "soundcloud") {
     return "https://a-v2.sndcdn.com/assets/images/sc-icons/white-108x108.png";
+  }
+  if (metadata.platform === "youtube") {
+    return "https://www.youtube.com/s/desktop/bc4637ea/img/favicon_144x144.png";
   }
   return;
 }
@@ -100,6 +127,14 @@ export function getPlatformItemTypeLabel(metadata: PlatformMetadata): string {
     return labels[metadata.itemType];
   }
 
+  if (metadata.platform === "youtube") {
+    const labels: Record<typeof metadata.itemType, string> = {
+      video: "Video",
+      playlist: "Playlist",
+    };
+    return labels[metadata.itemType];
+  }
+
   return "Unknown";
 }
 
@@ -146,12 +181,15 @@ export function validateRadioForMode(
     return;
   }
 
-  // Platform radios (SoundCloud/Bandcamp) only work in DJ mode
+  // Platform radios (SoundCloud/Bandcamp/YouTube) only work in DJ mode
   if (isPlatformRadio(radio) && mode !== "dj") {
+    const platformNames: Record<string, string> = {
+      bandcamp: "Bandcamp",
+      soundcloud: "SoundCloud",
+      youtube: "YouTube",
+    };
     const platform =
-      radio.platformMetadata?.platform === "bandcamp"
-        ? "Bandcamp"
-        : "SoundCloud";
+      platformNames[radio.platformMetadata?.platform ?? ""] ?? "External";
     throw new PlatformModeError(platform, mode);
   }
 }

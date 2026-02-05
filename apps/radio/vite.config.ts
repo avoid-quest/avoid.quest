@@ -90,6 +90,14 @@ export default defineConfig({
       },
     }),
   ],
+  ssr: {
+    optimizeDeps: {
+      // youtubei.js uses `class extends EventTarget` which breaks when
+      // esbuild pre-bundles it for SSR — skip pre-bundling so workerd
+      // resolves the globals at runtime
+      exclude: ["youtubei.js"],
+    },
+  },
   build: {
     // Let Cloudflare plugin handle chunking for Workers
     // The router bundle will be large (~1MB) for SSR as TanStack Start

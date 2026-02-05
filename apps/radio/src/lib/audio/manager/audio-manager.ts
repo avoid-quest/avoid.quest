@@ -14,6 +14,7 @@
 
 import { getProxiedBandcampUrl } from "@avoid.quest/bandcamp";
 import { getProxiedSoundCloudUrl } from "@avoid.quest/soundcloud";
+import { getProxiedYouTubeUrl } from "@avoid.quest/youtube";
 import type { EffectConfig } from "../dsp/effects/types.js";
 import {
   type AudioState,
@@ -1467,6 +1468,10 @@ export class AudioManager {
     const bandcampUrl = getProxiedBandcampUrl(url);
     if (bandcampUrl !== url) {
       return bandcampUrl;
+    }
+    const youtubeUrl = getProxiedYouTubeUrl(url);
+    if (youtubeUrl !== url) {
+      return youtubeUrl;
     }
     return getProxiedSoundCloudUrl(url);
   }

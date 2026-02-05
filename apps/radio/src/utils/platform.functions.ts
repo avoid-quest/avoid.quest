@@ -1,5 +1,6 @@
 import { getBandcampItem } from "@avoid.quest/bandcamp";
 import { getSoundCloudItem } from "@avoid.quest/soundcloud";
+import { getYouTubeItem } from "@avoid.quest/youtube";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { detectPlatformFromUrl } from "@/lib/external-url/detect";
@@ -35,7 +36,8 @@ export const loadPlatformItem = createServerFn({ method: "POST" })
     if (!platform) {
       return {
         success: false,
-        error: "Unsupported URL. Please enter a Bandcamp or SoundCloud URL.",
+        error:
+          "Unsupported URL. Please enter a Bandcamp, SoundCloud, or YouTube URL.",
       };
     }
 
@@ -45,6 +47,10 @@ export const loadPlatformItem = createServerFn({ method: "POST" })
 
     if (platform === "soundcloud") {
       return await getSoundCloudItem(trimmedUrl);
+    }
+
+    if (platform === "youtube") {
+      return await getYouTubeItem(trimmedUrl);
     }
 
     return {

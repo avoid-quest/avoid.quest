@@ -12,9 +12,9 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as ManifestRouteImport } from './routes/manifest'
 import { Route as ImportRouteImport } from './routes/import'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ApiYoutubeProxyRouteImport } from './routes/api/youtube-proxy'
 import { Route as ApiStreamProxyRouteImport } from './routes/api/stream-proxy'
 import { Route as ApiSoundcloudProxyRouteImport } from './routes/api/soundcloud-proxy'
-import { Route as ApiLoadPlatformItemRouteImport } from './routes/api/load-platform-item'
 import { Route as ApiBandcampProxyRouteImport } from './routes/api/bandcamp-proxy'
 
 const ManifestRoute = ManifestRouteImport.update({
@@ -32,6 +32,11 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiYoutubeProxyRoute = ApiYoutubeProxyRouteImport.update({
+  id: '/api/youtube-proxy',
+  path: '/api/youtube-proxy',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiStreamProxyRoute = ApiStreamProxyRouteImport.update({
   id: '/api/stream-proxy',
   path: '/api/stream-proxy',
@@ -40,11 +45,6 @@ const ApiStreamProxyRoute = ApiStreamProxyRouteImport.update({
 const ApiSoundcloudProxyRoute = ApiSoundcloudProxyRouteImport.update({
   id: '/api/soundcloud-proxy',
   path: '/api/soundcloud-proxy',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiLoadPlatformItemRoute = ApiLoadPlatformItemRouteImport.update({
-  id: '/api/load-platform-item',
-  path: '/api/load-platform-item',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiBandcampProxyRoute = ApiBandcampProxyRouteImport.update({
@@ -58,18 +58,18 @@ export interface FileRoutesByFullPath {
   '/import': typeof ImportRoute
   '/manifest': typeof ManifestRoute
   '/api/bandcamp-proxy': typeof ApiBandcampProxyRoute
-  '/api/load-platform-item': typeof ApiLoadPlatformItemRoute
   '/api/soundcloud-proxy': typeof ApiSoundcloudProxyRoute
   '/api/stream-proxy': typeof ApiStreamProxyRoute
+  '/api/youtube-proxy': typeof ApiYoutubeProxyRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/import': typeof ImportRoute
   '/manifest': typeof ManifestRoute
   '/api/bandcamp-proxy': typeof ApiBandcampProxyRoute
-  '/api/load-platform-item': typeof ApiLoadPlatformItemRoute
   '/api/soundcloud-proxy': typeof ApiSoundcloudProxyRoute
   '/api/stream-proxy': typeof ApiStreamProxyRoute
+  '/api/youtube-proxy': typeof ApiYoutubeProxyRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -77,9 +77,9 @@ export interface FileRoutesById {
   '/import': typeof ImportRoute
   '/manifest': typeof ManifestRoute
   '/api/bandcamp-proxy': typeof ApiBandcampProxyRoute
-  '/api/load-platform-item': typeof ApiLoadPlatformItemRoute
   '/api/soundcloud-proxy': typeof ApiSoundcloudProxyRoute
   '/api/stream-proxy': typeof ApiStreamProxyRoute
+  '/api/youtube-proxy': typeof ApiYoutubeProxyRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -88,27 +88,27 @@ export interface FileRouteTypes {
     | '/import'
     | '/manifest'
     | '/api/bandcamp-proxy'
-    | '/api/load-platform-item'
     | '/api/soundcloud-proxy'
     | '/api/stream-proxy'
+    | '/api/youtube-proxy'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/import'
     | '/manifest'
     | '/api/bandcamp-proxy'
-    | '/api/load-platform-item'
     | '/api/soundcloud-proxy'
     | '/api/stream-proxy'
+    | '/api/youtube-proxy'
   id:
     | '__root__'
     | '/'
     | '/import'
     | '/manifest'
     | '/api/bandcamp-proxy'
-    | '/api/load-platform-item'
     | '/api/soundcloud-proxy'
     | '/api/stream-proxy'
+    | '/api/youtube-proxy'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -116,9 +116,9 @@ export interface RootRouteChildren {
   ImportRoute: typeof ImportRoute
   ManifestRoute: typeof ManifestRoute
   ApiBandcampProxyRoute: typeof ApiBandcampProxyRoute
-  ApiLoadPlatformItemRoute: typeof ApiLoadPlatformItemRoute
   ApiSoundcloudProxyRoute: typeof ApiSoundcloudProxyRoute
   ApiStreamProxyRoute: typeof ApiStreamProxyRoute
+  ApiYoutubeProxyRoute: typeof ApiYoutubeProxyRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -144,6 +144,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/youtube-proxy': {
+      id: '/api/youtube-proxy'
+      path: '/api/youtube-proxy'
+      fullPath: '/api/youtube-proxy'
+      preLoaderRoute: typeof ApiYoutubeProxyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/stream-proxy': {
       id: '/api/stream-proxy'
       path: '/api/stream-proxy'
@@ -156,13 +163,6 @@ declare module '@tanstack/react-router' {
       path: '/api/soundcloud-proxy'
       fullPath: '/api/soundcloud-proxy'
       preLoaderRoute: typeof ApiSoundcloudProxyRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/load-platform-item': {
-      id: '/api/load-platform-item'
-      path: '/api/load-platform-item'
-      fullPath: '/api/load-platform-item'
-      preLoaderRoute: typeof ApiLoadPlatformItemRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/bandcamp-proxy': {
@@ -180,9 +180,9 @@ const rootRouteChildren: RootRouteChildren = {
   ImportRoute: ImportRoute,
   ManifestRoute: ManifestRoute,
   ApiBandcampProxyRoute: ApiBandcampProxyRoute,
-  ApiLoadPlatformItemRoute: ApiLoadPlatformItemRoute,
   ApiSoundcloudProxyRoute: ApiSoundcloudProxyRoute,
   ApiStreamProxyRoute: ApiStreamProxyRoute,
+  ApiYoutubeProxyRoute: ApiYoutubeProxyRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

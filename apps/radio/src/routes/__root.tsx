@@ -6,9 +6,13 @@ import { Button } from "@avoid.quest/ui/components/button";
 import { Toaster } from "@avoid.quest/ui/components/sonner";
 import globalsCss from "@avoid.quest/ui/globals.css?url";
 import { cn } from "@avoid.quest/ui/lib/utils";
+// biome-ignore lint/performance/noNamespaceImport: namespace import required for Sentry
+import * as Sentry from "@sentry/tanstackstart-react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { ErrorComponentProps } from "@tanstack/react-router";
 import {
   createRootRoute,
+  ErrorComponent,
   HeadContent,
   Link,
   Scripts,
@@ -28,6 +32,7 @@ import {
 
 export const Route = createRootRoute({
   ssr: false,
+  errorComponent: RootErrorComponent,
   headers: () => ({
     // Required for SharedArrayBuffer support in AudioWorklet
     "Cross-Origin-Opener-Policy": "same-origin",
@@ -109,6 +114,34 @@ export const Route = createRootRoute({
   shellComponent: RootDocument,
   notFoundComponent: NotFoundComponent,
 });
+
+function RootErrorComponent({ error, reset }: ErrorComponentProps) {
+  useEffect(() => {
+    Sentry.captureException(error);
+  }, [error]);
+
+  return (
+    <div className="flex h-full w-full flex-col items-center justify-center p-8">
+      <div className="text-center">
+        <h1 className="mb-2 font-bold text-4xl">Something went wrong</h1>
+        <div className="mb-6">
+          <ErrorComponent error={error} />
+        </div>
+        <div className="flex justify-center gap-3">
+          <Button onClick={reset} size="lg">
+            Try Again
+          </Button>
+          <Link to="/">
+            <Button size="lg" variant="outline">
+              <HomeIcon className="mr-2 size-4" />
+              Go Home
+            </Button>
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function NotFoundComponent() {
   return (

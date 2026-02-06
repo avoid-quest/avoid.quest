@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { cloudflare } from "@cloudflare/vite-plugin";
+import { sentryTanstackStart } from "@sentry/tanstackstart-react";
 import tailwindcss from "@tailwindcss/vite";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import viteReact from "@vitejs/plugin-react";
@@ -88,6 +89,11 @@ export default defineConfig({
       babel: {
         plugins: ["babel-plugin-react-compiler"],
       },
+    }),
+    sentryTanstackStart({
+      org: "avoidquest",
+      project: "radio",
+      authToken: process.env.SENTRY_AUTH_TOKEN,
     }),
   ],
   build: {

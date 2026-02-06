@@ -9,6 +9,8 @@ import {
   type SoundCloudSearchResult,
   searchSoundCloud,
 } from "@avoid.quest/soundcloud/search";
+// biome-ignore lint/performance/noNamespaceImport: namespace import required for Sentry
+import * as Sentry from "@sentry/tanstackstart-react";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { rateLimitMiddleware } from "./middleware";
@@ -37,6 +39,7 @@ export const bandcampSearch = createServerFn({ method: "POST" })
       );
       return { success: true, results };
     } catch (error) {
+      Sentry.captureException(error);
       const errorMessage =
         error instanceof Error ? error.message : "Search failed";
       return { success: false, error: errorMessage };
@@ -86,6 +89,7 @@ export const soundcloudSearch = createServerFn({ method: "POST" })
       const results = await searchSoundCloud(data.query, clientId);
       return { success: true, results };
     } catch (error) {
+      Sentry.captureException(error);
       const errorMessage =
         error instanceof Error ? error.message : "Search failed";
       return { success: false, error: errorMessage };

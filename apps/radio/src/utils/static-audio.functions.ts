@@ -4,6 +4,8 @@
  * Server-side functions for handling remote audio URLs and playlists.
  */
 
+// biome-ignore lint/performance/noNamespaceImport: namespace import required for Sentry
+import * as Sentry from "@sentry/tanstackstart-react";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import {
@@ -205,6 +207,7 @@ export const probeRemoteAudio = createServerFn({ method: "POST" })
       if (error instanceof Error && error.name === "AbortError") {
         return { success: false, error: "Request timed out" };
       }
+      Sentry.captureException(error);
       return {
         success: false,
         error: error instanceof Error ? error.message : "Unknown error",
@@ -256,6 +259,7 @@ export const fetchPlaylist = createServerFn({ method: "POST" })
       if (error instanceof Error && error.name === "AbortError") {
         return { error: "Request timed out" };
       }
+      Sentry.captureException(error);
       return {
         error: error instanceof Error ? error.message : "Unknown error",
       };

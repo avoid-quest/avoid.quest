@@ -4,8 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite dev --port 3000",
-    "build": "vite build",
+    "dev": "NODE_OPTIONS='--import ./instrument.server.mjs' vite dev --port 3000",
+    "build": "vite build && cp instrument.server.mjs .dist/server",
+    "start": "node --import ./.dist/server/instrument.server.mjs .dist/server/index.mjs",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
     "cf-deploy": "wrangler deploy",
@@ -50,6 +51,7 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "catalog:",
+    "@sentry/tanstackstart-react": "^10.38.0",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/react": "^16.3.2",
     "@types/bun": "catalog:",

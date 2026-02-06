@@ -1,5 +1,7 @@
 import { env } from "cloudflare:workers";
 import { resolveStreamUrl, searchYouTubeMusic } from "@avoid.quest/youtube";
+// biome-ignore lint/performance/noNamespaceImport: namespace import required for Sentry
+import * as Sentry from "@sentry/tanstackstart-react";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import type { YouTubeSearchResponse } from "@/lib/platform-types";
@@ -27,6 +29,7 @@ export const youtubeSearch = createServerFn({ method: "POST" })
       );
       return { success: true, results };
     } catch (error) {
+      Sentry.captureException(error);
       const errorMessage =
         error instanceof Error ? error.message : "Search failed";
       return { success: false, error: errorMessage };
@@ -45,14 +48,19 @@ export const youtubeResolveStream = createServerFn({ method: "POST" })
   .middleware([rateLimitMiddleware("youtube-resolve-stream")])
   .inputValidator(ResolveStreamSchema)
   .handler(async ({ data }): Promise<{ stream: ResolveStreamResult }> => {
-    // Pass Invidious config from Cloudflare env
-    const invidiousOptions = {
-      instanceUrl: env.INVIDIOUS_INSTANCE_URL || undefined,
-      auth: env.INVIDIOUS_AUTH || undefined,
-    };
-    const streamUrl = await resolveStreamUrl(data.videoId, invidiousOptions);
-    if (!streamUrl) {
+    try {
+      // Pass Invidious config from Cloudflare env
+      const invidiousOptions = {
+        instanceUrl: env.INVIDIOUS_INSTANCE_URL || undefined,
+        auth: env.INVIDIOUS_AUTH || undefined,
+      };
+      const streamUrl = await resolveStreamUrl(data.videoId, invidiousOptions);
+      if (!streamUrl) {
+        return { stream: null };
+      }
+      return { stream: { streamUrl } };
+    } catch (error) {
+      Sentry.captureException(error);
       return { stream: null };
     }
-    return { stream: { streamUrl } };
   });

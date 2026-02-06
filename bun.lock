@@ -104,11 +104,9 @@
       "name": "@avoid.quest/radio",
       "version": "0.5.0",
       "dependencies": {
-        "@avoid.quest/bandcamp": "workspace:*",
-        "@avoid.quest/soundcloud": "workspace:*",
+        "@avoid.quest/platforms": "workspace:*",
         "@avoid.quest/typescript-config": "workspace:*",
         "@avoid.quest/ui": "workspace:*",
-        "@avoid.quest/youtube": "workspace:*",
         "@cloudflare/vite-plugin": "^1.23.1",
         "@dnd-kit/core": "^6.3.1",
         "@dnd-kit/sortable": "^10.0.0",
@@ -204,18 +202,6 @@
         "vitest": "^4.0.18",
       },
     },
-    "packages/bandcamp": {
-      "name": "@avoid.quest/bandcamp",
-      "version": "0.0.1",
-      "dependencies": {
-        "cheerio": "^1.2.0",
-        "html-entities": "^2.6.0",
-      },
-      "devDependencies": {
-        "@avoid.quest/typescript-config": "workspace:*",
-        "typescript": "catalog:",
-      },
-    },
     "packages/pinterest": {
       "name": "@avoid.quest/pinterest",
       "version": "0.0.1",
@@ -224,18 +210,22 @@
         "typescript": "catalog:",
       },
     },
-    "packages/shared": {
-      "name": "@avoid.quest/shared",
-      "version": "1.0.0",
-    },
-    "packages/soundcloud": {
-      "name": "@avoid.quest/soundcloud",
+    "packages/platforms": {
+      "name": "@avoid.quest/platforms",
       "version": "0.0.1",
+      "dependencies": {
+        "cheerio": "^1.2.0",
+        "html-entities": "^2.6.0",
+      },
       "devDependencies": {
         "@avoid.quest/typescript-config": "workspace:*",
         "@types/node": "catalog:",
         "typescript": "catalog:",
       },
+    },
+    "packages/shared": {
+      "name": "@avoid.quest/shared",
+      "version": "1.0.0",
     },
     "packages/typescript-config": {
       "name": "@avoid.quest/typescript-config",
@@ -295,15 +285,6 @@
         "next-themes": "catalog:",
         "react": "catalog:",
         "react-dom": "catalog:",
-      },
-    },
-    "packages/youtube": {
-      "name": "@avoid.quest/youtube",
-      "version": "0.0.1",
-      "devDependencies": {
-        "@avoid.quest/typescript-config": "workspace:*",
-        "@types/node": "catalog:",
-        "typescript": "catalog:",
       },
     },
   },
@@ -368,27 +349,23 @@
 
     "@avoid.quest/backend": ["@avoid.quest/backend@workspace:packages/backend"],
 
-    "@avoid.quest/bandcamp": ["@avoid.quest/bandcamp@workspace:packages/bandcamp"],
-
     "@avoid.quest/cwavasape": ["@avoid.quest/cwavasape@workspace:apps/cwavasape"],
 
     "@avoid.quest/instarip": ["@avoid.quest/instarip@workspace:apps/instarip"],
 
     "@avoid.quest/pinterest": ["@avoid.quest/pinterest@workspace:packages/pinterest"],
 
+    "@avoid.quest/platforms": ["@avoid.quest/platforms@workspace:packages/platforms"],
+
     "@avoid.quest/radio": ["@avoid.quest/radio@workspace:apps/radio"],
 
     "@avoid.quest/shared": ["@avoid.quest/shared@workspace:packages/shared"],
-
-    "@avoid.quest/soundcloud": ["@avoid.quest/soundcloud@workspace:packages/soundcloud"],
 
     "@avoid.quest/typescript-config": ["@avoid.quest/typescript-config@workspace:packages/typescript-config"],
 
     "@avoid.quest/ui": ["@avoid.quest/ui@workspace:packages/ui"],
 
     "@avoid.quest/web": ["@avoid.quest/web@workspace:apps/web"],
-
-    "@avoid.quest/youtube": ["@avoid.quest/youtube@workspace:packages/youtube"],
 
     "@babel/code-frame": ["@babel/code-frame@7.29.0", "", { "dependencies": { "@babel/helper-validator-identifier": "^7.28.5", "js-tokens": "^4.0.0", "picocolors": "^1.1.1" } }, "sha512-9NhCeYjq9+3uxgdtp20LSiJXJvN0FeCtNGpJxuMFZ1Kv3cWUNb6DOhJwUvcVCzKGR66cw4njwM6hrJLqgOwbcw=="],
 
@@ -2650,13 +2627,11 @@
 
     "@avoid.quest/instarip/@types/node": ["@types/node@22.19.9", "", { "dependencies": { "undici-types": "~6.21.0" } }, "sha512-PD03/U8g1F9T9MI+1OBisaIARhSzeidsUjQaf51fOxrfjeiKN9bLVO06lHuHYjxdnqLWJijJHfqXPSJri2EM2A=="],
 
+    "@avoid.quest/platforms/@types/node": ["@types/node@22.19.9", "", { "dependencies": { "undici-types": "~6.21.0" } }, "sha512-PD03/U8g1F9T9MI+1OBisaIARhSzeidsUjQaf51fOxrfjeiKN9bLVO06lHuHYjxdnqLWJijJHfqXPSJri2EM2A=="],
+
     "@avoid.quest/radio/@types/node": ["@types/node@22.19.9", "", { "dependencies": { "undici-types": "~6.21.0" } }, "sha512-PD03/U8g1F9T9MI+1OBisaIARhSzeidsUjQaf51fOxrfjeiKN9bLVO06lHuHYjxdnqLWJijJHfqXPSJri2EM2A=="],
 
-    "@avoid.quest/soundcloud/@types/node": ["@types/node@22.19.9", "", { "dependencies": { "undici-types": "~6.21.0" } }, "sha512-PD03/U8g1F9T9MI+1OBisaIARhSzeidsUjQaf51fOxrfjeiKN9bLVO06lHuHYjxdnqLWJijJHfqXPSJri2EM2A=="],
-
     "@avoid.quest/web/@types/node": ["@types/node@22.19.9", "", { "dependencies": { "undici-types": "~6.21.0" } }, "sha512-PD03/U8g1F9T9MI+1OBisaIARhSzeidsUjQaf51fOxrfjeiKN9bLVO06lHuHYjxdnqLWJijJHfqXPSJri2EM2A=="],
-
-    "@avoid.quest/youtube/@types/node": ["@types/node@22.19.9", "", { "dependencies": { "undici-types": "~6.21.0" } }, "sha512-PD03/U8g1F9T9MI+1OBisaIARhSzeidsUjQaf51fOxrfjeiKN9bLVO06lHuHYjxdnqLWJijJHfqXPSJri2EM2A=="],
 
     "@babel/core/semver": ["semver@6.3.1", "", { "bin": { "semver": "bin/semver.js" } }, "sha512-BR7VvDCVHO+q2xBEWskxS6DJE1qRnb7DxzUrogb71CWoSficBxYsiAGd+Kl0mmq/MprG9yArRkyrQxTO6XjMzA=="],
 
@@ -2938,13 +2913,11 @@
 
     "@avoid.quest/instarip/@types/node/undici-types": ["undici-types@6.21.0", "", {}, "sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ=="],
 
+    "@avoid.quest/platforms/@types/node/undici-types": ["undici-types@6.21.0", "", {}, "sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ=="],
+
     "@avoid.quest/radio/@types/node/undici-types": ["undici-types@6.21.0", "", {}, "sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ=="],
 
-    "@avoid.quest/soundcloud/@types/node/undici-types": ["undici-types@6.21.0", "", {}, "sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ=="],
-
     "@avoid.quest/web/@types/node/undici-types": ["undici-types@6.21.0", "", {}, "sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ=="],
-
-    "@avoid.quest/youtube/@types/node/undici-types": ["undici-types@6.21.0", "", {}, "sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ=="],
 
     "@isaacs/cliui/string-width/emoji-regex": ["emoji-regex@9.2.2", "", {}, "sha512-L18DaJsXSUk2+42pv8mLs5jJT2hqFkFE4j21wOmgbUqsZ2hL72NsUU785g9RXgo3s0ZNgVl42TiHp3ZtOv/Vyg=="],
 

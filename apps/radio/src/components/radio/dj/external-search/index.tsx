@@ -1,6 +1,6 @@
+import type { SearchPlatform } from "@avoid.quest/platforms";
 import { useState } from "react";
 import type { Radio } from "@/lib/audio";
-import type { SearchPlatform } from "@/lib/search-types";
 import { SearchInput } from "./search-input";
 import { SearchResults } from "./search-results";
 import { UrlInput } from "./url-input";

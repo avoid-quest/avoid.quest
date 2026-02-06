@@ -3,12 +3,12 @@ import {
   type BandcampSearchFilter,
   type BandcampSearchResult,
   searchBandcamp,
-} from "@avoid.quest/bandcamp/search";
-import { fetchClientID } from "@avoid.quest/soundcloud/fetch-client";
+} from "@avoid.quest/platforms/bandcamp/search";
+import { fetchClientID } from "@avoid.quest/platforms/soundcloud/fetch-client";
 import {
   type SoundCloudSearchResult,
   searchSoundCloud,
-} from "@avoid.quest/soundcloud/search";
+} from "@avoid.quest/platforms/soundcloud/search";
 // biome-ignore lint/performance/noNamespaceImport: namespace import required for Sentry
 import * as Sentry from "@sentry/tanstackstart-react";
 import { createServerFn } from "@tanstack/react-start";

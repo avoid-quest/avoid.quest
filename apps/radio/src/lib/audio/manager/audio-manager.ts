@@ -12,8 +12,10 @@
  * Main delay is applied after all sound processing, before final output.
  */
 
-import { getProxiedBandcampUrl } from "@avoid.quest/bandcamp";
-import { getProxiedSoundCloudUrl } from "@avoid.quest/soundcloud";
+import {
+  getProxiedBandcampUrl,
+  getProxiedSoundCloudUrl,
+} from "@avoid.quest/platforms";
 import type { EffectConfig } from "../dsp/effects/types.js";
 import {
   type AudioState,

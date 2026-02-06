@@ -1,5 +1,5 @@
+import type { UnifiedSearchResult } from "@avoid.quest/platforms";
 import { create } from "zustand";
-import type { UnifiedSearchResult } from "@/lib/search-types";
 
 type SearchResultsState = {
   results: UnifiedSearchResult[];

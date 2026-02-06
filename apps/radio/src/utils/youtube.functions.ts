@@ -1,5 +1,5 @@
 import { env } from "cloudflare:workers";
-import { resolveStreamUrl, searchYouTubeMusic } from "@avoid.quest/youtube";
+import { resolveStreamUrl, searchYouTubeMusic } from "@avoid.quest/platforms";
 // biome-ignore lint/performance/noNamespaceImport: namespace import required for Sentry
 import * as Sentry from "@sentry/tanstackstart-react";
 import { createServerFn } from "@tanstack/react-start";

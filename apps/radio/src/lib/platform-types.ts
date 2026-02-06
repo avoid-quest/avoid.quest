@@ -3,21 +3,17 @@ import type {
   BandcampItemResult,
   BandcampMetadata,
   BandcampTrackInfo,
-} from "@avoid.quest/bandcamp";
-import type {
   SoundCloudItemError,
   SoundCloudItemResult,
   SoundCloudMetadata,
   SoundCloudTrackInfo,
-} from "@avoid.quest/soundcloud";
-import type {
   YouTubeItemError,
   YouTubeItemResult,
   YouTubeMetadata,
   YouTubeTrackInfo,
-} from "@avoid.quest/youtube";
+} from "@avoid.quest/platforms";
 
-// Re-export individual platform types for external use
+// Re-export platform types from @avoid.quest/platforms
 export type {
   BandcampItemError,
   BandcampItemResponse,
@@ -25,18 +21,12 @@ export type {
   BandcampItemType,
   BandcampMetadata,
   BandcampTrackInfo,
-} from "@avoid.quest/bandcamp";
-
-export type {
   SoundCloudItemError,
   SoundCloudItemResponse,
   SoundCloudItemResult,
   SoundCloudItemType,
   SoundCloudMetadata,
   SoundCloudTrackInfo,
-} from "@avoid.quest/soundcloud";
-
-export type {
   YouTubeItemError,
   YouTubeItemResponse,
   YouTubeItemResult,
@@ -45,7 +35,7 @@ export type {
   YouTubeSearchResponse,
   YouTubeSearchResult,
   YouTubeTrackInfo,
-} from "@avoid.quest/youtube";
+} from "@avoid.quest/platforms";
 
 import type { ChannelSelection } from "@/lib/audio";
 
@@ -135,7 +125,7 @@ export function isYouTubeMetadata(
 // Re-export for convenience
 export type { FileAudioMetadata } from "@/lib/audio/file-metadata";
 
-// Unified platform types
+// Unified platform types (app-level, includes device-input/static-audio/local-file)
 export type Platform =
   | "bandcamp"
   | "soundcloud"

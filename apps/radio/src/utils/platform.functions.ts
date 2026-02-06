@@ -1,12 +1,13 @@
 import { env } from "cloudflare:workers";
-import { getBandcampItem, normalizeBandcampUrl } from "@avoid.quest/bandcamp";
 import {
+  getBandcampItem,
   getSoundCloudItem,
+  getYouTubeItem,
   needsResolution,
+  normalizeBandcampUrl,
   normalizeSoundCloudUrl,
   resolveShortLink,
-} from "@avoid.quest/soundcloud";
-import { getYouTubeItem } from "@avoid.quest/youtube";
+} from "@avoid.quest/platforms";
 // biome-ignore lint/performance/noNamespaceImport: namespace import required for Sentry
 import * as Sentry from "@sentry/tanstackstart-react";
 import { createServerFn } from "@tanstack/react-start";

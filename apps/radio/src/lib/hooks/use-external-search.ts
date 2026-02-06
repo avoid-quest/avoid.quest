@@ -1,59 +1,13 @@
-import type { BandcampSearchResult } from "@avoid.quest/bandcamp";
-import type { SoundCloudSearchResult } from "@avoid.quest/soundcloud";
-import type { YouTubeSearchResult } from "@avoid.quest/youtube";
+import {
+  type SearchPlatform,
+  transformBandcampResults,
+  transformSoundCloudResults,
+  transformYouTubeResults,
+  type UnifiedSearchResult,
+} from "@avoid.quest/platforms";
 import { useMutation } from "@tanstack/react-query";
-import type { SearchPlatform, UnifiedSearchResult } from "@/lib/search-types";
 import { bandcampSearch, soundcloudSearch } from "@/utils/search.functions";
 import { youtubeSearch } from "@/utils/youtube.functions";
-
-// ============================================
-// Result Transformers
-// ============================================
-
-function transformBandcampResults(
-  results: BandcampSearchResult[]
-): UnifiedSearchResult[] {
-  return results.map((r) => ({
-    id: `bc-${r.id}`,
-    platform: "bandcamp" as const,
-    type: r.type,
-    title: r.title,
-    artist: r.artist,
-    thumbnail: r.thumbnail,
-    url: r.url,
-    albumTitle: r.albumTitle,
-  }));
-}
-
-function transformSoundCloudResults(
-  results: SoundCloudSearchResult[]
-): UnifiedSearchResult[] {
-  return results.map((r) => ({
-    id: `sc-${r.id}`,
-    platform: "soundcloud" as const,
-    type: "track" as const,
-    title: r.title,
-    artist: r.artist,
-    thumbnail: r.thumbnail,
-    duration: r.duration,
-    url: r.url,
-  }));
-}
-
-function transformYouTubeResults(
-  results: YouTubeSearchResult[]
-): UnifiedSearchResult[] {
-  return results.map((r) => ({
-    id: `yt-${r.videoId}`,
-    platform: "youtube" as const,
-    type: "video" as const,
-    title: r.title,
-    artist: r.author,
-    thumbnail: r.thumbnail,
-    duration: r.duration,
-    url: `https://youtube.com/watch?v=${r.videoId}`,
-  }));
-}
 
 // ============================================
 // Search Functions

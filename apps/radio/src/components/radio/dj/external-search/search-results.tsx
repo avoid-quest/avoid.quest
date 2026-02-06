@@ -1,10 +1,10 @@
+import type { UnifiedSearchResult } from "@avoid.quest/platforms";
 import { ScrollArea } from "@avoid.quest/ui/components/scroll-area";
 import { Loader2Icon, MusicIcon, PlayIcon } from "lucide-react";
 import { useState } from "react";
 import type { Radio } from "@/lib/audio";
 import { formatPlatformDuration } from "@/lib/external-url/utils";
 import { usePlatformLoad } from "@/lib/hooks/use-platform-query";
-import type { UnifiedSearchResult } from "@/lib/search-types";
 import { useSearchResultsStore } from "./search-results-store";
 
 type SearchResultsProps = {

@@ -1,3 +1,4 @@
+import type { SearchPlatform } from "@avoid.quest/platforms";
 import { Button } from "@avoid.quest/ui/components/button";
 import { Input } from "@avoid.quest/ui/components/input";
 import {
@@ -13,7 +14,6 @@ import { Loader2Icon, SearchIcon } from "lucide-react";
 import { useState } from "react";
 import type { Radio } from "@/lib/audio";
 import { useExternalSearch } from "@/lib/hooks/use-external-search";
-import type { SearchPlatform } from "@/lib/search-types";
 import { useSearchResultsStore } from "./search-results-store";
 
 type SearchInputProps = {

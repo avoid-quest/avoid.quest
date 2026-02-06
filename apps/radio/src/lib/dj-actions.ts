@@ -6,7 +6,7 @@
  * TanStack Store for runtime state.
  */
 
-import { resolveStreamUrl } from "@avoid.quest/youtube";
+import { resolveStreamUrl } from "@avoid.quest/platforms";
 import type {
   ChannelSelection,
   EffectConfig,

@@ -4,8 +4,12 @@
  * Simplified high-level API for audio playback with effects.
  * Uses HTML5 Audio with native Web Audio nodes for hardware acceleration.
  *
- * Audio routing:
- *   Html5AudioSource → GainNode → StereoPannerNode → BiquadFilterNode → WorkletNode (effects) → MasterGainNode → Destination
+ * Audio routing (post-effects CUE):
+ *   Html5AudioSource → Pan → Filter → WorkletNode (effects) → PreFaderSend (CUE tap) → Gain (fader) → Analyser → MainDelayNode → Destination
+ *
+ * The CUE tap point is now AFTER effects processing, so headphone monitoring
+ * includes the effects but is still independent of the channel fader.
+ * Main delay is applied after all sound processing, before final output.
  */
 
 import { getProxiedBandcampUrl } from "@avoid.quest/bandcamp";
@@ -14,6 +18,10 @@ import type { EffectConfig } from "../dsp/effects/types.js";
 import {
   type AudioState,
   type AudioStateCallback,
+  type ChannelSelection,
+  createDeviceSource,
+  type DeviceAudioConstraints,
+  type DeviceSource,
   type FilterType,
   generateErrorId,
   getAudioContext,
@@ -24,29 +32,7 @@ import {
   type Unsubscribe,
   WorkletManager,
 } from "../playback/index.js";
-
-/**
- * Safely disconnect an AudioNode, ignoring "already disconnected" errors
- * but logging unexpected errors.
- */
-export function safeDisconnect(node: AudioNode | null, context?: string): void {
-  if (!node) {
-    return;
-  }
-  try {
-    node.disconnect();
-  } catch (error) {
-    // Only ignore InvalidAccessError (already disconnected)
-    if (
-      !(error instanceof DOMException && error.name === "InvalidAccessError")
-    ) {
-      console.warn(
-        `[${context ?? "Audio"}] Unexpected disconnect error:`,
-        error
-      );
-    }
-  }
-}
+import { safeDisconnect } from "../utils.js";
 
 /**
  * Filter configuration for simple biquad filtering
@@ -63,7 +49,8 @@ export type FilterConfig = {
  * Native audio nodes for a sound instance
  */
 type AudioNodes = {
-  gain: GainNode;
+  preFaderSend: GainNode; // Tap point for CUE (post-effects, pre-fader monitoring)
+  gain: GainNode; // Channel fader
   pan: StereoPannerNode;
   filter: BiquadFilterNode;
   analyser: AnalyserNode;
@@ -76,6 +63,8 @@ type SoundInstance = {
   radio: Radio;
   sourceId: string;
   html5Source: Html5AudioSource | null;
+  deviceSource: DeviceSource | null;
+  isDeviceInput: boolean;
   nodes: AudioNodes | null;
   volume: number;
   pan: number;
@@ -108,6 +97,12 @@ export function setWorkletProcessorUrl(url: string): void {
  * - Filter application
  * - State subscriptions
  */
+/** Maximum main delay in milliseconds */
+const MAX_MAIN_DELAY_MS = 500;
+
+/** Maximum main delay in seconds (for Web Audio API) */
+const MAX_MAIN_DELAY_SECONDS = MAX_MAIN_DELAY_MS / 1000;
+
 export class AudioManager {
   private static instance: AudioManager | null = null;
 
@@ -125,6 +120,20 @@ export class AudioManager {
   private globalMuted = false;
   private lastGlobalVolume = 1;
   private readonly lastSoundVolumes = new Map<string, number>();
+
+  // Main output delay node (shared across all sounds)
+  private mainDelayNode: DelayNode | null = null;
+  private mainDelayMs = 0;
+
+  // Master meter nodes (stereo analyser tap on main output)
+  private masterAnalyserL: AnalyserNode | null = null;
+  private masterAnalyserR: AnalyserNode | null = null;
+  private masterSplitter: ChannelSplitterNode | null = null;
+  private readonly masterMeterListeners = new Set<
+    (level: { left: number; right: number }) => void
+  >();
+  private masterMeterRafId: number | null = null;
+  private masterMeterFrame = 0;
 
   private constructor() {}
 
@@ -201,6 +210,8 @@ export class AudioManager {
       radio,
       sourceId: id,
       html5Source: null,
+      deviceSource: null,
+      isDeviceInput: false,
       nodes: null,
       volume: 1,
       pan: 0,
@@ -227,6 +238,27 @@ export class AudioManager {
     const instance = this.sounds.get(soundId);
     if (!instance) {
       throw new Error(`Sound with id ${soundId} not found`);
+    }
+
+    // Device input: unmute by restoring gain (stream stays alive)
+    if (instance.isDeviceInput && instance.deviceSource?.isActive) {
+      const context = getAudioContext();
+      if (context && instance.nodes) {
+        const now = context.currentTime;
+        const targetVolume = Math.max(0.0001, volume * this.globalVolume);
+        instance.nodes.gain.gain.setTargetAtTime(targetVolume, now, 0.02);
+      }
+      instance.volume = volume;
+      instance.playing = true;
+      this.notifyListeners(soundId, {
+        isPlaying: true,
+        isLoading: false,
+        isBuffering: false,
+        volume,
+        error: null,
+        hasEnded: false,
+      });
+      return;
     }
 
     await this.init();
@@ -321,6 +353,24 @@ export class AudioManager {
             hasEnded: true,
           });
         },
+        onStreamError: (position) => {
+          this.notifyListeners(soundId, {
+            isPlaying: false,
+            isLoading: false,
+            isBuffering: false,
+            volume: instance.volume,
+            error: {
+              id: generateErrorId(),
+              message: `Stream interrupted at ${Math.floor(position)}s - URL may need refresh`,
+              code: "STREAM_INTERRUPTED",
+              radio: instance.radio,
+              timestamp: Date.now(),
+              sourceId: soundId,
+              position, // Include position for refresh
+            },
+            hasEnded: false,
+          });
+        },
       });
 
       // Get proxied URL for Bandcamp/SoundCloud
@@ -344,9 +394,135 @@ export class AudioManager {
   }
 
   /**
+   * Play a device input source (mic/line-in) through the full audio graph
+   */
+  async playDeviceSound(
+    soundId: string,
+    deviceId: string,
+    constraints?: DeviceAudioConstraints
+  ): Promise<void> {
+    const instance = this.sounds.get(soundId);
+    if (!instance) {
+      throw new Error(`Sound with id ${soundId} not found`);
+    }
+
+    await this.init();
+    await resumeAudioContext();
+
+    const context = getAudioContext();
+    if (!context) {
+      throw new Error("Audio context not available");
+    }
+
+    instance.isDeviceInput = true;
+    instance.loading = true;
+
+    this.notifyListeners(soundId, {
+      isPlaying: false,
+      isLoading: true,
+      isBuffering: false,
+      volume: instance.volume,
+      error: null,
+      hasEnded: false,
+    });
+
+    // Create audio nodes
+    if (!instance.nodes) {
+      instance.nodes = this.createAudioNodes(context);
+    }
+
+    // Create device source
+    instance.deviceSource = createDeviceSource(context, soundId, {
+      onActive: () => {
+        instance.loading = false;
+        instance.playing = true;
+        this.notifyListeners(soundId, {
+          isPlaying: true,
+          isLoading: false,
+          isBuffering: false,
+          volume: instance.volume,
+          error: null,
+          hasEnded: false,
+        });
+      },
+      onInactive: () => {
+        instance.playing = false;
+        this.notifyListeners(soundId, {
+          isPlaying: false,
+          isLoading: false,
+          isBuffering: false,
+          volume: instance.volume,
+          error: null,
+          hasEnded: false,
+        });
+      },
+      onError: (error) => {
+        instance.playing = false;
+        instance.loading = false;
+        this.notifyListeners(soundId, {
+          isPlaying: false,
+          isLoading: false,
+          isBuffering: false,
+          volume: instance.volume,
+          error: {
+            id: generateErrorId(),
+            message: error.message,
+            code: "PLAYBACK_FAILED",
+            radio: instance.radio,
+            timestamp: Date.now(),
+            sourceId: soundId,
+          },
+          hasEnded: false,
+        });
+      },
+    });
+
+    // Start capture (onActive callback fires when stream is ready)
+    await instance.deviceSource.start(deviceId, constraints);
+
+    // Connect through the full audio graph (after start so output node exists)
+    const graphConnected = await this.connectAudioGraph(instance);
+    if (!graphConnected) {
+      console.warn(
+        `[AudioManager] Audio graph connection failed for device ${soundId}`
+      );
+    }
+
+    // Set initial volume (after graph connection)
+    this.setVolume(soundId, instance.volume);
+  }
+
+  /**
+   * Set channel selection for a device input
+   */
+  setDeviceChannelSelection(
+    soundId: string,
+    selection: ChannelSelection
+  ): void {
+    const instance = this.sounds.get(soundId);
+    if (!instance?.deviceSource) {
+      return;
+    }
+    instance.deviceSource.setChannelSelection(selection);
+  }
+
+  /**
+   * Get the DeviceSource for a sound (to read channel count, etc.)
+   */
+  getDeviceSource(soundId: string): DeviceSource | null {
+    const instance = this.sounds.get(soundId);
+    return instance?.deviceSource ?? null;
+  }
+
+  /**
    * Create native audio nodes for a sound
    */
   private createAudioNodes(context: AudioContext): AudioNodes {
+    // Pre-fader send for CUE monitoring (post-effects, unity gain, always passing audio)
+    // This is the tap point between worklet output and channel fader
+    const preFaderSend = context.createGain();
+    preFaderSend.gain.value = 1;
+
     const gain = context.createGain();
     const pan = context.createStereoPanner();
     const filter = context.createBiquadFilter();
@@ -360,18 +536,24 @@ export class AudioManager {
     analyser.fftSize = 2048;
     analyser.smoothingTimeConstant = 0.8;
 
-    return { gain, pan, filter, analyser };
+    return { preFaderSend, gain, pan, filter, analyser };
   }
 
   /**
    * Connect the audio graph for a sound instance
    *
-   * Routing: Html5Source → Gain → Pan → Filter → Worklet → Analyser → Destination
+   * Routing (post-effects CUE):
+   *   Source → Pan → Filter → Worklet (effects) → PreFaderSend (CUE tap) → Gain (fader) → Analyser → Destination
+   *
+   * The CUE tap is now AFTER effects, so headphone monitoring includes effects
+   * but is still independent of the channel fader volume.
    *
    * @returns true if graph was connected successfully, false otherwise
    */
   private async connectAudioGraph(instance: SoundInstance): Promise<boolean> {
-    if (!(instance.html5Source?.output && instance.nodes)) {
+    const sourceOutput =
+      instance.html5Source?.output ?? instance.deviceSource?.output;
+    if (!(sourceOutput && instance.nodes)) {
       console.warn(
         `[AudioManager] Cannot connect graph: missing source or nodes for ${instance.sourceId}`
       );
@@ -386,11 +568,11 @@ export class AudioManager {
       return false;
     }
 
-    const { gain, pan, filter, analyser } = instance.nodes;
-    const sourceOutput = instance.html5Source.output;
+    const { preFaderSend, gain, pan, filter, analyser } = instance.nodes;
 
     // Disconnect any existing connections (may already be disconnected)
     safeDisconnect(sourceOutput, "AudioManager.connectAudioGraph");
+    safeDisconnect(preFaderSend, "AudioManager.connectAudioGraph");
     safeDisconnect(gain, "AudioManager.connectAudioGraph");
     safeDisconnect(pan, "AudioManager.connectAudioGraph");
     safeDisconnect(filter, "AudioManager.connectAudioGraph");
@@ -403,18 +585,29 @@ export class AudioManager {
     wm.createStreamSource(instance.sourceId);
     wm.startSource(instance.sourceId);
 
-    // Connect the graph
-    // Source → Gain → Pan → Filter
-    sourceOutput.connect(gain);
-    gain.connect(pan);
+    // Connect the graph (post-effects CUE routing)
+    // Source → Pan → Filter → Worklet (effects)
+    sourceOutput.connect(pan);
     pan.connect(filter);
 
-    // Filter → Worklet → Destination (per-sound effects chain)
-    if (wm.node) {
+    // Determine final destination (main delay node if available, else direct)
+    const finalDestination = this.mainDelayNode ?? context.destination;
+
+    if (wm.node && wm.outputNode) {
+      // Filter → Worklet input
       filter.connect(wm.node);
-      // Worklet's master gain connects to destination in init()
+
+      // Worklet output → PreFaderSend (CUE tap, now post-effects)
+      wm.outputNode.connect(preFaderSend);
+
+      // PreFaderSend → Gain (channel fader)
+      preFaderSend.connect(gain);
+
+      // Gain → Analyser → MainDelay → Destination
+      gain.connect(analyser);
+      analyser.connect(finalDestination);
     } else {
-      // Fallback: direct to analyser/destination - effects will be bypassed
+      // Fallback: direct routing without worklet - effects bypassed
       console.warn(
         `[AudioManager] Worklet unavailable for ${instance.sourceId}, effects bypassed`
       );
@@ -429,8 +622,12 @@ export class AudioManager {
           sourceId: instance.sourceId,
         },
       });
-      filter.connect(analyser);
-      analyser.connect(context.destination);
+
+      // Filter → PreFaderSend → Gain → Analyser → MainDelay → Destination
+      filter.connect(preFaderSend);
+      preFaderSend.connect(gain);
+      gain.connect(analyser);
+      analyser.connect(finalDestination);
     }
 
     return true;
@@ -446,8 +643,18 @@ export class AudioManager {
     }
 
     instance.playing = false;
-    instance.html5Source?.pause();
-    this.workletManagers.get(soundId)?.pauseSource(soundId);
+
+    // Device input: mute gain instead of stopping stream (instant unmute later)
+    if (instance.isDeviceInput) {
+      const context = getAudioContext();
+      if (context && instance.nodes) {
+        const now = context.currentTime;
+        instance.nodes.gain.gain.setTargetAtTime(0.0001, now, 0.02);
+      }
+    } else {
+      instance.html5Source?.pause();
+      this.workletManagers.get(soundId)?.pauseSource(soundId);
+    }
 
     this.notifyListeners(soundId, {
       isPlaying: false,
@@ -470,6 +677,7 @@ export class AudioManager {
 
     instance.playing = false;
     instance.html5Source?.stop();
+    instance.deviceSource?.stop();
     this.workletManagers.get(soundId)?.stopSource(soundId);
 
     this.notifyListeners(soundId, {
@@ -490,9 +698,11 @@ export class AudioManager {
 
     const instance = this.sounds.get(soundId);
     if (instance) {
-      // Clean up HTML5 source
+      // Clean up sources
       instance.html5Source?.cleanup();
       instance.html5Source = null;
+      instance.deviceSource?.cleanup();
+      instance.deviceSource = null;
 
       // Disconnect nodes (may already be disconnected)
       if (instance.nodes) {
@@ -587,15 +797,41 @@ export class AudioManager {
    */
   setPlaybackRate(soundId: string, rate: number): void {
     const instance = this.sounds.get(soundId);
-    if (!instance?.html5Source) {
+    if (!instance) {
       console.warn(
-        `[AudioManager] setPlaybackRate: sound ${soundId} not found or not initialized`
+        `[AudioManager] setPlaybackRate: sound ${soundId} not found`
       );
+      return;
+    }
+
+    // Can't change speed of live audio
+    if (instance.isDeviceInput) {
+      return;
+    }
+
+    if (!instance.html5Source) {
       return;
     }
 
     const clampedRate = Math.max(0.5, Math.min(2.0, rate));
     instance.html5Source.setPlaybackRate(clampedRate);
+  }
+
+  seekSound(soundId: string, position: number): void {
+    const instance = this.sounds.get(soundId);
+    if (!instance) {
+      return;
+    }
+
+    if (instance.isDeviceInput) {
+      return;
+    }
+
+    if (!instance.html5Source) {
+      return;
+    }
+
+    instance.html5Source.seek(position);
   }
 
   /**
@@ -670,16 +906,14 @@ export class AudioManager {
 
   /**
    * Set global volume (0-1)
+   *
+   * Note: Master volume is applied ONLY to the channel gain nodes (post-CUE tap).
+   * This ensures CUE/headphone monitoring is independent of master volume.
    */
   setGlobalVolume(volume: number): void {
     this.globalVolume = Math.max(0, Math.min(1, volume));
 
-    // Update all per-sound worklet managers
-    for (const wm of this.workletManagers.values()) {
-      wm.setVolume(this.globalVolume);
-    }
-
-    // Update all active sounds
+    // Update all active sounds (channel gain is post-CUE tap, so CUE is unaffected)
     for (const [_soundId, instance] of this.sounds) {
       if (instance.nodes) {
         const context = getAudioContext();
@@ -724,6 +958,37 @@ export class AudioManager {
   }
 
   /**
+   * Get current main output delay in milliseconds
+   */
+  getMainDelay(): number {
+    return this.mainDelayMs;
+  }
+
+  /**
+   * Set main output delay (0-500ms)
+   * Applies to all audio going to the main output
+   */
+  setMainDelay(ms: number): void {
+    const clampedMs = Math.max(0, Math.min(MAX_MAIN_DELAY_MS, ms));
+    this.mainDelayMs = clampedMs;
+
+    if (!this.mainDelayNode) {
+      return;
+    }
+
+    const context = getAudioContext();
+    if (!context) {
+      return;
+    }
+
+    const now = context.currentTime;
+    const seconds = clampedMs / 1000;
+
+    // Smooth transition to avoid clicks
+    this.mainDelayNode.delayTime.setTargetAtTime(seconds, now, 0.02);
+  }
+
+  /**
    * Mute a specific sound
    */
   muteSound(soundId: string): void {
@@ -761,14 +1026,11 @@ export class AudioManager {
   /**
    * Add an effect to a sound
    *
-   * @returns true if effect was added successfully, false if worklet not ready
+   * @returns true if effect was added, false if no worklet manager exists
    */
   addEffect(soundId: string, config: EffectConfig): boolean {
     const wm = this.workletManagers.get(soundId);
-    if (!wm?.isReady) {
-      console.warn(
-        `[AudioManager] Cannot add effect: worklet not ready for ${soundId}`
-      );
+    if (!wm) {
       return false;
     }
 
@@ -788,7 +1050,7 @@ export class AudioManager {
   /**
    * Update an effect's configuration
    *
-   * @returns true if effect was updated successfully, false if worklet not ready
+   * @returns true if effect was updated, false if no worklet manager exists
    */
   updateEffect(
     soundId: string,
@@ -796,10 +1058,7 @@ export class AudioManager {
     config: Partial<EffectConfig>
   ): boolean {
     const wm = this.workletManagers.get(soundId);
-    if (!wm?.isReady) {
-      console.warn(
-        `[AudioManager] Cannot update effect ${effectId}: worklet not ready for ${soundId}`
-      );
+    if (!wm) {
       return false;
     }
 
@@ -894,6 +1153,29 @@ export class AudioManager {
   }
 
   /**
+   * Subscribe to master output meter (post-fader, post-crossfader, post-master volume).
+   * Returns left/right RMS levels (0-1) computed from real AnalyserNodes.
+   */
+  subscribeMasterMeter(
+    callback: (level: { left: number; right: number }) => void
+  ): Unsubscribe {
+    this.masterMeterListeners.add(callback);
+
+    // Start rAF loop on first subscriber
+    if (this.masterMeterListeners.size === 1) {
+      this.startMasterMeterLoop();
+    }
+
+    return () => {
+      this.masterMeterListeners.delete(callback);
+      // Stop rAF loop when last subscriber leaves
+      if (this.masterMeterListeners.size === 0) {
+        this.stopMasterMeterLoop();
+      }
+    };
+  }
+
+  /**
    * Subscribe to RMS meter updates for a sound
    * Returns left/right RMS levels (0-1)
    */
@@ -942,6 +1224,127 @@ export class AudioManager {
   }
 
   // ============================================
+  // Stream URL Refresh (YouTube 403 recovery)
+  // ============================================
+
+  /**
+   * Refresh the stream URL for a sound, optionally seeking to a position.
+   * Used for YouTube URL refresh when streams get throttled (403 error).
+   *
+   * @param soundId - The sound ID to refresh
+   * @param newUrl - The new stream URL (should already be proxied)
+   * @param seekPosition - Optional position in seconds to seek to after refresh
+   */
+  async refreshStreamUrl(
+    soundId: string,
+    newUrl: string,
+    seekPosition?: number
+  ): Promise<void> {
+    const instance = this.sounds.get(soundId);
+    if (!instance?.html5Source) {
+      console.warn(
+        `[AudioManager] refreshStreamUrl: sound ${soundId} not found or no html5Source`
+      );
+      return;
+    }
+
+    // Update loading state
+    instance.loading = true;
+    this.notifyListeners(soundId, {
+      isPlaying: false,
+      isLoading: true,
+      isBuffering: false,
+      volume: instance.volume,
+      error: null,
+      hasEnded: false,
+    });
+
+    try {
+      // Get proxied URL
+      const proxiedUrl = this.getProxiedUrl(newUrl);
+
+      // Refresh the HTML5 source with new URL
+      await instance.html5Source.refreshUrl(proxiedUrl, seekPosition);
+
+      instance.loading = false;
+      instance.playing = true;
+
+      this.notifyListeners(soundId, {
+        isPlaying: true,
+        isLoading: false,
+        isBuffering: false,
+        volume: instance.volume,
+        error: null,
+        hasEnded: false,
+      });
+    } catch (error) {
+      instance.loading = false;
+      instance.playing = false;
+
+      this.notifyListeners(soundId, {
+        isPlaying: false,
+        isLoading: false,
+        isBuffering: false,
+        volume: instance.volume,
+        error: {
+          id: generateErrorId(),
+          message:
+            error instanceof Error ? error.message : "Failed to refresh stream",
+          code: "STREAM_FETCH_FAILED",
+          radio: instance.radio,
+          timestamp: Date.now(),
+          sourceId: soundId,
+        },
+        hasEnded: false,
+      });
+    }
+  }
+
+  /**
+   * Get the radio configuration for a sound
+   * Useful for re-loading platform metadata to get a fresh URL
+   */
+  getSoundRadio(soundId: string): Radio | null {
+    const instance = this.sounds.get(soundId);
+    return instance?.radio ?? null;
+  }
+
+  // ============================================
+  // CUE Pre-Fader Access
+  // ============================================
+
+  /**
+   * Get the pre-fader audio node for a sound
+   * This is a tap point AFTER effects but BEFORE the channel fader
+   * Used for CUE/PFL monitoring (headphones hear effects but not fader changes)
+   * Returns null if the sound doesn't exist or hasn't been initialized
+   */
+  getPreFaderNode(soundId: string): GainNode | null {
+    const instance = this.sounds.get(soundId);
+    return instance?.nodes?.preFaderSend ?? null;
+  }
+
+  /**
+   * Get the post-fader (post-crossfader) audio node for a sound
+   * This is the gain node where channel volume and crossfader are applied
+   * Used for MIX monitoring in headphones (hear what the audience hears)
+   * Returns null if the sound doesn't exist or hasn't been initialized
+   */
+  getPostFaderNode(soundId: string): GainNode | null {
+    const instance = this.sounds.get(soundId);
+    return instance?.nodes?.gain ?? null;
+  }
+
+  /**
+   * Get the WorkletManager for a sound
+   * This provides access to the master output node for CUE/MIX monitoring
+   * Returns null if the sound doesn't exist or worklet isn't initialized
+   */
+  getWorkletManager(soundId: string): WorkletManager | null {
+    return this.workletManagers.get(soundId) ?? null;
+  }
+
+  // ============================================
   // Cleanup
   // ============================================
 
@@ -964,11 +1367,87 @@ export class AudioManager {
     }
     this.workletManagers.clear();
     this.workletModuleLoaded = false;
+
+    // Cleanup master meter
+    this.stopMasterMeterLoop();
+    this.masterMeterListeners.clear();
+    if (this.masterSplitter) {
+      safeDisconnect(this.masterSplitter, "AudioManager.cleanup");
+      this.masterSplitter = null;
+    }
+    if (this.masterAnalyserL) {
+      safeDisconnect(this.masterAnalyserL, "AudioManager.cleanup");
+      this.masterAnalyserL = null;
+    }
+    if (this.masterAnalyserR) {
+      safeDisconnect(this.masterAnalyserR, "AudioManager.cleanup");
+      this.masterAnalyserR = null;
+    }
+
+    // Cleanup main delay node
+    if (this.mainDelayNode) {
+      safeDisconnect(this.mainDelayNode, "AudioManager.cleanup");
+      this.mainDelayNode = null;
+    }
+    this.mainDelayMs = 0;
   }
 
   // ============================================
   // Private Methods
   // ============================================
+
+  /**
+   * Start the master meter rAF loop (~30fps, every other frame)
+   */
+  private startMasterMeterLoop(): void {
+    const bufferL = new Float32Array(2048);
+    const bufferR = new Float32Array(2048);
+
+    const tick = () => {
+      this.masterMeterRafId = requestAnimationFrame(tick);
+
+      // Throttle to ~30fps by skipping every other frame
+      this.masterMeterFrame++;
+      if (this.masterMeterFrame % 2 !== 0) {
+        return;
+      }
+
+      if (!(this.masterAnalyserL && this.masterAnalyserR)) {
+        return;
+      }
+
+      this.masterAnalyserL.getFloatTimeDomainData(bufferL);
+      this.masterAnalyserR.getFloatTimeDomainData(bufferR);
+
+      let sumL = 0;
+      let sumR = 0;
+      for (let i = 0; i < bufferL.length; i++) {
+        sumL += bufferL[i] * bufferL[i];
+        sumR += bufferR[i] * bufferR[i];
+      }
+
+      const left = Math.sqrt(sumL / bufferL.length);
+      const right = Math.sqrt(sumR / bufferR.length);
+
+      const level = { left, right };
+      for (const cb of this.masterMeterListeners) {
+        cb(level);
+      }
+    };
+
+    this.masterMeterRafId = requestAnimationFrame(tick);
+  }
+
+  /**
+   * Stop the master meter rAF loop
+   */
+  private stopMasterMeterLoop(): void {
+    if (this.masterMeterRafId !== null) {
+      cancelAnimationFrame(this.masterMeterRafId);
+      this.masterMeterRafId = null;
+    }
+    this.masterMeterFrame = 0;
+  }
 
   /**
    * Initialize audio system (loads worklet module)
@@ -981,6 +1460,23 @@ export class AudioManager {
 
     // Resume the audio context first
     await resumeAudioContext();
+
+    // Create main delay node for output delay control
+    this.mainDelayNode = context.createDelay(MAX_MAIN_DELAY_SECONDS);
+    this.mainDelayNode.delayTime.value = 0;
+    this.mainDelayNode.connect(context.destination);
+
+    // Create master meter tap (parallel to main path, does not interrupt audio)
+    this.masterSplitter = context.createChannelSplitter(2);
+    this.mainDelayNode.connect(this.masterSplitter);
+
+    this.masterAnalyserL = context.createAnalyser();
+    this.masterAnalyserL.fftSize = 2048;
+    this.masterAnalyserR = context.createAnalyser();
+    this.masterAnalyserR.fftSize = 2048;
+
+    this.masterSplitter.connect(this.masterAnalyserL, 0);
+    this.masterSplitter.connect(this.masterAnalyserR, 1);
 
     // Load the worklet module once (will be used by all per-sound worklet managers)
     await context.audioWorklet.addModule(workletProcessorUrl);
@@ -1061,8 +1557,9 @@ export class AudioManager {
       }
     });
 
-    // Set initial global volume
-    wm.setVolume(this.globalVolume);
+    // Note: We intentionally don't set wm.setVolume() here.
+    // Worklet masterGainNode stays at unity (1.0) so CUE tap gets full signal.
+    // Master volume is applied via channel gain nodes (post-CUE tap).
 
     return wm;
   }
@@ -1075,6 +1572,7 @@ export class AudioManager {
     if (bandcampUrl !== url) {
       return bandcampUrl;
     }
+    // YouTube URLs do not need additional proxying (handled at stream resolution time)
     return getProxiedSoundCloudUrl(url);
   }
 
@@ -1106,6 +1604,7 @@ export class AudioManager {
     if (config.dryWet !== undefined) {
       base.wet = config.dryWet;
       base.dry = 1 - config.dryWet;
+      base.dryWet = config.dryWet;
     }
 
     switch (config.type) {

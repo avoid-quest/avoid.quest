@@ -60,8 +60,8 @@ export function InstallPrompt() {
         localStorage.setItem("pwa-install-dismissed", "true");
         setShowPrompt(false);
       }
-    } catch (error) {
-      console.error("Error showing install prompt:", error);
+    } catch {
+      // Install prompt error is non-critical
     } finally {
       setIsInstalling(false);
     }

@@ -1,4 +1,4 @@
-import { useThrottledCallback } from "@tanstack/react-pacer";
+import { useThrottler } from "@tanstack/react-pacer";
 import { useEffect, useState } from "react";
 import { AudioManager } from "@/lib/audio";
 
@@ -16,8 +16,7 @@ const METER_THROTTLE_MS = 50;
 export function usePeakLevel(soundId: string | null): PeakLevel {
   const [level, setLevel] = useState<PeakLevel>({ left: 0, right: 0 });
 
-  // Throttle state updates to ~30fps to reduce CPU during playback
-  const throttledSetLevel = useThrottledCallback(setLevel, {
+  const throttler = useThrottler(setLevel, {
     wait: METER_THROTTLE_MS,
     leading: true,
     trailing: true,
@@ -30,13 +29,16 @@ export function usePeakLevel(soundId: string | null): PeakLevel {
     }
 
     const audioManager = AudioManager.getInstance();
-    const unsubscribe = audioManager.subscribeMeter(soundId, throttledSetLevel);
+    const unsubscribe = audioManager.subscribeMeter(soundId, (l) => {
+      throttler.maybeExecute(l);
+    });
 
     return () => {
       unsubscribe();
+      throttler.cancel();
       setLevel({ left: 0, right: 0 });
     };
-  }, [soundId, throttledSetLevel]);
+  }, [soundId, throttler]);
 
   return level;
 }

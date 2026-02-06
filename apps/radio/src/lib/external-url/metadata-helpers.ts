@@ -6,7 +6,8 @@ import type { Platform, PlatformMetadata } from "@/lib/platform-types";
 export function isCollection(metadata: PlatformMetadata): boolean {
   return (
     (metadata.platform === "bandcamp" && metadata.itemType === "album") ||
-    (metadata.platform === "soundcloud" && metadata.itemType === "playlist")
+    (metadata.platform === "soundcloud" && metadata.itemType === "playlist") ||
+    (metadata.platform === "youtube" && metadata.itemType === "playlist")
   );
 }
 
@@ -17,54 +18,42 @@ export function getCurrentTrackIndex(
   metadata: PlatformMetadata,
   currentStreamUrl: string
 ): number {
+  if (
+    metadata.platform === "device-input" ||
+    metadata.platform === "local-file"
+  ) {
+    return 0;
+  }
   if (!(isCollection(metadata) && metadata.tracks)) {
     return 0;
   }
 
-  const index = metadata.tracks.findIndex(
-    (t) => t.streamUrl === currentStreamUrl
+  // First try direct streamUrl match
+  let index = metadata.tracks.findIndex(
+    (t: { streamUrl: string }) => t.streamUrl === currentStreamUrl
   );
+  if (index !== -1) {
+    return index;
+  }
+
+  // For YouTube, also match by videoId since resolved URLs differ from yt:{id} format
+  if (metadata.platform === "youtube") {
+    // Check if currentStreamUrl is a yt:{videoId} format
+    if (currentStreamUrl.startsWith("yt:")) {
+      const videoId = currentStreamUrl.slice(3);
+      index = metadata.tracks.findIndex(
+        (t) => "videoId" in t && t.videoId === videoId
+      );
+    } else {
+      // Current URL is resolved - find track whose streamUrl was updated to this URL
+      // or whose videoId matches a track that was resolved
+      index = metadata.tracks.findIndex(
+        (t) => t.streamUrl === currentStreamUrl
+      );
+    }
+  }
+
   return index !== -1 ? index : 0;
-}
-
-/**
- * Get human-readable item type label
- */
-export function getItemTypeLabel(
-  platform: Platform | null,
-  itemType?: string
-): string | null {
-  if (!(platform && itemType)) {
-    return null;
-  }
-
-  if (platform === "bandcamp") {
-    const labels: Record<string, string> = {
-      album: "Album",
-      track: "Track",
-      artist: "Artist",
-      label: "Label",
-    };
-    return labels[itemType] ?? null;
-  }
-
-  if (platform === "soundcloud") {
-    const labels: Record<string, string> = {
-      track: "Track",
-      playlist: "Playlist/Set",
-      user: "User",
-    };
-    return labels[itemType] ?? null;
-  }
-
-  return null;
-}
-
-/**
- * Get platform display name
- */
-export function getPlatformLabel(platform: Platform): string {
-  return platform === "bandcamp" ? "Bandcamp" : "SoundCloud";
 }
 
 /**
@@ -73,6 +62,9 @@ export function getPlatformLabel(platform: Platform): string {
 export function getUrlPlaceholder(platform: Platform): string {
   if (platform === "bandcamp") {
     return "https://artist.bandcamp.com/track/song-name";
+  }
+  if (platform === "youtube") {
+    return "https://youtube.com/watch?v=dQw4w9WgXcQ";
   }
   return "https://soundcloud.com/artist/track-name";
 }
@@ -83,6 +75,9 @@ export function getUrlPlaceholder(platform: Platform): string {
 export function getUrlExample(platform: Platform): string {
   if (platform === "bandcamp") {
     return "Example: https://artist.bandcamp.com/album/album-name";
+  }
+  if (platform === "youtube") {
+    return "Example: https://youtube.com/playlist?list=PLxxxxxxxx";
   }
   return "Example: https://soundcloud.com/artist/sets/playlist-name";
 }

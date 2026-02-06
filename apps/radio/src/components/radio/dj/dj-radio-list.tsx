@@ -11,8 +11,10 @@ import { useDraggable } from "@dnd-kit/core";
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
+  FileAudioIcon,
+  GlobeIcon,
   GripVerticalIcon,
-  MusicIcon,
+  MicIcon,
   SearchIcon,
   Volume2Icon,
 } from "lucide-react";
@@ -27,34 +29,62 @@ type DjRadioListProps = {
   radios: Radio[];
 };
 
-const BANDCAMP_PLATFORM_ID = -1;
-const SOUNDCLOUD_PLATFORM_ID = -2;
+const AUDIO_INPUT_PLATFORM_ID = -3;
+export const STATIC_AUDIO_PLATFORM_ID = -4;
+/** @deprecated Use STATIC_AUDIO_PLATFORM_ID */
+export const LOCAL_FILE_PLATFORM_ID = STATIC_AUDIO_PLATFORM_ID;
+export const EXTERNAL_PLATFORM_ID = -6;
 
-const BANDCAMP_COLOR = "#629aa0";
-const SOUNDCLOUD_COLOR = "#ff7700";
+const AUDIO_INPUT_COLOR = "#10b981";
+const STATIC_AUDIO_COLOR = "#8b5cf6";
+const EXTERNAL_COLOR = "#3b82f6"; // Blue for unified external
 
 // Platform-specific placeholder items
-const PLATFORM_ITEMS: Radio[] = [
+export const PLATFORM_ITEMS: Radio[] = [
   {
-    id: BANDCAMP_PLATFORM_ID,
-    name: "Bandcamp",
+    id: STATIC_AUDIO_PLATFORM_ID,
+    name: "Audio File",
     streamUrl: "",
-    description: "Paste a Bandcamp URL (album, track, or artist)",
+    description: "Load from file or URL (MP3, M3U, etc.)",
     enabled: true,
     platformMetadata: {
-      platform: "bandcamp",
-      itemType: "album",
+      platform: "static-audio",
+      itemType: "track",
       url: "",
+      fileName: "",
+      displayName: "",
+      duration: 0,
+      fileSize: 0,
+      mimeType: "",
+      streamUrl: "",
+      isLocal: true,
+      requiresProxy: false,
     },
   },
   {
-    id: SOUNDCLOUD_PLATFORM_ID,
-    name: "SoundCloud",
+    id: AUDIO_INPUT_PLATFORM_ID,
+    name: "Audio Input",
     streamUrl: "",
-    description: "Paste a SoundCloud URL (track, playlist, or user)",
+    description: "Route mic/line-in from your audio interface",
     enabled: true,
     platformMetadata: {
-      platform: "soundcloud",
+      platform: "device-input",
+      itemType: "track",
+      url: "",
+      deviceId: "",
+      deviceLabel: "",
+      channelSelection: { left: 0, right: 1 },
+      channelCount: 2,
+    },
+  },
+  {
+    id: EXTERNAL_PLATFORM_ID,
+    name: "External",
+    streamUrl: "",
+    description: "Search Bandcamp, SoundCloud, YouTube",
+    enabled: true,
+    platformMetadata: {
+      platform: "bandcamp", // Default, will be detected from URL/search
       itemType: "track",
       url: "",
     },
@@ -63,25 +93,84 @@ const PLATFORM_ITEMS: Radio[] = [
 
 export function isPlatformItem(radio: Radio): boolean {
   return (
-    radio.id === BANDCAMP_PLATFORM_ID || radio.id === SOUNDCLOUD_PLATFORM_ID
+    radio.id === AUDIO_INPUT_PLATFORM_ID ||
+    radio.id === STATIC_AUDIO_PLATFORM_ID ||
+    radio.id === EXTERNAL_PLATFORM_ID
   );
 }
 
+export function isAudioInputItem(radio: Radio): boolean {
+  return radio.id === AUDIO_INPUT_PLATFORM_ID;
+}
+
+export function isStaticAudioItem(radio: Radio): boolean {
+  return radio.id === STATIC_AUDIO_PLATFORM_ID;
+}
+
+/** @deprecated Use isStaticAudioItem */
+export function isLocalFileItem(radio: Radio): boolean {
+  return radio.id === STATIC_AUDIO_PLATFORM_ID;
+}
+
+export function isExternalItem(radio: Radio): boolean {
+  return radio.id === EXTERNAL_PLATFORM_ID;
+}
+
 export function getPlatformFromItem(radio: Radio): Platform | null {
-  if (radio.id === BANDCAMP_PLATFORM_ID) {
-    return "bandcamp";
+  if (radio.id === AUDIO_INPUT_PLATFORM_ID) {
+    return "device-input";
   }
-  if (radio.id === SOUNDCLOUD_PLATFORM_ID) {
-    return "soundcloud";
+  if (radio.id === STATIC_AUDIO_PLATFORM_ID) {
+    return "static-audio";
+  }
+  if (radio.id === EXTERNAL_PLATFORM_ID) {
+    return "external";
   }
   return radio.platformMetadata?.platform || null;
 }
 
-function RadioItemContent({ radio }: { radio: Radio }) {
+function getPlatformColor(platform: Platform | null): string {
+  switch (platform) {
+    case "bandcamp":
+      return "#629aa0";
+    case "soundcloud":
+      return "#ff7700";
+    case "device-input":
+      return AUDIO_INPUT_COLOR;
+    case "youtube":
+      return "#ff0000";
+    case "static-audio":
+    case "local-file":
+      return STATIC_AUDIO_COLOR;
+    case "external":
+      return EXTERNAL_COLOR;
+    default:
+      return "#ff7700";
+  }
+}
+
+export function RadioItemContent({ radio }: { radio: Radio }) {
   const isPlatform = isPlatformItem(radio);
+  const isAudioInput = isAudioInputItem(radio);
+  const isStaticAudio = isStaticAudioItem(radio);
+  const isExternal = isExternalItem(radio);
   const platform = getPlatformFromItem(radio);
-  const platformColor =
-    platform === "bandcamp" ? BANDCAMP_COLOR : SOUNDCLOUD_COLOR;
+  const platformColor = getPlatformColor(platform);
+
+  const getPlatformIcon = () => {
+    if (isAudioInput) {
+      return <MicIcon className="size-5" style={{ color: platformColor }} />;
+    }
+    if (isStaticAudio) {
+      return (
+        <FileAudioIcon className="size-5" style={{ color: platformColor }} />
+      );
+    }
+    if (isExternal) {
+      return <GlobeIcon className="size-5" style={{ color: platformColor }} />;
+    }
+    return <GlobeIcon className="size-5" style={{ color: platformColor }} />;
+  };
 
   return (
     <div className="flex min-w-0 flex-1 items-center gap-3">
@@ -93,12 +182,7 @@ function RadioItemContent({ radio }: { radio: Radio }) {
               backgroundColor: `${platformColor}1a`,
             }}
           >
-            <MusicIcon
-              className="size-5"
-              style={{
-                color: platformColor,
-              }}
-            />
+            {getPlatformIcon()}
           </div>
         ) : (
           <RadioLogo
@@ -127,7 +211,7 @@ type DraggableRadioItemProps = {
   radio: Radio;
 };
 
-function DraggableRadioItem({ radio }: DraggableRadioItemProps) {
+export function DraggableRadioItem({ radio }: DraggableRadioItemProps) {
   const { attributes, listeners, setNodeRef, transform, isDragging } =
     useDraggable({
       id: `radio-${radio.id}`,
@@ -167,7 +251,7 @@ function DraggableRadioItem({ radio }: DraggableRadioItemProps) {
   );
 }
 
-function MobileRadioItem({ radio }: { radio: Radio }) {
+export function MobileRadioItem({ radio }: { radio: Radio }) {
   const handleLoad = (deckId: "deck-a" | "deck-b") => {
     const isPlatform = isPlatformItem(radio);
     const platform = getPlatformFromItem(radio);

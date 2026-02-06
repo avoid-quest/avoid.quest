@@ -3,6 +3,7 @@ import {
   localStorageCollectionOptions,
 } from "@tanstack/react-db";
 import { z } from "zod";
+import { EFFECT_TYPES } from "@/lib/audio/dsp/effects/types";
 import { platformMetadataSchema } from "./schemas";
 
 const radioSchema = z
@@ -39,7 +40,7 @@ const filterConfigSchema = z.object({
 const effectConfigSchema = z
   .object({
     id: z.string(),
-    type: z.string(),
+    type: z.enum(EFFECT_TYPES),
     enabled: z.boolean(),
     order: z.number(),
     dryWet: z.number(),
@@ -62,12 +63,19 @@ const deckStateSchema = z.object({
   effects: z.array(effectConfigSchema),
   filter: filterConfigSchema,
   effectsDryWet: z.number(),
+  // Playback
+  repeat: z.boolean().default(false),
+  autoplay: z.boolean().default(true),
 });
 
 const mixerStateSchema = z.object({
   id: z.string(),
   crossfadePosition: z.number(),
   masterVolume: z.number(),
+  // CUE monitoring
+  headphoneVolume: z.number(),
+  deckACueEnabled: z.boolean(),
+  deckBCueEnabled: z.boolean(),
 });
 
 export type DeckRecord = z.infer<typeof deckStateSchema>;
@@ -111,6 +119,8 @@ const defaultDeckState: Omit<DeckRecord, "id"> = {
     enabled: false,
   },
   effectsDryWet: 1,
+  repeat: false,
+  autoplay: true,
 };
 
 /**
@@ -136,6 +146,9 @@ export async function initializeDjState(): Promise<void> {
       id: MIXER_ID,
       crossfadePosition: 0.5,
       masterVolume: 1,
+      headphoneVolume: 1,
+      deckACueEnabled: false,
+      deckBCueEnabled: false,
     });
   }
 }
@@ -165,6 +178,7 @@ export function getMixer(): MixerRecord | undefined {
  * Update deck A
  */
 export function updateDeckA(updater: (draft: DeckRecord) => void): void {
+  // @ts-expect-error - WritableObjectDeep is compatible with DeckRecord in practice
   deckCollection.update(DECK_A_ID, updater);
 }
 
@@ -172,6 +186,7 @@ export function updateDeckA(updater: (draft: DeckRecord) => void): void {
  * Update deck B
  */
 export function updateDeckB(updater: (draft: DeckRecord) => void): void {
+  // @ts-expect-error - WritableObjectDeep is compatible with DeckRecord in practice
   deckCollection.update(DECK_B_ID, updater);
 }
 
@@ -202,6 +217,8 @@ export function resetDeck(deckId: typeof DECK_A_ID | typeof DECK_B_ID): void {
       enabled: false,
     };
     draft.effectsDryWet = 1;
+    draft.repeat = false;
+    draft.autoplay = true;
   });
 }
 
@@ -214,5 +231,8 @@ export function resetAllDjState(): void {
   mixerCollection.update(MIXER_ID, (draft) => {
     draft.crossfadePosition = 0.5;
     draft.masterVolume = 1;
+    draft.headphoneVolume = 1;
+    draft.deckACueEnabled = false;
+    draft.deckBCueEnabled = false;
   });
 }

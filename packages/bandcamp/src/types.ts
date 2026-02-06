@@ -1,4 +1,9 @@
-export type BandcampItemType = "album" | "track" | "artist" | "label";
+export type BandcampItemType =
+  | "album"
+  | "track"
+  | "artist"
+  | "label"
+  | "collection";
 
 export type BandcampTrackInfo = {
   name: string;

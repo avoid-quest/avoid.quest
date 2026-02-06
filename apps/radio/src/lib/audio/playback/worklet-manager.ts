@@ -140,7 +140,10 @@ type ActiveSource = {
  * Manages the AudioWorklet processor for audio playback and effects.
  * Provides methods for source control, streaming, and effects.
  *
- * Audio routing: Worklet → GainNode (hardware volume) → Destination
+ * Audio routing: Worklet → GainNode (hardware volume) → [returned for external routing]
+ *
+ * Note: The masterGainNode is NOT auto-connected to destination.
+ * Use the outputNode getter to get the final output for external routing.
  */
 export class WorkletManager {
   private readonly context: AudioContext;
@@ -222,6 +225,15 @@ export class WorkletManager {
    * Get the master GainNode (for monitoring or external routing)
    */
   get gainNode(): GainNode | null {
+    return this.masterGainNode;
+  }
+
+  /**
+   * Get the output node for external routing
+   * This is the final output of the worklet chain (after hardware volume)
+   * Connect this to your destination, delay nodes, or other processing
+   */
+  get outputNode(): GainNode | null {
     return this.masterGainNode;
   }
 
@@ -633,9 +645,9 @@ export class WorkletManager {
     this.masterGainNode = nativeContext.createGain();
     this.masterGainNode.gain.value = 1;
 
-    // Route: Worklet → GainNode → Destination
+    // Route: Worklet → GainNode (no auto-connect to destination)
+    // External code should connect outputNode to destination or delay nodes
     this.workletNode.connect(this.masterGainNode);
-    this.masterGainNode.connect(nativeContext.destination);
 
     // Set up message listener
     this.setupMessageListener();

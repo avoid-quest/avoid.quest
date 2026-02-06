@@ -1,5 +1,4 @@
 import { Button } from "@avoid.quest/ui/components/button";
-import { Card } from "@avoid.quest/ui/components/card";
 import { Input } from "@avoid.quest/ui/components/input";
 import { Label } from "@avoid.quest/ui/components/label";
 import {
@@ -55,8 +54,8 @@ export function ImportExport() {
       // Generate the URL for display
       const url = await generateShareUrl();
       setShareUrl(url);
-    } catch (error) {
-      console.error("Failed to generate share URL:", error);
+    } catch {
+      toast.error("Failed to generate share URL");
     } finally {
       setIsExporting(false);
     }
@@ -80,8 +79,7 @@ export function ImportExport() {
       (
         window as Window & { pendingImportData?: DatabaseExport }
       ).pendingImportData = importData;
-    } catch (error) {
-      console.error("File import failed:", error);
+    } catch {
       toast.error("Failed to read import file");
     } finally {
       setIsImporting(false);
@@ -106,8 +104,7 @@ export function ImportExport() {
       (
         window as Window & { pendingImportData?: DatabaseExport }
       ).pendingImportData = importData;
-    } catch (error) {
-      console.error("URL import failed:", error);
+    } catch {
       toast.error("Failed to import from URL");
     } finally {
       setIsImporting(false);
@@ -141,8 +138,7 @@ export function ImportExport() {
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
-    } catch (error) {
-      console.error("Apply import failed:", error);
+    } catch {
       toast.error("Failed to apply import");
     } finally {
       setIsImporting(false);
@@ -170,176 +166,185 @@ export function ImportExport() {
         </TabsList>
 
         <TabsContent className="space-y-4" value="export">
-          <Card className="p-4 sm:p-6">
-            <div className="space-y-4">
+          <div className="space-y-4 rounded-lg border border-border/50 p-3">
+            <div>
+              <h3 className="font-mono text-foreground/80 text-xs uppercase tracking-wider">
+                Export Configuration
+              </h3>
+              <p className="text-[10px] text-muted-foreground/60">
+                Download a backup or create a shareable link.
+              </p>
+            </div>
+
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Button
+                className="w-full"
+                disabled={isExporting}
+                onClick={handleExportFile}
+                size="sm"
+                variant="outline"
+              >
+                {isExporting ? "Exporting..." : "Download Backup"}
+              </Button>
+              <Button
+                className="w-full"
+                disabled={isExporting}
+                onClick={handleGenerateShareUrl}
+                size="sm"
+              >
+                {isExporting ? "Generating..." : "Create Share Link"}
+              </Button>
+            </div>
+
+            {lastExportDate?.valueOf() && (
+              <p className="font-mono text-[10px] text-muted-foreground/60 tabular-nums">
+                Last exported: {new Date(lastExportDate).toLocaleString()}
+              </p>
+            )}
+
+            {shareUrl?.trim() !== "" && (
+              <div className="space-y-1.5">
+                <Label
+                  className="font-mono text-[10px] text-muted-foreground uppercase tracking-wider"
+                  htmlFor="share-url"
+                >
+                  Share URL
+                </Label>
+                <Input
+                  className="font-mono text-xs"
+                  id="share-url"
+                  readOnly
+                  value={shareUrl}
+                />
+                <p className="text-[10px] text-muted-foreground/60">
+                  Share this URL with others to import your configuration
+                </p>
+              </div>
+            )}
+          </div>
+        </TabsContent>
+
+        <TabsContent className="space-y-3" value="import">
+          <div className="space-y-3">
+            <div className="space-y-3 rounded-lg border border-border/50 p-3">
               <div>
-                <h3 className="font-semibold text-base sm:text-lg">
-                  Export Your Configuration
+                <h3 className="font-mono text-foreground/80 text-xs uppercase tracking-wider">
+                  Import from URL
                 </h3>
-                <p className="text-muted-foreground text-sm">
-                  Download a backup file or create a shareable link to export
-                  your radio stations and settings.
+                <p className="text-[10px] text-muted-foreground/60">
+                  Import stations and settings from a share URL.
                 </p>
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label
+                  className="font-mono text-[10px] text-muted-foreground uppercase tracking-wider"
+                  htmlFor="import-url"
+                >
+                  Share URL
+                </Label>
+                <Input
+                  disabled={isImporting}
+                  id="import-url"
+                  placeholder="https://app.com/import#data=..."
+                  type="url"
+                />
                 <Button
                   className="w-full"
-                  disabled={isExporting}
-                  onClick={handleExportFile}
-                  variant="outline"
+                  disabled={isImporting}
+                  onClick={handleUrlImport}
+                  size="sm"
                 >
-                  {isExporting ? "Exporting..." : "Download Backup"}
-                </Button>
-                <Button
-                  className="w-full"
-                  disabled={isExporting}
-                  onClick={handleGenerateShareUrl}
-                >
-                  {isExporting ? "Generating..." : "Create Share Link"}
+                  {isImporting ? "Importing..." : "Import from URL"}
                 </Button>
               </div>
-
-              {lastExportDate?.valueOf() && (
-                <div className="text-muted-foreground text-sm">
-                  Last exported: {new Date(lastExportDate).toLocaleString()}
-                </div>
-              )}
-
-              {shareUrl?.trim() !== "" && (
-                <div className="space-y-2">
-                  <Label htmlFor="share-url">Share URL:</Label>
-                  <Input
-                    className="font-mono text-sm"
-                    id="share-url"
-                    readOnly
-                    value={shareUrl}
-                  />
-                  <p className="text-muted-foreground text-xs">
-                    Share this URL with others - they can visit it to import
-                    your configuration
-                  </p>
-                </div>
-              )}
             </div>
-          </Card>
-        </TabsContent>
 
-        <TabsContent className="space-y-4" value="import">
-          <div className="space-y-4">
-            <Card className="p-4 sm:p-6">
-              <div className="space-y-4">
-                <div>
-                  <h3 className="font-semibold text-base sm:text-lg">
-                    Import from URL
-                  </h3>
-                  <p className="text-muted-foreground text-sm">
-                    Import radio stations and settings from a share URL.
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="import-url">Paste share URL here</Label>
-                  <Input
-                    disabled={isImporting}
-                    id="import-url"
-                    placeholder="https://app.com/import#data=..."
-                    type="url"
-                  />
-                  <Button
-                    className="w-full"
-                    disabled={isImporting}
-                    onClick={handleUrlImport}
-                  >
-                    {isImporting ? "Importing..." : "Import from URL"}
-                  </Button>
-                </div>
+            <div className="space-y-3 rounded-lg border border-border/50 p-3">
+              <div>
+                <h3 className="font-mono text-foreground/80 text-xs uppercase tracking-wider">
+                  Import from File
+                </h3>
+                <p className="text-[10px] text-muted-foreground/60">
+                  Upload a JSON configuration file.
+                </p>
               </div>
-            </Card>
 
-            <Card className="p-4 sm:p-6">
-              <div className="space-y-4">
-                <div>
-                  <h3 className="font-semibold text-base sm:text-lg">
-                    Import from File
-                  </h3>
-                  <p className="text-muted-foreground text-sm">
-                    Upload a JSON configuration file to import radio stations
-                    and settings.
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="import-file">Select JSON file</Label>
-                  <Input
-                    accept=".json"
-                    disabled={isImporting}
-                    id="import-file"
-                    onChange={handleFileImport}
-                    ref={fileInputRef}
-                    type="file"
-                  />
-                </div>
+              <div className="space-y-2">
+                <Label
+                  className="font-mono text-[10px] text-muted-foreground uppercase tracking-wider"
+                  htmlFor="import-file"
+                >
+                  JSON File
+                </Label>
+                <Input
+                  accept=".json"
+                  disabled={isImporting}
+                  id="import-file"
+                  onChange={handleFileImport}
+                  ref={fileInputRef}
+                  type="file"
+                />
               </div>
-            </Card>
+            </div>
           </div>
         </TabsContent>
 
         {importPreview?.valueOf() && (
-          <Card className="border-blue-200 bg-blue-50/50 p-6">
-            <div className="space-y-4">
+          <div className="rounded-lg border border-primary/20 bg-primary/5 p-3">
+            <div className="space-y-3">
               <div className="flex items-center gap-2">
-                <div className="h-2 w-2 rounded-full bg-blue-500" />
-                <h4 className="font-medium">Import Preview</h4>
+                <div className="h-1.5 w-1.5 rounded-full bg-primary" />
+                <h4 className="font-mono text-foreground/80 text-xs uppercase tracking-wider">
+                  Import Preview
+                </h4>
               </div>
 
-              <div className="grid grid-cols-2 gap-4 text-sm">
+              <div className="grid grid-cols-2 gap-2 font-mono text-[10px]">
                 <div>
-                  <span className="text-muted-foreground">New radios:</span>
-                  <span className="ml-2 font-medium text-green-600">
+                  <span className="text-muted-foreground">New:</span>
+                  <span className="ml-1.5 text-emerald-500">
                     {importPreview.newRadios}
                   </span>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">Updated radios:</span>
-                  <span className="ml-2 font-medium text-blue-600">
+                  <span className="text-muted-foreground">Updated:</span>
+                  <span className="ml-1.5 text-primary">
                     {importPreview.updatedRadios}
                   </span>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">
-                    Unchanged radios:
-                  </span>
-                  <span className="ml-2 font-medium text-gray-600">
+                  <span className="text-muted-foreground">Unchanged:</span>
+                  <span className="ml-1.5 text-foreground/60">
                     {importPreview.unchangedRadios}
                   </span>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">
-                    Settings changed:
-                  </span>
-                  <span className="ml-2 font-medium">
-                    {importPreview.settingsChanged ? "Yes" : "No"}
+                  <span className="text-muted-foreground">Settings:</span>
+                  <span className="ml-1.5">
+                    {importPreview.settingsChanged ? "Changed" : "No change"}
                   </span>
                 </div>
               </div>
 
-              <div className="space-y-3">
-                <Label>Import Mode</Label>
+              <div className="space-y-2">
+                <Label className="font-mono text-[10px] text-muted-foreground uppercase tracking-wider">
+                  Import Mode
+                </Label>
                 <RadioGroup
                   onValueChange={(value) => setImportMode(value as ImportMode)}
                   value={importMode}
                 >
                   <div className="flex items-center space-x-2">
                     <RadioGroupItem id="merge" value="merge" />
-                    <Label className="text-sm" htmlFor="merge">
-                      Merge - Keep existing data, add new and update changed
+                    <Label className="text-xs" htmlFor="merge">
+                      Merge — keep existing, add new
                     </Label>
                   </div>
                   <div className="flex items-center space-x-2">
                     <RadioGroupItem id="replace" value="replace" />
-                    <Label className="text-sm" htmlFor="replace">
-                      Replace - Clear all existing data and import new
+                    <Label className="text-xs" htmlFor="replace">
+                      Replace — clear all, import new
                     </Label>
                   </div>
                 </RadioGroup>
@@ -350,19 +355,21 @@ export function ImportExport() {
                   className="flex-1"
                   disabled={isImporting}
                   onClick={handleApplyImport}
+                  size="sm"
                 >
                   {isImporting ? "Importing..." : "Apply Import"}
                 </Button>
                 <Button
                   disabled={isImporting}
                   onClick={handleCancelImport}
+                  size="sm"
                   variant="outline"
                 >
                   Cancel
                 </Button>
               </div>
             </div>
-          </Card>
+          </div>
         )}
       </Tabs>
     </div>

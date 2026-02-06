@@ -6,21 +6,48 @@
  * TanStack Store for runtime state.
  */
 
-import type { EffectConfig, EffectType, FilterConfig } from "@/lib/audio";
+import { resolveStreamUrl } from "@avoid.quest/youtube";
+import type {
+  ChannelSelection,
+  EffectConfig,
+  EffectType,
+  FilterConfig,
+} from "@/lib/audio";
 import {
   AudioManager,
+  type CueBus,
+  createCueBus,
   createDefaultEffectConfig,
+  createOutputRouter,
+  getAudioContext,
+  type OutputRouter,
   type Radio,
 } from "@/lib/audio";
 import {
+  extractFileMetadata,
+  revokeFileObjectUrl,
+} from "@/lib/audio/file-metadata";
+import {
+  getAudioSettings,
   getDeckA,
   getDeckB,
+  getDelaySettings,
   getMixer,
   resetDeck as resetDeckDb,
+  setCueDelayMs as setCueDelayMsSetting,
+  setMainDelayMs as setMainDelayMsSetting,
   updateDeckA,
   updateDeckB,
   updateMixer,
 } from "@/lib/collections";
+import type { DeckRecord } from "@/lib/collections/dj-state";
+import {
+  type DeviceInputMetadata,
+  type FileMetadata,
+  isDeviceInputMetadata,
+  isFileMetadata,
+  isYouTubeMetadata,
+} from "@/lib/platform-types";
 import {
   getDeckARuntime,
   getDeckASubscriptionCleanup,
@@ -40,6 +67,19 @@ import {
 export type DeckSide = "left" | "right";
 type DeckId = "deck-a" | "deck-b";
 
+/**
+ * Typed accessor for DeckRecord.effects.
+ * The Zod schema uses `z.enum(EFFECT_TYPES)` for the type field, so the inferred
+ * type aligns with EffectConfig. The `.passthrough()` keeps extra per-effect params.
+ */
+function getDeckEffects(deck: DeckRecord): EffectConfig[] {
+  return deck.effects as EffectConfig[];
+}
+
+function getDeckRadio(deck: DeckRecord): Radio | null {
+  return deck.radio;
+}
+
 // Lazy initialization of AudioManager to avoid SSR issues
 let audioManager: AudioManager | null = null;
 
@@ -53,13 +93,209 @@ const getAudioManager = (): AudioManager => {
   return audioManager;
 };
 
+// Lazy initialization of CueBus for pre-fader monitoring
+let cueBus: CueBus | null = null;
+
+/**
+ * Get or create the CueBus instance
+ * Requires AudioContext to be available (user gesture)
+ */
+export const getCueBus = (audioContext: AudioContext): CueBus => {
+  if (typeof window === "undefined") {
+    throw new Error("CueBus can only be used in browser environment");
+  }
+  if (!cueBus) {
+    cueBus = createCueBus(audioContext, {
+      onHeadphoneVolumeChange: (volume) => {
+        updateMixer((draft) => {
+          draft.headphoneVolume = volume;
+        });
+      },
+      onDeckCueChange: (deckId, enabled) => {
+        updateMixer((draft) => {
+          if (deckId === "deck-a") {
+            draft.deckACueEnabled = enabled;
+          } else if (deckId === "deck-b") {
+            draft.deckBCueEnabled = enabled;
+          }
+        });
+      },
+    });
+
+    // Register both decks
+    cueBus.registerDeck("deck-a");
+    cueBus.registerDeck("deck-b");
+
+    // Restore state from persisted mixer
+    const mixer = getMixer();
+    if (mixer) {
+      if (mixer.headphoneVolume !== undefined) {
+        cueBus.setHeadphoneVolume(mixer.headphoneVolume);
+      }
+      if (mixer.deckACueEnabled) {
+        cueBus.setCueEnabled("deck-a", true);
+      }
+      if (mixer.deckBCueEnabled) {
+        cueBus.setCueEnabled("deck-b", true);
+      }
+    }
+  }
+  return cueBus;
+};
+
+/**
+ * Check if CueBus is initialized
+ */
+export const isCueBusInitialized = (): boolean => cueBus !== null;
+
+// Lazy initialization of OutputRouter for device selection
+let outputRouter: OutputRouter | null = null;
+
+/**
+ * Get or create the OutputRouter instance
+ */
+const getOutputRouter = (): OutputRouter | null => {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const context = getAudioContext();
+  if (!context) {
+    return null;
+  }
+
+  if (!outputRouter) {
+    outputRouter = createOutputRouter(context, {
+      onError: (error) => {
+        setDjError(error.message);
+      },
+    });
+  }
+
+  return outputRouter;
+};
+
+/**
+ * Apply main output device setting
+ * Called when user changes the main output in settings
+ */
+export async function applyMainOutputDevice(deviceId: string): Promise<void> {
+  const router = getOutputRouter();
+  if (router) {
+    await router.setMainOutput(deviceId);
+  }
+}
+
+/**
+ * Apply CUE output device setting
+ * Called when user changes the CUE output in settings
+ * Routes CUE audio to the specified device via MediaStream bridge
+ * Note: CueBus handles actual audio routing; OutputRouter CUE is not used
+ */
+export async function applyCueOutputDevice(
+  deviceId: string | null
+): Promise<void> {
+  // CueBus handles actual audio routing via MediaStream bridge
+  const bus = ensureCueBus();
+  if (bus) {
+    await bus.setCueOutputDevice(deviceId);
+
+    // When disabling CUE, reset deck CUE state so no stale state remains
+    if (!deviceId) {
+      bus.setCueEnabled("deck-a", false);
+      bus.setCueEnabled("deck-b", false);
+      updateMixer((draft) => {
+        draft.deckACueEnabled = false;
+        draft.deckBCueEnabled = false;
+      });
+    }
+  }
+}
+
+// Track if we've initialized audio devices from settings
+let audioDevicesInitialized = false;
+
+/**
+ * Apply current audio settings (devices and delays)
+ * Reusable function - called on init AND when settings change
+ */
+export async function applyCurrentAudioSettings(): Promise<void> {
+  const router = getOutputRouter();
+  if (!router) {
+    return;
+  }
+
+  try {
+    const settings = getAudioSettings();
+    if (settings.mainOutputId && settings.mainOutputId !== "default") {
+      await router.setMainOutput(settings.mainOutputId);
+    }
+    if (settings.cueOutputId) {
+      // CueBus handles actual audio routing
+      const bus = ensureCueBus();
+      if (bus) {
+        await bus.setCueOutputDevice(settings.cueOutputId);
+      }
+    }
+
+    // Apply output delays from saved settings
+    const delaySettings = getDelaySettings();
+    if (delaySettings.mainDelayMs > 0) {
+      getAudioManager().setMainDelay(delaySettings.mainDelayMs);
+    }
+    if (delaySettings.cueDelayMs > 0) {
+      const bus = ensureCueBus();
+      if (bus) {
+        bus.setCueDelay(delaySettings.cueDelayMs);
+      }
+    }
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Failed to apply audio settings";
+    setDjError(message);
+  }
+}
+
+/**
+ * Initialize audio output devices and delays from saved settings
+ * Called once when audio first plays
+ */
+async function initializeAudioDevices(): Promise<void> {
+  if (audioDevicesInitialized) {
+    return;
+  }
+  audioDevicesInitialized = true;
+
+  const router = getOutputRouter();
+  if (!router) {
+    // Reset flag on early return so we can retry later
+    audioDevicesInitialized = false;
+    return;
+  }
+
+  await applyCurrentAudioSettings();
+}
+
 const getSoundId = (radio: Radio, side: DeckSide): string =>
   `${side}_${radio.id}`;
 
 // Deck-specific function mappings
-const deckConfig = {
+const deckConfig: Record<
+  DeckId,
+  {
+    side: DeckSide;
+    getDeck: typeof getDeckA;
+    getRuntime: typeof getDeckARuntime;
+    getSubscriptionCleanup: typeof getDeckASubscriptionCleanup;
+    setSubscriptionCleanup: typeof setDeckASubscriptionCleanup;
+    setSoundId: typeof setDeckASoundId;
+    setRuntimeState: typeof setDeckARuntimeState;
+    resetRuntime: typeof resetDeckARuntime;
+    updateDeck: typeof updateDeckA;
+  }
+> = {
   "deck-a": {
-    side: "left" as DeckSide,
+    side: "left",
     getDeck: getDeckA,
     getRuntime: getDeckARuntime,
     getSubscriptionCleanup: getDeckASubscriptionCleanup,
@@ -70,7 +306,7 @@ const deckConfig = {
     updateDeck: updateDeckA,
   },
   "deck-b": {
-    side: "right" as DeckSide,
+    side: "right",
     getDeck: getDeckB,
     getRuntime: getDeckBRuntime,
     getSubscriptionCleanup: getDeckBSubscriptionCleanup,
@@ -80,40 +316,210 @@ const deckConfig = {
     resetRuntime: resetDeckBRuntime,
     updateDeck: updateDeckB,
   },
-} as const;
+};
+
+/**
+ * Handle track end - repeat current track or auto-advance to next in playlist/album.
+ */
+function handleTrackEnded(
+  config: (typeof deckConfig)["deck-a"],
+  currentDeck: DeckRecord,
+  soundId: string
+): void {
+  // Repeat mode: seek to start and replay
+  if (currentDeck.repeat) {
+    getAudioManager().seekSound(soundId, 0);
+    getAudioManager()
+      .playSound(soundId, currentDeck.volume)
+      .then(() => applyCrossfade())
+      .catch(() => setDjError("Failed to repeat track"));
+    return;
+  }
+
+  // Auto-advance to next track (only if autoplay is enabled)
+  if (!currentDeck.autoplay) {
+    return;
+  }
+
+  const deckRadio = getDeckRadio(currentDeck);
+  const nextTrack = findNextTrack(deckRadio);
+  if (nextTrack && deckRadio) {
+    // Resolve YouTube yt:{videoId} URLs before loading
+    const streamUrl = nextTrack.streamUrl;
+    if (streamUrl.startsWith("yt:")) {
+      const videoId = streamUrl.slice(3);
+      resolveStreamUrl(videoId)
+        .then((resolvedUrl) => {
+          if (resolvedUrl) {
+            // Update the track's streamUrl in metadata for tracklist highlighting
+            if (
+              isYouTubeMetadata(deckRadio.platformMetadata) &&
+              deckRadio.platformMetadata.tracks
+            ) {
+              const track = deckRadio.platformMetadata.tracks.find(
+                (t) => "videoId" in t && t.videoId === videoId
+              );
+              if (track) {
+                track.streamUrl = resolvedUrl;
+              }
+            }
+            loadTrack(
+              config.side,
+              { ...deckRadio, streamUrl: resolvedUrl },
+              true
+            );
+          } else {
+            setDjError("Failed to resolve next track");
+          }
+        })
+        .catch(() => setDjError("Failed to load next track"));
+    } else {
+      loadTrack(
+        config.side,
+        { ...deckRadio, streamUrl },
+        true // auto-play
+      );
+    }
+  }
+}
+
+/**
+ * Handle YouTube stream interruption by fetching a fresh URL and resuming playback.
+ * Called when STREAM_INTERRUPTED error is received for a YouTube stream.
+ */
+async function handleYouTubeStreamInterrupted(
+  soundId: string,
+  videoId: string,
+  position: number
+): Promise<void> {
+  try {
+    const newUrl = await refreshYouTubeStreamUrl(videoId);
+    if (newUrl) {
+      await getAudioManager().refreshStreamUrl(soundId, newUrl, position);
+      setDjError(null);
+      applyCrossfade();
+    } else {
+      setDjError("Failed to refresh YouTube stream - please reload");
+    }
+  } catch (err) {
+    setDjError(
+      `Stream refresh failed: ${err instanceof Error ? err.message : "Unknown error"}`
+    );
+  }
+}
+
+/**
+ * Refresh a YouTube stream URL when interrupted.
+ * Uses Invidious API for stream URL resolution.
+ * Returns the resolved URL or null on failure.
+ */
+async function refreshYouTubeStreamUrl(
+  videoId: string
+): Promise<string | null> {
+  try {
+    const streamUrl = await resolveStreamUrl(videoId);
+    if (streamUrl) {
+      return streamUrl;
+    }
+    return null;
+  } catch (error) {
+    console.warn(
+      `[dj-actions] refreshYouTubeStreamUrl failed for ${videoId}:`,
+      error
+    );
+    return null;
+  }
+}
+
+// Helper to get stream URL for a track (handles YouTube lazy resolution format)
+function getTrackStreamUrl(
+  track: { streamUrl: string; videoId?: string },
+  platform: string
+): string {
+  if (track.streamUrl) {
+    return track.streamUrl;
+  }
+  // YouTube tracks use yt:{videoId} format for lazy resolution
+  if (platform === "youtube" && "videoId" in track && track.videoId) {
+    return `yt:${track.videoId}`;
+  }
+  return "";
+}
+
+// Helper to find current track index in a playlist
+function findCurrentTrackIndex(
+  tracks: Array<{ streamUrl: string; videoId?: string }>,
+  currentStreamUrl: string,
+  platform: string
+): number {
+  // First try direct streamUrl match
+  let index = tracks.findIndex((t) => t.streamUrl === currentStreamUrl);
+  if (index !== -1) {
+    return index;
+  }
+
+  // For YouTube, also check by videoId since streamUrl might be yt:{id}
+  if (platform === "youtube" && currentStreamUrl.startsWith("yt:")) {
+    const currentVideoId = currentStreamUrl.slice(3);
+    index = tracks.findIndex(
+      (t) => "videoId" in t && t.videoId === currentVideoId
+    );
+  }
+
+  return index;
+}
 
 // Helper to find next track in a platform playlist/album
 export const findNextTrack = (
   radio: Radio | null
 ): { streamUrl: string } | null => {
-  if (!radio?.platformMetadata?.tracks) {
+  if (
+    !radio?.platformMetadata ||
+    radio.platformMetadata.platform === "device-input" ||
+    radio.platformMetadata.platform === "local-file"
+  ) {
     return null;
   }
 
   const { platformMetadata } = radio;
+
+  if (!("tracks" in platformMetadata && platformMetadata.tracks)) {
+    return null;
+  }
+
   const { tracks, platform, itemType } = platformMetadata;
 
   // Only handle collections (albums/playlists)
   const isCollection =
     (platform === "bandcamp" && itemType === "album") ||
-    (platform === "soundcloud" && itemType === "playlist");
+    (platform === "soundcloud" && itemType === "playlist") ||
+    (platform === "youtube" && itemType === "playlist");
 
-  if (!(isCollection && tracks) || tracks.length === 0) {
+  if (!isCollection || tracks.length === 0) {
     return null;
   }
 
-  // Find current track index
-  const currentIndex = tracks.findIndex((t) => t.streamUrl === radio.streamUrl);
+  const currentIndex = findCurrentTrackIndex(tracks, radio.streamUrl, platform);
 
+  // Current track not found, return first track
   if (currentIndex === -1) {
-    // Current track not found, return first track
-    return tracks[0];
+    const firstTrack = tracks[0];
+    if (!firstTrack) {
+      return null;
+    }
+    const streamUrl = getTrackStreamUrl(firstTrack, platform);
+    return streamUrl ? { streamUrl } : null;
   }
 
   // Return next track if available
   const nextIndex = currentIndex + 1;
   if (nextIndex < tracks.length) {
-    return tracks[nextIndex];
+    const nextTrack = tracks[nextIndex];
+    if (!nextTrack) {
+      return null;
+    }
+    const streamUrl = getTrackStreamUrl(nextTrack, platform);
+    return streamUrl ? { streamUrl } : null;
   }
 
   // No more tracks
@@ -133,16 +539,23 @@ function applyStoredEffectsAndFilters(
     }
 
     // Apply stored effects
+    let allAdded = true;
     for (const effect of effects) {
-      const success = getAudioManager().addEffect(soundId, effect);
-      if (!success) {
-        console.warn(
-          `[DjActions] Failed to apply effect ${effect.type} to ${soundId}`
-        );
+      if (!getAudioManager().addEffect(soundId, effect)) {
+        allAdded = false;
       }
     }
-  } catch (err) {
-    console.error("[DjActions] Error applying stored effects:", err);
+
+    // Retry once if some effects failed (WorkletManager may not be ready yet)
+    if (!allAdded && effects.length > 0) {
+      setTimeout(() => {
+        for (const effect of effects) {
+          getAudioManager().addEffect(soundId, effect);
+        }
+      }, 100);
+    }
+  } catch (error) {
+    console.warn("[dj-actions] Failed to apply stored effects:", error);
   }
 }
 
@@ -173,8 +586,37 @@ function applyStoredChannelStrip(
     if (effectsDryWet !== 1) {
       manager.setEffectsDryWet(soundId, effectsDryWet);
     }
-  } catch (err) {
-    console.error("[DjActions] Error applying channel strip:", err);
+  } catch (error) {
+    console.warn("[dj-actions] Failed to apply stored channel strip:", error);
+  }
+}
+
+/**
+ * Connect a deck's pre-fader audio node to the CueBus for CUE monitoring
+ * This should be called after audio starts playing
+ */
+function connectDeckToCueBus(deckId: DeckId, soundId: string): void {
+  const bus = ensureCueBus();
+  if (!bus) {
+    return;
+  }
+
+  const manager = getAudioManager();
+
+  // Connect pre-fader for CUE monitoring (raw audio, unaffected by crossfader)
+  const preFaderNode = manager.getPreFaderNode(soundId);
+  if (preFaderNode) {
+    bus.connectPreFader(deckId, preFaderNode);
+  }
+
+  // Restore CUE enabled state from mixer
+  const mixer = getMixer();
+  if (mixer) {
+    const enabled =
+      deckId === "deck-a" ? mixer.deckACueEnabled : mixer.deckBCueEnabled;
+    if (enabled) {
+      bus.setCueEnabled(deckId, true);
+    }
   }
 }
 
@@ -228,7 +670,13 @@ async function setDeckRadio(deckId: DeckId, radio: Radio | null) {
     config.setSubscriptionCleanup(null);
   }
 
-  // Cleanup existing sound
+  // Revoke object URL if previous source was a local file
+  const prevRadio = getDeckRadio(deck);
+  if (prevRadio && isFileMetadata(prevRadio.platformMetadata)) {
+    revokeFileObjectUrl(prevRadio.platformMetadata.objectUrl);
+  }
+
+  // Cleanup existing sound (CueBus handles disconnect internally via connectPreFader)
   if (runtime.soundId) {
     await getAudioManager().cleanupSound(runtime.soundId);
   }
@@ -264,7 +712,7 @@ async function setDeckRadio(deckId: DeckId, radio: Radio | null) {
       const currentDeck = config.getDeck();
       const currentRuntime = config.getRuntime();
 
-      // Apply stored settings on first play
+      // Apply stored settings on first play and connect to CueBus
       if (
         audioState.isPlaying &&
         !audioState.isLoading &&
@@ -274,8 +722,8 @@ async function setDeckRadio(deckId: DeckId, radio: Radio | null) {
         hasAppliedChannelStrip = true;
         applyStoredEffectsAndFilters(
           soundId,
-          currentDeck.effects as unknown as EffectConfig[],
-          currentDeck.filter as FilterConfig
+          getDeckEffects(currentDeck),
+          currentDeck.filter
         );
         applyStoredChannelStrip(
           soundId,
@@ -285,6 +733,17 @@ async function setDeckRadio(deckId: DeckId, radio: Radio | null) {
           currentDeck.channelFilter,
           currentDeck.effectsDryWet
         );
+
+        // Connect to CueBus for pre-fader monitoring
+        connectDeckToCueBus(deckId, soundId);
+
+        // Initialize audio output devices from saved settings
+        initializeAudioDevices().catch((error) => {
+          console.warn(
+            "[dj-actions] Failed to initialize audio devices:",
+            error
+          );
+        });
       }
 
       // Detect track end
@@ -303,24 +762,30 @@ async function setDeckRadio(deckId: DeckId, radio: Radio | null) {
         }));
       }
 
-      // Set error if present
+      // Handle STREAM_INTERRUPTED error for YouTube streams (auto-refresh on 403)
+      if (
+        audioState.error?.code === "STREAM_INTERRUPTED" &&
+        currentDeck?.radio &&
+        isYouTubeMetadata(currentDeck.radio.platformMetadata) &&
+        currentDeck.radio.platformMetadata.videoId &&
+        currentRuntime.soundId
+      ) {
+        handleYouTubeStreamInterrupted(
+          currentRuntime.soundId,
+          currentDeck.radio.platformMetadata.videoId,
+          audioState.error.position ?? 0
+        );
+        return; // Don't set error - wait for refresh attempt
+      }
+
+      // Set error if present (skip STREAM_INTERRUPTED - handled above)
       if (audioState.error?.message) {
         setDjError(audioState.error.message);
       }
 
-      // Handle track end - auto-advance to next track
-      if (trackEnded && currentDeck?.radio) {
-        const nextTrack = findNextTrack(currentDeck.radio as Radio);
-        if (nextTrack) {
-          loadTrack(
-            config.side,
-            {
-              ...(currentDeck.radio as Radio),
-              streamUrl: nextTrack.streamUrl,
-            },
-            true // auto-play
-          );
-        }
+      // Handle track end - repeat or auto-advance to next track
+      if (trackEnded && currentDeck?.radio && currentRuntime.soundId) {
+        handleTrackEnded(config, currentDeck, currentRuntime.soundId);
       }
     });
 
@@ -332,6 +797,21 @@ async function setDeckRadio(deckId: DeckId, radio: Radio | null) {
       applyCrossfade();
     }
   } catch (err) {
+    // Cleanup partial state on error
+    const currentRuntime = config.getRuntime();
+    if (currentRuntime.soundId === soundId) {
+      const existingCleanup = config.getSubscriptionCleanup();
+      if (existingCleanup) {
+        existingCleanup();
+        config.setSubscriptionCleanup(null);
+      }
+      try {
+        getAudioManager().cleanupSound(soundId);
+      } catch {
+        // Cleanup failure during error recovery - nothing more to do
+      }
+      config.resetRuntime();
+    }
     const msg = err instanceof Error ? err.message : `Failed to load ${deckId}`;
     setDjError(msg);
   }
@@ -410,7 +890,8 @@ async function resetDeck(deckId: DeckId) {
         enabled: false,
       };
     });
-    await setDeckRadio(deckId, deck.radio as Radio);
+    const radio = getDeckRadio(deck);
+    await setDeckRadio(deckId, radio);
   }
 }
 
@@ -585,6 +1066,49 @@ export function setDeckBSpeed(speed: number) {
   setDeckSpeed("deck-b", speed);
 }
 
+function setDeckRepeat(deckId: DeckId, enabled: boolean) {
+  deckConfig[deckId].updateDeck((draft) => {
+    draft.repeat = enabled;
+  });
+}
+
+export function setDeckARepeat(enabled: boolean) {
+  setDeckRepeat("deck-a", enabled);
+}
+
+export function setDeckBRepeat(enabled: boolean) {
+  setDeckRepeat("deck-b", enabled);
+}
+
+function setDeckAutoplay(deckId: DeckId, enabled: boolean) {
+  deckConfig[deckId].updateDeck((draft) => {
+    draft.autoplay = enabled;
+  });
+}
+
+export function setDeckAAutoplay(enabled: boolean) {
+  setDeckAutoplay("deck-a", enabled);
+}
+
+export function setDeckBAutoplay(enabled: boolean) {
+  setDeckAutoplay("deck-b", enabled);
+}
+
+function seekDeck(deckId: DeckId, position: number) {
+  const runtime = deckConfig[deckId].getRuntime();
+  if (runtime.soundId) {
+    getAudioManager().seekSound(runtime.soundId, position);
+  }
+}
+
+export function seekDeckA(position: number) {
+  seekDeck("deck-a", position);
+}
+
+export function seekDeckB(position: number) {
+  seekDeck("deck-b", position);
+}
+
 function setDeckChannelFilter(deckId: DeckId, value: number) {
   const runtime = deckConfig[deckId].getRuntime();
   deckConfig[deckId].updateDeck((draft) => {
@@ -652,7 +1176,8 @@ function addDeckEffect(deckId: DeckId, type: EffectType) {
     effects.length
   );
   config.updateDeck((draft) => {
-    (draft.effects as unknown as EffectConfig[]).push(effect);
+    // @ts-expect-error -- EffectConfig is compatible with Zod-inferred effect schema at runtime
+    draft.effects.push(effect);
   });
   if (runtime.soundId) {
     getAudioManager().addEffect(runtime.soundId, effect);
@@ -675,12 +1200,11 @@ function updateDeckEffect(
   const config = deckConfig[deckId];
   const runtime = config.getRuntime();
   config.updateDeck((draft) => {
-    const effects = draft.effects as unknown as EffectConfig[];
-    const idx = effects.findIndex((e) => e.id === effectId);
+    const idx = draft.effects.findIndex((e) => e.id === effectId);
     if (idx !== -1) {
-      const effect = effects[idx];
+      const effect = draft.effects[idx];
       if (effect) {
-        effects[idx] = { ...effect, ...effectConfig } as EffectConfig;
+        draft.effects[idx] = { ...effect, ...effectConfig };
       }
     }
   });
@@ -729,12 +1253,14 @@ function reorderDeckEffects(deckId: DeckId, effectIds: string[]) {
   if (!deck) {
     return;
   }
-  const effects = deck.effects as unknown as EffectConfig[];
-  const reorderedEffects = effectIds
-    .map((id) => effects.find((e) => e.id === id))
-    .filter((e): e is EffectConfig => e !== undefined);
   config.updateDeck((draft) => {
-    draft.effects = reorderedEffects as unknown as typeof draft.effects;
+    const reordered = effectIds
+      .map((id) => draft.effects.find((e) => e.id === id))
+      .filter((e) => e !== undefined);
+    draft.effects = reordered;
+    for (let i = 0; i < draft.effects.length; i++) {
+      draft.effects[i].order = i;
+    }
   });
   if (runtime.soundId) {
     getAudioManager().reorderEffects(runtime.soundId, effectIds);
@@ -747,4 +1273,468 @@ export function reorderDeckAEffects(effectIds: string[]) {
 
 export function reorderDeckBEffects(effectIds: string[]) {
   reorderDeckEffects("deck-b", effectIds);
+}
+
+// ============================================
+// CUE Monitoring Actions
+// ============================================
+
+/**
+ * Ensure CueBus is initialized, creating it if necessary
+ * Returns the CueBus instance or null if AudioContext isn't available yet
+ */
+function ensureCueBus(): CueBus | null {
+  if (cueBus) {
+    return cueBus;
+  }
+
+  // Try to get AudioContext (requires user gesture to have happened)
+  const context = getAudioContext();
+  if (!context) {
+    // AudioContext not yet available - will be initialized on first play
+    return null;
+  }
+
+  // Initialize CueBus
+  return getCueBus(context);
+}
+
+/**
+ * Enable/disable CUE monitoring for a deck (pre-fader listen)
+ */
+function setDeckCueEnabled(deckId: DeckId, enabled: boolean) {
+  const bus = ensureCueBus();
+  if (bus) {
+    bus.setCueEnabled(deckId, enabled);
+  }
+  // Always update mixer state so it persists
+  updateMixer((draft) => {
+    if (deckId === "deck-a") {
+      draft.deckACueEnabled = enabled;
+    } else {
+      draft.deckBCueEnabled = enabled;
+    }
+  });
+}
+
+export function setDeckACueEnabled(enabled: boolean) {
+  setDeckCueEnabled("deck-a", enabled);
+}
+
+export function setDeckBCueEnabled(enabled: boolean) {
+  setDeckCueEnabled("deck-b", enabled);
+}
+
+/**
+ * Toggle CUE monitoring for a deck
+ */
+export function toggleDeckACue() {
+  if (!getAudioSettings().cueOutputId) {
+    return;
+  }
+  const mixer = getMixer();
+  if (!mixer) {
+    return;
+  }
+  setDeckACueEnabled(!mixer.deckACueEnabled);
+}
+
+export function toggleDeckBCue() {
+  if (!getAudioSettings().cueOutputId) {
+    return;
+  }
+  const mixer = getMixer();
+  if (!mixer) {
+    return;
+  }
+  setDeckBCueEnabled(!mixer.deckBCueEnabled);
+}
+
+/**
+ * Set headphone volume (0-1)
+ * Independent volume control for CUE headphone output
+ */
+export function setHeadphoneVolume(volume: number) {
+  const bus = ensureCueBus();
+  updateMixer((draft) => {
+    draft.headphoneVolume = volume;
+  });
+  if (bus) {
+    bus.setHeadphoneVolume(volume);
+  }
+}
+
+/**
+ * Cleanup CueBus resources
+ */
+export function cleanupCueBus() {
+  if (cueBus) {
+    cueBus.cleanup();
+    cueBus = null;
+  }
+}
+
+// ============================================
+// Output Delay Actions
+// ============================================
+
+/**
+ * Set main output delay (0-500ms)
+ * Applies delay to all audio going to the main speakers
+ */
+export function setMainOutputDelay(ms: number) {
+  // Persist to settings
+  setMainDelayMsSetting(ms);
+
+  // Apply to AudioManager
+  getAudioManager().setMainDelay(ms);
+}
+
+/**
+ * Set CUE output delay (0-500ms)
+ * Applies delay to headphone/CUE output for timing adjustment
+ */
+export function setCueOutputDelay(ms: number) {
+  // Persist to settings
+  setCueDelayMsSetting(ms);
+
+  // Apply to CueBus
+  const bus = ensureCueBus();
+  if (bus) {
+    bus.setCueDelay(ms);
+  }
+}
+
+/**
+ * Get current delay settings
+ */
+export function getOutputDelays(): { mainDelayMs: number; cueDelayMs: number } {
+  return getDelaySettings();
+}
+
+/**
+ * Initialize output delays from saved settings
+ * Called when audio system is ready
+ */
+export function initializeOutputDelays(): void {
+  const { mainDelayMs, cueDelayMs } = getDelaySettings();
+
+  if (mainDelayMs > 0) {
+    getAudioManager().setMainDelay(mainDelayMs);
+  }
+
+  if (cueDelayMs > 0) {
+    const bus = ensureCueBus();
+    if (bus) {
+      bus.setCueDelay(cueDelayMs);
+    }
+  }
+}
+
+/**
+ * Detect system audio output latency
+ * Uses AudioContext.outputLatency and baseLatency to estimate total latency
+ * Returns latency in milliseconds, or null if not available
+ */
+export function detectSystemLatency(): number | null {
+  const context = getAudioContext();
+  if (!context) {
+    return null;
+  }
+
+  // outputLatency: time from audio graph to speaker (device-specific)
+  // baseLatency: processing latency of the audio context
+  const outputLatency = context.outputLatency ?? 0;
+  const baseLatency = context.baseLatency ?? 0;
+
+  const totalLatencySeconds = outputLatency + baseLatency;
+
+  // Convert to milliseconds and round
+  const totalLatencyMs = Math.round(totalLatencySeconds * 1000);
+
+  // Return null if latency is 0 (browser doesn't support or hasn't measured yet)
+  if (totalLatencyMs === 0) {
+    return null;
+  }
+
+  return totalLatencyMs;
+}
+
+/**
+ * Auto-detect and apply system latency to main output delay
+ * Returns the detected latency in ms, or null if detection failed
+ */
+export function autoCompensateLatency(): number | null {
+  const latencyMs = detectSystemLatency();
+
+  if (latencyMs === null) {
+    return null;
+  }
+
+  // Apply to main output delay
+  setMainOutputDelay(latencyMs);
+
+  return latencyMs;
+}
+
+// ============================================
+// Device Input Source Actions
+// ============================================
+
+/**
+ * Set a deck to use device input (mic/line-in), routed through AudioManager's full graph
+ */
+async function setDeckDeviceSource(
+  deckId: DeckId,
+  deviceId: string,
+  deviceLabel: string
+): Promise<void> {
+  const config = deckConfig[deckId];
+  const deck = config.getDeck();
+  const runtime = config.getRuntime();
+
+  if (!deck) {
+    return;
+  }
+
+  // Unsubscribe from previous subscription
+  const prevCleanup = config.getSubscriptionCleanup();
+  if (prevCleanup) {
+    prevCleanup();
+    config.setSubscriptionCleanup(null);
+  }
+
+  // Cleanup existing sound
+  if (runtime.soundId) {
+    getAudioManager().cleanupSound(runtime.soundId);
+  }
+
+  const side = config.side;
+  const radioId = `device-input-${side}`;
+  const soundId = `${side}_${radioId}`;
+
+  const platformMetadata: DeviceInputMetadata = {
+    platform: "device-input",
+    itemType: "track",
+    url: "",
+    deviceId,
+    deviceLabel,
+    channelSelection: { left: 0, right: 1 },
+    channelCount: 2,
+  };
+
+  const radio: Radio = {
+    id: radioId,
+    name: deviceLabel,
+    streamUrl: "",
+    description: "Device input (mic/line-in)",
+    enabled: true,
+    platformMetadata,
+  };
+
+  try {
+    setDjError(null);
+
+    // Create the sound in AudioManager
+    getAudioManager().createSound(radio, soundId);
+
+    // Update DB with radio
+    config.updateDeck((draft) => {
+      draft.radio = radio;
+    });
+
+    // Update runtime with soundId
+    config.setSoundId(soundId);
+
+    // Track whether we've applied channel strip settings
+    let hasAppliedChannelStrip = false;
+
+    // Subscribe to sound events
+    const cleanup = getAudioManager().subscribe(soundId, (audioState) => {
+      const currentDeck = config.getDeck();
+      const currentRuntime = config.getRuntime();
+
+      // Apply stored settings on first play and connect to CueBus
+      if (
+        audioState.isPlaying &&
+        !audioState.isLoading &&
+        !hasAppliedChannelStrip &&
+        currentDeck
+      ) {
+        hasAppliedChannelStrip = true;
+        applyStoredEffectsAndFilters(
+          soundId,
+          getDeckEffects(currentDeck),
+          currentDeck.filter
+        );
+        applyStoredChannelStrip(
+          soundId,
+          currentDeck.muted,
+          currentDeck.pan,
+          currentDeck.speed,
+          currentDeck.channelFilter,
+          currentDeck.effectsDryWet
+        );
+
+        // Connect to CueBus for pre-fader monitoring
+        connectDeckToCueBus(deckId, soundId);
+
+        // Initialize audio output devices from saved settings
+        initializeAudioDevices().catch((error) => {
+          console.warn(
+            "[dj-actions] Failed to initialize audio devices:",
+            error
+          );
+        });
+      }
+
+      // Update runtime state if changed
+      if (
+        currentRuntime.isPlaying !== audioState.isPlaying ||
+        currentRuntime.isLoading !== audioState.isLoading ||
+        currentRuntime.isBuffering !== audioState.isBuffering
+      ) {
+        config.setRuntimeState(() => ({
+          isPlaying: audioState.isPlaying,
+          isLoading: audioState.isLoading,
+          isBuffering: audioState.isBuffering,
+        }));
+      }
+
+      // Set error if present
+      if (audioState.error?.message) {
+        setDjError(audioState.error.message);
+      }
+    });
+
+    config.setSubscriptionCleanup(cleanup);
+
+    // Play via AudioManager's device sound path
+    await getAudioManager().playDeviceSound(soundId, deviceId);
+
+    // Read actual channel count from the opened device and update metadata
+    const deviceSource = getAudioManager().getDeviceSource(soundId);
+    if (deviceSource) {
+      const actualChannelCount = deviceSource.channelCount;
+      config.updateDeck((draft) => {
+        const meta = draft.radio?.platformMetadata;
+        if (isDeviceInputMetadata(meta)) {
+          meta.channelCount = actualChannelCount;
+        }
+      });
+    }
+
+    applyCrossfade();
+  } catch (err) {
+    // Cleanup partial state on error
+    const currentRuntime = config.getRuntime();
+    if (currentRuntime.soundId === soundId) {
+      const existingCleanup = config.getSubscriptionCleanup();
+      if (existingCleanup) {
+        existingCleanup();
+        config.setSubscriptionCleanup(null);
+      }
+      try {
+        getAudioManager().cleanupSound(soundId);
+      } catch {
+        // Cleanup failure during error recovery - nothing more to do
+      }
+      config.resetRuntime();
+    }
+    const msg =
+      err instanceof Error ? err.message : "Failed to start device input";
+    setDjError(msg);
+  }
+}
+
+export function setDeckADeviceSource(
+  deviceId: string,
+  deviceLabel: string
+): Promise<void> {
+  return setDeckDeviceSource("deck-a", deviceId, deviceLabel);
+}
+
+export function setDeckBDeviceSource(
+  deviceId: string,
+  deviceLabel: string
+): Promise<void> {
+  return setDeckDeviceSource("deck-b", deviceId, deviceLabel);
+}
+
+// Channel selection actions
+function setDeckChannelSelection(
+  deckId: DeckId,
+  selection: ChannelSelection
+): void {
+  const runtime = deckConfig[deckId].getRuntime();
+  if (runtime.soundId) {
+    getAudioManager().setDeviceChannelSelection(runtime.soundId, selection);
+  }
+  deckConfig[deckId].updateDeck((draft) => {
+    const meta = draft.radio?.platformMetadata;
+    if (isDeviceInputMetadata(meta)) {
+      meta.channelSelection = selection;
+    }
+  });
+}
+
+export function setDeckAChannelSelection(selection: ChannelSelection): void {
+  setDeckChannelSelection("deck-a", selection);
+}
+
+export function setDeckBChannelSelection(selection: ChannelSelection): void {
+  setDeckChannelSelection("deck-b", selection);
+}
+
+// ============================================
+// Local File Source Actions
+// ============================================
+
+/**
+ * Load a local audio file into a deck.
+ * Creates an object URL and feeds it to Html5AudioSource via setDeckRadio.
+ */
+async function setDeckFileSource(deckId: DeckId, file: File): Promise<void> {
+  const config = deckConfig[deckId];
+  const side = config.side;
+
+  try {
+    setDjError(null);
+    const meta = await extractFileMetadata(file);
+
+    const platformMetadata: FileMetadata = {
+      platform: "local-file",
+      itemType: "track",
+      url: "",
+      fileName: meta.fileName,
+      displayName: meta.displayName,
+      duration: meta.duration,
+      fileSize: meta.fileSize,
+      mimeType: meta.mimeType,
+      objectUrl: meta.objectUrl,
+    };
+
+    const radio: Radio = {
+      id: `local-file-${side}-${Date.now()}`,
+      name: meta.displayName,
+      streamUrl: meta.objectUrl,
+      description: "Local File",
+      enabled: true,
+      platformMetadata,
+    };
+
+    await setDeckRadio(deckId, radio);
+  } catch (err) {
+    const msg =
+      err instanceof Error ? err.message : "Failed to load audio file";
+    setDjError(msg);
+  }
+}
+
+export function setDeckAFileSource(file: File): Promise<void> {
+  return setDeckFileSource("deck-a", file);
+}
+
+export function setDeckBFileSource(file: File): Promise<void> {
+  return setDeckFileSource("deck-b", file);
 }

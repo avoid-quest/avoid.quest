@@ -10,7 +10,6 @@ import { useSettings } from "@/lib/hooks/use-settings";
 import { CustomPlayer } from "./custom-player";
 import { RadioSkeleton } from "./multiple/radio-skeleton";
 import { RadioItemActions } from "./radio-item-actions";
-import { RadioNameLink } from "./radio-name-link";
 
 type RadioComponentProps = {
   radio?: Radio;
@@ -39,9 +38,7 @@ export function RadioComponent({
       {radio ? (
         <>
           <CardHeader className="flex items-center justify-between">
-            <CardTitle>
-              <RadioNameLink radio={radio} />
-            </CardTitle>
+            <CardTitle>{radio.name}</CardTitle>
             <CardAction>
               <RadioItemActions
                 disabled={disabled}

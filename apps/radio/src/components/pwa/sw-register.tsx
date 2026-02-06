@@ -8,14 +8,8 @@ export function SWRegister() {
           scope: "/",
           updateViaCache: "none",
         })
-        .then((registration) => {
-          console.log(
-            "Service Worker registered successfully:",
-            registration.scope
-          );
-        })
-        .catch((error) => {
-          console.error("Service Worker registration failed:", error);
+        .catch(() => {
+          // SW registration failure is non-critical
         });
     }
   }, []);

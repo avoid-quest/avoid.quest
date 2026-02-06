@@ -52,8 +52,7 @@ export function RadioItemActions({
       updateRadio(String(radio.id), { enabled: newEnabled });
       onToggle(radio, newEnabled);
       toast.success(`${radio.name} ${newEnabled ? "enabled" : "disabled"}`);
-    } catch (error) {
-      console.error("Failed to toggle radio:", error);
+    } catch {
       toast.error("Failed to toggle radio");
     } finally {
       setIsUpdating(false);
@@ -75,8 +74,7 @@ export function RadioItemActions({
     try {
       await navigator.clipboard.writeText(radio.streamUrl);
       toast.success("Stream link copied to clipboard");
-    } catch (error) {
-      console.error("Failed to copy stream link:", error);
+    } catch {
       toast.error("Failed to copy stream link");
     }
   };

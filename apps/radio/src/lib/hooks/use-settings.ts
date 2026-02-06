@@ -28,11 +28,38 @@ export function useSettings() {
  */
 export function usePlayerMode() {
   const { data } = useSettings();
-  return data?.player.mode ?? "multiple";
+  return data?.player.mode ?? "single";
+}
+
+/**
+ * Get audio settings reactively (output devices, CUE config, delays)
+ */
+export function useAudioSettings() {
+  const { data } = useSettings();
+  return (
+    data?.audio ?? {
+      mainOutputId: "default" as string,
+      cueOutputId: null as string | null,
+      delay: { mainDelayMs: 0, cueDelayMs: 0 },
+    }
+  );
+}
+
+/**
+ * Get output delay settings
+ */
+export function useDelaySettings(): {
+  mainDelayMs: number;
+  cueDelayMs: number;
+} {
+  const { data } = useSettings();
+  return data?.audio?.delay ?? { mainDelayMs: 0, cueDelayMs: 0 };
 }
 
 // Re-export mutation functions
 export {
+  setCueDelayMs,
+  setMainDelayMs,
   setPlayerMode,
   setPlayerType,
   setRestoreStateOnLoad,

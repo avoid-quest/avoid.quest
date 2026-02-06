@@ -36,7 +36,7 @@ import {
 } from "@/lib/hooks/use-radios";
 import { RadioItemActions } from "../radio/radio-item-actions";
 import { RadioLogo } from "../radio/radio-logo";
-import { RadioNameLink } from "../radio/radio-name-link";
+
 import { RadioDialog } from "./radio-dialog";
 
 type SortableRadioItemProps = {
@@ -72,24 +72,24 @@ function SortableRadioItem({
 
   return (
     <div
-      className={`flex items-center gap-2 rounded-lg border bg-card p-3 transition-all ${
-        isDragging ? "shadow-lg" : "hover:shadow-md"
+      className={`flex items-center gap-2 rounded-lg border border-border/50 bg-card/50 px-3 py-2 transition-colors ${
+        isDragging ? "bg-muted/50" : ""
       } ${disabled ? "opacity-50" : ""}`}
       ref={setNodeRef}
       style={style}
     >
       <div
-        className="cursor-grab touch-manipulation text-muted-foreground active:cursor-grabbing"
+        className="cursor-grab touch-manipulation text-muted-foreground/50 active:cursor-grabbing"
         {...attributes}
         {...listeners}
       >
-        <GripVerticalIcon className="size-4" />
+        <GripVerticalIcon className="size-3.5" />
       </div>
       <div className="shrink-0">
         <RadioLogo
           className="size-8"
           fallbackIcon={
-            <Volume2Icon className="size-3 text-muted-foreground" />
+            <Volume2Icon className="size-3 text-muted-foreground/40" />
           }
           logoUrl={radio.logoUrl}
           name={radio.name}
@@ -97,11 +97,9 @@ function SortableRadioItem({
         />
       </div>
       <div className="min-w-0 flex-1">
-        <div className="truncate font-medium text-sm">
-          <RadioNameLink radio={radio} />
-        </div>
+        <div className="truncate text-sm">{radio.name}</div>
         {radio.description?.trim() !== "" && (
-          <div className="line-clamp-1 text-muted-foreground text-xs">
+          <div className="line-clamp-1 text-[10px] text-muted-foreground/60">
             {radio.description}
           </div>
         )}
@@ -152,8 +150,7 @@ export function RadioManagement() {
     try {
       updateRadio(String(radio.id), { enabled });
       toast.success(`${radio.name} ${enabled ? "enabled" : "disabled"}`);
-    } catch (error) {
-      console.error("Failed to update radio:", error);
+    } catch {
       toast.error("Failed to update radio");
     } finally {
       setIsUpdating(false);
@@ -190,8 +187,7 @@ export function RadioManagement() {
 
       reorderRadios(orderedIds);
       toast.success("Radio order updated");
-    } catch (error) {
-      console.error("Failed to reorder radios:", error);
+    } catch {
       toast.error("Failed to reorder radios");
     } finally {
       setIsUpdating(false);
@@ -223,8 +219,7 @@ export function RadioManagement() {
     try {
       deleteRadio(String(deleteConfirm.id));
       toast.success(`"${deleteConfirm.name}" deleted successfully`);
-    } catch (error) {
-      console.error("Failed to delete radio:", error);
+    } catch {
       toast.error("Failed to delete radio");
     } finally {
       setIsUpdating(false);
@@ -235,7 +230,9 @@ export function RadioManagement() {
   if (!radios) {
     return (
       <div className="flex items-center justify-center p-8">
-        <div className="text-muted-foreground text-sm">Loading radios...</div>
+        <p className="font-mono text-[10px] text-muted-foreground/60 uppercase tracking-wider">
+          Loading...
+        </p>
       </div>
     );
   }
@@ -243,16 +240,16 @@ export function RadioManagement() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-4">
-        <p className="text-muted-foreground text-xs">
-          Drag to reorder • Checkbox to enable/disable
+        <p className="font-mono text-[10px] text-muted-foreground/60 uppercase tracking-wider">
+          Drag to reorder • Toggle to enable
         </p>
         <Button
-          className="h-8"
+          className="h-7"
           onClick={handleAddRadio}
           size="sm"
           variant="outline"
         >
-          <PlusIcon className="mr-1 size-3.5" />
+          <PlusIcon className="mr-1 size-3" />
           Add Station
         </Button>
       </div>
@@ -307,12 +304,17 @@ export function RadioManagement() {
               </DialogDescription>
             </DialogHeader>
             <div className="flex justify-end gap-2 pt-4">
-              <Button onClick={() => setDeleteConfirm(null)} variant="outline">
+              <Button
+                onClick={() => setDeleteConfirm(null)}
+                size="sm"
+                variant="outline"
+              >
                 Cancel
               </Button>
               <Button
                 disabled={isUpdating}
                 onClick={confirmDelete}
+                size="sm"
                 variant="destructive"
               >
                 {isUpdating ? "Deleting..." : "Delete"}

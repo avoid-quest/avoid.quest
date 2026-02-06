@@ -116,6 +116,23 @@ export function useSingleAudio(transitionDuration?: number) {
         // Start new player at volume 0 (crossfade controller manages gain)
         await newPlayer.play(0);
 
+        // Wait for audio to be ready before starting crossfade
+        // This ensures smooth transitions without volume gaps
+        await new Promise<void>((resolve) => {
+          const element = newPlayer.element;
+          // readyState >= 3 means HAVE_FUTURE_DATA (enough data to start playing)
+          if (element.readyState >= 3) {
+            resolve();
+            return;
+          }
+
+          const onCanPlay = () => {
+            element.removeEventListener("canplay", onCanPlay);
+            resolve();
+          };
+          element.addEventListener("canplay", onCanPlay);
+        });
+
         // Subscribe to new player state changes
         const unsubscribe = subscribeToPlayer(newPlayer);
 

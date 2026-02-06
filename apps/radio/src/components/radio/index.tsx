@@ -8,13 +8,7 @@ export function Radios() {
   const { data: radios } = useEnabledRadios();
   const { data: settings } = useSettings();
 
-  // Map to Radio type expected by components
-  // Use string id directly - UUID strings work as keys
-  const enabledRadios =
-    radios?.map((r) => ({
-      ...r,
-      id: r.id,
-    })) ?? [];
+  const enabledRadios = radios ?? [];
 
   if (settings?.player.mode === "single") {
     return <SingleRadio radios={enabledRadios} />;

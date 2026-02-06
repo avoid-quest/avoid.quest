@@ -1,0 +1,190 @@
+import { cn } from "@avoid.quest/ui/lib/utils";
+import { useEffect, useRef } from "react";
+
+function amplify(level: number) {
+  return Math.min(1, Math.max(0, Math.sqrt(level) * 1.2));
+}
+
+const COLOR_GREEN = "#34d399";
+const COLOR_AMBER = "#fbbf24";
+const COLOR_RED = "#ef4444";
+
+const AMBER_AT = 70;
+const RED_AT = 90;
+
+// Hard-stop gradient: green up to 70%, amber 70-90%, red 90-100%
+const ZONED_V = `linear-gradient(to top, ${COLOR_GREEN} ${AMBER_AT}%, ${COLOR_AMBER} ${AMBER_AT}%, ${COLOR_AMBER} ${RED_AT}%, ${COLOR_RED} ${RED_AT}%)`;
+const ZONED_H = `linear-gradient(to right, ${COLOR_GREEN} ${AMBER_AT}%, ${COLOR_AMBER} ${AMBER_AT}%, ${COLOR_AMBER} ${RED_AT}%, ${COLOR_RED} ${RED_AT}%)`;
+
+function getPeakHoldColor(percent: number): string {
+  if (percent > RED_AT) {
+    return COLOR_RED;
+  }
+  if (percent > AMBER_AT) {
+    return COLOR_AMBER;
+  }
+  return COLOR_GREEN;
+}
+
+// Smoothed level — fast attack, slow release (like analog ballistics)
+function useSmoothedLevel(level: number) {
+  const smoothedRef = useRef(0);
+
+  useEffect(() => {
+    const target = amplify(level);
+    const current = smoothedRef.current;
+    if (target >= current) {
+      // Attack: jump to 70% immediately, ease the rest
+      smoothedRef.current = current + (target - current) * 0.7;
+    } else {
+      // Release: slow decay
+      smoothedRef.current = current + (target - current) * 0.15;
+    }
+  });
+
+  return smoothedRef.current;
+}
+
+function usePeakHold(level: number) {
+  const peakRef = useRef(0);
+  const decayRef = useRef(0);
+
+  useEffect(() => {
+    const amplified = amplify(level);
+    if (amplified >= peakRef.current) {
+      peakRef.current = amplified;
+      decayRef.current = 0;
+    } else {
+      decayRef.current += 1;
+      if (decayRef.current > 12) {
+        peakRef.current = Math.max(amplified, peakRef.current - 0.02);
+      }
+    }
+  });
+
+  return peakRef.current;
+}
+
+// ─── Single bar ─────────────────────────────────────────────────────────────
+
+function MeterBar({
+  level,
+  orientation,
+}: {
+  level: number;
+  orientation: "vertical" | "horizontal";
+}) {
+  const smoothed = useSmoothedLevel(level);
+  const percent = smoothed * 100;
+  const peakHold = usePeakHold(level);
+  const peakPercent = peakHold * 100;
+  const isVertical = orientation === "vertical";
+
+  const clipPath = isVertical
+    ? `inset(${100 - percent}% 0 0 0)`
+    : `inset(0 ${100 - percent}% 0 0)`;
+
+  return (
+    <div
+      className={cn(
+        "relative overflow-hidden border border-white/[0.06] bg-white/[0.02]",
+        isVertical ? "min-h-0 min-w-0 flex-1" : "h-1.5 w-full"
+      )}
+    >
+      <div
+        className="absolute inset-0"
+        style={{
+          background: isVertical ? ZONED_V : ZONED_H,
+          clipPath,
+          opacity: 0.85,
+        }}
+      />
+      {peakPercent > 2 && (
+        <div
+          className="absolute"
+          style={
+            isVertical
+              ? {
+                  insetInline: 0,
+                  bottom: `${peakPercent}%`,
+                  height: 1,
+                  background: getPeakHoldColor(peakPercent),
+                }
+              : {
+                  insetBlock: 0,
+                  left: `${peakPercent}%`,
+                  width: 1,
+                  background: getPeakHoldColor(peakPercent),
+                }
+          }
+        />
+      )}
+      {percent > RED_AT && (
+        <div
+          className="absolute rounded-full bg-red-500"
+          style={
+            isVertical
+              ? { top: 2, right: 1, width: 3, height: 3 }
+              : { top: 1, right: 2, width: 2, height: 2 }
+          }
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── Stereo pair ────────────────────────────────────────────────────────────
+
+type PeakMeterProps = {
+  left: number;
+  right: number;
+  orientation?: "vertical" | "horizontal";
+  className?: string;
+};
+
+export function PeakMeter({
+  left,
+  right,
+  orientation = "vertical",
+  className,
+}: PeakMeterProps) {
+  const isVertical = orientation === "vertical";
+
+  return (
+    <div
+      className={cn(
+        "flex",
+        isVertical ? "h-full flex-row gap-px" : "w-full flex-col gap-0.5",
+        className
+      )}
+    >
+      <MeterBar level={left} orientation={orientation} />
+      <MeterBar level={right} orientation={orientation} />
+    </div>
+  );
+}
+
+// ─── Deck wrapper ───────────────────────────────────────────────────────────
+
+export function DeckPeakMeter({
+  peakLevel,
+  className,
+}: {
+  peakLevel?: { left: number; right: number };
+  className?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex h-full w-5 shrink-0 items-stretch px-1 py-2",
+        className
+      )}
+    >
+      <PeakMeter
+        className="h-full w-full"
+        left={peakLevel?.left ?? 0}
+        right={peakLevel?.right ?? 0}
+      />
+    </div>
+  );
+}

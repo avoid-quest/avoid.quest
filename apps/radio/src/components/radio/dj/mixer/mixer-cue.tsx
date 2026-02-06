@@ -1,25 +1,22 @@
 import { Button } from "@avoid.quest/ui/components/button";
 
-type CueControlsProps = {
+type MixerCueProps = {
   deckACueEnabled: boolean;
   deckBCueEnabled: boolean;
   onDeckACueChange: (enabled: boolean) => void;
   onDeckBCueChange: (enabled: boolean) => void;
 };
 
-/**
- * CUE controls - deck CUE buttons
- */
-export function CueControls({
+export function MixerCue({
   deckACueEnabled,
   deckBCueEnabled,
   onDeckACueChange,
   onDeckBCueChange,
-}: CueControlsProps) {
+}: MixerCueProps) {
   return (
-    <div className="flex items-center justify-center gap-4">
+    <div className="flex items-center justify-center gap-3">
       <Button
-        className="h-8 w-16 font-bold text-xs"
+        className="h-7 w-14 font-bold font-mono text-[10px] uppercase tracking-wider"
         onClick={() => onDeckACueChange(!deckACueEnabled)}
         size="sm"
         variant={deckACueEnabled ? "default" : "outline"}
@@ -27,7 +24,7 @@ export function CueControls({
         CUE A
       </Button>
       <Button
-        className="h-8 w-16 font-bold text-xs"
+        className="h-7 w-14 font-bold font-mono text-[10px] uppercase tracking-wider"
         onClick={() => onDeckBCueChange(!deckBCueEnabled)}
         size="sm"
         variant={deckBCueEnabled ? "default" : "outline"}

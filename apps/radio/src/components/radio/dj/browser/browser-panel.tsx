@@ -1,5 +1,3 @@
-import { Button } from "@avoid.quest/ui/components/button";
-import { Card, CardContent } from "@avoid.quest/ui/components/card";
 import { Input } from "@avoid.quest/ui/components/input";
 import {
   Tabs,
@@ -11,14 +9,16 @@ import { cn } from "@avoid.quest/ui/lib/utils";
 import { ChevronDownIcon, ChevronUpIcon, SearchIcon } from "lucide-react";
 import { useState } from "react";
 import type { Radio } from "@/lib/audio";
-import { DraggableRadioItem, PLATFORM_ITEMS } from "./dj-radio-list";
+import { PLATFORM_ITEMS } from "../dj-radio-list";
+import { BrowserGrid } from "./browser-grid";
 
-type DjRadioBrowserProps = {
+type BrowserPanelProps = {
   radios: Radio[];
+  className?: string;
 };
 
-export function DjRadioBrowser({ radios }: DjRadioBrowserProps) {
-  const [isCollapsed, setIsCollapsed] = useState(false);
+export function BrowserPanel({ radios, className }: BrowserPanelProps) {
+  const [isOpen, setIsOpen] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState("radios");
 
@@ -38,24 +38,30 @@ export function DjRadioBrowser({ radios }: DjRadioBrowserProps) {
   const filteredPlatformItems = filterBySearchQuery(PLATFORM_ITEMS);
 
   return (
-    <Card className="flex shrink-0 flex-col">
-      {/* Header with collapse toggle */}
-      <Button
-        className="flex w-full items-center justify-between px-4 py-2"
-        onClick={() => setIsCollapsed(!isCollapsed)}
-        size="sm"
-        variant="ghost"
+    <div className={cn("border-border/50 border-t", className)}>
+      {/* Toggle bar — always visible */}
+      <button
+        className="flex w-full items-center gap-3 px-3 py-2 transition-colors hover:bg-muted/30"
+        onClick={() => setIsOpen(!isOpen)}
+        type="button"
       >
-        <span className="font-medium text-sm">Radio Browser</span>
-        {isCollapsed ? (
-          <ChevronUpIcon className="size-4" />
+        <span className="font-mono text-foreground/80 text-xs uppercase tracking-wider">
+          Browser
+        </span>
+        <span className="text-[10px] text-muted-foreground/50">
+          {radios.length} stations + {PLATFORM_ITEMS.length} sources
+        </span>
+        <div className="flex-1" />
+        {isOpen ? (
+          <ChevronDownIcon className="size-3.5 text-muted-foreground/50" />
         ) : (
-          <ChevronDownIcon className="size-4" />
+          <ChevronUpIcon className="size-3.5 text-muted-foreground/50" />
         )}
-      </Button>
+      </button>
 
-      {!isCollapsed && (
-        <CardContent className="px-4 pt-0 pb-4">
+      {/* Expandable content */}
+      {isOpen && (
+        <div className="px-3 pb-3">
           <Tabs onValueChange={setActiveTab} value={activeTab}>
             <div className="mb-2 flex items-center gap-2">
               <TabsList className="shrink-0">
@@ -63,7 +69,7 @@ export function DjRadioBrowser({ radios }: DjRadioBrowserProps) {
                   Radios
                 </TabsTrigger>
                 <TabsTrigger className="text-xs" value="external">
-                  External
+                  Sources
                 </TabsTrigger>
               </TabsList>
               <div className="relative flex-1">
@@ -79,10 +85,6 @@ export function DjRadioBrowser({ radios }: DjRadioBrowserProps) {
               </div>
             </div>
 
-            <div className="mb-2 text-muted-foreground text-xs">
-              Drag to load in a deck
-            </div>
-
             <TabsContent className="mt-0" value="radios">
               <BrowserGrid items={filteredRadios} />
             </TabsContent>
@@ -91,36 +93,8 @@ export function DjRadioBrowser({ radios }: DjRadioBrowserProps) {
               <BrowserGrid items={filteredPlatformItems} />
             </TabsContent>
           </Tabs>
-        </CardContent>
+        </div>
       )}
-    </Card>
-  );
-}
-
-function BrowserGrid({ items }: { items: Radio[] }) {
-  if (items.length === 0) {
-    return (
-      <div className="flex items-center justify-center py-4 text-center">
-        <p className="text-muted-foreground text-sm">No items found</p>
-      </div>
-    );
-  }
-
-  return (
-    <div
-      className={cn(
-        "grid max-h-[14rem] gap-2 overflow-y-auto",
-        "grid-cols-[repeat(auto-fill,minmax(12rem,1fr))]"
-      )}
-      style={{
-        touchAction: "pan-y",
-        position: "relative",
-        zIndex: 1,
-      }}
-    >
-      {items.map((radio) => (
-        <DraggableRadioItem key={radio.id} radio={radio} />
-      ))}
     </div>
   );
 }

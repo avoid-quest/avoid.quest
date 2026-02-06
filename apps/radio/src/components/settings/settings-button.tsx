@@ -7,6 +7,7 @@ import {
   DrawerTitle,
   DrawerTrigger,
 } from "@avoid.quest/ui/components/drawer";
+import { cn } from "@avoid.quest/ui/lib/utils";
 import { Settings2Icon } from "lucide-react";
 import { useState } from "react";
 import { SettingsForm } from "./settings-form";
@@ -22,8 +23,12 @@ export function SettingsButton({ defaultTab, className }: SettingsButtonProps) {
   return (
     <Drawer handleOnly={true} onOpenChange={setIsOpen} open={isOpen}>
       <DrawerTrigger asChild>
-        <Button className={className} size="icon" variant="outline">
-          <Settings2Icon className="size-4" />
+        <Button
+          className={cn("size-7", className)}
+          size="icon"
+          variant="outline"
+        >
+          <Settings2Icon className="size-3.5" />
         </Button>
       </DrawerTrigger>
       <DrawerContent>

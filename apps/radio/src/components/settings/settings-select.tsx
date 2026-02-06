@@ -27,9 +27,11 @@ export function SettingsSelect() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div className="space-y-2">
-        <div className="font-medium text-sm">Player Type</div>
+        <span className="font-mono text-[10px] text-muted-foreground uppercase tracking-wider">
+          Player Type
+        </span>
         <Select
           onValueChange={handlePlayerTypeChange}
           value={settings?.player.playerType ?? "default"}
@@ -48,7 +50,9 @@ export function SettingsSelect() {
       </div>
 
       <div className="space-y-2">
-        <div className="font-medium text-sm">Player Mode</div>
+        <span className="font-mono text-[10px] text-muted-foreground uppercase tracking-wider">
+          Player Mode
+        </span>
         <ModeSelect className="max-w-full" />
       </div>
     </div>

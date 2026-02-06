@@ -13,7 +13,7 @@ const singleModeSettingsSchema = z.object({
 });
 
 const playerSettingsSchema = z.object({
-  mode: playerModeSchema.default("multiple"),
+  mode: playerModeSchema.default("single"),
   playerType: playerTypeSchema.default("default"),
   restoreStateOnLoad: z.boolean().default(true),
   single: singleModeSettingsSchema.optional(),

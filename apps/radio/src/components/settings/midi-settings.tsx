@@ -140,10 +140,10 @@ function MappingGroup({
 
   return (
     <div className="space-y-1">
-      <h4 className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
+      <h4 className="font-mono text-[10px] text-muted-foreground/60 uppercase tracking-wider">
         {title}
       </h4>
-      <div className="rounded-lg border bg-muted/30 px-3 py-1">
+      <div className="rounded-lg border border-border/50 bg-card/50 px-3 py-1">
         {targetIds.map((id) => {
           const action = actions.find((a) => a.targetId === id);
           if (!action) {
@@ -205,9 +205,11 @@ export function MidiSettings() {
   if (!isSupported) {
     return (
       <div className="space-y-3">
-        <div className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-4">
-          <p className="font-medium text-sm">Web MIDI not supported</p>
-          <p className="mt-1 text-muted-foreground text-xs">
+        <div className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3">
+          <p className="font-mono text-xs uppercase tracking-wider">
+            Web MIDI not supported
+          </p>
+          <p className="mt-1 text-[10px] text-muted-foreground/60">
             MIDI controller support requires a Chromium-based browser (Chrome,
             Edge, Opera). Firefox and Safari do not support the Web MIDI API.
           </p>
@@ -222,12 +224,12 @@ export function MidiSettings() {
     <ScrollArea className="min-h-0 flex-1">
       <div className="space-y-5 pr-3">
         {/* Enable toggle */}
-        <div className="flex items-center justify-between rounded-lg border p-3">
+        <div className="flex items-center justify-between rounded-lg border border-border/50 p-3">
           <div className="space-y-0.5">
-            <label className="font-medium text-sm" htmlFor="midi-enabled">
+            <label className="text-sm" htmlFor="midi-enabled">
               Enable MIDI
             </label>
-            <p className="text-muted-foreground text-xs">
+            <p className="text-[10px] text-muted-foreground/60">
               Receive MIDI messages from connected controllers
             </p>
           </div>
@@ -242,9 +244,11 @@ export function MidiSettings() {
 
         {/* Connected devices */}
         <div className="space-y-2">
-          <h4 className="font-medium text-sm">Connected Devices</h4>
+          <h4 className="font-mono text-[10px] text-muted-foreground uppercase tracking-wider">
+            Connected Devices
+          </h4>
           {connectedDevices.length === 0 ? (
-            <p className="text-muted-foreground text-xs">
+            <p className="text-[10px] text-muted-foreground/60">
               No MIDI devices detected. Connect a controller and it will appear
               here.
             </p>
@@ -252,7 +256,7 @@ export function MidiSettings() {
             <div className="space-y-1">
               {connectedDevices.map((device) => (
                 <div
-                  className="flex items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2"
+                  className="flex items-center gap-2 rounded-lg border border-border/50 bg-card/50 px-3 py-2"
                   key={device.id}
                 >
                   <CircleIcon className="size-2.5 fill-emerald-500 text-emerald-500" />
@@ -272,7 +276,9 @@ export function MidiSettings() {
 
         {/* Preset selector */}
         <div className="space-y-2">
-          <h4 className="font-medium text-sm">Preset</h4>
+          <h4 className="font-mono text-[10px] text-muted-foreground uppercase tracking-wider">
+            Preset
+          </h4>
           <div className="flex items-center gap-2">
             <Select
               onValueChange={loadPreset}
@@ -293,7 +299,7 @@ export function MidiSettings() {
               </SelectContent>
             </Select>
           </div>
-          <p className="text-muted-foreground text-xs">
+          <p className="text-[10px] text-muted-foreground/60">
             Load a preset for your controller, or use Learn to map controls
             manually.
           </p>
@@ -302,7 +308,9 @@ export function MidiSettings() {
         {/* Mapping table */}
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <h4 className="font-medium text-sm">Mappings</h4>
+            <h4 className="font-mono text-[10px] text-muted-foreground uppercase tracking-wider">
+              Mappings
+            </h4>
             <Button
               className="h-7 text-xs"
               disabled={mappings.length === 0 || isLearning}

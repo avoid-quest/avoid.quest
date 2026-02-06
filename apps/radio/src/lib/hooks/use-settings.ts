@@ -28,7 +28,7 @@ export function useSettings() {
  */
 export function usePlayerMode() {
   const { data } = useSettings();
-  return data?.player.mode ?? "multiple";
+  return data?.player.mode ?? "single";
 }
 
 /**

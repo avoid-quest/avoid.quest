@@ -26,7 +26,6 @@ export function ModeSelect({ className }: { className?: string }) {
     }
 
     try {
-      // Stop audio before switching modes (preserves persisted radio state)
       await cleanupAudioOnly();
 
       const newMode = value as "single" | "multiple" | "dj";
@@ -49,19 +48,21 @@ export function ModeSelect({ className }: { className?: string }) {
       className={cn("w-full max-w-xs", className)}
       onValueChange={handleModeChange}
       type="single"
-      value={settings?.player.mode || "multiple"}
+      value={settings?.player.mode || "single"}
       variant="outline"
     >
       {playerModes.map((mode) => {
         const Icon = modeIcons[mode.value];
         return (
           <ToggleGroupItem
-            className="cursor-pointer px-4"
+            className="h-7 cursor-pointer gap-1.5 px-3 text-xs"
             key={mode.value}
             value={mode.value}
           >
-            <Icon />
-            <span className="hidden sm:block">{mode.label}</span>
+            <Icon className="size-3.5" />
+            <span className="hidden font-mono text-[10px] uppercase tracking-wider sm:block">
+              {mode.label}
+            </span>
           </ToggleGroupItem>
         );
       })}

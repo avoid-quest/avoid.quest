@@ -93,11 +93,11 @@ export function AudioSettings() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Permission request */}
       {permissionState !== "granted" && (
-        <div className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-4">
-          <p className="mb-3 text-sm">
+        <div className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3">
+          <p className="mb-2 text-xs">
             Grant microphone permission to see device names and select audio
             devices.
           </p>
@@ -122,7 +122,7 @@ export function AudioSettings() {
             variant="ghost"
           >
             <RefreshCwIcon
-              className={`mr-1.5 size-4 ${isLoading ? "animate-spin" : ""}`}
+              className={`mr-1.5 size-3.5 ${isLoading ? "animate-spin" : ""}`}
             />
             Refresh Devices
           </Button>
@@ -130,9 +130,9 @@ export function AudioSettings() {
       )}
 
       {/* Main Output Selection */}
-      <div className="space-y-3 rounded-lg border p-4">
-        <Label className="flex items-center gap-2 font-medium">
-          <Volume2Icon className="size-4" />
+      <div className="space-y-3 rounded-lg border border-border/50 p-3">
+        <Label className="flex items-center gap-2 text-sm">
+          <Volume2Icon className="size-3.5" />
           Main Output (PA/Speakers)
         </Label>
         {sinkIdSupported ? (
@@ -164,14 +164,14 @@ export function AudioSettings() {
         )}
 
         {/* Main Output Delay */}
-        <div className="space-y-2 border-t pt-3">
+        <div className="space-y-2 border-border/50 border-t pt-3">
           <div className="flex items-center justify-between">
             <Label className="flex items-center gap-2 text-sm">
               <ClockIcon className="size-3" />
               Delay
             </Label>
             <div className="flex items-center gap-2">
-              <span className="font-mono text-muted-foreground text-xs">
+              <span className="font-mono text-[10px] text-muted-foreground tabular-nums">
                 {mainDelayMs}ms
               </span>
               <Button
@@ -190,7 +190,7 @@ export function AudioSettings() {
             </div>
           </div>
           <Slider
-            className="h-2"
+            className="h-1.5"
             defaultValue={[0]}
             max={500}
             min={0}
@@ -202,9 +202,9 @@ export function AudioSettings() {
       </div>
 
       {/* CUE/Headphone Output Selection */}
-      <div className="space-y-3 rounded-lg border p-4">
-        <Label className="flex items-center gap-2 font-medium">
-          <HeadphonesIcon className="size-4" />
+      <div className="space-y-3 rounded-lg border border-border/50 p-3">
+        <Label className="flex items-center gap-2 text-sm">
+          <HeadphonesIcon className="size-3.5" />
           CUE/Headphones Output
         </Label>
         {sinkIdSupported ? (
@@ -242,18 +242,18 @@ export function AudioSettings() {
 
         {/* CUE Output Delay — only shown when CUE output is configured */}
         {cueOutputId && (
-          <div className="space-y-2 border-t pt-3">
+          <div className="space-y-2 border-border/50 border-t pt-3">
             <div className="flex items-center justify-between">
               <Label className="flex items-center gap-2 text-sm">
                 <ClockIcon className="size-3" />
                 Delay
               </Label>
-              <span className="font-mono text-muted-foreground text-xs">
+              <span className="font-mono text-[10px] text-muted-foreground tabular-nums">
                 {cueDelayMs}ms
               </span>
             </div>
             <Slider
-              className="h-2"
+              className="h-1.5"
               defaultValue={[0]}
               max={500}
               min={0}
@@ -267,7 +267,7 @@ export function AudioSettings() {
 
       {/* Browser compatibility note */}
       {!sinkIdSupported && (
-        <div className="rounded-lg border border-muted bg-muted/50 p-3">
+        <div className="rounded-lg border border-border/50 bg-muted/30 p-3">
           <p className="text-muted-foreground text-xs">
             <strong>Note:</strong> Output device selection requires Chrome or
             Edge. Firefox and Safari use the system default output.

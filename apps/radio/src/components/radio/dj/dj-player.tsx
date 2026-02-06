@@ -1,6 +1,4 @@
-import { Button } from "@avoid.quest/ui/components/button";
 import { useIsMobile } from "@avoid.quest/ui/hooks/use-mobile";
-import { cn } from "@avoid.quest/ui/lib/utils";
 import type { DragEndEvent, DragStartEvent } from "@dnd-kit/core";
 import {
   DndContext,
@@ -11,7 +9,7 @@ import {
   useSensors,
 } from "@dnd-kit/core";
 import { Volume2Icon } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import type { Radio } from "@/lib/audio";
 import {
   deckCollection,
@@ -38,23 +36,17 @@ import {
 import { useMidi } from "@/lib/hooks/use-midi";
 import { useAudioSettings } from "@/lib/hooks/use-settings";
 import type { Platform } from "@/lib/platform-types";
-import {
-  type DeckId,
-  useDeckAPeakLevel,
-  useDeckBPeakLevel,
-} from "@/lib/stores/dj-runtime-store";
+import type { DeckId } from "@/lib/stores/dj-runtime-store";
 
 import { RadioLogo } from "../radio-logo";
-import { DjDeck } from "./dj-deck";
-import { DjMixer } from "./dj-mixer";
-import { DjRadioBrowser } from "./dj-radio-browser";
+import { DjConsole } from "./dj-console";
+import { DjConsoleMobile } from "./dj-console-mobile";
 import {
   getPlatformFromItem,
   isAudioInputItem,
   isLocalFileItem,
   isPlatformItem,
 } from "./dj-radio-list";
-import { MiniMixerBar } from "./mini-mixer-bar";
 
 type DjPlayerProps = {
   radios?: Radio[];
@@ -85,13 +77,8 @@ function handlePlatformItemDrag({
   return true;
 }
 
-// Conditional hydration hook for DJ state
 function useDjStateHydration() {
   const hasHydratedRef = useRef(false);
-
-  // Note: Cleanup on mode change is handled by mode-select.tsx which awaits cleanupAudioOnly()
-  // We don't cleanup on unmount here because on page refresh the audio stops naturally,
-  // and running cleanup could interfere with state persistence timing.
 
   useEffect(() => {
     if (hasHydratedRef.current) {
@@ -99,9 +86,7 @@ function useDjStateHydration() {
     }
     hasHydratedRef.current = true;
 
-    // Async IIFE - wait for all collections to load from localStorage, then restore state
     (async () => {
-      // Wait for all collections to complete initial sync from localStorage
       const [settingsMap, deckMap, mixerMap] = await Promise.all([
         settingsCollection.stateWhenReady(),
         deckCollection.stateWhenReady(),
@@ -118,9 +103,6 @@ function useDjStateHydration() {
       const deckB = deckMap.get("deck-b");
       const mixer = mixerMap.get("mixer");
 
-      // Re-init audio for decks that have radios (audio needs component context)
-      // This also applies channel strip settings (pan, speed, filter, etc.)
-      // Clear local-file decks — blob URLs are session-scoped and invalid after reload
       if (deckA?.radio?.platformMetadata?.platform === "local-file") {
         resetDeck("deck-a");
       } else if (deckA?.radio) {
@@ -132,7 +114,6 @@ function useDjStateHydration() {
         await setDeckBRadio(deckB.radio as Radio);
       }
 
-      // Apply mixer settings to audio engine
       if (mixer) {
         setMasterVolume(mixer.masterVolume);
         setCrossfadePosition(mixer.crossfadePosition);
@@ -141,142 +122,11 @@ function useDjStateHydration() {
   }, []);
 }
 
-type DjPlayerMobileViewProps = {
-  radios: Radio[];
-  crossfadePosition: number;
-  masterVolume: number;
-  deckACueEnabled: boolean;
-  deckBCueEnabled: boolean;
-  isCueActive: boolean;
-};
-
-function DjPlayerMobileView({
-  radios,
-  crossfadePosition,
-  masterVolume,
-  deckACueEnabled,
-  deckBCueEnabled,
-  isCueActive,
-}: DjPlayerMobileViewProps) {
-  const [mobileTab, setMobileTab] = useState<"left" | "right">("left");
-  const deckAPeakLevel = useDeckAPeakLevel();
-  const deckBPeakLevel = useDeckBPeakLevel();
-
-  return (
-    <div className="flex h-full min-h-0 flex-col gap-2">
-      {/* Mini Mixer Bar — always visible */}
-      <MiniMixerBar
-        crossfadePosition={crossfadePosition}
-        deckACueEnabled={deckACueEnabled}
-        deckAPeakLevel={deckAPeakLevel}
-        deckBCueEnabled={deckBCueEnabled}
-        deckBPeakLevel={deckBPeakLevel}
-        isCueActive={isCueActive}
-        masterVolume={masterVolume}
-        onCrossfadeChange={setCrossfadePosition}
-        onDeckACueChange={setDeckACueEnabled}
-        onDeckBCueChange={setDeckBCueEnabled}
-        onMasterVolumeChange={setMasterVolume}
-      />
-
-      {/* 2-Tab Navigation */}
-      <div className="grid grid-cols-2 gap-2 rounded-lg bg-muted p-1">
-        <Button
-          className="w-full"
-          onClick={() => setMobileTab("left")}
-          size="sm"
-          variant={mobileTab === "left" ? "default" : "ghost"}
-        >
-          Deck A
-        </Button>
-        <Button
-          className="w-full"
-          onClick={() => setMobileTab("right")}
-          size="sm"
-          variant={mobileTab === "right" ? "default" : "ghost"}
-        >
-          Deck B
-        </Button>
-      </div>
-
-      {/* Deck Content Area */}
-      <div className="min-h-0 flex-1 overflow-hidden">
-        <div
-          className={cn("h-full", mobileTab === "left" ? "block" : "hidden")}
-        >
-          <DjDeck deckId="deck-a" radios={radios} />
-        </div>
-        <div
-          className={cn("h-full", mobileTab === "right" ? "block" : "hidden")}
-        >
-          <DjDeck deckId="deck-b" radios={radios} />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-type DjPlayerDesktopViewProps = {
-  radios: Radio[];
-  crossfadePosition: number;
-  masterVolume: number;
-  headphoneVolume: number;
-  deckACueEnabled: boolean;
-  deckBCueEnabled: boolean;
-  isCueActive: boolean;
-};
-
-function DjPlayerDesktopView({
-  radios,
-  crossfadePosition,
-  masterVolume,
-  headphoneVolume,
-  deckACueEnabled,
-  deckBCueEnabled,
-  isCueActive,
-}: DjPlayerDesktopViewProps) {
-  return (
-    <div className="grid h-full min-h-0 w-full grid-rows-[1fr_auto] gap-2">
-      {/* Row 1: Decks + Mixer */}
-      <div className="grid min-h-0 grid-cols-1 gap-2 lg:grid-cols-[1fr_24rem_1fr]">
-        {/* Deck A */}
-        <DjDeck
-          className="order-2 lg:order-1"
-          deckId="deck-a"
-          radios={radios}
-        />
-
-        {/* Center Mixer */}
-        <DjMixer
-          className="order-1 lg:order-2"
-          crossfadePosition={crossfadePosition}
-          deckACueEnabled={deckACueEnabled}
-          deckBCueEnabled={deckBCueEnabled}
-          headphoneVolume={headphoneVolume}
-          isCueActive={isCueActive}
-          masterVolume={masterVolume}
-          onCrossfadeChange={setCrossfadePosition}
-          onDeckACueChange={setDeckACueEnabled}
-          onDeckBCueChange={setDeckBCueEnabled}
-          onHeadphoneVolumeChange={setHeadphoneVolume}
-          onMasterVolumeChange={setMasterVolume}
-        />
-
-        {/* Deck B */}
-        <DjDeck className="order-3" deckId="deck-b" radios={radios} />
-      </div>
-
-      {/* Row 2: Radio Browser */}
-      <DjRadioBrowser radios={radios} />
-    </div>
-  );
-}
-
-type DjPlayerDragOverlayProps = {
+function DjPlayerDragOverlay({
+  activeDragRadio,
+}: {
   activeDragRadio: Radio | null;
-};
-
-function DjPlayerDragOverlay({ activeDragRadio }: DjPlayerDragOverlayProps) {
+}) {
   if (!activeDragRadio) {
     return null;
   }
@@ -306,16 +156,10 @@ function DjPlayerDragOverlay({ activeDragRadio }: DjPlayerDragOverlayProps) {
 }
 
 export function DjPlayer({ radios = [] }: DjPlayerProps) {
-  // Conditionally hydrate the DJ state based on user settings
   useDjStateHydration();
-
-  // Enable keyboard shortcuts for DJ mode (Q=Deck A CUE, W=Deck B CUE)
   useDjKeyboard();
-
-  // Enable MIDI controller support
   useMidi();
 
-  // Get UI state from the runtime store
   const activeDragRadio = useActiveDragRadio();
   const mixer = useMixer();
   const audioSettings = useAudioSettings();
@@ -327,19 +171,12 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
   const deckBCueEnabled = mixer?.deckBCueEnabled ?? false;
   const isCueActive = !!audioSettings.cueOutputId;
 
-  // Configure sensors for both mouse and touch interactions
-  // Enhanced mobile support with better touch handling
   const sensors = useSensors(
     useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 8,
-      },
+      activationConstraint: { distance: 8 },
     }),
     useSensor(TouchSensor, {
-      activationConstraint: {
-        delay: 50, // Reduced delay for better responsiveness
-        tolerance: 5, // Reduced tolerance for more precise touch handling
-      },
+      activationConstraint: { delay: 50, tolerance: 5 },
     })
   );
 
@@ -349,25 +186,6 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
     if (radio) {
       setActiveDragRadio(radio);
     }
-  };
-
-  const handleRegularRadioDrag = (radio: Radio, deckId: string): void => {
-    if (deckId === "deck-a") {
-      setDeckARadio(radio);
-    } else if (deckId === "deck-b") {
-      setDeckBRadio(radio);
-    }
-  };
-
-  const handleAudioInputDrag = (deckId: string): boolean => {
-    if (deckId === "deck-a" || deckId === "deck-b") {
-      setPendingPlatformItem({
-        deckId: deckId as "deck-a" | "deck-b",
-        platform: "device-input",
-      });
-      return true;
-    }
-    return false;
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
@@ -382,13 +200,16 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
     const radio = active.data.current?.radio as Radio;
     const deckId = over.id as string;
 
-    // Check if it's an audio input item first
     if (isAudioInputItem(radio)) {
-      handleAudioInputDrag(deckId);
+      if (deckId === "deck-a" || deckId === "deck-b") {
+        setPendingPlatformItem({
+          deckId: deckId as "deck-a" | "deck-b",
+          platform: "device-input",
+        });
+      }
       return;
     }
 
-    // Check if it's a local file item
     if (isLocalFileItem(radio)) {
       if (deckId === "deck-a" || deckId === "deck-b") {
         setPendingPlatformItem({
@@ -410,7 +231,11 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
     }
 
     setPendingPlatformItem(null);
-    handleRegularRadioDrag(radio, deckId);
+    if (deckId === "deck-a") {
+      setDeckARadio(radio);
+    } else if (deckId === "deck-b") {
+      setDeckBRadio(radio);
+    }
   };
 
   const isMobile = useIsMobile();
@@ -423,41 +248,40 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
     >
       <div
         className="flex h-full min-h-0 w-full flex-col px-2 py-2"
-        style={{
-          // Ensure drag operations work properly on mobile
-          touchAction: "manipulation",
-        }}
+        style={{ touchAction: "manipulation" }}
       >
         {isMobile ? (
-          <DjPlayerMobileView
+          <DjConsoleMobile
             crossfadePosition={crossfadePosition}
             deckACueEnabled={deckACueEnabled}
             deckBCueEnabled={deckBCueEnabled}
             isCueActive={isCueActive}
             masterVolume={masterVolume}
+            onCrossfadeChange={setCrossfadePosition}
+            onDeckACueChange={setDeckACueEnabled}
+            onDeckBCueChange={setDeckBCueEnabled}
+            onMasterVolumeChange={setMasterVolume}
             radios={radios}
           />
         ) : (
-          <DjPlayerDesktopView
+          <DjConsole
             crossfadePosition={crossfadePosition}
             deckACueEnabled={deckACueEnabled}
             deckBCueEnabled={deckBCueEnabled}
             headphoneVolume={headphoneVolume}
             isCueActive={isCueActive}
             masterVolume={masterVolume}
+            onCrossfadeChange={setCrossfadePosition}
+            onDeckACueChange={setDeckACueEnabled}
+            onDeckBCueChange={setDeckBCueEnabled}
+            onHeadphoneVolumeChange={setHeadphoneVolume}
+            onMasterVolumeChange={setMasterVolume}
             radios={radios}
           />
         )}
       </div>
 
-      {/* Drag Overlay */}
-      <DragOverlay
-        style={{
-          // Ensure drag overlay can escape scroll containers on mobile
-          zIndex: 9999,
-          position: "fixed",
-        }}
-      >
+      <DragOverlay style={{ zIndex: 9999, position: "fixed" }}>
         <DjPlayerDragOverlay activeDragRadio={activeDragRadio} />
       </DragOverlay>
     </DndContext>

@@ -1,18 +1,17 @@
 import { Button } from "@avoid.quest/ui/components/button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@avoid.quest/ui/components/card";
 import { Slider } from "@avoid.quest/ui/components/slider";
-import { PauseIcon, PlayIcon, Volume2Icon, VolumeXIcon } from "lucide-react";
+import {
+  AudioLinesIcon,
+  PauseIcon,
+  PlayIcon,
+  Volume2Icon,
+  VolumeXIcon,
+} from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { type Radio, useMultipleAudio } from "@/lib/audio";
 import { deleteRadio } from "@/lib/hooks/use-radios";
 import { RadioDialog } from "../../settings/radio-dialog";
-import { SettingsButton } from "../../settings/settings-button";
 import { MultipleRadioCard } from "./multiple-radio-card";
 
 export function MultipleRadios({ radios }: { radios?: Radio[] }) {
@@ -35,17 +34,14 @@ export function MultipleRadios({ radios }: { radios?: Radio[] }) {
   const [selectedRadio, setSelectedRadio] = useState<Radio | undefined>();
   const [deleteConfirm, setDeleteConfirm] = useState<Radio | null>(null);
 
-  // Track which radios we've added to avoid duplicates
   const addedRadioIdsRef = useRef<Set<string | number>>(new Set());
 
-  // Reset tracking when unmounting to ensure clean state on remount
   useEffect(() => {
     return () => {
       addedRadioIdsRef.current.clear();
     };
   }, []);
 
-  // Sync radios with audio players
   useEffect(() => {
     if (!radios) {
       return;
@@ -53,7 +49,6 @@ export function MultipleRadios({ radios }: { radios?: Radio[] }) {
 
     const currentRadioIds = new Set(radios.map((r) => r.id).filter(Boolean));
 
-    // Add new radios
     for (const radio of radios) {
       if (radio.id && !addedRadioIdsRef.current.has(radio.id)) {
         addedRadioIdsRef.current.add(radio.id);
@@ -61,17 +56,14 @@ export function MultipleRadios({ radios }: { radios?: Radio[] }) {
       }
     }
 
-    // Remove radios that are no longer in the list
     for (const radioId of addedRadioIdsRef.current) {
       if (!currentRadioIds.has(radioId)) {
-        // With stable IDs, we can compute the playerId directly
         removeRadio(`multi_${radioId}`);
         addedRadioIdsRef.current.delete(radioId);
       }
     }
   }, [radios, addRadio, removeRadio]);
 
-  // Find player state by matching radio ID
   const getPlayerState = useCallback(
     (radio: Radio) => players.find((p) => p.radio.id === radio.id) ?? null,
     [players]
@@ -88,10 +80,10 @@ export function MultipleRadios({ radios }: { radios?: Radio[] }) {
   );
 
   const handleVolumeChange = useCallback(
-    (radio: Radio, volume: number) => {
+    (radio: Radio, vol: number) => {
       const player = players.find((p) => p.radio.id === radio.id);
       if (player) {
-        setVolume(player.id, volume);
+        setVolume(player.id, vol);
       }
     },
     [players, setVolume]
@@ -132,65 +124,56 @@ export function MultipleRadios({ radios }: { radios?: Radio[] }) {
 
   if (!radios || radios.length === 0) {
     return (
-      <div className="mx-auto flex h-full min-h-0 w-full max-w-7xl items-center justify-center px-4 py-4">
-        <Card className="w-full max-w-md border-dashed">
-          <CardHeader>
-            <CardTitle className="text-center">
-              No Radio Stations Available
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4 text-center">
-            <div className="mx-auto flex size-16 items-center justify-center rounded-full bg-muted">
-              <Volume2Icon className="size-8 text-muted-foreground" />
-            </div>
-            <p className="text-muted-foreground text-sm">
-              All radio stations are currently disabled. Please enable some
-              stations in the settings.
-            </p>
-            <SettingsButton />
-          </CardContent>
-        </Card>
+      <div className="mx-auto flex h-full min-h-0 w-full max-w-5xl items-center justify-center px-4 py-6">
+        <div className="flex flex-col items-center gap-3 rounded-lg border border-border/50 border-dashed bg-card/50 px-8 py-12">
+          <AudioLinesIcon className="size-8 text-muted-foreground/30" />
+          <p className="font-mono text-[10px] text-muted-foreground/60 uppercase tracking-wider">
+            No stations enabled
+          </p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="mx-auto flex h-full max-h-[calc(100vh-6rem)] min-h-0 w-full max-w-7xl flex-col overflow-auto px-4 py-4">
-      {/* Global Controls */}
-      <div className="mb-4 flex items-center gap-4 rounded-lg border bg-card p-3">
+    <div className="mx-auto flex h-full min-h-0 w-full max-w-5xl flex-col overflow-auto px-4 py-6">
+      {/* Global controls bar */}
+      <div className="mb-4 flex shrink-0 items-center gap-4 rounded-lg border border-border/50 bg-card/50 px-4 py-3">
         <Button
+          className="h-9 gap-2 text-sm"
           onClick={isAnyPlaying ? pauseAll : playAll}
-          size="sm"
           variant="outline"
         >
           {isAnyPlaying ? (
             <>
-              <PauseIcon className="mr-2 size-4" />
+              <PauseIcon className="size-4" />
               Pause All
             </>
           ) : (
             <>
-              <PlayIcon className="mr-2 size-4" />
+              <PlayIcon className="size-4" />
               Play All
             </>
           )}
         </Button>
-        <div className="flex flex-1 items-center gap-2">
-          <Button
+
+        <div className="h-5 w-px bg-border/50" />
+
+        <div className="flex flex-1 items-center gap-2.5">
+          <button
             aria-label={globalMuted ? "Unmute all" : "Mute all"}
-            className="size-8"
+            className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground"
             onClick={toggleGlobalMute}
-            size="sm"
-            variant="ghost"
+            type="button"
           >
             {globalMuted ? (
               <VolumeXIcon className="size-4" />
             ) : (
               <Volume2Icon className="size-4" />
             )}
-          </Button>
+          </button>
           <Slider
-            className="max-w-[200px]"
+            className="h-2 max-w-xs flex-1"
             defaultValue={[1]}
             max={1}
             min={0}
@@ -198,30 +181,25 @@ export function MultipleRadios({ radios }: { radios?: Radio[] }) {
             step={0.01}
             value={[globalVolume]}
           />
-          <span className="text-muted-foreground text-sm">
+          <span className="w-10 shrink-0 text-right font-mono text-muted-foreground text-xs tabular-nums">
             {Math.round(globalVolume * 100)}%
           </span>
         </div>
-        <SettingsButton />
       </div>
 
-      {/* Radio Grid */}
-      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      {/* Grid */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {radios.map((radio: Radio) => (
-          <div
-            className="group relative transition-all duration-300 hover:-translate-y-1 hover:shadow-lg"
+          <MultipleRadioCard
             key={radio.id}
-          >
-            <MultipleRadioCard
-              onDelete={handleDeleteRadio}
-              onEdit={handleEditRadio}
-              onToggle={handleToggleRadio}
-              onTogglePlayPause={() => handleTogglePlayPause(radio)}
-              onVolumeChange={(vol) => handleVolumeChange(radio, vol)}
-              playerState={getPlayerState(radio)}
-              radio={radio}
-            />
-          </div>
+            onDelete={handleDeleteRadio}
+            onEdit={handleEditRadio}
+            onToggle={handleToggleRadio}
+            onTogglePlayPause={() => handleTogglePlayPause(radio)}
+            onVolumeChange={(vol) => handleVolumeChange(radio, vol)}
+            playerState={getPlayerState(radio)}
+            radio={radio}
+          />
         ))}
       </div>
 
@@ -232,20 +210,24 @@ export function MultipleRadios({ radios }: { radios?: Radio[] }) {
         radio={selectedRadio}
       />
 
-      {/* Delete Confirmation Dialog */}
+      {/* Delete Confirmation */}
       {deleteConfirm?.valueOf() && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="fade-in zoom-in w-full max-w-md animate-in rounded-lg border bg-background p-6 shadow-xl duration-200">
-            <h3 className="mb-2 font-semibold text-lg">Delete Radio Station</h3>
-            <p className="mb-4 text-muted-foreground">
-              Are you sure you want to delete "{deleteConfirm.name}"? This
-              action cannot be undone.
+          <div className="w-full max-w-md rounded-lg border border-border/50 bg-card p-6">
+            <h3 className="mb-2 font-semibold text-sm">Delete Radio Station</h3>
+            <p className="mb-4 text-muted-foreground text-xs">
+              Are you sure you want to delete &ldquo;{deleteConfirm.name}
+              &rdquo;? This action cannot be undone.
             </p>
             <div className="flex justify-end gap-2">
-              <Button onClick={() => setDeleteConfirm(null)} variant="outline">
+              <Button
+                onClick={() => setDeleteConfirm(null)}
+                size="sm"
+                variant="outline"
+              >
                 Cancel
               </Button>
-              <Button onClick={confirmDelete} variant="destructive">
+              <Button onClick={confirmDelete} size="sm" variant="destructive">
                 Delete
               </Button>
             </div>

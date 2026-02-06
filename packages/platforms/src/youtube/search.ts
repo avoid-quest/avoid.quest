@@ -13,38 +13,32 @@ export async function searchYouTubeMusic(
   _filter: "songs" | "videos" = "songs",
   options?: InvidiousOptions
 ): Promise<YouTubeSearchResult[]> {
-  try {
-    const results = await searchInvidious(query, options);
+  const results = await searchInvidious(query, options);
 
-    return results.map((item) => {
-      // Format views as string (e.g., "1.2M views")
-      const views =
-        item.viewCount > 0 ? formatViews(item.viewCount) : undefined;
+  return results.map((item) => {
+    // Format views as string (e.g., "1.2M views")
+    const views = item.viewCount > 0 ? formatViews(item.viewCount) : undefined;
 
-      // Get thumbnail URL
-      const thumbnail =
-        item.videoThumbnails.find((t) => t.quality === "high")?.url ||
-        item.videoThumbnails[0]?.url ||
-        "";
+    // Get thumbnail URL
+    const thumbnail =
+      item.videoThumbnails.find((t) => t.quality === "high")?.url ||
+      item.videoThumbnails[0]?.url ||
+      "";
 
-      // Prepend instance URL for relative thumbnails
-      const fullThumbnail = thumbnail.startsWith("/")
-        ? `${options?.instanceUrl ?? "https://yt.avoid.quest"}${thumbnail}`
-        : thumbnail;
+    // Prepend instance URL for relative thumbnails
+    const fullThumbnail = thumbnail.startsWith("/")
+      ? `${options?.instanceUrl ?? "https://yt.avoid.quest"}${thumbnail}`
+      : thumbnail;
 
-      return {
-        videoId: item.videoId,
-        title: item.title,
-        author: item.author,
-        duration: item.lengthSeconds,
-        thumbnail: fullThumbnail,
-        views,
-      };
-    });
-  } catch (error) {
-    console.warn("[YouTube] searchYouTubeMusic failed:", error);
-    return [];
-  }
+    return {
+      videoId: item.videoId,
+      title: item.title,
+      author: item.author,
+      duration: item.lengthSeconds,
+      thumbnail: fullThumbnail,
+      views,
+    };
+  });
 }
 
 /**

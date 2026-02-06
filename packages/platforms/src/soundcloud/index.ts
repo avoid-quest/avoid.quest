@@ -7,6 +7,54 @@ import type {
   SoundCloudMetadata,
 } from "./types.js";
 
+// Structural types for SoundCloud API responses (only properties we access)
+
+type SoundCloudTranscodingFormat = {
+  protocol?: string;
+  mime_type?: string;
+};
+
+type SoundCloudTranscoding = {
+  url: string;
+  format?: SoundCloudTranscodingFormat;
+};
+
+type SoundCloudApiTrack = {
+  kind?: string;
+  id?: number;
+  user_id?: number;
+  title?: string;
+  duration?: number;
+  user?: { username?: string };
+  artwork_url?: string;
+  media?: { transcodings?: SoundCloudTranscoding[] };
+};
+
+type SoundCloudApiPlaylist = {
+  kind?: string;
+  title?: string;
+  duration?: number;
+  track_count?: number;
+  user?: { username?: string };
+  artwork_url?: string;
+  tracks?: SoundCloudApiTrack[];
+};
+
+type SoundCloudApiUser = {
+  kind?: string;
+  id?: number;
+  username?: string;
+  full_name?: string;
+  avatar_url?: string;
+  track_count?: number;
+};
+
+type SoundCloudResolveResponse = SoundCloudApiTrack &
+  SoundCloudApiPlaylist &
+  SoundCloudApiUser & {
+    collection?: SoundCloudApiTrack[];
+  };
+
 export {
   detectSoundCloudItemType,
   isSoundCloudUrl,
@@ -67,15 +115,17 @@ function createErrorResponse(message: string): SoundCloudItemError {
 let clientIdCache: Promise<string> | null = null;
 
 function getClientId(): Promise<string> {
-  clientIdCache ??= fetchClientID();
+  clientIdCache ??= fetchClientID().catch((error) => {
+    clientIdCache = null;
+    throw error;
+  });
   return clientIdCache;
 }
 
 async function resolveSoundCloudUrl(
   url: string,
   clientId: string
-  // biome-ignore lint/suspicious/noExplicitAny: External SoundCloud API response shape is dynamic
-): Promise<any> {
+): Promise<SoundCloudResolveResponse> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 10_000);
 
@@ -91,7 +141,7 @@ async function resolveSoundCloudUrl(
   if (!response.ok) {
     throw new Error(`Failed to resolve URL: ${response.statusText}`);
   }
-  return await response.json();
+  return (await response.json()) as SoundCloudResolveResponse;
 }
 
 async function getStreamUrl(
@@ -110,7 +160,7 @@ async function getStreamUrl(
       return null;
     }
 
-    const data = (await response.json()) as { url: string };
+    const data: { url: string } = await response.json();
     // Use getProxiedSoundCloudUrl which skips proxy for CORS-enabled HLS URLs
     return getProxiedSoundCloudUrl(data.url);
   } catch (error) {
@@ -126,8 +176,7 @@ async function fetchUserTracks(
   userId: number,
   username: string,
   clientId: string
-  // biome-ignore lint/suspicious/noExplicitAny: External API response
-): Promise<{ collection: any[] }> {
+): Promise<{ collection: SoundCloudApiTrack[] }> {
   const searchUrl = new URL("https://api-v2.soundcloud.com/search/tracks");
   searchUrl.searchParams.set("q", username);
   searchUrl.searchParams.set("client_id", clientId);
@@ -144,16 +193,14 @@ async function fetchUserTracks(
     return { collection: [] };
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: External API response
-  const data = (await response.json()) as { collection: any[] };
+  const data: { collection: SoundCloudApiTrack[] } = await response.json();
 
   // Filter to only include tracks by this user
   const userTracks = data.collection.filter(
-    // biome-ignore lint/suspicious/noExplicitAny: External API response
-    (item: any) =>
+    (item) =>
       item.kind === "track" &&
       item.user_id === userId &&
-      item.media?.transcodings?.length > 0
+      (item.media?.transcodings?.length ?? 0) > 0
   );
 
   return { collection: userTracks };
@@ -168,6 +215,11 @@ export async function resolveShortLink(shortUrl: string): Promise<string> {
     redirect: "follow",
     signal: AbortSignal.timeout(10_000),
   });
+  if (!response.ok) {
+    throw new Error(
+      `Failed to resolve short link: ${response.status} ${response.statusText}`
+    );
+  }
   return response.url;
 }
 
@@ -206,14 +258,11 @@ export async function getSoundCloudItem(
  * Prefers progressive (direct download), falls back to HLS.
  */
 function findBestTranscoding(
-  // biome-ignore lint/suspicious/noExplicitAny: External API response
-  transcodings: any[]
-  // biome-ignore lint/suspicious/noExplicitAny: External API response
-): any | null {
+  transcodings: SoundCloudTranscoding[]
+): SoundCloudTranscoding | null {
   // First try progressive (easiest to work with)
   const progressive = transcodings.find(
-    // biome-ignore lint/suspicious/noExplicitAny: External API response
-    (t: any) => t.format?.protocol === "progressive"
+    (t) => t.format?.protocol === "progressive"
   );
   if (progressive) {
     return progressive;
@@ -221,25 +270,19 @@ function findBestTranscoding(
 
   // Fall back to HLS audio/mpeg (MP3 segments, widely compatible)
   const hlsMpeg = transcodings.find(
-    // biome-ignore lint/suspicious/noExplicitAny: External API response
-    (t: any) =>
-      t.format?.protocol === "hls" && t.format?.mime_type === "audio/mpeg"
+    (t) => t.format?.protocol === "hls" && t.format?.mime_type === "audio/mpeg"
   );
   if (hlsMpeg) {
     return hlsMpeg;
   }
 
   // Fall back to any HLS stream
-  const hlsAny = transcodings.find(
-    // biome-ignore lint/suspicious/noExplicitAny: External API response
-    (t: any) => t.format?.protocol === "hls"
-  );
-  return hlsAny || null;
+  const hlsAny = transcodings.find((t) => t.format?.protocol === "hls");
+  return hlsAny ?? null;
 }
 
 async function processTrack(
-  // biome-ignore lint/suspicious/noExplicitAny: External API response
-  data: any,
+  data: SoundCloudApiTrack,
   url: string,
   clientId: string
 ): Promise<SoundCloudItemResult | SoundCloudItemError> {
@@ -263,7 +306,7 @@ async function processTrack(
     artist: data.user?.username,
     artwork:
       data.artwork_url?.replace("-large", "-t500x500") || data.artwork_url,
-    duration: Math.floor(data.duration / 1000),
+    duration: Math.floor((data.duration ?? 0) / 1000),
     streamUrl,
   };
 
@@ -275,8 +318,7 @@ async function processTrack(
 }
 
 async function processPlaylist(
-  // biome-ignore lint/suspicious/noExplicitAny: External API response
-  data: any,
+  data: SoundCloudApiPlaylist,
   url: string,
   clientId: string
 ): Promise<SoundCloudItemResult | SoundCloudItemError> {
@@ -285,20 +327,15 @@ async function processPlaylist(
   }
 
   const processedTracks = await Promise.all(
-    // biome-ignore lint/suspicious/noExplicitAny: External API response
-    data.tracks.map(async (track: any) => {
-      let fullTrack = track;
+    data.tracks.map(async (track) => {
+      let fullTrack: SoundCloudApiTrack = track;
 
       // Fetch full track details if partial (missing transcodings)
       if (!track.media?.transcodings && track.id) {
         try {
           const trackApiUrl = `https://api.soundcloud.com/tracks/${track.id}`;
           fullTrack = await resolveSoundCloudUrl(trackApiUrl, clientId);
-        } catch (error) {
-          console.warn(
-            `[SoundCloud] Failed to resolve track ${track.id}:`,
-            error
-          );
+        } catch {
           return null;
         }
       }
@@ -319,9 +356,9 @@ async function processPlaylist(
       }
 
       return {
-        name: fullTrack.title,
+        name: fullTrack.title ?? "",
         streamUrl,
-        duration: Math.floor(fullTrack.duration / 1000),
+        duration: Math.floor((fullTrack.duration ?? 0) / 1000),
       };
     })
   );
@@ -348,7 +385,7 @@ async function processPlaylist(
     artist: data.user?.username,
     artwork:
       data.artwork_url?.replace("-large", "-t500x500") || data.artwork_url,
-    duration: Math.floor(data.duration / 1000),
+    duration: Math.floor((data.duration ?? 0) / 1000),
     trackCount: data.track_count,
     tracks: validTracks,
     streamUrl: firstTrack.streamUrl,
@@ -362,16 +399,14 @@ async function processPlaylist(
 }
 
 async function processUser(
-  // biome-ignore lint/suspicious/noExplicitAny: External API response
-  data: any,
+  data: SoundCloudApiUser,
   url: string,
   clientId: string
 ): Promise<SoundCloudItemResult | SoundCloudItemError> {
   // Try to resolve the user's tracks URL through the API
   const tracksUrl = `${url}/tracks`;
 
-  // biome-ignore lint/suspicious/noExplicitAny: External API response
-  let tracksData: { collection: any[] };
+  let tracksData: { collection: SoundCloudApiTrack[] };
 
   try {
     // Try resolving the tracks page URL - this sometimes returns a playlist-like response
@@ -381,16 +416,18 @@ async function processUser(
       tracksData = { collection: resolved.collection };
     } else if (resolved.tracks) {
       tracksData = { collection: resolved.tracks };
-    } else {
+    } else if (data.id && data.username) {
       // Fallback: search for user's tracks
       tracksData = await fetchUserTracks(data.id, data.username, clientId);
+    } else {
+      tracksData = { collection: [] };
     }
-  } catch (error) {
-    console.warn(
-      "[SoundCloud] Failed to resolve user tracks, falling back to search:",
-      error
-    );
-    tracksData = await fetchUserTracks(data.id, data.username, clientId);
+  } catch {
+    if (data.id && data.username) {
+      tracksData = await fetchUserTracks(data.id, data.username, clientId);
+    } else {
+      tracksData = { collection: [] };
+    }
   }
 
   if (!tracksData.collection || tracksData.collection.length === 0) {
@@ -398,8 +435,7 @@ async function processUser(
   }
 
   const processedTracks = await Promise.all(
-    // biome-ignore lint/suspicious/noExplicitAny: External API response
-    tracksData.collection.map(async (track: any) => {
+    tracksData.collection.map(async (track) => {
       if (!track.media?.transcodings) {
         return null;
       }
@@ -416,9 +452,9 @@ async function processUser(
       }
 
       return {
-        name: track.title,
+        name: track.title ?? "",
         streamUrl,
-        duration: Math.floor(track.duration / 1000),
+        duration: Math.floor((track.duration ?? 0) / 1000),
       };
     })
   );

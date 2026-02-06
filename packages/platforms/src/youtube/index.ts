@@ -98,14 +98,10 @@ export async function resolveStreamUrl(
   videoId: string,
   options?: InvidiousOptions
 ): Promise<string | null> {
-  try {
-    const data = await fetchInvidiousVideo(videoId, options);
-    const stream = selectBestAudioStream(data.adaptiveFormats);
-    if (stream) {
-      return getFullStreamUrl(stream.url, options?.instanceUrl);
-    }
-  } catch (error) {
-    console.warn(`[YouTube] resolveStreamUrl failed for ${videoId}:`, error);
+  const data = await fetchInvidiousVideo(videoId, options);
+  const stream = selectBestAudioStream(data.adaptiveFormats);
+  if (stream) {
+    return getFullStreamUrl(stream.url, options?.instanceUrl);
   }
   return null;
 }

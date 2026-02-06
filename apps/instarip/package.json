@@ -19,7 +19,7 @@
     "@tailwindcss/vite": "catalog:",
     "@tanstack/react-query": "^5.90.20",
     "@tanstack/react-router": "^1.158.1",
-    "@tanstack/react-start": "^1.158.1",
+    "@tanstack/react-start": "^1.158.3",
     "@tanstack/react-store": "^0.8.0",
     "@tanstack/router-plugin": "^1.158.1",
     "convex": "catalog:",

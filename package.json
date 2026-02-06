@@ -23,7 +23,7 @@
       "@types/react-dom": "^19.2.3",
       "@types/node": "^22.19.9",
       "@types/bun": "latest",
-      "@cloudflare/workers-types": "^4.20260205.0",
+      "@cloudflare/workers-types": "^4.20260206.0",
       "wrangler": "^4.63.0",
       "vite": "^7.3.1",
       "vitest": "^4.0.18",

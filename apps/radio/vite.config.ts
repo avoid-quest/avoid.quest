@@ -100,7 +100,7 @@ export default defineConfig({
     }),
   ],
   define: {
-    __APP_VERSION__: JSON.stringify(process.env.npm_package_version || "0.4.0"),
+    __APP_VERSION__: JSON.stringify(process.env.npm_package_version || "0.5.0"),
   },
   build: {
     minify: "esbuild",

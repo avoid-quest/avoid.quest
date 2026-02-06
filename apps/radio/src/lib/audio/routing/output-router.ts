@@ -3,7 +3,7 @@
  *
  * Manages audio output device selection for the main output.
  * Uses setSinkId for routing to specific output devices.
- * Handles browser compatibility (setSinkId not available in Firefox/Safari).
+ * Handles browser compatibility for setSinkId, which may not be available in all browsers.
  *
  * Note: CUE (headphone) routing is handled entirely by CueBus.
  */

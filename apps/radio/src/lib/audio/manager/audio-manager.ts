@@ -354,10 +354,6 @@ export class AudioManager {
           });
         },
         onStreamError: (position) => {
-          // Network error during streaming - notify for potential URL refresh
-          console.log(
-            `[AudioManager] Stream error for ${soundId} at position ${position}s`
-          );
           this.notifyListeners(soundId, {
             isPlaying: false,
             isLoading: false,
@@ -1252,10 +1248,6 @@ export class AudioManager {
       return;
     }
 
-    console.log(
-      `[AudioManager] Refreshing stream URL for ${soundId} at position ${seekPosition ?? 0}s`
-    );
-
     // Update loading state
     instance.loading = true;
     this.notifyListeners(soundId, {
@@ -1580,7 +1572,7 @@ export class AudioManager {
     if (bandcampUrl !== url) {
       return bandcampUrl;
     }
-    // YouTube URLs are already proxied through Invidious (local=true)
+    // YouTube URLs do not need additional proxying (handled at stream resolution time)
     return getProxiedSoundCloudUrl(url);
   }
 

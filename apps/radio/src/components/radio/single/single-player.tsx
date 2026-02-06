@@ -357,7 +357,86 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
 
   return (
     <div className="mx-auto flex h-full min-h-0 w-full max-w-5xl flex-col px-3 py-3 lg:flex-row">
-      <div className="flex h-full min-h-0 w-full overflow-hidden rounded-lg border border-border/50 bg-card/50">
+      <div className="flex h-full min-h-0 w-full flex-col overflow-hidden rounded-lg border border-border/50 bg-card/50 lg:flex-row">
+        {/* Mobile: now playing panel */}
+        {currentRadio && (
+          <div className="flex shrink-0 flex-col items-center gap-4 border-border/50 border-b px-5 py-5 lg:hidden">
+            <div className="relative size-28 shrink-0 overflow-hidden rounded-xl border border-border/50 bg-black/20 shadow-black/5 shadow-lg">
+              {currentRadio.logoUrl ? (
+                <img
+                  alt={currentRadio.name}
+                  className="h-full w-full object-contain"
+                  height={112}
+                  src={currentRadio.logoUrl}
+                  width={112}
+                />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center">
+                  <Music2Icon className="size-8 text-muted-foreground/20" />
+                </div>
+              )}
+              {(isLoading || isCrossfading) && (
+                <div className="absolute inset-0 animate-pulse bg-muted-foreground/10" />
+              )}
+            </div>
+
+            <div className="w-full text-center">
+              <p className="truncate font-semibold text-lg">
+                {currentRadio.name}
+              </p>
+              {currentRadio.description && (
+                <p className="mt-0.5 truncate text-muted-foreground/60 text-sm">
+                  {currentRadio.description}
+                </p>
+              )}
+            </div>
+
+            {!!error?.trim() && (
+              <div className="rounded-md bg-destructive/10 px-3 py-1.5">
+                <p className="font-mono text-destructive text-xs">{error}</p>
+              </div>
+            )}
+
+            <PlayPauseButton
+              className="size-14"
+              disabled={isLoading || isCrossfading}
+              iconClassName="size-6"
+              isLoading={isLoading || isCrossfading}
+              isPlaying={isPlaying}
+              onClick={togglePlayPause}
+              size="sm"
+              variant={isPlaying && !isLoading ? "outline" : "default"}
+            />
+
+            <div className="flex w-full items-center gap-2.5">
+              <button
+                aria-label={isMuted ? "Unmute" : "Mute"}
+                className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground"
+                onClick={handleMuteToggle}
+                type="button"
+              >
+                {isMuted ? (
+                  <VolumeXIcon className="size-4" />
+                ) : (
+                  <Volume2Icon className="size-4" />
+                )}
+              </button>
+              <Slider
+                className="h-2 flex-1"
+                defaultValue={[1]}
+                max={1}
+                min={0}
+                onValueChange={handleVolumeChange}
+                step={0.01}
+                value={[volume]}
+              />
+              <span className="w-10 shrink-0 text-right font-mono text-muted-foreground text-xs tabular-nums">
+                {Math.round(volume * 100)}%
+              </span>
+            </div>
+          </div>
+        )}
+
         <StationList
           currentRadioId={currentRadio?.id}
           onDelete={handleDeleteRadio}
@@ -381,55 +460,6 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
             volume={volume}
           />
         </div>
-
-        {/* Mobile: inline player bar */}
-        {currentRadio && (
-          <div className="flex items-center gap-2.5 border-border/50 border-t px-3 py-2 lg:hidden">
-            <RadioLogo
-              logoUrl={currentRadio.logoUrl}
-              name={currentRadio.name}
-              size="sm"
-            />
-            <div className="min-w-0 flex-1">
-              <p className="truncate font-semibold text-sm leading-tight">
-                {currentRadio.name}
-              </p>
-            </div>
-            <PlayPauseButton
-              className="size-8 shrink-0"
-              disabled={isLoading || isCrossfading}
-              iconClassName="size-4"
-              isLoading={isLoading || isCrossfading}
-              isPlaying={isPlaying}
-              onClick={togglePlayPause}
-              size="sm"
-              variant={isPlaying && !isLoading ? "outline" : "default"}
-            />
-            <div className="flex w-20 shrink-0 items-center gap-1">
-              <button
-                aria-label={isMuted ? "Unmute" : "Mute"}
-                className="flex size-6 shrink-0 items-center justify-center text-muted-foreground"
-                onClick={handleMuteToggle}
-                type="button"
-              >
-                {isMuted ? (
-                  <VolumeXIcon className="size-3" />
-                ) : (
-                  <Volume2Icon className="size-3" />
-                )}
-              </button>
-              <Slider
-                className="h-1.5 flex-1"
-                defaultValue={[1]}
-                max={1}
-                min={0}
-                onValueChange={handleVolumeChange}
-                step={0.01}
-                value={[volume]}
-              />
-            </div>
-          </div>
-        )}
       </div>
 
       <RadioDialog

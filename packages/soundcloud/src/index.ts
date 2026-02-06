@@ -104,13 +104,17 @@ async function getStreamUrl(
 
     const response = await fetch(url.toString());
     if (!response.ok) {
+      console.warn(
+        `[SoundCloud] getStreamUrl HTTP ${response.status} for ${transcodingUrl}`
+      );
       return null;
     }
 
     const data = (await response.json()) as { url: string };
     // Use getProxiedSoundCloudUrl which skips proxy for CORS-enabled HLS URLs
     return getProxiedSoundCloudUrl(data.url);
-  } catch {
+  } catch (error) {
+    console.warn("[SoundCloud] getStreamUrl failed:", error);
     return null;
   }
 }
@@ -134,6 +138,9 @@ async function fetchUserTracks(
   });
 
   if (!response.ok) {
+    console.warn(
+      `[SoundCloud] fetchUserTracks HTTP ${response.status} for ${username}`
+    );
     return { collection: [] };
   }
 
@@ -287,7 +294,11 @@ async function processPlaylist(
         try {
           const trackApiUrl = `https://api.soundcloud.com/tracks/${track.id}`;
           fullTrack = await resolveSoundCloudUrl(trackApiUrl, clientId);
-        } catch {
+        } catch (error) {
+          console.warn(
+            `[SoundCloud] Failed to resolve track ${track.id}:`,
+            error
+          );
           return null;
         }
       }
@@ -374,8 +385,11 @@ async function processUser(
       // Fallback: search for user's tracks
       tracksData = await fetchUserTracks(data.id, data.username, clientId);
     }
-  } catch {
-    // Fallback: search for user's tracks
+  } catch (error) {
+    console.warn(
+      "[SoundCloud] Failed to resolve user tracks, falling back to search:",
+      error
+    );
     tracksData = await fetchUserTracks(data.id, data.username, clientId);
   }
 

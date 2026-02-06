@@ -31,8 +31,8 @@ export class MidiController {
   private pendingRaf: number | null = null;
   private readonly pendingCcValues = new Map<string, number>();
   private readonly lastButtonDispatch = new Map<string, number>();
-  private readonly boundHandleMessage: (e: MIDIMessageEvent) => void;
-  private readonly boundHandleStateChange: (e: Event) => void;
+  private readonly boundHandleMessage: EventListener;
+  private readonly boundHandleStateChange: EventListener;
 
   // Action registry (absorbed from MidiActionRegistry)
   private readonly actions = new Map<MidiTargetId, MidiAction>();
@@ -40,8 +40,9 @@ export class MidiController {
   private snapshot: MidiAction[] = [];
 
   private constructor() {
-    this.boundHandleMessage = this.handleMidiMessage.bind(this);
-    this.boundHandleStateChange = this.handleStateChange.bind(this);
+    this.boundHandleMessage = (e: Event) =>
+      this.handleMidiMessage(e as MIDIMessageEvent);
+    this.boundHandleStateChange = (e: Event) => this.handleStateChange(e);
   }
 
   static getInstance(): MidiController {
@@ -61,7 +62,8 @@ export class MidiController {
       this.access.addEventListener("statechange", this.boundHandleStateChange);
       this.attachInputListeners();
       return true;
-    } catch {
+    } catch (error) {
+      console.warn("[MidiController] init failed:", error);
       return false;
     }
   }
@@ -80,10 +82,7 @@ export class MidiController {
         this.boundHandleStateChange
       );
       for (const input of this.access.inputs.values()) {
-        input.removeEventListener(
-          "midimessage",
-          this.boundHandleMessage as EventListener
-        );
+        input.removeEventListener("midimessage", this.boundHandleMessage);
       }
       this.access = null;
     }
@@ -168,14 +167,8 @@ export class MidiController {
       return;
     }
     for (const input of this.access.inputs.values()) {
-      input.removeEventListener(
-        "midimessage",
-        this.boundHandleMessage as EventListener
-      );
-      input.addEventListener(
-        "midimessage",
-        this.boundHandleMessage as EventListener
-      );
+      input.removeEventListener("midimessage", this.boundHandleMessage);
+      input.addEventListener("midimessage", this.boundHandleMessage);
     }
   }
 

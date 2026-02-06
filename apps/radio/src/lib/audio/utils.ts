@@ -28,8 +28,11 @@ export function safeDisconnect(
   }
   try {
     node.disconnect();
-  } catch {
-    // InvalidAccessError is expected when node is already disconnected
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "InvalidAccessError") {
+      return;
+    }
+    throw error;
   }
 }
 

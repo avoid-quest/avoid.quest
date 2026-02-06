@@ -54,8 +54,8 @@ export function useAudioDevices(
       if (hasRealLabels) {
         setPermissionState("granted");
       }
-    } catch {
-      // Device enumeration can fail if browser restricts access
+    } catch (error) {
+      console.warn("[useAudioDevices] Device enumeration failed:", error);
     }
   }, []);
 
@@ -67,7 +67,8 @@ export function useAudioDevices(
       if (state === "granted") {
         await loadDevices();
       }
-    } catch {
+    } catch (error) {
+      console.warn("[useAudioDevices] Permission request failed:", error);
       setPermissionState("error");
     } finally {
       setIsLoading(false);

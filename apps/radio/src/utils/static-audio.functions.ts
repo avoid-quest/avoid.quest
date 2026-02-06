@@ -23,6 +23,67 @@ import type {
 import { rateLimitMiddleware } from "./middleware";
 
 const REQUEST_TIMEOUT_MS = 15_000;
+const IP_OCTET_RE = /^\d{1,3}$/;
+
+/**
+ * Block server-side requests to private/internal networks (SSRF protection).
+ * Rejects RFC 1918, loopback, link-local, and cloud metadata addresses.
+ */
+function isPrivateHostname(hostname: string): boolean {
+  // Block obvious private hostnames
+  if (
+    hostname === "localhost" ||
+    hostname === "[::1]" ||
+    hostname.endsWith(".local") ||
+    hostname.endsWith(".internal")
+  ) {
+    return true;
+  }
+
+  // Check for IP addresses
+  const parts = hostname.split(".");
+  if (parts.length === 4 && parts.every((p) => IP_OCTET_RE.test(p))) {
+    const [a, b] = parts.map(Number);
+    // 10.0.0.0/8
+    if (a === 10) {
+      return true;
+    }
+    // 172.16.0.0/12
+    if (a === 172 && b !== undefined && b >= 16 && b <= 31) {
+      return true;
+    }
+    // 192.168.0.0/16
+    if (a === 192 && b === 168) {
+      return true;
+    }
+    // 127.0.0.0/8 (loopback)
+    if (a === 127) {
+      return true;
+    }
+    // 169.254.0.0/16 (link-local / cloud metadata)
+    if (a === 169 && b === 254) {
+      return true;
+    }
+    // 0.0.0.0
+    if (a === 0) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function validateUrlNotPrivate(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    if (isPrivateHostname(parsed.hostname)) {
+      return "URL points to a private/internal network address";
+    }
+    return null;
+  } catch {
+    return "Invalid URL";
+  }
+}
 
 // Types
 export type RemoteAudioProbeResult =
@@ -99,6 +160,11 @@ export const probeRemoteAudio = createServerFn({ method: "POST" })
   .middleware([rateLimitMiddleware("probe-remote-audio")])
   .inputValidator(ProbeRemoteAudioSchema)
   .handler(async ({ data }): Promise<RemoteAudioProbeResult> => {
+    const ssrfError = validateUrlNotPrivate(data.url);
+    if (ssrfError) {
+      return { success: false, error: ssrfError };
+    }
+
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(
@@ -153,6 +219,11 @@ export const fetchPlaylist = createServerFn({ method: "POST" })
   .middleware([rateLimitMiddleware("fetch-playlist")])
   .inputValidator(FetchPlaylistSchema)
   .handler(async ({ data }): Promise<ParsedPlaylist | { error: string }> => {
+    const ssrfError = validateUrlNotPrivate(data.url);
+    if (ssrfError) {
+      return { error: ssrfError };
+    }
+
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(
@@ -199,6 +270,11 @@ export const getStaticAudioItem = createServerFn({ method: "POST" })
   .middleware([rateLimitMiddleware("get-static-audio-item")])
   .inputValidator(GetStaticAudioItemSchema)
   .handler(async ({ data }): Promise<StaticAudioItemResponse> => {
+    const ssrfError = validateUrlNotPrivate(data.url);
+    if (ssrfError) {
+      return { success: false, error: ssrfError };
+    }
+
     const trimmedUrl = data.url.trim();
 
     // Handle playlist URLs

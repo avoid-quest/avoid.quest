@@ -92,7 +92,7 @@ function combineDeckState(
     pan: persisted.pan,
     speed: persisted.speed,
     channelFilter: persisted.channelFilter,
-    effects: persisted.effects as unknown as EffectConfig[],
+    effects: persisted.effects as EffectConfig[],
     filter: persisted.filter as FilterConfig,
     effectsDryWet: persisted.effectsDryWet,
     repeat: persisted.repeat,

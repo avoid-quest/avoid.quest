@@ -505,6 +505,7 @@ async function fetchCollectionFromApi(
   });
 
   if (!response.ok) {
+    console.warn(`[Bandcamp] fetchCollectionFromApi HTTP ${response.status}`);
     return [];
   }
 
@@ -591,8 +592,11 @@ async function getBandcampCollection(
   if (fanId) {
     try {
       collectionItems = await fetchCollectionFromApi(fanId);
-    } catch {
-      // Fall back to HTML parsing
+    } catch (error) {
+      console.warn(
+        "[Bandcamp] Collection API failed, falling back to HTML parsing:",
+        error
+      );
     }
   }
 

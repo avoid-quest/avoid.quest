@@ -41,7 +41,8 @@ export async function searchYouTubeMusic(
         views,
       };
     });
-  } catch {
+  } catch (error) {
+    console.warn("[YouTube] searchYouTubeMusic failed:", error);
     return [];
   }
 }

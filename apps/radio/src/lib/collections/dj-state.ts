@@ -3,6 +3,7 @@ import {
   localStorageCollectionOptions,
 } from "@tanstack/react-db";
 import { z } from "zod";
+import { EFFECT_TYPES } from "@/lib/audio/dsp/effects/types";
 import { platformMetadataSchema } from "./schemas";
 
 const radioSchema = z
@@ -39,7 +40,7 @@ const filterConfigSchema = z.object({
 const effectConfigSchema = z
   .object({
     id: z.string(),
-    type: z.string(),
+    type: z.enum(EFFECT_TYPES),
     enabled: z.boolean(),
     order: z.number(),
     dryWet: z.number(),

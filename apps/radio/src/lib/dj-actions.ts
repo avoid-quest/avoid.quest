@@ -69,12 +69,11 @@ type DeckId = "deck-a" | "deck-b";
 
 /**
  * Typed accessor for DeckRecord.effects.
- * The Zod schema uses `type: z.string()` + `.passthrough()`, so the inferred type
- * has `type: string` instead of `EffectType`. At runtime the values are valid
- * EffectConfig objects — this helper bridges the type gap without `as` casts.
+ * The Zod schema uses `z.enum(EFFECT_TYPES)` for the type field, so the inferred
+ * type aligns with EffectConfig. The `.passthrough()` keeps extra per-effect params.
  */
 function getDeckEffects(deck: DeckRecord): EffectConfig[] {
-  return deck.effects as unknown as EffectConfig[];
+  return deck.effects as EffectConfig[];
 }
 
 function getDeckRadio(deck: DeckRecord): Radio | null {
@@ -388,38 +387,31 @@ function handleTrackEnded(
  * Handle YouTube stream interruption by fetching a fresh URL and resuming playback.
  * Called when STREAM_INTERRUPTED error is received for a YouTube stream.
  */
-function handleYouTubeStreamInterrupted(
+async function handleYouTubeStreamInterrupted(
   soundId: string,
   videoId: string,
   position: number
-): void {
-  console.log(
-    `[dj-actions] YouTube stream interrupted at ${position}s, attempting refresh`
-  );
-
-  refreshYouTubeStreamUrl(videoId).then((newUrl) => {
+): Promise<void> {
+  try {
+    const newUrl = await refreshYouTubeStreamUrl(videoId);
     if (newUrl) {
-      getAudioManager()
-        .refreshStreamUrl(soundId, newUrl, position)
-        .then(() => {
-          setDjError(null); // Clear error on successful refresh
-          applyCrossfade();
-        })
-        .catch((err) => {
-          setDjError(
-            `Stream refresh failed: ${err instanceof Error ? err.message : "Unknown error"}`
-          );
-        });
+      await getAudioManager().refreshStreamUrl(soundId, newUrl, position);
+      setDjError(null);
+      applyCrossfade();
     } else {
       setDjError("Failed to refresh YouTube stream - please reload");
     }
-  });
+  } catch (err) {
+    setDjError(
+      `Stream refresh failed: ${err instanceof Error ? err.message : "Unknown error"}`
+    );
+  }
 }
 
 /**
  * Refresh a YouTube stream URL when interrupted.
- * Uses Piped API which handles n-param transformation server-side.
- * Returns the proxied URL or null on failure.
+ * Uses Invidious API for stream URL resolution.
+ * Returns the resolved URL or null on failure.
  */
 async function refreshYouTubeStreamUrl(
   videoId: string
@@ -430,7 +422,11 @@ async function refreshYouTubeStreamUrl(
       return streamUrl;
     }
     return null;
-  } catch {
+  } catch (error) {
+    console.warn(
+      `[dj-actions] refreshYouTubeStreamUrl failed for ${videoId}:`,
+      error
+    );
     return null;
   }
 }
@@ -558,8 +554,8 @@ function applyStoredEffectsAndFilters(
         }
       }, 100);
     }
-  } catch {
-    // Non-critical: effects will be missing but audio still plays
+  } catch (error) {
+    console.warn("[dj-actions] Failed to apply stored effects:", error);
   }
 }
 
@@ -590,8 +586,8 @@ function applyStoredChannelStrip(
     if (effectsDryWet !== 1) {
       manager.setEffectsDryWet(soundId, effectsDryWet);
     }
-  } catch {
-    // Non-critical: channel strip defaults will be used
+  } catch (error) {
+    console.warn("[dj-actions] Failed to apply stored channel strip:", error);
   }
 }
 
@@ -742,8 +738,11 @@ async function setDeckRadio(deckId: DeckId, radio: Radio | null) {
         connectDeckToCueBus(deckId, soundId);
 
         // Initialize audio output devices from saved settings
-        initializeAudioDevices().catch(() => {
-          // Non-critical: will use default audio output
+        initializeAudioDevices().catch((error) => {
+          console.warn(
+            "[dj-actions] Failed to initialize audio devices:",
+            error
+          );
         });
       }
 
@@ -1581,8 +1580,11 @@ async function setDeckDeviceSource(
         connectDeckToCueBus(deckId, soundId);
 
         // Initialize audio output devices from saved settings
-        initializeAudioDevices().catch(() => {
-          // Non-critical: will use default audio output
+        initializeAudioDevices().catch((error) => {
+          console.warn(
+            "[dj-actions] Failed to initialize audio devices:",
+            error
+          );
         });
       }
 

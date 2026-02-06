@@ -111,7 +111,7 @@ export function createPlatformRadio(
 }
 
 /**
- * Check if a radio item is from an external platform (Bandcamp/SoundCloud)
+ * Check if a radio item has platform metadata (any external platform or device input)
  */
 export function isPlatformRadio(radio: Radio | null): boolean {
   return radio?.platformMetadata !== undefined;

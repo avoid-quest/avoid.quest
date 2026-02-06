@@ -249,16 +249,12 @@ export class Html5AudioSource {
   private loadHls(url: string): void {
     // Prefer hls.js when available (better CORS and error handling)
     if (Hls.isSupported()) {
-      console.log("[Html5AudioSource] Using hls.js for HLS playback");
       this.setupHlsJs(url);
       return;
     }
 
     // Fall back to native HLS support (Safari without MSE, iOS)
     if (this.audio.canPlayType("application/vnd.apple.mpegurl")) {
-      console.log(
-        "[Html5AudioSource] Using native HLS support (hls.js not available)"
-      );
       this.audio.src = url;
       return;
     }
@@ -283,15 +279,16 @@ export class Html5AudioSource {
     // Set up HLS event handlers
     this.hls.on(Hls.Events.ERROR, (_event, data) => {
       if (data.fatal) {
-        console.error("[Html5AudioSource] Fatal HLS error:", data.type, data);
+        console.warn(
+          "[Html5AudioSource] Fatal HLS error:",
+          data.type,
+          data.details
+        );
         switch (data.type) {
           case Hls.ErrorTypes.NETWORK_ERROR:
-            // Try to recover from network error
-            console.log("[Html5AudioSource] Attempting HLS recovery...");
             this.hls?.startLoad();
             break;
           case Hls.ErrorTypes.MEDIA_ERROR:
-            console.log("[Html5AudioSource] Attempting media recovery...");
             this.hls?.recoverMediaError();
             break;
           default:
@@ -303,10 +300,6 @@ export class Html5AudioSource {
             break;
         }
       }
-    });
-
-    this.hls.on(Hls.Events.MANIFEST_PARSED, () => {
-      console.log("[Html5AudioSource] HLS manifest parsed");
     });
 
     // Attach to audio element and load source
@@ -429,10 +422,6 @@ export class Html5AudioSource {
    * Used for YouTube URL refresh when throttled
    */
   async refreshUrl(newUrl: string, seekPosition?: number): Promise<void> {
-    console.log(
-      `[Html5AudioSource] Refreshing URL, will seek to ${seekPosition ?? 0}s`
-    );
-
     // Store current state
     const wasPlaying = this._status === "streaming";
 
@@ -483,8 +472,6 @@ export class Html5AudioSource {
         await this.audio.play();
         this._status = "streaming";
       }
-
-      console.log("[Html5AudioSource] URL refresh successful");
     } catch (error) {
       this._status = "error";
       this.callbacks.onError?.(

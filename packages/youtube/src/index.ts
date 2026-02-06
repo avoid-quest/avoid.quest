@@ -104,8 +104,8 @@ export async function resolveStreamUrl(
     if (stream) {
       return getFullStreamUrl(stream.url, options?.instanceUrl);
     }
-  } catch {
-    // Fall through
+  } catch (error) {
+    console.warn(`[YouTube] resolveStreamUrl failed for ${videoId}:`, error);
   }
   return null;
 }

@@ -39,8 +39,8 @@ export function applyTransform(
   // Curve
   switch (t.curve) {
     case "log":
-      // Attempt log curve (0->0, 1->1 with log response)
-      v = v <= 0 ? 0 : Math.log1p(v * (Math.E - 1)) / 1;
+      // Log curve (0->0, 1->1 with logarithmic response)
+      v = v <= 0 ? 0 : Math.log1p(v * (Math.E - 1));
       break;
     case "exp":
       // Exponential curve (0->0, 1->1 with exp response)

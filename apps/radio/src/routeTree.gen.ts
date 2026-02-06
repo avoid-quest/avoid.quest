@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as TunnelRouteImport } from './routes/tunnel'
 import { Route as ManifestRouteImport } from './routes/manifest'
 import { Route as ImportRouteImport } from './routes/import'
 import { Route as IndexRouteImport } from './routes/index'
@@ -16,6 +17,11 @@ import { Route as ApiStreamProxyRouteImport } from './routes/api/stream-proxy'
 import { Route as ApiSoundcloudProxyRouteImport } from './routes/api/soundcloud-proxy'
 import { Route as ApiBandcampProxyRouteImport } from './routes/api/bandcamp-proxy'
 
+const TunnelRoute = TunnelRouteImport.update({
+  id: '/tunnel',
+  path: '/tunnel',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ManifestRoute = ManifestRouteImport.update({
   id: '/manifest',
   path: '/manifest',
@@ -51,6 +57,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/import': typeof ImportRoute
   '/manifest': typeof ManifestRoute
+  '/tunnel': typeof TunnelRoute
   '/api/bandcamp-proxy': typeof ApiBandcampProxyRoute
   '/api/soundcloud-proxy': typeof ApiSoundcloudProxyRoute
   '/api/stream-proxy': typeof ApiStreamProxyRoute
@@ -59,6 +66,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/import': typeof ImportRoute
   '/manifest': typeof ManifestRoute
+  '/tunnel': typeof TunnelRoute
   '/api/bandcamp-proxy': typeof ApiBandcampProxyRoute
   '/api/soundcloud-proxy': typeof ApiSoundcloudProxyRoute
   '/api/stream-proxy': typeof ApiStreamProxyRoute
@@ -68,6 +76,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/import': typeof ImportRoute
   '/manifest': typeof ManifestRoute
+  '/tunnel': typeof TunnelRoute
   '/api/bandcamp-proxy': typeof ApiBandcampProxyRoute
   '/api/soundcloud-proxy': typeof ApiSoundcloudProxyRoute
   '/api/stream-proxy': typeof ApiStreamProxyRoute
@@ -78,6 +87,7 @@ export interface FileRouteTypes {
     | '/'
     | '/import'
     | '/manifest'
+    | '/tunnel'
     | '/api/bandcamp-proxy'
     | '/api/soundcloud-proxy'
     | '/api/stream-proxy'
@@ -86,6 +96,7 @@ export interface FileRouteTypes {
     | '/'
     | '/import'
     | '/manifest'
+    | '/tunnel'
     | '/api/bandcamp-proxy'
     | '/api/soundcloud-proxy'
     | '/api/stream-proxy'
@@ -94,6 +105,7 @@ export interface FileRouteTypes {
     | '/'
     | '/import'
     | '/manifest'
+    | '/tunnel'
     | '/api/bandcamp-proxy'
     | '/api/soundcloud-proxy'
     | '/api/stream-proxy'
@@ -103,6 +115,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ImportRoute: typeof ImportRoute
   ManifestRoute: typeof ManifestRoute
+  TunnelRoute: typeof TunnelRoute
   ApiBandcampProxyRoute: typeof ApiBandcampProxyRoute
   ApiSoundcloudProxyRoute: typeof ApiSoundcloudProxyRoute
   ApiStreamProxyRoute: typeof ApiStreamProxyRoute
@@ -110,6 +123,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/tunnel': {
+      id: '/tunnel'
+      path: '/tunnel'
+      fullPath: '/tunnel'
+      preLoaderRoute: typeof TunnelRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/manifest': {
       id: '/manifest'
       path: '/manifest'
@@ -159,6 +179,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ImportRoute: ImportRoute,
   ManifestRoute: ManifestRoute,
+  TunnelRoute: TunnelRoute,
   ApiBandcampProxyRoute: ApiBandcampProxyRoute,
   ApiSoundcloudProxyRoute: ApiSoundcloudProxyRoute,
   ApiStreamProxyRoute: ApiStreamProxyRoute,

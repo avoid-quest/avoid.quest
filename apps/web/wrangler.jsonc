@@ -2,7 +2,7 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "main": "dist/_worker.js/index.js",
   "name": "avoid-quest",
-  "compatibility_date": "2026-01-21",
+  "compatibility_date": "2026-02-06",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
   "workers_dev": true,
   "preview_urls": true,

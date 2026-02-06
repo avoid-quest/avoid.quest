@@ -11,7 +11,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "instarip",
-  "compatibility_date": "2026-01-20",
+  "compatibility_date": "2026-02-06",
   "compatibility_flags": [
     "nodejs_compat",
     "enable_nodejs_http_modules"

@@ -152,6 +152,9 @@ export function SettingsForm({
             <RotateCcwIcon className="size-3.5 shrink-0" />
             <span className="truncate">Reset</span>
           </TabsTrigger>
+          <span className="hidden font-mono text-[10px] text-muted-foreground/40 md:mt-auto md:block md:px-2 md:py-1">
+            v{__APP_VERSION__}
+          </span>
         </TabsList>
 
         <div className="flex min-h-0 flex-1 flex-col rounded-lg border border-border/50 bg-card/50">

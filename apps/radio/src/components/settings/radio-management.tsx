@@ -254,7 +254,7 @@ export function RadioManagement() {
         </Button>
       </div>
       <div
-        className="max-h-72 overflow-y-auto sm:max-h-80"
+        className="max-h-72 overflow-y-auto sm:max-h-full"
         style={{ touchAction: "pan-y" }}
       >
         <DndContext

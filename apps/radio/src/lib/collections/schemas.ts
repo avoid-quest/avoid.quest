@@ -1,10 +1,13 @@
 import { z } from "zod";
+import type { PlatformMetadata } from "@/lib/platform-types";
 
 /**
  * Platform metadata schema for persistence boundary validation.
  * Uses discriminated union on `platform` to ensure valid data from localStorage.
  * Each variant validates the discriminant + required fields but uses passthrough()
  * for platform-specific optional fields that vary by item type.
+ * The final pipe(z.custom<PlatformMetadata>()) narrows the Zod output to the
+ * full PlatformMetadata union type for downstream TypeScript consumers.
  */
 const bandcampMetadataSchema = z
   .object({
@@ -66,4 +69,9 @@ export const platformMetadataSchema = z
     staticAudioMetadataSchema,
     fileMetadataSchema,
   ])
+  .pipe(
+    z.custom<PlatformMetadata>(
+      (val) => val != null && typeof val === "object" && "platform" in val
+    )
+  )
   .optional();

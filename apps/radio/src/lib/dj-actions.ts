@@ -67,15 +67,6 @@ import {
 export type DeckSide = "left" | "right";
 type DeckId = "deck-a" | "deck-b";
 
-/**
- * Typed accessor for DeckRecord.effects.
- * The Zod schema uses `z.enum(EFFECT_TYPES)` for the type field, so the inferred
- * type aligns with EffectConfig. The `.passthrough()` keeps extra per-effect params.
- */
-function getDeckEffects(deck: DeckRecord): EffectConfig[] {
-  return deck.effects as EffectConfig[];
-}
-
 function getDeckRadio(deck: DeckRecord): Radio | null {
   return deck.radio;
 }
@@ -722,7 +713,7 @@ async function setDeckRadio(deckId: DeckId, radio: Radio | null) {
         hasAppliedChannelStrip = true;
         applyStoredEffectsAndFilters(
           soundId,
-          getDeckEffects(currentDeck),
+          currentDeck.effects,
           currentDeck.filter
         );
         applyStoredChannelStrip(
@@ -1176,7 +1167,6 @@ function addDeckEffect(deckId: DeckId, type: EffectType) {
     effects.length
   );
   config.updateDeck((draft) => {
-    // @ts-expect-error -- EffectConfig is compatible with Zod-inferred effect schema at runtime
     draft.effects.push(effect);
   });
   if (runtime.soundId) {
@@ -1199,16 +1189,15 @@ function updateDeckEffect(
 ) {
   const config = deckConfig[deckId];
   const runtime = config.getRuntime();
+  let effectFound = false;
   config.updateDeck((draft) => {
-    const idx = draft.effects.findIndex((e) => e.id === effectId);
-    if (idx !== -1) {
-      const effect = draft.effects[idx];
-      if (effect) {
-        draft.effects[idx] = { ...effect, ...effectConfig };
-      }
+    const effect = draft.effects.find((e) => e.id === effectId);
+    if (effect) {
+      Object.assign(effect, effectConfig);
+      effectFound = true;
     }
   });
-  if (runtime.soundId) {
+  if (effectFound && runtime.soundId) {
     getAudioManager().updateEffect(runtime.soundId, effectId, effectConfig);
   }
 }
@@ -1564,7 +1553,7 @@ async function setDeckDeviceSource(
         hasAppliedChannelStrip = true;
         applyStoredEffectsAndFilters(
           soundId,
-          getDeckEffects(currentDeck),
+          currentDeck.effects,
           currentDeck.filter
         );
         applyStoredChannelStrip(

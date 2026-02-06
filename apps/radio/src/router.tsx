@@ -5,6 +5,10 @@ import { createRouter } from "@tanstack/react-router";
 // Import the generated route tree
 import { routeTree } from "./routeTree.gen";
 
+// Only propagate Sentry trace headers to same-origin (first-party) requests.
+// Relative URLs start with "/" and are always same-origin.
+const FIRST_PARTY_ROUTE = /^\//;
+
 // Create a new router instance
 export const getRouter = () => {
   const router = createRouter({
@@ -16,12 +20,19 @@ export const getRouter = () => {
     Sentry.init({
       dsn: "https://444829d47e194352a94b3739c56ca4ee@o4510834344656896.ingest.de.sentry.io/4510834349375568",
       tunnel: "/tunnel",
+      environment: import.meta.env.MODE,
+      release: `radio@${__APP_VERSION__}`,
       // Adds request headers and IP for users, for more info visit:
       // https://docs.sentry.io/platforms/javascript/guides/tanstackstart-react/configuration/options/#sendDefaultPii
       sendDefaultPii: true,
 
-      integrations: [Sentry.replayIntegration()],
+      integrations: [
+        Sentry.tanstackRouterBrowserTracingIntegration(router),
+        Sentry.replayIntegration(),
+      ],
 
+      tracesSampleRate: 0.2,
+      tracePropagationTargets: [FIRST_PARTY_ROUTE],
       // Capture Replay for 10% of all sessions,
       // plus for 100% of sessions with an error.
       replaysSessionSampleRate: 0.1,

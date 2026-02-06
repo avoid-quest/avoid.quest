@@ -3,7 +3,7 @@ import {
   localStorageCollectionOptions,
 } from "@tanstack/react-db";
 import { z } from "zod";
-import { EFFECT_TYPES } from "@/lib/audio/dsp/effects/types";
+import { EFFECT_TYPES, type EffectConfig } from "@/lib/audio/dsp/effects/types";
 import { platformMetadataSchema } from "./schemas";
 
 const radioSchema = z
@@ -47,7 +47,16 @@ const effectConfigSchema = z
     inputGain: z.number(),
     outputGain: z.number(),
   })
-  .passthrough();
+  .passthrough()
+  // Narrow Zod's inferred output to the full EffectConfig union.
+  // passthrough() preserves effect-specific fields at runtime;
+  // pipe() aligns the TypeScript type for downstream consumers.
+  .pipe(
+    z.custom<EffectConfig>(
+      (val) =>
+        val != null && typeof val === "object" && "type" in val && "id" in val
+    )
+  );
 
 const deckStateSchema = z.object({
   id: z.string(),

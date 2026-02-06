@@ -94,10 +94,18 @@ export default defineConfig({
       org: "avoidquest",
       project: "radio",
       authToken: process.env.SENTRY_AUTH_TOKEN,
+      sourcemaps: {
+        filesToDeleteAfterUpload: ["./dist/**/*.map"],
+      },
     }),
   ],
+  define: {
+    __APP_VERSION__: JSON.stringify(process.env.npm_package_version || "0.4.0"),
+  },
   build: {
     minify: "esbuild",
-    sourcemap: false,
+    // "hidden" generates source maps for Sentry upload but omits
+    // sourceMappingURL from production bundles (unlike true/inline).
+    sourcemap: "hidden",
   },
 });

@@ -310,20 +310,54 @@ const deckConfig: Record<
 };
 
 /**
+ * Resolve a YouTube yt:{videoId} URL and load the next track.
+ * Updates the track's streamUrl in metadata for tracklist highlighting.
+ */
+async function resolveAndLoadYouTubeTrack(
+  side: DeckSide,
+  deckRadio: Radio,
+  videoId: string
+): Promise<void> {
+  const resolvedUrl = await resolveStreamUrl(videoId);
+  if (!resolvedUrl) {
+    setDjError("Failed to resolve next track: no stream URL found");
+    return;
+  }
+
+  // Update the track's streamUrl in metadata for tracklist highlighting
+  if (
+    isYouTubeMetadata(deckRadio.platformMetadata) &&
+    deckRadio.platformMetadata.tracks
+  ) {
+    const track = deckRadio.platformMetadata.tracks.find(
+      (t) => "videoId" in t && t.videoId === videoId
+    );
+    if (track) {
+      track.streamUrl = resolvedUrl;
+    }
+  }
+  loadTrack(side, { ...deckRadio, streamUrl: resolvedUrl }, true);
+}
+
+/**
  * Handle track end - repeat current track or auto-advance to next in playlist/album.
  */
-function handleTrackEnded(
+async function handleTrackEnded(
   config: (typeof deckConfig)["deck-a"],
   currentDeck: DeckRecord,
   soundId: string
-): void {
+): Promise<void> {
   // Repeat mode: seek to start and replay
   if (currentDeck.repeat) {
     getAudioManager().seekSound(soundId, 0);
-    getAudioManager()
-      .playSound(soundId, currentDeck.volume)
-      .then(() => applyCrossfade())
-      .catch(() => setDjError("Failed to repeat track"));
+    try {
+      await getAudioManager().playSound(soundId, currentDeck.volume);
+      applyCrossfade();
+    } catch (err) {
+      setDjError(
+        `Failed to repeat track: ${err instanceof Error ? err.message : "Unknown error"}`
+      );
+    }
     return;
   }
 
@@ -334,43 +368,25 @@ function handleTrackEnded(
 
   const deckRadio = getDeckRadio(currentDeck);
   const nextTrack = findNextTrack(deckRadio);
-  if (nextTrack && deckRadio) {
-    // Resolve YouTube yt:{videoId} URLs before loading
-    const streamUrl = nextTrack.streamUrl;
-    if (streamUrl.startsWith("yt:")) {
-      const videoId = streamUrl.slice(3);
-      resolveStreamUrl(videoId)
-        .then((resolvedUrl) => {
-          if (resolvedUrl) {
-            // Update the track's streamUrl in metadata for tracklist highlighting
-            if (
-              isYouTubeMetadata(deckRadio.platformMetadata) &&
-              deckRadio.platformMetadata.tracks
-            ) {
-              const track = deckRadio.platformMetadata.tracks.find(
-                (t) => "videoId" in t && t.videoId === videoId
-              );
-              if (track) {
-                track.streamUrl = resolvedUrl;
-              }
-            }
-            loadTrack(
-              config.side,
-              { ...deckRadio, streamUrl: resolvedUrl },
-              true
-            );
-          } else {
-            setDjError("Failed to resolve next track");
-          }
-        })
-        .catch(() => setDjError("Failed to load next track"));
-    } else {
-      loadTrack(
+  if (!(nextTrack && deckRadio)) {
+    return;
+  }
+
+  const { streamUrl } = nextTrack;
+  if (streamUrl.startsWith("yt:")) {
+    try {
+      await resolveAndLoadYouTubeTrack(
         config.side,
-        { ...deckRadio, streamUrl },
-        true // auto-play
+        deckRadio,
+        streamUrl.slice(3)
+      );
+    } catch (err) {
+      setDjError(
+        `Failed to load next track: ${err instanceof Error ? err.message : "Unknown error"}`
       );
     }
+  } else {
+    loadTrack(config.side, { ...deckRadio, streamUrl }, true);
   }
 }
 
@@ -407,19 +423,7 @@ async function handleYouTubeStreamInterrupted(
 async function refreshYouTubeStreamUrl(
   videoId: string
 ): Promise<string | null> {
-  try {
-    const streamUrl = await resolveStreamUrl(videoId);
-    if (streamUrl) {
-      return streamUrl;
-    }
-    return null;
-  } catch (error) {
-    console.warn(
-      `[dj-actions] refreshYouTubeStreamUrl failed for ${videoId}:`,
-      error
-    );
-    return null;
-  }
+  return await resolveStreamUrl(videoId);
 }
 
 // Helper to get stream URL for a track (handles YouTube lazy resolution format)

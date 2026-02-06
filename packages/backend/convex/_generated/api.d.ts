@@ -473,6 +473,8 @@ export declare const components: {
             collaborators?: Array<string>;
             display_url: string;
             event_date?: number;
+            event_dates?: Array<number>;
+            event_period?: { end: number; start: number };
             ig_id: string;
             is_video: boolean;
             location?: { ig_id: string; name: string; slug: string };
@@ -506,6 +508,8 @@ export declare const components: {
           collaborators?: Array<string>;
           display_url: string;
           event_date?: number;
+          event_dates?: Array<number>;
+          event_period?: { end: number; start: number };
           ig_id: string;
           is_video: boolean;
           location?: { ig_id: string; name: string; slug: string };
@@ -535,6 +539,8 @@ export declare const components: {
             collaborators?: Array<string>;
             display_url: string;
             event_date?: number;
+            event_dates?: Array<number>;
+            event_period?: { end: number; start: number };
             ig_id: string;
             is_video: boolean;
             location?: { ig_id: string; name: string; slug: string };
@@ -579,6 +585,8 @@ export declare const components: {
           collaborators?: Array<string>;
           display_url: string;
           event_date?: number;
+          event_dates?: Array<number>;
+          event_period?: { end: number; start: number };
           ig_id: string;
           is_video: boolean;
           location?: { ig_id: string; name: string; slug: string };

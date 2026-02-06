@@ -50,6 +50,8 @@ const paginatedPostValidator = v.object({
 	users: v.array(v.id("users")),
 	timestamp: v.number(),
 	event_date: v.optional(v.number()),
+	event_dates: v.optional(v.array(v.number())),
+	event_period: v.optional(v.object({ start: v.number(), end: v.number() })),
 	location: v.optional(locationValidator),
 	collaborators: v.optional(v.array(v.string())),
 	status: postStatusValidator,

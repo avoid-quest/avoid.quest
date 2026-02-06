@@ -195,10 +195,12 @@ export const Route = createFileRoute("/api/soundcloud-proxy")({
           return fetchWithTimeout(urlValidation, request, origin);
         } catch (error) {
           Sentry.captureException(error);
-          const origin = new URL(request.url).origin;
-          const errorMessage =
-            error instanceof Error ? error.message : "Internal server error";
-          console.error("SoundCloud proxy error:", errorMessage, error);
+          let origin = "";
+          try {
+            origin = new URL(request.url).origin;
+          } catch {
+            // Fallback to empty origin if request.url is malformed
+          }
           return json(
             { error: "Internal server error" },
             { status: 500, headers: getCorsHeaders(origin) }

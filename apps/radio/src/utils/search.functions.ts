@@ -1,6 +1,5 @@
 // Import directly from search modules to avoid pulling in cheerio (not compatible with CF Workers)
 import {
-  type BandcampSearchFilter,
   type BandcampSearchResult,
   searchBandcamp,
 } from "@avoid.quest/platforms/bandcamp/search";
@@ -33,10 +32,7 @@ export const bandcampSearch = createServerFn({ method: "POST" })
   .inputValidator(BandcampSearchSchema)
   .handler(async ({ data }): Promise<BandcampSearchResponse> => {
     try {
-      const results = await searchBandcamp(
-        data.query,
-        data.filter as BandcampSearchFilter
-      );
+      const results = await searchBandcamp(data.query, data.filter);
       return { success: true, results };
     } catch (error) {
       Sentry.captureException(error);

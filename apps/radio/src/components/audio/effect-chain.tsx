@@ -33,6 +33,7 @@ type EffectChainProps = {
   title?: string;
   showAddButton?: boolean;
   showEffectsList?: boolean;
+  deckId?: "deck-a" | "deck-b";
 };
 
 export function EffectChain({
@@ -44,6 +45,7 @@ export function EffectChain({
   title,
   showAddButton = true,
   showEffectsList = true,
+  deckId,
 }: EffectChainProps) {
   const [expandedEffectId, setExpandedEffectId] = useState<string | null>(null);
   const [showPicker, setShowPicker] = useState(false);
@@ -65,12 +67,39 @@ export function EffectChain({
     setShowPicker(false);
   };
 
-  const sortedEffects = [...effects].sort((a, b) => a.order - b.order);
+  // Local optimistic order — prevents snap-back when external store update
+  // hasn't propagated yet at the time dnd-kit clears transforms on drag end
+  const [localOrder, setLocalOrder] = useState<string[]>(() =>
+    [...effects].sort((a, b) => a.order - b.order).map((e) => e.id)
+  );
+
+  // Sync local order when effects are added/removed externally.
+  // We compare sorted ID sets to detect structural changes (add/remove)
+  // without resetting on every reorder from the store.
+  const [prevIdKey, setPrevIdKey] = useState(() =>
+    effects
+      .map((e) => e.id)
+      .sort()
+      .join(",")
+  );
+  const currentIdKey = effects
+    .map((e) => e.id)
+    .sort()
+    .join(",");
+  if (currentIdKey !== prevIdKey) {
+    setPrevIdKey(currentIdKey);
+    setLocalOrder(
+      [...effects].sort((a, b) => a.order - b.order).map((e) => e.id)
+    );
+  }
+
+  const effectsById = new Map(effects.map((e) => [e.id, e]));
+  const sortedEffects = localOrder
+    .map((id) => effectsById.get(id))
+    .filter((e): e is EffectConfig => e !== undefined);
   const sortedIds = sortedEffects.map((e) => e.id);
 
-  const activeEffect = activeId
-    ? sortedEffects.find((e) => e.id === activeId)
-    : null;
+  const activeEffect = activeId ? (effectsById.get(activeId) ?? null) : null;
 
   const handleDragStart = (event: DragStartEvent) => {
     setActiveId(event.active.id as string);
@@ -88,7 +117,9 @@ export function EffectChain({
     const newIndex = sortedIds.indexOf(over.id as string);
 
     if (oldIndex !== -1 && newIndex !== -1) {
-      onReorderEffects(arrayMove(sortedIds, oldIndex, newIndex));
+      const newOrder = arrayMove(sortedIds, oldIndex, newIndex);
+      setLocalOrder(newOrder);
+      onReorderEffects(newOrder);
     }
   };
 
@@ -112,6 +143,7 @@ export function EffectChain({
             >
               {sortedEffects.map((effect) => (
                 <SortableEffectItem
+                  deckId={deckId}
                   effect={effect}
                   isDraggingAny={activeId !== null}
                   isExpanded={expandedEffectId === effect.id}
@@ -179,6 +211,7 @@ function SortableEffectItem({
   onUpdate,
   onRemove,
   onExpand,
+  deckId,
 }: {
   effect: EffectConfig;
   isExpanded: boolean;
@@ -186,9 +219,11 @@ function SortableEffectItem({
   onUpdate: (config: Partial<EffectConfig>) => void;
   onRemove: () => void;
   onExpand: () => void;
+  deckId?: "deck-a" | "deck-b";
 }) {
   const {
     setNodeRef,
+    setActivatorNodeRef,
     attributes,
     listeners,
     transform,
@@ -212,11 +247,14 @@ function SortableEffectItem({
       )}
       ref={setNodeRef}
       style={style}
-      {...attributes}
-      {...listeners}
     >
       <EffectItem
+        deckId={deckId}
+        dragHandleAttributes={attributes}
+        dragHandleListeners={listeners}
+        dragHandleRef={setActivatorNodeRef}
         effect={effect}
+        isDragging={isDragging}
         isExpanded={isExpanded}
         onExpand={onExpand}
         onRemove={onRemove}

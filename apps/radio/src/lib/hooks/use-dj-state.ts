@@ -8,11 +8,10 @@ import {
   resetAllDjState as resetAllDjStateDb,
   resetDeck as resetDeckDb,
 } from "@/lib/collections";
-import type { Platform } from "@/lib/platform-types";
 import {
-  type DeckId,
   getDeckARuntime,
   getDeckBRuntime,
+  type PendingPlatformItem,
   resetAllDjRuntime,
   resetDeckARuntime,
   resetDeckBRuntime,
@@ -41,6 +40,8 @@ export type DeckState = {
   effects: EffectConfig[];
   filter: FilterConfig;
   effectsDryWet: number;
+  repeat: boolean;
+  autoplay: boolean;
 };
 
 // Generic hook to get deck persisted state from DB
@@ -91,9 +92,11 @@ function combineDeckState(
     pan: persisted.pan,
     speed: persisted.speed,
     channelFilter: persisted.channelFilter,
-    effects: persisted.effects as unknown as EffectConfig[],
+    effects: persisted.effects as EffectConfig[],
     filter: persisted.filter as FilterConfig,
     effectsDryWet: persisted.effectsDryWet,
+    repeat: persisted.repeat,
+    autoplay: persisted.autoplay ?? true,
   };
 }
 
@@ -140,9 +143,7 @@ export function setActiveDragRadio(radio: Radio | null) {
   setActiveDragRadioStore(radio);
 }
 
-export function setPendingPlatformItem(
-  item: { deckId: DeckId; platform: Platform } | null
-) {
+export function setPendingPlatformItem(item: PendingPlatformItem) {
   setPendingPlatformItemStore(item);
 }
 
@@ -202,6 +203,8 @@ function getDeckState(
     effects: deck.effects as unknown as EffectConfig[],
     filter: deck.filter as FilterConfig,
     effectsDryWet: deck.effectsDryWet,
+    repeat: deck.repeat,
+    autoplay: deck.autoplay ?? true,
   };
 }
 

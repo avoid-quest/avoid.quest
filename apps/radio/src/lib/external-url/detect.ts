@@ -1,26 +1,32 @@
-import { isBandcampUrl } from "@avoid.quest/bandcamp";
-import { isSoundCloudUrl } from "@avoid.quest/soundcloud";
+import { detectPlatformFromUrl as detectExternalPlatform } from "@avoid.quest/platforms";
+import { isStaticAudioUrl } from "@/lib/audio/remote-url";
 import type { Platform } from "@/lib/platform-types";
 
-export { detectBandcampItemType } from "@avoid.quest/bandcamp";
-export { detectSoundCloudItemType } from "@avoid.quest/soundcloud";
+export {
+  detectBandcampItemType,
+  detectSoundCloudItemType,
+  detectYouTubeItemType,
+} from "@avoid.quest/platforms";
+export {
+  isAudioUrl,
+  isPlaylistUrl,
+  isStaticAudioUrl,
+} from "@/lib/audio/remote-url";
 
 /**
  * Detects the platform from a URL string.
- * @param url - The URL to detect the platform from
- * @returns The detected platform or null if the URL doesn't match any supported platform
+ * Extends the package-level detection with static-audio support.
  */
 export function detectPlatformFromUrl(url: string): Platform | null {
-  if (!url || typeof url !== "string") {
-    return null;
+  // Check external platforms first
+  const external = detectExternalPlatform(url);
+  if (external) {
+    return external;
   }
 
-  if (isBandcampUrl(url)) {
-    return "bandcamp";
-  }
-
-  if (isSoundCloudUrl(url)) {
-    return "soundcloud";
+  // Check for direct audio file URLs (mp3, wav, m3u, etc.)
+  if (url && isStaticAudioUrl(url)) {
+    return "static-audio";
   }
 
   return null;

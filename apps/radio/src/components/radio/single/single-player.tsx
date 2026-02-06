@@ -1,35 +1,24 @@
 import { Button } from "@avoid.quest/ui/components/button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@avoid.quest/ui/components/card";
-import {
-  Item,
-  ItemActions,
-  ItemContent,
-  ItemDescription,
-  ItemGroup,
-  ItemMedia,
-  ItemTitle,
-} from "@avoid.quest/ui/components/item";
 import { PlayPauseButton } from "@avoid.quest/ui/components/play-pause-button";
+import { ScrollArea } from "@avoid.quest/ui/components/scroll-area";
 import { Slider } from "@avoid.quest/ui/components/slider";
-import { AudioLinesIcon, Volume2Icon, VolumeXIcon } from "lucide-react";
+import { cn } from "@avoid.quest/ui/lib/utils";
+import {
+  AudioLinesIcon,
+  Music2Icon,
+  Volume2Icon,
+  VolumeXIcon,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import { type Radio, useSingleAudio } from "@/lib/audio";
 import { deleteRadio } from "@/lib/hooks/use-radios";
 import { useSettings } from "@/lib/hooks/use-settings";
 import { useSingleStore } from "@/lib/stores/single-store";
 import { RadioDialog } from "../../settings/radio-dialog";
-import { SettingsButton } from "../../settings/settings-button";
 import { RadioItemActions } from "../radio-item-actions";
 import { RadioLogo } from "../radio-logo";
-import { RadioNameLink } from "../radio-name-link";
 
-// Conditional hydration hook for single store persistence
-// Returns true once hydration is complete (or skipped)
 function useSingleStoreHydration(
   selectRadio: (radio: Radio) => Promise<void>,
   setVolume: (volume: number) => void
@@ -38,7 +27,6 @@ function useSingleStoreHydration(
   const hasHydratedRef = useRef(false);
   const [isHydrated, setIsHydrated] = useState(false);
 
-  // Use refs to avoid stale closures - these always have the latest functions
   const selectRadioRef = useRef(selectRadio);
   const setVolumeRef = useRef(setVolume);
   useEffect(() => {
@@ -51,7 +39,6 @@ function useSingleStoreHydration(
       return;
     }
 
-    // If settings loaded and restore is disabled, mark as hydrated immediately
     if (
       settings !== undefined &&
       settings?.player?.restoreStateOnLoad === false
@@ -69,12 +56,10 @@ function useSingleStoreHydration(
         await useSingleStore.persist.rehydrate();
         const { radio, volume } = useSingleStore.getState();
 
-        // Restore volume first (before loading radio which might trigger audio)
         if (volume !== undefined) {
           setVolumeRef.current(volume);
         }
 
-        // Then restore radio
         if (radio) {
           await selectRadioRef.current(radio);
         }
@@ -85,6 +70,200 @@ function useSingleStoreHydration(
   }, [settings]);
 
   return isHydrated;
+}
+
+function NowPlayingPanel({
+  radio,
+  isPlaying,
+  isLoading,
+  isCrossfading,
+  error,
+  volume,
+  isMuted,
+  onPlayPause,
+  onVolumeChange,
+  onMuteToggle,
+}: {
+  radio: Radio | null;
+  isPlaying: boolean;
+  isLoading: boolean;
+  isCrossfading: boolean;
+  error: string | null;
+  volume: number;
+  isMuted: boolean;
+  onPlayPause: () => void;
+  onVolumeChange: (value: number[]) => void;
+  onMuteToggle: () => void;
+}) {
+  if (!radio) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 py-24">
+        <Music2Icon className="size-12 text-muted-foreground/15" />
+        <p className="font-mono text-muted-foreground/40 text-xs uppercase tracking-wider">
+          Select a station
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col items-center gap-6">
+      <div className="relative size-52 shrink-0 overflow-hidden rounded-xl border border-border/50 bg-black/20 shadow-black/5 shadow-lg">
+        {radio.logoUrl ? (
+          <img
+            alt={radio.name}
+            className="h-full w-full object-contain"
+            height={208}
+            src={radio.logoUrl}
+            width={208}
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center">
+            <Music2Icon className="size-12 text-muted-foreground/20" />
+          </div>
+        )}
+        {(isLoading || isCrossfading) && (
+          <div className="absolute inset-0 animate-pulse bg-muted-foreground/10" />
+        )}
+      </div>
+
+      <div className="w-full max-w-sm text-center">
+        <p className="truncate font-semibold text-lg">{radio.name}</p>
+        {radio.description && (
+          <p className="mt-1 text-muted-foreground/60 text-sm leading-relaxed">
+            {radio.description}
+          </p>
+        )}
+      </div>
+
+      {!!error?.trim() && (
+        <div className="rounded-md bg-destructive/10 px-3 py-1.5">
+          <p className="font-mono text-destructive text-xs">{error}</p>
+        </div>
+      )}
+
+      <div className="flex w-full max-w-md flex-col items-center gap-5">
+        <PlayPauseButton
+          className="size-14"
+          disabled={isLoading || isCrossfading}
+          iconClassName="size-6"
+          isLoading={isLoading || isCrossfading}
+          isPlaying={isPlaying}
+          onClick={onPlayPause}
+          size="sm"
+          variant={isPlaying && !isLoading ? "outline" : "default"}
+        />
+
+        <div className="flex w-full items-center gap-2.5">
+          <button
+            aria-label={isMuted ? "Unmute" : "Mute"}
+            className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground"
+            onClick={onMuteToggle}
+            type="button"
+          >
+            {isMuted ? (
+              <VolumeXIcon className="size-4" />
+            ) : (
+              <Volume2Icon className="size-4" />
+            )}
+          </button>
+          <Slider
+            className="h-2 flex-1"
+            defaultValue={[1]}
+            max={1}
+            min={0}
+            onValueChange={onVolumeChange}
+            step={0.01}
+            value={[volume]}
+          />
+          <span className="w-10 shrink-0 text-right font-mono text-muted-foreground text-xs tabular-nums">
+            {Math.round(volume * 100)}%
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StationList({
+  radios,
+  currentRadioId,
+  onSelect,
+  onEdit,
+  onDelete,
+}: {
+  radios: Radio[] | undefined;
+  currentRadioId: string | number | undefined;
+  onSelect: (radio: Radio) => void;
+  onEdit: (radio: Radio) => void;
+  onDelete: (radio: Radio) => void;
+}) {
+  return (
+    <div className="flex min-h-0 w-full flex-col border-border/50 lg:w-72 lg:shrink-0 lg:border-r">
+      <div className="flex items-center gap-2 px-3 py-2">
+        <span className="font-mono text-foreground/80 text-xs uppercase tracking-wider">
+          Stations
+        </span>
+        <span className="text-[10px] text-muted-foreground/50">
+          {radios?.length ?? 0}
+        </span>
+      </div>
+
+      <ScrollArea className="min-h-0 flex-1">
+        {radios && radios.length > 0 ? (
+          <div className="flex flex-col gap-1 px-1.5 pb-1.5">
+            {radios.map((radio) => (
+              <div
+                className={cn(
+                  "group flex items-center gap-3 rounded-lg px-2.5 py-2.5 transition-colors",
+                  currentRadioId === radio.id
+                    ? "bg-primary/10"
+                    : "hover:bg-muted/40"
+                )}
+                key={radio.id}
+              >
+                <button
+                  className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                  onClick={() => onSelect(radio)}
+                  type="button"
+                >
+                  <RadioLogo
+                    logoUrl={radio.logoUrl}
+                    name={radio.name}
+                    size="md"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm leading-snug">
+                      {radio.name}
+                    </p>
+                    {radio.description && (
+                      <p className="mt-0.5 line-clamp-2 text-muted-foreground/60 text-xs leading-snug">
+                        {radio.description}
+                      </p>
+                    )}
+                  </div>
+                </button>
+                <div className="shrink-0 opacity-0 group-hover:opacity-100">
+                  <RadioItemActions
+                    onDelete={onDelete}
+                    onEdit={onEdit}
+                    radio={radio}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center px-4 py-10 text-center">
+            <AudioLinesIcon className="mb-3 size-8 text-muted-foreground/20" />
+            <p className="font-mono text-muted-foreground/40 text-xs uppercase tracking-wider">
+              No stations enabled
+            </p>
+          </div>
+        )}
+      </ScrollArea>
+    </div>
+  );
 }
 
 type SinglePlayerProps = {
@@ -105,10 +284,8 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
     setVolume,
   } = useSingleAudio(transitionDuration);
 
-  // Conditionally hydrate the single store based on user settings
   const isHydrated = useSingleStoreHydration(selectRadio, setVolume);
 
-  // Sync radio and volume changes to the store (only after hydration to avoid overwriting)
   useEffect(() => {
     if (!isHydrated) {
       return;
@@ -127,6 +304,14 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
   const [dialogMode, setDialogMode] = useState<"create" | "edit">("create");
   const [selectedRadio, setSelectedRadio] = useState<Radio | undefined>();
   const [deleteConfirm, setDeleteConfirm] = useState<Radio | null>(null);
+  const [isMuted, setIsMuted] = useState(false);
+  const [unmutedVolume, setUnmutedVolume] = useState(1);
+
+  useEffect(() => {
+    if (!isMuted) {
+      setUnmutedVolume(volume);
+    }
+  }, [volume, isMuted]);
 
   const handleEditRadio = (radio: Radio) => {
     setDialogMode("edit");
@@ -142,36 +327,17 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
     if (!deleteConfirm?.id) {
       return;
     }
-
     try {
       deleteRadio(String(deleteConfirm.id));
       setDeleteConfirm(null);
-    } catch (deleteError) {
-      console.error("Failed to delete radio:", deleteError);
+    } catch {
+      toast.error("Failed to delete radio");
     }
-  };
-
-  const [isMuted, setIsMuted] = useState(false);
-  const [unmutedVolume, setUnmutedVolume] = useState(1);
-
-  useEffect(() => {
-    if (!isMuted) {
-      setUnmutedVolume(volume);
-    }
-  }, [volume, isMuted]);
-
-  const handleRadioSelect = async (radio: Radio) => {
-    await selectRadio(radio);
-  };
-
-  const handlePlayPause = () => {
-    togglePlayPause();
   };
 
   const handleVolumeChange = (value: number[]) => {
     const newVolume = value[0] ?? 0;
     setVolume(newVolume);
-
     if (isMuted && newVolume > 0) {
       setUnmutedVolume(newVolume);
       setIsMuted(false);
@@ -190,147 +356,111 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
   };
 
   return (
-    <div className="mx-auto grid h-full min-h-0 w-full max-w-7xl grid-cols-1 gap-4 px-4 py-4 lg:grid-cols-2 lg:gap-8">
-      {/* Radio List */}
-      <Card className="order-last flex min-h-0 flex-col lg:order-first">
-        <CardHeader className="hidden lg:block">
-          <div className="flex items-center justify-between">
-            <CardTitle>Radio Stations</CardTitle>
-            <SettingsButton />
-          </div>
-        </CardHeader>
-        <CardContent className="flex min-h-0 flex-col p-0">
-          {radios && radios.length > 0 ? (
-            <ItemGroup className="flex-1 overflow-y-auto py-4">
-              {radios.map((radio) => (
-                <Item
-                  className={`cursor-pointer ${
-                    currentRadio?.id === radio.id
-                      ? "bg-accent"
-                      : "hover:bg-accent/50"
-                  }`}
-                  key={radio.id}
-                  onClick={() => handleRadioSelect(radio)}
-                >
-                  <ItemMedia variant="image">
-                    <RadioLogo
-                      logoUrl={radio.logoUrl}
-                      name={radio.name}
-                      size="lg"
-                    />
-                  </ItemMedia>
-                  <ItemContent>
-                    <ItemTitle>
-                      <RadioNameLink radio={radio} />
-                    </ItemTitle>
-                    {radio.description?.trim() !== "" && (
-                      <ItemDescription>{radio.description}</ItemDescription>
-                    )}
-                  </ItemContent>
-                  <ItemActions>
-                    <RadioItemActions
-                      onDelete={handleDeleteRadio}
-                      onEdit={handleEditRadio}
-                      radio={radio}
-                    />
-                  </ItemActions>
-                </Item>
-              ))}
-            </ItemGroup>
-          ) : (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <AudioLinesIcon className="mb-4 size-12 text-muted-foreground" />
-              <h3 className="mb-2 font-medium text-lg">
-                No Radio Stations Available
-              </h3>
-              <p className="mb-4 text-muted-foreground text-sm">
-                All radio stations are currently disabled. Please enable some
-                stations in the settings.
-              </p>
-              <Button size="sm" variant="outline">
-                Open Settings
-              </Button>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Current Player */}
-      <Card className="flex min-h-0 flex-col">
-        <CardContent className="flex flex-1 flex-col space-y-6 px-4 lg:px-8">
-          {currentRadio ? (
-            <div className="flex min-h-[120px] min-w-xs items-center gap-4 lg:gap-6">
-              {/* Custom image container for better control */}
-              <div className="shrink-0">
-                <RadioLogo
-                  className="rounded-lg"
-                  logoUrl={currentRadio.logoUrl}
-                  name={currentRadio.name}
-                  size="2xl"
+    <div className="mx-auto flex h-full min-h-0 w-full max-w-5xl flex-col px-3 py-3 lg:flex-row">
+      <div className="flex h-full min-h-0 w-full flex-col overflow-hidden rounded-lg border border-border/50 bg-card/50 lg:flex-row">
+        {/* Mobile: now playing panel */}
+        {currentRadio && (
+          <div className="flex shrink-0 flex-col items-center gap-4 border-border/50 border-b px-5 py-5 lg:hidden">
+            <div className="relative size-28 shrink-0 overflow-hidden rounded-xl border border-border/50 bg-black/20 shadow-black/5 shadow-lg">
+              {currentRadio.logoUrl ? (
+                <img
+                  alt={currentRadio.name}
+                  className="h-full w-full object-contain"
+                  height={112}
+                  src={currentRadio.logoUrl}
+                  width={112}
                 />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center">
+                  <Music2Icon className="size-8 text-muted-foreground/20" />
+                </div>
+              )}
+              {(isLoading || isCrossfading) && (
+                <div className="absolute inset-0 animate-pulse bg-muted-foreground/10" />
+              )}
+            </div>
+
+            <div className="w-full text-center">
+              <p className="truncate font-semibold text-lg">
+                {currentRadio.name}
+              </p>
+              {currentRadio.description && (
+                <p className="mt-0.5 truncate text-muted-foreground/60 text-sm">
+                  {currentRadio.description}
+                </p>
+              )}
+            </div>
+
+            {!!error?.trim() && (
+              <div className="rounded-md bg-destructive/10 px-3 py-1.5">
+                <p className="font-mono text-destructive text-xs">{error}</p>
               </div>
-              <ItemContent>
-                <ItemTitle className="text-xl">{currentRadio.name}</ItemTitle>
-                {currentRadio.description?.trim() !== "" && (
-                  <ItemDescription>{currentRadio.description}</ItemDescription>
-                )}
-              </ItemContent>
-            </div>
-          ) : (
-            <div className="flex min-h-[120px] min-w-xs items-center justify-center text-center text-muted-foreground">
-              Select a radio station to start playing
-            </div>
-          )}
+            )}
 
-          {/* Error Display */}
-          {!!error?.trim() && (
-            <div className="text-destructive text-sm">Error: {error}</div>
-          )}
-
-          {/* Player Controls - Compact on mobile, spacious on desktop */}
-          <div className="flex items-center gap-3 lg:flex-col lg:gap-6">
-            {/* Play/Pause Button - Smaller on mobile */}
             <PlayPauseButton
-              className="size-10 shrink-0 lg:size-16"
-              disabled={!currentRadio || isLoading || isCrossfading}
-              iconClassName="size-6 lg:size-8"
+              className="size-14"
+              disabled={isLoading || isCrossfading}
+              iconClassName="size-6"
               isLoading={isLoading || isCrossfading}
               isPlaying={isPlaying}
-              onClick={handlePlayPause}
+              onClick={togglePlayPause}
               size="sm"
               variant={isPlaying && !isLoading ? "outline" : "default"}
             />
 
-            {/* Volume Controls - Flex row on mobile, full width on desktop */}
-            <div className="flex flex-1 items-center gap-2 lg:w-full lg:gap-4">
-              <Button
+            <div className="flex w-full items-center gap-2.5">
+              <button
                 aria-label={isMuted ? "Unmute" : "Mute"}
-                className="size-8 shrink-0 lg:size-10"
+                className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground"
                 onClick={handleMuteToggle}
-                size="sm"
-                variant="ghost"
+                type="button"
               >
                 {isMuted ? (
-                  <VolumeXIcon className="size-4 lg:size-5" />
+                  <VolumeXIcon className="size-4" />
                 ) : (
-                  <Volume2Icon className="size-4 lg:size-5" />
+                  <Volume2Icon className="size-4" />
                 )}
-              </Button>
-              <div className="flex-1">
-                <Slider
-                  className="w-full"
-                  defaultValue={[1]}
-                  max={1}
-                  min={0}
-                  onValueChange={handleVolumeChange}
-                  step={0.1}
-                  value={[volume]}
-                />
-              </div>
+              </button>
+              <Slider
+                className="h-2 flex-1"
+                defaultValue={[1]}
+                max={1}
+                min={0}
+                onValueChange={handleVolumeChange}
+                step={0.01}
+                value={[volume]}
+              />
+              <span className="w-10 shrink-0 text-right font-mono text-muted-foreground text-xs tabular-nums">
+                {Math.round(volume * 100)}%
+              </span>
             </div>
           </div>
-        </CardContent>
-      </Card>
+        )}
+
+        <StationList
+          currentRadioId={currentRadio?.id}
+          onDelete={handleDeleteRadio}
+          onEdit={handleEditRadio}
+          onSelect={(radio) => selectRadio(radio)}
+          radios={radios}
+        />
+
+        {/* Now playing — desktop */}
+        <div className="hidden min-h-0 flex-1 items-center justify-center p-6 lg:flex">
+          <NowPlayingPanel
+            error={error}
+            isCrossfading={isCrossfading}
+            isLoading={isLoading}
+            isMuted={isMuted}
+            isPlaying={isPlaying}
+            onMuteToggle={handleMuteToggle}
+            onPlayPause={togglePlayPause}
+            onVolumeChange={handleVolumeChange}
+            radio={currentRadio}
+            volume={volume}
+          />
+        </div>
+      </div>
 
       <RadioDialog
         mode={dialogMode}
@@ -339,20 +469,23 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
         radio={selectedRadio}
       />
 
-      {/* Delete Confirmation Dialog */}
       {deleteConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="max-w-md rounded-lg border bg-background p-6">
-            <h3 className="mb-2 font-semibold text-lg">Delete Radio Station</h3>
-            <p className="mb-4 text-muted-foreground">
-              Are you sure you want to delete "{deleteConfirm.name}"? This
-              action cannot be undone.
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-lg border border-border/50 bg-card p-6">
+            <h3 className="mb-2 font-semibold text-sm">Delete Radio Station</h3>
+            <p className="mb-4 text-muted-foreground text-xs">
+              Are you sure you want to delete &ldquo;{deleteConfirm.name}
+              &rdquo;? This action cannot be undone.
             </p>
             <div className="flex justify-end gap-2">
-              <Button onClick={() => setDeleteConfirm(null)} variant="outline">
+              <Button
+                onClick={() => setDeleteConfirm(null)}
+                size="sm"
+                variant="outline"
+              >
                 Cancel
               </Button>
-              <Button onClick={confirmDelete} variant="destructive">
+              <Button onClick={confirmDelete} size="sm" variant="destructive">
                 Delete
               </Button>
             </div>

@@ -65,7 +65,7 @@ export {
   type MultipleAudioSettings,
   type MultipleAudioState,
   useAudio,
-  useDjAudio,
+  useAudioDevices,
   useMultipleAudio,
   useSingleAudio,
 } from "./hooks/index.js";
@@ -97,13 +97,20 @@ export {
 // Playback infrastructure
 export {
   AudioContextManager,
+  type AudioDeviceInfo,
   type AudioError,
   type AudioErrorCode,
   type AudioState,
   type AudioStateCallback,
+  type ChannelSelection,
+  createDeviceSource,
   createHtml5AudioSource,
   createMicSource,
   createWorkletManager,
+  type DeviceAudioConstraints,
+  type DevicePermissionState,
+  DeviceSource,
+  type DeviceSourceCallbacks,
   defaultStreamBufferConfig,
   getAudioContext,
   getAudioContextManager,
@@ -118,3 +125,17 @@ export {
   type Unsubscribe,
   WorkletManager,
 } from "./playback/index.js";
+// Routing (output device selection, CUE monitoring, delays)
+export {
+  CueBus,
+  type CueBusCallbacks,
+  type CueBusState,
+  type CueMode,
+  createCueBus,
+  createOutputRouter,
+  isSinkIdSupported,
+  OutputRouter,
+  type OutputRouterCallbacks,
+  type OutputRouterState,
+  safeDisconnectFrom,
+} from "./routing/index.js";

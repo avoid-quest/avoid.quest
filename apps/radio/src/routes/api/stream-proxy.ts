@@ -1,6 +1,8 @@
 /** biome-ignore-all lint/suspicious/useAwait: needed for server-only */
 
 import { env } from "cloudflare:workers";
+// biome-ignore lint/performance/noNamespaceImport: namespace import required for Sentry
+import * as Sentry from "@sentry/tanstackstart-react";
 import { createFileRoute } from "@tanstack/react-router";
 import { json } from "@tanstack/react-start";
 import { z } from "zod";
@@ -168,6 +170,7 @@ async function fetchStream(
       headers: responseHeaders,
     });
   } catch (error) {
+    Sentry.captureException(error);
     const errorMessage =
       error instanceof Error ? error.message : "Unknown error";
     console.error("Stream proxy fetch error:", errorMessage);
@@ -206,10 +209,13 @@ export const Route = createFileRoute("/api/stream-proxy")({
 
           return fetchStream(urlValidation, request, origin);
         } catch (error) {
-          const origin = new URL(request.url).origin;
-          const errorMessage =
-            error instanceof Error ? error.message : "Internal server error";
-          console.error("Stream proxy error:", errorMessage, error);
+          Sentry.captureException(error);
+          let origin = "";
+          try {
+            origin = new URL(request.url).origin;
+          } catch {
+            // Fallback to empty origin if request.url is malformed
+          }
           return json(
             { error: "Internal server error" },
             { status: 500, headers: getCorsHeaders(origin) }

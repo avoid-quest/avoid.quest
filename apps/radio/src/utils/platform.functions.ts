@@ -1,10 +1,21 @@
-import { getBandcampItem } from "@avoid.quest/bandcamp";
-import { getSoundCloudItem } from "@avoid.quest/soundcloud";
+import { env } from "cloudflare:workers";
+import {
+  getBandcampItem,
+  getSoundCloudItem,
+  getYouTubeItem,
+  needsResolution,
+  normalizeBandcampUrl,
+  normalizeSoundCloudUrl,
+  resolveShortLink,
+} from "@avoid.quest/platforms";
+// biome-ignore lint/performance/noNamespaceImport: namespace import required for Sentry
+import * as Sentry from "@sentry/tanstackstart-react";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { detectPlatformFromUrl } from "@/lib/external-url/detect";
 import type { PlatformItemResponse } from "@/lib/platform-types";
 import { rateLimitMiddleware } from "./middleware";
+import { getStaticAudioItem } from "./static-audio.functions";
 
 const LoadPlatformItemSchema = z.object({
   url: z
@@ -28,27 +39,68 @@ export const loadPlatformItem = createServerFn({ method: "POST" })
   .middleware([rateLimitMiddleware("load-platform-item")])
   .inputValidator(LoadPlatformItemSchema)
   .handler(async ({ data }): Promise<PlatformItemResponse> => {
-    const trimmedUrl = data.url.trim();
+    try {
+      let url = data.url.trim();
 
-    const platform = detectPlatformFromUrl(trimmedUrl);
+      // Resolve SoundCloud short links first
+      if (needsResolution(url)) {
+        try {
+          url = await resolveShortLink(url);
+        } catch {
+          return {
+            success: false,
+            error: "Failed to resolve SoundCloud short link",
+          };
+        }
+      }
 
-    if (!platform) {
+      // Normalize mobile URLs
+      url = normalizeSoundCloudUrl(url);
+      url = normalizeBandcampUrl(url);
+
+      const platform = detectPlatformFromUrl(url);
+
+      if (!platform) {
+        return {
+          success: false,
+          error:
+            "Unsupported URL. Please enter a Bandcamp, SoundCloud, YouTube, or audio file URL.",
+        };
+      }
+
+      if (platform === "bandcamp") {
+        return await getBandcampItem(url);
+      }
+
+      if (platform === "soundcloud") {
+        return await getSoundCloudItem(url);
+      }
+
+      if (platform === "youtube") {
+        // Pass Invidious config from Cloudflare env
+        const invidiousOptions = {
+          instanceUrl: env.INVIDIOUS_INSTANCE_URL || undefined,
+          auth: env.INVIDIOUS_AUTH || undefined,
+        };
+        return await getYouTubeItem(url, invidiousOptions);
+      }
+
+      if (platform === "static-audio") {
+        return await getStaticAudioItem({ data: { url } });
+      }
+
       return {
         success: false,
-        error: "Unsupported URL. Please enter a Bandcamp or SoundCloud URL.",
+        error: "Unsupported platform",
+      };
+    } catch (error) {
+      Sentry.captureException(error);
+      return {
+        success: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "An unexpected error occurred",
       };
     }
-
-    if (platform === "bandcamp") {
-      return await getBandcampItem(trimmedUrl);
-    }
-
-    if (platform === "soundcloud") {
-      return await getSoundCloudItem(trimmedUrl);
-    }
-
-    return {
-      success: false,
-      error: "Unsupported platform",
-    };
   });

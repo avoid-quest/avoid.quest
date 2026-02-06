@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { cloudflare } from "@cloudflare/vite-plugin";
+import { sentryTanstackStart } from "@sentry/tanstackstart-react";
 import tailwindcss from "@tailwindcss/vite";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import viteReact from "@vitejs/plugin-react";
@@ -84,17 +85,27 @@ export default defineConfig({
     tailwindcss(),
     tsConfigPaths(),
     tanstackStart(),
-    viteReact(),
+    viteReact({
+      babel: {
+        plugins: ["babel-plugin-react-compiler"],
+      },
+    }),
+    sentryTanstackStart({
+      org: "avoidquest",
+      project: "radio",
+      authToken: process.env.SENTRY_AUTH_TOKEN,
+      sourcemaps: {
+        filesToDeleteAfterUpload: ["./dist/**/*.map"],
+      },
+    }),
   ],
-  build: {
-    // Let Cloudflare plugin handle chunking for Workers
-    // The router bundle will be large (~1MB) for SSR as TanStack Start
-    // needs all routes bundled for server-side rendering on Workers
-    minify: "esbuild",
-    sourcemap: false,
+  define: {
+    __APP_VERSION__: JSON.stringify(process.env.npm_package_version || "0.5.0"),
   },
-  // Optimize dependencies - exclude devtools from production builds
-  optimizeDeps: {
-    exclude: ["@tanstack/react-devtools", "@tanstack/react-router-devtools"],
+  build: {
+    minify: "esbuild",
+    // "hidden" generates source maps for Sentry upload but omits
+    // sourceMappingURL from production bundles (unlike true/inline).
+    sourcemap: "hidden",
   },
 });

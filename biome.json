@@ -72,7 +72,8 @@
       "AutomationRate",
       "registerProcessor",
       "sampleRate",
-      "BUFFER_SIZE"
+      "BUFFER_SIZE",
+      "__APP_VERSION__"
     ]
   },
   "linter": {

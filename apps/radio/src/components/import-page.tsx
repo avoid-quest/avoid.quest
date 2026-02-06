@@ -46,8 +46,7 @@ export function ImportPage() {
           // No import data found, redirect to home
           navigate({ to: "/" });
         }
-      } catch (error) {
-        console.error("Auto-import failed:", error);
+      } catch {
         toast.error("Failed to import configuration from URL");
         navigate({ to: "/" });
       } finally {
@@ -73,8 +72,7 @@ export function ImportPage() {
 
       toast.success("Configuration imported successfully!");
       navigate({ to: "/" });
-    } catch (error) {
-      console.error("Apply import failed:", error);
+    } catch {
       toast.error("Failed to import configuration");
     } finally {
       setIsImporting(false);

@@ -38,6 +38,8 @@ export type AudioError = {
   timestamp: number;
   /** Source ID if error originated from a specific source/effect */
   sourceId?: string;
+  /** Playback position in seconds when error occurred (for stream refresh) */
+  position?: number;
 };
 
 /**
@@ -49,6 +51,7 @@ export type AudioErrorCode =
   | "STREAM_FETCH_FAILED"
   | "STREAM_DECODE_FAILED"
   | "STREAM_ABORTED"
+  | "STREAM_INTERRUPTED"
   | "WORKLET_LOAD_FAILED"
   | "WORKLET_CREATION_FAILED"
   | "WORKLET_INIT_TIMEOUT"

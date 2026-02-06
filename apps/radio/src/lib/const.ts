@@ -109,7 +109,7 @@ export const radios: Radio[] = [
 
 export const settings: Settings = {
   player: {
-    mode: "multiple",
+    mode: "single",
     playerType: "default",
     restoreStateOnLoad: true,
     single: {

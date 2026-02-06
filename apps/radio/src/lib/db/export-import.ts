@@ -33,7 +33,7 @@ export const exportDatabase = (): void => {
       radios: radios as unknown as Radio[],
       settings: (settings || {
         id: SETTINGS_ID,
-        player: { mode: "multiple" },
+        player: { mode: "single" },
       }) as unknown as DatabaseExport["settings"],
     };
 
@@ -79,7 +79,7 @@ export const generateShareUrl = (): string => {
       radios: radios as unknown as Radio[],
       settings: (settings || {
         id: SETTINGS_ID,
-        player: { mode: "multiple" },
+        player: { mode: "single" },
       }) as unknown as DatabaseExport["settings"],
     };
 
@@ -317,7 +317,7 @@ export const replaceImportedData = (importData: DatabaseExport): void => {
         settingsCollection.insert({
           id: SETTINGS_ID,
           player: {
-            mode: importSettings.player?.mode ?? "multiple",
+            mode: importSettings.player?.mode ?? "single",
             playerType: importSettings.player?.playerType ?? "default",
             restoreStateOnLoad:
               importSettings.player?.restoreStateOnLoad ?? true,
@@ -418,7 +418,7 @@ export const mergeImportedData = (importData: DatabaseExport): void => {
       settingsCollection.insert({
         id: SETTINGS_ID,
         player: {
-          mode: importSettings.player?.mode ?? "multiple",
+          mode: importSettings.player?.mode ?? "single",
           playerType: importSettings.player?.playerType ?? "default",
           restoreStateOnLoad: importSettings.player?.restoreStateOnLoad ?? true,
           single: importSettings.player?.single,

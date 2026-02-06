@@ -1,0 +1,32 @@
+{
+  "name": "@avoid.quest/platforms",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./bandcamp": "./src/bandcamp/index.ts",
+    "./bandcamp/search": "./src/bandcamp/search.ts",
+    "./soundcloud": "./src/soundcloud/index.ts",
+    "./soundcloud/search": "./src/soundcloud/search.ts",
+    "./soundcloud/fetch-client": "./src/soundcloud/fetch-client/index.ts",
+    "./youtube": "./src/youtube/index.ts"
+  },
+  "scripts": {
+    "check": "bunx ultracite check",
+    "fix": "bunx ultracite fix",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "cheerio": "^1.2.0",
+    "html-entities": "^2.6.0"
+  },
+  "devDependencies": {
+    "@avoid.quest/typescript-config": "workspace:*",
+    "@types/node": "catalog:",
+    "typescript": "catalog:"
+  }
+}

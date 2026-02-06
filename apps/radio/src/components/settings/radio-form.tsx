@@ -87,8 +87,7 @@ const handleFormSubmit = (
       toast.success("Radio station updated successfully");
     }
     onSuccess();
-  } catch (error) {
-    console.error("Failed to save radio:", error);
+  } catch {
     toast.error(`Failed to ${mode} radio station`);
   }
 };

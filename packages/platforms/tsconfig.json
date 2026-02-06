@@ -1,0 +1,15 @@
+{
+  "extends": "@avoid.quest/typescript-config/base.json",
+  "compilerOptions": {
+    "baseUrl": "./src",
+    "rootDir": "./src",
+    "noEmit": true,
+    "sourceMap": true,
+    "types": ["node"],
+    "strictNullChecks": true,
+    "module": "ESNext",
+    "moduleResolution": "bundler"
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "src/**/*.test.ts"]
+}

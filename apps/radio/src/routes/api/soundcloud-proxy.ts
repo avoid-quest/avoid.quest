@@ -1,6 +1,8 @@
 /** biome-ignore-all lint/suspicious/useAwait: needed for server-only */
 
 import { env } from "cloudflare:workers";
+// biome-ignore lint/performance/noNamespaceImport: namespace import required for Sentry
+import * as Sentry from "@sentry/tanstackstart-react";
 import { createFileRoute } from "@tanstack/react-router";
 import { json } from "@tanstack/react-start";
 import { z } from "zod";
@@ -10,6 +12,7 @@ import { validateAuthAndRateLimit } from "@/lib/middleware/rate-limit";
 
 const ALLOWED_SOUNDCLOUD_DOMAINS = [
   "cf-media.sndcdn.com",
+  "cf-hls-media.sndcdn.com",
   "media.soundcloud.com",
   "ec-media.sndcdn.com",
 ] as const;
@@ -191,10 +194,13 @@ export const Route = createFileRoute("/api/soundcloud-proxy")({
 
           return fetchWithTimeout(urlValidation, request, origin);
         } catch (error) {
-          const origin = new URL(request.url).origin;
-          const errorMessage =
-            error instanceof Error ? error.message : "Internal server error";
-          console.error("SoundCloud proxy error:", errorMessage, error);
+          Sentry.captureException(error);
+          let origin = "";
+          try {
+            origin = new URL(request.url).origin;
+          } catch {
+            // Fallback to empty origin if request.url is malformed
+          }
           return json(
             { error: "Internal server error" },
             { status: 500, headers: getCorsHeaders(origin) }

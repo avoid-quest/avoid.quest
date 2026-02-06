@@ -1,19 +1,11 @@
-import { Button } from "@avoid.quest/ui/components/button";
-import {
-  Card,
-  CardAction,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@avoid.quest/ui/components/card";
 import { PlayPauseButton } from "@avoid.quest/ui/components/play-pause-button";
 import { Slider } from "@avoid.quest/ui/components/slider";
+import { cn } from "@avoid.quest/ui/lib/utils";
 import { Volume2Icon, VolumeXIcon } from "lucide-react";
 import { useState } from "react";
 import type { MultipleAudioState, Radio } from "@/lib/audio";
 import { RadioItemActions } from "../radio-item-actions";
 import { RadioLogo } from "../radio-logo";
-import { RadioNameLink } from "../radio-name-link";
 
 type MultipleRadioCardProps = {
   radio: Radio;
@@ -64,61 +56,71 @@ export function MultipleRadioCard({
   };
 
   return (
-    <Card>
-      <CardHeader className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <RadioLogo logoUrl={radio.logoUrl} name={radio.name} size="md" />
-          <CardTitle>
-            <RadioNameLink radio={radio} />
-          </CardTitle>
+    <div
+      className={cn(
+        "flex flex-col rounded-lg border border-border/50 bg-card/50 transition-colors",
+        isPlaying && "border-primary/20"
+      )}
+    >
+      {/* Header */}
+      <div className="flex items-center gap-2.5 px-3 py-2">
+        <RadioLogo logoUrl={radio.logoUrl} name={radio.name} size="sm" />
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-semibold text-sm leading-tight">
+            {radio.name}
+          </p>
         </div>
-        <CardAction>
-          <RadioItemActions
-            onDelete={onDelete}
-            onEdit={onEdit}
-            onToggle={onToggle}
-            radio={radio}
-          />
-        </CardAction>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {error && (
-          <div className="text-destructive text-sm">Error: {error}</div>
-        )}
-        <div className="flex items-center gap-3">
-          <PlayPauseButton
-            className="size-9 shrink-0"
-            iconClassName="size-4"
-            isLoading={isLoading}
-            isPlaying={isPlaying}
-            onClick={onTogglePlayPause}
-            size="sm"
-            variant={isPlaying && !isLoading ? "outline" : "default"}
-          />
-          <Button
-            aria-label={isMuted ? "Unmute" : "Mute"}
-            className="size-9 shrink-0"
-            onClick={handleMuteToggle}
-            size="sm"
-            variant="ghost"
-          >
-            {isMuted || volume === 0 ? (
-              <VolumeXIcon className="size-4" />
-            ) : (
-              <Volume2Icon className="size-4" />
-            )}
-          </Button>
-          <Slider
-            className="flex-1"
-            defaultValue={[1]}
-            max={1}
-            min={0}
-            onValueChange={handleVolumeChange}
-            step={0.05}
-            value={[volume]}
-          />
+        <RadioItemActions
+          onDelete={onDelete}
+          onEdit={onEdit}
+          onToggle={onToggle}
+          radio={radio}
+        />
+      </div>
+
+      {/* Error */}
+      {error && (
+        <div className="mx-3 mb-2 rounded-md bg-destructive/10 px-2 py-1">
+          <p className="font-mono text-[10px] text-destructive">{error}</p>
         </div>
-      </CardContent>
-    </Card>
+      )}
+
+      {/* Controls */}
+      <div className="flex items-center gap-2 border-border/50 border-t px-3 py-2">
+        <PlayPauseButton
+          className="size-7 shrink-0"
+          iconClassName="size-3.5"
+          isLoading={isLoading}
+          isPlaying={isPlaying}
+          onClick={onTogglePlayPause}
+          size="sm"
+          variant={isPlaying && !isLoading ? "outline" : "default"}
+        />
+        <button
+          aria-label={isMuted ? "Unmute" : "Mute"}
+          className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground"
+          onClick={handleMuteToggle}
+          type="button"
+        >
+          {isMuted || volume === 0 ? (
+            <VolumeXIcon className="size-3" />
+          ) : (
+            <Volume2Icon className="size-3" />
+          )}
+        </button>
+        <Slider
+          className="h-1.5 flex-1"
+          defaultValue={[1]}
+          max={1}
+          min={0}
+          onValueChange={handleVolumeChange}
+          step={0.01}
+          value={[volume]}
+        />
+        <span className="w-7 shrink-0 text-right font-mono text-[10px] text-muted-foreground/60 tabular-nums">
+          {Math.round(volume * 100)}
+        </span>
+      </div>
+    </div>
   );
 }

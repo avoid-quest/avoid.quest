@@ -6,10 +6,15 @@ import {
   formatPlatformDuration,
   getPlatformItemTypeLabel,
 } from "@/lib/external-url";
-import type { PlatformMetadata } from "@/lib/platform-types";
+import type {
+  BandcampMetadata,
+  SoundCloudMetadata,
+} from "@/lib/platform-types";
+
+type StreamingPlatformMetadata = BandcampMetadata | SoundCloudMetadata;
 
 type PlatformItemCardProps = {
-  metadata: PlatformMetadata;
+  metadata: StreamingPlatformMetadata;
   onChangeUrl?: () => void;
   className?: string;
 };

@@ -3,10 +3,24 @@
  *
  * Wraps HTMLAudioElement for streaming audio with CORS detection and proxy fallback.
  * Uses MediaElementAudioSourceNode to connect to Web Audio graph.
+ * Supports HLS streams via hls.js for browsers without native HLS support.
  */
 
-import { safeDisconnect } from "../manager/audio-manager.js";
+import Hls from "hls.js";
+import { safeDisconnect } from "../utils.js";
 import type { StreamStatus } from "./types.js";
+
+/**
+ * Check if a URL is an HLS stream (M3U8 playlist)
+ */
+function isHlsUrl(url: string): boolean {
+  try {
+    const urlObj = new URL(url);
+    return urlObj.pathname.endsWith(".m3u8");
+  } catch {
+    return url.includes(".m3u8");
+  }
+}
 
 /**
  * Callbacks for Html5AudioSource
@@ -18,6 +32,8 @@ export type Html5AudioSourceCallbacks = {
   onReady?: () => void;
   onError?: (error: Error) => void;
   onEnded?: () => void;
+  /** Called when a network error occurs during streaming (e.g., YouTube 403 throttle) */
+  onStreamError?: (position: number) => void;
 };
 
 /**
@@ -35,6 +51,7 @@ export class Html5AudioSource {
   private audio: HTMLAudioElement;
   private source: MediaElementAudioSourceNode | null = null;
   private analyser: AnalyserNode | null = null;
+  private hls: Hls | null = null;
   private readonly context: AudioContext;
   private readonly callbacks: Html5AudioSourceCallbacks;
   private readonly sourceId: string;
@@ -42,6 +59,7 @@ export class Html5AudioSource {
   private _status: StreamStatus = "idle";
   private _corsState: CorsState = "unknown";
   private _isBuffering = false;
+  private _isHls = false;
   private corsCheckTimer: ReturnType<typeof setTimeout> | null = null;
   private currentUrl = "";
   private proxyUrl = "";
@@ -133,7 +151,7 @@ export class Html5AudioSource {
 
   /**
    * Load a stream URL
-   * Automatically handles CORS detection and proxy fallback
+   * Automatically handles CORS detection, proxy fallback, and HLS streams
    */
   async load(url: string): Promise<void> {
     // Clean up previous source
@@ -143,12 +161,19 @@ export class Html5AudioSource {
     this.proxyUrl = Html5AudioSource.PROXY_ROUTE + encodeURIComponent(url);
     this._status = "connecting";
     this._corsState = "checking";
+    this._isHls = isHlsUrl(url);
 
     // Create MediaElementSource (can only be created once per audio element)
     this.audio = new Audio();
     this.setupAudioElement();
     this.audio.crossOrigin = "anonymous";
-    this.audio.src = url;
+
+    // Handle HLS streams
+    if (this._isHls) {
+      this.loadHls(url);
+    } else {
+      this.audio.src = url;
+    }
 
     // Create Web Audio nodes
     this.source = this.context.createMediaElementSource(this.audio);
@@ -162,9 +187,124 @@ export class Html5AudioSource {
     this._isLoadingPhase = true;
     try {
       await this.waitForCanPlay();
+    } catch (error) {
+      // CORS failed: reload through proxy so the caller gets a valid source.
+      // handleError mutates _corsState during the async waitForCanPlay.
+      if (this.isCorsRetryNeeded()) {
+        await this.reloadWithProxy();
+        return;
+      }
+      throw error;
     } finally {
       this._isLoadingPhase = false;
     }
+  }
+
+  /**
+   * Check if CORS retry is needed. Separate method to avoid TS narrowing
+   * issues (handleError mutates _corsState during async waitForCanPlay).
+   */
+  private isCorsRetryNeeded(): boolean {
+    return this._corsState === "cors-failed";
+  }
+
+  /**
+   * Reload audio through proxy after CORS failure.
+   * Replaces audio element and Web Audio nodes inline so the caller's
+   * promise chain stays intact (AudioManager can connect the graph after).
+   */
+  private async reloadWithProxy(): Promise<void> {
+    this.audio.pause();
+    safeDisconnect(this.source, "Html5AudioSource.reloadWithProxy");
+    safeDisconnect(this.analyser, "Html5AudioSource.reloadWithProxy");
+
+    if (this.hls) {
+      this.hls.destroy();
+      this.hls = null;
+    }
+
+    this.audio = new Audio();
+    this.setupAudioElement();
+    this.audio.crossOrigin = "anonymous";
+
+    if (this._isHls) {
+      this.loadHls(this.proxyUrl);
+    } else {
+      this.audio.src = this.proxyUrl;
+    }
+
+    this.source = this.context.createMediaElementSource(this.audio);
+    this.analyser = this.context.createAnalyser();
+    this.analyser.fftSize = 256;
+    this.source.connect(this.analyser);
+
+    this._corsState = "proxied";
+    await this.waitForCanPlay();
+  }
+
+  /**
+   * Load HLS stream using hls.js or native support
+   * Prefers hls.js when available for better cross-origin handling
+   */
+  private loadHls(url: string): void {
+    // Prefer hls.js when available (better CORS and error handling)
+    if (Hls.isSupported()) {
+      this.setupHlsJs(url);
+      return;
+    }
+
+    // Fall back to native HLS support (Safari without MSE, iOS)
+    if (this.audio.canPlayType("application/vnd.apple.mpegurl")) {
+      this.audio.src = url;
+      return;
+    }
+
+    throw new Error("HLS is not supported in this browser");
+  }
+
+  /**
+   * Set up hls.js for HLS playback
+   */
+  private setupHlsJs(url: string): void {
+    this.hls = new Hls({
+      // Enable debug in development
+      debug: false,
+      // Start with low quality then adapt
+      startLevel: -1,
+      // Buffer settings optimized for audio
+      maxBufferLength: 30,
+      maxMaxBufferLength: 60,
+    });
+
+    // Set up HLS event handlers
+    this.hls.on(Hls.Events.ERROR, (_event, data) => {
+      if (data.fatal) {
+        console.warn(
+          "[Html5AudioSource] Fatal HLS error:",
+          data.type,
+          data.details
+        );
+        switch (data.type) {
+          case Hls.ErrorTypes.NETWORK_ERROR:
+            this.hls?.startLoad();
+            break;
+          case Hls.ErrorTypes.MEDIA_ERROR:
+            this.hls?.recoverMediaError();
+            break;
+          default:
+            // Cannot recover
+            this._status = "error";
+            this.callbacks.onError?.(
+              new Error(`HLS error: ${data.type} - ${data.details}`)
+            );
+            break;
+        }
+      }
+    });
+
+    // Attach to audio element and load source
+    this.hls.attachMedia(this.audio);
+    this.hls.loadSource(url);
   }
 
   /**
@@ -203,46 +343,13 @@ export class Html5AudioSource {
       throw new Error("Source not loaded - call load() first");
     }
 
-    await this.audio.play();
-  }
-
-  /**
-   * Retry loading through proxy
-   */
-  private async retryWithProxy(): Promise<void> {
-    // Stop current playback
-    this.audio.pause();
-
-    // Disconnect and cleanup old nodes
-    this.source?.disconnect();
-    this.analyser?.disconnect();
-
-    // Create new audio element with proxy URL
-    this.audio = new Audio();
-    this.setupAudioElement();
-    this.audio.crossOrigin = "anonymous";
-    this.audio.src = this.proxyUrl;
-
-    // Recreate Web Audio nodes
-    this.source = this.context.createMediaElementSource(this.audio);
-    this.analyser = this.context.createAnalyser();
-    this.analyser.fftSize = 256;
-    this.source.connect(this.analyser);
-
-    this._corsState = "proxied";
-
-    this._isLoadingPhase = true;
     try {
-      await this.waitForCanPlay();
       await this.audio.play();
-      this._status = "streaming";
     } catch (error) {
-      this._status = "error";
-      this.callbacks.onError?.(
-        error instanceof Error ? error : new Error("Failed to load via proxy")
-      );
-    } finally {
-      this._isLoadingPhase = false;
+      if (error instanceof DOMException && error.name === "AbortError") {
+        return;
+      }
+      throw error;
     }
   }
 
@@ -304,12 +411,90 @@ export class Html5AudioSource {
   }
 
   /**
+   * Seek to a position in seconds
+   */
+  seek(position: number): void {
+    this.audio.currentTime = position;
+  }
+
+  /**
+   * Refresh the stream with a new URL, optionally seeking to a position
+   * Used for YouTube URL refresh when throttled
+   */
+  async refreshUrl(newUrl: string, seekPosition?: number): Promise<void> {
+    // Store current state
+    const wasPlaying = this._status === "streaming";
+
+    // Disconnect and cleanup old nodes
+    this.audio.pause();
+    safeDisconnect(this.source, "Html5AudioSource.refreshUrl");
+    safeDisconnect(this.analyser, "Html5AudioSource.refreshUrl");
+
+    // Clean up HLS instance if exists
+    if (this.hls) {
+      this.hls.destroy();
+      this.hls = null;
+    }
+
+    // Create new audio element with new URL
+    this.audio = new Audio();
+    this.setupAudioElement();
+    this.audio.crossOrigin = "anonymous";
+    this.currentUrl = newUrl;
+    this._isHls = isHlsUrl(newUrl);
+
+    // Handle HLS streams
+    if (this._isHls) {
+      this.loadHls(newUrl);
+    } else {
+      this.audio.src = newUrl;
+    }
+
+    // Recreate Web Audio nodes
+    this.source = this.context.createMediaElementSource(this.audio);
+    this.analyser = this.context.createAnalyser();
+    this.analyser.fftSize = 256;
+    this.source.connect(this.analyser);
+
+    this._status = "connecting";
+    this._isLoadingPhase = true;
+
+    try {
+      await this.waitForCanPlay();
+
+      // Seek to position if specified
+      if (seekPosition !== undefined && seekPosition > 0) {
+        this.audio.currentTime = seekPosition;
+      }
+
+      // Resume playback if we were playing
+      if (wasPlaying) {
+        await this.audio.play();
+        this._status = "streaming";
+      }
+    } catch (error) {
+      this._status = "error";
+      this.callbacks.onError?.(
+        error instanceof Error ? error : new Error("Failed to refresh URL")
+      );
+    } finally {
+      this._isLoadingPhase = false;
+    }
+  }
+
+  /**
    * Cleanup resources
    */
   cleanup(): void {
     if (this.corsCheckTimer) {
       clearTimeout(this.corsCheckTimer);
       this.corsCheckTimer = null;
+    }
+
+    // Clean up HLS instance
+    if (this.hls) {
+      this.hls.destroy();
+      this.hls = null;
     }
 
     // Remove event listeners to prevent memory leaks
@@ -331,6 +516,7 @@ export class Html5AudioSource {
     this.analyser = null;
     this._status = "idle";
     this._corsState = "unknown";
+    this._isHls = false;
   }
 
   // === Event Handlers ===
@@ -354,7 +540,7 @@ export class Html5AudioSource {
 
   private readonly handleError = (): void => {
     // During loading phase, let waitForCanPlay() handle errors
-    // Only exception: trigger proxy retry for CORS errors
+    // Mark CORS failures so load() can retry with proxy inline
     if (this._isLoadingPhase) {
       const error = this.audio.error;
       if (
@@ -362,27 +548,32 @@ export class Html5AudioSource {
         error?.code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED
       ) {
         console.warn(
-          `[Html5AudioSource] MEDIA_ERR_SRC_NOT_SUPPORTED for ${this.currentUrl}, trying proxy`
+          `[Html5AudioSource] CORS failed for ${this.currentUrl}, will retry with proxy`
         );
         this._corsState = "cors-failed";
-        this.retryWithProxy().catch((err) => {
-          console.error(
-            `[Html5AudioSource] Proxy retry failed for ${this.currentUrl}:`,
-            err
-          );
-          this._status = "error";
-          this.callbacks.onError?.(
-            err instanceof Error ? err : new Error("Proxy retry failed")
-          );
-        });
       }
-      // Don't propagate error - waitForCanPlay() will handle it
+      // Don't propagate - waitForCanPlay() rejects, load() handles retry
       return;
     }
 
-    // After load complete, handle errors normally
+    // After load complete: network errors during streaming (e.g., YouTube 403 throttle)
     const error = this.audio.error;
     const errorMessage = error?.message || "Unknown audio error";
+
+    // Check if this was a streaming error (we were playing and hit a network issue)
+    // MEDIA_ERR_NETWORK (2) indicates network error during fetch
+    if (
+      this._status === "streaming" &&
+      error?.code === MediaError.MEDIA_ERR_NETWORK
+    ) {
+      console.warn(
+        `[Html5AudioSource] Network error during streaming at ${this.audio.currentTime}s`
+      );
+      // Notify about stream error with current position for potential refresh
+      const position = this.audio.currentTime;
+      this.callbacks.onStreamError?.(position);
+    }
+
     this._status = "error";
     this.callbacks.onError?.(new Error(errorMessage));
   };

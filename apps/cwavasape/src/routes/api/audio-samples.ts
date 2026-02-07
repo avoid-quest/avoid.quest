@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { createFileRoute } from "@tanstack/react-router";
+import { MANIFEST_CACHE_KEY } from "../../lib/audio-constants";
 
-const MANIFEST_CACHE_KEY = "audio:manifest:v2";
 const MANIFEST_CACHE_TTL = 3600; // 1 hour
 
 const AUDIO_EXTENSIONS = /\.(mp3|wav|ogg)$/i;

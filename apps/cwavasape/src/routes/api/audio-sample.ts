@@ -1,13 +1,6 @@
 import { env } from "cloudflare:workers";
 import { createFileRoute } from "@tanstack/react-router";
-
-const CONTENT_TYPES: Record<string, string> = {
-  mp3: "audio/mpeg",
-  wav: "audio/wav",
-  ogg: "audio/ogg",
-};
-
-const SAFE_KEY_PATTERN = /^[\w\-./]+\.(mp3|wav|ogg)$/;
+import { CONTENT_TYPES, SAFE_KEY_PATTERN } from "../../lib/audio-constants";
 
 export const Route = createFileRoute("/api/audio-sample")({
   server: {

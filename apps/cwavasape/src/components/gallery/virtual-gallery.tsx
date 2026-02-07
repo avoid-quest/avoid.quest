@@ -19,6 +19,7 @@ import {
   useCapabilities,
   useScrollState,
 } from "@/lib/effects";
+import { useAudio } from "@/lib/hooks/use-audio";
 import { usePins } from "@/lib/hooks/use-pins";
 import { useSettings } from "@/lib/hooks/use-settings";
 import { EffectsCanvas } from "./effects-canvas";
@@ -147,6 +148,13 @@ export function VirtualGallery() {
   const { scrollState, updateScrollState } = useScrollState({
     itemHeight,
     totalItems: allPins.length,
+  });
+
+  useAudio({
+    scrollRef: parentRef,
+    itemHeight,
+    audioEnabled: settings?.audioEnabled ?? false,
+    audioVolume: settings?.audioVolume ?? 0.5,
   });
 
   // Use ref to avoid re-attaching listener when callback changes

@@ -24,5 +24,12 @@
 			"id": "146191e0920b49018221b8204aaa2127",
 			"remote": true
 		}
+	],
+	"r2_buckets": [
+		{
+			"bucket_name": "cwavasape-audio-samples",
+			"binding": "cwavasape_audio_samples",
+			"remote": true
+		}
 	]
 }

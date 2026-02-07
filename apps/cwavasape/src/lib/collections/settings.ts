@@ -4,6 +4,8 @@ import {
 } from "@tanstack/react-db";
 import { z } from "zod";
 import {
+  DEFAULT_AUDIO_ENABLED,
+  DEFAULT_AUDIO_VOLUME,
   DEFAULT_BLUR_ENABLED,
   DEFAULT_BLUR_RADIUS,
   DEFAULT_EFFECTS_ENABLED,
@@ -71,6 +73,8 @@ const settingsSchema = z.object({
     .default(DEFAULT_SCROLL_SENSITIVITY),
   effectsEnabled: z.boolean().default(DEFAULT_EFFECTS_ENABLED),
   snapEnabled: z.boolean().default(DEFAULT_SNAP_ENABLED),
+  audioEnabled: z.boolean().default(DEFAULT_AUDIO_ENABLED),
+  audioVolume: z.number().min(0).max(1).default(DEFAULT_AUDIO_VOLUME),
   analysisEffects: analysisEffectsSchema.default(() => ({
     overlayOpacity: DEFAULT_OVERLAY_OPACITY,
     sobel: {
@@ -109,6 +113,35 @@ export const settingsCollection = createCollection(
   })
 );
 
+const DEFAULT_SETTINGS_VALUES = {
+  id: SETTINGS_ID,
+  username: DEFAULT_USERNAME,
+  imageSize: DEFAULT_IMAGE_SIZE,
+  scrollSensitivity: DEFAULT_SCROLL_SENSITIVITY,
+  effectsEnabled: DEFAULT_EFFECTS_ENABLED,
+  snapEnabled: DEFAULT_SNAP_ENABLED,
+  audioEnabled: DEFAULT_AUDIO_ENABLED,
+  audioVolume: DEFAULT_AUDIO_VOLUME,
+  analysisEffects: {
+    overlayOpacity: DEFAULT_OVERLAY_OPACITY,
+    sobel: {
+      enabled: DEFAULT_SOBEL_ENABLED,
+      threshold: DEFAULT_SOBEL_THRESHOLD,
+      intensity: DEFAULT_SOBEL_INTENSITY,
+    },
+    blur: {
+      enabled: DEFAULT_BLUR_ENABLED,
+      radius: DEFAULT_BLUR_RADIUS,
+    },
+    regionPaint: {
+      enabled: DEFAULT_REGION_PAINT_ENABLED,
+      threshold: DEFAULT_REGION_PAINT_THRESHOLD,
+      bandCount: DEFAULT_REGION_PAINT_BAND_COUNT,
+      paletteId: DEFAULT_REGION_PAINT_PALETTE_ID,
+    },
+  },
+} satisfies Settings;
+
 /**
  * Initialize settings with defaults if empty, or migrate existing settings
  */
@@ -116,67 +149,17 @@ export async function initializeSettings(): Promise<void> {
   const existing = await settingsCollection.stateWhenReady();
 
   if (existing.size === 0) {
-    settingsCollection.insert({
-      id: SETTINGS_ID,
-      username: DEFAULT_USERNAME,
-      imageSize: DEFAULT_IMAGE_SIZE,
-      scrollSensitivity: DEFAULT_SCROLL_SENSITIVITY,
-      effectsEnabled: DEFAULT_EFFECTS_ENABLED,
-      snapEnabled: DEFAULT_SNAP_ENABLED,
-      analysisEffects: {
-        overlayOpacity: DEFAULT_OVERLAY_OPACITY,
-        sobel: {
-          enabled: DEFAULT_SOBEL_ENABLED,
-          threshold: DEFAULT_SOBEL_THRESHOLD,
-          intensity: DEFAULT_SOBEL_INTENSITY,
-        },
-        blur: {
-          enabled: DEFAULT_BLUR_ENABLED,
-          radius: DEFAULT_BLUR_RADIUS,
-        },
-        regionPaint: {
-          enabled: DEFAULT_REGION_PAINT_ENABLED,
-          threshold: DEFAULT_REGION_PAINT_THRESHOLD,
-          bandCount: DEFAULT_REGION_PAINT_BAND_COUNT,
-          paletteId: DEFAULT_REGION_PAINT_PALETTE_ID,
-        },
-      },
-    });
+    settingsCollection.insert(DEFAULT_SETTINGS_VALUES);
   } else {
-    // Migrate existing settings to add new fields
     const settings = existing.get(SETTINGS_ID);
     if (settings) {
       settingsCollection.update(SETTINGS_ID, (draft) => {
-        if (draft.scrollSensitivity === undefined) {
-          draft.scrollSensitivity = DEFAULT_SCROLL_SENSITIVITY;
-        }
-        if (draft.effectsEnabled === undefined) {
-          draft.effectsEnabled = DEFAULT_EFFECTS_ENABLED;
-        }
-        if (draft.snapEnabled === undefined) {
-          draft.snapEnabled = DEFAULT_SNAP_ENABLED;
-        }
-        // Migrate analysisEffects
-        if (draft.analysisEffects === undefined) {
-          draft.analysisEffects = {
-            overlayOpacity: DEFAULT_OVERLAY_OPACITY,
-            sobel: {
-              enabled: DEFAULT_SOBEL_ENABLED,
-              threshold: DEFAULT_SOBEL_THRESHOLD,
-              intensity: DEFAULT_SOBEL_INTENSITY,
-            },
-            blur: {
-              enabled: DEFAULT_BLUR_ENABLED,
-              radius: DEFAULT_BLUR_RADIUS,
-            },
-            regionPaint: {
-              enabled: DEFAULT_REGION_PAINT_ENABLED,
-              threshold: DEFAULT_REGION_PAINT_THRESHOLD,
-              bandCount: DEFAULT_REGION_PAINT_BAND_COUNT,
-              paletteId: DEFAULT_REGION_PAINT_PALETTE_ID,
-            },
-          };
-        }
+        draft.scrollSensitivity ??= DEFAULT_SCROLL_SENSITIVITY;
+        draft.effectsEnabled ??= DEFAULT_EFFECTS_ENABLED;
+        draft.snapEnabled ??= DEFAULT_SNAP_ENABLED;
+        draft.audioEnabled ??= DEFAULT_AUDIO_ENABLED;
+        draft.audioVolume ??= DEFAULT_AUDIO_VOLUME;
+        draft.analysisEffects ??= DEFAULT_SETTINGS_VALUES.analysisEffects;
       });
     }
   }
@@ -245,6 +228,26 @@ export function setSnapEnabled(enabled: boolean): void {
   if (existing) {
     settingsCollection.update(SETTINGS_ID, (draft) => {
       draft.snapEnabled = enabled;
+    });
+  }
+}
+
+// Audio Setters
+
+export function setAudioEnabled(enabled: boolean): void {
+  const existing = getSettings();
+  if (existing) {
+    settingsCollection.update(SETTINGS_ID, (draft) => {
+      draft.audioEnabled = enabled;
+    });
+  }
+}
+
+export function setAudioVolume(volume: number): void {
+  const existing = getSettings();
+  if (existing) {
+    settingsCollection.update(SETTINGS_ID, (draft) => {
+      draft.audioVolume = Math.max(0, Math.min(1, volume));
     });
   }
 }

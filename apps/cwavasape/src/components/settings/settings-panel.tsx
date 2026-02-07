@@ -6,6 +6,7 @@ import {
 } from "@avoid.quest/ui/components/popover";
 import { Separator } from "@avoid.quest/ui/components/separator";
 import { Settings } from "lucide-react";
+import { AudioTab } from "./audio-tab";
 import { EffectsTab } from "./effects-tab";
 import { QualitySelect } from "./quality-select";
 import { ScrollSensitivitySlider } from "./scroll-sensitivity-slider";
@@ -30,6 +31,8 @@ export function SettingsPanel() {
           <UsernameField />
           <QualitySelect />
           <ScrollSensitivitySlider />
+          <Separator />
+          <AudioTab />
           <Separator />
           <EffectsTab />
         </div>

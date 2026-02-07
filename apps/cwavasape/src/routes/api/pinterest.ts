@@ -1,4 +1,4 @@
-import { env } from "cloudflare:workers";
+import { waitUntil } from "cloudflare:workers";
 import { createFileRoute } from "@tanstack/react-router";
 import { json } from "@tanstack/react-start";
 
@@ -11,30 +11,6 @@ const HEADERS = {
   "Accept-Language": "en-US,en;q=0.9",
   Accept: "application/json",
 };
-
-// Cache TTL in seconds (1 hour)
-const CACHE_TTL = 3600;
-
-/**
- * Generate a cache key for Pinterest API requests
- * Format: pinterest:<username>:<bookmark_hash>
- */
-function getCacheKey(username: string, data: string): string {
-  // Parse the data JSON to extract bookmark for key
-  try {
-    const parsed = JSON.parse(data);
-    const bookmark = parsed.options?.bookmarks?.[0] || "first";
-    // Create a short hash of the bookmark to keep key manageable
-    const bookmarkKey =
-      bookmark === "first"
-        ? "first"
-        : bookmark.slice(0, 32).replace(/[^a-zA-Z0-9]/g, "");
-    return `pinterest:${username}:${bookmarkKey}`;
-  } catch {
-    // Fallback to hashing the entire data string
-    return `pinterest:${username}:${btoa(data).slice(0, 32)}`;
-  }
-}
 
 export const Route = createFileRoute("/api/pinterest")({
   server: {
@@ -51,9 +27,14 @@ export const Route = createFileRoute("/api/pinterest")({
           );
         }
 
-        // Extract username from source_url (e.g., "/gemakara/pins/" -> "gemakara")
+        // Check Cache API first
+        const cache = caches.default;
+        const cached = await cache.match(request);
+        if (cached) {
+          return cached;
+        }
+
         const username = sourceUrl.split("/").filter(Boolean)[0] ?? "";
-        const cacheKey = getCacheKey(username, data);
 
         const params = new URLSearchParams({
           source_url: sourceUrl,
@@ -62,24 +43,13 @@ export const Route = createFileRoute("/api/pinterest")({
 
         const pinterestUrl = `${PINTEREST_BASE_URL}?${params}`;
 
-        // Start cache lookup and fetch in parallel
-        const cachePromise = env.CACHE?.get(cacheKey, "json").catch(() => null);
-        const fetchPromise = fetch(pinterestUrl, {
-          headers: {
-            ...HEADERS,
-            "X-Pinterest-PWS-Handler": `www/${username}.js`,
-          },
-        });
-
-        const cached = await cachePromise;
-        if (cached) {
-          return json(cached, {
-            headers: { "X-Cache": "HIT" },
-          });
-        }
-
         try {
-          const response = await fetchPromise;
+          const response = await fetch(pinterestUrl, {
+            headers: {
+              ...HEADERS,
+              "X-Pinterest-PWS-Handler": `www/${username}.js`,
+            },
+          });
 
           if (!response.ok) {
             return json(
@@ -89,19 +59,19 @@ export const Route = createFileRoute("/api/pinterest")({
           }
 
           const responseData = await response.json();
+          const body = JSON.stringify(responseData);
 
-          // Store in KV cache (fire and forget)
-          try {
-            await env.CACHE?.put(cacheKey, JSON.stringify(responseData), {
-              expirationTtl: CACHE_TTL,
-            });
-          } catch {
-            // Cache write failed - not critical, continue
-          }
-
-          return json(responseData, {
-            headers: { "X-Cache": "MISS" },
+          const proxyResponse = new Response(body, {
+            status: 200,
+            headers: {
+              "Content-Type": "application/json",
+              "Cache-Control": "public, s-maxage=3600",
+            },
           });
+
+          waitUntil(cache.put(request, proxyResponse.clone()));
+
+          return proxyResponse;
         } catch (error) {
           const message =
             error instanceof Error ? error.message : "Network error";

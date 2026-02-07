@@ -9,12 +9,20 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as UploadRouteImport } from './routes/upload'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiPinterestRouteImport } from './routes/api/pinterest'
 import { Route as ApiImageProxyRouteImport } from './routes/api/image-proxy'
+import { Route as ApiAudioUploadAuthRouteImport } from './routes/api/audio-upload-auth'
+import { Route as ApiAudioUploadRouteImport } from './routes/api/audio-upload'
 import { Route as ApiAudioSamplesRouteImport } from './routes/api/audio-samples'
 import { Route as ApiAudioSampleRouteImport } from './routes/api/audio-sample'
 
+const UploadRoute = UploadRouteImport.update({
+  id: '/upload',
+  path: '/upload',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -30,6 +38,16 @@ const ApiImageProxyRoute = ApiImageProxyRouteImport.update({
   path: '/api/image-proxy',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAudioUploadAuthRoute = ApiAudioUploadAuthRouteImport.update({
+  id: '/api/audio-upload-auth',
+  path: '/api/audio-upload-auth',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAudioUploadRoute = ApiAudioUploadRouteImport.update({
+  id: '/api/audio-upload',
+  path: '/api/audio-upload',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAudioSamplesRoute = ApiAudioSamplesRouteImport.update({
   id: '/api/audio-samples',
   path: '/api/audio-samples',
@@ -43,23 +61,32 @@ const ApiAudioSampleRoute = ApiAudioSampleRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/upload': typeof UploadRoute
   '/api/audio-sample': typeof ApiAudioSampleRoute
   '/api/audio-samples': typeof ApiAudioSamplesRoute
+  '/api/audio-upload': typeof ApiAudioUploadRoute
+  '/api/audio-upload-auth': typeof ApiAudioUploadAuthRoute
   '/api/image-proxy': typeof ApiImageProxyRoute
   '/api/pinterest': typeof ApiPinterestRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/upload': typeof UploadRoute
   '/api/audio-sample': typeof ApiAudioSampleRoute
   '/api/audio-samples': typeof ApiAudioSamplesRoute
+  '/api/audio-upload': typeof ApiAudioUploadRoute
+  '/api/audio-upload-auth': typeof ApiAudioUploadAuthRoute
   '/api/image-proxy': typeof ApiImageProxyRoute
   '/api/pinterest': typeof ApiPinterestRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/upload': typeof UploadRoute
   '/api/audio-sample': typeof ApiAudioSampleRoute
   '/api/audio-samples': typeof ApiAudioSamplesRoute
+  '/api/audio-upload': typeof ApiAudioUploadRoute
+  '/api/audio-upload-auth': typeof ApiAudioUploadAuthRoute
   '/api/image-proxy': typeof ApiImageProxyRoute
   '/api/pinterest': typeof ApiPinterestRoute
 }
@@ -67,36 +94,55 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/upload'
     | '/api/audio-sample'
     | '/api/audio-samples'
+    | '/api/audio-upload'
+    | '/api/audio-upload-auth'
     | '/api/image-proxy'
     | '/api/pinterest'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/upload'
     | '/api/audio-sample'
     | '/api/audio-samples'
+    | '/api/audio-upload'
+    | '/api/audio-upload-auth'
     | '/api/image-proxy'
     | '/api/pinterest'
   id:
     | '__root__'
     | '/'
+    | '/upload'
     | '/api/audio-sample'
     | '/api/audio-samples'
+    | '/api/audio-upload'
+    | '/api/audio-upload-auth'
     | '/api/image-proxy'
     | '/api/pinterest'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  UploadRoute: typeof UploadRoute
   ApiAudioSampleRoute: typeof ApiAudioSampleRoute
   ApiAudioSamplesRoute: typeof ApiAudioSamplesRoute
+  ApiAudioUploadRoute: typeof ApiAudioUploadRoute
+  ApiAudioUploadAuthRoute: typeof ApiAudioUploadAuthRoute
   ApiImageProxyRoute: typeof ApiImageProxyRoute
   ApiPinterestRoute: typeof ApiPinterestRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/upload': {
+      id: '/upload'
+      path: '/upload'
+      fullPath: '/upload'
+      preLoaderRoute: typeof UploadRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -118,6 +164,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiImageProxyRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/audio-upload-auth': {
+      id: '/api/audio-upload-auth'
+      path: '/api/audio-upload-auth'
+      fullPath: '/api/audio-upload-auth'
+      preLoaderRoute: typeof ApiAudioUploadAuthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/audio-upload': {
+      id: '/api/audio-upload'
+      path: '/api/audio-upload'
+      fullPath: '/api/audio-upload'
+      preLoaderRoute: typeof ApiAudioUploadRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/audio-samples': {
       id: '/api/audio-samples'
       path: '/api/audio-samples'
@@ -137,8 +197,11 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  UploadRoute: UploadRoute,
   ApiAudioSampleRoute: ApiAudioSampleRoute,
   ApiAudioSamplesRoute: ApiAudioSamplesRoute,
+  ApiAudioUploadRoute: ApiAudioUploadRoute,
+  ApiAudioUploadAuthRoute: ApiAudioUploadAuthRoute,
   ApiImageProxyRoute: ApiImageProxyRoute,
   ApiPinterestRoute: ApiPinterestRoute,
 }

@@ -12,6 +12,8 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiPinterestRouteImport } from './routes/api/pinterest'
 import { Route as ApiImageProxyRouteImport } from './routes/api/image-proxy'
+import { Route as ApiAudioSamplesRouteImport } from './routes/api/audio-samples'
+import { Route as ApiAudioSampleRouteImport } from './routes/api/audio-sample'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -28,33 +30,67 @@ const ApiImageProxyRoute = ApiImageProxyRouteImport.update({
   path: '/api/image-proxy',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAudioSamplesRoute = ApiAudioSamplesRouteImport.update({
+  id: '/api/audio-samples',
+  path: '/api/audio-samples',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAudioSampleRoute = ApiAudioSampleRouteImport.update({
+  id: '/api/audio-sample',
+  path: '/api/audio-sample',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/api/audio-sample': typeof ApiAudioSampleRoute
+  '/api/audio-samples': typeof ApiAudioSamplesRoute
   '/api/image-proxy': typeof ApiImageProxyRoute
   '/api/pinterest': typeof ApiPinterestRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/api/audio-sample': typeof ApiAudioSampleRoute
+  '/api/audio-samples': typeof ApiAudioSamplesRoute
   '/api/image-proxy': typeof ApiImageProxyRoute
   '/api/pinterest': typeof ApiPinterestRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/api/audio-sample': typeof ApiAudioSampleRoute
+  '/api/audio-samples': typeof ApiAudioSamplesRoute
   '/api/image-proxy': typeof ApiImageProxyRoute
   '/api/pinterest': typeof ApiPinterestRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/api/image-proxy' | '/api/pinterest'
+  fullPaths:
+    | '/'
+    | '/api/audio-sample'
+    | '/api/audio-samples'
+    | '/api/image-proxy'
+    | '/api/pinterest'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/api/image-proxy' | '/api/pinterest'
-  id: '__root__' | '/' | '/api/image-proxy' | '/api/pinterest'
+  to:
+    | '/'
+    | '/api/audio-sample'
+    | '/api/audio-samples'
+    | '/api/image-proxy'
+    | '/api/pinterest'
+  id:
+    | '__root__'
+    | '/'
+    | '/api/audio-sample'
+    | '/api/audio-samples'
+    | '/api/image-proxy'
+    | '/api/pinterest'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ApiAudioSampleRoute: typeof ApiAudioSampleRoute
+  ApiAudioSamplesRoute: typeof ApiAudioSamplesRoute
   ApiImageProxyRoute: typeof ApiImageProxyRoute
   ApiPinterestRoute: typeof ApiPinterestRoute
 }
@@ -82,11 +118,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiImageProxyRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/audio-samples': {
+      id: '/api/audio-samples'
+      path: '/api/audio-samples'
+      fullPath: '/api/audio-samples'
+      preLoaderRoute: typeof ApiAudioSamplesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/audio-sample': {
+      id: '/api/audio-sample'
+      path: '/api/audio-sample'
+      fullPath: '/api/audio-sample'
+      preLoaderRoute: typeof ApiAudioSampleRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ApiAudioSampleRoute: ApiAudioSampleRoute,
+  ApiAudioSamplesRoute: ApiAudioSamplesRoute,
   ApiImageProxyRoute: ApiImageProxyRoute,
   ApiPinterestRoute: ApiPinterestRoute,
 }

@@ -7,8 +7,9 @@ import {
   useVirtualizer,
   type Virtualizer,
 } from "@tanstack/react-virtual";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  DEFAULT_AUDIO_VOLUME,
   DEFAULT_IMAGE_SIZE,
   DEFAULT_SCROLL_SENSITIVITY,
   FETCH_THROTTLE_MS,
@@ -19,6 +20,7 @@ import {
   useCapabilities,
   useScrollState,
 } from "@/lib/effects";
+import { useAudio } from "@/lib/hooks/use-audio";
 import { usePins } from "@/lib/hooks/use-pins";
 import { useSettings } from "@/lib/hooks/use-settings";
 import { EffectsCanvas } from "./effects-canvas";
@@ -28,6 +30,13 @@ const OVERSCAN_COUNT = 5;
 
 export function VirtualGallery() {
   const parentRef = useRef<HTMLDivElement>(null);
+  const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(
+    null
+  );
+  const scrollRefCallback = useCallback((el: HTMLDivElement | null) => {
+    parentRef.current = el;
+    setScrollElement(el);
+  }, []);
   const activeStickyIndexRef = useRef(0);
   const itemHeightRef = useRef(
     typeof window !== "undefined" ? window.innerHeight : 800
@@ -149,6 +158,13 @@ export function VirtualGallery() {
     totalItems: allPins.length,
   });
 
+  useAudio({
+    scrollElement,
+    itemHeight,
+    audioEnabled: settings?.audioEnabled ?? false,
+    audioVolume: settings?.audioVolume ?? DEFAULT_AUDIO_VOLUME,
+  });
+
   // Use ref to avoid re-attaching listener when callback changes
   const updateScrollStateRef = useRef(updateScrollState);
   updateScrollStateRef.current = updateScrollState;
@@ -169,6 +185,45 @@ export function VirtualGallery() {
       scrollElement.removeEventListener("scroll", handleScroll);
     };
   }, []);
+
+  // Keyboard arrow navigation between images
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (
+        e.key !== "ArrowDown" &&
+        e.key !== "ArrowUp" &&
+        e.key !== "ArrowRight" &&
+        e.key !== "ArrowLeft"
+      ) {
+        return;
+      }
+
+      const scrollElement = parentRef.current;
+      if (!scrollElement) {
+        return;
+      }
+
+      e.preventDefault();
+
+      const direction =
+        e.key === "ArrowDown" || e.key === "ArrowRight" ? 1 : -1;
+      const currentIndex = Math.round(scrollElement.scrollTop / itemHeight);
+      const targetIndex = Math.max(
+        0,
+        Math.min(allPins.length - 1, currentIndex + direction)
+      );
+      const targetScrollTop = targetIndex * itemHeight;
+
+      scrollElement.scrollTo({ top: targetScrollTop, behavior: "smooth" });
+
+      if (effectsActive) {
+        updateScrollStateRef.current(targetScrollTop);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [itemHeight, allPins.length, effectsActive]);
 
   const virtualizer = useVirtualizer({
     count: allPins.length || 0,
@@ -250,7 +305,7 @@ export function VirtualGallery() {
     <div className="relative h-screen w-full">
       <div
         className="relative z-0 h-full w-full touch-pan-y overflow-y-scroll"
-        ref={parentRef}
+        ref={scrollRefCallback}
       >
         <div
           style={{

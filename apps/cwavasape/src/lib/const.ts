@@ -1,11 +1,13 @@
 import type { ImageSize } from "@avoid.quest/pinterest";
-import type { RGB } from "./effects/filters";
+import type { RGB } from "./effects/filters/region-paint-filter";
 
 export const DEFAULT_USERNAME = "gemakara";
 export const DEFAULT_IMAGE_SIZE: ImageSize = "474x";
 export const DEFAULT_SCROLL_SENSITIVITY = 1.0;
 export const DEFAULT_EFFECTS_ENABLED = false;
 export const DEFAULT_SNAP_ENABLED = false;
+export const DEFAULT_AUDIO_ENABLED = true;
+export const DEFAULT_AUDIO_VOLUME = 0.5;
 
 // Scroll throttle constants
 export const SCROLL_THROTTLE_MS = 16; // ~60fps

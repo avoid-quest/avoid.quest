@@ -4,7 +4,7 @@ import {
   type Settings,
   settingsCollection,
   setUsername,
-} from "@/lib/collections";
+} from "@/lib/collections/settings";
 
 const SETTINGS_ID = "app-settings";
 
@@ -43,4 +43,4 @@ export {
   setImageSize,
   setScrollSensitivity,
   setUsername,
-} from "@/lib/collections";
+} from "@/lib/collections/settings";

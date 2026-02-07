@@ -11,12 +11,15 @@
 
 export const features = {
   // cwavasape effects
-  "cwavasape.effects": false, // Master GPU effects toggle
-  "cwavasape.effects.sobel": false, // Edge detection effect
-  "cwavasape.effects.blur": false, // Gaussian blur effect
-  "cwavasape.effects.regionPaint": false, // Region paint / luminance banding
-  "cwavasape.effects.snap": false, // Instant snap toggle
-  "cwavasape.effects.overlay": false, // Overlay opacity control
+  "cwavasape.effects": true, // Master GPU effects toggle
+  "cwavasape.effects.sobel": true, // Edge detection effect
+  "cwavasape.effects.blur": true, // Gaussian blur effect
+  "cwavasape.effects.regionPaint": true, // Region paint / luminance banding
+  "cwavasape.effects.snap": true, // Instant snap toggle
+  "cwavasape.effects.overlay": true, // Overlay opacity control
+
+  // cwavasape audio
+  "cwavasape.audio": true, // Scroll-triggered audio sampler
 } as const satisfies Record<string, boolean>;
 
 export type FeatureFlag = keyof typeof features;

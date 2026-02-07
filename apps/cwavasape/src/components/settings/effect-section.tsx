@@ -5,7 +5,7 @@ import {
 } from "@avoid.quest/ui/components/collapsible";
 import { Label } from "@avoid.quest/ui/components/label";
 import { Switch } from "@avoid.quest/ui/components/switch";
-import { ChevronDownIcon } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { type ReactNode, useState } from "react";
 
 type EffectSectionProps = {
@@ -30,7 +30,7 @@ export function EffectSection({
       <div className="rounded-lg border border-border/50 bg-muted/30">
         <div className="flex items-center justify-between p-3">
           <CollapsibleTrigger className="flex flex-1 items-center gap-2 text-left">
-            <ChevronDownIcon
+            <ChevronDown
               className={`size-4 text-muted-foreground transition-transform ${
                 isOpen ? "rotate-0" : "-rotate-90"
               }`}

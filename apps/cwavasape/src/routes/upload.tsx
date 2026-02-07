@@ -193,6 +193,7 @@ function SampleRow({
 function SampleLibrary() {
   const [samples, setSamples] = useState<Sample[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(false);
   const [playingKey, setPlayingKey] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -202,12 +203,23 @@ function SampleLibrary() {
     async function fetchSamples() {
       try {
         const res = await fetch("/api/audio-samples");
-        if (res.ok && !cancelled) {
-          const data: { samples?: Sample[] } = await res.json();
-          setSamples(data.samples ?? []);
+        if (cancelled) {
+          return;
         }
+
+        if (!res.ok) {
+          setFetchError(true);
+          toast.error("Failed to load sample library");
+          return;
+        }
+
+        const data: { samples?: Sample[] } = await res.json();
+        setSamples(data.samples ?? []);
       } catch {
-        // Silently fail — library is secondary to upload
+        if (!cancelled) {
+          setFetchError(true);
+          toast.error("Failed to load sample library");
+        }
       } finally {
         if (!cancelled) {
           setLoading(false);
@@ -241,9 +253,14 @@ function SampleLibrary() {
         setPlayingKey(null);
         toast.error(`Failed to play ${key}`);
       };
-      audio.play();
       audioRef.current = audio;
-      setPlayingKey(key);
+      audio.play().then(
+        () => setPlayingKey(key),
+        () => {
+          setPlayingKey(null);
+          toast.error(`Failed to play ${key}`);
+        }
+      );
     },
     [playingKey]
   );
@@ -258,6 +275,16 @@ function SampleLibrary() {
     return (
       <div className="flex flex-1 items-center justify-center">
         <Loader2 className="size-5 animate-spin text-white/20" />
+      </div>
+    );
+  }
+
+  if (fetchError) {
+    return (
+      <div className="flex flex-1 items-center justify-center">
+        <p className="font-mono text-red-400/60 text-xs">
+          Failed to load samples
+        </p>
       </div>
     );
   }
@@ -299,7 +326,6 @@ function UploadPage() {
   const [isDragOver, setIsDragOver] = useState(false);
   const [uploadGeneration, setUploadGeneration] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const abortRef = useRef<XMLHttpRequest | null>(null);
 
   const handleAuth = useCallback(async () => {
     if (!password.trim()) {
@@ -316,8 +342,10 @@ function UploadPage() {
 
       if (res.ok) {
         setAuthenticated(true);
-      } else {
+      } else if (res.status === 401) {
         setAuthError("Wrong password");
+      } else {
+        setAuthError("Server error");
       }
     } catch {
       setAuthError("Connection error");
@@ -388,10 +416,9 @@ function UploadPage() {
   }, []);
 
   const uploadFile = useCallback(
-    (entry: FileEntry, index: number): Promise<boolean> => {
-      return new Promise((resolve) => {
+    (entry: FileEntry, index: number) => {
+      return new Promise<boolean>((resolve) => {
         const xhr = new XMLHttpRequest();
-        abortRef.current = xhr;
 
         const formData = new FormData();
         formData.append("file", entry.file);

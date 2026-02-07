@@ -82,9 +82,9 @@ const mixerStateSchema = z.object({
   crossfadePosition: z.number(),
   masterVolume: z.number(),
   // CUE monitoring
-  headphoneVolume: z.number(),
-  deckACueEnabled: z.boolean(),
-  deckBCueEnabled: z.boolean(),
+  headphoneVolume: z.number().default(1),
+  deckACueEnabled: z.boolean().default(false),
+  deckBCueEnabled: z.boolean().default(false),
 });
 
 export type DeckRecord = z.infer<typeof deckStateSchema>;
@@ -203,6 +203,7 @@ export function updateDeckB(updater: (draft: DeckRecord) => void): void {
  * Update mixer
  */
 export function updateMixer(updater: (draft: MixerRecord) => void): void {
+  // @ts-expect-error - WritableObjectDeep is compatible with MixerRecord in practice
   mixerCollection.update(MIXER_ID, updater);
 }
 

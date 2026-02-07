@@ -102,7 +102,7 @@
     },
     "apps/radio": {
       "name": "@avoid.quest/radio",
-      "version": "0.5.0",
+      "version": "0.5.1",
       "dependencies": {
         "@avoid.quest/platforms": "workspace:*",
         "@avoid.quest/typescript-config": "workspace:*",

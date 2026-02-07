@@ -7,8 +7,9 @@ import {
   useVirtualizer,
   type Virtualizer,
 } from "@tanstack/react-virtual";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  DEFAULT_AUDIO_VOLUME,
   DEFAULT_IMAGE_SIZE,
   DEFAULT_SCROLL_SENSITIVITY,
   FETCH_THROTTLE_MS,
@@ -29,6 +30,13 @@ const OVERSCAN_COUNT = 5;
 
 export function VirtualGallery() {
   const parentRef = useRef<HTMLDivElement>(null);
+  const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(
+    null
+  );
+  const scrollRefCallback = useCallback((el: HTMLDivElement | null) => {
+    parentRef.current = el;
+    setScrollElement(el);
+  }, []);
   const activeStickyIndexRef = useRef(0);
   const itemHeightRef = useRef(
     typeof window !== "undefined" ? window.innerHeight : 800
@@ -151,10 +159,10 @@ export function VirtualGallery() {
   });
 
   useAudio({
-    scrollRef: parentRef,
+    scrollElement,
     itemHeight,
     audioEnabled: settings?.audioEnabled ?? false,
-    audioVolume: settings?.audioVolume ?? 0.5,
+    audioVolume: settings?.audioVolume ?? DEFAULT_AUDIO_VOLUME,
   });
 
   // Use ref to avoid re-attaching listener when callback changes
@@ -258,7 +266,7 @@ export function VirtualGallery() {
     <div className="relative h-screen w-full">
       <div
         className="relative z-0 h-full w-full touch-pan-y overflow-y-scroll"
-        ref={parentRef}
+        ref={scrollRefCallback}
       >
         <div
           style={{

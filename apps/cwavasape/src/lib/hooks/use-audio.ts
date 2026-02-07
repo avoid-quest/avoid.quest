@@ -1,15 +1,15 @@
-import { type RefObject, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { disposeAudioEngine, getAudioEngine } from "@/lib/audio";
 
 type UseAudioOptions = {
-  scrollRef: RefObject<HTMLDivElement | null>;
+  scrollElement: HTMLDivElement | null;
   itemHeight: number;
   audioEnabled: boolean;
   audioVolume: number;
 };
 
 export function useAudio({
-  scrollRef,
+  scrollElement,
   itemHeight,
   audioEnabled,
   audioVolume,
@@ -19,48 +19,37 @@ export function useAudio({
 
   // Sync volume changes
   useEffect(() => {
-    if (!audioEnabled) {
-      return;
-    }
-    getAudioEngine().setVolume(audioVolume);
-  }, [audioEnabled, audioVolume]);
+    getAudioEngine()?.setVolume(audioVolume);
+  }, [audioVolume]);
 
-  // Listen for scroll events directly — bypasses React render cycle
+  // Scroll listener
   useEffect(() => {
-    if (!audioEnabled) {
-      return;
-    }
-
-    const el = scrollRef.current;
-    if (!el) {
+    if (!(audioEnabled && scrollElement)) {
       return;
     }
 
     const handleScroll = () => {
-      const currentIndex = Math.floor(el.scrollTop / itemHeight);
+      const currentIndex = Math.floor(scrollElement.scrollTop / itemHeight);
       if (currentIndex === prevIndexRef.current) {
         return;
       }
       prevIndexRef.current = currentIndex;
-      getAudioEngine().playRandom();
+
+      const engine = getAudioEngine();
+      if (engine?.isInitialized) {
+        engine.playRandom();
+      }
     };
 
-    el.addEventListener("scroll", handleScroll, { passive: true });
-    return () => el.removeEventListener("scroll", handleScroll);
-  }, [audioEnabled, scrollRef, itemHeight]);
+    scrollElement.addEventListener("scroll", handleScroll, { passive: true });
+    return () => scrollElement.removeEventListener("scroll", handleScroll);
+  }, [scrollElement, itemHeight, audioEnabled]);
 
-  // Dispose only when toggling enabled → disabled
+  // Dispose when toggling enabled → disabled
   useEffect(() => {
     if (wasEnabledRef.current && !audioEnabled) {
       disposeAudioEngine();
     }
     wasEnabledRef.current = audioEnabled;
   }, [audioEnabled]);
-
-  // Dispose on unmount
-  useEffect(() => {
-    return () => {
-      disposeAudioEngine();
-    };
-  }, []);
 }

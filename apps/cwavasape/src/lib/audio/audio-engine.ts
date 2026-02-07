@@ -16,10 +16,13 @@ class AudioEngine {
     this.context = new AudioContext();
     this.masterGain = this.context.createGain();
     this.masterGain.connect(this.context.destination);
+  }
 
-    // Browser autoplay policy may start context suspended
-    if (this.context.state === "suspended") {
-      this.context.resume();
+  resume(): void {
+    if (this.context?.state === "suspended") {
+      this.context.resume().catch((error: unknown) => {
+        console.warn("AudioContext resume failed:", error);
+      });
     }
   }
 
@@ -29,6 +32,9 @@ class AudioEngine {
     }
 
     const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch sample "${key}": ${response.status}`);
+    }
     const arrayBuffer = await response.arrayBuffer();
     const audioBuffer = await this.context.decodeAudioData(arrayBuffer);
     this.buffers.set(key, audioBuffer);
@@ -39,9 +45,10 @@ class AudioEngine {
       return;
     }
 
-    // Ensure context is running
     if (this.context.state === "suspended") {
-      this.context.resume();
+      this.context.resume().catch((error: unknown) => {
+        console.warn("AudioContext resume failed:", error);
+      });
     }
 
     const keys = [...this.buffers.keys()];
@@ -93,15 +100,17 @@ class AudioEngine {
     for (const source of this.activeSources) {
       try {
         source.stop();
-      } catch {
-        // Already stopped
+      } catch (error: unknown) {
+        console.warn("Failed to stop audio source:", error);
       }
     }
     this.activeSources.clear();
     this.buffers.clear();
 
     if (this.context) {
-      this.context.close();
+      this.context.close().catch((error: unknown) => {
+        console.warn("AudioContext close failed:", error);
+      });
       this.context = null;
     }
     this.masterGain = null;
@@ -114,7 +123,11 @@ class AudioEngine {
 
 let instance: AudioEngine | null = null;
 
-export function getAudioEngine(): AudioEngine {
+export function getAudioEngine(): AudioEngine | null {
+  return instance;
+}
+
+export function createAudioEngine(): AudioEngine {
   if (!instance) {
     instance = new AudioEngine();
   }

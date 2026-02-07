@@ -7,6 +7,8 @@ const CONTENT_TYPES: Record<string, string> = {
   ogg: "audio/ogg",
 };
 
+const SAFE_KEY_PATTERN = /^[\w\-./]+\.(mp3|wav|ogg)$/;
+
 export const Route = createFileRoute("/api/audio-sample")({
   server: {
     handlers: {
@@ -18,7 +20,14 @@ export const Route = createFileRoute("/api/audio-sample")({
           return new Response("Missing key parameter", { status: 400 });
         }
 
-        // Only allow audio file extensions
+        if (
+          key.includes("..") ||
+          key.startsWith("/") ||
+          !SAFE_KEY_PATTERN.test(key)
+        ) {
+          return new Response("Invalid key", { status: 400 });
+        }
+
         const ext = key.split(".").pop()?.toLowerCase();
         if (!(ext && CONTENT_TYPES[ext])) {
           return new Response("Invalid audio file type", { status: 400 });

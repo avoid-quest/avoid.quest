@@ -9,7 +9,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { ThemeProvider } from "@/components/theme/theme-provider";
-import { initializeSettings } from "@/lib/collections";
+import { initializeSettings } from "@/lib/collections/settings";
 
 // Lazy load devtools only in development
 const Devtools = lazy(async () => {

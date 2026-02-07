@@ -55,19 +55,6 @@ export const Route = createFileRoute("/api/pinterest")({
         const username = sourceUrl.split("/").filter(Boolean)[0] ?? "";
         const cacheKey = getCacheKey(username, data);
 
-        // Try to get from KV cache first
-        try {
-          const cached = await env.CACHE?.get(cacheKey, "json");
-          if (cached) {
-            // Return cached response with cache hit header
-            return json(cached, {
-              headers: { "X-Cache": "HIT" },
-            });
-          }
-        } catch {
-          // KV not available (dev mode without bindings) - continue without cache
-        }
-
         const params = new URLSearchParams({
           source_url: sourceUrl,
           data,
@@ -75,13 +62,24 @@ export const Route = createFileRoute("/api/pinterest")({
 
         const pinterestUrl = `${PINTEREST_BASE_URL}?${params}`;
 
-        try {
-          const response = await fetch(pinterestUrl, {
-            headers: {
-              ...HEADERS,
-              "X-Pinterest-PWS-Handler": `www/${username}.js`,
-            },
+        // Start cache lookup and fetch in parallel
+        const cachePromise = env.CACHE?.get(cacheKey, "json").catch(() => null);
+        const fetchPromise = fetch(pinterestUrl, {
+          headers: {
+            ...HEADERS,
+            "X-Pinterest-PWS-Handler": `www/${username}.js`,
+          },
+        });
+
+        const cached = await cachePromise;
+        if (cached) {
+          return json(cached, {
+            headers: { "X-Cache": "HIT" },
           });
+        }
+
+        try {
+          const response = await fetchPromise;
 
           if (!response.ok) {
             return json(

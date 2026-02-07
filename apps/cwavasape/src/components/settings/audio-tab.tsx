@@ -2,7 +2,7 @@ import { isEnabled } from "@avoid.quest/shared";
 import { Label } from "@avoid.quest/ui/components/label";
 import { Switch } from "@avoid.quest/ui/components/switch";
 import {
-  getAudioEngine,
+  createAudioEngine,
   loadSampleManifest,
   preloadSamples,
 } from "@/lib/audio";
@@ -18,17 +18,21 @@ function handleAudioToggle(enabled: boolean, volume: number): void {
     return;
   }
 
-  // Initialize AudioContext synchronously within this click gesture
-  const engine = getAudioEngine();
+  // Resume AudioContext within this click gesture (user activation)
+  const engine = createAudioEngine();
   engine.initialize();
+  engine.resume();
   engine.setVolume(volume);
 
-  // Load samples async
-  loadSampleManifest().then((keys) => {
-    if (keys.length > 0) {
-      preloadSamples(keys);
-    }
-  });
+  loadSampleManifest()
+    .then(async (keys) => {
+      if (keys.length > 0) {
+        await preloadSamples(keys);
+      }
+    })
+    .catch((error: unknown) => {
+      console.warn("Failed to load audio samples:", error);
+    });
 }
 
 export function AudioTab() {

@@ -5,9 +5,9 @@ import { REGION_PAINT_PALETTES } from "@/lib/const";
 import {
   type GaussianBlurFilters,
   gaussianBlurFactory,
-  regionPaintFactory,
-  sobelEdgeFactory,
-} from "../filters";
+} from "../filters/gaussian-blur-filter";
+import { regionPaintFactory } from "../filters/region-paint-filter";
+import { sobelEdgeFactory } from "../filters/sobel-edge-filter";
 
 type ActiveFilters = {
   sobel: Filter | null;

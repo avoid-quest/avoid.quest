@@ -10,25 +10,26 @@ export const Route = createFileRoute("/api/audio-samples")({
   server: {
     handlers: {
       GET: async () => {
-        // Try KV cache first
-        try {
-          const cached = await env.CACHE?.get(MANIFEST_CACHE_KEY, "text");
-          if (cached) {
-            return new Response(cached, {
-              status: 200,
-              headers: {
-                "Content-Type": "application/json",
-                "Cache-Control": "public, max-age=3600",
-                "X-Cache": "HIT",
-              },
-            });
-          }
-        } catch {
-          // KV not available - continue without cache
+        // Start cache lookup and R2 list in parallel
+        const cachePromise = env.CACHE?.get(MANIFEST_CACHE_KEY, "text").catch(
+          () => null
+        );
+        const listPromise = env.cwavasape_audio_samples.list();
+
+        const cached = await cachePromise;
+        if (cached) {
+          return new Response(cached, {
+            status: 200,
+            headers: {
+              "Content-Type": "application/json",
+              "Cache-Control": "public, max-age=3600",
+              "X-Cache": "HIT",
+            },
+          });
         }
 
         try {
-          const listed = await env.cwavasape_audio_samples.list();
+          const listed = await listPromise;
 
           const samples = listed.objects
             .filter((obj) => AUDIO_EXTENSIONS.test(obj.key))
@@ -42,8 +43,8 @@ export const Route = createFileRoute("/api/audio-samples")({
               await env.CACHE?.put(MANIFEST_CACHE_KEY, body, {
                 expirationTtl: MANIFEST_CACHE_TTL,
               });
-            } catch {
-              // Cache write failed - not critical
+            } catch (error: unknown) {
+              console.warn("KV cache write failed:", error);
             }
           }
 

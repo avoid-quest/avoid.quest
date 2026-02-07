@@ -1,10 +1,6 @@
 import { env } from "cloudflare:workers";
 import { createFileRoute } from "@tanstack/react-router";
-import {
-  CONTENT_TYPES,
-  MANIFEST_CACHE_KEY,
-  SAFE_KEY_PATTERN,
-} from "../../lib/audio-constants";
+import { CONTENT_TYPES, SAFE_KEY_PATTERN } from "../../lib/audio-constants";
 import { jsonError, jsonOk, verifyUploadAuth } from "../../lib/auth";
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB
@@ -57,11 +53,10 @@ export const Route = createFileRoute("/api/audio-upload")({
           });
 
           // Invalidate the manifest cache so the new file shows up
-          try {
-            await env.CACHE?.delete(MANIFEST_CACHE_KEY);
-          } catch (error: unknown) {
-            console.warn("Cache invalidation failed:", error);
-          }
+          const origin = new URL(request.url).origin;
+          await caches.default.delete(
+            new Request(`${origin}/api/audio-samples`)
+          );
 
           return jsonOk({ key });
         } catch (error) {

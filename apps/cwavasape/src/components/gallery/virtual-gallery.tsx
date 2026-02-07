@@ -186,6 +186,45 @@ export function VirtualGallery() {
     };
   }, []);
 
+  // Keyboard arrow navigation between images
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (
+        e.key !== "ArrowDown" &&
+        e.key !== "ArrowUp" &&
+        e.key !== "ArrowRight" &&
+        e.key !== "ArrowLeft"
+      ) {
+        return;
+      }
+
+      const scrollElement = parentRef.current;
+      if (!scrollElement) {
+        return;
+      }
+
+      e.preventDefault();
+
+      const direction =
+        e.key === "ArrowDown" || e.key === "ArrowRight" ? 1 : -1;
+      const currentIndex = Math.round(scrollElement.scrollTop / itemHeight);
+      const targetIndex = Math.max(
+        0,
+        Math.min(allPins.length - 1, currentIndex + direction)
+      );
+      const targetScrollTop = targetIndex * itemHeight;
+
+      scrollElement.scrollTo({ top: targetScrollTop, behavior: "smooth" });
+
+      if (effectsActive) {
+        updateScrollStateRef.current(targetScrollTop);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [itemHeight, allPins.length, effectsActive]);
+
   const virtualizer = useVirtualizer({
     count: allPins.length || 0,
     getScrollElement: () => parentRef.current,

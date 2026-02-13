@@ -54,7 +54,9 @@ export class HTML5AudioManager {
       this.removePlayer(id);
     }
 
-    const player = new HTML5AudioPlayer(id, radio);
+    const player = new HTML5AudioPlayer(id, radio, {
+      telemetryMode: "multiple",
+    });
     this.#players.set(id, player);
     this.#requestedVolumes.set(id, 1);
 

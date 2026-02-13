@@ -59,7 +59,7 @@ export const radios: Radio[] = [
     description:
       "Radio Blackout trasmette notizie, approfondimenti, musica e controcultura dal 1992, libera e autogestita.",
     websiteUrl: "https://radioblackout.org/",
-    streamUrl: "https://giffard.streampunk.cc/_stream/blackout.ogg",
+    streamUrl: "https://blimp.streampunk.cc/_stream/blackout.mp3",
     logoUrl: "https://radioblackout.org/logo.png",
     order: 12,
     isSystem: true,
@@ -83,17 +83,6 @@ export const radios: Radio[] = [
       "https://www.internetpublicradio.live/static/main-logo.bcb1782f3ce2.svg",
     streamUrl: "https://c11.radioboss.fm:18270/stream",
     order: 8,
-    isSystem: true,
-  },
-  {
-    name: "EOS Radio",
-    description:
-      "EOS is a platform that operates across various contexts by organizing events, initiating collaborations, and running an online radio.",
-    websiteUrl: "https://eosradio.de/",
-    logoUrl:
-      "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcReBIsbbj5FoSfB3z_yrbDlRWmPpdVKOqeT1g&s",
-    streamUrl: "https://s5.radio.co/s21c5fbf27/listen",
-    order: 9,
     isSystem: true,
   },
   {

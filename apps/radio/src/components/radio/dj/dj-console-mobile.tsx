@@ -42,9 +42,9 @@ export function DjConsoleMobile({
   const deckBPeakLevel = useDeckBPeakLevel();
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-2">
+    <div className="flex h-full min-h-0 flex-col gap-1.5 sm:gap-2">
       {/* Mini Mixer Bar */}
-      <div className="flex shrink-0 flex-col gap-1.5 rounded-lg border border-border/50 bg-card/50 p-2">
+      <div className="flex shrink-0 flex-col gap-1 rounded-lg border border-border/50 bg-card/50 p-1.5 sm:gap-1.5 sm:p-2">
         {/* VU meters row */}
         <div className="flex items-center gap-2">
           <span className="w-5 shrink-0 text-center font-bold font-mono text-[10px]">
@@ -52,12 +52,14 @@ export function DjConsoleMobile({
           </span>
           <PeakMeter
             className="flex-1"
+            compact={true}
             left={deckAPeakLevel.left}
             orientation="horizontal"
             right={deckAPeakLevel.right}
           />
           <PeakMeter
             className="flex-1"
+            compact={true}
             left={deckBPeakLevel.left}
             orientation="horizontal"
             right={deckBPeakLevel.right}
@@ -142,15 +144,12 @@ export function DjConsoleMobile({
 
       {/* Deck content */}
       <div className="min-h-0 flex-1 overflow-hidden">
-        <div
-          className={cn("h-full", mobileTab === "left" ? "block" : "hidden")}
-        >
-          <DeckPanel deckId="deck-a" radios={radios} />
-        </div>
-        <div
-          className={cn("h-full", mobileTab === "right" ? "block" : "hidden")}
-        >
-          <DeckPanel deckId="deck-b" radios={radios} />
+        <div className={cn("h-full")}>
+          {mobileTab === "left" ? (
+            <DeckPanel deckId="deck-a" key="deck-a" radios={radios} />
+          ) : (
+            <DeckPanel deckId="deck-b" key="deck-b" radios={radios} />
+          )}
         </div>
       </div>
     </div>

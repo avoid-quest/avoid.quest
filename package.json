@@ -47,6 +47,7 @@
     "preview": "turbo preview",
     "test": "turbo test",
     "cleanup": "./scripts/cleanup.sh",
+    "radio:diagnostics": "bash ./scripts/radio-stream-diagnostics.sh",
     "changeset": "changeset",
     "version-packages": "changeset version"
   },

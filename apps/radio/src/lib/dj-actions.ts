@@ -63,6 +63,7 @@ import {
   setDeckBSubscriptionCleanup,
   setDjError,
 } from "@/lib/stores/dj-runtime-store";
+import { capturePlaybackError } from "@/lib/telemetry/playback-errors";
 
 export type DeckSide = "left" | "right";
 type DeckId = "deck-a" | "deck-b";
@@ -158,7 +159,7 @@ const getOutputRouter = (): OutputRouter | null => {
   if (!outputRouter) {
     outputRouter = createOutputRouter(context, {
       onError: (error) => {
-        setDjError(error.message);
+        setDjErrorWithTelemetry(error.message, "DJ_OUTPUT_ROUTER_ERROR", error);
       },
     });
   }
@@ -243,7 +244,7 @@ export async function applyCurrentAudioSettings(): Promise<void> {
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Failed to apply audio settings";
-    setDjError(message);
+    setDjErrorWithTelemetry(message, "DJ_APPLY_AUDIO_SETTINGS_FAILED", error);
   }
 }
 
@@ -269,6 +270,24 @@ async function initializeAudioDevices(): Promise<void> {
 
 const getSoundId = (radio: Radio, side: DeckSide): string =>
   `${side}_${radio.id}`;
+
+function setDjErrorWithTelemetry(
+  message: string,
+  code: string,
+  error?: unknown,
+  radio?: Radio | null
+): void {
+  setDjError(message);
+  capturePlaybackError(error ?? new Error(message), {
+    mode: "dj",
+    radioId: radio?.id,
+    radioName: radio?.name,
+    streamUrl: radio?.streamUrl,
+    errorCode: code,
+    errorMessage: message,
+    retryPhase: "none",
+  });
+}
 
 // Deck-specific function mappings
 const deckConfig: Record<
@@ -320,7 +339,12 @@ async function resolveAndLoadYouTubeTrack(
 ): Promise<void> {
   const resolvedUrl = await resolveStreamUrl(videoId);
   if (!resolvedUrl) {
-    setDjError("Failed to resolve next track: no stream URL found");
+    setDjErrorWithTelemetry(
+      "Failed to resolve next track: no stream URL found",
+      "DJ_NEXT_TRACK_RESOLVE_FAILED",
+      undefined,
+      deckRadio
+    );
     return;
   }
 
@@ -354,8 +378,11 @@ async function handleTrackEnded(
       await getAudioManager().playSound(soundId, currentDeck.volume);
       applyCrossfade();
     } catch (err) {
-      setDjError(
-        `Failed to repeat track: ${err instanceof Error ? err.message : "Unknown error"}`
+      setDjErrorWithTelemetry(
+        `Failed to repeat track: ${err instanceof Error ? err.message : "Unknown error"}`,
+        "DJ_REPEAT_TRACK_FAILED",
+        err,
+        currentDeck.radio
       );
     }
     return;
@@ -381,8 +408,11 @@ async function handleTrackEnded(
         streamUrl.slice(3)
       );
     } catch (err) {
-      setDjError(
-        `Failed to load next track: ${err instanceof Error ? err.message : "Unknown error"}`
+      setDjErrorWithTelemetry(
+        `Failed to load next track: ${err instanceof Error ? err.message : "Unknown error"}`,
+        "DJ_LOAD_NEXT_TRACK_FAILED",
+        err,
+        currentDeck.radio
       );
     }
   } else {
@@ -406,11 +436,16 @@ async function handleYouTubeStreamInterrupted(
       setDjError(null);
       applyCrossfade();
     } else {
-      setDjError("Failed to refresh YouTube stream - please reload");
+      setDjErrorWithTelemetry(
+        "Failed to refresh YouTube stream - please reload",
+        "DJ_YOUTUBE_REFRESH_FAILED"
+      );
     }
   } catch (err) {
-    setDjError(
-      `Stream refresh failed: ${err instanceof Error ? err.message : "Unknown error"}`
+    setDjErrorWithTelemetry(
+      `Stream refresh failed: ${err instanceof Error ? err.message : "Unknown error"}`,
+      "DJ_STREAM_REFRESH_FAILED",
+      err
     );
   }
 }
@@ -775,7 +810,12 @@ async function setDeckRadio(deckId: DeckId, radio: Radio | null) {
 
       // Set error if present (skip STREAM_INTERRUPTED - handled above)
       if (audioState.error?.message) {
-        setDjError(audioState.error.message);
+        setDjErrorWithTelemetry(
+          audioState.error.message,
+          `DJ_${audioState.error.code}`,
+          new Error(audioState.error.message),
+          currentDeck?.radio
+        );
       }
 
       // Handle track end - repeat or auto-advance to next track
@@ -808,7 +848,7 @@ async function setDeckRadio(deckId: DeckId, radio: Radio | null) {
       config.resetRuntime();
     }
     const msg = err instanceof Error ? err.message : `Failed to load ${deckId}`;
-    setDjError(msg);
+    setDjErrorWithTelemetry(msg, "DJ_LOAD_DECK_FAILED", err, radio);
   }
 }
 
@@ -832,8 +872,11 @@ async function playDeck(deckId: DeckId) {
       await getAudioManager().playSound(runtime.soundId, deck.volume);
       applyCrossfade();
     } catch (err) {
-      setDjError(
-        err instanceof Error ? err.message : `Failed to play ${deckId}`
+      setDjErrorWithTelemetry(
+        err instanceof Error ? err.message : `Failed to play ${deckId}`,
+        "DJ_PLAY_DECK_FAILED",
+        err,
+        deck.radio
       );
     }
   }
@@ -1596,7 +1639,12 @@ async function setDeckDeviceSource(
 
       // Set error if present
       if (audioState.error?.message) {
-        setDjError(audioState.error.message);
+        setDjErrorWithTelemetry(
+          audioState.error.message,
+          `DJ_${audioState.error.code}`,
+          new Error(audioState.error.message),
+          currentDeck?.radio
+        );
       }
     });
 
@@ -1636,7 +1684,7 @@ async function setDeckDeviceSource(
     }
     const msg =
       err instanceof Error ? err.message : "Failed to start device input";
-    setDjError(msg);
+    setDjErrorWithTelemetry(msg, "DJ_DEVICE_INPUT_START_FAILED", err, radio);
   }
 }
 
@@ -1720,7 +1768,7 @@ async function setDeckFileSource(deckId: DeckId, file: File): Promise<void> {
   } catch (err) {
     const msg =
       err instanceof Error ? err.message : "Failed to load audio file";
-    setDjError(msg);
+    setDjErrorWithTelemetry(msg, "DJ_LOCAL_FILE_LOAD_FAILED", err);
   }
 }
 

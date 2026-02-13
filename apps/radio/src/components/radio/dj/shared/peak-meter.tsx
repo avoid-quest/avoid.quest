@@ -70,9 +70,11 @@ function usePeakHold(level: number) {
 function MeterBar({
   level,
   orientation,
+  compact = false,
 }: {
   level: number;
   orientation: "vertical" | "horizontal";
+  compact?: boolean;
 }) {
   const smoothed = useSmoothedLevel(level);
   const percent = smoothed * 100;
@@ -88,7 +90,11 @@ function MeterBar({
     <div
       className={cn(
         "relative overflow-hidden border border-white/[0.06] bg-white/[0.02]",
-        isVertical ? "min-h-0 min-w-0 flex-1" : "h-1.5 w-full"
+        isVertical
+          ? "min-h-0 min-w-0 flex-1"
+          : compact
+            ? "h-1 w-full"
+            : "h-1.5 w-full"
       )}
     >
       <div
@@ -99,7 +105,7 @@ function MeterBar({
           opacity: 0.85,
         }}
       />
-      {peakPercent > 2 && (
+      {!compact && peakPercent > 2 && (
         <div
           className="absolute"
           style={
@@ -119,7 +125,7 @@ function MeterBar({
           }
         />
       )}
-      {percent > RED_AT && (
+      {!compact && percent > RED_AT && (
         <div
           className="absolute rounded-full bg-red-500"
           style={
@@ -140,6 +146,7 @@ type PeakMeterProps = {
   right: number;
   orientation?: "vertical" | "horizontal";
   className?: string;
+  compact?: boolean;
 };
 
 export function PeakMeter({
@@ -147,6 +154,7 @@ export function PeakMeter({
   right,
   orientation = "vertical",
   className,
+  compact = false,
 }: PeakMeterProps) {
   const isVertical = orientation === "vertical";
 
@@ -154,12 +162,18 @@ export function PeakMeter({
     <div
       className={cn(
         "flex",
-        isVertical ? "h-full flex-row gap-px" : "w-full flex-col gap-0.5",
+        isVertical
+          ? compact
+            ? "h-full flex-row gap-[1px]"
+            : "h-full flex-row gap-px"
+          : compact
+            ? "w-full flex-col gap-px"
+            : "w-full flex-col gap-0.5",
         className
       )}
     >
-      <MeterBar level={left} orientation={orientation} />
-      <MeterBar level={right} orientation={orientation} />
+      <MeterBar compact={compact} level={left} orientation={orientation} />
+      <MeterBar compact={compact} level={right} orientation={orientation} />
     </div>
   );
 }

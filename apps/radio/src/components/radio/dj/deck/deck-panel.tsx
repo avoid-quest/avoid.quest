@@ -611,15 +611,6 @@ function DeckPanelInner({
     content = (
       <div className="flex h-full min-h-0 flex-col gap-2">
         <DjRadioList radios={radios} />
-        <div className="border-border/50 border-t pt-2">
-          <EffectChain
-            effects={effects}
-            onAddEffect={addEffect}
-            onRemoveEffect={removeEffect}
-            onReorderEffects={reorderEffects}
-            onUpdateEffect={updateEffect}
-          />
-        </div>
       </div>
     );
   } else {
@@ -652,7 +643,9 @@ function DeckPanelInner({
       ref={setNodeRef}
     >
       <DeckHeader deckId={deckId} onReset={reset} radio={radio} />
-      <div className="flex h-full min-h-0 flex-col px-2 pb-2">{content}</div>
+      <div className="flex h-full min-h-0 flex-col px-1.5 pb-1.5 sm:px-2 sm:pb-2">
+        {content}
+      </div>
     </div>
   );
 }
@@ -686,14 +679,14 @@ function LoadedDeckContent({
     return (
       <div className="flex h-full min-h-0 flex-col">
         <ScrollArea className="min-h-0 flex-1">
-          <div className="flex flex-col gap-2 pr-3">
+          <div className="flex flex-col gap-1.5 pr-2 sm:gap-2 sm:pr-3">
             <DeckTransport />
             <div className="rounded-lg border border-border/50 bg-muted/30 px-2 py-2">
               <DeckChannelStrip />
             </div>
             <Accordion
               className="space-y-1"
-              defaultValue={["effects"]}
+              defaultValue={[]}
               type="multiple"
             >
               {hasTracklist && tracks && (

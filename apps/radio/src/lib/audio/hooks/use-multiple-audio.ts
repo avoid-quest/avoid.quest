@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { validateRadioForMode } from "@/lib/external-url/utils";
+import { capturePlaybackError } from "@/lib/telemetry/playback-errors";
 
 import { HTML5AudioManager } from "../html5/index.js";
 import type { Radio } from "../playback/types.js";
@@ -130,6 +131,15 @@ export function useMultipleAudio(settings?: MultipleAudioSettings) {
           setPlayers((prev) =>
             prev.map((p) => (p.id === playerId ? { ...p, error: errorMsg } : p))
           );
+          capturePlaybackError(error, {
+            mode: "multiple",
+            radioId: radio.id,
+            radioName: radio.name,
+            streamUrl: radio.streamUrl,
+            errorCode: "MULTIPLE_AUTO_PLAY_FAILED",
+            errorMessage: errorMsg,
+            retryPhase: "none",
+          });
         }
       }
 
@@ -168,9 +178,19 @@ export function useMultipleAudio(settings?: MultipleAudioSettings) {
         setPlayers((prev) =>
           prev.map((p) => (p.id === playerId ? { ...p, error: errorMsg } : p))
         );
+        const current = players.find((p) => p.id === playerId);
+        capturePlaybackError(error, {
+          mode: "multiple",
+          radioId: current?.radio.id,
+          radioName: current?.radio.name,
+          streamUrl: current?.radio.streamUrl,
+          errorCode: "MULTIPLE_PLAY_FAILED",
+          errorMessage: errorMsg,
+          retryPhase: "none",
+        });
       }
     },
-    [manager]
+    [manager, players]
   );
 
   // Pause a specific radio
@@ -249,6 +269,15 @@ export function useMultipleAudio(settings?: MultipleAudioSettings) {
               p.id === player.id ? { ...p, error: errorMsg } : p
             )
           );
+          capturePlaybackError(error, {
+            mode: "multiple",
+            radioId: player.radio.id,
+            radioName: player.radio.name,
+            streamUrl: player.radio.streamUrl,
+            errorCode: "MULTIPLE_PLAY_ALL_FAILED",
+            errorMessage: errorMsg,
+            retryPhase: "none",
+          });
         }
       }
     }

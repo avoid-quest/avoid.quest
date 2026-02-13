@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { validateRadioForMode } from "@/lib/external-url/utils";
+import { capturePlaybackError } from "@/lib/telemetry/playback-errors";
 
 import {
   CrossfadeController,
@@ -106,7 +107,9 @@ export function useSingleAudio(transitionDuration?: number) {
         previousPlayerRef.current = currentPlayerRef.current;
 
         // Create new player
-        const newPlayer = new HTML5AudioPlayer(newPlayerId, newRadio);
+        const newPlayer = new HTML5AudioPlayer(newPlayerId, newRadio, {
+          telemetryMode: "single",
+        });
         currentPlayerRef.current = newPlayer;
         setCurrentRadio(newRadio);
 
@@ -163,6 +166,15 @@ export function useSingleAudio(transitionDuration?: number) {
         const errorMessage =
           err instanceof Error ? err.message : "Crossfade failed";
         setError(errorMessage);
+        capturePlaybackError(err, {
+          mode: "single",
+          radioId: newRadio.id,
+          radioName: newRadio.name,
+          streamUrl: newRadio.streamUrl,
+          errorCode: "SINGLE_CROSSFADE_FAILED",
+          errorMessage,
+          retryPhase: "none",
+        });
         setIsCrossfading(false);
         // biome-ignore lint/suspicious/noEmptyBlockStatements: noop unsubscribe
         return () => {};
@@ -192,7 +204,9 @@ export function useSingleAudio(transitionDuration?: number) {
         cleanupPreviousPlayers();
 
         // Create new player
-        const player = new HTML5AudioPlayer(playerId, radio);
+        const player = new HTML5AudioPlayer(playerId, radio, {
+          telemetryMode: "single",
+        });
         currentPlayerRef.current = player;
         setCurrentRadio(radio);
 
@@ -202,6 +216,15 @@ export function useSingleAudio(transitionDuration?: number) {
         const errorMessage =
           err instanceof Error ? err.message : "Failed to load radio";
         setError(errorMessage);
+        capturePlaybackError(err, {
+          mode: "single",
+          radioId: radio.id,
+          radioName: radio.name,
+          streamUrl: radio.streamUrl,
+          errorCode: "SINGLE_LOAD_FAILED",
+          errorMessage,
+          retryPhase: "none",
+        });
       }
     },
     [
@@ -244,6 +267,15 @@ export function useSingleAudio(transitionDuration?: number) {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Play failed";
       setError(errorMessage);
+      capturePlaybackError(err, {
+        mode: "single",
+        radioId: currentRadio.id,
+        radioName: currentRadio.name,
+        streamUrl: currentRadio.streamUrl,
+        errorCode: "SINGLE_PLAY_FAILED",
+        errorMessage,
+        retryPhase: "none",
+      });
     }
   }, [currentRadio, loadRadio, isPlaying, isCrossfading, volume]);
 

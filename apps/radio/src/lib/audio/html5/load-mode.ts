@@ -114,7 +114,10 @@ export function shouldRetryWithoutCors(
   return (
     message.includes("no supported source") ||
     message.includes("not supported") ||
-    message.includes("media source")
+    message.includes("media source") ||
+    message.includes("cors") ||
+    message.includes("cross-origin") ||
+    message.includes("err_failed")
   );
 }
 

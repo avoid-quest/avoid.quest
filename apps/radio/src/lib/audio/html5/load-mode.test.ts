@@ -69,6 +69,15 @@ describe("retry eligibility and message mapping", () => {
     expect(shouldRetryWithoutCors(new Error("x"), 4)).toBe(true);
   });
 
+  test("marks cors-like failures as retryable", () => {
+    expect(
+      shouldRetryWithoutCors(
+        new Error("blocked by CORS policy: No Access-Control-Allow-Origin"),
+        null
+      )
+    ).toBe(true);
+  });
+
   test("does not retry non-format errors", () => {
     expect(shouldRetryWithoutCors(new Error("network"), 2)).toBe(false);
   });

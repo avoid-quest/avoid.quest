@@ -116,7 +116,7 @@ export class HTML5AudioPlayer {
       this.#updateState({ isPlaying: true, isLoading: false });
     } catch (error) {
       const mediaErrorCode = this.#audio.error?.code;
-      const canRetry = shouldRetryWithoutCors(error, mediaErrorCode);
+      const canRetry = this.#shouldAttemptNoCorsFallback(error, mediaErrorCode);
       const retryMode = getRetryLoadMode(initialMode, canRetry);
 
       if (retryMode) {
@@ -228,7 +228,19 @@ export class HTML5AudioPlayer {
 
     this.#audio.addEventListener("error", () => {
       const mediaError = this.#audio.error;
-      const errorMessage = mapPlaybackFailureMessage(errorFromMedia(mediaError), mediaError?.code);
+      const mediaErrorObject = errorFromMedia(mediaError);
+
+      // Let play() run a no-cors compatibility retry before surfacing terminal errors.
+      if (
+        this.#shouldAttemptNoCorsFallback(mediaErrorObject, mediaError?.code)
+      ) {
+        return;
+      }
+
+      const errorMessage = mapPlaybackFailureMessage(
+        mediaErrorObject,
+        mediaError?.code
+      );
       const errorCode = `MEDIA_ERROR_${mediaError?.code || 0}`;
 
       const error: HTML5AudioError = {
@@ -244,7 +256,7 @@ export class HTML5AudioPlayer {
         error,
       });
 
-      capturePlaybackError(errorFromMedia(mediaError), {
+      capturePlaybackError(mediaErrorObject, {
         mode: this.#telemetryMode,
         radioId: this.#radio.id,
         radioName: this.#radio.name,
@@ -267,8 +279,34 @@ export class HTML5AudioPlayer {
   }
 
   #applyLoadMode(mode: Html5LoadMode): void {
-    this.#audio.crossOrigin = mode === "cors-anonymous" ? "anonymous" : null;
+    if (mode === "cors-anonymous") {
+      this.#audio.crossOrigin = "anonymous";
+      this.#audio.setAttribute("crossorigin", "anonymous");
+    } else {
+      this.#audio.crossOrigin = null;
+      this.#audio.removeAttribute("crossorigin");
+    }
     this.#activeLoadMode = mode;
+  }
+
+  #shouldAttemptNoCorsFallback(
+    error: unknown,
+    mediaErrorCode: number | null | undefined
+  ): boolean {
+    if (this.#activeLoadMode !== "cors-anonymous") {
+      return false;
+    }
+
+    if (error instanceof DOMException && error.name === "NotAllowedError") {
+      return false;
+    }
+
+    // Some browsers classify CORS-blocked media as MEDIA_ERR_NETWORK (2).
+    if (mediaErrorCode === 2 || mediaErrorCode === 4) {
+      return true;
+    }
+
+    return shouldRetryWithoutCors(error, mediaErrorCode);
   }
 
   #setPlayFailureState(

@@ -133,6 +133,7 @@ export function PlatformForm({
                 {
                   {
                     bandcamp: "Bandcamp",
+                    radiogarden: "Radio Garden",
                     soundcloud: "SoundCloud",
                     youtube: "YouTube",
                     "device-input": "Device Input",

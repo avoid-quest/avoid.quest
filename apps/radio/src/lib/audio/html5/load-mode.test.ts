@@ -3,9 +3,9 @@ import {
   createLoadModeCache,
   getInitialLoadMode,
   getRetryLoadMode,
+  type Html5LoadMode,
   mapPlaybackFailureMessage,
   shouldRetryWithoutCors,
-  type Html5LoadMode,
 } from "./load-mode";
 
 class MemoryStorage {

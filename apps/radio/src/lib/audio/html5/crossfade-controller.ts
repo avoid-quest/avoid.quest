@@ -137,7 +137,8 @@ export class CrossfadeController {
     const outgoingConnection = outgoing
       ? this.#connections.get(outgoing.id)
       : undefined;
-    const outgoingStartGain = outgoingConnection?.gain.gain.value ?? clampedTarget;
+    const outgoingStartGain =
+      outgoingConnection?.gain.gain.value ?? clampedTarget;
     const { fadeIn, fadeOut } = createEqualPowerCurves(
       curveSteps,
       outgoingStartGain,
@@ -158,20 +159,18 @@ export class CrossfadeController {
     );
 
     // Fade out outgoing if present
-    if (outgoing) {
-      if (outgoingConnection) {
-        outgoingConnection.gain.gain.cancelScheduledValues(currentTime);
-        outgoingConnection.gain.gain.setValueAtTime(
-          outgoingStartGain,
-          currentTime
-        );
-        outgoingConnection.gain.gain.setValueCurveAtTime(
-          fadeOut,
-          currentTime,
-          durationSec
-        );
-        outgoingConnection.gain.gain.setValueAtTime(0, currentTime + durationSec);
-      }
+    if (outgoing && outgoingConnection) {
+      outgoingConnection.gain.gain.cancelScheduledValues(currentTime);
+      outgoingConnection.gain.gain.setValueAtTime(
+        outgoingStartGain,
+        currentTime
+      );
+      outgoingConnection.gain.gain.setValueCurveAtTime(
+        fadeOut,
+        currentTime,
+        durationSec
+      );
+      outgoingConnection.gain.gain.setValueAtTime(0, currentTime + durationSec);
     }
 
     // Wait for crossfade to complete

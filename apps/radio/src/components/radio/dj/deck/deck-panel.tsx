@@ -684,11 +684,7 @@ function LoadedDeckContent({
             <div className="rounded-lg border border-border/50 bg-muted/30 px-2 py-2">
               <DeckChannelStrip />
             </div>
-            <Accordion
-              className="space-y-1"
-              defaultValue={[]}
-              type="multiple"
-            >
+            <Accordion className="space-y-1" defaultValue={[]} type="multiple">
               {hasTracklist && tracks && (
                 <AccordionSection
                   title={`Tracks (${currentTrackIndex + 1}/${tracks.length})`}

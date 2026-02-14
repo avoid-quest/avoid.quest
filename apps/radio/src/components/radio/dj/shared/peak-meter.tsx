@@ -92,9 +92,7 @@ function MeterBar({
         "relative overflow-hidden border border-white/[0.06] bg-white/[0.02]",
         isVertical
           ? "min-h-0 min-w-0 flex-1"
-          : compact
-            ? "h-1 w-full"
-            : "h-1.5 w-full"
+          : `${compact ? "h-1" : "h-1.5"} w-full`
       )}
     >
       <div
@@ -149,6 +147,13 @@ type PeakMeterProps = {
   compact?: boolean;
 };
 
+function meterLayoutClass(isVertical: boolean, compact: boolean): string {
+  if (isVertical) {
+    return compact ? "h-full flex-row gap-[1px]" : "h-full flex-row gap-px";
+  }
+  return compact ? "w-full flex-col gap-px" : "w-full flex-col gap-0.5";
+}
+
 export function PeakMeter({
   left,
   right,
@@ -160,17 +165,7 @@ export function PeakMeter({
 
   return (
     <div
-      className={cn(
-        "flex",
-        isVertical
-          ? compact
-            ? "h-full flex-row gap-[1px]"
-            : "h-full flex-row gap-px"
-          : compact
-            ? "w-full flex-col gap-px"
-            : "w-full flex-col gap-0.5",
-        className
-      )}
+      className={cn("flex", meterLayoutClass(isVertical, compact), className)}
     >
       <MeterBar compact={compact} level={left} orientation={orientation} />
       <MeterBar compact={compact} level={right} orientation={orientation} />

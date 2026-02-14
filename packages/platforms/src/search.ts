@@ -1,19 +1,26 @@
 import type { BandcampSearchResult } from "./bandcamp/search.js";
+import type { RadioGardenSearchResult } from "./radiogarden/types.js";
 import type { SoundCloudSearchResult } from "./soundcloud/search.js";
 import type { YouTubeSearchResult } from "./youtube/types.js";
 
-export type SearchPlatform = "all" | "bandcamp" | "soundcloud" | "youtube";
+export type SearchPlatform =
+  | "all"
+  | "bandcamp"
+  | "radiogarden"
+  | "soundcloud"
+  | "youtube";
 
 export type SearchResultType =
   | "track"
   | "album"
   | "video"
   | "playlist"
-  | "artist";
+  | "artist"
+  | "station";
 
 export type UnifiedSearchResult = {
   id: string;
-  platform: "bandcamp" | "soundcloud" | "youtube";
+  platform: "bandcamp" | "radiogarden" | "soundcloud" | "youtube";
   type: SearchResultType;
   title: string;
   artist: string;
@@ -69,5 +76,18 @@ export function transformYouTubeResults(
     thumbnail: r.thumbnail,
     duration: r.duration,
     url: `https://youtube.com/watch?v=${r.videoId}`,
+  }));
+}
+
+export function transformRadioGardenResults(
+  results: RadioGardenSearchResult[]
+): UnifiedSearchResult[] {
+  return results.map((r) => ({
+    id: `rg-${r.channelId}`,
+    platform: "radiogarden" as const,
+    type: "station" as const,
+    title: r.title,
+    artist: `${r.placeTitle}, ${r.countryTitle}`,
+    url: r.url,
   }));
 }

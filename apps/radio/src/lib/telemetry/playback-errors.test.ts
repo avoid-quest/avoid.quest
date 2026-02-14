@@ -26,14 +26,14 @@ describe("playback telemetry helpers", () => {
   });
 
   test("dedupe store suppresses repeated events within ttl", () => {
-    let now = 1_000;
+    let now = 1000;
     const dedupe = createDedupeStore(500, () => now);
     const key = "single|MEDIA_ERROR_4|https://example|unsupported";
 
     expect(dedupe.hasSeen(key)).toBe(false);
     expect(dedupe.hasSeen(key)).toBe(true);
 
-    now = 1_700;
+    now = 1700;
     expect(dedupe.hasSeen(key)).toBe(false);
   });
 });

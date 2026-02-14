@@ -52,6 +52,15 @@ const staticAudioMetadataSchema = z
   })
   .passthrough();
 
+const radioGardenMetadataSchema = z
+  .object({
+    platform: z.literal("radiogarden"),
+    itemType: z.literal("channel"),
+    url: z.string(),
+    channelId: z.string(),
+  })
+  .passthrough();
+
 const fileMetadataSchema = z
   .object({
     platform: z.literal("local-file"),
@@ -63,6 +72,7 @@ const fileMetadataSchema = z
 export const platformMetadataSchema = z
   .discriminatedUnion("platform", [
     bandcampMetadataSchema,
+    radioGardenMetadataSchema,
     soundcloudMetadataSchema,
     youtubeMetadataSchema,
     deviceInputMetadataSchema,

@@ -3,6 +3,9 @@ import type {
   BandcampItemResult,
   BandcampMetadata,
   BandcampTrackInfo,
+  RadioGardenItemError,
+  RadioGardenItemResult,
+  RadioGardenMetadata,
   SoundCloudItemError,
   SoundCloudItemResult,
   SoundCloudMetadata,
@@ -21,6 +24,11 @@ export type {
   BandcampItemType,
   BandcampMetadata,
   BandcampTrackInfo,
+  RadioGardenItemError,
+  RadioGardenItemResponse,
+  RadioGardenItemResult,
+  RadioGardenMetadata,
+  RadioGardenSearchResult,
   SoundCloudItemError,
   SoundCloudItemResponse,
   SoundCloudItemResult,
@@ -116,6 +124,12 @@ export function isFileMetadata(
   return metadata?.platform === "local-file";
 }
 
+export function isRadioGardenMetadata(
+  metadata: PlatformMetadata | undefined | null
+): metadata is RadioGardenMetadata {
+  return metadata?.platform === "radiogarden";
+}
+
 export function isYouTubeMetadata(
   metadata: PlatformMetadata | undefined | null
 ): metadata is YouTubeMetadata {
@@ -128,6 +142,7 @@ export type { FileAudioMetadata } from "@/lib/audio/file-metadata";
 // Unified platform types (app-level, includes device-input/static-audio/local-file)
 export type Platform =
   | "bandcamp"
+  | "radiogarden"
   | "soundcloud"
   | "youtube"
   | "device-input"
@@ -136,6 +151,7 @@ export type Platform =
   | "local-file"; // deprecated, use "static-audio"
 export type PlatformMetadata =
   | BandcampMetadata
+  | RadioGardenMetadata
   | SoundCloudMetadata
   | YouTubeMetadata
   | DeviceInputMetadata
@@ -159,11 +175,13 @@ export type StaticAudioItemResponse =
   | StaticAudioItemError;
 export type PlatformItemResult =
   | BandcampItemResult
+  | RadioGardenItemResult
   | SoundCloudItemResult
   | YouTubeItemResult
   | StaticAudioItemResult;
 export type PlatformItemError =
   | BandcampItemError
+  | RadioGardenItemError
   | SoundCloudItemError
   | YouTubeItemError
   | StaticAudioItemError;

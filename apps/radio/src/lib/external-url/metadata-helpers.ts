@@ -20,7 +20,8 @@ export function getCurrentTrackIndex(
 ): number {
   if (
     metadata.platform === "device-input" ||
-    metadata.platform === "local-file"
+    metadata.platform === "local-file" ||
+    metadata.platform === "radiogarden"
   ) {
     return 0;
   }

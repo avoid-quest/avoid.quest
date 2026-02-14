@@ -1,9 +1,11 @@
+import { Badge } from "@avoid.quest/ui/components/badge";
 import { PlayPauseButton } from "@avoid.quest/ui/components/play-pause-button";
 import { Slider } from "@avoid.quest/ui/components/slider";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import { Volume2Icon, VolumeXIcon } from "lucide-react";
 import { useState } from "react";
 import type { MultipleAudioState, Radio } from "@/lib/audio";
+import { isSessionRadio } from "@/lib/hooks/use-session-radios";
 import { RadioItemActions } from "../radio-item-actions";
 import { RadioLogo } from "../radio-logo";
 
@@ -15,6 +17,7 @@ type MultipleRadioCardProps = {
   onEdit?: (radio: Radio) => void;
   onDelete?: (radio: Radio) => void;
   onToggle?: (radio: Radio, enabled: boolean) => void;
+  onSave?: (radio: Radio) => void;
 };
 
 export function MultipleRadioCard({
@@ -25,6 +28,7 @@ export function MultipleRadioCard({
   onEdit,
   onDelete,
   onToggle,
+  onSave,
 }: MultipleRadioCardProps) {
   const [isMuted, setIsMuted] = useState(false);
   const [unmutedVolume, setUnmutedVolume] = useState(1);
@@ -55,24 +59,49 @@ export function MultipleRadioCard({
     }
   };
 
+  const isSession = isSessionRadio(radio);
+
   return (
     <div
       className={cn(
         "flex flex-col rounded-lg border border-border/50 bg-card/50 transition-colors",
-        isPlaying && "border-primary/20"
+        isPlaying && "border-primary/20",
+        isSession && "border-l-2 border-l-[#00d084]/40"
       )}
     >
       {/* Header */}
       <div className="flex items-center gap-2.5 px-3 py-2">
         <RadioLogo logoUrl={radio.logoUrl} name={radio.name} size="sm" />
         <div className="min-w-0 flex-1">
-          <p className="truncate font-semibold text-sm leading-tight">
-            {radio.name}
-          </p>
+          <div className="flex items-center gap-1.5">
+            <p className="truncate font-semibold text-sm leading-tight">
+              {radio.name}
+            </p>
+            {isSession && (
+              <Badge
+                className="h-4 shrink-0 border-[#00d084]/30 bg-[#00d084]/10 px-1 text-[#00d084] text-[10px]"
+                variant="outline"
+              >
+                Unsaved
+              </Badge>
+            )}
+          </div>
+          {radio.placeTitle ? (
+            <p className="truncate text-muted-foreground/60 text-xs leading-snug">
+              {radio.placeTitle}, {radio.countryTitle}
+            </p>
+          ) : (
+            radio.description && (
+              <p className="truncate text-muted-foreground/60 text-xs leading-snug">
+                {radio.description}
+              </p>
+            )
+          )}
         </div>
         <RadioItemActions
           onDelete={onDelete}
           onEdit={onEdit}
+          onSave={onSave}
           onToggle={onToggle}
           radio={radio}
         />

@@ -46,7 +46,10 @@ import {
   isAudioInputItem,
   isLocalFileItem,
   isPlatformItem,
+  isRadioGardenItem,
 } from "./dj-radio-list";
+
+// Note: isAudioInputItem, isLocalFileItem, isRadioGardenItem used by handlePlatformItemDrag
 
 type DjPlayerProps = {
   radios?: Radio[];
@@ -63,16 +66,35 @@ function handlePlatformItemDrag({
   deckId,
   setPendingItem,
 }: HandlePlatformItemDragParams): boolean {
+  // Handle all known platform items (audio input, static audio, external, radio garden)
+  if (isAudioInputItem(radio)) {
+    if (deckId === "deck-a" || deckId === "deck-b") {
+      setPendingItem({ deckId, platform: "device-input" });
+    }
+    return true;
+  }
+
+  if (isLocalFileItem(radio)) {
+    if (deckId === "deck-a" || deckId === "deck-b") {
+      setPendingItem({ deckId, platform: "local-file" });
+    }
+    return true;
+  }
+
+  if (isRadioGardenItem(radio)) {
+    if (deckId === "deck-a" || deckId === "deck-b") {
+      setPendingItem({ deckId, platform: "external" });
+    }
+    return true;
+  }
+
   if (!isPlatformItem(radio)) {
     return false;
   }
 
   const platform = getPlatformFromItem(radio);
   if (platform && (deckId === "deck-a" || deckId === "deck-b")) {
-    setPendingItem({
-      deckId: deckId as "deck-a" | "deck-b",
-      platform,
-    });
+    setPendingItem({ deckId, platform });
   }
   return true;
 }
@@ -199,26 +221,6 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
 
     const radio = active.data.current?.radio as Radio;
     const deckId = over.id as string;
-
-    if (isAudioInputItem(radio)) {
-      if (deckId === "deck-a" || deckId === "deck-b") {
-        setPendingPlatformItem({
-          deckId: deckId as "deck-a" | "deck-b",
-          platform: "device-input",
-        });
-      }
-      return;
-    }
-
-    if (isLocalFileItem(radio)) {
-      if (deckId === "deck-a" || deckId === "deck-b") {
-        setPendingPlatformItem({
-          deckId: deckId as "deck-a" | "deck-b",
-          platform: "local-file",
-        });
-      }
-      return;
-    }
 
     const handled = handlePlatformItemDrag({
       radio,

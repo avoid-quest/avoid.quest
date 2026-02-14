@@ -643,7 +643,7 @@ function DeckPanelInner({
       ref={setNodeRef}
     >
       <DeckHeader deckId={deckId} onReset={reset} radio={radio} />
-      <div className="flex h-full min-h-0 flex-col px-1.5 pb-1.5 sm:px-2 sm:pb-2">
+      <div className="flex h-full min-h-0 min-w-0 flex-col overflow-x-hidden px-1.5 pb-1.5 sm:px-2 sm:pb-2">
         {content}
       </div>
     </div>
@@ -678,8 +678,8 @@ function LoadedDeckContent({
   if (isMobile) {
     return (
       <div className="flex h-full min-h-0 flex-col">
-        <ScrollArea className="min-h-0 flex-1">
-          <div className="flex flex-col gap-1.5 pr-2 sm:gap-2 sm:pr-3">
+        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+          <div className="flex w-full min-w-0 max-w-full flex-col gap-1.5 pr-0 sm:gap-2 sm:pr-3">
             <DeckTransport />
             <div className="rounded-lg border border-border/50 bg-muted/30 px-2 py-2">
               <DeckChannelStrip />
@@ -708,7 +708,7 @@ function LoadedDeckContent({
               </AccordionSection>
             </Accordion>
           </div>
-        </ScrollArea>
+        </div>
         <DeckFooter
           isFileSource={isFileSource}
           onChangeUrl={onChangeUrl}
@@ -885,9 +885,11 @@ function DeviceInputContent({
             className="mt-3 flex min-h-0 flex-1 flex-col gap-2 overflow-hidden"
             value="source"
           >
-            <ScrollArea className="min-h-0 flex-1">
-              <div className="flex flex-col gap-3 pr-3">{sharedControls}</div>
-            </ScrollArea>
+            <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+              <div className="flex w-full min-w-0 max-w-full flex-col gap-3 pr-0 sm:pr-3">
+                {sharedControls}
+              </div>
+            </div>
           </TabsContent>
           <TabsContent
             className="mt-3 flex min-h-0 flex-1 flex-col overflow-hidden"

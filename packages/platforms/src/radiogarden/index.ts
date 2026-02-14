@@ -1,6 +1,7 @@
 export { extractChannelId, isRadioGardenUrl } from "./detect.js";
 export {
   getRadioGardenItem,
+  getRadioGardenSuggestions,
   resolveRadioGardenStream,
   searchRadioGarden,
 } from "./search.js";

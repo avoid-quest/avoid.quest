@@ -44,6 +44,7 @@ export type {
 export {
   extractChannelId,
   getRadioGardenItem,
+  getRadioGardenSuggestions,
   isRadioGardenUrl,
   resolveRadioGardenStream,
   searchRadioGarden,

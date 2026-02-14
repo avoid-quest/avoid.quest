@@ -143,8 +143,8 @@ export function DjConsoleMobile({
       </div>
 
       {/* Deck content */}
-      <div className="min-h-0 flex-1 overflow-hidden">
-        <div className={cn("h-full")}>
+      <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
+        <div className={cn("h-full min-w-0")}>
           {mobileTab === "left" ? (
             <DeckPanel deckId="deck-a" key="deck-a" radios={radios} />
           ) : (

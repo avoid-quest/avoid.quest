@@ -1,5 +1,6 @@
 // Import from subpath to avoid pulling in incompatible deps (cheerio etc.)
 import {
+  getRadioGardenSuggestions,
   type RadioGardenSearchResult,
   resolveRadioGardenStream as resolveStream,
   searchRadioGarden,
@@ -63,6 +64,28 @@ export const radioGardenResolveStream = createServerFn({ method: "POST" })
       Sentry.captureException(error);
       const errorMessage =
         error instanceof Error ? error.message : "Failed to resolve stream";
+      return { success: false, error: errorMessage };
+    }
+  });
+
+// ============================================
+// Radio Garden Suggestions (Popular Stations)
+// ============================================
+
+export type RadioGardenSuggestionsResponse =
+  | { success: true; results: RadioGardenSearchResult[] }
+  | { success: false; error: string };
+
+export const radioGardenSuggestions = createServerFn({ method: "GET" })
+  .middleware([rateLimitMiddleware("radio-garden-suggestions")])
+  .handler(async (): Promise<RadioGardenSuggestionsResponse> => {
+    try {
+      const results = await getRadioGardenSuggestions();
+      return { success: true, results };
+    } catch (error) {
+      Sentry.captureException(error);
+      const errorMessage =
+        error instanceof Error ? error.message : "Failed to fetch suggestions";
       return { success: false, error: errorMessage };
     }
   });

@@ -124,7 +124,7 @@ export function EffectChain({
   };
 
   return (
-    <div className="space-y-2">
+    <div className="w-full min-w-0 space-y-2">
       {title?.trim() !== "" && (
         <div className="font-medium text-muted-foreground text-sm">{title}</div>
       )}

@@ -137,6 +137,76 @@ export async function resolveRadioGardenStream(
   throw new Error(`Failed to resolve Radio Garden stream: ${response.status}`);
 }
 
+type RadioGardenSuggestionsResponse = {
+  apiVersion: number;
+  version: string;
+  data: {
+    type: string;
+    title: string;
+    url: string;
+    content: Array<{
+      type: string;
+      title: string;
+      subtitle?: string;
+      itemsType: string;
+      items: RadioGardenApiPage[];
+    }>;
+  };
+};
+
+export async function getRadioGardenSuggestions(): Promise<
+  RadioGardenSearchResult[]
+> {
+  let response: Response;
+  try {
+    response = await fetch(`${RADIO_GARDEN_API}/ara/content/search?s=1`, {
+      headers: { "User-Agent": BROWSER_USER_AGENT },
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error("Radio Garden suggestions timed out — try again");
+    }
+    throw error;
+  }
+
+  if (!response.ok) {
+    throw new Error(`Radio Garden suggestions failed: ${response.status}`);
+  }
+
+  let data: RadioGardenSuggestionsResponse;
+  try {
+    data = (await response.json()) as RadioGardenSuggestionsResponse;
+  } catch {
+    throw new Error("Radio Garden returned an invalid response");
+  }
+
+  const results: RadioGardenSearchResult[] = [];
+
+  for (const section of data.data.content) {
+    if (section.itemsType !== "channel") {
+      continue;
+    }
+    for (const item of section.items) {
+      const channelId = item.url.split("/").pop() ?? "";
+      if (!channelId) {
+        continue;
+      }
+      results.push({
+        channelId,
+        title: item.title,
+        subtitle: item.subtitle,
+        url: `https://radio.garden${item.url}`,
+        website: item.website || undefined,
+        placeTitle: item.place.title,
+        countryTitle: item.country.title,
+      });
+    }
+  }
+
+  return results.slice(0, 16);
+}
+
 export async function getRadioGardenItem(
   channelId: string
 ): Promise<RadioGardenItemResponse> {

@@ -5,7 +5,7 @@ import { useState } from "react";
 type RadioLogoProps = {
   logoUrl?: string;
   name: string;
-  size?: "sm" | "md" | "lg" | "xl" | "2xl";
+  size?: "sm" | "md" | "lg" | "xl" | "2xl" | "3xl" | "4xl";
   className?: string;
   fallbackIcon?: React.ReactNode;
 };
@@ -16,6 +16,8 @@ const sizeMap = {
   lg: "size-12",
   xl: "size-20",
   "2xl": "size-24",
+  "3xl": "size-28",
+  "4xl": "size-52",
 };
 
 const sizePixels = {
@@ -24,6 +26,18 @@ const sizePixels = {
   lg: 48,
   xl: 80,
   "2xl": 96,
+  "3xl": 112,
+  "4xl": 208,
+};
+
+const iconSizeMap = {
+  sm: "size-4",
+  md: "size-4",
+  lg: "size-5",
+  xl: "size-6",
+  "2xl": "size-7",
+  "3xl": "size-8",
+  "4xl": "size-12",
 };
 
 export function RadioLogo({
@@ -55,7 +69,9 @@ export function RadioLogo({
         )}
       >
         {fallbackIcon || (
-          <AudioLinesIcon className="size-4 text-muted-foreground" />
+          <AudioLinesIcon
+            className={cn(iconSizeMap[size], "text-muted-foreground")}
+          />
         )}
       </div>
     );
@@ -101,7 +117,12 @@ export function RadioLogo({
             sizeMap[size]
           )}
         >
-          <AudioLinesIcon className="size-4 animate-pulse text-muted-foreground" />
+          <AudioLinesIcon
+            className={cn(
+              iconSizeMap[size],
+              "animate-pulse text-muted-foreground"
+            )}
+          />
         </div>
       )}
     </div>

@@ -9,6 +9,7 @@ import { cn } from "@avoid.quest/ui/lib/utils";
 import { ChevronDownIcon, ChevronUpIcon, SearchIcon } from "lucide-react";
 import { useState } from "react";
 import type { Radio } from "@/lib/audio";
+import { useSessionRadios } from "@/lib/hooks/use-session-radios";
 import { PLATFORM_ITEMS } from "../dj-radio-list";
 import { BrowserGrid } from "./browser-grid";
 
@@ -21,6 +22,12 @@ export function BrowserPanel({ radios, className }: BrowserPanelProps) {
   const [isOpen, setIsOpen] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState("radios");
+  const sessionRadios = useSessionRadios((s) => s.radios);
+
+  const allRadios = [
+    ...radios,
+    ...sessionRadios.filter((sr) => !radios.some((r) => r.id === sr.id)),
+  ];
 
   const filterBySearchQuery = (items: Radio[]) =>
     items.filter((item) => {
@@ -34,7 +41,7 @@ export function BrowserPanel({ radios, className }: BrowserPanelProps) {
       );
     });
 
-  const filteredRadios = filterBySearchQuery(radios);
+  const filteredRadios = filterBySearchQuery(allRadios);
   const filteredPlatformItems = filterBySearchQuery(PLATFORM_ITEMS);
 
   return (
@@ -49,7 +56,7 @@ export function BrowserPanel({ radios, className }: BrowserPanelProps) {
           Browser
         </span>
         <span className="text-[10px] text-muted-foreground/50">
-          {radios.length} stations + {PLATFORM_ITEMS.length} sources
+          {allRadios.length} stations + {PLATFORM_ITEMS.length} sources
         </span>
         <div className="flex-1" />
         {isOpen ? (

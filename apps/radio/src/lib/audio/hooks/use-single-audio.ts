@@ -244,7 +244,10 @@ export function useSingleAudio(transitionDuration?: number) {
         // Start incoming silent, then transition by graph gain or element volume.
         await incomingPlayer.play(0);
 
-        const outgoingViaGraph = attachPlayerToGraph(outgoingPlayer, targetVolume);
+        const outgoingViaGraph = attachPlayerToGraph(
+          outgoingPlayer,
+          targetVolume
+        );
         const incomingViaGraph = attachPlayerToGraph(incomingPlayer, 0);
 
         setCurrentRadio(newRadio);

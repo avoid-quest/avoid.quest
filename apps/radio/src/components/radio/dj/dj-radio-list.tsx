@@ -1,3 +1,4 @@
+import { Badge } from "@avoid.quest/ui/components/badge";
 import { Button } from "@avoid.quest/ui/components/button";
 import { Input } from "@avoid.quest/ui/components/input";
 import {
@@ -15,6 +16,7 @@ import {
   GlobeIcon,
   GripVerticalIcon,
   MicIcon,
+  RadioTowerIcon,
   SearchIcon,
   Volume2Icon,
 } from "lucide-react";
@@ -22,6 +24,10 @@ import { useState } from "react";
 import type { Radio } from "@/lib/audio";
 import { setDeckARadio, setDeckBRadio } from "@/lib/dj-actions";
 import { setPendingPlatformItem } from "@/lib/hooks/use-dj-state";
+import {
+  isSessionRadio,
+  useSessionRadios,
+} from "@/lib/hooks/use-session-radios";
 import type { Platform } from "@/lib/platform-types";
 import { RadioLogo } from "../radio-logo";
 
@@ -34,10 +40,12 @@ export const STATIC_AUDIO_PLATFORM_ID = -4;
 /** @deprecated Use STATIC_AUDIO_PLATFORM_ID */
 export const LOCAL_FILE_PLATFORM_ID = STATIC_AUDIO_PLATFORM_ID;
 export const EXTERNAL_PLATFORM_ID = -6;
+export const RADIO_GARDEN_PLATFORM_ID = -7;
 
 const AUDIO_INPUT_COLOR = "#10b981";
 const STATIC_AUDIO_COLOR = "#8b5cf6";
 const EXTERNAL_COLOR = "#3b82f6"; // Blue for unified external
+const RADIO_GARDEN_COLOR = "#00d084";
 
 // Platform-specific placeholder items
 export const PLATFORM_ITEMS: Radio[] = [
@@ -78,6 +86,19 @@ export const PLATFORM_ITEMS: Radio[] = [
     },
   },
   {
+    id: RADIO_GARDEN_PLATFORM_ID,
+    name: "Radio Garden",
+    streamUrl: "",
+    description: "Search worldwide radio stations",
+    enabled: true,
+    platformMetadata: {
+      platform: "radiogarden",
+      itemType: "channel",
+      url: "",
+      channelId: "",
+    },
+  },
+  {
     id: EXTERNAL_PLATFORM_ID,
     name: "External",
     streamUrl: "",
@@ -95,8 +116,13 @@ export function isPlatformItem(radio: Radio): boolean {
   return (
     radio.id === AUDIO_INPUT_PLATFORM_ID ||
     radio.id === STATIC_AUDIO_PLATFORM_ID ||
-    radio.id === EXTERNAL_PLATFORM_ID
+    radio.id === EXTERNAL_PLATFORM_ID ||
+    radio.id === RADIO_GARDEN_PLATFORM_ID
   );
+}
+
+export function isRadioGardenItem(radio: Radio): boolean {
+  return radio.id === RADIO_GARDEN_PLATFORM_ID;
 }
 
 export function isAudioInputItem(radio: Radio): boolean {
@@ -123,6 +149,9 @@ export function getPlatformFromItem(radio: Radio): Platform | null {
   if (radio.id === STATIC_AUDIO_PLATFORM_ID) {
     return "static-audio";
   }
+  if (radio.id === RADIO_GARDEN_PLATFORM_ID) {
+    return "radiogarden";
+  }
   if (radio.id === EXTERNAL_PLATFORM_ID) {
     return "external";
   }
@@ -139,6 +168,8 @@ function getPlatformColor(platform: Platform | null): string {
       return AUDIO_INPUT_COLOR;
     case "youtube":
       return "#ff0000";
+    case "radiogarden":
+      return RADIO_GARDEN_COLOR;
     case "static-audio":
     case "local-file":
       return STATIC_AUDIO_COLOR;
@@ -154,6 +185,8 @@ export function RadioItemContent({ radio }: { radio: Radio }) {
   const isAudioInput = isAudioInputItem(radio);
   const isStaticAudio = isStaticAudioItem(radio);
   const isExternal = isExternalItem(radio);
+  const isRG = isRadioGardenItem(radio);
+  const isSession = isSessionRadio(radio);
   const platform = getPlatformFromItem(radio);
   const platformColor = getPlatformColor(platform);
 
@@ -166,11 +199,20 @@ export function RadioItemContent({ radio }: { radio: Radio }) {
         <FileAudioIcon className="size-5" style={{ color: platformColor }} />
       );
     }
+    if (isRG) {
+      return (
+        <RadioTowerIcon className="size-5" style={{ color: platformColor }} />
+      );
+    }
     if (isExternal) {
       return <GlobeIcon className="size-5" style={{ color: platformColor }} />;
     }
     return <GlobeIcon className="size-5" style={{ color: platformColor }} />;
   };
+
+  const subtitle = radio.placeTitle
+    ? `${radio.placeTitle}, ${radio.countryTitle}`
+    : radio.description;
 
   return (
     <div className="flex min-w-0 flex-1 items-center gap-3">
@@ -196,11 +238,19 @@ export function RadioItemContent({ radio }: { radio: Radio }) {
         )}
       </div>
       <div className="min-w-0 flex-1">
-        <h3 className="truncate font-medium text-sm">{radio.name}</h3>
-        {radio.description?.trim() !== "" && (
-          <p className="truncate text-muted-foreground text-xs">
-            {radio.description}
-          </p>
+        <div className="flex items-center gap-1.5">
+          <h3 className="truncate font-medium text-sm">{radio.name}</h3>
+          {isSession && (
+            <Badge
+              className="h-4 shrink-0 border-[#00d084]/30 bg-[#00d084]/10 px-1 text-[#00d084] text-[10px]"
+              variant="outline"
+            >
+              Unsaved
+            </Badge>
+          )}
+        </div>
+        {subtitle?.trim() !== "" && (
+          <p className="truncate text-muted-foreground text-xs">{subtitle}</p>
         )}
       </div>
     </div>
@@ -303,6 +353,12 @@ export function DjRadioList({ radios }: DjRadioListProps) {
   const isMobile = useIsMobile();
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState("radios");
+  const sessionRadios = useSessionRadios((s) => s.radios);
+
+  const allRadios = [
+    ...radios,
+    ...sessionRadios.filter((sr) => !radios.some((r) => r.id === sr.id)),
+  ];
 
   const filterBySearchQuery = (items: Radio[]) =>
     items.filter((item) => {
@@ -316,7 +372,7 @@ export function DjRadioList({ radios }: DjRadioListProps) {
       );
     });
 
-  const filteredRadios = filterBySearchQuery(radios);
+  const filteredRadios = filterBySearchQuery(allRadios);
   const filteredPlatformItems = filterBySearchQuery(PLATFORM_ITEMS);
 
   const renderRadioList = (itemsToRender: Radio[]) => {

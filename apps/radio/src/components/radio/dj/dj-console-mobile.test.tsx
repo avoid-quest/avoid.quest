@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, test, mock } from "bun:test";
+import { beforeAll, describe, expect, mock, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 
 const renderedDeckIds: string[] = [];
@@ -19,7 +19,7 @@ mock.module("@/components/settings/settings-button", () => ({
   SettingsButton: () => <button type="button">settings</button>,
 }));
 
-let DjConsoleMobile: (typeof import("./dj-console-mobile"))["DjConsoleMobile"];
+let DjConsoleMobile: typeof import("./dj-console-mobile")["DjConsoleMobile"];
 
 beforeAll(async () => {
   ({ DjConsoleMobile } = await import("./dj-console-mobile"));

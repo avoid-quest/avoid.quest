@@ -53,7 +53,10 @@ function readRecord(storage: StorageLike | null): LoadModeRecord {
   }
 }
 
-function writeRecord(storage: StorageLike | null, record: LoadModeRecord): void {
+function writeRecord(
+  storage: StorageLike | null,
+  record: LoadModeRecord
+): void {
   if (!storage) {
     return;
   }

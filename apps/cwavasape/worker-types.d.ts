@@ -1,5 +1,10 @@
 // Augment DOM CacheStorage with Cloudflare Workers' `default` cache property
 // See: https://developers.cloudflare.com/workers/runtime-apis/cache/
-type CacheStorage = {
-  readonly default: Cache;
-};
+declare global {
+  // biome-ignore lint/style/useConsistentTypeDefinitions: interface required for global augmentation
+  interface CacheStorage {
+    readonly default: Cache;
+  }
+}
+
+export {};

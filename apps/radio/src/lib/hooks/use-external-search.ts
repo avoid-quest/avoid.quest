@@ -1,11 +1,15 @@
 import {
   type SearchPlatform,
   transformBandcampResults,
+  transformRadioGardenResults,
   transformSoundCloudResults,
   transformYouTubeResults,
   type UnifiedSearchResult,
 } from "@avoid.quest/platforms";
+// biome-ignore lint/performance/noNamespaceImport: namespace import required for Sentry
+import * as Sentry from "@sentry/tanstackstart-react";
 import { useMutation } from "@tanstack/react-query";
+import { radioGardenSearch } from "@/utils/radio-garden.functions";
 import { bandcampSearch, soundcloudSearch } from "@/utils/search.functions";
 import { youtubeSearch } from "@/utils/youtube.functions";
 
@@ -41,6 +45,16 @@ async function searchSoundCloudPlatform(
   return transformSoundCloudResults(response.results);
 }
 
+async function searchRadioGardenPlatform(
+  query: string
+): Promise<UnifiedSearchResult[]> {
+  const response = await radioGardenSearch({ data: { query } });
+  if (!response.success) {
+    throw new Error(response.error);
+  }
+  return transformRadioGardenResults(response.results);
+}
+
 async function searchYouTubePlatform(
   query: string,
   filter: "songs" | "videos" = "songs"
@@ -56,18 +70,41 @@ async function searchAllPlatforms(
   query: string
 ): Promise<UnifiedSearchResult[]> {
   // Search all platforms in parallel
-  const [bandcampResults, soundcloudResults, youtubeResults] =
-    await Promise.allSettled([
-      searchBandcampPlatform(query, "t"), // Tracks only for "all" search
-      searchSoundCloudPlatform(query),
-      searchYouTubePlatform(query, "songs"),
-    ]);
+  const [
+    bandcampResults,
+    radioGardenResults,
+    soundcloudResults,
+    youtubeResults,
+  ] = await Promise.allSettled([
+    searchBandcampPlatform(query, "t"), // Tracks only for "all" search
+    searchRadioGardenPlatform(query),
+    searchSoundCloudPlatform(query),
+    searchYouTubePlatform(query, "songs"),
+  ]);
+
+  const settled = [
+    { name: "bandcamp", result: bandcampResults },
+    { name: "radiogarden", result: radioGardenResults },
+    { name: "soundcloud", result: soundcloudResults },
+    { name: "youtube", result: youtubeResults },
+  ] as const;
+
+  for (const { name, result } of settled) {
+    if (result.status === "rejected") {
+      Sentry.captureException(result.reason, {
+        tags: { searchPlatform: name },
+      });
+    }
+  }
 
   const results: UnifiedSearchResult[] = [];
 
   // Collect successful results
   if (bandcampResults.status === "fulfilled") {
     results.push(...bandcampResults.value);
+  }
+  if (radioGardenResults.status === "fulfilled") {
+    results.push(...radioGardenResults.value);
   }
   if (soundcloudResults.status === "fulfilled") {
     results.push(...soundcloudResults.value);
@@ -81,6 +118,7 @@ async function searchAllPlatforms(
   const interleaved: UnifiedSearchResult[] = [];
   const byPlatform = {
     bandcamp: results.filter((r) => r.platform === "bandcamp"),
+    radiogarden: results.filter((r) => r.platform === "radiogarden"),
     soundcloud: results.filter((r) => r.platform === "soundcloud"),
     youtube: results.filter((r) => r.platform === "youtube"),
   };
@@ -89,6 +127,9 @@ async function searchAllPlatforms(
   for (let i = 0; i < maxPerRound; i++) {
     if (byPlatform.bandcamp[i]) {
       interleaved.push(byPlatform.bandcamp[i]);
+    }
+    if (byPlatform.radiogarden[i]) {
+      interleaved.push(byPlatform.radiogarden[i]);
     }
     if (byPlatform.soundcloud[i]) {
       interleaved.push(byPlatform.soundcloud[i]);
@@ -127,6 +168,8 @@ export function useExternalSearch() {
           return await searchAllPlatforms(query);
         case "bandcamp":
           return await searchBandcampPlatform(query, bandcampFilter);
+        case "radiogarden":
+          return await searchRadioGardenPlatform(query);
         case "soundcloud":
           return await searchSoundCloudPlatform(query);
         case "youtube":

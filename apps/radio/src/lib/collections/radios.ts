@@ -63,6 +63,8 @@ const radioSchema = z.object({
   logoUrl: z.string().optional(),
   description: z.string().optional(),
   websiteUrl: z.string().optional(),
+  placeTitle: z.string().optional(),
+  countryTitle: z.string().optional(),
   order: z.number().default(0),
   enabled: z.boolean().default(true),
   platformMetadata: platformMetadataSchema,

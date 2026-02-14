@@ -24,8 +24,8 @@
 		"@convex-dev/migrations": "^0.3.1",
 		"chrono-node": "^2.9.0",
 		"convex": "catalog:",
-		"convex-helpers": "^0.1.111",
-		"grammy": "^1.39.3",
+		"convex-helpers": "^0.1.112",
+		"grammy": "^1.40.0",
 		"grammy-inline-menu": "^9.2.0",
 		"zod": "catalog:"
 	}

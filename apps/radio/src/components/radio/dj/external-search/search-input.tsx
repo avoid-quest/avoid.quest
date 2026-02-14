@@ -29,6 +29,7 @@ type SearchInputProps = {
 const PLATFORM_HINTS: Record<SearchPlatform, string> = {
   all: "Tracks from all platforms",
   bandcamp: "Tracks & albums from independent artists",
+  radiogarden: "40,000+ radio stations worldwide",
   soundcloud: "Tracks, mixes & DJ sets",
   youtube: "Music videos & audio",
 };
@@ -95,6 +96,15 @@ export function SearchInput({
                     style={{ backgroundColor: "#629aa0" }}
                   />
                   Bandcamp
+                </span>
+              </SelectItem>
+              <SelectItem value="radiogarden">
+                <span className="flex items-center gap-1.5">
+                  <span
+                    className="size-2 rounded-full"
+                    style={{ backgroundColor: "#00d084" }}
+                  />
+                  Radio Garden
                 </span>
               </SelectItem>
               <SelectItem value="soundcloud">

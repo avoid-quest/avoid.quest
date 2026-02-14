@@ -10,6 +10,8 @@ export type Radio = {
   logoUrl?: string;
   description?: string;
   websiteUrl?: string;
+  placeTitle?: string;
+  countryTitle?: string;
   order?: number;
   enabled?: boolean;
   platformMetadata?: PlatformMetadata;

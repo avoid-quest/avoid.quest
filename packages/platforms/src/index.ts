@@ -16,7 +16,6 @@ export {
   getProxiedBandcampUrl,
   searchBandcamp,
 } from "./bandcamp/index.js";
-
 // Unified detection
 export {
   BANDCAMP_HTML_MARKERS,
@@ -34,6 +33,22 @@ export {
   normalizeBandcampUrl,
   normalizeSoundCloudUrl,
 } from "./detect.js";
+// Radio Garden
+export type {
+  RadioGardenItemError,
+  RadioGardenItemResponse,
+  RadioGardenItemResult,
+  RadioGardenMetadata,
+  RadioGardenSearchResult,
+} from "./radiogarden/index.js";
+export {
+  extractChannelId,
+  getRadioGardenItem,
+  getRadioGardenSuggestions,
+  isRadioGardenUrl,
+  resolveRadioGardenStream,
+  searchRadioGarden,
+} from "./radiogarden/index.js";
 
 // Unified search
 export type {
@@ -44,6 +59,7 @@ export type {
 } from "./search.js";
 export {
   transformBandcampResults,
+  transformRadioGardenResults,
   transformSoundCloudResults,
   transformYouTubeResults,
 } from "./search.js";

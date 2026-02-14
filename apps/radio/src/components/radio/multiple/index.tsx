@@ -10,8 +10,17 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { type Radio, useMultipleAudio } from "@/lib/audio";
-import { deleteRadio } from "@/lib/hooks/use-radios";
+import { useRadioGardenResolve } from "@/lib/hooks/use-radio-garden-resolve";
+import {
+  addRadio as addRadioToCollection,
+  deleteRadio,
+} from "@/lib/hooks/use-radios";
+import {
+  isSessionRadio,
+  useSessionRadios,
+} from "@/lib/hooks/use-session-radios";
 import { RadioDialog } from "../../settings/radio-dialog";
+import { RadioSearchBar } from "../radio-search-bar";
 import { MultipleRadioCard } from "./multiple-radio-card";
 
 export function MultipleRadios({ radios }: { radios?: Radio[] }) {
@@ -28,6 +37,17 @@ export function MultipleRadios({ radios }: { radios?: Radio[] }) {
     playAll,
     pauseAll,
   } = useMultipleAudio();
+
+  const sessionRadios = useSessionRadios((s) => s.radios);
+  const removeSessionRadio = useSessionRadios((s) => s.removeSessionRadio);
+  const handleResolved = useCallback(
+    (radio: Radio) => {
+      addRadio(radio, true);
+    },
+    [addRadio]
+  );
+  const { resolve, saveToCollection, isResolving } =
+    useRadioGardenResolve(handleResolved);
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogMode, setDialogMode] = useState<"create" | "edit">("create");
@@ -96,7 +116,28 @@ export function MultipleRadios({ radios }: { radios?: Radio[] }) {
   };
 
   const handleDeleteRadio = (radio: Radio) => {
+    if (isSessionRadio(radio)) {
+      if (radio.id) {
+        removeSessionRadio(radio.id);
+        removeRadio(`multi_${radio.id}`);
+      }
+      return;
+    }
     setDeleteConfirm(radio);
+  };
+
+  const handleSaveSessionRadio = (radio: Radio) => {
+    const { id: _id, ...radioData } = radio;
+    addRadioToCollection({
+      ...radioData,
+      order: 0,
+      enabled: true,
+      isSystem: false,
+    });
+    if (radio.id) {
+      removeSessionRadio(radio.id);
+    }
+    toast.success(`Saved "${radio.name}" to collection`);
   };
 
   const handleToggleRadio = async (_radio: Radio, _enabled: boolean) => {
@@ -122,9 +163,22 @@ export function MultipleRadios({ radios }: { radios?: Radio[] }) {
 
   const isAnyPlaying = players.some((p) => p.isPlaying);
 
-  if (!radios || radios.length === 0) {
+  const allRadios = [
+    ...(radios ?? []),
+    ...sessionRadios.filter((sr) => !radios?.some((r) => r.id === sr.id)),
+  ];
+
+  if (allRadios.length === 0) {
     return (
-      <div className="mx-auto flex h-full min-h-0 w-full max-w-5xl items-center justify-center px-4 py-6">
+      <div className="mx-auto flex h-full min-h-0 w-full max-w-5xl flex-col items-center px-4 py-6">
+        <RadioSearchBar
+          className="mb-4 w-full max-w-md"
+          isResolving={isResolving}
+          onSaveRemote={saveToCollection}
+          onSelectLocal={(radio) => addRadio(radio, true)}
+          onSelectRemote={resolve}
+          radios={radios ?? []}
+        />
         <div className="flex flex-col items-center gap-3 rounded-lg border border-border/50 border-dashed bg-card/50 px-8 py-12">
           <AudioLinesIcon className="size-8 text-muted-foreground/30" />
           <p className="font-mono text-[10px] text-muted-foreground/60 uppercase tracking-wider">
@@ -137,6 +191,16 @@ export function MultipleRadios({ radios }: { radios?: Radio[] }) {
 
   return (
     <div className="mx-auto flex h-full min-h-0 w-full max-w-5xl flex-col overflow-auto px-4 py-6">
+      {/* Search bar */}
+      <RadioSearchBar
+        className="mb-4"
+        isResolving={isResolving}
+        onSaveRemote={saveToCollection}
+        onSelectLocal={(radio) => addRadio(radio, true)}
+        onSelectRemote={resolve}
+        radios={radios ?? []}
+      />
+
       {/* Global controls bar */}
       <div className="mb-4 flex shrink-0 items-center gap-4 rounded-lg border border-border/50 bg-card/50 px-4 py-3">
         <Button
@@ -189,11 +253,12 @@ export function MultipleRadios({ radios }: { radios?: Radio[] }) {
 
       {/* Grid */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {radios.map((radio: Radio) => (
+        {allRadios.map((radio: Radio) => (
           <MultipleRadioCard
             key={radio.id}
             onDelete={handleDeleteRadio}
             onEdit={handleEditRadio}
+            onSave={handleSaveSessionRadio}
             onToggle={handleToggleRadio}
             onTogglePlayPause={() => handleTogglePlayPause(radio)}
             onVolumeChange={(vol) => handleVolumeChange(radio, vol)}

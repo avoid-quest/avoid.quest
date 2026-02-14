@@ -13,12 +13,14 @@ type SearchResultsProps = {
 
 const PLATFORM_COLORS = {
   bandcamp: "#629aa0",
+  radiogarden: "#00d084",
   soundcloud: "#ff7700",
   youtube: "#ff0000",
 };
 
 const PLATFORM_LABELS = {
   bandcamp: "BC",
+  radiogarden: "RG",
   soundcloud: "SC",
   youtube: "YT",
 };

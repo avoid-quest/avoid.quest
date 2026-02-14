@@ -124,10 +124,10 @@ export function DeckTransport({ className }: { className?: string }) {
   const isRight = deckSide === "right";
 
   return (
-    <div className={cn("flex flex-col gap-1.5", className)}>
+    <div className={cn("flex w-full min-w-0 flex-col gap-1.5", className)}>
       <div
         className={cn(
-          "flex items-center gap-2.5 rounded-md border border-border/50 bg-muted/30 p-2",
+          "flex w-full min-w-0 items-center gap-2.5 rounded-md border border-border/50 bg-muted/30 p-2",
           isRight && "flex-row-reverse"
         )}
       >
@@ -185,13 +185,13 @@ export function DeckTransport({ className }: { className?: string }) {
         {/* Title + progress */}
         <div
           className={cn(
-            "flex min-w-0 flex-1 flex-col justify-center gap-0.5",
+            "flex min-w-0 flex-1 flex-col justify-center gap-0.5 overflow-hidden",
             isRight && "items-end"
           )}
         >
           <span
             className={cn(
-              "w-full truncate font-semibold text-sm leading-tight",
+              "block w-full overflow-hidden truncate text-ellipsis whitespace-nowrap font-semibold text-sm leading-tight",
               isRight && "text-right"
             )}
             title={title}

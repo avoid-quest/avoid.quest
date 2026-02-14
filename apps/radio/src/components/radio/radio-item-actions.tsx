@@ -7,6 +7,7 @@ import {
   DropdownMenuTrigger,
 } from "@avoid.quest/ui/components/dropdown-menu";
 import {
+  BookmarkPlusIcon,
   CopyIcon,
   ExternalLinkIcon,
   MoreHorizontalIcon,
@@ -14,17 +15,20 @@ import {
   ToggleLeftIcon,
   ToggleRightIcon,
   Trash2Icon,
+  XIcon,
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import type { Radio } from "@/lib/audio";
 import { updateRadio } from "@/lib/hooks/use-radios";
+import { isSessionRadio } from "@/lib/hooks/use-session-radios";
 
 type RadioItemActionsProps = {
   radio: Radio;
   onEdit?: (radio: Radio) => void;
   onDelete?: (radio: Radio) => void;
   onToggle?: (radio: Radio, enabled: boolean) => void;
+  onSave?: (radio: Radio) => void;
   disabled?: boolean;
 };
 
@@ -33,9 +37,11 @@ export function RadioItemActions({
   onEdit,
   onDelete,
   onToggle,
+  onSave,
   disabled = false,
 }: RadioItemActionsProps) {
   const [isUpdating, setIsUpdating] = useState(false);
+  const isSession = isSessionRadio(radio);
 
   const handleToggle = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -69,6 +75,11 @@ export function RadioItemActions({
     onEdit?.(radio);
   };
 
+  const handleSave = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onSave?.(radio);
+  };
+
   const handleCopyStreamLink = async (e: React.MouseEvent) => {
     e.stopPropagation();
     try {
@@ -100,6 +111,16 @@ export function RadioItemActions({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
+        {isSession && onSave && (
+          <>
+            <DropdownMenuItem onClick={handleSave}>
+              <BookmarkPlusIcon className="mr-2 size-4" />
+              Save to Collection
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+          </>
+        )}
+
         <DropdownMenuItem onClick={handleCopyStreamLink}>
           <CopyIcon className="mr-2 size-4" />
           Copy Stream Link
@@ -112,27 +133,31 @@ export function RadioItemActions({
           </DropdownMenuItem>
         )}
 
-        <DropdownMenuSeparator />
+        {!isSession && (
+          <>
+            <DropdownMenuSeparator />
 
-        <DropdownMenuItem onClick={handleEdit}>
-          <PencilIcon className="mr-2 size-4" />
-          Edit
-        </DropdownMenuItem>
+            <DropdownMenuItem onClick={handleEdit}>
+              <PencilIcon className="mr-2 size-4" />
+              Edit
+            </DropdownMenuItem>
 
-        {onToggle && (
-          <DropdownMenuItem disabled={isUpdating} onClick={handleToggle}>
-            {radio.enabled ? (
-              <>
-                <ToggleRightIcon className="mr-2 size-4" />
-                Disable
-              </>
-            ) : (
-              <>
-                <ToggleLeftIcon className="mr-2 size-4" />
-                Enable
-              </>
+            {onToggle && (
+              <DropdownMenuItem disabled={isUpdating} onClick={handleToggle}>
+                {radio.enabled ? (
+                  <>
+                    <ToggleRightIcon className="mr-2 size-4" />
+                    Disable
+                  </>
+                ) : (
+                  <>
+                    <ToggleLeftIcon className="mr-2 size-4" />
+                    Enable
+                  </>
+                )}
+              </DropdownMenuItem>
             )}
-          </DropdownMenuItem>
+          </>
         )}
 
         <DropdownMenuSeparator />
@@ -141,8 +166,17 @@ export function RadioItemActions({
           className="text-destructive focus:text-destructive"
           onClick={handleDelete}
         >
-          <Trash2Icon className="mr-2 size-4" />
-          Delete
+          {isSession ? (
+            <>
+              <XIcon className="mr-2 size-4" />
+              Remove
+            </>
+          ) : (
+            <>
+              <Trash2Icon className="mr-2 size-4" />
+              Delete
+            </>
+          )}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

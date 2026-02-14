@@ -50,9 +50,19 @@ function getYouTubeDescription(metadata: PlatformMetadata): string | undefined {
   }
 }
 
+function getRadioGardenDescription(
+  metadata: PlatformMetadata
+): string | undefined {
+  if (metadata.platform !== "radiogarden") {
+    return;
+  }
+  return metadata.subtitle || "Radio Station";
+}
+
 function getDescription(metadata: PlatformMetadata): string | undefined {
   return (
     getBandcampDescription(metadata) ??
+    getRadioGardenDescription(metadata) ??
     getSoundCloudDescription(metadata) ??
     getYouTubeDescription(metadata)
   );
@@ -62,7 +72,8 @@ function getLogoUrl(metadata: PlatformMetadata): string | undefined {
   if (
     metadata.platform === "device-input" ||
     metadata.platform === "local-file" ||
-    metadata.platform === "static-audio"
+    metadata.platform === "static-audio" ||
+    metadata.platform === "radiogarden"
   ) {
     return;
   }
@@ -94,6 +105,9 @@ export function createPlatformRadio(
     }
     if (metadata.platform === "static-audio") {
       return metadata.displayName || metadata.fileName || "Audio File";
+    }
+    if (metadata.platform === "radiogarden") {
+      return metadata.name || "Radio Station";
     }
     return metadata.name || metadata.artist || "Unknown";
   };
@@ -139,6 +153,10 @@ export function getPlatformItemTypeLabel(metadata: PlatformMetadata): string {
       user: "User",
     };
     return labels[metadata.itemType];
+  }
+
+  if (metadata.platform === "radiogarden") {
+    return "Radio Station";
   }
 
   if (metadata.platform === "youtube") {
@@ -196,14 +214,19 @@ export function validateRadioForMode(
   }
 
   // Platform radios (SoundCloud/Bandcamp/YouTube) only work in DJ mode
-  if (isPlatformRadio(radio) && mode !== "dj") {
-    const platformNames: Record<string, string> = {
-      bandcamp: "Bandcamp",
-      soundcloud: "SoundCloud",
-      youtube: "YouTube",
-    };
-    const platform =
-      platformNames[radio.platformMetadata?.platform ?? ""] ?? "External";
+  // Radio Garden stations are live streams — they work in all modes
+  const djOnlyPlatforms: Record<string, string> = {
+    bandcamp: "Bandcamp",
+    soundcloud: "SoundCloud",
+    youtube: "YouTube",
+  };
+  const platformKey = radio.platformMetadata?.platform ?? "";
+  if (
+    isPlatformRadio(radio) &&
+    mode !== "dj" &&
+    platformKey in djOnlyPlatforms
+  ) {
+    const platform = djOnlyPlatforms[platformKey] ?? "External";
     throw new PlatformModeError(platform, mode);
   }
 }

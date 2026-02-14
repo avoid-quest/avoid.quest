@@ -5,7 +5,12 @@ import { PeakMeter } from "./peak-meter";
 describe("PeakMeter", () => {
   test("renders compact horizontal layout with reduced bar size", () => {
     const compactHtml = renderToStaticMarkup(
-      <PeakMeter compact={true} left={0.8} orientation="horizontal" right={0.6} />
+      <PeakMeter
+        compact={true}
+        left={0.8}
+        orientation="horizontal"
+        right={0.6}
+      />
     );
 
     expect(compactHtml.includes("w-full flex-col gap-px")).toBeTrue();

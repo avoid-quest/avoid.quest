@@ -5,16 +5,16 @@
  * Used in non-DJ modes for straightforward playback.
  */
 
+import { capturePlaybackError } from "@/lib/telemetry/playback-errors";
 import type { Radio } from "../playback/types.js";
 import {
   createLoadModeCache,
   getInitialLoadMode,
   getRetryLoadMode,
+  type Html5LoadMode,
   mapPlaybackFailureMessage,
   shouldRetryWithoutCors,
-  type Html5LoadMode,
 } from "./load-mode.js";
-import { capturePlaybackError } from "@/lib/telemetry/playback-errors";
 import {
   type HTML5AudioError,
   type HTML5AudioState,
@@ -315,12 +315,14 @@ export class HTML5AudioPlayer {
     retryPhase: "initial" | "fallback-no-cors"
   ): void {
     const message = mapPlaybackFailureMessage(error, mediaErrorCode);
-    const code =
-      retryPhase === "fallback-no-cors"
-        ? "PLAYBACK_FALLBACK_FAILED"
-        : mediaErrorCode
-          ? `MEDIA_ERROR_${mediaErrorCode}`
-          : "PLAYBACK_FAILED";
+    let code: string;
+    if (retryPhase === "fallback-no-cors") {
+      code = "PLAYBACK_FALLBACK_FAILED";
+    } else if (mediaErrorCode) {
+      code = `MEDIA_ERROR_${mediaErrorCode}`;
+    } else {
+      code = "PLAYBACK_FAILED";
+    }
 
     const audioError: HTML5AudioError = {
       message,

@@ -1,6 +1,8 @@
 import { env } from "cloudflare:workers";
 import {
+  extractChannelId,
   getBandcampItem,
+  getRadioGardenItem,
   getSoundCloudItem,
   getYouTubeItem,
   needsResolution,
@@ -64,7 +66,7 @@ export const loadPlatformItem = createServerFn({ method: "POST" })
         return {
           success: false,
           error:
-            "Unsupported URL. Please enter a Bandcamp, SoundCloud, YouTube, or audio file URL.",
+            "Unsupported URL. Please enter a Bandcamp, SoundCloud, YouTube, Radio Garden, or audio file URL.",
         };
       }
 
@@ -83,6 +85,17 @@ export const loadPlatformItem = createServerFn({ method: "POST" })
           auth: env.INVIDIOUS_AUTH || undefined,
         };
         return await getYouTubeItem(url, invidiousOptions);
+      }
+
+      if (platform === "radiogarden") {
+        const channelId = extractChannelId(url);
+        if (!channelId) {
+          return {
+            success: false,
+            error: "Could not extract Radio Garden channel ID from URL",
+          };
+        }
+        return await getRadioGardenItem(channelId);
       }
 
       if (platform === "static-audio") {

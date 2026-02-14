@@ -5,13 +5,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@avoid.quest/ui/components/dialog";
-import { useState } from "react";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@avoid.quest/ui/components/tabs";
 import type { Radio } from "@/lib/audio";
-import type { RadioMetadata } from "@/lib/platform-types";
-import { RadioAddModeSelector } from "./radio-add-mode-selector";
 import { RadioForm } from "./radio-form";
-import { RadioGuidedForm } from "./radio-guided-form";
-import { RadioScrapedResults } from "./radio-scraped-results";
+import { RadioFromUrlTab } from "./radio-from-url-tab";
+import { RadioGardenTab } from "./radio-garden-tab";
 
 type RadioDialogProps = {
   mode: "create" | "edit";
@@ -20,152 +23,66 @@ type RadioDialogProps = {
   onOpenChange: (open: boolean) => void;
 };
 
-type DialogStep = "select-mode" | "guided" | "selection" | "manual";
-
 export function RadioDialog({
   mode,
   radio,
   open,
   onOpenChange,
 }: RadioDialogProps) {
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [currentStep, setCurrentStep] = useState<DialogStep>("select-mode");
-  const [scrapedData, setScrapedData] = useState<RadioMetadata | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
   const handleSuccess = () => {
-    setIsSubmitting(false);
     onOpenChange(false);
-    // Reset state when dialog closes
-    setCurrentStep("select-mode");
-    setScrapedData(null);
-    setError(null);
   };
 
   const handleCancel = () => {
-    if (!isSubmitting) {
-      onOpenChange(false);
-      // Reset state when dialog closes
-      setCurrentStep("select-mode");
-      setScrapedData(null);
-      setError(null);
-    }
+    onOpenChange(false);
   };
 
-  const handleModeChange = (newMode: "guided" | "manual") => {
-    if (newMode === "guided") {
-      setCurrentStep("guided");
-    } else {
-      setCurrentStep("manual");
-    }
-  };
-
-  const handleScrapedData = (data: RadioMetadata) => {
-    setScrapedData(data);
-    setCurrentStep("selection");
-    setError(null);
-  };
-
-  const handleError = (errorMessage: string) => {
-    setError(errorMessage);
-  };
-
-  const getDialogTitle = () => {
-    if (mode === "edit") {
-      return "Edit Radio Station";
-    }
-    if (currentStep === "select-mode") {
-      return "Add Radio Station";
-    }
-    if (currentStep === "guided") {
-      return "Add Radio Station - Guided";
-    }
-    if (currentStep === "selection") {
-      return "Review Found Information";
-    }
-    return "Add Radio Station - Manual";
-  };
-
-  const getDialogDescription = () => {
-    if (mode === "edit") {
-      return "Update the radio station details.";
-    }
-    if (currentStep === "select-mode") {
-      return "Choose how you'd like to add a new radio station.";
-    }
-    if (currentStep === "guided") {
-      return "Enter the radio station's website URL to automatically find details.";
-    }
-    if (currentStep === "selection") {
-      return "Review and select the information we found for your radio station.";
-    }
-    return "Manually enter all radio station details.";
-  };
-
-  const handleSelectionContinue = (data: RadioMetadata) => {
-    setScrapedData(data);
-    setCurrentStep("manual");
-  };
-
-  const handleSelectionTryAgain = () => {
-    setScrapedData(null);
-    setCurrentStep("guided");
-  };
-
-  const renderContent = () => {
-    if (mode === "edit" || currentStep === "manual") {
-      return (
-        <RadioForm
-          mode={mode}
-          onCancel={handleCancel}
-          onSuccess={handleSuccess}
-          radio={radio}
-          scrapedData={scrapedData}
-        />
-      );
-    }
-
-    if (currentStep === "select-mode") {
-      return <RadioAddModeSelector onModeChange={handleModeChange} />;
-    }
-
-    if (currentStep === "guided") {
-      return (
-        <div className="space-y-4">
-          <RadioGuidedForm
-            onError={handleError}
-            onScrapedData={handleScrapedData}
-          />
-          {!!error?.trim() && (
-            <div className="rounded-md bg-destructive/10 p-3">
-              <p className="text-destructive text-sm">{error}</p>
-            </div>
-          )}
-        </div>
-      );
-    }
-
-    if (currentStep === "selection" && scrapedData) {
-      return (
-        <RadioScrapedResults
-          data={scrapedData}
-          onContinue={handleSelectionContinue}
-          onTryAgain={handleSelectionTryAgain}
-        />
-      );
-    }
-
-    return null;
-  };
+  const isEdit = mode === "edit";
 
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
-      <DialogContent className="max-h-[90vh] w-full max-w-7xl xl:max-w-[90vw] 2xl:max-w-[80vw]">
+      <DialogContent className="max-h-[90vh] w-full max-w-2xl">
         <DialogHeader className="shrink-0">
-          <DialogTitle>{getDialogTitle()}</DialogTitle>
-          <DialogDescription>{getDialogDescription()}</DialogDescription>
+          <DialogTitle>
+            {isEdit ? "Edit Radio Station" : "Add Radio Station"}
+          </DialogTitle>
+          <DialogDescription>
+            {isEdit
+              ? "Update the radio station details."
+              : "Search Radio Garden, fetch from a URL, or enter details manually."}
+          </DialogDescription>
         </DialogHeader>
-        <div className="min-h-0 flex-1 overflow-y-auto">{renderContent()}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          {isEdit ? (
+            <RadioForm
+              mode="edit"
+              onCancel={handleCancel}
+              onSuccess={handleSuccess}
+              radio={radio}
+            />
+          ) : (
+            <Tabs defaultValue="radiogarden">
+              <TabsList className="w-full">
+                <TabsTrigger value="radiogarden">Radio Garden</TabsTrigger>
+                <TabsTrigger value="from-url">From URL</TabsTrigger>
+                <TabsTrigger value="manual">Manual</TabsTrigger>
+              </TabsList>
+              <TabsContent value="radiogarden">
+                <RadioGardenTab onSuccess={handleSuccess} />
+              </TabsContent>
+              <TabsContent value="from-url">
+                <RadioFromUrlTab onSuccess={handleSuccess} />
+              </TabsContent>
+              <TabsContent value="manual">
+                <RadioForm
+                  mode="create"
+                  onCancel={handleCancel}
+                  onSuccess={handleSuccess}
+                />
+              </TabsContent>
+            </Tabs>
+          )}
+        </div>
       </DialogContent>
     </Dialog>
   );

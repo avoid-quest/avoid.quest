@@ -73,7 +73,7 @@ export function BrowserPanel({ radios, className }: BrowserPanelProps) {
             <div className="mb-2 flex items-center gap-2">
               <TabsList className="shrink-0">
                 <TabsTrigger className="text-xs" value="radios">
-                  Radios
+                  Library
                 </TabsTrigger>
                 <TabsTrigger className="text-xs" value="external">
                   Sources

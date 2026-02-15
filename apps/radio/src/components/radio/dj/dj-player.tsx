@@ -83,7 +83,7 @@ function handlePlatformItemDrag({
 
   if (isRadioGardenItem(radio)) {
     if (deckId === "deck-a" || deckId === "deck-b") {
-      setPendingItem({ deckId, platform: "external" });
+      setPendingItem({ deckId, platform: "radiogarden" });
     }
     return true;
   }

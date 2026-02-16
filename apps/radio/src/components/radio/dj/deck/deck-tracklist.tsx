@@ -6,7 +6,7 @@ import { formatPlatformDuration } from "@/lib/external-url/utils";
 import type { PlatformTrack } from "@/lib/platform-types";
 import { useDeckContext } from "./deck-context";
 
-function getTrackPlayUrl(track: PlatformTrack): string {
+export function getTrackPlayUrl(track: PlatformTrack): string {
   if (track.streamUrl) {
     return track.streamUrl;
   }
@@ -43,8 +43,7 @@ export function DeckTracklist({ className }: { className?: string }) {
 }
 
 function TracklistNavigation() {
-  const { tracks, currentTrackIndex, loadTrack, radio, deckSide } =
-    useDeckContext();
+  const { tracks, currentTrackIndex, loadTrack } = useDeckContext();
 
   if (!tracks) {
     return null;
@@ -56,10 +55,12 @@ function TracklistNavigation() {
   const handleNavigate = (direction: -1 | 1) => {
     const targetIndex = currentTrackIndex + direction;
     const track = tracks[targetIndex];
-    if (track && radio) {
+    if (track) {
       const url = getTrackPlayUrl(track);
       if (url) {
-        loadTrack(deckSide, { ...radio, streamUrl: url }, true);
+        loadTrack(url).catch(() => {
+          // Errors are surfaced by deck actions/telemetry.
+        });
       }
     }
   };
@@ -102,15 +103,14 @@ function TrackRow({
   index: number;
   isCurrent: boolean;
 }) {
-  const { loadTrack, radio, deckSide } = useDeckContext();
+  const { loadTrack } = useDeckContext();
 
   const handlePlay = () => {
-    if (!radio) {
-      return;
-    }
     const url = getTrackPlayUrl(track);
     if (url) {
-      loadTrack(deckSide, { ...radio, streamUrl: url }, true);
+      loadTrack(url).catch(() => {
+        // Errors are surfaced by deck actions/telemetry.
+      });
     }
   };
 

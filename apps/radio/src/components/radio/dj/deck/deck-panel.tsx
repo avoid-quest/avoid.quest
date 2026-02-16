@@ -34,6 +34,7 @@ import { toast } from "sonner";
 import { EffectChain } from "@/components/audio/effect-chain";
 import type { ChannelSelection, Radio } from "@/lib/audio";
 import { isAudioFile } from "@/lib/audio/file-metadata";
+import { validatePlaybackStreamUrl } from "@/lib/audio/playback/url-validation";
 import { getFilenameFromUrl } from "@/lib/audio/remote-url";
 import {
   addDeckAEffect,
@@ -240,7 +241,7 @@ function DeckPanelInner({
     play,
     pause,
     setVolume,
-    loadTrack,
+    loadTrack: loadDeckTrack,
     soundId,
     reset,
     pan,
@@ -346,10 +347,10 @@ function DeckPanelInner({
         requiresProxy: false,
       };
       const r = createPlatformRadio(url, meta);
-      loadTrack(deckSide, r, false);
+      loadDeckTrack(deckSide, r, false);
       setPendingPlatformItem(null);
     },
-    [deckSide, loadTrack]
+    [deckSide, loadDeckTrack]
   );
 
   // Native drag handlers
@@ -396,7 +397,7 @@ function DeckPanelInner({
   );
 
   const handleClear = () => {
-    loadTrack(deckSide, null, false);
+    loadDeckTrack(deckSide, null, false);
     if (pendingPlatformItem?.deckId === deckId) {
       setPendingPlatformItem(null);
     }
@@ -419,7 +420,17 @@ function DeckPanelInner({
       resolvedUrl = resolved;
     }
     if (resolvedUrl) {
-      await loadTrack(deckSide, { ...radio, streamUrl: resolvedUrl }, true);
+      const validation = validatePlaybackStreamUrl(resolvedUrl);
+      if (!validation.ok) {
+        toast.error("Invalid stream URL");
+        return;
+      }
+
+      await loadDeckTrack(
+        deckSide,
+        { ...radio, streamUrl: validation.normalizedUrl },
+        true
+      );
     }
   };
 
@@ -436,7 +447,7 @@ function DeckPanelInner({
       }
       resolvedRadio = { ...newRadio, streamUrl: resolvedUrl };
     }
-    loadTrack(deckSide, resolvedRadio, false);
+    loadDeckTrack(deckSide, resolvedRadio, false);
     setPendingPlatformItem(null);
   };
 

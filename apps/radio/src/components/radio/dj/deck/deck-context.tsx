@@ -30,11 +30,7 @@ type DeckContextValue = {
   setRepeat: (enabled: boolean) => void;
   setAutoplay: (enabled: boolean) => void;
   seek: (position: number) => void;
-  loadTrack: (
-    side: string,
-    radio: Radio | null,
-    autoPlay: boolean
-  ) => Promise<void>;
+  loadTrack: (streamUrl: string) => Promise<void>;
   reset: () => Promise<void>;
   // Effect actions
   addEffect: (type: EffectType) => void;

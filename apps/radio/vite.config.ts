@@ -19,6 +19,19 @@ const sentryReleaseName = process.env.SENTRY_RELEASE ?? `radio@${APP_VERSION}`;
 const sentryBuildEnabled = Boolean(
   sentryAuthToken && sentryOrg && sentryProject
 );
+const missingSentryBuildEnv = [
+  ["SENTRY_AUTH_TOKEN", sentryAuthToken],
+  ["SENTRY_ORG", sentryOrg],
+  ["SENTRY_PROJECT", sentryProject],
+]
+  .filter(([, value]) => !value)
+  .map(([name]) => name);
+
+if (process.env.NODE_ENV === "production" && !sentryBuildEnabled) {
+  console.warn(
+    `[radio] Sentry sourcemap upload disabled: missing ${missingSentryBuildEnv.join(", ")}`
+  );
+}
 
 /**
  * Plugin to build the AudioWorklet processor bundle

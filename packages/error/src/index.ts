@@ -193,6 +193,27 @@ function makeBaseSentryOptions(config: {
   } as const;
 }
 
+function shouldDropKnownBrowserApiNoise(
+  event: Sentry.ErrorEvent | Sentry.Event
+): boolean {
+  const values = event.exception?.values;
+  if (!values || values.length === 0) {
+    return false;
+  }
+
+  const hasExpectedMessage = values.some(
+    (value) => value.value === "Error invoking post: Method not found"
+  );
+  if (!hasExpectedMessage) {
+    return false;
+  }
+
+  return values.some(
+    (value) =>
+      value.mechanism?.type === "auto.browser.browserapierrors.setTimeout"
+  );
+}
+
 export function initClientSentry(config: {
   dsn: string;
   environment: string;
@@ -206,6 +227,12 @@ export function initClientSentry(config: {
   Sentry.init({
     ...makeBaseSentryOptions(config),
     tunnel: config.tunnel,
+    beforeSend(event) {
+      if (shouldDropKnownBrowserApiNoise(event)) {
+        return null;
+      }
+      return event;
+    },
     integrations: [
       Sentry.replayIntegration({
         maskAllText: true,

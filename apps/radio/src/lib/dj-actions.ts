@@ -28,6 +28,7 @@ import {
   extractFileMetadata,
   revokeFileObjectUrl,
 } from "@/lib/audio/file-metadata";
+import { validatePlaybackStreamUrl } from "@/lib/audio/playback/url-validation";
 import {
   getAudioSettings,
   getDeckA,
@@ -994,6 +995,22 @@ export async function loadTrack(
     return;
   }
 
+  const streamValidation = validatePlaybackStreamUrl(radio.streamUrl);
+  if (!streamValidation.ok) {
+    setDjErrorWithTelemetry(
+      "Invalid stream URL",
+      "DJ_INVALID_STREAM_URL",
+      new Error(`Invalid stream URL: ${streamValidation.reason}`),
+      radio
+    );
+    return;
+  }
+
+  const normalizedRadio =
+    streamValidation.normalizedUrl === radio.streamUrl
+      ? radio
+      : { ...radio, streamUrl: streamValidation.normalizedUrl };
+
   // Prevent re-entry if already loading
   if (runtime.isLoading) {
     return;
@@ -1005,7 +1022,7 @@ export async function loadTrack(
   }
 
   // Load new track
-  await setRadio(radio);
+  await setRadio(normalizedRadio);
 
   // Auto-play if requested
   if (autoPlay) {

@@ -7,10 +7,10 @@ export function useRadioGardenSuggestions(enabled: boolean) {
     queryKey: ["radio-garden-suggestions"],
     queryFn: async (): Promise<RadioGardenSearchResult[]> => {
       const response = await radioGardenSuggestions();
-      if (!response.success) {
-        throw new Error(response.error);
+      if (!response.ok) {
+        throw new Error(response.error.message);
       }
-      return response.results;
+      return response.data.results;
     },
     staleTime: 5 * 60 * 1000,
     gcTime: 30 * 60 * 1000,

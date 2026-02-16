@@ -1,3 +1,4 @@
+import { captureError } from "@avoid.quest/error";
 import {
   type SearchPlatform,
   transformBandcampResults,
@@ -6,16 +7,10 @@ import {
   transformYouTubeResults,
   type UnifiedSearchResult,
 } from "@avoid.quest/platforms";
-// biome-ignore lint/performance/noNamespaceImport: namespace import required for Sentry
-import * as Sentry from "@sentry/tanstackstart-react";
 import { useMutation } from "@tanstack/react-query";
 import { radioGardenSearch } from "@/utils/radio-garden.functions";
 import { bandcampSearch, soundcloudSearch } from "@/utils/search.functions";
 import { youtubeSearch } from "@/utils/youtube.functions";
-
-// ============================================
-// Search Functions
-// ============================================
 
 type SearchParams = {
   query: string;
@@ -29,30 +24,30 @@ async function searchBandcampPlatform(
   filter: "" | "t" | "a" = ""
 ): Promise<UnifiedSearchResult[]> {
   const response = await bandcampSearch({ data: { query, filter } });
-  if (!response.success) {
-    throw new Error(response.error);
+  if (!response.ok) {
+    throw new Error(response.error.message);
   }
-  return transformBandcampResults(response.results);
+  return transformBandcampResults(response.data.results);
 }
 
 async function searchSoundCloudPlatform(
   query: string
 ): Promise<UnifiedSearchResult[]> {
   const response = await soundcloudSearch({ data: { query } });
-  if (!response.success) {
-    throw new Error(response.error);
+  if (!response.ok) {
+    throw new Error(response.error.message);
   }
-  return transformSoundCloudResults(response.results);
+  return transformSoundCloudResults(response.data.results);
 }
 
 async function searchRadioGardenPlatform(
   query: string
 ): Promise<UnifiedSearchResult[]> {
   const response = await radioGardenSearch({ data: { query } });
-  if (!response.success) {
-    throw new Error(response.error);
+  if (!response.ok) {
+    throw new Error(response.error.message);
   }
-  return transformRadioGardenResults(response.results);
+  return transformRadioGardenResults(response.data.results);
 }
 
 async function searchYouTubePlatform(
@@ -60,23 +55,22 @@ async function searchYouTubePlatform(
   filter: "songs" | "videos" = "songs"
 ): Promise<UnifiedSearchResult[]> {
   const response = await youtubeSearch({ data: { query, filter } });
-  if (!response.success) {
-    throw new Error(response.error);
+  if (!response.ok) {
+    throw new Error(response.error.message);
   }
-  return transformYouTubeResults(response.results);
+  return transformYouTubeResults(response.data.results);
 }
 
 async function searchAllPlatforms(
   query: string
 ): Promise<UnifiedSearchResult[]> {
-  // Search all platforms in parallel
   const [
     bandcampResults,
     radioGardenResults,
     soundcloudResults,
     youtubeResults,
   ] = await Promise.allSettled([
-    searchBandcampPlatform(query, "t"), // Tracks only for "all" search
+    searchBandcampPlatform(query, "t"),
     searchRadioGardenPlatform(query),
     searchSoundCloudPlatform(query),
     searchYouTubePlatform(query, "songs"),
@@ -91,15 +85,15 @@ async function searchAllPlatforms(
 
   for (const { name, result } of settled) {
     if (result.status === "rejected") {
-      Sentry.captureException(result.reason, {
+      captureError(result.reason, {
+        surface: "ui",
+        operation: "searchAllPlatforms",
         tags: { searchPlatform: name },
       });
     }
   }
 
   const results: UnifiedSearchResult[] = [];
-
-  // Collect successful results
   if (bandcampResults.status === "fulfilled") {
     results.push(...bandcampResults.value);
   }
@@ -113,8 +107,6 @@ async function searchAllPlatforms(
     results.push(...youtubeResults.value);
   }
 
-  // Interleave results from different platforms for variety
-  // Take first 8 from each platform then append rest
   const interleaved: UnifiedSearchResult[] = [];
   const byPlatform = {
     bandcamp: results.filter((r) => r.platform === "bandcamp"),
@@ -139,17 +131,12 @@ async function searchAllPlatforms(
     }
   }
 
-  // Add remaining results
   for (const platform of Object.values(byPlatform)) {
     interleaved.push(...platform.slice(maxPerRound));
   }
 
   return interleaved;
 }
-
-// ============================================
-// Hook
-// ============================================
 
 export function useExternalSearch() {
   return useMutation({

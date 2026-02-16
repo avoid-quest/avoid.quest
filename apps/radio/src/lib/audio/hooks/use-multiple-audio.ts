@@ -5,10 +5,9 @@
  * Each radio plays simultaneously without effects or complex routing.
  */
 
+import { capturePlaybackError } from "@avoid.quest/error";
 import { useCallback, useEffect, useRef, useState } from "react";
-
 import { validateRadioForMode } from "@/lib/external-url/utils";
-import { capturePlaybackError } from "@/lib/telemetry/playback-errors";
 
 import { HTML5AudioManager } from "../html5/index.js";
 import type { Radio } from "../playback/types.js";

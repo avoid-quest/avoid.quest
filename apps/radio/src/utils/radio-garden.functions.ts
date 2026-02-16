@@ -1,46 +1,42 @@
 // Import from subpath to avoid pulling in incompatible deps (cheerio etc.)
+import { type AppResult, runServerFn } from "@avoid.quest/error";
 import {
   getRadioGardenSuggestions,
   type RadioGardenSearchResult,
   resolveRadioGardenStream as resolveStream,
   searchRadioGarden,
 } from "@avoid.quest/platforms/radiogarden/search";
-// biome-ignore lint/performance/noNamespaceImport: namespace import required for Sentry
-import * as Sentry from "@sentry/tanstackstart-react";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { rateLimitMiddleware } from "./middleware";
-
-// ============================================
-// Radio Garden Search
-// ============================================
 
 const RadioGardenSearchSchema = z.object({
   query: z.string().min(1, "Search query is required").max(200),
 });
 
-export type RadioGardenSearchResponse =
-  | { success: true; results: RadioGardenSearchResult[] }
-  | { success: false; error: string };
+export type RadioGardenSearchResponse = AppResult<{
+  results: RadioGardenSearchResult[];
+}>;
 
 export const radioGardenSearch = createServerFn({ method: "POST" })
   .middleware([rateLimitMiddleware("radio-garden-search")])
   .inputValidator(RadioGardenSearchSchema)
-  .handler(async ({ data }): Promise<RadioGardenSearchResponse> => {
-    try {
-      const results = await searchRadioGarden(data.query);
-      return { success: true, results };
-    } catch (error) {
-      Sentry.captureException(error);
-      const errorMessage =
-        error instanceof Error ? error.message : "Search failed";
-      return { success: false, error: errorMessage };
-    }
+  .handler(({ data }): Promise<RadioGardenSearchResponse> => {
+    return runServerFn({
+      operation: "radioGardenSearch",
+      fallback: {
+        code: "RADIO_GARDEN_SEARCH_FAILED",
+        safeMessage: "Search failed",
+        category: "dependency",
+        expected: false,
+        status: 500,
+      },
+      run: async () => {
+        const results = await searchRadioGarden(data.query);
+        return { results };
+      },
+    });
   });
-
-// ============================================
-// Radio Garden Stream Resolution
-// ============================================
 
 const RadioGardenResolveSchema = z.object({
   channelId: z
@@ -49,43 +45,49 @@ const RadioGardenResolveSchema = z.object({
     .regex(/^[a-zA-Z0-9]+$/, "Invalid channel ID format"),
 });
 
-export type RadioGardenResolveResponse =
-  | { success: true; streamUrl: string }
-  | { success: false; error: string };
+export type RadioGardenResolveResponse = AppResult<{
+  streamUrl: string;
+}>;
 
 export const radioGardenResolveStream = createServerFn({ method: "POST" })
   .middleware([rateLimitMiddleware("radio-garden-resolve")])
   .inputValidator(RadioGardenResolveSchema)
-  .handler(async ({ data }): Promise<RadioGardenResolveResponse> => {
-    try {
-      const streamUrl = await resolveStream(data.channelId);
-      return { success: true, streamUrl };
-    } catch (error) {
-      Sentry.captureException(error);
-      const errorMessage =
-        error instanceof Error ? error.message : "Failed to resolve stream";
-      return { success: false, error: errorMessage };
-    }
+  .handler(({ data }): Promise<RadioGardenResolveResponse> => {
+    return runServerFn({
+      operation: "radioGardenResolveStream",
+      fallback: {
+        code: "RADIO_GARDEN_RESOLVE_FAILED",
+        safeMessage: "Failed to resolve stream",
+        category: "dependency",
+        expected: false,
+        status: 500,
+      },
+      run: async () => {
+        const streamUrl = await resolveStream(data.channelId);
+        return { streamUrl };
+      },
+    });
   });
 
-// ============================================
-// Radio Garden Suggestions (Popular Stations)
-// ============================================
-
-export type RadioGardenSuggestionsResponse =
-  | { success: true; results: RadioGardenSearchResult[] }
-  | { success: false; error: string };
+export type RadioGardenSuggestionsResponse = AppResult<{
+  results: RadioGardenSearchResult[];
+}>;
 
 export const radioGardenSuggestions = createServerFn({ method: "GET" })
   .middleware([rateLimitMiddleware("radio-garden-suggestions")])
-  .handler(async (): Promise<RadioGardenSuggestionsResponse> => {
-    try {
-      const results = await getRadioGardenSuggestions();
-      return { success: true, results };
-    } catch (error) {
-      Sentry.captureException(error);
-      const errorMessage =
-        error instanceof Error ? error.message : "Failed to fetch suggestions";
-      return { success: false, error: errorMessage };
-    }
+  .handler((): Promise<RadioGardenSuggestionsResponse> => {
+    return runServerFn({
+      operation: "radioGardenSuggestions",
+      fallback: {
+        code: "RADIO_GARDEN_SUGGESTIONS_FAILED",
+        safeMessage: "Failed to fetch suggestions",
+        category: "dependency",
+        expected: false,
+        status: 500,
+      },
+      run: async () => {
+        const results = await getRadioGardenSuggestions();
+        return { results };
+      },
+    });
   });

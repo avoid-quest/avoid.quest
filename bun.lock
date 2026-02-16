@@ -102,8 +102,9 @@
     },
     "apps/radio": {
       "name": "@avoid.quest/radio",
-      "version": "0.5.2",
+      "version": "0.5.3",
       "dependencies": {
+        "@avoid.quest/error": "workspace:*",
         "@avoid.quest/platforms": "workspace:*",
         "@avoid.quest/typescript-config": "workspace:*",
         "@avoid.quest/ui": "workspace:*",
@@ -200,6 +201,13 @@
         "convex-test": "^0.0.41",
         "typescript": "catalog:",
         "vitest": "^4.0.18",
+      },
+    },
+    "packages/error": {
+      "name": "@avoid.quest/error",
+      "version": "0.0.1",
+      "dependencies": {
+        "@sentry/tanstackstart-react": "^10.39.0",
       },
     },
     "packages/pinterest": {
@@ -350,6 +358,8 @@
     "@avoid.quest/backend": ["@avoid.quest/backend@workspace:packages/backend"],
 
     "@avoid.quest/cwavasape": ["@avoid.quest/cwavasape@workspace:apps/cwavasape"],
+
+    "@avoid.quest/error": ["@avoid.quest/error@workspace:packages/error"],
 
     "@avoid.quest/instarip": ["@avoid.quest/instarip@workspace:apps/instarip"],
 

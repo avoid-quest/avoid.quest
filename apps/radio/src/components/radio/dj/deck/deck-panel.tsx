@@ -140,7 +140,11 @@ async function resolveYouTubePlaylistTrack(
   tracks?: { streamUrl: string; videoId?: string }[]
 ): Promise<string | null> {
   const result = await youtubeResolveStream({ data: { videoId } });
-  const { stream } = result;
+  if (!result.ok) {
+    toast.error(result.error.message);
+    return null;
+  }
+  const { stream } = result.data;
   if (!stream) {
     toast.error("Failed to resolve YouTube stream");
     return null;

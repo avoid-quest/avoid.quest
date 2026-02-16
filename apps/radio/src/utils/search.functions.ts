@@ -1,4 +1,5 @@
 // Import directly from search modules to avoid pulling in cheerio (not compatible with CF Workers)
+import { type AppResult, runServerFn } from "@avoid.quest/error";
 import {
   type BandcampSearchResult,
   searchBandcamp,
@@ -8,53 +9,47 @@ import {
   type SoundCloudSearchResult,
   searchSoundCloud,
 } from "@avoid.quest/platforms/soundcloud/search";
-// biome-ignore lint/performance/noNamespaceImport: namespace import required for Sentry
-import * as Sentry from "@sentry/tanstackstart-react";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { rateLimitMiddleware } from "./middleware";
-
-// ============================================
-// Bandcamp Search
-// ============================================
 
 const BandcampSearchSchema = z.object({
   query: z.string().min(1, "Search query is required").max(200),
   filter: z.enum(["", "t", "a", "b"]).optional().default(""),
 });
 
-export type BandcampSearchResponse =
-  | { success: true; results: BandcampSearchResult[] }
-  | { success: false; error: string };
+export type BandcampSearchResponse = AppResult<{
+  results: BandcampSearchResult[];
+}>;
 
 export const bandcampSearch = createServerFn({ method: "POST" })
   .middleware([rateLimitMiddleware("bandcamp-search")])
   .inputValidator(BandcampSearchSchema)
-  .handler(async ({ data }): Promise<BandcampSearchResponse> => {
-    try {
-      const results = await searchBandcamp(data.query, data.filter);
-      return { success: true, results };
-    } catch (error) {
-      Sentry.captureException(error);
-      const errorMessage =
-        error instanceof Error ? error.message : "Search failed";
-      return { success: false, error: errorMessage };
-    }
+  .handler(({ data }): Promise<BandcampSearchResponse> => {
+    return runServerFn({
+      operation: "bandcampSearch",
+      fallback: {
+        code: "BANDCAMP_SEARCH_FAILED",
+        safeMessage: "Search failed",
+        category: "dependency",
+        expected: false,
+        status: 500,
+      },
+      run: async () => {
+        const results = await searchBandcamp(data.query, data.filter);
+        return { results };
+      },
+    });
   });
-
-// ============================================
-// SoundCloud Search
-// ============================================
 
 const SoundCloudSearchSchema = z.object({
   query: z.string().min(1, "Search query is required").max(200),
 });
 
-export type SoundCloudSearchResponse =
-  | { success: true; results: SoundCloudSearchResult[] }
-  | { success: false; error: string };
+export type SoundCloudSearchResponse = AppResult<{
+  results: SoundCloudSearchResult[];
+}>;
 
-// Cache client ID on server side
 let soundcloudClientId: string | null = null;
 let clientIdPromise: Promise<string> | null = null;
 
@@ -79,15 +74,20 @@ function getSoundCloudClientId(): Promise<string> {
 export const soundcloudSearch = createServerFn({ method: "POST" })
   .middleware([rateLimitMiddleware("soundcloud-search")])
   .inputValidator(SoundCloudSearchSchema)
-  .handler(async ({ data }): Promise<SoundCloudSearchResponse> => {
-    try {
-      const clientId = await getSoundCloudClientId();
-      const results = await searchSoundCloud(data.query, clientId);
-      return { success: true, results };
-    } catch (error) {
-      Sentry.captureException(error);
-      const errorMessage =
-        error instanceof Error ? error.message : "Search failed";
-      return { success: false, error: errorMessage };
-    }
+  .handler(({ data }): Promise<SoundCloudSearchResponse> => {
+    return runServerFn({
+      operation: "soundcloudSearch",
+      fallback: {
+        code: "SOUNDCLOUD_SEARCH_FAILED",
+        safeMessage: "Search failed",
+        category: "dependency",
+        expected: false,
+        status: 500,
+      },
+      run: async () => {
+        const clientId = await getSoundCloudClientId();
+        const results = await searchSoundCloud(data.query, clientId);
+        return { results };
+      },
+    });
   });

@@ -1,10 +1,14 @@
 /** biome-ignore-all lint/suspicious/useAwait: needed for server-only */
 
 import { env } from "cloudflare:workers";
-// biome-ignore lint/performance/noNamespaceImport: namespace import required for Sentry
-import * as Sentry from "@sentry/tanstackstart-react";
+import {
+  AppError,
+  captureError,
+  createRequestId,
+  problemResponse,
+  runApiRoute,
+} from "@avoid.quest/error";
 import { createFileRoute } from "@tanstack/react-router";
-import { json } from "@tanstack/react-start";
 import { z } from "zod";
 import { getCorsHeaders, getCorsOptionsHeaders } from "@/lib/middleware/cors";
 import { validateAuthAndRateLimit } from "@/lib/middleware/rate-limit";
@@ -21,34 +25,66 @@ const URL_SCHEMA = z
     }
   }, "Invalid URL format");
 
+function problemWithCors(
+  error: AppError,
+  origin: string,
+  requestId: string
+): Response {
+  return problemResponse(error, {
+    requestId,
+    headers: getCorsHeaders(origin),
+  });
+}
+
 /**
  * Validate URL is a streaming URL (http/https protocol)
  */
 function validateUrl(
   urlParam: string | null,
-  origin: string
+  origin: string,
+  requestId: string
 ): string | Response {
   if (!urlParam) {
-    return json(
-      { error: "URL parameter is required" },
-      { status: 400, headers: getCorsHeaders(origin) }
+    return problemWithCors(
+      new AppError({
+        code: "STREAM_PROXY_URL_REQUIRED",
+        safeMessage: "URL parameter is required",
+        category: "validation",
+        expected: true,
+        status: 400,
+      }),
+      origin,
+      requestId
     );
   }
 
   const urlValidation = URL_SCHEMA.safeParse(urlParam);
   if (!urlValidation.success) {
-    return json(
-      { error: "Invalid URL format" },
-      { status: 400, headers: getCorsHeaders(origin) }
+    return problemWithCors(
+      new AppError({
+        code: "STREAM_PROXY_INVALID_URL",
+        safeMessage: "Invalid URL format",
+        category: "validation",
+        expected: true,
+        status: 400,
+      }),
+      origin,
+      requestId
     );
   }
 
-  // Validate protocol
   const parsed = new URL(urlParam);
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    return json(
-      { error: "Invalid URL: must use http or https protocol" },
-      { status: 400, headers: getCorsHeaders(origin) }
+    return problemWithCors(
+      new AppError({
+        code: "STREAM_PROXY_INVALID_PROTOCOL",
+        safeMessage: "Invalid URL: must use http or https protocol",
+        category: "validation",
+        expected: true,
+        status: 400,
+      }),
+      origin,
+      requestId
     );
   }
 
@@ -75,17 +111,24 @@ function validateUrl(
     hostname.startsWith("172.29.") ||
     hostname.startsWith("172.30.") ||
     hostname.startsWith("172.31.") ||
-    hostname.startsWith("169.254.") || // Link-local
+    hostname.startsWith("169.254.") ||
     hostname === "0.0.0.0" ||
     hostname === "::1" ||
     hostname === "[::1]" ||
-    hostname.startsWith("fc") || // IPv6 unique local (fc00::/7)
-    hostname.startsWith("fd") || // IPv6 unique local (fc00::/7)
-    hostname.startsWith("fe80:") // IPv6 link-local
+    hostname.startsWith("fc") ||
+    hostname.startsWith("fd") ||
+    hostname.startsWith("fe80:")
   ) {
-    return json(
-      { error: "Internal addresses not allowed" },
-      { status: 400, headers: getCorsHeaders(origin) }
+    return problemWithCors(
+      new AppError({
+        code: "STREAM_PROXY_INTERNAL_ADDRESS",
+        safeMessage: "Internal addresses not allowed",
+        category: "security",
+        expected: true,
+        status: 400,
+      }),
+      origin,
+      requestId
     );
   }
 
@@ -99,16 +142,14 @@ function validateUrl(
 async function fetchStream(
   url: string,
   request: Request,
-  origin: string
+  origin: string,
+  requestId: string
 ): Promise<Response> {
   try {
-    // Forward relevant headers from the original request
     const headers: HeadersInit = {
-      // Request ICY metadata if client supports it
       "Icy-MetaData": request.headers.get("Icy-MetaData") || "0",
     };
 
-    // Forward Range header for seeking support
     const rangeHeader = request.headers.get("range");
     if (rangeHeader) {
       headers.Range = rangeHeader;
@@ -117,33 +158,37 @@ async function fetchStream(
     const res = await fetch(url, { headers });
 
     if (!res.ok) {
-      return json(
-        { error: `Upstream error: ${res.status} ${res.statusText}` },
-        { status: res.status, headers: getCorsHeaders(origin) }
+      return problemWithCors(
+        new AppError({
+          code: "STREAM_PROXY_UPSTREAM_ERROR",
+          safeMessage: `Upstream error: ${res.status} ${res.statusText}`,
+          category: "dependency",
+          expected: false,
+          status: res.status,
+          tags: { upstreamStatus: res.status },
+        }),
+        origin,
+        requestId
       );
     }
 
-    // Build response headers with CORS
     const responseHeaders: HeadersInit = {
       ...getCorsHeaders(origin),
-      // Expose ICY headers for metadata
       "Access-Control-Expose-Headers":
         "Content-Type, Content-Length, Icy-MetaInt, Icy-Name, Icy-Description, Icy-Genre, Icy-Br",
+      "x-request-id": requestId,
     };
 
-    // Forward content type
     const contentType = res.headers.get("Content-Type");
     if (contentType) {
       responseHeaders["Content-Type"] = contentType;
     }
 
-    // Forward content length if available
     const contentLength = res.headers.get("Content-Length");
     if (contentLength) {
       responseHeaders["Content-Length"] = contentLength;
     }
 
-    // Forward ICY metadata headers (Icecast specific)
     for (const header of [
       "Icy-MetaInt",
       "Icy-Name",
@@ -157,27 +202,33 @@ async function fetchStream(
       }
     }
 
-    // Forward range response headers
     const contentRange = res.headers.get("Content-Range");
     if (contentRange) {
       responseHeaders["Content-Range"] = contentRange;
       responseHeaders["Accept-Ranges"] = "bytes";
     }
 
-    // Stream the response body directly
     return new Response(res.body, {
       status: res.status,
       headers: responseHeaders,
     });
   } catch (error) {
-    Sentry.captureException(error);
-    const errorMessage =
-      error instanceof Error ? error.message : "Unknown error";
-    console.error("Stream proxy fetch error:", errorMessage);
-    return json(
-      { error: "Failed to fetch stream" },
-      { status: 502, headers: getCorsHeaders(origin) }
-    );
+    const appError = new AppError({
+      code: "STREAM_PROXY_FETCH_FAILED",
+      safeMessage: "Failed to fetch stream",
+      category: "network",
+      expected: false,
+      status: 502,
+    });
+
+    captureError(error instanceof AppError ? error : appError, {
+      surface: "api-route",
+      operation: "stream-proxy.fetchStream",
+      requestId,
+      tags: { endpoint: "stream-proxy" },
+    });
+
+    return problemWithCors(appError, origin, requestId);
   }
 }
 
@@ -185,48 +236,55 @@ export const Route = createFileRoute("/api/stream-proxy")({
   server: {
     handlers: {
       GET: async ({ request }) => {
-        try {
-          const origin = new URL(request.url).origin;
+        return runApiRoute({
+          request,
+          operation: "stream-proxy.GET",
+          fallback: {
+            code: "STREAM_PROXY_INTERNAL_ERROR",
+            safeMessage: "Internal server error",
+            category: "infrastructure",
+            expected: false,
+            status: 500,
+          },
+          errorHeaders: () => {
+            try {
+              return getCorsHeaders(new URL(request.url).origin);
+            } catch {
+              return {};
+            }
+          },
+          run: async ({ requestId }) => {
+            const origin = new URL(request.url).origin;
 
-          // Validate authentication and rate limiting
-          // Note: createSessionIfMissing=true allows anonymous stream proxy access
-          // for DJ mode where user may not have an existing session
-          const authResult = await validateAuthAndRateLimit(
-            request,
-            env,
-            "stream-proxy",
-            { createSessionIfMissing: true }
-          );
-          if (authResult instanceof Response) {
-            return authResult;
-          }
+            const authResult = await validateAuthAndRateLimit(
+              request,
+              env,
+              "stream-proxy",
+              { createSessionIfMissing: true, requestId }
+            );
+            if (authResult instanceof Response) {
+              return authResult;
+            }
 
-          const urlParam = new URL(request.url).searchParams.get("url");
-          const urlValidation = validateUrl(urlParam, origin);
-          if (urlValidation instanceof Response) {
-            return urlValidation;
-          }
+            const urlParam = new URL(request.url).searchParams.get("url");
+            const urlValidation = validateUrl(urlParam, origin, requestId);
+            if (urlValidation instanceof Response) {
+              return urlValidation;
+            }
 
-          return fetchStream(urlValidation, request, origin);
-        } catch (error) {
-          Sentry.captureException(error);
-          let origin = "";
-          try {
-            origin = new URL(request.url).origin;
-          } catch {
-            // Fallback to empty origin if request.url is malformed
-          }
-          return json(
-            { error: "Internal server error" },
-            { status: 500, headers: getCorsHeaders(origin) }
-          );
-        }
+            return fetchStream(urlValidation, request, origin, requestId);
+          },
+        });
       },
       OPTIONS: async ({ request }) => {
+        const requestId = createRequestId(request);
         const origin = new URL(request.url).origin;
+        const headers = new Headers(getCorsOptionsHeaders(origin));
+        headers.set("x-request-id", requestId);
+
         return new Response(null, {
           status: 200,
-          headers: getCorsOptionsHeaders(origin),
+          headers,
         });
       },
     },

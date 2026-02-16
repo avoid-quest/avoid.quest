@@ -1,4 +1,4 @@
-import { json } from "@tanstack/react-start";
+import { AppError, problemResponse } from "@avoid.quest/error";
 import { getSessionId } from "@/lib/auth/session";
 import { logAuthFailure, logRateLimitViolation } from "@/lib/logger";
 import { checkRateLimit } from "@/lib/rate-limit";
@@ -38,7 +38,7 @@ export async function validateAuthAndRateLimit(
     };
   },
   identifier: string,
-  options?: { createSessionIfMissing?: boolean }
+  options?: { createSessionIfMissing?: boolean; requestId?: string }
 ): Promise<AuthAndRateLimitResult> {
   let origin = "*";
   try {
@@ -50,6 +50,7 @@ export async function validateAuthAndRateLimit(
   const ip = getClientIP(request);
   const cookieHeader = request.headers.get("cookie");
   const createSessionIfMissing = options?.createSessionIfMissing ?? true;
+  const requestId = options?.requestId;
 
   let sessionId: string | null;
   let shouldSetCookie = false;
@@ -68,9 +69,18 @@ export async function validateAuthAndRateLimit(
       sessionId = getSessionId(cookieHeader);
       if (!sessionId) {
         logAuthFailure(identifier, ip);
-        return json(
-          { error: "Unauthorized" },
-          { status: 401, headers: getCorsHeaders(origin) }
+        return problemResponse(
+          new AppError({
+            code: "UNAUTHORIZED",
+            safeMessage: "Unauthorized",
+            category: "auth",
+            expected: true,
+            status: 401,
+          }),
+          {
+            requestId,
+            headers: getCorsHeaders(origin),
+          }
         );
       }
     }
@@ -80,9 +90,18 @@ export async function validateAuthAndRateLimit(
 
     if (!rateLimitResult.allowed) {
       logRateLimitViolation(sessionId, identifier, ip);
-      return json(
-        { error: "Rate limit exceeded" },
-        { status: 429, headers: getCorsHeaders(origin) }
+      return problemResponse(
+        new AppError({
+          code: "RATE_LIMITED",
+          safeMessage: "Rate limit exceeded",
+          category: "rate_limit",
+          expected: true,
+          status: 429,
+        }),
+        {
+          requestId,
+          headers: getCorsHeaders(origin),
+        }
       );
     }
 
@@ -92,9 +111,18 @@ export async function validateAuthAndRateLimit(
       error instanceof Error ? error.message : "Unknown error";
     console.error("validateAuthAndRateLimit error:", errorMessage, error);
     // Fail closed - return unauthorized on error
-    return json(
-      { error: "Authentication failed" },
-      { status: 500, headers: getCorsHeaders(origin) }
+    return problemResponse(
+      new AppError({
+        code: "AUTHENTICATION_FAILED",
+        safeMessage: "Authentication failed",
+        category: "infrastructure",
+        expected: false,
+        status: 500,
+      }),
+      {
+        requestId,
+        headers: getCorsHeaders(origin),
+      }
     );
   }
 }

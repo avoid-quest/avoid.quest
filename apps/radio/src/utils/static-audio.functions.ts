@@ -4,8 +4,7 @@
  * Server-side functions for handling remote audio URLs and playlists.
  */
 
-// biome-ignore lint/performance/noNamespaceImport: namespace import required for Sentry
-import * as Sentry from "@sentry/tanstackstart-react";
+import { AppError, type AppResult, runServerFn } from "@avoid.quest/error";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import {
@@ -18,7 +17,6 @@ import {
   isPlaylistUrl,
 } from "@/lib/audio/remote-url";
 import type {
-  StaticAudioItemResponse,
   StaticAudioMetadata,
   StaticAudioTrack,
 } from "@/lib/platform-types";
@@ -27,12 +25,7 @@ import { rateLimitMiddleware } from "./middleware";
 const REQUEST_TIMEOUT_MS = 15_000;
 const IP_OCTET_RE = /^\d{1,3}$/;
 
-/**
- * Block server-side requests to private/internal networks (SSRF protection).
- * Rejects RFC 1918, loopback, link-local, and cloud metadata addresses.
- */
 function isPrivateHostname(hostname: string): boolean {
-  // Block obvious private hostnames
   if (
     hostname === "localhost" ||
     hostname === "[::1]" ||
@@ -42,31 +35,24 @@ function isPrivateHostname(hostname: string): boolean {
     return true;
   }
 
-  // Check for IP addresses
   const parts = hostname.split(".");
   if (parts.length === 4 && parts.every((p) => IP_OCTET_RE.test(p))) {
     const [a, b] = parts.map(Number);
-    // 10.0.0.0/8
     if (a === 10) {
       return true;
     }
-    // 172.16.0.0/12
     if (a === 172 && b !== undefined && b >= 16 && b <= 31) {
       return true;
     }
-    // 192.168.0.0/16
     if (a === 192 && b === 168) {
       return true;
     }
-    // 127.0.0.0/8 (loopback)
     if (a === 127) {
       return true;
     }
-    // 169.254.0.0/16 (link-local / cloud metadata)
     if (a === 169 && b === 254) {
       return true;
     }
-    // 0.0.0.0
     if (a === 0) {
       return true;
     }
@@ -75,32 +61,39 @@ function isPrivateHostname(hostname: string): boolean {
   return false;
 }
 
-function validateUrlNotPrivate(url: string): string | null {
+function assertUrlNotPrivate(url: string): void {
   try {
     const parsed = new URL(url);
     if (isPrivateHostname(parsed.hostname)) {
-      return "URL points to a private/internal network address";
+      throw new AppError({
+        code: "STATIC_AUDIO_PRIVATE_ADDRESS",
+        safeMessage: "URL points to a private/internal network address",
+        category: "security",
+        expected: true,
+        status: 400,
+      });
     }
-    return null;
-  } catch {
-    return "Invalid URL";
+  } catch (error) {
+    if (error instanceof AppError) {
+      throw error;
+    }
+
+    throw new AppError({
+      code: "STATIC_AUDIO_INVALID_URL",
+      safeMessage: "Invalid URL",
+      category: "validation",
+      expected: true,
+      status: 400,
+    });
   }
 }
 
-// Types
-export type RemoteAudioProbeResult =
-  | {
-      success: true;
-      contentType: string;
-      contentLength: number | null;
-      filename: string;
-    }
-  | {
-      success: false;
-      error: string;
-    };
+export type RemoteAudioProbeResponse = AppResult<{
+  contentType: string;
+  contentLength: number | null;
+  filename: string;
+}>;
 
-// Schemas
 const ProbeRemoteAudioSchema = z.object({
   url: z
     .string()
@@ -155,209 +148,274 @@ const GetStaticAudioItemSchema = z.object({
     ),
 });
 
-/**
- * Probe a remote audio URL for metadata (content-type, size)
- */
+export type FetchPlaylistResponse = AppResult<{
+  playlist: ParsedPlaylist;
+}>;
+
+export type StaticAudioItemResponse = AppResult<{
+  metadata: StaticAudioMetadata;
+  streamUrl: string;
+}>;
+
 export const probeRemoteAudio = createServerFn({ method: "POST" })
   .middleware([rateLimitMiddleware("probe-remote-audio")])
   .inputValidator(ProbeRemoteAudioSchema)
-  .handler(async ({ data }): Promise<RemoteAudioProbeResult> => {
-    const ssrfError = validateUrlNotPrivate(data.url);
-    if (ssrfError) {
-      return { success: false, error: ssrfError };
-    }
+  .handler(({ data }): Promise<RemoteAudioProbeResponse> => {
+    return runServerFn({
+      operation: "probeRemoteAudio",
+      fallback: {
+        code: "STATIC_AUDIO_PROBE_FAILED",
+        safeMessage: "Failed to probe remote audio",
+        category: "network",
+        expected: false,
+        status: 500,
+      },
+      run: async () => {
+        assertUrlNotPrivate(data.url);
 
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(
-        () => controller.abort(),
-        REQUEST_TIMEOUT_MS
-      );
+        const controller = new AbortController();
+        const timeoutId = setTimeout(
+          () => controller.abort(),
+          REQUEST_TIMEOUT_MS
+        );
 
-      const response = await fetch(data.url, {
-        method: "HEAD",
-        signal: controller.signal,
-        headers: {
-          "User-Agent": "Mozilla/5.0 (compatible; avoid.quest/1.0)",
-        },
-      });
+        try {
+          const response = await fetch(data.url, {
+            method: "HEAD",
+            signal: controller.signal,
+            headers: {
+              "User-Agent": "Mozilla/5.0 (compatible; avoid.quest/1.0)",
+            },
+          });
 
-      clearTimeout(timeoutId);
+          if (!response.ok) {
+            throw new AppError({
+              code: "STATIC_AUDIO_PROBE_HTTP_ERROR",
+              safeMessage: `HTTP ${response.status}: ${response.statusText}`,
+              category: "network",
+              expected: true,
+              status: 502,
+            });
+          }
 
-      if (!response.ok) {
-        return {
-          success: false,
-          error: `HTTP ${response.status}: ${response.statusText}`,
-        };
-      }
+          const contentType =
+            response.headers.get("content-type") || "audio/mpeg";
+          const contentLengthStr = response.headers.get("content-length");
+          const contentLength = contentLengthStr
+            ? Number.parseInt(contentLengthStr, 10)
+            : null;
 
-      const contentType = response.headers.get("content-type") || "audio/mpeg";
-      const contentLengthStr = response.headers.get("content-length");
-      const contentLength = contentLengthStr
-        ? Number.parseInt(contentLengthStr, 10)
-        : null;
-
-      return {
-        success: true,
-        contentType,
-        contentLength,
-        filename: getFilenameFromUrl(data.url),
-      };
-    } catch (error) {
-      if (error instanceof Error && error.name === "AbortError") {
-        return { success: false, error: "Request timed out" };
-      }
-      Sentry.captureException(error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
-      };
-    }
+          return {
+            contentType,
+            contentLength,
+            filename: getFilenameFromUrl(data.url),
+          };
+        } catch (error) {
+          if (error instanceof Error && error.name === "AbortError") {
+            throw new AppError({
+              code: "STATIC_AUDIO_PROBE_TIMEOUT",
+              safeMessage: "Request timed out",
+              category: "network",
+              expected: true,
+              status: 408,
+            });
+          }
+          throw error;
+        } finally {
+          clearTimeout(timeoutId);
+        }
+      },
+    });
   });
 
-/**
- * Fetch and parse a remote playlist file
- */
 export const fetchPlaylist = createServerFn({ method: "POST" })
   .middleware([rateLimitMiddleware("fetch-playlist")])
   .inputValidator(FetchPlaylistSchema)
-  .handler(async ({ data }): Promise<ParsedPlaylist | { error: string }> => {
-    const ssrfError = validateUrlNotPrivate(data.url);
-    if (ssrfError) {
-      return { error: ssrfError };
-    }
+  .handler(({ data }): Promise<FetchPlaylistResponse> => {
+    return runServerFn({
+      operation: "fetchPlaylist",
+      fallback: {
+        code: "STATIC_AUDIO_FETCH_PLAYLIST_FAILED",
+        safeMessage: "Failed to fetch playlist",
+        category: "network",
+        expected: false,
+        status: 500,
+      },
+      run: async () => {
+        assertUrlNotPrivate(data.url);
 
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(
-        () => controller.abort(),
-        REQUEST_TIMEOUT_MS
-      );
+        const controller = new AbortController();
+        const timeoutId = setTimeout(
+          () => controller.abort(),
+          REQUEST_TIMEOUT_MS
+        );
 
-      const response = await fetch(data.url, {
-        signal: controller.signal,
-        headers: {
-          "User-Agent": "Mozilla/5.0 (compatible; avoid.quest/1.0)",
-        },
-      });
+        try {
+          const response = await fetch(data.url, {
+            signal: controller.signal,
+            headers: {
+              "User-Agent": "Mozilla/5.0 (compatible; avoid.quest/1.0)",
+            },
+          });
 
-      clearTimeout(timeoutId);
+          if (!response.ok) {
+            throw new AppError({
+              code: "STATIC_AUDIO_PLAYLIST_HTTP_ERROR",
+              safeMessage: `HTTP ${response.status}: ${response.statusText}`,
+              category: "network",
+              expected: true,
+              status: 502,
+            });
+          }
 
-      if (!response.ok) {
-        return { error: `HTTP ${response.status}: ${response.statusText}` };
-      }
+          const content = await response.text();
+          const playlist = parsePlaylist(content, data.url);
 
-      const content = await response.text();
-      const playlist = parsePlaylist(content, data.url);
+          if (playlist.tracks.length === 0) {
+            throw new AppError({
+              code: "STATIC_AUDIO_PLAYLIST_EMPTY",
+              safeMessage: "No tracks found in playlist",
+              category: "validation",
+              expected: true,
+              status: 400,
+            });
+          }
 
-      if (playlist.tracks.length === 0) {
-        return { error: "No tracks found in playlist" };
-      }
-
-      return playlist;
-    } catch (error) {
-      if (error instanceof Error && error.name === "AbortError") {
-        return { error: "Request timed out" };
-      }
-      Sentry.captureException(error);
-      return {
-        error: error instanceof Error ? error.message : "Unknown error",
-      };
-    }
+          return { playlist };
+        } catch (error) {
+          if (error instanceof Error && error.name === "AbortError") {
+            throw new AppError({
+              code: "STATIC_AUDIO_PLAYLIST_TIMEOUT",
+              safeMessage: "Request timed out",
+              category: "network",
+              expected: true,
+              status: 408,
+            });
+          }
+          throw error;
+        } finally {
+          clearTimeout(timeoutId);
+        }
+      },
+    });
   });
 
-/**
- * Get static audio item metadata from a URL
- * Similar to loadPlatformItem but for direct audio/playlist URLs
- */
 export const getStaticAudioItem = createServerFn({ method: "POST" })
   .middleware([rateLimitMiddleware("get-static-audio-item")])
   .inputValidator(GetStaticAudioItemSchema)
-  .handler(async ({ data }): Promise<StaticAudioItemResponse> => {
-    const ssrfError = validateUrlNotPrivate(data.url);
-    if (ssrfError) {
-      return { success: false, error: ssrfError };
-    }
+  .handler(({ data }): Promise<StaticAudioItemResponse> => {
+    return runServerFn({
+      operation: "getStaticAudioItem",
+      fallback: {
+        code: "STATIC_AUDIO_ITEM_FAILED",
+        safeMessage: "Failed to resolve static audio item",
+        category: "dependency",
+        expected: false,
+        status: 500,
+      },
+      run: async () => {
+        assertUrlNotPrivate(data.url);
+        const trimmedUrl = data.url.trim();
 
-    const trimmedUrl = data.url.trim();
+        if (isPlaylistUrl(trimmedUrl)) {
+          const playlistResult = await fetchPlaylist({
+            data: { url: trimmedUrl },
+          });
+          if (!playlistResult.ok) {
+            throw new AppError({
+              code: "STATIC_AUDIO_PLAYLIST_RESOLVE_FAILED",
+              safeMessage: playlistResult.error.message,
+              category: "dependency",
+              expected: true,
+              status: playlistResult.error.status,
+            });
+          }
 
-    // Handle playlist URLs
-    if (isPlaylistUrl(trimmedUrl)) {
-      const playlistResult = await fetchPlaylist({ data: { url: trimmedUrl } });
+          const tracks: StaticAudioTrack[] =
+            playlistResult.data.playlist.tracks.map((track) => ({
+              title: track.title,
+              streamUrl: track.url,
+              duration: track.duration,
+              requiresProxy: true,
+            }));
 
-      if ("error" in playlistResult) {
-        return { success: false, error: playlistResult.error };
-      }
+          const firstTrack = tracks[0];
+          if (!firstTrack) {
+            throw new AppError({
+              code: "STATIC_AUDIO_PLAYLIST_EMPTY",
+              safeMessage: "No tracks found in playlist",
+              category: "validation",
+              expected: true,
+              status: 400,
+            });
+          }
 
-      const tracks: StaticAudioTrack[] = playlistResult.tracks.map((track) => ({
-        title: track.title,
-        streamUrl: track.url,
-        duration: track.duration,
-        requiresProxy: true, // Assume remote URLs need proxy
-      }));
+          const metadata: StaticAudioMetadata = {
+            platform: "static-audio",
+            itemType: "playlist",
+            url: trimmedUrl,
+            fileName: getFilenameFromUrl(trimmedUrl),
+            displayName: getFilenameFromUrl(trimmedUrl),
+            duration: tracks.reduce((sum, t) => sum + (t.duration ?? 0), 0),
+            fileSize: 0,
+            mimeType: "audio/x-mpegurl",
+            streamUrl: firstTrack.streamUrl,
+            isLocal: false,
+            requiresProxy: true,
+            tracks,
+            playlistName: getFilenameFromUrl(trimmedUrl),
+            playlistFormat: playlistResult.data.playlist.format,
+          };
 
-      const firstTrack = tracks[0];
-      if (!firstTrack) {
-        return { success: false, error: "No tracks found in playlist" };
-      }
+          return {
+            metadata,
+            streamUrl: firstTrack.streamUrl,
+          };
+        }
 
-      const metadata: StaticAudioMetadata = {
-        platform: "static-audio",
-        itemType: "playlist",
-        url: trimmedUrl,
-        fileName: getFilenameFromUrl(trimmedUrl),
-        displayName: getFilenameFromUrl(trimmedUrl),
-        duration: tracks.reduce((sum, t) => sum + (t.duration ?? 0), 0),
-        fileSize: 0,
-        mimeType: "audio/x-mpegurl",
-        streamUrl: firstTrack.streamUrl,
-        isLocal: false,
-        requiresProxy: true,
-        tracks,
-        playlistName: getFilenameFromUrl(trimmedUrl),
-        playlistFormat: playlistResult.format,
-      };
+        if (isAudioUrl(trimmedUrl)) {
+          const probeResult = await probeRemoteAudio({
+            data: { url: trimmedUrl },
+          });
 
-      return {
-        success: true,
-        metadata,
-        streamUrl: firstTrack.streamUrl,
-      };
-    }
+          if (!probeResult.ok) {
+            throw new AppError({
+              code: "STATIC_AUDIO_PROBE_FAILED",
+              safeMessage: probeResult.error.message,
+              category: "dependency",
+              expected: true,
+              status: probeResult.error.status,
+            });
+          }
 
-    // Handle single audio URLs
-    if (isAudioUrl(trimmedUrl)) {
-      const probeResult = await probeRemoteAudio({
-        data: { url: trimmedUrl },
-      });
+          const metadata: StaticAudioMetadata = {
+            platform: "static-audio",
+            itemType: "track",
+            url: trimmedUrl,
+            fileName: `${probeResult.data.filename}.mp3`,
+            displayName: probeResult.data.filename,
+            duration: 0,
+            fileSize: probeResult.data.contentLength ?? 0,
+            mimeType: probeResult.data.contentType,
+            streamUrl: trimmedUrl,
+            isLocal: false,
+            requiresProxy: true,
+          };
 
-      if (!probeResult.success) {
-        return { success: false, error: probeResult.error };
-      }
+          return {
+            metadata,
+            streamUrl: trimmedUrl,
+          };
+        }
 
-      const metadata: StaticAudioMetadata = {
-        platform: "static-audio",
-        itemType: "track",
-        url: trimmedUrl,
-        fileName: `${probeResult.filename}.mp3`,
-        displayName: probeResult.filename,
-        duration: 0, // Can't determine without loading audio
-        fileSize: probeResult.contentLength ?? 0,
-        mimeType: probeResult.contentType,
-        streamUrl: trimmedUrl,
-        isLocal: false,
-        requiresProxy: true, // Assume remote URLs need proxy for CORS
-      };
-
-      return {
-        success: true,
-        metadata,
-        streamUrl: trimmedUrl,
-      };
-    }
-
-    return {
-      success: false,
-      error: "URL does not point to a supported audio file or playlist",
-    };
+        throw new AppError({
+          code: "STATIC_AUDIO_UNSUPPORTED_URL",
+          safeMessage:
+            "URL does not point to a supported audio file or playlist",
+          category: "validation",
+          expected: true,
+          status: 400,
+        });
+      },
+    });
   });

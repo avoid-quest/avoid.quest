@@ -12,10 +12,10 @@ export function useYouTubeSearch() {
       filter?: "songs" | "videos";
     }): Promise<YouTubeSearchResult[]> => {
       const response = await youtubeSearch({ data: { query, filter } });
-      if (!response.success) {
-        throw new Error(response.error);
+      if (!response.ok) {
+        throw new Error(response.error.message);
       }
-      return response.results;
+      return response.data.results;
     },
   });
 }

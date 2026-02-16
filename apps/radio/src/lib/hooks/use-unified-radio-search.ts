@@ -23,10 +23,10 @@ export function useUnifiedRadioSearch(query: string, localRadios: Radio[]) {
   const searchMutation = useMutation({
     mutationFn: async (q: string): Promise<RadioGardenSearchResult[]> => {
       const response = await radioGardenSearch({ data: { query: q } });
-      if (!response.success) {
-        throw new Error(response.error);
+      if (!response.ok) {
+        throw new Error(response.error.message);
       }
-      return response.results;
+      return response.data.results;
     },
     onSuccess: (results) => {
       setRemoteResults(results);
@@ -60,7 +60,6 @@ export function useUnifiedRadioSearch(query: string, localRadios: Radio[]) {
     };
   }, [query, debouncedSearch]);
 
-  // Clear remote results when query is emptied
   useEffect(() => {
     if (!query.trim()) {
       setRemoteResults([]);

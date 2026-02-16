@@ -102,7 +102,7 @@
     },
     "apps/radio": {
       "name": "@avoid.quest/radio",
-      "version": "0.5.3",
+      "version": "0.5.4",
       "dependencies": {
         "@avoid.quest/error": "workspace:*",
         "@avoid.quest/platforms": "workspace:*",

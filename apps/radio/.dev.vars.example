@@ -1,16 +1,2 @@
 INVIDIOUS_INSTANCE_URL=
 INVIDIOUS_AUTH=
-
-# Runtime server DSN (used by server init + tunnel validation)
-SENTRY_DSN=
-
-# Client DSN embedded at build time
-VITE_SENTRY_DSN=
-VITE_SENTRY_TUNNEL=/tunnel
-
-# Build-time Sentry upload settings (CI/local build env)
-SENTRY_AUTH_TOKEN=
-SENTRY_ORG=
-SENTRY_PROJECT=
-# Optional explicit release (default: radio@<package-version>)
-SENTRY_RELEASE=

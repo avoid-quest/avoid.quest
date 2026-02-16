@@ -39,16 +39,85 @@ const AUDIO_INPUT_PLATFORM_ID = -3;
 export const STATIC_AUDIO_PLATFORM_ID = -4;
 /** @deprecated Use STATIC_AUDIO_PLATFORM_ID */
 export const LOCAL_FILE_PLATFORM_ID = STATIC_AUDIO_PLATFORM_ID;
-export const EXTERNAL_PLATFORM_ID = -6;
+export const SEARCH_ALL_PLATFORM_ID = -6;
+/** @deprecated Use SEARCH_ALL_PLATFORM_ID */
+export const EXTERNAL_PLATFORM_ID = SEARCH_ALL_PLATFORM_ID;
 export const RADIO_GARDEN_PLATFORM_ID = -7;
+export const BANDCAMP_PLATFORM_ID = -8;
+export const SOUNDCLOUD_PLATFORM_ID = -9;
+export const YOUTUBE_PLATFORM_ID = -10;
 
 const AUDIO_INPUT_COLOR = "#10b981";
 const STATIC_AUDIO_COLOR = "#8b5cf6";
-const EXTERNAL_COLOR = "#3b82f6"; // Blue for unified external
+const SEARCH_ALL_COLOR = "#3b82f6";
 const RADIO_GARDEN_COLOR = "#00d084";
+const BANDCAMP_COLOR = "#629aa0";
+const SOUNDCLOUD_COLOR = "#ff7700";
+const YOUTUBE_COLOR = "#ff0000";
 
 // Platform-specific placeholder items
 export const PLATFORM_ITEMS: Radio[] = [
+  {
+    id: SEARCH_ALL_PLATFORM_ID,
+    name: "Search All",
+    streamUrl: "",
+    description: "Search across all platforms",
+    enabled: true,
+    platformMetadata: {
+      platform: "bandcamp",
+      itemType: "track",
+      url: "",
+    },
+  },
+  {
+    id: RADIO_GARDEN_PLATFORM_ID,
+    name: "Radio Garden",
+    streamUrl: "",
+    description: "Search worldwide radio stations",
+    enabled: true,
+    platformMetadata: {
+      platform: "radiogarden",
+      itemType: "channel",
+      url: "",
+      channelId: "",
+    },
+  },
+  {
+    id: BANDCAMP_PLATFORM_ID,
+    name: "Bandcamp",
+    streamUrl: "",
+    description: "Tracks & albums from independent artists",
+    enabled: true,
+    platformMetadata: {
+      platform: "bandcamp",
+      itemType: "track",
+      url: "",
+    },
+  },
+  {
+    id: SOUNDCLOUD_PLATFORM_ID,
+    name: "SoundCloud",
+    streamUrl: "",
+    description: "Tracks, mixes & DJ sets",
+    enabled: true,
+    platformMetadata: {
+      platform: "soundcloud",
+      itemType: "track",
+      url: "",
+    },
+  },
+  {
+    id: YOUTUBE_PLATFORM_ID,
+    name: "YouTube",
+    streamUrl: "",
+    description: "Music videos & audio",
+    enabled: true,
+    platformMetadata: {
+      platform: "youtube",
+      itemType: "video",
+      url: "",
+    },
+  },
   {
     id: STATIC_AUDIO_PLATFORM_ID,
     name: "Audio File",
@@ -85,39 +154,17 @@ export const PLATFORM_ITEMS: Radio[] = [
       channelCount: 2,
     },
   },
-  {
-    id: RADIO_GARDEN_PLATFORM_ID,
-    name: "Radio Garden",
-    streamUrl: "",
-    description: "Search worldwide radio stations",
-    enabled: true,
-    platformMetadata: {
-      platform: "radiogarden",
-      itemType: "channel",
-      url: "",
-      channelId: "",
-    },
-  },
-  {
-    id: EXTERNAL_PLATFORM_ID,
-    name: "External",
-    streamUrl: "",
-    description: "Search Bandcamp, SoundCloud, YouTube",
-    enabled: true,
-    platformMetadata: {
-      platform: "bandcamp", // Default, will be detected from URL/search
-      itemType: "track",
-      url: "",
-    },
-  },
 ];
 
 export function isPlatformItem(radio: Radio): boolean {
   return (
     radio.id === AUDIO_INPUT_PLATFORM_ID ||
     radio.id === STATIC_AUDIO_PLATFORM_ID ||
-    radio.id === EXTERNAL_PLATFORM_ID ||
-    radio.id === RADIO_GARDEN_PLATFORM_ID
+    radio.id === SEARCH_ALL_PLATFORM_ID ||
+    radio.id === RADIO_GARDEN_PLATFORM_ID ||
+    radio.id === BANDCAMP_PLATFORM_ID ||
+    radio.id === SOUNDCLOUD_PLATFORM_ID ||
+    radio.id === YOUTUBE_PLATFORM_ID
   );
 }
 
@@ -138,8 +185,25 @@ export function isLocalFileItem(radio: Radio): boolean {
   return radio.id === STATIC_AUDIO_PLATFORM_ID;
 }
 
+export function isSearchAllItem(radio: Radio): boolean {
+  return radio.id === SEARCH_ALL_PLATFORM_ID;
+}
+
+/** @deprecated Use isSearchAllItem */
 export function isExternalItem(radio: Radio): boolean {
-  return radio.id === EXTERNAL_PLATFORM_ID;
+  return radio.id === SEARCH_ALL_PLATFORM_ID;
+}
+
+export function isBandcampItem(radio: Radio): boolean {
+  return radio.id === BANDCAMP_PLATFORM_ID;
+}
+
+export function isSoundCloudItem(radio: Radio): boolean {
+  return radio.id === SOUNDCLOUD_PLATFORM_ID;
+}
+
+export function isYouTubeItem(radio: Radio): boolean {
+  return radio.id === YOUTUBE_PLATFORM_ID;
 }
 
 export function getPlatformFromItem(radio: Radio): Platform | null {
@@ -152,8 +216,17 @@ export function getPlatformFromItem(radio: Radio): Platform | null {
   if (radio.id === RADIO_GARDEN_PLATFORM_ID) {
     return "radiogarden";
   }
-  if (radio.id === EXTERNAL_PLATFORM_ID) {
+  if (radio.id === SEARCH_ALL_PLATFORM_ID) {
     return "external";
+  }
+  if (radio.id === BANDCAMP_PLATFORM_ID) {
+    return "bandcamp";
+  }
+  if (radio.id === SOUNDCLOUD_PLATFORM_ID) {
+    return "soundcloud";
+  }
+  if (radio.id === YOUTUBE_PLATFORM_ID) {
+    return "youtube";
   }
   return radio.platformMetadata?.platform || null;
 }
@@ -161,20 +234,20 @@ export function getPlatformFromItem(radio: Radio): Platform | null {
 function getPlatformColor(platform: Platform | null): string {
   switch (platform) {
     case "bandcamp":
-      return "#629aa0";
+      return BANDCAMP_COLOR;
     case "soundcloud":
-      return "#ff7700";
+      return SOUNDCLOUD_COLOR;
     case "device-input":
       return AUDIO_INPUT_COLOR;
     case "youtube":
-      return "#ff0000";
+      return YOUTUBE_COLOR;
     case "radiogarden":
       return RADIO_GARDEN_COLOR;
     case "static-audio":
     case "local-file":
       return STATIC_AUDIO_COLOR;
     case "external":
-      return EXTERNAL_COLOR;
+      return SEARCH_ALL_COLOR;
     default:
       return "#ff7700";
   }
@@ -184,7 +257,7 @@ export function RadioItemContent({ radio }: { radio: Radio }) {
   const isPlatform = isPlatformItem(radio);
   const isAudioInput = isAudioInputItem(radio);
   const isStaticAudio = isStaticAudioItem(radio);
-  const isExternal = isExternalItem(radio);
+  const isSearchAll = isSearchAllItem(radio);
   const isRG = isRadioGardenItem(radio);
   const isSession = isSessionRadio(radio);
   const platform = getPlatformFromItem(radio);
@@ -204,8 +277,8 @@ export function RadioItemContent({ radio }: { radio: Radio }) {
         <RadioTowerIcon className="size-5" style={{ color: platformColor }} />
       );
     }
-    if (isExternal) {
-      return <GlobeIcon className="size-5" style={{ color: platformColor }} />;
+    if (isSearchAll) {
+      return <SearchIcon className="size-5" style={{ color: platformColor }} />;
     }
     return <GlobeIcon className="size-5" style={{ color: platformColor }} />;
   };
@@ -420,10 +493,10 @@ export function DjRadioList({ radios }: DjRadioListProps) {
         <div className="mb-3 flex shrink-0 flex-col gap-2">
           <TabsList className="w-full">
             <TabsTrigger className="flex-1 text-xs" value="radios">
-              Radios
+              Library
             </TabsTrigger>
             <TabsTrigger className="flex-1 text-xs" value="external">
-              External
+              Sources
             </TabsTrigger>
           </TabsList>
           <div className="relative">

@@ -46,10 +46,10 @@ export function useRadioGardenResolve(
       const response = await radioGardenResolveStream({
         data: { channelId: result.channelId },
       });
-      if (!response.success) {
-        throw new Error(response.error);
+      if (!response.ok) {
+        throw new Error(response.error.message);
       }
-      const radio = resultToRadio(result, response.streamUrl);
+      const radio = resultToRadio(result, response.data.streamUrl);
       return { radio, result };
     },
     onSuccess: async ({ radio }) => {
@@ -62,14 +62,12 @@ export function useRadioGardenResolve(
   });
 
   const saveToCollection = (result: RadioGardenSearchResult) => {
-    // Find session radio for this result
     const sessionRadios = useSessionRadios.getState().radios;
     const sessionRadio = sessionRadios.find(
       (r) => r.id === `rg_${result.channelId}`
     );
 
     if (sessionRadio) {
-      // Already resolved — save directly
       const { id: _id, ...radioData } = sessionRadio;
       addRadio({
         ...radioData,
@@ -86,15 +84,14 @@ export function useRadioGardenResolve(
       return;
     }
 
-    // Not yet resolved — resolve first, then save
     radioGardenResolveStream({
       data: { channelId: result.channelId },
     }).then((response) => {
-      if (!response.success) {
-        toast.error(response.error);
+      if (!response.ok) {
+        toast.error(response.error.message);
         return;
       }
-      const radio = resultToRadio(result, response.streamUrl);
+      const radio = resultToRadio(result, response.data.streamUrl);
       const { id: _id, ...radioData } = radio;
       addRadio({
         ...radioData,

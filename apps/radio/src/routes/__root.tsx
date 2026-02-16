@@ -1,3 +1,4 @@
+import { AppError, captureError } from "@avoid.quest/error";
 import appleIcon from "@avoid.quest/ui/assets/favicon/apple-icon.png";
 import favicon from "@avoid.quest/ui/assets/favicon/favicon.ico";
 import icon0 from "@avoid.quest/ui/assets/favicon/icon0.svg";
@@ -6,13 +7,10 @@ import { Button } from "@avoid.quest/ui/components/button";
 import { Toaster } from "@avoid.quest/ui/components/sonner";
 import globalsCss from "@avoid.quest/ui/globals.css?url";
 import { cn } from "@avoid.quest/ui/lib/utils";
-// biome-ignore lint/performance/noNamespaceImport: namespace import required for Sentry
-import * as Sentry from "@sentry/tanstackstart-react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ErrorComponentProps } from "@tanstack/react-router";
 import {
   createRootRoute,
-  ErrorComponent,
   HeadContent,
   Link,
   Scripts,
@@ -116,17 +114,24 @@ export const Route = createRootRoute({
 });
 
 function RootErrorComponent({ error, reset }: ErrorComponentProps) {
+  const safeMessage =
+    error instanceof AppError
+      ? error.safeMessage
+      : "Something went wrong. Please try again.";
+
   useEffect(() => {
-    Sentry.captureException(error);
+    captureError(error, {
+      surface: "ui",
+      operation: "root-error-boundary",
+      tags: { route: "__root" },
+    });
   }, [error]);
 
   return (
     <div className="flex h-full w-full flex-col items-center justify-center p-8">
       <div className="text-center">
         <h1 className="mb-2 font-bold text-4xl">Something went wrong</h1>
-        <div className="mb-6">
-          <ErrorComponent error={error} />
-        </div>
+        <p className="mb-6 text-muted-foreground">{safeMessage}</p>
         <div className="flex justify-center gap-3">
           <Button onClick={reset} size="lg">
             Try Again

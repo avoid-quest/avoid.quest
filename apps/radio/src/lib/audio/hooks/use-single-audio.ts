@@ -5,10 +5,9 @@
  * Uses HTML5 Audio + Web Audio API for crossfade (no worklets).
  */
 
+import { capturePlaybackError } from "@avoid.quest/error";
 import { useCallback, useEffect, useRef, useState } from "react";
-
 import { validateRadioForMode } from "@/lib/external-url/utils";
-import { capturePlaybackError } from "@/lib/telemetry/playback-errors";
 
 import {
   CrossfadeController,

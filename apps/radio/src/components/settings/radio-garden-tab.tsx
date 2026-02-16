@@ -1,8 +1,7 @@
+import { captureError } from "@avoid.quest/error";
 import { Button } from "@avoid.quest/ui/components/button";
 import { Input } from "@avoid.quest/ui/components/input";
 import { ScrollArea } from "@avoid.quest/ui/components/scroll-area";
-// biome-ignore lint/performance/noNamespaceImport: namespace import required for Sentry
-import * as Sentry from "@sentry/tanstackstart-react";
 import {
   ExternalLinkIcon,
   GlobeIcon,
@@ -51,17 +50,22 @@ export function RadioGardenTab({ onSuccess }: RadioGardenTabProps) {
       const response = await radioGardenSearch({
         data: { query: query.trim() },
       });
-      if (!response.success) {
-        setSearchError(response.error);
+
+      if (!response.ok) {
+        setSearchError(response.error.message);
         setResults([]);
         return;
       }
-      setResults(response.results);
-      if (response.results.length === 0) {
+
+      setResults(response.data.results);
+      if (response.data.results.length === 0) {
         setSearchError("No stations found. Try a different search.");
       }
     } catch (error) {
-      Sentry.captureException(error);
+      captureError(error, {
+        surface: "ui",
+        operation: "radio-garden.search",
+      });
       setSearchError(
         error instanceof Error
           ? error.message
@@ -89,8 +93,10 @@ export function RadioGardenTab({ onSuccess }: RadioGardenTabProps) {
         data: { channelId: result.channelId },
       });
 
-      if (!resolveResponse.success) {
-        toast.error(`Failed to resolve stream: ${resolveResponse.error}`);
+      if (!resolveResponse.ok) {
+        toast.error(
+          `Failed to resolve stream: ${resolveResponse.error.message}`
+        );
         return;
       }
 
@@ -111,7 +117,7 @@ export function RadioGardenTab({ onSuccess }: RadioGardenTabProps) {
 
       addRadio({
         name: editedName || result.title,
-        streamUrl: resolveResponse.streamUrl,
+        streamUrl: resolveResponse.data.streamUrl,
         description: `${result.placeTitle}, ${result.countryTitle}`,
         websiteUrl: result.website,
         order: maxOrder + 1,
@@ -123,7 +129,10 @@ export function RadioGardenTab({ onSuccess }: RadioGardenTabProps) {
       toast.success(`Added "${editedName || result.title}" to your collection`);
       onSuccess();
     } catch (error) {
-      Sentry.captureException(error);
+      captureError(error, {
+        surface: "ui",
+        operation: "radio-garden.add",
+      });
       toast.error(
         error instanceof Error
           ? error.message
@@ -189,7 +198,6 @@ export function RadioGardenTab({ onSuccess }: RadioGardenTabProps) {
                   </div>
                 </button>
 
-                {/* Inline preview card */}
                 {selectedId === result.channelId && selected && (
                   <div className="mx-2 mb-2 space-y-3 rounded-md border bg-muted/30 p-3">
                     <div className="space-y-2">

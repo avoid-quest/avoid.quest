@@ -65,7 +65,6 @@ import { useThrottledParam } from "@/lib/hooks/use-throttled-param";
 import { useTrackProgress } from "@/lib/hooks/use-track-progress";
 import type {
   BandcampMetadata,
-  Platform,
   PlatformMetadata,
   SoundCloudMetadata,
   StaticAudioMetadata,
@@ -85,7 +84,6 @@ import { DeviceForm } from "../device-form";
 import { DjRadioList } from "../dj-radio-list";
 import { ExternalSearch } from "../external-search";
 import { FileForm } from "../file-form";
-import { PlatformForm } from "../platform-form";
 import { DeckChannelStrip } from "./deck-channel-strip";
 import {
   type DeckContextValue,
@@ -142,7 +140,11 @@ async function resolveYouTubePlaylistTrack(
   tracks?: { streamUrl: string; videoId?: string }[]
 ): Promise<string | null> {
   const result = await youtubeResolveStream({ data: { videoId } });
-  const { stream } = result;
+  if (!result.ok) {
+    toast.error(result.error.message);
+    return null;
+  }
+  const { stream } = result.data;
   if (!stream) {
     toast.error("Failed to resolve YouTube stream");
     return null;
@@ -516,11 +518,17 @@ function DeckPanelInner({
         />
       );
     } else if (isChangingUrl && isPlatformRadio(radio)) {
+      const editPlatform = radio.platformMetadata?.platform;
+      const searchPlatform =
+        editPlatform === "bandcamp" ||
+        editPlatform === "soundcloud" ||
+        editPlatform === "youtube" ||
+        editPlatform === "radiogarden"
+          ? editPlatform
+          : ("all" as const);
       content = (
-        <PlatformForm
-          currentUrl={radio.platformMetadata?.url}
-          editMode={true}
-          initialPlatform={radio.platformMetadata?.platform as Platform}
+        <ExternalSearch
+          initialPlatform={searchPlatform}
           onCancel={() => setIsChangingUrl(false)}
           onLoad={handleUrlChanged}
         />
@@ -595,14 +603,18 @@ function DeckPanelInner({
         onLoadUrl={handleLoadRemoteUrl}
       />
     );
-  } else if (pendingPlatform === "external") {
+  } else if (
+    pendingPlatform === "external" ||
+    pendingPlatform === "bandcamp" ||
+    pendingPlatform === "soundcloud" ||
+    pendingPlatform === "youtube" ||
+    pendingPlatform === "radiogarden"
+  ) {
+    const searchPlatform =
+      pendingPlatform === "external" ? "all" : pendingPlatform;
     content = (
-      <ExternalSearch onCancel={handleClear} onLoad={handleLoadPlatformItem} />
-    );
-  } else if (pendingPlatform) {
-    content = (
-      <PlatformForm
-        initialPlatform={pendingPlatform}
+      <ExternalSearch
+        initialPlatform={searchPlatform}
         onCancel={handleClear}
         onLoad={handleLoadPlatformItem}
       />

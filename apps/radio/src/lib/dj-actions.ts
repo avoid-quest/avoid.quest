@@ -6,6 +6,7 @@
  * TanStack Store for runtime state.
  */
 
+import { capturePlaybackError } from "@avoid.quest/error";
 import { resolveStreamUrl } from "@avoid.quest/platforms";
 import type {
   ChannelSelection,
@@ -63,7 +64,6 @@ import {
   setDeckBSubscriptionCleanup,
   setDjError,
 } from "@/lib/stores/dj-runtime-store";
-import { capturePlaybackError } from "@/lib/telemetry/playback-errors";
 
 export type DeckSide = "left" | "right";
 type DeckId = "deck-a" | "deck-b";

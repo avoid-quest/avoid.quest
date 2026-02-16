@@ -5,7 +5,7 @@
  * Used in non-DJ modes for straightforward playback.
  */
 
-import { capturePlaybackError } from "@/lib/telemetry/playback-errors";
+import { capturePlaybackError } from "@avoid.quest/error";
 import type { Radio } from "../playback/types.js";
 import {
   createLoadModeCache,

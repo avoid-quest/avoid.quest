@@ -24,6 +24,7 @@ type SearchInputProps = {
   youtubeFilter: "songs" | "videos";
   onYoutubeFilterChange: (filter: "songs" | "videos") => void;
   onLoad: (radio: Radio) => void;
+  locked?: boolean;
 };
 
 const PLATFORM_HINTS: Record<SearchPlatform, string> = {
@@ -34,6 +35,22 @@ const PLATFORM_HINTS: Record<SearchPlatform, string> = {
   youtube: "Music videos & audio",
 };
 
+const PLATFORM_LABELS: Record<SearchPlatform, string> = {
+  all: "All Platforms",
+  bandcamp: "Bandcamp",
+  radiogarden: "Radio Garden",
+  soundcloud: "SoundCloud",
+  youtube: "YouTube",
+};
+
+const PLATFORM_DOT_COLORS: Record<SearchPlatform, string> = {
+  all: "#3b82f6",
+  bandcamp: "#629aa0",
+  radiogarden: "#00d084",
+  soundcloud: "#ff7700",
+  youtube: "#ff0000",
+};
+
 export function SearchInput({
   platform,
   onPlatformChange,
@@ -41,6 +58,7 @@ export function SearchInput({
   onBandcampFilterChange,
   youtubeFilter,
   onYoutubeFilterChange,
+  locked,
 }: SearchInputProps) {
   const [query, setQuery] = useState("");
   const { mutate: search, isPending } = useExternalSearch();
@@ -75,59 +93,71 @@ export function SearchInput({
   return (
     <form className="flex flex-col gap-2" onSubmit={handleSubmit}>
       <div className="flex gap-2">
-        <Select
-          onValueChange={(v) => onPlatformChange(v as SearchPlatform)}
-          value={platform}
-        >
-          <SelectTrigger className="h-8 w-[120px] shrink-0 text-xs">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectGroup>
-              <SelectLabel className="text-[10px]">Search Platform</SelectLabel>
-              <SelectItem value="all">All Platforms</SelectItem>
-            </SelectGroup>
-            <SelectGroup>
-              <SelectLabel className="text-[10px]">Individual</SelectLabel>
-              <SelectItem value="bandcamp">
-                <span className="flex items-center gap-1.5">
-                  <span
-                    className="size-2 rounded-full"
-                    style={{ backgroundColor: "#629aa0" }}
-                  />
-                  Bandcamp
-                </span>
-              </SelectItem>
-              <SelectItem value="radiogarden">
-                <span className="flex items-center gap-1.5">
-                  <span
-                    className="size-2 rounded-full"
-                    style={{ backgroundColor: "#00d084" }}
-                  />
-                  Radio Garden
-                </span>
-              </SelectItem>
-              <SelectItem value="soundcloud">
-                <span className="flex items-center gap-1.5">
-                  <span
-                    className="size-2 rounded-full"
-                    style={{ backgroundColor: "#ff7700" }}
-                  />
-                  SoundCloud
-                </span>
-              </SelectItem>
-              <SelectItem value="youtube">
-                <span className="flex items-center gap-1.5">
-                  <span
-                    className="size-2 rounded-full"
-                    style={{ backgroundColor: "#ff0000" }}
-                  />
-                  YouTube
-                </span>
-              </SelectItem>
-            </SelectGroup>
-          </SelectContent>
-        </Select>
+        {locked ? (
+          <div className="flex h-8 w-[120px] shrink-0 items-center gap-1.5 rounded-md border border-input bg-background px-3 text-xs">
+            <span
+              className="size-2 shrink-0 rounded-full"
+              style={{ backgroundColor: PLATFORM_DOT_COLORS[platform] }}
+            />
+            <span className="truncate">{PLATFORM_LABELS[platform]}</span>
+          </div>
+        ) : (
+          <Select
+            onValueChange={(v) => onPlatformChange(v as SearchPlatform)}
+            value={platform}
+          >
+            <SelectTrigger className="h-8 w-[120px] shrink-0 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                <SelectLabel className="text-[10px]">
+                  Search Platform
+                </SelectLabel>
+                <SelectItem value="all">All Platforms</SelectItem>
+              </SelectGroup>
+              <SelectGroup>
+                <SelectLabel className="text-[10px]">Individual</SelectLabel>
+                <SelectItem value="bandcamp">
+                  <span className="flex items-center gap-1.5">
+                    <span
+                      className="size-2 rounded-full"
+                      style={{ backgroundColor: "#629aa0" }}
+                    />
+                    Bandcamp
+                  </span>
+                </SelectItem>
+                <SelectItem value="radiogarden">
+                  <span className="flex items-center gap-1.5">
+                    <span
+                      className="size-2 rounded-full"
+                      style={{ backgroundColor: "#00d084" }}
+                    />
+                    Radio Garden
+                  </span>
+                </SelectItem>
+                <SelectItem value="soundcloud">
+                  <span className="flex items-center gap-1.5">
+                    <span
+                      className="size-2 rounded-full"
+                      style={{ backgroundColor: "#ff7700" }}
+                    />
+                    SoundCloud
+                  </span>
+                </SelectItem>
+                <SelectItem value="youtube">
+                  <span className="flex items-center gap-1.5">
+                    <span
+                      className="size-2 rounded-full"
+                      style={{ backgroundColor: "#ff0000" }}
+                    />
+                    YouTube
+                  </span>
+                </SelectItem>
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+        )}
 
         <div className="relative flex-1">
           <SearchIcon className="absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground" />

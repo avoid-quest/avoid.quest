@@ -8,19 +8,28 @@ import { UrlInput } from "./url-input";
 type ExternalSearchProps = {
   onLoad: (radio: Radio) => void;
   onCancel?: () => void;
+  initialPlatform?: SearchPlatform;
 };
 
-export function ExternalSearch({ onLoad, onCancel }: ExternalSearchProps) {
-  const [platform, setPlatform] = useState<SearchPlatform>("all");
+export function ExternalSearch({
+  onLoad,
+  onCancel,
+  initialPlatform,
+}: ExternalSearchProps) {
+  const [platform, setPlatform] = useState<SearchPlatform>(
+    initialPlatform ?? "all"
+  );
   const [bandcampFilter, setBandcampFilter] = useState<"" | "t" | "a">("t");
   const [youtubeFilter, setYoutubeFilter] = useState<"songs" | "videos">(
     "songs"
   );
+  const isLocked = initialPlatform !== undefined && initialPlatform !== "all";
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden p-2">
       <SearchInput
         bandcampFilter={bandcampFilter}
+        locked={isLocked}
         onBandcampFilterChange={setBandcampFilter}
         onLoad={onLoad}
         onPlatformChange={setPlatform}

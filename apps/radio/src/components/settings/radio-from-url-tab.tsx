@@ -1,3 +1,4 @@
+import { captureError } from "@avoid.quest/error";
 import { Button } from "@avoid.quest/ui/components/button";
 import { Input } from "@avoid.quest/ui/components/input";
 import {
@@ -8,8 +9,6 @@ import {
   SelectValue,
 } from "@avoid.quest/ui/components/select";
 import { Spinner } from "@avoid.quest/ui/components/spinner";
-// biome-ignore lint/performance/noNamespaceImport: namespace import required for Sentry
-import * as Sentry from "@sentry/tanstackstart-react";
 import { CheckCircleIcon, LinkIcon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -99,7 +98,10 @@ export function RadioFromUrlTab({ onSuccess }: RadioFromUrlTabProps) {
       toast.success(`Added "${name.trim()}" to your collection`);
       onSuccess();
     } catch (error) {
-      Sentry.captureException(error);
+      captureError(error, {
+        surface: "ui",
+        operation: "radio-from-url.add",
+      });
       toast.error(
         error instanceof Error ? error.message : "Failed to add station"
       );

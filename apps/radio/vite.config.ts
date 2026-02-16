@@ -10,6 +10,15 @@ import tsConfigPaths from "vite-tsconfig-paths";
 
 const WORKLET_OUT_DIR = ".worklet-build";
 const WORKLET_FILENAME = "dsp-processor-bundle.js";
+const APP_VERSION = process.env.npm_package_version || "0.5.0";
+
+const sentryAuthToken = process.env.SENTRY_AUTH_TOKEN;
+const sentryOrg = process.env.SENTRY_ORG;
+const sentryProject = process.env.SENTRY_PROJECT;
+const sentryReleaseName = process.env.SENTRY_RELEASE ?? `radio@${APP_VERSION}`;
+const sentryBuildEnabled = Boolean(
+  sentryAuthToken && sentryOrg && sentryProject
+);
 
 /**
  * Plugin to build the AudioWorklet processor bundle
@@ -90,17 +99,22 @@ export default defineConfig({
         plugins: ["babel-plugin-react-compiler"],
       },
     }),
-    sentryTanstackStart({
-      org: "avoidquest",
-      project: "radio",
-      authToken: process.env.SENTRY_AUTH_TOKEN,
-      sourcemaps: {
-        filesToDeleteAfterUpload: ["./dist/**/*.map"],
-      },
-    }),
+    ...(sentryBuildEnabled
+      ? sentryTanstackStart({
+          org: sentryOrg,
+          project: sentryProject,
+          authToken: sentryAuthToken,
+          release: { name: sentryReleaseName },
+          telemetry: false,
+          autoInstrumentMiddleware: false,
+          sourcemaps: {
+            filesToDeleteAfterUpload: ["./dist/**/*.map"],
+          },
+        })
+      : []),
   ],
   define: {
-    __APP_VERSION__: JSON.stringify(process.env.npm_package_version || "0.5.0"),
+    __APP_VERSION__: JSON.stringify(APP_VERSION),
   },
   build: {
     minify: "esbuild",

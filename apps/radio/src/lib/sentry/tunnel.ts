@@ -5,10 +5,10 @@ export const CLIENT_SENTRY_DSN =
 export const CLIENT_SENTRY_TUNNEL = "/tunnel";
 export const MAX_TUNNEL_ENVELOPE_BYTES = 1_000_000;
 
-export interface SentryTunnelTarget {
+export type SentryTunnelTarget = {
   host: string;
   projectId: string;
-}
+};
 
 export function parseSentryDsn(raw: string): URL | null {
   try {
@@ -66,7 +66,9 @@ export function resolveTunnelTarget(config: {
   return null;
 }
 
-export function readEnvelopeHeader(envelope: ArrayBuffer): { dsn?: string } | null {
+export function readEnvelopeHeader(
+  envelope: ArrayBuffer
+): { dsn?: string } | null {
   const bytes = new Uint8Array(envelope);
   const headerEnd = bytes.indexOf(10);
   if (headerEnd <= 0) {

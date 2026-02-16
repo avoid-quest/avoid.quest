@@ -3,8 +3,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import {
   CLIENT_SENTRY_DSN,
-  MAX_TUNNEL_ENVELOPE_BYTES,
   isAllowedEnvelopeDsn,
+  MAX_TUNNEL_ENVELOPE_BYTES,
   readEnvelopeHeader,
   resolveTunnelTarget,
 } from "@/lib/sentry/tunnel";

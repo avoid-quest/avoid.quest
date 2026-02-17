@@ -33,16 +33,67 @@ if (process.env.NODE_ENV === "production" && !sentryBuildEnabled) {
   );
 }
 
+const VENDOR_CHUNK_GROUPS: Array<{
+  name: string;
+  match: (normalizedId: string) => boolean;
+}> = [
+  {
+    name: "vendor-react",
+    match: (id) =>
+      id.includes("/node_modules/react/") ||
+      id.includes("/node_modules/react-dom/") ||
+      id.includes("/node_modules/scheduler/"),
+  },
+  {
+    name: "vendor-tanstack",
+    match: (id) => id.includes("/node_modules/@tanstack/"),
+  },
+  {
+    name: "vendor-audio",
+    match: (id) =>
+      id.includes("/node_modules/@opendaw/") ||
+      id.includes("/node_modules/hls.js/"),
+  },
+  {
+    name: "vendor-ui",
+    match: (id) =>
+      id.includes("/node_modules/@dnd-kit/") ||
+      id.includes("/node_modules/lucide-react/"),
+  },
+];
+
+function manualVendorChunks(id: string): string | undefined {
+  if (!id.includes("node_modules")) {
+    return undefined;
+  }
+  const normalizedId = id.replaceAll(path.sep, "/");
+  for (const group of VENDOR_CHUNK_GROUPS) {
+    if (group.match(normalizedId)) {
+      return group.name;
+    }
+  }
+  return "vendor";
+}
+
 /**
  * Plugin to build the AudioWorklet processor bundle
  */
 function audioWorkletPlugin(): Plugin {
   let workletContent: string | null = null;
+  let shouldBuildWorklet = true;
 
   return {
     name: "audio-worklet-plugin",
 
+    configResolved(config) {
+      shouldBuildWorklet = config.command === "serve" || !config.build.ssr;
+    },
+
     async buildStart() {
+      if (!shouldBuildWorklet) {
+        return;
+      }
+
       // Build worklet to a temporary directory
       await build({
         configFile: false,
@@ -89,6 +140,10 @@ function audioWorkletPlugin(): Plugin {
 
     // Copy worklet to dist during production build
     writeBundle(options) {
+      if (!shouldBuildWorklet) {
+        return;
+      }
+
       if (options.dir?.includes("client") && workletContent) {
         const outPath = path.resolve(options.dir, WORKLET_FILENAME);
         mkdirSync(path.dirname(outPath), { recursive: true });
@@ -134,5 +189,10 @@ export default defineConfig({
     // "hidden" generates source maps for Sentry upload but omits
     // sourceMappingURL from production bundles (unlike true/inline).
     sourcemap: "hidden",
+    rollupOptions: {
+      output: {
+        manualChunks: manualVendorChunks,
+      },
+    },
   },
 });

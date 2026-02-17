@@ -81,7 +81,7 @@ const EMPTY_KEY_MAP = new Map<string, MidiMapping>();
 const initialState: MidiState = {
   mappings: [],
   activePresetId: null,
-  enabled: true,
+  enabled: false,
   mappingsByTarget: EMPTY_TARGET_MAP,
   mappingsByKey: EMPTY_KEY_MAP,
   learningTarget: null,

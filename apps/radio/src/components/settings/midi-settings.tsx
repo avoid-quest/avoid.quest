@@ -14,8 +14,8 @@ import {
   SelectValue,
 } from "@avoid.quest/ui/components/select";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { CircleIcon, Trash2Icon, XIcon } from "lucide-react";
-import { useSyncExternalStore } from "react";
+import { CircleIcon, RefreshCwIcon, Trash2Icon, XIcon } from "lucide-react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import {
   MIDI_PRESETS,
   type MidiAction,
@@ -25,6 +25,7 @@ import {
 } from "@/lib/midi";
 
 const EMPTY_ACTIONS: MidiAction[] = [];
+type MidiPermissionState = "prompt" | "granted" | "denied" | "error";
 
 function useActions(): MidiAction[] {
   const controller = MidiController.getInstance();
@@ -182,6 +183,11 @@ export function MidiSettings() {
   const clearMappings = useMidiStore((s) => s.clearMappings);
   const removeMapping = useMidiStore((s) => s.removeMapping);
   const setEnabled = useMidiStore((s) => s.setEnabled);
+  const setDevices = useMidiStore((s) => s.setDevices);
+
+  const [permissionState, setPermissionState] =
+    useState<MidiPermissionState>("prompt");
+  const [isLoading, setIsLoading] = useState(false);
 
   const isLearning = learningTarget !== null;
 
@@ -201,6 +207,82 @@ export function MidiSettings() {
   const deckBEffectTargets = actions
     .filter((a) => a.group === "deck-b-effects")
     .map((a) => a.targetId);
+
+  const requestPermission = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const controller = MidiController.getInstance();
+      const success = await controller.init();
+      if (!success) {
+        setPermissionState("denied");
+        setDevices([]);
+        return;
+      }
+      setDevices(controller.getDevices());
+      setPermissionState("granted");
+    } catch {
+      setPermissionState("error");
+      setDevices([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [setDevices]);
+
+  const refreshDevices = useCallback(async () => {
+    if (permissionState !== "granted") {
+      return;
+    }
+    setIsLoading(true);
+    try {
+      const controller = MidiController.getInstance();
+      const success = await controller.init();
+      if (!success) {
+        setPermissionState("denied");
+        setDevices([]);
+        return;
+      }
+      setDevices(controller.getDevices());
+    } finally {
+      setIsLoading(false);
+    }
+  }, [permissionState, setDevices]);
+
+  useEffect(() => {
+    if (devices.length > 0) {
+      setPermissionState("granted");
+    }
+  }, [devices.length]);
+
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("permissions" in navigator)) {
+      return;
+    }
+    let isCancelled = false;
+    let status: PermissionStatus | null = null;
+    const onChange = () => {
+      if (!status || isCancelled) {
+        return;
+      }
+      setPermissionState(status.state as MidiPermissionState);
+    };
+    navigator.permissions
+      .query({ name: "midi", sysex: false } as PermissionDescriptor)
+      .then((permissionStatus) => {
+        if (isCancelled) {
+          return;
+        }
+        status = permissionStatus;
+        setPermissionState(permissionStatus.state as MidiPermissionState);
+        permissionStatus.addEventListener("change", onChange);
+      })
+      .catch(() => {
+        // Some browsers expose Web MIDI but not permissions.query({ name: "midi" })
+      });
+    return () => {
+      isCancelled = true;
+      status?.removeEventListener("change", onChange);
+    };
+  }, []);
 
   if (!isSupported) {
     return (
@@ -223,6 +305,39 @@ export function MidiSettings() {
   return (
     <ScrollArea className="min-h-0 flex-1">
       <div className="space-y-5 pr-3">
+        {permissionState !== "granted" && (
+          <div className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3">
+            <p className="mb-2 text-xs">
+              Grant MIDI permission to detect controllers and receive MIDI
+              messages.
+            </p>
+            <Button
+              disabled={isLoading}
+              onClick={requestPermission}
+              size="sm"
+              variant="outline"
+            >
+              {isLoading ? "Requesting..." : "Grant MIDI Permission"}
+            </Button>
+          </div>
+        )}
+
+        {permissionState === "granted" && (
+          <div className="flex justify-end">
+            <Button
+              disabled={isLoading}
+              onClick={refreshDevices}
+              size="sm"
+              variant="ghost"
+            >
+              <RefreshCwIcon
+                className={`mr-1.5 size-3.5 ${isLoading ? "animate-spin" : ""}`}
+              />
+              Refresh Devices
+            </Button>
+          </div>
+        )}
+
         {/* Enable toggle */}
         <div className="flex items-center justify-between rounded-lg border border-border/50 p-3">
           <div className="space-y-0.5">

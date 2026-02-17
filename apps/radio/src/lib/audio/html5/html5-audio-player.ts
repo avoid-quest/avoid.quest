@@ -37,6 +37,7 @@ export class HTML5AudioPlayer {
 
   #state: HTML5AudioState = { ...initialHTML5AudioState };
   #activeLoadMode: Html5LoadMode = "cors-anonymous";
+  #isResettingSource = false;
 
   constructor(
     id: string,
@@ -86,12 +87,14 @@ export class HTML5AudioPlayer {
       getInitialLoadMode(this.#loadModeCache.get(this.#radio.streamUrl));
     this.#activeLoadMode = effectiveMode;
 
+    this.#isResettingSource = true;
     this.#audio.pause();
-    this.#audio.src = "";
+    this.#audio.removeAttribute("src");
     this.#audio.load();
     this.#applyLoadMode(effectiveMode);
     this.#audio.src = this.#radio.streamUrl;
     this.#audio.load();
+    this.#isResettingSource = false;
     this.#updateState({ isLoading: true, error: null, hasEnded: false });
   }
 
@@ -185,9 +188,11 @@ export class HTML5AudioPlayer {
    * Clean up resources
    */
   dispose(): void {
+    this.#isResettingSource = true;
     this.#audio.pause();
-    this.#audio.src = "";
+    this.#audio.removeAttribute("src");
     this.#audio.load();
+    this.#isResettingSource = false;
     this.#listeners.clear();
   }
 
@@ -228,6 +233,17 @@ export class HTML5AudioPlayer {
 
     this.#audio.addEventListener("error", () => {
       const mediaError = this.#audio.error;
+      const currentSrc = this.#audio.currentSrc || this.#audio.src || "";
+      if (
+        shouldIgnorePlaybackMediaError({
+          mediaErrorCode: mediaError?.code,
+          currentSrc,
+          isResettingSource: this.#isResettingSource,
+        })
+      ) {
+        return;
+      }
+
       const mediaErrorObject = errorFromMedia(mediaError);
 
       // Let play() run a no-cors compatibility retry before surfacing terminal errors.
@@ -256,7 +272,7 @@ export class HTML5AudioPlayer {
         error,
       });
 
-      capturePlaybackError(mediaErrorObject, {
+      capturePlaybackError(new Error(errorMessage), {
         mode: this.#telemetryMode,
         radioId: this.#radio.id,
         radioName: this.#radio.name,
@@ -350,5 +366,43 @@ export class HTML5AudioPlayer {
 }
 
 function errorFromMedia(mediaError: MediaError | null): Error {
-  return new Error(mediaError?.message || "Unknown audio error");
+  switch (mediaError?.code) {
+    case MEDIA_ERR_ABORTED:
+      return new Error("MEDIA_ERR_ABORTED");
+    case 2:
+      return new Error("MEDIA_ERR_NETWORK");
+    case 3:
+      return new Error("MEDIA_ERR_DECODE");
+    case MEDIA_ERR_SRC_NOT_SUPPORTED:
+      return new Error("MEDIA_ERR_SRC_NOT_SUPPORTED");
+    default:
+      return new Error("MEDIA_ERROR_UNKNOWN");
+  }
+}
+
+type IgnorePlaybackMediaErrorInput = {
+  mediaErrorCode: number | null | undefined;
+  currentSrc: string;
+  isResettingSource: boolean;
+};
+
+const MEDIA_ERR_ABORTED = 1;
+const MEDIA_ERR_SRC_NOT_SUPPORTED = 4;
+
+export function shouldIgnorePlaybackMediaError(
+  input: IgnorePlaybackMediaErrorInput
+): boolean {
+  if (input.isResettingSource) {
+    return true;
+  }
+
+  if (!input.currentSrc.trim()) {
+    return true;
+  }
+
+  if (input.mediaErrorCode === MEDIA_ERR_ABORTED) {
+    return true;
+  }
+
+  return false;
 }

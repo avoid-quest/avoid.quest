@@ -19,15 +19,77 @@ const sentryReleaseName = process.env.SENTRY_RELEASE ?? `radio@${APP_VERSION}`;
 const sentryBuildEnabled = Boolean(
   sentryAuthToken && sentryOrg && sentryProject
 );
+const missingSentryBuildEnv = [
+  ["SENTRY_AUTH_TOKEN", sentryAuthToken],
+  ["SENTRY_ORG", sentryOrg],
+  ["SENTRY_PROJECT", sentryProject],
+]
+  .filter(([, value]) => !value)
+  .map(([name]) => name);
+
+if (process.env.NODE_ENV === "production" && !sentryBuildEnabled) {
+  console.warn(
+    `[radio] Sentry sourcemap upload disabled: missing ${missingSentryBuildEnv.join(", ")}`
+  );
+}
+
+const VENDOR_CHUNK_GROUPS: Array<{
+  name: string;
+  match: (normalizedId: string) => boolean;
+}> = [
+  {
+    name: "vendor-react",
+    match: (id) =>
+      id.includes("/node_modules/react/") ||
+      id.includes("/node_modules/react-dom/") ||
+      id.includes("/node_modules/scheduler/"),
+  },
+  {
+    name: "vendor-tanstack",
+    match: (id) => id.includes("/node_modules/@tanstack/"),
+  },
+  {
+    name: "vendor-audio",
+    match: (id) =>
+      id.includes("/node_modules/@opendaw/") ||
+      id.includes("/node_modules/hls.js/"),
+  },
+  {
+    name: "vendor-ui",
+    match: (id) =>
+      id.includes("/node_modules/@dnd-kit/") ||
+      id.includes("/node_modules/lucide-react/"),
+  },
+];
+
+function manualVendorChunks(id: string): string | undefined {
+  if (!id.includes("node_modules")) {
+    return undefined;
+  }
+  const normalizedId = id.replaceAll(path.sep, "/");
+  for (const group of VENDOR_CHUNK_GROUPS) {
+    if (group.match(normalizedId)) {
+      return group.name;
+    }
+  }
+  return "vendor";
+}
 
 /**
  * Plugin to build the AudioWorklet processor bundle
  */
 function audioWorkletPlugin(): Plugin {
   let workletContent: string | null = null;
+  let resolvedRootDir = process.cwd();
+  let resolvedOutDir = path.resolve(process.cwd(), "dist");
 
   return {
     name: "audio-worklet-plugin",
+
+    configResolved(config) {
+      resolvedRootDir = config.root;
+      resolvedOutDir = path.resolve(config.root, config.build.outDir);
+    },
 
     async buildStart() {
       // Build worklet to a temporary directory
@@ -41,7 +103,7 @@ function audioWorkletPlugin(): Plugin {
             name: "DSPWorklet",
             fileName: () => WORKLET_FILENAME,
           },
-          outDir: WORKLET_OUT_DIR,
+          outDir: path.resolve(resolvedRootDir, WORKLET_OUT_DIR),
           emptyOutDir: true,
           copyPublicDir: false,
           minify: "esbuild",
@@ -56,7 +118,11 @@ function audioWorkletPlugin(): Plugin {
       });
 
       // Read the built worklet for serving in dev mode
-      const workletPath = path.resolve(WORKLET_OUT_DIR, WORKLET_FILENAME);
+      const workletPath = path.resolve(
+        resolvedRootDir,
+        WORKLET_OUT_DIR,
+        WORKLET_FILENAME
+      );
       if (existsSync(workletPath)) {
         workletContent = readFileSync(workletPath, "utf-8");
       }
@@ -76,8 +142,27 @@ function audioWorkletPlugin(): Plugin {
 
     // Copy worklet to dist during production build
     writeBundle(options) {
-      if (options.dir?.includes("client") && workletContent) {
-        const outPath = path.resolve(options.dir, WORKLET_FILENAME);
+      if (!workletContent) {
+        return;
+      }
+
+      const targetDirs = new Set<string>([resolvedOutDir]);
+      if (path.basename(resolvedOutDir) === "server") {
+        targetDirs.add(path.resolve(resolvedOutDir, "..", "client"));
+      } else if (path.basename(resolvedOutDir) !== "client") {
+        targetDirs.add(path.resolve(resolvedOutDir, "client"));
+      }
+
+      if (options.dir) {
+        const bundleDir = path.resolve(options.dir);
+        targetDirs.add(bundleDir);
+        if (path.basename(bundleDir) === "server") {
+          targetDirs.add(path.resolve(bundleDir, "..", "client"));
+        }
+      }
+
+      for (const targetDir of targetDirs) {
+        const outPath = path.resolve(targetDir, WORKLET_FILENAME);
         mkdirSync(path.dirname(outPath), { recursive: true });
         writeFileSync(outPath, workletContent);
       }
@@ -121,5 +206,10 @@ export default defineConfig({
     // "hidden" generates source maps for Sentry upload but omits
     // sourceMappingURL from production bundles (unlike true/inline).
     sourcemap: "hidden",
+    rollupOptions: {
+      output: {
+        manualChunks: manualVendorChunks,
+      },
+    },
   },
 });

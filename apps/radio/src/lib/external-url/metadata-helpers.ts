@@ -5,7 +5,8 @@ import type { Platform, PlatformMetadata } from "@/lib/platform-types";
  */
 export function isCollection(metadata: PlatformMetadata): boolean {
   return (
-    (metadata.platform === "bandcamp" && metadata.itemType === "album") ||
+    (metadata.platform === "bandcamp" &&
+      (metadata.itemType === "album" || metadata.itemType === "collection")) ||
     (metadata.platform === "soundcloud" && metadata.itemType === "playlist") ||
     (metadata.platform === "youtube" && metadata.itemType === "playlist")
   );

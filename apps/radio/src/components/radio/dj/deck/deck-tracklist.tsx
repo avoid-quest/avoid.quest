@@ -2,16 +2,44 @@ import { Button } from "@avoid.quest/ui/components/button";
 import { ScrollArea } from "@avoid.quest/ui/components/scroll-area";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import { ChevronLeftIcon, ChevronRightIcon, PlayIcon } from "lucide-react";
+import { validatePlaybackStreamUrl } from "@/lib/audio/playback/url-validation";
 import { formatPlatformDuration } from "@/lib/external-url/utils";
 import type { PlatformTrack } from "@/lib/platform-types";
 import { useDeckContext } from "./deck-context";
 
 export function getTrackPlayUrl(track: PlatformTrack): string {
+  let candidate = "";
   if (track.streamUrl) {
-    return track.streamUrl;
+    candidate = track.streamUrl;
   }
-  if ("videoId" in track && track.videoId) {
-    return `yt:${track.videoId}`;
+  if (!candidate && "videoId" in track && track.videoId) {
+    candidate = `yt:${track.videoId}`;
+  }
+
+  if (!candidate) {
+    return "";
+  }
+
+  const validation = validatePlaybackStreamUrl(candidate);
+  return validation.ok ? validation.normalizedUrl : "";
+}
+
+export function findTrackPlayUrlInDirection(
+  tracks: PlatformTrack[],
+  currentTrackIndex: number,
+  direction: -1 | 1
+): string {
+  let targetIndex = currentTrackIndex + direction;
+  while (targetIndex >= 0 && targetIndex < tracks.length) {
+    const track = tracks[targetIndex];
+    if (!track) {
+      return "";
+    }
+    const url = getTrackPlayUrl(track);
+    if (url) {
+      return url;
+    }
+    targetIndex += direction;
   }
   return "";
 }
@@ -49,19 +77,25 @@ function TracklistNavigation() {
     return null;
   }
 
-  const hasNext = currentTrackIndex < tracks.length - 1;
-  const hasPrevious = currentTrackIndex > 0;
+  const nextUrl = findTrackPlayUrlInDirection(tracks, currentTrackIndex, 1);
+  const previousUrl = findTrackPlayUrlInDirection(
+    tracks,
+    currentTrackIndex,
+    -1
+  );
+  const hasNext = Boolean(nextUrl);
+  const hasPrevious = Boolean(previousUrl);
 
   const handleNavigate = (direction: -1 | 1) => {
-    const targetIndex = currentTrackIndex + direction;
-    const track = tracks[targetIndex];
-    if (track) {
-      const url = getTrackPlayUrl(track);
-      if (url) {
-        loadTrack(url).catch(() => {
-          // Errors are surfaced by deck actions/telemetry.
-        });
-      }
+    const url = findTrackPlayUrlInDirection(
+      tracks,
+      currentTrackIndex,
+      direction
+    );
+    if (url) {
+      loadTrack(url).catch(() => {
+        // Errors are surfaced by deck actions/telemetry.
+      });
     }
   };
 

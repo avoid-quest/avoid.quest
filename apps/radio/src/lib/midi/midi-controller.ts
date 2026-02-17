@@ -57,6 +57,11 @@ export class MidiController {
       return false;
     }
 
+    if (this.access) {
+      this.attachInputListeners();
+      return true;
+    }
+
     try {
       this.access = await navigator.requestMIDIAccess({ sysex: false });
       this.access.addEventListener("statechange", this.boundHandleStateChange);

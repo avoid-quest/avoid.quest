@@ -237,7 +237,6 @@ export class HTML5AudioPlayer {
       if (
         shouldIgnorePlaybackMediaError({
           mediaErrorCode: mediaError?.code,
-          mediaErrorMessage: mediaError?.message,
           currentSrc,
           isResettingSource: this.#isResettingSource,
         })
@@ -367,12 +366,22 @@ export class HTML5AudioPlayer {
 }
 
 function errorFromMedia(mediaError: MediaError | null): Error {
-  return new Error(mediaError?.message || "");
+  switch (mediaError?.code) {
+    case MEDIA_ERR_ABORTED:
+      return new Error("MEDIA_ERR_ABORTED");
+    case 2:
+      return new Error("MEDIA_ERR_NETWORK");
+    case 3:
+      return new Error("MEDIA_ERR_DECODE");
+    case MEDIA_ERR_SRC_NOT_SUPPORTED:
+      return new Error("MEDIA_ERR_SRC_NOT_SUPPORTED");
+    default:
+      return new Error("MEDIA_ERROR_UNKNOWN");
+  }
 }
 
 type IgnorePlaybackMediaErrorInput = {
   mediaErrorCode: number | null | undefined;
-  mediaErrorMessage: string | undefined;
   currentSrc: string;
   isResettingSource: boolean;
 };
@@ -391,18 +400,7 @@ export function shouldIgnorePlaybackMediaError(
     return true;
   }
 
-  const message = (input.mediaErrorMessage || "").trim().toLowerCase();
-  if (
-    input.mediaErrorCode === MEDIA_ERR_SRC_NOT_SUPPORTED &&
-    message.includes("empty src")
-  ) {
-    return true;
-  }
-
-  if (
-    input.mediaErrorCode === MEDIA_ERR_ABORTED &&
-    message.includes("interrupted")
-  ) {
+  if (input.mediaErrorCode === MEDIA_ERR_ABORTED) {
     return true;
   }
 

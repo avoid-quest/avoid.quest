@@ -468,13 +468,48 @@ function getTrackStreamUrl(
   platform: string
 ): string {
   if (track.streamUrl) {
-    return track.streamUrl;
+    const validation = validatePlaybackStreamUrl(track.streamUrl);
+    if (validation.ok) {
+      return validation.normalizedUrl;
+    }
   }
   // YouTube tracks use yt:{videoId} format for lazy resolution
   if (platform === "youtube" && "videoId" in track && track.videoId) {
-    return `yt:${track.videoId}`;
+    const lazyUrl = `yt:${track.videoId}`;
+    const validation = validatePlaybackStreamUrl(lazyUrl);
+    return validation.ok ? validation.normalizedUrl : "";
   }
   return "";
+}
+
+function isSupportedCollectionItem(
+  platform: string,
+  itemType: string | undefined
+): boolean {
+  return (
+    (platform === "bandcamp" &&
+      (itemType === "album" || itemType === "collection")) ||
+    (platform === "soundcloud" && itemType === "playlist") ||
+    (platform === "youtube" && itemType === "playlist")
+  );
+}
+
+function findPlayableTrackStreamUrl(
+  tracks: Array<{ streamUrl: string; videoId?: string }>,
+  platform: string,
+  startIndex: number
+): string | null {
+  for (let index = startIndex; index < tracks.length; index++) {
+    const track = tracks[index];
+    if (!track) {
+      continue;
+    }
+    const streamUrl = getTrackStreamUrl(track, platform);
+    if (streamUrl) {
+      return streamUrl;
+    }
+  }
+  return null;
 }
 
 // Helper to find current track index in a playlist
@@ -520,37 +555,20 @@ export const findNextTrack = (
 
   const { tracks, platform, itemType } = platformMetadata;
 
-  // Only handle collections (albums/playlists)
-  const isCollection =
-    (platform === "bandcamp" && itemType === "album") ||
-    (platform === "soundcloud" && itemType === "playlist") ||
-    (platform === "youtube" && itemType === "playlist");
-
-  if (!isCollection || tracks.length === 0) {
+  if (!isSupportedCollectionItem(platform, itemType) || tracks.length === 0) {
     return null;
   }
 
   const currentIndex = findCurrentTrackIndex(tracks, radio.streamUrl, platform);
 
-  // Current track not found, return first track
-  if (currentIndex === -1) {
-    const firstTrack = tracks[0];
-    if (!firstTrack) {
-      return null;
-    }
-    const streamUrl = getTrackStreamUrl(firstTrack, platform);
-    return streamUrl ? { streamUrl } : null;
-  }
-
-  // Return next track if available
-  const nextIndex = currentIndex + 1;
-  if (nextIndex < tracks.length) {
-    const nextTrack = tracks[nextIndex];
-    if (!nextTrack) {
-      return null;
-    }
-    const streamUrl = getTrackStreamUrl(nextTrack, platform);
-    return streamUrl ? { streamUrl } : null;
+  const searchStartIndex = currentIndex === -1 ? 0 : currentIndex + 1;
+  const streamUrl = findPlayableTrackStreamUrl(
+    tracks,
+    platform,
+    searchStartIndex
+  );
+  if (streamUrl) {
+    return { streamUrl };
   }
 
   // No more tracks

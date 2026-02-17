@@ -6,7 +6,6 @@ describe("shouldIgnorePlaybackMediaError", () => {
     expect(
       shouldIgnorePlaybackMediaError({
         mediaErrorCode: 4,
-        mediaErrorMessage: "Empty src attribute",
         currentSrc: "",
         isResettingSource: true,
       })
@@ -17,8 +16,17 @@ describe("shouldIgnorePlaybackMediaError", () => {
     expect(
       shouldIgnorePlaybackMediaError({
         mediaErrorCode: 4,
-        mediaErrorMessage: "MEDIA_ELEMENT_ERROR: Empty src attribute",
         currentSrc: "   ",
+        isResettingSource: false,
+      })
+    ).toBeTrue();
+  });
+
+  test("ignores aborted media errors", () => {
+    expect(
+      shouldIgnorePlaybackMediaError({
+        mediaErrorCode: 1,
+        currentSrc: "https://radio.example/live",
         isResettingSource: false,
       })
     ).toBeTrue();
@@ -28,7 +36,6 @@ describe("shouldIgnorePlaybackMediaError", () => {
     expect(
       shouldIgnorePlaybackMediaError({
         mediaErrorCode: 2,
-        mediaErrorMessage: "Network error while loading stream",
         currentSrc: "https://radio.example/live",
         isResettingSource: false,
       })

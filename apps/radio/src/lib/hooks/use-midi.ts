@@ -6,7 +6,6 @@
  */
 
 import { useEffect } from "react";
-import { toast } from "sonner";
 import {
   MidiController,
   registerStaticActions,
@@ -14,7 +13,8 @@ import {
 } from "@/lib/midi";
 
 export function useMidi(): void {
-  // Initialize MIDI controller and register static actions on mount
+  // Register static actions and capability flags on mount.
+  // MIDI access is requested explicitly from the MIDI settings tab.
   useEffect(() => {
     if (typeof window === "undefined" || !navigator.requestMIDIAccess) {
       useMidiStore.getState().setIsSupported(false);
@@ -27,16 +27,6 @@ export function useMidi(): void {
 
     // Register static MIDI actions (decks + mixer)
     const unregisterStatic = registerStaticActions();
-
-    controller.init().then((success) => {
-      if (success) {
-        useMidiStore.getState().setDevices(controller.getDevices());
-      } else {
-        toast.error("Failed to initialize MIDI controller", {
-          description: "Check browser permissions and try reconnecting",
-        });
-      }
-    });
 
     return () => {
       unregisterStatic();

@@ -39,6 +39,19 @@ export type AppResult<T> =
 
 const DEFAULT_SAFE_MESSAGE = "Something went wrong. Please try again.";
 
+function normalizeSafeMessage(message: unknown): string {
+  if (typeof message !== "string") {
+    return DEFAULT_SAFE_MESSAGE;
+  }
+
+  const trimmed = message.trim();
+  if (!trimmed) {
+    return DEFAULT_SAFE_MESSAGE;
+  }
+
+  return trimmed;
+}
+
 const DEFAULT_SEVERITY_BY_CATEGORY: Record<ErrorCategory, ErrorSeverity> = {
   validation: "warning",
   auth: "warning",
@@ -76,10 +89,11 @@ export class AppError extends Error {
   readonly context?: Record<string, unknown>;
 
   constructor(init: AppErrorInit) {
-    super(init.safeMessage, { cause: init.cause });
+    const safeMessage = normalizeSafeMessage(init.safeMessage);
+    super(safeMessage, { cause: init.cause });
     this.name = "AppError";
     this.code = init.code;
-    this.safeMessage = init.safeMessage;
+    this.safeMessage = safeMessage;
     this.category = init.category;
     this.severity =
       init.severity ?? DEFAULT_SEVERITY_BY_CATEGORY[init.category];
@@ -531,6 +545,7 @@ const ACTIONABLE_PLAYBACK_PREFIXES = [
   "SINGLE_",
   "MULTIPLE_",
 ];
+const ABORTED_OPERATION_MESSAGE_FRAGMENT = "operation was aborted";
 
 export function shouldCapturePlaybackError(errorCode: string): boolean {
   return ACTIONABLE_PLAYBACK_PREFIXES.some((prefix) =>
@@ -538,15 +553,49 @@ export function shouldCapturePlaybackError(errorCode: string): boolean {
   );
 }
 
+function hasAbortErrorName(error: unknown): boolean {
+  if (
+    typeof DOMException !== "undefined" &&
+    error instanceof DOMException &&
+    error.name === "AbortError"
+  ) {
+    return true;
+  }
+
+  if (error instanceof Error && error.name === "AbortError") {
+    return true;
+  }
+
+  if (typeof error !== "object" || error === null || !("name" in error)) {
+    return false;
+  }
+
+  return (error as { name?: unknown }).name === "AbortError";
+}
+
+export function isAbortPlaybackError(
+  error: unknown,
+  message: string
+): boolean {
+  if (hasAbortErrorName(error)) {
+    return true;
+  }
+
+  return message
+    .toLowerCase()
+    .includes(ABORTED_OPERATION_MESSAGE_FRAGMENT);
+}
+
 export function buildPlaybackEventKey(
   payload: PlaybackTelemetryPayload
 ): string {
   const streamHost = payload.streamHost ?? hostFromUrl(payload.streamUrl);
+  const safeMessage = normalizeSafeMessage(payload.errorMessage);
   return [
     payload.mode,
     payload.errorCode,
     streamHost,
-    payload.errorMessage.trim().toLowerCase(),
+    safeMessage.toLowerCase(),
   ].join("|");
 }
 
@@ -558,12 +607,21 @@ export function capturePlaybackError(
     return;
   }
 
+  const safeMessage = normalizeSafeMessage(payload.errorMessage);
+  if (isAbortPlaybackError(error, safeMessage)) {
+    return;
+  }
+
   const streamHost = payload.streamHost ?? hostFromUrl(payload.streamUrl);
-  const dedupeKey = buildPlaybackEventKey(payload);
+  const dedupeKey = buildPlaybackEventKey({
+    ...payload,
+    streamHost,
+    errorMessage: safeMessage,
+  });
 
   const appError = new AppError({
     code: payload.errorCode,
-    safeMessage: payload.errorMessage,
+    safeMessage: safeMessage,
     category: "playback",
     severity: "error",
     expected: false,

@@ -6,6 +6,7 @@ import {
   capturePlaybackError,
   createDedupeStore,
   createRequestId,
+  isAbortPlaybackError,
   problemJson,
   runApiRoute,
   shouldCapturePlaybackError,
@@ -38,6 +39,17 @@ describe("AppError", () => {
 
     expect(normalized).toBeInstanceOf(AppError);
     expect(normalized.code).toBe("UNKNOWN");
+  });
+
+  test("falls back to default safe message when empty", () => {
+    const error = new AppError({
+      code: "EMPTY_MESSAGE",
+      safeMessage: "   ",
+      category: "unknown",
+    });
+
+    expect(error.safeMessage).toBe("Something went wrong. Please try again.");
+    expect(error.message).toBe("Something went wrong. Please try again.");
   });
 });
 
@@ -204,6 +216,33 @@ describe("playback helpers", () => {
     expect(key).toContain("MEDIA_ERROR_4");
     expect(key).toContain("example.test");
     expect(key).not.toContain("https://example.test/live");
+  });
+
+  test("buildPlaybackEventKey normalizes empty messages", () => {
+    const key = buildPlaybackEventKey({
+      mode: "single",
+      errorCode: "MEDIA_ERROR_4",
+      errorMessage: "   ",
+      streamUrl: "https://example.test/live",
+    });
+
+    expect(key).toContain("something went wrong. please try again.");
+  });
+
+  test("detects abort playback errors by error name", () => {
+    const error = new Error("The operation was aborted.");
+    error.name = "AbortError";
+
+    expect(isAbortPlaybackError(error, error.message)).toBe(true);
+  });
+
+  test("detects abort playback errors by message text", () => {
+    expect(
+      isAbortPlaybackError(
+        new Error("some wrapper"),
+        "The operation was aborted."
+      )
+    ).toBe(true);
   });
 
   test("capturePlaybackError dedupes repeats", () => {

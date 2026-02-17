@@ -80,20 +80,18 @@ function manualVendorChunks(id: string): string | undefined {
  */
 function audioWorkletPlugin(): Plugin {
   let workletContent: string | null = null;
-  let shouldBuildWorklet = true;
+  let resolvedRootDir = process.cwd();
+  let resolvedOutDir = path.resolve(process.cwd(), "dist");
 
   return {
     name: "audio-worklet-plugin",
 
     configResolved(config) {
-      shouldBuildWorklet = config.command === "serve" || !config.build.ssr;
+      resolvedRootDir = config.root;
+      resolvedOutDir = path.resolve(config.root, config.build.outDir);
     },
 
     async buildStart() {
-      if (!shouldBuildWorklet) {
-        return;
-      }
-
       // Build worklet to a temporary directory
       await build({
         configFile: false,
@@ -105,7 +103,7 @@ function audioWorkletPlugin(): Plugin {
             name: "DSPWorklet",
             fileName: () => WORKLET_FILENAME,
           },
-          outDir: WORKLET_OUT_DIR,
+          outDir: path.resolve(resolvedRootDir, WORKLET_OUT_DIR),
           emptyOutDir: true,
           copyPublicDir: false,
           minify: "esbuild",
@@ -120,7 +118,11 @@ function audioWorkletPlugin(): Plugin {
       });
 
       // Read the built worklet for serving in dev mode
-      const workletPath = path.resolve(WORKLET_OUT_DIR, WORKLET_FILENAME);
+      const workletPath = path.resolve(
+        resolvedRootDir,
+        WORKLET_OUT_DIR,
+        WORKLET_FILENAME
+      );
       if (existsSync(workletPath)) {
         workletContent = readFileSync(workletPath, "utf-8");
       }
@@ -140,12 +142,27 @@ function audioWorkletPlugin(): Plugin {
 
     // Copy worklet to dist during production build
     writeBundle(options) {
-      if (!shouldBuildWorklet) {
+      if (!workletContent) {
         return;
       }
 
-      if (options.dir?.includes("client") && workletContent) {
-        const outPath = path.resolve(options.dir, WORKLET_FILENAME);
+      const targetDirs = new Set<string>([resolvedOutDir]);
+      if (path.basename(resolvedOutDir) === "server") {
+        targetDirs.add(path.resolve(resolvedOutDir, "..", "client"));
+      } else if (path.basename(resolvedOutDir) !== "client") {
+        targetDirs.add(path.resolve(resolvedOutDir, "client"));
+      }
+
+      if (options.dir) {
+        const bundleDir = path.resolve(options.dir);
+        targetDirs.add(bundleDir);
+        if (path.basename(bundleDir) === "server") {
+          targetDirs.add(path.resolve(bundleDir, "..", "client"));
+        }
+      }
+
+      for (const targetDir of targetDirs) {
+        const outPath = path.resolve(targetDir, WORKLET_FILENAME);
         mkdirSync(path.dirname(outPath), { recursive: true });
         writeFileSync(outPath, workletContent);
       }

@@ -573,17 +573,12 @@ function hasAbortErrorName(error: unknown): boolean {
   return (error as { name?: unknown }).name === "AbortError";
 }
 
-export function isAbortPlaybackError(
-  error: unknown,
-  message: string
-): boolean {
+export function isAbortPlaybackError(error: unknown, message: string): boolean {
   if (hasAbortErrorName(error)) {
     return true;
   }
 
-  return message
-    .toLowerCase()
-    .includes(ABORTED_OPERATION_MESSAGE_FRAGMENT);
+  return message.toLowerCase().includes(ABORTED_OPERATION_MESSAGE_FRAGMENT);
 }
 
 export function buildPlaybackEventKey(
@@ -621,7 +616,7 @@ export function capturePlaybackError(
 
   const appError = new AppError({
     code: payload.errorCode,
-    safeMessage: safeMessage,
+    safeMessage,
     category: "playback",
     severity: "error",
     expected: false,

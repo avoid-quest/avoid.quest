@@ -4,6 +4,7 @@ import {
   type RadioRecord,
   radiosCollection,
 } from "@/lib/collections";
+import { generateId } from "@/lib/types";
 
 /**
  * Get all enabled radios sorted by order.
@@ -50,7 +51,7 @@ export function useRadio(id: string | null) {
  */
 export function addRadio(radio: Omit<RadioRecord, "id">): void {
   radiosCollection.insert({
-    id: crypto.randomUUID(),
+    id: generateId(),
     ...radio,
   });
 }

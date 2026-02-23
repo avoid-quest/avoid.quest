@@ -7,7 +7,7 @@ import {
   type SettingsRecord,
   settingsCollection,
 } from "@/lib/collections";
-import type { DatabaseExport, ImportPreview } from "../types";
+import { type DatabaseExport, generateId, type ImportPreview } from "../types";
 
 const EXPORT_VERSION = 1;
 const STORAGE_KEY_LAST_EXPORT = "radioproxy_last_export";
@@ -281,7 +281,7 @@ export const replaceImportedData = (importData: DatabaseExport): void => {
 
     // Import new radios
     for (const radio of importData.radios) {
-      const id = radio.id ? String(radio.id) : crypto.randomUUID();
+      const id = radio.id ? String(radio.id) : generateId();
       radiosCollection.insert({
         id,
         name: radio.name,
@@ -382,7 +382,7 @@ export const mergeImportedData = (importData: DatabaseExport): void => {
           0
         );
         radiosCollection.insert({
-          id: crypto.randomUUID(),
+          id: generateId(),
           name: importedRadio.name,
           streamUrl: importedRadio.streamUrl,
           logoUrl: importedRadio.logoUrl,

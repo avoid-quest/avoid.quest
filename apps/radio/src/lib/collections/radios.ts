@@ -5,6 +5,7 @@ import {
 import { z } from "zod";
 import type { Radio } from "../audio";
 import { radios as defaultRadios } from "../const";
+import { generateId } from "../types";
 import { platformMetadataSchema } from "./schemas";
 
 const DISMISSED_RADIOS_KEY = "radio-app-dismissed-radios";
@@ -169,7 +170,7 @@ export function applySyncChanges(changes: SyncChanges): void {
   // Apply additions
   for (const radio of changes.additions) {
     radiosCollection.insert({
-      id: crypto.randomUUID(),
+      id: generateId(),
       name: radio.name,
       streamUrl: radio.streamUrl,
       logoUrl: radio.logoUrl,
@@ -211,7 +212,7 @@ export async function initializeRadios(): Promise<SyncChanges | null> {
     // Seed with defaults, marking all as system radios
     for (const radio of defaultRadios) {
       radiosCollection.insert({
-        id: crypto.randomUUID(),
+        id: generateId(),
         name: radio.name,
         streamUrl: radio.streamUrl,
         logoUrl: radio.logoUrl,

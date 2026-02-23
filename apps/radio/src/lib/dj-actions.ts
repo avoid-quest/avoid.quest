@@ -65,6 +65,7 @@ import {
   setDeckBSubscriptionCleanup,
   setDjError,
 } from "@/lib/stores/dj-runtime-store";
+import { generateId } from "@/lib/types";
 
 export type DeckSide = "left" | "right";
 type DeckId = "deck-a" | "deck-b";
@@ -1243,11 +1244,7 @@ function addDeckEffect(deckId: DeckId, type: EffectType) {
   const runtime = config.getRuntime();
   const deck = config.getDeck();
   const effects = deck?.effects ?? [];
-  const effect = createDefaultEffectConfig(
-    type,
-    crypto.randomUUID(),
-    effects.length
-  );
+  const effect = createDefaultEffectConfig(type, generateId(), effects.length);
   config.updateDeck((draft) => {
     draft.effects.push(effect);
   });

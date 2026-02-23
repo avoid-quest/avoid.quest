@@ -44,6 +44,20 @@ export type DatabaseExport = {
 
 export type ImportMode = "replace" | "merge";
 
+/**
+ * Generate a unique ID, with fallback for environments where crypto.randomUUID
+ * is unavailable (e.g. Safari iOS < 15.4, non-secure contexts).
+ */
+export function generateId(): string {
+  if (
+    typeof crypto !== "undefined" &&
+    typeof crypto.randomUUID === "function"
+  ) {
+    return crypto.randomUUID();
+  }
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
 export type ImportPreview = {
   newRadios: number;
   updatedRadios: number;

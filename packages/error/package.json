@@ -8,6 +8,6 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@sentry/tanstackstart-react": "^10.39.0"
+    "@sentry/tanstackstart-react": "^10.41.0"
   }
 }

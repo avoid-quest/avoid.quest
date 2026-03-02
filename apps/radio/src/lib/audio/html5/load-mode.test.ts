@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import {
+  buildProxyUrl,
   createLoadModeCache,
   getInitialLoadMode,
+  getProxyRetryMode,
   getRetryLoadMode,
   type Html5LoadMode,
   mapPlaybackFailureMessage,
@@ -31,6 +33,15 @@ describe("load mode cache", () => {
     expect(cache.get(url)).toBe("no-cors");
   });
 
+  test("persists and reads proxied mode", () => {
+    const storage = new MemoryStorage();
+    const cache = createLoadModeCache(storage);
+    const url = "https://example.test/proxied-stream";
+
+    cache.set(url, "proxied");
+    expect(cache.get(url)).toBe("proxied");
+  });
+
   test("ignores invalid stored values", () => {
     const storage = new MemoryStorage();
     storage.setItem(
@@ -56,6 +67,28 @@ describe("load mode ordering", () => {
     expect(getRetryLoadMode("cors-anonymous", true)).toBe("no-cors");
     expect(getRetryLoadMode("no-cors", true)).toBeNull();
     expect(getRetryLoadMode("cors-anonymous", false)).toBeNull();
+  });
+
+  test("uses cached proxied mode", () => {
+    const cached: Html5LoadMode = "proxied";
+    expect(getInitialLoadMode(cached)).toBe("proxied");
+  });
+});
+
+describe("proxy retry mode", () => {
+  test("returns proxied from cors-anonymous or no-cors", () => {
+    expect(getProxyRetryMode("cors-anonymous")).toBe("proxied");
+    expect(getProxyRetryMode("no-cors")).toBe("proxied");
+  });
+
+  test("returns null when already proxied", () => {
+    expect(getProxyRetryMode("proxied")).toBeNull();
+  });
+
+  test("builds proxy URL with encoded stream URL", () => {
+    const url = "https://s5.radio.co/stream?key=value&other=1";
+    const proxyUrl = buildProxyUrl(url);
+    expect(proxyUrl).toBe(`/api/stream-proxy?url=${encodeURIComponent(url)}`);
   });
 });
 

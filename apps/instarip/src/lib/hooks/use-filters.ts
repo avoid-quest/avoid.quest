@@ -23,14 +23,14 @@ export function useCollaborators() {
  * Hook to access filter state
  */
 export function useFilterState() {
-  return useStore(filterStore);
+  return useStore(filterStore, (state) => state);
 }
 
 /**
  * Check if any filters are active
  */
 export function useHasActiveFilters() {
-  const state = useStore(filterStore);
+  const state = useStore(filterStore, (state) => state);
   return hasActiveFilters(state);
 }
 
@@ -56,7 +56,7 @@ export function useDebouncedValue<T>(value: T, delay: number): T {
  * Uses convex-helpers pagination for infinite scroll
  */
 export function useFilteredPosts(initialNumItems = 12) {
-  const state = useStore(filterStore);
+  const state = useStore(filterStore, (state) => state);
   const debouncedSearch = useDebouncedValue(state.search, 300);
   const isSearching = debouncedSearch.trim().length > 0;
   const hasFilters =

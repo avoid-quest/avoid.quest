@@ -30,6 +30,18 @@ describe("validatePlaybackStreamUrl", () => {
     expect(isValidPlaybackStreamUrl("left")).toBeFalse();
   });
 
+  test("accepts relative proxy paths", () => {
+    expect(
+      validatePlaybackStreamUrl(
+        "/api/soundcloud-proxy?url=https%3A%2F%2Fexample.com"
+      )
+    ).toEqual({
+      ok: true,
+      normalizedUrl: "/api/soundcloud-proxy?url=https%3A%2F%2Fexample.com",
+    });
+    expect(isValidPlaybackStreamUrl("/api/stream-proxy?url=test")).toBeTrue();
+  });
+
   test("rejects unsupported protocols and invalid URLs", () => {
     expect(validatePlaybackStreamUrl("ftp://radio.example/stream")).toEqual({
       ok: false,

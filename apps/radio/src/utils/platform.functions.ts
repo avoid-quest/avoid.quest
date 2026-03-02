@@ -226,7 +226,35 @@ export const loadPlatformItem = createServerFn({ method: "POST" })
       run: async () => {
         const normalizedUrl = await normalizePlatformUrl(data.url);
         const platform = getSupportedPlatform(normalizedUrl);
-        return resolvePlatformItem(platform, normalizedUrl);
+        const item = await resolvePlatformItem(platform, normalizedUrl);
+
+        if (!item.streamUrl?.trim()) {
+          throw new AppError({
+            code: "PLATFORM_EMPTY_STREAM_URL",
+            safeMessage: "Platform returned no playable stream URL",
+            category: "dependency",
+            expected: false,
+            status: 500,
+          });
+        }
+
+        if (
+          !(item.streamUrl.startsWith("yt:") || item.streamUrl.startsWith("/"))
+        ) {
+          try {
+            new URL(item.streamUrl);
+          } catch {
+            throw new AppError({
+              code: "PLATFORM_INVALID_STREAM_URL",
+              safeMessage: "Platform returned an invalid stream URL",
+              category: "dependency",
+              expected: false,
+              status: 500,
+            });
+          }
+        }
+
+        return item;
       },
     });
   });

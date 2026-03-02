@@ -524,7 +524,7 @@ export function hostFromUrl(url?: string): string {
 }
 
 type PlaybackMode = "single" | "multiple" | "dj";
-type RetryPhase = "initial" | "fallback-no-cors" | "none";
+type RetryPhase = "initial" | "fallback-no-cors" | "fallback-proxy" | "none";
 
 export type PlaybackTelemetryPayload = {
   mode: PlaybackMode;
@@ -585,13 +585,7 @@ export function buildPlaybackEventKey(
   payload: PlaybackTelemetryPayload
 ): string {
   const streamHost = payload.streamHost ?? hostFromUrl(payload.streamUrl);
-  const safeMessage = normalizeSafeMessage(payload.errorMessage);
-  return [
-    payload.mode,
-    payload.errorCode,
-    streamHost,
-    safeMessage.toLowerCase(),
-  ].join("|");
+  return [payload.mode, streamHost].join("|");
 }
 
 export function capturePlaybackError(

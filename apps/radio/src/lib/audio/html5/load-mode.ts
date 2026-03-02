@@ -1,4 +1,4 @@
-export type Html5LoadMode = "cors-anonymous" | "no-cors";
+export type Html5LoadMode = "cors-anonymous" | "no-cors" | "proxied";
 
 const LOAD_MODE_STORAGE_KEY = "radio-app-html5-load-modes";
 const MEDIA_ERR_ABORTED = 1;
@@ -16,7 +16,9 @@ export type LoadModeCache = {
 type StorageLike = Pick<Storage, "getItem" | "setItem">;
 
 function isLoadMode(value: unknown): value is Html5LoadMode {
-  return value === "cors-anonymous" || value === "no-cors";
+  return (
+    value === "cors-anonymous" || value === "no-cors" || value === "proxied"
+  );
 }
 
 function getStorage(): StorageLike | null {
@@ -98,6 +100,19 @@ export function getRetryLoadMode(
     return "no-cors";
   }
   return null;
+}
+
+export function getProxyRetryMode(
+  currentMode: Html5LoadMode
+): Html5LoadMode | null {
+  if (currentMode === "proxied") {
+    return null;
+  }
+  return "proxied";
+}
+
+export function buildProxyUrl(streamUrl: string): string {
+  return `/api/stream-proxy?url=${encodeURIComponent(streamUrl)}`;
 }
 
 export function shouldRetryWithoutCors(

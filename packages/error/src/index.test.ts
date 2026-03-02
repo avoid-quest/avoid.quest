@@ -204,7 +204,7 @@ describe("playback helpers", () => {
     expect(shouldCapturePlaybackError("UNKNOWN")).toBe(false);
   });
 
-  test("builds stable playback keys", () => {
+  test("builds stable playback keys from mode and host only", () => {
     const key = buildPlaybackEventKey({
       mode: "single",
       errorCode: "MEDIA_ERROR_4",
@@ -212,21 +212,23 @@ describe("playback helpers", () => {
       streamUrl: "https://example.test/live",
     });
 
-    expect(key).toContain("single");
-    expect(key).toContain("MEDIA_ERROR_4");
-    expect(key).toContain("example.test");
-    expect(key).not.toContain("https://example.test/live");
+    expect(key).toBe("single|example.test");
   });
 
-  test("buildPlaybackEventKey normalizes empty messages", () => {
-    const key = buildPlaybackEventKey({
-      mode: "single",
-      errorCode: "MEDIA_ERROR_4",
-      errorMessage: "   ",
+  test("dedupes errors with different errorCode but same mode and host", () => {
+    const base = {
+      mode: "single" as const,
+      errorMessage: "some error",
       streamUrl: "https://example.test/live",
+    };
+
+    const key1 = buildPlaybackEventKey({ ...base, errorCode: "MEDIA_ERROR_4" });
+    const key2 = buildPlaybackEventKey({
+      ...base,
+      errorCode: "PLAYBACK_FALLBACK_FAILED",
     });
 
-    expect(key).toContain("something went wrong. please try again.");
+    expect(key1).toBe(key2);
   });
 
   test("detects abort playback errors by error name", () => {

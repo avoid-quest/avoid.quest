@@ -8,8 +8,10 @@
 import { capturePlaybackError } from "@avoid.quest/error";
 import type { Radio } from "../playback/types.js";
 import {
+  buildProxyUrl,
   createLoadModeCache,
   getInitialLoadMode,
+  getProxyRetryMode,
   getRetryLoadMode,
   type Html5LoadMode,
   mapPlaybackFailureMessage,
@@ -30,7 +32,7 @@ import {
 export class HTML5AudioPlayer {
   readonly #id: string;
   readonly #radio: Radio;
-  readonly #audio: HTMLAudioElement;
+  #audio: HTMLAudioElement;
   readonly #telemetryMode: "single" | "multiple";
   readonly #listeners = new Set<HTML5AudioStateCallback>();
   readonly #loadModeCache = createLoadModeCache();
@@ -38,6 +40,7 @@ export class HTML5AudioPlayer {
   #state: HTML5AudioState = { ...initialHTML5AudioState };
   #activeLoadMode: Html5LoadMode = "cors-anonymous";
   #isResettingSource = false;
+  #isPlayInProgress = false;
 
   constructor(
     id: string,
@@ -92,7 +95,11 @@ export class HTML5AudioPlayer {
     this.#audio.removeAttribute("src");
     this.#audio.load();
     this.#applyLoadMode(effectiveMode);
-    this.#audio.src = this.#radio.streamUrl;
+    const src =
+      effectiveMode === "proxied"
+        ? buildProxyUrl(this.#radio.streamUrl)
+        : this.#radio.streamUrl;
+    this.#audio.src = src;
     this.#audio.load();
     this.#isResettingSource = false;
     this.#updateState({ isLoading: true, error: null, hasEnded: false });
@@ -103,6 +110,7 @@ export class HTML5AudioPlayer {
    */
   async play(volume = 1): Promise<void> {
     this.#audio.volume = Math.max(0, Math.min(1, volume));
+    this.#isPlayInProgress = true;
 
     const cachedMode = this.#loadModeCache.get(this.#radio.streamUrl);
     const initialMode = getInitialLoadMode(cachedMode);
@@ -124,24 +132,59 @@ export class HTML5AudioPlayer {
 
       if (retryMode) {
         try {
+          this.#replaceAudioElement();
           this.load(retryMode);
           await this.#audio.play();
           this.#loadModeCache.set(this.#radio.streamUrl, retryMode);
           this.#updateState({ isPlaying: true, isLoading: false, error: null });
           return;
-        } catch (retryError) {
+        } catch (noCorsError) {
+          if (await this.#tryProxyFallback(retryMode)) {
+            return;
+          }
+
           const retryMediaErrorCode = this.#audio.error?.code;
           this.#setPlayFailureState(
-            retryError,
+            noCorsError,
             retryMediaErrorCode,
             "fallback-no-cors"
           );
-          throw retryError;
+          throw noCorsError;
         }
+      }
+
+      if (await this.#tryProxyFallback(initialMode)) {
+        return;
       }
 
       this.#setPlayFailureState(error, mediaErrorCode, "initial");
       throw error;
+    } finally {
+      this.#isPlayInProgress = false;
+    }
+  }
+
+  async #tryProxyFallback(currentMode: Html5LoadMode): Promise<boolean> {
+    const proxyMode = getProxyRetryMode(currentMode);
+    if (!proxyMode) {
+      return false;
+    }
+
+    try {
+      this.#replaceAudioElement();
+      this.load(proxyMode);
+      await this.#audio.play();
+      this.#loadModeCache.set(this.#radio.streamUrl, proxyMode);
+      this.#updateState({ isPlaying: true, isLoading: false, error: null });
+      return true;
+    } catch (proxyError) {
+      const proxyMediaErrorCode = this.#audio.error?.code;
+      this.#setPlayFailureState(
+        proxyError,
+        proxyMediaErrorCode,
+        "fallback-proxy"
+      );
+      throw proxyError;
     }
   }
 
@@ -246,7 +289,12 @@ export class HTML5AudioPlayer {
 
       const mediaErrorObject = errorFromMedia(mediaError);
 
-      // Let play() run a no-cors compatibility retry before surfacing terminal errors.
+      // Let play() handle retries (no-cors / proxy) before surfacing terminal errors.
+      if (this.#isPlayInProgress) {
+        return;
+      }
+
+      // Legacy guard for errors outside play() flow.
       if (
         this.#shouldAttemptNoCorsFallback(mediaErrorObject, mediaError?.code)
       ) {
@@ -295,7 +343,7 @@ export class HTML5AudioPlayer {
   }
 
   #applyLoadMode(mode: Html5LoadMode): void {
-    if (mode === "cors-anonymous") {
+    if (mode === "cors-anonymous" || mode === "proxied") {
       this.#audio.crossOrigin = "anonymous";
       this.#audio.setAttribute("crossorigin", "anonymous");
     } else {
@@ -303,6 +351,21 @@ export class HTML5AudioPlayer {
       this.#audio.removeAttribute("crossorigin");
     }
     this.#activeLoadMode = mode;
+  }
+
+  #replaceAudioElement(): void {
+    const oldVolume = this.#audio.volume;
+    this.#isResettingSource = true;
+    this.#audio.pause();
+    this.#audio.removeAttribute("src");
+    this.#audio.load();
+    this.#isResettingSource = false;
+
+    const newAudio = new Audio();
+    newAudio.preload = "none";
+    newAudio.volume = oldVolume;
+    this.#audio = newAudio;
+    this.#setupEventListeners();
   }
 
   #shouldAttemptNoCorsFallback(
@@ -328,11 +391,13 @@ export class HTML5AudioPlayer {
   #setPlayFailureState(
     error: unknown,
     mediaErrorCode: number | null | undefined,
-    retryPhase: "initial" | "fallback-no-cors"
+    retryPhase: "initial" | "fallback-no-cors" | "fallback-proxy"
   ): void {
     const message = mapPlaybackFailureMessage(error, mediaErrorCode);
     let code: string;
-    if (retryPhase === "fallback-no-cors") {
+    if (retryPhase === "fallback-proxy") {
+      code = "PLAYBACK_PROXY_FALLBACK_FAILED";
+    } else if (retryPhase === "fallback-no-cors") {
       code = "PLAYBACK_FALLBACK_FAILED";
     } else if (mediaErrorCode) {
       code = `MEDIA_ERROR_${mediaErrorCode}`;

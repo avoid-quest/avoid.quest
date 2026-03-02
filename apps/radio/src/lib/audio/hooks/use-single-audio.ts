@@ -5,7 +5,6 @@
  * Uses HTML5 Audio + Web Audio API for crossfade (no worklets).
  */
 
-import { capturePlaybackError } from "@avoid.quest/error";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { validateRadioForMode } from "@/lib/external-url/utils";
 
@@ -278,15 +277,6 @@ export function useSingleAudio(transitionDuration?: number) {
         const errorMessage =
           err instanceof Error ? err.message : "Crossfade failed";
         setError(errorMessage);
-        capturePlaybackError(err, {
-          mode: "single",
-          radioId: newRadio.id,
-          radioName: newRadio.name,
-          streamUrl: newRadio.streamUrl,
-          errorCode: "SINGLE_CROSSFADE_FAILED",
-          errorMessage,
-          retryPhase: "none",
-        });
 
         // Restore previous player as current when incoming transition fails.
         if (incomingPlayer) {
@@ -365,15 +355,6 @@ export function useSingleAudio(transitionDuration?: number) {
         const errorMessage =
           err instanceof Error ? err.message : "Failed to load radio";
         setError(errorMessage);
-        capturePlaybackError(err, {
-          mode: "single",
-          radioId: radio.id,
-          radioName: radio.name,
-          streamUrl: radio.streamUrl,
-          errorCode: "SINGLE_LOAD_FAILED",
-          errorMessage,
-          retryPhase: "none",
-        });
       }
     },
     [
@@ -425,15 +406,6 @@ export function useSingleAudio(transitionDuration?: number) {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Play failed";
       setError(errorMessage);
-      capturePlaybackError(err, {
-        mode: "single",
-        radioId: currentRadio.id,
-        radioName: currentRadio.name,
-        streamUrl: currentRadio.streamUrl,
-        errorCode: "SINGLE_PLAY_FAILED",
-        errorMessage,
-        retryPhase: "none",
-      });
     }
   }, [currentRadio, loadRadio, isPlaying, attachPlayerToGraph]);
 

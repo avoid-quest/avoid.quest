@@ -1016,12 +1016,7 @@ export async function loadTrack(
 
   const streamValidation = validatePlaybackStreamUrl(radio.streamUrl);
   if (!streamValidation.ok) {
-    setDjErrorWithTelemetry(
-      "Invalid stream URL",
-      "DJ_INVALID_STREAM_URL",
-      new Error(`Invalid stream URL: ${streamValidation.reason}`),
-      radio
-    );
+    setDjError("Invalid stream URL");
     return;
   }
 

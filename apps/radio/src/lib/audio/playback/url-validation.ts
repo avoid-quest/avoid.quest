@@ -25,6 +25,11 @@ export function validatePlaybackStreamUrl(
     return { ok: true, normalizedUrl: `${YOUTUBE_LAZY_PREFIX}${videoId}` };
   }
 
+  // Relative proxy paths (e.g. /api/soundcloud-proxy?url=...) are valid for audio playback
+  if (normalizedUrl.startsWith("/")) {
+    return { ok: true, normalizedUrl };
+  }
+
   try {
     const parsed = new URL(normalizedUrl);
     const isSupportedProtocol =

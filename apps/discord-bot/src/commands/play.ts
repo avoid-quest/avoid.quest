@@ -50,14 +50,18 @@ export async function execute(
 
     const tracks = Array.isArray(result) ? result : [result];
 
-    for (const track of tracks) {
-      player.queue.add(track);
-    }
-
     const firstTrack = tracks[0];
     if (!firstTrack) {
       await interaction.editReply({ content: "No playable tracks found." });
       return;
+    }
+
+    if (player.currentTrack?.isLiveStream) {
+      player.stop();
+    }
+
+    for (const track of tracks) {
+      player.queue.add(track);
     }
 
     if (!(player.isPlaying || player.isPaused)) {

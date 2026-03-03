@@ -20,14 +20,13 @@ export async function execute(
 
   const player = getGuildPlayer(interaction.guildId);
 
-  if (!player?.isPlaying) {
+  if (!player?.isActive) {
     await interaction.reply({ content: "Nothing is playing." });
     return;
   }
 
-  player.skip();
+  const next = player.skip();
 
-  const next = player.currentTrack;
   if (next) {
     await interaction.reply({
       content: "Skipped. Now playing:",

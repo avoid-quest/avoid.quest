@@ -9,6 +9,10 @@ import { data as queueData, execute as queueExecute } from "./queue.js";
 import { data as radioData, execute as radioExecute } from "./radio.js";
 import { data as searchData, execute as searchExecute } from "./search.js";
 import { data as skipData, execute as skipExecute } from "./skip.js";
+import {
+  data as stereotestData,
+  execute as stereotestExecute,
+} from "./stereo-test.js";
 
 export type Command = {
   data: { name: string; toJSON: () => unknown };
@@ -21,6 +25,7 @@ const commandList: Command[] = [
   { data: searchData, execute: searchExecute },
   { data: queueData, execute: queueExecute },
   { data: skipData, execute: skipExecute },
+  { data: stereotestData, execute: stereotestExecute },
   { data: nowplayingData, execute: nowplayingExecute },
   pause,
   resume,

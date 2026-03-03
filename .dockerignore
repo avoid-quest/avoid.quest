@@ -8,3 +8,9 @@ dist
 *.md
 .changeset
 .claude
+.vscode
+.idea
+.DS_Store
+coverage
+scripts
+**/__tests__

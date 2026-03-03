@@ -1,50 +1,61 @@
-FROM node:20-slim AS base
+# --- PREPARE: prune monorepo ---
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 make g++ curl unzip ca-certificates \
-  && curl -fsSL https://bun.sh/install | bash -s "bun-v1.3.10" \
-  && rm -rf /var/lib/apt/lists/*
+FROM node:20-alpine AS prepare
 
-ENV PATH="/root/.bun/bin:$PATH"
-
-# ---
-
-FROM base AS prepare
+RUN npm i -g turbo@^2
 
 WORKDIR /app
 COPY . .
-RUN bun install --frozen-lockfile
-RUN bunx turbo prune @avoid.quest/discord-bot --docker
+RUN turbo prune @avoid.quest/discord-bot --docker
 
-# ---
+# --- BASE: bun + native build tools ---
 
-FROM base AS install
+FROM node:20-alpine AS base
+
+RUN apk add --no-cache python3 make g++ curl bash unzip
+
+RUN curl -fsSL https://bun.sh/install | bash -s "bun-v1.3.10"
+
+ENV PATH="/root/.bun/bin:$PATH"
+
+# --- BUILD: install all deps + compile ---
+
+FROM base AS build
 
 WORKDIR /app
 
 COPY --from=prepare /app/out/json/ .
+COPY --from=prepare /app/out/bun.lock ./bun.lock
 RUN printf '[install]\nlinker = "hoisted"' > bunfig.toml
 RUN bun install --frozen-lockfile
 
-# ---
-
-FROM install AS build
-
 COPY --from=prepare /app/out/full/ .
+RUN cd apps/discord-bot && bun x tsup
 
-RUN cd apps/discord-bot && bunx tsup
+# --- PRODINSTALL: production deps only ---
 
-# ---
-
-FROM node:20-slim AS runtime
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ffmpeg ca-certificates \
-  && rm -rf /var/lib/apt/lists/*
+FROM base AS prodinstall
 
 WORKDIR /app
 
-COPY --from=build /app/apps/discord-bot/dist/ ./dist/
-COPY --from=build /app/node_modules/ ./node_modules/
+COPY --from=prepare /app/out/json/ .
+COPY --from=prepare /app/out/bun.lock ./bun.lock
+RUN printf '[install]\nlinker = "hoisted"' > bunfig.toml
+RUN bun install --frozen-lockfile --omit dev
+
+# --- RUNTIME ---
+
+FROM node:20-alpine AS runtime
+
+RUN apk add --no-cache ffmpeg
+
+RUN adduser -D -u 1001 botuser
+
+WORKDIR /app
+
+COPY --from=build --chown=botuser:botuser /app/apps/discord-bot/dist/ ./dist/
+COPY --from=prodinstall --chown=botuser:botuser /app/node_modules/ ./node_modules/
+
+USER botuser
 
 CMD ["node", "dist/index.cjs"]

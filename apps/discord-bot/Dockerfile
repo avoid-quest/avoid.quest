@@ -20,6 +20,7 @@ ENV PATH="/root/.bun/bin:$PATH"
 WORKDIR /app
 
 COPY --from=prepare /app/out/json/ .
+RUN printf '[install]\nlinker = "hoisted"' > bunfig.toml
 RUN bun install --frozen-lockfile
 
 # ---
@@ -28,19 +29,7 @@ FROM install AS build
 
 COPY --from=prepare /app/out/full/ .
 
-RUN cd apps/discord-bot && npx tsup src/index.ts \
-  --format esm \
-  --target node20 \
-  --clean \
-  --noExternal '/./' \
-  --external @discordjs/opus \
-  --external sodium-native
-
-# Collect native modules + their transitive deps into a clean node_modules
-RUN mkdir -p /native-deps && \
-  echo '{"dependencies":{"@discordjs/opus":"0.9.0","sodium-native":"4.3.3"}}' \
-  > /native-deps/package.json && \
-  cd /native-deps && bun install --production
+RUN cd apps/discord-bot && npx tsup
 
 # ---
 
@@ -53,6 +42,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 COPY --from=build /app/apps/discord-bot/dist/ ./dist/
-COPY --from=build /native-deps/node_modules/ ./node_modules/
+COPY --from=build /app/node_modules/ ./node_modules/
 
-CMD ["node", "dist/index.mjs"]
+CMD ["node", "dist/index.cjs"]

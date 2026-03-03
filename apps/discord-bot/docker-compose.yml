@@ -1,0 +1,7 @@
+services:
+  bot:
+    build:
+      context: ../..
+      dockerfile: apps/discord-bot/Dockerfile
+    env_file: .env
+    restart: unless-stopped

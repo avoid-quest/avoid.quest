@@ -1,6 +1,6 @@
 FROM node:20-slim AS prepare
 
-RUN npm install -g turbo@^2
+RUN npm install -g turbo@2.8.12
 
 WORKDIR /app
 COPY . .
@@ -12,7 +12,7 @@ FROM node:20-slim AS install
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 make g++ curl unzip ca-certificates \
-  && curl -fsSL https://bun.sh/install | bash \
+  && curl -fsSL https://bun.sh/install | bash -s "bun-v1.3.10" \
   && rm -rf /var/lib/apt/lists/*
 
 ENV PATH="/root/.bun/bin:$PATH"
@@ -32,9 +32,15 @@ RUN cd apps/discord-bot && npx tsup src/index.ts \
   --format esm \
   --target node20 \
   --clean \
-  --noExternal @avoid.quest/platforms \
+  --noExternal '/./' \
   --external @discordjs/opus \
   --external sodium-native
+
+# Collect native modules + their transitive deps into a clean node_modules
+RUN mkdir -p /native-deps && \
+  echo '{"dependencies":{"@discordjs/opus":"0.9.0","sodium-native":"4.3.3"}}' \
+  > /native-deps/package.json && \
+  cd /native-deps && bun install --production
 
 # ---
 
@@ -47,8 +53,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 COPY --from=build /app/apps/discord-bot/dist/ ./dist/
-COPY --from=build /app/node_modules/@discordjs/opus/ ./node_modules/@discordjs/opus/
-COPY --from=build /app/node_modules/sodium-native/ ./node_modules/sodium-native/
-COPY --from=build /app/node_modules/node-gyp-build/ ./node_modules/node-gyp-build/
+COPY --from=build /native-deps/node_modules/ ./node_modules/
 
 CMD ["node", "dist/index.mjs"]

@@ -12,10 +12,10 @@ export type QueueTrack = {
 
 export class TrackQueue {
   private tracks: QueueTrack[] = [];
-  private position = 0;
 
+  /** Currently playing track (first in queue) */
   get current(): QueueTrack | null {
-    return this.tracks[this.position] ?? null;
+    return this.tracks[0] ?? null;
   }
 
   get length(): number {
@@ -26,25 +26,24 @@ export class TrackQueue {
     return this.tracks;
   }
 
-  get currentPosition(): number {
-    return this.position;
-  }
-
   get isEmpty(): boolean {
     return this.tracks.length === 0;
   }
 
-  add(track: QueueTrack): number {
-    this.tracks.push(track);
-    return this.tracks.length - 1;
+  /** Replace entire queue */
+  replace(tracks: QueueTrack[]): void {
+    this.tracks = [...tracks];
   }
 
+  /** Add track(s) to end of queue */
+  add(track: QueueTrack): void {
+    this.tracks.push(track);
+  }
+
+  /** Remove finished current track, return new current (next track) */
   next(): QueueTrack | null {
-    if (this.position + 1 < this.tracks.length) {
-      this.position++;
-      return this.current;
-    }
-    return null;
+    this.tracks.shift();
+    return this.current;
   }
 
   remove(index: number): QueueTrack | null {
@@ -52,16 +51,10 @@ export class TrackQueue {
       return null;
     }
     const [removed] = this.tracks.splice(index, 1);
-    if (index < this.position) {
-      this.position--;
-    } else if (index === this.position && this.position >= this.tracks.length) {
-      this.position = Math.max(0, this.tracks.length - 1);
-    }
     return removed ?? null;
   }
 
   clear(): void {
     this.tracks = [];
-    this.position = 0;
   }
 }

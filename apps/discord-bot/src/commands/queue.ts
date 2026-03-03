@@ -26,6 +26,6 @@ export async function execute(
   }
 
   await interaction.reply({
-    embeds: [queueEmbed(player.queue.items, player.queue.currentPosition)],
+    embeds: [queueEmbed(player.queue.items, 0)],
   });
 }

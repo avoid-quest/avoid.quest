@@ -237,22 +237,9 @@ export class GuildPlayer {
       return null;
     }
 
-    if (this.currentTrack?.isLiveStream) {
-      this.stop();
-    }
-
-    if (!(this.isPlaying || this.isPaused)) {
-      this.queue.clear();
-    }
-
-    for (const track of tracks) {
-      this.queue.add(track);
-    }
-
-    if (!(this.isPlaying || this.isPaused)) {
-      await this.play(firstTrack);
-    }
-
+    this.player.stop(true);
+    this.queue.replace(tracks);
+    await this.play(firstTrack);
     return firstTrack;
   }
 

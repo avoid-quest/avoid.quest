@@ -78,9 +78,7 @@ export async function execute(
       thumbnail: station.logoUrl,
     };
 
-    player.stop();
-    player.queue.add(track);
-    await player.play(track);
+    await player.enqueue([track]);
 
     await interaction.editReply({
       embeds: [nowPlayingEmbed(track)],

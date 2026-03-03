@@ -112,12 +112,8 @@ export class GuildPlayer {
       channelId: channel.id,
       guildId: channel.guild.id,
       adapterCreator: channel.guild.voiceAdapterCreator,
-      debug: true,
     });
 
-    this.connection.on("debug", (msg) => {
-      console.log(`[Voice ${this.guildId}] ${msg}`);
-    });
     this.connection.subscribe(this.player);
 
     try {

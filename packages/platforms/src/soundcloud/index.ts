@@ -161,8 +161,8 @@ async function getStreamUrl(
     }
 
     const data: { url: string } = await response.json();
-    // Use getProxiedSoundCloudUrl which skips proxy for CORS-enabled HLS URLs
-    return getProxiedSoundCloudUrl(data.url);
+    // Return raw stream URL - consumers apply proxying as needed
+    return data.url;
   } catch (error) {
     console.warn("[SoundCloud] getStreamUrl failed:", error);
     return null;

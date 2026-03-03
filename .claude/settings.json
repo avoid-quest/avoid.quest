@@ -1,12 +1,43 @@
 {
   "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/block-non-bun.sh"
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/block-direct-linter.sh"
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/block-direct-test.sh"
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/block-direct-tsc.sh"
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/block-deploy.sh"
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/block-direct-shadcn.sh"
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "Write|Edit",
         "hooks": [
           {
             "type": "command",
-            "command": "bun x ultracite fix"
+            "command": "bunx ultracite fix"
           }
         ]
       }

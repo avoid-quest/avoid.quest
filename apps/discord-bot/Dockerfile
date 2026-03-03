@@ -1,14 +1,4 @@
-FROM node:20-slim AS prepare
-
-RUN npm install -g turbo@2.8.12
-
-WORKDIR /app
-COPY . .
-RUN turbo prune @avoid.quest/discord-bot --docker
-
-# ---
-
-FROM node:20-slim AS install
+FROM node:20-slim AS base
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 make g++ curl unzip ca-certificates \
@@ -16,6 +6,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   && rm -rf /var/lib/apt/lists/*
 
 ENV PATH="/root/.bun/bin:$PATH"
+
+# ---
+
+FROM base AS prepare
+
+WORKDIR /app
+COPY . .
+RUN bun install --frozen-lockfile
+RUN bunx turbo prune @avoid.quest/discord-bot --docker
+
+# ---
+
+FROM base AS install
 
 WORKDIR /app
 
@@ -29,7 +32,7 @@ FROM install AS build
 
 COPY --from=prepare /app/out/full/ .
 
-RUN cd apps/discord-bot && npx tsup
+RUN cd apps/discord-bot && bunx tsup
 
 # ---
 

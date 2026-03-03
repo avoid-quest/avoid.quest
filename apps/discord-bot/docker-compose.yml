@@ -4,4 +4,5 @@ services:
       context: ../..
       dockerfile: apps/discord-bot/Dockerfile
     env_file: .env
+    network_mode: host
     restart: unless-stopped

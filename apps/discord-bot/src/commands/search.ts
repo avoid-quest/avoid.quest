@@ -172,8 +172,7 @@ export async function handleSelection(
     }
 
     if (!(player.isPlaying || player.isPaused)) {
-      const trackToPlay = player.queue.current ?? firstTrack;
-      await player.play(trackToPlay);
+      await player.play(firstTrack);
     }
 
     if (tracks.length > 1) {

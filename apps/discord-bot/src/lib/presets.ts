@@ -80,4 +80,12 @@ export const presets: PresetRadio[] = [
     streamUrl: "https://n03.radiojar.com/78cxy6wkxtzuv",
     logoUrl: "https://www.radioalhara.net/img/radio-alhara-logo.svg",
   },
+  {
+    name: "Gatto Misterioso",
+    description: "",
+    websiteUrl: "",
+    streamUrl:
+      "https://azuracast.gattomisterioso.top/listen/gatto_misterioso/radio.mp3",
+    logoUrl: "",
+  },
 ];

@@ -94,6 +94,13 @@ export const radios: Radio[] = [
     order: 11,
     isSystem: true,
   },
+  {
+    name: "Gatto Misterioso",
+    streamUrl:
+      "https://azuracast.gattomisterioso.top/listen/gatto_misterioso/radio.mp3",
+    order: 13,
+    isSystem: true,
+  },
 ];
 
 export const settings: Settings = {

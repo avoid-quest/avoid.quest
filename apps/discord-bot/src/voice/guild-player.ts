@@ -231,6 +231,31 @@ export class GuildPlayer {
     this.updateVoiceStatus("");
   }
 
+  async enqueue(tracks: QueueTrack[]): Promise<QueueTrack | null> {
+    const firstTrack = tracks[0];
+    if (!firstTrack) {
+      return null;
+    }
+
+    if (this.currentTrack?.isLiveStream) {
+      this.stop();
+    }
+
+    if (!(this.isPlaying || this.isPaused)) {
+      this.queue.clear();
+    }
+
+    for (const track of tracks) {
+      this.queue.add(track);
+    }
+
+    if (!(this.isPlaying || this.isPaused)) {
+      await this.play(firstTrack);
+    }
+
+    return firstTrack;
+  }
+
   setVolume(percent: number): void {
     this.volume = Math.max(0, Math.min(1, percent / 100));
     const resource = (

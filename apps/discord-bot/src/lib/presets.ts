@@ -69,7 +69,7 @@ export const presets: PresetRadio[] = [
     description:
       "Internet Public Radio is an independent cultural platform and radio station broadcasting from Guadalajara, Latin America, Europe and more territories.",
     websiteUrl: "https://www.internetpublicradio.live/",
-    streamUrl: "https://c11.radioboss.fm:18270/stream",
+    streamUrl: "https://stream-relay-geo.internetpublicradio.live/stream/main",
     logoUrl:
       "https://www.internetpublicradio.live/static/main-logo.bcb1782f3ce2.svg",
   },

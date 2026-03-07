@@ -81,7 +81,7 @@ export const radios: Radio[] = [
     websiteUrl: "https://www.internetpublicradio.live/",
     logoUrl:
       "https://www.internetpublicradio.live/static/main-logo.bcb1782f3ce2.svg",
-    streamUrl: "https://c11.radioboss.fm:18270/stream",
+    streamUrl: "https://stream-relay-geo.internetpublicradio.live/stream/main",
     order: 8,
     isSystem: true,
   },

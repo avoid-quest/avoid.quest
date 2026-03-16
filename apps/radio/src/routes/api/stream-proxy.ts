@@ -117,7 +117,32 @@ function validateUrl(
     hostname === "[::1]" ||
     hostname.startsWith("fc") ||
     hostname.startsWith("fd") ||
-    hostname.startsWith("fe80:")
+    hostname.startsWith("fe80:") ||
+    hostname.endsWith(".onion") ||
+    hostname.endsWith(".local") ||
+    hostname.endsWith(".internal") ||
+    hostname === "metadata.google.internal" ||
+    // IPv4-mapped IPv6 addresses
+    hostname.startsWith("::ffff:127.") ||
+    hostname.startsWith("::ffff:10.") ||
+    hostname.startsWith("::ffff:192.168.") ||
+    hostname.startsWith("::ffff:172.16.") ||
+    hostname.startsWith("::ffff:172.17.") ||
+    hostname.startsWith("::ffff:172.18.") ||
+    hostname.startsWith("::ffff:172.19.") ||
+    hostname.startsWith("::ffff:172.20.") ||
+    hostname.startsWith("::ffff:172.21.") ||
+    hostname.startsWith("::ffff:172.22.") ||
+    hostname.startsWith("::ffff:172.23.") ||
+    hostname.startsWith("::ffff:172.24.") ||
+    hostname.startsWith("::ffff:172.25.") ||
+    hostname.startsWith("::ffff:172.26.") ||
+    hostname.startsWith("::ffff:172.27.") ||
+    hostname.startsWith("::ffff:172.28.") ||
+    hostname.startsWith("::ffff:172.29.") ||
+    hostname.startsWith("::ffff:172.30.") ||
+    hostname.startsWith("::ffff:172.31.") ||
+    hostname.startsWith("::ffff:169.254.")
   ) {
     return problemWithCors(
       new AppError({

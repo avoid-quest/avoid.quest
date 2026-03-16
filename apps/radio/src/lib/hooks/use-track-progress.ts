@@ -1,11 +1,12 @@
-import { useEffect, useState } from "react";
+import { useThrottledCallback } from "@tanstack/react-pacer";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AudioManager } from "@/lib/audio";
 
 /**
  * Track progress hook
  *
- * Polls the AudioManager for current playback position and duration.
- * Updates at ~4Hz (250ms intervals) to balance accuracy and performance.
+ * Polls the AudioManager for current playback position and duration using RAF.
+ * Updates are throttled at 250ms intervals to balance accuracy and performance.
  *
  * For live streams, duration will be Infinity.
  * For finite tracks (Bandcamp, SoundCloud), both position and duration are available.
@@ -16,6 +17,27 @@ export function useTrackProgress(soundId: string | null): {
 } {
   const [position, setPosition] = useState(0);
   const [duration, setDuration] = useState(0);
+  const rafRef = useRef<number | null>(null);
+
+  const updateState = useThrottledCallback(
+    (pos: number, dur: number) => {
+      setPosition(pos);
+      setDuration(dur);
+    },
+    { wait: 250, leading: true, trailing: true }
+  );
+
+  const tick = useCallback(() => {
+    if (!soundId) {
+      return;
+    }
+    const audioManager = AudioManager.getInstance();
+    const progress = audioManager.getTrackProgress(soundId);
+    if (progress) {
+      updateState(progress.position, progress.duration);
+    }
+    rafRef.current = requestAnimationFrame(tick);
+  }, [soundId, updateState]);
 
   useEffect(() => {
     if (!soundId) {
@@ -23,30 +45,13 @@ export function useTrackProgress(soundId: string | null): {
       setDuration(0);
       return;
     }
-
-    const audioManager = AudioManager.getInstance();
-
-    // Poll for progress updates
-    const updateProgress = () => {
-      const progress = audioManager.getTrackProgress(soundId);
-      if (progress) {
-        setPosition(progress.position);
-        // For live streams, duration is Infinity - we keep it as-is
-        // The UI can decide how to display this
-        setDuration(progress.duration);
+    rafRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
       }
     };
-
-    // Initial update
-    updateProgress();
-
-    // Poll at ~4Hz (250ms) for smooth progress updates
-    const intervalId = setInterval(updateProgress, 250);
-
-    return () => {
-      clearInterval(intervalId);
-    };
-  }, [soundId]);
+  }, [soundId, tick]);
 
   return { position, duration };
 }

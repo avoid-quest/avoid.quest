@@ -1,56 +1,117 @@
 # radio
 
-PWA internet radio player with advanced audio mixing and 3 playback modes.
+PWA internet radio player with advanced audio mixing, effects chain, and MIDI support.
 
 ## Features
 
-- **3 Playback Modes**:
-  - Multiple: play several radios simultaneously with independent volume mixing
-  - Single: single station with full controls
-  - DJ: advanced mixing with crossfades and effects
-- Audio DSP: Web Audio API with AudioWorklet for effects (EQ, compression, etc.)
-- Platform imports: Bandcamp and SoundCloud track/playlist support
-- PWA: installable, service worker, offline-capable
-- Local storage sync: TanStack DB with lz-string compression
-- Visualizations: spectrum analysis, waveform display
-- Device controls: media keys, hardware button support
-- Settings: form-based radio management, import/export data
-- Theme: dark/light mode
+- **3 Playback Modes**
+  - **Multiple**: several stations simultaneously with independent volume/controls
+  - **Single**: focused single-station player with crossfade transitions
+  - **DJ**: two-deck mixer with crossfader, channel strip, effects chain, CUE monitoring, MIDI control
+- **Audio DSP**: custom AudioWorklet processor with real-time effects (7-band EQ, compressor, delay, reverb, distortion, bitcrusher, stereo tool, pitch shift)
+- **Platform support**: Bandcamp albums/tracks, SoundCloud playlists/tracks, YouTube playlists/videos, Radio Garden stations
+- **External inputs**: device audio input (mic/line-in), local file playback
+- **PWA**: installable, service worker, offline shell
+- **Persistence**: TanStack DB collections backed by localStorage — radios, settings, DJ state
+- **Visualizations**: spectrum analyser, waveform display, level/peak meters
+- **Media Session API**: lock screen controls, AVRCP Bluetooth metadata
+- **MIDI**: configurable controller mappings for all DJ actions
+- **Import/Export**: JSON config, shareable URL (lz-string compressed)
+- **Theme**: dark/light mode
 
 ## Tech Stack
 
-- TanStack Router (file-based routing)
-- TanStack React Query, DB, Store
-- React 19, TypeScript, Vite
-- Tailwind CSS v4
-- Cloudflare Workers (deploy)
-- @opendaw/lib-dsp for audio processing
+- **Routing**: TanStack Start + TanStack Router (file-based, SSR disabled for UI routes)
+- **State**: TanStack DB (persisted), TanStack Store (runtime), TanStack Query (platform metadata)
+- **Throttling**: `@tanstack/react-pacer` (`useThrottledCallback`)
+- **DSP**: `@opendaw/lib-dsp` (biquad filters, compressor, spectrum analyser, DSP primitives)
+- **Audio**: Web Audio API, AudioWorklet, HLS.js, HTML5 Audio
+- **UI**: React 19, Tailwind CSS v4, shadcn/ui, Radix UI, dnd-kit
+- **Deploy**: Cloudflare Workers (Wrangler)
+- **Monitoring**: Sentry (client + server, via `/tunnel` route)
 
 ## Routes
 
-- `/` - Main radio player (switches between modes)
-- `/import` - Import radios from external sources
+| Route | Description |
+|-------|-------------|
+| `/` | Main player — switches between Multiple / Single / DJ mode |
+| `/import` | Batch import radios from a URL or JSON |
+| `/api/stream-proxy` | CORS proxy for radio streams |
+| `/api/soundcloud-proxy` | SoundCloud CDN proxy (domain allowlisted) |
+| `/api/bandcamp-proxy` | Bandcamp stream proxy |
+| `/manifest` | PWA web app manifest (dynamic) |
+| `/tunnel` | Sentry envelope tunnel |
 
-## Connections
+Server functions (TanStack Start `createServerFn`):
 
-- Uses `@avoid.quest/bandcamp`: Bandcamp metadata extraction
-- Uses `@avoid.quest/soundcloud`: SoundCloud metadata extraction
-- Uses `@avoid.quest/ui`: form inputs, dialogs, sliders, buttons
+| Function file | Description |
+|--------------|-------------|
+| `utils/platform.functions.ts` | Resolve Bandcamp/SoundCloud/YouTube/Radio Garden URLs |
+| `utils/search.functions.ts` | Search Bandcamp and SoundCloud |
+| `utils/youtube.functions.ts` | YouTube search + stream URL resolution (Invidious) |
+| `utils/radio-garden.functions.ts` | Radio Garden search, stream resolve, suggestions |
+| `utils/static-audio.functions.ts` | Static audio file probing and playlist parsing |
 
-## Sentry + Cloudflare setup
+## Architecture
 
-### Build-time variables (CI/local build environment)
+### State layers
 
-- `SENTRY_AUTH_TOKEN`: required for release creation and sourcemap upload.
-- `SENTRY_ORG`: your Sentry organization slug.
-- `SENTRY_PROJECT`: your Sentry project slug.
-- `SENTRY_RELEASE` (optional): explicit release name; defaults to `radio@<package-version>`.
+```
+┌─────────────────────────────────────────────┐
+│  TanStack DB (localStorage)                  │
+│  radiosCollection · settingsCollection       │
+│  deckCollection · mixerCollection            │
+│  singleStateCollection                       │
+├─────────────────────────────────────────────┤
+│  TanStack Store (in-memory runtime)          │
+│  djRuntimeStore — isPlaying, isLoading,      │
+│  soundId, peakLevels, drag state             │
+├─────────────────────────────────────────────┤
+│  TanStack Query (server state cache)         │
+│  platform metadata, search results           │
+└─────────────────────────────────────────────┘
+```
 
-If `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, or `SENTRY_PROJECT` are missing, the Sentry Vite upload plugin is skipped to avoid build warnings.
+### Audio signal path (DJ mode)
 
-### Notes
+```
+Html5AudioSource / DeviceSource
+  → Pan → Filter → WorkletNode (effects chain)
+  → PreFaderSend (CUE tap) → Gain (fader)
+  → Analyser → MainDelayNode → Destination (speakers)
 
-- Client DSN + tunnel constants are defined in `/src/lib/sentry/tunnel.ts` and used by `/src/router.tsx`.
-- `/tunnel` validates envelope DSN host + project and forwards only valid envelopes to Sentry.
-- Server function middlewares are manually wrapped with `wrapMiddlewaresWithSentry(...)` to avoid TanStack Start auto-instrumentation warnings.
-- Scripts are configured with `WRANGLER_LOG_PATH=.wrangler/logs` to keep Wrangler logs inside the workspace.
+CueBus: PreFaderSend → CueSumNode → CueDelayNode
+  → HeadphoneGain → MediaStreamDest → Headphones (setSinkId)
+```
+
+## Environment variables
+
+### Dev (`.dev.vars`)
+
+```
+INVIDIOUS_INSTANCE_URL=   # Invidious instance for YouTube stream resolution
+INVIDIOUS_AUTH=           # Optional Invidious auth token
+```
+
+### Build-time (Sentry sourcemap upload)
+
+```
+SENTRY_AUTH_TOKEN   # Required for sourcemap upload
+SENTRY_ORG          # Sentry organization slug
+SENTRY_PROJECT      # Sentry project slug
+SENTRY_RELEASE      # Optional: defaults to radio@<version>
+```
+
+If any Sentry build vars are missing the upload step is skipped silently.
+
+## Development
+
+```bash
+bun run dev          # Start dev server (port 3000)
+bun run build        # Production build
+bun run typecheck    # tsc --noEmit
+bun run test         # Run tests (bun test)
+bun run cf-deploy    # Deploy to Cloudflare Workers
+bun run cf-upload    # Upload new version without promoting
+bun run cf-typegen   # Regenerate cloudflare-env.d.ts
+```

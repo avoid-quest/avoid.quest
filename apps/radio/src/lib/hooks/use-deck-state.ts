@@ -27,7 +27,6 @@ import {
   setDeckBVolume,
 } from "@/lib/dj-actions";
 import { type DeckState, useDeckA, useDeckB } from "@/lib/hooks/use-dj-state";
-import type { DeckId } from "@/lib/stores/dj-runtime-store";
 
 const DEFAULT_FILTER = {
   type: "lowpass" as const,
@@ -143,14 +142,4 @@ export function useDeckBState(): DeckStateResult {
     () => createDeckStateResult(deckState, deckBActions),
     [deckState]
   );
-}
-
-/**
- * Hook for deck state by ID - prefer useDeckAState/useDeckBState for better performance
- * @deprecated Use useDeckAState() or useDeckBState() directly to avoid subscribing to both decks
- */
-export function useDeckState(deckId: DeckId): DeckStateResult {
-  const deckAState = useDeckAState();
-  const deckBState = useDeckBState();
-  return deckId === "deck-a" ? deckAState : deckBState;
 }

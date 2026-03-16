@@ -190,12 +190,16 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 
   // Initialize TanStack DB collections with default data
   useEffect(() => {
-    initializeCollections().then((changes) => {
-      if (changes) {
-        setSyncChanges(changes);
-        setShowSyncDialog(true);
-      }
-    });
+    initializeCollections()
+      .then((changes) => {
+        if (changes) {
+          setSyncChanges(changes);
+          setShowSyncDialog(true);
+        }
+      })
+      .catch((error) => {
+        console.error("[radio] Failed to initialize collections:", error);
+      });
   }, []);
 
   const handleApplySyncChanges = (changes: SyncChanges) => {

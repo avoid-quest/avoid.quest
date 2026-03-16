@@ -4,9 +4,8 @@ import { cloudflare } from "@cloudflare/vite-plugin";
 import { sentryTanstackStart } from "@sentry/tanstackstart-react/vite";
 import tailwindcss from "@tailwindcss/vite";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
-import viteReact from "@vitejs/plugin-react";
+import react from "@vitejs/plugin-react";
 import { build, defineConfig, type Plugin } from "vite";
-import tsConfigPaths from "vite-tsconfig-paths";
 
 const WORKLET_OUT_DIR = ".worklet-build";
 const WORKLET_FILENAME = "dsp-processor-bundle.js";
@@ -108,11 +107,6 @@ function audioWorkletPlugin(): Plugin {
           copyPublicDir: false,
           minify: "esbuild",
           sourcemap: false,
-          rollupOptions: {
-            output: {
-              inlineDynamicImports: true,
-            },
-          },
         },
         logLevel: "warn",
       });
@@ -177,9 +171,9 @@ export default defineConfig({
       viteEnvironment: { name: "ssr" },
     }),
     tailwindcss(),
-    tsConfigPaths(),
     tanstackStart(),
-    viteReact({
+    react({
+      //@ts-expect-error
       babel: {
         plugins: ["babel-plugin-react-compiler"],
       },
@@ -200,6 +194,9 @@ export default defineConfig({
   ],
   define: {
     __APP_VERSION__: JSON.stringify(APP_VERSION),
+  },
+  resolve: {
+    tsconfigPaths: true,
   },
   build: {
     minify: "esbuild",

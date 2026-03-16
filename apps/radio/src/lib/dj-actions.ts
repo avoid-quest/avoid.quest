@@ -691,8 +691,9 @@ export function applyCrossfade() {
 
   const { crossfadePosition } = mixer;
 
-  const leftFinalVol = (1 - crossfadePosition) * deckA.volume;
-  const rightFinalVol = crossfadePosition * deckB.volume;
+  const angle = (crossfadePosition * Math.PI) / 2;
+  const leftFinalVol = Math.cos(angle) * deckA.volume;
+  const rightFinalVol = Math.sin(angle) * deckB.volume;
 
   const manager = getAudioManager();
   if (runtimeA.soundId) {

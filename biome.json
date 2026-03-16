@@ -98,7 +98,9 @@
         "useConsistentTypeDefinitions": {
           "fix": "safe",
           "level": "info",
-          "options": { "style": "type" }
+          "options": {
+            "style": "type"
+          }
         },
         "useBlockStatements": {
           "fix": "safe",

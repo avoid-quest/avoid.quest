@@ -1,8 +1,10 @@
 import {
   initializeRadios,
   initializeSettings,
+  initializeSingleState,
   radiosCollection,
   settingsCollection,
+  singleStateCollection,
 } from "./collections";
 
 const SETTINGS_ID = "app-settings";
@@ -30,7 +32,14 @@ export const resetAllSettings = async (): Promise<void> => {
     settingsCollection.delete(SETTINGS_ID);
   }
 
+  // Clear single state
+  const singleState = singleStateCollection.state.get("single-state");
+  if (singleState) {
+    singleStateCollection.delete("single-state");
+  }
+
   // Reinitialize with defaults
   initializeSettings();
   await initializeRadios();
+  await initializeSingleState();
 };

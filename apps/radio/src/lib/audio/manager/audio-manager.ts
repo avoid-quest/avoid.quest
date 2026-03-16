@@ -877,16 +877,17 @@ export class AudioManager {
 
     if (clampedValue < 0) {
       // Negative: Lowpass sweep (lower value = lower cutoff)
+      // Logarithmic mapping -1→0 : 80Hz→20kHz — evenly distributed on perceptual scale
       filter.type = "lowpass";
-      // Map -1 to 0 → 200Hz to 20000Hz
-      const freq = 200 + (1 + clampedValue) * 19_800;
+      const t = 1 + clampedValue; // 0..1
+      const freq = 80 * (20_000 / 80) ** t;
       filter.frequency.setTargetAtTime(freq, now, 0.05);
       filter.Q.setTargetAtTime(1.0, now, 0.05);
     } else {
       // Positive: Highpass sweep (higher value = higher cutoff)
+      // Logarithmic mapping 0→1 : 20Hz→18kHz — evenly distributed on perceptual scale
       filter.type = "highpass";
-      // Map 0 to 1 → 20Hz to 5000Hz
-      const freq = 20 + clampedValue * 4980;
+      const freq = 20 * (18_000 / 20) ** clampedValue;
       filter.frequency.setTargetAtTime(freq, now, 0.05);
       filter.Q.setTargetAtTime(1.0, now, 0.05);
     }

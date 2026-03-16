@@ -1,6 +1,7 @@
 import { initializeDjState } from "./dj-state";
 import { initializeRadios, type SyncChanges } from "./radios";
 import { initializeSettings } from "./settings";
+import { initializeSingleState } from "./single-state";
 
 export {
   type DeckRecord,
@@ -61,6 +62,14 @@ export {
   updateInputDeckSettings,
   updatePlayerSettings,
 } from "./settings";
+export {
+  getSingleState,
+  initializeSingleState,
+  type SingleStateRecord,
+  setSingleRadio,
+  setSingleVolume,
+  singleStateCollection,
+} from "./single-state";
 
 /**
  * Initialize all collections with default data
@@ -70,6 +79,7 @@ export async function initializeCollections(): Promise<SyncChanges | null> {
   const syncChanges = await initializeRadios();
   await initializeSettings();
   await initializeDjState();
+  await initializeSingleState();
 
   return syncChanges;
 }

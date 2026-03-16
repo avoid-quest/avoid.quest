@@ -27,10 +27,21 @@ function getPeakHoldColor(percent: number): string {
 }
 
 // Smoothed level — fast attack, slow release (like analog ballistics)
+// When level is exactly 0 (e.g. after eject), snap to 0 immediately
+// instead of slowly decaying — otherwise the bar freezes because ref
+// mutations don't trigger re-renders.
 function useSmoothedLevel(level: number) {
   const smoothedRef = useRef(0);
 
+  if (level === 0) {
+    smoothedRef.current = 0;
+  }
+
   useEffect(() => {
+    if (level === 0) {
+      smoothedRef.current = 0;
+      return;
+    }
     const target = amplify(level);
     const current = smoothedRef.current;
     if (target >= current) {
@@ -49,7 +60,17 @@ function usePeakHold(level: number) {
   const peakRef = useRef(0);
   const decayRef = useRef(0);
 
+  if (level === 0) {
+    peakRef.current = 0;
+    decayRef.current = 0;
+  }
+
   useEffect(() => {
+    if (level === 0) {
+      peakRef.current = 0;
+      decayRef.current = 0;
+      return;
+    }
     const amplified = amplify(level);
     if (amplified >= peakRef.current) {
       peakRef.current = amplified;

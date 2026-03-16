@@ -13,6 +13,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { type Radio, useSingleAudio } from "@/lib/audio";
+import { setSingleRadio, setSingleVolume } from "@/lib/collections";
 import { useMediaSession } from "@/lib/hooks/use-media-session";
 import { useRadioGardenResolve } from "@/lib/hooks/use-radio-garden-resolve";
 import {
@@ -24,17 +25,18 @@ import {
   useSessionRadios,
 } from "@/lib/hooks/use-session-radios";
 import { useSettings } from "@/lib/hooks/use-settings";
-import { useSingleStore } from "@/lib/stores/single-store";
+import { useSingleState } from "@/lib/hooks/use-single-state";
 import { RadioDialog } from "../../settings/radio-dialog";
 import { RadioItemActions } from "../radio-item-actions";
 import { RadioLogo } from "../radio-logo";
 import { RadioSearchBar } from "../radio-search-bar";
 
-function useSingleStoreHydration(
+function useSingleStateHydration(
   selectRadio: (radio: Radio) => Promise<void>,
   setVolume: (volume: number) => void
 ) {
   const { data: settings } = useSettings();
+  const singleState = useSingleState();
   const hasHydratedRef = useRef(false);
   const [isHydrated, setIsHydrated] = useState(false);
 
@@ -60,25 +62,22 @@ function useSingleStoreHydration(
     }
 
     const shouldRestore = settings?.player?.restoreStateOnLoad !== false;
-    if (shouldRestore && settings !== undefined) {
+    if (shouldRestore && settings !== undefined && singleState !== undefined) {
       hasHydratedRef.current = true;
 
-      (async () => {
-        await useSingleStore.persist.rehydrate();
-        const { radio, volume } = useSingleStore.getState();
+      if (singleState.volume !== undefined) {
+        setVolumeRef.current(singleState.volume);
+      }
 
-        if (volume !== undefined) {
-          setVolumeRef.current(volume);
-        }
+      if (singleState.radio) {
+        selectRadioRef.current(singleState.radio).catch((error) => {
+          console.error("[radio] Failed to restore radio:", error);
+        });
+      }
 
-        if (radio) {
-          await selectRadioRef.current(radio);
-        }
-
-        setIsHydrated(true);
-      })();
+      setIsHydrated(true);
     }
-  }, [settings]);
+  }, [settings, singleState]);
 
   return isHydrated;
 }
@@ -342,7 +341,9 @@ type SinglePlayerProps = {
 };
 
 export function SinglePlayer({ radios }: SinglePlayerProps) {
-  const transitionDuration = useSingleStore((s) => s.transitionDuration);
+  const { data: settings } = useSettings();
+  const transitionDuration =
+    settings?.player?.single?.transitionDuration ?? 2000;
   const {
     currentRadio,
     isPlaying,
@@ -355,7 +356,7 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
     setVolume,
   } = useSingleAudio(transitionDuration);
 
-  const isHydrated = useSingleStoreHydration(selectRadio, setVolume);
+  const isHydrated = useSingleStateHydration(selectRadio, setVolume);
 
   useMediaSession({ mode: "single", radio: currentRadio, isPlaying });
 
@@ -374,14 +375,14 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
     if (!isHydrated) {
       return;
     }
-    useSingleStore.getState().setRadio(currentRadio);
+    setSingleRadio(currentRadio);
   }, [currentRadio, isHydrated]);
 
   useEffect(() => {
     if (!isHydrated) {
       return;
     }
-    useSingleStore.getState().setVolume(volume);
+    setSingleVolume(volume);
   }, [volume, isHydrated]);
 
   const [dialogOpen, setDialogOpen] = useState(false);

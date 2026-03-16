@@ -68,6 +68,7 @@ class WorkletEventEmitter {
 const MessageType = {
   // Source lifecycle
   CREATE_SOURCE: "CREATE_SOURCE",
+  REMOVE_SOURCE: "REMOVE_SOURCE",
   START_SOURCE: "START_SOURCE",
   STOP_SOURCE: "STOP_SOURCE",
   PAUSE_SOURCE: "PAUSE_SOURCE",
@@ -151,6 +152,7 @@ export class WorkletManager {
   private masterGainNode: GainNode | null = null;
   private readonly eventEmitter = new WorkletEventEmitter();
   private readonly activeSources = new Map<string, ActiveSource>();
+  private readonly createdSources = new Set<string>();
   private initPromise: Promise<void> | null = null;
   private initFailed = false;
   private readonly processorUrl: string;
@@ -249,15 +251,45 @@ export class WorkletManager {
   // ============================================
 
   /**
-   * Create a streaming source
+   * Check if a source has already been created in the worklet processor.
+   * Use this before calling createStreamSource to avoid resetting the effect chain.
+   */
+  hasSource(sourceId: string): boolean {
+    return this.createdSources.has(sourceId);
+  }
+
+  /**
+   * Create a streaming source.
+   * If the source already exists (hasSource returns true), this is a no-op —
+   * call startSource directly to preserve the existing effect chain.
    */
   createStreamSource(sourceId: string): void {
+    if (this.createdSources.has(sourceId)) {
+      return;
+    }
+    this.createdSources.add(sourceId);
     this.postMessage({
       type: MessageType.CREATE_SOURCE,
       payload: {
         id: sourceId,
         options: { type: "stream" },
       },
+    });
+  }
+
+  /**
+   * Destroy a streaming source and remove it from the worklet processor.
+   * Call this when the sound is fully cleaned up (e.g. in cleanupSound).
+   * After this, createStreamSource will recreate the source fresh.
+   */
+  destroyStreamSource(sourceId: string): void {
+    if (!this.createdSources.has(sourceId)) {
+      return;
+    }
+    this.createdSources.delete(sourceId);
+    this.postMessage({
+      type: MessageType.REMOVE_SOURCE,
+      payload: { sourceId },
     });
   }
 

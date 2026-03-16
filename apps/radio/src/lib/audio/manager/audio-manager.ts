@@ -723,6 +723,15 @@ export class AudioManager {
       this.workletManagers.delete(soundId);
     }
 
+    // Notify meter listeners with zero before removing the sound,
+    // so consumers (e.g. deck-panel) can reset their UI state.
+    const meterCallbacks = this.meterListeners.get(soundId);
+    if (meterCallbacks) {
+      for (const callback of meterCallbacks) {
+        callback({ left: 0, right: 0 });
+      }
+    }
+
     this.sounds.delete(soundId);
     this.lastSoundVolumes.delete(soundId);
 

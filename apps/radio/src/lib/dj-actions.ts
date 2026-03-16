@@ -371,10 +371,13 @@ async function resolveAndLoadYouTubeTrack(
 async function handleTrackEnded(
   config: (typeof deckConfig)["deck-a"],
   currentDeck: DeckRecord,
-  soundId: string
+  soundId: string,
+  resetChannelStripFlag: () => void
 ): Promise<void> {
   // Repeat mode: seek to start and replay
   if (currentDeck.repeat) {
+    // Reset flag so effects/channel strip are re-applied after the new Html5AudioSource is created
+    resetChannelStripFlag();
     getAudioManager().seekSound(soundId, 0);
     try {
       await getAudioManager().playSound(soundId, currentDeck.volume);
@@ -840,7 +843,9 @@ async function setDeckRadio(deckId: DeckId, radio: Radio | null) {
 
       // Handle track end - repeat or auto-advance to next track
       if (trackEnded && currentDeck?.radio && currentRuntime.soundId) {
-        handleTrackEnded(config, currentDeck, currentRuntime.soundId);
+        handleTrackEnded(config, currentDeck, currentRuntime.soundId, () => {
+          hasAppliedChannelStrip = false;
+        });
       }
     });
 

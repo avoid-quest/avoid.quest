@@ -31,13 +31,15 @@ import {
   setActiveDragRadio,
   setPendingPlatformItem,
   useActiveDragRadio,
+  useDeckA,
+  useDeckB,
   useMixer,
 } from "@/lib/hooks/use-dj-state";
+import { useMediaSession } from "@/lib/hooks/use-media-session";
 import { useMidi } from "@/lib/hooks/use-midi";
 import { useAudioSettings } from "@/lib/hooks/use-settings";
 import type { Platform } from "@/lib/platform-types";
 import type { DeckId } from "@/lib/stores/dj-runtime-store";
-
 import { RadioLogo } from "../radio-logo";
 import { DjConsole } from "./dj-console";
 import { DjConsoleMobile } from "./dj-console-mobile";
@@ -185,6 +187,16 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
   const activeDragRadio = useActiveDragRadio();
   const mixer = useMixer();
   const audioSettings = useAudioSettings();
+  const deckA = useDeckA();
+  const deckB = useDeckB();
+
+  const isPlaying = (deckA?.isPlaying ?? false) || (deckB?.isPlaying ?? false);
+  useMediaSession({
+    mode: "dj",
+    deckA: deckA?.radio ?? null,
+    deckB: deckB?.radio ?? null,
+    isPlaying,
+  });
 
   const crossfadePosition = mixer?.crossfadePosition ?? 0.5;
   const masterVolume = mixer?.masterVolume ?? 1;

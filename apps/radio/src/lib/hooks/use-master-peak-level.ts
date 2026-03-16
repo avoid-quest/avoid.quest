@@ -1,4 +1,4 @@
-import { useThrottler } from "@tanstack/react-pacer";
+import { useThrottledCallback } from "@tanstack/react-pacer";
 import { useEffect, useState } from "react";
 import { AudioManager } from "@/lib/audio";
 
@@ -13,7 +13,7 @@ const METER_THROTTLE_MS = 50;
 export function useMasterPeakLevel(): PeakLevel {
   const [level, setLevel] = useState<PeakLevel>({ left: 0, right: 0 });
 
-  const throttler = useThrottler(setLevel, {
+  const throttledSetLevel = useThrottledCallback(setLevel, {
     wait: METER_THROTTLE_MS,
     leading: true,
     trailing: true,
@@ -22,15 +22,13 @@ export function useMasterPeakLevel(): PeakLevel {
   useEffect(() => {
     const audioManager = AudioManager.getInstance();
     const unsubscribe = audioManager.subscribeMasterMeter((l) => {
-      throttler.maybeExecute(l);
+      throttledSetLevel(l);
     });
-
     return () => {
       unsubscribe();
-      throttler.cancel();
       setLevel({ left: 0, right: 0 });
     };
-  }, [throttler]);
+  }, [throttledSetLevel]);
 
   return level;
 }

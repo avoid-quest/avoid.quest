@@ -14,6 +14,7 @@ export default defineConfig(({ mode }) => {
       tailwindcss(),
       tanstackStart(),
       react({
+        // @ts-expect-error
         babel: {
           plugins: ["babel-plugin-react-compiler"],
         },

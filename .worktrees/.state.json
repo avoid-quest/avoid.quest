@@ -1,0 +1,20 @@
+{
+  "fix-148-loop-effects": {
+    "path": "/home/claw/code/avoid.quest/.worktrees/fix-148-loop-effects",
+    "branch": "feature/fix-148-loop-effects",
+    "created": "2026-03-16T17:10:47Z",
+    "status": "removed"
+  },
+  "fix-149-meter-cleanup": {
+    "path": "/home/claw/code/avoid.quest/.worktrees/fix-149-meter-cleanup",
+    "branch": "feature/fix-149-meter-cleanup",
+    "created": "2026-03-16T17:12:39Z",
+    "status": "removed"
+  },
+  "fix-148-effects-loop": {
+    "path": "/home/claw/code/avoid.quest/.worktrees/fix-148-effects-loop",
+    "branch": "feature/fix-148-effects-loop",
+    "created": "2026-03-16T18:33:44Z",
+    "status": "removed"
+  }
+}

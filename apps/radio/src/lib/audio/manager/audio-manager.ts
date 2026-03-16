@@ -880,14 +880,14 @@ export class AudioManager {
       // Logarithmic mapping -1→0 : 80Hz→20kHz — evenly distributed on perceptual scale
       filter.type = "lowpass";
       const t = 1 + clampedValue; // 0..1
-      const freq = 80 * Math.pow(20_000 / 80, t);
+      const freq = 80 * (20_000 / 80) ** t;
       filter.frequency.setTargetAtTime(freq, now, 0.05);
       filter.Q.setTargetAtTime(1.0, now, 0.05);
     } else {
       // Positive: Highpass sweep (higher value = higher cutoff)
       // Logarithmic mapping 0→1 : 20Hz→18kHz — evenly distributed on perceptual scale
       filter.type = "highpass";
-      const freq = 20 * Math.pow(18_000 / 20, clampedValue);
+      const freq = 20 * (18_000 / 20) ** clampedValue;
       filter.frequency.setTargetAtTime(freq, now, 0.05);
       filter.Q.setTargetAtTime(1.0, now, 0.05);
     }

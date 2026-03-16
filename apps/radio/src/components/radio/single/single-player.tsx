@@ -13,6 +13,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { type Radio, useSingleAudio } from "@/lib/audio";
+import { useMediaSession } from "@/lib/hooks/use-media-session";
 import { useRadioGardenResolve } from "@/lib/hooks/use-radio-garden-resolve";
 import {
   addRadio as addRadioToCollection,
@@ -355,6 +356,8 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
   } = useSingleAudio(transitionDuration);
 
   const isHydrated = useSingleStoreHydration(selectRadio, setVolume);
+
+  useMediaSession({ mode: "single", radio: currentRadio, isPlaying });
 
   const sessionRadios = useSessionRadios((s) => s.radios);
   const removeSessionRadio = useSessionRadios((s) => s.removeSessionRadio);

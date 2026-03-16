@@ -10,6 +10,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { type Radio, useMultipleAudio } from "@/lib/audio";
+import { useMediaSession } from "@/lib/hooks/use-media-session";
 import { useRadioGardenResolve } from "@/lib/hooks/use-radio-garden-resolve";
 import {
   addRadio as addRadioToCollection,
@@ -161,12 +162,19 @@ export function MultipleRadios({ radios }: { radios?: Radio[] }) {
     setGlobalVolume(value[0] ?? 1);
   };
 
-  const isAnyPlaying = players.some((p) => p.isPlaying);
-
   const allRadios = [
     ...(radios ?? []),
     ...sessionRadios.filter((sr) => !radios?.some((r) => r.id === sr.id)),
   ];
+
+  const isAnyPlaying = players.some((p) => p.isPlaying);
+  const playingCount = players.filter((p) => p.isPlaying).length;
+
+  useMediaSession({
+    mode: "multiple",
+    radios: allRadios,
+    playingCount,
+  });
 
   if (allRadios.length === 0) {
     return (

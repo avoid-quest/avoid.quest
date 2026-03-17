@@ -1,11 +1,12 @@
 /**
- * Pitch Shifting Effects - Multiple Algorithms
+ * Pitch shifting effects.
  *
- * This module provides four distinct pitch shifting implementations:
- * 1. VarispeedEffect - Simple speed-based pitch shift (tape/vinyl analog)
- * 2. OlaPhaseVocoder - FFT-based phase vocoder with Overlap-Add (high quality)
- * 3. PsolaEffect - Pitch-Synchronous Overlap-Add (time-domain, simpler)
- * 4. GranularPitchEffect - Granular synthesis approach with configurable grain size
+ * Notes:
+ * - VarispeedEffect is true tape-style resampling (pitch + tempo together)
+ * - WsolaPitchShifter is a time-domain overlap-add pitch shifter with waveform matching
+ * - PhaseVocoder is currently an alias of WSOLA in this codebase until a proper FFT/STFT
+ *   implementation is introduced. This is intentionally explicit rather than shipping a fake
+ *   phase vocoder with misleading behavior.
  */
 
 import type { StereoChannels } from "./types.js";
@@ -19,72 +20,69 @@ function wrapIndex(index: number, length: number): number {
   return wrapped < 0 ? wrapped + length : wrapped;
 }
 
-function smoothstepWindow(phase: number): number {
-  const x = Math.max(0, Math.min(1, phase));
-  return Math.sin(Math.PI * x);
-}
-
-function cubicInterpolate(
-  y0: number,
-  y1: number,
-  y2: number,
-  y3: number,
+function hermiteInterpolate(
+  x0: number,
+  x1: number,
+  x2: number,
+  x3: number,
   t: number
 ): number {
-  const a0 = y3 - y2 - y0 + y1;
-  const a1 = y0 - y1 - a0;
-  const a2 = y2 - y0;
-  const a3 = y1;
-  return ((a0 * t + a1) * t + a2) * t + a3;
+  const c0 = x1;
+  const c1 = 0.5 * (x2 - x0);
+  const c2 = x0 - 2.5 * x1 + 2 * x2 - 0.5 * x3;
+  const c3 = 0.5 * (x3 - x0) + 1.5 * (x1 - x2);
+  return ((c3 * t + c2) * t + c1) * t + c0;
 }
 
-function readCubic(buffer: Float32Array, position: number): number {
+function readHermite(buffer: Float32Array, position: number): number {
   const length = buffer.length;
-  const x1 = Math.floor(position);
-  const t = position - x1;
-  const x0 = wrapIndex(x1 - 1, length);
-  const x2 = wrapIndex(x1 + 1, length);
-  const x3 = wrapIndex(x1 + 2, length);
-  return cubicInterpolate(
-    buffer[x0] ?? 0,
-    buffer[wrapIndex(x1, length)] ?? 0,
-    buffer[x2] ?? 0,
-    buffer[x3] ?? 0,
-    t
+  const i1 = Math.floor(position);
+  const frac = position - i1;
+  const i0 = wrapIndex(i1 - 1, length);
+  const i2 = wrapIndex(i1 + 1, length);
+  const i3 = wrapIndex(i1 + 2, length);
+  return hermiteInterpolate(
+    buffer[i0] ?? 0,
+    buffer[wrapIndex(i1, length)] ?? 0,
+    buffer[i2] ?? 0,
+    buffer[i3] ?? 0,
+    frac
   );
 }
 
-function readLinear(buffer: Float32Array, position: number): number {
-  const length = buffer.length;
-  const i0 = Math.floor(position);
-  const frac = position - i0;
-  const idx0 = wrapIndex(i0, length);
-  const idx1 = wrapIndex(i0 + 1, length);
-  const a = buffer[idx0] ?? 0;
-  const b = buffer[idx1] ?? 0;
-  return a + (b - a) * frac;
+function hannWindow(size: number): Float32Array {
+  const window = new Float32Array(size);
+  for (let i = 0; i < size; i++) {
+    window[i] = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (size - 1));
+  }
+  return window;
+}
+
+function overlapCorrelation(
+  buffer: Float32Array,
+  ref: Float32Array,
+  start: number,
+  overlap: number
+): number {
+  let sum = 0;
+  for (let i = 0; i < overlap; i++) {
+    sum += (buffer[wrapIndex(start + i, buffer.length)] ?? 0) * (ref[i] ?? 0);
+  }
+  return sum;
 }
 
 /**
- * Simple linear resampling pitch shifter.
- * This changes both pitch AND tempo together (like speeding up/slowing down a tape).
- * - pitchFactor < 1.0 = slower + lower pitch
- * - pitchFactor > 1.0 = faster + higher pitch
+ * Tape-style resampling pitch shifter.
+ * Pitch and duration change together.
  */
 export class VarispeedEffect {
   private pitchFactor = 1.0;
   private smoothedPitchFactor = 1.0;
-
-  private readonly bufferSize = 8192;
-  private readonly bufferL: Float32Array;
-  private readonly bufferR: Float32Array;
+  private readonly bufferSize = 16384;
+  private readonly bufferL = new Float32Array(this.bufferSize);
+  private readonly bufferR = new Float32Array(this.bufferSize);
   private readPosition = 0;
   private writePosition = 0;
-
-  constructor() {
-    this.bufferL = new Float32Array(this.bufferSize);
-    this.bufferR = new Float32Array(this.bufferSize);
-  }
 
   setPitchFactor(value: number): void {
     this.pitchFactor = clampPitchFactor(value);
@@ -107,7 +105,7 @@ export class VarispeedEffect {
     const [inputL, inputR] = input;
     const [outputL, outputR] = output;
 
-    if (Math.abs(this.pitchFactor - 1.0) < 0.001) {
+    if (Math.abs(this.pitchFactor - 1.0) < 0.0001) {
       for (let i = fromIndex; i < toIndex; i++) {
         outputL[i] = inputL[i] ?? 0;
         outputR[i] = inputR[i] ?? 0;
@@ -124,10 +122,10 @@ export class VarispeedEffect {
 
     for (let i = fromIndex; i < toIndex; i++) {
       this.smoothedPitchFactor +=
-        (this.pitchFactor - this.smoothedPitchFactor) * 0.01;
+        (this.pitchFactor - this.smoothedPitchFactor) * 0.0025;
 
-      outputL[i] = readCubic(this.bufferL, this.readPosition);
-      outputR[i] = readCubic(this.bufferR, this.readPosition);
+      outputL[i] = readHermite(this.bufferL, this.readPosition);
+      outputR[i] = readHermite(this.bufferR, this.readPosition);
 
       this.readPosition += this.smoothedPitchFactor;
       while (this.readPosition >= this.bufferSize) {
@@ -138,52 +136,53 @@ export class VarispeedEffect {
 }
 
 /**
- * OLA (Overlap-Add) pitch shifter — time-domain, no FFT required.
+ * WSOLA-like pitch shifter.
  *
- * Reads the input at a pitch-scaled rate and overlap-adds Hann-windowed grains
- * into the synthesis buffer. Because the read pointer advances at `pitchFactor`
- * per output sample, the perceived pitch changes without stretching time.
- *
- * Better than VarispeedEffect: windowing eliminates the hard splices that
- * cause aliasing in plain linear resampling. Slightly more CPU intensive.
+ * This is a time-domain overlap-add algorithm with local waveform matching:
+ * - synthesis hop is fixed
+ * - analysis hop follows pitchFactor
+ * - a short correlation search aligns the next grain to reduce boundary clicks
  */
-export class OlaPhaseVocoder {
+export class WsolaPitchShifter {
   private pitchFactor = 1.0;
   private smoothedPitchFactor = 1.0;
-  private readonly grainSize: number;
+
+  private readonly frameSize: number;
   private readonly hopSize: number;
+  private readonly overlapSize: number;
+  private readonly searchRadius: number;
   private readonly window: Float32Array;
-  private readonly normalization: Float32Array;
-  private readonly bufferL: Float32Array;
-  private readonly bufferR: Float32Array;
-  private readonly outBufL: Float32Array;
-  private readonly outBufR: Float32Array;
-  private readonly normBuf: Float32Array;
-  private writePosition = 0;
-  private outRead = 0;
-  private outWrite = 0;
-  private analysisCenter = 0;
-  private samplesUntilNextGrain = 0;
 
-  constructor(grainSize: number = 2048) {
-    this.grainSize = grainSize;
-    this.hopSize = grainSize >> 3;
-    this.window = new Float32Array(grainSize);
-    this.normalization = new Float32Array(grainSize);
-    for (let i = 0; i < grainSize; i++) {
-      const phase = i / (grainSize - 1);
-      const w = smoothstepWindow(phase);
-      this.window[i] = w;
-      this.normalization[i] = w * w;
-    }
+  private readonly inputL: Float32Array;
+  private readonly inputR: Float32Array;
+  private readonly outputL: Float32Array;
+  private readonly outputR: Float32Array;
+  private readonly norm: Float32Array;
+  private readonly refL: Float32Array;
+  private readonly refR: Float32Array;
 
-    const bufLen = grainSize * 8;
-    this.bufferL = new Float32Array(bufLen);
-    this.bufferR = new Float32Array(bufLen);
-    this.outBufL = new Float32Array(bufLen);
-    this.outBufR = new Float32Array(bufLen);
-    this.normBuf = new Float32Array(bufLen);
-    this.samplesUntilNextGrain = this.hopSize;
+  private inputWrite = 0;
+  private outputRead = 0;
+  private outputWrite = 0;
+  private sourceCenter = 0;
+  private samplesUntilFrame = 0;
+
+  constructor(frameSize: number = 1024, searchRadius: number = 128) {
+    this.frameSize = frameSize;
+    this.hopSize = frameSize >> 2;
+    this.overlapSize = frameSize >> 1;
+    this.searchRadius = searchRadius;
+    this.window = hannWindow(frameSize);
+
+    const bufferSize = frameSize * 16;
+    this.inputL = new Float32Array(bufferSize);
+    this.inputR = new Float32Array(bufferSize);
+    this.outputL = new Float32Array(bufferSize);
+    this.outputR = new Float32Array(bufferSize);
+    this.norm = new Float32Array(bufferSize);
+    this.refL = new Float32Array(this.overlapSize);
+    this.refR = new Float32Array(this.overlapSize);
+    this.samplesUntilFrame = this.hopSize;
   }
 
   setPitchFactor(value: number): void {
@@ -191,235 +190,19 @@ export class OlaPhaseVocoder {
   }
 
   reset(): void {
-    this.bufferL.fill(0);
-    this.bufferR.fill(0);
-    this.outBufL.fill(0);
-    this.outBufR.fill(0);
-    this.normBuf.fill(0);
-    this.writePosition = 0;
-    this.outRead = 0;
-    this.outWrite = 0;
-    this.analysisCenter = 0;
-    this.samplesUntilNextGrain = this.hopSize;
+    this.inputL.fill(0);
+    this.inputR.fill(0);
+    this.outputL.fill(0);
+    this.outputR.fill(0);
+    this.norm.fill(0);
+    this.refL.fill(0);
+    this.refR.fill(0);
+    this.inputWrite = 0;
+    this.outputRead = 0;
+    this.outputWrite = 0;
+    this.sourceCenter = 0;
+    this.samplesUntilFrame = this.hopSize;
     this.smoothedPitchFactor = this.pitchFactor;
-  }
-
-  process(input: StereoChannels, output: StereoChannels, fromIndex: number, toIndex: number): void {
-    const [inputL, inputR] = input;
-    const [outputL, outputR] = output;
-    const bufferLength = this.bufferL.length;
-
-    if (Math.abs(this.pitchFactor - 1.0) < 0.001) {
-      for (let i = fromIndex; i < toIndex; i++) {
-        outputL[i] = inputL[i] ?? 0;
-        outputR[i] = inputR[i] ?? 0;
-      }
-      this.smoothedPitchFactor = 1.0;
-      return;
-    }
-
-    for (let i = fromIndex; i < toIndex; i++) {
-      this.bufferL[this.writePosition] = inputL[i] ?? 0;
-      this.bufferR[this.writePosition] = inputR[i] ?? 0;
-
-      this.smoothedPitchFactor += (this.pitchFactor - this.smoothedPitchFactor) * 0.005;
-      this.samplesUntilNextGrain--;
-      if (this.samplesUntilNextGrain <= 0) {
-        this.spawnGrain();
-        this.samplesUntilNextGrain += this.hopSize;
-      }
-
-      const norm = this.normBuf[this.outRead] || 1;
-      outputL[i] = this.outBufL[this.outRead] / norm;
-      outputR[i] = this.outBufR[this.outRead] / norm;
-      this.outBufL[this.outRead] = 0;
-      this.outBufR[this.outRead] = 0;
-      this.normBuf[this.outRead] = 0;
-
-      this.writePosition = (this.writePosition + 1) % bufferLength;
-      this.outRead = (this.outRead + 1) % bufferLength;
-      this.outWrite = (this.outWrite + 1) % bufferLength;
-    }
-  }
-
-  private spawnGrain(): void {
-    const bufferLength = this.bufferL.length;
-    const half = this.grainSize >> 1;
-    const sourceStart = this.analysisCenter - half;
-
-    for (let i = 0; i < this.grainSize; i++) {
-      const windowValue = this.window[i] ?? 0;
-      const normValue = this.normalization[i] ?? 0;
-      const sourcePosition = sourceStart + i / this.smoothedPitchFactor;
-      const sampleL = readCubic(this.bufferL, sourcePosition) * windowValue;
-      const sampleR = readCubic(this.bufferR, sourcePosition) * windowValue;
-      const outIndex = (this.outWrite + i) % bufferLength;
-      this.outBufL[outIndex] += sampleL;
-      this.outBufR[outIndex] += sampleR;
-      this.normBuf[outIndex] += normValue;
-    }
-
-    this.analysisCenter += this.hopSize / this.smoothedPitchFactor;
-  }
-}
-
-/**
- * PSOLA (Pitch-Synchronous Overlap-Add)
- * Time-domain pitch shifting without FFT.
- * Good balance between quality and CPU cost.
- */
-export class PsolaEffect {
-  private pitchFactor = 1.0;
-  private smoothedPitchFactor = 1.0;
-  private readonly periodSize: number;
-  private readonly grainSize: number;
-  private readonly bufferSize: number;
-  private readonly bufferL: Float32Array;
-  private readonly bufferR: Float32Array;
-  private readonly outBufL: Float32Array;
-  private readonly outBufR: Float32Array;
-  private readonly normBuf: Float32Array;
-  private writePos = 0;
-  private outRead = 0;
-  private outWrite = 0;
-  private sourceAnchor = 0;
-  private samplesUntilPulse = 0;
-
-  constructor() {
-    this.periodSize = 384;
-    this.grainSize = this.periodSize * 2;
-    this.bufferSize = this.periodSize * 16;
-    this.bufferL = new Float32Array(this.bufferSize);
-    this.bufferR = new Float32Array(this.bufferSize);
-    this.outBufL = new Float32Array(this.bufferSize);
-    this.outBufR = new Float32Array(this.bufferSize);
-    this.normBuf = new Float32Array(this.bufferSize);
-    this.samplesUntilPulse = this.periodSize >> 1;
-  }
-
-  setPitchFactor(value: number): void {
-    this.pitchFactor = clampPitchFactor(value);
-  }
-
-  reset(): void {
-    this.bufferL.fill(0);
-    this.bufferR.fill(0);
-    this.outBufL.fill(0);
-    this.outBufR.fill(0);
-    this.normBuf.fill(0);
-    this.writePos = 0;
-    this.outRead = 0;
-    this.outWrite = 0;
-    this.sourceAnchor = 0;
-    this.samplesUntilPulse = this.periodSize >> 1;
-    this.smoothedPitchFactor = this.pitchFactor;
-  }
-
-  process(input: StereoChannels, output: StereoChannels, fromIndex: number, toIndex: number): void {
-    const [inputL, inputR] = input;
-    const [outputL, outputR] = output;
-
-    if (Math.abs(this.pitchFactor - 1.0) < 0.001) {
-      for (let i = fromIndex; i < toIndex; i++) {
-        outputL[i] = inputL[i] ?? 0;
-        outputR[i] = inputR[i] ?? 0;
-      }
-      this.smoothedPitchFactor = 1.0;
-      return;
-    }
-
-    for (let i = fromIndex; i < toIndex; i++) {
-      this.bufferL[this.writePos] = inputL[i] ?? 0;
-      this.bufferR[this.writePos] = inputR[i] ?? 0;
-
-      this.smoothedPitchFactor += (this.pitchFactor - this.smoothedPitchFactor) * 0.01;
-      this.samplesUntilPulse--;
-      if (this.samplesUntilPulse <= 0) {
-        this.spawnPulse();
-        this.samplesUntilPulse += Math.max(32, Math.round((this.periodSize >> 1) / this.smoothedPitchFactor));
-      }
-
-      const norm = this.normBuf[this.outRead] || 1;
-      outputL[i] = this.outBufL[this.outRead] / norm;
-      outputR[i] = this.outBufR[this.outRead] / norm;
-      this.outBufL[this.outRead] = 0;
-      this.outBufR[this.outRead] = 0;
-      this.normBuf[this.outRead] = 0;
-
-      this.writePos = (this.writePos + 1) % this.bufferSize;
-      this.outRead = (this.outRead + 1) % this.bufferSize;
-      this.outWrite = (this.outWrite + 1) % this.bufferSize;
-    }
-  }
-
-  private spawnPulse(): void {
-    const half = this.grainSize >> 1;
-    const start = this.sourceAnchor - half;
-
-    for (let i = 0; i < this.grainSize; i++) {
-      const phase = i / (this.grainSize - 1);
-      const windowValue = smoothstepWindow(phase);
-      const sourcePosition = start + i / this.smoothedPitchFactor;
-      const outIndex = (this.outWrite + i) % this.bufferSize;
-      this.outBufL[outIndex] += readLinear(this.bufferL, sourcePosition) * windowValue;
-      this.outBufR[outIndex] += readLinear(this.bufferR, sourcePosition) * windowValue;
-      this.normBuf[outIndex] += windowValue * windowValue;
-    }
-
-    this.sourceAnchor += this.periodSize / this.smoothedPitchFactor;
-  }
-}
-
-/**
- * Granular Pitch Shifting
- * Overlapping grains with pitch-scaled playback.
- * Flexible grain size parameter.
- */
-export class GranularPitchEffect {
-  private pitchFactor = 1.0;
-  private smoothedPitchFactor = 1.0;
-  private grainSizeMs = 50;
-  private readonly sampleRate: number;
-  private readonly maxGrains = 6;
-  private readonly grains: GrainState[];
-  private readonly bufferL: Float32Array;
-  private readonly bufferR: Float32Array;
-  private bufferPos = 0;
-  private nextGrainTime = 0;
-
-  constructor(sampleRate: number = 44100) {
-    this.sampleRate = sampleRate;
-    this.bufferL = new Float32Array(sampleRate * 0.5); // 500ms buffer
-    this.bufferR = new Float32Array(sampleRate * 0.5);
-    this.grains = [];
-    for (let i = 0; i < this.maxGrains; i++) {
-      this.grains.push({
-        readPos: 0,
-        grainPos: 0,
-        envelope: 0,
-        active: false,
-        startBufferPos: 0,
-      });
-    }
-  }
-
-  setPitchFactor(value: number): void {
-    this.pitchFactor = clampPitchFactor(value);
-  }
-
-  setGrainSize(sizeMs: number): void {
-    this.grainSizeMs = Math.max(10, Math.min(200, sizeMs));
-  }
-
-  reset(): void {
-    this.bufferL.fill(0);
-    this.bufferR.fill(0);
-    this.bufferPos = 0;
-    this.nextGrainTime = 0;
-    this.smoothedPitchFactor = this.pitchFactor;
-    for (const grain of this.grains) {
-      grain.active = false;
-    }
   }
 
   process(
@@ -428,84 +211,105 @@ export class GranularPitchEffect {
     fromIndex: number,
     toIndex: number
   ): void {
-    const [inputL, inputR] = input;
-    const [outputL, outputR] = output;
-    const grainSizeSamples = Math.max(
-      64,
-      Math.round((this.grainSizeMs * this.sampleRate) / 1000)
-    );
+    const [inputChL, inputChR] = input;
+    const [outputChL, outputChR] = output;
+    const inputLength = this.inputL.length;
+    const outputLength = this.outputL.length;
+
+    if (Math.abs(this.pitchFactor - 1.0) < 0.0001) {
+      for (let i = fromIndex; i < toIndex; i++) {
+        outputChL[i] = inputChL[i] ?? 0;
+        outputChR[i] = inputChR[i] ?? 0;
+      }
+      this.smoothedPitchFactor = 1.0;
+      return;
+    }
 
     for (let i = fromIndex; i < toIndex; i++) {
-      this.bufferL[this.bufferPos] = inputL[i] ?? 0;
-      this.bufferR[this.bufferPos] = inputR[i] ?? 0;
+      this.inputL[this.inputWrite] = inputChL[i] ?? 0;
+      this.inputR[this.inputWrite] = inputChR[i] ?? 0;
 
       this.smoothedPitchFactor +=
-        (this.pitchFactor - this.smoothedPitchFactor) * 0.01;
+        (this.pitchFactor - this.smoothedPitchFactor) * 0.0025;
 
-      let outL = 0;
-      let outR = 0;
-      let totalEnvelope = 0;
-
-      this.nextGrainTime--;
-      if (this.nextGrainTime <= 0) {
-        for (const grain of this.grains) {
-          if (!grain.active) {
-            grain.active = true;
-            grain.readPos = this.bufferPos - grainSizeSamples;
-            grain.grainPos = 0;
-            grain.startBufferPos = this.bufferPos;
-            this.nextGrainTime = Math.max(
-              16,
-              Math.round(grainSizeSamples / this.maxGrains)
-            );
-            break;
-          }
-        }
+      this.samplesUntilFrame--;
+      if (this.samplesUntilFrame <= 0) {
+        this.samplesUntilFrame += this.hopSize;
+        this.renderFrame();
       }
 
-      for (const grain of this.grains) {
-        if (!grain.active) continue;
-
-        const phase = grain.grainPos / (grainSizeSamples - 1);
-        grain.envelope = phase < 1.0 ? smoothstepWindow(phase) : 0;
-
-        const sampleL = readLinear(this.bufferL, grain.readPos);
-        const sampleR = readLinear(this.bufferR, grain.readPos);
-        outL += sampleL * grain.envelope;
-        outR += sampleR * grain.envelope;
-        totalEnvelope += grain.envelope * grain.envelope;
-
-        grain.readPos += this.smoothedPitchFactor;
-        grain.grainPos++;
-
-        if (grain.grainPos >= grainSizeSamples) {
-          grain.active = false;
-        }
-      }
-
-      if (totalEnvelope > 1e-6) {
-        outputL[i] = outL / totalEnvelope;
-        outputR[i] = outR / totalEnvelope;
+      const denom = this.norm[this.outputRead];
+      if (denom > 1e-6) {
+        outputChL[i] = this.outputL[this.outputRead] / denom;
+        outputChR[i] = this.outputR[this.outputRead] / denom;
       } else {
-        outputL[i] = 0;
-        outputR[i] = 0;
+        outputChL[i] = 0;
+        outputChR[i] = 0;
       }
 
-      this.bufferPos = (this.bufferPos + 1) % this.bufferL.length;
+      this.outputL[this.outputRead] = 0;
+      this.outputR[this.outputRead] = 0;
+      this.norm[this.outputRead] = 0;
+
+      this.inputWrite = (this.inputWrite + 1) % inputLength;
+      this.outputRead = (this.outputRead + 1) % outputLength;
+      this.outputWrite = (this.outputWrite + 1) % outputLength;
     }
+  }
+
+  private renderFrame(): void {
+    const inputLength = this.inputL.length;
+    const outputLength = this.outputL.length;
+    const halfFrame = this.frameSize >> 1;
+    const expectedStart = Math.floor(this.sourceCenter - halfFrame);
+    let bestStart = expectedStart;
+
+    let bestScore = -Infinity;
+    for (let delta = -this.searchRadius; delta <= this.searchRadius; delta++) {
+      const candidate = expectedStart + delta;
+      let score = overlapCorrelation(
+        this.inputL,
+        this.refL,
+        candidate,
+        this.overlapSize
+      );
+      score += overlapCorrelation(
+        this.inputR,
+        this.refR,
+        candidate,
+        this.overlapSize
+      );
+      if (score > bestScore) {
+        bestScore = score;
+        bestStart = candidate;
+      }
+    }
+
+    for (let i = 0; i < this.frameSize; i++) {
+      const inIdx = wrapIndex(bestStart + i, inputLength);
+      const outIdx = (this.outputWrite + i) % outputLength;
+      const w = this.window[i] ?? 0;
+      const wn = w * w;
+      const sampleL = (this.inputL[inIdx] ?? 0) * w;
+      const sampleR = (this.inputR[inIdx] ?? 0) * w;
+      this.outputL[outIdx] += sampleL;
+      this.outputR[outIdx] += sampleR;
+      this.norm[outIdx] += wn;
+    }
+
+    for (let i = 0; i < this.overlapSize; i++) {
+      const idx = wrapIndex(bestStart + this.frameSize - this.overlapSize + i, inputLength);
+      this.refL[i] = this.inputL[idx] ?? 0;
+      this.refR[i] = this.inputR[idx] ?? 0;
+    }
+
+    this.sourceCenter += this.hopSize * this.smoothedPitchFactor;
   }
 }
 
-type GrainState = {
-  readPos: number;
-  grainPos: number;
-  envelope: number;
-  active: boolean;
-  startBufferPos: number;
-};
-
 /**
- * Backward compatibility: default export alias to OlaPhaseVocoder (high-quality default)
- * @deprecated Use OlaPhaseVocoder, VarispeedEffect, PsolaEffect, or GranularPitchEffect directly
+ * Temporary alias until a proper FFT/STFT phase vocoder is introduced.
+ * Kept explicit for API stability and honest naming in the codebase.
  */
-export { OlaPhaseVocoder as PhaseVocoder };
+export class PhaseVocoder extends WsolaPitchShifter {}
+export class OlaPhaseVocoder extends WsolaPitchShifter {}

@@ -327,17 +327,16 @@ export const EFFECT_SCHEMAS = {
     type: "pitchShifter",
     name: "Pitch Shifter",
     description:
-      "Multiple pitch shifting algorithms: Varispeed, OLA Phase Vocoder, PSOLA, and Granular synthesis",
+      "Pitch shifting variants with different trade-offs: Varispeed, WSOLA, and Phase Vocoder",
     params: [
       {
         type: "select",
         key: "variant",
         label: "Algorithm",
         options: [
-          { value: "ola", label: "OLA Phase Vocoder" },
           { value: "varispeed", label: "Varispeed" },
-          { value: "psola", label: "PSOLA" },
-          { value: "granular", label: "Granular" },
+          { value: "wsola", label: "WSOLA" },
+          { value: "phaseVocoder", label: "Phase Vocoder" },
         ],
         valueType: "string",
       },
@@ -349,15 +348,6 @@ export const EFFECT_SCHEMAS = {
         min: 0.25,
         max: 4.0,
         step: 0.01,
-      },
-      {
-        type: "slider",
-        key: "grainSize",
-        label: "Grain Size (ms)",
-        formatKey: "default",
-        min: 10,
-        max: 200,
-        step: 1,
       },
     ],
   },

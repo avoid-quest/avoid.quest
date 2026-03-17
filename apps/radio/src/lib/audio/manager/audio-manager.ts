@@ -1636,8 +1636,7 @@ export class AudioManager {
         break;
       case "pitchShifter":
         base.pitchFactor = config.pitchFactor;
-        base.variant = config.variant ?? "ola";
-        base.grainSize = config.grainSize ?? 50;
+        base.variant = config.variant ?? "wsola";
         break;
       case "limiter":
         base.threshold = config.threshold;

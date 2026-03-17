@@ -25,8 +25,7 @@ export {
   PhaseVocoder,
   OlaPhaseVocoder,
   VarispeedEffect,
-  PsolaEffect,
-  GranularPitchEffect,
+  WsolaPitchShifter,
 } from "./phase-vocoder.js";
 // Registry
 export {

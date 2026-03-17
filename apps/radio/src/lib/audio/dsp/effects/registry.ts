@@ -45,13 +45,12 @@ export const AVAILABLE_EFFECTS = [
     type: "pitchShifter",
     name: "Pitch Shifter",
     description:
-      "Multiple pitch shifting algorithms: Varispeed, OLA Phase Vocoder, PSOLA, and Granular synthesis",
+      "Pitch shifting variants with different trade-offs: Varispeed, WSOLA, and Phase Vocoder",
     defaultConfig: {
       type: "pitchShifter",
       enabled: false,
       pitchFactor: 1.0,
-      variant: "ola",
-      grainSize: 50,
+      variant: "wsola",
       dryWet: 1.0,
       inputGain: 1.0,
       outputGain: 1.0,

@@ -19,10 +19,9 @@ import { Distortion } from "./effects/distortion.js";
 import { FoldEffect } from "./effects/fold.js";
 import { Limiter } from "./effects/limiter.js";
 import {
-  OlaPhaseVocoder,
+  PhaseVocoder,
   VarispeedEffect,
-  PsolaEffect,
-  GranularPitchEffect,
+  WsolaPitchShifter,
 } from "./effects/phase-vocoder.js";
 import { RevampEffect } from "./effects/revamp.js";
 import { DattorroReverb } from "./effects/reverb.js";
@@ -178,9 +177,8 @@ type EffectConfigData = {
   dryWet: number;
   order: number;
   // pitchShifter-specific
-  variant?: "varispeed" | "ola" | "psola" | "granular";
+  variant?: "varispeed" | "wsola" | "phaseVocoder";
   pitchFactor?: number;
-  grainSize?: number;
 };
 
 /**
@@ -379,11 +377,11 @@ class EffectSource {
     // Store pitch shifter specific params
     if (type === "pitchShifter") {
       effectConfig.variant =
-        typeof config.variant === "string" ? config.variant : "ola";
+        typeof config.variant === "string"
+          ? (config.variant as "varispeed" | "wsola" | "phaseVocoder")
+          : "wsola";
       effectConfig.pitchFactor =
         typeof config.pitchFactor === "number" ? config.pitchFactor : 1.0;
-      effectConfig.grainSize =
-        typeof config.grainSize === "number" ? config.grainSize : 50;
     }
 
     this.effectConfigs.set(effectId, effectConfig);
@@ -416,10 +414,10 @@ class EffectSource {
       const currentVariant =
         existingConfig && typeof existingConfig.variant === "string"
           ? existingConfig.variant
-          : "ola";
+          : "wsola";
       const newVariant = (
         typeof config.variant === "string" ? config.variant : currentVariant
-      ) as "varispeed" | "ola" | "psola" | "granular";
+      ) as "varispeed" | "wsola" | "phaseVocoder";
 
       if (newVariant !== currentVariant) {
         // Variant changed, recreate processor and reapply full cached state
@@ -437,7 +435,6 @@ class EffectSource {
                   dryWet: existingConfig.dryWet,
                   variant: newVariant,
                   pitchFactor: existingConfig.pitchFactor ?? 1.0,
-                  grainSize: existingConfig.grainSize ?? 50,
                 }
               : {}),
             ...config,
@@ -476,15 +473,11 @@ class EffectSource {
         if (typeof config.variant === "string") {
           existingConfig.variant = config.variant as
             | "varispeed"
-            | "ola"
-            | "psola"
-            | "granular";
+            | "wsola"
+            | "phaseVocoder";
         }
         if (typeof config.pitchFactor === "number") {
           existingConfig.pitchFactor = config.pitchFactor;
-        }
-        if (typeof config.grainSize === "number") {
-          existingConfig.grainSize = config.grainSize;
         }
       }
     }
@@ -497,17 +490,15 @@ class EffectSource {
   private createPitchShifterVariant(
     variant?: string | number | boolean
   ): EffectProcessor {
-    const variantStr = typeof variant === "string" ? variant : "ola";
+    const variantStr = typeof variant === "string" ? variant : "wsola";
     switch (variantStr) {
       case "varispeed":
         return new VarispeedEffect();
-      case "psola":
-        return new PsolaEffect();
-      case "granular":
-        return new GranularPitchEffect(this.sampleRate);
-      case "ola":
+      case "phaseVocoder":
+        return new PhaseVocoder();
+      case "wsola":
       default:
-        return new OlaPhaseVocoder();
+        return new WsolaPitchShifter();
     }
   }
 
@@ -516,7 +507,7 @@ class EffectSource {
       case "plateReverb":
         return new DattorroReverb(this.sampleRate);
       case "pitchShifter":
-        return this.createPitchShifterVariant("ola");
+        return this.createPitchShifterVariant("wsola");
       case "limiter":
         return new Limiter(this.sampleRate);
       case "distortion":
@@ -714,14 +705,8 @@ class EffectSource {
         break;
       }
       case "pitchShifter": {
-        // Handle pitchFactor for all variants
         if (typeof config.pitchFactor === "number") {
           (processor as VarispeedEffect).setPitchFactor(config.pitchFactor);
-        }
-        // Handle grainSize for GranularPitchEffect
-        if (typeof config.grainSize === "number") {
-          const granular = processor as GranularPitchEffect;
-          granular.setGrainSize?.(config.grainSize);
         }
         break;
       }

@@ -1,10 +1,11 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { cloudflare } from "@cloudflare/vite-plugin";
+import babel from "@rolldown/plugin-babel";
 import { sentryTanstackStart } from "@sentry/tanstackstart-react/vite";
 import tailwindcss from "@tailwindcss/vite";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
-import react from "@vitejs/plugin-react";
+import react, { reactCompilerPreset } from "@vitejs/plugin-react";
 import { build, defineConfig, type Plugin } from "vite";
 
 const WORKLET_OUT_DIR = ".worklet-build";
@@ -172,12 +173,8 @@ export default defineConfig({
     }),
     tailwindcss(),
     tanstackStart(),
-    react({
-      //@ts-expect-error
-      babel: {
-        plugins: ["babel-plugin-react-compiler"],
-      },
-    }),
+    react(),
+    babel({ presets: [reactCompilerPreset()] }),
     ...(sentryBuildEnabled
       ? sentryTanstackStart({
           org: sentryOrg,

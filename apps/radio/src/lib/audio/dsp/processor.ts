@@ -179,6 +179,7 @@ type EffectConfigData = {
   order: number;
   // pitchShifter-specific
   variant?: "varispeed" | "ola" | "psola" | "granular";
+  pitchFactor?: number;
   grainSize?: number;
 };
 
@@ -377,8 +378,12 @@ class EffectSource {
 
     // Store pitch shifter specific params
     if (type === "pitchShifter") {
-      effectConfig.variant = typeof config.variant === "string" ? config.variant : "ola";
-      effectConfig.grainSize = typeof config.grainSize === "number" ? config.grainSize : 50;
+      effectConfig.variant =
+        typeof config.variant === "string" ? config.variant : "ola";
+      effectConfig.pitchFactor =
+        typeof config.pitchFactor === "number" ? config.pitchFactor : 1.0;
+      effectConfig.grainSize =
+        typeof config.grainSize === "number" ? config.grainSize : 50;
     }
 
     this.effectConfigs.set(effectId, effectConfig);
@@ -417,11 +422,29 @@ class EffectSource {
       ) as "varispeed" | "ola" | "psola" | "granular";
 
       if (newVariant !== currentVariant) {
-        // Variant changed, recreate processor
+        // Variant changed, recreate processor and reapply full cached state
         const newProcessor = this.createPitchShifterVariant(newVariant);
         if (newProcessor) {
           processor = newProcessor;
           this.effects.set(effectId, processor);
+
+          const mergedConfig: Record<string, number | boolean | string> = {
+            ...(existingConfig
+              ? {
+                  enabled: existingConfig.enabled,
+                  inputGain: existingConfig.inputGain,
+                  outputGain: existingConfig.outputGain,
+                  dryWet: existingConfig.dryWet,
+                  variant: newVariant,
+                  pitchFactor: existingConfig.pitchFactor ?? 1.0,
+                  grainSize: existingConfig.grainSize ?? 50,
+                }
+              : {}),
+            ...config,
+          };
+
+          this.applyEffectConfig(processor, type, mergedConfig);
+
           if (existingConfig) {
             existingConfig.variant = newVariant;
           }
@@ -450,6 +473,16 @@ class EffectSource {
       }
       // Update pitch shifter specific params
       if (type === "pitchShifter") {
+        if (typeof config.variant === "string") {
+          existingConfig.variant = config.variant as
+            | "varispeed"
+            | "ola"
+            | "psola"
+            | "granular";
+        }
+        if (typeof config.pitchFactor === "number") {
+          existingConfig.pitchFactor = config.pitchFactor;
+        }
         if (typeof config.grainSize === "number") {
           existingConfig.grainSize = config.grainSize;
         }

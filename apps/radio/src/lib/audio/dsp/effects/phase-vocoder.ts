@@ -10,6 +10,61 @@
 
 import type { StereoChannels } from "./types.js";
 
+function clampPitchFactor(value: number): number {
+  return Math.max(0.25, Math.min(4.0, value));
+}
+
+function wrapIndex(index: number, length: number): number {
+  const wrapped = index % length;
+  return wrapped < 0 ? wrapped + length : wrapped;
+}
+
+function smoothstepWindow(phase: number): number {
+  const x = Math.max(0, Math.min(1, phase));
+  return Math.sin(Math.PI * x);
+}
+
+function cubicInterpolate(
+  y0: number,
+  y1: number,
+  y2: number,
+  y3: number,
+  t: number
+): number {
+  const a0 = y3 - y2 - y0 + y1;
+  const a1 = y0 - y1 - a0;
+  const a2 = y2 - y0;
+  const a3 = y1;
+  return ((a0 * t + a1) * t + a2) * t + a3;
+}
+
+function readCubic(buffer: Float32Array, position: number): number {
+  const length = buffer.length;
+  const x1 = Math.floor(position);
+  const t = position - x1;
+  const x0 = wrapIndex(x1 - 1, length);
+  const x2 = wrapIndex(x1 + 1, length);
+  const x3 = wrapIndex(x1 + 2, length);
+  return cubicInterpolate(
+    buffer[x0] ?? 0,
+    buffer[wrapIndex(x1, length)] ?? 0,
+    buffer[x2] ?? 0,
+    buffer[x3] ?? 0,
+    t
+  );
+}
+
+function readLinear(buffer: Float32Array, position: number): number {
+  const length = buffer.length;
+  const i0 = Math.floor(position);
+  const frac = position - i0;
+  const idx0 = wrapIndex(i0, length);
+  const idx1 = wrapIndex(i0 + 1, length);
+  const a = buffer[idx0] ?? 0;
+  const b = buffer[idx1] ?? 0;
+  return a + (b - a) * frac;
+}
+
 /**
  * Simple linear resampling pitch shifter.
  * This changes both pitch AND tempo together (like speeding up/slowing down a tape).
@@ -18,9 +73,9 @@ import type { StereoChannels } from "./types.js";
  */
 export class VarispeedEffect {
   private pitchFactor = 1.0;
+  private smoothedPitchFactor = 1.0;
 
-  // Buffer for resampling
-  private readonly bufferSize = 4096;
+  private readonly bufferSize = 8192;
   private readonly bufferL: Float32Array;
   private readonly bufferR: Float32Array;
   private readPosition = 0;
@@ -32,7 +87,7 @@ export class VarispeedEffect {
   }
 
   setPitchFactor(value: number): void {
-    this.pitchFactor = Math.max(0.25, Math.min(4.0, value));
+    this.pitchFactor = clampPitchFactor(value);
   }
 
   reset(): void {
@@ -40,6 +95,7 @@ export class VarispeedEffect {
     this.bufferR.fill(0);
     this.readPosition = 0;
     this.writePosition = 0;
+    this.smoothedPitchFactor = this.pitchFactor;
   }
 
   process(
@@ -51,46 +107,29 @@ export class VarispeedEffect {
     const [inputL, inputR] = input;
     const [outputL, outputR] = output;
 
-    // If pitch factor is 1.0, pass through
     if (Math.abs(this.pitchFactor - 1.0) < 0.001) {
       for (let i = fromIndex; i < toIndex; i++) {
         outputL[i] = inputL[i] ?? 0;
         outputR[i] = inputR[i] ?? 0;
       }
+      this.smoothedPitchFactor = 1.0;
       return;
     }
 
-    // Simple resampling-based pitch shift
-    // Write input to buffer
     for (let i = fromIndex; i < toIndex; i++) {
       this.bufferL[this.writePosition] = inputL[i] ?? 0;
       this.bufferR[this.writePosition] = inputR[i] ?? 0;
       this.writePosition = (this.writePosition + 1) & (this.bufferSize - 1);
     }
 
-    // Read from buffer with pitch-shifted rate
-    const step = this.pitchFactor;
-
     for (let i = fromIndex; i < toIndex; i++) {
-      const pos = this.readPosition;
-      const posInt = Math.floor(pos);
-      const posFrac = pos - posInt;
+      this.smoothedPitchFactor +=
+        (this.pitchFactor - this.smoothedPitchFactor) * 0.01;
 
-      // Linear interpolation
-      const idx0 = posInt & (this.bufferSize - 1);
-      const idx1 = (posInt + 1) & (this.bufferSize - 1);
+      outputL[i] = readCubic(this.bufferL, this.readPosition);
+      outputR[i] = readCubic(this.bufferR, this.readPosition);
 
-      const sampleL0 = this.bufferL[idx0] ?? 0;
-      const sampleL1 = this.bufferL[idx1] ?? 0;
-      const sampleR0 = this.bufferR[idx0] ?? 0;
-      const sampleR1 = this.bufferR[idx1] ?? 0;
-
-      outputL[i] = sampleL0 + (sampleL1 - sampleL0) * posFrac;
-      outputR[i] = sampleR0 + (sampleR1 - sampleR0) * posFrac;
-
-      this.readPosition += step;
-
-      // Keep read position in bounds
+      this.readPosition += this.smoothedPitchFactor;
       while (this.readPosition >= this.bufferSize) {
         this.readPosition -= this.bufferSize;
       }
@@ -110,129 +149,117 @@ export class VarispeedEffect {
  */
 export class OlaPhaseVocoder {
   private pitchFactor = 1.0;
+  private smoothedPitchFactor = 1.0;
   private readonly grainSize: number;
   private readonly hopSize: number;
   private readonly window: Float32Array;
-
-  // Circular input buffer
-  private readonly inBufL: Float32Array;
-  private readonly inBufR: Float32Array;
-  private inWrite = 0;
-
-  // Synthesis (overlap-add) buffer
+  private readonly normalization: Float32Array;
+  private readonly bufferL: Float32Array;
+  private readonly bufferR: Float32Array;
   private readonly outBufL: Float32Array;
   private readonly outBufR: Float32Array;
+  private readonly normBuf: Float32Array;
+  private writePosition = 0;
   private outRead = 0;
   private outWrite = 0;
-
-  // Read position in input buffer (fractional, pitch-scaled)
-  private readPos = 0;
-  // Counter to trigger next grain
-  private samplesSinceGrain = 0;
+  private analysisCenter = 0;
+  private samplesUntilNextGrain = 0;
 
   constructor(grainSize: number = 2048) {
     this.grainSize = grainSize;
-    this.hopSize = grainSize >> 2; // 75% overlap
-
-    // Pre-compute Hann window
+    this.hopSize = grainSize >> 3;
     this.window = new Float32Array(grainSize);
+    this.normalization = new Float32Array(grainSize);
     for (let i = 0; i < grainSize; i++) {
-      this.window[i] = 0.5 * (1 - Math.cos((2 * Math.PI * i) / (grainSize - 1)));
+      const phase = i / (grainSize - 1);
+      const w = smoothstepWindow(phase);
+      this.window[i] = w;
+      this.normalization[i] = w * w;
     }
 
-    // Input buffer: 4× grain size for safe look-back
-    const inBufLen = grainSize * 4;
-    this.inBufL = new Float32Array(inBufLen);
-    this.inBufR = new Float32Array(inBufLen);
-
-    // Output buffer: 4× grain size for accumulated overlap-add
-    const outBufLen = grainSize * 4;
-    this.outBufL = new Float32Array(outBufLen);
-    this.outBufR = new Float32Array(outBufLen);
+    const bufLen = grainSize * 8;
+    this.bufferL = new Float32Array(bufLen);
+    this.bufferR = new Float32Array(bufLen);
+    this.outBufL = new Float32Array(bufLen);
+    this.outBufR = new Float32Array(bufLen);
+    this.normBuf = new Float32Array(bufLen);
+    this.samplesUntilNextGrain = this.hopSize;
   }
 
   setPitchFactor(value: number): void {
-    this.pitchFactor = Math.max(0.25, Math.min(4.0, value));
+    this.pitchFactor = clampPitchFactor(value);
   }
 
   reset(): void {
-    this.inBufL.fill(0);
-    this.inBufR.fill(0);
+    this.bufferL.fill(0);
+    this.bufferR.fill(0);
     this.outBufL.fill(0);
     this.outBufR.fill(0);
-    this.inWrite = 0;
+    this.normBuf.fill(0);
+    this.writePosition = 0;
     this.outRead = 0;
     this.outWrite = 0;
-    this.readPos = 0;
-    this.samplesSinceGrain = 0;
+    this.analysisCenter = 0;
+    this.samplesUntilNextGrain = this.hopSize;
+    this.smoothedPitchFactor = this.pitchFactor;
   }
 
-  process(
-    input: StereoChannels,
-    output: StereoChannels,
-    fromIndex: number,
-    toIndex: number
-  ): void {
+  process(input: StereoChannels, output: StereoChannels, fromIndex: number, toIndex: number): void {
     const [inputL, inputR] = input;
     const [outputL, outputR] = output;
-    const inBufLen = this.inBufL.length;
-    const outBufLen = this.outBufL.length;
+    const bufferLength = this.bufferL.length;
 
     if (Math.abs(this.pitchFactor - 1.0) < 0.001) {
       for (let i = fromIndex; i < toIndex; i++) {
         outputL[i] = inputL[i] ?? 0;
         outputR[i] = inputR[i] ?? 0;
       }
+      this.smoothedPitchFactor = 1.0;
       return;
     }
 
     for (let i = fromIndex; i < toIndex; i++) {
-      // Write new input sample
-      this.inBufL[this.inWrite] = inputL[i] ?? 0;
-      this.inBufR[this.inWrite] = inputR[i] ?? 0;
-      this.inWrite = (this.inWrite + 1) % inBufLen;
+      this.bufferL[this.writePosition] = inputL[i] ?? 0;
+      this.bufferR[this.writePosition] = inputR[i] ?? 0;
 
-      // Trigger a new grain every hopSize output samples
-      if (this.samplesSinceGrain >= this.hopSize) {
-        this.samplesSinceGrain = 0;
-        this.addGrain(inBufLen, outBufLen);
+      this.smoothedPitchFactor += (this.pitchFactor - this.smoothedPitchFactor) * 0.005;
+      this.samplesUntilNextGrain--;
+      if (this.samplesUntilNextGrain <= 0) {
+        this.spawnGrain();
+        this.samplesUntilNextGrain += this.hopSize;
       }
-      this.samplesSinceGrain++;
 
-      // Read one sample from synthesis buffer
-      outputL[i] = this.outBufL[this.outRead];
-      outputR[i] = this.outBufR[this.outRead];
+      const norm = this.normBuf[this.outRead] || 1;
+      outputL[i] = this.outBufL[this.outRead] / norm;
+      outputR[i] = this.outBufR[this.outRead] / norm;
       this.outBufL[this.outRead] = 0;
       this.outBufR[this.outRead] = 0;
-      this.outRead = (this.outRead + 1) % outBufLen;
-      this.outWrite = (this.outWrite + 1) % outBufLen;
+      this.normBuf[this.outRead] = 0;
+
+      this.writePosition = (this.writePosition + 1) % bufferLength;
+      this.outRead = (this.outRead + 1) % bufferLength;
+      this.outWrite = (this.outWrite + 1) % bufferLength;
     }
   }
 
-  private addGrain(inBufLen: number, outBufLen: number): void {
-    const grainSize = this.grainSize;
-    // Start reading from the past so the grain is centred near the current position
-    const grainStart = this.readPos - grainSize * 0.5;
+  private spawnGrain(): void {
+    const bufferLength = this.bufferL.length;
+    const half = this.grainSize >> 1;
+    const sourceStart = this.analysisCenter - half;
 
-    for (let j = 0; j < grainSize; j++) {
-      const w = this.window[j]!;
-      // Source position in input circular buffer
-      const srcFrac = grainStart + j * this.pitchFactor;
-      const srcInt = Math.floor(srcFrac);
-      const frac = srcFrac - srcInt;
-      const idx0 = ((srcInt % inBufLen) + inBufLen) % inBufLen;
-      const idx1 = (idx0 + 1) % inBufLen;
-
-      const sL = (this.inBufL[idx0]! + (this.inBufL[idx1]! - this.inBufL[idx0]!) * frac) * w;
-      const sR = (this.inBufR[idx0]! + (this.inBufR[idx1]! - this.inBufR[idx0]!) * frac) * w;
-
-      const outIdx = (this.outWrite + j) % outBufLen;
-      this.outBufL[outIdx] = (this.outBufL[outIdx] ?? 0) + sL;
-      this.outBufR[outIdx] = (this.outBufR[outIdx] ?? 0) + sR;
+    for (let i = 0; i < this.grainSize; i++) {
+      const windowValue = this.window[i] ?? 0;
+      const normValue = this.normalization[i] ?? 0;
+      const sourcePosition = sourceStart + i / this.smoothedPitchFactor;
+      const sampleL = readCubic(this.bufferL, sourcePosition) * windowValue;
+      const sampleR = readCubic(this.bufferR, sourcePosition) * windowValue;
+      const outIndex = (this.outWrite + i) % bufferLength;
+      this.outBufL[outIndex] += sampleL;
+      this.outBufR[outIndex] += sampleR;
+      this.normBuf[outIndex] += normValue;
     }
 
-    // Advance the read position by one synthesis hop
-    this.readPos += this.hopSize;
+    this.analysisCenter += this.hopSize / this.smoothedPitchFactor;
   }
 }
 
@@ -243,67 +270,103 @@ export class OlaPhaseVocoder {
  */
 export class PsolaEffect {
   private pitchFactor = 1.0;
+  private smoothedPitchFactor = 1.0;
   private readonly periodSize: number;
+  private readonly grainSize: number;
   private readonly bufferSize: number;
   private readonly bufferL: Float32Array;
   private readonly bufferR: Float32Array;
-  private readPos = 0;
+  private readonly outBufL: Float32Array;
+  private readonly outBufR: Float32Array;
+  private readonly normBuf: Float32Array;
   private writePos = 0;
+  private outRead = 0;
+  private outWrite = 0;
+  private sourceAnchor = 0;
+  private samplesUntilPulse = 0;
 
   constructor() {
-    this.periodSize = 512; // Base grain period
-    this.bufferSize = this.periodSize * 8; // Circular buffer
+    this.periodSize = 384;
+    this.grainSize = this.periodSize * 2;
+    this.bufferSize = this.periodSize * 16;
     this.bufferL = new Float32Array(this.bufferSize);
     this.bufferR = new Float32Array(this.bufferSize);
+    this.outBufL = new Float32Array(this.bufferSize);
+    this.outBufR = new Float32Array(this.bufferSize);
+    this.normBuf = new Float32Array(this.bufferSize);
+    this.samplesUntilPulse = this.periodSize >> 1;
   }
 
   setPitchFactor(value: number): void {
-    this.pitchFactor = Math.max(0.25, Math.min(4.0, value));
+    this.pitchFactor = clampPitchFactor(value);
   }
 
   reset(): void {
     this.bufferL.fill(0);
     this.bufferR.fill(0);
-    this.readPos = 0;
+    this.outBufL.fill(0);
+    this.outBufR.fill(0);
+    this.normBuf.fill(0);
     this.writePos = 0;
+    this.outRead = 0;
+    this.outWrite = 0;
+    this.sourceAnchor = 0;
+    this.samplesUntilPulse = this.periodSize >> 1;
+    this.smoothedPitchFactor = this.pitchFactor;
   }
 
-  process(
-    input: StereoChannels,
-    output: StereoChannels,
-    fromIndex: number,
-    toIndex: number
-  ): void {
+  process(input: StereoChannels, output: StereoChannels, fromIndex: number, toIndex: number): void {
     const [inputL, inputR] = input;
     const [outputL, outputR] = output;
 
     if (Math.abs(this.pitchFactor - 1.0) < 0.001) {
-      // Pass through if pitch = 1.0
       for (let i = fromIndex; i < toIndex; i++) {
         outputL[i] = inputL[i] ?? 0;
         outputR[i] = inputR[i] ?? 0;
       }
+      this.smoothedPitchFactor = 1.0;
       return;
     }
 
-    const grainSize = Math.round(this.periodSize / this.pitchFactor);
-
     for (let i = fromIndex; i < toIndex; i++) {
-      // Write input to circular buffer
       this.bufferL[this.writePos] = inputL[i] ?? 0;
       this.bufferR[this.writePos] = inputR[i] ?? 0;
+
+      this.smoothedPitchFactor += (this.pitchFactor - this.smoothedPitchFactor) * 0.01;
+      this.samplesUntilPulse--;
+      if (this.samplesUntilPulse <= 0) {
+        this.spawnPulse();
+        this.samplesUntilPulse += Math.max(32, Math.round((this.periodSize >> 1) / this.smoothedPitchFactor));
+      }
+
+      const norm = this.normBuf[this.outRead] || 1;
+      outputL[i] = this.outBufL[this.outRead] / norm;
+      outputR[i] = this.outBufR[this.outRead] / norm;
+      this.outBufL[this.outRead] = 0;
+      this.outBufR[this.outRead] = 0;
+      this.normBuf[this.outRead] = 0;
+
       this.writePos = (this.writePos + 1) % this.bufferSize;
-
-      // Read with Hann window overlap
-      const readPhase = (this.readPos / this.periodSize) % 1.0;
-      const hannWindow = 0.5 * (1 - Math.cos(2 * Math.PI * readPhase));
-
-      const readIdx = Math.floor(this.readPos) % this.bufferSize;
-      outputL[i] = this.bufferL[readIdx] * hannWindow;
-      outputR[i] = this.bufferR[readIdx] * hannWindow;
-
-      this.readPos += grainSize / this.periodSize;
+      this.outRead = (this.outRead + 1) % this.bufferSize;
+      this.outWrite = (this.outWrite + 1) % this.bufferSize;
     }
+  }
+
+  private spawnPulse(): void {
+    const half = this.grainSize >> 1;
+    const start = this.sourceAnchor - half;
+
+    for (let i = 0; i < this.grainSize; i++) {
+      const phase = i / (this.grainSize - 1);
+      const windowValue = smoothstepWindow(phase);
+      const sourcePosition = start + i / this.smoothedPitchFactor;
+      const outIndex = (this.outWrite + i) % this.bufferSize;
+      this.outBufL[outIndex] += readLinear(this.bufferL, sourcePosition) * windowValue;
+      this.outBufR[outIndex] += readLinear(this.bufferR, sourcePosition) * windowValue;
+      this.normBuf[outIndex] += windowValue * windowValue;
+    }
+
+    this.sourceAnchor += this.periodSize / this.smoothedPitchFactor;
   }
 }
 
@@ -314,9 +377,10 @@ export class PsolaEffect {
  */
 export class GranularPitchEffect {
   private pitchFactor = 1.0;
+  private smoothedPitchFactor = 1.0;
   private grainSizeMs = 50;
   private readonly sampleRate: number;
-  private readonly maxGrains = 4;
+  private readonly maxGrains = 6;
   private readonly grains: GrainState[];
   private readonly bufferL: Float32Array;
   private readonly bufferR: Float32Array;
@@ -340,7 +404,7 @@ export class GranularPitchEffect {
   }
 
   setPitchFactor(value: number): void {
-    this.pitchFactor = Math.max(0.25, Math.min(4.0, value));
+    this.pitchFactor = clampPitchFactor(value);
   }
 
   setGrainSize(sizeMs: number): void {
@@ -352,6 +416,7 @@ export class GranularPitchEffect {
     this.bufferR.fill(0);
     this.bufferPos = 0;
     this.nextGrainTime = 0;
+    this.smoothedPitchFactor = this.pitchFactor;
     for (const grain of this.grains) {
       grain.active = false;
     }
@@ -365,68 +430,68 @@ export class GranularPitchEffect {
   ): void {
     const [inputL, inputR] = input;
     const [outputL, outputR] = output;
-    const grainSizeSamples = Math.round((this.grainSizeMs * this.sampleRate) / 1000);
+    const grainSizeSamples = Math.max(
+      64,
+      Math.round((this.grainSizeMs * this.sampleRate) / 1000)
+    );
 
-    // Write input to circular buffer
     for (let i = fromIndex; i < toIndex; i++) {
       this.bufferL[this.bufferPos] = inputL[i] ?? 0;
       this.bufferR[this.bufferPos] = inputR[i] ?? 0;
-      this.bufferPos = (this.bufferPos + 1) % this.bufferL.length;
-    }
 
-    // Process each sample
-    for (let i = fromIndex; i < toIndex; i++) {
+      this.smoothedPitchFactor +=
+        (this.pitchFactor - this.smoothedPitchFactor) * 0.01;
+
       let outL = 0;
       let outR = 0;
       let totalEnvelope = 0;
 
-      // Spawn new grain if needed
       this.nextGrainTime--;
       if (this.nextGrainTime <= 0) {
         for (const grain of this.grains) {
           if (!grain.active) {
             grain.active = true;
-            grain.readPos = this.bufferPos;
+            grain.readPos = this.bufferPos - grainSizeSamples;
             grain.grainPos = 0;
             grain.startBufferPos = this.bufferPos;
-            this.nextGrainTime = Math.round(grainSizeSamples / this.maxGrains);
+            this.nextGrainTime = Math.max(
+              16,
+              Math.round(grainSizeSamples / this.maxGrains)
+            );
             break;
           }
         }
       }
 
-      // Process active grains
       for (const grain of this.grains) {
         if (!grain.active) continue;
 
-        // Hann window envelope
-        const phase = grain.grainPos / grainSizeSamples;
-        grain.envelope = phase < 1.0 ? 0.5 * (1 - Math.cos(Math.PI * phase)) : 0;
+        const phase = grain.grainPos / (grainSizeSamples - 1);
+        grain.envelope = phase < 1.0 ? smoothstepWindow(phase) : 0;
 
-        // Read from buffer at pitch-scaled rate
-        const readIdx = Math.floor(grain.readPos) % this.bufferL.length;
-        outL += this.bufferL[readIdx] * grain.envelope;
-        outR += this.bufferR[readIdx] * grain.envelope;
-        totalEnvelope += grain.envelope;
+        const sampleL = readLinear(this.bufferL, grain.readPos);
+        const sampleR = readLinear(this.bufferR, grain.readPos);
+        outL += sampleL * grain.envelope;
+        outR += sampleR * grain.envelope;
+        totalEnvelope += grain.envelope * grain.envelope;
 
-        // Advance grain read position by pitch factor
-        grain.readPos += this.pitchFactor;
+        grain.readPos += this.smoothedPitchFactor;
         grain.grainPos++;
 
-        // Deactivate grain when it exceeds grain size
         if (grain.grainPos >= grainSizeSamples) {
           grain.active = false;
         }
       }
 
-      // Normalize output
-      if (totalEnvelope > 0) {
+      if (totalEnvelope > 1e-6) {
         outputL[i] = outL / totalEnvelope;
         outputR[i] = outR / totalEnvelope;
       } else {
         outputL[i] = 0;
         outputR[i] = 0;
       }
+
+      this.bufferPos = (this.bufferPos + 1) % this.bufferL.length;
     }
   }
 }

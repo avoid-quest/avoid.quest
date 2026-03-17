@@ -72,7 +72,6 @@ export type PlateReverbConfig = BaseEffectConfig & {
 export type PitchShifterConfig = BaseEffectConfig & {
   type: "pitchShifter";
   pitchFactor: number;
-  variant?: "varispeed" | "wsola" | "phaseVocoder";
 };
 
 export type DelayConfig = BaseEffectConfig & {

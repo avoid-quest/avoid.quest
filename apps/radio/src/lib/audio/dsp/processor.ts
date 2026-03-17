@@ -18,11 +18,7 @@ import { Delay } from "./effects/delay.js";
 import { Distortion } from "./effects/distortion.js";
 import { FoldEffect } from "./effects/fold.js";
 import { Limiter } from "./effects/limiter.js";
-import {
-  PhaseVocoder,
-  VarispeedEffect,
-  WsolaPitchShifter,
-} from "./effects/phase-vocoder.js";
+import { PhaseVocoder } from "./effects/phase-vocoder.js";
 import { RevampEffect } from "./effects/revamp.js";
 import { DattorroReverb } from "./effects/reverb.js";
 import { StereoToolEffect } from "./effects/stereo-tool.js";
@@ -176,9 +172,6 @@ type EffectConfigData = {
   outputGain: number;
   dryWet: number;
   order: number;
-  // pitchShifter-specific
-  variant?: "varispeed" | "wsola" | "phaseVocoder";
-  pitchFactor?: number;
 };
 
 /**
@@ -348,13 +341,7 @@ class EffectSource {
     config: Record<string, number | boolean | string>,
     order: number
   ): boolean {
-    let processor: EffectProcessor | null;
-    if (type === "pitchShifter") {
-      processor = this.createPitchShifterVariant(config.variant);
-    } else {
-      processor = this.createEffectProcessor(type);
-    }
-
+    const processor = this.createEffectProcessor(type);
     if (!processor) {
       return false;
     }
@@ -365,26 +352,14 @@ class EffectSource {
 
     // Store universal params (enabled, inputGain, outputGain, dryWet, order)
     // Note: enabled comes as 0/1 number from audio-manager, convert to boolean
-    const effectConfig: any = {
+    this.effectConfigs.set(effectId, {
       enabled: !!config.enabled,
       inputGain: typeof config.inputGain === "number" ? config.inputGain : 1.0,
       outputGain:
         typeof config.outputGain === "number" ? config.outputGain : 1.0,
       dryWet: typeof config.dryWet === "number" ? config.dryWet : 1.0,
       order,
-    };
-
-    // Store pitch shifter specific params
-    if (type === "pitchShifter") {
-      effectConfig.variant =
-        typeof config.variant === "string"
-          ? (config.variant as "varispeed" | "wsola" | "phaseVocoder")
-          : "wsola";
-      effectConfig.pitchFactor =
-        typeof config.pitchFactor === "number" ? config.pitchFactor : 1.0;
-    }
-
-    this.effectConfigs.set(effectId, effectConfig);
+    });
 
     // Insert at correct order position
     this.insertEffectAtOrder(effectId, order);
@@ -402,51 +377,10 @@ class EffectSource {
     effectId: string,
     config: Record<string, number | boolean | string>
   ): void {
-    let processor = this.effects.get(effectId);
+    const processor = this.effects.get(effectId);
     const type = this.effectTypes.get(effectId);
     if (!(processor && type)) {
       return;
-    }
-
-    // Handle variant change for pitch shifter
-    if (type === "pitchShifter") {
-      const existingConfig = this.effectConfigs.get(effectId);
-      const currentVariant =
-        existingConfig && typeof existingConfig.variant === "string"
-          ? existingConfig.variant
-          : "wsola";
-      const newVariant = (
-        typeof config.variant === "string" ? config.variant : currentVariant
-      ) as "varispeed" | "wsola" | "phaseVocoder";
-
-      if (newVariant !== currentVariant) {
-        // Variant changed, recreate processor and reapply full cached state
-        const newProcessor = this.createPitchShifterVariant(newVariant);
-        if (newProcessor) {
-          processor = newProcessor;
-          this.effects.set(effectId, processor);
-
-          const mergedConfig: Record<string, number | boolean | string> = {
-            ...(existingConfig
-              ? {
-                  enabled: existingConfig.enabled,
-                  inputGain: existingConfig.inputGain,
-                  outputGain: existingConfig.outputGain,
-                  dryWet: existingConfig.dryWet,
-                  variant: newVariant,
-                  pitchFactor: existingConfig.pitchFactor ?? 1.0,
-                }
-              : {}),
-            ...config,
-          };
-
-          this.applyEffectConfig(processor, type, mergedConfig);
-
-          if (existingConfig) {
-            existingConfig.variant = newVariant;
-          }
-        }
-      }
     }
 
     this.applyEffectConfig(processor, type, config);
@@ -468,18 +402,6 @@ class EffectSource {
       if (typeof config.dryWet === "number") {
         existingConfig.dryWet = config.dryWet;
       }
-      // Update pitch shifter specific params
-      if (type === "pitchShifter") {
-        if (typeof config.variant === "string") {
-          existingConfig.variant = config.variant as
-            | "varispeed"
-            | "wsola"
-            | "phaseVocoder";
-        }
-        if (typeof config.pitchFactor === "number") {
-          existingConfig.pitchFactor = config.pitchFactor;
-        }
-      }
     }
   }
 
@@ -487,27 +409,12 @@ class EffectSource {
     this.effectOrder = effectIds.filter((id) => this.effects.has(id));
   }
 
-  private createPitchShifterVariant(
-    variant?: string | number | boolean
-  ): EffectProcessor {
-    const variantStr = typeof variant === "string" ? variant : "wsola";
-    switch (variantStr) {
-      case "varispeed":
-        return new VarispeedEffect();
-      case "phaseVocoder":
-        return new PhaseVocoder();
-      case "wsola":
-      default:
-        return new WsolaPitchShifter();
-    }
-  }
-
   private createEffectProcessor(type: EffectType): EffectProcessor | null {
     switch (type) {
       case "plateReverb":
         return new DattorroReverb(this.sampleRate);
       case "pitchShifter":
-        return this.createPitchShifterVariant("wsola");
+        return new PhaseVocoder();
       case "limiter":
         return new Limiter(this.sampleRate);
       case "distortion":
@@ -705,8 +612,9 @@ class EffectSource {
         break;
       }
       case "pitchShifter": {
+        const pv = processor as PhaseVocoder;
         if (typeof config.pitchFactor === "number") {
-          (processor as VarispeedEffect).setPitchFactor(config.pitchFactor);
+          pv.setPitchFactor(config.pitchFactor);
         }
         break;
       }

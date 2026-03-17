@@ -43,14 +43,13 @@ export const AVAILABLE_EFFECTS = [
   },
   {
     type: "pitchShifter",
-    name: "Pitch Shifter",
+    name: "Varispeed",
     description:
-      "Pitch shifting variants with different trade-offs: Varispeed, WSOLA, and Phase Vocoder",
+      "Tape-style pitch and speed change. Tempo changes together with pitch.",
     defaultConfig: {
       type: "pitchShifter",
       enabled: false,
       pitchFactor: 1.0,
-      variant: "wsola",
       dryWet: 1.0,
       inputGain: 1.0,
       outputGain: 1.0,

@@ -325,29 +325,24 @@ export const EFFECT_SCHEMAS = {
 
   pitchShifter: {
     type: "pitchShifter",
-    name: "Pitch Shifter",
+    name: "Varispeed",
     description:
-      "Pitch shifting variants with different trade-offs: Varispeed, WSOLA, and Phase Vocoder",
+      "Tape-style pitch and speed change. Tempo changes together with pitch.",
     params: [
       {
-        type: "select",
-        key: "variant",
-        label: "Algorithm",
-        options: [
-          { value: "varispeed", label: "Varispeed" },
-          { value: "wsola", label: "WSOLA" },
-          { value: "phaseVocoder", label: "Phase Vocoder" },
+        type: "group",
+        title: "Pitch",
+        children: [
+          {
+            type: "slider",
+            key: "pitchFactor",
+            label: "Pitch Factor",
+            formatKey: "default",
+            min: 0.25,
+            max: 4.0,
+            step: 0.01,
+          },
         ],
-        valueType: "string",
-      },
-      {
-        type: "slider",
-        key: "pitchFactor",
-        label: "Pitch Factor",
-        formatKey: "default",
-        min: 0.25,
-        max: 4.0,
-        step: 0.01,
       },
     ],
   },

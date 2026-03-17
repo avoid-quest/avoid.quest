@@ -8,7 +8,7 @@ PWA internet radio player with advanced audio mixing, effects chain, and MIDI su
   - **Multiple**: several stations simultaneously with independent volume/controls
   - **Single**: focused single-station player with crossfade transitions
   - **DJ**: two-deck mixer with crossfader, channel strip, effects chain, CUE monitoring, MIDI control
-- **Audio DSP**: custom AudioWorklet processor with real-time effects (7-band EQ, compressor, delay, reverb, distortion, bitcrusher, stereo tool, pitch shift)
+- **Audio DSP**: custom AudioWorklet processor with real-time effects (7-band EQ, compressor, delay, reverb, distortion, bitcrusher, stereo tool, varispeed)
 - **Platform support**: Bandcamp albums/tracks, SoundCloud playlists/tracks, YouTube playlists/videos, Radio Garden stations
 - **External inputs**: device audio input (mic/line-in), local file playback
 - **PWA**: installable, service worker, offline shell

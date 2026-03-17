@@ -1604,11 +1604,9 @@ export class AudioManager {
    * Convert effect config to worklet format
    */
   // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: simple switch over effect types
-  private convertEffectConfig(
-    config: EffectConfig
-  ): Record<string, number | string> {
+  private convertEffectConfig(config: EffectConfig): Record<string, number> {
     // Universal params for all effects
-    const base: Record<string, number | string> = {
+    const base: Record<string, number> = {
       enabled: config.enabled ? 1 : 0,
       inputGain: config.inputGain ?? 1.0,
       outputGain: config.outputGain ?? 1.0,
@@ -1636,7 +1634,6 @@ export class AudioManager {
         break;
       case "pitchShifter":
         base.pitchFactor = config.pitchFactor;
-        base.variant = config.variant ?? "wsola";
         break;
       case "limiter":
         base.threshold = config.threshold;
@@ -1721,8 +1718,8 @@ export class AudioManager {
    */
   private convertPartialEffectConfig(
     config: Partial<EffectConfig>
-  ): Record<string, number | string> {
-    const result: Record<string, number | string> = {};
+  ): Record<string, number> {
+    const result: Record<string, number> = {};
 
     if (config.dryWet !== undefined) {
       result.wet = config.dryWet;
@@ -1736,8 +1733,6 @@ export class AudioManager {
         result[key] = value;
       } else if (typeof value === "boolean") {
         result[key] = value ? 1 : 0;
-      } else if (typeof value === "string") {
-        result[key] = value;
       }
     }
 

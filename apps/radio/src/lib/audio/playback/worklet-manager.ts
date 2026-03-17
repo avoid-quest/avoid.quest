@@ -414,7 +414,7 @@ export class WorkletManager {
     sourceId: string,
     effectId: string,
     type: EffectType,
-    config: Record<string, number | string>,
+    config: Record<string, number>,
     order: number
   ): void {
     this.postMessage({
@@ -439,7 +439,7 @@ export class WorkletManager {
   updateEffect(
     sourceId: string,
     effectId: string,
-    config: Partial<Record<string, number | string>>
+    config: Partial<Record<string, number>>
   ): void {
     this.postMessage({
       type: MessageType.UPDATE_EFFECT,

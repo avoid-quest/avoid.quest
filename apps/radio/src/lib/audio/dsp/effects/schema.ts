@@ -325,24 +325,39 @@ export const EFFECT_SCHEMAS = {
 
   pitchShifter: {
     type: "pitchShifter",
-    name: "Pitch/Speed",
+    name: "Pitch Shifter",
     description:
-      "Speed-based pitch change (varispeed). Changes tempo proportionally with pitch.",
+      "Multiple pitch shifting algorithms: Varispeed, OLA Phase Vocoder, PSOLA, and Granular synthesis",
     params: [
       {
-        type: "group",
-        title: "Pitch",
-        children: [
-          {
-            type: "slider",
-            key: "pitchFactor",
-            label: "Pitch Factor",
-            formatKey: "default",
-            min: 0.25,
-            max: 4.0,
-            step: 0.01,
-          },
+        type: "select",
+        key: "variant",
+        label: "Algorithm",
+        options: [
+          { value: "ola", label: "OLA Phase Vocoder" },
+          { value: "varispeed", label: "Varispeed" },
+          { value: "psola", label: "PSOLA" },
+          { value: "granular", label: "Granular" },
         ],
+        valueType: "string",
+      },
+      {
+        type: "slider",
+        key: "pitchFactor",
+        label: "Pitch Factor",
+        formatKey: "default",
+        min: 0.25,
+        max: 4.0,
+        step: 0.01,
+      },
+      {
+        type: "slider",
+        key: "grainSize",
+        label: "Grain Size (ms)",
+        formatKey: "default",
+        min: 10,
+        max: 200,
+        step: 1,
       },
     ],
   },

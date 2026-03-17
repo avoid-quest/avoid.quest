@@ -21,7 +21,13 @@ export { Delay } from "./delay.js";
 export { Distortion } from "./distortion.js";
 export { FoldEffect } from "./fold.js";
 export { Limiter } from "./limiter.js";
-export { PhaseVocoder } from "./phase-vocoder.js";
+export {
+  PhaseVocoder,
+  OlaPhaseVocoder,
+  VarispeedEffect,
+  PsolaEffect,
+  GranularPitchEffect,
+} from "./phase-vocoder.js";
 // Registry
 export {
   AVAILABLE_EFFECTS,

@@ -43,13 +43,15 @@ export const AVAILABLE_EFFECTS = [
   },
   {
     type: "pitchShifter",
-    name: "Pitch/Speed",
+    name: "Pitch Shifter",
     description:
-      "Speed-based pitch change (varispeed). Changes tempo proportionally with pitch.",
+      "Multiple pitch shifting algorithms: Varispeed, OLA Phase Vocoder, PSOLA, and Granular synthesis",
     defaultConfig: {
       type: "pitchShifter",
       enabled: false,
       pitchFactor: 1.0,
+      variant: "ola",
+      grainSize: 50,
       dryWet: 1.0,
       inputGain: 1.0,
       outputGain: 1.0,

@@ -18,7 +18,12 @@ import { Delay } from "./effects/delay.js";
 import { Distortion } from "./effects/distortion.js";
 import { FoldEffect } from "./effects/fold.js";
 import { Limiter } from "./effects/limiter.js";
-import { PhaseVocoder } from "./effects/phase-vocoder.js";
+import {
+  OlaPhaseVocoder,
+  VarispeedEffect,
+  PsolaEffect,
+  GranularPitchEffect,
+} from "./effects/phase-vocoder.js";
 import { RevampEffect } from "./effects/revamp.js";
 import { DattorroReverb } from "./effects/reverb.js";
 import { StereoToolEffect } from "./effects/stereo-tool.js";
@@ -172,6 +177,9 @@ type EffectConfigData = {
   outputGain: number;
   dryWet: number;
   order: number;
+  // pitchShifter-specific
+  variant?: "varispeed" | "ola" | "psola" | "granular";
+  grainSize?: number;
 };
 
 /**
@@ -341,7 +349,13 @@ class EffectSource {
     config: Record<string, number | boolean | string>,
     order: number
   ): boolean {
-    const processor = this.createEffectProcessor(type);
+    let processor: EffectProcessor | null;
+    if (type === "pitchShifter") {
+      processor = this.createPitchShifterVariant(config.variant);
+    } else {
+      processor = this.createEffectProcessor(type);
+    }
+
     if (!processor) {
       return false;
     }
@@ -352,14 +366,22 @@ class EffectSource {
 
     // Store universal params (enabled, inputGain, outputGain, dryWet, order)
     // Note: enabled comes as 0/1 number from audio-manager, convert to boolean
-    this.effectConfigs.set(effectId, {
+    const effectConfig: any = {
       enabled: !!config.enabled,
       inputGain: typeof config.inputGain === "number" ? config.inputGain : 1.0,
       outputGain:
         typeof config.outputGain === "number" ? config.outputGain : 1.0,
       dryWet: typeof config.dryWet === "number" ? config.dryWet : 1.0,
       order,
-    });
+    };
+
+    // Store pitch shifter specific params
+    if (type === "pitchShifter") {
+      effectConfig.variant = typeof config.variant === "string" ? config.variant : "ola";
+      effectConfig.grainSize = typeof config.grainSize === "number" ? config.grainSize : 50;
+    }
+
+    this.effectConfigs.set(effectId, effectConfig);
 
     // Insert at correct order position
     this.insertEffectAtOrder(effectId, order);
@@ -377,10 +399,34 @@ class EffectSource {
     effectId: string,
     config: Record<string, number | boolean | string>
   ): void {
-    const processor = this.effects.get(effectId);
+    let processor = this.effects.get(effectId);
     const type = this.effectTypes.get(effectId);
     if (!(processor && type)) {
       return;
+    }
+
+    // Handle variant change for pitch shifter
+    if (type === "pitchShifter") {
+      const existingConfig = this.effectConfigs.get(effectId);
+      const currentVariant =
+        existingConfig && typeof existingConfig.variant === "string"
+          ? existingConfig.variant
+          : "ola";
+      const newVariant = (
+        typeof config.variant === "string" ? config.variant : currentVariant
+      ) as "varispeed" | "ola" | "psola" | "granular";
+
+      if (newVariant !== currentVariant) {
+        // Variant changed, recreate processor
+        const newProcessor = this.createPitchShifterVariant(newVariant);
+        if (newProcessor) {
+          processor = newProcessor;
+          this.effects.set(effectId, processor);
+          if (existingConfig) {
+            existingConfig.variant = newVariant;
+          }
+        }
+      }
     }
 
     this.applyEffectConfig(processor, type, config);
@@ -402,6 +448,12 @@ class EffectSource {
       if (typeof config.dryWet === "number") {
         existingConfig.dryWet = config.dryWet;
       }
+      // Update pitch shifter specific params
+      if (type === "pitchShifter") {
+        if (typeof config.grainSize === "number") {
+          existingConfig.grainSize = config.grainSize;
+        }
+      }
     }
   }
 
@@ -409,12 +461,29 @@ class EffectSource {
     this.effectOrder = effectIds.filter((id) => this.effects.has(id));
   }
 
+  private createPitchShifterVariant(
+    variant?: string | number | boolean
+  ): EffectProcessor {
+    const variantStr = typeof variant === "string" ? variant : "ola";
+    switch (variantStr) {
+      case "varispeed":
+        return new VarispeedEffect();
+      case "psola":
+        return new PsolaEffect();
+      case "granular":
+        return new GranularPitchEffect(this.sampleRate);
+      case "ola":
+      default:
+        return new OlaPhaseVocoder();
+    }
+  }
+
   private createEffectProcessor(type: EffectType): EffectProcessor | null {
     switch (type) {
       case "plateReverb":
         return new DattorroReverb(this.sampleRate);
       case "pitchShifter":
-        return new PhaseVocoder();
+        return this.createPitchShifterVariant("ola");
       case "limiter":
         return new Limiter(this.sampleRate);
       case "distortion":
@@ -612,9 +681,14 @@ class EffectSource {
         break;
       }
       case "pitchShifter": {
-        const pv = processor as PhaseVocoder;
+        // Handle pitchFactor for all variants
         if (typeof config.pitchFactor === "number") {
-          pv.setPitchFactor(config.pitchFactor);
+          (processor as VarispeedEffect).setPitchFactor(config.pitchFactor);
+        }
+        // Handle grainSize for GranularPitchEffect
+        if (typeof config.grainSize === "number") {
+          const granular = processor as GranularPitchEffect;
+          granular.setGrainSize?.(config.grainSize);
         }
         break;
       }

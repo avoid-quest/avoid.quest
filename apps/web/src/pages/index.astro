@@ -6,42 +6,49 @@ export const prerender = true;
 ---
 
 <Layout>
-  <div class="flex h-full flex-col items-center justify-center">
+  <div class="flex h-full flex-col items-center justify-center px-6">
     <AvoidLogo className="-mb-10 size-64" />
     <small class="font-mono text-muted-foreground text-xs"> avoid.quest </small>
 
-    <div class="mt-10 flex flex-row items-center justify-center gap-4">
+    <div class="mt-10 flex w-full max-w-md flex-col gap-5">
       <a
         href="https://instarip.avoid.quest"
         target="_blank"
         rel="noopener"
-        class="text-primary underline-offset-4 hover:underline"
+        class="group flex flex-col"
       >
-        instarip
+        <span class="text-primary underline-offset-4 group-hover:underline">instarip</span>
+        <span class="text-muted-foreground text-sm">escape the platform</span>
       </a>
+
       <a
         href="https://radio.avoid.quest"
         target="_blank"
         rel="noopener"
-        class="text-primary underline-offset-4 hover:underline"
+        class="group flex flex-col"
       >
-        radio
+        <span class="text-primary underline-offset-4 group-hover:underline">radio</span>
+        <span class="text-muted-foreground text-sm">enhanced web player</span>
       </a>
+
       <a
         href="https://feed.avoid.quest"
         target="_blank"
         rel="noopener"
-        class="text-primary underline-offset-4 hover:underline"
+        class="group flex flex-col"
       >
-        feed
+        <span class="text-primary underline-offset-4 group-hover:underline">feed</span>
+        <span class="text-muted-foreground text-sm">stay informed</span>
       </a>
+
       <a
         href="https://cwavasape.com"
         target="_blank"
         rel="noopener"
-        class="text-primary underline-offset-4 hover:underline"
+        class="group flex flex-col"
       >
-        cwavsape
+        <span class="text-primary underline-offset-4 group-hover:underline">cwavasape</span>
+        <span class="text-muted-foreground text-sm">doomscroller internet gallery</span>
       </a>
     </div>
   </div>

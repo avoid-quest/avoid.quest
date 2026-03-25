@@ -114,6 +114,16 @@ export class AudioManager {
     string,
     Set<(level: { left: number; right: number }) => void>
   >();
+  private readonly analysisListeners = new Map<
+    string,
+    Set<
+      (data: {
+        levels: { left: number; right: number; mono: number; peak: number };
+        spectrum: Float32Array;
+        waveform: Float32Array;
+      }) => void
+    >
+  >();
 
   private readonly workletManagers = new Map<string, WorkletManager>();
   private workletModuleLoaded = false;
@@ -1212,6 +1222,38 @@ export class AudioManager {
     };
   }
 
+  /**
+   * Subscribe to deck analysis updates emitted by the DSP worklet.
+   */
+  subscribeAnalysis(
+    soundId: string,
+    callback: (data: {
+      levels: { left: number; right: number; mono: number; peak: number };
+      spectrum: Float32Array;
+      waveform: Float32Array;
+    }) => void
+  ): Unsubscribe {
+    const existing = this.analysisListeners.get(soundId);
+    if (existing) {
+      existing.add(callback);
+    } else {
+      this.analysisListeners.set(soundId, new Set([callback]));
+      this.workletManagers.get(soundId)?.setAnalysisEnabled(true);
+    }
+
+    return () => {
+      const callbacks = this.analysisListeners.get(soundId);
+      if (!callbacks) {
+        return;
+      }
+      callbacks.delete(callback);
+      if (callbacks.size === 0) {
+        this.analysisListeners.delete(soundId);
+        this.workletManagers.get(soundId)?.setAnalysisEnabled(false);
+      }
+    };
+  }
+
   // ============================================
   // Track Progress
   // ============================================
@@ -1371,6 +1413,7 @@ export class AudioManager {
     this.sounds.clear();
     this.listeners.clear();
     this.meterListeners.clear();
+    this.analysisListeners.clear();
     this.lastSoundVolumes.clear();
 
     // Cleanup all per-sound worklet managers
@@ -1568,6 +1611,19 @@ export class AudioManager {
         }
       }
     });
+
+    wm.on("analysisData", (data) => {
+      const callbacks = this.analysisListeners.get(soundId);
+      if (callbacks) {
+        for (const callback of callbacks) {
+          callback(data);
+        }
+      }
+    });
+
+    if (this.analysisListeners.has(soundId)) {
+      wm.setAnalysisEnabled(true);
+    }
 
     // Note: We intentionally don't set wm.setVolume() here.
     // Worklet masterGainNode stays at unity (1.0) so CUE tap gets full signal.

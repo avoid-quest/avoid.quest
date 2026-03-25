@@ -7,6 +7,7 @@ import {
   Repeat1Icon,
 } from "lucide-react";
 import { formatTime } from "../shared/format-utils";
+import { DeckVisualizer } from "./deck-visualizer";
 import { useDeckContext } from "./deck-context";
 
 function TransportArtwork({
@@ -206,6 +207,8 @@ export function DeckTransport({ className }: { className?: string }) {
           />
         </div>
       </div>
+
+      <DeckVisualizer />
     </div>
   );
 }

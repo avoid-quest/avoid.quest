@@ -92,10 +92,14 @@ const MessageType = {
   // Global
   SET_PARAM: "SET_PARAM",
 
+  // Analysis control
+  ENABLE_ANALYSIS: "ENABLE_ANALYSIS",
+
   // Events (worklet → main)
   SOURCE_ENDED: "SOURCE_ENDED",
   SOURCE_ERROR: "SOURCE_ERROR",
   STREAM_READY: "STREAM_READY",
+  ANALYSIS_DATA: "ANALYSIS_DATA",
   PEAK_METER: "PEAK_METER",
 } as const;
 
@@ -124,6 +128,11 @@ export type WorkletManagerEvents = {
   sourceEnded: SourceEndedPayload;
   sourceError: SourceErrorPayload;
   streamReady: StreamReadyPayload;
+  analysisData: {
+    levels: { left: number; right: number; mono: number; peak: number };
+    spectrum: Float32Array;
+    waveform: Float32Array;
+  };
   peakMeter: { peakL: number; peakR: number };
 };
 
@@ -551,6 +560,16 @@ export class WorkletManager {
     });
   }
 
+  /**
+   * Enable or disable analysis data emission from the worklet.
+   */
+  setAnalysisEnabled(enabled: boolean): void {
+    this.postMessage({
+      type: MessageType.ENABLE_ANALYSIS,
+      payload: { enabled },
+    });
+  }
+
   // ============================================
   // Event Subscription
   // ============================================
@@ -746,6 +765,13 @@ export class WorkletManager {
         this.eventEmitter.emit(
           "streamReady",
           message.payload as StreamReadyPayload
+        );
+        break;
+
+      case MessageType.ANALYSIS_DATA:
+        this.eventEmitter.emit(
+          "analysisData",
+          message.payload as WorkletManagerEvents["analysisData"]
         );
         break;
 

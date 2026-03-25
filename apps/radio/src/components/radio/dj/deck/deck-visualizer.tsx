@@ -1,20 +1,21 @@
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { useMemo } from "react";
-import { useDeckAnalysis } from "@/lib/hooks/use-deck-analysis";
 import { useDeckContext } from "./deck-context";
 import { PeakMeter } from "../shared/peak-meter";
+import { formatTime } from "../shared/format-utils";
 
 function deckTone(deckSide: "left" | "right") {
   return deckSide === "left"
     ? {
-        accent: "#60a5fa",
-        accentSoft: "rgba(96, 165, 250, 0.18)",
-        border: "border-blue-500/15",
+        accent: "bg-blue-400/80",
+        rail: "bg-blue-500/10",
+        border: "border-blue-500/10",
+        text: "text-blue-200/85",
       }
     : {
-        accent: "#f472b6",
-        accentSoft: "rgba(244, 114, 182, 0.18)",
-        border: "border-pink-500/15",
+        accent: "bg-pink-400/80",
+        rail: "bg-pink-500/10",
+        border: "border-pink-500/10",
+        text: "text-pink-200/85",
       };
 }
 
@@ -22,211 +23,147 @@ function clamp01(value: number): number {
   return Math.max(0, Math.min(1, value));
 }
 
-function formatDbLike(level: number): string {
-  if (level <= 0.0001) {
-    return "−∞ dB";
+function getUpcomingTrackName(
+  tracks: { name: string }[] | undefined,
+  currentTrackIndex: number
+): string | null {
+  if (!tracks || tracks.length === 0) {
+    return null;
   }
-  const db = 20 * Math.log10(level);
-  return `${db.toFixed(1)} dB`;
+  const next = tracks[currentTrackIndex + 1];
+  return next?.name ?? null;
 }
 
-function WaveformStrip({
-  waveform,
-  accent,
+function TimelineBar({
+  progress,
+  accentClass,
+  railClass,
 }: {
-  waveform: Float32Array | null;
-  accent: string;
+  progress: number;
+  accentClass: string;
+  railClass: string;
 }) {
-  const bars = useMemo(() => {
-    if (!waveform || waveform.length === 0) {
-      return [];
-    }
-
-    const targetBars = 40;
-    const chunkSize = Math.max(1, Math.floor(waveform.length / targetBars));
-    const next: number[] = [];
-
-    for (let start = 0; start < waveform.length; start += chunkSize) {
-      const end = Math.min(waveform.length, start + chunkSize);
-      let peak = 0;
-      for (let i = start; i < end; i++) {
-        peak = Math.max(peak, Math.abs(waveform[i] ?? 0));
-      }
-      next.push(clamp01(peak));
-    }
-
-    return next.slice(0, targetBars);
-  }, [waveform]);
+  const normalized = clamp01(progress);
+  const segmentCount = 24;
+  const activeSegments = Math.round(normalized * segmentCount);
 
   return (
-    <div className="space-y-1">
-      <div className="flex items-center justify-between">
-        <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/70">
-          Waveform
-        </span>
-        <span className="font-mono text-[10px] text-muted-foreground/60">
-          live window
-        </span>
-      </div>
-      <div className="relative h-12 overflow-hidden rounded-sm border border-white/5 bg-black/25 px-1.5">
-        <div className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-white/6" />
-        <div className="flex h-full items-center gap-px">
-          {bars.length === 0
-            ? Array.from({ length: 32 }, (_, i) => (
-                <div
-                  className="flex-1 rounded-full bg-white/6"
-                  key={`empty-${i}`}
-                  style={{ height: 4 }}
-                />
-              ))
-            : bars.map((value, index) => {
-                const height = Math.max(4, value * 100 * 0.55);
-                return (
-                  <div className="flex flex-1 justify-center" key={index}>
-                    <div
-                      className="w-full rounded-full"
-                      style={{
-                        height,
-                        background: accent,
-                        opacity: 0.35 + value * 0.65,
-                        boxShadow: `0 0 10px ${accent}22`,
-                      }}
-                    />
-                  </div>
-                );
-              })}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function SpectrumStrip({
-  spectrum,
-  accent,
-}: {
-  spectrum: Float32Array | null;
-  accent: string;
-}) {
-  const bars = useMemo(() => {
-    if (!spectrum || spectrum.length === 0) {
-      return [];
-    }
-
-    const count = 20;
-    const nyquistBins = spectrum.length;
-    const minFreq = 30;
-    const maxFreq = 16000;
-    const sampleRate = 44100;
-    const next: number[] = [];
-
-    for (let i = 0; i < count; i++) {
-      const t0 = i / count;
-      const t1 = (i + 1) / count;
-      const f0 = minFreq * (maxFreq / minFreq) ** t0;
-      const f1 = minFreq * (maxFreq / minFreq) ** t1;
-      const b0 = Math.max(0, Math.floor((f0 / (sampleRate / 2)) * nyquistBins));
-      const b1 = Math.max(b0 + 1, Math.floor((f1 / (sampleRate / 2)) * nyquistBins));
-
-      let peak = -100;
-      for (let bin = b0; bin < Math.min(b1, nyquistBins); bin++) {
-        peak = Math.max(peak, spectrum[bin] ?? -100);
-      }
-
-      const normalized = clamp01((peak + 96) / 72);
-      next.push(normalized);
-    }
-
-    return next;
-  }, [spectrum]);
-
-  return (
-    <div className="space-y-1">
-      <div className="flex items-center justify-between">
-        <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/70">
-          Spectrum
-        </span>
-        <span className="font-mono text-[10px] text-muted-foreground/60">
-          low → high
-        </span>
-      </div>
-      <div className="flex h-10 items-end gap-1 overflow-hidden rounded-sm border border-white/5 bg-black/20 px-1.5 py-1.5">
-        {bars.length === 0
-          ? Array.from({ length: 20 }, (_, i) => (
-              <div
-                className="flex-1 rounded-sm bg-white/6"
-                key={`empty-spec-${i}`}
-                style={{ height: 3 }}
-              />
-            ))
-          : bars.map((value, index) => {
-              const height = Math.max(3, value * 100);
-              return (
-                <div
-                  className="flex-1 rounded-sm"
-                  key={index}
-                  style={{
-                    height: `${height}%`,
-                    background: `linear-gradient(to top, ${accent}cc, ${accent})`,
-                    opacity: 0.22 + value * 0.78,
-                  }}
-                />
-              );
-            })}
+    <div className="space-y-1.5">
+      <div className="flex h-2 items-center gap-1">
+        {Array.from({ length: segmentCount }, (_, index) => {
+          const active = index < activeSegments;
+          return (
+            <div
+              className={cn(
+                "h-full flex-1 rounded-full transition-opacity duration-300",
+                active ? accentClass : railClass,
+                active ? "opacity-100" : "opacity-55"
+              )}
+              key={index}
+            />
+          );
+        })}
       </div>
     </div>
   );
 }
 
 export function DeckVisualizer({ className }: { className?: string }) {
-  const { soundId, isPlaying, deckSide, peakLevel } = useDeckContext();
-  const analysis = useDeckAnalysis(soundId, Boolean(soundId));
+  const {
+    deckSide,
+    trackProgress,
+    isSeekable,
+    hasTracklist,
+    tracks,
+    currentTrackIndex,
+    peakLevel,
+    isPlaying,
+  } = useDeckContext();
+
   const tone = deckTone(deckSide);
-  const signalPeak = analysis.levels.peak || Math.max(peakLevel.left, peakLevel.right);
+  const progress =
+    isSeekable && trackProgress && trackProgress.duration > 0
+      ? clamp01(trackProgress.position / trackProgress.duration)
+      : 0;
+
+  const remaining =
+    isSeekable && trackProgress
+      ? Math.max(0, trackProgress.duration - trackProgress.position)
+      : 0;
+
+  const currentLabel = isSeekable
+    ? `${formatTime(trackProgress?.position ?? 0)} / ${formatTime(trackProgress?.duration ?? 0)}`
+    : "LIVE";
+
+  const statusLabel = isSeekable
+    ? `−${formatTime(remaining)}`
+    : isPlaying
+      ? "live"
+      : "idle";
+
+  const upcomingTrack = hasTracklist
+    ? getUpcomingTrackName(tracks, currentTrackIndex)
+    : null;
 
   return (
     <div
       className={cn(
-        "space-y-2 rounded-md border bg-black/20 px-2 py-2",
+        "space-y-2 rounded-md border border-border/40 bg-transparent px-0.5 py-1",
         tone.border,
         className
       )}
     >
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <span
-            className="h-2 w-2 rounded-full"
-            style={{
-              background: tone.accent,
-              opacity: isPlaying ? 1 : 0.45,
-              boxShadow: isPlaying ? `0 0 12px ${tone.accent}` : "none",
-            }}
-          />
-          <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-            Signal
-          </span>
-        </div>
-        <span className="font-mono text-[10px] text-muted-foreground/70">
-          {formatDbLike(signalPeak)}
+      <div className="flex items-center justify-between gap-2 px-1">
+        <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground/75">
+          Timeline
+        </span>
+        <span className={cn("font-mono text-[10px]", tone.text)}>
+          {statusLabel}
         </span>
       </div>
 
-      <WaveformStrip accent={tone.accent} waveform={analysis.waveform} />
-      <SpectrumStrip accent={tone.accent} spectrum={analysis.spectrum} />
-
-      <div
-        className="grid grid-cols-[1fr_auto] items-center gap-2 rounded-sm border border-white/5 px-2 py-1.5"
-        style={{ background: tone.accentSoft }}
-      >
-        <PeakMeter
-          compact
-          left={analysis.levels.left || peakLevel.left}
-          orientation="horizontal"
-          right={analysis.levels.right || peakLevel.right}
+      <div className="space-y-2 rounded-md border border-white/5 bg-white/[0.02] px-2 py-2">
+        <TimelineBar
+          accentClass={tone.accent}
+          progress={progress}
+          railClass={tone.rail}
         />
-        <span className="min-w-14 text-right font-mono text-[10px] tabular-nums text-muted-foreground/85">
-          {isPlaying ? "live" : "idle"}
-        </span>
+
+        <div className="flex items-center justify-between gap-2 font-mono text-[10px] tabular-nums text-muted-foreground/70">
+          <span>{currentLabel}</span>
+          {hasTracklist && tracks ? (
+            <span>
+              {Math.min(currentTrackIndex + 1, tracks.length)}/{tracks.length}
+            </span>
+          ) : (
+            <span>{isSeekable ? "track" : "stream"}</span>
+          )}
+        </div>
+
+        {upcomingTrack ? (
+          <div className="flex items-center justify-between gap-2 border-white/5 border-t pt-1.5">
+            <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/55">
+              Next
+            </span>
+            <span className="truncate text-right text-[11px] text-muted-foreground/80">
+              {upcomingTrack}
+            </span>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between gap-2 border-white/5 border-t pt-1.5">
+            <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/55">
+              Signal
+            </span>
+            <div className="w-28">
+              <PeakMeter
+                compact
+                left={peakLevel.left}
+                orientation="horizontal"
+                right={peakLevel.right}
+              />
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

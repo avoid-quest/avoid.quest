@@ -1,4 +1,6 @@
 import { cn } from "@avoid.quest/ui/lib/utils";
+import { useMemo } from "react";
+import { useDeckWaveformHistory } from "@/lib/hooks/use-deck-waveform-history";
 import { useDeckContext } from "./deck-context";
 import { PeakMeter } from "../shared/peak-meter";
 import { formatTime } from "../shared/format-utils";
@@ -6,16 +8,14 @@ import { formatTime } from "../shared/format-utils";
 function deckTone(deckSide: "left" | "right") {
   return deckSide === "left"
     ? {
-        accent: "bg-blue-400/80",
-        rail: "bg-blue-500/10",
-        border: "border-blue-500/10",
-        text: "text-blue-200/85",
+        accent: "#2dd4bf",
+        accentSoft: "rgba(45, 212, 191, 0.12)",
+        border: "border-emerald-400/10",
       }
     : {
-        accent: "bg-pink-400/80",
-        rail: "bg-pink-500/10",
-        border: "border-pink-500/10",
-        text: "text-pink-200/85",
+        accent: "#22c55e",
+        accentSoft: "rgba(34, 197, 94, 0.12)",
+        border: "border-lime-400/10",
       };
 }
 
@@ -30,39 +30,65 @@ function getUpcomingTrackName(
   if (!tracks || tracks.length === 0) {
     return null;
   }
-  const next = tracks[currentTrackIndex + 1];
-  return next?.name ?? null;
+  return tracks[currentTrackIndex + 1]?.name ?? null;
 }
 
-function TimelineBar({
+function RollingWaveform({
+  samples,
   progress,
-  accentClass,
-  railClass,
+  accent,
+  isLive,
 }: {
-  progress: number;
-  accentClass: string;
-  railClass: string;
+  samples: number[];
+  progress: number | null;
+  accent: string;
+  isLive: boolean;
 }) {
-  const normalized = clamp01(progress);
-  const segmentCount = 24;
-  const activeSegments = Math.round(normalized * segmentCount);
+  const bars = useMemo(() => {
+    if (samples.length === 0) {
+      return [];
+    }
+    return samples.map((value) => clamp01(value));
+  }, [samples]);
 
   return (
     <div className="space-y-1.5">
-      <div className="flex h-2 items-center gap-1">
-        {Array.from({ length: segmentCount }, (_, index) => {
-          const active = index < activeSegments;
-          return (
-            <div
-              className={cn(
-                "h-full flex-1 rounded-full transition-opacity duration-300",
-                active ? accentClass : railClass,
-                active ? "opacity-100" : "opacity-55"
-              )}
-              key={index}
-            />
-          );
-        })}
+      <div className="flex items-center justify-between">
+        <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground/65">
+          {isLive ? "Live buffer" : "Track waveform"}
+        </span>
+        <span className="font-mono text-[10px] text-muted-foreground/55">
+          {isLive ? "recent audio" : "time-aligned"}
+        </span>
+      </div>
+
+      <div className="relative h-14 overflow-hidden rounded-sm border border-white/5 bg-black/20 px-1.5 py-1.5">
+        <div className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-white/5" />
+
+        <div className="flex h-full items-center gap-px">
+          {bars.map((value, index) => {
+            const height = Math.max(4, value * 100 * 0.9);
+            return (
+              <div className="flex h-full flex-1 items-center justify-center" key={index}>
+                <div
+                  className="w-full rounded-full"
+                  style={{
+                    height,
+                    background: accent,
+                    opacity: 0.12 + value * 0.88,
+                  }}
+                />
+              </div>
+            );
+          })}
+        </div>
+
+        {progress !== null && (
+          <div
+            className="pointer-events-none absolute inset-y-1 w-px bg-white/70"
+            style={{ left: `calc(${clamp01(progress) * 100}% - 0.5px)` }}
+          />
+        )}
       </div>
     </div>
   );
@@ -71,6 +97,7 @@ function TimelineBar({
 export function DeckVisualizer({ className }: { className?: string }) {
   const {
     deckSide,
+    soundId,
     trackProgress,
     isSeekable,
     hasTracklist,
@@ -81,10 +108,12 @@ export function DeckVisualizer({ className }: { className?: string }) {
   } = useDeckContext();
 
   const tone = deckTone(deckSide);
+  const { samples, hasSignal } = useDeckWaveformHistory(soundId, Boolean(soundId));
+
   const progress =
     isSeekable && trackProgress && trackProgress.duration > 0
       ? clamp01(trackProgress.position / trackProgress.duration)
-      : 0;
+      : null;
 
   const remaining =
     isSeekable && trackProgress
@@ -93,13 +122,9 @@ export function DeckVisualizer({ className }: { className?: string }) {
 
   const currentLabel = isSeekable
     ? `${formatTime(trackProgress?.position ?? 0)} / ${formatTime(trackProgress?.duration ?? 0)}`
-    : "LIVE";
-
-  const statusLabel = isSeekable
-    ? `−${formatTime(remaining)}`
     : isPlaying
-      ? "live"
-      : "idle";
+      ? "LIVE"
+      : "IDLE";
 
   const upcomingTrack = hasTracklist
     ? getUpcomingTrackName(tracks, currentTrackIndex)
@@ -108,25 +133,29 @@ export function DeckVisualizer({ className }: { className?: string }) {
   return (
     <div
       className={cn(
-        "space-y-2 rounded-md border border-border/40 bg-transparent px-0.5 py-1",
+        "space-y-2 rounded-md border bg-transparent px-0.5 py-1",
         tone.border,
         className
       )}
     >
       <div className="flex items-center justify-between gap-2 px-1">
         <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground/75">
-          Timeline
+          Waveform
         </span>
-        <span className={cn("font-mono text-[10px]", tone.text)}>
-          {statusLabel}
+        <span className="font-mono text-[10px] text-muted-foreground/60">
+          {isSeekable ? `−${formatTime(remaining)}` : isPlaying ? "live" : "idle"}
         </span>
       </div>
 
-      <div className="space-y-2 rounded-md border border-white/5 bg-white/[0.02] px-2 py-2">
-        <TimelineBar
-          accentClass={tone.accent}
+      <div
+        className="space-y-2 rounded-md border border-white/5 px-2 py-2"
+        style={{ background: tone.accentSoft }}
+      >
+        <RollingWaveform
+          accent={tone.accent}
+          isLive={!isSeekable}
           progress={progress}
-          railClass={tone.rail}
+          samples={samples}
         />
 
         <div className="flex items-center justify-between gap-2 font-mono text-[10px] tabular-nums text-muted-foreground/70">
@@ -136,34 +165,36 @@ export function DeckVisualizer({ className }: { className?: string }) {
               {Math.min(currentTrackIndex + 1, tracks.length)}/{tracks.length}
             </span>
           ) : (
-            <span>{isSeekable ? "track" : "stream"}</span>
+            <span>{hasSignal ? "buffered" : "waiting"}</span>
           )}
         </div>
 
-        {upcomingTrack ? (
-          <div className="flex items-center justify-between gap-2 border-white/5 border-t pt-1.5">
-            <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/55">
-              Next
-            </span>
-            <span className="truncate text-right text-[11px] text-muted-foreground/80">
-              {upcomingTrack}
-            </span>
-          </div>
-        ) : (
-          <div className="flex items-center justify-between gap-2 border-white/5 border-t pt-1.5">
-            <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/55">
-              Signal
-            </span>
-            <div className="w-28">
-              <PeakMeter
-                compact
-                left={peakLevel.left}
-                orientation="horizontal"
-                right={peakLevel.right}
-              />
-            </div>
-          </div>
-        )}
+        <div className="flex items-center justify-between gap-2 border-white/5 border-t pt-1.5">
+          {upcomingTrack ? (
+            <>
+              <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/55">
+                Next
+              </span>
+              <span className="truncate text-right text-[11px] text-muted-foreground/80">
+                {upcomingTrack}
+              </span>
+            </>
+          ) : (
+            <>
+              <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/55">
+                Signal
+              </span>
+              <div className="w-28">
+                <PeakMeter
+                  compact
+                  left={peakLevel.left}
+                  orientation="horizontal"
+                  right={peakLevel.right}
+                />
+              </div>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );

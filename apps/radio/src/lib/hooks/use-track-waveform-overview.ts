@@ -19,7 +19,7 @@ function getWaveformSource(
   radio: Radio | null,
   metadata: PlatformMetadata | undefined
 ): WaveformSource | null {
-  if (!radio || !metadata) {
+  if (!radio) {
     return null;
   }
 
@@ -31,24 +31,29 @@ function getWaveformSource(
   }
 
   if (isStaticAudioMetadata(metadata) && metadata.itemType === "track") {
-    if (metadata.streamUrl.startsWith("blob:")) {
+    if (radio.streamUrl.startsWith("blob:")) {
       return {
-        url: metadata.streamUrl,
-        cacheKey: metadata.streamUrl,
+        url: radio.streamUrl,
+        cacheKey: radio.streamUrl,
       };
     }
 
-    if (metadata.requiresProxy && metadata.url) {
+    const baseUrl = metadata.url || radio.streamUrl;
+    if (!baseUrl) {
+      return null;
+    }
+
+    if (metadata.requiresProxy) {
       return {
-        url: buildProxyUrl(metadata.url),
-        cacheKey: `proxy:${metadata.url}`,
+        url: buildProxyUrl(baseUrl),
+        cacheKey: `proxy:${baseUrl}`,
       };
     }
 
-    if (metadata.url.startsWith("http://") || metadata.url.startsWith("https://")) {
+    if (baseUrl.startsWith("http://") || baseUrl.startsWith("https://")) {
       return {
-        url: metadata.url,
-        cacheKey: metadata.url,
+        url: baseUrl,
+        cacheKey: baseUrl,
       };
     }
   }
@@ -102,14 +107,17 @@ export function useTrackWaveformOverview(
 ): {
   samples: number[] | null;
   loading: boolean;
+  failed: boolean;
 } {
   const [samples, setSamples] = useState<number[] | null>(null);
   const [loading, setLoading] = useState(false);
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     if (!enabled) {
       setSamples(null);
       setLoading(false);
+      setFailed(false);
       return;
     }
 
@@ -117,6 +125,7 @@ export function useTrackWaveformOverview(
     if (!source) {
       setSamples(null);
       setLoading(false);
+      setFailed(false);
       return;
     }
 
@@ -125,11 +134,13 @@ export function useTrackWaveformOverview(
     if (cached) {
       setSamples(cached);
       setLoading(false);
+      setFailed(false);
       return;
     }
 
     let cancelled = false;
     setLoading(true);
+    setFailed(false);
 
     buildWaveformOverview(source.url, sampleCount)
       .then((result) => {
@@ -139,6 +150,7 @@ export function useTrackWaveformOverview(
         waveformCache.set(cacheKey, result);
         setSamples(result);
         setLoading(false);
+        setFailed(false);
       })
       .catch(() => {
         if (cancelled) {
@@ -146,6 +158,7 @@ export function useTrackWaveformOverview(
         }
         setSamples(null);
         setLoading(false);
+        setFailed(true);
       });
 
     return () => {
@@ -153,5 +166,5 @@ export function useTrackWaveformOverview(
     };
   }, [enabled, metadata, radio, sampleCount]);
 
-  return { samples, loading };
+  return { samples, loading, failed };
 }

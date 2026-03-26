@@ -56,6 +56,14 @@ function WaveformBars({
   );
 }
 
+function PlaceholderWaveform({ label }: { label: string }) {
+  return (
+    <div className="flex h-10 items-center justify-center rounded-sm bg-white/[0.02] px-2 text-[10px] text-muted-foreground/45">
+      {label}
+    </div>
+  );
+}
+
 export function DeckVisualizer({ className }: { className?: string }) {
   const {
     radio,
@@ -68,13 +76,14 @@ export function DeckVisualizer({ className }: { className?: string }) {
     metadata,
   } = useDeckContext();
 
-  const { samples: liveSamples, liveWindowSeconds } = useDeckWaveformHistory(
-    soundId,
-    Boolean(soundId) && !isSeekable
-  );
+  const { samples: liveSamples, liveWindowSeconds, hasSignal } =
+    useDeckWaveformHistory(soundId, Boolean(soundId) && !isSeekable);
 
-  const { samples: overviewSamples, loading: overviewLoading } =
-    useTrackWaveformOverview(radio, metadata, isSeekable);
+  const {
+    samples: overviewSamples,
+    loading: overviewLoading,
+    failed: overviewFailed,
+  } = useTrackWaveformOverview(radio, metadata, isSeekable);
 
   const progress =
     isSeekable && trackProgress && trackProgress.duration > 0
@@ -98,9 +107,8 @@ export function DeckVisualizer({ className }: { className?: string }) {
     return liveSamples.map((value) => value / max);
   }, [liveSamples]);
 
-  const waveformSamples = isSeekable
-    ? overviewSamples ?? Array.from({ length: 120 }, () => 0)
-    : liveNormalized;
+  const shouldShowOverview = isSeekable && Boolean(overviewSamples?.length);
+  const shouldShowLive = !isSeekable && hasSignal;
 
   const leftLabel = isSeekable
     ? formatTime(trackProgress?.position ?? 0)
@@ -114,14 +122,27 @@ export function DeckVisualizer({ className }: { className?: string }) {
     ? `${Math.min(currentTrackIndex + 1, tracks.length)}/${tracks.length}`
     : overviewLoading
       ? "analysing"
-      : "";
+      : overviewFailed
+        ? "unavailable"
+        : "";
 
   return (
     <div className={cn("space-y-1 px-0.5 pb-0.5", className)}>
-      <WaveformBars
-        playhead={isSeekable ? progress : undefined}
-        samples={waveformSamples}
-      />
+      {shouldShowOverview ? (
+        <WaveformBars playhead={progress} samples={overviewSamples ?? []} />
+      ) : shouldShowLive ? (
+        <WaveformBars samples={liveNormalized} />
+      ) : (
+        <PlaceholderWaveform
+          label={
+            isSeekable
+              ? overviewLoading
+                ? "analysing track"
+                : "waveform unavailable"
+              : "waiting for signal"
+          }
+        />
+      )}
 
       <div className="flex items-center justify-between gap-2 font-mono text-[10px] tabular-nums text-muted-foreground/55">
         <span>{leftLabel}</span>

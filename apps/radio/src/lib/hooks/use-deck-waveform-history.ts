@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useDeckAnalysis } from "./use-deck-analysis";
 
-const DEFAULT_HISTORY_SIZE = 96;
-const DEFAULT_UPDATE_MS = 120;
+const DEFAULT_HISTORY_SIZE = 120;
+const DEFAULT_UPDATE_MS = 140;
+const DEFAULT_LIVE_WINDOW_SECONDS = 12;
 
 function getEnvelopePeak(waveform: Float32Array | null): number {
   if (!waveform || waveform.length === 0) {
@@ -19,14 +20,24 @@ function getEnvelopePeak(waveform: Float32Array | null): number {
 export function useDeckWaveformHistory(
   soundId: string | null,
   enabled = true,
-  options: { historySize?: number; updateMs?: number } = {}
+  options: {
+    historySize?: number;
+    updateMs?: number;
+    liveWindowSeconds?: number;
+  } = {}
 ): {
   samples: number[];
   hasSignal: boolean;
   peak: number;
+  secondsPerSample: number;
+  liveWindowSeconds: number;
 } {
-  const { historySize = DEFAULT_HISTORY_SIZE, updateMs = DEFAULT_UPDATE_MS } =
-    options;
+  const {
+    historySize = DEFAULT_HISTORY_SIZE,
+    updateMs = DEFAULT_UPDATE_MS,
+    liveWindowSeconds = DEFAULT_LIVE_WINDOW_SECONDS,
+  } = options;
+
   const analysis = useDeckAnalysis(soundId, enabled);
   const [samples, setSamples] = useState<number[]>(() =>
     Array.from({ length: historySize }, () => 0)
@@ -65,5 +76,7 @@ export function useDeckWaveformHistory(
     samples,
     hasSignal: samples.some((value) => value > 0.001),
     peak,
+    secondsPerSample: liveWindowSeconds / historySize,
+    liveWindowSeconds,
   };
 }

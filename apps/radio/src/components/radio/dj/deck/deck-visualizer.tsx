@@ -2,20 +2,17 @@ import { cn } from "@avoid.quest/ui/lib/utils";
 import { useMemo } from "react";
 import { useDeckWaveformHistory } from "@/lib/hooks/use-deck-waveform-history";
 import { useDeckContext } from "./deck-context";
-import { PeakMeter } from "../shared/peak-meter";
 import { formatTime } from "../shared/format-utils";
 
 function deckTone(deckSide: "left" | "right") {
   return deckSide === "left"
     ? {
-        accent: "#2dd4bf",
-        accentSoft: "rgba(45, 212, 191, 0.12)",
-        border: "border-emerald-400/10",
+        accent: "rgba(255,255,255,0.88)",
+        accentSoft: "rgba(255,255,255,0.08)",
       }
     : {
-        accent: "#22c55e",
-        accentSoft: "rgba(34, 197, 94, 0.12)",
-        border: "border-lime-400/10",
+        accent: "rgba(255,255,255,0.82)",
+        accentSoft: "rgba(255,255,255,0.07)",
       };
 }
 
@@ -33,41 +30,22 @@ function getUpcomingTrackName(
   return tracks[currentTrackIndex + 1]?.name ?? null;
 }
 
-function RollingWaveform({
+function TrackOverviewWaveform({
   samples,
   progress,
   accent,
-  isLive,
 }: {
   samples: number[];
-  progress: number | null;
+  progress: number;
   accent: string;
-  isLive: boolean;
 }) {
-  const bars = useMemo(() => {
-    if (samples.length === 0) {
-      return [];
-    }
-    return samples.map((value) => clamp01(value));
-  }, [samples]);
-
   return (
-    <div className="space-y-1.5">
-      <div className="flex items-center justify-between">
-        <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground/65">
-          {isLive ? "Live buffer" : "Track waveform"}
-        </span>
-        <span className="font-mono text-[10px] text-muted-foreground/55">
-          {isLive ? "recent audio" : "time-aligned"}
-        </span>
-      </div>
-
-      <div className="relative h-14 overflow-hidden rounded-sm border border-white/5 bg-black/20 px-1.5 py-1.5">
+    <div className="space-y-1">
+      <div className="relative h-14 overflow-hidden rounded-sm bg-white/[0.03] px-1.5 py-1.5">
         <div className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-white/5" />
-
         <div className="flex h-full items-center gap-px">
-          {bars.map((value, index) => {
-            const height = Math.max(4, value * 100 * 0.9);
+          {samples.map((value, index) => {
+            const height = Math.max(3, clamp01(value) * 100 * 0.92);
             return (
               <div className="flex h-full flex-1 items-center justify-center" key={index}>
                 <div
@@ -75,20 +53,51 @@ function RollingWaveform({
                   style={{
                     height,
                     background: accent,
-                    opacity: 0.12 + value * 0.88,
+                    opacity: 0.12 + clamp01(value) * 0.88,
                   }}
                 />
               </div>
             );
           })}
         </div>
+        <div
+          className="pointer-events-none absolute inset-y-1 w-px bg-white"
+          style={{ left: `calc(${clamp01(progress) * 100}% - 0.5px)` }}
+        />
+      </div>
+    </div>
+  );
+}
 
-        {progress !== null && (
-          <div
-            className="pointer-events-none absolute inset-y-1 w-px bg-white/70"
-            style={{ left: `calc(${clamp01(progress) * 100}% - 0.5px)` }}
-          />
-        )}
+function LiveRollingWaveform({
+  samples,
+  accent,
+}: {
+  samples: number[];
+  accent: string;
+}) {
+  return (
+    <div className="space-y-1">
+      <div className="relative h-14 overflow-hidden rounded-sm bg-white/[0.03] px-1.5 py-1.5">
+        <div className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-white/5" />
+        <div className="flex h-full items-center gap-px">
+          {samples.map((value, index) => {
+            const height = Math.max(3, clamp01(value) * 100 * 0.92);
+            return (
+              <div className="flex h-full flex-1 items-center justify-center" key={index}>
+                <div
+                  className="w-full rounded-full"
+                  style={{
+                    height,
+                    background: accent,
+                    opacity: 0.12 + clamp01(value) * 0.88,
+                  }}
+                />
+              </div>
+            );
+          })}
+        </div>
+        <div className="pointer-events-none absolute inset-y-1 right-1.5 w-px bg-white/70" />
       </div>
     </div>
   );
@@ -103,99 +112,84 @@ export function DeckVisualizer({ className }: { className?: string }) {
     hasTracklist,
     tracks,
     currentTrackIndex,
-    peakLevel,
-    isPlaying,
   } = useDeckContext();
 
   const tone = deckTone(deckSide);
-  const { samples, hasSignal } = useDeckWaveformHistory(soundId, Boolean(soundId));
+  const { samples, liveWindowSeconds } = useDeckWaveformHistory(
+    soundId,
+    Boolean(soundId)
+  );
 
   const progress =
     isSeekable && trackProgress && trackProgress.duration > 0
       ? clamp01(trackProgress.position / trackProgress.duration)
-      : null;
+      : 0;
 
   const remaining =
     isSeekable && trackProgress
       ? Math.max(0, trackProgress.duration - trackProgress.position)
       : 0;
 
-  const currentLabel = isSeekable
-    ? `${formatTime(trackProgress?.position ?? 0)} / ${formatTime(trackProgress?.duration ?? 0)}`
-    : isPlaying
-      ? "LIVE"
-      : "IDLE";
-
   const upcomingTrack = hasTracklist
     ? getUpcomingTrackName(tracks, currentTrackIndex)
     : null;
 
+  const leftLabel = isSeekable
+    ? formatTime(trackProgress?.position ?? 0)
+    : `-${Math.round(liveWindowSeconds)}s`;
+  const rightLabel = isSeekable
+    ? `-${formatTime(remaining)}`
+    : "now";
+
+  const centerLabel = isSeekable
+    ? formatTime(trackProgress?.duration ?? 0)
+    : null;
+
+  const summaryLabel = isSeekable
+    ? hasTracklist && tracks
+      ? `${Math.min(currentTrackIndex + 1, tracks.length)}/${tracks.length}`
+      : "track"
+    : "live";
+
+  const footerLabel = upcomingTrack ?? "";
+
+  const normalizedSamples = useMemo(() => {
+    if (!samples.length) {
+      return [];
+    }
+
+    if (isSeekable) {
+      return samples;
+    }
+
+    const max = Math.max(...samples, 0.0001);
+    return samples.map((value) => value / max);
+  }, [isSeekable, samples]);
+
   return (
-    <div
-      className={cn(
-        "space-y-2 rounded-md border bg-transparent px-0.5 py-1",
-        tone.border,
-        className
-      )}
-    >
-      <div className="flex items-center justify-between gap-2 px-1">
-        <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground/75">
-          Waveform
-        </span>
-        <span className="font-mono text-[10px] text-muted-foreground/60">
-          {isSeekable ? `−${formatTime(remaining)}` : isPlaying ? "live" : "idle"}
-        </span>
-      </div>
-
-      <div
-        className="space-y-2 rounded-md border border-white/5 px-2 py-2"
-        style={{ background: tone.accentSoft }}
-      >
-        <RollingWaveform
+    <div className={cn("space-y-1.5 px-0.5 py-1", className)}>
+      {isSeekable ? (
+        <TrackOverviewWaveform
           accent={tone.accent}
-          isLive={!isSeekable}
           progress={progress}
-          samples={samples}
+          samples={normalizedSamples}
         />
+      ) : (
+        <LiveRollingWaveform accent={tone.accent} samples={normalizedSamples} />
+      )}
 
-        <div className="flex items-center justify-between gap-2 font-mono text-[10px] tabular-nums text-muted-foreground/70">
-          <span>{currentLabel}</span>
-          {hasTracklist && tracks ? (
-            <span>
-              {Math.min(currentTrackIndex + 1, tracks.length)}/{tracks.length}
-            </span>
-          ) : (
-            <span>{hasSignal ? "buffered" : "waiting"}</span>
-          )}
-        </div>
-
-        <div className="flex items-center justify-between gap-2 border-white/5 border-t pt-1.5">
-          {upcomingTrack ? (
-            <>
-              <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/55">
-                Next
-              </span>
-              <span className="truncate text-right text-[11px] text-muted-foreground/80">
-                {upcomingTrack}
-              </span>
-            </>
-          ) : (
-            <>
-              <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/55">
-                Signal
-              </span>
-              <div className="w-28">
-                <PeakMeter
-                  compact
-                  left={peakLevel.left}
-                  orientation="horizontal"
-                  right={peakLevel.right}
-                />
-              </div>
-            </>
-          )}
-        </div>
+      <div className="flex items-center justify-between gap-2 font-mono text-[10px] tabular-nums text-muted-foreground/60">
+        <span>{leftLabel}</span>
+        <span>{summaryLabel}</span>
+        <span>{rightLabel}</span>
       </div>
+
+      {(centerLabel || footerLabel) && (
+        <div className="flex items-center justify-between gap-2 text-[10px] text-muted-foreground/50">
+          <span className="font-mono tabular-nums">{centerLabel ?? ""}</span>
+          <span className="truncate text-right">{footerLabel}</span>
+        </div>
+      )}
     </div>
   );
 }

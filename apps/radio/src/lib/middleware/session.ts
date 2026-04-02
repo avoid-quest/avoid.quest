@@ -1,13 +1,32 @@
 const SESSION_COOKIE_NAME = "radio_session_id";
-const SESSION_MAX_AGE = 60 * 60 * 24 * 365; // 1 year
+// Aligned with current proxy rate-limit window in apps/radio/wrangler.jsonc (period: 10s)
+const SESSION_COOKIE_MAX_AGE_SECONDS = 10;
 
 /**
- * Create a session cookie string
- * @param sessionId - The session ID
- * @returns Cookie string
+ * Create a secure session cookie string.
  */
 export function createSessionCookie(sessionId: string): string {
-  const isProduction = process.env.NODE_ENV === "production";
-  const secure = isProduction ? "Secure; " : "";
-  return `${SESSION_COOKIE_NAME}=${sessionId}; Path=/; Max-Age=${SESSION_MAX_AGE}; HttpOnly; SameSite=Lax; ${secure}`;
+  return `${SESSION_COOKIE_NAME}=${sessionId}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${SESSION_COOKIE_MAX_AGE_SECONDS}`;
+}
+
+/**
+ * Attach session cookie to response when required.
+ */
+export function attachSessionCookie(
+  response: Response,
+  sessionId: string,
+  shouldSetCookie: boolean
+): Response {
+  if (!shouldSetCookie) {
+    return response;
+  }
+
+  const headers = new Headers(response.headers);
+  headers.append("Set-Cookie", createSessionCookie(sessionId));
+
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
 }

@@ -12,6 +12,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 import { getCorsHeaders, getCorsOptionsHeaders } from "@/lib/middleware/cors";
 import { validateAuthAndRateLimit } from "@/lib/middleware/rate-limit";
+import { attachSessionCookie } from "@/lib/middleware/session";
 
 const URL_SCHEMA = z
   .string()
@@ -231,10 +232,25 @@ export const Route = createFileRoute("/api/bandcamp-proxy")({
             const urlParam = new URL(request.url).searchParams.get("url");
             const urlValidation = validateUrl(urlParam, origin, requestId);
             if (urlValidation instanceof Response) {
-              return urlValidation;
+              return attachSessionCookie(
+                urlValidation,
+                authResult.sessionId,
+                authResult.shouldSetCookie
+              );
             }
 
-            return fetchWithTimeout(urlValidation, request, origin, requestId);
+            const response = await fetchWithTimeout(
+              urlValidation,
+              request,
+              origin,
+              requestId
+            );
+
+            return attachSessionCookie(
+              response,
+              authResult.sessionId,
+              authResult.shouldSetCookie
+            );
           },
         });
       },

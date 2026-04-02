@@ -13,6 +13,7 @@ import { z } from "zod";
 import { logSSRFAttempt } from "@/lib/logger";
 import { getCorsHeaders, getCorsOptionsHeaders } from "@/lib/middleware/cors";
 import { validateAuthAndRateLimit } from "@/lib/middleware/rate-limit";
+import { attachSessionCookie } from "@/lib/middleware/session";
 
 const ALLOWED_SOUNDCLOUD_DOMAINS = [
   "cf-media.sndcdn.com",
@@ -294,10 +295,25 @@ export const Route = createFileRoute("/api/soundcloud-proxy")({
               requestId
             );
             if (urlValidation instanceof Response) {
-              return urlValidation;
+              return attachSessionCookie(
+                urlValidation,
+                authResult.sessionId,
+                authResult.shouldSetCookie
+              );
             }
 
-            return fetchWithTimeout(urlValidation, request, origin, requestId);
+            const response = await fetchWithTimeout(
+              urlValidation,
+              request,
+              origin,
+              requestId
+            );
+
+            return attachSessionCookie(
+              response,
+              authResult.sessionId,
+              authResult.shouldSetCookie
+            );
           },
         });
       },

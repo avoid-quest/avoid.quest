@@ -12,6 +12,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 import { getCorsHeaders, getCorsOptionsHeaders } from "@/lib/middleware/cors";
 import { validateAuthAndRateLimit } from "@/lib/middleware/rate-limit";
+import { isAllowedBandcampUrl } from "./bandcamp-proxy-url-validation";
 
 const URL_SCHEMA = z
   .string()
@@ -72,7 +73,9 @@ function validateUrl(
     );
   }
 
-  if (!urlParam.includes("bcbits.com")) {
+  const urlObj = new URL(urlParam);
+
+  if (!isAllowedBandcampUrl(urlObj)) {
     return problemWithCors(
       new AppError({
         code: "BANDCAMP_PROXY_INVALID_DOMAIN",

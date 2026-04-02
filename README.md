@@ -41,6 +41,11 @@ bun run fix          # Auto-fix lint issues
 bun run cleanup      # Clean node_modules and build artifacts
 ```
 
+## Security
+
+Per segnalazioni di sicurezza, **non usare issue pubbliche**.
+Consulta [SECURITY.md](./SECURITY.md) per canali privati e policy di disclosure.
+
 ## Cloudflare Deployment
 
 Each app deploys independently via Wrangler:

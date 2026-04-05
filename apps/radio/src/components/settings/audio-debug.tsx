@@ -8,6 +8,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@avoid.quest/ui/components/select";
+import { useState } from "react";
+import { toast } from "sonner";
 import {
   type AudioDebugSnapshot,
   clearAudioDebugSources,
@@ -58,6 +60,129 @@ function networkStateLabel(value: number | null): string {
       return "3 NETWORK_NO_SOURCE";
     default:
       return "n/a";
+  }
+}
+
+function formatReportValue(value: number | string | null | boolean): string {
+  if (value === null) {
+    return "n/a";
+  }
+
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) {
+      return "n/a";
+    }
+    return Number.isInteger(value) ? String(value) : value.toFixed(3);
+  }
+
+  return String(value);
+}
+
+function buildAudioDebugReport(
+  snapshots: AudioDebugSnapshot[],
+  loadModeOverride: Html5LoadModeOverride
+): string {
+  const standalone =
+    typeof window !== "undefined" &&
+    "matchMedia" in window &&
+    window.matchMedia("(display-mode: standalone)").matches;
+
+  const lines = [
+    "Radio Audio Debug Report",
+    `generatedAt=${new Date().toISOString()}`,
+    `href=${window.location.href}`,
+    `origin=${window.location.origin}`,
+    `secureContext=${String(window.isSecureContext)}`,
+    `displayModeStandalone=${String(standalone)}`,
+    `userAgent=${navigator.userAgent}`,
+    `loadModeOverride=${loadModeOverride}`,
+    `snapshotCount=${snapshots.length}`,
+    "",
+  ];
+
+  if (snapshots.length === 0) {
+    lines.push("No active audio sources.");
+    return lines.join("\n");
+  }
+
+  snapshots.forEach((snapshot, index) => {
+    lines.push(`[snapshot ${index + 1}]`);
+    lines.push(
+      `station=${snapshot.stationName ?? "n/a"} mode=${snapshot.mode} radioId=${snapshot.radioId ?? "n/a"} id=${snapshot.id}`
+    );
+    lines.push(
+      `host=${snapshot.host} deliveryPath=${snapshot.deliveryPath} processingPath=${snapshot.processingPath}`
+    );
+    lines.push(
+      `loadMode=${snapshot.loadMode ?? "n/a"} crossOrigin=${snapshot.crossOrigin ?? "none"}`
+    );
+    lines.push(
+      `streamUrl=${snapshot.streamUrl ?? "n/a"} currentSrc=${snapshot.currentSrc ?? "n/a"}`
+    );
+    lines.push(
+      `readyState=${readyStateLabel(snapshot.readyState)} networkState=${networkStateLabel(snapshot.networkState)} bufferedAheadSec=${formatReportValue(snapshot.bufferedAheadSec)}`
+    );
+    lines.push(
+      `firstPlayableMs=${formatReportValue(snapshot.firstPlayableMs)} totalBufferingMs=${formatReportValue(snapshot.totalBufferingMs)} maxGapMs=${formatReportValue(snapshot.maxGapMs)} waitingSinceMs=${formatReportValue(snapshot.waitingSinceMs)}`
+    );
+    lines.push(`eventCounts=${JSON.stringify(snapshot.eventCounts)}`);
+    lines.push(
+      `contextState=${snapshot.context?.state ?? "n/a"} sampleRate=${formatReportValue(snapshot.context?.sampleRate ?? null)} baseLatency=${formatReportValue(snapshot.context?.baseLatency ?? null)} outputLatency=${formatReportValue(snapshot.context?.outputLatency ?? null)}`
+    );
+    lines.push(
+      `usesWorklet=${String(snapshot.usesWorklet)} workletActive=${String(snapshot.workletActive)} workletBypassed=${String(snapshot.workletBypassed)} effectsActive=${String(snapshot.effectsActive)} filterActive=${String(snapshot.filterActive)}`
+    );
+    lines.push(
+      `createdAt=${new Date(snapshot.createdAt).toISOString()} lastUpdatedAt=${new Date(snapshot.lastUpdatedAt).toISOString()} lastActivityAt=${snapshot.lastActivityAt ? new Date(snapshot.lastActivityAt).toISOString() : "n/a"}`
+    );
+
+    if (snapshot.recentEvents.length > 0) {
+      lines.push("recentEvents:");
+      for (const event of snapshot.recentEvents) {
+        lines.push(
+          `  ${new Date(event.at).toISOString()} ${event.name} ready=${readyStateLabel(event.readyState)} network=${networkStateLabel(event.networkState)} bufferedAheadSec=${formatReportValue(event.bufferedAheadSec)} currentTime=${formatReportValue(event.currentTime)}`
+        );
+      }
+    } else {
+      lines.push("recentEvents: none");
+    }
+
+    lines.push("");
+  });
+
+  return lines.join("\n");
+}
+
+async function copyTextToClipboard(text: string): Promise<void> {
+  if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return;
+    } catch {
+      // Fall back to selection-based copy below.
+    }
+  }
+
+  if (typeof document === "undefined") {
+    throw new Error("Clipboard copy requires a browser document.");
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "true");
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  textarea.style.pointerEvents = "none";
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+  textarea.setSelectionRange(0, textarea.value.length);
+
+  const copied = document.execCommand("copy");
+  document.body.removeChild(textarea);
+
+  if (!copied) {
+    throw new Error("Clipboard copy failed.");
   }
 }
 
@@ -145,12 +270,27 @@ function AudioDebugSnapshotCard({
 }
 
 export function AudioDebug() {
+  const [isCopying, setIsCopying] = useState(false);
   const { enabled, loadModeOverride, setLoadModeOverride, snapshots } =
     useAudioDebug();
 
   if (!enabled) {
     return null;
   }
+
+  const handleCopyLogs = async () => {
+    setIsCopying(true);
+    try {
+      await copyTextToClipboard(
+        buildAudioDebugReport(snapshots, loadModeOverride)
+      );
+      toast.success("Audio debug logs copied");
+    } catch {
+      toast.error("Failed to copy audio debug logs");
+    } finally {
+      setIsCopying(false);
+    }
+  };
 
   return (
     <div className="space-y-3 rounded-lg border border-amber-500/40 bg-amber-500/5 p-3">
@@ -163,13 +303,23 @@ export function AudioDebug() {
             Hidden diagnostics for stream path, buffering, and worklet usage.
           </p>
         </div>
-        <Button
-          onClick={() => clearAudioDebugSources()}
-          size="sm"
-          variant="outline"
-        >
-          Clear
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            disabled={isCopying}
+            onClick={handleCopyLogs}
+            size="sm"
+            variant="outline"
+          >
+            {isCopying ? "Copying..." : "Copy Logs"}
+          </Button>
+          <Button
+            onClick={() => clearAudioDebugSources()}
+            size="sm"
+            variant="outline"
+          >
+            Clear
+          </Button>
+        </div>
       </div>
 
       <div className="grid gap-3 md:grid-cols-[minmax(0,220px)_1fr]">

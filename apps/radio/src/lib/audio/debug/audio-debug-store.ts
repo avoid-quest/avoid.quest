@@ -27,6 +27,13 @@ const DIAGNOSTIC_DEDUPE_MS = 30_000;
 
 const listeners = new Set<() => void>();
 const snapshots = new Map<string, AudioDebugSnapshot>();
+let snapshotRevision = 0;
+let cachedHookSnapshot: {
+  enabled: boolean;
+  snapshots: AudioDebugSnapshot[];
+  loadModeOverride: Html5LoadModeOverride;
+} | null = null;
+let cachedHookSnapshotRevision = -1;
 
 const ACTIVITY_EVENTS = new Set<AudioDebugEventName>([
   "progress",
@@ -43,6 +50,7 @@ const BUFFER_END_EVENTS = new Set<AudioDebugEventName>([
 ]);
 
 function emit(): void {
+  snapshotRevision += 1;
   for (const listener of listeners) {
     listener();
   }
@@ -504,23 +512,43 @@ function getHookSnapshot(): {
   snapshots: AudioDebugSnapshot[];
   loadModeOverride: Html5LoadModeOverride;
 } {
-  return {
-    enabled: isAudioDebugEnabled(),
+  const enabled = isAudioDebugEnabled();
+  const loadModeOverride = getLoadModeOverride();
+
+  if (
+    cachedHookSnapshot !== null &&
+    cachedHookSnapshotRevision === snapshotRevision &&
+    cachedHookSnapshot.enabled === enabled &&
+    cachedHookSnapshot.loadModeOverride === loadModeOverride
+  ) {
+    return cachedHookSnapshot;
+  }
+
+  cachedHookSnapshot = {
+    enabled,
     snapshots: getAudioDebugSnapshots(),
-    loadModeOverride: getLoadModeOverride(),
+    loadModeOverride,
   };
+  cachedHookSnapshotRevision = snapshotRevision;
+  return cachedHookSnapshot;
 }
+
+const SERVER_SNAPSHOT: {
+  enabled: false;
+  snapshots: [];
+  loadModeOverride: Html5LoadModeOverride;
+} = {
+  enabled: false,
+  snapshots: [],
+  loadModeOverride: "auto" as Html5LoadModeOverride,
+};
 
 function getServerSnapshot(): {
   enabled: false;
   snapshots: [];
   loadModeOverride: Html5LoadModeOverride;
 } {
-  return {
-    enabled: false,
-    snapshots: [],
-    loadModeOverride: "auto",
-  };
+  return SERVER_SNAPSHOT;
 }
 
 export function useAudioDebug() {

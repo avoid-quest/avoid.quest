@@ -10,6 +10,22 @@
  * - hooks/: React integration (useAudio, useSingleAudio, useDjAudio)
  */
 
+export {
+  clearAudioDebugSources,
+  getAudioDebugSnapshot,
+  getAudioDebugSnapshots,
+  isAudioDebugEnabled,
+  useAudioDebug,
+} from "./debug/audio-debug-store.js";
+export type {
+  AudioDebugDeliveryPath,
+  AudioDebugEventCounts,
+  AudioDebugEventEntry,
+  AudioDebugEventName,
+  AudioDebugMode,
+  AudioDebugProcessingPath,
+  AudioDebugSnapshot,
+} from "./debug/audio-debug-types.js";
 // DSP Analysis
 export {
   FFTAnalyzer,
@@ -74,13 +90,17 @@ export {
   type CrossfadeConfig,
   CrossfadeController,
   getCrossfadeContext,
+  getLoadModeOverride,
   type HTML5AudioError,
   HTML5AudioManager,
   HTML5AudioPlayer,
   type HTML5AudioState,
   type HTML5AudioStateCallback,
+  type Html5LoadMode,
+  type Html5LoadModeOverride,
   initialHTML5AudioState,
   resumeCrossfadeContext,
+  setLoadModeOverride,
 } from "./html5/index.js";
 // High-level API (primary exports)
 export {
@@ -97,6 +117,7 @@ export {
 // Playback infrastructure
 export {
   AudioContextManager,
+  type AudioContextMetrics,
   type AudioDeviceInfo,
   type AudioError,
   type AudioErrorCode,
@@ -119,7 +140,9 @@ export {
   initialAudioState,
   MicSource,
   type MicSourceCallbacks,
+  peekAudioContext,
   type Radio,
+  readAudioContextMetrics,
   resumeAudioContext,
   suspendAudioContext,
   type Unsubscribe,

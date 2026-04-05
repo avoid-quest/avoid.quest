@@ -8,9 +8,12 @@
 // Audio Context
 export {
   AudioContextManager,
+  type AudioContextMetrics,
   type ContextStateCallback,
   getAudioContext,
   getAudioContextManager,
+  peekAudioContext,
+  readAudioContextMetrics,
   resumeAudioContext,
   suspendAudioContext,
 } from "./audio-context.js";

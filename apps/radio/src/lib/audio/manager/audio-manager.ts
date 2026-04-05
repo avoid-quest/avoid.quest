@@ -16,6 +16,12 @@ import {
   getProxiedBandcampUrl,
   getProxiedSoundCloudUrl,
 } from "@avoid.quest/platforms";
+import {
+  registerAudioDebugSource,
+  removeAudioDebugSource,
+  updateAudioDebugContext,
+  updateAudioDebugSnapshot,
+} from "../debug/audio-debug-store.js";
 import type { EffectConfig } from "../dsp/effects/types.js";
 import {
   type AudioState,
@@ -29,12 +35,18 @@ import {
   getAudioContext,
   Html5AudioSource,
   initialAudioState,
+  peekAudioContext,
   type Radio,
+  readAudioContextMetrics,
   resumeAudioContext,
   type Unsubscribe,
   WorkletManager,
 } from "../playback/index.js";
 import { safeDisconnect } from "../utils.js";
+import {
+  hasActiveEffects,
+  shouldUseWorkletProcessing,
+} from "./processing-path.js";
 
 /**
  * Filter configuration for simple biquad filtering
@@ -74,6 +86,9 @@ type SoundInstance = {
   loading: boolean;
   buffering: boolean;
   filterEnabled: boolean;
+  effects: Map<string, EffectConfig>;
+  effectsDryWet: number;
+  workletActive: boolean;
 };
 
 /**
@@ -221,9 +236,26 @@ export class AudioManager {
       loading: false,
       buffering: false,
       filterEnabled: false,
+      effects: new Map<string, EffectConfig>(),
+      effectsDryWet: 1,
+      workletActive: false,
     };
 
     this.sounds.set(id, instance);
+    registerAudioDebugSource({
+      id,
+      mode: "dj",
+      radio,
+      streamUrl: radio.streamUrl,
+      deliveryPath: "unknown",
+      processingPath: "bypass",
+      usesWorklet: this.workletModuleLoaded,
+      workletActive: false,
+      workletBypassed: false,
+      effectsActive: false,
+      filterActive: false,
+    });
+    this.syncInstanceDebugState(instance);
 
     // Notify ready state (sound is registered but not initialized)
     this.notifyListeners(id, {
@@ -270,11 +302,13 @@ export class AudioManager {
     if (!context) {
       throw new Error("Audio context not available");
     }
+    updateAudioDebugContext(soundId, readAudioContextMetrics(context));
 
     // Update instance state
     instance.volume = volume;
     instance.playing = true;
     instance.loading = true;
+    this.syncInstanceDebugState(instance);
 
     // Notify loading state
     this.notifyListeners(soundId, {
@@ -295,7 +329,10 @@ export class AudioManager {
     if (instance.html5Source?.isActive) {
       // Resuming existing source - tell worklet to resume
       const wm = this.workletManagers.get(soundId);
-      wm?.resumeSource(soundId);
+      if (instance.workletActive) {
+        wm?.resumeSource(soundId);
+      }
+      this.syncInstanceDebugState(instance);
     } else {
       // Clean up old source
       instance.html5Source?.cleanup();
@@ -305,6 +342,7 @@ export class AudioManager {
         onPlaying: () => {
           instance.loading = false;
           instance.buffering = false;
+          this.syncInstanceDebugState(instance);
           this.notifyListeners(soundId, {
             isPlaying: true,
             isLoading: false,
@@ -316,6 +354,7 @@ export class AudioManager {
         },
         onBuffering: (isBuffering) => {
           instance.buffering = isBuffering;
+          this.syncInstanceDebugState(instance);
           this.notifyListeners(soundId, {
             isPlaying: instance.playing,
             isLoading: false,
@@ -328,6 +367,7 @@ export class AudioManager {
         onError: (error) => {
           instance.playing = false;
           instance.loading = false;
+          this.syncInstanceDebugState(instance);
           this.notifyListeners(soundId, {
             isPlaying: false,
             isLoading: false,
@@ -346,6 +386,7 @@ export class AudioManager {
         },
         onEnded: () => {
           instance.playing = false;
+          this.syncInstanceDebugState(instance);
           this.notifyListeners(soundId, {
             isPlaying: false,
             isLoading: false,
@@ -390,6 +431,7 @@ export class AudioManager {
 
     // Set initial volume
     this.setVolume(soundId, volume);
+    this.syncInstanceDebugState(instance);
 
     // Start playback
     await instance.html5Source.play();
@@ -415,9 +457,11 @@ export class AudioManager {
     if (!context) {
       throw new Error("Audio context not available");
     }
+    updateAudioDebugContext(soundId, readAudioContextMetrics(context));
 
     instance.isDeviceInput = true;
     instance.loading = true;
+    this.syncInstanceDebugState(instance);
 
     this.notifyListeners(soundId, {
       isPlaying: false,
@@ -438,6 +482,7 @@ export class AudioManager {
       onActive: () => {
         instance.loading = false;
         instance.playing = true;
+        this.syncInstanceDebugState(instance);
         this.notifyListeners(soundId, {
           isPlaying: true,
           isLoading: false,
@@ -449,6 +494,7 @@ export class AudioManager {
       },
       onInactive: () => {
         instance.playing = false;
+        this.syncInstanceDebugState(instance);
         this.notifyListeners(soundId, {
           isPlaying: false,
           isLoading: false,
@@ -461,6 +507,7 @@ export class AudioManager {
       onError: (error) => {
         instance.playing = false;
         instance.loading = false;
+        this.syncInstanceDebugState(instance);
         this.notifyListeners(soundId, {
           isPlaying: false,
           isLoading: false,
@@ -492,6 +539,7 @@ export class AudioManager {
 
     // Set initial volume (after graph connection)
     this.setVolume(soundId, instance.volume);
+    this.syncInstanceDebugState(instance);
   }
 
   /**
@@ -552,6 +600,7 @@ export class AudioManager {
    *
    * @returns true if graph was connected successfully, false otherwise
    */
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: routing must keep worklet and bypass recovery in one place
   private async connectAudioGraph(instance: SoundInstance): Promise<boolean> {
     const sourceOutput =
       instance.html5Source?.output ?? instance.deviceSource?.output;
@@ -571,6 +620,11 @@ export class AudioManager {
     }
 
     const { preFaderSend, gain, pan, filter, analyser } = instance.nodes;
+    const shouldUseWorklet = shouldUseWorkletProcessing({
+      effects: instance.effects.values(),
+      effectsDryWet: instance.effectsDryWet,
+    });
+    const finalDestination = this.mainDelayNode ?? context.destination;
 
     // Disconnect any existing connections (may already be disconnected)
     safeDisconnect(sourceOutput, "AudioManager.connectAudioGraph");
@@ -579,58 +633,91 @@ export class AudioManager {
     safeDisconnect(pan, "AudioManager.connectAudioGraph");
     safeDisconnect(filter, "AudioManager.connectAudioGraph");
     safeDisconnect(analyser, "AudioManager.connectAudioGraph");
-
-    // Get or create per-sound worklet manager
-    const wm = await this.getOrCreateWorkletManager(instance.sourceId);
-
-    // Create worklet source for this sound (for effects processing)
-    wm.createStreamSource(instance.sourceId);
-    wm.startSource(instance.sourceId);
+    const existingWorklet = this.workletManagers.get(instance.sourceId);
+    if (existingWorklet?.outputNode) {
+      safeDisconnect(
+        existingWorklet.outputNode,
+        "AudioManager.connectAudioGraph"
+      );
+    }
 
     // Connect the graph (post-effects CUE routing)
-    // Source → Pan → Filter → Worklet (effects)
     sourceOutput.connect(pan);
     pan.connect(filter);
 
-    // Determine final destination (main delay node if available, else direct)
-    const finalDestination = this.mainDelayNode ?? context.destination;
+    let workletActive = false;
+    let usesWorklet = this.workletModuleLoaded;
 
-    if (wm.node && wm.outputNode) {
-      // Filter → Worklet input
-      filter.connect(wm.node);
+    if (shouldUseWorklet) {
+      try {
+        const wm = await this.getOrCreateWorkletManager(instance.sourceId);
+        usesWorklet = true;
 
-      // Worklet output → PreFaderSend (CUE tap, now post-effects)
-      wm.outputNode.connect(preFaderSend);
+        const hadSource = wm.hasSource(instance.sourceId);
+        wm.createStreamSource(instance.sourceId);
+        if (!hadSource) {
+          for (const effect of instance.effects.values()) {
+            wm.addEffect(
+              instance.sourceId,
+              effect.id,
+              effect.type,
+              this.convertEffectConfig(effect),
+              effect.order
+            );
+          }
+        }
+        if (instance.playing) {
+          wm.startSource(instance.sourceId);
+        }
+        wm.setEffectsDryWet(instance.sourceId, instance.effectsDryWet);
+        wm.setPeakMeterEnabled(
+          (this.meterListeners.get(instance.sourceId)?.size ?? 0) > 0
+        );
 
-      // PreFaderSend → Gain (channel fader)
-      preFaderSend.connect(gain);
-
-      // Gain → Analyser → MainDelay → Destination
-      gain.connect(analyser);
-      analyser.connect(finalDestination);
-    } else {
-      // Fallback: direct routing without worklet - effects bypassed
-      console.warn(
-        `[AudioManager] Worklet unavailable for ${instance.sourceId}, effects bypassed`
-      );
-      this.notifyListeners(instance.sourceId, {
-        ...initialAudioState,
-        error: {
-          id: generateErrorId(),
-          message: "Audio effects unavailable - worklet failed to initialize",
-          code: "WORKLET_UNAVAILABLE",
-          radio: instance.radio,
-          timestamp: Date.now(),
-          sourceId: instance.sourceId,
-        },
-      });
-
-      // Filter → PreFaderSend → Gain → Analyser → MainDelay → Destination
-      filter.connect(preFaderSend);
-      preFaderSend.connect(gain);
-      gain.connect(analyser);
-      analyser.connect(finalDestination);
+        if (wm.node && wm.outputNode) {
+          filter.connect(wm.node);
+          wm.outputNode.connect(preFaderSend);
+          workletActive = true;
+        }
+      } catch (error) {
+        console.warn(
+          `[AudioManager] Worklet unavailable for ${instance.sourceId}, effects bypassed`,
+          error
+        );
+        this.notifyListeners(instance.sourceId, {
+          ...initialAudioState,
+          error: {
+            id: generateErrorId(),
+            message: "Audio effects unavailable - worklet failed to initialize",
+            code: "WORKLET_UNAVAILABLE",
+            radio: instance.radio,
+            timestamp: Date.now(),
+            sourceId: instance.sourceId,
+          },
+        });
+      }
+    } else if (existingWorklet) {
+      existingWorklet.stopSource(instance.sourceId);
+      existingWorklet.destroyStreamSource(instance.sourceId);
+      existingWorklet.setPeakMeterEnabled(false);
+      usesWorklet = true;
     }
+
+    if (!workletActive) {
+      filter.connect(preFaderSend);
+    }
+
+    preFaderSend.connect(gain);
+    gain.connect(analyser);
+    analyser.connect(finalDestination);
+
+    instance.workletActive = workletActive;
+    this.syncInstanceDebugState(instance, {
+      usesWorklet,
+      processingPath: workletActive ? "worklet" : "bypass",
+      workletActive,
+      workletBypassed: usesWorklet && !workletActive,
+    });
 
     return true;
   }
@@ -645,6 +732,7 @@ export class AudioManager {
     }
 
     instance.playing = false;
+    this.syncInstanceDebugState(instance);
 
     // Device input: mute gain instead of stopping stream (instant unmute later)
     if (instance.isDeviceInput) {
@@ -655,7 +743,9 @@ export class AudioManager {
       }
     } else {
       instance.html5Source?.pause();
-      this.workletManagers.get(soundId)?.pauseSource(soundId);
+      if (instance.workletActive) {
+        this.workletManagers.get(soundId)?.pauseSource(soundId);
+      }
     }
 
     this.notifyListeners(soundId, {
@@ -678,9 +768,12 @@ export class AudioManager {
     }
 
     instance.playing = false;
+    this.syncInstanceDebugState(instance);
     instance.html5Source?.stop();
     instance.deviceSource?.stop();
-    this.workletManagers.get(soundId)?.stopSource(soundId);
+    if (instance.workletActive) {
+      this.workletManagers.get(soundId)?.stopSource(soundId);
+    }
 
     this.notifyListeners(soundId, {
       isPlaying: false,
@@ -734,6 +827,7 @@ export class AudioManager {
 
     this.sounds.delete(soundId);
     this.lastSoundVolumes.delete(soundId);
+    removeAudioDebugSource(soundId);
 
     this.notifyListeners(soundId, {
       ...initialAudioState,
@@ -872,6 +966,8 @@ export class AudioManager {
       // Bypass: set to allpass-like behavior
       filter.type = "allpass";
       filter.frequency.setTargetAtTime(1000, now, 0.05);
+      instance.filterEnabled = false;
+      this.syncInstanceDebugState(instance);
       return;
     }
 
@@ -891,6 +987,9 @@ export class AudioManager {
       filter.frequency.setTargetAtTime(freq, now, 0.05);
       filter.Q.setTargetAtTime(1.0, now, 0.05);
     }
+
+    instance.filterEnabled = true;
+    this.syncInstanceDebugState(instance);
   }
 
   /**
@@ -906,7 +1005,10 @@ export class AudioManager {
     }
 
     const clampedValue = Math.max(0, Math.min(1, value));
+    instance.effectsDryWet = clampedValue;
     this.workletManagers.get(soundId)?.setEffectsDryWet(soundId, clampedValue);
+    this.syncInstanceDebugState(instance);
+    this.refreshAudioGraph(soundId);
   }
 
   /**
@@ -1042,7 +1144,15 @@ export class AudioManager {
    */
   addEffect(soundId: string, config: EffectConfig): boolean {
     const wm = this.workletManagers.get(soundId);
-    if (!wm) {
+    const instance = this.sounds.get(soundId);
+    if (!instance) {
+      return false;
+    }
+    const workletHasSource = wm?.hasSource(soundId) ?? false;
+    instance.effects.set(config.id, config);
+    this.syncInstanceDebugState(instance);
+    this.refreshAudioGraph(soundId);
+    if (!(wm && workletHasSource)) {
       return false;
     }
 
@@ -1056,7 +1166,17 @@ export class AudioManager {
    * Remove an effect from a sound
    */
   removeEffect(soundId: string, effectId: string): void {
-    this.workletManagers.get(soundId)?.removeEffect(soundId, effectId);
+    const instance = this.sounds.get(soundId);
+    const wm = this.workletManagers.get(soundId);
+    const workletHasSource = wm?.hasSource(soundId) ?? false;
+    instance?.effects.delete(effectId);
+    if (instance) {
+      this.syncInstanceDebugState(instance);
+    }
+    if (wm && workletHasSource) {
+      wm.removeEffect(soundId, effectId);
+    }
+    this.refreshAudioGraph(soundId);
   }
 
   /**
@@ -1070,7 +1190,20 @@ export class AudioManager {
     config: Partial<EffectConfig>
   ): boolean {
     const wm = this.workletManagers.get(soundId);
-    if (!wm) {
+    const instance = this.sounds.get(soundId);
+    const workletHasSource = wm?.hasSource(soundId) ?? false;
+    if (instance) {
+      const existing = instance.effects.get(effectId);
+      if (existing) {
+        instance.effects.set(effectId, {
+          ...existing,
+          ...config,
+        } as EffectConfig);
+        this.syncInstanceDebugState(instance);
+        this.refreshAudioGraph(soundId);
+      }
+    }
+    if (!(wm && workletHasSource)) {
       return false;
     }
 
@@ -1083,6 +1216,16 @@ export class AudioManager {
    * Reorder effects in a sound's chain
    */
   reorderEffects(soundId: string, effectIds: string[]): void {
+    const instance = this.sounds.get(soundId);
+    if (instance) {
+      effectIds.forEach((effectId, index) => {
+        const existing = instance.effects.get(effectId);
+        if (existing) {
+          instance.effects.set(effectId, { ...existing, order: index });
+        }
+      });
+      this.syncInstanceDebugState(instance);
+    }
     this.workletManagers.get(soundId)?.reorderEffects(soundId, effectIds);
   }
 
@@ -1115,6 +1258,7 @@ export class AudioManager {
       filter.type = "highpass";
       filter.frequency.setTargetAtTime(0, now, 0.05);
       instance.filterEnabled = false;
+      this.syncInstanceDebugState(instance);
       return;
     }
 
@@ -1124,6 +1268,7 @@ export class AudioManager {
     filter.Q.setTargetAtTime(config.Q, now, 0.05);
     filter.gain.setTargetAtTime(config.gain, now, 0.05);
     instance.filterEnabled = true;
+    this.syncInstanceDebugState(instance);
   }
 
   /**
@@ -1200,12 +1345,14 @@ export class AudioManager {
     }
 
     this.meterListeners.get(soundId)?.add(callback);
+    this.workletManagers.get(soundId)?.setPeakMeterEnabled(true);
 
     return () => {
       const callbacks = this.meterListeners.get(soundId);
       if (callbacks) {
         callbacks.delete(callback);
         if (callbacks.size === 0) {
+          this.workletManagers.get(soundId)?.setPeakMeterEnabled(false);
           this.meterListeners.delete(soundId);
         }
       }
@@ -1366,6 +1513,7 @@ export class AudioManager {
   cleanup(): void {
     for (const soundId of this.sounds.keys()) {
       this.stopSound(soundId);
+      removeAudioDebugSource(soundId);
     }
 
     this.sounds.clear();
@@ -1407,6 +1555,77 @@ export class AudioManager {
   // ============================================
   // Private Methods
   // ============================================
+
+  private refreshAudioGraph(soundId: string): void {
+    const instance = this.sounds.get(soundId);
+    if (!instance?.nodes) {
+      return;
+    }
+
+    const hasSourceOutput =
+      instance.html5Source?.output != null ||
+      instance.deviceSource?.output != null;
+    if (!hasSourceOutput) {
+      this.syncInstanceDebugState(instance);
+      return;
+    }
+
+    const reconnectPromise = this.connectAudioGraph(instance);
+    reconnectPromise.catch((error) => {
+      console.warn(
+        `[AudioManager] Failed to refresh graph for ${soundId}`,
+        error
+      );
+    });
+  }
+
+  private syncInstanceDebugState(
+    instance: SoundInstance,
+    overrides?: {
+      usesWorklet?: boolean;
+      processingPath?: "worklet" | "bypass";
+      workletActive?: boolean;
+      workletBypassed?: boolean;
+    }
+  ): void {
+    const effectsActive = hasActiveEffects(instance.effects.values());
+    const usesWorklet =
+      overrides?.usesWorklet ??
+      (this.workletModuleLoaded || this.workletManagers.has(instance.sourceId));
+    const workletActive = overrides?.workletActive ?? instance.workletActive;
+    const processingPath =
+      overrides?.processingPath ?? (workletActive ? "worklet" : "bypass");
+    const workletBypassed =
+      overrides?.workletBypassed ?? (usesWorklet && !workletActive);
+
+    instance.workletActive = workletActive;
+
+    const context = peekAudioContext();
+    if (context) {
+      updateAudioDebugContext(
+        instance.sourceId,
+        readAudioContextMetrics(context)
+      );
+    }
+
+    updateAudioDebugSnapshot(instance.sourceId, {
+      processingPath,
+      usesWorklet,
+      workletActive,
+      workletBypassed,
+      effectsActive,
+      filterActive: instance.filterEnabled,
+    });
+
+    instance.html5Source?.updateDebugRoute({
+      processingPath,
+      usesWorklet,
+      workletActive,
+      workletBypassed,
+      effectsActive,
+      filterActive: instance.filterEnabled,
+    });
+  }
 
   /**
    * Start the master meter rAF loop (~30fps, every other frame)
@@ -1491,7 +1710,7 @@ export class AudioManager {
     this.masterSplitter.connect(this.masterAnalyserR, 1);
 
     // Load the worklet module once (will be used by all per-sound worklet managers)
-    await context.audioWorklet.addModule(workletProcessorUrl);
+    await WorkletManager.ensureModuleRegistered(context, workletProcessorUrl);
     this.workletModuleLoaded = true;
   }
 
@@ -1516,6 +1735,7 @@ export class AudioManager {
     wm = new WorkletManager(context, workletProcessorUrl);
     await wm.init();
     this.workletManagers.set(soundId, wm);
+    wm.setPeakMeterEnabled((this.meterListeners.get(soundId)?.size ?? 0) > 0);
 
     // Set up event handlers for this worklet manager
     wm.on("sourceEnded", ({ sourceId }) => {

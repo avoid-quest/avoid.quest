@@ -65,6 +65,7 @@ export const MessageType = {
 
   // Analysis control (main → worklet)
   ENABLE_ANALYSIS: "ENABLE_ANALYSIS",
+  ENABLE_PEAK_METER: "ENABLE_PEAK_METER",
 } as const;
 
 /**
@@ -921,6 +922,7 @@ export class DSPProcessor {
   private readonly analysisInterval = 3; // Send every N render quanta (~60fps)
 
   // Peak meter (always active, independent of analysis)
+  private peakMeterEnabled = false;
   private meterCounter = 0;
   private readonly meterInterval = 6; // Send every N render quanta (~30fps)
 
@@ -942,6 +944,10 @@ export class DSPProcessor {
       this.levelMeter = new LevelMeter(2048, 0.95);
       this.spectrumAnalyzer = new SpectrumAnalyzer(512);
     }
+  }
+
+  setPeakMeterEnabled(enabled: boolean): void {
+    this.peakMeterEnabled = enabled;
   }
 
   /**
@@ -1092,6 +1098,12 @@ export class DSPProcessor {
         this.setAnalysisEnabled(enabled);
         break;
       }
+
+      case MessageType.ENABLE_PEAK_METER: {
+        const { enabled } = payload as { enabled: boolean };
+        this.setPeakMeterEnabled(enabled);
+        break;
+      }
       default:
         // Log unknown message types for debugging version mismatches
         // Note: console.warn in AudioWorklet goes to browser console
@@ -1169,16 +1181,20 @@ export class DSPProcessor {
     );
 
     // Emit peak meter data (always active, throttled to ~60fps)
-    this.meterCounter++;
-    if (this.meterCounter >= this.meterInterval) {
-      this.meterCounter = 0;
-      let peakL = 0;
-      let peakR = 0;
-      for (let i = fromIndex; i < toIndex; i++) {
-        peakL = Math.max(peakL, Math.abs(outputL[i] ?? 0));
-        peakR = Math.max(peakR, Math.abs(outputR[i] ?? 0));
+    if (this.peakMeterEnabled) {
+      this.meterCounter++;
+      if (this.meterCounter >= this.meterInterval) {
+        this.meterCounter = 0;
+        let peakL = 0;
+        let peakR = 0;
+        for (let i = fromIndex; i < toIndex; i++) {
+          peakL = Math.max(peakL, Math.abs(outputL[i] ?? 0));
+          peakR = Math.max(peakR, Math.abs(outputR[i] ?? 0));
+        }
+        this.emitMessage(MessageType.PEAK_METER, { peakL, peakR });
       }
-      this.emitMessage(MessageType.PEAK_METER, { peakL, peakR });
+    } else {
+      this.meterCounter = 0;
     }
 
     // Run analysis if enabled (throttled)

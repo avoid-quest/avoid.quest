@@ -5,6 +5,7 @@
  * using Web Audio API for precise gain control.
  */
 
+import { readAudioContextMetrics } from "../playback/audio-context.js";
 import type { HTML5AudioPlayer } from "./html5-audio-player.js";
 import type { CrossfadeConfig } from "./types.js";
 
@@ -58,6 +59,10 @@ export class CrossfadeController {
     gain.connect(this.#context.destination);
 
     this.#connections.set(player.id, { source, gain });
+    player.setDebugProcessingPath(
+      "web-audio",
+      readAudioContextMetrics(this.#context)
+    );
   }
 
   /**
@@ -180,6 +185,7 @@ export class CrossfadeController {
     if (outgoing) {
       outgoing.stop();
       this.disconnect(outgoing.id);
+      outgoing.setDebugProcessingPath("html5");
     }
   }
 

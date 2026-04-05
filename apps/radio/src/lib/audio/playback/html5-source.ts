@@ -7,7 +7,19 @@
  */
 
 import Hls from "hls.js";
+import {
+  recordAudioDebugEvent,
+  syncAudioDebugMediaState,
+  updateAudioDebugContext,
+  updateAudioDebugSnapshot,
+} from "../debug/audio-debug-store.js";
+import type {
+  AudioDebugDeliveryPath,
+  AudioDebugProcessingPath,
+} from "../debug/audio-debug-types.js";
+import { getLoadModeOverride, type Html5LoadMode } from "../html5/load-mode.js";
 import { safeDisconnect } from "../utils.js";
+import { readAudioContextMetrics } from "./audio-context.js";
 import type { StreamStatus } from "./types.js";
 
 /**
@@ -64,6 +76,14 @@ export class Html5AudioSource {
   private currentUrl = "";
   private proxyUrl = "";
   private _isLoadingPhase = false;
+  private debugLoadMode: Html5LoadMode = "cors-anonymous";
+  private debugDeliveryPath: AudioDebugDeliveryPath = "direct";
+  private debugProcessingPath: AudioDebugProcessingPath = "bypass";
+  private debugUsesWorklet = false;
+  private debugWorkletActive = false;
+  private debugWorkletBypassed = false;
+  private debugEffectsActive = false;
+  private debugFilterActive = false;
 
   // Proxy URL pattern - uses the stream-proxy route
   private static readonly PROXY_ROUTE = "/api/stream-proxy?url=";
@@ -78,6 +98,10 @@ export class Html5AudioSource {
     this.callbacks = callbacks;
     this.audio = new Audio();
     this.setupAudioElement();
+    updateAudioDebugContext(
+      this.sourceId,
+      readAudioContextMetrics(this.context)
+    );
   }
 
   /**
@@ -93,11 +117,16 @@ export class Html5AudioSource {
     this.audio.addEventListener("pause", this.handlePaused);
     this.audio.addEventListener("ended", this.handleEnded);
     this.audio.addEventListener("error", this.handleError);
+    this.audio.addEventListener("loadstart", this.handleLoadStart);
+    this.audio.addEventListener("loadedmetadata", this.handleLoadedMetadata);
 
     // Buffering events
     this.audio.addEventListener("waiting", this.handleWaiting);
     this.audio.addEventListener("canplay", this.handleCanPlay);
     this.audio.addEventListener("canplaythrough", this.handleCanPlayThrough);
+    this.audio.addEventListener("stalled", this.handleStalled);
+    this.audio.addEventListener("suspend", this.handleSuspend);
+    this.audio.addEventListener("progress", this.handleProgress);
   }
 
   /**
@@ -160,19 +189,23 @@ export class Html5AudioSource {
     this.currentUrl = url;
     this.proxyUrl = Html5AudioSource.PROXY_ROUTE + encodeURIComponent(url);
     this._status = "connecting";
-    this._corsState = "checking";
     this._isHls = isHlsUrl(url);
+    this.applyInitialDebugLoadMode();
+    const requestUrl =
+      this.debugLoadMode === "proxied" ? this.proxyUrl : this.currentUrl;
+    this._corsState = this.debugLoadMode === "proxied" ? "proxied" : "checking";
 
     // Create MediaElementSource (can only be created once per audio element)
     this.audio = new Audio();
     this.setupAudioElement();
     this.audio.crossOrigin = "anonymous";
+    this.syncDebugState();
 
     // Handle HLS streams
     if (this._isHls) {
-      this.loadHls(url);
+      this.loadHls(requestUrl);
     } else {
-      this.audio.src = url;
+      this.audio.src = requestUrl;
     }
 
     // Create Web Audio nodes
@@ -226,6 +259,9 @@ export class Html5AudioSource {
     this.audio = new Audio();
     this.setupAudioElement();
     this.audio.crossOrigin = "anonymous";
+    this.debugLoadMode = "proxied";
+    this.debugDeliveryPath = "proxied";
+    this.syncDebugState();
 
     if (this._isHls) {
       this.loadHls(this.proxyUrl);
@@ -239,6 +275,7 @@ export class Html5AudioSource {
     this.source.connect(this.analyser);
 
     this._corsState = "proxied";
+    this.syncDebugState();
     await this.waitForCanPlay();
   }
 
@@ -442,6 +479,12 @@ export class Html5AudioSource {
     this.audio.crossOrigin = "anonymous";
     this.currentUrl = newUrl;
     this._isHls = isHlsUrl(newUrl);
+    this.debugLoadMode = newUrl.startsWith(Html5AudioSource.PROXY_ROUTE)
+      ? "proxied"
+      : "cors-anonymous";
+    this.debugDeliveryPath =
+      this.debugLoadMode === "proxied" ? "proxied" : "direct";
+    this.syncDebugState();
 
     // Handle HLS streams
     if (this._isHls) {
@@ -502,9 +545,14 @@ export class Html5AudioSource {
     this.audio.removeEventListener("pause", this.handlePaused);
     this.audio.removeEventListener("ended", this.handleEnded);
     this.audio.removeEventListener("error", this.handleError);
+    this.audio.removeEventListener("loadstart", this.handleLoadStart);
+    this.audio.removeEventListener("loadedmetadata", this.handleLoadedMetadata);
     this.audio.removeEventListener("waiting", this.handleWaiting);
     this.audio.removeEventListener("canplay", this.handleCanPlay);
     this.audio.removeEventListener("canplaythrough", this.handleCanPlayThrough);
+    this.audio.removeEventListener("stalled", this.handleStalled);
+    this.audio.removeEventListener("suspend", this.handleSuspend);
+    this.audio.removeEventListener("progress", this.handleProgress);
 
     this.audio.pause();
     this.audio.src = "";
@@ -519,12 +567,50 @@ export class Html5AudioSource {
     this._isHls = false;
   }
 
+  updateDebugRoute(input: {
+    processingPath?: AudioDebugProcessingPath;
+    usesWorklet?: boolean;
+    workletActive?: boolean;
+    workletBypassed?: boolean;
+    effectsActive?: boolean;
+    filterActive?: boolean;
+  }): void {
+    if (input.processingPath !== undefined) {
+      this.debugProcessingPath = input.processingPath;
+    }
+    if (input.usesWorklet !== undefined) {
+      this.debugUsesWorklet = input.usesWorklet;
+    }
+    if (input.workletActive !== undefined) {
+      this.debugWorkletActive = input.workletActive;
+    }
+    if (input.workletBypassed !== undefined) {
+      this.debugWorkletBypassed = input.workletBypassed;
+    }
+    if (input.effectsActive !== undefined) {
+      this.debugEffectsActive = input.effectsActive;
+    }
+    if (input.filterActive !== undefined) {
+      this.debugFilterActive = input.filterActive;
+    }
+    this.syncDebugState();
+  }
+
   // === Event Handlers ===
+
+  private readonly handleLoadStart = (): void => {
+    this.recordDebugEvent("loadstart");
+  };
+
+  private readonly handleLoadedMetadata = (): void => {
+    this.recordDebugEvent("loadedmetadata");
+  };
 
   private readonly handlePlaying = (): void => {
     this._isBuffering = false;
     this._status = "streaming";
-    this._corsState = "cors-ok";
+    this._corsState = this.debugLoadMode === "proxied" ? "proxied" : "cors-ok";
+    this.recordDebugEvent("playing");
     this.callbacks.onPlaying?.();
     this.callbacks.onBuffering?.(false);
   };
@@ -539,6 +625,7 @@ export class Html5AudioSource {
   };
 
   private readonly handleError = (): void => {
+    this.recordDebugEvent("error");
     // During loading phase, let waitForCanPlay() handle errors
     // Mark CORS failures so load() can retry with proxy inline
     if (this._isLoadingPhase) {
@@ -581,18 +668,83 @@ export class Html5AudioSource {
   private readonly handleWaiting = (): void => {
     this._isBuffering = true;
     this._status = "buffering";
+    this.recordDebugEvent("waiting");
     this.callbacks.onBuffering?.(true);
   };
 
   private readonly handleCanPlay = (): void => {
     this._isBuffering = false;
+    this.recordDebugEvent("canplay");
     this.callbacks.onBuffering?.(false);
   };
 
   private readonly handleCanPlayThrough = (): void => {
     this._isBuffering = false;
+    this.recordDebugEvent("canplaythrough");
     this.callbacks.onBuffering?.(false);
   };
+
+  private readonly handleStalled = (): void => {
+    this.recordDebugEvent("stalled");
+  };
+
+  private readonly handleSuspend = (): void => {
+    this.recordDebugEvent("suspend");
+  };
+
+  private readonly handleProgress = (): void => {
+    this.recordDebugEvent("progress");
+  };
+
+  private applyInitialDebugLoadMode(): void {
+    const override = getLoadModeOverride();
+    if (override === "proxied") {
+      this.debugLoadMode = "proxied";
+      this.debugDeliveryPath = "proxied";
+      return;
+    }
+
+    this.debugLoadMode = "cors-anonymous";
+    this.debugDeliveryPath = "direct";
+  }
+
+  private syncDebugState(): void {
+    updateAudioDebugContext(
+      this.sourceId,
+      readAudioContextMetrics(this.context)
+    );
+    syncAudioDebugMediaState(this.sourceId, {
+      element: this.audio,
+      streamUrl: this.currentUrl || this.audio.src || null,
+      loadMode: this.debugLoadMode,
+      deliveryPath: this.debugDeliveryPath,
+      processingPath: this.debugProcessingPath,
+      usesWorklet: this.debugUsesWorklet,
+      workletActive: this.debugWorkletActive,
+      workletBypassed: this.debugWorkletBypassed,
+      effectsActive: this.debugEffectsActive,
+      filterActive: this.debugFilterActive,
+    });
+  }
+
+  private recordDebugEvent(
+    name: Parameters<typeof recordAudioDebugEvent>[1]
+  ): void {
+    recordAudioDebugEvent(this.sourceId, name, {
+      element: this.audio,
+      streamUrl: this.currentUrl || this.audio.src || null,
+      loadMode: this.debugLoadMode,
+      deliveryPath: this.debugDeliveryPath,
+      processingPath: this.debugProcessingPath,
+    });
+    updateAudioDebugSnapshot(this.sourceId, {
+      usesWorklet: this.debugUsesWorklet,
+      workletActive: this.debugWorkletActive,
+      workletBypassed: this.debugWorkletBypassed,
+      effectsActive: this.debugEffectsActive,
+      filterActive: this.debugFilterActive,
+    });
+  }
 }
 
 /**

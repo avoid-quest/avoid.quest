@@ -535,6 +535,8 @@ export type PlaybackTelemetryPayload = {
   errorCode: string;
   errorMessage: string;
   retryPhase?: RetryPhase;
+  tags?: Record<string, string | number | boolean>;
+  context?: Record<string, unknown>;
 };
 
 const ACTIONABLE_PLAYBACK_PREFIXES = [
@@ -621,11 +623,13 @@ export function capturePlaybackError(
       stream_host: streamHost,
       retry_phase: payload.retryPhase ?? "none",
       feature: "radio-playback",
+      ...payload.tags,
     },
     context: {
       radioName: payload.radioName,
       radioId: payload.radioId,
       streamHost,
+      ...payload.context,
     },
   });
 
@@ -637,6 +641,7 @@ export function capturePlaybackError(
       stream_host: streamHost,
       retry_phase: payload.retryPhase ?? "none",
       feature: "radio-playback",
+      ...payload.tags,
     },
     fingerprint: [
       "radio-playback",

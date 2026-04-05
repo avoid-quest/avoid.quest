@@ -3,10 +3,12 @@ import {
   buildProxyUrl,
   createLoadModeCache,
   getInitialLoadMode,
+  getLoadModeOverride,
   getProxyRetryMode,
   getRetryLoadMode,
   type Html5LoadMode,
   mapPlaybackFailureMessage,
+  setLoadModeOverride,
   shouldRetryWithoutCors,
 } from "./load-mode";
 
@@ -72,6 +74,33 @@ describe("load mode ordering", () => {
   test("uses cached proxied mode", () => {
     const cached: Html5LoadMode = "proxied";
     expect(getInitialLoadMode(cached)).toBe("proxied");
+  });
+
+  test("session override wins over cached mode", () => {
+    expect(getInitialLoadMode("cors-anonymous", "proxied")).toBe("proxied");
+  });
+});
+
+describe("load mode override", () => {
+  test("persists override in session storage", () => {
+    const storage = new MemoryStorage();
+
+    expect(getLoadModeOverride(storage)).toBe("auto");
+    setLoadModeOverride("proxied", storage);
+    expect(getLoadModeOverride(storage)).toBe("proxied");
+  });
+
+  test("resetting to auto clears forced precedence", () => {
+    const storage = new MemoryStorage();
+    setLoadModeOverride("no-cors", storage);
+    expect(
+      getInitialLoadMode("cors-anonymous", getLoadModeOverride(storage))
+    ).toBe("no-cors");
+
+    setLoadModeOverride("auto", storage);
+    expect(getInitialLoadMode("proxied", getLoadModeOverride(storage))).toBe(
+      "proxied"
+    );
   });
 });
 

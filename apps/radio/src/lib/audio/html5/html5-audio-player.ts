@@ -6,11 +6,21 @@
  */
 
 import { capturePlaybackError } from "@avoid.quest/error";
+import {
+  recordAudioDebugEvent,
+  registerAudioDebugSource,
+  removeAudioDebugSource,
+  syncAudioDebugMediaState,
+  updateAudioDebugContext,
+  updateAudioDebugSnapshot,
+} from "../debug/audio-debug-store.js";
+import type { AudioDebugProcessingPath } from "../debug/audio-debug-types.js";
 import type { Radio } from "../playback/types.js";
 import {
   buildProxyUrl,
   createLoadModeCache,
   getInitialLoadMode,
+  getLoadModeOverride,
   getProxyRetryMode,
   getRetryLoadMode,
   type Html5LoadMode,
@@ -41,6 +51,7 @@ export class HTML5AudioPlayer {
   #activeLoadMode: Html5LoadMode = "cors-anonymous";
   #isResettingSource = false;
   #isPlayInProgress = false;
+  #processingPath: AudioDebugProcessingPath = "html5";
 
   constructor(
     id: string,
@@ -53,6 +64,16 @@ export class HTML5AudioPlayer {
     this.#audio = new Audio();
     this.#audio.preload = "none";
     this.#applyLoadMode(this.#activeLoadMode);
+    registerAudioDebugSource({
+      id: this.#id,
+      mode: this.#telemetryMode,
+      radio: this.#radio,
+      streamUrl: this.#radio.streamUrl,
+      loadMode: this.#activeLoadMode,
+      deliveryPath: this.#getDeliveryPath(this.#activeLoadMode),
+      processingPath: this.#processingPath,
+    });
+    this.#syncDebugMediaState();
 
     this.#setupEventListeners();
   }
@@ -81,13 +102,40 @@ export class HTML5AudioPlayer {
     return this.#audio.volume;
   }
 
+  setDebugProcessingPath(
+    processingPath: AudioDebugProcessingPath,
+    context?:
+      | (Pick<AudioContext, "state" | "sampleRate"> & {
+          baseLatency?: number;
+          outputLatency?: number;
+        })
+      | {
+          state: AudioContextState | "suspended" | "running" | "closed";
+          sampleRate: number | null;
+          baseLatency?: number | null;
+          outputLatency?: number | null;
+        }
+  ): void {
+    this.#processingPath = processingPath;
+    updateAudioDebugSnapshot(this.#id, {
+      processingPath,
+    });
+    if (context) {
+      updateAudioDebugContext(this.#id, context);
+    }
+    this.#syncDebugMediaState();
+  }
+
   /**
    * Load the audio source
    */
   load(mode?: Html5LoadMode): void {
     const effectiveMode =
       mode ??
-      getInitialLoadMode(this.#loadModeCache.get(this.#radio.streamUrl));
+      getInitialLoadMode(
+        this.#loadModeCache.get(this.#radio.streamUrl),
+        getLoadModeOverride()
+      );
     this.#activeLoadMode = effectiveMode;
 
     this.#isResettingSource = true;
@@ -102,6 +150,7 @@ export class HTML5AudioPlayer {
     this.#audio.src = src;
     this.#audio.load();
     this.#isResettingSource = false;
+    this.#syncDebugMediaState();
     this.#updateState({ isLoading: true, error: null, hasEnded: false });
   }
 
@@ -111,9 +160,10 @@ export class HTML5AudioPlayer {
   async play(volume = 1): Promise<void> {
     this.#audio.volume = Math.max(0, Math.min(1, volume));
     this.#isPlayInProgress = true;
+    const loadModeOverride = getLoadModeOverride();
 
     const cachedMode = this.#loadModeCache.get(this.#radio.streamUrl);
-    const initialMode = getInitialLoadMode(cachedMode);
+    const initialMode = getInitialLoadMode(cachedMode, loadModeOverride);
 
     if (!this.#audio.src || this.#activeLoadMode !== initialMode) {
       this.load(initialMode);
@@ -123,9 +173,14 @@ export class HTML5AudioPlayer {
 
     try {
       await this.#audio.play();
-      this.#loadModeCache.set(this.#radio.streamUrl, this.#activeLoadMode);
+      this.#persistLoadMode(this.#activeLoadMode, loadModeOverride);
       this.#updateState({ isPlaying: true, isLoading: false });
     } catch (error) {
+      if (loadModeOverride !== "auto") {
+        this.#setPlayFailureState(error, this.#audio.error?.code, "initial");
+        throw error;
+      }
+
       const mediaErrorCode = this.#audio.error?.code;
       const canRetry = this.#shouldAttemptNoCorsFallback(error, mediaErrorCode);
       const retryMode = getRetryLoadMode(initialMode, canRetry);
@@ -135,7 +190,7 @@ export class HTML5AudioPlayer {
           this.#replaceAudioElement();
           this.load(retryMode);
           await this.#audio.play();
-          this.#loadModeCache.set(this.#radio.streamUrl, retryMode);
+          this.#persistLoadMode(retryMode, loadModeOverride);
           this.#updateState({ isPlaying: true, isLoading: false, error: null });
           return;
         } catch (noCorsError) {
@@ -174,7 +229,7 @@ export class HTML5AudioPlayer {
       this.#replaceAudioElement();
       this.load(proxyMode);
       await this.#audio.play();
-      this.#loadModeCache.set(this.#radio.streamUrl, proxyMode);
+      this.#persistLoadMode(proxyMode);
       this.#updateState({ isPlaying: true, isLoading: false, error: null });
       return true;
     } catch (proxyError) {
@@ -237,13 +292,23 @@ export class HTML5AudioPlayer {
     this.#audio.load();
     this.#isResettingSource = false;
     this.#listeners.clear();
+    removeAudioDebugSource(this.#id);
   }
 
   /**
    * Set up event listeners for the audio element
    */
   #setupEventListeners(): void {
+    this.#audio.addEventListener("loadstart", () => {
+      this.#recordDebugEvent("loadstart");
+    });
+
+    this.#audio.addEventListener("loadedmetadata", () => {
+      this.#recordDebugEvent("loadedmetadata");
+    });
+
     this.#audio.addEventListener("playing", () => {
+      this.#recordDebugEvent("playing");
       this.#updateState({ isPlaying: true, isLoading: false });
     });
 
@@ -256,11 +321,29 @@ export class HTML5AudioPlayer {
     });
 
     this.#audio.addEventListener("waiting", () => {
+      this.#recordDebugEvent("waiting");
       this.#updateState({ isLoading: true });
     });
 
     this.#audio.addEventListener("canplay", () => {
+      this.#recordDebugEvent("canplay");
       this.#updateState({ isLoading: false });
+    });
+
+    this.#audio.addEventListener("canplaythrough", () => {
+      this.#recordDebugEvent("canplaythrough");
+    });
+
+    this.#audio.addEventListener("stalled", () => {
+      this.#recordDebugEvent("stalled");
+    });
+
+    this.#audio.addEventListener("suspend", () => {
+      this.#recordDebugEvent("suspend");
+    });
+
+    this.#audio.addEventListener("progress", () => {
+      this.#recordDebugEvent("progress");
     });
 
     this.#audio.addEventListener("timeupdate", () => {
@@ -271,10 +354,12 @@ export class HTML5AudioPlayer {
     });
 
     this.#audio.addEventListener("volumechange", () => {
+      this.#syncDebugMediaState();
       this.#updateState({ volume: this.#audio.volume });
     });
 
     this.#audio.addEventListener("error", () => {
+      this.#recordDebugEvent("error");
       const mediaError = this.#audio.error;
       const currentSrc = this.#audio.currentSrc || this.#audio.src || "";
       if (
@@ -351,6 +436,10 @@ export class HTML5AudioPlayer {
       this.#audio.removeAttribute("crossorigin");
     }
     this.#activeLoadMode = mode;
+    updateAudioDebugSnapshot(this.#id, {
+      loadMode: mode,
+      deliveryPath: this.#getDeliveryPath(mode),
+    });
   }
 
   #replaceAudioElement(): void {
@@ -366,6 +455,48 @@ export class HTML5AudioPlayer {
     newAudio.volume = oldVolume;
     this.#audio = newAudio;
     this.#setupEventListeners();
+    this.#applyLoadMode(this.#activeLoadMode);
+    this.#syncDebugMediaState();
+  }
+
+  #persistLoadMode(
+    mode: Html5LoadMode,
+    override: ReturnType<typeof getLoadModeOverride> = getLoadModeOverride()
+  ): void {
+    if (override !== "auto") {
+      return;
+    }
+    this.#loadModeCache.set(this.#radio.streamUrl, mode);
+  }
+
+  #getDeliveryPath(mode: Html5LoadMode): "direct" | "no-cors" | "proxied" {
+    if (mode === "no-cors") {
+      return "no-cors";
+    }
+    if (mode === "proxied") {
+      return "proxied";
+    }
+    return "direct";
+  }
+
+  #syncDebugMediaState(): void {
+    syncAudioDebugMediaState(this.#id, {
+      element: this.#audio,
+      streamUrl: this.#radio.streamUrl,
+      loadMode: this.#activeLoadMode,
+      deliveryPath: this.#getDeliveryPath(this.#activeLoadMode),
+      processingPath: this.#processingPath,
+    });
+  }
+
+  #recordDebugEvent(name: Parameters<typeof recordAudioDebugEvent>[1]): void {
+    recordAudioDebugEvent(this.#id, name, {
+      element: this.#audio,
+      streamUrl: this.#radio.streamUrl,
+      loadMode: this.#activeLoadMode,
+      deliveryPath: this.#getDeliveryPath(this.#activeLoadMode),
+      processingPath: this.#processingPath,
+    });
   }
 
   #shouldAttemptNoCorsFallback(

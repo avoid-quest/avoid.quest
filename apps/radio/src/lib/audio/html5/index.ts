@@ -12,6 +12,12 @@ export {
 } from "./crossfade-controller.js";
 export { HTML5AudioManager } from "./html5-audio-manager.js";
 export { HTML5AudioPlayer } from "./html5-audio-player.js";
+export {
+  getLoadModeOverride,
+  type Html5LoadMode,
+  type Html5LoadModeOverride,
+  setLoadModeOverride,
+} from "./load-mode.js";
 export type {
   CrossfadeConfig,
   HTML5AudioError,

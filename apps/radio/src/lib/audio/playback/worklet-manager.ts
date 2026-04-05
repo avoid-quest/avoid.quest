@@ -91,6 +91,7 @@ const MessageType = {
 
   // Global
   SET_PARAM: "SET_PARAM",
+  ENABLE_PEAK_METER: "ENABLE_PEAK_METER",
 
   // Events (worklet → main)
   SOURCE_ENDED: "SOURCE_ENDED",
@@ -147,6 +148,11 @@ type ActiveSource = {
  * Use the outputNode getter to get the final output for external routing.
  */
 export class WorkletManager {
+  private static readonly moduleInitPromises = new WeakMap<
+    AudioContext,
+    Map<string, Promise<void>>
+  >();
+
   private readonly context: AudioContext;
   private workletNode: AudioWorkletNode | null = null;
   private masterGainNode: GainNode | null = null;
@@ -156,6 +162,7 @@ export class WorkletManager {
   private initPromise: Promise<void> | null = null;
   private initFailed = false;
   private readonly processorUrl: string;
+  private peakMeterEnabled = false;
 
   /** Queue for messages sent before worklet is ready */
   private readonly messageQueue: Array<{ type: string; payload?: unknown }> =
@@ -244,6 +251,31 @@ export class WorkletManager {
    */
   get volume(): number {
     return this.masterGainNode?.gain.value ?? 1;
+  }
+
+  static ensureModuleRegistered(
+    context: AudioContext,
+    processorUrl: string
+  ): Promise<void> {
+    let byUrl = WorkletManager.moduleInitPromises.get(context);
+    if (!byUrl) {
+      byUrl = new Map<string, Promise<void>>();
+      WorkletManager.moduleInitPromises.set(context, byUrl);
+    }
+
+    const existing = byUrl.get(processorUrl);
+    if (existing) {
+      return existing;
+    }
+
+    const promise = context.audioWorklet
+      .addModule(processorUrl)
+      .catch((error) => {
+        byUrl.delete(processorUrl);
+        throw error;
+      });
+    byUrl.set(processorUrl, promise);
+    return promise;
   }
 
   // ============================================
@@ -400,6 +432,18 @@ export class WorkletManager {
     this.postMessage({
       type: MessageType.SET_EFFECTS_DRY_WET,
       payload: { sourceId, dryWet },
+    });
+  }
+
+  setPeakMeterEnabled(enabled: boolean): void {
+    if (this.peakMeterEnabled === enabled) {
+      return;
+    }
+
+    this.peakMeterEnabled = enabled;
+    this.postMessage({
+      type: MessageType.ENABLE_PEAK_METER,
+      payload: { enabled },
     });
   }
 
@@ -595,10 +639,12 @@ export class WorkletManager {
     }
 
     this.activeSources.clear();
+    this.createdSources.clear();
     this.eventEmitter.clear();
     this.messageQueue.length = 0;
     this.initPromise = null;
     this.initFailed = false;
+    this.peakMeterEnabled = false;
   }
 
   /**
@@ -658,8 +704,10 @@ export class WorkletManager {
    * Perform the actual initialization work
    */
   private async performInit(nativeContext: AudioContext): Promise<void> {
-    // Load the worklet module
-    await this.context.audioWorklet.addModule(this.processorUrl);
+    await WorkletManager.ensureModuleRegistered(
+      this.context,
+      this.processorUrl
+    );
 
     // Create the worklet node
     this.workletNode = new AudioWorkletNode(
@@ -683,6 +731,7 @@ export class WorkletManager {
 
     // Set up message listener
     this.setupMessageListener();
+    this.setPeakMeterEnabled(this.peakMeterEnabled);
   }
 
   /**

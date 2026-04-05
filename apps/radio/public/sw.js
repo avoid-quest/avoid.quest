@@ -14,14 +14,23 @@ self.addEventListener("activate", (event) => {
 // Fetch event - always fetch from network (no caching)
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
+  const accept = event.request.headers.get("accept") || "";
+  const hasRangeHeader = event.request.headers.has("range");
+  const isStreamingProxyRoute =
+    url.pathname === "/api/stream-proxy" ||
+    url.pathname === "/api/bandcamp-proxy" ||
+    url.pathname === "/api/soundcloud-proxy";
 
   // Don't intercept cross-origin requests (external streams)
   if (url.origin !== self.location.origin) {
     return;
   }
 
-  // Don't intercept media requests
+  // Don't intercept streaming requests or proxy passthroughs
   if (
+    isStreamingProxyRoute ||
+    hasRangeHeader ||
+    accept.startsWith("audio/") ||
     event.request.destination === "audio" ||
     event.request.destination === "video"
   ) {

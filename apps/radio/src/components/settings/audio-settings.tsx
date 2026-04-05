@@ -31,6 +31,7 @@ import {
   setCueOutputDelay,
   setMainOutputDelay,
 } from "@/lib/dj-actions";
+import { AudioDebug } from "./audio-debug";
 
 /**
  * Audio settings panel for the main settings form.
@@ -274,6 +275,8 @@ export function AudioSettings() {
           </p>
         </div>
       )}
+
+      <AudioDebug />
     </div>
   );
 }

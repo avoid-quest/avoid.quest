@@ -1,6 +1,8 @@
 export type Html5LoadMode = "cors-anonymous" | "no-cors" | "proxied";
+export type Html5LoadModeOverride = "auto" | Html5LoadMode;
 
 const LOAD_MODE_STORAGE_KEY = "radio-app-html5-load-modes";
+const LOAD_MODE_OVERRIDE_SESSION_KEY = "radio-app-html5-load-mode-override";
 const MEDIA_ERR_ABORTED = 1;
 const MEDIA_ERR_NETWORK = 2;
 const MEDIA_ERR_DECODE = 3;
@@ -21,12 +23,27 @@ function isLoadMode(value: unknown): value is Html5LoadMode {
   );
 }
 
+function isLoadModeOverride(value: unknown): value is Html5LoadModeOverride {
+  return value === "auto" || isLoadMode(value);
+}
+
 function getStorage(): StorageLike | null {
   if (typeof window === "undefined") {
     return null;
   }
   try {
     return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
+function getSessionStorage(): StorageLike | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  try {
+    return window.sessionStorage;
   } catch {
     return null;
   }
@@ -84,8 +101,12 @@ export function createLoadModeCache(storage = getStorage()): LoadModeCache {
 }
 
 export function getInitialLoadMode(
-  cachedMode: Html5LoadMode | null
+  cachedMode: Html5LoadMode | null,
+  override: Html5LoadModeOverride = getLoadModeOverride()
 ): Html5LoadMode {
+  if (override !== "auto") {
+    return override;
+  }
   return cachedMode ?? "cors-anonymous";
 }
 
@@ -113,6 +134,36 @@ export function getProxyRetryMode(
 
 export function buildProxyUrl(streamUrl: string): string {
   return `/api/stream-proxy?url=${encodeURIComponent(streamUrl)}`;
+}
+
+export function getLoadModeOverride(
+  storage = getSessionStorage()
+): Html5LoadModeOverride {
+  if (!storage) {
+    return "auto";
+  }
+
+  try {
+    const value = storage.getItem(LOAD_MODE_OVERRIDE_SESSION_KEY);
+    return isLoadModeOverride(value) ? value : "auto";
+  } catch {
+    return "auto";
+  }
+}
+
+export function setLoadModeOverride(
+  value: Html5LoadModeOverride,
+  storage = getSessionStorage()
+): void {
+  if (!storage) {
+    return;
+  }
+
+  try {
+    storage.setItem(LOAD_MODE_OVERRIDE_SESSION_KEY, value);
+  } catch {
+    // ignore storage write failures
+  }
 }
 
 export function shouldRetryWithoutCors(

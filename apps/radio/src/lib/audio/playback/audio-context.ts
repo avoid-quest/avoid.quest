@@ -12,6 +12,13 @@
  */
 type NormalizedContextState = "suspended" | "running" | "closed";
 
+export type AudioContextMetrics = {
+  state: NormalizedContextState;
+  sampleRate: number | null;
+  baseLatency: number | null;
+  outputLatency: number | null;
+};
+
 /**
  * Callback for context state changes
  */
@@ -29,6 +36,34 @@ function normalizeState(state: AudioContextState): NormalizedContextState {
     return "closed";
   }
   return "suspended";
+}
+
+export function readAudioContextMetrics(
+  context:
+    | (Pick<AudioContext, "state" | "sampleRate"> & {
+        baseLatency?: number;
+        outputLatency?: number;
+      })
+    | null
+    | undefined
+): AudioContextMetrics {
+  if (!context) {
+    return {
+      state: "suspended",
+      sampleRate: null,
+      baseLatency: null,
+      outputLatency: null,
+    };
+  }
+
+  return {
+    state: normalizeState(context.state),
+    sampleRate: Number.isFinite(context.sampleRate) ? context.sampleRate : null,
+    baseLatency:
+      typeof context.baseLatency === "number" ? context.baseLatency : null,
+    outputLatency:
+      typeof context.outputLatency === "number" ? context.outputLatency : null,
+  };
 }
 
 /**
@@ -65,6 +100,13 @@ class AudioContextManager {
   getContext(): AudioContext {
     if (!this.context || this.context.state === "closed") {
       this.context = this.createContext();
+    }
+    return this.context;
+  }
+
+  peekContext(): AudioContext | null {
+    if (!this.context || this.context.state === "closed") {
+      return null;
     }
     return this.context;
   }
@@ -301,6 +343,10 @@ export function getAudioContextManager(): AudioContextManager {
  */
 export function getAudioContext(): AudioContext {
   return getAudioContextManager().getContext();
+}
+
+export function peekAudioContext(): AudioContext | null {
+  return getAudioContextManager().peekContext();
 }
 
 /**

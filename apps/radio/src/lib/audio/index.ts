@@ -7,7 +7,7 @@
  * - playback/: Thin playback infrastructure (context, streaming, worklet)
  * - dsp/: DSP processing (effects, analysis, routing)
  * - manager/: High-level API (AudioManager, crossfade)
- * - hooks/: React integration (useAudio, useSingleAudio, useDjAudio)
+ * - hooks/: React integration (useAudio, useAudioDevices)
  */
 
 // DSP Analysis
@@ -60,28 +60,14 @@ export {
   MessageType,
   type MessageTypeValue,
 } from "./dsp/processor.js";
+export type { MultipleAudioState } from "./hooks/index.js";
 // React hooks
 export {
-  type MultipleAudioSettings,
-  type MultipleAudioState,
   useAudio,
   useAudioDevices,
   useMultipleAudio,
   useSingleAudio,
 } from "./hooks/index.js";
-// HTML5 Audio (non-DJ modes)
-export {
-  type CrossfadeConfig,
-  CrossfadeController,
-  getCrossfadeContext,
-  type HTML5AudioError,
-  HTML5AudioManager,
-  HTML5AudioPlayer,
-  type HTML5AudioState,
-  type HTML5AudioStateCallback,
-  initialHTML5AudioState,
-  resumeCrossfadeContext,
-} from "./html5/index.js";
 // High-level API (primary exports)
 export {
   AudioManager,

@@ -54,7 +54,6 @@ export function MultipleRadios({ radios }: { radios?: Radio[] }) {
   const [dialogMode, setDialogMode] = useState<"create" | "edit">("create");
   const [selectedRadio, setSelectedRadio] = useState<Radio | undefined>();
   const [deleteConfirm, setDeleteConfirm] = useState<Radio | null>(null);
-
   const addedRadioIdsRef = useRef<Set<string | number>>(new Set());
 
   useEffect(() => {
@@ -68,7 +67,9 @@ export function MultipleRadios({ radios }: { radios?: Radio[] }) {
       return;
     }
 
-    const currentRadioIds = new Set(radios.map((r) => r.id).filter(Boolean));
+    const currentRadioIds = new Set(
+      radios.map((radio) => radio.id).filter(Boolean)
+    );
 
     for (const radio of radios) {
       if (radio.id && !addedRadioIdsRef.current.has(radio.id)) {

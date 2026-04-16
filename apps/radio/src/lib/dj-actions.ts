@@ -31,18 +31,20 @@ import {
 import { validatePlaybackStreamUrl } from "@/lib/audio/playback/url-validation";
 import {
   getAudioSettings,
-  getDeckA,
-  getDeckB,
   getDelaySettings,
-  getMixer,
-  resetDeck as resetDeckDb,
   setCueDelayMs as setCueDelayMsSetting,
   setMainDelayMs as setMainDelayMsSetting,
+} from "@/lib/collections";
+import {
+  type DeckRecord,
+  getDeckA,
+  getDeckB,
+  getMixer,
+  resetDeck as resetDeckDb,
   updateDeckA,
   updateDeckB,
   updateMixer,
-} from "@/lib/collections";
-import type { DeckRecord } from "@/lib/collections/dj-state";
+} from "@/lib/hooks/use-dj-state";
 import {
   type DeviceInputMetadata,
   type FileMetadata,

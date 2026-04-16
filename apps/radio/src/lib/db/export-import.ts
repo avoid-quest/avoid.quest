@@ -9,10 +9,21 @@ import {
 } from "@/lib/collections";
 import { type DatabaseExport, generateId, type ImportPreview } from "../types";
 
-const EXPORT_VERSION = 1;
+const EXPORT_VERSION = 2;
 const STORAGE_KEY_LAST_EXPORT = "radioproxy_last_export";
 const DATA_FRAGMENT_LENGTH = 6;
 const SETTINGS_ID = "app-settings";
+
+function normalizeImportedSettings(
+  settings: DatabaseExport["settings"] | SettingsRecord | undefined
+): SettingsRecord["player"] {
+  const importedPlayer = settings?.player;
+  return {
+    mode: importedPlayer?.mode ?? "single",
+    restoreStateOnLoad: importedPlayer?.restoreStateOnLoad ?? true,
+    single: importedPlayer?.single,
+  };
+}
 
 /**
  * Export the entire database to a JSON file
@@ -160,7 +171,14 @@ export const validateImportData = (data: unknown): DatabaseExport => {
     throw new Error("Invalid settings data");
   }
 
-  return data as DatabaseExport;
+  return {
+    ...(data as DatabaseExport),
+    settings: {
+      player: normalizeImportedSettings(
+        exportData.settings as DatabaseExport["settings"]
+      ),
+    } as DatabaseExport["settings"],
+  };
 };
 
 /**
@@ -298,30 +316,24 @@ export const replaceImportedData = (importData: DatabaseExport): void => {
     // Replace settings
     if (importData.settings) {
       const existingSettings = getSettings();
-      const importSettings = importData.settings as unknown as SettingsRecord;
+      const importPlayer = normalizeImportedSettings(importData.settings);
       if (existingSettings) {
         settingsCollection.update(SETTINGS_ID, (draft) => {
-          draft.player.mode =
-            importSettings.player?.mode ?? existingSettings.player.mode;
-          draft.player.playerType =
-            importSettings.player?.playerType ??
-            existingSettings.player.playerType;
+          draft.player.mode = importPlayer.mode ?? existingSettings.player.mode;
           draft.player.restoreStateOnLoad =
-            importSettings.player?.restoreStateOnLoad ??
+            importPlayer.restoreStateOnLoad ??
             existingSettings.player.restoreStateOnLoad;
-          if (importSettings.player?.single) {
-            draft.player.single = importSettings.player.single;
+          if (importPlayer.single) {
+            draft.player.single = importPlayer.single;
           }
         });
       } else {
         settingsCollection.insert({
           id: SETTINGS_ID,
           player: {
-            mode: importSettings.player?.mode ?? "single",
-            playerType: importSettings.player?.playerType ?? "default",
-            restoreStateOnLoad:
-              importSettings.player?.restoreStateOnLoad ?? true,
-            single: importSettings.player?.single,
+            mode: importPlayer.mode ?? "single",
+            restoreStateOnLoad: importPlayer.restoreStateOnLoad ?? true,
+            single: importPlayer.single,
           },
         });
       }
@@ -397,31 +409,26 @@ export const mergeImportedData = (importData: DatabaseExport): void => {
 
     // Merge settings (be careful not to overwrite volatile data)
     if (importData.settings && existingSettings) {
-      const importSettings = importData.settings as unknown as SettingsRecord;
+      const importPlayer = normalizeImportedSettings(importData.settings);
       settingsCollection.update(SETTINGS_ID, (draft) => {
         // Merge player settings
-        if (importSettings.player) {
-          if (importSettings.player.mode) {
-            draft.player.mode = importSettings.player.mode;
-          }
-          if (importSettings.player.playerType) {
-            draft.player.playerType = importSettings.player.playerType;
-          }
-          // Preserve volatile single mode data from existing, or use import
-          if (!draft.player.single && importSettings.player.single) {
-            draft.player.single = importSettings.player.single;
-          }
+        if (importPlayer.mode) {
+          draft.player.mode = importPlayer.mode;
+        }
+        draft.player.restoreStateOnLoad =
+          importPlayer.restoreStateOnLoad ?? draft.player.restoreStateOnLoad;
+        if (!draft.player.single && importPlayer.single) {
+          draft.player.single = importPlayer.single;
         }
       });
     } else if (importData.settings) {
-      const importSettings = importData.settings as unknown as SettingsRecord;
+      const importPlayer = normalizeImportedSettings(importData.settings);
       settingsCollection.insert({
         id: SETTINGS_ID,
         player: {
-          mode: importSettings.player?.mode ?? "single",
-          playerType: importSettings.player?.playerType ?? "default",
-          restoreStateOnLoad: importSettings.player?.restoreStateOnLoad ?? true,
-          single: importSettings.player?.single,
+          mode: importPlayer.mode ?? "single",
+          restoreStateOnLoad: importPlayer.restoreStateOnLoad ?? true,
+          single: importPlayer.single,
         },
       });
     }

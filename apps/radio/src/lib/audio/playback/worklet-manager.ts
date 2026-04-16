@@ -147,6 +147,7 @@ type ActiveSource = {
  * Use the outputNode getter to get the final output for external routing.
  */
 export class WorkletManager {
+  private static readonly loadedContexts = new WeakSet<AudioContext>();
   private readonly context: AudioContext;
   private workletNode: AudioWorkletNode | null = null;
   private masterGainNode: GainNode | null = null;
@@ -658,8 +659,10 @@ export class WorkletManager {
    * Perform the actual initialization work
    */
   private async performInit(nativeContext: AudioContext): Promise<void> {
-    // Load the worklet module
-    await this.context.audioWorklet.addModule(this.processorUrl);
+    if (!WorkletManager.loadedContexts.has(nativeContext)) {
+      await this.context.audioWorklet.addModule(this.processorUrl);
+      WorkletManager.loadedContexts.add(nativeContext);
+    }
 
     // Create the worklet node
     this.workletNode = new AudioWorkletNode(

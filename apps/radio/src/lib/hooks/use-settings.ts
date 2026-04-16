@@ -61,7 +61,6 @@ export {
   setCueDelayMs,
   setMainDelayMs,
   setPlayerMode,
-  setPlayerType,
   setRestoreStateOnLoad,
   setSingleModeTransitionDuration,
 } from "@/lib/collections";

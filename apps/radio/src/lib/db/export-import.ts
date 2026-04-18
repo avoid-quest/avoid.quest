@@ -16,11 +16,11 @@ const SETTINGS_ID = "app-settings";
 
 function normalizeImportedSettings(
   settings: DatabaseExport["settings"] | SettingsRecord | undefined
-): SettingsRecord["player"] {
+): DatabaseExport["settings"]["player"] {
   const importedPlayer = settings?.player;
   return {
     mode: importedPlayer?.mode ?? "single",
-    restoreStateOnLoad: importedPlayer?.restoreStateOnLoad ?? true,
+    restoreStateOnLoad: importedPlayer?.restoreStateOnLoad,
     single: importedPlayer?.single,
   };
 }
@@ -415,8 +415,9 @@ export const mergeImportedData = (importData: DatabaseExport): void => {
         if (importPlayer.mode) {
           draft.player.mode = importPlayer.mode;
         }
-        draft.player.restoreStateOnLoad =
-          importPlayer.restoreStateOnLoad ?? draft.player.restoreStateOnLoad;
+        if (importPlayer.restoreStateOnLoad !== undefined) {
+          draft.player.restoreStateOnLoad = importPlayer.restoreStateOnLoad;
+        }
         if (!draft.player.single && importPlayer.single) {
           draft.player.single = importPlayer.single;
         }

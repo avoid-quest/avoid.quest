@@ -1,15 +1,10 @@
-import {
-  AudioManager,
-  createOutputRouter,
-  getAudioContext,
-  type OutputRouter,
-  type Radio,
-} from "@/lib/audio";
+import { AudioManager, type Radio } from "@/lib/audio";
 import {
   getPlaybackSession,
   type PlaybackSessionId,
 } from "@/lib/collections/playback-sessions";
 import { getAudioSettings, getDelaySettings } from "@/lib/collections/settings";
+import { getMainOutputRouter } from "@/lib/main-output-router";
 import {
   getPlaybackChannelRuntime,
   getPlaybackChannelSubscriptionCleanup,
@@ -20,7 +15,6 @@ import {
   setPlaybackChannelSubscriptionCleanup,
 } from "@/lib/stores/playback-runtime-store";
 
-let outputRouter: OutputRouter | null = null;
 let audioRoutingInitialized = false;
 
 export function getAudioManager(): AudioManager {
@@ -40,15 +34,8 @@ export function isSameRadio(
   return a.streamUrl === b.streamUrl;
 }
 
-function getOutputRouter(): OutputRouter | null {
-  const context = getAudioContext();
-  if (!context) {
-    return null;
-  }
-  if (!outputRouter) {
-    outputRouter = createOutputRouter(context);
-  }
-  return outputRouter;
+function getOutputRouter() {
+  return getMainOutputRouter();
 }
 
 export async function applyMainOutputDevice(deviceId: string): Promise<void> {

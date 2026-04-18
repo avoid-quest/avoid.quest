@@ -2,9 +2,7 @@ import {
   type AudioManager,
   type CueBus,
   createCueBus,
-  createOutputRouter,
   getAudioContext,
-  type OutputRouter,
 } from "@/lib/audio";
 import {
   getAudioSettings,
@@ -14,13 +12,17 @@ import {
 } from "@/lib/collections";
 import type { DeckId } from "@/lib/dj-actions-decks.js";
 import { getMixer, updateMixer } from "@/lib/hooks/use-dj-state";
+import {
+  getMainOutputRouter,
+  onMainOutputRouterError,
+} from "@/lib/main-output-router";
 
 type ReportDjError = (message: string, code: string, error?: unknown) => void;
 type GetAudioManager = () => AudioManager;
 
 let cueBus: CueBus | null = null;
-let outputRouter: OutputRouter | null = null;
 let audioDevicesInitialized = false;
+let outputRouterErrorCleanup: (() => void) | null = null;
 
 function getCueBus(audioContext: AudioContext): CueBus {
   if (typeof window === "undefined") {
@@ -89,25 +91,20 @@ function cleanupCueBus(): void {
   }
 }
 
-function getOutputRouter(reportDjError: ReportDjError): OutputRouter | null {
+function registerOutputRouterErrors(reportDjError: ReportDjError): void {
+  outputRouterErrorCleanup?.();
+  outputRouterErrorCleanup = onMainOutputRouterError((error) => {
+    reportDjError(error.message, "DJ_OUTPUT_ROUTER_ERROR", error);
+  });
+}
+
+function getOutputRouter(reportDjError: ReportDjError) {
   if (typeof window === "undefined") {
     return null;
   }
 
-  const context = getAudioContext();
-  if (!context) {
-    return null;
-  }
-
-  if (!outputRouter) {
-    outputRouter = createOutputRouter(context, {
-      onError: (error) => {
-        reportDjError(error.message, "DJ_OUTPUT_ROUTER_ERROR", error);
-      },
-    });
-  }
-
-  return outputRouter;
+  registerOutputRouterErrors(reportDjError);
+  return getMainOutputRouter();
 }
 
 async function applyMainOutputDevice(

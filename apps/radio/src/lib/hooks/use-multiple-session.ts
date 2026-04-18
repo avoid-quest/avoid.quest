@@ -1,6 +1,6 @@
 import { eq, useLiveQuery } from "@tanstack/react-db";
 import { useStore } from "@tanstack/react-store";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { Radio } from "@/lib/audio";
 import { generateErrorId } from "@/lib/audio/playback";
 import {
@@ -64,9 +64,16 @@ function setMultipleChannelError(
 
 export function useMultipleSession() {
   const session = useMultipleSessionRecord();
-  const [globalMuted, setGlobalMuted] = useState(false);
   const lastGlobalVolumeRef = useRef(session?.masterVolume ?? 1);
   const runtimes = useStore(playbackRuntimeStore, (state) => state.channels);
+  const globalVolume = session?.masterVolume ?? 1;
+  const globalMuted = globalVolume === 0;
+
+  useEffect(() => {
+    if (globalVolume > 0) {
+      lastGlobalVolumeRef.current = globalVolume;
+    }
+  }, [globalVolume]);
 
   const players = useMemo<MultipleSessionPlayerState[]>(() => {
     if (!session) {
@@ -133,7 +140,6 @@ export function useMultipleSession() {
   const setGlobalVolume = useCallback((volume: number) => {
     if (volume > 0) {
       lastGlobalVolumeRef.current = volume;
-      setGlobalMuted(false);
     }
     setMultipleSessionMasterVolume(volume);
   }, []);
@@ -141,13 +147,11 @@ export function useMultipleSession() {
   const toggleGlobalMute = useCallback(() => {
     if (globalMuted) {
       setMultipleSessionMasterVolume(lastGlobalVolumeRef.current);
-      setGlobalMuted(false);
       return;
     }
-    lastGlobalVolumeRef.current = session?.masterVolume ?? 1;
+    lastGlobalVolumeRef.current = globalVolume || lastGlobalVolumeRef.current;
     setMultipleSessionMasterVolume(0);
-    setGlobalMuted(true);
-  }, [globalMuted, session?.masterVolume]);
+  }, [globalMuted, globalVolume]);
 
   const playAll = useCallback(async () => {
     for (const player of players) {
@@ -170,7 +174,7 @@ export function useMultipleSession() {
   return {
     session,
     players,
-    globalVolume: session?.masterVolume ?? 1,
+    globalVolume,
     globalMuted,
     syncRadios,
     addRadio,

@@ -16,6 +16,7 @@ export {
 } from "./playback-actions-managed-channel.js";
 export {
   addMultiplePlaybackChannel,
+  mergeMultiplePlaybackRadios,
   pauseAllMultipleChannels,
   playAllMultipleChannels,
   removeMultiplePlaybackChannel,

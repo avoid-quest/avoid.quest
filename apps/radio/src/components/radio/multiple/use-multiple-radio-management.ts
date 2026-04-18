@@ -11,6 +11,7 @@ import {
   isSessionRadio,
   useSessionRadios,
 } from "@/lib/hooks/use-session-radios";
+import { mergeMultiplePlaybackRadios } from "@/lib/playback-actions";
 
 type UseMultipleRadioManagementOptions = {
   radios?: Radio[];
@@ -48,8 +49,8 @@ export function useMultipleRadioManagement({
     if (!radios) {
       return;
     }
-    syncRadios(radios);
-  }, [radios, syncRadios]);
+    syncRadios(mergeMultiplePlaybackRadios(radios, sessionRadios));
+  }, [radios, sessionRadios, syncRadios]);
 
   const handleEditRadio = useCallback((radio: Radio) => {
     setDialogMode("edit");

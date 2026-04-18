@@ -192,7 +192,7 @@ export function resetDeck(deckId: "deck-a" | "deck-b") {
       effectsDryWet: 1,
       repeat: false,
       autoplay: true,
-      cueEnabled: false,
+      cueEnabled: next?.cueEnabled ?? draft.cueEnabled,
     });
   });
 }

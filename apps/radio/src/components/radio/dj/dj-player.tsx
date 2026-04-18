@@ -11,7 +11,6 @@ import {
 import { Volume2Icon } from "lucide-react";
 import { useEffect, useRef } from "react";
 import type { Radio } from "@/lib/audio";
-import { getPlaybackSession, resetDeck } from "@/lib/collections";
 import {
   setCrossfadePosition,
   setDeckACueEnabled,
@@ -22,7 +21,9 @@ import {
   setMasterVolume,
 } from "@/lib/dj-actions";
 import { useDjKeyboard } from "@/lib/hooks/use-dj-keyboard";
+import { useDjSession } from "@/lib/hooks/use-dj-session";
 import {
+  resetDeck,
   setActiveDragRadio,
   setPendingPlatformItem,
   useActiveDragRadio,
@@ -99,26 +100,28 @@ function handlePlatformItemDrag({
 function useDjStateHydration() {
   const hasHydratedRef = useRef(false);
   const { data: settings } = useSettings();
+  const session = useDjSession();
 
   useEffect(() => {
     if (hasHydratedRef.current || settings === undefined) {
       return;
     }
+
+    const shouldRestore = settings.player.restoreStateOnLoad !== false;
+    if (!shouldRestore) {
+      hasHydratedRef.current = true;
+      return;
+    }
+
+    if (!session) {
+      return;
+    }
+
     hasHydratedRef.current = true;
 
     (async () => {
-      const shouldRestore = settings?.player?.restoreStateOnLoad !== false;
-      if (!shouldRestore) {
-        return;
-      }
-
-      const session = getPlaybackSession("dj");
-      const deckA = session?.channels.find(
-        (channel) => channel.id === "deck-a"
-      );
-      const deckB = session?.channels.find(
-        (channel) => channel.id === "deck-b"
-      );
+      const deckA = session.channels.find((channel) => channel.id === "deck-a");
+      const deckB = session.channels.find((channel) => channel.id === "deck-b");
 
       if (deckA?.radio?.platformMetadata?.platform === "local-file") {
         resetDeck("deck-a");
@@ -131,12 +134,10 @@ function useDjStateHydration() {
         await setDeckBRadio(deckB.radio as Radio);
       }
 
-      if (session) {
-        setMasterVolume(session.masterVolume);
-        setCrossfadePosition(session.crossfadePosition);
-      }
+      setMasterVolume(session.masterVolume);
+      setCrossfadePosition(session.crossfadePosition);
     })();
-  }, [settings]);
+  }, [session, settings]);
 }
 
 function DjPlayerDragOverlay({

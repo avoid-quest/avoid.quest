@@ -56,13 +56,20 @@ export function addMultiplePlaybackChannel(
   radio: Radio,
   order?: number
 ): PlaybackChannelRecord {
+  const channelId = getMultipleChannelId(radio);
+  const existingChannel = getPlaybackChannel("multiple", channelId);
+  const nextOrder =
+    order ??
+    existingChannel?.order ??
+    getPlaybackSession("multiple")?.channels.length ??
+    0;
   const channel = {
-    ...createDefaultChannel(
-      getMultipleChannelId(radio),
-      "multiple",
-      order ?? getPlaybackSession("multiple")?.channels.length ?? 0
-    ),
+    ...(existingChannel ??
+      createDefaultChannel(channelId, "multiple", nextOrder)),
+    id: channelId,
+    role: "multiple" as const,
     radio,
+    order: nextOrder,
   };
   upsertPlaybackChannel("multiple", channel);
   return channel;

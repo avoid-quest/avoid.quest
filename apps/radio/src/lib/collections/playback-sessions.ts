@@ -423,10 +423,12 @@ export async function initializePlaybackSessions(): Promise<void> {
     if (!playbackSessionsCollection.state.has("single")) {
       upsertSession(buildSingleSessionFromLegacy());
     }
+    if (!playbackSessionsCollection.state.has("multiple")) {
+      upsertSession(buildMultipleSessionFromEnabledRadios());
+    }
     if (!playbackSessionsCollection.state.has("dj")) {
       upsertSession(buildDjSessionFromLegacy());
     }
-    upsertSession(buildMultipleSessionFromEnabledRadios());
   }
 
   const settings = settingsCollection.state.get(SETTINGS_ID);

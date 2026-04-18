@@ -15,6 +15,7 @@ export function MultipleRadios({ radios }: { radios?: Radio[] }) {
     players,
     globalVolume,
     globalMuted,
+    syncRadios,
     addRadio,
     removeRadio,
     togglePlayPause,
@@ -43,6 +44,7 @@ export function MultipleRadios({ radios }: { radios?: Radio[] }) {
     confirmDelete,
   } = useMultipleRadioManagement({
     radios,
+    syncRadios,
     addRadio,
     removeRadio,
   });

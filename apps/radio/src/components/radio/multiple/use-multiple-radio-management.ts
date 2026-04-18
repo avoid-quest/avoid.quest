@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import type { Radio } from "@/lib/audio";
+import { getMultipleChannelId } from "@/lib/collections/playback-sessions";
 import { useRadioGardenResolve } from "@/lib/hooks/use-radio-garden-resolve";
 import {
   addRadio as addRadioToCollection,
@@ -13,12 +14,14 @@ import {
 
 type UseMultipleRadioManagementOptions = {
   radios?: Radio[];
+  syncRadios: (radios: Radio[]) => void;
   addRadio: (radio: Radio, persistSelection?: boolean) => void;
   removeRadio: (playerId: string) => void;
 };
 
 export function useMultipleRadioManagement({
   radios,
+  syncRadios,
   addRadio,
   removeRadio,
 }: UseMultipleRadioManagementOptions) {
@@ -40,37 +43,13 @@ export function useMultipleRadioManagement({
   const [dialogMode, setDialogMode] = useState<"create" | "edit">("create");
   const [selectedRadio, setSelectedRadio] = useState<Radio | undefined>();
   const [deleteConfirm, setDeleteConfirm] = useState<Radio | null>(null);
-  const addedRadioIdsRef = useRef<Set<string | number>>(new Set());
-
-  useEffect(() => {
-    return () => {
-      addedRadioIdsRef.current.clear();
-    };
-  }, []);
 
   useEffect(() => {
     if (!radios) {
       return;
     }
-
-    const currentRadioIds = new Set(
-      radios.map((radio) => radio.id).filter(Boolean)
-    );
-
-    for (const radio of radios) {
-      if (radio.id && !addedRadioIdsRef.current.has(radio.id)) {
-        addedRadioIdsRef.current.add(radio.id);
-        addRadio(radio, false);
-      }
-    }
-
-    for (const radioId of addedRadioIdsRef.current) {
-      if (!currentRadioIds.has(radioId)) {
-        removeRadio(`multi_${radioId}`);
-        addedRadioIdsRef.current.delete(radioId);
-      }
-    }
-  }, [radios, addRadio, removeRadio]);
+    syncRadios(radios);
+  }, [radios, syncRadios]);
 
   const handleEditRadio = useCallback((radio: Radio) => {
     setDialogMode("edit");
@@ -83,7 +62,7 @@ export function useMultipleRadioManagement({
       if (isSessionRadio(radio)) {
         if (radio.id) {
           removeSessionRadio(radio.id);
-          removeRadio(`multi_${radio.id}`);
+          removeRadio(getMultipleChannelId(radio));
         }
         return;
       }

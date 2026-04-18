@@ -23,11 +23,12 @@ self.addEventListener("fetch", (event) => {
   // Don't intercept media requests
   if (
     event.request.destination === "audio" ||
-    event.request.destination === "video"
+    event.request.destination === "video" ||
+    event.request.mode === "navigate"
   ) {
     return;
   }
 
   // Pass through to network - no caching for live streaming
-  event.respondWith(fetch(event.request));
+  event.respondWith(fetch(event.request).catch(() => Response.error()));
 });

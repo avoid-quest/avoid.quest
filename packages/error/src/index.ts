@@ -247,19 +247,6 @@ export function initClientSentry(config: {
       }
       return event;
     },
-    integrations: [
-      Sentry.replayIntegration({
-        maskAllText: true,
-        maskAllInputs: true,
-        blockAllMedia: true,
-        networkCaptureBodies: false,
-        networkRequestHeaders: [],
-        networkResponseHeaders: [],
-        networkDetailAllowUrls: [],
-      }),
-    ],
-    replaysSessionSampleRate: 0,
-    replaysOnErrorSampleRate: 1.0,
   });
 }
 

@@ -2,6 +2,7 @@ import { eq, useLiveQuery } from "@tanstack/react-db";
 import { useStore } from "@tanstack/react-store";
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { Radio } from "@/lib/audio";
+import { generateErrorId } from "@/lib/audio/playback";
 import {
   type PlaybackSessionRecord,
   playbackSessionsCollection,
@@ -9,14 +10,16 @@ import {
 import {
   addMultiplePlaybackChannel,
   pauseAllMultipleChannels,
-  playAllMultipleChannels,
   removeMultiplePlaybackChannel,
   setMultipleChannelPlaying,
   setMultipleChannelVolume,
   setMultipleSessionMasterVolume,
   syncMultiplePlaybackChannels,
 } from "@/lib/playback-actions";
-import { playbackRuntimeStore } from "@/lib/stores/playback-runtime-store";
+import {
+  playbackRuntimeStore,
+  setPlaybackChannelRuntime,
+} from "@/lib/stores/playback-runtime-store";
 
 export type MultipleSessionPlayerState = {
   id: string;
@@ -34,6 +37,29 @@ function useMultipleSessionRecord(): PlaybackSessionRecord | undefined {
       .where(({ session }) => eq(session.id, "multiple"))
   );
   return result.data?.[0] as PlaybackSessionRecord | undefined;
+}
+
+function clearMultipleChannelError(channelId: string): void {
+  setPlaybackChannelRuntime(channelId, () => ({ error: null }));
+}
+
+function setMultipleChannelError(
+  channelId: string,
+  error: unknown,
+  radio?: Radio
+): void {
+  const errorObj =
+    error instanceof Error ? error : new Error("Failed to update playback");
+  setPlaybackChannelRuntime(channelId, () => ({
+    isLoading: false,
+    error: {
+      id: generateErrorId(),
+      message: errorObj.message,
+      code: "PLAY_ERROR",
+      radio,
+      timestamp: Date.now(),
+    },
+  }));
 }
 
 export function useMultipleSession() {
@@ -70,7 +96,12 @@ export function useMultipleSession() {
   const addRadio = useCallback(async (radio: Radio, autoPlay = false) => {
     const channel = addMultiplePlaybackChannel(radio);
     if (autoPlay) {
-      await setMultipleChannelPlaying(channel.id, true);
+      try {
+        clearMultipleChannelError(channel.id);
+        await setMultipleChannelPlaying(channel.id, true);
+      } catch (error) {
+        setMultipleChannelError(channel.id, error, radio);
+      }
     }
     return channel.id;
   }, []);
@@ -82,7 +113,15 @@ export function useMultipleSession() {
   const togglePlayPause = useCallback(
     async (channelId: string) => {
       const player = players.find((entry) => entry.id === channelId);
-      await setMultipleChannelPlaying(channelId, !(player?.isPlaying ?? false));
+      try {
+        clearMultipleChannelError(channelId);
+        await setMultipleChannelPlaying(
+          channelId,
+          !(player?.isPlaying ?? false)
+        );
+      } catch (error) {
+        setMultipleChannelError(channelId, error, player?.radio);
+      }
     },
     [players]
   );
@@ -111,8 +150,18 @@ export function useMultipleSession() {
   }, [globalMuted, session?.masterVolume]);
 
   const playAll = useCallback(async () => {
-    await playAllMultipleChannels();
-  }, []);
+    for (const player of players) {
+      if (player.isPlaying) {
+        continue;
+      }
+      try {
+        clearMultipleChannelError(player.id);
+        await setMultipleChannelPlaying(player.id, true);
+      } catch (error) {
+        setMultipleChannelError(player.id, error, player.radio);
+      }
+    }
+  }, [players]);
 
   const pauseAll = useCallback(() => {
     pauseAllMultipleChannels();

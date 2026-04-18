@@ -5,7 +5,6 @@ import {
 import { cn } from "@avoid.quest/ui/lib/utils";
 import { LayersIcon, ListMusicIcon, SwordsIcon } from "lucide-react";
 import { toast } from "sonner";
-import { HTML5AudioManager } from "@/lib/audio/html5";
 import { updatePlayerSettings } from "@/lib/collections";
 import { DEFAULT_TRANSITION_DURATION } from "@/lib/const";
 import { cleanupAudioOnly } from "@/lib/dj-actions";
@@ -30,7 +29,6 @@ export function ModeSelect({ className }: { className?: string }) {
     try {
       const newMode = value as "single" | "multiple" | "dj";
       await cleanupAudioOnly();
-      HTML5AudioManager.getInstance().dispose();
       await cleanupAudioForModeChange(newMode);
 
       updatePlayerSettings((player) => ({

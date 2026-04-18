@@ -4,7 +4,7 @@
  * Self-contained audio system for radio streaming with DSP effects.
  *
  * Architecture:
- * - playback/: Thin playback infrastructure (context, streaming, worklet)
+ * - playback/: Thin playback infrastructure (context, transport, worklet)
  * - dsp/: DSP processing (effects, analysis, routing)
  * - manager/: High-level API (AudioManager, crossfade)
  * - hooks/: React integration (useAudio, useAudioDevices)
@@ -60,14 +60,8 @@ export {
   MessageType,
   type MessageTypeValue,
 } from "./dsp/processor.js";
-export type { MultipleAudioState } from "./hooks/index.js";
 // React hooks
-export {
-  useAudio,
-  useAudioDevices,
-  useMultipleAudio,
-  useSingleAudio,
-} from "./hooks/index.js";
+export { useAudio, useAudioDevices } from "./hooks/index.js";
 // High-level API (primary exports)
 export {
   AudioManager,
@@ -90,8 +84,8 @@ export {
   type AudioStateCallback,
   type ChannelSelection,
   createDeviceSource,
-  createHtml5AudioSource,
   createMicSource,
+  createPlaybackSource,
   createWorkletManager,
   type DeviceAudioConstraints,
   type DevicePermissionState,
@@ -100,11 +94,12 @@ export {
   defaultStreamBufferConfig,
   getAudioContext,
   getAudioContextManager,
-  Html5AudioSource,
-  type Html5AudioSourceCallbacks,
   initialAudioState,
+  MediaElementPlaybackSource,
   MicSource,
   type MicSourceCallbacks,
+  type PlaybackSource,
+  type PlaybackSourceCallbacks,
   type Radio,
   resumeAudioContext,
   suspendAudioContext,

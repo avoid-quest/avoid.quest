@@ -4,14 +4,15 @@ import { Slider } from "@avoid.quest/ui/components/slider";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import { Volume2Icon, VolumeXIcon } from "lucide-react";
 import { useState } from "react";
-import type { MultipleAudioState, Radio } from "@/lib/audio";
+import type { Radio } from "@/lib/audio";
+import type { MultipleSessionPlayerState } from "@/lib/hooks/use-multiple-session";
 import { isSessionRadio } from "@/lib/hooks/use-session-radios";
 import { RadioItemActions } from "../radio-item-actions";
 import { RadioLogo } from "../radio-logo";
 
 type MultipleRadioCardProps = {
   radio: Radio;
-  playerState: MultipleAudioState | null;
+  playerState: MultipleSessionPlayerState | null;
   onTogglePlayPause: () => void;
   onVolumeChange: (volume: number) => void;
   onEdit?: (radio: Radio) => void;

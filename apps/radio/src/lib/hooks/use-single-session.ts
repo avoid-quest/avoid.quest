@@ -1,6 +1,7 @@
 import { eq, useLiveQuery } from "@tanstack/react-db";
 import { useCallback, useMemo, useState } from "react";
 import type { Radio } from "@/lib/audio";
+import { generateErrorId } from "@/lib/audio/playback";
 import {
   type PlaybackSessionRecord,
   playbackSessionsCollection,
@@ -12,7 +13,38 @@ import {
   setSingleChannelVolume,
   setSinglePlaybackState,
 } from "@/lib/playback-actions";
-import { usePlaybackChannelRuntime } from "@/lib/stores/playback-runtime-store";
+import {
+  setPlaybackChannelRuntime,
+  usePlaybackChannelRuntime,
+} from "@/lib/stores/playback-runtime-store";
+
+function clearSingleSessionErrors(): void {
+  for (const channelId of [
+    SINGLE_ACTIVE_CHANNEL_ID,
+    SINGLE_STANDBY_CHANNEL_ID,
+  ]) {
+    setPlaybackChannelRuntime(channelId, () => ({ error: null }));
+  }
+}
+
+function setSingleSessionError(
+  channelId: string,
+  error: unknown,
+  radio?: Radio
+): void {
+  const errorObj =
+    error instanceof Error ? error : new Error("Failed to update playback");
+  setPlaybackChannelRuntime(channelId, () => ({
+    isLoading: false,
+    error: {
+      id: generateErrorId(),
+      message: errorObj.message,
+      code: "PLAY_ERROR",
+      radio,
+      timestamp: Date.now(),
+    },
+  }));
+}
 
 function useSingleSessionRecord(): PlaybackSessionRecord | undefined {
   const result = useLiveQuery((q) =>
@@ -55,31 +87,62 @@ export function useSingleSession(transitionDuration: number) {
         !!currentRadio &&
         activeRuntime.isPlaying &&
         radio.streamUrl !== currentRadio.streamUrl;
+      const errorChannelId = activeChannelId ?? SINGLE_ACTIVE_CHANNEL_ID;
       if (shouldCrossfade) {
         setIsCrossfading(true);
       }
       try {
+        clearSingleSessionErrors();
         await selectSinglePlaybackRadio(radio, transitionDuration);
+      } catch (error) {
+        setSingleSessionError(errorChannelId, error, radio);
       } finally {
         if (shouldCrossfade) {
           setIsCrossfading(false);
         }
       }
     },
-    [activeRuntime.isPlaying, currentRadio, transitionDuration]
+    [activeChannelId, activeRuntime.isPlaying, currentRadio, transitionDuration]
   );
 
   const togglePlayPause = useCallback(async () => {
-    await setSinglePlaybackState(!activeRuntime.isPlaying);
-  }, [activeRuntime.isPlaying]);
+    try {
+      clearSingleSessionErrors();
+      await setSinglePlaybackState(!activeRuntime.isPlaying);
+    } catch (error) {
+      setSingleSessionError(
+        activeChannelId ?? SINGLE_ACTIVE_CHANNEL_ID,
+        error,
+        currentRadio ?? undefined
+      );
+    }
+  }, [activeChannelId, activeRuntime.isPlaying, currentRadio]);
 
   const play = useCallback(async () => {
-    await setSinglePlaybackState(true);
-  }, []);
+    try {
+      clearSingleSessionErrors();
+      await setSinglePlaybackState(true);
+    } catch (error) {
+      setSingleSessionError(
+        activeChannelId ?? SINGLE_ACTIVE_CHANNEL_ID,
+        error,
+        currentRadio ?? undefined
+      );
+    }
+  }, [activeChannelId, currentRadio]);
 
   const pause = useCallback(async () => {
-    await setSinglePlaybackState(false);
-  }, []);
+    try {
+      clearSingleSessionErrors();
+      await setSinglePlaybackState(false);
+    } catch (error) {
+      setSingleSessionError(
+        activeChannelId ?? SINGLE_ACTIVE_CHANNEL_ID,
+        error,
+        currentRadio ?? undefined
+      );
+    }
+  }, [activeChannelId, currentRadio]);
 
   const stop = pause;
 

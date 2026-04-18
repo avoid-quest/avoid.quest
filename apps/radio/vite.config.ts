@@ -50,9 +50,7 @@ const VENDOR_CHUNK_GROUPS: Array<{
   },
   {
     name: "vendor-audio",
-    match: (id) =>
-      id.includes("/node_modules/@opendaw/") ||
-      id.includes("/node_modules/hls.js/"),
+    match: (id) => id.includes("/node_modules/@opendaw/"),
   },
   {
     name: "vendor-ui",

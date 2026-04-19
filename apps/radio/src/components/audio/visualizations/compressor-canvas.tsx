@@ -73,6 +73,7 @@ export const CompressorCanvas = memo(function CompressorCanvas({
   maxDb = 0,
 }: CompressorCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const sizeRef = useRef({ width: 0, height: 0 });
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -86,17 +87,18 @@ export const CompressorCanvas = memo(function CompressorCanvas({
     }
 
     const draw = () => {
+      const { width: cssWidth, height: cssHeight } = sizeRef.current;
+      if (cssWidth === 0 || cssHeight === 0) {
+        return;
+      }
+
       const dpr = window.devicePixelRatio || 1;
-      const rect = canvas.getBoundingClientRect();
-      const width = rect.width * dpr;
-      const height = rect.height * dpr;
+      canvas.width = cssWidth * dpr;
+      canvas.height = cssHeight * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-      canvas.width = width;
-      canvas.height = height;
-      ctx.scale(dpr, dpr);
-
-      const w = rect.width;
-      const h = rect.height;
+      const w = cssWidth;
+      const h = cssHeight;
       const dbRange = maxDb - minDb;
 
       // Helper to convert dB to X coordinate
@@ -196,7 +198,11 @@ export const CompressorCanvas = memo(function CompressorCanvas({
 
     draw();
 
-    const resizeObserver = new ResizeObserver(() => {
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width, height } = entry.contentRect;
+        sizeRef.current = { width, height };
+      }
       draw();
     });
     resizeObserver.observe(canvas);

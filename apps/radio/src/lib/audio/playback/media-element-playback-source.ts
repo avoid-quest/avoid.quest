@@ -7,6 +7,8 @@ import {
 } from "./playback-source-shared.js";
 import type { StreamStatus } from "./types.js";
 
+const MEDIA_LOAD_TIMEOUT_MS = 8000;
+
 function isHlsUrl(url: string): boolean {
   try {
     return new URL(
@@ -54,15 +56,23 @@ function resolveMediaUrl(url: string): string {
   return STREAM_PROXY_ROUTE + encodeURIComponent(url);
 }
 
-function getMediaPlaybackCandidates(url: string): string[] {
-  const candidates = [url];
+export function getMediaPlaybackCandidates(url: string): string[] {
   const proxiedUrl = resolveMediaUrl(url);
 
-  if (proxiedUrl !== url) {
-    candidates.push(proxiedUrl);
+  if (proxiedUrl === url) {
+    return [url];
   }
 
-  return candidates;
+  // HLS manifests typically reference segment URLs, so keep the direct URL
+  // first and only fall back to the single-URL proxy.
+  if (isHlsUrl(url)) {
+    return [url, proxiedUrl];
+  }
+
+  // Plain remote streams should stay on the same-origin proxy path. Falling
+  // back to the raw URL just produces noisy CORS failures and cannot be wired
+  // into the Web Audio graph reliably.
+  return [proxiedUrl];
 }
 
 function createMediaError(element: HTMLMediaElement): Error {
@@ -326,12 +336,17 @@ export class MediaElementPlaybackSource implements PlaybackSource {
   ): Promise<void> {
     await new Promise<void>((resolve, reject) => {
       let settled = false;
+      let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
       const cleanup = () => {
         this.audio.removeEventListener("canplay", handleReady);
         this.audio.removeEventListener("loadedmetadata", handleReady);
         this.audio.removeEventListener("error", handleError);
         this.audio.removeEventListener("abort", handleAbort);
+        if (timeoutId !== null) {
+          clearTimeout(timeoutId);
+          timeoutId = null;
+        }
       };
 
       const finish = (fn: () => void) => {
@@ -371,12 +386,21 @@ export class MediaElementPlaybackSource implements PlaybackSource {
         });
       };
 
+      const handleTimeout = () => {
+        finish(() => {
+          reject(
+            new Error(`Audio stream timed out after ${MEDIA_LOAD_TIMEOUT_MS}ms`)
+          );
+        });
+      };
+
       this.audio.addEventListener("canplay", handleReady, { once: true });
       this.audio.addEventListener("loadedmetadata", handleReady, {
         once: true,
       });
       this.audio.addEventListener("error", handleError, { once: true });
       this.audio.addEventListener("abort", handleAbort, { once: true });
+      timeoutId = setTimeout(handleTimeout, MEDIA_LOAD_TIMEOUT_MS);
 
       try {
         this.loadIntoMediaElement(url, treatAsHls, (error) => {

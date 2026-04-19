@@ -528,6 +528,69 @@ export class AudioManager {
   }
 
   /**
+   * Schedule a volume curve for a sound without a main-thread animation loop.
+   */
+  scheduleVolumeCurve(
+    soundId: string,
+    volumeCurve: Float32Array,
+    durationMs: number
+  ): void {
+    const instance = this.sounds.get(soundId);
+    if (!instance) {
+      return;
+    }
+
+    if (volumeCurve.length === 0) {
+      return;
+    }
+
+    const lastVolume = Math.max(
+      0,
+      Math.min(1, volumeCurve.at(-1) ?? instance.volume)
+    );
+    instance.volume = lastVolume;
+
+    if (instance.nodes) {
+      const context = getAudioContext();
+      if (context) {
+        const now = context.currentTime;
+        const durationSeconds = Math.max(0, durationMs) / 1000;
+        const gainNode = instance.nodes.gain.gain;
+
+        gainNode.cancelScheduledValues(now);
+
+        if (durationSeconds === 0) {
+          gainNode.setValueAtTime(
+            Math.max(0.0001, lastVolume * this.globalVolume),
+            now
+          );
+        } else {
+          const scaledCurve = Float32Array.from(volumeCurve, (value) =>
+            Math.max(
+              0.0001,
+              Math.max(0, Math.min(1, value)) * this.globalVolume
+            )
+          );
+          gainNode.setValueCurveAtTime(scaledCurve, now, durationSeconds);
+        }
+      }
+    }
+
+    notifySoundState(this.notifyListeners, soundId, instance, {
+      volume: lastVolume,
+      error: null,
+    });
+  }
+
+  hasSound(soundId: string): boolean {
+    return this.sounds.has(soundId);
+  }
+
+  getSoundVolume(soundId: string): number | null {
+    return this.sounds.get(soundId)?.volume ?? null;
+  }
+
+  /**
    * Set pan for a sound (-1 to 1)
    */
   setPan(soundId: string, pan: number): void {

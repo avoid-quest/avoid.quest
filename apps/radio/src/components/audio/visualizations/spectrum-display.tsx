@@ -85,7 +85,6 @@ export const SpectrumDisplay = memo(function SpectrumDisplay({
   colorScheme = "green",
 }: SpectrumDisplayProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const animationRef = useRef<number>(0);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -169,8 +168,6 @@ export const SpectrumDisplay = memo(function SpectrumDisplay({
           barHeight * dpr
         );
       }
-
-      animationRef.current = requestAnimationFrame(draw);
     };
 
     // Handle resize
@@ -188,7 +185,6 @@ export const SpectrumDisplay = memo(function SpectrumDisplay({
 
     return () => {
       resizeObserver.disconnect();
-      cancelAnimationFrame(animationRef.current);
     };
   }, [spectrum, barCount, minDb, maxDb, barGap, colorScheme]);
 

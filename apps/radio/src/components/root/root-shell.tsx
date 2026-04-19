@@ -8,6 +8,7 @@ import { SWRegister } from "@/components/pwa/sw-register";
 import { SyncDialog } from "@/components/settings/sync-dialog";
 import { Header } from "@/components/theme/header";
 import { ThemeProvider } from "@/components/theme/theme-provider";
+import { AudioManager } from "@/lib/audio";
 import type { SyncChanges } from "@/lib/collections";
 import {
   applyRootSyncChanges,
@@ -40,6 +41,18 @@ export function RootShell({ children }: { children: React.ReactNode }) {
 
     return () => {
       cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const handlePageHide = () => {
+      AudioManager.resetInstance();
+    };
+
+    window.addEventListener("pagehide", handlePageHide);
+
+    return () => {
+      window.removeEventListener("pagehide", handlePageHide);
     };
   }, []);
 

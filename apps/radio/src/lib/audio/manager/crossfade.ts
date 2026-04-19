@@ -40,6 +40,34 @@ function applyCurve(progress: number, curve: CrossfadeCurve): number {
   }
 }
 
+function createVolumeCurve(
+  startVolume: number,
+  endVolume: number,
+  curve: CrossfadeCurve,
+  transformProgress: (progress: number) => number
+): Float32Array {
+  const stepCount = 48;
+  const values = new Float32Array(stepCount + 1);
+
+  for (let index = 0; index <= stepCount; index++) {
+    const rawProgress = index / stepCount;
+    const curvedProgress = transformProgress(applyCurve(rawProgress, curve));
+    values[index] = startVolume + (endVolume - startVolume) * curvedProgress;
+  }
+
+  return values;
+}
+
+function wait(duration: number): Promise<void> {
+  if (duration <= 0) {
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve) => {
+    setTimeout(resolve, duration);
+  });
+}
+
 /**
  * Crossfade between two sounds
  *
@@ -58,40 +86,55 @@ export function crossfade(
 ): Promise<void> {
   const manager = AudioManager.getInstance();
   const { duration, targetVolume = 1, curve = "linear" } = options;
+  const clampedDuration = Math.max(0, duration);
 
-  // Get initial volumes
-  // For now, we estimate from current state - ideally we'd track this
-  const fromStartVolume = 1; // Assumes current volume is 1
-  const toStartVolume = 0;
+  return (async () => {
+    if (!manager.hasSound(toSoundId)) {
+      return;
+    }
 
-  const startTime = Date.now();
+    const fromStartVolume = manager.getSoundVolume(fromSoundId) ?? 1;
+    const toStartVolume = manager.getSoundVolume(toSoundId) ?? 0;
 
-  return new Promise((resolve) => {
-    const animate = () => {
-      const elapsed = Date.now() - startTime;
-      const rawProgress = Math.min(elapsed / duration, 1);
-      const progress = applyCurve(rawProgress, curve);
-
-      // Calculate volumes
-      const fromVolume = fromStartVolume * (1 - progress);
-      const toVolume =
-        toStartVolume + (targetVolume - toStartVolume) * progress;
-
-      // Apply volumes
-      manager.setVolume(fromSoundId, fromVolume);
-      manager.setVolume(toSoundId, toVolume);
-
-      if (rawProgress < 1) {
-        requestAnimationFrame(animate);
-      } else {
-        // Crossfade complete - stop the outgoing sound
-        manager.stopSound(fromSoundId);
-        resolve();
+    if (clampedDuration === 0) {
+      if (manager.hasSound(fromSoundId)) {
+        manager.setVolume(fromSoundId, 0);
       }
-    };
+      manager.setVolume(toSoundId, targetVolume);
+      if (manager.hasSound(fromSoundId)) {
+        manager.stopSound(fromSoundId);
+      }
+      return;
+    }
 
-    animate();
-  });
+    if (manager.hasSound(fromSoundId)) {
+      manager.scheduleVolumeCurve(
+        fromSoundId,
+        createVolumeCurve(fromStartVolume, 0, curve, (progress) => progress),
+        clampedDuration
+      );
+    }
+
+    manager.scheduleVolumeCurve(
+      toSoundId,
+      createVolumeCurve(
+        toStartVolume,
+        targetVolume,
+        curve,
+        (progress) => progress
+      ),
+      clampedDuration
+    );
+
+    await wait(clampedDuration);
+
+    if (manager.hasSound(toSoundId)) {
+      manager.setVolume(toSoundId, targetVolume);
+    }
+    if (manager.hasSound(fromSoundId)) {
+      manager.stopSound(fromSoundId);
+    }
+  })();
 }
 
 /**
@@ -109,28 +152,30 @@ export function fadeIn(
   curve: CrossfadeCurve = "linear"
 ): Promise<void> {
   const manager = AudioManager.getInstance();
-  const startTime = Date.now();
+  const clampedDuration = Math.max(0, duration);
 
-  // Start at zero volume
-  manager.setVolume(soundId, 0);
+  return (async () => {
+    if (!manager.hasSound(soundId)) {
+      return;
+    }
 
-  return new Promise((resolve) => {
-    const animate = () => {
-      const elapsed = Date.now() - startTime;
-      const rawProgress = Math.min(elapsed / duration, 1);
-      const progress = applyCurve(rawProgress, curve);
+    manager.setVolume(soundId, 0);
 
-      manager.setVolume(soundId, targetVolume * progress);
+    if (clampedDuration === 0) {
+      manager.setVolume(soundId, targetVolume);
+      return;
+    }
 
-      if (rawProgress < 1) {
-        requestAnimationFrame(animate);
-      } else {
-        resolve();
-      }
-    };
-
-    animate();
-  });
+    manager.scheduleVolumeCurve(
+      soundId,
+      createVolumeCurve(0, targetVolume, curve, (progress) => progress),
+      clampedDuration
+    );
+    await wait(clampedDuration);
+    if (manager.hasSound(soundId)) {
+      manager.setVolume(soundId, targetVolume);
+    }
+  })();
 }
 
 /**
@@ -148,29 +193,37 @@ export function fadeOut(
   curve: CrossfadeCurve = "linear"
 ): Promise<void> {
   const manager = AudioManager.getInstance();
-  const startTime = Date.now();
-  const startVolume = 1; // Assumes current volume is 1
+  const clampedDuration = Math.max(0, duration);
 
-  return new Promise((resolve) => {
-    const animate = () => {
-      const elapsed = Date.now() - startTime;
-      const rawProgress = Math.min(elapsed / duration, 1);
-      const progress = applyCurve(rawProgress, curve);
+  return (async () => {
+    if (!manager.hasSound(soundId)) {
+      return;
+    }
 
-      manager.setVolume(soundId, startVolume * (1 - progress));
+    const startVolume = manager.getSoundVolume(soundId) ?? 1;
 
-      if (rawProgress < 1) {
-        requestAnimationFrame(animate);
-      } else {
-        if (stopAfter) {
-          manager.stopSound(soundId);
-        }
-        resolve();
+    if (clampedDuration === 0) {
+      manager.setVolume(soundId, 0);
+      if (stopAfter && manager.hasSound(soundId)) {
+        manager.stopSound(soundId);
       }
-    };
+      return;
+    }
 
-    animate();
-  });
+    manager.scheduleVolumeCurve(
+      soundId,
+      createVolumeCurve(startVolume, 0, curve, (progress) => progress),
+      clampedDuration
+    );
+    await wait(clampedDuration);
+    if (!manager.hasSound(soundId)) {
+      return;
+    }
+    manager.setVolume(soundId, 0);
+    if (stopAfter) {
+      manager.stopSound(soundId);
+    }
+  })();
 }
 
 /**
@@ -188,46 +241,54 @@ export async function duckSound(
   fadeDuration = 300
 ): Promise<() => Promise<void>> {
   const manager = AudioManager.getInstance();
-  const startTime = Date.now();
-  const startVolume = 1; // Assumes current volume is 1
+  const startVolume = manager.getSoundVolume(soundId) ?? 1;
+  const clampedDuration = Math.max(0, fadeDuration);
 
-  // Fade down
-  await new Promise<void>((resolve) => {
-    const animate = () => {
-      const elapsed = Date.now() - startTime;
-      const progress = Math.min(elapsed / fadeDuration, 1);
-
-      const volume = startVolume - (startVolume - duckLevel) * progress;
-      manager.setVolume(soundId, volume);
-
-      if (progress < 1) {
-        requestAnimationFrame(animate);
-      } else {
-        resolve();
+  if (manager.hasSound(soundId)) {
+    if (clampedDuration === 0) {
+      manager.setVolume(soundId, duckLevel);
+    } else {
+      manager.scheduleVolumeCurve(
+        soundId,
+        createVolumeCurve(
+          startVolume,
+          duckLevel,
+          "linear",
+          (progress) => progress
+        ),
+        clampedDuration
+      );
+      await wait(clampedDuration);
+      if (manager.hasSound(soundId)) {
+        manager.setVolume(soundId, duckLevel);
       }
-    };
-    animate();
-  });
+    }
+  }
 
   // Return function to restore volume
-  return () => {
-    const restoreStartTime = Date.now();
+  return async () => {
+    if (!manager.hasSound(soundId)) {
+      return;
+    }
 
-    return new Promise((resolve) => {
-      const animate = () => {
-        const elapsed = Date.now() - restoreStartTime;
-        const progress = Math.min(elapsed / fadeDuration, 1);
+    if (clampedDuration === 0) {
+      manager.setVolume(soundId, startVolume);
+      return;
+    }
 
-        const volume = duckLevel + (startVolume - duckLevel) * progress;
-        manager.setVolume(soundId, volume);
-
-        if (progress < 1) {
-          requestAnimationFrame(animate);
-        } else {
-          resolve();
-        }
-      };
-      animate();
-    });
+    manager.scheduleVolumeCurve(
+      soundId,
+      createVolumeCurve(
+        duckLevel,
+        startVolume,
+        "linear",
+        (progress) => progress
+      ),
+      clampedDuration
+    );
+    await wait(clampedDuration);
+    if (manager.hasSound(soundId)) {
+      manager.setVolume(soundId, startVolume);
+    }
   };
 }

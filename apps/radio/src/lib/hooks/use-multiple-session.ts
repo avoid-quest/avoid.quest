@@ -30,6 +30,39 @@ export type MultipleSessionPlayerState = {
   error: string | null;
 };
 
+const PLAY_ALL_CONCURRENCY = 3;
+
+function yieldToBrowser(): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, 0);
+  });
+}
+
+async function runWithConcurrency<T>(
+  items: T[],
+  limit: number,
+  task: (item: T) => Promise<void>
+): Promise<void> {
+  let index = 0;
+
+  const workerCount = Math.min(limit, items.length);
+  await Promise.all(
+    Array.from({ length: workerCount }, async () => {
+      while (index < items.length) {
+        const currentItem = items[index];
+        index += 1;
+
+        if (currentItem === undefined) {
+          return;
+        }
+
+        await task(currentItem);
+        await yieldToBrowser();
+      }
+    })
+  );
+}
+
 function useMultipleSessionRecord(): PlaybackSessionRecord | undefined {
   const result = useLiveQuery((q) =>
     q
@@ -154,17 +187,18 @@ export function useMultipleSession() {
   }, [globalMuted, globalVolume]);
 
   const playAll = useCallback(async () => {
-    for (const player of players) {
-      if (player.isPlaying) {
-        continue;
+    await runWithConcurrency(
+      players.filter((player) => !player.isPlaying),
+      PLAY_ALL_CONCURRENCY,
+      async (player) => {
+        try {
+          clearMultipleChannelError(player.id);
+          await setMultipleChannelPlaying(player.id, true);
+        } catch (error) {
+          setMultipleChannelError(player.id, error, player.radio);
+        }
       }
-      try {
-        clearMultipleChannelError(player.id);
-        await setMultipleChannelPlaying(player.id, true);
-      } catch (error) {
-        setMultipleChannelError(player.id, error, player.radio);
-      }
-    }
+    );
   }, [players]);
 
   const pauseAll = useCallback(() => {

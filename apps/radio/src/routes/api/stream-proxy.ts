@@ -5,6 +5,7 @@ import { AppError, captureError } from "@avoid.quest/error";
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 import { createProxyRequestPolicy } from "@/lib/proxy/request-policy";
+import { inspectStreamAccess } from "@/lib/proxy/stream-access";
 
 const URL_SCHEMA = z
   .string()
@@ -148,6 +149,53 @@ function validateUrl(
  * Fetch stream and pipe response with CORS headers
  * Uses streaming response body for efficient proxying
  */
+function buildStreamResponse(
+  upstreamResponse: Response,
+  request: Request,
+  requestId: string
+): Response {
+  const responseHeaders: HeadersInit = {
+    ...proxyPolicy.errorHeaders(request),
+    "Access-Control-Expose-Headers":
+      "Content-Type, Content-Length, Icy-MetaInt, Icy-Name, Icy-Description, Icy-Genre, Icy-Br",
+    "x-request-id": requestId,
+  };
+
+  const contentType = upstreamResponse.headers.get("Content-Type");
+  if (contentType) {
+    responseHeaders["Content-Type"] = contentType;
+  }
+
+  const contentLength = upstreamResponse.headers.get("Content-Length");
+  if (contentLength) {
+    responseHeaders["Content-Length"] = contentLength;
+  }
+
+  for (const header of [
+    "Icy-MetaInt",
+    "Icy-Name",
+    "Icy-Description",
+    "Icy-Genre",
+    "Icy-Br",
+  ]) {
+    const value = upstreamResponse.headers.get(header);
+    if (value) {
+      responseHeaders[header] = value;
+    }
+  }
+
+  const contentRange = upstreamResponse.headers.get("Content-Range");
+  if (contentRange) {
+    responseHeaders["Content-Range"] = contentRange;
+    responseHeaders["Accept-Ranges"] = "bytes";
+  }
+
+  return new Response(upstreamResponse.body, {
+    status: upstreamResponse.status,
+    headers: responseHeaders,
+  });
+}
+
 async function fetchStream(
   url: string,
   request: Request,
@@ -181,46 +229,7 @@ async function fetchStream(
       );
     }
 
-    const responseHeaders: HeadersInit = {
-      ...proxyPolicy.errorHeaders(request),
-      "Access-Control-Expose-Headers":
-        "Content-Type, Content-Length, Icy-MetaInt, Icy-Name, Icy-Description, Icy-Genre, Icy-Br",
-      "x-request-id": requestId,
-    };
-
-    const contentType = res.headers.get("Content-Type");
-    if (contentType) {
-      responseHeaders["Content-Type"] = contentType;
-    }
-
-    const contentLength = res.headers.get("Content-Length");
-    if (contentLength) {
-      responseHeaders["Content-Length"] = contentLength;
-    }
-
-    for (const header of [
-      "Icy-MetaInt",
-      "Icy-Name",
-      "Icy-Description",
-      "Icy-Genre",
-      "Icy-Br",
-    ]) {
-      const value = res.headers.get(header);
-      if (value) {
-        responseHeaders[header] = value;
-      }
-    }
-
-    const contentRange = res.headers.get("Content-Range");
-    if (contentRange) {
-      responseHeaders["Content-Range"] = contentRange;
-      responseHeaders["Accept-Ranges"] = "bytes";
-    }
-
-    return new Response(res.body, {
-      status: res.status,
-      headers: responseHeaders,
-    });
+    return buildStreamResponse(res, request, requestId);
   } catch (error) {
     const appError = new AppError({
       code: "STREAM_PROXY_FETCH_FAILED",
@@ -239,6 +248,22 @@ async function fetchStream(
 
     return proxyPolicy.problem(appError, origin, requestId);
   }
+}
+
+function redirectToStream(
+  url: string,
+  request: Request,
+  requestId: string
+): Response {
+  const headers = new Headers(proxyPolicy.errorHeaders(request));
+  headers.set("Cache-Control", "private, no-store");
+  headers.set("Location", url);
+  headers.set("x-request-id", requestId);
+
+  return new Response(null, {
+    status: 307,
+    headers,
+  });
 }
 
 export const Route = createFileRoute("/api/stream-proxy")({
@@ -262,6 +287,25 @@ export const Route = createFileRoute("/api/stream-proxy")({
             const urlValidation = validateUrl(urlParam, origin, requestId);
             if (urlValidation instanceof Response) {
               return urlValidation;
+            }
+
+            const accessDecision = await inspectStreamAccess(urlValidation, {
+              origin,
+            });
+            if (accessDecision.mode === "direct") {
+              return redirectToStream(
+                accessDecision.resolvedUrl ?? urlValidation,
+                request,
+                requestId
+              );
+            }
+
+            if (accessDecision.response?.ok) {
+              return buildStreamResponse(
+                accessDecision.response,
+                request,
+                requestId
+              );
             }
 
             return fetchStream(urlValidation, request, origin, requestId);

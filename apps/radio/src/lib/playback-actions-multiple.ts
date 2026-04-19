@@ -144,9 +144,9 @@ export function setMultipleSessionMasterVolume(volume: number): void {
 
 export async function playAllMultipleChannels(): Promise<void> {
   const channels = getPlaybackSession("multiple")?.channels ?? [];
-  for (const channel of channels) {
-    await setMultipleChannelPlaying(channel.id, true);
-  }
+  await Promise.allSettled(
+    channels.map((channel) => setMultipleChannelPlaying(channel.id, true))
+  );
 }
 
 export function pauseAllMultipleChannels(): void {

@@ -25,7 +25,6 @@ export const WaveformDisplay = memo(function WaveformDisplay({
   fillOpacity = 0.2,
 }: WaveformDisplayProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const animationRef = useRef<number>(0);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -97,7 +96,6 @@ export const WaveformDisplay = memo(function WaveformDisplay({
       }
 
       ctx.stroke();
-      animationRef.current = requestAnimationFrame(draw);
     };
 
     // Handle resize
@@ -115,7 +113,6 @@ export const WaveformDisplay = memo(function WaveformDisplay({
 
     return () => {
       resizeObserver.disconnect();
-      cancelAnimationFrame(animationRef.current);
     };
   }, [waveform, lineWidth, color, fillOpacity]);
 

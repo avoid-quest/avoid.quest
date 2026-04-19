@@ -54,8 +54,6 @@ export function useSingleStateHydration(
           await selectRadioRef.current(singleState.radio);
         } catch (error) {
           console.error("[radio] Failed to restore radio:", error);
-          setIsHydrated(true);
-          return;
         }
       }
 

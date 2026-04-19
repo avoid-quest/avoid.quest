@@ -28,24 +28,29 @@ const PLATFORM_LABELS = {
 function ResultItem({
   result,
   onLoad,
+  onError,
   isDisabled,
   isLoading,
   onLoadingChange,
 }: {
   result: UnifiedSearchResult;
   onLoad: (radio: Radio) => void;
+  onError: (message: string) => void;
   isDisabled: boolean;
   isLoading: boolean;
   onLoadingChange: (loading: boolean) => void;
 }) {
   const { mutate: loadItem, isPending } = useDjTrackLoad({
     onLoad: (radio) => {
+      onError("");
       onLoad(radio);
     },
+    onError,
     onSettled: () => onLoadingChange(false),
   });
 
   const handleClick = () => {
+    onError("");
     onLoadingChange(true);
     loadItem(result.url);
   };
@@ -123,6 +128,7 @@ export function SearchResults({ onLoad }: SearchResultsProps) {
   const results = useSearchResultsStore((s) => s.results);
   const error = useSearchResultsStore((s) => s.error);
   const [loadingId, setLoadingId] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   if (error) {
     return (
@@ -138,19 +144,26 @@ export function SearchResults({ onLoad }: SearchResultsProps) {
 
   return (
     <ScrollArea className="min-h-0 flex-1">
-      <div className="space-y-0.5 pr-3">
-        {results.map((result) => (
-          <ResultItem
-            isDisabled={loadingId !== null}
-            isLoading={loadingId === result.id}
-            key={result.id}
-            onLoad={onLoad}
-            onLoadingChange={(loading) =>
-              setLoadingId(loading ? result.id : null)
-            }
-            result={result}
-          />
-        ))}
+      <div className="space-y-2 pr-3">
+        {!!loadError?.trim() && (
+          <p className="px-2 text-destructive text-xs">{loadError}</p>
+        )}
+
+        <div className="space-y-0.5">
+          {results.map((result) => (
+            <ResultItem
+              isDisabled={loadingId !== null}
+              isLoading={loadingId === result.id}
+              key={result.id}
+              onError={setLoadError}
+              onLoad={onLoad}
+              onLoadingChange={(loading) =>
+                setLoadingId(loading ? result.id : null)
+              }
+              result={result}
+            />
+          ))}
+        </div>
       </div>
     </ScrollArea>
   );

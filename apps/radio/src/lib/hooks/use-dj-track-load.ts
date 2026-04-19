@@ -7,6 +7,7 @@ import { usePlatformLoad } from "@/lib/hooks/use-platform-query";
 
 type UseDjTrackLoadOptions = {
   onLoad: (radio: Radio) => void;
+  onError?: (message: string, code: string) => void;
   onSettled?: () => void;
 };
 
@@ -18,7 +19,9 @@ export function useDjTrackLoad(options: UseDjTrackLoadOptions) {
       options.onSettled?.();
     },
     onError: (message, code) => {
-      reportDjErrorSurface(message, code ?? "DJ_TRACK_RESOLUTION_FAILED");
+      const errorCode = code ?? "DJ_TRACK_RESOLUTION_FAILED";
+      reportDjErrorSurface(message, errorCode);
+      options.onError?.(message, errorCode);
       options.onSettled?.();
     },
   });

@@ -29,6 +29,9 @@ export function UrlInput({ onLoad, onCancel }: UrlInputProps) {
       setUrl("");
       setError(null);
     },
+    onError: (message) => {
+      setError(message);
+    },
   });
 
   const handleSubmit = (e: React.FormEvent) => {

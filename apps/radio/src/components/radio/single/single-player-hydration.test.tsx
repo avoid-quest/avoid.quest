@@ -32,6 +32,12 @@ for (const [key, value] of Object.entries({
   });
 }
 
+Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", {
+  configurable: true,
+  writable: true,
+  value: true,
+});
+
 const mockSettingsState = {
   data: undefined as
     | {
@@ -180,5 +186,47 @@ describe("useSingleStateHydration", () => {
     expect(view.getByTestId("hydrated").textContent).toBe("true");
     expect(setVolume).not.toHaveBeenCalled();
     expect(selectRadio).not.toHaveBeenCalled();
+  });
+
+  test("restores saved volume even when restoring the saved radio fails", async () => {
+    const savedRadio = {
+      id: "saved-radio",
+      name: "Saved Radio",
+      streamUrl: "https://radio.example/saved.mp3",
+    } satisfies Radio;
+    const originalConsoleError = console.error;
+    console.error = mock(() => undefined) as typeof console.error;
+    try {
+      const selectRadio = mock((_radio: Radio) =>
+        Promise.reject(new Error("station gone"))
+      );
+      const setVolume = mock((_volume: number) => undefined);
+
+      mockSettingsState.data = {
+        player: { restoreStateOnLoad: true },
+      };
+      mockSingleStateValue.current = {
+        radio: savedRadio,
+        volume: 0.42,
+      };
+
+      const view = render(
+        <TestHarness
+          hasSingleSession={true}
+          selectRadio={selectRadio}
+          setVolume={setVolume}
+        />
+      );
+
+      await act(async () => Promise.resolve());
+
+      expect(view.getByTestId("hydrated").textContent).toBe("true");
+      expect(selectRadio).toHaveBeenCalledTimes(1);
+      expect(selectRadio).toHaveBeenCalledWith(savedRadio);
+      expect(setVolume).toHaveBeenCalledTimes(1);
+      expect(setVolume).toHaveBeenCalledWith(0.42);
+    } finally {
+      console.error = originalConsoleError;
+    }
   });
 });

@@ -288,4 +288,132 @@ describe("multiple session persistence", () => {
     expect(getPlaybackSession("single")).toBeDefined();
     expect(getPlaybackSession("dj")).toBeDefined();
   });
+
+  test("initializePlaybackSessions resets stored sessions when restore is disabled", async () => {
+    await Promise.all([
+      playbackSessionsCollection.stateWhenReady(),
+      radiosCollection.stateWhenReady(),
+      settingsCollection.stateWhenReady(),
+    ]);
+
+    radiosCollection.insert({
+      id: "saved-radio-1",
+      name: "Saved Radio",
+      streamUrl: "https://radio.example/saved.mp3",
+      order: 0,
+      enabled: true,
+      isSystem: false,
+    });
+
+    settingsCollection.insert({
+      id: SETTINGS_ID,
+      player: {
+        mode: "multiple",
+        restoreStateOnLoad: false,
+      },
+    });
+
+    playbackSessionsCollection.insert({
+      id: "single",
+      channels: [
+        {
+          ...createDefaultChannel(
+            SINGLE_ACTIVE_CHANNEL_ID,
+            "single-primary",
+            0
+          ),
+          radio: {
+            id: "single-radio",
+            name: "Persisted Single",
+            streamUrl: "https://radio.example/single.mp3",
+          },
+          volume: 0.25,
+        },
+        createDefaultChannel("single-b", "single-secondary", 1),
+      ],
+      masterVolume: 0.6,
+      crossfadePosition: 0.5,
+      headphoneVolume: 1,
+      activeChannelId: SINGLE_ACTIVE_CHANNEL_ID,
+    });
+
+    playbackSessionsCollection.insert({
+      id: "multiple",
+      channels: [
+        {
+          ...createDefaultChannel("multi:session-only", "multiple", 0),
+          radio: {
+            id: "session-only",
+            name: "Session Only",
+            streamUrl: "https://radio.example/session-only.mp3",
+          },
+          volume: 0.11,
+          muted: true,
+        },
+      ],
+      masterVolume: 0.23,
+      crossfadePosition: 0.5,
+      headphoneVolume: 0.7,
+      activeChannelId: null,
+    });
+
+    playbackSessionsCollection.insert({
+      id: "dj",
+      channels: [
+        {
+          ...createDefaultChannel(DECK_A_CHANNEL_ID, "deck-a", 0),
+          radio: {
+            id: "deck-a-radio",
+            name: "Deck A Radio",
+            streamUrl: "https://radio.example/deck-a.mp3",
+          },
+          volume: 0.8,
+          cueEnabled: true,
+        },
+        {
+          ...createDefaultChannel(DECK_B_CHANNEL_ID, "deck-b", 1),
+          radio: {
+            id: "deck-b-radio",
+            name: "Deck B Radio",
+            streamUrl: "https://radio.example/deck-b.mp3",
+          },
+          muted: true,
+        },
+      ],
+      masterVolume: 0.4,
+      crossfadePosition: 0.2,
+      headphoneVolume: 0.3,
+      activeChannelId: null,
+    });
+
+    await initializePlaybackSessions();
+
+    const singleSession = getPlaybackSession("single");
+    expect(singleSession?.activeChannelId).toBeNull();
+    expect(singleSession?.channels[0]?.radio).toBeNull();
+    expect(singleSession?.channels[0]?.volume).toBe(1);
+
+    const multipleSession = getPlaybackSession("multiple");
+    expect(multipleSession?.masterVolume).toBe(1);
+    expect(multipleSession?.channels).toHaveLength(1);
+    expect(multipleSession?.channels[0]?.id).toBe("multi:saved-radio-1");
+    expect(multipleSession?.channels[0]?.radio?.id).toBe("saved-radio-1");
+    expect(multipleSession?.channels[0]?.volume).toBe(1);
+    expect(multipleSession?.channels[0]?.muted).toBe(false);
+
+    const djSession = getPlaybackSession("dj");
+    const deckA = djSession?.channels.find(
+      (channel) => channel.id === DECK_A_CHANNEL_ID
+    );
+    const deckB = djSession?.channels.find(
+      (channel) => channel.id === DECK_B_CHANNEL_ID
+    );
+    expect(djSession?.masterVolume).toBe(1);
+    expect(djSession?.crossfadePosition).toBe(0.5);
+    expect(djSession?.headphoneVolume).toBe(1);
+    expect(deckA?.radio).toBeNull();
+    expect(deckA?.cueEnabled).toBe(false);
+    expect(deckB?.radio).toBeNull();
+    expect(deckB?.muted).toBe(false);
+  });
 });

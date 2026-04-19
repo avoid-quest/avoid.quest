@@ -12,6 +12,7 @@ import { useMultipleRadioManagement } from "./use-multiple-radio-management";
 
 export function MultipleRadios({ radios }: { radios?: Radio[] }) {
   const {
+    session,
     players,
     globalVolume,
     globalMuted,
@@ -44,6 +45,7 @@ export function MultipleRadios({ radios }: { radios?: Radio[] }) {
     confirmDelete,
   } = useMultipleRadioManagement({
     radios,
+    hasMultipleSession: Boolean(session),
     syncRadios,
     addRadio,
     removeRadio,

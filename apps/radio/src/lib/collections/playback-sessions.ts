@@ -415,7 +415,14 @@ export async function initializePlaybackSessions(): Promise<void> {
     settingsCollection.stateWhenReady(),
   ]);
 
-  if (playbackSessionsCollection.state.size === 0) {
+  const settings = settingsCollection.state.get(SETTINGS_ID);
+  const shouldRestore = settings?.player.restoreStateOnLoad !== false;
+
+  if (!shouldRestore) {
+    upsertSession(buildSingleSessionFromLegacyState());
+    upsertSession(buildMultipleSessionFromEnabledRadios());
+    upsertSession(buildDjSessionFromLegacyState());
+  } else if (playbackSessionsCollection.state.size === 0) {
     upsertSession(buildSingleSessionFromLegacy());
     upsertSession(buildMultipleSessionFromEnabledRadios());
     upsertSession(buildDjSessionFromLegacy());
@@ -431,7 +438,6 @@ export async function initializePlaybackSessions(): Promise<void> {
     }
   }
 
-  const settings = settingsCollection.state.get(SETTINGS_ID);
   const activeMode = settings?.player.mode ?? "single";
   const activeSession = playbackSessionsCollection.state.get(activeMode);
   if (activeSession) {

@@ -5,7 +5,8 @@ import { useSingleState } from "@/lib/hooks/use-single-state";
 
 export function useSingleStateHydration(
   selectRadio: (radio: Radio) => Promise<void>,
-  setVolume: (volume: number) => void
+  setVolume: (volume: number) => void,
+  hasSingleSession: boolean
 ) {
   const { data: settings } = useSettings();
   const singleState = useSingleState();
@@ -34,22 +35,32 @@ export function useSingleStateHydration(
     }
 
     const shouldRestore = settings?.player?.restoreStateOnLoad !== false;
-    if (shouldRestore && settings !== undefined && singleState !== undefined) {
-      hasHydratedRef.current = true;
-
-      if (singleState.volume !== undefined) {
-        setVolumeRef.current(singleState.volume);
-      }
-
-      if (singleState.radio) {
-        selectRadioRef.current(singleState.radio).catch((error) => {
-          console.error("[radio] Failed to restore radio:", error);
-        });
-      }
-
-      setIsHydrated(true);
+    if (!shouldRestore) {
+      return;
     }
-  }, [settings, singleState]);
+
+    if (
+      settings === undefined ||
+      singleState === undefined ||
+      !hasSingleSession
+    ) {
+      return;
+    }
+
+    hasHydratedRef.current = true;
+
+    if (singleState.volume !== undefined) {
+      setVolumeRef.current(singleState.volume);
+    }
+
+    if (singleState.radio) {
+      selectRadioRef.current(singleState.radio).catch((error) => {
+        console.error("[radio] Failed to restore radio:", error);
+      });
+    }
+
+    setIsHydrated(true);
+  }, [hasSingleSession, settings, singleState]);
 
   return isHydrated;
 }

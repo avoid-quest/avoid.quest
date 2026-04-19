@@ -34,6 +34,7 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
   const transitionDuration =
     settings?.player?.single?.transitionDuration ?? 2000;
   const {
+    session,
     currentRadio,
     isPlaying,
     isLoading,
@@ -45,7 +46,11 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
     setVolume,
   } = useSingleSession(transitionDuration);
 
-  const isHydrated = useSingleStateHydration(selectRadio, setVolume);
+  const isHydrated = useSingleStateHydration(
+    selectRadio,
+    setVolume,
+    Boolean(session)
+  );
 
   useMediaSession({ mode: "single", radio: currentRadio, isPlaying });
 

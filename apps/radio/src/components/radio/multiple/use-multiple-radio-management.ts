@@ -15,6 +15,7 @@ import { mergeMultiplePlaybackRadios } from "@/lib/playback-actions";
 
 type UseMultipleRadioManagementOptions = {
   radios?: Radio[];
+  hasMultipleSession: boolean;
   syncRadios: (radios: Radio[]) => void;
   addRadio: (radio: Radio, persistSelection?: boolean) => void;
   removeRadio: (playerId: string) => void;
@@ -22,6 +23,7 @@ type UseMultipleRadioManagementOptions = {
 
 export function useMultipleRadioManagement({
   radios,
+  hasMultipleSession,
   syncRadios,
   addRadio,
   removeRadio,
@@ -46,11 +48,11 @@ export function useMultipleRadioManagement({
   const [deleteConfirm, setDeleteConfirm] = useState<Radio | null>(null);
 
   useEffect(() => {
-    if (!radios) {
+    if (!(radios && hasMultipleSession)) {
       return;
     }
     syncRadios(mergeMultiplePlaybackRadios(radios, sessionRadios));
-  }, [radios, sessionRadios, syncRadios]);
+  }, [hasMultipleSession, radios, sessionRadios, syncRadios]);
 
   const handleEditRadio = useCallback((radio: Radio) => {
     setDialogMode("edit");

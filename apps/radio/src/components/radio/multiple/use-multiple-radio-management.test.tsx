@@ -17,14 +17,20 @@ const dom = new JSDOM("<!doctype html><html><body></body></html>", {
   url: "https://radio.test",
 });
 
-Object.assign(globalThis, {
+for (const [key, value] of Object.entries({
   window: dom.window,
   document: dom.window.document,
   navigator: dom.window.navigator,
   HTMLElement: dom.window.HTMLElement,
   localStorage: dom.window.localStorage,
   sessionStorage: dom.window.sessionStorage,
-});
+})) {
+  Object.defineProperty(globalThis, key, {
+    configurable: true,
+    writable: true,
+    value,
+  });
+}
 
 const sessionRadiosState = {
   radios: [] as Radio[],

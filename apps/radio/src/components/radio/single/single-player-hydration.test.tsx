@@ -17,14 +17,20 @@ const dom = new JSDOM("<!doctype html><html><body></body></html>", {
   url: "https://radio.test",
 });
 
-Object.assign(globalThis, {
+for (const [key, value] of Object.entries({
   window: dom.window,
   document: dom.window.document,
   navigator: dom.window.navigator,
   HTMLElement: dom.window.HTMLElement,
   localStorage: dom.window.localStorage,
   sessionStorage: dom.window.sessionStorage,
-});
+})) {
+  Object.defineProperty(globalThis, key, {
+    configurable: true,
+    writable: true,
+    value,
+  });
+}
 
 const mockSettingsState = {
   data: undefined as
@@ -89,14 +95,21 @@ function TestHarness({
 }
 
 describe("useSingleStateHydration", () => {
-  test("waits for the single playback session before restoring saved state", async () => {
+  test("waits for the single playback session and restores radio before saved volume", async () => {
     const savedRadio = {
       id: "saved-radio",
       name: "Saved Radio",
       streamUrl: "https://radio.example/saved.mp3",
     } satisfies Radio;
-    const selectRadio = mock(async (_radio: Radio) => undefined);
-    const setVolume = mock((_volume: number) => undefined);
+    const callOrder: string[] = [];
+    const selectRadio = mock(async (_radio: Radio) => {
+      callOrder.push("select:start");
+      await Promise.resolve();
+      callOrder.push("select:end");
+    });
+    const setVolume = mock((_volume: number) => {
+      callOrder.push("volume");
+    });
 
     mockSettingsState.data = {
       player: { restoreStateOnLoad: true },
@@ -131,10 +144,11 @@ describe("useSingleStateHydration", () => {
     await act(async () => Promise.resolve());
 
     expect(view.getByTestId("hydrated").textContent).toBe("true");
-    expect(setVolume).toHaveBeenCalledTimes(1);
-    expect(setVolume).toHaveBeenCalledWith(0.42);
     expect(selectRadio).toHaveBeenCalledTimes(1);
     expect(selectRadio).toHaveBeenCalledWith(savedRadio);
+    expect(setVolume).toHaveBeenCalledTimes(1);
+    expect(setVolume).toHaveBeenCalledWith(0.42);
+    expect(callOrder).toEqual(["select:start", "select:end", "volume"]);
   });
 
   test("completes immediately without restoring when restore is disabled", async () => {

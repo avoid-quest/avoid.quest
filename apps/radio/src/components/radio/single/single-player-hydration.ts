@@ -48,18 +48,25 @@ export function useSingleStateHydration(
     }
 
     hasHydratedRef.current = true;
+    const hydrate = async () => {
+      if (singleState.radio) {
+        try {
+          await selectRadioRef.current(singleState.radio);
+        } catch (error) {
+          console.error("[radio] Failed to restore radio:", error);
+          setIsHydrated(true);
+          return;
+        }
+      }
 
-    if (singleState.volume !== undefined) {
-      setVolumeRef.current(singleState.volume);
-    }
+      if (singleState.volume !== undefined) {
+        setVolumeRef.current(singleState.volume);
+      }
 
-    if (singleState.radio) {
-      selectRadioRef.current(singleState.radio).catch((error) => {
-        console.error("[radio] Failed to restore radio:", error);
-      });
-    }
+      setIsHydrated(true);
+    };
 
-    setIsHydrated(true);
+    hydrate();
   }, [hasSingleSession, settings, singleState]);
 
   return isHydrated;

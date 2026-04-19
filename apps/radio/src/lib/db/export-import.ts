@@ -14,12 +14,18 @@ const STORAGE_KEY_LAST_EXPORT = "radioproxy_last_export";
 const DATA_FRAGMENT_LENGTH = 6;
 const SETTINGS_ID = "app-settings";
 
+type ImportedPlayerSettings = {
+  mode?: DatabaseExport["settings"]["player"]["mode"];
+  restoreStateOnLoad?: DatabaseExport["settings"]["player"]["restoreStateOnLoad"];
+  single?: DatabaseExport["settings"]["player"]["single"];
+};
+
 function normalizeImportedSettings(
   settings: DatabaseExport["settings"] | SettingsRecord | undefined
-): DatabaseExport["settings"]["player"] {
+): ImportedPlayerSettings {
   const importedPlayer = settings?.player;
   return {
-    mode: importedPlayer?.mode ?? "single",
+    mode: importedPlayer?.mode,
     restoreStateOnLoad: importedPlayer?.restoreStateOnLoad,
     single: importedPlayer?.single,
   };

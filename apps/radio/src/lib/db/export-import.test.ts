@@ -63,6 +63,23 @@ describe("validateImportData", () => {
       single: undefined,
     });
   });
+
+  test("preserves omitted mode so merge imports can keep local value", () => {
+    const imported = validateImportData({
+      version: 1,
+      exportDate: "2026-04-16T00:00:00.000Z",
+      radios: [],
+      settings: {
+        player: {
+          restoreStateOnLoad: false,
+        },
+      },
+    });
+
+    expect(imported.settings.player.mode).toBeUndefined();
+    expect(imported.settings.player.restoreStateOnLoad).toBe(false);
+    expect(imported.settings.player.single).toBeUndefined();
+  });
 });
 
 describe("mergeImportedData", () => {
@@ -90,6 +107,37 @@ describe("mergeImportedData", () => {
 
     expect(getSettings()?.player).toEqual({
       mode: "dj",
+      restoreStateOnLoad: false,
+      single: undefined,
+    });
+  });
+
+  test("does not overwrite mode when the import omits it", async () => {
+    await settingsCollection.stateWhenReady();
+
+    settingsCollection.insert({
+      id: SETTINGS_ID,
+      player: {
+        mode: "multiple",
+        restoreStateOnLoad: true,
+      },
+    });
+
+    mergeImportedData(
+      validateImportData({
+        version: 1,
+        exportDate: "2026-04-16T00:00:00.000Z",
+        radios: [],
+        settings: {
+          player: {
+            restoreStateOnLoad: false,
+          },
+        },
+      })
+    );
+
+    expect(getSettings()?.player).toEqual({
+      mode: "multiple",
       restoreStateOnLoad: false,
       single: undefined,
     });

@@ -1,0 +1,116 @@
+import {
+  type AppError,
+  type AppErrorInit,
+  createRequestId,
+  problemResponse,
+  runApiRoute,
+} from "@avoid.quest/error";
+import {
+  type CorsHeaders,
+  getCorsHeaders,
+  getCorsOptionsHeaders,
+} from "@/lib/middleware/cors";
+import { validateAuthAndRateLimit } from "@/lib/middleware/rate-limit";
+
+type ProxyAuthResult = Exclude<
+  Awaited<ReturnType<typeof validateAuthAndRateLimit>>,
+  Response
+>;
+
+type ProxyPolicyDependencies = {
+  validateAuthAndRateLimit: typeof validateAuthAndRateLimit;
+};
+
+type ProxyRouteContext = {
+  auth: ProxyAuthResult;
+  origin: string;
+  request: Request;
+  requestId: string;
+};
+
+type ProxyRouteConfig = {
+  createSessionIfMissing?: boolean;
+  env: Parameters<typeof validateAuthAndRateLimit>[1];
+  fallback: Omit<AppErrorInit, "cause">;
+  identifier: string;
+  operation: string;
+  request: Request;
+  run: (context: ProxyRouteContext) => Promise<Response>;
+};
+
+function resolveProxyOrigin(request: Request): string {
+  try {
+    return new URL(request.url).origin;
+  } catch {
+    return "*";
+  }
+}
+
+export function createProxyRequestPolicy(
+  dependencies: ProxyPolicyDependencies = {
+    validateAuthAndRateLimit,
+  }
+) {
+  const problem = (error: AppError, origin: string, requestId: string) => {
+    return problemResponse(error, {
+      requestId,
+      headers: getCorsHeaders(origin),
+    });
+  };
+
+  const options = (request: Request) => {
+    const requestId = createRequestId(request);
+    const headers = new Headers(
+      getCorsOptionsHeaders(resolveProxyOrigin(request))
+    );
+    headers.set("x-request-id", requestId);
+
+    return new Response(null, {
+      status: 200,
+      headers,
+    });
+  };
+
+  const errorHeaders = (request: Request): CorsHeaders => {
+    return getCorsHeaders(resolveProxyOrigin(request));
+  };
+
+  const run = (config: ProxyRouteConfig): Promise<Response> => {
+    return runApiRoute({
+      request: config.request,
+      operation: config.operation,
+      fallback: config.fallback,
+      errorHeaders: ({ request }) => errorHeaders(request),
+      run: async ({ requestId }) => {
+        const origin = resolveProxyOrigin(config.request);
+        const authResult = await dependencies.validateAuthAndRateLimit(
+          config.request,
+          config.env,
+          config.identifier,
+          {
+            createSessionIfMissing: config.createSessionIfMissing ?? true,
+            requestId,
+          }
+        );
+
+        if (authResult instanceof Response) {
+          return authResult;
+        }
+
+        return config.run({
+          auth: authResult,
+          origin,
+          request: config.request,
+          requestId,
+        });
+      },
+    });
+  };
+
+  return {
+    errorHeaders,
+    options,
+    problem,
+    run,
+  };
+}

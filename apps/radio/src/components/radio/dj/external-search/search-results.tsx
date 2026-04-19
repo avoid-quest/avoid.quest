@@ -4,7 +4,7 @@ import { Loader2Icon, MusicIcon, PlayIcon } from "lucide-react";
 import { useState } from "react";
 import type { Radio } from "@/lib/audio";
 import { formatPlatformDuration } from "@/lib/external-url/utils";
-import { usePlatformLoad } from "@/lib/hooks/use-platform-query";
+import { useDjTrackLoad } from "@/lib/hooks/use-dj-track-load";
 import { useSearchResultsStore } from "./search-results-store";
 
 type SearchResultsProps = {
@@ -30,25 +30,23 @@ function ResultItem({
   onLoad,
   isDisabled,
   isLoading,
-  onLoadStart,
+  onLoadingChange,
 }: {
   result: UnifiedSearchResult;
   onLoad: (radio: Radio) => void;
   isDisabled: boolean;
   isLoading: boolean;
-  onLoadStart: () => void;
+  onLoadingChange: (loading: boolean) => void;
 }) {
-  const { mutate: loadItem, isPending } = usePlatformLoad({
-    onSuccess: (radio) => {
+  const { mutate: loadItem, isPending } = useDjTrackLoad({
+    onLoad: (radio) => {
       onLoad(radio);
     },
-    onError: () => {
-      // Error handled by mutation
-    },
+    onSettled: () => onLoadingChange(false),
   });
 
   const handleClick = () => {
-    onLoadStart();
+    onLoadingChange(true);
     loadItem(result.url);
   };
 
@@ -147,7 +145,9 @@ export function SearchResults({ onLoad }: SearchResultsProps) {
             isLoading={loadingId === result.id}
             key={result.id}
             onLoad={onLoad}
-            onLoadStart={() => setLoadingId(result.id)}
+            onLoadingChange={(loading) =>
+              setLoadingId(loading ? result.id : null)
+            }
             result={result}
           />
         ))}

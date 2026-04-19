@@ -2,58 +2,56 @@ import type { RadioGardenSearchResult } from "@avoid.quest/platforms";
 import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type { Radio } from "@/lib/audio";
+import { radiosCollection } from "@/lib/collections";
 import { addRadio } from "@/lib/hooks/use-radios";
 import { useSessionRadios } from "@/lib/hooks/use-session-radios";
+import {
+  addResolvedStationToSession,
+  resolveRadioGardenStation,
+  saveResolvedStationToCollection,
+} from "@/lib/stations/external-station-workflow";
 import { radioGardenResolveStream } from "@/utils/radio-garden.functions";
-
-function resultToRadio(
-  result: RadioGardenSearchResult,
-  streamUrl: string
-): Radio {
-  return {
-    id: `rg_${result.channelId}`,
-    name: result.title,
-    streamUrl,
-    description: result.subtitle,
-    placeTitle: result.placeTitle,
-    countryTitle: result.countryTitle,
-    websiteUrl: result.website,
-    enabled: true,
-    isSystem: false,
-    platformMetadata: {
-      platform: "radiogarden",
-      itemType: "channel",
-      url: result.url,
-      channelId: result.channelId,
-      name: result.title,
-      subtitle: result.subtitle,
-      placeTitle: result.placeTitle,
-      countryTitle: result.countryTitle,
-      website: result.website,
-    },
-  };
-}
 
 export function useRadioGardenResolve(
   onResolved: (radio: Radio) => void | Promise<void>
 ) {
   const addSessionRadio = useSessionRadios((s) => s.addSessionRadio);
+  const removeSessionRadio = useSessionRadios((s) => s.removeSessionRadio);
 
   const resolveMutation = useMutation({
-    mutationFn: async (
-      result: RadioGardenSearchResult
-    ): Promise<{ radio: Radio; result: RadioGardenSearchResult }> => {
-      const response = await radioGardenResolveStream({
-        data: { channelId: result.channelId },
-      });
-      if (!response.ok) {
-        throw new Error(response.error.message);
+    mutationFn: async (result: RadioGardenSearchResult): Promise<Radio> => {
+      const resolved = await resolveRadioGardenStation(
+        result,
+        async (channelId) => {
+          const response = await radioGardenResolveStream({
+            data: { channelId },
+          });
+          if (!response.ok) {
+            return {
+              ok: false,
+              error: {
+                code: response.error.code,
+                message: response.error.message,
+              },
+            };
+          }
+
+          return {
+            ok: true,
+            data: {
+              streamUrl: response.data.streamUrl,
+            },
+          };
+        }
+      );
+      if (!resolved.ok) {
+        throw new Error(resolved.error.message);
       }
-      const radio = resultToRadio(result, response.data.streamUrl);
-      return { radio, result };
+
+      return resolved.data;
     },
-    onSuccess: async ({ radio }) => {
-      addSessionRadio(radio);
+    onSuccess: async (radio) => {
+      addResolvedStationToSession(radio, addSessionRadio);
       await onResolved(radio);
     },
     onError: (error) => {
@@ -68,36 +66,48 @@ export function useRadioGardenResolve(
     );
 
     if (sessionRadio) {
-      const { id: _id, ...radioData } = sessionRadio;
-      addRadio({
-        ...radioData,
-        name: radioData.name,
-        streamUrl: radioData.streamUrl,
-        order: 0,
-        enabled: true,
-        isSystem: false,
-      });
-      if (sessionRadio.id) {
-        useSessionRadios.getState().removeSessionRadio(sessionRadio.id);
-      }
+      saveResolvedStationToCollection(
+        sessionRadio,
+        {
+          addSavedRadio: addRadio,
+          getSavedRadios: () => radiosCollection.state.values(),
+          removeSessionRadio,
+        },
+        { removeSessionRadioId: sessionRadio.id }
+      );
       toast.success(`Saved "${result.title}" to collection`);
       return;
     }
 
-    radioGardenResolveStream({
-      data: { channelId: result.channelId },
-    }).then((response) => {
+    resolveRadioGardenStation(result, async (channelId) => {
+      const response = await radioGardenResolveStream({
+        data: { channelId },
+      });
       if (!response.ok) {
-        toast.error(response.error.message);
+        return {
+          ok: false,
+          error: {
+            code: response.error.code,
+            message: response.error.message,
+          },
+        };
+      }
+
+      return {
+        ok: true,
+        data: {
+          streamUrl: response.data.streamUrl,
+        },
+      };
+    }).then((resolved) => {
+      if (!resolved.ok) {
+        toast.error(resolved.error.message);
         return;
       }
-      const radio = resultToRadio(result, response.data.streamUrl);
-      const { id: _id, ...radioData } = radio;
-      addRadio({
-        ...radioData,
-        order: 0,
-        enabled: true,
-        isSystem: false,
+
+      saveResolvedStationToCollection(resolved.data, {
+        addSavedRadio: addRadio,
+        getSavedRadios: () => radiosCollection.state.values(),
       });
       toast.success(`Saved "${result.title}" to collection`);
     });

@@ -6,7 +6,6 @@
  * TanStack Store for runtime state.
  */
 
-import { capturePlaybackError } from "@avoid.quest/error";
 import { resolveStreamUrl } from "@avoid.quest/platforms";
 import type {
   ChannelSelection,
@@ -20,6 +19,10 @@ import {
   type Radio,
 } from "@/lib/audio";
 import { validatePlaybackStreamUrl } from "@/lib/audio/playback/url-validation";
+import {
+  clearDjErrorSurface,
+  reportDjErrorSurface,
+} from "@/lib/dj/dj-error-surface";
 import {
   applyStoredChannelStrip,
   applyStoredEffectsAndFilters,
@@ -69,7 +72,6 @@ import {
   getDeckBSubscriptionCleanup,
   resetDeckARuntime,
   resetDeckBRuntime,
-  setDjError,
 } from "@/lib/stores/dj-runtime-store";
 import { generateId } from "@/lib/types";
 
@@ -89,29 +91,11 @@ const getAudioManager = (): AudioManager => {
 const getSoundId = (radio: Radio, side: DeckSide): string =>
   `${side}_${radio.id}`;
 
-function setDjErrorWithTelemetry(
-  message: string,
-  code: string,
-  error?: unknown,
-  radio?: Radio | null
-): void {
-  setDjError(message);
-  capturePlaybackError(error ?? new Error(message), {
-    mode: "dj",
-    radioId: radio?.id,
-    radioName: radio?.name,
-    streamUrl: radio?.streamUrl,
-    errorCode: code,
-    errorMessage: message,
-    retryPhase: "none",
-  });
-}
-
 export const getCueBus = getDjCueBus;
 export const isCueBusInitialized = isDjCueBusInitialized;
 
 export async function applyMainOutputDevice(deviceId: string): Promise<void> {
-  await applyMainOutputDeviceSetting(deviceId, setDjErrorWithTelemetry);
+  await applyMainOutputDeviceSetting(deviceId, reportDjErrorSurface);
 }
 
 export async function applyCueOutputDevice(
@@ -121,7 +105,7 @@ export async function applyCueOutputDevice(
 }
 
 export async function applyCurrentAudioSettings(): Promise<void> {
-  await applySavedAudioSettings(getAudioManager, setDjErrorWithTelemetry);
+  await applySavedAudioSettings(getAudioManager, reportDjErrorSurface);
 }
 
 const setDeckCueEnabled = setDeckCueRoutingEnabled;
@@ -210,15 +194,13 @@ async function setDeckRadio(deckId: DeckId, radio: Radio | null) {
     applyCrossfade,
     applyStoredChannelStrip,
     applyStoredEffectsAndFilters,
-    clearDjError: () => {
-      setDjError(null);
-    },
+    clearDjError: clearDjErrorSurface,
     connectDeckCueBus,
     getAudioManager,
     getSoundId,
     initializeAudioDevices: initializeSavedAudioDevices,
     loadTrack,
-    reportDjError: setDjErrorWithTelemetry,
+    reportDjError: reportDjErrorSurface,
     resolveStreamUrl,
   });
 }
@@ -241,7 +223,7 @@ async function playDeck(deckId: DeckId) {
       await getAudioManager().playSound(runtime.soundId, deck.volume);
       applyCrossfade();
     } catch (err) {
-      setDjErrorWithTelemetry(
+      reportDjErrorSurface(
         err instanceof Error ? err.message : `Failed to play ${deckId}`,
         "DJ_PLAY_DECK_FAILED",
         err,
@@ -316,7 +298,7 @@ export async function cleanupAudioOnly() {
   // Reset runtime state only
   resetDeckARuntime();
   resetDeckBRuntime();
-  setDjError(null);
+  clearDjErrorSurface();
 }
 
 // Unified track loading
@@ -340,7 +322,7 @@ export async function loadTrack(
 
   const streamValidation = validatePlaybackStreamUrl(radio.streamUrl);
   if (!streamValidation.ok) {
-    setDjError("Invalid stream URL");
+    reportDjErrorSurface("Invalid stream URL", "DJ_INVALID_STREAM_URL");
     return;
   }
 
@@ -553,13 +535,11 @@ async function setDeckDeviceSource(
     applyCrossfade,
     applyStoredChannelStrip,
     applyStoredEffectsAndFilters,
-    clearDjError: () => {
-      setDjError(null);
-    },
+    clearDjError: clearDjErrorSurface,
     connectDeckCueBus,
     getAudioManager,
     initializeAudioDevices: initializeSavedAudioDevices,
-    reportDjError: setDjErrorWithTelemetry,
+    reportDjError: reportDjErrorSurface,
     setDeckRadio,
   });
 }
@@ -575,10 +555,8 @@ async function setDeckFileSource(deckId: DeckId, file: File): Promise<void> {
   await setDeckLocalFileSource(
     deckId,
     file,
-    () => {
-      setDjError(null);
-    },
-    setDjErrorWithTelemetry,
+    clearDjErrorSurface,
+    reportDjErrorSurface,
     setDeckRadio
   );
 }

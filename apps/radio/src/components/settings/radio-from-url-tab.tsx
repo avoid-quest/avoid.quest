@@ -16,6 +16,10 @@ import { radiosCollection } from "@/lib/collections";
 import { addRadio } from "@/lib/hooks/use-radios";
 import type { RadioMetadata, ScrapedOption } from "@/lib/platform-types";
 import { scrapeRadioMetadata } from "@/lib/radio-scraper";
+import {
+  createImportedStationRadio,
+  saveResolvedStationToCollection,
+} from "@/lib/stations/external-station-workflow";
 import { RadioFieldPreview } from "./radio-field-preview";
 
 type RadioFromUrlTabProps = {
@@ -81,19 +85,19 @@ export function RadioFromUrlTab({ onSuccess }: RadioFromUrlTabProps) {
 
     setIsAdding(true);
     try {
-      const existingRadios = Array.from(radiosCollection.state.values());
-      const maxOrder = Math.max(...existingRadios.map((r) => r.order || 0), 0);
-
-      addRadio({
-        name: name.trim(),
-        streamUrl: streamUrl.trim(),
-        logoUrl: logoUrl.trim() || undefined,
-        description: description.trim() || undefined,
-        websiteUrl: url.trim() || undefined,
-        order: maxOrder + 1,
-        enabled: true,
-        isSystem: false,
-      });
+      saveResolvedStationToCollection(
+        createImportedStationRadio({
+          name,
+          streamUrl,
+          logoUrl,
+          description,
+          websiteUrl: url,
+        }),
+        {
+          addSavedRadio: addRadio,
+          getSavedRadios: () => radiosCollection.state.values(),
+        }
+      );
 
       toast.success(`Added "${name.trim()}" to your collection`);
       onSuccess();

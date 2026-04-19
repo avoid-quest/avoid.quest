@@ -91,6 +91,10 @@ export function useDjError() {
   return useStore(djUiStore, (state) => state.error);
 }
 
+export function getDjError() {
+  return djUiStore.state.error;
+}
+
 export function setDeckARuntimeState(
   updater: (state: DeckRuntimeState) => Partial<DeckRuntimeState>
 ) {

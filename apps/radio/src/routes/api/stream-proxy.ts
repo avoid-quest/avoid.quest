@@ -1,17 +1,10 @@
 /** biome-ignore-all lint/suspicious/useAwait: needed for server-only */
 
 import { env } from "cloudflare:workers";
-import {
-  AppError,
-  captureError,
-  createRequestId,
-  problemResponse,
-  runApiRoute,
-} from "@avoid.quest/error";
+import { AppError, captureError } from "@avoid.quest/error";
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
-import { getCorsHeaders, getCorsOptionsHeaders } from "@/lib/middleware/cors";
-import { validateAuthAndRateLimit } from "@/lib/middleware/rate-limit";
+import { createProxyRequestPolicy } from "@/lib/proxy/request-policy";
 
 const URL_SCHEMA = z
   .string()
@@ -25,16 +18,7 @@ const URL_SCHEMA = z
     }
   }, "Invalid URL format");
 
-function problemWithCors(
-  error: AppError,
-  origin: string,
-  requestId: string
-): Response {
-  return problemResponse(error, {
-    requestId,
-    headers: getCorsHeaders(origin),
-  });
-}
+const proxyPolicy = createProxyRequestPolicy();
 
 /**
  * Validate URL is a streaming URL (http/https protocol)
@@ -45,7 +29,7 @@ function validateUrl(
   requestId: string
 ): string | Response {
   if (!urlParam) {
-    return problemWithCors(
+    return proxyPolicy.problem(
       new AppError({
         code: "STREAM_PROXY_URL_REQUIRED",
         safeMessage: "URL parameter is required",
@@ -60,7 +44,7 @@ function validateUrl(
 
   const urlValidation = URL_SCHEMA.safeParse(urlParam);
   if (!urlValidation.success) {
-    return problemWithCors(
+    return proxyPolicy.problem(
       new AppError({
         code: "STREAM_PROXY_INVALID_URL",
         safeMessage: "Invalid URL format",
@@ -75,7 +59,7 @@ function validateUrl(
 
   const parsed = new URL(urlParam);
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    return problemWithCors(
+    return proxyPolicy.problem(
       new AppError({
         code: "STREAM_PROXY_INVALID_PROTOCOL",
         safeMessage: "Invalid URL: must use http or https protocol",
@@ -144,7 +128,7 @@ function validateUrl(
     hostname.startsWith("::ffff:172.31.") ||
     hostname.startsWith("::ffff:169.254.")
   ) {
-    return problemWithCors(
+    return proxyPolicy.problem(
       new AppError({
         code: "STREAM_PROXY_INTERNAL_ADDRESS",
         safeMessage: "Internal addresses not allowed",
@@ -183,7 +167,7 @@ async function fetchStream(
     const res = await fetch(url, { headers });
 
     if (!res.ok) {
-      return problemWithCors(
+      return proxyPolicy.problem(
         new AppError({
           code: "STREAM_PROXY_UPSTREAM_ERROR",
           safeMessage: `Upstream error: ${res.status} ${res.statusText}`,
@@ -198,7 +182,7 @@ async function fetchStream(
     }
 
     const responseHeaders: HeadersInit = {
-      ...getCorsHeaders(origin),
+      ...proxyPolicy.errorHeaders(request),
       "Access-Control-Expose-Headers":
         "Content-Type, Content-Length, Icy-MetaInt, Icy-Name, Icy-Description, Icy-Genre, Icy-Br",
       "x-request-id": requestId,
@@ -253,7 +237,7 @@ async function fetchStream(
       tags: { endpoint: "stream-proxy" },
     });
 
-    return problemWithCors(appError, origin, requestId);
+    return proxyPolicy.problem(appError, origin, requestId);
   }
 }
 
@@ -261,8 +245,10 @@ export const Route = createFileRoute("/api/stream-proxy")({
   server: {
     handlers: {
       GET: async ({ request }) => {
-        return runApiRoute({
+        return proxyPolicy.run({
           request,
+          env,
+          identifier: "stream-proxy",
           operation: "stream-proxy.GET",
           fallback: {
             code: "STREAM_PROXY_INTERNAL_ERROR",
@@ -271,26 +257,7 @@ export const Route = createFileRoute("/api/stream-proxy")({
             expected: false,
             status: 500,
           },
-          errorHeaders: () => {
-            try {
-              return getCorsHeaders(new URL(request.url).origin);
-            } catch {
-              return {};
-            }
-          },
-          run: async ({ requestId }) => {
-            const origin = new URL(request.url).origin;
-
-            const authResult = await validateAuthAndRateLimit(
-              request,
-              env,
-              "stream-proxy",
-              { createSessionIfMissing: true, requestId }
-            );
-            if (authResult instanceof Response) {
-              return authResult;
-            }
-
+          run: async ({ origin, request, requestId }) => {
             const urlParam = new URL(request.url).searchParams.get("url");
             const urlValidation = validateUrl(urlParam, origin, requestId);
             if (urlValidation instanceof Response) {
@@ -301,17 +268,7 @@ export const Route = createFileRoute("/api/stream-proxy")({
           },
         });
       },
-      OPTIONS: async ({ request }) => {
-        const requestId = createRequestId(request);
-        const origin = new URL(request.url).origin;
-        const headers = new Headers(getCorsOptionsHeaders(origin));
-        headers.set("x-request-id", requestId);
-
-        return new Response(null, {
-          status: 200,
-          headers,
-        });
-      },
+      OPTIONS: ({ request }) => proxyPolicy.options(request),
     },
   },
 });

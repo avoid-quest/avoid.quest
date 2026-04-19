@@ -11,6 +11,7 @@ import { settingsCollection } from "./settings";
 
 const PLAYBACK_SESSIONS_STORAGE_KEY = "radio-app-playback-sessions";
 const SETTINGS_ID = "app-settings";
+const SESSION_RADIOS_STORAGE_KEY = "radio-session-radios";
 
 export const PLAYBACK_SESSION_IDS = ["single", "multiple", "dj"] as const;
 export type PlaybackSessionId = (typeof PLAYBACK_SESSION_IDS)[number];
@@ -183,6 +184,39 @@ function readLegacyCollectionState<
   const parsed = readLegacyLocalStorage<T>(key);
   const values = parsed?.state?.values;
   return Array.isArray(values) ? values : [];
+}
+
+function isSessionOnlyRadio(radio: Radio | null): boolean {
+  if (!radio?.id) {
+    return false;
+  }
+  return String(radio.id).startsWith("rg_");
+}
+
+function readStoredSessionRadioIds(): Set<string> {
+  if (typeof sessionStorage === "undefined") {
+    return new Set();
+  }
+
+  try {
+    const raw = sessionStorage.getItem(SESSION_RADIOS_STORAGE_KEY);
+    if (!raw) {
+      return new Set();
+    }
+
+    const parsed = JSON.parse(raw) as {
+      state?: { radios?: Array<Pick<Radio, "id"> | null> };
+    };
+    const radios = Array.isArray(parsed.state?.radios)
+      ? parsed.state.radios
+      : [];
+
+    return new Set(
+      radios.flatMap((radio) => (radio?.id == null ? [] : [String(radio.id)]))
+    );
+  } catch {
+    return new Set();
+  }
 }
 
 export function buildSingleSessionFromLegacyState(legacySingle?: {
@@ -399,6 +433,28 @@ function upsertSession(session: PlaybackSessionRecord): void {
   playbackSessionsCollection.insert(session);
 }
 
+function pruneStaleMultipleSessionChannels(): void {
+  const multipleSession = playbackSessionsCollection.state.get("multiple");
+  if (!multipleSession) {
+    return;
+  }
+
+  const sessionRadioIds = readStoredSessionRadioIds();
+  const channels = multipleSession.channels.filter((channel) => {
+    if (!isSessionOnlyRadio(channel.radio)) {
+      return true;
+    }
+
+    return sessionRadioIds.has(String(channel.radio?.id));
+  });
+
+  if (channels.length === multipleSession.channels.length) {
+    return;
+  }
+
+  replacePlaybackChannels("multiple", channels);
+}
+
 export const playbackSessionsCollection = createCollection(
   localStorageCollectionOptions({
     id: "playback-sessions",
@@ -437,6 +493,8 @@ export async function initializePlaybackSessions(): Promise<void> {
       upsertSession(buildDjSessionFromLegacy());
     }
   }
+
+  pruneStaleMultipleSessionChannels();
 
   const activeMode = settings?.player.mode ?? "single";
   const activeSession = playbackSessionsCollection.state.get(activeMode);

@@ -23,6 +23,38 @@ const LEGACY_DJ_DECKS_KEY = "radio-app-dj-decks";
 const LEGACY_DJ_MIXER_KEY = "radio-app-dj-mixer";
 const SETTINGS_ID = "app-settings";
 
+function createMemoryStorage(): Storage {
+  const state = new Map<string, string>();
+
+  return {
+    get length() {
+      return state.size;
+    },
+    clear() {
+      state.clear();
+    },
+    getItem(key) {
+      return state.get(key) ?? null;
+    },
+    key(index) {
+      return Array.from(state.keys())[index] ?? null;
+    },
+    removeItem(key) {
+      state.delete(key);
+    },
+    setItem(key, value) {
+      state.set(key, value);
+    },
+  };
+}
+
+if (typeof sessionStorage === "undefined") {
+  Object.defineProperty(globalThis, "sessionStorage", {
+    value: createMemoryStorage(),
+    configurable: true,
+  });
+}
+
 async function resetPlaybackState() {
   await Promise.all([
     playbackSessionsCollection.stateWhenReady(),
@@ -49,6 +81,10 @@ async function resetPlaybackState() {
     localStorage.removeItem(LEGACY_SINGLE_STATE_KEY);
     localStorage.removeItem(LEGACY_DJ_DECKS_KEY);
     localStorage.removeItem(LEGACY_DJ_MIXER_KEY);
+  }
+
+  if (typeof sessionStorage !== "undefined") {
+    sessionStorage.clear();
   }
 }
 
@@ -287,6 +323,113 @@ describe("multiple session persistence", () => {
     expect(multipleSession?.channels[0]?.muted).toBe(true);
     expect(getPlaybackSession("single")).toBeDefined();
     expect(getPlaybackSession("dj")).toBeDefined();
+  });
+
+  test("initializePlaybackSessions prunes stale session-only radios from the multiple session", async () => {
+    await Promise.all([
+      playbackSessionsCollection.stateWhenReady(),
+      settingsCollection.stateWhenReady(),
+    ]);
+
+    settingsCollection.insert({
+      id: SETTINGS_ID,
+      player: {
+        mode: "multiple",
+        restoreStateOnLoad: true,
+      },
+    });
+
+    playbackSessionsCollection.insert({
+      id: "multiple",
+      channels: [
+        {
+          ...createDefaultChannel("multi:radio-1", "multiple", 0),
+          radio: {
+            id: "radio-1",
+            name: "Saved Radio",
+            streamUrl: "https://radio.example/saved.mp3",
+          },
+        },
+        {
+          ...createDefaultChannel("multi:rg_hidden", "multiple", 1),
+          radio: {
+            id: "rg_hidden",
+            name: "Hidden Session Radio",
+            streamUrl: "https://radio.example/hidden.mp3",
+          },
+          volume: 0.5,
+        },
+      ],
+      masterVolume: 0.4,
+      crossfadePosition: 0.5,
+      headphoneVolume: 1,
+      activeChannelId: "multi:rg_hidden",
+    });
+
+    await initializePlaybackSessions();
+
+    const multipleSession = getPlaybackSession("multiple");
+    expect(
+      multipleSession?.channels.map((channel) => channel.radio?.id)
+    ).toEqual(["radio-1"]);
+    expect(multipleSession?.activeChannelId).toBeNull();
+  });
+
+  test("initializePlaybackSessions preserves current session-only radios when session storage still has them", async () => {
+    await Promise.all([
+      playbackSessionsCollection.stateWhenReady(),
+      settingsCollection.stateWhenReady(),
+    ]);
+
+    settingsCollection.insert({
+      id: SETTINGS_ID,
+      player: {
+        mode: "multiple",
+        restoreStateOnLoad: true,
+      },
+    });
+
+    sessionStorage.setItem(
+      "radio-session-radios",
+      JSON.stringify({
+        state: {
+          radios: [
+            {
+              id: "rg_live",
+              name: "Live Session Radio",
+              streamUrl: "https://radio.example/live.mp3",
+            },
+          ],
+        },
+        version: 0,
+      })
+    );
+
+    playbackSessionsCollection.insert({
+      id: "multiple",
+      channels: [
+        {
+          ...createDefaultChannel("multi:rg_live", "multiple", 0),
+          radio: {
+            id: "rg_live",
+            name: "Live Session Radio",
+            streamUrl: "https://radio.example/live.mp3",
+          },
+          volume: 0.33,
+        },
+      ],
+      masterVolume: 0.4,
+      crossfadePosition: 0.5,
+      headphoneVolume: 1,
+      activeChannelId: "multi:rg_live",
+    });
+
+    await initializePlaybackSessions();
+
+    const multipleSession = getPlaybackSession("multiple");
+    expect(multipleSession?.channels).toHaveLength(1);
+    expect(multipleSession?.channels[0]?.radio?.id).toBe("rg_live");
+    expect(multipleSession?.activeChannelId).toBe("multi:rg_live");
   });
 
   test("initializePlaybackSessions resets stored sessions when restore is disabled", async () => {

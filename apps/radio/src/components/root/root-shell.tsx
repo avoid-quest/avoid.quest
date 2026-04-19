@@ -8,8 +8,8 @@ import { SWRegister } from "@/components/pwa/sw-register";
 import { SyncDialog } from "@/components/settings/sync-dialog";
 import { Header } from "@/components/theme/header";
 import { ThemeProvider } from "@/components/theme/theme-provider";
-import { AudioManager } from "@/lib/audio";
 import type { SyncChanges } from "@/lib/collections";
+import { resetManagedAudioState } from "@/lib/playback-actions-shared";
 import {
   applyRootSyncChanges,
   createRootQueryClient,
@@ -46,7 +46,7 @@ export function RootShell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const handlePageHide = () => {
-      AudioManager.resetInstance();
+      resetManagedAudioState();
     };
 
     window.addEventListener("pagehide", handlePageHide);

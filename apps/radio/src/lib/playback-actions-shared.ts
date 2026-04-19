@@ -8,6 +8,7 @@ import { getMainOutputRouter } from "@/lib/main-output-router";
 import {
   getPlaybackChannelRuntime,
   getPlaybackChannelSubscriptionCleanup,
+  resetAllPlaybackRuntime,
   resetPlaybackChannelRuntime,
   setPlaybackChannelPeakLevel,
   setPlaybackChannelRuntime,
@@ -66,6 +67,12 @@ export async function ensureMainAudioSettingsApplied(): Promise<void> {
   if (!audioRoutingInitialized) {
     await applyCurrentMainAudioSettings();
   }
+}
+
+export function resetManagedAudioState(): void {
+  AudioManager.resetInstance();
+  resetAllPlaybackRuntime();
+  audioRoutingInitialized = false;
 }
 
 function getSessionMasterVolume(sessionId: PlaybackSessionId): number {

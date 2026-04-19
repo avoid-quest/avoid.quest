@@ -291,6 +291,7 @@ export const Route = createFileRoute("/api/stream-proxy")({
 
             const accessDecision = await inspectStreamAccess(urlValidation, {
               origin,
+              requestHeaders: request.headers,
             });
             if (accessDecision.mode === "direct") {
               return redirectToStream(

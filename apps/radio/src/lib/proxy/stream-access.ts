@@ -16,6 +16,7 @@ type DetermineStreamAccessOptions = {
   fetchImpl?: FetchLike;
   now?: () => number;
   origin: string;
+  requestHeaders?: Headers;
   timeoutMs?: number;
 };
 
@@ -26,6 +27,10 @@ const streamAccessCache = new Map<string, StreamAccessCacheEntry>();
 
 function normalizeAccessControlOrigin(value: string): string {
   return value.trim().toLowerCase();
+}
+
+function getStreamAccessCacheKey(url: string, origin: string): string {
+  return `${normalizeAccessControlOrigin(origin)}::${url}`;
 }
 
 function isCorsPlayableForOrigin(
@@ -63,11 +68,13 @@ async function probeStreamAccess(
     fetchImpl = fetch,
     now = Date.now,
     origin,
+    requestHeaders,
     timeoutMs = STREAM_ACCESS_PROBE_TIMEOUT_MS,
   }: DetermineStreamAccessOptions,
   preserveProxyResponse: boolean
 ): Promise<StreamAccessDecision> {
-  const cached = streamAccessCache.get(url);
+  const cacheKey = getStreamAccessCacheKey(url, origin);
+  const cached = streamAccessCache.get(cacheKey);
   const currentTime = now();
   if (cached && cached.expiresAt > currentTime) {
     return {
@@ -84,10 +91,13 @@ async function probeStreamAccess(
 
   try {
     const headers: HeadersInit = {
-      "Icy-MetaData": "0",
+      "Icy-MetaData": requestHeaders?.get("Icy-MetaData") || "0",
     };
 
-    if (!preserveProxyResponse) {
+    const rangeHeader = requestHeaders?.get("range");
+    if (rangeHeader) {
+      headers.Range = rangeHeader;
+    } else if (!preserveProxyResponse) {
       headers.Range = "bytes=0-0";
     }
 
@@ -105,7 +115,7 @@ async function probeStreamAccess(
       ? "direct"
       : "proxy";
 
-    streamAccessCache.set(url, {
+    streamAccessCache.set(cacheKey, {
       expiresAt: currentTime + STREAM_ACCESS_CACHE_TTL_MS,
       mode,
     });
@@ -120,7 +130,7 @@ async function probeStreamAccess(
       resolvedUrl: mode === "direct" ? response.url || url : null,
     };
   } catch {
-    streamAccessCache.set(url, {
+    streamAccessCache.set(cacheKey, {
       expiresAt: currentTime + STREAM_ACCESS_CACHE_TTL_MS,
       mode: "proxy",
     });

@@ -178,6 +178,7 @@ export const SpectrumDisplay = memo(function SpectrumDisplay({
         canvas.width = width * dpr;
         canvas.height = height * dpr;
       }
+      draw();
     });
 
     resizeObserver.observe(canvas);

@@ -106,6 +106,7 @@ export const WaveformDisplay = memo(function WaveformDisplay({
         canvas.width = width * dpr;
         canvas.height = height * dpr;
       }
+      draw();
     });
 
     resizeObserver.observe(canvas);

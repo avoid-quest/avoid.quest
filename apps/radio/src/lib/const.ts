@@ -9,7 +9,7 @@ export const radios: Radio[] = [
       "A community platform for mixes, podcasts, live recordings and releases by independent musicians, sound artists and collectives.",
     websiteUrl: "https://radio.syg.ma",
     streamUrl: "https://radio.syg.ma/audio.ogg",
-    logoUrl: "https://f4.bcbits.com/img/0016171260_10.jpg",
+    logoUrl: "https://radio.syg.ma/icons/android-icon-192x192.png",
     order: 2,
     isSystem: true,
   },
@@ -38,8 +38,7 @@ export const radios: Radio[] = [
     name: "NTS Radio | Channel 1",
     websiteUrl: "https://www.nts.live",
     description: "NTS | London Stream",
-    logoUrl:
-      "https://upload.wikimedia.org/wikipedia/commons/thumb/2/20/NTS_Radio_logo.svg/2048px-NTS_Radio_logo.svg.png",
+    logoUrl: "https://www.nts.live/apple-touch-icon.png?v=47rE43RRzB",
     streamUrl: "https://stream-relay-geo.ntslive.net/stream",
     order: 5,
     isSystem: true,
@@ -48,8 +47,7 @@ export const radios: Radio[] = [
     name: "NTS Radio | Channel 2",
     websiteUrl: "https://www.nts.live",
     description: "NTS | NY Stream",
-    logoUrl:
-      "https://upload.wikimedia.org/wikipedia/commons/thumb/2/20/NTS_Radio_logo.svg/2048px-NTS_Radio_logo.svg.png",
+    logoUrl: "https://www.nts.live/apple-touch-icon.png?v=47rE43RRzB",
     streamUrl: "https://stream-relay-geo.ntslive.net/stream2",
     order: 6,
     isSystem: true,
@@ -79,8 +77,7 @@ export const radios: Radio[] = [
     description:
       "Internet Public Radio is an independent cultural platform and radio station broadcasting from Guadalajara, Latin America, Europe and more territories.",
     websiteUrl: "https://www.internetpublicradio.live/",
-    logoUrl:
-      "https://www.internetpublicradio.live/static/main-logo.bcb1782f3ce2.svg",
+    logoUrl: "https://www.internetpublicradio.live/logo.svg",
     streamUrl: "https://stream-relay-geo.internetpublicradio.live/stream/main",
     order: 8,
     isSystem: true,
@@ -88,7 +85,7 @@ export const radios: Radio[] = [
   {
     name: "Radio Alhara",
     description: "Radio AlHara راديو الحارة",
-    logoUrl: "https://www.radioalhara.net/img/radio-alhara-logo.svg",
+    logoUrl: "https://radioalhara.net/img/radio-alhara-logo.svg",
     websiteUrl: "https://www.radioalhara.net/",
     streamUrl: "https://n03.radiojar.com/78cxy6wkxtzuv",
     order: 11,

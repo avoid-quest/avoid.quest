@@ -36,6 +36,16 @@ type ChannelUpdate =
   | Partial<PlaybackChannelRecord>
   | ((draft: PlaybackChannelRecord) => void);
 
+const CHANNEL_AUDIO_SYNC_ORDER = [
+  "volume",
+  "muted",
+  "pan",
+  "speed",
+  "channelFilter",
+  "effectsDryWet",
+  "filter",
+] as const satisfies readonly ChannelAudioField[];
+
 const subscriptionCleanups = new Map<string, () => void>();
 
 function getAudioManager(): AudioManager {
@@ -55,38 +65,55 @@ function mergeChannelState(
   };
 }
 
-function syncChannelAudio(
+function syncChannelAudioField(
+  manager: AudioManager,
+  soundId: string,
+  channel: PlaybackChannelRecord,
+  field: ChannelAudioField
+): void {
+  switch (field) {
+    case "volume":
+      manager.setVolume(soundId, channel.volume);
+      break;
+    case "muted":
+      if (channel.muted) {
+        manager.muteSound(soundId);
+      } else {
+        manager.unmuteSound(soundId);
+      }
+      break;
+    case "pan":
+      manager.setPan(soundId, channel.pan);
+      break;
+    case "speed":
+      manager.setPlaybackRate(soundId, channel.speed);
+      break;
+    case "channelFilter":
+      manager.setChannelFilter(soundId, channel.channelFilter);
+      break;
+    case "effectsDryWet":
+      manager.setEffectsDryWet(soundId, channel.effectsDryWet);
+      break;
+    case "filter":
+      manager.updateFilter(soundId, channel.filter as FilterConfig);
+      break;
+    default:
+      break;
+  }
+}
+
+function syncChannelAudioFields(
   soundId: string,
   channel: PlaybackChannelRecord,
   fields: readonly ChannelAudioField[]
 ): void {
   const manager = getAudioManager();
-  const selectedFields = new Set(fields);
+  const selectedFields = new Set<ChannelAudioField>(fields);
 
-  if (selectedFields.has("volume")) {
-    manager.setVolume(soundId, channel.volume);
-  }
-  if (selectedFields.has("muted")) {
-    if (channel.muted) {
-      manager.muteSound(soundId);
-    } else {
-      manager.unmuteSound(soundId);
+  for (const field of CHANNEL_AUDIO_SYNC_ORDER) {
+    if (selectedFields.has(field)) {
+      syncChannelAudioField(manager, soundId, channel, field);
     }
-  }
-  if (selectedFields.has("pan")) {
-    manager.setPan(soundId, channel.pan);
-  }
-  if (selectedFields.has("speed")) {
-    manager.setPlaybackRate(soundId, channel.speed);
-  }
-  if (selectedFields.has("channelFilter")) {
-    manager.setChannelFilter(soundId, channel.channelFilter);
-  }
-  if (selectedFields.has("effectsDryWet")) {
-    manager.setEffectsDryWet(soundId, channel.effectsDryWet);
-  }
-  if (selectedFields.has("filter")) {
-    manager.updateFilter(soundId, channel.filter as FilterConfig);
   }
 }
 
@@ -136,7 +163,7 @@ export function updateChannel(
   if (!(channel && runtime.soundId && syncFields.length > 0)) {
     return;
   }
-  syncChannelAudio(runtime.soundId, channel, syncFields);
+  syncChannelAudioFields(runtime.soundId, channel, syncFields);
 }
 
 export function setChannelVolume(

@@ -1,20 +1,22 @@
 import { Store, useStore } from "@tanstack/react-store";
 import type { Radio } from "@/lib/audio";
 import {
+  getChannelSubscriptionCleanup,
+  setChannelSubscriptionCleanup,
+} from "@/lib/channel-state-manager";
+import {
   DECK_A_CHANNEL_ID,
   DECK_B_CHANNEL_ID,
 } from "@/lib/collections/playback-sessions";
 import type { Platform } from "@/lib/platform-types";
 import {
   getPlaybackChannelRuntime,
-  getPlaybackChannelSubscriptionCleanup,
   type RuntimePeakLevel,
   resetAllPlaybackRuntime,
   resetPlaybackChannelRuntime,
   setPlaybackChannelPeakLevel,
   setPlaybackChannelRuntime,
   setPlaybackChannelSoundId,
-  setPlaybackChannelSubscriptionCleanup,
   usePlaybackChannelRuntime,
 } from "./playback-runtime-store";
 
@@ -136,19 +138,19 @@ export function setDjError(error: string | null) {
 }
 
 export function setDeckASubscriptionCleanup(cleanup: (() => void) | null) {
-  setPlaybackChannelSubscriptionCleanup(DECK_A_CHANNEL_ID, cleanup);
+  setChannelSubscriptionCleanup(DECK_A_CHANNEL_ID, cleanup);
 }
 
 export function setDeckBSubscriptionCleanup(cleanup: (() => void) | null) {
-  setPlaybackChannelSubscriptionCleanup(DECK_B_CHANNEL_ID, cleanup);
+  setChannelSubscriptionCleanup(DECK_B_CHANNEL_ID, cleanup);
 }
 
 export function getDeckASubscriptionCleanup() {
-  return getPlaybackChannelSubscriptionCleanup(DECK_A_CHANNEL_ID);
+  return getChannelSubscriptionCleanup(DECK_A_CHANNEL_ID);
 }
 
 export function getDeckBSubscriptionCleanup() {
-  return getPlaybackChannelSubscriptionCleanup(DECK_B_CHANNEL_ID);
+  return getChannelSubscriptionCleanup(DECK_B_CHANNEL_ID);
 }
 
 export function resetDeckARuntime() {
@@ -180,8 +182,8 @@ export function getDjRuntimeState() {
     deckBPeakLevel: getPlaybackChannelRuntime(DECK_B_CHANNEL_ID).peakLevel,
     error: djUiStore.state.error,
     _subscriptionCleanup: {
-      "deck-a": getPlaybackChannelSubscriptionCleanup(DECK_A_CHANNEL_ID),
-      "deck-b": getPlaybackChannelSubscriptionCleanup(DECK_B_CHANNEL_ID),
+      "deck-a": getChannelSubscriptionCleanup(DECK_A_CHANNEL_ID),
+      "deck-b": getChannelSubscriptionCleanup(DECK_B_CHANNEL_ID),
     },
   };
 }

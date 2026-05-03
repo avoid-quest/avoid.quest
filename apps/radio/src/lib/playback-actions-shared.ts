@@ -1,20 +1,17 @@
 import { AudioManager, type Radio } from "@/lib/audio";
 import {
+  activateChannel,
+  clearAllChannelSubscriptionCleanups,
+  deactivateChannel,
+  subscribeChannelRuntime,
+} from "@/lib/channel-state-manager";
+import {
   getPlaybackSession,
   type PlaybackSessionId,
 } from "@/lib/collections/playback-sessions";
 import { getAudioSettings, getDelaySettings } from "@/lib/collections/settings";
 import { getMainOutputRouter } from "@/lib/main-output-router";
-import {
-  getPlaybackChannelRuntime,
-  getPlaybackChannelSubscriptionCleanup,
-  resetAllPlaybackRuntime,
-  resetPlaybackChannelRuntime,
-  setPlaybackChannelPeakLevel,
-  setPlaybackChannelRuntime,
-  setPlaybackChannelSoundId,
-  setPlaybackChannelSubscriptionCleanup,
-} from "@/lib/stores/playback-runtime-store";
+import { resetAllPlaybackRuntime } from "@/lib/stores/playback-runtime-store";
 
 let audioRoutingInitialized = false;
 
@@ -70,6 +67,7 @@ export async function ensureMainAudioSettingsApplied(): Promise<void> {
 }
 
 export function resetManagedAudioState(): void {
+  clearAllChannelSubscriptionCleanups();
   AudioManager.resetInstance();
   resetAllPlaybackRuntime();
   audioRoutingInitialized = false;
@@ -95,28 +93,7 @@ export function subscribeManagedChannel(
   channelId: string,
   soundId: string
 ): void {
-  const manager = getAudioManager();
-  const cleanup = manager.subscribe(soundId, (audioState) => {
-    setPlaybackChannelRuntime(channelId, () => ({
-      soundId,
-      isPlaying: audioState.isPlaying,
-      isLoading: audioState.isLoading,
-      isBuffering: audioState.isBuffering,
-      error: audioState.error,
-    }));
-  });
-
-  const meterCleanup =
-    sessionId === "dj"
-      ? manager.subscribeMeter(soundId, (level) => {
-          setPlaybackChannelPeakLevel(channelId, level);
-        })
-      : null;
-
-  setPlaybackChannelSubscriptionCleanup(channelId, () => {
-    cleanup();
-    meterCleanup?.();
-  });
+  subscribeChannelRuntime(sessionId, channelId, soundId);
 }
 
 export function createManagedSound(
@@ -125,32 +102,11 @@ export function createManagedSound(
   radio: Radio,
   soundId = getDefaultSoundId(sessionId, channelId)
 ): string {
-  const manager = getAudioManager();
-
-  const previousCleanup = getPlaybackChannelSubscriptionCleanup(channelId);
-  if (previousCleanup) {
-    previousCleanup();
-    setPlaybackChannelSubscriptionCleanup(channelId, null);
-  }
-
-  const previousRuntime = getPlaybackChannelRuntime(channelId);
-  if (previousRuntime.soundId) {
-    manager.cleanupSound(previousRuntime.soundId);
-  }
-
-  manager.createSound(radio, soundId);
-  setPlaybackChannelSoundId(channelId, soundId);
-  subscribeManagedChannel(sessionId, channelId, soundId);
-
-  return soundId;
+  return activateChannel(sessionId, channelId, radio, soundId);
 }
 
 export function cleanupManagedChannel(channelId: string): void {
-  const runtime = getPlaybackChannelRuntime(channelId);
-  if (runtime.soundId) {
-    getAudioManager().cleanupSound(runtime.soundId);
-  }
-  resetPlaybackChannelRuntime(channelId);
+  deactivateChannel(channelId);
 }
 
 export function cleanupPlaybackSessionAudio(

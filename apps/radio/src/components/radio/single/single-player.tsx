@@ -2,7 +2,6 @@ import { Button } from "@avoid.quest/ui/components/button";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import type { Radio } from "@/lib/audio";
-import { setSingleRadio, setSingleVolume } from "@/lib/collections";
 import { useMediaSession } from "@/lib/hooks/use-media-session";
 import { useRadioGardenResolve } from "@/lib/hooks/use-radio-garden-resolve";
 import {
@@ -46,11 +45,7 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
     setVolume,
   } = useSingleSession(transitionDuration);
 
-  const isHydrated = useSingleStateHydration(
-    selectRadio,
-    setVolume,
-    Boolean(session)
-  );
+  useSingleStateHydration(selectRadio, setVolume, Boolean(session));
 
   useMediaSession({ mode: "single", radio: currentRadio, isPlaying });
 
@@ -64,20 +59,6 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
   );
   const { resolve, saveToCollection, isResolving } =
     useRadioGardenResolve(handleResolved);
-
-  useEffect(() => {
-    if (!isHydrated) {
-      return;
-    }
-    setSingleRadio(currentRadio);
-  }, [currentRadio, isHydrated]);
-
-  useEffect(() => {
-    if (!isHydrated) {
-      return;
-    }
-    setSingleVolume(volume);
-  }, [volume, isHydrated]);
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogMode, setDialogMode] = useState<"create" | "edit">("create");

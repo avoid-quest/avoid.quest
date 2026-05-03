@@ -29,7 +29,7 @@ const singleStateSchema = z.object({
 
 export type SingleStateRecord = z.infer<typeof singleStateSchema>;
 
-const SINGLE_STATE_ID = "single-state";
+export const SINGLE_STATE_ID = "single-state";
 
 export const singleStateCollection = createCollection(
   localStorageCollectionOptions({
@@ -40,35 +40,6 @@ export const singleStateCollection = createCollection(
   })
 );
 
-export async function initializeSingleState(): Promise<void> {
-  const existing = await singleStateCollection.stateWhenReady();
-  if (existing.size === 0) {
-    singleStateCollection.insert({
-      id: SINGLE_STATE_ID,
-      radio: null,
-      volume: 1,
-    });
-  }
-}
-
 export function getSingleState(): SingleStateRecord | undefined {
   return singleStateCollection.state.get(SINGLE_STATE_ID);
-}
-
-export function setSingleRadio(radio: SingleStateRecord["radio"]): void {
-  const existing = getSingleState();
-  if (existing) {
-    singleStateCollection.update(SINGLE_STATE_ID, (draft) => {
-      draft.radio = radio;
-    });
-  }
-}
-
-export function setSingleVolume(volume: number): void {
-  const existing = getSingleState();
-  if (existing) {
-    singleStateCollection.update(SINGLE_STATE_ID, (draft) => {
-      draft.volume = volume;
-    });
-  }
 }

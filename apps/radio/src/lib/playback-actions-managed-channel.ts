@@ -1,8 +1,20 @@
 import type { EffectConfig, FilterConfig } from "@/lib/audio";
 import {
-  type PlaybackChannelRecord,
-  type PlaybackSessionId,
-  updatePlaybackChannel,
+  addChannelEffect,
+  removeChannelEffect,
+  reorderChannelEffects,
+  setChannelEffectsDryWet,
+  setChannelFilterValue,
+  setChannelMuted,
+  setChannelPan,
+  setChannelSpeed,
+  updateChannel,
+  updateChannelEffect,
+  updateChannelFilter,
+} from "@/lib/channel-state-manager";
+import type {
+  PlaybackChannelRecord,
+  PlaybackSessionId,
 } from "@/lib/collections/playback-sessions";
 import { getPlaybackChannelRuntime } from "@/lib/stores/playback-runtime-store";
 import { getAudioManager } from "./playback-actions-shared.js";
@@ -12,7 +24,7 @@ export function updateManagedChannel(
   channelId: string,
   updater: (draft: PlaybackChannelRecord) => void
 ): void {
-  updatePlaybackChannel(sessionId, channelId, updater);
+  updateChannel(sessionId, channelId, updater);
 }
 
 export function updateManagedChannelFilter(
@@ -20,13 +32,7 @@ export function updateManagedChannelFilter(
   channelId: string,
   filter: FilterConfig
 ): void {
-  updatePlaybackChannel(sessionId, channelId, (draft) => {
-    draft.filter = filter;
-  });
-  const runtime = getPlaybackChannelRuntime(channelId);
-  if (runtime.soundId) {
-    getAudioManager().updateFilter(runtime.soundId, filter);
-  }
+  updateChannelFilter(sessionId, channelId, filter);
 }
 
 export function setManagedChannelEffectsDryWet(
@@ -34,13 +40,7 @@ export function setManagedChannelEffectsDryWet(
   channelId: string,
   value: number
 ): void {
-  updatePlaybackChannel(sessionId, channelId, (draft) => {
-    draft.effectsDryWet = value;
-  });
-  const runtime = getPlaybackChannelRuntime(channelId);
-  if (runtime.soundId) {
-    getAudioManager().setEffectsDryWet(runtime.soundId, value);
-  }
+  setChannelEffectsDryWet(sessionId, channelId, value);
 }
 
 export function setManagedChannelPan(
@@ -48,13 +48,7 @@ export function setManagedChannelPan(
   channelId: string,
   pan: number
 ): void {
-  updatePlaybackChannel(sessionId, channelId, (draft) => {
-    draft.pan = pan;
-  });
-  const runtime = getPlaybackChannelRuntime(channelId);
-  if (runtime.soundId) {
-    getAudioManager().setPan(runtime.soundId, pan);
-  }
+  setChannelPan(sessionId, channelId, pan);
 }
 
 export function setManagedChannelSpeed(
@@ -62,13 +56,7 @@ export function setManagedChannelSpeed(
   channelId: string,
   speed: number
 ): void {
-  updatePlaybackChannel(sessionId, channelId, (draft) => {
-    draft.speed = speed;
-  });
-  const runtime = getPlaybackChannelRuntime(channelId);
-  if (runtime.soundId) {
-    getAudioManager().setPlaybackRate(runtime.soundId, speed);
-  }
+  setChannelSpeed(sessionId, channelId, speed);
 }
 
 export function setManagedChannelMuted(
@@ -76,17 +64,7 @@ export function setManagedChannelMuted(
   channelId: string,
   muted: boolean
 ): void {
-  updatePlaybackChannel(sessionId, channelId, (draft) => {
-    draft.muted = muted;
-  });
-  const runtime = getPlaybackChannelRuntime(channelId);
-  if (runtime.soundId) {
-    if (muted) {
-      getAudioManager().muteSound(runtime.soundId);
-    } else {
-      getAudioManager().unmuteSound(runtime.soundId);
-    }
-  }
+  setChannelMuted(sessionId, channelId, muted);
 }
 
 export function setManagedChannelRepeat(
@@ -94,9 +72,7 @@ export function setManagedChannelRepeat(
   channelId: string,
   repeat: boolean
 ): void {
-  updatePlaybackChannel(sessionId, channelId, (draft) => {
-    draft.repeat = repeat;
-  });
+  updateChannel(sessionId, channelId, { repeat });
 }
 
 export function setManagedChannelAutoplay(
@@ -104,9 +80,7 @@ export function setManagedChannelAutoplay(
   channelId: string,
   autoplay: boolean
 ): void {
-  updatePlaybackChannel(sessionId, channelId, (draft) => {
-    draft.autoplay = autoplay;
-  });
+  updateChannel(sessionId, channelId, { autoplay });
 }
 
 export function seekManagedChannel(channelId: string, position: number): void {
@@ -121,13 +95,7 @@ export function setManagedChannelFilterValue(
   channelId: string,
   value: number
 ): void {
-  updatePlaybackChannel(sessionId, channelId, (draft) => {
-    draft.channelFilter = value;
-  });
-  const runtime = getPlaybackChannelRuntime(channelId);
-  if (runtime.soundId) {
-    getAudioManager().setChannelFilter(runtime.soundId, value);
-  }
+  setChannelFilterValue(sessionId, channelId, value);
 }
 
 export function addManagedChannelEffect(
@@ -135,13 +103,7 @@ export function addManagedChannelEffect(
   channelId: string,
   effect: EffectConfig
 ): void {
-  updatePlaybackChannel(sessionId, channelId, (draft) => {
-    draft.effects.push(effect);
-  });
-  const runtime = getPlaybackChannelRuntime(channelId);
-  if (runtime.soundId) {
-    getAudioManager().addEffect(runtime.soundId, effect);
-  }
+  addChannelEffect(sessionId, channelId, effect);
 }
 
 export function updateManagedChannelEffect(
@@ -150,16 +112,7 @@ export function updateManagedChannelEffect(
   effectId: string,
   effectConfig: Partial<EffectConfig>
 ): void {
-  updatePlaybackChannel(sessionId, channelId, (draft) => {
-    const effect = draft.effects.find((entry) => entry.id === effectId);
-    if (effect) {
-      Object.assign(effect, effectConfig);
-    }
-  });
-  const runtime = getPlaybackChannelRuntime(channelId);
-  if (runtime.soundId) {
-    getAudioManager().updateEffect(runtime.soundId, effectId, effectConfig);
-  }
+  updateChannelEffect(sessionId, channelId, effectId, effectConfig);
 }
 
 export function removeManagedChannelEffect(
@@ -167,13 +120,7 @@ export function removeManagedChannelEffect(
   channelId: string,
   effectId: string
 ): void {
-  updatePlaybackChannel(sessionId, channelId, (draft) => {
-    draft.effects = draft.effects.filter((effect) => effect.id !== effectId);
-  });
-  const runtime = getPlaybackChannelRuntime(channelId);
-  if (runtime.soundId) {
-    getAudioManager().removeEffect(runtime.soundId, effectId);
-  }
+  removeChannelEffect(sessionId, channelId, effectId);
 }
 
 export function reorderManagedChannelEffects(
@@ -181,16 +128,5 @@ export function reorderManagedChannelEffects(
   channelId: string,
   effectIds: string[]
 ): void {
-  updatePlaybackChannel(sessionId, channelId, (draft) => {
-    draft.effects = effectIds
-      .map((effectId) => draft.effects.find((effect) => effect.id === effectId))
-      .filter((effect): effect is EffectConfig => Boolean(effect));
-    for (const [index, effect] of draft.effects.entries()) {
-      effect.order = index;
-    }
-  });
-  const runtime = getPlaybackChannelRuntime(channelId);
-  if (runtime.soundId) {
-    getAudioManager().reorderEffects(runtime.soundId, effectIds);
-  }
+  reorderChannelEffects(sessionId, channelId, effectIds);
 }

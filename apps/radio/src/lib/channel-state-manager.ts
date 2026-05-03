@@ -1,0 +1,343 @@
+import { eq, useLiveQuery } from "@tanstack/react-db";
+import {
+  AudioManager,
+  type EffectConfig,
+  type FilterConfig,
+} from "@/lib/audio";
+import {
+  getPlaybackChannel,
+  type PlaybackChannelRecord,
+  type PlaybackSessionId,
+  playbackSessionsCollection,
+  updatePlaybackChannel,
+} from "@/lib/collections/playback-sessions";
+import {
+  getPlaybackChannelRuntime,
+  resetPlaybackChannelRuntime,
+  setPlaybackChannelPeakLevel,
+  setPlaybackChannelRuntime,
+  setPlaybackChannelSoundId,
+  usePlaybackChannelRuntime,
+} from "@/lib/stores/playback-runtime-store";
+
+export type ChannelState = PlaybackChannelRecord &
+  ReturnType<typeof getPlaybackChannelRuntime>;
+
+type ChannelAudioField =
+  | "volume"
+  | "muted"
+  | "pan"
+  | "speed"
+  | "channelFilter"
+  | "effectsDryWet"
+  | "filter";
+
+type ChannelUpdate =
+  | Partial<PlaybackChannelRecord>
+  | ((draft: PlaybackChannelRecord) => void);
+
+const subscriptionCleanups = new Map<string, () => void>();
+
+function getAudioManager(): AudioManager {
+  return AudioManager.getInstance();
+}
+
+function mergeChannelState(
+  persisted: PlaybackChannelRecord | undefined,
+  runtime: ReturnType<typeof getPlaybackChannelRuntime>
+): ChannelState | null {
+  if (!persisted) {
+    return null;
+  }
+  return {
+    ...persisted,
+    ...runtime,
+  };
+}
+
+function syncChannelAudio(
+  soundId: string,
+  channel: PlaybackChannelRecord,
+  fields: readonly ChannelAudioField[]
+): void {
+  const manager = getAudioManager();
+  const selectedFields = new Set(fields);
+
+  if (selectedFields.has("volume")) {
+    manager.setVolume(soundId, channel.volume);
+  }
+  if (selectedFields.has("muted")) {
+    if (channel.muted) {
+      manager.muteSound(soundId);
+    } else {
+      manager.unmuteSound(soundId);
+    }
+  }
+  if (selectedFields.has("pan")) {
+    manager.setPan(soundId, channel.pan);
+  }
+  if (selectedFields.has("speed")) {
+    manager.setPlaybackRate(soundId, channel.speed);
+  }
+  if (selectedFields.has("channelFilter")) {
+    manager.setChannelFilter(soundId, channel.channelFilter);
+  }
+  if (selectedFields.has("effectsDryWet")) {
+    manager.setEffectsDryWet(soundId, channel.effectsDryWet);
+  }
+  if (selectedFields.has("filter")) {
+    manager.updateFilter(soundId, channel.filter as FilterConfig);
+  }
+}
+
+export function getChannelState(
+  sessionId: PlaybackSessionId,
+  channelId: string
+): ChannelState | null {
+  return mergeChannelState(
+    getPlaybackChannel(sessionId, channelId),
+    getPlaybackChannelRuntime(channelId)
+  );
+}
+
+export function useChannelState(
+  sessionId: PlaybackSessionId,
+  channelId: string
+): ChannelState | null {
+  const runtime = usePlaybackChannelRuntime(channelId);
+  const result = useLiveQuery((q) =>
+    q
+      .from({ session: playbackSessionsCollection })
+      .where(({ session }) => eq(session.id, sessionId))
+  );
+  const session = result.data?.[0];
+  const persisted = session?.channels.find(
+    (channel) => channel.id === channelId
+  ) as PlaybackChannelRecord | undefined;
+  return mergeChannelState(persisted, runtime);
+}
+
+export function updateChannel(
+  sessionId: PlaybackSessionId,
+  channelId: string,
+  update: ChannelUpdate,
+  syncFields: readonly ChannelAudioField[] = []
+): void {
+  updatePlaybackChannel(sessionId, channelId, (draft) => {
+    if (typeof update === "function") {
+      update(draft);
+      return;
+    }
+    Object.assign(draft, update);
+  });
+
+  const channel = getPlaybackChannel(sessionId, channelId);
+  const runtime = getPlaybackChannelRuntime(channelId);
+  if (!(channel && runtime.soundId && syncFields.length > 0)) {
+    return;
+  }
+  syncChannelAudio(runtime.soundId, channel, syncFields);
+}
+
+export function setChannelVolume(
+  sessionId: PlaybackSessionId,
+  channelId: string,
+  volume: number
+): void {
+  updateChannel(sessionId, channelId, { volume }, ["volume"]);
+}
+
+export function setChannelMuted(
+  sessionId: PlaybackSessionId,
+  channelId: string,
+  muted: boolean
+): void {
+  updateChannel(sessionId, channelId, { muted }, ["muted"]);
+}
+
+export function setChannelPan(
+  sessionId: PlaybackSessionId,
+  channelId: string,
+  pan: number
+): void {
+  updateChannel(sessionId, channelId, { pan }, ["pan"]);
+}
+
+export function setChannelSpeed(
+  sessionId: PlaybackSessionId,
+  channelId: string,
+  speed: number
+): void {
+  updateChannel(sessionId, channelId, { speed }, ["speed"]);
+}
+
+export function setChannelFilterValue(
+  sessionId: PlaybackSessionId,
+  channelId: string,
+  channelFilter: number
+): void {
+  updateChannel(sessionId, channelId, { channelFilter }, ["channelFilter"]);
+}
+
+export function setChannelEffectsDryWet(
+  sessionId: PlaybackSessionId,
+  channelId: string,
+  effectsDryWet: number
+): void {
+  updateChannel(sessionId, channelId, { effectsDryWet }, ["effectsDryWet"]);
+}
+
+export function updateChannelFilter(
+  sessionId: PlaybackSessionId,
+  channelId: string,
+  filter: FilterConfig
+): void {
+  updateChannel(sessionId, channelId, { filter }, ["filter"]);
+}
+
+export function addChannelEffect(
+  sessionId: PlaybackSessionId,
+  channelId: string,
+  effect: EffectConfig
+): void {
+  updateChannel(sessionId, channelId, (draft) => {
+    draft.effects.push(effect);
+  });
+  const runtime = getPlaybackChannelRuntime(channelId);
+  if (runtime.soundId) {
+    getAudioManager().addEffect(runtime.soundId, effect);
+  }
+}
+
+export function updateChannelEffect(
+  sessionId: PlaybackSessionId,
+  channelId: string,
+  effectId: string,
+  effectConfig: Partial<EffectConfig>
+): void {
+  let effectFound = false;
+  updateChannel(sessionId, channelId, (draft) => {
+    const effect = draft.effects.find((entry) => entry.id === effectId);
+    if (effect) {
+      Object.assign(effect, effectConfig);
+      effectFound = true;
+    }
+  });
+  const runtime = getPlaybackChannelRuntime(channelId);
+  if (effectFound && runtime.soundId) {
+    getAudioManager().updateEffect(runtime.soundId, effectId, effectConfig);
+  }
+}
+
+export function removeChannelEffect(
+  sessionId: PlaybackSessionId,
+  channelId: string,
+  effectId: string
+): void {
+  updateChannel(sessionId, channelId, (draft) => {
+    draft.effects = draft.effects.filter((effect) => effect.id !== effectId);
+  });
+  const runtime = getPlaybackChannelRuntime(channelId);
+  if (runtime.soundId) {
+    getAudioManager().removeEffect(runtime.soundId, effectId);
+  }
+}
+
+export function reorderChannelEffects(
+  sessionId: PlaybackSessionId,
+  channelId: string,
+  effectIds: string[]
+): void {
+  updateChannel(sessionId, channelId, (draft) => {
+    draft.effects = effectIds
+      .map((effectId) => draft.effects.find((effect) => effect.id === effectId))
+      .filter((effect): effect is EffectConfig => Boolean(effect));
+    for (const [index, effect] of draft.effects.entries()) {
+      effect.order = index;
+    }
+  });
+  const runtime = getPlaybackChannelRuntime(channelId);
+  if (runtime.soundId) {
+    getAudioManager().reorderEffects(runtime.soundId, effectIds);
+  }
+}
+
+export function setChannelSubscriptionCleanup(
+  channelId: string,
+  cleanup: (() => void) | null
+): void {
+  subscriptionCleanups.get(channelId)?.();
+  if (cleanup) {
+    subscriptionCleanups.set(channelId, cleanup);
+    return;
+  }
+  subscriptionCleanups.delete(channelId);
+}
+
+export function getChannelSubscriptionCleanup(
+  channelId: string
+): (() => void) | null {
+  return subscriptionCleanups.get(channelId) ?? null;
+}
+
+export function clearAllChannelSubscriptionCleanups(): void {
+  for (const cleanup of subscriptionCleanups.values()) {
+    cleanup();
+  }
+  subscriptionCleanups.clear();
+}
+
+export function subscribeChannelRuntime(
+  sessionId: PlaybackSessionId,
+  channelId: string,
+  soundId: string
+): void {
+  const manager = getAudioManager();
+  const cleanup = manager.subscribe(soundId, (audioState) => {
+    setPlaybackChannelRuntime(channelId, () => ({
+      soundId,
+      isPlaying: audioState.isPlaying,
+      isLoading: audioState.isLoading,
+      isBuffering: audioState.isBuffering,
+      error: audioState.error,
+    }));
+  });
+
+  const meterCleanup =
+    sessionId === "dj"
+      ? manager.subscribeMeter(soundId, (level) => {
+          setPlaybackChannelPeakLevel(channelId, level);
+        })
+      : null;
+
+  setChannelSubscriptionCleanup(channelId, () => {
+    cleanup();
+    meterCleanup?.();
+  });
+}
+
+export function activateChannel(
+  sessionId: PlaybackSessionId,
+  channelId: string,
+  radio: PlaybackChannelRecord["radio"],
+  soundId = `${sessionId}:${channelId}`
+): string {
+  if (!radio) {
+    throw new Error(`Cannot activate ${channelId} without a radio`);
+  }
+
+  deactivateChannel(channelId);
+  getAudioManager().createSound(radio, soundId);
+  setPlaybackChannelSoundId(channelId, soundId);
+  subscribeChannelRuntime(sessionId, channelId, soundId);
+  return soundId;
+}
+
+export function deactivateChannel(channelId: string): void {
+  const runtime = getPlaybackChannelRuntime(channelId);
+  setChannelSubscriptionCleanup(channelId, null);
+  if (runtime.soundId) {
+    getAudioManager().cleanupSound(runtime.soundId);
+  }
+  resetPlaybackChannelRuntime(channelId);
+}

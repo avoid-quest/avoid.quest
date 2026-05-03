@@ -1,4 +1,5 @@
 import type { Radio } from "@/lib/audio";
+import { setChannelVolume } from "@/lib/channel-state-manager";
 import {
   createDefaultChannel,
   getMultipleChannelId,
@@ -7,7 +8,6 @@ import {
   type PlaybackChannelRecord,
   removePlaybackChannel,
   replacePlaybackChannels,
-  updatePlaybackChannel,
   updatePlaybackSession,
   upsertPlaybackChannel,
 } from "@/lib/collections/playback-sessions";
@@ -124,13 +124,7 @@ export function setMultipleChannelVolume(
   channelId: string,
   volume: number
 ): void {
-  updatePlaybackChannel("multiple", channelId, (draft) => {
-    draft.volume = volume;
-  });
-  const runtime = getPlaybackChannelRuntime(channelId);
-  if (runtime.soundId) {
-    getAudioManager().setVolume(runtime.soundId, volume);
-  }
+  setChannelVolume("multiple", channelId, volume);
 }
 
 export function setMultipleSessionMasterVolume(volume: number): void {

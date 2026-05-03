@@ -20,6 +20,19 @@ import {
 } from "@/lib/audio";
 import { validatePlaybackStreamUrl } from "@/lib/audio/playback/url-validation";
 import {
+  addChannelEffect,
+  removeChannelEffect,
+  reorderChannelEffects,
+  setChannelEffectsDryWet,
+  setChannelFilterValue,
+  setChannelMuted,
+  setChannelPan,
+  setChannelSpeed,
+  setChannelVolume,
+  updateChannelEffect,
+  updateChannelFilter,
+} from "@/lib/channel-state-manager";
+import {
   clearDjErrorSurface,
   reportDjErrorSurface,
 } from "@/lib/dj/dj-error-surface";
@@ -281,10 +294,10 @@ export async function cleanupAudioOnly() {
   const cleanupA = getDeckASubscriptionCleanup();
   const cleanupB = getDeckBSubscriptionCleanup();
   if (cleanupA) {
-    cleanupA();
+    deckConfig["deck-a"].setSubscriptionCleanup(null);
   }
   if (cleanupB) {
-    cleanupB();
+    deckConfig["deck-b"].setSubscriptionCleanup(null);
   }
 
   // Cleanup sounds
@@ -367,46 +380,22 @@ export function setMasterVolume(volume: number) {
 
 // Volume actions with audio manager sync
 function setDeckVolume(deckId: DeckId, volume: number) {
-  deckConfig[deckId].updateDeck((draft) => {
-    draft.volume = volume;
-  });
+  setChannelVolume("dj", deckId, volume);
   applyCrossfade();
 }
 
 // Mute actions with audio manager sync
 function setDeckMute(deckId: DeckId, muted: boolean) {
-  const runtime = deckConfig[deckId].getRuntime();
-  deckConfig[deckId].updateDeck((draft) => {
-    draft.muted = muted;
-  });
-  if (runtime.soundId) {
-    if (muted) {
-      getAudioManager().muteSound(runtime.soundId);
-    } else {
-      getAudioManager().unmuteSound(runtime.soundId);
-    }
-  }
+  setChannelMuted("dj", deckId, muted);
 }
 
 // Channel strip actions with audio manager sync
 function setDeckPan(deckId: DeckId, pan: number) {
-  const runtime = deckConfig[deckId].getRuntime();
-  deckConfig[deckId].updateDeck((draft) => {
-    draft.pan = pan;
-  });
-  if (runtime.soundId) {
-    getAudioManager().setPan(runtime.soundId, pan);
-  }
+  setChannelPan("dj", deckId, pan);
 }
 
 function setDeckSpeed(deckId: DeckId, speed: number) {
-  const runtime = deckConfig[deckId].getRuntime();
-  deckConfig[deckId].updateDeck((draft) => {
-    draft.speed = speed;
-  });
-  if (runtime.soundId) {
-    getAudioManager().setPlaybackRate(runtime.soundId, speed);
-  }
+  setChannelSpeed("dj", deckId, speed);
 }
 
 function setDeckRepeat(deckId: DeckId, enabled: boolean) {
@@ -429,49 +418,25 @@ function seekDeck(deckId: DeckId, position: number) {
 }
 
 function setDeckChannelFilter(deckId: DeckId, value: number) {
-  const runtime = deckConfig[deckId].getRuntime();
-  deckConfig[deckId].updateDeck((draft) => {
-    draft.channelFilter = value;
-  });
-  if (runtime.soundId) {
-    getAudioManager().setChannelFilter(runtime.soundId, value);
-  }
+  setChannelFilterValue("dj", deckId, value);
 }
 
 function setDeckEffectsDryWet(deckId: DeckId, value: number) {
-  const runtime = deckConfig[deckId].getRuntime();
-  deckConfig[deckId].updateDeck((draft) => {
-    draft.effectsDryWet = value;
-  });
-  if (runtime.soundId) {
-    getAudioManager().setEffectsDryWet(runtime.soundId, value);
-  }
+  setChannelEffectsDryWet("dj", deckId, value);
 }
 
 // Filter actions with audio manager sync
 function updateDeckFilter(deckId: DeckId, filter: FilterConfig) {
-  const runtime = deckConfig[deckId].getRuntime();
-  deckConfig[deckId].updateDeck((draft) => {
-    draft.filter = filter;
-  });
-  if (runtime.soundId) {
-    getAudioManager().updateFilter(runtime.soundId, filter);
-  }
+  updateChannelFilter("dj", deckId, filter);
 }
 
 // Effect actions with audio manager sync
 function addDeckEffect(deckId: DeckId, type: EffectType) {
   const config = deckConfig[deckId];
-  const runtime = config.getRuntime();
   const deck = config.getDeck();
   const effects = deck?.effects ?? [];
   const effect = createDefaultEffectConfig(type, generateId(), effects.length);
-  config.updateDeck((draft) => {
-    draft.effects.push(effect);
-  });
-  if (runtime.soundId) {
-    getAudioManager().addEffect(runtime.soundId, effect);
-  }
+  addChannelEffect("dj", deckId, effect);
 }
 
 function updateDeckEffect(
@@ -479,51 +444,15 @@ function updateDeckEffect(
   effectId: string,
   effectConfig: Partial<EffectConfig>
 ) {
-  const config = deckConfig[deckId];
-  const runtime = config.getRuntime();
-  let effectFound = false;
-  config.updateDeck((draft) => {
-    const effect = draft.effects.find((e) => e.id === effectId);
-    if (effect) {
-      Object.assign(effect, effectConfig);
-      effectFound = true;
-    }
-  });
-  if (effectFound && runtime.soundId) {
-    getAudioManager().updateEffect(runtime.soundId, effectId, effectConfig);
-  }
+  updateChannelEffect("dj", deckId, effectId, effectConfig);
 }
 
 function removeDeckEffect(deckId: DeckId, effectId: string) {
-  const config = deckConfig[deckId];
-  const runtime = config.getRuntime();
-  config.updateDeck((draft) => {
-    draft.effects = draft.effects.filter((e) => e.id !== effectId);
-  });
-  if (runtime.soundId) {
-    getAudioManager().removeEffect(runtime.soundId, effectId);
-  }
+  removeChannelEffect("dj", deckId, effectId);
 }
 
 function reorderDeckEffects(deckId: DeckId, effectIds: string[]) {
-  const config = deckConfig[deckId];
-  const runtime = config.getRuntime();
-  const deck = config.getDeck();
-  if (!deck) {
-    return;
-  }
-  config.updateDeck((draft) => {
-    const reordered = effectIds
-      .map((id) => draft.effects.find((e) => e.id === id))
-      .filter((e) => e !== undefined);
-    draft.effects = reordered;
-    for (let i = 0; i < draft.effects.length; i++) {
-      draft.effects[i].order = i;
-    }
-  });
-  if (runtime.soundId) {
-    getAudioManager().reorderEffects(runtime.soundId, effectIds);
-  }
+  reorderChannelEffects("dj", deckId, effectIds);
 }
 
 async function setDeckDeviceSource(

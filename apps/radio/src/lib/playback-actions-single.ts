@@ -1,4 +1,5 @@
 import { crossfade, type Radio } from "@/lib/audio";
+import { setChannelVolume } from "@/lib/channel-state-manager";
 import {
   createDefaultChannel,
   getPlaybackChannel,
@@ -24,13 +25,7 @@ export function setSingleChannelVolume(
   channelId: string,
   volume: number
 ): void {
-  updatePlaybackChannel("single", channelId, (draft) => {
-    draft.volume = volume;
-  });
-  const runtime = getPlaybackChannelRuntime(channelId);
-  if (runtime.soundId) {
-    getAudioManager().setVolume(runtime.soundId, volume);
-  }
+  setChannelVolume("single", channelId, volume);
 }
 
 export async function setSinglePlaybackState(playing: boolean): Promise<void> {

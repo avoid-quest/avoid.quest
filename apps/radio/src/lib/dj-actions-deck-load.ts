@@ -195,7 +195,6 @@ async function cleanupFailedDeckLoad(
 
   const existingCleanup = config.getSubscriptionCleanup();
   if (existingCleanup) {
-    existingCleanup();
     config.setSubscriptionCleanup(null);
   }
 
@@ -224,7 +223,6 @@ export async function setDeckRadioSource(
   const wasPlaying = runtime.isPlaying;
   const previousCleanup = config.getSubscriptionCleanup();
   if (previousCleanup) {
-    previousCleanup();
     config.setSubscriptionCleanup(null);
   }
 

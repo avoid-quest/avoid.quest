@@ -53,6 +53,20 @@ describe("crossfade utilities", () => {
       expect.any(Float32Array),
       1
     );
+    expect(manager.setVolume).not.toHaveBeenCalled();
+    expect(manager.stopSound).toHaveBeenCalledWith("outgoing");
+  });
+
+  test("crossfade directly sets final volumes only for zero duration", async () => {
+    await crossfade("outgoing", "incoming", {
+      duration: 0,
+      targetVolume: 0.18,
+      curve: "equalPower",
+    });
+
+    expect(manager.scheduleVolumeCurve).not.toHaveBeenCalled();
+    expect(manager.setVolume).toHaveBeenCalledWith("outgoing", 0);
+    expect(manager.setVolume).toHaveBeenCalledWith("incoming", 0.18);
     expect(manager.stopSound).toHaveBeenCalledWith("outgoing");
   });
 

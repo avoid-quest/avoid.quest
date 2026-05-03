@@ -128,9 +128,6 @@ export function crossfade(
 
     await wait(clampedDuration);
 
-    if (manager.hasSound(toSoundId)) {
-      manager.setVolume(toSoundId, targetVolume);
-    }
     if (manager.hasSound(fromSoundId)) {
       manager.stopSound(fromSoundId);
     }
@@ -172,9 +169,6 @@ export function fadeIn(
       clampedDuration
     );
     await wait(clampedDuration);
-    if (manager.hasSound(soundId)) {
-      manager.setVolume(soundId, targetVolume);
-    }
   })();
 }
 
@@ -219,7 +213,6 @@ export function fadeOut(
     if (!manager.hasSound(soundId)) {
       return;
     }
-    manager.setVolume(soundId, 0);
     if (stopAfter) {
       manager.stopSound(soundId);
     }
@@ -259,9 +252,6 @@ export async function duckSound(
         clampedDuration
       );
       await wait(clampedDuration);
-      if (manager.hasSound(soundId)) {
-        manager.setVolume(soundId, duckLevel);
-      }
     }
   }
 
@@ -287,8 +277,5 @@ export async function duckSound(
       clampedDuration
     );
     await wait(clampedDuration);
-    if (manager.hasSound(soundId)) {
-      manager.setVolume(soundId, startVolume);
-    }
   };
 }

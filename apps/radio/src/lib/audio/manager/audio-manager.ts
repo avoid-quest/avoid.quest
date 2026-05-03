@@ -95,6 +95,7 @@ export class AudioManager {
   >();
 
   private readonly workletManagers = new Map<string, WorkletManager>();
+  private readonly volumeCurveEndTimes = new Map<string, number>();
   private workletModuleLoaded = false;
   private initPromise: Promise<void> | null = null;
   private globalVolume = 1;
@@ -487,6 +488,7 @@ export class AudioManager {
 
     this.sounds.delete(soundId);
     this.lastSoundVolumes.delete(soundId);
+    this.volumeCurveEndTimes.delete(soundId);
 
     this.notifyListeners(soundId, { ...initialAudioState });
   }
@@ -508,18 +510,7 @@ export class AudioManager {
     const clampedVolume = Math.max(0, Math.min(1, volume));
     instance.volume = clampedVolume;
 
-    // Use native GainNode for hardware-accelerated volume control
-    if (instance.nodes) {
-      const context = getAudioContext();
-      if (context) {
-        const now = context.currentTime;
-        const targetVolume = Math.max(
-          0.0001,
-          clampedVolume * this.globalVolume
-        );
-        instance.nodes.gain.gain.setTargetAtTime(targetVolume, now, 0.05);
-      }
-    }
+    this.setSoundGainTarget(soundId, instance, clampedVolume);
 
     notifySoundState(this.notifyListeners, soundId, instance, {
       volume: clampedVolume,
@@ -556,14 +547,26 @@ export class AudioManager {
         const now = context.currentTime;
         const durationSeconds = Math.max(0, durationMs) / 1000;
         const gainNode = instance.nodes.gain.gain;
+        const activeCurveEndTime = this.volumeCurveEndTimes.get(soundId) ?? 0;
+        const cancelAndHoldAtTime =
+          gainNode.cancelAndHoldAtTime?.bind(gainNode);
+        const curveStartTime =
+          activeCurveEndTime > now && !cancelAndHoldAtTime
+            ? activeCurveEndTime + 0.001
+            : now;
 
-        gainNode.cancelScheduledValues(now);
+        if (activeCurveEndTime > now && cancelAndHoldAtTime) {
+          cancelAndHoldAtTime(now);
+        } else {
+          gainNode.cancelScheduledValues(curveStartTime);
+        }
 
         if (durationSeconds === 0) {
           gainNode.setValueAtTime(
             Math.max(0.0001, lastVolume * this.globalVolume),
-            now
+            curveStartTime
           );
+          this.volumeCurveEndTimes.delete(soundId);
         } else {
           const scaledCurve = Float32Array.from(volumeCurve, (value) =>
             Math.max(
@@ -571,7 +574,15 @@ export class AudioManager {
               Math.max(0, Math.min(1, value)) * this.globalVolume
             )
           );
-          gainNode.setValueCurveAtTime(scaledCurve, now, durationSeconds);
+          gainNode.setValueCurveAtTime(
+            scaledCurve,
+            curveStartTime,
+            durationSeconds
+          );
+          this.volumeCurveEndTimes.set(
+            soundId,
+            curveStartTime + durationSeconds
+          );
         }
       }
     }
@@ -738,15 +749,7 @@ export class AudioManager {
     // Update all active sounds (channel gain is post-CUE tap, so CUE is unaffected)
     for (const [_soundId, instance] of this.sounds) {
       if (instance.nodes) {
-        const context = getAudioContext();
-        if (context) {
-          const now = context.currentTime;
-          const targetVolume = Math.max(
-            0.0001,
-            instance.volume * this.globalVolume
-          );
-          instance.nodes.gain.gain.setTargetAtTime(targetVolume, now, 0.05);
-        }
+        this.setSoundGainTarget(_soundId, instance, instance.volume);
       }
     }
   }
@@ -1167,6 +1170,7 @@ export class AudioManager {
     this.listeners.clear();
     this.meterListeners.clear();
     this.lastSoundVolumes.clear();
+    this.volumeCurveEndTimes.clear();
 
     // Cleanup all per-sound worklet managers
     for (const wm of this.workletManagers.values()) {
@@ -1227,6 +1231,45 @@ export class AudioManager {
     this.masterMeterRafId = null;
     this.masterMeterFrame.count = 0;
     this.masterMeterFrame.value = 0;
+  }
+
+  private setSoundGainTarget(
+    soundId: string,
+    instance: SoundInstance,
+    volume: number
+  ): void {
+    if (!instance.nodes) {
+      return;
+    }
+
+    const context = getAudioContext();
+    if (!context) {
+      return;
+    }
+
+    const now = context.currentTime;
+    const gainParam = instance.nodes.gain.gain;
+    const targetVolume = Math.max(0.0001, volume * this.globalVolume);
+    const activeCurveEndTime = this.volumeCurveEndTimes.get(soundId) ?? 0;
+
+    if (activeCurveEndTime > now) {
+      const cancelAndHoldAtTime =
+        gainParam.cancelAndHoldAtTime?.bind(gainParam);
+
+      if (cancelAndHoldAtTime) {
+        cancelAndHoldAtTime(now);
+        this.volumeCurveEndTimes.delete(soundId);
+        gainParam.setTargetAtTime(targetVolume, now, 0.05);
+        return;
+      }
+
+      gainParam.setTargetAtTime(targetVolume, activeCurveEndTime + 0.001, 0.05);
+      return;
+    }
+
+    this.volumeCurveEndTimes.delete(soundId);
+    gainParam.cancelScheduledValues(now);
+    gainParam.setTargetAtTime(targetVolume, now, 0.05);
   }
 
   /**

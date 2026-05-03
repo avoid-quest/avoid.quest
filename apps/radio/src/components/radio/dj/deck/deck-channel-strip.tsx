@@ -40,6 +40,7 @@ export function DeckChannelStrip({ className }: { className?: string }) {
         />
         <ChannelSlider
           defaultValue={0}
+          fillFromDefault={true}
           formatValue={formatPan}
           label="PAN"
           max={1}
@@ -51,6 +52,7 @@ export function DeckChannelStrip({ className }: { className?: string }) {
         />
         <ChannelSlider
           defaultValue={0}
+          fillFromDefault={true}
           formatValue={formatChannelFilter}
           label="FILT"
           max={1}
@@ -62,6 +64,7 @@ export function DeckChannelStrip({ className }: { className?: string }) {
         />
         <ChannelSlider
           defaultValue={1}
+          fillFromDefault={true}
           formatValue={formatSpeed}
           label="SPD"
           max={2.0}

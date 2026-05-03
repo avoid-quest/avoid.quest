@@ -2,17 +2,80 @@
 
 import { cn } from "@avoid.quest/ui/lib/utils";
 import { Range, Root, Thumb, Track } from "@radix-ui/react-slider";
-import { type ComponentProps, useMemo } from "react";
+import { type ComponentProps, type CSSProperties, useMemo } from "react";
+
+type SliderProps = ComponentProps<typeof Root> & {
+  defaultMarkerValue?: number;
+  rangeOriginValue?: number;
+};
+
+function getPercent(value: number, min: number, max: number) {
+  if (max === min) {
+    return 0;
+  }
+  return Math.min(100, Math.max(0, ((value - min) / (max - min)) * 100));
+}
+
+function getRangeStyle({
+  orientation,
+  originPercent,
+  valuePercent,
+}: {
+  orientation: SliderProps["orientation"];
+  originPercent: number | undefined;
+  valuePercent: number;
+}) {
+  if (originPercent === undefined) {
+    return;
+  }
+
+  if (orientation === "vertical") {
+    return {
+      bottom: `${Math.min(originPercent, valuePercent)}%`,
+      height: `${Math.abs(valuePercent - originPercent)}%`,
+    } satisfies CSSProperties;
+  }
+
+  return {
+    left: `${Math.min(originPercent, valuePercent)}%`,
+    width: `${Math.abs(valuePercent - originPercent)}%`,
+  } satisfies CSSProperties;
+}
+
+function getMarkerStyle({
+  markerPercent,
+  orientation,
+}: {
+  markerPercent: number | undefined;
+  orientation: SliderProps["orientation"];
+}) {
+  if (markerPercent === undefined) {
+    return;
+  }
+
+  if (orientation === "vertical") {
+    return {
+      bottom: `${markerPercent}%`,
+    } satisfies CSSProperties;
+  }
+
+  return {
+    left: `${markerPercent}%`,
+  } satisfies CSSProperties;
+}
 
 function Slider({
   className,
   defaultValue,
+  defaultMarkerValue,
   value,
   min = 0,
   max = 100,
   onValueChange,
+  orientation = "horizontal",
+  rangeOriginValue,
   ...props
-}: ComponentProps<typeof Root>) {
+}: SliderProps) {
   const _values = useMemo(
     () =>
       Array.isArray(value)
@@ -50,6 +113,25 @@ function Slider({
     onValueChange(newValues);
   };
 
+  const markerPercent =
+    defaultMarkerValue === undefined
+      ? undefined
+      : getPercent(defaultMarkerValue, min, max);
+  const valuePercent = getPercent(_values[0] ?? min, min, max);
+  const originPercent =
+    rangeOriginValue === undefined
+      ? undefined
+      : getPercent(rangeOriginValue, min, max);
+  const rangeStyle = getRangeStyle({
+    orientation,
+    originPercent,
+    valuePercent,
+  });
+  const markerStyle = getMarkerStyle({
+    markerPercent,
+    orientation,
+  });
+
   const handleClick = (index: number, e: React.MouseEvent) => {
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.detail === 2) {
       handleReset(index, e);
@@ -73,6 +155,7 @@ function Slider({
       max={max}
       min={min}
       onValueChange={onValueChange}
+      orientation={orientation}
       value={value}
       {...props}
     >
@@ -82,12 +165,29 @@ function Slider({
         )}
         data-slot="slider-track"
       >
-        <Range
-          className={cn(
-            "absolute bg-primary data-[orientation=horizontal]:h-full data-[orientation=vertical]:w-full"
-          )}
-          data-slot="slider-range"
-        />
+        {rangeStyle ? (
+          <div
+            className="absolute bg-primary data-[orientation=horizontal]:h-full data-[orientation=vertical]:w-full"
+            data-orientation={orientation}
+            data-slot="slider-default-origin-range"
+            style={rangeStyle}
+          />
+        ) : (
+          <Range
+            className={cn(
+              "absolute bg-primary data-[orientation=horizontal]:h-full data-[orientation=vertical]:w-full"
+            )}
+            data-slot="slider-range"
+          />
+        )}
+        {markerStyle && (
+          <span
+            className="pointer-events-none absolute z-10 bg-foreground/60 data-[orientation=horizontal]:h-full data-[orientation=vertical]:h-px data-[orientation=horizontal]:w-px data-[orientation=vertical]:w-full"
+            data-orientation={orientation}
+            data-slot="slider-default-marker"
+            style={markerStyle}
+          />
+        )}
       </Track>
       {Array.from({ length: _values.length }, (_, index) => (
         <Thumb

@@ -40,6 +40,16 @@ const iconSizeMap = {
   "4xl": "size-12",
 };
 
+const imagePaddingMap = {
+  sm: "p-0.5",
+  md: "p-0.5",
+  lg: "p-0.5",
+  xl: "p-1",
+  "2xl": "p-1",
+  "3xl": "p-1.5",
+  "4xl": "p-2",
+};
+
 export function RadioLogo({
   logoUrl,
   name,
@@ -63,7 +73,7 @@ export function RadioLogo({
     return (
       <div
         className={cn(
-          "flex items-center justify-center rounded-sm bg-muted",
+          "flex items-center justify-center rounded-sm border border-border/70 bg-muted",
           sizeMap[size],
           className
         )}
@@ -80,7 +90,7 @@ export function RadioLogo({
   return (
     <div
       className={cn(
-        "relative overflow-hidden rounded-sm",
+        "relative flex items-center justify-center overflow-hidden rounded-sm border border-border/70 bg-muted",
         sizeMap[size],
         className
       )}
@@ -89,24 +99,14 @@ export function RadioLogo({
       <img
         alt={`${name} logo`}
         className={cn(
-          "rounded-sm object-contain transition-opacity",
-          sizeMap[size],
+          "size-full rounded-sm object-contain transition-opacity",
+          imagePaddingMap[size],
           imageLoaded ? "opacity-100" : "opacity-0"
         )}
         height={sizePixels[size]}
         onError={handleImageError}
         onLoad={handleImageLoad}
         src={logoUrl}
-        style={{
-          // Theme-aware background for transparent logos
-          backgroundColor: "var(--card)",
-          // Add subtle border for better definition
-          border: "1px solid var(--border)",
-          // Ensure logos with white/black backgrounds are visible
-          filter: "contrast(1.1) brightness(1.05)",
-          width: `${sizePixels[size]}px`,
-          height: `${sizePixels[size]}px`,
-        }}
         width={sizePixels[size]}
       />
       {/* Loading state */}

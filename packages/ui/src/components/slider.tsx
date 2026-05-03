@@ -9,6 +9,42 @@ type SliderProps = ComponentProps<typeof Root> & {
   rangeOriginValue?: number;
 };
 
+type SliderOrientation = NonNullable<SliderProps["orientation"]>;
+
+function getSliderValues({
+  defaultValue,
+  max,
+  min,
+  value,
+}: {
+  defaultValue: SliderProps["defaultValue"];
+  max: number;
+  min: number;
+  value: SliderProps["value"];
+}) {
+  if (Array.isArray(value)) {
+    return value;
+  }
+
+  if (Array.isArray(defaultValue)) {
+    return defaultValue;
+  }
+
+  return [min, max];
+}
+
+function getDefaultValues(defaultValue: SliderProps["defaultValue"]) {
+  if (Array.isArray(defaultValue)) {
+    return defaultValue;
+  }
+
+  if (defaultValue !== undefined) {
+    return [defaultValue];
+  }
+
+  return;
+}
+
 function getPercent(value: number, min: number, max: number) {
   if (max === min) {
     return 0;
@@ -21,7 +57,7 @@ function getRangeStyle({
   originPercent,
   valuePercent,
 }: {
-  orientation: SliderProps["orientation"];
+  orientation: SliderOrientation;
   originPercent: number | undefined;
   valuePercent: number;
 }) {
@@ -47,7 +83,7 @@ function getMarkerStyle({
   orientation,
 }: {
   markerPercent: number | undefined;
-  orientation: SliderProps["orientation"];
+  orientation: SliderOrientation;
 }) {
   if (markerPercent === undefined) {
     return;
@@ -76,40 +112,29 @@ function Slider({
   rangeOriginValue,
   ...props
 }: SliderProps) {
-  const _values = useMemo(
-    () =>
-      Array.isArray(value)
-        ? value
-        : // biome-ignore lint/style/noNestedTernary: shadcn
-          Array.isArray(defaultValue)
-          ? defaultValue
-          : [min, max],
+  const values = useMemo(
+    () => getSliderValues({ defaultValue, max, min, value }),
     [value, defaultValue, min, max]
   );
 
-  const _defaultValue = useMemo(() => {
-    if (Array.isArray(defaultValue)) {
-      return defaultValue;
-    }
-    if (defaultValue !== undefined) {
-      return [defaultValue];
-    }
-    return;
-  }, [defaultValue]);
+  const defaultValues = useMemo(
+    () => getDefaultValues(defaultValue),
+    [defaultValue]
+  );
 
   const handleReset = (
     index: number,
     e?: React.MouseEvent | React.TouchEvent
   ) => {
-    if (!(onValueChange && _defaultValue)) {
+    if (!(onValueChange && defaultValues)) {
       return;
     }
     if (e) {
       e.preventDefault();
       e.stopPropagation();
     }
-    const newValues = [..._values];
-    newValues[index] = _defaultValue[index] ?? _defaultValue[0] ?? min;
+    const newValues = [...values];
+    newValues[index] = defaultValues[index] ?? defaultValues[0] ?? min;
     onValueChange(newValues);
   };
 
@@ -117,7 +142,7 @@ function Slider({
     defaultMarkerValue === undefined
       ? undefined
       : getPercent(defaultMarkerValue, min, max);
-  const valuePercent = getPercent(_values[0] ?? min, min, max);
+  const valuePercent = getPercent(values[0] ?? min, min, max);
   const originPercent =
     rangeOriginValue === undefined
       ? undefined
@@ -189,7 +214,7 @@ function Slider({
           />
         )}
       </Track>
-      {Array.from({ length: _values.length }, (_, index) => (
+      {Array.from({ length: values.length }, (_, index) => (
         <Thumb
           className="block size-4 shrink-0 rounded-full border border-primary light:border-primary/80 bg-white light:bg-background shadow-sm ring-ring/50 transition-[color,box-shadow] hover:ring-4 focus-visible:outline-hidden focus-visible:ring-4 disabled:pointer-events-none disabled:opacity-50 dark:bg-white"
           data-slot="slider-thumb"

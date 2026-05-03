@@ -1,6 +1,8 @@
 import { Slider } from "@avoid.quest/ui/components/slider";
 import { MidiControlWrapper } from "@/components/audio/midi-control-wrapper";
 
+const DEFAULT_SNAP_THRESHOLD_RATIO = 0.02;
+
 type ChannelSliderProps = {
   label: string;
   value: number;
@@ -26,13 +28,15 @@ export function ChannelSlider({
   formatValue,
   targetId,
 }: ChannelSliderProps) {
-  const handleValueChange = ([nextValue]: number[]) => {
+  const handleValueChange = (nextValues: number[]) => {
+    const [nextValue = value] = nextValues;
+
     onChange(
       snapChannelSliderValue({
         defaultValue,
         max,
         min,
-        value: nextValue ?? value,
+        value: nextValue,
       })
     );
   };
@@ -71,7 +75,7 @@ export function snapChannelSliderValue({
   defaultValue,
   max,
   min,
-  thresholdRatio = 0.02,
+  thresholdRatio = DEFAULT_SNAP_THRESHOLD_RATIO,
   value,
 }: {
   value: number;

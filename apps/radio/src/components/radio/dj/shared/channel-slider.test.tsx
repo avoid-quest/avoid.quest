@@ -17,16 +17,16 @@ describe("ChannelSlider", () => {
       />
     );
 
-    expect(html.includes("[@media(pointer:coarse)]:h-10")).toBeTrue();
-    expect(html.includes('data-slot="slider-default-marker"')).toBeTrue();
-    expect(html.includes("left:63.09148264984227%")).toBeTrue();
+    expect(html).toContain("[@media(pointer:coarse)]:h-10");
+    expect(html).toContain('data-slot="slider-default-marker"');
+    expect(html).toContain("left:63.09148264984227%");
   });
 
   test("can fill bipolar controls from the default value outward", () => {
     const html = renderToStaticMarkup(
       <ChannelSlider
         defaultValue={0}
-        fillFromDefault={true}
+        fillFromDefault
         formatValue={(value) => `${value}`}
         label="FILT"
         max={1}
@@ -37,9 +37,9 @@ describe("ChannelSlider", () => {
       />
     );
 
-    expect(html.includes('data-slot="slider-default-origin-range"')).toBeTrue();
-    expect(html.includes("left:50%")).toBeTrue();
-    expect(html.includes("width:25%")).toBeTrue();
+    expect(html).toContain('data-slot="slider-default-origin-range"');
+    expect(html).toContain("left:50%");
+    expect(html).toContain("width:25%");
   });
 
   test("snaps values near the default", () => {

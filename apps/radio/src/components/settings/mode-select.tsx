@@ -27,7 +27,11 @@ export function ModeSelect({ className }: { className?: string }) {
     }
 
     try {
-      const newMode = value as "single" | "multiple" | "dj";
+      const newMode = playerModes.find((mode) => mode.value === value)?.value;
+      if (!newMode) {
+        return;
+      }
+
       await cleanupAudioOnly();
       await cleanupAudioForModeChange(newMode);
 

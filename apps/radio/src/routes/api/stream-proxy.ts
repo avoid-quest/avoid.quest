@@ -266,6 +266,15 @@ function redirectToStream(
   });
 }
 
+function canRedirectDirectStream(url: string, origin: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "https:" || parsed.origin === origin;
+  } catch {
+    return false;
+  }
+}
+
 export const Route = createFileRoute("/api/stream-proxy")({
   server: {
     handlers: {
@@ -294,11 +303,10 @@ export const Route = createFileRoute("/api/stream-proxy")({
               requestHeaders: request.headers,
             });
             if (accessDecision.mode === "direct") {
-              return redirectToStream(
-                accessDecision.resolvedUrl ?? urlValidation,
-                request,
-                requestId
-              );
+              const streamUrl = accessDecision.resolvedUrl ?? urlValidation;
+              if (canRedirectDirectStream(streamUrl, origin)) {
+                return redirectToStream(streamUrl, request, requestId);
+              }
             }
 
             if (accessDecision.response?.ok) {

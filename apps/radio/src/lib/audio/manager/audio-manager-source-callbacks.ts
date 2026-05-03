@@ -29,6 +29,14 @@ function createPlaybackSourceCallbacks({
         error: null,
       });
     },
+    onPaused: () => {
+      instance.playing = false;
+      instance.buffering = false;
+      notifySoundState(notifyListeners, soundId, instance, {
+        isPlaying: false,
+        error: null,
+      });
+    },
     onBuffering: (isBuffering) => {
       instance.buffering = isBuffering;
       notifySoundState(notifyListeners, soundId, instance, {

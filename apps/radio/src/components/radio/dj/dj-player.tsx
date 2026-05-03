@@ -12,12 +12,6 @@ import { Volume2Icon } from "lucide-react";
 import { useEffect, useRef } from "react";
 import type { Radio } from "@/lib/audio";
 import {
-  deckCollection,
-  mixerCollection,
-  resetDeck,
-  settingsCollection,
-} from "@/lib/collections";
-import {
   setCrossfadePosition,
   setDeckACueEnabled,
   setDeckARadio,
@@ -27,7 +21,9 @@ import {
   setMasterVolume,
 } from "@/lib/dj-actions";
 import { useDjKeyboard } from "@/lib/hooks/use-dj-keyboard";
+import { useDjSession } from "@/lib/hooks/use-dj-session";
 import {
+  resetDeck,
   setActiveDragRadio,
   setPendingPlatformItem,
   useActiveDragRadio,
@@ -37,7 +33,7 @@ import {
 } from "@/lib/hooks/use-dj-state";
 import { useMediaSession } from "@/lib/hooks/use-media-session";
 import { useMidi } from "@/lib/hooks/use-midi";
-import { useAudioSettings } from "@/lib/hooks/use-settings";
+import { useAudioSettings, useSettings } from "@/lib/hooks/use-settings";
 import type { Platform } from "@/lib/platform-types";
 import type { DeckId } from "@/lib/stores/dj-runtime-store";
 import { RadioLogo } from "../radio-logo";
@@ -103,29 +99,29 @@ function handlePlatformItemDrag({
 
 function useDjStateHydration() {
   const hasHydratedRef = useRef(false);
+  const { data: settings } = useSettings();
+  const session = useDjSession();
 
   useEffect(() => {
-    if (hasHydratedRef.current) {
+    if (hasHydratedRef.current || settings === undefined) {
       return;
     }
+
+    const shouldRestore = settings.player.restoreStateOnLoad !== false;
+    if (!shouldRestore) {
+      hasHydratedRef.current = true;
+      return;
+    }
+
+    if (!session) {
+      return;
+    }
+
     hasHydratedRef.current = true;
 
     (async () => {
-      const [settingsMap, deckMap, mixerMap] = await Promise.all([
-        settingsCollection.stateWhenReady(),
-        deckCollection.stateWhenReady(),
-        mixerCollection.stateWhenReady(),
-      ]);
-
-      const settings = settingsMap.get("app-settings");
-      const shouldRestore = settings?.player?.restoreStateOnLoad !== false;
-      if (!shouldRestore) {
-        return;
-      }
-
-      const deckA = deckMap.get("deck-a");
-      const deckB = deckMap.get("deck-b");
-      const mixer = mixerMap.get("mixer");
+      const deckA = session.channels.find((channel) => channel.id === "deck-a");
+      const deckB = session.channels.find((channel) => channel.id === "deck-b");
 
       if (deckA?.radio?.platformMetadata?.platform === "local-file") {
         resetDeck("deck-a");
@@ -138,12 +134,10 @@ function useDjStateHydration() {
         await setDeckBRadio(deckB.radio as Radio);
       }
 
-      if (mixer) {
-        setMasterVolume(mixer.masterVolume);
-        setCrossfadePosition(mixer.crossfadePosition);
-      }
+      setMasterVolume(session.masterVolume);
+      setCrossfadePosition(session.crossfadePosition);
     })();
-  }, []);
+  }, [session, settings]);
 }
 
 function DjPlayerDragOverlay({

@@ -1,0 +1,153 @@
+import { crossfade, type Radio } from "@/lib/audio";
+import {
+  createDefaultChannel,
+  getPlaybackChannel,
+  getPlaybackSession,
+  SINGLE_ACTIVE_CHANNEL_ID,
+  SINGLE_STANDBY_CHANNEL_ID,
+  setPlaybackSessionActiveChannel,
+  updatePlaybackChannel,
+  upsertPlaybackChannel,
+} from "@/lib/collections/playback-sessions";
+import { validateRadioForMode } from "@/lib/external-url/utils";
+import { getPlaybackChannelRuntime } from "@/lib/stores/playback-runtime-store";
+import {
+  applySessionMasterVolume,
+  cleanupManagedChannel,
+  createManagedSound,
+  ensureMainAudioSettingsApplied,
+  getAudioManager,
+  isSameRadio,
+} from "./playback-actions-shared.js";
+
+export function setSingleChannelVolume(
+  channelId: string,
+  volume: number
+): void {
+  updatePlaybackChannel("single", channelId, (draft) => {
+    draft.volume = volume;
+  });
+  const runtime = getPlaybackChannelRuntime(channelId);
+  if (runtime.soundId) {
+    getAudioManager().setVolume(runtime.soundId, volume);
+  }
+}
+
+export async function setSinglePlaybackState(playing: boolean): Promise<void> {
+  const session = getPlaybackSession("single");
+  const activeChannelId = session?.activeChannelId;
+  if (!activeChannelId) {
+    return;
+  }
+  const channel = session?.channels.find(
+    (entry) => entry.id === activeChannelId
+  );
+  if (!channel?.radio) {
+    return;
+  }
+
+  validateRadioForMode(channel.radio, "single");
+
+  const runtime = getPlaybackChannelRuntime(activeChannelId);
+  if (!playing) {
+    if (runtime.soundId) {
+      getAudioManager().pauseSound(runtime.soundId);
+    }
+    return;
+  }
+
+  const soundId =
+    runtime.soundId ??
+    createManagedSound("single", activeChannelId, channel.radio);
+
+  await ensureMainAudioSettingsApplied();
+  applySessionMasterVolume("single");
+  await getAudioManager().playSound(soundId, channel.volume);
+}
+
+export async function selectSinglePlaybackRadio(
+  radio: Radio,
+  transitionDuration: number
+): Promise<void> {
+  validateRadioForMode(radio, "single");
+
+  const session = getPlaybackSession("single");
+  if (!session) {
+    return;
+  }
+
+  const activeChannelId = session.activeChannelId;
+  const activeChannel = activeChannelId
+    ? (session.channels.find((entry) => entry.id === activeChannelId) ?? null)
+    : null;
+
+  if (isSameRadio(activeChannel?.radio, radio)) {
+    return;
+  }
+
+  const incomingChannelId =
+    activeChannelId === SINGLE_ACTIVE_CHANNEL_ID
+      ? SINGLE_STANDBY_CHANNEL_ID
+      : SINGLE_ACTIVE_CHANNEL_ID;
+  const outgoingChannelId =
+    activeChannelId === incomingChannelId ? null : activeChannelId;
+
+  const incomingChannel =
+    getPlaybackChannel("single", incomingChannelId) ??
+    createDefaultChannel(
+      incomingChannelId,
+      incomingChannelId === SINGLE_ACTIVE_CHANNEL_ID
+        ? "single-primary"
+        : "single-secondary",
+      incomingChannelId === SINGLE_ACTIVE_CHANNEL_ID ? 0 : 1
+    );
+
+  const previousVolume = activeChannel?.volume ?? incomingChannel.volume;
+  upsertPlaybackChannel("single", {
+    ...incomingChannel,
+    radio,
+    volume: previousVolume,
+  });
+
+  const incomingSoundId = createManagedSound(
+    "single",
+    incomingChannelId,
+    radio
+  );
+  await ensureMainAudioSettingsApplied();
+  applySessionMasterVolume("single");
+
+  const outgoingRuntime = outgoingChannelId
+    ? getPlaybackChannelRuntime(outgoingChannelId)
+    : null;
+  const shouldCrossfade = !!(
+    outgoingChannelId &&
+    outgoingRuntime?.soundId &&
+    outgoingRuntime.isPlaying
+  );
+
+  if (!shouldCrossfade) {
+    if (outgoingChannelId && outgoingRuntime?.soundId) {
+      cleanupManagedChannel(outgoingChannelId);
+    }
+    setPlaybackSessionActiveChannel("single", incomingChannelId);
+    return;
+  }
+
+  await getAudioManager().playSound(incomingSoundId, 0);
+  await crossfade(outgoingRuntime.soundId as string, incomingSoundId, {
+    duration: transitionDuration,
+    targetVolume: previousVolume,
+    curve: "equalPower",
+  });
+
+  if (outgoingChannelId) {
+    cleanupManagedChannel(outgoingChannelId);
+    updatePlaybackChannel("single", outgoingChannelId, (draft) => {
+      draft.radio = null;
+      draft.volume = previousVolume;
+    });
+  }
+
+  setPlaybackSessionActiveChannel("single", incomingChannelId);
+}

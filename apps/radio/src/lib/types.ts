@@ -8,7 +8,6 @@ export type Settings = {
   id?: number;
   player: {
     mode: (typeof playerModes)[number]["value"];
-    playerType?: (typeof playerTypes)[number]["value"];
     restoreStateOnLoad?: boolean;
     single?: {
       transitionDuration: number;
@@ -29,10 +28,6 @@ export const playerModes = [
   { value: "single", label: "Single", icon: "list-music" },
   { value: "multiple", label: "Multiple", icon: "square-stack" },
   { value: "dj", label: "DJ", icon: "swords" },
-] as const;
-export const playerTypes = [
-  { value: "default", label: "Custom Player" },
-  { value: "browser", label: "Browser Default" },
 ] as const;
 
 export type DatabaseExport = {

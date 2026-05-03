@@ -174,16 +174,11 @@ export function SettingsForm({
             value="player"
           >
             <SectionHeader
-              description="Customize your listening experience."
+              description="Customize playback behavior."
               title="Player"
             />
             <div className="space-y-4">
-              <div className="space-y-2">
-                <span className="font-mono text-[10px] text-muted-foreground uppercase tracking-wider">
-                  Playback Mode
-                </span>
-                <SettingsSelect />
-              </div>
+              <SettingsSelect />
 
               <div className="space-y-2 rounded-lg border border-border/50 p-3">
                 <div className="flex items-center justify-between gap-4">
@@ -234,7 +229,7 @@ export function SettingsForm({
             value="audio"
           >
             <SectionHeader
-              description="Configure input and output devices for DJ mode."
+              description="Configure shared output routing and DJ monitoring."
               title="Audio"
             />
             <Suspense fallback={<LoadingFallback />}>

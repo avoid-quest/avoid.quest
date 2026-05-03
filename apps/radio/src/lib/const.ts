@@ -103,7 +103,6 @@ export const radios: Radio[] = [
 export const settings: Settings = {
   player: {
     mode: "single",
-    playerType: "default",
     restoreStateOnLoad: true,
     single: {
       transitionDuration: DEFAULT_TRANSITION_DURATION,

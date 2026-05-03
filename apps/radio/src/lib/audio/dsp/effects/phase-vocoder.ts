@@ -17,7 +17,7 @@
  * 3. Time stretching for speed-independent pitch
  * 4. ISTFT synthesis
  *
- * For true pitch-independent speed control, use HTML5 playbackRate
+ * For true pitch-independent speed control, use media-element playbackRate
  * for speed and this effect chain for pitch (with the understanding
  * that they currently both affect tempo).
  */

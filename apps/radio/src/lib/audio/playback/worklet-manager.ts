@@ -5,135 +5,29 @@
  * This is a simplified version focused on streaming audio for radio playback.
  */
 
+import type { EffectType as WorkletEffectType } from "../dsp/effects/types.js";
 import type {
   SourceEndedPayload,
   SourceErrorPayload,
   StreamReadyPayload,
 } from "./types.js";
+import {
+  type EventCallback,
+  WorkletEventEmitter,
+} from "./worklet-manager-events.js";
+import {
+  type ActiveSource,
+  type WorkletManagerEvents as ManagerEvents,
+  MessageType,
+  type FilterType as WorkletFilterType,
+  type WorkletPortMessage,
+} from "./worklet-manager-protocol.js";
 
-/**
- * Event callback type for worklet events
- */
-type EventCallback<T = unknown> = (payload: T) => void;
-
-/**
- * Simple typed event emitter for worklet events
- */
-class WorkletEventEmitter {
-  private readonly listeners = new Map<string, Set<EventCallback>>();
-
-  on<T>(event: string, callback: EventCallback<T>): void {
-    const existing = this.listeners.get(event);
-    if (existing) {
-      existing.add(callback as EventCallback);
-    } else {
-      this.listeners.set(event, new Set([callback as EventCallback]));
-    }
-  }
-
-  off<T>(event: string, callback: EventCallback<T>): void {
-    const callbacks = this.listeners.get(event);
-    if (callbacks) {
-      callbacks.delete(callback as EventCallback);
-      if (callbacks.size === 0) {
-        this.listeners.delete(event);
-      }
-    }
-  }
-
-  emit<T>(event: string, payload: T): void {
-    const callbacks = this.listeners.get(event);
-    if (callbacks) {
-      for (const callback of callbacks) {
-        try {
-          callback(payload);
-        } catch (error) {
-          console.error(
-            `[WorkletEventEmitter] Error in listener for "${event}" (${callbacks.size} listeners):`,
-            error
-          );
-        }
-      }
-    }
-  }
-
-  clear(): void {
-    this.listeners.clear();
-  }
-}
-
-/**
- * Message types for main thread → worklet communication
- */
-const MessageType = {
-  // Source lifecycle
-  CREATE_SOURCE: "CREATE_SOURCE",
-  REMOVE_SOURCE: "REMOVE_SOURCE",
-  START_SOURCE: "START_SOURCE",
-  STOP_SOURCE: "STOP_SOURCE",
-  PAUSE_SOURCE: "PAUSE_SOURCE",
-  RESUME_SOURCE: "RESUME_SOURCE",
-  SEEK_SOURCE: "SEEK_SOURCE",
-  SET_SOURCE_VOLUME: "SET_SOURCE_VOLUME",
-  SET_SOURCE_PAN: "SET_SOURCE_PAN",
-
-  // Effects
-  ADD_EFFECT: "ADD_EFFECT",
-  REMOVE_EFFECT: "REMOVE_EFFECT",
-  UPDATE_EFFECT: "UPDATE_EFFECT",
-  REORDER_EFFECTS: "REORDER_EFFECTS",
-  SET_EFFECTS_DRY_WET: "SET_EFFECTS_DRY_WET",
-
-  // Filter
-  ADD_FILTER: "ADD_FILTER",
-  REMOVE_FILTER: "REMOVE_FILTER",
-  SET_FILTER_PARAM: "SET_FILTER_PARAM",
-
-  // Global
-  SET_PARAM: "SET_PARAM",
-
-  // Events (worklet → main)
-  SOURCE_ENDED: "SOURCE_ENDED",
-  SOURCE_ERROR: "SOURCE_ERROR",
-  STREAM_READY: "STREAM_READY",
-  PEAK_METER: "PEAK_METER",
-} as const;
-
-// Import and re-export EffectType from canonical source for API consistency
-// biome-ignore lint/style/noExportedImports: needed for local use and re-export
-import type { EffectType } from "../dsp/effects/types.js";
-export type { EffectType };
-
-/**
- * Filter types supported by the worklet processor
- */
-export type FilterType =
-  | "lowpass"
-  | "highpass"
-  | "bandpass"
-  | "lowshelf"
-  | "highshelf"
-  | "peaking"
-  | "notch"
-  | "allpass";
-
-/**
- * Worklet manager events
- */
-export type WorkletManagerEvents = {
-  sourceEnded: SourceEndedPayload;
-  sourceError: SourceErrorPayload;
-  streamReady: StreamReadyPayload;
-  peakMeter: { peakL: number; peakR: number };
-};
-
-/**
- * Active source tracking state
- */
-type ActiveSource = {
-  playing: boolean;
-  offset: number;
-};
+export type { EffectType } from "../dsp/effects/types.js";
+export type {
+  FilterType,
+  WorkletManagerEvents,
+} from "./worklet-manager-protocol.js";
 
 /**
  * Worklet Manager
@@ -147,6 +41,7 @@ type ActiveSource = {
  * Use the outputNode getter to get the final output for external routing.
  */
 export class WorkletManager {
+  private static readonly loadedContexts = new WeakSet<AudioContext>();
   private readonly context: AudioContext;
   private workletNode: AudioWorkletNode | null = null;
   private masterGainNode: GainNode | null = null;
@@ -158,8 +53,7 @@ export class WorkletManager {
   private readonly processorUrl: string;
 
   /** Queue for messages sent before worklet is ready */
-  private readonly messageQueue: Array<{ type: string; payload?: unknown }> =
-    [];
+  private readonly messageQueue: WorkletPortMessage[] = [];
 
   /** Ramp time for volume changes (ms) */
   private static readonly VOLUME_RAMP_TIME = 0.05; // 50ms for smooth transitions
@@ -413,7 +307,7 @@ export class WorkletManager {
   addEffect(
     sourceId: string,
     effectId: string,
-    type: EffectType,
+    type: WorkletEffectType,
     config: Record<string, number>,
     order: number
   ): void {
@@ -467,7 +361,7 @@ export class WorkletManager {
   addFilter(
     sourceId: string,
     filterId: string,
-    type: FilterType,
+    type: WorkletFilterType,
     frequency: number,
     Q: number,
     gain: number
@@ -558,9 +452,9 @@ export class WorkletManager {
   /**
    * Subscribe to worklet events
    */
-  on<K extends keyof WorkletManagerEvents>(
+  on<K extends keyof ManagerEvents>(
     event: K,
-    callback: EventCallback<WorkletManagerEvents[K]>
+    callback: EventCallback<ManagerEvents[K]>
   ): void {
     this.eventEmitter.on(event, callback);
   }
@@ -568,9 +462,9 @@ export class WorkletManager {
   /**
    * Unsubscribe from worklet events
    */
-  off<K extends keyof WorkletManagerEvents>(
+  off<K extends keyof ManagerEvents>(
     event: K,
-    callback: EventCallback<WorkletManagerEvents[K]>
+    callback: EventCallback<ManagerEvents[K]>
   ): void {
     this.eventEmitter.off(event, callback);
   }
@@ -658,8 +552,10 @@ export class WorkletManager {
    * Perform the actual initialization work
    */
   private async performInit(nativeContext: AudioContext): Promise<void> {
-    // Load the worklet module
-    await this.context.audioWorklet.addModule(this.processorUrl);
+    if (!WorkletManager.loadedContexts.has(nativeContext)) {
+      await this.context.audioWorklet.addModule(this.processorUrl);
+      WorkletManager.loadedContexts.add(nativeContext);
+    }
 
     // Create the worklet node
     this.workletNode = new AudioWorkletNode(
@@ -708,7 +604,7 @@ export class WorkletManager {
     }
 
     this.workletNode.port.onmessage = (
-      event: MessageEvent<{ type: string; payload?: unknown }>
+      event: MessageEvent<WorkletPortMessage>
     ) => {
       this.handleWorkletMessage(event.data);
     };
@@ -717,10 +613,7 @@ export class WorkletManager {
   /**
    * Handle messages from the worklet
    */
-  private handleWorkletMessage(message: {
-    type: string;
-    payload?: unknown;
-  }): void {
+  private handleWorkletMessage(message: WorkletPortMessage): void {
     switch (message.type) {
       case MessageType.SOURCE_ENDED:
         this.eventEmitter.emit(
@@ -765,7 +658,7 @@ export class WorkletManager {
    * Post a message to the worklet
    * If worklet isn't ready yet, queues the message to be sent after initialization
    */
-  private postMessage(message: { type: string; payload?: unknown }): void {
+  private postMessage(message: WorkletPortMessage): void {
     if (this.workletNode) {
       this.workletNode.port.postMessage(message);
     } else if (this.initFailed) {

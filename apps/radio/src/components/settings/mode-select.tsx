@@ -5,10 +5,11 @@ import {
 import { cn } from "@avoid.quest/ui/lib/utils";
 import { LayersIcon, ListMusicIcon, SwordsIcon } from "lucide-react";
 import { toast } from "sonner";
-import { cleanupAudioOnly } from "src/lib/dj-actions";
 import { updatePlayerSettings } from "@/lib/collections";
 import { DEFAULT_TRANSITION_DURATION } from "@/lib/const";
+import { cleanupAudioOnly } from "@/lib/dj-actions";
 import { useSettings } from "@/lib/hooks/use-settings";
+import { cleanupAudioForModeChange } from "@/lib/playback-actions";
 import { playerModes } from "@/lib/types";
 
 const modeIcons = {
@@ -26,13 +27,16 @@ export function ModeSelect({ className }: { className?: string }) {
     }
 
     try {
-      await cleanupAudioOnly();
+      const newMode = playerModes.find((mode) => mode.value === value)?.value;
+      if (!newMode) {
+        return;
+      }
 
-      const newMode = value as "single" | "multiple" | "dj";
+      await cleanupAudioOnly();
+      await cleanupAudioForModeChange(newMode);
 
       updatePlayerSettings((player) => ({
         mode: newMode,
-        playerType: player.playerType,
         single: {
           transitionDuration:
             player.single?.transitionDuration ?? DEFAULT_TRANSITION_DURATION,

@@ -6,7 +6,6 @@ import { z } from "zod";
 import { settings as defaultSettings } from "../const";
 
 const playerModeSchema = z.enum(["multiple", "single", "dj"]);
-const playerTypeSchema = z.enum(["default", "browser"]);
 
 const singleModeSettingsSchema = z.object({
   transitionDuration: z.number().default(2000),
@@ -14,7 +13,6 @@ const singleModeSettingsSchema = z.object({
 
 const playerSettingsSchema = z.object({
   mode: playerModeSchema.default("single"),
-  playerType: playerTypeSchema.default("default"),
   restoreStateOnLoad: z.boolean().default(true),
   single: singleModeSettingsSchema.optional(),
 });
@@ -72,7 +70,6 @@ export async function initializeSettings(): Promise<void> {
       id: SETTINGS_ID,
       player: {
         mode: defaultSettings.player.mode,
-        playerType: defaultSettings.player.playerType ?? "default",
         restoreStateOnLoad: defaultSettings.player.restoreStateOnLoad ?? true,
         single: defaultSettings.player.single,
       },
@@ -101,23 +98,8 @@ export function setPlayerMode(mode: z.infer<typeof playerModeSchema>): void {
       id: SETTINGS_ID,
       player: {
         mode,
-        playerType: "default",
         restoreStateOnLoad: true,
       },
-    });
-  }
-}
-
-/**
- * Update player type
- */
-export function setPlayerType(
-  playerType: z.infer<typeof playerTypeSchema>
-): void {
-  const existing = getSettings();
-  if (existing) {
-    settingsCollection.update(SETTINGS_ID, (draft) => {
-      draft.player.playerType = playerType;
     });
   }
 }
@@ -156,7 +138,6 @@ export function setSingleModeTransitionDuration(duration: number): void {
 export function updatePlayerSettings(
   updater: (player: SettingsRecord["player"]) => Partial<{
     mode: "single" | "multiple" | "dj";
-    playerType: "default" | "browser";
     restoreStateOnLoad: boolean;
     single: { transitionDuration: number };
   }>
@@ -167,9 +148,6 @@ export function updatePlayerSettings(
       const updates = updater(existing.player);
       if (updates.mode !== undefined) {
         draft.player.mode = updates.mode;
-      }
-      if (updates.playerType !== undefined) {
-        draft.player.playerType = updates.playerType;
       }
       if (updates.restoreStateOnLoad !== undefined) {
         draft.player.restoreStateOnLoad = updates.restoreStateOnLoad;

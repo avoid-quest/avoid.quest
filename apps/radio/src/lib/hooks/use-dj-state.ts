@@ -1,31 +1,33 @@
-import { eq, useLiveQuery } from "@tanstack/react-db";
+import { useMemo } from "react";
 import type { EffectConfig, FilterConfig, Radio } from "@/lib/audio";
 import {
-  type DeckRecord,
-  deckCollection,
-  type MixerRecord,
-  mixerCollection,
-  resetAllDjState as resetAllDjStateDb,
-  resetDeck as resetDeckDb,
-} from "@/lib/collections";
+  DECK_A_CHANNEL_ID,
+  DECK_B_CHANNEL_ID,
+  getPlaybackChannel,
+  getPlaybackSession,
+  type PlaybackChannelRecord,
+  updatePlaybackChannel,
+  updatePlaybackSession,
+} from "@/lib/collections/playback-sessions";
+import { useDjSession } from "@/lib/hooks/use-dj-session";
 import {
-  getDeckARuntime,
-  getDeckBRuntime,
-  type PendingPlatformItem,
-  resetAllDjRuntime,
-  resetDeckARuntime,
-  resetDeckBRuntime,
-  setActiveDragRadio as setActiveDragRadioStore,
-  setPendingPlatformItem as setPendingPlatformItemStore,
-  useDeckARuntimeState,
-  useDeckBRuntimeState,
-} from "@/lib/stores/dj-runtime-store";
+  getPlaybackChannelRuntime,
+  usePlaybackChannelRuntime,
+} from "@/lib/stores/playback-runtime-store";
 
-const DECK_A_ID = "deck-a";
-const DECK_B_ID = "deck-b";
 const MIXER_ID = "mixer";
 
-// Combined deck state type (persisted + runtime)
+export type DeckRecord = PlaybackChannelRecord;
+
+export type MixerRecord = {
+  id: typeof MIXER_ID;
+  crossfadePosition: number;
+  masterVolume: number;
+  headphoneVolume: number;
+  deckACueEnabled: boolean;
+  deckBCueEnabled: boolean;
+};
+
 export type DeckState = {
   radio: Radio | null;
   soundId: string | null;
@@ -44,38 +46,30 @@ export type DeckState = {
   autoplay: boolean;
 };
 
-// Generic hook to get deck persisted state from DB
-function useDeckPersisted(deckId: string): DeckRecord | undefined {
-  const result = useLiveQuery((q) =>
-    q.from({ deck: deckCollection }).where(({ deck }) => eq(deck.id, deckId))
+function toMixerRecord(): MixerRecord | undefined {
+  const session = getPlaybackSession("dj");
+  const deckA = session?.channels.find(
+    (channel) => channel.id === DECK_A_CHANNEL_ID
   );
-  return result.data?.[0] as DeckRecord | undefined;
-}
-
-// Hook to get Deck A persisted state from DB
-export function useDeckAPersisted(): DeckRecord | undefined {
-  return useDeckPersisted(DECK_A_ID);
-}
-
-// Hook to get Deck B persisted state from DB
-export function useDeckBPersisted(): DeckRecord | undefined {
-  return useDeckPersisted(DECK_B_ID);
-}
-
-// Hook to get mixer state from DB
-export function useMixer(): MixerRecord | undefined {
-  const result = useLiveQuery((q) =>
-    q
-      .from({ mixer: mixerCollection })
-      .where(({ mixer }) => eq(mixer.id, MIXER_ID))
+  const deckB = session?.channels.find(
+    (channel) => channel.id === DECK_B_CHANNEL_ID
   );
-  return result.data?.[0] as MixerRecord | undefined;
+  if (!session) {
+    return;
+  }
+  return {
+    id: MIXER_ID,
+    crossfadePosition: session.crossfadePosition,
+    masterVolume: session.masterVolume,
+    headphoneVolume: session.headphoneVolume,
+    deckACueEnabled: deckA?.cueEnabled ?? false,
+    deckBCueEnabled: deckB?.cueEnabled ?? false,
+  };
 }
 
-// Helper to combine persisted and runtime state into DeckState
 function combineDeckState(
   persisted: DeckRecord | undefined,
-  runtime: ReturnType<typeof useDeckARuntimeState>
+  runtime: ReturnType<typeof getPlaybackChannelRuntime>
 ): DeckState | null {
   if (!persisted) {
     return null;
@@ -100,29 +94,71 @@ function combineDeckState(
   };
 }
 
-// Combined Deck A state (persisted + runtime)
+export function useDeckAPersisted(): DeckRecord | undefined {
+  const session = useDjSession();
+  return session?.channels.find((channel) => channel.id === DECK_A_CHANNEL_ID);
+}
+
+export function useDeckBPersisted(): DeckRecord | undefined {
+  const session = useDjSession();
+  return session?.channels.find((channel) => channel.id === DECK_B_CHANNEL_ID);
+}
+
+export function useMixer(): MixerRecord | undefined {
+  const session = useDjSession();
+  return useMemo(() => {
+    if (!session) {
+      return;
+    }
+    const deckA = session.channels.find(
+      (channel) => channel.id === DECK_A_CHANNEL_ID
+    );
+    const deckB = session.channels.find(
+      (channel) => channel.id === DECK_B_CHANNEL_ID
+    );
+    return {
+      id: MIXER_ID,
+      crossfadePosition: session.crossfadePosition,
+      masterVolume: session.masterVolume,
+      headphoneVolume: session.headphoneVolume,
+      deckACueEnabled: deckA?.cueEnabled ?? false,
+      deckBCueEnabled: deckB?.cueEnabled ?? false,
+    };
+  }, [session]);
+}
+
 export function useDeckA(): DeckState | null {
   const persisted = useDeckAPersisted();
-  const runtime = useDeckARuntimeState();
+  const runtime = usePlaybackChannelRuntime(DECK_A_CHANNEL_ID);
   return combineDeckState(persisted, runtime);
 }
 
-// Combined Deck B state (persisted + runtime)
 export function useDeckB(): DeckState | null {
   const persisted = useDeckBPersisted();
-  const runtime = useDeckBRuntimeState();
+  const runtime = usePlaybackChannelRuntime(DECK_B_CHANNEL_ID);
   return combineDeckState(persisted, runtime);
 }
 
-// Get both decks
 export function useDecks() {
   const deckA = useDeckA();
   const deckB = useDeckB();
   return { deckA, deckB };
 }
 
-// Re-export runtime hooks
 export {
+  getDeckARuntime,
+  getDeckBRuntime,
+  resetDeckARuntime,
+  resetDeckBRuntime,
+  setActiveDragRadio,
+  setDeckARuntimeState,
+  setDeckASoundId,
+  setDeckASubscriptionCleanup,
+  setDeckBRuntimeState,
+  setDeckBSoundId,
+  setDeckBSubscriptionCleanup,
+  setDjError,
+  setPendingPlatformItem,
   useActiveDragRadio,
   useDeckAIsLoading,
   useDeckAIsPlaying,
@@ -134,92 +170,97 @@ export {
   usePendingPlatformItem,
 } from "@/lib/stores/dj-runtime-store";
 
-// NOTE: All deck/mixer action functions (setDeckAVolume, setDeckBVolume, etc.)
-// should be imported from "@/lib/dj-actions" which properly syncs with the audio manager.
-// The functions below are UI-only actions that write to the runtime store.
-
-// UI actions (write to runtime store)
-export function setActiveDragRadio(radio: Radio | null) {
-  setActiveDragRadioStore(radio);
-}
-
-export function setPendingPlatformItem(item: PendingPlatformItem) {
-  setPendingPlatformItemStore(item);
-}
-
-// Export runtime state setters for use in actions
-export {
-  getDeckARuntime,
-  getDeckBRuntime,
-  resetDeckARuntime,
-  resetDeckBRuntime,
-  setDeckARuntimeState,
-  setDeckASoundId,
-  setDeckASubscriptionCleanup,
-  setDeckBRuntimeState,
-  setDeckBSoundId,
-  setDeckBSubscriptionCleanup,
-  setDjError,
-} from "@/lib/stores/dj-runtime-store";
-
-// Reset functions (combines DB and runtime)
 export function resetDeck(deckId: "deck-a" | "deck-b") {
-  resetDeckDb(deckId);
-  if (deckId === "deck-a") {
-    resetDeckARuntime();
-  } else {
-    resetDeckBRuntime();
-  }
+  updatePlaybackChannel("dj", deckId, (draft) => {
+    const next = getPlaybackChannel("dj", deckId);
+    Object.assign(draft, {
+      ...(next ?? draft),
+      radio: null,
+      volume: 1,
+      muted: false,
+      pan: 0,
+      speed: 1,
+      channelFilter: 0,
+      effects: [],
+      filter: {
+        type: "lowpass",
+        frequency: 1000,
+        Q: 1,
+        gain: 0,
+        enabled: false,
+      },
+      effectsDryWet: 1,
+      repeat: false,
+      autoplay: true,
+      cueEnabled: next?.cueEnabled ?? draft.cueEnabled,
+    });
+  });
 }
 
 export function resetAllDjState() {
-  resetAllDjStateDb();
-  resetAllDjRuntime();
+  resetDeck(DECK_A_CHANNEL_ID);
+  resetDeck(DECK_B_CHANNEL_ID);
+  updatePlaybackSession("dj", (draft) => {
+    draft.crossfadePosition = 0.5;
+    draft.masterVolume = 1;
+    draft.headphoneVolume = 1;
+  });
 }
 
-// Helper to get deck state synchronously (for non-React contexts)
-function getDeckState(
-  deckId: string,
-  getRuntime: typeof getDeckARuntime
-): DeckState | null {
-  const deck = deckCollection.state.get(deckId);
-  const runtime = getRuntime();
-
-  if (!deck) {
-    return null;
-  }
-
-  return {
-    radio: deck.radio as Radio | null,
-    soundId: runtime.soundId,
-    isPlaying: runtime.isPlaying,
-    isLoading: runtime.isLoading,
-    isBuffering: runtime.isBuffering,
-    volume: deck.volume,
-    muted: deck.muted,
-    pan: deck.pan,
-    speed: deck.speed,
-    channelFilter: deck.channelFilter,
-    effects: deck.effects as unknown as EffectConfig[],
-    filter: deck.filter as FilterConfig,
-    effectsDryWet: deck.effectsDryWet,
-    repeat: deck.repeat,
-    autoplay: deck.autoplay ?? true,
-  };
-}
-
-// Direct state access for non-React contexts
 export function getDeckAState(): DeckState | null {
-  return getDeckState(DECK_A_ID, getDeckARuntime);
+  return combineDeckState(
+    getPlaybackChannel("dj", DECK_A_CHANNEL_ID),
+    getPlaybackChannelRuntime(DECK_A_CHANNEL_ID)
+  );
 }
 
 export function getDeckBState(): DeckState | null {
-  return getDeckState(DECK_B_ID, getDeckBRuntime);
+  return combineDeckState(
+    getPlaybackChannel("dj", DECK_B_CHANNEL_ID),
+    getPlaybackChannelRuntime(DECK_B_CHANNEL_ID)
+  );
 }
 
 export function getMixerState(): MixerRecord | undefined {
-  return mixerCollection.state.get(MIXER_ID);
+  return toMixerRecord();
 }
 
-// Re-export DB mutation functions for advanced use
-export { updateDeckA, updateDeckB, updateMixer } from "@/lib/collections";
+export function getDeckA(): DeckRecord | undefined {
+  return getPlaybackChannel("dj", DECK_A_CHANNEL_ID);
+}
+
+export function getDeckB(): DeckRecord | undefined {
+  return getPlaybackChannel("dj", DECK_B_CHANNEL_ID);
+}
+
+export function getMixer(): MixerRecord | undefined {
+  return toMixerRecord();
+}
+
+export function updateDeckA(updater: (draft: DeckRecord) => void) {
+  updatePlaybackChannel("dj", DECK_A_CHANNEL_ID, updater);
+}
+
+export function updateDeckB(updater: (draft: DeckRecord) => void) {
+  updatePlaybackChannel("dj", DECK_B_CHANNEL_ID, updater);
+}
+
+export function updateMixer(updater: (draft: MixerRecord) => void) {
+  const mixer = toMixerRecord();
+  if (!mixer) {
+    return;
+  }
+  const draft = { ...mixer };
+  updater(draft);
+  updatePlaybackSession("dj", (session) => {
+    session.crossfadePosition = draft.crossfadePosition;
+    session.masterVolume = draft.masterVolume;
+    session.headphoneVolume = draft.headphoneVolume;
+  });
+  updatePlaybackChannel("dj", DECK_A_CHANNEL_ID, (channel) => {
+    channel.cueEnabled = draft.deckACueEnabled;
+  });
+  updatePlaybackChannel("dj", DECK_B_CHANNEL_ID, (channel) => {
+    channel.cueEnabled = draft.deckBCueEnabled;
+  });
+}

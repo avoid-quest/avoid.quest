@@ -9,7 +9,7 @@ import { ChevronRightIcon, LinkIcon, Loader2Icon } from "lucide-react";
 import { useState } from "react";
 import type { Radio } from "@/lib/audio";
 import { detectPlatformFromUrl } from "@/lib/external-url/detect";
-import { usePlatformLoad } from "@/lib/hooks/use-platform-query";
+import { useDjTrackLoad } from "@/lib/hooks/use-dj-track-load";
 
 type UrlInputProps = {
   onLoad: (radio: Radio) => void;
@@ -23,14 +23,14 @@ export function UrlInput({ onLoad, onCancel }: UrlInputProps) {
 
   const detectedPlatform = detectPlatformFromUrl(url);
 
-  const { mutate: loadItem, isPending } = usePlatformLoad({
-    onSuccess: (radio) => {
+  const { mutate: loadItem, isPending } = useDjTrackLoad({
+    onLoad: (radio) => {
       onLoad(radio);
       setUrl("");
       setError(null);
     },
-    onError: (errorMessage) => {
-      setError(errorMessage);
+    onError: (message) => {
+      setError(message);
     },
   });
 

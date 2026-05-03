@@ -1,7 +1,9 @@
 import {
+  initializePlaybackSessions,
   initializeRadios,
   initializeSettings,
   initializeSingleState,
+  playbackSessionsCollection,
   radiosCollection,
   settingsCollection,
   singleStateCollection,
@@ -38,8 +40,22 @@ export const resetAllSettings = async (): Promise<void> => {
     singleStateCollection.delete("single-state");
   }
 
+  for (const sessionId of ["single", "multiple", "dj"] as const) {
+    const session = playbackSessionsCollection.state.get(sessionId);
+    if (session) {
+      playbackSessionsCollection.delete(sessionId);
+    }
+  }
+
+  if (typeof window !== "undefined") {
+    window.localStorage.removeItem("radio-app-dj-decks");
+    window.localStorage.removeItem("radio-app-dj-mixer");
+    window.localStorage.removeItem("radio-app-single-state");
+  }
+
   // Reinitialize with defaults
   initializeSettings();
   await initializeRadios();
   await initializeSingleState();
+  await initializePlaybackSessions();
 };

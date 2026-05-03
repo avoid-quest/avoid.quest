@@ -1,4 +1,5 @@
 import { initializeDjState } from "./dj-state";
+import { initializePlaybackSessions } from "./playback-sessions";
 import { initializeRadios, type SyncChanges } from "./radios";
 import { initializeSettings } from "./settings";
 import { initializeSingleState } from "./single-state";
@@ -18,6 +19,27 @@ export {
   updateDeckB,
   updateMixer,
 } from "./dj-state";
+export {
+  createDefaultChannel,
+  DECK_A_CHANNEL_ID,
+  DECK_B_CHANNEL_ID,
+  getMultipleChannelId,
+  getPlaybackChannel,
+  getPlaybackSession,
+  initializePlaybackSessions,
+  type PlaybackChannelRecord,
+  type PlaybackSessionId,
+  type PlaybackSessionRecord,
+  playbackSessionsCollection,
+  removePlaybackChannel,
+  replacePlaybackChannels,
+  SINGLE_ACTIVE_CHANNEL_ID,
+  SINGLE_STANDBY_CHANNEL_ID,
+  setPlaybackSessionActiveChannel,
+  updatePlaybackChannel,
+  updatePlaybackSession,
+  upsertPlaybackChannel,
+} from "./playback-sessions";
 export {
   addDismissedRadio,
   addDismissedRadios,
@@ -55,7 +77,6 @@ export {
   setMainDelayMs,
   setMainOutputDevice,
   setPlayerMode,
-  setPlayerType,
   setRestoreStateOnLoad,
   setSingleModeTransitionDuration,
   settingsCollection,
@@ -80,6 +101,7 @@ export async function initializeCollections(): Promise<SyncChanges | null> {
   await initializeSettings();
   await initializeDjState();
   await initializeSingleState();
+  await initializePlaybackSessions();
 
   return syncChanges;
 }

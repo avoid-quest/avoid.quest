@@ -51,7 +51,7 @@ class CacophonyProcessor extends AudioWorkletProcessor {
       return true;
     }
 
-    // Get input audio from Web Audio graph (from MediaElementSource)
+    // Get input audio from the shared Web Audio graph
     // If no input, use pre-allocated empty buffer to avoid GC pressure
     const inputL = input?.[0] ?? this.emptyBuffer;
     const inputR = input?.[1] ?? input?.[0] ?? this.emptyBuffer;

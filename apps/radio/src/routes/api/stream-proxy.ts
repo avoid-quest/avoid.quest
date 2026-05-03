@@ -1,17 +1,11 @@
 /** biome-ignore-all lint/suspicious/useAwait: needed for server-only */
 
 import { env } from "cloudflare:workers";
-import {
-  AppError,
-  captureError,
-  createRequestId,
-  problemResponse,
-  runApiRoute,
-} from "@avoid.quest/error";
+import { AppError, captureError } from "@avoid.quest/error";
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
-import { getCorsHeaders, getCorsOptionsHeaders } from "@/lib/middleware/cors";
-import { validateAuthAndRateLimit } from "@/lib/middleware/rate-limit";
+import { createProxyRequestPolicy } from "@/lib/proxy/request-policy";
+import { inspectStreamAccess } from "@/lib/proxy/stream-access";
 
 const URL_SCHEMA = z
   .string()
@@ -25,16 +19,7 @@ const URL_SCHEMA = z
     }
   }, "Invalid URL format");
 
-function problemWithCors(
-  error: AppError,
-  origin: string,
-  requestId: string
-): Response {
-  return problemResponse(error, {
-    requestId,
-    headers: getCorsHeaders(origin),
-  });
-}
+const proxyPolicy = createProxyRequestPolicy();
 
 /**
  * Validate URL is a streaming URL (http/https protocol)
@@ -45,7 +30,7 @@ function validateUrl(
   requestId: string
 ): string | Response {
   if (!urlParam) {
-    return problemWithCors(
+    return proxyPolicy.problem(
       new AppError({
         code: "STREAM_PROXY_URL_REQUIRED",
         safeMessage: "URL parameter is required",
@@ -60,7 +45,7 @@ function validateUrl(
 
   const urlValidation = URL_SCHEMA.safeParse(urlParam);
   if (!urlValidation.success) {
-    return problemWithCors(
+    return proxyPolicy.problem(
       new AppError({
         code: "STREAM_PROXY_INVALID_URL",
         safeMessage: "Invalid URL format",
@@ -75,7 +60,7 @@ function validateUrl(
 
   const parsed = new URL(urlParam);
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    return problemWithCors(
+    return proxyPolicy.problem(
       new AppError({
         code: "STREAM_PROXY_INVALID_PROTOCOL",
         safeMessage: "Invalid URL: must use http or https protocol",
@@ -144,7 +129,7 @@ function validateUrl(
     hostname.startsWith("::ffff:172.31.") ||
     hostname.startsWith("::ffff:169.254.")
   ) {
-    return problemWithCors(
+    return proxyPolicy.problem(
       new AppError({
         code: "STREAM_PROXY_INTERNAL_ADDRESS",
         safeMessage: "Internal addresses not allowed",
@@ -164,6 +149,53 @@ function validateUrl(
  * Fetch stream and pipe response with CORS headers
  * Uses streaming response body for efficient proxying
  */
+function buildStreamResponse(
+  upstreamResponse: Response,
+  request: Request,
+  requestId: string
+): Response {
+  const responseHeaders: HeadersInit = {
+    ...proxyPolicy.errorHeaders(request),
+    "Access-Control-Expose-Headers":
+      "Content-Type, Content-Length, Icy-MetaInt, Icy-Name, Icy-Description, Icy-Genre, Icy-Br",
+    "x-request-id": requestId,
+  };
+
+  const contentType = upstreamResponse.headers.get("Content-Type");
+  if (contentType) {
+    responseHeaders["Content-Type"] = contentType;
+  }
+
+  const contentLength = upstreamResponse.headers.get("Content-Length");
+  if (contentLength) {
+    responseHeaders["Content-Length"] = contentLength;
+  }
+
+  for (const header of [
+    "Icy-MetaInt",
+    "Icy-Name",
+    "Icy-Description",
+    "Icy-Genre",
+    "Icy-Br",
+  ]) {
+    const value = upstreamResponse.headers.get(header);
+    if (value) {
+      responseHeaders[header] = value;
+    }
+  }
+
+  const contentRange = upstreamResponse.headers.get("Content-Range");
+  if (contentRange) {
+    responseHeaders["Content-Range"] = contentRange;
+    responseHeaders["Accept-Ranges"] = "bytes";
+  }
+
+  return new Response(upstreamResponse.body, {
+    status: upstreamResponse.status,
+    headers: responseHeaders,
+  });
+}
+
 async function fetchStream(
   url: string,
   request: Request,
@@ -183,7 +215,7 @@ async function fetchStream(
     const res = await fetch(url, { headers });
 
     if (!res.ok) {
-      return problemWithCors(
+      return proxyPolicy.problem(
         new AppError({
           code: "STREAM_PROXY_UPSTREAM_ERROR",
           safeMessage: `Upstream error: ${res.status} ${res.statusText}`,
@@ -197,46 +229,7 @@ async function fetchStream(
       );
     }
 
-    const responseHeaders: HeadersInit = {
-      ...getCorsHeaders(origin),
-      "Access-Control-Expose-Headers":
-        "Content-Type, Content-Length, Icy-MetaInt, Icy-Name, Icy-Description, Icy-Genre, Icy-Br",
-      "x-request-id": requestId,
-    };
-
-    const contentType = res.headers.get("Content-Type");
-    if (contentType) {
-      responseHeaders["Content-Type"] = contentType;
-    }
-
-    const contentLength = res.headers.get("Content-Length");
-    if (contentLength) {
-      responseHeaders["Content-Length"] = contentLength;
-    }
-
-    for (const header of [
-      "Icy-MetaInt",
-      "Icy-Name",
-      "Icy-Description",
-      "Icy-Genre",
-      "Icy-Br",
-    ]) {
-      const value = res.headers.get(header);
-      if (value) {
-        responseHeaders[header] = value;
-      }
-    }
-
-    const contentRange = res.headers.get("Content-Range");
-    if (contentRange) {
-      responseHeaders["Content-Range"] = contentRange;
-      responseHeaders["Accept-Ranges"] = "bytes";
-    }
-
-    return new Response(res.body, {
-      status: res.status,
-      headers: responseHeaders,
-    });
+    return buildStreamResponse(res, request, requestId);
   } catch (error) {
     const appError = new AppError({
       code: "STREAM_PROXY_FETCH_FAILED",
@@ -253,7 +246,32 @@ async function fetchStream(
       tags: { endpoint: "stream-proxy" },
     });
 
-    return problemWithCors(appError, origin, requestId);
+    return proxyPolicy.problem(appError, origin, requestId);
+  }
+}
+
+function redirectToStream(
+  url: string,
+  request: Request,
+  requestId: string
+): Response {
+  const headers = new Headers(proxyPolicy.errorHeaders(request));
+  headers.set("Cache-Control", "private, no-store");
+  headers.set("Location", url);
+  headers.set("x-request-id", requestId);
+
+  return new Response(null, {
+    status: 307,
+    headers,
+  });
+}
+
+function canRedirectDirectStream(url: string, origin: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "https:" || parsed.origin === origin;
+  } catch {
+    return false;
   }
 }
 
@@ -261,8 +279,10 @@ export const Route = createFileRoute("/api/stream-proxy")({
   server: {
     handlers: {
       GET: async ({ request }) => {
-        return runApiRoute({
+        return proxyPolicy.run({
           request,
+          env,
+          identifier: "stream-proxy",
           operation: "stream-proxy.GET",
           fallback: {
             code: "STREAM_PROXY_INTERNAL_ERROR",
@@ -271,47 +291,37 @@ export const Route = createFileRoute("/api/stream-proxy")({
             expected: false,
             status: 500,
           },
-          errorHeaders: () => {
-            try {
-              return getCorsHeaders(new URL(request.url).origin);
-            } catch {
-              return {};
-            }
-          },
-          run: async ({ requestId }) => {
-            const origin = new URL(request.url).origin;
-
-            const authResult = await validateAuthAndRateLimit(
-              request,
-              env,
-              "stream-proxy",
-              { createSessionIfMissing: true, requestId }
-            );
-            if (authResult instanceof Response) {
-              return authResult;
-            }
-
+          run: async ({ origin, request, requestId }) => {
             const urlParam = new URL(request.url).searchParams.get("url");
             const urlValidation = validateUrl(urlParam, origin, requestId);
             if (urlValidation instanceof Response) {
               return urlValidation;
             }
 
+            const accessDecision = await inspectStreamAccess(urlValidation, {
+              origin,
+              requestHeaders: request.headers,
+            });
+            if (accessDecision.mode === "direct") {
+              const streamUrl = accessDecision.resolvedUrl ?? urlValidation;
+              if (canRedirectDirectStream(streamUrl, origin)) {
+                return redirectToStream(streamUrl, request, requestId);
+              }
+            }
+
+            if (accessDecision.response?.ok) {
+              return buildStreamResponse(
+                accessDecision.response,
+                request,
+                requestId
+              );
+            }
+
             return fetchStream(urlValidation, request, origin, requestId);
           },
         });
       },
-      OPTIONS: async ({ request }) => {
-        const requestId = createRequestId(request);
-        const origin = new URL(request.url).origin;
-        const headers = new Headers(getCorsOptionsHeaders(origin));
-        headers.set("x-request-id", requestId);
-
-        return new Response(null, {
-          status: 200,
-          headers,
-        });
-      },
+      OPTIONS: ({ request }) => proxyPolicy.options(request),
     },
   },
 });

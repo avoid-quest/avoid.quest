@@ -63,6 +63,11 @@ type DrawContext = {
   maxDb: number;
 };
 
+type CanvasSize = {
+  width: number;
+  height: number;
+};
+
 function drawGrid(dc: DrawContext): void {
   const { ctx, w, h, xScale, yScale } = dc;
   ctx.strokeStyle = GRID_COLOR;
@@ -179,6 +184,7 @@ export const EQCanvas = memo(function EQCanvas({
   maxDb = 36,
 }: EQCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const sizeRef = useRef<CanvasSize>({ width: 0, height: 0 });
 
   const frequencies = useMemo(
     () => generateLogFrequencies(MIN_FREQ, MAX_FREQ, NUM_POINTS),
@@ -202,14 +208,18 @@ export const EQCanvas = memo(function EQCanvas({
     }
 
     const draw = () => {
-      const dpr = window.devicePixelRatio || 1;
-      const rect = canvas.getBoundingClientRect();
-      canvas.width = rect.width * dpr;
-      canvas.height = rect.height * dpr;
-      ctx.scale(dpr, dpr);
+      const { width, height } = sizeRef.current;
+      if (width === 0 || height === 0) {
+        return;
+      }
 
-      const w = rect.width;
-      const h = rect.height;
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = width * dpr;
+      canvas.height = height * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      const w = width;
+      const h = height;
 
       ctx.clearRect(0, 0, w, h);
 
@@ -234,7 +244,13 @@ export const EQCanvas = memo(function EQCanvas({
 
     draw();
 
-    const resizeObserver = new ResizeObserver(() => draw());
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width, height } = entry.contentRect;
+        sizeRef.current = { width, height };
+      }
+      draw();
+    });
     resizeObserver.observe(canvas);
 
     return () => resizeObserver.disconnect();

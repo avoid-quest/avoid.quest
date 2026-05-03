@@ -15,10 +15,11 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { radiosCollection } from "@/lib/collections";
 import { addRadio } from "@/lib/hooks/use-radios";
-import type {
-  RadioGardenMetadata,
-  RadioGardenSearchResult,
-} from "@/lib/platform-types";
+import type { RadioGardenSearchResult } from "@/lib/platform-types";
+import {
+  resolveRadioGardenStation,
+  saveResolvedStationToCollection,
+} from "@/lib/stations/external-station-workflow";
 import {
   radioGardenResolveStream,
   radioGardenSearch,
@@ -89,41 +90,40 @@ export function RadioGardenTab({ onSuccess }: RadioGardenTabProps) {
   const handleAdd = async (result: RadioGardenSearchResult) => {
     setIsAdding(true);
     try {
-      const resolveResponse = await radioGardenResolveStream({
-        data: { channelId: result.channelId },
-      });
+      const resolved = await resolveRadioGardenStation(
+        result,
+        async (channelId) => {
+          const response = await radioGardenResolveStream({
+            data: { channelId },
+          });
+          if (!response.ok) {
+            return {
+              ok: false,
+              error: {
+                code: response.error.code,
+                message: response.error.message,
+              },
+            };
+          }
 
-      if (!resolveResponse.ok) {
-        toast.error(
-          `Failed to resolve stream: ${resolveResponse.error.message}`
-        );
+          return {
+            ok: true,
+            data: {
+              streamUrl: response.data.streamUrl,
+            },
+          };
+        },
+        { name: editedName || result.title }
+      );
+
+      if (!resolved.ok) {
+        toast.error(`Failed to resolve stream: ${resolved.error.message}`);
         return;
       }
 
-      const existingRadios = Array.from(radiosCollection.state.values());
-      const maxOrder = Math.max(...existingRadios.map((r) => r.order || 0), 0);
-
-      const metadata: RadioGardenMetadata = {
-        platform: "radiogarden",
-        itemType: "channel",
-        url: result.url,
-        channelId: result.channelId,
-        name: editedName || result.title,
-        subtitle: result.subtitle,
-        website: result.website,
-        placeTitle: result.placeTitle,
-        countryTitle: result.countryTitle,
-      };
-
-      addRadio({
-        name: editedName || result.title,
-        streamUrl: resolveResponse.data.streamUrl,
-        description: `${result.placeTitle}, ${result.countryTitle}`,
-        websiteUrl: result.website,
-        order: maxOrder + 1,
-        enabled: true,
-        isSystem: false,
-        platformMetadata: metadata,
+      saveResolvedStationToCollection(resolved.data, {
+        addSavedRadio: addRadio,
+        getSavedRadios: () => radiosCollection.state.values(),
       });
 
       toast.success(`Added "${editedName || result.title}" to your collection`);

@@ -1,60 +1,12 @@
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@avoid.quest/ui/components/select";
-import { toast } from "sonner";
-import { setPlayerType } from "@/lib/collections";
-import { useSettings } from "@/lib/hooks/use-settings";
-import { playerTypes } from "@/lib/types";
 import { ModeSelect } from "./mode-select";
 
 export function SettingsSelect() {
-  const { data: settings } = useSettings();
-
-  const handlePlayerTypeChange = (value: string) => {
-    if (!settings) {
-      return;
-    }
-
-    try {
-      setPlayerType(value as "default" | "browser");
-    } catch {
-      toast.error("Failed to update player type");
-    }
-  };
-
   return (
-    <div className="space-y-4">
-      <div className="space-y-2">
-        <span className="font-mono text-[10px] text-muted-foreground uppercase tracking-wider">
-          Player Type
-        </span>
-        <Select
-          onValueChange={handlePlayerTypeChange}
-          value={settings?.player.playerType ?? "default"}
-        >
-          <SelectTrigger className="w-full">
-            <SelectValue placeholder="Select a player type" />
-          </SelectTrigger>
-          <SelectContent>
-            {playerTypes.map((type) => (
-              <SelectItem key={type.value} value={type.value}>
-                {type.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      <div className="space-y-2">
-        <span className="font-mono text-[10px] text-muted-foreground uppercase tracking-wider">
-          Player Mode
-        </span>
-        <ModeSelect className="max-w-full" />
-      </div>
+    <div className="space-y-2">
+      <span className="font-mono text-[10px] text-muted-foreground uppercase tracking-wider">
+        Player Mode
+      </span>
+      <ModeSelect className="max-w-full" />
     </div>
   );
 }

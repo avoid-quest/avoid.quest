@@ -1,17 +1,10 @@
 /** biome-ignore-all lint/suspicious/useAwait: needed for server-only */
 
 import { env } from "cloudflare:workers";
-import {
-  AppError,
-  captureError,
-  createRequestId,
-  problemResponse,
-  runApiRoute,
-} from "@avoid.quest/error";
+import { AppError, captureError } from "@avoid.quest/error";
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
-import { getCorsHeaders, getCorsOptionsHeaders } from "@/lib/middleware/cors";
-import { validateAuthAndRateLimit } from "@/lib/middleware/rate-limit";
+import { createProxyRequestPolicy } from "@/lib/proxy/request-policy";
 
 const URL_SCHEMA = z
   .string()
@@ -27,16 +20,7 @@ const URL_SCHEMA = z
 const FETCH_TIMEOUT_MS = 10_000;
 const MAX_RESPONSE_SIZE = 100 * 1024 * 1024;
 
-function problemWithCors(
-  error: AppError,
-  origin: string,
-  requestId: string
-): Response {
-  return problemResponse(error, {
-    requestId,
-    headers: getCorsHeaders(origin),
-  });
-}
+const proxyPolicy = createProxyRequestPolicy();
 
 function validateUrl(
   urlParam: string | null,
@@ -44,7 +28,7 @@ function validateUrl(
   requestId: string
 ): string | Response {
   if (!urlParam) {
-    return problemWithCors(
+    return proxyPolicy.problem(
       new AppError({
         code: "BANDCAMP_PROXY_URL_REQUIRED",
         safeMessage: "URL parameter is required",
@@ -59,7 +43,7 @@ function validateUrl(
 
   const urlValidation = URL_SCHEMA.safeParse(urlParam);
   if (!urlValidation.success) {
-    return problemWithCors(
+    return proxyPolicy.problem(
       new AppError({
         code: "BANDCAMP_PROXY_INVALID_URL",
         safeMessage: "Invalid URL format",
@@ -73,7 +57,7 @@ function validateUrl(
   }
 
   if (!urlParam.includes("bcbits.com")) {
-    return problemWithCors(
+    return proxyPolicy.problem(
       new AppError({
         code: "BANDCAMP_PROXY_INVALID_DOMAIN",
         safeMessage: "Invalid URL: must be a Bandcamp CDN URL",
@@ -110,7 +94,7 @@ async function fetchWithTimeout(
     clearTimeout(timeout);
 
     if (!res.ok) {
-      return problemWithCors(
+      return proxyPolicy.problem(
         new AppError({
           code: "BANDCAMP_PROXY_UPSTREAM_ERROR",
           safeMessage: `Failed to fetch stream: ${res.statusText}`,
@@ -127,7 +111,7 @@ async function fetchWithTimeout(
     if (contentLength) {
       const size = Number.parseInt(contentLength, 10);
       if (size > MAX_RESPONSE_SIZE) {
-        return problemWithCors(
+        return proxyPolicy.problem(
           new AppError({
             code: "BANDCAMP_PROXY_RESPONSE_TOO_LARGE",
             safeMessage: "Response too large",
@@ -142,7 +126,7 @@ async function fetchWithTimeout(
     }
 
     const headers: HeadersInit = {
-      ...getCorsHeaders(origin),
+      ...proxyPolicy.errorHeaders(request),
       "Content-Type": res.headers.get("Content-Type") || "audio/mpeg",
       "Accept-Ranges": "bytes",
       "x-request-id": requestId,
@@ -160,7 +144,7 @@ async function fetchWithTimeout(
   } catch (error) {
     clearTimeout(timeout);
     if (error instanceof Error && error.name === "AbortError") {
-      return problemWithCors(
+      return proxyPolicy.problem(
         new AppError({
           code: "BANDCAMP_PROXY_TIMEOUT",
           safeMessage: "Request timeout",
@@ -187,7 +171,7 @@ async function fetchWithTimeout(
       requestId,
     });
 
-    return problemWithCors(appError, origin, requestId);
+    return proxyPolicy.problem(appError, origin, requestId);
   }
 }
 
@@ -195,8 +179,10 @@ export const Route = createFileRoute("/api/bandcamp-proxy")({
   server: {
     handlers: {
       GET: async ({ request }) => {
-        return runApiRoute({
+        return proxyPolicy.run({
           request,
+          env,
+          identifier: "bandcamp-proxy",
           operation: "bandcamp-proxy.GET",
           fallback: {
             code: "BANDCAMP_PROXY_INTERNAL_ERROR",
@@ -205,29 +191,7 @@ export const Route = createFileRoute("/api/bandcamp-proxy")({
             expected: false,
             status: 500,
           },
-          errorHeaders: () => {
-            try {
-              return getCorsHeaders(new URL(request.url).origin);
-            } catch {
-              return {};
-            }
-          },
-          run: async ({ requestId }) => {
-            const origin = new URL(request.url).origin;
-
-            const authResult = await validateAuthAndRateLimit(
-              request,
-              env,
-              "bandcamp-proxy",
-              {
-                createSessionIfMissing: true,
-                requestId,
-              }
-            );
-            if (authResult instanceof Response) {
-              return authResult;
-            }
-
+          run: async ({ origin, request, requestId }) => {
             const urlParam = new URL(request.url).searchParams.get("url");
             const urlValidation = validateUrl(urlParam, origin, requestId);
             if (urlValidation instanceof Response) {
@@ -238,16 +202,7 @@ export const Route = createFileRoute("/api/bandcamp-proxy")({
           },
         });
       },
-      OPTIONS: async ({ request }) => {
-        const requestId = createRequestId(request);
-        const origin = new URL(request.url).origin;
-        const headers = new Headers(getCorsOptionsHeaders(origin));
-        headers.set("x-request-id", requestId);
-        return new Response(null, {
-          status: 200,
-          headers,
-        });
-      },
+      OPTIONS: ({ request }) => proxyPolicy.options(request),
     },
   },
 });

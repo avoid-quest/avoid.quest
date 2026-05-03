@@ -103,15 +103,6 @@ export type StreamStatus =
   | "error";
 
 /**
- * Configuration for stream source creation
- */
-export type StreamSourceConfig = {
-  url: string;
-  sourceId: string;
-  signal?: AbortSignal;
-};
-
-/**
  * Stream buffer configuration
  */
 export type StreamBufferConfig = {

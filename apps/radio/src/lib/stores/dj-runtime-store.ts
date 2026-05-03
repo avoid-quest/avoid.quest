@@ -1,326 +1,195 @@
 import { Store, useStore } from "@tanstack/react-store";
 import type { Radio } from "@/lib/audio";
+import {
+  DECK_A_CHANNEL_ID,
+  DECK_B_CHANNEL_ID,
+} from "@/lib/collections/playback-sessions";
 import type { Platform } from "@/lib/platform-types";
+import {
+  getPlaybackChannelRuntime,
+  getPlaybackChannelSubscriptionCleanup,
+  type RuntimePeakLevel,
+  resetAllPlaybackRuntime,
+  resetPlaybackChannelRuntime,
+  setPlaybackChannelPeakLevel,
+  setPlaybackChannelRuntime,
+  setPlaybackChannelSoundId,
+  setPlaybackChannelSubscriptionCleanup,
+  usePlaybackChannelRuntime,
+} from "./playback-runtime-store";
 
 export type DeckId = "deck-a" | "deck-b";
 
-type DeckRuntimeState = {
-  soundId: string | null;
-  isPlaying: boolean;
-  isLoading: boolean;
-  isBuffering: boolean;
-};
-
-type SubscriptionCleanup = {
-  "deck-a": (() => void) | null;
-  "deck-b": (() => void) | null;
-};
-
-type PeakLevel = { left: number; right: number };
+type DeckRuntimeState = ReturnType<typeof getPlaybackChannelRuntime>;
 
 export type PendingPlatformItem = {
   deckId: DeckId;
   platform: Platform | "external";
 } | null;
 
-type DjRuntimeState = {
-  deckA: DeckRuntimeState;
-  deckB: DeckRuntimeState;
-  ui: {
-    activeDragRadio: Radio | null;
-    pendingPlatformItem: PendingPlatformItem;
-  };
-  deckAPeakLevel: PeakLevel;
-  deckBPeakLevel: PeakLevel;
+type DjUiState = {
+  activeDragRadio: Radio | null;
+  pendingPlatformItem: PendingPlatformItem;
   error: string | null;
-  _subscriptionCleanup: SubscriptionCleanup;
 };
 
-const initialDeckRuntime: DeckRuntimeState = {
-  soundId: null,
-  isPlaying: false,
-  isLoading: false,
-  isBuffering: false,
-};
-
-const initialPeakLevel: PeakLevel = { left: 0, right: 0 };
-
-const initialState: DjRuntimeState = {
-  deckA: { ...initialDeckRuntime },
-  deckB: { ...initialDeckRuntime },
-  ui: {
-    activeDragRadio: null,
-    pendingPlatformItem: null,
-  },
-  deckAPeakLevel: { ...initialPeakLevel },
-  deckBPeakLevel: { ...initialPeakLevel },
+const djUiStore = new Store<DjUiState>({
+  activeDragRadio: null,
+  pendingPlatformItem: null,
   error: null,
-  _subscriptionCleanup: {
-    "deck-a": null,
-    "deck-b": null,
-  },
-};
+});
 
-// Create the runtime store
-export const djRuntimeStore = new Store<DjRuntimeState>(initialState);
-
-// Deck A selectors
 export function useDeckARuntimeState() {
-  return useStore(djRuntimeStore, (state) => state.deckA);
+  return usePlaybackChannelRuntime(DECK_A_CHANNEL_ID);
+}
+
+export function useDeckBRuntimeState() {
+  return usePlaybackChannelRuntime(DECK_B_CHANNEL_ID);
 }
 
 export function useDeckAIsPlaying() {
-  return useStore(djRuntimeStore, (state) => state.deckA.isPlaying);
+  return usePlaybackChannelRuntime(DECK_A_CHANNEL_ID).isPlaying;
 }
 
 export function useDeckAIsLoading() {
-  return useStore(djRuntimeStore, (state) => state.deckA.isLoading);
+  return usePlaybackChannelRuntime(DECK_A_CHANNEL_ID).isLoading;
 }
 
 export function useDeckASoundId() {
-  return useStore(djRuntimeStore, (state) => state.deckA.soundId);
-}
-
-// Deck B selectors
-export function useDeckBRuntimeState() {
-  return useStore(djRuntimeStore, (state) => state.deckB);
+  return usePlaybackChannelRuntime(DECK_A_CHANNEL_ID).soundId;
 }
 
 export function useDeckBIsPlaying() {
-  return useStore(djRuntimeStore, (state) => state.deckB.isPlaying);
+  return usePlaybackChannelRuntime(DECK_B_CHANNEL_ID).isPlaying;
 }
 
 export function useDeckBIsLoading() {
-  return useStore(djRuntimeStore, (state) => state.deckB.isLoading);
+  return usePlaybackChannelRuntime(DECK_B_CHANNEL_ID).isLoading;
 }
 
 export function useDeckBSoundId() {
-  return useStore(djRuntimeStore, (state) => state.deckB.soundId);
+  return usePlaybackChannelRuntime(DECK_B_CHANNEL_ID).soundId;
 }
 
-// Peak level selectors
-export function useDeckAPeakLevel() {
-  return useStore(djRuntimeStore, (state) => state.deckAPeakLevel);
+export function useDeckAPeakLevel(): RuntimePeakLevel {
+  return usePlaybackChannelRuntime(DECK_A_CHANNEL_ID).peakLevel;
 }
 
-export function useDeckBPeakLevel() {
-  return useStore(djRuntimeStore, (state) => state.deckBPeakLevel);
+export function useDeckBPeakLevel(): RuntimePeakLevel {
+  return usePlaybackChannelRuntime(DECK_B_CHANNEL_ID).peakLevel;
 }
 
-// UI selectors
 export function useActiveDragRadio() {
-  return useStore(djRuntimeStore, (state) => state.ui.activeDragRadio);
+  return useStore(djUiStore, (state) => state.activeDragRadio);
 }
 
 export function usePendingPlatformItem() {
-  return useStore(djRuntimeStore, (state) => state.ui.pendingPlatformItem);
+  return useStore(djUiStore, (state) => state.pendingPlatformItem);
 }
 
 export function useDjError() {
-  return useStore(djRuntimeStore, (state) => state.error);
+  return useStore(djUiStore, (state) => state.error);
 }
 
-// Generic deck runtime state setter
-function setDeckRuntimeState(
-  deck: "deckA" | "deckB",
-  updater: (state: DeckRuntimeState) => Partial<DeckRuntimeState>
-) {
-  djRuntimeStore.setState((state) => ({
-    ...state,
-    [deck]: { ...state[deck], ...updater(state[deck]) },
-  }));
+export function getDjError() {
+  return djUiStore.state.error;
 }
 
-// Generic deck property setter
-function setDeckProperty<K extends keyof DeckRuntimeState>(
-  deck: "deckA" | "deckB",
-  key: K,
-  value: DeckRuntimeState[K]
-) {
-  djRuntimeStore.setState((state) => ({
-    ...state,
-    [deck]: { ...state[deck], [key]: value },
-  }));
-}
-
-// Deck runtime state setters
 export function setDeckARuntimeState(
   updater: (state: DeckRuntimeState) => Partial<DeckRuntimeState>
 ) {
-  setDeckRuntimeState("deckA", updater);
+  setPlaybackChannelRuntime(DECK_A_CHANNEL_ID, updater);
 }
 
 export function setDeckBRuntimeState(
   updater: (state: DeckRuntimeState) => Partial<DeckRuntimeState>
 ) {
-  setDeckRuntimeState("deckB", updater);
+  setPlaybackChannelRuntime(DECK_B_CHANNEL_ID, updater);
 }
 
-// Set deck soundId
 export function setDeckASoundId(soundId: string | null) {
-  setDeckProperty("deckA", "soundId", soundId);
+  setPlaybackChannelSoundId(DECK_A_CHANNEL_ID, soundId);
 }
 
 export function setDeckBSoundId(soundId: string | null) {
-  setDeckProperty("deckB", "soundId", soundId);
+  setPlaybackChannelSoundId(DECK_B_CHANNEL_ID, soundId);
 }
 
-// Set deck playing state
-export function setDeckAPlaying(isPlaying: boolean) {
-  setDeckProperty("deckA", "isPlaying", isPlaying);
-}
-
-export function setDeckBPlaying(isPlaying: boolean) {
-  setDeckProperty("deckB", "isPlaying", isPlaying);
-}
-
-// Set deck loading state
-export function setDeckALoading(isLoading: boolean) {
-  setDeckProperty("deckA", "isLoading", isLoading);
-}
-
-export function setDeckBLoading(isLoading: boolean) {
-  setDeckProperty("deckB", "isLoading", isLoading);
-}
-
-// Set deck buffering state
-export function setDeckABuffering(isBuffering: boolean) {
-  setDeckProperty("deckA", "isBuffering", isBuffering);
-}
-
-export function setDeckBBuffering(isBuffering: boolean) {
-  setDeckProperty("deckB", "isBuffering", isBuffering);
-}
-
-// UI state setters
 export function setActiveDragRadio(radio: Radio | null) {
-  djRuntimeStore.setState((state) => ({
-    ...state,
-    ui: { ...state.ui, activeDragRadio: radio },
-  }));
+  djUiStore.setState((state) => ({ ...state, activeDragRadio: radio }));
 }
 
 export function setPendingPlatformItem(item: PendingPlatformItem) {
-  djRuntimeStore.setState((state) => ({
-    ...state,
-    ui: { ...state.ui, pendingPlatformItem: item },
-  }));
+  djUiStore.setState((state) => ({ ...state, pendingPlatformItem: item }));
 }
 
-// Peak level setters
-export function setDeckAPeakLevel(level: PeakLevel) {
-  djRuntimeStore.setState((state) => ({
-    ...state,
-    deckAPeakLevel: level,
-  }));
+export function setDeckAPeakLevel(level: RuntimePeakLevel) {
+  setPlaybackChannelPeakLevel(DECK_A_CHANNEL_ID, level);
 }
 
-export function setDeckBPeakLevel(level: PeakLevel) {
-  djRuntimeStore.setState((state) => ({
-    ...state,
-    deckBPeakLevel: level,
-  }));
+export function setDeckBPeakLevel(level: RuntimePeakLevel) {
+  setPlaybackChannelPeakLevel(DECK_B_CHANNEL_ID, level);
 }
 
-// Error setter
 export function setDjError(error: string | null) {
-  djRuntimeStore.setState((state) => ({
-    ...state,
-    error,
-  }));
+  djUiStore.setState((state) => ({ ...state, error }));
 }
 
-// Subscription cleanup management
 export function setDeckASubscriptionCleanup(cleanup: (() => void) | null) {
-  const prev = djRuntimeStore.state._subscriptionCleanup["deck-a"];
-  if (prev) {
-    prev();
-  }
-  djRuntimeStore.setState((state) => ({
-    ...state,
-    _subscriptionCleanup: {
-      ...state._subscriptionCleanup,
-      "deck-a": cleanup,
-    },
-  }));
+  setPlaybackChannelSubscriptionCleanup(DECK_A_CHANNEL_ID, cleanup);
 }
 
 export function setDeckBSubscriptionCleanup(cleanup: (() => void) | null) {
-  const prev = djRuntimeStore.state._subscriptionCleanup["deck-b"];
-  if (prev) {
-    prev();
-  }
-  djRuntimeStore.setState((state) => ({
-    ...state,
-    _subscriptionCleanup: {
-      ...state._subscriptionCleanup,
-      "deck-b": cleanup,
-    },
-  }));
+  setPlaybackChannelSubscriptionCleanup(DECK_B_CHANNEL_ID, cleanup);
 }
 
-// Get current subscription cleanup
 export function getDeckASubscriptionCleanup() {
-  return djRuntimeStore.state._subscriptionCleanup["deck-a"];
+  return getPlaybackChannelSubscriptionCleanup(DECK_A_CHANNEL_ID);
 }
 
 export function getDeckBSubscriptionCleanup() {
-  return djRuntimeStore.state._subscriptionCleanup["deck-b"];
+  return getPlaybackChannelSubscriptionCleanup(DECK_B_CHANNEL_ID);
 }
 
-// Reset deck runtime state
 export function resetDeckARuntime() {
-  const cleanup = djRuntimeStore.state._subscriptionCleanup["deck-a"];
-  if (cleanup) {
-    cleanup();
-  }
-  djRuntimeStore.setState((state) => ({
-    ...state,
-    deckA: { ...initialDeckRuntime },
-    _subscriptionCleanup: {
-      ...state._subscriptionCleanup,
-      "deck-a": null,
-    },
-  }));
+  resetPlaybackChannelRuntime(DECK_A_CHANNEL_ID);
 }
 
 export function resetDeckBRuntime() {
-  const cleanup = djRuntimeStore.state._subscriptionCleanup["deck-b"];
-  if (cleanup) {
-    cleanup();
-  }
-  djRuntimeStore.setState((state) => ({
-    ...state,
-    deckB: { ...initialDeckRuntime },
-    _subscriptionCleanup: {
-      ...state._subscriptionCleanup,
-      "deck-b": null,
-    },
+  resetPlaybackChannelRuntime(DECK_B_CHANNEL_ID);
+}
+
+export function resetAllDjRuntime() {
+  resetAllPlaybackRuntime();
+  djUiStore.setState(() => ({
+    activeDragRadio: null,
+    pendingPlatformItem: null,
+    error: null,
   }));
 }
 
-// Reset all runtime state
-export function resetAllDjRuntime() {
-  const cleanupA = djRuntimeStore.state._subscriptionCleanup["deck-a"];
-  const cleanupB = djRuntimeStore.state._subscriptionCleanup["deck-b"];
-  if (cleanupA) {
-    cleanupA();
-  }
-  if (cleanupB) {
-    cleanupB();
-  }
-  djRuntimeStore.setState(() => ({ ...initialState }));
-}
-
-// Direct state access for non-React contexts
 export function getDjRuntimeState() {
-  return djRuntimeStore.state;
+  return {
+    deckA: getPlaybackChannelRuntime(DECK_A_CHANNEL_ID),
+    deckB: getPlaybackChannelRuntime(DECK_B_CHANNEL_ID),
+    ui: {
+      activeDragRadio: djUiStore.state.activeDragRadio,
+      pendingPlatformItem: djUiStore.state.pendingPlatformItem,
+    },
+    deckAPeakLevel: getPlaybackChannelRuntime(DECK_A_CHANNEL_ID).peakLevel,
+    deckBPeakLevel: getPlaybackChannelRuntime(DECK_B_CHANNEL_ID).peakLevel,
+    error: djUiStore.state.error,
+    _subscriptionCleanup: {
+      "deck-a": getPlaybackChannelSubscriptionCleanup(DECK_A_CHANNEL_ID),
+      "deck-b": getPlaybackChannelSubscriptionCleanup(DECK_B_CHANNEL_ID),
+    },
+  };
 }
 
 export function getDeckARuntime() {
-  return djRuntimeStore.state.deckA;
+  return getPlaybackChannelRuntime(DECK_A_CHANNEL_ID);
 }
 
 export function getDeckBRuntime() {
-  return djRuntimeStore.state.deckB;
+  return getPlaybackChannelRuntime(DECK_B_CHANNEL_ID);
 }

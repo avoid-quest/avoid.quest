@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Radio } from "@/lib/audio";
-import { createPlatformRadio } from "@/lib/external-url/utils";
+import { resolvePlatformStation } from "@/lib/stations/external-station-workflow";
 import { loadPlatformItem as loadPlatformItemFn } from "@/utils/platform.functions";
 
 export const platformKeys = {
@@ -10,25 +10,46 @@ export const platformKeys = {
 
 type LoadPlatformItemResult =
   | { success: true; radio: Radio }
-  | { success: false; error: string };
+  | { success: false; code: string; error: string };
 
 async function loadPlatformItem(url: string): Promise<LoadPlatformItemResult> {
-  const result = await loadPlatformItemFn({ data: { url: url.trim() } });
+  const result = await resolvePlatformStation(url, async (inputUrl) => {
+    const response = await loadPlatformItemFn({
+      data: { url: inputUrl.trim() },
+    });
+    if (!response.ok) {
+      return {
+        ok: false,
+        error: {
+          code: response.error.code,
+          message: response.error.message,
+        },
+      };
+    }
+
+    return {
+      ok: true,
+      data: {
+        metadata: response.data.metadata,
+        streamUrl: response.data.streamUrl,
+      },
+    };
+  });
 
   if (!result.ok) {
-    return { success: false, error: result.error.message };
+    return {
+      success: false,
+      code: result.error.code,
+      error: result.error.message,
+    };
   }
 
-  const radio = createPlatformRadio(
-    result.data.streamUrl,
-    result.data.metadata
-  );
-  return { success: true, radio };
+  return { success: true, radio: result.data };
 }
 
 type UsePlatformLoadOptions = {
   onSuccess?: (radio: Radio) => void;
-  onError?: (error: string) => void;
+  onError?: (error: string, code?: string) => void;
 };
 
 export function usePlatformLoad(options: UsePlatformLoadOptions = {}) {
@@ -44,7 +65,7 @@ export function usePlatformLoad(options: UsePlatformLoadOptions = {}) {
         }
         options.onSuccess?.(result.radio);
       } else {
-        options.onError?.(result.error);
+        options.onError?.(result.error, result.code);
       }
     },
     onError: (error) => {

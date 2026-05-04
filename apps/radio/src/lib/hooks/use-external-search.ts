@@ -1,20 +1,15 @@
 import { captureError } from "@avoid.quest/error";
-import type {
-  SearchPlatform,
-  UnifiedSearchResult,
-} from "@avoid.quest/platforms";
+import type { UnifiedSearchResult } from "@avoid.quest/platforms";
 import { useMutation } from "@tanstack/react-query";
-import { createExternalPlatformSearchWorkflow } from "@/lib/external-platform-search-workflow";
+import {
+  createExternalPlatformSearchWorkflow,
+  type ExternalPlatformSearchParams,
+} from "@/lib/external-platform-search-workflow";
 import { radioGardenSearch } from "@/utils/radio-garden.functions";
 import { bandcampSearch, soundcloudSearch } from "@/utils/search.functions";
 import { youtubeSearch } from "@/utils/youtube.functions";
 
-type SearchParams = {
-  query: string;
-  platform: SearchPlatform;
-  bandcampFilter?: "" | "t" | "a";
-  youtubeFilter?: "songs" | "videos";
-};
+type SearchParams = ExternalPlatformSearchParams;
 
 const externalPlatformSearchWorkflow = createExternalPlatformSearchWorkflow({
   adapters: {

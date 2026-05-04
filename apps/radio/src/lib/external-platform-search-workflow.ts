@@ -43,11 +43,27 @@ export type ExternalPlatformSearchAdapters = {
 };
 
 type SearchableProvider = Exclude<SearchPlatform, "all">;
+type ProviderSearchParams = Pick<
+  ExternalPlatformSearchParams,
+  "bandcampFilter" | "youtubeFilter"
+>;
 
 type ExternalPlatformSearchWorkflowDependencies = {
   adapters: ExternalPlatformSearchAdapters;
   reportProviderError?: (provider: SearchableProvider, error: unknown) => void;
 };
+
+type ProviderSearchResult =
+  | {
+      provider: SearchableProvider;
+      results: UnifiedSearchResult[];
+      status: "fulfilled";
+    }
+  | {
+      error: unknown;
+      provider: SearchableProvider;
+      status: "rejected";
+    };
 
 const ALL_PROVIDER_ORDER = [
   "bandcamp",
@@ -57,6 +73,13 @@ const ALL_PROVIDER_ORDER = [
 ] as const satisfies SearchableProvider[];
 
 const MAX_INTERLEAVE_ROUNDS = 8;
+
+const ALL_PROVIDER_SEARCH_PARAMS = {
+  bandcamp: { bandcampFilter: "t" },
+  radiogarden: {},
+  soundcloud: {},
+  youtube: { youtubeFilter: "songs" },
+} as const satisfies Record<SearchableProvider, ProviderSearchParams>;
 
 function interleaveResults(
   resultsByProvider: Record<SearchableProvider, UnifiedSearchResult[]>
@@ -88,10 +111,7 @@ export function createExternalPlatformSearchWorkflow({
   async function searchProvider(
     provider: SearchableProvider,
     query: string,
-    params: Pick<
-      ExternalPlatformSearchParams,
-      "bandcampFilter" | "youtubeFilter"
-    >
+    params: ProviderSearchParams
   ): Promise<UnifiedSearchResult[]> {
     switch (provider) {
       case "bandcamp":
@@ -118,12 +138,25 @@ export function createExternalPlatformSearchWorkflow({
   }
 
   async function searchAll(query: string): Promise<UnifiedSearchResult[]> {
-    const settled = await Promise.allSettled([
-      searchProvider("bandcamp", query, { bandcampFilter: "t" }),
-      searchProvider("radiogarden", query, {}),
-      searchProvider("soundcloud", query, {}),
-      searchProvider("youtube", query, { youtubeFilter: "songs" }),
-    ]);
+    const providerResults = await Promise.all(
+      ALL_PROVIDER_ORDER.map(
+        async (provider): Promise<ProviderSearchResult> => {
+          try {
+            return {
+              provider,
+              results: await searchProvider(
+                provider,
+                query,
+                ALL_PROVIDER_SEARCH_PARAMS[provider]
+              ),
+              status: "fulfilled",
+            };
+          } catch (error) {
+            return { error, provider, status: "rejected" };
+          }
+        }
+      )
+    );
 
     const resultsByProvider: Record<SearchableProvider, UnifiedSearchResult[]> =
       {
@@ -133,12 +166,11 @@ export function createExternalPlatformSearchWorkflow({
         youtube: [],
       };
 
-    for (const [index, result] of settled.entries()) {
-      const provider = ALL_PROVIDER_ORDER[index];
+    for (const result of providerResults) {
       if (result.status === "fulfilled") {
-        resultsByProvider[provider] = result.value;
+        resultsByProvider[result.provider] = result.results;
       } else {
-        reportProviderError?.(provider, result.reason);
+        reportProviderError?.(result.provider, result.error);
       }
     }
 

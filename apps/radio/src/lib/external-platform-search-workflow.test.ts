@@ -102,6 +102,29 @@ describe("createExternalPlatformSearchWorkflow", () => {
     expect(youtubeSearch).toHaveBeenCalledWith("videos", "videos");
   });
 
+  test("uses all-platform default filters for providers that support filters", async () => {
+    const bandcampSearch = mock(async () => []);
+    const youtubeSearch = mock(async () => []);
+    const workflow = createExternalPlatformSearchWorkflow({
+      adapters: {
+        bandcamp: { search: bandcampSearch },
+        radiogarden: { search: mock(async () => []) },
+        soundcloud: { search: mock(async () => []) },
+        youtube: { search: youtubeSearch },
+      },
+    });
+
+    await workflow.search({
+      bandcampFilter: "a",
+      platform: "all",
+      query: " all platforms ",
+      youtubeFilter: "videos",
+    });
+
+    expect(bandcampSearch).toHaveBeenCalledWith("all platforms", "t");
+    expect(youtubeSearch).toHaveBeenCalledWith("all platforms", "songs");
+  });
+
   test("interleaves all-platform results by provider and appends overflow", async () => {
     const workflow = createExternalPlatformSearchWorkflow({
       adapters: {

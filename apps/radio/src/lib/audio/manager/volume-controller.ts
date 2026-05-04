@@ -2,12 +2,18 @@ import { type AudioState, getAudioContext } from "../playback/index.js";
 import { notifySoundState } from "./audio-manager-state.js";
 import type { SoundInstance } from "./audio-manager-types.js";
 
+const MIN_GAIN = 0.0001;
+
 type VolumeControllerOptions = {
   getSound: (soundId: string) => SoundInstance | null;
   getSounds: () => Iterable<[string, SoundInstance]>;
   notifyListeners: (soundId: string, state: AudioState) => void;
   getContext?: () => AudioContext | null;
 };
+
+function clampVolume(volume: number): number {
+  return Math.max(0, Math.min(1, volume));
+}
 
 class VolumeController {
   private readonly getSound: (soundId: string) => SoundInstance | null;
@@ -42,14 +48,11 @@ class VolumeController {
       return;
     }
 
-    const clampedVolume = Math.max(0, Math.min(1, volume));
+    const clampedVolume = clampVolume(volume);
     instance.volume = clampedVolume;
     this.setSoundGainTarget(soundId, instance, clampedVolume);
 
-    notifySoundState(this.notifyListeners, soundId, instance, {
-      volume: clampedVolume,
-      error: null,
-    });
+    this.notifyVolumeChange(soundId, instance, clampedVolume);
   }
 
   scheduleVolumeCurve(
@@ -62,62 +65,53 @@ class VolumeController {
       return;
     }
 
-    const lastVolume = Math.max(
-      0,
-      Math.min(1, volumeCurve.at(-1) ?? instance.volume)
-    );
+    const lastVolume = clampVolume(volumeCurve.at(-1) ?? instance.volume);
     instance.volume = lastVolume;
 
-    if (instance.nodes) {
-      const context = this.getContext();
-      if (context) {
-        const now = context.currentTime;
-        const durationSeconds = Math.max(0, durationMs) / 1000;
-        const gainNode = instance.nodes.gain.gain;
-        const activeCurveEndTime = this.volumeCurveEndTimes.get(soundId) ?? 0;
-        const cancelAndHoldAtTime =
-          gainNode.cancelAndHoldAtTime?.bind(gainNode);
-        const curveStartTime =
-          activeCurveEndTime > now && !cancelAndHoldAtTime
-            ? activeCurveEndTime + 0.001
-            : now;
-
-        if (activeCurveEndTime > now && cancelAndHoldAtTime) {
-          cancelAndHoldAtTime(now);
-        } else {
-          gainNode.cancelScheduledValues(curveStartTime);
-        }
-
-        if (durationSeconds === 0) {
-          gainNode.setValueAtTime(
-            Math.max(0.0001, lastVolume * this.globalVolume),
-            curveStartTime
-          );
-          this.volumeCurveEndTimes.delete(soundId);
-        } else {
-          const scaledCurve = Float32Array.from(volumeCurve, (value) =>
-            Math.max(
-              0.0001,
-              Math.max(0, Math.min(1, value)) * this.globalVolume
-            )
-          );
-          gainNode.setValueCurveAtTime(
-            scaledCurve,
-            curveStartTime,
-            durationSeconds
-          );
-          this.volumeCurveEndTimes.set(
-            soundId,
-            curveStartTime + durationSeconds
-          );
-        }
-      }
+    const nodes = instance.nodes;
+    if (!nodes) {
+      this.notifyVolumeChange(soundId, instance, lastVolume);
+      return;
     }
 
-    notifySoundState(this.notifyListeners, soundId, instance, {
-      volume: lastVolume,
-      error: null,
-    });
+    const context = this.getContext();
+    if (!context) {
+      this.notifyVolumeChange(soundId, instance, lastVolume);
+      return;
+    }
+
+    const now = context.currentTime;
+    const durationSeconds = Math.max(0, durationMs) / 1000;
+    const gainNode = nodes.gain.gain;
+    const activeCurveEndTime = this.volumeCurveEndTimes.get(soundId) ?? 0;
+    const cancelAndHoldAtTime = gainNode.cancelAndHoldAtTime?.bind(gainNode);
+    const curveStartTime =
+      activeCurveEndTime > now && !cancelAndHoldAtTime
+        ? activeCurveEndTime + 0.001
+        : now;
+
+    if (activeCurveEndTime > now && cancelAndHoldAtTime) {
+      cancelAndHoldAtTime(now);
+    } else {
+      gainNode.cancelScheduledValues(curveStartTime);
+    }
+
+    if (durationSeconds === 0) {
+      gainNode.setValueAtTime(
+        this.scaleForGlobalVolume(lastVolume),
+        curveStartTime
+      );
+      this.volumeCurveEndTimes.delete(soundId);
+      this.notifyVolumeChange(soundId, instance, lastVolume);
+      return;
+    }
+
+    const scaledCurve = Float32Array.from(volumeCurve, (value) =>
+      this.scaleForGlobalVolume(clampVolume(value))
+    );
+    gainNode.setValueCurveAtTime(scaledCurve, curveStartTime, durationSeconds);
+    this.volumeCurveEndTimes.set(soundId, curveStartTime + durationSeconds);
+    this.notifyVolumeChange(soundId, instance, lastVolume);
   }
 
   getSoundVolume(soundId: string): number | null {
@@ -129,7 +123,7 @@ class VolumeController {
   }
 
   setGlobalVolume(volume: number): void {
-    this.globalVolume = Math.max(0, Math.min(1, volume));
+    this.globalVolume = clampVolume(volume);
 
     for (const [soundId, instance] of this.getSounds()) {
       if (instance.nodes) {
@@ -208,7 +202,7 @@ class VolumeController {
 
     const now = context.currentTime;
     const gainParam = instance.nodes.gain.gain;
-    const targetVolume = Math.max(0.0001, volume * this.globalVolume);
+    const targetVolume = this.scaleForGlobalVolume(volume);
     const activeCurveEndTime = this.volumeCurveEndTimes.get(soundId) ?? 0;
 
     if (activeCurveEndTime > now) {
@@ -229,6 +223,21 @@ class VolumeController {
     this.volumeCurveEndTimes.delete(soundId);
     gainParam.cancelScheduledValues(now);
     gainParam.setTargetAtTime(targetVolume, now, 0.05);
+  }
+
+  private notifyVolumeChange(
+    soundId: string,
+    instance: SoundInstance,
+    volume: number
+  ): void {
+    notifySoundState(this.notifyListeners, soundId, instance, {
+      volume,
+      error: null,
+    });
+  }
+
+  private scaleForGlobalVolume(volume: number): number {
+    return Math.max(MIN_GAIN, volume * this.globalVolume);
   }
 }
 

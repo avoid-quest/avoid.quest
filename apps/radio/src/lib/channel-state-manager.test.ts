@@ -5,14 +5,11 @@ import {
   getPlaybackChannel,
   playbackSessionsCollection,
 } from "@/lib/collections/playback-sessions";
-import {
-  resetAllPlaybackRuntime,
-  setPlaybackChannelSoundId,
-} from "@/lib/stores/playback-runtime-store";
+import { setPlaybackChannelSoundId } from "@/lib/stores/playback-runtime-store";
 import {
   activateChannel,
   addChannelEffect,
-  clearAllChannelSubscriptionCleanups,
+  deactivateAllChannels,
   deactivateChannel,
   setChannelVolume,
 } from "./channel-state-manager";
@@ -27,14 +24,12 @@ async function resetPlaybackSessions() {
 
 beforeEach(async () => {
   await resetPlaybackSessions();
-  resetAllPlaybackRuntime();
-  clearAllChannelSubscriptionCleanups();
+  deactivateAllChannels();
 });
 
 afterEach(async () => {
   await resetPlaybackSessions();
-  resetAllPlaybackRuntime();
-  clearAllChannelSubscriptionCleanups();
+  deactivateAllChannels();
   AudioManager.resetInstance();
 });
 

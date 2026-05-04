@@ -319,13 +319,6 @@ function setChannelSubscriptionCleanup(
   subscriptionCleanups.delete(channelId);
 }
 
-export function clearAllChannelSubscriptionCleanups(): void {
-  for (const cleanup of subscriptionCleanups.values()) {
-    cleanup();
-  }
-  subscriptionCleanups.clear();
-}
-
 export function deactivateAllChannels(): void {
   const channelIds = new Set([
     ...subscriptionCleanups.keys(),

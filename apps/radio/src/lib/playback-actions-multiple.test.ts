@@ -8,7 +8,7 @@ import {
 import { getPlaybackChannelRuntime } from "@/lib/stores/playback-runtime-store";
 import {
   activateChannel,
-  clearAllChannelSubscriptionCleanups,
+  deactivateAllChannels,
 } from "./channel-state-manager";
 import {
   mergeMultiplePlaybackRadios,
@@ -25,13 +25,13 @@ async function resetPlaybackSessions() {
 
 beforeEach(async () => {
   await resetPlaybackSessions();
-  clearAllChannelSubscriptionCleanups();
+  deactivateAllChannels();
   AudioManager.resetInstance();
 });
 
 afterEach(async () => {
   await resetPlaybackSessions();
-  clearAllChannelSubscriptionCleanups();
+  deactivateAllChannels();
   AudioManager.resetInstance();
 });
 

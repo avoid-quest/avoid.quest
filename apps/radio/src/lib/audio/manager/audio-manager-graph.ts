@@ -267,3 +267,4 @@ export {
   startMasterMeterLoop,
   stopMasterMeterLoop,
 };
+export type { MasterGraphNodes, MeterListener };

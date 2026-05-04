@@ -11,6 +11,7 @@ import {
   initializePlaybackSessions,
   playbackSessionsCollection,
   SINGLE_ACTIVE_CHANNEL_ID,
+  updatePlaybackSession,
 } from "./playback-sessions";
 import { radiosCollection } from "./radios";
 import { addSessionRadio, sessionRadiosCollection } from "./session-radios";
@@ -228,6 +229,41 @@ describe("buildMultipleSessionFromRadios", () => {
 });
 
 describe("multiple session persistence", () => {
+  test("updatePlaybackSession persists nested channel state through the typed session mutation path", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+
+    playbackSessionsCollection.insert({
+      id: "multiple",
+      channels: [
+        {
+          ...createDefaultChannel("multi:radio-1", "multiple", 0),
+          radio: {
+            id: "radio-1",
+            name: "Radio One",
+            streamUrl: "https://radio.example/one.mp3",
+          },
+        },
+      ],
+      masterVolume: 1,
+      crossfadePosition: 0.5,
+      headphoneVolume: 1,
+      activeChannelId: null,
+    });
+
+    updatePlaybackSession("multiple", (draft) => {
+      const channel = draft.channels[0];
+      if (!channel) {
+        throw new Error("Expected seeded multiple channel");
+      }
+      channel.volume = 0.25;
+      draft.masterVolume = 0.75;
+    });
+
+    const session = getPlaybackSession("multiple");
+    expect(session?.channels[0]?.volume).toBe(0.25);
+    expect(session?.masterVolume).toBe(0.75);
+  });
+
   test("re-adding an existing multiple channel preserves its saved state", async () => {
     await playbackSessionsCollection.stateWhenReady();
 

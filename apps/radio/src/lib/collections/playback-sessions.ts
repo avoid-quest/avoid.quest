@@ -446,6 +446,20 @@ export const playbackSessionsCollection = createCollection(
   })
 );
 
+function updatePlaybackSessionRecord(
+  id: PlaybackSessionId,
+  updater: (draft: PlaybackSessionRecord) => void
+): void {
+  // TanStack DB's draft type is narrower than this validated nested schema,
+  // so keep the cast at the collection boundary and preserve the method binding.
+  (
+    playbackSessionsCollection.update as unknown as (
+      key: PlaybackSessionId,
+      updater: (draft: PlaybackSessionRecord) => void
+    ) => void
+  ).call(playbackSessionsCollection, id, updater);
+}
+
 export async function initializePlaybackSessions(): Promise<void> {
   await Promise.all([
     playbackSessionsCollection.stateWhenReady(),
@@ -500,8 +514,7 @@ export function updatePlaybackSession(
 ): void {
   const existing = getPlaybackSession(id);
   if (existing) {
-    // @ts-expect-error TanStack DB's draft type still rejects this nested schema shape, but the runtime draft matches PlaybackSessionRecord.
-    playbackSessionsCollection.update(id, updater);
+    updatePlaybackSessionRecord(id, updater);
   }
 }
 

@@ -38,10 +38,15 @@ type ChannelUpdate =
   | Partial<PlaybackChannelRecord>
   | ((draft: PlaybackChannelRecord) => void);
 
-type ChannelActivationOptions = {
+export type ChannelActivationOptions = {
   soundId?: string;
   onAudioState?: (audioState: AudioState) => void;
 };
+
+export type ChannelRuntimeSubscriptionOptions = Pick<
+  ChannelActivationOptions,
+  "onAudioState"
+>;
 
 const CHANNEL_AUDIO_SYNC_ORDER = [
   "volume",
@@ -324,7 +329,7 @@ export function subscribeChannelRuntime(
   sessionId: PlaybackSessionId,
   channelId: string,
   soundId: string,
-  options: Pick<ChannelActivationOptions, "onAudioState"> = {}
+  options: ChannelRuntimeSubscriptionOptions = {}
 ): void {
   const manager = getAudioManager();
   const cleanup = manager.subscribe(soundId, (audioState) => {

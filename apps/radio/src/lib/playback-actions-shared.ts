@@ -1,4 +1,4 @@
-import type { AudioManager, AudioState, Radio } from "@/lib/audio";
+import type { AudioManager, Radio } from "@/lib/audio";
 import {
   getPlaybackSession,
   type PlaybackSessionId,
@@ -6,6 +6,10 @@ import {
 import { getAudioSettings, getDelaySettings } from "@/lib/collections/settings";
 import { getMainOutputRouter } from "@/lib/main-output-router";
 import { resetAllPlaybackRuntime } from "@/lib/stores/playback-runtime-store";
+import type {
+  ChannelActivationOptions,
+  ChannelRuntimeSubscriptionOptions,
+} from "./channel-state-manager.js";
 import {
   getDefaultPlaybackActionContext,
   type PlaybackActionContext,
@@ -102,9 +106,7 @@ export function subscribeManagedChannel(
   sessionId: PlaybackSessionId,
   channelId: string,
   soundId: string,
-  options: {
-    onAudioState?: (audioState: AudioState) => void;
-  } = {},
+  options: ChannelRuntimeSubscriptionOptions = {},
   ctx: PlaybackActionContext = getDefaultPlaybackActionContext()
 ): void {
   ctx.channels.subscribeRuntime(sessionId, channelId, soundId, options);
@@ -114,12 +116,7 @@ export function createManagedSound(
   sessionId: PlaybackSessionId,
   channelId: string,
   radio: Radio,
-  optionsOrSoundId:
-    | string
-    | {
-        soundId?: string;
-        onAudioState?: (audioState: AudioState) => void;
-      } = {},
+  optionsOrSoundId: string | ChannelActivationOptions = {},
   ctx = getDefaultPlaybackActionContext()
 ): string {
   const options =

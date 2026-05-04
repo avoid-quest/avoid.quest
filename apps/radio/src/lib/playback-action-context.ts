@@ -1,6 +1,8 @@
-import { AudioManager, type AudioState, type Radio } from "@/lib/audio";
+import { AudioManager, type Radio } from "@/lib/audio";
 import {
   activateChannel,
+  type ChannelActivationOptions,
+  type ChannelRuntimeSubscriptionOptions,
   clearAllChannelSubscriptionCleanups,
   deactivateChannel,
   setChannelVolume,
@@ -21,12 +23,7 @@ export type PlaybackActionChannelFacade = {
     sessionId: PlaybackSessionId,
     channelId: string,
     radio: Radio,
-    optionsOrSoundId?:
-      | string
-      | {
-          soundId?: string;
-          onAudioState?: (audioState: AudioState) => void;
-        }
+    optionsOrSoundId?: string | ChannelActivationOptions
   ) => string;
   clearSubscriptionCleanups: () => void;
   deactivate: (channelId: string) => void;
@@ -39,9 +36,7 @@ export type PlaybackActionChannelFacade = {
     sessionId: PlaybackSessionId,
     channelId: string,
     soundId: string,
-    options?: {
-      onAudioState?: (audioState: AudioState) => void;
-    }
+    options?: ChannelRuntimeSubscriptionOptions
   ) => void;
 };
 

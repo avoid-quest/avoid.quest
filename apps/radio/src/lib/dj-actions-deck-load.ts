@@ -191,13 +191,14 @@ function cleanupFailedDeckLoad(
   deckId: DeckId,
   config: (typeof deckConfig)["deck-a"],
   soundId: string
-): void {
+): boolean {
   const currentRuntime = config.getRuntime();
   if (currentRuntime.soundId !== soundId) {
-    return;
+    return false;
   }
 
   deactivateChannel(deckId);
+  return true;
 }
 
 export async function setDeckRadioSource(
@@ -347,7 +348,12 @@ export async function setDeckRadioSource(
       dependencies.applyCrossfade();
     }
   } catch (error) {
-    cleanupFailedDeckLoad(deckId, config, soundId);
+    const channelWasActivated = cleanupFailedDeckLoad(deckId, config, soundId);
+    if (!channelWasActivated) {
+      config.updateDeck((draft) => {
+        draft.radio = previousRadio;
+      });
+    }
     const message =
       error instanceof Error ? error.message : `Failed to load ${deckId}`;
     dependencies.reportDjError(message, "DJ_LOAD_DECK_FAILED", error, radio);

@@ -57,13 +57,14 @@ function cleanupFailedDeviceSource(
   deckId: DeckId,
   config: (typeof deckConfig)["deck-a"],
   soundId: string
-): void {
+): boolean {
   const currentRuntime = config.getRuntime();
   if (currentRuntime.soundId !== soundId) {
-    return;
+    return false;
   }
 
   deactivateChannel(deckId);
+  return true;
 }
 
 export async function setDeckDeviceInputSource(
@@ -79,6 +80,7 @@ export async function setDeckDeviceInputSource(
     return;
   }
 
+  const previousRadio = deck.radio;
   deactivateChannel(deckId);
 
   const side = config.side;
@@ -197,7 +199,16 @@ export async function setDeckDeviceInputSource(
 
     dependencies.applyCrossfade();
   } catch (error) {
-    cleanupFailedDeviceSource(deckId, config, soundId);
+    const channelWasActivated = cleanupFailedDeviceSource(
+      deckId,
+      config,
+      soundId
+    );
+    if (!channelWasActivated) {
+      config.updateDeck((draft) => {
+        draft.radio = previousRadio;
+      });
+    }
     const message =
       error instanceof Error ? error.message : "Failed to start device input";
     dependencies.reportDjError(

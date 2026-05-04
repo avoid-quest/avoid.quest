@@ -32,9 +32,18 @@ function createTestContext(overrides: Partial<AudioManager> = {}) {
       ...overrides,
     } as unknown as AudioManager,
     channels: {
-      activate: mock((_sessionId, _channelId, _radio, soundId?: string) => {
-        return soundId ?? "sound";
-      }),
+      activate: mock(
+        (
+          _sessionId,
+          _channelId,
+          _radio,
+          optionsOrSoundId?: string | { soundId?: string }
+        ) => {
+          return typeof optionsOrSoundId === "string"
+            ? optionsOrSoundId
+            : (optionsOrSoundId?.soundId ?? "sound");
+        }
+      ),
       clearSubscriptionCleanups: mock(() => undefined),
       deactivate: mock((_channelId: string) => undefined),
       setVolume: mock((_sessionId, _channelId, _volume) => undefined),

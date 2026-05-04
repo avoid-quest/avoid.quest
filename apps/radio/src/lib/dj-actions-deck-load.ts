@@ -1,6 +1,10 @@
 import type { AudioManager, Radio } from "@/lib/audio";
 import { revokeFileObjectUrl } from "@/lib/audio/file-metadata";
 import {
+  activateChannel,
+  deactivateChannel,
+} from "@/lib/channel-state-manager";
+import {
   type DeckId,
   type DeckSide,
   deckConfig,
@@ -183,28 +187,18 @@ async function handleYouTubeStreamInterrupted(
   }
 }
 
-async function cleanupFailedDeckLoad(
+function cleanupFailedDeckLoad(
+  deckId: DeckId,
   config: (typeof deckConfig)["deck-a"],
-  soundId: string,
-  audioManager: AudioManager
-): Promise<void> {
+  soundId: string
+): boolean {
   const currentRuntime = config.getRuntime();
   if (currentRuntime.soundId !== soundId) {
-    return;
+    return false;
   }
 
-  const existingCleanup = config.getSubscriptionCleanup();
-  if (existingCleanup) {
-    config.setSubscriptionCleanup(null);
-  }
-
-  try {
-    await audioManager.cleanupSound(soundId);
-  } catch {
-    // Cleanup failure during error recovery - nothing more to do.
-  }
-
-  config.resetRuntime();
+  deactivateChannel(deckId);
+  return true;
 }
 
 export async function setDeckRadioSource(
@@ -221,23 +215,15 @@ export async function setDeckRadioSource(
   }
 
   const wasPlaying = runtime.isPlaying;
-  const previousCleanup = config.getSubscriptionCleanup();
-  if (previousCleanup) {
-    config.setSubscriptionCleanup(null);
-  }
-
   const previousRadio = getDeckRadio(deck);
   if (previousRadio && isFileMetadata(previousRadio.platformMetadata)) {
     revokeFileObjectUrl(previousRadio.platformMetadata.objectUrl);
   }
 
-  if (runtime.soundId) {
-    await dependencies.getAudioManager().cleanupSound(runtime.soundId);
-  }
+  deactivateChannel(deckId);
 
   if (!radio) {
     resetDeckDb(deckId);
-    config.resetRuntime();
     return;
   }
 
@@ -245,17 +231,15 @@ export async function setDeckRadioSource(
 
   try {
     dependencies.clearDjError();
-    dependencies.getAudioManager().createSound(radio, soundId);
 
     config.updateDeck((draft) => {
       draft.radio = radio;
     });
-    config.setSoundId(soundId);
 
     let hasAppliedChannelStrip = false;
-    const cleanup = dependencies
-      .getAudioManager()
-      .subscribe(soundId, (audioState) => {
+    activateChannel("dj", deckId, radio, {
+      soundId,
+      onAudioState: (audioState) => {
         const currentDeck = config.getDeck();
         const currentRuntime = config.getRuntime();
 
@@ -356,20 +340,20 @@ export async function setDeckRadioSource(
             console.error("[dj-actions] Failed to handle ended track:", error);
           });
         }
-      });
-
-    config.setSubscriptionCleanup(cleanup);
+      },
+    });
 
     if (wasPlaying) {
       await dependencies.getAudioManager().playSound(soundId, deck.volume);
       dependencies.applyCrossfade();
     }
   } catch (error) {
-    await cleanupFailedDeckLoad(
-      config,
-      soundId,
-      dependencies.getAudioManager()
-    );
+    const channelWasActivated = cleanupFailedDeckLoad(deckId, config, soundId);
+    if (!channelWasActivated) {
+      config.updateDeck((draft) => {
+        draft.radio = previousRadio;
+      });
+    }
     const message =
       error instanceof Error ? error.message : `Failed to load ${deckId}`;
     dependencies.reportDjError(message, "DJ_LOAD_DECK_FAILED", error, radio);

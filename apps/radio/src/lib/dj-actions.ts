@@ -21,6 +21,7 @@ import {
 import { validatePlaybackStreamUrl } from "@/lib/audio/playback/url-validation";
 import {
   addChannelEffect,
+  deactivateChannel,
   removeChannelEffect,
   reorderChannelEffects,
   setChannelEffectsDryWet,
@@ -82,11 +83,7 @@ import { getDefaultPlaybackActionContext } from "@/lib/playback-action-context";
 import { createPlaybackActionError } from "@/lib/playback-action-errors";
 import {
   getDeckARuntime,
-  getDeckASubscriptionCleanup,
   getDeckBRuntime,
-  getDeckBSubscriptionCleanup,
-  resetDeckARuntime,
-  resetDeckBRuntime,
 } from "@/lib/stores/dj-runtime-store";
 import { generateId } from "@/lib/types";
 
@@ -290,32 +287,11 @@ export async function cleanupAll() {
 }
 
 // Cleanup audio only (keep radio state)
-export async function cleanupAudioOnly() {
-  const runtimeA = getDeckARuntime();
-  const runtimeB = getDeckBRuntime();
-
-  // Cleanup subscriptions
-  const cleanupA = getDeckASubscriptionCleanup();
-  const cleanupB = getDeckBSubscriptionCleanup();
-  if (cleanupA) {
-    deckConfig["deck-a"].setSubscriptionCleanup(null);
-  }
-  if (cleanupB) {
-    deckConfig["deck-b"].setSubscriptionCleanup(null);
-  }
-
-  // Cleanup sounds
-  if (runtimeA.soundId) {
-    await getAudioManager().cleanupSound(runtimeA.soundId);
-  }
-  if (runtimeB.soundId) {
-    await getAudioManager().cleanupSound(runtimeB.soundId);
-  }
-
-  // Reset runtime state only
-  resetDeckARuntime();
-  resetDeckBRuntime();
+export function cleanupAudioOnly(): Promise<void> {
+  deactivateChannel("deck-a");
+  deactivateChannel("deck-b");
   clearDjErrorSurface();
+  return Promise.resolve();
 }
 
 // Unified track loading

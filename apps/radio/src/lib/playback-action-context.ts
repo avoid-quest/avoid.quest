@@ -3,7 +3,7 @@ import {
   activateChannel,
   type ChannelActivationOptions,
   type ChannelRuntimeSubscriptionOptions,
-  clearAllChannelSubscriptionCleanups,
+  deactivateAllChannels,
   deactivateChannel,
   setChannelVolume,
   subscribeChannelRuntime,
@@ -25,7 +25,7 @@ export type PlaybackActionChannelFacade = {
     radio: Radio,
     optionsOrSoundId?: string | ChannelActivationOptions
   ) => string;
-  clearSubscriptionCleanups: () => void;
+  deactivateAll: () => void;
   deactivate: (channelId: string) => void;
   setVolume: (
     sessionId: PlaybackSessionId,
@@ -55,7 +55,7 @@ const defaultLifecycle: PlaybackAudioRoutingLifecycle = {
 
 const defaultChannels: PlaybackActionChannelFacade = {
   activate: activateChannel,
-  clearSubscriptionCleanups: clearAllChannelSubscriptionCleanups,
+  deactivateAll: deactivateAllChannels,
   deactivate: deactivateChannel,
   setVolume: setChannelVolume,
   subscribeRuntime: subscribeChannelRuntime,

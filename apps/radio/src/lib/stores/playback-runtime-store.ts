@@ -50,6 +50,10 @@ export function getPlaybackChannelRuntime(
   return ensureChannelState(channelId);
 }
 
+export function getPlaybackRuntimeChannelIds(): string[] {
+  return Object.keys(playbackRuntimeStore.state.channels);
+}
+
 export function updatePlaybackChannelRuntime(
   channelId: string,
   updater: (state: ChannelRuntimeState) => Partial<ChannelRuntimeState>

@@ -14,6 +14,7 @@ import {
 } from "@/lib/collections/playback-sessions";
 import {
   getPlaybackChannelRuntime,
+  getPlaybackRuntimeChannelIds,
   resetPlaybackChannelRuntime,
   setPlaybackChannelPeakLevel,
   setPlaybackChannelRuntime,
@@ -323,6 +324,17 @@ export function clearAllChannelSubscriptionCleanups(): void {
     cleanup();
   }
   subscriptionCleanups.clear();
+}
+
+export function deactivateAllChannels(): void {
+  const channelIds = new Set([
+    ...subscriptionCleanups.keys(),
+    ...getPlaybackRuntimeChannelIds(),
+  ]);
+
+  for (const channelId of channelIds) {
+    deactivateChannel(channelId);
+  }
 }
 
 export function subscribeChannelRuntime(

@@ -14,24 +14,13 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { radiosCollection } from "@/lib/collections";
 import { addRadio } from "@/lib/hooks/use-radios";
-import type { RadioMetadata, ScrapedOption } from "@/lib/platform-types";
-import { scrapeRadioMetadata } from "@/lib/radio-scraper";
-import {
-  createImportedStationRadio,
-  saveResolvedStationToCollection,
-} from "@/lib/stations/external-station-workflow";
+import type { RadioMetadata } from "@/lib/platform-types";
+import { createBrowserManualWebsiteImportWorkflow } from "@/lib/stations/manual-website-import-workflow";
 import { RadioFieldPreview } from "./radio-field-preview";
 
 type RadioFromUrlTabProps = {
   onSuccess: () => void;
 };
-
-function getBestValue(options?: ScrapedOption[]): string {
-  if (!options || options.length === 0) {
-    return "";
-  }
-  return options[0]?.value ?? "";
-}
 
 export function RadioFromUrlTab({ onSuccess }: RadioFromUrlTabProps) {
   const [url, setUrl] = useState("");
@@ -46,30 +35,29 @@ export function RadioFromUrlTab({ onSuccess }: RadioFromUrlTabProps) {
   const [description, setDescription] = useState("");
   const [isAdding, setIsAdding] = useState(false);
 
+  const createWorkflow = () =>
+    createBrowserManualWebsiteImportWorkflow({
+      addSavedRadio: addRadio,
+      getSavedRadios: () => radiosCollection.state.values(),
+    });
+
   const handleFetch = async () => {
-    if (!url.trim()) {
-      setError("Please enter a URL");
-      return;
-    }
-
-    try {
-      new URL(url);
-    } catch {
-      setError("Please enter a valid URL");
-      return;
-    }
-
     setIsLoading(true);
     setError(null);
     setScrapedData(null);
 
     try {
-      const data = await scrapeRadioMetadata(url);
-      setScrapedData(data);
-      setName(getBestValue(data.name));
-      setStreamUrl(getBestValue(data.streamUrl));
-      setLogoUrl(getBestValue(data.logoUrl));
-      setDescription(getBestValue(data.description));
+      const result = await createWorkflow().fetchDefaults(url);
+      if (!result.ok) {
+        setError(result.error.message);
+        return;
+      }
+
+      setScrapedData(result.data.metadata);
+      setName(result.data.fields.name);
+      setStreamUrl(result.data.fields.streamUrl);
+      setLogoUrl(result.data.fields.logoUrl);
+      setDescription(result.data.fields.description);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch data");
     } finally {
@@ -85,19 +73,18 @@ export function RadioFromUrlTab({ onSuccess }: RadioFromUrlTabProps) {
 
     setIsAdding(true);
     try {
-      saveResolvedStationToCollection(
-        createImportedStationRadio({
-          name,
-          streamUrl,
-          logoUrl,
-          description,
-          websiteUrl: url,
-        }),
-        {
-          addSavedRadio: addRadio,
-          getSavedRadios: () => radiosCollection.state.values(),
-        }
-      );
+      const result = createWorkflow().saveDraft({
+        name,
+        streamUrl,
+        logoUrl,
+        description,
+        websiteUrl: url,
+      });
+
+      if (!result.ok) {
+        toast.error(result.error.message);
+        return;
+      }
 
       toast.success(`Added "${name.trim()}" to your collection`);
       onSuccess();

@@ -33,58 +33,61 @@ export async function scrapeRadioMetadata(
       throw new Error(`Failed to fetch: ${response.status}`);
     }
 
-    const html = await response.text();
-    const doc = new DOMParser().parseFromString(html, "text/html");
-
-    const metadata: RadioMetadata = {
-      websiteUrl,
-      foundFields: [],
-      missingFields: [],
-    };
-
-    // Extract name options
-    const nameOptions = extractNameOptions(doc);
-    if (nameOptions.length > 0) {
-      metadata.name = nameOptions;
-      metadata.foundFields.push("name");
-    } else {
-      metadata.missingFields.push("name");
-    }
-
-    // Extract stream URL options
-    const streamOptions = extractStreamOptions(doc, websiteUrl);
-    if (streamOptions.length > 0) {
-      metadata.streamUrl = streamOptions;
-      metadata.foundFields.push("streamUrl");
-    } else {
-      metadata.missingFields.push("streamUrl");
-    }
-
-    // Extract logo options
-    const logoOptions = extractLogoOptions(doc, websiteUrl);
-    if (logoOptions.length > 0) {
-      metadata.logoUrl = logoOptions;
-      metadata.foundFields.push("logoUrl");
-    } else {
-      metadata.missingFields.push("logoUrl");
-    }
-
-    // Extract description options
-    const descriptionOptions = extractDescriptionOptions(doc);
-    if (descriptionOptions.length > 0) {
-      metadata.description = descriptionOptions;
-      metadata.foundFields.push("description");
-    } else {
-      metadata.missingFields.push("description");
-    }
-
-    return metadata;
+    return parseRadioMetadataFromDocument(
+      new DOMParser().parseFromString(await response.text(), "text/html"),
+      websiteUrl
+    );
   } catch (error) {
     console.error("Error scraping radio metadata:", error);
     throw new Error(
       `Failed to fetch website data: ${error instanceof Error ? error.message : "Unknown error"}`
     );
   }
+}
+
+export function parseRadioMetadataFromDocument(
+  doc: Document,
+  websiteUrl: string
+): RadioMetadata {
+  const metadata: RadioMetadata = {
+    websiteUrl,
+    foundFields: [],
+    missingFields: [],
+  };
+
+  const nameOptions = extractNameOptions(doc);
+  if (nameOptions.length > 0) {
+    metadata.name = nameOptions;
+    metadata.foundFields.push("name");
+  } else {
+    metadata.missingFields.push("name");
+  }
+
+  const streamOptions = extractStreamOptions(doc, websiteUrl);
+  if (streamOptions.length > 0) {
+    metadata.streamUrl = streamOptions;
+    metadata.foundFields.push("streamUrl");
+  } else {
+    metadata.missingFields.push("streamUrl");
+  }
+
+  const logoOptions = extractLogoOptions(doc, websiteUrl);
+  if (logoOptions.length > 0) {
+    metadata.logoUrl = logoOptions;
+    metadata.foundFields.push("logoUrl");
+  } else {
+    metadata.missingFields.push("logoUrl");
+  }
+
+  const descriptionOptions = extractDescriptionOptions(doc);
+  if (descriptionOptions.length > 0) {
+    metadata.description = descriptionOptions;
+    metadata.foundFields.push("description");
+  } else {
+    metadata.missingFields.push("description");
+  }
+
+  return metadata;
 }
 
 function fetchWithTimeout(

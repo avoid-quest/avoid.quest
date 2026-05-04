@@ -1,4 +1,4 @@
-import type { AudioManager, Radio } from "@/lib/audio";
+import type { AudioManager, AudioState, Radio } from "@/lib/audio";
 import {
   getPlaybackSession,
   type PlaybackSessionId,
@@ -102,19 +102,38 @@ export function subscribeManagedChannel(
   sessionId: PlaybackSessionId,
   channelId: string,
   soundId: string,
+  options: {
+    onAudioState?: (audioState: AudioState) => void;
+  } = {},
   ctx: PlaybackActionContext = getDefaultPlaybackActionContext()
 ): void {
-  ctx.channels.subscribeRuntime(sessionId, channelId, soundId);
+  ctx.channels.subscribeRuntime(sessionId, channelId, soundId, options);
 }
 
 export function createManagedSound(
   sessionId: PlaybackSessionId,
   channelId: string,
   radio: Radio,
-  soundId = getDefaultSoundId(sessionId, channelId),
+  optionsOrSoundId:
+    | string
+    | {
+        soundId?: string;
+        onAudioState?: (audioState: AudioState) => void;
+      } = {},
   ctx = getDefaultPlaybackActionContext()
 ): string {
-  return ctx.channels.activate(sessionId, channelId, radio, soundId);
+  const options =
+    typeof optionsOrSoundId === "string"
+      ? { soundId: optionsOrSoundId }
+      : optionsOrSoundId;
+  const soundId = options.soundId ?? getDefaultSoundId(sessionId, channelId);
+  if (!options.onAudioState) {
+    return ctx.channels.activate(sessionId, channelId, radio, soundId);
+  }
+  return ctx.channels.activate(sessionId, channelId, radio, {
+    ...options,
+    soundId,
+  });
 }
 
 export function cleanupManagedChannel(

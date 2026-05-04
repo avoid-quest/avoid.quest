@@ -97,6 +97,46 @@ describe("channel state manager", () => {
     expect(manager.cleanupSound).toHaveBeenCalledWith("sound-1");
   });
 
+  test("runs activation state handlers from the lifecycle-owned subscription", () => {
+    const manager = AudioManager.getInstance();
+    const cleanup = mock(() => undefined);
+    const onAudioState = mock(() => undefined);
+    manager.createSound = mock(
+      (_radio, soundId?: string) => soundId ?? "sound"
+    );
+    manager.cleanupSound = mock((_soundId: string) => undefined);
+    manager.subscribe = mock((_soundId, callback) => {
+      callback({
+        error: null,
+        hasEnded: false,
+        isBuffering: false,
+        isLoading: false,
+        isPlaying: true,
+        volume: 1,
+      });
+      return cleanup;
+    });
+    manager.subscribeMeter = mock((_soundId, _callback) => cleanup);
+
+    activateChannel(
+      "dj",
+      "deck-a",
+      {
+        id: "station-1",
+        name: "Station 1",
+        streamUrl: "https://radio.example/station.mp3",
+      },
+      {
+        onAudioState,
+        soundId: "sound-1",
+      }
+    );
+
+    expect(onAudioState).toHaveBeenCalledWith(
+      expect.objectContaining({ isPlaying: true })
+    );
+  });
+
   test("owns effect order assignment when effects are added", async () => {
     await playbackSessionsCollection.stateWhenReady();
     playbackSessionsCollection.insert({

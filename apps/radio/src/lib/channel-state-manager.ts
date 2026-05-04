@@ -1,6 +1,7 @@
 import { eq, useLiveQuery } from "@tanstack/react-db";
 import {
   AudioManager,
+  type AudioState,
   type EffectConfig,
   type FilterConfig,
 } from "@/lib/audio";
@@ -36,6 +37,11 @@ type ChannelAudioField =
 type ChannelUpdate =
   | Partial<PlaybackChannelRecord>
   | ((draft: PlaybackChannelRecord) => void);
+
+type ChannelActivationOptions = {
+  soundId?: string;
+  onAudioState?: (audioState: AudioState) => void;
+};
 
 const CHANNEL_AUDIO_SYNC_ORDER = [
   "volume",
@@ -295,7 +301,7 @@ export function reorderChannelEffects(
   }
 }
 
-export function setChannelSubscriptionCleanup(
+function setChannelSubscriptionCleanup(
   channelId: string,
   cleanup: (() => void) | null
 ): void {
@@ -305,12 +311,6 @@ export function setChannelSubscriptionCleanup(
     return;
   }
   subscriptionCleanups.delete(channelId);
-}
-
-export function getChannelSubscriptionCleanup(
-  channelId: string
-): (() => void) | null {
-  return subscriptionCleanups.get(channelId) ?? null;
 }
 
 export function clearAllChannelSubscriptionCleanups(): void {
@@ -323,7 +323,8 @@ export function clearAllChannelSubscriptionCleanups(): void {
 export function subscribeChannelRuntime(
   sessionId: PlaybackSessionId,
   channelId: string,
-  soundId: string
+  soundId: string,
+  options: Pick<ChannelActivationOptions, "onAudioState"> = {}
 ): void {
   const manager = getAudioManager();
   const cleanup = manager.subscribe(soundId, (audioState) => {
@@ -341,6 +342,7 @@ export function subscribeChannelRuntime(
           )
         : null,
     }));
+    options.onAudioState?.(audioState);
   });
 
   const meterCleanup =
@@ -360,16 +362,24 @@ export function activateChannel(
   sessionId: PlaybackSessionId,
   channelId: string,
   radio: PlaybackChannelRecord["radio"],
-  soundId = `${sessionId}:${channelId}`
+  optionsOrSoundId: ChannelActivationOptions | string = {}
 ): string {
   if (!radio) {
     throw new Error(`Cannot activate ${channelId} without a radio`);
   }
 
+  const options =
+    typeof optionsOrSoundId === "string"
+      ? { soundId: optionsOrSoundId }
+      : optionsOrSoundId;
+  const soundId = options.soundId ?? `${sessionId}:${channelId}`;
+
   deactivateChannel(channelId);
   getAudioManager().createSound(radio, soundId);
   setPlaybackChannelSoundId(channelId, soundId);
-  subscribeChannelRuntime(sessionId, channelId, soundId);
+  subscribeChannelRuntime(sessionId, channelId, soundId, {
+    onAudioState: options.onAudioState,
+  });
   return soundId;
 }
 

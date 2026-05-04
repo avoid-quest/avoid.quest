@@ -1,10 +1,6 @@
 import { Store, useStore } from "@tanstack/react-store";
 import type { Radio } from "@/lib/audio";
 import {
-  getChannelSubscriptionCleanup,
-  setChannelSubscriptionCleanup,
-} from "@/lib/channel-state-manager";
-import {
   DECK_A_CHANNEL_ID,
   DECK_B_CHANNEL_ID,
 } from "@/lib/collections/playback-sessions";
@@ -137,22 +133,6 @@ export function setDjError(error: string | null) {
   djUiStore.setState((state) => ({ ...state, error }));
 }
 
-export function setDeckASubscriptionCleanup(cleanup: (() => void) | null) {
-  setChannelSubscriptionCleanup(DECK_A_CHANNEL_ID, cleanup);
-}
-
-export function setDeckBSubscriptionCleanup(cleanup: (() => void) | null) {
-  setChannelSubscriptionCleanup(DECK_B_CHANNEL_ID, cleanup);
-}
-
-export function getDeckASubscriptionCleanup() {
-  return getChannelSubscriptionCleanup(DECK_A_CHANNEL_ID);
-}
-
-export function getDeckBSubscriptionCleanup() {
-  return getChannelSubscriptionCleanup(DECK_B_CHANNEL_ID);
-}
-
 export function resetDeckARuntime() {
   resetPlaybackChannelRuntime(DECK_A_CHANNEL_ID);
 }
@@ -181,10 +161,6 @@ export function getDjRuntimeState() {
     deckAPeakLevel: getPlaybackChannelRuntime(DECK_A_CHANNEL_ID).peakLevel,
     deckBPeakLevel: getPlaybackChannelRuntime(DECK_B_CHANNEL_ID).peakLevel,
     error: djUiStore.state.error,
-    _subscriptionCleanup: {
-      "deck-a": getChannelSubscriptionCleanup(DECK_A_CHANNEL_ID),
-      "deck-b": getChannelSubscriptionCleanup(DECK_B_CHANNEL_ID),
-    },
   };
 }
 

@@ -23,9 +23,18 @@ async function resetPlaybackSessions() {
 
 function createTestContext(overrides: Partial<AudioManager> = {}) {
   const reportedErrors: PlaybackActionError[] = [];
-  const activate = mock((_sessionId, _channelId, _radio, soundId?: string) => {
-    return soundId ?? "single:active";
-  });
+  const activate = mock(
+    (
+      _sessionId,
+      _channelId,
+      _radio,
+      optionsOrSoundId?: string | { soundId?: string }
+    ) => {
+      return typeof optionsOrSoundId === "string"
+        ? optionsOrSoundId
+        : (optionsOrSoundId?.soundId ?? "single:active");
+    }
+  );
   const context = {
     audio: {
       pauseSound: mock((_soundId: string) => undefined),

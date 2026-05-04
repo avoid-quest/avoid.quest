@@ -69,6 +69,7 @@ type CreateModeManagerOptions = {
 };
 
 type DjDeckCommands = ReturnType<typeof createDjDeckCommands>;
+type ManagedPlaybackSessionId = Exclude<PlaybackSessionId, "dj">;
 
 type ModeManager = {
   getSnapshot: () => ModeTransitionSnapshot;
@@ -160,18 +161,11 @@ function assertNoOrphanedSounds(
   }
 }
 
-function getPlaybackModeLabel(sessionId: PlaybackSessionId): string {
-  switch (sessionId) {
-    case "dj":
-      return "DJ";
-    case "multiple":
-      return "Multiple";
-    case "single":
-      return "Single";
-    default:
-      return sessionId;
-  }
-}
+const PLAYBACK_MODE_LABELS = {
+  dj: "DJ",
+  multiple: "Multiple",
+  single: "Single",
+} satisfies Record<PlaybackSessionId, string>;
 
 async function getReadyPlaybackSession(
   sessionId: PlaybackSessionId
@@ -180,26 +174,43 @@ async function getReadyPlaybackSession(
   const session = getPlaybackSession(sessionId);
   if (!session) {
     throw new Error(
-      `${getPlaybackModeLabel(sessionId)} playback session is not ready`
+      `${PLAYBACK_MODE_LABELS[sessionId]} playback session is not ready`
     );
   }
   return session;
 }
 
+async function prepareReadyPlaybackSession(
+  sessionId: PlaybackSessionId,
+  ctx: PlaybackActionContext
+): Promise<PlaybackSessionRecord> {
+  const session = await getReadyPlaybackSession(sessionId);
+  await ensureMainAudioSettingsApplied(ctx);
+  return session;
+}
+
+function getManagedRestoreChannels(
+  sessionId: ManagedPlaybackSessionId,
+  session: PlaybackSessionRecord
+): PlaybackSessionRecord["channels"] {
+  if (sessionId === "single") {
+    return session.channels.filter(
+      (channel) => channel.id === session.activeChannelId
+    );
+  }
+  return session.channels;
+}
+
 function restoreManagedModeSounds(
-  sessionId: Exclude<PlaybackSessionId, "dj">,
+  sessionId: ManagedPlaybackSessionId,
   session: PlaybackSessionRecord,
   ctx: PlaybackActionContext
 ): void {
-  const channels =
-    sessionId === "single"
-      ? session.channels.filter(
-          (channel) => channel.id === session.activeChannelId
-        )
-      : session.channels;
-
-  for (const channel of channels) {
-    if (!(channel.radio && !getPlaybackChannelRuntime(channel.id).soundId)) {
+  for (const channel of getManagedRestoreChannels(sessionId, session)) {
+    if (!channel.radio) {
+      continue;
+    }
+    if (getPlaybackChannelRuntime(channel.id).soundId) {
       continue;
     }
     createManagedSound(sessionId, channel.id, channel.radio, undefined, ctx);
@@ -207,16 +218,12 @@ function restoreManagedModeSounds(
 }
 
 async function activateManagedMode(
-  sessionId: PlaybackSessionId,
+  sessionId: ManagedPlaybackSessionId,
   ctx: PlaybackActionContext
-): Promise<PlaybackSessionRecord> {
-  const session = await getReadyPlaybackSession(sessionId);
-  await ensureMainAudioSettingsApplied(ctx);
-  if (sessionId !== "dj") {
-    restoreManagedModeSounds(sessionId, session, ctx);
-  }
+): Promise<void> {
+  const session = await prepareReadyPlaybackSession(sessionId, ctx);
+  restoreManagedModeSounds(sessionId, session, ctx);
   applySessionMasterVolume(sessionId, ctx);
-  return session;
 }
 
 async function deactivateManagedMode(
@@ -264,7 +271,8 @@ async function restoreDjDeckRadio(
 }
 
 async function activateDjMode(ctx: PlaybackActionContext): Promise<void> {
-  const session = await activateManagedMode("dj", ctx);
+  const session = await prepareReadyPlaybackSession("dj", ctx);
+  applySessionMasterVolume("dj", ctx);
   const deckCommands = createDjDeckCommands(ctx);
 
   const deckA = session.channels.find(
@@ -306,15 +314,13 @@ async function deactivateDjMode(
 }
 
 function createManagedModeLifecycle(
-  sessionId: PlaybackSessionId,
+  sessionId: ManagedPlaybackSessionId,
   ctx: PlaybackActionContext,
   fadeOutSound: FadeOutSound,
   fadeOutDurationMs: number
 ): ModeLifecycle {
   return createLifecycle(
-    async () => {
-      await activateManagedMode(sessionId, ctx);
-    },
+    () => activateManagedMode(sessionId, ctx),
     () => deactivateManagedMode(sessionId, ctx, fadeOutSound, fadeOutDurationMs)
   );
 }

@@ -1,29 +1,26 @@
 import type { AudioManager, EffectConfig, FilterConfig } from "@/lib/audio";
 
-function applyStoredEffectsAndFilters(
+async function applyStoredEffectsAndFilters(
   audioManager: AudioManager,
   soundId: string,
   effects: EffectConfig[],
   filter: FilterConfig
-): void {
+): Promise<void> {
   try {
+    const workletManager = audioManager.getWorkletManager(soundId);
+    if (!workletManager?.isReady) {
+      const ready = await audioManager.ensureEffectsReady(soundId);
+      if (!ready) {
+        return;
+      }
+    }
+
     if (filter.enabled) {
       audioManager.updateFilter(soundId, filter);
     }
 
-    let allAdded = true;
     for (const effect of effects) {
-      if (!audioManager.addEffect(soundId, effect)) {
-        allAdded = false;
-      }
-    }
-
-    if (!allAdded && effects.length > 0) {
-      setTimeout(() => {
-        for (const effect of effects) {
-          audioManager.addEffect(soundId, effect);
-        }
-      }, 100);
+      audioManager.addEffect(soundId, effect);
     }
   } catch (error) {
     console.warn("[dj-actions] Failed to apply stored effects:", error);

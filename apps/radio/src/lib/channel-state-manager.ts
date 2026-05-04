@@ -228,12 +228,17 @@ export function addChannelEffect(
   channelId: string,
   effect: EffectConfig
 ): void {
+  let orderedEffect = effect;
   updateChannel(sessionId, channelId, (draft) => {
-    draft.effects.push(effect);
+    orderedEffect = {
+      ...effect,
+      order: draft.effects.length,
+    } as EffectConfig;
+    draft.effects.push(orderedEffect);
   });
   const runtime = getPlaybackChannelRuntime(channelId);
   if (runtime.soundId) {
-    getAudioManager().addEffect(runtime.soundId, effect);
+    getAudioManager().addEffect(runtime.soundId, orderedEffect);
   }
 }
 

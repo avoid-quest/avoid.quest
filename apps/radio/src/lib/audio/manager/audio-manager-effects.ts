@@ -1,154 +1,155 @@
-import type { EffectConfig } from "../dsp/effects/types.js";
+import {
+  type EffectParamDef,
+  getEffectParamDefs,
+} from "../dsp/effects/schema.js";
+import type { EffectConfig, EffectType } from "../dsp/effects/types.js";
 
-function applyReverbAndTimeConfig(
-  base: Record<string, number>,
-  config: EffectConfig
-): void {
-  switch (config.type) {
-    case "plateReverb":
-      base.preDelay = config.preDelay;
-      base.bandwidth = config.bandwidth;
-      base.inputDiffusion1 = config.inputDiffusion1;
-      base.inputDiffusion2 = config.inputDiffusion2;
-      base.decay = config.decay;
-      base.decayDiffusion1 = config.decayDiffusion1;
-      base.decayDiffusion2 = config.decayDiffusion2;
-      base.damping = config.damping;
-      base.excursionRate = config.excursionRate;
-      base.excursionDepth = config.excursionDepth;
-      break;
-    case "pitchShifter":
-      base.pitchFactor = config.pitchFactor;
-      break;
-    case "limiter":
-      base.threshold = config.threshold;
-      break;
-    case "delay":
-      base.delayTime = config.delayTime;
-      base.feedback = config.feedback;
-      break;
-    case "distortion":
-      base.amount = config.amount;
-      break;
+type EngineEffectParamValue = number | string;
+type EngineEffectConfig = Record<string, EngineEffectParamValue>;
+
+const UNIVERSAL_EFFECT_PARAM_KEYS = new Set([
+  "enabled",
+  "dryWet",
+  "inputGain",
+  "outputGain",
+]);
+
+const EFFECT_PARAM_KEYS = new Set<string>();
+
+function effectConfigRecord(
+  config: EffectConfig | Partial<EffectConfig>
+): Record<string, unknown> {
+  return config as Record<string, unknown>;
+}
+
+function convertBoolean(value: unknown): number | undefined {
+  if (typeof value === "boolean") {
+    return value ? 1 : 0;
+  }
+  if (typeof value === "number") {
+    return value === 0 ? 0 : 1;
+  }
+  return undefined;
+}
+
+function convertParamValue(
+  param: EffectParamDef,
+  value: unknown
+): EngineEffectParamValue | undefined {
+  switch (param.type) {
+    case "checkbox":
+      return convertBoolean(value);
+    case "slider":
+      return typeof value === "number" ? value : undefined;
+    case "select":
+      if (param.valueType === "number") {
+        return typeof value === "number" ? value : undefined;
+      }
+      return typeof value === "string" ? value : undefined;
     default:
-      break;
+      return undefined;
   }
 }
 
-function applyDynamicsAndColorConfig(
-  base: Record<string, number>,
-  config: EffectConfig
+function applyUniversalParams(
+  result: EngineEffectConfig,
+  config: Record<string, unknown>
 ): void {
-  switch (config.type) {
-    case "compressor":
-      base.threshold = config.threshold;
-      base.ratio = config.ratio;
-      base.attack = config.attack;
-      base.release = config.release;
-      base.knee = config.knee;
-      break;
-    case "crusher":
-      base.crush = config.crush;
-      base.bitDepth = config.bitDepth;
-      base.boost = config.boost;
-      base.mix = config.dryWet;
-      break;
-    case "fold":
-      base.amount = config.amount;
-      base.volume = config.volume;
-      base.oversample = config.oversample;
-      break;
-    case "stereoTool":
-      base.volume = config.volume;
-      base.stereo = config.stereo;
-      base.invertL = config.invertL ? 1 : 0;
-      base.invertR = config.invertR ? 1 : 0;
-      base.swap = config.swap ? 1 : 0;
-      break;
-    default:
-      break;
+  if (config.enabled !== undefined) {
+    const enabled = convertBoolean(config.enabled);
+    if (enabled !== undefined) {
+      result.enabled = enabled;
+    }
+  }
+
+  if (typeof config.inputGain === "number") {
+    result.inputGain = config.inputGain;
+  }
+
+  if (typeof config.outputGain === "number") {
+    result.outputGain = config.outputGain;
+  }
+
+  if (typeof config.dryWet === "number") {
+    result.wet = config.dryWet;
+    result.dry = 1 - config.dryWet;
+    result.dryWet = config.dryWet;
   }
 }
 
-function applyEqAndModulationConfig(
-  base: Record<string, number>,
-  config: EffectConfig
+function applySchemaParams(
+  result: EngineEffectConfig,
+  type: EffectType,
+  config: Record<string, unknown>
 ): void {
-  switch (config.type) {
-    case "revamp":
-      base.highPassEnabled = config.highPassEnabled ? 1 : 0;
-      base.highPassFrequency = config.highPassFrequency;
-      base.highPassQ = config.highPassQ;
-      base.highPassOrder = config.highPassOrder;
-      base.lowShelfEnabled = config.lowShelfEnabled ? 1 : 0;
-      base.lowShelfFrequency = config.lowShelfFrequency;
-      base.lowShelfGain = config.lowShelfGain;
-      base.lowBellEnabled = config.lowBellEnabled ? 1 : 0;
-      base.lowBellFrequency = config.lowBellFrequency;
-      base.lowBellGain = config.lowBellGain;
-      base.lowBellQ = config.lowBellQ;
-      base.midBellEnabled = config.midBellEnabled ? 1 : 0;
-      base.midBellFrequency = config.midBellFrequency;
-      base.midBellGain = config.midBellGain;
-      base.midBellQ = config.midBellQ;
-      base.highBellEnabled = config.highBellEnabled ? 1 : 0;
-      base.highBellFrequency = config.highBellFrequency;
-      base.highBellGain = config.highBellGain;
-      base.highBellQ = config.highBellQ;
-      base.highShelfEnabled = config.highShelfEnabled ? 1 : 0;
-      base.highShelfFrequency = config.highShelfFrequency;
-      base.highShelfGain = config.highShelfGain;
-      base.lowPassEnabled = config.lowPassEnabled ? 1 : 0;
-      base.lowPassFrequency = config.lowPassFrequency;
-      base.lowPassQ = config.lowPassQ;
-      base.lowPassOrder = config.lowPassOrder;
-      break;
-    case "tidal":
-      base.rate = config.rate;
-      base.depth = config.depth;
-      base.slope = config.slope;
-      base.symmetry = config.symmetry;
-      base.offset = config.offset;
-      base.channelOffset = config.channelOffset;
-      break;
-    default:
-      break;
+  for (const param of getEffectParamDefs(type)) {
+    if (config[param.key] === undefined) {
+      continue;
+    }
+
+    const value = convertParamValue(param, config[param.key]);
+    if (value !== undefined) {
+      result[param.key] = value;
+    }
   }
 }
 
-function convertEffectConfig(config: EffectConfig): Record<string, number> {
-  const base: Record<string, number> = {
-    enabled: config.enabled ? 1 : 0,
-    inputGain: config.inputGain ?? 1.0,
-    outputGain: config.outputGain ?? 1.0,
-  };
-
-  if (config.dryWet !== undefined) {
-    base.wet = config.dryWet;
-    base.dry = 1 - config.dryWet;
-    base.dryWet = config.dryWet;
+function ensureEffectParamKeys(): Set<string> {
+  if (EFFECT_PARAM_KEYS.size > 0) {
+    return EFFECT_PARAM_KEYS;
   }
 
-  applyReverbAndTimeConfig(base, config);
-  applyDynamicsAndColorConfig(base, config);
-  applyEqAndModulationConfig(base, config);
+  for (const type of [
+    "plateReverb",
+    "pitchShifter",
+    "delay",
+    "distortion",
+    "compressor",
+    "crusher",
+    "fold",
+    "stereoTool",
+    "revamp",
+    "tidal",
+    "limiter",
+  ] satisfies EffectType[]) {
+    for (const param of getEffectParamDefs(type)) {
+      EFFECT_PARAM_KEYS.add(param.key);
+    }
+  }
 
-  return base;
+  return EFFECT_PARAM_KEYS;
+}
+
+function convertEffectConfig(config: EffectConfig): EngineEffectConfig {
+  const result: EngineEffectConfig = {};
+  const record = effectConfigRecord(config);
+
+  applyUniversalParams(result, record);
+  applySchemaParams(result, config.type, record);
+
+  return result;
 }
 
 function convertPartialEffectConfig(
   config: Partial<EffectConfig>
-): Record<string, number> {
-  const result: Record<string, number> = {};
+): EngineEffectConfig {
+  const result: EngineEffectConfig = {};
+  const record = effectConfigRecord(config);
 
-  if (config.dryWet !== undefined) {
-    result.wet = config.dryWet;
-    result.dry = 1 - config.dryWet;
-    result.mix = config.dryWet;
+  applyUniversalParams(result, record);
+
+  if (config.type) {
+    applySchemaParams(result, config.type, record);
+    return result;
   }
 
-  for (const [key, value] of Object.entries(config)) {
-    if (typeof value === "number" && key !== "order") {
+  const knownParamKeys = ensureEffectParamKeys();
+  for (const [key, value] of Object.entries(record)) {
+    if (UNIVERSAL_EFFECT_PARAM_KEYS.has(key) || !knownParamKeys.has(key)) {
+      continue;
+    }
+
+    if (typeof value === "number" || typeof value === "string") {
       result[key] = value;
     } else if (typeof value === "boolean") {
       result[key] = value ? 1 : 0;
@@ -159,3 +160,4 @@ function convertPartialEffectConfig(
 }
 
 export { convertEffectConfig, convertPartialEffectConfig };
+export type { EngineEffectConfig, EngineEffectParamValue };

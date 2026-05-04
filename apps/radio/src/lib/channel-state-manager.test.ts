@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { AudioManager } from "@/lib/audio";
+import { AudioManager, createDefaultEffectConfig } from "@/lib/audio";
 import {
   createDefaultChannel,
   getPlaybackChannel,
@@ -11,6 +11,7 @@ import {
 } from "@/lib/stores/playback-runtime-store";
 import {
   activateChannel,
+  addChannelEffect,
   clearAllChannelSubscriptionCleanups,
   deactivateChannel,
   setChannelVolume,
@@ -94,5 +95,30 @@ describe("channel state manager", () => {
 
     expect(cleanup).toHaveBeenCalledTimes(1);
     expect(manager.cleanupSound).toHaveBeenCalledWith("sound-1");
+  });
+
+  test("owns effect order assignment when effects are added", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    playbackSessionsCollection.insert({
+      id: "dj",
+      channels: [createDefaultChannel("deck-a", "deck-a", 0)],
+      masterVolume: 1,
+      crossfadePosition: 0.5,
+      headphoneVolume: 1,
+      activeChannelId: null,
+    });
+
+    const delay = createDefaultEffectConfig("delay", "delay-1", 99);
+    const limiter = createDefaultEffectConfig("limiter", "limiter-1", 99);
+
+    addChannelEffect("dj", "deck-a", delay);
+    addChannelEffect("dj", "deck-a", limiter);
+
+    const effects = getPlaybackChannel("dj", "deck-a")?.effects ?? [];
+    expect(effects.map((effect) => effect.id)).toEqual([
+      "delay-1",
+      "limiter-1",
+    ]);
+    expect(effects.map((effect) => effect.order)).toEqual([0, 1]);
   });
 });

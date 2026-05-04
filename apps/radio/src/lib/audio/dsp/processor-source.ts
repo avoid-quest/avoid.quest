@@ -84,6 +84,20 @@ type EffectConfigData = {
   order: number;
 };
 
+function readBooleanConfig(
+  config: Record<string, number | boolean | string>,
+  key: string
+): boolean | undefined {
+  const value = config[key];
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "number") {
+    return value !== 0;
+  }
+  return undefined;
+}
+
 /**
  * Effect source - tracks effects and filters for a source
  * Audio comes from Web Audio graph, not from chunks
@@ -345,8 +359,9 @@ export class EffectSource {
         if (typeof config.boost === "number") {
           crusher.setBoost(config.boost);
         }
-        if (typeof config.autoGain === "boolean") {
-          crusher.setAutoGain(config.autoGain);
+        const autoGain = readBooleanConfig(config, "autoGain");
+        if (autoGain !== undefined) {
+          crusher.setAutoGain(autoGain);
         }
         break;
       }
@@ -364,8 +379,9 @@ export class EffectSource {
             fold.setOversample(os);
           }
         }
-        if (typeof config.autoGain === "boolean") {
-          fold.setAutoGain(config.autoGain);
+        const autoGain = readBooleanConfig(config, "autoGain");
+        if (autoGain !== undefined) {
+          fold.setAutoGain(autoGain);
         }
         break;
       }
@@ -377,14 +393,17 @@ export class EffectSource {
         if (typeof config.stereo === "number") {
           stereo.setStereoWidth(config.stereo);
         }
-        if (typeof config.invertL === "boolean") {
-          stereo.setInvertL(config.invertL);
+        const invertL = readBooleanConfig(config, "invertL");
+        if (invertL !== undefined) {
+          stereo.setInvertL(invertL);
         }
-        if (typeof config.invertR === "boolean") {
-          stereo.setInvertR(config.invertR);
+        const invertR = readBooleanConfig(config, "invertR");
+        if (invertR !== undefined) {
+          stereo.setInvertR(invertR);
         }
-        if (typeof config.swap === "boolean") {
-          stereo.setSwap(config.swap);
+        const swap = readBooleanConfig(config, "swap");
+        if (swap !== undefined) {
+          stereo.setSwap(swap);
         }
         break;
       }
@@ -486,17 +505,21 @@ export class EffectSource {
         if (typeof config.mix === "number") {
           comp.setMix(config.mix);
         }
-        if (typeof config.lookahead === "boolean") {
-          comp.setLookahead(config.lookahead);
+        const lookahead = readBooleanConfig(config, "lookahead");
+        if (lookahead !== undefined) {
+          comp.setLookahead(lookahead);
         }
-        if (typeof config.autoAttack === "boolean") {
-          comp.setAutoAttack(config.autoAttack);
+        const autoAttack = readBooleanConfig(config, "autoAttack");
+        if (autoAttack !== undefined) {
+          comp.setAutoAttack(autoAttack);
         }
-        if (typeof config.autoRelease === "boolean") {
-          comp.setAutoRelease(config.autoRelease);
+        const autoRelease = readBooleanConfig(config, "autoRelease");
+        if (autoRelease !== undefined) {
+          comp.setAutoRelease(autoRelease);
         }
-        if (typeof config.autoMakeup === "boolean") {
-          comp.setAutoMakeup(config.autoMakeup);
+        const autoMakeup = readBooleanConfig(config, "autoMakeup");
+        if (autoMakeup !== undefined) {
+          comp.setAutoMakeup(autoMakeup);
         }
         break;
       }
@@ -516,8 +539,9 @@ export class EffectSource {
       }
       case "revamp": {
         const revamp = processor as RevampEffect;
-        if (typeof config.highPassEnabled === "boolean") {
-          revamp.setHighPassEnabled(config.highPassEnabled);
+        const highPassEnabled = readBooleanConfig(config, "highPassEnabled");
+        if (highPassEnabled !== undefined) {
+          revamp.setHighPassEnabled(highPassEnabled);
         }
         if (typeof config.highPassFrequency === "number") {
           revamp.setHighPassFrequency(config.highPassFrequency);
@@ -528,8 +552,9 @@ export class EffectSource {
         if (typeof config.highPassOrder === "number") {
           revamp.setHighPassOrder(config.highPassOrder);
         }
-        if (typeof config.lowShelfEnabled === "boolean") {
-          revamp.setLowShelfEnabled(config.lowShelfEnabled);
+        const lowShelfEnabled = readBooleanConfig(config, "lowShelfEnabled");
+        if (lowShelfEnabled !== undefined) {
+          revamp.setLowShelfEnabled(lowShelfEnabled);
         }
         if (typeof config.lowShelfFrequency === "number") {
           revamp.setLowShelfFrequency(config.lowShelfFrequency);
@@ -537,8 +562,9 @@ export class EffectSource {
         if (typeof config.lowShelfGain === "number") {
           revamp.setLowShelfGain(config.lowShelfGain);
         }
-        if (typeof config.lowBellEnabled === "boolean") {
-          revamp.setLowBellEnabled(config.lowBellEnabled);
+        const lowBellEnabled = readBooleanConfig(config, "lowBellEnabled");
+        if (lowBellEnabled !== undefined) {
+          revamp.setLowBellEnabled(lowBellEnabled);
         }
         if (typeof config.lowBellFrequency === "number") {
           revamp.setLowBellFrequency(config.lowBellFrequency);
@@ -549,8 +575,9 @@ export class EffectSource {
         if (typeof config.lowBellQ === "number") {
           revamp.setLowBellQ(config.lowBellQ);
         }
-        if (typeof config.midBellEnabled === "boolean") {
-          revamp.setMidBellEnabled(config.midBellEnabled);
+        const midBellEnabled = readBooleanConfig(config, "midBellEnabled");
+        if (midBellEnabled !== undefined) {
+          revamp.setMidBellEnabled(midBellEnabled);
         }
         if (typeof config.midBellFrequency === "number") {
           revamp.setMidBellFrequency(config.midBellFrequency);
@@ -561,8 +588,9 @@ export class EffectSource {
         if (typeof config.midBellQ === "number") {
           revamp.setMidBellQ(config.midBellQ);
         }
-        if (typeof config.highBellEnabled === "boolean") {
-          revamp.setHighBellEnabled(config.highBellEnabled);
+        const highBellEnabled = readBooleanConfig(config, "highBellEnabled");
+        if (highBellEnabled !== undefined) {
+          revamp.setHighBellEnabled(highBellEnabled);
         }
         if (typeof config.highBellFrequency === "number") {
           revamp.setHighBellFrequency(config.highBellFrequency);
@@ -573,8 +601,9 @@ export class EffectSource {
         if (typeof config.highBellQ === "number") {
           revamp.setHighBellQ(config.highBellQ);
         }
-        if (typeof config.highShelfEnabled === "boolean") {
-          revamp.setHighShelfEnabled(config.highShelfEnabled);
+        const highShelfEnabled = readBooleanConfig(config, "highShelfEnabled");
+        if (highShelfEnabled !== undefined) {
+          revamp.setHighShelfEnabled(highShelfEnabled);
         }
         if (typeof config.highShelfFrequency === "number") {
           revamp.setHighShelfFrequency(config.highShelfFrequency);
@@ -582,8 +611,9 @@ export class EffectSource {
         if (typeof config.highShelfGain === "number") {
           revamp.setHighShelfGain(config.highShelfGain);
         }
-        if (typeof config.lowPassEnabled === "boolean") {
-          revamp.setLowPassEnabled(config.lowPassEnabled);
+        const lowPassEnabled = readBooleanConfig(config, "lowPassEnabled");
+        if (lowPassEnabled !== undefined) {
+          revamp.setLowPassEnabled(lowPassEnabled);
         }
         if (typeof config.lowPassFrequency === "number") {
           revamp.setLowPassFrequency(config.lowPassFrequency);

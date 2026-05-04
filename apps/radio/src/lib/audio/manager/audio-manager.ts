@@ -713,6 +713,27 @@ export class AudioManager {
   }
 
   /**
+   * Ensure the effect worklet exists and has finished initialization.
+   */
+  async ensureEffectsReady(soundId: string): Promise<boolean> {
+    const instance = this.sounds.get(soundId);
+    if (!instance) {
+      return false;
+    }
+
+    try {
+      const wm = await this.effects.getOrCreateWorkletManager(soundId);
+      return wm.isReady;
+    } catch (error) {
+      console.warn(
+        `[AudioManager] ensureEffectsReady: failed for sound ${soundId}`,
+        error
+      );
+      return false;
+    }
+  }
+
+  /**
    * Remove an effect from a sound
    */
   removeEffect(soundId: string, effectId: string): void {

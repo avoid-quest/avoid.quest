@@ -7,6 +7,7 @@ import {
 import {
   convertEffectConfig,
   convertPartialEffectConfig,
+  type EngineEffectConfig,
 } from "./audio-manager-effects.js";
 import {
   attachWorkletManagerListeners,
@@ -49,7 +50,7 @@ class EffectsController {
       return false;
     }
 
-    const engineConfig = convertEffectConfig(config);
+    const engineConfig: EngineEffectConfig = convertEffectConfig(config);
     wm.addEffect(soundId, config.id, config.type, engineConfig, config.order);
     return true;
   }
@@ -68,7 +69,7 @@ class EffectsController {
       return false;
     }
 
-    const engineConfig = convertPartialEffectConfig(config);
+    const engineConfig: EngineEffectConfig = convertPartialEffectConfig(config);
     wm.updateEffect(soundId, effectId, engineConfig);
     return true;
   }

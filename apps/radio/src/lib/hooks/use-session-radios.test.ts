@@ -143,6 +143,40 @@ describe("session radios", () => {
     expect(getSessionRadios().map((radio) => radio.id)).toEqual(["rg_legacy"]);
   });
 
+  test("adds new session radios ahead of restored records", async () => {
+    await sessionRadiosCollection.stateWhenReady();
+
+    sessionStorage.setItem(
+      "radio-session-radios",
+      JSON.stringify({
+        "s:rg_restored": {
+          versionKey: "restored",
+          data: {
+            id: "rg_restored",
+            name: "Restored",
+            streamUrl: "https://radio.example/restored.mp3",
+            addedAt: Date.now() + 60_000,
+          },
+        },
+      })
+    );
+    const sync = sessionRadiosCollection.config.sync as {
+      manualTrigger?: () => void;
+    };
+    sync.manualTrigger?.();
+
+    addSessionRadio({
+      id: "rg_new",
+      name: "New",
+      streamUrl: "https://radio.example/new.mp3",
+    });
+
+    expect(getSessionRadios().map((radio) => radio.id)).toEqual([
+      "rg_new",
+      "rg_restored",
+    ]);
+  });
+
   test("saving a resolved session radio removes its temporary session entry", async () => {
     await sessionRadiosCollection.stateWhenReady();
 

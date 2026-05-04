@@ -4,7 +4,6 @@ import {
   addSessionRadio,
   getSessionRadios,
   removeSessionRadio,
-  type SessionRadioRecord,
   sessionRadiosCollection,
   toSessionRadio,
 } from "@/lib/collections/session-radios";
@@ -34,23 +33,25 @@ function buildSessionRadiosState(radios: Radio[]): SessionRadiosState {
 }
 
 type UseSessionRadios = {
+  (): SessionRadiosState;
   <T>(selector: (state: SessionRadiosState) => T): T;
   getState: () => SessionRadiosState;
 };
 
-export const useSessionRadios: UseSessionRadios = Object.assign(
-  <T>(selector: (state: SessionRadiosState) => T): T => {
-    const result = useLiveQuery((q) =>
-      q
-        .from({ radio: sessionRadiosCollection })
-        .orderBy(({ radio }) => radio.addedAt, "desc")
-    );
-    return selector(
-      buildSessionRadiosState(
-        (result.data as SessionRadioRecord[]).map(toSessionRadio)
-      )
-    );
-  },
+const useSessionRadiosSelector = <T>(
+  selector?: (state: SessionRadiosState) => T
+): SessionRadiosState | T => {
+  const result = useLiveQuery((q) =>
+    q
+      .from({ radio: sessionRadiosCollection })
+      .orderBy(({ radio }) => radio.addedAt, "desc")
+  );
+  const state = buildSessionRadiosState(result.data.map(toSessionRadio));
+  return selector ? selector(state) : state;
+};
+
+export const useSessionRadios = Object.assign(
+  useSessionRadiosSelector as UseSessionRadios,
   {
     getState: () => buildSessionRadiosState(getSessionRadios()),
   }

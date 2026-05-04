@@ -4,6 +4,7 @@ import {
 } from "@tanstack/react-db";
 import { z } from "zod";
 import type { Radio } from "@/lib/audio";
+import { platformMetadataSchema } from "./schemas";
 
 const SESSION_RADIOS_STORAGE_KEY = "radio-session-radios";
 const MAX_SESSION_RADIOS = 20;
@@ -57,19 +58,24 @@ const sessionRadioSchema = z.object({
   order: z.number().optional(),
   enabled: z.boolean().optional(),
   isSystem: z.boolean().optional(),
-  platformMetadata: z.custom<Radio["platformMetadata"]>().optional(),
+  platformMetadata: platformMetadataSchema,
   addedAt: z.number(),
 });
 
 export type SessionRadioRecord = z.infer<typeof sessionRadioSchema>;
 
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
 function parseSessionRadiosStorage(data: string): unknown {
   const parsed = JSON.parse(data) as unknown;
-  if (!(parsed && typeof parsed === "object" && "state" in parsed)) {
+  if (!(isObjectRecord(parsed) && "state" in parsed)) {
     return parsed;
   }
 
-  const radios = (parsed as { state?: { radios?: unknown[] } }).state?.radios;
+  const state = isObjectRecord(parsed.state) ? parsed.state : undefined;
+  const radios = state?.radios;
   if (!Array.isArray(radios)) {
     return parsed;
   }
@@ -77,8 +83,11 @@ function parseSessionRadiosStorage(data: string): unknown {
   const baseAddedAt = Date.now();
   return Object.fromEntries(
     radios.flatMap((radio, index) => {
+      if (!isObjectRecord(radio)) {
+        return [];
+      }
       const record = sessionRadioSchema.safeParse({
-        ...(radio as object),
+        ...radio,
         addedAt: baseAddedAt - index,
       });
       if (!record.success) {
@@ -119,12 +128,29 @@ export function isSessionRadio(radio: Radio): boolean {
   return String(radio.id).startsWith("rg_");
 }
 
+function getOrderedSessionRadioRecords(): SessionRadioRecord[] {
+  return Array.from(sessionRadiosCollection.state.values()).sort(
+    (a, b) => b.addedAt - a.addedAt
+  );
+}
+
+function getNextAddedAt(): number {
+  const latestStoredAddedAt = Math.max(
+    0,
+    ...Array.from(sessionRadiosCollection.state.values(), (radio) =>
+      Number.isFinite(radio.addedAt) ? radio.addedAt : 0
+    )
+  );
+
+  lastAddedAt = Math.max(Date.now(), lastAddedAt + 1, latestStoredAddedAt + 1);
+  return lastAddedAt;
+}
+
 function toSessionRadioRecord(radio: Radio): SessionRadioRecord {
-  lastAddedAt = Math.max(Date.now(), lastAddedAt + 1);
   return {
     ...radio,
     id: radio.id ?? radio.name,
-    addedAt: lastAddedAt,
+    addedAt: getNextAddedAt(),
   };
 }
 
@@ -134,9 +160,7 @@ export function toSessionRadio(record: SessionRadioRecord): Radio {
 }
 
 export function getSessionRadios(): Radio[] {
-  return Array.from(sessionRadiosCollection.state.values())
-    .sort((a, b) => b.addedAt - a.addedAt)
-    .map(toSessionRadio);
+  return getOrderedSessionRadioRecords().map(toSessionRadio);
 }
 
 export function addSessionRadio(radio: Radio): void {
@@ -148,10 +172,9 @@ export function addSessionRadio(radio: Radio): void {
 
   sessionRadiosCollection.insert(record);
 
-  const radios = Array.from(sessionRadiosCollection.state.values()).sort(
-    (a, b) => b.addedAt - a.addedAt
-  );
-  for (const staleRadio of radios.slice(MAX_SESSION_RADIOS)) {
+  for (const staleRadio of getOrderedSessionRadioRecords().slice(
+    MAX_SESSION_RADIOS
+  )) {
     sessionRadiosCollection.delete(String(staleRadio.id));
   }
 }

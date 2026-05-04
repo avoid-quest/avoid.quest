@@ -15,6 +15,18 @@ export type PlaybackActionError = {
 
 export type PlaybackActionErrorReporter = (error: PlaybackActionError) => void;
 
+export type PlaybackActionErrorInput = {
+  mode: PlaybackActionMode;
+  code?: AudioErrorCode;
+  cause: unknown;
+  channelId?: string;
+  radio?: Radio;
+  fallbackMessage?: string;
+};
+
+const DEFAULT_PLAYBACK_START_ERROR_MESSAGE =
+  "Playback could not start. Check the station stream and try again.";
+
 function getRawErrorMessage(error: unknown): string | null {
   if (error instanceof Error) {
     return error.message;
@@ -25,9 +37,24 @@ function getRawErrorMessage(error: unknown): string | null {
   return null;
 }
 
+function messageIncludesAny(message: string, fragments: readonly string[]) {
+  return fragments.some((fragment) => message.includes(fragment));
+}
+
+function hasPlaybackActionErrorShape(
+  error: unknown
+): error is PlaybackActionError {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "userMessage" in error &&
+    typeof error.userMessage === "string"
+  );
+}
+
 export function getFriendlyPlaybackErrorMessage(
   error: unknown,
-  fallback = "Playback could not start. Check the station stream and try again."
+  fallback = DEFAULT_PLAYBACK_START_ERROR_MESSAGE
 ): string {
   if (typeof DOMException !== "undefined" && error instanceof DOMException) {
     if (error.name === "NotAllowedError") {
@@ -40,38 +67,29 @@ export function getFriendlyPlaybackErrorMessage(
 
   const rawMessage = getRawErrorMessage(error)?.toLowerCase() ?? "";
   if (
-    rawMessage.includes("notallowed") ||
-    rawMessage.includes("permission") ||
-    rawMessage.includes("user gesture")
+    messageIncludesAny(rawMessage, ["notallowed", "permission", "user gesture"])
   ) {
     return "Playback needs browser audio permission before it can start.";
   }
   if (
-    rawMessage.includes("not found") ||
-    rawMessage.includes("cleaned up") ||
-    rawMessage.includes("source_not_found")
+    messageIncludesAny(rawMessage, [
+      "not found",
+      "cleaned up",
+      "source_not_found",
+    ])
   ) {
     return "Playback source is no longer available. Reload the station and try again.";
   }
-  if (
-    rawMessage.includes("network") ||
-    rawMessage.includes("fetch") ||
-    rawMessage.includes("stream")
-  ) {
+  if (messageIncludesAny(rawMessage, ["network", "fetch", "stream"])) {
     return "The stream could not be reached. Check the station URL and try again.";
   }
 
   return fallback;
 }
 
-export function createPlaybackActionError(input: {
-  mode: PlaybackActionMode;
-  code?: AudioErrorCode;
-  cause: unknown;
-  channelId?: string;
-  radio?: Radio;
-  fallbackMessage?: string;
-}): PlaybackActionError {
+export function createPlaybackActionError(
+  input: PlaybackActionErrorInput
+): PlaybackActionError {
   return {
     mode: input.mode,
     code: input.code ?? "PLAY_ERROR",
@@ -87,22 +105,18 @@ export function createPlaybackActionError(input: {
 }
 
 export function toRuntimeAudioError(
-  error: PlaybackActionError | unknown,
+  error: unknown,
   code: AudioErrorCode = "PLAY_ERROR",
   radio?: Radio
 ): AudioError {
-  const normalized =
-    typeof error === "object" &&
-    error !== null &&
-    "userMessage" in error &&
-    typeof error.userMessage === "string"
-      ? (error as PlaybackActionError)
-      : createPlaybackActionError({
-          mode: "single",
-          code,
-          cause: error,
-          radio,
-        });
+  const normalized = hasPlaybackActionErrorShape(error)
+    ? error
+    : createPlaybackActionError({
+        mode: "single",
+        code,
+        cause: error,
+        radio,
+      });
 
   return {
     id: generateErrorId(),
@@ -115,7 +129,7 @@ export function toRuntimeAudioError(
 
 export function reportPlaybackActionError(
   reportError: PlaybackActionErrorReporter,
-  input: Parameters<typeof createPlaybackActionError>[0]
+  input: PlaybackActionErrorInput
 ): PlaybackActionError {
   const error = createPlaybackActionError(input);
   reportError(error);

@@ -29,15 +29,15 @@ export function isSameRadio(
   return a.streamUrl === b.streamUrl;
 }
 
-function getOutputRouter() {
-  return getMainOutputRouter();
+function getPlaybackOutputRouter(ctx: PlaybackActionContext) {
+  return ctx.getMainOutputRouter() ?? getMainOutputRouter();
 }
 
 export async function applyMainOutputDevice(
   deviceId: string,
   ctx = getDefaultPlaybackActionContext()
 ): Promise<void> {
-  const router = ctx.getMainOutputRouter() ?? getOutputRouter();
+  const router = getPlaybackOutputRouter(ctx);
   if (router) {
     await router.setMainOutput(deviceId);
   }
@@ -46,7 +46,7 @@ export async function applyMainOutputDevice(
 export async function applyCurrentMainAudioSettings(
   ctx = getDefaultPlaybackActionContext()
 ): Promise<void> {
-  const router = ctx.getMainOutputRouter() ?? getOutputRouter();
+  const router = getPlaybackOutputRouter(ctx);
   if (!router) {
     ctx.lifecycle.mainOutputSettingsApplied = false;
     return;

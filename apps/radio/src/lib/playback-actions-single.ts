@@ -79,8 +79,6 @@ export async function setSinglePlaybackState(
       cause: error,
       channelId: activeChannelId,
       radio: channel.radio,
-      fallbackMessage:
-        "Playback could not start. Check the station stream and try again.",
     });
   }
 }
@@ -143,13 +141,12 @@ export async function selectSinglePlaybackRadio(
   const outgoingRuntime = outgoingChannelId
     ? getPlaybackChannelRuntime(outgoingChannelId)
     : null;
-  const shouldCrossfade = !!(
-    outgoingChannelId &&
-    outgoingRuntime?.soundId &&
-    outgoingRuntime.isPlaying
-  );
+  const outgoingSoundId =
+    outgoingRuntime?.isPlaying && outgoingRuntime.soundId
+      ? outgoingRuntime.soundId
+      : null;
 
-  if (!shouldCrossfade) {
+  if (!(outgoingChannelId && outgoingSoundId)) {
     if (outgoingChannelId && outgoingRuntime?.soundId) {
       cleanupManagedChannel(outgoingChannelId, ctx);
     }
@@ -159,7 +156,7 @@ export async function selectSinglePlaybackRadio(
 
   try {
     await ctx.audio.playSound(incomingSoundId, 0);
-    await crossfade(outgoingRuntime.soundId as string, incomingSoundId, {
+    await crossfade(outgoingSoundId, incomingSoundId, {
       duration: transitionDuration,
       targetVolume: previousVolume,
       curve: "equalPower",
@@ -171,8 +168,6 @@ export async function selectSinglePlaybackRadio(
       cause: error,
       channelId: incomingChannelId,
       radio,
-      fallbackMessage:
-        "Playback could not start. Check the station stream and try again.",
     });
   }
 

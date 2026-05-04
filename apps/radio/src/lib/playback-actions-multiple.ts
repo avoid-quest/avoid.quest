@@ -134,8 +134,6 @@ export async function setMultipleChannelPlaying(
       cause: error,
       channelId,
       radio: channel.radio,
-      fallbackMessage:
-        "Playback could not start. Check the station stream and try again.",
     });
   }
 }

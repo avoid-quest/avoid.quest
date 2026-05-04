@@ -63,9 +63,12 @@ function createTestContext(overrides: Partial<AudioManager> = {}) {
           _radio,
           optionsOrSoundId?: string | { soundId?: string }
         ) => {
-          return typeof optionsOrSoundId === "string"
-            ? optionsOrSoundId
-            : (optionsOrSoundId?.soundId ?? "sound");
+          const soundId =
+            typeof optionsOrSoundId === "string"
+              ? optionsOrSoundId
+              : (optionsOrSoundId?.soundId ?? "sound");
+          setPlaybackChannelRuntime(_channelId, () => ({ soundId }));
+          return soundId;
         }
       ),
       deactivateAll: mock(() => undefined),
@@ -182,6 +185,139 @@ describe("mode lifecycle manager", () => {
     expect(manager.getSnapshot()).toMatchObject({
       currentMode: null,
       phase: "inactive",
+    });
+  });
+
+  test("keeps initial single activation retryable until the session exists and restores its active sound", async () => {
+    const context = createTestContext();
+    const manager = createModeManager({
+      lifecycles: createModeLifecycleRegistry({
+        ctx: context,
+      }),
+      commitMode: mock(() => undefined),
+    });
+
+    await expect(manager.activateInitialMode("single")).rejects.toThrow(
+      "Single playback session is not ready"
+    );
+
+    expect(manager.getSnapshot()).toMatchObject({
+      currentMode: null,
+      phase: "inactive",
+    });
+
+    await playbackSessionsCollection.stateWhenReady();
+    const radio = {
+      id: "station-1",
+      name: "Station 1",
+      streamUrl: "https://radio.example/station.mp3",
+    };
+    playbackSessionsCollection.insert({
+      id: "single",
+      channels: [
+        {
+          ...createDefaultChannel("single-a", "single-primary", 0),
+          radio,
+        },
+      ],
+      masterVolume: 0.6,
+      crossfadePosition: 0.5,
+      headphoneVolume: 1,
+      activeChannelId: "single-a",
+    });
+
+    await manager.activateInitialMode("single");
+
+    expect(context.channels.activate).toHaveBeenCalledWith(
+      "single",
+      "single-a",
+      radio,
+      "single:single-a"
+    );
+    expect(context.audio.setGlobalVolume).toHaveBeenCalledWith(0.6);
+    expect(getPlaybackChannelRuntime("single-a").soundId).toBe(
+      "single:single-a"
+    );
+    expect(manager.getSnapshot()).toMatchObject({
+      currentMode: "single",
+      phase: "active",
+      error: null,
+    });
+  });
+
+  test("keeps initial multiple activation retryable until the session exists and restores channel sounds", async () => {
+    const context = createTestContext();
+    const manager = createModeManager({
+      lifecycles: createModeLifecycleRegistry({ ctx: context }),
+      commitMode: mock(() => undefined),
+    });
+
+    await expect(manager.activateInitialMode("multiple")).rejects.toThrow(
+      "Multiple playback session is not ready"
+    );
+
+    expect(manager.getSnapshot()).toMatchObject({
+      currentMode: null,
+      phase: "inactive",
+    });
+
+    await playbackSessionsCollection.stateWhenReady();
+    const radioOne = {
+      id: "station-1",
+      name: "Station 1",
+      streamUrl: "https://radio.example/station-1.mp3",
+    };
+    const radioTwo = {
+      id: "station-2",
+      name: "Station 2",
+      streamUrl: "https://radio.example/station-2.mp3",
+    };
+    playbackSessionsCollection.insert({
+      id: "multiple",
+      channels: [
+        {
+          ...createDefaultChannel("multi:station-1", "multiple", 0),
+          radio: radioOne,
+        },
+        {
+          ...createDefaultChannel("multi:station-2", "multiple", 1),
+          radio: radioTwo,
+        },
+        createDefaultChannel("multi:empty", "multiple", 2),
+      ],
+      masterVolume: 0.8,
+      crossfadePosition: 0.5,
+      headphoneVolume: 1,
+      activeChannelId: null,
+    });
+
+    await manager.activateInitialMode("multiple");
+
+    expect(context.channels.activate).toHaveBeenCalledTimes(2);
+    expect(context.channels.activate).toHaveBeenCalledWith(
+      "multiple",
+      "multi:station-1",
+      radioOne,
+      "multiple:multi:station-1"
+    );
+    expect(context.channels.activate).toHaveBeenCalledWith(
+      "multiple",
+      "multi:station-2",
+      radioTwo,
+      "multiple:multi:station-2"
+    );
+    expect(context.audio.setGlobalVolume).toHaveBeenCalledWith(0.8);
+    expect(getPlaybackChannelRuntime("multi:station-1").soundId).toBe(
+      "multiple:multi:station-1"
+    );
+    expect(getPlaybackChannelRuntime("multi:station-2").soundId).toBe(
+      "multiple:multi:station-2"
+    );
+    expect(getPlaybackChannelRuntime("multi:empty").soundId).toBeNull();
+    expect(manager.getSnapshot()).toMatchObject({
+      currentMode: "multiple",
+      phase: "active",
+      error: null,
     });
   });
 

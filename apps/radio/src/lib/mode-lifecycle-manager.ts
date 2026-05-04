@@ -6,6 +6,7 @@ import {
   getPlaybackSession,
   PLAYBACK_SESSION_IDS,
   type PlaybackSessionId,
+  type PlaybackSessionRecord,
   playbackSessionsCollection,
 } from "@/lib/collections/playback-sessions";
 import { updatePlayerSettings } from "@/lib/collections/settings";
@@ -25,6 +26,7 @@ import {
 import {
   applySessionMasterVolume,
   cleanupManagedChannel,
+  createManagedSound,
   ensureMainAudioSettingsApplied,
 } from "@/lib/playback-actions-shared";
 import type { DeckId } from "@/lib/stores/dj-runtime-store";
@@ -158,12 +160,63 @@ function assertNoOrphanedSounds(
   }
 }
 
+function getPlaybackModeLabel(sessionId: PlaybackSessionId): string {
+  switch (sessionId) {
+    case "dj":
+      return "DJ";
+    case "multiple":
+      return "Multiple";
+    case "single":
+      return "Single";
+    default:
+      return sessionId;
+  }
+}
+
+async function getReadyPlaybackSession(
+  sessionId: PlaybackSessionId
+): Promise<PlaybackSessionRecord> {
+  await playbackSessionsCollection.stateWhenReady();
+  const session = getPlaybackSession(sessionId);
+  if (!session) {
+    throw new Error(
+      `${getPlaybackModeLabel(sessionId)} playback session is not ready`
+    );
+  }
+  return session;
+}
+
+function restoreManagedModeSounds(
+  sessionId: Exclude<PlaybackSessionId, "dj">,
+  session: PlaybackSessionRecord,
+  ctx: PlaybackActionContext
+): void {
+  const channels =
+    sessionId === "single"
+      ? session.channels.filter(
+          (channel) => channel.id === session.activeChannelId
+        )
+      : session.channels;
+
+  for (const channel of channels) {
+    if (!(channel.radio && !getPlaybackChannelRuntime(channel.id).soundId)) {
+      continue;
+    }
+    createManagedSound(sessionId, channel.id, channel.radio, undefined, ctx);
+  }
+}
+
 async function activateManagedMode(
   sessionId: PlaybackSessionId,
   ctx: PlaybackActionContext
-): Promise<void> {
+): Promise<PlaybackSessionRecord> {
+  const session = await getReadyPlaybackSession(sessionId);
   await ensureMainAudioSettingsApplied(ctx);
+  if (sessionId !== "dj") {
+    restoreManagedModeSounds(sessionId, session, ctx);
+  }
   applySessionMasterVolume(sessionId, ctx);
+  return session;
 }
 
 async function deactivateManagedMode(
@@ -211,13 +264,7 @@ async function restoreDjDeckRadio(
 }
 
 async function activateDjMode(ctx: PlaybackActionContext): Promise<void> {
-  await playbackSessionsCollection.stateWhenReady();
-  const session = getPlaybackSession("dj");
-  if (!session) {
-    throw new Error("DJ playback session is not ready");
-  }
-
-  await activateManagedMode("dj", ctx);
+  const session = await activateManagedMode("dj", ctx);
   const deckCommands = createDjDeckCommands(ctx);
 
   const deckA = session.channels.find(
@@ -265,7 +312,9 @@ function createManagedModeLifecycle(
   fadeOutDurationMs: number
 ): ModeLifecycle {
   return createLifecycle(
-    () => activateManagedMode(sessionId, ctx),
+    async () => {
+      await activateManagedMode(sessionId, ctx);
+    },
     () => deactivateManagedMode(sessionId, ctx, fadeOutSound, fadeOutDurationMs)
   );
 }

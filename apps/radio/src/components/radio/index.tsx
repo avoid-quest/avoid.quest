@@ -21,12 +21,14 @@ export function Radios() {
     if (snapshot.currentMode === mode) {
       return;
     }
-    const transition =
-      snapshot.currentMode === null && snapshot.phase === "inactive"
-        ? modeManager.activateInitialMode(mode)
-        : modeManager.switchTo(mode);
+    const isInitialActivation =
+      snapshot.currentMode === null && snapshot.phase === "inactive";
+    const transition = isInitialActivation
+      ? modeManager.activateInitialMode(mode)
+      : modeManager.switchTo(mode);
+
     transition.catch((error) => {
-      console.error("[radio] Failed to activate initial mode:", error);
+      console.error("[radio] Failed to synchronize playback mode:", error);
     });
   }, [mode]);
 

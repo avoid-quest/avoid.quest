@@ -1,7 +1,10 @@
 import { useSyncExternalStore } from "react";
 import { fadeOut, type Radio } from "@/lib/audio";
 import {
+  DECK_A_CHANNEL_ID,
+  DECK_B_CHANNEL_ID,
   getPlaybackSession,
+  PLAYBACK_SESSION_IDS,
   type PlaybackSessionId,
 } from "@/lib/collections/playback-sessions";
 import { updatePlayerSettings } from "@/lib/collections/settings";
@@ -24,6 +27,7 @@ import {
   cleanupManagedChannel,
   ensureMainAudioSettingsApplied,
 } from "@/lib/playback-actions-shared";
+import type { DeckId } from "@/lib/stores/dj-runtime-store";
 import {
   getPlaybackChannelRuntime,
   resetPlaybackChannelRuntime,
@@ -62,7 +66,13 @@ type CreateModeManagerOptions = {
   commitMode?: (mode: PlaybackSessionId) => void;
 };
 
-const MODE_IDS = ["single", "multiple", "dj"] as const;
+type ModeManager = {
+  getSnapshot: () => ModeTransitionSnapshot;
+  subscribe: (listener: () => void) => () => void;
+  activateInitialMode: (mode: PlaybackSessionId) => Promise<void>;
+  switchTo: (nextMode: PlaybackSessionId) => Promise<void>;
+};
+
 const MODE_FADE_OUT_DURATION_MS = 150;
 
 function getErrorMessage(error: unknown): string {
@@ -176,6 +186,27 @@ function isRestorableDjRadio(radio: Radio | null): radio is Radio {
   return radio !== null && radio.platformMetadata?.platform !== "local-file";
 }
 
+async function restoreDjDeckRadio(
+  deckId: DeckId,
+  radio: Radio | null
+): Promise<void> {
+  if (radio?.platformMetadata?.platform === "local-file") {
+    resetDeck(deckId);
+    return;
+  }
+
+  if (!isRestorableDjRadio(radio)) {
+    return;
+  }
+
+  if (deckId === DECK_A_CHANNEL_ID) {
+    await setDeckARadio(radio);
+    return;
+  }
+
+  await setDeckBRadio(radio);
+}
+
 async function activateDjMode(ctx: PlaybackActionContext): Promise<void> {
   const session = getPlaybackSession("dj");
   await activateManagedMode("dj", ctx);
@@ -183,22 +214,15 @@ async function activateDjMode(ctx: PlaybackActionContext): Promise<void> {
     return;
   }
 
-  const deckA = session.channels.find((channel) => channel.id === "deck-a");
-  const deckB = session.channels.find((channel) => channel.id === "deck-b");
-  const deckARadio = deckA?.radio ?? null;
-  const deckBRadio = deckB?.radio ?? null;
+  const deckA = session.channels.find(
+    (channel) => channel.id === DECK_A_CHANNEL_ID
+  );
+  const deckB = session.channels.find(
+    (channel) => channel.id === DECK_B_CHANNEL_ID
+  );
 
-  if (deckARadio?.platformMetadata?.platform === "local-file") {
-    resetDeck("deck-a");
-  } else if (isRestorableDjRadio(deckARadio)) {
-    await setDeckARadio(deckARadio);
-  }
-
-  if (deckBRadio?.platformMetadata?.platform === "local-file") {
-    resetDeck("deck-b");
-  } else if (isRestorableDjRadio(deckBRadio)) {
-    await setDeckBRadio(deckBRadio);
-  }
+  await restoreDjDeckRadio(DECK_A_CHANNEL_ID, deckA?.radio ?? null);
+  await restoreDjDeckRadio(DECK_B_CHANNEL_ID, deckB?.radio ?? null);
 
   setMasterVolume(session.masterVolume);
   setCrossfadePosition(session.crossfadePosition);
@@ -220,6 +244,18 @@ async function deactivateDjMode(
   assertNoOrphanedSounds(soundIds, ctx, "dj");
 }
 
+function createManagedModeLifecycle(
+  sessionId: PlaybackSessionId,
+  ctx: PlaybackActionContext,
+  fadeOutSound: FadeOutSound,
+  fadeOutDurationMs: number
+): ModeLifecycle {
+  return createLifecycle(
+    () => activateManagedMode(sessionId, ctx),
+    () => deactivateManagedMode(sessionId, ctx, fadeOutSound, fadeOutDurationMs)
+  );
+}
+
 export function createModeLifecycleRegistry({
   ctx = getDefaultPlaybackActionContext(),
   fadeOutDurationMs = MODE_FADE_OUT_DURATION_MS,
@@ -229,15 +265,17 @@ export function createModeLifecycleRegistry({
   ModeLifecycle
 > {
   return {
-    single: createLifecycle(
-      () => activateManagedMode("single", ctx),
-      () =>
-        deactivateManagedMode("single", ctx, fadeOutSound, fadeOutDurationMs)
+    single: createManagedModeLifecycle(
+      "single",
+      ctx,
+      fadeOutSound,
+      fadeOutDurationMs
     ),
-    multiple: createLifecycle(
-      () => activateManagedMode("multiple", ctx),
-      () =>
-        deactivateManagedMode("multiple", ctx, fadeOutSound, fadeOutDurationMs)
+    multiple: createManagedModeLifecycle(
+      "multiple",
+      ctx,
+      fadeOutSound,
+      fadeOutDurationMs
     ),
     dj: createLifecycle(
       () => activateDjMode(ctx),
@@ -260,7 +298,7 @@ export function createModeManager({
   initialMode = null,
   lifecycles = createModeLifecycleRegistry(),
   commitMode = defaultCommitMode,
-}: CreateModeManagerOptions = {}) {
+}: CreateModeManagerOptions = {}): ModeManager {
   let snapshot: ModeTransitionSnapshot = {
     currentMode: initialMode,
     requestedMode: null,
@@ -276,7 +314,9 @@ export function createModeManager({
     }
   }
 
-  async function restorePreviousMode(previousMode: PlaybackSessionId | null) {
+  async function restorePreviousMode(
+    previousMode: PlaybackSessionId | null
+  ): Promise<void> {
     if (!previousMode) {
       emit({ currentMode: null, phase: "inactive", requestedMode: null });
       return;
@@ -375,5 +415,5 @@ export function useModeTransitionSnapshot(): ModeTransitionSnapshot {
 }
 
 export function isPlaybackSessionId(value: string): value is PlaybackSessionId {
-  return MODE_IDS.includes(value as PlaybackSessionId);
+  return PLAYBACK_SESSION_IDS.some((sessionId) => sessionId === value);
 }

@@ -16,6 +16,72 @@ const URL_SCHEMA = z
 
 type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
+const EXPOSED_STREAM_HEADERS = [
+  "Content-Type",
+  "Content-Length",
+  "Icy-MetaInt",
+  "Icy-Name",
+  "Icy-Description",
+  "Icy-Genre",
+  "Icy-Br",
+];
+
+const BLOCKED_HOSTNAMES = [
+  "localhost",
+  "0.0.0.0",
+  "::1",
+  "[::1]",
+  "metadata.google.internal",
+];
+
+const BLOCKED_HOSTNAME_SUFFIXES = [".onion", ".local", ".internal"];
+
+const BLOCKED_HOSTNAME_PREFIXES = [
+  "127.",
+  "10.",
+  "192.168.",
+  "172.16.",
+  "172.17.",
+  "172.18.",
+  "172.19.",
+  "172.20.",
+  "172.21.",
+  "172.22.",
+  "172.23.",
+  "172.24.",
+  "172.25.",
+  "172.26.",
+  "172.27.",
+  "172.28.",
+  "172.29.",
+  "172.30.",
+  "172.31.",
+  "169.254.",
+  "fc",
+  "fd",
+  "fe80:",
+  "::ffff:127.",
+  "::ffff:10.",
+  "::ffff:192.168.",
+  "::ffff:172.16.",
+  "::ffff:172.17.",
+  "::ffff:172.18.",
+  "::ffff:172.19.",
+  "::ffff:172.20.",
+  "::ffff:172.21.",
+  "::ffff:172.22.",
+  "::ffff:172.23.",
+  "::ffff:172.24.",
+  "::ffff:172.25.",
+  "::ffff:172.26.",
+  "::ffff:172.27.",
+  "::ffff:172.28.",
+  "::ffff:172.29.",
+  "::ffff:172.30.",
+  "::ffff:172.31.",
+  "::ffff:169.254.",
+];
+
 type StreamAccessInspector = (
   url: string,
   options: {
@@ -53,6 +119,14 @@ function createStreamProxyError(init: {
   return new AppError(init);
 }
 
+function isBlockedStreamHostname(hostname: string): boolean {
+  return (
+    BLOCKED_HOSTNAMES.includes(hostname) ||
+    BLOCKED_HOSTNAME_PREFIXES.some((prefix) => hostname.startsWith(prefix)) ||
+    BLOCKED_HOSTNAME_SUFFIXES.some((suffix) => hostname.endsWith(suffix))
+  );
+}
+
 function getPrivateAddressReason(urlParam: string): AppError | null {
   const parsed = new URL(urlParam);
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
@@ -66,60 +140,7 @@ function getPrivateAddressReason(urlParam: string): AppError | null {
   }
 
   const hostname = parsed.hostname.toLowerCase();
-  const isPrivate =
-    hostname === "localhost" ||
-    hostname.startsWith("127.") ||
-    hostname.startsWith("10.") ||
-    hostname.startsWith("192.168.") ||
-    hostname.startsWith("172.16.") ||
-    hostname.startsWith("172.17.") ||
-    hostname.startsWith("172.18.") ||
-    hostname.startsWith("172.19.") ||
-    hostname.startsWith("172.20.") ||
-    hostname.startsWith("172.21.") ||
-    hostname.startsWith("172.22.") ||
-    hostname.startsWith("172.23.") ||
-    hostname.startsWith("172.24.") ||
-    hostname.startsWith("172.25.") ||
-    hostname.startsWith("172.26.") ||
-    hostname.startsWith("172.27.") ||
-    hostname.startsWith("172.28.") ||
-    hostname.startsWith("172.29.") ||
-    hostname.startsWith("172.30.") ||
-    hostname.startsWith("172.31.") ||
-    hostname.startsWith("169.254.") ||
-    hostname === "0.0.0.0" ||
-    hostname === "::1" ||
-    hostname === "[::1]" ||
-    hostname.startsWith("fc") ||
-    hostname.startsWith("fd") ||
-    hostname.startsWith("fe80:") ||
-    hostname.endsWith(".onion") ||
-    hostname.endsWith(".local") ||
-    hostname.endsWith(".internal") ||
-    hostname === "metadata.google.internal" ||
-    hostname.startsWith("::ffff:127.") ||
-    hostname.startsWith("::ffff:10.") ||
-    hostname.startsWith("::ffff:192.168.") ||
-    hostname.startsWith("::ffff:172.16.") ||
-    hostname.startsWith("::ffff:172.17.") ||
-    hostname.startsWith("::ffff:172.18.") ||
-    hostname.startsWith("::ffff:172.19.") ||
-    hostname.startsWith("::ffff:172.20.") ||
-    hostname.startsWith("::ffff:172.21.") ||
-    hostname.startsWith("::ffff:172.22.") ||
-    hostname.startsWith("::ffff:172.23.") ||
-    hostname.startsWith("::ffff:172.24.") ||
-    hostname.startsWith("::ffff:172.25.") ||
-    hostname.startsWith("::ffff:172.26.") ||
-    hostname.startsWith("::ffff:172.27.") ||
-    hostname.startsWith("::ffff:172.28.") ||
-    hostname.startsWith("::ffff:172.29.") ||
-    hostname.startsWith("::ffff:172.30.") ||
-    hostname.startsWith("::ffff:172.31.") ||
-    hostname.startsWith("::ffff:169.254.");
-
-  if (!isPrivate) {
+  if (!isBlockedStreamHostname(hostname)) {
     return null;
   }
 
@@ -157,6 +178,17 @@ function validateStreamUrl(urlParam: string | null): string | AppError {
   return getPrivateAddressReason(urlParam) ?? urlParam;
 }
 
+function copyHeaderIfPresent(
+  source: Headers,
+  target: Headers,
+  headerName: string
+): void {
+  const value = source.get(headerName);
+  if (value) {
+    target.set(headerName, value);
+  }
+}
+
 function buildStreamResponse(
   upstreamResponse: Response,
   request: Request,
@@ -166,31 +198,12 @@ function buildStreamResponse(
   const responseHeaders = new Headers(proxyPolicy.errorHeaders(request));
   responseHeaders.set(
     "Access-Control-Expose-Headers",
-    "Content-Type, Content-Length, Icy-MetaInt, Icy-Name, Icy-Description, Icy-Genre, Icy-Br"
+    EXPOSED_STREAM_HEADERS.join(", ")
   );
   responseHeaders.set("x-request-id", requestId);
 
-  const contentType = upstreamResponse.headers.get("Content-Type");
-  if (contentType) {
-    responseHeaders.set("Content-Type", contentType);
-  }
-
-  const contentLength = upstreamResponse.headers.get("Content-Length");
-  if (contentLength) {
-    responseHeaders.set("Content-Length", contentLength);
-  }
-
-  for (const header of [
-    "Icy-MetaInt",
-    "Icy-Name",
-    "Icy-Description",
-    "Icy-Genre",
-    "Icy-Br",
-  ]) {
-    const value = upstreamResponse.headers.get(header);
-    if (value) {
-      responseHeaders.set(header, value);
-    }
+  for (const header of EXPOSED_STREAM_HEADERS) {
+    copyHeaderIfPresent(upstreamResponse.headers, responseHeaders, header);
   }
 
   const contentRange = upstreamResponse.headers.get("Content-Range");

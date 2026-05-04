@@ -48,6 +48,14 @@ export {
   syncRadios,
 } from "./radios";
 export {
+  addSessionRadio,
+  getSessionRadios,
+  isSessionRadio,
+  removeSessionRadio,
+  type SessionRadioRecord,
+  sessionRadiosCollection,
+} from "./session-radios";
+export {
   getAudioSettings,
   getDelaySettings,
   getInputDeckSettings,

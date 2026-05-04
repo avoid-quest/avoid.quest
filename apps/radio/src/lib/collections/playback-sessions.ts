@@ -7,11 +7,11 @@ import { EFFECT_TYPES, type EffectConfig } from "@/lib/audio/dsp/effects/types";
 import type { Radio } from "@/lib/audio/playback/types";
 import { radiosCollection } from "./radios";
 import { platformMetadataSchema } from "./schemas";
+import { sessionRadiosCollection } from "./session-radios";
 import { settingsCollection } from "./settings";
 
 const PLAYBACK_SESSIONS_STORAGE_KEY = "radio-app-playback-sessions";
 const SETTINGS_ID = "app-settings";
-const SESSION_RADIOS_STORAGE_KEY = "radio-session-radios";
 
 export const PLAYBACK_SESSION_IDS = ["single", "multiple", "dj"] as const;
 export type PlaybackSessionId = (typeof PLAYBACK_SESSION_IDS)[number];
@@ -194,29 +194,11 @@ function isSessionOnlyRadio(radio: Radio | null): boolean {
 }
 
 function readStoredSessionRadioIds(): Set<string> {
-  if (typeof sessionStorage === "undefined") {
-    return new Set();
-  }
-
-  try {
-    const raw = sessionStorage.getItem(SESSION_RADIOS_STORAGE_KEY);
-    if (!raw) {
-      return new Set();
-    }
-
-    const parsed = JSON.parse(raw) as {
-      state?: { radios?: Array<Pick<Radio, "id"> | null> };
-    };
-    const radios = Array.isArray(parsed.state?.radios)
-      ? parsed.state.radios
-      : [];
-
-    return new Set(
-      radios.flatMap((radio) => (radio?.id == null ? [] : [String(radio.id)]))
-    );
-  } catch {
-    return new Set();
-  }
+  return new Set(
+    Array.from(sessionRadiosCollection.state.values()).map((radio) =>
+      String(radio.id)
+    )
+  );
 }
 
 export function buildSingleSessionFromLegacyState(legacySingle?: {
@@ -469,6 +451,7 @@ export async function initializePlaybackSessions(): Promise<void> {
     playbackSessionsCollection.stateWhenReady(),
     radiosCollection.stateWhenReady(),
     settingsCollection.stateWhenReady(),
+    sessionRadiosCollection.stateWhenReady(),
   ]);
 
   const settings = settingsCollection.state.get(SETTINGS_ID);
@@ -517,7 +500,7 @@ export function updatePlaybackSession(
 ): void {
   const existing = getPlaybackSession(id);
   if (existing) {
-    // @ts-expect-error TanStack DB draft type is compatible with PlaybackSessionRecord in practice.
+    // @ts-expect-error TanStack DB's draft type still rejects this nested schema shape, but the runtime draft matches PlaybackSessionRecord.
     playbackSessionsCollection.update(id, updater);
   }
 }

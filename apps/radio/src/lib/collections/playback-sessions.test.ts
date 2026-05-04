@@ -13,6 +13,7 @@ import {
   SINGLE_ACTIVE_CHANNEL_ID,
 } from "./playback-sessions";
 import { radiosCollection } from "./radios";
+import { addSessionRadio, sessionRadiosCollection } from "./session-radios";
 import { settingsCollection } from "./settings";
 
 const PLAYBACK_SESSIONS_STORAGE_KEY = "radio-app-playback-sessions";
@@ -60,6 +61,7 @@ async function resetPlaybackState() {
     playbackSessionsCollection.stateWhenReady(),
     radiosCollection.stateWhenReady(),
     settingsCollection.stateWhenReady(),
+    sessionRadiosCollection.stateWhenReady(),
   ]);
 
   for (const sessionId of Array.from(playbackSessionsCollection.state.keys())) {
@@ -72,6 +74,10 @@ async function resetPlaybackState() {
 
   for (const settingsId of Array.from(settingsCollection.state.keys())) {
     settingsCollection.delete(settingsId);
+  }
+
+  for (const radioId of Array.from(sessionRadiosCollection.state.keys())) {
+    sessionRadiosCollection.delete(radioId);
   }
 
   if (typeof localStorage !== "undefined") {
@@ -389,21 +395,11 @@ describe("multiple session persistence", () => {
       },
     });
 
-    sessionStorage.setItem(
-      "radio-session-radios",
-      JSON.stringify({
-        state: {
-          radios: [
-            {
-              id: "rg_live",
-              name: "Live Session Radio",
-              streamUrl: "https://radio.example/live.mp3",
-            },
-          ],
-        },
-        version: 0,
-      })
-    );
+    addSessionRadio({
+      id: "rg_live",
+      name: "Live Session Radio",
+      streamUrl: "https://radio.example/live.mp3",
+    });
 
     playbackSessionsCollection.insert({
       id: "multiple",

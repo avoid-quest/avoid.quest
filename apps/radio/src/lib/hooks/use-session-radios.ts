@@ -1,15 +1,20 @@
-import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { useLiveQuery } from "@tanstack/react-db";
 import type { Radio } from "@/lib/audio";
+import {
+  addSessionRadio,
+  getSessionRadios,
+  removeSessionRadio,
+  sessionRadiosCollection,
+  toSessionRadio,
+} from "@/lib/collections/session-radios";
 
-export function isSessionRadio(radio: Radio): boolean {
-  if (!radio.id) {
-    return false;
-  }
-  return String(radio.id).startsWith("rg_");
-}
-
-const MAX_SESSION_RADIOS = 20;
+export {
+  addSessionRadio,
+  getSessionRadios,
+  isSessionRadio,
+  removeSessionRadio,
+  sessionRadiosCollection,
+} from "@/lib/collections/session-radios";
 
 type SessionRadiosState = {
   radios: Radio[];
@@ -18,43 +23,36 @@ type SessionRadiosState = {
   getSessionRadios: () => Radio[];
 };
 
-export const useSessionRadios = create<SessionRadiosState>()(
-  persist(
-    (set, get) => ({
-      radios: [],
-      addSessionRadio: (radio) =>
-        set((state) => {
-          // Don't add duplicates
-          if (state.radios.some((r) => r.id === radio.id)) {
-            return state;
-          }
-          const updated = [radio, ...state.radios];
-          // FIFO eviction
-          if (updated.length > MAX_SESSION_RADIOS) {
-            updated.pop();
-          }
-          return { radios: updated };
-        }),
-      removeSessionRadio: (id) =>
-        set((state) => ({
-          radios: state.radios.filter((r) => r.id !== id),
-        })),
-      getSessionRadios: () => get().radios,
-    }),
-    {
-      name: "radio-session-radios",
-      storage: {
-        getItem: (name) => {
-          const value = sessionStorage.getItem(name);
-          return value ? JSON.parse(value) : null;
-        },
-        setItem: (name, value) => {
-          sessionStorage.setItem(name, JSON.stringify(value));
-        },
-        removeItem: (name) => {
-          sessionStorage.removeItem(name);
-        },
-      },
-    }
-  )
+function buildSessionRadiosState(radios: Radio[]): SessionRadiosState {
+  return {
+    radios,
+    addSessionRadio,
+    removeSessionRadio,
+    getSessionRadios,
+  };
+}
+
+type UseSessionRadios = {
+  (): SessionRadiosState;
+  <T>(selector: (state: SessionRadiosState) => T): T;
+  getState: () => SessionRadiosState;
+};
+
+const useSessionRadiosSelector = <T>(
+  selector?: (state: SessionRadiosState) => T
+): SessionRadiosState | T => {
+  const result = useLiveQuery((q) =>
+    q
+      .from({ radio: sessionRadiosCollection })
+      .orderBy(({ radio }) => radio.addedAt, "desc")
+  );
+  const state = buildSessionRadiosState(result.data.map(toSessionRadio));
+  return selector ? selector(state) : state;
+};
+
+export const useSessionRadios = Object.assign(
+  useSessionRadiosSelector as UseSessionRadios,
+  {
+    getState: () => buildSessionRadiosState(getSessionRadios()),
+  }
 );

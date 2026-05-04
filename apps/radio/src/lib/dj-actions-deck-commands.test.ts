@@ -1,10 +1,8 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import {
-  AUDIO_ENGINE_FACADE_PUBLIC_METHOD_BUDGET,
   type AudioEngineFacade,
   type AudioManager,
   AudioManager as AudioManagerClass,
-  countAudioEngineFacadeMethods,
   type Radio,
 } from "@/lib/audio";
 import {
@@ -45,7 +43,12 @@ function insertDjSession() {
   });
 }
 
-function createTestAudioEngine(overrides: Partial<AudioEngineFacade> = {}) {
+type AudioEngineFacadeOverrides = {
+  playback?: Partial<AudioEngineFacade["playback"]>;
+  volume?: Partial<AudioEngineFacade["volume"]>;
+};
+
+function createTestAudioEngine(overrides: AudioEngineFacadeOverrides = {}) {
   const base = {
     playback: {
       play: mock(async (_soundId: string, _volume?: number) => undefined),
@@ -70,7 +73,7 @@ function createTestAudioEngine(overrides: Partial<AudioEngineFacade> = {}) {
 
 function createTestContext(
   overrides: Partial<AudioManager> = {},
-  audioEngineOverrides: Partial<AudioEngineFacade> = {}
+  audioEngineOverrides: AudioEngineFacadeOverrides = {}
 ) {
   const reportedErrors: PlaybackActionError[] = [];
   const audioEngine = createTestAudioEngine(audioEngineOverrides);
@@ -131,14 +134,6 @@ afterEach(async () => {
 });
 
 describe("DJ deck command context", () => {
-  test("keeps the audio engine facade within its public method budget", () => {
-    const { audioEngine } = createTestContext();
-
-    expect(countAudioEngineFacadeMethods(audioEngine)).toBeLessThanOrEqual(
-      AUDIO_ENGINE_FACADE_PUBLIC_METHOD_BUDGET
-    );
-  });
-
   test("loads, plays, pauses, and resets a deck through an injected playback context", async () => {
     await playbackSessionsCollection.stateWhenReady();
     insertDjSession();

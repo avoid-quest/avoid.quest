@@ -2,6 +2,16 @@ import type { AudioManager } from "./audio-manager.js";
 
 export const AUDIO_ENGINE_FACADE_PUBLIC_METHOD_BUDGET = 15;
 
+type AudioEngineManager = Pick<
+  AudioManager,
+  | "playSound"
+  | "pauseSound"
+  | "seekSound"
+  | "refreshStreamUrl"
+  | "setVolume"
+  | "setGlobalVolume"
+>;
+
 /**
  * Architecture decision for the radio audio engine migration:
  * AudioManager remains the singleton-backed compatibility object, while
@@ -26,20 +36,27 @@ export type AudioEngineFacade = {
   };
 };
 
+type AudioEngineFacadeSubsystem = AudioEngineFacade[keyof AudioEngineFacade];
+
+function countFacadeSubsystemMethods(
+  subsystem: AudioEngineFacadeSubsystem
+): number {
+  return Object.values(subsystem).filter(
+    (member) => typeof member === "function"
+  ).length;
+}
+
 export function countAudioEngineFacadeMethods(
   facade: AudioEngineFacade
 ): number {
-  return Object.values(facade).reduce((count, subsystem) => {
-    return (
-      count +
-      Object.values(subsystem).filter((member) => typeof member === "function")
-        .length
-    );
-  }, 0);
+  return Object.values(facade).reduce(
+    (count, subsystem) => count + countFacadeSubsystemMethods(subsystem),
+    0
+  );
 }
 
 export function createAudioEngineFacade(
-  manager: AudioManager
+  manager: AudioEngineManager
 ): AudioEngineFacade {
   return {
     playback: {

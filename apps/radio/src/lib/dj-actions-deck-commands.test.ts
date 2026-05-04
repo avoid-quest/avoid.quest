@@ -1,6 +1,12 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import type { AudioManager, Radio } from "@/lib/audio";
-import { AudioManager as AudioManagerClass } from "@/lib/audio";
+import {
+  AUDIO_ENGINE_FACADE_PUBLIC_METHOD_BUDGET,
+  type AudioEngineFacade,
+  type AudioManager,
+  AudioManager as AudioManagerClass,
+  countAudioEngineFacadeMethods,
+  type Radio,
+} from "@/lib/audio";
 import {
   createDefaultChannel,
   DECK_A_CHANNEL_ID,
@@ -39,8 +45,35 @@ function insertDjSession() {
   });
 }
 
-function createTestContext(overrides: Partial<AudioManager> = {}) {
+function createTestAudioEngine(overrides: Partial<AudioEngineFacade> = {}) {
+  const base = {
+    playback: {
+      play: mock(async (_soundId: string, _volume?: number) => undefined),
+      pause: mock((_soundId: string) => undefined),
+      seek: mock((_soundId: string, _position: number) => undefined),
+      refreshStreamUrl: mock(
+        async (_soundId: string, _newUrl: string, _seekPosition?: number) =>
+          undefined
+      ),
+    },
+    volume: {
+      setChannelVolume: mock((_soundId: string, _volume: number) => undefined),
+      setMasterVolume: mock((_volume: number) => undefined),
+    },
+  } satisfies AudioEngineFacade;
+
+  return {
+    playback: { ...base.playback, ...overrides.playback },
+    volume: { ...base.volume, ...overrides.volume },
+  } satisfies AudioEngineFacade;
+}
+
+function createTestContext(
+  overrides: Partial<AudioManager> = {},
+  audioEngineOverrides: Partial<AudioEngineFacade> = {}
+) {
   const reportedErrors: PlaybackActionError[] = [];
+  const audioEngine = createTestAudioEngine(audioEngineOverrides);
   const context = {
     audio: {
       pauseSound: mock((_soundId: string) => undefined),
@@ -48,6 +81,7 @@ function createTestContext(overrides: Partial<AudioManager> = {}) {
       setVolume: mock((_soundId: string, _volume: number) => undefined),
       ...overrides,
     } as unknown as AudioManager,
+    audioEngine,
     channels: {
       activate: mock(
         (
@@ -73,7 +107,7 @@ function createTestContext(overrides: Partial<AudioManager> = {}) {
     resetAudioManager: mock(() => undefined),
   } satisfies PlaybackActionContext;
 
-  return { context, reportedErrors };
+  return { context, audioEngine, reportedErrors };
 }
 
 const station: Radio = {
@@ -97,6 +131,14 @@ afterEach(async () => {
 });
 
 describe("DJ deck command context", () => {
+  test("keeps the audio engine facade within its public method budget", () => {
+    const { audioEngine } = createTestContext();
+
+    expect(countAudioEngineFacadeMethods(audioEngine)).toBeLessThanOrEqual(
+      AUDIO_ENGINE_FACADE_PUBLIC_METHOD_BUDGET
+    );
+  });
+
   test("loads, plays, pauses, and resets a deck through an injected playback context", async () => {
     await playbackSessionsCollection.stateWhenReady();
     insertDjSession();
@@ -123,12 +165,68 @@ describe("DJ deck command context", () => {
         station,
         expect.objectContaining({ soundId: "left_station-1" })
       );
-      expect(context.audio.playSound).toHaveBeenCalledWith("left_station-1", 1);
-      expect(context.audio.pauseSound).toHaveBeenCalledWith("left_station-1");
+      expect(context.audioEngine.playback.play).toHaveBeenCalledWith(
+        "left_station-1",
+        1
+      );
+      expect(context.audioEngine.playback.pause).toHaveBeenCalledWith(
+        "left_station-1"
+      );
       expect(context.channels.deactivate).toHaveBeenCalledWith("deck-a");
       expect(getPlaybackChannel("dj", "deck-a")?.radio).toEqual(station);
     } finally {
       AudioManagerClass.getInstance = originalGetInstance;
+    }
+  });
+
+  test("uses the narrow audio engine facade for deck transport and crossfade", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertDjSession();
+    const originalWindowDescriptor = Object.getOwnPropertyDescriptor(
+      globalThis,
+      "window"
+    );
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: {},
+    });
+    const { audioEngine, context } = createTestContext({
+      pauseSound: mock(() => {
+        throw new Error("legacy pauseSound should not be used");
+      }),
+      playSound: mock(() =>
+        Promise.reject(new Error("legacy playSound should not be used"))
+      ),
+      setVolume: mock(() => {
+        throw new Error("legacy setVolume should not be used");
+      }),
+    });
+
+    try {
+      const commands = createDjDeckCommands(context);
+
+      await commands.setDeckARadio(station);
+      setPlaybackChannelRuntime("deck-a", () => ({
+        soundId: "left_station-1",
+      }));
+      await commands.playDeckA();
+      commands.pauseDeckA();
+
+      expect(audioEngine.playback.play).toHaveBeenCalledWith(
+        "left_station-1",
+        1
+      );
+      expect(audioEngine.playback.pause).toHaveBeenCalledWith("left_station-1");
+      expect(audioEngine.volume.setChannelVolume).toHaveBeenCalledWith(
+        "left_station-1",
+        expect.any(Number)
+      );
+    } finally {
+      if (originalWindowDescriptor) {
+        Object.defineProperty(globalThis, "window", originalWindowDescriptor);
+      } else {
+        Reflect.deleteProperty(globalThis, "window");
+      }
     }
   });
 

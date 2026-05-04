@@ -15,6 +15,7 @@ import type {
 } from "@/lib/audio";
 import {
   type AudioManager,
+  createAudioEngineFacade,
   createDefaultEffectConfig,
   type Radio,
 } from "@/lib/audio";
@@ -95,6 +96,8 @@ const getAudioManager = (): AudioManager => {
   }
   return getDefaultPlaybackActionContext().audio;
 };
+
+const getAudioEngine = () => createAudioEngineFacade(getAudioManager());
 
 const getSoundId = (radio: Radio, side: DeckSide): string =>
   `${side}_${radio.id}`;
@@ -187,12 +190,11 @@ export function applyCrossfade(ctx = getDefaultPlaybackActionContext()) {
   const leftFinalVol = Math.cos(angle) * deckA.volume;
   const rightFinalVol = Math.sin(angle) * deckB.volume;
 
-  const manager = ctx.audio;
   if (runtimeA.soundId) {
-    manager.setVolume(runtimeA.soundId, leftFinalVol);
+    ctx.audioEngine.volume.setChannelVolume(runtimeA.soundId, leftFinalVol);
   }
   if (runtimeB.soundId) {
-    manager.setVolume(runtimeB.soundId, rightFinalVol);
+    ctx.audioEngine.volume.setChannelVolume(runtimeB.soundId, rightFinalVol);
   }
 }
 
@@ -239,7 +241,7 @@ async function playDeck(
 
   if (runtime.soundId && deck?.radio && !runtime.isPlaying) {
     try {
-      await ctx.audio.playSound(runtime.soundId, deck.volume);
+      await ctx.audioEngine.playback.play(runtime.soundId, deck.volume);
       applyCrossfade(ctx);
     } catch (err) {
       const playbackError = createPlaybackActionError({
@@ -264,7 +266,7 @@ async function playDeck(
 function pauseDeck(deckId: DeckId, ctx = getDefaultPlaybackActionContext()) {
   const runtime = deckConfig[deckId].getRuntime();
   if (runtime.soundId) {
-    ctx.audio.pauseSound(runtime.soundId);
+    ctx.audioEngine.playback.pause(runtime.soundId);
   }
 }
 
@@ -397,8 +399,8 @@ export function setMasterVolume(volume: number, ctx?: PlaybackActionContext) {
   updateMixer((draft) => {
     draft.masterVolume = volume;
   });
-  const manager = ctx?.audio ?? getAudioManager();
-  manager.setGlobalVolume(volume);
+  const engine = ctx?.audioEngine ?? getAudioEngine();
+  engine.volume.setMasterVolume(volume);
 }
 
 // Volume actions with audio manager sync
@@ -436,7 +438,7 @@ function setDeckAutoplay(deckId: DeckId, enabled: boolean) {
 function seekDeck(deckId: DeckId, position: number) {
   const runtime = deckConfig[deckId].getRuntime();
   if (runtime.soundId) {
-    getAudioManager().seekSound(runtime.soundId, position);
+    getAudioEngine().playback.seek(runtime.soundId, position);
   }
 }
 

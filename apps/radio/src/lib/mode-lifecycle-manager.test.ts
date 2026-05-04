@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import {
+  type AudioEngineFacade,
   type AudioManager,
   AudioManager as AudioManagerClass,
 } from "@/lib/audio";
@@ -27,6 +28,22 @@ async function resetPlaybackSessions() {
 }
 
 function createTestContext(overrides: Partial<AudioManager> = {}) {
+  const audioEngine = {
+    playback: {
+      play: mock(async (_soundId: string, _volume?: number) => undefined),
+      pause: mock((_soundId: string) => undefined),
+      seek: mock((_soundId: string, _position: number) => undefined),
+      refreshStreamUrl: mock(
+        async (_soundId: string, _newUrl: string, _seekPosition?: number) =>
+          undefined
+      ),
+    },
+    volume: {
+      setChannelVolume: mock((_soundId: string, _volume: number) => undefined),
+      setMasterVolume: mock((_volume: number) => undefined),
+    },
+  } satisfies AudioEngineFacade;
+
   return {
     audio: {
       hasSound: mock((_soundId: string) => false),
@@ -37,6 +54,7 @@ function createTestContext(overrides: Partial<AudioManager> = {}) {
       setVolume: mock((_soundId: string, _volume: number) => undefined),
       ...overrides,
     } as unknown as AudioManager,
+    audioEngine,
     channels: {
       activate: mock(
         (

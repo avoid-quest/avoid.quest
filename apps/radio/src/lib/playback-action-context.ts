@@ -1,4 +1,9 @@
-import { AudioManager, type Radio } from "@/lib/audio";
+import {
+  type AudioEngineFacade,
+  AudioManager,
+  createAudioEngineFacade,
+  type Radio,
+} from "@/lib/audio";
 import {
   activateChannel,
   type ChannelActivationOptions,
@@ -42,6 +47,7 @@ export type PlaybackActionChannelFacade = {
 
 export type PlaybackActionContext = {
   audio: AudioManager;
+  audioEngine: AudioEngineFacade;
   channels: PlaybackActionChannelFacade;
   getMainOutputRouter: () => MainOutputRouter;
   lifecycle: PlaybackAudioRoutingLifecycle;
@@ -69,6 +75,9 @@ export function createDefaultPlaybackActionContext(): PlaybackActionContext {
   return {
     get audio() {
       return AudioManager.getInstance();
+    },
+    get audioEngine() {
+      return createAudioEngineFacade(AudioManager.getInstance());
     },
     channels: defaultChannels,
     getMainOutputRouter,

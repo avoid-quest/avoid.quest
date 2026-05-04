@@ -17,7 +17,7 @@ import type {
   PlaybackSessionId,
 } from "@/lib/collections/playback-sessions";
 import { getPlaybackChannelRuntime } from "@/lib/stores/playback-runtime-store";
-import { getAudioManager } from "./playback-actions-shared.js";
+import { getDefaultPlaybackActionContext } from "./playback-action-context.js";
 
 export function updateManagedChannel(
   sessionId: PlaybackSessionId,
@@ -83,10 +83,14 @@ export function setManagedChannelAutoplay(
   updateChannel(sessionId, channelId, { autoplay });
 }
 
-export function seekManagedChannel(channelId: string, position: number): void {
+export function seekManagedChannel(
+  channelId: string,
+  position: number,
+  ctx = getDefaultPlaybackActionContext()
+): void {
   const runtime = getPlaybackChannelRuntime(channelId);
   if (runtime.soundId) {
-    getAudioManager().seekSound(runtime.soundId, position);
+    ctx.audio.seekSound(runtime.soundId, position);
   }
 }
 

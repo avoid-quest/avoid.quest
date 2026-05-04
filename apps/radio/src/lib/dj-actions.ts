@@ -14,7 +14,7 @@ import type {
   FilterConfig,
 } from "@/lib/audio";
 import {
-  AudioManager,
+  type AudioManager,
   createDefaultEffectConfig,
   type Radio,
 } from "@/lib/audio";
@@ -78,6 +78,8 @@ import {
   getMixer,
   updateMixer,
 } from "@/lib/hooks/use-dj-state";
+import { getDefaultPlaybackActionContext } from "@/lib/playback-action-context";
+import { createPlaybackActionError } from "@/lib/playback-action-errors";
 import {
   getDeckARuntime,
   getDeckASubscriptionCleanup,
@@ -88,17 +90,11 @@ import {
 } from "@/lib/stores/dj-runtime-store";
 import { generateId } from "@/lib/types";
 
-// Lazy initialization of AudioManager to avoid SSR issues
-let audioManager: AudioManager | null = null;
-
 const getAudioManager = (): AudioManager => {
   if (typeof window === "undefined") {
     throw new Error("AudioManager can only be used in browser environment");
   }
-  if (!audioManager) {
-    audioManager = AudioManager.getInstance();
-  }
-  return audioManager;
+  return getDefaultPlaybackActionContext().audio;
 };
 
 const getSoundId = (radio: Radio, side: DeckSide): string =>
@@ -236,8 +232,16 @@ async function playDeck(deckId: DeckId) {
       await getAudioManager().playSound(runtime.soundId, deck.volume);
       applyCrossfade();
     } catch (err) {
+      const playbackError = createPlaybackActionError({
+        mode: "dj",
+        code: "PLAY_ERROR",
+        cause: err,
+        channelId: deckId,
+        radio: deck.radio,
+        fallbackMessage: `Failed to play ${deckId}`,
+      });
       reportDjErrorSurface(
-        err instanceof Error ? err.message : `Failed to play ${deckId}`,
+        playbackError.userMessage,
         "DJ_PLAY_DECK_FAILED",
         err,
         deck.radio

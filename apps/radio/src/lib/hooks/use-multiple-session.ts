@@ -2,11 +2,11 @@ import { eq, useLiveQuery } from "@tanstack/react-db";
 import { useStore } from "@tanstack/react-store";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { Radio } from "@/lib/audio";
-import { generateErrorId } from "@/lib/audio/playback";
 import {
   type PlaybackSessionRecord,
   playbackSessionsCollection,
 } from "@/lib/collections/playback-sessions";
+import { toRuntimeAudioError } from "@/lib/playback-action-errors";
 import {
   addMultiplePlaybackChannel,
   pauseAllMultipleChannels,
@@ -81,17 +81,9 @@ function setMultipleChannelError(
   error: unknown,
   radio?: Radio
 ): void {
-  const errorObj =
-    error instanceof Error ? error : new Error("Failed to update playback");
   setPlaybackChannelRuntime(channelId, () => ({
     isLoading: false,
-    error: {
-      id: generateErrorId(),
-      message: errorObj.message,
-      code: "PLAY_ERROR",
-      radio,
-      timestamp: Date.now(),
-    },
+    error: toRuntimeAudioError(error, "PLAY_ERROR", radio),
   }));
 }
 

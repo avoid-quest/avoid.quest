@@ -1,13 +1,13 @@
 import { eq, useLiveQuery } from "@tanstack/react-db";
 import { useCallback, useMemo, useState } from "react";
 import type { Radio } from "@/lib/audio";
-import { generateErrorId } from "@/lib/audio/playback";
 import {
   type PlaybackSessionRecord,
   playbackSessionsCollection,
   SINGLE_ACTIVE_CHANNEL_ID,
   SINGLE_STANDBY_CHANNEL_ID,
 } from "@/lib/collections/playback-sessions";
+import { toRuntimeAudioError } from "@/lib/playback-action-errors";
 import {
   selectSinglePlaybackRadio,
   setSingleChannelVolume,
@@ -32,17 +32,9 @@ function setSingleSessionError(
   error: unknown,
   radio?: Radio
 ): void {
-  const errorObj =
-    error instanceof Error ? error : new Error("Failed to update playback");
   setPlaybackChannelRuntime(channelId, () => ({
     isLoading: false,
-    error: {
-      id: generateErrorId(),
-      message: errorObj.message,
-      code: "PLAY_ERROR",
-      radio,
-      timestamp: Date.now(),
-    },
+    error: toRuntimeAudioError(error, "PLAY_ERROR", radio),
   }));
 }
 

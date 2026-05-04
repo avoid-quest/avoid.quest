@@ -19,6 +19,7 @@ import {
   setPlaybackChannelSoundId,
   usePlaybackChannelRuntime,
 } from "@/lib/stores/playback-runtime-store";
+import { toRuntimeAudioError } from "./playback-action-errors.js";
 
 export type ChannelState = PlaybackChannelRecord &
   ReturnType<typeof getPlaybackChannelRuntime>;
@@ -321,12 +322,19 @@ export function subscribeChannelRuntime(
 ): void {
   const manager = getAudioManager();
   const cleanup = manager.subscribe(soundId, (audioState) => {
+    const channel = getPlaybackChannel(sessionId, channelId);
     setPlaybackChannelRuntime(channelId, () => ({
       soundId,
       isPlaying: audioState.isPlaying,
       isLoading: audioState.isLoading,
       isBuffering: audioState.isBuffering,
-      error: audioState.error,
+      error: audioState.error
+        ? toRuntimeAudioError(
+            audioState.error,
+            audioState.error.code,
+            channel?.radio ?? undefined
+          )
+        : null,
     }));
   });
 

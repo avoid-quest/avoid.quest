@@ -1,10 +1,6 @@
 import type { AudioManager, Radio } from "@/lib/audio";
 import { revokeFileObjectUrl } from "@/lib/audio/file-metadata";
 import {
-  activateChannel,
-  deactivateChannel,
-} from "@/lib/channel-state-manager";
-import {
   type DeckId,
   type DeckSide,
   deckConfig,
@@ -16,6 +12,11 @@ import {
   resetDeck as resetDeckDb,
 } from "@/lib/hooks/use-dj-state";
 import { isFileMetadata, isYouTubeMetadata } from "@/lib/platform-types";
+import type { PlaybackActionChannelFacade } from "./playback-action-context.js";
+import {
+  createPlaybackActionError,
+  type PlaybackActionError,
+} from "./playback-action-errors.js";
 
 type ReportDjError = (
   message: string,
@@ -25,6 +26,7 @@ type ReportDjError = (
 ) => void;
 
 type DeckLoadDependencies = {
+  activateChannel: PlaybackActionChannelFacade["activate"];
   applyCrossfade: () => void;
   applyStoredChannelStrip: (
     audioManager: AudioManager,
@@ -47,6 +49,7 @@ type DeckLoadDependencies = {
     soundId: string,
     getAudioManager: () => AudioManager
   ) => void;
+  deactivateChannel: PlaybackActionChannelFacade["deactivate"];
   getAudioManager: () => AudioManager;
   getSoundId: (radio: Radio, side: DeckSide) => string;
   initializeAudioDevices: (
@@ -59,6 +62,7 @@ type DeckLoadDependencies = {
     autoPlay?: boolean
   ) => Promise<void>;
   reportDjError: ReportDjError;
+  reportPlaybackError?: (error: PlaybackActionError) => void;
   resolveStreamUrl: (videoId: string) => Promise<string | null>;
 };
 
@@ -190,14 +194,15 @@ async function handleYouTubeStreamInterrupted(
 function cleanupFailedDeckLoad(
   deckId: DeckId,
   config: (typeof deckConfig)["deck-a"],
-  soundId: string
+  soundId: string,
+  dependencies: DeckLoadDependencies
 ): boolean {
   const currentRuntime = config.getRuntime();
   if (currentRuntime.soundId !== soundId) {
     return false;
   }
 
-  deactivateChannel(deckId);
+  dependencies.deactivateChannel(deckId);
   return true;
 }
 
@@ -220,7 +225,7 @@ export async function setDeckRadioSource(
     revokeFileObjectUrl(previousRadio.platformMetadata.objectUrl);
   }
 
-  deactivateChannel(deckId);
+  dependencies.deactivateChannel(deckId);
 
   if (!radio) {
     resetDeckDb(deckId);
@@ -237,7 +242,7 @@ export async function setDeckRadioSource(
     });
 
     let hasAppliedChannelStrip = false;
-    activateChannel("dj", deckId, radio, {
+    dependencies.activateChannel("dj", deckId, radio, {
       soundId,
       onAudioState: (audioState) => {
         const currentDeck = config.getDeck();
@@ -319,10 +324,19 @@ export async function setDeckRadioSource(
         }
 
         if (audioState.error?.message) {
+          const playbackError = createPlaybackActionError({
+            mode: "dj",
+            code: audioState.error.code,
+            cause: new Error(audioState.error.message),
+            channelId: deckId,
+            radio: currentDeck?.radio ?? undefined,
+            fallbackMessage: audioState.error.message,
+          });
+          dependencies.reportPlaybackError?.(playbackError);
           dependencies.reportDjError(
-            audioState.error.message,
+            playbackError.userMessage,
             `DJ_${audioState.error.code}`,
-            new Error(audioState.error.message),
+            playbackError.cause,
             currentDeck?.radio
           );
         }
@@ -348,14 +362,31 @@ export async function setDeckRadioSource(
       dependencies.applyCrossfade();
     }
   } catch (error) {
-    const channelWasActivated = cleanupFailedDeckLoad(deckId, config, soundId);
+    const channelWasActivated = cleanupFailedDeckLoad(
+      deckId,
+      config,
+      soundId,
+      dependencies
+    );
     if (!channelWasActivated) {
       config.updateDeck((draft) => {
         draft.radio = previousRadio;
       });
     }
-    const message =
-      error instanceof Error ? error.message : `Failed to load ${deckId}`;
-    dependencies.reportDjError(message, "DJ_LOAD_DECK_FAILED", error, radio);
+    const playbackError = createPlaybackActionError({
+      mode: "dj",
+      code: "PLAY_ERROR",
+      cause: error,
+      channelId: deckId,
+      radio: radio ?? undefined,
+      fallbackMessage: `Failed to load ${deckId}`,
+    });
+    dependencies.reportPlaybackError?.(playbackError);
+    dependencies.reportDjError(
+      playbackError.userMessage,
+      "DJ_LOAD_DECK_FAILED",
+      error,
+      radio
+    );
   }
 }

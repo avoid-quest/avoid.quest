@@ -79,7 +79,10 @@ import {
   getMixer,
   updateMixer,
 } from "@/lib/hooks/use-dj-state";
-import { getDefaultPlaybackActionContext } from "@/lib/playback-action-context";
+import {
+  getDefaultPlaybackActionContext,
+  type PlaybackActionContext,
+} from "@/lib/playback-action-context";
 import { createPlaybackActionError } from "@/lib/playback-action-errors";
 import {
   getDeckARuntime,
@@ -163,8 +166,14 @@ export const findNextTrack = (
   radio: Radio | null
 ): { streamUrl: string } | null => findNextTrackInPlaylist(radio);
 
+function getContextAudioManager(
+  ctx: PlaybackActionContext
+): () => AudioManager {
+  return () => ctx.audio;
+}
+
 // Apply crossfade based on current mixer position
-export function applyCrossfade() {
+export function applyCrossfade(ctx = getDefaultPlaybackActionContext()) {
   if (typeof window === "undefined") {
     return;
   }
@@ -185,7 +194,7 @@ export function applyCrossfade() {
   const leftFinalVol = Math.cos(angle) * deckA.volume;
   const rightFinalVol = Math.sin(angle) * deckB.volume;
 
-  const manager = getAudioManager();
+  const manager = ctx.audio;
   if (runtimeA.soundId) {
     manager.setVolume(runtimeA.soundId, leftFinalVol);
   }
@@ -195,18 +204,27 @@ export function applyCrossfade() {
 }
 
 // Generic set deck radio function
-async function setDeckRadio(deckId: DeckId, radio: Radio | null) {
+async function setDeckRadio(
+  deckId: DeckId,
+  radio: Radio | null,
+  ctx = getDefaultPlaybackActionContext()
+) {
+  const getAudioManagerFromContext = getContextAudioManager(ctx);
   await setDeckRadioSource(deckId, radio, {
-    applyCrossfade,
+    activateChannel: ctx.channels.activate,
+    applyCrossfade: () => applyCrossfade(ctx),
     applyStoredChannelStrip,
     applyStoredEffectsAndFilters,
     clearDjError: clearDjErrorSurface,
     connectDeckCueBus,
-    getAudioManager,
+    deactivateChannel: ctx.channels.deactivate,
+    getAudioManager: getAudioManagerFromContext,
     getSoundId,
     initializeAudioDevices: initializeSavedAudioDevices,
-    loadTrack,
+    loadTrack: (deckSide, nextRadio, autoPlay) =>
+      loadTrack(deckSide, nextRadio, autoPlay, ctx),
     reportDjError: reportDjErrorSurface,
+    reportPlaybackError: ctx.reportError,
     resolveStreamUrl,
   });
 }
@@ -219,15 +237,18 @@ const bindDeckAction = <Args extends unknown[], Result>(
 };
 
 // Generic play deck function
-async function playDeck(deckId: DeckId) {
+async function playDeck(
+  deckId: DeckId,
+  ctx = getDefaultPlaybackActionContext()
+) {
   const config = deckConfig[deckId];
   const deck = config.getDeck();
   const runtime = config.getRuntime();
 
   if (runtime.soundId && deck?.radio && !runtime.isPlaying) {
     try {
-      await getAudioManager().playSound(runtime.soundId, deck.volume);
-      applyCrossfade();
+      await ctx.audio.playSound(runtime.soundId, deck.volume);
+      applyCrossfade(ctx);
     } catch (err) {
       const playbackError = createPlaybackActionError({
         mode: "dj",
@@ -237,6 +258,7 @@ async function playDeck(deckId: DeckId) {
         radio: deck.radio,
         fallbackMessage: `Failed to play ${deckId}`,
       });
+      ctx.reportError(playbackError);
       reportDjErrorSurface(
         playbackError.userMessage,
         "DJ_PLAY_DECK_FAILED",
@@ -247,15 +269,18 @@ async function playDeck(deckId: DeckId) {
   }
 }
 
-function pauseDeck(deckId: DeckId) {
+function pauseDeck(deckId: DeckId, ctx = getDefaultPlaybackActionContext()) {
   const runtime = deckConfig[deckId].getRuntime();
   if (runtime.soundId) {
-    getAudioManager().pauseSound(runtime.soundId);
+    ctx.audio.pauseSound(runtime.soundId);
   }
 }
 
 // Generic reset deck function
-async function resetDeck(deckId: DeckId) {
+async function resetDeck(
+  deckId: DeckId,
+  ctx = getDefaultPlaybackActionContext()
+) {
   const config = deckConfig[deckId];
   const deck = config.getDeck();
   if (deck?.radio) {
@@ -277,13 +302,31 @@ async function resetDeck(deckId: DeckId) {
       };
     });
     const radio = getDeckRadio(deck);
-    await setDeckRadio(deckId, radio);
+    await setDeckRadio(deckId, radio, ctx);
   }
 }
 
+export function createDjDeckCommands(ctx = getDefaultPlaybackActionContext()) {
+  return {
+    setDeckARadio: (radio: Radio | null) => setDeckRadio("deck-a", radio, ctx),
+    setDeckBRadio: (radio: Radio | null) => setDeckRadio("deck-b", radio, ctx),
+    playDeckA: () => playDeck("deck-a", ctx),
+    playDeckB: () => playDeck("deck-b", ctx),
+    pauseDeckA: () => pauseDeck("deck-a", ctx),
+    pauseDeckB: () => pauseDeck("deck-b", ctx),
+    resetDeckA: () => resetDeck("deck-a", ctx),
+    resetDeckB: () => resetDeck("deck-b", ctx),
+    loadTrack: (deckSide: DeckSide, radio: Radio | null, autoPlay = false) =>
+      loadTrack(deckSide, radio, autoPlay, ctx),
+  };
+}
+
 // Cleanup all decks
-export async function cleanupAll() {
-  await Promise.all([setDeckARadio(null), setDeckBRadio(null)]);
+export async function cleanupAll(ctx = getDefaultPlaybackActionContext()) {
+  await Promise.all([
+    setDeckRadio("deck-a", null, ctx),
+    setDeckRadio("deck-b", null, ctx),
+  ]);
 }
 
 // Cleanup audio only (keep radio state)
@@ -298,14 +341,16 @@ export function cleanupAudioOnly(): Promise<void> {
 export async function loadTrack(
   deckSide: DeckSide,
   radio: Radio | null,
-  autoPlay = false
+  autoPlay = false,
+  ctx = getDefaultPlaybackActionContext()
 ) {
   const deckId = deckSide === "left" ? "deck-a" : "deck-b";
   const config = deckConfig[deckId];
   const runtime = config.getRuntime();
-  const setRadio = deckSide === "left" ? setDeckARadio : setDeckBRadio;
-  const pause = deckSide === "left" ? pauseDeckA : pauseDeckB;
-  const play = deckSide === "left" ? playDeckA : playDeckB;
+  const setRadio = (nextRadio: Radio | null) =>
+    setDeckRadio(deckId, nextRadio, ctx);
+  const pause = () => pauseDeck(deckId, ctx);
+  const play = () => playDeck(deckId, ctx);
 
   // Handle clearing the deck
   if (!radio) {

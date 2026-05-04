@@ -8,7 +8,11 @@ import {
   playbackSessionsCollection,
 } from "@/lib/collections/playback-sessions";
 import { getPlaybackChannelRuntime } from "@/lib/stores/playback-runtime-store";
-import { deactivateAllChannels } from "./channel-state-manager";
+import {
+  activateChannel,
+  deactivateAllChannels,
+  deactivateChannel,
+} from "./channel-state-manager";
 import { setDeckRadioSource } from "./dj-actions-deck-load";
 
 async function resetPlaybackSessions() {
@@ -35,11 +39,13 @@ function insertDjSession() {
 
 function createDependencies() {
   return {
+    activateChannel,
     applyCrossfade: mock(() => undefined),
     applyStoredChannelStrip: mock(() => undefined),
     applyStoredEffectsAndFilters: mock(async () => undefined),
     clearDjError: mock(() => undefined),
     connectDeckCueBus: mock(() => undefined),
+    deactivateChannel,
     getAudioManager: () => AudioManager.getInstance(),
     getSoundId: (radio: { id?: string | number }, side: string) =>
       `${side}_${radio.id}`,
@@ -138,7 +144,7 @@ describe("DJ deck channel lifecycle", () => {
     expect(getPlaybackChannel("dj", "deck-a")?.radio).toBeNull();
     expect(getPlaybackChannelRuntime("deck-a").soundId).toBeNull();
     expect(dependencies.reportDjError).toHaveBeenCalledWith(
-      "create failed",
+      "Failed to load deck-a",
       "DJ_LOAD_DECK_FAILED",
       expect.any(Error),
       expect.objectContaining({ id: "station-1" })

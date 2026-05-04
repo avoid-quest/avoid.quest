@@ -38,7 +38,13 @@ If applicable, use RGR to complete the task.
 
 # FEEDBACK LOOPS
 
-Before committing, run `bun run typecheck` and `bun run test` to ensure the tests pass.
+Before committing, run validation:
+
+1. `bun run check`
+2. `bun run typecheck`
+3. `bun run test`
+
+If root typecheck exits 137 or hangs in an unrelated workspace such as `apps/web` Astro check or another untouched app, stop that validation process. Then run the narrowest touched-workspace typecheck/test/build commands that prove this issue, and record the blocked root command and exact workspace/process in the commit notes. Do not keep retrying the same root typecheck.
 
 # COMMIT
 

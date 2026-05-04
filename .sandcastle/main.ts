@@ -4,12 +4,12 @@
 //   Phase 1 (Plan):             An opus agent analyzes open issues, builds a
 //                               dependency graph, and outputs a <plan> JSON
 //                               listing ready issues with branch names.
-//   Phase 2 (Execute + Review): For each issue, a sandbox is created via
+//   Phase 2 (Execute + Review): For each selected issue, a sandbox is created via
 //                               createSandbox(). The implementer runs first
 //                               (100 iterations). If it produces commits, a
 //                               reviewer runs in the same sandbox on the same
-//                               branch (1 iteration). Issue pipelines run
-//                               serially to avoid competing workspace edits.
+//                               branch (1 iteration). Selected issue pipelines
+//                               run serially to avoid competing workspace edits.
 //   Phase 3 (Merge):            A single agent merges all completed branches
 //                               into the current branch.
 //
@@ -49,6 +49,9 @@ await Promise.all([
 ]);
 
 const git = (args: string[]) => execFile("git", args);
+
+const formatIssue = (issue: IssuePlan) =>
+  `${issue.id}: ${issue.title} → ${issue.branch}`;
 
 const getCurrentBranch = async () => {
   const { stdout } = await git(["branch", "--show-current"]);
@@ -151,12 +154,23 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
     break;
   }
 
-  console.log(`Planning complete. ${issues.length} issue(s) to work serially:`);
+  const selectedIssues = issues.slice(0, MAX_ACTIVE_ISSUE_PIPELINES);
+
+  console.log(`Planning complete. ${issues.length} issue(s) available:`);
   console.log(
     `Configured max active issue pipelines: ${MAX_ACTIVE_ISSUE_PIPELINES}`
   );
   for (const issue of issues) {
-    console.log(`  ${issue.id}: ${issue.title} → ${issue.branch}`);
+    console.log(`  ${formatIssue(issue)}`);
+  }
+
+  if (selectedIssues.length < issues.length) {
+    console.log(
+      `Running only ${selectedIssues.length} issue pipeline(s) this iteration:`
+    );
+    for (const issue of selectedIssues) {
+      console.log(`  ${formatIssue(issue)}`);
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -169,7 +183,7 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
 
   const settled: PromiseSettledResult<IssueRunResult>[] = [];
 
-  for (const issue of issues) {
+  for (const issue of selectedIssues) {
     try {
       const outcome = await (async (): Promise<IssueRunResult> => {
         await ensureBranchExists(issue.branch, baseBranch);
@@ -229,7 +243,7 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
   // Log any agents that threw (network error, sandbox crash, etc.) and keep
   // only branches that actually produced commits for the merge phase.
   for (const [i, outcome] of settled.entries()) {
-    const issue = issues.at(i);
+    const issue = selectedIssues.at(i);
     if (!issue) {
       continue;
     }

@@ -22,7 +22,7 @@ An issue is **unblocked** if it has zero blocking dependencies on other open iss
 
 For each unblocked issue, assign a branch name using the format `sandcastle/issue-{id}-{slug}`.
 
-The implementation runner processes issues serially with a maximum of one active issue pipeline at a time. Do not optimize the plan for parallel execution; order issues from safest/most foundational to riskiest/highest-conflict.
+The implementation runner processes one issue pipeline per iteration. Do not optimize the plan for parallel execution. Return only the single safest/most-foundational unblocked issue. If every issue is blocked, return the single highest-priority candidate (the one with the fewest or weakest dependencies).
 
 # OUTPUT
 
@@ -32,4 +32,4 @@ Output your plan as a JSON object wrapped in `<plan>` tags:
 {"issues": [{"id": "42", "title": "Fix auth bug", "branch": "sandcastle/issue-42-fix-auth-bug"}]}
 </plan>
 
-Include only unblocked issues. If every issue is blocked, include the single highest-priority candidate (the one with the fewest or weakest dependencies).
+Include only one issue.

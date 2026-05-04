@@ -21,7 +21,9 @@
 // Or add to package.json:
 //   "scripts": { "sandcastle": "bun run .sandcastle/main.ts" }
 
+import { execFile as execFileWithCallback } from "node:child_process";
 import { mkdir } from "node:fs/promises";
+import { promisify } from "node:util";
 import { codex, createSandbox, run } from "@ai-hero/sandcastle";
 import { docker } from "@ai-hero/sandcastle/sandboxes/docker";
 
@@ -39,11 +41,27 @@ type IssueRunResult = { commits: { sha: string }[] };
 
 const sharedNodeModulesPath = ".sandcastle/shared/node_modules";
 const sharedBunCachePath = ".sandcastle/shared/bun-cache";
+const execFile = promisify(execFileWithCallback);
 
 await Promise.all([
   mkdir(sharedNodeModulesPath, { recursive: true }),
   mkdir(sharedBunCachePath, { recursive: true }),
 ]);
+
+const git = (args: string[]) => execFile("git", args);
+
+const getCurrentBranch = async () => {
+  const { stdout } = await git(["branch", "--show-current"]);
+  return stdout.trim();
+};
+
+const ensureBranchExists = async (branch: string, baseBranch: string) => {
+  try {
+    await git(["rev-parse", "--verify", `refs/heads/${branch}`]);
+  } catch {
+    await git(["branch", branch, baseBranch]);
+  }
+};
 
 const sandboxProvider = () =>
   docker({
@@ -93,6 +111,7 @@ const hooks = {
 
 for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
   console.log(`\n=== Iteration ${iteration}/${MAX_ITERATIONS} ===\n`);
+  const baseBranch = await getCurrentBranch();
 
   // -------------------------------------------------------------------------
   // Phase 1: Plan
@@ -153,8 +172,11 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
   for (const issue of issues) {
     try {
       const outcome = await (async (): Promise<IssueRunResult> => {
+        await ensureBranchExists(issue.branch, baseBranch);
+
         const sandbox = await createSandbox({
           branch: issue.branch,
+          baseBranch,
           sandbox: sandboxProvider(),
           hooks,
         });
@@ -235,6 +257,10 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
 
   if (completedBranches.length === 0) {
     // All agents ran but none made commits — nothing to merge this cycle.
+    if (settled.some((outcome) => outcome.status === "rejected")) {
+      throw new Error("All issue pipelines failed before producing commits.");
+    }
+
     console.log("No commits produced. Nothing to merge.");
     continue;
   }

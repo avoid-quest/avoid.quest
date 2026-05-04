@@ -1,6 +1,6 @@
 # TASK
 
-Review the code changes on branch `{{TARGET_BRANCH}}` relative to `{{SOURCE_BRANCH}}`.
+Review the code changes on branch `{{SOURCE_BRANCH}}` relative to `{{TARGET_BRANCH}}`.
 
 Improve correctness, clarity, consistency, and maintainability while preserving exact functionality.
 
@@ -8,11 +8,11 @@ Improve correctness, clarity, consistency, and maintainability while preserving 
 
 ## Branch diff
 
-!`git diff {{SOURCE_BRANCH}}...{{TARGET_BRANCH}}`
+!`git diff {{TARGET_BRANCH}}...{{SOURCE_BRANCH}}`
 
 ## Commits on this branch
 
-!`git log {{SOURCE_BRANCH}}..{{TARGET_BRANCH}} --oneline`
+!`git log {{TARGET_BRANCH}}..{{SOURCE_BRANCH}} --oneline`
 
 # REVIEW PROCESS
 

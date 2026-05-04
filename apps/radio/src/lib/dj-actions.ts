@@ -40,12 +40,14 @@ import {
   applyStoredChannelStrip,
   applyStoredEffectsAndFilters,
 } from "@/lib/dj-actions-channel-strip.js";
-import { setDeckRadioSource } from "@/lib/dj-actions-deck-load.js";
+import {
+  createDjDeckLoadWorkflow,
+  type DeckLoadDependencies,
+} from "@/lib/dj-actions-deck-load.js";
 import {
   type DeckId,
   type DeckSide,
   deckConfig,
-  getDeckRadio,
 } from "@/lib/dj-actions-decks.js";
 import {
   setDeckDeviceChannelSelection,
@@ -198,12 +200,10 @@ export function applyCrossfade(ctx = getDefaultPlaybackActionContext()) {
 }
 
 // Generic set deck radio function
-async function setDeckRadio(
-  deckId: DeckId,
-  radio: Radio | null,
-  ctx = getDefaultPlaybackActionContext()
-) {
-  await setDeckRadioSource(deckId, radio, {
+function createDeckLoadDependencies(
+  ctx: PlaybackActionContext
+): DeckLoadDependencies {
+  return {
     activateChannel: ctx.channels.activate,
     applyCrossfade: () => applyCrossfade(ctx),
     applyStoredChannelStrip,
@@ -219,7 +219,19 @@ async function setDeckRadio(
     reportDjError: reportDjErrorSurface,
     reportPlaybackError: ctx.reportError,
     resolveStreamUrl,
-  });
+  };
+}
+
+function createDeckLoadWorkflow(ctx: PlaybackActionContext) {
+  return createDjDeckLoadWorkflow(createDeckLoadDependencies(ctx));
+}
+
+async function setDeckRadio(
+  deckId: DeckId,
+  radio: Radio | null,
+  ctx = getDefaultPlaybackActionContext()
+) {
+  await createDeckLoadWorkflow(ctx).loadDeckRadio(deckId, radio);
 }
 
 const bindDeckAction = <Args extends unknown[], Result>(
@@ -274,29 +286,7 @@ async function resetDeck(
   deckId: DeckId,
   ctx = getDefaultPlaybackActionContext()
 ) {
-  const config = deckConfig[deckId];
-  const deck = config.getDeck();
-  if (deck?.radio) {
-    // Reset channel strip to defaults
-    config.updateDeck((draft) => {
-      draft.volume = 1;
-      draft.muted = false;
-      draft.pan = 0;
-      draft.speed = 1.0;
-      draft.channelFilter = 0;
-      draft.effectsDryWet = 1.0;
-      draft.effects = [];
-      draft.filter = {
-        type: "lowpass",
-        frequency: 1000,
-        Q: 1,
-        gain: 0,
-        enabled: false,
-      };
-    });
-    const radio = getDeckRadio(deck);
-    await setDeckRadio(deckId, radio, ctx);
-  }
+  await createDeckLoadWorkflow(ctx).resetDeck(deckId);
 }
 
 export function createDjDeckCommands(ctx = getDefaultPlaybackActionContext()) {

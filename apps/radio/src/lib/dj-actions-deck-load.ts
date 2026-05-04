@@ -66,6 +66,11 @@ type DeckLoadDependencies = {
   resolveStreamUrl: (videoId: string) => Promise<string | null>;
 };
 
+type DjDeckLoadWorkflow = {
+  loadDeckRadio: (deckId: DeckId, radio: Radio | null) => Promise<void>;
+  resetDeck: (deckId: DeckId) => Promise<void>;
+};
+
 async function resolveAndLoadYouTubeTrack(
   side: DeckSide,
   deckRadio: Radio,
@@ -206,7 +211,7 @@ function cleanupFailedDeckLoad(
   return true;
 }
 
-export async function setDeckRadioSource(
+async function loadDeckRadio(
   deckId: DeckId,
   radio: Radio | null,
   dependencies: DeckLoadDependencies
@@ -390,3 +395,53 @@ export async function setDeckRadioSource(
     );
   }
 }
+
+async function resetDeck(
+  deckId: DeckId,
+  dependencies: DeckLoadDependencies
+): Promise<void> {
+  const config = deckConfig[deckId];
+  const deck = config.getDeck();
+  if (!deck?.radio) {
+    return;
+  }
+
+  config.updateDeck((draft) => {
+    draft.volume = 1;
+    draft.muted = false;
+    draft.pan = 0;
+    draft.speed = 1.0;
+    draft.channelFilter = 0;
+    draft.effectsDryWet = 1.0;
+    draft.effects = [];
+    draft.filter = {
+      type: "lowpass",
+      frequency: 1000,
+      Q: 1,
+      gain: 0,
+      enabled: false,
+    };
+  });
+
+  await loadDeckRadio(deckId, getDeckRadio(deck), dependencies);
+}
+
+export function createDjDeckLoadWorkflow(
+  dependencies: DeckLoadDependencies
+): DjDeckLoadWorkflow {
+  return {
+    loadDeckRadio: (deckId, radio) =>
+      loadDeckRadio(deckId, radio, dependencies),
+    resetDeck: (deckId) => resetDeck(deckId, dependencies),
+  };
+}
+
+export async function setDeckRadioSource(
+  deckId: DeckId,
+  radio: Radio | null,
+  dependencies: DeckLoadDependencies
+): Promise<void> {
+  await createDjDeckLoadWorkflow(dependencies).loadDeckRadio(deckId, radio);
+}
+
+export type { DeckLoadDependencies, DjDeckLoadWorkflow };

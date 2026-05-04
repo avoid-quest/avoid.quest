@@ -14,11 +14,24 @@ import type {
   FilterConfig,
 } from "@/lib/audio";
 import {
-  AudioManager,
-  createDefaultEffectConfig,
+  type AudioManager,
+  createAudioEngineFacade,
   type Radio,
 } from "@/lib/audio";
 import { validatePlaybackStreamUrl } from "@/lib/audio/playback/url-validation";
+import {
+  createAndAddChannelEffect,
+  removeChannelEffect,
+  reorderChannelEffects,
+  setChannelEffectsDryWet,
+  setChannelFilterValue,
+  setChannelMuted,
+  setChannelPan,
+  setChannelSpeed,
+  setChannelVolume,
+  updateChannelEffect,
+  updateChannelFilter,
+} from "@/lib/channel-state-manager";
 import {
   clearDjErrorSurface,
   reportDjErrorSurface,
@@ -66,27 +79,24 @@ import {
   updateMixer,
 } from "@/lib/hooks/use-dj-state";
 import {
+  getDefaultPlaybackActionContext,
+  type PlaybackActionContext,
+} from "@/lib/playback-action-context";
+import { createPlaybackActionError } from "@/lib/playback-action-errors";
+import {
   getDeckARuntime,
-  getDeckASubscriptionCleanup,
   getDeckBRuntime,
-  getDeckBSubscriptionCleanup,
-  resetDeckARuntime,
-  resetDeckBRuntime,
 } from "@/lib/stores/dj-runtime-store";
 import { generateId } from "@/lib/types";
-
-// Lazy initialization of AudioManager to avoid SSR issues
-let audioManager: AudioManager | null = null;
 
 const getAudioManager = (): AudioManager => {
   if (typeof window === "undefined") {
     throw new Error("AudioManager can only be used in browser environment");
   }
-  if (!audioManager) {
-    audioManager = AudioManager.getInstance();
-  }
-  return audioManager;
+  return getDefaultPlaybackActionContext().audio;
 };
+
+const getAudioEngine = () => createAudioEngineFacade(getAudioManager());
 
 const getSoundId = (radio: Radio, side: DeckSide): string =>
   `${side}_${radio.id}`;
@@ -158,7 +168,7 @@ export const findNextTrack = (
 ): { streamUrl: string } | null => findNextTrackInPlaylist(radio);
 
 // Apply crossfade based on current mixer position
-export function applyCrossfade() {
+export function applyCrossfade(ctx = getDefaultPlaybackActionContext()) {
   if (typeof window === "undefined") {
     return;
   }
@@ -179,28 +189,35 @@ export function applyCrossfade() {
   const leftFinalVol = Math.cos(angle) * deckA.volume;
   const rightFinalVol = Math.sin(angle) * deckB.volume;
 
-  const manager = getAudioManager();
   if (runtimeA.soundId) {
-    manager.setVolume(runtimeA.soundId, leftFinalVol);
+    ctx.audioEngine.volume.setChannelVolume(runtimeA.soundId, leftFinalVol);
   }
   if (runtimeB.soundId) {
-    manager.setVolume(runtimeB.soundId, rightFinalVol);
+    ctx.audioEngine.volume.setChannelVolume(runtimeB.soundId, rightFinalVol);
   }
 }
 
 // Generic set deck radio function
-async function setDeckRadio(deckId: DeckId, radio: Radio | null) {
+async function setDeckRadio(
+  deckId: DeckId,
+  radio: Radio | null,
+  ctx = getDefaultPlaybackActionContext()
+) {
   await setDeckRadioSource(deckId, radio, {
-    applyCrossfade,
+    activateChannel: ctx.channels.activate,
+    applyCrossfade: () => applyCrossfade(ctx),
     applyStoredChannelStrip,
     applyStoredEffectsAndFilters,
     clearDjError: clearDjErrorSurface,
     connectDeckCueBus,
-    getAudioManager,
+    deactivateChannel: ctx.channels.deactivate,
+    getAudioManager: () => ctx.audio,
     getSoundId,
     initializeAudioDevices: initializeSavedAudioDevices,
-    loadTrack,
+    loadTrack: (deckSide, nextRadio, autoPlay) =>
+      loadTrack(deckSide, nextRadio, autoPlay, ctx),
     reportDjError: reportDjErrorSurface,
+    reportPlaybackError: ctx.reportError,
     resolveStreamUrl,
   });
 }
@@ -213,18 +230,30 @@ const bindDeckAction = <Args extends unknown[], Result>(
 };
 
 // Generic play deck function
-async function playDeck(deckId: DeckId) {
+async function playDeck(
+  deckId: DeckId,
+  ctx = getDefaultPlaybackActionContext()
+) {
   const config = deckConfig[deckId];
   const deck = config.getDeck();
   const runtime = config.getRuntime();
 
   if (runtime.soundId && deck?.radio && !runtime.isPlaying) {
     try {
-      await getAudioManager().playSound(runtime.soundId, deck.volume);
-      applyCrossfade();
+      await ctx.audioEngine.playback.play(runtime.soundId, deck.volume);
+      applyCrossfade(ctx);
     } catch (err) {
+      const playbackError = createPlaybackActionError({
+        mode: "dj",
+        code: "PLAY_ERROR",
+        cause: err,
+        channelId: deckId,
+        radio: deck.radio,
+        fallbackMessage: `Failed to play ${deckId}`,
+      });
+      ctx.reportError(playbackError);
       reportDjErrorSurface(
-        err instanceof Error ? err.message : `Failed to play ${deckId}`,
+        playbackError.userMessage,
         "DJ_PLAY_DECK_FAILED",
         err,
         deck.radio
@@ -233,15 +262,18 @@ async function playDeck(deckId: DeckId) {
   }
 }
 
-function pauseDeck(deckId: DeckId) {
+function pauseDeck(deckId: DeckId, ctx = getDefaultPlaybackActionContext()) {
   const runtime = deckConfig[deckId].getRuntime();
   if (runtime.soundId) {
-    getAudioManager().pauseSound(runtime.soundId);
+    ctx.audioEngine.playback.pause(runtime.soundId);
   }
 }
 
 // Generic reset deck function
-async function resetDeck(deckId: DeckId) {
+async function resetDeck(
+  deckId: DeckId,
+  ctx = getDefaultPlaybackActionContext()
+) {
   const config = deckConfig[deckId];
   const deck = config.getDeck();
   if (deck?.radio) {
@@ -263,56 +295,57 @@ async function resetDeck(deckId: DeckId) {
       };
     });
     const radio = getDeckRadio(deck);
-    await setDeckRadio(deckId, radio);
+    await setDeckRadio(deckId, radio, ctx);
   }
+}
+
+export function createDjDeckCommands(ctx = getDefaultPlaybackActionContext()) {
+  return {
+    setDeckARadio: (radio: Radio | null) => setDeckRadio("deck-a", radio, ctx),
+    setDeckBRadio: (radio: Radio | null) => setDeckRadio("deck-b", radio, ctx),
+    playDeckA: () => playDeck("deck-a", ctx),
+    playDeckB: () => playDeck("deck-b", ctx),
+    pauseDeckA: () => pauseDeck("deck-a", ctx),
+    pauseDeckB: () => pauseDeck("deck-b", ctx),
+    resetDeckA: () => resetDeck("deck-a", ctx),
+    resetDeckB: () => resetDeck("deck-b", ctx),
+    loadTrack: (deckSide: DeckSide, radio: Radio | null, autoPlay = false) =>
+      loadTrack(deckSide, radio, autoPlay, ctx),
+  };
 }
 
 // Cleanup all decks
-export async function cleanupAll() {
-  await Promise.all([setDeckARadio(null), setDeckBRadio(null)]);
+export async function cleanupAll(ctx = getDefaultPlaybackActionContext()) {
+  await Promise.all([
+    setDeckRadio("deck-a", null, ctx),
+    setDeckRadio("deck-b", null, ctx),
+  ]);
 }
 
 // Cleanup audio only (keep radio state)
-export async function cleanupAudioOnly() {
-  const runtimeA = getDeckARuntime();
-  const runtimeB = getDeckBRuntime();
-
-  // Cleanup subscriptions
-  const cleanupA = getDeckASubscriptionCleanup();
-  const cleanupB = getDeckBSubscriptionCleanup();
-  if (cleanupA) {
-    cleanupA();
-  }
-  if (cleanupB) {
-    cleanupB();
-  }
-
-  // Cleanup sounds
-  if (runtimeA.soundId) {
-    await getAudioManager().cleanupSound(runtimeA.soundId);
-  }
-  if (runtimeB.soundId) {
-    await getAudioManager().cleanupSound(runtimeB.soundId);
-  }
-
-  // Reset runtime state only
-  resetDeckARuntime();
-  resetDeckBRuntime();
+export function cleanupAudioOnly(
+  ctx = getDefaultPlaybackActionContext()
+): Promise<void> {
+  ctx.channels.deactivate("deck-a");
+  ctx.channels.deactivate("deck-b");
   clearDjErrorSurface();
+  return Promise.resolve();
 }
 
 // Unified track loading
 export async function loadTrack(
   deckSide: DeckSide,
   radio: Radio | null,
-  autoPlay = false
+  autoPlay = false,
+  ctx = getDefaultPlaybackActionContext()
 ) {
   const deckId = deckSide === "left" ? "deck-a" : "deck-b";
   const config = deckConfig[deckId];
   const runtime = config.getRuntime();
-  const setRadio = deckSide === "left" ? setDeckARadio : setDeckBRadio;
-  const pause = deckSide === "left" ? pauseDeckA : pauseDeckB;
-  const play = deckSide === "left" ? playDeckA : playDeckB;
+  const setRadio = (nextRadio: Radio | null) =>
+    setDeckRadio(deckId, nextRadio, ctx);
+  const pause = () => pauseDeck(deckId, ctx);
+  const play = () => playDeck(deckId, ctx);
 
   // Handle clearing the deck
   if (!radio) {
@@ -351,62 +384,42 @@ export async function loadTrack(
 }
 
 // Mixer actions
-export function setCrossfadePosition(position: number) {
+export function setCrossfadePosition(
+  position: number,
+  ctx = getDefaultPlaybackActionContext()
+) {
   updateMixer((draft) => {
     draft.crossfadePosition = position;
   });
-  applyCrossfade();
+  applyCrossfade(ctx);
 }
 
-export function setMasterVolume(volume: number) {
+export function setMasterVolume(volume: number, ctx?: PlaybackActionContext) {
   updateMixer((draft) => {
     draft.masterVolume = volume;
   });
-  getAudioManager().setGlobalVolume(volume);
+  const engine = ctx?.audioEngine ?? getAudioEngine();
+  engine.volume.setMasterVolume(volume);
 }
 
 // Volume actions with audio manager sync
 function setDeckVolume(deckId: DeckId, volume: number) {
-  deckConfig[deckId].updateDeck((draft) => {
-    draft.volume = volume;
-  });
+  setChannelVolume("dj", deckId, volume);
   applyCrossfade();
 }
 
 // Mute actions with audio manager sync
 function setDeckMute(deckId: DeckId, muted: boolean) {
-  const runtime = deckConfig[deckId].getRuntime();
-  deckConfig[deckId].updateDeck((draft) => {
-    draft.muted = muted;
-  });
-  if (runtime.soundId) {
-    if (muted) {
-      getAudioManager().muteSound(runtime.soundId);
-    } else {
-      getAudioManager().unmuteSound(runtime.soundId);
-    }
-  }
+  setChannelMuted("dj", deckId, muted);
 }
 
 // Channel strip actions with audio manager sync
 function setDeckPan(deckId: DeckId, pan: number) {
-  const runtime = deckConfig[deckId].getRuntime();
-  deckConfig[deckId].updateDeck((draft) => {
-    draft.pan = pan;
-  });
-  if (runtime.soundId) {
-    getAudioManager().setPan(runtime.soundId, pan);
-  }
+  setChannelPan("dj", deckId, pan);
 }
 
 function setDeckSpeed(deckId: DeckId, speed: number) {
-  const runtime = deckConfig[deckId].getRuntime();
-  deckConfig[deckId].updateDeck((draft) => {
-    draft.speed = speed;
-  });
-  if (runtime.soundId) {
-    getAudioManager().setPlaybackRate(runtime.soundId, speed);
-  }
+  setChannelSpeed("dj", deckId, speed);
 }
 
 function setDeckRepeat(deckId: DeckId, enabled: boolean) {
@@ -424,54 +437,26 @@ function setDeckAutoplay(deckId: DeckId, enabled: boolean) {
 function seekDeck(deckId: DeckId, position: number) {
   const runtime = deckConfig[deckId].getRuntime();
   if (runtime.soundId) {
-    getAudioManager().seekSound(runtime.soundId, position);
+    getAudioEngine().playback.seek(runtime.soundId, position);
   }
 }
 
 function setDeckChannelFilter(deckId: DeckId, value: number) {
-  const runtime = deckConfig[deckId].getRuntime();
-  deckConfig[deckId].updateDeck((draft) => {
-    draft.channelFilter = value;
-  });
-  if (runtime.soundId) {
-    getAudioManager().setChannelFilter(runtime.soundId, value);
-  }
+  setChannelFilterValue("dj", deckId, value);
 }
 
 function setDeckEffectsDryWet(deckId: DeckId, value: number) {
-  const runtime = deckConfig[deckId].getRuntime();
-  deckConfig[deckId].updateDeck((draft) => {
-    draft.effectsDryWet = value;
-  });
-  if (runtime.soundId) {
-    getAudioManager().setEffectsDryWet(runtime.soundId, value);
-  }
+  setChannelEffectsDryWet("dj", deckId, value);
 }
 
 // Filter actions with audio manager sync
 function updateDeckFilter(deckId: DeckId, filter: FilterConfig) {
-  const runtime = deckConfig[deckId].getRuntime();
-  deckConfig[deckId].updateDeck((draft) => {
-    draft.filter = filter;
-  });
-  if (runtime.soundId) {
-    getAudioManager().updateFilter(runtime.soundId, filter);
-  }
+  updateChannelFilter("dj", deckId, filter);
 }
 
 // Effect actions with audio manager sync
 function addDeckEffect(deckId: DeckId, type: EffectType) {
-  const config = deckConfig[deckId];
-  const runtime = config.getRuntime();
-  const deck = config.getDeck();
-  const effects = deck?.effects ?? [];
-  const effect = createDefaultEffectConfig(type, generateId(), effects.length);
-  config.updateDeck((draft) => {
-    draft.effects.push(effect);
-  });
-  if (runtime.soundId) {
-    getAudioManager().addEffect(runtime.soundId, effect);
-  }
+  createAndAddChannelEffect("dj", deckId, type, generateId());
 }
 
 function updateDeckEffect(
@@ -479,51 +464,15 @@ function updateDeckEffect(
   effectId: string,
   effectConfig: Partial<EffectConfig>
 ) {
-  const config = deckConfig[deckId];
-  const runtime = config.getRuntime();
-  let effectFound = false;
-  config.updateDeck((draft) => {
-    const effect = draft.effects.find((e) => e.id === effectId);
-    if (effect) {
-      Object.assign(effect, effectConfig);
-      effectFound = true;
-    }
-  });
-  if (effectFound && runtime.soundId) {
-    getAudioManager().updateEffect(runtime.soundId, effectId, effectConfig);
-  }
+  updateChannelEffect("dj", deckId, effectId, effectConfig);
 }
 
 function removeDeckEffect(deckId: DeckId, effectId: string) {
-  const config = deckConfig[deckId];
-  const runtime = config.getRuntime();
-  config.updateDeck((draft) => {
-    draft.effects = draft.effects.filter((e) => e.id !== effectId);
-  });
-  if (runtime.soundId) {
-    getAudioManager().removeEffect(runtime.soundId, effectId);
-  }
+  removeChannelEffect("dj", deckId, effectId);
 }
 
 function reorderDeckEffects(deckId: DeckId, effectIds: string[]) {
-  const config = deckConfig[deckId];
-  const runtime = config.getRuntime();
-  const deck = config.getDeck();
-  if (!deck) {
-    return;
-  }
-  config.updateDeck((draft) => {
-    const reordered = effectIds
-      .map((id) => draft.effects.find((e) => e.id === id))
-      .filter((e) => e !== undefined);
-    draft.effects = reordered;
-    for (let i = 0; i < draft.effects.length; i++) {
-      draft.effects[i].order = i;
-    }
-  });
-  if (runtime.soundId) {
-    getAudioManager().reorderEffects(runtime.soundId, effectIds);
-  }
+  reorderChannelEffects("dj", deckId, effectIds);
 }
 
 async function setDeckDeviceSource(

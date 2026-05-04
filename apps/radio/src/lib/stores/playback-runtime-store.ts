@@ -14,7 +14,6 @@ export type ChannelRuntimeState = {
 
 type PlaybackRuntimeState = {
   channels: Record<string, ChannelRuntimeState>;
-  subscriptions: Record<string, (() => void) | null>;
 };
 
 export const initialChannelRuntimeState: ChannelRuntimeState = {
@@ -28,7 +27,6 @@ export const initialChannelRuntimeState: ChannelRuntimeState = {
 
 export const playbackRuntimeStore = new Store<PlaybackRuntimeState>({
   channels: {},
-  subscriptions: {},
 });
 
 function ensureChannelState(channelId: string): ChannelRuntimeState {
@@ -52,20 +50,28 @@ export function getPlaybackChannelRuntime(
   return ensureChannelState(channelId);
 }
 
+export function getPlaybackRuntimeChannelIds(): string[] {
+  return Object.keys(playbackRuntimeStore.state.channels);
+}
+
 export function updatePlaybackChannelRuntime(
   channelId: string,
   updater: (state: ChannelRuntimeState) => Partial<ChannelRuntimeState>
 ): void {
   playbackRuntimeStore.setState((state) => {
-    const current = state.channels[channelId] ?? ensureChannelState(channelId);
+    const current = state.channels[channelId] ?? {
+      ...initialChannelRuntimeState,
+      peakLevel: { ...initialChannelRuntimeState.peakLevel },
+    };
+    const nextChannel = {
+      ...current,
+      ...updater(current),
+    };
     return {
       ...state,
       channels: {
         ...state.channels,
-        [channelId]: {
-          ...current,
-          ...updater(current),
-        },
+        [channelId]: nextChannel,
       },
     };
   });
@@ -88,19 +94,12 @@ export function setPlaybackChannelPeakLevel(
 }
 
 export function resetPlaybackChannelRuntime(channelId: string): void {
-  const cleanup = playbackRuntimeStore.state.subscriptions[channelId];
-  if (cleanup) {
-    cleanup();
-  }
   playbackRuntimeStore.setState((state) => {
     const nextChannels = { ...state.channels };
     delete nextChannels[channelId];
-    const nextSubscriptions = { ...state.subscriptions };
-    delete nextSubscriptions[channelId];
     return {
       ...state,
       channels: nextChannels,
-      subscriptions: nextSubscriptions,
     };
   });
 }
@@ -111,37 +110,8 @@ export function resetPlaybackRuntimeForChannels(channelIds: string[]): void {
   }
 }
 
-export function setPlaybackChannelSubscriptionCleanup(
-  channelId: string,
-  cleanup: (() => void) | null
-): void {
-  const previous = playbackRuntimeStore.state.subscriptions[channelId];
-  if (previous) {
-    previous();
-  }
-  playbackRuntimeStore.setState((state) => ({
-    ...state,
-    subscriptions: {
-      ...state.subscriptions,
-      [channelId]: cleanup,
-    },
-  }));
-}
-
-export function getPlaybackChannelSubscriptionCleanup(
-  channelId: string
-): (() => void) | null {
-  return playbackRuntimeStore.state.subscriptions[channelId] ?? null;
-}
-
 export function resetAllPlaybackRuntime(): void {
-  for (const cleanup of Object.values(
-    playbackRuntimeStore.state.subscriptions
-  )) {
-    cleanup?.();
-  }
   playbackRuntimeStore.setState(() => ({
     channels: {},
-    subscriptions: {},
   }));
 }

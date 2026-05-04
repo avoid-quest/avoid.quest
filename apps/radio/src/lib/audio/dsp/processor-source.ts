@@ -84,6 +84,31 @@ type EffectConfigData = {
   order: number;
 };
 
+function readBooleanConfig(
+  config: Record<string, number | boolean | string>,
+  key: string
+): boolean | undefined {
+  const value = config[key];
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "number") {
+    return value !== 0;
+  }
+  return undefined;
+}
+
+function applyBooleanConfig(
+  config: Record<string, number | boolean | string>,
+  key: string,
+  apply: (value: boolean) => void
+): void {
+  const value = readBooleanConfig(config, key);
+  if (value !== undefined) {
+    apply(value);
+  }
+}
+
 /**
  * Effect source - tracks effects and filters for a source
  * Audio comes from Web Audio graph, not from chunks
@@ -345,9 +370,9 @@ export class EffectSource {
         if (typeof config.boost === "number") {
           crusher.setBoost(config.boost);
         }
-        if (typeof config.autoGain === "boolean") {
-          crusher.setAutoGain(config.autoGain);
-        }
+        applyBooleanConfig(config, "autoGain", (value) =>
+          crusher.setAutoGain(value)
+        );
         break;
       }
       case "fold": {
@@ -364,9 +389,9 @@ export class EffectSource {
             fold.setOversample(os);
           }
         }
-        if (typeof config.autoGain === "boolean") {
-          fold.setAutoGain(config.autoGain);
-        }
+        applyBooleanConfig(config, "autoGain", (value) =>
+          fold.setAutoGain(value)
+        );
         break;
       }
       case "stereoTool": {
@@ -377,15 +402,13 @@ export class EffectSource {
         if (typeof config.stereo === "number") {
           stereo.setStereoWidth(config.stereo);
         }
-        if (typeof config.invertL === "boolean") {
-          stereo.setInvertL(config.invertL);
-        }
-        if (typeof config.invertR === "boolean") {
-          stereo.setInvertR(config.invertR);
-        }
-        if (typeof config.swap === "boolean") {
-          stereo.setSwap(config.swap);
-        }
+        applyBooleanConfig(config, "invertL", (value) =>
+          stereo.setInvertL(value)
+        );
+        applyBooleanConfig(config, "invertR", (value) =>
+          stereo.setInvertR(value)
+        );
+        applyBooleanConfig(config, "swap", (value) => stereo.setSwap(value));
         break;
       }
       case "tidal": {
@@ -486,18 +509,18 @@ export class EffectSource {
         if (typeof config.mix === "number") {
           comp.setMix(config.mix);
         }
-        if (typeof config.lookahead === "boolean") {
-          comp.setLookahead(config.lookahead);
-        }
-        if (typeof config.autoAttack === "boolean") {
-          comp.setAutoAttack(config.autoAttack);
-        }
-        if (typeof config.autoRelease === "boolean") {
-          comp.setAutoRelease(config.autoRelease);
-        }
-        if (typeof config.autoMakeup === "boolean") {
-          comp.setAutoMakeup(config.autoMakeup);
-        }
+        applyBooleanConfig(config, "lookahead", (value) =>
+          comp.setLookahead(value)
+        );
+        applyBooleanConfig(config, "autoAttack", (value) =>
+          comp.setAutoAttack(value)
+        );
+        applyBooleanConfig(config, "autoRelease", (value) =>
+          comp.setAutoRelease(value)
+        );
+        applyBooleanConfig(config, "autoMakeup", (value) =>
+          comp.setAutoMakeup(value)
+        );
         break;
       }
       case "pitchShifter": {
@@ -516,9 +539,9 @@ export class EffectSource {
       }
       case "revamp": {
         const revamp = processor as RevampEffect;
-        if (typeof config.highPassEnabled === "boolean") {
-          revamp.setHighPassEnabled(config.highPassEnabled);
-        }
+        applyBooleanConfig(config, "highPassEnabled", (value) =>
+          revamp.setHighPassEnabled(value)
+        );
         if (typeof config.highPassFrequency === "number") {
           revamp.setHighPassFrequency(config.highPassFrequency);
         }
@@ -528,18 +551,18 @@ export class EffectSource {
         if (typeof config.highPassOrder === "number") {
           revamp.setHighPassOrder(config.highPassOrder);
         }
-        if (typeof config.lowShelfEnabled === "boolean") {
-          revamp.setLowShelfEnabled(config.lowShelfEnabled);
-        }
+        applyBooleanConfig(config, "lowShelfEnabled", (value) =>
+          revamp.setLowShelfEnabled(value)
+        );
         if (typeof config.lowShelfFrequency === "number") {
           revamp.setLowShelfFrequency(config.lowShelfFrequency);
         }
         if (typeof config.lowShelfGain === "number") {
           revamp.setLowShelfGain(config.lowShelfGain);
         }
-        if (typeof config.lowBellEnabled === "boolean") {
-          revamp.setLowBellEnabled(config.lowBellEnabled);
-        }
+        applyBooleanConfig(config, "lowBellEnabled", (value) =>
+          revamp.setLowBellEnabled(value)
+        );
         if (typeof config.lowBellFrequency === "number") {
           revamp.setLowBellFrequency(config.lowBellFrequency);
         }
@@ -549,9 +572,9 @@ export class EffectSource {
         if (typeof config.lowBellQ === "number") {
           revamp.setLowBellQ(config.lowBellQ);
         }
-        if (typeof config.midBellEnabled === "boolean") {
-          revamp.setMidBellEnabled(config.midBellEnabled);
-        }
+        applyBooleanConfig(config, "midBellEnabled", (value) =>
+          revamp.setMidBellEnabled(value)
+        );
         if (typeof config.midBellFrequency === "number") {
           revamp.setMidBellFrequency(config.midBellFrequency);
         }
@@ -561,9 +584,9 @@ export class EffectSource {
         if (typeof config.midBellQ === "number") {
           revamp.setMidBellQ(config.midBellQ);
         }
-        if (typeof config.highBellEnabled === "boolean") {
-          revamp.setHighBellEnabled(config.highBellEnabled);
-        }
+        applyBooleanConfig(config, "highBellEnabled", (value) =>
+          revamp.setHighBellEnabled(value)
+        );
         if (typeof config.highBellFrequency === "number") {
           revamp.setHighBellFrequency(config.highBellFrequency);
         }
@@ -573,18 +596,18 @@ export class EffectSource {
         if (typeof config.highBellQ === "number") {
           revamp.setHighBellQ(config.highBellQ);
         }
-        if (typeof config.highShelfEnabled === "boolean") {
-          revamp.setHighShelfEnabled(config.highShelfEnabled);
-        }
+        applyBooleanConfig(config, "highShelfEnabled", (value) =>
+          revamp.setHighShelfEnabled(value)
+        );
         if (typeof config.highShelfFrequency === "number") {
           revamp.setHighShelfFrequency(config.highShelfFrequency);
         }
         if (typeof config.highShelfGain === "number") {
           revamp.setHighShelfGain(config.highShelfGain);
         }
-        if (typeof config.lowPassEnabled === "boolean") {
-          revamp.setLowPassEnabled(config.lowPassEnabled);
-        }
+        applyBooleanConfig(config, "lowPassEnabled", (value) =>
+          revamp.setLowPassEnabled(value)
+        );
         if (typeof config.lowPassFrequency === "number") {
           revamp.setLowPassFrequency(config.lowPassFrequency);
         }

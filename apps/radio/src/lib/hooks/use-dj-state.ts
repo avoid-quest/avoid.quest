@@ -1,19 +1,19 @@
 import { useMemo } from "react";
 import type { EffectConfig, FilterConfig, Radio } from "@/lib/audio";
 import {
+  getChannelState,
+  updateChannel,
+  useChannelState,
+} from "@/lib/channel-state-manager";
+import {
   DECK_A_CHANNEL_ID,
   DECK_B_CHANNEL_ID,
   getPlaybackChannel,
   getPlaybackSession,
   type PlaybackChannelRecord,
-  updatePlaybackChannel,
   updatePlaybackSession,
 } from "@/lib/collections/playback-sessions";
 import { useDjSession } from "@/lib/hooks/use-dj-session";
-import {
-  getPlaybackChannelRuntime,
-  usePlaybackChannelRuntime,
-} from "@/lib/stores/playback-runtime-store";
 
 const MIXER_ID = "mixer";
 
@@ -67,33 +67,6 @@ function toMixerRecord(): MixerRecord | undefined {
   };
 }
 
-function combineDeckState(
-  persisted: DeckRecord | undefined,
-  runtime: ReturnType<typeof getPlaybackChannelRuntime>
-): DeckState | null {
-  if (!persisted) {
-    return null;
-  }
-
-  return {
-    radio: persisted.radio as Radio | null,
-    soundId: runtime.soundId,
-    isPlaying: runtime.isPlaying,
-    isLoading: runtime.isLoading,
-    isBuffering: runtime.isBuffering,
-    volume: persisted.volume,
-    muted: persisted.muted,
-    pan: persisted.pan,
-    speed: persisted.speed,
-    channelFilter: persisted.channelFilter,
-    effects: persisted.effects as EffectConfig[],
-    filter: persisted.filter as FilterConfig,
-    effectsDryWet: persisted.effectsDryWet,
-    repeat: persisted.repeat,
-    autoplay: persisted.autoplay ?? true,
-  };
-}
-
 export function useDeckAPersisted(): DeckRecord | undefined {
   const session = useDjSession();
   return session?.channels.find((channel) => channel.id === DECK_A_CHANNEL_ID);
@@ -128,15 +101,11 @@ export function useMixer(): MixerRecord | undefined {
 }
 
 export function useDeckA(): DeckState | null {
-  const persisted = useDeckAPersisted();
-  const runtime = usePlaybackChannelRuntime(DECK_A_CHANNEL_ID);
-  return combineDeckState(persisted, runtime);
+  return useChannelState("dj", DECK_A_CHANNEL_ID) as DeckState | null;
 }
 
 export function useDeckB(): DeckState | null {
-  const persisted = useDeckBPersisted();
-  const runtime = usePlaybackChannelRuntime(DECK_B_CHANNEL_ID);
-  return combineDeckState(persisted, runtime);
+  return useChannelState("dj", DECK_B_CHANNEL_ID) as DeckState | null;
 }
 
 export function useDecks() {
@@ -153,10 +122,8 @@ export {
   setActiveDragRadio,
   setDeckARuntimeState,
   setDeckASoundId,
-  setDeckASubscriptionCleanup,
   setDeckBRuntimeState,
   setDeckBSoundId,
-  setDeckBSubscriptionCleanup,
   setDjError,
   setPendingPlatformItem,
   useActiveDragRadio,
@@ -171,7 +138,7 @@ export {
 } from "@/lib/stores/dj-runtime-store";
 
 export function resetDeck(deckId: "deck-a" | "deck-b") {
-  updatePlaybackChannel("dj", deckId, (draft) => {
+  updateChannel("dj", deckId, (draft) => {
     const next = getPlaybackChannel("dj", deckId);
     Object.assign(draft, {
       ...(next ?? draft),
@@ -208,17 +175,11 @@ export function resetAllDjState() {
 }
 
 export function getDeckAState(): DeckState | null {
-  return combineDeckState(
-    getPlaybackChannel("dj", DECK_A_CHANNEL_ID),
-    getPlaybackChannelRuntime(DECK_A_CHANNEL_ID)
-  );
+  return getChannelState("dj", DECK_A_CHANNEL_ID) as DeckState | null;
 }
 
 export function getDeckBState(): DeckState | null {
-  return combineDeckState(
-    getPlaybackChannel("dj", DECK_B_CHANNEL_ID),
-    getPlaybackChannelRuntime(DECK_B_CHANNEL_ID)
-  );
+  return getChannelState("dj", DECK_B_CHANNEL_ID) as DeckState | null;
 }
 
 export function getMixerState(): MixerRecord | undefined {
@@ -238,11 +199,11 @@ export function getMixer(): MixerRecord | undefined {
 }
 
 export function updateDeckA(updater: (draft: DeckRecord) => void) {
-  updatePlaybackChannel("dj", DECK_A_CHANNEL_ID, updater);
+  updateChannel("dj", DECK_A_CHANNEL_ID, updater);
 }
 
 export function updateDeckB(updater: (draft: DeckRecord) => void) {
-  updatePlaybackChannel("dj", DECK_B_CHANNEL_ID, updater);
+  updateChannel("dj", DECK_B_CHANNEL_ID, updater);
 }
 
 export function updateMixer(updater: (draft: MixerRecord) => void) {
@@ -257,10 +218,10 @@ export function updateMixer(updater: (draft: MixerRecord) => void) {
     session.masterVolume = draft.masterVolume;
     session.headphoneVolume = draft.headphoneVolume;
   });
-  updatePlaybackChannel("dj", DECK_A_CHANNEL_ID, (channel) => {
+  updateChannel("dj", DECK_A_CHANNEL_ID, (channel) => {
     channel.cueEnabled = draft.deckACueEnabled;
   });
-  updatePlaybackChannel("dj", DECK_B_CHANNEL_ID, (channel) => {
+  updateChannel("dj", DECK_B_CHANNEL_ID, (channel) => {
     channel.cueEnabled = draft.deckBCueEnabled;
   });
 }

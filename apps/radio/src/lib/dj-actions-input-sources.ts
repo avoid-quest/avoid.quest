@@ -6,6 +6,10 @@ import type {
   Radio,
 } from "@/lib/audio";
 import { extractFileMetadata } from "@/lib/audio/file-metadata";
+import {
+  activateChannel,
+  deactivateChannel,
+} from "@/lib/channel-state-manager";
 import { type DeckId, deckConfig } from "@/lib/dj-actions-decks.js";
 import type { DeviceInputMetadata, FileMetadata } from "@/lib/platform-types";
 import { isDeviceInputMetadata } from "@/lib/platform-types";
@@ -33,7 +37,7 @@ type InputSourceDependencies = {
     soundId: string,
     effects: EffectConfig[],
     filter: FilterConfig
-  ) => void;
+  ) => Promise<void>;
   clearDjError: () => void;
   connectDeckCueBus: (
     deckId: DeckId,
@@ -49,29 +53,18 @@ type InputSourceDependencies = {
   setDeckRadio: (deckId: DeckId, radio: Radio | null) => Promise<void>;
 };
 
-async function cleanupFailedDeviceSource(
+function cleanupFailedDeviceSource(
+  deckId: DeckId,
   config: (typeof deckConfig)["deck-a"],
-  soundId: string,
-  audioManager: AudioManager
-): Promise<void> {
+  soundId: string
+): boolean {
   const currentRuntime = config.getRuntime();
   if (currentRuntime.soundId !== soundId) {
-    return;
+    return false;
   }
 
-  const existingCleanup = config.getSubscriptionCleanup();
-  if (existingCleanup) {
-    existingCleanup();
-    config.setSubscriptionCleanup(null);
-  }
-
-  try {
-    await audioManager.cleanupSound(soundId);
-  } catch {
-    // Cleanup failure during error recovery - nothing more to do.
-  }
-
-  config.resetRuntime();
+  deactivateChannel(deckId);
+  return true;
 }
 
 export async function setDeckDeviceInputSource(
@@ -82,21 +75,13 @@ export async function setDeckDeviceInputSource(
 ): Promise<void> {
   const config = deckConfig[deckId];
   const deck = config.getDeck();
-  const runtime = config.getRuntime();
 
   if (!deck) {
     return;
   }
 
-  const previousCleanup = config.getSubscriptionCleanup();
-  if (previousCleanup) {
-    previousCleanup();
-    config.setSubscriptionCleanup(null);
-  }
-
-  if (runtime.soundId) {
-    await dependencies.getAudioManager().cleanupSound(runtime.soundId);
-  }
+  const previousRadio = deck.radio;
+  deactivateChannel(deckId);
 
   const side = config.side;
   const radioId = `device-input-${side}`;
@@ -123,17 +108,15 @@ export async function setDeckDeviceInputSource(
 
   try {
     dependencies.clearDjError();
-    dependencies.getAudioManager().createSound(radio, soundId);
 
     config.updateDeck((draft) => {
       draft.radio = radio;
     });
-    config.setSoundId(soundId);
 
     let hasAppliedChannelStrip = false;
-    const cleanup = dependencies
-      .getAudioManager()
-      .subscribe(soundId, (audioState) => {
+    activateChannel("dj", deckId, radio, {
+      soundId,
+      onAudioState: (audioState) => {
         const currentDeck = config.getDeck();
         const currentRuntime = config.getRuntime();
 
@@ -197,9 +180,8 @@ export async function setDeckDeviceInputSource(
             currentDeck?.radio
           );
         }
-      });
-
-    config.setSubscriptionCleanup(cleanup);
+      },
+    });
     await dependencies.getAudioManager().playDeviceSound(soundId, deviceId);
 
     const deviceSource = dependencies
@@ -217,11 +199,16 @@ export async function setDeckDeviceInputSource(
 
     dependencies.applyCrossfade();
   } catch (error) {
-    await cleanupFailedDeviceSource(
+    const channelWasActivated = cleanupFailedDeviceSource(
+      deckId,
       config,
-      soundId,
-      dependencies.getAudioManager()
+      soundId
     );
+    if (!channelWasActivated) {
+      config.updateDeck((draft) => {
+        draft.radio = previousRadio;
+      });
+    }
     const message =
       error instanceof Error ? error.message : "Failed to start device input";
     dependencies.reportDjError(

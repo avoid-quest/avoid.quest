@@ -5,11 +5,12 @@ import {
 import { cn } from "@avoid.quest/ui/lib/utils";
 import { LayersIcon, ListMusicIcon, SwordsIcon } from "lucide-react";
 import { toast } from "sonner";
-import { updatePlayerSettings } from "@/lib/collections";
-import { DEFAULT_TRANSITION_DURATION } from "@/lib/const";
-import { cleanupAudioOnly } from "@/lib/dj-actions";
 import { useSettings } from "@/lib/hooks/use-settings";
-import { cleanupAudioForModeChange } from "@/lib/playback-actions";
+import {
+  isPlaybackSessionId,
+  modeManager,
+  useModeTransitionSnapshot,
+} from "@/lib/mode-lifecycle-manager";
 import { playerModes } from "@/lib/types";
 
 const modeIcons = {
@@ -20,6 +21,10 @@ const modeIcons = {
 
 export function ModeSelect({ className }: { className?: string }) {
   const { data: settings } = useSettings();
+  const modeTransition = useModeTransitionSnapshot();
+  const isTransitioning =
+    modeTransition.phase === "activating" ||
+    modeTransition.phase === "deactivating";
 
   const handleModeChange = async (value: string) => {
     if (!settings) {
@@ -27,21 +32,11 @@ export function ModeSelect({ className }: { className?: string }) {
     }
 
     try {
-      const newMode = playerModes.find((mode) => mode.value === value)?.value;
-      if (!newMode) {
+      if (!isPlaybackSessionId(value)) {
         return;
       }
 
-      await cleanupAudioOnly();
-      await cleanupAudioForModeChange(newMode);
-
-      updatePlayerSettings((player) => ({
-        mode: newMode,
-        single: {
-          transitionDuration:
-            player.single?.transitionDuration ?? DEFAULT_TRANSITION_DURATION,
-        },
-      }));
+      await modeManager.switchTo(value);
     } catch {
       toast.error("Failed to update mode");
     }
@@ -60,6 +55,7 @@ export function ModeSelect({ className }: { className?: string }) {
         return (
           <ToggleGroupItem
             className="h-7 cursor-pointer gap-1.5 px-3 text-xs"
+            disabled={isTransitioning}
             key={mode.value}
             value={mode.value}
           >

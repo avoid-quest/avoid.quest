@@ -64,9 +64,13 @@ export {
 export { useAudio, useAudioDevices } from "./hooks/index.js";
 // High-level API (primary exports)
 export {
+  AUDIO_ENGINE_FACADE_PUBLIC_METHOD_BUDGET,
+  type AudioEngineFacade,
   AudioManager,
   type CrossfadeCurve,
   type CrossfadeOptions,
+  countAudioEngineFacadeMethods,
+  createAudioEngineFacade,
   crossfade,
   duckSound,
   type FilterConfig,

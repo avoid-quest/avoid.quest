@@ -7,14 +7,12 @@ import {
 import type { Platform } from "@/lib/platform-types";
 import {
   getPlaybackChannelRuntime,
-  getPlaybackChannelSubscriptionCleanup,
   type RuntimePeakLevel,
   resetAllPlaybackRuntime,
   resetPlaybackChannelRuntime,
   setPlaybackChannelPeakLevel,
   setPlaybackChannelRuntime,
   setPlaybackChannelSoundId,
-  setPlaybackChannelSubscriptionCleanup,
   usePlaybackChannelRuntime,
 } from "./playback-runtime-store";
 
@@ -135,22 +133,6 @@ export function setDjError(error: string | null) {
   djUiStore.setState((state) => ({ ...state, error }));
 }
 
-export function setDeckASubscriptionCleanup(cleanup: (() => void) | null) {
-  setPlaybackChannelSubscriptionCleanup(DECK_A_CHANNEL_ID, cleanup);
-}
-
-export function setDeckBSubscriptionCleanup(cleanup: (() => void) | null) {
-  setPlaybackChannelSubscriptionCleanup(DECK_B_CHANNEL_ID, cleanup);
-}
-
-export function getDeckASubscriptionCleanup() {
-  return getPlaybackChannelSubscriptionCleanup(DECK_A_CHANNEL_ID);
-}
-
-export function getDeckBSubscriptionCleanup() {
-  return getPlaybackChannelSubscriptionCleanup(DECK_B_CHANNEL_ID);
-}
-
 export function resetDeckARuntime() {
   resetPlaybackChannelRuntime(DECK_A_CHANNEL_ID);
 }
@@ -179,10 +161,6 @@ export function getDjRuntimeState() {
     deckAPeakLevel: getPlaybackChannelRuntime(DECK_A_CHANNEL_ID).peakLevel,
     deckBPeakLevel: getPlaybackChannelRuntime(DECK_B_CHANNEL_ID).peakLevel,
     error: djUiStore.state.error,
-    _subscriptionCleanup: {
-      "deck-a": getPlaybackChannelSubscriptionCleanup(DECK_A_CHANNEL_ID),
-      "deck-b": getPlaybackChannelSubscriptionCleanup(DECK_B_CHANNEL_ID),
-    },
   };
 }
 

@@ -9,7 +9,6 @@ import {
   useSensors,
 } from "@dnd-kit/core";
 import { Volume2Icon } from "lucide-react";
-import { useEffect, useRef } from "react";
 import type { Radio } from "@/lib/audio";
 import {
   setCrossfadePosition,
@@ -21,9 +20,7 @@ import {
   setMasterVolume,
 } from "@/lib/dj-actions";
 import { useDjKeyboard } from "@/lib/hooks/use-dj-keyboard";
-import { useDjSession } from "@/lib/hooks/use-dj-session";
 import {
-  resetDeck,
   setActiveDragRadio,
   setPendingPlatformItem,
   useActiveDragRadio,
@@ -33,7 +30,7 @@ import {
 } from "@/lib/hooks/use-dj-state";
 import { useMediaSession } from "@/lib/hooks/use-media-session";
 import { useMidi } from "@/lib/hooks/use-midi";
-import { useAudioSettings, useSettings } from "@/lib/hooks/use-settings";
+import { useAudioSettings } from "@/lib/hooks/use-settings";
 import type { Platform } from "@/lib/platform-types";
 import type { DeckId } from "@/lib/stores/dj-runtime-store";
 import { RadioLogo } from "../radio-logo";
@@ -97,49 +94,6 @@ function handlePlatformItemDrag({
   return true;
 }
 
-function useDjStateHydration() {
-  const hasHydratedRef = useRef(false);
-  const { data: settings } = useSettings();
-  const session = useDjSession();
-
-  useEffect(() => {
-    if (hasHydratedRef.current || settings === undefined) {
-      return;
-    }
-
-    const shouldRestore = settings.player.restoreStateOnLoad !== false;
-    if (!shouldRestore) {
-      hasHydratedRef.current = true;
-      return;
-    }
-
-    if (!session) {
-      return;
-    }
-
-    hasHydratedRef.current = true;
-
-    (async () => {
-      const deckA = session.channels.find((channel) => channel.id === "deck-a");
-      const deckB = session.channels.find((channel) => channel.id === "deck-b");
-
-      if (deckA?.radio?.platformMetadata?.platform === "local-file") {
-        resetDeck("deck-a");
-      } else if (deckA?.radio) {
-        await setDeckARadio(deckA.radio as Radio);
-      }
-      if (deckB?.radio?.platformMetadata?.platform === "local-file") {
-        resetDeck("deck-b");
-      } else if (deckB?.radio) {
-        await setDeckBRadio(deckB.radio as Radio);
-      }
-
-      setMasterVolume(session.masterVolume);
-      setCrossfadePosition(session.crossfadePosition);
-    })();
-  }, [session, settings]);
-}
-
 function DjPlayerDragOverlay({
   activeDragRadio,
 }: {
@@ -174,7 +128,6 @@ function DjPlayerDragOverlay({
 }
 
 export function DjPlayer({ radios = [] }: DjPlayerProps) {
-  useDjStateHydration();
   useDjKeyboard();
   useMidi();
 

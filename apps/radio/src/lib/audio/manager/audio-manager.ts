@@ -30,21 +30,9 @@ import {
   type Radio,
   resumeAudioContext,
   type Unsubscribe,
-  WorkletManager,
+  type WorkletManager,
 } from "../playback/index.js";
-import { safeDisconnect } from "../utils.js";
-import {
-  convertEffectConfig,
-  convertPartialEffectConfig,
-} from "./audio-manager-effects.js";
-import {
-  attachWorkletManagerListeners,
-  cleanupSoundNodes,
-  connectAudioGraph,
-  createMasterGraphNodes,
-  startMasterMeterLoop,
-  stopMasterMeterLoop,
-} from "./audio-manager-graph.js";
+import { cleanupSoundNodes, connectAudioGraph } from "./audio-manager-graph.js";
 import {
   createDeviceSourceCallbacks,
   createPlaybackSourceCallbacks,
@@ -53,11 +41,13 @@ import { notifySoundError, notifySoundState } from "./audio-manager-state.js";
 import {
   type FilterConfig as AudioManagerFilterConfig,
   createAudioNodes,
-  createSoundInstance,
-  MAX_MAIN_DELAY_MS,
-  MAX_MAIN_DELAY_SECONDS,
   type SoundInstance,
 } from "./audio-manager-types.js";
+import { EffectsController } from "./effects-controller.js";
+import { MeterService } from "./meter-service.js";
+import { OutputRouter } from "./output-router.js";
+import { SoundRegistry } from "./sound-registry.js";
+import { VolumeController } from "./volume-controller.js";
 
 /**
  * Worklet processor URL - should be set before use
@@ -87,37 +77,34 @@ export type { FilterConfig } from "./audio-manager-types.js";
 export class AudioManager {
   private static instance: AudioManager | null = null;
 
-  private readonly sounds = new Map<string, SoundInstance>();
+  private readonly soundRegistry = new SoundRegistry();
   private readonly listeners = new Map<string, Set<AudioStateCallback>>();
-  private readonly meterListeners = new Map<
-    string,
-    Set<(level: { left: number; right: number }) => void>
-  >();
-
-  private readonly workletManagers = new Map<string, WorkletManager>();
-  private readonly volumeCurveEndTimes = new Map<string, number>();
+  readonly volume: VolumeController;
+  readonly effects: EffectsController;
+  readonly output: OutputRouter;
+  readonly meters: MeterService;
   private workletModuleLoaded = false;
   private initPromise: Promise<void> | null = null;
-  private globalVolume = 1;
-  private globalMuted = false;
-  private lastGlobalVolume = 1;
-  private readonly lastSoundVolumes = new Map<string, number>();
 
-  // Main output delay node (shared across all sounds)
-  private mainDelayNode: DelayNode | null = null;
-  private mainDelayMs = 0;
+  private get sounds(): Map<string, SoundInstance> {
+    return this.soundRegistry.asMap();
+  }
 
-  // Master meter nodes (stereo analyser tap on main output)
-  private masterAnalyserL: AnalyserNode | null = null;
-  private masterAnalyserR: AnalyserNode | null = null;
-  private masterSplitter: ChannelSplitterNode | null = null;
-  private readonly masterMeterListeners = new Set<
-    (level: { left: number; right: number }) => void
-  >();
-  private masterMeterRafId: number | null = null;
-  private readonly masterMeterFrame = { count: 0, value: 0 };
-
-  private constructor() {}
+  private constructor() {
+    this.meters = new MeterService();
+    this.output = new OutputRouter();
+    this.volume = new VolumeController({
+      getSound: (soundId) => this.soundRegistry.get(soundId),
+      getSounds: () => this.soundRegistry.entries(),
+      notifyListeners: this.notifyListeners,
+    });
+    this.effects = new EffectsController({
+      workletProcessorUrl: () => workletProcessorUrl,
+      sounds: this.soundRegistry.asMap(),
+      meterListeners: this.meters.soundMeterListeners,
+      notifyListeners: this.notifyListeners,
+    });
+  }
 
   /**
    * Get the singleton instance
@@ -180,17 +167,13 @@ export class AudioManager {
    * after a user gesture).
    */
   createSound(radio: Radio, soundId?: string): string {
-    const id = soundId ?? `sound_${radio.id ?? Date.now()}`;
-
-    // Clean up existing sound
-    if (this.sounds.has(id)) {
-      this.cleanupSound(id);
+    const id = this.soundRegistry.create(radio, soundId, (existingSoundId) => {
+      this.cleanupSound(existingSoundId);
+    });
+    const instance = this.soundRegistry.get(id);
+    if (!instance) {
+      throw new Error(`Failed to create sound with id ${id}`);
     }
-
-    // Create sound instance (but don't initialize audio system yet)
-    const instance = createSoundInstance(radio, id);
-
-    this.sounds.set(id, instance);
 
     // Notify ready state (sound is registered but not initialized)
     notifySoundState(this.notifyListeners, id, instance, {
@@ -218,7 +201,10 @@ export class AudioManager {
       const context = getAudioContext();
       if (context && instance.nodes) {
         const now = context.currentTime;
-        const targetVolume = Math.max(0.0001, volume * this.globalVolume);
+        const targetVolume = Math.max(
+          0.0001,
+          volume * this.volume.getGlobalVolume()
+        );
         instance.nodes.gain.gain.setTargetAtTime(targetVolume, now, 0.02);
       }
       instance.volume = volume;
@@ -260,8 +246,7 @@ export class AudioManager {
     // Create remote playback source if not exists or if previous ended/errored
     if (instance.playbackSource?.isActive) {
       // Resuming existing source - tell worklet to resume
-      const wm = this.workletManagers.get(soundId);
-      wm?.resumeSource(soundId);
+      this.effects.resumeSource(soundId);
     } else {
       // Clean up old source
       instance.playbackSource?.cleanup();
@@ -292,7 +277,7 @@ export class AudioManager {
     }
 
     // Set initial volume
-    this.setVolume(soundId, volume);
+    this.volume.set(soundId, volume);
 
     // Start playback
     await instance.playbackSource.play();
@@ -395,10 +380,10 @@ export class AudioManager {
   private connectAudioGraph(instance: SoundInstance): Promise<boolean> {
     return connectAudioGraph({
       instance,
-      mainDelayNode: this.mainDelayNode,
+      mainDelayNode: this.output.mainDelayNode,
       notifyListeners: this.notifyListeners,
       getOrCreateWorkletManager: (soundId) =>
-        this.getOrCreateWorkletManager(soundId),
+        this.effects.getOrCreateWorkletManager(soundId),
     });
   }
 
@@ -422,7 +407,7 @@ export class AudioManager {
       }
     } else {
       instance.playbackSource?.pause();
-      this.workletManagers.get(soundId)?.pauseSource(soundId);
+      this.effects.pauseSource(soundId);
     }
 
     notifySoundState(this.notifyListeners, soundId, instance, {
@@ -443,7 +428,7 @@ export class AudioManager {
     instance.playing = false;
     instance.playbackSource?.stop();
     instance.deviceSource?.stop();
-    this.workletManagers.get(soundId)?.stopSource(soundId);
+    this.effects.stopSource(soundId);
 
     notifySoundState(this.notifyListeners, soundId, instance, {
       isPlaying: false,
@@ -471,24 +456,14 @@ export class AudioManager {
     }
 
     // Cleanup per-sound worklet manager
-    const wm = this.workletManagers.get(soundId);
-    if (wm) {
-      wm.cleanup();
-      this.workletManagers.delete(soundId);
-    }
+    this.effects.cleanupSound(soundId);
 
     // Notify meter listeners with zero before removing the sound,
     // so consumers (e.g. deck-panel) can reset their UI state.
-    const meterCallbacks = this.meterListeners.get(soundId);
-    if (meterCallbacks) {
-      for (const callback of meterCallbacks) {
-        callback({ left: 0, right: 0 });
-      }
-    }
+    this.meters.notifySoundZero(soundId);
 
-    this.sounds.delete(soundId);
-    this.lastSoundVolumes.delete(soundId);
-    this.volumeCurveEndTimes.delete(soundId);
+    this.soundRegistry.delete(soundId);
+    this.volume.deleteSound(soundId);
 
     this.notifyListeners(soundId, { ...initialAudioState });
   }
@@ -501,21 +476,7 @@ export class AudioManager {
    * Set volume for a sound (0-1)
    */
   setVolume(soundId: string, volume: number): void {
-    const instance = this.sounds.get(soundId);
-    if (!instance) {
-      console.warn(`[AudioManager] setVolume: sound ${soundId} not found`);
-      return;
-    }
-
-    const clampedVolume = Math.max(0, Math.min(1, volume));
-    instance.volume = clampedVolume;
-
-    this.setSoundGainTarget(soundId, instance, clampedVolume);
-
-    notifySoundState(this.notifyListeners, soundId, instance, {
-      volume: clampedVolume,
-      error: null,
-    });
+    this.volume.set(soundId, volume);
   }
 
   /**
@@ -526,79 +487,15 @@ export class AudioManager {
     volumeCurve: Float32Array,
     durationMs: number
   ): void {
-    const instance = this.sounds.get(soundId);
-    if (!instance) {
-      return;
-    }
-
-    if (volumeCurve.length === 0) {
-      return;
-    }
-
-    const lastVolume = Math.max(
-      0,
-      Math.min(1, volumeCurve.at(-1) ?? instance.volume)
-    );
-    instance.volume = lastVolume;
-
-    if (instance.nodes) {
-      const context = getAudioContext();
-      if (context) {
-        const now = context.currentTime;
-        const durationSeconds = Math.max(0, durationMs) / 1000;
-        const gainNode = instance.nodes.gain.gain;
-        const activeCurveEndTime = this.volumeCurveEndTimes.get(soundId) ?? 0;
-        const cancelAndHoldAtTime =
-          gainNode.cancelAndHoldAtTime?.bind(gainNode);
-        const curveStartTime =
-          activeCurveEndTime > now && !cancelAndHoldAtTime
-            ? activeCurveEndTime + 0.001
-            : now;
-
-        if (activeCurveEndTime > now && cancelAndHoldAtTime) {
-          cancelAndHoldAtTime(now);
-        } else {
-          gainNode.cancelScheduledValues(curveStartTime);
-        }
-
-        if (durationSeconds === 0) {
-          gainNode.setValueAtTime(
-            Math.max(0.0001, lastVolume * this.globalVolume),
-            curveStartTime
-          );
-          this.volumeCurveEndTimes.delete(soundId);
-        } else {
-          const scaledCurve = Float32Array.from(volumeCurve, (value) =>
-            Math.max(
-              0.0001,
-              Math.max(0, Math.min(1, value)) * this.globalVolume
-            )
-          );
-          gainNode.setValueCurveAtTime(
-            scaledCurve,
-            curveStartTime,
-            durationSeconds
-          );
-          this.volumeCurveEndTimes.set(
-            soundId,
-            curveStartTime + durationSeconds
-          );
-        }
-      }
-    }
-
-    notifySoundState(this.notifyListeners, soundId, instance, {
-      volume: lastVolume,
-      error: null,
-    });
+    this.volume.scheduleVolumeCurve(soundId, volumeCurve, durationMs);
   }
 
   hasSound(soundId: string): boolean {
-    return this.sounds.has(soundId);
+    return this.soundRegistry.has(soundId);
   }
 
   getSoundVolume(soundId: string): number | null {
-    return this.sounds.get(soundId)?.volume ?? null;
+    return this.volume.getSoundVolume(soundId);
   }
 
   /**
@@ -718,23 +615,21 @@ export class AudioManager {
    * Set master dry/wet for the effect chain (0 = bypass all, 1 = full effects)
    */
   setEffectsDryWet(soundId: string, value: number): void {
-    const instance = this.sounds.get(soundId);
-    if (!instance) {
+    if (!this.soundRegistry.has(soundId)) {
       console.warn(
         `[AudioManager] setEffectsDryWet: sound ${soundId} not found`
       );
       return;
     }
 
-    const clampedValue = Math.max(0, Math.min(1, value));
-    this.workletManagers.get(soundId)?.setEffectsDryWet(soundId, clampedValue);
+    this.effects.setDryWet(soundId, value);
   }
 
   /**
    * Get global volume
    */
   getGlobalVolume(): number {
-    return this.globalVolume;
+    return this.volume.getGlobalVolume();
   }
 
   /**
@@ -744,49 +639,35 @@ export class AudioManager {
    * This ensures CUE/headphone monitoring is independent of master volume.
    */
   setGlobalVolume(volume: number): void {
-    this.globalVolume = Math.max(0, Math.min(1, volume));
-
-    // Update all active sounds (channel gain is post-CUE tap, so CUE is unaffected)
-    for (const [_soundId, instance] of this.sounds) {
-      if (instance.nodes) {
-        this.setSoundGainTarget(_soundId, instance, instance.volume);
-      }
-    }
+    this.volume.setGlobalVolume(volume);
   }
 
   /**
    * Mute global audio
    */
   muteGlobal(): void {
-    if (!this.globalMuted) {
-      this.lastGlobalVolume = this.globalVolume;
-      this.setGlobalVolume(0);
-      this.globalMuted = true;
-    }
+    this.volume.muteGlobal();
   }
 
   /**
    * Unmute global audio
    */
   unmuteGlobal(): void {
-    if (this.globalMuted) {
-      this.setGlobalVolume(this.lastGlobalVolume);
-      this.globalMuted = false;
-    }
+    this.volume.unmuteGlobal();
   }
 
   /**
    * Check if global audio is muted
    */
   isGlobalMuted(): boolean {
-    return this.globalMuted;
+    return this.volume.isGlobalMuted();
   }
 
   /**
    * Get current main output delay in milliseconds
    */
   getMainDelay(): number {
-    return this.mainDelayMs;
+    return this.output.getMainDelay();
   }
 
   /**
@@ -794,54 +675,28 @@ export class AudioManager {
    * Applies to all audio going to the main output
    */
   setMainDelay(ms: number): void {
-    const clampedMs = Math.max(0, Math.min(MAX_MAIN_DELAY_MS, ms));
-    this.mainDelayMs = clampedMs;
-
-    if (!this.mainDelayNode) {
-      return;
-    }
-
-    const context = getAudioContext();
-    if (!context) {
-      return;
-    }
-
-    const now = context.currentTime;
-    const seconds = clampedMs / 1000;
-
-    // Smooth transition to avoid clicks
-    this.mainDelayNode.delayTime.setTargetAtTime(seconds, now, 0.02);
+    this.output.setMainDelay(ms);
   }
 
   /**
    * Mute a specific sound
    */
   muteSound(soundId: string): void {
-    const instance = this.sounds.get(soundId);
-    if (instance) {
-      this.lastSoundVolumes.set(soundId, instance.volume);
-      this.setVolume(soundId, 0);
-    }
+    this.volume.muteSound(soundId);
   }
 
   /**
    * Unmute a specific sound
    */
   unmuteSound(soundId: string): void {
-    const instance = this.sounds.get(soundId);
-    if (instance) {
-      const lastVolume = this.lastSoundVolumes.get(soundId) ?? 1;
-      this.setVolume(soundId, lastVolume);
-      this.lastSoundVolumes.delete(soundId);
-    }
+    this.volume.unmuteSound(soundId);
   }
 
   /**
    * Check if a sound is muted
    */
   isSoundMuted(soundId: string): boolean {
-    const instance = this.sounds.get(soundId);
-    return instance ? instance.volume === 0 : false;
+    return this.volume.isSoundMuted(soundId);
   }
 
   // ============================================
@@ -854,22 +709,35 @@ export class AudioManager {
    * @returns true if effect was added, false if no worklet manager exists
    */
   addEffect(soundId: string, config: EffectConfig): boolean {
-    const wm = this.workletManagers.get(soundId);
-    if (!wm) {
+    return this.effects.add(soundId, config);
+  }
+
+  /**
+   * Ensure the effect worklet exists and has finished initialization.
+   */
+  async ensureEffectsReady(soundId: string): Promise<boolean> {
+    const instance = this.sounds.get(soundId);
+    if (!instance) {
       return false;
     }
 
-    const engineConfig = convertEffectConfig(config);
-
-    wm.addEffect(soundId, config.id, config.type, engineConfig, config.order);
-    return true;
+    try {
+      const wm = await this.effects.getOrCreateWorkletManager(soundId);
+      return wm.isReady;
+    } catch (error) {
+      console.warn(
+        `[AudioManager] ensureEffectsReady: failed for sound ${soundId}`,
+        error
+      );
+      return false;
+    }
   }
 
   /**
    * Remove an effect from a sound
    */
   removeEffect(soundId: string, effectId: string): void {
-    this.workletManagers.get(soundId)?.removeEffect(soundId, effectId);
+    this.effects.remove(soundId, effectId);
   }
 
   /**
@@ -882,21 +750,14 @@ export class AudioManager {
     effectId: string,
     config: Partial<EffectConfig>
   ): boolean {
-    const wm = this.workletManagers.get(soundId);
-    if (!wm) {
-      return false;
-    }
-
-    const engineConfig = convertPartialEffectConfig(config);
-    wm.updateEffect(soundId, effectId, engineConfig);
-    return true;
+    return this.effects.update(soundId, effectId, config);
   }
 
   /**
    * Reorder effects in a sound's chain
    */
   reorderEffects(soundId: string, effectIds: string[]): void {
-    this.workletManagers.get(soundId)?.reorderEffects(soundId, effectIds);
+    this.effects.reorder(soundId, effectIds);
   }
 
   // ============================================
@@ -984,20 +845,7 @@ export class AudioManager {
   subscribeMasterMeter(
     callback: (level: { left: number; right: number }) => void
   ): Unsubscribe {
-    this.masterMeterListeners.add(callback);
-
-    // Start rAF loop on first subscriber
-    if (this.masterMeterListeners.size === 1) {
-      this.startMasterMeterLoop();
-    }
-
-    return () => {
-      this.masterMeterListeners.delete(callback);
-      // Stop rAF loop when last subscriber leaves
-      if (this.masterMeterListeners.size === 0) {
-        this.stopMasterMeterLoop();
-      }
-    };
+    return this.meters.subscribeMasterMeter(callback);
   }
 
   /**
@@ -1008,21 +856,7 @@ export class AudioManager {
     soundId: string,
     callback: (level: { left: number; right: number }) => void
   ): Unsubscribe {
-    if (!this.meterListeners.has(soundId)) {
-      this.meterListeners.set(soundId, new Set());
-    }
-
-    this.meterListeners.get(soundId)?.add(callback);
-
-    return () => {
-      const callbacks = this.meterListeners.get(soundId);
-      if (callbacks) {
-        callbacks.delete(callback);
-        if (callbacks.size === 0) {
-          this.meterListeners.delete(soundId);
-        }
-      }
-    };
+    return this.meters.subscribeMeter(soundId, callback);
   }
 
   // ============================================
@@ -1151,7 +985,7 @@ export class AudioManager {
    * Returns null if the sound doesn't exist or worklet isn't initialized
    */
   getWorkletManager(soundId: string): WorkletManager | null {
-    return this.workletManagers.get(soundId) ?? null;
+    return this.effects.getWorkletManager(soundId);
   }
 
   // ============================================
@@ -1166,111 +1000,20 @@ export class AudioManager {
       this.stopSound(soundId);
     }
 
-    this.sounds.clear();
+    this.soundRegistry.clear();
     this.listeners.clear();
-    this.meterListeners.clear();
-    this.lastSoundVolumes.clear();
-    this.volumeCurveEndTimes.clear();
+    this.meters.clear();
+    this.volume.clear();
 
     // Cleanup all per-sound worklet managers
-    for (const wm of this.workletManagers.values()) {
-      wm.cleanup();
-    }
-    this.workletManagers.clear();
+    this.effects.cleanup();
     this.workletModuleLoaded = false;
-
-    // Cleanup master meter
-    this.stopMasterMeterLoop();
-    this.masterMeterListeners.clear();
-    if (this.masterSplitter) {
-      safeDisconnect(this.masterSplitter, "AudioManager.cleanup");
-      this.masterSplitter = null;
-    }
-    if (this.masterAnalyserL) {
-      safeDisconnect(this.masterAnalyserL, "AudioManager.cleanup");
-      this.masterAnalyserL = null;
-    }
-    if (this.masterAnalyserR) {
-      safeDisconnect(this.masterAnalyserR, "AudioManager.cleanup");
-      this.masterAnalyserR = null;
-    }
-
-    // Cleanup main delay node
-    if (this.mainDelayNode) {
-      safeDisconnect(this.mainDelayNode, "AudioManager.cleanup");
-      this.mainDelayNode = null;
-    }
-    this.mainDelayMs = 0;
+    this.output.cleanup();
   }
 
   // ============================================
   // Private Methods
   // ============================================
-
-  /**
-   * Start the master meter rAF loop (~30fps, every other frame)
-   */
-  private startMasterMeterLoop(): void {
-    if (!(this.masterAnalyserL && this.masterAnalyserR)) {
-      return;
-    }
-
-    this.masterMeterRafId = startMasterMeterLoop(
-      this.masterAnalyserL,
-      this.masterAnalyserR,
-      this.masterMeterListeners,
-      this.masterMeterFrame
-    );
-  }
-
-  /**
-   * Stop the master meter rAF loop
-   */
-  private stopMasterMeterLoop(): void {
-    stopMasterMeterLoop(this.masterMeterFrame.value || this.masterMeterRafId);
-    this.masterMeterRafId = null;
-    this.masterMeterFrame.count = 0;
-    this.masterMeterFrame.value = 0;
-  }
-
-  private setSoundGainTarget(
-    soundId: string,
-    instance: SoundInstance,
-    volume: number
-  ): void {
-    if (!instance.nodes) {
-      return;
-    }
-
-    const context = getAudioContext();
-    if (!context) {
-      return;
-    }
-
-    const now = context.currentTime;
-    const gainParam = instance.nodes.gain.gain;
-    const targetVolume = Math.max(0.0001, volume * this.globalVolume);
-    const activeCurveEndTime = this.volumeCurveEndTimes.get(soundId) ?? 0;
-
-    if (activeCurveEndTime > now) {
-      const cancelAndHoldAtTime =
-        gainParam.cancelAndHoldAtTime?.bind(gainParam);
-
-      if (cancelAndHoldAtTime) {
-        cancelAndHoldAtTime(now);
-        this.volumeCurveEndTimes.delete(soundId);
-        gainParam.setTargetAtTime(targetVolume, now, 0.05);
-        return;
-      }
-
-      gainParam.setTargetAtTime(targetVolume, activeCurveEndTime + 0.001, 0.05);
-      return;
-    }
-
-    this.volumeCurveEndTimes.delete(soundId);
-    gainParam.cancelScheduledValues(now);
-    gainParam.setTargetAtTime(targetVolume, now, 0.05);
-  }
 
   /**
    * Initialize audio system (loads worklet module)
@@ -1284,52 +1027,15 @@ export class AudioManager {
     // Resume the audio context first
     await resumeAudioContext();
 
-    const masterGraph = createMasterGraphNodes(context, MAX_MAIN_DELAY_SECONDS);
-    this.mainDelayNode = masterGraph.mainDelayNode;
-    this.masterSplitter = masterGraph.masterSplitter;
-    this.masterAnalyserL = masterGraph.masterAnalyserL;
-    this.masterAnalyserR = masterGraph.masterAnalyserR;
+    const masterGraph = this.output.initializeMasterGraph(context);
+    this.meters.setMasterAnalysers(
+      masterGraph.masterAnalyserL,
+      masterGraph.masterAnalyserR
+    );
 
     // Load the worklet module once (will be used by all per-sound worklet managers)
     await context.audioWorklet.addModule(workletProcessorUrl);
     this.workletModuleLoaded = true;
-  }
-
-  /**
-   * Get or create a WorkletManager for a specific sound
-   */
-  private async getOrCreateWorkletManager(
-    soundId: string
-  ): Promise<WorkletManager> {
-    let wm = this.workletManagers.get(soundId);
-    if (wm) {
-      return wm;
-    }
-
-    const context = getAudioContext();
-    if (!context) {
-      throw new Error("Audio context not available");
-    }
-
-    // Create new WorkletManager for this sound
-    // Note: worklet module is already loaded in doInit()
-    wm = new WorkletManager(context, workletProcessorUrl);
-    await wm.init();
-    this.workletManagers.set(soundId, wm);
-
-    attachWorkletManagerListeners({
-      wm,
-      soundId,
-      sounds: this.sounds,
-      meterListeners: this.meterListeners,
-      notifyListeners: this.notifyListeners,
-    });
-
-    // Note: We intentionally don't set wm.setVolume() here.
-    // Worklet masterGainNode stays at unity (1.0) so CUE tap gets full signal.
-    // Master volume is applied via channel gain nodes (post-CUE tap).
-
-    return wm;
   }
 
   /**

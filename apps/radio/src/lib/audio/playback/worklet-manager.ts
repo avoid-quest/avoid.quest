@@ -29,6 +29,8 @@ export type {
   WorkletManagerEvents,
 } from "./worklet-manager-protocol.js";
 
+export type WorkletEffectConfig = Record<string, number | string>;
+
 /**
  * Worklet Manager
  *
@@ -308,7 +310,7 @@ export class WorkletManager {
     sourceId: string,
     effectId: string,
     type: WorkletEffectType,
-    config: Record<string, number>,
+    config: WorkletEffectConfig,
     order: number
   ): void {
     this.postMessage({
@@ -333,7 +335,7 @@ export class WorkletManager {
   updateEffect(
     sourceId: string,
     effectId: string,
-    config: Partial<Record<string, number>>
+    config: Partial<WorkletEffectConfig>
   ): void {
     this.postMessage({
       type: MessageType.UPDATE_EFFECT,

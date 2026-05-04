@@ -55,6 +55,7 @@ export type ParamDef =
   | SelectParamDef
   | CheckboxParamDef
   | GroupParamDef;
+export type EffectParamDef = Exclude<ParamDef, GroupParamDef>;
 
 export type VisualizationType = "eq-curve" | "compressor-curve" | "none";
 
@@ -752,20 +753,30 @@ export function getEffectSchema(type: EffectType): EffectSchema | undefined {
   return EFFECT_SCHEMAS[type];
 }
 
+export function getEffectParamDefs(type: EffectType): EffectParamDef[] {
+  return extractParamDefs(EFFECT_SCHEMAS[type].params);
+}
+
 /**
  * Extract all parameter keys from a schema's params array (recursive for groups).
  * Used for runtime validation.
  */
-function extractParamKeys(params: ParamDef[]): string[] {
-  const keys: string[] = [];
+function extractParamDefs(params: readonly ParamDef[]): EffectParamDef[] {
+  const paramDefs: EffectParamDef[] = [];
+
   for (const param of params) {
     if (param.type === "group") {
-      keys.push(...extractParamKeys(param.children));
+      paramDefs.push(...extractParamDefs(param.children));
     } else {
-      keys.push(param.key);
+      paramDefs.push(param);
     }
   }
-  return keys;
+
+  return paramDefs;
+}
+
+function extractParamKeys(params: ParamDef[]): string[] {
+  return extractParamDefs(params).map((param) => param.key);
 }
 
 /**

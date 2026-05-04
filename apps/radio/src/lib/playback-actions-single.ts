@@ -12,28 +12,30 @@ import {
 import { validateRadioForMode } from "@/lib/external-url/utils";
 import { getPlaybackChannelRuntime } from "@/lib/stores/playback-runtime-store";
 import {
+  getDefaultPlaybackActionContext,
+  type PlaybackActionContext,
+} from "./playback-action-context.js";
+import { reportPlaybackActionError } from "./playback-action-errors.js";
+import {
   applySessionMasterVolume,
   cleanupManagedChannel,
   createManagedSound,
   ensureMainAudioSettingsApplied,
-  getAudioManager,
   isSameRadio,
 } from "./playback-actions-shared.js";
 
 export function setSingleChannelVolume(
   channelId: string,
-  volume: number
+  volume: number,
+  ctx = getDefaultPlaybackActionContext()
 ): void {
-  updatePlaybackChannel("single", channelId, (draft) => {
-    draft.volume = volume;
-  });
-  const runtime = getPlaybackChannelRuntime(channelId);
-  if (runtime.soundId) {
-    getAudioManager().setVolume(runtime.soundId, volume);
-  }
+  ctx.channels.setVolume("single", channelId, volume);
 }
 
-export async function setSinglePlaybackState(playing: boolean): Promise<void> {
+export async function setSinglePlaybackState(
+  playing: boolean,
+  ctx = getDefaultPlaybackActionContext()
+): Promise<void> {
   const session = getPlaybackSession("single");
   const activeChannelId = session?.activeChannelId;
   if (!activeChannelId) {
@@ -51,23 +53,40 @@ export async function setSinglePlaybackState(playing: boolean): Promise<void> {
   const runtime = getPlaybackChannelRuntime(activeChannelId);
   if (!playing) {
     if (runtime.soundId) {
-      getAudioManager().pauseSound(runtime.soundId);
+      ctx.audio.pauseSound(runtime.soundId);
     }
     return;
   }
 
   const soundId =
     runtime.soundId ??
-    createManagedSound("single", activeChannelId, channel.radio);
+    createManagedSound(
+      "single",
+      activeChannelId,
+      channel.radio,
+      undefined,
+      ctx
+    );
 
-  await ensureMainAudioSettingsApplied();
-  applySessionMasterVolume("single");
-  await getAudioManager().playSound(soundId, channel.volume);
+  try {
+    await ensureMainAudioSettingsApplied(ctx);
+    applySessionMasterVolume("single", ctx);
+    await ctx.audio.playSound(soundId, channel.volume);
+  } catch (error) {
+    throw reportPlaybackActionError(ctx.reportError, {
+      mode: "single",
+      code: "PLAY_ERROR",
+      cause: error,
+      channelId: activeChannelId,
+      radio: channel.radio,
+    });
+  }
 }
 
 export async function selectSinglePlaybackRadio(
   radio: Radio,
-  transitionDuration: number
+  transitionDuration: number,
+  ctx: PlaybackActionContext = getDefaultPlaybackActionContext()
 ): Promise<void> {
   validateRadioForMode(radio, "single");
 
@@ -112,37 +131,48 @@ export async function selectSinglePlaybackRadio(
   const incomingSoundId = createManagedSound(
     "single",
     incomingChannelId,
-    radio
+    radio,
+    undefined,
+    ctx
   );
-  await ensureMainAudioSettingsApplied();
-  applySessionMasterVolume("single");
+  await ensureMainAudioSettingsApplied(ctx);
+  applySessionMasterVolume("single", ctx);
 
   const outgoingRuntime = outgoingChannelId
     ? getPlaybackChannelRuntime(outgoingChannelId)
     : null;
-  const shouldCrossfade = !!(
-    outgoingChannelId &&
-    outgoingRuntime?.soundId &&
-    outgoingRuntime.isPlaying
-  );
+  const outgoingSoundId =
+    outgoingRuntime?.isPlaying && outgoingRuntime.soundId
+      ? outgoingRuntime.soundId
+      : null;
 
-  if (!shouldCrossfade) {
+  if (!(outgoingChannelId && outgoingSoundId)) {
     if (outgoingChannelId && outgoingRuntime?.soundId) {
-      cleanupManagedChannel(outgoingChannelId);
+      cleanupManagedChannel(outgoingChannelId, ctx);
     }
     setPlaybackSessionActiveChannel("single", incomingChannelId);
     return;
   }
 
-  await getAudioManager().playSound(incomingSoundId, 0);
-  await crossfade(outgoingRuntime.soundId as string, incomingSoundId, {
-    duration: transitionDuration,
-    targetVolume: previousVolume,
-    curve: "equalPower",
-  });
+  try {
+    await ctx.audio.playSound(incomingSoundId, 0);
+    await crossfade(outgoingSoundId, incomingSoundId, {
+      duration: transitionDuration,
+      targetVolume: previousVolume,
+      curve: "equalPower",
+    });
+  } catch (error) {
+    throw reportPlaybackActionError(ctx.reportError, {
+      mode: "single",
+      code: "PLAY_ERROR",
+      cause: error,
+      channelId: incomingChannelId,
+      radio,
+    });
+  }
 
   if (outgoingChannelId) {
-    cleanupManagedChannel(outgoingChannelId);
+    cleanupManagedChannel(outgoingChannelId, ctx);
     updatePlaybackChannel("single", outgoingChannelId, (draft) => {
       draft.radio = null;
       draft.volume = previousVolume;

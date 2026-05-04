@@ -1,25 +1,22 @@
-import { AudioManager, type Radio } from "@/lib/audio";
+import type { AudioManager, Radio } from "@/lib/audio";
 import {
   getPlaybackSession,
   type PlaybackSessionId,
 } from "@/lib/collections/playback-sessions";
 import { getAudioSettings, getDelaySettings } from "@/lib/collections/settings";
 import { getMainOutputRouter } from "@/lib/main-output-router";
+import type {
+  ChannelActivationOptions,
+  ChannelRuntimeSubscriptionOptions,
+} from "./channel-state-manager.js";
 import {
-  getPlaybackChannelRuntime,
-  getPlaybackChannelSubscriptionCleanup,
-  resetAllPlaybackRuntime,
-  resetPlaybackChannelRuntime,
-  setPlaybackChannelPeakLevel,
-  setPlaybackChannelRuntime,
-  setPlaybackChannelSoundId,
-  setPlaybackChannelSubscriptionCleanup,
-} from "@/lib/stores/playback-runtime-store";
-
-let audioRoutingInitialized = false;
+  getDefaultPlaybackActionContext,
+  type PlaybackActionContext,
+  resetDefaultPlaybackActionContext,
+} from "./playback-action-context.js";
 
 export function getAudioManager(): AudioManager {
-  return AudioManager.getInstance();
+  return getDefaultPlaybackActionContext().audio;
 }
 
 export function isSameRadio(
@@ -35,21 +32,26 @@ export function isSameRadio(
   return a.streamUrl === b.streamUrl;
 }
 
-function getOutputRouter() {
-  return getMainOutputRouter();
+function getPlaybackOutputRouter(ctx: PlaybackActionContext) {
+  return ctx.getMainOutputRouter() ?? getMainOutputRouter();
 }
 
-export async function applyMainOutputDevice(deviceId: string): Promise<void> {
-  const router = getOutputRouter();
+export async function applyMainOutputDevice(
+  deviceId: string,
+  ctx = getDefaultPlaybackActionContext()
+): Promise<void> {
+  const router = getPlaybackOutputRouter(ctx);
   if (router) {
     await router.setMainOutput(deviceId);
   }
 }
 
-export async function applyCurrentMainAudioSettings(): Promise<void> {
-  const router = getOutputRouter();
+export async function applyCurrentMainAudioSettings(
+  ctx = getDefaultPlaybackActionContext()
+): Promise<void> {
+  const router = getPlaybackOutputRouter(ctx);
   if (!router) {
-    audioRoutingInitialized = false;
+    ctx.lifecycle.mainOutputSettingsApplied = false;
     return;
   }
 
@@ -59,28 +61,36 @@ export async function applyCurrentMainAudioSettings(): Promise<void> {
   }
 
   const { mainDelayMs } = getDelaySettings();
-  getAudioManager().setMainDelay(mainDelayMs);
-  audioRoutingInitialized = true;
+  ctx.audio.setMainDelay(mainDelayMs);
+  ctx.lifecycle.mainOutputSettingsApplied = true;
 }
 
-export async function ensureMainAudioSettingsApplied(): Promise<void> {
-  if (!audioRoutingInitialized) {
-    await applyCurrentMainAudioSettings();
+export async function ensureMainAudioSettingsApplied(
+  ctx = getDefaultPlaybackActionContext()
+): Promise<void> {
+  if (!ctx.lifecycle.mainOutputSettingsApplied) {
+    await applyCurrentMainAudioSettings(ctx);
   }
 }
 
-export function resetManagedAudioState(): void {
-  AudioManager.resetInstance();
-  resetAllPlaybackRuntime();
-  audioRoutingInitialized = false;
+export function resetManagedAudioState(
+  ctx = getDefaultPlaybackActionContext()
+): void {
+  ctx.channels.deactivateAll();
+  ctx.resetAudioManager();
+  ctx.lifecycle.mainOutputSettingsApplied = false;
+  resetDefaultPlaybackActionContext();
 }
 
 function getSessionMasterVolume(sessionId: PlaybackSessionId): number {
   return getPlaybackSession(sessionId)?.masterVolume ?? 1;
 }
 
-export function applySessionMasterVolume(sessionId: PlaybackSessionId): void {
-  getAudioManager().setGlobalVolume(getSessionMasterVolume(sessionId));
+export function applySessionMasterVolume(
+  sessionId: PlaybackSessionId,
+  ctx = getDefaultPlaybackActionContext()
+): void {
+  ctx.audio.setGlobalVolume(getSessionMasterVolume(sessionId));
 }
 
 export function getDefaultSoundId(
@@ -93,83 +103,63 @@ export function getDefaultSoundId(
 export function subscribeManagedChannel(
   sessionId: PlaybackSessionId,
   channelId: string,
-  soundId: string
+  soundId: string,
+  options: ChannelRuntimeSubscriptionOptions = {},
+  ctx: PlaybackActionContext = getDefaultPlaybackActionContext()
 ): void {
-  const manager = getAudioManager();
-  const cleanup = manager.subscribe(soundId, (audioState) => {
-    setPlaybackChannelRuntime(channelId, () => ({
-      soundId,
-      isPlaying: audioState.isPlaying,
-      isLoading: audioState.isLoading,
-      isBuffering: audioState.isBuffering,
-      error: audioState.error,
-    }));
-  });
-
-  const meterCleanup =
-    sessionId === "dj"
-      ? manager.subscribeMeter(soundId, (level) => {
-          setPlaybackChannelPeakLevel(channelId, level);
-        })
-      : null;
-
-  setPlaybackChannelSubscriptionCleanup(channelId, () => {
-    cleanup();
-    meterCleanup?.();
-  });
+  ctx.channels.subscribeRuntime(sessionId, channelId, soundId, options);
 }
 
 export function createManagedSound(
   sessionId: PlaybackSessionId,
   channelId: string,
   radio: Radio,
-  soundId = getDefaultSoundId(sessionId, channelId)
+  optionsOrSoundId: string | ChannelActivationOptions = {},
+  ctx = getDefaultPlaybackActionContext()
 ): string {
-  const manager = getAudioManager();
-
-  const previousCleanup = getPlaybackChannelSubscriptionCleanup(channelId);
-  if (previousCleanup) {
-    previousCleanup();
-    setPlaybackChannelSubscriptionCleanup(channelId, null);
+  const options =
+    typeof optionsOrSoundId === "string"
+      ? { soundId: optionsOrSoundId }
+      : optionsOrSoundId;
+  const soundId = options.soundId ?? getDefaultSoundId(sessionId, channelId);
+  if (!options.onAudioState) {
+    return ctx.channels.activate(sessionId, channelId, radio, soundId);
   }
-
-  const previousRuntime = getPlaybackChannelRuntime(channelId);
-  if (previousRuntime.soundId) {
-    manager.cleanupSound(previousRuntime.soundId);
-  }
-
-  manager.createSound(radio, soundId);
-  setPlaybackChannelSoundId(channelId, soundId);
-  subscribeManagedChannel(sessionId, channelId, soundId);
-
-  return soundId;
+  return ctx.channels.activate(sessionId, channelId, radio, {
+    ...options,
+    soundId,
+  });
 }
 
-export function cleanupManagedChannel(channelId: string): void {
-  const runtime = getPlaybackChannelRuntime(channelId);
-  if (runtime.soundId) {
-    getAudioManager().cleanupSound(runtime.soundId);
-  }
-  resetPlaybackChannelRuntime(channelId);
+export function cleanupManagedChannel(
+  channelId: string,
+  ctx = getDefaultPlaybackActionContext()
+): void {
+  ctx.channels.deactivate(channelId);
 }
 
 export function cleanupPlaybackSessionAudio(
-  sessionId: PlaybackSessionId
+  sessionId: PlaybackSessionId,
+  ctx = getDefaultPlaybackActionContext()
 ): void {
   const session = getPlaybackSession(sessionId);
   if (!session) {
     return;
   }
   for (const channel of session.channels) {
-    cleanupManagedChannel(channel.id);
+    cleanupManagedChannel(channel.id, ctx);
   }
 }
 
-export function cleanupAudioForModeChange(nextMode: PlaybackSessionId): void {
+export function cleanupAudioForModeChange(
+  nextMode: PlaybackSessionId,
+  ctx = getDefaultPlaybackActionContext()
+): void {
   for (const sessionId of ["single", "multiple", "dj"] as const) {
     if (sessionId !== nextMode) {
-      cleanupPlaybackSessionAudio(sessionId);
+      cleanupPlaybackSessionAudio(sessionId, ctx);
     }
   }
-  applySessionMasterVolume(nextMode);
+  ctx.lifecycle.mainOutputSettingsApplied = false;
+  applySessionMasterVolume(nextMode, ctx);
 }

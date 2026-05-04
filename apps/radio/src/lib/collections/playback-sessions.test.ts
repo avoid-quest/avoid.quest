@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { createDefaultEffectConfig } from "@/lib/audio";
 import { addMultiplePlaybackChannel } from "../playback-actions-multiple";
 import {
   buildDjSessionFromLegacyState,
@@ -11,8 +12,10 @@ import {
   initializePlaybackSessions,
   playbackSessionsCollection,
   SINGLE_ACTIVE_CHANNEL_ID,
+  updatePlaybackSession,
 } from "./playback-sessions";
 import { radiosCollection } from "./radios";
+import { addSessionRadio, sessionRadiosCollection } from "./session-radios";
 import { settingsCollection } from "./settings";
 
 const PLAYBACK_SESSIONS_STORAGE_KEY = "radio-app-playback-sessions";
@@ -60,6 +63,7 @@ async function resetPlaybackState() {
     playbackSessionsCollection.stateWhenReady(),
     radiosCollection.stateWhenReady(),
     settingsCollection.stateWhenReady(),
+    sessionRadiosCollection.stateWhenReady(),
   ]);
 
   for (const sessionId of Array.from(playbackSessionsCollection.state.keys())) {
@@ -72,6 +76,10 @@ async function resetPlaybackState() {
 
   for (const settingsId of Array.from(settingsCollection.state.keys())) {
     settingsCollection.delete(settingsId);
+  }
+
+  for (const radioId of Array.from(sessionRadiosCollection.state.keys())) {
+    sessionRadiosCollection.delete(radioId);
   }
 
   if (typeof localStorage !== "undefined") {
@@ -181,6 +189,29 @@ describe("buildDjSessionFromLegacyState", () => {
     expect(deckB?.muted).toBe(true);
     expect(deckB?.cueEnabled).toBe(false);
   });
+
+  test("reloads deck effects in persisted order", () => {
+    const delay = createDefaultEffectConfig("delay", "delay-1", 2);
+    const limiter = createDefaultEffectConfig("limiter", "limiter-1", 0);
+    const crusher = createDefaultEffectConfig("crusher", "crusher-1", 1);
+
+    const session = buildDjSessionFromLegacyState({
+      legacyDecks: [
+        {
+          id: DECK_A_CHANNEL_ID,
+          effects: [delay, limiter, crusher],
+        },
+      ],
+    });
+
+    const deckA = session.channels.find((channel) => channel.id === "deck-a");
+    expect(deckA?.effects.map((effect) => effect.id)).toEqual([
+      "limiter-1",
+      "crusher-1",
+      "delay-1",
+    ]);
+    expect(deckA?.effects.map((effect) => effect.order)).toEqual([0, 1, 2]);
+  });
 });
 
 describe("buildMultipleSessionFromRadios", () => {
@@ -222,6 +253,41 @@ describe("buildMultipleSessionFromRadios", () => {
 });
 
 describe("multiple session persistence", () => {
+  test("updatePlaybackSession updates nested channel state and session fields", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+
+    playbackSessionsCollection.insert({
+      id: "multiple",
+      channels: [
+        {
+          ...createDefaultChannel("multi:radio-1", "multiple", 0),
+          radio: {
+            id: "radio-1",
+            name: "Radio One",
+            streamUrl: "https://radio.example/one.mp3",
+          },
+        },
+      ],
+      masterVolume: 1,
+      crossfadePosition: 0.5,
+      headphoneVolume: 1,
+      activeChannelId: null,
+    });
+
+    updatePlaybackSession("multiple", (draft) => {
+      const channel = draft.channels[0];
+      if (!channel) {
+        throw new Error("Expected seeded multiple channel");
+      }
+      channel.volume = 0.25;
+      draft.masterVolume = 0.75;
+    });
+
+    const session = getPlaybackSession("multiple");
+    expect(session?.channels[0]?.volume).toBe(0.25);
+    expect(session?.masterVolume).toBe(0.75);
+  });
+
   test("re-adding an existing multiple channel preserves its saved state", async () => {
     await playbackSessionsCollection.stateWhenReady();
 
@@ -389,21 +455,11 @@ describe("multiple session persistence", () => {
       },
     });
 
-    sessionStorage.setItem(
-      "radio-session-radios",
-      JSON.stringify({
-        state: {
-          radios: [
-            {
-              id: "rg_live",
-              name: "Live Session Radio",
-              streamUrl: "https://radio.example/live.mp3",
-            },
-          ],
-        },
-        version: 0,
-      })
-    );
+    addSessionRadio({
+      id: "rg_live",
+      name: "Live Session Radio",
+      streamUrl: "https://radio.example/live.mp3",
+    });
 
     playbackSessionsCollection.insert({
       id: "multiple",

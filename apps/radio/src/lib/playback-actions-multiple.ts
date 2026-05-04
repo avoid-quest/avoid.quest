@@ -7,19 +7,19 @@ import {
   type PlaybackChannelRecord,
   removePlaybackChannel,
   replacePlaybackChannels,
-  updatePlaybackChannel,
   updatePlaybackSession,
   upsertPlaybackChannel,
 } from "@/lib/collections/playback-sessions";
 import { getSettings } from "@/lib/collections/settings";
 import { validateRadioForMode } from "@/lib/external-url/utils";
 import { getPlaybackChannelRuntime } from "@/lib/stores/playback-runtime-store";
+import { getDefaultPlaybackActionContext } from "./playback-action-context.js";
+import { reportPlaybackActionError } from "./playback-action-errors.js";
 import {
   applySessionMasterVolume,
   cleanupManagedChannel,
   createManagedSound,
   ensureMainAudioSettingsApplied,
-  getAudioManager,
 } from "./playback-actions-shared.js";
 
 export function mergeMultiplePlaybackRadios(
@@ -34,7 +34,10 @@ export function mergeMultiplePlaybackRadios(
   ];
 }
 
-export function syncMultiplePlaybackChannels(radios: Radio[]): void {
+export function syncMultiplePlaybackChannels(
+  radios: Radio[],
+  ctx = getDefaultPlaybackActionContext()
+): void {
   const existingChannels = getPlaybackSession("multiple")?.channels ?? [];
   const nextChannelIds = new Set(
     radios.map((radio) => getMultipleChannelId(radio))
@@ -42,7 +45,7 @@ export function syncMultiplePlaybackChannels(radios: Radio[]): void {
 
   for (const channel of existingChannels) {
     if (!nextChannelIds.has(channel.id)) {
-      cleanupManagedChannel(channel.id);
+      cleanupManagedChannel(channel.id, ctx);
     }
   }
 
@@ -87,14 +90,18 @@ export function addMultiplePlaybackChannel(
   return channel;
 }
 
-export function removeMultiplePlaybackChannel(channelId: string): void {
-  cleanupManagedChannel(channelId);
+export function removeMultiplePlaybackChannel(
+  channelId: string,
+  ctx = getDefaultPlaybackActionContext()
+): void {
+  cleanupManagedChannel(channelId, ctx);
   removePlaybackChannel("multiple", channelId);
 }
 
 export async function setMultipleChannelPlaying(
   channelId: string,
-  playing: boolean
+  playing: boolean,
+  ctx = getDefaultPlaybackActionContext()
 ): Promise<void> {
   const channel = getPlaybackChannel("multiple", channelId);
   if (!channel?.radio) {
@@ -106,55 +113,68 @@ export async function setMultipleChannelPlaying(
   if (!playing) {
     const runtime = getPlaybackChannelRuntime(channelId);
     if (runtime.soundId) {
-      getAudioManager().pauseSound(runtime.soundId);
+      ctx.audio.pauseSound(runtime.soundId);
     }
     return;
   }
 
   const runtime = getPlaybackChannelRuntime(channelId);
   const soundId =
-    runtime.soundId ?? createManagedSound("multiple", channelId, channel.radio);
+    runtime.soundId ??
+    createManagedSound("multiple", channelId, channel.radio, undefined, ctx);
 
-  await ensureMainAudioSettingsApplied();
-  applySessionMasterVolume("multiple");
-  await getAudioManager().playSound(soundId, channel.volume);
+  try {
+    await ensureMainAudioSettingsApplied(ctx);
+    applySessionMasterVolume("multiple", ctx);
+    await ctx.audio.playSound(soundId, channel.volume);
+  } catch (error) {
+    throw reportPlaybackActionError(ctx.reportError, {
+      mode: "multiple",
+      code: "PLAY_ERROR",
+      cause: error,
+      channelId,
+      radio: channel.radio,
+    });
+  }
 }
 
 export function setMultipleChannelVolume(
   channelId: string,
-  volume: number
+  volume: number,
+  ctx = getDefaultPlaybackActionContext()
 ): void {
-  updatePlaybackChannel("multiple", channelId, (draft) => {
-    draft.volume = volume;
-  });
-  const runtime = getPlaybackChannelRuntime(channelId);
-  if (runtime.soundId) {
-    getAudioManager().setVolume(runtime.soundId, volume);
-  }
+  ctx.channels.setVolume("multiple", channelId, volume);
 }
 
-export function setMultipleSessionMasterVolume(volume: number): void {
+export function setMultipleSessionMasterVolume(
+  volume: number,
+  ctx = getDefaultPlaybackActionContext()
+): void {
   updatePlaybackSession("multiple", (draft) => {
     draft.masterVolume = volume;
   });
   if ((getSettings()?.player.mode ?? "single") === "multiple") {
-    getAudioManager().setGlobalVolume(volume);
+    ctx.audio.setGlobalVolume(volume);
   }
 }
 
-export async function playAllMultipleChannels(): Promise<void> {
+export async function playAllMultipleChannels(
+  ctx = getDefaultPlaybackActionContext()
+): Promise<void> {
   const channels = getPlaybackSession("multiple")?.channels ?? [];
   await Promise.allSettled(
-    channels.map((channel) => setMultipleChannelPlaying(channel.id, true))
+    channels.map((channel) => setMultipleChannelPlaying(channel.id, true, ctx))
   );
 }
 
-export function pauseAllMultipleChannels(): void {
+export function pauseAllMultipleChannels(
+  ctx = getDefaultPlaybackActionContext()
+): void {
   const channels = getPlaybackSession("multiple")?.channels ?? [];
   for (const channel of channels) {
     const runtime = getPlaybackChannelRuntime(channel.id);
     if (runtime.soundId) {
-      getAudioManager().pauseSound(runtime.soundId);
+      ctx.audio.pauseSound(runtime.soundId);
     }
   }
 }

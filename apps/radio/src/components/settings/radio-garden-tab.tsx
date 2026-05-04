@@ -16,10 +16,7 @@ import { toast } from "sonner";
 import { radiosCollection } from "@/lib/collections";
 import { addRadio } from "@/lib/hooks/use-radios";
 import type { RadioGardenSearchResult } from "@/lib/platform-types";
-import {
-  resolveRadioGardenStation,
-  saveResolvedStationToCollection,
-} from "@/lib/stations/external-station-workflow";
+import { createExternalStationResolutionWorkflow } from "@/lib/stations/external-station-workflow";
 import {
   radioGardenResolveStream,
   radioGardenSearch,
@@ -37,6 +34,46 @@ export function RadioGardenTab({ onSuccess }: RadioGardenTabProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editedName, setEditedName] = useState("");
   const [isAdding, setIsAdding] = useState(false);
+  const workflow = createExternalStationResolutionWorkflow({
+    adapters: {
+      platform: {
+        resolve: async () => ({
+          ok: false,
+          error: {
+            code: "PLATFORM_RESOLVE_UNAVAILABLE",
+            message: "Platform resolution is unavailable here",
+          },
+        }),
+      },
+      radioGarden: {
+        resolveStream: async (channelId) => {
+          const response = await radioGardenResolveStream({
+            data: { channelId },
+          });
+          if (!response.ok) {
+            return {
+              ok: false,
+              error: {
+                code: response.error.code,
+                message: response.error.message,
+              },
+            };
+          }
+
+          return {
+            ok: true,
+            data: {
+              streamUrl: response.data.streamUrl,
+            },
+          };
+        },
+      },
+    },
+    collection: {
+      addSavedRadio: addRadio,
+      getSavedRadios: () => radiosCollection.state.values(),
+    },
+  });
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -90,41 +127,14 @@ export function RadioGardenTab({ onSuccess }: RadioGardenTabProps) {
   const handleAdd = async (result: RadioGardenSearchResult) => {
     setIsAdding(true);
     try {
-      const resolved = await resolveRadioGardenStation(
-        result,
-        async (channelId) => {
-          const response = await radioGardenResolveStream({
-            data: { channelId },
-          });
-          if (!response.ok) {
-            return {
-              ok: false,
-              error: {
-                code: response.error.code,
-                message: response.error.message,
-              },
-            };
-          }
-
-          return {
-            ok: true,
-            data: {
-              streamUrl: response.data.streamUrl,
-            },
-          };
-        },
-        { name: editedName || result.title }
-      );
+      const resolved = await workflow.resolveRadioGardenToCollection(result, {
+        name: editedName || result.title,
+      });
 
       if (!resolved.ok) {
         toast.error(`Failed to resolve stream: ${resolved.error.message}`);
         return;
       }
-
-      saveResolvedStationToCollection(resolved.data, {
-        addSavedRadio: addRadio,
-        getSavedRadios: () => radiosCollection.state.values(),
-      });
 
       toast.success(`Added "${editedName || result.title}" to your collection`);
       onSuccess();

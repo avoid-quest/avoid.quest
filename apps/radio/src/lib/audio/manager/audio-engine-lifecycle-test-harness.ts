@@ -57,7 +57,7 @@ function installAudioEngineLifecycleHarness() {
 function installGlobals(records: HarnessRecords): InstalledGlobal[] {
   const originals: InstalledGlobal[] = [];
 
-  const assignGlobal = (key: keyof typeof globalThis, value: unknown) => {
+  const assignGlobal = (key: keyof typeof globalThis, value: unknown): void => {
     originals.push({ key, value: globalThis[key] });
     Object.defineProperty(globalThis, key, {
       configurable: true,
@@ -78,7 +78,11 @@ function installGlobals(records: HarnessRecords): InstalledGlobal[] {
     exponentialRampToValueAtTime(value: number, _endTime: number): void {
       this.value = value;
     }
-    setTargetAtTime(value: number, _startTime: number, _timeConstant: number) {
+    setTargetAtTime(
+      value: number,
+      _startTime: number,
+      _timeConstant: number
+    ): void {
       this.value = value;
     }
     setValueAtTime(value: number, _time: number): void {
@@ -88,7 +92,7 @@ function installGlobals(records: HarnessRecords): InstalledGlobal[] {
       values: Float32Array,
       _time: number,
       _duration: number
-    ) {
+    ): void {
       this.value = values.at(-1) ?? this.value;
     }
   }
@@ -339,7 +343,7 @@ function installGlobals(records: HarnessRecords): InstalledGlobal[] {
 }
 
 function restoreGlobals(originals: InstalledGlobal[]): void {
-  for (const { key, value } of originals.reverse()) {
+  for (const { key, value } of [...originals].reverse()) {
     if (value === undefined) {
       Reflect.deleteProperty(globalThis, key);
       continue;

@@ -33,20 +33,21 @@ describe("audio engine lifecycle", () => {
 
     await manager.playSound(soundId, 0.4);
 
+    const connectedNodePairs = harness.connectedNodePairs();
+    const workletMessageTypes = harness
+      .workletMessages()
+      .map((message) => message.type);
+
     expect(harness.loadedMediaUrls()).toEqual([
       "/api/stream-proxy?url=https%3A%2F%2Faudio.example%2Fstream.mp3",
     ]);
-    expect(harness.connectedNodePairs()).toContain("media-source -> gain");
-    expect(harness.connectedNodePairs()).toContain("gain -> stereo-panner");
-    expect(harness.connectedNodePairs()).toContain("stereo-panner -> biquad");
-    expect(harness.connectedNodePairs()).toContain("biquad -> worklet");
-    expect(harness.connectedNodePairs()).toContain("worklet-gain -> gain");
-    expect(harness.workletMessages().map((message) => message.type)).toContain(
-      "CREATE_SOURCE"
-    );
-    expect(harness.workletMessages().map((message) => message.type)).toContain(
-      "START_SOURCE"
-    );
+    expect(connectedNodePairs).toContain("media-source -> gain");
+    expect(connectedNodePairs).toContain("gain -> stereo-panner");
+    expect(connectedNodePairs).toContain("stereo-panner -> biquad");
+    expect(connectedNodePairs).toContain("biquad -> worklet");
+    expect(connectedNodePairs).toContain("worklet-gain -> gain");
+    expect(workletMessageTypes).toContain("CREATE_SOURCE");
+    expect(workletMessageTypes).toContain("START_SOURCE");
     expect(states).toContainEqual(
       expect.objectContaining({
         isLoading: true,

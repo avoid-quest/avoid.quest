@@ -8,9 +8,16 @@ import {
 } from "./external-station-workflow";
 
 export type ManualWebsiteImportError = {
-  code: string;
+  code: ManualWebsiteImportErrorCode;
   message: string;
 };
+
+export type ManualWebsiteImportErrorCode =
+  | "INVALID_WEBSITE_URL"
+  | "MISSING_REQUIRED_STATION_FIELDS"
+  | "MISSING_WEBSITE_URL"
+  | "WEBSITE_FETCH_FAILED"
+  | "WEBSITE_PARSE_FAILED";
 
 export type ManualWebsiteImportResult<T> =
   | { ok: true; data: T }
@@ -48,7 +55,7 @@ export type ManualWebsiteImportDependencies = {
 const CORS_PROXY = "https://api.allorigins.win/raw?url=";
 const FETCH_TIMEOUT = 10_000;
 
-function validateWebsiteUrl(
+export function validateManualWebsiteImportUrl(
   websiteUrl: string
 ): ManualWebsiteImportResult<string> {
   const trimmedUrl = websiteUrl.trim();
@@ -98,7 +105,7 @@ function createDraftFromMetadata(
 }
 
 function createSafeFailure(
-  code: string,
+  code: ManualWebsiteImportErrorCode,
   fallbackMessage: string,
   error: unknown
 ): ManualWebsiteImportResult<never> {
@@ -165,7 +172,7 @@ export function createManualWebsiteImportWorkflow({
     async fetchDefaults(
       websiteUrl: string
     ): Promise<ManualWebsiteImportResult<ManualWebsiteImportDraft>> {
-      const validatedUrl = validateWebsiteUrl(websiteUrl);
+      const validatedUrl = validateManualWebsiteImportUrl(websiteUrl);
       if (!validatedUrl.ok) {
         return validatedUrl;
       }
@@ -227,6 +234,8 @@ export function createManualWebsiteImportWorkflow({
         data: saved,
       };
     },
+
+    validateWebsiteUrl: validateManualWebsiteImportUrl,
   };
 }
 

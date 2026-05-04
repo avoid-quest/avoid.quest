@@ -42,12 +42,19 @@ export function RadioFromUrlTab({ onSuccess }: RadioFromUrlTabProps) {
     });
 
   const handleFetch = async () => {
+    const workflow = createWorkflow();
+    const validatedUrl = workflow.validateWebsiteUrl(url);
+    if (!validatedUrl.ok) {
+      setError(validatedUrl.error.message);
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
     setScrapedData(null);
 
     try {
-      const result = await createWorkflow().fetchDefaults(url);
+      const result = await workflow.fetchDefaults(validatedUrl.data);
       if (!result.ok) {
         setError(result.error.message);
         return;

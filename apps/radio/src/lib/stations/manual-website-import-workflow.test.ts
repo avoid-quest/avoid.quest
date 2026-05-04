@@ -1,9 +1,7 @@
 import { describe, expect, test } from "bun:test";
+// @ts-expect-error jsdom types are not installed in this workspace.
+import { JSDOM } from "jsdom";
 import { createManualWebsiteImportWorkflow } from "./manual-website-import-workflow";
-
-const { JSDOM } = require("jsdom") as {
-  JSDOM: new (html: string) => { window: { document: Document } };
-};
 
 function parseHtml(html: string): Document {
   return new JSDOM(html).window.document;

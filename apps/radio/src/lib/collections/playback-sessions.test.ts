@@ -229,7 +229,7 @@ describe("buildMultipleSessionFromRadios", () => {
 });
 
 describe("multiple session persistence", () => {
-  test("updatePlaybackSession persists nested channel state through the typed session mutation path", async () => {
+  test("updatePlaybackSession updates nested channel state and session fields", async () => {
     await playbackSessionsCollection.stateWhenReady();
 
     playbackSessionsCollection.insert({

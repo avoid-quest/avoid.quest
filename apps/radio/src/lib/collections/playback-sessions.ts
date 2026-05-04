@@ -446,18 +446,22 @@ export const playbackSessionsCollection = createCollection(
   })
 );
 
+type PlaybackSessionUpdater = (draft: PlaybackSessionRecord) => void;
+type PlaybackSessionRecordUpdate = (
+  this: typeof playbackSessionsCollection,
+  key: PlaybackSessionId,
+  updater: PlaybackSessionUpdater
+) => void;
+
 function updatePlaybackSessionRecord(
   id: PlaybackSessionId,
-  updater: (draft: PlaybackSessionRecord) => void
+  updater: PlaybackSessionUpdater
 ): void {
   // TanStack DB's draft type is narrower than this validated nested schema,
   // so keep the cast at the collection boundary and preserve the method binding.
-  (
-    playbackSessionsCollection.update as unknown as (
-      key: PlaybackSessionId,
-      updater: (draft: PlaybackSessionRecord) => void
-    ) => void
-  ).call(playbackSessionsCollection, id, updater);
+  const updateRecord =
+    playbackSessionsCollection.update as unknown as PlaybackSessionRecordUpdate;
+  updateRecord.call(playbackSessionsCollection, id, updater);
 }
 
 export async function initializePlaybackSessions(): Promise<void> {
@@ -510,7 +514,7 @@ export function getPlaybackSession(
 
 export function updatePlaybackSession(
   id: PlaybackSessionId,
-  updater: (draft: PlaybackSessionRecord) => void
+  updater: PlaybackSessionUpdater
 ): void {
   const existing = getPlaybackSession(id);
   if (existing) {

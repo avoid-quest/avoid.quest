@@ -7,6 +7,7 @@ import {
 import {
   getPlaybackChannelRuntime,
   resetAllPlaybackRuntime,
+  setPlaybackChannelRuntime,
 } from "@/lib/stores/playback-runtime-store";
 import { createManagedPlaybackSessionWorkflow } from "./managed-playback-session-workflow";
 import type { PlaybackActionContext } from "./playback-action-context";
@@ -177,5 +178,54 @@ describe("managed playback session workflow", () => {
     expect(context.audio.setGlobalVolume).toHaveBeenCalledWith(0.65);
     expect(getPlaybackChannelRuntime("multi:local-1").soundId).toBeNull();
     expect(getPlaybackChannelRuntime("multi:sc-1").soundId).toBeNull();
+  });
+
+  test("cleans stale runtime for channels that cannot be restored", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    const localFileRadio = {
+      id: "local-1",
+      name: "Local",
+      streamUrl: "blob:https://radio.example/local",
+      platformMetadata: {
+        platform: "local-file",
+        itemType: "track",
+        url: "",
+        fileName: "local.mp3",
+        displayName: "Local",
+        duration: 10,
+        fileSize: 100,
+        mimeType: "audio/mpeg",
+        objectUrl: "blob:https://radio.example/local",
+      },
+    } satisfies Radio;
+
+    playbackSessionsCollection.insert({
+      id: "multiple",
+      channels: [
+        {
+          ...createDefaultChannel("multi:local-1", "multiple", 0),
+          radio: localFileRadio,
+        },
+      ],
+      masterVolume: 0.65,
+      crossfadePosition: 0.5,
+      headphoneVolume: 1,
+      activeChannelId: null,
+    });
+    setPlaybackChannelRuntime("multi:local-1", () => ({
+      soundId: "multiple:multi:local-1",
+      isPlaying: true,
+    }));
+    const context = createTestContext();
+    const workflow = createManagedPlaybackSessionWorkflow("multiple", {
+      ctx: context,
+    });
+
+    await workflow.activate();
+
+    expect(context.channels.activate).not.toHaveBeenCalled();
+    expect(context.channels.deactivate).toHaveBeenCalledWith("multi:local-1");
+    expect(getPlaybackChannelRuntime("multi:local-1").soundId).toBeNull();
+    expect(getPlaybackChannelRuntime("multi:local-1").isPlaying).toBe(false);
   });
 });

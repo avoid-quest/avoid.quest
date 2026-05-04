@@ -135,11 +135,15 @@ function restoreSessionSounds(
   ctx: PlaybackActionContext
 ): void {
   for (const channel of getRestoreChannels(sessionId, session)) {
+    const runtime = getPlaybackChannelRuntime(channel.id);
     if (!isRestorableManagedRadio(channel.radio, sessionId)) {
+      if (runtime.soundId) {
+        cleanupManagedChannel(channel.id, ctx);
+      }
       resetPlaybackChannelRuntime(channel.id);
       continue;
     }
-    if (getPlaybackChannelRuntime(channel.id).soundId) {
+    if (runtime.soundId) {
       continue;
     }
     createManagedSound(sessionId, channel.id, channel.radio, undefined, ctx);
@@ -199,6 +203,9 @@ function syncMultipleChannels(
   ctx: PlaybackActionContext
 ): void {
   const existingChannels = getPlaybackSession("multiple")?.channels ?? [];
+  const existingChannelsById = new Map(
+    existingChannels.map((channel) => [channel.id, channel])
+  );
   const nextChannelIds = new Set(
     radios.map((radio) => getMultipleChannelId(radio))
   );
@@ -211,9 +218,7 @@ function syncMultipleChannels(
 
   const channels = radios.map((radio, index) => {
     const channelId = getMultipleChannelId(radio);
-    const existingChannel = existingChannels.find(
-      (channel) => channel.id === channelId
-    );
+    const existingChannel = existingChannelsById.get(channelId);
 
     return {
       ...(existingChannel ??
@@ -248,6 +253,13 @@ function addMultipleChannel(
   };
   upsertPlaybackChannel("multiple", channel);
   return channel;
+}
+
+function createDefaultSingleChannel(channelId: string): PlaybackChannelRecord {
+  if (channelId === SINGLE_ACTIVE_CHANNEL_ID) {
+    return createDefaultChannel(channelId, "single-primary", 0);
+  }
+  return createDefaultChannel(channelId, "single-secondary", 1);
 }
 
 async function setSinglePlaying(
@@ -332,13 +344,7 @@ async function selectSingleRadio(
 
   const incomingChannel =
     getPlaybackChannel("single", incomingChannelId) ??
-    createDefaultChannel(
-      incomingChannelId,
-      incomingChannelId === SINGLE_ACTIVE_CHANNEL_ID
-        ? "single-primary"
-        : "single-secondary",
-      incomingChannelId === SINGLE_ACTIVE_CHANNEL_ID ? 0 : 1
-    );
+    createDefaultSingleChannel(incomingChannelId);
 
   const previousVolume = activeChannel?.volume ?? incomingChannel.volume;
   upsertPlaybackChannel("single", {

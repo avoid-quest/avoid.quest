@@ -10,6 +10,9 @@ Work on branch {{BRANCH}}. Make commits and run tests.
 
 # CONTEXT
 
+Follow the repository instructions in `AGENTS.md` and the Sandcastle coding
+standards in `.sandcastle/CODING_STANDARDS.md`.
+
 Here are the last 10 commits:
 
 <recent-commits>

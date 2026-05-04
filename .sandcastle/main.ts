@@ -1,15 +1,15 @@
-// Parallel Planner with Review — four-phase orchestration loop
+// Serial Planner with Review — three-phase orchestration loop
 //
 // This template drives a multi-phase workflow:
 //   Phase 1 (Plan):             An opus agent analyzes open issues, builds a
 //                               dependency graph, and outputs a <plan> JSON
-//                               listing unblocked issues with branch names.
+//                               listing ready issues with branch names.
 //   Phase 2 (Execute + Review): For each issue, a sandbox is created via
 //                               createSandbox(). The implementer runs first
 //                               (100 iterations). If it produces commits, a
 //                               reviewer runs in the same sandbox on the same
-//                               branch (1 iteration). All issue pipelines run
-//                               concurrently via Promise.allSettled().
+//                               branch (1 iteration). Issue pipelines run
+//                               serially to avoid competing workspace edits.
 //   Phase 3 (Merge):            A single agent merges all completed branches
 //                               into the current branch.
 //
@@ -32,8 +32,10 @@ import { docker } from "@ai-hero/sandcastle/sandboxes/docker";
 // Maximum number of plan→execute→merge cycles before stopping.
 // Raise this if your backlog is large; lower it for a quick smoke-test run.
 const MAX_ITERATIONS = 10;
+const MAX_ACTIVE_ISSUE_PIPELINES = 1;
 
 type IssuePlan = { id: string; title: string; branch: string };
+type IssueRunResult = { commits: { sha: string }[] };
 
 const sharedNodeModulesPath = ".sandcastle/shared/node_modules";
 const sharedBunCachePath = ".sandcastle/shared/bun-cache";
@@ -72,10 +74,15 @@ const sandboxProvider = () =>
 
 // Hooks run inside the sandbox before the agent starts each iteration.
 // bun install ensures the shared sandbox node_modules matches bun.lock.
+// Install scripts are skipped because this repo has native runtime packages
+// that do not have stable Linux arm64 prebuilds for the Sandcastle image.
 const hooks = {
   sandbox: {
     onSandboxReady: [
-      { command: "bun install --frozen-lockfile", timeoutMs: 300_000 },
+      {
+        command: "bun install --frozen-lockfile --ignore-scripts",
+        timeoutMs: 300_000,
+      },
     ],
   },
 };
@@ -90,9 +97,8 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
   // -------------------------------------------------------------------------
   // Phase 1: Plan
   //
-  // The planning agent (opus, for deeper reasoning) reads the open issue list,
-  // builds a dependency graph, and selects the issues that can be worked in
-  // parallel right now (i.e., no blocking dependencies on other open issues).
+  // The planning agent (opus, for deeper reasoning) reads the open issue list
+  // and builds a dependency graph so ready issues can be processed serially.
   //
   // It outputs a <plan> JSON block — we parse that to drive Phase 2.
   // -------------------------------------------------------------------------
@@ -126,8 +132,9 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
     break;
   }
 
+  console.log(`Planning complete. ${issues.length} issue(s) to work serially:`);
   console.log(
-    `Planning complete. ${issues.length} issue(s) to work in parallel:`
+    `Configured max active issue pipelines: ${MAX_ACTIVE_ISSUE_PIPELINES}`
   );
   for (const issue of issues) {
     console.log(`  ${issue.id}: ${issue.title} → ${issue.branch}`);
@@ -139,58 +146,61 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
   // For each issue, create a sandbox via createSandbox() so the implementer
   // and reviewer share the same sandbox instance per branch. The implementer
   // runs first; if it produces commits, the reviewer runs in the same sandbox.
-  //
-  // Promise.allSettled means one failing pipeline doesn't cancel the others.
   // -------------------------------------------------------------------------
 
-  const settled = await Promise.allSettled(
-    issues.map(async (issue) => {
-      const sandbox = await createSandbox({
-        branch: issue.branch,
-        sandbox: sandboxProvider(),
-        hooks,
-      });
+  const settled: PromiseSettledResult<IssueRunResult>[] = [];
 
-      try {
-        // Run the implementer
-        const implement = await sandbox.run({
-          name: "implementer",
-          maxIterations: 100,
-          agent: codex("gpt-5.5", { effort: "medium" }),
-          promptFile: "./.sandcastle/implement-prompt.md",
-          promptArgs: {
-            TASK_ID: issue.id,
-            ISSUE_TITLE: issue.title,
-            BRANCH: issue.branch,
-          },
+  for (const issue of issues) {
+    try {
+      const outcome = await (async (): Promise<IssueRunResult> => {
+        const sandbox = await createSandbox({
+          branch: issue.branch,
+          sandbox: sandboxProvider(),
+          hooks,
         });
 
-        // Only review if the implementer produced commits
-        if (implement.commits.length > 0) {
-          const review = await sandbox.run({
-            name: "reviewer",
-            maxIterations: 1,
-            agent: codex("gpt-5.5", { effort: "high" }),
-            promptFile: "./.sandcastle/review-prompt.md",
+        try {
+          // Run the implementer
+          const implement = await sandbox.run({
+            name: "implementer",
+            maxIterations: 100,
+            agent: codex("gpt-5.5", { effort: "medium" }),
+            promptFile: "./.sandcastle/implement-prompt.md",
             promptArgs: {
+              TASK_ID: issue.id,
+              ISSUE_TITLE: issue.title,
               BRANCH: issue.branch,
             },
           });
 
-          // Merge commits from both runs so the merge phase sees all of them.
-          // Each sandbox.run() only returns commits from its own run.
-          return {
-            ...review,
-            commits: [...implement.commits, ...review.commits],
-          };
-        }
+          // Only review if the implementer produced commits
+          if (implement.commits.length > 0) {
+            const review = await sandbox.run({
+              name: "reviewer",
+              maxIterations: 1,
+              agent: codex("gpt-5.5", { effort: "high" }),
+              promptFile: "./.sandcastle/review-prompt.md",
+            });
 
-        return implement;
-      } finally {
-        await sandbox.close();
-      }
-    })
-  );
+            // Merge commits from both runs so the merge phase sees all of them.
+            // Each sandbox.run() only returns commits from its own run.
+            return {
+              ...review,
+              commits: [...implement.commits, ...review.commits],
+            };
+          }
+
+          return implement;
+        } finally {
+          await sandbox.close();
+        }
+      })();
+
+      settled.push({ status: "fulfilled", value: outcome });
+    } catch (reason) {
+      settled.push({ status: "rejected", reason });
+    }
+  }
 
   const completedIssues: IssuePlan[] = [];
 

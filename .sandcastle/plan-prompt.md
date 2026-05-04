@@ -22,6 +22,8 @@ An issue is **unblocked** if it has zero blocking dependencies on other open iss
 
 For each unblocked issue, assign a branch name using the format `sandcastle/issue-{id}-{slug}`.
 
+The implementation runner processes issues serially with a maximum of one active issue pipeline at a time. Do not optimize the plan for parallel execution; order issues from safest/most foundational to riskiest/highest-conflict.
+
 # OUTPUT
 
 Output your plan as a JSON object wrapped in `<plan>` tags:

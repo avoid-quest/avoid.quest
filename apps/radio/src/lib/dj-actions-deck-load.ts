@@ -36,7 +36,7 @@ type DeckLoadDependencies = {
     soundId: string,
     effects: DeckRecord["effects"],
     filter: DeckRecord["filter"]
-  ) => void;
+  ) => Promise<void>;
   clearDjError: () => void;
   connectDeckCueBus: (
     deckId: DeckId,

@@ -2,7 +2,11 @@ import {
   type EffectParamDef,
   getEffectParamDefs,
 } from "../dsp/effects/schema.js";
-import type { EffectConfig, EffectType } from "../dsp/effects/types.js";
+import {
+  EFFECT_TYPES,
+  type EffectConfig,
+  type EffectType,
+} from "../dsp/effects/types.js";
 
 type EngineEffectParamValue = number | string;
 type EngineEffectConfig = Record<string, EngineEffectParamValue>;
@@ -14,7 +18,7 @@ const UNIVERSAL_EFFECT_PARAM_KEYS = new Set([
   "outputGain",
 ]);
 
-const EFFECT_PARAM_KEYS = new Set<string>();
+const KNOWN_EFFECT_PARAM_KEYS = new Set<string>();
 
 function effectConfigRecord(
   config: EffectConfig | Partial<EffectConfig>
@@ -94,30 +98,18 @@ function applySchemaParams(
   }
 }
 
-function ensureEffectParamKeys(): Set<string> {
-  if (EFFECT_PARAM_KEYS.size > 0) {
-    return EFFECT_PARAM_KEYS;
+function getKnownEffectParamKeys(): Set<string> {
+  if (KNOWN_EFFECT_PARAM_KEYS.size > 0) {
+    return KNOWN_EFFECT_PARAM_KEYS;
   }
 
-  for (const type of [
-    "plateReverb",
-    "pitchShifter",
-    "delay",
-    "distortion",
-    "compressor",
-    "crusher",
-    "fold",
-    "stereoTool",
-    "revamp",
-    "tidal",
-    "limiter",
-  ] satisfies EffectType[]) {
+  for (const type of EFFECT_TYPES) {
     for (const param of getEffectParamDefs(type)) {
-      EFFECT_PARAM_KEYS.add(param.key);
+      KNOWN_EFFECT_PARAM_KEYS.add(param.key);
     }
   }
 
-  return EFFECT_PARAM_KEYS;
+  return KNOWN_EFFECT_PARAM_KEYS;
 }
 
 function convertEffectConfig(config: EffectConfig): EngineEffectConfig {
@@ -143,7 +135,7 @@ function convertPartialEffectConfig(
     return result;
   }
 
-  const knownParamKeys = ensureEffectParamKeys();
+  const knownParamKeys = getKnownEffectParamKeys();
   for (const [key, value] of Object.entries(record)) {
     if (UNIVERSAL_EFFECT_PARAM_KEYS.has(key) || !knownParamKeys.has(key)) {
       continue;

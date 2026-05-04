@@ -33,7 +33,7 @@ type InputSourceDependencies = {
     soundId: string,
     effects: EffectConfig[],
     filter: FilterConfig
-  ) => void;
+  ) => Promise<void>;
   clearDjError: () => void;
   connectDeckCueBus: (
     deckId: DeckId,

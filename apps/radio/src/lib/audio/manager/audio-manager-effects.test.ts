@@ -1,27 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { createDefaultEffectConfig } from "../dsp/effects/registry";
-import {
-  EFFECT_SCHEMAS,
-  type EffectParamDef,
-  type ParamDef,
-} from "../dsp/effects/schema";
+import { getEffectParamDefs } from "../dsp/effects/schema";
 import type { EffectConfig, EffectType } from "../dsp/effects/types";
 import { EFFECT_TYPES } from "../dsp/effects/types";
 import { convertEffectConfig } from "./audio-manager-effects";
-
-function collectParamDefs(params: readonly ParamDef[]): EffectParamDef[] {
-  const result: EffectParamDef[] = [];
-
-  for (const param of params) {
-    if (param.type === "group") {
-      result.push(...collectParamDefs(param.children));
-    } else {
-      result.push(param);
-    }
-  }
-
-  return result;
-}
 
 function readConfigValue(config: EffectConfig, key: string): unknown {
   return (config as unknown as Record<string, unknown>)[key];
@@ -32,9 +14,8 @@ describe("audio manager effect config conversion", () => {
     for (const type of EFFECT_TYPES) {
       const config = createDefaultEffectConfig(type, `effect-${type}`, 0);
       const converted = convertEffectConfig(config);
-      const paramDefs = collectParamDefs(EFFECT_SCHEMAS[type].params);
 
-      for (const param of paramDefs) {
+      for (const param of getEffectParamDefs(type)) {
         const original = readConfigValue(config, param.key);
         const convertedValue = converted[param.key];
 

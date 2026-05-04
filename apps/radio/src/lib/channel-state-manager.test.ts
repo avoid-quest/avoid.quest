@@ -11,6 +11,7 @@ import {
   addChannelEffect,
   deactivateAllChannels,
   deactivateChannel,
+  reorderChannelEffects,
   setChannelVolume,
 } from "./channel-state-manager";
 
@@ -155,5 +156,48 @@ describe("channel state manager", () => {
       "limiter-1",
     ]);
     expect(effects.map((effect) => effect.order)).toEqual([0, 1]);
+  });
+
+  test("serializes persisted effect order before syncing reorder commands", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    playbackSessionsCollection.insert({
+      id: "dj",
+      channels: [createDefaultChannel("deck-a", "deck-a", 0)],
+      masterVolume: 1,
+      crossfadePosition: 0.5,
+      headphoneVolume: 1,
+      activeChannelId: null,
+    });
+
+    const delay = createDefaultEffectConfig("delay", "delay-1", 99);
+    const limiter = createDefaultEffectConfig("limiter", "limiter-1", 99);
+    const crusher = createDefaultEffectConfig("crusher", "crusher-1", 99);
+    const manager = AudioManager.getInstance();
+    manager.reorderEffects = mock(
+      (_soundId: string, _effectIds: string[]) => undefined
+    );
+    setPlaybackChannelSoundId("deck-a", "sound-1");
+
+    addChannelEffect("dj", "deck-a", delay);
+    addChannelEffect("dj", "deck-a", limiter);
+    addChannelEffect("dj", "deck-a", crusher);
+    reorderChannelEffects("dj", "deck-a", [
+      "crusher-1",
+      "missing-effect",
+      "delay-1",
+    ]);
+
+    const effects = getPlaybackChannel("dj", "deck-a")?.effects ?? [];
+    expect(effects.map((effect) => effect.id)).toEqual([
+      "crusher-1",
+      "delay-1",
+      "limiter-1",
+    ]);
+    expect(effects.map((effect) => effect.order)).toEqual([0, 1, 2]);
+    expect(manager.reorderEffects).toHaveBeenCalledWith("sound-1", [
+      "crusher-1",
+      "delay-1",
+      "limiter-1",
+    ]);
   });
 });

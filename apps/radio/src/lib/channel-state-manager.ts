@@ -3,6 +3,7 @@ import {
   AudioManager,
   type AudioState,
   type EffectConfig,
+  type EffectType,
   type FilterConfig,
 } from "@/lib/audio";
 import {
@@ -21,6 +22,11 @@ import {
   setPlaybackChannelSoundId,
   usePlaybackChannelRuntime,
 } from "@/lib/stores/playback-runtime-store";
+import {
+  appendEffectInOrder,
+  createOrderedEffectConfig,
+  reorderEffectsByIds,
+} from "./effect-order.js";
 import { toRuntimeAudioError } from "./playback-action-errors.js";
 
 export type ChannelState = PlaybackChannelRecord &
@@ -240,18 +246,31 @@ export function addChannelEffect(
   channelId: string,
   effect: EffectConfig
 ): void {
-  let orderedEffect = effect;
+  let orderedEffect: EffectConfig | null = null;
   updateChannel(sessionId, channelId, (draft) => {
-    orderedEffect = {
-      ...effect,
-      order: draft.effects.length,
-    } as EffectConfig;
-    draft.effects.push(orderedEffect);
+    const effects = appendEffectInOrder(draft.effects, effect);
+    draft.effects = effects;
+    orderedEffect = effects.at(-1) ?? null;
   });
   const runtime = getPlaybackChannelRuntime(channelId);
-  if (runtime.soundId) {
+  if (orderedEffect && runtime.soundId) {
     getAudioManager().addEffect(runtime.soundId, orderedEffect);
   }
+}
+
+export function createAndAddChannelEffect(
+  sessionId: PlaybackSessionId,
+  channelId: string,
+  type: EffectType,
+  effectId: string
+): void {
+  const channel = getPlaybackChannel(sessionId, channelId);
+  const effect = createOrderedEffectConfig(
+    type,
+    effectId,
+    channel?.effects ?? []
+  );
+  addChannelEffect(sessionId, channelId, effect);
 }
 
 export function updateChannelEffect(
@@ -293,17 +312,15 @@ export function reorderChannelEffects(
   channelId: string,
   effectIds: string[]
 ): void {
+  let serializedOrder: string[] = [];
   updateChannel(sessionId, channelId, (draft) => {
-    draft.effects = effectIds
-      .map((effectId) => draft.effects.find((effect) => effect.id === effectId))
-      .filter((effect): effect is EffectConfig => Boolean(effect));
-    for (const [index, effect] of draft.effects.entries()) {
-      effect.order = index;
-    }
+    const effects = reorderEffectsByIds(draft.effects, effectIds);
+    draft.effects = effects;
+    serializedOrder = effects.map((effect) => effect.id);
   });
   const runtime = getPlaybackChannelRuntime(channelId);
   if (runtime.soundId) {
-    getAudioManager().reorderEffects(runtime.soundId, effectIds);
+    getAudioManager().reorderEffects(runtime.soundId, serializedOrder);
   }
 }
 

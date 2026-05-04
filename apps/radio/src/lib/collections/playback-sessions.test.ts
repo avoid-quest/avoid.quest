@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { createDefaultEffectConfig } from "@/lib/audio";
 import { addMultiplePlaybackChannel } from "../playback-actions-multiple";
 import {
   buildDjSessionFromLegacyState,
@@ -187,6 +188,29 @@ describe("buildDjSessionFromLegacyState", () => {
     expect(deckB?.volume).toBe(0.9);
     expect(deckB?.muted).toBe(true);
     expect(deckB?.cueEnabled).toBe(false);
+  });
+
+  test("reloads deck effects in persisted order", () => {
+    const delay = createDefaultEffectConfig("delay", "delay-1", 2);
+    const limiter = createDefaultEffectConfig("limiter", "limiter-1", 0);
+    const crusher = createDefaultEffectConfig("crusher", "crusher-1", 1);
+
+    const session = buildDjSessionFromLegacyState({
+      legacyDecks: [
+        {
+          id: DECK_A_CHANNEL_ID,
+          effects: [delay, limiter, crusher],
+        },
+      ],
+    });
+
+    const deckA = session.channels.find((channel) => channel.id === "deck-a");
+    expect(deckA?.effects.map((effect) => effect.id)).toEqual([
+      "limiter-1",
+      "crusher-1",
+      "delay-1",
+    ]);
+    expect(deckA?.effects.map((effect) => effect.order)).toEqual([0, 1, 2]);
   });
 });
 

@@ -5,6 +5,7 @@ import {
 import { z } from "zod";
 import { EFFECT_TYPES, type EffectConfig } from "@/lib/audio/dsp/effects/types";
 import type { Radio } from "@/lib/audio/playback/types";
+import { orderEffectsForPlayback } from "../effect-order.js";
 import { radiosCollection } from "./radios";
 import { platformMetadataSchema } from "./schemas";
 import { sessionRadiosCollection } from "./session-radios";
@@ -160,7 +161,13 @@ function normalizeChannel(
   fallback: PlaybackChannelRecord
 ): PlaybackChannelRecord {
   const parsed = playbackChannelSchema.safeParse(value);
-  return parsed.success ? parsed.data : fallback;
+  if (!parsed.success) {
+    return fallback;
+  }
+  return {
+    ...parsed.data,
+    effects: orderEffectsForPlayback(parsed.data.effects),
+  };
 }
 
 function readLegacyLocalStorage<T>(key: string): T | null {

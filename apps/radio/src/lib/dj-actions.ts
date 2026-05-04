@@ -16,12 +16,11 @@ import type {
 import {
   type AudioManager,
   createAudioEngineFacade,
-  createDefaultEffectConfig,
   type Radio,
 } from "@/lib/audio";
 import { validatePlaybackStreamUrl } from "@/lib/audio/playback/url-validation";
 import {
-  addChannelEffect,
+  createAndAddChannelEffect,
   removeChannelEffect,
   reorderChannelEffects,
   setChannelEffectsDryWet,
@@ -457,11 +456,7 @@ function updateDeckFilter(deckId: DeckId, filter: FilterConfig) {
 
 // Effect actions with audio manager sync
 function addDeckEffect(deckId: DeckId, type: EffectType) {
-  const config = deckConfig[deckId];
-  const deck = config.getDeck();
-  const effects = deck?.effects ?? [];
-  const effect = createDefaultEffectConfig(type, generateId(), effects.length);
-  addChannelEffect("dj", deckId, effect);
+  createAndAddChannelEffect("dj", deckId, type, generateId());
 }
 
 function updateDeckEffect(

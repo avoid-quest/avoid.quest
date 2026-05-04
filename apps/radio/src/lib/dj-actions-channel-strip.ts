@@ -1,4 +1,5 @@
 import type { AudioManager, EffectConfig, FilterConfig } from "@/lib/audio";
+import { orderEffectsForPlayback } from "./effect-order.js";
 
 async function applyStoredEffectsAndFilters(
   audioManager: AudioManager,
@@ -19,7 +20,7 @@ async function applyStoredEffectsAndFilters(
       audioManager.updateFilter(soundId, filter);
     }
 
-    for (const effect of effects) {
+    for (const effect of orderEffectsForPlayback(effects)) {
       audioManager.addEffect(soundId, effect);
     }
   } catch (error) {

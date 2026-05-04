@@ -61,4 +61,29 @@ describe("dj channel strip stored effect replay", () => {
     expect(audioManager.addEffect).not.toHaveBeenCalled();
     expect(audioManager.updateFilter).not.toHaveBeenCalled();
   });
+
+  test("replays stored effects by persisted order", async () => {
+    const delay = createDefaultEffectConfig("delay", "delay-1", 2);
+    const limiter = createDefaultEffectConfig("limiter", "limiter-1", 0);
+    const crusher = createDefaultEffectConfig("crusher", "crusher-1", 1);
+    const appliedEffectIds: string[] = [];
+    const audioManager = {
+      getWorkletManager: mock(() => ({ isReady: true })),
+      ensureEffectsReady: mock(async () => true),
+      updateFilter: mock(() => undefined),
+      addEffect: mock((_soundId: string, effect: EffectConfig) => {
+        appliedEffectIds.push(effect.id);
+        return true;
+      }),
+    } as unknown as AudioManager;
+
+    await applyStoredEffectsAndFilters(
+      audioManager,
+      "sound-1",
+      [delay, limiter, crusher],
+      defaultFilter
+    );
+
+    expect(appliedEffectIds).toEqual(["limiter-1", "crusher-1", "delay-1"]);
+  });
 });

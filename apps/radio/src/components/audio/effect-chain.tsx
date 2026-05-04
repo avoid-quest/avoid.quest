@@ -21,6 +21,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { PlusIcon } from "lucide-react";
 import { useState } from "react";
 import type { EffectConfig, EffectType } from "@/lib/audio";
+import { serializeEffectOrder } from "@/lib/effect-order";
 import { EffectItem } from "./effect-item";
 import { EffectPicker } from "./effect-picker";
 
@@ -70,7 +71,7 @@ export function EffectChain({
   // Local optimistic order — prevents snap-back when external store update
   // hasn't propagated yet at the time dnd-kit clears transforms on drag end
   const [localOrder, setLocalOrder] = useState<string[]>(() =>
-    [...effects].sort((a, b) => a.order - b.order).map((e) => e.id)
+    serializeEffectOrder(effects)
   );
 
   // Sync local order when effects are added/removed externally.
@@ -88,9 +89,7 @@ export function EffectChain({
     .join(",");
   if (currentIdKey !== prevIdKey) {
     setPrevIdKey(currentIdKey);
-    setLocalOrder(
-      [...effects].sort((a, b) => a.order - b.order).map((e) => e.id)
-    );
+    setLocalOrder(serializeEffectOrder(effects));
   }
 
   const effectsById = new Map(effects.map((e) => [e.id, e]));

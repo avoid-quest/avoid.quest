@@ -6,6 +6,7 @@ import {
   getPlaybackSession,
   PLAYBACK_SESSION_IDS,
   type PlaybackSessionId,
+  playbackSessionsCollection,
 } from "@/lib/collections/playback-sessions";
 import { updatePlayerSettings } from "@/lib/collections/settings";
 import { DEFAULT_TRANSITION_DURATION } from "@/lib/const";
@@ -208,11 +209,13 @@ async function restoreDjDeckRadio(
 }
 
 async function activateDjMode(ctx: PlaybackActionContext): Promise<void> {
+  await playbackSessionsCollection.stateWhenReady();
   const session = getPlaybackSession("dj");
-  await activateManagedMode("dj", ctx);
   if (!session) {
-    return;
+    throw new Error("DJ playback session is not ready");
   }
+
+  await activateManagedMode("dj", ctx);
 
   const deckA = session.channels.find(
     (channel) => channel.id === DECK_A_CHANNEL_ID

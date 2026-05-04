@@ -1,4 +1,6 @@
+import { useLiveQuery } from "@tanstack/react-db";
 import { useEffect } from "react";
+import { playbackSessionsCollection } from "@/lib/collections/playback-sessions";
 import { useEnabledRadios } from "@/lib/hooks/use-radios";
 import { useSettings } from "@/lib/hooks/use-settings";
 import { modeManager } from "@/lib/mode-lifecycle-manager";
@@ -9,12 +11,21 @@ import { SingleRadio } from "./single";
 export function Radios() {
   const { data: radios } = useEnabledRadios();
   const { data: settings } = useSettings();
+  const { data: playbackSessions } = useLiveQuery((q) =>
+    q.from({ session: playbackSessionsCollection })
+  );
 
   const enabledRadios = radios ?? [];
   const mode = settings?.player.mode;
+  const activeSession = playbackSessions?.find(
+    (session) => session.id === mode
+  );
 
   useEffect(() => {
     if (!mode) {
+      return;
+    }
+    if (!activeSession) {
       return;
     }
     const snapshot = modeManager.getSnapshot();
@@ -30,7 +41,7 @@ export function Radios() {
     transition.catch((error) => {
       console.error("[radio] Failed to synchronize playback mode:", error);
     });
-  }, [mode]);
+  }, [mode, activeSession]);
 
   if (mode === "single") {
     return <SingleRadio radios={enabledRadios} />;

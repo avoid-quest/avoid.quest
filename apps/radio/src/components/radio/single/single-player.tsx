@@ -17,7 +17,6 @@ import { useSingleSession } from "@/lib/hooks/use-single-session";
 import { RadioDialog } from "../../settings/radio-dialog";
 import { RadioItemActions } from "../radio-item-actions";
 import { RadioSearchBar } from "../radio-search-bar";
-import { useSingleStateHydration } from "./single-player-hydration";
 import {
   MobileNowPlayingPanel,
   NowPlayingPanel,
@@ -33,7 +32,6 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
   const transitionDuration =
     settings?.player?.single?.transitionDuration ?? 2000;
   const {
-    session,
     currentRadio,
     isPlaying,
     isLoading,
@@ -44,8 +42,6 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
     togglePlayPause,
     setVolume,
   } = useSingleSession(transitionDuration);
-
-  useSingleStateHydration(selectRadio, setVolume, Boolean(session));
 
   useMediaSession({ mode: "single", radio: currentRadio, isPlaying });
 

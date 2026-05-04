@@ -134,6 +134,24 @@ describe("mode lifecycle manager", () => {
     expect(commitMode).not.toHaveBeenCalled();
   });
 
+  test("keeps initial DJ activation retryable until the session exists", async () => {
+    const manager = createModeManager({
+      lifecycles: createModeLifecycleRegistry({
+        ctx: createTestContext(),
+      }),
+      commitMode: mock(() => undefined),
+    });
+
+    await expect(manager.activateInitialMode("dj")).rejects.toThrow(
+      "DJ playback session is not ready"
+    );
+
+    expect(manager.getSnapshot()).toMatchObject({
+      currentMode: null,
+      phase: "inactive",
+    });
+  });
+
   test("deactivation fades managed sounds, clears runtime state, and checks orphans", async () => {
     await playbackSessionsCollection.stateWhenReady();
     playbackSessionsCollection.insert({

@@ -25,8 +25,6 @@ import {
 } from "@/lib/playback-action-context";
 import {
   applySessionMasterVolume,
-  cleanupManagedChannel,
-  createManagedSound,
   ensureMainAudioSettingsApplied,
 } from "@/lib/playback-actions-shared";
 import type { DeckId } from "@/lib/stores/dj-runtime-store";
@@ -34,6 +32,7 @@ import {
   getPlaybackChannelRuntime,
   resetPlaybackChannelRuntime,
 } from "@/lib/stores/playback-runtime-store";
+import { createManagedPlaybackSessionWorkflow } from "./managed-playback-session-workflow.js";
 
 export type ModePhase = "inactive" | "activating" | "active" | "deactivating";
 
@@ -189,61 +188,6 @@ async function prepareReadyPlaybackSession(
   return session;
 }
 
-function getManagedRestoreChannels(
-  sessionId: ManagedPlaybackSessionId,
-  session: PlaybackSessionRecord
-): PlaybackSessionRecord["channels"] {
-  if (sessionId === "single") {
-    return session.channels.filter(
-      (channel) => channel.id === session.activeChannelId
-    );
-  }
-  return session.channels;
-}
-
-function restoreManagedModeSounds(
-  sessionId: ManagedPlaybackSessionId,
-  session: PlaybackSessionRecord,
-  ctx: PlaybackActionContext
-): void {
-  for (const channel of getManagedRestoreChannels(sessionId, session)) {
-    if (!channel.radio) {
-      continue;
-    }
-    if (getPlaybackChannelRuntime(channel.id).soundId) {
-      continue;
-    }
-    createManagedSound(sessionId, channel.id, channel.radio, undefined, ctx);
-  }
-}
-
-async function activateManagedMode(
-  sessionId: ManagedPlaybackSessionId,
-  ctx: PlaybackActionContext
-): Promise<void> {
-  const session = await prepareReadyPlaybackSession(sessionId, ctx);
-  restoreManagedModeSounds(sessionId, session, ctx);
-  applySessionMasterVolume(sessionId, ctx);
-}
-
-async function deactivateManagedMode(
-  sessionId: PlaybackSessionId,
-  ctx: PlaybackActionContext,
-  fadeOutSound: FadeOutSound,
-  fadeOutDurationMs: number
-): Promise<void> {
-  const soundIds = getSessionSoundIds(sessionId);
-  await fadeOutSoundIds(soundIds, fadeOutSound, fadeOutDurationMs);
-
-  const session = getPlaybackSession(sessionId);
-  for (const channel of session?.channels ?? []) {
-    cleanupManagedChannel(channel.id, ctx);
-    resetPlaybackChannelRuntime(channel.id);
-  }
-
-  assertNoOrphanedSounds(soundIds, ctx, sessionId);
-}
-
 function isRestorableDjRadio(radio: Radio | null): radio is Radio {
   return radio !== null && radio.platformMetadata?.platform !== "local-file";
 }
@@ -319,9 +263,18 @@ function createManagedModeLifecycle(
   fadeOutSound: FadeOutSound,
   fadeOutDurationMs: number
 ): ModeLifecycle {
+  const workflow = createManagedPlaybackSessionWorkflow(sessionId, {
+    ctx,
+    fadeOutDurationMs,
+    fadeOutSound,
+  });
   return createLifecycle(
-    () => activateManagedMode(sessionId, ctx),
-    () => deactivateManagedMode(sessionId, ctx, fadeOutSound, fadeOutDurationMs)
+    () => workflow.activate(),
+    async () => {
+      const soundIds = getSessionSoundIds(sessionId);
+      await workflow.deactivate();
+      assertNoOrphanedSounds(soundIds, ctx, sessionId);
+    }
   );
 }
 

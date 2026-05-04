@@ -13,9 +13,8 @@ import { DEFAULT_TRANSITION_DURATION } from "@/lib/const";
 import { clearDjErrorSurface } from "@/lib/dj/dj-error-surface";
 import {
   cleanupAudioOnly,
+  createDjDeckCommands,
   setCrossfadePosition,
-  setDeckARadio,
-  setDeckBRadio,
   setMasterVolume,
 } from "@/lib/dj-actions";
 import { resetDeck } from "@/lib/hooks/use-dj-state";
@@ -66,6 +65,8 @@ type CreateModeManagerOptions = {
   lifecycles?: Record<PlaybackSessionId, ModeLifecycle>;
   commitMode?: (mode: PlaybackSessionId) => void;
 };
+
+type DjDeckCommands = ReturnType<typeof createDjDeckCommands>;
 
 type ModeManager = {
   getSnapshot: () => ModeTransitionSnapshot;
@@ -189,7 +190,8 @@ function isRestorableDjRadio(radio: Radio | null): radio is Radio {
 
 async function restoreDjDeckRadio(
   deckId: DeckId,
-  radio: Radio | null
+  radio: Radio | null,
+  deckCommands: DjDeckCommands
 ): Promise<void> {
   if (radio?.platformMetadata?.platform === "local-file") {
     resetDeck(deckId);
@@ -201,11 +203,11 @@ async function restoreDjDeckRadio(
   }
 
   if (deckId === DECK_A_CHANNEL_ID) {
-    await setDeckARadio(radio);
+    await deckCommands.setDeckARadio(radio);
     return;
   }
 
-  await setDeckBRadio(radio);
+  await deckCommands.setDeckBRadio(radio);
 }
 
 async function activateDjMode(ctx: PlaybackActionContext): Promise<void> {
@@ -216,6 +218,7 @@ async function activateDjMode(ctx: PlaybackActionContext): Promise<void> {
   }
 
   await activateManagedMode("dj", ctx);
+  const deckCommands = createDjDeckCommands(ctx);
 
   const deckA = session.channels.find(
     (channel) => channel.id === DECK_A_CHANNEL_ID
@@ -224,11 +227,19 @@ async function activateDjMode(ctx: PlaybackActionContext): Promise<void> {
     (channel) => channel.id === DECK_B_CHANNEL_ID
   );
 
-  await restoreDjDeckRadio(DECK_A_CHANNEL_ID, deckA?.radio ?? null);
-  await restoreDjDeckRadio(DECK_B_CHANNEL_ID, deckB?.radio ?? null);
+  await restoreDjDeckRadio(
+    DECK_A_CHANNEL_ID,
+    deckA?.radio ?? null,
+    deckCommands
+  );
+  await restoreDjDeckRadio(
+    DECK_B_CHANNEL_ID,
+    deckB?.radio ?? null,
+    deckCommands
+  );
 
-  setMasterVolume(session.masterVolume);
-  setCrossfadePosition(session.crossfadePosition);
+  setMasterVolume(session.masterVolume, ctx);
+  setCrossfadePosition(session.crossfadePosition, ctx);
 }
 
 async function deactivateDjMode(
@@ -239,7 +250,7 @@ async function deactivateDjMode(
   const soundIds = getSessionSoundIds("dj");
   const channelIds = getSessionChannelIds("dj");
   await fadeOutSoundIds(soundIds, fadeOutSound, fadeOutDurationMs);
-  await cleanupAudioOnly();
+  await cleanupAudioOnly(ctx);
   for (const channelId of channelIds) {
     resetPlaybackChannelRuntime(channelId);
   }

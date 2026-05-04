@@ -21,7 +21,6 @@ import {
 import { validatePlaybackStreamUrl } from "@/lib/audio/playback/url-validation";
 import {
   addChannelEffect,
-  deactivateChannel,
   removeChannelEffect,
   reorderChannelEffects,
   setChannelEffectsDryWet,
@@ -166,12 +165,6 @@ export const findNextTrack = (
   radio: Radio | null
 ): { streamUrl: string } | null => findNextTrackInPlaylist(radio);
 
-function getContextAudioManager(
-  ctx: PlaybackActionContext
-): () => AudioManager {
-  return () => ctx.audio;
-}
-
 // Apply crossfade based on current mixer position
 export function applyCrossfade(ctx = getDefaultPlaybackActionContext()) {
   if (typeof window === "undefined") {
@@ -209,7 +202,6 @@ async function setDeckRadio(
   radio: Radio | null,
   ctx = getDefaultPlaybackActionContext()
 ) {
-  const getAudioManagerFromContext = getContextAudioManager(ctx);
   await setDeckRadioSource(deckId, radio, {
     activateChannel: ctx.channels.activate,
     applyCrossfade: () => applyCrossfade(ctx),
@@ -218,7 +210,7 @@ async function setDeckRadio(
     clearDjError: clearDjErrorSurface,
     connectDeckCueBus,
     deactivateChannel: ctx.channels.deactivate,
-    getAudioManager: getAudioManagerFromContext,
+    getAudioManager: () => ctx.audio,
     getSoundId,
     initializeAudioDevices: initializeSavedAudioDevices,
     loadTrack: (deckSide, nextRadio, autoPlay) =>
@@ -330,9 +322,11 @@ export async function cleanupAll(ctx = getDefaultPlaybackActionContext()) {
 }
 
 // Cleanup audio only (keep radio state)
-export function cleanupAudioOnly(): Promise<void> {
-  deactivateChannel("deck-a");
-  deactivateChannel("deck-b");
+export function cleanupAudioOnly(
+  ctx = getDefaultPlaybackActionContext()
+): Promise<void> {
+  ctx.channels.deactivate("deck-a");
+  ctx.channels.deactivate("deck-b");
   clearDjErrorSurface();
   return Promise.resolve();
 }
@@ -389,18 +383,22 @@ export async function loadTrack(
 }
 
 // Mixer actions
-export function setCrossfadePosition(position: number) {
+export function setCrossfadePosition(
+  position: number,
+  ctx = getDefaultPlaybackActionContext()
+) {
   updateMixer((draft) => {
     draft.crossfadePosition = position;
   });
-  applyCrossfade();
+  applyCrossfade(ctx);
 }
 
-export function setMasterVolume(volume: number) {
+export function setMasterVolume(volume: number, ctx?: PlaybackActionContext) {
   updateMixer((draft) => {
     draft.masterVolume = volume;
   });
-  getAudioManager().setGlobalVolume(volume);
+  const manager = ctx?.audio ?? getAudioManager();
+  manager.setGlobalVolume(volume);
 }
 
 // Volume actions with audio manager sync

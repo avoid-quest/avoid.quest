@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import type { AudioManager } from "@/lib/audio";
+import {
+  type AudioManager,
+  AudioManager as AudioManagerClass,
+} from "@/lib/audio";
 import {
   createDefaultChannel,
   playbackSessionsCollection,
@@ -27,8 +30,11 @@ function createTestContext(overrides: Partial<AudioManager> = {}) {
   return {
     audio: {
       hasSound: mock((_soundId: string) => false),
+      pauseSound: mock((_soundId: string) => undefined),
+      playSound: mock(async (_soundId: string, _volume: number) => undefined),
       setGlobalVolume: mock((_volume: number) => undefined),
       setMainDelay: mock((_delayMs: number) => undefined),
+      setVolume: mock((_soundId: string, _volume: number) => undefined),
       ...overrides,
     } as unknown as AudioManager,
     channels: {
@@ -207,5 +213,49 @@ describe("mode lifecycle manager", () => {
     expect(context.audio.hasSound).toHaveBeenCalledWith("single:single-a");
     expect(getPlaybackChannelRuntime("single-a").error).toBeNull();
     expect(getPlaybackChannelRuntime("single-a").soundId).toBeNull();
+  });
+
+  test("activates DJ mode with the provided playback context", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    const radio = {
+      id: "station-1",
+      name: "Station 1",
+      streamUrl: "https://radio.example/station.mp3",
+    };
+    playbackSessionsCollection.insert({
+      id: "dj",
+      channels: [
+        {
+          ...createDefaultChannel("deck-a", "deck-a", 0),
+          radio,
+        },
+        createDefaultChannel("deck-b", "deck-b", 1),
+      ],
+      masterVolume: 0.7,
+      crossfadePosition: 0.25,
+      headphoneVolume: 1,
+      activeChannelId: null,
+    });
+    const context = createTestContext();
+    const originalGetInstance = AudioManagerClass.getInstance;
+    AudioManagerClass.getInstance = mock(() => {
+      throw new Error("AudioManager singleton should not be used");
+    }) as typeof AudioManagerClass.getInstance;
+
+    try {
+      const lifecycles = createModeLifecycleRegistry({ ctx: context });
+
+      await lifecycles.dj.activate();
+    } finally {
+      AudioManagerClass.getInstance = originalGetInstance;
+    }
+
+    expect(context.channels.activate).toHaveBeenCalledWith(
+      "dj",
+      "deck-a",
+      radio,
+      expect.objectContaining({ soundId: "left_station-1" })
+    );
+    expect(context.audio.setGlobalVolume).toHaveBeenCalledWith(0.7);
   });
 });

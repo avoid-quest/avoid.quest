@@ -43,6 +43,7 @@ import {
 import {
   createDjDeckLoadWorkflow,
   type DeckLoadDependencies,
+  type DjDeckLoadWorkflow,
 } from "@/lib/dj-actions-deck-load.js";
 import {
   type DeckId,
@@ -199,7 +200,6 @@ export function applyCrossfade(ctx = getDefaultPlaybackActionContext()) {
   }
 }
 
-// Generic set deck radio function
 function createDeckLoadDependencies(
   ctx: PlaybackActionContext
 ): DeckLoadDependencies {
@@ -222,7 +222,9 @@ function createDeckLoadDependencies(
   };
 }
 
-function createDeckLoadWorkflow(ctx: PlaybackActionContext) {
+function createDeckLoadWorkflow(
+  ctx: PlaybackActionContext
+): DjDeckLoadWorkflow {
   return createDjDeckLoadWorkflow(createDeckLoadDependencies(ctx));
 }
 

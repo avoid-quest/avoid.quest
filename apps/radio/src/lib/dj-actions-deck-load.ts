@@ -441,7 +441,7 @@ export async function setDeckRadioSource(
   radio: Radio | null,
   dependencies: DeckLoadDependencies
 ): Promise<void> {
-  await createDjDeckLoadWorkflow(dependencies).loadDeckRadio(deckId, radio);
+  await loadDeckRadio(deckId, radio, dependencies);
 }
 
 export type { DeckLoadDependencies, DjDeckLoadWorkflow };

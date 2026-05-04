@@ -312,14 +312,14 @@ export function reorderChannelEffects(
   channelId: string,
   effectIds: string[]
 ): void {
-  let serializedOrder: string[] = [];
+  let serializedOrder: string[] | null = null;
   updateChannel(sessionId, channelId, (draft) => {
     const effects = reorderEffectsByIds(draft.effects, effectIds);
     draft.effects = effects;
     serializedOrder = effects.map((effect) => effect.id);
   });
   const runtime = getPlaybackChannelRuntime(channelId);
-  if (runtime.soundId) {
+  if (serializedOrder && runtime.soundId) {
     getAudioManager().reorderEffects(runtime.soundId, serializedOrder);
   }
 }

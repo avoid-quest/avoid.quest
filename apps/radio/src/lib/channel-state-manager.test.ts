@@ -200,4 +200,26 @@ describe("channel state manager", () => {
       "limiter-1",
     ]);
   });
+
+  test("skips audio reorder sync when the persisted channel is missing", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    playbackSessionsCollection.insert({
+      id: "dj",
+      channels: [createDefaultChannel("deck-b", "deck-b", 1)],
+      masterVolume: 1,
+      crossfadePosition: 0.5,
+      headphoneVolume: 1,
+      activeChannelId: null,
+    });
+
+    const manager = AudioManager.getInstance();
+    manager.reorderEffects = mock(
+      (_soundId: string, _effectIds: string[]) => undefined
+    );
+    setPlaybackChannelSoundId("deck-a", "sound-1");
+
+    reorderChannelEffects("dj", "deck-a", ["delay-1"]);
+
+    expect(manager.reorderEffects).not.toHaveBeenCalled();
+  });
 });

@@ -8,7 +8,7 @@ import {
   playbackSessionsCollection,
 } from "@/lib/collections/playback-sessions";
 import { getPlaybackChannelRuntime } from "@/lib/stores/playback-runtime-store";
-import { clearAllChannelSubscriptionCleanups } from "./channel-state-manager";
+import { deactivateAllChannels } from "./channel-state-manager";
 import { setDeckDeviceInputSource } from "./dj-actions-input-sources";
 
 async function resetPlaybackSessions() {
@@ -49,13 +49,13 @@ function createDependencies() {
 
 beforeEach(async () => {
   await resetPlaybackSessions();
-  clearAllChannelSubscriptionCleanups();
+  deactivateAllChannels();
   AudioManager.resetInstance();
 });
 
 afterEach(async () => {
   await resetPlaybackSessions();
-  clearAllChannelSubscriptionCleanups();
+  deactivateAllChannels();
   AudioManager.resetInstance();
 });
 

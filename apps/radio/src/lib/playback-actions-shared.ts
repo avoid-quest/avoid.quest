@@ -5,7 +5,6 @@ import {
 } from "@/lib/collections/playback-sessions";
 import { getAudioSettings, getDelaySettings } from "@/lib/collections/settings";
 import { getMainOutputRouter } from "@/lib/main-output-router";
-import { resetAllPlaybackRuntime } from "@/lib/stores/playback-runtime-store";
 import type {
   ChannelActivationOptions,
   ChannelRuntimeSubscriptionOptions,
@@ -77,9 +76,8 @@ export async function ensureMainAudioSettingsApplied(
 export function resetManagedAudioState(
   ctx = getDefaultPlaybackActionContext()
 ): void {
-  ctx.channels.clearSubscriptionCleanups();
+  ctx.channels.deactivateAll();
   ctx.resetAudioManager();
-  resetAllPlaybackRuntime();
   ctx.lifecycle.mainOutputSettingsApplied = false;
   resetDefaultPlaybackActionContext();
 }

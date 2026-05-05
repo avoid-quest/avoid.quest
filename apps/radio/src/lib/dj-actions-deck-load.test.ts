@@ -950,6 +950,69 @@ describe("DJ deck channel lifecycle", () => {
     expect(dependencies.applyCrossfade).toHaveBeenCalledTimes(1);
   });
 
+  test("does not play a stale device input after a newer load starts first", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertDjSession();
+
+    const manager = AudioManager.getInstance();
+    manager.createSound = mock(
+      (_radio, soundId?: string) => soundId ?? "sound"
+    );
+    manager.cleanupSound = mock((_soundId: string) => undefined);
+    manager.subscribe = mock((_soundId, _callback) => mock(() => undefined));
+    manager.subscribeMeter = mock((_soundId, _callback) =>
+      mock(() => undefined)
+    );
+
+    const dependencies = createDependencies();
+    const activateChannelThroughFacade = dependencies.activateChannel;
+    let workflow: ReturnType<typeof createDjDeckLoadWorkflow>;
+    let hasStartedNewerLoad = false;
+    const newerLoads: Promise<void>[] = [];
+
+    dependencies.activateChannel = mock(
+      (sessionId, channelId, radio, optionsOrSoundId) => {
+        const soundId = activateChannelThroughFacade(
+          sessionId,
+          channelId,
+          radio,
+          optionsOrSoundId
+        );
+        if (
+          channelId === "deck-a" &&
+          radio.platformMetadata?.platform === "device-input" &&
+          radio.platformMetadata.deviceId === "device-1" &&
+          !hasStartedNewerLoad
+        ) {
+          hasStartedNewerLoad = true;
+          newerLoads.push(
+            workflow.loadDeckDeviceInput("deck-a", "device-2", "Device 2")
+          );
+        }
+        return soundId;
+      }
+    );
+    workflow = createDjDeckLoadWorkflow(dependencies);
+
+    await workflow.loadDeckDeviceInput("deck-a", "device-1", "Device 1");
+    await Promise.all(newerLoads);
+
+    expect(dependencies.playDeviceSound).toHaveBeenCalledTimes(1);
+    expect(dependencies.playDeviceSound).toHaveBeenCalledWith(
+      "left_device-input-left",
+      "device-2"
+    );
+    expect(getPlaybackChannel("dj", "deck-a")?.radio).toEqual(
+      expect.objectContaining({
+        name: "Device 2",
+        platformMetadata: expect.objectContaining({
+          platform: "device-input",
+          deviceId: "device-2",
+        }),
+      })
+    );
+  });
+
   test("applies stored device channel selection when loading a device input source", async () => {
     await playbackSessionsCollection.stateWhenReady();
     insertDjSession();

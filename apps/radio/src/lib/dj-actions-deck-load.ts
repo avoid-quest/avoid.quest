@@ -337,6 +337,10 @@ async function activateLoadedSource(
     return { startedPlayback: false };
   }
 
+  if (!isCurrentDeckLoad(deckId, loadToken)) {
+    return { startedPlayback: false };
+  }
+
   await dependencies.playDeviceSound(soundId, metadata.deviceId);
 
   if (!isCurrentDeckLoad(deckId, loadToken)) {

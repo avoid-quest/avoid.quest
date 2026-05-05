@@ -209,6 +209,58 @@ function captureDeckAudioState(manager: AudioManager): {
   };
 }
 
+function installMockAudioMetadata(duration = 123): () => void {
+  const originalAudioDescriptor = Object.getOwnPropertyDescriptor(
+    globalThis,
+    "Audio"
+  );
+
+  class MockAudio {
+    duration = duration;
+    preload = "";
+    readonly #listeners = new Map<string, Set<() => void>>();
+    #src = "";
+
+    addEventListener(type: string, listener: EventListener): void {
+      const listeners = this.#listeners.get(type) ?? new Set<() => void>();
+      listeners.add(listener as () => void);
+      this.#listeners.set(type, listeners);
+    }
+
+    removeEventListener(type: string, listener: EventListener): void {
+      this.#listeners.get(type)?.delete(listener as () => void);
+    }
+
+    get src(): string {
+      return this.#src;
+    }
+
+    set src(value: string) {
+      this.#src = value;
+      if (value) {
+        queueMicrotask(() => {
+          for (const listener of this.#listeners.get("loadedmetadata") ?? []) {
+            listener();
+          }
+        });
+      }
+    }
+  }
+
+  Object.defineProperty(globalThis, "Audio", {
+    configurable: true,
+    value: MockAudio,
+  });
+
+  return () => {
+    if (originalAudioDescriptor) {
+      Object.defineProperty(globalThis, "Audio", originalAudioDescriptor);
+    } else {
+      Reflect.deleteProperty(globalThis, "Audio");
+    }
+  };
+}
+
 beforeEach(async () => {
   await resetPlaybackSessions();
   deactivateAllChannels();
@@ -513,6 +565,57 @@ describe("DJ deck channel lifecycle", () => {
       expect(URL.revokeObjectURL).not.toHaveBeenCalled();
     } finally {
       URL.revokeObjectURL = originalRevokeObjectUrl;
+    }
+  });
+
+  test("releases a newly extracted local file URL when activation fails", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertDjSession();
+
+    const previousRadio = {
+      id: "station-1",
+      name: "Station 1",
+      streamUrl: "https://radio.example/one.mp3",
+    };
+    updatePlaybackChannel("dj", "deck-a", (draft) => {
+      draft.radio = previousRadio;
+    });
+
+    const restoreAudio = installMockAudioMetadata();
+    const originalCreateObjectUrl = URL.createObjectURL;
+    const originalRevokeObjectUrl = URL.revokeObjectURL;
+    URL.createObjectURL = mock(
+      (_file: Blob) => "blob:https://radio.example/new-track"
+    ) as typeof URL.createObjectURL;
+    URL.revokeObjectURL = mock((_url: string) => undefined);
+
+    try {
+      const manager = AudioManager.getInstance();
+      manager.createSound = mock(() => {
+        throw new Error("create failed");
+      });
+      manager.cleanupSound = mock((_soundId: string) => undefined);
+      manager.subscribe = mock((_soundId, _callback) => mock(() => undefined));
+      manager.subscribeMeter = mock((_soundId, _callback) =>
+        mock(() => undefined)
+      );
+      const dependencies = createDependencies();
+      const workflow = createDjDeckLoadWorkflow(dependencies);
+      const file = new File(["audio"], "new-track.mp3", {
+        type: "audio/mpeg",
+      });
+
+      await workflow.loadDeckFile("deck-a", file);
+
+      expect(getPlaybackChannel("dj", "deck-a")?.radio).toEqual(previousRadio);
+      expect(getPlaybackChannelRuntime("deck-a").soundId).toBeNull();
+      expect(URL.revokeObjectURL).toHaveBeenCalledWith(
+        "blob:https://radio.example/new-track"
+      );
+    } finally {
+      URL.createObjectURL = originalCreateObjectUrl;
+      URL.revokeObjectURL = originalRevokeObjectUrl;
+      restoreAudio();
     }
   });
 

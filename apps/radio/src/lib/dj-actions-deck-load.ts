@@ -8,6 +8,7 @@ import type {
 } from "@/lib/audio";
 import {
   extractFileMetadata,
+  type FileAudioMetadata,
   revokeFileObjectUrl,
 } from "@/lib/audio/file-metadata";
 import {
@@ -197,6 +198,30 @@ function createDeviceInputRadio(
     description: "Device input (mic/line-in)",
     enabled: true,
     platformMetadata,
+  };
+}
+
+function createLocalFileRadio(
+  side: DeckSide,
+  metadata: FileAudioMetadata
+): Radio {
+  return {
+    id: `local-file-${side}-${Date.now()}`,
+    name: metadata.displayName,
+    streamUrl: metadata.objectUrl,
+    description: "Local File",
+    enabled: true,
+    platformMetadata: {
+      platform: "local-file",
+      itemType: "track",
+      url: "",
+      fileName: metadata.fileName,
+      displayName: metadata.displayName,
+      duration: metadata.duration,
+      fileSize: metadata.fileSize,
+      mimeType: metadata.mimeType,
+      objectUrl: metadata.objectUrl,
+    },
   };
 }
 
@@ -600,37 +625,30 @@ async function loadDeckFile(
   dependencies: DeckLoadDependencies
 ): Promise<void> {
   const side = deckConfig[deckId].side;
+  let extractedObjectUrl: string | null = null;
 
   try {
     dependencies.clearDjError();
     const meta = await extractFileMetadata(file);
+    extractedObjectUrl = meta.objectUrl;
+    const radio = createLocalFileRadio(side, meta);
 
-    await loadDeckRadio(
-      deckId,
-      {
-        id: `local-file-${side}-${Date.now()}`,
-        name: meta.displayName,
-        streamUrl: meta.objectUrl,
-        description: "Local File",
-        enabled: true,
-        platformMetadata: {
-          platform: "local-file",
-          itemType: "track",
-          url: "",
-          fileName: meta.fileName,
-          displayName: meta.displayName,
-          duration: meta.duration,
-          fileSize: meta.fileSize,
-          mimeType: meta.mimeType,
-          objectUrl: meta.objectUrl,
-        },
-      },
-      dependencies
+    await loadDeckRadio(deckId, radio, dependencies);
+
+    const activeObjectUrl = getLocalFileObjectUrl(
+      deckConfig[deckId].getDeck()?.radio ?? null
     );
+    if (activeObjectUrl === extractedObjectUrl) {
+      extractedObjectUrl = null;
+    }
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Failed to load audio file";
     dependencies.reportDjError(message, "DJ_LOCAL_FILE_LOAD_FAILED", error);
+  } finally {
+    if (extractedObjectUrl) {
+      revokeFileObjectUrl(extractedObjectUrl);
+    }
   }
 }
 

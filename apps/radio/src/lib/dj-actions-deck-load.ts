@@ -13,10 +13,8 @@ import {
   deckConfig,
   getDeckRadio,
 } from "@/lib/dj-actions-decks.js";
-import {
-  createDjDeckContinuationWorkflow,
-  type PlatformStreamResolutionInput,
-} from "@/lib/dj-deck-continuation-workflow.js";
+import { createDjDeckContinuationWorkflow } from "@/lib/dj-deck-continuation-workflow.js";
+import type { PlatformStreamResolutionInput } from "@/lib/dj-platform-stream-port.js";
 import {
   type DeckRecord,
   resetDeck as resetDeckDb,

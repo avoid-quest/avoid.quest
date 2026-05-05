@@ -1,5 +1,12 @@
 import { resolveStreamUrl } from "@avoid.quest/platforms";
-import type { PlatformStreamResolutionInput } from "@/lib/dj-deck-continuation-workflow.js";
+import type { Radio } from "@/lib/audio";
+
+type PlatformStreamResolutionInput = {
+  platform: "youtube";
+  reason: "playlist-next" | "stream-refresh";
+  videoId: string;
+  radio: Radio;
+};
 
 export async function resolveDjPlatformStreamUrl(
   input: PlatformStreamResolutionInput
@@ -11,3 +18,5 @@ export async function resolveDjPlatformStreamUrl(
       return null;
   }
 }
+
+export type { PlatformStreamResolutionInput };

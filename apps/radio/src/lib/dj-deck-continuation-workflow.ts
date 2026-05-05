@@ -1,6 +1,7 @@
 import type { AudioManager, Radio } from "@/lib/audio";
 import type { DeckId, DeckSide } from "@/lib/dj-actions-decks.js";
 import { findNextTrack as findNextTrackInPlaylist } from "@/lib/dj-actions-playlist.js";
+import type { PlatformStreamResolutionInput } from "@/lib/dj-platform-stream-port.js";
 import type { DeckRecord } from "@/lib/hooks/use-dj-state";
 import { isYouTubeMetadata } from "@/lib/platform-types";
 import {
@@ -14,13 +15,6 @@ type ReportDjError = (
   error?: unknown,
   radio?: Radio | null
 ) => void;
-
-type PlatformStreamResolutionInput = {
-  platform: "youtube";
-  reason: "playlist-next" | "stream-refresh";
-  videoId: string;
-  radio: Radio;
-};
 
 type DjDeckContinuationDependencies = {
   applyCrossfade: () => void;
@@ -255,6 +249,6 @@ export function createDjDeckContinuationWorkflow(
 export type {
   DjDeckContinuationDependencies,
   DjDeckContinuationWorkflow,
-  PlatformStreamResolutionInput,
   StreamInterruptedResult,
 };
+export type { PlatformStreamResolutionInput } from "@/lib/dj-platform-stream-port.js";

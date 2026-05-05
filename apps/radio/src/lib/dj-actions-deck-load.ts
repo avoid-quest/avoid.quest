@@ -91,6 +91,28 @@ function cleanupFailedDeckLoad(
   return true;
 }
 
+function getLocalFileObjectUrl(radio: Radio | null): string | null {
+  const metadata = radio?.platformMetadata;
+  if (!isFileMetadata(metadata)) {
+    return null;
+  }
+  return metadata.objectUrl;
+}
+
+function releaseReplacedLocalFileUrl(
+  previousRadio: Radio | null,
+  nextRadio: Radio | null
+): void {
+  const previousObjectUrl = getLocalFileObjectUrl(previousRadio);
+  if (
+    !previousObjectUrl ||
+    previousObjectUrl === getLocalFileObjectUrl(nextRadio)
+  ) {
+    return;
+  }
+  revokeFileObjectUrl(previousObjectUrl);
+}
+
 async function loadDeckRadio(
   deckId: DeckId,
   radio: Radio | null,
@@ -107,14 +129,12 @@ async function loadDeckRadio(
 
   const wasPlaying = runtime.isPlaying;
   const previousRadio = getDeckRadio(deck);
-  if (previousRadio && isFileMetadata(previousRadio.platformMetadata)) {
-    revokeFileObjectUrl(previousRadio.platformMetadata.objectUrl);
-  }
 
   dependencies.deactivateChannel(deckId);
 
   if (!radio) {
     resetDeckDb(deckId);
+    releaseReplacedLocalFileUrl(previousRadio, null);
     return;
   }
 
@@ -245,6 +265,7 @@ async function loadDeckRadio(
         }
       },
     });
+    releaseReplacedLocalFileUrl(previousRadio, radio);
 
     if (wasPlaying) {
       await dependencies.getAudioManager().playSound(soundId, deck.volume);

@@ -6,8 +6,8 @@ Date: 2026-05-05
 
 ## Scope
 
-This approves the caller-facing contracts for the two radio lifecycle workflow
-boundaries from PRD #213:
+This approves the caller-facing target contracts for the two radio lifecycle
+workflow boundaries from PRD #213:
 
 - DJ deck and channel lifecycle.
 - Playback mode activation and switching.
@@ -17,7 +17,7 @@ stored data shape, browser/runtime APIs, or compatibility exports.
 
 ## DJ Deck And Channel Lifecycle Boundary
 
-Approved public boundary:
+Approved target workflow boundary:
 
 ```ts
 type RadioDjLifecycleWorkflow = {
@@ -38,8 +38,9 @@ type RadioDjLifecycleWorkflow = {
 };
 ```
 
-Callers should use this boundary for user-level DJ deck operations. They should
-not directly compose deck collection updates, playback runtime updates,
+UI and command callers should use this boundary for user-level DJ deck
+operations. Audio callbacks may enter through `handleAudioState`, but callers
+should not directly compose deck collection updates, playback runtime updates,
 `AudioManager` calls, cue routing, channel activation, strip replay,
 continuation, stream refresh, or DJ error reporting.
 
@@ -81,7 +82,7 @@ Approved near-term implementation direction:
 
 ## Mode Activation And Switching Boundary
 
-Approved public boundary:
+Approved target workflow boundary:
 
 ```ts
 type RadioModeLifecycleWorkflow = {
@@ -108,7 +109,7 @@ Owned by the boundary:
 - Rolling back to the previous active mode when activation fails.
 - Delegating single and multiple mode restore/cleanup to the managed playback
   session workflow.
-- Delegating DJ restore/cleanup to the DJ lifecycle workflow.
+- Delegating DJ restore/cleanup to the DJ mode lifecycle workflow.
 - Fade-out cleanup, runtime reset, stale error clearing, and orphan sound
   detection for deactivated sessions.
 

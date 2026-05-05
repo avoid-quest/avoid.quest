@@ -104,10 +104,8 @@ function releaseReplacedLocalFileUrl(
   nextRadio: Radio | null
 ): void {
   const previousObjectUrl = getLocalFileObjectUrl(previousRadio);
-  if (
-    !previousObjectUrl ||
-    previousObjectUrl === getLocalFileObjectUrl(nextRadio)
-  ) {
+  const nextObjectUrl = getLocalFileObjectUrl(nextRadio);
+  if (!previousObjectUrl || previousObjectUrl === nextObjectUrl) {
     return;
   }
   revokeFileObjectUrl(previousObjectUrl);

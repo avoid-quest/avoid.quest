@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { AudioManager, type AudioState } from "@/lib/audio";
+import { AudioManager, type AudioState, type Radio } from "@/lib/audio";
 import {
   createDefaultChannel,
   DECK_A_CHANNEL_ID,
@@ -54,6 +54,27 @@ function createDependencies() {
     loadTrack: mock(async () => undefined),
     reportDjError: mock(() => undefined),
     resolvePlatformStreamUrl: mock(async () => null),
+  };
+}
+
+function createLocalFileRadio(
+  objectUrl = "blob:https://radio.example/prior"
+): Radio {
+  return {
+    id: "local-file-left-1",
+    name: "Local Track",
+    streamUrl: objectUrl,
+    platformMetadata: {
+      platform: "local-file",
+      itemType: "track",
+      url: "",
+      fileName: "local.mp3",
+      displayName: "Local",
+      duration: 120,
+      fileSize: 1024,
+      mimeType: "audio/mpeg",
+      objectUrl,
+    },
   };
 }
 
@@ -181,22 +202,7 @@ describe("DJ deck channel lifecycle", () => {
     await playbackSessionsCollection.stateWhenReady();
     insertDjSession();
 
-    const priorRadio = {
-      id: "local-file-left-1",
-      name: "Local Track",
-      streamUrl: "blob:https://radio.example/prior",
-      platformMetadata: {
-        platform: "local-file" as const,
-        itemType: "track" as const,
-        url: "" as const,
-        fileName: "local.mp3",
-        displayName: "Local",
-        duration: 120,
-        fileSize: 1024,
-        mimeType: "audio/mpeg",
-        objectUrl: "blob:https://radio.example/prior",
-      },
-    };
+    const priorRadio = createLocalFileRadio();
     updatePlaybackChannel("dj", "deck-a", (draft) => {
       draft.radio = priorRadio;
     });
@@ -235,22 +241,7 @@ describe("DJ deck channel lifecycle", () => {
     insertDjSession();
 
     updatePlaybackChannel("dj", "deck-a", (draft) => {
-      draft.radio = {
-        id: "local-file-left-1",
-        name: "Local Track",
-        streamUrl: "blob:https://radio.example/prior",
-        platformMetadata: {
-          platform: "local-file",
-          itemType: "track",
-          url: "",
-          fileName: "local.mp3",
-          displayName: "Local",
-          duration: 120,
-          fileSize: 1024,
-          mimeType: "audio/mpeg",
-          objectUrl: "blob:https://radio.example/prior",
-        },
-      };
+      draft.radio = createLocalFileRadio();
     });
 
     const originalRevokeObjectUrl = URL.revokeObjectURL;
@@ -278,6 +269,39 @@ describe("DJ deck channel lifecycle", () => {
       expect(getPlaybackChannel("dj", "deck-a")?.radio).toEqual(
         expect.objectContaining({ id: "station-1" })
       );
+      expect(URL.revokeObjectURL).toHaveBeenCalledWith(
+        "blob:https://radio.example/prior"
+      );
+    } finally {
+      URL.revokeObjectURL = originalRevokeObjectUrl;
+    }
+  });
+
+  test("releases a prior local file URL after clearing a deck", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertDjSession();
+
+    const manager = AudioManager.getInstance();
+    manager.createSound = mock(
+      (_radio, soundId?: string) => soundId ?? "sound"
+    );
+    manager.cleanupSound = mock((_soundId: string) => undefined);
+    manager.subscribe = mock((_soundId, _callback) => mock(() => undefined));
+    manager.subscribeMeter = mock((_soundId, _callback) =>
+      mock(() => undefined)
+    );
+    const dependencies = createDependencies();
+    const workflow = createDjDeckLoadWorkflow(dependencies);
+
+    await workflow.loadDeckRadio("deck-a", createLocalFileRadio());
+
+    const originalRevokeObjectUrl = URL.revokeObjectURL;
+    URL.revokeObjectURL = mock((_url: string) => undefined);
+
+    try {
+      await workflow.loadDeckRadio("deck-a", null);
+
+      expect(getPlaybackChannel("dj", "deck-a")?.radio).toBeNull();
       expect(URL.revokeObjectURL).toHaveBeenCalledWith(
         "blob:https://radio.example/prior"
       );

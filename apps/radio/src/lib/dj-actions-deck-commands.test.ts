@@ -11,6 +11,7 @@ import {
   DECK_B_CHANNEL_ID,
   getPlaybackChannel,
   playbackSessionsCollection,
+  updatePlaybackChannel,
 } from "@/lib/collections/playback-sessions";
 import {
   resetAllPlaybackRuntime,
@@ -88,14 +89,25 @@ function createTestContext(
     channels: {
       activate: mock(
         (
-          _sessionId,
-          _channelId,
-          _radio,
-          optionsOrSoundId?: string | { soundId?: string }
-        ) =>
-          typeof optionsOrSoundId === "string"
+          sessionId,
+          channelId,
+          radio,
+          optionsOrSoundId?:
+            | string
+            | { persistRadio?: boolean; soundId?: string }
+        ) => {
+          if (
+            typeof optionsOrSoundId !== "string" &&
+            optionsOrSoundId?.persistRadio
+          ) {
+            updatePlaybackChannel(sessionId, channelId, (draft) => {
+              draft.radio = radio;
+            });
+          }
+          return typeof optionsOrSoundId === "string"
             ? optionsOrSoundId
-            : (optionsOrSoundId?.soundId ?? "sound-1")
+            : (optionsOrSoundId?.soundId ?? "sound-1");
+        }
       ),
       deactivateAll: mock(() => undefined),
       deactivate: mock((_channelId: string) => undefined),

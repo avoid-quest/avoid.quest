@@ -142,6 +142,73 @@ describe("DJ deck channel lifecycle", () => {
     );
   });
 
+  test("rolls back a loaded deck when lifecycle runtime subscription fails", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertDjSession();
+
+    const manager = AudioManager.getInstance();
+    manager.createSound = mock(
+      (_radio, soundId?: string) => soundId ?? "sound"
+    );
+    manager.cleanupSound = mock((_soundId: string) => undefined);
+    manager.subscribe = mock(() => {
+      throw new Error("subscription failed");
+    });
+    manager.subscribeMeter = mock((_soundId, _callback) =>
+      mock(() => undefined)
+    );
+    const dependencies = createDependencies();
+    const workflow = createDjDeckLoadWorkflow(dependencies);
+
+    await workflow.loadDeckRadio("deck-a", {
+      id: "station-1",
+      name: "Station 1",
+      streamUrl: "https://radio.example/one.mp3",
+    });
+
+    expect(getPlaybackChannel("dj", "deck-a")?.radio).toBeNull();
+    expect(getPlaybackChannelRuntime("deck-a").soundId).toBeNull();
+    expect(manager.cleanupSound).toHaveBeenCalledWith("left_station-1");
+    expect(dependencies.reportDjError).toHaveBeenCalledWith(
+      "Failed to load deck-a",
+      "DJ_LOAD_DECK_FAILED",
+      expect.any(Error),
+      expect.objectContaining({ id: "station-1" })
+    );
+  });
+
+  test("persists the loaded deck radio from the lifecycle activation boundary", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertDjSession();
+
+    const dependencies = {
+      ...createDependencies(),
+      activateChannel: mock((sessionId, channelId, radio, options) => {
+        expect(sessionId).toBe("dj");
+        expect(channelId).toBe("deck-a");
+        expect(options).toEqual(
+          expect.objectContaining({ persistRadio: true })
+        );
+        expect(getPlaybackChannel("dj", "deck-a")?.radio).toBeNull();
+        updatePlaybackChannel("dj", "deck-a", (draft) => {
+          draft.radio = radio;
+        });
+        return "left_station-1";
+      }),
+    };
+    const workflow = createDjDeckLoadWorkflow(dependencies);
+
+    await workflow.loadDeckRadio("deck-a", {
+      id: "station-1",
+      name: "Station 1",
+      streamUrl: "https://radio.example/one.mp3",
+    });
+
+    expect(getPlaybackChannel("dj", "deck-a")?.radio).toEqual(
+      expect.objectContaining({ id: "station-1" })
+    );
+  });
+
   test("replays stored strip, effects, and cue routing when a loaded deck becomes active", async () => {
     await playbackSessionsCollection.stateWhenReady();
     insertDjSession();

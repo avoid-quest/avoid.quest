@@ -123,12 +123,9 @@ async function loadDeckRadio(
   try {
     dependencies.clearDjError();
 
-    config.updateDeck((draft) => {
-      draft.radio = radio;
-    });
-
     let hasAppliedChannelStrip = false;
     dependencies.activateChannel("dj", deckId, radio, {
+      persistRadio: true,
       soundId,
       onAudioState: (audioState) => {
         const currentDeck = config.getDeck();

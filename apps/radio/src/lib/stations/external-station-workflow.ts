@@ -38,10 +38,10 @@ type PlatformResolveLoader = (
 >;
 
 export type ExternalStationResolutionAdapters = {
-  platform: {
+  platform?: {
     resolve: PlatformResolveLoader;
   };
-  radioGarden: {
+  radioGarden?: {
     resolveStream: RadioGardenResolveLoader;
   };
 };
@@ -50,6 +50,14 @@ export type ExternalStationResolutionWorkflowDependencies = {
   adapters: ExternalStationResolutionAdapters;
   collection: CollectionStationDependencies;
   session?: SessionStationDependencies;
+};
+
+type ResolvedStationData = { radio: Radio };
+
+type SavedStationData = {
+  order: number;
+  radio: Radio;
+  removedSessionRadioId?: string | number;
 };
 
 function normalizeWorkflowError(
@@ -295,6 +303,26 @@ function findRadioGardenSessionRadio(
   }
 }
 
+function radioGardenUnavailableResult<T>(): ExternalStationResult<T> {
+  return {
+    ok: false,
+    error: {
+      code: "RADIO_GARDEN_RESOLVE_UNAVAILABLE",
+      message: "Radio Garden resolution is unavailable here",
+    },
+  };
+}
+
+function platformUnavailableResult<T>(): ExternalStationResult<T> {
+  return {
+    ok: false,
+    error: {
+      code: "PLATFORM_RESOLVE_UNAVAILABLE",
+      message: "Platform resolution is unavailable here",
+    },
+  };
+}
+
 export function createExternalStationResolutionWorkflow({
   adapters,
   collection,
@@ -304,7 +332,11 @@ export function createExternalStationResolutionWorkflow({
     async resolveRadioGardenToSession(
       result: RadioGardenSearchResult,
       options?: { name?: string }
-    ): Promise<ExternalStationResult<{ radio: Radio }>> {
+    ): Promise<ExternalStationResult<ResolvedStationData>> {
+      if (!adapters.radioGarden) {
+        return radioGardenUnavailableResult();
+      }
+
       const resolved = await resolveRadioGardenStation(
         result,
         adapters.radioGarden.resolveStream,
@@ -321,32 +353,26 @@ export function createExternalStationResolutionWorkflow({
     async resolveRadioGardenToCollection(
       result: RadioGardenSearchResult,
       options?: { name?: string }
-    ): Promise<
-      ExternalStationResult<{
-        order: number;
-        radio: Radio;
-        removedSessionRadioId?: string | number;
-      }>
-    > {
-      const sessionDependencies = session;
-      const sessionRadio = sessionDependencies
-        ? findRadioGardenSessionRadio(
-            result,
-            sessionDependencies.getSessionRadios()
-          )
+    ): Promise<ExternalStationResult<SavedStationData>> {
+      const sessionRadio = session
+        ? findRadioGardenSessionRadio(result, session.getSessionRadios())
         : undefined;
-      if (sessionRadio && sessionDependencies) {
+      if (sessionRadio && session) {
         return {
           ok: true,
           data: saveResolvedStationToCollection(
             sessionRadio,
             {
               ...collection,
-              removeSessionRadio: sessionDependencies.removeSessionRadio,
+              removeSessionRadio: session.removeSessionRadio,
             },
             { removeSessionRadioId: sessionRadio.id }
           ),
         };
+      }
+
+      if (!adapters.radioGarden) {
+        return radioGardenUnavailableResult();
       }
 
       const resolved = await resolveRadioGardenStation(
@@ -364,24 +390,35 @@ export function createExternalStationResolutionWorkflow({
       };
     },
 
-    resolvePlatformUrl(
+    async resolvePlatformUrl(
       url: string
-    ): Promise<ExternalStationResult<{ radio: Radio }>> {
-      return resolvePlatformStation(url, adapters.platform.resolve).then(
-        (result) =>
-          result.ok ? { ok: true, data: { radio: result.data } } : result
+    ): Promise<ExternalStationResult<ResolvedStationData>> {
+      if (!adapters.platform) {
+        return platformUnavailableResult();
+      }
+
+      const result = await resolvePlatformStation(
+        url,
+        adapters.platform.resolve
       );
+      if (!result.ok) {
+        return result;
+      }
+
+      return { ok: true, data: { radio: result.data } };
     },
 
     saveRadioToCollection(
       radio: Radio,
       options?: { removeSessionRadioId?: string | number }
-    ): {
-      order: number;
-      radio: Radio;
-      removedSessionRadioId?: string | number;
-    } {
-      return saveResolvedStationToCollection(radio, collection, options);
+    ): SavedStationData {
+      return saveResolvedStationToCollection(
+        radio,
+        session
+          ? { ...collection, removeSessionRadio: session.removeSessionRadio }
+          : collection,
+        options
+      );
     },
   };
 }

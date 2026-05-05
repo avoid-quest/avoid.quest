@@ -155,11 +155,6 @@ describe("createExternalStationResolutionWorkflow", () => {
     const sessionRadios: unknown[] = [];
     const workflow = createExternalStationResolutionWorkflow({
       adapters: {
-        platform: {
-          resolve: mock(() =>
-            Promise.reject(new Error("platform should not resolve"))
-          ),
-        },
         radioGarden: {
           resolveStream: mock(() =>
             Promise.resolve({
@@ -224,11 +219,6 @@ describe("createExternalStationResolutionWorkflow", () => {
     };
     const workflow = createExternalStationResolutionWorkflow({
       adapters: {
-        platform: {
-          resolve: mock(() =>
-            Promise.reject(new Error("platform should not resolve"))
-          ),
-        },
         radioGarden: {
           resolveStream: mock(() =>
             Promise.reject(new Error("radio garden should not resolve again"))
@@ -294,11 +284,6 @@ describe("createExternalStationResolutionWorkflow", () => {
     const saved: unknown[] = [];
     const workflow = createExternalStationResolutionWorkflow({
       adapters: {
-        platform: {
-          resolve: mock(() =>
-            Promise.reject(new Error("platform should not resolve"))
-          ),
-        },
         radioGarden: {
           resolveStream: mock(() =>
             Promise.resolve({
@@ -369,11 +354,6 @@ describe("createExternalStationResolutionWorkflow", () => {
             });
           }),
         },
-        radioGarden: {
-          resolveStream: mock(() =>
-            Promise.reject(new Error("radio garden should not resolve"))
-          ),
-        },
       },
       collection: {
         addSavedRadio: mock(() => undefined),
@@ -400,5 +380,39 @@ describe("createExternalStationResolutionWorkflow", () => {
         message: "Failed to load platform item",
       },
     });
+  });
+
+  test("saveRadioToCollection removes a session radio when the workflow has session cleanup", () => {
+    const saved: unknown[] = [];
+    const removed: unknown[] = [];
+    const workflow = createExternalStationResolutionWorkflow({
+      adapters: {},
+      collection: {
+        addSavedRadio: (radio) => saved.push(radio),
+        getSavedRadios: () => [],
+      },
+      session: {
+        addSessionRadio: mock(() => undefined),
+        getSessionRadios: () => [],
+        removeSessionRadio: (id) => removed.push(id),
+      },
+    });
+
+    const radio = {
+      id: "rg_rg1",
+      name: "Garden Radio",
+      streamUrl: "https://stream.example/garden.mp3",
+    };
+    const result = workflow.saveRadioToCollection(radio, {
+      removeSessionRadioId: "rg_rg1",
+    });
+
+    expect(result).toEqual({
+      order: 1,
+      radio,
+      removedSessionRadioId: "rg_rg1",
+    });
+    expect(saved).toHaveLength(1);
+    expect(removed).toEqual(["rg_rg1"]);
   });
 });

@@ -39,15 +39,6 @@ async function loadPlatformItem(url: string): Promise<LoadPlatformItemResult> {
           };
         },
       },
-      radioGarden: {
-        resolveStream: async () => ({
-          ok: false,
-          error: {
-            code: "RADIO_GARDEN_RESOLVE_UNAVAILABLE",
-            message: "Radio Garden resolution is unavailable here",
-          },
-        }),
-      },
     },
     collection: {
       addSavedRadio: () => undefined,

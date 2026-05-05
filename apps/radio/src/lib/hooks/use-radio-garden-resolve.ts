@@ -39,15 +39,6 @@ export function useRadioGardenResolve(
   const removeSessionRadio = useSessionRadios((s) => s.removeSessionRadio);
   const workflow = createExternalStationResolutionWorkflow({
     adapters: {
-      platform: {
-        resolve: async () => ({
-          ok: false,
-          error: {
-            code: "PLATFORM_RESOLVE_UNAVAILABLE",
-            message: "Platform resolution is unavailable here",
-          },
-        }),
-      },
       radioGarden: {
         resolveStream: createRadioGardenResolveAdapter(),
       },

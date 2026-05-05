@@ -36,15 +36,6 @@ export function RadioGardenTab({ onSuccess }: RadioGardenTabProps) {
   const [isAdding, setIsAdding] = useState(false);
   const workflow = createExternalStationResolutionWorkflow({
     adapters: {
-      platform: {
-        resolve: async () => ({
-          ok: false,
-          error: {
-            code: "PLATFORM_RESOLVE_UNAVAILABLE",
-            message: "Platform resolution is unavailable here",
-          },
-        }),
-      },
       radioGarden: {
         resolveStream: async (channelId) => {
           const response = await radioGardenResolveStream({

@@ -62,16 +62,20 @@ const MODE_FADE_OUT_DURATION_MS = 150;
 const MODE_TRANSITION_ERROR_MESSAGE = "Mode could not be changed. Try again.";
 const MODE_STARTUP_ERROR_MESSAGE = "Playback mode could not start. Try again.";
 
-function getErrorMessage(
-  error: unknown,
-  fallback = MODE_TRANSITION_ERROR_MESSAGE
-): string {
-  if (
+function hasUserMessage(error: unknown): error is { userMessage: string } {
+  return (
     typeof error === "object" &&
     error !== null &&
     "userMessage" in error &&
     typeof error.userMessage === "string"
-  ) {
+  );
+}
+
+function getUserFacingErrorMessage(
+  error: unknown,
+  fallback = MODE_TRANSITION_ERROR_MESSAGE
+): string {
+  if (hasUserMessage(error)) {
     return error.userMessage;
   }
   return fallback;
@@ -241,8 +245,12 @@ export function createModeManager({
   }
 
   async function restorePreviousMode(
-    previousMode: PlaybackSessionId | null
+    previousMode: PlaybackSessionId | null,
+    activeModeToDeactivate: PlaybackSessionId | null = null
   ): Promise<void> {
+    if (activeModeToDeactivate) {
+      await lifecycles[activeModeToDeactivate].deactivate();
+    }
     if (!previousMode) {
       emit({ currentMode: null, phase: "inactive", requestedMode: null });
       return;
@@ -253,6 +261,58 @@ export function createModeManager({
       phase: "active",
       requestedMode: null,
     });
+  }
+
+  async function rollbackModeSwitch(
+    previousMode: PlaybackSessionId | null,
+    activeModeToDeactivate: PlaybackSessionId | null
+  ): Promise<void> {
+    try {
+      await restorePreviousMode(previousMode, activeModeToDeactivate);
+    } catch (rollbackError) {
+      emit({
+        currentMode: previousMode,
+        requestedMode: null,
+        phase: previousMode ? "active" : "inactive",
+        error: getUserFacingErrorMessage(rollbackError),
+      });
+    }
+  }
+
+  async function switchMode(nextMode: PlaybackSessionId): Promise<void> {
+    if (snapshot.currentMode === nextMode && snapshot.phase === "active") {
+      return;
+    }
+
+    const previousMode = snapshot.currentMode;
+    let activatedNextMode = false;
+    emit({ requestedMode: nextMode, phase: "deactivating", error: null });
+
+    try {
+      if (previousMode) {
+        await lifecycles[previousMode].deactivate();
+      }
+
+      emit({ phase: "activating" });
+      await lifecycles[nextMode].activate();
+      activatedNextMode = true;
+
+      commitMode(nextMode);
+      emit({
+        currentMode: nextMode,
+        requestedMode: null,
+        phase: "active",
+        error: null,
+      });
+    } catch (error) {
+      const message = getUserFacingErrorMessage(error);
+      await rollbackModeSwitch(
+        previousMode,
+        activatedNextMode ? nextMode : null
+      );
+      emit({ error: message });
+      throw error;
+    }
   }
 
   function enqueueTransition<T>(run: () => Promise<T>): Promise<T> {
@@ -287,52 +347,14 @@ export function createModeManager({
           emit({
             requestedMode: null,
             phase: "inactive",
-            error: getErrorMessage(error, MODE_STARTUP_ERROR_MESSAGE),
+            error: getUserFacingErrorMessage(error, MODE_STARTUP_ERROR_MESSAGE),
           });
           throw error;
         }
       });
     },
     switchTo(nextMode: PlaybackSessionId): Promise<void> {
-      return enqueueTransition(async () => {
-        if (snapshot.currentMode === nextMode && snapshot.phase === "active") {
-          return;
-        }
-
-        const previousMode = snapshot.currentMode;
-        emit({ requestedMode: nextMode, phase: "deactivating", error: null });
-
-        try {
-          if (previousMode) {
-            await lifecycles[previousMode].deactivate();
-          }
-
-          emit({ phase: "activating" });
-          await lifecycles[nextMode].activate();
-
-          commitMode(nextMode);
-          emit({
-            currentMode: nextMode,
-            requestedMode: null,
-            phase: "active",
-            error: null,
-          });
-        } catch (error) {
-          const message = getErrorMessage(error);
-          try {
-            await restorePreviousMode(previousMode);
-          } catch (rollbackError) {
-            emit({
-              currentMode: previousMode,
-              requestedMode: null,
-              phase: previousMode ? "active" : "inactive",
-              error: getErrorMessage(rollbackError),
-            });
-          }
-          emit({ error: message });
-          throw error;
-        }
-      });
+      return enqueueTransition(() => switchMode(nextMode));
     },
   };
 }

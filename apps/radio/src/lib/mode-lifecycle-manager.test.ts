@@ -254,6 +254,47 @@ describe("mode lifecycle manager", () => {
     expect(commitMode).not.toHaveBeenCalled();
   });
 
+  test("deactivates the newly activated mode before rolling back when commit fails", async () => {
+    const singleActivate = mock(async () => undefined);
+    const multipleDeactivate = mock(async () => undefined);
+    const commitMode = mock(() => {
+      throw new Error("settings commit failed");
+    });
+    const manager = createModeManager({
+      initialMode: "single",
+      lifecycles: {
+        single: {
+          activate: singleActivate,
+          deactivate: mock(async () => undefined),
+          getPhase: () => "inactive",
+        },
+        multiple: {
+          activate: mock(async () => undefined),
+          deactivate: multipleDeactivate,
+          getPhase: () => "inactive",
+        },
+        dj: {
+          activate: mock(async () => undefined),
+          deactivate: mock(async () => undefined),
+          getPhase: () => "inactive",
+        },
+      },
+      commitMode,
+    });
+
+    await expect(manager.switchTo("multiple")).rejects.toThrow(
+      "settings commit failed"
+    );
+
+    expect(multipleDeactivate).toHaveBeenCalledTimes(1);
+    expect(singleActivate).toHaveBeenCalledTimes(1);
+    expect(manager.getSnapshot()).toMatchObject({
+      currentMode: "single",
+      phase: "active",
+      error: "Mode could not be changed. Try again.",
+    });
+  });
+
   test("surfaces safe mode transition errors without leaking implementation details", async () => {
     const manager = createModeManager({
       initialMode: "single",

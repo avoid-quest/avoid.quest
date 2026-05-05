@@ -50,6 +50,16 @@ await Promise.all([
 
 const git = (args: string[]) => execFile("git", args);
 
+const sandboxEnv = {
+  // Keep Turbo state inside the bind-mounted sandbox worktree. Without this,
+  // agents inherit a host-style cache path such as /Users/devit/... that is not
+  // writable from the Linux container.
+  TURBO_CACHE_DIR: "/home/agent/workspace/.turbo/cache",
+  TURBO_TELEMETRY_DISABLED: "1",
+  ASTRO_TELEMETRY_DISABLED: "1",
+  CI: "1",
+};
+
 const formatIssue = (issue: IssuePlan) =>
   `${issue.id}: ${issue.title} → ${issue.branch}`;
 
@@ -68,6 +78,7 @@ const ensureBranchExists = async (branch: string, baseBranch: string) => {
 
 const sandboxProvider = () =>
   docker({
+    env: sandboxEnv,
     mounts: [
       {
         hostPath: sharedNodeModulesPath,
@@ -100,6 +111,10 @@ const sandboxProvider = () =>
 const hooks = {
   sandbox: {
     onSandboxReady: [
+      {
+        command: "mkdir -p .turbo/cache",
+        timeoutMs: 30_000,
+      },
       {
         command: "bun install --frozen-lockfile --ignore-scripts",
         timeoutMs: 300_000,

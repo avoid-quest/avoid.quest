@@ -6,6 +6,8 @@ RUN apt-get update && apt-get install -y \
   git \
   curl \
   jq \
+  procps \
+  ripgrep \
   && rm -rf /var/lib/apt/lists/*
 
 # Install GitHub CLI

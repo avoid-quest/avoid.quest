@@ -60,16 +60,17 @@ async function fadeOutSoundIds(
   );
 }
 
-function getSessionChannelIds(): string[] {
-  const sessionChannelIds =
+function getDjRuntimeCleanupChannelIds(): string[] {
+  const persistedChannelIds =
     getPlaybackSession("dj")?.channels.map((channel) => channel.id) ?? [];
-  return Array.from(new Set([...sessionChannelIds, ...DJ_DECK_CHANNEL_IDS]));
+  return Array.from(new Set([...persistedChannelIds, ...DJ_DECK_CHANNEL_IDS]));
 }
 
-function getActiveSessionSoundIds(channelIds: string[]): string[] {
-  return channelIds
-    .map((channelId) => getPlaybackChannelRuntime(channelId).soundId)
-    .filter((soundId): soundId is string => Boolean(soundId));
+function getActiveSoundIds(channelIds: readonly string[]): string[] {
+  return channelIds.flatMap((channelId) => {
+    const soundId = getPlaybackChannelRuntime(channelId).soundId;
+    return soundId ? [soundId] : [];
+  });
 }
 
 function assertNoOrphanedSounds(
@@ -162,8 +163,8 @@ async function deactivateDjMode(
   fadeOutSound: FadeOutSound,
   fadeOutDurationMs: number
 ): Promise<void> {
-  const channelIds = getSessionChannelIds();
-  const soundIds = getActiveSessionSoundIds(channelIds);
+  const channelIds = getDjRuntimeCleanupChannelIds();
+  const soundIds = getActiveSoundIds(channelIds);
   await fadeOutSoundIds(soundIds, fadeOutSound, fadeOutDurationMs);
   await cleanupAudioOnly(ctx);
   for (const channelId of channelIds) {

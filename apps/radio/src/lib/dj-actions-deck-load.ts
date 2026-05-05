@@ -161,7 +161,8 @@ function rollbackFailedDeckLoad(
   config: (typeof deckConfig)["deck-a"],
   soundId: string,
   previousRadio: Radio | null,
-  dependencies: DeckLoadDependencies
+  dependencies: DeckLoadDependencies,
+  restorePreviousRadio: boolean
 ): boolean {
   const currentRuntime = config.getRuntime();
   if (currentRuntime.soundId !== soundId) {
@@ -169,9 +170,11 @@ function rollbackFailedDeckLoad(
   }
 
   dependencies.deactivateChannel(deckId);
-  config.updateDeck((draft) => {
-    draft.radio = previousRadio;
-  });
+  if (restorePreviousRadio) {
+    config.updateDeck((draft) => {
+      draft.radio = previousRadio;
+    });
+  }
   return true;
 }
 
@@ -236,13 +239,14 @@ function getLocalFileObjectUrl(radio: Radio | null): string | null {
 function releaseReplacedLocalFileUrl(
   previousRadio: Radio | null,
   nextRadio: Radio | null
-): void {
+): boolean {
   const previousObjectUrl = getLocalFileObjectUrl(previousRadio);
   const nextObjectUrl = getLocalFileObjectUrl(nextRadio);
   if (!previousObjectUrl || previousObjectUrl === nextObjectUrl) {
-    return;
+    return false;
   }
   revokeFileObjectUrl(previousObjectUrl);
+  return true;
 }
 
 function shouldWarnRoutingRestoreFailure(error: unknown): boolean {
@@ -372,6 +376,7 @@ async function loadDeckRadio(
 
   const wasPlaying = runtime.isPlaying;
   const previousRadio = getDeckRadio(deck);
+  let previousRadioWasReleased = false;
   const loadToken = beginDeckLoad(deckId);
 
   dependencies.deactivateChannel(deckId);
@@ -521,7 +526,10 @@ async function loadDeckRadio(
       config,
       dependencies
     );
-    releaseReplacedLocalFileUrl(previousRadio, radio);
+    previousRadioWasReleased = releaseReplacedLocalFileUrl(
+      previousRadio,
+      radio
+    );
     if (!isCurrentDeckLoad(deckId, loadToken)) {
       return;
     }
@@ -544,7 +552,8 @@ async function loadDeckRadio(
       config,
       soundId,
       previousRadio,
-      dependencies
+      dependencies,
+      !previousRadioWasReleased
     );
     const playbackError = createPlaybackActionError({
       mode: "dj",

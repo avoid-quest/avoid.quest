@@ -460,6 +460,57 @@ describe("DJ deck channel lifecycle", () => {
     }
   });
 
+  test("keeps replacement source when prior local file was released before play rollback", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertDjSession();
+
+    const manager = AudioManager.getInstance();
+    const { emitAudioState } = captureDeckAudioState(manager);
+    const rawError = new Error("play failed");
+    const dependencies = {
+      ...createDependencies(),
+      playDeckSound: mock(() => Promise.reject(rawError)),
+    };
+    const workflow = createDjDeckLoadWorkflow(dependencies);
+
+    await workflow.loadDeckRadio("deck-a", createLocalFileRadio());
+    emitAudioState({
+      isPlaying: true,
+      isLoading: false,
+      isBuffering: false,
+      hasEnded: false,
+      volume: 1,
+      error: null,
+    });
+
+    const originalRevokeObjectUrl = URL.revokeObjectURL;
+    URL.revokeObjectURL = mock((_url: string) => undefined);
+
+    try {
+      await workflow.loadDeckRadio("deck-a", {
+        id: "station-1",
+        name: "Station 1",
+        streamUrl: "https://radio.example/one.mp3",
+      });
+
+      expect(URL.revokeObjectURL).toHaveBeenCalledWith(
+        "blob:https://radio.example/prior"
+      );
+      expect(getPlaybackChannel("dj", "deck-a")?.radio).toEqual(
+        expect.objectContaining({ id: "station-1" })
+      );
+      expect(getPlaybackChannelRuntime("deck-a").soundId).toBeNull();
+      expect(dependencies.reportDjError).toHaveBeenCalledWith(
+        "Failed to load deck-a",
+        "DJ_LOAD_DECK_FAILED",
+        rawError,
+        expect.objectContaining({ id: "station-1" })
+      );
+    } finally {
+      URL.revokeObjectURL = originalRevokeObjectUrl;
+    }
+  });
+
   test("releases a prior local file URL after a superseded replacement persists", async () => {
     await playbackSessionsCollection.stateWhenReady();
     insertDjSession();

@@ -28,7 +28,6 @@ import {
   setChannelMuted,
   setChannelPan,
   setChannelSpeed,
-  setChannelVolume,
   updateChannelEffect,
   updateChannelFilter,
 } from "@/lib/channel-state-manager";
@@ -223,7 +222,8 @@ function createDeckLoadDependencies(
     resolvePlatformStreamUrl: ({ videoId }) => resolveStreamUrl(videoId),
     seekDeckSound: (soundId, position) =>
       ctx.audioEngine.playback.seek(soundId, position),
-    setDeckVolume: (deckId, volume) => setChannelVolume("dj", deckId, volume),
+    setDeckVolume: (deckId, volume) =>
+      ctx.channels.setVolume("dj", deckId, volume),
   };
 }
 
@@ -406,11 +406,12 @@ function setDeckAutoplay(deckId: DeckId, enabled: boolean) {
   });
 }
 
-function seekDeck(deckId: DeckId, position: number) {
-  createDeckLoadWorkflow(getDefaultPlaybackActionContext()).seekDeck(
-    deckId,
-    position
-  );
+function seekDeck(
+  deckId: DeckId,
+  position: number,
+  ctx = getDefaultPlaybackActionContext()
+) {
+  createDeckLoadWorkflow(ctx).seekDeck(deckId, position);
 }
 
 function setDeckChannelFilter(deckId: DeckId, value: number) {

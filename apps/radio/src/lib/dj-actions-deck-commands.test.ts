@@ -18,7 +18,7 @@ import {
   setPlaybackChannelRuntime,
 } from "@/lib/stores/playback-runtime-store";
 import { deactivateAllChannels } from "./channel-state-manager";
-import { createDjDeckCommands } from "./dj-actions";
+import { createDjDeckCommands, seekDeckA, setDeckAVolume } from "./dj-actions";
 import type { PlaybackActionContext } from "./playback-action-context";
 import type { PlaybackActionError } from "./playback-action-errors";
 
@@ -235,6 +235,36 @@ describe("DJ deck command context", () => {
         Reflect.deleteProperty(globalThis, "window");
       }
     }
+  });
+
+  test("routes deck volume through the injected channel facade", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertDjSession();
+    const { context } = createTestContext();
+
+    setDeckAVolume(0.27, context);
+
+    expect(context.channels.setVolume).toHaveBeenCalledWith(
+      "dj",
+      "deck-a",
+      0.27
+    );
+  });
+
+  test("seeks a deck through an injected playback context", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertDjSession();
+    const { audioEngine, context } = createTestContext();
+    setPlaybackChannelRuntime("deck-a", () => ({
+      soundId: "left_station-1",
+    }));
+
+    seekDeckA(42, context);
+
+    expect(audioEngine.playback.seek).toHaveBeenCalledWith(
+      "left_station-1",
+      42
+    );
   });
 
   test("reports load failures through the shared user-safe playback error model", async () => {

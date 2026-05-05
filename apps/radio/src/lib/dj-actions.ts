@@ -215,9 +215,8 @@ function createDeckLoadDependencies(
       ctx.audio.playDeviceSound(soundId, deviceId),
     reportDjError: reportDjErrorSurface,
     reportPlaybackError: ctx.reportError,
-    resolvePlatformStreamUrl: (input) =>
-      ctx.platformStreams?.resolveStreamUrl(input) ??
-      resolveDjPlatformStreamUrl(input),
+    resolvePlatformStreamUrl:
+      ctx.platformStreams?.resolveStreamUrl ?? resolveDjPlatformStreamUrl,
     seekDeckSound: (soundId, position) =>
       ctx.audioEngine.playback.seek(soundId, position),
     setDeviceChannelSelection: (soundId, selection) =>

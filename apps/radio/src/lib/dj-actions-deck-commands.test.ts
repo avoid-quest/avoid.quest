@@ -3,6 +3,7 @@ import {
   type AudioEngineFacade,
   type AudioManager,
   AudioManager as AudioManagerClass,
+  type AudioState,
   type Radio,
 } from "@/lib/audio";
 import {
@@ -87,7 +88,7 @@ function createTestContext(
 ) {
   const reportedErrors: PlaybackActionError[] = [];
   const audioEngine = createTestAudioEngine(audioEngineOverrides);
-  const context = {
+  const context: PlaybackActionContext = {
     audio: {
       pauseSound: mock((_soundId: string) => undefined),
       playSound: mock(async (_soundId: string, _volume: number) => undefined),
@@ -132,7 +133,7 @@ function createTestContext(
       reportedErrors.push(error);
     }),
     resetAudioManager: mock(() => undefined),
-  } satisfies PlaybackActionContext;
+  };
 
   return { context, audioEngine, reportedErrors };
 }
@@ -142,6 +143,11 @@ const station: Radio = {
   name: "Station 1",
   streamUrl: "https://radio.example/station.mp3",
 };
+
+async function flushContinuation() {
+  await Promise.resolve();
+  await Promise.resolve();
+}
 
 beforeEach(async () => {
   await resetPlaybackSessions();
@@ -299,6 +305,86 @@ describe("DJ deck command context", () => {
         autoplay: false,
       })
     );
+  });
+
+  test("honors an injected null stream resolver without default fallback", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertDjSession();
+    const youtubePlaylist: Radio = {
+      id: "youtube-playlist-1",
+      name: "YouTube Playlist",
+      streamUrl: "https://youtube.example/current.mp3",
+      platformMetadata: {
+        platform: "youtube",
+        itemType: "playlist",
+        url: "https://youtube.example/playlist?list=abc123",
+        playlistId: "abc123",
+        tracks: [
+          {
+            name: "Current",
+            streamUrl: "https://youtube.example/current.mp3",
+            videoId: "current-video",
+          },
+          {
+            name: "Next",
+            streamUrl: "yt:next-video",
+            videoId: "next-video",
+          },
+        ],
+      },
+    };
+    const resolveStreamUrl = mock(async () => null);
+    const captured = {
+      emitAudioState: null as ((audioState: AudioState) => void) | null,
+    };
+    const { context } = createTestContext();
+    context.platformStreams = { resolveStreamUrl };
+    const activateWithCapturedState: PlaybackActionContext["channels"]["activate"] =
+      (sessionId, channelId, radio, optionsOrSoundId) => {
+        const options =
+          typeof optionsOrSoundId === "string" ? undefined : optionsOrSoundId;
+        const soundId =
+          typeof optionsOrSoundId === "string"
+            ? optionsOrSoundId
+            : (optionsOrSoundId?.soundId ?? "sound-1");
+
+        if (options?.persistRadio) {
+          updatePlaybackChannel(sessionId, channelId, (draft) => {
+            draft.radio = radio;
+          });
+        }
+        setPlaybackChannelRuntime(channelId, () => ({ soundId }));
+        captured.emitAudioState = options?.onAudioState ?? null;
+        return soundId;
+      };
+    context.channels.activate = mock(activateWithCapturedState);
+    const commands = createDjDeckCommands(context);
+
+    await commands.setDeckARadio(youtubePlaylist);
+    const capturedEmitAudioState = captured.emitAudioState;
+    if (!capturedEmitAudioState) {
+      throw new Error(
+        "Expected deck activation to provide audio state handler"
+      );
+    }
+    capturedEmitAudioState({
+      error: null,
+      hasEnded: true,
+      isBuffering: false,
+      isLoading: false,
+      isPlaying: false,
+      volume: 1,
+    });
+    await flushContinuation();
+
+    expect(resolveStreamUrl).toHaveBeenCalledWith({
+      platform: "youtube",
+      reason: "playlist-next",
+      videoId: "next-video",
+      radio: youtubePlaylist,
+    });
+    expect(context.channels.activate).toHaveBeenCalledTimes(1);
+    expect(getPlaybackChannel("dj", "deck-a")?.radio).toEqual(youtubePlaylist);
   });
 
   test("seeks a deck through an injected playback context", async () => {

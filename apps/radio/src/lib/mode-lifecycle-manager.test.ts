@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { playbackSessionsCollection } from "@/lib/collections/playback-sessions";
+import {
+  type PlaybackSessionId,
+  playbackSessionsCollection,
+} from "@/lib/collections/playback-sessions";
 import { resetAllPlaybackRuntime } from "@/lib/stores/playback-runtime-store";
 import {
   createModeManager,
@@ -14,6 +17,17 @@ async function resetPlaybackSessions() {
   }
 }
 
+function insertPlaybackSession(id: PlaybackSessionId) {
+  playbackSessionsCollection.insert({
+    id,
+    channels: [],
+    masterVolume: 1,
+    crossfadePosition: 0.5,
+    headphoneVolume: 1,
+    activeChannelId: null,
+  });
+}
+
 beforeEach(async () => {
   await resetPlaybackSessions();
   resetAllPlaybackRuntime();
@@ -26,6 +40,7 @@ afterEach(async () => {
 
 describe("mode lifecycle manager", () => {
   test("routes startup mode activation through the lifecycle boundary", async () => {
+    insertPlaybackSession("multiple");
     const activateInitialMode = mock(async (_mode: string) => undefined);
     const switchTo = mock(async (_mode: string) => undefined);
     const manager = {
@@ -41,6 +56,36 @@ describe("mode lifecycle manager", () => {
     };
 
     await synchronizePlaybackMode("multiple", manager);
+
+    expect(activateInitialMode).toHaveBeenCalledWith("multiple");
+    expect(switchTo).not.toHaveBeenCalled();
+  });
+
+  test("waits for startup playback session readiness before activating mode", async () => {
+    const activateInitialMode = mock(async (_mode: string) => undefined);
+    const switchTo = mock(async (_mode: string) => undefined);
+    const getSnapshot = mock(() => ({
+      currentMode: null,
+      requestedMode: null,
+      phase: "inactive" as const,
+      error: null,
+    }));
+    const manager = {
+      getSnapshot,
+      subscribe: mock((_listener: () => void) => () => undefined),
+      activateInitialMode,
+      switchTo,
+    };
+
+    const activation = synchronizePlaybackMode("multiple", manager);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(getSnapshot).not.toHaveBeenCalled();
+    expect(activateInitialMode).not.toHaveBeenCalled();
+
+    insertPlaybackSession("multiple");
+    await activation;
 
     expect(activateInitialMode).toHaveBeenCalledWith("multiple");
     expect(switchTo).not.toHaveBeenCalled();

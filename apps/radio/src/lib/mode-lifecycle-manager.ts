@@ -4,6 +4,7 @@ import {
   getPlaybackSession,
   PLAYBACK_SESSION_IDS,
   type PlaybackSessionId,
+  playbackSessionsCollection,
 } from "@/lib/collections/playback-sessions";
 import { updatePlayerSettings } from "@/lib/collections/settings";
 import { DEFAULT_TRANSITION_DURATION } from "@/lib/const";
@@ -61,6 +62,23 @@ const MODE_FADE_OUT_DURATION_MS = 150;
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Mode transition failed";
+}
+
+async function waitForPlaybackSession(mode: PlaybackSessionId): Promise<void> {
+  await playbackSessionsCollection.stateWhenReady();
+  if (getPlaybackSession(mode)) {
+    return;
+  }
+
+  await new Promise<void>((resolve) => {
+    const subscription = playbackSessionsCollection.subscribeChanges(() => {
+      if (!getPlaybackSession(mode)) {
+        return;
+      }
+      subscription.unsubscribe();
+      resolve();
+    });
+  });
 }
 
 function createLifecycle(
@@ -300,13 +318,15 @@ export function createModeManager({
 
 export const modeManager = createModeManager();
 
-export function synchronizePlaybackMode(
+export async function synchronizePlaybackMode(
   mode: PlaybackSessionId,
   manager: ModeManager = modeManager
 ): Promise<void> {
+  await waitForPlaybackSession(mode);
+
   const snapshot = manager.getSnapshot();
   if (snapshot.currentMode === mode) {
-    return Promise.resolve();
+    return;
   }
 
   if (snapshot.currentMode === null && snapshot.phase === "inactive") {

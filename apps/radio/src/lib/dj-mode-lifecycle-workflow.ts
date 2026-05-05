@@ -132,6 +132,7 @@ async function restoreDjDeckRadio(
 
 async function activateDjMode(ctx: PlaybackActionContext): Promise<void> {
   const session = await prepareReadyDjPlaybackSession(ctx);
+  clearDjErrorSurface();
   applySessionMasterVolume("dj", ctx);
   const deckCommands = createDjDeckCommands(ctx);
 

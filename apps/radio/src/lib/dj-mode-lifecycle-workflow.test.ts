@@ -163,6 +163,26 @@ describe("createDjModeLifecycleWorkflow", () => {
     );
   });
 
+  test("clears stale surfaced errors during activation even when no decks restore", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    playbackSessionsCollection.insert({
+      id: "dj",
+      channels: [],
+      masterVolume: 0.7,
+      crossfadePosition: 0.25,
+      headphoneVolume: 1,
+      activeChannelId: null,
+    });
+    setDjError("stale deck load failed");
+    const context = createTestContext();
+    const workflow = createDjModeLifecycleWorkflow({ ctx: context });
+
+    await workflow.activate();
+
+    expect(getDjError()).toBeNull();
+    expect(context.channels.activate).not.toHaveBeenCalled();
+  });
+
   test("deactivation fades deck sounds, clears runtime state, and clears surfaced errors", async () => {
     await playbackSessionsCollection.stateWhenReady();
     playbackSessionsCollection.insert({

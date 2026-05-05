@@ -1,13 +1,23 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import type { AudioEngineFacade, AudioManager } from "@/lib/audio";
 import {
+  createDefaultChannel,
+  DECK_A_CHANNEL_ID,
+  DECK_B_CHANNEL_ID,
   type PlaybackSessionId,
   playbackSessionsCollection,
 } from "@/lib/collections/playback-sessions";
-import { resetAllPlaybackRuntime } from "@/lib/stores/playback-runtime-store";
 import {
+  getPlaybackChannelRuntime,
+  resetAllPlaybackRuntime,
+  setPlaybackChannelRuntime,
+} from "@/lib/stores/playback-runtime-store";
+import {
+  createModeLifecycleRegistry,
   createModeManager,
   synchronizePlaybackMode,
 } from "./mode-lifecycle-manager";
+import type { PlaybackActionContext } from "./playback-action-context";
 
 async function resetPlaybackSessions() {
   await playbackSessionsCollection.stateWhenReady();
@@ -26,6 +36,54 @@ function insertPlaybackSession(id: PlaybackSessionId) {
     headphoneVolume: 1,
     activeChannelId: null,
   });
+}
+
+function createModeLifecycleTestContext() {
+  const audioEngine = {
+    playback: {
+      play: mock(async (_soundId: string, _volume?: number) => undefined),
+      pause: mock((_soundId: string) => undefined),
+      seek: mock((_soundId: string, _position: number) => undefined),
+      refreshStreamUrl: mock(
+        async (_soundId: string, _newUrl: string, _seekPosition?: number) =>
+          undefined
+      ),
+    },
+    volume: {
+      setChannelVolume: mock((_soundId: string, _volume: number) => undefined),
+      setMasterVolume: mock((_volume: number) => undefined),
+    },
+  } satisfies AudioEngineFacade;
+
+  return {
+    audio: {
+      hasSound: mock((_soundId: string) => false),
+      pauseSound: mock((_soundId: string) => undefined),
+      playSound: mock(async (_soundId: string, _volume: number) => undefined),
+      setGlobalVolume: mock((_volume: number) => undefined),
+      setMainDelay: mock((_delayMs: number) => undefined),
+      setVolume: mock((_soundId: string, _volume: number) => undefined),
+    } as unknown as AudioManager,
+    audioEngine,
+    channels: {
+      activate: mock((_sessionId, channelId, _radio, optionsOrSoundId) => {
+        const soundId =
+          typeof optionsOrSoundId === "string"
+            ? optionsOrSoundId
+            : (optionsOrSoundId?.soundId ?? `sound:${channelId}`);
+        setPlaybackChannelRuntime(channelId, () => ({ soundId }));
+        return soundId;
+      }),
+      deactivateAll: mock(() => undefined),
+      deactivate: mock((_channelId: string) => undefined),
+      setVolume: mock((_sessionId, _channelId, _volume) => undefined),
+      subscribeRuntime: mock((_sessionId, _channelId, _soundId) => undefined),
+    },
+    getMainOutputRouter: () => null,
+    lifecycle: { mainOutputSettingsApplied: true },
+    reportError: mock(() => undefined),
+    resetAudioManager: mock(() => undefined),
+  } satisfies PlaybackActionContext;
 }
 
 beforeEach(async () => {
@@ -165,6 +223,56 @@ describe("mode lifecycle manager", () => {
     });
     expect(singleActivate).toHaveBeenCalledTimes(1);
     expect(commitMode).not.toHaveBeenCalled();
+  });
+
+  test("switching out of DJ mode cleans up deck audio through lifecycle boundaries", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    playbackSessionsCollection.insert({
+      id: "dj",
+      channels: [
+        createDefaultChannel(DECK_A_CHANNEL_ID, "deck-a", 0),
+        createDefaultChannel(DECK_B_CHANNEL_ID, "deck-b", 1),
+      ],
+      masterVolume: 0.5,
+      crossfadePosition: 0.5,
+      headphoneVolume: 1,
+      activeChannelId: null,
+    });
+    insertPlaybackSession("single");
+    setPlaybackChannelRuntime(DECK_A_CHANNEL_ID, () => ({
+      soundId: "left_station-1",
+      isPlaying: true,
+    }));
+    setPlaybackChannelRuntime(DECK_B_CHANNEL_ID, () => ({
+      soundId: "right_station-2",
+      isPlaying: true,
+    }));
+    const context = createModeLifecycleTestContext();
+    const fadeOut = mock((_soundId: string, _durationMs: number) =>
+      Promise.resolve()
+    );
+    const manager = createModeManager({
+      initialMode: "dj",
+      lifecycles: createModeLifecycleRegistry({
+        ctx: context,
+        fadeOutDurationMs: 120,
+        fadeOutSound: fadeOut,
+      }),
+      commitMode: mock(() => undefined),
+    });
+
+    await manager.switchTo("single");
+
+    expect(fadeOut).toHaveBeenCalledWith("left_station-1", 120, true);
+    expect(fadeOut).toHaveBeenCalledWith("right_station-2", 120, true);
+    expect(context.channels.deactivate).toHaveBeenCalledWith(DECK_A_CHANNEL_ID);
+    expect(context.channels.deactivate).toHaveBeenCalledWith(DECK_B_CHANNEL_ID);
+    expect(getPlaybackChannelRuntime(DECK_A_CHANNEL_ID).soundId).toBeNull();
+    expect(getPlaybackChannelRuntime(DECK_B_CHANNEL_ID).soundId).toBeNull();
+    expect(manager.getSnapshot()).toMatchObject({
+      currentMode: "single",
+      phase: "active",
+    });
   });
 
   test("keeps failed initial activation retryable without committing mode state", async () => {

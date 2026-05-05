@@ -114,6 +114,11 @@ const hooks = {
   },
 };
 
+// Copy node_modules from the host into each worktree before the sandbox starts.
+// The install hook remains as a safety net for Linux-specific package artifacts
+// and dependency changes since the last host install.
+const copyToWorktree = ["node_modules"];
+
 // ---------------------------------------------------------------------------
 // Main loop
 // ---------------------------------------------------------------------------
@@ -134,6 +139,7 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
     hooks,
     sandbox: sandboxProvider(),
     branchStrategy: { type: "merge-to-head" },
+    copyToWorktree,
     name: "planner",
     // One iteration is enough: the planner just needs to read and reason,
     // not write code.
@@ -200,6 +206,7 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
           baseBranch,
           sandbox: sandboxProvider(),
           hooks,
+          copyToWorktree,
         });
 
         try {
@@ -299,6 +306,7 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
     hooks,
     sandbox: sandboxProvider(),
     branchStrategy: { type: "merge-to-head" },
+    copyToWorktree,
     name: "merger",
     maxIterations: 1,
     agent: codex("gpt-5.4-mini"),

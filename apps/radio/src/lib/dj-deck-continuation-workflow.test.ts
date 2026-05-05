@@ -61,7 +61,8 @@ function createDependencies(
   overrides: {
     loadTrack?: (
       deckSide: "left" | "right",
-      radio: Radio | null
+      radio: Radio | null,
+      autoPlay?: boolean
     ) => Promise<void>;
     playSound?: (soundId: string, volume: number) => Promise<void>;
     refreshStreamUrl?: (
@@ -152,25 +153,87 @@ describe("DJ deck continuation workflow", () => {
     );
   });
 
+  test("autoplay resolves YouTube playlist tracks through the platform adapter", async () => {
+    const { dependencies } = createDependencies({
+      resolvePlatformStreamUrl: async () =>
+        "https://youtube.example/resolved-next.mp3",
+    });
+    const workflow = createDjDeckContinuationWorkflow(dependencies);
+    const youtubePlaylist: Radio = {
+      id: "youtube-playlist-1",
+      name: "YouTube Playlist",
+      streamUrl: "https://youtube.example/current.mp3",
+      platformMetadata: {
+        platform: "youtube",
+        itemType: "playlist",
+        url: "https://youtube.example/playlist?list=abc123",
+        playlistId: "abc123",
+        tracks: [
+          {
+            name: "Current",
+            streamUrl: "https://youtube.example/current.mp3",
+            videoId: "current-video",
+          },
+          {
+            name: "Next",
+            streamUrl: "",
+            videoId: "next-video",
+          },
+        ],
+      },
+    };
+
+    await workflow.handleTrackEnded({
+      currentDeck: createDeck({ radio: youtubePlaylist }),
+      deckId: "deck-a",
+      deckSide: "left",
+      resetChannelStripFlag: mock(() => undefined),
+      soundId: "left_youtube-playlist-1",
+    });
+
+    expect(dependencies.resolvePlatformStreamUrl).toHaveBeenCalledWith({
+      platform: "youtube",
+      reason: "playlist-next",
+      videoId: "next-video",
+      radio: youtubePlaylist,
+    });
+    expect(dependencies.loadTrack).toHaveBeenCalledWith(
+      "left",
+      expect.objectContaining({
+        streamUrl: "https://youtube.example/resolved-next.mp3",
+      }),
+      true
+    );
+  });
+
   test("autoplay leaves the deck stable when no next playlist track exists", async () => {
     const { dependencies } = createDependencies();
     const workflow = createDjDeckContinuationWorkflow(dependencies);
+    const oneTrackPlaylist: Radio = {
+      id: "playlist-1",
+      name: "Playlist 1",
+      streamUrl: "https://radio.example/current.mp3",
+      platformMetadata: {
+        platform: "soundcloud",
+        itemType: "playlist",
+        url: "https://soundcloud.example/playlist",
+        name: "Playlist 1",
+        artist: "Artist",
+        artwork: "",
+        trackCount: 1,
+        tracks: [
+          {
+            name: "Current",
+            streamUrl: "https://radio.example/current.mp3",
+            duration: 120,
+          },
+        ],
+      },
+    };
 
     await workflow.handleTrackEnded({
       currentDeck: createDeck({
-        radio: {
-          ...baseRadio,
-          platformMetadata: {
-            ...baseRadio.platformMetadata,
-            tracks: [
-              {
-                name: "Current",
-                streamUrl: "https://radio.example/current.mp3",
-                duration: 120,
-              },
-            ],
-          },
-        } as Radio,
+        radio: oneTrackPlaylist,
       }),
       deckId: "deck-a",
       deckSide: "left",

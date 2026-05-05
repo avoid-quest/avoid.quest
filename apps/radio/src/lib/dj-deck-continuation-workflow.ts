@@ -85,7 +85,7 @@ function reportContinuationFailure(
 }
 
 async function resolveAndLoadYouTubeTrack(
-  side: DeckSide,
+  deckSide: DeckSide,
   deckRadio: Radio,
   videoId: string,
   dependencies: DjDeckContinuationDependencies
@@ -119,7 +119,7 @@ async function resolveAndLoadYouTubeTrack(
   }
 
   await dependencies.loadTrack(
-    side,
+    deckSide,
     { ...deckRadio, streamUrl: resolvedUrl },
     true
   );
@@ -157,8 +157,12 @@ async function handleTrackEnded(
   }
 
   const deckRadio = currentDeck.radio;
+  if (!deckRadio) {
+    return;
+  }
+
   const nextTrack = findNextTrackInPlaylist(deckRadio);
-  if (!(nextTrack && deckRadio)) {
+  if (!nextTrack) {
     return;
   }
 

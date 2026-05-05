@@ -22,7 +22,10 @@ import {
   createDjDeckCommands,
   seekDeckA,
   setDeckAAutoplay,
+  setDeckAMute,
+  setDeckAPan,
   setDeckARepeat,
+  setDeckASpeed,
   setDeckAVolume,
 } from "./dj-actions";
 import type { PlaybackActionContext } from "./playback-action-context";
@@ -118,6 +121,9 @@ function createTestContext(
       deactivateAll: mock(() => undefined),
       deactivate: mock((_channelId: string) => undefined),
       setVolume: mock((_sessionId, _channelId, _volume) => undefined),
+      setMuted: mock((_sessionId, _channelId, _muted) => undefined),
+      setPan: mock((_sessionId, _channelId, _pan) => undefined),
+      setSpeed: mock((_sessionId, _channelId, _speed) => undefined),
       subscribeRuntime: mock((_sessionId, _channelId, _soundId) => undefined),
     },
     getMainOutputRouter: () => null,
@@ -254,6 +260,28 @@ describe("DJ deck command context", () => {
       "dj",
       "deck-a",
       0.27
+    );
+  });
+
+  test("routes deck strip updates through the injected channel facade", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertDjSession();
+    const { context } = createTestContext();
+
+    setDeckAMute(true, context);
+    setDeckAPan(-0.2, context);
+    setDeckASpeed(1.15, context);
+
+    expect(context.channels.setMuted).toHaveBeenCalledWith(
+      "dj",
+      "deck-a",
+      true
+    );
+    expect(context.channels.setPan).toHaveBeenCalledWith("dj", "deck-a", -0.2);
+    expect(context.channels.setSpeed).toHaveBeenCalledWith(
+      "dj",
+      "deck-a",
+      1.15
     );
   });
 

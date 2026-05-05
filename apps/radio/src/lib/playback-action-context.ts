@@ -10,6 +10,9 @@ import {
   type ChannelRuntimeSubscriptionOptions,
   deactivateAllChannels,
   deactivateChannel,
+  setChannelMuted,
+  setChannelPan,
+  setChannelSpeed,
   setChannelVolume,
   subscribeChannelRuntime,
 } from "@/lib/channel-state-manager";
@@ -37,6 +40,21 @@ export type PlaybackActionChannelFacade = {
     sessionId: PlaybackSessionId,
     channelId: string,
     volume: number
+  ) => void;
+  setMuted: (
+    sessionId: PlaybackSessionId,
+    channelId: string,
+    muted: boolean
+  ) => void;
+  setPan: (
+    sessionId: PlaybackSessionId,
+    channelId: string,
+    pan: number
+  ) => void;
+  setSpeed: (
+    sessionId: PlaybackSessionId,
+    channelId: string,
+    speed: number
   ) => void;
   subscribeRuntime: (
     sessionId: PlaybackSessionId,
@@ -72,6 +90,9 @@ const defaultChannels: PlaybackActionChannelFacade = {
   deactivateAll: deactivateAllChannels,
   deactivate: deactivateChannel,
   setVolume: setChannelVolume,
+  setMuted: setChannelMuted,
+  setPan: setChannelPan,
+  setSpeed: setChannelSpeed,
   subscribeRuntime: subscribeChannelRuntime,
 };
 

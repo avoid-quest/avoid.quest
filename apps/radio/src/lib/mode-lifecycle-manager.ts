@@ -8,7 +8,7 @@ import {
   SINGLE_ACTIVE_CHANNEL_ID,
   SINGLE_STANDBY_CHANNEL_ID,
 } from "@/lib/collections/playback-sessions";
-import { updatePlayerSettings } from "@/lib/collections/settings";
+import { getSettings, updatePlayerSettings } from "@/lib/collections/settings";
 import { DEFAULT_TRANSITION_DURATION } from "@/lib/const";
 import {
   getDefaultPlaybackActionContext,
@@ -257,7 +257,6 @@ export function createModeManager({
     phase: initialMode ? "active" : "inactive",
     error: null,
   };
-  let transitionQueue = Promise.resolve();
   const listeners = new Set<() => void>();
 
   function emit(nextSnapshot: Partial<ModeTransitionSnapshot>): void {
@@ -271,11 +270,19 @@ export function createModeManager({
     previousMode: PlaybackSessionId | null,
     activeModeToDeactivate: PlaybackSessionId | null = null
   ): Promise<void> {
+    let cleanupError: unknown = null;
     if (activeModeToDeactivate) {
-      await lifecycles[activeModeToDeactivate].deactivate();
+      try {
+        await lifecycles[activeModeToDeactivate].deactivate();
+      } catch (error) {
+        cleanupError = error;
+      }
     }
     if (!previousMode) {
       emit({ currentMode: null, phase: "inactive", requestedMode: null });
+      if (cleanupError) {
+        throw cleanupError;
+      }
       return;
     }
     await lifecycles[previousMode].activate();
@@ -340,13 +347,8 @@ export function createModeManager({
     }
   }
 
-  function enqueueTransition<T>(run: () => Promise<T>): Promise<T> {
-    const transition = transitionQueue.then(run, run);
-    transitionQueue = transition.then(
-      () => undefined,
-      () => undefined
-    );
-    return transition;
+  function isTransitionInProgress(): boolean {
+    return snapshot.phase === "activating" || snapshot.phase === "deactivating";
   }
 
   return {
@@ -360,7 +362,7 @@ export function createModeManager({
       };
     },
     activateInitialMode(mode: PlaybackSessionId): Promise<void> {
-      return enqueueTransition(async () => {
+      return (async () => {
         if (snapshot.currentMode === mode || snapshot.phase !== "inactive") {
           return;
         }
@@ -376,10 +378,13 @@ export function createModeManager({
           });
           throw error;
         }
-      });
+      })();
     },
     switchTo(nextMode: PlaybackSessionId): Promise<void> {
-      return enqueueTransition(() => switchMode(nextMode));
+      if (isTransitionInProgress()) {
+        return Promise.reject(new Error("Mode transition in progress"));
+      }
+      return switchMode(nextMode);
     },
   };
 }
@@ -391,6 +396,11 @@ export async function synchronizePlaybackMode(
   manager: ModeManager = modeManager
 ): Promise<void> {
   await waitForPlaybackSession(mode);
+
+  const settings = getSettings();
+  if (settings && settings.player.mode !== mode) {
+    return;
+  }
 
   const snapshot = manager.getSnapshot();
   if (snapshot.currentMode === mode) {

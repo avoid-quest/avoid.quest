@@ -24,9 +24,6 @@ import {
   reorderChannelEffects,
   setChannelEffectsDryWet,
   setChannelFilterValue,
-  setChannelMuted,
-  setChannelPan,
-  setChannelSpeed,
   updateChannelEffect,
   updateChannelFilter,
 } from "@/lib/channel-state-manager";
@@ -236,9 +233,9 @@ function createDeckLoadDependencies(
       setChannelFilterValue("dj", deckId, value),
     setDeckEffectsDryWet: (deckId, value) =>
       setChannelEffectsDryWet("dj", deckId, value),
-    setDeckMute: (deckId, muted) => setChannelMuted("dj", deckId, muted),
-    setDeckPan: (deckId, pan) => setChannelPan("dj", deckId, pan),
-    setDeckSpeed: (deckId, speed) => setChannelSpeed("dj", deckId, speed),
+    setDeckMute: (deckId, muted) => ctx.channels.setMuted("dj", deckId, muted),
+    setDeckPan: (deckId, pan) => ctx.channels.setPan("dj", deckId, pan),
+    setDeckSpeed: (deckId, speed) => ctx.channels.setSpeed("dj", deckId, speed),
     setDeckVolume: (deckId, volume) =>
       ctx.channels.setVolume("dj", deckId, volume),
     updateDeckEffect: (deckId, effectId, effectConfig) =>

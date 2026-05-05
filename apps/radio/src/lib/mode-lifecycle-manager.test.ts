@@ -38,6 +38,18 @@ function insertPlaybackSession(id: PlaybackSessionId) {
   });
 }
 
+type ChannelActivationSoundIdOption = string | { soundId?: string };
+
+function getActivatedSoundId(
+  channelId: string,
+  optionsOrSoundId?: ChannelActivationSoundIdOption
+): string {
+  if (typeof optionsOrSoundId === "string") {
+    return optionsOrSoundId;
+  }
+  return optionsOrSoundId?.soundId ?? `sound:${channelId}`;
+}
+
 function createModeLifecycleTestContext() {
   const audioEngine = {
     playback: {
@@ -66,14 +78,18 @@ function createModeLifecycleTestContext() {
     } as unknown as AudioManager,
     audioEngine,
     channels: {
-      activate: mock((_sessionId, channelId, _radio, optionsOrSoundId) => {
-        const soundId =
-          typeof optionsOrSoundId === "string"
-            ? optionsOrSoundId
-            : (optionsOrSoundId?.soundId ?? `sound:${channelId}`);
-        setPlaybackChannelRuntime(channelId, () => ({ soundId }));
-        return soundId;
-      }),
+      activate: mock(
+        (
+          _sessionId,
+          channelId,
+          _radio,
+          optionsOrSoundId?: ChannelActivationSoundIdOption
+        ) => {
+          const soundId = getActivatedSoundId(channelId, optionsOrSoundId);
+          setPlaybackChannelRuntime(channelId, () => ({ soundId }));
+          return soundId;
+        }
+      ),
       deactivateAll: mock(() => undefined),
       deactivate: mock((_channelId: string) => undefined),
       setVolume: mock((_sessionId, _channelId, _volume) => undefined),

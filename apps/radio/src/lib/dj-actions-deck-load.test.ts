@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { AudioManager } from "@/lib/audio";
+import { AudioManager, type AudioState } from "@/lib/audio";
 import {
   createDefaultChannel,
   DECK_A_CHANNEL_ID,
   DECK_B_CHANNEL_ID,
   getPlaybackChannel,
   playbackSessionsCollection,
+  updatePlaybackChannel,
 } from "@/lib/collections/playback-sessions";
 import { getPlaybackChannelRuntime } from "@/lib/stores/playback-runtime-store";
 import {
@@ -13,7 +14,7 @@ import {
   deactivateAllChannels,
   deactivateChannel,
 } from "./channel-state-manager";
-import { setDeckRadioSource } from "./dj-actions-deck-load";
+import { createDjDeckLoadWorkflow } from "./dj-actions-deck-load";
 
 async function resetPlaybackSessions() {
   await playbackSessionsCollection.stateWhenReady();
@@ -52,7 +53,7 @@ function createDependencies() {
     initializeAudioDevices: mock(async () => undefined),
     loadTrack: mock(async () => undefined),
     reportDjError: mock(() => undefined),
-    resolveStreamUrl: mock(async () => null),
+    resolvePlatformStreamUrl: mock(async () => null),
   };
 }
 
@@ -87,26 +88,19 @@ describe("DJ deck channel lifecycle", () => {
       mock(() => undefined)
     );
     const dependencies = createDependencies();
+    const workflow = createDjDeckLoadWorkflow(dependencies);
 
-    await setDeckRadioSource(
-      "deck-a",
-      {
-        id: "station-1",
-        name: "Station 1",
-        streamUrl: "https://radio.example/one.mp3",
-      },
-      dependencies
-    );
-    await setDeckRadioSource(
-      "deck-a",
-      {
-        id: "station-2",
-        name: "Station 2",
-        streamUrl: "https://radio.example/two.mp3",
-      },
-      dependencies
-    );
-    await setDeckRadioSource("deck-a", null, dependencies);
+    await workflow.loadDeckRadio("deck-a", {
+      id: "station-1",
+      name: "Station 1",
+      streamUrl: "https://radio.example/one.mp3",
+    });
+    await workflow.loadDeckRadio("deck-a", {
+      id: "station-2",
+      name: "Station 2",
+      streamUrl: "https://radio.example/two.mp3",
+    });
+    await workflow.loadDeckRadio("deck-a", null);
 
     expect(firstCleanup).toHaveBeenCalledTimes(1);
     expect(secondCleanup).toHaveBeenCalledTimes(1);
@@ -130,16 +124,13 @@ describe("DJ deck channel lifecycle", () => {
       mock(() => undefined)
     );
     const dependencies = createDependencies();
+    const workflow = createDjDeckLoadWorkflow(dependencies);
 
-    await setDeckRadioSource(
-      "deck-a",
-      {
-        id: "station-1",
-        name: "Station 1",
-        streamUrl: "https://radio.example/one.mp3",
-      },
-      dependencies
-    );
+    await workflow.loadDeckRadio("deck-a", {
+      id: "station-1",
+      name: "Station 1",
+      streamUrl: "https://radio.example/one.mp3",
+    });
 
     expect(getPlaybackChannel("dj", "deck-a")?.radio).toBeNull();
     expect(getPlaybackChannelRuntime("deck-a").soundId).toBeNull();
@@ -148,6 +139,93 @@ describe("DJ deck channel lifecycle", () => {
       "DJ_LOAD_DECK_FAILED",
       expect.any(Error),
       expect.objectContaining({ id: "station-1" })
+    );
+  });
+
+  test("replays stored strip, effects, and cue routing when a loaded deck becomes active", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertDjSession();
+    updatePlaybackChannel("dj", "deck-a", (draft) => {
+      draft.volume = 0.72;
+      draft.muted = true;
+      draft.pan = -0.35;
+      draft.speed = 1.1;
+      draft.channelFilter = 0.25;
+      draft.effectsDryWet = 0.6;
+      draft.cueEnabled = true;
+      draft.effects = [
+        {
+          id: "delay-1",
+          type: "delay",
+          enabled: true,
+          order: 0,
+          dryWet: 0.5,
+          inputGain: 1,
+          outputGain: 1,
+          delayTime: 0.2,
+          feedback: 0.4,
+        },
+      ];
+      draft.filter = {
+        type: "highpass",
+        frequency: 400,
+        Q: 1,
+        gain: 0,
+        enabled: true,
+      };
+    });
+
+    const manager = AudioManager.getInstance();
+    let onAudioState: (audioState: AudioState) => void = () => {
+      throw new Error("Audio state subscriber was not registered");
+    };
+    manager.createSound = mock(
+      (_radio, soundId?: string) => soundId ?? "sound"
+    );
+    manager.cleanupSound = mock((_soundId: string) => undefined);
+    manager.subscribe = mock((_soundId, callback) => {
+      onAudioState = callback;
+      return mock(() => undefined);
+    });
+    manager.subscribeMeter = mock((_soundId, _callback) =>
+      mock(() => undefined)
+    );
+    const dependencies = createDependencies();
+    const workflow = createDjDeckLoadWorkflow(dependencies);
+
+    await workflow.loadDeckRadio("deck-a", {
+      id: "station-1",
+      name: "Station 1",
+      streamUrl: "https://radio.example/one.mp3",
+    });
+    onAudioState({
+      isPlaying: true,
+      isLoading: false,
+      isBuffering: false,
+      hasEnded: false,
+      volume: 1,
+      error: null,
+    });
+
+    expect(dependencies.applyStoredEffectsAndFilters).toHaveBeenCalledWith(
+      manager,
+      "left_station-1",
+      expect.arrayContaining([expect.objectContaining({ id: "delay-1" })]),
+      expect.objectContaining({ type: "highpass", enabled: true })
+    );
+    expect(dependencies.applyStoredChannelStrip).toHaveBeenCalledWith(
+      manager,
+      "left_station-1",
+      true,
+      -0.35,
+      1.1,
+      0.25,
+      0.6
+    );
+    expect(dependencies.connectDeckCueBus).toHaveBeenCalledWith(
+      "deck-a",
+      "left_station-1",
+      dependencies.getAudioManager
     );
   });
 });

@@ -1,4 +1,8 @@
 export {
+  createManagedPlaybackSessionWorkflow,
+  type ManagedPlaybackSessionWorkflow,
+} from "./managed-playback-session-workflow.js";
+export {
   addManagedChannelEffect,
   removeManagedChannelEffect,
   reorderManagedChannelEffects,

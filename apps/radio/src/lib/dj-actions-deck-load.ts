@@ -6,7 +6,10 @@ import {
   deckConfig,
   getDeckRadio,
 } from "@/lib/dj-actions-decks.js";
-import { findNextTrack as findNextTrackInPlaylist } from "@/lib/dj-actions-playlist.js";
+import {
+  createDjDeckContinuationWorkflow,
+  type PlatformStreamResolutionInput,
+} from "@/lib/dj-deck-continuation-workflow.js";
 import {
   type DeckRecord,
   resetDeck as resetDeckDb,
@@ -63,133 +66,15 @@ type DeckLoadDependencies = {
   ) => Promise<void>;
   reportDjError: ReportDjError;
   reportPlaybackError?: (error: PlaybackActionError) => void;
-  resolveStreamUrl: (videoId: string) => Promise<string | null>;
+  resolvePlatformStreamUrl: (
+    input: PlatformStreamResolutionInput
+  ) => Promise<string | null>;
 };
 
-async function resolveAndLoadYouTubeTrack(
-  side: DeckSide,
-  deckRadio: Radio,
-  videoId: string,
-  dependencies: DeckLoadDependencies
-): Promise<void> {
-  const resolvedUrl = await dependencies.resolveStreamUrl(videoId);
-  if (!resolvedUrl) {
-    dependencies.reportDjError(
-      "Failed to resolve next track: no stream URL found",
-      "DJ_NEXT_TRACK_RESOLVE_FAILED",
-      undefined,
-      deckRadio
-    );
-    return;
-  }
-
-  if (
-    isYouTubeMetadata(deckRadio.platformMetadata) &&
-    deckRadio.platformMetadata.tracks
-  ) {
-    const track = deckRadio.platformMetadata.tracks.find(
-      (item) => "videoId" in item && item.videoId === videoId
-    );
-    if (track) {
-      track.streamUrl = resolvedUrl;
-    }
-  }
-
-  await dependencies.loadTrack(
-    side,
-    { ...deckRadio, streamUrl: resolvedUrl },
-    true
-  );
-}
-
-async function handleTrackEnded(
-  config: (typeof deckConfig)["deck-a"],
-  currentDeck: DeckRecord,
-  soundId: string,
-  resetChannelStripFlag: () => void,
-  dependencies: DeckLoadDependencies
-): Promise<void> {
-  if (currentDeck.repeat) {
-    resetChannelStripFlag();
-    dependencies.getAudioManager().seekSound(soundId, 0);
-    try {
-      await dependencies
-        .getAudioManager()
-        .playSound(soundId, currentDeck.volume);
-      dependencies.applyCrossfade();
-    } catch (error) {
-      dependencies.reportDjError(
-        `Failed to repeat track: ${error instanceof Error ? error.message : "Unknown error"}`,
-        "DJ_REPEAT_TRACK_FAILED",
-        error,
-        currentDeck.radio
-      );
-    }
-    return;
-  }
-
-  if (!currentDeck.autoplay) {
-    return;
-  }
-
-  const deckRadio = getDeckRadio(currentDeck);
-  const nextTrack = findNextTrackInPlaylist(deckRadio);
-  if (!(nextTrack && deckRadio)) {
-    return;
-  }
-
-  const { streamUrl } = nextTrack;
-  if (streamUrl.startsWith("yt:")) {
-    try {
-      await resolveAndLoadYouTubeTrack(
-        config.side,
-        deckRadio,
-        streamUrl.slice(3),
-        dependencies
-      );
-    } catch (error) {
-      dependencies.reportDjError(
-        `Failed to load next track: ${error instanceof Error ? error.message : "Unknown error"}`,
-        "DJ_LOAD_NEXT_TRACK_FAILED",
-        error,
-        currentDeck.radio
-      );
-    }
-    return;
-  }
-
-  await dependencies.loadTrack(config.side, { ...deckRadio, streamUrl }, true);
-}
-
-async function handleYouTubeStreamInterrupted(
-  soundId: string,
-  videoId: string,
-  position: number,
-  dependencies: DeckLoadDependencies
-): Promise<void> {
-  try {
-    const newUrl = await dependencies.resolveStreamUrl(videoId);
-    if (newUrl) {
-      await dependencies
-        .getAudioManager()
-        .refreshStreamUrl(soundId, newUrl, position);
-      dependencies.clearDjError();
-      dependencies.applyCrossfade();
-      return;
-    }
-
-    dependencies.reportDjError(
-      "Failed to refresh YouTube stream - please reload",
-      "DJ_YOUTUBE_REFRESH_FAILED"
-    );
-  } catch (error) {
-    dependencies.reportDjError(
-      `Stream refresh failed: ${error instanceof Error ? error.message : "Unknown error"}`,
-      "DJ_STREAM_REFRESH_FAILED",
-      error
-    );
-  }
-}
+type DjDeckLoadWorkflow = {
+  loadDeckRadio: (deckId: DeckId, radio: Radio | null) => Promise<void>;
+  resetDeck: (deckId: DeckId) => Promise<void>;
+};
 
 function cleanupFailedDeckLoad(
   deckId: DeckId,
@@ -206,7 +91,7 @@ function cleanupFailedDeckLoad(
   return true;
 }
 
-export async function setDeckRadioSource(
+async function loadDeckRadio(
   deckId: DeckId,
   radio: Radio | null,
   dependencies: DeckLoadDependencies
@@ -214,6 +99,7 @@ export async function setDeckRadioSource(
   const config = deckConfig[deckId];
   const deck = config.getDeck();
   const runtime = config.getRuntime();
+  const continuationWorkflow = createDjDeckContinuationWorkflow(dependencies);
 
   if (!deck) {
     return;
@@ -309,17 +195,18 @@ export async function setDeckRadioSource(
           currentDeck.radio.platformMetadata.videoId &&
           currentRuntime.soundId
         ) {
-          handleYouTubeStreamInterrupted(
-            currentRuntime.soundId,
-            currentDeck.radio.platformMetadata.videoId,
-            audioState.error.position ?? 0,
-            dependencies
-          ).catch((error) => {
-            console.error(
-              "[dj-actions] Failed to refresh interrupted stream:",
-              error
-            );
-          });
+          continuationWorkflow
+            .handleStreamInterrupted({
+              currentRadio: currentDeck.radio,
+              position: audioState.error.position ?? 0,
+              soundId: currentRuntime.soundId,
+            })
+            .catch((error) => {
+              console.error(
+                "[dj-actions] Failed to refresh interrupted stream:",
+                error
+              );
+            });
           return;
         }
 
@@ -342,17 +229,22 @@ export async function setDeckRadioSource(
         }
 
         if (trackEnded && currentDeck?.radio && currentRuntime.soundId) {
-          handleTrackEnded(
-            config,
-            currentDeck,
-            currentRuntime.soundId,
-            () => {
-              hasAppliedChannelStrip = false;
-            },
-            dependencies
-          ).catch((error) => {
-            console.error("[dj-actions] Failed to handle ended track:", error);
-          });
+          continuationWorkflow
+            .handleTrackEnded({
+              deckId,
+              deckSide: config.side,
+              currentDeck,
+              soundId: currentRuntime.soundId,
+              resetChannelStripFlag: () => {
+                hasAppliedChannelStrip = false;
+              },
+            })
+            .catch((error) => {
+              console.error(
+                "[dj-actions] Failed to handle ended track:",
+                error
+              );
+            });
         }
       },
     });
@@ -390,3 +282,53 @@ export async function setDeckRadioSource(
     );
   }
 }
+
+async function resetDeck(
+  deckId: DeckId,
+  dependencies: DeckLoadDependencies
+): Promise<void> {
+  const config = deckConfig[deckId];
+  const deck = config.getDeck();
+  if (!deck?.radio) {
+    return;
+  }
+
+  config.updateDeck((draft) => {
+    draft.volume = 1;
+    draft.muted = false;
+    draft.pan = 0;
+    draft.speed = 1.0;
+    draft.channelFilter = 0;
+    draft.effectsDryWet = 1.0;
+    draft.effects = [];
+    draft.filter = {
+      type: "lowpass",
+      frequency: 1000,
+      Q: 1,
+      gain: 0,
+      enabled: false,
+    };
+  });
+
+  await loadDeckRadio(deckId, getDeckRadio(deck), dependencies);
+}
+
+export function createDjDeckLoadWorkflow(
+  dependencies: DeckLoadDependencies
+): DjDeckLoadWorkflow {
+  return {
+    loadDeckRadio: (deckId, radio) =>
+      loadDeckRadio(deckId, radio, dependencies),
+    resetDeck: (deckId) => resetDeck(deckId, dependencies),
+  };
+}
+
+export async function setDeckRadioSource(
+  deckId: DeckId,
+  radio: Radio | null,
+  dependencies: DeckLoadDependencies
+): Promise<void> {
+  await loadDeckRadio(deckId, radio, dependencies);
+}
+
+export type { DeckLoadDependencies, DjDeckLoadWorkflow };

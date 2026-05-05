@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Radio } from "@/lib/audio";
-import { resolvePlatformStation } from "@/lib/stations/external-station-workflow";
+import { createExternalStationResolutionWorkflow } from "@/lib/stations/external-station-workflow";
 import { loadPlatformItem as loadPlatformItemFn } from "@/utils/platform.functions";
 
 export const platformKeys = {
@@ -13,28 +13,39 @@ type LoadPlatformItemResult =
   | { success: false; code: string; error: string };
 
 async function loadPlatformItem(url: string): Promise<LoadPlatformItemResult> {
-  const result = await resolvePlatformStation(url, async (inputUrl) => {
-    const response = await loadPlatformItemFn({
-      data: { url: inputUrl.trim() },
-    });
-    if (!response.ok) {
-      return {
-        ok: false,
-        error: {
-          code: response.error.code,
-          message: response.error.message,
-        },
-      };
-    }
+  const workflow = createExternalStationResolutionWorkflow({
+    adapters: {
+      platform: {
+        resolve: async (inputUrl) => {
+          const response = await loadPlatformItemFn({
+            data: { url: inputUrl },
+          });
+          if (!response.ok) {
+            return {
+              ok: false,
+              error: {
+                code: response.error.code,
+                message: response.error.message,
+              },
+            };
+          }
 
-    return {
-      ok: true,
-      data: {
-        metadata: response.data.metadata,
-        streamUrl: response.data.streamUrl,
+          return {
+            ok: true,
+            data: {
+              metadata: response.data.metadata,
+              streamUrl: response.data.streamUrl,
+            },
+          };
+        },
       },
-    };
+    },
+    collection: {
+      addSavedRadio: () => undefined,
+      getSavedRadios: () => [],
+    },
   });
+  const result = await workflow.resolvePlatformUrl(url);
 
   if (!result.ok) {
     return {
@@ -44,7 +55,7 @@ async function loadPlatformItem(url: string): Promise<LoadPlatformItemResult> {
     };
   }
 
-  return { success: true, radio: result.data };
+  return { success: true, radio: result.data.radio };
 }
 
 type UsePlatformLoadOptions = {

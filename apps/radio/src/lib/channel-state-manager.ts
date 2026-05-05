@@ -48,6 +48,7 @@ type ChannelUpdate =
 export type ChannelActivationOptions = {
   soundId?: string;
   onAudioState?: (audioState: AudioState) => void;
+  persistRadio?: boolean;
 };
 
 export type ChannelRuntimeSubscriptionOptions = Pick<
@@ -372,17 +373,24 @@ export function subscribeChannelRuntime(
     options.onAudioState?.(audioState);
   });
 
-  const meterCleanup =
-    sessionId === "dj"
-      ? manager.subscribeMeter(soundId, (level) => {
-          setPlaybackChannelPeakLevel(channelId, level);
-        })
-      : null;
+  let meterCleanup: (() => void) | null = null;
+  try {
+    meterCleanup =
+      sessionId === "dj"
+        ? manager.subscribeMeter(soundId, (level) => {
+            setPlaybackChannelPeakLevel(channelId, level);
+          })
+        : null;
 
-  setChannelSubscriptionCleanup(channelId, () => {
+    setChannelSubscriptionCleanup(channelId, () => {
+      cleanup();
+      meterCleanup?.();
+    });
+  } catch (error) {
     cleanup();
     meterCleanup?.();
-  });
+    throw error;
+  }
 }
 
 export function activateChannel(
@@ -400,13 +408,36 @@ export function activateChannel(
       ? { soundId: optionsOrSoundId }
       : optionsOrSoundId;
   const soundId = options.soundId ?? `${sessionId}:${channelId}`;
+  const previousRadio = getPlaybackChannel(sessionId, channelId)?.radio ?? null;
+  const manager = getAudioManager();
+  let soundCreated = false;
 
   deactivateChannel(channelId);
-  getAudioManager().createSound(radio, soundId);
-  setPlaybackChannelSoundId(channelId, soundId);
-  subscribeChannelRuntime(sessionId, channelId, soundId, {
-    onAudioState: options.onAudioState,
-  });
+  try {
+    manager.createSound(radio, soundId);
+    soundCreated = true;
+    if (options.persistRadio) {
+      updatePlaybackChannel(sessionId, channelId, (draft) => {
+        draft.radio = radio;
+      });
+    }
+    setPlaybackChannelSoundId(channelId, soundId);
+    subscribeChannelRuntime(sessionId, channelId, soundId, {
+      onAudioState: options.onAudioState,
+    });
+  } catch (error) {
+    setChannelSubscriptionCleanup(channelId, null);
+    if (soundCreated) {
+      manager.cleanupSound(soundId);
+    }
+    resetPlaybackChannelRuntime(channelId);
+    if (options.persistRadio) {
+      updatePlaybackChannel(sessionId, channelId, (draft) => {
+        draft.radio = previousRadio;
+      });
+    }
+    throw error;
+  }
   return soundId;
 }
 

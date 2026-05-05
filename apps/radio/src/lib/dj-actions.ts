@@ -6,7 +6,6 @@
  * TanStack Store for runtime state.
  */
 
-import { resolveStreamUrl } from "@avoid.quest/platforms";
 import type {
   ChannelSelection,
   EffectConfig,
@@ -25,10 +24,6 @@ import {
   reorderChannelEffects,
   setChannelEffectsDryWet,
   setChannelFilterValue,
-  setChannelMuted,
-  setChannelPan,
-  setChannelSpeed,
-  setChannelVolume,
   updateChannelEffect,
   updateChannelFilter,
 } from "@/lib/channel-state-manager";
@@ -50,11 +45,6 @@ import {
   type DeckSide,
   deckConfig,
 } from "@/lib/dj-actions-decks.js";
-import {
-  setDeckDeviceChannelSelection,
-  setDeckDeviceInputSource,
-  setDeckLocalFileSource,
-} from "@/lib/dj-actions-input-sources.js";
 import { findNextTrack as findNextTrackInPlaylist } from "@/lib/dj-actions-playlist.js";
 import {
   setCueOutputDelay as applyCueOutputDelay,
@@ -75,6 +65,7 @@ import {
   setDeckCueEnabled as setDeckCueRoutingEnabled,
   toggleDeckCue as toggleDeckCueRouting,
 } from "@/lib/dj-actions-routing.js";
+import { resolveDjPlatformStreamUrl } from "@/lib/dj-platform-stream-port.js";
 import {
   getDeckA,
   getDeckB,
@@ -85,7 +76,6 @@ import {
   getDefaultPlaybackActionContext,
   type PlaybackActionContext,
 } from "@/lib/playback-action-context";
-import { createPlaybackActionError } from "@/lib/playback-action-errors";
 import {
   getDeckARuntime,
   getDeckBRuntime,
@@ -212,13 +202,45 @@ function createDeckLoadDependencies(
     connectDeckCueBus,
     deactivateChannel: ctx.channels.deactivate,
     getAudioManager: () => ctx.audio,
+    getDeviceChannelCount: (soundId) =>
+      ctx.audio.getDeviceSource(soundId)?.channelCount ?? null,
     getSoundId,
     initializeAudioDevices: initializeSavedAudioDevices,
     loadTrack: (deckSide, nextRadio, autoPlay) =>
       loadTrack(deckSide, nextRadio, autoPlay, ctx),
+    pauseDeckSound: (soundId) => ctx.audioEngine.playback.pause(soundId),
+    playDeckSound: (soundId, volume) =>
+      ctx.audioEngine.playback.play(soundId, volume),
+    playDeviceSound: (soundId, deviceId) =>
+      ctx.audio.playDeviceSound(soundId, deviceId),
     reportDjError: reportDjErrorSurface,
     reportPlaybackError: ctx.reportError,
-    resolvePlatformStreamUrl: ({ videoId }) => resolveStreamUrl(videoId),
+    resolvePlatformStreamUrl:
+      ctx.platformStreams?.resolveStreamUrl ?? resolveDjPlatformStreamUrl,
+    seekDeckSound: (soundId, position) =>
+      ctx.audioEngine.playback.seek(soundId, position),
+    setDeviceChannelSelection: (soundId, selection) =>
+      ctx.audio.setDeviceChannelSelection(soundId, selection),
+    addDeckEffect: (deckId, type, effectId) =>
+      createAndAddChannelEffect("dj", deckId, type, effectId),
+    createEffectId: generateId,
+    removeDeckEffect: (deckId, effectId) =>
+      removeChannelEffect("dj", deckId, effectId),
+    reorderDeckEffects: (deckId, effectIds) =>
+      reorderChannelEffects("dj", deckId, effectIds),
+    setDeckChannelFilter: (deckId, value) =>
+      setChannelFilterValue("dj", deckId, value),
+    setDeckEffectsDryWet: (deckId, value) =>
+      setChannelEffectsDryWet("dj", deckId, value),
+    setDeckMute: (deckId, muted) => ctx.channels.setMuted("dj", deckId, muted),
+    setDeckPan: (deckId, pan) => ctx.channels.setPan("dj", deckId, pan),
+    setDeckSpeed: (deckId, speed) => ctx.channels.setSpeed("dj", deckId, speed),
+    setDeckVolume: (deckId, volume) =>
+      ctx.channels.setVolume("dj", deckId, volume),
+    updateDeckEffect: (deckId, effectId, effectConfig) =>
+      updateChannelEffect("dj", deckId, effectId, effectConfig),
+    updateDeckFilter: (deckId, filter) =>
+      updateChannelFilter("dj", deckId, filter),
   };
 }
 
@@ -248,39 +270,11 @@ async function playDeck(
   deckId: DeckId,
   ctx = getDefaultPlaybackActionContext()
 ) {
-  const config = deckConfig[deckId];
-  const deck = config.getDeck();
-  const runtime = config.getRuntime();
-
-  if (runtime.soundId && deck?.radio && !runtime.isPlaying) {
-    try {
-      await ctx.audioEngine.playback.play(runtime.soundId, deck.volume);
-      applyCrossfade(ctx);
-    } catch (err) {
-      const playbackError = createPlaybackActionError({
-        mode: "dj",
-        code: "PLAY_ERROR",
-        cause: err,
-        channelId: deckId,
-        radio: deck.radio,
-        fallbackMessage: `Failed to play ${deckId}`,
-      });
-      ctx.reportError(playbackError);
-      reportDjErrorSurface(
-        playbackError.userMessage,
-        "DJ_PLAY_DECK_FAILED",
-        err,
-        deck.radio
-      );
-    }
-  }
+  await createDeckLoadWorkflow(ctx).playDeck(deckId);
 }
 
 function pauseDeck(deckId: DeckId, ctx = getDefaultPlaybackActionContext()) {
-  const runtime = deckConfig[deckId].getRuntime();
-  if (runtime.soundId) {
-    ctx.audioEngine.playback.pause(runtime.soundId);
-  }
+  createDeckLoadWorkflow(ctx).pauseDeck(deckId);
 }
 
 // Generic reset deck function
@@ -395,111 +389,150 @@ export function setMasterVolume(volume: number, ctx?: PlaybackActionContext) {
 }
 
 // Volume actions with audio manager sync
-function setDeckVolume(deckId: DeckId, volume: number) {
-  setChannelVolume("dj", deckId, volume);
-  applyCrossfade();
+function setDeckVolume(
+  deckId: DeckId,
+  volume: number,
+  ctx = getDefaultPlaybackActionContext()
+) {
+  createDeckLoadWorkflow(ctx).setDeckVolume(deckId, volume);
 }
 
 // Mute actions with audio manager sync
-function setDeckMute(deckId: DeckId, muted: boolean) {
-  setChannelMuted("dj", deckId, muted);
+function setDeckMute(
+  deckId: DeckId,
+  muted: boolean,
+  ctx = getDefaultPlaybackActionContext()
+) {
+  createDeckLoadWorkflow(ctx).setDeckMute(deckId, muted);
 }
 
 // Channel strip actions with audio manager sync
-function setDeckPan(deckId: DeckId, pan: number) {
-  setChannelPan("dj", deckId, pan);
+function setDeckPan(
+  deckId: DeckId,
+  pan: number,
+  ctx = getDefaultPlaybackActionContext()
+) {
+  createDeckLoadWorkflow(ctx).setDeckPan(deckId, pan);
 }
 
-function setDeckSpeed(deckId: DeckId, speed: number) {
-  setChannelSpeed("dj", deckId, speed);
+function setDeckSpeed(
+  deckId: DeckId,
+  speed: number,
+  ctx = getDefaultPlaybackActionContext()
+) {
+  createDeckLoadWorkflow(ctx).setDeckSpeed(deckId, speed);
 }
 
-function setDeckRepeat(deckId: DeckId, enabled: boolean) {
-  deckConfig[deckId].updateDeck((draft) => {
-    draft.repeat = enabled;
-  });
+function setDeckRepeat(
+  deckId: DeckId,
+  enabled: boolean,
+  ctx = getDefaultPlaybackActionContext()
+) {
+  createDeckLoadWorkflow(ctx).setDeckRepeat(deckId, enabled);
 }
 
-function setDeckAutoplay(deckId: DeckId, enabled: boolean) {
-  deckConfig[deckId].updateDeck((draft) => {
-    draft.autoplay = enabled;
-  });
+function setDeckAutoplay(
+  deckId: DeckId,
+  enabled: boolean,
+  ctx = getDefaultPlaybackActionContext()
+) {
+  createDeckLoadWorkflow(ctx).setDeckAutoplay(deckId, enabled);
 }
 
-function seekDeck(deckId: DeckId, position: number) {
-  const runtime = deckConfig[deckId].getRuntime();
-  if (runtime.soundId) {
-    getAudioEngine().playback.seek(runtime.soundId, position);
-  }
+function seekDeck(
+  deckId: DeckId,
+  position: number,
+  ctx = getDefaultPlaybackActionContext()
+) {
+  createDeckLoadWorkflow(ctx).seekDeck(deckId, position);
 }
 
-function setDeckChannelFilter(deckId: DeckId, value: number) {
-  setChannelFilterValue("dj", deckId, value);
+function setDeckChannelFilter(
+  deckId: DeckId,
+  value: number,
+  ctx = getDefaultPlaybackActionContext()
+) {
+  createDeckLoadWorkflow(ctx).setDeckChannelFilter(deckId, value);
 }
 
-function setDeckEffectsDryWet(deckId: DeckId, value: number) {
-  setChannelEffectsDryWet("dj", deckId, value);
+function setDeckEffectsDryWet(
+  deckId: DeckId,
+  value: number,
+  ctx = getDefaultPlaybackActionContext()
+) {
+  createDeckLoadWorkflow(ctx).setDeckEffectsDryWet(deckId, value);
 }
 
 // Filter actions with audio manager sync
-function updateDeckFilter(deckId: DeckId, filter: FilterConfig) {
-  updateChannelFilter("dj", deckId, filter);
+function updateDeckFilter(
+  deckId: DeckId,
+  filter: FilterConfig,
+  ctx = getDefaultPlaybackActionContext()
+) {
+  createDeckLoadWorkflow(ctx).updateDeckFilter(deckId, filter);
 }
 
 // Effect actions with audio manager sync
-function addDeckEffect(deckId: DeckId, type: EffectType) {
-  createAndAddChannelEffect("dj", deckId, type, generateId());
+function addDeckEffect(
+  deckId: DeckId,
+  type: EffectType,
+  ctx = getDefaultPlaybackActionContext()
+) {
+  createDeckLoadWorkflow(ctx).addDeckEffect(deckId, type);
 }
 
 function updateDeckEffect(
   deckId: DeckId,
   effectId: string,
-  effectConfig: Partial<EffectConfig>
+  effectConfig: Partial<EffectConfig>,
+  ctx = getDefaultPlaybackActionContext()
 ) {
-  updateChannelEffect("dj", deckId, effectId, effectConfig);
+  createDeckLoadWorkflow(ctx).updateDeckEffect(deckId, effectId, effectConfig);
 }
 
-function removeDeckEffect(deckId: DeckId, effectId: string) {
-  removeChannelEffect("dj", deckId, effectId);
+function removeDeckEffect(
+  deckId: DeckId,
+  effectId: string,
+  ctx = getDefaultPlaybackActionContext()
+) {
+  createDeckLoadWorkflow(ctx).removeDeckEffect(deckId, effectId);
 }
 
-function reorderDeckEffects(deckId: DeckId, effectIds: string[]) {
-  reorderChannelEffects("dj", deckId, effectIds);
+function reorderDeckEffects(
+  deckId: DeckId,
+  effectIds: string[],
+  ctx = getDefaultPlaybackActionContext()
+) {
+  createDeckLoadWorkflow(ctx).reorderDeckEffects(deckId, effectIds);
 }
 
 async function setDeckDeviceSource(
   deckId: DeckId,
   deviceId: string,
-  deviceLabel: string
+  deviceLabel: string,
+  ctx = getDefaultPlaybackActionContext()
 ): Promise<void> {
-  await setDeckDeviceInputSource(deckId, deviceId, deviceLabel, {
-    applyCrossfade,
-    applyStoredChannelStrip,
-    applyStoredEffectsAndFilters,
-    clearDjError: clearDjErrorSurface,
-    connectDeckCueBus,
-    getAudioManager,
-    initializeAudioDevices: initializeSavedAudioDevices,
-    reportDjError: reportDjErrorSurface,
-    setDeckRadio,
-  });
+  await createDeckLoadWorkflow(ctx).loadDeckDeviceInput(
+    deckId,
+    deviceId,
+    deviceLabel
+  );
 }
 
 function setDeckChannelSelection(
   deckId: DeckId,
-  selection: ChannelSelection
+  selection: ChannelSelection,
+  ctx = getDefaultPlaybackActionContext()
 ): void {
-  setDeckDeviceChannelSelection(deckId, selection, getAudioManager);
+  createDeckLoadWorkflow(ctx).setDeckDeviceChannelSelection(deckId, selection);
 }
 
-async function setDeckFileSource(deckId: DeckId, file: File): Promise<void> {
-  await setDeckLocalFileSource(
-    deckId,
-    file,
-    clearDjErrorSurface,
-    reportDjErrorSurface,
-    setDeckRadio
-  );
+async function setDeckFileSource(
+  deckId: DeckId,
+  file: File,
+  ctx = getDefaultPlaybackActionContext()
+): Promise<void> {
+  await createDeckLoadWorkflow(ctx).loadDeckFile(deckId, file);
 }
 
 export const setDeckARadio = bindDeckAction("deck-a", setDeckRadio);

@@ -1,6 +1,7 @@
 import type { AudioManager, Radio } from "@/lib/audio";
 import type { DeckId, DeckSide } from "@/lib/dj-actions-decks.js";
 import { findNextTrack as findNextTrackInPlaylist } from "@/lib/dj-actions-playlist.js";
+import type { PlatformStreamResolutionInput } from "@/lib/dj-platform-stream-port.js";
 import type { DeckRecord } from "@/lib/hooks/use-dj-state";
 import { isYouTubeMetadata } from "@/lib/platform-types";
 import {
@@ -15,13 +16,6 @@ type ReportDjError = (
   radio?: Radio | null
 ) => void;
 
-type PlatformStreamResolutionInput = {
-  platform: "youtube";
-  reason: "playlist-next" | "stream-refresh";
-  videoId: string;
-  radio: Radio;
-};
-
 type DjDeckContinuationDependencies = {
   applyCrossfade: () => void;
   clearDjError: () => void;
@@ -31,11 +25,13 @@ type DjDeckContinuationDependencies = {
     radio: Radio | null,
     autoPlay?: boolean
   ) => Promise<void>;
+  playDeckSound: (soundId: string, volume: number) => Promise<void>;
   reportDjError: ReportDjError;
   reportPlaybackError?: (error: PlaybackActionError) => void;
   resolvePlatformStreamUrl: (
     input: PlatformStreamResolutionInput
   ) => Promise<string | null>;
+  seekDeckSound: (soundId: string, position: number) => void;
 };
 
 type TrackEndedInput = {
@@ -52,9 +48,13 @@ type StreamInterruptedInput = {
   soundId: string;
 };
 
+type StreamInterruptedResult = "refreshed" | "not-refreshable" | "failed";
+
 type DjDeckContinuationWorkflow = {
   handleTrackEnded: (input: TrackEndedInput) => Promise<void>;
-  handleStreamInterrupted: (input: StreamInterruptedInput) => Promise<void>;
+  handleStreamInterrupted: (
+    input: StreamInterruptedInput
+  ) => Promise<StreamInterruptedResult>;
 };
 
 function reportContinuationFailure(
@@ -134,11 +134,9 @@ async function handleTrackEnded(
 
   if (currentDeck.repeat) {
     resetChannelStripFlag();
-    dependencies.getAudioManager().seekSound(soundId, 0);
+    dependencies.seekDeckSound(soundId, 0);
     try {
-      await dependencies
-        .getAudioManager()
-        .playSound(soundId, currentDeck.volume);
+      await dependencies.playDeckSound(soundId, currentDeck.volume);
       dependencies.applyCrossfade();
     } catch (error) {
       reportContinuationFailure(dependencies, {
@@ -193,7 +191,7 @@ async function handleTrackEnded(
 async function handleStreamInterrupted(
   input: StreamInterruptedInput,
   dependencies: DjDeckContinuationDependencies
-): Promise<void> {
+): Promise<StreamInterruptedResult> {
   const { currentRadio, position, soundId } = input;
   if (
     !(
@@ -201,7 +199,7 @@ async function handleStreamInterrupted(
       currentRadio.platformMetadata.videoId
     )
   ) {
-    return;
+    return "not-refreshable";
   }
 
   try {
@@ -217,7 +215,7 @@ async function handleStreamInterrupted(
         .refreshStreamUrl(soundId, newUrl, position);
       dependencies.clearDjError();
       dependencies.applyCrossfade();
-      return;
+      return "refreshed";
     }
 
     dependencies.reportDjError(
@@ -226,6 +224,7 @@ async function handleStreamInterrupted(
       undefined,
       currentRadio
     );
+    return "failed";
   } catch (error) {
     reportContinuationFailure(dependencies, {
       code: "DJ_STREAM_REFRESH_FAILED",
@@ -233,6 +232,7 @@ async function handleStreamInterrupted(
       fallbackMessage: "Failed to refresh YouTube stream - please reload",
       radio: currentRadio,
     });
+    return "failed";
   }
 }
 
@@ -249,5 +249,6 @@ export function createDjDeckContinuationWorkflow(
 export type {
   DjDeckContinuationDependencies,
   DjDeckContinuationWorkflow,
-  PlatformStreamResolutionInput,
+  StreamInterruptedResult,
 };
+export type { PlatformStreamResolutionInput } from "@/lib/dj-platform-stream-port.js";

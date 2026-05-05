@@ -3,6 +3,7 @@ import {
   type AudioEngineFacade,
   type AudioManager,
   AudioManager as AudioManagerClass,
+  type AudioState,
   type Radio,
 } from "@/lib/audio";
 import {
@@ -11,13 +12,23 @@ import {
   DECK_B_CHANNEL_ID,
   getPlaybackChannel,
   playbackSessionsCollection,
+  updatePlaybackChannel,
 } from "@/lib/collections/playback-sessions";
 import {
   resetAllPlaybackRuntime,
   setPlaybackChannelRuntime,
 } from "@/lib/stores/playback-runtime-store";
 import { deactivateAllChannels } from "./channel-state-manager";
-import { createDjDeckCommands } from "./dj-actions";
+import {
+  createDjDeckCommands,
+  seekDeckA,
+  setDeckAAutoplay,
+  setDeckAMute,
+  setDeckAPan,
+  setDeckARepeat,
+  setDeckASpeed,
+  setDeckAVolume,
+} from "./dj-actions";
 import type { PlaybackActionContext } from "./playback-action-context";
 import type { PlaybackActionError } from "./playback-action-errors";
 
@@ -77,7 +88,7 @@ function createTestContext(
 ) {
   const reportedErrors: PlaybackActionError[] = [];
   const audioEngine = createTestAudioEngine(audioEngineOverrides);
-  const context = {
+  const context: PlaybackActionContext = {
     audio: {
       pauseSound: mock((_soundId: string) => undefined),
       playSound: mock(async (_soundId: string, _volume: number) => undefined),
@@ -88,18 +99,32 @@ function createTestContext(
     channels: {
       activate: mock(
         (
-          _sessionId,
-          _channelId,
-          _radio,
-          optionsOrSoundId?: string | { soundId?: string }
-        ) =>
-          typeof optionsOrSoundId === "string"
+          sessionId,
+          channelId,
+          radio,
+          optionsOrSoundId?:
+            | string
+            | { persistRadio?: boolean; soundId?: string }
+        ) => {
+          if (
+            typeof optionsOrSoundId !== "string" &&
+            optionsOrSoundId?.persistRadio
+          ) {
+            updatePlaybackChannel(sessionId, channelId, (draft) => {
+              draft.radio = radio;
+            });
+          }
+          return typeof optionsOrSoundId === "string"
             ? optionsOrSoundId
-            : (optionsOrSoundId?.soundId ?? "sound-1")
+            : (optionsOrSoundId?.soundId ?? "sound-1");
+        }
       ),
       deactivateAll: mock(() => undefined),
       deactivate: mock((_channelId: string) => undefined),
       setVolume: mock((_sessionId, _channelId, _volume) => undefined),
+      setMuted: mock((_sessionId, _channelId, _muted) => undefined),
+      setPan: mock((_sessionId, _channelId, _pan) => undefined),
+      setSpeed: mock((_sessionId, _channelId, _speed) => undefined),
       subscribeRuntime: mock((_sessionId, _channelId, _soundId) => undefined),
     },
     getMainOutputRouter: () => null,
@@ -108,7 +133,7 @@ function createTestContext(
       reportedErrors.push(error);
     }),
     resetAudioManager: mock(() => undefined),
-  } satisfies PlaybackActionContext;
+  };
 
   return { context, audioEngine, reportedErrors };
 }
@@ -118,6 +143,11 @@ const station: Radio = {
   name: "Station 1",
   streamUrl: "https://radio.example/station.mp3",
 };
+
+async function flushContinuation() {
+  await Promise.resolve();
+  await Promise.resolve();
+}
 
 beforeEach(async () => {
   await resetPlaybackSessions();
@@ -223,6 +253,154 @@ describe("DJ deck command context", () => {
         Reflect.deleteProperty(globalThis, "window");
       }
     }
+  });
+
+  test("routes deck volume through the injected channel facade", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertDjSession();
+    const { context } = createTestContext();
+
+    setDeckAVolume(0.27, context);
+
+    expect(context.channels.setVolume).toHaveBeenCalledWith(
+      "dj",
+      "deck-a",
+      0.27
+    );
+  });
+
+  test("routes deck strip updates through the injected channel facade", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertDjSession();
+    const { context } = createTestContext();
+
+    setDeckAMute(true, context);
+    setDeckAPan(-0.2, context);
+    setDeckASpeed(1.15, context);
+
+    expect(context.channels.setMuted).toHaveBeenCalledWith(
+      "dj",
+      "deck-a",
+      true
+    );
+    expect(context.channels.setPan).toHaveBeenCalledWith("dj", "deck-a", -0.2);
+    expect(context.channels.setSpeed).toHaveBeenCalledWith(
+      "dj",
+      "deck-a",
+      1.15
+    );
+  });
+
+  test("persists deck continuation flags through the lifecycle command boundary", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertDjSession();
+    const { context } = createTestContext();
+
+    setDeckARepeat(true, context);
+    setDeckAAutoplay(false, context);
+
+    expect(getPlaybackChannel("dj", "deck-a")).toEqual(
+      expect.objectContaining({
+        repeat: true,
+        autoplay: false,
+      })
+    );
+  });
+
+  test("honors an injected null stream resolver without default fallback", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertDjSession();
+    const youtubePlaylist: Radio = {
+      id: "youtube-playlist-1",
+      name: "YouTube Playlist",
+      streamUrl: "https://youtube.example/current.mp3",
+      platformMetadata: {
+        platform: "youtube",
+        itemType: "playlist",
+        url: "https://youtube.example/playlist?list=abc123",
+        playlistId: "abc123",
+        tracks: [
+          {
+            name: "Current",
+            streamUrl: "https://youtube.example/current.mp3",
+            videoId: "current-video",
+          },
+          {
+            name: "Next",
+            streamUrl: "yt:next-video",
+            videoId: "next-video",
+          },
+        ],
+      },
+    };
+    const resolveStreamUrl = mock(async () => null);
+    const captured = {
+      emitAudioState: null as ((audioState: AudioState) => void) | null,
+    };
+    const { context } = createTestContext();
+    context.platformStreams = { resolveStreamUrl };
+    const activateWithCapturedState: PlaybackActionContext["channels"]["activate"] =
+      (sessionId, channelId, radio, optionsOrSoundId) => {
+        const options =
+          typeof optionsOrSoundId === "string" ? undefined : optionsOrSoundId;
+        const soundId =
+          typeof optionsOrSoundId === "string"
+            ? optionsOrSoundId
+            : (optionsOrSoundId?.soundId ?? "sound-1");
+
+        if (options?.persistRadio) {
+          updatePlaybackChannel(sessionId, channelId, (draft) => {
+            draft.radio = radio;
+          });
+        }
+        setPlaybackChannelRuntime(channelId, () => ({ soundId }));
+        captured.emitAudioState = options?.onAudioState ?? null;
+        return soundId;
+      };
+    context.channels.activate = mock(activateWithCapturedState);
+    const commands = createDjDeckCommands(context);
+
+    await commands.setDeckARadio(youtubePlaylist);
+    const capturedEmitAudioState = captured.emitAudioState;
+    if (!capturedEmitAudioState) {
+      throw new Error(
+        "Expected deck activation to provide audio state handler"
+      );
+    }
+    capturedEmitAudioState({
+      error: null,
+      hasEnded: true,
+      isBuffering: false,
+      isLoading: false,
+      isPlaying: false,
+      volume: 1,
+    });
+    await flushContinuation();
+
+    expect(resolveStreamUrl).toHaveBeenCalledWith({
+      platform: "youtube",
+      reason: "playlist-next",
+      videoId: "next-video",
+      radio: youtubePlaylist,
+    });
+    expect(context.channels.activate).toHaveBeenCalledTimes(1);
+    expect(getPlaybackChannel("dj", "deck-a")?.radio).toEqual(youtubePlaylist);
+  });
+
+  test("seeks a deck through an injected playback context", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertDjSession();
+    const { audioEngine, context } = createTestContext();
+    setPlaybackChannelRuntime("deck-a", () => ({
+      soundId: "left_station-1",
+    }));
+
+    seekDeckA(42, context);
+
+    expect(audioEngine.playback.seek).toHaveBeenCalledWith(
+      "left_station-1",
+      42
+    );
   });
 
   test("reports load failures through the shared user-safe playback error model", async () => {

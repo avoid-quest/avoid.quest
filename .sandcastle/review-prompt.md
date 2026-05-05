@@ -52,8 +52,15 @@ If you find improvements to make:
 
 1. Make the changes directly on this branch
 2. Add focused behavior tests for correctness fixes or newly covered edge cases when practical
-3. Run tests and type checking to ensure nothing is broken
+3. Run validation:
+   - `bun run check`
+   - `bun run typecheck`
+   - touched-workspace typecheck/test/build commands that cover your edits
 4. Commit describing the refinements
+
+If repo-wide typecheck fails in an unrelated untouched workspace, stop that
+validation path and run only the touched-workspace checks. Record the skipped
+root command and exact workspace/process in the final notes.
 
 If the code is already correct, clean, and well-structured, do nothing.
 

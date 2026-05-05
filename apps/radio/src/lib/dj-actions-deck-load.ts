@@ -1,20 +1,33 @@
-import type { AudioManager, Radio } from "@/lib/audio";
-import { revokeFileObjectUrl } from "@/lib/audio/file-metadata";
+import type {
+  AudioManager,
+  ChannelSelection,
+  EffectConfig,
+  EffectType,
+  FilterConfig,
+  Radio,
+} from "@/lib/audio";
+import {
+  extractFileMetadata,
+  type FileAudioMetadata,
+  revokeFileObjectUrl,
+} from "@/lib/audio/file-metadata";
 import {
   type DeckId,
   type DeckSide,
   deckConfig,
   getDeckRadio,
 } from "@/lib/dj-actions-decks.js";
-import {
-  createDjDeckContinuationWorkflow,
-  type PlatformStreamResolutionInput,
-} from "@/lib/dj-deck-continuation-workflow.js";
+import { createDjDeckContinuationWorkflow } from "@/lib/dj-deck-continuation-workflow.js";
+import type { PlatformStreamResolutionInput } from "@/lib/dj-platform-stream-port.js";
 import {
   type DeckRecord,
   resetDeck as resetDeckDb,
 } from "@/lib/hooks/use-dj-state";
-import { isFileMetadata, isYouTubeMetadata } from "@/lib/platform-types";
+import {
+  type DeviceInputMetadata,
+  isDeviceInputMetadata,
+  isFileMetadata,
+} from "@/lib/platform-types";
 import type { PlaybackActionChannelFacade } from "./playback-action-context.js";
 import {
   createPlaybackActionError,
@@ -54,6 +67,7 @@ type DeckLoadDependencies = {
   ) => void;
   deactivateChannel: PlaybackActionChannelFacade["deactivate"];
   getAudioManager: () => AudioManager;
+  getDeviceChannelCount: (soundId: string) => number | null;
   getSoundId: (radio: Radio, side: DeckSide) => string;
   initializeAudioDevices: (
     getAudioManager: () => AudioManager,
@@ -64,23 +78,91 @@ type DeckLoadDependencies = {
     radio: Radio | null,
     autoPlay?: boolean
   ) => Promise<void>;
+  pauseDeckSound: (soundId: string) => void;
+  playDeckSound: (soundId: string, volume: number) => Promise<void>;
+  playDeviceSound: (soundId: string, deviceId: string) => Promise<void>;
   reportDjError: ReportDjError;
   reportPlaybackError?: (error: PlaybackActionError) => void;
   resolvePlatformStreamUrl: (
     input: PlatformStreamResolutionInput
   ) => Promise<string | null>;
+  seekDeckSound: (soundId: string, position: number) => void;
+  setDeviceChannelSelection: (
+    soundId: string,
+    selection: ChannelSelection
+  ) => void;
+  addDeckEffect: (deckId: DeckId, type: EffectType, effectId: string) => void;
+  createEffectId: () => string;
+  removeDeckEffect: (deckId: DeckId, effectId: string) => void;
+  reorderDeckEffects: (deckId: DeckId, effectIds: string[]) => void;
+  setDeckChannelFilter: (deckId: DeckId, value: number) => void;
+  setDeckEffectsDryWet: (deckId: DeckId, value: number) => void;
+  setDeckMute: (deckId: DeckId, muted: boolean) => void;
+  setDeckPan: (deckId: DeckId, pan: number) => void;
+  setDeckSpeed: (deckId: DeckId, speed: number) => void;
+  setDeckVolume: (deckId: DeckId, volume: number) => void;
+  updateDeckEffect: (
+    deckId: DeckId,
+    effectId: string,
+    effectConfig: Partial<EffectConfig>
+  ) => void;
+  updateDeckFilter: (deckId: DeckId, filter: FilterConfig) => void;
 };
 
 type DjDeckLoadWorkflow = {
+  addDeckEffect: (deckId: DeckId, type: EffectType) => void;
+  loadDeckDeviceInput: (
+    deckId: DeckId,
+    deviceId: string,
+    deviceLabel: string
+  ) => Promise<void>;
+  loadDeckFile: (deckId: DeckId, file: File) => Promise<void>;
   loadDeckRadio: (deckId: DeckId, radio: Radio | null) => Promise<void>;
+  pauseDeck: (deckId: DeckId) => void;
+  playDeck: (deckId: DeckId) => Promise<void>;
+  removeDeckEffect: (deckId: DeckId, effectId: string) => void;
   resetDeck: (deckId: DeckId) => Promise<void>;
+  reorderDeckEffects: (deckId: DeckId, effectIds: string[]) => void;
+  seekDeck: (deckId: DeckId, position: number) => void;
+  setDeckDeviceChannelSelection: (
+    deckId: DeckId,
+    selection: ChannelSelection
+  ) => void;
+  setDeckChannelFilter: (deckId: DeckId, value: number) => void;
+  setDeckEffectsDryWet: (deckId: DeckId, value: number) => void;
+  setDeckMute: (deckId: DeckId, muted: boolean) => void;
+  setDeckPan: (deckId: DeckId, pan: number) => void;
+  setDeckAutoplay: (deckId: DeckId, enabled: boolean) => void;
+  setDeckRepeat: (deckId: DeckId, enabled: boolean) => void;
+  setDeckSpeed: (deckId: DeckId, speed: number) => void;
+  setDeckVolume: (deckId: DeckId, volume: number) => void;
+  updateDeckEffect: (
+    deckId: DeckId,
+    effectId: string,
+    effectConfig: Partial<EffectConfig>
+  ) => void;
+  updateDeckFilter: (deckId: DeckId, filter: FilterConfig) => void;
 };
 
-function cleanupFailedDeckLoad(
+const activeDeckLoadTokens = new Map<DeckId, symbol>();
+
+function beginDeckLoad(deckId: DeckId): symbol {
+  const token = Symbol(deckId);
+  activeDeckLoadTokens.set(deckId, token);
+  return token;
+}
+
+function isCurrentDeckLoad(deckId: DeckId, token: symbol): boolean {
+  return activeDeckLoadTokens.get(deckId) === token;
+}
+
+function rollbackFailedDeckLoad(
   deckId: DeckId,
   config: (typeof deckConfig)["deck-a"],
   soundId: string,
-  dependencies: DeckLoadDependencies
+  previousRadio: Radio | null,
+  dependencies: DeckLoadDependencies,
+  restorePreviousRadio: boolean
 ): boolean {
   const currentRuntime = config.getRuntime();
   if (currentRuntime.soundId !== soundId) {
@@ -88,7 +170,198 @@ function cleanupFailedDeckLoad(
   }
 
   dependencies.deactivateChannel(deckId);
+  if (restorePreviousRadio) {
+    config.updateDeck((draft) => {
+      draft.radio = previousRadio;
+    });
+  }
   return true;
+}
+
+function createDeviceInputRadio(
+  side: DeckSide,
+  deviceId: string,
+  deviceLabel: string
+): Radio {
+  const radioId = `device-input-${side}`;
+  const platformMetadata: DeviceInputMetadata = {
+    platform: "device-input",
+    itemType: "track",
+    url: "",
+    deviceId,
+    deviceLabel,
+    channelSelection: { left: 0, right: 1 },
+    channelCount: 2,
+  };
+
+  return {
+    id: radioId,
+    name: deviceLabel,
+    streamUrl: "",
+    description: "Device input (mic/line-in)",
+    enabled: true,
+    platformMetadata,
+  };
+}
+
+function createLocalFileRadio(
+  side: DeckSide,
+  metadata: FileAudioMetadata
+): Radio {
+  return {
+    id: `local-file-${side}-${Date.now()}`,
+    name: metadata.displayName,
+    streamUrl: metadata.objectUrl,
+    description: "Local File",
+    enabled: true,
+    platformMetadata: {
+      platform: "local-file",
+      itemType: "track",
+      url: "",
+      fileName: metadata.fileName,
+      displayName: metadata.displayName,
+      duration: metadata.duration,
+      fileSize: metadata.fileSize,
+      mimeType: metadata.mimeType,
+      objectUrl: metadata.objectUrl,
+    },
+  };
+}
+
+function getLocalFileObjectUrl(radio: Radio | null): string | null {
+  const metadata = radio?.platformMetadata;
+  if (!isFileMetadata(metadata)) {
+    return null;
+  }
+  return metadata.objectUrl;
+}
+
+function releaseReplacedLocalFileUrl(
+  previousRadio: Radio | null,
+  nextRadio: Radio | null
+): boolean {
+  const previousObjectUrl = getLocalFileObjectUrl(previousRadio);
+  const nextObjectUrl = getLocalFileObjectUrl(nextRadio);
+  if (!previousObjectUrl || previousObjectUrl === nextObjectUrl) {
+    return false;
+  }
+  revokeFileObjectUrl(previousObjectUrl);
+  return true;
+}
+
+function shouldWarnRoutingRestoreFailure(error: unknown): boolean {
+  return !(
+    error instanceof ReferenceError &&
+    error.message.includes("AudioContext is not defined")
+  );
+}
+
+function warnRoutingRestoreFailure(message: string, error: unknown): void {
+  if (shouldWarnRoutingRestoreFailure(error)) {
+    console.warn(message, error);
+  }
+}
+
+function connectDeckCueRouting(
+  deckId: DeckId,
+  soundId: string,
+  dependencies: DeckLoadDependencies
+): boolean {
+  try {
+    dependencies.connectDeckCueBus(
+      deckId,
+      soundId,
+      dependencies.getAudioManager
+    );
+    return true;
+  } catch (error) {
+    warnRoutingRestoreFailure(
+      "[dj-actions] Failed to connect cue routing:",
+      error
+    );
+    return false;
+  }
+}
+
+function connectReadyDeckCueRouting(
+  deckId: DeckId,
+  soundId: string,
+  dependencies: DeckLoadDependencies
+): boolean {
+  if (!dependencies.getAudioManager().getPreFaderNode(soundId)) {
+    return false;
+  }
+
+  return connectDeckCueRouting(deckId, soundId, dependencies);
+}
+
+function initializeSavedAudioDevices(dependencies: DeckLoadDependencies): void {
+  try {
+    const initialization = dependencies.initializeAudioDevices(
+      dependencies.getAudioManager,
+      dependencies.reportDjError
+    );
+    initialization.catch((error) => {
+      warnRoutingRestoreFailure(
+        "[dj-actions] Failed to initialize audio devices:",
+        error
+      );
+    });
+  } catch (error) {
+    warnRoutingRestoreFailure(
+      "[dj-actions] Failed to initialize audio devices:",
+      error
+    );
+  }
+}
+
+function restoreDeckRouting(
+  deckId: DeckId,
+  soundId: string,
+  dependencies: DeckLoadDependencies
+): void {
+  connectDeckCueRouting(deckId, soundId, dependencies);
+  initializeSavedAudioDevices(dependencies);
+}
+
+async function activateLoadedSource(
+  deckId: DeckId,
+  loadToken: symbol,
+  radio: Radio,
+  soundId: string,
+  config: (typeof deckConfig)["deck-a"],
+  dependencies: DeckLoadDependencies
+): Promise<{ startedPlayback: boolean }> {
+  const metadata = radio.platformMetadata;
+  if (!isDeviceInputMetadata(metadata)) {
+    return { startedPlayback: false };
+  }
+
+  if (!isCurrentDeckLoad(deckId, loadToken)) {
+    return { startedPlayback: false };
+  }
+
+  await dependencies.playDeviceSound(soundId, metadata.deviceId);
+
+  if (!isCurrentDeckLoad(deckId, loadToken)) {
+    return { startedPlayback: true };
+  }
+
+  dependencies.setDeviceChannelSelection(soundId, metadata.channelSelection);
+
+  const channelCount = dependencies.getDeviceChannelCount(soundId);
+  if (channelCount === null) {
+    return { startedPlayback: true };
+  }
+
+  config.updateDeck((draft) => {
+    const currentMetadata = draft.radio?.platformMetadata;
+    if (isDeviceInputMetadata(currentMetadata)) {
+      currentMetadata.channelCount = channelCount;
+    }
+  });
+
+  return { startedPlayback: true };
 }
 
 async function loadDeckRadio(
@@ -107,14 +380,14 @@ async function loadDeckRadio(
 
   const wasPlaying = runtime.isPlaying;
   const previousRadio = getDeckRadio(deck);
-  if (previousRadio && isFileMetadata(previousRadio.platformMetadata)) {
-    revokeFileObjectUrl(previousRadio.platformMetadata.objectUrl);
-  }
+  let previousRadioWasReleased = false;
+  const loadToken = beginDeckLoad(deckId);
 
   dependencies.deactivateChannel(deckId);
 
   if (!radio) {
     resetDeckDb(deckId);
+    releaseReplacedLocalFileUrl(previousRadio, null);
     return;
   }
 
@@ -123,12 +396,10 @@ async function loadDeckRadio(
   try {
     dependencies.clearDjError();
 
-    config.updateDeck((draft) => {
-      draft.radio = radio;
-    });
-
     let hasAppliedChannelStrip = false;
+    let hasConnectedReadyCueRouting = false;
     dependencies.activateChannel("dj", deckId, radio, {
+      persistRadio: true,
       soundId,
       onAudioState: (audioState) => {
         const currentDeck = config.getDeck();
@@ -156,22 +427,18 @@ async function loadDeckRadio(
             currentDeck.channelFilter,
             currentDeck.effectsDryWet
           );
-          dependencies.connectDeckCueBus(
+        }
+        if (
+          audioState.isPlaying &&
+          !audioState.isLoading &&
+          !hasConnectedReadyCueRouting &&
+          currentDeck
+        ) {
+          hasConnectedReadyCueRouting = connectReadyDeckCueRouting(
             deckId,
             soundId,
-            dependencies.getAudioManager
+            dependencies
           );
-          dependencies
-            .initializeAudioDevices(
-              dependencies.getAudioManager,
-              dependencies.reportDjError
-            )
-            .catch((error) => {
-              console.warn(
-                "[dj-actions] Failed to initialize audio devices:",
-                error
-              );
-            });
         }
 
         const trackEnded = audioState.hasEnded;
@@ -191,8 +458,6 @@ async function loadDeckRadio(
         if (
           audioState.error?.code === "STREAM_INTERRUPTED" &&
           currentDeck?.radio &&
-          isYouTubeMetadata(currentDeck.radio.platformMetadata) &&
-          currentDeck.radio.platformMetadata.videoId &&
           currentRuntime.soundId
         ) {
           continuationWorkflow
@@ -200,6 +465,14 @@ async function loadDeckRadio(
               currentRadio: currentDeck.radio,
               position: audioState.error.position ?? 0,
               soundId: currentRuntime.soundId,
+            })
+            .then((result) => {
+              if (
+                result === "refreshed" &&
+                config.getRuntime().soundId === currentRuntime.soundId
+              ) {
+                config.setRuntimeState(() => ({ error: null }));
+              }
             })
             .catch((error) => {
               console.error(
@@ -248,23 +521,44 @@ async function loadDeckRadio(
         }
       },
     });
+    restoreDeckRouting(deckId, soundId, dependencies);
+    const sourceActivation = await activateLoadedSource(
+      deckId,
+      loadToken,
+      radio,
+      soundId,
+      config,
+      dependencies
+    );
+    previousRadioWasReleased = releaseReplacedLocalFileUrl(
+      previousRadio,
+      radio
+    );
+    if (!isCurrentDeckLoad(deckId, loadToken)) {
+      return;
+    }
 
     if (wasPlaying) {
-      await dependencies.getAudioManager().playSound(soundId, deck.volume);
+      await dependencies.playDeckSound(soundId, deck.volume);
+      if (!isCurrentDeckLoad(deckId, loadToken)) {
+        return;
+      }
+      dependencies.applyCrossfade();
+    } else if (sourceActivation.startedPlayback) {
       dependencies.applyCrossfade();
     }
   } catch (error) {
-    const channelWasActivated = cleanupFailedDeckLoad(
+    if (!isCurrentDeckLoad(deckId, loadToken)) {
+      return;
+    }
+    rollbackFailedDeckLoad(
       deckId,
       config,
       soundId,
-      dependencies
+      previousRadio,
+      dependencies,
+      !previousRadioWasReleased
     );
-    if (!channelWasActivated) {
-      config.updateDeck((draft) => {
-        draft.radio = previousRadio;
-      });
-    }
     const playbackError = createPlaybackActionError({
       mode: "dj",
       code: "PLAY_ERROR",
@@ -280,6 +574,94 @@ async function loadDeckRadio(
       error,
       radio
     );
+  }
+}
+
+async function playDeck(
+  deckId: DeckId,
+  dependencies: DeckLoadDependencies
+): Promise<void> {
+  const config = deckConfig[deckId];
+  const deck = config.getDeck();
+  const runtime = config.getRuntime();
+
+  if (!(runtime.soundId && deck?.radio) || runtime.isPlaying) {
+    return;
+  }
+
+  try {
+    await dependencies.playDeckSound(runtime.soundId, deck.volume);
+    dependencies.applyCrossfade();
+  } catch (error) {
+    const playbackError = createPlaybackActionError({
+      mode: "dj",
+      code: "PLAY_ERROR",
+      cause: error,
+      channelId: deckId,
+      radio: deck.radio,
+      fallbackMessage: `Failed to play ${deckId}`,
+    });
+    dependencies.reportPlaybackError?.(playbackError);
+    dependencies.reportDjError(
+      playbackError.userMessage,
+      "DJ_PLAY_DECK_FAILED",
+      error,
+      deck.radio
+    );
+  }
+}
+
+async function loadDeckDeviceInput(
+  deckId: DeckId,
+  deviceId: string,
+  deviceLabel: string,
+  dependencies: DeckLoadDependencies
+): Promise<void> {
+  const side = deckConfig[deckId].side;
+  await loadDeckRadio(
+    deckId,
+    createDeviceInputRadio(side, deviceId, deviceLabel),
+    dependencies
+  );
+}
+
+function pauseDeck(deckId: DeckId, dependencies: DeckLoadDependencies): void {
+  const runtime = deckConfig[deckId].getRuntime();
+  if (runtime.soundId) {
+    dependencies.pauseDeckSound(runtime.soundId);
+  }
+}
+
+async function loadDeckFile(
+  deckId: DeckId,
+  file: File,
+  dependencies: DeckLoadDependencies
+): Promise<void> {
+  const side = deckConfig[deckId].side;
+  let extractedObjectUrl: string | null = null;
+
+  try {
+    dependencies.clearDjError();
+    const meta = await extractFileMetadata(file);
+    extractedObjectUrl = meta.objectUrl;
+    const radio = createLocalFileRadio(side, meta);
+
+    await loadDeckRadio(deckId, radio, dependencies);
+
+    const activeObjectUrl = getLocalFileObjectUrl(
+      deckConfig[deckId].getDeck()?.radio ?? null
+    );
+    if (activeObjectUrl === extractedObjectUrl) {
+      extractedObjectUrl = null;
+    }
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Failed to load audio file";
+    dependencies.reportDjError(message, "DJ_LOCAL_FILE_LOAD_FAILED", error);
+  } finally {
+    if (extractedObjectUrl) {
+      revokeFileObjectUrl(extractedObjectUrl);
+    }
   }
 }
 
@@ -313,13 +695,93 @@ async function resetDeck(
   await loadDeckRadio(deckId, getDeckRadio(deck), dependencies);
 }
 
+function seekDeck(
+  deckId: DeckId,
+  position: number,
+  dependencies: DeckLoadDependencies
+): void {
+  const runtime = deckConfig[deckId].getRuntime();
+  if (runtime.soundId) {
+    dependencies.seekDeckSound(runtime.soundId, position);
+  }
+}
+
+function setDeckDeviceChannelSelection(
+  deckId: DeckId,
+  selection: ChannelSelection,
+  dependencies: DeckLoadDependencies
+): void {
+  const config = deckConfig[deckId];
+  const deck = config.getDeck();
+  const metadata = deck ? getDeckRadio(deck)?.platformMetadata : undefined;
+  if (!isDeviceInputMetadata(metadata)) {
+    return;
+  }
+
+  const runtime = config.getRuntime();
+  if (runtime.soundId) {
+    dependencies.setDeviceChannelSelection(runtime.soundId, selection);
+  }
+
+  config.updateDeck((draft) => {
+    const meta = draft.radio?.platformMetadata;
+    if (isDeviceInputMetadata(meta)) {
+      meta.channelSelection = selection;
+    }
+  });
+}
+
+function setDeckVolume(
+  deckId: DeckId,
+  volume: number,
+  dependencies: DeckLoadDependencies
+): void {
+  dependencies.setDeckVolume(deckId, volume);
+  dependencies.applyCrossfade();
+}
+
+function setDeckRepeat(deckId: DeckId, enabled: boolean): void {
+  deckConfig[deckId].updateDeck((draft) => {
+    draft.repeat = enabled;
+  });
+}
+
+function setDeckAutoplay(deckId: DeckId, enabled: boolean): void {
+  deckConfig[deckId].updateDeck((draft) => {
+    draft.autoplay = enabled;
+  });
+}
+
 export function createDjDeckLoadWorkflow(
   dependencies: DeckLoadDependencies
 ): DjDeckLoadWorkflow {
   return {
+    addDeckEffect: (deckId, type) =>
+      dependencies.addDeckEffect(deckId, type, dependencies.createEffectId()),
+    loadDeckDeviceInput: (deckId, deviceId, deviceLabel) =>
+      loadDeckDeviceInput(deckId, deviceId, deviceLabel, dependencies),
+    loadDeckFile: (deckId, file) => loadDeckFile(deckId, file, dependencies),
     loadDeckRadio: (deckId, radio) =>
       loadDeckRadio(deckId, radio, dependencies),
+    pauseDeck: (deckId) => pauseDeck(deckId, dependencies),
+    playDeck: (deckId) => playDeck(deckId, dependencies),
+    removeDeckEffect: dependencies.removeDeckEffect,
     resetDeck: (deckId) => resetDeck(deckId, dependencies),
+    reorderDeckEffects: dependencies.reorderDeckEffects,
+    seekDeck: (deckId, position) => seekDeck(deckId, position, dependencies),
+    setDeckDeviceChannelSelection: (deckId, selection) =>
+      setDeckDeviceChannelSelection(deckId, selection, dependencies),
+    setDeckChannelFilter: dependencies.setDeckChannelFilter,
+    setDeckEffectsDryWet: dependencies.setDeckEffectsDryWet,
+    setDeckMute: dependencies.setDeckMute,
+    setDeckPan: dependencies.setDeckPan,
+    setDeckAutoplay,
+    setDeckRepeat,
+    setDeckSpeed: dependencies.setDeckSpeed,
+    setDeckVolume: (deckId, volume) =>
+      setDeckVolume(deckId, volume, dependencies),
+    updateDeckEffect: dependencies.updateDeckEffect,
+    updateDeckFilter: dependencies.updateDeckFilter,
   };
 }
 

@@ -4,16 +4,27 @@ import {
   getPlaybackSession,
   PLAYBACK_SESSION_IDS,
   type PlaybackSessionId,
+  playbackSessionsCollection,
+  SINGLE_ACTIVE_CHANNEL_ID,
+  SINGLE_STANDBY_CHANNEL_ID,
 } from "@/lib/collections/playback-sessions";
-import { updatePlayerSettings } from "@/lib/collections/settings";
+import { getSettings, updatePlayerSettings } from "@/lib/collections/settings";
 import { DEFAULT_TRANSITION_DURATION } from "@/lib/const";
 import {
   getDefaultPlaybackActionContext,
   type PlaybackActionContext,
 } from "@/lib/playback-action-context";
-import { getPlaybackChannelRuntime } from "@/lib/stores/playback-runtime-store";
+import {
+  getPlaybackRuntimeChannelIds,
+  resetPlaybackChannelRuntime,
+} from "@/lib/stores/playback-runtime-store";
 import { createDjModeLifecycleWorkflow } from "./dj-mode-lifecycle-workflow.js";
 import { createManagedPlaybackSessionWorkflow } from "./managed-playback-session-workflow.js";
+import {
+  cleanupOrphanedSounds,
+  getRuntimeSoundIds,
+} from "./mode-lifecycle-cleanup.js";
+import { resetManagedAudioState } from "./playback-actions-shared.js";
 
 export type ModePhase = "inactive" | "activating" | "active" | "deactivating";
 
@@ -50,7 +61,7 @@ type CreateModeManagerOptions = {
 
 type ManagedPlaybackSessionId = Exclude<PlaybackSessionId, "dj">;
 
-type ModeManager = {
+export type ModeManager = {
   getSnapshot: () => ModeTransitionSnapshot;
   subscribe: (listener: () => void) => () => void;
   activateInitialMode: (mode: PlaybackSessionId) => Promise<void>;
@@ -58,9 +69,43 @@ type ModeManager = {
 };
 
 const MODE_FADE_OUT_DURATION_MS = 150;
+const MODE_TRANSITION_ERROR_MESSAGE = "Mode could not be changed. Try again.";
+const MODE_STARTUP_ERROR_MESSAGE = "Playback mode could not start. Try again.";
 
-function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "Mode transition failed";
+function hasUserMessage(error: unknown): error is { userMessage: string } {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "userMessage" in error &&
+    typeof error.userMessage === "string"
+  );
+}
+
+function getUserFacingErrorMessage(
+  error: unknown,
+  fallback = MODE_TRANSITION_ERROR_MESSAGE
+): string {
+  if (hasUserMessage(error)) {
+    return error.userMessage;
+  }
+  return fallback;
+}
+
+async function waitForPlaybackSession(mode: PlaybackSessionId): Promise<void> {
+  await playbackSessionsCollection.stateWhenReady();
+  if (getPlaybackSession(mode)) {
+    return;
+  }
+
+  await new Promise<void>((resolve) => {
+    const subscription = playbackSessionsCollection.subscribeChanges(() => {
+      if (!getPlaybackSession(mode)) {
+        return;
+      }
+      subscription.unsubscribe();
+      resolve();
+    });
+  });
 }
 
 function createLifecycle(
@@ -96,32 +141,44 @@ function createLifecycle(
   };
 }
 
-function getSessionSoundIds(sessionId: PlaybackSessionId): string[] {
-  const session = getPlaybackSession(sessionId);
-  if (!session) {
-    return [];
-  }
-  return session.channels.flatMap((channel) => {
-    const soundId = getPlaybackChannelRuntime(channel.id).soundId;
-    return soundId ? [soundId] : [];
-  });
+function getModeRuntimeCleanupChannelIds(
+  sessionId: PlaybackSessionId
+): string[] {
+  const persistedChannelIds =
+    getPlaybackSession(sessionId)?.channels.map((channel) => channel.id) ?? [];
+  const runtimeChannelIds = getPlaybackRuntimeChannelIds().filter((channelId) =>
+    isRuntimeChannelOwnedByMode(sessionId, channelId)
+  );
+  return Array.from(new Set([...persistedChannelIds, ...runtimeChannelIds]));
 }
 
-function assertNoOrphanedSounds(
+function finalizeModeRuntimeCleanup(
+  sessionId: PlaybackSessionId,
+  channelIds: string[],
   soundIds: string[],
-  ctx: PlaybackActionContext,
-  sessionId: PlaybackSessionId
+  ctx: PlaybackActionContext
 ): void {
-  const orphanedSoundIds = soundIds.filter((soundId) =>
-    ctx.audio.hasSound(soundId)
-  );
-  if (orphanedSoundIds.length > 0) {
-    throw new Error(
-      `Orphaned ${sessionId} sounds after deactivation: ${orphanedSoundIds.join(
-        ", "
-      )}`
+  for (const channelId of channelIds) {
+    ctx.channels.deactivate(channelId);
+    resetPlaybackChannelRuntime(channelId);
+  }
+  cleanupOrphanedSounds(soundIds, ctx, sessionId);
+}
+
+function isRuntimeChannelOwnedByMode(
+  sessionId: PlaybackSessionId,
+  channelId: string
+): boolean {
+  if (sessionId === "single") {
+    return (
+      channelId === SINGLE_ACTIVE_CHANNEL_ID ||
+      channelId === SINGLE_STANDBY_CHANNEL_ID
     );
   }
+  if (sessionId === "multiple") {
+    return channelId.startsWith("multi:");
+  }
+  return false;
 }
 
 function createManagedModeLifecycle(
@@ -138,9 +195,10 @@ function createManagedModeLifecycle(
   return createLifecycle(
     () => workflow.activate(),
     async () => {
-      const soundIds = getSessionSoundIds(sessionId);
+      const channelIds = getModeRuntimeCleanupChannelIds(sessionId);
+      const soundIds = getRuntimeSoundIds(channelIds);
       await workflow.deactivate();
-      assertNoOrphanedSounds(soundIds, ctx, sessionId);
+      finalizeModeRuntimeCleanup(sessionId, channelIds, soundIds, ctx);
     }
   );
 }
@@ -209,10 +267,22 @@ export function createModeManager({
   }
 
   async function restorePreviousMode(
-    previousMode: PlaybackSessionId | null
+    previousMode: PlaybackSessionId | null,
+    activeModeToDeactivate: PlaybackSessionId | null = null
   ): Promise<void> {
+    let cleanupError: unknown = null;
+    if (activeModeToDeactivate) {
+      try {
+        await lifecycles[activeModeToDeactivate].deactivate();
+      } catch (error) {
+        cleanupError = error;
+      }
+    }
     if (!previousMode) {
       emit({ currentMode: null, phase: "inactive", requestedMode: null });
+      if (cleanupError) {
+        throw cleanupError;
+      }
       return;
     }
     await lifecycles[previousMode].activate();
@@ -221,6 +291,64 @@ export function createModeManager({
       phase: "active",
       requestedMode: null,
     });
+  }
+
+  async function rollbackModeSwitch(
+    previousMode: PlaybackSessionId | null,
+    activeModeToDeactivate: PlaybackSessionId | null
+  ): Promise<void> {
+    try {
+      await restorePreviousMode(previousMode, activeModeToDeactivate);
+    } catch (rollbackError) {
+      emit({
+        currentMode: previousMode,
+        requestedMode: null,
+        phase: previousMode ? "active" : "inactive",
+        error: getUserFacingErrorMessage(rollbackError),
+      });
+    }
+  }
+
+  async function switchMode(nextMode: PlaybackSessionId): Promise<void> {
+    if (snapshot.currentMode === nextMode && snapshot.phase === "active") {
+      return;
+    }
+
+    const previousMode = snapshot.currentMode;
+    let activatedNextMode = false;
+    let nextModeActivationStarted = false;
+    emit({ requestedMode: nextMode, phase: "deactivating", error: null });
+
+    try {
+      if (previousMode) {
+        await lifecycles[previousMode].deactivate();
+      }
+
+      emit({ phase: "activating" });
+      nextModeActivationStarted = true;
+      await lifecycles[nextMode].activate();
+      activatedNextMode = true;
+
+      commitMode(nextMode);
+      emit({
+        currentMode: nextMode,
+        requestedMode: null,
+        phase: "active",
+        error: null,
+      });
+    } catch (error) {
+      const message = getUserFacingErrorMessage(error);
+      await rollbackModeSwitch(
+        previousMode,
+        activatedNextMode || nextModeActivationStarted ? nextMode : null
+      );
+      emit({ error: message });
+      throw error;
+    }
+  }
+
+  function isTransitionInProgress(): boolean {
+    return snapshot.phase === "activating" || snapshot.phase === "deactivating";
   }
 
   return {
@@ -233,72 +361,64 @@ export function createModeManager({
         listeners.delete(listener);
       };
     },
-    async activateInitialMode(mode: PlaybackSessionId): Promise<void> {
-      if (snapshot.currentMode === mode || snapshot.phase !== "inactive") {
-        return;
-      }
-      emit({ requestedMode: mode, phase: "activating", error: null });
-      try {
-        await lifecycles[mode].activate();
-        emit({ currentMode: mode, requestedMode: null, phase: "active" });
-      } catch (error) {
-        emit({
-          requestedMode: null,
-          phase: "inactive",
-          error: getErrorMessage(error),
-        });
-        throw error;
-      }
-    },
-    async switchTo(nextMode: PlaybackSessionId): Promise<void> {
-      if (snapshot.currentMode === nextMode && snapshot.phase === "active") {
-        return;
-      }
-      if (
-        snapshot.phase === "activating" ||
-        snapshot.phase === "deactivating"
-      ) {
-        throw new Error("Mode transition in progress");
-      }
-
-      const previousMode = snapshot.currentMode;
-      emit({ requestedMode: nextMode, phase: "deactivating", error: null });
-
-      try {
-        if (previousMode) {
-          await lifecycles[previousMode].deactivate();
+    activateInitialMode(mode: PlaybackSessionId): Promise<void> {
+      return (async () => {
+        if (snapshot.currentMode === mode || snapshot.phase !== "inactive") {
+          return;
         }
-
-        emit({ phase: "activating" });
-        await lifecycles[nextMode].activate();
-
-        commitMode(nextMode);
-        emit({
-          currentMode: nextMode,
-          requestedMode: null,
-          phase: "active",
-          error: null,
-        });
-      } catch (error) {
-        const message = getErrorMessage(error);
+        emit({ requestedMode: mode, phase: "activating", error: null });
         try {
-          await restorePreviousMode(previousMode);
-        } catch (rollbackError) {
+          await lifecycles[mode].activate();
+          emit({ currentMode: mode, requestedMode: null, phase: "active" });
+        } catch (error) {
           emit({
-            currentMode: previousMode,
             requestedMode: null,
-            phase: previousMode ? "active" : "inactive",
-            error: getErrorMessage(rollbackError),
+            phase: "inactive",
+            error: getUserFacingErrorMessage(error, MODE_STARTUP_ERROR_MESSAGE),
           });
+          throw error;
         }
-        emit({ error: message });
-        throw error;
+      })();
+    },
+    switchTo(nextMode: PlaybackSessionId): Promise<void> {
+      if (isTransitionInProgress()) {
+        return Promise.reject(new Error("Mode transition in progress"));
       }
+      return switchMode(nextMode);
     },
   };
 }
 
 export const modeManager = createModeManager();
+
+export async function synchronizePlaybackMode(
+  mode: PlaybackSessionId,
+  manager: ModeManager = modeManager
+): Promise<void> {
+  await waitForPlaybackSession(mode);
+
+  const settings = getSettings();
+  if (settings && settings.player.mode !== mode) {
+    return;
+  }
+
+  const snapshot = manager.getSnapshot();
+  if (snapshot.currentMode === mode) {
+    return;
+  }
+
+  if (snapshot.currentMode === null && snapshot.phase === "inactive") {
+    return manager.activateInitialMode(mode);
+  }
+
+  return manager.switchTo(mode);
+}
+
+export function resetPlaybackLifecycleState(
+  ctx = getDefaultPlaybackActionContext()
+): void {
+  resetManagedAudioState(ctx);
+}
 
 export function useModeTransitionSnapshot(): ModeTransitionSnapshot {
   return useSyncExternalStore(

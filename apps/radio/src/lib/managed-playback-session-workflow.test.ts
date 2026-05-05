@@ -3,6 +3,8 @@ import type { AudioEngineFacade, AudioManager, Radio } from "@/lib/audio";
 import {
   createDefaultChannel,
   playbackSessionsCollection,
+  SINGLE_ACTIVE_CHANNEL_ID,
+  SINGLE_STANDBY_CHANNEL_ID,
 } from "@/lib/collections/playback-sessions";
 import {
   getPlaybackChannelRuntime,
@@ -47,6 +49,7 @@ function createTestContext() {
         typeof optionsOrSoundId === "string"
           ? optionsOrSoundId
           : (optionsOrSoundId?.soundId ?? `sound:${channelId}`);
+      setPlaybackChannelRuntime(channelId, () => ({ soundId }));
       return soundId;
     }
   );
@@ -65,6 +68,9 @@ function createTestContext() {
       deactivateAll: mock(() => undefined),
       deactivate: mock((_channelId: string) => undefined),
       setVolume: mock((_sessionId, _channelId, _volume) => undefined),
+      setMuted: mock((_sessionId, _channelId, _muted) => undefined),
+      setPan: mock((_sessionId, _channelId, _pan) => undefined),
+      setSpeed: mock((_sessionId, _channelId, _speed) => undefined),
       subscribeRuntime: mock((_sessionId, _channelId, _soundId) => undefined),
     },
     getMainOutputRouter: () => null,
@@ -85,6 +91,85 @@ afterEach(async () => {
 });
 
 describe("managed playback session workflow", () => {
+  test("activates single mode with only the active restorable channel", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    const standbyRadio = {
+      id: "standby-local",
+      name: "Standby Local",
+      streamUrl: "blob:https://radio.example/standby",
+      platformMetadata: {
+        platform: "local-file",
+        itemType: "track",
+        url: "",
+        fileName: "standby.mp3",
+        displayName: "Standby",
+        duration: 10,
+        fileSize: 100,
+        mimeType: "audio/mpeg",
+        objectUrl: "blob:https://radio.example/standby",
+      },
+    } satisfies Radio;
+    const activeRadio = {
+      id: "active-station",
+      name: "Active Station",
+      streamUrl: "https://radio.example/active.mp3",
+    } satisfies Radio;
+
+    playbackSessionsCollection.insert({
+      id: "single",
+      channels: [
+        {
+          ...createDefaultChannel(
+            SINGLE_ACTIVE_CHANNEL_ID,
+            "single-primary",
+            0
+          ),
+          radio: activeRadio,
+        },
+        {
+          ...createDefaultChannel(
+            SINGLE_STANDBY_CHANNEL_ID,
+            "single-secondary",
+            1
+          ),
+          radio: standbyRadio,
+        },
+      ],
+      masterVolume: 0.4,
+      crossfadePosition: 0.5,
+      headphoneVolume: 1,
+      activeChannelId: SINGLE_ACTIVE_CHANNEL_ID,
+    });
+    setPlaybackChannelRuntime(SINGLE_STANDBY_CHANNEL_ID, () => ({
+      soundId: "single:single-b",
+      isPlaying: true,
+    }));
+    const context = createTestContext();
+    const workflow = createManagedPlaybackSessionWorkflow("single", {
+      ctx: context,
+    });
+
+    await workflow.activate();
+
+    expect(context.channels.activate).toHaveBeenCalledTimes(1);
+    expect(context.channels.activate).toHaveBeenCalledWith(
+      "single",
+      SINGLE_ACTIVE_CHANNEL_ID,
+      activeRadio,
+      "single:single-a"
+    );
+    expect(context.channels.deactivate).not.toHaveBeenCalledWith(
+      SINGLE_STANDBY_CHANNEL_ID
+    );
+    expect(getPlaybackChannelRuntime(SINGLE_ACTIVE_CHANNEL_ID).soundId).toBe(
+      "single:single-a"
+    );
+    expect(getPlaybackChannelRuntime(SINGLE_STANDBY_CHANNEL_ID).soundId).toBe(
+      "single:single-b"
+    );
+    expect(context.audio.setGlobalVolume).toHaveBeenCalledWith(0.4);
+  });
+
   test("activates multiple mode with only restorable stream channels", async () => {
     await playbackSessionsCollection.stateWhenReady();
     const restorableRadio = {

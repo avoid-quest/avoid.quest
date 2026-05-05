@@ -23,10 +23,11 @@ import {
   applySessionMasterVolume,
   ensureMainAudioSettingsApplied,
 } from "@/lib/playback-actions-shared";
+import { resetPlaybackChannelRuntime } from "@/lib/stores/playback-runtime-store";
 import {
-  getPlaybackChannelRuntime,
-  resetPlaybackChannelRuntime,
-} from "@/lib/stores/playback-runtime-store";
+  cleanupOrphanedSounds,
+  getRuntimeSoundIds,
+} from "./mode-lifecycle-cleanup.js";
 
 type FadeOutSound = (
   soundId: string,
@@ -48,6 +49,7 @@ export type DjModeLifecycleWorkflow = {
 };
 
 const DJ_MODE_FADE_OUT_DURATION_MS = 150;
+const DJ_DECK_CHANNEL_IDS = [DECK_A_CHANNEL_ID, DECK_B_CHANNEL_ID] as const;
 
 async function fadeOutSoundIds(
   soundIds: string[],
@@ -59,32 +61,10 @@ async function fadeOutSoundIds(
   );
 }
 
-function getSessionSoundIds(): string[] {
-  const session = getPlaybackSession("dj");
-  if (!session) {
-    return [];
-  }
-  return session.channels
-    .map((channel) => getPlaybackChannelRuntime(channel.id).soundId)
-    .filter((soundId): soundId is string => Boolean(soundId));
-}
-
-function getSessionChannelIds(): string[] {
-  return getPlaybackSession("dj")?.channels.map((channel) => channel.id) ?? [];
-}
-
-function assertNoOrphanedSounds(
-  soundIds: string[],
-  ctx: PlaybackActionContext
-): void {
-  const orphanedSoundIds = soundIds.filter((soundId) =>
-    ctx.audio.hasSound(soundId)
-  );
-  if (orphanedSoundIds.length > 0) {
-    throw new Error(
-      `Orphaned dj sounds after deactivation: ${orphanedSoundIds.join(", ")}`
-    );
-  }
+function getDjRuntimeCleanupChannelIds(): string[] {
+  const persistedChannelIds =
+    getPlaybackSession("dj")?.channels.map((channel) => channel.id) ?? [];
+  return Array.from(new Set([...persistedChannelIds, ...DJ_DECK_CHANNEL_IDS]));
 }
 
 async function getReadyDjPlaybackSession(): Promise<PlaybackSessionRecord> {
@@ -132,6 +112,7 @@ async function restoreDjDeckRadio(
 
 async function activateDjMode(ctx: PlaybackActionContext): Promise<void> {
   const session = await prepareReadyDjPlaybackSession(ctx);
+  clearDjErrorSurface();
   applySessionMasterVolume("dj", ctx);
   const deckCommands = createDjDeckCommands(ctx);
 
@@ -162,15 +143,15 @@ async function deactivateDjMode(
   fadeOutSound: FadeOutSound,
   fadeOutDurationMs: number
 ): Promise<void> {
-  const soundIds = getSessionSoundIds();
-  const channelIds = getSessionChannelIds();
+  const channelIds = getDjRuntimeCleanupChannelIds();
+  const soundIds = getRuntimeSoundIds(channelIds);
   await fadeOutSoundIds(soundIds, fadeOutSound, fadeOutDurationMs);
   await cleanupAudioOnly(ctx);
   for (const channelId of channelIds) {
     resetPlaybackChannelRuntime(channelId);
   }
   clearDjErrorSurface();
-  assertNoOrphanedSounds(soundIds, ctx);
+  cleanupOrphanedSounds(soundIds, ctx, "dj");
 }
 
 export function createDjModeLifecycleWorkflow({

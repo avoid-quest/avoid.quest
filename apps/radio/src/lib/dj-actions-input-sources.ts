@@ -67,6 +67,10 @@ function cleanupFailedDeviceSource(
   return true;
 }
 
+/**
+ * Temporary compatibility shim for tests and any incremental callers that have
+ * not moved to createDjDeckLoadWorkflow().loadDeckDeviceInput yet.
+ */
 export async function setDeckDeviceInputSource(
   deckId: DeckId,
   deviceId: string,
@@ -220,6 +224,10 @@ export async function setDeckDeviceInputSource(
   }
 }
 
+/**
+ * Temporary compatibility shim for callers moving to
+ * createDjDeckLoadWorkflow().setDeckDeviceChannelSelection.
+ */
 export function setDeckDeviceChannelSelection(
   deckId: DeckId,
   selection: ChannelSelection,
@@ -238,6 +246,10 @@ export function setDeckDeviceChannelSelection(
   });
 }
 
+/**
+ * Temporary compatibility shim for callers moving to
+ * createDjDeckLoadWorkflow().loadDeckFile.
+ */
 export async function setDeckLocalFileSource(
   deckId: DeckId,
   file: File,

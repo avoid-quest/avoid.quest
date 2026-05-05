@@ -10,10 +10,14 @@ import {
   type ChannelRuntimeSubscriptionOptions,
   deactivateAllChannels,
   deactivateChannel,
+  setChannelMuted,
+  setChannelPan,
+  setChannelSpeed,
   setChannelVolume,
   subscribeChannelRuntime,
 } from "@/lib/channel-state-manager";
 import type { PlaybackSessionId } from "@/lib/collections/playback-sessions";
+import type { PlatformStreamResolutionInput } from "@/lib/dj-platform-stream-port.js";
 import { getMainOutputRouter } from "@/lib/main-output-router";
 import type { PlaybackActionErrorReporter } from "./playback-action-errors.js";
 
@@ -37,6 +41,21 @@ export type PlaybackActionChannelFacade = {
     channelId: string,
     volume: number
   ) => void;
+  setMuted: (
+    sessionId: PlaybackSessionId,
+    channelId: string,
+    muted: boolean
+  ) => void;
+  setPan: (
+    sessionId: PlaybackSessionId,
+    channelId: string,
+    pan: number
+  ) => void;
+  setSpeed: (
+    sessionId: PlaybackSessionId,
+    channelId: string,
+    speed: number
+  ) => void;
   subscribeRuntime: (
     sessionId: PlaybackSessionId,
     channelId: string,
@@ -45,12 +64,19 @@ export type PlaybackActionChannelFacade = {
   ) => void;
 };
 
+export type PlaybackPlatformStreamFacade = {
+  resolveStreamUrl: (
+    input: PlatformStreamResolutionInput
+  ) => Promise<string | null>;
+};
+
 export type PlaybackActionContext = {
   audio: AudioManager;
   audioEngine: AudioEngineFacade;
   channels: PlaybackActionChannelFacade;
   getMainOutputRouter: () => MainOutputRouter;
   lifecycle: PlaybackAudioRoutingLifecycle;
+  platformStreams?: PlaybackPlatformStreamFacade;
   reportError: PlaybackActionErrorReporter;
   resetAudioManager: () => void;
 };
@@ -64,6 +90,9 @@ const defaultChannels: PlaybackActionChannelFacade = {
   deactivateAll: deactivateAllChannels,
   deactivate: deactivateChannel,
   setVolume: setChannelVolume,
+  setMuted: setChannelMuted,
+  setPan: setChannelPan,
+  setSpeed: setChannelSpeed,
   subscribeRuntime: subscribeChannelRuntime,
 };
 

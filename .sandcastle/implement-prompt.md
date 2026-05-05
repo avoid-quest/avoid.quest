@@ -2,7 +2,13 @@
 
 Fix issue {{TASK_ID}}: {{ISSUE_TITLE}}
 
-Pull in the issue using `gh issue view <ID>`. If it has a parent PRD, pull that in too.
+Pull in the issue using:
+
+`gh issue view <ID> --json number,title,body,comments,labels,state,url`
+
+If it has a parent PRD, pull that in too using the same JSON form. Do not
+start with `gh issue view <ID> --comments`; that output is often empty in this
+sandbox and causes a redundant retry.
 
 Only work on the issue specified.
 
@@ -44,7 +50,11 @@ Before committing, run validation:
 2. `bun run typecheck`
 3. `bun run test`
 
-If root typecheck exits 137 or hangs in an unrelated workspace such as `apps/web` Astro check or another untouched app, stop that validation process. Then run the narrowest touched-workspace typecheck/test/build commands that prove this issue, and record the blocked root command and exact workspace/process in the commit notes. Do not keep retrying the same root typecheck.
+If root typecheck/test fails in an unrelated untouched workspace, stop that
+validation path. Then run the narrowest touched-workspace typecheck/test/build
+commands that prove this issue, and record the blocked root command and exact
+workspace/process in the commit notes. Do not keep retrying the same root
+typecheck/test.
 
 # COMMIT
 

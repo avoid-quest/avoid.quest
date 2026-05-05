@@ -5,6 +5,8 @@ import {
   PLAYBACK_SESSION_IDS,
   type PlaybackSessionId,
   playbackSessionsCollection,
+  SINGLE_ACTIVE_CHANNEL_ID,
+  SINGLE_STANDBY_CHANNEL_ID,
 } from "@/lib/collections/playback-sessions";
 import { updatePlayerSettings } from "@/lib/collections/settings";
 import { DEFAULT_TRANSITION_DURATION } from "@/lib/const";
@@ -12,7 +14,11 @@ import {
   getDefaultPlaybackActionContext,
   type PlaybackActionContext,
 } from "@/lib/playback-action-context";
-import { getPlaybackChannelRuntime } from "@/lib/stores/playback-runtime-store";
+import {
+  getPlaybackChannelRuntime,
+  getPlaybackRuntimeChannelIds,
+  resetPlaybackChannelRuntime,
+} from "@/lib/stores/playback-runtime-store";
 import { createDjModeLifecycleWorkflow } from "./dj-mode-lifecycle-workflow.js";
 import { createManagedPlaybackSessionWorkflow } from "./managed-playback-session-workflow.js";
 
@@ -132,17 +138,53 @@ function createLifecycle(
 }
 
 function getSessionSoundIds(sessionId: PlaybackSessionId): string[] {
-  const session = getPlaybackSession(sessionId);
-  if (!session) {
-    return [];
-  }
-  return session.channels.flatMap((channel) => {
-    const soundId = getPlaybackChannelRuntime(channel.id).soundId;
+  return getModeRuntimeCleanupChannelIds(sessionId).flatMap((channelId) => {
+    const soundId = getPlaybackChannelRuntime(channelId).soundId;
     return soundId ? [soundId] : [];
   });
 }
 
-function assertNoOrphanedSounds(
+function getModeRuntimeCleanupChannelIds(
+  sessionId: PlaybackSessionId
+): string[] {
+  const persistedChannelIds =
+    getPlaybackSession(sessionId)?.channels.map((channel) => channel.id) ?? [];
+  const runtimeChannelIds = getPlaybackRuntimeChannelIds().filter((channelId) =>
+    isRuntimeChannelOwnedByMode(sessionId, channelId)
+  );
+  return Array.from(new Set([...persistedChannelIds, ...runtimeChannelIds]));
+}
+
+function finalizeModeRuntimeCleanup(
+  sessionId: PlaybackSessionId,
+  channelIds: string[],
+  soundIds: string[],
+  ctx: PlaybackActionContext
+): void {
+  for (const channelId of channelIds) {
+    ctx.channels.deactivate(channelId);
+    resetPlaybackChannelRuntime(channelId);
+  }
+  cleanupOrphanedSounds(soundIds, ctx, sessionId);
+}
+
+function isRuntimeChannelOwnedByMode(
+  sessionId: PlaybackSessionId,
+  channelId: string
+): boolean {
+  if (sessionId === "single") {
+    return (
+      channelId === SINGLE_ACTIVE_CHANNEL_ID ||
+      channelId === SINGLE_STANDBY_CHANNEL_ID
+    );
+  }
+  if (sessionId === "multiple") {
+    return channelId.startsWith("multi:");
+  }
+  return false;
+}
+
+function cleanupOrphanedSounds(
   soundIds: string[],
   ctx: PlaybackActionContext,
   sessionId: PlaybackSessionId
@@ -150,9 +192,15 @@ function assertNoOrphanedSounds(
   const orphanedSoundIds = soundIds.filter((soundId) =>
     ctx.audio.hasSound(soundId)
   );
-  if (orphanedSoundIds.length > 0) {
+  for (const soundId of orphanedSoundIds) {
+    ctx.audio.cleanupSound(soundId);
+  }
+  const remainingSoundIds = orphanedSoundIds.filter((soundId) =>
+    ctx.audio.hasSound(soundId)
+  );
+  if (remainingSoundIds.length > 0) {
     throw new Error(
-      `Orphaned ${sessionId} sounds after deactivation: ${orphanedSoundIds.join(
+      `Orphaned ${sessionId} sounds after deactivation: ${remainingSoundIds.join(
         ", "
       )}`
     );
@@ -173,9 +221,10 @@ function createManagedModeLifecycle(
   return createLifecycle(
     () => workflow.activate(),
     async () => {
+      const channelIds = getModeRuntimeCleanupChannelIds(sessionId);
       const soundIds = getSessionSoundIds(sessionId);
       await workflow.deactivate();
-      assertNoOrphanedSounds(soundIds, ctx, sessionId);
+      finalizeModeRuntimeCleanup(sessionId, channelIds, soundIds, ctx);
     }
   );
 }
@@ -286,6 +335,7 @@ export function createModeManager({
 
     const previousMode = snapshot.currentMode;
     let activatedNextMode = false;
+    let nextModeActivationStarted = false;
     emit({ requestedMode: nextMode, phase: "deactivating", error: null });
 
     try {
@@ -294,6 +344,7 @@ export function createModeManager({
       }
 
       emit({ phase: "activating" });
+      nextModeActivationStarted = true;
       await lifecycles[nextMode].activate();
       activatedNextMode = true;
 
@@ -308,7 +359,7 @@ export function createModeManager({
       const message = getUserFacingErrorMessage(error);
       await rollbackModeSwitch(
         previousMode,
-        activatedNextMode ? nextMode : null
+        activatedNextMode || nextModeActivationStarted ? nextMode : null
       );
       emit({ error: message });
       throw error;

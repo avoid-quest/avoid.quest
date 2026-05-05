@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import type { AudioEngineFacade, AudioManager } from "@/lib/audio";
+import type { AudioEngineFacade, AudioManager, Radio } from "@/lib/audio";
 import {
   createDefaultChannel,
   DECK_A_CHANNEL_ID,
@@ -69,6 +69,7 @@ function createModeLifecycleTestContext() {
 
   return {
     audio: {
+      cleanupSound: mock((_soundId: string) => undefined),
       hasSound: mock((_soundId: string) => false),
       pauseSound: mock((_soundId: string) => undefined),
       playSound: mock(async (_soundId: string, _volume: number) => undefined),
@@ -113,6 +114,12 @@ afterEach(async () => {
 });
 
 describe("mode lifecycle manager", () => {
+  const stationRadio = {
+    id: "station-1",
+    name: "Station 1",
+    streamUrl: "https://radio.example/station.mp3",
+  } satisfies Radio;
+
   test("routes startup mode activation through the lifecycle boundary", async () => {
     insertPlaybackSession("multiple");
     const activateInitialMode = mock(async (_mode: string) => undefined);
@@ -377,6 +384,180 @@ describe("mode lifecycle manager", () => {
     expect(context.channels.deactivate).toHaveBeenCalledWith(DECK_B_CHANNEL_ID);
     expect(getPlaybackChannelRuntime(DECK_A_CHANNEL_ID).soundId).toBeNull();
     expect(getPlaybackChannelRuntime(DECK_B_CHANNEL_ID).soundId).toBeNull();
+    expect(manager.getSnapshot()).toMatchObject({
+      currentMode: "single",
+      phase: "active",
+    });
+  });
+
+  test("switching modes cleans orphaned sounds owned by the deactivated mode", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    playbackSessionsCollection.insert({
+      id: "single",
+      channels: [
+        createDefaultChannel("single-a", "single-primary", 0),
+        createDefaultChannel("single-b", "single-secondary", 1),
+      ],
+      masterVolume: 0.5,
+      crossfadePosition: 0.5,
+      headphoneVolume: 1,
+      activeChannelId: "single-a",
+    });
+    insertPlaybackSession("multiple");
+    setPlaybackChannelRuntime("single-a", () => ({
+      soundId: "single:orphan",
+      isPlaying: true,
+      isLoading: true,
+      isBuffering: true,
+      error: {
+        id: "stale-error",
+        message: "stale",
+        code: "STREAM_ABORTED",
+        timestamp: 1,
+      },
+    }));
+    const context = createModeLifecycleTestContext();
+    const liveSoundIds = new Set(["single:orphan"]);
+    context.audio.hasSound = mock((soundId: string) =>
+      liveSoundIds.has(soundId)
+    );
+    context.audio.cleanupSound = mock((soundId: string) => {
+      liveSoundIds.delete(soundId);
+    });
+    const manager = createModeManager({
+      initialMode: "single",
+      lifecycles: createModeLifecycleRegistry({ ctx: context }),
+      commitMode: mock(() => undefined),
+    });
+
+    await manager.switchTo("multiple");
+
+    expect(context.audio.cleanupSound).toHaveBeenCalledWith("single:orphan");
+    expect(getPlaybackChannelRuntime("single-a")).toMatchObject({
+      soundId: null,
+      isPlaying: false,
+      isLoading: false,
+      isBuffering: false,
+      error: null,
+    });
+  });
+
+  test("switch cleanup preserves sounds that belong to the newly active mode", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    playbackSessionsCollection.insert({
+      id: "single",
+      channels: [
+        createDefaultChannel("single-a", "single-primary", 0),
+        createDefaultChannel("single-b", "single-secondary", 1),
+      ],
+      masterVolume: 0.5,
+      crossfadePosition: 0.5,
+      headphoneVolume: 1,
+      activeChannelId: "single-a",
+    });
+    playbackSessionsCollection.insert({
+      id: "multiple",
+      channels: [
+        {
+          ...createDefaultChannel("multi:station-1", "multiple", 0),
+          radio: stationRadio,
+        },
+      ],
+      masterVolume: 0.5,
+      crossfadePosition: 0.5,
+      headphoneVolume: 1,
+      activeChannelId: null,
+    });
+    setPlaybackChannelRuntime("single-a", () => ({
+      soundId: "single:orphan",
+      isPlaying: true,
+    }));
+    setPlaybackChannelRuntime("multi:station-1", () => ({
+      soundId: "multiple:kept",
+      isPlaying: true,
+    }));
+    const context = createModeLifecycleTestContext();
+    const liveSoundIds = new Set(["single:orphan", "multiple:kept"]);
+    context.audio.hasSound = mock((soundId: string) =>
+      liveSoundIds.has(soundId)
+    );
+    context.audio.cleanupSound = mock((soundId: string) => {
+      liveSoundIds.delete(soundId);
+    });
+    const manager = createModeManager({
+      initialMode: "single",
+      lifecycles: createModeLifecycleRegistry({ ctx: context }),
+      commitMode: mock(() => undefined),
+    });
+
+    await manager.switchTo("multiple");
+
+    expect(context.audio.cleanupSound).toHaveBeenCalledWith("single:orphan");
+    expect(context.audio.cleanupSound).not.toHaveBeenCalledWith(
+      "multiple:kept"
+    );
+    expect(getPlaybackChannelRuntime("multi:station-1").soundId).toBe(
+      "multiple:kept"
+    );
+  });
+
+  test("cleans partially activated mode runtime before rolling back", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    playbackSessionsCollection.insert({
+      id: "single",
+      channels: [createDefaultChannel("single-a", "single-primary", 0)],
+      masterVolume: 0.5,
+      crossfadePosition: 0.5,
+      headphoneVolume: 1,
+      activeChannelId: "single-a",
+    });
+    playbackSessionsCollection.insert({
+      id: "multiple",
+      channels: [
+        {
+          ...createDefaultChannel("multi:station-1", "multiple", 0),
+          radio: stationRadio,
+        },
+      ],
+      masterVolume: 0.5,
+      crossfadePosition: 0.5,
+      headphoneVolume: 1,
+      activeChannelId: null,
+    });
+    const context = createModeLifecycleTestContext();
+    context.channels.activate = mock((_sessionId, channelId) => {
+      setPlaybackChannelRuntime(channelId, () => ({
+        soundId: "multiple:partial",
+        isLoading: true,
+        isPlaying: true,
+        isBuffering: true,
+        error: {
+          id: "partial-error",
+          message: "stale",
+          code: "STREAM_ABORTED",
+          timestamp: 1,
+        },
+      }));
+      throw new Error("activation failed midway");
+    });
+    const manager = createModeManager({
+      initialMode: "single",
+      lifecycles: createModeLifecycleRegistry({ ctx: context }),
+      commitMode: mock(() => undefined),
+    });
+
+    await expect(manager.switchTo("multiple")).rejects.toThrow(
+      "activation failed midway"
+    );
+
+    expect(context.channels.deactivate).toHaveBeenCalledWith("multi:station-1");
+    expect(getPlaybackChannelRuntime("multi:station-1")).toMatchObject({
+      soundId: null,
+      isPlaying: false,
+      isLoading: false,
+      isBuffering: false,
+      error: null,
+    });
     expect(manager.getSnapshot()).toMatchObject({
       currentMode: "single",
       phase: "active",

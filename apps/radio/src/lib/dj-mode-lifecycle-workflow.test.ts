@@ -58,6 +58,7 @@ function createTestContext() {
 
   return {
     audio: {
+      cleanupSound: mock((_soundId: string) => undefined),
       hasSound: mock((_soundId: string) => false),
       pauseSound: mock((_soundId: string) => undefined),
       playSound: mock(async (_soundId: string, _volume: number) => undefined),
@@ -260,5 +261,59 @@ describe("createDjModeLifecycleWorkflow", () => {
     expect(fadeOut).toHaveBeenCalledWith("right_station-2", 120, true);
     expect(getPlaybackChannelRuntime(DECK_A_CHANNEL_ID).soundId).toBeNull();
     expect(getPlaybackChannelRuntime(DECK_B_CHANNEL_ID).soundId).toBeNull();
+  });
+
+  test("deactivation cleans orphaned deck sounds after runtime cleanup", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    playbackSessionsCollection.insert({
+      id: "dj",
+      channels: [
+        createDefaultChannel(DECK_A_CHANNEL_ID, "deck-a", 0),
+        createDefaultChannel(DECK_B_CHANNEL_ID, "deck-b", 1),
+      ],
+      masterVolume: 0.5,
+      crossfadePosition: 0.5,
+      headphoneVolume: 1,
+      activeChannelId: null,
+    });
+    setPlaybackChannelRuntime(DECK_A_CHANNEL_ID, () => ({
+      soundId: "left_orphan",
+      isPlaying: true,
+      isLoading: true,
+      isBuffering: true,
+      error: {
+        id: "deck-error",
+        message: "stale",
+        code: "STREAM_ABORTED",
+        timestamp: 1,
+      },
+    }));
+    const fadeOut = mock((_soundId: string, _duration: number) =>
+      Promise.resolve()
+    );
+    const context = createTestContext();
+    const liveSoundIds = new Set(["left_orphan"]);
+    context.audio.hasSound = mock((soundId: string) =>
+      liveSoundIds.has(soundId)
+    );
+    context.audio.cleanupSound = mock((soundId: string) => {
+      liveSoundIds.delete(soundId);
+    });
+    const workflow = createDjModeLifecycleWorkflow({
+      ctx: context,
+      fadeOutSound: fadeOut,
+      fadeOutDurationMs: 120,
+    });
+
+    await workflow.deactivate();
+
+    expect(context.audio.cleanupSound).toHaveBeenCalledWith("left_orphan");
+    expect(getPlaybackChannelRuntime(DECK_A_CHANNEL_ID)).toMatchObject({
+      soundId: null,
+      isPlaying: false,
+      isLoading: false,
+      isBuffering: false,
+      error: null,
+    });
   });
 });

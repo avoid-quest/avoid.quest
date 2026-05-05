@@ -73,16 +73,22 @@ function getActiveSoundIds(channelIds: readonly string[]): string[] {
   });
 }
 
-function assertNoOrphanedSounds(
+function cleanupOrphanedSounds(
   soundIds: string[],
   ctx: PlaybackActionContext
 ): void {
   const orphanedSoundIds = soundIds.filter((soundId) =>
     ctx.audio.hasSound(soundId)
   );
-  if (orphanedSoundIds.length > 0) {
+  for (const soundId of orphanedSoundIds) {
+    ctx.audio.cleanupSound(soundId);
+  }
+  const remainingSoundIds = orphanedSoundIds.filter((soundId) =>
+    ctx.audio.hasSound(soundId)
+  );
+  if (remainingSoundIds.length > 0) {
     throw new Error(
-      `Orphaned dj sounds after deactivation: ${orphanedSoundIds.join(", ")}`
+      `Orphaned dj sounds after deactivation: ${remainingSoundIds.join(", ")}`
     );
   }
 }
@@ -171,7 +177,7 @@ async function deactivateDjMode(
     resetPlaybackChannelRuntime(channelId);
   }
   clearDjErrorSurface();
-  assertNoOrphanedSounds(soundIds, ctx);
+  cleanupOrphanedSounds(soundIds, ctx);
 }
 
 export function createDjModeLifecycleWorkflow({

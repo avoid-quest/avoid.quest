@@ -1,7 +1,10 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { playbackSessionsCollection } from "@/lib/collections/playback-sessions";
 import { resetAllPlaybackRuntime } from "@/lib/stores/playback-runtime-store";
-import { createModeManager } from "./mode-lifecycle-manager";
+import {
+  createModeManager,
+  synchronizePlaybackMode,
+} from "./mode-lifecycle-manager";
 
 async function resetPlaybackSessions() {
   await playbackSessionsCollection.stateWhenReady();
@@ -22,6 +25,27 @@ afterEach(async () => {
 });
 
 describe("mode lifecycle manager", () => {
+  test("routes startup mode activation through the lifecycle boundary", async () => {
+    const activateInitialMode = mock(async (_mode: string) => undefined);
+    const switchTo = mock(async (_mode: string) => undefined);
+    const manager = {
+      getSnapshot: () => ({
+        currentMode: null,
+        requestedMode: null,
+        phase: "inactive" as const,
+        error: null,
+      }),
+      subscribe: mock((_listener: () => void) => () => undefined),
+      activateInitialMode,
+      switchTo,
+    };
+
+    await synchronizePlaybackMode("multiple", manager);
+
+    expect(activateInitialMode).toHaveBeenCalledWith("multiple");
+    expect(switchTo).not.toHaveBeenCalled();
+  });
+
   test("serializes concurrent mode switch requests", async () => {
     const releaseActivation = Promise.withResolvers<void>();
     const manager = createModeManager({

@@ -50,7 +50,7 @@ type CreateModeManagerOptions = {
 
 type ManagedPlaybackSessionId = Exclude<PlaybackSessionId, "dj">;
 
-type ModeManager = {
+export type ModeManager = {
   getSnapshot: () => ModeTransitionSnapshot;
   subscribe: (listener: () => void) => () => void;
   activateInitialMode: (mode: PlaybackSessionId) => Promise<void>;
@@ -299,6 +299,22 @@ export function createModeManager({
 }
 
 export const modeManager = createModeManager();
+
+export function synchronizePlaybackMode(
+  mode: PlaybackSessionId,
+  manager: ModeManager = modeManager
+): Promise<void> {
+  const snapshot = manager.getSnapshot();
+  if (snapshot.currentMode === mode) {
+    return Promise.resolve();
+  }
+
+  if (snapshot.currentMode === null && snapshot.phase === "inactive") {
+    return manager.activateInitialMode(mode);
+  }
+
+  return manager.switchTo(mode);
+}
 
 export function useModeTransitionSnapshot(): ModeTransitionSnapshot {
   return useSyncExternalStore(

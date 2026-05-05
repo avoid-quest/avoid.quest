@@ -1,5 +1,6 @@
 import type {
   AudioManager,
+  ChannelSelection,
   EffectConfig,
   EffectType,
   FilterConfig,
@@ -20,7 +21,12 @@ import {
   type DeckRecord,
   resetDeck as resetDeckDb,
 } from "@/lib/hooks/use-dj-state";
-import { isFileMetadata, isYouTubeMetadata } from "@/lib/platform-types";
+import {
+  type DeviceInputMetadata,
+  isDeviceInputMetadata,
+  isFileMetadata,
+  isYouTubeMetadata,
+} from "@/lib/platform-types";
 import type { PlaybackActionChannelFacade } from "./playback-action-context.js";
 import {
   createPlaybackActionError,
@@ -60,6 +66,7 @@ type DeckLoadDependencies = {
   ) => void;
   deactivateChannel: PlaybackActionChannelFacade["deactivate"];
   getAudioManager: () => AudioManager;
+  getDeviceChannelCount: (soundId: string) => number | null;
   getSoundId: (radio: Radio, side: DeckSide) => string;
   initializeAudioDevices: (
     getAudioManager: () => AudioManager,
@@ -72,12 +79,17 @@ type DeckLoadDependencies = {
   ) => Promise<void>;
   pauseDeckSound: (soundId: string) => void;
   playDeckSound: (soundId: string, volume: number) => Promise<void>;
+  playDeviceSound: (soundId: string, deviceId: string) => Promise<void>;
   reportDjError: ReportDjError;
   reportPlaybackError?: (error: PlaybackActionError) => void;
   resolvePlatformStreamUrl: (
     input: PlatformStreamResolutionInput
   ) => Promise<string | null>;
   seekDeckSound: (soundId: string, position: number) => void;
+  setDeviceChannelSelection: (
+    soundId: string,
+    selection: ChannelSelection
+  ) => void;
   addDeckEffect: (deckId: DeckId, type: EffectType, effectId: string) => void;
   createEffectId: () => string;
   removeDeckEffect: (deckId: DeckId, effectId: string) => void;
@@ -98,6 +110,11 @@ type DeckLoadDependencies = {
 
 type DjDeckLoadWorkflow = {
   addDeckEffect: (deckId: DeckId, type: EffectType) => void;
+  loadDeckDeviceInput: (
+    deckId: DeckId,
+    deviceId: string,
+    deviceLabel: string
+  ) => Promise<void>;
   loadDeckRadio: (deckId: DeckId, radio: Radio | null) => Promise<void>;
   pauseDeck: (deckId: DeckId) => void;
   playDeck: (deckId: DeckId) => Promise<void>;
@@ -105,6 +122,10 @@ type DjDeckLoadWorkflow = {
   resetDeck: (deckId: DeckId) => Promise<void>;
   reorderDeckEffects: (deckId: DeckId, effectIds: string[]) => void;
   seekDeck: (deckId: DeckId, position: number) => void;
+  setDeckDeviceChannelSelection: (
+    deckId: DeckId,
+    selection: ChannelSelection
+  ) => void;
   setDeckChannelFilter: (deckId: DeckId, value: number) => void;
   setDeckEffectsDryWet: (deckId: DeckId, value: number) => void;
   setDeckMute: (deckId: DeckId, muted: boolean) => void;
@@ -132,6 +153,32 @@ function cleanupFailedDeckLoad(
 
   dependencies.deactivateChannel(deckId);
   return true;
+}
+
+function createDeviceInputRadio(
+  side: DeckSide,
+  deviceId: string,
+  deviceLabel: string
+): Radio {
+  const radioId = `device-input-${side}`;
+  const platformMetadata: DeviceInputMetadata = {
+    platform: "device-input",
+    itemType: "track",
+    url: "",
+    deviceId,
+    deviceLabel,
+    channelSelection: { left: 0, right: 1 },
+    channelCount: 2,
+  };
+
+  return {
+    id: radioId,
+    name: deviceLabel,
+    streamUrl: "",
+    description: "Device input (mic/line-in)",
+    enabled: true,
+    platformMetadata,
+  };
 }
 
 function getLocalFileObjectUrl(radio: Radio | null): string | null {
@@ -227,6 +274,32 @@ function restoreDeckRouting(
 ): void {
   connectDeckCueRouting(deckId, soundId, dependencies);
   initializeSavedAudioDevices(dependencies);
+}
+
+async function activateLoadedSource(
+  radio: Radio,
+  soundId: string,
+  config: (typeof deckConfig)["deck-a"],
+  dependencies: DeckLoadDependencies
+): Promise<void> {
+  const metadata = radio.platformMetadata;
+  if (!isDeviceInputMetadata(metadata)) {
+    return;
+  }
+
+  await dependencies.playDeviceSound(soundId, metadata.deviceId);
+
+  const channelCount = dependencies.getDeviceChannelCount(soundId);
+  if (channelCount === null) {
+    return;
+  }
+
+  config.updateDeck((draft) => {
+    const currentMetadata = draft.radio?.platformMetadata;
+    if (isDeviceInputMetadata(currentMetadata)) {
+      currentMetadata.channelCount = channelCount;
+    }
+  });
 }
 
 async function loadDeckRadio(
@@ -379,6 +452,7 @@ async function loadDeckRadio(
       },
     });
     restoreDeckRouting(deckId, soundId, dependencies);
+    await activateLoadedSource(radio, soundId, config, dependencies);
     releaseReplacedLocalFileUrl(previousRadio, radio);
 
     if (wasPlaying) {
@@ -386,17 +460,10 @@ async function loadDeckRadio(
       dependencies.applyCrossfade();
     }
   } catch (error) {
-    const channelWasActivated = cleanupFailedDeckLoad(
-      deckId,
-      config,
-      soundId,
-      dependencies
-    );
-    if (!channelWasActivated) {
-      config.updateDeck((draft) => {
-        draft.radio = previousRadio;
-      });
-    }
+    cleanupFailedDeckLoad(deckId, config, soundId, dependencies);
+    config.updateDeck((draft) => {
+      draft.radio = previousRadio;
+    });
     const playbackError = createPlaybackActionError({
       mode: "dj",
       code: "PLAY_ERROR",
@@ -449,6 +516,20 @@ async function playDeck(
   }
 }
 
+async function loadDeckDeviceInput(
+  deckId: DeckId,
+  deviceId: string,
+  deviceLabel: string,
+  dependencies: DeckLoadDependencies
+): Promise<void> {
+  const side = deckConfig[deckId].side;
+  await loadDeckRadio(
+    deckId,
+    createDeviceInputRadio(side, deviceId, deviceLabel),
+    dependencies
+  );
+}
+
 function pauseDeck(deckId: DeckId, dependencies: DeckLoadDependencies): void {
   const runtime = deckConfig[deckId].getRuntime();
   if (runtime.soundId) {
@@ -497,6 +578,25 @@ function seekDeck(
   }
 }
 
+function setDeckDeviceChannelSelection(
+  deckId: DeckId,
+  selection: ChannelSelection,
+  dependencies: DeckLoadDependencies
+): void {
+  const config = deckConfig[deckId];
+  const runtime = config.getRuntime();
+  if (runtime.soundId) {
+    dependencies.setDeviceChannelSelection(runtime.soundId, selection);
+  }
+
+  config.updateDeck((draft) => {
+    const meta = draft.radio?.platformMetadata;
+    if (isDeviceInputMetadata(meta)) {
+      meta.channelSelection = selection;
+    }
+  });
+}
+
 function setDeckVolume(
   deckId: DeckId,
   volume: number,
@@ -512,6 +612,8 @@ export function createDjDeckLoadWorkflow(
   return {
     addDeckEffect: (deckId, type) =>
       dependencies.addDeckEffect(deckId, type, dependencies.createEffectId()),
+    loadDeckDeviceInput: (deckId, deviceId, deviceLabel) =>
+      loadDeckDeviceInput(deckId, deviceId, deviceLabel, dependencies),
     loadDeckRadio: (deckId, radio) =>
       loadDeckRadio(deckId, radio, dependencies),
     pauseDeck: (deckId) => pauseDeck(deckId, dependencies),
@@ -520,6 +622,8 @@ export function createDjDeckLoadWorkflow(
     resetDeck: (deckId) => resetDeck(deckId, dependencies),
     reorderDeckEffects: dependencies.reorderDeckEffects,
     seekDeck: (deckId, position) => seekDeck(deckId, position, dependencies),
+    setDeckDeviceChannelSelection: (deckId, selection) =>
+      setDeckDeviceChannelSelection(deckId, selection, dependencies),
     setDeckChannelFilter: dependencies.setDeckChannelFilter,
     setDeckEffectsDryWet: dependencies.setDeckEffectsDryWet,
     setDeckMute: dependencies.setDeckMute,

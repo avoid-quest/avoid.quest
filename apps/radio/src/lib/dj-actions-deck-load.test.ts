@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import {
   AudioManager,
   type AudioState,
+  type ChannelSelection,
   createDefaultEffectConfig,
   type EffectConfig,
   type EffectType,
@@ -71,15 +72,22 @@ function createDependencies(): DeckLoadDependencies {
     connectDeckCueBus: mock(() => undefined),
     deactivateChannel,
     getAudioManager: () => AudioManager.getInstance(),
+    getDeviceChannelCount: mock((_soundId: string) => null),
     getSoundId: (radio: { id?: string | number }, side: string) =>
       `${side}_${radio.id}`,
     initializeAudioDevices: mock(async () => undefined),
     loadTrack: mock(async () => undefined),
     pauseDeckSound: mock((_soundId: string) => undefined),
     playDeckSound: mock(async (_soundId: string, _volume: number) => undefined),
+    playDeviceSound: mock(
+      async (_soundId: string, _deviceId: string) => undefined
+    ),
     reportDjError: mock(() => undefined),
     resolvePlatformStreamUrl: mock(async () => null),
     seekDeckSound: mock((_soundId: string, _position: number) => undefined),
+    setDeviceChannelSelection: mock(
+      (_soundId: string, _selection: ChannelSelection) => undefined
+    ),
     addDeckEffect: (deckId, type, effectId) =>
       createAndAddChannelEffect("dj", deckId, type, effectId),
     createEffectId: mock(() => "effect-1"),
@@ -412,6 +420,81 @@ describe("DJ deck channel lifecycle", () => {
     }
   });
 
+  test("loads a local file source through the lifecycle boundary", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertDjSession();
+
+    const manager = AudioManager.getInstance();
+    manager.createSound = mock(
+      (_radio, soundId?: string) => soundId ?? "sound"
+    );
+    manager.cleanupSound = mock((_soundId: string) => undefined);
+    manager.subscribe = mock((_soundId, _callback) => mock(() => undefined));
+    manager.subscribeMeter = mock((_soundId, _callback) =>
+      mock(() => undefined)
+    );
+    const dependencies = createDependencies();
+    const workflow = createDjDeckLoadWorkflow(dependencies);
+
+    await workflow.loadDeckRadio("deck-a", createLocalFileRadio());
+
+    expect(getPlaybackChannelRuntime("deck-a").soundId).toBe(
+      "left_local-file-left-1"
+    );
+    expect(getPlaybackChannel("dj", "deck-a")?.radio).toEqual(
+      expect.objectContaining({
+        id: "local-file-left-1",
+        name: "Local Track",
+        streamUrl: "blob:https://radio.example/prior",
+        platformMetadata: expect.objectContaining({
+          platform: "local-file",
+          fileName: "local.mp3",
+          displayName: "Local",
+          objectUrl: "blob:https://radio.example/prior",
+        }),
+      })
+    );
+  });
+
+  test("keeps a prior deck source when local file activation fails", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertDjSession();
+
+    const previousRadio = {
+      id: "station-1",
+      name: "Station 1",
+      streamUrl: "https://radio.example/one.mp3",
+    };
+    updatePlaybackChannel("dj", "deck-a", (draft) => {
+      draft.radio = previousRadio;
+    });
+
+    const originalRevokeObjectUrl = URL.revokeObjectURL;
+    URL.revokeObjectURL = mock((_url: string) => undefined);
+
+    try {
+      const manager = AudioManager.getInstance();
+      manager.createSound = mock(() => {
+        throw new Error("create failed");
+      });
+      manager.cleanupSound = mock((_soundId: string) => undefined);
+      manager.subscribe = mock((_soundId, _callback) => mock(() => undefined));
+      manager.subscribeMeter = mock((_soundId, _callback) =>
+        mock(() => undefined)
+      );
+      const dependencies = createDependencies();
+      const workflow = createDjDeckLoadWorkflow(dependencies);
+
+      await workflow.loadDeckRadio("deck-a", createLocalFileRadio());
+
+      expect(getPlaybackChannel("dj", "deck-a")?.radio).toEqual(previousRadio);
+      expect(getPlaybackChannelRuntime("deck-a").soundId).toBeNull();
+      expect(URL.revokeObjectURL).not.toHaveBeenCalled();
+    } finally {
+      URL.revokeObjectURL = originalRevokeObjectUrl;
+    }
+  });
+
   test("clears persisted deck state and runtime state together", async () => {
     await playbackSessionsCollection.stateWhenReady();
     insertDjSession();
@@ -529,6 +612,129 @@ describe("DJ deck channel lifecycle", () => {
 
     expect(getPlaybackChannel("dj", "deck-a")?.radio).toEqual(
       expect.objectContaining({ id: "station-1" })
+    );
+  });
+
+  test("rolls back a device input deck source when device activation fails", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertDjSession();
+
+    const previousRadio = {
+      id: "station-1",
+      name: "Station 1",
+      streamUrl: "https://radio.example/one.mp3",
+    };
+    updatePlaybackChannel("dj", "deck-a", (draft) => {
+      draft.radio = previousRadio;
+    });
+
+    const manager = AudioManager.getInstance();
+    manager.createSound = mock(
+      (_radio, soundId?: string) => soundId ?? "sound"
+    );
+    manager.cleanupSound = mock((_soundId: string) => undefined);
+    manager.subscribe = mock((_soundId, _callback) => mock(() => undefined));
+    manager.subscribeMeter = mock((_soundId, _callback) =>
+      mock(() => undefined)
+    );
+    const dependencies = {
+      ...createDependencies(),
+      playDeviceSound: mock(() =>
+        Promise.reject(new Error("device unavailable"))
+      ),
+    };
+    const workflow = createDjDeckLoadWorkflow(dependencies);
+
+    await workflow.loadDeckDeviceInput("deck-a", "device-1", "Device 1");
+
+    expect(getPlaybackChannel("dj", "deck-a")?.radio).toEqual(previousRadio);
+    expect(getPlaybackChannelRuntime("deck-a").soundId).toBeNull();
+    expect(manager.cleanupSound).toHaveBeenCalledWith("left_device-input-left");
+    expect(dependencies.reportDjError).toHaveBeenCalledWith(
+      "Failed to load deck-a",
+      "DJ_LOAD_DECK_FAILED",
+      expect.any(Error),
+      expect.objectContaining({
+        id: "device-input-left",
+        platformMetadata: expect.objectContaining({
+          platform: "device-input",
+          deviceId: "device-1",
+          deviceLabel: "Device 1",
+        }),
+      })
+    );
+  });
+
+  test("loads a device input source through the lifecycle boundary", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertDjSession();
+
+    const manager = AudioManager.getInstance();
+    manager.createSound = mock(
+      (_radio, soundId?: string) => soundId ?? "sound"
+    );
+    manager.cleanupSound = mock((_soundId: string) => undefined);
+    manager.subscribe = mock((_soundId, _callback) => mock(() => undefined));
+    manager.subscribeMeter = mock((_soundId, _callback) =>
+      mock(() => undefined)
+    );
+    const dependencies = {
+      ...createDependencies(),
+      getDeviceChannelCount: mock((_soundId: string) => 4),
+    };
+    const workflow = createDjDeckLoadWorkflow(dependencies);
+
+    await workflow.loadDeckDeviceInput("deck-a", "device-1", "Device 1");
+
+    expect(dependencies.playDeviceSound).toHaveBeenCalledWith(
+      "left_device-input-left",
+      "device-1"
+    );
+    expect(getPlaybackChannelRuntime("deck-a").soundId).toBe(
+      "left_device-input-left"
+    );
+    expect(getPlaybackChannel("dj", "deck-a")?.radio).toEqual(
+      expect.objectContaining({
+        id: "device-input-left",
+        name: "Device 1",
+        platformMetadata: expect.objectContaining({
+          platform: "device-input",
+          deviceId: "device-1",
+          deviceLabel: "Device 1",
+          channelCount: 4,
+        }),
+      })
+    );
+  });
+
+  test("updates device channel selection against the active deck runtime source", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertDjSession();
+
+    const manager = AudioManager.getInstance();
+    manager.createSound = mock(
+      (_radio, soundId?: string) => soundId ?? "sound"
+    );
+    manager.cleanupSound = mock((_soundId: string) => undefined);
+    manager.subscribe = mock((_soundId, _callback) => mock(() => undefined));
+    manager.subscribeMeter = mock((_soundId, _callback) =>
+      mock(() => undefined)
+    );
+    const dependencies = createDependencies();
+    const workflow = createDjDeckLoadWorkflow(dependencies);
+
+    await workflow.loadDeckDeviceInput("deck-a", "device-1", "Device 1");
+    workflow.setDeckDeviceChannelSelection("deck-a", { left: 2, right: 3 });
+
+    expect(dependencies.setDeviceChannelSelection).toHaveBeenCalledWith(
+      "left_device-input-left",
+      { left: 2, right: 3 }
+    );
+    expect(getPlaybackChannel("dj", "deck-a")?.radio?.platformMetadata).toEqual(
+      expect.objectContaining({
+        platform: "device-input",
+        channelSelection: { left: 2, right: 3 },
+      })
     );
   });
 

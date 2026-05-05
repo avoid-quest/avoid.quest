@@ -49,11 +49,7 @@ import {
   type DeckSide,
   deckConfig,
 } from "@/lib/dj-actions-decks.js";
-import {
-  setDeckDeviceChannelSelection,
-  setDeckDeviceInputSource,
-  setDeckLocalFileSource,
-} from "@/lib/dj-actions-input-sources.js";
+import { setDeckLocalFileSource } from "@/lib/dj-actions-input-sources.js";
 import { findNextTrack as findNextTrackInPlaylist } from "@/lib/dj-actions-playlist.js";
 import {
   setCueOutputDelay as applyCueOutputDelay,
@@ -210,6 +206,8 @@ function createDeckLoadDependencies(
     connectDeckCueBus,
     deactivateChannel: ctx.channels.deactivate,
     getAudioManager: () => ctx.audio,
+    getDeviceChannelCount: (soundId) =>
+      ctx.audio.getDeviceSource(soundId)?.channelCount ?? null,
     getSoundId,
     initializeAudioDevices: initializeSavedAudioDevices,
     loadTrack: (deckSide, nextRadio, autoPlay) =>
@@ -217,11 +215,15 @@ function createDeckLoadDependencies(
     pauseDeckSound: (soundId) => ctx.audioEngine.playback.pause(soundId),
     playDeckSound: (soundId, volume) =>
       ctx.audioEngine.playback.play(soundId, volume),
+    playDeviceSound: (soundId, deviceId) =>
+      ctx.audio.playDeviceSound(soundId, deviceId),
     reportDjError: reportDjErrorSurface,
     reportPlaybackError: ctx.reportError,
     resolvePlatformStreamUrl: ({ videoId }) => resolveStreamUrl(videoId),
     seekDeckSound: (soundId, position) =>
       ctx.audioEngine.playback.seek(soundId, position),
+    setDeviceChannelSelection: (soundId, selection) =>
+      ctx.audio.setDeviceChannelSelection(soundId, selection),
     addDeckEffect: (deckId, type, effectId) =>
       createAndAddChannelEffect("dj", deckId, type, effectId),
     createEffectId: generateId,
@@ -506,26 +508,22 @@ function reorderDeckEffects(
 async function setDeckDeviceSource(
   deckId: DeckId,
   deviceId: string,
-  deviceLabel: string
+  deviceLabel: string,
+  ctx = getDefaultPlaybackActionContext()
 ): Promise<void> {
-  await setDeckDeviceInputSource(deckId, deviceId, deviceLabel, {
-    applyCrossfade,
-    applyStoredChannelStrip,
-    applyStoredEffectsAndFilters,
-    clearDjError: clearDjErrorSurface,
-    connectDeckCueBus,
-    getAudioManager,
-    initializeAudioDevices: initializeSavedAudioDevices,
-    reportDjError: reportDjErrorSurface,
-    setDeckRadio,
-  });
+  await createDeckLoadWorkflow(ctx).loadDeckDeviceInput(
+    deckId,
+    deviceId,
+    deviceLabel
+  );
 }
 
 function setDeckChannelSelection(
   deckId: DeckId,
-  selection: ChannelSelection
+  selection: ChannelSelection,
+  ctx = getDefaultPlaybackActionContext()
 ): void {
-  setDeckDeviceChannelSelection(deckId, selection, getAudioManager);
+  createDeckLoadWorkflow(ctx).setDeckDeviceChannelSelection(deckId, selection);
 }
 
 async function setDeckFileSource(deckId: DeckId, file: File): Promise<void> {

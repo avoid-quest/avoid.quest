@@ -140,10 +140,23 @@ type DjDeckLoadWorkflow = {
   updateDeckFilter: (deckId: DeckId, filter: FilterConfig) => void;
 };
 
-function cleanupFailedDeckLoad(
+const activeDeckLoadTokens = new Map<DeckId, symbol>();
+
+function beginDeckLoad(deckId: DeckId): symbol {
+  const token = Symbol(deckId);
+  activeDeckLoadTokens.set(deckId, token);
+  return token;
+}
+
+function isCurrentDeckLoad(deckId: DeckId, token: symbol): boolean {
+  return activeDeckLoadTokens.get(deckId) === token;
+}
+
+function rollbackFailedDeckLoad(
   deckId: DeckId,
   config: (typeof deckConfig)["deck-a"],
   soundId: string,
+  previousRadio: Radio | null,
   dependencies: DeckLoadDependencies
 ): boolean {
   const currentRuntime = config.getRuntime();
@@ -152,6 +165,9 @@ function cleanupFailedDeckLoad(
   }
 
   dependencies.deactivateChannel(deckId);
+  config.updateDeck((draft) => {
+    draft.radio = previousRadio;
+  });
   return true;
 }
 
@@ -277,21 +293,29 @@ function restoreDeckRouting(
 }
 
 async function activateLoadedSource(
+  deckId: DeckId,
+  loadToken: symbol,
   radio: Radio,
   soundId: string,
   config: (typeof deckConfig)["deck-a"],
   dependencies: DeckLoadDependencies
-): Promise<void> {
+): Promise<{ startedPlayback: boolean }> {
   const metadata = radio.platformMetadata;
   if (!isDeviceInputMetadata(metadata)) {
-    return;
+    return { startedPlayback: false };
   }
 
   await dependencies.playDeviceSound(soundId, metadata.deviceId);
 
+  if (!isCurrentDeckLoad(deckId, loadToken)) {
+    return { startedPlayback: true };
+  }
+
+  dependencies.setDeviceChannelSelection(soundId, metadata.channelSelection);
+
   const channelCount = dependencies.getDeviceChannelCount(soundId);
   if (channelCount === null) {
-    return;
+    return { startedPlayback: true };
   }
 
   config.updateDeck((draft) => {
@@ -300,6 +324,8 @@ async function activateLoadedSource(
       currentMetadata.channelCount = channelCount;
     }
   });
+
+  return { startedPlayback: true };
 }
 
 async function loadDeckRadio(
@@ -318,6 +344,7 @@ async function loadDeckRadio(
 
   const wasPlaying = runtime.isPlaying;
   const previousRadio = getDeckRadio(deck);
+  const loadToken = beginDeckLoad(deckId);
 
   dependencies.deactivateChannel(deckId);
 
@@ -452,18 +479,39 @@ async function loadDeckRadio(
       },
     });
     restoreDeckRouting(deckId, soundId, dependencies);
-    await activateLoadedSource(radio, soundId, config, dependencies);
+    const sourceActivation = await activateLoadedSource(
+      deckId,
+      loadToken,
+      radio,
+      soundId,
+      config,
+      dependencies
+    );
+    if (!isCurrentDeckLoad(deckId, loadToken)) {
+      return;
+    }
     releaseReplacedLocalFileUrl(previousRadio, radio);
 
     if (wasPlaying) {
       await dependencies.playDeckSound(soundId, deck.volume);
+      if (!isCurrentDeckLoad(deckId, loadToken)) {
+        return;
+      }
+      dependencies.applyCrossfade();
+    } else if (sourceActivation.startedPlayback) {
       dependencies.applyCrossfade();
     }
   } catch (error) {
-    cleanupFailedDeckLoad(deckId, config, soundId, dependencies);
-    config.updateDeck((draft) => {
-      draft.radio = previousRadio;
-    });
+    if (!isCurrentDeckLoad(deckId, loadToken)) {
+      return;
+    }
+    rollbackFailedDeckLoad(
+      deckId,
+      config,
+      soundId,
+      previousRadio,
+      dependencies
+    );
     const playbackError = createPlaybackActionError({
       mode: "dj",
       code: "PLAY_ERROR",
@@ -584,6 +632,12 @@ function setDeckDeviceChannelSelection(
   dependencies: DeckLoadDependencies
 ): void {
   const config = deckConfig[deckId];
+  const deck = config.getDeck();
+  const metadata = deck ? getDeckRadio(deck)?.platformMetadata : undefined;
+  if (!isDeviceInputMetadata(metadata)) {
+    return;
+  }
+
   const runtime = config.getRuntime();
   if (runtime.soundId) {
     dependencies.setDeviceChannelSelection(runtime.soundId, selection);

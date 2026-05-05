@@ -131,6 +131,27 @@ function createLocalFileRadio(
   };
 }
 
+function createDeviceInputRadio(
+  selection: ChannelSelection = { left: 0, right: 1 }
+): Radio {
+  return {
+    id: "device-input-left",
+    name: "Device 1",
+    streamUrl: "",
+    description: "Device input (mic/line-in)",
+    enabled: true,
+    platformMetadata: {
+      platform: "device-input",
+      itemType: "track",
+      url: "",
+      deviceId: "device-1",
+      deviceLabel: "Device 1",
+      channelSelection: selection,
+      channelCount: 4,
+    },
+  };
+}
+
 function createPlaylistRadio(overrides: Partial<Radio> = {}): Radio {
   return {
     id: "playlist-1",
@@ -705,6 +726,92 @@ describe("DJ deck channel lifecycle", () => {
         }),
       })
     );
+    expect(dependencies.applyCrossfade).toHaveBeenCalledTimes(1);
+  });
+
+  test("applies stored device channel selection when loading a device input source", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertDjSession();
+
+    const manager = AudioManager.getInstance();
+    manager.createSound = mock(
+      (_radio, soundId?: string) => soundId ?? "sound"
+    );
+    manager.cleanupSound = mock((_soundId: string) => undefined);
+    manager.subscribe = mock((_soundId, _callback) => mock(() => undefined));
+    manager.subscribeMeter = mock((_soundId, _callback) =>
+      mock(() => undefined)
+    );
+    const dependencies = createDependencies();
+    const workflow = createDjDeckLoadWorkflow(dependencies);
+
+    await workflow.loadDeckRadio(
+      "deck-a",
+      createDeviceInputRadio({ left: 2, right: 3 })
+    );
+
+    expect(dependencies.setDeviceChannelSelection).toHaveBeenCalledWith(
+      "left_device-input-left",
+      { left: 2, right: 3 }
+    );
+  });
+
+  test("does not roll back a newer device input load when an older activation fails", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertDjSession();
+
+    const manager = AudioManager.getInstance();
+    manager.createSound = mock(
+      (_radio, soundId?: string) => soundId ?? "sound"
+    );
+    manager.cleanupSound = mock((_soundId: string) => undefined);
+    manager.subscribe = mock((_soundId, _callback) => mock(() => undefined));
+    manager.subscribeMeter = mock((_soundId, _callback) =>
+      mock(() => undefined)
+    );
+
+    const firstDeviceLoad = {
+      fail: null as ((error: Error) => void) | null,
+    };
+    const dependencies = {
+      ...createDependencies(),
+      playDeviceSound: mock((_soundId: string, deviceId: string) => {
+        if (deviceId === "device-1") {
+          return new Promise<void>((_resolve, reject) => {
+            firstDeviceLoad.fail = reject;
+          });
+        }
+        return Promise.resolve();
+      }),
+    };
+    const workflow = createDjDeckLoadWorkflow(dependencies);
+
+    const firstLoad = workflow.loadDeckDeviceInput(
+      "deck-a",
+      "device-1",
+      "Device 1"
+    );
+    await Promise.resolve();
+    await workflow.loadDeckDeviceInput("deck-a", "device-2", "Device 2");
+    if (!firstDeviceLoad.fail) {
+      throw new Error("First device load was not started");
+    }
+    firstDeviceLoad.fail(new Error("stale activation failed"));
+    await firstLoad;
+
+    expect(getPlaybackChannelRuntime("deck-a").soundId).toBe(
+      "left_device-input-left"
+    );
+    expect(getPlaybackChannel("dj", "deck-a")?.radio).toEqual(
+      expect.objectContaining({
+        name: "Device 2",
+        platformMetadata: expect.objectContaining({
+          platform: "device-input",
+          deviceId: "device-2",
+        }),
+      })
+    );
+    expect(dependencies.reportDjError).not.toHaveBeenCalled();
   });
 
   test("updates device channel selection against the active deck runtime source", async () => {
@@ -734,6 +841,38 @@ describe("DJ deck channel lifecycle", () => {
       expect.objectContaining({
         platform: "device-input",
         channelSelection: { left: 2, right: 3 },
+      })
+    );
+  });
+
+  test("ignores device channel selection when the active deck source is not a device input", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertDjSession();
+
+    const manager = AudioManager.getInstance();
+    manager.createSound = mock(
+      (_radio, soundId?: string) => soundId ?? "sound"
+    );
+    manager.cleanupSound = mock((_soundId: string) => undefined);
+    manager.subscribe = mock((_soundId, _callback) => mock(() => undefined));
+    manager.subscribeMeter = mock((_soundId, _callback) =>
+      mock(() => undefined)
+    );
+    const dependencies = createDependencies();
+    const workflow = createDjDeckLoadWorkflow(dependencies);
+
+    await workflow.loadDeckRadio("deck-a", {
+      id: "station-1",
+      name: "Station 1",
+      streamUrl: "https://radio.example/one.mp3",
+    });
+    workflow.setDeckDeviceChannelSelection("deck-a", { left: 2, right: 3 });
+
+    expect(dependencies.setDeviceChannelSelection).not.toHaveBeenCalled();
+    expect(getPlaybackChannel("dj", "deck-a")?.radio).toEqual(
+      expect.objectContaining({
+        id: "station-1",
+        streamUrl: "https://radio.example/one.mp3",
       })
     );
   });

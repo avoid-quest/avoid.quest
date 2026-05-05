@@ -1,4 +1,10 @@
-import type { AudioManager, Radio } from "@/lib/audio";
+import type {
+  AudioManager,
+  EffectConfig,
+  EffectType,
+  FilterConfig,
+  Radio,
+} from "@/lib/audio";
 import { revokeFileObjectUrl } from "@/lib/audio/file-metadata";
 import {
   type DeckId,
@@ -72,16 +78,45 @@ type DeckLoadDependencies = {
     input: PlatformStreamResolutionInput
   ) => Promise<string | null>;
   seekDeckSound: (soundId: string, position: number) => void;
+  addDeckEffect: (deckId: DeckId, type: EffectType, effectId: string) => void;
+  createEffectId: () => string;
+  removeDeckEffect: (deckId: DeckId, effectId: string) => void;
+  reorderDeckEffects: (deckId: DeckId, effectIds: string[]) => void;
+  setDeckChannelFilter: (deckId: DeckId, value: number) => void;
+  setDeckEffectsDryWet: (deckId: DeckId, value: number) => void;
+  setDeckMute: (deckId: DeckId, muted: boolean) => void;
+  setDeckPan: (deckId: DeckId, pan: number) => void;
+  setDeckSpeed: (deckId: DeckId, speed: number) => void;
   setDeckVolume: (deckId: DeckId, volume: number) => void;
+  updateDeckEffect: (
+    deckId: DeckId,
+    effectId: string,
+    effectConfig: Partial<EffectConfig>
+  ) => void;
+  updateDeckFilter: (deckId: DeckId, filter: FilterConfig) => void;
 };
 
 type DjDeckLoadWorkflow = {
+  addDeckEffect: (deckId: DeckId, type: EffectType) => void;
   loadDeckRadio: (deckId: DeckId, radio: Radio | null) => Promise<void>;
   pauseDeck: (deckId: DeckId) => void;
   playDeck: (deckId: DeckId) => Promise<void>;
+  removeDeckEffect: (deckId: DeckId, effectId: string) => void;
   resetDeck: (deckId: DeckId) => Promise<void>;
+  reorderDeckEffects: (deckId: DeckId, effectIds: string[]) => void;
   seekDeck: (deckId: DeckId, position: number) => void;
+  setDeckChannelFilter: (deckId: DeckId, value: number) => void;
+  setDeckEffectsDryWet: (deckId: DeckId, value: number) => void;
+  setDeckMute: (deckId: DeckId, muted: boolean) => void;
+  setDeckPan: (deckId: DeckId, pan: number) => void;
+  setDeckSpeed: (deckId: DeckId, speed: number) => void;
   setDeckVolume: (deckId: DeckId, volume: number) => void;
+  updateDeckEffect: (
+    deckId: DeckId,
+    effectId: string,
+    effectConfig: Partial<EffectConfig>
+  ) => void;
+  updateDeckFilter: (deckId: DeckId, filter: FilterConfig) => void;
 };
 
 function cleanupFailedDeckLoad(
@@ -398,18 +433,115 @@ function setDeckVolume(
   dependencies.applyCrossfade();
 }
 
+function setDeckMute(
+  deckId: DeckId,
+  muted: boolean,
+  dependencies: DeckLoadDependencies
+): void {
+  dependencies.setDeckMute(deckId, muted);
+}
+
+function setDeckPan(
+  deckId: DeckId,
+  pan: number,
+  dependencies: DeckLoadDependencies
+): void {
+  dependencies.setDeckPan(deckId, pan);
+}
+
+function setDeckSpeed(
+  deckId: DeckId,
+  speed: number,
+  dependencies: DeckLoadDependencies
+): void {
+  dependencies.setDeckSpeed(deckId, speed);
+}
+
+function setDeckChannelFilter(
+  deckId: DeckId,
+  value: number,
+  dependencies: DeckLoadDependencies
+): void {
+  dependencies.setDeckChannelFilter(deckId, value);
+}
+
+function setDeckEffectsDryWet(
+  deckId: DeckId,
+  value: number,
+  dependencies: DeckLoadDependencies
+): void {
+  dependencies.setDeckEffectsDryWet(deckId, value);
+}
+
+function updateDeckFilter(
+  deckId: DeckId,
+  filter: FilterConfig,
+  dependencies: DeckLoadDependencies
+): void {
+  dependencies.updateDeckFilter(deckId, filter);
+}
+
+function addDeckEffect(
+  deckId: DeckId,
+  type: EffectType,
+  dependencies: DeckLoadDependencies
+): void {
+  dependencies.addDeckEffect(deckId, type, dependencies.createEffectId());
+}
+
+function updateDeckEffect(
+  deckId: DeckId,
+  effectId: string,
+  effectConfig: Partial<EffectConfig>,
+  dependencies: DeckLoadDependencies
+): void {
+  dependencies.updateDeckEffect(deckId, effectId, effectConfig);
+}
+
+function removeDeckEffect(
+  deckId: DeckId,
+  effectId: string,
+  dependencies: DeckLoadDependencies
+): void {
+  dependencies.removeDeckEffect(deckId, effectId);
+}
+
+function reorderDeckEffects(
+  deckId: DeckId,
+  effectIds: string[],
+  dependencies: DeckLoadDependencies
+): void {
+  dependencies.reorderDeckEffects(deckId, effectIds);
+}
+
 export function createDjDeckLoadWorkflow(
   dependencies: DeckLoadDependencies
 ): DjDeckLoadWorkflow {
   return {
+    addDeckEffect: (deckId, type) => addDeckEffect(deckId, type, dependencies),
     loadDeckRadio: (deckId, radio) =>
       loadDeckRadio(deckId, radio, dependencies),
     pauseDeck: (deckId) => pauseDeck(deckId, dependencies),
     playDeck: (deckId) => playDeck(deckId, dependencies),
+    removeDeckEffect: (deckId, effectId) =>
+      removeDeckEffect(deckId, effectId, dependencies),
     resetDeck: (deckId) => resetDeck(deckId, dependencies),
+    reorderDeckEffects: (deckId, effectIds) =>
+      reorderDeckEffects(deckId, effectIds, dependencies),
     seekDeck: (deckId, position) => seekDeck(deckId, position, dependencies),
+    setDeckChannelFilter: (deckId, value) =>
+      setDeckChannelFilter(deckId, value, dependencies),
+    setDeckEffectsDryWet: (deckId, value) =>
+      setDeckEffectsDryWet(deckId, value, dependencies),
+    setDeckMute: (deckId, muted) => setDeckMute(deckId, muted, dependencies),
+    setDeckPan: (deckId, pan) => setDeckPan(deckId, pan, dependencies),
+    setDeckSpeed: (deckId, speed) => setDeckSpeed(deckId, speed, dependencies),
     setDeckVolume: (deckId, volume) =>
       setDeckVolume(deckId, volume, dependencies),
+    updateDeckEffect: (deckId, effectId, effectConfig) =>
+      updateDeckEffect(deckId, effectId, effectConfig, dependencies),
+    updateDeckFilter: (deckId, filter) =>
+      updateDeckFilter(deckId, filter, dependencies),
   };
 }
 

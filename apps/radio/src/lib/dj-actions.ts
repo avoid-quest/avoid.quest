@@ -222,8 +222,26 @@ function createDeckLoadDependencies(
     resolvePlatformStreamUrl: ({ videoId }) => resolveStreamUrl(videoId),
     seekDeckSound: (soundId, position) =>
       ctx.audioEngine.playback.seek(soundId, position),
+    addDeckEffect: (deckId, type, effectId) =>
+      createAndAddChannelEffect("dj", deckId, type, effectId),
+    createEffectId: generateId,
+    removeDeckEffect: (deckId, effectId) =>
+      removeChannelEffect("dj", deckId, effectId),
+    reorderDeckEffects: (deckId, effectIds) =>
+      reorderChannelEffects("dj", deckId, effectIds),
+    setDeckChannelFilter: (deckId, value) =>
+      setChannelFilterValue("dj", deckId, value),
+    setDeckEffectsDryWet: (deckId, value) =>
+      setChannelEffectsDryWet("dj", deckId, value),
+    setDeckMute: (deckId, muted) => setChannelMuted("dj", deckId, muted),
+    setDeckPan: (deckId, pan) => setChannelPan("dj", deckId, pan),
+    setDeckSpeed: (deckId, speed) => setChannelSpeed("dj", deckId, speed),
     setDeckVolume: (deckId, volume) =>
       ctx.channels.setVolume("dj", deckId, volume),
+    updateDeckEffect: (deckId, effectId, effectConfig) =>
+      updateChannelEffect("dj", deckId, effectId, effectConfig),
+    updateDeckFilter: (deckId, filter) =>
+      updateChannelFilter("dj", deckId, filter),
   };
 }
 
@@ -381,17 +399,29 @@ function setDeckVolume(
 }
 
 // Mute actions with audio manager sync
-function setDeckMute(deckId: DeckId, muted: boolean) {
-  setChannelMuted("dj", deckId, muted);
+function setDeckMute(
+  deckId: DeckId,
+  muted: boolean,
+  ctx = getDefaultPlaybackActionContext()
+) {
+  createDeckLoadWorkflow(ctx).setDeckMute(deckId, muted);
 }
 
 // Channel strip actions with audio manager sync
-function setDeckPan(deckId: DeckId, pan: number) {
-  setChannelPan("dj", deckId, pan);
+function setDeckPan(
+  deckId: DeckId,
+  pan: number,
+  ctx = getDefaultPlaybackActionContext()
+) {
+  createDeckLoadWorkflow(ctx).setDeckPan(deckId, pan);
 }
 
-function setDeckSpeed(deckId: DeckId, speed: number) {
-  setChannelSpeed("dj", deckId, speed);
+function setDeckSpeed(
+  deckId: DeckId,
+  speed: number,
+  ctx = getDefaultPlaybackActionContext()
+) {
+  createDeckLoadWorkflow(ctx).setDeckSpeed(deckId, speed);
 }
 
 function setDeckRepeat(deckId: DeckId, enabled: boolean) {
@@ -414,38 +444,63 @@ function seekDeck(
   createDeckLoadWorkflow(ctx).seekDeck(deckId, position);
 }
 
-function setDeckChannelFilter(deckId: DeckId, value: number) {
-  setChannelFilterValue("dj", deckId, value);
+function setDeckChannelFilter(
+  deckId: DeckId,
+  value: number,
+  ctx = getDefaultPlaybackActionContext()
+) {
+  createDeckLoadWorkflow(ctx).setDeckChannelFilter(deckId, value);
 }
 
-function setDeckEffectsDryWet(deckId: DeckId, value: number) {
-  setChannelEffectsDryWet("dj", deckId, value);
+function setDeckEffectsDryWet(
+  deckId: DeckId,
+  value: number,
+  ctx = getDefaultPlaybackActionContext()
+) {
+  createDeckLoadWorkflow(ctx).setDeckEffectsDryWet(deckId, value);
 }
 
 // Filter actions with audio manager sync
-function updateDeckFilter(deckId: DeckId, filter: FilterConfig) {
-  updateChannelFilter("dj", deckId, filter);
+function updateDeckFilter(
+  deckId: DeckId,
+  filter: FilterConfig,
+  ctx = getDefaultPlaybackActionContext()
+) {
+  createDeckLoadWorkflow(ctx).updateDeckFilter(deckId, filter);
 }
 
 // Effect actions with audio manager sync
-function addDeckEffect(deckId: DeckId, type: EffectType) {
-  createAndAddChannelEffect("dj", deckId, type, generateId());
+function addDeckEffect(
+  deckId: DeckId,
+  type: EffectType,
+  ctx = getDefaultPlaybackActionContext()
+) {
+  createDeckLoadWorkflow(ctx).addDeckEffect(deckId, type);
 }
 
 function updateDeckEffect(
   deckId: DeckId,
   effectId: string,
-  effectConfig: Partial<EffectConfig>
+  effectConfig: Partial<EffectConfig>,
+  ctx = getDefaultPlaybackActionContext()
 ) {
-  updateChannelEffect("dj", deckId, effectId, effectConfig);
+  createDeckLoadWorkflow(ctx).updateDeckEffect(deckId, effectId, effectConfig);
 }
 
-function removeDeckEffect(deckId: DeckId, effectId: string) {
-  removeChannelEffect("dj", deckId, effectId);
+function removeDeckEffect(
+  deckId: DeckId,
+  effectId: string,
+  ctx = getDefaultPlaybackActionContext()
+) {
+  createDeckLoadWorkflow(ctx).removeDeckEffect(deckId, effectId);
 }
 
-function reorderDeckEffects(deckId: DeckId, effectIds: string[]) {
-  reorderChannelEffects("dj", deckId, effectIds);
+function reorderDeckEffects(
+  deckId: DeckId,
+  effectIds: string[],
+  ctx = getDefaultPlaybackActionContext()
+) {
+  createDeckLoadWorkflow(ctx).reorderDeckEffects(deckId, effectIds);
 }
 
 async function setDeckDeviceSource(

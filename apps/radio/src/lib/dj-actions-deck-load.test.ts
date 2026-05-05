@@ -1,5 +1,12 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { AudioManager, type AudioState, type Radio } from "@/lib/audio";
+import {
+  AudioManager,
+  type AudioState,
+  createDefaultEffectConfig,
+  type EffectConfig,
+  type EffectType,
+  type Radio,
+} from "@/lib/audio";
 import {
   createDefaultChannel,
   DECK_A_CHANNEL_ID,
@@ -11,10 +18,25 @@ import {
 import { getPlaybackChannelRuntime } from "@/lib/stores/playback-runtime-store";
 import {
   activateChannel,
+  addChannelEffect,
+  createAndAddChannelEffect,
   deactivateAllChannels,
   deactivateChannel,
+  removeChannelEffect,
+  reorderChannelEffects,
+  setChannelEffectsDryWet,
+  setChannelFilterValue,
+  setChannelMuted,
+  setChannelPan,
+  setChannelSpeed,
+  updateChannelEffect,
+  updateChannelFilter,
 } from "./channel-state-manager";
-import { createDjDeckLoadWorkflow } from "./dj-actions-deck-load";
+import {
+  createDjDeckLoadWorkflow,
+  type DeckLoadDependencies,
+} from "./dj-actions-deck-load";
+import type { DeckId } from "./dj-actions-decks";
 import type { PlaybackActionError } from "./playback-action-errors";
 
 async function resetPlaybackSessions() {
@@ -39,7 +61,7 @@ function insertDjSession() {
   });
 }
 
-function createDependencies() {
+function createDependencies(): DeckLoadDependencies {
   return {
     activateChannel,
     applyCrossfade: mock(() => undefined),
@@ -58,7 +80,25 @@ function createDependencies() {
     reportDjError: mock(() => undefined),
     resolvePlatformStreamUrl: mock(async () => null),
     seekDeckSound: mock((_soundId: string, _position: number) => undefined),
-    setDeckVolume: mock((_deckId: string, _volume: number) => undefined),
+    addDeckEffect: (deckId, type, effectId) =>
+      createAndAddChannelEffect("dj", deckId, type, effectId),
+    createEffectId: mock(() => "effect-1"),
+    removeDeckEffect: (deckId, effectId) =>
+      removeChannelEffect("dj", deckId, effectId),
+    reorderDeckEffects: (deckId, effectIds) =>
+      reorderChannelEffects("dj", deckId, effectIds),
+    setDeckChannelFilter: (deckId, value) =>
+      setChannelFilterValue("dj", deckId, value),
+    setDeckEffectsDryWet: (deckId, value) =>
+      setChannelEffectsDryWet("dj", deckId, value),
+    setDeckMute: (deckId, muted) => setChannelMuted("dj", deckId, muted),
+    setDeckPan: (deckId, pan) => setChannelPan("dj", deckId, pan),
+    setDeckSpeed: (deckId, speed) => setChannelSpeed("dj", deckId, speed),
+    setDeckVolume: mock((_deckId: DeckId, _volume: number) => undefined),
+    updateDeckEffect: (deckId, effectId, effectConfig) =>
+      updateChannelEffect("dj", deckId, effectId, effectConfig),
+    updateDeckFilter: (deckId, filter) =>
+      updateChannelFilter("dj", deckId, filter),
   };
 }
 
@@ -646,5 +686,166 @@ describe("DJ deck channel lifecycle", () => {
 
     expect(dependencies.setDeckVolume).toHaveBeenCalledWith("deck-a", 0.33);
     expect(dependencies.applyCrossfade).toHaveBeenCalledTimes(1);
+  });
+
+  test("persists strip field changes and syncs active audio through the lifecycle boundary", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertDjSession();
+
+    const manager = AudioManager.getInstance();
+    const calls: string[] = [];
+    manager.muteSound = mock((_soundId: string) => {
+      calls.push("mute");
+    });
+    manager.setPan = mock((_soundId: string, _pan: number) => {
+      calls.push("pan");
+    });
+    manager.setPlaybackRate = mock((_soundId: string, _speed: number) => {
+      calls.push("speed");
+    });
+    manager.setChannelFilter = mock((_soundId: string, _value: number) => {
+      calls.push("channelFilter");
+    });
+    manager.setEffectsDryWet = mock((_soundId: string, _value: number) => {
+      calls.push("effectsDryWet");
+    });
+    manager.updateFilter = mock((_soundId, _filter) => {
+      calls.push("filter");
+    });
+    const dependencies = createDependencies();
+    const workflow = createDjDeckLoadWorkflow(dependencies);
+
+    workflow.setDeckMute("deck-a", true);
+    workflow.setDeckPan("deck-a", -0.2);
+    workflow.setDeckSpeed("deck-a", 1.15);
+    workflow.setDeckChannelFilter("deck-a", 0.35);
+    workflow.setDeckEffectsDryWet("deck-a", 0.7);
+    workflow.updateDeckFilter("deck-a", {
+      type: "highpass",
+      frequency: 300,
+      Q: 1.5,
+      gain: 2,
+      enabled: true,
+    });
+
+    expect(calls).toEqual([]);
+
+    await workflow.loadDeckRadio("deck-a", {
+      id: "station-1",
+      name: "Station 1",
+      streamUrl: "https://radio.example/one.mp3",
+    });
+    workflow.setDeckMute("deck-a", true);
+    workflow.setDeckPan("deck-a", -0.4);
+    workflow.setDeckSpeed("deck-a", 1.25);
+    workflow.setDeckChannelFilter("deck-a", 0.45);
+    workflow.setDeckEffectsDryWet("deck-a", 0.5);
+    workflow.updateDeckFilter("deck-a", {
+      type: "highpass",
+      frequency: 500,
+      Q: 2,
+      gain: 3,
+      enabled: true,
+    });
+
+    expect(getPlaybackChannel("dj", "deck-a")).toEqual(
+      expect.objectContaining({
+        muted: true,
+        pan: -0.4,
+        speed: 1.25,
+        channelFilter: 0.45,
+        effectsDryWet: 0.5,
+        filter: expect.objectContaining({
+          type: "highpass",
+          frequency: 500,
+          Q: 2,
+          gain: 3,
+          enabled: true,
+        }),
+      })
+    );
+    expect(manager.muteSound).toHaveBeenCalledWith("left_station-1");
+    expect(manager.setPan).toHaveBeenCalledWith("left_station-1", -0.4);
+    expect(manager.setPlaybackRate).toHaveBeenCalledWith(
+      "left_station-1",
+      1.25
+    );
+    expect(manager.setChannelFilter).toHaveBeenCalledWith(
+      "left_station-1",
+      0.45
+    );
+    expect(manager.setEffectsDryWet).toHaveBeenCalledWith(
+      "left_station-1",
+      0.5
+    );
+    expect(manager.updateFilter).toHaveBeenCalledWith(
+      "left_station-1",
+      expect.objectContaining({ type: "highpass", frequency: 500 })
+    );
+  });
+
+  test("persists effect lifecycle changes and syncs active audio through the lifecycle boundary", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertDjSession();
+
+    const manager = AudioManager.getInstance();
+    manager.addEffect = mock((_soundId: string, _effect: EffectConfig) => true);
+    manager.updateEffect = mock(
+      (_soundId: string, _effectId: string, _config: Partial<EffectConfig>) =>
+        true
+    );
+    manager.removeEffect = mock((_soundId, _effectId) => undefined);
+    manager.reorderEffects = mock((_soundId, _effectIds) => undefined);
+    let nextEffectId = "delay-1";
+    const dependencies = {
+      ...createDependencies(),
+      addDeckEffect: (deckId: DeckId, type: EffectType, effectId: string) =>
+        addChannelEffect(
+          "dj",
+          deckId,
+          createDefaultEffectConfig(type, effectId, 99)
+        ),
+      createEffectId: mock(() => nextEffectId),
+    };
+    const workflow = createDjDeckLoadWorkflow(dependencies);
+
+    workflow.addDeckEffect("deck-a", "delay");
+
+    expect(getPlaybackChannel("dj", "deck-a")?.effects).toEqual([
+      expect.objectContaining({ id: "delay-1", order: 0 }),
+    ]);
+    expect(manager.addEffect).not.toHaveBeenCalled();
+
+    await workflow.loadDeckRadio("deck-a", {
+      id: "station-1",
+      name: "Station 1",
+      streamUrl: "https://radio.example/one.mp3",
+    });
+    nextEffectId = "limiter-1";
+    workflow.addDeckEffect("deck-a", "limiter");
+    workflow.updateDeckEffect("deck-a", "delay-1", { dryWet: 0.4 });
+    workflow.reorderDeckEffects("deck-a", ["limiter-1", "delay-1"]);
+    workflow.removeDeckEffect("deck-a", "delay-1");
+
+    expect(manager.addEffect).toHaveBeenCalledWith(
+      "left_station-1",
+      expect.objectContaining({ id: "limiter-1", order: 1 })
+    );
+    expect(manager.updateEffect).toHaveBeenCalledWith(
+      "left_station-1",
+      "delay-1",
+      { dryWet: 0.4 }
+    );
+    expect(manager.reorderEffects).toHaveBeenCalledWith("left_station-1", [
+      "limiter-1",
+      "delay-1",
+    ]);
+    expect(manager.removeEffect).toHaveBeenCalledWith(
+      "left_station-1",
+      "delay-1"
+    );
+    expect(getPlaybackChannel("dj", "deck-a")?.effects).toEqual([
+      expect.objectContaining({ id: "limiter-1", order: 0 }),
+    ]);
   });
 });

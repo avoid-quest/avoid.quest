@@ -15,6 +15,7 @@ import {
   deactivateChannel,
 } from "./channel-state-manager";
 import { createDjDeckLoadWorkflow } from "./dj-actions-deck-load";
+import type { PlaybackActionError } from "./playback-action-errors";
 
 async function resetPlaybackSessions() {
   await playbackSessionsCollection.stateWhenReady();
@@ -52,8 +53,12 @@ function createDependencies() {
       `${side}_${radio.id}`,
     initializeAudioDevices: mock(async () => undefined),
     loadTrack: mock(async () => undefined),
+    pauseDeckSound: mock((_soundId: string) => undefined),
+    playDeckSound: mock(async (_soundId: string, _volume: number) => undefined),
     reportDjError: mock(() => undefined),
     resolvePlatformStreamUrl: mock(async () => null),
+    seekDeckSound: mock((_soundId: string, _position: number) => undefined),
+    setDeckVolume: mock((_deckId: string, _volume: number) => undefined),
   };
 }
 
@@ -515,5 +520,131 @@ describe("DJ deck channel lifecycle", () => {
       "left_station-1",
       dependencies.getAudioManager
     );
+  });
+
+  test("plays a loaded deck through the lifecycle boundary with persisted volume", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertDjSession();
+    updatePlaybackChannel("dj", "deck-a", (draft) => {
+      draft.radio = {
+        id: "station-1",
+        name: "Station 1",
+        streamUrl: "https://radio.example/one.mp3",
+      };
+      draft.volume = 0.42;
+    });
+
+    const manager = AudioManager.getInstance();
+    manager.createSound = mock(
+      (_radio, soundId?: string) => soundId ?? "sound"
+    );
+    manager.cleanupSound = mock((_soundId: string) => undefined);
+    manager.subscribe = mock((_soundId, _callback) => mock(() => undefined));
+    manager.subscribeMeter = mock((_soundId, _callback) =>
+      mock(() => undefined)
+    );
+    const dependencies = createDependencies();
+    const workflow = createDjDeckLoadWorkflow(dependencies);
+
+    await workflow.loadDeckRadio("deck-a", {
+      id: "station-1",
+      name: "Station 1",
+      streamUrl: "https://radio.example/one.mp3",
+    });
+    await workflow.playDeck("deck-a");
+
+    expect(dependencies.playDeckSound).toHaveBeenCalledWith(
+      "left_station-1",
+      0.42
+    );
+    expect(dependencies.applyCrossfade).toHaveBeenCalledTimes(1);
+  });
+
+  test("pauses and seeks a loaded deck through the lifecycle boundary", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertDjSession();
+
+    const manager = AudioManager.getInstance();
+    manager.createSound = mock(
+      (_radio, soundId?: string) => soundId ?? "sound"
+    );
+    manager.cleanupSound = mock((_soundId: string) => undefined);
+    manager.subscribe = mock((_soundId, _callback) => mock(() => undefined));
+    manager.subscribeMeter = mock((_soundId, _callback) =>
+      mock(() => undefined)
+    );
+    const dependencies = createDependencies();
+    const workflow = createDjDeckLoadWorkflow(dependencies);
+
+    workflow.pauseDeck("deck-a");
+    workflow.seekDeck("deck-a", 12);
+
+    await workflow.loadDeckRadio("deck-a", {
+      id: "station-1",
+      name: "Station 1",
+      streamUrl: "https://radio.example/one.mp3",
+    });
+    workflow.pauseDeck("deck-a");
+    workflow.seekDeck("deck-a", 42);
+
+    expect(dependencies.pauseDeckSound).toHaveBeenCalledTimes(1);
+    expect(dependencies.pauseDeckSound).toHaveBeenCalledWith("left_station-1");
+    expect(dependencies.seekDeckSound).toHaveBeenCalledTimes(1);
+    expect(dependencies.seekDeckSound).toHaveBeenCalledWith(
+      "left_station-1",
+      42
+    );
+  });
+
+  test("reports deck play failures through the user-safe DJ error path", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertDjSession();
+    const reportedErrors: PlaybackActionError[] = [];
+    const rawError = new Error("decoder vendor stack details");
+
+    const manager = AudioManager.getInstance();
+    manager.createSound = mock(
+      (_radio, soundId?: string) => soundId ?? "sound"
+    );
+    manager.cleanupSound = mock((_soundId: string) => undefined);
+    manager.subscribe = mock((_soundId, _callback) => mock(() => undefined));
+    manager.subscribeMeter = mock((_soundId, _callback) =>
+      mock(() => undefined)
+    );
+    const dependencies = {
+      ...createDependencies(),
+      playDeckSound: mock(() => Promise.reject(rawError)),
+      reportPlaybackError: mock((error: PlaybackActionError) => {
+        reportedErrors.push(error);
+      }),
+    };
+    const workflow = createDjDeckLoadWorkflow(dependencies);
+
+    await workflow.loadDeckRadio("deck-a", {
+      id: "station-1",
+      name: "Station 1",
+      streamUrl: "https://radio.example/one.mp3",
+    });
+    await workflow.playDeck("deck-a");
+
+    expect(reportedErrors).toHaveLength(1);
+    expect(reportedErrors[0]?.userMessage).toBe("Failed to play deck-a");
+    expect(reportedErrors[0]?.rawMessage).toBe(rawError.message);
+    expect(dependencies.reportDjError).toHaveBeenCalledWith(
+      "Failed to play deck-a",
+      "DJ_PLAY_DECK_FAILED",
+      rawError,
+      expect.objectContaining({ id: "station-1" })
+    );
+  });
+
+  test("applies crossfade after deck volume changes through the lifecycle boundary", () => {
+    const dependencies = createDependencies();
+    const workflow = createDjDeckLoadWorkflow(dependencies);
+
+    workflow.setDeckVolume("deck-a", 0.33);
+
+    expect(dependencies.setDeckVolume).toHaveBeenCalledWith("deck-a", 0.33);
+    expect(dependencies.applyCrossfade).toHaveBeenCalledTimes(1);
   });
 });

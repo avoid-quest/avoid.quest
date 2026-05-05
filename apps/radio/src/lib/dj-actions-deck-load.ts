@@ -64,16 +64,24 @@ type DeckLoadDependencies = {
     radio: Radio | null,
     autoPlay?: boolean
   ) => Promise<void>;
+  pauseDeckSound: (soundId: string) => void;
+  playDeckSound: (soundId: string, volume: number) => Promise<void>;
   reportDjError: ReportDjError;
   reportPlaybackError?: (error: PlaybackActionError) => void;
   resolvePlatformStreamUrl: (
     input: PlatformStreamResolutionInput
   ) => Promise<string | null>;
+  seekDeckSound: (soundId: string, position: number) => void;
+  setDeckVolume: (deckId: DeckId, volume: number) => void;
 };
 
 type DjDeckLoadWorkflow = {
   loadDeckRadio: (deckId: DeckId, radio: Radio | null) => Promise<void>;
+  pauseDeck: (deckId: DeckId) => void;
+  playDeck: (deckId: DeckId) => Promise<void>;
   resetDeck: (deckId: DeckId) => Promise<void>;
+  seekDeck: (deckId: DeckId, position: number) => void;
+  setDeckVolume: (deckId: DeckId, volume: number) => void;
 };
 
 function cleanupFailedDeckLoad(
@@ -266,7 +274,7 @@ async function loadDeckRadio(
     releaseReplacedLocalFileUrl(previousRadio, radio);
 
     if (wasPlaying) {
-      await dependencies.getAudioManager().playSound(soundId, deck.volume);
+      await dependencies.playDeckSound(soundId, deck.volume);
       dependencies.applyCrossfade();
     }
   } catch (error) {
@@ -296,6 +304,47 @@ async function loadDeckRadio(
       error,
       radio
     );
+  }
+}
+
+async function playDeck(
+  deckId: DeckId,
+  dependencies: DeckLoadDependencies
+): Promise<void> {
+  const config = deckConfig[deckId];
+  const deck = config.getDeck();
+  const runtime = config.getRuntime();
+
+  if (!(runtime.soundId && deck?.radio) || runtime.isPlaying) {
+    return;
+  }
+
+  try {
+    await dependencies.playDeckSound(runtime.soundId, deck.volume);
+    dependencies.applyCrossfade();
+  } catch (error) {
+    const playbackError = createPlaybackActionError({
+      mode: "dj",
+      code: "PLAY_ERROR",
+      cause: error,
+      channelId: deckId,
+      radio: deck.radio,
+      fallbackMessage: `Failed to play ${deckId}`,
+    });
+    dependencies.reportPlaybackError?.(playbackError);
+    dependencies.reportDjError(
+      playbackError.userMessage,
+      "DJ_PLAY_DECK_FAILED",
+      error,
+      deck.radio
+    );
+  }
+}
+
+function pauseDeck(deckId: DeckId, dependencies: DeckLoadDependencies): void {
+  const runtime = deckConfig[deckId].getRuntime();
+  if (runtime.soundId) {
+    dependencies.pauseDeckSound(runtime.soundId);
   }
 }
 
@@ -329,13 +378,38 @@ async function resetDeck(
   await loadDeckRadio(deckId, getDeckRadio(deck), dependencies);
 }
 
+function seekDeck(
+  deckId: DeckId,
+  position: number,
+  dependencies: DeckLoadDependencies
+): void {
+  const runtime = deckConfig[deckId].getRuntime();
+  if (runtime.soundId) {
+    dependencies.seekDeckSound(runtime.soundId, position);
+  }
+}
+
+function setDeckVolume(
+  deckId: DeckId,
+  volume: number,
+  dependencies: DeckLoadDependencies
+): void {
+  dependencies.setDeckVolume(deckId, volume);
+  dependencies.applyCrossfade();
+}
+
 export function createDjDeckLoadWorkflow(
   dependencies: DeckLoadDependencies
 ): DjDeckLoadWorkflow {
   return {
     loadDeckRadio: (deckId, radio) =>
       loadDeckRadio(deckId, radio, dependencies),
+    pauseDeck: (deckId) => pauseDeck(deckId, dependencies),
+    playDeck: (deckId) => playDeck(deckId, dependencies),
     resetDeck: (deckId) => resetDeck(deckId, dependencies),
+    seekDeck: (deckId, position) => seekDeck(deckId, position, dependencies),
+    setDeckVolume: (deckId, volume) =>
+      setDeckVolume(deckId, volume, dependencies),
   };
 }
 

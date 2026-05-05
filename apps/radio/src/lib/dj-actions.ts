@@ -85,7 +85,6 @@ import {
   getDefaultPlaybackActionContext,
   type PlaybackActionContext,
 } from "@/lib/playback-action-context";
-import { createPlaybackActionError } from "@/lib/playback-action-errors";
 import {
   getDeckARuntime,
   getDeckBRuntime,
@@ -216,9 +215,15 @@ function createDeckLoadDependencies(
     initializeAudioDevices: initializeSavedAudioDevices,
     loadTrack: (deckSide, nextRadio, autoPlay) =>
       loadTrack(deckSide, nextRadio, autoPlay, ctx),
+    pauseDeckSound: (soundId) => ctx.audioEngine.playback.pause(soundId),
+    playDeckSound: (soundId, volume) =>
+      ctx.audioEngine.playback.play(soundId, volume),
     reportDjError: reportDjErrorSurface,
     reportPlaybackError: ctx.reportError,
     resolvePlatformStreamUrl: ({ videoId }) => resolveStreamUrl(videoId),
+    seekDeckSound: (soundId, position) =>
+      ctx.audioEngine.playback.seek(soundId, position),
+    setDeckVolume: (deckId, volume) => setChannelVolume("dj", deckId, volume),
   };
 }
 
@@ -248,39 +253,11 @@ async function playDeck(
   deckId: DeckId,
   ctx = getDefaultPlaybackActionContext()
 ) {
-  const config = deckConfig[deckId];
-  const deck = config.getDeck();
-  const runtime = config.getRuntime();
-
-  if (runtime.soundId && deck?.radio && !runtime.isPlaying) {
-    try {
-      await ctx.audioEngine.playback.play(runtime.soundId, deck.volume);
-      applyCrossfade(ctx);
-    } catch (err) {
-      const playbackError = createPlaybackActionError({
-        mode: "dj",
-        code: "PLAY_ERROR",
-        cause: err,
-        channelId: deckId,
-        radio: deck.radio,
-        fallbackMessage: `Failed to play ${deckId}`,
-      });
-      ctx.reportError(playbackError);
-      reportDjErrorSurface(
-        playbackError.userMessage,
-        "DJ_PLAY_DECK_FAILED",
-        err,
-        deck.radio
-      );
-    }
-  }
+  await createDeckLoadWorkflow(ctx).playDeck(deckId);
 }
 
 function pauseDeck(deckId: DeckId, ctx = getDefaultPlaybackActionContext()) {
-  const runtime = deckConfig[deckId].getRuntime();
-  if (runtime.soundId) {
-    ctx.audioEngine.playback.pause(runtime.soundId);
-  }
+  createDeckLoadWorkflow(ctx).pauseDeck(deckId);
 }
 
 // Generic reset deck function
@@ -395,9 +372,12 @@ export function setMasterVolume(volume: number, ctx?: PlaybackActionContext) {
 }
 
 // Volume actions with audio manager sync
-function setDeckVolume(deckId: DeckId, volume: number) {
-  setChannelVolume("dj", deckId, volume);
-  applyCrossfade();
+function setDeckVolume(
+  deckId: DeckId,
+  volume: number,
+  ctx = getDefaultPlaybackActionContext()
+) {
+  createDeckLoadWorkflow(ctx).setDeckVolume(deckId, volume);
 }
 
 // Mute actions with audio manager sync
@@ -427,10 +407,10 @@ function setDeckAutoplay(deckId: DeckId, enabled: boolean) {
 }
 
 function seekDeck(deckId: DeckId, position: number) {
-  const runtime = deckConfig[deckId].getRuntime();
-  if (runtime.soundId) {
-    getAudioEngine().playback.seek(runtime.soundId, position);
-  }
+  createDeckLoadWorkflow(getDefaultPlaybackActionContext()).seekDeck(
+    deckId,
+    position
+  );
 }
 
 function setDeckChannelFilter(deckId: DeckId, value: number) {

@@ -5,7 +5,10 @@ import {
   getPlaybackChannel,
   playbackSessionsCollection,
 } from "@/lib/collections/playback-sessions";
-import { setPlaybackChannelSoundId } from "@/lib/stores/playback-runtime-store";
+import {
+  getPlaybackChannelRuntime,
+  setPlaybackChannelSoundId,
+} from "@/lib/stores/playback-runtime-store";
 import {
   activateChannel,
   addChannelEffect,
@@ -131,6 +134,50 @@ describe("channel state manager", () => {
     expect(onAudioState).toHaveBeenCalledWith(
       expect.objectContaining({ isPlaying: true })
     );
+  });
+
+  test("cleans up partial activation when DJ meter subscription fails", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    playbackSessionsCollection.insert({
+      id: "dj",
+      channels: [createDefaultChannel("deck-a", "deck-a", 0)],
+      masterVolume: 1,
+      crossfadePosition: 0.5,
+      headphoneVolume: 1,
+      activeChannelId: null,
+    });
+
+    const manager = AudioManager.getInstance();
+    const cleanup = mock(() => undefined);
+    manager.createSound = mock(
+      (_radio, soundId?: string) => soundId ?? "sound"
+    );
+    manager.cleanupSound = mock((_soundId: string) => undefined);
+    manager.subscribe = mock((_soundId, _callback) => cleanup);
+    manager.subscribeMeter = mock(() => {
+      throw new Error("meter subscription failed");
+    });
+
+    expect(() =>
+      activateChannel(
+        "dj",
+        "deck-a",
+        {
+          id: "station-1",
+          name: "Station 1",
+          streamUrl: "https://radio.example/station.mp3",
+        },
+        {
+          persistRadio: true,
+          soundId: "sound-1",
+        }
+      )
+    ).toThrow("meter subscription failed");
+
+    expect(cleanup).toHaveBeenCalledTimes(1);
+    expect(manager.cleanupSound).toHaveBeenCalledWith("sound-1");
+    expect(getPlaybackChannelRuntime("deck-a").soundId).toBeNull();
+    expect(getPlaybackChannel("dj", "deck-a")?.radio).toBeNull();
   });
 
   test("owns effect order assignment when effects are added", async () => {

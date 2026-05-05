@@ -373,17 +373,24 @@ export function subscribeChannelRuntime(
     options.onAudioState?.(audioState);
   });
 
-  const meterCleanup =
-    sessionId === "dj"
-      ? manager.subscribeMeter(soundId, (level) => {
-          setPlaybackChannelPeakLevel(channelId, level);
-        })
-      : null;
+  let meterCleanup: (() => void) | null = null;
+  try {
+    meterCleanup =
+      sessionId === "dj"
+        ? manager.subscribeMeter(soundId, (level) => {
+            setPlaybackChannelPeakLevel(channelId, level);
+          })
+        : null;
 
-  setChannelSubscriptionCleanup(channelId, () => {
+    setChannelSubscriptionCleanup(channelId, () => {
+      cleanup();
+      meterCleanup?.();
+    });
+  } catch (error) {
     cleanup();
     meterCleanup?.();
-  });
+    throw error;
+  }
 }
 
 export function activateChannel(

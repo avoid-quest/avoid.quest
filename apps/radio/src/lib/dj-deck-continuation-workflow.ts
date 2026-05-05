@@ -31,11 +31,13 @@ type DjDeckContinuationDependencies = {
     radio: Radio | null,
     autoPlay?: boolean
   ) => Promise<void>;
+  playDeckSound: (soundId: string, volume: number) => Promise<void>;
   reportDjError: ReportDjError;
   reportPlaybackError?: (error: PlaybackActionError) => void;
   resolvePlatformStreamUrl: (
     input: PlatformStreamResolutionInput
   ) => Promise<string | null>;
+  seekDeckSound: (soundId: string, position: number) => void;
 };
 
 type TrackEndedInput = {
@@ -134,11 +136,9 @@ async function handleTrackEnded(
 
   if (currentDeck.repeat) {
     resetChannelStripFlag();
-    dependencies.getAudioManager().seekSound(soundId, 0);
+    dependencies.seekDeckSound(soundId, 0);
     try {
-      await dependencies
-        .getAudioManager()
-        .playSound(soundId, currentDeck.volume);
+      await dependencies.playDeckSound(soundId, currentDeck.volume);
       dependencies.applyCrossfade();
     } catch (error) {
       reportContinuationFailure(dependencies, {

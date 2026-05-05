@@ -101,12 +101,17 @@ function createDependencies(
             _autoPlay?: boolean
           ) => undefined)
       ),
+      playDeckSound: mock(
+        overrides.playSound ??
+          (async (_soundId: string, _volume: number) => undefined)
+      ),
       reportDjError: mock(() => undefined),
       reportPlaybackError: mock(() => undefined),
       resolvePlatformStreamUrl: mock(
         overrides.resolvePlatformStreamUrl ??
           (async () => "https://radio.example/resolved.mp3")
       ),
+      seekDeckSound: mock((_soundId: string, _position: number) => undefined),
     },
     audioManager,
   };
@@ -114,7 +119,7 @@ function createDependencies(
 
 describe("DJ deck continuation workflow", () => {
   test("repeat seeks and restarts the current deck sound with crossfade reapplied", async () => {
-    const { audioManager, dependencies } = createDependencies();
+    const { dependencies } = createDependencies();
     const workflow = createDjDeckContinuationWorkflow(dependencies);
     const resetChannelStripFlag = mock(() => undefined);
 
@@ -126,8 +131,14 @@ describe("DJ deck continuation workflow", () => {
       soundId: "left_playlist-1",
     });
 
-    expect(audioManager.seekSound).toHaveBeenCalledWith("left_playlist-1", 0);
-    expect(audioManager.playSound).toHaveBeenCalledWith("left_playlist-1", 0.8);
+    expect(dependencies.seekDeckSound).toHaveBeenCalledWith(
+      "left_playlist-1",
+      0
+    );
+    expect(dependencies.playDeckSound).toHaveBeenCalledWith(
+      "left_playlist-1",
+      0.8
+    );
     expect(resetChannelStripFlag).toHaveBeenCalledTimes(1);
     expect(dependencies.applyCrossfade).toHaveBeenCalledTimes(1);
   });

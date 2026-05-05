@@ -123,6 +123,41 @@ function createLocalFileRadio(
   };
 }
 
+function createPlaylistRadio(overrides: Partial<Radio> = {}): Radio {
+  return {
+    id: "playlist-1",
+    name: "Playlist 1",
+    streamUrl: "https://radio.example/current.mp3",
+    platformMetadata: {
+      platform: "soundcloud",
+      itemType: "playlist",
+      url: "https://soundcloud.example/playlist",
+      name: "Playlist 1",
+      artist: "Artist",
+      artwork: "",
+      trackCount: 2,
+      tracks: [
+        {
+          name: "Current",
+          streamUrl: "https://radio.example/current.mp3",
+          duration: 120,
+        },
+        {
+          name: "Next",
+          streamUrl: "https://radio.example/next.mp3",
+          duration: 180,
+        },
+      ],
+    },
+    ...overrides,
+  };
+}
+
+async function flushContinuation() {
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
 beforeEach(async () => {
   await resetPlaybackSessions();
   deactivateAllChannels();
@@ -829,6 +864,336 @@ describe("DJ deck channel lifecycle", () => {
       "DJ_PLAY_DECK_FAILED",
       rawError,
       expect.objectContaining({ id: "station-1" })
+    );
+  });
+
+  test("repeats an ended deck through the lifecycle transport boundary", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertDjSession();
+    updatePlaybackChannel("dj", "deck-a", (draft) => {
+      draft.volume = 0.64;
+      draft.repeat = true;
+    });
+
+    const manager = AudioManager.getInstance();
+    let onAudioState: (audioState: AudioState) => void = () => {
+      throw new Error("Audio state subscriber was not registered");
+    };
+    manager.createSound = mock(
+      (_radio, soundId?: string) => soundId ?? "sound"
+    );
+    manager.cleanupSound = mock((_soundId: string) => undefined);
+    manager.playSound = mock(async () => undefined);
+    manager.seekSound = mock(() => undefined);
+    manager.subscribe = mock((_soundId, callback) => {
+      onAudioState = callback;
+      return mock(() => undefined);
+    });
+    manager.subscribeMeter = mock((_soundId, _callback) =>
+      mock(() => undefined)
+    );
+    const dependencies = createDependencies();
+    const workflow = createDjDeckLoadWorkflow(dependencies);
+
+    await workflow.loadDeckRadio("deck-a", {
+      id: "station-1",
+      name: "Station 1",
+      streamUrl: "https://radio.example/one.mp3",
+    });
+    onAudioState({
+      isPlaying: true,
+      isLoading: false,
+      isBuffering: false,
+      hasEnded: false,
+      volume: 1,
+      error: null,
+    });
+    onAudioState({
+      isPlaying: false,
+      isLoading: false,
+      isBuffering: false,
+      hasEnded: true,
+      volume: 1,
+      error: null,
+    });
+    await flushContinuation();
+    onAudioState({
+      isPlaying: true,
+      isLoading: false,
+      isBuffering: false,
+      hasEnded: false,
+      volume: 1,
+      error: null,
+    });
+
+    expect(dependencies.seekDeckSound).toHaveBeenCalledWith(
+      "left_station-1",
+      0
+    );
+    expect(dependencies.playDeckSound).toHaveBeenCalledWith(
+      "left_station-1",
+      0.64
+    );
+    expect(manager.seekSound).not.toHaveBeenCalled();
+    expect(manager.playSound).not.toHaveBeenCalled();
+    expect(dependencies.applyCrossfade).toHaveBeenCalledTimes(1);
+    expect(dependencies.applyStoredChannelStrip).toHaveBeenCalledTimes(2);
+    expect(dependencies.applyStoredEffectsAndFilters).toHaveBeenCalledTimes(2);
+  });
+
+  test("autoplays the next playable collection item through the lifecycle boundary", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertDjSession();
+
+    const manager = AudioManager.getInstance();
+    let onAudioState: (audioState: AudioState) => void = () => {
+      throw new Error("Audio state subscriber was not registered");
+    };
+    manager.createSound = mock(
+      (_radio, soundId?: string) => soundId ?? "sound"
+    );
+    manager.cleanupSound = mock((_soundId: string) => undefined);
+    manager.subscribe = mock((_soundId, callback) => {
+      onAudioState = callback;
+      return mock(() => undefined);
+    });
+    manager.subscribeMeter = mock((_soundId, _callback) =>
+      mock(() => undefined)
+    );
+    const dependencies = createDependencies();
+    const workflow = createDjDeckLoadWorkflow(dependencies);
+
+    await workflow.loadDeckRadio("deck-a", createPlaylistRadio());
+    onAudioState({
+      isPlaying: false,
+      isLoading: false,
+      isBuffering: false,
+      hasEnded: true,
+      volume: 1,
+      error: null,
+    });
+    await flushContinuation();
+
+    expect(dependencies.loadTrack).toHaveBeenCalledWith(
+      "left",
+      expect.objectContaining({
+        id: "playlist-1",
+        streamUrl: "https://radio.example/next.mp3",
+      }),
+      true
+    );
+  });
+
+  test("resolves lazy YouTube autoplay URLs through the lifecycle platform port", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertDjSession();
+
+    const youtubePlaylist: Radio = {
+      id: "youtube-playlist-1",
+      name: "YouTube Playlist",
+      streamUrl: "https://youtube.example/current.mp3",
+      platformMetadata: {
+        platform: "youtube",
+        itemType: "playlist",
+        url: "https://youtube.example/playlist?list=abc123",
+        playlistId: "abc123",
+        tracks: [
+          {
+            name: "Current",
+            streamUrl: "https://youtube.example/current.mp3",
+            videoId: "current-video",
+          },
+          {
+            name: "Next",
+            streamUrl: "",
+            videoId: "next-video",
+          },
+        ],
+      },
+    };
+    const manager = AudioManager.getInstance();
+    let onAudioState: (audioState: AudioState) => void = () => {
+      throw new Error("Audio state subscriber was not registered");
+    };
+    manager.createSound = mock(
+      (_radio, soundId?: string) => soundId ?? "sound"
+    );
+    manager.cleanupSound = mock((_soundId: string) => undefined);
+    manager.subscribe = mock((_soundId, callback) => {
+      onAudioState = callback;
+      return mock(() => undefined);
+    });
+    manager.subscribeMeter = mock((_soundId, _callback) =>
+      mock(() => undefined)
+    );
+    const dependencies = {
+      ...createDependencies(),
+      resolvePlatformStreamUrl: mock(() =>
+        Promise.resolve("https://youtube.example/resolved-next.mp3")
+      ),
+    };
+    const workflow = createDjDeckLoadWorkflow(dependencies);
+
+    await workflow.loadDeckRadio("deck-a", youtubePlaylist);
+    onAudioState({
+      isPlaying: false,
+      isLoading: false,
+      isBuffering: false,
+      hasEnded: true,
+      volume: 1,
+      error: null,
+    });
+    await flushContinuation();
+
+    expect(dependencies.resolvePlatformStreamUrl).toHaveBeenCalledWith({
+      platform: "youtube",
+      reason: "playlist-next",
+      videoId: "next-video",
+      radio: youtubePlaylist,
+    });
+    expect(dependencies.loadTrack).toHaveBeenCalledWith(
+      "left",
+      expect.objectContaining({
+        streamUrl: "https://youtube.example/resolved-next.mp3",
+      }),
+      true
+    );
+  });
+
+  test("does not continue when autoplay is disabled or no next track exists", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertDjSession();
+    updatePlaybackChannel("dj", "deck-a", (draft) => {
+      draft.autoplay = false;
+    });
+
+    const manager = AudioManager.getInstance();
+    let onAudioState: (audioState: AudioState) => void = () => {
+      throw new Error("Audio state subscriber was not registered");
+    };
+    manager.createSound = mock(
+      (_radio, soundId?: string) => soundId ?? "sound"
+    );
+    manager.cleanupSound = mock((_soundId: string) => undefined);
+    manager.subscribe = mock((_soundId, callback) => {
+      onAudioState = callback;
+      return mock(() => undefined);
+    });
+    manager.subscribeMeter = mock((_soundId, _callback) =>
+      mock(() => undefined)
+    );
+    const dependencies = createDependencies();
+    const workflow = createDjDeckLoadWorkflow(dependencies);
+
+    await workflow.loadDeckRadio("deck-a", createPlaylistRadio());
+    onAudioState({
+      isPlaying: false,
+      isLoading: false,
+      isBuffering: false,
+      hasEnded: true,
+      volume: 1,
+      error: null,
+    });
+    await flushContinuation();
+
+    expect(dependencies.loadTrack).not.toHaveBeenCalled();
+    expect(dependencies.resolvePlatformStreamUrl).not.toHaveBeenCalled();
+    expect(dependencies.reportDjError).not.toHaveBeenCalled();
+
+    updatePlaybackChannel("dj", "deck-a", (draft) => {
+      draft.autoplay = true;
+      draft.radio = createPlaylistRadio({
+        streamUrl: "https://radio.example/only.mp3",
+        platformMetadata: {
+          platform: "soundcloud",
+          itemType: "playlist",
+          url: "https://soundcloud.example/playlist",
+          name: "Playlist 1",
+          artist: "Artist",
+          artwork: "",
+          trackCount: 1,
+          tracks: [
+            {
+              name: "Only",
+              streamUrl: "https://radio.example/only.mp3",
+              duration: 120,
+            },
+          ],
+        },
+      });
+    });
+    onAudioState({
+      isPlaying: false,
+      isLoading: false,
+      isBuffering: false,
+      hasEnded: true,
+      volume: 1,
+      error: null,
+    });
+    await flushContinuation();
+
+    expect(dependencies.loadTrack).not.toHaveBeenCalled();
+    expect(dependencies.resolvePlatformStreamUrl).not.toHaveBeenCalled();
+    expect(dependencies.reportDjError).not.toHaveBeenCalled();
+  });
+
+  test("reports continuation failures without corrupting loaded deck state", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertDjSession();
+
+    const rawError = new Error("vendor stream token details");
+    const manager = AudioManager.getInstance();
+    let onAudioState: (audioState: AudioState) => void = () => {
+      throw new Error("Audio state subscriber was not registered");
+    };
+    manager.createSound = mock(
+      (_radio, soundId?: string) => soundId ?? "sound"
+    );
+    manager.cleanupSound = mock((_soundId: string) => undefined);
+    manager.subscribe = mock((_soundId, callback) => {
+      onAudioState = callback;
+      return mock(() => undefined);
+    });
+    manager.subscribeMeter = mock((_soundId, _callback) =>
+      mock(() => undefined)
+    );
+    const dependencies = {
+      ...createDependencies(),
+      loadTrack: mock(() => Promise.reject(rawError)),
+      reportPlaybackError: mock((_error: PlaybackActionError) => undefined),
+    };
+    const workflow = createDjDeckLoadWorkflow(dependencies);
+
+    await workflow.loadDeckRadio("deck-a", createPlaylistRadio());
+    onAudioState({
+      isPlaying: false,
+      isLoading: false,
+      isBuffering: false,
+      hasEnded: true,
+      volume: 1,
+      error: null,
+    });
+    await flushContinuation();
+
+    expect(getPlaybackChannel("dj", "deck-a")?.radio).toEqual(
+      expect.objectContaining({
+        id: "playlist-1",
+        streamUrl: "https://radio.example/current.mp3",
+      })
+    );
+    expect(getPlaybackChannelRuntime("deck-a").soundId).toBe("left_playlist-1");
+    expect(dependencies.reportPlaybackError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        rawMessage: rawError.message,
+        userMessage:
+          "The stream could not be reached. Check the station URL and try again.",
+      })
+    );
+    expect(dependencies.reportDjError).toHaveBeenCalledWith(
+      "The stream could not be reached. Check the station URL and try again.",
+      "DJ_LOAD_NEXT_TRACK_FAILED",
+      rawError,
+      expect.objectContaining({ id: "playlist-1" })
     );
   });
 

@@ -33,7 +33,7 @@ import { docker } from "@ai-hero/sandcastle/sandboxes/docker";
 
 // Maximum number of plan→execute→merge cycles before stopping.
 // Raise this if your backlog is large; lower it for a quick smoke-test run.
-const MAX_ITERATIONS = 10;
+const MAX_ITERATIONS = 25;
 const MAX_ACTIVE_ISSUE_PIPELINES = 1;
 
 type IssuePlan = { id: string; title: string; branch: string };

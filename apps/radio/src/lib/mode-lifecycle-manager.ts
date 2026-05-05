@@ -15,12 +15,15 @@ import {
   type PlaybackActionContext,
 } from "@/lib/playback-action-context";
 import {
-  getPlaybackChannelRuntime,
   getPlaybackRuntimeChannelIds,
   resetPlaybackChannelRuntime,
 } from "@/lib/stores/playback-runtime-store";
 import { createDjModeLifecycleWorkflow } from "./dj-mode-lifecycle-workflow.js";
 import { createManagedPlaybackSessionWorkflow } from "./managed-playback-session-workflow.js";
+import {
+  cleanupOrphanedSounds,
+  getRuntimeSoundIds,
+} from "./mode-lifecycle-cleanup.js";
 
 export type ModePhase = "inactive" | "activating" | "active" | "deactivating";
 
@@ -137,13 +140,6 @@ function createLifecycle(
   };
 }
 
-function getSessionSoundIds(sessionId: PlaybackSessionId): string[] {
-  return getModeRuntimeCleanupChannelIds(sessionId).flatMap((channelId) => {
-    const soundId = getPlaybackChannelRuntime(channelId).soundId;
-    return soundId ? [soundId] : [];
-  });
-}
-
 function getModeRuntimeCleanupChannelIds(
   sessionId: PlaybackSessionId
 ): string[] {
@@ -184,29 +180,6 @@ function isRuntimeChannelOwnedByMode(
   return false;
 }
 
-function cleanupOrphanedSounds(
-  soundIds: string[],
-  ctx: PlaybackActionContext,
-  sessionId: PlaybackSessionId
-): void {
-  const orphanedSoundIds = soundIds.filter((soundId) =>
-    ctx.audio.hasSound(soundId)
-  );
-  for (const soundId of orphanedSoundIds) {
-    ctx.audio.cleanupSound(soundId);
-  }
-  const remainingSoundIds = orphanedSoundIds.filter((soundId) =>
-    ctx.audio.hasSound(soundId)
-  );
-  if (remainingSoundIds.length > 0) {
-    throw new Error(
-      `Orphaned ${sessionId} sounds after deactivation: ${remainingSoundIds.join(
-        ", "
-      )}`
-    );
-  }
-}
-
 function createManagedModeLifecycle(
   sessionId: ManagedPlaybackSessionId,
   ctx: PlaybackActionContext,
@@ -222,7 +195,7 @@ function createManagedModeLifecycle(
     () => workflow.activate(),
     async () => {
       const channelIds = getModeRuntimeCleanupChannelIds(sessionId);
-      const soundIds = getSessionSoundIds(sessionId);
+      const soundIds = getRuntimeSoundIds(channelIds);
       await workflow.deactivate();
       finalizeModeRuntimeCleanup(sessionId, channelIds, soundIds, ctx);
     }

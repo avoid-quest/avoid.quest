@@ -23,10 +23,11 @@ import {
   applySessionMasterVolume,
   ensureMainAudioSettingsApplied,
 } from "@/lib/playback-actions-shared";
+import { resetPlaybackChannelRuntime } from "@/lib/stores/playback-runtime-store";
 import {
-  getPlaybackChannelRuntime,
-  resetPlaybackChannelRuntime,
-} from "@/lib/stores/playback-runtime-store";
+  cleanupOrphanedSounds,
+  getRuntimeSoundIds,
+} from "./mode-lifecycle-cleanup.js";
 
 type FadeOutSound = (
   soundId: string,
@@ -64,33 +65,6 @@ function getDjRuntimeCleanupChannelIds(): string[] {
   const persistedChannelIds =
     getPlaybackSession("dj")?.channels.map((channel) => channel.id) ?? [];
   return Array.from(new Set([...persistedChannelIds, ...DJ_DECK_CHANNEL_IDS]));
-}
-
-function getActiveSoundIds(channelIds: readonly string[]): string[] {
-  return channelIds.flatMap((channelId) => {
-    const soundId = getPlaybackChannelRuntime(channelId).soundId;
-    return soundId ? [soundId] : [];
-  });
-}
-
-function cleanupOrphanedSounds(
-  soundIds: string[],
-  ctx: PlaybackActionContext
-): void {
-  const orphanedSoundIds = soundIds.filter((soundId) =>
-    ctx.audio.hasSound(soundId)
-  );
-  for (const soundId of orphanedSoundIds) {
-    ctx.audio.cleanupSound(soundId);
-  }
-  const remainingSoundIds = orphanedSoundIds.filter((soundId) =>
-    ctx.audio.hasSound(soundId)
-  );
-  if (remainingSoundIds.length > 0) {
-    throw new Error(
-      `Orphaned dj sounds after deactivation: ${remainingSoundIds.join(", ")}`
-    );
-  }
 }
 
 async function getReadyDjPlaybackSession(): Promise<PlaybackSessionRecord> {
@@ -170,14 +144,14 @@ async function deactivateDjMode(
   fadeOutDurationMs: number
 ): Promise<void> {
   const channelIds = getDjRuntimeCleanupChannelIds();
-  const soundIds = getActiveSoundIds(channelIds);
+  const soundIds = getRuntimeSoundIds(channelIds);
   await fadeOutSoundIds(soundIds, fadeOutSound, fadeOutDurationMs);
   await cleanupAudioOnly(ctx);
   for (const channelId of channelIds) {
     resetPlaybackChannelRuntime(channelId);
   }
   clearDjErrorSurface();
-  cleanupOrphanedSounds(soundIds, ctx);
+  cleanupOrphanedSounds(soundIds, ctx, "dj");
 }
 
 export function createDjModeLifecycleWorkflow({

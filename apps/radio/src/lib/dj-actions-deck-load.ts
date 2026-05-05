@@ -167,24 +167,40 @@ function warnRoutingRestoreFailure(message: string, error: unknown): void {
   }
 }
 
-function restoreDeckRouting(
+function connectDeckCueRouting(
   deckId: DeckId,
   soundId: string,
   dependencies: DeckLoadDependencies
-): void {
+): boolean {
   try {
     dependencies.connectDeckCueBus(
       deckId,
       soundId,
       dependencies.getAudioManager
     );
+    return true;
   } catch (error) {
     warnRoutingRestoreFailure(
       "[dj-actions] Failed to connect cue routing:",
       error
     );
+    return false;
+  }
+}
+
+function connectReadyDeckCueRouting(
+  deckId: DeckId,
+  soundId: string,
+  dependencies: DeckLoadDependencies
+): boolean {
+  if (!dependencies.getAudioManager().getPreFaderNode(soundId)) {
+    return false;
   }
 
+  return connectDeckCueRouting(deckId, soundId, dependencies);
+}
+
+function initializeSavedAudioDevices(dependencies: DeckLoadDependencies): void {
   try {
     const initialization = dependencies.initializeAudioDevices(
       dependencies.getAudioManager,
@@ -202,6 +218,15 @@ function restoreDeckRouting(
       error
     );
   }
+}
+
+function restoreDeckRouting(
+  deckId: DeckId,
+  soundId: string,
+  dependencies: DeckLoadDependencies
+): void {
+  connectDeckCueRouting(deckId, soundId, dependencies);
+  initializeSavedAudioDevices(dependencies);
 }
 
 async function loadDeckRadio(
@@ -235,6 +260,7 @@ async function loadDeckRadio(
     dependencies.clearDjError();
 
     let hasAppliedChannelStrip = false;
+    let hasConnectedReadyCueRouting = false;
     dependencies.activateChannel("dj", deckId, radio, {
       persistRadio: true,
       soundId,
@@ -263,6 +289,18 @@ async function loadDeckRadio(
             currentDeck.speed,
             currentDeck.channelFilter,
             currentDeck.effectsDryWet
+          );
+        }
+        if (
+          audioState.isPlaying &&
+          !audioState.isLoading &&
+          !hasConnectedReadyCueRouting &&
+          currentDeck
+        ) {
+          hasConnectedReadyCueRouting = connectReadyDeckCueRouting(
+            deckId,
+            soundId,
+            dependencies
           );
         }
 

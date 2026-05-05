@@ -599,6 +599,70 @@ describe("DJ deck channel lifecycle", () => {
     );
   });
 
+  test("reconnects cue routing after playback creates a pre-fader node", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertDjSession();
+    updatePlaybackChannel("dj", "deck-a", (draft) => {
+      draft.cueEnabled = true;
+    });
+
+    const manager = AudioManager.getInstance();
+    let onAudioState: (audioState: AudioState) => void = () => {
+      throw new Error("Audio state subscriber was not registered");
+    };
+    let preFaderNode: GainNode | null = null;
+    const cueConnectionHadNode: boolean[] = [];
+    manager.createSound = mock(
+      (_radio, soundId?: string) => soundId ?? "sound"
+    );
+    manager.cleanupSound = mock((_soundId: string) => undefined);
+    manager.getPreFaderNode = mock((_soundId: string) => preFaderNode);
+    manager.subscribe = mock((_soundId, callback) => {
+      onAudioState = callback;
+      return mock(() => undefined);
+    });
+    manager.subscribeMeter = mock((_soundId, _callback) =>
+      mock(() => undefined)
+    );
+    const dependencies = {
+      ...createDependencies(),
+      connectDeckCueBus: mock((_deckId, soundId, getAudioManager) => {
+        cueConnectionHadNode.push(
+          getAudioManager().getPreFaderNode(soundId) !== null
+        );
+      }),
+    };
+    const workflow = createDjDeckLoadWorkflow(dependencies);
+
+    await workflow.loadDeckRadio("deck-a", {
+      id: "station-1",
+      name: "Station 1",
+      streamUrl: "https://radio.example/one.mp3",
+    });
+    onAudioState({
+      isPlaying: true,
+      isLoading: false,
+      isBuffering: false,
+      hasEnded: false,
+      volume: 1,
+      error: null,
+    });
+    preFaderNode = {
+      connect: mock(() => undefined),
+      disconnect: mock(() => undefined),
+    } as unknown as GainNode;
+    onAudioState({
+      isPlaying: true,
+      isLoading: false,
+      isBuffering: false,
+      hasEnded: false,
+      volume: 1,
+      error: null,
+    });
+
+    expect(cueConnectionHadNode).toEqual([false, true]);
+  });
+
   test("keeps cue routing restored when saved output device initialization fails", async () => {
     await playbackSessionsCollection.stateWhenReady();
     insertDjSession();

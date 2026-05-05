@@ -225,4 +225,40 @@ describe("createDjModeLifecycleWorkflow", () => {
     expect(getPlaybackChannelRuntime(DECK_B_CHANNEL_ID).soundId).toBeNull();
     expect(getDjError()).toBeNull();
   });
+
+  test("deactivation fades deck runtime sounds even when persisted deck channels are missing", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    playbackSessionsCollection.insert({
+      id: "dj",
+      channels: [],
+      masterVolume: 0.5,
+      crossfadePosition: 0.5,
+      headphoneVolume: 1,
+      activeChannelId: null,
+    });
+    setPlaybackChannelRuntime(DECK_A_CHANNEL_ID, () => ({
+      soundId: "left_station-1",
+      isPlaying: true,
+    }));
+    setPlaybackChannelRuntime(DECK_B_CHANNEL_ID, () => ({
+      soundId: "right_station-2",
+      isPlaying: true,
+    }));
+    const fadeOut = mock((_soundId: string, _duration: number) =>
+      Promise.resolve()
+    );
+    const context = createTestContext();
+    const workflow = createDjModeLifecycleWorkflow({
+      ctx: context,
+      fadeOutSound: fadeOut,
+      fadeOutDurationMs: 120,
+    });
+
+    await workflow.deactivate();
+
+    expect(fadeOut).toHaveBeenCalledWith("left_station-1", 120, true);
+    expect(fadeOut).toHaveBeenCalledWith("right_station-2", 120, true);
+    expect(getPlaybackChannelRuntime(DECK_A_CHANNEL_ID).soundId).toBeNull();
+    expect(getPlaybackChannelRuntime(DECK_B_CHANNEL_ID).soundId).toBeNull();
+  });
 });

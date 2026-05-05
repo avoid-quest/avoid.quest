@@ -48,6 +48,7 @@ export type DjModeLifecycleWorkflow = {
 };
 
 const DJ_MODE_FADE_OUT_DURATION_MS = 150;
+const DJ_DECK_CHANNEL_IDS = [DECK_A_CHANNEL_ID, DECK_B_CHANNEL_ID] as const;
 
 async function fadeOutSoundIds(
   soundIds: string[],
@@ -59,18 +60,16 @@ async function fadeOutSoundIds(
   );
 }
 
-function getSessionSoundIds(): string[] {
-  const session = getPlaybackSession("dj");
-  if (!session) {
-    return [];
-  }
-  return session.channels
-    .map((channel) => getPlaybackChannelRuntime(channel.id).soundId)
-    .filter((soundId): soundId is string => Boolean(soundId));
+function getSessionChannelIds(): string[] {
+  const sessionChannelIds =
+    getPlaybackSession("dj")?.channels.map((channel) => channel.id) ?? [];
+  return Array.from(new Set([...sessionChannelIds, ...DJ_DECK_CHANNEL_IDS]));
 }
 
-function getSessionChannelIds(): string[] {
-  return getPlaybackSession("dj")?.channels.map((channel) => channel.id) ?? [];
+function getActiveSessionSoundIds(channelIds: string[]): string[] {
+  return channelIds
+    .map((channelId) => getPlaybackChannelRuntime(channelId).soundId)
+    .filter((soundId): soundId is string => Boolean(soundId));
 }
 
 function assertNoOrphanedSounds(
@@ -163,8 +162,8 @@ async function deactivateDjMode(
   fadeOutSound: FadeOutSound,
   fadeOutDurationMs: number
 ): Promise<void> {
-  const soundIds = getSessionSoundIds();
   const channelIds = getSessionChannelIds();
+  const soundIds = getActiveSessionSoundIds(channelIds);
   await fadeOutSoundIds(soundIds, fadeOutSound, fadeOutDurationMs);
   await cleanupAudioOnly(ctx);
   for (const channelId of channelIds) {

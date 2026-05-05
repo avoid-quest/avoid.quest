@@ -165,8 +165,9 @@ describe("mode lifecycle manager", () => {
     expect(switchTo).not.toHaveBeenCalled();
   });
 
-  test("serializes concurrent mode switch requests", async () => {
+  test("serializes concurrent mode switch requests through the lifecycle boundary", async () => {
     const releaseActivation = Promise.withResolvers<void>();
+    const committedModes: string[] = [];
     const manager = createModeManager({
       initialMode: "single",
       lifecycles: {
@@ -188,20 +189,32 @@ describe("mode lifecycle manager", () => {
           getPhase: () => "inactive",
         },
       },
-      commitMode: mock(() => undefined),
+      commitMode: mock((mode) => {
+        committedModes.push(mode);
+      }),
     });
 
     const firstSwitch = manager.switchTo("multiple");
-    const rejectedSwitch = manager.switchTo("dj");
+    const queuedSwitch = manager.switchTo("dj");
 
-    await expect(rejectedSwitch).rejects.toThrow("Mode transition in progress");
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(manager.getSnapshot()).toMatchObject({
+      currentMode: "single",
+      requestedMode: "multiple",
+      phase: "activating",
+    });
+    expect(committedModes).toEqual([]);
+
     releaseActivation.resolve();
     await firstSwitch;
+    await queuedSwitch;
 
     expect(manager.getSnapshot()).toMatchObject({
-      currentMode: "multiple",
+      currentMode: "dj",
       phase: "active",
     });
+    expect(committedModes).toEqual(["multiple", "dj"]);
   });
 
   test("rolls back to the previous active mode when activation fails", async () => {
@@ -239,6 +252,44 @@ describe("mode lifecycle manager", () => {
     });
     expect(singleActivate).toHaveBeenCalledTimes(1);
     expect(commitMode).not.toHaveBeenCalled();
+  });
+
+  test("surfaces safe mode transition errors without leaking implementation details", async () => {
+    const manager = createModeManager({
+      initialMode: "single",
+      lifecycles: {
+        single: {
+          activate: mock(async () => undefined),
+          deactivate: mock(async () => undefined),
+          getPhase: () => "inactive",
+        },
+        multiple: {
+          activate: mock(() =>
+            Promise.reject(
+              new Error(
+                "Failed to execute 'linearRampToValueAtTime' on 'AudioParam'"
+              )
+            )
+          ),
+          deactivate: mock(async () => undefined),
+          getPhase: () => "inactive",
+        },
+        dj: {
+          activate: mock(async () => undefined),
+          deactivate: mock(async () => undefined),
+          getPhase: () => "inactive",
+        },
+      },
+      commitMode: mock(() => undefined),
+    });
+
+    await expect(manager.switchTo("multiple")).rejects.toThrow(
+      "linearRampToValueAtTime"
+    );
+
+    expect(manager.getSnapshot().error).toBe(
+      "Mode could not be changed. Try again."
+    );
   });
 
   test("switching out of DJ mode cleans up deck audio through lifecycle boundaries", async () => {
@@ -329,7 +380,7 @@ describe("mode lifecycle manager", () => {
     expect(manager.getSnapshot()).toMatchObject({
       currentMode: null,
       phase: "inactive",
-      error: "session is not ready",
+      error: "Playback mode could not start. Try again.",
     });
     expect(commitMode).not.toHaveBeenCalled();
 

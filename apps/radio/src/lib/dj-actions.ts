@@ -6,7 +6,6 @@
  * TanStack Store for runtime state.
  */
 
-import { resolveStreamUrl } from "@avoid.quest/platforms";
 import type {
   ChannelSelection,
   EffectConfig,
@@ -70,6 +69,7 @@ import {
   setDeckCueEnabled as setDeckCueRoutingEnabled,
   toggleDeckCue as toggleDeckCueRouting,
 } from "@/lib/dj-actions-routing.js";
+import { resolveDjPlatformStreamUrl } from "@/lib/dj-platform-stream-port.js";
 import {
   getDeckA,
   getDeckB,
@@ -219,7 +219,9 @@ function createDeckLoadDependencies(
       ctx.audio.playDeviceSound(soundId, deviceId),
     reportDjError: reportDjErrorSurface,
     reportPlaybackError: ctx.reportError,
-    resolvePlatformStreamUrl: ({ videoId }) => resolveStreamUrl(videoId),
+    resolvePlatformStreamUrl: (input) =>
+      ctx.platformStreams?.resolveStreamUrl(input) ??
+      resolveDjPlatformStreamUrl(input),
     seekDeckSound: (soundId, position) =>
       ctx.audioEngine.playback.seek(soundId, position),
     setDeviceChannelSelection: (soundId, selection) =>

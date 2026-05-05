@@ -25,7 +25,6 @@ import {
   type DeviceInputMetadata,
   isDeviceInputMetadata,
   isFileMetadata,
-  isYouTubeMetadata,
 } from "@/lib/platform-types";
 import type { PlaybackActionChannelFacade } from "./playback-action-context.js";
 import {
@@ -421,8 +420,6 @@ async function loadDeckRadio(
         if (
           audioState.error?.code === "STREAM_INTERRUPTED" &&
           currentDeck?.radio &&
-          isYouTubeMetadata(currentDeck.radio.platformMetadata) &&
-          currentDeck.radio.platformMetadata.videoId &&
           currentRuntime.soundId
         ) {
           continuationWorkflow
@@ -430,6 +427,14 @@ async function loadDeckRadio(
               currentRadio: currentDeck.radio,
               position: audioState.error.position ?? 0,
               soundId: currentRuntime.soundId,
+            })
+            .then((result) => {
+              if (
+                result === "refreshed" &&
+                config.getRuntime().soundId === currentRuntime.soundId
+              ) {
+                config.setRuntimeState(() => ({ error: null }));
+              }
             })
             .catch((error) => {
               console.error(

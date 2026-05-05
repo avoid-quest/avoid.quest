@@ -15,6 +15,7 @@ import {
 } from "@/lib/channel-state-manager";
 import type { PlaybackSessionId } from "@/lib/collections/playback-sessions";
 import { getMainOutputRouter } from "@/lib/main-output-router";
+import type { PlatformStreamResolutionInput } from "./dj-deck-continuation-workflow.js";
 import type { PlaybackActionErrorReporter } from "./playback-action-errors.js";
 
 export type MainOutputRouter = ReturnType<typeof getMainOutputRouter>;
@@ -45,12 +46,19 @@ export type PlaybackActionChannelFacade = {
   ) => void;
 };
 
+export type PlaybackPlatformStreamFacade = {
+  resolveStreamUrl: (
+    input: PlatformStreamResolutionInput
+  ) => Promise<string | null>;
+};
+
 export type PlaybackActionContext = {
   audio: AudioManager;
   audioEngine: AudioEngineFacade;
   channels: PlaybackActionChannelFacade;
   getMainOutputRouter: () => MainOutputRouter;
   lifecycle: PlaybackAudioRoutingLifecycle;
+  platformStreams?: PlaybackPlatformStreamFacade;
   reportError: PlaybackActionErrorReporter;
   resetAudioManager: () => void;
 };

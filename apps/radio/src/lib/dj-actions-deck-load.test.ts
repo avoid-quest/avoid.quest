@@ -1388,6 +1388,228 @@ describe("DJ deck channel lifecycle", () => {
     );
   });
 
+  test("refreshes an interrupted YouTube stream through the lifecycle platform port", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertDjSession();
+
+    const youtubeRadio: Radio = {
+      id: "youtube-video-1",
+      name: "YouTube Video",
+      streamUrl: "https://youtube.example/stale.mp3",
+      platformMetadata: {
+        platform: "youtube",
+        itemType: "video",
+        url: "https://youtube.example/watch?v=video-1",
+        videoId: "video-1",
+      },
+    };
+    const manager = AudioManager.getInstance();
+    const { emitAudioState } = captureDeckAudioState(manager);
+    manager.refreshStreamUrl = mock(
+      async (_soundId: string, _newUrl: string, _position?: number) => undefined
+    );
+    const dependencies = {
+      ...createDependencies(),
+      resolvePlatformStreamUrl: mock(() =>
+        Promise.resolve("https://youtube.example/fresh.mp3")
+      ),
+    };
+    const workflow = createDjDeckLoadWorkflow(dependencies);
+
+    await workflow.loadDeckRadio("deck-a", youtubeRadio);
+    emitAudioState({
+      isPlaying: false,
+      isLoading: false,
+      isBuffering: false,
+      hasEnded: false,
+      volume: 1,
+      error: {
+        id: "stream-interrupted",
+        code: "STREAM_INTERRUPTED",
+        message: "provider stream interrupted",
+        position: 42,
+        timestamp: 1,
+      },
+    });
+    await flushContinuation();
+
+    expect(dependencies.resolvePlatformStreamUrl).toHaveBeenCalledWith({
+      platform: "youtube",
+      reason: "stream-refresh",
+      videoId: "video-1",
+      radio: youtubeRadio,
+    });
+    expect(manager.refreshStreamUrl).toHaveBeenCalledWith(
+      "left_youtube-video-1",
+      "https://youtube.example/fresh.mp3",
+      42
+    );
+    expect(dependencies.clearDjError).toHaveBeenCalledTimes(2);
+    expect(dependencies.applyCrossfade).toHaveBeenCalledTimes(1);
+    expect(getPlaybackChannelRuntime("deck-a").error).toBeNull();
+  });
+
+  test("reports a safe error when interrupted YouTube refresh returns no stream", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertDjSession();
+
+    const manager = AudioManager.getInstance();
+    const { emitAudioState } = captureDeckAudioState(manager);
+    manager.refreshStreamUrl = mock(
+      async (_soundId: string, _newUrl: string, _position?: number) => undefined
+    );
+    const dependencies = {
+      ...createDependencies(),
+      resolvePlatformStreamUrl: mock(() => Promise.resolve(null)),
+    };
+    const workflow = createDjDeckLoadWorkflow(dependencies);
+
+    await workflow.loadDeckRadio("deck-a", {
+      id: "youtube-video-1",
+      name: "YouTube Video",
+      streamUrl: "https://youtube.example/stale.mp3",
+      platformMetadata: {
+        platform: "youtube",
+        itemType: "video",
+        url: "https://youtube.example/watch?v=video-1",
+        videoId: "video-1",
+      },
+    });
+    emitAudioState({
+      isPlaying: false,
+      isLoading: false,
+      isBuffering: false,
+      hasEnded: false,
+      volume: 1,
+      error: {
+        id: "stream-interrupted",
+        code: "STREAM_INTERRUPTED",
+        message: "provider stream interrupted",
+        position: 42,
+        timestamp: 1,
+      },
+    });
+    await flushContinuation();
+
+    expect(manager.refreshStreamUrl).not.toHaveBeenCalled();
+    expect(dependencies.reportDjError).toHaveBeenCalledWith(
+      "Failed to refresh YouTube stream - please reload",
+      "DJ_YOUTUBE_REFRESH_FAILED",
+      undefined,
+      expect.objectContaining({ id: "youtube-video-1" })
+    );
+    expect(getPlaybackChannelRuntime("deck-a").error).toEqual(
+      expect.objectContaining({ code: "STREAM_INTERRUPTED" })
+    );
+  });
+
+  test("reports resolver failures without exposing provider details", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertDjSession();
+
+    const rawError = new Error("provider token leaked abc123");
+    const manager = AudioManager.getInstance();
+    const { emitAudioState } = captureDeckAudioState(manager);
+    manager.refreshStreamUrl = mock(
+      async (_soundId: string, _newUrl: string, _position?: number) => undefined
+    );
+    const dependencies = {
+      ...createDependencies(),
+      reportPlaybackError: mock((_error: PlaybackActionError) => undefined),
+      resolvePlatformStreamUrl: mock(() => Promise.reject(rawError)),
+    };
+    const workflow = createDjDeckLoadWorkflow(dependencies);
+
+    await workflow.loadDeckRadio("deck-a", {
+      id: "youtube-video-1",
+      name: "YouTube Video",
+      streamUrl: "https://youtube.example/stale.mp3",
+      platformMetadata: {
+        platform: "youtube",
+        itemType: "video",
+        url: "https://youtube.example/watch?v=video-1",
+        videoId: "video-1",
+      },
+    });
+    emitAudioState({
+      isPlaying: false,
+      isLoading: false,
+      isBuffering: false,
+      hasEnded: false,
+      volume: 1,
+      error: {
+        id: "stream-interrupted",
+        code: "STREAM_INTERRUPTED",
+        message: "provider stream interrupted",
+        position: 42,
+        timestamp: 1,
+      },
+    });
+    await flushContinuation();
+
+    expect(manager.refreshStreamUrl).not.toHaveBeenCalled();
+    expect(dependencies.reportPlaybackError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        rawMessage: rawError.message,
+        userMessage: "Failed to refresh YouTube stream - please reload",
+      })
+    );
+    expect(dependencies.reportDjError).toHaveBeenCalledWith(
+      "Failed to refresh YouTube stream - please reload",
+      "DJ_STREAM_REFRESH_FAILED",
+      rawError,
+      expect.objectContaining({ id: "youtube-video-1" })
+    );
+  });
+
+  test("ignores non-refreshable stream interruptions", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertDjSession();
+
+    const manager = AudioManager.getInstance();
+    const { emitAudioState } = captureDeckAudioState(manager);
+    manager.refreshStreamUrl = mock(
+      async (_soundId: string, _newUrl: string, _position?: number) => undefined
+    );
+    const dependencies = {
+      ...createDependencies(),
+      resolvePlatformStreamUrl: mock(() =>
+        Promise.resolve("https://youtube.example/fresh.mp3")
+      ),
+    };
+    const workflow = createDjDeckLoadWorkflow(dependencies);
+
+    await workflow.loadDeckRadio("deck-a", {
+      id: "station-1",
+      name: "Station 1",
+      streamUrl: "https://radio.example/live.mp3",
+    });
+    emitAudioState({
+      isPlaying: false,
+      isLoading: false,
+      isBuffering: false,
+      hasEnded: false,
+      volume: 1,
+      error: {
+        id: "stream-interrupted",
+        code: "STREAM_INTERRUPTED",
+        message: "stream interrupted",
+        position: 42,
+        timestamp: 1,
+      },
+    });
+    await flushContinuation();
+
+    expect(dependencies.resolvePlatformStreamUrl).not.toHaveBeenCalled();
+    expect(manager.refreshStreamUrl).not.toHaveBeenCalled();
+    expect(dependencies.reportDjError).not.toHaveBeenCalledWith(
+      expect.any(String),
+      "DJ_STREAM_REFRESH_FAILED",
+      expect.anything(),
+      expect.anything()
+    );
+  });
+
   test("does not continue when autoplay is disabled or no next track exists", async () => {
     await playbackSessionsCollection.stateWhenReady();
     insertDjSession();

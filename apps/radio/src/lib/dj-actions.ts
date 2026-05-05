@@ -218,7 +218,7 @@ function createDeckLoadDependencies(
       loadTrack(deckSide, nextRadio, autoPlay, ctx),
     reportDjError: reportDjErrorSurface,
     reportPlaybackError: ctx.reportError,
-    resolveStreamUrl,
+    resolvePlatformStreamUrl: ({ videoId }) => resolveStreamUrl(videoId),
   };
 }
 

@@ -53,7 +53,7 @@ function createDependencies() {
     initializeAudioDevices: mock(async () => undefined),
     loadTrack: mock(async () => undefined),
     reportDjError: mock(() => undefined),
-    resolveStreamUrl: mock(async () => null),
+    resolvePlatformStreamUrl: mock(async () => null),
   };
 }
 

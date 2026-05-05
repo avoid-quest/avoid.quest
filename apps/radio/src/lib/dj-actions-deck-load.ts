@@ -154,6 +154,56 @@ function releaseReplacedLocalFileUrl(
   revokeFileObjectUrl(previousObjectUrl);
 }
 
+function shouldWarnRoutingRestoreFailure(error: unknown): boolean {
+  return !(
+    error instanceof ReferenceError &&
+    error.message.includes("AudioContext is not defined")
+  );
+}
+
+function warnRoutingRestoreFailure(message: string, error: unknown): void {
+  if (shouldWarnRoutingRestoreFailure(error)) {
+    console.warn(message, error);
+  }
+}
+
+function restoreDeckRouting(
+  deckId: DeckId,
+  soundId: string,
+  dependencies: DeckLoadDependencies
+): void {
+  try {
+    dependencies.connectDeckCueBus(
+      deckId,
+      soundId,
+      dependencies.getAudioManager
+    );
+  } catch (error) {
+    warnRoutingRestoreFailure(
+      "[dj-actions] Failed to connect cue routing:",
+      error
+    );
+  }
+
+  try {
+    const initialization = dependencies.initializeAudioDevices(
+      dependencies.getAudioManager,
+      dependencies.reportDjError
+    );
+    initialization.catch((error) => {
+      warnRoutingRestoreFailure(
+        "[dj-actions] Failed to initialize audio devices:",
+        error
+      );
+    });
+  } catch (error) {
+    warnRoutingRestoreFailure(
+      "[dj-actions] Failed to initialize audio devices:",
+      error
+    );
+  }
+}
+
 async function loadDeckRadio(
   deckId: DeckId,
   radio: Radio | null,
@@ -214,22 +264,6 @@ async function loadDeckRadio(
             currentDeck.channelFilter,
             currentDeck.effectsDryWet
           );
-          dependencies.connectDeckCueBus(
-            deckId,
-            soundId,
-            dependencies.getAudioManager
-          );
-          dependencies
-            .initializeAudioDevices(
-              dependencies.getAudioManager,
-              dependencies.reportDjError
-            )
-            .catch((error) => {
-              console.warn(
-                "[dj-actions] Failed to initialize audio devices:",
-                error
-              );
-            });
         }
 
         const trackEnded = audioState.hasEnded;
@@ -306,6 +340,7 @@ async function loadDeckRadio(
         }
       },
     });
+    restoreDeckRouting(deckId, soundId, dependencies);
     releaseReplacedLocalFileUrl(previousRadio, radio);
 
     if (wasPlaying) {

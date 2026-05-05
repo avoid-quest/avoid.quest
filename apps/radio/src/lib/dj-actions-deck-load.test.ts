@@ -562,6 +562,96 @@ describe("DJ deck channel lifecycle", () => {
     );
   });
 
+  test("restores cue routing and saved output devices during deck load", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertDjSession();
+    updatePlaybackChannel("dj", "deck-a", (draft) => {
+      draft.cueEnabled = true;
+    });
+
+    const manager = AudioManager.getInstance();
+    manager.createSound = mock(
+      (_radio, soundId?: string) => soundId ?? "sound"
+    );
+    manager.cleanupSound = mock((_soundId: string) => undefined);
+    manager.subscribe = mock((_soundId, _callback) => mock(() => undefined));
+    manager.subscribeMeter = mock((_soundId, _callback) =>
+      mock(() => undefined)
+    );
+    const dependencies = createDependencies();
+    const workflow = createDjDeckLoadWorkflow(dependencies);
+
+    await workflow.loadDeckRadio("deck-a", {
+      id: "station-1",
+      name: "Station 1",
+      streamUrl: "https://radio.example/one.mp3",
+    });
+    await Promise.resolve();
+
+    expect(dependencies.connectDeckCueBus).toHaveBeenCalledWith(
+      "deck-a",
+      "left_station-1",
+      dependencies.getAudioManager
+    );
+    expect(dependencies.initializeAudioDevices).toHaveBeenCalledWith(
+      dependencies.getAudioManager,
+      dependencies.reportDjError
+    );
+  });
+
+  test("keeps cue routing restored when saved output device initialization fails", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertDjSession();
+    updatePlaybackChannel("dj", "deck-a", (draft) => {
+      draft.cueEnabled = true;
+    });
+
+    const manager = AudioManager.getInstance();
+    manager.createSound = mock(
+      (_radio, soundId?: string) => soundId ?? "sound"
+    );
+    manager.cleanupSound = mock((_soundId: string) => undefined);
+    manager.subscribe = mock((_soundId, _callback) => mock(() => undefined));
+    manager.subscribeMeter = mock((_soundId, _callback) =>
+      mock(() => undefined)
+    );
+    const outputError = new Error("setSinkId failed");
+    const dependencies = {
+      ...createDependencies(),
+      initializeAudioDevices: mock(() => Promise.reject(outputError)),
+    };
+    const originalWarn = console.warn;
+    console.warn = mock(() => undefined);
+
+    try {
+      const workflow = createDjDeckLoadWorkflow(dependencies);
+
+      await workflow.loadDeckRadio("deck-a", {
+        id: "station-1",
+        name: "Station 1",
+        streamUrl: "https://radio.example/one.mp3",
+      });
+      await Promise.resolve();
+
+      expect(getPlaybackChannel("dj", "deck-a")?.radio).toEqual(
+        expect.objectContaining({ id: "station-1" })
+      );
+      expect(dependencies.connectDeckCueBus).toHaveBeenCalledWith(
+        "deck-a",
+        "left_station-1",
+        dependencies.getAudioManager
+      );
+      expect(dependencies.reportDjError).not.toHaveBeenCalledWith(
+        "Failed to load deck-a",
+        "DJ_LOAD_DECK_FAILED",
+        outputError,
+        expect.anything()
+      );
+    } finally {
+      console.warn = originalWarn;
+    }
+  });
+
   test("plays a loaded deck through the lifecycle boundary with persisted volume", async () => {
     await playbackSessionsCollection.stateWhenReady();
     insertDjSession();

@@ -19,12 +19,24 @@ import {
 import { createDjModeLifecycleWorkflow } from "./dj-mode-lifecycle-workflow";
 import type { PlaybackActionContext } from "./playback-action-context";
 
+type ChannelActivationSoundIdOption = string | { soundId?: string };
+
 async function resetPlaybackSessions() {
   await playbackSessionsCollection.stateWhenReady();
 
   for (const sessionId of Array.from(playbackSessionsCollection.state.keys())) {
     playbackSessionsCollection.delete(sessionId);
   }
+}
+
+function getActivatedSoundId(
+  channelId: string,
+  optionsOrSoundId?: ChannelActivationSoundIdOption
+): string {
+  if (typeof optionsOrSoundId === "string") {
+    return optionsOrSoundId;
+  }
+  return optionsOrSoundId?.soundId ?? `sound:${channelId}`;
 }
 
 function createTestContext() {
@@ -60,12 +72,9 @@ function createTestContext() {
           _sessionId,
           channelId,
           _radio,
-          optionsOrSoundId?: string | { soundId?: string }
+          optionsOrSoundId?: ChannelActivationSoundIdOption
         ) => {
-          const soundId =
-            typeof optionsOrSoundId === "string"
-              ? optionsOrSoundId
-              : (optionsOrSoundId?.soundId ?? `sound:${channelId}`);
+          const soundId = getActivatedSoundId(channelId, optionsOrSoundId);
           setPlaybackChannelRuntime(channelId, () => ({ soundId }));
           return soundId;
         }

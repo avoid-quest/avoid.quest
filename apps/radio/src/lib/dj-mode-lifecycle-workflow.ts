@@ -13,6 +13,7 @@ import {
   setCrossfadePosition,
   setMasterVolume,
 } from "@/lib/dj-actions";
+import type { DeckId } from "@/lib/dj-actions-decks.js";
 import { resetDeck } from "@/lib/hooks/use-dj-state";
 import {
   getDefaultPlaybackActionContext,
@@ -22,7 +23,6 @@ import {
   applySessionMasterVolume,
   ensureMainAudioSettingsApplied,
 } from "@/lib/playback-actions-shared";
-import type { DeckId } from "@/lib/stores/dj-runtime-store";
 import {
   getPlaybackChannelRuntime,
   resetPlaybackChannelRuntime,
@@ -64,10 +64,9 @@ function getSessionSoundIds(): string[] {
   if (!session) {
     return [];
   }
-  return session.channels.flatMap((channel) => {
-    const soundId = getPlaybackChannelRuntime(channel.id).soundId;
-    return soundId ? [soundId] : [];
-  });
+  return session.channels
+    .map((channel) => getPlaybackChannelRuntime(channel.id).soundId)
+    .filter((soundId): soundId is string => Boolean(soundId));
 }
 
 function getSessionChannelIds(): string[] {
@@ -105,30 +104,30 @@ async function prepareReadyDjPlaybackSession(
   return session;
 }
 
-function isRestorableDjRadio(radio: Radio | null): radio is Radio {
-  return radio !== null && radio.platformMetadata?.platform !== "local-file";
-}
-
 async function restoreDjDeckRadio(
   deckId: DeckId,
   radio: Radio | null,
   deckCommands: DjDeckCommands
 ): Promise<void> {
-  if (radio?.platformMetadata?.platform === "local-file") {
+  if (!radio) {
+    return;
+  }
+
+  if (radio.platformMetadata?.platform === "local-file") {
     resetDeck(deckId);
     return;
   }
 
-  if (!isRestorableDjRadio(radio)) {
-    return;
+  switch (deckId) {
+    case DECK_A_CHANNEL_ID:
+      await deckCommands.setDeckARadio(radio);
+      return;
+    case DECK_B_CHANNEL_ID:
+      await deckCommands.setDeckBRadio(radio);
+      return;
+    default:
+      await deckCommands.setDeckBRadio(radio);
   }
-
-  if (deckId === DECK_A_CHANNEL_ID) {
-    await deckCommands.setDeckARadio(radio);
-    return;
-  }
-
-  await deckCommands.setDeckBRadio(radio);
 }
 
 async function activateDjMode(ctx: PlaybackActionContext): Promise<void> {

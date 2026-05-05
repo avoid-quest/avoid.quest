@@ -64,7 +64,7 @@ function createDependencies(
       radio: Radio | null,
       autoPlay?: boolean
     ) => Promise<void>;
-    playSound?: (soundId: string, volume: number) => Promise<void>;
+    playDeckSound?: (soundId: string, volume: number) => Promise<void>;
     refreshStreamUrl?: (
       soundId: string,
       newUrl: string,
@@ -76,16 +76,11 @@ function createDependencies(
   } = {}
 ) {
   const audioManager = {
-    playSound: mock(
-      overrides.playSound ??
-        (async (_soundId: string, _volume: number) => undefined)
-    ),
     refreshStreamUrl: mock(
       overrides.refreshStreamUrl ??
         (async (_soundId: string, _newUrl: string, _position?: number) =>
           undefined)
     ),
-    seekSound: mock((_soundId: string, _position: number) => undefined),
   } as unknown as AudioManager;
 
   return {
@@ -102,7 +97,7 @@ function createDependencies(
           ) => undefined)
       ),
       playDeckSound: mock(
-        overrides.playSound ??
+        overrides.playDeckSound ??
           (async (_soundId: string, _volume: number) => undefined)
       ),
       reportDjError: mock(() => undefined),

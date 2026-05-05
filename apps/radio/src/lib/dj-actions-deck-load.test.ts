@@ -158,6 +158,28 @@ async function flushContinuation() {
   await Promise.resolve();
 }
 
+function captureDeckAudioState(manager: AudioManager): {
+  emitAudioState: (audioState: AudioState) => void;
+} {
+  let onAudioState: (audioState: AudioState) => void = () => {
+    throw new Error("Audio state subscriber was not registered");
+  };
+
+  manager.createSound = mock((_radio, soundId?: string) => soundId ?? "sound");
+  manager.cleanupSound = mock((_soundId: string) => undefined);
+  manager.subscribe = mock((_soundId, callback) => {
+    onAudioState = callback;
+    return mock(() => undefined);
+  });
+  manager.subscribeMeter = mock((_soundId, _callback) => mock(() => undefined));
+
+  return {
+    emitAudioState: (audioState) => {
+      onAudioState(audioState);
+    },
+  };
+}
+
 beforeEach(async () => {
   await resetPlaybackSessions();
   deactivateAllChannels();
@@ -876,22 +898,9 @@ describe("DJ deck channel lifecycle", () => {
     });
 
     const manager = AudioManager.getInstance();
-    let onAudioState: (audioState: AudioState) => void = () => {
-      throw new Error("Audio state subscriber was not registered");
-    };
-    manager.createSound = mock(
-      (_radio, soundId?: string) => soundId ?? "sound"
-    );
-    manager.cleanupSound = mock((_soundId: string) => undefined);
+    const { emitAudioState } = captureDeckAudioState(manager);
     manager.playSound = mock(async () => undefined);
     manager.seekSound = mock(() => undefined);
-    manager.subscribe = mock((_soundId, callback) => {
-      onAudioState = callback;
-      return mock(() => undefined);
-    });
-    manager.subscribeMeter = mock((_soundId, _callback) =>
-      mock(() => undefined)
-    );
     const dependencies = createDependencies();
     const workflow = createDjDeckLoadWorkflow(dependencies);
 
@@ -900,7 +909,7 @@ describe("DJ deck channel lifecycle", () => {
       name: "Station 1",
       streamUrl: "https://radio.example/one.mp3",
     });
-    onAudioState({
+    emitAudioState({
       isPlaying: true,
       isLoading: false,
       isBuffering: false,
@@ -908,7 +917,7 @@ describe("DJ deck channel lifecycle", () => {
       volume: 1,
       error: null,
     });
-    onAudioState({
+    emitAudioState({
       isPlaying: false,
       isLoading: false,
       isBuffering: false,
@@ -917,7 +926,7 @@ describe("DJ deck channel lifecycle", () => {
       error: null,
     });
     await flushContinuation();
-    onAudioState({
+    emitAudioState({
       isPlaying: true,
       isLoading: false,
       isBuffering: false,
@@ -946,25 +955,12 @@ describe("DJ deck channel lifecycle", () => {
     insertDjSession();
 
     const manager = AudioManager.getInstance();
-    let onAudioState: (audioState: AudioState) => void = () => {
-      throw new Error("Audio state subscriber was not registered");
-    };
-    manager.createSound = mock(
-      (_radio, soundId?: string) => soundId ?? "sound"
-    );
-    manager.cleanupSound = mock((_soundId: string) => undefined);
-    manager.subscribe = mock((_soundId, callback) => {
-      onAudioState = callback;
-      return mock(() => undefined);
-    });
-    manager.subscribeMeter = mock((_soundId, _callback) =>
-      mock(() => undefined)
-    );
+    const { emitAudioState } = captureDeckAudioState(manager);
     const dependencies = createDependencies();
     const workflow = createDjDeckLoadWorkflow(dependencies);
 
     await workflow.loadDeckRadio("deck-a", createPlaylistRadio());
-    onAudioState({
+    emitAudioState({
       isPlaying: false,
       isLoading: false,
       isBuffering: false,
@@ -1012,20 +1008,7 @@ describe("DJ deck channel lifecycle", () => {
       },
     };
     const manager = AudioManager.getInstance();
-    let onAudioState: (audioState: AudioState) => void = () => {
-      throw new Error("Audio state subscriber was not registered");
-    };
-    manager.createSound = mock(
-      (_radio, soundId?: string) => soundId ?? "sound"
-    );
-    manager.cleanupSound = mock((_soundId: string) => undefined);
-    manager.subscribe = mock((_soundId, callback) => {
-      onAudioState = callback;
-      return mock(() => undefined);
-    });
-    manager.subscribeMeter = mock((_soundId, _callback) =>
-      mock(() => undefined)
-    );
+    const { emitAudioState } = captureDeckAudioState(manager);
     const dependencies = {
       ...createDependencies(),
       resolvePlatformStreamUrl: mock(() =>
@@ -1035,7 +1018,7 @@ describe("DJ deck channel lifecycle", () => {
     const workflow = createDjDeckLoadWorkflow(dependencies);
 
     await workflow.loadDeckRadio("deck-a", youtubePlaylist);
-    onAudioState({
+    emitAudioState({
       isPlaying: false,
       isLoading: false,
       isBuffering: false,
@@ -1068,25 +1051,12 @@ describe("DJ deck channel lifecycle", () => {
     });
 
     const manager = AudioManager.getInstance();
-    let onAudioState: (audioState: AudioState) => void = () => {
-      throw new Error("Audio state subscriber was not registered");
-    };
-    manager.createSound = mock(
-      (_radio, soundId?: string) => soundId ?? "sound"
-    );
-    manager.cleanupSound = mock((_soundId: string) => undefined);
-    manager.subscribe = mock((_soundId, callback) => {
-      onAudioState = callback;
-      return mock(() => undefined);
-    });
-    manager.subscribeMeter = mock((_soundId, _callback) =>
-      mock(() => undefined)
-    );
+    const { emitAudioState } = captureDeckAudioState(manager);
     const dependencies = createDependencies();
     const workflow = createDjDeckLoadWorkflow(dependencies);
 
     await workflow.loadDeckRadio("deck-a", createPlaylistRadio());
-    onAudioState({
+    emitAudioState({
       isPlaying: false,
       isLoading: false,
       isBuffering: false,
@@ -1122,7 +1092,7 @@ describe("DJ deck channel lifecycle", () => {
         },
       });
     });
-    onAudioState({
+    emitAudioState({
       isPlaying: false,
       isLoading: false,
       isBuffering: false,
@@ -1143,20 +1113,7 @@ describe("DJ deck channel lifecycle", () => {
 
     const rawError = new Error("vendor stream token details");
     const manager = AudioManager.getInstance();
-    let onAudioState: (audioState: AudioState) => void = () => {
-      throw new Error("Audio state subscriber was not registered");
-    };
-    manager.createSound = mock(
-      (_radio, soundId?: string) => soundId ?? "sound"
-    );
-    manager.cleanupSound = mock((_soundId: string) => undefined);
-    manager.subscribe = mock((_soundId, callback) => {
-      onAudioState = callback;
-      return mock(() => undefined);
-    });
-    manager.subscribeMeter = mock((_soundId, _callback) =>
-      mock(() => undefined)
-    );
+    const { emitAudioState } = captureDeckAudioState(manager);
     const dependencies = {
       ...createDependencies(),
       loadTrack: mock(() => Promise.reject(rawError)),
@@ -1165,7 +1122,7 @@ describe("DJ deck channel lifecycle", () => {
     const workflow = createDjDeckLoadWorkflow(dependencies);
 
     await workflow.loadDeckRadio("deck-a", createPlaylistRadio());
-    onAudioState({
+    emitAudioState({
       isPlaying: false,
       isLoading: false,
       isBuffering: false,

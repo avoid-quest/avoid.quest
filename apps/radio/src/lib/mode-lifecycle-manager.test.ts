@@ -99,20 +99,24 @@ describe("mode lifecycle manager", () => {
   });
 
   test("keeps failed initial activation retryable without committing mode state", async () => {
-    const failedActivation = mock(() =>
-      Promise.reject(new Error("session is not ready"))
-    );
-    const successfulActivation = mock(async () => undefined);
+    let shouldFailActivation = true;
+    const activateSingle = mock(() => {
+      if (shouldFailActivation) {
+        shouldFailActivation = false;
+        return Promise.reject(new Error("session is not ready"));
+      }
+      return Promise.resolve();
+    });
     const commitMode = mock((_mode: string) => undefined);
     const manager = createModeManager({
       lifecycles: {
         single: {
-          activate: failedActivation,
+          activate: activateSingle,
           deactivate: mock(async () => undefined),
           getPhase: () => "inactive",
         },
         multiple: {
-          activate: successfulActivation,
+          activate: mock(async () => undefined),
           deactivate: mock(async () => undefined),
           getPhase: () => "inactive",
         },
@@ -136,12 +140,12 @@ describe("mode lifecycle manager", () => {
     });
     expect(commitMode).not.toHaveBeenCalled();
 
-    await manager.activateInitialMode("multiple");
+    await manager.activateInitialMode("single");
 
-    expect(failedActivation).toHaveBeenCalledTimes(1);
-    expect(successfulActivation).toHaveBeenCalledTimes(1);
+    expect(activateSingle).toHaveBeenCalledTimes(2);
+    expect(commitMode).not.toHaveBeenCalled();
     expect(manager.getSnapshot()).toMatchObject({
-      currentMode: "multiple",
+      currentMode: "single",
       phase: "active",
       error: null,
     });

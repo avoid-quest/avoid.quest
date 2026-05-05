@@ -460,6 +460,73 @@ describe("DJ deck channel lifecycle", () => {
     }
   });
 
+  test("releases a prior local file URL after a superseded replacement persists", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertDjSession();
+
+    updatePlaybackChannel("dj", "deck-a", (draft) => {
+      draft.radio = createLocalFileRadio();
+    });
+
+    const originalRevokeObjectUrl = URL.revokeObjectURL;
+    URL.revokeObjectURL = mock((_url: string) => undefined);
+
+    try {
+      const manager = AudioManager.getInstance();
+      manager.createSound = mock(
+        (_radio, soundId?: string) => soundId ?? "sound"
+      );
+      manager.cleanupSound = mock((_soundId: string) => undefined);
+      manager.subscribe = mock((_soundId, _callback) => mock(() => undefined));
+      manager.subscribeMeter = mock((_soundId, _callback) =>
+        mock(() => undefined)
+      );
+      const firstDeviceLoad = {
+        resolve: null as (() => void) | null,
+      };
+      const dependencies = {
+        ...createDependencies(),
+        playDeviceSound: mock((_soundId: string, deviceId: string) => {
+          if (deviceId === "device-1") {
+            return new Promise<void>((resolve) => {
+              firstDeviceLoad.resolve = resolve;
+            });
+          }
+          return Promise.resolve();
+        }),
+      };
+      const workflow = createDjDeckLoadWorkflow(dependencies);
+
+      const firstLoad = workflow.loadDeckDeviceInput(
+        "deck-a",
+        "device-1",
+        "Device 1"
+      );
+      await Promise.resolve();
+      await workflow.loadDeckDeviceInput("deck-a", "device-2", "Device 2");
+      if (!firstDeviceLoad.resolve) {
+        throw new Error("First device load was not started");
+      }
+      firstDeviceLoad.resolve();
+      await firstLoad;
+
+      expect(getPlaybackChannel("dj", "deck-a")?.radio).toEqual(
+        expect.objectContaining({
+          name: "Device 2",
+          platformMetadata: expect.objectContaining({
+            platform: "device-input",
+            deviceId: "device-2",
+          }),
+        })
+      );
+      expect(URL.revokeObjectURL).toHaveBeenCalledWith(
+        "blob:https://radio.example/prior"
+      );
+    } finally {
+      URL.revokeObjectURL = originalRevokeObjectUrl;
+    }
+  });
+
   test("releases a prior local file URL after clearing a deck", async () => {
     await playbackSessionsCollection.stateWhenReady();
     insertDjSession();

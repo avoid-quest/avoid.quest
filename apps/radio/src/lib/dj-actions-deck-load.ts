@@ -521,10 +521,10 @@ async function loadDeckRadio(
       config,
       dependencies
     );
+    releaseReplacedLocalFileUrl(previousRadio, radio);
     if (!isCurrentDeckLoad(deckId, loadToken)) {
       return;
     }
-    releaseReplacedLocalFileUrl(previousRadio, radio);
 
     if (wasPlaying) {
       await dependencies.playDeckSound(soundId, deck.volume);

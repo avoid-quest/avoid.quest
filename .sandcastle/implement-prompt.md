@@ -2,7 +2,13 @@
 
 Fix issue {{TASK_ID}}: {{ISSUE_TITLE}}
 
-Pull in the issue using `gh issue view <ID>`. If it has a parent PRD, pull that in too.
+Pull in the issue using:
+
+`gh issue view <ID> --json number,title,body,comments,labels,state,url`
+
+If it has a parent PRD, pull that in too using the same JSON form. Do not
+start with `gh issue view <ID> --comments`; that output is often empty in this
+sandbox and causes a redundant retry.
 
 Only work on the issue specified.
 

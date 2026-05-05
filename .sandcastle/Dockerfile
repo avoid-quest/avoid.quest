@@ -2,11 +2,16 @@ FROM oven/bun:1.3.10-debian
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
+  build-essential \
   ca-certificates \
   git \
   curl \
   jq \
+  libopus-dev \
+  libsodium-dev \
+  pkg-config \
   procps \
+  python3 \
   ripgrep \
   && rm -rf /var/lib/apt/lists/*
 
@@ -32,11 +37,13 @@ USER agent
 ENV BUN_INSTALL=/home/agent/.bun
 ENV BUN_INSTALL_BIN=/home/agent/.bun/bin
 ENV PATH=/home/agent/.bun/bin:$PATH
+ENV CFLAGS="-Wno-error=implicit-function-declaration"
+ENV CXXFLAGS="-Wno-error=implicit-function-declaration"
 
 WORKDIR /home/agent
 
 RUN mkdir -p /home/agent/.bun/install/cache /home/agent/.codex /home/agent/.convex \
-  && bun install -g @openai/codex \
+  && bun install -g @openai/codex node-gyp \
   && chmod -R a+rX /home/agent/.bun \
   && chmod 777 /home/agent/.codex /home/agent/.convex
 

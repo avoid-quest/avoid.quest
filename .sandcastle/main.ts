@@ -35,18 +35,15 @@ import { docker } from "@ai-hero/sandcastle/sandboxes/docker";
 // Raise this if your backlog is large; lower it for a quick smoke-test run.
 const MAX_ITERATIONS = 25;
 const MAX_ACTIVE_ISSUE_PIPELINES = 1;
+const SANDCASTLE_IMAGE_NAME = "sandcastle:avoid.quest";
 
 type IssuePlan = { id: string; title: string; branch: string };
 type IssueRunResult = { commits: { sha: string }[] };
 
-const sharedNodeModulesPath = ".sandcastle/shared/node_modules";
 const sharedBunCachePath = ".sandcastle/shared/bun-cache";
 const execFile = promisify(execFileWithCallback);
 
-await Promise.all([
-  mkdir(sharedNodeModulesPath, { recursive: true }),
-  mkdir(sharedBunCachePath, { recursive: true }),
-]);
+await mkdir(sharedBunCachePath, { recursive: true });
 
 const git = (args: string[]) => execFile("git", args);
 
@@ -57,6 +54,11 @@ const sandboxEnv = {
   TURBO_CACHE_DIR: "/home/agent/workspace/.turbo/cache",
   TURBO_TELEMETRY_DISABLED: "1",
   ASTRO_TELEMETRY_DISABLED: "1",
+  // Sandcastle validation builds should not try to upload sourcemaps with
+  // host Sentry credentials. The app still reports the missing env vars.
+  SENTRY_AUTH_TOKEN: "",
+  SENTRY_ORG: "",
+  SENTRY_PROJECT: "",
   CI: "1",
 };
 
@@ -78,12 +80,9 @@ const ensureBranchExists = async (branch: string, baseBranch: string) => {
 
 const sandboxProvider = () =>
   docker({
+    imageName: SANDCASTLE_IMAGE_NAME,
     env: sandboxEnv,
     mounts: [
-      {
-        hostPath: sharedNodeModulesPath,
-        sandboxPath: "node_modules",
-      },
       {
         hostPath: sharedBunCachePath,
         sandboxPath: "/home/agent/.bun/install/cache",
@@ -96,28 +95,20 @@ const sandboxProvider = () =>
         hostPath: "~/.convex",
         sandboxPath: "/home/agent/.convex",
       },
-      {
-        hostPath: "AGENTS.md",
-        sandboxPath: "AGENTS.md",
-        readonly: true,
-      },
     ],
   });
 
 // Hooks run inside the sandbox before the agent starts each iteration.
-// bun install ensures the shared sandbox node_modules matches bun.lock.
-// Install scripts are skipped because this repo has native runtime packages
-// that do not have stable Linux arm64 prebuilds for the Sandcastle image.
+// Keep installs faithful to the lockfile and package lifecycle scripts. The
+// shared Bun cache speeds this up without sharing node_modules across worktrees.
 const hooks = {
   sandbox: {
     onSandboxReady: [
       {
         command: "mkdir -p .turbo/cache",
-        timeoutMs: 30_000,
       },
       {
-        command: "bun install --frozen-lockfile --ignore-scripts",
-        timeoutMs: 300_000,
+        command: "bun install --frozen-lockfile",
       },
     ],
   },
@@ -142,6 +133,7 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
   const plan = await run({
     hooks,
     sandbox: sandboxProvider(),
+    branchStrategy: { type: "merge-to-head" },
     name: "planner",
     // One iteration is enough: the planner just needs to read and reason,
     // not write code.
@@ -306,6 +298,7 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
   await run({
     hooks,
     sandbox: sandboxProvider(),
+    branchStrategy: { type: "merge-to-head" },
     name: "merger",
     maxIterations: 1,
     agent: codex("gpt-5.4-mini"),

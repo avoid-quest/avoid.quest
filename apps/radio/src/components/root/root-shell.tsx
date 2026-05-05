@@ -9,7 +9,7 @@ import { SyncDialog } from "@/components/settings/sync-dialog";
 import { Header } from "@/components/theme/header";
 import { ThemeProvider } from "@/components/theme/theme-provider";
 import type { SyncChanges } from "@/lib/collections";
-import { resetManagedAudioState } from "@/lib/playback-actions-shared";
+import { resetPlaybackLifecycleState } from "@/lib/mode-lifecycle-manager";
 import {
   applyRootSyncChanges,
   createRootQueryClient,
@@ -46,7 +46,7 @@ export function RootShell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const handlePageHide = () => {
-      resetManagedAudioState();
+      resetPlaybackLifecycleState();
     };
 
     window.addEventListener("pagehide", handlePageHide);

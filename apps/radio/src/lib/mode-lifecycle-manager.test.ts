@@ -15,6 +15,7 @@ import {
 import {
   createModeLifecycleRegistry,
   createModeManager,
+  resetPlaybackLifecycleState,
   synchronizePlaybackMode,
 } from "./mode-lifecycle-manager";
 import type { PlaybackActionContext } from "./playback-action-context";
@@ -615,5 +616,16 @@ describe("mode lifecycle manager", () => {
       phase: "active",
       error: null,
     });
+  });
+
+  test("resets page lifecycle audio state through the mode lifecycle boundary", () => {
+    const context = createModeLifecycleTestContext();
+    context.lifecycle.mainOutputSettingsApplied = true;
+
+    resetPlaybackLifecycleState(context);
+
+    expect(context.channels.deactivateAll).toHaveBeenCalledTimes(1);
+    expect(context.resetAudioManager).toHaveBeenCalledTimes(1);
+    expect(context.lifecycle.mainOutputSettingsApplied as boolean).toBe(false);
   });
 });

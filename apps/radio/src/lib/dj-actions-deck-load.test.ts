@@ -1731,6 +1731,22 @@ describe("DJ deck channel lifecycle", () => {
     expect(dependencies.applyCrossfade).toHaveBeenCalledTimes(1);
   });
 
+  test("persists continuation flags through the lifecycle boundary", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertDjSession();
+    const workflow = createDjDeckLoadWorkflow(createDependencies());
+
+    workflow.setDeckRepeat("deck-a", true);
+    workflow.setDeckAutoplay("deck-a", false);
+
+    expect(getPlaybackChannel("dj", "deck-a")).toEqual(
+      expect.objectContaining({
+        repeat: true,
+        autoplay: false,
+      })
+    );
+  });
+
   test("persists strip field changes and syncs active audio through the lifecycle boundary", async () => {
     await playbackSessionsCollection.stateWhenReady();
     insertDjSession();

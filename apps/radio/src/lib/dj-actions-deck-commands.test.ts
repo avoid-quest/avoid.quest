@@ -18,7 +18,13 @@ import {
   setPlaybackChannelRuntime,
 } from "@/lib/stores/playback-runtime-store";
 import { deactivateAllChannels } from "./channel-state-manager";
-import { createDjDeckCommands, seekDeckA, setDeckAVolume } from "./dj-actions";
+import {
+  createDjDeckCommands,
+  seekDeckA,
+  setDeckAAutoplay,
+  setDeckARepeat,
+  setDeckAVolume,
+} from "./dj-actions";
 import type { PlaybackActionContext } from "./playback-action-context";
 import type { PlaybackActionError } from "./playback-action-errors";
 
@@ -248,6 +254,22 @@ describe("DJ deck command context", () => {
       "dj",
       "deck-a",
       0.27
+    );
+  });
+
+  test("persists deck continuation flags through the lifecycle command boundary", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertDjSession();
+    const { context } = createTestContext();
+
+    setDeckARepeat(true, context);
+    setDeckAAutoplay(false, context);
+
+    expect(getPlaybackChannel("dj", "deck-a")).toEqual(
+      expect.objectContaining({
+        repeat: true,
+        autoplay: false,
+      })
     );
   });
 

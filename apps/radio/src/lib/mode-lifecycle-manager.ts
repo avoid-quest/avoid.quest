@@ -24,6 +24,7 @@ import {
   cleanupOrphanedSounds,
   getRuntimeSoundIds,
 } from "./mode-lifecycle-cleanup.js";
+import { resetManagedAudioState } from "./playback-actions-shared.js";
 
 export type ModePhase = "inactive" | "activating" | "active" | "deactivating";
 
@@ -401,6 +402,12 @@ export async function synchronizePlaybackMode(
   }
 
   return manager.switchTo(mode);
+}
+
+export function resetPlaybackLifecycleState(
+  ctx = getDefaultPlaybackActionContext()
+): void {
+  resetManagedAudioState(ctx);
 }
 
 export function useModeTransitionSnapshot(): ModeTransitionSnapshot {

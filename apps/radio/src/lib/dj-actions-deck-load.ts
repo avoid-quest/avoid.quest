@@ -6,7 +6,10 @@ import type {
   FilterConfig,
   Radio,
 } from "@/lib/audio";
-import { revokeFileObjectUrl } from "@/lib/audio/file-metadata";
+import {
+  extractFileMetadata,
+  revokeFileObjectUrl,
+} from "@/lib/audio/file-metadata";
 import {
   type DeckId,
   type DeckSide,
@@ -112,6 +115,7 @@ type DjDeckLoadWorkflow = {
     deviceId: string,
     deviceLabel: string
   ) => Promise<void>;
+  loadDeckFile: (deckId: DeckId, file: File) => Promise<void>;
   loadDeckRadio: (deckId: DeckId, radio: Radio | null) => Promise<void>;
   pauseDeck: (deckId: DeckId) => void;
   playDeck: (deckId: DeckId) => Promise<void>;
@@ -127,6 +131,8 @@ type DjDeckLoadWorkflow = {
   setDeckEffectsDryWet: (deckId: DeckId, value: number) => void;
   setDeckMute: (deckId: DeckId, muted: boolean) => void;
   setDeckPan: (deckId: DeckId, pan: number) => void;
+  setDeckAutoplay: (deckId: DeckId, enabled: boolean) => void;
+  setDeckRepeat: (deckId: DeckId, enabled: boolean) => void;
   setDeckSpeed: (deckId: DeckId, speed: number) => void;
   setDeckVolume: (deckId: DeckId, volume: number) => void;
   updateDeckEffect: (
@@ -588,6 +594,46 @@ function pauseDeck(deckId: DeckId, dependencies: DeckLoadDependencies): void {
   }
 }
 
+async function loadDeckFile(
+  deckId: DeckId,
+  file: File,
+  dependencies: DeckLoadDependencies
+): Promise<void> {
+  const side = deckConfig[deckId].side;
+
+  try {
+    dependencies.clearDjError();
+    const meta = await extractFileMetadata(file);
+
+    await loadDeckRadio(
+      deckId,
+      {
+        id: `local-file-${side}-${Date.now()}`,
+        name: meta.displayName,
+        streamUrl: meta.objectUrl,
+        description: "Local File",
+        enabled: true,
+        platformMetadata: {
+          platform: "local-file",
+          itemType: "track",
+          url: "",
+          fileName: meta.fileName,
+          displayName: meta.displayName,
+          duration: meta.duration,
+          fileSize: meta.fileSize,
+          mimeType: meta.mimeType,
+          objectUrl: meta.objectUrl,
+        },
+      },
+      dependencies
+    );
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Failed to load audio file";
+    dependencies.reportDjError(message, "DJ_LOCAL_FILE_LOAD_FAILED", error);
+  }
+}
+
 async function resetDeck(
   deckId: DeckId,
   dependencies: DeckLoadDependencies
@@ -663,6 +709,18 @@ function setDeckVolume(
   dependencies.applyCrossfade();
 }
 
+function setDeckRepeat(deckId: DeckId, enabled: boolean): void {
+  deckConfig[deckId].updateDeck((draft) => {
+    draft.repeat = enabled;
+  });
+}
+
+function setDeckAutoplay(deckId: DeckId, enabled: boolean): void {
+  deckConfig[deckId].updateDeck((draft) => {
+    draft.autoplay = enabled;
+  });
+}
+
 export function createDjDeckLoadWorkflow(
   dependencies: DeckLoadDependencies
 ): DjDeckLoadWorkflow {
@@ -671,6 +729,7 @@ export function createDjDeckLoadWorkflow(
       dependencies.addDeckEffect(deckId, type, dependencies.createEffectId()),
     loadDeckDeviceInput: (deckId, deviceId, deviceLabel) =>
       loadDeckDeviceInput(deckId, deviceId, deviceLabel, dependencies),
+    loadDeckFile: (deckId, file) => loadDeckFile(deckId, file, dependencies),
     loadDeckRadio: (deckId, radio) =>
       loadDeckRadio(deckId, radio, dependencies),
     pauseDeck: (deckId) => pauseDeck(deckId, dependencies),
@@ -685,6 +744,8 @@ export function createDjDeckLoadWorkflow(
     setDeckEffectsDryWet: dependencies.setDeckEffectsDryWet,
     setDeckMute: dependencies.setDeckMute,
     setDeckPan: dependencies.setDeckPan,
+    setDeckAutoplay,
+    setDeckRepeat,
     setDeckSpeed: dependencies.setDeckSpeed,
     setDeckVolume: (deckId, volume) =>
       setDeckVolume(deckId, volume, dependencies),

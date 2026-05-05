@@ -138,6 +138,10 @@ export function cleanupManagedChannel(
   ctx.channels.deactivate(channelId);
 }
 
+/**
+ * Temporary compatibility helper for legacy managed-session callers. Mode
+ * transitions should prefer mode-lifecycle-manager boundaries.
+ */
 export function cleanupPlaybackSessionAudio(
   sessionId: PlaybackSessionId,
   ctx = getDefaultPlaybackActionContext()
@@ -151,6 +155,10 @@ export function cleanupPlaybackSessionAudio(
   }
 }
 
+/**
+ * Temporary compatibility helper for legacy managed-session callers. Mode
+ * transitions should prefer mode-lifecycle-manager boundaries.
+ */
 export function cleanupAudioForModeChange(
   nextMode: PlaybackSessionId,
   ctx = getDefaultPlaybackActionContext()

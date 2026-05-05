@@ -48,7 +48,6 @@ import {
   type DeckSide,
   deckConfig,
 } from "@/lib/dj-actions-decks.js";
-import { setDeckLocalFileSource } from "@/lib/dj-actions-input-sources.js";
 import { findNextTrack as findNextTrackInPlaylist } from "@/lib/dj-actions-playlist.js";
 import {
   setCueOutputDelay as applyCueOutputDelay,
@@ -428,16 +427,20 @@ function setDeckSpeed(
   createDeckLoadWorkflow(ctx).setDeckSpeed(deckId, speed);
 }
 
-function setDeckRepeat(deckId: DeckId, enabled: boolean) {
-  deckConfig[deckId].updateDeck((draft) => {
-    draft.repeat = enabled;
-  });
+function setDeckRepeat(
+  deckId: DeckId,
+  enabled: boolean,
+  ctx = getDefaultPlaybackActionContext()
+) {
+  createDeckLoadWorkflow(ctx).setDeckRepeat(deckId, enabled);
 }
 
-function setDeckAutoplay(deckId: DeckId, enabled: boolean) {
-  deckConfig[deckId].updateDeck((draft) => {
-    draft.autoplay = enabled;
-  });
+function setDeckAutoplay(
+  deckId: DeckId,
+  enabled: boolean,
+  ctx = getDefaultPlaybackActionContext()
+) {
+  createDeckLoadWorkflow(ctx).setDeckAutoplay(deckId, enabled);
 }
 
 function seekDeck(
@@ -528,14 +531,12 @@ function setDeckChannelSelection(
   createDeckLoadWorkflow(ctx).setDeckDeviceChannelSelection(deckId, selection);
 }
 
-async function setDeckFileSource(deckId: DeckId, file: File): Promise<void> {
-  await setDeckLocalFileSource(
-    deckId,
-    file,
-    clearDjErrorSurface,
-    reportDjErrorSurface,
-    setDeckRadio
-  );
+async function setDeckFileSource(
+  deckId: DeckId,
+  file: File,
+  ctx = getDefaultPlaybackActionContext()
+): Promise<void> {
+  await createDeckLoadWorkflow(ctx).loadDeckFile(deckId, file);
 }
 
 export const setDeckARadio = bindDeckAction("deck-a", setDeckRadio);

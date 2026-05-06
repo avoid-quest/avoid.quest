@@ -88,4 +88,45 @@ describe("audio engine lifecycle", () => {
       ])
     );
   });
+
+  test("stops early media playback if worklet initialization fails", async () => {
+    harness = installAudioEngineLifecycleHarness({ failWorkletModule: true });
+    const manager = AudioManager.getInstance();
+    const states: AudioState[] = [];
+    const radio: Radio = {
+      id: "radio-1",
+      name: "Lifecycle Radio",
+      streamUrl: "https://audio.example/stream.mp3",
+    };
+
+    const soundId = manager.createSound(radio, "sound-lifecycle");
+    const unsubscribe = manager.subscribe(soundId, (state) => {
+      states.push(state);
+    });
+
+    await expect(manager.playSound(soundId, 0.4)).rejects.toThrow(
+      "Worklet module failed"
+    );
+
+    const events = harness.events();
+    const playIndex = events.indexOf("media-play");
+    const workletIndex = events.findIndex((event) =>
+      event.startsWith("worklet-module:")
+    );
+    const pauseIndex = events.lastIndexOf("media-pause");
+
+    expect(playIndex).toBeGreaterThanOrEqual(0);
+    expect(workletIndex).toBeGreaterThan(playIndex);
+    expect(pauseIndex).toBeGreaterThan(workletIndex);
+    expect(states.at(-1)).toEqual(
+      expect.objectContaining({
+        isLoading: false,
+        isPlaying: false,
+      })
+    );
+    expect(manager.hasSound(soundId)).toBe(true);
+
+    manager.cleanupSound(soundId);
+    unsubscribe();
+  });
 });

@@ -217,13 +217,11 @@ export class AudioManager {
       return;
     }
 
-    await this.init();
-    await resumeAudioContext();
-
     const context = getAudioContext();
     if (!context) {
       throw new Error("Audio context not available");
     }
+    const resumePromise = resumeAudioContext();
 
     // Update instance state
     instance.volume = volume;
@@ -243,10 +241,21 @@ export class AudioManager {
       instance.nodes = createAudioNodes(context);
     }
 
+    let playPromise: Promise<void> | null = null;
+    const activePlaybackSource = instance.playbackSource?.isActive
+      ? instance.playbackSource
+      : null;
+    const startPlayback = (
+      playbackSource: NonNullable<SoundInstance["playbackSource"]>
+    ) => {
+      const pendingPlay = playbackSource.play();
+      pendingPlay.catch(() => undefined);
+      return pendingPlay;
+    };
+
     // Create remote playback source if not exists or if previous ended/errored
-    if (instance.playbackSource?.isActive) {
-      // Resuming existing source - tell worklet to resume
-      this.effects.resumeSource(soundId);
+    if (activePlaybackSource) {
+      playPromise = startPlayback(activePlaybackSource);
     } else {
       // Clean up old source
       instance.playbackSource?.cleanup();
@@ -267,7 +276,11 @@ export class AudioManager {
       const streamUrl = this.getProxiedUrl(instance.radio.streamUrl);
 
       // Load and connect
-      await instance.playbackSource.load(streamUrl);
+      const loadPromise = instance.playbackSource.load(streamUrl);
+      playPromise = startPlayback(instance.playbackSource);
+      await resumePromise;
+      await this.init();
+      await loadPromise;
       const graphConnected = await this.connectAudioGraph(instance);
       if (!graphConnected) {
         console.warn(
@@ -276,11 +289,21 @@ export class AudioManager {
       }
     }
 
+    await resumePromise;
+    await this.init();
+
     // Set initial volume
     this.volume.set(soundId, volume);
 
+    if (activePlaybackSource) {
+      // Resuming existing source - tell worklet to resume
+      this.effects.resumeSource(soundId);
+    }
+
     // Start playback
-    await instance.playbackSource.play();
+    if (playPromise) {
+      await playPromise;
+    }
   }
 
   /**

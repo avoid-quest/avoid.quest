@@ -16,6 +16,7 @@ type Listener = {
 type HarnessRecords = {
   connections: string[];
   disconnections: string[];
+  events: string[];
   loadedUrls: string[];
   workletMessages: WorkletPortMessage[];
   workletModules: string[];
@@ -38,6 +39,7 @@ function installAudioEngineLifecycleHarness() {
   const records: HarnessRecords = {
     connections: [],
     disconnections: [],
+    events: [],
     loadedUrls: [],
     workletMessages: [],
     workletModules: [],
@@ -47,6 +49,7 @@ function installAudioEngineLifecycleHarness() {
   return {
     connectedNodePairs: () => [...records.connections],
     disconnectedNodeNames: () => [...records.disconnections],
+    events: () => [...records.events],
     loadedMediaUrls: () => [...records.loadedUrls],
     restore: () => restoreGlobals(originals),
     workletMessages: () => [...records.workletMessages],
@@ -157,6 +160,7 @@ function installGlobals(records: HarnessRecords): InstalledGlobal[] {
   class FakeAudioContext {
     readonly audioWorklet = {
       addModule: (url: string): Promise<void> => {
+        records.events.push(`worklet-module:${url}`);
         records.workletModules.push(url);
         return Promise.resolve();
       },
@@ -277,6 +281,7 @@ function installGlobals(records: HarnessRecords): InstalledGlobal[] {
       }
 
       records.loadedUrls.push(this.src);
+      records.events.push(`media-load:${this.src}`);
       this.readyState = 1;
       queueMicrotask(() => {
         this.dispatch("loadedmetadata");
@@ -289,6 +294,7 @@ function installGlobals(records: HarnessRecords): InstalledGlobal[] {
     }
 
     play(): Promise<void> {
+      records.events.push("media-play");
       this.paused = false;
       this.dispatch("playing");
       return Promise.resolve();

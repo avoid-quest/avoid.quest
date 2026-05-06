@@ -33,6 +33,7 @@ describe("audio engine lifecycle", () => {
 
     await manager.playSound(soundId, 0.4);
 
+    const events = harness.events();
     const connectedNodePairs = harness.connectedNodePairs();
     const workletMessageTypes = harness
       .workletMessages()
@@ -41,6 +42,10 @@ describe("audio engine lifecycle", () => {
     expect(harness.loadedMediaUrls()).toEqual([
       "/api/stream-proxy?url=https%3A%2F%2Faudio.example%2Fstream.mp3",
     ]);
+    expect(events.indexOf("media-play")).toBeGreaterThanOrEqual(0);
+    expect(
+      events.findIndex((event) => event.startsWith("worklet-module:"))
+    ).toBeGreaterThan(events.indexOf("media-play"));
     expect(connectedNodePairs).toContain("media-source -> gain");
     expect(connectedNodePairs).toContain("gain -> stereo-panner");
     expect(connectedNodePairs).toContain("stereo-panner -> biquad");

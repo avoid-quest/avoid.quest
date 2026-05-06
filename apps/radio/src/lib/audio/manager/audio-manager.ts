@@ -245,13 +245,13 @@ export class AudioManager {
     const activePlaybackSource = instance.playbackSource?.isActive
       ? instance.playbackSource
       : null;
+    const handleDeferredRejection = <T>(promise: Promise<T>): Promise<T> => {
+      promise.catch(() => undefined);
+      return promise;
+    };
     const startPlayback = (
       playbackSource: NonNullable<SoundInstance["playbackSource"]>
-    ) => {
-      const pendingPlay = playbackSource.play();
-      pendingPlay.catch(() => undefined);
-      return pendingPlay;
-    };
+    ) => handleDeferredRejection(playbackSource.play());
 
     // Create remote playback source if not exists or if previous ended/errored
     if (activePlaybackSource) {
@@ -276,7 +276,9 @@ export class AudioManager {
       const streamUrl = this.getProxiedUrl(instance.radio.streamUrl);
 
       // Load and connect
-      const loadPromise = instance.playbackSource.load(streamUrl);
+      const loadPromise = handleDeferredRejection(
+        instance.playbackSource.load(streamUrl)
+      );
       playPromise = startPlayback(instance.playbackSource);
       await resumePromise;
       await this.init();

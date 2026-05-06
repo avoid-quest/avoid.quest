@@ -217,13 +217,11 @@ export class AudioManager {
       return;
     }
 
-    await this.init();
-    await resumeAudioContext();
-
     const context = getAudioContext();
     if (!context) {
       throw new Error("Audio context not available");
     }
+    const resumePromise = resumeAudioContext();
 
     // Update instance state
     instance.volume = volume;
@@ -243,10 +241,14 @@ export class AudioManager {
       instance.nodes = createAudioNodes(context);
     }
 
+    let playPromise: Promise<void> | null = null;
+    const activePlaybackSource = instance.playbackSource?.isActive
+      ? instance.playbackSource
+      : null;
+
     // Create remote playback source if not exists or if previous ended/errored
-    if (instance.playbackSource?.isActive) {
-      // Resuming existing source - tell worklet to resume
-      this.effects.resumeSource(soundId);
+    if (activePlaybackSource) {
+      playPromise = this.startPlayback(activePlaybackSource);
     } else {
       // Clean up old source
       instance.playbackSource?.cleanup();
@@ -267,20 +269,45 @@ export class AudioManager {
       const streamUrl = this.getProxiedUrl(instance.radio.streamUrl);
 
       // Load and connect
-      await instance.playbackSource.load(streamUrl);
-      const graphConnected = await this.connectAudioGraph(instance);
-      if (!graphConnected) {
-        console.warn(
-          `[AudioManager] Audio graph connection failed for ${soundId}, playback may be affected`
-        );
-      }
+      const loadPromise = this.handleDeferredRejection(
+        instance.playbackSource.load(streamUrl)
+      );
+      playPromise = this.startPlayback(instance.playbackSource);
+      await this.ensurePlaybackSetup(
+        soundId,
+        instance,
+        activePlaybackSource,
+        resumePromise
+      );
+      await loadPromise;
+      await this.connectAudioGraphOrRollback(
+        soundId,
+        instance,
+        activePlaybackSource
+      );
+    }
+
+    if (activePlaybackSource) {
+      await this.ensurePlaybackSetup(
+        soundId,
+        instance,
+        activePlaybackSource,
+        resumePromise
+      );
     }
 
     // Set initial volume
     this.volume.set(soundId, volume);
 
+    if (activePlaybackSource) {
+      // Resuming existing source - tell worklet to resume
+      this.effects.resumeSource(soundId);
+    }
+
     // Start playback
-    await instance.playbackSource.play();
+    if (playPromise) {
+      await playPromise;
+    }
   }
 
   /**
@@ -1014,6 +1041,74 @@ export class AudioManager {
   // ============================================
   // Private Methods
   // ============================================
+
+  private handleDeferredRejection<T>(promise: Promise<T>): Promise<T> {
+    promise.catch(() => undefined);
+    return promise;
+  }
+
+  private startPlayback(
+    playbackSource: NonNullable<SoundInstance["playbackSource"]>
+  ): Promise<void> {
+    return this.handleDeferredRejection(playbackSource.play());
+  }
+
+  private rollbackEarlyPlayback(
+    soundId: string,
+    instance: SoundInstance,
+    activePlaybackSource: NonNullable<SoundInstance["playbackSource"]> | null
+  ): void {
+    if (activePlaybackSource) {
+      activePlaybackSource.pause();
+    } else {
+      instance.playbackSource?.stop();
+      instance.playbackSource?.cleanup();
+      instance.playbackSource = null;
+    }
+
+    instance.playing = false;
+    instance.loading = false;
+    instance.buffering = false;
+    notifySoundState(this.notifyListeners, soundId, instance, {
+      isPlaying: false,
+      isLoading: false,
+      isBuffering: false,
+    });
+  }
+
+  private async ensurePlaybackSetup(
+    soundId: string,
+    instance: SoundInstance,
+    activePlaybackSource: NonNullable<SoundInstance["playbackSource"]> | null,
+    resumePromise: Promise<void>
+  ): Promise<void> {
+    try {
+      await resumePromise;
+      await this.init();
+    } catch (error) {
+      this.rollbackEarlyPlayback(soundId, instance, activePlaybackSource);
+      throw error;
+    }
+  }
+
+  private async connectAudioGraphOrRollback(
+    soundId: string,
+    instance: SoundInstance,
+    activePlaybackSource: NonNullable<SoundInstance["playbackSource"]> | null
+  ): Promise<void> {
+    let graphConnected = false;
+    try {
+      graphConnected = await this.connectAudioGraph(instance);
+    } catch (error) {
+      this.rollbackEarlyPlayback(soundId, instance, activePlaybackSource);
+      throw error;
+    }
+
+    if (!graphConnected) {
+      this.rollbackEarlyPlayback(soundId, instance, activePlaybackSource);
+      throw new Error(`Audio graph connection failed for ${soundId}`);
+    }
+  }
 
   /**
    * Initialize audio system (loads worklet module)

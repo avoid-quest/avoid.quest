@@ -16,9 +16,14 @@ type Listener = {
 type HarnessRecords = {
   connections: string[];
   disconnections: string[];
+  events: string[];
   loadedUrls: string[];
   workletMessages: WorkletPortMessage[];
   workletModules: string[];
+};
+
+type HarnessOptions = {
+  failWorkletModule?: boolean;
 };
 
 type AudioEngineLifecycleHarness = ReturnType<
@@ -34,19 +39,21 @@ type AudioEngineLifecycleHarness = ReturnType<
  * when they need another observable browser boundary, not to mock AudioManager
  * internals or replace the engine implementation.
  */
-function installAudioEngineLifecycleHarness() {
+function installAudioEngineLifecycleHarness(options: HarnessOptions = {}) {
   const records: HarnessRecords = {
     connections: [],
     disconnections: [],
+    events: [],
     loadedUrls: [],
     workletMessages: [],
     workletModules: [],
   };
-  const originals = installGlobals(records);
+  const originals = installGlobals(records, options);
 
   return {
     connectedNodePairs: () => [...records.connections],
     disconnectedNodeNames: () => [...records.disconnections],
+    events: () => [...records.events],
     loadedMediaUrls: () => [...records.loadedUrls],
     restore: () => restoreGlobals(originals),
     workletMessages: () => [...records.workletMessages],
@@ -54,7 +61,10 @@ function installAudioEngineLifecycleHarness() {
   };
 }
 
-function installGlobals(records: HarnessRecords): InstalledGlobal[] {
+function installGlobals(
+  records: HarnessRecords,
+  options: HarnessOptions
+): InstalledGlobal[] {
   const originals: InstalledGlobal[] = [];
 
   const assignGlobal = (key: keyof typeof globalThis, value: unknown): void => {
@@ -157,7 +167,11 @@ function installGlobals(records: HarnessRecords): InstalledGlobal[] {
   class FakeAudioContext {
     readonly audioWorklet = {
       addModule: (url: string): Promise<void> => {
+        records.events.push(`worklet-module:${url}`);
         records.workletModules.push(url);
+        if (options.failWorkletModule) {
+          return Promise.reject(new Error("Worklet module failed"));
+        }
         return Promise.resolve();
       },
     };
@@ -277,6 +291,7 @@ function installGlobals(records: HarnessRecords): InstalledGlobal[] {
       }
 
       records.loadedUrls.push(this.src);
+      records.events.push(`media-load:${this.src}`);
       this.readyState = 1;
       queueMicrotask(() => {
         this.dispatch("loadedmetadata");
@@ -284,11 +299,13 @@ function installGlobals(records: HarnessRecords): InstalledGlobal[] {
     }
 
     pause(): void {
+      records.events.push("media-pause");
       this.paused = true;
       this.dispatch("pause");
     }
 
     play(): Promise<void> {
+      records.events.push("media-play");
       this.paused = false;
       this.dispatch("playing");
       return Promise.resolve();

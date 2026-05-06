@@ -205,15 +205,24 @@ export class MediaElementPlaybackSource implements PlaybackSource {
   }
 
   async play(): Promise<void> {
+    this.shouldResumeAfterLoad = true;
+
     if (this.currentLoadPromise) {
-      await this.currentLoadPromise;
+      // Mobile browsers require media playback to be requested while the tap's
+      // transient user activation is still alive. Start the media element now,
+      // even if metadata is still loading, and then wait for both readiness and
+      // the browser's play promise.
+      const playPromise = this.audio.paused
+        ? this.audio.play()
+        : Promise.resolve();
+      await Promise.all([this.currentLoadPromise, playPromise]);
+      return;
     }
 
     if (this._status === "idle" || this._status === "ended") {
       throw new Error("Source not loaded - call load() first");
     }
 
-    this.shouldResumeAfterLoad = true;
     await this.audio.play();
   }
 

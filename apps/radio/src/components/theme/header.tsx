@@ -21,7 +21,9 @@ export function Header() {
       </ClientOnly>
 
       <div className="flex shrink-0 items-center gap-1.5 [&_button]:size-7 [&_button]:text-xs">
-        <AppFeedback />
+        <ClientOnly>
+          <AppFeedback />
+        </ClientOnly>
         <SettingsButton />
         <ModeToggle />
       </div>

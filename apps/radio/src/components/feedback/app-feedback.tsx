@@ -45,9 +45,9 @@ const feedbackCategoryLabels: Record<
   (typeof FEEDBACK_CATEGORIES)[number],
   string
 > = {
-  bug: "Bug report",
-  idea: "Feature idea",
-  question: "Question",
+  bug: "🐛 Bug report",
+  idea: "💡 Feature idea",
+  question: "❓ Question",
 };
 
 const feedbackCopy = {
@@ -128,7 +128,7 @@ function FeedbackHeader({ viewModel }: FeedbackHeaderSlotProps) {
   return (
     <DialogHeader className="border-border/60 border-b pb-4">
       <DialogTitle
-        className="font-mono text-foreground/90 text-sm uppercase tracking-wider"
+        className="text-center font-mono text-foreground/90 text-sm uppercase tracking-wider"
         id={viewModel.titleId}
       >
         {viewModel.copy.title}

@@ -1,15 +1,9 @@
 import { createFeedbackEndpoint, type FeedbackItem } from "git-feedback/server";
-import { getSessionId } from "@/lib/auth/session";
-import { logRateLimitViolation } from "@/lib/logger";
-import { getClientIP } from "@/lib/middleware/rate-limit";
+import { validateAuthAndRateLimit } from "@/lib/middleware/rate-limit";
 import { createSessionCookie } from "@/lib/middleware/session";
-import { getOrCreateSessionFromRequest } from "@/lib/middleware/session-creation";
-import { checkRateLimit } from "@/lib/rate-limit";
 import { FEEDBACK_CATEGORIES } from "./config";
 
 const FEEDBACK_REPOSITORY = "avoid-quest/avoid.quest";
-const FEEDBACK_RATE_LIMIT_IDENTIFIER = "feedback";
-const UNKNOWN_FEEDBACK_IP = "unknown";
 const FEEDBACK_LABELS_BY_CATEGORY = {
   bug: "bug",
   idea: "enhancement",
@@ -33,10 +27,7 @@ type FeedbackEnv = {
   };
 };
 
-type SubmissionErrorCode =
-  | "bad_request"
-  | "issue_create_failed"
-  | "submission_blocked";
+type SubmissionErrorCode = "bad_request" | "issue_create_failed";
 
 function feedbackError(error: SubmissionErrorCode, status: number): Response {
   return Response.json({ ok: false, error }, { status });
@@ -98,42 +89,6 @@ function formatRadioFeedbackIssueBody(item: FeedbackItem): string {
   ].join("\n");
 }
 
-function getFeedbackRateLimitKey(request: Request): string {
-  const trustedClientIp = request.headers.get("cf-connecting-ip")?.trim();
-  return `ip:${trustedClientIp || UNKNOWN_FEEDBACK_IP}`;
-}
-
-async function checkFeedbackRateLimit(
-  request: Request,
-  env: FeedbackEnv
-): Promise<{ sessionCookie?: string } | Response> {
-  const cookieHeader = request.headers.get("cookie");
-  const existingSessionId = getSessionId(cookieHeader);
-  const session = existingSessionId
-    ? { sessionId: existingSessionId, shouldSetCookie: false }
-    : getOrCreateSessionFromRequest(cookieHeader);
-  const rateLimitSubject = getFeedbackRateLimitKey(request);
-
-  const rateLimitResult = await checkRateLimit(
-    env,
-    rateLimitSubject,
-    FEEDBACK_RATE_LIMIT_IDENTIFIER
-  );
-
-  if (!rateLimitResult.allowed) {
-    logRateLimitViolation(
-      rateLimitSubject,
-      FEEDBACK_RATE_LIMIT_IDENTIFIER,
-      getClientIP(request)
-    );
-    return feedbackError("submission_blocked", 429);
-  }
-
-  return session.shouldSetCookie
-    ? { sessionCookie: createSessionCookie(session.sessionId) }
-    : {};
-}
-
 export async function handleFeedbackRequest(
   request: Request,
   bindings: unknown
@@ -145,9 +100,11 @@ export async function handleFeedbackRequest(
     return feedbackError("issue_create_failed", 502);
   }
 
-  const rateLimit = await checkFeedbackRateLimit(request, env);
-  if (rateLimit instanceof Response) {
-    return rateLimit;
+  const authResult = await validateAuthAndRateLimit(request, env, "feedback", {
+    createSessionIfMissing: true,
+  });
+  if (authResult instanceof Response) {
+    return authResult;
   }
 
   try {
@@ -177,8 +134,11 @@ export async function handleFeedbackRequest(
 
     const response = await endpoint(request);
 
-    if (rateLimit.sessionCookie) {
-      response.headers.append("Set-Cookie", rateLimit.sessionCookie);
+    if (authResult.shouldSetCookie) {
+      response.headers.append(
+        "Set-Cookie",
+        createSessionCookie(authResult.sessionId)
+      );
     }
 
     return response;

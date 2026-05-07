@@ -53,7 +53,7 @@ export const presets: PresetRadio[] = [
     description:
       "Radio Blackout trasmette notizie, approfondimenti, musica e controcultura dal 1992, libera e autogestita.",
     websiteUrl: "https://radioblackout.org/",
-    streamUrl: "https://blimp.streampunk.cc/_stream/blackout.mp3",
+    streamUrl: "https://zeppelin.streampunk.cc/_stream/blackout.mp3",
     logoUrl: "https://radioblackout.org/logo.png",
   },
   {

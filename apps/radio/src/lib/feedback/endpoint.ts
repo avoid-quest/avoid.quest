@@ -97,6 +97,32 @@ function formatRadioFeedbackIssueBody(item: FeedbackItem): string {
   ].join("\n");
 }
 
+function createRadioFeedbackEndpoint(token: string) {
+  return createFeedbackEndpoint({
+    categories: FEEDBACK_CATEGORIES,
+    github: {
+      repository: FEEDBACK_REPOSITORY,
+      credentials: {
+        type: "token",
+        token,
+      },
+    },
+    issue: {
+      formatter: (item) => ({
+        body: formatRadioFeedbackIssueBody(item),
+        labels: [
+          "git-feedback",
+          "radio",
+          FEEDBACK_LABELS_BY_CATEGORY[
+            item.category as keyof typeof FEEDBACK_LABELS_BY_CATEGORY
+          ],
+        ].filter((label): label is string => Boolean(label)),
+      }),
+      titlePrefix: "[GF]",
+    },
+  });
+}
+
 export async function handleFeedbackRequest(
   request: Request,
   bindings: unknown
@@ -108,6 +134,12 @@ export async function handleFeedbackRequest(
     return feedbackError("issue_create_failed", 502);
   }
 
+  const endpoint = createRadioFeedbackEndpoint(token);
+
+  if (request.method === "GET") {
+    return endpoint(request);
+  }
+
   const authResult = await validateAuthAndRateLimit(request, env, "feedback", {
     createSessionIfMissing: true,
   });
@@ -116,30 +148,6 @@ export async function handleFeedbackRequest(
   }
 
   try {
-    const endpoint = createFeedbackEndpoint({
-      categories: FEEDBACK_CATEGORIES,
-      github: {
-        repository: FEEDBACK_REPOSITORY,
-        credentials: {
-          type: "token",
-          token,
-        },
-      },
-      issue: {
-        formatter: (item) => ({
-          body: formatRadioFeedbackIssueBody(item),
-          labels: [
-            "git-feedback",
-            "radio",
-            FEEDBACK_LABELS_BY_CATEGORY[
-              item.category as keyof typeof FEEDBACK_LABELS_BY_CATEGORY
-            ],
-          ].filter((label): label is string => Boolean(label)),
-        }),
-        titlePrefix: "[GF]",
-      },
-    });
-
     const response = await endpoint(request);
 
     if (authResult.shouldSetCookie) {

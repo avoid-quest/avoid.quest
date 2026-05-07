@@ -263,7 +263,6 @@ export function AppFeedback() {
   return (
     <ContactEmailContext.Provider value={{ contactEmail, setContactEmail }}>
       <FeedbackWidget
-        categories={FEEDBACK_CATEGORIES}
         components={{
           Actions: FeedbackActions,
           CancelAction: FeedbackCancelAction,

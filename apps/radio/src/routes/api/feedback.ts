@@ -7,6 +7,7 @@ import { handleFeedbackRequest } from "@/lib/feedback/endpoint";
 export const Route = createFileRoute("/api/feedback")({
   server: {
     handlers: {
+      GET: ({ request }) => handleFeedbackRequest(request, env),
       POST: ({ request }) => handleFeedbackRequest(request, env),
     },
   },

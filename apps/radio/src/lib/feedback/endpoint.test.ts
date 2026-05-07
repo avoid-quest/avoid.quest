@@ -29,6 +29,24 @@ beforeEach(() => {
 });
 
 describe("handleFeedbackRequest", () => {
+  test("returns capabilities for GET requests without rate limiting", async () => {
+    const limitMock = mock(async (_options: { key: string }) => ({
+      success: true,
+    }));
+    const request = new Request("https://radio.test/api/feedback", {
+      method: "GET",
+    });
+
+    const response = await handleFeedbackRequest(request, {
+      GIT_FEEDBACK_GITHUB_TOKEN: "token",
+      "proxy-rate-limit": { limit: limitMock },
+    });
+
+    expect(response.status).toBe(200);
+    expect(limitMock).not.toHaveBeenCalled();
+    expect(feedbackHandlerMock).toHaveBeenCalledTimes(1);
+  });
+
   test("rate limits feedback by session ID", async () => {
     const limitMock = mock(async (_options: { key: string }) => ({
       success: true,

@@ -92,8 +92,7 @@ CueBus: PreFaderSend → CueSumNode → CueDelayNode
 ```
 INVIDIOUS_INSTANCE_URL=   # Invidious instance for YouTube stream resolution
 INVIDIOUS_AUTH=           # Optional Invidious auth token
-GIT_FEEDBACK_REPOSITORY=avoid-quest/avoid.quest  # GitHub issue target
-GIT_FEEDBACK_GITHUB_TOKEN=                       # Fine-grained token with Issues read/write
+GIT_FEEDBACK_GITHUB_TOKEN= # Fine-grained token with Issues read/write
 ```
 
 ### Build-time (Sentry sourcemap upload)

@@ -7,8 +7,9 @@ import { getOrCreateSessionFromRequest } from "@/lib/middleware/session-creation
 import { checkRateLimit } from "@/lib/rate-limit";
 import { FEEDBACK_CATEGORIES } from "./config";
 
-const DEFAULT_FEEDBACK_REPOSITORY = "avoid-quest/avoid.quest";
+const FEEDBACK_REPOSITORY = "avoid-quest/avoid.quest";
 const FEEDBACK_RATE_LIMIT_IDENTIFIER = "feedback";
+const UNKNOWN_FEEDBACK_IP = "unknown";
 const FEEDBACK_LABELS_BY_CATEGORY = {
   bug: "bug",
   idea: "enhancement",
@@ -17,7 +18,6 @@ const FEEDBACK_LABELS_BY_CATEGORY = {
 
 type FeedbackEnv = {
   readonly GIT_FEEDBACK_GITHUB_TOKEN?: string;
-  readonly GIT_FEEDBACK_REPOSITORY?: string;
   readonly "proxy-rate-limit"?: {
     limit: (options: { key: string }) => Promise<{ success: boolean }>;
   };
@@ -36,6 +36,11 @@ function readFeedbackEnv(bindings: unknown): FeedbackEnv {
   return bindings as FeedbackEnv;
 }
 
+function getFeedbackRateLimitKey(request: Request): string {
+  const trustedClientIp = request.headers.get("cf-connecting-ip")?.trim();
+  return `ip:${trustedClientIp || UNKNOWN_FEEDBACK_IP}`;
+}
+
 async function checkFeedbackRateLimit(
   request: Request,
   env: FeedbackEnv
@@ -45,16 +50,17 @@ async function checkFeedbackRateLimit(
   const session = existingSessionId
     ? { sessionId: existingSessionId, shouldSetCookie: false }
     : getOrCreateSessionFromRequest(cookieHeader);
+  const rateLimitSubject = getFeedbackRateLimitKey(request);
 
   const rateLimitResult = await checkRateLimit(
     env,
-    session.sessionId,
+    rateLimitSubject,
     FEEDBACK_RATE_LIMIT_IDENTIFIER
   );
 
   if (!rateLimitResult.allowed) {
     logRateLimitViolation(
-      session.sessionId,
+      rateLimitSubject,
       FEEDBACK_RATE_LIMIT_IDENTIFIER,
       getClientIP(request)
     );
@@ -86,8 +92,7 @@ export async function handleFeedbackRequest(
     const endpoint = createFeedbackEndpoint({
       categories: FEEDBACK_CATEGORIES,
       github: {
-        repository:
-          env.GIT_FEEDBACK_REPOSITORY?.trim() || DEFAULT_FEEDBACK_REPOSITORY,
+        repository: FEEDBACK_REPOSITORY,
         credentials: {
           type: "token",
           token,

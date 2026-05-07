@@ -119,4 +119,47 @@ describe("handleFeedbackRequest", () => {
     );
     expect(feedbackHandlerMock).not.toHaveBeenCalled();
   });
+
+  test("formats contact email and mode into readable issue sections", async () => {
+    const limitMock = mock(async (_options: { key: string }) => ({
+      success: true,
+    }));
+    const request = new Request("https://radio.test/api/feedback", {
+      method: "POST",
+    });
+
+    await handleFeedbackRequest(request, {
+      GIT_FEEDBACK_GITHUB_TOKEN: "token",
+      "proxy-rate-limit": { limit: limitMock },
+    });
+
+    const endpointOptions = createFeedbackEndpointMock.mock.calls[0]?.[0] as {
+      issue?: {
+        formatter?: (item: {
+          body: string;
+          category?: string;
+          pageUrl?: string;
+          untrustedMetadata?: Record<string, string>;
+          userAgent?: string;
+        }) => { body?: string };
+      };
+    };
+    const formatted = endpointOptions.issue?.formatter?.({
+      body: "The deck meter stopped moving.",
+      category: "bug",
+      pageUrl: "https://radio.test/",
+      untrustedMetadata: {
+        contactEmail: "listener@example.com",
+        mode: "dj",
+      },
+      userAgent: "Test Browser",
+    });
+
+    expect(formatted?.body).toContain("## Contact");
+    expect(formatted?.body).toContain("- Email: listener@example.com");
+    expect(formatted?.body).toContain("## Context");
+    expect(formatted?.body).toContain("| Category | Bug report |");
+    expect(formatted?.body).toContain("| Mode | DJ |");
+    expect(formatted?.body).toContain("<summary>Details</summary>");
+  });
 });

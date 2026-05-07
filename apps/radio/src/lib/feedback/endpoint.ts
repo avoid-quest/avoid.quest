@@ -1,4 +1,4 @@
-import { createFeedbackEndpoint } from "git-feedback/server";
+import { createFeedbackEndpoint, type FeedbackItem } from "git-feedback/server";
 import { getSessionId } from "@/lib/auth/session";
 import { logRateLimitViolation } from "@/lib/logger";
 import { getClientIP } from "@/lib/middleware/rate-limit";
@@ -14,6 +14,16 @@ const FEEDBACK_LABELS_BY_CATEGORY = {
   bug: "bug",
   idea: "enhancement",
   question: "question",
+} as const;
+const FEEDBACK_CATEGORY_NAMES_BY_VALUE = {
+  bug: "Bug report",
+  idea: "Feature idea",
+  question: "Question",
+} as const;
+const FEEDBACK_MODE_NAMES_BY_VALUE = {
+  dj: "DJ",
+  multiple: "Multiple",
+  single: "Single",
 } as const;
 
 type FeedbackEnv = {
@@ -34,6 +44,58 @@ function feedbackError(error: SubmissionErrorCode, status: number): Response {
 
 function readFeedbackEnv(bindings: unknown): FeedbackEnv {
   return bindings as FeedbackEnv;
+}
+
+function readStringMetadata(
+  item: FeedbackItem,
+  key: string
+): string | undefined {
+  const value = item.untrustedMetadata?.[key];
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function formatTableCell(value: string | undefined): string {
+  return (value || "Not provided").replaceAll("|", "\\|").replace(/\s+/g, " ");
+}
+
+function formatRadioFeedbackIssueBody(item: FeedbackItem): string {
+  const category =
+    FEEDBACK_CATEGORY_NAMES_BY_VALUE[
+      item.category as keyof typeof FEEDBACK_CATEGORY_NAMES_BY_VALUE
+    ] ?? item.category?.trim();
+  const mode = readStringMetadata(item, "mode");
+  const modeLabel =
+    FEEDBACK_MODE_NAMES_BY_VALUE[
+      mode as keyof typeof FEEDBACK_MODE_NAMES_BY_VALUE
+    ] ?? mode;
+  const contactEmail = readStringMetadata(item, "contactEmail");
+
+  return [
+    "## Feedback",
+    "",
+    item.body.trim(),
+    "",
+    "## Contact",
+    "",
+    contactEmail
+      ? `- Email: ${formatTableCell(contactEmail)}`
+      : "- No contact email provided.",
+    "",
+    "## Context",
+    "",
+    "| Field | Value |",
+    "| --- | --- |",
+    `| Category | ${formatTableCell(category)} |`,
+    `| Mode | ${formatTableCell(modeLabel)} |`,
+    "",
+    "<details>",
+    "<summary>Details</summary>",
+    "",
+    `- Page URL: ${formatTableCell(item.pageUrl?.trim())}`,
+    `- User agent: ${formatTableCell(item.userAgent?.trim())}`,
+    "",
+    "</details>",
+  ].join("\n");
 }
 
 function getFeedbackRateLimitKey(request: Request): string {
@@ -100,6 +162,7 @@ export async function handleFeedbackRequest(
       },
       issue: {
         formatter: (item) => ({
+          body: formatRadioFeedbackIssueBody(item),
           labels: [
             "git-feedback",
             "radio",

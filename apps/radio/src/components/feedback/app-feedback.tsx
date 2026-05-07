@@ -6,6 +6,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@avoid.quest/ui/components/dialog";
+import { Input } from "@avoid.quest/ui/components/input";
 import { Label } from "@avoid.quest/ui/components/label";
 import {
   Select,
@@ -35,8 +36,10 @@ import {
   FeedbackWidget,
 } from "git-feedback/react";
 import { MessageCircleMore } from "lucide-react";
+import { createContext, useContext, useState } from "react";
 import { toast } from "sonner";
 import { FEEDBACK_CATEGORIES, FEEDBACK_ENDPOINT } from "@/lib/feedback/config";
+import { usePlayerMode } from "@/lib/hooks/use-settings";
 
 const feedbackCategoryLabels: Record<
   (typeof FEEDBACK_CATEGORIES)[number],
@@ -56,6 +59,23 @@ const feedbackCopy = {
   title: "Radio feedback",
   triggerLabel: "Feedback",
 };
+
+type ContactEmailContextValue = {
+  readonly contactEmail: string;
+  readonly setContactEmail: (email: string) => void;
+};
+
+const ContactEmailContext = createContext<ContactEmailContextValue | null>(
+  null
+);
+
+function useContactEmail() {
+  const context = useContext(ContactEmailContext);
+  if (!context) {
+    throw new Error("ContactEmailContext is missing");
+  }
+  return context;
+}
 
 function FeedbackTrigger({ viewModel }: FeedbackTriggerSlotProps) {
   return (
@@ -118,19 +138,38 @@ function FeedbackHeader({ viewModel }: FeedbackHeaderSlotProps) {
 }
 
 function FeedbackMessageField({ viewModel }: FeedbackMessageFieldSlotProps) {
+  const { contactEmail, setContactEmail } = useContactEmail();
+
   return (
-    <div className="grid gap-2">
-      <Label htmlFor={viewModel.bodyId}>{viewModel.copy.messageLabel}</Label>
-      <Textarea
-        className="min-h-32 resize-none bg-background/60"
-        disabled={viewModel.isSubmitting}
-        id={viewModel.bodyId}
-        onChange={(event) => viewModel.setBody(event.target.value)}
-        placeholder="Describe what happened, what you expected, or what would make radio better."
-        required
-        value={viewModel.body}
-      />
-    </div>
+    <>
+      <div className="grid gap-2">
+        <Label htmlFor="feedback-contact-email">Email (optional)</Label>
+        <Input
+          autoComplete="email"
+          className="bg-background/60"
+          disabled={viewModel.isSubmitting}
+          id="feedback-contact-email"
+          inputMode="email"
+          maxLength={254}
+          onChange={(event) => setContactEmail(event.target.value)}
+          placeholder="you@example.com"
+          type="email"
+          value={contactEmail}
+        />
+      </div>
+      <div className="grid gap-2">
+        <Label htmlFor={viewModel.bodyId}>{viewModel.copy.messageLabel}</Label>
+        <Textarea
+          className="min-h-32 resize-none bg-background/60"
+          disabled={viewModel.isSubmitting}
+          id={viewModel.bodyId}
+          onChange={(event) => viewModel.setBody(event.target.value)}
+          placeholder="Describe what happened, what you expected, or what would make radio better."
+          required
+          value={viewModel.body}
+        />
+      </div>
+    </>
   );
 }
 
@@ -218,26 +257,39 @@ function FeedbackSubmitAction({ viewModel }: FeedbackSubmitActionSlotProps) {
 }
 
 export function AppFeedback() {
+  const [contactEmail, setContactEmail] = useState("");
+  const mode = usePlayerMode();
+
   return (
-    <FeedbackWidget
-      categories={FEEDBACK_CATEGORIES}
-      components={{
-        Actions: FeedbackActions,
-        CancelAction: FeedbackCancelAction,
-        CategoryField: FeedbackCategoryField,
-        Dialog: FeedbackDialog,
-        Form: FeedbackForm,
-        Header: FeedbackHeader,
-        MessageField: FeedbackMessageField,
-        StatusOutput: FeedbackStatusOutput,
-        SubmitAction: FeedbackSubmitAction,
-        Trigger: FeedbackTrigger,
-      }}
-      copy={feedbackCopy}
-      endpoint={FEEDBACK_ENDPOINT}
-      onAfterSubmit={() => {
-        toast.success(feedbackCopy.successMessage);
-      }}
-    />
+    <ContactEmailContext.Provider value={{ contactEmail, setContactEmail }}>
+      <FeedbackWidget
+        categories={FEEDBACK_CATEGORIES}
+        components={{
+          Actions: FeedbackActions,
+          CancelAction: FeedbackCancelAction,
+          CategoryField: FeedbackCategoryField,
+          Dialog: FeedbackDialog,
+          Form: FeedbackForm,
+          Header: FeedbackHeader,
+          MessageField: FeedbackMessageField,
+          StatusOutput: FeedbackStatusOutput,
+          SubmitAction: FeedbackSubmitAction,
+          Trigger: FeedbackTrigger,
+        }}
+        copy={feedbackCopy}
+        endpoint={FEEDBACK_ENDPOINT}
+        onAfterSubmit={() => {
+          setContactEmail("");
+          toast.success(feedbackCopy.successMessage);
+        }}
+        untrustedMetadata={() => {
+          const email = contactEmail.trim();
+          return {
+            ...(email ? { contactEmail: email } : {}),
+            mode,
+          };
+        }}
+      />
+    </ContactEmailContext.Provider>
   );
 }

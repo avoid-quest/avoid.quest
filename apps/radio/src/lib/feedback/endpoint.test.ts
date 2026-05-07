@@ -140,5 +140,6 @@ describe("handleFeedbackRequest", () => {
     expect(formatted?.body).toContain("| Category | Bug report |");
     expect(formatted?.body).toContain("| Mode | DJ |");
     expect(formatted?.body).toContain("<summary>Details</summary>");
+    expect(formatted?.body).toContain("- App version: v");
   });
 });

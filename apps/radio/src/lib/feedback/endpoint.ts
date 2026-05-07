@@ -22,6 +22,10 @@ const FEEDBACK_MODE_NAMES_BY_VALUE = {
   multiple: "Multiple",
   single: "Single",
 } as const;
+const APP_VERSION =
+  typeof __APP_VERSION__ === "string"
+    ? __APP_VERSION__
+    : (process.env.npm_package_version ?? "unknown");
 
 type FeedbackEnv = {
   readonly GIT_FEEDBACK_GITHUB_TOKEN?: string;
@@ -85,6 +89,7 @@ function formatRadioFeedbackIssueBody(item: FeedbackItem): string {
     "<details>",
     "<summary>Details</summary>",
     "",
+    `- App version: ${formatTableCell(`v${APP_VERSION}`)}`,
     `- Page URL: ${formatTableCell(item.pageUrl?.trim())}`,
     `- User agent: ${formatTableCell(item.userAgent?.trim())}`,
     "",

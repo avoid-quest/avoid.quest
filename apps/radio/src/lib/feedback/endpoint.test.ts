@@ -49,6 +49,13 @@ describe("handleFeedbackRequest", () => {
     expect(limitMock).toHaveBeenCalledWith({
       key: "feedback:test-session-123",
     });
+    expect(createFeedbackEndpointMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        github: expect.objectContaining({
+          repository: "avoid-quest/avoid.quest",
+        }),
+      })
+    );
     expect(response.headers.get("set-cookie")).toBeNull();
   });
 

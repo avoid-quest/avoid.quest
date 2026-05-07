@@ -4,11 +4,14 @@ import { createSessionCookie } from "@/lib/middleware/session";
 import { FEEDBACK_CATEGORIES } from "./config";
 
 const FEEDBACK_REPOSITORY = "avoid-quest/avoid.quest";
-const FEEDBACK_LABELS_BY_CATEGORY = {
+const FEEDBACK_LABELS_BY_CATEGORY: Record<
+  (typeof FEEDBACK_CATEGORIES)[number],
+  string
+> = {
   bug: "bug",
   idea: "enhancement",
   question: "question",
-} as const;
+};
 const FEEDBACK_CATEGORY_NAMES_BY_VALUE = {
   bug: "Bug report",
   idea: "Feature idea",

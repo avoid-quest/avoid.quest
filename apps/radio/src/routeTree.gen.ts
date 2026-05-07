@@ -17,6 +17,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiStreamProxyRouteImport } from './routes/api/stream-proxy'
 import { Route as ApiStationsDotjsonRouteImport } from './routes/api/stations[.]json'
 import { Route as ApiSoundcloudProxyRouteImport } from './routes/api/soundcloud-proxy'
+import { Route as ApiFeedbackRouteImport } from './routes/api/feedback'
 import { Route as ApiBandcampProxyRouteImport } from './routes/api/bandcamp-proxy'
 
 const TunnelRoute = TunnelRouteImport.update({
@@ -59,6 +60,11 @@ const ApiSoundcloudProxyRoute = ApiSoundcloudProxyRouteImport.update({
   path: '/api/soundcloud-proxy',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiFeedbackRoute = ApiFeedbackRouteImport.update({
+  id: '/api/feedback',
+  path: '/api/feedback',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiBandcampProxyRoute = ApiBandcampProxyRouteImport.update({
   id: '/api/bandcamp-proxy',
   path: '/api/bandcamp-proxy',
@@ -72,6 +78,7 @@ export interface FileRoutesByFullPath {
   '/playlist.m3u': typeof PlaylistDotm3uRoute
   '/tunnel': typeof TunnelRoute
   '/api/bandcamp-proxy': typeof ApiBandcampProxyRoute
+  '/api/feedback': typeof ApiFeedbackRoute
   '/api/soundcloud-proxy': typeof ApiSoundcloudProxyRoute
   '/api/stations.json': typeof ApiStationsDotjsonRoute
   '/api/stream-proxy': typeof ApiStreamProxyRoute
@@ -83,6 +90,7 @@ export interface FileRoutesByTo {
   '/playlist.m3u': typeof PlaylistDotm3uRoute
   '/tunnel': typeof TunnelRoute
   '/api/bandcamp-proxy': typeof ApiBandcampProxyRoute
+  '/api/feedback': typeof ApiFeedbackRoute
   '/api/soundcloud-proxy': typeof ApiSoundcloudProxyRoute
   '/api/stations.json': typeof ApiStationsDotjsonRoute
   '/api/stream-proxy': typeof ApiStreamProxyRoute
@@ -95,6 +103,7 @@ export interface FileRoutesById {
   '/playlist.m3u': typeof PlaylistDotm3uRoute
   '/tunnel': typeof TunnelRoute
   '/api/bandcamp-proxy': typeof ApiBandcampProxyRoute
+  '/api/feedback': typeof ApiFeedbackRoute
   '/api/soundcloud-proxy': typeof ApiSoundcloudProxyRoute
   '/api/stations.json': typeof ApiStationsDotjsonRoute
   '/api/stream-proxy': typeof ApiStreamProxyRoute
@@ -108,6 +117,7 @@ export interface FileRouteTypes {
     | '/playlist.m3u'
     | '/tunnel'
     | '/api/bandcamp-proxy'
+    | '/api/feedback'
     | '/api/soundcloud-proxy'
     | '/api/stations.json'
     | '/api/stream-proxy'
@@ -119,6 +129,7 @@ export interface FileRouteTypes {
     | '/playlist.m3u'
     | '/tunnel'
     | '/api/bandcamp-proxy'
+    | '/api/feedback'
     | '/api/soundcloud-proxy'
     | '/api/stations.json'
     | '/api/stream-proxy'
@@ -130,6 +141,7 @@ export interface FileRouteTypes {
     | '/playlist.m3u'
     | '/tunnel'
     | '/api/bandcamp-proxy'
+    | '/api/feedback'
     | '/api/soundcloud-proxy'
     | '/api/stations.json'
     | '/api/stream-proxy'
@@ -142,6 +154,7 @@ export interface RootRouteChildren {
   PlaylistDotm3uRoute: typeof PlaylistDotm3uRoute
   TunnelRoute: typeof TunnelRoute
   ApiBandcampProxyRoute: typeof ApiBandcampProxyRoute
+  ApiFeedbackRoute: typeof ApiFeedbackRoute
   ApiSoundcloudProxyRoute: typeof ApiSoundcloudProxyRoute
   ApiStationsDotjsonRoute: typeof ApiStationsDotjsonRoute
   ApiStreamProxyRoute: typeof ApiStreamProxyRoute
@@ -205,6 +218,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiSoundcloudProxyRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/feedback': {
+      id: '/api/feedback'
+      path: '/api/feedback'
+      fullPath: '/api/feedback'
+      preLoaderRoute: typeof ApiFeedbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/bandcamp-proxy': {
       id: '/api/bandcamp-proxy'
       path: '/api/bandcamp-proxy'
@@ -222,6 +242,7 @@ const rootRouteChildren: RootRouteChildren = {
   PlaylistDotm3uRoute: PlaylistDotm3uRoute,
   TunnelRoute: TunnelRoute,
   ApiBandcampProxyRoute: ApiBandcampProxyRoute,
+  ApiFeedbackRoute: ApiFeedbackRoute,
   ApiSoundcloudProxyRoute: ApiSoundcloudProxyRoute,
   ApiStationsDotjsonRoute: ApiStationsDotjsonRoute,
   ApiStreamProxyRoute: ApiStreamProxyRoute,

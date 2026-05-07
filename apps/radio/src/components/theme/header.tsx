@@ -2,6 +2,7 @@ import AvoidLogo from "@avoid.quest/ui/components/avoid-logo";
 import { ModeToggle } from "@avoid.quest/ui/components/mode-toggle";
 import { Skeleton } from "@avoid.quest/ui/components/skeleton";
 import { ClientOnly } from "../client-only";
+import { AppFeedback } from "../feedback/app-feedback";
 import { ModeSelect } from "../settings/mode-select";
 import { SettingsButton } from "../settings/settings-button";
 
@@ -20,6 +21,7 @@ export function Header() {
       </ClientOnly>
 
       <div className="flex shrink-0 items-center gap-1.5 [&_button]:size-7 [&_button]:text-xs">
+        <AppFeedback />
         <SettingsButton />
         <ModeToggle />
       </div>

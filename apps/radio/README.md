@@ -39,6 +39,7 @@ PWA internet radio player with advanced audio mixing, effects chain, and MIDI su
 | `/api/stream-proxy` | CORS proxy for radio streams |
 | `/api/soundcloud-proxy` | SoundCloud CDN proxy (domain allowlisted) |
 | `/api/bandcamp-proxy` | Bandcamp stream proxy |
+| `/api/feedback` | GitHub issue feedback endpoint |
 | `/manifest` | PWA web app manifest (dynamic) |
 | `/tunnel` | Sentry envelope tunnel |
 
@@ -91,6 +92,8 @@ CueBus: PreFaderSend → CueSumNode → CueDelayNode
 ```
 INVIDIOUS_INSTANCE_URL=   # Invidious instance for YouTube stream resolution
 INVIDIOUS_AUTH=           # Optional Invidious auth token
+GIT_FEEDBACK_REPOSITORY=avoid-quest/avoid.quest  # GitHub issue target
+GIT_FEEDBACK_GITHUB_TOKEN=                       # Fine-grained token with Issues read/write
 ```
 
 ### Build-time (Sentry sourcemap upload)

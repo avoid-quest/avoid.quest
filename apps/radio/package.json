@@ -31,7 +31,7 @@
     "@tanstack/react-router": "^1.167.4",
     "@tanstack/react-start": "^1.166.15",
     "@tanstack/react-store": "^0.9.2",
-    "git-feedback": "^0.2.3",
+    "git-feedback": "^0.2.4",
     "hls.js": "^1.6.15",
     "lucide-react": "catalog:",
     "lz-string": "^1.5.0",

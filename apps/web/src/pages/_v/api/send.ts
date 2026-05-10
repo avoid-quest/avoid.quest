@@ -26,9 +26,14 @@ function proxyHeaders(request: Request) {
   const headers = new Headers();
   const contentType = request.headers.get("Content-Type");
   const umamiCache = request.headers.get("x-umami-cache");
+  const userAgent = request.headers.get("User-Agent");
 
   if (contentType) {
     headers.set("Content-Type", contentType);
+  }
+
+  if (userAgent) {
+    headers.set("User-Agent", userAgent);
   }
 
   if (umamiCache) {

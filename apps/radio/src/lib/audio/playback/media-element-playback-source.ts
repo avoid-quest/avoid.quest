@@ -13,9 +13,9 @@ function isHlsUrl(url: string): boolean {
   try {
     return new URL(
       url,
-      typeof window !== "undefined"
-        ? window.location.origin
-        : "https://example.invalid"
+      typeof window === "undefined"
+        ? "https://example.invalid"
+        : window.location.origin
     ).pathname.endsWith(".m3u8");
   } catch {
     return url.includes(".m3u8");
@@ -30,9 +30,9 @@ function shouldProxyMediaUrl(url: string): boolean {
   try {
     const parsed = new URL(
       url,
-      typeof window !== "undefined"
-        ? window.location.origin
-        : "https://example.invalid"
+      typeof window === "undefined"
+        ? "https://example.invalid"
+        : window.location.origin
     );
 
     if (

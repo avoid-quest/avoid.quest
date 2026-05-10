@@ -44,6 +44,16 @@ export function findTrackPlayUrlInDirection(
   return "";
 }
 
+function getTrackKey(track: PlatformTrack) {
+  return [
+    "videoId" in track ? track.videoId : "",
+    track.streamUrl,
+    track.name,
+    track.duration ?? "",
+    "trackNumber" in track ? (track.trackNumber ?? "") : "",
+  ].join(":");
+}
+
 export function DeckTracklist({ className }: { className?: string }) {
   const { tracks, currentTrackIndex, hasTracklist } = useDeckContext();
 
@@ -60,7 +70,7 @@ export function DeckTracklist({ className }: { className?: string }) {
             <TrackRow
               index={index}
               isCurrent={index === currentTrackIndex}
-              key={`${index}-${track.name}`}
+              key={getTrackKey(track)}
               track={track}
             />
           ))}

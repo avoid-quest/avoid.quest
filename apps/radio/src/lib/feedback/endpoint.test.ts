@@ -3,10 +3,21 @@ import { beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
 const feedbackHandlerMock = mock(async (_request: Request) =>
   Response.json({ ok: true })
 );
-const createFeedbackEndpointMock = mock((_options: unknown) => {
-  return feedbackHandlerMock;
-});
+const createFeedbackEndpointMock = mock(
+  (_options: unknown) => feedbackHandlerMock
+);
+const createIssueMock = mock(async () => ({
+  id: "1",
+  title: "Feedback",
+  url: "https://github.test/issue/1",
+}));
+const createGitHubAdapterMock = mock((_options: unknown) => ({
+  createIssue: createIssueMock,
+}));
 
+mock.module("git-feedback/github", () => ({
+  createGitHubAdapter: createGitHubAdapterMock,
+}));
 mock.module("git-feedback/server", () => ({
   createFeedbackEndpoint: createFeedbackEndpointMock,
 }));
@@ -24,6 +35,8 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
+  createGitHubAdapterMock.mockClear();
+  createIssueMock.mockClear();
   feedbackHandlerMock.mockClear();
   createFeedbackEndpointMock.mockClear();
 });
@@ -69,9 +82,18 @@ describe("handleFeedbackRequest", () => {
     });
     expect(createFeedbackEndpointMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        github: expect.objectContaining({
-          repository: "avoid-quest/avoid.quest",
-        }),
+        adapter: expect.objectContaining({ createIssue: createIssueMock }),
+      })
+    );
+    expect(createGitHubAdapterMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        categoryLabels: {
+          bug: "bug",
+          idea: "enhancement",
+          question: "question",
+        },
+        labels: ["git-feedback", "radio"],
+        repository: "avoid-quest/avoid.quest",
       })
     );
     expect(response.headers.get("set-cookie")).toBeNull();

@@ -56,10 +56,10 @@ type WorkletPortMessage = {
   payload?: unknown;
 };
 
-export { MessageType };
 export type {
   ActiveSource,
   FilterType,
   WorkletManagerEvents,
   WorkletPortMessage,
 };
+export { MessageType };

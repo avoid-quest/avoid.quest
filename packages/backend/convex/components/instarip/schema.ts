@@ -203,8 +203,8 @@ export default defineSchema({
 
 // Export validators for use in other files within this component
 export {
-	telegramSettingsValidator,
 	instagramSettingsValidator,
 	localeSettingsValidator,
 	loggingSettingsValidator,
+	telegramSettingsValidator,
 };

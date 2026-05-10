@@ -44,11 +44,10 @@ function createTestContext(overrides: Partial<AudioManager> = {}) {
       _channelId,
       _radio,
       optionsOrSoundId?: string | { soundId?: string }
-    ) => {
-      return typeof optionsOrSoundId === "string"
+    ) =>
+      typeof optionsOrSoundId === "string"
         ? optionsOrSoundId
-        : (optionsOrSoundId?.soundId ?? "single:active");
-    }
+        : (optionsOrSoundId?.soundId ?? "single:active")
   );
   const context = {
     audio: {

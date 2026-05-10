@@ -240,7 +240,7 @@ function extractAudioSourceElements(
   for (const source of allSources) {
     const src = source.getAttribute("src");
     const type = source.getAttribute("type");
-    if (src && type && type.startsWith("audio/") && isValidAudioUrl(src)) {
+    if (src && type?.startsWith("audio/") && isValidAudioUrl(src)) {
       options.push({
         value: resolveUrl(src, baseUrl),
         label: `Audio Source: ${type}`,

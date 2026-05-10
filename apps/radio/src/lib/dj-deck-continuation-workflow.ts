@@ -246,9 +246,9 @@ export function createDjDeckContinuationWorkflow(
   };
 }
 
+export type { PlatformStreamResolutionInput } from "@/lib/dj-platform-stream-port.js";
 export type {
   DjDeckContinuationDependencies,
   DjDeckContinuationWorkflow,
   StreamInterruptedResult,
 };
-export type { PlatformStreamResolutionInput } from "@/lib/dj-platform-stream-port.js";

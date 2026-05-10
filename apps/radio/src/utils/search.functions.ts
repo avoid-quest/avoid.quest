@@ -25,22 +25,23 @@ export type BandcampSearchResponse = AppResult<{
 export const bandcampSearch = createServerFn({ method: "POST" })
   .middleware([rateLimitMiddleware("bandcamp-search")])
   .inputValidator(BandcampSearchSchema)
-  .handler(({ data }): Promise<BandcampSearchResponse> => {
-    return runServerFn({
-      operation: "bandcampSearch",
-      fallback: {
-        code: "BANDCAMP_SEARCH_FAILED",
-        safeMessage: "Search failed",
-        category: "dependency",
-        expected: false,
-        status: 500,
-      },
-      run: async () => {
-        const results = await searchBandcamp(data.query, data.filter);
-        return { results };
-      },
-    });
-  });
+  .handler(
+    ({ data }): Promise<BandcampSearchResponse> =>
+      runServerFn({
+        operation: "bandcampSearch",
+        fallback: {
+          code: "BANDCAMP_SEARCH_FAILED",
+          safeMessage: "Search failed",
+          category: "dependency",
+          expected: false,
+          status: 500,
+        },
+        run: async () => {
+          const results = await searchBandcamp(data.query, data.filter);
+          return { results };
+        },
+      })
+  );
 
 const SoundCloudSearchSchema = z.object({
   query: z.string().min(1, "Search query is required").max(200),
@@ -74,20 +75,21 @@ function getSoundCloudClientId(): Promise<string> {
 export const soundcloudSearch = createServerFn({ method: "POST" })
   .middleware([rateLimitMiddleware("soundcloud-search")])
   .inputValidator(SoundCloudSearchSchema)
-  .handler(({ data }): Promise<SoundCloudSearchResponse> => {
-    return runServerFn({
-      operation: "soundcloudSearch",
-      fallback: {
-        code: "SOUNDCLOUD_SEARCH_FAILED",
-        safeMessage: "Search failed",
-        category: "dependency",
-        expected: false,
-        status: 500,
-      },
-      run: async () => {
-        const clientId = await getSoundCloudClientId();
-        const results = await searchSoundCloud(data.query, clientId);
-        return { results };
-      },
-    });
-  });
+  .handler(
+    ({ data }): Promise<SoundCloudSearchResponse> =>
+      runServerFn({
+        operation: "soundcloudSearch",
+        fallback: {
+          code: "SOUNDCLOUD_SEARCH_FAILED",
+          safeMessage: "Search failed",
+          category: "dependency",
+          expected: false,
+          status: 500,
+        },
+        run: async () => {
+          const clientId = await getSoundCloudClientId();
+          const results = await searchSoundCloud(data.query, clientId);
+          return { results };
+        },
+      })
+  );

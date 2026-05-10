@@ -103,7 +103,7 @@ function PostDetailPage() {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(blobUrl);
-    } catch (_error) {
+    } catch {
       // Fallback: open in new tab
       window.open(url, "_blank");
     }

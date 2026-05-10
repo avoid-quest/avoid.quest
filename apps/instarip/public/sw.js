@@ -16,13 +16,13 @@ self.addEventListener("activate", (event) => {
       // Clean up old caches
       caches
         .keys()
-        .then((cacheNames) => {
-          return Promise.all(
+        .then((cacheNames) =>
+          Promise.all(
             cacheNames
               .filter((name) => name !== CACHE_NAME)
               .map((name) => caches.delete(name))
-          );
-        }),
+          )
+        ),
     ])
   );
 });

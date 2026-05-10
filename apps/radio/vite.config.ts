@@ -62,7 +62,7 @@ const VENDOR_CHUNK_GROUPS: Array<{
 
 function manualVendorChunks(id: string): string | undefined {
   if (!id.includes("node_modules")) {
-    return undefined;
+    return;
   }
   const normalizedId = id.replaceAll(path.sep, "/");
   for (const group of VENDOR_CHUNK_GROUPS) {

@@ -20,5 +20,5 @@ type PlaybackSource = {
   stop(): void;
 };
 
-export type { PlaybackSource };
 export type { PlaybackSourceCallbacks } from "./playback-source-shared.js";
+export type { PlaybackSource };

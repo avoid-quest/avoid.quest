@@ -141,5 +141,5 @@ class EffectsController {
   }
 }
 
-export { EffectsController };
 export type { EffectsControllerOptions };
+export { EffectsController };

@@ -1,3 +1,4 @@
+import { createGitHubAdapter } from "git-feedback/github";
 import { createFeedbackEndpoint, type FeedbackItem } from "git-feedback/server";
 import { validateAuthAndRateLimit } from "@/lib/middleware/rate-limit";
 import { createSessionCookie } from "@/lib/middleware/session";
@@ -99,24 +100,19 @@ function formatRadioFeedbackIssueBody(item: FeedbackItem): string {
 
 function createRadioFeedbackEndpoint(token: string) {
   return createFeedbackEndpoint({
-    categories: FEEDBACK_CATEGORIES,
-    github: {
-      repository: FEEDBACK_REPOSITORY,
+    adapter: createGitHubAdapter({
+      categoryLabels: FEEDBACK_LABELS_BY_CATEGORY,
       credentials: {
         type: "token",
         token,
       },
-    },
+      labels: ["git-feedback", "radio"],
+      repository: FEEDBACK_REPOSITORY,
+    }),
+    categories: FEEDBACK_CATEGORIES,
     issue: {
       formatter: (item) => ({
         body: formatRadioFeedbackIssueBody(item),
-        labels: [
-          "git-feedback",
-          "radio",
-          FEEDBACK_LABELS_BY_CATEGORY[
-            item.category as keyof typeof FEEDBACK_LABELS_BY_CATEGORY
-          ],
-        ].filter((label): label is string => Boolean(label)),
       }),
       titlePrefix: "[GF]",
     },

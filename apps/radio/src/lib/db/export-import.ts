@@ -199,9 +199,7 @@ export const importFromUrl = (url: string): DatabaseExport => {
       throw new Error("Invalid share URL format");
     }
 
-    const base64Data = decodeURIComponent(
-      fragment.substring(DATA_FRAGMENT_LENGTH)
-    );
+    const base64Data = decodeURIComponent(fragment.slice(DATA_FRAGMENT_LENGTH));
     // decompressFromBase64 returns the original string directly (not compressed data)
     const jsonString = LZString.decompressFromBase64(base64Data);
 

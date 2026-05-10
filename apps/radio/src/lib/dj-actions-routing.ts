@@ -318,6 +318,7 @@ function autoCompensateLatency(
   return latencyMs;
 }
 
+export type { GetAudioManager, ReportDjError };
 export {
   applyCueOutputDevice,
   applyCurrentAudioSettings,
@@ -338,4 +339,3 @@ export {
   setMainOutputDelay,
   toggleDeckCue,
 };
-export type { GetAudioManager, ReportDjError };

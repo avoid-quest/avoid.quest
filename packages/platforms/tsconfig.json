@@ -1,7 +1,6 @@
 {
   "extends": "@avoid.quest/typescript-config/base.json",
   "compilerOptions": {
-    "baseUrl": "./src",
     "rootDir": "./src",
     "noEmit": true,
     "sourceMap": true,

@@ -59,7 +59,7 @@ function getArtworkUrl(artId?: number, img?: string): string | undefined {
   if (artId) {
     return `https://f4.bcbits.com/img/a${artId}_2.jpg`;
   }
-  return undefined;
+  return;
 }
 
 /**

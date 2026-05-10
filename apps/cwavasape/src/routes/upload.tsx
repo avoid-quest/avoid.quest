@@ -22,6 +22,7 @@ const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB
 const ALLOWED_EXTENSIONS = new Set(["mp3", "wav", "ogg"]);
 
 type FileEntry = {
+  id: string;
   file: File;
   status: "pending" | "uploading" | "done" | "error";
   progress: number;
@@ -47,6 +48,10 @@ function getExtension(name: string) {
   return name.split(".").pop()?.toLowerCase() ?? "";
 }
 
+function createFileEntryId(file: File) {
+  return `${file.name}-${file.size}-${file.lastModified}-${crypto.randomUUID()}`;
+}
+
 function getRowClasses(status: FileEntry["status"]) {
   if (status === "done") {
     return "border-emerald-500/15 bg-emerald-500/[0.04]";
@@ -62,7 +67,7 @@ function getUploadLabel(uploading: boolean, pendingCount: number) {
     return "Uploading...";
   }
   if (pendingCount > 0) {
-    return `Upload ${pendingCount} file${pendingCount !== 1 ? "s" : ""}`;
+    return `Upload ${pendingCount} file${pendingCount === 1 ? "" : "s"}`;
   }
   return "All uploaded";
 }
@@ -265,11 +270,12 @@ function SampleLibrary() {
     [playingKey]
   );
 
-  useEffect(() => {
-    return () => {
+  useEffect(
+    () => () => {
       audioRef.current?.pause();
-    };
-  }, []);
+    },
+    []
+  );
 
   if (loading) {
     return (
@@ -368,7 +374,12 @@ function UploadPage() {
         rejected.push(`${file.name} (too large)`);
         continue;
       }
-      entries.push({ file, status: "pending", progress: 0 });
+      entries.push({
+        id: createFileEntryId(file),
+        file,
+        status: "pending",
+        progress: 0,
+      });
     }
 
     if (rejected.length > 0) {
@@ -581,7 +592,7 @@ function UploadPage() {
             </h1>
             {files.length > 0 && (
               <p className="font-mono text-white/20 text-xs">
-                {files.length} file{files.length !== 1 ? "s" : ""}
+                {files.length} file{files.length === 1 ? "" : "s"}
                 {doneCount > 0 ? ` \u00b7 ${doneCount} uploaded` : ""}
               </p>
             )}
@@ -637,7 +648,7 @@ function UploadPage() {
               {files.map((entry, i) => (
                 <FileRow
                   entry={entry}
-                  key={`${entry.file.name}-${i}`}
+                  key={entry.id}
                   onRemove={() => removeFile(i)}
                   uploading={uploading}
                 />

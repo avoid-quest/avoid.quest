@@ -74,10 +74,10 @@ function createSoundInstance(radio: Radio, sourceId: string): SoundInstance {
   };
 }
 
+export type { AudioNodes, FilterConfig, SoundInstance };
 export {
   createAudioNodes,
   createSoundInstance,
   MAX_MAIN_DELAY_MS,
   MAX_MAIN_DELAY_SECONDS,
 };
-export type { AudioNodes, FilterConfig, SoundInstance };

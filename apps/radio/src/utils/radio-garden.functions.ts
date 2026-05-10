@@ -21,22 +21,23 @@ export type RadioGardenSearchResponse = AppResult<{
 export const radioGardenSearch = createServerFn({ method: "POST" })
   .middleware([rateLimitMiddleware("radio-garden-search")])
   .inputValidator(RadioGardenSearchSchema)
-  .handler(({ data }): Promise<RadioGardenSearchResponse> => {
-    return runServerFn({
-      operation: "radioGardenSearch",
-      fallback: {
-        code: "RADIO_GARDEN_SEARCH_FAILED",
-        safeMessage: "Search failed",
-        category: "dependency",
-        expected: false,
-        status: 500,
-      },
-      run: async () => {
-        const results = await searchRadioGarden(data.query);
-        return { results };
-      },
-    });
-  });
+  .handler(
+    ({ data }): Promise<RadioGardenSearchResponse> =>
+      runServerFn({
+        operation: "radioGardenSearch",
+        fallback: {
+          code: "RADIO_GARDEN_SEARCH_FAILED",
+          safeMessage: "Search failed",
+          category: "dependency",
+          expected: false,
+          status: 500,
+        },
+        run: async () => {
+          const results = await searchRadioGarden(data.query);
+          return { results };
+        },
+      })
+  );
 
 const RadioGardenResolveSchema = z.object({
   channelId: z
@@ -52,22 +53,23 @@ export type RadioGardenResolveResponse = AppResult<{
 export const radioGardenResolveStream = createServerFn({ method: "POST" })
   .middleware([rateLimitMiddleware("radio-garden-resolve")])
   .inputValidator(RadioGardenResolveSchema)
-  .handler(({ data }): Promise<RadioGardenResolveResponse> => {
-    return runServerFn({
-      operation: "radioGardenResolveStream",
-      fallback: {
-        code: "RADIO_GARDEN_RESOLVE_FAILED",
-        safeMessage: "Failed to resolve stream",
-        category: "dependency",
-        expected: false,
-        status: 500,
-      },
-      run: async () => {
-        const streamUrl = await resolveStream(data.channelId);
-        return { streamUrl };
-      },
-    });
-  });
+  .handler(
+    ({ data }): Promise<RadioGardenResolveResponse> =>
+      runServerFn({
+        operation: "radioGardenResolveStream",
+        fallback: {
+          code: "RADIO_GARDEN_RESOLVE_FAILED",
+          safeMessage: "Failed to resolve stream",
+          category: "dependency",
+          expected: false,
+          status: 500,
+        },
+        run: async () => {
+          const streamUrl = await resolveStream(data.channelId);
+          return { streamUrl };
+        },
+      })
+  );
 
 export type RadioGardenSuggestionsResponse = AppResult<{
   results: RadioGardenSearchResult[];
@@ -75,19 +77,20 @@ export type RadioGardenSuggestionsResponse = AppResult<{
 
 export const radioGardenSuggestions = createServerFn({ method: "GET" })
   .middleware([rateLimitMiddleware("radio-garden-suggestions")])
-  .handler((): Promise<RadioGardenSuggestionsResponse> => {
-    return runServerFn({
-      operation: "radioGardenSuggestions",
-      fallback: {
-        code: "RADIO_GARDEN_SUGGESTIONS_FAILED",
-        safeMessage: "Failed to fetch suggestions",
-        category: "dependency",
-        expected: false,
-        status: 500,
-      },
-      run: async () => {
-        const results = await getRadioGardenSuggestions();
-        return { results };
-      },
-    });
-  });
+  .handler(
+    (): Promise<RadioGardenSuggestionsResponse> =>
+      runServerFn({
+        operation: "radioGardenSuggestions",
+        fallback: {
+          code: "RADIO_GARDEN_SUGGESTIONS_FAILED",
+          safeMessage: "Failed to fetch suggestions",
+          category: "dependency",
+          expected: false,
+          status: 500,
+        },
+        run: async () => {
+          const results = await getRadioGardenSuggestions();
+          return { results };
+        },
+      })
+  );

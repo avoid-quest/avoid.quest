@@ -486,7 +486,7 @@ function DeckPanelInner({
       // Normal deck (streaming/file)
       const onChangeUrl = (() => {
         if (!(radio && isPlatformRadio(radio))) {
-          return undefined;
+          return;
         }
         if (isFileSource) {
           return () => setIsChangingFile(true);

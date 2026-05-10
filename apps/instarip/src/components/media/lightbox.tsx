@@ -252,8 +252,8 @@ export function Lightbox({
               key={currentItem.url}
               maxScale={5}
               minScale={0.5}
-              onTransformed={(ref) => {
-                isZoomed.current = ref.state.scale > 1.05;
+              onTransform={(_ref, state) => {
+                isZoomed.current = state.scale > 1.05;
               }}
               wheel={{ step: 0.2 }}
             >

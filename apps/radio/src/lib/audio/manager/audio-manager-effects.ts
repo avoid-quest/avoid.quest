@@ -33,7 +33,7 @@ function convertBoolean(value: unknown): number | undefined {
   if (typeof value === "number") {
     return value === 0 ? 0 : 1;
   }
-  return undefined;
+  return;
 }
 
 function convertParamValue(
@@ -51,7 +51,7 @@ function convertParamValue(
       }
       return typeof value === "string" ? value : undefined;
     default:
-      return undefined;
+      return;
   }
 }
 
@@ -151,5 +151,5 @@ function convertPartialEffectConfig(
   return result;
 }
 
-export { convertEffectConfig, convertPartialEffectConfig };
 export type { EngineEffectConfig, EngineEffectParamValue };
+export { convertEffectConfig, convertPartialEffectConfig };

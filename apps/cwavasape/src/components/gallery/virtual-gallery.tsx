@@ -39,7 +39,7 @@ export function VirtualGallery() {
   }, []);
   const activeStickyIndexRef = useRef(0);
   const itemHeightRef = useRef(
-    typeof window !== "undefined" ? window.innerHeight : 800
+    typeof window === "undefined" ? 800 : window.innerHeight
   );
 
   const { data: settings } = useSettings();

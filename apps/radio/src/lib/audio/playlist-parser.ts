@@ -98,14 +98,14 @@ export function parseM3U(content: string, baseUrl?: string): ParsedPlaylist {
       const info = trimmed.slice(8);
       const commaIndex = info.indexOf(",");
 
-      if (commaIndex !== -1) {
+      if (commaIndex === -1) {
+        currentTitle = info.trim();
+      } else {
         const durationStr = info.slice(0, commaIndex).trim();
         const duration = Number.parseInt(durationStr, 10);
         currentDuration =
           Number.isNaN(duration) || duration < 0 ? undefined : duration;
         currentTitle = info.slice(commaIndex + 1).trim();
-      } else {
-        currentTitle = info.trim();
       }
       continue;
     }

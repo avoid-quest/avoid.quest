@@ -258,12 +258,13 @@ async function setDeckRadio(
   await createDeckLoadWorkflow(ctx).loadDeckRadio(deckId, radio);
 }
 
-const bindDeckAction = <Args extends unknown[], Result>(
-  deckId: DeckId,
-  action: (deckId: DeckId, ...args: Args) => Result
-) => {
-  return (...args: Args): Result => action(deckId, ...args);
-};
+const bindDeckAction =
+  <Args extends unknown[], Result>(
+    deckId: DeckId,
+    action: (deckId: DeckId, ...args: Args) => Result
+  ) =>
+  (...args: Args): Result =>
+    action(deckId, ...args);
 
 // Generic play deck function
 async function playDeck(

@@ -49,7 +49,7 @@ export function ChannelSlider({
       <div className="min-w-0 flex-1" style={{ touchAction: "none" }}>
         <Slider
           defaultMarkerValue={defaultValue}
-          defaultValue={defaultValue !== undefined ? [defaultValue] : undefined}
+          defaultValue={defaultValue === undefined ? undefined : [defaultValue]}
           max={max}
           min={min}
           onValueChange={handleValueChange}

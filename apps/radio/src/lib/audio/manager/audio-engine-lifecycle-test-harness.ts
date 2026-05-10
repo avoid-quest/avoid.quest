@@ -374,5 +374,5 @@ function restoreGlobals(originals: InstalledGlobal[]): void {
   }
 }
 
-export { installAudioEngineLifecycleHarness };
 export type { AudioEngineLifecycleHarness };
+export { installAudioEngineLifecycleHarness };

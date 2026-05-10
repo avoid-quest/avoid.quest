@@ -18,32 +18,33 @@ export type YouTubeSearchResponse = AppResult<{
 export const youtubeSearch = createServerFn({ method: "POST" })
   .middleware([rateLimitMiddleware("youtube-search")])
   .inputValidator(SearchSchema)
-  .handler(({ data }): Promise<YouTubeSearchResponse> => {
-    return runServerFn({
-      operation: "youtubeSearch",
-      fallback: {
-        code: "YOUTUBE_SEARCH_FAILED",
-        safeMessage: "Search failed",
-        category: "dependency",
-        expected: false,
-        status: 500,
-      },
-      run: async () => {
-        const invidiousOptions = {
-          instanceUrl: env.INVIDIOUS_INSTANCE_URL || undefined,
-          auth: env.INVIDIOUS_AUTH || undefined,
-        };
+  .handler(
+    ({ data }): Promise<YouTubeSearchResponse> =>
+      runServerFn({
+        operation: "youtubeSearch",
+        fallback: {
+          code: "YOUTUBE_SEARCH_FAILED",
+          safeMessage: "Search failed",
+          category: "dependency",
+          expected: false,
+          status: 500,
+        },
+        run: async () => {
+          const invidiousOptions = {
+            instanceUrl: env.INVIDIOUS_INSTANCE_URL || undefined,
+            auth: env.INVIDIOUS_AUTH || undefined,
+          };
 
-        const results = await searchYouTubeMusic(
-          data.query,
-          data.filter,
-          invidiousOptions
-        );
+          const results = await searchYouTubeMusic(
+            data.query,
+            data.filter,
+            invidiousOptions
+          );
 
-        return { results };
-      },
-    });
-  });
+          return { results };
+        },
+      })
+  );
 
 const ResolveStreamSchema = z.object({
   videoId: z.string().min(1).max(20),
@@ -60,29 +61,30 @@ export type YouTubeResolveStreamResponse = AppResult<{
 export const youtubeResolveStream = createServerFn({ method: "POST" })
   .middleware([rateLimitMiddleware("youtube-resolve-stream")])
   .inputValidator(ResolveStreamSchema)
-  .handler(({ data }): Promise<YouTubeResolveStreamResponse> => {
-    return runServerFn({
-      operation: "youtubeResolveStream",
-      fallback: {
-        code: "YOUTUBE_RESOLVE_STREAM_FAILED",
-        safeMessage: "Failed to resolve stream",
-        category: "dependency",
-        expected: false,
-        status: 500,
-      },
-      run: async () => {
-        const invidiousOptions = {
-          instanceUrl: env.INVIDIOUS_INSTANCE_URL || undefined,
-          auth: env.INVIDIOUS_AUTH || undefined,
-        };
-        const streamUrl = await resolveStreamUrl(
-          data.videoId,
-          invidiousOptions
-        );
-        if (!streamUrl) {
-          return { stream: null };
-        }
-        return { stream: { streamUrl } };
-      },
-    });
-  });
+  .handler(
+    ({ data }): Promise<YouTubeResolveStreamResponse> =>
+      runServerFn({
+        operation: "youtubeResolveStream",
+        fallback: {
+          code: "YOUTUBE_RESOLVE_STREAM_FAILED",
+          safeMessage: "Failed to resolve stream",
+          category: "dependency",
+          expected: false,
+          status: 500,
+        },
+        run: async () => {
+          const invidiousOptions = {
+            instanceUrl: env.INVIDIOUS_INSTANCE_URL || undefined,
+            auth: env.INVIDIOUS_AUTH || undefined,
+          };
+          const streamUrl = await resolveStreamUrl(
+            data.videoId,
+            invidiousOptions
+          );
+          if (!streamUrl) {
+            return { stream: null };
+          }
+          return { stream: { streamUrl } };
+        },
+      })
+  );

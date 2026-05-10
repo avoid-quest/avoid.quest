@@ -14,26 +14,26 @@
     "cf-upload": "npx wrangler@latest versions upload"
   },
   "dependencies": {
-    "@astrojs/cloudflare": "^13.1.2",
-    "@astrojs/react": "^5.0.0",
+    "@astrojs/cloudflare": "^13.5.0",
+    "@astrojs/react": "^5.0.4",
     "@avoid.quest/typescript-config": "workspace:*",
     "@avoid.quest/ui": "workspace:*",
     "@fontsource/geist-mono": "^5.2.7",
     "@fontsource/geist-sans": "^5.2.5",
-    "astro": "^6.0.5",
+    "astro": "^6.3.1",
     "react": "catalog:",
     "react-dom": "catalog:",
     "tailwindcss": "catalog:"
   },
   "devDependencies": {
-    "@astrojs/check": "^0.9.8",
+    "@astrojs/check": "^0.9.9",
     "@cloudflare/workers-types": "catalog:",
     "@tailwindcss/vite": "catalog:",
     "@types/node": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "typescript": "catalog:",
-    "vite": "catalog:",
+    "vite": "^7.3.2",
     "wrangler": "catalog:"
   }
 }

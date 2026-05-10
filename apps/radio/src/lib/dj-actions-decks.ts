@@ -45,5 +45,5 @@ const deckConfig: Record<DeckId, DeckConfig> = {
   },
 };
 
-export { deckConfig, getDeckRadio };
 export type { DeckConfig, DeckId, DeckSide };
+export { deckConfig, getDeckRadio };

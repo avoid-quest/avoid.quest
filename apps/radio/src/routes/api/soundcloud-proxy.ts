@@ -235,8 +235,8 @@ async function fetchWithTimeout(
 export const Route = createFileRoute("/api/soundcloud-proxy")({
   server: {
     handlers: {
-      GET: async ({ request }) => {
-        return proxyPolicy.run({
+      GET: async ({ request }) =>
+        proxyPolicy.run({
           request,
           env,
           identifier: "soundcloud-proxy",
@@ -263,8 +263,7 @@ export const Route = createFileRoute("/api/soundcloud-proxy")({
 
             return fetchWithTimeout(urlValidation, request, origin, requestId);
           },
-        });
-      },
+        }),
       OPTIONS: ({ request }) => proxyPolicy.options(request),
     },
   },

@@ -23,24 +23,16 @@ for (const [key, value] of Object.entries({
 
 const captureErrorMock = mock((_error: unknown, _meta: unknown) => undefined);
 
-mock.module("@avoid.quest/error", () => {
-  return {
-    AppError,
-    captureError: captureErrorMock,
-  };
-});
+mock.module("@avoid.quest/error", () => ({
+  AppError,
+  captureError: captureErrorMock,
+}));
 
-mock.module("@tanstack/react-router", () => {
-  return {
-    Link: ({
-      children,
-      to: _to,
-    }: {
-      children: React.ReactNode;
-      to: string;
-    }) => <a href="/">{children}</a>,
-  };
-});
+mock.module("@tanstack/react-router", () => ({
+  Link: ({ children, to: _to }: { children: React.ReactNode; to: string }) => (
+    <a href="/">{children}</a>
+  ),
+}));
 
 let RootErrorView: typeof import("./root-error-view")["RootErrorView"];
 

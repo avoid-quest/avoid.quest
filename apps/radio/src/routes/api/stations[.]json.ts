@@ -9,8 +9,8 @@ const STATIONS_CACHE_CONTROL =
 export const Route = createFileRoute("/api/stations.json")({
   server: {
     handlers: {
-      GET: () => {
-        return json(
+      GET: () =>
+        json(
           {
             stations: getPublicKodiStations(radios),
           },
@@ -19,8 +19,7 @@ export const Route = createFileRoute("/api/stations.json")({
               "Cache-Control": STATIONS_CACHE_CONTROL,
             },
           }
-        );
-      },
+        ),
     },
   },
 });

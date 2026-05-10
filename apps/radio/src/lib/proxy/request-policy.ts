@@ -51,12 +51,11 @@ export function createProxyRequestPolicy(
     validateAuthAndRateLimit,
   }
 ) {
-  const problem = (error: AppError, origin: string, requestId: string) => {
-    return problemResponse(error, {
+  const problem = (error: AppError, origin: string, requestId: string) =>
+    problemResponse(error, {
       requestId,
       headers: getCorsHeaders(origin),
     });
-  };
 
   const options = (request: Request) => {
     const requestId = createRequestId(request);
@@ -71,12 +70,11 @@ export function createProxyRequestPolicy(
     });
   };
 
-  const errorHeaders = (request: Request): CorsHeaders => {
-    return getCorsHeaders(resolveProxyOrigin(request));
-  };
+  const errorHeaders = (request: Request): CorsHeaders =>
+    getCorsHeaders(resolveProxyOrigin(request));
 
-  const run = (config: ProxyRouteConfig): Promise<Response> => {
-    return runApiRoute({
+  const run = (config: ProxyRouteConfig): Promise<Response> =>
+    runApiRoute({
       request: config.request,
       operation: config.operation,
       fallback: config.fallback,
@@ -105,7 +103,6 @@ export function createProxyRequestPolicy(
         });
       },
     });
-  };
 
   return {
     errorHeaders,

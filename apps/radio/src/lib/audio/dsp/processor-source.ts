@@ -95,7 +95,7 @@ function readBooleanConfig(
   if (typeof value === "number") {
     return value !== 0;
   }
-  return undefined;
+  return;
 }
 
 function applyBooleanConfig(
@@ -694,7 +694,7 @@ export class EffectSource {
     for (const effectId of this.effectOrder) {
       const effect = this.effects.get(effectId);
       const config = this.effectConfigs.get(effectId);
-      if (!(effect && config && config.enabled)) {
+      if (!(effect && config?.enabled)) {
         continue;
       }
 

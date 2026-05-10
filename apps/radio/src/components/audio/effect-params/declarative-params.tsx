@@ -40,7 +40,7 @@ function getDefaultValue(
   key: string
 ): number | undefined {
   if (!defaultConfig) {
-    return undefined;
+    return;
   }
   const value = (defaultConfig as Record<string, unknown>)[key];
   return typeof value === "number" ? value : undefined;

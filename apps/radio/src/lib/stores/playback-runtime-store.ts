@@ -39,9 +39,10 @@ function ensureChannelState(channelId: string): ChannelRuntimeState {
 }
 
 export function usePlaybackChannelRuntime(channelId: string) {
-  return useStore(playbackRuntimeStore, (state) => {
-    return state.channels[channelId] ?? initialChannelRuntimeState;
-  });
+  return useStore(
+    playbackRuntimeStore,
+    (state) => state.channels[channelId] ?? initialChannelRuntimeState
+  );
 }
 
 export function getPlaybackChannelRuntime(

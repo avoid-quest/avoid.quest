@@ -261,4 +261,4 @@ function resolveStaticAudio(url: string, requestedBy: string): QueueTrack {
   };
 }
 
-export { getSoundCloudClientId, getInvidiousOptions };
+export { getInvidiousOptions, getSoundCloudClientId };

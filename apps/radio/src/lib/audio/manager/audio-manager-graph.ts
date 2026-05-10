@@ -259,6 +259,7 @@ async function connectAudioGraph({
   return true;
 }
 
+export type { MasterGraphNodes, MeterListener };
 export {
   attachWorkletManagerListeners,
   cleanupSoundNodes,
@@ -267,4 +268,3 @@ export {
   startMasterMeterLoop,
   stopMasterMeterLoop,
 };
-export type { MasterGraphNodes, MeterListener };

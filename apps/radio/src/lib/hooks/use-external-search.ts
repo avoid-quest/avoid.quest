@@ -66,13 +66,12 @@ export function useExternalSearch() {
       platform,
       bandcampFilter,
       youtubeFilter,
-    }: SearchParams): Promise<UnifiedSearchResult[]> => {
-      return await externalPlatformSearchWorkflow.search({
+    }: SearchParams): Promise<UnifiedSearchResult[]> =>
+      await externalPlatformSearchWorkflow.search({
         bandcampFilter,
         platform,
         query,
         youtubeFilter,
-      });
-    },
+      }),
   });
 }

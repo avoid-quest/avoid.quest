@@ -42,7 +42,7 @@ function formatMapping(mapping: MidiMapping | undefined): string {
   }
   const typeLabel = mapping.type === "cc" ? "CC" : "Note";
   const transformInfo = mapping.transform
-    ? ` ${mapping.transform.invert ? "INV " : ""}${mapping.transform.curve !== "linear" ? mapping.transform.curve : ""}`
+    ? ` ${mapping.transform.invert ? "INV " : ""}${mapping.transform.curve === "linear" ? "" : mapping.transform.curve}`
     : "";
   return `${typeLabel} ${mapping.control} ch.${mapping.channel + 1}${transformInfo}`;
 }

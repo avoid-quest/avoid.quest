@@ -38,7 +38,10 @@ import {
 import { MessageCircleMore } from "lucide-react";
 import { createContext, useContext, useState } from "react";
 import { toast } from "sonner";
-import { FEEDBACK_CATEGORIES, FEEDBACK_ENDPOINT } from "@/lib/feedback/config";
+import {
+  type FEEDBACK_CATEGORIES,
+  FEEDBACK_ENDPOINT,
+} from "@/lib/feedback/config";
 import { usePlayerMode } from "@/lib/hooks/use-settings";
 
 const feedbackCategoryLabels: Record<

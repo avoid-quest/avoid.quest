@@ -39,7 +39,7 @@ export function ParamSlider({
     : formatParam(formatKey, value, formatter);
 
   const defaultValueArray =
-    defaultValue?.valueOf() !== undefined ? [defaultValue] : undefined;
+    defaultValue?.valueOf() === undefined ? undefined : [defaultValue];
 
   return (
     <div className="space-y-2" title={description}>

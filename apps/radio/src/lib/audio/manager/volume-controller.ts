@@ -241,5 +241,5 @@ class VolumeController {
   }
 }
 
-export { VolumeController };
 export type { VolumeControllerOptions };
+export { VolumeController };

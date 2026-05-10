@@ -74,5 +74,5 @@ function notifySoundError(
   });
 }
 
-export { buildSoundError, notifySoundError, notifySoundState };
 export type { NotifySoundListeners };
+export { buildSoundError, notifySoundError, notifySoundState };

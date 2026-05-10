@@ -43,5 +43,5 @@ class WorkletEventEmitter {
   }
 }
 
-export { WorkletEventEmitter };
 export type { EventCallback };
+export { WorkletEventEmitter };

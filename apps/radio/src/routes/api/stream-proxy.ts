@@ -15,8 +15,8 @@ const streamProxyWorkflow = createStreamProxyRequestWorkflow({
 export const Route = createFileRoute("/api/stream-proxy")({
   server: {
     handlers: {
-      GET: async ({ request }) => {
-        return proxyPolicy.run({
+      GET: async ({ request }) =>
+        proxyPolicy.run({
           request,
           env,
           identifier: "stream-proxy",
@@ -29,8 +29,7 @@ export const Route = createFileRoute("/api/stream-proxy")({
             status: 500,
           },
           run: streamProxyWorkflow.handle,
-        });
-      },
+        }),
       OPTIONS: ({ request }) => proxyPolicy.options(request),
     },
   },

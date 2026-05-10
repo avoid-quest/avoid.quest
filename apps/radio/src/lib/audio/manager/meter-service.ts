@@ -95,5 +95,5 @@ class MeterService {
   }
 }
 
-export { MeterService };
 export type { MeterLevel, MeterListener };
+export { MeterService };

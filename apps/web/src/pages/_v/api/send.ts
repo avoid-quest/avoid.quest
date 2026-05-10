@@ -25,6 +25,7 @@ export const POST = (async ({ request }) => {
 function proxyHeaders(request: Request) {
   const headers = new Headers();
   const contentType = request.headers.get("Content-Type");
+  const cloudflareConnectingIp = request.headers.get("CF-Connecting-IP");
   const umamiCache = request.headers.get("x-umami-cache");
   const userAgent = request.headers.get("User-Agent");
 
@@ -34,6 +35,10 @@ function proxyHeaders(request: Request) {
 
   if (userAgent) {
     headers.set("User-Agent", userAgent);
+  }
+
+  if (cloudflareConnectingIp) {
+    headers.set("CF-Connecting-IP", cloudflareConnectingIp);
   }
 
   if (umamiCache) {

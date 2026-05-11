@@ -1,0 +1,57 @@
+name: Mirror repository
+
+on:
+  push:
+    branches:
+      - "**"
+    tags:
+      - "**"
+  delete:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 * * * *"
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  mirror:
+    if: github.repository == 'avoid-quest/avoid.quest'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Create destination GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.MIRROR_APP_ID }}
+          private-key: ${{ secrets.MIRROR_APP_PRIVATE_KEY }}
+          owner: net-work-studio
+          repositories: NWS-www_avoid.quest
+
+      - name: Mirror to destination repo
+        env:
+          SOURCE_REPO: ${{ github.repository }}
+          SOURCE_TOKEN: ${{ github.token }}
+          DEST_REPO: net-work-studio/NWS-www_avoid.quest
+          DEST_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+
+          git -c init.defaultBranch=main init --bare repo.git
+          cd repo.git
+
+          git remote add source "https://x-access-token:${SOURCE_TOKEN}@github.com/${SOURCE_REPO}.git"
+          git remote add destination "https://x-access-token:${DEST_TOKEN}@github.com/${DEST_REPO}.git"
+          git config --unset-all remote.source.fetch
+
+          git fetch --prune source \
+            "+refs/heads/*:refs/heads/*" \
+            "+refs/tags/*:refs/tags/*"
+
+          git push --prune destination \
+            "+refs/heads/*:refs/heads/*" \
+            "+refs/tags/*:refs/tags/*"

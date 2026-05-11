@@ -3,7 +3,9 @@ name: Mirror repository
 on:
   push:
     branches:
-      - "**"
+      - main
+      - release/**
+      - releases/**
     tags:
       - "**"
   delete:
@@ -27,7 +29,7 @@ jobs:
         id: app-token
         uses: actions/create-github-app-token@v3
         with:
-          app-id: ${{ secrets.MIRROR_APP_ID }}
+          client-id: ${{ secrets.MIRROR_APP_CLIENT_ID }}
           private-key: ${{ secrets.MIRROR_APP_PRIVATE_KEY }}
           owner: net-work-studio
           repositories: NWS-www_avoid.quest
@@ -49,9 +51,13 @@ jobs:
           git config --unset-all remote.source.fetch
 
           git fetch --prune source \
-            "+refs/heads/*:refs/heads/*" \
+            "+refs/heads/main:refs/heads/main" \
+            "+refs/heads/release/*:refs/heads/release/*" \
+            "+refs/heads/releases/*:refs/heads/releases/*" \
             "+refs/tags/*:refs/tags/*"
 
           git push --prune destination \
-            "+refs/heads/*:refs/heads/*" \
+            "+refs/heads/main:refs/heads/main" \
+            "+refs/heads/release/*:refs/heads/release/*" \
+            "+refs/heads/releases/*:refs/heads/releases/*" \
             "+refs/tags/*:refs/tags/*"

@@ -1,8 +1,8 @@
 import type { Radio } from "@/lib/audio";
 import type { RadioNowPlaying } from "./types";
 
-const IDLE_TITLE = "radio — avoid.quest";
-const SUFFIX = " — radio.avoid.quest";
+export const IDLE_RADIO_DOCUMENT_TITLE = "radio — avoid.quest";
+export const RADIO_DOCUMENT_TITLE_SUFFIX = " — radio.avoid.quest";
 const MAX_DOCUMENT_TITLE_LENGTH = 120;
 
 export function formatNowPlaying(
@@ -29,18 +29,10 @@ export function formatRadioDocumentTitle(input: {
   metadata?: RadioNowPlaying | null;
 }): string {
   if (!(input.radio && input.isPlaying)) {
-    return IDLE_TITLE;
+    return IDLE_RADIO_DOCUMENT_TITLE;
   }
   const title = input.metadata?.title ?? input.radio.name;
-  return `${truncateTitle(title)}${SUFFIX}`;
-}
-
-export function getIdleRadioDocumentTitle(): string {
-  return IDLE_TITLE;
-}
-
-export function getRadioDocumentTitleSuffix(): string {
-  return SUFFIX;
+  return `${truncateTitle(title)}${RADIO_DOCUMENT_TITLE_SUFFIX}`;
 }
 
 export function getMediaSessionText(input: {

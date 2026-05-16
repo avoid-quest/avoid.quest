@@ -2,9 +2,9 @@ import { useEffect } from "react";
 import type { Radio } from "@/lib/audio";
 import {
   formatRadioDocumentTitle,
-  getIdleRadioDocumentTitle,
   getMediaSessionText,
-  getRadioDocumentTitleSuffix,
+  IDLE_RADIO_DOCUMENT_TITLE,
+  RADIO_DOCUMENT_TITLE_SUFFIX,
 } from "@/lib/metadata/display";
 import type { RadioNowPlaying } from "@/lib/metadata/types";
 
@@ -47,20 +47,20 @@ function buildTitle(options: MediaSessionOptions): string {
   }
   if (options.mode === "multiple") {
     return options.playingCount > 0
-      ? `Multiple stations${getRadioDocumentTitleSuffix()}`
-      : getIdleRadioDocumentTitle();
+      ? `Multiple stations${RADIO_DOCUMENT_TITLE_SUFFIX}`
+      : IDLE_RADIO_DOCUMENT_TITLE;
   }
   // dj
   if (options.deckA && options.deckB) {
-    return `${options.deckA.name} | ${options.deckB.name}${getRadioDocumentTitleSuffix()}`;
+    return `${options.deckA.name} | ${options.deckB.name}${RADIO_DOCUMENT_TITLE_SUFFIX}`;
   }
   if (options.deckA) {
-    return `${options.deckA.name}${getRadioDocumentTitleSuffix()}`;
+    return `${options.deckA.name}${RADIO_DOCUMENT_TITLE_SUFFIX}`;
   }
   if (options.deckB) {
-    return `${options.deckB.name}${getRadioDocumentTitleSuffix()}`;
+    return `${options.deckB.name}${RADIO_DOCUMENT_TITLE_SUFFIX}`;
   }
-  return getIdleRadioDocumentTitle();
+  return IDLE_RADIO_DOCUMENT_TITLE;
 }
 
 function buildDjDeckInfo(
@@ -140,7 +140,7 @@ export function useMediaSession(options: MediaSessionOptions): void {
     document.title = buildTitle(options);
     setMediaSession(options);
     return () => {
-      document.title = getIdleRadioDocumentTitle();
+      document.title = IDLE_RADIO_DOCUMENT_TITLE;
       clearMediaSession();
     };
   }, [options]);

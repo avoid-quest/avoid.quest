@@ -32,7 +32,7 @@ export type RadioMetadataRetrievalDependencies = {
 
 const DEFAULT_TIMEOUT_MS = 8000;
 
-export function errorResponse(
+function errorResponse(
   code: RadioMetadataErrorCode,
   message: string
 ): Extract<RadioMetadataResponse, { ok: false }> {
@@ -200,9 +200,10 @@ export function createRadioMetadataRetrieval({
     }
 
     const expiresAt = sampledAt + RADIO_METADATA_SUCCESS_TTL_MS;
+    const providerFetch = fetchWithSignal(signal);
     for (const provider of EXTERNAL_METADATA_PROVIDER_ADAPTERS) {
       const externalResult = await provider.retrieve({
-        fetchImpl: fetchWithSignal(signal),
+        fetchImpl: providerFetch,
         streamUrl,
         sampledAt,
         expiresAt,

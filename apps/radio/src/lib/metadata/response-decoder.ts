@@ -8,7 +8,7 @@ type MetadataDecodeResult =
     }
   | { kind: "failure"; message: string };
 
-const ERROR_CODES = new Set([
+const RADIO_METADATA_ERROR_CODES = new Set([
   "RADIO_METADATA_URL_REQUIRED",
   "RADIO_METADATA_INVALID_URL",
   "RADIO_METADATA_INTERNAL_ADDRESS",
@@ -21,20 +21,24 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
 function getProblemMessage(data: unknown, fallback: string): string {
   if (!isRecord(data)) {
     return fallback;
   }
   for (const key of ["safeMessage", "message", "title", "detail"]) {
     const value = data[key];
-    if (typeof value === "string" && value.trim()) {
+    if (isNonEmptyString(value)) {
       return value;
     }
   }
   const error = data.error;
   if (isRecord(error)) {
     const message = error.message;
-    if (typeof message === "string" && message.trim()) {
+    if (isNonEmptyString(message)) {
       return message;
     }
   }
@@ -55,17 +59,17 @@ export function decodeRadioMetadataResponse(
   if (isRecord(data) && data.ok === false && isRecord(data.error)) {
     const code = data.error.code;
     const message = data.error.message;
-    if (typeof code === "string" && ERROR_CODES.has(code)) {
+    if (typeof code === "string" && RADIO_METADATA_ERROR_CODES.has(code)) {
       const decoded = data as Extract<RadioMetadataResponse, { ok: false }>;
-      return code === "RADIO_METADATA_UNSUPPORTED"
-        ? { kind: "unsupported", response: decoded }
-        : {
-            kind: "failure",
-            message:
-              typeof message === "string" && message.trim()
-                ? message
-                : "Failed to load radio metadata",
-          };
+      if (code === "RADIO_METADATA_UNSUPPORTED") {
+        return { kind: "unsupported", response: decoded };
+      }
+      return {
+        kind: "failure",
+        message: isNonEmptyString(message)
+          ? message
+          : "Failed to load radio metadata",
+      };
     }
   }
 

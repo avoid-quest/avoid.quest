@@ -84,8 +84,7 @@ export function createRadioMetadataWorkflow({
     timeoutMs,
   });
 
-  const resolve = async (streamUrl: string): Promise<RadioMetadataResponse> =>
-    retrieval.retrieve(streamUrl);
+  const resolve = retrieval.retrieve;
 
   const handle = async ({
     origin,

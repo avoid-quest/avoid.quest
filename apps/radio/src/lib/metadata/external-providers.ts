@@ -3,6 +3,20 @@ import type { RadioMetadataSource, RadioNowPlaying } from "./types";
 
 type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
+export type ExternalMetadataProviderInput = {
+  fetchImpl: FetchLike;
+  streamUrl: string;
+  sampledAt: number;
+  expiresAt: number;
+};
+
+export type ExternalMetadataProviderAdapter = {
+  id: RadioMetadataSource;
+  retrieve: (
+    input: ExternalMetadataProviderInput
+  ) => Promise<RadioNowPlaying | null>;
+};
+
 type AirtimeTrack = {
   name?: unknown;
   metadata?: {
@@ -144,12 +158,9 @@ async function fetchObjectJson(
   }
 }
 
-export async function tryAirtimeLiveInfo(input: {
-  fetchImpl: FetchLike;
-  streamUrl: string;
-  sampledAt: number;
-  expiresAt: number;
-}): Promise<RadioNowPlaying | null> {
+export async function tryAirtimeLiveInfo(
+  input: ExternalMetadataProviderInput
+): Promise<RadioNowPlaying | null> {
   for (const url of getAirtimeCandidateUrls(input.streamUrl)) {
     const result = await fetchObjectJson(input.fetchImpl, url);
     if (!result) {
@@ -169,12 +180,9 @@ export async function tryAirtimeLiveInfo(input: {
   return null;
 }
 
-export async function tryNtsLiveApi(input: {
-  fetchImpl: FetchLike;
-  streamUrl: string;
-  sampledAt: number;
-  expiresAt: number;
-}): Promise<RadioNowPlaying | null> {
+export async function tryNtsLiveApi(
+  input: ExternalMetadataProviderInput
+): Promise<RadioNowPlaying | null> {
   const url = new URL(input.streamUrl);
   if (url.hostname !== "stream-relay-geo.ntslive.net") {
     return null;
@@ -227,12 +235,9 @@ export async function tryNtsLiveApi(input: {
   });
 }
 
-export async function tryRadioBlackoutApi(input: {
-  fetchImpl: FetchLike;
-  streamUrl: string;
-  sampledAt: number;
-  expiresAt: number;
-}): Promise<RadioNowPlaying | null> {
+export async function tryRadioBlackoutApi(
+  input: ExternalMetadataProviderInput
+): Promise<RadioNowPlaying | null> {
   const url = new URL(input.streamUrl);
   if (
     !(

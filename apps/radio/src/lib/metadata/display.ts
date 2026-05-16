@@ -1,4 +1,9 @@
+import type { Radio } from "@/lib/audio";
 import type { RadioNowPlaying } from "./types";
+
+const IDLE_TITLE = "radio — avoid.quest";
+const SUFFIX = " — radio.avoid.quest";
+const MAX_DOCUMENT_TITLE_LENGTH = 120;
 
 export function formatNowPlaying(
   metadata: RadioNowPlaying | null | undefined
@@ -10,4 +15,44 @@ export function formatNowPlaying(
   return metadata.artist
     ? `${metadata.artist} - ${metadata.title}`
     : metadata.title;
+}
+
+function truncateTitle(value: string): string {
+  return value.length > MAX_DOCUMENT_TITLE_LENGTH
+    ? `${value.slice(0, MAX_DOCUMENT_TITLE_LENGTH - 1)}…`
+    : value;
+}
+
+export function formatRadioDocumentTitle(input: {
+  radio: Radio | null;
+  isPlaying: boolean;
+  metadata?: RadioNowPlaying | null;
+}): string {
+  if (!(input.radio && input.isPlaying)) {
+    return IDLE_TITLE;
+  }
+  const title = input.metadata?.title ?? input.radio.name;
+  return `${truncateTitle(title)}${SUFFIX}`;
+}
+
+export function getIdleRadioDocumentTitle(): string {
+  return IDLE_TITLE;
+}
+
+export function getRadioDocumentTitleSuffix(): string {
+  return SUFFIX;
+}
+
+export function getMediaSessionText(input: {
+  radio: Radio;
+  metadata?: RadioNowPlaying | null;
+}): { title: string; artist: string } {
+  const title = input.metadata?.title ?? input.radio.name;
+  const artist =
+    input.metadata?.artist ||
+    input.radio.name ||
+    input.radio.description ||
+    input.radio.placeTitle ||
+    "";
+  return { title, artist };
 }

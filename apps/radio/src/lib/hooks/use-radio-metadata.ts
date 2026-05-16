@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import type { Radio } from "@/lib/audio";
+import { decodeRadioMetadataResponse } from "@/lib/metadata/response-decoder";
 import type {
   RadioMetadataResponse,
   RadioNowPlaying,
@@ -27,6 +28,14 @@ function isMetadataEligibleStreamUrl(
   }
 }
 
+async function readJson(response: Response): Promise<unknown> {
+  try {
+    return await response.json();
+  } catch {
+    return null;
+  }
+}
+
 async function fetchRadioMetadata(
   streamUrl: string
 ): Promise<RadioMetadataResponse> {
@@ -34,11 +43,14 @@ async function fetchRadioMetadata(
     `/api/radio-metadata?url=${encodeURIComponent(streamUrl)}`,
     { headers: { Accept: "application/json" } }
   );
-  const data = (await response.json()) as RadioMetadataResponse;
-  if (!data.ok && data.error.code !== "RADIO_METADATA_UNSUPPORTED") {
-    throw new Error(data.error.message);
+  const decoded = decodeRadioMetadataResponse(
+    response,
+    await readJson(response)
+  );
+  if (decoded.kind === "failure") {
+    throw new Error(decoded.message);
   }
-  return data;
+  return decoded.response;
 }
 
 function getMetadataErrorMessage(error: unknown): string | null {
@@ -73,6 +85,15 @@ export function useRadioMetadata({
     retry: 1,
   });
 
+  if (!enabled) {
+    return {
+      metadata: null,
+      isLoading: false,
+      isSupported: false,
+      error: null,
+    };
+  }
+
   const response = query.data;
   const unsupported = response && !response.ok;
   const isSupported = response ? response.ok : null;
@@ -81,7 +102,7 @@ export function useRadioMetadata({
   return {
     metadata: response?.ok ? response.data : null,
     isLoading: query.isLoading,
-    isSupported: enabled ? isSupported : false,
+    isSupported,
     error: unsupported ? null : error,
   };
 }

@@ -7,6 +7,7 @@ type CacheEntry = {
 
 const MAX_CACHE_ENTRIES = 256;
 const cache = new Map<string, CacheEntry>();
+const inFlight = new Map<string, Promise<RadioMetadataResponse>>();
 
 export const RADIO_METADATA_SUCCESS_TTL_MS = 15_000;
 export const RADIO_METADATA_UNSUPPORTED_TTL_MS = 10_000;
@@ -49,6 +50,45 @@ export function setCachedRadioMetadata(
   });
 }
 
+export function getOrSetCachedRadioMetadata(
+  key: string,
+  options: {
+    now?: () => number;
+    retrieve: () => Promise<RadioMetadataResponse>;
+    ttlForResponse: (response: RadioMetadataResponse) => number;
+  }
+): Promise<RadioMetadataResponse> {
+  const now = options.now ?? Date.now;
+  const cached = getCachedRadioMetadata(key, now());
+  if (cached) {
+    return Promise.resolve(cached);
+  }
+
+  const existing = inFlight.get(key);
+  if (existing) {
+    return existing;
+  }
+
+  const pending = options
+    .retrieve()
+    .then((response) => {
+      setCachedRadioMetadata(
+        key,
+        response,
+        options.ttlForResponse(response),
+        now()
+      );
+      return response;
+    })
+    .finally(() => {
+      inFlight.delete(key);
+    });
+
+  inFlight.set(key, pending);
+  return pending;
+}
+
 export function clearRadioMetadataCache(): void {
   cache.clear();
+  inFlight.clear();
 }

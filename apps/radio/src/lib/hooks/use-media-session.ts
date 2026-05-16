@@ -1,5 +1,11 @@
 import { useEffect } from "react";
 import type { Radio } from "@/lib/audio";
+import {
+  formatRadioDocumentTitle,
+  getIdleRadioDocumentTitle,
+  getMediaSessionText,
+  getRadioDocumentTitleSuffix,
+} from "@/lib/metadata/display";
 import type { RadioNowPlaying } from "@/lib/metadata/types";
 
 /**
@@ -35,38 +41,26 @@ type MediaSessionOptions =
       isPlaying: boolean;
     };
 
-const IDLE_TITLE = "radio — avoid.quest";
-const SUFFIX = " — radio.avoid.quest";
-const MAX_DOCUMENT_TITLE_LENGTH = 120;
-
-function truncateTitle(value: string): string {
-  return value.length > MAX_DOCUMENT_TITLE_LENGTH
-    ? `${value.slice(0, MAX_DOCUMENT_TITLE_LENGTH - 1)}…`
-    : value;
-}
-
 function buildTitle(options: MediaSessionOptions): string {
   if (options.mode === "single") {
-    if (!(options.radio && options.isPlaying)) {
-      return IDLE_TITLE;
-    }
-    const title = options.metadata?.title ?? options.radio.name;
-    return `${truncateTitle(title)}${SUFFIX}`;
+    return formatRadioDocumentTitle(options);
   }
   if (options.mode === "multiple") {
-    return options.playingCount > 0 ? `Multiple stations${SUFFIX}` : IDLE_TITLE;
+    return options.playingCount > 0
+      ? `Multiple stations${getRadioDocumentTitleSuffix()}`
+      : getIdleRadioDocumentTitle();
   }
   // dj
   if (options.deckA && options.deckB) {
-    return `${options.deckA.name} | ${options.deckB.name}${SUFFIX}`;
+    return `${options.deckA.name} | ${options.deckB.name}${getRadioDocumentTitleSuffix()}`;
   }
   if (options.deckA) {
-    return `${options.deckA.name}${SUFFIX}`;
+    return `${options.deckA.name}${getRadioDocumentTitleSuffix()}`;
   }
   if (options.deckB) {
-    return `${options.deckB.name}${SUFFIX}`;
+    return `${options.deckB.name}${getRadioDocumentTitleSuffix()}`;
   }
-  return IDLE_TITLE;
+  return getIdleRadioDocumentTitle();
 }
 
 function buildDjDeckInfo(
@@ -90,13 +84,13 @@ function buildMetadata(options: MediaSessionOptions): MediaMetadata | null {
     if (!options.radio) {
       return null;
     }
-    const title = options.metadata?.title ?? options.radio.name;
-    const artist = options.metadata?.artist ?? options.radio.name;
+    const text = getMediaSessionText({
+      radio: options.radio,
+      metadata: options.metadata,
+    });
     return new MediaMetadata({
-      title: sanitizeForBluetooth(title),
-      artist: sanitizeForBluetooth(
-        artist || options.radio.description || options.radio.placeTitle || ""
-      ),
+      title: sanitizeForBluetooth(text.title),
+      artist: sanitizeForBluetooth(text.artist),
     });
   }
   if (options.mode === "multiple") {
@@ -146,7 +140,7 @@ export function useMediaSession(options: MediaSessionOptions): void {
     document.title = buildTitle(options);
     setMediaSession(options);
     return () => {
-      document.title = IDLE_TITLE;
+      document.title = getIdleRadioDocumentTitle();
       clearMediaSession();
     };
   }, [options]);

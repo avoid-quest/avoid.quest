@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import type { Radio } from "@/lib/audio";
+import type { RadioNowPlaying } from "@/lib/metadata/types";
 
 /**
  * Sanitizes a string for safe use in AVRCP/Bluetooth metadata.
@@ -20,7 +21,12 @@ export function sanitizeForBluetooth(str: string): string {
 }
 
 type MediaSessionOptions =
-  | { mode: "single"; radio: Radio | null; isPlaying: boolean }
+  | {
+      mode: "single";
+      radio: Radio | null;
+      isPlaying: boolean;
+      metadata?: RadioNowPlaying | null;
+    }
   | { mode: "multiple"; radios: Radio[]; playingCount: number }
   | {
       mode: "dj";
@@ -31,12 +37,21 @@ type MediaSessionOptions =
 
 const IDLE_TITLE = "radio — avoid.quest";
 const SUFFIX = " — radio.avoid.quest";
+const MAX_DOCUMENT_TITLE_LENGTH = 120;
+
+function truncateTitle(value: string): string {
+  return value.length > MAX_DOCUMENT_TITLE_LENGTH
+    ? `${value.slice(0, MAX_DOCUMENT_TITLE_LENGTH - 1)}…`
+    : value;
+}
 
 function buildTitle(options: MediaSessionOptions): string {
   if (options.mode === "single") {
-    return options.radio && options.isPlaying
-      ? `${options.radio.name}${SUFFIX}`
-      : IDLE_TITLE;
+    if (!(options.radio && options.isPlaying)) {
+      return IDLE_TITLE;
+    }
+    const title = options.metadata?.title ?? options.radio.name;
+    return `${truncateTitle(title)}${SUFFIX}`;
   }
   if (options.mode === "multiple") {
     return options.playingCount > 0 ? `Multiple stations${SUFFIX}` : IDLE_TITLE;
@@ -75,10 +90,12 @@ function buildMetadata(options: MediaSessionOptions): MediaMetadata | null {
     if (!options.radio) {
       return null;
     }
+    const title = options.metadata?.title ?? options.radio.name;
+    const artist = options.metadata?.artist ?? options.radio.name;
     return new MediaMetadata({
-      title: sanitizeForBluetooth(options.radio.name),
+      title: sanitizeForBluetooth(title),
       artist: sanitizeForBluetooth(
-        options.radio.description || options.radio.placeTitle || ""
+        artist || options.radio.description || options.radio.placeTitle || ""
       ),
     });
   }

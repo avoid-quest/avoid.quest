@@ -1,0 +1,87 @@
+import { useQuery } from "@tanstack/react-query";
+import type { Radio } from "@/lib/audio";
+import type {
+  RadioMetadataResponse,
+  RadioNowPlaying,
+} from "@/lib/metadata/types";
+
+const POLL_INTERVAL_MS = 30_000;
+
+export const radioMetadataKeys = {
+  all: ["radio-metadata"] as const,
+  stream: (url: string | undefined) =>
+    [...radioMetadataKeys.all, url ?? ""] as const,
+};
+
+function isMetadataEligibleStreamUrl(
+  streamUrl: string | undefined
+): streamUrl is string {
+  if (!streamUrl?.trim()) {
+    return false;
+  }
+  try {
+    const parsed = new URL(streamUrl);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+async function fetchRadioMetadata(
+  streamUrl: string
+): Promise<RadioMetadataResponse> {
+  const response = await fetch(
+    `/api/radio-metadata?url=${encodeURIComponent(streamUrl)}`,
+    { headers: { Accept: "application/json" } }
+  );
+  const data = (await response.json()) as RadioMetadataResponse;
+  if (!data.ok && data.error.code !== "RADIO_METADATA_UNSUPPORTED") {
+    throw new Error(data.error.message);
+  }
+  return data;
+}
+
+function getMetadataErrorMessage(error: unknown): string | null {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return error ? "Failed to load radio metadata" : null;
+}
+
+export function useRadioMetadata({
+  radio,
+  enabled: requested,
+}: {
+  radio: Radio | null;
+  enabled: boolean;
+}): {
+  metadata: RadioNowPlaying | null;
+  isLoading: boolean;
+  isSupported: boolean | null;
+  error: string | null;
+} {
+  const streamUrl = radio?.streamUrl;
+  const enabled = requested && isMetadataEligibleStreamUrl(streamUrl);
+
+  const query = useQuery({
+    queryKey: radioMetadataKeys.stream(streamUrl),
+    queryFn: async () => fetchRadioMetadata(streamUrl ?? ""),
+    enabled,
+    refetchInterval: enabled ? POLL_INTERVAL_MS : false,
+    staleTime: 15_000,
+    gcTime: 60_000,
+    retry: 1,
+  });
+
+  const response = query.data;
+  const unsupported = response && !response.ok;
+  const isSupported = response ? response.ok : null;
+  const error = getMetadataErrorMessage(query.error);
+
+  return {
+    metadata: response?.ok ? response.data : null,
+    isLoading: query.isLoading,
+    isSupported: enabled ? isSupported : false,
+    error: unsupported ? null : error,
+  };
+}

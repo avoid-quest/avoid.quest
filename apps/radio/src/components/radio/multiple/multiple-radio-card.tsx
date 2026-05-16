@@ -6,9 +6,11 @@ import { Volume2Icon, VolumeXIcon } from "lucide-react";
 import { useState } from "react";
 import type { Radio } from "@/lib/audio";
 import type { MultipleSessionPlayerState } from "@/lib/hooks/use-multiple-session";
+import { useRadioMetadata } from "@/lib/hooks/use-radio-metadata";
 import { isSessionRadio } from "@/lib/hooks/use-session-radios";
 import { RadioItemActions } from "../radio-item-actions";
 import { RadioLogo } from "../radio-logo";
+import { RadioNowPlaying } from "../radio-now-playing";
 
 type MultipleRadioCardProps = {
   radio: Radio;
@@ -38,6 +40,7 @@ export function MultipleRadioCard({
   const isLoading = playerState?.isLoading ?? false;
   const volume = playerState?.volume ?? 1;
   const error = playerState?.error ?? null;
+  const { metadata } = useRadioMetadata({ radio, enabled: isPlaying });
 
   const handleVolumeChange = (value: number[]) => {
     const newVolume = value[0] ?? 0;
@@ -97,6 +100,9 @@ export function MultipleRadioCard({
                 {radio.description}
               </p>
             )
+          )}
+          {isPlaying && (
+            <RadioNowPlaying className="truncate" metadata={metadata} />
           )}
         </div>
         <RadioItemActions

@@ -4,8 +4,10 @@ import { Slider } from "@avoid.quest/ui/components/slider";
 import { Music2Icon, Volume2Icon, VolumeXIcon } from "lucide-react";
 import type { Radio } from "@/lib/audio";
 import { isSessionRadio } from "@/lib/hooks/use-session-radios";
+import type { RadioNowPlaying as RadioNowPlayingMetadata } from "@/lib/metadata/types";
 import { RadioItemActions } from "../radio-item-actions";
 import { RadioLogo } from "../radio-logo";
+import { RadioNowPlaying } from "../radio-now-playing";
 
 type SharedPanelProps = {
   radio: Radio | null;
@@ -15,6 +17,7 @@ type SharedPanelProps = {
   error: string | null;
   volume: number;
   isMuted: boolean;
+  metadata?: RadioNowPlayingMetadata | null;
   onPlayPause: () => void;
   onVolumeChange: (value: number[]) => void;
   onMuteToggle: () => void;
@@ -31,6 +34,7 @@ export function NowPlayingPanel({
   onPlayPause,
   onVolumeChange,
   onMuteToggle,
+  metadata,
 }: SharedPanelProps) {
   if (!radio) {
     return (
@@ -71,13 +75,17 @@ export function NowPlayingPanel({
             </Badge>
           )}
         </div>
+        <RadioNowPlaying
+          className="mt-3 line-clamp-2 font-medium text-base text-foreground leading-relaxed"
+          metadata={metadata}
+        />
         {radio.placeTitle ? (
-          <p className="mt-1 text-muted-foreground/60 text-sm leading-relaxed">
+          <p className="mt-2 text-muted-foreground/60 text-sm leading-relaxed">
             {radio.placeTitle}, {radio.countryTitle}
           </p>
         ) : (
           radio.description && (
-            <p className="mt-1 text-muted-foreground/60 text-sm leading-relaxed">
+            <p className="mt-2 text-muted-foreground/60 text-sm leading-relaxed">
               {radio.description}
             </p>
           )
@@ -151,6 +159,7 @@ export function MobileNowPlayingPanel({
   onPlayPause,
   onVolumeChange,
   onMuteToggle,
+  metadata,
   onDelete,
   onEdit,
   onSave,
@@ -196,13 +205,17 @@ export function MobileNowPlayingPanel({
             </Badge>
           )}
         </div>
+        <RadioNowPlaying
+          className="mt-2 line-clamp-2 font-medium text-foreground text-sm"
+          metadata={metadata}
+        />
         {radio.placeTitle ? (
-          <p className="mt-0.5 truncate text-muted-foreground/60 text-sm">
+          <p className="mt-1 truncate text-muted-foreground/60 text-sm">
             {radio.placeTitle}, {radio.countryTitle}
           </p>
         ) : (
           radio.description && (
-            <p className="mt-0.5 truncate text-muted-foreground/60 text-sm">
+            <p className="mt-1 truncate text-muted-foreground/60 text-sm">
               {radio.description}
             </p>
           )

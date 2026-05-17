@@ -1,3 +1,6 @@
+import type { z } from "zod";
+import type { radioMetadataConfigSchema } from "./schema";
+
 export type RadioMetadataSource =
   | "icy"
   | "icecast-status-json"
@@ -5,13 +8,7 @@ export type RadioMetadataSource =
   | "nts-live-api"
   | "radio-blackout-api";
 
-export type RadioMetadataConfig =
-  | { kind: "none" }
-  | { kind: "icecast-status"; url?: string }
-  | { kind: "airtime-live-info"; urls: string[] }
-  | { kind: "nts-live-api"; channel: "1" | "2" }
-  | { kind: "radio-blackout-api"; url?: string }
-  | { kind: "icy" };
+export type RadioMetadataConfig = z.infer<typeof radioMetadataConfigSchema>;
 
 export type RadioNowPlaying = {
   streamUrl: string;

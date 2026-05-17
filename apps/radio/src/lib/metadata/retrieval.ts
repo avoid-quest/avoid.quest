@@ -47,6 +47,16 @@ function errorResponse(
   return { ok: false, error: { code, message } };
 }
 
+function unsupportedMetadataResponse(): Extract<
+  RadioMetadataResponse,
+  { ok: false }
+> {
+  return errorResponse(
+    "RADIO_METADATA_UNSUPPORTED",
+    "No standard now-playing metadata was found for this stream"
+  );
+}
+
 export function validationErrorForReason(
   reason: StreamUrlValidationFailure
 ): Extract<RadioMetadataResponse, { ok: false }> {
@@ -209,28 +219,19 @@ export function createRadioMetadataRetrieval({
       case "icecast-status":
         return (
           (await tryIcecastStatus(streamUrl, sampledAt, signal, config.url)) ??
-          errorResponse(
-            "RADIO_METADATA_UNSUPPORTED",
-            "No standard now-playing metadata was found for this stream"
-          )
+          unsupportedMetadataResponse()
         );
       case "airtime-live-info": {
         const externalResult = await tryAirtimeLiveInfo(input, config.urls);
         return externalResult
           ? { ok: true, data: externalResult }
-          : errorResponse(
-              "RADIO_METADATA_UNSUPPORTED",
-              "No standard now-playing metadata was found for this stream"
-            );
+          : unsupportedMetadataResponse();
       }
       case "nts-live-api": {
         const externalResult = await tryNtsLiveApi(input, config.channel);
         return externalResult
           ? { ok: true, data: externalResult }
-          : errorResponse(
-              "RADIO_METADATA_UNSUPPORTED",
-              "No standard now-playing metadata was found for this stream"
-            );
+          : unsupportedMetadataResponse();
       }
       case "radio-blackout-api": {
         const externalResult = await tryRadioBlackoutApi(
@@ -239,10 +240,7 @@ export function createRadioMetadataRetrieval({
         );
         return externalResult
           ? { ok: true, data: externalResult }
-          : errorResponse(
-              "RADIO_METADATA_UNSUPPORTED",
-              "No standard now-playing metadata was found for this stream"
-            );
+          : unsupportedMetadataResponse();
       }
       case "icy": {
         const icyResult = await tryIcy(streamUrl, sampledAt, signal);
@@ -252,10 +250,7 @@ export function createRadioMetadataRetrieval({
         ) {
           return icyResult;
         }
-        return errorResponse(
-          "RADIO_METADATA_UNSUPPORTED",
-          "No standard now-playing metadata was found for this stream"
-        );
+        return unsupportedMetadataResponse();
       }
       default: {
         const exhaustive: never = config;

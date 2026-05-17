@@ -10,13 +10,6 @@ export type ExternalMetadataProviderInput = {
   expiresAt: number;
 };
 
-export type ExternalMetadataProviderAdapter = {
-  id: RadioMetadataSource;
-  retrieve: (
-    input: ExternalMetadataProviderInput
-  ) => Promise<RadioNowPlaying | null>;
-};
-
 type AirtimeTrack = {
   name?: unknown;
   metadata?: {

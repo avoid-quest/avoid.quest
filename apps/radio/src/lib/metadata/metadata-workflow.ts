@@ -23,6 +23,8 @@ import { createMetadataUpstreamFetch } from "./upstream-fetch";
 
 type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
+const MAX_METADATA_URLS = 5;
+
 type RadioMetadataWorkflowContext = {
   origin: string;
   request: Request;
@@ -119,14 +121,20 @@ function parseMetadataConfig(params: URLSearchParams): MetadataConfigResult {
     }
     case "airtime-live-info": {
       const urls = params.getAll("metadataUrl");
-      if (urls.length === 0) {
+      const uniqueUrls = [...new Set(urls)];
+      if (
+        urls.length === 0 ||
+        urls.length > MAX_METADATA_URLS ||
+        uniqueUrls.length !== urls.length
+      ) {
         return invalidConfigResponse();
       }
-      const validatedUrls = urls.flatMap((url) => {
+
+      const validatedUrls = uniqueUrls.flatMap((url) => {
         const validation = validatePublicStreamUrl(url);
         return validation.ok ? [validation.url] : [];
       });
-      if (validatedUrls.length !== urls.length) {
+      if (validatedUrls.length !== uniqueUrls.length) {
         return invalidConfigResponse();
       }
       return { ok: true, config: { kind, urls: validatedUrls } };
@@ -177,8 +185,6 @@ export function createRadioMetadataWorkflow({
     timeoutMs,
   });
 
-  const resolve = retrieval.retrieve;
-
   const handle = async ({
     origin,
     request,
@@ -212,7 +218,7 @@ export function createRadioMetadataWorkflow({
     );
     const response = await getOrSetCachedRadioMetadata(cacheKey, {
       now,
-      retrieve: () => resolve(validation.url, configResult.config),
+      retrieve: () => retrieval.retrieve(validation.url, configResult.config),
       ttlForResponse,
     });
     return jsonResponse(
@@ -223,5 +229,5 @@ export function createRadioMetadataWorkflow({
     );
   };
 
-  return { handle, resolve };
+  return { handle };
 }

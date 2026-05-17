@@ -199,6 +199,7 @@ export function toSavedRadioRecord(
     enabled: true,
     isSystem: false,
     platformMetadata: normalizePlatformMetadata(radio.platformMetadata),
+    metadataConfig: radio.metadataConfig,
   };
 }
 

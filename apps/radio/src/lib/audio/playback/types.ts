@@ -1,3 +1,4 @@
+import type { RadioMetadataConfig } from "@/lib/metadata/types";
 import type { PlatformMetadata } from "@/lib/platform-types";
 
 /**
@@ -15,6 +16,7 @@ export type Radio = {
   order?: number;
   enabled?: boolean;
   platformMetadata?: PlatformMetadata;
+  metadataConfig?: RadioMetadataConfig;
   /** Whether this is a system-provided radio (from const.ts defaults) */
   isSystem?: boolean;
 };

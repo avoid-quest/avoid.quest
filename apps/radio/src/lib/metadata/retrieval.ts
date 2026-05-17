@@ -2,6 +2,11 @@ import { captureError } from "@avoid.quest/error";
 import type { StreamUrlValidationFailure } from "@/lib/proxy/url-policy";
 import { RADIO_METADATA_SUCCESS_TTL_MS } from "./cache";
 import {
+  tryAirtimeLiveInfo,
+  tryNtsLiveApi,
+  tryRadioBlackoutApi,
+} from "./external-providers";
+import {
   getIcecastStatusUrl,
   normalizeIcecastSource,
   parseIcecastStatusResponse,
@@ -13,8 +18,11 @@ import {
   parseIcyMetaInt,
   readFirstIcyMetadataBlock,
 } from "./icy-parser";
-import { EXTERNAL_METADATA_PROVIDER_ADAPTERS } from "./providers";
-import type { RadioMetadataErrorCode, RadioMetadataResponse } from "./types";
+import type {
+  RadioMetadataConfig,
+  RadioMetadataErrorCode,
+  RadioMetadataResponse,
+} from "./types";
 import {
   cancelResponseBody,
   type MetadataUpstreamFetch,
@@ -143,9 +151,9 @@ export function createRadioMetadataRetrieval({
   const tryIcecastStatus = async (
     streamUrl: string,
     sampledAt: number,
-    signal: AbortSignal
+    signal: AbortSignal,
+    statusUrl = getIcecastStatusUrl(streamUrl)
   ): Promise<RadioMetadataResponse | null> => {
-    const statusUrl = getIcecastStatusUrl(streamUrl);
     const response = await fetchFollowingPublicRedirects(
       statusUrl,
       {
@@ -183,50 +191,87 @@ export function createRadioMetadataRetrieval({
 
   const retrieveWithSignal = async (
     streamUrl: string,
+    config: Exclude<RadioMetadataConfig, { kind: "none" }>,
     signal: AbortSignal
   ): Promise<RadioMetadataResponse> => {
     const sampledAt = now();
 
-    const icecastResult = await tryIcecastStatus(streamUrl, sampledAt, signal);
-    if (icecastResult) {
-      return icecastResult;
-    }
-
     const expiresAt = sampledAt + RADIO_METADATA_SUCCESS_TTL_MS;
     const providerFetch = fetchWithSignal(signal);
-    for (const provider of EXTERNAL_METADATA_PROVIDER_ADAPTERS) {
-      const externalResult = await provider.retrieve({
-        fetchImpl: providerFetch,
-        streamUrl,
-        sampledAt,
-        expiresAt,
-      });
-      if (externalResult) {
-        return { ok: true, data: externalResult };
+    const input = {
+      fetchImpl: providerFetch,
+      streamUrl,
+      sampledAt,
+      expiresAt,
+    };
+
+    switch (config.kind) {
+      case "icecast-status":
+        return (
+          (await tryIcecastStatus(streamUrl, sampledAt, signal, config.url)) ??
+          errorResponse(
+            "RADIO_METADATA_UNSUPPORTED",
+            "No standard now-playing metadata was found for this stream"
+          )
+        );
+      case "airtime-live-info": {
+        const externalResult = await tryAirtimeLiveInfo(input, config.urls);
+        return externalResult
+          ? { ok: true, data: externalResult }
+          : errorResponse(
+              "RADIO_METADATA_UNSUPPORTED",
+              "No standard now-playing metadata was found for this stream"
+            );
+      }
+      case "nts-live-api": {
+        const externalResult = await tryNtsLiveApi(input, config.channel);
+        return externalResult
+          ? { ok: true, data: externalResult }
+          : errorResponse(
+              "RADIO_METADATA_UNSUPPORTED",
+              "No standard now-playing metadata was found for this stream"
+            );
+      }
+      case "radio-blackout-api": {
+        const externalResult = await tryRadioBlackoutApi(
+          input,
+          config.url ?? undefined
+        );
+        return externalResult
+          ? { ok: true, data: externalResult }
+          : errorResponse(
+              "RADIO_METADATA_UNSUPPORTED",
+              "No standard now-playing metadata was found for this stream"
+            );
+      }
+      case "icy": {
+        const icyResult = await tryIcy(streamUrl, sampledAt, signal);
+        if (
+          icyResult?.ok ||
+          icyResult?.error.code === "RADIO_METADATA_UPSTREAM_ERROR"
+        ) {
+          return icyResult;
+        }
+        return errorResponse(
+          "RADIO_METADATA_UNSUPPORTED",
+          "No standard now-playing metadata was found for this stream"
+        );
+      }
+      default: {
+        const exhaustive: never = config;
+        throw new Error(`Unsupported metadata config: ${exhaustive}`);
       }
     }
-
-    const icyResult = await tryIcy(streamUrl, sampledAt, signal);
-    if (
-      icyResult?.ok ||
-      icyResult?.error.code === "RADIO_METADATA_UPSTREAM_ERROR"
-    ) {
-      return icyResult;
-    }
-
-    return errorResponse(
-      "RADIO_METADATA_UNSUPPORTED",
-      "No standard now-playing metadata was found for this stream"
-    );
   };
 
   const retrieve = async (
-    streamUrl: string
+    streamUrl: string,
+    config: Exclude<RadioMetadataConfig, { kind: "none" }>
   ): Promise<RadioMetadataResponse> => {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      return await retrieveWithSignal(streamUrl, controller.signal);
+      return await retrieveWithSignal(streamUrl, config, controller.signal);
     } catch (error) {
       if (isAbortError(error)) {
         return errorResponse(

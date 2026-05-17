@@ -4,6 +4,7 @@ import {
 } from "@tanstack/react-db";
 import { z } from "zod";
 import type { Radio } from "@/lib/audio";
+import { radioMetadataConfigSchema } from "@/lib/metadata/schema";
 import { platformMetadataSchema } from "./schemas";
 
 const SESSION_RADIOS_STORAGE_KEY = "radio-session-radios";
@@ -59,6 +60,7 @@ const sessionRadioSchema = z.object({
   enabled: z.boolean().optional(),
   isSystem: z.boolean().optional(),
   platformMetadata: platformMetadataSchema,
+  metadataConfig: radioMetadataConfigSchema.optional(),
   addedAt: z.number(),
 });
 

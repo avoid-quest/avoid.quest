@@ -1,7 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import type { Radio } from "@/lib/audio";
+import { getRadioMetadataConfig } from "@/lib/metadata/radio-config";
 import { decodeRadioMetadataResponse } from "@/lib/metadata/response-decoder";
 import type {
+  RadioMetadataConfig,
   RadioMetadataResponse,
   RadioNowPlaying,
 } from "@/lib/metadata/types";
@@ -10,8 +12,10 @@ const POLL_INTERVAL_MS = 30_000;
 
 export const radioMetadataKeys = {
   all: ["radio-metadata"] as const,
-  stream: (url: string | undefined) =>
-    [...radioMetadataKeys.all, url ?? ""] as const,
+  stream: (
+    url: string | undefined,
+    metadataConfig: RadioMetadataConfig | undefined
+  ) => [...radioMetadataKeys.all, url ?? "", metadataConfig ?? null] as const,
 };
 
 function isMetadataEligibleStreamUrl(
@@ -37,12 +41,28 @@ async function readJson(response: Response): Promise<unknown> {
 }
 
 async function fetchRadioMetadata(
-  streamUrl: string
+  streamUrl: string,
+  metadataConfig: Exclude<RadioMetadataConfig, { kind: "none" }>
 ): Promise<RadioMetadataResponse> {
-  const response = await fetch(
-    `/api/radio-metadata?url=${encodeURIComponent(streamUrl)}`,
-    { headers: { Accept: "application/json" } }
-  );
+  const params = new URLSearchParams({
+    url: streamUrl,
+    kind: metadataConfig.kind,
+  });
+  if ("url" in metadataConfig && metadataConfig.url) {
+    params.set("metadataUrl", metadataConfig.url);
+  }
+  if ("urls" in metadataConfig) {
+    for (const url of metadataConfig.urls) {
+      params.append("metadataUrl", url);
+    }
+  }
+  if ("channel" in metadataConfig) {
+    params.set("channel", metadataConfig.channel);
+  }
+
+  const response = await fetch(`/api/radio-metadata?${params.toString()}`, {
+    headers: { Accept: "application/json" },
+  });
   const decoded = decodeRadioMetadataResponse(
     response,
     await readJson(response)
@@ -51,6 +71,15 @@ async function fetchRadioMetadata(
     throw new Error(decoded.message);
   }
   return decoded.response;
+}
+
+function getUsableMetadataConfig(
+  config: RadioMetadataConfig | undefined
+): Exclude<RadioMetadataConfig, { kind: "none" }> | null {
+  if (!config || config.kind === "none") {
+    return null;
+  }
+  return config;
 }
 
 function getMetadataErrorMessage(error: unknown): string | null {
@@ -73,11 +102,20 @@ export function useRadioMetadata({
   error: string | null;
 } {
   const streamUrl = radio?.streamUrl;
-  const enabled = requested && isMetadataEligibleStreamUrl(streamUrl);
+  const metadataConfig = getUsableMetadataConfig(getRadioMetadataConfig(radio));
+  const enabled =
+    requested &&
+    Boolean(metadataConfig) &&
+    isMetadataEligibleStreamUrl(streamUrl);
 
   const query = useQuery({
-    queryKey: radioMetadataKeys.stream(streamUrl),
-    queryFn: async () => fetchRadioMetadata(streamUrl ?? ""),
+    queryKey: radioMetadataKeys.stream(streamUrl, metadataConfig ?? undefined),
+    queryFn: () => {
+      if (!(metadataConfig && streamUrl)) {
+        throw new Error("Missing radio metadata configuration");
+      }
+      return fetchRadioMetadata(streamUrl, metadataConfig);
+    },
     enabled,
     refetchInterval: enabled ? POLL_INTERVAL_MS : false,
     staleTime: 15_000,

@@ -159,9 +159,10 @@ async function fetchObjectJson(
 }
 
 export async function tryAirtimeLiveInfo(
-  input: ExternalMetadataProviderInput
+  input: ExternalMetadataProviderInput,
+  urls = getAirtimeCandidateUrls(input.streamUrl)
 ): Promise<RadioNowPlaying | null> {
-  for (const url of getAirtimeCandidateUrls(input.streamUrl)) {
+  for (const url of [...new Set(urls)]) {
     const result = await fetchObjectJson(input.fetchImpl, url);
     if (!result) {
       continue;
@@ -181,13 +182,9 @@ export async function tryAirtimeLiveInfo(
 }
 
 export async function tryNtsLiveApi(
-  input: ExternalMetadataProviderInput
+  input: ExternalMetadataProviderInput,
+  requestedChannel?: "1" | "2"
 ): Promise<RadioNowPlaying | null> {
-  const url = new URL(input.streamUrl);
-  if (url.hostname !== "stream-relay-geo.ntslive.net") {
-    return null;
-  }
-
   const result = await fetchObjectJson(
     input.fetchImpl,
     "https://www.nts.live/api/v2/live"
@@ -195,7 +192,9 @@ export async function tryNtsLiveApi(
   if (!result) {
     return null;
   }
-  const channelName = url.pathname === "/stream2" ? "2" : "1";
+  const channelName =
+    requestedChannel ??
+    (new URL(input.streamUrl).pathname === "/stream2" ? "2" : "1");
   const results = (result.data as { results?: unknown }).results;
   const channel = Array.isArray(results)
     ? results.find(
@@ -236,18 +235,9 @@ export async function tryNtsLiveApi(
 }
 
 export async function tryRadioBlackoutApi(
-  input: ExternalMetadataProviderInput
+  input: ExternalMetadataProviderInput,
+  endpoint = "https://radioblackout.org/api/listening"
 ): Promise<RadioNowPlaying | null> {
-  const url = new URL(input.streamUrl);
-  if (
-    !(
-      url.hostname === "zeppelin.streampunk.cc" &&
-      url.pathname.includes("blackout")
-    )
-  ) {
-    return null;
-  }
-  const endpoint = "https://radioblackout.org/api/listening";
   const result = await fetchObjectJson(input.fetchImpl, endpoint);
   if (!result) {
     return null;

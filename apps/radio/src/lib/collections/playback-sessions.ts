@@ -5,6 +5,7 @@ import {
 import { z } from "zod";
 import { EFFECT_TYPES, type EffectConfig } from "@/lib/audio/dsp/effects/types";
 import type { Radio } from "@/lib/audio/playback/types";
+import { radioMetadataConfigSchema } from "@/lib/metadata/schema";
 import { orderEffectsForPlayback } from "../effect-order.js";
 import { radiosCollection } from "./radios";
 import { platformMetadataSchema } from "./schemas";
@@ -40,6 +41,7 @@ const radioSchema = z
     enabled: z.boolean().optional(),
     isSystem: z.boolean().optional(),
     platformMetadata: platformMetadataSchema,
+    metadataConfig: radioMetadataConfigSchema.optional(),
   })
   .nullable();
 

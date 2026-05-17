@@ -5,6 +5,14 @@ export type RadioMetadataSource =
   | "nts-live-api"
   | "radio-blackout-api";
 
+export type RadioMetadataConfig =
+  | { kind: "none" }
+  | { kind: "icecast-status"; url?: string }
+  | { kind: "airtime-live-info"; urls: string[] }
+  | { kind: "nts-live-api"; channel: "1" | "2" }
+  | { kind: "radio-blackout-api"; url?: string }
+  | { kind: "icy" };
+
 export type RadioNowPlaying = {
   streamUrl: string;
   resolvedUrl?: string;

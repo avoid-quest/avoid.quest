@@ -3,6 +3,7 @@ import {
   localStorageCollectionOptions,
 } from "@tanstack/react-db";
 import { z } from "zod";
+import { radioMetadataConfigSchema } from "@/lib/metadata/schema";
 import { platformMetadataSchema } from "./schemas";
 
 const radioSchema = z
@@ -18,6 +19,7 @@ const radioSchema = z
     order: z.number().optional(),
     enabled: z.boolean().optional(),
     platformMetadata: platformMetadataSchema,
+    metadataConfig: radioMetadataConfigSchema.optional(),
   })
   .nullable();
 

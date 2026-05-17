@@ -25,6 +25,7 @@ export function LoadedDeckContent({
     deckId,
     radio,
     isPlaying,
+    isLoading,
     isFileSource,
     hasTracklist,
     tracks,
@@ -35,7 +36,10 @@ export function LoadedDeckContent({
     reorderEffects,
   } = useDeckContext();
   const isMobile = useIsMobile();
-  const { metadata } = useRadioMetadata({ radio, enabled: isPlaying });
+  const { metadata } = useRadioMetadata({
+    radio,
+    enabled: isPlaying && !isLoading,
+  });
 
   const effectsPanel = (
     <EffectChain

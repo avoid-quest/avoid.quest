@@ -40,7 +40,10 @@ export function MultipleRadioCard({
   const isLoading = playerState?.isLoading ?? false;
   const volume = playerState?.volume ?? 1;
   const error = playerState?.error ?? null;
-  const { metadata } = useRadioMetadata({ radio, enabled: isPlaying });
+  const { metadata } = useRadioMetadata({
+    radio,
+    enabled: isPlaying && !isLoading,
+  });
 
   const handleVolumeChange = (value: number[]) => {
     const newVolume = value[0] ?? 0;

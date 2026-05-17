@@ -186,13 +186,6 @@ export function createRadioMetadataRetrieval({
     signal: AbortSignal
   ): Promise<RadioMetadataResponse> => {
     const sampledAt = now();
-    const icyResult = await tryIcy(streamUrl, sampledAt, signal);
-    if (
-      icyResult?.ok ||
-      icyResult?.error.code === "RADIO_METADATA_UPSTREAM_ERROR"
-    ) {
-      return icyResult;
-    }
 
     const icecastResult = await tryIcecastStatus(streamUrl, sampledAt, signal);
     if (icecastResult) {
@@ -211,6 +204,14 @@ export function createRadioMetadataRetrieval({
       if (externalResult) {
         return { ok: true, data: externalResult };
       }
+    }
+
+    const icyResult = await tryIcy(streamUrl, sampledAt, signal);
+    if (
+      icyResult?.ok ||
+      icyResult?.error.code === "RADIO_METADATA_UPSTREAM_ERROR"
+    ) {
+      return icyResult;
     }
 
     return errorResponse(

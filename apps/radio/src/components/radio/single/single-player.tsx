@@ -46,7 +46,7 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
 
   const { metadata } = useRadioMetadata({
     radio: currentRadio,
-    enabled: isPlaying,
+    enabled: isPlaying && !isLoading,
   });
 
   useMediaSession({

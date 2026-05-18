@@ -33,7 +33,9 @@ describe("ICY metadata parsing", () => {
     ).toBeNull();
   });
 
-  test("rejects excessive metaint values", () => {
+  test("rejects invalid metaint values", () => {
+    expect(parseIcyMetaInt("0")).toBeNull();
+    expect(parseIcyMetaInt("-1")).toBeNull();
     expect(parseIcyMetaInt("1048577")).toBeNull();
     expect(parseIcyMetaInt("16000")).toBe(16_000);
   });

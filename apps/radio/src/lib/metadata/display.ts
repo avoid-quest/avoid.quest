@@ -8,13 +8,14 @@ const MAX_DOCUMENT_TITLE_LENGTH = 120;
 export function formatNowPlaying(
   metadata: RadioNowPlaying | null | undefined
 ): string | null {
-  if (!metadata?.title) {
+  if (!metadata) {
     return null;
   }
+  if (metadata.artist && metadata.title) {
+    return `${metadata.artist} - ${metadata.title}`;
+  }
 
-  return metadata.artist
-    ? `${metadata.artist} - ${metadata.title}`
-    : metadata.title;
+  return metadata.title || metadata.artist || null;
 }
 
 function truncateTitle(value: string): string {

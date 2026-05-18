@@ -24,7 +24,11 @@ export function parseIcyMetaInt(value: string | null): number | null {
     return null;
   }
   const parsed = Number.parseInt(value, 10);
-  if (!Number.isSafeInteger(parsed) || parsed < 0 || parsed > MAX_ICY_METAINT) {
+  if (
+    !Number.isSafeInteger(parsed) ||
+    parsed <= 0 ||
+    parsed > MAX_ICY_METAINT
+  ) {
     return null;
   }
   return parsed;

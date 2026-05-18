@@ -156,7 +156,12 @@ export async function tryAirtimeLiveInfo(
   urls = getAirtimeCandidateUrls(input.streamUrl)
 ): Promise<RadioNowPlaying | null> {
   for (const url of [...new Set(urls)]) {
-    const result = await fetchObjectJson(input.fetchImpl, url);
+    let result: Awaited<ReturnType<typeof fetchObjectJson>>;
+    try {
+      result = await fetchObjectJson(input.fetchImpl, url);
+    } catch {
+      continue;
+    }
     if (!result) {
       continue;
     }

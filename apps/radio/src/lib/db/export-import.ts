@@ -262,13 +262,15 @@ export const previewImportChanges = (
     const existing = existingRadiosMap.get(importedRadio.name);
 
     if (existing) {
+      const importsMetadataConfig = importedRadio.metadataConfig !== undefined;
       const hasChanged =
         existing.streamUrl !== importedRadio.streamUrl ||
         existing.logoUrl !== importedRadio.logoUrl ||
         existing.description !== importedRadio.description ||
         existing.websiteUrl !== importedRadio.websiteUrl ||
-        JSON.stringify(existing.metadataConfig) !==
-          JSON.stringify(importedRadio.metadataConfig);
+        (importsMetadataConfig &&
+          JSON.stringify(existing.metadataConfig) !==
+            JSON.stringify(importedRadio.metadataConfig));
 
       if (hasChanged) {
         updatedRadios += 1;
@@ -377,13 +379,16 @@ export const mergeImportedData = (importData: DatabaseExport): void => {
 
       if (existing) {
         // Check if radio data has changed
+        const importsMetadataConfig =
+          importedRadio.metadataConfig !== undefined;
         const hasChanged =
           existing.streamUrl !== importedRadio.streamUrl ||
           existing.logoUrl !== importedRadio.logoUrl ||
           existing.description !== importedRadio.description ||
           existing.websiteUrl !== importedRadio.websiteUrl ||
-          JSON.stringify(existing.metadataConfig) !==
-            JSON.stringify(importedRadio.metadataConfig);
+          (importsMetadataConfig &&
+            JSON.stringify(existing.metadataConfig) !==
+              JSON.stringify(importedRadio.metadataConfig));
 
         if (hasChanged) {
           // Update existing radio with new data, preserving user preferences
@@ -392,7 +397,9 @@ export const mergeImportedData = (importData: DatabaseExport): void => {
             draft.logoUrl = importedRadio.logoUrl;
             draft.description = importedRadio.description;
             draft.websiteUrl = importedRadio.websiteUrl;
-            draft.metadataConfig = importedRadio.metadataConfig;
+            if (importsMetadataConfig) {
+              draft.metadataConfig = importedRadio.metadataConfig;
+            }
             // Keep order and enabled status from existing
           });
           updatedRadiosCount += 1;

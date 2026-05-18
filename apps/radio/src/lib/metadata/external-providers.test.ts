@@ -42,6 +42,40 @@ describe("external radio metadata providers", () => {
     expect(result?.title).toBe("GUESTS 179 – naîve");
   });
 
+  test("continues Airtime fallbacks after a candidate fetch throws", async () => {
+    const calls: string[] = [];
+    const result = await tryAirtimeLiveInfo(
+      {
+        fetchImpl: (url) => {
+          calls.push(url);
+          if (url === "https://bad.example/live-info") {
+            throw new TypeError("fetch failed");
+          }
+          return Promise.resolve(
+            json({
+              tracks: {
+                current: {
+                  name: "Recovered Show",
+                },
+              },
+            })
+          );
+        },
+        streamUrl: "https://radio.example/audio.mp3",
+        sampledAt: 1000,
+        expiresAt: 2000,
+      },
+      ["https://bad.example/live-info", "https://good.example/live-info"]
+    );
+
+    expect(calls).toEqual([
+      "https://bad.example/live-info",
+      "https://good.example/live-info",
+    ]);
+    expect(result?.source).toBe("airtime-live-info");
+    expect(result?.title).toBe("Recovered Show");
+  });
+
   test("uses the NTS live API channel matching the stream path", async () => {
     const result = await tryNtsLiveApi({
       fetchImpl: async () =>

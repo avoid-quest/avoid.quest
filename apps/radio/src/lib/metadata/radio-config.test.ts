@@ -4,6 +4,28 @@ import { radios as defaultRadios } from "@/lib/const";
 import { getRadioMetadataConfig } from "./radio-config";
 
 describe("radio metadata config fallback", () => {
+  test("uses working metadata strategies for default stations without status-json endpoints", () => {
+    expect(
+      Object.fromEntries(
+        defaultRadios
+          .filter((radio) =>
+            [
+              "Resonance Extra",
+              "Internet Public Radio",
+              "Radio Alhara",
+              "Gatto Misterioso",
+            ].includes(radio.name)
+          )
+          .map((radio) => [radio.name, radio.metadataConfig?.kind])
+      )
+    ).toEqual({
+      "Resonance Extra": "icy",
+      "Internet Public Radio": "none",
+      "Radio Alhara": "icy",
+      "Gatto Misterioso": "icy",
+    });
+  });
+
   test("matches default metadata by stream URL after a station is renamed", () => {
     const defaultRadio = defaultRadios.find((radio) => radio.metadataConfig);
     if (!defaultRadio) {

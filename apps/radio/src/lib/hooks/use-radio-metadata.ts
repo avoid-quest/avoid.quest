@@ -59,6 +59,9 @@ async function fetchRadioMetadata(
   if ("channel" in metadataConfig) {
     params.set("channel", metadataConfig.channel);
   }
+  if ("sid" in metadataConfig && metadataConfig.sid) {
+    params.set("sid", metadataConfig.sid);
+  }
 
   const response = await fetch(`/api/radio-metadata?${params.toString()}`, {
     headers: { Accept: "application/json" },

@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import {
   tryAirtimeLiveInfo,
+  tryAzuraCastNowPlaying,
   tryNtsLiveApi,
   tryRadioBlackoutApi,
+  tryShoutcastStatus,
 } from "./external-providers";
 
 function json(data: unknown) {
@@ -98,6 +100,102 @@ describe("external radio metadata providers", () => {
 
     expect(calls[0]).toBe("https://cashmereradio.airtime.pro/api/live-info-v2");
     expect(result?.title).toBe("V2 Show");
+  });
+
+  test("normalizes AzuraCast now-playing API responses", async () => {
+    const calls: string[] = [];
+    const result = await tryAzuraCastNowPlaying({
+      fetchImpl: (url) => {
+        calls.push(url);
+        return Promise.resolve(
+          json({
+            station: {
+              name: "Gatto Misterioso",
+              description: "AzuraCast station",
+            },
+            now_playing: {
+              song: {
+                artist: "Artist",
+                title: "Title",
+                art: "https://radio.example/art.jpg",
+              },
+            },
+          })
+        );
+      },
+      streamUrl:
+        "https://azuracast.gattomisterioso.top/listen/gatto_misterioso/radio.mp3",
+      sampledAt: 1000,
+      expiresAt: 2000,
+    });
+
+    expect(calls).toEqual([
+      "https://azuracast.gattomisterioso.top/api/nowplaying/gatto_misterioso",
+    ]);
+    expect(result).toMatchObject({
+      source: "azuracast-now-playing",
+      artist: "Artist",
+      title: "Title",
+      artworkUrl: "https://radio.example/art.jpg",
+      stationName: "Gatto Misterioso",
+    });
+  });
+
+  test("normalizes SHOUTcast JSON stats responses", async () => {
+    const calls: string[] = [];
+    const result = await tryShoutcastStatus({
+      fetchImpl: (url) => {
+        calls.push(url);
+        return Promise.resolve(
+          json({
+            songtitle: "Artist - Title",
+            servertitle: "SHOUTcast Station",
+            servergenre: "Eclectic",
+            bitrate: "128",
+          })
+        );
+      },
+      streamUrl: "https://shoutcast.example/stream",
+      sampledAt: 1000,
+      expiresAt: 2000,
+    });
+
+    expect(calls).toEqual(["https://shoutcast.example/stats?sid=1&json=1"]);
+    expect(result).toMatchObject({
+      source: "shoutcast-status",
+      artist: "Artist",
+      title: "Title",
+      stationName: "SHOUTcast Station",
+      genre: "Eclectic",
+      bitrate: 128,
+    });
+  });
+
+  test("falls back to legacy SHOUTcast 7.html text responses", async () => {
+    const calls: string[] = [];
+    const result = await tryShoutcastStatus({
+      fetchImpl: (url) => {
+        calls.push(url);
+        if (url.includes("/stats") || url.includes("/currentsong")) {
+          return Promise.resolve(new Response("", { status: 404 }));
+        }
+        return Promise.resolve(new Response("1,1,1,128,1,Artist - Title"));
+      },
+      streamUrl: "https://shoutcast.example/stream",
+      sampledAt: 1000,
+      expiresAt: 2000,
+    });
+
+    expect(calls).toEqual([
+      "https://shoutcast.example/stats?sid=1&json=1",
+      "https://shoutcast.example/currentsong?sid=1",
+      "https://shoutcast.example/7.html?sid=1",
+    ]);
+    expect(result).toMatchObject({
+      source: "shoutcast-status",
+      artist: "Artist",
+      title: "Title",
+    });
   });
 
   test("uses the NTS live API channel matching the stream path", async () => {

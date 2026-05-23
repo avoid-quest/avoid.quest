@@ -92,7 +92,12 @@ export const radios: Radio[] = [
     websiteUrl: "https://www.internetpublicradio.live/",
     logoUrl: "https://www.internetpublicradio.live/logo.svg",
     streamUrl: "https://stream-relay-geo.internetpublicradio.live/stream/main",
-    metadataConfig: { kind: "none" },
+    metadataConfig: {
+      kind: "airtime-live-info",
+      urls: [
+        "https://stream-relay-geo.internetpublicradio.live/api-filtered.php",
+      ],
+    },
     order: 8,
     isSystem: true,
   },
@@ -110,7 +115,7 @@ export const radios: Radio[] = [
     name: "Gatto Misterioso",
     streamUrl:
       "https://azuracast.gattomisterioso.top/listen/gatto_misterioso/radio.mp3",
-    metadataConfig: { kind: "icy" },
+    metadataConfig: { kind: "azuracast-now-playing" },
     order: 13,
     isSystem: true,
   },

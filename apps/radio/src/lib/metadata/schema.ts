@@ -11,6 +11,15 @@ export const radioMetadataConfigSchema = z.discriminatedUnion("kind", [
     urls: z.array(z.string()).min(1),
   }),
   z.object({
+    kind: z.literal("azuracast-now-playing"),
+    url: z.string().optional(),
+  }),
+  z.object({
+    kind: z.literal("shoutcast-status"),
+    sid: z.string().optional(),
+    url: z.string().optional(),
+  }),
+  z.object({
     kind: z.literal("nts-live-api"),
     channel: z.enum(["1", "2"]),
   }),

@@ -20,9 +20,9 @@ describe("radio metadata config fallback", () => {
       )
     ).toEqual({
       "Resonance Extra": "icy",
-      "Internet Public Radio": "none",
+      "Internet Public Radio": "airtime-live-info",
       "Radio Alhara": "icy",
-      "Gatto Misterioso": "icy",
+      "Gatto Misterioso": "azuracast-now-playing",
     });
   });
 

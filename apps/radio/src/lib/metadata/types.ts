@@ -5,6 +5,8 @@ export type RadioMetadataSource =
   | "icy"
   | "icecast-status-json"
   | "airtime-live-info"
+  | "azuracast-now-playing"
+  | "shoutcast-status"
   | "nts-live-api"
   | "radio-blackout-api";
 

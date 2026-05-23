@@ -2,9 +2,12 @@ import { captureError } from "@avoid.quest/error";
 import type { StreamUrlValidationFailure } from "@/lib/proxy/url-policy";
 import { RADIO_METADATA_SUCCESS_TTL_MS } from "./cache";
 import {
+  type ExternalMetadataProviderInput,
   tryAirtimeLiveInfo,
+  tryAzuraCastNowPlaying,
   tryNtsLiveApi,
   tryRadioBlackoutApi,
+  tryShoutcastStatus,
 } from "./external-providers";
 import {
   getIcecastStatusUrl,
@@ -55,6 +58,53 @@ function unsupportedMetadataResponse(): Extract<
     "RADIO_METADATA_UNSUPPORTED",
     "No standard now-playing metadata was found for this stream"
   );
+}
+
+type ExternalRadioMetadataConfig = Extract<
+  RadioMetadataConfig,
+  {
+    kind:
+      | "airtime-live-info"
+      | "azuracast-now-playing"
+      | "nts-live-api"
+      | "radio-blackout-api"
+      | "shoutcast-status";
+  }
+>;
+
+function retrieveExternalResult(
+  input: ExternalMetadataProviderInput,
+  config: ExternalRadioMetadataConfig
+): Promise<Awaited<ReturnType<typeof tryAirtimeLiveInfo>>> {
+  switch (config.kind) {
+    case "airtime-live-info":
+      return tryAirtimeLiveInfo(input, config.urls);
+    case "azuracast-now-playing":
+      return tryAzuraCastNowPlaying(input, config.url);
+    case "shoutcast-status":
+      return tryShoutcastStatus(input, {
+        endpoint: config.url,
+        sid: config.sid,
+      });
+    case "nts-live-api":
+      return tryNtsLiveApi(input, config.channel);
+    case "radio-blackout-api":
+      return tryRadioBlackoutApi(input, config.url ?? undefined);
+    default: {
+      const exhaustive: never = config;
+      throw new Error(`Unsupported external metadata config: ${exhaustive}`);
+    }
+  }
+}
+
+async function retrieveExternalProvider(
+  input: ExternalMetadataProviderInput,
+  config: ExternalRadioMetadataConfig
+): Promise<RadioMetadataResponse> {
+  const externalResult = await retrieveExternalResult(input, config);
+  return externalResult
+    ? { ok: true, data: externalResult }
+    : unsupportedMetadataResponse();
 }
 
 export function validationErrorForReason(
@@ -221,27 +271,12 @@ export function createRadioMetadataRetrieval({
           (await tryIcecastStatus(streamUrl, sampledAt, signal, config.url)) ??
           unsupportedMetadataResponse()
         );
-      case "airtime-live-info": {
-        const externalResult = await tryAirtimeLiveInfo(input, config.urls);
-        return externalResult
-          ? { ok: true, data: externalResult }
-          : unsupportedMetadataResponse();
-      }
-      case "nts-live-api": {
-        const externalResult = await tryNtsLiveApi(input, config.channel);
-        return externalResult
-          ? { ok: true, data: externalResult }
-          : unsupportedMetadataResponse();
-      }
-      case "radio-blackout-api": {
-        const externalResult = await tryRadioBlackoutApi(
-          input,
-          config.url ?? undefined
-        );
-        return externalResult
-          ? { ok: true, data: externalResult }
-          : unsupportedMetadataResponse();
-      }
+      case "airtime-live-info":
+      case "azuracast-now-playing":
+      case "shoutcast-status":
+      case "nts-live-api":
+      case "radio-blackout-api":
+        return retrieveExternalProvider(input, config);
       case "icy": {
         const icyResult = await tryIcy(streamUrl, sampledAt, signal);
         if (

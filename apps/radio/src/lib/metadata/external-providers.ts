@@ -3,6 +3,8 @@ import type { RadioMetadataSource, RadioNowPlaying } from "./types";
 
 type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
+const AZURACAST_LISTEN_PATH_PATTERN = /\/listen\/([^/]+)/;
+
 export type ExternalMetadataProviderInput = {
   fetchImpl: FetchLike;
   streamUrl: string;
@@ -40,8 +42,46 @@ type BlackoutListening = {
   featured_media?: unknown;
 };
 
+type AzuraCastNowPlaying = {
+  station?: {
+    name?: unknown;
+    description?: unknown;
+  };
+  now_playing?: {
+    song?: {
+      artist?: unknown;
+      title?: unknown;
+      text?: unknown;
+      art?: unknown;
+    };
+  };
+  live?: {
+    streamer_name?: unknown;
+  };
+};
+
+type ShoutcastStatus = {
+  songtitle?: unknown;
+  currenttitle?: unknown;
+  title?: unknown;
+  servertitle?: unknown;
+  servergenre?: unknown;
+  bitrate?: unknown;
+};
+
 function asString(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function asNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number.parseInt(value, 10);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
 }
 
 function first<T>(value: T | T[] | undefined): T | undefined {
@@ -54,8 +94,10 @@ function buildNowPlaying(input: {
   source: RadioMetadataSource;
   rawTitle: string;
   artworkUrl?: string | null;
+  stationName?: string | null;
   stationDescription?: string | null;
   genre?: string | null;
+  bitrate?: number | null;
   sampledAt: number;
   expiresAt: number;
 }): RadioNowPlaying | null {
@@ -72,10 +114,10 @@ function buildNowPlaying(input: {
     artist: parsed.artist,
     rawTitle: parsed.rawTitle,
     artworkUrl: input.artworkUrl ?? null,
-    stationName: null,
+    stationName: input.stationName ?? null,
     stationDescription: input.stationDescription ?? null,
     genre: input.genre ?? null,
-    bitrate: null,
+    bitrate: input.bitrate ?? null,
     sampledAt: input.sampledAt,
     expiresAt: input.expiresAt,
   };
@@ -151,6 +193,242 @@ async function fetchObjectJson(
   } catch {
     return null;
   }
+}
+
+async function fetchText(
+  fetchImpl: FetchLike,
+  url: string,
+  accept = "text/plain, */*"
+): Promise<{ text: string; response: Response } | null> {
+  const response = await fetchImpl(url, {
+    headers: { Accept: accept },
+    method: "GET",
+  });
+  if (!response.ok) {
+    await response.body?.cancel().catch(() => undefined);
+    return null;
+  }
+  try {
+    const text = await response.text();
+    return text.trim() ? { text, response } : null;
+  } catch {
+    return null;
+  }
+}
+
+function getAzuraCastCandidateUrls(streamUrl: string): string[] {
+  const url = new URL(streamUrl);
+  const stationFromPath = url.pathname.match(
+    AZURACAST_LISTEN_PATH_PATTERN
+  )?.[1];
+  const urls: string[] = [];
+  if (stationFromPath) {
+    urls.push(
+      new URL(`/api/nowplaying/${stationFromPath}`, url.origin).toString()
+    );
+  }
+  urls.push(new URL("/api/nowplaying", url.origin).toString());
+  return [...new Set(urls)];
+}
+
+function selectAzuraCastStation(
+  data: object,
+  streamUrl: string
+): AzuraCastNowPlaying | null {
+  if (!Array.isArray(data)) {
+    return data as AzuraCastNowPlaying;
+  }
+
+  const streamPath = new URL(streamUrl).pathname;
+  return (
+    (data.find((item) => {
+      const listenUrl = asString(
+        (item as { station?: { listen_url?: unknown } }).station?.listen_url
+      );
+      if (!listenUrl) {
+        return false;
+      }
+      try {
+        return new URL(listenUrl).pathname === streamPath;
+      } catch {
+        return listenUrl.includes(streamPath);
+      }
+    }) as AzuraCastNowPlaying | undefined) ??
+    (data[0] as AzuraCastNowPlaying | undefined) ??
+    null
+  );
+}
+
+function normalizeAzuraCastNowPlaying(input: {
+  data: object;
+  streamUrl: string;
+  resolvedUrl?: string;
+  sampledAt: number;
+  expiresAt: number;
+}): RadioNowPlaying | null {
+  const station = selectAzuraCastStation(input.data, input.streamUrl);
+  const song = station?.now_playing?.song;
+  const artist = asString(song?.artist);
+  const title = asString(song?.title);
+  const rawTitle =
+    [artist, title].filter(Boolean).join(" - ") || asString(song?.text);
+  if (!rawTitle) {
+    return null;
+  }
+
+  return buildNowPlaying({
+    streamUrl: input.streamUrl,
+    resolvedUrl: input.resolvedUrl,
+    source: "azuracast-now-playing",
+    rawTitle,
+    artworkUrl: asString(song?.art),
+    stationName: asString(station?.station?.name),
+    stationDescription:
+      asString(station?.station?.description) ??
+      asString(station?.live?.streamer_name),
+    sampledAt: input.sampledAt,
+    expiresAt: input.expiresAt,
+  });
+}
+
+export async function tryAzuraCastNowPlaying(
+  input: ExternalMetadataProviderInput,
+  endpoint?: string
+): Promise<RadioNowPlaying | null> {
+  const urls = endpoint
+    ? [endpoint]
+    : getAzuraCastCandidateUrls(input.streamUrl);
+  for (const url of [...new Set(urls)]) {
+    let result: Awaited<ReturnType<typeof fetchObjectJson>>;
+    try {
+      result = await fetchObjectJson(input.fetchImpl, url);
+    } catch {
+      continue;
+    }
+    if (!result) {
+      continue;
+    }
+    const normalized = normalizeAzuraCastNowPlaying({
+      data: result.data,
+      streamUrl: input.streamUrl,
+      resolvedUrl: result.response.url || url,
+      sampledAt: input.sampledAt,
+      expiresAt: input.expiresAt,
+    });
+    if (normalized) {
+      return normalized;
+    }
+  }
+  return null;
+}
+
+function getShoutcastCandidateUrls(streamUrl: string, sid = "1"): string[] {
+  const origin = new URL(streamUrl).origin;
+  return [
+    new URL(`/stats?sid=${sid}&json=1`, origin).toString(),
+    new URL(`/currentsong?sid=${sid}`, origin).toString(),
+    new URL(`/7.html?sid=${sid}`, origin).toString(),
+  ];
+}
+
+function normalizeShoutcastJson(input: {
+  data: object;
+  streamUrl: string;
+  resolvedUrl?: string;
+  sampledAt: number;
+  expiresAt: number;
+}): RadioNowPlaying | null {
+  const data = input.data as ShoutcastStatus;
+  const rawTitle =
+    asString(data.songtitle) ??
+    asString(data.currenttitle) ??
+    asString(data.title);
+  if (!rawTitle) {
+    return null;
+  }
+  return buildNowPlaying({
+    streamUrl: input.streamUrl,
+    resolvedUrl: input.resolvedUrl,
+    source: "shoutcast-status",
+    rawTitle,
+    stationName: asString(data.servertitle),
+    genre: asString(data.servergenre),
+    bitrate: asNumber(data.bitrate),
+    sampledAt: input.sampledAt,
+    expiresAt: input.expiresAt,
+  });
+}
+
+function normalizeShoutcastText(input: {
+  text: string;
+  streamUrl: string;
+  resolvedUrl?: string;
+  sampledAt: number;
+  expiresAt: number;
+}): RadioNowPlaying | null {
+  const rawTitle = input.text.includes(",")
+    ? input.text.split(",").at(-1)?.trim()
+    : input.text.trim();
+  if (!rawTitle || rawTitle === "-" || rawTitle === "- -") {
+    return null;
+  }
+  return buildNowPlaying({
+    streamUrl: input.streamUrl,
+    resolvedUrl: input.resolvedUrl,
+    source: "shoutcast-status",
+    rawTitle,
+    sampledAt: input.sampledAt,
+    expiresAt: input.expiresAt,
+  });
+}
+
+async function tryShoutcastUrl(
+  input: ExternalMetadataProviderInput,
+  url: string
+): Promise<RadioNowPlaying | null> {
+  if (url.includes("json=1") || url.includes("/stats")) {
+    const result = await fetchObjectJson(input.fetchImpl, url);
+    return result
+      ? normalizeShoutcastJson({
+          data: result.data,
+          streamUrl: input.streamUrl,
+          resolvedUrl: result.response.url || url,
+          sampledAt: input.sampledAt,
+          expiresAt: input.expiresAt,
+        })
+      : null;
+  }
+
+  const result = await fetchText(input.fetchImpl, url);
+  return result
+    ? normalizeShoutcastText({
+        text: result.text,
+        streamUrl: input.streamUrl,
+        resolvedUrl: result.response.url || url,
+        sampledAt: input.sampledAt,
+        expiresAt: input.expiresAt,
+      })
+    : null;
+}
+
+export async function tryShoutcastStatus(
+  input: ExternalMetadataProviderInput,
+  options: { endpoint?: string; sid?: string } = {}
+): Promise<RadioNowPlaying | null> {
+  const urls = options.endpoint
+    ? [options.endpoint]
+    : getShoutcastCandidateUrls(input.streamUrl, options.sid);
+  for (const url of [...new Set(urls)]) {
+    try {
+      const normalized = await tryShoutcastUrl(input, url);
+      if (normalized) {
+        return normalized;
+      }
+    } catch {
+      // Continue trying lower-fidelity legacy endpoints.
+    }
+  }
+  return null;
 }
 
 export async function tryAirtimeLiveInfo(

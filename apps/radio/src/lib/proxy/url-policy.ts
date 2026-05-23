@@ -13,7 +13,12 @@ function parseUrl(value: string): URL | null {
 }
 
 const BLOCKED_HOSTNAMES = new Set(["localhost", "metadata.google.internal"]);
-const BLOCKED_HOSTNAME_SUFFIXES = [".onion", ".local", ".internal"];
+const BLOCKED_HOSTNAME_SUFFIXES = [
+  ".localhost",
+  ".onion",
+  ".local",
+  ".internal",
+];
 const BRACKETED_HOSTNAME_PATTERN = /^\[(.*)\]$/;
 const TRAILING_DOTS_PATTERN = /\.+$/;
 const IPV4_OCTET_PATTERN = /^\d{1,3}$/;

@@ -54,6 +54,7 @@ type AzuraCastNowPlaying = {
   station?: {
     name?: unknown;
     description?: unknown;
+    listen_url?: unknown;
   };
   now_playing?: {
     song?: {
@@ -303,29 +304,40 @@ function getAzuraCastCandidateUrls(streamUrl: string): string[] {
   return [...new Set(urls)];
 }
 
+function azuraCastStationMatchesStream(
+  station: AzuraCastNowPlaying,
+  streamPath: string,
+  options: { allowMissingListenUrl?: boolean } = {}
+): boolean {
+  const listenUrl = asString(station.station?.listen_url);
+  if (!listenUrl) {
+    return options.allowMissingListenUrl ?? false;
+  }
+  try {
+    return new URL(listenUrl).pathname === streamPath;
+  } catch {
+    return listenUrl.includes(streamPath);
+  }
+}
+
 function selectAzuraCastStation(
   data: object,
   streamUrl: string
 ): AzuraCastNowPlaying | null {
+  const streamPath = new URL(streamUrl).pathname;
   if (!Array.isArray(data)) {
-    return data as AzuraCastNowPlaying;
+    const station = data as AzuraCastNowPlaying;
+    return azuraCastStationMatchesStream(station, streamPath, {
+      allowMissingListenUrl: true,
+    })
+      ? station
+      : null;
   }
 
-  const streamPath = new URL(streamUrl).pathname;
   return (
-    (data.find((item) => {
-      const listenUrl = asString(
-        (item as { station?: { listen_url?: unknown } }).station?.listen_url
-      );
-      if (!listenUrl) {
-        return false;
-      }
-      try {
-        return new URL(listenUrl).pathname === streamPath;
-      } catch {
-        return listenUrl.includes(streamPath);
-      }
-    }) as AzuraCastNowPlaying | undefined) ?? null
+    (data.find((item) =>
+      azuraCastStationMatchesStream(item as AzuraCastNowPlaying, streamPath)
+    ) as AzuraCastNowPlaying | undefined) ?? null
   );
 }
 

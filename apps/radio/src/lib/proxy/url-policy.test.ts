@@ -11,6 +11,7 @@ function expectInternalAddress(url: string): void {
 describe("validatePublicStreamUrl", () => {
   test("rejects normalized local hostnames", () => {
     expectInternalAddress("http://localhost./stream");
+    expectInternalAddress("http://radio.localhost/stream");
     expectInternalAddress("https://radio.local./stream");
     expectInternalAddress(
       "https://metadata.google.internal./computeMetadata/v1"

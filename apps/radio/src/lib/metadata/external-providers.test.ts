@@ -138,6 +138,8 @@ describe("external radio metadata providers", () => {
             station: {
               name: "Gatto Misterioso",
               description: "AzuraCast station",
+              listen_url:
+                "https://azuracast.gattomisterioso.top/listen/gatto_misterioso/radio.mp3",
             },
             now_playing: {
               song: {
@@ -183,6 +185,24 @@ describe("external radio metadata providers", () => {
             now_playing: { song: { title: "Wrong Station" } },
           },
         ]),
+      streamUrl: "https://azuracast.example/listen/right/radio.mp3",
+      sampledAt: 1000,
+      expiresAt: 2000,
+    });
+
+    expect(result).toBeNull();
+  });
+
+  test("does not accept a single AzuraCast response for a different stream", async () => {
+    const result = await tryAzuraCastNowPlaying({
+      fetchImpl: async () =>
+        json({
+          station: {
+            listen_url: "https://azuracast.example/listen/other/radio.mp3",
+            name: "Other Station",
+          },
+          now_playing: { song: { title: "Wrong Station" } },
+        }),
       streamUrl: "https://azuracast.example/listen/right/radio.mp3",
       sampledAt: 1000,
       expiresAt: 2000,

@@ -275,8 +275,21 @@ export function createRadioMetadataRetrieval({
       case "azuracast-now-playing":
       case "shoutcast-status":
       case "nts-live-api":
-      case "radio-blackout-api":
-        return retrieveExternalProvider(input, config);
+      case "radio-blackout-api": {
+        const externalResult = await retrieveExternalProvider(input, config);
+        if (externalResult.ok) {
+          return externalResult;
+        }
+
+        const icyResult = await tryIcy(streamUrl, sampledAt, signal);
+        if (
+          icyResult?.ok ||
+          icyResult?.error.code === "RADIO_METADATA_UPSTREAM_ERROR"
+        ) {
+          return icyResult;
+        }
+        return externalResult;
+      }
       case "icy": {
         const icyResult = await tryIcy(streamUrl, sampledAt, signal);
         if (

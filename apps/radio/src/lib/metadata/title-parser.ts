@@ -1,5 +1,35 @@
 const EMPTY_TITLES = new Set(["", "-", "unknown"]);
 
+const HTML_ENTITY_PATTERN = /&(#\d+|#x[\da-f]+|amp|lt|gt|quot|apos);/gi;
+const HTML_ENTITY_REPLACEMENTS: Record<string, string> = {
+  amp: "&",
+  apos: "'",
+  gt: ">",
+  lt: "<",
+  quot: '"',
+};
+
+function decodeCodePoint(codePoint: number, fallback: string): string {
+  return Number.isInteger(codePoint) &&
+    codePoint >= 0 &&
+    codePoint <= 0x10_ff_ff
+    ? String.fromCodePoint(codePoint)
+    : fallback;
+}
+
+function decodeHtmlEntities(value: string): string {
+  return value.replace(HTML_ENTITY_PATTERN, (entity, name: string) => {
+    const normalized = name.toLowerCase();
+    if (normalized.startsWith("#x")) {
+      return decodeCodePoint(Number.parseInt(normalized.slice(2), 16), entity);
+    }
+    if (normalized.startsWith("#")) {
+      return decodeCodePoint(Number.parseInt(normalized.slice(1), 10), entity);
+    }
+    return HTML_ENTITY_REPLACEMENTS[normalized] ?? entity;
+  });
+}
+
 export type ParsedRadioTitle = {
   title: string | null;
   artist: string | null;
@@ -7,7 +37,9 @@ export type ParsedRadioTitle = {
 };
 
 export function cleanMetadataText(value: string | null | undefined): string {
-  return (value ?? "").replace(/\0/g, "").trim();
+  return decodeHtmlEntities(value ?? "")
+    .replace(/\0/g, "")
+    .trim();
 }
 
 export function normalizeRawTitle(

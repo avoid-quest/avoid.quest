@@ -28,6 +28,8 @@ describe("external radio metadata providers", () => {
                 metadata: {
                   artist_name: "",
                   track_title: "GUESTS 179 – naîve",
+                  album_title: "Guests",
+                  info_url: "guests-179-naive",
                 },
               },
             },
@@ -42,6 +44,10 @@ describe("external radio metadata providers", () => {
     expect(calls[0]).toBe("https://radio.syg.ma/stats-icecast.json");
     expect(result?.source).toBe("airtime-live-info");
     expect(result?.title).toBe("GUESTS 179 – naîve");
+    expect(result?.album).toBe("Guests");
+    expect(result?.itemUrl).toBe(
+      "https://radio.syg.ma/episodes/guests-179-naive"
+    );
   });
 
   test("continues Airtime fallbacks after a candidate fetch throws", async () => {
@@ -136,6 +142,8 @@ describe("external radio metadata providers", () => {
               song: {
                 artist: "Artist",
                 title: "Title",
+                album: "Album",
+                genre: "Genre",
                 art: "https://radio.example/art.jpg",
               },
             },
@@ -156,6 +164,8 @@ describe("external radio metadata providers", () => {
       artist: "Artist",
       title: "Title",
       artworkUrl: "https://radio.example/art.jpg",
+      album: "Album",
+      genre: "Genre",
       stationName: "Gatto Misterioso",
     });
   });
@@ -296,7 +306,23 @@ describe("external radio metadata providers", () => {
         json({
           results: [
             { channel_name: "1", now: { broadcast_title: "Channel One" } },
-            { channel_name: "2", now: { broadcast_title: "MUTUALISM" } },
+            {
+              channel_name: "2",
+              now: {
+                broadcast_title: "MUTUALISM",
+                links: [
+                  {
+                    rel: "details",
+                    href: "https://www.nts.live/api/v2/shows/mutualism/episodes/mutualism-1st-january-2026",
+                  },
+                ],
+                embeds: {
+                  details: {
+                    genres: [{ value: "Experimental" }],
+                  },
+                },
+              },
+            },
           ],
         }),
       streamUrl: "https://stream-relay-geo.ntslive.net/stream2",
@@ -306,6 +332,10 @@ describe("external radio metadata providers", () => {
 
     expect(result?.source).toBe("nts-live-api");
     expect(result?.title).toBe("MUTUALISM");
+    expect(result?.genre).toBe("Experimental");
+    expect(result?.itemUrl).toBe(
+      "https://www.nts.live/shows/mutualism/episodes/mutualism-1st-january-2026"
+    );
   });
 
   test("normalizes Radio BlackOut listening endpoint", async () => {
@@ -315,6 +345,7 @@ describe("external radio metadata providers", () => {
           title: "B-Rave Ragazze",
           excerpt: "Current show",
           featured_media: "https://radioblackout.org/logo.png",
+          link: "https://radioblackout.org/shows/b-rave-ragazze/",
         }),
       streamUrl: "https://zeppelin.streampunk.cc/_stream/blackout.mp3",
       sampledAt: 1000,
@@ -324,5 +355,8 @@ describe("external radio metadata providers", () => {
     expect(result?.source).toBe("radio-blackout-api");
     expect(result?.title).toBe("B-Rave Ragazze");
     expect(result?.artworkUrl).toBe("https://radioblackout.org/logo.png");
+    expect(result?.itemUrl).toBe(
+      "https://radioblackout.org/shows/b-rave-ragazze/"
+    );
   });
 });

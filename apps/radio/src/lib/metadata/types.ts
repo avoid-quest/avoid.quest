@@ -19,7 +19,9 @@ export type RadioNowPlaying = {
   title: string | null;
   artist: string | null;
   rawTitle: string | null;
+  album: string | null;
   artworkUrl: string | null;
+  itemUrl: string | null;
   stationName: string | null;
   stationDescription: string | null;
   genre: string | null;

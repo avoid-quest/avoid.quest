@@ -21,6 +21,10 @@ type AirtimeTrack = {
     album_title?: unknown;
     genre?: unknown;
     artwork_url?: unknown;
+    url?: unknown;
+    info_url?: unknown;
+    audio_source_url?: unknown;
+    buy_this_url?: unknown;
   };
 };
 
@@ -35,12 +39,14 @@ type AirtimeShow = {
   name?: unknown;
   description?: unknown;
   image_path?: unknown;
+  url?: unknown;
 };
 
 type BlackoutListening = {
   title?: unknown;
   excerpt?: unknown;
   featured_media?: unknown;
+  link?: unknown;
 };
 
 type AzuraCastNowPlaying = {
@@ -52,8 +58,10 @@ type AzuraCastNowPlaying = {
     song?: {
       artist?: unknown;
       title?: unknown;
+      album?: unknown;
       text?: unknown;
       art?: unknown;
+      genre?: unknown;
     };
   };
   live?: {
@@ -70,8 +78,28 @@ type ShoutcastStatus = {
   bitrate?: unknown;
 };
 
+type Link = {
+  href?: unknown;
+  rel?: unknown;
+};
+
 function asString(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function asPublicUrl(value: unknown): string | null {
+  const text = asString(value);
+  if (!text) {
+    return null;
+  }
+  try {
+    const url = new URL(text);
+    return url.protocol === "http:" || url.protocol === "https:"
+      ? url.toString()
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 function isAbortError(error: unknown): boolean {
@@ -98,7 +126,9 @@ function buildNowPlaying(input: {
   resolvedUrl?: string;
   source: RadioMetadataSource;
   rawTitle: string;
+  album?: string | null;
   artworkUrl?: string | null;
+  itemUrl?: string | null;
   stationName?: string | null;
   stationDescription?: string | null;
   genre?: string | null;
@@ -118,7 +148,9 @@ function buildNowPlaying(input: {
     title: parsed.title,
     artist: parsed.artist,
     rawTitle: parsed.rawTitle,
+    album: input.album ?? null,
     artworkUrl: input.artworkUrl ?? null,
+    itemUrl: input.itemUrl ?? null,
     stationName: input.stationName ?? null,
     stationDescription: input.stationDescription ?? null,
     genre: input.genre ?? null,
@@ -126,6 +158,30 @@ function buildNowPlaying(input: {
     sampledAt: input.sampledAt,
     expiresAt: input.expiresAt,
   };
+}
+
+function getSygmaEpisodeUrl(streamUrl: string, slug: unknown): string | null {
+  if (new URL(streamUrl).hostname !== "radio.syg.ma") {
+    return null;
+  }
+  const episodeSlug = asString(slug);
+  return episodeSlug
+    ? new URL(`/episodes/${episodeSlug}`, "https://radio.syg.ma").toString()
+    : null;
+}
+
+function getAirtimeItemUrl(input: {
+  streamUrl: string;
+  metadata: AirtimeTrack["metadata"] | undefined;
+  show: AirtimeShow | undefined;
+}): string | null {
+  return (
+    asPublicUrl(input.metadata?.url) ??
+    getSygmaEpisodeUrl(input.streamUrl, input.metadata?.info_url) ??
+    asPublicUrl(input.metadata?.audio_source_url) ??
+    asPublicUrl(input.metadata?.buy_this_url) ??
+    asPublicUrl(input.show?.url)
+  );
 }
 
 function normalizeAirtimeLiveInfo(input: {
@@ -152,7 +208,13 @@ function normalizeAirtimeLiveInfo(input: {
     resolvedUrl: input.resolvedUrl,
     source: "airtime-live-info",
     rawTitle,
+    album: asString(metadata?.album_title),
     artworkUrl: asString(metadata?.artwork_url) ?? asString(show?.image_path),
+    itemUrl: getAirtimeItemUrl({
+      streamUrl: input.streamUrl,
+      metadata,
+      show,
+    }),
     stationDescription: asString(show?.description),
     genre: asString(metadata?.genre),
     sampledAt: input.sampledAt,
@@ -284,11 +346,13 @@ function normalizeAzuraCastNowPlaying(input: {
     resolvedUrl: input.resolvedUrl,
     source: "azuracast-now-playing",
     rawTitle,
+    album: asString(song?.album),
     artworkUrl: asString(song?.art),
     stationName: asString(station?.station?.name),
     stationDescription:
       asString(station?.station?.description) ??
       asString(station?.live?.streamer_name),
+    genre: asString(song?.genre),
     sampledAt: input.sampledAt,
     expiresAt: input.expiresAt,
   });
@@ -516,11 +580,14 @@ export async function tryNtsLiveApi(
     channel as {
       now?: {
         broadcast_title?: unknown;
+        links?: Link[];
         embeds?: {
           details?: {
             name?: unknown;
             description?: unknown;
+            genres?: { value?: unknown }[];
             media?: { picture_medium?: unknown };
+            links?: Link[];
           };
         };
       };
@@ -532,13 +599,24 @@ export async function tryNtsLiveApi(
     return null;
   }
 
+  const apiItemUrl =
+    now?.links?.find((link) => asString(link.rel) === "details")?.href ??
+    now?.embeds?.details?.links?.find((link) => asString(link.rel) === "self")
+      ?.href;
+  const itemUrl = asPublicUrl(apiItemUrl)?.replace(
+    "https://www.nts.live/api/v2/shows/",
+    "https://www.nts.live/shows/"
+  );
+
   return buildNowPlaying({
     streamUrl: input.streamUrl,
     resolvedUrl: result.response.url || "https://www.nts.live/api/v2/live",
     source: "nts-live-api",
     rawTitle: title,
     artworkUrl: asString(now?.embeds?.details?.media?.picture_medium),
+    itemUrl,
     stationDescription: asString(now?.embeds?.details?.description),
+    genre: asString(now?.embeds?.details?.genres?.[0]?.value),
     sampledAt: input.sampledAt,
     expiresAt: input.expiresAt,
   });
@@ -563,6 +641,7 @@ export async function tryRadioBlackoutApi(
     source: "radio-blackout-api",
     rawTitle: title,
     artworkUrl: asString(data.featured_media),
+    itemUrl: asPublicUrl(data.link),
     stationDescription: asString(data.excerpt),
     sampledAt: input.sampledAt,
     expiresAt: input.expiresAt,

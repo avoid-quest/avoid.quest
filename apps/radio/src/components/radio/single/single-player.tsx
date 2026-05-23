@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import type { Radio } from "@/lib/audio";
 import { useMediaSession } from "@/lib/hooks/use-media-session";
 import { useRadioGardenResolve } from "@/lib/hooks/use-radio-garden-resolve";
+import { useRadioMetadata } from "@/lib/hooks/use-radio-metadata";
 import {
   addRadio as addRadioToCollection,
   deleteRadio,
@@ -43,7 +44,17 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
     setVolume,
   } = useSingleSession(transitionDuration);
 
-  useMediaSession({ mode: "single", radio: currentRadio, isPlaying });
+  const { metadata } = useRadioMetadata({
+    radio: currentRadio,
+    enabled: isPlaying && !isLoading,
+  });
+
+  useMediaSession({
+    mode: "single",
+    radio: currentRadio,
+    isPlaying,
+    metadata,
+  });
 
   const sessionRadios = useSessionRadios((s) => s.radios);
   const removeSessionRadio = useSessionRadios((s) => s.removeSessionRadio);
@@ -142,6 +153,7 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
           isLoading={isLoading}
           isMuted={isMuted}
           isPlaying={isPlaying}
+          metadata={metadata}
           onDelete={handleDeleteRadio}
           onEdit={handleEditRadio}
           onMuteToggle={handleMuteToggle}
@@ -192,6 +204,7 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
             isLoading={isLoading}
             isMuted={isMuted}
             isPlaying={isPlaying}
+            metadata={metadata}
             onMuteToggle={handleMuteToggle}
             onPlayPause={togglePlayPause}
             onVolumeChange={handleVolumeChange}

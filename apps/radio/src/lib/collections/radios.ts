@@ -5,6 +5,7 @@ import {
 import { z } from "zod";
 import type { Radio } from "../audio";
 import { radios as defaultRadios } from "../const";
+import { radioMetadataConfigSchema } from "../metadata/schema";
 import { generateId } from "../types";
 import { platformMetadataSchema } from "./schemas";
 
@@ -69,6 +70,7 @@ const radioSchema = z.object({
   order: z.number().default(0),
   enabled: z.boolean().default(true),
   platformMetadata: platformMetadataSchema,
+  metadataConfig: radioMetadataConfigSchema.optional(),
   isSystem: z.boolean().default(false),
 });
 
@@ -100,7 +102,9 @@ function hasRadioChanged(existing: RadioRecord, incoming: Radio): boolean {
     existing.streamUrl !== incoming.streamUrl ||
     existing.logoUrl !== incoming.logoUrl ||
     existing.description !== incoming.description ||
-    existing.websiteUrl !== incoming.websiteUrl
+    existing.websiteUrl !== incoming.websiteUrl ||
+    JSON.stringify(existing.metadataConfig) !==
+      JSON.stringify(incoming.metadataConfig)
   );
 }
 
@@ -163,6 +167,7 @@ export function applySyncChanges(changes: SyncChanges): void {
       draft.logoUrl = incoming.logoUrl;
       draft.description = incoming.description;
       draft.websiteUrl = incoming.websiteUrl;
+      draft.metadataConfig = incoming.metadataConfig;
       // Preserve order and enabled status
     });
   }
@@ -176,6 +181,7 @@ export function applySyncChanges(changes: SyncChanges): void {
       logoUrl: radio.logoUrl,
       description: radio.description,
       websiteUrl: radio.websiteUrl,
+      metadataConfig: radio.metadataConfig,
       order: radio.order ?? 0,
       enabled: true,
       isSystem: true,
@@ -218,6 +224,7 @@ export async function initializeRadios(): Promise<SyncChanges | null> {
         logoUrl: radio.logoUrl,
         description: radio.description,
         websiteUrl: radio.websiteUrl,
+        metadataConfig: radio.metadataConfig,
         order: radio.order ?? 0,
         enabled: true,
         isSystem: true,

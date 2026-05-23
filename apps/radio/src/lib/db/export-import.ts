@@ -262,11 +262,15 @@ export const previewImportChanges = (
     const existing = existingRadiosMap.get(importedRadio.name);
 
     if (existing) {
+      const importsMetadataConfig = importedRadio.metadataConfig !== undefined;
       const hasChanged =
         existing.streamUrl !== importedRadio.streamUrl ||
         existing.logoUrl !== importedRadio.logoUrl ||
         existing.description !== importedRadio.description ||
-        existing.websiteUrl !== importedRadio.websiteUrl;
+        existing.websiteUrl !== importedRadio.websiteUrl ||
+        (importsMetadataConfig &&
+          JSON.stringify(existing.metadataConfig) !==
+            JSON.stringify(importedRadio.metadataConfig));
 
       if (hasChanged) {
         updatedRadios += 1;
@@ -311,6 +315,7 @@ export const replaceImportedData = (importData: DatabaseExport): void => {
         logoUrl: radio.logoUrl,
         description: radio.description,
         websiteUrl: radio.websiteUrl,
+        metadataConfig: radio.metadataConfig,
         order: radio.order ?? 0,
         enabled: radio.enabled ?? true,
         platformMetadata: radio.platformMetadata,
@@ -374,11 +379,16 @@ export const mergeImportedData = (importData: DatabaseExport): void => {
 
       if (existing) {
         // Check if radio data has changed
+        const importsMetadataConfig =
+          importedRadio.metadataConfig !== undefined;
         const hasChanged =
           existing.streamUrl !== importedRadio.streamUrl ||
           existing.logoUrl !== importedRadio.logoUrl ||
           existing.description !== importedRadio.description ||
-          existing.websiteUrl !== importedRadio.websiteUrl;
+          existing.websiteUrl !== importedRadio.websiteUrl ||
+          (importsMetadataConfig &&
+            JSON.stringify(existing.metadataConfig) !==
+              JSON.stringify(importedRadio.metadataConfig));
 
         if (hasChanged) {
           // Update existing radio with new data, preserving user preferences
@@ -387,6 +397,9 @@ export const mergeImportedData = (importData: DatabaseExport): void => {
             draft.logoUrl = importedRadio.logoUrl;
             draft.description = importedRadio.description;
             draft.websiteUrl = importedRadio.websiteUrl;
+            if (importsMetadataConfig) {
+              draft.metadataConfig = importedRadio.metadataConfig;
+            }
             // Keep order and enabled status from existing
           });
           updatedRadiosCount += 1;
@@ -404,6 +417,7 @@ export const mergeImportedData = (importData: DatabaseExport): void => {
           logoUrl: importedRadio.logoUrl,
           description: importedRadio.description,
           websiteUrl: importedRadio.websiteUrl,
+          metadataConfig: importedRadio.metadataConfig,
           order: maxOrder + newRadiosCount + 1,
           enabled: false, // New radios are disabled by default
         });

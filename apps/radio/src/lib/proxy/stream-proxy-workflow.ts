@@ -1,18 +1,6 @@
 import { AppError, captureError, type ErrorCategory } from "@avoid.quest/error";
-import { z } from "zod";
 import type { StreamAccessDecision } from "./stream-access";
-
-const URL_SCHEMA = z
-  .string()
-  .max(2048)
-  .refine((val) => {
-    try {
-      new URL(val);
-      return true;
-    } catch {
-      return false;
-    }
-  }, "Invalid URL format");
+import { validatePublicStreamUrl } from "./url-policy";
 
 type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -24,62 +12,6 @@ const EXPOSED_STREAM_HEADERS = [
   "Icy-Description",
   "Icy-Genre",
   "Icy-Br",
-];
-
-const BLOCKED_HOSTNAMES = [
-  "localhost",
-  "0.0.0.0",
-  "::1",
-  "[::1]",
-  "metadata.google.internal",
-];
-
-const BLOCKED_HOSTNAME_SUFFIXES = [".onion", ".local", ".internal"];
-
-const BLOCKED_HOSTNAME_PREFIXES = [
-  "127.",
-  "10.",
-  "192.168.",
-  "172.16.",
-  "172.17.",
-  "172.18.",
-  "172.19.",
-  "172.20.",
-  "172.21.",
-  "172.22.",
-  "172.23.",
-  "172.24.",
-  "172.25.",
-  "172.26.",
-  "172.27.",
-  "172.28.",
-  "172.29.",
-  "172.30.",
-  "172.31.",
-  "169.254.",
-  "fc",
-  "fd",
-  "fe80:",
-  "::ffff:127.",
-  "::ffff:10.",
-  "::ffff:192.168.",
-  "::ffff:172.16.",
-  "::ffff:172.17.",
-  "::ffff:172.18.",
-  "::ffff:172.19.",
-  "::ffff:172.20.",
-  "::ffff:172.21.",
-  "::ffff:172.22.",
-  "::ffff:172.23.",
-  "::ffff:172.24.",
-  "::ffff:172.25.",
-  "::ffff:172.26.",
-  "::ffff:172.27.",
-  "::ffff:172.28.",
-  "::ffff:172.29.",
-  "::ffff:172.30.",
-  "::ffff:172.31.",
-  "::ffff:169.254.",
 ];
 
 type StreamAccessInspector = (
@@ -119,63 +51,52 @@ function createStreamProxyError(init: {
   return new AppError(init);
 }
 
-function isBlockedStreamHostname(hostname: string): boolean {
-  return (
-    BLOCKED_HOSTNAMES.includes(hostname) ||
-    BLOCKED_HOSTNAME_PREFIXES.some((prefix) => hostname.startsWith(prefix)) ||
-    BLOCKED_HOSTNAME_SUFFIXES.some((suffix) => hostname.endsWith(suffix))
-  );
-}
-
-function getPrivateAddressReason(urlParam: string): AppError | null {
-  const parsed = new URL(urlParam);
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    return createStreamProxyError({
-      code: "STREAM_PROXY_INVALID_PROTOCOL",
-      safeMessage: "Invalid URL: must use http or https protocol",
-      category: "validation",
-      expected: true,
-      status: 400,
-    });
-  }
-
-  const hostname = parsed.hostname.toLowerCase();
-  if (!isBlockedStreamHostname(hostname)) {
-    return null;
-  }
-
-  return createStreamProxyError({
-    code: "STREAM_PROXY_INTERNAL_ADDRESS",
-    safeMessage: "Internal addresses not allowed",
-    category: "security",
-    expected: true,
-    status: 400,
-  });
-}
-
 function validateStreamUrl(urlParam: string | null): string | AppError {
-  if (!urlParam) {
-    return createStreamProxyError({
-      code: "STREAM_PROXY_URL_REQUIRED",
-      safeMessage: "URL parameter is required",
-      category: "validation",
-      expected: true,
-      status: 400,
-    });
+  const validation = validatePublicStreamUrl(urlParam);
+  if (validation.ok) {
+    return validation.url;
   }
 
-  const urlValidation = URL_SCHEMA.safeParse(urlParam);
-  if (!urlValidation.success) {
-    return createStreamProxyError({
-      code: "STREAM_PROXY_INVALID_URL",
-      safeMessage: "Invalid URL format",
-      category: "validation",
-      expected: true,
-      status: 400,
-    });
+  switch (validation.reason) {
+    case "required":
+      return createStreamProxyError({
+        code: "STREAM_PROXY_URL_REQUIRED",
+        safeMessage: "URL parameter is required",
+        category: "validation",
+        expected: true,
+        status: 400,
+      });
+    case "invalid-url":
+      return createStreamProxyError({
+        code: "STREAM_PROXY_INVALID_URL",
+        safeMessage: "Invalid URL format",
+        category: "validation",
+        expected: true,
+        status: 400,
+      });
+    case "invalid-protocol":
+      return createStreamProxyError({
+        code: "STREAM_PROXY_INVALID_PROTOCOL",
+        safeMessage: "Invalid URL: must use http or https protocol",
+        category: "validation",
+        expected: true,
+        status: 400,
+      });
+    case "internal-address":
+      return createStreamProxyError({
+        code: "STREAM_PROXY_INTERNAL_ADDRESS",
+        safeMessage: "Internal addresses not allowed",
+        category: "security",
+        expected: true,
+        status: 400,
+      });
+    default: {
+      const exhaustive: never = validation.reason;
+      throw new Error(
+        `Unsupported stream URL validation reason: ${exhaustive}`
+      );
+    }
   }
-
-  return getPrivateAddressReason(urlParam) ?? urlParam;
 }
 
 function copyHeaderIfPresent(

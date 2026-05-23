@@ -1,5 +1,12 @@
 import { useEffect } from "react";
 import type { Radio } from "@/lib/audio";
+import {
+  formatRadioDocumentTitle,
+  getMediaSessionText,
+  IDLE_RADIO_DOCUMENT_TITLE,
+  RADIO_DOCUMENT_TITLE_SUFFIX,
+} from "@/lib/metadata/display";
+import type { RadioNowPlaying } from "@/lib/metadata/types";
 
 /**
  * Sanitizes a string for safe use in AVRCP/Bluetooth metadata.
@@ -20,7 +27,12 @@ export function sanitizeForBluetooth(str: string): string {
 }
 
 type MediaSessionOptions =
-  | { mode: "single"; radio: Radio | null; isPlaying: boolean }
+  | {
+      mode: "single";
+      radio: Radio | null;
+      isPlaying: boolean;
+      metadata?: RadioNowPlaying | null;
+    }
   | { mode: "multiple"; radios: Radio[]; playingCount: number }
   | {
       mode: "dj";
@@ -29,29 +41,26 @@ type MediaSessionOptions =
       isPlaying: boolean;
     };
 
-const IDLE_TITLE = "radio — avoid.quest";
-const SUFFIX = " — radio.avoid.quest";
-
 function buildTitle(options: MediaSessionOptions): string {
   if (options.mode === "single") {
-    return options.radio && options.isPlaying
-      ? `${options.radio.name}${SUFFIX}`
-      : IDLE_TITLE;
+    return formatRadioDocumentTitle(options);
   }
   if (options.mode === "multiple") {
-    return options.playingCount > 0 ? `Multiple stations${SUFFIX}` : IDLE_TITLE;
+    return options.playingCount > 0
+      ? `Multiple stations${RADIO_DOCUMENT_TITLE_SUFFIX}`
+      : IDLE_RADIO_DOCUMENT_TITLE;
   }
   // dj
   if (options.deckA && options.deckB) {
-    return `${options.deckA.name} | ${options.deckB.name}${SUFFIX}`;
+    return `${options.deckA.name} | ${options.deckB.name}${RADIO_DOCUMENT_TITLE_SUFFIX}`;
   }
   if (options.deckA) {
-    return `${options.deckA.name}${SUFFIX}`;
+    return `${options.deckA.name}${RADIO_DOCUMENT_TITLE_SUFFIX}`;
   }
   if (options.deckB) {
-    return `${options.deckB.name}${SUFFIX}`;
+    return `${options.deckB.name}${RADIO_DOCUMENT_TITLE_SUFFIX}`;
   }
-  return IDLE_TITLE;
+  return IDLE_RADIO_DOCUMENT_TITLE;
 }
 
 function buildDjDeckInfo(
@@ -75,12 +84,18 @@ function buildMetadata(options: MediaSessionOptions): MediaMetadata | null {
     if (!options.radio) {
       return null;
     }
-    return new MediaMetadata({
-      title: sanitizeForBluetooth(options.radio.name),
-      artist: sanitizeForBluetooth(
-        options.radio.description || options.radio.placeTitle || ""
-      ),
+    const text = getMediaSessionText({
+      radio: options.radio,
+      metadata: options.metadata,
     });
+    const metadata: MediaMetadataInit = {
+      title: sanitizeForBluetooth(text.title),
+      artist: sanitizeForBluetooth(text.artist),
+    };
+    if (options.metadata?.album) {
+      metadata.album = sanitizeForBluetooth(options.metadata.album);
+    }
+    return new MediaMetadata(metadata);
   }
   if (options.mode === "multiple") {
     return new MediaMetadata({ title: "Multiple stations" });
@@ -129,7 +144,7 @@ export function useMediaSession(options: MediaSessionOptions): void {
     document.title = buildTitle(options);
     setMediaSession(options);
     return () => {
-      document.title = IDLE_TITLE;
+      document.title = IDLE_RADIO_DOCUMENT_TITLE;
       clearMediaSession();
     };
   }, [options]);

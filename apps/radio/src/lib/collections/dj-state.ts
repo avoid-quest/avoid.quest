@@ -4,6 +4,7 @@ import {
 } from "@tanstack/react-db";
 import { z } from "zod";
 import { EFFECT_TYPES, type EffectConfig } from "@/lib/audio/dsp/effects/types";
+import { radioMetadataConfigSchema } from "@/lib/metadata/schema";
 import { platformMetadataSchema } from "./schemas";
 
 const radioSchema = z
@@ -17,6 +18,7 @@ const radioSchema = z
     order: z.number().optional(),
     enabled: z.boolean().optional(),
     platformMetadata: platformMetadataSchema,
+    metadataConfig: radioMetadataConfigSchema.optional(),
   })
   .nullable();
 

@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { getSettings, settingsCollection } from "@/lib/collections";
+import {
+  getSettings,
+  radiosCollection,
+  settingsCollection,
+} from "@/lib/collections";
 import { mergeImportedData, validateImportData } from "./export-import";
 
 const SETTINGS_ID = "app-settings";
@@ -12,12 +16,20 @@ async function resetSettings() {
   }
 }
 
+async function resetRadios() {
+  await radiosCollection.stateWhenReady();
+
+  for (const radioId of Array.from(radiosCollection.state.keys())) {
+    radiosCollection.delete(radioId);
+  }
+}
+
 beforeEach(async () => {
-  await resetSettings();
+  await Promise.all([resetSettings(), resetRadios()]);
 });
 
 afterEach(async () => {
-  await resetSettings();
+  await Promise.all([resetSettings(), resetRadios()]);
 });
 
 describe("validateImportData", () => {
@@ -83,6 +95,47 @@ describe("validateImportData", () => {
 });
 
 describe("mergeImportedData", () => {
+  test("preserves metadataConfig when a legacy import omits it", async () => {
+    await radiosCollection.stateWhenReady();
+
+    radiosCollection.insert({
+      id: "radio-1",
+      name: "Existing",
+      streamUrl: "https://radio.example/original.mp3",
+      metadataConfig: {
+        kind: "airtime-live-info",
+        urls: ["https://radio.example/api/live-info"],
+      },
+      order: 1,
+      enabled: true,
+    });
+
+    mergeImportedData({
+      version: 1,
+      exportDate: "2026-04-16T00:00:00.000Z",
+      radios: [
+        {
+          id: "legacy-radio",
+          name: "Existing",
+          streamUrl: "https://radio.example/replaced.mp3",
+        },
+      ],
+      settings: {
+        player: {
+          mode: "single",
+        },
+      },
+    });
+
+    expect(radiosCollection.state.get("radio-1")).toMatchObject({
+      streamUrl: "https://radio.example/replaced.mp3",
+      metadataConfig: {
+        kind: "airtime-live-info",
+        urls: ["https://radio.example/api/live-info"],
+      },
+    });
+  });
+
   test("does not overwrite restoreStateOnLoad when the import omits it", async () => {
     await settingsCollection.stateWhenReady();
 

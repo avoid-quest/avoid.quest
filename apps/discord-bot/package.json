@@ -19,7 +19,7 @@
     "sodium-native": "^5.1.0"
   },
   "devDependencies": {
-    "@avoid.quest/typescript-config": "workspace:*",
+    "@avoid.quest/config": "workspace:*",
     "@types/node": "catalog:",
     "tsup": "^8.5.1",
     "tsx": "^4.21.0",

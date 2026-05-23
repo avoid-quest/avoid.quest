@@ -45,7 +45,7 @@
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@avoid.quest/typescript-config": "workspace:*",
+    "@avoid.quest/config": "workspace:*",
     "@turbo/gen": "^2.9.12",
     "tailwindcss": "catalog:",
     "typescript": "catalog:"

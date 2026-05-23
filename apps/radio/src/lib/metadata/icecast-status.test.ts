@@ -22,6 +22,28 @@ describe("Icecast status parsing", () => {
     expect(normalized?.bitrate).toBe(128);
   });
 
+  test("matches single source by mount path when path data is present", () => {
+    const selected = selectIcecastSource(
+      { icestats: { source: { title: "Right", mount: "/live" } } },
+      "https://radio.example/live"
+    );
+
+    expect(selected?.title).toBe("Right");
+  });
+
+  test("does not use a single source with a different mount path", () => {
+    const selected = selectIcecastSource(
+      {
+        icestats: {
+          source: { title: "Wrong", listenurl: "https://radio.example/other" },
+        },
+      },
+      "https://radio.example/live"
+    );
+
+    expect(selected).toBeNull();
+  });
+
   test("matches array source by mount path", () => {
     const selected = selectIcecastSource(
       {

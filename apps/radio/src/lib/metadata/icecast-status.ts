@@ -38,6 +38,10 @@ function asNumber(value: unknown): number | null {
   return null;
 }
 
+function sourceHasPath(source: IcecastSource): boolean {
+  return Boolean(asString(source.mount) || asString(source.listenurl));
+}
+
 function sourceMatchesPath(
   source: IcecastSource,
   streamPathname: string
@@ -67,11 +71,13 @@ export function selectIcecastSource(
   if (!source) {
     return null;
   }
+  const streamPathname = new URL(streamUrl).pathname;
   if (!Array.isArray(source)) {
-    return source;
+    return sourceHasPath(source) && !sourceMatchesPath(source, streamPathname)
+      ? null
+      : source;
   }
 
-  const streamPathname = new URL(streamUrl).pathname;
   return source.find((item) => sourceMatchesPath(item, streamPathname)) ?? null;
 }
 

@@ -87,15 +87,32 @@ describe("handleFeedbackRequest", () => {
     );
     expect(createGitHubAdapterMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        categoryLabels: {
-          bug: "bug",
-          idea: "enhancement",
-          question: "question",
+        client: expect.objectContaining({
+          rest: expect.objectContaining({
+            issues: expect.objectContaining({ create: expect.any(Function) }),
+          }),
+        }),
+        customizeIssueInput: expect.any(Function),
+        input: {
+          labels: ["git-feedback", "radio"],
+          owner: "avoid-quest",
+          repo: "avoid.quest",
         },
-        labels: ["git-feedback", "radio"],
-        repository: "avoid-quest/avoid.quest",
       })
     );
+
+    const githubOptions = createGitHubAdapterMock.mock.calls[0]?.[0] as {
+      customizeIssueInput: (
+        input: { labels?: string[] },
+        context: { issue: { category?: string } }
+      ) => { labels?: string[] };
+    };
+    expect(
+      githubOptions.customizeIssueInput(
+        { labels: ["git-feedback", "radio"] },
+        { issue: { category: "bug" } }
+      ).labels
+    ).toEqual(["git-feedback", "radio", "bug"]);
     expect(response.headers.get("set-cookie")).toBeNull();
   });
 

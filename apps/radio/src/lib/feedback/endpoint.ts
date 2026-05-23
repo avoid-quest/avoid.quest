@@ -1,3 +1,5 @@
+import { Octokit as OctokitCore } from "@octokit/core";
+import { restEndpointMethods } from "@octokit/plugin-rest-endpoint-methods";
 import { createGitHubAdapter } from "git-feedback/github";
 import { createFeedbackEndpoint, type FeedbackItem } from "git-feedback/server";
 import { validateAuthAndRateLimit } from "@/lib/middleware/rate-limit";
@@ -5,6 +7,8 @@ import { createSessionCookie } from "@/lib/middleware/session";
 import { FEEDBACK_CATEGORIES } from "./config";
 
 const FEEDBACK_REPOSITORY = "avoid-quest/avoid.quest";
+const [FEEDBACK_REPOSITORY_OWNER, FEEDBACK_REPOSITORY_NAME] =
+  FEEDBACK_REPOSITORY.split("/") as [string, string];
 const FEEDBACK_LABELS_BY_CATEGORY: Record<
   (typeof FEEDBACK_CATEGORIES)[number],
   string
@@ -27,6 +31,7 @@ const APP_VERSION =
   typeof __APP_VERSION__ === "string"
     ? __APP_VERSION__
     : (process.env.npm_package_version ?? "unknown");
+const Octokit = OctokitCore.plugin(restEndpointMethods);
 
 type FeedbackEnv = {
   readonly GIT_FEEDBACK_GITHUB_TOKEN?: string;
@@ -99,15 +104,30 @@ function formatRadioFeedbackIssueBody(item: FeedbackItem): string {
 }
 
 function createRadioFeedbackEndpoint(token: string) {
+  const octokit = new Octokit({ auth: token });
+
   return createFeedbackEndpoint({
     adapter: createGitHubAdapter({
-      categoryLabels: FEEDBACK_LABELS_BY_CATEGORY,
-      credentials: {
-        type: "token",
-        token,
+      client: octokit,
+      input: {
+        labels: ["git-feedback", "radio"],
+        owner: FEEDBACK_REPOSITORY_OWNER,
+        repo: FEEDBACK_REPOSITORY_NAME,
       },
-      labels: ["git-feedback", "radio"],
-      repository: FEEDBACK_REPOSITORY,
+      customizeIssueInput(input, { issue }) {
+        const labels = new Set(input.labels ?? []);
+        const categoryLabel = issue.category
+          ? FEEDBACK_LABELS_BY_CATEGORY[
+              issue.category as (typeof FEEDBACK_CATEGORIES)[number]
+            ]
+          : undefined;
+
+        if (categoryLabel) {
+          labels.add(categoryLabel);
+        }
+
+        return { ...input, labels: [...labels] };
+      },
     }),
     categories: FEEDBACK_CATEGORIES,
     issue: {

@@ -72,11 +72,7 @@ export function selectIcecastSource(
   }
 
   const streamPathname = new URL(streamUrl).pathname;
-  return (
-    source.find((item) => sourceMatchesPath(item, streamPathname)) ??
-    source[0] ??
-    null
-  );
+  return source.find((item) => sourceMatchesPath(item, streamPathname)) ?? null;
 }
 
 export function normalizeIcecastSource(input: {

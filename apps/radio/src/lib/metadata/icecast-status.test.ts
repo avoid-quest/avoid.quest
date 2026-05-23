@@ -38,6 +38,21 @@ describe("Icecast status parsing", () => {
     expect(selected?.title).toBe("Right");
   });
 
+  test("does not use another mount when no array source matches", () => {
+    const selected = selectIcecastSource(
+      {
+        icestats: {
+          source: [
+            { title: "Wrong", listenurl: "https://radio.example/other" },
+          ],
+        },
+      },
+      "https://radio.example/live"
+    );
+
+    expect(selected).toBeNull();
+  });
+
   test("returns null when title is missing", () => {
     const normalized = normalizeIcecastSource({
       source: { server_name: "Station" },

@@ -32,7 +32,7 @@ export function formatRadioDocumentTitle(input: {
   if (!(input.radio && input.isPlaying)) {
     return IDLE_RADIO_DOCUMENT_TITLE;
   }
-  const title = input.metadata?.title ?? input.radio.name;
+  const title = input.metadata?.title || input.radio.name;
   return `${truncateTitle(title)}${RADIO_DOCUMENT_TITLE_SUFFIX}`;
 }
 
@@ -40,12 +40,12 @@ export function getMediaSessionText(input: {
   radio: Radio;
   metadata?: RadioNowPlaying | null;
 }): { title: string; artist: string } {
-  const title = input.metadata?.title ?? input.radio.name;
+  const title = input.metadata?.title || input.radio.name;
   const artist =
     input.metadata?.artist ||
-    input.radio.name ||
     input.radio.description ||
     input.radio.placeTitle ||
+    input.radio.name ||
     "";
   return { title, artist };
 }

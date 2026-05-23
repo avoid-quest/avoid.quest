@@ -12,8 +12,6 @@ export function getRadioMetadataConfig(
     return radio.metadataConfig;
   }
   return defaultRadios.find(
-    (defaultRadio) =>
-      defaultRadio.name === radio.name &&
-      defaultRadio.streamUrl === radio.streamUrl
+    (defaultRadio) => defaultRadio.streamUrl === radio.streamUrl
   )?.metadataConfig;
 }

@@ -76,6 +76,30 @@ describe("external radio metadata providers", () => {
     expect(result?.title).toBe("Recovered Show");
   });
 
+  test("tries Cashmere Airtime v2 before legacy live-info fallback", async () => {
+    const calls: string[] = [];
+    const result = await tryAirtimeLiveInfo({
+      fetchImpl: (url) => {
+        calls.push(url);
+        return Promise.resolve(
+          json({
+            tracks: {
+              current: {
+                name: "V2 Show",
+              },
+            },
+          })
+        );
+      },
+      streamUrl: "https://cashmereradio.out.airtime.pro/cashmereradio_b",
+      sampledAt: 1000,
+      expiresAt: 2000,
+    });
+
+    expect(calls[0]).toBe("https://cashmereradio.airtime.pro/api/live-info-v2");
+    expect(result?.title).toBe("V2 Show");
+  });
+
   test("uses the NTS live API channel matching the stream path", async () => {
     const result = await tryNtsLiveApi({
       fetchImpl: async () =>

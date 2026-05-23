@@ -124,8 +124,10 @@ function getAirtimeCandidateUrls(streamUrl: string): string[] {
     urls.unshift(new URL("/stats-icecast.json", url.origin).toString());
   }
   if (url.hostname === "cashmereradio.out.airtime.pro") {
-    urls.unshift("https://cashmereradio.airtime.pro/api/live-info-v2");
-    urls.unshift("https://cashmereradio.airtime.pro/api/live-info");
+    urls.unshift(
+      "https://cashmereradio.airtime.pro/api/live-info-v2",
+      "https://cashmereradio.airtime.pro/api/live-info"
+    );
   }
 
   return [...new Set(urls)];

@@ -14,7 +14,6 @@
     "@avoid.quest/platforms": "workspace:*",
     "@discordjs/opus": "^0.10.0",
     "@discordjs/voice": "^0.19.2",
-    "@snazzah/davey": "^0.1.11",
     "discord.js": "^14.26.4",
     "sodium-native": "^5.1.0"
   },

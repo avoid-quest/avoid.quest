@@ -559,10 +559,18 @@ export async function tryNtsLiveApi(
   input: ExternalMetadataProviderInput,
   requestedChannel?: "1" | "2"
 ): Promise<RadioNowPlaying | null> {
-  const result = await fetchObjectJson(
-    input.fetchImpl,
-    "https://www.nts.live/api/v2/live"
-  );
+  let result: Awaited<ReturnType<typeof fetchObjectJson>>;
+  try {
+    result = await fetchObjectJson(
+      input.fetchImpl,
+      "https://www.nts.live/api/v2/live"
+    );
+  } catch (error) {
+    if (isAbortError(error)) {
+      throw error;
+    }
+    return null;
+  }
   if (!result) {
     return null;
   }

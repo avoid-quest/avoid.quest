@@ -338,6 +338,35 @@ describe("external radio metadata providers", () => {
     );
   });
 
+  test("returns null for NTS network failures so ICY fallback can run", async () => {
+    const result = await tryNtsLiveApi({
+      fetchImpl: () => {
+        throw new Error("network failed");
+      },
+      streamUrl: "https://stream-relay-geo.ntslive.net/stream",
+      sampledAt: 1000,
+      expiresAt: 2000,
+    });
+
+    expect(result).toBeNull();
+  });
+
+  test("propagates NTS aborts instead of treating them as unsupported", async () => {
+    const abortError = new Error("aborted");
+    abortError.name = "AbortError";
+
+    await expect(
+      tryNtsLiveApi({
+        fetchImpl: () => {
+          throw abortError;
+        },
+        streamUrl: "https://stream-relay-geo.ntslive.net/stream",
+        sampledAt: 1000,
+        expiresAt: 2000,
+      })
+    ).rejects.toThrow("aborted");
+  });
+
   test("normalizes Radio BlackOut listening endpoint", async () => {
     const result = await tryRadioBlackoutApi({
       fetchImpl: async () =>

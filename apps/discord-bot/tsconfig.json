@@ -1,5 +1,5 @@
 {
-  "extends": "@avoid.quest/typescript-config/base.json",
+  "extends": "@avoid.quest/config/base.json",
   "include": ["src/**/*.ts"],
   "compilerOptions": {
     "outDir": "dist",

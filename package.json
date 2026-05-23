@@ -35,9 +35,6 @@
     "cf-upload": "turbo cf-upload",
     "cf-typegen": "turbo cf-typegen",
     "ui": "bun --filter @avoid.quest/ui ui",
-    "dev:backend": "turbo -F @avoid.quest/backend dev",
-    "dev:setup": "turbo -F @avoid.quest/backend dev:setup",
-    "deploy:backend": "turbo -F @avoid.quest/backend deploy",
     "sandcastle": "bun run .sandcastle/main.ts",
     "dev": "turbo dev",
     "build": "turbo build",
@@ -47,14 +44,11 @@
     "preview": "turbo preview",
     "test": "turbo test",
     "cleanup": "./scripts/cleanup.sh",
-    "radio:diagnostics": "bash ./scripts/radio-stream-diagnostics.sh",
-    "changeset": "changeset",
-    "version-packages": "changeset version"
+    "radio:diagnostics": "bash ./scripts/radio-stream-diagnostics.sh"
   },
   "devDependencies": {
     "@ai-hero/sandcastle": "^0.5.10",
     "@biomejs/biome": "2.4.15",
-    "@changesets/cli": "^2.31.0",
     "@types/bun": "^1.3.13",
     "@types/node": "^25.6.2",
     "turbo": "^2.9.12",

@@ -78,6 +78,25 @@ describe("external radio metadata providers", () => {
     expect(result?.title).toBe("Recovered Show");
   });
 
+  test("propagates Airtime aborts instead of treating them as unsupported", async () => {
+    const abortError = new Error("aborted");
+    abortError.name = "AbortError";
+
+    await expect(
+      tryAirtimeLiveInfo(
+        {
+          fetchImpl: () => {
+            throw abortError;
+          },
+          streamUrl: "https://radio.example/audio.mp3",
+          sampledAt: 1000,
+          expiresAt: 2000,
+        },
+        ["https://bad.example/live-info", "https://good.example/live-info"]
+      )
+    ).rejects.toThrow("aborted");
+  });
+
   test("tries Cashmere Airtime v2 before legacy live-info fallback", async () => {
     const calls: string[] = [];
     const result = await tryAirtimeLiveInfo({
@@ -141,6 +160,42 @@ describe("external radio metadata providers", () => {
     });
   });
 
+  test("does not default AzuraCast multi-station responses to the first station", async () => {
+    const result = await tryAzuraCastNowPlaying({
+      fetchImpl: async () =>
+        json([
+          {
+            station: {
+              listen_url: "https://azuracast.example/listen/other/radio.mp3",
+              name: "Other Station",
+            },
+            now_playing: { song: { title: "Wrong Station" } },
+          },
+        ]),
+      streamUrl: "https://azuracast.example/listen/right/radio.mp3",
+      sampledAt: 1000,
+      expiresAt: 2000,
+    });
+
+    expect(result).toBeNull();
+  });
+
+  test("propagates AzuraCast aborts instead of treating them as unsupported", async () => {
+    const abortError = new Error("aborted");
+    abortError.name = "AbortError";
+
+    await expect(
+      tryAzuraCastNowPlaying({
+        fetchImpl: () => {
+          throw abortError;
+        },
+        streamUrl: "https://azuracast.example/listen/right/radio.mp3",
+        sampledAt: 1000,
+        expiresAt: 2000,
+      })
+    ).rejects.toThrow("aborted");
+  });
+
   test("normalizes SHOUTcast JSON stats responses", async () => {
     const calls: string[] = [];
     const result = await tryShoutcastStatus({
@@ -196,6 +251,43 @@ describe("external radio metadata providers", () => {
       artist: "Artist",
       title: "Title",
     });
+  });
+
+  test("keeps comma-containing titles from legacy SHOUTcast 7.html responses", async () => {
+    const result = await tryShoutcastStatus({
+      fetchImpl: (url) => {
+        if (url.includes("/stats") || url.includes("/currentsong")) {
+          return Promise.resolve(new Response("", { status: 404 }));
+        }
+        return Promise.resolve(
+          new Response("1,1,1,128,1,Artist - Title, Part Two")
+        );
+      },
+      streamUrl: "https://shoutcast.example/stream",
+      sampledAt: 1000,
+      expiresAt: 2000,
+    });
+
+    expect(result).toMatchObject({
+      artist: "Artist",
+      title: "Title, Part Two",
+    });
+  });
+
+  test("propagates SHOUTcast aborts instead of treating them as unsupported", async () => {
+    const abortError = new Error("aborted");
+    abortError.name = "AbortError";
+
+    await expect(
+      tryShoutcastStatus({
+        fetchImpl: () => {
+          throw abortError;
+        },
+        streamUrl: "https://shoutcast.example/stream",
+        sampledAt: 1000,
+        expiresAt: 2000,
+      })
+    ).rejects.toThrow("aborted");
   });
 
   test("uses the NTS live API channel matching the stream path", async () => {

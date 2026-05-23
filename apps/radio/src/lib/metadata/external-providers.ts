@@ -4,6 +4,7 @@ import type { RadioMetadataSource, RadioNowPlaying } from "./types";
 type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
 const AZURACAST_LISTEN_PATH_PATTERN = /\/listen\/([^/]+)/;
+const INTEGER_FIELD_PATTERN = /^\d+$/;
 
 export type ExternalMetadataProviderInput = {
   fetchImpl: FetchLike;
@@ -71,6 +72,10 @@ type ShoutcastStatus = {
 
 function asString(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === "AbortError";
 }
 
 function asNumber(value: unknown): number | null {
@@ -253,9 +258,7 @@ function selectAzuraCastStation(
       } catch {
         return listenUrl.includes(streamPath);
       }
-    }) as AzuraCastNowPlaying | undefined) ??
-    (data[0] as AzuraCastNowPlaying | undefined) ??
-    null
+    }) as AzuraCastNowPlaying | undefined) ?? null
   );
 }
 
@@ -302,7 +305,10 @@ export async function tryAzuraCastNowPlaying(
     let result: Awaited<ReturnType<typeof fetchObjectJson>>;
     try {
       result = await fetchObjectJson(input.fetchImpl, url);
-    } catch {
+    } catch (error) {
+      if (isAbortError(error)) {
+        throw error;
+      }
       continue;
     }
     if (!result) {
@@ -359,16 +365,35 @@ function normalizeShoutcastJson(input: {
   });
 }
 
+function getShoutcast7HtmlTitle(text: string): string | null {
+  const fields = text.split(",");
+  if (fields.length < 2) {
+    return asString(text);
+  }
+
+  const titleOffset = fields.findIndex((field, index) => {
+    if (index > 5) {
+      return true;
+    }
+    return !INTEGER_FIELD_PATTERN.test(field.trim());
+  });
+  if (titleOffset < 0) {
+    return null;
+  }
+  return asString(fields.slice(titleOffset).join(","));
+}
+
 function normalizeShoutcastText(input: {
   text: string;
   streamUrl: string;
   resolvedUrl?: string;
+  isSevenHtml?: boolean;
   sampledAt: number;
   expiresAt: number;
 }): RadioNowPlaying | null {
-  const rawTitle = input.text.includes(",")
-    ? input.text.split(",").at(-1)?.trim()
-    : input.text.trim();
+  const rawTitle = input.isSevenHtml
+    ? getShoutcast7HtmlTitle(input.text)
+    : asString(input.text);
   if (!rawTitle || rawTitle === "-" || rawTitle === "- -") {
     return null;
   }
@@ -405,6 +430,7 @@ async function tryShoutcastUrl(
         text: result.text,
         streamUrl: input.streamUrl,
         resolvedUrl: result.response.url || url,
+        isSevenHtml: url.includes("/7.html"),
         sampledAt: input.sampledAt,
         expiresAt: input.expiresAt,
       })
@@ -424,7 +450,10 @@ export async function tryShoutcastStatus(
       if (normalized) {
         return normalized;
       }
-    } catch {
+    } catch (error) {
+      if (isAbortError(error)) {
+        throw error;
+      }
       // Continue trying lower-fidelity legacy endpoints.
     }
   }
@@ -439,7 +468,10 @@ export async function tryAirtimeLiveInfo(
     let result: Awaited<ReturnType<typeof fetchObjectJson>>;
     try {
       result = await fetchObjectJson(input.fetchImpl, url);
-    } catch {
+    } catch (error) {
+      if (isAbortError(error)) {
+        throw error;
+      }
       continue;
     }
     if (!result) {

@@ -88,10 +88,14 @@ function buildMetadata(options: MediaSessionOptions): MediaMetadata | null {
       radio: options.radio,
       metadata: options.metadata,
     });
-    return new MediaMetadata({
+    const metadata: MediaMetadataInit = {
       title: sanitizeForBluetooth(text.title),
       artist: sanitizeForBluetooth(text.artist),
-    });
+    };
+    if (options.metadata?.album) {
+      metadata.album = sanitizeForBluetooth(options.metadata.album);
+    }
+    return new MediaMetadata(metadata);
   }
   if (options.mode === "multiple") {
     return new MediaMetadata({ title: "Multiple stations" });

@@ -6,6 +6,7 @@ import {
   tryRadioBlackoutApi,
   tryShoutcastStatus,
 } from "./external-providers";
+import { RadioMetadataValidationError } from "./upstream-fetch";
 
 function json(data: unknown) {
   return new Response(JSON.stringify(data), {
@@ -206,6 +207,19 @@ describe("external radio metadata providers", () => {
     ).rejects.toThrow("aborted");
   });
 
+  test("propagates AzuraCast URL validation errors instead of falling back", async () => {
+    await expect(
+      tryAzuraCastNowPlaying({
+        fetchImpl: () => {
+          throw new RadioMetadataValidationError("internal-address");
+        },
+        streamUrl: "https://azuracast.example/listen/right/radio.mp3",
+        sampledAt: 1000,
+        expiresAt: 2000,
+      })
+    ).rejects.toBeInstanceOf(RadioMetadataValidationError);
+  });
+
   test("normalizes SHOUTcast JSON stats responses", async () => {
     const calls: string[] = [];
     const result = await tryShoutcastStatus({
@@ -387,5 +401,31 @@ describe("external radio metadata providers", () => {
     expect(result?.itemUrl).toBe(
       "https://radioblackout.org/shows/b-rave-ragazze/"
     );
+  });
+
+  test("returns null for Radio BlackOut network failures so ICY fallback can run", async () => {
+    const result = await tryRadioBlackoutApi({
+      fetchImpl: () => {
+        throw new Error("network failed");
+      },
+      streamUrl: "https://zeppelin.streampunk.cc/_stream/blackout.mp3",
+      sampledAt: 1000,
+      expiresAt: 2000,
+    });
+
+    expect(result).toBeNull();
+  });
+
+  test("propagates Radio BlackOut URL validation errors", async () => {
+    await expect(
+      tryRadioBlackoutApi({
+        fetchImpl: () => {
+          throw new RadioMetadataValidationError("internal-address");
+        },
+        streamUrl: "https://zeppelin.streampunk.cc/_stream/blackout.mp3",
+        sampledAt: 1000,
+        expiresAt: 2000,
+      })
+    ).rejects.toBeInstanceOf(RadioMetadataValidationError);
   });
 });

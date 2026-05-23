@@ -1,5 +1,6 @@
 import { parseRadioTitle } from "./title-parser";
 import type { RadioMetadataSource, RadioNowPlaying } from "./types";
+import { RadioMetadataValidationError } from "./upstream-fetch";
 
 type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -104,6 +105,10 @@ function asPublicUrl(value: unknown): string | null {
 
 function isAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === "AbortError";
+}
+
+function shouldPropagateFetchError(error: unknown): boolean {
+  return isAbortError(error) || error instanceof RadioMetadataValidationError;
 }
 
 function asNumber(value: unknown): number | null {
@@ -370,7 +375,7 @@ export async function tryAzuraCastNowPlaying(
     try {
       result = await fetchObjectJson(input.fetchImpl, url);
     } catch (error) {
-      if (isAbortError(error)) {
+      if (shouldPropagateFetchError(error)) {
         throw error;
       }
       continue;
@@ -515,7 +520,7 @@ export async function tryShoutcastStatus(
         return normalized;
       }
     } catch (error) {
-      if (isAbortError(error)) {
+      if (shouldPropagateFetchError(error)) {
         throw error;
       }
       // Continue trying lower-fidelity legacy endpoints.
@@ -533,7 +538,7 @@ export async function tryAirtimeLiveInfo(
     try {
       result = await fetchObjectJson(input.fetchImpl, url);
     } catch (error) {
-      if (isAbortError(error)) {
+      if (shouldPropagateFetchError(error)) {
         throw error;
       }
       continue;
@@ -566,7 +571,7 @@ export async function tryNtsLiveApi(
       "https://www.nts.live/api/v2/live"
     );
   } catch (error) {
-    if (isAbortError(error)) {
+    if (shouldPropagateFetchError(error)) {
       throw error;
     }
     return null;
@@ -634,7 +639,15 @@ export async function tryRadioBlackoutApi(
   input: ExternalMetadataProviderInput,
   endpoint = "https://radioblackout.org/api/listening"
 ): Promise<RadioNowPlaying | null> {
-  const result = await fetchObjectJson(input.fetchImpl, endpoint);
+  let result: Awaited<ReturnType<typeof fetchObjectJson>>;
+  try {
+    result = await fetchObjectJson(input.fetchImpl, endpoint);
+  } catch (error) {
+    if (shouldPropagateFetchError(error)) {
+      throw error;
+    }
+    return null;
+  }
   if (!result) {
     return null;
   }

@@ -1,72 +1,70 @@
 # avoid.quest
 
-Monorepo for avoid.quest apps. TanStack Start + Convex + Cloudflare.
+Core avoid.quest monorepo for the landing site, radio app, Discord bot, and shared packages that still belong to the main avoid.quest project.
+
+> Split note: `cwavasape` and `instarip` now live in their own private repositories under the `avoid-quest` GitHub organization.
 
 ## Apps
 
-- **radio**: PWA internet radio player — 3 modes (Multiple/Single/DJ), audio mixing, effects, MIDI support
-- **instarip**: Instagram post viewer — browse scraped IG content without an account
-- **cwavasape**: Pinterest visual gallery with audio-reactive GPU shader effects
-- **web**: Landing page and links hub
+- **web** (`apps/web`): Astro landing page and links hub.
+- **radio** (`apps/radio`): PWA internet radio player with multi-mode playback, platform resolvers, audio effects, MIDI support, and Cloudflare Worker deployment.
+- **discord-bot** (`apps/discord-bot`): Discord bot for avoid.quest radio/platform interactions.
 
 ## Packages
 
-- **backend**: Convex database + API — posts, users, media items, Telegram bot integration
-- **platforms**: Platform scrapers and resolvers — Bandcamp, SoundCloud, YouTube, Radio Garden
-- **error**: Shared error types, AppError, Sentry helpers
-- **shared**: Shared utilities and feature flags
-- **ui**: Component library (shadcn/ui + Radix UI)
-- **typescript-config**: Shared TypeScript configs
+- **config** (`packages/config`): Shared TypeScript configuration.
+- **error** (`packages/error`): Shared error types, `AppError`, and Sentry helpers.
+- **platforms** (`packages/platforms`): Platform scrapers and resolvers for Bandcamp, SoundCloud, YouTube, and Radio Garden.
+- **ui** (`packages/ui`): Shared React UI components, shadcn/ui primitives, and branding assets.
 
-## Tech Stack
+## Related repositories
 
-- **Frontend**: TanStack Start, TanStack Router, React 19, TypeScript
-- **State**: TanStack DB (localStorage collections), TanStack Store (runtime), TanStack Query (server state)
-- **Backend**: Convex (database + real-time)
-- **Styling**: Tailwind CSS v4, shadcn/ui
-- **Tooling**: Bun, Turborepo, Biome (lint/format)
-- **Deploy**: Cloudflare Workers
+- **cwavasape**: split to `avoid-quest/cwavasape`.
+- **instarip**: split to `avoid-quest/instarip` and kept as an archived project with its pruned Convex backend.
+
+## Tech stack
+
+- **Web**: Astro, React islands, Tailwind CSS v4.
+- **Radio**: TanStack Start, TanStack Router, React 19, TypeScript, Web Audio API.
+- **Bot**: Discord.js, TypeScript, tsup.
+- **Tooling**: Bun, Turborepo, Ultracite/Biome.
+- **Deploy**: Cloudflare Workers for deployable web apps.
 
 ## Development
 
 ```bash
 bun install          # Install dependencies
-bun run dev          # Start all apps in dev mode
-bun run dev:backend  # Start Convex backend only
-bun run dev:setup    # First-time Convex setup
-bun run build        # Build all apps
+bun run dev          # Start workspace dev tasks
+bun run build        # Build all apps/packages
 bun run typecheck    # Type check all packages
-bun run check        # Lint (biome via ultracite)
-bun run fix          # Auto-fix lint issues
+bun run check        # Lint/format check via Ultracite
+bun run fix          # Auto-fix lint/format issues
 bun run cleanup      # Clean node_modules and build artifacts
 ```
 
-## Cloudflare Deployment
-
-Each app deploys independently via Wrangler:
+Scoped examples:
 
 ```bash
-bun run cf-build     # Build all apps for Cloudflare
-bun run cf-deploy    # Deploy all apps to Cloudflare
-bun run cf-upload    # Upload new versions without promoting
+bun run --filter @avoid.quest/web dev
+bun run --filter @avoid.quest/radio dev
+bun run --filter @avoid.quest/discord-bot dev
+```
+
+## Cloudflare deployment
+
+Deployable apps have their own Wrangler configuration under `apps/*/wrangler.jsonc`.
+
+```bash
+bun run cf-build     # Build Cloudflare-targeted apps
+bun run cf-deploy    # Deploy Cloudflare-targeted apps
+bun run cf-upload    # Upload versions without promoting
 bun run cf-typegen   # Regenerate Cloudflare environment type bindings
 ```
 
-## Backend
+Do not deploy from automation unless the task explicitly asks for deployment.
+
+## UI components
 
 ```bash
-bun run deploy:backend  # Deploy Convex to production
-```
-
-## UI Components
-
-```bash
-bun run ui           # Open shadcn/ui CLI for adding components to packages/ui
-```
-
-## Changesets
-
-```bash
-bun changeset        # Create a changeset
-bun version-packages # Bump versions from changesets
+bun run ui           # Open shadcn/ui CLI for packages/ui
 ```

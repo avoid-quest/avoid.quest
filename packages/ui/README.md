@@ -1,14 +1,14 @@
 # ui
 
-Shared UI component library. shadcn/ui + Radix UI primitives.
+Shared React UI component library for the main avoid.quest workspace.
 
 ## Features
 
-- **Components**: button, card, input, textarea, select, dialog, dropdown, tabs, carousel, accordion, avatar, badge, skeleton, tooltip, slider, switch, separator, popover, and more
-- **Theme**: Dark/light mode via next-themes, CSS variables, OKLCH color space
-- **Custom components**: avoid-logo, site-logo, mode-toggle, rotary-knob, play-pause-button, user-avatar
-- **Utilities**: `cn()` for Tailwind class merging
-- **Assets**: Favicons and icons exported from package
+- **Components**: button, card, input, textarea, select, dialog, dropdown, tabs, carousel, accordion, avatar, badge, skeleton, tooltip, slider, switch, separator, popover, and more.
+- **Theme**: dark/light mode via `next-themes`, CSS variables, and OKLCH color space.
+- **Custom components**: avoid logo, site logo, mode toggle, rotary knob, play/pause button, and user avatar.
+- **Utilities**: `cn()` for Tailwind class merging.
+- **Assets**: favicons and icons exported from the package.
 
 ## Usage
 
@@ -17,16 +17,15 @@ import { Button, Card, Input } from "@avoid.quest/ui/components";
 import { cn } from "@avoid.quest/ui/lib/utils";
 ```
 
-## Adding Components
+## Adding components
 
 ```bash
-# From monorepo root
+# From the repository root
 bun run ui add <component-name>
 ```
 
 ## Connections
 
-- Used by **apps/instarip**: Cards, buttons, carousel, lightbox
-- Used by **apps/radio**: Form inputs, dialogs, sliders, settings
-- Used by **apps/cwavasape**: Sliders, selects, tabs, settings panel
-- Used by **apps/web**: Logo, buttons, theme toggle
+- Used by **apps/web** for branding, buttons, and theme controls.
+- Used by **apps/radio** for forms, dialogs, sliders, and settings UI.
+- Copied into the split `cwavasape` and `instarip` repositories as their local UI package.

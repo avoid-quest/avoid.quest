@@ -1,31 +1,34 @@
 # web
 
-Landing page for avoid.quest. Links to all apps.
+Astro landing page for avoid.quest.
 
 ## Features
 
-- Homepage with branding and app links
-- Theme support (dark/light mode)
-- Static site generation
+- Homepage with avoid.quest branding and links to active apps.
+- Theme support through shared UI components.
+- Static-first Astro app deployed through Cloudflare.
 
-## Tech Stack
+## Tech stack
 
 - Astro
-- React (islands)
+- React islands
 - Tailwind CSS v4
-- Cloudflare Pages (deploy)
+- Cloudflare Workers/Pages-compatible build
 
 ## Routes
 
-- `/` - Landing page with links to instarip, radio, cwavasape
+- `/` - Landing page with active avoid.quest links.
 
 ## Development
 
 ```bash
-# From monorepo root
-bun run dev --filter=@avoid.quest/web
+# From the repository root
+bun run --filter @avoid.quest/web dev
+bun run --filter @avoid.quest/web build
+bun run --filter @avoid.quest/web typecheck
 ```
 
 ## Connections
 
-- **@avoid.quest/ui**: Logo component, buttons, theme toggle
+- **@avoid.quest/ui**: Logo, buttons, and theme controls.
+- **@avoid.quest/config**: Shared TypeScript configuration.

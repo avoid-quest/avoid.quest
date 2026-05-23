@@ -15,7 +15,6 @@
     "cf-typegen": "wrangler types --env-interface CloudflareEnv ./cloudflare-env.d.ts"
   },
   "dependencies": {
-    "@avoid.quest/config": "workspace:*",
     "@avoid.quest/error": "workspace:*",
     "@avoid.quest/platforms": "workspace:*",
     "@avoid.quest/ui": "workspace:*",
@@ -24,9 +23,7 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@hookform/resolvers": "^5.4.0",
     "@octokit/core": "^7.0.6",
-    "@octokit/plugin-paginate-rest": "^14.0.0",
     "@octokit/plugin-rest-endpoint-methods": "^17.0.0",
-    "@octokit/request-error": "^7.1.0",
     "@opendaw/lib-dsp": "^0.0.84",
     "@opendaw/lib-std": "^0.0.78",
     "@tanstack/react-db": "^0.1.85",
@@ -44,7 +41,6 @@
     "react-dom": "catalog:",
     "react-hook-form": "^7.76.1",
     "sonner": "catalog:",
-    "tailwindcss": "catalog:",
     "zod": "catalog:",
     "zustand": "^5.0.13"
   },
@@ -54,7 +50,6 @@
     "@rolldown/plugin-babel": "^0.2.3",
     "@sentry/tanstackstart-react": "^10.53.1",
     "@tailwindcss/vite": "catalog:",
-    "@tanstack/router-plugin": "^1.168.10",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/react": "^16.3.2",
     "@types/bun": "catalog:",
@@ -66,8 +61,6 @@
     "jsdom": "^29.1.1",
     "typescript": "catalog:",
     "vite": "catalog:",
-    "vitest": "catalog:",
-    "web-vitals": "^5.2.0",
     "wrangler": "catalog:"
   }
 }

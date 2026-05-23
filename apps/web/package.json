@@ -16,14 +16,12 @@
   "dependencies": {
     "@astrojs/cloudflare": "^13.5.4",
     "@astrojs/react": "^5.0.5",
-    "@avoid.quest/config": "workspace:*",
     "@avoid.quest/ui": "workspace:*",
     "@fontsource/geist-mono": "^5.2.8",
     "@fontsource/geist-sans": "^5.2.5",
     "astro": "^6.3.7",
     "react": "catalog:",
-    "react-dom": "catalog:",
-    "tailwindcss": "catalog:"
+    "react-dom": "catalog:"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.9",
@@ -33,7 +31,7 @@
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "typescript": "catalog:",
-    "vite": "^8.0.14",
+    "vite": "^7.3.2",
     "wrangler": "catalog:"
   }
 }

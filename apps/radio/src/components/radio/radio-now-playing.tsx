@@ -25,7 +25,7 @@ export function RadioNowPlaying({ metadata, className }: RadioNowPlayingProps) {
       {metadata?.itemUrl && (
         <a
           aria-label="More info about this show or track"
-          className="inline-flex shrink-0 items-center text-primary/80 transition-colors hover:text-primary"
+          className="ml-1 inline-flex shrink-0 items-center text-primary/80 transition-colors hover:text-primary"
           href={metadata.itemUrl}
           rel="noopener noreferrer"
           target="_blank"

@@ -300,7 +300,6 @@ export class AudioManager {
     this.volume.set(soundId, volume);
 
     if (activePlaybackSource) {
-      // Resuming existing source - tell worklet to resume
       this.effects.resumeSource(soundId);
     }
 

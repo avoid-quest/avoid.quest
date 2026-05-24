@@ -269,6 +269,7 @@ describe("DJ deck continuation workflow", () => {
     };
 
     await workflow.handleStreamInterrupted({
+      deckId: "deck-a",
       currentRadio: radio,
       position: 42,
       soundId: "left_youtube-1",
@@ -285,7 +286,7 @@ describe("DJ deck continuation workflow", () => {
       "https://youtube.example/fresh.mp3",
       42
     );
-    expect(dependencies.clearDjError).toHaveBeenCalledTimes(1);
+    expect(dependencies.clearDjError).toHaveBeenCalledWith("deck-a");
     expect(dependencies.applyCrossfade).toHaveBeenCalledTimes(1);
   });
 
@@ -296,6 +297,7 @@ describe("DJ deck continuation workflow", () => {
     const workflow = createDjDeckContinuationWorkflow(dependencies);
 
     await workflow.handleStreamInterrupted({
+      deckId: "deck-a",
       currentRadio: {
         id: "youtube-1",
         name: "YouTube 1",
@@ -315,7 +317,8 @@ describe("DJ deck continuation workflow", () => {
       "Failed to refresh YouTube stream - please reload",
       "DJ_YOUTUBE_REFRESH_FAILED",
       undefined,
-      expect.objectContaining({ id: "youtube-1" })
+      expect.objectContaining({ id: "youtube-1" }),
+      "deck-a"
     );
   });
 
@@ -345,7 +348,8 @@ describe("DJ deck continuation workflow", () => {
       "The stream could not be reached. Check the station URL and try again.",
       "DJ_LOAD_NEXT_TRACK_FAILED",
       rawError,
-      expect.objectContaining({ id: "playlist-1" })
+      expect.objectContaining({ id: "playlist-1" }),
+      "deck-a"
     );
   });
 });

@@ -38,7 +38,8 @@ type ReportDjError = (
   message: string,
   code: string,
   error?: unknown,
-  radio?: Radio | null
+  radio?: Radio | null,
+  channelId?: DeckId | null
 ) => void;
 
 type DeckLoadDependencies = {
@@ -59,7 +60,7 @@ type DeckLoadDependencies = {
     effects: DeckRecord["effects"],
     filter: DeckRecord["filter"]
   ) => Promise<void>;
-  clearDjError: () => void;
+  clearDjError: (deckId?: DeckId) => void;
   connectDeckCueBus: (
     deckId: DeckId,
     soundId: string,
@@ -145,15 +146,52 @@ type DjDeckLoadWorkflow = {
 };
 
 const activeDeckLoadTokens = new Map<DeckId, symbol>();
+const activeDeckPlayTokens = new Map<DeckId, symbol>();
 
 function beginDeckLoad(deckId: DeckId): symbol {
   const token = Symbol(deckId);
   activeDeckLoadTokens.set(deckId, token);
+  activeDeckPlayTokens.delete(deckId);
   return token;
 }
 
 function isCurrentDeckLoad(deckId: DeckId, token: symbol): boolean {
   return activeDeckLoadTokens.get(deckId) === token;
+}
+
+function beginDeckPlay(deckId: DeckId): symbol {
+  const token = Symbol(deckId);
+  activeDeckPlayTokens.set(deckId, token);
+  return token;
+}
+
+function isCurrentDeckPlay(deckId: DeckId, token: symbol): boolean {
+  return activeDeckPlayTokens.get(deckId) === token;
+}
+
+function cancelDeckPlay(deckId: DeckId): void {
+  activeDeckPlayTokens.delete(deckId);
+}
+
+function isCurrentDeckPlayTarget(
+  deckId: DeckId,
+  token: symbol,
+  soundId: string,
+  radio: Radio,
+  config: (typeof deckConfig)["deck-a"]
+): boolean {
+  const currentDeck = config.getDeck();
+  const currentRadio = currentDeck ? getDeckRadio(currentDeck) : null;
+
+  if (!(currentDeck && currentRadio && isCurrentDeckPlay(deckId, token))) {
+    return false;
+  }
+
+  return (
+    config.getRuntime().soundId === soundId &&
+    currentRadio.id === radio.id &&
+    currentRadio.streamUrl === radio.streamUrl
+  );
 }
 
 function rollbackFailedDeckLoad(
@@ -462,6 +500,7 @@ async function loadDeckRadio(
         ) {
           continuationWorkflow
             .handleStreamInterrupted({
+              deckId,
               currentRadio: currentDeck.radio,
               position: audioState.error.position ?? 0,
               soundId: currentRuntime.soundId,
@@ -497,7 +536,8 @@ async function loadDeckRadio(
             playbackError.userMessage,
             `DJ_${audioState.error.code}`,
             playbackError.cause,
-            currentDeck?.radio
+            currentDeck?.radio,
+            deckId
           );
         }
 
@@ -572,7 +612,8 @@ async function loadDeckRadio(
       playbackError.userMessage,
       "DJ_LOAD_DECK_FAILED",
       error,
-      radio
+      radio,
+      deckId
     );
   }
 }
@@ -589,10 +630,23 @@ async function playDeck(
     return;
   }
 
+  const soundId = runtime.soundId;
+  const radio = deck.radio;
+  const playToken = beginDeckPlay(deckId);
+
   try {
-    await dependencies.playDeckSound(runtime.soundId, deck.volume);
+    await dependencies.playDeckSound(soundId, deck.volume);
+    if (!isCurrentDeckPlayTarget(deckId, playToken, soundId, radio, config)) {
+      return;
+    }
+
+    dependencies.clearDjError(deckId);
     dependencies.applyCrossfade();
   } catch (error) {
+    if (!isCurrentDeckPlay(deckId, playToken)) {
+      return;
+    }
+
     const playbackError = createPlaybackActionError({
       mode: "dj",
       code: "PLAY_ERROR",
@@ -606,7 +660,8 @@ async function playDeck(
       playbackError.userMessage,
       "DJ_PLAY_DECK_FAILED",
       error,
-      deck.radio
+      deck.radio,
+      deckId
     );
   }
 }
@@ -628,6 +683,7 @@ async function loadDeckDeviceInput(
 function pauseDeck(deckId: DeckId, dependencies: DeckLoadDependencies): void {
   const runtime = deckConfig[deckId].getRuntime();
   if (runtime.soundId) {
+    cancelDeckPlay(deckId);
     dependencies.pauseDeckSound(runtime.soundId);
   }
 }
@@ -657,7 +713,13 @@ async function loadDeckFile(
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Failed to load audio file";
-    dependencies.reportDjError(message, "DJ_LOCAL_FILE_LOAD_FAILED", error);
+    dependencies.reportDjError(
+      message,
+      "DJ_LOCAL_FILE_LOAD_FAILED",
+      error,
+      null,
+      deckId
+    );
   } finally {
     if (extractedObjectUrl) {
       revokeFileObjectUrl(extractedObjectUrl);

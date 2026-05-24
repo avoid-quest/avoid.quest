@@ -342,7 +342,8 @@ describe("DJ deck channel lifecycle", () => {
       "Failed to load deck-a",
       "DJ_LOAD_DECK_FAILED",
       expect.any(Error),
-      expect.objectContaining({ id: "station-1" })
+      expect.objectContaining({ id: "station-1" }),
+      "deck-a"
     );
   });
 
@@ -377,7 +378,8 @@ describe("DJ deck channel lifecycle", () => {
       "Failed to load deck-a",
       "DJ_LOAD_DECK_FAILED",
       expect.any(Error),
-      expect.objectContaining({ id: "station-1" })
+      expect.objectContaining({ id: "station-1" }),
+      "deck-a"
     );
   });
 
@@ -504,7 +506,8 @@ describe("DJ deck channel lifecycle", () => {
         "Failed to load deck-a",
         "DJ_LOAD_DECK_FAILED",
         rawError,
-        expect.objectContaining({ id: "station-1" })
+        expect.objectContaining({ id: "station-1" }),
+        "deck-a"
       );
     } finally {
       URL.revokeObjectURL = originalRevokeObjectUrl;
@@ -903,7 +906,8 @@ describe("DJ deck channel lifecycle", () => {
           deviceId: "device-1",
           deviceLabel: "Device 1",
         }),
-      })
+      }),
+      "deck-a"
     );
   });
 
@@ -1440,6 +1444,220 @@ describe("DJ deck channel lifecycle", () => {
     expect(dependencies.applyCrossfade).toHaveBeenCalledTimes(1);
   });
 
+  test("clears stale DJ errors after a loaded deck starts playing again", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertDjSession();
+    updatePlaybackChannel("dj", "deck-a", (draft) => {
+      draft.radio = {
+        id: "station-1",
+        name: "Station 1",
+        streamUrl: "https://radio.example/one.mp3",
+      };
+      draft.volume = 0.42;
+    });
+
+    const manager = AudioManager.getInstance();
+    manager.createSound = mock(
+      (_radio, soundId?: string) => soundId ?? "sound"
+    );
+    manager.cleanupSound = mock((_soundId: string) => undefined);
+    manager.subscribe = mock((_soundId, _callback) => mock(() => undefined));
+    manager.subscribeMeter = mock((_soundId, _callback) =>
+      mock(() => undefined)
+    );
+    const dependencies = createDependencies();
+    const workflow = createDjDeckLoadWorkflow(dependencies);
+
+    await workflow.loadDeckRadio("deck-a", {
+      id: "station-1",
+      name: "Station 1",
+      streamUrl: "https://radio.example/one.mp3",
+    });
+    (dependencies.clearDjError as ReturnType<typeof mock>).mockClear();
+
+    await workflow.playDeck("deck-a");
+
+    expect(dependencies.playDeckSound).toHaveBeenCalledWith(
+      "left_station-1",
+      0.42
+    );
+    expect(dependencies.clearDjError).toHaveBeenCalledTimes(1);
+  });
+
+  test("does not clear newer DJ errors from a stale deck play completion", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertDjSession();
+    updatePlaybackChannel("dj", "deck-a", (draft) => {
+      draft.radio = {
+        id: "station-1",
+        name: "Station 1",
+        streamUrl: "https://radio.example/one.mp3",
+      };
+      draft.volume = 0.42;
+    });
+
+    const manager = AudioManager.getInstance();
+    manager.createSound = mock(
+      (_radio, soundId?: string) => soundId ?? "sound"
+    );
+    manager.cleanupSound = mock((_soundId: string) => undefined);
+    manager.subscribe = mock((_soundId, _callback) => mock(() => undefined));
+    manager.subscribeMeter = mock((_soundId, _callback) =>
+      mock(() => undefined)
+    );
+    let resolvePlay: () => void = () => undefined;
+    const playFinished = new Promise<void>((resolve) => {
+      resolvePlay = resolve;
+    });
+    const dependencies = {
+      ...createDependencies(),
+      playDeckSound: mock(() => playFinished),
+    };
+    const workflow = createDjDeckLoadWorkflow(dependencies);
+
+    await workflow.loadDeckRadio("deck-a", {
+      id: "station-1",
+      name: "Station 1",
+      streamUrl: "https://radio.example/one.mp3",
+    });
+
+    const replay = workflow.playDeck("deck-a");
+    await Promise.resolve();
+    await workflow.loadDeckRadio("deck-a", {
+      id: "station-2",
+      name: "Station 2",
+      streamUrl: "https://radio.example/two.mp3",
+    });
+    (dependencies.clearDjError as ReturnType<typeof mock>).mockClear();
+    (dependencies.applyCrossfade as ReturnType<typeof mock>).mockClear();
+
+    resolvePlay();
+    await replay;
+
+    expect(dependencies.playDeckSound).toHaveBeenCalledWith(
+      "left_station-1",
+      0.42
+    );
+    expect(dependencies.clearDjError).not.toHaveBeenCalled();
+    expect(dependencies.applyCrossfade).not.toHaveBeenCalled();
+  });
+
+  test("does not clear newer DJ errors from overlapping play attempts for the same deck", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertDjSession();
+    updatePlaybackChannel("dj", "deck-a", (draft) => {
+      draft.radio = {
+        id: "station-1",
+        name: "Station 1",
+        streamUrl: "https://radio.example/one.mp3",
+      };
+      draft.volume = 0.42;
+    });
+
+    const manager = AudioManager.getInstance();
+    manager.createSound = mock(
+      (_radio, soundId?: string) => soundId ?? "sound"
+    );
+    manager.cleanupSound = mock((_soundId: string) => undefined);
+    manager.subscribe = mock((_soundId, _callback) => mock(() => undefined));
+    manager.subscribeMeter = mock((_soundId, _callback) =>
+      mock(() => undefined)
+    );
+    let resolveFirstPlay: () => void = () => undefined;
+    const firstPlayFinished = new Promise<void>((resolve) => {
+      resolveFirstPlay = resolve;
+    });
+    const secondPlayError = new Error("newer play failed");
+    let playCalls = 0;
+    const dependencies = {
+      ...createDependencies(),
+      playDeckSound: mock(() => {
+        playCalls += 1;
+        return playCalls === 1
+          ? firstPlayFinished
+          : Promise.reject(secondPlayError);
+      }),
+    };
+    const workflow = createDjDeckLoadWorkflow(dependencies);
+
+    await workflow.loadDeckRadio("deck-a", {
+      id: "station-1",
+      name: "Station 1",
+      streamUrl: "https://radio.example/one.mp3",
+    });
+    (dependencies.clearDjError as ReturnType<typeof mock>).mockClear();
+    (dependencies.applyCrossfade as ReturnType<typeof mock>).mockClear();
+
+    const firstReplay = workflow.playDeck("deck-a");
+    await Promise.resolve();
+    await workflow.playDeck("deck-a");
+
+    expect(dependencies.reportDjError).toHaveBeenCalledWith(
+      "Failed to play deck-a",
+      "DJ_PLAY_DECK_FAILED",
+      secondPlayError,
+      expect.objectContaining({ id: "station-1" }),
+      "deck-a"
+    );
+
+    resolveFirstPlay();
+    await firstReplay;
+
+    expect(dependencies.playDeckSound).toHaveBeenCalledTimes(2);
+    expect(dependencies.clearDjError).not.toHaveBeenCalled();
+    expect(dependencies.applyCrossfade).not.toHaveBeenCalled();
+  });
+
+  test("does not clear DJ errors from a play completion after pause", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertDjSession();
+    updatePlaybackChannel("dj", "deck-a", (draft) => {
+      draft.radio = {
+        id: "station-1",
+        name: "Station 1",
+        streamUrl: "https://radio.example/one.mp3",
+      };
+      draft.volume = 0.42;
+    });
+
+    const manager = AudioManager.getInstance();
+    manager.createSound = mock(
+      (_radio, soundId?: string) => soundId ?? "sound"
+    );
+    manager.cleanupSound = mock((_soundId: string) => undefined);
+    manager.subscribe = mock((_soundId, _callback) => mock(() => undefined));
+    manager.subscribeMeter = mock((_soundId, _callback) =>
+      mock(() => undefined)
+    );
+    let resolvePlay: () => void = () => undefined;
+    const playFinished = new Promise<void>((resolve) => {
+      resolvePlay = resolve;
+    });
+    const dependencies = {
+      ...createDependencies(),
+      playDeckSound: mock(() => playFinished),
+    };
+    const workflow = createDjDeckLoadWorkflow(dependencies);
+
+    await workflow.loadDeckRadio("deck-a", {
+      id: "station-1",
+      name: "Station 1",
+      streamUrl: "https://radio.example/one.mp3",
+    });
+    (dependencies.clearDjError as ReturnType<typeof mock>).mockClear();
+    (dependencies.applyCrossfade as ReturnType<typeof mock>).mockClear();
+
+    const replay = workflow.playDeck("deck-a");
+    await Promise.resolve();
+    workflow.pauseDeck("deck-a");
+    resolvePlay();
+    await replay;
+
+    expect(dependencies.pauseDeckSound).toHaveBeenCalledWith("left_station-1");
+    expect(dependencies.clearDjError).not.toHaveBeenCalled();
+    expect(dependencies.applyCrossfade).not.toHaveBeenCalled();
+  });
+
   test("pauses and seeks a loaded deck through the lifecycle boundary", async () => {
     await playbackSessionsCollection.stateWhenReady();
     insertDjSession();
@@ -1514,7 +1732,8 @@ describe("DJ deck channel lifecycle", () => {
       "Failed to play deck-a",
       "DJ_PLAY_DECK_FAILED",
       rawError,
-      expect.objectContaining({ id: "station-1" })
+      expect.objectContaining({ id: "station-1" }),
+      "deck-a"
     );
   });
 
@@ -1780,7 +1999,8 @@ describe("DJ deck channel lifecycle", () => {
       "Failed to refresh YouTube stream - please reload",
       "DJ_YOUTUBE_REFRESH_FAILED",
       undefined,
-      expect.objectContaining({ id: "youtube-video-1" })
+      expect.objectContaining({ id: "youtube-video-1" }),
+      "deck-a"
     );
     expect(getPlaybackChannelRuntime("deck-a").error).toEqual(
       expect.objectContaining({ code: "STREAM_INTERRUPTED" })
@@ -1842,7 +2062,8 @@ describe("DJ deck channel lifecycle", () => {
       "Failed to refresh YouTube stream - please reload",
       "DJ_STREAM_REFRESH_FAILED",
       rawError,
-      expect.objectContaining({ id: "youtube-video-1" })
+      expect.objectContaining({ id: "youtube-video-1" }),
+      "deck-a"
     );
   });
 
@@ -2001,7 +2222,8 @@ describe("DJ deck channel lifecycle", () => {
       "The stream could not be reached. Check the station URL and try again.",
       "DJ_LOAD_NEXT_TRACK_FAILED",
       rawError,
-      expect.objectContaining({ id: "playlist-1" })
+      expect.objectContaining({ id: "playlist-1" }),
+      "deck-a"
     );
   });
 

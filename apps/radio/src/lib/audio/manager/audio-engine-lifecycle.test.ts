@@ -89,6 +89,64 @@ describe("audio engine lifecycle", () => {
     );
   });
 
+  test("pauses and replays an active browser-backed sound with one worklet source", async () => {
+    harness = installAudioEngineLifecycleHarness();
+    const manager = AudioManager.getInstance();
+    const radio: Radio = {
+      id: "radio-1",
+      name: "Lifecycle Radio",
+      streamUrl: "https://audio.example/stream.mp3",
+    };
+
+    const soundId = manager.createSound(radio, "sound-lifecycle");
+
+    await manager.playSound(soundId, 0.4);
+    manager.pauseSound(soundId);
+    await manager.playSound(soundId, 0.4);
+
+    const workletMessageTypes = harness
+      .workletMessages()
+      .map((message) => message.type);
+
+    expect(harness.events()).toEqual(
+      expect.arrayContaining(["media-pause", "media-play"])
+    );
+    expect(
+      workletMessageTypes.filter((type) => type === "CREATE_SOURCE")
+    ).toHaveLength(1);
+    expect(
+      workletMessageTypes.filter((type) => type === "START_SOURCE")
+    ).toHaveLength(1);
+    expect(workletMessageTypes).toContain("PAUSE_SOURCE");
+    expect(workletMessageTypes).toContain("RESUME_SOURCE");
+
+    manager.cleanupSound(soundId);
+  });
+
+  test("starts the master meter when subscribers mount before audio initialization", async () => {
+    harness = installAudioEngineLifecycleHarness({ analyserSample: 0.5 });
+    const manager = AudioManager.getInstance();
+    const levels: Array<{ left: number; right: number }> = [];
+    const radio: Radio = {
+      id: "radio-1",
+      name: "Lifecycle Radio",
+      streamUrl: "https://audio.example/stream.mp3",
+    };
+
+    const unsubscribe = manager.subscribeMasterMeter((level) => {
+      levels.push(level);
+    });
+    const soundId = manager.createSound(radio, "sound-lifecycle");
+
+    await manager.playSound(soundId, 0.4);
+    harness.runAnimationFrames(2);
+
+    expect(levels.at(-1)).toEqual({ left: 0.5, right: 0.5 });
+
+    unsubscribe();
+    manager.cleanupSound(soundId);
+  });
+
   test("stops early media playback if worklet initialization fails", async () => {
     harness = installAudioEngineLifecycleHarness({ failWorkletModule: true });
     const manager = AudioManager.getInstance();

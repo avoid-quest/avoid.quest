@@ -36,6 +36,8 @@ type WorkletListenerParams = {
   notifyListeners: NotifySoundListeners;
 };
 
+const STALE_SOURCE_CONTROL_ERROR = /^Cannot (pause|resume):/;
+
 function cleanupSoundNodes(instance: SoundInstance): void {
   if (!instance.nodes) {
     return;
@@ -154,6 +156,16 @@ function attachWorkletManagerListeners({
     }: WorkletManagerEvents["sourceError"]) => {
       const instance = sounds.get(sourceId);
       if (!instance) {
+        return;
+      }
+
+      if (
+        code === "SOURCE_NOT_FOUND" &&
+        STALE_SOURCE_CONTROL_ERROR.test(error)
+      ) {
+        console.warn(
+          `[AudioManager] Ignoring stale worklet source error: ${error}`
+        );
         return;
       }
 

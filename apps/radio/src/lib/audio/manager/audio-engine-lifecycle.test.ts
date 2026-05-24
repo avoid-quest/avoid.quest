@@ -89,7 +89,7 @@ describe("audio engine lifecycle", () => {
     );
   });
 
-  test("pauses and replays an active browser-backed sound without worklet pause/resume control", async () => {
+  test("pauses and replays an active browser-backed sound with one worklet source", async () => {
     harness = installAudioEngineLifecycleHarness();
     const manager = AudioManager.getInstance();
     const radio: Radio = {
@@ -117,8 +117,8 @@ describe("audio engine lifecycle", () => {
     expect(
       workletMessageTypes.filter((type) => type === "START_SOURCE")
     ).toHaveLength(1);
-    expect(workletMessageTypes).not.toContain("PAUSE_SOURCE");
-    expect(workletMessageTypes).not.toContain("RESUME_SOURCE");
+    expect(workletMessageTypes).toContain("PAUSE_SOURCE");
+    expect(workletMessageTypes).toContain("RESUME_SOURCE");
 
     manager.cleanupSound(soundId);
   });

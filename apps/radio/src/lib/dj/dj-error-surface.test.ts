@@ -22,4 +22,21 @@ describe("dj-error-surface", () => {
 
     expect(getDjError()).toBeNull();
   });
+
+  test("keeps errors from other decks when clearing a recovered deck", () => {
+    reportDjErrorSurface(
+      "Deck B failed",
+      "DJ_PLAYBACK_FAILED",
+      undefined,
+      null,
+      "deck-b"
+    );
+    clearDjErrorSurface("deck-a");
+
+    expect(getDjError()).toBe("Deck B failed");
+
+    clearDjErrorSurface("deck-b");
+
+    expect(getDjError()).toBeNull();
+  });
 });

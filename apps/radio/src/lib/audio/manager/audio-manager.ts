@@ -299,10 +299,9 @@ export class AudioManager {
     // Set initial volume
     this.volume.set(soundId, volume);
 
-    // The worklet source stays active while the media element is paused.
-    // Pausing/resuming the HTMLAudioElement is enough; sending extra worklet
-    // resume messages can race against processor source lifecycle and surface
-    // false SOURCE_NOT_FOUND errors even though audio restarts correctly.
+    if (activePlaybackSource) {
+      this.effects.resumeSource(soundId);
+    }
 
     // Start playback
     if (playPromise) {
@@ -434,6 +433,7 @@ export class AudioManager {
       }
     } else {
       instance.playbackSource?.pause();
+      this.effects.pauseSource(soundId);
     }
 
     notifySoundState(this.notifyListeners, soundId, instance, {

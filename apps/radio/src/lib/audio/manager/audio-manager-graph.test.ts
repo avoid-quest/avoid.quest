@@ -22,49 +22,57 @@ function createTestSoundInstance(radio: Radio): SoundInstance {
   } as unknown as SoundInstance;
 }
 
-describe("audio manager graph worklet errors", () => {
-  test("does not surface stale worklet SOURCE_NOT_FOUND as playback failure", () => {
-    const handlers: WorkletEventHandlers = {};
-    const workletManager = {
+function attachTestWorkletListeners() {
+  const handlers: WorkletEventHandlers = {};
+  const notifyListeners = mock(
+    (_soundId: string, _state: unknown) => undefined
+  );
+
+  attachWorkletManagerListeners({
+    wm: {
       on: mock((event: string, callback: (payload: unknown) => void) => {
         handlers[event] = callback;
       }),
-    };
-    const notifyListeners = mock(
-      (_soundId: string, _state: unknown) => undefined
-    );
+    } as never,
+    soundId: "sound-1",
+    sounds: new Map([
+      [
+        "sound-1",
+        createTestSoundInstance({
+          id: "station-1",
+          name: "Station 1",
+          streamUrl: "https://radio.example/one.mp3",
+        }),
+      ],
+    ]),
+    notifyListeners,
+    meterListeners: new Map(),
+  });
+
+  return { handlers, notifyListeners };
+}
+
+describe("audio manager graph worklet errors", () => {
+  test.each([
+    "pause",
+    "resume",
+  ])("does not surface stale worklet SOURCE_NOT_FOUND from %s cleanup", (action) => {
+    const { handlers, notifyListeners } = attachTestWorkletListeners();
     const originalWarn = console.warn;
     console.warn = mock(() => undefined);
 
     try {
-      attachWorkletManagerListeners({
-        wm: workletManager as never,
-        soundId: "sound-1",
-        sounds: new Map([
-          [
-            "sound-1",
-            createTestSoundInstance({
-              id: "station-1",
-              name: "Station 1",
-              streamUrl: "https://radio.example/one.mp3",
-            }),
-          ],
-        ]),
-        notifyListeners,
-        meterListeners: new Map(),
-      });
-
       handlers.sourceError?.({
         id: "err-1",
         sourceId: "sound-1",
-        error: "Cannot pause: source sound-1 not found",
+        error: `Cannot ${action}: source sound-1 not found`,
         code: "SOURCE_NOT_FOUND",
         timestamp: 123,
       });
 
       expect(notifyListeners).not.toHaveBeenCalled();
       expect(console.warn).toHaveBeenCalledWith(
-        "[AudioManager] Ignoring stale worklet source error: Cannot pause: source sound-1 not found"
+        `[AudioManager] Ignoring stale worklet source error: Cannot ${action}: source sound-1 not found`
       );
     } finally {
       console.warn = originalWarn;
@@ -72,32 +80,7 @@ describe("audio manager graph worklet errors", () => {
   });
 
   test("surfaces non-pause SOURCE_NOT_FOUND worklet errors", () => {
-    const handlers: WorkletEventHandlers = {};
-    const workletManager = {
-      on: mock((event: string, callback: (payload: unknown) => void) => {
-        handlers[event] = callback;
-      }),
-    };
-    const notifyListeners = mock(
-      (_soundId: string, _state: unknown) => undefined
-    );
-
-    attachWorkletManagerListeners({
-      wm: workletManager as never,
-      soundId: "sound-1",
-      sounds: new Map([
-        [
-          "sound-1",
-          createTestSoundInstance({
-            id: "station-1",
-            name: "Station 1",
-            streamUrl: "https://radio.example/one.mp3",
-          }),
-        ],
-      ]),
-      notifyListeners,
-      meterListeners: new Map(),
-    });
+    const { handlers, notifyListeners } = attachTestWorkletListeners();
 
     handlers.sourceError?.({
       id: "err-1",

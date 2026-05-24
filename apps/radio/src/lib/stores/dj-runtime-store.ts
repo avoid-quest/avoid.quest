@@ -29,12 +29,14 @@ type DjUiState = {
   activeDragRadio: Radio | null;
   pendingPlatformItem: PendingPlatformItem;
   error: string | null;
+  errorChannelId: string | null;
 };
 
 const djUiStore = new Store<DjUiState>({
   activeDragRadio: null,
   pendingPlatformItem: null,
   error: null,
+  errorChannelId: null,
 });
 
 export function useDeckARuntimeState() {
@@ -129,8 +131,15 @@ export function setDeckBPeakLevel(level: RuntimePeakLevel) {
   setPlaybackChannelPeakLevel(DECK_B_CHANNEL_ID, level);
 }
 
-export function setDjError(error: string | null) {
-  djUiStore.setState((state) => ({ ...state, error }));
+export function setDjError(
+  error: string | null,
+  channelId: string | null = null
+) {
+  djUiStore.setState((state) => ({
+    ...state,
+    error,
+    errorChannelId: error ? channelId : null,
+  }));
 }
 
 export function resetDeckARuntime() {
@@ -147,6 +156,7 @@ export function resetAllDjRuntime() {
     activeDragRadio: null,
     pendingPlatformItem: null,
     error: null,
+    errorChannelId: null,
   }));
 }
 
@@ -161,6 +171,7 @@ export function getDjRuntimeState() {
     deckAPeakLevel: getPlaybackChannelRuntime(DECK_A_CHANNEL_ID).peakLevel,
     deckBPeakLevel: getPlaybackChannelRuntime(DECK_B_CHANNEL_ID).peakLevel,
     error: djUiStore.state.error,
+    errorChannelId: djUiStore.state.errorChannelId,
   };
 }
 

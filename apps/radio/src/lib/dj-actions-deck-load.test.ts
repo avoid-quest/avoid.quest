@@ -342,7 +342,8 @@ describe("DJ deck channel lifecycle", () => {
       "Failed to load deck-a",
       "DJ_LOAD_DECK_FAILED",
       expect.any(Error),
-      expect.objectContaining({ id: "station-1" })
+      expect.objectContaining({ id: "station-1" }),
+      "deck-a"
     );
   });
 
@@ -377,7 +378,8 @@ describe("DJ deck channel lifecycle", () => {
       "Failed to load deck-a",
       "DJ_LOAD_DECK_FAILED",
       expect.any(Error),
-      expect.objectContaining({ id: "station-1" })
+      expect.objectContaining({ id: "station-1" }),
+      "deck-a"
     );
   });
 
@@ -504,7 +506,8 @@ describe("DJ deck channel lifecycle", () => {
         "Failed to load deck-a",
         "DJ_LOAD_DECK_FAILED",
         rawError,
-        expect.objectContaining({ id: "station-1" })
+        expect.objectContaining({ id: "station-1" }),
+        "deck-a"
       );
     } finally {
       URL.revokeObjectURL = originalRevokeObjectUrl;
@@ -903,7 +906,8 @@ describe("DJ deck channel lifecycle", () => {
           deviceId: "device-1",
           deviceLabel: "Device 1",
         }),
-      })
+      }),
+      "deck-a"
     );
   });
 
@@ -1592,13 +1596,64 @@ describe("DJ deck channel lifecycle", () => {
       "Failed to play deck-a",
       "DJ_PLAY_DECK_FAILED",
       secondPlayError,
-      expect.objectContaining({ id: "station-1" })
+      expect.objectContaining({ id: "station-1" }),
+      "deck-a"
     );
 
     resolveFirstPlay();
     await firstReplay;
 
     expect(dependencies.playDeckSound).toHaveBeenCalledTimes(2);
+    expect(dependencies.clearDjError).not.toHaveBeenCalled();
+    expect(dependencies.applyCrossfade).not.toHaveBeenCalled();
+  });
+
+  test("does not clear DJ errors from a play completion after pause", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertDjSession();
+    updatePlaybackChannel("dj", "deck-a", (draft) => {
+      draft.radio = {
+        id: "station-1",
+        name: "Station 1",
+        streamUrl: "https://radio.example/one.mp3",
+      };
+      draft.volume = 0.42;
+    });
+
+    const manager = AudioManager.getInstance();
+    manager.createSound = mock(
+      (_radio, soundId?: string) => soundId ?? "sound"
+    );
+    manager.cleanupSound = mock((_soundId: string) => undefined);
+    manager.subscribe = mock((_soundId, _callback) => mock(() => undefined));
+    manager.subscribeMeter = mock((_soundId, _callback) =>
+      mock(() => undefined)
+    );
+    let resolvePlay: () => void = () => undefined;
+    const playFinished = new Promise<void>((resolve) => {
+      resolvePlay = resolve;
+    });
+    const dependencies = {
+      ...createDependencies(),
+      playDeckSound: mock(() => playFinished),
+    };
+    const workflow = createDjDeckLoadWorkflow(dependencies);
+
+    await workflow.loadDeckRadio("deck-a", {
+      id: "station-1",
+      name: "Station 1",
+      streamUrl: "https://radio.example/one.mp3",
+    });
+    (dependencies.clearDjError as ReturnType<typeof mock>).mockClear();
+    (dependencies.applyCrossfade as ReturnType<typeof mock>).mockClear();
+
+    const replay = workflow.playDeck("deck-a");
+    await Promise.resolve();
+    workflow.pauseDeck("deck-a");
+    resolvePlay();
+    await replay;
+
+    expect(dependencies.pauseDeckSound).toHaveBeenCalledWith("left_station-1");
     expect(dependencies.clearDjError).not.toHaveBeenCalled();
     expect(dependencies.applyCrossfade).not.toHaveBeenCalled();
   });
@@ -1677,7 +1732,8 @@ describe("DJ deck channel lifecycle", () => {
       "Failed to play deck-a",
       "DJ_PLAY_DECK_FAILED",
       rawError,
-      expect.objectContaining({ id: "station-1" })
+      expect.objectContaining({ id: "station-1" }),
+      "deck-a"
     );
   });
 

@@ -1999,7 +1999,8 @@ describe("DJ deck channel lifecycle", () => {
       "Failed to refresh YouTube stream - please reload",
       "DJ_YOUTUBE_REFRESH_FAILED",
       undefined,
-      expect.objectContaining({ id: "youtube-video-1" })
+      expect.objectContaining({ id: "youtube-video-1" }),
+      "deck-a"
     );
     expect(getPlaybackChannelRuntime("deck-a").error).toEqual(
       expect.objectContaining({ code: "STREAM_INTERRUPTED" })
@@ -2061,7 +2062,8 @@ describe("DJ deck channel lifecycle", () => {
       "Failed to refresh YouTube stream - please reload",
       "DJ_STREAM_REFRESH_FAILED",
       rawError,
-      expect.objectContaining({ id: "youtube-video-1" })
+      expect.objectContaining({ id: "youtube-video-1" }),
+      "deck-a"
     );
   });
 
@@ -2220,7 +2222,8 @@ describe("DJ deck channel lifecycle", () => {
       "The stream could not be reached. Check the station URL and try again.",
       "DJ_LOAD_NEXT_TRACK_FAILED",
       rawError,
-      expect.objectContaining({ id: "playlist-1" })
+      expect.objectContaining({ id: "playlist-1" }),
+      "deck-a"
     );
   });
 

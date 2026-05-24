@@ -13,12 +13,13 @@ type ReportDjError = (
   message: string,
   code: string,
   error?: unknown,
-  radio?: Radio | null
+  radio?: Radio | null,
+  channelId?: DeckId | null
 ) => void;
 
 type DjDeckContinuationDependencies = {
   applyCrossfade: () => void;
-  clearDjError: () => void;
+  clearDjError: (deckId?: DeckId) => void;
   getAudioManager: () => AudioManager;
   loadTrack: (
     deckSide: DeckSide,
@@ -43,6 +44,7 @@ type TrackEndedInput = {
 };
 
 type StreamInterruptedInput = {
+  deckId: DeckId;
   currentRadio: Radio;
   position: number;
   soundId: string;
@@ -80,11 +82,13 @@ function reportContinuationFailure(
     playbackError.userMessage,
     input.code,
     playbackError.cause,
-    input.radio
+    input.radio,
+    input.deckId
   );
 }
 
 async function resolveAndLoadYouTubeTrack(
+  deckId: DeckId,
   deckSide: DeckSide,
   deckRadio: Radio,
   videoId: string,
@@ -101,7 +105,8 @@ async function resolveAndLoadYouTubeTrack(
       "Failed to resolve next track: no stream URL found",
       "DJ_NEXT_TRACK_RESOLVE_FAILED",
       undefined,
-      deckRadio
+      deckRadio,
+      deckId
     );
     return;
   }
@@ -168,6 +173,7 @@ async function handleTrackEnded(
     const { streamUrl } = nextTrack;
     if (streamUrl.startsWith("yt:")) {
       await resolveAndLoadYouTubeTrack(
+        deckId,
         deckSide,
         deckRadio,
         streamUrl.slice(3),
@@ -192,7 +198,7 @@ async function handleStreamInterrupted(
   input: StreamInterruptedInput,
   dependencies: DjDeckContinuationDependencies
 ): Promise<StreamInterruptedResult> {
-  const { currentRadio, position, soundId } = input;
+  const { currentRadio, deckId, position, soundId } = input;
   if (
     !(
       isYouTubeMetadata(currentRadio.platformMetadata) &&
@@ -213,7 +219,7 @@ async function handleStreamInterrupted(
       await dependencies
         .getAudioManager()
         .refreshStreamUrl(soundId, newUrl, position);
-      dependencies.clearDjError();
+      dependencies.clearDjError(deckId);
       dependencies.applyCrossfade();
       return "refreshed";
     }
@@ -222,12 +228,14 @@ async function handleStreamInterrupted(
       "Failed to refresh YouTube stream - please reload",
       "DJ_YOUTUBE_REFRESH_FAILED",
       undefined,
-      currentRadio
+      currentRadio,
+      deckId
     );
     return "failed";
   } catch (error) {
     reportContinuationFailure(dependencies, {
       code: "DJ_STREAM_REFRESH_FAILED",
+      deckId,
       error,
       fallbackMessage: "Failed to refresh YouTube stream - please reload",
       radio: currentRadio,

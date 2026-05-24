@@ -500,6 +500,7 @@ async function loadDeckRadio(
         ) {
           continuationWorkflow
             .handleStreamInterrupted({
+              deckId,
               currentRadio: currentDeck.radio,
               position: audioState.error.position ?? 0,
               soundId: currentRuntime.soundId,

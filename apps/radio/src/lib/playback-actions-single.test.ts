@@ -73,6 +73,7 @@ function createTestContext(overrides: Partial<AudioManager> = {}) {
     reportError: mock((error: PlaybackActionError) => {
       reportedErrors.push(error);
     }),
+    resumeAudioContext: mock(async () => undefined),
     resetAudioManager: mock(() => undefined),
   } satisfies PlaybackActionContext;
 

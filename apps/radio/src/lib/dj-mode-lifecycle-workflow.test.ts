@@ -91,6 +91,7 @@ function createTestContext() {
     getMainOutputRouter: () => null,
     lifecycle: { mainOutputSettingsApplied: true },
     reportError: mock(() => undefined),
+    resumeAudioContext: mock(async () => undefined),
     resetAudioManager: mock(() => undefined),
   } satisfies PlaybackActionContext;
 }

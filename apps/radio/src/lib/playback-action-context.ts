@@ -3,6 +3,7 @@ import {
   AudioManager,
   createAudioEngineFacade,
   type Radio,
+  resumeAudioContext,
 } from "@/lib/audio";
 import {
   activateChannel,
@@ -78,6 +79,7 @@ export type PlaybackActionContext = {
   lifecycle: PlaybackAudioRoutingLifecycle;
   platformStreams?: PlaybackPlatformStreamFacade;
   reportError: PlaybackActionErrorReporter;
+  resumeAudioContext: () => Promise<void>;
   resetAudioManager: () => void;
 };
 
@@ -112,6 +114,7 @@ export function createDefaultPlaybackActionContext(): PlaybackActionContext {
     getMainOutputRouter,
     lifecycle: defaultLifecycle,
     reportError: noopReportError,
+    resumeAudioContext,
     resetAudioManager: AudioManager.resetInstance,
   };
 }

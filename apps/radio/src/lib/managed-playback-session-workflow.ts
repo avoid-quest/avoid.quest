@@ -109,11 +109,9 @@ async function getReadyPlaybackSession(
 }
 
 async function prepareReadyPlaybackSession(
-  sessionId: ManagedPlaybackSessionId,
-  ctx: PlaybackActionContext
+  sessionId: ManagedPlaybackSessionId
 ): Promise<PlaybackSessionRecord> {
   const session = await getReadyPlaybackSession(sessionId);
-  await ensureMainAudioSettingsApplied(ctx);
   return session;
 }
 
@@ -174,7 +172,7 @@ async function activateSession(
   sessionId: ManagedPlaybackSessionId,
   ctx: PlaybackActionContext
 ): Promise<void> {
-  const session = await prepareReadyPlaybackSession(sessionId, ctx);
+  const session = await prepareReadyPlaybackSession(sessionId);
   restoreSessionSounds(sessionId, session, ctx);
   applySessionMasterVolume(sessionId, ctx);
 }
@@ -298,12 +296,15 @@ async function setChannelPlaying(
   const soundId =
     runtime.soundId ??
     createManagedSound(sessionId, channelId, channel.radio, undefined, ctx);
+  const resumePromise = ctx.resumeAudioContext();
 
   try {
     await ensureMainAudioSettingsApplied(ctx);
     applySessionMasterVolume(sessionId, ctx);
+    await resumePromise;
     await ctx.audio.playSound(soundId, channel.volume);
   } catch (error) {
+    await resumePromise.catch(() => undefined);
     throw reportPlaybackActionError(ctx.reportError, {
       mode: sessionId,
       code: "PLAY_ERROR",
@@ -360,8 +361,6 @@ async function selectSingleRadio(
     undefined,
     ctx
   );
-  await ensureMainAudioSettingsApplied(ctx);
-  applySessionMasterVolume("single", ctx);
 
   const outgoingRuntime = outgoingChannelId
     ? getPlaybackChannelRuntime(outgoingChannelId)
@@ -379,7 +378,12 @@ async function selectSingleRadio(
     return;
   }
 
+  const resumePromise = ctx.resumeAudioContext();
+
   try {
+    await ensureMainAudioSettingsApplied(ctx);
+    applySessionMasterVolume("single", ctx);
+    await resumePromise;
     await ctx.audio.playSound(incomingSoundId, 0);
     await crossfade(outgoingSoundId, incomingSoundId, {
       duration: transitionDuration,
@@ -387,6 +391,7 @@ async function selectSingleRadio(
       curve: "equalPower",
     });
   } catch (error) {
+    await resumePromise.catch(() => undefined);
     throw reportPlaybackActionError(ctx.reportError, {
       mode: "single",
       code: "PLAY_ERROR",

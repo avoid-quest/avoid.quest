@@ -17,12 +17,12 @@ function ScrollArea({
 }: React.ComponentProps<typeof Root>) {
   return (
     <Root
-      className={cn("relative", className)}
+      className={cn("relative overflow-hidden", className)}
       data-slot="scroll-area"
       {...props}
     >
       <Viewport
-        className="size-full rounded-[inherit] outline-none transition-[color,box-shadow] focus-visible:outline-1 focus-visible:ring-[3px] focus-visible:ring-ring/50"
+        className="size-full max-h-[inherit] rounded-[inherit] outline-none transition-[color,box-shadow] focus-visible:outline-1 focus-visible:ring-[3px] focus-visible:ring-ring/50"
         data-slot="scroll-area-viewport"
       >
         {children}

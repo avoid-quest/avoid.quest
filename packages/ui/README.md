@@ -28,4 +28,3 @@ bun run ui add <component-name>
 
 - Used by **apps/web** for branding, buttons, and theme controls.
 - Used by **apps/radio** for forms, dialogs, sliders, and settings UI.
-- Copied into the split `cwavasape` and `instarip` repositories as their local UI package.

@@ -20,13 +20,9 @@
       "!**/.svelte-kit",
       "!**/wrangler.jsonc",
       "!**/.source",
-      "!**/.sandcastle/logs",
-      "!**/.sandcastle/shared",
-      "!**/.sandcastle/worktrees",
       "!**/cloudflare-env.d.ts",
       "!**/*-bundle.js",
       "!**/*-bundle.d.ts",
-      "!**/packages/backend/convex/_generated/server.js",
       "!**/_generated/**/*.ts",
       "!**/_generated/**/*.js",
       "!**/packages/_archived"

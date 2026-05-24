@@ -132,6 +132,7 @@ function createTestContext(
     reportError: mock((error: PlaybackActionError) => {
       reportedErrors.push(error);
     }),
+    resumeAudioContext: mock(async () => undefined),
     resetAudioManager: mock(() => undefined),
   };
 

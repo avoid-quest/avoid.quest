@@ -1440,6 +1440,104 @@ describe("DJ deck channel lifecycle", () => {
     expect(dependencies.applyCrossfade).toHaveBeenCalledTimes(1);
   });
 
+  test("clears stale DJ errors after a loaded deck starts playing again", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertDjSession();
+    updatePlaybackChannel("dj", "deck-a", (draft) => {
+      draft.radio = {
+        id: "station-1",
+        name: "Station 1",
+        streamUrl: "https://radio.example/one.mp3",
+      };
+      draft.volume = 0.42;
+    });
+
+    const manager = AudioManager.getInstance();
+    manager.createSound = mock(
+      (_radio, soundId?: string) => soundId ?? "sound"
+    );
+    manager.cleanupSound = mock((_soundId: string) => undefined);
+    manager.subscribe = mock((_soundId, _callback) => mock(() => undefined));
+    manager.subscribeMeter = mock((_soundId, _callback) =>
+      mock(() => undefined)
+    );
+    const dependencies = createDependencies();
+    const workflow = createDjDeckLoadWorkflow(dependencies);
+
+    await workflow.loadDeckRadio("deck-a", {
+      id: "station-1",
+      name: "Station 1",
+      streamUrl: "https://radio.example/one.mp3",
+    });
+    (dependencies.clearDjError as ReturnType<typeof mock>).mockClear();
+
+    await workflow.playDeck("deck-a");
+
+    expect(dependencies.playDeckSound).toHaveBeenCalledWith(
+      "left_station-1",
+      0.42
+    );
+    expect(dependencies.clearDjError).toHaveBeenCalledTimes(1);
+  });
+
+  test("does not clear newer DJ errors from a stale deck play completion", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertDjSession();
+    updatePlaybackChannel("dj", "deck-a", (draft) => {
+      draft.radio = {
+        id: "station-1",
+        name: "Station 1",
+        streamUrl: "https://radio.example/one.mp3",
+      };
+      draft.volume = 0.42;
+    });
+
+    const manager = AudioManager.getInstance();
+    manager.createSound = mock(
+      (_radio, soundId?: string) => soundId ?? "sound"
+    );
+    manager.cleanupSound = mock((_soundId: string) => undefined);
+    manager.subscribe = mock((_soundId, _callback) => mock(() => undefined));
+    manager.subscribeMeter = mock((_soundId, _callback) =>
+      mock(() => undefined)
+    );
+    let resolvePlay: () => void = () => undefined;
+    const playFinished = new Promise<void>((resolve) => {
+      resolvePlay = resolve;
+    });
+    const dependencies = {
+      ...createDependencies(),
+      playDeckSound: mock(() => playFinished),
+    };
+    const workflow = createDjDeckLoadWorkflow(dependencies);
+
+    await workflow.loadDeckRadio("deck-a", {
+      id: "station-1",
+      name: "Station 1",
+      streamUrl: "https://radio.example/one.mp3",
+    });
+
+    const replay = workflow.playDeck("deck-a");
+    await Promise.resolve();
+    await workflow.loadDeckRadio("deck-a", {
+      id: "station-2",
+      name: "Station 2",
+      streamUrl: "https://radio.example/two.mp3",
+    });
+    (dependencies.clearDjError as ReturnType<typeof mock>).mockClear();
+    (dependencies.applyCrossfade as ReturnType<typeof mock>).mockClear();
+
+    resolvePlay();
+    await replay;
+
+    expect(dependencies.playDeckSound).toHaveBeenCalledWith(
+      "left_station-1",
+      0.42
+    );
+    expect(dependencies.clearDjError).not.toHaveBeenCalled();
+    expect(dependencies.applyCrossfade).not.toHaveBeenCalled();
+  });
+
   test("pauses and seeks a loaded deck through the lifecycle boundary", async () => {
     await playbackSessionsCollection.stateWhenReady();
     insertDjSession();

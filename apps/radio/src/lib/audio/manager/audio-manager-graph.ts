@@ -157,6 +157,13 @@ function attachWorkletManagerListeners({
         return;
       }
 
+      if (code === "SOURCE_NOT_FOUND" && error.startsWith("Cannot pause:")) {
+        console.warn(
+          `[AudioManager] Ignoring stale worklet source error: ${error}`
+        );
+        return;
+      }
+
       const message = effectId ? `[${effectId}] ${error}` : error;
       notifySoundError(
         notifyListeners,

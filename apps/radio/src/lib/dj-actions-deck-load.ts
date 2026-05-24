@@ -589,8 +589,29 @@ async function playDeck(
     return;
   }
 
+  const soundId = runtime.soundId;
+  const radio = deck.radio;
+
   try {
-    await dependencies.playDeckSound(runtime.soundId, deck.volume);
+    await dependencies.playDeckSound(soundId, deck.volume);
+    const currentDeck = config.getDeck();
+    const currentRuntime = config.getRuntime();
+
+    if (!currentDeck) {
+      return;
+    }
+
+    const currentRadio = getDeckRadio(currentDeck);
+
+    if (
+      currentRuntime.soundId !== soundId ||
+      currentRadio?.id !== radio.id ||
+      currentRadio?.streamUrl !== radio.streamUrl
+    ) {
+      return;
+    }
+
+    dependencies.clearDjError();
     dependencies.applyCrossfade();
   } catch (error) {
     const playbackError = createPlaybackActionError({

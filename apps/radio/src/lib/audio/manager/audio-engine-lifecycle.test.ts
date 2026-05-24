@@ -89,6 +89,40 @@ describe("audio engine lifecycle", () => {
     );
   });
 
+  test("pauses and replays an active browser-backed sound without worklet pause/resume control", async () => {
+    harness = installAudioEngineLifecycleHarness();
+    const manager = AudioManager.getInstance();
+    const radio: Radio = {
+      id: "radio-1",
+      name: "Lifecycle Radio",
+      streamUrl: "https://audio.example/stream.mp3",
+    };
+
+    const soundId = manager.createSound(radio, "sound-lifecycle");
+
+    await manager.playSound(soundId, 0.4);
+    manager.pauseSound(soundId);
+    await manager.playSound(soundId, 0.4);
+
+    const workletMessageTypes = harness
+      .workletMessages()
+      .map((message) => message.type);
+
+    expect(harness.events()).toEqual(
+      expect.arrayContaining(["media-pause", "media-play"])
+    );
+    expect(
+      workletMessageTypes.filter((type) => type === "CREATE_SOURCE")
+    ).toHaveLength(1);
+    expect(
+      workletMessageTypes.filter((type) => type === "START_SOURCE")
+    ).toHaveLength(1);
+    expect(workletMessageTypes).not.toContain("PAUSE_SOURCE");
+    expect(workletMessageTypes).not.toContain("RESUME_SOURCE");
+
+    manager.cleanupSound(soundId);
+  });
+
   test("stops early media playback if worklet initialization fails", async () => {
     harness = installAudioEngineLifecycleHarness({ failWorkletModule: true });
     const manager = AudioManager.getInstance();

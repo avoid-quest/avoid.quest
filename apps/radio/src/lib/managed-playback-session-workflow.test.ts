@@ -22,7 +22,7 @@ async function resetPlaybackSessions() {
   }
 }
 
-function createTestContext() {
+function createTestContext(): PlaybackActionContext {
   const audioEngine = {
     playback: {
       play: mock(async (_soundId: string, _volume?: number) => undefined),
@@ -313,5 +313,55 @@ describe("managed playback session workflow", () => {
     expect(context.channels.deactivate).toHaveBeenCalledWith("multi:local-1");
     expect(getPlaybackChannelRuntime("multi:local-1").soundId).toBeNull();
     expect(getPlaybackChannelRuntime("multi:local-1").isPlaying).toBe(false);
+  });
+
+  test("starts audio context resume before awaiting output routing", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    const events: string[] = [];
+    const radio = {
+      id: "station-1",
+      name: "Station 1",
+      streamUrl: "https://radio.example/station.mp3",
+    } satisfies Radio;
+
+    playbackSessionsCollection.insert({
+      id: "multiple",
+      channels: [
+        {
+          ...createDefaultChannel("multi:station-1", "multiple", 0),
+          radio,
+        },
+      ],
+      masterVolume: 0.65,
+      crossfadePosition: 0.5,
+      headphoneVolume: 1,
+      activeChannelId: null,
+    });
+
+    const context = createTestContext();
+    context.lifecycle.mainOutputSettingsApplied = false;
+    context.getMainOutputRouter = () =>
+      ({
+        setMainOutput: mock(() => Promise.resolve()),
+      }) as unknown as ReturnType<PlaybackActionContext["getMainOutputRouter"]>;
+    context.resumeAudioContext = mock(() => {
+      events.push("resume");
+      return Promise.resolve();
+    });
+    context.audio.setMainDelay = mock(() => {
+      events.push("settings");
+    });
+    context.audio.playSound = mock(() => {
+      events.push("play");
+      return Promise.resolve();
+    });
+
+    const workflow = createManagedPlaybackSessionWorkflow("multiple", {
+      ctx: context,
+    });
+
+    await workflow.setPlaying(true, "multi:station-1");
+
+    expect(events).toEqual(["resume", "settings", "play"]);
   });
 });

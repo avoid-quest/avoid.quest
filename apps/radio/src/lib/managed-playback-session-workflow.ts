@@ -77,6 +77,33 @@ const PLAYBACK_MODE_LABELS = {
   single: "Single",
 } satisfies Record<ManagedPlaybackSessionId, string>;
 
+function startGestureAudioResume(ctx: PlaybackActionContext): {
+  wait: () => Promise<void>;
+} {
+  let resumeError: unknown = null;
+  let resumePromise: Promise<void>;
+
+  try {
+    resumePromise = ctx.resumeAudioContext();
+  } catch (error) {
+    resumeError = error;
+    resumePromise = Promise.resolve();
+  }
+
+  const handledResume = resumePromise.catch((error: unknown) => {
+    resumeError = error;
+  });
+
+  return {
+    async wait() {
+      await handledResume;
+      if (resumeError) {
+        throw resumeError;
+      }
+    },
+  };
+}
+
 function isRestorableManagedRadio(
   radio: Radio | null,
   sessionId: ManagedPlaybackSessionId
@@ -105,13 +132,6 @@ async function getReadyPlaybackSession(
       `${PLAYBACK_MODE_LABELS[sessionId]} playback session is not ready`
     );
   }
-  return session;
-}
-
-async function prepareReadyPlaybackSession(
-  sessionId: ManagedPlaybackSessionId
-): Promise<PlaybackSessionRecord> {
-  const session = await getReadyPlaybackSession(sessionId);
   return session;
 }
 
@@ -172,7 +192,7 @@ async function activateSession(
   sessionId: ManagedPlaybackSessionId,
   ctx: PlaybackActionContext
 ): Promise<void> {
-  const session = await prepareReadyPlaybackSession(sessionId);
+  const session = await getReadyPlaybackSession(sessionId);
   restoreSessionSounds(sessionId, session, ctx);
   applySessionMasterVolume(sessionId, ctx);
 }
@@ -296,15 +316,14 @@ async function setChannelPlaying(
   const soundId =
     runtime.soundId ??
     createManagedSound(sessionId, channelId, channel.radio, undefined, ctx);
-  const resumePromise = ctx.resumeAudioContext();
+  const gestureResume = startGestureAudioResume(ctx);
 
   try {
     await ensureMainAudioSettingsApplied(ctx);
     applySessionMasterVolume(sessionId, ctx);
-    await resumePromise;
+    await gestureResume.wait();
     await ctx.audio.playSound(soundId, channel.volume);
   } catch (error) {
-    await resumePromise.catch(() => undefined);
     throw reportPlaybackActionError(ctx.reportError, {
       mode: sessionId,
       code: "PLAY_ERROR",
@@ -378,12 +397,12 @@ async function selectSingleRadio(
     return;
   }
 
-  const resumePromise = ctx.resumeAudioContext();
+  const gestureResume = startGestureAudioResume(ctx);
 
   try {
     await ensureMainAudioSettingsApplied(ctx);
     applySessionMasterVolume("single", ctx);
-    await resumePromise;
+    await gestureResume.wait();
     await ctx.audio.playSound(incomingSoundId, 0);
     await crossfade(outgoingSoundId, incomingSoundId, {
       duration: transitionDuration,
@@ -391,7 +410,6 @@ async function selectSingleRadio(
       curve: "equalPower",
     });
   } catch (error) {
-    await resumePromise.catch(() => undefined);
     throw reportPlaybackActionError(ctx.reportError, {
       mode: "single",
       code: "PLAY_ERROR",

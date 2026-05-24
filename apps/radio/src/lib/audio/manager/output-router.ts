@@ -26,12 +26,8 @@ class OutputRouter {
   }
 
   initializeMasterGraph(context: AudioContext): MasterGraphNodes {
-    if (this.masterGraph) {
-      this.setMainDelay(this.mainDelayMs);
-      return this.masterGraph;
-    }
-
     const currentMainDelayMs = this.mainDelayMs;
+    this.disconnectMasterGraph();
     this.masterGraph = createMasterGraphNodes(context, MAX_MAIN_DELAY_SECONDS);
     this.mainDelayMs = currentMainDelayMs;
     this.setMainDelay(currentMainDelayMs);

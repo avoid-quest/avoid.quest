@@ -14,15 +14,18 @@ type Listener = {
 };
 
 type HarnessRecords = {
+  animationFrames: Map<number, FrameRequestCallback>;
   connections: string[];
   disconnections: string[];
   events: string[];
   loadedUrls: string[];
+  nextAnimationFrameId: number;
   workletMessages: WorkletPortMessage[];
   workletModules: string[];
 };
 
 type HarnessOptions = {
+  analyserSample?: number;
   failWorkletModule?: boolean;
 };
 
@@ -41,10 +44,12 @@ type AudioEngineLifecycleHarness = ReturnType<
  */
 function installAudioEngineLifecycleHarness(options: HarnessOptions = {}) {
   const records: HarnessRecords = {
+    animationFrames: new Map(),
     connections: [],
     disconnections: [],
     events: [],
     loadedUrls: [],
+    nextAnimationFrameId: 1,
     workletMessages: [],
     workletModules: [],
   };
@@ -56,6 +61,17 @@ function installAudioEngineLifecycleHarness(options: HarnessOptions = {}) {
     events: () => [...records.events],
     loadedMediaUrls: () => [...records.loadedUrls],
     restore: () => restoreGlobals(originals),
+    runAnimationFrames: (count = 1) => {
+      for (let i = 0; i < count; i++) {
+        const [id, callback] =
+          records.animationFrames.entries().next().value ?? [];
+        if (!(id && callback)) {
+          return;
+        }
+        records.animationFrames.delete(id);
+        callback(performance.now());
+      }
+    },
     workletMessages: () => [...records.workletMessages],
     workletModules: () => [...records.workletModules],
   };
@@ -160,7 +176,7 @@ function installGlobals(
     }
 
     getFloatTimeDomainData(buffer: Float32Array): void {
-      buffer.fill(0);
+      buffer.fill(options.analyserSample ?? 0);
     }
   }
 
@@ -348,12 +364,20 @@ function installGlobals(
   assignGlobal("Audio", FakeAudioElement);
   assignGlobal("AudioContext", FakeAudioContext);
   assignGlobal("AudioWorkletNode", FakeAudioWorkletNode);
+  assignGlobal("cancelAnimationFrame", (id: number) => {
+    records.animationFrames.delete(id);
+  });
   assignGlobal("HTMLMediaElement", { HAVE_METADATA: 1 });
   assignGlobal("MediaError", {
     MEDIA_ERR_ABORTED: 1,
     MEDIA_ERR_NETWORK: 2,
     MEDIA_ERR_DECODE: 3,
     MEDIA_ERR_SRC_NOT_SUPPORTED: 4,
+  });
+  assignGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+    const id = records.nextAnimationFrameId++;
+    records.animationFrames.set(id, callback);
+    return id;
   });
 
   return originals;

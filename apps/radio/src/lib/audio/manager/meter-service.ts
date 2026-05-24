@@ -19,8 +19,13 @@ class MeterService {
     analyserL: AnalyserNode | null,
     analyserR: AnalyserNode | null
   ): void {
+    this.stopMasterMeterLoop();
     this.masterAnalyserL = analyserL;
     this.masterAnalyserR = analyserR;
+
+    if (this.masterMeterListeners.size > 0) {
+      this.startMasterMeterLoop();
+    }
   }
 
   subscribeMasterMeter(callback: MeterListener): Unsubscribe {

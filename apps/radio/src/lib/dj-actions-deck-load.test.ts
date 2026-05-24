@@ -1538,6 +1538,71 @@ describe("DJ deck channel lifecycle", () => {
     expect(dependencies.applyCrossfade).not.toHaveBeenCalled();
   });
 
+  test("does not clear newer DJ errors from overlapping play attempts for the same deck", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertDjSession();
+    updatePlaybackChannel("dj", "deck-a", (draft) => {
+      draft.radio = {
+        id: "station-1",
+        name: "Station 1",
+        streamUrl: "https://radio.example/one.mp3",
+      };
+      draft.volume = 0.42;
+    });
+
+    const manager = AudioManager.getInstance();
+    manager.createSound = mock(
+      (_radio, soundId?: string) => soundId ?? "sound"
+    );
+    manager.cleanupSound = mock((_soundId: string) => undefined);
+    manager.subscribe = mock((_soundId, _callback) => mock(() => undefined));
+    manager.subscribeMeter = mock((_soundId, _callback) =>
+      mock(() => undefined)
+    );
+    let resolveFirstPlay: () => void = () => undefined;
+    const firstPlayFinished = new Promise<void>((resolve) => {
+      resolveFirstPlay = resolve;
+    });
+    const secondPlayError = new Error("newer play failed");
+    let playCalls = 0;
+    const dependencies = {
+      ...createDependencies(),
+      playDeckSound: mock(() => {
+        playCalls += 1;
+        return playCalls === 1
+          ? firstPlayFinished
+          : Promise.reject(secondPlayError);
+      }),
+    };
+    const workflow = createDjDeckLoadWorkflow(dependencies);
+
+    await workflow.loadDeckRadio("deck-a", {
+      id: "station-1",
+      name: "Station 1",
+      streamUrl: "https://radio.example/one.mp3",
+    });
+    (dependencies.clearDjError as ReturnType<typeof mock>).mockClear();
+    (dependencies.applyCrossfade as ReturnType<typeof mock>).mockClear();
+
+    const firstReplay = workflow.playDeck("deck-a");
+    await Promise.resolve();
+    await workflow.playDeck("deck-a");
+
+    expect(dependencies.reportDjError).toHaveBeenCalledWith(
+      "Failed to play deck-a",
+      "DJ_PLAY_DECK_FAILED",
+      secondPlayError,
+      expect.objectContaining({ id: "station-1" })
+    );
+
+    resolveFirstPlay();
+    await firstReplay;
+
+    expect(dependencies.playDeckSound).toHaveBeenCalledTimes(2);
+    expect(dependencies.clearDjError).not.toHaveBeenCalled();
+    expect(dependencies.applyCrossfade).not.toHaveBeenCalled();
+  });
+
   test("pauses and seeks a loaded deck through the lifecycle boundary", async () => {
     await playbackSessionsCollection.stateWhenReady();
     insertDjSession();

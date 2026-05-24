@@ -145,15 +145,27 @@ type DjDeckLoadWorkflow = {
 };
 
 const activeDeckLoadTokens = new Map<DeckId, symbol>();
+const activeDeckPlayTokens = new Map<DeckId, symbol>();
 
 function beginDeckLoad(deckId: DeckId): symbol {
   const token = Symbol(deckId);
   activeDeckLoadTokens.set(deckId, token);
+  activeDeckPlayTokens.delete(deckId);
   return token;
 }
 
 function isCurrentDeckLoad(deckId: DeckId, token: symbol): boolean {
   return activeDeckLoadTokens.get(deckId) === token;
+}
+
+function beginDeckPlay(deckId: DeckId): symbol {
+  const token = Symbol(deckId);
+  activeDeckPlayTokens.set(deckId, token);
+  return token;
+}
+
+function isCurrentDeckPlay(deckId: DeckId, token: symbol): boolean {
+  return activeDeckPlayTokens.get(deckId) === token;
 }
 
 function rollbackFailedDeckLoad(
@@ -591,13 +603,14 @@ async function playDeck(
 
   const soundId = runtime.soundId;
   const radio = deck.radio;
+  const playToken = beginDeckPlay(deckId);
 
   try {
     await dependencies.playDeckSound(soundId, deck.volume);
     const currentDeck = config.getDeck();
     const currentRuntime = config.getRuntime();
 
-    if (!currentDeck) {
+    if (!(currentDeck && isCurrentDeckPlay(deckId, playToken))) {
       return;
     }
 
@@ -614,6 +627,10 @@ async function playDeck(
     dependencies.clearDjError();
     dependencies.applyCrossfade();
   } catch (error) {
+    if (!isCurrentDeckPlay(deckId, playToken)) {
+      return;
+    }
+
     const playbackError = createPlaybackActionError({
       mode: "dj",
       code: "PLAY_ERROR",

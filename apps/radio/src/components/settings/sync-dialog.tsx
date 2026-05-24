@@ -106,14 +106,14 @@ export function SyncDialog({
 
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
+      <DialogContent className="max-h-[calc(100dvh-2rem)] max-w-md overflow-hidden p-4 sm:p-6">
+        <DialogHeader className="shrink-0 pr-8 sm:pr-0">
           <DialogTitle>Radio Updates Available</DialogTitle>
           <DialogDescription>{getDescription()}</DialogDescription>
         </DialogHeader>
 
-        <ScrollArea className="max-h-[300px] pr-4">
-          <div className="space-y-4">
+        <ScrollArea className="min-h-0 flex-1 pr-4">
+          <div className="space-y-4 pb-1">
             {changes.updates.length > 0 && (
               <div className="space-y-2">
                 <h4 className="flex items-center gap-2 font-medium text-sm">
@@ -132,10 +132,12 @@ export function SyncDialog({
                         onCheckedChange={() => toggleUpdate(existing.id)}
                       />
                       <Label
-                        className="flex-1 cursor-pointer"
+                        className="min-w-0 flex-1 cursor-pointer"
                         htmlFor={`update-${existing.id}`}
                       >
-                        <div className="font-medium">{existing.name}</div>
+                        <div className="truncate font-medium">
+                          {existing.name}
+                        </div>
                         <div className="text-muted-foreground text-xs">
                           {existing.streamUrl !== incoming.streamUrl && (
                             <div>Stream URL changed</div>
@@ -175,10 +177,10 @@ export function SyncDialog({
                         onCheckedChange={() => toggleAddition(radio.name)}
                       />
                       <Label
-                        className="flex-1 cursor-pointer"
+                        className="min-w-0 flex-1 cursor-pointer"
                         htmlFor={`add-${radio.name}`}
                       >
-                        <div className="font-medium">{radio.name}</div>
+                        <div className="truncate font-medium">{radio.name}</div>
                         {radio.description && (
                           <div className="line-clamp-2 text-muted-foreground text-xs">
                             {radio.description}
@@ -193,11 +195,19 @@ export function SyncDialog({
           </div>
         </ScrollArea>
 
-        <DialogFooter className="gap-2 sm:gap-0">
-          <Button onClick={handleSkip} variant="outline">
+        <DialogFooter className="shrink-0 gap-2 sm:gap-0">
+          <Button
+            className="w-full sm:w-auto"
+            onClick={handleSkip}
+            variant="outline"
+          >
             Skip
           </Button>
-          <Button disabled={totalSelected === 0} onClick={handleApply}>
+          <Button
+            className="w-full sm:w-auto"
+            disabled={totalSelected === 0}
+            onClick={handleApply}
+          >
             Apply Selected ({totalSelected}/{totalChanges})
           </Button>
         </DialogFooter>

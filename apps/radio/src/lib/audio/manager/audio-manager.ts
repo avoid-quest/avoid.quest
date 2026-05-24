@@ -32,7 +32,11 @@ import {
   type Unsubscribe,
   type WorkletManager,
 } from "../playback/index.js";
-import { cleanupSoundNodes, connectAudioGraph } from "./audio-manager-graph.js";
+import {
+  cleanupSoundNodes,
+  connectAudioGraph,
+  connectBypassAudioGraph,
+} from "./audio-manager-graph.js";
 import {
   createDeviceSourceCallbacks,
   createPlaybackSourceCallbacks,
@@ -264,6 +268,16 @@ export class AudioManager {
           notifyListeners: this.notifyListeners,
         })
       );
+
+      const masterGraph = this.output.initializeMasterGraph(context);
+      this.meters.setMasterAnalysers(
+        masterGraph.masterAnalyserL,
+        masterGraph.masterAnalyserR
+      );
+      connectBypassAudioGraph({
+        instance,
+        mainDelayNode: this.output.mainDelayNode,
+      });
 
       // Get proxied URL for Bandcamp/SoundCloud
       const streamUrl = this.getProxiedUrl(instance.radio.streamUrl);

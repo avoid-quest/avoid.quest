@@ -259,11 +259,52 @@ async function connectAudioGraph({
   return true;
 }
 
+function connectBypassAudioGraph({
+  instance,
+  mainDelayNode,
+}: Pick<ConnectAudioGraphParams, "instance" | "mainDelayNode">): boolean {
+  const sourceOutput =
+    instance.playbackSource?.output ?? instance.deviceSource?.output;
+  if (!(sourceOutput && instance.nodes)) {
+    console.warn(
+      `[AudioManager] Cannot connect bypass graph: missing source or nodes for ${instance.sourceId}`
+    );
+    return false;
+  }
+
+  const context = getAudioContext();
+  if (!context) {
+    console.warn(
+      "[AudioManager] Cannot connect bypass graph: no AudioContext available"
+    );
+    return false;
+  }
+
+  const { preFaderSend, gain, pan, filter, analyser } = instance.nodes;
+
+  safeDisconnect(sourceOutput, "AudioManager.connectBypassAudioGraph");
+  safeDisconnect(preFaderSend, "AudioManager.connectBypassAudioGraph");
+  safeDisconnect(gain, "AudioManager.connectBypassAudioGraph");
+  safeDisconnect(pan, "AudioManager.connectBypassAudioGraph");
+  safeDisconnect(filter, "AudioManager.connectBypassAudioGraph");
+  safeDisconnect(analyser, "AudioManager.connectBypassAudioGraph");
+
+  const finalDestination = mainDelayNode ?? context.destination;
+  sourceOutput.connect(pan);
+  pan.connect(filter);
+  filter.connect(preFaderSend);
+  preFaderSend.connect(gain);
+  gain.connect(analyser);
+  analyser.connect(finalDestination);
+  return true;
+}
+
 export type { MasterGraphNodes, MeterListener };
 export {
   attachWorkletManagerListeners,
   cleanupSoundNodes,
   connectAudioGraph,
+  connectBypassAudioGraph,
   createMasterGraphNodes,
   startMasterMeterLoop,
   stopMasterMeterLoop,

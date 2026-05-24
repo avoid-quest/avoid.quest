@@ -49,6 +49,9 @@ describe("audio engine lifecycle", () => {
     expect(connectedNodePairs).toContain("media-source -> gain");
     expect(connectedNodePairs).toContain("gain -> stereo-panner");
     expect(connectedNodePairs).toContain("stereo-panner -> biquad");
+    expect(connectedNodePairs.indexOf("biquad -> gain")).toBeLessThan(
+      connectedNodePairs.indexOf("biquad -> worklet")
+    );
     expect(connectedNodePairs).toContain("biquad -> worklet");
     expect(connectedNodePairs).toContain("worklet-gain -> gain");
     expect(workletMessageTypes).toContain("CREATE_SOURCE");

@@ -64,14 +64,14 @@ sudo apt install ffmpeg
 
 ## 6. Configure Environment Variables
 
-Create `apps/discord-bot/.env`:
+Provide these variables through your runtime secret manager. For local development only, an ignored `apps/discord-bot/.env` file can be used; do not commit real secret values.
 
 ```env
-DISCORD_TOKEN=your-bot-token-from-step-2
-DISCORD_CLIENT_ID=your-client-id-from-step-3
-DISCORD_GUILD_ID=your-server-id-from-step-5
+DISCORD_TOKEN=...
+DISCORD_CLIENT_ID=...
+DISCORD_GUILD_ID=...
 INVIDIOUS_INSTANCE_URL=https://yt.avoid.quest
-INVIDIOUS_AUTH=username:password
+INVIDIOUS_AUTH=...
 ```
 
 `INVIDIOUS_AUTH` format is `username:password` (HTTP Basic Auth). Omit it if your instance has no auth.

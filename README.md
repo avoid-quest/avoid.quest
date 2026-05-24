@@ -1,13 +1,11 @@
 # avoid.quest
 
-Core avoid.quest monorepo for the landing site, radio app, Discord bot, and shared packages that still belong to the main avoid.quest project.
-
-> Split note: `cwavasape` and `instarip` now live in their own private repositories under the `avoid-quest` GitHub organization.
+Private Bun/Turborepo monorepo for the active avoid.quest apps and shared packages.
 
 ## Apps
 
 - **web** (`apps/web`): Astro landing page and links hub.
-- **radio** (`apps/radio`): PWA internet radio player with multi-mode playback, platform resolvers, audio effects, MIDI support, and Cloudflare Worker deployment.
+- **radio** (`apps/radio`): TanStack Start PWA internet radio player with multi-mode playback, platform resolvers, audio effects, MIDI support, and Cloudflare Worker deployment.
 - **discord-bot** (`apps/discord-bot`): Discord bot for avoid.quest radio/platform interactions.
 
 ## Packages
@@ -17,18 +15,15 @@ Core avoid.quest monorepo for the landing site, radio app, Discord bot, and shar
 - **platforms** (`packages/platforms`): Platform scrapers and resolvers for Bandcamp, SoundCloud, YouTube, and Radio Garden.
 - **ui** (`packages/ui`): Shared React UI components, shadcn/ui primitives, and branding assets.
 
-## Related repositories
-
-- **cwavasape**: split to `avoid-quest/cwavasape`.
-- **instarip**: split to `avoid-quest/instarip` and kept as an archived project with its pruned Convex backend.
-
 ## Tech stack
 
-- **Web**: Astro, React islands, Tailwind CSS v4.
-- **Radio**: TanStack Start, TanStack Router, React 19, TypeScript, Web Audio API.
-- **Bot**: Discord.js, TypeScript, tsup.
-- **Tooling**: Bun, Turborepo, Ultracite/Biome.
-- **Deploy**: Cloudflare Workers for deployable web apps.
+- **Runtime/package manager**: Bun
+- **Monorepo**: Turborepo
+- **Lint/format**: Ultracite/Biome
+- **Web**: Astro, React islands, Tailwind CSS v4
+- **Radio**: TanStack Start, TanStack Router, React 19, TypeScript, Web Audio API
+- **Bot**: Discord.js, TypeScript, tsup
+- **Deploy**: Cloudflare Workers for deployable web apps
 
 ## Development
 
@@ -39,7 +34,6 @@ bun run build        # Build all apps/packages
 bun run typecheck    # Type check all packages
 bun run check        # Lint/format check via Ultracite
 bun run fix          # Auto-fix lint/format issues
-bun run cleanup      # Clean node_modules and build artifacts
 ```
 
 Scoped examples:
@@ -52,7 +46,7 @@ bun run --filter @avoid.quest/discord-bot dev
 
 ## Cloudflare deployment
 
-Deployable apps have their own Wrangler configuration under `apps/*/wrangler.jsonc`.
+Deployable apps keep their Wrangler configuration under `apps/*/wrangler.jsonc`. Do not deploy from automation unless the task explicitly asks for deployment.
 
 ```bash
 bun run cf-build     # Build Cloudflare-targeted apps
@@ -61,10 +55,8 @@ bun run cf-upload    # Upload versions without promoting
 bun run cf-typegen   # Regenerate Cloudflare environment type bindings
 ```
 
-Do not deploy from automation unless the task explicitly asks for deployment.
-
 ## UI components
 
 ```bash
-bun run ui           # Open shadcn/ui CLI for packages/ui
+bun run ui add <component-name>
 ```

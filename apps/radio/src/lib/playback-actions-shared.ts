@@ -3,11 +3,7 @@ import {
   getPlaybackSession,
   type PlaybackSessionId,
 } from "@/lib/collections/playback-sessions";
-import {
-  getAudioSettings,
-  getDelaySettings,
-  setMainOutputDevice,
-} from "@/lib/collections/settings";
+import { getAudioSettings, getDelaySettings } from "@/lib/collections/settings";
 import { getMainOutputRouter } from "@/lib/main-output-router";
 import type {
   ChannelActivationOptions,
@@ -40,33 +36,14 @@ function getPlaybackOutputRouter(ctx: PlaybackActionContext) {
   return ctx.getMainOutputRouter() ?? getMainOutputRouter();
 }
 
-async function applyMainOutputDeviceWithFallback(
-  deviceId: string,
-  ctx: PlaybackActionContext
-): Promise<void> {
-  const router = getPlaybackOutputRouter(ctx);
-  if (!router) {
-    return;
-  }
-
-  try {
-    await router.setMainOutput(deviceId);
-    return;
-  } catch (error) {
-    if (deviceId === "default") {
-      throw error;
-    }
-
-    setMainOutputDevice("default");
-    await router.setMainOutput("default");
-  }
-}
-
 export async function applyMainOutputDevice(
   deviceId: string,
   ctx = getDefaultPlaybackActionContext()
 ): Promise<void> {
-  await applyMainOutputDeviceWithFallback(deviceId, ctx);
+  const router = getPlaybackOutputRouter(ctx);
+  if (router) {
+    await router.setMainOutput(deviceId);
+  }
 }
 
 export async function applyCurrentMainAudioSettings(
@@ -80,7 +57,7 @@ export async function applyCurrentMainAudioSettings(
 
   const settings = getAudioSettings();
   if (settings.mainOutputId && settings.mainOutputId !== "default") {
-    await applyMainOutputDeviceWithFallback(settings.mainOutputId, ctx);
+    await router.setMainOutput(settings.mainOutputId);
   }
 
   const { mainDelayMs } = getDelaySettings();

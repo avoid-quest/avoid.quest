@@ -3,13 +3,20 @@
 import { env } from "cloudflare:workers";
 import { AppError, captureError } from "@avoid.quest/error";
 import { createFileRoute } from "@tanstack/react-router";
-import {
-  cancelUpstreamBody,
-  createBandcampProxyRequestHeaders,
-  validateBandcampCdnUrl,
-} from "@/lib/proxy/bandcamp-proxy";
+import { z } from "zod";
 import { createProxyRequestPolicy } from "@/lib/proxy/request-policy";
 
+const URL_SCHEMA = z
+  .string()
+  .max(2048)
+  .refine((val) => {
+    try {
+      new URL(val);
+      return true;
+    } catch {
+      return false;
+    }
+  }, "Invalid URL format");
 const FETCH_TIMEOUT_MS = 10_000;
 const MAX_RESPONSE_SIZE = 100 * 1024 * 1024;
 
@@ -20,46 +27,50 @@ function validateUrl(
   origin: string,
   requestId: string
 ): string | Response {
-  const urlValidation = validateBandcampCdnUrl(urlParam);
-  if (!urlValidation.ok) {
-    const errorByReason = {
-      required: {
-        code: "BANDCAMP_PROXY_URL_REQUIRED",
-        safeMessage: "URL parameter is required",
-        category: "validation" as const,
-        status: 400,
-      },
-      "invalid-url": {
-        code: "BANDCAMP_PROXY_INVALID_URL",
-        safeMessage: "Invalid URL format",
-        category: "validation" as const,
-        status: 400,
-      },
-      "invalid-protocol": {
-        code: "BANDCAMP_PROXY_INVALID_PROTOCOL",
-        safeMessage: "Invalid URL: must use http or https protocol",
-        category: "validation" as const,
-        status: 400,
-      },
-      "invalid-domain": {
-        code: "BANDCAMP_PROXY_INVALID_DOMAIN",
-        safeMessage: "Invalid URL: must be a Bandcamp CDN URL",
-        category: "validation" as const,
-        status: 400,
-      },
-    }[urlValidation.reason];
-
+  if (!urlParam) {
     return proxyPolicy.problem(
       new AppError({
-        ...errorByReason,
+        code: "BANDCAMP_PROXY_URL_REQUIRED",
+        safeMessage: "URL parameter is required",
+        category: "validation",
         expected: true,
+        status: 400,
       }),
       origin,
       requestId
     );
   }
 
-  return urlValidation.url;
+  const urlValidation = URL_SCHEMA.safeParse(urlParam);
+  if (!urlValidation.success) {
+    return proxyPolicy.problem(
+      new AppError({
+        code: "BANDCAMP_PROXY_INVALID_URL",
+        safeMessage: "Invalid URL format",
+        category: "validation",
+        expected: true,
+        status: 400,
+      }),
+      origin,
+      requestId
+    );
+  }
+
+  if (!urlParam.includes("bcbits.com")) {
+    return proxyPolicy.problem(
+      new AppError({
+        code: "BANDCAMP_PROXY_INVALID_DOMAIN",
+        safeMessage: "Invalid URL: must be a Bandcamp CDN URL",
+        category: "validation",
+        expected: true,
+        status: 400,
+      }),
+      origin,
+      requestId
+    );
+  }
+
+  return urlParam;
 }
 
 async function fetchWithTimeout(
@@ -74,13 +85,15 @@ async function fetchWithTimeout(
   try {
     const res = await fetch(url, {
       signal: controller.signal,
-      headers: createBandcampProxyRequestHeaders(request),
+      headers: {
+        Range: request.headers.get("range") || "",
+        Referer: "https://bandcamp.com/",
+      },
     });
 
     clearTimeout(timeout);
 
     if (!res.ok) {
-      await cancelUpstreamBody(res);
       return proxyPolicy.problem(
         new AppError({
           code: "BANDCAMP_PROXY_UPSTREAM_ERROR",
@@ -98,7 +111,6 @@ async function fetchWithTimeout(
     if (contentLength) {
       const size = Number.parseInt(contentLength, 10);
       if (size > MAX_RESPONSE_SIZE) {
-        await cancelUpstreamBody(res);
         return proxyPolicy.problem(
           new AppError({
             code: "BANDCAMP_PROXY_RESPONSE_TOO_LARGE",

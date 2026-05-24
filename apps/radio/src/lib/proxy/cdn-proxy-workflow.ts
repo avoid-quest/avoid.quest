@@ -19,10 +19,6 @@ const MAX_RESPONSE_SIZE = 100 * 1024 * 1024;
 
 type ProxyPolicy = ReturnType<typeof createProxyRequestPolicy>;
 
-function cancelResponseBody(response: Response): Promise<void> {
-  return response.body?.cancel().catch(() => undefined) ?? Promise.resolve();
-}
-
 type CdnProxyProviderConfig = {
   endpoint: string;
   referer: string;
@@ -189,7 +185,6 @@ export async function proxyCdnUrl({
     clearTimeout(timeout);
 
     if (!res.ok) {
-      await cancelResponseBody(res);
       return proxyPolicy.problem(
         new AppError({
           code: `${config.errorCodePrefix}_UPSTREAM_ERROR`,
@@ -207,7 +202,6 @@ export async function proxyCdnUrl({
     if (contentLength) {
       const size = Number.parseInt(contentLength, 10);
       if (size > MAX_RESPONSE_SIZE) {
-        await cancelResponseBody(res);
         return proxyPolicy.problem(
           new AppError({
             code: `${config.errorCodePrefix}_RESPONSE_TOO_LARGE`,

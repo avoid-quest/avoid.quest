@@ -98,6 +98,7 @@ GIT_FEEDBACK_GITHUB_TOKEN= # Fine-grained token with Issues read/write
 ### Build-time (Sentry sourcemap upload)
 
 ```
+VITE_RADIO_SENTRY_DSN # Optional public browser DSN; also used by /tunnel fallback validation
 SENTRY_AUTH_TOKEN   # Required for sourcemap upload
 SENTRY_ORG          # Sentry organization slug
 SENTRY_PROJECT      # Sentry project slug
@@ -105,6 +106,23 @@ SENTRY_RELEASE      # Optional: defaults to radio@<version>
 ```
 
 If any Sentry build vars are missing the upload step is skipped silently.
+
+### Runtime (Sentry)
+
+```
+RADIO_SENTRY_DSN    # Optional server DSN and primary /tunnel validation target
+SENTRY_DSN          # Optional fallback server DSN name
+```
+
+Local development works without Sentry variables. In that mode client/server
+Sentry initialization is skipped and `/tunnel` returns 503 until a DSN is
+configured.
+
+## Cloudflare exposure
+
+Committed Wrangler config disables `workers_dev` and `preview_urls` for public
+repository safety. Production exposure should be configured with Cloudflare
+account-level custom domains or routes outside this repository.
 
 ## Development
 

@@ -1,6 +1,11 @@
 # avoid.quest
 
-Private Bun/Turborepo monorepo for the active avoid.quest apps and shared packages.
+Bun/Turborepo monorepo for the active avoid.quest apps and shared packages.
+
+This repository is source-available, not open source. See [LICENSE](./LICENSE)
+for usage restrictions, [SECURITY.md](./SECURITY.md) for vulnerability
+reporting, and [CONTRIBUTING.md](./CONTRIBUTING.md) for contribution
+expectations.
 
 ## Apps
 
@@ -46,7 +51,18 @@ bun run --filter @avoid.quest/discord-bot dev
 
 ## Cloudflare deployment
 
-Deployable apps keep their Wrangler configuration under `apps/*/wrangler.jsonc`. Do not deploy from automation unless the task explicitly asks for deployment.
+Deployable apps keep their Wrangler configuration under `apps/*/wrangler.jsonc`.
+Do not deploy from automation unless the task explicitly asks for deployment.
+
+Public preview exposure is disabled in committed Wrangler config:
+
+| App | `workers_dev` | `preview_urls` | Production exposure |
+|-----|---------------|----------------|---------------------|
+| `@avoid.quest/web` | Disabled | Disabled | Use Cloudflare account-level custom domains or routes for the production hostname. |
+| `@avoid.quest/radio` | Disabled | Disabled | Use Cloudflare account-level custom domains or routes for the production hostname. |
+
+Production hostnames and any production-only overrides are intentionally kept
+out of the public repository. Configure them in Cloudflare before deploying.
 
 ```bash
 bun run cf-build     # Build Cloudflare-targeted apps

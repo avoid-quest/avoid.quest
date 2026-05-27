@@ -1,9 +1,11 @@
 const LEADING_SLASH_PATTERN = /^\//;
 
-export const CLIENT_SENTRY_DSN =
-  "https://444829d47e194352a94b3739c56ca4ee@o4510834344656896.ingest.de.sentry.io/4510834349375568";
 export const CLIENT_SENTRY_TUNNEL = "/tunnel";
 export const MAX_TUNNEL_ENVELOPE_BYTES = 1_000_000;
+
+export function readClientSentryDsn(): string {
+  return import.meta.env.VITE_RADIO_SENTRY_DSN?.trim() ?? "";
+}
 
 export type SentryTunnelTarget = {
   host: string;

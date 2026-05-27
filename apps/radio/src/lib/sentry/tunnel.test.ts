@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import {
-  CLIENT_SENTRY_DSN,
   getProjectIdFromDsn,
   isAllowedEnvelopeDsn,
   readEnvelopeHeader,
@@ -8,12 +7,14 @@ import {
 } from "./tunnel";
 import { handleSentryTunnelRequest } from "./tunnel-service";
 
+const TEST_SENTRY_DSN =
+  "https://examplePublicKey@o123.ingest.us.sentry.io/9876543210";
+
 describe("resolveTunnelTarget", () => {
   test("uses runtime DSN when available", () => {
     const target = resolveTunnelTarget({
-      runtimeDsn:
-        "https://examplePublicKey@o123.ingest.us.sentry.io/9876543210",
-      fallbackDsn: CLIENT_SENTRY_DSN,
+      runtimeDsn: TEST_SENTRY_DSN,
+      fallbackDsn: "https://fallbackPublicKey@o999.ingest.us.sentry.io/111",
     });
 
     expect(target).toEqual({
@@ -22,15 +23,15 @@ describe("resolveTunnelTarget", () => {
     });
   });
 
-  test("falls back to client DSN when runtime DSN is missing", () => {
+  test("falls back to configured client DSN when runtime DSN is missing", () => {
     const target = resolveTunnelTarget({
       runtimeDsn: undefined,
-      fallbackDsn: CLIENT_SENTRY_DSN,
+      fallbackDsn: TEST_SENTRY_DSN,
     });
 
     expect(target).not.toBeNull();
-    expect(target?.host).toBe("o4510834344656896.ingest.de.sentry.io");
-    expect(target?.projectId).toBe("4510834349375568");
+    expect(target?.host).toBe("o123.ingest.us.sentry.io");
+    expect(target?.projectId).toBe("9876543210");
   });
 
   test("returns null when no valid DSN is provided", () => {
@@ -45,7 +46,7 @@ describe("resolveTunnelTarget", () => {
   test("returns null when runtime DSN is invalid even if fallback exists", () => {
     const target = resolveTunnelTarget({
       runtimeDsn: "not-a-url",
-      fallbackDsn: CLIENT_SENTRY_DSN,
+      fallbackDsn: TEST_SENTRY_DSN,
     });
 
     expect(target).toBeNull();
@@ -81,14 +82,14 @@ describe("readEnvelopeHeader", () => {
 
 describe("isAllowedEnvelopeDsn", () => {
   const target = {
-    host: "o4510834344656896.ingest.de.sentry.io",
-    projectId: "4510834349375568",
+    host: "o123.ingest.us.sentry.io",
+    projectId: "9876543210",
   };
 
   test("accepts matching host and project", () => {
     expect(
       isAllowedEnvelopeDsn(
-        "https://abc@o4510834344656896.ingest.de.sentry.io/4510834349375568",
+        "https://abc@o123.ingest.us.sentry.io/9876543210",
         target
       )
     ).toBe(true);
@@ -97,7 +98,7 @@ describe("isAllowedEnvelopeDsn", () => {
   test("rejects mismatched host", () => {
     expect(
       isAllowedEnvelopeDsn(
-        "https://abc@o999.ingest.de.sentry.io/4510834349375568",
+        "https://abc@o999.ingest.us.sentry.io/9876543210",
         target
       )
     ).toBe(false);
@@ -105,22 +106,19 @@ describe("isAllowedEnvelopeDsn", () => {
 
   test("rejects mismatched project", () => {
     expect(
-      isAllowedEnvelopeDsn(
-        "https://abc@o4510834344656896.ingest.de.sentry.io/111",
-        target
-      )
+      isAllowedEnvelopeDsn("https://abc@o123.ingest.us.sentry.io/111", target)
     ).toBe(false);
   });
 });
 
 describe("getProjectIdFromDsn", () => {
   test("extracts the project id", () => {
-    const dsn = new URL("https://abc@o4510834344656896.ingest.de.sentry.io/42");
+    const dsn = new URL("https://abc@o123.ingest.us.sentry.io/42");
     expect(getProjectIdFromDsn(dsn)).toBe("42");
   });
 
   test("returns null for missing project id", () => {
-    const dsn = new URL("https://abc@o4510834344656896.ingest.de.sentry.io/");
+    const dsn = new URL("https://abc@o123.ingest.us.sentry.io/");
     expect(getProjectIdFromDsn(dsn)).toBeNull();
   });
 });
@@ -130,7 +128,7 @@ describe("handleSentryTunnelRequest", () => {
     const fetchImpl = (async (url: string | URL, init?: RequestInit) => {
       await Promise.resolve();
       expect(String(url)).toBe(
-        "https://o4510834344656896.ingest.de.sentry.io/api/4510834349375568/envelope/"
+        "https://o123.ingest.us.sentry.io/api/9876543210/envelope/"
       );
       expect(init?.method).toBe("POST");
       expect(init?.headers).toEqual({
@@ -139,14 +137,17 @@ describe("handleSentryTunnelRequest", () => {
       return new Response(null, { status: 202 });
     }) as unknown as typeof fetch;
     const envelope = new TextEncoder().encode(
-      `{"dsn":"${CLIENT_SENTRY_DSN}"}\n{"type":"event"}\n{}`
+      `{"dsn":"${TEST_SENTRY_DSN}"}\n{"type":"event"}\n{}`
     );
     const request = new Request("https://radio.test/tunnel", {
       method: "POST",
       body: envelope,
     });
 
-    const response = await handleSentryTunnelRequest(request, { fetchImpl });
+    const response = await handleSentryTunnelRequest(request, {
+      fallbackDsn: TEST_SENTRY_DSN,
+      fetchImpl,
+    });
 
     expect(response.status).toBe(202);
     expect(response.headers.get("Cache-Control")).toBe("no-store");
@@ -156,11 +157,13 @@ describe("handleSentryTunnelRequest", () => {
     const request = new Request("https://radio.test/tunnel", {
       method: "POST",
       body: new TextEncoder().encode(
-        '{"dsn":"https://abc@o999.ingest.de.sentry.io/4510834349375568"}\n{"type":"event"}\n{}'
+        '{"dsn":"https://abc@o999.ingest.us.sentry.io/9876543210"}\n{"type":"event"}\n{}'
       ),
     });
 
-    const response = await handleSentryTunnelRequest(request);
+    const response = await handleSentryTunnelRequest(request, {
+      fallbackDsn: TEST_SENTRY_DSN,
+    });
 
     expect(response.status).toBe(403);
     await expect(response.text()).resolves.toBe("Invalid Sentry destination");
@@ -170,11 +173,12 @@ describe("handleSentryTunnelRequest", () => {
     const request = new Request("https://radio.test/tunnel", {
       method: "POST",
       body: new TextEncoder().encode(
-        `{"dsn":"${CLIENT_SENTRY_DSN}"}\n{"type":"event"}\n{}`
+        `{"dsn":"${TEST_SENTRY_DSN}"}\n{"type":"event"}\n{}`
       ),
     });
 
     const response = await handleSentryTunnelRequest(request, {
+      fallbackDsn: TEST_SENTRY_DSN,
       fetchImpl: (async () => {
         await Promise.resolve();
         throw new Error("network failure");
@@ -183,5 +187,19 @@ describe("handleSentryTunnelRequest", () => {
 
     expect(response.status).toBe(502);
     await expect(response.text()).resolves.toBe("Error tunneling to Sentry");
+  });
+
+  test("returns unavailable when no Sentry DSN is configured", async () => {
+    const request = new Request("https://radio.test/tunnel", {
+      method: "POST",
+      body: new TextEncoder().encode(
+        `{"dsn":"${TEST_SENTRY_DSN}"}\n{"type":"event"}\n{}`
+      ),
+    });
+
+    const response = await handleSentryTunnelRequest(request);
+
+    expect(response.status).toBe(503);
+    await expect(response.text()).resolves.toBe("Sentry tunnel not configured");
   });
 });

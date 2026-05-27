@@ -1,6 +1,6 @@
 import { initClientSentry } from "@avoid.quest/error";
 import { createRouter } from "@tanstack/react-router";
-import { CLIENT_SENTRY_DSN, CLIENT_SENTRY_TUNNEL } from "@/lib/sentry/tunnel";
+import { CLIENT_SENTRY_TUNNEL, readClientSentryDsn } from "@/lib/sentry/tunnel";
 
 // Import the generated route tree
 import { routeTree } from "./routeTree.gen";
@@ -13,7 +13,7 @@ export const getRouter = () => {
   });
   if (!router.isServer) {
     initClientSentry({
-      dsn: CLIENT_SENTRY_DSN,
+      dsn: readClientSentryDsn(),
       tunnel: CLIENT_SENTRY_TUNNEL,
       environment: import.meta.env.MODE,
       release: `radio@${__APP_VERSION__}`,

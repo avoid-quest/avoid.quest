@@ -1,7 +1,10 @@
 import { initServerSentry } from "@avoid.quest/error";
 
 const SENTRY_DSN =
-  "https://444829d47e194352a94b3739c56ca4ee@o4510834344656896.ingest.de.sentry.io/4510834349375568";
+  process.env.RADIO_SENTRY_DSN ||
+  process.env.SENTRY_DSN ||
+  process.env.VITE_RADIO_SENTRY_DSN ||
+  "";
 
 initServerSentry({
   dsn: SENTRY_DSN,

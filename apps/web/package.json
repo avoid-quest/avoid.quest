@@ -2,16 +2,17 @@
   "name": "@avoid.quest/web",
   "version": "0.1.0",
   "private": true,
+  "license": "UNLICENSED",
   "type": "module",
   "scripts": {
     "dev": "astro dev --port 3000",
     "build": "astro build",
     "preview": "astro preview",
     "typecheck": "astro check && tsc --noEmit",
-    "deploy": "astro build && bunx wrangler@latest deploy",
+    "deploy": "bun run build && wrangler deploy",
     "cf-build": "astro build",
-    "cf-deploy": "npx wrangler@latest deploy",
-    "cf-upload": "npx wrangler@latest versions upload"
+    "cf-deploy": "wrangler deploy",
+    "cf-upload": "wrangler versions upload"
   },
   "dependencies": {
     "@astrojs/cloudflare": "^13.5.4",

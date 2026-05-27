@@ -1,5 +1,4 @@
 import {
-  CLIENT_SENTRY_DSN,
   isAllowedEnvelopeDsn,
   MAX_TUNNEL_ENVELOPE_BYTES,
   readEnvelopeHeader,
@@ -33,7 +32,7 @@ export async function handleSentryTunnelRequest(
 ): Promise<Response> {
   const target = resolveTunnelTarget({
     runtimeDsn: options.runtimeDsn,
-    fallbackDsn: options.fallbackDsn ?? CLIENT_SENTRY_DSN,
+    fallbackDsn: options.fallbackDsn,
   });
 
   if (!target) {

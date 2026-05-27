@@ -2,7 +2,7 @@
 
 FROM node:20-alpine AS prepare
 
-RUN npm i -g turbo@^2
+RUN npm i -g turbo@2.9.15
 
 WORKDIR /app
 COPY . .
@@ -14,7 +14,7 @@ FROM node:20-alpine AS base
 
 RUN apk add --no-cache python3 make g++ curl bash unzip
 
-RUN curl -fsSL https://bun.sh/install | bash -s "bun-v1.3.10"
+RUN curl -fsSL https://bun.sh/install | bash -s "bun-v1.3.14"
 
 ENV PATH="/root/.bun/bin:$PATH"
 

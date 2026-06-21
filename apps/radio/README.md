@@ -111,7 +111,9 @@ SENTRY_PROJECT      # Sentry project slug
 SENTRY_RELEASE      # Optional: defaults to radio@<version>
 ```
 
-If any Sentry build vars are missing the upload step is skipped silently.
+If any required Sentry build vars are missing, production builds print one
+warning and skip the upload step. The app still builds with hidden source maps;
+set all three required vars in release/deploy environments to upload them.
 
 ### Runtime (Sentry)
 

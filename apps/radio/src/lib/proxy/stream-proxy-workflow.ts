@@ -90,7 +90,6 @@ const STREAM_URL_VALIDATION_ERRORS = {
 } as const satisfies Record<StreamUrlValidationFailure, AppErrorInit>;
 
 const STREAM_REDIRECT_FAILURE_ERRORS = {
-  required: STREAM_PROXY_INVALID_URL_ERROR,
   "invalid-url": STREAM_PROXY_INVALID_URL_ERROR,
   "invalid-protocol": STREAM_PROXY_INVALID_PROTOCOL_ERROR,
   "internal-address": STREAM_PROXY_INTERNAL_ADDRESS_ERROR,

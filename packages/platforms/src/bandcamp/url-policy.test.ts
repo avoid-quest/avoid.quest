@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { validateBandcampCdnUrl as validateCanonicalBandcampCdnUrl } from "@avoid.quest/platforms/bandcamp/url-policy";
-import { validateBandcampCdnUrl } from "./bandcamp-url-policy";
+import { getProxiedBandcampUrl } from "./index";
+import { isBandcampCdnHostname, validateBandcampCdnUrl } from "./url-policy";
 
 function expectInvalidBandcampUrl(
   url: string,
@@ -10,11 +10,7 @@ function expectInvalidBandcampUrl(
 }
 
 describe("validateBandcampCdnUrl", () => {
-  test("delegates to the platform-owned canonical policy", () => {
-    expect(validateBandcampCdnUrl).toBe(validateCanonicalBandcampCdnUrl);
-  });
-
-  test("allows normalized Bandcamp CDN hostnames", () => {
+  test("allows normalized bcbits CDN hostnames", () => {
     expect(validateBandcampCdnUrl("https://t4.bcbits.com/track.mp3").ok).toBe(
       true
     );
@@ -45,5 +41,25 @@ describe("validateBandcampCdnUrl", () => {
       `https://t4.bcbits.com/${"x".repeat(2048)}`,
       "invalid-url"
     );
+  });
+});
+
+describe("isBandcampCdnHostname", () => {
+  test("uses the shared hostname normalization", () => {
+    expect(isBandcampCdnHostname("T4.BCBITS.COM.")).toBe(true);
+    expect(isBandcampCdnHostname("bcbits.com.evil.test")).toBe(false);
+  });
+});
+
+describe("getProxiedBandcampUrl", () => {
+  test("generates proxy URLs only for canonical Bandcamp CDN URLs", () => {
+    const cdnUrl = "https://t4.bcbits.com/track.mp3";
+
+    expect(getProxiedBandcampUrl(cdnUrl)).toBe(
+      `/api/bandcamp-proxy?url=${encodeURIComponent(cdnUrl)}`
+    );
+    expect(
+      getProxiedBandcampUrl("https://bcbits.com.evil.test/track.mp3")
+    ).toBe("https://bcbits.com.evil.test/track.mp3");
   });
 });

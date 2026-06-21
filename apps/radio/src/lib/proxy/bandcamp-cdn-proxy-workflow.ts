@@ -1,5 +1,5 @@
 import type { AppErrorInit } from "@avoid.quest/error";
-import type { ValidatedRedirectFailure } from "@avoid.quest/platforms/redirects";
+import type { ValidatedRedirectTargetFailure } from "@avoid.quest/platforms/redirects";
 import {
   type BandcampCdnUrlValidationFailure,
   validateBandcampCdnUrl,
@@ -10,7 +10,7 @@ import {
 } from "./cdn-proxy-workflow";
 
 type BandcampRedirectFailure =
-  ValidatedRedirectFailure<BandcampCdnUrlValidationFailure>;
+  ValidatedRedirectTargetFailure<BandcampCdnUrlValidationFailure>;
 
 type BandcampCdnProxyWorkflowDependencies = {
   proxyPolicy: CdnProxyPolicy;
@@ -54,7 +54,6 @@ const BANDCAMP_URL_FAILURE_ERRORS = {
 } as const satisfies Record<BandcampCdnUrlValidationFailure, AppErrorInit>;
 
 const BANDCAMP_REDIRECT_FAILURE_ERRORS = {
-  required: BANDCAMP_INVALID_URL_ERROR,
   "invalid-url": BANDCAMP_INVALID_URL_ERROR,
   "invalid-protocol": BANDCAMP_INVALID_PROTOCOL_ERROR,
   "invalid-domain": BANDCAMP_INVALID_DOMAIN_ERROR,

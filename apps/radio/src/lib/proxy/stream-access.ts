@@ -1,8 +1,9 @@
 import {
   fetchWithValidatedRedirectResult,
   ValidatedRedirectError,
-  type ValidatedRedirectFailure,
+  type ValidatedRedirectTargetFailure,
 } from "@avoid.quest/platforms/redirects";
+import { validateRedirectTargetUrl } from "./redirect-target-validation";
 import {
   type StreamUrlValidationFailure,
   validatePublicStreamUrl,
@@ -37,7 +38,7 @@ const STREAM_ACCESS_MAX_REDIRECTS = 5;
 const streamAccessCache = new Map<string, StreamAccessCacheEntry>();
 
 export type StreamRedirectFailure =
-  ValidatedRedirectFailure<StreamUrlValidationFailure>;
+  ValidatedRedirectTargetFailure<StreamUrlValidationFailure>;
 
 export class StreamRedirectError extends ValidatedRedirectError<StreamRedirectFailure> {
   constructor(reason: StreamRedirectFailure, url: string) {
@@ -95,7 +96,12 @@ export async function fetchPublicStreamWithRedirects(
     invalidUrlReason: "invalid-url",
     maxRedirects,
     url,
-    validateUrl: validatePublicStreamUrl,
+    validateUrl: (redirectUrl) =>
+      validateRedirectTargetUrl(
+        redirectUrl,
+        validatePublicStreamUrl,
+        "invalid-url"
+      ),
   });
 
   if (!result.ok) {

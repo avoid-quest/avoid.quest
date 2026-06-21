@@ -27,6 +27,21 @@ describe("fetchPublicStreamWithRedirects", () => {
     expect(result.resolvedUrl).toBe("https://radio.example/live");
     expect("ok" in result).toBe(false);
   });
+
+  test("maps required failures on concrete stream URLs to invalid URL", async () => {
+    const fetchImpl = mock(async () => {
+      await Promise.resolve();
+      throw new Error("Empty stream URLs should not be fetched");
+    });
+
+    await expect(
+      fetchPublicStreamWithRedirects("", { method: "GET" }, fetchImpl)
+    ).rejects.toMatchObject({
+      reason: "invalid-url",
+      url: "",
+    });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
 });
 
 describe("determineStreamAccessMode", () => {

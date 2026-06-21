@@ -10,10 +10,12 @@
     ".": "./src/index.ts",
     "./bandcamp": "./src/bandcamp/index.ts",
     "./bandcamp/search": "./src/bandcamp/search.ts",
+    "./bandcamp/url-policy": "./src/bandcamp/url-policy.ts",
     "./redirects": "./src/redirects/index.ts",
     "./soundcloud": "./src/soundcloud/index.ts",
     "./soundcloud/search": "./src/soundcloud/search.ts",
     "./soundcloud/fetch-client": "./src/soundcloud/fetch-client/index.ts",
+    "./soundcloud/url-policy": "./src/soundcloud/url-policy.ts",
     "./radiogarden": "./src/radiogarden/index.ts",
     "./radiogarden/search": "./src/radiogarden/search.ts",
     "./youtube": "./src/youtube/index.ts"

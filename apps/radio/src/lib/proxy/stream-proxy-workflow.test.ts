@@ -39,6 +39,38 @@ afterEach(() => {
 });
 
 describe("createStreamProxyRequestWorkflow", () => {
+  test("keeps missing request URL parameters on the request validation path", async () => {
+    const inspectStreamAccess = mock(async () => {
+      await Promise.resolve();
+      return { mode: "proxy" as const, response: null, resolvedUrl: null };
+    });
+    const fetchImpl = mock(async () => {
+      await Promise.resolve();
+      return new Response("should not fetch");
+    });
+    const workflow = createStreamProxyRequestWorkflow({
+      fetchImpl,
+      inspectStreamAccess,
+      proxyPolicy: createTestPolicy(),
+    });
+
+    const response = await workflow.handle({
+      origin: "https://radio.test",
+      request: new Request("https://radio.test/api/stream-proxy"),
+      requestId: "req_missing_url",
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      code: "STREAM_PROXY_URL_REQUIRED",
+      message: "URL parameter is required",
+      requestId: "req_missing_url",
+      status: 400,
+    });
+    expect(inspectStreamAccess).not.toHaveBeenCalled();
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
   test("redirects direct HTTPS streams with CORS and request headers", async () => {
     const inspectStreamAccess = mock(async () => {
       await Promise.resolve();

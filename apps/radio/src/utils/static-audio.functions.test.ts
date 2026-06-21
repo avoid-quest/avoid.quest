@@ -161,4 +161,21 @@ describe("fetchStaticAudioWithRedirects", () => {
       "manual",
     ]);
   });
+
+  test("maps required failures on concrete fetch URLs to invalid URL", async () => {
+    const fetchImpl = mock(async () => {
+      await Promise.resolve();
+      throw new Error("Empty static audio URLs should not be fetched");
+    });
+
+    await expectStaticAudioFetchError(
+      fetchStaticAudioWithRedirects("", {
+        fetchImpl,
+        method: "HEAD",
+      }),
+      "STATIC_AUDIO_INVALID_URL"
+    );
+
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
 });

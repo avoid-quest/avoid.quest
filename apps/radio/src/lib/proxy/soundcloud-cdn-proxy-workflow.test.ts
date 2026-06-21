@@ -49,6 +49,31 @@ function createWorkflow() {
 }
 
 describe("createSoundCloudCdnProxyWorkflow", () => {
+  test("maps canonical page-url failures to the SoundCloud response", async () => {
+    logSSRFAttempt.mockClear();
+
+    const response = await createWorkflow().handle({
+      auth: {
+        ip: "203.0.113.10",
+        sessionId: "sess_soundcloud",
+      },
+      origin: "https://radio.test",
+      request: new Request(
+        "https://radio.test/api/soundcloud-proxy?url=https%3A%2F%2Fsoundcloud.com%2Fartist%2Ftrack"
+      ),
+      requestId: "req_soundcloud_page_url",
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      code: "SOUNDCLOUD_PROXY_PAGE_URL_NOT_ALLOWED",
+      message: "Invalid URL: must be a stream URL, not a page URL",
+      requestId: "req_soundcloud_page_url",
+      status: 400,
+    });
+    expect(logSSRFAttempt).not.toHaveBeenCalled();
+  });
+
   test("rejects redirects outside the SoundCloud CDN allowlist before fetching the target", async () => {
     const initialUrl = "https://cf-media.sndcdn.com/track.mp3";
     const requestedUrls: string[] = [];

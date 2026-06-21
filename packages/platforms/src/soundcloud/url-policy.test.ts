@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { validateSoundCloudCdnUrl as validateCanonicalSoundCloudCdnUrl } from "@avoid.quest/platforms/soundcloud/url-policy";
-import { validateSoundCloudCdnUrl } from "./soundcloud-url-policy";
+import { getProxiedSoundCloudUrl } from "./index";
+import {
+  isSoundCloudCdnHostname,
+  isSoundCloudPageHostname,
+  validateSoundCloudCdnUrl,
+} from "./url-policy";
 
 function expectInvalidSoundCloudUrl(
   url: string,
@@ -10,10 +14,6 @@ function expectInvalidSoundCloudUrl(
 }
 
 describe("validateSoundCloudCdnUrl", () => {
-  test("delegates to the platform-owned canonical policy", () => {
-    expect(validateSoundCloudCdnUrl).toBe(validateCanonicalSoundCloudCdnUrl);
-  });
-
   test("allows normalized SoundCloud CDN hostnames", () => {
     expect(
       validateSoundCloudCdnUrl("https://cf-media.sndcdn.com/track.mp3").ok
@@ -51,5 +51,31 @@ describe("validateSoundCloudCdnUrl", () => {
       `https://cf-media.sndcdn.com/${"x".repeat(2048)}`,
       "invalid-url"
     );
+  });
+});
+
+describe("SoundCloud hostname policies", () => {
+  test("use the shared hostname normalization", () => {
+    expect(isSoundCloudCdnHostname("CF-MEDIA.SNDCDN.COM.")).toBe(true);
+    expect(isSoundCloudCdnHostname("cf-media.sndcdn.com.evil.test")).toBe(
+      false
+    );
+    expect(isSoundCloudPageHostname("WWW.SOUNDCLOUD.COM.")).toBe(true);
+  });
+});
+
+describe("getProxiedSoundCloudUrl", () => {
+  test("generates proxy URLs only for canonical SoundCloud CDN URLs", () => {
+    const cdnUrl = "https://cf-media.sndcdn.com/track.mp3";
+    const hlsUrl = "https://cf-hls-media.sndcdn.com/track.m3u8";
+    const pageUrl = "https://soundcloud.com/artist/track";
+    const spoofedUrl = "https://cf-media.sndcdn.com.evil.test/track.mp3";
+
+    expect(getProxiedSoundCloudUrl(cdnUrl)).toBe(
+      `/api/soundcloud-proxy?url=${encodeURIComponent(cdnUrl)}`
+    );
+    expect(getProxiedSoundCloudUrl(hlsUrl)).toBe(hlsUrl);
+    expect(getProxiedSoundCloudUrl(pageUrl)).toBe(pageUrl);
+    expect(getProxiedSoundCloudUrl(spoofedUrl)).toBe(spoofedUrl);
   });
 });

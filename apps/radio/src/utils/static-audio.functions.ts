@@ -12,7 +12,7 @@ import {
 } from "@avoid.quest/error";
 import {
   fetchWithValidatedRedirectResult,
-  type ValidatedRedirectFailure,
+  type ValidatedRedirectTargetFailure,
 } from "@avoid.quest/platforms/redirects";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
@@ -29,6 +29,7 @@ import type {
   StaticAudioMetadata,
   StaticAudioTrack,
 } from "@/lib/platform-types";
+import { validateRedirectTargetUrl } from "@/lib/proxy/redirect-target-validation";
 import {
   type StreamUrlValidationFailure,
   validatePublicStreamUrl,
@@ -39,7 +40,7 @@ const REQUEST_TIMEOUT_MS = 15_000;
 const STATIC_AUDIO_MAX_REDIRECTS = 5;
 type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 type StaticAudioRedirectFailure =
-  ValidatedRedirectFailure<StreamUrlValidationFailure>;
+  ValidatedRedirectTargetFailure<StreamUrlValidationFailure>;
 
 const STATIC_AUDIO_INVALID_URL_ERROR = {
   code: "STATIC_AUDIO_INVALID_URL",
@@ -73,7 +74,6 @@ const STATIC_AUDIO_URL_VALIDATION_ERRORS = {
 } as const satisfies Record<StreamUrlValidationFailure, AppErrorInit>;
 
 const STATIC_AUDIO_REDIRECT_FAILURE_ERRORS = {
-  required: STATIC_AUDIO_INVALID_URL_ERROR,
   "invalid-url": STATIC_AUDIO_INVALID_URL_ERROR,
   "invalid-protocol": STATIC_AUDIO_INVALID_PROTOCOL_ERROR,
   "internal-address": STATIC_AUDIO_PRIVATE_ADDRESS_ERROR,
@@ -132,7 +132,12 @@ export async function fetchStaticAudioWithRedirects(
     invalidUrlReason: "invalid-url",
     maxRedirects: STATIC_AUDIO_MAX_REDIRECTS,
     url,
-    validateUrl: validatePublicStreamUrl,
+    validateUrl: (redirectUrl) =>
+      validateRedirectTargetUrl(
+        redirectUrl,
+        validatePublicStreamUrl,
+        "invalid-url"
+      ),
   });
 
   if (!redirectResult.ok) {

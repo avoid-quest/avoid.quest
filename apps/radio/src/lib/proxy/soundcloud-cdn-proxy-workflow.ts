@@ -1,5 +1,5 @@
 import type { AppErrorInit } from "@avoid.quest/error";
-import type { ValidatedRedirectFailure } from "@avoid.quest/platforms/redirects";
+import type { ValidatedRedirectTargetFailure } from "@avoid.quest/platforms/redirects";
 import { logSSRFAttempt } from "@/lib/logger";
 import {
   type CdnProxyPolicy,
@@ -11,7 +11,7 @@ import {
 } from "./soundcloud-url-policy";
 
 type SoundCloudRedirectFailure =
-  ValidatedRedirectFailure<SoundCloudCdnUrlValidationFailure>;
+  ValidatedRedirectTargetFailure<SoundCloudCdnUrlValidationFailure>;
 type SoundCloudProxyAuth = {
   ip: string | undefined;
   sessionId: string;
@@ -68,7 +68,6 @@ const SOUNDCLOUD_URL_FAILURE_ERRORS = {
 } as const satisfies Record<SoundCloudCdnUrlValidationFailure, AppErrorInit>;
 
 const SOUNDCLOUD_REDIRECT_FAILURE_ERRORS = {
-  required: SOUNDCLOUD_INVALID_URL_ERROR,
   "invalid-url": SOUNDCLOUD_INVALID_URL_ERROR,
   "invalid-protocol": SOUNDCLOUD_INVALID_PROTOCOL_ERROR,
   "page-url": SOUNDCLOUD_PAGE_URL_ERROR,

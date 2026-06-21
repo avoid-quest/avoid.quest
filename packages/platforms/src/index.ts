@@ -16,6 +16,15 @@ export {
   getProxiedBandcampUrl,
   searchBandcamp,
 } from "./bandcamp/index.js";
+export type {
+  BandcampCdnUrlValidationFailure,
+  BandcampCdnUrlValidationResult,
+} from "./bandcamp/url-policy.js";
+export {
+  isBandcampCdnHostname,
+  isBandcampHostname,
+  validateBandcampCdnUrl,
+} from "./bandcamp/url-policy.js";
 // Unified detection
 export {
   BANDCAMP_HTML_MARKERS,
@@ -83,6 +92,17 @@ export {
   resolveShortLink,
   searchSoundCloud,
 } from "./soundcloud/index.js";
+export type {
+  SoundCloudCdnUrlValidationFailure,
+  SoundCloudCdnUrlValidationResult,
+} from "./soundcloud/url-policy.js";
+export {
+  isSoundCloudCdnHostname,
+  isSoundCloudCorsAllowedCdnHostname,
+  isSoundCloudHostname,
+  isSoundCloudPageHostname,
+  validateSoundCloudCdnUrl,
+} from "./soundcloud/url-policy.js";
 export type {
   Platform,
   PlatformItemError,

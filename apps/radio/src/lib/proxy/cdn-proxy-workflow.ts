@@ -2,9 +2,11 @@ import { AppError, type AppErrorInit, captureError } from "@avoid.quest/error";
 import {
   type FetchLike,
   fetchWithValidatedRedirectResult,
+  type RedirectTargetValidationFailure,
   type UrlValidationResult,
-  type ValidatedRedirectFailure,
+  type ValidatedRedirectTargetFailure,
 } from "@avoid.quest/platforms/redirects";
+import { validateRedirectTargetUrl } from "./redirect-target-validation";
 
 const DEFAULT_FETCH_TIMEOUT_MS = 10_000;
 const DEFAULT_MAX_REDIRECTS = 5;
@@ -39,7 +41,7 @@ type CdnProxyWorkflowConfig<
   fetchFailedError: AppErrorInit;
   fetchImpl?: FetchLike | undefined;
   fetchTimeoutMs?: number | undefined;
-  invalidUrlReason: UrlFailure;
+  invalidUrlReason: RedirectTargetValidationFailure<UrlFailure>;
   maxRedirects?: number | undefined;
   maxResponseSize?: number | undefined;
   onUrlValidationFailure?:
@@ -52,7 +54,7 @@ type CdnProxyWorkflowConfig<
   operation: string;
   proxyPolicy: CdnProxyPolicy;
   redirectFailureErrors: Readonly<
-    Record<ValidatedRedirectFailure<UrlFailure>, AppErrorInit>
+    Record<ValidatedRedirectTargetFailure<UrlFailure>, AppErrorInit>
   >;
   responseTooLargeError: AppErrorInit;
   timeoutError: AppErrorInit;
@@ -158,7 +160,8 @@ export function createCdnProxyRequestWorkflow<
         invalidUrlReason,
         maxRedirects,
         url,
-        validateUrl,
+        validateUrl: (redirectUrl) =>
+          validateRedirectTargetUrl(redirectUrl, validateUrl, invalidUrlReason),
       });
 
       clearTimeout(timeout);

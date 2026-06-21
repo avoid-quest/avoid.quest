@@ -18,6 +18,7 @@ import { load } from "cheerio";
 import { decode } from "html-entities";
 
 import { detectBandcampItemType } from "./detect.js";
+import { validateBandcampCdnUrl } from "./url-policy.js";
 
 export {
   BANDCAMP_HTML_MARKERS,
@@ -28,6 +29,15 @@ export {
 } from "./detect.js";
 export type { BandcampSearchFilter, BandcampSearchResult } from "./search.js";
 export { searchBandcamp } from "./search.js";
+export type {
+  BandcampCdnUrlValidationFailure,
+  BandcampCdnUrlValidationResult,
+} from "./url-policy.js";
+export {
+  isBandcampCdnHostname,
+  isBandcampHostname,
+  validateBandcampCdnUrl,
+} from "./url-policy.js";
 
 // Top-level regex patterns for performance
 const TRAILING_SLASH_RE = /\/?$/;
@@ -56,7 +66,7 @@ type BandcampExtraData = {
 
 /** Proxies bcbits.com URLs through the API to avoid CORS issues. */
 export function getProxiedBandcampUrl(url: string): string {
-  if (url.includes("bcbits.com")) {
+  if (validateBandcampCdnUrl(url).ok) {
     return `/api/bandcamp-proxy?url=${encodeURIComponent(url)}`;
   }
   return url;

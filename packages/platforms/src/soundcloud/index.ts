@@ -11,6 +11,11 @@ import type {
   SoundCloudItemResult,
   SoundCloudMetadata,
 } from "./types.js";
+import {
+  isSoundCloudCorsAllowedCdnHostname,
+  isSoundCloudHostname,
+  validateSoundCloudCdnUrl,
+} from "./url-policy.js";
 
 // Structural types for SoundCloud API responses (only properties we access)
 
@@ -77,19 +82,19 @@ export type {
   SoundCloudMetadata,
   SoundCloudTrackInfo,
 } from "./types.js";
+export type {
+  SoundCloudCdnUrlValidationFailure,
+  SoundCloudCdnUrlValidationResult,
+} from "./url-policy.js";
+export {
+  isSoundCloudCdnHostname,
+  isSoundCloudCorsAllowedCdnHostname,
+  isSoundCloudHostname,
+  isSoundCloudPageHostname,
+  validateSoundCloudCdnUrl,
+} from "./url-policy.js";
 
-const SOUNDCLOUD_DOMAINS = [
-  "sndcdn.com",
-  "media.soundcloud.com",
-  "soundcloud.com",
-];
-
-// HLS CDN allows CORS, so no proxy needed
-const CORS_ALLOWED_DOMAINS = ["cf-hls-media.sndcdn.com"];
 const SHORT_LINK_MAX_REDIRECTS = 5;
-const SOUNDCLOUD_HOST = "soundcloud.com";
-const SOUNDCLOUD_HOST_SUFFIX = ".soundcloud.com";
-const TRAILING_DOTS_PATTERN = /\.+$/;
 
 type ShortLinkRedirectValidationFailure =
   | "invalid-url"
@@ -105,29 +110,6 @@ const SHORT_LINK_REDIRECT_ERROR_MESSAGES = {
   "missing-location": "SoundCloud short link redirect missing Location header",
   "too-many-redirects": "Too many SoundCloud short link redirects",
 } as const satisfies Record<ShortLinkRedirectFailure, string>;
-
-function isSoundCloudStreamUrl(url: string): boolean {
-  return (
-    !url.startsWith("/api/") &&
-    SOUNDCLOUD_DOMAINS.some((domain) => url.includes(domain))
-  );
-}
-
-function isCorsAllowed(url: string): boolean {
-  return CORS_ALLOWED_DOMAINS.some((domain) => url.includes(domain));
-}
-
-function normalizeHostname(hostname: string): string {
-  return hostname.toLowerCase().replace(TRAILING_DOTS_PATTERN, "");
-}
-
-function isSoundCloudHostname(hostname: string): boolean {
-  const normalized = normalizeHostname(hostname);
-  return (
-    normalized === SOUNDCLOUD_HOST ||
-    normalized.endsWith(SOUNDCLOUD_HOST_SUFFIX)
-  );
-}
 
 function validateShortLinkRedirectTarget(
   url: string
@@ -156,14 +138,17 @@ function createShortLinkRedirectError(reason: ShortLinkRedirectFailure): Error {
 
 /** Proxies SoundCloud stream URLs to avoid CORS issues (skips HLS which has CORS enabled) */
 export function getProxiedSoundCloudUrl(url: string): string {
-  // HLS CDN has CORS enabled, no proxy needed
-  if (isCorsAllowed(url)) {
+  const validation = validateSoundCloudCdnUrl(url);
+  if (!validation.ok) {
     return url;
   }
-  if (isSoundCloudStreamUrl(url)) {
-    return `/api/soundcloud-proxy?url=${encodeURIComponent(url)}`;
+
+  // HLS CDN has CORS enabled, no proxy needed
+  if (isSoundCloudCorsAllowedCdnHostname(validation.parsed.hostname)) {
+    return url;
   }
-  return url;
+
+  return `/api/soundcloud-proxy?url=${encodeURIComponent(url)}`;
 }
 
 function createErrorResponse(message: string): SoundCloudItemError {

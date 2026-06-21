@@ -38,6 +38,25 @@ function createWorkflow() {
 }
 
 describe("createBandcampCdnProxyWorkflow", () => {
+  test("maps canonical invalid-domain failures to the Bandcamp response", async () => {
+    const response = await createWorkflow().handle({
+      auth: undefined,
+      origin: "https://radio.test",
+      request: new Request(
+        "https://radio.test/api/bandcamp-proxy?url=https%3A%2F%2Fbcbits.com.evil.test%2Ftrack.mp3"
+      ),
+      requestId: "req_bandcamp_invalid_domain",
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      code: "BANDCAMP_PROXY_INVALID_DOMAIN",
+      message: "Invalid URL: must be a Bandcamp CDN URL",
+      requestId: "req_bandcamp_invalid_domain",
+      status: 400,
+    });
+  });
+
   test("rejects redirects outside the Bandcamp CDN before fetching the target", async () => {
     const initialUrl = "https://t4.bcbits.com/stream.mp3";
     const requestedUrls: string[] = [];

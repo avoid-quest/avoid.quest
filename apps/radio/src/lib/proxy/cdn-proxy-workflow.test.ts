@@ -3,7 +3,7 @@ import type { AppError, AppErrorInit } from "@avoid.quest/error";
 import type {
   FetchLike,
   UrlValidationResult,
-  ValidatedRedirectFailure,
+  ValidatedRedirectTargetFailure,
 } from "@avoid.quest/platforms/redirects";
 import {
   type CdnProxyWorkflowContext,
@@ -11,7 +11,7 @@ import {
 } from "./cdn-proxy-workflow";
 
 type TestFailure = "required" | "invalid-url" | "invalid-domain";
-type TestRedirectFailure = ValidatedRedirectFailure<TestFailure>;
+type TestRedirectFailure = ValidatedRedirectTargetFailure<TestFailure>;
 type TestAuth = {
   ip?: string;
   sessionId: string;
@@ -42,7 +42,6 @@ const TEST_URL_FAILURE_ERRORS = {
 } as const satisfies Record<TestFailure, AppErrorInit>;
 
 const TEST_REDIRECT_FAILURE_ERRORS = {
-  required: TEST_URL_FAILURE_ERRORS["invalid-url"],
   "invalid-url": TEST_URL_FAILURE_ERRORS["invalid-url"],
   "invalid-domain": TEST_URL_FAILURE_ERRORS["invalid-domain"],
   "missing-location": {
@@ -164,6 +163,25 @@ function createWorkflow({
 }
 
 describe("createCdnProxyRequestWorkflow", () => {
+  test("keeps missing request URL parameters on the request validation path", async () => {
+    const workflow = createWorkflow();
+
+    const response = await workflow.handle({
+      auth: { ip: "203.0.113.10", sessionId: "sess_test" },
+      origin: "https://radio.test",
+      request: new Request("https://radio.test/api/test-proxy"),
+      requestId: "req_missing_url",
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      code: "TEST_URL_REQUIRED",
+      message: "URL parameter is required",
+      requestId: "req_missing_url",
+      status: 400,
+    });
+  });
+
   test("runs the validation failure hook before returning a problem response", async () => {
     const validationFailures: Array<{
       reason: TestFailure;
@@ -261,6 +279,29 @@ describe("createCdnProxyRequestWorkflow", () => {
       status: 400,
     });
     expect(requestedUrls).toEqual(["https://cdn.example/track.mp3"]);
+  });
+
+  test("maps required failures on concrete redirect URLs to invalid URL", async () => {
+    const fetchImpl = mock(async () => {
+      await Promise.resolve();
+      throw new Error("Empty redirect URLs should not be fetched");
+    });
+    const workflow = createWorkflow({ fetchImpl });
+
+    const response = await workflow.fetchStream("", {
+      origin: "https://radio.test",
+      request: new Request("https://radio.test/api/test-proxy"),
+      requestId: "req_empty_redirect_url",
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      code: "TEST_INVALID_URL",
+      message: "Invalid URL",
+      requestId: "req_empty_redirect_url",
+      status: 400,
+    });
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 
   test("maps aborted upstream fetches to the configured timeout response", async () => {

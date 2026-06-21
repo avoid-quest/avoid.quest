@@ -12,6 +12,14 @@ export type ValidatedRedirectFailure<Failure extends string> =
   | "missing-location"
   | "too-many-redirects";
 
+export type RedirectTargetValidationFailure<Failure extends string> = Exclude<
+  Failure,
+  "required"
+>;
+
+export type ValidatedRedirectTargetFailure<Failure extends string> =
+  ValidatedRedirectFailure<RedirectTargetValidationFailure<Failure>>;
+
 export type ValidatedRedirectSuccess = {
   response: Response;
   resolvedUrl: string;

@@ -17,12 +17,15 @@ export {
   searchBandcamp,
 } from "./bandcamp/index.js";
 export type {
+  BandcampCdnRedirectUrlValidationFailure,
+  BandcampCdnRedirectUrlValidationResult,
   BandcampCdnUrlValidationFailure,
   BandcampCdnUrlValidationResult,
 } from "./bandcamp/url-policy.js";
 export {
   isBandcampCdnHostname,
   isBandcampHostname,
+  validateBandcampCdnRedirectUrl,
   validateBandcampCdnUrl,
 } from "./bandcamp/url-policy.js";
 // Unified detection
@@ -93,6 +96,8 @@ export {
   searchSoundCloud,
 } from "./soundcloud/index.js";
 export type {
+  SoundCloudCdnRedirectUrlValidationFailure,
+  SoundCloudCdnRedirectUrlValidationResult,
   SoundCloudCdnUrlValidationFailure,
   SoundCloudCdnUrlValidationResult,
 } from "./soundcloud/url-policy.js";
@@ -101,6 +106,7 @@ export {
   isSoundCloudCorsAllowedCdnHostname,
   isSoundCloudHostname,
   isSoundCloudPageHostname,
+  validateSoundCloudCdnRedirectUrl,
   validateSoundCloudCdnUrl,
 } from "./soundcloud/url-policy.js";
 export type {
@@ -112,6 +118,21 @@ export type {
   PlatformTrack,
 } from "./types.js";
 export { isYouTubeMetadata } from "./types.js";
+export type {
+  PublicHttpFetchResult,
+  PublicHttpRedirectFailure,
+  PublicHttpUrlFailure,
+  PublicHttpUrlResult,
+  PublicHttpUrlValidationFailure,
+  PublicHttpUrlValidationResult,
+} from "./url-policy/index.js";
+export {
+  fetchPublicHttpUrlWithValidatedRedirects,
+  isBlockedPublicHttpHostname,
+  isPublicHttpUrl,
+  validatePublicHttpUrl,
+  validatePublicHttpUrlParam,
+} from "./url-policy/index.js";
 
 // YouTube
 export type {

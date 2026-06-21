@@ -4,7 +4,6 @@ import {
   determineStreamAccessMode,
   fetchPublicStreamWithRedirects,
   inspectStreamAccess,
-  StreamRedirectError,
 } from "./stream-access";
 
 afterEach(() => {
@@ -12,7 +11,7 @@ afterEach(() => {
 });
 
 describe("fetchPublicStreamWithRedirects", () => {
-  test("keeps the public redirect helper success shape stable", async () => {
+  test("returns a typed public redirect fetch result on success", async () => {
     const fetchImpl = mock(async () => {
       await Promise.resolve();
       return new Response("ok");
@@ -24,11 +23,14 @@ describe("fetchPublicStreamWithRedirects", () => {
       fetchImpl
     );
 
+    expect(result.ok).toBeTrue();
+    if (!result.ok) {
+      throw new Error("Expected successful public stream fetch");
+    }
     expect(result.resolvedUrl).toBe("https://radio.example/live");
-    expect("ok" in result).toBe(false);
   });
 
-  test("maps required failures on concrete stream URLs to invalid URL", async () => {
+  test("maps empty concrete stream URLs to invalid URL", async () => {
     const fetchImpl = mock(async () => {
       await Promise.resolve();
       throw new Error("Empty stream URLs should not be fetched");
@@ -36,9 +38,12 @@ describe("fetchPublicStreamWithRedirects", () => {
 
     await expect(
       fetchPublicStreamWithRedirects("", { method: "GET" }, fetchImpl)
-    ).rejects.toMatchObject({
-      reason: "invalid-url",
-      url: "",
+    ).resolves.toEqual({
+      failure: {
+        reason: "invalid-url",
+        url: "",
+      },
+      ok: false,
     });
     expect(fetchImpl).not.toHaveBeenCalled();
   });
@@ -152,19 +157,19 @@ describe("determineStreamAccessMode", () => {
         fetchImpl,
         origin: "https://radio.test",
       })
-    ).rejects.toMatchObject({
-      reason: "internal-address",
-      url: "http://127.0.0.1/live",
+    ).resolves.toMatchObject({
+      failure: {
+        reason: "internal-address",
+        url: "http://127.0.0.1/live",
+      },
+      mode: "rejected",
     });
     await expect(
       determineStreamAccessMode("https://radio.example/live", {
         fetchImpl,
         origin: "https://radio.test",
       })
-    ).rejects.toMatchObject({
-      reason: "internal-address",
-      url: "http://127.0.0.1/live",
-    });
+    ).resolves.toBe("rejected");
     expect(requestedUrls).toEqual([
       "https://radio.example/live",
       "https://radio.example/live",
@@ -263,23 +268,20 @@ describe("determineStreamAccessMode", () => {
       return Response.redirect("http://127.0.0.1/live", 302);
     });
 
-    try {
-      await inspectStreamAccess("https://radio.example/live", {
-        fetchImpl,
-        origin: "https://radio.test",
-      });
-    } catch (error) {
-      expect(error).toBeInstanceOf(StreamRedirectError);
-      expect(error).toMatchObject({
+    const decision = await inspectStreamAccess("https://radio.example/live", {
+      fetchImpl,
+      origin: "https://radio.test",
+    });
+
+    expect(decision).toMatchObject({
+      failure: {
         reason: "internal-address",
         url: "http://127.0.0.1/live",
-      });
-      expect(requestedUrls).toEqual(["https://radio.example/live"]);
-      expect(redirectModes).toEqual(["manual"]);
-      return;
-    }
-
-    throw new Error("Expected loopback redirect to be rejected");
+      },
+      mode: "rejected",
+    });
+    expect(requestedUrls).toEqual(["https://radio.example/live"]);
+    expect(redirectModes).toEqual(["manual"]);
   });
 
   test("stops after the redirect hop limit", async () => {
@@ -298,9 +300,12 @@ describe("determineStreamAccessMode", () => {
         fetchImpl,
         origin: "https://radio.test",
       })
-    ).rejects.toMatchObject({
-      reason: "too-many-redirects",
-      url: "https://radio.example/live-5",
+    ).resolves.toMatchObject({
+      failure: {
+        reason: "too-many-redirects",
+        url: "https://radio.example/live-5",
+      },
+      mode: "rejected",
     });
     expect(requestedUrls).toHaveLength(6);
   });

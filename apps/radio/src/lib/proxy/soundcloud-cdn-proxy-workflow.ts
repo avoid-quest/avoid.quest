@@ -1,7 +1,9 @@
 import type { AppErrorInit } from "@avoid.quest/error";
-import type { ValidatedRedirectTargetFailure } from "@avoid.quest/platforms/redirects";
+import type { ValidatedRedirectFailure } from "@avoid.quest/platforms/redirects";
 import {
+  type SoundCloudCdnRedirectUrlValidationFailure,
   type SoundCloudCdnUrlValidationFailure,
+  validateSoundCloudCdnRedirectUrl,
   validateSoundCloudCdnUrl,
 } from "@avoid.quest/platforms/soundcloud/url-policy";
 import { logSSRFAttempt } from "@/lib/logger";
@@ -11,7 +13,7 @@ import {
 } from "./cdn-proxy-workflow";
 
 type SoundCloudRedirectFailure =
-  ValidatedRedirectTargetFailure<SoundCloudCdnUrlValidationFailure>;
+  ValidatedRedirectFailure<SoundCloudCdnRedirectUrlValidationFailure>;
 type SoundCloudProxyAuth = {
   ip: string | undefined;
   sessionId: string;
@@ -107,6 +109,7 @@ export function createSoundCloudCdnProxyWorkflow({
 }: SoundCloudCdnProxyWorkflowDependencies) {
   return createCdnProxyRequestWorkflow<
     SoundCloudCdnUrlValidationFailure,
+    SoundCloudCdnRedirectUrlValidationFailure,
     SoundCloudProxyAuth
   >({
     createUpstreamHeaders: createSoundCloudUpstreamHeaders,
@@ -153,6 +156,7 @@ export function createSoundCloudCdnProxyWorkflow({
       status: response.status,
     }),
     urlFailureErrors: SOUNDCLOUD_URL_FAILURE_ERRORS,
+    validateRedirectUrl: validateSoundCloudCdnRedirectUrl,
     validateUrl: validateSoundCloudCdnUrl,
   });
 }

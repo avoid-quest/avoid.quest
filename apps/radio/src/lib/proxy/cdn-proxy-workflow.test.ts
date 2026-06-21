@@ -3,7 +3,6 @@ import type { AppError, AppErrorInit } from "@avoid.quest/error";
 import type {
   FetchLike,
   UrlValidationResult,
-  ValidatedRedirectTargetFailure,
 } from "@avoid.quest/platforms/redirects";
 import {
   type CdnProxyWorkflowContext,
@@ -11,7 +10,11 @@ import {
 } from "./cdn-proxy-workflow";
 
 type TestFailure = "required" | "invalid-url" | "invalid-domain";
-type TestRedirectFailure = ValidatedRedirectTargetFailure<TestFailure>;
+type TestRedirectUrlFailure = "invalid-url" | "invalid-domain";
+type TestRedirectFailure =
+  | TestRedirectUrlFailure
+  | "missing-location"
+  | "too-many-redirects";
 type TestAuth = {
   ip?: string;
   sessionId: string;
@@ -101,6 +104,20 @@ function validateTestUrl(
   return { ok: true, url: urlParam };
 }
 
+function validateTestRedirectUrl(
+  url: string
+): UrlValidationResult<TestRedirectUrlFailure> {
+  if (!url) {
+    return { ok: false, reason: "invalid-url" };
+  }
+
+  if (!url.startsWith("https://cdn.example/")) {
+    return { ok: false, reason: "invalid-domain" };
+  }
+
+  return { ok: true, url };
+}
+
 function createWorkflow({
   fetchImpl,
   fetchTimeoutMs,
@@ -116,7 +133,11 @@ function createWorkflow({
     urlParam: string | null;
   }) => void;
 } = {}) {
-  return createCdnProxyRequestWorkflow<TestFailure, TestAuth>({
+  return createCdnProxyRequestWorkflow<
+    TestFailure,
+    TestRedirectUrlFailure,
+    TestAuth
+  >({
     createUpstreamHeaders: (request) => ({
       Range: request.headers.get("range") || "",
       Referer: "https://example.com/",
@@ -158,6 +179,7 @@ function createWorkflow({
       status: response.status,
     }),
     urlFailureErrors: TEST_URL_FAILURE_ERRORS,
+    validateRedirectUrl: validateTestRedirectUrl,
     validateUrl: validateTestUrl,
   });
 }
@@ -281,7 +303,7 @@ describe("createCdnProxyRequestWorkflow", () => {
     expect(requestedUrls).toEqual(["https://cdn.example/track.mp3"]);
   });
 
-  test("maps required failures on concrete redirect URLs to invalid URL", async () => {
+  test("maps empty concrete redirect URLs to invalid URL", async () => {
     const fetchImpl = mock(async () => {
       await Promise.resolve();
       throw new Error("Empty redirect URLs should not be fetched");

@@ -11,6 +11,9 @@ export const MAX_BANDCAMP_CDN_URL_LENGTH = 2048;
 
 export type BandcampCdnUrlValidationFailure =
   | "required"
+  | BandcampCdnRedirectUrlValidationFailure;
+
+export type BandcampCdnRedirectUrlValidationFailure =
   | "invalid-url"
   | "invalid-protocol"
   | "invalid-domain";
@@ -18,6 +21,10 @@ export type BandcampCdnUrlValidationFailure =
 export type BandcampCdnUrlValidationResult =
   | { ok: true; url: string; parsed: URL }
   | { ok: false; reason: BandcampCdnUrlValidationFailure };
+
+export type BandcampCdnRedirectUrlValidationResult =
+  | { ok: true; url: string; parsed: URL }
+  | { ok: false; reason: BandcampCdnRedirectUrlValidationFailure };
 
 export function isBandcampHostname(hostname: string): boolean {
   return isHostnameOrSubdomain(hostname, BANDCAMP_HOST);
@@ -36,20 +43,16 @@ export function isBandcampUrl(url: string): boolean {
   return parsed ? isBandcampHostname(parsed.hostname) : false;
 }
 
-export function validateBandcampCdnUrl(
-  urlParam: string | null
-): BandcampCdnUrlValidationResult {
-  if (!urlParam) {
-    return { ok: false, reason: "required" };
-  }
-
-  if (urlParam.length > MAX_BANDCAMP_CDN_URL_LENGTH) {
+export function validateBandcampCdnRedirectUrl(
+  url: string
+): BandcampCdnRedirectUrlValidationResult {
+  if (url.length > MAX_BANDCAMP_CDN_URL_LENGTH) {
     return { ok: false, reason: "invalid-url" };
   }
 
   let parsed: URL;
   try {
-    parsed = new URL(urlParam);
+    parsed = new URL(url);
   } catch {
     return { ok: false, reason: "invalid-url" };
   }
@@ -62,5 +65,15 @@ export function validateBandcampCdnUrl(
     return { ok: false, reason: "invalid-domain" };
   }
 
-  return { ok: true, url: urlParam, parsed };
+  return { ok: true, url, parsed };
+}
+
+export function validateBandcampCdnUrl(
+  urlParam: string | null
+): BandcampCdnUrlValidationResult {
+  if (!urlParam) {
+    return { ok: false, reason: "required" };
+  }
+
+  return validateBandcampCdnRedirectUrl(urlParam);
 }

@@ -30,12 +30,15 @@ export {
 export type { BandcampSearchFilter, BandcampSearchResult } from "./search.js";
 export { searchBandcamp } from "./search.js";
 export type {
+  BandcampCdnRedirectUrlValidationFailure,
+  BandcampCdnRedirectUrlValidationResult,
   BandcampCdnUrlValidationFailure,
   BandcampCdnUrlValidationResult,
 } from "./url-policy.js";
 export {
   isBandcampCdnHostname,
   isBandcampHostname,
+  validateBandcampCdnRedirectUrl,
   validateBandcampCdnUrl,
 } from "./url-policy.js";
 

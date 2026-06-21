@@ -44,7 +44,7 @@ describe("validateAuthAndRateLimit", () => {
     });
   });
 
-  test("falls back to a valid existing session ID when Cloudflare IP is unavailable", async () => {
+  test("does not use a syntactically valid session cookie when Cloudflare IP is unavailable", async () => {
     const limitMock = mock(async (_options: { key: string }) => ({
       success: true,
     }));
@@ -62,13 +62,12 @@ describe("validateAuthAndRateLimit", () => {
       { createSessionIfMissing: true }
     );
 
-    expect(result).not.toBeInstanceOf(Response);
-    expect(limitMock).toHaveBeenCalledWith({
-      key: `feedback:session:${VALID_SESSION_ID}`,
-    });
+    expect(result).toBeInstanceOf(Response);
+    expect((result as Response).status).toBe(429);
+    expect(limitMock).not.toHaveBeenCalled();
   });
 
-  test("fails closed when no trusted IP or valid existing session can key the limit", async () => {
+  test("fails closed when no trusted IP can key the limit", async () => {
     const limitMock = mock(async (_options: { key: string }) => ({
       success: true,
     }));

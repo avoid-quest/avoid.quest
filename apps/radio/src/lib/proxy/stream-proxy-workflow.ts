@@ -2,8 +2,8 @@ import { AppError, type AppErrorInit, captureError } from "@avoid.quest/error";
 import {
   fetchPublicStreamWithRedirects,
   type StreamAccessDecision,
-  StreamRedirectError,
   type StreamRedirectFailure,
+  type StreamRedirectFailureDetails,
 } from "./stream-access";
 import {
   type StreamUrlValidationFailure,
@@ -120,8 +120,10 @@ function validateStreamUrl(urlParam: string | null): string | AppError {
   );
 }
 
-function createRedirectFailureError(error: StreamRedirectError): AppError {
-  return createStreamProxyError(STREAM_REDIRECT_FAILURE_ERRORS[error.reason]);
+function createRedirectFailureError(
+  failure: StreamRedirectFailureDetails
+): AppError {
+  return createStreamProxyError(STREAM_REDIRECT_FAILURE_ERRORS[failure.reason]);
 }
 
 function copyHeaderIfPresent(
@@ -214,13 +216,22 @@ export function createStreamProxyRequestWorkflow({
     { origin, request, requestId }: StreamProxyWorkflowContext
   ): Promise<Response> => {
     try {
-      const { response: res } = await fetchPublicStreamWithRedirects(
+      const fetchResult = await fetchPublicStreamWithRedirects(
         url,
         {
           headers: createForwardedStreamHeaders(request),
         },
         fetchImpl
       );
+      if (!fetchResult.ok) {
+        return proxyPolicy.problem(
+          createRedirectFailureError(fetchResult.failure),
+          origin,
+          requestId
+        );
+      }
+
+      const { response: res } = fetchResult;
 
       if (!res.ok) {
         return proxyPolicy.problem(
@@ -239,14 +250,6 @@ export function createStreamProxyRequestWorkflow({
 
       return buildStreamResponse(res, request, requestId, proxyPolicy);
     } catch (error) {
-      if (error instanceof StreamRedirectError) {
-        return proxyPolicy.problem(
-          createRedirectFailureError(error),
-          origin,
-          requestId
-        );
-      }
-
       const appError = createStreamProxyError({
         code: "STREAM_PROXY_FETCH_FAILED",
         safeMessage: "Failed to fetch stream",
@@ -279,23 +282,19 @@ export function createStreamProxyRequestWorkflow({
       );
     }
 
-    let accessDecision: StreamAccessDecision;
-    try {
-      accessDecision = await inspectStreamAccess(urlValidation, {
-        origin: context.origin,
-        requestHeaders: context.request.headers,
-      });
-    } catch (error) {
-      if (error instanceof StreamRedirectError) {
-        return proxyPolicy.problem(
-          createRedirectFailureError(error),
-          context.origin,
-          context.requestId
-        );
-      }
+    const accessDecision = await inspectStreamAccess(urlValidation, {
+      origin: context.origin,
+      requestHeaders: context.request.headers,
+    });
 
-      throw error;
+    if (accessDecision.mode === "rejected") {
+      return proxyPolicy.problem(
+        createRedirectFailureError(accessDecision.failure),
+        context.origin,
+        context.requestId
+      );
     }
+
     if (accessDecision.mode === "direct" && accessDecision.resolvedUrl) {
       const streamUrl = accessDecision.resolvedUrl;
       if (canRedirectDirectStream(streamUrl, context.origin)) {

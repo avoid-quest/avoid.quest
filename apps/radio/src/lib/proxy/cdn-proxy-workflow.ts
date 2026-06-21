@@ -2,10 +2,8 @@ import { AppError, type AppErrorInit, captureError } from "@avoid.quest/error";
 import {
   type FetchLike,
   fetchWithValidatedRedirectResult,
-  type RedirectTargetValidationFailure,
   type UrlValidationResult,
-  type ValidatedRedirectTargetFailure,
-  validateRedirectTargetUrl,
+  type ValidatedRedirectFailure,
 } from "@avoid.quest/platforms/redirects";
 
 const DEFAULT_FETCH_TIMEOUT_MS = 10_000;
@@ -32,8 +30,13 @@ type UrlValidator<UrlFailure extends string> = (
   urlParam: string | null
 ) => UrlValidationResult<UrlFailure>;
 
+type RedirectUrlValidator<RedirectFailure extends string> = (
+  url: string
+) => UrlValidationResult<RedirectFailure>;
+
 type CdnProxyWorkflowConfig<
   UrlFailure extends string,
+  RedirectFailure extends string,
   AuthContext = unknown,
 > = {
   captureError?: typeof captureError | undefined;
@@ -41,7 +44,7 @@ type CdnProxyWorkflowConfig<
   fetchFailedError: AppErrorInit;
   fetchImpl?: FetchLike | undefined;
   fetchTimeoutMs?: number | undefined;
-  invalidUrlReason: RedirectTargetValidationFailure<UrlFailure>;
+  invalidUrlReason: RedirectFailure;
   maxRedirects?: number | undefined;
   maxResponseSize?: number | undefined;
   onUrlValidationFailure?:
@@ -54,12 +57,13 @@ type CdnProxyWorkflowConfig<
   operation: string;
   proxyPolicy: CdnProxyPolicy;
   redirectFailureErrors: Readonly<
-    Record<ValidatedRedirectTargetFailure<UrlFailure>, AppErrorInit>
+    Record<ValidatedRedirectFailure<RedirectFailure>, AppErrorInit>
   >;
   responseTooLargeError: AppErrorInit;
   timeoutError: AppErrorInit;
   upstreamError: (response: Response) => AppErrorInit;
   urlFailureErrors: Readonly<Record<UrlFailure, AppErrorInit>>;
+  validateRedirectUrl: RedirectUrlValidator<RedirectFailure>;
   validateUrl: UrlValidator<UrlFailure>;
 };
 
@@ -119,6 +123,7 @@ function buildCdnStreamResponse(
 
 export function createCdnProxyRequestWorkflow<
   UrlFailure extends string,
+  RedirectFailure extends string,
   AuthContext = unknown,
 >({
   captureError: captureErrorImpl = captureError,
@@ -136,10 +141,12 @@ export function createCdnProxyRequestWorkflow<
   responseTooLargeError,
   timeoutError,
   upstreamError,
+  validateRedirectUrl,
   urlFailureErrors,
   validateUrl,
 }: CdnProxyWorkflowConfig<
   UrlFailure,
+  RedirectFailure,
   AuthContext
 >): CdnProxyWorkflow<AuthContext> {
   const fetchStream = async (
@@ -160,8 +167,7 @@ export function createCdnProxyRequestWorkflow<
         invalidUrlReason,
         maxRedirects,
         url,
-        validateUrl: (redirectUrl) =>
-          validateRedirectTargetUrl(redirectUrl, validateUrl, invalidUrlReason),
+        validateUrl: validateRedirectUrl,
       });
 
       clearTimeout(timeout);

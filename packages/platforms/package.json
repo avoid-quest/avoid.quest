@@ -12,6 +12,7 @@
     "./bandcamp/search": "./src/bandcamp/search.ts",
     "./bandcamp/url-policy": "./src/bandcamp/url-policy.ts",
     "./redirects": "./src/redirects/index.ts",
+    "./url-policy": "./src/url-policy/index.ts",
     "./soundcloud": "./src/soundcloud/index.ts",
     "./soundcloud/search": "./src/soundcloud/search.ts",
     "./soundcloud/fetch-client": "./src/soundcloud/fetch-client/index.ts",

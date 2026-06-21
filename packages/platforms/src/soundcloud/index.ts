@@ -83,6 +83,8 @@ export type {
   SoundCloudTrackInfo,
 } from "./types.js";
 export type {
+  SoundCloudCdnRedirectUrlValidationFailure,
+  SoundCloudCdnRedirectUrlValidationResult,
   SoundCloudCdnUrlValidationFailure,
   SoundCloudCdnUrlValidationResult,
 } from "./url-policy.js";
@@ -91,6 +93,7 @@ export {
   isSoundCloudCorsAllowedCdnHostname,
   isSoundCloudHostname,
   isSoundCloudPageHostname,
+  validateSoundCloudCdnRedirectUrl,
   validateSoundCloudCdnUrl,
 } from "./url-policy.js";
 

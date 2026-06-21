@@ -11,10 +11,9 @@ import {
   runServerFn,
 } from "@avoid.quest/error";
 import {
-  fetchWithValidatedRedirectResult,
-  type ValidatedRedirectTargetFailure,
-  validateRedirectTargetUrl,
-} from "@avoid.quest/platforms/redirects";
+  fetchPublicHttpUrlWithValidatedRedirects,
+  type PublicHttpRedirectFailure,
+} from "@avoid.quest/platforms/url-policy";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import {
@@ -39,8 +38,7 @@ import { rateLimitMiddleware } from "./middleware";
 const REQUEST_TIMEOUT_MS = 15_000;
 const STATIC_AUDIO_MAX_REDIRECTS = 5;
 type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
-type StaticAudioRedirectFailure =
-  ValidatedRedirectTargetFailure<StreamUrlValidationFailure>;
+type StaticAudioRedirectFailure = PublicHttpRedirectFailure;
 
 const STATIC_AUDIO_INVALID_URL_ERROR = {
   code: "STATIC_AUDIO_INVALID_URL",
@@ -122,22 +120,15 @@ export async function fetchStaticAudioWithRedirects(
     signal?: AbortSignal;
   }
 ): Promise<Response> {
-  const redirectResult = await fetchWithValidatedRedirectResult({
+  const redirectResult = await fetchPublicHttpUrlWithValidatedRedirects({
     fetchImpl,
     init: {
       headers,
       method,
       signal,
     },
-    invalidUrlReason: "invalid-url",
     maxRedirects: STATIC_AUDIO_MAX_REDIRECTS,
     url,
-    validateUrl: (redirectUrl) =>
-      validateRedirectTargetUrl(
-        redirectUrl,
-        validatePublicStreamUrl,
-        "invalid-url"
-      ),
   });
 
   if (!redirectResult.ok) {

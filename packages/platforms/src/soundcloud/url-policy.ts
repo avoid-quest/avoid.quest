@@ -25,6 +25,9 @@ const SOUNDCLOUD_CORS_ALLOWED_CDN_HOSTNAMES = new Set([
 
 export type SoundCloudCdnUrlValidationFailure =
   | "required"
+  | SoundCloudCdnRedirectUrlValidationFailure;
+
+export type SoundCloudCdnRedirectUrlValidationFailure =
   | "invalid-url"
   | "invalid-protocol"
   | "page-url"
@@ -33,6 +36,10 @@ export type SoundCloudCdnUrlValidationFailure =
 export type SoundCloudCdnUrlValidationResult =
   | { ok: true; url: string; parsed: URL }
   | { ok: false; reason: SoundCloudCdnUrlValidationFailure };
+
+export type SoundCloudCdnRedirectUrlValidationResult =
+  | { ok: true; url: string; parsed: URL }
+  | { ok: false; reason: SoundCloudCdnRedirectUrlValidationFailure };
 
 export function isSoundCloudHostname(hostname: string): boolean {
   return isHostnameOrSubdomain(hostname, SOUNDCLOUD_HOST);
@@ -65,20 +72,16 @@ export function isSoundCloudUrl(url: string): boolean {
   return parsed ? isSoundCloudHostname(parsed.hostname) : false;
 }
 
-export function validateSoundCloudCdnUrl(
-  urlParam: string | null
-): SoundCloudCdnUrlValidationResult {
-  if (!urlParam) {
-    return { ok: false, reason: "required" };
-  }
-
-  if (urlParam.length > MAX_SOUNDCLOUD_CDN_URL_LENGTH) {
+export function validateSoundCloudCdnRedirectUrl(
+  url: string
+): SoundCloudCdnRedirectUrlValidationResult {
+  if (url.length > MAX_SOUNDCLOUD_CDN_URL_LENGTH) {
     return { ok: false, reason: "invalid-url" };
   }
 
   let parsed: URL;
   try {
-    parsed = new URL(urlParam);
+    parsed = new URL(url);
   } catch {
     return { ok: false, reason: "invalid-url" };
   }
@@ -95,5 +98,15 @@ export function validateSoundCloudCdnUrl(
     return { ok: false, reason: "invalid-domain" };
   }
 
-  return { ok: true, url: urlParam, parsed };
+  return { ok: true, url, parsed };
+}
+
+export function validateSoundCloudCdnUrl(
+  urlParam: string | null
+): SoundCloudCdnUrlValidationResult {
+  if (!urlParam) {
+    return { ok: false, reason: "required" };
+  }
+
+  return validateSoundCloudCdnRedirectUrl(urlParam);
 }

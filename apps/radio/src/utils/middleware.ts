@@ -43,9 +43,7 @@ export function rateLimitMiddleware(
       throw new Error("Unauthorized");
     }
 
-    const rateLimitSubject = resolveRateLimitSubject(request, sessionId, {
-      allowSessionFallback: !shouldSetCookie,
-    });
+    const rateLimitSubject = resolveRateLimitSubject(request);
     const rateLimitResult = await checkRateLimit(
       env,
       identifier,

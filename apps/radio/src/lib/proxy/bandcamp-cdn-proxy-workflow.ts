@@ -1,16 +1,18 @@
 import type { AppErrorInit } from "@avoid.quest/error";
 import {
+  type BandcampCdnRedirectUrlValidationFailure,
   type BandcampCdnUrlValidationFailure,
+  validateBandcampCdnRedirectUrl,
   validateBandcampCdnUrl,
 } from "@avoid.quest/platforms/bandcamp/url-policy";
-import type { ValidatedRedirectTargetFailure } from "@avoid.quest/platforms/redirects";
+import type { ValidatedRedirectFailure } from "@avoid.quest/platforms/redirects";
 import {
   type CdnProxyPolicy,
   createCdnProxyRequestWorkflow,
 } from "./cdn-proxy-workflow";
 
 type BandcampRedirectFailure =
-  ValidatedRedirectTargetFailure<BandcampCdnUrlValidationFailure>;
+  ValidatedRedirectFailure<BandcampCdnRedirectUrlValidationFailure>;
 
 type BandcampCdnProxyWorkflowDependencies = {
   proxyPolicy: CdnProxyPolicy;
@@ -118,6 +120,7 @@ export function createBandcampCdnProxyWorkflow({
       status: response.status,
     }),
     urlFailureErrors: BANDCAMP_URL_FAILURE_ERRORS,
+    validateRedirectUrl: validateBandcampCdnRedirectUrl,
     validateUrl: validateBandcampCdnUrl,
   });
 }

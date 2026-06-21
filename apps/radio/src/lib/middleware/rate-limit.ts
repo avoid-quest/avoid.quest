@@ -83,9 +83,7 @@ export async function validateAuthAndRateLimit(
     }
 
     // Check rate limit
-    const rateLimitSubject = resolveRateLimitSubject(request, sessionId, {
-      allowSessionFallback: !shouldSetCookie,
-    });
+    const rateLimitSubject = resolveRateLimitSubject(request);
     const rateLimitResult = await checkRateLimit(
       env,
       identifier,

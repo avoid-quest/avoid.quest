@@ -162,7 +162,7 @@ describe("fetchStaticAudioWithRedirects", () => {
     ]);
   });
 
-  test("maps required failures on concrete fetch URLs to invalid URL", async () => {
+  test("maps empty concrete fetch URLs to invalid URL", async () => {
     const fetchImpl = mock(async () => {
       await Promise.resolve();
       throw new Error("Empty static audio URLs should not be fetched");

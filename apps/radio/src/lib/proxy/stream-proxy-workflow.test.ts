@@ -3,7 +3,6 @@ import type { AppError } from "@avoid.quest/error";
 import {
   clearStreamAccessCache,
   inspectStreamAccess as inspectRealStreamAccess,
-  StreamRedirectError,
 } from "./stream-access";
 import { createStreamProxyRequestWorkflow } from "./stream-proxy-workflow";
 
@@ -172,10 +171,15 @@ describe("createStreamProxyRequestWorkflow", () => {
   test("maps access inspection redirect rejections without fallback refetch", async () => {
     const inspectStreamAccess = mock(async () => {
       await Promise.resolve();
-      throw new StreamRedirectError(
-        "internal-address",
-        "http://127.0.0.1/live.mp3"
-      );
+      return {
+        failure: {
+          reason: "internal-address" as const,
+          url: "http://127.0.0.1/live.mp3",
+        },
+        mode: "rejected" as const,
+        response: null,
+        resolvedUrl: null,
+      };
     });
     const fetchImpl = mock(async () => {
       await Promise.resolve();

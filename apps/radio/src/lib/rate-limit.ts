@@ -1,5 +1,3 @@
-import { isValidSessionId } from "@/lib/auth/session";
-
 export type RateLimitResult = {
   allowed: boolean;
 };
@@ -10,9 +8,7 @@ export type RateLimitEnv = {
   };
 };
 
-export type RateLimitSubject =
-  | { type: "ip"; value: string }
-  | { type: "session"; value: string };
+export type RateLimitSubject = { type: "ip"; value: string };
 
 function getNonEmptyHeader(headers: Headers, name: string): string | undefined {
   const value = headers.get(name)?.trim();
@@ -33,17 +29,11 @@ export function getClientIP(request: Request): string | undefined {
 }
 
 export function resolveRateLimitSubject(
-  request: Request,
-  sessionId: string | null,
-  options?: { allowSessionFallback?: boolean }
+  request: Request
 ): RateLimitSubject | null {
   const cfClientIP = getCloudflareClientIP(request);
   if (cfClientIP) {
     return { type: "ip", value: cfClientIP };
-  }
-
-  if ((options?.allowSessionFallback ?? true) && isValidSessionId(sessionId)) {
-    return { type: "session", value: sessionId };
   }
 
   return null;

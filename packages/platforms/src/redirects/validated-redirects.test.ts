@@ -5,10 +5,8 @@ import {
   type UrlValidationResult,
   ValidatedRedirectError,
   type ValidatedRedirectFailure,
-  validateRedirectTargetUrl,
 } from "./validated-redirects";
 
-type TestUrlFailure = "required" | "invalid-url" | "invalid-domain";
 type TestFetchUrlFailure = "invalid-url" | "invalid-domain";
 
 const TEST_REDIRECT_FAILURE_MESSAGES = {
@@ -38,41 +36,30 @@ function validateExampleUrl(
   return { ok: true, url };
 }
 
-function validateOptionalExampleUrl(
-  url: string | null
-): UrlValidationResult<TestUrlFailure> {
-  if (!url) {
-    return { ok: false, reason: "required" };
-  }
-
-  return validateExampleUrl(url);
-}
-
-describe("validateRedirectTargetUrl", () => {
-  test("maps required failures to the caller's invalid URL reason", () => {
-    expect(
-      validateRedirectTargetUrl("", validateOptionalExampleUrl, "invalid-url")
-    ).toEqual({
-      ok: false,
-      reason: "invalid-url",
-    });
-  });
-
-  test("preserves concrete redirect target validation failures", () => {
-    expect(
-      validateRedirectTargetUrl(
-        "https://internal.test/final",
-        validateOptionalExampleUrl,
-        "invalid-url"
-      )
-    ).toEqual({
-      ok: false,
-      reason: "invalid-domain",
-    });
-  });
-});
-
 describe("fetchWithValidatedRedirects", () => {
+  test("rejects invalid initial URLs before fetching", async () => {
+    const fetchImpl = mock(async () => {
+      await Promise.resolve();
+      throw new Error("Invalid initial URLs should not be fetched");
+    });
+
+    await expect(
+      fetchWithValidatedRedirectResult({
+        fetchImpl,
+        invalidUrlReason: "invalid-url",
+        url: "",
+        validateUrl: validateExampleUrl,
+      })
+    ).resolves.toEqual({
+      failure: {
+        reason: "invalid-url",
+        url: "",
+      },
+      ok: false,
+    });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
   test("follows validated redirects and returns the final URL", async () => {
     const requestedUrls: string[] = [];
     const fetchImpl = mock(async (url: string) => {

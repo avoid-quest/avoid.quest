@@ -16,7 +16,7 @@ import {
   getProxiedBandcampUrl,
   getProxiedSoundCloudUrl,
 } from "@avoid.quest/platforms";
-import type { EffectConfig } from "../dsp/effects/types.js";
+import type { EffectConfig, EffectType } from "../dsp/effects/types.js";
 import {
   type AudioState,
   type AudioStateCallback,
@@ -774,9 +774,10 @@ export class AudioManager {
   updateEffect(
     soundId: string,
     effectId: string,
+    type: EffectType,
     config: Partial<EffectConfig>
   ): boolean {
-    return this.effects.update(soundId, effectId, config);
+    return this.effects.update(soundId, effectId, type, config);
   }
 
   /**

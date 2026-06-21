@@ -281,16 +281,23 @@ export function updateChannelEffect(
   effectConfig: Partial<EffectConfig>
 ): void {
   let effectFound = false;
+  let effectType: EffectType | null = null;
   updateChannel(sessionId, channelId, (draft) => {
     const effect = draft.effects.find((entry) => entry.id === effectId);
     if (effect) {
       Object.assign(effect, effectConfig);
       effectFound = true;
+      effectType = effect.type;
     }
   });
   const runtime = getPlaybackChannelRuntime(channelId);
-  if (effectFound && runtime.soundId) {
-    getAudioManager().updateEffect(runtime.soundId, effectId, effectConfig);
+  if (effectFound && effectType && runtime.soundId) {
+    getAudioManager().updateEffect(
+      runtime.soundId,
+      effectId,
+      effectType,
+      effectConfig
+    );
   }
 }
 

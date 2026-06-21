@@ -6,54 +6,12 @@
 
 import type { EffectConfig } from "@/lib/audio";
 import {
+  getEffectMidiParamDefs,
   getEffectSchema,
-  type ParamDef,
-  type SliderParamDef,
 } from "@/lib/audio/dsp/effects/schema";
 import { getDjDeckActions } from "@/lib/dj-actions";
 import { MidiController } from "./midi-controller";
 import type { MidiAction } from "./types";
-
-/** Universal param ranges (same as universal-params.tsx) */
-const UNIVERSAL_PARAMS: SliderParamDef[] = [
-  {
-    type: "slider",
-    key: "dryWet",
-    label: "Dry/Wet",
-    min: 0,
-    max: 1,
-    step: 0.01,
-  },
-  {
-    type: "slider",
-    key: "inputGain",
-    label: "Input Gain",
-    min: 0,
-    max: 4.0,
-    step: 0.01,
-  },
-  {
-    type: "slider",
-    key: "outputGain",
-    label: "Output Gain",
-    min: 0,
-    max: 4.0,
-    step: 0.01,
-  },
-];
-
-/** Recursively extract all slider param defs from a schema's param tree */
-function extractSliderParams(params: ParamDef[]): SliderParamDef[] {
-  const sliders: SliderParamDef[] = [];
-  for (const param of params) {
-    if (param.type === "slider") {
-      sliders.push(param);
-    } else if (param.type === "group") {
-      sliders.push(...extractSliderParams(param.children));
-    }
-  }
-  return sliders;
-}
 
 /**
  * Register MIDI actions for a single effect instance on a deck.
@@ -73,11 +31,6 @@ export function registerEffectActions(
   const group = `${deckId}-effects`;
   const prefix = `${deckId}:effect:${effect.id}`;
 
-  const sliderParams = [
-    ...extractSliderParams(schema.params),
-    ...UNIVERSAL_PARAMS,
-  ];
-
   const actions: MidiAction[] = [];
 
   // Enabled toggle
@@ -93,7 +46,7 @@ export function registerEffectActions(
   });
 
   // Slider params
-  for (const param of sliderParams) {
+  for (const param of getEffectMidiParamDefs(effect.type)) {
     actions.push({
       targetId: `${prefix}:${param.key}`,
       label: `${schema.name} - ${param.label}`,

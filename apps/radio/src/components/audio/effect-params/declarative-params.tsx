@@ -5,10 +5,8 @@
  * Single component that handles all effect types.
  */
 
-import { useMemo } from "react";
 import { MidiControlWrapper } from "@/components/audio/midi-control-wrapper";
 import type { EffectConfig } from "@/lib/audio";
-import { getEffectMetadata } from "@/lib/audio";
 import type {
   CheckboxParamDef,
   EffectSchema,
@@ -191,15 +189,10 @@ export function DeclarativeParams({
   deckId,
   effectId,
 }: DeclarativeParamsProps) {
-  const defaultConfig = useMemo(() => {
-    const metadata = getEffectMetadata(effect.type);
-    return metadata?.defaultConfig;
-  }, [effect.type]);
-
   const ctx: RenderParamContext = {
     effect,
     onUpdate,
-    defaultConfig,
+    defaultConfig: schema.defaultConfig,
     deckId,
     effectId,
   };

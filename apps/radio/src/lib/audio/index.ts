@@ -28,10 +28,24 @@ export {
 } from "./dsp/effects/registry.js";
 // DSP effect schema (declarative params)
 export {
+  convertEffectConfigToEngine,
+  convertEffectParamValue,
+  convertPartialEffectConfigToEngine,
+  EFFECT_DEFINITIONS,
   EFFECT_SCHEMAS,
+  type EffectDefinition,
+  type EffectParamDef,
   type EffectSchema,
+  type EngineEffectConfig,
+  type EngineEffectParamValue,
+  getEffectDefaultConfig,
+  getEffectDefinition,
+  getEffectMidiParamDefs,
+  getEffectParamDefs,
   getEffectSchema,
+  getEffectSliderParamDefs,
   type ParamDef,
+  UNIVERSAL_EFFECT_PARAM_DEFS,
   type VisualizationType,
 } from "./dsp/effects/schema.js";
 // DSP types (effect configs)

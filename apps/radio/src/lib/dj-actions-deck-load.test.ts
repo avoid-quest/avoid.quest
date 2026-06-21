@@ -2356,8 +2356,12 @@ describe("DJ deck channel lifecycle", () => {
     const manager = AudioManager.getInstance();
     manager.addEffect = mock((_soundId: string, _effect: EffectConfig) => true);
     manager.updateEffect = mock(
-      (_soundId: string, _effectId: string, _config: Partial<EffectConfig>) =>
-        true
+      (
+        _soundId: string,
+        _effectId: string,
+        _type: EffectType,
+        _config: Partial<EffectConfig>
+      ) => true
     );
     manager.removeEffect = mock((_soundId, _effectId) => undefined);
     manager.reorderEffects = mock((_soundId, _effectIds) => undefined);
@@ -2399,6 +2403,7 @@ describe("DJ deck channel lifecycle", () => {
     expect(manager.updateEffect).toHaveBeenCalledWith(
       "left_station-1",
       "delay-1",
+      "delay",
       { dryWet: 0.4 }
     );
     expect(manager.reorderEffects).toHaveBeenCalledWith("left_station-1", [

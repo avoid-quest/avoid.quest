@@ -1,4 +1,4 @@
-import type { EffectConfig } from "../dsp/effects/types.js";
+import type { EffectConfig, EffectType } from "../dsp/effects/types.js";
 import {
   type AudioState,
   getAudioContext,
@@ -62,6 +62,7 @@ class EffectsController {
   update(
     soundId: string,
     effectId: string,
+    type: EffectType,
     config: Partial<EffectConfig>
   ): boolean {
     const wm = this.workletManagers.get(soundId);
@@ -69,7 +70,10 @@ class EffectsController {
       return false;
     }
 
-    const engineConfig: EngineEffectConfig = convertPartialEffectConfig(config);
+    const engineConfig: EngineEffectConfig = convertPartialEffectConfig(
+      type,
+      config
+    );
     wm.updateEffect(soundId, effectId, engineConfig);
     return true;
   }

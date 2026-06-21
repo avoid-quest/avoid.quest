@@ -6,11 +6,7 @@ import {
   GripVerticalIcon,
 } from "lucide-react";
 import type { Radio } from "@/lib/audio";
-import {
-  getDeckLibrarySourceLoadIntent,
-  getDjDeckActions,
-} from "@/lib/dj-actions";
-import { setPendingPlatformItem } from "@/lib/hooks/use-dj-state";
+import { getDjDeckActions } from "@/lib/dj-actions";
 import { isPlatformItem, RadioItemContent } from "../dj-radio-list";
 
 export function DraggableBrowserItem({ radio }: { radio: Radio }) {
@@ -53,14 +49,8 @@ export function DraggableBrowserItem({ radio }: { radio: Radio }) {
 
 export function MobileBrowserItem({ radio }: { radio: Radio }) {
   const handleLoad = (deckId: "deck-a" | "deck-b") => {
-    const intent = getDeckLibrarySourceLoadIntent(radio);
-    if (intent.type === "pending-platform") {
-      setPendingPlatformItem({ deckId, platform: intent.platform });
-      return;
-    }
-    setPendingPlatformItem(null);
     getDjDeckActions(deckId)
-      .loadSource(intent)
+      .loadLibrarySource(radio)
       .catch((error) => {
         console.error("[dj] Failed to load browser source:", error);
       });

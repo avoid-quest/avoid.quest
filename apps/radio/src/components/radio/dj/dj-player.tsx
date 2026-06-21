@@ -11,7 +11,7 @@ import {
 import { Volume2Icon } from "lucide-react";
 import type { Radio } from "@/lib/audio";
 import {
-  getDeckLibrarySourceLoadIntent,
+  clearDeckLibrarySourcePending,
   getDjDeckActions,
   setCrossfadePosition,
   setHeadphoneVolume,
@@ -20,7 +20,6 @@ import {
 import { useDjKeyboard } from "@/lib/hooks/use-dj-keyboard";
 import {
   setActiveDragRadio,
-  setPendingPlatformItem,
   useActiveDragRadio,
   useDeckA,
   useDeckB,
@@ -124,7 +123,7 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
     setActiveDragRadio(null);
 
     if (!over) {
-      setPendingPlatformItem(null);
+      clearDeckLibrarySourcePending();
       return;
     }
 
@@ -132,14 +131,8 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
     const deckId = over.id as string;
 
     if (isDeckId(deckId)) {
-      const intent = getDeckLibrarySourceLoadIntent(radio);
-      if (intent.type === "pending-platform") {
-        setPendingPlatformItem({ deckId, platform: intent.platform });
-        return;
-      }
-      setPendingPlatformItem(null);
       getDjDeckActions(deckId)
-        .loadSource(intent)
+        .loadLibrarySource(radio)
         .catch((error) => {
           console.error("[dj] Failed to load dragged source:", error);
         });

@@ -22,22 +22,20 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import type { Radio } from "@/lib/audio";
-import {
-  getDeckLibrarySourceLoadIntent,
-  getDjDeckActions,
-} from "@/lib/dj-actions";
+import { getDjDeckActions } from "@/lib/dj-actions";
 import {
   AUDIO_INPUT_PLATFORM_ID,
   BANDCAMP_PLATFORM_ID,
   getPlatformFromPlaceholderItem,
+  getPlatformSourceColor,
   isPlatformPlaceholderItem,
+  PLATFORM_ITEMS,
   RADIO_GARDEN_PLATFORM_ID,
   SEARCH_ALL_PLATFORM_ID,
   SOUNDCLOUD_PLATFORM_ID,
   STATIC_AUDIO_PLATFORM_ID,
   YOUTUBE_PLATFORM_ID,
-} from "@/lib/dj-actions-deck-load";
-import { setPendingPlatformItem } from "@/lib/hooks/use-dj-state";
+} from "@/lib/dj-library-sources";
 import {
   isSessionRadio,
   useSessionRadios,
@@ -49,127 +47,19 @@ type DjRadioListProps = {
   radios: Radio[];
 };
 
-const AUDIO_INPUT_COLOR = "#10b981";
-const STATIC_AUDIO_COLOR = "#8b5cf6";
-const SEARCH_ALL_COLOR = "#3b82f6";
-const RADIO_GARDEN_COLOR = "#00d084";
-const BANDCAMP_COLOR = "#629aa0";
-const SOUNDCLOUD_COLOR = "#ff7700";
-const YOUTUBE_COLOR = "#ff0000";
-
 export {
   AUDIO_INPUT_PLATFORM_ID,
   BANDCAMP_PLATFORM_ID,
+  PLATFORM_ITEMS,
   RADIO_GARDEN_PLATFORM_ID,
   SEARCH_ALL_PLATFORM_ID,
   SOUNDCLOUD_PLATFORM_ID,
   STATIC_AUDIO_PLATFORM_ID,
   YOUTUBE_PLATFORM_ID,
-} from "@/lib/dj-actions-deck-load";
+} from "@/lib/dj-library-sources";
 export const LOCAL_FILE_PLATFORM_ID = STATIC_AUDIO_PLATFORM_ID;
 /** @deprecated Use SEARCH_ALL_PLATFORM_ID */
 export const EXTERNAL_PLATFORM_ID = SEARCH_ALL_PLATFORM_ID;
-
-// Platform-specific placeholder items
-export const PLATFORM_ITEMS: Radio[] = [
-  {
-    id: SEARCH_ALL_PLATFORM_ID,
-    name: "Search All",
-    streamUrl: "",
-    description: "Search across all platforms",
-    enabled: true,
-    platformMetadata: {
-      platform: "bandcamp",
-      itemType: "track",
-      url: "",
-    },
-  },
-  {
-    id: RADIO_GARDEN_PLATFORM_ID,
-    name: "Radio Garden",
-    streamUrl: "",
-    description: "Search worldwide radio stations",
-    enabled: true,
-    platformMetadata: {
-      platform: "radiogarden",
-      itemType: "channel",
-      url: "",
-      channelId: "",
-    },
-  },
-  {
-    id: BANDCAMP_PLATFORM_ID,
-    name: "Bandcamp",
-    streamUrl: "",
-    description: "Tracks & albums from independent artists",
-    enabled: true,
-    platformMetadata: {
-      platform: "bandcamp",
-      itemType: "track",
-      url: "",
-    },
-  },
-  {
-    id: SOUNDCLOUD_PLATFORM_ID,
-    name: "SoundCloud",
-    streamUrl: "",
-    description: "Tracks, mixes & DJ sets",
-    enabled: true,
-    platformMetadata: {
-      platform: "soundcloud",
-      itemType: "track",
-      url: "",
-    },
-  },
-  {
-    id: YOUTUBE_PLATFORM_ID,
-    name: "YouTube",
-    streamUrl: "",
-    description: "Music videos & audio",
-    enabled: true,
-    platformMetadata: {
-      platform: "youtube",
-      itemType: "video",
-      url: "",
-    },
-  },
-  {
-    id: STATIC_AUDIO_PLATFORM_ID,
-    name: "Audio File",
-    streamUrl: "",
-    description: "Load from file or URL (MP3, M3U, etc.)",
-    enabled: true,
-    platformMetadata: {
-      platform: "static-audio",
-      itemType: "track",
-      url: "",
-      fileName: "",
-      displayName: "",
-      duration: 0,
-      fileSize: 0,
-      mimeType: "",
-      streamUrl: "",
-      isLocal: true,
-      requiresProxy: false,
-    },
-  },
-  {
-    id: AUDIO_INPUT_PLATFORM_ID,
-    name: "Audio Input",
-    streamUrl: "",
-    description: "Route mic/line-in from your audio interface",
-    enabled: true,
-    platformMetadata: {
-      platform: "device-input",
-      itemType: "track",
-      url: "",
-      deviceId: "",
-      deviceLabel: "",
-      channelSelection: { left: 0, right: 1 },
-      channelCount: 2,
-    },
-  },
-];
 
 export function isPlatformItem(radio: Radio): boolean {
   return isPlatformPlaceholderItem(radio);
@@ -218,25 +108,7 @@ export function getPlatformFromItem(radio: Radio): Platform | null {
 }
 
 function getPlatformColor(platform: Platform | null): string {
-  switch (platform) {
-    case "bandcamp":
-      return BANDCAMP_COLOR;
-    case "soundcloud":
-      return SOUNDCLOUD_COLOR;
-    case "device-input":
-      return AUDIO_INPUT_COLOR;
-    case "youtube":
-      return YOUTUBE_COLOR;
-    case "radiogarden":
-      return RADIO_GARDEN_COLOR;
-    case "static-audio":
-    case "local-file":
-      return STATIC_AUDIO_COLOR;
-    case "external":
-      return SEARCH_ALL_COLOR;
-    default:
-      return "#ff7700";
-  }
+  return getPlatformSourceColor(platform);
 }
 
 export function RadioItemContent({ radio }: { radio: Radio }) {
@@ -362,17 +234,8 @@ export function DraggableRadioItem({ radio }: DraggableRadioItemProps) {
 
 export function MobileRadioItem({ radio }: { radio: Radio }) {
   const handleLoad = (deckId: "deck-a" | "deck-b") => {
-    const intent = getDeckLibrarySourceLoadIntent(radio);
-    if (intent.type === "pending-platform") {
-      setPendingPlatformItem({
-        deckId,
-        platform: intent.platform,
-      });
-      return;
-    }
-    setPendingPlatformItem(null);
     getDjDeckActions(deckId)
-      .loadSource(intent)
+      .loadLibrarySource(radio)
       .catch((error) => {
         console.error("[dj] Failed to load mobile source:", error);
       });

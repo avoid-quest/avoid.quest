@@ -8,11 +8,9 @@ import type {
 } from "@/lib/audio";
 import {
   extractFileMetadata,
-  type FileAudioMetadata,
   revokeFileObjectUrl,
 } from "@/lib/audio/file-metadata";
 import { validatePlaybackStreamUrl } from "@/lib/audio/playback/url-validation";
-import { getFilenameFromUrl } from "@/lib/audio/remote-url";
 import {
   type DeckId,
   type DeckSide,
@@ -20,20 +18,24 @@ import {
   getDeckRadio,
 } from "@/lib/dj-actions-decks.js";
 import { createDjDeckContinuationWorkflow } from "@/lib/dj-deck-continuation-workflow.js";
+import {
+  createDeviceInputRadio,
+  createLocalFileRadio,
+  getLocalFileObjectUrl,
+  releaseReplacedLocalFileUrl,
+} from "@/lib/dj-deck-source-radios.js";
+import { resolveInitialTrackStreamUrl } from "@/lib/dj-initial-stream-resolution.js";
+import {
+  createStaticAudioRadio,
+  type DeckSourceLoadIntent,
+  type DeckSourceLoadResult,
+} from "@/lib/dj-library-sources.js";
 import type { PlatformStreamResolutionInput } from "@/lib/dj-platform-stream-port.js";
-import { createPlatformRadio } from "@/lib/external-url/utils";
 import {
   type DeckRecord,
   resetDeck as resetDeckDb,
 } from "@/lib/hooks/use-dj-state";
-import {
-  type DeviceInputMetadata,
-  isDeviceInputMetadata,
-  isFileMetadata,
-  isYouTubeMetadata,
-  type Platform,
-  type StaticAudioMetadata,
-} from "@/lib/platform-types";
+import { isDeviceInputMetadata } from "@/lib/platform-types";
 import type { PlaybackActionChannelFacade } from "./playback-action-context.js";
 import {
   createPlaybackActionError,
@@ -155,34 +157,6 @@ type DjDeckLoadWorkflow = {
   updateDeckFilter: (deckId: DeckId, filter: FilterConfig) => void;
 };
 
-const AUDIO_INPUT_PLATFORM_ID = -3;
-const STATIC_AUDIO_PLATFORM_ID = -4;
-const SEARCH_ALL_PLATFORM_ID = -6;
-const RADIO_GARDEN_PLATFORM_ID = -7;
-const BANDCAMP_PLATFORM_ID = -8;
-const SOUNDCLOUD_PLATFORM_ID = -9;
-const YOUTUBE_PLATFORM_ID = -10;
-
-type DeckSourceLoadIntent =
-  | { type: "device-input"; deviceId: string; deviceLabel: string }
-  | { type: "file"; file: File }
-  | { type: "ignored" }
-  | { type: "pending-platform"; platform: Platform }
-  | { type: "radio"; radio: Radio | null }
-  | { type: "static-audio-url"; url: string }
-  | { type: "track"; radio: Radio | null; autoPlay?: boolean }
-  | {
-      type: "track-url";
-      radio: Radio;
-      streamUrl: string;
-      autoPlay?: boolean;
-    };
-
-type DeckSourceLoadResult =
-  | { type: "ignored" }
-  | { type: "loaded" }
-  | { type: "pending-platform"; platform: Platform };
-
 const activeDeckLoadTokens = new Map<DeckId, symbol>();
 const activeDeckPlayTokens = new Map<DeckId, symbol>();
 const activeDeckSourceLoadTokens = new Map<DeckId, symbol>();
@@ -195,55 +169,6 @@ function beginDeckSourceLoad(deckId: DeckId): symbol {
 
 function isCurrentDeckSourceLoad(deckId: DeckId, token: symbol): boolean {
   return activeDeckSourceLoadTokens.get(deckId) === token;
-}
-
-function isPlatformPlaceholderItem(radio: Radio): boolean {
-  return (
-    radio.id === AUDIO_INPUT_PLATFORM_ID ||
-    radio.id === STATIC_AUDIO_PLATFORM_ID ||
-    radio.id === SEARCH_ALL_PLATFORM_ID ||
-    radio.id === RADIO_GARDEN_PLATFORM_ID ||
-    radio.id === BANDCAMP_PLATFORM_ID ||
-    radio.id === SOUNDCLOUD_PLATFORM_ID ||
-    radio.id === YOUTUBE_PLATFORM_ID
-  );
-}
-
-function getPlatformFromPlaceholderItem(radio: Radio): Platform | null {
-  if (radio.id === AUDIO_INPUT_PLATFORM_ID) {
-    return "device-input";
-  }
-  if (radio.id === STATIC_AUDIO_PLATFORM_ID) {
-    return "static-audio";
-  }
-  if (radio.id === RADIO_GARDEN_PLATFORM_ID) {
-    return "radiogarden";
-  }
-  if (radio.id === SEARCH_ALL_PLATFORM_ID) {
-    return "external";
-  }
-  if (radio.id === BANDCAMP_PLATFORM_ID) {
-    return "bandcamp";
-  }
-  if (radio.id === SOUNDCLOUD_PLATFORM_ID) {
-    return "soundcloud";
-  }
-  if (radio.id === YOUTUBE_PLATFORM_ID) {
-    return "youtube";
-  }
-  return radio.platformMetadata?.platform || null;
-}
-
-function getDeckLibrarySourceIntent(radio: Radio): DeckSourceLoadIntent {
-  if (!isPlatformPlaceholderItem(radio)) {
-    return { type: "radio", radio };
-  }
-
-  const platform = getPlatformFromPlaceholderItem(radio);
-  if (!platform) {
-    return { type: "ignored" };
-  }
-  return { type: "pending-platform", platform };
 }
 
 function beginDeckLoad(deckId: DeckId): symbol {
@@ -312,95 +237,6 @@ function rollbackFailedDeckLoad(
       draft.radio = previousRadio;
     });
   }
-  return true;
-}
-
-function createDeviceInputRadio(
-  side: DeckSide,
-  deviceId: string,
-  deviceLabel: string
-): Radio {
-  const radioId = `device-input-${side}`;
-  const platformMetadata: DeviceInputMetadata = {
-    platform: "device-input",
-    itemType: "track",
-    url: "",
-    deviceId,
-    deviceLabel,
-    channelSelection: { left: 0, right: 1 },
-    channelCount: 2,
-  };
-
-  return {
-    id: radioId,
-    name: deviceLabel,
-    streamUrl: "",
-    description: "Device input (mic/line-in)",
-    enabled: true,
-    platformMetadata,
-  };
-}
-
-function createLocalFileRadio(
-  side: DeckSide,
-  metadata: FileAudioMetadata
-): Radio {
-  return {
-    id: `local-file-${side}-${Date.now()}`,
-    name: metadata.displayName,
-    streamUrl: metadata.objectUrl,
-    description: "Local File",
-    enabled: true,
-    platformMetadata: {
-      platform: "local-file",
-      itemType: "track",
-      url: "",
-      fileName: metadata.fileName,
-      displayName: metadata.displayName,
-      duration: metadata.duration,
-      fileSize: metadata.fileSize,
-      mimeType: metadata.mimeType,
-      objectUrl: metadata.objectUrl,
-    },
-  };
-}
-
-function createStaticAudioRadio(url: string): Radio {
-  const displayName = getFilenameFromUrl(url);
-  const metadata: StaticAudioMetadata = {
-    platform: "static-audio",
-    itemType: "track",
-    url,
-    fileName: displayName,
-    displayName,
-    duration: 0,
-    fileSize: 0,
-    mimeType: "audio/mpeg",
-    streamUrl: url,
-    isLocal: false,
-    requiresProxy: false,
-  };
-  return createPlatformRadio(url, metadata);
-}
-
-function getLocalFileObjectUrl(radio: Radio | null): string | null {
-  const metadata = radio?.platformMetadata;
-  if (!isFileMetadata(metadata)) {
-    return null;
-  }
-  return metadata.objectUrl;
-}
-
-function releaseReplacedLocalFileUrl(
-  previousRadio: Radio | null,
-  nextRadio: Radio | null
-): boolean {
-  const previousObjectUrl = getLocalFileObjectUrl(previousRadio);
-  const nextObjectUrl = getLocalFileObjectUrl(nextRadio);
-  if (!previousObjectUrl || previousObjectUrl === nextObjectUrl) {
-    return false;
-  }
-  revokeFileObjectUrl(previousObjectUrl);
   return true;
 }
 
@@ -735,77 +571,12 @@ async function loadDeckRadio(
   }
 }
 
-async function resolveInitialYouTubeStreamUrl(
-  deckId: DeckId,
-  radio: Radio,
-  videoId: string,
-  dependencies: DeckLoadDependencies
-): Promise<string | null> {
-  try {
-    const resolvedUrl = await dependencies.resolvePlatformStreamUrl({
-      platform: "youtube",
-      reason: "initial-load",
-      videoId,
-      radio,
-    });
-    if (!resolvedUrl) {
-      dependencies.reportDjError(
-        "Failed to resolve YouTube stream",
-        "DJ_YOUTUBE_RESOLVE_FAILED",
-        undefined,
-        radio,
-        deckId
-      );
-      return null;
-    }
-
-    if (
-      isYouTubeMetadata(radio.platformMetadata) &&
-      radio.platformMetadata.tracks
-    ) {
-      const track = radio.platformMetadata.tracks.find(
-        (item) => "videoId" in item && item.videoId === videoId
-      );
-      if (track) {
-        track.streamUrl = resolvedUrl;
-      }
-    }
-
-    return resolvedUrl;
-  } catch (error) {
-    dependencies.reportDjError(
-      "Failed to resolve YouTube stream",
-      "DJ_YOUTUBE_RESOLVE_FAILED",
-      error,
-      radio,
-      deckId
-    );
-    return null;
-  }
-}
-
-async function resolveInitialTrackStreamUrl(
-  deckId: DeckId,
-  radio: Radio,
-  streamUrl: string,
-  dependencies: DeckLoadDependencies
-): Promise<string | null> {
-  if (!streamUrl.startsWith("yt:")) {
-    return streamUrl;
-  }
-  return await resolveInitialYouTubeStreamUrl(
-    deckId,
-    radio,
-    streamUrl.slice(3),
-    dependencies
-  );
-}
-
 async function loadDeckTrackRadio(
   deckId: DeckId,
   radio: Radio | null,
   autoPlay: boolean,
-  dependencies: DeckLoadDependencies
+  dependencies: DeckLoadDependencies,
+  sourceStreamUrl?: string
 ): Promise<void> {
   const config = deckConfig[deckId];
 
@@ -815,15 +586,16 @@ async function loadDeckTrackRadio(
   }
 
   const sourceLoadToken = beginDeckSourceLoad(deckId);
+  const isCurrentSourceLoad = () =>
+    isCurrentDeckSourceLoad(deckId, sourceLoadToken);
   const resolvedStreamUrl = await resolveInitialTrackStreamUrl(
     deckId,
     radio,
-    radio.streamUrl,
-    dependencies
+    sourceStreamUrl ?? radio.streamUrl,
+    dependencies,
+    isCurrentSourceLoad
   );
-  if (
-    !(resolvedStreamUrl && isCurrentDeckSourceLoad(deckId, sourceLoadToken))
-  ) {
+  if (!(resolvedStreamUrl && isCurrentSourceLoad())) {
     return;
   }
 
@@ -867,21 +639,7 @@ async function loadDeckTrackUrl(
   autoPlay: boolean,
   dependencies: DeckLoadDependencies
 ): Promise<void> {
-  const resolvedStreamUrl = await resolveInitialTrackStreamUrl(
-    deckId,
-    radio,
-    streamUrl,
-    dependencies
-  );
-  if (!resolvedStreamUrl) {
-    return;
-  }
-  await loadDeckTrackRadio(
-    deckId,
-    { ...radio, streamUrl: resolvedStreamUrl },
-    autoPlay,
-    dependencies
-  );
+  await loadDeckTrackRadio(deckId, radio, autoPlay, dependencies, streamUrl);
 }
 
 async function playDeck(
@@ -1010,10 +768,6 @@ async function loadDeckSource(
     case "file":
       await loadDeckFile(deckId, source.file, dependencies);
       return { type: "loaded" };
-    case "ignored":
-      return { type: "ignored" };
-    case "pending-platform":
-      return { type: "pending-platform", platform: source.platform };
     case "radio":
       await loadDeckRadio(deckId, source.radio, dependencies);
       return { type: "loaded" };
@@ -1042,8 +796,10 @@ async function loadDeckSource(
         dependencies
       );
       return { type: "loaded" };
-    default:
-      return { type: "ignored" };
+    default: {
+      const exhaustiveSource: never = source;
+      return exhaustiveSource;
+    }
   }
 }
 
@@ -1178,20 +934,7 @@ export async function setDeckRadioSource(
 }
 
 export type {
-  DeckLoadDependencies,
   DeckSourceLoadIntent,
   DeckSourceLoadResult,
-  DjDeckLoadWorkflow,
-};
-export {
-  AUDIO_INPUT_PLATFORM_ID,
-  BANDCAMP_PLATFORM_ID,
-  getDeckLibrarySourceIntent,
-  getPlatformFromPlaceholderItem,
-  isPlatformPlaceholderItem,
-  RADIO_GARDEN_PLATFORM_ID,
-  SEARCH_ALL_PLATFORM_ID,
-  SOUNDCLOUD_PLATFORM_ID,
-  STATIC_AUDIO_PLATFORM_ID,
-  YOUTUBE_PLATFORM_ID,
-};
+} from "@/lib/dj-library-sources.js";
+export type { DeckLoadDependencies, DjDeckLoadWorkflow };

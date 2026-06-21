@@ -69,6 +69,8 @@ Do not deploy from automation unless the task explicitly asks for deployment.
 Workers `workers.dev` exposure and preview URLs are enabled in committed
 Wrangler config:
 
+Non-production Workers Builds should publish preview URLs in PR comments.
+
 | App | `workers_dev` | `preview_urls` | Production exposure |
 |-----|---------------|----------------|---------------------|
 | `@avoid.quest/web` | Enabled | Enabled | Use `workers.dev` plus Cloudflare account-level custom domains or routes as needed. |

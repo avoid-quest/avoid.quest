@@ -6,6 +6,7 @@ export type FetchLike = (
 export type UrlValidationResult<Failure extends string> =
   | { ok: true; url: string }
   | { ok: false; reason: Failure };
+type MaybePromise<T> = T | Promise<T>;
 
 export type ValidatedRedirectFailure<Failure extends string> =
   | Failure
@@ -49,7 +50,7 @@ type FetchWithValidatedRedirectsOptions<Failure extends string> = {
   invalidUrlReason: Failure;
   maxRedirects?: number;
   url: string;
-  validateUrl: (url: string) => UrlValidationResult<Failure>;
+  validateUrl: (url: string) => MaybePromise<UrlValidationResult<Failure>>;
 };
 
 function isRedirectStatus(status: number): boolean {
@@ -85,7 +86,7 @@ export async function fetchWithValidatedRedirectResult<Failure extends string>({
 }: FetchWithValidatedRedirectsOptions<Failure>): Promise<
   ValidatedRedirectResult<Failure>
 > {
-  const initialValidation = validateUrl(url);
+  const initialValidation = await validateUrl(url);
   if (!initialValidation.ok) {
     return redirectFailure<Failure>(initialValidation.reason, url);
   }
@@ -119,7 +120,7 @@ export async function fetchWithValidatedRedirectResult<Failure extends string>({
       return redirectFailure<Failure>(invalidUrlReason, location);
     }
 
-    const validation = validateUrl(nextUrl);
+    const validation = await validateUrl(nextUrl);
     if (!validation.ok) {
       return redirectFailure<Failure>(validation.reason, nextUrl);
     }

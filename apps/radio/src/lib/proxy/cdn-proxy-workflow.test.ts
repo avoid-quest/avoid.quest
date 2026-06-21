@@ -275,6 +275,38 @@ describe("createCdnProxyRequestWorkflow", () => {
     });
   });
 
+  test("rejects invalid upstream Content-Length values", async () => {
+    for (const contentLength of ["not-a-number", "-1", "1, 2"]) {
+      const fetchImpl = mock(async () => {
+        await Promise.resolve();
+        return new Response("audio", {
+          headers: {
+            "Content-Length": contentLength,
+            "Content-Type": "audio/mpeg",
+          },
+        });
+      });
+      const workflow = createWorkflow({ fetchImpl });
+
+      const response = await workflow.fetchStream(
+        "https://cdn.example/track.mp3",
+        {
+          origin: "https://radio.test",
+          request: new Request("https://radio.test/api/test-proxy"),
+          requestId: `req_invalid_size_${contentLength}`,
+        }
+      );
+
+      expect(response.status).toBe(413);
+      await expect(response.json()).resolves.toEqual({
+        code: "TEST_RESPONSE_TOO_LARGE",
+        message: "Response too large",
+        requestId: `req_invalid_size_${contentLength}`,
+        status: 413,
+      });
+    }
+  });
+
   test("maps validated redirect failures to the configured response", async () => {
     const requestedUrls: string[] = [];
     const fetchImpl = mock(async (url: string) => {

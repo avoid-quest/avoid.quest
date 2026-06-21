@@ -66,12 +66,13 @@ downloaded secret files for normal local development.
 Deployable apps keep their Wrangler configuration under `apps/*/wrangler.jsonc`.
 Do not deploy from automation unless the task explicitly asks for deployment.
 
-Public preview exposure is disabled in committed Wrangler config:
+Workers preview URLs are enabled in committed Wrangler config while
+`workers_dev` remains disabled:
 
 | App | `workers_dev` | `preview_urls` | Production exposure |
 |-----|---------------|----------------|---------------------|
-| `@avoid.quest/web` | Disabled | Disabled | Use Cloudflare account-level custom domains or routes for the production hostname. |
-| `@avoid.quest/radio` | Disabled | Disabled | Use Cloudflare account-level custom domains or routes for the production hostname. |
+| `@avoid.quest/web` | Disabled | Enabled | Use Cloudflare account-level custom domains or routes for the production hostname. |
+| `@avoid.quest/radio` | Disabled | Enabled | Use Cloudflare account-level custom domains or routes for the production hostname. |
 
 Production hostnames and any production-only overrides are intentionally kept
 out of the public repository. Configure them in Cloudflare before deploying.

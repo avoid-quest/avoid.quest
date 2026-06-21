@@ -4,6 +4,7 @@ export {
   parseHttpUrl,
 } from "./hostname.js";
 export type {
+  PublicHostnameResolver,
   PublicHttpFetchResult,
   PublicHttpRedirectFailure,
   PublicHttpUrlFailure,
@@ -15,6 +16,8 @@ export {
   fetchPublicHttpUrlWithValidatedRedirects,
   isBlockedPublicHttpHostname,
   isPublicHttpUrl,
+  resolvePublicHostnameWithDoh,
   validatePublicHttpUrl,
   validatePublicHttpUrlParam,
+  validateResolvedPublicHttpUrl,
 } from "./public-http-url.js";

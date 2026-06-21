@@ -76,6 +76,14 @@ const STREAM_PROXY_INTERNAL_ADDRESS_ERROR = {
   status: 400,
 } as const satisfies AppErrorInit;
 
+const STREAM_PROXY_HOSTNAME_RESOLUTION_ERROR = {
+  code: "STREAM_PROXY_HOSTNAME_RESOLUTION_FAILED",
+  safeMessage: "Failed to resolve stream host",
+  category: "validation",
+  expected: true,
+  status: 400,
+} as const satisfies AppErrorInit;
+
 const STREAM_URL_VALIDATION_ERRORS = {
   required: {
     code: "STREAM_PROXY_URL_REQUIRED",
@@ -87,12 +95,14 @@ const STREAM_URL_VALIDATION_ERRORS = {
   "invalid-url": STREAM_PROXY_INVALID_URL_ERROR,
   "invalid-protocol": STREAM_PROXY_INVALID_PROTOCOL_ERROR,
   "internal-address": STREAM_PROXY_INTERNAL_ADDRESS_ERROR,
+  "hostname-resolution-failed": STREAM_PROXY_HOSTNAME_RESOLUTION_ERROR,
 } as const satisfies Record<StreamUrlValidationFailure, AppErrorInit>;
 
 const STREAM_REDIRECT_FAILURE_ERRORS = {
   "invalid-url": STREAM_PROXY_INVALID_URL_ERROR,
   "invalid-protocol": STREAM_PROXY_INVALID_PROTOCOL_ERROR,
   "internal-address": STREAM_PROXY_INTERNAL_ADDRESS_ERROR,
+  "hostname-resolution-failed": STREAM_PROXY_HOSTNAME_RESOLUTION_ERROR,
   "missing-location": {
     code: "STREAM_PROXY_REDIRECT_LOCATION_MISSING",
     safeMessage: "Upstream redirect missing Location header",

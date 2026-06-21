@@ -64,17 +64,27 @@ const STATIC_AUDIO_PRIVATE_ADDRESS_ERROR = {
   status: 400,
 } as const satisfies AppErrorInit;
 
+const STATIC_AUDIO_HOSTNAME_RESOLUTION_ERROR = {
+  code: "STATIC_AUDIO_HOSTNAME_RESOLUTION_FAILED",
+  safeMessage: "Failed to resolve audio URL host",
+  category: "validation",
+  expected: true,
+  status: 400,
+} as const satisfies AppErrorInit;
+
 const STATIC_AUDIO_URL_VALIDATION_ERRORS = {
   required: STATIC_AUDIO_INVALID_URL_ERROR,
   "invalid-url": STATIC_AUDIO_INVALID_URL_ERROR,
   "invalid-protocol": STATIC_AUDIO_INVALID_PROTOCOL_ERROR,
   "internal-address": STATIC_AUDIO_PRIVATE_ADDRESS_ERROR,
+  "hostname-resolution-failed": STATIC_AUDIO_HOSTNAME_RESOLUTION_ERROR,
 } as const satisfies Record<StreamUrlValidationFailure, AppErrorInit>;
 
 const STATIC_AUDIO_REDIRECT_FAILURE_ERRORS = {
   "invalid-url": STATIC_AUDIO_INVALID_URL_ERROR,
   "invalid-protocol": STATIC_AUDIO_INVALID_PROTOCOL_ERROR,
   "internal-address": STATIC_AUDIO_PRIVATE_ADDRESS_ERROR,
+  "hostname-resolution-failed": STATIC_AUDIO_HOSTNAME_RESOLUTION_ERROR,
   "missing-location": {
     code: "STATIC_AUDIO_REDIRECT_LOCATION_MISSING",
     safeMessage: "Redirect missing Location header",

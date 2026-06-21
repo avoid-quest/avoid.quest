@@ -30,9 +30,10 @@ bun run --filter @avoid.quest/web typecheck
 
 ## Cloudflare deployment
 
-Committed Wrangler config disables `workers_dev` and `preview_urls` for public
-repository safety. Production exposure should be configured with Cloudflare
-account-level custom domains or routes outside this repository.
+Committed Wrangler config keeps `workers_dev` disabled and enables
+`preview_urls` for Workers Builds previews. Production exposure should be
+configured with Cloudflare account-level custom domains or routes outside this
+repository.
 
 Deployment scripts use the workspace-installed Wrangler version:
 

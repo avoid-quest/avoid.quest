@@ -18,11 +18,19 @@ const TRAILING_DOTS_PATTERN = /\.+$/;
 const IPV4_OCTET_PATTERN = /^\d{1,3}$/;
 const IPV4_IN_IPV6_PATTERN = /(?:^|:)(\d{1,3}(?:\.\d{1,3}){3})$/;
 const IPV6_PART_PATTERN = /^[\da-f]{1,4}$/i;
+const PUBLIC_DNS_JSON_ENDPOINT = "https://cloudflare-dns.com/dns-query";
+const DNS_RECORD_TYPES = {
+  A: 1,
+  AAAA: 28,
+} as const;
+const DNS_SUCCESS_STATUS = 0;
+const DNS_NAME_NOT_FOUND_STATUS = 3;
 
 export type PublicHttpUrlFailure =
   | "invalid-url"
   | "invalid-protocol"
-  | "internal-address";
+  | "internal-address"
+  | "hostname-resolution-failed";
 
 export type PublicHttpUrlValidationFailure = "required" | PublicHttpUrlFailure;
 
@@ -46,7 +54,34 @@ type FetchPublicHttpUrlOptions = {
   fetchImpl: FetchLike;
   init?: RequestInit;
   maxRedirects?: number;
+  resolveHostname?: PublicHostnameResolver | false;
   url: string;
+};
+
+export type PublicHostnameResolver = (
+  hostname: string,
+  options?: PublicHostnameResolutionOptions
+) => Promise<readonly string[]>;
+
+type PublicHostnameResolutionOptions = {
+  signal?: AbortSignal;
+};
+
+type ValidateResolvedPublicHttpUrlOptions = {
+  resolveHostname?: PublicHostnameResolver | false;
+  signal?: AbortSignal;
+};
+
+type DnsJsonRecordType = keyof typeof DNS_RECORD_TYPES;
+
+type DnsJsonAnswer = {
+  data?: unknown;
+  type?: unknown;
+};
+
+type DnsJsonResponse = {
+  Answer?: DnsJsonAnswer[];
+  Status?: unknown;
 };
 
 function parseUrl(value: string): URL | null {
@@ -87,6 +122,14 @@ function parseIpv4Address(
   return octets.every(Number.isInteger)
     ? (octets as [number, number, number, number])
     : null;
+}
+
+function isIpAddress(hostname: string): boolean {
+  const normalized = normalizeHostname(hostname);
+  return (
+    parseIpv4Address(normalized) !== null ||
+    parseIpv6Address(normalized) !== null
+  );
 }
 
 function isBlockedIpv4([a, b]: [number, number, number, number]): boolean {
@@ -204,6 +247,110 @@ export function isBlockedPublicHttpHostname(hostname: string): boolean {
   );
 }
 
+function getResolvedAddressFailure(
+  addresses: readonly string[]
+): PublicHttpUrlFailure | null {
+  if (addresses.length === 0) {
+    return "hostname-resolution-failed";
+  }
+
+  for (const address of addresses) {
+    const normalized = normalizeHostname(address);
+    const ipv4 = parseIpv4Address(normalized);
+    if (ipv4) {
+      if (isBlockedIpv4(ipv4)) {
+        return "internal-address";
+      }
+      continue;
+    }
+
+    const ipv6 = parseIpv6Address(normalized);
+    if (ipv6) {
+      if (isBlockedIpv6(ipv6)) {
+        return "internal-address";
+      }
+      continue;
+    }
+
+    return "hostname-resolution-failed";
+  }
+
+  return null;
+}
+
+function isDnsJsonResponse(value: unknown): value is DnsJsonResponse {
+  return typeof value === "object" && value !== null;
+}
+
+async function queryDnsJsonAddresses(
+  hostname: string,
+  recordType: DnsJsonRecordType,
+  signal?: AbortSignal
+): Promise<readonly string[] | null> {
+  const endpoint = new URL(PUBLIC_DNS_JSON_ENDPOINT);
+  endpoint.searchParams.set("name", hostname);
+  endpoint.searchParams.set("type", recordType);
+
+  let response: Response;
+  try {
+    response = await globalThis.fetch(endpoint.toString(), {
+      headers: { accept: "application/dns-json" },
+      signal,
+    });
+  } catch {
+    return null;
+  }
+
+  if (!response.ok) {
+    return null;
+  }
+
+  let payload: unknown;
+  try {
+    payload = await response.json();
+  } catch {
+    return null;
+  }
+
+  if (!isDnsJsonResponse(payload)) {
+    return null;
+  }
+
+  if (
+    payload.Status !== DNS_SUCCESS_STATUS &&
+    payload.Status !== DNS_NAME_NOT_FOUND_STATUS
+  ) {
+    return null;
+  }
+
+  const answers = Array.isArray(payload.Answer) ? payload.Answer : [];
+
+  return answers
+    .filter(
+      (answer) =>
+        answer.type === DNS_RECORD_TYPES[recordType] &&
+        typeof answer.data === "string"
+    )
+    .map((answer) => answer.data as string);
+}
+
+export async function resolvePublicHostnameWithDoh(
+  hostname: string,
+  { signal }: PublicHostnameResolutionOptions = {}
+): Promise<readonly string[]> {
+  const normalized = normalizeHostname(hostname);
+  const [ipv4Addresses, ipv6Addresses] = await Promise.all([
+    queryDnsJsonAddresses(normalized, "A", signal),
+    queryDnsJsonAddresses(normalized, "AAAA", signal),
+  ]);
+
+  if (!(ipv4Addresses && ipv6Addresses)) {
+    throw new Error("Failed to resolve public hostname");
+  }
+
+  return [...ipv4Addresses, ...ipv6Addresses];
+}
+
 export function validatePublicHttpUrl(url: string): PublicHttpUrlResult {
   const parsed = parseUrl(url);
   if (!parsed) {
@@ -218,6 +365,37 @@ export function validatePublicHttpUrl(url: string): PublicHttpUrlResult {
   }
 
   return { ok: true, url, parsed };
+}
+
+export async function validateResolvedPublicHttpUrl(
+  url: string,
+  {
+    resolveHostname = resolvePublicHostnameWithDoh,
+    signal,
+  }: ValidateResolvedPublicHttpUrlOptions = {}
+): Promise<PublicHttpUrlResult> {
+  const validation = validatePublicHttpUrl(url);
+  if (!validation.ok || resolveHostname === false) {
+    return validation;
+  }
+
+  if (isIpAddress(validation.parsed.hostname)) {
+    return validation;
+  }
+
+  let addresses: readonly string[];
+  try {
+    addresses = await resolveHostname(validation.parsed.hostname, { signal });
+  } catch {
+    return { ok: false, reason: "hostname-resolution-failed" };
+  }
+
+  const failure = getResolvedAddressFailure(addresses);
+  if (failure) {
+    return { ok: false, reason: failure };
+  }
+
+  return validation;
 }
 
 export function validatePublicHttpUrlParam(
@@ -239,6 +417,9 @@ export function fetchPublicHttpUrlWithValidatedRedirects({
   fetchImpl,
   init,
   maxRedirects,
+  resolveHostname = fetchImpl === globalThis.fetch
+    ? resolvePublicHostnameWithDoh
+    : false,
   url,
 }: FetchPublicHttpUrlOptions): Promise<PublicHttpFetchResult> {
   return fetchWithValidatedRedirectResult({
@@ -247,6 +428,10 @@ export function fetchPublicHttpUrlWithValidatedRedirects({
     invalidUrlReason: "invalid-url",
     maxRedirects,
     url,
-    validateUrl: validatePublicHttpUrl,
+    validateUrl: (candidateUrl) =>
+      validateResolvedPublicHttpUrl(candidateUrl, {
+        resolveHostname,
+        signal: init?.signal ?? undefined,
+      }),
   });
 }

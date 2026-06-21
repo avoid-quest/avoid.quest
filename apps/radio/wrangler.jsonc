@@ -12,7 +12,7 @@
 	],
 	"main": "@tanstack/react-start/server-entry",
 	"workers_dev": false,
-	"preview_urls": false,
+	"preview_urls": true,
 	"observability": {
 		"logs": {
 			"enabled": true

@@ -9,6 +9,7 @@ import {
 const DEFAULT_FETCH_TIMEOUT_MS = 10_000;
 const DEFAULT_MAX_REDIRECTS = 5;
 const DEFAULT_MAX_RESPONSE_SIZE = 100 * 1024 * 1024;
+const CONTENT_LENGTH_PATTERN = /^\d+$/;
 
 export type CdnProxyPolicy = {
   errorHeaders: (request: Request) => HeadersInit;
@@ -85,7 +86,12 @@ function isResponseTooLarge(
     return false;
   }
 
-  return Number.parseInt(contentLength, 10) > maxResponseSize;
+  const normalized = contentLength.trim();
+  if (!CONTENT_LENGTH_PATTERN.test(normalized)) {
+    return true;
+  }
+
+  return BigInt(normalized) > BigInt(maxResponseSize);
 }
 
 function copyHeaderIfPresent(

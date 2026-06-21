@@ -2,10 +2,11 @@ import { describe, expect, mock, test } from "bun:test";
 import type { AppError } from "@avoid.quest/error";
 import { createBandcampCdnProxyWorkflow } from "./bandcamp-cdn-proxy-workflow";
 
-function createProxyRequest(range = "bytes=0-10"): Request {
-  return new Request("https://radio.test/api/bandcamp-proxy", {
-    headers: { range },
-  });
+function createProxyRequest(range: string | null = "bytes=0-10"): Request {
+  return new Request(
+    "https://radio.test/api/bandcamp-proxy",
+    range ? { headers: { range } } : undefined
+  );
 }
 
 function createWorkflow() {
@@ -95,6 +96,37 @@ describe("createBandcampCdnProxyWorkflow", () => {
     expect(requestedUrls).toEqual([initialUrl]);
     expect(redirectModes).toEqual(["manual"]);
     expect(forwardedRanges).toEqual(["bytes=0-10"]);
+    expect(forwardedReferers).toEqual(["https://bandcamp.com/"]);
+  });
+
+  test("omits the upstream Range header when the client omits it", async () => {
+    const forwardedRanges: Array<string | null> = [];
+    const forwardedReferers: Array<string | null> = [];
+    const fetchImpl = mock(async (_url: string, init?: RequestInit) => {
+      await Promise.resolve();
+      const headers = new Headers(init?.headers);
+      forwardedRanges.push(headers.get("Range"));
+      forwardedReferers.push(headers.get("Referer"));
+      return new Response("audio-bytes", {
+        headers: {
+          "Content-Length": "11",
+          "Content-Type": "audio/mpeg",
+        },
+      });
+    });
+
+    const response = await createWorkflow().fetchStream(
+      "https://t4.bcbits.com/stream.mp3",
+      {
+        origin: "https://radio.test",
+        request: createProxyRequest(null),
+        requestId: "req_bandcamp_no_range",
+      },
+      fetchImpl
+    );
+
+    expect(response.status).toBe(200);
+    expect(forwardedRanges).toEqual([null]);
     expect(forwardedReferers).toEqual(["https://bandcamp.com/"]);
   });
 

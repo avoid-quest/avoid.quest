@@ -119,6 +119,7 @@ export type {
 } from "./types.js";
 export { isYouTubeMetadata } from "./types.js";
 export type {
+  PublicHostnameResolver,
   PublicHttpFetchResult,
   PublicHttpRedirectFailure,
   PublicHttpUrlFailure,
@@ -130,8 +131,10 @@ export {
   fetchPublicHttpUrlWithValidatedRedirects,
   isBlockedPublicHttpHostname,
   isPublicHttpUrl,
+  resolvePublicHostnameWithDoh,
   validatePublicHttpUrl,
   validatePublicHttpUrlParam,
+  validateResolvedPublicHttpUrl,
 } from "./url-policy/index.js";
 
 // YouTube

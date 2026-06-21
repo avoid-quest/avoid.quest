@@ -18,7 +18,7 @@ export type YouTubeSearchResponse = AppResult<{
 
 export const youtubeSearch = createServerFn({ method: "POST" })
   .middleware([rateLimitMiddleware("youtube-search")])
-  .inputValidator(SearchSchema)
+  .validator(SearchSchema)
   .handler(
     ({ data }): Promise<YouTubeSearchResponse> =>
       runServerFn({
@@ -58,7 +58,7 @@ export type YouTubeResolveStreamResponse = AppResult<{
 
 export const youtubeResolveStream = createServerFn({ method: "POST" })
   .middleware([rateLimitMiddleware("youtube-resolve-stream")])
-  .inputValidator(ResolveStreamSchema)
+  .validator(ResolveStreamSchema)
   .handler(
     ({ data }): Promise<YouTubeResolveStreamResponse> =>
       runServerFn({

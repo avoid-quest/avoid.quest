@@ -20,7 +20,7 @@ export type RadioGardenSearchResponse = AppResult<{
 
 export const radioGardenSearch = createServerFn({ method: "POST" })
   .middleware([rateLimitMiddleware("radio-garden-search")])
-  .inputValidator(RadioGardenSearchSchema)
+  .validator(RadioGardenSearchSchema)
   .handler(
     ({ data }): Promise<RadioGardenSearchResponse> =>
       runServerFn({
@@ -52,7 +52,7 @@ export type RadioGardenResolveResponse = AppResult<{
 
 export const radioGardenResolveStream = createServerFn({ method: "POST" })
   .middleware([rateLimitMiddleware("radio-garden-resolve")])
-  .inputValidator(RadioGardenResolveSchema)
+  .validator(RadioGardenResolveSchema)
   .handler(
     ({ data }): Promise<RadioGardenResolveResponse> =>
       runServerFn({

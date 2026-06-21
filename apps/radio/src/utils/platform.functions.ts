@@ -159,7 +159,7 @@ async function resolvePlatformItem(
 
 export const loadPlatformItem = createServerFn({ method: "POST" })
   .middleware([rateLimitMiddleware("load-platform-item")])
-  .inputValidator(LoadPlatformItemSchema)
+  .validator(LoadPlatformItemSchema)
   .handler(
     ({ data }): Promise<LoadPlatformItemResponse> =>
       runServerFn({

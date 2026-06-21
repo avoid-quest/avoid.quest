@@ -100,7 +100,7 @@ async function fetchPlaylistWithRateLimit(
 
 export const probeRemoteAudio = createServerFn({ method: "POST" })
   .middleware([rateLimitMiddleware("probe-remote-audio")])
-  .inputValidator(ProbeRemoteAudioSchema)
+  .validator(ProbeRemoteAudioSchema)
   .handler(
     ({ data }): Promise<RemoteAudioProbeResponse> =>
       runServerFn({
@@ -118,7 +118,7 @@ export const probeRemoteAudio = createServerFn({ method: "POST" })
 
 export const fetchPlaylist = createServerFn({ method: "POST" })
   .middleware([rateLimitMiddleware("fetch-playlist")])
-  .inputValidator(FetchPlaylistSchema)
+  .validator(FetchPlaylistSchema)
   .handler(
     ({ data }): Promise<FetchPlaylistResponse> =>
       runServerFn({
@@ -136,7 +136,7 @@ export const fetchPlaylist = createServerFn({ method: "POST" })
 
 export const getStaticAudioItem = createServerFn({ method: "POST" })
   .middleware([rateLimitMiddleware("get-static-audio-item")])
-  .inputValidator(GetStaticAudioItemSchema)
+  .validator(GetStaticAudioItemSchema)
   .handler(
     ({ data }): Promise<StaticAudioItemResponse> =>
       runServerFn({

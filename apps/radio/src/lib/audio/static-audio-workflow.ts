@@ -32,10 +32,6 @@ type StaticAudioWorkflowOptions = {
   fetchImpl?: FetchLike;
 };
 
-type StaticAudioWorkflowStepResult<T> =
-  | { ok: true; data: T }
-  | { ok: false; error: AppError };
-
 const STATIC_AUDIO_INVALID_URL_ERROR = {
   code: "STATIC_AUDIO_INVALID_URL",
   safeMessage: "Invalid URL",
@@ -173,17 +169,27 @@ async function withStaticAudioTimeout<T>({
   }
 }
 
-async function runStaticAudioWorkflowStep<T>({
+async function runStaticAudioDependency<T>({
+  code,
   fallback,
   run,
 }: {
+  code: string;
   fallback: AppErrorInit;
   run: () => Promise<T>;
-}): Promise<StaticAudioWorkflowStepResult<T>> {
+}): Promise<T> {
   try {
-    return { ok: true, data: await run() };
+    return await run();
   } catch (error) {
-    return { ok: false, error: toAppError(error, fallback) };
+    const appError = toAppError(error, fallback);
+    throw new AppError({
+      code,
+      safeMessage: appError.safeMessage,
+      category: "dependency",
+      expected: true,
+      status: appError.status,
+      cause: appError,
+    });
   }
 }
 
@@ -398,41 +404,23 @@ export async function getStaticAudioItemWorkflow(
   const trimmedUrl = url.trim();
 
   if (isPlaylistUrl(trimmedUrl)) {
-    const playlistResult = await runStaticAudioWorkflowStep({
+    const playlistResult = await runStaticAudioDependency({
+      code: "STATIC_AUDIO_PLAYLIST_RESOLVE_FAILED",
       fallback: STATIC_AUDIO_FETCH_PLAYLIST_FALLBACK_ERROR,
       run: () => fetchStaticAudioPlaylistWorkflow(trimmedUrl, options),
     });
 
-    if (!playlistResult.ok) {
-      throw new AppError({
-        code: "STATIC_AUDIO_PLAYLIST_RESOLVE_FAILED",
-        safeMessage: playlistResult.error.safeMessage,
-        category: "dependency",
-        expected: true,
-        status: playlistResult.error.status,
-      });
-    }
-
-    return createPlaylistMetadata(trimmedUrl, playlistResult.data.playlist);
+    return createPlaylistMetadata(trimmedUrl, playlistResult.playlist);
   }
 
   if (isAudioUrl(trimmedUrl)) {
-    const probeResult = await runStaticAudioWorkflowStep({
+    const probeResult = await runStaticAudioDependency({
+      code: "STATIC_AUDIO_PROBE_FAILED",
       fallback: STATIC_AUDIO_PROBE_FALLBACK_ERROR,
       run: () => probeRemoteAudioWorkflow(trimmedUrl, options),
     });
 
-    if (!probeResult.ok) {
-      throw new AppError({
-        code: "STATIC_AUDIO_PROBE_FAILED",
-        safeMessage: probeResult.error.safeMessage,
-        category: "dependency",
-        expected: true,
-        status: probeResult.error.status,
-      });
-    }
-
-    return createTrackMetadata(trimmedUrl, probeResult.data);
+    return createTrackMetadata(trimmedUrl, probeResult);
   }
 
   throw new AppError({

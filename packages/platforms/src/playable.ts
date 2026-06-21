@@ -18,12 +18,29 @@ export type StaticAudioItemResolver<TMetadata> = (
   url: string
 ) => Promise<{ metadata: TMetadata; streamUrl: string }>;
 
-export type PlayablePlatformItem<TStaticAudioMetadata = never> = {
-  platform: PlayablePlatform;
+type PlayablePlatformItemBase<TPlatform extends PlayablePlatform, TMetadata> = {
+  platform: TPlatform;
   normalizedUrl: string;
-  metadata: PlatformMetadata | TStaticAudioMetadata;
+  metadata: TMetadata;
   streamUrl: string;
 };
+
+type PlayableProviderPlatformItem<TPlatform extends Platform = Platform> =
+  TPlatform extends Platform
+    ? PlayablePlatformItemBase<
+        TPlatform,
+        Extract<PlatformMetadata, { platform: TPlatform }>
+      >
+    : never;
+
+type StaticAudioPlatformItem<TStaticAudioMetadata> = PlayablePlatformItemBase<
+  "static-audio",
+  TStaticAudioMetadata
+>;
+
+export type PlayablePlatformItem<TStaticAudioMetadata = never> =
+  | PlayableProviderPlatformItem
+  | StaticAudioPlatformItem<TStaticAudioMetadata>;
 
 export type PlayablePlatformResolutionErrorCode =
   | "provider-resolution-failed"
@@ -125,7 +142,12 @@ async function resolveBandcampPlayableItem<TStaticAudioMetadata>(
       result.error || "Failed to resolve Bandcamp item"
     );
   }
-  return itemResult<TStaticAudioMetadata>("bandcamp", normalizedUrl, result);
+  return providerItemResult<TStaticAudioMetadata>({
+    metadata: result.metadata,
+    normalizedUrl,
+    platform: "bandcamp",
+    streamUrl: result.streamUrl,
+  });
 }
 
 async function resolveSoundCloudPlayableItem<TStaticAudioMetadata>(
@@ -138,7 +160,12 @@ async function resolveSoundCloudPlayableItem<TStaticAudioMetadata>(
       result.error || "Failed to resolve SoundCloud item"
     );
   }
-  return itemResult<TStaticAudioMetadata>("soundcloud", normalizedUrl, result);
+  return providerItemResult<TStaticAudioMetadata>({
+    metadata: result.metadata,
+    normalizedUrl,
+    platform: "soundcloud",
+    streamUrl: result.streamUrl,
+  });
 }
 
 async function resolveYouTubePlayableItem<TStaticAudioMetadata>(
@@ -152,7 +179,12 @@ async function resolveYouTubePlayableItem<TStaticAudioMetadata>(
       result.error || "Failed to resolve YouTube item"
     );
   }
-  return itemResult<TStaticAudioMetadata>("youtube", normalizedUrl, result);
+  return providerItemResult<TStaticAudioMetadata>({
+    metadata: result.metadata,
+    normalizedUrl,
+    platform: "youtube",
+    streamUrl: result.streamUrl,
+  });
 }
 
 async function resolveRadioGardenPlayableItem<TStaticAudioMetadata>(
@@ -177,7 +209,12 @@ async function resolveRadioGardenPlayableItem<TStaticAudioMetadata>(
       result.error || "Failed to resolve Radio Garden item"
     );
   }
-  return itemResult<TStaticAudioMetadata>("radiogarden", normalizedUrl, result);
+  return providerItemResult<TStaticAudioMetadata>({
+    metadata: result.metadata,
+    normalizedUrl,
+    platform: "radiogarden",
+    streamUrl: result.streamUrl,
+  });
 }
 
 async function resolveStaticAudioPlayableItem<TStaticAudioMetadata>(
@@ -199,11 +236,12 @@ async function resolveStaticAudioPlayableItem<TStaticAudioMetadata>(
 
   try {
     const result = await resolveStaticAudioItem(normalizedUrl);
-    return itemResult<TStaticAudioMetadata>(
-      "static-audio",
+    return staticAudioItemResult({
+      metadata: result.metadata,
       normalizedUrl,
-      result
-    );
+      platform: "static-audio",
+      streamUrl: result.streamUrl,
+    });
   } catch (error) {
     return {
       error: {
@@ -216,21 +254,20 @@ async function resolveStaticAudioPlayableItem<TStaticAudioMetadata>(
   }
 }
 
-function itemResult<TStaticAudioMetadata>(
-  platform: PlayablePlatform,
-  normalizedUrl: string,
-  result: {
-    metadata: PlatformMetadata | TStaticAudioMetadata;
-    streamUrl: string;
-  }
+function providerItemResult<TStaticAudioMetadata>(
+  item: PlayableProviderPlatformItem
 ): PlayablePlatformResolutionResult<TStaticAudioMetadata> {
   return {
-    item: {
-      metadata: result.metadata,
-      normalizedUrl,
-      platform,
-      streamUrl: result.streamUrl,
-    },
+    item,
+    success: true,
+  };
+}
+
+function staticAudioItemResult<TStaticAudioMetadata>(
+  item: StaticAudioPlatformItem<TStaticAudioMetadata>
+): PlayablePlatformResolutionResult<TStaticAudioMetadata> {
+  return {
+    item,
     success: true,
   };
 }
@@ -311,7 +348,7 @@ export function toPlayableSources(
     ];
   }
 
-  const metadata = item.metadata as PlatformMetadata;
+  const metadata = item.metadata;
 
   if (metadata.platform === "radiogarden") {
     return [

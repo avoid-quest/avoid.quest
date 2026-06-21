@@ -2,18 +2,19 @@ import { env } from "cloudflare:workers";
 import { AppError, type AppResult, runServerFn } from "@avoid.quest/error";
 import {
   createPlayablePlatformResolver,
+  detectPlayablePlatformFromUrl,
   normalizePlayablePlatformUrl,
   type PlayablePlatformResolutionError,
 } from "@avoid.quest/platforms";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
+import { getStaticAudioItemWorkflow } from "@/lib/audio/static-audio-workflow";
 import type {
   PlatformMetadata,
   StaticAudioMetadata,
 } from "@/lib/platform-types";
 import { readInvidiousOptions } from "./invidious-env";
 import { rateLimitMiddleware } from "./middleware";
-import { getStaticAudioItem } from "./static-audio.functions";
 
 const LoadPlatformItemSchema = z.object({
   url: z
@@ -42,16 +43,6 @@ type ResolvedPlatformItem = {
   metadata: PlatformMetadata;
   streamUrl: string;
 };
-
-function toPlatformResolutionError(message: string): AppError {
-  return new AppError({
-    code: "PLATFORM_ITEM_RESOLUTION_FAILED",
-    safeMessage: message || "Failed to resolve platform item",
-    category: "dependency",
-    expected: false,
-    status: 500,
-  });
-}
 
 async function normalizePlatformUrl(url: string): Promise<string> {
   try {
@@ -108,27 +99,22 @@ function toAppError(error: PlayablePlatformResolutionError): AppError {
   });
 }
 
-async function resolveStaticAudioItem(url: string): Promise<{
+function resolveStaticAudioItem(url: string): Promise<{
   metadata: StaticAudioMetadata;
   streamUrl: string;
 }> {
-  const result = await getStaticAudioItem({ data: { url } });
-  if (result.ok) {
-    return {
-      metadata: result.data.metadata,
-      streamUrl: result.data.streamUrl,
-    };
-  }
-
-  throw toPlatformResolutionError(result.error.message);
+  return getStaticAudioItemWorkflow(url);
 }
 
 async function resolvePlatformItem(
   normalizedUrl: string
 ): Promise<ResolvedPlatformItem> {
+  if (detectPlayablePlatformFromUrl(normalizedUrl) === "static-audio") {
+    return resolveStaticAudioItem(normalizedUrl);
+  }
+
   const resolver = createPlayablePlatformResolver<StaticAudioMetadata>({
     invidiousOptions: () => readInvidiousOptions(env),
-    resolveStaticAudioItem,
   });
   const result = await resolver.resolveNormalizedItem(normalizedUrl);
   if (!result.success) {

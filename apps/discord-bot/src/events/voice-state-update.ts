@@ -3,12 +3,21 @@ import { updateGuildVoiceOccupancy } from "../voice/guild-player.js";
 
 export function handleVoiceStateUpdate(
   oldState: VoiceState,
-  _newState: VoiceState
+  newState: VoiceState
 ): void {
-  if (!oldState.channel) {
-    return;
-  }
+  const seenChannelIds = new Set<string>();
 
-  const members = oldState.channel.members.filter((m) => !m.user.bot);
-  updateGuildVoiceOccupancy(oldState.guild.id, members.size);
+  for (const channel of [oldState.channel, newState.channel]) {
+    if (!channel || seenChannelIds.has(channel.id)) {
+      continue;
+    }
+
+    seenChannelIds.add(channel.id);
+    const members = channel.members.filter((m) => !m.user.bot);
+    updateGuildVoiceOccupancy({
+      guildId: channel.guild.id,
+      channelId: channel.id,
+      nonBotMemberCount: members.size,
+    });
+  }
 }

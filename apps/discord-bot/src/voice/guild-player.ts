@@ -122,12 +122,17 @@ export function setGuildPlaybackVolume(
   );
 }
 
-export function updateGuildVoiceOccupancy(
-  guildId: string,
-  nonBotMemberCount: number
-): OccupancyResult {
+export function updateGuildVoiceOccupancy({
+  guildId,
+  channelId,
+  nonBotMemberCount,
+}: {
+  guildId: string;
+  channelId: string;
+  nonBotMemberCount: number;
+}): OccupancyResult {
   return (
-    getGuildPlayer(guildId)?.updateOccupancy(nonBotMemberCount) ?? {
+    getGuildPlayer(guildId)?.updateOccupancy(channelId, nonBotMemberCount) ?? {
       status: "not-playing",
     }
   );
@@ -263,7 +268,7 @@ class GuildPlayer {
   getSnapshot(): GuildPlaybackSnapshot {
     return {
       currentTrack: this.queue.current,
-      queueTracks: this.queue.items,
+      queueTracks: [...this.queue.items],
     };
   }
 
@@ -412,7 +417,14 @@ class GuildPlayer {
     return { status: "volume-set", percent };
   }
 
-  updateOccupancy(nonBotMemberCount: number): OccupancyResult {
+  updateOccupancy(
+    channelId: string,
+    nonBotMemberCount: number
+  ): OccupancyResult {
+    if (this.channel?.id !== channelId) {
+      return { status: "not-playing" };
+    }
+
     if (nonBotMemberCount === 0) {
       this.startDisconnectTimer();
       return { status: "disconnect-scheduled" };

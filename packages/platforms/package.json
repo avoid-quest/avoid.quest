@@ -12,6 +12,7 @@
     "./bandcamp/search": "./src/bandcamp/search.ts",
     "./bandcamp/url-policy": "./src/bandcamp/url-policy.ts",
     "./search": "./src/search.ts",
+    "./playable": "./src/playable.ts",
     "./static-audio": "./src/static-audio.ts",
     "./redirects": "./src/redirects/index.ts",
     "./url-policy": "./src/url-policy/index.ts",

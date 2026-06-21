@@ -1,12 +1,6 @@
-import { beforeAll, describe, expect, mock, test } from "bun:test";
-
-mock.module("cloudflare:workers", () => ({ env: {} }));
-
-let fetchBandcampProxyStream: typeof import("./bandcamp-proxy")["fetchBandcampProxyStream"];
-
-beforeAll(async () => {
-  ({ fetchBandcampProxyStream } = await import("./bandcamp-proxy"));
-});
+import { describe, expect, mock, test } from "bun:test";
+import type { AppError } from "@avoid.quest/error";
+import { createBandcampCdnProxyWorkflow } from "./bandcamp-cdn-proxy-workflow";
 
 function createProxyRequest(range = "bytes=0-10"): Request {
   return new Request("https://radio.test/api/bandcamp-proxy", {
@@ -14,7 +8,36 @@ function createProxyRequest(range = "bytes=0-10"): Request {
   });
 }
 
-describe("fetchBandcampProxyStream", () => {
+function createWorkflow() {
+  return createBandcampCdnProxyWorkflow({
+    proxyPolicy: {
+      errorHeaders(request: Request) {
+        return {
+          "Access-Control-Allow-Origin": new URL(request.url).origin,
+        };
+      },
+      problem(error: AppError, origin: string, requestId: string) {
+        return Response.json(
+          {
+            code: error.code,
+            message: error.safeMessage,
+            requestId,
+            status: error.status,
+          },
+          {
+            status: error.status,
+            headers: {
+              "Access-Control-Allow-Origin": origin,
+              "x-request-id": requestId,
+            },
+          }
+        );
+      },
+    },
+  });
+}
+
+describe("createBandcampCdnProxyWorkflow", () => {
   test("rejects redirects outside the Bandcamp CDN before fetching the target", async () => {
     const initialUrl = "https://t4.bcbits.com/stream.mp3";
     const requestedUrls: string[] = [];
@@ -35,11 +58,13 @@ describe("fetchBandcampProxyStream", () => {
       throw new Error(`Unexpected fetch for ${url}`);
     });
 
-    const response = await fetchBandcampProxyStream(
+    const response = await createWorkflow().fetchStream(
       initialUrl,
-      createProxyRequest(),
-      "https://radio.test",
-      "req_bandcamp_redirect",
+      {
+        origin: "https://radio.test",
+        request: createProxyRequest(),
+        requestId: "req_bandcamp_redirect",
+      },
       fetchImpl
     );
 
@@ -82,11 +107,13 @@ describe("fetchBandcampProxyStream", () => {
       });
     });
 
-    const response = await fetchBandcampProxyStream(
+    const response = await createWorkflow().fetchStream(
       initialUrl,
-      createProxyRequest(),
-      "https://radio.test",
-      "req_bandcamp_allowed_redirect",
+      {
+        origin: "https://radio.test",
+        request: createProxyRequest(),
+        requestId: "req_bandcamp_allowed_redirect",
+      },
       fetchImpl
     );
 

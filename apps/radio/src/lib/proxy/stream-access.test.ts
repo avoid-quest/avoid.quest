@@ -2,12 +2,31 @@ import { afterEach, describe, expect, mock, test } from "bun:test";
 import {
   clearStreamAccessCache,
   determineStreamAccessMode,
+  fetchPublicStreamWithRedirects,
   inspectStreamAccess,
   StreamRedirectError,
 } from "./stream-access";
 
 afterEach(() => {
   clearStreamAccessCache();
+});
+
+describe("fetchPublicStreamWithRedirects", () => {
+  test("keeps the public redirect helper success shape stable", async () => {
+    const fetchImpl = mock(async () => {
+      await Promise.resolve();
+      return new Response("ok");
+    });
+
+    const result = await fetchPublicStreamWithRedirects(
+      "https://radio.example/live",
+      { method: "GET" },
+      fetchImpl
+    );
+
+    expect(result.resolvedUrl).toBe("https://radio.example/live");
+    expect("ok" in result).toBe(false);
+  });
 });
 
 describe("determineStreamAccessMode", () => {

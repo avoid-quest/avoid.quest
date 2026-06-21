@@ -235,6 +235,34 @@ describe("createCdnProxyRequestWorkflow", () => {
     });
   });
 
+  test("maps validated redirect failures to the configured response", async () => {
+    const requestedUrls: string[] = [];
+    const fetchImpl = mock(async (url: string) => {
+      await Promise.resolve();
+      requestedUrls.push(url);
+      return Response.redirect("https://internal.example/track.mp3", 302);
+    });
+    const workflow = createWorkflow({ fetchImpl });
+
+    const response = await workflow.fetchStream(
+      "https://cdn.example/track.mp3",
+      {
+        origin: "https://radio.test",
+        request: new Request("https://radio.test/api/test-proxy"),
+        requestId: "req_redirect_domain",
+      }
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      code: "TEST_INVALID_DOMAIN",
+      message: "Invalid domain",
+      requestId: "req_redirect_domain",
+      status: 400,
+    });
+    expect(requestedUrls).toEqual(["https://cdn.example/track.mp3"]);
+  });
+
   test("maps aborted upstream fetches to the configured timeout response", async () => {
     const fetchImpl = mock(
       (_url: string, init?: RequestInit) =>

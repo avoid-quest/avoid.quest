@@ -1,11 +1,16 @@
 import { beforeAll, describe, expect, mock, test } from "bun:test";
+import type { AppError } from "@avoid.quest/error";
 
-mock.module("cloudflare:workers", () => ({ env: {} }));
+const logSSRFAttempt = mock(() => undefined);
 
-let fetchSoundCloudProxyStream: typeof import("./soundcloud-proxy")["fetchSoundCloudProxyStream"];
+mock.module("@/lib/logger", () => ({ logSSRFAttempt }));
+
+let createSoundCloudCdnProxyWorkflow: typeof import("./soundcloud-cdn-proxy-workflow")["createSoundCloudCdnProxyWorkflow"];
 
 beforeAll(async () => {
-  ({ fetchSoundCloudProxyStream } = await import("./soundcloud-proxy"));
+  ({ createSoundCloudCdnProxyWorkflow } = await import(
+    "./soundcloud-cdn-proxy-workflow"
+  ));
 });
 
 function createProxyRequest(range = "bytes=0-10"): Request {
@@ -14,7 +19,36 @@ function createProxyRequest(range = "bytes=0-10"): Request {
   });
 }
 
-describe("fetchSoundCloudProxyStream", () => {
+function createWorkflow() {
+  return createSoundCloudCdnProxyWorkflow({
+    proxyPolicy: {
+      errorHeaders(request: Request) {
+        return {
+          "Access-Control-Allow-Origin": new URL(request.url).origin,
+        };
+      },
+      problem(error: AppError, origin: string, requestId: string) {
+        return Response.json(
+          {
+            code: error.code,
+            message: error.safeMessage,
+            requestId,
+            status: error.status,
+          },
+          {
+            status: error.status,
+            headers: {
+              "Access-Control-Allow-Origin": origin,
+              "x-request-id": requestId,
+            },
+          }
+        );
+      },
+    },
+  });
+}
+
+describe("createSoundCloudCdnProxyWorkflow", () => {
   test("rejects redirects outside the SoundCloud CDN allowlist before fetching the target", async () => {
     const initialUrl = "https://cf-media.sndcdn.com/track.mp3";
     const requestedUrls: string[] = [];
@@ -40,11 +74,13 @@ describe("fetchSoundCloudProxyStream", () => {
       throw new Error(`Unexpected fetch for ${url}`);
     });
 
-    const response = await fetchSoundCloudProxyStream(
+    const response = await createWorkflow().fetchStream(
       initialUrl,
-      createProxyRequest(),
-      "https://radio.test",
-      "req_soundcloud_redirect",
+      {
+        origin: "https://radio.test",
+        request: createProxyRequest(),
+        requestId: "req_soundcloud_redirect",
+      },
       fetchImpl
     );
 
@@ -76,11 +112,13 @@ describe("fetchSoundCloudProxyStream", () => {
       throw new Error(`Unexpected fetch for ${url}`);
     });
 
-    const response = await fetchSoundCloudProxyStream(
+    const response = await createWorkflow().fetchStream(
       initialUrl,
-      createProxyRequest(),
-      "https://radio.test",
-      "req_soundcloud_protocol_redirect",
+      {
+        origin: "https://radio.test",
+        request: createProxyRequest(),
+        requestId: "req_soundcloud_protocol_redirect",
+      },
       fetchImpl
     );
 
@@ -121,11 +159,13 @@ describe("fetchSoundCloudProxyStream", () => {
       });
     });
 
-    const response = await fetchSoundCloudProxyStream(
+    const response = await createWorkflow().fetchStream(
       initialUrl,
-      createProxyRequest(),
-      "https://radio.test",
-      "req_soundcloud_allowed_redirect",
+      {
+        origin: "https://radio.test",
+        request: createProxyRequest(),
+        requestId: "req_soundcloud_allowed_redirect",
+      },
       fetchImpl
     );
 
@@ -145,5 +185,33 @@ describe("fetchSoundCloudProxyStream", () => {
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
     ]);
+  });
+
+  test("logs invalid-domain URL validation failures as SSRF attempts", async () => {
+    logSSRFAttempt.mockClear();
+
+    const response = await createWorkflow().handle({
+      auth: {
+        ip: "203.0.113.10",
+        sessionId: "sess_soundcloud",
+      },
+      origin: "https://radio.test",
+      request: new Request(
+        "https://radio.test/api/soundcloud-proxy?url=http%3A%2F%2F127.0.0.1%2Fprivate.mp3"
+      ),
+      requestId: "req_soundcloud_ssrf",
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "SOUNDCLOUD_PROXY_INVALID_DOMAIN",
+      requestId: "req_soundcloud_ssrf",
+    });
+    expect(logSSRFAttempt).toHaveBeenCalledWith(
+      "sess_soundcloud",
+      "http://127.0.0.1/private.mp3",
+      "soundcloud-proxy",
+      "203.0.113.10"
+    );
   });
 });

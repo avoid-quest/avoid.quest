@@ -1,5 +1,5 @@
 import {
-  fetchWithValidatedRedirects,
+  fetchWithValidatedRedirectResult,
   ValidatedRedirectError,
   type ValidatedRedirectFailure,
 } from "@avoid.quest/platforms/redirects";
@@ -89,24 +89,23 @@ export async function fetchPublicStreamWithRedirects(
   fetchImpl: FetchLike,
   maxRedirects = STREAM_ACCESS_MAX_REDIRECTS
 ): Promise<{ response: Response; resolvedUrl: string }> {
-  try {
-    return await fetchWithValidatedRedirects({
-      fetchImpl,
-      init,
-      invalidUrlReason: "invalid-url",
-      maxRedirects,
-      url,
-      validateUrl: validatePublicStreamUrl,
-    });
-  } catch (error) {
-    if (error instanceof ValidatedRedirectError) {
-      throw new StreamRedirectError(
-        error.reason as StreamRedirectFailure,
-        error.url
-      );
-    }
-    throw error;
+  const result = await fetchWithValidatedRedirectResult({
+    fetchImpl,
+    init,
+    invalidUrlReason: "invalid-url",
+    maxRedirects,
+    url,
+    validateUrl: validatePublicStreamUrl,
+  });
+
+  if (!result.ok) {
+    throw new StreamRedirectError(result.failure.reason, result.failure.url);
   }
+
+  return {
+    response: result.response,
+    resolvedUrl: result.resolvedUrl,
+  };
 }
 
 async function probeStreamAccess(

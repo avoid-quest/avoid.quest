@@ -1,9 +1,8 @@
 import { AppError, type AppErrorInit, captureError } from "@avoid.quest/error";
 import {
   type FetchLike,
-  fetchWithValidatedRedirects,
+  fetchWithValidatedRedirectResult,
   type UrlValidationResult,
-  ValidatedRedirectError,
   type ValidatedRedirectFailure,
 } from "@avoid.quest/platforms/redirects";
 
@@ -11,7 +10,7 @@ const DEFAULT_FETCH_TIMEOUT_MS = 10_000;
 const DEFAULT_MAX_REDIRECTS = 5;
 const DEFAULT_MAX_RESPONSE_SIZE = 100 * 1024 * 1024;
 
-type CdnProxyPolicy = {
+export type CdnProxyPolicy = {
   errorHeaders: (request: Request) => HeadersInit;
   problem: (error: AppError, origin: string, requestId: string) => Response;
 };
@@ -62,7 +61,7 @@ type CdnProxyWorkflowConfig<
   validateUrl: UrlValidator<UrlFailure>;
 };
 
-type CdnProxyWorkflow<AuthContext> = {
+export type CdnProxyWorkflow<AuthContext> = {
   fetchStream: (
     url: string,
     context: CdnProxyFetchContext,
@@ -150,7 +149,7 @@ export function createCdnProxyRequestWorkflow<
     const timeout = setTimeout(() => controller.abort(), fetchTimeoutMs);
 
     try {
-      const { response } = await fetchWithValidatedRedirects({
+      const redirectResult = await fetchWithValidatedRedirectResult({
         fetchImpl,
         init: {
           signal: controller.signal,
@@ -163,6 +162,16 @@ export function createCdnProxyRequestWorkflow<
       });
 
       clearTimeout(timeout);
+
+      if (!redirectResult.ok) {
+        return proxyPolicy.problem(
+          new AppError(redirectFailureErrors[redirectResult.failure.reason]),
+          context.origin,
+          context.requestId
+        );
+      }
+
+      const { response } = redirectResult;
 
       if (!response.ok) {
         return proxyPolicy.problem(
@@ -183,18 +192,6 @@ export function createCdnProxyRequestWorkflow<
       return buildCdnStreamResponse(response, context, proxyPolicy);
     } catch (error) {
       clearTimeout(timeout);
-
-      if (error instanceof ValidatedRedirectError) {
-        return proxyPolicy.problem(
-          new AppError(
-            redirectFailureErrors[
-              error.reason as ValidatedRedirectFailure<UrlFailure>
-            ]
-          ),
-          context.origin,
-          context.requestId
-        );
-      }
 
       if (error instanceof Error && error.name === "AbortError") {
         return proxyPolicy.problem(

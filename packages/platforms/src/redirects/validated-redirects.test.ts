@@ -1,11 +1,20 @@
 import { describe, expect, mock, test } from "bun:test";
 import {
+  fetchWithValidatedRedirectResult,
   fetchWithValidatedRedirects,
   type UrlValidationResult,
   ValidatedRedirectError,
+  type ValidatedRedirectFailure,
 } from "./validated-redirects";
 
 type TestUrlFailure = "invalid-url" | "invalid-domain";
+
+const TEST_REDIRECT_FAILURE_MESSAGES = {
+  "invalid-url": "Invalid URL",
+  "invalid-domain": "Invalid domain",
+  "missing-location": "Missing Location",
+  "too-many-redirects": "Too many redirects",
+} as const satisfies Record<ValidatedRedirectFailure<TestUrlFailure>, string>;
 
 function validateExampleUrl(url: string): UrlValidationResult<TestUrlFailure> {
   let parsed: URL;
@@ -47,6 +56,7 @@ describe("fetchWithValidatedRedirects", () => {
     });
 
     expect(result.resolvedUrl).toBe("https://example.test/final");
+    expect("ok" in result).toBe(false);
     expect(requestedUrls).toEqual([
       "https://example.test/start",
       "https://example.test/final",
@@ -73,6 +83,37 @@ describe("fetchWithValidatedRedirects", () => {
       url: "https://internal.test/final",
     });
     expect(requestedUrls).toEqual(["https://example.test/start"]);
+  });
+
+  test("returns typed failure results for exhaustive caller mapping", async () => {
+    const fetchImpl = mock(async () => {
+      await Promise.resolve();
+      return Response.redirect("https://internal.test/final", 302);
+    });
+
+    const result = await fetchWithValidatedRedirectResult({
+      fetchImpl,
+      invalidUrlReason: "invalid-url",
+      url: "https://example.test/start",
+      validateUrl: validateExampleUrl,
+    });
+
+    expect(result).toEqual({
+      failure: {
+        reason: "invalid-domain",
+        url: "https://internal.test/final",
+      },
+      ok: false,
+    });
+
+    if (!result.ok) {
+      expect(TEST_REDIRECT_FAILURE_MESSAGES[result.failure.reason]).toBe(
+        "Invalid domain"
+      );
+      return;
+    }
+
+    throw new Error("Expected typed redirect failure result");
   });
 
   test("throws a structured failure at the redirect hop limit", async () => {

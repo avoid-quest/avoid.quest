@@ -1,7 +1,6 @@
 import {
-  fetchWithValidatedRedirects,
+  fetchWithValidatedRedirectResult,
   type UrlValidationResult,
-  ValidatedRedirectError,
   type ValidatedRedirectFailure,
 } from "../redirects/index.js";
 import { detectSoundCloudItemType, needsResolution } from "./detect.js";
@@ -277,35 +276,29 @@ export async function resolveShortLink(shortUrl: string): Promise<string> {
   }
 
   const signal = AbortSignal.timeout(10_000);
-  try {
-    const { response, resolvedUrl } = await fetchWithValidatedRedirects({
-      fetchImpl: fetch,
-      init: {
-        method: "HEAD",
-        signal,
-      },
-      invalidUrlReason: "invalid-url",
-      maxRedirects: SHORT_LINK_MAX_REDIRECTS,
-      url: shortUrl,
-      validateUrl: validateShortLinkRedirectTarget,
-    });
+  const result = await fetchWithValidatedRedirectResult({
+    fetchImpl: fetch,
+    init: {
+      method: "HEAD",
+      signal,
+    },
+    invalidUrlReason: "invalid-url",
+    maxRedirects: SHORT_LINK_MAX_REDIRECTS,
+    url: shortUrl,
+    validateUrl: validateShortLinkRedirectTarget,
+  });
 
-    if (!response.ok) {
-      throw new Error(
-        `Failed to resolve short link: ${response.status} ${response.statusText}`
-      );
-    }
-
-    return resolvedUrl;
-  } catch (error) {
-    if (error instanceof ValidatedRedirectError) {
-      throw createShortLinkRedirectError(
-        error.reason as ShortLinkRedirectFailure
-      );
-    }
-
-    throw error;
+  if (!result.ok) {
+    throw createShortLinkRedirectError(result.failure.reason);
   }
+
+  if (!result.response.ok) {
+    throw new Error(
+      `Failed to resolve short link: ${result.response.status} ${result.response.statusText}`
+    );
+  }
+
+  return result.resolvedUrl;
 }
 
 export async function getSoundCloudItem(

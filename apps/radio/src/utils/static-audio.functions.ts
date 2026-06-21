@@ -10,6 +10,10 @@ import {
   type AppResult,
   runServerFn,
 } from "@avoid.quest/error";
+import {
+  fetchWithValidatedRedirectResult,
+  type ValidatedRedirectFailure,
+} from "@avoid.quest/platforms/redirects";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import {
@@ -26,18 +30,16 @@ import type {
   StaticAudioTrack,
 } from "@/lib/platform-types";
 import {
-  fetchPublicStreamWithRedirects,
-  StreamRedirectError,
-  type StreamRedirectFailure,
-} from "@/lib/proxy/stream-access";
-import {
   type StreamUrlValidationFailure,
   validatePublicStreamUrl,
 } from "@/lib/proxy/url-policy";
 import { rateLimitMiddleware } from "./middleware";
 
 const REQUEST_TIMEOUT_MS = 15_000;
+const STATIC_AUDIO_MAX_REDIRECTS = 5;
 type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
+type StaticAudioRedirectFailure =
+  ValidatedRedirectFailure<StreamUrlValidationFailure>;
 
 const STATIC_AUDIO_INVALID_URL_ERROR = {
   code: "STATIC_AUDIO_INVALID_URL",
@@ -89,11 +91,7 @@ const STATIC_AUDIO_REDIRECT_FAILURE_ERRORS = {
     expected: false,
     status: 502,
   },
-} as const satisfies Record<StreamRedirectFailure, AppErrorInit>;
-
-function createStaticAudioError(init: AppErrorInit): AppError {
-  return new AppError(init);
-}
+} as const satisfies Record<StaticAudioRedirectFailure, AppErrorInit>;
 
 export function assertPublicStaticAudioUrl(url: string): void {
   const validation = validatePublicStreamUrl(url);
@@ -101,15 +99,13 @@ export function assertPublicStaticAudioUrl(url: string): void {
     return;
   }
 
-  throw createStaticAudioError(
-    STATIC_AUDIO_URL_VALIDATION_ERRORS[validation.reason]
-  );
+  throw new AppError(STATIC_AUDIO_URL_VALIDATION_ERRORS[validation.reason]);
 }
 
-function createStaticAudioRedirectError(error: StreamRedirectError): AppError {
-  return createStaticAudioError(
-    STATIC_AUDIO_REDIRECT_FAILURE_ERRORS[error.reason]
-  );
+function createStaticAudioRedirectError(
+  reason: StaticAudioRedirectFailure
+): AppError {
+  return new AppError(STATIC_AUDIO_REDIRECT_FAILURE_ERRORS[reason]);
 }
 
 export async function fetchStaticAudioWithRedirects(
@@ -126,24 +122,24 @@ export async function fetchStaticAudioWithRedirects(
     signal?: AbortSignal;
   }
 ): Promise<Response> {
-  try {
-    const { response } = await fetchPublicStreamWithRedirects(
-      url,
-      {
-        headers,
-        method,
-        signal,
-      },
-      fetchImpl
-    );
-    return response;
-  } catch (error) {
-    if (error instanceof StreamRedirectError) {
-      throw createStaticAudioRedirectError(error);
-    }
+  const redirectResult = await fetchWithValidatedRedirectResult({
+    fetchImpl,
+    init: {
+      headers,
+      method,
+      signal,
+    },
+    invalidUrlReason: "invalid-url",
+    maxRedirects: STATIC_AUDIO_MAX_REDIRECTS,
+    url,
+    validateUrl: validatePublicStreamUrl,
+  });
 
-    throw error;
+  if (!redirectResult.ok) {
+    throw createStaticAudioRedirectError(redirectResult.failure.reason);
   }
+
+  return redirectResult.response;
 }
 
 export type RemoteAudioProbeResponse = AppResult<{

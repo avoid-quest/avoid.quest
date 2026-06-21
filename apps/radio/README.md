@@ -132,6 +132,8 @@ workers.dev and Workers Builds preview exposure. Custom production hostnames
 should be configured with Cloudflare account-level custom domains or routes
 outside this repository.
 
+Workers Builds PR comments should include the branch preview URL after upload.
+
 ## Development
 
 ```bash

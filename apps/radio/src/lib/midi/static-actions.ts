@@ -5,25 +5,10 @@
  */
 
 import {
-  pauseDeckA,
-  pauseDeckB,
-  playDeckA,
-  playDeckB,
+  getDjDeckActions,
   setCrossfadePosition,
-  setDeckAChannelFilter,
-  setDeckAEffectsDryWet,
-  setDeckAPan,
-  setDeckASpeed,
-  setDeckAVolume,
-  setDeckBChannelFilter,
-  setDeckBEffectsDryWet,
-  setDeckBPan,
-  setDeckBSpeed,
-  setDeckBVolume,
   setHeadphoneVolume,
   setMasterVolume,
-  toggleDeckACue,
-  toggleDeckBCue,
 } from "@/lib/dj-actions";
 import {
   getDeckARuntime,
@@ -34,15 +19,17 @@ import type { MidiAction } from "./types";
 
 function createDeckActions(deckId: "deck-a" | "deck-b"): MidiAction[] {
   const isA = deckId === "deck-a";
-  const play = isA ? playDeckA : playDeckB;
-  const pause = isA ? pauseDeckA : pauseDeckB;
   const getRuntime = isA ? getDeckARuntime : getDeckBRuntime;
-  const setVolume = isA ? setDeckAVolume : setDeckBVolume;
-  const setSpeed = isA ? setDeckASpeed : setDeckBSpeed;
-  const setFilter = isA ? setDeckAChannelFilter : setDeckBChannelFilter;
-  const setEffectsDryWet = isA ? setDeckAEffectsDryWet : setDeckBEffectsDryWet;
-  const setPan = isA ? setDeckAPan : setDeckBPan;
-  const toggleCue = isA ? toggleDeckACue : toggleDeckBCue;
+  const {
+    play,
+    pause,
+    setVolume,
+    setSpeed,
+    setChannelFilter,
+    setEffectsDryWet,
+    setPan,
+    toggleCue,
+  } = getDjDeckActions(deckId);
 
   return [
     {
@@ -86,7 +73,7 @@ function createDeckActions(deckId: "deck-a" | "deck-b"): MidiAction[] {
       label: "Filter",
       group: deckId,
       type: "continuous",
-      dispatch: (v) => setFilter(v * 2 - 1),
+      dispatch: (v) => setChannelFilter(v * 2 - 1),
       range: { min: -1, max: 1, step: 0.01 },
     },
     {

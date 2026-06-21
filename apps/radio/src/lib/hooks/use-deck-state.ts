@@ -1,30 +1,8 @@
 import { useMemo } from "react";
 import {
+  type DjDeckActions,
+  getDjDeckActions,
   loadTrack,
-  pauseDeckA,
-  pauseDeckB,
-  playDeckA,
-  playDeckB,
-  resetDeckA,
-  resetDeckB,
-  seekDeckA,
-  seekDeckB,
-  setDeckAAutoplay,
-  setDeckAChannelFilter,
-  setDeckAEffectsDryWet,
-  setDeckAMute,
-  setDeckAPan,
-  setDeckARepeat,
-  setDeckASpeed,
-  setDeckAVolume,
-  setDeckBAutoplay,
-  setDeckBChannelFilter,
-  setDeckBEffectsDryWet,
-  setDeckBMute,
-  setDeckBPan,
-  setDeckBRepeat,
-  setDeckBSpeed,
-  setDeckBVolume,
 } from "@/lib/dj-actions";
 import { type DeckState, useDeckA, useDeckB } from "@/lib/hooks/use-dj-state";
 
@@ -36,35 +14,8 @@ const DEFAULT_FILTER = {
   enabled: false,
 };
 
-const deckAActions = {
-  play: playDeckA,
-  pause: pauseDeckA,
-  setVolume: setDeckAVolume,
-  setMute: setDeckAMute,
-  reset: resetDeckA,
-  setPan: setDeckAPan,
-  setSpeed: setDeckASpeed,
-  setChannelFilter: setDeckAChannelFilter,
-  setEffectsDryWet: setDeckAEffectsDryWet,
-  seek: seekDeckA,
-  setRepeat: setDeckARepeat,
-  setAutoplay: setDeckAAutoplay,
-};
-
-const deckBActions = {
-  play: playDeckB,
-  pause: pauseDeckB,
-  setVolume: setDeckBVolume,
-  setMute: setDeckBMute,
-  reset: resetDeckB,
-  setPan: setDeckBPan,
-  setSpeed: setDeckBSpeed,
-  setChannelFilter: setDeckBChannelFilter,
-  setEffectsDryWet: setDeckBEffectsDryWet,
-  seek: seekDeckB,
-  setRepeat: setDeckBRepeat,
-  setAutoplay: setDeckBAutoplay,
-};
+const deckAActions = getDjDeckActions("deck-a");
+const deckBActions = getDjDeckActions("deck-b");
 
 type DeckStateResult = {
   radio: DeckState["radio"];
@@ -82,24 +33,24 @@ type DeckStateResult = {
   effectsDryWet: number;
   repeat: boolean;
   autoplay: boolean;
-  play: typeof playDeckA;
-  pause: typeof pauseDeckA;
-  setVolume: typeof setDeckAVolume;
-  setMute: typeof setDeckAMute;
-  reset: typeof resetDeckA;
-  setPan: typeof setDeckAPan;
-  setSpeed: typeof setDeckASpeed;
-  setChannelFilter: typeof setDeckAChannelFilter;
-  setEffectsDryWet: typeof setDeckAEffectsDryWet;
-  seek: typeof seekDeckA;
-  setRepeat: typeof setDeckARepeat;
-  setAutoplay: typeof setDeckAAutoplay;
+  play: DjDeckActions["play"];
+  pause: DjDeckActions["pause"];
+  setVolume: DjDeckActions["setVolume"];
+  setMute: DjDeckActions["setMute"];
+  reset: DjDeckActions["reset"];
+  setPan: DjDeckActions["setPan"];
+  setSpeed: DjDeckActions["setSpeed"];
+  setChannelFilter: DjDeckActions["setChannelFilter"];
+  setEffectsDryWet: DjDeckActions["setEffectsDryWet"];
+  seek: DjDeckActions["seek"];
+  setRepeat: DjDeckActions["setRepeat"];
+  setAutoplay: DjDeckActions["setAutoplay"];
   loadTrack: typeof loadTrack;
 };
 
 function createDeckStateResult(
   deckState: DeckState | null,
-  actions: typeof deckAActions
+  actions: DjDeckActions
 ): DeckStateResult {
   return {
     radio: deckState?.radio ?? null,

@@ -21,13 +21,13 @@ import {
 import { deactivateAllChannels } from "./channel-state-manager";
 import {
   createDjDeckCommands,
-  seekDeckA,
-  setDeckAAutoplay,
-  setDeckAMute,
-  setDeckAPan,
-  setDeckARepeat,
-  setDeckASpeed,
-  setDeckAVolume,
+  seekDeck,
+  setDeckAutoplay,
+  setDeckMute,
+  setDeckPan,
+  setDeckRepeat,
+  setDeckSpeed,
+  setDeckVolume,
 } from "./dj-actions";
 import type { PlaybackActionContext } from "./playback-action-context";
 import type { PlaybackActionError } from "./playback-action-errors";
@@ -165,6 +165,16 @@ afterEach(async () => {
 });
 
 describe("DJ deck command context", () => {
+  test("keeps deprecated A/B command aliases as adapters over the keyed commands", () => {
+    const { context } = createTestContext();
+    const commands = createDjDeckCommands(context);
+
+    expect(commands.setDeckARadio).toBe(commands["deck-a"].setRadio);
+    expect(commands.playDeckA).toBe(commands["deck-a"].play);
+    expect(commands.pauseDeckB).toBe(commands["deck-b"].pause);
+    expect(commands.resetDeckB).toBe(commands["deck-b"].reset);
+  });
+
   test("loads, plays, pauses, and resets a deck through an injected playback context", async () => {
     await playbackSessionsCollection.stateWhenReady();
     insertDjSession();
@@ -176,14 +186,15 @@ describe("DJ deck command context", () => {
     try {
       const { context } = createTestContext();
       const commands = createDjDeckCommands(context);
+      const deckACommands = commands["deck-a"];
 
-      await commands.setDeckARadio(station);
+      await deckACommands.setRadio(station);
       setPlaybackChannelRuntime("deck-a", () => ({
         soundId: "left_station-1",
       }));
-      await commands.playDeckA();
-      commands.pauseDeckA();
-      await commands.resetDeckA();
+      await deckACommands.play();
+      deckACommands.pause();
+      await deckACommands.reset();
 
       expect(context.channels.activate).toHaveBeenCalledWith(
         "dj",
@@ -230,13 +241,14 @@ describe("DJ deck command context", () => {
 
     try {
       const commands = createDjDeckCommands(context);
+      const deckACommands = commands["deck-a"];
 
-      await commands.setDeckARadio(station);
+      await deckACommands.setRadio(station);
       setPlaybackChannelRuntime("deck-a", () => ({
         soundId: "left_station-1",
       }));
-      await commands.playDeckA();
-      commands.pauseDeckA();
+      await deckACommands.play();
+      deckACommands.pause();
 
       expect(audioEngine.playback.play).toHaveBeenCalledWith(
         "left_station-1",
@@ -261,7 +273,7 @@ describe("DJ deck command context", () => {
     insertDjSession();
     const { context } = createTestContext();
 
-    setDeckAVolume(0.27, context);
+    setDeckVolume("deck-a", 0.27, context);
 
     expect(context.channels.setVolume).toHaveBeenCalledWith(
       "dj",
@@ -275,9 +287,9 @@ describe("DJ deck command context", () => {
     insertDjSession();
     const { context } = createTestContext();
 
-    setDeckAMute(true, context);
-    setDeckAPan(-0.2, context);
-    setDeckASpeed(1.15, context);
+    setDeckMute("deck-a", true, context);
+    setDeckPan("deck-a", -0.2, context);
+    setDeckSpeed("deck-a", 1.15, context);
 
     expect(context.channels.setMuted).toHaveBeenCalledWith(
       "dj",
@@ -297,8 +309,8 @@ describe("DJ deck command context", () => {
     insertDjSession();
     const { context } = createTestContext();
 
-    setDeckARepeat(true, context);
-    setDeckAAutoplay(false, context);
+    setDeckRepeat("deck-a", true, context);
+    setDeckAutoplay("deck-a", false, context);
 
     expect(getPlaybackChannel("dj", "deck-a")).toEqual(
       expect.objectContaining({
@@ -360,8 +372,9 @@ describe("DJ deck command context", () => {
       };
     context.channels.activate = mock(activateWithCapturedState);
     const commands = createDjDeckCommands(context);
+    const deckACommands = commands["deck-a"];
 
-    await commands.setDeckARadio(youtubePlaylist);
+    await deckACommands.setRadio(youtubePlaylist);
     const capturedEmitAudioState = captured.emitAudioState;
     if (!capturedEmitAudioState) {
       throw new Error(
@@ -396,7 +409,7 @@ describe("DJ deck command context", () => {
       soundId: "left_station-1",
     }));
 
-    seekDeckA(42, context);
+    seekDeck("deck-a", 42, context);
 
     expect(audioEngine.playback.seek).toHaveBeenCalledWith(
       "left_station-1",
@@ -413,8 +426,9 @@ describe("DJ deck command context", () => {
       throw rawError;
     });
     const commands = createDjDeckCommands(context);
+    const deckACommands = commands["deck-a"];
 
-    await commands.setDeckARadio(station);
+    await deckACommands.setRadio(station);
 
     expect(reportedErrors).toHaveLength(1);
     expect(reportedErrors[0]?.userMessage).toBe(

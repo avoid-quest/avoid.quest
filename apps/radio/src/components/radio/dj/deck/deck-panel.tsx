@@ -7,22 +7,7 @@ import type { Radio } from "@/lib/audio";
 import { isAudioFile } from "@/lib/audio/file-metadata";
 import { validatePlaybackStreamUrl } from "@/lib/audio/playback/url-validation";
 import { getFilenameFromUrl } from "@/lib/audio/remote-url";
-import {
-  addDeckAEffect,
-  addDeckBEffect,
-  removeDeckAEffect,
-  removeDeckBEffect,
-  reorderDeckAEffects,
-  reorderDeckBEffects,
-  setDeckAChannelSelection,
-  setDeckADeviceSource,
-  setDeckAFileSource,
-  setDeckBChannelSelection,
-  setDeckBDeviceSource,
-  setDeckBFileSource,
-  updateDeckAEffect,
-  updateDeckBEffect,
-} from "@/lib/dj-actions";
+import { getDjDeckActions } from "@/lib/dj-actions";
 import { isPlatformRadio } from "@/lib/external-url";
 import { createPlatformRadio } from "@/lib/external-url/utils";
 import { useDeckAState, useDeckBState } from "@/lib/hooks/use-deck-state";
@@ -160,6 +145,7 @@ function DeckPanelInner({
     setAutoplay,
     seek,
   } = deckState;
+  const deckActions = getDjDeckActions(deckId);
 
   const { currentTrackIndex, metadata } = usePlatformMetadata(radio);
   const trackProgress = useTrackProgress(soundId);
@@ -183,13 +169,15 @@ function DeckPanelInner({
   useMidiEffectRegistration(deckId, effects);
 
   // Effect actions
-  const addEffect = deckId === "deck-a" ? addDeckAEffect : addDeckBEffect;
-  const updateEffect =
-    deckId === "deck-a" ? updateDeckAEffect : updateDeckBEffect;
-  const removeEffect =
-    deckId === "deck-a" ? removeDeckAEffect : removeDeckBEffect;
-  const reorderEffects =
-    deckId === "deck-a" ? reorderDeckAEffects : reorderDeckBEffects;
+  const {
+    addEffect,
+    updateEffect,
+    removeEffect,
+    reorderEffects,
+    setChannelSelection,
+    setDeviceSource,
+    setFileSource,
+  } = deckActions;
 
   const pendingPlatformItem = usePendingPlatformItem();
   const deckSide = deckId === "deck-a" ? "left" : "right";
@@ -223,12 +211,10 @@ function DeckPanelInner({
 
   const handleFileDrop = useCallback(
     (file: File) => {
-      const setFileSource =
-        deckId === "deck-a" ? setDeckAFileSource : setDeckBFileSource;
       setFileSource(file);
       setPendingPlatformItem(null);
     },
-    [deckId]
+    [setFileSource]
   );
 
   const handleLoadRemoteUrl = useCallback(
@@ -356,8 +342,6 @@ function DeckPanelInner({
     deviceId: string,
     deviceLabel: string
   ) => {
-    const setDeviceSource =
-      deckId === "deck-a" ? setDeckADeviceSource : setDeckBDeviceSource;
     await setDeviceSource(deviceId, deviceLabel);
     setPendingPlatformItem(null);
     setIsChangingDevice(false);
@@ -466,11 +450,7 @@ function DeckPanelInner({
             isLoading={isLoading}
             isPlaying={isPlaying}
             onChangeDevice={() => setIsChangingDevice(true)}
-            onChannelSelectionChange={
-              deckId === "deck-a"
-                ? setDeckAChannelSelection
-                : setDeckBChannelSelection
-            }
+            onChannelSelectionChange={setChannelSelection}
             onClear={handleClear}
             onToggleMute={() => {
               if (isPlaying) {

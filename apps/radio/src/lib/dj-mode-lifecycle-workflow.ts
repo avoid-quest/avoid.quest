@@ -98,16 +98,7 @@ async function restoreDjDeckRadio(
     return;
   }
 
-  switch (deckId) {
-    case DECK_A_CHANNEL_ID:
-      await deckCommands.setDeckARadio(radio);
-      return;
-    case DECK_B_CHANNEL_ID:
-      await deckCommands.setDeckBRadio(radio);
-      return;
-    default:
-      await deckCommands.setDeckBRadio(radio);
-  }
+  await deckCommands[deckId].setRadio(radio);
 }
 
 async function activateDjMode(ctx: PlaybackActionContext): Promise<void> {

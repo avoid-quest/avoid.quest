@@ -43,7 +43,9 @@ class MockAudioElement {
   preload = "";
   readyState = 0;
   playCalls = 0;
+  nativeHlsSupport = "";
   readonly loadSources: string[] = [];
+  readonly playSources: string[] = [];
   #src = "";
   readonly #listeners = new Map<
     string,
@@ -72,8 +74,10 @@ class MockAudioElement {
     this.#listeners.set(type, listeners);
   }
 
-  canPlayType(): string {
-    return "";
+  canPlayType(type: string): string {
+    return type === "application/vnd.apple.mpegurl"
+      ? this.nativeHlsSupport
+      : "";
   }
 
   dispatchEvent(event: Event): boolean {
@@ -105,6 +109,12 @@ class MockAudioElement {
 
   play(): Promise<void> {
     this.playCalls += 1;
+    this.playSources.push(this.src);
+    if (!this.src) {
+      return Promise.reject(
+        new DOMException("No supported source is attached", "NotSupportedError")
+      );
+    }
     this.paused = false;
     return Promise.resolve();
   }
@@ -145,7 +155,20 @@ function installMediaElementMocks(): {
     globalThis,
     "MediaError"
   );
+  const originalMediaSource = Object.getOwnPropertyDescriptor(
+    globalThis,
+    "MediaSource"
+  );
+  const originalCreateObjectUrl = Object.getOwnPropertyDescriptor(
+    URL,
+    "createObjectURL"
+  );
+  const originalRevokeObjectUrl = Object.getOwnPropertyDescriptor(
+    URL,
+    "revokeObjectURL"
+  );
   let audio: MockAudioElement | null = null;
+  let mediaSourceId = 0;
 
   Object.defineProperty(globalThis, "Audio", {
     configurable: true,
@@ -169,6 +192,29 @@ function installMediaElementMocks(): {
       MEDIA_ERR_SRC_NOT_SUPPORTED: 4,
     },
   });
+  Object.defineProperty(globalThis, "MediaSource", {
+    configurable: true,
+    value: class MediaSourceMock {
+      addEventListener(): void {
+        // HLS mock does not exercise MediaSource events.
+      }
+
+      removeEventListener(): void {
+        // HLS mock does not exercise MediaSource events.
+      }
+    },
+  });
+  Object.defineProperty(URL, "createObjectURL", {
+    configurable: true,
+    value: mock(() => {
+      mediaSourceId += 1;
+      return `blob:mock-media-source-${mediaSourceId}`;
+    }),
+  });
+  Object.defineProperty(URL, "revokeObjectURL", {
+    configurable: true,
+    value: mock(),
+  });
 
   return {
     getAudio: () => {
@@ -181,12 +227,15 @@ function installMediaElementMocks(): {
       restoreDescriptor("Audio", originalAudio);
       restoreDescriptor("HTMLMediaElement", originalHtmlMediaElement);
       restoreDescriptor("MediaError", originalMediaError);
+      restoreDescriptor("MediaSource", originalMediaSource);
+      restoreUrlDescriptor("createObjectURL", originalCreateObjectUrl);
+      restoreUrlDescriptor("revokeObjectURL", originalRevokeObjectUrl);
     },
   };
 }
 
 function restoreDescriptor(
-  name: "Audio" | "HTMLMediaElement" | "MediaError",
+  name: "Audio" | "HTMLMediaElement" | "MediaError" | "MediaSource",
   descriptor: PropertyDescriptor | undefined
 ): void {
   if (descriptor) {
@@ -194,6 +243,17 @@ function restoreDescriptor(
     return;
   }
   Reflect.deleteProperty(globalThis, name);
+}
+
+function restoreUrlDescriptor(
+  name: "createObjectURL" | "revokeObjectURL",
+  descriptor: PropertyDescriptor | undefined
+): void {
+  if (descriptor) {
+    Object.defineProperty(URL, name, descriptor);
+    return;
+  }
+  Reflect.deleteProperty(URL, name);
 }
 
 function createMockAudioContext(): AudioContext {
@@ -213,13 +273,18 @@ function createMockAudioContext(): AudioContext {
 }
 
 function installDelayedHlsMock(): {
+  attachedMediaSources: Array<MediaSource | null | undefined>;
+  importStarted: () => boolean;
   importGate: Deferred<void>;
   loadedSources: string[];
 } {
   const importGate = createDeferred<void>();
+  let importStarted = false;
+  const attachedMediaSources: Array<MediaSource | null | undefined> = [];
   const loadedSources: string[] = [];
 
   mock.module("hls.js", async () => {
+    importStarted = true;
     await importGate.promise;
 
     class MockHls {
@@ -235,8 +300,19 @@ function installDelayedHlsMock(): {
 
       #media: MockAudioElement | null = null;
 
-      attachMedia(media: HTMLMediaElement): void {
-        this.#media = media as unknown as MockAudioElement;
+      attachMedia(
+        target:
+          | HTMLMediaElement
+          | { media: HTMLMediaElement; mediaSource?: MediaSource | null }
+      ): void {
+        if ("media" in target) {
+          attachedMediaSources.push(target.mediaSource);
+          this.#media = target.media as unknown as MockAudioElement;
+          return;
+        }
+
+        attachedMediaSources.push(undefined);
+        this.#media = target as unknown as MockAudioElement;
       }
 
       destroy(): void {
@@ -262,7 +338,12 @@ function installDelayedHlsMock(): {
     return { default: MockHls };
   });
 
-  return { importGate, loadedSources };
+  return {
+    attachedMediaSources,
+    importGate,
+    importStarted: () => importStarted,
+    loadedSources,
+  };
 }
 
 function createPlaybackSource(): MediaElementPlaybackSource {
@@ -308,6 +389,22 @@ describe("MediaElementPlaybackSource HLS loading", () => {
     const hlsMock = installDelayedHlsMock();
 
     try {
+      const nativeSource = createPlaybackSource();
+      const nativeAudio = mediaMocks.getAudio();
+      nativeAudio.nativeHlsSupport = "maybe";
+      const nativeLoad = nativeSource.load(
+        "https://radio.example/live/native.m3u8"
+      );
+      const nativePlay = nativeSource.play();
+      await flushMicrotasks();
+      expect(nativeAudio.playSources).toEqual([
+        "https://radio.example/live/native.m3u8",
+      ]);
+      expect(hlsMock.importStarted()).toBe(false);
+      nativeAudio.emit("loadedmetadata");
+      await expect(nativeLoad).resolves.toBeUndefined();
+      await expect(nativePlay).resolves.toBeUndefined();
+
       const activationSource = createPlaybackSource();
       const activationAudio = mediaMocks.getAudio();
       const activationLoad = activationSource.load(
@@ -322,6 +419,7 @@ describe("MediaElementPlaybackSource HLS loading", () => {
       await flushMicrotasks();
 
       expect(activationAudio.playCalls).toBe(1);
+      expect(activationAudio.playSources).toEqual(["blob:mock-media-source-1"]);
 
       const pausedSource = createPlaybackSource();
       const pausedAudio = mediaMocks.getAudio();
@@ -336,6 +434,7 @@ describe("MediaElementPlaybackSource HLS loading", () => {
 
       await flushMicrotasks();
       expect(pausedAudio.playCalls).toBe(1);
+      expect(pausedAudio.playSources).toEqual(["blob:mock-media-source-2"]);
 
       pausedSource.pause();
       expect(pausedAudio.paused).toBe(true);
@@ -354,6 +453,7 @@ describe("MediaElementPlaybackSource HLS loading", () => {
       await flushMicrotasks();
       fallbackAudio.emit("abort");
       await flushMicrotasks();
+      expect(fallbackAudio.playSources).toEqual(["blob:mock-media-source-3"]);
 
       hlsMock.importGate.resolve();
 
@@ -365,12 +465,15 @@ describe("MediaElementPlaybackSource HLS loading", () => {
       expect(await fallbackPlayResult).toBe("resolved");
       expect(pausedAudio.playCalls).toBe(1);
       expect(pausedAudio.paused).toBe(true);
+      expect(hlsMock.attachedMediaSources).toHaveLength(3);
+      expect(hlsMock.attachedMediaSources.every(Boolean)).toBe(true);
       expect(hlsMock.loadedSources).toEqual([
         "https://radio.example/live/activation.m3u8",
         "https://radio.example/live/pause.m3u8",
         "/api/stream-proxy?url=https%3A%2F%2Fradio.example%2Flive%2Ffallback.m3u8",
       ]);
       activationSource.cleanup();
+      nativeSource.cleanup();
       pausedSource.cleanup();
       fallbackSource.cleanup();
     } finally {

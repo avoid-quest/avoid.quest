@@ -8,6 +8,10 @@ import type { StreamStatus } from "./types.js";
 const MEDIA_LOAD_TIMEOUT_MS = 8000;
 type HlsConstructor = typeof import("hls.js").default;
 type HlsInstance = InstanceType<HlsConstructor>;
+type MediaSourceGlobal = typeof globalThis & {
+  ManagedMediaSource?: typeof MediaSource;
+  WebKitMediaSource?: typeof MediaSource;
+};
 
 function isHlsUrl(url: string): boolean {
   try {
@@ -54,6 +58,16 @@ function resolveMediaUrl(url: string): string {
   }
 
   return STREAM_PROXY_ROUTE + encodeURIComponent(url);
+}
+
+function getPreferredMediaSourceConstructor(): typeof MediaSource | null {
+  const mediaSourceGlobal = globalThis as MediaSourceGlobal;
+  return (
+    mediaSourceGlobal.ManagedMediaSource ??
+    mediaSourceGlobal.MediaSource ??
+    mediaSourceGlobal.WebKitMediaSource ??
+    null
+  );
 }
 
 export function getMediaPlaybackCandidates(url: string): string[] {
@@ -108,6 +122,7 @@ export class MediaElementPlaybackSource implements PlaybackSource {
   private playbackRate = 1;
   private shouldResumeAfterLoad = false;
   private currentLoadPromise: Promise<void> | null = null;
+  private pendingMediaSourceObjectUrl: string | null = null;
   private isLoadingPhase = false;
   private suppressPauseCallback = false;
 
@@ -306,6 +321,7 @@ export class MediaElementPlaybackSource implements PlaybackSource {
     this._status = "idle";
     this.setBuffering(false);
     this.currentLoadPromise = null;
+    this.revokePendingMediaSourceObjectUrl();
     this.isLoadingPhase = false;
   }
 
@@ -497,6 +513,7 @@ export class MediaElementPlaybackSource implements PlaybackSource {
       return;
     }
 
+    const mediaSource = this.attachMediaSourceForEarlyPlayback();
     const { default: Hls } = await import("hls.js");
     if (
       generation !== this.generation ||
@@ -540,7 +557,12 @@ export class MediaElementPlaybackSource implements PlaybackSource {
         }
       });
 
-      hls.attachMedia(this.audio);
+      if (mediaSource) {
+        hls.attachMedia({ media: this.audio, mediaSource });
+        this.pendingMediaSourceObjectUrl = null;
+      } else {
+        hls.attachMedia(this.audio);
+      }
       hls.loadSource(url);
       this.hls = hls;
       return;
@@ -552,6 +574,7 @@ export class MediaElementPlaybackSource implements PlaybackSource {
   private resetMediaElement(options: { resetProgress: boolean }): void {
     this.suppressPauseCallback = true;
     this.mediaLoadAttempt += 1;
+    this.revokePendingMediaSourceObjectUrl();
     this.audio.pause();
     this.destroyHls();
     this.audio.removeAttribute("src");
@@ -598,6 +621,33 @@ export class MediaElementPlaybackSource implements PlaybackSource {
     return (
       playbackIntent !== this.playbackIntent || !this.shouldResumeAfterLoad
     );
+  }
+
+  private attachMediaSourceForEarlyPlayback(): MediaSource | null {
+    const MediaSourceConstructor = getPreferredMediaSourceConstructor();
+    if (
+      !MediaSourceConstructor ||
+      typeof URL === "undefined" ||
+      typeof URL.createObjectURL !== "function"
+    ) {
+      return null;
+    }
+
+    const mediaSource = new MediaSourceConstructor();
+    const objectUrl = URL.createObjectURL(mediaSource);
+    this.pendingMediaSourceObjectUrl = objectUrl;
+    this.audio.src = objectUrl;
+    this.audio.load();
+    return mediaSource;
+  }
+
+  private revokePendingMediaSourceObjectUrl(): void {
+    if (!this.pendingMediaSourceObjectUrl) {
+      return;
+    }
+
+    URL.revokeObjectURL(this.pendingMediaSourceObjectUrl);
+    this.pendingMediaSourceObjectUrl = null;
   }
 
   private destroyHls(): void {

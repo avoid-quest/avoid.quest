@@ -24,7 +24,7 @@ export type BandcampSearchResponse = AppResult<{
 
 export const bandcampSearch = createServerFn({ method: "POST" })
   .middleware([rateLimitMiddleware("bandcamp-search")])
-  .inputValidator(BandcampSearchSchema)
+  .validator(BandcampSearchSchema)
   .handler(
     ({ data }): Promise<BandcampSearchResponse> =>
       runServerFn({
@@ -74,7 +74,7 @@ function getSoundCloudClientId(): Promise<string> {
 
 export const soundcloudSearch = createServerFn({ method: "POST" })
   .middleware([rateLimitMiddleware("soundcloud-search")])
-  .inputValidator(SoundCloudSearchSchema)
+  .validator(SoundCloudSearchSchema)
   .handler(
     ({ data }): Promise<SoundCloudSearchResponse> =>
       runServerFn({

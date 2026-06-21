@@ -7,6 +7,8 @@ export const Route = createFileRoute("/api/soundcloud-proxy")({
   server: createProxyRouteRegistration({
     env,
     identifier: "soundcloud-proxy",
+    operation: "soundcloud-proxy.GET",
+    internalErrorCode: "SOUNDCLOUD_PROXY_INTERNAL_ERROR",
     createWorkflow: (proxyPolicy) =>
       createSoundCloudCdnProxyWorkflow({
         proxyPolicy,

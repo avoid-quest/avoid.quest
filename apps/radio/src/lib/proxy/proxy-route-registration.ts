@@ -12,13 +12,15 @@ type ProxyRouteRegistrationConfig = {
   createWorkflow: (proxyPolicy: ProxyRequestPolicy) => ProxyRouteWorkflow;
   env: ProxyGetConfig["env"];
   identifier: string;
+  internalErrorCode: AppErrorInit["code"];
+  operation: string;
 };
 
 function createInternalErrorFallback(
-  identifier: string
+  internalErrorCode: AppErrorInit["code"]
 ): Omit<AppErrorInit, "cause"> {
   return {
-    code: `${identifier.replaceAll("-", "_").toUpperCase()}_INTERNAL_ERROR`,
+    code: internalErrorCode,
     safeMessage: "Internal server error",
     category: "infrastructure",
     expected: false,
@@ -30,6 +32,8 @@ export function createProxyRouteRegistration({
   createWorkflow,
   env,
   identifier,
+  internalErrorCode,
+  operation,
 }: ProxyRouteRegistrationConfig) {
   const proxyPolicy = createProxyRequestPolicy();
   const workflow = createWorkflow(proxyPolicy);
@@ -39,8 +43,8 @@ export function createProxyRouteRegistration({
       GET: proxyPolicy.get({
         env,
         identifier,
-        operation: `${identifier}.GET`,
-        fallback: createInternalErrorFallback(identifier),
+        operation,
+        fallback: createInternalErrorFallback(internalErrorCode),
         run: workflow.handle,
       }),
       OPTIONS: ({ request }: { request: Request }) =>

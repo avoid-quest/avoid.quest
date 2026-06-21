@@ -7,6 +7,8 @@ export const Route = createFileRoute("/api/radio-metadata")({
   server: createProxyRouteRegistration({
     env,
     identifier: "radio-metadata",
+    operation: "radio-metadata.GET",
+    internalErrorCode: "RADIO_METADATA_INTERNAL_ERROR",
     createWorkflow: () => createRadioMetadataWorkflow(),
   }),
 });

@@ -8,6 +8,8 @@ export const Route = createFileRoute("/api/stream-proxy")({
   server: createProxyRouteRegistration({
     env,
     identifier: "stream-proxy",
+    operation: "stream-proxy.GET",
+    internalErrorCode: "STREAM_PROXY_INTERNAL_ERROR",
     createWorkflow: (proxyPolicy) =>
       createStreamProxyRequestWorkflow({
         inspectStreamAccess,

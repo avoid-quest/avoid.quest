@@ -7,6 +7,8 @@ export const Route = createFileRoute("/api/bandcamp-proxy")({
   server: createProxyRouteRegistration({
     env,
     identifier: "bandcamp-proxy",
+    operation: "bandcamp-proxy.GET",
+    internalErrorCode: "BANDCAMP_PROXY_INTERNAL_ERROR",
     createWorkflow: (proxyPolicy) =>
       createBandcampCdnProxyWorkflow({
         proxyPolicy,

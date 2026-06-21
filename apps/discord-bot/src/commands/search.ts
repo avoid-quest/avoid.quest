@@ -153,6 +153,7 @@ export async function handleSelection(
   const playback = await requestPlayback(interaction, {
     messages: {
       voiceChannelRequired: "You need to be in a voice channel.",
+      serverRequired: "This selection can only be used in a server.",
       failurePrefix: "Failed to play",
     },
     loadTracks: (requestedBy) => resolveTrack(selected.url, requestedBy),

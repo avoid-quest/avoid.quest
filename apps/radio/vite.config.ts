@@ -38,6 +38,10 @@ const VENDOR_CHUNK_GROUPS: Array<{
   match: (normalizedId: string) => boolean;
 }> = [
   {
+    name: "vendor-hls",
+    match: (id) => id.includes("/node_modules/hls.js/"),
+  },
+  {
     name: "vendor-react",
     match: (id) =>
       id.includes("/node_modules/react/") ||

@@ -1,10 +1,34 @@
-import { useEffect } from "react";
+import { lazy, Suspense, useEffect } from "react";
+import type { Radio } from "@/lib/audio";
 import { useEnabledRadios } from "@/lib/hooks/use-radios";
 import { useSettings } from "@/lib/hooks/use-settings";
 import { modeLifecycleRequests } from "@/lib/mode-lifecycle-requests";
-import { DjPlayer } from "./dj/dj-player";
-import { MultipleRadios } from "./multiple";
-import { SingleRadio } from "./single";
+
+const SingleRadio = lazy(() =>
+  import("./single").then((mod) => ({ default: mod.SingleRadio }))
+);
+const MultipleRadios = lazy(() =>
+  import("./multiple").then((mod) => ({ default: mod.MultipleRadios }))
+);
+const DjPlayer = lazy(() =>
+  import("./dj/dj-player").then((mod) => ({ default: mod.DjPlayer }))
+);
+
+function RadioMode({
+  mode,
+  radios,
+}: {
+  mode: string | undefined;
+  radios: Radio[];
+}) {
+  if (mode === "single") {
+    return <SingleRadio radios={radios} />;
+  }
+  if (mode === "dj") {
+    return <DjPlayer radios={radios} />;
+  }
+  return <MultipleRadios radios={radios} />;
+}
 
 export function Radios() {
   const { data: radios } = useEnabledRadios();
@@ -22,11 +46,9 @@ export function Radios() {
     });
   }, [mode]);
 
-  if (mode === "single") {
-    return <SingleRadio radios={enabledRadios} />;
-  }
-  if (mode === "dj") {
-    return <DjPlayer radios={enabledRadios} />;
-  }
-  return <MultipleRadios radios={enabledRadios} />;
+  return (
+    <Suspense fallback={null}>
+      <RadioMode mode={mode} radios={enabledRadios} />
+    </Suspense>
+  );
 }

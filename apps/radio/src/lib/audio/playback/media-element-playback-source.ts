@@ -1,5 +1,3 @@
-import Hls from "hls.js";
-
 import type { PlaybackSource } from "./playback-source.js";
 import {
   type PlaybackSourceCallbacks,
@@ -8,6 +6,8 @@ import {
 import type { StreamStatus } from "./types.js";
 
 const MEDIA_LOAD_TIMEOUT_MS = 8000;
+type HlsConstructor = typeof import("hls.js").default;
+type HlsInstance = InstanceType<HlsConstructor>;
 
 function isHlsUrl(url: string): boolean {
   try {
@@ -99,13 +99,15 @@ export class MediaElementPlaybackSource implements PlaybackSource {
   private readonly mediaSourceNode: MediaElementAudioSourceNode;
   private readonly outputNode: GainNode;
 
-  private hls: Hls | null = null;
+  private hls: HlsInstance | null = null;
   private _status: StreamStatus = "idle";
   private _isBuffering = false;
   private generation = 0;
+  private mediaLoadAttempt = 0;
   private playbackRate = 1;
   private shouldResumeAfterLoad = false;
   private currentLoadPromise: Promise<void> | null = null;
+  private currentSourceAttachmentPromise: Promise<void> | null = null;
   private isLoadingPhase = false;
   private suppressPauseCallback = false;
 
@@ -212,10 +214,15 @@ export class MediaElementPlaybackSource implements PlaybackSource {
       // transient user activation is still alive. Start the media element now,
       // even if metadata is still loading, and then wait for both readiness and
       // the browser's play promise.
-      const playPromise = this.audio.paused
-        ? this.audio.play()
-        : Promise.resolve();
-      await Promise.all([this.currentLoadPromise, playPromise]);
+      const loadPromise = this.currentLoadPromise;
+      const sourceAttachmentPromise = this.currentSourceAttachmentPromise;
+      let playPromise = Promise.resolve();
+      if (this.audio.paused) {
+        playPromise = sourceAttachmentPromise
+          ? sourceAttachmentPromise.then(() => this.audio.play())
+          : this.audio.play();
+      }
+      await Promise.all([loadPromise, playPromise]);
       return;
     }
 
@@ -268,6 +275,7 @@ export class MediaElementPlaybackSource implements PlaybackSource {
     this._status = "idle";
     this.setBuffering(false);
     this.currentLoadPromise = null;
+    this.currentSourceAttachmentPromise = null;
   }
 
   setPlaybackRate(rate: number): void {
@@ -411,20 +419,34 @@ export class MediaElementPlaybackSource implements PlaybackSource {
       this.audio.addEventListener("abort", handleAbort, { once: true });
       timeoutId = setTimeout(handleTimeout, MEDIA_LOAD_TIMEOUT_MS);
 
-      try {
-        this.loadIntoMediaElement(url, treatAsHls, (error) => {
+      const mediaLoadAttempt = ++this.mediaLoadAttempt;
+      const sourceAttachmentPromise = this.loadIntoMediaElement(
+        url,
+        treatAsHls,
+        generation,
+        mediaLoadAttempt,
+        (error) => {
           finish(() => {
             reject(error);
           });
+        }
+      );
+      this.currentSourceAttachmentPromise = sourceAttachmentPromise;
+      sourceAttachmentPromise
+        .catch((error) => {
+          finish(() => {
+            reject(
+              error instanceof Error
+                ? error
+                : new Error("Audio playback failed")
+            );
+          });
+        })
+        .finally(() => {
+          if (this.currentSourceAttachmentPromise === sourceAttachmentPromise) {
+            this.currentSourceAttachmentPromise = null;
+          }
         });
-      } catch (error) {
-        finish(() => {
-          reject(
-            error instanceof Error ? error : new Error("Audio playback failed")
-          );
-        });
-        return;
-      }
 
       if (this.audio.readyState >= HTMLMediaElement.HAVE_METADATA) {
         handleReady();
@@ -432,17 +454,33 @@ export class MediaElementPlaybackSource implements PlaybackSource {
     });
   }
 
-  private loadIntoMediaElement(
+  private async loadIntoMediaElement(
     url: string,
     treatAsHls: boolean,
+    generation: number,
+    mediaLoadAttempt: number,
     onFatalError: (error: Error) => void
-  ): void {
+  ): Promise<void> {
     this.destroyHls();
 
     if (!treatAsHls) {
       this.audio.src = url;
       this.audio.load();
       return;
+    }
+
+    if (this.audio.canPlayType("application/vnd.apple.mpegurl")) {
+      this.audio.src = url;
+      this.audio.load();
+      return;
+    }
+
+    const { default: Hls } = await import("hls.js");
+    if (
+      generation !== this.generation ||
+      mediaLoadAttempt !== this.mediaLoadAttempt
+    ) {
+      throw new DOMException("Load aborted", "AbortError");
     }
 
     if (Hls.isSupported()) {
@@ -486,17 +524,13 @@ export class MediaElementPlaybackSource implements PlaybackSource {
       return;
     }
 
-    if (this.audio.canPlayType("application/vnd.apple.mpegurl")) {
-      this.audio.src = url;
-      this.audio.load();
-      return;
-    }
-
     throw new Error("HLS is not supported in this browser");
   }
 
   private resetMediaElement(options: { resetProgress: boolean }): void {
     this.suppressPauseCallback = true;
+    this.mediaLoadAttempt += 1;
+    this.currentSourceAttachmentPromise = null;
     this.audio.pause();
     this.destroyHls();
     this.audio.removeAttribute("src");

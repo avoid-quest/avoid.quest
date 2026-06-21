@@ -10,6 +10,7 @@
     ".": "./src/index.ts",
     "./bandcamp": "./src/bandcamp/index.ts",
     "./bandcamp/search": "./src/bandcamp/search.ts",
+    "./redirects": "./src/redirects/index.ts",
     "./soundcloud": "./src/soundcloud/index.ts",
     "./soundcloud/search": "./src/soundcloud/search.ts",
     "./soundcloud/fetch-client": "./src/soundcloud/fetch-client/index.ts",

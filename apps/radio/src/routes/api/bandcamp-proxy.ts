@@ -1,25 +1,20 @@
 /** biome-ignore-all lint/suspicious/useAwait: needed for server-only */
 
 import { env } from "cloudflare:workers";
-import { AppError, type AppErrorInit, captureError } from "@avoid.quest/error";
+import type { AppErrorInit } from "@avoid.quest/error";
+import type {
+  FetchLike,
+  ValidatedRedirectFailure,
+} from "@avoid.quest/platforms/redirects";
 import { createFileRoute } from "@tanstack/react-router";
 import {
   type BandcampCdnUrlValidationFailure,
   validateBandcampCdnUrl,
 } from "@/lib/proxy/bandcamp-url-policy";
+import { createCdnProxyRequestWorkflow } from "@/lib/proxy/cdn-proxy-workflow";
 import { createProxyRequestPolicy } from "@/lib/proxy/request-policy";
-import {
-  fetchWithValidatedRedirects,
-  ValidatedRedirectError,
-  type ValidatedRedirectFailure,
-} from "@/lib/proxy/validated-redirects";
-
-const FETCH_TIMEOUT_MS = 10_000;
-const MAX_REDIRECTS = 5;
-const MAX_RESPONSE_SIZE = 100 * 1024 * 1024;
 
 const proxyPolicy = createProxyRequestPolicy();
-type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 type BandcampRedirectFailure =
   ValidatedRedirectFailure<BandcampCdnUrlValidationFailure>;
 
@@ -81,156 +76,59 @@ const BANDCAMP_REDIRECT_FAILURE_ERRORS = {
   },
 } as const satisfies Record<BandcampRedirectFailure, AppErrorInit>;
 
-function createBandcampError(init: AppErrorInit): AppError {
-  return new AppError(init);
-}
+const bandcampProxyWorkflow = createCdnProxyRequestWorkflow({
+  createUpstreamHeaders: (request) => ({
+    Range: request.headers.get("range") || "",
+    Referer: "https://bandcamp.com/",
+  }),
+  fetchFailedError: {
+    code: "BANDCAMP_PROXY_FETCH_FAILED",
+    safeMessage: "Failed to fetch stream",
+    category: "network",
+    expected: false,
+    status: 500,
+  },
+  invalidUrlReason: "invalid-url",
+  operation: "bandcamp-proxy.fetch",
+  proxyPolicy,
+  redirectFailureErrors: BANDCAMP_REDIRECT_FAILURE_ERRORS,
+  responseTooLargeError: {
+    code: "BANDCAMP_PROXY_RESPONSE_TOO_LARGE",
+    safeMessage: "Response too large",
+    category: "validation",
+    expected: true,
+    status: 413,
+  },
+  timeoutError: {
+    code: "BANDCAMP_PROXY_TIMEOUT",
+    safeMessage: "Request timeout",
+    category: "network",
+    expected: true,
+    status: 408,
+  },
+  upstreamError: (response) => ({
+    code: "BANDCAMP_PROXY_UPSTREAM_ERROR",
+    safeMessage: `Failed to fetch stream: ${response.statusText}`,
+    category: "dependency",
+    expected: false,
+    status: response.status,
+  }),
+  urlFailureErrors: BANDCAMP_URL_FAILURE_ERRORS,
+  validateUrl: validateBandcampCdnUrl,
+});
 
-function createBandcampUrlError(
-  reason: BandcampCdnUrlValidationFailure
-): AppError {
-  return createBandcampError(BANDCAMP_URL_FAILURE_ERRORS[reason]);
-}
-
-function createBandcampRedirectError(
-  reason: BandcampRedirectFailure
-): AppError {
-  return createBandcampError(BANDCAMP_REDIRECT_FAILURE_ERRORS[reason]);
-}
-
-function validateUrl(
-  urlParam: string | null,
-  origin: string,
-  requestId: string
-): string | Response {
-  const urlValidation = validateBandcampCdnUrl(urlParam);
-  if (!urlValidation.ok) {
-    return proxyPolicy.problem(
-      createBandcampUrlError(urlValidation.reason),
-      origin,
-      requestId
-    );
-  }
-
-  return urlValidation.url;
-}
-
-export async function fetchBandcampProxyStream(
+export function fetchBandcampProxyStream(
   url: string,
   request: Request,
   origin: string,
   requestId: string,
   fetchImpl: FetchLike = fetch
 ): Promise<Response> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-
-  try {
-    const { response: res } = await fetchWithValidatedRedirects({
-      fetchImpl,
-      init: {
-        signal: controller.signal,
-        headers: {
-          Range: request.headers.get("range") || "",
-          Referer: "https://bandcamp.com/",
-        },
-      },
-      invalidUrlReason: "invalid-url",
-      maxRedirects: MAX_REDIRECTS,
-      url,
-      validateUrl: validateBandcampCdnUrl,
-    });
-
-    clearTimeout(timeout);
-
-    if (!res.ok) {
-      return proxyPolicy.problem(
-        new AppError({
-          code: "BANDCAMP_PROXY_UPSTREAM_ERROR",
-          safeMessage: `Failed to fetch stream: ${res.statusText}`,
-          category: "dependency",
-          expected: false,
-          status: res.status,
-        }),
-        origin,
-        requestId
-      );
-    }
-
-    const contentLength = res.headers.get("Content-Length");
-    if (contentLength) {
-      const size = Number.parseInt(contentLength, 10);
-      if (size > MAX_RESPONSE_SIZE) {
-        return proxyPolicy.problem(
-          new AppError({
-            code: "BANDCAMP_PROXY_RESPONSE_TOO_LARGE",
-            safeMessage: "Response too large",
-            category: "validation",
-            expected: true,
-            status: 413,
-          }),
-          origin,
-          requestId
-        );
-      }
-    }
-
-    const headers: HeadersInit = {
-      ...proxyPolicy.errorHeaders(request),
-      "Content-Type": res.headers.get("Content-Type") || "audio/mpeg",
-      "Accept-Ranges": "bytes",
-      "x-request-id": requestId,
-    };
-    const length = res.headers.get("Content-Length");
-    const range = res.headers.get("Content-Range");
-    if (length) {
-      headers["Content-Length"] = length;
-    }
-    if (range) {
-      headers["Content-Range"] = range;
-    }
-
-    return new Response(res.body, { status: res.status, headers });
-  } catch (error) {
-    clearTimeout(timeout);
-
-    if (error instanceof ValidatedRedirectError) {
-      return proxyPolicy.problem(
-        createBandcampRedirectError(error.reason as BandcampRedirectFailure),
-        origin,
-        requestId
-      );
-    }
-
-    if (error instanceof Error && error.name === "AbortError") {
-      return proxyPolicy.problem(
-        new AppError({
-          code: "BANDCAMP_PROXY_TIMEOUT",
-          safeMessage: "Request timeout",
-          category: "network",
-          expected: true,
-          status: 408,
-        }),
-        origin,
-        requestId
-      );
-    }
-
-    const appError = new AppError({
-      code: "BANDCAMP_PROXY_FETCH_FAILED",
-      safeMessage: "Failed to fetch stream",
-      category: "network",
-      expected: false,
-      status: 500,
-    });
-
-    captureError(error instanceof AppError ? error : appError, {
-      surface: "api-route",
-      operation: "bandcamp-proxy.fetch",
-      requestId,
-    });
-
-    return proxyPolicy.problem(appError, origin, requestId);
-  }
+  return bandcampProxyWorkflow.fetchStream(
+    url,
+    { origin, request, requestId },
+    fetchImpl
+  );
 }
 
 export const Route = createFileRoute("/api/bandcamp-proxy")({
@@ -249,20 +147,7 @@ export const Route = createFileRoute("/api/bandcamp-proxy")({
             expected: false,
             status: 500,
           },
-          run: async ({ origin, request, requestId }) => {
-            const urlParam = new URL(request.url).searchParams.get("url");
-            const urlValidation = validateUrl(urlParam, origin, requestId);
-            if (urlValidation instanceof Response) {
-              return urlValidation;
-            }
-
-            return fetchBandcampProxyStream(
-              urlValidation,
-              request,
-              origin,
-              requestId
-            );
-          },
+          run: async (context) => bandcampProxyWorkflow.handle(context),
         }),
       OPTIONS: ({ request }) => proxyPolicy.options(request),
     },

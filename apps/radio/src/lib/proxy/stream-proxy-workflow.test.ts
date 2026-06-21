@@ -3,6 +3,7 @@ import type { AppError } from "@avoid.quest/error";
 import {
   clearStreamAccessCache,
   inspectStreamAccess as inspectRealStreamAccess,
+  StreamRedirectError,
 } from "./stream-access";
 import { createStreamProxyRequestWorkflow } from "./stream-proxy-workflow";
 
@@ -77,7 +78,7 @@ describe("createStreamProxyRequestWorkflow", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(0);
   });
 
-  test("does not direct-redirect cached direct streams when redirects change", async () => {
+  test("rejects changed direct-stream redirects during access inspection", async () => {
     clearStreamAccessCache();
 
     let requestCount = 0;
@@ -124,15 +125,52 @@ describe("createStreamProxyRequestWorkflow", () => {
     );
     expect(secondResponse.status).toBe(400);
     expect(secondResponse.headers.get("Location")).toBeNull();
-    await expect(secondResponse.json()).resolves.toMatchObject({
+    await expect(secondResponse.json()).resolves.toEqual({
       code: "STREAM_PROXY_INTERNAL_ADDRESS",
+      message: "Internal addresses not allowed",
       requestId: "req_direct_second",
+      status: 400,
     });
     expect(fetchedUrls).toEqual([
       "https://radio.example/live.mp3",
       "https://radio.example/live.mp3",
-      "https://radio.example/live.mp3",
     ]);
+  });
+
+  test("maps access inspection redirect rejections without fallback refetch", async () => {
+    const inspectStreamAccess = mock(async () => {
+      await Promise.resolve();
+      throw new StreamRedirectError(
+        "internal-address",
+        "http://127.0.0.1/live.mp3"
+      );
+    });
+    const fetchImpl = mock(async () => {
+      await Promise.resolve();
+      return new Response("should not fetch");
+    });
+    const workflow = createStreamProxyRequestWorkflow({
+      fetchImpl,
+      inspectStreamAccess,
+      proxyPolicy: createTestPolicy(),
+    });
+
+    const response = await workflow.handle({
+      origin: "https://radio.test",
+      request: new Request(
+        "https://radio.test/api/stream-proxy?url=https%3A%2F%2Fradio.example%2Flive.mp3"
+      ),
+      requestId: "req_inspect_redirect_private",
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      code: "STREAM_PROXY_INTERNAL_ADDRESS",
+      message: "Internal addresses not allowed",
+      requestId: "req_inspect_redirect_private",
+      status: 400,
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(0);
   });
 
   test("proxies preserved access responses with audio playback headers", async () => {

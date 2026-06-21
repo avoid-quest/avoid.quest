@@ -1,12 +1,12 @@
 import {
-  type StreamUrlValidationFailure,
-  validatePublicStreamUrl,
-} from "./url-policy";
-import {
   fetchWithValidatedRedirects,
   ValidatedRedirectError,
   type ValidatedRedirectFailure,
-} from "./validated-redirects";
+} from "@avoid.quest/platforms/redirects";
+import {
+  type StreamUrlValidationFailure,
+  validatePublicStreamUrl,
+} from "./url-policy";
 
 export type StreamAccessMode = "direct" | "proxy";
 export type StreamAccessDecision = {
@@ -186,7 +186,12 @@ async function probeStreamAccess(
       response: mode === "proxy" && preserveProxyResponse ? response : null,
       resolvedUrl: mode === "direct" ? resolvedUrl : null,
     };
-  } catch {
+  } catch (error) {
+    if (error instanceof StreamRedirectError) {
+      streamAccessCache.delete(cacheKey);
+      throw error;
+    }
+
     streamAccessCache.set(cacheKey, {
       expiresAt: currentTime + STREAM_ACCESS_CACHE_TTL_MS,
       mode: "proxy",

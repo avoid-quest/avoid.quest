@@ -20,11 +20,13 @@ describe("fetchBandcampProxyStream", () => {
     const requestedUrls: string[] = [];
     const redirectModes: Array<RequestRedirect | undefined> = [];
     const forwardedRanges: Array<string | null> = [];
+    const forwardedReferers: Array<string | null> = [];
     const fetchImpl = mock(async (url: string, init?: RequestInit) => {
       await Promise.resolve();
       requestedUrls.push(url);
       redirectModes.push(init?.redirect);
       forwardedRanges.push(new Headers(init?.headers).get("Range"));
+      forwardedReferers.push(new Headers(init?.headers).get("Referer"));
 
       if (url === initialUrl) {
         return Response.redirect("http://127.0.0.1/private.mp3", 302);
@@ -49,6 +51,7 @@ describe("fetchBandcampProxyStream", () => {
     expect(requestedUrls).toEqual([initialUrl]);
     expect(redirectModes).toEqual(["manual"]);
     expect(forwardedRanges).toEqual(["bytes=0-10"]);
+    expect(forwardedReferers).toEqual(["https://bandcamp.com/"]);
   });
 
   test("follows allowed Bandcamp CDN redirects and preserves streaming headers", async () => {
@@ -57,11 +60,13 @@ describe("fetchBandcampProxyStream", () => {
     const requestedUrls: string[] = [];
     const redirectModes: Array<RequestRedirect | undefined> = [];
     const forwardedRanges: Array<string | null> = [];
+    const forwardedReferers: Array<string | null> = [];
     const fetchImpl = mock(async (url: string, init?: RequestInit) => {
       await Promise.resolve();
       requestedUrls.push(url);
       redirectModes.push(init?.redirect);
       forwardedRanges.push(new Headers(init?.headers).get("Range"));
+      forwardedReferers.push(new Headers(init?.headers).get("Referer"));
 
       if (url === initialUrl) {
         return Response.redirect(finalUrl, 302);
@@ -93,5 +98,9 @@ describe("fetchBandcampProxyStream", () => {
     expect(requestedUrls).toEqual([initialUrl, finalUrl]);
     expect(redirectModes).toEqual(["manual", "manual"]);
     expect(forwardedRanges).toEqual(["bytes=0-10", "bytes=0-10"]);
+    expect(forwardedReferers).toEqual([
+      "https://bandcamp.com/",
+      "https://bandcamp.com/",
+    ]);
   });
 });

@@ -45,10 +45,6 @@ async function cancelResponseBody(response: Response): Promise<void> {
   }
 }
 
-function resolveRedirectUrl(location: string, currentUrl: string): string {
-  return new URL(location, currentUrl).toString();
-}
-
 export async function fetchWithValidatedRedirects<Failure extends string>({
   fetchImpl,
   init,
@@ -66,10 +62,7 @@ export async function fetchWithValidatedRedirects<Failure extends string>({
 }): Promise<{ response: Response; resolvedUrl: string }> {
   const initialValidation = validateUrl(url);
   if (!initialValidation.ok) {
-    throw new ValidatedRedirectError<ValidatedRedirectFailure<Failure>>(
-      initialValidation.reason,
-      url
-    );
+    throw new ValidatedRedirectError(initialValidation.reason, url);
   }
 
   let currentUrl = initialValidation.url;
@@ -86,36 +79,24 @@ export async function fetchWithValidatedRedirects<Failure extends string>({
     await cancelResponseBody(response);
 
     if (redirectCount >= maxRedirects) {
-      throw new ValidatedRedirectError<ValidatedRedirectFailure<Failure>>(
-        "too-many-redirects",
-        currentUrl
-      );
+      throw new ValidatedRedirectError("too-many-redirects", currentUrl);
     }
 
     const location = response.headers.get("Location");
     if (!location) {
-      throw new ValidatedRedirectError<ValidatedRedirectFailure<Failure>>(
-        "missing-location",
-        currentUrl
-      );
+      throw new ValidatedRedirectError("missing-location", currentUrl);
     }
 
     let nextUrl: string;
     try {
-      nextUrl = resolveRedirectUrl(location, currentUrl);
+      nextUrl = new URL(location, currentUrl).toString();
     } catch {
-      throw new ValidatedRedirectError<ValidatedRedirectFailure<Failure>>(
-        invalidUrlReason,
-        location
-      );
+      throw new ValidatedRedirectError(invalidUrlReason, location);
     }
 
     const validation = validateUrl(nextUrl);
     if (!validation.ok) {
-      throw new ValidatedRedirectError<ValidatedRedirectFailure<Failure>>(
-        validation.reason,
-        nextUrl
-      );
+      throw new ValidatedRedirectError(validation.reason, nextUrl);
     }
 
     currentUrl = validation.url;

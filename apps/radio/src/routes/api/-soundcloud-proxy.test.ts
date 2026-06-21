@@ -20,11 +20,15 @@ describe("fetchSoundCloudProxyStream", () => {
     const requestedUrls: string[] = [];
     const redirectModes: Array<RequestRedirect | undefined> = [];
     const forwardedRanges: Array<string | null> = [];
+    const forwardedReferers: Array<string | null> = [];
+    const forwardedUserAgents: Array<string | null> = [];
     const fetchImpl = mock(async (url: string, init?: RequestInit) => {
       await Promise.resolve();
       requestedUrls.push(url);
       redirectModes.push(init?.redirect);
       forwardedRanges.push(new Headers(init?.headers).get("Range"));
+      forwardedReferers.push(new Headers(init?.headers).get("Referer"));
+      forwardedUserAgents.push(new Headers(init?.headers).get("User-Agent"));
 
       if (url === initialUrl) {
         return Response.redirect(
@@ -52,6 +56,10 @@ describe("fetchSoundCloudProxyStream", () => {
     expect(requestedUrls).toEqual([initialUrl]);
     expect(redirectModes).toEqual(["manual"]);
     expect(forwardedRanges).toEqual(["bytes=0-10"]);
+    expect(forwardedReferers).toEqual(["https://soundcloud.com/"]);
+    expect(forwardedUserAgents).toEqual([
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    ]);
   });
 
   test("rejects redirects to unsupported protocols before fetching the target", async () => {
@@ -90,11 +98,15 @@ describe("fetchSoundCloudProxyStream", () => {
     const requestedUrls: string[] = [];
     const redirectModes: Array<RequestRedirect | undefined> = [];
     const forwardedRanges: Array<string | null> = [];
+    const forwardedReferers: Array<string | null> = [];
+    const forwardedUserAgents: Array<string | null> = [];
     const fetchImpl = mock(async (url: string, init?: RequestInit) => {
       await Promise.resolve();
       requestedUrls.push(url);
       redirectModes.push(init?.redirect);
       forwardedRanges.push(new Headers(init?.headers).get("Range"));
+      forwardedReferers.push(new Headers(init?.headers).get("Referer"));
+      forwardedUserAgents.push(new Headers(init?.headers).get("User-Agent"));
 
       if (url === initialUrl) {
         return Response.redirect(finalUrl, 302);
@@ -125,5 +137,13 @@ describe("fetchSoundCloudProxyStream", () => {
     expect(requestedUrls).toEqual([initialUrl, finalUrl]);
     expect(redirectModes).toEqual(["manual", "manual"]);
     expect(forwardedRanges).toEqual(["bytes=0-10", "bytes=0-10"]);
+    expect(forwardedReferers).toEqual([
+      "https://soundcloud.com/",
+      "https://soundcloud.com/",
+    ]);
+    expect(forwardedUserAgents).toEqual([
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    ]);
   });
 });

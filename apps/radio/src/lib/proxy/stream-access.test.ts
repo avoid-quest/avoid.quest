@@ -3,6 +3,7 @@ import {
   clearStreamAccessCache,
   determineStreamAccessMode,
   inspectStreamAccess,
+  StreamRedirectError,
 } from "./stream-access";
 
 afterEach(() => {
@@ -117,16 +118,25 @@ describe("determineStreamAccessMode", () => {
         fetchImpl,
         origin: "https://radio.test",
       })
-    ).resolves.toMatchObject({
-      mode: "proxy",
-      response: null,
-      resolvedUrl: null,
+    ).rejects.toMatchObject({
+      reason: "internal-address",
+      url: "http://127.0.0.1/live",
+    });
+    await expect(
+      determineStreamAccessMode("https://radio.example/live", {
+        fetchImpl,
+        origin: "https://radio.test",
+      })
+    ).rejects.toMatchObject({
+      reason: "internal-address",
+      url: "http://127.0.0.1/live",
     });
     expect(requestedUrls).toEqual([
       "https://radio.example/live",
       "https://radio.example/live",
+      "https://radio.example/live",
     ]);
-    expect(redirectModes).toEqual(["manual", "manual"]);
+    expect(redirectModes).toEqual(["manual", "manual", "manual"]);
   });
 
   test("scopes cached decisions by request origin", async () => {
@@ -200,7 +210,7 @@ describe("determineStreamAccessMode", () => {
     expect(redirectModes).toEqual(["manual", "manual"]);
   });
 
-  test("does not follow redirects to loopback addresses", async () => {
+  test("rejects redirects to loopback addresses without modeling them as proxy", async () => {
     const requestedUrls: string[] = [];
     const redirectModes: Array<RequestRedirect | undefined> = [];
     const fetchImpl = mock(async (url: string, init?: RequestInit) => {
@@ -219,18 +229,23 @@ describe("determineStreamAccessMode", () => {
       return Response.redirect("http://127.0.0.1/live", 302);
     });
 
-    await expect(
-      inspectStreamAccess("https://radio.example/live", {
+    try {
+      await inspectStreamAccess("https://radio.example/live", {
         fetchImpl,
         origin: "https://radio.test",
-      })
-    ).resolves.toMatchObject({
-      mode: "proxy",
-      response: null,
-      resolvedUrl: null,
-    });
-    expect(requestedUrls).toEqual(["https://radio.example/live"]);
-    expect(redirectModes).toEqual(["manual"]);
+      });
+    } catch (error) {
+      expect(error).toBeInstanceOf(StreamRedirectError);
+      expect(error).toMatchObject({
+        reason: "internal-address",
+        url: "http://127.0.0.1/live",
+      });
+      expect(requestedUrls).toEqual(["https://radio.example/live"]);
+      expect(redirectModes).toEqual(["manual"]);
+      return;
+    }
+
+    throw new Error("Expected loopback redirect to be rejected");
   });
 
   test("stops after the redirect hop limit", async () => {
@@ -249,10 +264,9 @@ describe("determineStreamAccessMode", () => {
         fetchImpl,
         origin: "https://radio.test",
       })
-    ).resolves.toMatchObject({
-      mode: "proxy",
-      response: null,
-      resolvedUrl: null,
+    ).rejects.toMatchObject({
+      reason: "too-many-redirects",
+      url: "https://radio.example/live-5",
     });
     expect(requestedUrls).toHaveLength(6);
   });

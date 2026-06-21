@@ -280,10 +280,23 @@ export function createStreamProxyRequestWorkflow({
       );
     }
 
-    const accessDecision = await inspectStreamAccess(urlValidation, {
-      origin: context.origin,
-      requestHeaders: context.request.headers,
-    });
+    let accessDecision: StreamAccessDecision;
+    try {
+      accessDecision = await inspectStreamAccess(urlValidation, {
+        origin: context.origin,
+        requestHeaders: context.request.headers,
+      });
+    } catch (error) {
+      if (error instanceof StreamRedirectError) {
+        return proxyPolicy.problem(
+          createRedirectFailureError(error),
+          context.origin,
+          context.requestId
+        );
+      }
+
+      throw error;
+    }
     if (accessDecision.mode === "direct" && accessDecision.resolvedUrl) {
       const streamUrl = accessDecision.resolvedUrl;
       if (canRedirectDirectStream(streamUrl, context.origin)) {

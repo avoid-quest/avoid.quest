@@ -1,8 +1,8 @@
 import type { ChatInputCommandInteraction } from "discord.js";
-import { GuildMember, SlashCommandBuilder } from "discord.js";
-import { nowPlayingEmbed, presetListEmbed } from "../lib/embeds.js";
-import { presets } from "../lib/presets.js";
-import { getOrCreateGuildPlayer } from "../voice/guild-player.js";
+import { SlashCommandBuilder } from "discord.js";
+import { presetListEmbed } from "../lib/embeds.js";
+import { type PresetRadio, presets } from "../lib/presets.js";
+import { requestPlayback } from "../voice/playback-request.js";
 import type { QueueTrack } from "../voice/queue.js";
 
 export const data = new SlashCommandBuilder()
@@ -25,69 +25,50 @@ export async function execute(
     return;
   }
 
-  const member = interaction.member;
+  let station: PresetRadio | undefined;
 
-  if (!(member instanceof GuildMember && member.voice.channel)) {
-    await interaction.reply({
-      content: "You need to be in a voice channel to use this command.",
-      ephemeral: true,
-    });
-    return;
-  }
+  await requestPlayback(interaction, {
+    messages: {
+      voiceChannelRequired:
+        "You need to be in a voice channel to use this command.",
+      serverRequired: "This command can only be used in a server.",
+      failurePrefix: "Failed to play station",
+    },
+    beforeDefer: async () => {
+      const query = name.toLowerCase();
+      station = presets.find(
+        (p) =>
+          p.name.toLowerCase().includes(query) ||
+          query.includes(p.name.toLowerCase())
+      );
 
-  if (!interaction.guildId) {
-    await interaction.reply({
-      content: "This command can only be used in a server.",
-      ephemeral: true,
-    });
-    return;
-  }
+      if (!station) {
+        await interaction.reply({
+          content: `No station found matching "${name}". Use \`/radio\` to see available stations.`,
+          ephemeral: true,
+        });
+        return false;
+      }
 
-  const query = name.toLowerCase();
-  const station = presets.find(
-    (p) =>
-      p.name.toLowerCase().includes(query) ||
-      query.includes(p.name.toLowerCase())
-  );
+      return true;
+    },
+    loadTracks: (requestedBy) => {
+      if (!station) {
+        throw new Error("No station selected");
+      }
 
-  if (!station) {
-    await interaction.reply({
-      content: `No station found matching "${name}". Use \`/radio\` to see available stations.`,
-      ephemeral: true,
-    });
-    return;
-  }
+      const track: QueueTrack = {
+        title: station.name,
+        artist: station.description,
+        url: station.websiteUrl,
+        streamUrl: station.streamUrl,
+        platform: "radio",
+        requestedBy,
+        isLiveStream: true,
+        thumbnail: station.logoUrl,
+      };
 
-  await interaction.deferReply();
-
-  try {
-    const player = getOrCreateGuildPlayer(interaction.guildId);
-
-    if (!player.isConnected) {
-      await player.join(member.voice.channel);
-    }
-
-    const track: QueueTrack = {
-      title: station.name,
-      artist: station.description,
-      url: station.websiteUrl,
-      streamUrl: station.streamUrl,
-      platform: "radio",
-      requestedBy: interaction.user.displayName,
-      isLiveStream: true,
-      thumbnail: station.logoUrl,
-    };
-
-    await player.enqueue([track]);
-
-    await interaction.editReply({
-      embeds: [nowPlayingEmbed(track)],
-    });
-  } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "An unknown error occurred";
-    await interaction.editReply({
-      content: `Failed to play station: ${message}`,
-    });
-  }
+      return track;
+    },
+  });
 }

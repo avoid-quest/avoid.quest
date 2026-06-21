@@ -15,13 +15,11 @@ import type {
 } from "discord.js";
 import {
   ActionRowBuilder,
-  GuildMember,
   SlashCommandBuilder,
   StringSelectMenuBuilder,
   StringSelectMenuOptionBuilder,
 } from "discord.js";
-import { nowPlayingEmbed } from "../lib/embeds.js";
-import { getOrCreateGuildPlayer } from "../voice/guild-player.js";
+import { requestPlayback } from "../voice/playback-request.js";
 import {
   getInvidiousOptions,
   getSoundCloudClientId,
@@ -130,52 +128,16 @@ export async function handleSelection(
     return;
   }
 
-  const member = interaction.member;
-  if (!(member instanceof GuildMember && member.voice.channel)) {
-    await interaction.reply({
-      content: "You need to be in a voice channel.",
-      ephemeral: true,
-    });
-    return;
-  }
+  const playback = await requestPlayback(interaction, {
+    messages: {
+      voiceChannelRequired: "You need to be in a voice channel.",
+      failurePrefix: "Failed to play",
+    },
+    loadTracks: (requestedBy) => resolveTrack(selected.url, requestedBy),
+  });
 
-  if (!interaction.guildId) {
-    return;
-  }
-
-  await interaction.deferReply();
-
-  try {
-    const result = await resolveTrack(
-      selected.url,
-      interaction.user.displayName
-    );
-    const player = getOrCreateGuildPlayer(interaction.guildId);
-
-    if (!player.isConnected) {
-      await player.join(member.voice.channel);
-    }
-
-    const tracks = Array.isArray(result) ? result : [result];
-    const firstTrack = await player.enqueue(tracks);
-
-    if (!firstTrack) {
-      return;
-    }
-
-    if (tracks.length > 1) {
-      await interaction.editReply({
-        content: `Added ${tracks.length} tracks to the queue.`,
-        embeds: [nowPlayingEmbed(firstTrack)],
-      });
-    } else {
-      await interaction.editReply({ embeds: [nowPlayingEmbed(firstTrack)] });
-    }
+  if (playback.status === "played") {
     pendingSearches.delete(interactionId);
-  } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "An unknown error occurred";
-    await interaction.editReply({ content: `Failed to play: ${message}` });
   }
 }
 

@@ -17,8 +17,8 @@ import {
   createModeLifecycleRegistry,
   createModeManager,
   resetPlaybackLifecycleState,
-  synchronizePlaybackMode,
 } from "./mode-lifecycle-manager";
+import { createModeLifecycleRequests } from "./mode-lifecycle-requests";
 import type { PlaybackActionContext } from "./playback-action-context";
 
 async function resetPlaybackSessions() {
@@ -162,7 +162,7 @@ describe("mode lifecycle manager", () => {
       switchTo,
     };
 
-    await synchronizePlaybackMode("multiple", manager);
+    await createModeLifecycleRequests({ manager }).synchronizeMode("multiple");
 
     expect(activateInitialMode).toHaveBeenCalledWith("multiple");
     expect(switchTo).not.toHaveBeenCalled();
@@ -184,7 +184,9 @@ describe("mode lifecycle manager", () => {
       switchTo,
     };
 
-    const activation = synchronizePlaybackMode("multiple", manager);
+    const activation = createModeLifecycleRequests({ manager }).synchronizeMode(
+      "multiple"
+    );
     await Promise.resolve();
     await Promise.resolve();
 
@@ -215,7 +217,9 @@ describe("mode lifecycle manager", () => {
       switchTo,
     };
 
-    const synchronization = synchronizePlaybackMode("multiple", manager);
+    const synchronization = createModeLifecycleRequests({
+      manager,
+    }).synchronizeMode("multiple");
     await Promise.resolve();
     await Promise.resolve();
 

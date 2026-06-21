@@ -1,14 +1,12 @@
-import { useSyncExternalStore } from "react";
 import { fadeOut } from "@/lib/audio";
 import {
   getPlaybackSession,
-  PLAYBACK_SESSION_IDS,
   type PlaybackSessionId,
   playbackSessionsCollection,
   SINGLE_ACTIVE_CHANNEL_ID,
   SINGLE_STANDBY_CHANNEL_ID,
 } from "@/lib/collections/playback-sessions";
-import { getSettings, updatePlayerSettings } from "@/lib/collections/settings";
+import { updatePlayerSettings } from "@/lib/collections/settings";
 import { DEFAULT_TRANSITION_DURATION } from "@/lib/const";
 import {
   getDefaultPlaybackActionContext,
@@ -91,7 +89,9 @@ function getUserFacingErrorMessage(
   return fallback;
 }
 
-async function waitForPlaybackSession(mode: PlaybackSessionId): Promise<void> {
+export async function waitForPlaybackSession(
+  mode: PlaybackSessionId
+): Promise<void> {
   await playbackSessionsCollection.stateWhenReady();
   if (getPlaybackSession(mode)) {
     return;
@@ -391,43 +391,8 @@ export function createModeManager({
 
 export const modeManager = createModeManager();
 
-export async function synchronizePlaybackMode(
-  mode: PlaybackSessionId,
-  manager: ModeManager = modeManager
-): Promise<void> {
-  await waitForPlaybackSession(mode);
-
-  const settings = getSettings();
-  if (settings && settings.player.mode !== mode) {
-    return;
-  }
-
-  const snapshot = manager.getSnapshot();
-  if (snapshot.currentMode === mode) {
-    return;
-  }
-
-  if (snapshot.currentMode === null && snapshot.phase === "inactive") {
-    return manager.activateInitialMode(mode);
-  }
-
-  return manager.switchTo(mode);
-}
-
 export function resetPlaybackLifecycleState(
   ctx = getDefaultPlaybackActionContext()
 ): void {
   resetManagedAudioState(ctx);
-}
-
-export function useModeTransitionSnapshot(): ModeTransitionSnapshot {
-  return useSyncExternalStore(
-    modeManager.subscribe,
-    modeManager.getSnapshot,
-    modeManager.getSnapshot
-  );
-}
-
-export function isPlaybackSessionId(value: string): value is PlaybackSessionId {
-  return PLAYBACK_SESSION_IDS.some((sessionId) => sessionId === value);
 }

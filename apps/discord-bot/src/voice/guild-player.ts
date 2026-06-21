@@ -23,11 +23,46 @@ function noop() {}
 
 const players = new Map<string, GuildPlayer>();
 
-export function getGuildPlayer(guildId: string): GuildPlayer | undefined {
+export type GuildPlaybackSnapshot = {
+  currentTrack: QueueTrack | null;
+  queueTracks: readonly QueueTrack[];
+};
+
+export type PausePlaybackResult =
+  | { status: "paused" }
+  | { status: "not-playing" };
+
+export type ResumePlaybackResult =
+  | { status: "resumed" }
+  | { status: "not-paused" };
+
+export type StopPlaybackResult =
+  | { status: "stopped" }
+  | { status: "not-playing" };
+
+export type ClearPlaybackResult =
+  | { status: "cleared" }
+  | { status: "not-playing" };
+
+export type SkipPlaybackResult =
+  | { status: "playing-next"; track: QueueTrack }
+  | { status: "queue-empty" }
+  | { status: "not-playing" };
+
+export type SetVolumeResult =
+  | { status: "volume-set"; percent: number }
+  | { status: "not-playing" };
+
+export type OccupancyResult =
+  | { status: "disconnect-scheduled" }
+  | { status: "disconnect-cleared" }
+  | { status: "not-playing" };
+
+function getGuildPlayer(guildId: string): GuildPlayer | undefined {
   return players.get(guildId);
 }
 
-export function getOrCreateGuildPlayer(guildId: string): GuildPlayer {
+function getOrCreateGuildPlayer(guildId: string): GuildPlayer {
   let player = players.get(guildId);
   if (!player) {
     player = new GuildPlayer(guildId);
@@ -36,7 +71,7 @@ export function getOrCreateGuildPlayer(guildId: string): GuildPlayer {
   return player;
 }
 
-export function destroyGuildPlayer(guildId: string): void {
+function destroyGuildPlayer(guildId: string): void {
   const player = players.get(guildId);
   if (player) {
     player.destroy();
@@ -44,9 +79,95 @@ export function destroyGuildPlayer(guildId: string): void {
   }
 }
 
-export class GuildPlayer {
+export function getGuildPlaybackSnapshot(
+  guildId: string
+): GuildPlaybackSnapshot {
+  const player = getGuildPlayer(guildId);
+  return player?.getSnapshot() ?? { currentTrack: null, queueTracks: [] };
+}
+
+export function pauseGuildPlayback(guildId: string): PausePlaybackResult {
+  return getGuildPlayer(guildId)?.pausePlayback() ?? { status: "not-playing" };
+}
+
+export function resumeGuildPlayback(guildId: string): ResumePlaybackResult {
+  return getGuildPlayer(guildId)?.resumePlayback() ?? { status: "not-paused" };
+}
+
+export function stopGuildPlayback(guildId: string): StopPlaybackResult {
+  if (!getGuildPlayer(guildId)) {
+    return { status: "not-playing" };
+  }
+
+  destroyGuildPlayer(guildId);
+  return { status: "stopped" };
+}
+
+export function clearGuildPlayback(guildId: string): ClearPlaybackResult {
+  return getGuildPlayer(guildId)?.clearPlayback() ?? { status: "not-playing" };
+}
+
+export function skipGuildPlayback(guildId: string): SkipPlaybackResult {
+  return getGuildPlayer(guildId)?.skipPlayback() ?? { status: "not-playing" };
+}
+
+export function setGuildPlaybackVolume(
+  guildId: string,
+  percent: number
+): SetVolumeResult {
+  return (
+    getGuildPlayer(guildId)?.setPlaybackVolume(percent) ?? {
+      status: "not-playing",
+    }
+  );
+}
+
+export function updateGuildVoiceOccupancy({
+  guildId,
+  voiceChannel,
+  nonBotMemberCount,
+}: {
+  guildId: string;
+  voiceChannel: VoiceBasedChannel;
+  nonBotMemberCount: number;
+}): OccupancyResult {
+  const player = getGuildPlayer(guildId);
+  return (
+    player?.updateOccupancy(voiceChannel, nonBotMemberCount) ?? {
+      status: "not-playing",
+    }
+  );
+}
+
+export function startGuildPlayback({
+  guildId,
+  voiceChannel,
+  tracks,
+}: {
+  guildId: string;
+  voiceChannel: VoiceBasedChannel;
+  tracks: QueueTrack[];
+}): Promise<QueueTrack | null> {
+  const player = getOrCreateGuildPlayer(guildId);
+  return player.startPlayback(voiceChannel, tracks);
+}
+
+export async function playGuildDiagnosticResource({
+  guildId,
+  voiceChannel,
+  resource,
+}: {
+  guildId: string;
+  voiceChannel: VoiceBasedChannel;
+  resource: AudioResource;
+}): Promise<void> {
+  const player = getOrCreateGuildPlayer(guildId);
+  await player.playDiagnosticResource(voiceChannel, resource);
+}
+
+class GuildPlayer {
   readonly guildId: string;
-  readonly queue = new TrackQueue();
+  private readonly queue = new TrackQueue();
   private connection: VoiceConnection | null = null;
   private channel: VoiceBasedChannel | null = null;
   private readonly player: AudioPlayer;
@@ -77,19 +198,19 @@ export class GuildPlayer {
     });
   }
 
-  get isConnected(): boolean {
+  private get isConnected(): boolean {
     return this.connection !== null;
   }
 
-  get isPlaying(): boolean {
+  private get isPlaying(): boolean {
     return this.player.state.status === AudioPlayerStatus.Playing;
   }
 
-  get isPaused(): boolean {
+  private get isPaused(): boolean {
     return this.player.state.status === AudioPlayerStatus.Paused;
   }
 
-  get isActive(): boolean {
+  private get isActive(): boolean {
     const s = this.player.state.status;
     return (
       s === AudioPlayerStatus.Playing ||
@@ -98,11 +219,7 @@ export class GuildPlayer {
     );
   }
 
-  get currentTrack(): QueueTrack | null {
-    return this.queue.current;
-  }
-
-  async join(channel: VoiceBasedChannel): Promise<void> {
+  private async join(channel: VoiceBasedChannel): Promise<void> {
     if (this.connection) {
       this.connection.destroy();
     }
@@ -143,7 +260,20 @@ export class GuildPlayer {
     this.clearDisconnectTimer();
   }
 
-  async play(track: QueueTrack): Promise<void> {
+  private async joinIfNeeded(channel: VoiceBasedChannel): Promise<void> {
+    if (!this.isConnected) {
+      await this.join(channel);
+    }
+  }
+
+  getSnapshot(): GuildPlaybackSnapshot {
+    return {
+      currentTrack: this.queue.current,
+      queueTracks: [...this.queue.items],
+    };
+  }
+
+  private async play(track: QueueTrack): Promise<void> {
     const id = ++this.playId;
     let { streamUrl } = track;
 
@@ -179,7 +309,7 @@ export class GuildPlayer {
     this.updateVoiceStatus(status.slice(0, 128));
   }
 
-  async playNext(): Promise<boolean> {
+  private async playNext(): Promise<boolean> {
     const next = this.queue.next();
     if (!next) {
       return false;
@@ -197,7 +327,11 @@ export class GuildPlayer {
     }
   }
 
-  skip(): QueueTrack | null {
+  skipPlayback(): SkipPlaybackResult {
+    if (!this.isActive) {
+      return { status: "not-playing" };
+    }
+
     this.skipping = true;
     const next = this.queue.next();
     this.player.stop();
@@ -210,28 +344,58 @@ export class GuildPlayer {
     } else {
       this.updateVoiceStatus("");
     }
-    return next;
+    return next
+      ? { status: "playing-next", track: next }
+      : { status: "queue-empty" };
   }
 
-  pause(): boolean {
-    return this.player.pause();
+  pausePlayback(): PausePlaybackResult {
+    if (!this.isPlaying) {
+      return { status: "not-playing" };
+    }
+
+    this.player.pause();
+    return { status: "paused" };
   }
 
-  resume(): boolean {
-    return this.player.unpause();
+  resumePlayback(): ResumePlaybackResult {
+    if (!this.isPaused) {
+      return { status: "not-paused" };
+    }
+
+    this.player.unpause();
+    return { status: "resumed" };
   }
 
-  playResource(resource: AudioResource): void {
+  async startPlayback(
+    voiceChannel: VoiceBasedChannel,
+    tracks: QueueTrack[]
+  ): Promise<QueueTrack | null> {
+    await this.joinIfNeeded(voiceChannel);
+    return this.enqueue(tracks);
+  }
+
+  async playDiagnosticResource(
+    voiceChannel: VoiceBasedChannel,
+    resource: AudioResource
+  ): Promise<void> {
+    await this.joinIfNeeded(voiceChannel);
+    this.clearPlayback();
+    this.playResource(resource);
+  }
+
+  private playResource(resource: AudioResource): void {
     this.player.play(resource);
   }
 
-  stop(): void {
+  clearPlayback(): ClearPlaybackResult {
     this.queue.clear();
     this.player.stop();
     this.updateVoiceStatus("");
+    return { status: "cleared" };
   }
 
-  async enqueue(tracks: QueueTrack[]): Promise<QueueTrack | null> {
+  private async enqueue(tracks: QueueTrack[]): Promise<QueueTrack | null> {
     const firstTrack = tracks[0];
     if (!firstTrack) {
       return null;
@@ -243,7 +407,7 @@ export class GuildPlayer {
     return firstTrack;
   }
 
-  setVolume(percent: number): void {
+  setPlaybackVolume(percent: number): SetVolumeResult {
     this.volume = Math.max(0, Math.min(1, percent / 100));
     const resource = (
       this.player.state as {
@@ -251,20 +415,37 @@ export class GuildPlayer {
       }
     ).resource;
     resource?.volume?.setVolume(this.volume);
+    return { status: "volume-set", percent };
   }
 
-  getVolume(): number {
-    return Math.round(this.volume * 100);
+  updateOccupancy(
+    voiceChannel: VoiceBasedChannel,
+    nonBotMemberCount: number
+  ): OccupancyResult {
+    const botUserId = voiceChannel.client.user?.id;
+    if (!(botUserId && voiceChannel.members.has(botUserId))) {
+      return { status: "not-playing" };
+    }
+
+    this.channel = voiceChannel;
+
+    if (nonBotMemberCount === 0) {
+      this.startDisconnectTimer();
+      return { status: "disconnect-scheduled" };
+    }
+
+    this.clearDisconnectTimer();
+    return { status: "disconnect-cleared" };
   }
 
-  startDisconnectTimer(ms = 5 * 60 * 1000): void {
+  private startDisconnectTimer(ms = 5 * 60 * 1000): void {
     this.clearDisconnectTimer();
     this.disconnectTimer = setTimeout(() => {
       destroyGuildPlayer(this.guildId);
     }, ms);
   }
 
-  clearDisconnectTimer(): void {
+  private clearDisconnectTimer(): void {
     if (this.disconnectTimer) {
       clearTimeout(this.disconnectTimer);
       this.disconnectTimer = null;

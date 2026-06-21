@@ -1,20 +1,25 @@
 import type { ChatInputCommandInteraction } from "discord.js";
 import { SlashCommandBuilder } from "discord.js";
-import { destroyGuildPlayer, getGuildPlayer } from "../voice/guild-player.js";
+import {
+  clearGuildPlayback,
+  pauseGuildPlayback,
+  resumeGuildPlayback,
+  setGuildPlaybackVolume,
+  stopGuildPlayback,
+} from "../voice/guild-player.js";
 
 export const pause = {
   data: new SlashCommandBuilder()
     .setName("pause")
     .setDescription("Pause playback"),
   async execute(interaction: ChatInputCommandInteraction): Promise<void> {
-    const player = interaction.guildId
-      ? getGuildPlayer(interaction.guildId)
-      : null;
-    if (!player?.isPlaying) {
+    const result = interaction.guildId
+      ? pauseGuildPlayback(interaction.guildId)
+      : { status: "not-playing" };
+    if (result.status === "not-playing") {
       await interaction.reply({ content: "Nothing is playing." });
       return;
     }
-    player.pause();
     await interaction.reply({ content: "Paused." });
   },
 };
@@ -24,14 +29,13 @@ export const resume = {
     .setName("resume")
     .setDescription("Resume playback"),
   async execute(interaction: ChatInputCommandInteraction): Promise<void> {
-    const player = interaction.guildId
-      ? getGuildPlayer(interaction.guildId)
-      : null;
-    if (!player?.isPaused) {
+    const result = interaction.guildId
+      ? resumeGuildPlayback(interaction.guildId)
+      : { status: "not-paused" };
+    if (result.status === "not-paused") {
       await interaction.reply({ content: "Nothing is paused." });
       return;
     }
-    player.resume();
     await interaction.reply({ content: "Resumed." });
   },
 };
@@ -48,12 +52,11 @@ export const stop = {
       });
       return;
     }
-    const player = getGuildPlayer(interaction.guildId);
-    if (!player) {
+    const result = stopGuildPlayback(interaction.guildId);
+    if (result.status === "not-playing") {
       await interaction.reply({ content: "Nothing is playing." });
       return;
     }
-    destroyGuildPlayer(interaction.guildId);
     await interaction.reply({ content: "Stopped and disconnected." });
   },
 };
@@ -71,15 +74,14 @@ export const volume = {
         .setMaxValue(100)
     ),
   async execute(interaction: ChatInputCommandInteraction): Promise<void> {
-    const player = interaction.guildId
-      ? getGuildPlayer(interaction.guildId)
-      : null;
-    if (!player) {
+    const percent = interaction.options.getInteger("percent", true);
+    const result = interaction.guildId
+      ? setGuildPlaybackVolume(interaction.guildId, percent)
+      : { status: "not-playing" };
+    if (result.status === "not-playing") {
       await interaction.reply({ content: "Nothing is playing." });
       return;
     }
-    const percent = interaction.options.getInteger("percent", true);
-    player.setVolume(percent);
     await interaction.reply({ content: `Volume set to ${percent}%.` });
   },
 };
@@ -89,14 +91,13 @@ export const clear = {
     .setName("clear")
     .setDescription("Clear the queue"),
   async execute(interaction: ChatInputCommandInteraction): Promise<void> {
-    const player = interaction.guildId
-      ? getGuildPlayer(interaction.guildId)
-      : null;
-    if (!player) {
+    const result = interaction.guildId
+      ? clearGuildPlayback(interaction.guildId)
+      : { status: "not-playing" };
+    if (result.status === "not-playing") {
       await interaction.reply({ content: "Nothing is playing." });
       return;
     }
-    player.stop();
     await interaction.reply({ content: "Queue cleared." });
   },
 };

@@ -1,7 +1,7 @@
 import type { ChatInputCommandInteraction } from "discord.js";
 import { SlashCommandBuilder } from "discord.js";
 import { nowPlayingEmbed } from "../lib/embeds.js";
-import { getGuildPlayer } from "../voice/guild-player.js";
+import { skipGuildPlayback } from "../voice/guild-player.js";
 
 export const data = new SlashCommandBuilder()
   .setName("skip")
@@ -18,19 +18,17 @@ export async function execute(
     return;
   }
 
-  const player = getGuildPlayer(interaction.guildId);
+  const result = skipGuildPlayback(interaction.guildId);
 
-  if (!player?.isActive) {
+  if (result.status === "not-playing") {
     await interaction.reply({ content: "Nothing is playing." });
     return;
   }
 
-  const next = player.skip();
-
-  if (next) {
+  if (result.status === "playing-next") {
     await interaction.reply({
       content: "Skipped. Now playing:",
-      embeds: [nowPlayingEmbed(next)],
+      embeds: [nowPlayingEmbed(result.track)],
     });
   } else {
     await interaction.reply({ content: "Skipped. Queue is now empty." });

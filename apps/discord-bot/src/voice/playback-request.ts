@@ -1,11 +1,10 @@
 import type {
   ChatInputCommandInteraction,
   StringSelectMenuInteraction,
-  VoiceBasedChannel,
 } from "discord.js";
 import { GuildMember } from "discord.js";
 import { nowPlayingEmbed } from "../lib/embeds.js";
-import { getOrCreateGuildPlayer } from "./guild-player.js";
+import { startGuildPlayback } from "./guild-player.js";
 import type { QueueTrack } from "./queue.js";
 
 type PlaybackInteraction =
@@ -68,7 +67,7 @@ export async function requestPlayback(
   try {
     const loadedTracks = await options.loadTracks(interaction.user.displayName);
     const tracks = Array.isArray(loadedTracks) ? loadedTracks : [loadedTracks];
-    const firstTrack = await enqueuePlayback({
+    const firstTrack = await startGuildPlayback({
       guildId: interaction.guildId,
       voiceChannel: member.voice.channel,
       tracks,
@@ -102,22 +101,4 @@ export async function requestPlayback(
     });
     return { status: "failed", message };
   }
-}
-
-async function enqueuePlayback({
-  guildId,
-  voiceChannel,
-  tracks,
-}: {
-  guildId: string;
-  voiceChannel: VoiceBasedChannel;
-  tracks: QueueTrack[];
-}): Promise<QueueTrack | null> {
-  const player = getOrCreateGuildPlayer(guildId);
-
-  if (!player.isConnected) {
-    await player.join(voiceChannel);
-  }
-
-  return player.enqueue(tracks);
 }

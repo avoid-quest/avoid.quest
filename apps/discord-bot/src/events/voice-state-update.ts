@@ -1,24 +1,23 @@
 import type { VoiceState } from "discord.js";
-import { getGuildPlayer } from "../voice/guild-player.js";
+import { updateGuildVoiceOccupancy } from "../voice/guild-player.js";
 
 export function handleVoiceStateUpdate(
   oldState: VoiceState,
-  _newState: VoiceState
+  newState: VoiceState
 ): void {
-  if (!oldState.channel) {
-    return;
-  }
+  const seenChannelIds = new Set<string>();
 
-  const guildId = oldState.guild.id;
-  const player = getGuildPlayer(guildId);
-  if (!player) {
-    return;
-  }
+  for (const channel of [oldState.channel, newState.channel]) {
+    if (!channel || seenChannelIds.has(channel.id)) {
+      continue;
+    }
 
-  const members = oldState.channel.members.filter((m) => !m.user.bot);
-  if (members.size === 0) {
-    player.startDisconnectTimer();
-  } else {
-    player.clearDisconnectTimer();
+    seenChannelIds.add(channel.id);
+    const members = channel.members.filter((m) => !m.user.bot);
+    updateGuildVoiceOccupancy({
+      guildId: channel.guild.id,
+      voiceChannel: channel,
+      nonBotMemberCount: members.size,
+    });
   }
 }

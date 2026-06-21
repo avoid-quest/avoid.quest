@@ -124,15 +124,16 @@ export function setGuildPlaybackVolume(
 
 export function updateGuildVoiceOccupancy({
   guildId,
-  channelId,
+  voiceChannel,
   nonBotMemberCount,
 }: {
   guildId: string;
-  channelId: string;
+  voiceChannel: VoiceBasedChannel;
   nonBotMemberCount: number;
 }): OccupancyResult {
+  const player = getGuildPlayer(guildId);
   return (
-    getGuildPlayer(guildId)?.updateOccupancy(channelId, nonBotMemberCount) ?? {
+    player?.updateOccupancy(voiceChannel, nonBotMemberCount) ?? {
       status: "not-playing",
     }
   );
@@ -418,12 +419,15 @@ class GuildPlayer {
   }
 
   updateOccupancy(
-    channelId: string,
+    voiceChannel: VoiceBasedChannel,
     nonBotMemberCount: number
   ): OccupancyResult {
-    if (this.channel?.id !== channelId) {
+    const botUserId = voiceChannel.client.user?.id;
+    if (!(botUserId && voiceChannel.members.has(botUserId))) {
       return { status: "not-playing" };
     }
+
+    this.channel = voiceChannel;
 
     if (nonBotMemberCount === 0) {
       this.startDisconnectTimer();

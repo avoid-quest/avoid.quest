@@ -104,10 +104,10 @@ export class MediaElementPlaybackSource implements PlaybackSource {
   private _isBuffering = false;
   private generation = 0;
   private mediaLoadAttempt = 0;
+  private playbackIntent = 0;
   private playbackRate = 1;
   private shouldResumeAfterLoad = false;
   private currentLoadPromise: Promise<void> | null = null;
-  private currentSourceAttachmentPromise: Promise<void> | null = null;
   private isLoadingPhase = false;
   private suppressPauseCallback = false;
 
@@ -181,7 +181,7 @@ export class MediaElementPlaybackSource implements PlaybackSource {
 
   async load(url: string): Promise<void> {
     const generation = ++this.generation;
-    this.shouldResumeAfterLoad = false;
+    this.cancelPendingPlaybackIntent();
     this.resetMediaElement({ resetProgress: true });
 
     this._status = "connecting";
@@ -195,18 +195,21 @@ export class MediaElementPlaybackSource implements PlaybackSource {
     } catch (error) {
       const loadError =
         error instanceof Error ? error : new Error("Audio playback failed");
-      this._status = "error";
-      this.callbacks.onError?.(loadError);
+      if (generation === this.generation) {
+        this._status = "error";
+        this.callbacks.onError?.(loadError);
+      }
       throw loadError;
     } finally {
       if (this.currentLoadPromise === loadPromise) {
         this.currentLoadPromise = null;
+        this.isLoadingPhase = false;
       }
-      this.isLoadingPhase = false;
     }
   }
 
   async play(): Promise<void> {
+    const playbackIntent = ++this.playbackIntent;
     this.shouldResumeAfterLoad = true;
 
     if (this.currentLoadPromise) {
@@ -215,14 +218,39 @@ export class MediaElementPlaybackSource implements PlaybackSource {
       // even if metadata is still loading, and then wait for both readiness and
       // the browser's play promise.
       const loadPromise = this.currentLoadPromise;
-      const sourceAttachmentPromise = this.currentSourceAttachmentPromise;
-      let playPromise = Promise.resolve();
-      if (this.audio.paused) {
-        playPromise = sourceAttachmentPromise
-          ? sourceAttachmentPromise.then(() => this.audio.play())
-          : this.audio.play();
+      const playResultPromise = (
+        this.audio.paused ? this.audio.play() : Promise.resolve()
+      ).then(
+        () => ({ ok: true as const }),
+        (error: unknown) => ({ error, ok: false as const })
+      );
+      try {
+        await loadPromise;
+      } catch (error) {
+        if (this.isPlaybackIntentCanceled(playbackIntent)) {
+          return;
+        }
+        throw error;
       }
-      await Promise.all([loadPromise, playPromise]);
+
+      const playResult = await playResultPromise;
+      if (!playResult.ok) {
+        const canRecoverPlayError = this.canRecoverPendingPlayError(
+          playResult.error,
+          playbackIntent
+        );
+        if (!canRecoverPlayError) {
+          throw playResult.error;
+        }
+      }
+
+      if (
+        playbackIntent === this.playbackIntent &&
+        this.shouldResumeAfterLoad &&
+        this.audio.paused
+      ) {
+        await this.audio.play();
+      }
       return;
     }
 
@@ -234,7 +262,7 @@ export class MediaElementPlaybackSource implements PlaybackSource {
   }
 
   pause(): void {
-    this.shouldResumeAfterLoad = false;
+    this.cancelPendingPlaybackIntent();
     this._status = "buffering";
     this.suppressPauseCallback = true;
     this.audio.pause();
@@ -245,7 +273,8 @@ export class MediaElementPlaybackSource implements PlaybackSource {
   }
 
   stop(): void {
-    this.shouldResumeAfterLoad = false;
+    this.cancelPendingPlaybackIntent();
+    this.cancelPendingLoad();
     this.resetMediaElement({ resetProgress: true });
     this._status = "ended";
     this.setBuffering(false);
@@ -253,6 +282,8 @@ export class MediaElementPlaybackSource implements PlaybackSource {
   }
 
   cleanup(): void {
+    this.cancelPendingPlaybackIntent();
+    this.cancelPendingLoad();
     this.resetMediaElement({ resetProgress: true });
     this.audio.removeEventListener("playing", this.handlePlaying);
     this.audio.removeEventListener("waiting", this.handleWaiting);
@@ -275,7 +306,7 @@ export class MediaElementPlaybackSource implements PlaybackSource {
     this._status = "idle";
     this.setBuffering(false);
     this.currentLoadPromise = null;
-    this.currentSourceAttachmentPromise = null;
+    this.isLoadingPhase = false;
   }
 
   setPlaybackRate(rate: number): void {
@@ -431,22 +462,13 @@ export class MediaElementPlaybackSource implements PlaybackSource {
           });
         }
       );
-      this.currentSourceAttachmentPromise = sourceAttachmentPromise;
-      sourceAttachmentPromise
-        .catch((error) => {
-          finish(() => {
-            reject(
-              error instanceof Error
-                ? error
-                : new Error("Audio playback failed")
-            );
-          });
-        })
-        .finally(() => {
-          if (this.currentSourceAttachmentPromise === sourceAttachmentPromise) {
-            this.currentSourceAttachmentPromise = null;
-          }
+      sourceAttachmentPromise.catch((error) => {
+        finish(() => {
+          reject(
+            error instanceof Error ? error : new Error("Audio playback failed")
+          );
         });
+      });
 
       if (this.audio.readyState >= HTMLMediaElement.HAVE_METADATA) {
         handleReady();
@@ -530,7 +552,6 @@ export class MediaElementPlaybackSource implements PlaybackSource {
   private resetMediaElement(options: { resetProgress: boolean }): void {
     this.suppressPauseCallback = true;
     this.mediaLoadAttempt += 1;
-    this.currentSourceAttachmentPromise = null;
     this.audio.pause();
     this.destroyHls();
     this.audio.removeAttribute("src");
@@ -547,6 +568,36 @@ export class MediaElementPlaybackSource implements PlaybackSource {
     queueMicrotask(() => {
       this.suppressPauseCallback = false;
     });
+  }
+
+  private cancelPendingPlaybackIntent(): void {
+    this.shouldResumeAfterLoad = false;
+    this.playbackIntent += 1;
+  }
+
+  private canRecoverPendingPlayError(
+    error: unknown,
+    playbackIntent: number
+  ): boolean {
+    if (this.isPlaybackIntentCanceled(playbackIntent)) {
+      return true;
+    }
+
+    const errorName =
+      error instanceof DOMException || error instanceof Error ? error.name : "";
+    return errorName === "AbortError" || errorName === "NotSupportedError";
+  }
+
+  private cancelPendingLoad(): void {
+    this.generation += 1;
+    this.currentLoadPromise = null;
+    this.isLoadingPhase = false;
+  }
+
+  private isPlaybackIntentCanceled(playbackIntent: number): boolean {
+    return (
+      playbackIntent !== this.playbackIntent || !this.shouldResumeAfterLoad
+    );
   }
 
   private destroyHls(): void {

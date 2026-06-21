@@ -1,5 +1,9 @@
-import { lazy, Suspense, useEffect } from "react";
+import { lazy, type ReactElement, Suspense, useEffect } from "react";
 import type { Radio } from "@/lib/audio";
+import {
+  PLAYBACK_SESSION_IDS,
+  type PlaybackSessionId,
+} from "@/lib/collections/playback-sessions";
 import { useEnabledRadios } from "@/lib/hooks/use-radios";
 import { useSettings } from "@/lib/hooks/use-settings";
 import { modeLifecycleRequests } from "@/lib/mode-lifecycle-requests";
@@ -14,20 +18,35 @@ const DjPlayer = lazy(() =>
   import("./dj/dj-player").then((mod) => ({ default: mod.DjPlayer }))
 );
 
+const DEFAULT_RADIO_MODE: PlaybackSessionId = "multiple";
+
+type RadioModeRenderer = (radios: Radio[]) => ReactElement;
+
+const radioModeRenderers = {
+  single: (radios) => <SingleRadio radios={radios} />,
+  multiple: (radios) => <MultipleRadios radios={radios} />,
+  dj: (radios) => <DjPlayer radios={radios} />,
+} satisfies Record<PlaybackSessionId, RadioModeRenderer>;
+
 function RadioMode({
   mode,
   radios,
 }: {
-  mode: string | undefined;
+  mode: PlaybackSessionId;
   radios: Radio[];
 }) {
-  if (mode === "single") {
-    return <SingleRadio radios={radios} />;
-  }
-  if (mode === "dj") {
-    return <DjPlayer radios={radios} />;
-  }
-  return <MultipleRadios radios={radios} />;
+  return radioModeRenderers[mode](radios);
+}
+
+function getConfiguredMode(mode: unknown): PlaybackSessionId | undefined {
+  return isPlaybackSessionId(mode) ? mode : undefined;
+}
+
+function isPlaybackSessionId(mode: unknown): mode is PlaybackSessionId {
+  return (
+    typeof mode === "string" &&
+    PLAYBACK_SESSION_IDS.some((sessionId) => sessionId === mode)
+  );
 }
 
 export function Radios() {
@@ -35,16 +54,17 @@ export function Radios() {
   const { data: settings } = useSettings();
 
   const enabledRadios = radios ?? [];
-  const mode = settings?.player.mode;
+  const configuredMode = getConfiguredMode(settings?.player.mode);
+  const mode = configuredMode ?? DEFAULT_RADIO_MODE;
 
   useEffect(() => {
-    if (!mode) {
+    if (!configuredMode) {
       return;
     }
-    modeLifecycleRequests.synchronizeMode(mode).catch((error) => {
+    modeLifecycleRequests.synchronizeMode(configuredMode).catch((error) => {
       console.error("[radio] Failed to synchronize playback mode:", error);
     });
-  }, [mode]);
+  }, [configuredMode]);
 
   return (
     <Suspense fallback={null}>

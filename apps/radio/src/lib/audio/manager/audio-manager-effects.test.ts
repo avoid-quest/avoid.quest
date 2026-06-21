@@ -3,7 +3,10 @@ import { createDefaultEffectConfig } from "../dsp/effects/registry";
 import { getEffectParamDefs } from "../dsp/effects/schema";
 import type { EffectConfig, EffectType } from "../dsp/effects/types";
 import { EFFECT_TYPES } from "../dsp/effects/types";
-import { convertEffectConfig } from "./audio-manager-effects";
+import {
+  convertEffectConfig,
+  convertPartialEffectConfig,
+} from "./audio-manager-effects";
 
 function readConfigValue(config: EffectConfig, key: string): unknown {
   return (config as unknown as Record<string, unknown>)[key];
@@ -70,5 +73,34 @@ describe("audio manager effect config conversion", () => {
     );
 
     expect(convertEffectConfig(config)).not.toHaveProperty("order");
+  });
+
+  test("converts partial configs using the explicit effect type", () => {
+    expect(
+      convertPartialEffectConfig("delay", {
+        enabled: false,
+        dryWet: 0.4,
+        delayTime: 0.5,
+        feedback: 0.2,
+      } as Partial<EffectConfig>)
+    ).toEqual({
+      enabled: 0,
+      wet: 0.4,
+      dry: 0.6,
+      dryWet: 0.4,
+      delayTime: 0.5,
+      feedback: 0.2,
+    });
+  });
+
+  test("does not convert parameters from a different effect type", () => {
+    expect(
+      convertPartialEffectConfig("delay", {
+        delayTime: 0.25,
+        threshold: -30,
+      } as Partial<EffectConfig>)
+    ).toEqual({
+      delayTime: 0.25,
+    });
   });
 });

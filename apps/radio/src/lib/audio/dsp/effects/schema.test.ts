@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { AVAILABLE_EFFECTS } from "./registry";
 import {
   convertEffectConfigToEngine,
+  convertPartialEffectConfigToEngine,
   EFFECT_DEFINITIONS,
   getEffectDefaultConfig,
   getEffectMidiParamDefs,
@@ -66,6 +67,17 @@ describe("effect definitions", () => {
     });
     expect(convertEffectConfigToEngine(config)).not.toHaveProperty("id");
     expect(convertEffectConfigToEngine(config)).not.toHaveProperty("order");
+  });
+
+  test("converts partial engine params through an explicit effect type", () => {
+    expect(
+      convertPartialEffectConfigToEngine("delay", {
+        delayTime: 0.25,
+        threshold: -30,
+      } as Partial<EffectConfig>)
+    ).toEqual({
+      delayTime: 0.25,
+    });
   });
 
   test("keeps serialized defaults compatible with effect configs", () => {

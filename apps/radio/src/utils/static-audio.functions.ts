@@ -4,7 +4,13 @@
  * Server-side functions for handling remote audio URLs and playlists.
  */
 
-import { type AppResult, runServerFn } from "@avoid.quest/error";
+import {
+  AppError,
+  type AppErrorInit,
+  type AppResult,
+  type ProblemErrorPayload,
+  runServerFn,
+} from "@avoid.quest/error";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import {
@@ -49,6 +55,48 @@ const GetStaticAudioItemSchema = z.object({ url: RemoteAudioUrlSchema });
 export type FetchPlaylistResponse = AppResult<StaticAudioPlaylist>;
 
 export type StaticAudioItemResponse = AppResult<StaticAudioItem>;
+
+function appErrorCategoryForStatus(status: number): AppErrorInit["category"] {
+  if (status === 429) {
+    return "rate_limit";
+  }
+  if (status < 500) {
+    return "validation";
+  }
+  return "dependency";
+}
+
+function toStaticAudioServerFunctionError(
+  error: ProblemErrorPayload
+): AppError {
+  return new AppError({
+    code: error.code,
+    safeMessage: error.message,
+    category: appErrorCategoryForStatus(error.status),
+    expected: error.status < 500,
+    status: error.status,
+  });
+}
+
+async function probeRemoteAudioWithRateLimit(
+  url: string
+): Promise<RemoteAudioProbe> {
+  const result = await probeRemoteAudio({ data: { url } });
+  if (result.ok) {
+    return result.data;
+  }
+  throw toStaticAudioServerFunctionError(result.error);
+}
+
+async function fetchPlaylistWithRateLimit(
+  url: string
+): Promise<StaticAudioPlaylist> {
+  const result = await fetchPlaylist({ data: { url } });
+  if (result.ok) {
+    return result.data;
+  }
+  throw toStaticAudioServerFunctionError(result.error);
+}
 
 export const probeRemoteAudio = createServerFn({ method: "POST" })
   .middleware([rateLimitMiddleware("probe-remote-audio")])
@@ -100,6 +148,10 @@ export const getStaticAudioItem = createServerFn({ method: "POST" })
           expected: false,
           status: 500,
         },
-        run: () => getStaticAudioItemWorkflow(data.url),
+        run: () =>
+          getStaticAudioItemWorkflow(data.url, {
+            fetchPlaylist: fetchPlaylistWithRateLimit,
+            probeRemoteAudio: probeRemoteAudioWithRateLimit,
+          }),
       })
   );

@@ -1,4 +1,5 @@
 import { describe, expect, mock, test } from "bun:test";
+import { AppError } from "@avoid.quest/error";
 import {
   fetchStaticAudioPlaylistWorkflow,
   getStaticAudioItemWorkflow,
@@ -84,6 +85,68 @@ describe("fetchStaticAudioPlaylistWorkflow", () => {
 });
 
 describe("getStaticAudioItemWorkflow", () => {
+  test("uses injected playlist dependency before fetching remote playlist contents", async () => {
+    const fetchImpl = mock(async () => {
+      await Promise.resolve();
+      throw new Error(
+        "Playlist should not be fetched after dependency failure"
+      );
+    });
+    const fetchPlaylist = mock(async (url: string) => {
+      await Promise.resolve();
+      expect(url).toBe("https://audio.example/list.m3u");
+      throw new AppError({
+        code: "RATE_LIMITED",
+        safeMessage: "Rate limit exceeded",
+        category: "rate_limit",
+        expected: true,
+        status: 429,
+      });
+    });
+
+    await expectStaticAudioWorkflowError(
+      getStaticAudioItemWorkflow("https://audio.example/list.m3u", {
+        fetchPlaylist,
+        fetchImpl,
+      }),
+      "STATIC_AUDIO_PLAYLIST_RESOLVE_FAILED",
+      429,
+      "Rate limit exceeded"
+    );
+    expect(fetchPlaylist).toHaveBeenCalledTimes(1);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  test("uses injected probe dependency before fetching remote audio headers", async () => {
+    const fetchImpl = mock(async () => {
+      await Promise.resolve();
+      throw new Error("Audio should not be fetched after dependency failure");
+    });
+    const probeRemoteAudio = mock(async (url: string) => {
+      await Promise.resolve();
+      expect(url).toBe("https://audio.example/live.mp3");
+      throw new AppError({
+        code: "RATE_LIMITED",
+        safeMessage: "Rate limit exceeded",
+        category: "rate_limit",
+        expected: true,
+        status: 429,
+      });
+    });
+
+    await expectStaticAudioWorkflowError(
+      getStaticAudioItemWorkflow("https://audio.example/live.mp3", {
+        fetchImpl,
+        probeRemoteAudio,
+      }),
+      "STATIC_AUDIO_PROBE_FAILED",
+      429,
+      "Rate limit exceeded"
+    );
+    expect(probeRemoteAudio).toHaveBeenCalledTimes(1);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
   test("builds playlist metadata from parsed tracks", async () => {
     const fetchImpl = mock(async () => {
       await Promise.resolve();

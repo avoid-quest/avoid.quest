@@ -202,7 +202,16 @@ async function resolveRadioGardenPlayableItem<TStaticAudioMetadata>(
     };
   }
 
-  const result = await getRadioGardenItem(channelId);
+  let result: Awaited<ReturnType<typeof getRadioGardenItem>>;
+  try {
+    result = await getRadioGardenItem(channelId);
+  } catch (error) {
+    return providerError(
+      "radiogarden",
+      errorMessage(error, "Failed to resolve Radio Garden item")
+    );
+  }
+
   if (!result.success) {
     return providerError(
       "radiogarden",

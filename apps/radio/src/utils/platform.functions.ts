@@ -1,5 +1,11 @@
 import { env } from "cloudflare:workers";
-import { AppError, type AppResult, runServerFn } from "@avoid.quest/error";
+import {
+  AppError,
+  type AppErrorInit,
+  type AppResult,
+  type ProblemErrorPayload,
+  runServerFn,
+} from "@avoid.quest/error";
 import {
   createPlayablePlatformResolver,
   detectPlayablePlatformFromUrl,
@@ -8,13 +14,13 @@ import {
 } from "@avoid.quest/platforms";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { getStaticAudioItemWorkflow } from "@/lib/audio/static-audio-workflow";
 import type {
   PlatformMetadata,
   StaticAudioMetadata,
 } from "@/lib/platform-types";
 import { readInvidiousOptions } from "./invidious-env";
 import { rateLimitMiddleware } from "./middleware";
+import { getStaticAudioItem } from "./static-audio.functions";
 
 const LoadPlatformItemSchema = z.object({
   url: z
@@ -99,11 +105,35 @@ function toAppError(error: PlayablePlatformResolutionError): AppError {
   });
 }
 
-function resolveStaticAudioItem(url: string): Promise<{
+function appErrorCategoryForStatus(status: number): AppErrorInit["category"] {
+  if (status === 429) {
+    return "rate_limit";
+  }
+  if (status < 500) {
+    return "validation";
+  }
+  return "dependency";
+}
+
+function toServerFunctionAppError(error: ProblemErrorPayload): AppError {
+  return new AppError({
+    code: error.code,
+    safeMessage: error.message,
+    category: appErrorCategoryForStatus(error.status),
+    expected: error.status < 500,
+    status: error.status,
+  });
+}
+
+async function resolveStaticAudioItem(url: string): Promise<{
   metadata: StaticAudioMetadata;
   streamUrl: string;
 }> {
-  return getStaticAudioItemWorkflow(url);
+  const result = await getStaticAudioItem({ data: { url } });
+  if (result.ok) {
+    return result.data;
+  }
+  throw toServerFunctionAppError(result.error);
 }
 
 async function resolvePlatformItem(

@@ -102,6 +102,62 @@ describe("createPlayablePlatformResolver", () => {
       success: false,
     });
   });
+
+  test("maps Radio Garden stream failures to structured resolver errors", async () => {
+    const originalFetch = globalThis.fetch;
+    const fetchImpl = mock(async (input: RequestInfo | URL) => {
+      await Promise.resolve();
+      const url = String(input);
+
+      if (url.includes("/ara/content/channel/abc123")) {
+        return Response.json({
+          apiVersion: 1,
+          version: "1",
+          data: {
+            country: {
+              id: "jp",
+              title: "Japan",
+            },
+            id: "abc123",
+            place: {
+              id: "tokyo",
+              title: "Tokyo",
+            },
+            preroll: false,
+            secure: true,
+            stream: "",
+            title: "Garden",
+            type: "channel",
+            url: "/listen/garden/abc123",
+          },
+        });
+      }
+
+      if (url.includes("/ara/content/listen/abc123/channel.mp3")) {
+        throw new Error("stream failed");
+      }
+
+      throw new Error(`Unexpected Radio Garden fetch: ${url}`);
+    });
+
+    globalThis.fetch = fetchImpl as typeof fetch;
+    try {
+      const resolver = createPlayablePlatformResolver();
+
+      await expect(
+        resolver.resolveItem("https://radio.garden/listen/garden/abc123")
+      ).resolves.toEqual({
+        error: {
+          code: "provider-resolution-failed",
+          message: "stream failed",
+          platform: "radiogarden",
+        },
+        success: false,
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
 });
 
 describe("toPlayableSources", () => {

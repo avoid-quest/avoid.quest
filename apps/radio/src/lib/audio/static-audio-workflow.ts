@@ -30,6 +30,8 @@ type StaticAudioRedirectFailure = PublicHttpRedirectFailure;
 
 type StaticAudioWorkflowOptions = {
   fetchImpl?: FetchLike;
+  fetchPlaylist?: (url: string) => Promise<StaticAudioPlaylist>;
+  probeRemoteAudio?: (url: string) => Promise<RemoteAudioProbe>;
 };
 
 const STATIC_AUDIO_INVALID_URL_ERROR = {
@@ -404,20 +406,27 @@ export async function getStaticAudioItemWorkflow(
   const trimmedUrl = url.trim();
 
   if (isPlaylistUrl(trimmedUrl)) {
+    const fetchPlaylist =
+      options.fetchPlaylist ??
+      ((playlistUrl: string) =>
+        fetchStaticAudioPlaylistWorkflow(playlistUrl, options));
     const playlistResult = await runStaticAudioDependency({
       code: "STATIC_AUDIO_PLAYLIST_RESOLVE_FAILED",
       fallback: STATIC_AUDIO_FETCH_PLAYLIST_FALLBACK_ERROR,
-      run: () => fetchStaticAudioPlaylistWorkflow(trimmedUrl, options),
+      run: () => fetchPlaylist(trimmedUrl),
     });
 
     return createPlaylistMetadata(trimmedUrl, playlistResult.playlist);
   }
 
   if (isAudioUrl(trimmedUrl)) {
+    const probeRemoteAudio =
+      options.probeRemoteAudio ??
+      ((audioUrl: string) => probeRemoteAudioWorkflow(audioUrl, options));
     const probeResult = await runStaticAudioDependency({
       code: "STATIC_AUDIO_PROBE_FAILED",
       fallback: STATIC_AUDIO_PROBE_FALLBACK_ERROR,
-      run: () => probeRemoteAudioWorkflow(trimmedUrl, options),
+      run: () => probeRemoteAudio(trimmedUrl),
     });
 
     return createTrackMetadata(trimmedUrl, probeResult);

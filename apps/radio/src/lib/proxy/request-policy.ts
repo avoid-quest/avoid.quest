@@ -39,6 +39,12 @@ type ProxyRouteConfig = {
   run: (context: ProxyRouteContext) => Promise<Response>;
 };
 
+type ProxyGetAdapterConfig = Omit<ProxyRouteConfig, "request">;
+
+type ProxyGetAdapterInput = {
+  request: Request;
+};
+
 function resolveProxyOrigin(request: Request): string {
   try {
     return new URL(request.url).origin;
@@ -122,8 +128,17 @@ export function createProxyRequestPolicy(
       },
     });
 
+  const get =
+    (config: ProxyGetAdapterConfig) =>
+    ({ request }: ProxyGetAdapterInput): Promise<Response> =>
+      run({
+        ...config,
+        request,
+      });
+
   return {
     errorHeaders,
+    get,
     options,
     problem,
     run,

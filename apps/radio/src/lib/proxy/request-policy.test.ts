@@ -101,6 +101,45 @@ describe("createProxyRequestPolicy", () => {
     expect(response.headers.get("x-request-id")).toBeTruthy();
   });
 
+  test("creates GET adapters backed by the shared proxy policy", async () => {
+    const validateAuthAndRateLimit = mock(
+      async (_request, _env, _identifier, options) => {
+        await Promise.resolve();
+        return {
+          sessionId: "session_123",
+          ip: "127.0.0.1",
+          shouldSetCookie: options?.createSessionIfMissing ?? true,
+        };
+      }
+    );
+    const policy = createProxyRequestPolicy({ validateAuthAndRateLimit });
+    const get = policy.get({
+      env: {},
+      identifier: "stream-proxy",
+      operation: "stream-proxy.GET",
+      fallback: {
+        code: "STREAM_PROXY_INTERNAL_ERROR",
+        safeMessage: "Internal server error",
+        category: "infrastructure",
+        expected: false,
+        status: 500,
+      },
+      run: async ({ request }) => {
+        await Promise.resolve();
+        expect(request.url).toBe("https://radio.test/api/stream-proxy");
+        return new Response("ok");
+      },
+    });
+
+    const response = await get({
+      request: new Request("https://radio.test/api/stream-proxy"),
+    });
+
+    expect(validateAuthAndRateLimit).toHaveBeenCalledTimes(1);
+    expect(response.status).toBe(200);
+    await expect(response.text()).resolves.toBe("ok");
+  });
+
   test("sets generated session cookies on proxy handler responses", async () => {
     const validateAuthAndRateLimit = mock(async () => {
       await Promise.resolve();

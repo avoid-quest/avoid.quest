@@ -27,7 +27,16 @@ const missingSentryBuildEnv = [
   .filter(([, value]) => !value)
   .map(([name]) => name);
 
-if (process.env.NODE_ENV === "production" && !sentryBuildEnabled) {
+const globalSentryWarningState = globalThis as typeof globalThis & {
+  __avoidQuestRadioSentryBuildWarningEmitted?: boolean;
+};
+
+if (
+  process.env.NODE_ENV === "production" &&
+  !sentryBuildEnabled &&
+  !globalSentryWarningState.__avoidQuestRadioSentryBuildWarningEmitted
+) {
+  globalSentryWarningState.__avoidQuestRadioSentryBuildWarningEmitted = true;
   console.warn(
     `[radio] Sentry sourcemap upload disabled: missing ${missingSentryBuildEnv.join(", ")}`
   );

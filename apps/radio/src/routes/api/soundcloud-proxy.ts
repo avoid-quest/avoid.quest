@@ -1,34 +1,112 @@
 /** biome-ignore-all lint/suspicious/useAwait: needed for server-only */
 
 import { env } from "cloudflare:workers";
-import { AppError, captureError } from "@avoid.quest/error";
+import { AppError, type AppErrorInit, captureError } from "@avoid.quest/error";
 import { createFileRoute } from "@tanstack/react-router";
-import { z } from "zod";
 import { logSSRFAttempt } from "@/lib/logger";
 import { createProxyRequestPolicy } from "@/lib/proxy/request-policy";
+import {
+  type SoundCloudCdnUrlValidationFailure,
+  validateSoundCloudCdnUrl,
+} from "@/lib/proxy/soundcloud-url-policy";
+import {
+  fetchWithValidatedRedirects,
+  ValidatedRedirectError,
+  type ValidatedRedirectFailure,
+} from "@/lib/proxy/validated-redirects";
 
-const ALLOWED_SOUNDCLOUD_DOMAINS = [
-  "cf-media.sndcdn.com",
-  "cf-hls-media.sndcdn.com",
-  "media.soundcloud.com",
-  "ec-media.sndcdn.com",
-] as const;
-
-const URL_SCHEMA = z
-  .string()
-  .max(2048)
-  .refine((val) => {
-    try {
-      new URL(val);
-      return true;
-    } catch {
-      return false;
-    }
-  }, "Invalid URL format");
 const FETCH_TIMEOUT_MS = 10_000;
+const MAX_REDIRECTS = 5;
 const MAX_RESPONSE_SIZE = 100 * 1024 * 1024;
 
 const proxyPolicy = createProxyRequestPolicy();
+type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
+type SoundCloudRedirectFailure =
+  ValidatedRedirectFailure<SoundCloudCdnUrlValidationFailure>;
+
+const SOUNDCLOUD_INVALID_URL_ERROR = {
+  code: "SOUNDCLOUD_PROXY_INVALID_URL",
+  safeMessage: "Invalid URL format",
+  category: "validation",
+  expected: true,
+  status: 400,
+} as const satisfies AppErrorInit;
+
+const SOUNDCLOUD_INVALID_PROTOCOL_ERROR = {
+  code: "SOUNDCLOUD_PROXY_INVALID_PROTOCOL",
+  safeMessage: "Invalid URL: must use HTTP or HTTPS",
+  category: "validation",
+  expected: true,
+  status: 400,
+} as const satisfies AppErrorInit;
+
+const SOUNDCLOUD_PAGE_URL_ERROR = {
+  code: "SOUNDCLOUD_PROXY_PAGE_URL_NOT_ALLOWED",
+  safeMessage: "Invalid URL: must be a stream URL, not a page URL",
+  category: "validation",
+  expected: true,
+  status: 400,
+} as const satisfies AppErrorInit;
+
+const SOUNDCLOUD_INVALID_DOMAIN_ERROR = {
+  code: "SOUNDCLOUD_PROXY_INVALID_DOMAIN",
+  safeMessage: "Invalid domain: not a SoundCloud CDN domain",
+  category: "security",
+  expected: true,
+  status: 400,
+} as const satisfies AppErrorInit;
+
+const SOUNDCLOUD_URL_FAILURE_ERRORS = {
+  required: {
+    code: "SOUNDCLOUD_PROXY_URL_REQUIRED",
+    safeMessage: "URL parameter is required",
+    category: "validation",
+    expected: true,
+    status: 400,
+  },
+  "invalid-url": SOUNDCLOUD_INVALID_URL_ERROR,
+  "invalid-protocol": SOUNDCLOUD_INVALID_PROTOCOL_ERROR,
+  "page-url": SOUNDCLOUD_PAGE_URL_ERROR,
+  "invalid-domain": SOUNDCLOUD_INVALID_DOMAIN_ERROR,
+} as const satisfies Record<SoundCloudCdnUrlValidationFailure, AppErrorInit>;
+
+const SOUNDCLOUD_REDIRECT_FAILURE_ERRORS = {
+  required: SOUNDCLOUD_INVALID_URL_ERROR,
+  "invalid-url": SOUNDCLOUD_INVALID_URL_ERROR,
+  "invalid-protocol": SOUNDCLOUD_INVALID_PROTOCOL_ERROR,
+  "page-url": SOUNDCLOUD_PAGE_URL_ERROR,
+  "invalid-domain": SOUNDCLOUD_INVALID_DOMAIN_ERROR,
+  "missing-location": {
+    code: "SOUNDCLOUD_PROXY_REDIRECT_LOCATION_MISSING",
+    safeMessage: "Upstream redirect missing Location header",
+    category: "dependency",
+    expected: false,
+    status: 502,
+  },
+  "too-many-redirects": {
+    code: "SOUNDCLOUD_PROXY_TOO_MANY_REDIRECTS",
+    safeMessage: "Too many SoundCloud CDN redirects",
+    category: "dependency",
+    expected: false,
+    status: 502,
+  },
+} as const satisfies Record<SoundCloudRedirectFailure, AppErrorInit>;
+
+function createSoundCloudError(init: AppErrorInit): AppError {
+  return new AppError(init);
+}
+
+function createSoundCloudUrlError(
+  reason: SoundCloudCdnUrlValidationFailure
+): AppError {
+  return createSoundCloudError(SOUNDCLOUD_URL_FAILURE_ERRORS[reason]);
+}
+
+function createSoundCloudRedirectError(
+  reason: SoundCloudRedirectFailure
+): AppError {
+  return createSoundCloudError(SOUNDCLOUD_REDIRECT_FAILURE_ERRORS[reason]);
+}
 
 function validateSoundCloudUrl(
   urlParam: string | null,
@@ -37,96 +115,28 @@ function validateSoundCloudUrl(
   ip: string | undefined,
   requestId: string
 ): string | Response {
-  if (!urlParam) {
-    return proxyPolicy.problem(
-      new AppError({
-        code: "SOUNDCLOUD_PROXY_URL_REQUIRED",
-        safeMessage: "URL parameter is required",
-        category: "validation",
-        expected: true,
-        status: 400,
-      }),
-      origin,
-      requestId
-    );
+  const urlValidation = validateSoundCloudCdnUrl(urlParam);
+  if (urlValidation.ok) {
+    return urlValidation.url;
   }
 
-  const urlValidation = URL_SCHEMA.safeParse(urlParam);
-  if (!urlValidation.success) {
-    return proxyPolicy.problem(
-      new AppError({
-        code: "SOUNDCLOUD_PROXY_INVALID_URL",
-        safeMessage: "Invalid URL format",
-        category: "validation",
-        expected: true,
-        status: 400,
-      }),
-      origin,
-      requestId
-    );
+  if (urlValidation.reason === "invalid-domain") {
+    logSSRFAttempt(sessionId, urlParam ?? "", "soundcloud-proxy", ip);
   }
 
-  let urlObj: URL;
-  try {
-    urlObj = new URL(urlParam);
-  } catch {
-    return proxyPolicy.problem(
-      new AppError({
-        code: "SOUNDCLOUD_PROXY_INVALID_URL",
-        safeMessage: "Invalid URL format",
-        category: "validation",
-        expected: true,
-        status: 400,
-      }),
-      origin,
-      requestId
-    );
-  }
-
-  if (
-    urlObj.hostname === "soundcloud.com" ||
-    urlObj.hostname === "www.soundcloud.com"
-  ) {
-    return proxyPolicy.problem(
-      new AppError({
-        code: "SOUNDCLOUD_PROXY_PAGE_URL_NOT_ALLOWED",
-        safeMessage: "Invalid URL: must be a stream URL, not a page URL",
-        category: "validation",
-        expected: true,
-        status: 400,
-      }),
-      origin,
-      requestId
-    );
-  }
-
-  if (
-    !ALLOWED_SOUNDCLOUD_DOMAINS.includes(
-      urlObj.hostname as (typeof ALLOWED_SOUNDCLOUD_DOMAINS)[number]
-    )
-  ) {
-    logSSRFAttempt(sessionId, urlParam, "soundcloud-proxy", ip);
-    return proxyPolicy.problem(
-      new AppError({
-        code: "SOUNDCLOUD_PROXY_INVALID_DOMAIN",
-        safeMessage: "Invalid domain: not a SoundCloud CDN domain",
-        category: "security",
-        expected: true,
-        status: 400,
-      }),
-      origin,
-      requestId
-    );
-  }
-
-  return urlParam;
+  return proxyPolicy.problem(
+    createSoundCloudUrlError(urlValidation.reason),
+    origin,
+    requestId
+  );
 }
 
-async function fetchWithTimeout(
+export async function fetchSoundCloudProxyStream(
   url: string,
   request: Request,
   origin: string,
-  requestId: string
+  requestId: string,
+  fetchImpl: FetchLike = fetch
 ): Promise<Response> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
@@ -142,9 +152,16 @@ async function fetchWithTimeout(
       requestHeaders.Range = rangeHeader;
     }
 
-    const res = await fetch(url, {
-      signal: controller.signal,
-      headers: requestHeaders,
+    const { response: res } = await fetchWithValidatedRedirects({
+      fetchImpl,
+      init: {
+        signal: controller.signal,
+        headers: requestHeaders,
+      },
+      invalidUrlReason: "invalid-url",
+      maxRedirects: MAX_REDIRECTS,
+      url,
+      validateUrl: validateSoundCloudCdnUrl,
     });
 
     clearTimeout(timeout);
@@ -199,6 +216,16 @@ async function fetchWithTimeout(
     return new Response(res.body, { status: res.status, headers });
   } catch (error) {
     clearTimeout(timeout);
+
+    if (error instanceof ValidatedRedirectError) {
+      return proxyPolicy.problem(
+        createSoundCloudRedirectError(
+          error.reason as SoundCloudRedirectFailure
+        ),
+        origin,
+        requestId
+      );
+    }
 
     if (error instanceof Error && error.name === "AbortError") {
       return proxyPolicy.problem(
@@ -261,7 +288,12 @@ export const Route = createFileRoute("/api/soundcloud-proxy")({
               return urlValidation;
             }
 
-            return fetchWithTimeout(urlValidation, request, origin, requestId);
+            return fetchSoundCloudProxyStream(
+              urlValidation,
+              request,
+              origin,
+              requestId
+            );
           },
         }),
       OPTIONS: ({ request }) => proxyPolicy.options(request),

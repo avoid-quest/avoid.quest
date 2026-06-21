@@ -3,15 +3,11 @@ import { createMiddleware } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
 import { getSessionId } from "@/lib/auth/session";
 import { logAuthFailure, logRateLimitViolation } from "@/lib/logger";
-import { checkRateLimit } from "@/lib/rate-limit";
-
-function getClientIP(request: Request): string | undefined {
-  return (
-    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-    request.headers.get("cf-connecting-ip") ||
-    undefined
-  );
-}
+import {
+  checkRateLimit,
+  getClientIP,
+  resolveRateLimitSubject,
+} from "@/lib/rate-limit";
 
 async function getOrCreateSession(
   cookieHeader: string | null,
@@ -47,10 +43,13 @@ export function rateLimitMiddleware(
       throw new Error("Unauthorized");
     }
 
+    const rateLimitSubject = resolveRateLimitSubject(request, sessionId, {
+      allowSessionFallback: !shouldSetCookie,
+    });
     const rateLimitResult = await checkRateLimit(
       env,
-      sessionId ?? "anonymous",
-      identifier
+      identifier,
+      rateLimitSubject
     );
 
     if (!rateLimitResult.allowed) {

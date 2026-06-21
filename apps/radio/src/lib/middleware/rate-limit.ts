@@ -1,7 +1,12 @@
 import { AppError, problemResponse } from "@avoid.quest/error";
 import { getSessionId } from "@/lib/auth/session";
 import { logAuthFailure, logRateLimitViolation } from "@/lib/logger";
-import { checkRateLimit } from "@/lib/rate-limit";
+import {
+  checkRateLimit,
+  type RateLimitEnv,
+  getClientIP as readClientIP,
+  resolveRateLimitSubject,
+} from "@/lib/rate-limit";
 import { getCorsHeaders } from "./cors";
 
 /**
@@ -10,11 +15,7 @@ import { getCorsHeaders } from "./cors";
  * @returns Client IP or undefined
  */
 export function getClientIP(request: Request): string | undefined {
-  return (
-    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-    request.headers.get("cf-connecting-ip") ||
-    undefined
-  );
+  return readClientIP(request);
 }
 
 export type AuthAndRateLimitResult =
@@ -32,11 +33,7 @@ export type AuthAndRateLimitResult =
  */
 export async function validateAuthAndRateLimit(
   request: Request,
-  env: {
-    "proxy-rate-limit"?: {
-      limit: (options: { key: string }) => Promise<{ success: boolean }>;
-    };
-  },
+  env: RateLimitEnv,
   identifier: string,
   options?: { createSessionIfMissing?: boolean; requestId?: string }
 ): Promise<AuthAndRateLimitResult> {
@@ -86,7 +83,14 @@ export async function validateAuthAndRateLimit(
     }
 
     // Check rate limit
-    const rateLimitResult = await checkRateLimit(env, sessionId, identifier);
+    const rateLimitSubject = resolveRateLimitSubject(request, sessionId, {
+      allowSessionFallback: !shouldSetCookie,
+    });
+    const rateLimitResult = await checkRateLimit(
+      env,
+      identifier,
+      rateLimitSubject
+    );
 
     if (!rateLimitResult.allowed) {
       logRateLimitViolation(sessionId, identifier, ip);

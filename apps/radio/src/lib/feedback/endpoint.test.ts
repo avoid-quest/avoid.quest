@@ -28,6 +28,9 @@ mock.module("@/lib/logger", () => ({
   logSSRFAttempt: mock(() => undefined),
 }));
 
+const VALID_SESSION_ID =
+  "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
 let handleFeedbackRequest: typeof import("./endpoint")["handleFeedbackRequest"];
 
 beforeAll(async () => {
@@ -60,14 +63,15 @@ describe("handleFeedbackRequest", () => {
     expect(feedbackHandlerMock).toHaveBeenCalledTimes(1);
   });
 
-  test("rate limits feedback by session ID", async () => {
+  test("rate limits feedback by Cloudflare IP", async () => {
     const limitMock = mock(async (_options: { key: string }) => ({
       success: true,
     }));
     const request = new Request("https://radio.test/api/feedback", {
       method: "POST",
       headers: {
-        cookie: "radio_session_id=test-session-123",
+        "cf-connecting-ip": "203.0.113.10",
+        cookie: `radio_session_id=${VALID_SESSION_ID}`,
       },
     });
 
@@ -78,7 +82,7 @@ describe("handleFeedbackRequest", () => {
 
     expect(response.status).toBe(200);
     expect(limitMock).toHaveBeenCalledWith({
-      key: "feedback:test-session-123",
+      key: "feedback:ip:203.0.113.10",
     });
     expect(createFeedbackEndpointMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -122,6 +126,9 @@ describe("handleFeedbackRequest", () => {
     }));
     const request = new Request("https://radio.test/api/feedback", {
       method: "POST",
+      headers: {
+        "cf-connecting-ip": "203.0.113.10",
+      },
     });
 
     const response = await handleFeedbackRequest(request, {
@@ -130,9 +137,9 @@ describe("handleFeedbackRequest", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(limitMock).toHaveBeenCalledTimes(1);
-    const rateLimitKey = (limitMock.mock.calls[0]?.[0] as { key: string }).key;
-    expect(rateLimitKey).toStartWith("feedback:");
+    expect(limitMock).toHaveBeenCalledWith({
+      key: "feedback:ip:203.0.113.10",
+    });
     expect(response.headers.get("set-cookie")).toStartWith("radio_session_id=");
   });
 
@@ -143,7 +150,7 @@ describe("handleFeedbackRequest", () => {
     const request = new Request("https://radio.test/api/feedback", {
       method: "POST",
       headers: {
-        cookie: "radio_session_id=test-session",
+        "cf-connecting-ip": "203.0.113.10",
       },
     });
 
@@ -162,6 +169,9 @@ describe("handleFeedbackRequest", () => {
     }));
     const request = new Request("https://radio.test/api/feedback", {
       method: "POST",
+      headers: {
+        "cf-connecting-ip": "203.0.113.10",
+      },
     });
 
     await handleFeedbackRequest(request, {

@@ -11,6 +11,7 @@ import {
   getCorsOptionsHeaders,
 } from "@/lib/middleware/cors";
 import { validateAuthAndRateLimit } from "@/lib/middleware/rate-limit";
+import { createSessionCookie } from "@/lib/middleware/session";
 
 type ProxyAuthResult = Exclude<
   Awaited<ReturnType<typeof validateAuthAndRateLimit>>,
@@ -44,6 +45,17 @@ function resolveProxyOrigin(request: Request): string {
   } catch {
     return "*";
   }
+}
+
+function withSessionCookie(response: Response, sessionId: string): Response {
+  const headers = new Headers(response.headers);
+  headers.append("Set-Cookie", createSessionCookie(sessionId));
+
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
 }
 
 export function createProxyRequestPolicy(
@@ -95,12 +107,18 @@ export function createProxyRequestPolicy(
           return authResult;
         }
 
-        return config.run({
+        const response = await config.run({
           auth: authResult,
           origin,
           request: config.request,
           requestId,
         });
+
+        if (!authResult.shouldSetCookie) {
+          return response;
+        }
+
+        return withSessionCookie(response, authResult.sessionId);
       },
     });
 

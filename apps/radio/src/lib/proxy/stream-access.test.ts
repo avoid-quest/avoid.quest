@@ -82,6 +82,53 @@ describe("determineStreamAccessMode", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
+  test("revalidates cached direct decisions when inspecting streams", async () => {
+    let requestCount = 0;
+    const requestedUrls: string[] = [];
+    const redirectModes: Array<RequestRedirect | undefined> = [];
+    const fetchImpl = mock(async (url: string, init?: RequestInit) => {
+      await Promise.resolve();
+      requestCount += 1;
+      requestedUrls.push(url);
+      redirectModes.push(init?.redirect);
+
+      if (requestCount === 1) {
+        return new Response("ok", {
+          headers: {
+            "access-control-allow-origin": "*",
+          },
+        });
+      }
+
+      return Response.redirect("http://127.0.0.1/live", 302);
+    });
+
+    await expect(
+      inspectStreamAccess("https://radio.example/live", {
+        fetchImpl,
+        origin: "https://radio.test",
+      })
+    ).resolves.toMatchObject({
+      mode: "direct",
+      resolvedUrl: "https://radio.example/live",
+    });
+    await expect(
+      inspectStreamAccess("https://radio.example/live", {
+        fetchImpl,
+        origin: "https://radio.test",
+      })
+    ).resolves.toMatchObject({
+      mode: "proxy",
+      response: null,
+      resolvedUrl: null,
+    });
+    expect(requestedUrls).toEqual([
+      "https://radio.example/live",
+      "https://radio.example/live",
+    ]);
+    expect(redirectModes).toEqual(["manual", "manual"]);
+  });
+
   test("scopes cached decisions by request origin", async () => {
     const fetchImpl = mock(async () => {
       await Promise.resolve();
@@ -118,19 +165,23 @@ describe("determineStreamAccessMode", () => {
     ).resolves.toBe("proxy");
   });
 
-  test("returns the resolved final URL for direct redirects", async () => {
-    const response = new Response("ok", {
-      headers: {
-        "access-control-allow-origin": "*",
-      },
-    });
-    Object.defineProperty(response, "url", {
-      configurable: true,
-      value: "https://edge.example/live",
-    });
-    const fetchImpl = mock(async () => {
+  test("returns the resolved final URL for valid public redirects", async () => {
+    const requestedUrls: string[] = [];
+    const redirectModes: Array<RequestRedirect | undefined> = [];
+    const fetchImpl = mock(async (url: string, init?: RequestInit) => {
       await Promise.resolve();
-      return response;
+      requestedUrls.push(url);
+      redirectModes.push(init?.redirect);
+
+      if (url === "https://radio.example/live") {
+        return Response.redirect("https://edge.example/live", 302);
+      }
+
+      return new Response("ok", {
+        headers: {
+          "access-control-allow-origin": "*",
+        },
+      });
     });
 
     await expect(
@@ -142,6 +193,68 @@ describe("determineStreamAccessMode", () => {
       mode: "direct",
       resolvedUrl: "https://edge.example/live",
     });
+    expect(requestedUrls).toEqual([
+      "https://radio.example/live",
+      "https://edge.example/live",
+    ]);
+    expect(redirectModes).toEqual(["manual", "manual"]);
+  });
+
+  test("does not follow redirects to loopback addresses", async () => {
+    const requestedUrls: string[] = [];
+    const redirectModes: Array<RequestRedirect | undefined> = [];
+    const fetchImpl = mock(async (url: string, init?: RequestInit) => {
+      await Promise.resolve();
+      requestedUrls.push(url);
+      redirectModes.push(init?.redirect);
+
+      if (url === "https://radio.example/live" && init?.redirect !== "manual") {
+        return new Response("internal", {
+          headers: {
+            "access-control-allow-origin": "*",
+          },
+        });
+      }
+
+      return Response.redirect("http://127.0.0.1/live", 302);
+    });
+
+    await expect(
+      inspectStreamAccess("https://radio.example/live", {
+        fetchImpl,
+        origin: "https://radio.test",
+      })
+    ).resolves.toMatchObject({
+      mode: "proxy",
+      response: null,
+      resolvedUrl: null,
+    });
+    expect(requestedUrls).toEqual(["https://radio.example/live"]);
+    expect(redirectModes).toEqual(["manual"]);
+  });
+
+  test("stops after the redirect hop limit", async () => {
+    const requestedUrls: string[] = [];
+    const fetchImpl = mock(async (url: string) => {
+      await Promise.resolve();
+      requestedUrls.push(url);
+      return Response.redirect(
+        `https://radio.example/live-${requestedUrls.length}`,
+        302
+      );
+    });
+
+    await expect(
+      inspectStreamAccess("https://radio.example/live", {
+        fetchImpl,
+        origin: "https://radio.test",
+      })
+    ).resolves.toMatchObject({
+      mode: "proxy",
+      response: null,
+      resolvedUrl: null,
+    });
+    expect(requestedUrls).toHaveLength(6);
   });
 
   test("reuses the caller headers when preserving a proxied response", async () => {

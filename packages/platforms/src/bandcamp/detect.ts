@@ -1,7 +1,9 @@
 import type { BandcampItemType } from "./types.js";
 
-const BANDCAMP_PATTERN = /bandcamp\.com/i;
-const BANDCAMP_MOBILE = /m\.bandcamp\.com/i;
+const BANDCAMP_HOST = "bandcamp.com";
+const BANDCAMP_HOST_SUFFIX = ".bandcamp.com";
+const BANDCAMP_MOBILE_HOST = "m.bandcamp.com";
+const TRAILING_DOTS_PATTERN = /\.+$/;
 const BANDCAMP_ALBUM_PATTERN = /bandcamp\.com\/album\//i;
 const BANDCAMP_TRACK_PATTERN = /bandcamp\.com\/track\//i;
 const BANDCAMP_LABEL_PATTERN = /bandcamp\.com\/label\//i;
@@ -13,15 +15,44 @@ const BANDCAMP_COLLECTION_PATTERN =
 const BANDCAMP_ARTIST_PATTERN =
   /^https?:\/\/[a-zA-Z0-9_-]+\.bandcamp\.com(?:\/music)?(?:\/)?$/i;
 
+function parseHttpUrl(url: string): URL | null {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "http:" || parsed.protocol === "https:"
+      ? parsed
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeHostname(hostname: string): string {
+  return hostname.toLowerCase().replace(TRAILING_DOTS_PATTERN, "");
+}
+
+function isBandcampHostname(hostname: string): boolean {
+  const normalized = normalizeHostname(hostname);
+  return (
+    normalized === BANDCAMP_HOST || normalized.endsWith(BANDCAMP_HOST_SUFFIX)
+  );
+}
+
 export function isBandcampUrl(url: string): boolean {
-  return Boolean(url) && BANDCAMP_PATTERN.test(url);
+  const parsed = parseHttpUrl(url);
+  return parsed ? isBandcampHostname(parsed.hostname) : false;
 }
 
 /**
  * Normalize Bandcamp URL (converts mobile URLs to desktop)
  */
 export function normalizeBandcampUrl(url: string): string {
-  return url.replace(BANDCAMP_MOBILE, "bandcamp.com");
+  const parsed = parseHttpUrl(url);
+  if (!parsed || normalizeHostname(parsed.hostname) !== BANDCAMP_MOBILE_HOST) {
+    return url;
+  }
+
+  parsed.hostname = BANDCAMP_HOST;
+  return parsed.toString();
 }
 
 /**

@@ -1,3 +1,13 @@
+import {
+  type StreamUrlValidationFailure,
+  validatePublicStreamUrl,
+} from "./url-policy";
+import {
+  fetchWithValidatedRedirects,
+  ValidatedRedirectError,
+  type ValidatedRedirectFailure,
+} from "./validated-redirects";
+
 export type StreamAccessMode = "direct" | "proxy";
 export type StreamAccessDecision = {
   mode: StreamAccessMode;
@@ -22,8 +32,19 @@ type DetermineStreamAccessOptions = {
 
 const STREAM_ACCESS_CACHE_TTL_MS = 10 * 60 * 1000;
 const STREAM_ACCESS_PROBE_TIMEOUT_MS = 4000;
+const STREAM_ACCESS_MAX_REDIRECTS = 5;
 
 const streamAccessCache = new Map<string, StreamAccessCacheEntry>();
+
+export type StreamRedirectFailure =
+  ValidatedRedirectFailure<StreamUrlValidationFailure>;
+
+export class StreamRedirectError extends ValidatedRedirectError<StreamRedirectFailure> {
+  constructor(reason: StreamRedirectFailure, url: string) {
+    super(reason, url);
+    this.name = "StreamRedirectError";
+  }
+}
 
 function normalizeAccessControlOrigin(value: string): string {
   return value.trim().toLowerCase();
@@ -62,6 +83,32 @@ async function cancelResponseBody(response: Response): Promise<void> {
   }
 }
 
+export async function fetchPublicStreamWithRedirects(
+  url: string,
+  init: RequestInit,
+  fetchImpl: FetchLike,
+  maxRedirects = STREAM_ACCESS_MAX_REDIRECTS
+): Promise<{ response: Response; resolvedUrl: string }> {
+  try {
+    return await fetchWithValidatedRedirects({
+      fetchImpl,
+      init,
+      invalidUrlReason: "invalid-url",
+      maxRedirects,
+      url,
+      validateUrl: validatePublicStreamUrl,
+    });
+  } catch (error) {
+    if (error instanceof ValidatedRedirectError) {
+      throw new StreamRedirectError(
+        error.reason as StreamRedirectFailure,
+        error.url
+      );
+    }
+    throw error;
+  }
+}
+
 async function probeStreamAccess(
   url: string,
   {
@@ -76,7 +123,14 @@ async function probeStreamAccess(
   const cacheKey = getStreamAccessCacheKey(url, origin);
   const cached = streamAccessCache.get(cacheKey);
   const currentTime = now();
-  if (cached && cached.expiresAt > currentTime) {
+  // Direct stream inspections can emit browser redirects, so they need a
+  // freshly validated redirect chain instead of a cached mode-only decision.
+  const canUseCachedDecision =
+    cached &&
+    cached.expiresAt > currentTime &&
+    (cached.mode !== "direct" || !preserveProxyResponse);
+
+  if (canUseCachedDecision) {
     return {
       mode: cached.mode,
       response: null,
@@ -101,12 +155,15 @@ async function probeStreamAccess(
       headers.Range = "bytes=0-0";
     }
 
-    const response = await fetchImpl(url, {
-      headers,
-      method: "GET",
-      redirect: "follow",
-      signal: controller.signal,
-    });
+    const { response, resolvedUrl } = await fetchPublicStreamWithRedirects(
+      url,
+      {
+        headers,
+        method: "GET",
+        signal: controller.signal,
+      },
+      fetchImpl
+    );
 
     const mode = isCorsPlayableForOrigin(
       response.headers.get("access-control-allow-origin"),
@@ -127,7 +184,7 @@ async function probeStreamAccess(
     return {
       mode,
       response: mode === "proxy" && preserveProxyResponse ? response : null,
-      resolvedUrl: mode === "direct" ? response.url || url : null,
+      resolvedUrl: mode === "direct" ? resolvedUrl : null,
     };
   } catch {
     streamAccessCache.set(cacheKey, {

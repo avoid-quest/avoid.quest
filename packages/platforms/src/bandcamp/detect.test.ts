@@ -24,6 +24,13 @@ describe("isBandcampUrl", () => {
   test("rejects non-Bandcamp URLs", () => {
     expect(isBandcampUrl("https://example.com")).toBe(false);
     expect(isBandcampUrl("https://soundcloud.com/artist")).toBe(false);
+    expect(isBandcampUrl("https://example.com/bandcamp.com/artist")).toBe(
+      false
+    );
+    expect(isBandcampUrl("http://127.0.0.1/bandcamp.com/artist")).toBe(false);
+    expect(isBandcampUrl("https://bandcamp.com.evil.example/artist")).toBe(
+      false
+    );
     expect(isBandcampUrl("")).toBe(false);
   });
 });

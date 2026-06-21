@@ -4,7 +4,12 @@
  * Server-side functions for handling remote audio URLs and playlists.
  */
 
-import { AppError, type AppResult, runServerFn } from "@avoid.quest/error";
+import {
+  AppError,
+  type AppErrorInit,
+  type AppResult,
+  runServerFn,
+} from "@avoid.quest/error";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import {
@@ -20,71 +25,124 @@ import type {
   StaticAudioMetadata,
   StaticAudioTrack,
 } from "@/lib/platform-types";
+import {
+  fetchPublicStreamWithRedirects,
+  StreamRedirectError,
+  type StreamRedirectFailure,
+} from "@/lib/proxy/stream-access";
+import {
+  type StreamUrlValidationFailure,
+  validatePublicStreamUrl,
+} from "@/lib/proxy/url-policy";
 import { rateLimitMiddleware } from "./middleware";
 
 const REQUEST_TIMEOUT_MS = 15_000;
-const IP_OCTET_RE = /^\d{1,3}$/;
+type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
-function isPrivateHostname(hostname: string): boolean {
-  if (
-    hostname === "localhost" ||
-    hostname === "[::1]" ||
-    hostname.endsWith(".local") ||
-    hostname.endsWith(".internal")
-  ) {
-    return true;
-  }
+const STATIC_AUDIO_INVALID_URL_ERROR = {
+  code: "STATIC_AUDIO_INVALID_URL",
+  safeMessage: "Invalid URL",
+  category: "validation",
+  expected: true,
+  status: 400,
+} as const satisfies AppErrorInit;
 
-  const parts = hostname.split(".");
-  if (parts.length === 4 && parts.every((p) => IP_OCTET_RE.test(p))) {
-    const [a, b] = parts.map(Number);
-    if (a === 10) {
-      return true;
-    }
-    if (a === 172 && b !== undefined && b >= 16 && b <= 31) {
-      return true;
-    }
-    if (a === 192 && b === 168) {
-      return true;
-    }
-    if (a === 127) {
-      return true;
-    }
-    if (a === 169 && b === 254) {
-      return true;
-    }
-    if (a === 0) {
-      return true;
-    }
-  }
+const STATIC_AUDIO_INVALID_PROTOCOL_ERROR = {
+  code: "STATIC_AUDIO_INVALID_PROTOCOL",
+  safeMessage: "URL must use HTTP or HTTPS",
+  category: "validation",
+  expected: true,
+  status: 400,
+} as const satisfies AppErrorInit;
 
-  return false;
+const STATIC_AUDIO_PRIVATE_ADDRESS_ERROR = {
+  code: "STATIC_AUDIO_PRIVATE_ADDRESS",
+  safeMessage: "URL points to a private/internal network address",
+  category: "security",
+  expected: true,
+  status: 400,
+} as const satisfies AppErrorInit;
+
+const STATIC_AUDIO_URL_VALIDATION_ERRORS = {
+  required: STATIC_AUDIO_INVALID_URL_ERROR,
+  "invalid-url": STATIC_AUDIO_INVALID_URL_ERROR,
+  "invalid-protocol": STATIC_AUDIO_INVALID_PROTOCOL_ERROR,
+  "internal-address": STATIC_AUDIO_PRIVATE_ADDRESS_ERROR,
+} as const satisfies Record<StreamUrlValidationFailure, AppErrorInit>;
+
+const STATIC_AUDIO_REDIRECT_FAILURE_ERRORS = {
+  required: STATIC_AUDIO_INVALID_URL_ERROR,
+  "invalid-url": STATIC_AUDIO_INVALID_URL_ERROR,
+  "invalid-protocol": STATIC_AUDIO_INVALID_PROTOCOL_ERROR,
+  "internal-address": STATIC_AUDIO_PRIVATE_ADDRESS_ERROR,
+  "missing-location": {
+    code: "STATIC_AUDIO_REDIRECT_LOCATION_MISSING",
+    safeMessage: "Redirect missing Location header",
+    category: "dependency",
+    expected: false,
+    status: 502,
+  },
+  "too-many-redirects": {
+    code: "STATIC_AUDIO_TOO_MANY_REDIRECTS",
+    safeMessage: "Too many redirects",
+    category: "dependency",
+    expected: false,
+    status: 502,
+  },
+} as const satisfies Record<StreamRedirectFailure, AppErrorInit>;
+
+function createStaticAudioError(init: AppErrorInit): AppError {
+  return new AppError(init);
 }
 
-function assertUrlNotPrivate(url: string): void {
+export function assertPublicStaticAudioUrl(url: string): void {
+  const validation = validatePublicStreamUrl(url);
+  if (validation.ok) {
+    return;
+  }
+
+  throw createStaticAudioError(
+    STATIC_AUDIO_URL_VALIDATION_ERRORS[validation.reason]
+  );
+}
+
+function createStaticAudioRedirectError(error: StreamRedirectError): AppError {
+  return createStaticAudioError(
+    STATIC_AUDIO_REDIRECT_FAILURE_ERRORS[error.reason]
+  );
+}
+
+export async function fetchStaticAudioWithRedirects(
+  url: string,
+  {
+    fetchImpl = fetch,
+    headers,
+    method,
+    signal,
+  }: {
+    fetchImpl?: FetchLike;
+    headers?: HeadersInit;
+    method: "GET" | "HEAD";
+    signal?: AbortSignal;
+  }
+): Promise<Response> {
   try {
-    const parsed = new URL(url);
-    if (isPrivateHostname(parsed.hostname)) {
-      throw new AppError({
-        code: "STATIC_AUDIO_PRIVATE_ADDRESS",
-        safeMessage: "URL points to a private/internal network address",
-        category: "security",
-        expected: true,
-        status: 400,
-      });
-    }
+    const { response } = await fetchPublicStreamWithRedirects(
+      url,
+      {
+        headers,
+        method,
+        signal,
+      },
+      fetchImpl
+    );
+    return response;
   } catch (error) {
-    if (error instanceof AppError) {
-      throw error;
+    if (error instanceof StreamRedirectError) {
+      throw createStaticAudioRedirectError(error);
     }
 
-    throw new AppError({
-      code: "STATIC_AUDIO_INVALID_URL",
-      safeMessage: "Invalid URL",
-      category: "validation",
-      expected: true,
-      status: 400,
-    });
+    throw error;
   }
 }
 
@@ -94,59 +152,27 @@ export type RemoteAudioProbeResponse = AppResult<{
   filename: string;
 }>;
 
-const ProbeRemoteAudioSchema = z.object({
-  url: z
-    .string()
-    .min(1, "URL is required")
-    .max(2048, "URL too long")
-    .refine(
-      (val) => {
-        try {
-          const parsed = new URL(val);
-          return parsed.protocol === "http:" || parsed.protocol === "https:";
-        } catch {
-          return false;
-        }
-      },
-      { message: "Invalid URL format" }
-    ),
-});
+const RemoteAudioUrlSchema = z
+  .string()
+  .min(1, "URL is required")
+  .max(2048, "URL too long")
+  .refine(
+    (val) => {
+      try {
+        const parsed = new URL(val);
+        return parsed.protocol === "http:" || parsed.protocol === "https:";
+      } catch {
+        return false;
+      }
+    },
+    { message: "Invalid URL format" }
+  );
 
-const FetchPlaylistSchema = z.object({
-  url: z
-    .string()
-    .min(1, "URL is required")
-    .max(2048, "URL too long")
-    .refine(
-      (val) => {
-        try {
-          const parsed = new URL(val);
-          return parsed.protocol === "http:" || parsed.protocol === "https:";
-        } catch {
-          return false;
-        }
-      },
-      { message: "Invalid URL format" }
-    ),
-});
+const ProbeRemoteAudioSchema = z.object({ url: RemoteAudioUrlSchema });
 
-const GetStaticAudioItemSchema = z.object({
-  url: z
-    .string()
-    .min(1, "URL is required")
-    .max(2048, "URL too long")
-    .refine(
-      (val) => {
-        try {
-          const parsed = new URL(val);
-          return parsed.protocol === "http:" || parsed.protocol === "https:";
-        } catch {
-          return false;
-        }
-      },
-      { message: "Invalid URL format" }
-    ),
-});
+const FetchPlaylistSchema = z.object({ url: RemoteAudioUrlSchema });
+
+const GetStaticAudioItemSchema = z.object({ url: RemoteAudioUrlSchema });
 
 export type FetchPlaylistResponse = AppResult<{
   playlist: ParsedPlaylist;
@@ -172,7 +198,7 @@ export const probeRemoteAudio = createServerFn({ method: "POST" })
           status: 500,
         },
         run: async () => {
-          assertUrlNotPrivate(data.url);
+          assertPublicStaticAudioUrl(data.url);
 
           const controller = new AbortController();
           const timeoutId = setTimeout(
@@ -181,7 +207,7 @@ export const probeRemoteAudio = createServerFn({ method: "POST" })
           );
 
           try {
-            const response = await fetch(data.url, {
+            const response = await fetchStaticAudioWithRedirects(data.url, {
               method: "HEAD",
               signal: controller.signal,
               headers: {
@@ -244,7 +270,7 @@ export const fetchPlaylist = createServerFn({ method: "POST" })
           status: 500,
         },
         run: async () => {
-          assertUrlNotPrivate(data.url);
+          assertPublicStaticAudioUrl(data.url);
 
           const controller = new AbortController();
           const timeoutId = setTimeout(
@@ -253,7 +279,8 @@ export const fetchPlaylist = createServerFn({ method: "POST" })
           );
 
           try {
-            const response = await fetch(data.url, {
+            const response = await fetchStaticAudioWithRedirects(data.url, {
+              method: "GET",
               signal: controller.signal,
               headers: {
                 "User-Agent": "Mozilla/5.0 (compatible; avoid.quest/1.0)",
@@ -317,7 +344,7 @@ export const getStaticAudioItem = createServerFn({ method: "POST" })
           status: 500,
         },
         run: async () => {
-          assertUrlNotPrivate(data.url);
+          assertPublicStaticAudioUrl(data.url);
           const trimmedUrl = data.url.trim();
 
           if (isPlaylistUrl(trimmedUrl)) {

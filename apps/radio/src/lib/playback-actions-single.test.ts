@@ -9,9 +9,9 @@ import {
   resetAllPlaybackRuntime,
   setPlaybackChannelRuntime,
 } from "@/lib/stores/playback-runtime-store";
+import { createManagedPlaybackSessionWorkflow } from "./managed-playback-session-workflow";
 import type { PlaybackActionContext } from "./playback-action-context";
 import type { PlaybackActionError } from "./playback-action-errors";
-import { setSinglePlaybackState } from "./playback-actions-single";
 
 async function resetPlaybackSessions() {
   await playbackSessionsCollection.stateWhenReady();
@@ -118,7 +118,9 @@ describe("single playback actions", () => {
 
     const { context } = createTestContext();
 
-    await setSinglePlaybackState(true, context);
+    await createManagedPlaybackSessionWorkflow("single", {
+      ctx: context,
+    }).setPlaying(true);
 
     expect(context.channels.activate).toHaveBeenCalledWith(
       "single",
@@ -172,7 +174,11 @@ describe("single playback actions", () => {
       ) as AudioManager["playSound"],
     });
 
-    await expect(setSinglePlaybackState(true, context)).rejects.toMatchObject({
+    await expect(
+      createManagedPlaybackSessionWorkflow("single", {
+        ctx: context,
+      }).setPlaying(true)
+    ).rejects.toMatchObject({
       userMessage:
         "Playback could not start. Check the station stream and try again.",
       rawMessage: "Failed to execute 'linearRampToValueAtTime' on 'AudioParam'",

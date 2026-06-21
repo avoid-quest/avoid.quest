@@ -250,6 +250,18 @@ function syncMultipleChannels(
   replacePlaybackChannels("multiple", channels);
 }
 
+export function mergeMultiplePlaybackRadios(
+  radios: Radio[],
+  sessionRadios: Radio[]
+): Radio[] {
+  return [
+    ...radios,
+    ...sessionRadios.filter(
+      (sessionRadio) => !radios.some((radio) => radio.id === sessionRadio.id)
+    ),
+  ];
+}
+
 function addMultipleChannel(
   radio: Radio,
   order?: number

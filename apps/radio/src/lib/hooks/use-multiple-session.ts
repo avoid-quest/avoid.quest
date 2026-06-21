@@ -6,20 +6,8 @@ import {
   type PlaybackSessionRecord,
   playbackSessionsCollection,
 } from "@/lib/collections/playback-sessions";
-import { toRuntimeAudioError } from "@/lib/playback-action-errors";
-import {
-  addMultiplePlaybackChannel,
-  pauseAllMultipleChannels,
-  removeMultiplePlaybackChannel,
-  setMultipleChannelPlaying,
-  setMultipleChannelVolume,
-  setMultipleSessionMasterVolume,
-  syncMultiplePlaybackChannels,
-} from "@/lib/playback-actions";
-import {
-  playbackRuntimeStore,
-  setPlaybackChannelRuntime,
-} from "@/lib/stores/playback-runtime-store";
+import { createManagedPlaybackSessionWorkflow } from "@/lib/playback-actions";
+import { playbackRuntimeStore } from "@/lib/stores/playback-runtime-store";
 
 export type MultipleSessionPlayerState = {
   id: string;
@@ -73,7 +61,9 @@ function useMultipleSessionRecord(): PlaybackSessionRecord | undefined {
 }
 
 function clearMultipleChannelError(channelId: string): void {
-  setPlaybackChannelRuntime(channelId, () => ({ error: null }));
+  createManagedPlaybackSessionWorkflow("multiple").clearPlaybackErrors([
+    channelId,
+  ]);
 }
 
 function setMultipleChannelError(
@@ -81,10 +71,11 @@ function setMultipleChannelError(
   error: unknown,
   radio?: Radio
 ): void {
-  setPlaybackChannelRuntime(channelId, () => ({
-    isLoading: false,
-    error: toRuntimeAudioError(error, "PLAY_ERROR", radio),
-  }));
+  createManagedPlaybackSessionWorkflow("multiple").setPlaybackError(
+    channelId,
+    error,
+    radio
+  );
 }
 
 export function useMultipleSession() {
@@ -122,15 +113,19 @@ export function useMultipleSession() {
   }, [runtimes, session]);
 
   const syncRadios = useCallback((radios: Radio[]) => {
-    syncMultiplePlaybackChannels(radios);
+    createManagedPlaybackSessionWorkflow("multiple").syncChannels(radios);
   }, []);
 
   const addRadio = useCallback(async (radio: Radio, autoPlay = false) => {
-    const channel = addMultiplePlaybackChannel(radio);
+    const channel =
+      createManagedPlaybackSessionWorkflow("multiple").addChannel(radio);
     if (autoPlay) {
       try {
         clearMultipleChannelError(channel.id);
-        await setMultipleChannelPlaying(channel.id, true);
+        await createManagedPlaybackSessionWorkflow("multiple").setPlaying(
+          true,
+          channel.id
+        );
       } catch (error) {
         setMultipleChannelError(channel.id, error, radio);
       }
@@ -139,7 +134,7 @@ export function useMultipleSession() {
   }, []);
 
   const removeRadio = useCallback((channelId: string) => {
-    removeMultiplePlaybackChannel(channelId);
+    createManagedPlaybackSessionWorkflow("multiple").removeChannel(channelId);
   }, []);
 
   const togglePlayPause = useCallback(
@@ -147,9 +142,9 @@ export function useMultipleSession() {
       const player = players.find((entry) => entry.id === channelId);
       try {
         clearMultipleChannelError(channelId);
-        await setMultipleChannelPlaying(
-          channelId,
-          !(player?.isPlaying ?? false)
+        await createManagedPlaybackSessionWorkflow("multiple").setPlaying(
+          !(player?.isPlaying ?? false),
+          channelId
         );
       } catch (error) {
         setMultipleChannelError(channelId, error, player?.radio);
@@ -159,23 +154,28 @@ export function useMultipleSession() {
   );
 
   const setVolume = useCallback((channelId: string, volume: number) => {
-    setMultipleChannelVolume(channelId, volume);
+    createManagedPlaybackSessionWorkflow("multiple").setChannelVolume(
+      channelId,
+      volume
+    );
   }, []);
 
   const setGlobalVolume = useCallback((volume: number) => {
     if (volume > 0) {
       lastGlobalVolumeRef.current = volume;
     }
-    setMultipleSessionMasterVolume(volume);
+    createManagedPlaybackSessionWorkflow("multiple").setMasterVolume(volume);
   }, []);
 
   const toggleGlobalMute = useCallback(() => {
     if (globalMuted) {
-      setMultipleSessionMasterVolume(lastGlobalVolumeRef.current);
+      createManagedPlaybackSessionWorkflow("multiple").setMasterVolume(
+        lastGlobalVolumeRef.current
+      );
       return;
     }
     lastGlobalVolumeRef.current = globalVolume || lastGlobalVolumeRef.current;
-    setMultipleSessionMasterVolume(0);
+    createManagedPlaybackSessionWorkflow("multiple").setMasterVolume(0);
   }, [globalMuted, globalVolume]);
 
   const playAll = useCallback(async () => {
@@ -185,7 +185,10 @@ export function useMultipleSession() {
       async (player) => {
         try {
           clearMultipleChannelError(player.id);
-          await setMultipleChannelPlaying(player.id, true);
+          await createManagedPlaybackSessionWorkflow("multiple").setPlaying(
+            true,
+            player.id
+          );
         } catch (error) {
           setMultipleChannelError(player.id, error, player.radio);
         }
@@ -194,7 +197,7 @@ export function useMultipleSession() {
   }, [players]);
 
   const pauseAll = useCallback(() => {
-    pauseAllMultipleChannels();
+    createManagedPlaybackSessionWorkflow("multiple").pauseAll();
   }, []);
 
   return {

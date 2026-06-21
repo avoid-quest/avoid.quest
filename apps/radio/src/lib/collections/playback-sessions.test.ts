@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createDefaultEffectConfig } from "@/lib/audio";
-import { addMultiplePlaybackChannel } from "../playback-actions-multiple";
+import { createManagedPlaybackSessionWorkflow } from "../managed-playback-session-workflow";
 import {
   buildDjSessionFromLegacyState,
   buildMultipleSessionFromRadios,
@@ -318,11 +318,13 @@ describe("multiple session persistence", () => {
       activeChannelId: null,
     });
 
-    const channel = addMultiplePlaybackChannel({
-      id: "radio-1",
-      name: "Existing",
-      streamUrl: "https://radio.example/existing.mp3",
-    });
+    const channel = createManagedPlaybackSessionWorkflow("multiple").addChannel(
+      {
+        id: "radio-1",
+        name: "Existing",
+        streamUrl: "https://radio.example/existing.mp3",
+      }
+    );
 
     expect(channel.volume).toBe(0.37);
     expect(channel.muted).toBe(true);

@@ -84,6 +84,24 @@ describe("createPlayablePlatformResolver", () => {
     });
     expect(resolveStaticAudioItem).not.toHaveBeenCalled();
   });
+
+  test("maps static audio adapter failures to structured resolver errors", async () => {
+    const resolveStaticAudioItem = mock(() =>
+      Promise.reject(new Error("Static audio probe failed"))
+    );
+    const resolver = createPlayablePlatformResolver({ resolveStaticAudioItem });
+
+    const result = await resolver.resolveItem("https://example.com/mix.mp3");
+
+    expect(result).toEqual({
+      error: {
+        code: "static-audio-resolution-failed",
+        message: "Static audio probe failed",
+        platform: "static-audio",
+      },
+      success: false,
+    });
+  });
 });
 
 describe("toPlayableSources", () => {

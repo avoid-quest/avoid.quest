@@ -97,6 +97,24 @@ function providerError(
   };
 }
 
+function errorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "safeMessage" in error &&
+    typeof error.safeMessage === "string" &&
+    error.safeMessage.trim()
+  ) {
+    return error.safeMessage;
+  }
+
+  return fallback;
+}
+
 async function resolveBandcampPlayableItem<TStaticAudioMetadata>(
   normalizedUrl: string
 ): Promise<PlayablePlatformResolutionResult<TStaticAudioMetadata>> {
@@ -179,12 +197,23 @@ async function resolveStaticAudioPlayableItem<TStaticAudioMetadata>(
     };
   }
 
-  const result = await resolveStaticAudioItem(normalizedUrl);
-  return itemResult<TStaticAudioMetadata>(
-    "static-audio",
-    normalizedUrl,
-    result
-  );
+  try {
+    const result = await resolveStaticAudioItem(normalizedUrl);
+    return itemResult<TStaticAudioMetadata>(
+      "static-audio",
+      normalizedUrl,
+      result
+    );
+  } catch (error) {
+    return {
+      error: {
+        code: "static-audio-resolution-failed",
+        message: errorMessage(error, "Failed to resolve static audio item"),
+        platform: "static-audio",
+      },
+      success: false,
+    };
+  }
 }
 
 function itemResult<TStaticAudioMetadata>(

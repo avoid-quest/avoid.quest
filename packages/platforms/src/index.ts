@@ -45,6 +45,21 @@ export {
   normalizeBandcampUrl,
   normalizeSoundCloudUrl,
 } from "./detect.js";
+export type {
+  PlayablePlatform,
+  PlayablePlatformItem,
+  PlayablePlatformResolutionError,
+  PlayablePlatformResolutionErrorCode,
+  PlayablePlatformResolutionResult,
+  PlayableSource,
+  StaticAudioItemResolver,
+} from "./playable.js";
+export {
+  createPlayablePlatformResolver,
+  detectPlayablePlatformFromUrl,
+  normalizePlayablePlatformUrl,
+  toPlayableSources,
+} from "./playable.js";
 // Radio Garden
 export type {
   RadioGardenItemError,
@@ -61,7 +76,6 @@ export {
   resolveRadioGardenStream,
   searchRadioGarden,
 } from "./radiogarden/index.js";
-
 // Unified search
 export type {
   ExternalPlatformSearchAdapters,

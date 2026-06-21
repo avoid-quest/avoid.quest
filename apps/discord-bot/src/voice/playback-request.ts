@@ -39,16 +39,6 @@ export async function requestPlayback(
   interaction: PlaybackInteraction,
   options: PlaybackRequestOptions
 ): Promise<PlaybackRequestResult> {
-  const member = interaction.member;
-
-  if (!(member instanceof GuildMember && member.voice.channel)) {
-    await interaction.reply({
-      content: options.messages.voiceChannelRequired,
-      ephemeral: true,
-    });
-    return { status: "missing-voice-channel" };
-  }
-
   if (!interaction.guildId) {
     if (options.messages.serverRequired) {
       await interaction.reply({
@@ -57,6 +47,16 @@ export async function requestPlayback(
       });
     }
     return { status: "missing-guild" };
+  }
+
+  const member = interaction.member;
+
+  if (!(member instanceof GuildMember && member.voice.channel)) {
+    await interaction.reply({
+      content: options.messages.voiceChannelRequired,
+      ephemeral: true,
+    });
+    return { status: "missing-voice-channel" };
   }
 
   if (options.beforeDefer && !(await options.beforeDefer())) {
@@ -75,11 +75,10 @@ export async function requestPlayback(
     });
 
     if (!firstTrack) {
-      if (options.messages.noPlayableTracks) {
-        await interaction.editReply({
-          content: options.messages.noPlayableTracks,
-        });
-      }
+      await interaction.editReply({
+        content:
+          options.messages.noPlayableTracks ?? "No playable tracks found.",
+      });
       return { status: "no-playable-tracks" };
     }
 

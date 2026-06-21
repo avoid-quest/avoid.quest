@@ -11,9 +11,8 @@ import {
 } from "./schema.js";
 import { EFFECT_TYPES, type EffectConfig, type EffectType } from "./types.js";
 
-export type EffectMetadata = Pick<
-  EffectDefinition,
-  "type" | "name" | "description" | "defaultConfig"
+export type EffectMetadata = Readonly<
+  Pick<EffectDefinition, "type" | "name" | "description" | "defaultConfig">
 > & {
   readonly icon?: string;
 };
@@ -23,15 +22,17 @@ export type EffectMetadata = Pick<
  * Derived from EFFECT_DEFINITIONS so defaults and parameter metadata stay
  * coupled at the effect definition boundary.
  */
-export const AVAILABLE_EFFECTS = EFFECT_TYPES.map((type) => {
-  const definition = EFFECT_DEFINITIONS[type];
-  return {
-    type: definition.type,
-    name: definition.name,
-    description: definition.description,
-    defaultConfig: definition.defaultConfig,
-  };
-}) satisfies EffectMetadata[];
+export const AVAILABLE_EFFECTS: readonly EffectMetadata[] = EFFECT_TYPES.map(
+  (type) => {
+    const definition = EFFECT_DEFINITIONS[type];
+    return {
+      type: definition.type,
+      name: definition.name,
+      description: definition.description,
+      defaultConfig: definition.defaultConfig,
+    };
+  }
+);
 
 export function getEffectMetadata(
   type: EffectType

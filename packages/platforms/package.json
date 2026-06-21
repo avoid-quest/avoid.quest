@@ -11,6 +11,8 @@
     "./bandcamp": "./src/bandcamp/index.ts",
     "./bandcamp/search": "./src/bandcamp/search.ts",
     "./bandcamp/url-policy": "./src/bandcamp/url-policy.ts",
+    "./search": "./src/search.ts",
+    "./static-audio": "./src/static-audio.ts",
     "./redirects": "./src/redirects/index.ts",
     "./url-policy": "./src/url-policy/index.ts",
     "./soundcloud": "./src/soundcloud/index.ts",
@@ -19,7 +21,8 @@
     "./soundcloud/url-policy": "./src/soundcloud/url-policy.ts",
     "./radiogarden": "./src/radiogarden/index.ts",
     "./radiogarden/search": "./src/radiogarden/search.ts",
-    "./youtube": "./src/youtube/index.ts"
+    "./youtube": "./src/youtube/index.ts",
+    "./youtube/search": "./src/youtube/search.ts"
   },
   "scripts": {
     "check": "bunx ultracite check",

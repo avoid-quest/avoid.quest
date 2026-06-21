@@ -64,12 +64,17 @@ export {
 
 // Unified search
 export type {
+  ExternalPlatformSearchAdapters,
+  ExternalPlatformSearchParams,
+  SearchablePlatform,
   SearchPlatform,
   SearchResultType,
   UnifiedSearchResponse,
   UnifiedSearchResult,
+  YouTubeSearchFilter,
 } from "./search.js";
 export {
+  createExternalPlatformSearchWorkflow,
   transformBandcampResults,
   transformRadioGardenResults,
   transformSoundCloudResults,
@@ -109,6 +114,14 @@ export {
   validateSoundCloudCdnRedirectUrl,
   validateSoundCloudCdnUrl,
 } from "./soundcloud/url-policy.js";
+export {
+  AUDIO_EXTENSIONS,
+  getFilenameFromUrl,
+  isAudioUrl,
+  isPlaylistUrl,
+  isStaticAudioUrl,
+  PLAYLIST_EXTENSIONS,
+} from "./static-audio.js";
 export type {
   Platform,
   PlatformItemError,

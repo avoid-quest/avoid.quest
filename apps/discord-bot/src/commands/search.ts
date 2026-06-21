@@ -1,14 +1,12 @@
-import type { UnifiedSearchResult } from "@avoid.quest/platforms";
-import {
-  searchBandcamp,
-  searchRadioGarden,
-  searchSoundCloud,
-  searchYouTubeMusic,
-  transformBandcampResults,
-  transformRadioGardenResults,
-  transformSoundCloudResults,
-  transformYouTubeResults,
-} from "@avoid.quest/platforms";
+import { searchBandcamp } from "@avoid.quest/platforms/bandcamp/search";
+import { searchRadioGarden } from "@avoid.quest/platforms/radiogarden/search";
+import type {
+  SearchPlatform,
+  UnifiedSearchResult,
+} from "@avoid.quest/platforms/search";
+import { createExternalPlatformSearchWorkflow } from "@avoid.quest/platforms/search";
+import { searchSoundCloud } from "@avoid.quest/platforms/soundcloud/search";
+import { searchYouTubeMusic } from "@avoid.quest/platforms/youtube/search";
 import type {
   ChatInputCommandInteraction,
   StringSelectMenuInteraction,
@@ -50,6 +48,30 @@ export const data = new SlashCommandBuilder()
   );
 
 const pendingSearches = new Map<string, UnifiedSearchResult[]>();
+
+const externalPlatformSearchWorkflow = createExternalPlatformSearchWorkflow({
+  adapters: {
+    bandcamp: {
+      search: (query, filter) => searchBandcamp(query, filter),
+    },
+    radiogarden: {
+      search: (query) => searchRadioGarden(query),
+    },
+    soundcloud: {
+      search: async (query) =>
+        searchSoundCloud(query, await getSoundCloudClientId()),
+    },
+    youtube: {
+      search: (query, filter) =>
+        searchYouTubeMusic(query, filter, getInvidiousOptions()),
+    },
+  },
+  allProviderResultsMode: "append-by-completion",
+  allProviderSearchParams: {
+    bandcamp: { bandcampFilter: "" },
+    youtube: { youtubeFilter: "songs" },
+  },
+});
 
 export async function execute(
   interaction: ChatInputCommandInteraction
@@ -145,51 +167,13 @@ async function searchPlatforms(
   query: string,
   platform: string
 ): Promise<UnifiedSearchResult[]> {
-  const results: UnifiedSearchResult[] = [];
-
-  const searches: Promise<void>[] = [];
-
-  if (platform === "all" || platform === "youtube") {
-    searches.push(
-      searchYouTubeMusic(query, "songs", getInvidiousOptions())
-        .then((r) => {
-          results.push(...transformYouTubeResults(r));
-        })
-        .catch(() => undefined)
-    );
+  try {
+    return await externalPlatformSearchWorkflow.search({
+      platform: platform as SearchPlatform,
+      query,
+      youtubeFilter: "songs",
+    });
+  } catch {
+    return [];
   }
-
-  if (platform === "all" || platform === "soundcloud") {
-    searches.push(
-      getSoundCloudClientId()
-        .then((clientId) => searchSoundCloud(query, clientId))
-        .then((r) => {
-          results.push(...transformSoundCloudResults(r));
-        })
-        .catch(() => undefined)
-    );
-  }
-
-  if (platform === "all" || platform === "bandcamp") {
-    searches.push(
-      searchBandcamp(query)
-        .then((r) => {
-          results.push(...transformBandcampResults(r));
-        })
-        .catch(() => undefined)
-    );
-  }
-
-  if (platform === "all" || platform === "radiogarden") {
-    searches.push(
-      searchRadioGarden(query)
-        .then((r) => {
-          results.push(...transformRadioGardenResults(r));
-        })
-        .catch(() => undefined)
-    );
-  }
-
-  await Promise.all(searches);
-  return results;
 }

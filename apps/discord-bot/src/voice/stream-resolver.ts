@@ -12,6 +12,7 @@ import {
   resolveShortLink,
   resolveStreamUrl,
 } from "@avoid.quest/platforms";
+import { getFilenameFromUrl } from "@avoid.quest/platforms/static-audio";
 import { config } from "../config.js";
 import { detectPlatformFromUrl } from "../lib/platform-detect.js";
 import type { QueueTrack } from "./queue.js";
@@ -40,21 +41,6 @@ async function normalizeUrl(url: string): Promise<string> {
   }
   normalized = normalizeSoundCloudUrl(normalized);
   return normalizeBandcampUrl(normalized);
-}
-
-function getFilenameFromUrl(url: string): string {
-  try {
-    const parsed = new URL(url);
-    const pathname = parsed.pathname;
-    const lastSlash = pathname.lastIndexOf("/");
-    const filename =
-      lastSlash === -1 ? pathname : pathname.slice(lastSlash + 1);
-    const lastDot = filename.lastIndexOf(".");
-    const name = lastDot === -1 ? filename : filename.slice(0, lastDot);
-    return decodeURIComponent(name).replace(/[_-]+/g, " ").trim() || "Unknown";
-  } catch {
-    return "Unknown";
-  }
 }
 
 export async function resolveTrack(
@@ -251,7 +237,7 @@ async function resolveRadioGarden(
 
 function resolveStaticAudio(url: string, requestedBy: string): QueueTrack {
   return {
-    title: getFilenameFromUrl(url),
+    title: getFilenameFromUrl(url) || "Unknown",
     artist: "Direct Link",
     url,
     streamUrl: url,

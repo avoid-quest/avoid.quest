@@ -1,6 +1,14 @@
-import { AppError, captureError, type ErrorCategory } from "@avoid.quest/error";
-import type { StreamAccessDecision } from "./stream-access";
-import { validatePublicStreamUrl } from "./url-policy";
+import { AppError, type AppErrorInit, captureError } from "@avoid.quest/error";
+import {
+  fetchPublicStreamWithRedirects,
+  type StreamAccessDecision,
+  type StreamRedirectFailure,
+  type StreamRedirectFailureDetails,
+} from "./stream-access";
+import {
+  type StreamUrlValidationFailure,
+  validatePublicStreamUrl,
+} from "./url-policy";
 
 type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -40,16 +48,76 @@ type StreamProxyWorkflowContext = {
   requestId: string;
 };
 
-function createStreamProxyError(init: {
-  category: ErrorCategory;
-  code: string;
-  expected: boolean;
-  safeMessage: string;
-  status: number;
-  tags?: Record<string, string | number | boolean>;
-}): AppError {
+function createStreamProxyError(init: AppErrorInit): AppError {
   return new AppError(init);
 }
+
+const STREAM_PROXY_INVALID_URL_ERROR = {
+  code: "STREAM_PROXY_INVALID_URL",
+  safeMessage: "Invalid URL format",
+  category: "validation",
+  expected: true,
+  status: 400,
+} as const satisfies AppErrorInit;
+
+const STREAM_PROXY_INVALID_PROTOCOL_ERROR = {
+  code: "STREAM_PROXY_INVALID_PROTOCOL",
+  safeMessage: "Invalid URL: must use http or https protocol",
+  category: "validation",
+  expected: true,
+  status: 400,
+} as const satisfies AppErrorInit;
+
+const STREAM_PROXY_INTERNAL_ADDRESS_ERROR = {
+  code: "STREAM_PROXY_INTERNAL_ADDRESS",
+  safeMessage: "Internal addresses not allowed",
+  category: "security",
+  expected: true,
+  status: 400,
+} as const satisfies AppErrorInit;
+
+const STREAM_PROXY_HOSTNAME_RESOLUTION_ERROR = {
+  code: "STREAM_PROXY_HOSTNAME_RESOLUTION_FAILED",
+  safeMessage: "Failed to resolve stream host",
+  category: "validation",
+  expected: true,
+  status: 400,
+} as const satisfies AppErrorInit;
+
+const STREAM_URL_VALIDATION_ERRORS = {
+  required: {
+    code: "STREAM_PROXY_URL_REQUIRED",
+    safeMessage: "URL parameter is required",
+    category: "validation",
+    expected: true,
+    status: 400,
+  },
+  "invalid-url": STREAM_PROXY_INVALID_URL_ERROR,
+  "invalid-protocol": STREAM_PROXY_INVALID_PROTOCOL_ERROR,
+  "internal-address": STREAM_PROXY_INTERNAL_ADDRESS_ERROR,
+  "hostname-resolution-failed": STREAM_PROXY_HOSTNAME_RESOLUTION_ERROR,
+} as const satisfies Record<StreamUrlValidationFailure, AppErrorInit>;
+
+const STREAM_REDIRECT_FAILURE_ERRORS = {
+  "invalid-url": STREAM_PROXY_INVALID_URL_ERROR,
+  "invalid-protocol": STREAM_PROXY_INVALID_PROTOCOL_ERROR,
+  "internal-address": STREAM_PROXY_INTERNAL_ADDRESS_ERROR,
+  "hostname-resolution-failed": STREAM_PROXY_HOSTNAME_RESOLUTION_ERROR,
+  "missing-location": {
+    code: "STREAM_PROXY_REDIRECT_LOCATION_MISSING",
+    safeMessage: "Upstream redirect missing Location header",
+    category: "dependency",
+    expected: false,
+    status: 502,
+  },
+  "too-many-redirects": {
+    code: "STREAM_PROXY_TOO_MANY_REDIRECTS",
+    safeMessage: "Too many stream redirects",
+    category: "dependency",
+    expected: false,
+    status: 502,
+  },
+} as const satisfies Record<StreamRedirectFailure, AppErrorInit>;
 
 function validateStreamUrl(urlParam: string | null): string | AppError {
   const validation = validatePublicStreamUrl(urlParam);
@@ -57,46 +125,15 @@ function validateStreamUrl(urlParam: string | null): string | AppError {
     return validation.url;
   }
 
-  switch (validation.reason) {
-    case "required":
-      return createStreamProxyError({
-        code: "STREAM_PROXY_URL_REQUIRED",
-        safeMessage: "URL parameter is required",
-        category: "validation",
-        expected: true,
-        status: 400,
-      });
-    case "invalid-url":
-      return createStreamProxyError({
-        code: "STREAM_PROXY_INVALID_URL",
-        safeMessage: "Invalid URL format",
-        category: "validation",
-        expected: true,
-        status: 400,
-      });
-    case "invalid-protocol":
-      return createStreamProxyError({
-        code: "STREAM_PROXY_INVALID_PROTOCOL",
-        safeMessage: "Invalid URL: must use http or https protocol",
-        category: "validation",
-        expected: true,
-        status: 400,
-      });
-    case "internal-address":
-      return createStreamProxyError({
-        code: "STREAM_PROXY_INTERNAL_ADDRESS",
-        safeMessage: "Internal addresses not allowed",
-        category: "security",
-        expected: true,
-        status: 400,
-      });
-    default: {
-      const exhaustive: never = validation.reason;
-      throw new Error(
-        `Unsupported stream URL validation reason: ${exhaustive}`
-      );
-    }
-  }
+  return createStreamProxyError(
+    STREAM_URL_VALIDATION_ERRORS[validation.reason]
+  );
+}
+
+function createRedirectFailureError(
+  failure: StreamRedirectFailureDetails
+): AppError {
+  return createStreamProxyError(STREAM_REDIRECT_FAILURE_ERRORS[failure.reason]);
 }
 
 function copyHeaderIfPresent(
@@ -189,9 +226,22 @@ export function createStreamProxyRequestWorkflow({
     { origin, request, requestId }: StreamProxyWorkflowContext
   ): Promise<Response> => {
     try {
-      const res = await fetchImpl(url, {
-        headers: createForwardedStreamHeaders(request),
-      });
+      const fetchResult = await fetchPublicStreamWithRedirects(
+        url,
+        {
+          headers: createForwardedStreamHeaders(request),
+        },
+        fetchImpl
+      );
+      if (!fetchResult.ok) {
+        return proxyPolicy.problem(
+          createRedirectFailureError(fetchResult.failure),
+          origin,
+          requestId
+        );
+      }
+
+      const { response: res } = fetchResult;
 
       if (!res.ok) {
         return proxyPolicy.problem(
@@ -246,8 +296,17 @@ export function createStreamProxyRequestWorkflow({
       origin: context.origin,
       requestHeaders: context.request.headers,
     });
-    if (accessDecision.mode === "direct") {
-      const streamUrl = accessDecision.resolvedUrl ?? urlValidation;
+
+    if (accessDecision.mode === "rejected") {
+      return proxyPolicy.problem(
+        createRedirectFailureError(accessDecision.failure),
+        context.origin,
+        context.requestId
+      );
+    }
+
+    if (accessDecision.mode === "direct" && accessDecision.resolvedUrl) {
+      const streamUrl = accessDecision.resolvedUrl;
       if (canRedirectDirectStream(streamUrl, context.origin)) {
         return redirectToStream(
           streamUrl,

@@ -1,7 +1,9 @@
+import { parseHttpUrl } from "../url-policy/hostname.js";
 import type { BandcampItemType } from "./types.js";
+import { BANDCAMP_HOST, isBandcampMobileHostname } from "./url-policy.js";
 
-const BANDCAMP_PATTERN = /bandcamp\.com/i;
-const BANDCAMP_MOBILE = /m\.bandcamp\.com/i;
+export { isBandcampUrl } from "./url-policy.js";
+
 const BANDCAMP_ALBUM_PATTERN = /bandcamp\.com\/album\//i;
 const BANDCAMP_TRACK_PATTERN = /bandcamp\.com\/track\//i;
 const BANDCAMP_LABEL_PATTERN = /bandcamp\.com\/label\//i;
@@ -13,15 +15,17 @@ const BANDCAMP_COLLECTION_PATTERN =
 const BANDCAMP_ARTIST_PATTERN =
   /^https?:\/\/[a-zA-Z0-9_-]+\.bandcamp\.com(?:\/music)?(?:\/)?$/i;
 
-export function isBandcampUrl(url: string): boolean {
-  return Boolean(url) && BANDCAMP_PATTERN.test(url);
-}
-
 /**
  * Normalize Bandcamp URL (converts mobile URLs to desktop)
  */
 export function normalizeBandcampUrl(url: string): string {
-  return url.replace(BANDCAMP_MOBILE, "bandcamp.com");
+  const parsed = parseHttpUrl(url);
+  if (!(parsed && isBandcampMobileHostname(parsed.hostname))) {
+    return url;
+  }
+
+  parsed.hostname = BANDCAMP_HOST;
+  return parsed.toString();
 }
 
 /**

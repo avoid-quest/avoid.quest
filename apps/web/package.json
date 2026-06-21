@@ -5,7 +5,7 @@
   "license": "UNLICENSED",
   "type": "module",
   "scripts": {
-    "dev": "astro dev --port 3000",
+    "dev": "doppler run -- astro dev --port 3000",
     "build": "astro build",
     "preview": "astro preview",
     "typecheck": "astro check && tsc --noEmit",
@@ -15,12 +15,12 @@
     "cf-upload": "wrangler versions upload"
   },
   "dependencies": {
-    "@astrojs/cloudflare": "^13.5.4",
-    "@astrojs/react": "^5.0.5",
+    "@astrojs/cloudflare": "^13.7.0",
+    "@astrojs/react": "^5.0.7",
     "@avoid.quest/ui": "workspace:*",
     "@fontsource/geist-mono": "^5.2.8",
     "@fontsource/geist-sans": "^5.2.5",
-    "astro": "^6.3.7",
+    "astro": "^6.4.8",
     "react": "catalog:",
     "react-dom": "catalog:"
   },
@@ -32,7 +32,7 @@
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "typescript": "catalog:",
-    "vite": "^7.3.2",
+    "vite": "^7.3.5",
     "wrangler": "catalog:"
   }
 }

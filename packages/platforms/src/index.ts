@@ -16,6 +16,18 @@ export {
   getProxiedBandcampUrl,
   searchBandcamp,
 } from "./bandcamp/index.js";
+export type {
+  BandcampCdnRedirectUrlValidationFailure,
+  BandcampCdnRedirectUrlValidationResult,
+  BandcampCdnUrlValidationFailure,
+  BandcampCdnUrlValidationResult,
+} from "./bandcamp/url-policy.js";
+export {
+  isBandcampCdnHostname,
+  isBandcampHostname,
+  validateBandcampCdnRedirectUrl,
+  validateBandcampCdnUrl,
+} from "./bandcamp/url-policy.js";
 // Unified detection
 export {
   BANDCAMP_HTML_MARKERS,
@@ -84,6 +96,20 @@ export {
   searchSoundCloud,
 } from "./soundcloud/index.js";
 export type {
+  SoundCloudCdnRedirectUrlValidationFailure,
+  SoundCloudCdnRedirectUrlValidationResult,
+  SoundCloudCdnUrlValidationFailure,
+  SoundCloudCdnUrlValidationResult,
+} from "./soundcloud/url-policy.js";
+export {
+  isSoundCloudCdnHostname,
+  isSoundCloudCorsAllowedCdnHostname,
+  isSoundCloudHostname,
+  isSoundCloudPageHostname,
+  validateSoundCloudCdnRedirectUrl,
+  validateSoundCloudCdnUrl,
+} from "./soundcloud/url-policy.js";
+export type {
   Platform,
   PlatformItemError,
   PlatformItemResponse,
@@ -92,6 +118,24 @@ export type {
   PlatformTrack,
 } from "./types.js";
 export { isYouTubeMetadata } from "./types.js";
+export type {
+  PublicHostnameResolver,
+  PublicHttpFetchResult,
+  PublicHttpRedirectFailure,
+  PublicHttpUrlFailure,
+  PublicHttpUrlResult,
+  PublicHttpUrlValidationFailure,
+  PublicHttpUrlValidationResult,
+} from "./url-policy/index.js";
+export {
+  fetchPublicHttpUrlWithValidatedRedirects,
+  isBlockedPublicHttpHostname,
+  isPublicHttpUrl,
+  resolvePublicHostnameWithDoh,
+  validatePublicHttpUrl,
+  validatePublicHttpUrlParam,
+  validateResolvedPublicHttpUrl,
+} from "./url-policy/index.js";
 
 // YouTube
 export type {

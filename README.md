@@ -34,12 +34,19 @@ expectations.
 
 ```bash
 bun install          # Install dependencies
-bun run dev          # Start workspace dev tasks
+bun run secrets:setup # Select the avoid-quest/dev_personal Doppler config
+bun run dev          # Start workspace dev tasks with Doppler-backed app scripts
 bun run build        # Build all apps/packages
 bun run typecheck    # Type check all packages
 bun run check        # Lint/format check via Ultracite
 bun run fix          # Auto-fix lint/format issues
 ```
+
+Local development secrets are managed through Doppler. Install the Doppler CLI,
+run `doppler login` once for your machine, then run `bun run secrets:setup` from
+the repository root. The committed `doppler.yaml` preselects the
+`avoid-quest` project and `dev_personal` config, matching Doppler's recommended
+repo-root setup flow for monorepos.
 
 Scoped examples:
 
@@ -49,20 +56,29 @@ bun run --filter @avoid.quest/radio dev
 bun run --filter @avoid.quest/discord-bot dev
 ```
 
+Use `bun run secrets:status` to inspect which Doppler project/config is active
+for the repository root. Doppler is the development secrets source of truth; do
+not create or commit plaintext `.env`, `.dev.vars`, service tokens, or
+downloaded secret files for normal local development.
+
 ## Cloudflare deployment
 
 Deployable apps keep their Wrangler configuration under `apps/*/wrangler.jsonc`.
 Do not deploy from automation unless the task explicitly asks for deployment.
 
-Public preview exposure is disabled in committed Wrangler config:
+Workers `workers.dev` exposure and preview URLs are enabled in committed
+Wrangler config:
+
+Non-production Workers Builds should publish preview URLs in PR comments.
 
 | App | `workers_dev` | `preview_urls` | Production exposure |
 |-----|---------------|----------------|---------------------|
-| `@avoid.quest/web` | Disabled | Disabled | Use Cloudflare account-level custom domains or routes for the production hostname. |
-| `@avoid.quest/radio` | Disabled | Disabled | Use Cloudflare account-level custom domains or routes for the production hostname. |
+| `@avoid.quest/web` | Enabled | Enabled | Use `workers.dev` plus Cloudflare account-level custom domains or routes as needed. |
+| `@avoid.quest/radio` | Enabled | Enabled | Use `workers.dev` plus Cloudflare account-level custom domains or routes as needed. |
 
-Production hostnames and any production-only overrides are intentionally kept
-out of the public repository. Configure them in Cloudflare before deploying.
+Custom production hostnames and any production-only overrides are intentionally
+kept out of the public repository. Configure them in Cloudflare before
+deploying.
 
 ```bash
 bun run cf-build     # Build Cloudflare-targeted apps

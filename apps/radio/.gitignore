@@ -13,6 +13,5 @@ count.txt
 todos.json
 
 .dev.vars*
-!.dev.vars.example
 !.env.example
 .worklet-build

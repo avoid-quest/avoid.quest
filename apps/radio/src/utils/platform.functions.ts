@@ -15,6 +15,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { detectPlatformFromUrl } from "@/lib/external-url/detect";
 import type { PlatformMetadata } from "@/lib/platform-types";
+import { readInvidiousOptions } from "./invidious-env";
 import { rateLimitMiddleware } from "./middleware";
 import { getStaticAudioItem } from "./static-audio.functions";
 
@@ -134,10 +135,7 @@ async function resolveSoundCloudItem(
 }
 
 async function resolveYouTubeItem(url: string): Promise<ResolvedPlatformItem> {
-  const invidiousOptions = {
-    instanceUrl: env.INVIDIOUS_INSTANCE_URL || undefined,
-    auth: env.INVIDIOUS_AUTH || undefined,
-  };
+  const invidiousOptions = readInvidiousOptions(env);
   const result = await getYouTubeItem(url, invidiousOptions);
   requireSuccess(
     result,

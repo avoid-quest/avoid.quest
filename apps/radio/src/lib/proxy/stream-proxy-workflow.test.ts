@@ -1,5 +1,9 @@
-import { describe, expect, mock, test } from "bun:test";
+import { afterEach, describe, expect, mock, test } from "bun:test";
 import type { AppError } from "@avoid.quest/error";
+import {
+  clearStreamAccessCache,
+  inspectStreamAccess as inspectRealStreamAccess,
+} from "./stream-access";
 import { createStreamProxyRequestWorkflow } from "./stream-proxy-workflow";
 
 function createTestPolicy() {
@@ -29,7 +33,43 @@ function createTestPolicy() {
   };
 }
 
+afterEach(() => {
+  clearStreamAccessCache();
+});
+
 describe("createStreamProxyRequestWorkflow", () => {
+  test("keeps missing request URL parameters on the request validation path", async () => {
+    const inspectStreamAccess = mock(async () => {
+      await Promise.resolve();
+      return { mode: "proxy" as const, response: null, resolvedUrl: null };
+    });
+    const fetchImpl = mock(async () => {
+      await Promise.resolve();
+      return new Response("should not fetch");
+    });
+    const workflow = createStreamProxyRequestWorkflow({
+      fetchImpl,
+      inspectStreamAccess,
+      proxyPolicy: createTestPolicy(),
+    });
+
+    const response = await workflow.handle({
+      origin: "https://radio.test",
+      request: new Request("https://radio.test/api/stream-proxy"),
+      requestId: "req_missing_url",
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      code: "STREAM_PROXY_URL_REQUIRED",
+      message: "URL parameter is required",
+      requestId: "req_missing_url",
+      status: 400,
+    });
+    expect(inspectStreamAccess).not.toHaveBeenCalled();
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
   test("redirects direct HTTPS streams with CORS and request headers", async () => {
     const inspectStreamAccess = mock(async () => {
       await Promise.resolve();
@@ -66,6 +106,106 @@ describe("createStreamProxyRequestWorkflow", () => {
       "https://radio.test"
     );
     expect(response.headers.get("x-request-id")).toBe("req_redirect");
+    expect(fetchImpl).toHaveBeenCalledTimes(0);
+  });
+
+  test("rejects changed direct-stream redirects during access inspection", async () => {
+    clearStreamAccessCache();
+
+    let requestCount = 0;
+    const fetchedUrls: string[] = [];
+    const fetchImpl = mock(async (url: string) => {
+      await Promise.resolve();
+      requestCount += 1;
+      fetchedUrls.push(url);
+
+      if (requestCount === 1) {
+        return new Response("direct", {
+          headers: {
+            "access-control-allow-origin": "*",
+          },
+        });
+      }
+
+      return Response.redirect("http://127.0.0.1/live.mp3", 302);
+    });
+    const workflow = createStreamProxyRequestWorkflow({
+      fetchImpl,
+      inspectStreamAccess: (url, options) =>
+        inspectRealStreamAccess(url, { ...options, fetchImpl }),
+      proxyPolicy: createTestPolicy(),
+    });
+    const request = new Request(
+      "https://radio.test/api/stream-proxy?url=https%3A%2F%2Fradio.example%2Flive.mp3"
+    );
+
+    const firstResponse = await workflow.handle({
+      origin: "https://radio.test",
+      request,
+      requestId: "req_direct_first",
+    });
+    const secondResponse = await workflow.handle({
+      origin: "https://radio.test",
+      request,
+      requestId: "req_direct_second",
+    });
+
+    expect(firstResponse.status).toBe(307);
+    expect(firstResponse.headers.get("Location")).toBe(
+      "https://radio.example/live.mp3"
+    );
+    expect(secondResponse.status).toBe(400);
+    expect(secondResponse.headers.get("Location")).toBeNull();
+    await expect(secondResponse.json()).resolves.toEqual({
+      code: "STREAM_PROXY_INTERNAL_ADDRESS",
+      message: "Internal addresses not allowed",
+      requestId: "req_direct_second",
+      status: 400,
+    });
+    expect(fetchedUrls).toEqual([
+      "https://radio.example/live.mp3",
+      "https://radio.example/live.mp3",
+    ]);
+  });
+
+  test("maps access inspection redirect rejections without fallback refetch", async () => {
+    const inspectStreamAccess = mock(async () => {
+      await Promise.resolve();
+      return {
+        failure: {
+          reason: "internal-address" as const,
+          url: "http://127.0.0.1/live.mp3",
+        },
+        mode: "rejected" as const,
+        response: null,
+        resolvedUrl: null,
+      };
+    });
+    const fetchImpl = mock(async () => {
+      await Promise.resolve();
+      return new Response("should not fetch");
+    });
+    const workflow = createStreamProxyRequestWorkflow({
+      fetchImpl,
+      inspectStreamAccess,
+      proxyPolicy: createTestPolicy(),
+    });
+
+    const response = await workflow.handle({
+      origin: "https://radio.test",
+      request: new Request(
+        "https://radio.test/api/stream-proxy?url=https%3A%2F%2Fradio.example%2Flive.mp3"
+      ),
+      requestId: "req_inspect_redirect_private",
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      code: "STREAM_PROXY_INTERNAL_ADDRESS",
+      message: "Internal addresses not allowed",
+      requestId: "req_inspect_redirect_private",
+      status: 400,
+    });
     expect(fetchImpl).toHaveBeenCalledTimes(0);
   });
 
@@ -177,6 +317,85 @@ describe("createStreamProxyRequestWorkflow", () => {
     const headers: Headers = forwardedHeaders;
     expect(headers.get("Icy-MetaData")).toBe("1");
     expect(headers.get("Range")).toBe("bytes=100-200");
+  });
+
+  test("rejects fallback redirects to metadata hosts without fetching the target", async () => {
+    const fetchedUrls: string[] = [];
+    const fetchImpl = mock(async (url: string, init?: RequestInit) => {
+      await Promise.resolve();
+      fetchedUrls.push(url);
+
+      if (
+        url === "https://radio.example/fallback.mp3" &&
+        init?.redirect !== "manual"
+      ) {
+        return new Response("metadata", {
+          headers: {
+            "Content-Type": "audio/mpeg",
+          },
+        });
+      }
+
+      return Response.redirect("http://metadata.google.internal/latest", 302);
+    });
+    const workflow = createStreamProxyRequestWorkflow({
+      fetchImpl,
+      inspectStreamAccess: mock(async () => {
+        await Promise.resolve();
+        return { mode: "proxy" as const, response: null, resolvedUrl: null };
+      }),
+      proxyPolicy: createTestPolicy(),
+    });
+
+    const response = await workflow.handle({
+      origin: "https://radio.test",
+      request: new Request(
+        "https://radio.test/api/stream-proxy?url=https%3A%2F%2Fradio.example%2Ffallback.mp3"
+      ),
+      requestId: "req_redirect_private",
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "STREAM_PROXY_INTERNAL_ADDRESS",
+      requestId: "req_redirect_private",
+    });
+    expect(fetchedUrls).toEqual(["https://radio.example/fallback.mp3"]);
+  });
+
+  test("rejects fallback redirect loops at the hop limit", async () => {
+    const fetchedUrls: string[] = [];
+    const fetchImpl = mock(async (url: string) => {
+      await Promise.resolve();
+      fetchedUrls.push(url);
+      return Response.redirect(
+        `https://radio.example/loop-${fetchedUrls.length}`,
+        302
+      );
+    });
+    const workflow = createStreamProxyRequestWorkflow({
+      fetchImpl,
+      inspectStreamAccess: mock(async () => {
+        await Promise.resolve();
+        return { mode: "proxy" as const, response: null, resolvedUrl: null };
+      }),
+      proxyPolicy: createTestPolicy(),
+    });
+
+    const response = await workflow.handle({
+      origin: "https://radio.test",
+      request: new Request(
+        "https://radio.test/api/stream-proxy?url=https%3A%2F%2Fradio.example%2Floop"
+      ),
+      requestId: "req_redirect_loop",
+    });
+
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "STREAM_PROXY_TOO_MANY_REDIRECTS",
+      requestId: "req_redirect_loop",
+    });
+    expect(fetchedUrls).toHaveLength(6);
   });
 
   test("rejects private stream URLs before access probes or upstream fetches", async () => {

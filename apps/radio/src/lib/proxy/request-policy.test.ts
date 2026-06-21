@@ -2,6 +2,9 @@ import { describe, expect, mock, test } from "bun:test";
 import { AppError } from "@avoid.quest/error";
 import { createProxyRequestPolicy } from "./request-policy";
 
+const GENERATED_SESSION_ID = "a".repeat(64);
+const EXISTING_SESSION_ID = "b".repeat(64);
+
 describe("createProxyRequestPolicy", () => {
   test("creates problem responses with CORS and request IDs", async () => {
     const policy = createProxyRequestPolicy({
@@ -96,6 +99,91 @@ describe("createProxyRequestPolicy", () => {
     expect(validateAuthAndRateLimit).toHaveBeenCalledTimes(1);
     expect(response.status).toBe(200);
     expect(response.headers.get("x-request-id")).toBeTruthy();
+  });
+
+  test("sets generated session cookies on proxy handler responses", async () => {
+    const validateAuthAndRateLimit = mock(async () => {
+      await Promise.resolve();
+      return {
+        sessionId: GENERATED_SESSION_ID,
+        ip: "127.0.0.1",
+        shouldSetCookie: true,
+      };
+    });
+    const policy = createProxyRequestPolicy({ validateAuthAndRateLimit });
+    const body = new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("audio-bytes"));
+        controller.close();
+      },
+    });
+
+    const response = await policy.run({
+      request: new Request("https://radio.test/api/stream-proxy"),
+      env: {},
+      identifier: "stream-proxy",
+      operation: "stream-proxy.GET",
+      fallback: {
+        code: "STREAM_PROXY_INTERNAL_ERROR",
+        safeMessage: "Internal server error",
+        category: "infrastructure",
+        expected: false,
+        status: 500,
+      },
+      run: async () => {
+        await Promise.resolve();
+        return new Response(body, {
+          status: 206,
+          headers: {
+            "Content-Type": "audio/mpeg",
+            "Set-Cookie": "existing=1; Path=/",
+            "x-upstream": "preserved",
+          },
+        });
+      },
+    });
+
+    expect(response.status).toBe(206);
+    expect(response.headers.get("Content-Type")).toBe("audio/mpeg");
+    expect(response.headers.get("x-upstream")).toBe("preserved");
+    expect(response.headers.get("set-cookie")).toContain("existing=1");
+    expect(response.headers.get("set-cookie")).toContain(
+      `radio_session_id=${GENERATED_SESSION_ID}`
+    );
+    await expect(response.text()).resolves.toBe("audio-bytes");
+  });
+
+  test("does not set session cookies when auth reused an existing session", async () => {
+    const validateAuthAndRateLimit = mock(async () => {
+      await Promise.resolve();
+      return {
+        sessionId: EXISTING_SESSION_ID,
+        ip: "127.0.0.1",
+        shouldSetCookie: false,
+      };
+    });
+    const policy = createProxyRequestPolicy({ validateAuthAndRateLimit });
+
+    const response = await policy.run({
+      request: new Request("https://radio.test/api/stream-proxy"),
+      env: {},
+      identifier: "stream-proxy",
+      operation: "stream-proxy.GET",
+      fallback: {
+        code: "STREAM_PROXY_INTERNAL_ERROR",
+        safeMessage: "Internal server error",
+        category: "infrastructure",
+        expected: false,
+        status: 500,
+      },
+      run: async () => {
+        await Promise.resolve();
+        return new Response("ok");
+      },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("set-cookie")).toBeNull();
   });
 
   test("returns auth responses unchanged when the policy blocks the request", async () => {

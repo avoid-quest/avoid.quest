@@ -1,13 +1,28 @@
-export type StreamAccessMode = "direct" | "proxy";
-export type StreamAccessDecision = {
-  mode: StreamAccessMode;
-  response: Response | null;
-  resolvedUrl: string | null;
+import {
+  fetchPublicHttpUrlWithValidatedRedirects,
+  type PublicHttpFetchResult,
+  type PublicHttpRedirectFailure,
+} from "@avoid.quest/platforms/url-policy";
+
+export type StreamAccessMode = "direct" | "proxy" | "rejected";
+export type StreamRedirectFailure = PublicHttpRedirectFailure;
+export type StreamRedirectFailureDetails = {
+  reason: StreamRedirectFailure;
+  url: string;
 };
+export type StreamAccessDecision =
+  | { mode: "direct"; response: null; resolvedUrl: string | null }
+  | { mode: "proxy"; response: Response | null; resolvedUrl: null }
+  | {
+      failure: StreamRedirectFailureDetails;
+      mode: "rejected";
+      response: null;
+      resolvedUrl: null;
+    };
 
 type StreamAccessCacheEntry = {
   expiresAt: number;
-  mode: StreamAccessMode;
+  mode: Exclude<StreamAccessMode, "rejected">;
 };
 
 type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
@@ -22,6 +37,7 @@ type DetermineStreamAccessOptions = {
 
 const STREAM_ACCESS_CACHE_TTL_MS = 10 * 60 * 1000;
 const STREAM_ACCESS_PROBE_TIMEOUT_MS = 4000;
+const STREAM_ACCESS_MAX_REDIRECTS = 5;
 
 const streamAccessCache = new Map<string, StreamAccessCacheEntry>();
 
@@ -62,6 +78,20 @@ async function cancelResponseBody(response: Response): Promise<void> {
   }
 }
 
+export function fetchPublicStreamWithRedirects(
+  url: string,
+  init: RequestInit,
+  fetchImpl: FetchLike,
+  maxRedirects = STREAM_ACCESS_MAX_REDIRECTS
+): Promise<PublicHttpFetchResult> {
+  return fetchPublicHttpUrlWithValidatedRedirects({
+    fetchImpl,
+    init,
+    maxRedirects,
+    url,
+  });
+}
+
 async function probeStreamAccess(
   url: string,
   {
@@ -76,7 +106,14 @@ async function probeStreamAccess(
   const cacheKey = getStreamAccessCacheKey(url, origin);
   const cached = streamAccessCache.get(cacheKey);
   const currentTime = now();
-  if (cached && cached.expiresAt > currentTime) {
+  // Direct stream inspections can emit browser redirects, so they need a
+  // freshly validated redirect chain instead of a cached mode-only decision.
+  const canUseCachedDecision =
+    cached &&
+    cached.expiresAt > currentTime &&
+    (cached.mode !== "direct" || !preserveProxyResponse);
+
+  if (canUseCachedDecision) {
     return {
       mode: cached.mode,
       response: null,
@@ -101,12 +138,26 @@ async function probeStreamAccess(
       headers.Range = "bytes=0-0";
     }
 
-    const response = await fetchImpl(url, {
-      headers,
-      method: "GET",
-      redirect: "follow",
-      signal: controller.signal,
-    });
+    const fetchResult = await fetchPublicStreamWithRedirects(
+      url,
+      {
+        headers,
+        method: "GET",
+        signal: controller.signal,
+      },
+      fetchImpl
+    );
+    if (!fetchResult.ok) {
+      streamAccessCache.delete(cacheKey);
+      return {
+        failure: fetchResult.failure,
+        mode: "rejected",
+        response: null,
+        resolvedUrl: null,
+      };
+    }
+
+    const { response, resolvedUrl } = fetchResult;
 
     const mode = isCorsPlayableForOrigin(
       response.headers.get("access-control-allow-origin"),
@@ -124,10 +175,18 @@ async function probeStreamAccess(
       await cancelResponseBody(response);
     }
 
+    if (mode === "direct") {
+      return {
+        mode,
+        response: null,
+        resolvedUrl,
+      };
+    }
+
     return {
       mode,
-      response: mode === "proxy" && preserveProxyResponse ? response : null,
-      resolvedUrl: mode === "direct" ? response.url || url : null,
+      response: preserveProxyResponse ? response : null,
+      resolvedUrl: null,
     };
   } catch {
     streamAccessCache.set(cacheKey, {

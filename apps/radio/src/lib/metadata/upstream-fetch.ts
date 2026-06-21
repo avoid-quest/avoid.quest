@@ -1,6 +1,7 @@
 import {
+  type StreamHostnameResolver,
   type StreamUrlValidationFailure,
-  validatePublicStreamUrl,
+  validateResolvedPublicStreamUrl,
 } from "@/lib/proxy/url-policy";
 
 type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
@@ -28,7 +29,13 @@ export async function cancelResponseBody(response: Response): Promise<void> {
   }
 }
 
-export function createMetadataUpstreamFetch(fetchImpl: FetchLike) {
+export function createMetadataUpstreamFetch(
+  fetchImpl: FetchLike,
+  resolveHostname: StreamHostnameResolver | false | undefined = fetchImpl ===
+  globalThis.fetch
+    ? undefined
+    : false
+) {
   return async function fetchFollowingPublicRedirects(
     url: string,
     init: RequestInit,
@@ -37,6 +44,18 @@ export function createMetadataUpstreamFetch(fetchImpl: FetchLike) {
     let currentUrl = url;
 
     for (let redirects = 0; redirects <= MAX_REDIRECTS; redirects += 1) {
+      const currentValidation = await validateResolvedPublicStreamUrl(
+        currentUrl,
+        {
+          resolveHostname,
+          signal,
+        }
+      );
+      if (!currentValidation.ok) {
+        throw new RadioMetadataValidationError(currentValidation.reason);
+      }
+      currentUrl = currentValidation.url;
+
       const response = await fetchImpl(currentUrl, {
         ...init,
         redirect: "manual",
@@ -54,7 +73,10 @@ export function createMetadataUpstreamFetch(fetchImpl: FetchLike) {
 
       await cancelResponseBody(response);
       const nextUrl = new URL(location, currentUrl).toString();
-      const validation = validatePublicStreamUrl(nextUrl);
+      const validation = await validateResolvedPublicStreamUrl(nextUrl, {
+        resolveHostname,
+        signal,
+      });
       if (!validation.ok) {
         throw new RadioMetadataValidationError(validation.reason);
       }

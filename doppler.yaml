@@ -1,0 +1,3 @@
+setup:
+  - project: avoid-quest
+    config: dev_personal

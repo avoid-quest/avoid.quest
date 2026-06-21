@@ -1,4 +1,9 @@
-import { detectSoundCloudItemType } from "./detect.js";
+import {
+  fetchWithValidatedRedirectResult,
+  type UrlValidationResult,
+  type ValidatedRedirectFailure,
+} from "../redirects/index.js";
+import { detectSoundCloudItemType, needsResolution } from "./detect.js";
 import { fetchClientID } from "./fetch-client/index.js";
 import type {
   SoundCloudItemError,
@@ -6,6 +11,11 @@ import type {
   SoundCloudItemResult,
   SoundCloudMetadata,
 } from "./types.js";
+import {
+  isSoundCloudCorsAllowedCdnHostname,
+  isSoundCloudHostname,
+  validateSoundCloudCdnUrl,
+} from "./url-policy.js";
 
 // Structural types for SoundCloud API responses (only properties we access)
 
@@ -72,37 +82,76 @@ export type {
   SoundCloudMetadata,
   SoundCloudTrackInfo,
 } from "./types.js";
+export type {
+  SoundCloudCdnRedirectUrlValidationFailure,
+  SoundCloudCdnRedirectUrlValidationResult,
+  SoundCloudCdnUrlValidationFailure,
+  SoundCloudCdnUrlValidationResult,
+} from "./url-policy.js";
+export {
+  isSoundCloudCdnHostname,
+  isSoundCloudCorsAllowedCdnHostname,
+  isSoundCloudHostname,
+  isSoundCloudPageHostname,
+  validateSoundCloudCdnRedirectUrl,
+  validateSoundCloudCdnUrl,
+} from "./url-policy.js";
 
-const SOUNDCLOUD_DOMAINS = [
-  "sndcdn.com",
-  "media.soundcloud.com",
-  "soundcloud.com",
-];
+const SHORT_LINK_MAX_REDIRECTS = 5;
 
-// HLS CDN allows CORS, so no proxy needed
-const CORS_ALLOWED_DOMAINS = ["cf-hls-media.sndcdn.com"];
+type ShortLinkRedirectValidationFailure =
+  | "invalid-url"
+  | "invalid-protocol"
+  | "invalid-domain";
+type ShortLinkRedirectFailure =
+  ValidatedRedirectFailure<ShortLinkRedirectValidationFailure>;
 
-function isSoundCloudStreamUrl(url: string): boolean {
-  return (
-    !url.startsWith("/api/") &&
-    SOUNDCLOUD_DOMAINS.some((domain) => url.includes(domain))
-  );
+const SHORT_LINK_REDIRECT_ERROR_MESSAGES = {
+  "invalid-url": "Invalid SoundCloud short link redirect target",
+  "invalid-protocol": "Unsupported SoundCloud short link redirect protocol",
+  "invalid-domain": "Non-SoundCloud short link redirect target",
+  "missing-location": "SoundCloud short link redirect missing Location header",
+  "too-many-redirects": "Too many SoundCloud short link redirects",
+} as const satisfies Record<ShortLinkRedirectFailure, string>;
+
+function validateShortLinkRedirectTarget(
+  url: string
+): UrlValidationResult<ShortLinkRedirectValidationFailure> {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return { ok: false, reason: "invalid-url" };
+  }
+
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    return { ok: false, reason: "invalid-protocol" };
+  }
+
+  if (!isSoundCloudHostname(parsed.hostname)) {
+    return { ok: false, reason: "invalid-domain" };
+  }
+
+  return { ok: true, url };
 }
 
-function isCorsAllowed(url: string): boolean {
-  return CORS_ALLOWED_DOMAINS.some((domain) => url.includes(domain));
+function createShortLinkRedirectError(reason: ShortLinkRedirectFailure): Error {
+  return new Error(SHORT_LINK_REDIRECT_ERROR_MESSAGES[reason]);
 }
 
 /** Proxies SoundCloud stream URLs to avoid CORS issues (skips HLS which has CORS enabled) */
 export function getProxiedSoundCloudUrl(url: string): string {
-  // HLS CDN has CORS enabled, no proxy needed
-  if (isCorsAllowed(url)) {
+  const validation = validateSoundCloudCdnUrl(url);
+  if (!validation.ok) {
     return url;
   }
-  if (isSoundCloudStreamUrl(url)) {
-    return `/api/soundcloud-proxy?url=${encodeURIComponent(url)}`;
+
+  // HLS CDN has CORS enabled, no proxy needed
+  if (isSoundCloudCorsAllowedCdnHostname(validation.parsed.hostname)) {
+    return url;
   }
-  return url;
+
+  return `/api/soundcloud-proxy?url=${encodeURIComponent(url)}`;
 }
 
 function createErrorResponse(message: string): SoundCloudItemError {
@@ -210,17 +259,34 @@ async function fetchUserTracks(
  * Resolve a SoundCloud short link (on.soundcloud.com) to full URL
  */
 export async function resolveShortLink(shortUrl: string): Promise<string> {
-  const response = await fetch(shortUrl, {
-    method: "HEAD",
-    redirect: "follow",
-    signal: AbortSignal.timeout(10_000),
+  if (!needsResolution(shortUrl)) {
+    throw new Error("Invalid SoundCloud short link");
+  }
+
+  const signal = AbortSignal.timeout(10_000);
+  const result = await fetchWithValidatedRedirectResult({
+    fetchImpl: fetch,
+    init: {
+      method: "HEAD",
+      signal,
+    },
+    invalidUrlReason: "invalid-url",
+    maxRedirects: SHORT_LINK_MAX_REDIRECTS,
+    url: shortUrl,
+    validateUrl: validateShortLinkRedirectTarget,
   });
-  if (!response.ok) {
+
+  if (!result.ok) {
+    throw createShortLinkRedirectError(result.failure.reason);
+  }
+
+  if (!result.response.ok) {
     throw new Error(
-      `Failed to resolve short link: ${response.status} ${response.statusText}`
+      `Failed to resolve short link: ${result.response.status} ${result.response.statusText}`
     );
   }
-  return response.url;
+
+  return result.resolvedUrl;
 }
 
 export async function getSoundCloudItem(

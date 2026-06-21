@@ -69,6 +69,7 @@ function statusForError(code: RadioMetadataErrorCode): number {
     case "RADIO_METADATA_URL_REQUIRED":
     case "RADIO_METADATA_INVALID_URL":
     case "RADIO_METADATA_INTERNAL_ADDRESS":
+    case "RADIO_METADATA_HOSTNAME_RESOLUTION_FAILED":
       return 400;
     case "RADIO_METADATA_TIMEOUT":
       return 504;

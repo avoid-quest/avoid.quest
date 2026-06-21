@@ -121,6 +121,11 @@ export function validationErrorForReason(
         "RADIO_METADATA_INTERNAL_ADDRESS",
         "Internal addresses are not allowed"
       );
+    case "hostname-resolution-failed":
+      return errorResponse(
+        "RADIO_METADATA_HOSTNAME_RESOLUTION_FAILED",
+        "Failed to resolve stream host"
+      );
     case "invalid-url":
     case "invalid-protocol":
       return errorResponse("RADIO_METADATA_INVALID_URL", "Invalid stream URL");

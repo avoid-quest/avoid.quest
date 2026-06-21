@@ -87,13 +87,20 @@ CueBus: PreFaderSend → CueSumNode → CueDelayNode
 
 ## Environment variables
 
-### Dev (`.dev.vars`)
+### Dev (Doppler)
 
 ```
 INVIDIOUS_INSTANCE_URL=   # Invidious instance for YouTube stream resolution
 INVIDIOUS_AUTH=           # Optional Invidious auth token
 GIT_FEEDBACK_GITHUB_TOKEN= # Fine-grained token with Issues read/write
 ```
+
+Local development reads these through Doppler. Run `bun run secrets:setup` from
+the repository root before starting the app. The radio `dev` script uses
+`doppler run` to inject secrets into the process environment and starts the
+Cloudflare Vite runtime with `CLOUDFLARE_INCLUDE_PROCESS_ENV=true`. Local type
+generation and local development do not depend on committed or generated
+`.dev.vars`/`.env` files.
 
 ### Build-time (Sentry sourcemap upload)
 
@@ -120,14 +127,17 @@ configured.
 
 ## Cloudflare exposure
 
-Committed Wrangler config disables `workers_dev` and `preview_urls` for public
-repository safety. Production exposure should be configured with Cloudflare
-account-level custom domains or routes outside this repository.
+Committed Wrangler config enables `workers_dev` and `preview_urls` for
+workers.dev and Workers Builds preview exposure. Custom production hostnames
+should be configured with Cloudflare account-level custom domains or routes
+outside this repository.
+
+Workers Builds PR comments should include the branch preview URL after upload.
 
 ## Development
 
 ```bash
-bun run dev          # Start dev server (port 3000)
+bun run dev          # Start dev server with Doppler (port 3000)
 bun run build        # Production build
 bun run typecheck    # tsc --noEmit
 bun run test         # Run tests (bun test)

@@ -1,4 +1,11 @@
 const SESSION_COOKIE_NAME = "radio_session_id";
+const SESSION_ID_PATTERN = /^[0-9a-f]{64}$/;
+
+export function isValidSessionId(
+  sessionId: string | null | undefined
+): sessionId is string {
+  return typeof sessionId === "string" && SESSION_ID_PATTERN.test(sessionId);
+}
 
 /**
  * Get session ID from cookies (for API routes).
@@ -21,5 +28,5 @@ export function getSessionId(cookieHeader: string | null): string | null {
   }
 
   const sessionId = sessionCookie.split("=")[1];
-  return sessionId || null;
+  return isValidSessionId(sessionId) ? sessionId : null;
 }

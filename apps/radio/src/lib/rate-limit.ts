@@ -2,25 +2,74 @@ export type RateLimitResult = {
   allowed: boolean;
 };
 
+export type RateLimitEnv = {
+  "proxy-rate-limit"?: {
+    limit: (options: { key: string }) => Promise<{ success: boolean }>;
+  };
+};
+
+export type RateLimitSubject = { type: "ip"; value: string };
+
+function getNonEmptyHeader(headers: Headers, name: string): string | undefined {
+  const value = headers.get(name)?.trim();
+  return value || undefined;
+}
+
+function getForwardedClientIP(request: Request): string | undefined {
+  const forwardedFor = getNonEmptyHeader(request.headers, "x-forwarded-for");
+  return forwardedFor?.split(",")[0]?.trim() || undefined;
+}
+
+export function getCloudflareClientIP(request: Request): string | undefined {
+  return getNonEmptyHeader(request.headers, "cf-connecting-ip");
+}
+
+export function getClientIP(request: Request): string | undefined {
+  return getCloudflareClientIP(request) || getForwardedClientIP(request);
+}
+
+export function resolveRateLimitSubject(
+  request: Request
+): RateLimitSubject | null {
+  const cfClientIP = getCloudflareClientIP(request);
+  if (cfClientIP) {
+    return { type: "ip", value: cfClientIP };
+  }
+
+  return null;
+}
+
+function formatRateLimitKey(
+  identifier: string,
+  subject: RateLimitSubject
+): string {
+  return `${identifier}:${subject.type}:${subject.value}`;
+}
+
 /**
  * Check rate limit using Cloudflare Rate Limit API
  * @param env - The Cloudflare environment bindings
- * @param sessionId - The session ID to rate limit against
  * @param identifier - Unique identifier for this rate limit (e.g., 'soundcloud-proxy')
+ * @param subject - Trusted subject to rate limit against
  * @returns Rate limit result with allowed status
  */
 export async function checkRateLimit(
-  env: {
-    "proxy-rate-limit"?: {
-      limit: (options: { key: string }) => Promise<{ success: boolean }>;
-    };
-  },
-  sessionId: string,
-  identifier: string
+  env: RateLimitEnv,
+  identifier: string,
+  subject: RateLimitSubject | null
 ): Promise<RateLimitResult> {
   const isDevelopment = process.env.NODE_ENV === "development";
 
   try {
+    if (!subject) {
+      if (isDevelopment) {
+        console.warn("Rate limit key not available, allowing request");
+        return { allowed: true };
+      }
+      console.error("Rate limit key not available in production");
+      return { allowed: false };
+    }
+
     if (!env) {
       if (isDevelopment) {
         console.warn("Environment not available, allowing request");
@@ -40,7 +89,7 @@ export async function checkRateLimit(
       return { allowed: false };
     }
 
-    const key = `${identifier}:${sessionId}`;
+    const key = formatRateLimitKey(identifier, subject);
     const outcome = await rateLimit.limit({ key });
 
     return { allowed: outcome.success };

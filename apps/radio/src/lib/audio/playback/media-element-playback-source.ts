@@ -1,5 +1,3 @@
-import Hls from "hls.js";
-
 import type { PlaybackSource } from "./playback-source.js";
 import {
   type PlaybackSourceCallbacks,
@@ -8,6 +6,12 @@ import {
 import type { StreamStatus } from "./types.js";
 
 const MEDIA_LOAD_TIMEOUT_MS = 8000;
+type HlsConstructor = typeof import("hls.js").default;
+type HlsInstance = InstanceType<HlsConstructor>;
+type MediaSourceGlobal = typeof globalThis & {
+  ManagedMediaSource?: typeof MediaSource;
+  WebKitMediaSource?: typeof MediaSource;
+};
 
 function isHlsUrl(url: string): boolean {
   try {
@@ -56,6 +60,16 @@ function resolveMediaUrl(url: string): string {
   return STREAM_PROXY_ROUTE + encodeURIComponent(url);
 }
 
+function getPreferredMediaSourceConstructor(): typeof MediaSource | null {
+  const mediaSourceGlobal = globalThis as MediaSourceGlobal;
+  return (
+    mediaSourceGlobal.ManagedMediaSource ??
+    mediaSourceGlobal.MediaSource ??
+    mediaSourceGlobal.WebKitMediaSource ??
+    null
+  );
+}
+
 export function getMediaPlaybackCandidates(url: string): string[] {
   const proxiedUrl = resolveMediaUrl(url);
 
@@ -99,13 +113,16 @@ export class MediaElementPlaybackSource implements PlaybackSource {
   private readonly mediaSourceNode: MediaElementAudioSourceNode;
   private readonly outputNode: GainNode;
 
-  private hls: Hls | null = null;
+  private hls: HlsInstance | null = null;
   private _status: StreamStatus = "idle";
   private _isBuffering = false;
   private generation = 0;
+  private mediaLoadAttempt = 0;
+  private playbackIntent = 0;
   private playbackRate = 1;
   private shouldResumeAfterLoad = false;
   private currentLoadPromise: Promise<void> | null = null;
+  private pendingMediaSourceObjectUrl: string | null = null;
   private isLoadingPhase = false;
   private suppressPauseCallback = false;
 
@@ -179,7 +196,7 @@ export class MediaElementPlaybackSource implements PlaybackSource {
 
   async load(url: string): Promise<void> {
     const generation = ++this.generation;
-    this.shouldResumeAfterLoad = false;
+    this.cancelPendingPlaybackIntent();
     this.resetMediaElement({ resetProgress: true });
 
     this._status = "connecting";
@@ -193,18 +210,21 @@ export class MediaElementPlaybackSource implements PlaybackSource {
     } catch (error) {
       const loadError =
         error instanceof Error ? error : new Error("Audio playback failed");
-      this._status = "error";
-      this.callbacks.onError?.(loadError);
+      if (generation === this.generation) {
+        this._status = "error";
+        this.callbacks.onError?.(loadError);
+      }
       throw loadError;
     } finally {
       if (this.currentLoadPromise === loadPromise) {
         this.currentLoadPromise = null;
+        this.isLoadingPhase = false;
       }
-      this.isLoadingPhase = false;
     }
   }
 
   async play(): Promise<void> {
+    const playbackIntent = ++this.playbackIntent;
     this.shouldResumeAfterLoad = true;
 
     if (this.currentLoadPromise) {
@@ -212,10 +232,40 @@ export class MediaElementPlaybackSource implements PlaybackSource {
       // transient user activation is still alive. Start the media element now,
       // even if metadata is still loading, and then wait for both readiness and
       // the browser's play promise.
-      const playPromise = this.audio.paused
-        ? this.audio.play()
-        : Promise.resolve();
-      await Promise.all([this.currentLoadPromise, playPromise]);
+      const loadPromise = this.currentLoadPromise;
+      const playResultPromise = (
+        this.audio.paused ? this.audio.play() : Promise.resolve()
+      ).then(
+        () => ({ ok: true as const }),
+        (error: unknown) => ({ error, ok: false as const })
+      );
+      try {
+        await loadPromise;
+      } catch (error) {
+        if (this.isPlaybackIntentCanceled(playbackIntent)) {
+          return;
+        }
+        throw error;
+      }
+
+      const playResult = await playResultPromise;
+      if (!playResult.ok) {
+        const canRecoverPlayError = this.canRecoverPendingPlayError(
+          playResult.error,
+          playbackIntent
+        );
+        if (!canRecoverPlayError) {
+          throw playResult.error;
+        }
+      }
+
+      if (
+        playbackIntent === this.playbackIntent &&
+        this.shouldResumeAfterLoad &&
+        this.audio.paused
+      ) {
+        await this.audio.play();
+      }
       return;
     }
 
@@ -227,7 +277,7 @@ export class MediaElementPlaybackSource implements PlaybackSource {
   }
 
   pause(): void {
-    this.shouldResumeAfterLoad = false;
+    this.cancelPendingPlaybackIntent();
     this._status = "buffering";
     this.suppressPauseCallback = true;
     this.audio.pause();
@@ -238,7 +288,8 @@ export class MediaElementPlaybackSource implements PlaybackSource {
   }
 
   stop(): void {
-    this.shouldResumeAfterLoad = false;
+    this.cancelPendingPlaybackIntent();
+    this.cancelPendingLoad();
     this.resetMediaElement({ resetProgress: true });
     this._status = "ended";
     this.setBuffering(false);
@@ -246,6 +297,8 @@ export class MediaElementPlaybackSource implements PlaybackSource {
   }
 
   cleanup(): void {
+    this.cancelPendingPlaybackIntent();
+    this.cancelPendingLoad();
     this.resetMediaElement({ resetProgress: true });
     this.audio.removeEventListener("playing", this.handlePlaying);
     this.audio.removeEventListener("waiting", this.handleWaiting);
@@ -268,6 +321,8 @@ export class MediaElementPlaybackSource implements PlaybackSource {
     this._status = "idle";
     this.setBuffering(false);
     this.currentLoadPromise = null;
+    this.revokePendingMediaSourceObjectUrl();
+    this.isLoadingPhase = false;
   }
 
   setPlaybackRate(rate: number): void {
@@ -411,20 +466,25 @@ export class MediaElementPlaybackSource implements PlaybackSource {
       this.audio.addEventListener("abort", handleAbort, { once: true });
       timeoutId = setTimeout(handleTimeout, MEDIA_LOAD_TIMEOUT_MS);
 
-      try {
-        this.loadIntoMediaElement(url, treatAsHls, (error) => {
+      const mediaLoadAttempt = ++this.mediaLoadAttempt;
+      const sourceAttachmentPromise = this.loadIntoMediaElement(
+        url,
+        treatAsHls,
+        generation,
+        mediaLoadAttempt,
+        (error) => {
           finish(() => {
             reject(error);
           });
-        });
-      } catch (error) {
+        }
+      );
+      sourceAttachmentPromise.catch((error) => {
         finish(() => {
           reject(
             error instanceof Error ? error : new Error("Audio playback failed")
           );
         });
-        return;
-      }
+      });
 
       if (this.audio.readyState >= HTMLMediaElement.HAVE_METADATA) {
         handleReady();
@@ -432,17 +492,34 @@ export class MediaElementPlaybackSource implements PlaybackSource {
     });
   }
 
-  private loadIntoMediaElement(
+  private async loadIntoMediaElement(
     url: string,
     treatAsHls: boolean,
+    generation: number,
+    mediaLoadAttempt: number,
     onFatalError: (error: Error) => void
-  ): void {
+  ): Promise<void> {
     this.destroyHls();
 
     if (!treatAsHls) {
       this.audio.src = url;
       this.audio.load();
       return;
+    }
+
+    if (this.audio.canPlayType("application/vnd.apple.mpegurl")) {
+      this.audio.src = url;
+      this.audio.load();
+      return;
+    }
+
+    const mediaSource = this.attachMediaSourceForEarlyPlayback();
+    const { default: Hls } = await import("hls.js");
+    if (
+      generation !== this.generation ||
+      mediaLoadAttempt !== this.mediaLoadAttempt
+    ) {
+      throw new DOMException("Load aborted", "AbortError");
     }
 
     if (Hls.isSupported()) {
@@ -480,15 +557,14 @@ export class MediaElementPlaybackSource implements PlaybackSource {
         }
       });
 
-      hls.attachMedia(this.audio);
+      if (mediaSource) {
+        hls.attachMedia({ media: this.audio, mediaSource });
+        this.pendingMediaSourceObjectUrl = null;
+      } else {
+        hls.attachMedia(this.audio);
+      }
       hls.loadSource(url);
       this.hls = hls;
-      return;
-    }
-
-    if (this.audio.canPlayType("application/vnd.apple.mpegurl")) {
-      this.audio.src = url;
-      this.audio.load();
       return;
     }
 
@@ -497,6 +573,8 @@ export class MediaElementPlaybackSource implements PlaybackSource {
 
   private resetMediaElement(options: { resetProgress: boolean }): void {
     this.suppressPauseCallback = true;
+    this.mediaLoadAttempt += 1;
+    this.revokePendingMediaSourceObjectUrl();
     this.audio.pause();
     this.destroyHls();
     this.audio.removeAttribute("src");
@@ -513,6 +591,63 @@ export class MediaElementPlaybackSource implements PlaybackSource {
     queueMicrotask(() => {
       this.suppressPauseCallback = false;
     });
+  }
+
+  private cancelPendingPlaybackIntent(): void {
+    this.shouldResumeAfterLoad = false;
+    this.playbackIntent += 1;
+  }
+
+  private canRecoverPendingPlayError(
+    error: unknown,
+    playbackIntent: number
+  ): boolean {
+    if (this.isPlaybackIntentCanceled(playbackIntent)) {
+      return true;
+    }
+
+    const errorName =
+      error instanceof DOMException || error instanceof Error ? error.name : "";
+    return errorName === "AbortError" || errorName === "NotSupportedError";
+  }
+
+  private cancelPendingLoad(): void {
+    this.generation += 1;
+    this.currentLoadPromise = null;
+    this.isLoadingPhase = false;
+  }
+
+  private isPlaybackIntentCanceled(playbackIntent: number): boolean {
+    return (
+      playbackIntent !== this.playbackIntent || !this.shouldResumeAfterLoad
+    );
+  }
+
+  private attachMediaSourceForEarlyPlayback(): MediaSource | null {
+    const MediaSourceConstructor = getPreferredMediaSourceConstructor();
+    if (
+      !MediaSourceConstructor ||
+      typeof URL === "undefined" ||
+      typeof URL.createObjectURL !== "function"
+    ) {
+      return null;
+    }
+
+    const mediaSource = new MediaSourceConstructor();
+    const objectUrl = URL.createObjectURL(mediaSource);
+    this.pendingMediaSourceObjectUrl = objectUrl;
+    this.audio.src = objectUrl;
+    this.audio.load();
+    return mediaSource;
+  }
+
+  private revokePendingMediaSourceObjectUrl(): void {
+    if (!this.pendingMediaSourceObjectUrl) {
+      return;
+    }
+
+    URL.revokeObjectURL(this.pendingMediaSourceObjectUrl);
+    this.pendingMediaSourceObjectUrl = null;
   }
 
   private destroyHls(): void {

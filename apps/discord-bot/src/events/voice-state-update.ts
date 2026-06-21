@@ -1,5 +1,5 @@
 import type { VoiceState } from "discord.js";
-import { getGuildPlayer } from "../voice/guild-player.js";
+import { updateGuildVoiceOccupancy } from "../voice/guild-player.js";
 
 export function handleVoiceStateUpdate(
   oldState: VoiceState,
@@ -9,16 +9,6 @@ export function handleVoiceStateUpdate(
     return;
   }
 
-  const guildId = oldState.guild.id;
-  const player = getGuildPlayer(guildId);
-  if (!player) {
-    return;
-  }
-
   const members = oldState.channel.members.filter((m) => !m.user.bot);
-  if (members.size === 0) {
-    player.startDisconnectTimer();
-  } else {
-    player.clearDisconnectTimer();
-  }
+  updateGuildVoiceOccupancy(oldState.guild.id, members.size);
 }

@@ -5,7 +5,7 @@ import {
   GuildMember,
   SlashCommandBuilder,
 } from "discord.js";
-import { getOrCreateGuildPlayer } from "../voice/guild-player.js";
+import { playGuildDiagnosticResource } from "../voice/guild-player.js";
 import { configureStereoEncoder } from "../voice/stereo-patch.js";
 
 export const data = new SlashCommandBuilder()
@@ -29,11 +29,6 @@ export async function execute(
   }
 
   await interaction.deferReply();
-
-  const player = getOrCreateGuildPlayer(interaction.guildId);
-  if (!player.isConnected) {
-    await player.join(member.voice.channel);
-  }
 
   // Generate 6 seconds of stereo test: L tone, R tone, L tone, R tone, L tone, R tone
   const sampleRate = 48_000;
@@ -74,8 +69,11 @@ export async function execute(
 
   configureStereoEncoder(resource);
 
-  player.stop();
-  player.playResource(resource);
+  await playGuildDiagnosticResource({
+    guildId: interaction.guildId,
+    voiceChannel: member.voice.channel,
+    resource,
+  });
 
   await interaction.editReply(
     "Playing stereo test: L(440Hz) → R(554Hz), 3 cycles. Listen with headphones."

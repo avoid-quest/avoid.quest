@@ -1,7 +1,7 @@
 import type { ChatInputCommandInteraction } from "discord.js";
 import { SlashCommandBuilder } from "discord.js";
 import { queueEmbed } from "../lib/embeds.js";
-import { getGuildPlayer } from "../voice/guild-player.js";
+import { getGuildPlaybackSnapshot } from "../voice/guild-player.js";
 
 export const data = new SlashCommandBuilder()
   .setName("queue")
@@ -18,14 +18,14 @@ export async function execute(
     return;
   }
 
-  const player = getGuildPlayer(interaction.guildId);
+  const snapshot = getGuildPlaybackSnapshot(interaction.guildId);
 
-  if (!player || player.queue.isEmpty) {
+  if (snapshot.queueTracks.length === 0) {
     await interaction.reply({ content: "The queue is empty." });
     return;
   }
 
   await interaction.reply({
-    embeds: [queueEmbed(player.queue.items, 0)],
+    embeds: [queueEmbed(snapshot.queueTracks, 0)],
   });
 }

@@ -11,9 +11,9 @@ import {
   deactivateAllChannels,
 } from "./channel-state-manager";
 import {
+  createManagedPlaybackSessionWorkflow,
   mergeMultiplePlaybackRadios,
-  syncMultiplePlaybackChannels,
-} from "./playback-actions-multiple";
+} from "./managed-playback-session-workflow";
 
 async function resetPlaybackSessions() {
   await playbackSessionsCollection.stateWhenReady();
@@ -66,7 +66,7 @@ describe("syncMultiplePlaybackChannels", () => {
       activeChannelId: null,
     });
 
-    syncMultiplePlaybackChannels(
+    createManagedPlaybackSessionWorkflow("multiple").syncChannels(
       mergeMultiplePlaybackRadios(
         [
           {
@@ -120,7 +120,7 @@ describe("syncMultiplePlaybackChannels", () => {
       activeChannelId: null,
     });
 
-    syncMultiplePlaybackChannels([
+    createManagedPlaybackSessionWorkflow("multiple").syncChannels([
       {
         id: "saved-1",
         name: "Saved",
@@ -182,7 +182,7 @@ describe("syncMultiplePlaybackChannels", () => {
       "multiple:multi:removed-1"
     );
 
-    syncMultiplePlaybackChannels([
+    createManagedPlaybackSessionWorkflow("multiple").syncChannels([
       {
         id: "saved-1",
         name: "Saved",

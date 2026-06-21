@@ -12,7 +12,7 @@ PWA internet radio player with advanced audio mixing, effects chain, and MIDI su
 - **Platform support**: Bandcamp albums/tracks, SoundCloud playlists/tracks, YouTube playlists/videos, Radio Garden stations
 - **External inputs**: device audio input (mic/line-in), local file playback
 - **PWA**: installable, service worker, offline shell
-- **Persistence**: TanStack DB collections backed by localStorage — radios, settings, DJ state
+- **Persistence**: TanStack DB collections backed by localStorage — radios, settings, playback sessions
 - **Visualizations**: spectrum analyser, waveform display, level/peak meters
 - **Media Session API**: lock screen controls, AVRCP Bluetooth metadata
 - **MIDI**: configurable controller mappings for all DJ actions
@@ -61,8 +61,7 @@ Server functions (TanStack Start `createServerFn`):
 ┌─────────────────────────────────────────────┐
 │  TanStack DB (localStorage)                  │
 │  radiosCollection · settingsCollection       │
-│  deckCollection · mixerCollection            │
-│  singleStateCollection                       │
+│  playbackSessionsCollection                  │
 ├─────────────────────────────────────────────┤
 │  TanStack Store (in-memory runtime)          │
 │  djRuntimeStore — isPlaying, isLoading,      │

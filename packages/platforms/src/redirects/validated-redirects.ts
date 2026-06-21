@@ -60,6 +60,10 @@ type FetchWithValidatedRedirectsOptions<Failure extends string> = {
   validateUrl: (url: string) => UrlValidationResult<Failure>;
 };
 
+type UrlValidator<UrlFailure extends string> = (
+  urlParam: string | null
+) => UrlValidationResult<UrlFailure>;
+
 function isRedirectStatus(status: number): boolean {
   return REDIRECT_STATUSES.has(status);
 }
@@ -81,6 +85,26 @@ function redirectFailure<Failure extends string>(
   url: string
 ): ValidatedRedirectResult<Failure> {
   return { failure: { reason, url }, ok: false };
+}
+
+export function validateRedirectTargetUrl<UrlFailure extends string>(
+  url: string,
+  validateUrl: UrlValidator<UrlFailure>,
+  invalidUrlReason: RedirectTargetValidationFailure<UrlFailure>
+): UrlValidationResult<RedirectTargetValidationFailure<UrlFailure>> {
+  const validation = validateUrl(url);
+  if (validation.ok) {
+    return validation;
+  }
+
+  if (validation.reason === "required") {
+    return { ok: false, reason: invalidUrlReason };
+  }
+
+  return {
+    ok: false,
+    reason: validation.reason as RedirectTargetValidationFailure<UrlFailure>,
+  };
 }
 
 export async function fetchWithValidatedRedirectResult<Failure extends string>({

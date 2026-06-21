@@ -5,18 +5,25 @@ import {
   type UrlValidationResult,
   ValidatedRedirectError,
   type ValidatedRedirectFailure,
+  validateRedirectTargetUrl,
 } from "./validated-redirects";
 
-type TestUrlFailure = "invalid-url" | "invalid-domain";
+type TestUrlFailure = "required" | "invalid-url" | "invalid-domain";
+type TestFetchUrlFailure = "invalid-url" | "invalid-domain";
 
 const TEST_REDIRECT_FAILURE_MESSAGES = {
   "invalid-url": "Invalid URL",
   "invalid-domain": "Invalid domain",
   "missing-location": "Missing Location",
   "too-many-redirects": "Too many redirects",
-} as const satisfies Record<ValidatedRedirectFailure<TestUrlFailure>, string>;
+} as const satisfies Record<
+  ValidatedRedirectFailure<TestFetchUrlFailure>,
+  string
+>;
 
-function validateExampleUrl(url: string): UrlValidationResult<TestUrlFailure> {
+function validateExampleUrl(
+  url: string
+): UrlValidationResult<TestFetchUrlFailure> {
   let parsed: URL;
   try {
     parsed = new URL(url);
@@ -30,6 +37,40 @@ function validateExampleUrl(url: string): UrlValidationResult<TestUrlFailure> {
 
   return { ok: true, url };
 }
+
+function validateOptionalExampleUrl(
+  url: string | null
+): UrlValidationResult<TestUrlFailure> {
+  if (!url) {
+    return { ok: false, reason: "required" };
+  }
+
+  return validateExampleUrl(url);
+}
+
+describe("validateRedirectTargetUrl", () => {
+  test("maps required failures to the caller's invalid URL reason", () => {
+    expect(
+      validateRedirectTargetUrl("", validateOptionalExampleUrl, "invalid-url")
+    ).toEqual({
+      ok: false,
+      reason: "invalid-url",
+    });
+  });
+
+  test("preserves concrete redirect target validation failures", () => {
+    expect(
+      validateRedirectTargetUrl(
+        "https://internal.test/final",
+        validateOptionalExampleUrl,
+        "invalid-url"
+      )
+    ).toEqual({
+      ok: false,
+      reason: "invalid-domain",
+    });
+  });
+});
 
 describe("fetchWithValidatedRedirects", () => {
   test("follows validated redirects and returns the final URL", async () => {

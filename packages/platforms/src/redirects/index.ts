@@ -12,4 +12,5 @@ export {
   fetchWithValidatedRedirectResult,
   fetchWithValidatedRedirects,
   ValidatedRedirectError,
+  validateRedirectTargetUrl,
 } from "./validated-redirects.js";

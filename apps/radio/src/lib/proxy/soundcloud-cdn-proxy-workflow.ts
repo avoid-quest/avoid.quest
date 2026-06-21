@@ -1,14 +1,14 @@
 import type { AppErrorInit } from "@avoid.quest/error";
 import type { ValidatedRedirectTargetFailure } from "@avoid.quest/platforms/redirects";
+import {
+  type SoundCloudCdnUrlValidationFailure,
+  validateSoundCloudCdnUrl,
+} from "@avoid.quest/platforms/soundcloud/url-policy";
 import { logSSRFAttempt } from "@/lib/logger";
 import {
   type CdnProxyPolicy,
   createCdnProxyRequestWorkflow,
 } from "./cdn-proxy-workflow";
-import {
-  type SoundCloudCdnUrlValidationFailure,
-  validateSoundCloudCdnUrl,
-} from "./soundcloud-url-policy";
 
 type SoundCloudRedirectFailure =
   ValidatedRedirectTargetFailure<SoundCloudCdnUrlValidationFailure>;

@@ -5,8 +5,8 @@ import {
   type RedirectTargetValidationFailure,
   type UrlValidationResult,
   type ValidatedRedirectTargetFailure,
+  validateRedirectTargetUrl,
 } from "@avoid.quest/platforms/redirects";
-import { validateRedirectTargetUrl } from "./redirect-target-validation";
 
 const DEFAULT_FETCH_TIMEOUT_MS = 10_000;
 const DEFAULT_MAX_REDIRECTS = 5;

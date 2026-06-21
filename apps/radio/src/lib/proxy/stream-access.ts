@@ -2,8 +2,8 @@ import {
   fetchWithValidatedRedirectResult,
   ValidatedRedirectError,
   type ValidatedRedirectTargetFailure,
+  validateRedirectTargetUrl,
 } from "@avoid.quest/platforms/redirects";
-import { validateRedirectTargetUrl } from "./redirect-target-validation";
 import {
   type StreamUrlValidationFailure,
   validatePublicStreamUrl,

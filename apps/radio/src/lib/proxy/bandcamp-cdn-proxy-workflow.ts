@@ -1,9 +1,9 @@
 import type { AppErrorInit } from "@avoid.quest/error";
-import type { ValidatedRedirectTargetFailure } from "@avoid.quest/platforms/redirects";
 import {
   type BandcampCdnUrlValidationFailure,
   validateBandcampCdnUrl,
-} from "./bandcamp-url-policy";
+} from "@avoid.quest/platforms/bandcamp/url-policy";
+import type { ValidatedRedirectTargetFailure } from "@avoid.quest/platforms/redirects";
 import {
   type CdnProxyPolicy,
   createCdnProxyRequestWorkflow,

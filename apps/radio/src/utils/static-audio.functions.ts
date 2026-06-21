@@ -13,6 +13,7 @@ import {
 import {
   fetchWithValidatedRedirectResult,
   type ValidatedRedirectTargetFailure,
+  validateRedirectTargetUrl,
 } from "@avoid.quest/platforms/redirects";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
@@ -29,7 +30,6 @@ import type {
   StaticAudioMetadata,
   StaticAudioTrack,
 } from "@/lib/platform-types";
-import { validateRedirectTargetUrl } from "@/lib/proxy/redirect-target-validation";
 import {
   type StreamUrlValidationFailure,
   validatePublicStreamUrl,

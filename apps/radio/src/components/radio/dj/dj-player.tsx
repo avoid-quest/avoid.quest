@@ -11,6 +11,7 @@ import {
 import { Volume2Icon } from "lucide-react";
 import type { Radio } from "@/lib/audio";
 import {
+  getDeckLibrarySourceLoadIntent,
   getDjDeckActions,
   setCrossfadePosition,
   setHeadphoneVolume,
@@ -28,68 +29,14 @@ import {
 import { useMediaSession } from "@/lib/hooks/use-media-session";
 import { useMidi } from "@/lib/hooks/use-midi";
 import { useAudioSettings } from "@/lib/hooks/use-settings";
-import type { Platform } from "@/lib/platform-types";
 import type { DeckId } from "@/lib/stores/dj-runtime-store";
 import { RadioLogo } from "../radio-logo";
 import { DjConsole } from "./dj-console";
 import { DjConsoleMobile } from "./dj-console-mobile";
-import {
-  getPlatformFromItem,
-  isAudioInputItem,
-  isLocalFileItem,
-  isPlatformItem,
-  isRadioGardenItem,
-} from "./dj-radio-list";
-
-// Note: isAudioInputItem, isLocalFileItem, isRadioGardenItem used by handlePlatformItemDrag
 
 type DjPlayerProps = {
   radios?: Radio[];
 };
-
-type HandlePlatformItemDragParams = {
-  radio: Radio;
-  deckId: string;
-  setPendingItem: (item: { deckId: DeckId; platform: Platform } | null) => void;
-};
-
-function handlePlatformItemDrag({
-  radio,
-  deckId,
-  setPendingItem,
-}: HandlePlatformItemDragParams): boolean {
-  // Handle all known platform items (audio input, static audio, external, radio garden)
-  if (isAudioInputItem(radio)) {
-    if (deckId === "deck-a" || deckId === "deck-b") {
-      setPendingItem({ deckId, platform: "device-input" });
-    }
-    return true;
-  }
-
-  if (isLocalFileItem(radio)) {
-    if (deckId === "deck-a" || deckId === "deck-b") {
-      setPendingItem({ deckId, platform: "local-file" });
-    }
-    return true;
-  }
-
-  if (isRadioGardenItem(radio)) {
-    if (deckId === "deck-a" || deckId === "deck-b") {
-      setPendingItem({ deckId, platform: "radiogarden" });
-    }
-    return true;
-  }
-
-  if (!isPlatformItem(radio)) {
-    return false;
-  }
-
-  const platform = getPlatformFromItem(radio);
-  if (platform && (deckId === "deck-a" || deckId === "deck-b")) {
-    setPendingItem({ deckId, platform });
-  }
-  return true;
-}
 
 function DjPlayerDragOverlay({
   activeDragRadio,
@@ -184,19 +131,18 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
     const radio = active.data.current?.radio as Radio;
     const deckId = over.id as string;
 
-    const handled = handlePlatformItemDrag({
-      radio,
-      deckId,
-      setPendingItem: setPendingPlatformItem,
-    });
-
-    if (handled) {
-      return;
-    }
-
-    setPendingPlatformItem(null);
     if (isDeckId(deckId)) {
-      getDjDeckActions(deckId).setRadio(radio);
+      const intent = getDeckLibrarySourceLoadIntent(radio);
+      if (intent.type === "pending-platform") {
+        setPendingPlatformItem({ deckId, platform: intent.platform });
+        return;
+      }
+      setPendingPlatformItem(null);
+      getDjDeckActions(deckId)
+        .loadSource(intent)
+        .catch((error) => {
+          console.error("[dj] Failed to load dragged source:", error);
+        });
     }
   };
 

@@ -22,7 +22,21 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import type { Radio } from "@/lib/audio";
-import { getDjDeckActions } from "@/lib/dj-actions";
+import {
+  getDeckLibrarySourceLoadIntent,
+  getDjDeckActions,
+} from "@/lib/dj-actions";
+import {
+  AUDIO_INPUT_PLATFORM_ID,
+  BANDCAMP_PLATFORM_ID,
+  getPlatformFromPlaceholderItem,
+  isPlatformPlaceholderItem,
+  RADIO_GARDEN_PLATFORM_ID,
+  SEARCH_ALL_PLATFORM_ID,
+  SOUNDCLOUD_PLATFORM_ID,
+  STATIC_AUDIO_PLATFORM_ID,
+  YOUTUBE_PLATFORM_ID,
+} from "@/lib/dj-actions-deck-load";
 import { setPendingPlatformItem } from "@/lib/hooks/use-dj-state";
 import {
   isSessionRadio,
@@ -35,18 +49,6 @@ type DjRadioListProps = {
   radios: Radio[];
 };
 
-const AUDIO_INPUT_PLATFORM_ID = -3;
-export const STATIC_AUDIO_PLATFORM_ID = -4;
-/** @deprecated Use STATIC_AUDIO_PLATFORM_ID */
-export const LOCAL_FILE_PLATFORM_ID = STATIC_AUDIO_PLATFORM_ID;
-export const SEARCH_ALL_PLATFORM_ID = -6;
-/** @deprecated Use SEARCH_ALL_PLATFORM_ID */
-export const EXTERNAL_PLATFORM_ID = SEARCH_ALL_PLATFORM_ID;
-export const RADIO_GARDEN_PLATFORM_ID = -7;
-export const BANDCAMP_PLATFORM_ID = -8;
-export const SOUNDCLOUD_PLATFORM_ID = -9;
-export const YOUTUBE_PLATFORM_ID = -10;
-
 const AUDIO_INPUT_COLOR = "#10b981";
 const STATIC_AUDIO_COLOR = "#8b5cf6";
 const SEARCH_ALL_COLOR = "#3b82f6";
@@ -54,6 +56,19 @@ const RADIO_GARDEN_COLOR = "#00d084";
 const BANDCAMP_COLOR = "#629aa0";
 const SOUNDCLOUD_COLOR = "#ff7700";
 const YOUTUBE_COLOR = "#ff0000";
+
+export {
+  AUDIO_INPUT_PLATFORM_ID,
+  BANDCAMP_PLATFORM_ID,
+  RADIO_GARDEN_PLATFORM_ID,
+  SEARCH_ALL_PLATFORM_ID,
+  SOUNDCLOUD_PLATFORM_ID,
+  STATIC_AUDIO_PLATFORM_ID,
+  YOUTUBE_PLATFORM_ID,
+} from "@/lib/dj-actions-deck-load";
+export const LOCAL_FILE_PLATFORM_ID = STATIC_AUDIO_PLATFORM_ID;
+/** @deprecated Use SEARCH_ALL_PLATFORM_ID */
+export const EXTERNAL_PLATFORM_ID = SEARCH_ALL_PLATFORM_ID;
 
 // Platform-specific placeholder items
 export const PLATFORM_ITEMS: Radio[] = [
@@ -157,15 +172,7 @@ export const PLATFORM_ITEMS: Radio[] = [
 ];
 
 export function isPlatformItem(radio: Radio): boolean {
-  return (
-    radio.id === AUDIO_INPUT_PLATFORM_ID ||
-    radio.id === STATIC_AUDIO_PLATFORM_ID ||
-    radio.id === SEARCH_ALL_PLATFORM_ID ||
-    radio.id === RADIO_GARDEN_PLATFORM_ID ||
-    radio.id === BANDCAMP_PLATFORM_ID ||
-    radio.id === SOUNDCLOUD_PLATFORM_ID ||
-    radio.id === YOUTUBE_PLATFORM_ID
-  );
+  return isPlatformPlaceholderItem(radio);
 }
 
 export function isRadioGardenItem(radio: Radio): boolean {
@@ -207,28 +214,7 @@ export function isYouTubeItem(radio: Radio): boolean {
 }
 
 export function getPlatformFromItem(radio: Radio): Platform | null {
-  if (radio.id === AUDIO_INPUT_PLATFORM_ID) {
-    return "device-input";
-  }
-  if (radio.id === STATIC_AUDIO_PLATFORM_ID) {
-    return "static-audio";
-  }
-  if (radio.id === RADIO_GARDEN_PLATFORM_ID) {
-    return "radiogarden";
-  }
-  if (radio.id === SEARCH_ALL_PLATFORM_ID) {
-    return "external";
-  }
-  if (radio.id === BANDCAMP_PLATFORM_ID) {
-    return "bandcamp";
-  }
-  if (radio.id === SOUNDCLOUD_PLATFORM_ID) {
-    return "soundcloud";
-  }
-  if (radio.id === YOUTUBE_PLATFORM_ID) {
-    return "youtube";
-  }
-  return radio.platformMetadata?.platform || null;
+  return getPlatformFromPlaceholderItem(radio);
 }
 
 function getPlatformColor(platform: Platform | null): string {
@@ -376,18 +362,20 @@ export function DraggableRadioItem({ radio }: DraggableRadioItemProps) {
 
 export function MobileRadioItem({ radio }: { radio: Radio }) {
   const handleLoad = (deckId: "deck-a" | "deck-b") => {
-    const isPlatform = isPlatformItem(radio);
-    const platform = getPlatformFromItem(radio);
-    if (isPlatform) {
-      if (platform) {
-        setPendingPlatformItem({
-          deckId,
-          platform,
-        });
-      }
-    } else {
-      getDjDeckActions(deckId).setRadio(radio);
+    const intent = getDeckLibrarySourceLoadIntent(radio);
+    if (intent.type === "pending-platform") {
+      setPendingPlatformItem({
+        deckId,
+        platform: intent.platform,
+      });
+      return;
     }
+    setPendingPlatformItem(null);
+    getDjDeckActions(deckId)
+      .loadSource(intent)
+      .catch((error) => {
+        console.error("[dj] Failed to load mobile source:", error);
+      });
   };
 
   return (

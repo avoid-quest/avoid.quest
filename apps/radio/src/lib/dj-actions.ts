@@ -17,7 +17,6 @@ import {
   createAudioEngineFacade,
   type Radio,
 } from "@/lib/audio";
-import { validatePlaybackStreamUrl } from "@/lib/audio/playback/url-validation";
 import {
   createAndAddChannelEffect,
   removeChannelEffect,
@@ -38,13 +37,12 @@ import {
 import {
   createDjDeckLoadWorkflow,
   type DeckLoadDependencies,
+  type DeckSourceLoadIntent,
+  type DeckSourceLoadResult,
   type DjDeckLoadWorkflow,
+  getDeckLibrarySourceIntent,
 } from "@/lib/dj-actions-deck-load.js";
-import {
-  type DeckId,
-  type DeckSide,
-  deckConfig,
-} from "@/lib/dj-actions-decks.js";
+import type { DeckId, DeckSide } from "@/lib/dj-actions-decks.js";
 import { findNextTrack as findNextTrackInPlaylist } from "@/lib/dj-actions-playlist.js";
 import {
   setCueOutputDelay as applyCueOutputDelay,
@@ -259,7 +257,10 @@ export async function setDeckRadio(
   radio: Radio | null,
   ctx = getDefaultPlaybackActionContext()
 ) {
-  await createDeckLoadWorkflow(ctx).loadDeckRadio(deckId, radio);
+  await createDeckLoadWorkflow(ctx).loadDeckSource(deckId, {
+    type: "radio",
+    radio,
+  });
 }
 
 const bindDeckAction =
@@ -271,6 +272,7 @@ const bindDeckAction =
     action(deckId, ...args);
 
 export type DjDeckActions = {
+  loadSource: (source: DeckSourceLoadIntent) => Promise<DeckSourceLoadResult>;
   setRadio: (radio: Radio | null) => Promise<void>;
   play: () => Promise<void>;
   pause: () => void;
@@ -328,6 +330,8 @@ function createDeckActions(
   const getContext = () => ctx ?? getDefaultPlaybackActionContext();
   return {
     setRadio: (radio) => setDeckRadio(deckId, radio, getContext()),
+    loadSource: (source) =>
+      createDeckLoadWorkflow(getContext()).loadDeckSource(deckId, source),
     play: () => playDeck(deckId, getContext()),
     pause: () => pauseDeck(deckId, getContext()),
     reset: () => resetDeck(deckId, getContext()),
@@ -428,47 +432,11 @@ export async function loadTrack(
   ctx = getDefaultPlaybackActionContext()
 ) {
   const deckId = deckSide === "left" ? "deck-a" : "deck-b";
-  const config = deckConfig[deckId];
-  const runtime = config.getRuntime();
-  const setRadio = (nextRadio: Radio | null) =>
-    setDeckRadio(deckId, nextRadio, ctx);
-  const pause = () => pauseDeck(deckId, ctx);
-  const play = () => playDeck(deckId, ctx);
-
-  // Handle clearing the deck
-  if (!radio) {
-    await setRadio(null);
-    return;
-  }
-
-  const streamValidation = validatePlaybackStreamUrl(radio.streamUrl);
-  if (!streamValidation.ok) {
-    reportDjErrorSurface("Invalid stream URL", "DJ_INVALID_STREAM_URL");
-    return;
-  }
-
-  const normalizedRadio =
-    streamValidation.normalizedUrl === radio.streamUrl
-      ? radio
-      : { ...radio, streamUrl: streamValidation.normalizedUrl };
-
-  // Prevent re-entry if already loading
-  if (runtime.isLoading) {
-    return;
-  }
-
-  // Pause current track if playing
-  if (runtime.isPlaying) {
-    pause();
-  }
-
-  // Load new track
-  await setRadio(normalizedRadio);
-
-  // Auto-play if requested
-  if (autoPlay) {
-    await play();
-  }
+  await createDeckLoadWorkflow(ctx).loadDeckSource(deckId, {
+    type: "track",
+    radio,
+    autoPlay,
+  });
 }
 
 // Mixer actions
@@ -614,11 +582,11 @@ export async function setDeckDeviceSource(
   deviceLabel: string,
   ctx = getDefaultPlaybackActionContext()
 ): Promise<void> {
-  await createDeckLoadWorkflow(ctx).loadDeckDeviceInput(
-    deckId,
+  await createDeckLoadWorkflow(ctx).loadDeckSource(deckId, {
+    type: "device-input",
     deviceId,
-    deviceLabel
-  );
+    deviceLabel,
+  });
 }
 
 export function setDeckChannelSelection(
@@ -634,8 +602,22 @@ export async function setDeckFileSource(
   file: File,
   ctx = getDefaultPlaybackActionContext()
 ): Promise<void> {
-  await createDeckLoadWorkflow(ctx).loadDeckFile(deckId, file);
+  await createDeckLoadWorkflow(ctx).loadDeckSource(deckId, {
+    type: "file",
+    file,
+  });
 }
+
+export function getDeckLibrarySourceLoadIntent(
+  radio: Radio
+): DeckSourceLoadIntent {
+  return getDeckLibrarySourceIntent(radio);
+}
+
+export type {
+  DeckSourceLoadIntent,
+  DeckSourceLoadResult,
+} from "@/lib/dj-actions-deck-load.js";
 
 export const setDeckARadio = bindDeckAction("deck-a", setDeckRadio);
 export const setDeckBRadio = bindDeckAction("deck-b", setDeckRadio);

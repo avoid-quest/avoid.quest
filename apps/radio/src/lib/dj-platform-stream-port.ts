@@ -3,7 +3,7 @@ import type { Radio } from "@/lib/audio";
 
 type PlatformStreamResolutionInput = {
   platform: "youtube";
-  reason: "playlist-next" | "stream-refresh";
+  reason: "initial-load" | "playlist-next" | "stream-refresh";
   videoId: string;
   radio: Radio;
 };

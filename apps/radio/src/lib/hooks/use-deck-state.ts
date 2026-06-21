@@ -45,6 +45,7 @@ type DeckStateResult = {
   seek: DjDeckActions["seek"];
   setRepeat: DjDeckActions["setRepeat"];
   setAutoplay: DjDeckActions["setAutoplay"];
+  loadSource: DjDeckActions["loadSource"];
   loadTrack: typeof loadTrack;
 };
 

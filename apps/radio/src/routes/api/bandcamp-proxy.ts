@@ -1,30 +1,17 @@
 import { env } from "cloudflare:workers";
 import { createFileRoute } from "@tanstack/react-router";
 import { createBandcampCdnProxyWorkflow } from "@/lib/proxy/bandcamp-cdn-proxy-workflow";
-import { createProxyRequestPolicy } from "@/lib/proxy/request-policy";
-
-const proxyPolicy = createProxyRequestPolicy();
-const bandcampProxyWorkflow = createBandcampCdnProxyWorkflow({
-  proxyPolicy,
-});
+import { createProxyRouteRegistration } from "@/lib/proxy/proxy-route-registration";
 
 export const Route = createFileRoute("/api/bandcamp-proxy")({
-  server: {
-    handlers: {
-      GET: proxyPolicy.get({
-        env,
-        identifier: "bandcamp-proxy",
-        operation: "bandcamp-proxy.GET",
-        fallback: {
-          code: "BANDCAMP_PROXY_INTERNAL_ERROR",
-          safeMessage: "Internal server error",
-          category: "infrastructure",
-          expected: false,
-          status: 500,
-        },
-        run: bandcampProxyWorkflow.handle,
+  server: createProxyRouteRegistration({
+    env,
+    identifier: "bandcamp-proxy",
+    operation: "bandcamp-proxy.GET",
+    internalErrorCode: "BANDCAMP_PROXY_INTERNAL_ERROR",
+    createWorkflow: (proxyPolicy) =>
+      createBandcampCdnProxyWorkflow({
+        proxyPolicy,
       }),
-      OPTIONS: ({ request }) => proxyPolicy.options(request),
-    },
-  },
+  }),
 });

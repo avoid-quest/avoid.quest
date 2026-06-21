@@ -1,28 +1,14 @@
 import { env } from "cloudflare:workers";
 import { createFileRoute } from "@tanstack/react-router";
 import { createRadioMetadataWorkflow } from "@/lib/metadata/metadata-workflow";
-import { createProxyRequestPolicy } from "@/lib/proxy/request-policy";
-
-const proxyPolicy = createProxyRequestPolicy();
-const metadataWorkflow = createRadioMetadataWorkflow();
+import { createProxyRouteRegistration } from "@/lib/proxy/proxy-route-registration";
 
 export const Route = createFileRoute("/api/radio-metadata")({
-  server: {
-    handlers: {
-      GET: proxyPolicy.get({
-        env,
-        identifier: "radio-metadata",
-        operation: "radio-metadata.GET",
-        fallback: {
-          code: "RADIO_METADATA_INTERNAL_ERROR",
-          safeMessage: "Internal server error",
-          category: "infrastructure",
-          expected: false,
-          status: 500,
-        },
-        run: metadataWorkflow.handle,
-      }),
-      OPTIONS: ({ request }) => proxyPolicy.options(request),
-    },
-  },
+  server: createProxyRouteRegistration({
+    env,
+    identifier: "radio-metadata",
+    operation: "radio-metadata.GET",
+    internalErrorCode: "RADIO_METADATA_INTERNAL_ERROR",
+    createWorkflow: () => createRadioMetadataWorkflow(),
+  }),
 });

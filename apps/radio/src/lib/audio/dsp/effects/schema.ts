@@ -5,7 +5,7 @@
  * Replaces individual param component files with a single declarative structure.
  */
 
-import type { EffectType } from "./types.js";
+import type { EffectConfig, EffectType } from "./types.js";
 
 export type ParamType = "slider" | "select" | "checkbox" | "group";
 
@@ -59,13 +59,66 @@ export type EffectParamDef = Exclude<ParamDef, GroupParamDef>;
 
 export type VisualizationType = "eq-curve" | "compressor-curve" | "none";
 
-export type EffectSchema = {
-  type: EffectType;
+export type EngineEffectParamValue = number | string;
+export type EngineEffectConfig = Record<string, EngineEffectParamValue>;
+
+export type EffectDefaultConfig<TType extends EffectType = EffectType> = Omit<
+  Extract<EffectConfig, { type: TType }>,
+  "id" | "order"
+>;
+
+export type EffectDefinition<TType extends EffectType = EffectType> = {
+  type: TType;
   name: string;
   description: string;
+  defaultConfig: EffectDefaultConfig<TType>;
   params: ParamDef[];
   visualization?: VisualizationType;
 };
+
+export type EffectDefinitionMap = {
+  [TType in EffectType]: EffectDefinition<TType>;
+};
+
+export type EffectSchema<TType extends EffectType = EffectType> =
+  EffectDefinition<TType>;
+
+export const UNIVERSAL_EFFECT_PARAM_DEFS: readonly SliderParamDef[] = [
+  {
+    type: "slider",
+    key: "dryWet",
+    label: "Dry/Wet",
+    formatKey: "percentage",
+    min: 0,
+    max: 1,
+    step: 0.01,
+    description:
+      "Effect Mix: 0% = dry (bypassed), 100% = fully wet (full effect)",
+  },
+  {
+    type: "slider",
+    key: "inputGain",
+    label: "Input Gain",
+    formatKey: "linearGain",
+    min: 0,
+    max: 4.0,
+    step: 0.01,
+  },
+  {
+    type: "slider",
+    key: "outputGain",
+    label: "Output Gain",
+    formatKey: "linearGain",
+    min: 0,
+    max: 4.0,
+    step: 0.01,
+  },
+];
+
+const UNIVERSAL_EFFECT_PARAM_KEYS = new Set([
+  "enabled",
+  ...UNIVERSAL_EFFECT_PARAM_DEFS.map((param) => param.key),
+]);
 
 // Order options for HP/LP filters
 const orderOptions: SelectOption[] = [
@@ -201,11 +254,28 @@ function createPassFilterGroup(prefix: string, title: string): GroupParamDef {
   };
 }
 
-export const EFFECT_SCHEMAS = {
+export const EFFECT_DEFINITIONS = {
   plateReverb: {
     type: "plateReverb",
     name: "Plate Reverb",
     description: "Advanced plate reverb with extensive controls",
+    defaultConfig: {
+      type: "plateReverb",
+      enabled: false,
+      preDelay: 0,
+      bandwidth: 0.9999,
+      inputDiffusion1: 0.75,
+      inputDiffusion2: 0.625,
+      decay: 0.5,
+      decayDiffusion1: 0.7,
+      decayDiffusion2: 0.5,
+      damping: 0.005,
+      excursionRate: 0.5,
+      excursionDepth: 0.7,
+      dryWet: 1.0,
+      inputGain: 1.0,
+      outputGain: 1.0,
+    },
     params: [
       {
         type: "group",
@@ -329,6 +399,14 @@ export const EFFECT_SCHEMAS = {
     name: "Pitch/Speed",
     description:
       "Speed-based pitch change (varispeed). Changes tempo proportionally with pitch.",
+    defaultConfig: {
+      type: "pitchShifter",
+      enabled: false,
+      pitchFactor: 1.0,
+      dryWet: 1.0,
+      inputGain: 1.0,
+      outputGain: 1.0,
+    },
     params: [
       {
         type: "group",
@@ -352,6 +430,15 @@ export const EFFECT_SCHEMAS = {
     type: "delay",
     name: "Delay",
     description: "Echo/delay effect with feedback control",
+    defaultConfig: {
+      type: "delay",
+      enabled: false,
+      delayTime: 0.3,
+      feedback: 0.3,
+      dryWet: 1.0,
+      inputGain: 1.0,
+      outputGain: 1.0,
+    },
     params: [
       {
         type: "slider",
@@ -378,6 +465,15 @@ export const EFFECT_SCHEMAS = {
     type: "distortion",
     name: "Distortion",
     description: "Wave shaper distortion effect",
+    defaultConfig: {
+      type: "distortion",
+      enabled: false,
+      amount: 50,
+      oversample: "2x",
+      dryWet: 1.0,
+      inputGain: 1.0,
+      outputGain: 1.0,
+    },
     params: [
       {
         type: "slider",
@@ -403,6 +499,24 @@ export const EFFECT_SCHEMAS = {
     name: "Compressor",
     description:
       "Professional dynamics compressor with lookahead and auto attack/release",
+    defaultConfig: {
+      type: "compressor",
+      enabled: false,
+      threshold: -10,
+      ratio: 4,
+      attack: 2,
+      release: 140,
+      knee: 6,
+      makeup: 0,
+      mix: 1,
+      lookahead: true,
+      autoAttack: false,
+      autoRelease: false,
+      autoMakeup: false,
+      dryWet: 1.0,
+      inputGain: 1.0,
+      outputGain: 1.0,
+    },
     visualization: "compressor-curve",
     params: [
       {
@@ -517,6 +631,17 @@ export const EFFECT_SCHEMAS = {
     type: "crusher",
     name: "Crusher",
     description: "Bit crusher effect with crush rate, bit depth, and boost",
+    defaultConfig: {
+      type: "crusher",
+      enabled: false,
+      crush: 0.5,
+      bitDepth: 8,
+      boost: 0,
+      autoGain: true,
+      dryWet: 1.0,
+      inputGain: 1.0,
+      outputGain: 1.0,
+    },
     params: [
       {
         type: "slider",
@@ -558,6 +683,17 @@ export const EFFECT_SCHEMAS = {
     type: "fold",
     name: "Fold",
     description: "Wave folding effect with amount, volume, and oversampling",
+    defaultConfig: {
+      type: "fold",
+      enabled: false,
+      amount: 0,
+      volume: 0,
+      oversample: 2,
+      autoGain: true,
+      dryWet: 1.0,
+      inputGain: 1.0,
+      outputGain: 1.0,
+    },
     params: [
       {
         type: "slider",
@@ -597,6 +733,18 @@ export const EFFECT_SCHEMAS = {
     type: "stereoTool",
     name: "Stereo Tool",
     description: "Stereo manipulation with volume, width, and channel controls",
+    defaultConfig: {
+      type: "stereoTool",
+      enabled: false,
+      volume: 0,
+      stereo: 0,
+      invertL: false,
+      invertR: false,
+      swap: false,
+      dryWet: 1.0,
+      inputGain: 1.0,
+      outputGain: 1.0,
+    },
     params: [
       {
         type: "slider",
@@ -644,6 +792,39 @@ export const EFFECT_SCHEMAS = {
     type: "revamp",
     name: "7-Band EQ",
     description: "Parametric equalizer with 7 bands",
+    defaultConfig: {
+      type: "revamp",
+      enabled: false,
+      highPassEnabled: true,
+      highPassFrequency: 20,
+      highPassQ: Math.SQRT1_2,
+      highPassOrder: 1,
+      lowShelfEnabled: true,
+      lowShelfFrequency: 80,
+      lowShelfGain: 0,
+      lowBellEnabled: true,
+      lowBellFrequency: 200,
+      lowBellGain: 0,
+      lowBellQ: Math.SQRT1_2,
+      midBellEnabled: true,
+      midBellFrequency: 1000,
+      midBellGain: 0,
+      midBellQ: Math.SQRT1_2,
+      highBellEnabled: true,
+      highBellFrequency: 5000,
+      highBellGain: 0,
+      highBellQ: Math.SQRT1_2,
+      highShelfEnabled: true,
+      highShelfFrequency: 10_000,
+      highShelfGain: 0,
+      lowPassEnabled: true,
+      lowPassFrequency: 20_000,
+      lowPassQ: Math.SQRT1_2,
+      lowPassOrder: 1,
+      dryWet: 1.0,
+      inputGain: 1.0,
+      outputGain: 1.0,
+    },
     visualization: "eq-curve",
     params: [
       createPassFilterGroup("highPass", "High Pass"),
@@ -661,6 +842,19 @@ export const EFFECT_SCHEMAS = {
     name: "Tidal",
     description:
       "Rhythm shaping effect with rate, depth, slope, symmetry, and phase controls",
+    defaultConfig: {
+      type: "tidal",
+      enabled: false,
+      rate: 1.0,
+      depth: 0.0,
+      slope: 0.0,
+      symmetry: 0.0,
+      offset: 0,
+      channelOffset: 0,
+      dryWet: 1.0,
+      inputGain: 1.0,
+      outputGain: 1.0,
+    },
     params: [
       {
         type: "slider",
@@ -729,6 +923,14 @@ export const EFFECT_SCHEMAS = {
     type: "limiter",
     name: "Limiter",
     description: "Transparent brick-wall limiter for output protection",
+    defaultConfig: {
+      type: "limiter",
+      enabled: false,
+      threshold: 0,
+      dryWet: 1.0,
+      inputGain: 1.0,
+      outputGain: 1.0,
+    },
     params: [
       {
         type: "group",
@@ -747,14 +949,38 @@ export const EFFECT_SCHEMAS = {
       },
     ],
   },
-} as const satisfies Record<EffectType, EffectSchema>;
+} as const satisfies EffectDefinitionMap;
+
+export const EFFECT_SCHEMAS = EFFECT_DEFINITIONS;
+
+export function getEffectDefinition(
+  type: EffectType
+): EffectDefinition | undefined {
+  return EFFECT_DEFINITIONS[type];
+}
 
 export function getEffectSchema(type: EffectType): EffectSchema | undefined {
-  return EFFECT_SCHEMAS[type];
+  return getEffectDefinition(type);
+}
+
+export function getEffectDefaultConfig(
+  type: EffectType
+): EffectDefaultConfig | undefined {
+  return getEffectDefinition(type)?.defaultConfig;
 }
 
 export function getEffectParamDefs(type: EffectType): EffectParamDef[] {
-  return extractParamDefs(EFFECT_SCHEMAS[type].params);
+  return extractParamDefs(EFFECT_DEFINITIONS[type].params);
+}
+
+export function getEffectSliderParamDefs(type: EffectType): SliderParamDef[] {
+  return getEffectParamDefs(type).filter(
+    (param): param is SliderParamDef => param.type === "slider"
+  );
+}
+
+export function getEffectMidiParamDefs(type: EffectType): SliderParamDef[] {
+  return [...getEffectSliderParamDefs(type), ...UNIVERSAL_EFFECT_PARAM_DEFS];
 }
 
 /**
@@ -777,6 +1003,137 @@ function extractParamDefs(params: readonly ParamDef[]): EffectParamDef[] {
 
 function extractParamKeys(params: ParamDef[]): string[] {
   return extractParamDefs(params).map((param) => param.key);
+}
+
+function effectConfigRecord(
+  config: EffectConfig | Partial<EffectConfig>
+): Record<string, unknown> {
+  return config as Record<string, unknown>;
+}
+
+function convertBoolean(value: unknown): number | undefined {
+  if (typeof value === "boolean") {
+    return value ? 1 : 0;
+  }
+  if (typeof value === "number") {
+    return value === 0 ? 0 : 1;
+  }
+  return;
+}
+
+export function convertEffectParamValue(
+  param: EffectParamDef,
+  value: unknown
+): EngineEffectParamValue | undefined {
+  switch (param.type) {
+    case "checkbox":
+      return convertBoolean(value);
+    case "slider":
+      return typeof value === "number" ? value : undefined;
+    case "select":
+      if (param.valueType === "number") {
+        return typeof value === "number" ? value : undefined;
+      }
+      return typeof value === "string" ? value : undefined;
+    default:
+      return;
+  }
+}
+
+function applyUniversalParams(
+  result: EngineEffectConfig,
+  config: Record<string, unknown>
+): void {
+  if (config.enabled !== undefined) {
+    const enabled = convertBoolean(config.enabled);
+    if (enabled !== undefined) {
+      result.enabled = enabled;
+    }
+  }
+
+  if (typeof config.inputGain === "number") {
+    result.inputGain = config.inputGain;
+  }
+
+  if (typeof config.outputGain === "number") {
+    result.outputGain = config.outputGain;
+  }
+
+  if (typeof config.dryWet === "number") {
+    result.wet = config.dryWet;
+    result.dry = 1 - config.dryWet;
+    result.dryWet = config.dryWet;
+  }
+}
+
+function applyEffectParams(
+  result: EngineEffectConfig,
+  type: EffectType,
+  config: Record<string, unknown>
+): void {
+  for (const param of getEffectParamDefs(type)) {
+    if (config[param.key] === undefined) {
+      continue;
+    }
+
+    const value = convertEffectParamValue(param, config[param.key]);
+    if (value !== undefined) {
+      result[param.key] = value;
+    }
+  }
+}
+
+function getKnownEffectParamKeys(): Set<string> {
+  const keys = new Set<string>();
+
+  for (const definition of Object.values(EFFECT_DEFINITIONS)) {
+    for (const param of extractParamDefs(definition.params)) {
+      keys.add(param.key);
+    }
+  }
+
+  return keys;
+}
+
+export function convertEffectConfigToEngine(
+  config: EffectConfig
+): EngineEffectConfig {
+  const result: EngineEffectConfig = {};
+  const record = effectConfigRecord(config);
+
+  applyUniversalParams(result, record);
+  applyEffectParams(result, config.type, record);
+
+  return result;
+}
+
+export function convertPartialEffectConfigToEngine(
+  config: Partial<EffectConfig>
+): EngineEffectConfig {
+  const result: EngineEffectConfig = {};
+  const record = effectConfigRecord(config);
+
+  applyUniversalParams(result, record);
+
+  if (config.type) {
+    applyEffectParams(result, config.type, record);
+    return result;
+  }
+
+  const knownParamKeys = getKnownEffectParamKeys();
+  for (const [key, value] of Object.entries(record)) {
+    if (UNIVERSAL_EFFECT_PARAM_KEYS.has(key) || !knownParamKeys.has(key)) {
+      continue;
+    }
+
+    if (typeof value === "number" || typeof value === "string") {
+      result[key] = value;
+    } else if (typeof value === "boolean") {
+      result[key] = value ? 1 : 0;
+    }
+  }
+
+  return result;
 }
 
 /**

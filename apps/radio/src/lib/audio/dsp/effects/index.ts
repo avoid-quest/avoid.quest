@@ -31,6 +31,27 @@ export {
 } from "./registry.js";
 export { RevampEffect } from "./revamp.js";
 export { DattorroReverb } from "./reverb.js";
+export {
+  convertEffectConfigToEngine,
+  convertEffectParamValue,
+  convertPartialEffectConfigToEngine,
+  EFFECT_DEFINITIONS,
+  EFFECT_SCHEMAS,
+  type EffectDefinition,
+  type EffectParamDef,
+  type EffectSchema,
+  type EngineEffectConfig,
+  type EngineEffectParamValue,
+  getEffectDefaultConfig,
+  getEffectDefinition,
+  getEffectMidiParamDefs,
+  getEffectParamDefs,
+  getEffectSchema,
+  getEffectSliderParamDefs,
+  type ParamDef,
+  UNIVERSAL_EFFECT_PARAM_DEFS,
+  type VisualizationType,
+} from "./schema.js";
 export { StereoToolEffect } from "./stereo-tool.js";
 export { TidalEffect } from "./tidal.js";
 // Types

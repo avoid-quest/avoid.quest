@@ -1,11 +1,9 @@
-import { toast } from "sonner";
 import type {
   BandcampMetadata,
   PlatformMetadata,
   SoundCloudMetadata,
   YouTubeMetadata,
 } from "@/lib/platform-types";
-import { youtubeResolveStream } from "@/utils/youtube.functions";
 
 export function isStreamingMetadata(
   metadata?: PlatformMetadata
@@ -40,27 +38,4 @@ export function calculateHasTracklist(metadata?: PlatformMetadata): boolean {
     return metadata.itemType === "playlist";
   }
   return false;
-}
-
-export async function resolveYouTubePlaylistTrack(
-  videoId: string,
-  tracks?: { streamUrl: string; videoId?: string }[]
-): Promise<string | null> {
-  const result = await youtubeResolveStream({ data: { videoId } });
-  if (!result.ok) {
-    toast.error(result.error.message);
-    return null;
-  }
-  const { stream } = result.data;
-  if (!stream) {
-    toast.error("Failed to resolve YouTube stream");
-    return null;
-  }
-  if (tracks) {
-    const track = tracks.find((t) => "videoId" in t && t.videoId === videoId);
-    if (track) {
-      track.streamUrl = stream.streamUrl;
-    }
-  }
-  return stream.streamUrl;
 }

@@ -38,6 +38,11 @@ import {
   type DeckLoadDependencies,
 } from "./dj-actions-deck-load";
 import type { DeckId } from "./dj-actions-decks";
+import {
+  getDeckLibrarySourceIntent,
+  SEARCH_ALL_PLATFORM_ID,
+  STATIC_AUDIO_PLATFORM_ID,
+} from "./dj-library-sources";
 import type { PlaybackActionError } from "./playback-action-errors";
 
 async function resetPlaybackSessions() {
@@ -274,6 +279,40 @@ afterEach(async () => {
 });
 
 describe("DJ deck channel lifecycle", () => {
+  test("maps browser placeholder items into pending platform source intents", () => {
+    expect(
+      getDeckLibrarySourceIntent({
+        id: SEARCH_ALL_PLATFORM_ID,
+        name: "Search All",
+        streamUrl: "",
+      })
+    ).toEqual({ type: "pending-platform", platform: "external" });
+    expect(
+      getDeckLibrarySourceIntent({
+        id: STATIC_AUDIO_PLATFORM_ID,
+        name: "Audio File",
+        streamUrl: "",
+      })
+    ).toEqual({ type: "pending-platform", platform: "static-audio" });
+    expect(
+      getDeckLibrarySourceIntent({
+        id: "station-1",
+        name: "Station 1",
+        streamUrl: "https://radio.example/one.mp3",
+      })
+    ).toEqual({
+      type: "load",
+      source: {
+        type: "radio",
+        radio: {
+          id: "station-1",
+          name: "Station 1",
+          streamUrl: "https://radio.example/one.mp3",
+        },
+      },
+    });
+  });
+
   test("loads, replaces, and ejects a deck through channel lifecycle cleanup", async () => {
     await playbackSessionsCollection.stateWhenReady();
     insertDjSession();
@@ -738,6 +777,39 @@ describe("DJ deck channel lifecycle", () => {
       URL.revokeObjectURL = originalRevokeObjectUrl;
       restoreAudio();
     }
+  });
+
+  test("loads static audio URLs through source intent dispatch", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertDjSession();
+
+    const manager = AudioManager.getInstance();
+    manager.createSound = mock(
+      (_radio, soundId?: string) => soundId ?? "sound"
+    );
+    manager.cleanupSound = mock((_soundId: string) => undefined);
+    manager.subscribe = mock((_soundId, _callback) => mock(() => undefined));
+    manager.subscribeMeter = mock((_soundId, _callback) =>
+      mock(() => undefined)
+    );
+    const dependencies = createDependencies();
+    const workflow = createDjDeckLoadWorkflow(dependencies);
+
+    await workflow.loadDeckSource("deck-a", {
+      type: "static-audio-url",
+      url: "https://radio.example/set.mp3",
+    });
+
+    expect(getPlaybackChannel("dj", "deck-a")?.radio).toEqual(
+      expect.objectContaining({
+        name: "set",
+        streamUrl: "https://radio.example/set.mp3",
+        platformMetadata: expect.objectContaining({
+          platform: "static-audio",
+          streamUrl: "https://radio.example/set.mp3",
+        }),
+      })
+    );
   });
 
   test("clears persisted deck state and runtime state together", async () => {
@@ -1888,6 +1960,327 @@ describe("DJ deck channel lifecycle", () => {
         streamUrl: "https://youtube.example/resolved-next.mp3",
       }),
       true
+    );
+  });
+
+  test("resolves initial YouTube source URLs through source intent dispatch", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertDjSession();
+
+    const youtubeRadio: Radio = {
+      id: "youtube-video-1",
+      name: "YouTube Video",
+      streamUrl: "yt:video-1",
+      platformMetadata: {
+        platform: "youtube",
+        itemType: "video",
+        url: "https://youtube.example/watch?v=video-1",
+        videoId: "video-1",
+        duration: 120,
+      },
+    };
+    const manager = AudioManager.getInstance();
+    manager.createSound = mock(
+      (_radio, soundId?: string) => soundId ?? "sound"
+    );
+    manager.cleanupSound = mock((_soundId: string) => undefined);
+    manager.subscribe = mock((_soundId, _callback) => mock(() => undefined));
+    manager.subscribeMeter = mock((_soundId, _callback) =>
+      mock(() => undefined)
+    );
+    const dependencies = {
+      ...createDependencies(),
+      resolvePlatformStreamUrl: mock(() =>
+        Promise.resolve("https://youtube.example/resolved-video.mp3")
+      ),
+    };
+    const workflow = createDjDeckLoadWorkflow(dependencies);
+
+    await workflow.loadDeckSource("deck-a", {
+      type: "track",
+      radio: youtubeRadio,
+      autoPlay: false,
+    });
+
+    expect(dependencies.resolvePlatformStreamUrl).toHaveBeenCalledWith({
+      platform: "youtube",
+      reason: "initial-load",
+      videoId: "video-1",
+      radio: youtubeRadio,
+    });
+    expect(getPlaybackChannel("dj", "deck-a")?.radio).toEqual(
+      expect.objectContaining({
+        id: "youtube-video-1",
+        streamUrl: "https://youtube.example/resolved-video.mp3",
+      })
+    );
+  });
+
+  test("reports failed initial YouTube source resolution without throwing", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertDjSession();
+
+    const rawError = new Error("resolver unavailable");
+    const manager = AudioManager.getInstance();
+    manager.createSound = mock(
+      (_radio, soundId?: string) => soundId ?? "sound"
+    );
+    manager.cleanupSound = mock((_soundId: string) => undefined);
+    manager.subscribe = mock((_soundId, _callback) => mock(() => undefined));
+    manager.subscribeMeter = mock((_soundId, _callback) =>
+      mock(() => undefined)
+    );
+    const dependencies = {
+      ...createDependencies(),
+      resolvePlatformStreamUrl: mock(() => Promise.reject(rawError)),
+    };
+    const workflow = createDjDeckLoadWorkflow(dependencies);
+
+    await workflow.loadDeckSource("deck-a", {
+      type: "track",
+      radio: {
+        id: "youtube-video-1",
+        name: "YouTube Video",
+        streamUrl: "yt:video-1",
+        platformMetadata: {
+          platform: "youtube",
+          itemType: "video",
+          url: "https://youtube.example/watch?v=video-1",
+          videoId: "video-1",
+          duration: 120,
+        },
+      },
+      autoPlay: false,
+    });
+
+    expect(dependencies.reportDjError).toHaveBeenCalledWith(
+      "Failed to resolve YouTube stream",
+      "DJ_YOUTUBE_RESOLVE_FAILED",
+      rawError,
+      expect.objectContaining({ id: "youtube-video-1" }),
+      "deck-a"
+    );
+    expect(getPlaybackChannel("dj", "deck-a")?.radio).toBeNull();
+  });
+
+  test("does not let stale initial YouTube resolution overwrite a newer source load", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertDjSession();
+
+    const manager = AudioManager.getInstance();
+    manager.createSound = mock(
+      (_radio, soundId?: string) => soundId ?? "sound"
+    );
+    manager.cleanupSound = mock((_soundId: string) => undefined);
+    manager.subscribe = mock((_soundId, _callback) => mock(() => undefined));
+    manager.subscribeMeter = mock((_soundId, _callback) =>
+      mock(() => undefined)
+    );
+    const pendingResolve = {
+      resolve: null as ((value: string) => void) | null,
+    };
+    const dependencies = {
+      ...createDependencies(),
+      resolvePlatformStreamUrl: mock(
+        () =>
+          new Promise<string>((resolve) => {
+            pendingResolve.resolve = resolve;
+          })
+      ),
+    };
+    const workflow = createDjDeckLoadWorkflow(dependencies);
+
+    const staleLoad = workflow.loadDeckSource("deck-a", {
+      type: "track",
+      radio: {
+        id: "youtube-video-1",
+        name: "YouTube Video",
+        streamUrl: "yt:video-1",
+        platformMetadata: {
+          platform: "youtube",
+          itemType: "video",
+          url: "https://youtube.example/watch?v=video-1",
+          videoId: "video-1",
+          duration: 120,
+        },
+      },
+      autoPlay: false,
+    });
+    await Promise.resolve();
+
+    await workflow.loadDeckSource("deck-a", {
+      type: "radio",
+      radio: {
+        id: "station-2",
+        name: "Station 2",
+        streamUrl: "https://radio.example/two.mp3",
+      },
+    });
+
+    if (!pendingResolve.resolve) {
+      throw new Error("Expected YouTube resolver to start");
+    }
+    pendingResolve.resolve("https://youtube.example/resolved-video.mp3");
+    await staleLoad;
+
+    expect(getPlaybackChannel("dj", "deck-a")?.radio).toEqual(
+      expect.objectContaining({
+        id: "station-2",
+        streamUrl: "https://radio.example/two.mp3",
+      })
+    );
+  });
+
+  test("does not let stale track URL resolution overwrite a newer source load", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertDjSession();
+
+    const manager = AudioManager.getInstance();
+    manager.createSound = mock(
+      (_radio, soundId?: string) => soundId ?? "sound"
+    );
+    manager.cleanupSound = mock((_soundId: string) => undefined);
+    manager.subscribe = mock((_soundId, _callback) => mock(() => undefined));
+    manager.subscribeMeter = mock((_soundId, _callback) =>
+      mock(() => undefined)
+    );
+    const pendingResolve = {
+      resolve: null as ((value: string) => void) | null,
+    };
+    const dependencies = {
+      ...createDependencies(),
+      resolvePlatformStreamUrl: mock(
+        () =>
+          new Promise<string>((resolve) => {
+            pendingResolve.resolve = resolve;
+          })
+      ),
+    };
+    const workflow = createDjDeckLoadWorkflow(dependencies);
+    const youtubePlaylist: Radio = {
+      id: "youtube-playlist-1",
+      name: "YouTube Playlist",
+      streamUrl: "https://youtube.example/current.mp3",
+      platformMetadata: {
+        platform: "youtube",
+        itemType: "playlist",
+        url: "https://youtube.example/playlist",
+        playlistId: "playlist-1",
+        name: "YouTube Playlist",
+        tracks: [
+          {
+            name: "Next Video",
+            streamUrl: "yt:next-video",
+            videoId: "next-video",
+          },
+        ],
+      },
+    };
+
+    const staleLoad = workflow.loadDeckSource("deck-a", {
+      type: "track-url",
+      radio: youtubePlaylist,
+      streamUrl: "yt:next-video",
+      autoPlay: true,
+    });
+    await Promise.resolve();
+
+    await workflow.loadDeckSource("deck-a", {
+      type: "radio",
+      radio: {
+        id: "station-2",
+        name: "Station 2",
+        streamUrl: "https://radio.example/two.mp3",
+      },
+    });
+
+    if (!pendingResolve.resolve) {
+      throw new Error("Expected YouTube resolver to start");
+    }
+    pendingResolve.resolve("https://youtube.example/resolved-next.mp3");
+    await staleLoad;
+
+    expect(getPlaybackChannel("dj", "deck-a")?.radio).toEqual(
+      expect.objectContaining({
+        id: "station-2",
+        streamUrl: "https://radio.example/two.mp3",
+      })
+    );
+  });
+
+  test("does not report stale initial YouTube resolution failures", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertDjSession();
+
+    const rawError = new Error("resolver unavailable");
+    const manager = AudioManager.getInstance();
+    manager.createSound = mock(
+      (_radio, soundId?: string) => soundId ?? "sound"
+    );
+    manager.cleanupSound = mock((_soundId: string) => undefined);
+    manager.subscribe = mock((_soundId, _callback) => mock(() => undefined));
+    manager.subscribeMeter = mock((_soundId, _callback) =>
+      mock(() => undefined)
+    );
+    const pendingReject = {
+      reject: null as ((error: Error) => void) | null,
+    };
+    const dependencies = {
+      ...createDependencies(),
+      resolvePlatformStreamUrl: mock(
+        () =>
+          new Promise<string>((_resolve, reject) => {
+            pendingReject.reject = reject;
+          })
+      ),
+    };
+    const workflow = createDjDeckLoadWorkflow(dependencies);
+
+    const staleLoad = workflow.loadDeckSource("deck-a", {
+      type: "track",
+      radio: {
+        id: "youtube-video-1",
+        name: "YouTube Video",
+        streamUrl: "yt:video-1",
+        platformMetadata: {
+          platform: "youtube",
+          itemType: "video",
+          url: "https://youtube.example/watch?v=video-1",
+          videoId: "video-1",
+          duration: 120,
+        },
+      },
+      autoPlay: false,
+    });
+    await Promise.resolve();
+
+    await workflow.loadDeckSource("deck-a", {
+      type: "radio",
+      radio: {
+        id: "station-2",
+        name: "Station 2",
+        streamUrl: "https://radio.example/two.mp3",
+      },
+    });
+
+    if (!pendingReject.reject) {
+      throw new Error("Expected YouTube resolver to start");
+    }
+    pendingReject.reject(rawError);
+    await staleLoad;
+
+    expect(dependencies.reportDjError).not.toHaveBeenCalledWith(
+      "Failed to resolve YouTube stream",
+      "DJ_YOUTUBE_RESOLVE_FAILED",
+      rawError,
+      expect.objectContaining({ id: "youtube-video-1" }),
+      "deck-a"
+    );
+    expect(getPlaybackChannel("dj", "deck-a")?.radio).toEqual(
+      expect.objectContaining({
+        id: "station-2",
+        streamUrl: "https://radio.example/two.mp3",
+      })
     );
   });
 

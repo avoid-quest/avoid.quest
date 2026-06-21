@@ -2,14 +2,10 @@ import { useIsMobile } from "@avoid.quest/ui/hooks/use-mobile";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import { useDroppable } from "@dnd-kit/core";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { toast } from "sonner";
 import type { Radio } from "@/lib/audio";
 import { isAudioFile } from "@/lib/audio/file-metadata";
-import { validatePlaybackStreamUrl } from "@/lib/audio/playback/url-validation";
-import { getFilenameFromUrl } from "@/lib/audio/remote-url";
 import { getDjDeckActions } from "@/lib/dj-actions";
 import { isPlatformRadio } from "@/lib/external-url";
-import { createPlatformRadio } from "@/lib/external-url/utils";
 import { useDeckAState, useDeckBState } from "@/lib/hooks/use-deck-state";
 import {
   setPendingPlatformItem,
@@ -20,12 +16,7 @@ import { usePeakLevel } from "@/lib/hooks/use-peak-level";
 import { usePlatformMetadata } from "@/lib/hooks/use-platform-metadata";
 import { useThrottledParam } from "@/lib/hooks/use-throttled-param";
 import { useTrackProgress } from "@/lib/hooks/use-track-progress";
-import type { StaticAudioMetadata } from "@/lib/platform-types";
-import {
-  isDeviceInputMetadata,
-  isFileMetadata,
-  isYouTubeMetadata,
-} from "@/lib/platform-types";
+import { isDeviceInputMetadata, isFileMetadata } from "@/lib/platform-types";
 import {
   setDeckAPeakLevel,
   setDeckBPeakLevel,
@@ -42,7 +33,6 @@ import { LoadedDeckContent } from "./deck-loaded-content";
 import {
   calculateHasTracklist,
   isStreamingMetadata,
-  resolveYouTubePlaylistTrack,
 } from "./deck-panel-helpers";
 
 // ============================================================================
@@ -127,7 +117,6 @@ function DeckPanelInner({
     play,
     pause,
     setVolume,
-    loadTrack: loadDeckTrack,
     soundId,
     reset,
     pan,
@@ -144,6 +133,7 @@ function DeckPanelInner({
     setRepeat,
     setAutoplay,
     seek,
+    loadSource,
   } = deckState;
   const deckActions = getDjDeckActions(deckId);
 
@@ -175,8 +165,6 @@ function DeckPanelInner({
     removeEffect,
     reorderEffects,
     setChannelSelection,
-    setDeviceSource,
-    setFileSource,
   } = deckActions;
 
   const pendingPlatformItem = usePendingPlatformItem();
@@ -211,33 +199,22 @@ function DeckPanelInner({
 
   const handleFileDrop = useCallback(
     (file: File) => {
-      setFileSource(file);
+      loadSource({ type: "file", file }).catch((error) => {
+        console.error("[dj] Failed to load file source:", error);
+      });
       setPendingPlatformItem(null);
     },
-    [setFileSource]
+    [loadSource]
   );
 
   const handleLoadRemoteUrl = useCallback(
     (url: string) => {
-      const displayName = getFilenameFromUrl(url);
-      const meta: StaticAudioMetadata = {
-        platform: "static-audio",
-        itemType: "track",
-        url,
-        fileName: displayName,
-        displayName,
-        duration: 0,
-        fileSize: 0,
-        mimeType: "audio/mpeg",
-        streamUrl: url,
-        isLocal: false,
-        requiresProxy: false,
-      };
-      const r = createPlatformRadio(url, meta);
-      loadDeckTrack(deckSide, r, false);
+      loadSource({ type: "static-audio-url", url }).catch((error) => {
+        console.error("[dj] Failed to load static audio URL:", error);
+      });
       setPendingPlatformItem(null);
     },
-    [deckSide, loadDeckTrack]
+    [loadSource]
   );
 
   // Native drag handlers
@@ -284,7 +261,11 @@ function DeckPanelInner({
   );
 
   const handleClear = () => {
-    loadDeckTrack(deckSide, null, false);
+    loadSource({ type: "track", radio: null, autoPlay: false }).catch(
+      (error) => {
+        console.error("[dj] Failed to clear deck source:", error);
+      }
+    );
     if (pendingPlatformItem?.deckId === deckId) {
       setPendingPlatformItem(null);
     }
@@ -294,47 +275,11 @@ function DeckPanelInner({
     if (!radio) {
       return;
     }
-    let resolvedUrl: string = streamUrl;
-    if (streamUrl.startsWith("yt:")) {
-      const videoId = streamUrl.slice(3);
-      const ytTracks = isYouTubeMetadata(metadata)
-        ? metadata.tracks
-        : undefined;
-      const resolved = await resolveYouTubePlaylistTrack(videoId, ytTracks);
-      if (!resolved) {
-        return;
-      }
-      resolvedUrl = resolved;
-    }
-    if (resolvedUrl) {
-      const validation = validatePlaybackStreamUrl(resolvedUrl);
-      if (!validation.ok) {
-        toast.error("Invalid stream URL");
-        return;
-      }
-
-      await loadDeckTrack(
-        deckSide,
-        { ...radio, streamUrl: validation.normalizedUrl },
-        true
-      );
-    }
+    await loadSource({ type: "track-url", radio, streamUrl, autoPlay: true });
   };
 
   const handleLoadPlatformItem = async (newRadio: Radio) => {
-    let resolvedRadio = newRadio;
-    if (newRadio.streamUrl.startsWith("yt:")) {
-      const videoId = newRadio.streamUrl.slice(3);
-      const ytTracks = isYouTubeMetadata(newRadio.platformMetadata)
-        ? newRadio.platformMetadata.tracks
-        : undefined;
-      const resolvedUrl = await resolveYouTubePlaylistTrack(videoId, ytTracks);
-      if (!resolvedUrl) {
-        return;
-      }
-      resolvedRadio = { ...newRadio, streamUrl: resolvedUrl };
-    }
-    loadDeckTrack(deckSide, resolvedRadio, false);
+    await loadSource({ type: "track", radio: newRadio, autoPlay: false });
     setPendingPlatformItem(null);
   };
 
@@ -342,7 +287,7 @@ function DeckPanelInner({
     deviceId: string,
     deviceLabel: string
   ) => {
-    await setDeviceSource(deviceId, deviceLabel);
+    await loadSource({ type: "device-input", deviceId, deviceLabel });
     setPendingPlatformItem(null);
     setIsChangingDevice(false);
   };

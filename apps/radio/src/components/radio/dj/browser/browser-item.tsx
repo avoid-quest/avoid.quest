@@ -7,12 +7,7 @@ import {
 } from "lucide-react";
 import type { Radio } from "@/lib/audio";
 import { getDjDeckActions } from "@/lib/dj-actions";
-import { setPendingPlatformItem } from "@/lib/hooks/use-dj-state";
-import {
-  getPlatformFromItem,
-  isPlatformItem,
-  RadioItemContent,
-} from "../dj-radio-list";
+import { isPlatformItem, RadioItemContent } from "../dj-radio-list";
 
 export function DraggableBrowserItem({ radio }: { radio: Radio }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } =
@@ -54,15 +49,11 @@ export function DraggableBrowserItem({ radio }: { radio: Radio }) {
 
 export function MobileBrowserItem({ radio }: { radio: Radio }) {
   const handleLoad = (deckId: "deck-a" | "deck-b") => {
-    const isPlatform = isPlatformItem(radio);
-    const platform = getPlatformFromItem(radio);
-    if (isPlatform) {
-      if (platform) {
-        setPendingPlatformItem({ deckId, platform });
-      }
-    } else {
-      getDjDeckActions(deckId).setRadio(radio);
-    }
+    getDjDeckActions(deckId)
+      .loadLibrarySource(radio)
+      .catch((error) => {
+        console.error("[dj] Failed to load browser source:", error);
+      });
   };
 
   return (

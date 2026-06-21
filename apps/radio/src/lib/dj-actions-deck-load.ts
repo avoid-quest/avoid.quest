@@ -8,9 +8,9 @@ import type {
 } from "@/lib/audio";
 import {
   extractFileMetadata,
-  type FileAudioMetadata,
   revokeFileObjectUrl,
 } from "@/lib/audio/file-metadata";
+import { validatePlaybackStreamUrl } from "@/lib/audio/playback/url-validation";
 import {
   type DeckId,
   type DeckSide,
@@ -18,16 +18,24 @@ import {
   getDeckRadio,
 } from "@/lib/dj-actions-decks.js";
 import { createDjDeckContinuationWorkflow } from "@/lib/dj-deck-continuation-workflow.js";
+import {
+  createDeviceInputRadio,
+  createLocalFileRadio,
+  getLocalFileObjectUrl,
+  releaseReplacedLocalFileUrl,
+} from "@/lib/dj-deck-source-radios.js";
+import { resolveInitialTrackStreamUrl } from "@/lib/dj-initial-stream-resolution.js";
+import {
+  createStaticAudioRadio,
+  type DeckSourceLoadIntent,
+  type DeckSourceLoadResult,
+} from "@/lib/dj-library-sources.js";
 import type { PlatformStreamResolutionInput } from "@/lib/dj-platform-stream-port.js";
 import {
   type DeckRecord,
   resetDeck as resetDeckDb,
 } from "@/lib/hooks/use-dj-state";
-import {
-  type DeviceInputMetadata,
-  isDeviceInputMetadata,
-  isFileMetadata,
-} from "@/lib/platform-types";
+import { isDeviceInputMetadata } from "@/lib/platform-types";
 import type { PlaybackActionChannelFacade } from "./playback-action-context.js";
 import {
   createPlaybackActionError,
@@ -119,6 +127,10 @@ type DjDeckLoadWorkflow = {
   ) => Promise<void>;
   loadDeckFile: (deckId: DeckId, file: File) => Promise<void>;
   loadDeckRadio: (deckId: DeckId, radio: Radio | null) => Promise<void>;
+  loadDeckSource: (
+    deckId: DeckId,
+    source: DeckSourceLoadIntent
+  ) => Promise<DeckSourceLoadResult>;
   pauseDeck: (deckId: DeckId) => void;
   playDeck: (deckId: DeckId) => Promise<void>;
   removeDeckEffect: (deckId: DeckId, effectId: string) => void;
@@ -147,9 +159,21 @@ type DjDeckLoadWorkflow = {
 
 const activeDeckLoadTokens = new Map<DeckId, symbol>();
 const activeDeckPlayTokens = new Map<DeckId, symbol>();
+const activeDeckSourceLoadTokens = new Map<DeckId, symbol>();
+
+function beginDeckSourceLoad(deckId: DeckId): symbol {
+  const token = Symbol(deckId);
+  activeDeckSourceLoadTokens.set(deckId, token);
+  return token;
+}
+
+function isCurrentDeckSourceLoad(deckId: DeckId, token: symbol): boolean {
+  return activeDeckSourceLoadTokens.get(deckId) === token;
+}
 
 function beginDeckLoad(deckId: DeckId): symbol {
   const token = Symbol(deckId);
+  activeDeckSourceLoadTokens.delete(deckId);
   activeDeckLoadTokens.set(deckId, token);
   activeDeckPlayTokens.delete(deckId);
   return token;
@@ -213,77 +237,6 @@ function rollbackFailedDeckLoad(
       draft.radio = previousRadio;
     });
   }
-  return true;
-}
-
-function createDeviceInputRadio(
-  side: DeckSide,
-  deviceId: string,
-  deviceLabel: string
-): Radio {
-  const radioId = `device-input-${side}`;
-  const platformMetadata: DeviceInputMetadata = {
-    platform: "device-input",
-    itemType: "track",
-    url: "",
-    deviceId,
-    deviceLabel,
-    channelSelection: { left: 0, right: 1 },
-    channelCount: 2,
-  };
-
-  return {
-    id: radioId,
-    name: deviceLabel,
-    streamUrl: "",
-    description: "Device input (mic/line-in)",
-    enabled: true,
-    platformMetadata,
-  };
-}
-
-function createLocalFileRadio(
-  side: DeckSide,
-  metadata: FileAudioMetadata
-): Radio {
-  return {
-    id: `local-file-${side}-${Date.now()}`,
-    name: metadata.displayName,
-    streamUrl: metadata.objectUrl,
-    description: "Local File",
-    enabled: true,
-    platformMetadata: {
-      platform: "local-file",
-      itemType: "track",
-      url: "",
-      fileName: metadata.fileName,
-      displayName: metadata.displayName,
-      duration: metadata.duration,
-      fileSize: metadata.fileSize,
-      mimeType: metadata.mimeType,
-      objectUrl: metadata.objectUrl,
-    },
-  };
-}
-
-function getLocalFileObjectUrl(radio: Radio | null): string | null {
-  const metadata = radio?.platformMetadata;
-  if (!isFileMetadata(metadata)) {
-    return null;
-  }
-  return metadata.objectUrl;
-}
-
-function releaseReplacedLocalFileUrl(
-  previousRadio: Radio | null,
-  nextRadio: Radio | null
-): boolean {
-  const previousObjectUrl = getLocalFileObjectUrl(previousRadio);
-  const nextObjectUrl = getLocalFileObjectUrl(nextRadio);
-  if (!previousObjectUrl || previousObjectUrl === nextObjectUrl) {
-    return false;
-  }
-  revokeFileObjectUrl(previousObjectUrl);
   return true;
 }
 
@@ -618,6 +571,77 @@ async function loadDeckRadio(
   }
 }
 
+async function loadDeckTrackRadio(
+  deckId: DeckId,
+  radio: Radio | null,
+  autoPlay: boolean,
+  dependencies: DeckLoadDependencies,
+  sourceStreamUrl?: string
+): Promise<void> {
+  const config = deckConfig[deckId];
+
+  if (!radio) {
+    await loadDeckRadio(deckId, null, dependencies);
+    return;
+  }
+
+  const sourceLoadToken = beginDeckSourceLoad(deckId);
+  const isCurrentSourceLoad = () =>
+    isCurrentDeckSourceLoad(deckId, sourceLoadToken);
+  const resolvedStreamUrl = await resolveInitialTrackStreamUrl(
+    deckId,
+    radio,
+    sourceStreamUrl ?? radio.streamUrl,
+    dependencies,
+    isCurrentSourceLoad
+  );
+  if (!(resolvedStreamUrl && isCurrentSourceLoad())) {
+    return;
+  }
+
+  const streamValidation = validatePlaybackStreamUrl(resolvedStreamUrl);
+  if (!streamValidation.ok) {
+    dependencies.reportDjError(
+      "Invalid stream URL",
+      "DJ_INVALID_STREAM_URL",
+      undefined,
+      radio,
+      deckId
+    );
+    return;
+  }
+
+  const normalizedRadio =
+    streamValidation.normalizedUrl === radio.streamUrl
+      ? radio
+      : { ...radio, streamUrl: streamValidation.normalizedUrl };
+
+  const runtime = config.getRuntime();
+  if (runtime.isLoading) {
+    return;
+  }
+
+  if (runtime.isPlaying) {
+    pauseDeck(deckId, dependencies);
+  }
+
+  await loadDeckRadio(deckId, normalizedRadio, dependencies);
+
+  if (autoPlay) {
+    await playDeck(deckId, dependencies);
+  }
+}
+
+async function loadDeckTrackUrl(
+  deckId: DeckId,
+  radio: Radio,
+  streamUrl: string,
+  autoPlay: boolean,
+  dependencies: DeckLoadDependencies
+): Promise<void> {
+  await loadDeckTrackRadio(deckId, radio, autoPlay, dependencies, streamUrl);
+}
+
 async function playDeck(
   deckId: DeckId,
   dependencies: DeckLoadDependencies
@@ -727,6 +751,58 @@ async function loadDeckFile(
   }
 }
 
+async function loadDeckSource(
+  deckId: DeckId,
+  source: DeckSourceLoadIntent,
+  dependencies: DeckLoadDependencies
+): Promise<DeckSourceLoadResult> {
+  switch (source.type) {
+    case "device-input":
+      await loadDeckDeviceInput(
+        deckId,
+        source.deviceId,
+        source.deviceLabel,
+        dependencies
+      );
+      return { type: "loaded" };
+    case "file":
+      await loadDeckFile(deckId, source.file, dependencies);
+      return { type: "loaded" };
+    case "radio":
+      await loadDeckRadio(deckId, source.radio, dependencies);
+      return { type: "loaded" };
+    case "static-audio-url":
+      await loadDeckTrackRadio(
+        deckId,
+        createStaticAudioRadio(source.url),
+        false,
+        dependencies
+      );
+      return { type: "loaded" };
+    case "track":
+      await loadDeckTrackRadio(
+        deckId,
+        source.radio,
+        source.autoPlay ?? false,
+        dependencies
+      );
+      return { type: "loaded" };
+    case "track-url":
+      await loadDeckTrackUrl(
+        deckId,
+        source.radio,
+        source.streamUrl,
+        source.autoPlay ?? false,
+        dependencies
+      );
+      return { type: "loaded" };
+    default: {
+      const exhaustiveSource: never = source;
+      return exhaustiveSource;
+    }
+  }
+}
+
 async function resetDeck(
   deckId: DeckId,
   dependencies: DeckLoadDependencies
@@ -825,6 +901,8 @@ export function createDjDeckLoadWorkflow(
     loadDeckFile: (deckId, file) => loadDeckFile(deckId, file, dependencies),
     loadDeckRadio: (deckId, radio) =>
       loadDeckRadio(deckId, radio, dependencies),
+    loadDeckSource: (deckId, source) =>
+      loadDeckSource(deckId, source, dependencies),
     pauseDeck: (deckId) => pauseDeck(deckId, dependencies),
     playDeck: (deckId) => playDeck(deckId, dependencies),
     removeDeckEffect: dependencies.removeDeckEffect,
@@ -855,4 +933,8 @@ export async function setDeckRadioSource(
   await loadDeckRadio(deckId, radio, dependencies);
 }
 
+export type {
+  DeckSourceLoadIntent,
+  DeckSourceLoadResult,
+} from "@/lib/dj-library-sources.js";
 export type { DeckLoadDependencies, DjDeckLoadWorkflow };

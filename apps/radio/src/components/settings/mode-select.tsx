@@ -6,12 +6,9 @@ import { cn } from "@avoid.quest/ui/lib/utils";
 import { LayersIcon, ListMusicIcon, SwordsIcon } from "lucide-react";
 import { toast } from "sonner";
 import { useSettings } from "@/lib/hooks/use-settings";
-import {
-  isPlaybackSessionId,
-  modeManager,
-  useModeTransitionSnapshot,
-} from "@/lib/mode-lifecycle-manager";
+import { modeLifecycleRequests } from "@/lib/mode-lifecycle-requests";
 import { playerModes } from "@/lib/types";
+import { useModeTransitionSnapshot } from "@/lib/use-mode-transition-snapshot";
 
 const modeIcons = {
   multiple: LayersIcon,
@@ -32,11 +29,7 @@ export function ModeSelect({ className }: { className?: string }) {
     }
 
     try {
-      if (!isPlaybackSessionId(value)) {
-        return;
-      }
-
-      await modeManager.switchTo(value);
+      await modeLifecycleRequests.requestMode(value);
     } catch {
       toast.error("Failed to update mode");
     }

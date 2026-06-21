@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useEnabledRadios } from "@/lib/hooks/use-radios";
 import { useSettings } from "@/lib/hooks/use-settings";
-import { synchronizePlaybackMode } from "@/lib/mode-lifecycle-manager";
+import { modeLifecycleRequests } from "@/lib/mode-lifecycle-requests";
 import { DjPlayer } from "./dj/dj-player";
 import { MultipleRadios } from "./multiple";
 import { SingleRadio } from "./single";
@@ -17,7 +17,7 @@ export function Radios() {
     if (!mode) {
       return;
     }
-    synchronizePlaybackMode(mode).catch((error) => {
+    modeLifecycleRequests.synchronizeMode(mode).catch((error) => {
       console.error("[radio] Failed to synchronize playback mode:", error);
     });
   }, [mode]);

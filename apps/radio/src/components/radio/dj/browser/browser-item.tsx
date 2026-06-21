@@ -6,7 +6,7 @@ import {
   GripVerticalIcon,
 } from "lucide-react";
 import type { Radio } from "@/lib/audio";
-import { setDeckARadio, setDeckBRadio } from "@/lib/dj-actions";
+import { getDjDeckActions } from "@/lib/dj-actions";
 import { setPendingPlatformItem } from "@/lib/hooks/use-dj-state";
 import {
   getPlatformFromItem,
@@ -60,10 +60,8 @@ export function MobileBrowserItem({ radio }: { radio: Radio }) {
       if (platform) {
         setPendingPlatformItem({ deckId, platform });
       }
-    } else if (deckId === "deck-a") {
-      setDeckARadio(radio);
     } else {
-      setDeckBRadio(radio);
+      getDjDeckActions(deckId).setRadio(radio);
     }
   };
 

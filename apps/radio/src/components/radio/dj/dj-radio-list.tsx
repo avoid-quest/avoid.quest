@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import type { Radio } from "@/lib/audio";
-import { setDeckARadio, setDeckBRadio } from "@/lib/dj-actions";
+import { getDjDeckActions } from "@/lib/dj-actions";
 import { setPendingPlatformItem } from "@/lib/hooks/use-dj-state";
 import {
   isSessionRadio,
@@ -385,10 +385,8 @@ export function MobileRadioItem({ radio }: { radio: Radio }) {
           platform,
         });
       }
-    } else if (deckId === "deck-a") {
-      setDeckARadio(radio);
     } else {
-      setDeckBRadio(radio);
+      getDjDeckActions(deckId).setRadio(radio);
     }
   };
 

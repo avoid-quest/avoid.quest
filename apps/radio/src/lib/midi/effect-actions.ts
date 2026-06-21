@@ -10,7 +10,7 @@ import {
   type ParamDef,
   type SliderParamDef,
 } from "@/lib/audio/dsp/effects/schema";
-import { updateDeckAEffect, updateDeckBEffect } from "@/lib/dj-actions";
+import { getDjDeckActions } from "@/lib/dj-actions";
 import { MidiController } from "./midi-controller";
 import type { MidiAction } from "./types";
 
@@ -69,8 +69,7 @@ export function registerEffectActions(
     return () => {};
   }
 
-  const updateEffect =
-    deckId === "deck-a" ? updateDeckAEffect : updateDeckBEffect;
+  const { updateEffect } = getDjDeckActions(deckId);
   const group = `${deckId}-effects`;
   const prefix = `${deckId}:effect:${effect.id}`;
 

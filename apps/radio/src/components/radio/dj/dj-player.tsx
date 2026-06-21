@@ -11,11 +11,8 @@ import {
 import { Volume2Icon } from "lucide-react";
 import type { Radio } from "@/lib/audio";
 import {
+  getDjDeckActions,
   setCrossfadePosition,
-  setDeckACueEnabled,
-  setDeckARadio,
-  setDeckBCueEnabled,
-  setDeckBRadio,
   setHeadphoneVolume,
   setMasterVolume,
 } from "@/lib/dj-actions";
@@ -127,6 +124,10 @@ function DjPlayerDragOverlay({
   );
 }
 
+function isDeckId(value: string): value is DeckId {
+  return value === "deck-a" || value === "deck-b";
+}
+
 export function DjPlayer({ radios = [] }: DjPlayerProps) {
   useDjKeyboard();
   useMidi();
@@ -136,6 +137,8 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
   const audioSettings = useAudioSettings();
   const deckA = useDeckA();
   const deckB = useDeckB();
+  const deckAActions = getDjDeckActions("deck-a");
+  const deckBActions = getDjDeckActions("deck-b");
 
   const isPlaying = (deckA?.isPlaying ?? false) || (deckB?.isPlaying ?? false);
   useMediaSession({
@@ -192,10 +195,8 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
     }
 
     setPendingPlatformItem(null);
-    if (deckId === "deck-a") {
-      setDeckARadio(radio);
-    } else if (deckId === "deck-b") {
-      setDeckBRadio(radio);
+    if (isDeckId(deckId)) {
+      getDjDeckActions(deckId).setRadio(radio);
     }
   };
 
@@ -219,8 +220,8 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
             isCueActive={isCueActive}
             masterVolume={masterVolume}
             onCrossfadeChange={setCrossfadePosition}
-            onDeckACueChange={setDeckACueEnabled}
-            onDeckBCueChange={setDeckBCueEnabled}
+            onDeckACueChange={deckAActions.setCueEnabled}
+            onDeckBCueChange={deckBActions.setCueEnabled}
             onMasterVolumeChange={setMasterVolume}
             radios={radios}
           />
@@ -233,8 +234,8 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
             isCueActive={isCueActive}
             masterVolume={masterVolume}
             onCrossfadeChange={setCrossfadePosition}
-            onDeckACueChange={setDeckACueEnabled}
-            onDeckBCueChange={setDeckBCueEnabled}
+            onDeckACueChange={deckAActions.setCueEnabled}
+            onDeckBCueChange={deckBActions.setCueEnabled}
             onHeadphoneVolumeChange={setHeadphoneVolume}
             onMasterVolumeChange={setMasterVolume}
             radios={radios}

@@ -185,6 +185,17 @@ type DeckSourceLoadResult =
 
 const activeDeckLoadTokens = new Map<DeckId, symbol>();
 const activeDeckPlayTokens = new Map<DeckId, symbol>();
+const activeDeckSourceLoadTokens = new Map<DeckId, symbol>();
+
+function beginDeckSourceLoad(deckId: DeckId): symbol {
+  const token = Symbol(deckId);
+  activeDeckSourceLoadTokens.set(deckId, token);
+  return token;
+}
+
+function isCurrentDeckSourceLoad(deckId: DeckId, token: symbol): boolean {
+  return activeDeckSourceLoadTokens.get(deckId) === token;
+}
 
 function isPlatformPlaceholderItem(radio: Radio): boolean {
   return (
@@ -237,6 +248,7 @@ function getDeckLibrarySourceIntent(radio: Radio): DeckSourceLoadIntent {
 
 function beginDeckLoad(deckId: DeckId): symbol {
   const token = Symbol(deckId);
+  activeDeckSourceLoadTokens.delete(deckId);
   activeDeckLoadTokens.set(deckId, token);
   activeDeckPlayTokens.delete(deckId);
   return token;
@@ -729,36 +741,47 @@ async function resolveInitialYouTubeStreamUrl(
   videoId: string,
   dependencies: DeckLoadDependencies
 ): Promise<string | null> {
-  const resolvedUrl = await dependencies.resolvePlatformStreamUrl({
-    platform: "youtube",
-    reason: "initial-load",
-    videoId,
-    radio,
-  });
-  if (!resolvedUrl) {
+  try {
+    const resolvedUrl = await dependencies.resolvePlatformStreamUrl({
+      platform: "youtube",
+      reason: "initial-load",
+      videoId,
+      radio,
+    });
+    if (!resolvedUrl) {
+      dependencies.reportDjError(
+        "Failed to resolve YouTube stream",
+        "DJ_YOUTUBE_RESOLVE_FAILED",
+        undefined,
+        radio,
+        deckId
+      );
+      return null;
+    }
+
+    if (
+      isYouTubeMetadata(radio.platformMetadata) &&
+      radio.platformMetadata.tracks
+    ) {
+      const track = radio.platformMetadata.tracks.find(
+        (item) => "videoId" in item && item.videoId === videoId
+      );
+      if (track) {
+        track.streamUrl = resolvedUrl;
+      }
+    }
+
+    return resolvedUrl;
+  } catch (error) {
     dependencies.reportDjError(
       "Failed to resolve YouTube stream",
       "DJ_YOUTUBE_RESOLVE_FAILED",
-      undefined,
+      error,
       radio,
       deckId
     );
     return null;
   }
-
-  if (
-    isYouTubeMetadata(radio.platformMetadata) &&
-    radio.platformMetadata.tracks
-  ) {
-    const track = radio.platformMetadata.tracks.find(
-      (item) => "videoId" in item && item.videoId === videoId
-    );
-    if (track) {
-      track.streamUrl = resolvedUrl;
-    }
-  }
-
-  return resolvedUrl;
 }
 
 async function resolveInitialTrackStreamUrl(
@@ -785,20 +808,22 @@ async function loadDeckTrackRadio(
   dependencies: DeckLoadDependencies
 ): Promise<void> {
   const config = deckConfig[deckId];
-  const runtime = config.getRuntime();
 
   if (!radio) {
     await loadDeckRadio(deckId, null, dependencies);
     return;
   }
 
+  const sourceLoadToken = beginDeckSourceLoad(deckId);
   const resolvedStreamUrl = await resolveInitialTrackStreamUrl(
     deckId,
     radio,
     radio.streamUrl,
     dependencies
   );
-  if (!resolvedStreamUrl) {
+  if (
+    !(resolvedStreamUrl && isCurrentDeckSourceLoad(deckId, sourceLoadToken))
+  ) {
     return;
   }
 
@@ -819,6 +844,7 @@ async function loadDeckTrackRadio(
       ? radio
       : { ...radio, streamUrl: streamValidation.normalizedUrl };
 
+  const runtime = config.getRuntime();
   if (runtime.isLoading) {
     return;
   }

@@ -122,7 +122,7 @@ class AudioContextManager {
    * Useful for saving resources when audio is not needed.
    */
   async suspend(): Promise<void> {
-    if (!this.context || this.context.state !== "running") {
+    if (this.context?.state !== "running") {
       return;
     }
 

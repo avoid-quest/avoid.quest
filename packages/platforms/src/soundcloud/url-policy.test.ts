@@ -24,6 +24,11 @@ describe("validateSoundCloudCdnUrl", () => {
     expect(
       validateSoundCloudCdnUrl("https://CF-HLS-MEDIA.SNDCDN.COM./track.m3u8").ok
     ).toBe(true);
+    expect(
+      validateSoundCloudCdnUrl(
+        "https://PLAYBACK.MEDIA-STREAMING.SOUNDCLOUD.CLOUD./track/aac_160k/id/playlist.m3u8"
+      ).ok
+    ).toBe(true);
   });
 
   test("rejects page URLs and hostnames that only contain allowed domains", () => {
@@ -57,6 +62,9 @@ describe("validateSoundCloudCdnUrl", () => {
 describe("SoundCloud hostname policies", () => {
   test("use the shared hostname normalization", () => {
     expect(isSoundCloudCdnHostname("CF-MEDIA.SNDCDN.COM.")).toBe(true);
+    expect(
+      isSoundCloudCdnHostname("PLAYBACK.MEDIA-STREAMING.SOUNDCLOUD.CLOUD.")
+    ).toBe(true);
     expect(isSoundCloudCdnHostname("cf-media.sndcdn.com.evil.test")).toBe(
       false
     );
@@ -68,6 +76,8 @@ describe("getProxiedSoundCloudUrl", () => {
   test("generates proxy URLs only for canonical SoundCloud CDN URLs", () => {
     const cdnUrl = "https://cf-media.sndcdn.com/track.mp3";
     const hlsUrl = "https://cf-hls-media.sndcdn.com/track.m3u8";
+    const aacHlsUrl =
+      "https://playback.media-streaming.soundcloud.cloud/track/aac_160k/id/playlist.m3u8";
     const pageUrl = "https://soundcloud.com/artist/track";
     const spoofedUrl = "https://cf-media.sndcdn.com.evil.test/track.mp3";
 
@@ -75,6 +85,7 @@ describe("getProxiedSoundCloudUrl", () => {
       `/api/soundcloud-proxy?url=${encodeURIComponent(cdnUrl)}`
     );
     expect(getProxiedSoundCloudUrl(hlsUrl)).toBe(hlsUrl);
+    expect(getProxiedSoundCloudUrl(aacHlsUrl)).toBe(aacHlsUrl);
     expect(getProxiedSoundCloudUrl(pageUrl)).toBe(pageUrl);
     expect(getProxiedSoundCloudUrl(spoofedUrl)).toBe(spoofedUrl);
   });

@@ -5,10 +5,10 @@
   "license": "UNLICENSED",
   "type": "module",
   "scripts": {
-    "dev": "tsx --watch src/index.ts",
+    "dev": "doppler run -- tsx --watch src/index.ts",
     "build": "tsup",
     "start": "node dist/index.cjs",
-    "deploy-commands": "tsx src/deploy-commands.ts",
+    "deploy-commands": "doppler run -- tsx src/deploy-commands.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -22,7 +22,7 @@
     "@avoid.quest/config": "workspace:*",
     "@types/node": "catalog:",
     "tsup": "^8.5.1",
-    "tsx": "^4.22.3",
+    "tsx": "^4.22.4",
     "typescript": "catalog:"
   }
 }

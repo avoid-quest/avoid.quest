@@ -4,6 +4,7 @@ import { resolveStreamUrl, searchYouTubeMusic } from "@avoid.quest/platforms";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import type { YouTubeSearchResult } from "@/lib/platform-types";
+import { readInvidiousOptions } from "./invidious-env";
 import { rateLimitMiddleware } from "./middleware";
 
 const SearchSchema = z.object({
@@ -30,10 +31,7 @@ export const youtubeSearch = createServerFn({ method: "POST" })
           status: 500,
         },
         run: async () => {
-          const invidiousOptions = {
-            instanceUrl: env.INVIDIOUS_INSTANCE_URL || undefined,
-            auth: env.INVIDIOUS_AUTH || undefined,
-          };
+          const invidiousOptions = readInvidiousOptions(env);
 
           const results = await searchYouTubeMusic(
             data.query,
@@ -73,10 +71,7 @@ export const youtubeResolveStream = createServerFn({ method: "POST" })
           status: 500,
         },
         run: async () => {
-          const invidiousOptions = {
-            instanceUrl: env.INVIDIOUS_INSTANCE_URL || undefined,
-            auth: env.INVIDIOUS_AUTH || undefined,
-          };
+          const invidiousOptions = readInvidiousOptions(env);
           const streamUrl = await resolveStreamUrl(
             data.videoId,
             invidiousOptions

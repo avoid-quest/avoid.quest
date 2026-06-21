@@ -62,9 +62,16 @@ sudo apt install ffmpeg
 
 ---
 
-## 6. Configure Environment Variables
+## 6. Configure Development Secrets
 
-Provide these variables through your runtime secret manager. For local development only, an ignored `apps/discord-bot/.env` file can be used; do not commit real secret values.
+Local development secrets are managed through Doppler. From the monorepo root,
+install the Doppler CLI if needed, run `doppler login`, then run:
+
+```sh
+bun run secrets:setup
+```
+
+Store these variables in the selected Doppler development config:
 
 ```env
 DISCORD_TOKEN=...
@@ -75,6 +82,7 @@ INVIDIOUS_AUTH=...
 ```
 
 `INVIDIOUS_AUTH` format is `username:password` (HTTP Basic Auth). Omit it if your instance has no auth.
+Do not commit plaintext `.env` files, service tokens, or downloaded secret files.
 
 ---
 

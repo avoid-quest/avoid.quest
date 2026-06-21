@@ -7,6 +7,8 @@ import {
 export const SOUNDCLOUD_HOST = "soundcloud.com";
 export const SOUNDCLOUD_MOBILE_HOST = "m.soundcloud.com";
 export const SOUNDCLOUD_SHORT_LINK_HOST = "on.soundcloud.com";
+export const SOUNDCLOUD_AAC_HLS_HOST =
+  "playback.media-streaming.soundcloud.cloud";
 export const MAX_SOUNDCLOUD_CDN_URL_LENGTH = 2048;
 
 const SOUNDCLOUD_PAGE_HOSTNAMES = new Set([
@@ -18,9 +20,11 @@ const SOUNDCLOUD_CDN_HOSTNAMES = new Set([
   "cf-hls-media.sndcdn.com",
   "media.soundcloud.com",
   "ec-media.sndcdn.com",
+  SOUNDCLOUD_AAC_HLS_HOST,
 ]);
 const SOUNDCLOUD_CORS_ALLOWED_CDN_HOSTNAMES = new Set([
   "cf-hls-media.sndcdn.com",
+  SOUNDCLOUD_AAC_HLS_HOST,
 ]);
 
 export type SoundCloudCdnUrlValidationFailure =

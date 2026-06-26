@@ -147,7 +147,13 @@ export function limitResponseBody(
         return;
       }
 
-      const result = await reader.read();
+      let result: Awaited<ReturnType<typeof reader.read>>;
+      try {
+        result = await reader.read();
+      } catch (error) {
+        await fail(error, controller);
+        return;
+      }
       if (closed) {
         return;
       }
@@ -223,6 +229,19 @@ export function limitResponseBody(
     if (controller) {
       controller.close();
     }
+  }
+
+  async function fail(
+    reason: unknown,
+    controller: ReadableStreamDefaultController<Uint8Array>
+  ): Promise<void> {
+    if (!markClosed()) {
+      return;
+    }
+
+    abortController?.abort(reason);
+    controller.error(reason);
+    await cancelReader(reason);
   }
 
   async function cancelUpstream(reason: unknown): Promise<void> {

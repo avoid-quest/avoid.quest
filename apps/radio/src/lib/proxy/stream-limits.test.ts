@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 import {
   createBoundedRangeHeader,
   getContentLengthLimitFailure,
@@ -7,6 +7,10 @@ import {
 
 function chunk(value: string): Uint8Array {
   return new TextEncoder().encode(value);
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 describe("createBoundedRangeHeader", () => {
@@ -114,5 +118,32 @@ describe("limitResponseBody", () => {
     expect(wasCanceled).toBe(true);
     expect(abortController.signal.aborted).toBe(true);
     expect(abortController.signal.reason).toBe("duration");
+  });
+
+  test("aborts immediately when upstream reads fail", async () => {
+    const upstreamError = new Error("upstream read failed");
+    const abortController = new AbortController();
+    const onLimitExceeded = mock((_reason: string) => undefined);
+    const limited = limitResponseBody(
+      new ReadableStream<Uint8Array>({
+        pull() {
+          throw upstreamError;
+        },
+      }),
+      {
+        abortController,
+        maxBytes: 100,
+        maxDurationMs: 1,
+        onLimitExceeded,
+      }
+    );
+
+    const response = new Response(limited);
+
+    await expect(response.text()).rejects.toBe(upstreamError);
+    await delay(5);
+    expect(abortController.signal.aborted).toBe(true);
+    expect(abortController.signal.reason).toBe(upstreamError);
+    expect(onLimitExceeded).not.toHaveBeenCalled();
   });
 });

@@ -195,6 +195,9 @@ function buildStreamResponse(
   responseHeaders.set("x-request-id", requestId);
 
   for (const header of EXPOSED_STREAM_HEADERS) {
+    if (header === "Content-Length") {
+      continue;
+    }
     copyHeaderIfPresent(upstreamResponse.headers, responseHeaders, header);
   }
 

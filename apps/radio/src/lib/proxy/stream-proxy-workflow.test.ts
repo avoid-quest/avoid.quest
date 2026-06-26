@@ -295,7 +295,7 @@ describe("createStreamProxyRequestWorkflow", () => {
 
     expect(response.status).toBe(206);
     expect(response.headers.get("Content-Type")).toBe("audio/aac");
-    expect(response.headers.get("Content-Length")).toBe("11");
+    expect(response.headers.get("Content-Length")).toBeNull();
     expect(response.headers.get("Content-Range")).toBe("bytes 0-10/100");
     expect(response.headers.get("Accept-Ranges")).toBe("bytes");
     expect(response.headers.get("Icy-MetaInt")).toBe("16000");

@@ -15,7 +15,7 @@ const DEFAULT_FETCH_TIMEOUT_MS = 10_000;
 const DEFAULT_MAX_REDIRECTS = 5;
 const DEFAULT_MAX_RESPONSE_SIZE = 100 * 1024 * 1024;
 const DEFAULT_MAX_RANGE_BYTES = 8 * 1024 * 1024;
-const DEFAULT_MAX_STREAM_DURATION_MS = 10 * 60 * 1000;
+const DEFAULT_MAX_STREAM_DURATION_MS = 2 * 60 * 60 * 1000;
 
 export type CdnProxyPolicy = {
   errorHeaders: (request: Request) => HeadersInit;
@@ -119,7 +119,6 @@ function buildCdnStreamResponse(
   headers.set("Accept-Ranges", "bytes");
   headers.set("x-request-id", requestId);
 
-  copyHeaderIfPresent(upstreamResponse.headers, headers, "Content-Length");
   copyHeaderIfPresent(upstreamResponse.headers, headers, "Content-Range");
 
   const body = limitResponseBody(upstreamResponse.body, {

@@ -347,6 +347,7 @@ describe("createCdnProxyRequestWorkflow", () => {
     );
 
     expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Length")).toBeNull();
     await expect(response.text()).resolves.toBe("ok");
     expect(capture.forwardedRange).toBe("bytes=0-9");
   });

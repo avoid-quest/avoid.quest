@@ -21,6 +21,7 @@ type SocketAddressResolver = (
 
 type FetchDirectAudioStreamOptions = {
   fetchImpl?: FetchLike;
+  headerFetchTimeoutMs?: number;
   resolveHostname?: PublicHostnameResolver | false;
   resolveSocketAddresses?: SocketAddressResolver;
   signal?: AbortSignal;
@@ -32,6 +33,7 @@ export type DirectAudioStream = {
 };
 
 const DIRECT_AUDIO_MAX_REDIRECTS = 5;
+const DIRECT_AUDIO_HEADER_FETCH_TIMEOUT_MS = 10_000;
 const DIRECT_AUDIO_USER_AGENT = "avoid.quest-discord-bot/1.0";
 
 const DIRECT_AUDIO_ERROR_MESSAGES = {
@@ -55,6 +57,13 @@ export class DirectAudioFetchError extends Error {
   }
 }
 
+export class DirectAudioHeaderTimeoutError extends Error {
+  constructor() {
+    super("Direct audio header fetch timed out.");
+    this.name = "DirectAudioHeaderTimeoutError";
+  }
+}
+
 async function cancelBody(response: Response): Promise<void> {
   if (!response.body) {
     return;
@@ -65,6 +74,34 @@ async function cancelBody(response: Response): Promise<void> {
   } catch {
     // Some runtimes lock the body once the stream has been handed off.
   }
+}
+
+function createHeaderFetchSignal(
+  signal: AbortSignal | undefined,
+  timeoutMs: number
+): { cleanup: () => void; signal: AbortSignal } {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => {
+    controller.abort(new DirectAudioHeaderTimeoutError());
+  }, timeoutMs);
+
+  const abortFromCaller = () => {
+    controller.abort(signal?.reason);
+  };
+
+  if (signal?.aborted) {
+    abortFromCaller();
+  } else {
+    signal?.addEventListener("abort", abortFromCaller, { once: true });
+  }
+
+  return {
+    cleanup: () => {
+      clearTimeout(timeout);
+      signal?.removeEventListener("abort", abortFromCaller);
+    },
+    signal: controller.signal,
+  };
 }
 
 function resolveSocketAddressesWithDns(
@@ -189,6 +226,7 @@ export async function fetchDirectAudioStream(
   url: string,
   {
     fetchImpl,
+    headerFetchTimeoutMs = DIRECT_AUDIO_HEADER_FETCH_TIMEOUT_MS,
     resolveHostname,
     resolveSocketAddresses = resolveSocketAddressesWithDns,
     signal,
@@ -196,20 +234,38 @@ export async function fetchDirectAudioStream(
 ): Promise<DirectAudioStream> {
   const audioFetchImpl =
     fetchImpl ?? createDirectAudioNodeFetch(resolveSocketAddresses);
-  const redirectResult = await fetchPublicHttpUrlWithValidatedRedirects({
-    fetchImpl: audioFetchImpl,
-    init: {
-      headers: {
-        "User-Agent": DIRECT_AUDIO_USER_AGENT,
+  const headerFetch = createHeaderFetchSignal(signal, headerFetchTimeoutMs);
+  let redirectResult: Awaited<
+    ReturnType<typeof fetchPublicHttpUrlWithValidatedRedirects>
+  >;
+
+  try {
+    redirectResult = await fetchPublicHttpUrlWithValidatedRedirects({
+      fetchImpl: audioFetchImpl,
+      init: {
+        headers: {
+          "User-Agent": DIRECT_AUDIO_USER_AGENT,
+        },
+        signal: headerFetch.signal,
       },
-      signal,
-    },
-    maxRedirects: DIRECT_AUDIO_MAX_REDIRECTS,
-    resolveHostname: resolveHostname ?? resolvePublicHostnameWithDoh,
-    url,
-  });
+      maxRedirects: DIRECT_AUDIO_MAX_REDIRECTS,
+      resolveHostname: resolveHostname ?? resolvePublicHostnameWithDoh,
+      url,
+    });
+  } catch (error) {
+    if (headerFetch.signal.reason instanceof DirectAudioHeaderTimeoutError) {
+      throw headerFetch.signal.reason;
+    }
+    throw error;
+  } finally {
+    headerFetch.cleanup();
+  }
 
   if (!redirectResult.ok) {
+    if (headerFetch.signal.reason instanceof DirectAudioHeaderTimeoutError) {
+      throw headerFetch.signal.reason;
+    }
+
     throw new DirectAudioFetchError(
       redirectResult.failure.reason,
       redirectResult.failure.url

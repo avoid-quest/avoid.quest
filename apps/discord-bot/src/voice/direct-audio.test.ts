@@ -1,5 +1,9 @@
 import { describe, expect, mock, test } from "bun:test";
-import { DirectAudioFetchError, fetchDirectAudioStream } from "./direct-audio";
+import {
+  DirectAudioFetchError,
+  DirectAudioHeaderTimeoutError,
+  fetchDirectAudioStream,
+} from "./direct-audio";
 
 async function readStream(stream: NodeJS.ReadableStream): Promise<string> {
   let output = "";
@@ -7,6 +11,10 @@ async function readStream(stream: NodeJS.ReadableStream): Promise<string> {
     output += Buffer.from(chunk as Uint8Array).toString("utf8");
   }
   return output;
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 describe("fetchDirectAudioStream", () => {
@@ -115,5 +123,54 @@ describe("fetchDirectAudioStream", () => {
       "avoid.quest-discord-bot/1.0",
       "avoid.quest-discord-bot/1.0",
     ]);
+  });
+
+  test("times out direct audio fetches before response headers arrive", async () => {
+    const initialUrl = "https://audio.example/live.mp3";
+    const fetchImpl = mock(
+      async (_url: string, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          const signal = init?.signal;
+          if (!signal) {
+            reject(new Error("Missing abort signal"));
+            return;
+          }
+
+          signal.addEventListener("abort", () => reject(signal.reason), {
+            once: true,
+          });
+        })
+    );
+
+    await expect(
+      fetchDirectAudioStream(initialUrl, {
+        fetchImpl,
+        headerFetchTimeoutMs: 1,
+        resolveHostname: async () => ["93.184.216.34"],
+      })
+    ).rejects.toBeInstanceOf(DirectAudioHeaderTimeoutError);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  test("clears the header timeout after response headers arrive", async () => {
+    let headerSignal: AbortSignal | undefined;
+    const fetchImpl = mock(async (_url: string, init?: RequestInit) => {
+      await Promise.resolve();
+      headerSignal = init?.signal ?? undefined;
+      return new Response("audio-bytes");
+    });
+
+    const result = await fetchDirectAudioStream(
+      "https://audio.example/live.mp3",
+      {
+        fetchImpl,
+        headerFetchTimeoutMs: 1,
+        resolveHostname: async () => ["93.184.216.34"],
+      }
+    );
+
+    await delay(5);
+    expect(headerSignal?.aborted).toBe(false);
+    await expect(readStream(result.stream)).resolves.toBe("audio-bytes");
   });
 });

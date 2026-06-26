@@ -96,6 +96,13 @@ export function createBandcampCdnProxyWorkflow({
       status: 500,
     },
     invalidUrlReason: "invalid-url",
+    invalidRangeError: {
+      code: "BANDCAMP_PROXY_INVALID_RANGE",
+      safeMessage: "Invalid Range header",
+      category: "validation",
+      expected: true,
+      status: 416,
+    },
     operation: "bandcamp-proxy.fetch",
     proxyPolicy,
     redirectFailureErrors: BANDCAMP_REDIRECT_FAILURE_ERRORS,

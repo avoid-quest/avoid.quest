@@ -121,6 +121,13 @@ export function createSoundCloudCdnProxyWorkflow({
       status: 500,
     },
     invalidUrlReason: "invalid-url",
+    invalidRangeError: {
+      code: "SOUNDCLOUD_PROXY_INVALID_RANGE",
+      safeMessage: "Invalid Range header",
+      category: "validation",
+      expected: true,
+      status: 416,
+    },
     onUrlValidationFailure: ({ context, reason, urlParam }) => {
       if (reason === "invalid-domain") {
         logSSRFAttempt(

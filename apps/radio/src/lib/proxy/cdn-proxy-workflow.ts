@@ -5,11 +5,17 @@ import {
   type UrlValidationResult,
   type ValidatedRedirectFailure,
 } from "@avoid.quest/platforms/redirects";
+import {
+  applyBoundedRangeHeader,
+  getContentLengthLimitFailure,
+  limitResponseBody,
+} from "./stream-limits";
 
 const DEFAULT_FETCH_TIMEOUT_MS = 10_000;
 const DEFAULT_MAX_REDIRECTS = 5;
 const DEFAULT_MAX_RESPONSE_SIZE = 100 * 1024 * 1024;
-const CONTENT_LENGTH_PATTERN = /^\d+$/;
+const DEFAULT_MAX_RANGE_BYTES = 8 * 1024 * 1024;
+const DEFAULT_MAX_STREAM_DURATION_MS = 10 * 60 * 1000;
 
 export type CdnProxyPolicy = {
   errorHeaders: (request: Request) => HeadersInit;
@@ -45,9 +51,12 @@ type CdnProxyWorkflowConfig<
   fetchFailedError: AppErrorInit;
   fetchImpl?: FetchLike | undefined;
   fetchTimeoutMs?: number | undefined;
+  invalidRangeError: AppErrorInit;
   invalidUrlReason: RedirectFailure;
   maxRedirects?: number | undefined;
+  maxRangeBytes?: number | undefined;
   maxResponseSize?: number | undefined;
+  maxStreamDurationMs?: number | undefined;
   onUrlValidationFailure?:
     | ((details: {
         context: CdnProxyWorkflowContext<AuthContext>;
@@ -77,23 +86,6 @@ export type CdnProxyWorkflow<AuthContext> = {
   handle: (context: CdnProxyWorkflowContext<AuthContext>) => Promise<Response>;
 };
 
-function isResponseTooLarge(
-  response: Response,
-  maxResponseSize: number
-): boolean {
-  const contentLength = response.headers.get("Content-Length");
-  if (!contentLength) {
-    return false;
-  }
-
-  const normalized = contentLength.trim();
-  if (!CONTENT_LENGTH_PATTERN.test(normalized)) {
-    return true;
-  }
-
-  return BigInt(normalized) > BigInt(maxResponseSize);
-}
-
 function copyHeaderIfPresent(
   source: Headers,
   target: Headers,
@@ -108,7 +100,16 @@ function copyHeaderIfPresent(
 function buildCdnStreamResponse(
   upstreamResponse: Response,
   { request, requestId }: CdnProxyFetchContext,
-  proxyPolicy: CdnProxyPolicy
+  proxyPolicy: CdnProxyPolicy,
+  {
+    abortController,
+    maxResponseSize,
+    maxStreamDurationMs,
+  }: {
+    abortController: AbortController;
+    maxResponseSize: number;
+    maxStreamDurationMs: number;
+  }
 ): Response {
   const headers = new Headers(proxyPolicy.errorHeaders(request));
   headers.set(
@@ -121,7 +122,13 @@ function buildCdnStreamResponse(
   copyHeaderIfPresent(upstreamResponse.headers, headers, "Content-Length");
   copyHeaderIfPresent(upstreamResponse.headers, headers, "Content-Range");
 
-  return new Response(upstreamResponse.body, {
+  const body = limitResponseBody(upstreamResponse.body, {
+    abortController,
+    maxBytes: maxResponseSize,
+    maxDurationMs: maxStreamDurationMs,
+  });
+
+  return new Response(body, {
     status: upstreamResponse.status,
     headers,
   });
@@ -137,9 +144,12 @@ export function createCdnProxyRequestWorkflow<
   fetchFailedError,
   fetchImpl: defaultFetchImpl = fetch,
   fetchTimeoutMs = DEFAULT_FETCH_TIMEOUT_MS,
+  invalidRangeError,
   invalidUrlReason,
   maxRedirects = DEFAULT_MAX_REDIRECTS,
+  maxRangeBytes = DEFAULT_MAX_RANGE_BYTES,
   maxResponseSize = DEFAULT_MAX_RESPONSE_SIZE,
+  maxStreamDurationMs = DEFAULT_MAX_STREAM_DURATION_MS,
   onUrlValidationFailure,
   operation,
   proxyPolicy,
@@ -160,6 +170,20 @@ export function createCdnProxyRequestWorkflow<
     context: CdnProxyFetchContext,
     fetchImpl: FetchLike = defaultFetchImpl
   ): Promise<Response> => {
+    const upstreamHeaders = new Headers(createUpstreamHeaders(context.request));
+    const rangeResult = applyBoundedRangeHeader(
+      upstreamHeaders,
+      context.request,
+      maxRangeBytes
+    );
+    if (!rangeResult.ok) {
+      return proxyPolicy.problem(
+        new AppError(invalidRangeError),
+        context.origin,
+        context.requestId
+      );
+    }
+
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), fetchTimeoutMs);
 
@@ -168,7 +192,7 @@ export function createCdnProxyRequestWorkflow<
         fetchImpl,
         init: {
           signal: controller.signal,
-          headers: createUpstreamHeaders(context.request),
+          headers: upstreamHeaders,
         },
         invalidUrlReason,
         maxRedirects,
@@ -196,7 +220,8 @@ export function createCdnProxyRequestWorkflow<
         );
       }
 
-      if (isResponseTooLarge(response, maxResponseSize)) {
+      if (getContentLengthLimitFailure(response.headers, maxResponseSize)) {
+        await response.body?.cancel();
         return proxyPolicy.problem(
           new AppError(responseTooLargeError),
           context.origin,
@@ -204,7 +229,11 @@ export function createCdnProxyRequestWorkflow<
         );
       }
 
-      return buildCdnStreamResponse(response, context, proxyPolicy);
+      return buildCdnStreamResponse(response, context, proxyPolicy, {
+        abortController: controller,
+        maxResponseSize,
+        maxStreamDurationMs,
+      });
     } catch (error) {
       clearTimeout(timeout);
 

@@ -3,6 +3,7 @@ import {
   type PublicHttpFetchResult,
   type PublicHttpRedirectFailure,
 } from "@avoid.quest/platforms/url-policy";
+import { createBoundedRangeHeader } from "./stream-limits";
 
 export type StreamAccessMode = "direct" | "proxy" | "rejected";
 export type StreamRedirectFailure = PublicHttpRedirectFailure;
@@ -38,6 +39,7 @@ type DetermineStreamAccessOptions = {
 const STREAM_ACCESS_CACHE_TTL_MS = 10 * 60 * 1000;
 const STREAM_ACCESS_PROBE_TIMEOUT_MS = 4000;
 const STREAM_ACCESS_MAX_REDIRECTS = 5;
+const STREAM_ACCESS_MAX_RANGE_BYTES = 8 * 1024 * 1024;
 
 const streamAccessCache = new Map<string, StreamAccessCacheEntry>();
 
@@ -131,9 +133,12 @@ async function probeStreamAccess(
       "Icy-MetaData": requestHeaders?.get("Icy-MetaData") || "0",
     };
 
-    const rangeHeader = requestHeaders?.get("range");
-    if (rangeHeader) {
-      headers.Range = rangeHeader;
+    const rangeResult = createBoundedRangeHeader(
+      requestHeaders?.get("range") ?? null,
+      STREAM_ACCESS_MAX_RANGE_BYTES
+    );
+    if (rangeResult.ok && rangeResult.range) {
+      headers.Range = rangeResult.range;
     } else if (!preserveProxyResponse) {
       headers.Range = "bytes=0-0";
     }

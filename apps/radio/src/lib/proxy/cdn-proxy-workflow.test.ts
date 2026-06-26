@@ -121,12 +121,16 @@ function validateTestRedirectUrl(
 function createWorkflow({
   fetchImpl,
   fetchTimeoutMs,
+  maxRangeBytes,
   maxResponseSize,
+  maxStreamDurationMs,
   onUrlValidationFailure,
 }: {
   fetchImpl?: FetchLike;
   fetchTimeoutMs?: number;
+  maxRangeBytes?: number;
   maxResponseSize?: number;
+  maxStreamDurationMs?: number;
   onUrlValidationFailure?: (details: {
     context: CdnProxyWorkflowContext<TestAuth>;
     reason: TestFailure;
@@ -138,8 +142,7 @@ function createWorkflow({
     TestRedirectUrlFailure,
     TestAuth
   >({
-    createUpstreamHeaders: (request) => ({
-      Range: request.headers.get("range") || "",
+    createUpstreamHeaders: () => ({
       Referer: "https://example.com/",
     }),
     fetchFailedError: {
@@ -151,8 +154,17 @@ function createWorkflow({
     },
     fetchImpl,
     fetchTimeoutMs,
+    invalidRangeError: {
+      code: "TEST_INVALID_RANGE",
+      safeMessage: "Invalid Range header",
+      category: "validation",
+      expected: true,
+      status: 416,
+    },
     invalidUrlReason: "invalid-url",
+    maxRangeBytes,
     maxResponseSize,
+    maxStreamDurationMs,
     onUrlValidationFailure,
     operation: "test-proxy.fetch",
     proxyPolicy: createTestPolicy(),
@@ -305,6 +317,108 @@ describe("createCdnProxyRequestWorkflow", () => {
         status: 413,
       });
     }
+  });
+
+  test("bounds forwarded Range headers before fetching upstream", async () => {
+    const capture: { forwardedRange: string | null } = {
+      forwardedRange: null,
+    };
+    const fetchImpl = mock(async (_url: string, init?: RequestInit) => {
+      await Promise.resolve();
+      capture.forwardedRange = new Headers(init?.headers).get("Range");
+      return new Response("ok", {
+        headers: {
+          "Content-Length": "2",
+          "Content-Type": "audio/mpeg",
+        },
+      });
+    });
+    const workflow = createWorkflow({ fetchImpl, maxRangeBytes: 10 });
+
+    const response = await workflow.fetchStream(
+      "https://cdn.example/track.mp3",
+      {
+        origin: "https://radio.test",
+        request: new Request("https://radio.test/api/test-proxy", {
+          headers: { Range: "bytes=0-999" },
+        }),
+        requestId: "req_bounded_range",
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Length")).toBeNull();
+    await expect(response.text()).resolves.toBe("ok");
+    expect(capture.forwardedRange).toBe("bytes=0-9");
+  });
+
+  test("rejects malformed Range headers before fetching upstream", async () => {
+    const fetchImpl = mock(async () => {
+      await Promise.resolve();
+      return new Response("should not fetch");
+    });
+    const workflow = createWorkflow({ fetchImpl, maxRangeBytes: 10 });
+
+    const response = await workflow.fetchStream(
+      "https://cdn.example/track.mp3",
+      {
+        origin: "https://radio.test",
+        request: new Request("https://radio.test/api/test-proxy", {
+          headers: { Range: "bytes=0-1,3-4" },
+        }),
+        requestId: "req_invalid_range",
+      }
+    );
+
+    expect(response.status).toBe(416);
+    await expect(response.json()).resolves.toEqual({
+      code: "TEST_INVALID_RANGE",
+      message: "Invalid Range header",
+      requestId: "req_invalid_range",
+      status: 416,
+    });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  test("caps missing Content-Length bodies and aborts the upstream stream", async () => {
+    let wasCanceled = false;
+    let upstreamSignal: AbortSignal | undefined;
+    const fetchImpl = mock(async (_url: string, init?: RequestInit) => {
+      await Promise.resolve();
+      upstreamSignal = init?.signal ?? undefined;
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          pull(controller) {
+            controller.enqueue(new TextEncoder().encode("abc"));
+            controller.enqueue(new TextEncoder().encode("def"));
+          },
+          cancel() {
+            wasCanceled = true;
+          },
+        }),
+        {
+          headers: {
+            "Content-Type": "audio/mpeg",
+          },
+        }
+      );
+    });
+    const workflow = createWorkflow({ fetchImpl, maxResponseSize: 5 });
+
+    const response = await workflow.fetchStream(
+      "https://cdn.example/track.mp3",
+      {
+        origin: "https://radio.test",
+        request: new Request("https://radio.test/api/test-proxy"),
+        requestId: "req_missing_length_limit",
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Length")).toBeNull();
+    await expect(response.text()).resolves.toBe("abcde");
+    expect(wasCanceled).toBe(true);
+    expect(upstreamSignal?.aborted).toBe(true);
   });
 
   test("maps validated redirect failures to the configured response", async () => {

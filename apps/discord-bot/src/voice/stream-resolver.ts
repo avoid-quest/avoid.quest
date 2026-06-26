@@ -2,8 +2,11 @@ import type { InvidiousOptions } from "@avoid.quest/platforms";
 import {
   createPlayablePlatformResolver,
   fetchClientID,
+  isPlaylistUrl,
+  type PublicStaticAudioUrlFailure,
   resolveStreamUrl,
   toPlayableSources,
+  validatePublicStaticAudioUrl,
 } from "@avoid.quest/platforms";
 import { config } from "../config.js";
 import type { QueueTrack } from "./queue.js";
@@ -25,19 +28,57 @@ function getInvidiousOptions(): InvidiousOptions {
   };
 }
 
+const STATIC_AUDIO_VALIDATION_MESSAGES = {
+  "invalid-url": "Invalid direct audio URL.",
+  "invalid-protocol": "Direct audio URLs must use HTTP or HTTPS.",
+  "internal-address": "Direct audio URLs cannot point to internal addresses.",
+  "hostname-resolution-failed": "Failed to resolve direct audio host.",
+  "unsupported-url":
+    "Direct audio URL must point to a supported audio file or playlist.",
+} as const satisfies Record<PublicStaticAudioUrlFailure, string>;
+
+const STATIC_AUDIO_PLAYLIST_UNSUPPORTED_MESSAGE =
+  "Discord direct audio URLs must point to an audio file, not a playlist.";
+
+const STATIC_AUDIO_COMMAND_VALIDATION_OPTIONS = {
+  resolveHostname: false,
+} as const;
+
+export async function resolveStaticAudioItem(normalizedUrl: string): Promise<{
+  metadata: {
+    platform: "static-audio";
+    url: string;
+  };
+  streamUrl: string;
+}> {
+  if (isPlaylistUrl(normalizedUrl)) {
+    throw new Error(STATIC_AUDIO_PLAYLIST_UNSUPPORTED_MESSAGE);
+  }
+
+  const validation = await validatePublicStaticAudioUrl(
+    normalizedUrl,
+    STATIC_AUDIO_COMMAND_VALIDATION_OPTIONS
+  );
+  if (!validation.ok) {
+    throw new Error(STATIC_AUDIO_VALIDATION_MESSAGES[validation.reason]);
+  }
+
+  return {
+    metadata: {
+      platform: "static-audio" as const,
+      url: validation.url,
+    },
+    streamUrl: validation.url,
+  };
+}
+
 export async function resolveTrack(
   url: string,
   requestedBy: string
 ): Promise<QueueTrack | QueueTrack[]> {
   const resolver = createPlayablePlatformResolver({
     invidiousOptions: getInvidiousOptions,
-    resolveStaticAudioItem: async (normalizedUrl: string) => ({
-      metadata: {
-        platform: "static-audio" as const,
-        url: normalizedUrl,
-      },
-      streamUrl: normalizedUrl,
-    }),
+    resolveStaticAudioItem,
   });
   const result = await resolver.resolveItem(url);
   if (!result.success) {

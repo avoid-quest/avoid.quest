@@ -155,7 +155,7 @@ describe("createSoundCloudCdnProxyWorkflow", () => {
     expect(requestedUrls).toEqual([initialUrl]);
   });
 
-  test("follows allowed SoundCloud CDN redirects and preserves streaming headers", async () => {
+  test("follows allowed SoundCloud CDN redirects and strips limited-body length headers", async () => {
     const initialUrl = "https://cf-media.sndcdn.com/track.mp3";
     const finalUrl = "https://media.soundcloud.com/track.mp3";
     const requestedUrls: string[] = [];
@@ -195,7 +195,7 @@ describe("createSoundCloudCdnProxyWorkflow", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(response.headers.get("Content-Length")).toBe("11");
+    expect(response.headers.get("Content-Length")).toBeNull();
     expect(response.headers.get("Content-Range")).toBe("bytes 0-10/11");
     expect(response.headers.get("Accept-Ranges")).toBe("bytes");
     await expect(response.text()).resolves.toBe("sound-bytes");

@@ -130,7 +130,7 @@ describe("createBandcampCdnProxyWorkflow", () => {
     expect(forwardedReferers).toEqual(["https://bandcamp.com/"]);
   });
 
-  test("follows allowed Bandcamp CDN redirects and preserves streaming headers", async () => {
+  test("follows allowed Bandcamp CDN redirects and strips limited-body length headers", async () => {
     const initialUrl = "https://t4.bcbits.com/stream.mp3";
     const finalUrl = "https://t4.bcbits.com/final.mp3";
     const requestedUrls: string[] = [];
@@ -169,7 +169,7 @@ describe("createBandcampCdnProxyWorkflow", () => {
     );
 
     expect(response.status).toBe(206);
-    expect(response.headers.get("Content-Length")).toBe("11");
+    expect(response.headers.get("Content-Length")).toBeNull();
     expect(response.headers.get("Content-Range")).toBe("bytes 0-10/11");
     expect(response.headers.get("Accept-Ranges")).toBe("bytes");
     await expect(response.text()).resolves.toBe("audio-bytes");

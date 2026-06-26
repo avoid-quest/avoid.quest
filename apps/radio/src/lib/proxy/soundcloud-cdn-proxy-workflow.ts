@@ -90,18 +90,12 @@ const SOUNDCLOUD_REDIRECT_FAILURE_ERRORS = {
   },
 } as const satisfies Record<SoundCloudRedirectFailure, AppErrorInit>;
 
-function createSoundCloudUpstreamHeaders(request: Request): HeadersInit {
-  const rangeHeader = request.headers.get("range");
-  const requestHeaders: HeadersInit = {
+function createSoundCloudUpstreamHeaders(): HeadersInit {
+  return {
     Referer: "https://soundcloud.com/",
     "User-Agent":
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
   };
-  if (rangeHeader) {
-    requestHeaders.Range = rangeHeader;
-  }
-
-  return requestHeaders;
 }
 
 export function createSoundCloudCdnProxyWorkflow({
@@ -121,6 +115,13 @@ export function createSoundCloudCdnProxyWorkflow({
       status: 500,
     },
     invalidUrlReason: "invalid-url",
+    invalidRangeError: {
+      code: "SOUNDCLOUD_PROXY_INVALID_RANGE",
+      safeMessage: "Invalid Range header",
+      category: "validation",
+      expected: true,
+      status: 416,
+    },
     onUrlValidationFailure: ({ context, reason, urlParam }) => {
       if (reason === "invalid-domain") {
         logSSRFAttempt(

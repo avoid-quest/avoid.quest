@@ -1,3 +1,10 @@
+import {
+  type PublicHostnameResolver,
+  type PublicHttpUrlFailure,
+  type PublicHttpUrlResult,
+  validateResolvedPublicHttpUrl,
+} from "./url-policy/index.js";
+
 export const AUDIO_EXTENSIONS = [
   ".mp3",
   ".wav",
@@ -10,6 +17,19 @@ export const AUDIO_EXTENSIONS = [
 ] as const;
 
 export const PLAYLIST_EXTENSIONS = [".m3u", ".m3u8", ".pls"] as const;
+
+export type PublicStaticAudioUrlFailure =
+  | PublicHttpUrlFailure
+  | "unsupported-url";
+
+export type PublicStaticAudioUrlResult =
+  | PublicHttpUrlResult
+  | { ok: false; reason: "unsupported-url" };
+
+type ValidatePublicStaticAudioUrlOptions = {
+  resolveHostname?: PublicHostnameResolver | false;
+  signal?: AbortSignal;
+};
 
 function getExtension(url: string): string {
   try {
@@ -37,6 +57,17 @@ export function isPlaylistUrl(url: string): boolean {
 
 export function isStaticAudioUrl(url: string): boolean {
   return isAudioUrl(url) || isPlaylistUrl(url);
+}
+
+export function validatePublicStaticAudioUrl(
+  url: string,
+  options: ValidatePublicStaticAudioUrlOptions = {}
+): Promise<PublicStaticAudioUrlResult> {
+  if (!isStaticAudioUrl(url)) {
+    return Promise.resolve({ ok: false, reason: "unsupported-url" });
+  }
+
+  return validateResolvedPublicHttpUrl(url, options);
 }
 
 export function getFilenameFromUrl(url: string): string {

@@ -75,10 +75,8 @@ const BANDCAMP_REDIRECT_FAILURE_ERRORS = {
   },
 } as const satisfies Record<BandcampRedirectFailure, AppErrorInit>;
 
-function createBandcampUpstreamHeaders(request: Request): HeadersInit {
-  const rangeHeader = request.headers.get("range");
+function createBandcampUpstreamHeaders(): HeadersInit {
   return {
-    ...(rangeHeader ? { Range: rangeHeader } : {}),
     Referer: "https://bandcamp.com/",
   };
 }
@@ -96,6 +94,13 @@ export function createBandcampCdnProxyWorkflow({
       status: 500,
     },
     invalidUrlReason: "invalid-url",
+    invalidRangeError: {
+      code: "BANDCAMP_PROXY_INVALID_RANGE",
+      safeMessage: "Invalid Range header",
+      category: "validation",
+      expected: true,
+      status: 416,
+    },
     operation: "bandcamp-proxy.fetch",
     proxyPolicy,
     redirectFailureErrors: BANDCAMP_REDIRECT_FAILURE_ERRORS,

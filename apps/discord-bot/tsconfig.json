@@ -9,5 +9,6 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "strictNullChecks": true
-  }
+  },
+  "exclude": ["node_modules", "src/**/*.test.ts"]
 }

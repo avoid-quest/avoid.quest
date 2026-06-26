@@ -31,7 +31,7 @@ type DetermineStreamAccessOptions = {
   fetchImpl?: FetchLike;
   now?: () => number;
   origin: string;
-  requestHeaders?: Headers;
+  preparedHeaders?: Headers;
   timeoutMs?: number;
 };
 
@@ -98,7 +98,7 @@ async function probeStreamAccess(
     fetchImpl = fetch,
     now = Date.now,
     origin,
-    requestHeaders,
+    preparedHeaders,
     timeoutMs = STREAM_ACCESS_PROBE_TIMEOUT_MS,
   }: DetermineStreamAccessOptions,
   preserveProxyResponse: boolean
@@ -127,15 +127,12 @@ async function probeStreamAccess(
   }, timeoutMs);
 
   try {
-    const headers: HeadersInit = {
-      "Icy-MetaData": requestHeaders?.get("Icy-MetaData") || "0",
-    };
-
-    const rangeHeader = requestHeaders?.get("range");
-    if (rangeHeader) {
-      headers.Range = rangeHeader;
-    } else if (!preserveProxyResponse) {
-      headers.Range = "bytes=0-0";
+    const headers = new Headers(preparedHeaders);
+    if (!headers.has("Icy-MetaData")) {
+      headers.set("Icy-MetaData", "0");
+    }
+    if (!(preserveProxyResponse || headers.has("Range"))) {
+      headers.set("Range", "bytes=0-0");
     }
 
     const fetchResult = await fetchPublicStreamWithRedirects(

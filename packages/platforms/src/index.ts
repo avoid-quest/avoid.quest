@@ -128,6 +128,10 @@ export {
   validateSoundCloudCdnRedirectUrl,
   validateSoundCloudCdnUrl,
 } from "./soundcloud/url-policy.js";
+export type {
+  PublicStaticAudioUrlFailure,
+  PublicStaticAudioUrlResult,
+} from "./static-audio.js";
 export {
   AUDIO_EXTENSIONS,
   getFilenameFromUrl,
@@ -135,6 +139,7 @@ export {
   isPlaylistUrl,
   isStaticAudioUrl,
   PLAYLIST_EXTENSIONS,
+  validatePublicStaticAudioUrl,
 } from "./static-audio.js";
 export type {
   Platform,

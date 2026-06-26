@@ -8,7 +8,10 @@
   "exports": {
     ".": "./src/index.ts"
   },
+  "scripts": {
+    "test": "bun test"
+  },
   "dependencies": {
-    "@sentry/tanstackstart-react": "^10.59.0"
+    "@sentry/tanstackstart-react": "^10.61.0"
   }
 }

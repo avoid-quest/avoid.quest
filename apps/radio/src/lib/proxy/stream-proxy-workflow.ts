@@ -6,6 +6,11 @@ import {
   type StreamRedirectFailureDetails,
 } from "./stream-access";
 import {
+  applyBoundedRangeHeader,
+  getContentLengthLimitFailure,
+  limitResponseBody,
+} from "./stream-limits";
+import {
   type StreamUrlValidationFailure,
   validatePublicStreamUrl,
 } from "./url-policy";
@@ -21,12 +26,17 @@ const EXPOSED_STREAM_HEADERS = [
   "Icy-Genre",
   "Icy-Br",
 ];
+const STREAM_PROXY_FETCH_TIMEOUT_MS = 10_000;
+const STREAM_PROXY_MAX_RANGE_BYTES = 8 * 1024 * 1024;
+const STREAM_PROXY_MAX_STREAM_DURATION_MS = 2 * 60 * 60 * 1000;
+const STREAM_PROXY_HIGH_LIVE_STREAM_BYTE_CAP = 8 * 1024 * 1024 * 1024;
+const STREAM_PROXY_FETCH_TIMEOUT_REASON = "stream-proxy-fetch-timeout";
 
 type StreamAccessInspector = (
   url: string,
   options: {
     origin: string;
-    requestHeaders?: Headers;
+    preparedHeaders?: Headers;
   }
 ) => Promise<StreamAccessDecision>;
 
@@ -37,8 +47,12 @@ type StreamProxyPolicy = {
 
 type StreamProxyWorkflowDependencies = {
   captureError?: typeof captureError;
+  fetchTimeoutMs?: number;
   fetchImpl?: FetchLike;
   inspectStreamAccess: StreamAccessInspector;
+  maxRangeBytes?: number;
+  maxStreamDurationMs?: number;
+  maxStreamedBytes?: number;
   proxyPolicy: StreamProxyPolicy;
 };
 
@@ -82,6 +96,30 @@ const STREAM_PROXY_HOSTNAME_RESOLUTION_ERROR = {
   category: "validation",
   expected: true,
   status: 400,
+} as const satisfies AppErrorInit;
+
+const STREAM_PROXY_INVALID_RANGE_ERROR = {
+  code: "STREAM_PROXY_INVALID_RANGE",
+  safeMessage: "Invalid Range header",
+  category: "validation",
+  expected: true,
+  status: 416,
+} as const satisfies AppErrorInit;
+
+const STREAM_PROXY_RESPONSE_TOO_LARGE_ERROR = {
+  code: "STREAM_PROXY_RESPONSE_TOO_LARGE",
+  safeMessage: "Response too large",
+  category: "validation",
+  expected: true,
+  status: 413,
+} as const satisfies AppErrorInit;
+
+const STREAM_PROXY_TIMEOUT_ERROR = {
+  code: "STREAM_PROXY_TIMEOUT",
+  safeMessage: "Request timeout",
+  category: "network",
+  expected: true,
+  status: 408,
 } as const satisfies AppErrorInit;
 
 const STREAM_URL_VALIDATION_ERRORS = {
@@ -136,6 +174,10 @@ function createRedirectFailureError(
   return createStreamProxyError(STREAM_REDIRECT_FAILURE_ERRORS[failure.reason]);
 }
 
+function createResponseTooLargeError(): AppError {
+  return createStreamProxyError(STREAM_PROXY_RESPONSE_TOO_LARGE_ERROR);
+}
+
 function copyHeaderIfPresent(
   source: Headers,
   target: Headers,
@@ -151,7 +193,10 @@ function buildStreamResponse(
   upstreamResponse: Response,
   request: Request,
   requestId: string,
-  proxyPolicy: StreamProxyPolicy
+  proxyPolicy: StreamProxyPolicy,
+  maxStreamedBytes: number,
+  maxStreamDurationMs: number,
+  abortController?: AbortController
 ): Response {
   const responseHeaders = new Headers(proxyPolicy.errorHeaders(request));
   responseHeaders.set(
@@ -161,6 +206,9 @@ function buildStreamResponse(
   responseHeaders.set("x-request-id", requestId);
 
   for (const header of EXPOSED_STREAM_HEADERS) {
+    if (header === "Content-Length") {
+      continue;
+    }
     copyHeaderIfPresent(upstreamResponse.headers, responseHeaders, header);
   }
 
@@ -170,20 +218,40 @@ function buildStreamResponse(
     responseHeaders.set("Accept-Ranges", "bytes");
   }
 
-  return new Response(upstreamResponse.body, {
+  const body = limitResponseBody(upstreamResponse.body, {
+    abortController,
+    maxBytes: maxStreamedBytes,
+    maxDurationMs: maxStreamDurationMs,
+  });
+
+  return new Response(body, {
     status: upstreamResponse.status,
     headers: responseHeaders,
   });
 }
 
-function createForwardedStreamHeaders(request: Request): HeadersInit {
-  const headers: HeadersInit = {
-    "Icy-MetaData": request.headers.get("Icy-MetaData") || "0",
-  };
+function validateUpstreamResponseSize(
+  response: Response,
+  maxStreamedBytes: number
+): AppError | null {
+  const failure = getContentLengthLimitFailure(
+    response.headers,
+    maxStreamedBytes
+  );
+  return failure ? createResponseTooLargeError() : null;
+}
 
-  const rangeHeader = request.headers.get("range");
-  if (rangeHeader) {
-    headers.Range = rangeHeader;
+function createForwardedStreamHeaders(
+  request: Request,
+  maxRangeBytes: number
+): Headers | AppError {
+  const headers = new Headers({
+    "Icy-MetaData": request.headers.get("Icy-MetaData") || "0",
+  });
+
+  const rangeResult = applyBoundedRangeHeader(headers, request, maxRangeBytes);
+  if (!rangeResult.ok) {
+    return createStreamProxyError(STREAM_PROXY_INVALID_RANGE_ERROR);
   }
 
   return headers;
@@ -218,21 +286,34 @@ function canRedirectDirectStream(url: string, origin: string): boolean {
 export function createStreamProxyRequestWorkflow({
   captureError: captureErrorImpl = captureError,
   fetchImpl = fetch,
+  fetchTimeoutMs = STREAM_PROXY_FETCH_TIMEOUT_MS,
   inspectStreamAccess,
+  maxRangeBytes = STREAM_PROXY_MAX_RANGE_BYTES,
+  maxStreamDurationMs = STREAM_PROXY_MAX_STREAM_DURATION_MS,
+  maxStreamedBytes = STREAM_PROXY_HIGH_LIVE_STREAM_BYTE_CAP,
   proxyPolicy,
 }: StreamProxyWorkflowDependencies) {
   const fetchStream = async (
     url: string,
-    { origin, request, requestId }: StreamProxyWorkflowContext
+    { origin, request, requestId }: StreamProxyWorkflowContext,
+    headers: Headers
   ): Promise<Response> => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => {
+      controller.abort(STREAM_PROXY_FETCH_TIMEOUT_REASON);
+    }, fetchTimeoutMs);
+
     try {
       const fetchResult = await fetchPublicStreamWithRedirects(
         url,
         {
-          headers: createForwardedStreamHeaders(request),
+          headers,
+          signal: controller.signal,
         },
         fetchImpl
       );
+      clearTimeout(timeout);
+
       if (!fetchResult.ok) {
         return proxyPolicy.problem(
           createRedirectFailureError(fetchResult.failure),
@@ -258,8 +339,32 @@ export function createStreamProxyRequestWorkflow({
         );
       }
 
-      return buildStreamResponse(res, request, requestId, proxyPolicy);
+      const sizeError = validateUpstreamResponseSize(res, maxStreamedBytes);
+      if (sizeError) {
+        await res.body?.cancel();
+        return proxyPolicy.problem(sizeError, origin, requestId);
+      }
+
+      return buildStreamResponse(
+        res,
+        request,
+        requestId,
+        proxyPolicy,
+        maxStreamedBytes,
+        maxStreamDurationMs,
+        controller
+      );
     } catch (error) {
+      clearTimeout(timeout);
+
+      if (controller.signal.reason === STREAM_PROXY_FETCH_TIMEOUT_REASON) {
+        return proxyPolicy.problem(
+          createStreamProxyError(STREAM_PROXY_TIMEOUT_ERROR),
+          origin,
+          requestId
+        );
+      }
+
       const appError = createStreamProxyError({
         code: "STREAM_PROXY_FETCH_FAILED",
         safeMessage: "Failed to fetch stream",
@@ -292,9 +397,17 @@ export function createStreamProxyRequestWorkflow({
       );
     }
 
+    const headers = createForwardedStreamHeaders(
+      context.request,
+      maxRangeBytes
+    );
+    if (headers instanceof AppError) {
+      return proxyPolicy.problem(headers, context.origin, context.requestId);
+    }
+
     const accessDecision = await inspectStreamAccess(urlValidation, {
       origin: context.origin,
-      requestHeaders: context.request.headers,
+      preparedHeaders: headers,
     });
 
     if (accessDecision.mode === "rejected") {
@@ -318,15 +431,30 @@ export function createStreamProxyRequestWorkflow({
     }
 
     if (accessDecision.response?.ok) {
+      const sizeError = validateUpstreamResponseSize(
+        accessDecision.response,
+        maxStreamedBytes
+      );
+      if (sizeError) {
+        await accessDecision.response.body?.cancel();
+        return proxyPolicy.problem(
+          sizeError,
+          context.origin,
+          context.requestId
+        );
+      }
+
       return buildStreamResponse(
         accessDecision.response,
         context.request,
         context.requestId,
-        proxyPolicy
+        proxyPolicy,
+        maxStreamedBytes,
+        maxStreamDurationMs
       );
     }
 
-    return fetchStream(urlValidation, context);
+    return fetchStream(urlValidation, context, headers);
   };
 
   return { handle };

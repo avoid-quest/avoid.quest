@@ -26,9 +26,15 @@ const EXPOSED_STREAM_HEADERS = [
   "Icy-Genre",
   "Icy-Br",
 ];
+const STREAM_PROXY_FETCH_TIMEOUT_MS = 10_000;
 const STREAM_PROXY_MAX_RANGE_BYTES = 8 * 1024 * 1024;
-const STREAM_PROXY_MAX_STREAMED_BYTES = 128 * 1024 * 1024;
 const STREAM_PROXY_MAX_STREAM_DURATION_MS = 2 * 60 * 60 * 1000;
+const STREAM_PROXY_MAX_AVERAGE_BITRATE_BPS = 1_000_000;
+const STREAM_PROXY_MAX_STREAMED_BYTES = bytesForBitrateDuration(
+  STREAM_PROXY_MAX_AVERAGE_BITRATE_BPS,
+  STREAM_PROXY_MAX_STREAM_DURATION_MS
+);
+const STREAM_PROXY_FETCH_TIMEOUT_REASON = "stream-proxy-fetch-timeout";
 
 type StreamAccessInspector = (
   url: string,
@@ -45,6 +51,7 @@ type StreamProxyPolicy = {
 
 type StreamProxyWorkflowDependencies = {
   captureError?: typeof captureError;
+  fetchTimeoutMs?: number;
   fetchImpl?: FetchLike;
   inspectStreamAccess: StreamAccessInspector;
   maxRangeBytes?: number;
@@ -61,6 +68,13 @@ type StreamProxyWorkflowContext = {
 
 function createStreamProxyError(init: AppErrorInit): AppError {
   return new AppError(init);
+}
+
+function bytesForBitrateDuration(
+  bitsPerSecond: number,
+  durationMs: number
+): number {
+  return Math.ceil((bitsPerSecond * durationMs) / 8000);
 }
 
 const STREAM_PROXY_INVALID_URL_ERROR = {
@@ -109,6 +123,14 @@ const STREAM_PROXY_RESPONSE_TOO_LARGE_ERROR = {
   category: "validation",
   expected: true,
   status: 413,
+} as const satisfies AppErrorInit;
+
+const STREAM_PROXY_TIMEOUT_ERROR = {
+  code: "STREAM_PROXY_TIMEOUT",
+  safeMessage: "Request timeout",
+  category: "network",
+  expected: true,
+  status: 408,
 } as const satisfies AppErrorInit;
 
 const STREAM_URL_VALIDATION_ERRORS = {
@@ -275,6 +297,7 @@ function canRedirectDirectStream(url: string, origin: string): boolean {
 export function createStreamProxyRequestWorkflow({
   captureError: captureErrorImpl = captureError,
   fetchImpl = fetch,
+  fetchTimeoutMs = STREAM_PROXY_FETCH_TIMEOUT_MS,
   inspectStreamAccess,
   maxRangeBytes = STREAM_PROXY_MAX_RANGE_BYTES,
   maxStreamDurationMs = STREAM_PROXY_MAX_STREAM_DURATION_MS,
@@ -286,8 +309,12 @@ export function createStreamProxyRequestWorkflow({
     { origin, request, requestId }: StreamProxyWorkflowContext,
     headers: Headers
   ): Promise<Response> => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => {
+      controller.abort(STREAM_PROXY_FETCH_TIMEOUT_REASON);
+    }, fetchTimeoutMs);
+
     try {
-      const controller = new AbortController();
       const fetchResult = await fetchPublicStreamWithRedirects(
         url,
         {
@@ -296,6 +323,8 @@ export function createStreamProxyRequestWorkflow({
         },
         fetchImpl
       );
+      clearTimeout(timeout);
+
       if (!fetchResult.ok) {
         return proxyPolicy.problem(
           createRedirectFailureError(fetchResult.failure),
@@ -337,6 +366,16 @@ export function createStreamProxyRequestWorkflow({
         controller
       );
     } catch (error) {
+      clearTimeout(timeout);
+
+      if (controller.signal.reason === STREAM_PROXY_FETCH_TIMEOUT_REASON) {
+        return proxyPolicy.problem(
+          createStreamProxyError(STREAM_PROXY_TIMEOUT_ERROR),
+          origin,
+          requestId
+        );
+      }
+
       const appError = createStreamProxyError({
         code: "STREAM_PROXY_FETCH_FAILED",
         safeMessage: "Failed to fetch stream",

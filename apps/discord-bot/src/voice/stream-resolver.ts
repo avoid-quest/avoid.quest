@@ -51,7 +51,9 @@ export async function resolveStaticAudioItem(normalizedUrl: string): Promise<{
     throw new Error(STATIC_AUDIO_PLAYLIST_UNSUPPORTED_MESSAGE);
   }
 
-  const validation = await validatePublicStaticAudioUrl(normalizedUrl);
+  const validation = await validatePublicStaticAudioUrl(normalizedUrl, {
+    resolveHostname: false,
+  });
   if (!validation.ok) {
     throw new Error(STATIC_AUDIO_VALIDATION_MESSAGES[validation.reason]);
   }

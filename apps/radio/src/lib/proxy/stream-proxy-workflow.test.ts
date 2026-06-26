@@ -434,6 +434,84 @@ describe("createStreamProxyRequestWorkflow", () => {
     });
   });
 
+  test("allows live stream responses above the previous 128 MiB default cap", async () => {
+    const workflow = createStreamProxyRequestWorkflow({
+      fetchImpl: mock(async () => {
+        await Promise.resolve();
+        return new Response("large-stream", {
+          headers: {
+            "Content-Length": String(129 * 1024 * 1024),
+            "Content-Type": "audio/mpeg",
+          },
+        });
+      }),
+      inspectStreamAccess: mock(async () => {
+        await Promise.resolve();
+        return { mode: "proxy" as const, response: null, resolvedUrl: null };
+      }),
+      proxyPolicy: createTestPolicy(),
+    });
+
+    const response = await workflow.handle({
+      origin: "https://radio.test",
+      request: new Request(
+        "https://radio.test/api/stream-proxy?url=https%3A%2F%2Fradio.example%2Ffallback.mp3"
+      ),
+      requestId: "req_above_old_stream_cap",
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Length")).toBeNull();
+    await expect(response.text()).resolves.toBe("large-stream");
+  });
+
+  test("times out fallback upstream fetches before response headers arrive", async () => {
+    const workflow = createStreamProxyRequestWorkflow({
+      fetchImpl: mock(
+        async (_url: string, init?: RequestInit) =>
+          new Promise<Response>((_resolve, reject) => {
+            const signal = init?.signal;
+            if (!signal) {
+              reject(new Error("Missing abort signal"));
+              return;
+            }
+
+            signal.addEventListener(
+              "abort",
+              () => {
+                const error = new Error("Aborted");
+                error.name = "AbortError";
+                reject(error);
+              },
+              { once: true }
+            );
+          })
+      ),
+      fetchTimeoutMs: 1,
+      inspectStreamAccess: mock(async () => {
+        await Promise.resolve();
+        return { mode: "proxy" as const, response: null, resolvedUrl: null };
+      }),
+      proxyPolicy: createTestPolicy(),
+    });
+
+    const response = await workflow.handle({
+      origin: "https://radio.test",
+      request: new Request(
+        "https://radio.test/api/stream-proxy?url=https%3A%2F%2Fradio.example%2Ffallback.mp3"
+      ),
+      requestId: "req_fallback_timeout",
+    });
+
+    expect(response.status).toBe(408);
+    await expect(response.json()).resolves.toEqual({
+      code: "STREAM_PROXY_TIMEOUT",
+      message: "Request timeout",
+      requestId: "req_fallback_timeout",
+      status: 408,
+    });
+  });
+
   test("caps unknown-length fallback streams and aborts upstream", async () => {
     let wasCanceled = false;
     let upstreamSignal: AbortSignal | undefined;

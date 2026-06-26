@@ -40,6 +40,10 @@ const STATIC_AUDIO_VALIDATION_MESSAGES = {
 const STATIC_AUDIO_PLAYLIST_UNSUPPORTED_MESSAGE =
   "Discord direct audio URLs must point to an audio file, not a playlist.";
 
+const STATIC_AUDIO_COMMAND_VALIDATION_OPTIONS = {
+  resolveHostname: false,
+} as const;
+
 export async function resolveStaticAudioItem(normalizedUrl: string): Promise<{
   metadata: {
     platform: "static-audio";
@@ -51,9 +55,10 @@ export async function resolveStaticAudioItem(normalizedUrl: string): Promise<{
     throw new Error(STATIC_AUDIO_PLAYLIST_UNSUPPORTED_MESSAGE);
   }
 
-  const validation = await validatePublicStaticAudioUrl(normalizedUrl, {
-    resolveHostname: false,
-  });
+  const validation = await validatePublicStaticAudioUrl(
+    normalizedUrl,
+    STATIC_AUDIO_COMMAND_VALIDATION_OPTIONS
+  );
   if (!validation.ok) {
     throw new Error(STATIC_AUDIO_VALIDATION_MESSAGES[validation.reason]);
   }

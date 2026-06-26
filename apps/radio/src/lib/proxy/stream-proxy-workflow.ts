@@ -29,11 +29,7 @@ const EXPOSED_STREAM_HEADERS = [
 const STREAM_PROXY_FETCH_TIMEOUT_MS = 10_000;
 const STREAM_PROXY_MAX_RANGE_BYTES = 8 * 1024 * 1024;
 const STREAM_PROXY_MAX_STREAM_DURATION_MS = 2 * 60 * 60 * 1000;
-const STREAM_PROXY_MAX_AVERAGE_BITRATE_BPS = 1_000_000;
-const STREAM_PROXY_MAX_STREAMED_BYTES = bytesForBitrateDuration(
-  STREAM_PROXY_MAX_AVERAGE_BITRATE_BPS,
-  STREAM_PROXY_MAX_STREAM_DURATION_MS
-);
+const STREAM_PROXY_HIGH_LIVE_STREAM_BYTE_CAP = 8 * 1024 * 1024 * 1024;
 const STREAM_PROXY_FETCH_TIMEOUT_REASON = "stream-proxy-fetch-timeout";
 
 type StreamAccessInspector = (
@@ -68,13 +64,6 @@ type StreamProxyWorkflowContext = {
 
 function createStreamProxyError(init: AppErrorInit): AppError {
   return new AppError(init);
-}
-
-function bytesForBitrateDuration(
-  bitsPerSecond: number,
-  durationMs: number
-): number {
-  return Math.ceil((bitsPerSecond * durationMs) / 8000);
 }
 
 const STREAM_PROXY_INVALID_URL_ERROR = {
@@ -301,7 +290,7 @@ export function createStreamProxyRequestWorkflow({
   inspectStreamAccess,
   maxRangeBytes = STREAM_PROXY_MAX_RANGE_BYTES,
   maxStreamDurationMs = STREAM_PROXY_MAX_STREAM_DURATION_MS,
-  maxStreamedBytes = STREAM_PROXY_MAX_STREAMED_BYTES,
+  maxStreamedBytes = STREAM_PROXY_HIGH_LIVE_STREAM_BYTE_CAP,
   proxyPolicy,
 }: StreamProxyWorkflowDependencies) {
   const fetchStream = async (

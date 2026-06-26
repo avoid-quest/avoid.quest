@@ -10,7 +10,7 @@ describe("resolveStaticAudioItem", () => {
     );
   });
 
-  test("does not resolve hostnames during command-time direct audio validation", async () => {
+  test("defers direct audio hostname resolution to the timed playback fetch", async () => {
     const originalFetch = globalThis.fetch;
     const fetchImpl = mock(async () => {
       await Promise.resolve();

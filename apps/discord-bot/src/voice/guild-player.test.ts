@@ -1,6 +1,16 @@
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  test,
+} from "bun:test";
 import { Readable } from "node:stream";
 import type { QueueTrack } from "./queue";
+
+type GuildPlayerModule = typeof import("./guild-player");
 
 const audioPlayerPlayMock = mock((_resource: unknown) => undefined);
 const audioPlayerStopMock = mock((_force?: boolean) => true);
@@ -33,46 +43,6 @@ const VoiceConnectionStatus = {
   Signalling: "signalling",
 } as const;
 
-mock.module("@discordjs/voice", () => ({
-  AudioPlayerStatus,
-  VoiceConnectionStatus,
-  createAudioPlayer: () => {
-    const player = {
-      on: mock(
-        (_event: string, _listener: (...args: unknown[]) => void) => player
-      ),
-      pause: mock(() => {
-        player.state.status = AudioPlayerStatus.Paused;
-        return true;
-      }),
-      play: mock((resource: unknown) => {
-        player.state = {
-          resource,
-          status: AudioPlayerStatus.Playing,
-        };
-        audioPlayerPlayMock(resource);
-      }),
-      state: { status: AudioPlayerStatus.Idle } as {
-        resource?: unknown;
-        status: (typeof AudioPlayerStatus)[keyof typeof AudioPlayerStatus];
-      },
-      stop: mock((force?: boolean) => {
-        player.state = { status: AudioPlayerStatus.Idle };
-        audioPlayerStopMock(force);
-        return true;
-      }),
-      unpause: mock(() => {
-        player.state.status = AudioPlayerStatus.Playing;
-        return true;
-      }),
-    };
-    return player;
-  },
-  createAudioResource: createAudioResourceMock,
-  entersState: mock(async () => undefined),
-  joinVoiceChannel: joinVoiceChannelMock,
-}));
-
 const fetchDirectAudioStreamMock = mock(
   async (_url: string, _options?: { signal?: AbortSignal }) => {
     await Promise.resolve();
@@ -80,20 +50,10 @@ const fetchDirectAudioStreamMock = mock(
   }
 );
 
-mock.module("./direct-audio.js", () => ({
-  fetchDirectAudioStream: fetchDirectAudioStreamMock,
-}));
-
-mock.module("./stream-resolver.js", () => ({
-  resolveYouTubeStreamUrl: mock(async () => null),
-}));
-
-const {
-  clearGuildPlayback,
-  skipGuildPlayback,
-  startGuildPlayback,
-  stopGuildPlayback,
-} = await import("./guild-player");
+let clearGuildPlayback!: GuildPlayerModule["clearGuildPlayback"];
+let skipGuildPlayback!: GuildPlayerModule["skipGuildPlayback"];
+let startGuildPlayback!: GuildPlayerModule["startGuildPlayback"];
+let stopGuildPlayback!: GuildPlayerModule["stopGuildPlayback"];
 
 type Deferred<T> = {
   promise: Promise<T>;
@@ -149,12 +109,73 @@ function createDirectAudioStream(id: string): Readable {
   return Readable.from([Buffer.from(id)]);
 }
 
+beforeAll(async () => {
+  mock.module("@discordjs/voice", () => ({
+    AudioPlayerStatus,
+    VoiceConnectionStatus,
+    createAudioPlayer: () => {
+      const player = {
+        on: mock(
+          (_event: string, _listener: (...args: unknown[]) => void) => player
+        ),
+        pause: mock(() => {
+          player.state.status = AudioPlayerStatus.Paused;
+          return true;
+        }),
+        play: mock((resource: unknown) => {
+          player.state = {
+            resource,
+            status: AudioPlayerStatus.Playing,
+          };
+          audioPlayerPlayMock(resource);
+        }),
+        state: { status: AudioPlayerStatus.Idle } as {
+          resource?: unknown;
+          status: (typeof AudioPlayerStatus)[keyof typeof AudioPlayerStatus];
+        },
+        stop: mock((force?: boolean) => {
+          player.state = { status: AudioPlayerStatus.Idle };
+          audioPlayerStopMock(force);
+          return true;
+        }),
+        unpause: mock(() => {
+          player.state.status = AudioPlayerStatus.Playing;
+          return true;
+        }),
+      };
+      return player;
+    },
+    createAudioResource: createAudioResourceMock,
+    entersState: mock(async () => undefined),
+    joinVoiceChannel: joinVoiceChannelMock,
+  }));
+
+  mock.module("./direct-audio.js", () => ({
+    fetchDirectAudioStream: fetchDirectAudioStreamMock,
+  }));
+
+  mock.module("./stream-resolver.js", () => ({
+    resolveYouTubeStreamUrl: mock(async () => null),
+  }));
+
+  ({
+    clearGuildPlayback,
+    skipGuildPlayback,
+    startGuildPlayback,
+    stopGuildPlayback,
+  } = await import("./guild-player"));
+});
+
 beforeEach(() => {
   audioPlayerPlayMock.mockClear();
   audioPlayerStopMock.mockClear();
   createAudioResourceMock.mockClear();
   fetchDirectAudioStreamMock.mockClear();
   joinVoiceChannelMock.mockClear();
+});
+
+afterAll(() => {
+  mock.restore();
 });
 
 describe("GuildPlayer direct audio invalidation", () => {

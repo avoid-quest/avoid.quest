@@ -434,13 +434,13 @@ describe("createStreamProxyRequestWorkflow", () => {
     });
   });
 
-  test("allows live stream responses above the previous 128 MiB default cap", async () => {
+  test("allows live stream responses above the previous bitrate-derived cap", async () => {
     const workflow = createStreamProxyRequestWorkflow({
       fetchImpl: mock(async () => {
         await Promise.resolve();
         return new Response("large-stream", {
           headers: {
-            "Content-Length": String(129 * 1024 * 1024),
+            "Content-Length": String(512 * 1024 * 1024),
             "Content-Type": "audio/mpeg",
           },
         });

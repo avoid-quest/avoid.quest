@@ -10,6 +10,10 @@ import {
   VoiceConnectionStatus,
 } from "@discordjs/voice";
 import type { VoiceBasedChannel } from "discord.js";
+import {
+  type DirectAudioStream,
+  fetchDirectAudioStream,
+} from "./direct-audio.js";
 import type { QueueTrack } from "./queue.js";
 import { TrackQueue } from "./queue.js";
 import {
@@ -276,6 +280,8 @@ class GuildPlayer {
   private async play(track: QueueTrack): Promise<void> {
     const id = ++this.playId;
     let { streamUrl } = track;
+    let resourceInput: Parameters<typeof createAudioResource>[0] = streamUrl;
+    let directAudio: DirectAudioStream | null = null;
 
     if (streamUrl.startsWith("yt:")) {
       const videoId = streamUrl.slice(3);
@@ -287,13 +293,22 @@ class GuildPlayer {
       }
       streamUrl = resolved;
       track.streamUrl = resolved;
+      resourceInput = resolved;
+    }
+
+    if (track.platform === "static-audio") {
+      directAudio = await fetchDirectAudioStream(streamUrl);
+      streamUrl = directAudio.resolvedUrl;
+      track.streamUrl = directAudio.resolvedUrl;
+      resourceInput = directAudio.stream;
     }
 
     if (id !== this.playId) {
+      directAudio?.stream.destroy();
       return;
     }
 
-    const resource = createAudioResource(streamUrl, {
+    const resource = createAudioResource(resourceInput, {
       inlineVolume: true,
     });
 

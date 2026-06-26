@@ -9,6 +9,7 @@
     "build": "tsup",
     "start": "node dist/index.cjs",
     "deploy-commands": "doppler run -- tsx src/deploy-commands.ts",
+    "test": "bun test",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

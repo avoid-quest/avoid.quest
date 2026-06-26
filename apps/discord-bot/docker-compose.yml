@@ -9,7 +9,6 @@ services:
       - DISCORD_GUILD_ID=${DISCORD_GUILD_ID:-}
       - INVIDIOUS_INSTANCE_URL=${INVIDIOUS_INSTANCE_URL:-https://yt.avoid.quest}
       - INVIDIOUS_AUTH=${INVIDIOUS_AUTH:-}
-    network_mode: host
     restart: unless-stopped
     logging:
       driver: json-file

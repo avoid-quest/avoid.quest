@@ -327,7 +327,7 @@ describe("determineStreamAccessMode", () => {
       inspectStreamAccess("https://radio.example/live", {
         fetchImpl,
         origin: "https://radio.test",
-        requestHeaders,
+        preparedHeaders: requestHeaders,
       })
     ).resolves.toMatchObject({
       mode: "proxy",

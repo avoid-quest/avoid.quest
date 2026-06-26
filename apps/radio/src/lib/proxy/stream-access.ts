@@ -3,7 +3,6 @@ import {
   type PublicHttpFetchResult,
   type PublicHttpRedirectFailure,
 } from "@avoid.quest/platforms/url-policy";
-import { createBoundedRangeHeader } from "./stream-limits";
 
 export type StreamAccessMode = "direct" | "proxy" | "rejected";
 export type StreamRedirectFailure = PublicHttpRedirectFailure;
@@ -32,14 +31,13 @@ type DetermineStreamAccessOptions = {
   fetchImpl?: FetchLike;
   now?: () => number;
   origin: string;
-  requestHeaders?: Headers;
+  preparedHeaders?: Headers;
   timeoutMs?: number;
 };
 
 const STREAM_ACCESS_CACHE_TTL_MS = 10 * 60 * 1000;
 const STREAM_ACCESS_PROBE_TIMEOUT_MS = 4000;
 const STREAM_ACCESS_MAX_REDIRECTS = 5;
-const STREAM_ACCESS_MAX_RANGE_BYTES = 8 * 1024 * 1024;
 
 const streamAccessCache = new Map<string, StreamAccessCacheEntry>();
 
@@ -100,7 +98,7 @@ async function probeStreamAccess(
     fetchImpl = fetch,
     now = Date.now,
     origin,
-    requestHeaders,
+    preparedHeaders,
     timeoutMs = STREAM_ACCESS_PROBE_TIMEOUT_MS,
   }: DetermineStreamAccessOptions,
   preserveProxyResponse: boolean
@@ -129,18 +127,12 @@ async function probeStreamAccess(
   }, timeoutMs);
 
   try {
-    const headers: HeadersInit = {
-      "Icy-MetaData": requestHeaders?.get("Icy-MetaData") || "0",
-    };
-
-    const rangeResult = createBoundedRangeHeader(
-      requestHeaders?.get("range") ?? null,
-      STREAM_ACCESS_MAX_RANGE_BYTES
-    );
-    if (rangeResult.ok && rangeResult.range) {
-      headers.Range = rangeResult.range;
-    } else if (!preserveProxyResponse) {
-      headers.Range = "bytes=0-0";
+    const headers = new Headers(preparedHeaders);
+    if (!headers.has("Icy-MetaData")) {
+      headers.set("Icy-MetaData", "0");
+    }
+    if (!(preserveProxyResponse || headers.has("Range"))) {
+      headers.set("Range", "bytes=0-0");
     }
 
     const fetchResult = await fetchPublicStreamWithRedirects(

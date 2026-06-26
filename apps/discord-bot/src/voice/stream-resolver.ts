@@ -2,6 +2,7 @@ import type { InvidiousOptions } from "@avoid.quest/platforms";
 import {
   createPlayablePlatformResolver,
   fetchClientID,
+  isPlaylistUrl,
   type PublicStaticAudioUrlFailure,
   resolveStreamUrl,
   toPlayableSources,
@@ -36,6 +37,9 @@ const STATIC_AUDIO_VALIDATION_MESSAGES = {
     "Direct audio URL must point to a supported audio file or playlist.",
 } as const satisfies Record<PublicStaticAudioUrlFailure, string>;
 
+const STATIC_AUDIO_PLAYLIST_UNSUPPORTED_MESSAGE =
+  "Discord direct audio URLs must point to an audio file, not a playlist.";
+
 export async function resolveStaticAudioItem(normalizedUrl: string): Promise<{
   metadata: {
     platform: "static-audio";
@@ -43,6 +47,10 @@ export async function resolveStaticAudioItem(normalizedUrl: string): Promise<{
   };
   streamUrl: string;
 }> {
+  if (isPlaylistUrl(normalizedUrl)) {
+    throw new Error(STATIC_AUDIO_PLAYLIST_UNSUPPORTED_MESSAGE);
+  }
+
   const validation = await validatePublicStaticAudioUrl(normalizedUrl);
   if (!validation.ok) {
     throw new Error(STATIC_AUDIO_VALIDATION_MESSAGES[validation.reason]);

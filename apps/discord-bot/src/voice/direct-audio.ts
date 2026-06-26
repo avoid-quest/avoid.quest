@@ -1,16 +1,28 @@
+import type { LookupAddress, LookupOptions } from "node:dns";
+import { lookup as lookupHostname } from "node:dns/promises";
+import { request as requestHttp } from "node:http";
+import { request as requestHttps } from "node:https";
+import type { LookupFunction } from "node:net";
 import { Readable } from "node:stream";
 import type { ReadableStream as NodeReadableStream } from "node:stream/web";
 import {
   fetchPublicHttpUrlWithValidatedRedirects,
+  isBlockedPublicHttpHostname,
   type PublicHostnameResolver,
   type PublicHttpRedirectFailure,
+  resolvePublicHostnameWithDoh,
 } from "@avoid.quest/platforms/url-policy";
 
 type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
+type SocketAddressResolver = (
+  hostname: string,
+  options: LookupOptions
+) => Promise<readonly LookupAddress[]>;
 
 type FetchDirectAudioStreamOptions = {
   fetchImpl?: FetchLike;
   resolveHostname?: PublicHostnameResolver | false;
+  resolveSocketAddresses?: SocketAddressResolver;
   signal?: AbortSignal;
 };
 
@@ -55,16 +67,137 @@ async function cancelBody(response: Response): Promise<void> {
   }
 }
 
+function resolveSocketAddressesWithDns(
+  hostname: string,
+  options: LookupOptions
+): Promise<readonly LookupAddress[]> {
+  return lookupHostname(hostname, {
+    all: true,
+    family: options.family,
+    hints: options.hints,
+  });
+}
+
+function createPublicSocketLookup(
+  url: string,
+  resolveSocketAddresses: SocketAddressResolver
+): LookupFunction {
+  return (hostname, options, callback) => {
+    resolveSocketAddresses(hostname, options)
+      .then((addresses) => {
+        const publicAddresses = addresses.filter(
+          ({ address }) => !isBlockedPublicHttpHostname(address)
+        );
+
+        if (publicAddresses.length === 0) {
+          callback(new DirectAudioFetchError("internal-address", url), "", 0);
+          return;
+        }
+
+        if (options.all) {
+          callback(null, [...publicAddresses]);
+          return;
+        }
+
+        const [address] = publicAddresses;
+        if (!address) {
+          callback(
+            new DirectAudioFetchError("hostname-resolution-failed", url),
+            "",
+            0
+          );
+          return;
+        }
+
+        callback(null, address.address, address.family);
+      })
+      .catch(() => {
+        callback(
+          new DirectAudioFetchError("hostname-resolution-failed", url),
+          "",
+          0
+        );
+      });
+  };
+}
+
+function headersToObject(
+  headers: HeadersInit | undefined
+): Record<string, string> {
+  const normalized = new Headers(headers);
+  const output: Record<string, string> = {};
+  normalized.forEach((value, key) => {
+    output[key] = value;
+  });
+  return output;
+}
+
+function incomingHeadersToHeaders(
+  headers: NodeJS.Dict<string | string[]>
+): Headers {
+  const responseHeaders = new Headers();
+  for (const [name, value] of Object.entries(headers)) {
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        responseHeaders.append(name, item);
+      }
+      continue;
+    }
+
+    if (value !== undefined) {
+      responseHeaders.set(name, value);
+    }
+  }
+  return responseHeaders;
+}
+
+function createDirectAudioNodeFetch(
+  resolveSocketAddresses: SocketAddressResolver
+): FetchLike {
+  return (input, init = {}) =>
+    new Promise<Response>((resolve, reject) => {
+      const url = new URL(input);
+      const request = url.protocol === "https:" ? requestHttps : requestHttp;
+      const req = request(
+        url,
+        {
+          headers: headersToObject(init.headers),
+          lookup: createPublicSocketLookup(input, resolveSocketAddresses),
+          method: init.method ?? "GET",
+          signal: init.signal ?? undefined,
+        },
+        (res) => {
+          const body = Readable.toWeb(
+            res
+          ) as unknown as ReadableStream<Uint8Array>;
+          resolve(
+            new Response(body, {
+              headers: incomingHeadersToHeaders(res.headers),
+              status: res.statusCode ?? 500,
+              statusText: res.statusMessage,
+            })
+          );
+        }
+      );
+
+      req.on("error", reject);
+      req.end();
+    });
+}
+
 export async function fetchDirectAudioStream(
   url: string,
   {
-    fetchImpl = fetch,
+    fetchImpl,
     resolveHostname,
+    resolveSocketAddresses = resolveSocketAddressesWithDns,
     signal,
   }: FetchDirectAudioStreamOptions = {}
 ): Promise<DirectAudioStream> {
+  const audioFetchImpl =
+    fetchImpl ?? createDirectAudioNodeFetch(resolveSocketAddresses);
   const redirectResult = await fetchPublicHttpUrlWithValidatedRedirects({
-    fetchImpl,
+    fetchImpl: audioFetchImpl,
     init: {
       headers: {
         "User-Agent": DIRECT_AUDIO_USER_AGENT,
@@ -72,7 +205,7 @@ export async function fetchDirectAudioStream(
       signal,
     },
     maxRedirects: DIRECT_AUDIO_MAX_REDIRECTS,
-    resolveHostname,
+    resolveHostname: resolveHostname ?? resolvePublicHostnameWithDoh,
     url,
   });
 

@@ -52,6 +52,22 @@ describe("fetchDirectAudioStream", () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
+  test("rejects socket lookups that rebind to private addresses", async () => {
+    const url = "http://audio.example/live.mp3";
+
+    await expect(
+      fetchDirectAudioStream(url, {
+        resolveHostname: async () => ["93.184.216.34"],
+        resolveSocketAddresses: async () => [
+          { address: "127.0.0.1", family: 4 },
+        ],
+      })
+    ).rejects.toMatchObject({
+      reason: "internal-address",
+      url,
+    });
+  });
+
   test("rejects redirects to internal addresses before fetching the target", async () => {
     const requestedUrls: string[] = [];
     const initialUrl = "https://audio.example/live.mp3";

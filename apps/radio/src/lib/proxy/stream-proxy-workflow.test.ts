@@ -363,14 +363,16 @@ describe("createStreamProxyRequestWorkflow", () => {
     const capture: { forwardedHeaders: Headers | null } = {
       forwardedHeaders: null,
     };
+    const inspection: { headers: Headers | null } = { headers: null };
     const workflow = createStreamProxyRequestWorkflow({
       fetchImpl: mock(async (_url: string, init?: RequestInit) => {
         await Promise.resolve();
         capture.forwardedHeaders = new Headers(init?.headers);
         return new Response("fallback-audio");
       }),
-      inspectStreamAccess: mock(async () => {
+      inspectStreamAccess: mock(async (_url, options) => {
         await Promise.resolve();
+        inspection.headers = options.preparedHeaders ?? null;
         return { mode: "proxy" as const, response: null, resolvedUrl: null };
       }),
       maxRangeBytes: 10,
@@ -392,6 +394,7 @@ describe("createStreamProxyRequestWorkflow", () => {
 
     expect(response.status).toBe(200);
     await expect(response.text()).resolves.toBe("fallback-audio");
+    expect(inspection.headers?.get("Range")).toBe("bytes=100-109");
     expect(capture.forwardedHeaders?.get("Range")).toBe("bytes=100-109");
   });
 

@@ -34,7 +34,7 @@ type StreamAccessInspector = (
   url: string,
   options: {
     origin: string;
-    requestHeaders?: Headers;
+    preparedHeaders?: Headers;
   }
 ) => Promise<StreamAccessDecision>;
 
@@ -280,14 +280,10 @@ export function createStreamProxyRequestWorkflow({
 }: StreamProxyWorkflowDependencies) {
   const fetchStream = async (
     url: string,
-    { origin, request, requestId }: StreamProxyWorkflowContext
+    { origin, request, requestId }: StreamProxyWorkflowContext,
+    headers: Headers
   ): Promise<Response> => {
     try {
-      const headers = createForwardedStreamHeaders(request, maxRangeBytes);
-      if (headers instanceof AppError) {
-        return proxyPolicy.problem(headers, origin, requestId);
-      }
-
       const controller = new AbortController();
       const fetchResult = await fetchPublicStreamWithRedirects(
         url,
@@ -380,7 +376,7 @@ export function createStreamProxyRequestWorkflow({
 
     const accessDecision = await inspectStreamAccess(urlValidation, {
       origin: context.origin,
-      requestHeaders: context.request.headers,
+      preparedHeaders: headers,
     });
 
     if (accessDecision.mode === "rejected") {
@@ -427,7 +423,7 @@ export function createStreamProxyRequestWorkflow({
       );
     }
 
-    return fetchStream(urlValidation, context);
+    return fetchStream(urlValidation, context, headers);
   };
 
   return { handle };

@@ -177,6 +177,7 @@ class GuildPlayer {
   private readonly player: AudioPlayer;
   private volume = 0.5;
   private disconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private activePlayAbortController: AbortController | null = null;
   private skipping = false;
   private playId = 0;
 
@@ -219,7 +220,8 @@ class GuildPlayer {
     return (
       s === AudioPlayerStatus.Playing ||
       s === AudioPlayerStatus.Buffering ||
-      s === AudioPlayerStatus.Paused
+      s === AudioPlayerStatus.Paused ||
+      this.activePlayAbortController !== null
     );
   }
 
@@ -277,51 +279,93 @@ class GuildPlayer {
     };
   }
 
-  private async play(track: QueueTrack): Promise<void> {
+  private beginPlay(): { controller: AbortController; id: number } {
+    this.abortActivePlay();
+    const controller = new AbortController();
     const id = ++this.playId;
+    this.activePlayAbortController = controller;
+    return { controller, id };
+  }
+
+  private abortActivePlay(): void {
+    this.activePlayAbortController?.abort();
+    this.activePlayAbortController = null;
+  }
+
+  private invalidateActivePlay(): void {
+    this.abortActivePlay();
+    this.playId += 1;
+  }
+
+  private isCurrentPlay(id: number, controller: AbortController): boolean {
+    return id === this.playId && this.activePlayAbortController === controller;
+  }
+
+  private finishPendingPlay(controller: AbortController): void {
+    if (this.activePlayAbortController === controller) {
+      this.activePlayAbortController = null;
+    }
+  }
+
+  private async play(track: QueueTrack): Promise<void> {
+    const { controller, id } = this.beginPlay();
     let { streamUrl } = track;
     let resourceInput: Parameters<typeof createAudioResource>[0] = streamUrl;
     let directAudio: DirectAudioStream | null = null;
 
-    if (streamUrl.startsWith("yt:")) {
-      const videoId = streamUrl.slice(3);
-      const resolved = await resolveYouTubeStreamUrl(videoId);
-      if (!resolved) {
-        throw new Error(
-          `Failed to resolve YouTube stream for video ${videoId}`
-        );
+    try {
+      if (streamUrl.startsWith("yt:")) {
+        const videoId = streamUrl.slice(3);
+        const resolved = await resolveYouTubeStreamUrl(videoId);
+        if (!this.isCurrentPlay(id, controller)) {
+          return;
+        }
+        if (!resolved) {
+          throw new Error(
+            `Failed to resolve YouTube stream for video ${videoId}`
+          );
+        }
+        streamUrl = resolved;
+        track.streamUrl = resolved;
+        resourceInput = resolved;
       }
-      streamUrl = resolved;
-      track.streamUrl = resolved;
-      resourceInput = resolved;
+
+      if (track.platform === "static-audio") {
+        directAudio = await fetchDirectAudioStream(streamUrl, {
+          signal: controller.signal,
+        });
+        streamUrl = directAudio.resolvedUrl;
+        track.streamUrl = directAudio.resolvedUrl;
+        resourceInput = directAudio.stream;
+      }
+
+      if (!this.isCurrentPlay(id, controller)) {
+        directAudio?.stream.destroy();
+        return;
+      }
+
+      const resource = createAudioResource(resourceInput, {
+        inlineVolume: true,
+      });
+
+      configureStereoEncoder(resource);
+
+      resource.volume?.setVolume(this.volume);
+      this.player.play(resource);
+
+      const status =
+        track.artist && !track.isLiveStream
+          ? `${track.title} — ${track.artist}`
+          : track.title;
+      this.updateVoiceStatus(status.slice(0, 128));
+    } catch (error) {
+      if (!this.isCurrentPlay(id, controller) || controller.signal.aborted) {
+        return;
+      }
+      throw error;
+    } finally {
+      this.finishPendingPlay(controller);
     }
-
-    if (track.platform === "static-audio") {
-      directAudio = await fetchDirectAudioStream(streamUrl);
-      streamUrl = directAudio.resolvedUrl;
-      track.streamUrl = directAudio.resolvedUrl;
-      resourceInput = directAudio.stream;
-    }
-
-    if (id !== this.playId) {
-      directAudio?.stream.destroy();
-      return;
-    }
-
-    const resource = createAudioResource(resourceInput, {
-      inlineVolume: true,
-    });
-
-    configureStereoEncoder(resource);
-
-    resource.volume?.setVolume(this.volume);
-    this.player.play(resource);
-
-    const status =
-      track.artist && !track.isLiveStream
-        ? `${track.title} — ${track.artist}`
-        : track.title;
-    this.updateVoiceStatus(status.slice(0, 128));
   }
 
   private async playNext(): Promise<boolean> {
@@ -349,6 +393,7 @@ class GuildPlayer {
 
     this.skipping = true;
     const next = this.queue.next();
+    this.invalidateActivePlay();
     this.player.stop();
     this.skipping = false;
     if (next) {
@@ -404,6 +449,7 @@ class GuildPlayer {
   }
 
   clearPlayback(): ClearPlaybackResult {
+    this.invalidateActivePlay();
     this.queue.clear();
     this.player.stop();
     this.updateVoiceStatus("");
@@ -469,6 +515,7 @@ class GuildPlayer {
 
   destroy(): void {
     this.clearDisconnectTimer();
+    this.invalidateActivePlay();
     this.updateVoiceStatus("");
     this.player.stop(true);
     this.connection?.destroy();

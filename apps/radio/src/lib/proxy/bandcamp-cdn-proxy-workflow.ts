@@ -75,10 +75,8 @@ const BANDCAMP_REDIRECT_FAILURE_ERRORS = {
   },
 } as const satisfies Record<BandcampRedirectFailure, AppErrorInit>;
 
-function createBandcampUpstreamHeaders(request: Request): HeadersInit {
-  const rangeHeader = request.headers.get("range");
+function createBandcampUpstreamHeaders(): HeadersInit {
   return {
-    ...(rangeHeader ? { Range: rangeHeader } : {}),
     Referer: "https://bandcamp.com/",
   };
 }

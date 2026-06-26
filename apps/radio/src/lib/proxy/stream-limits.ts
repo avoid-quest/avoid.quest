@@ -181,16 +181,30 @@ export function limitResponseBody(
     }
   }
 
-  function close(
-    controller: ReadableStreamDefaultController<Uint8Array>
-  ): void {
+  function markClosed(): boolean {
     if (closed) {
-      return;
+      return false;
     }
 
     closed = true;
     clearLimitTimer();
-    controller.close();
+    return true;
+  }
+
+  async function cancelReader(reason: unknown): Promise<void> {
+    try {
+      await reader.cancel(reason);
+    } catch {
+      // Some runtime streams reject cancellation after the fetch is aborted.
+    }
+  }
+
+  function close(
+    controller: ReadableStreamDefaultController<Uint8Array>
+  ): void {
+    if (markClosed()) {
+      controller.close();
+    }
   }
 
   async function stop(
@@ -198,20 +212,13 @@ export function limitResponseBody(
     controller?: ReadableStreamDefaultController<Uint8Array>,
     cancelReason: unknown = reason
   ): Promise<void> {
-    if (closed) {
+    if (!markClosed()) {
       return;
     }
 
-    closed = true;
-    clearLimitTimer();
     onLimitExceeded?.(reason);
     abortController?.abort(reason);
-
-    try {
-      await reader.cancel(cancelReason);
-    } catch {
-      // Some runtime streams reject cancellation after the fetch is aborted.
-    }
+    await cancelReader(cancelReason);
 
     if (controller) {
       controller.close();
@@ -219,18 +226,11 @@ export function limitResponseBody(
   }
 
   async function cancelUpstream(reason: unknown): Promise<void> {
-    if (closed) {
+    if (!markClosed()) {
       return;
     }
 
-    closed = true;
-    clearLimitTimer();
     abortController?.abort(reason);
-
-    try {
-      await reader.cancel(reason);
-    } catch {
-      // Some runtime streams reject cancellation after the fetch is aborted.
-    }
+    await cancelReader(reason);
   }
 }

@@ -90,18 +90,12 @@ const SOUNDCLOUD_REDIRECT_FAILURE_ERRORS = {
   },
 } as const satisfies Record<SoundCloudRedirectFailure, AppErrorInit>;
 
-function createSoundCloudUpstreamHeaders(request: Request): HeadersInit {
-  const rangeHeader = request.headers.get("range");
-  const requestHeaders: HeadersInit = {
+function createSoundCloudUpstreamHeaders(): HeadersInit {
+  return {
     Referer: "https://soundcloud.com/",
     "User-Agent":
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
   };
-  if (rangeHeader) {
-    requestHeaders.Range = rangeHeader;
-  }
-
-  return requestHeaders;
 }
 
 export function createSoundCloudCdnProxyWorkflow({

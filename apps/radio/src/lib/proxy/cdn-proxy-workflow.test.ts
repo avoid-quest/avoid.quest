@@ -142,8 +142,7 @@ function createWorkflow({
     TestRedirectUrlFailure,
     TestAuth
   >({
-    createUpstreamHeaders: (request) => ({
-      Range: request.headers.get("range") || "",
+    createUpstreamHeaders: () => ({
       Referer: "https://example.com/",
     }),
     fetchFailedError: {

@@ -1,6 +1,11 @@
 import { useThrottledCallback } from "@tanstack/react-pacer";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AudioManager } from "@/lib/audio";
+import {
+  getVisibleTrackProgress,
+  type TrackProgress,
+  type TrackProgressState,
+} from "./track-progress-state";
 
 /**
  * Track progress hook
@@ -11,18 +16,21 @@ import { AudioManager } from "@/lib/audio";
  * For live streams, duration will be Infinity.
  * For finite tracks (Bandcamp, SoundCloud), both position and duration are available.
  */
-export function useTrackProgress(soundId: string | null): {
-  position: number;
-  duration: number;
-} {
-  const [position, setPosition] = useState(0);
-  const [duration, setDuration] = useState(0);
+export function useTrackProgress(soundId: string | null): TrackProgress {
+  const activeSoundIdRef = useRef(soundId);
+  activeSoundIdRef.current = soundId;
+  const [progress, setProgress] = useState<TrackProgressState>({
+    soundId,
+    position: 0,
+    duration: 0,
+  });
   const rafRef = useRef<number | null>(null);
 
   const updateState = useThrottledCallback(
-    (pos: number, dur: number) => {
-      setPosition(pos);
-      setDuration(dur);
+    (sourceId: string, position: number, duration: number) => {
+      if (sourceId === activeSoundIdRef.current) {
+        setProgress({ duration, position, soundId: sourceId });
+      }
     },
     { wait: 250, leading: true, trailing: true }
   );
@@ -34,15 +42,14 @@ export function useTrackProgress(soundId: string | null): {
     const audioManager = AudioManager.getInstance();
     const progress = audioManager.getTrackProgress(soundId);
     if (progress) {
-      updateState(progress.position, progress.duration);
+      updateState(soundId, progress.position, progress.duration);
     }
     rafRef.current = requestAnimationFrame(tick);
   }, [soundId, updateState]);
 
   useEffect(() => {
+    setProgress({ duration: 0, position: 0, soundId });
     if (!soundId) {
-      setPosition(0);
-      setDuration(0);
       return;
     }
     rafRef.current = requestAnimationFrame(tick);
@@ -53,5 +60,5 @@ export function useTrackProgress(soundId: string | null): {
     };
   }, [soundId, tick]);
 
-  return { position, duration };
+  return getVisibleTrackProgress(soundId, progress);
 }

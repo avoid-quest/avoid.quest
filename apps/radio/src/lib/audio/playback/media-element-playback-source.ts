@@ -1,8 +1,5 @@
-import type { PlaybackSource } from "./playback-source.js";
-import {
-  type PlaybackSourceCallbacks,
-  STREAM_PROXY_ROUTE,
-} from "./playback-source-shared.js";
+import type { PlaybackInput, PlaybackSource } from "./playback-source.js";
+import type { PlaybackSourceCallbacks } from "./playback-source-shared.js";
 import type { StreamStatus } from "./types.js";
 
 const MEDIA_LOAD_TIMEOUT_MS = 8000;
@@ -26,40 +23,6 @@ function isHlsUrl(url: string): boolean {
   }
 }
 
-function shouldProxyMediaUrl(url: string): boolean {
-  if (url.startsWith("/") || url.startsWith(STREAM_PROXY_ROUTE)) {
-    return false;
-  }
-
-  try {
-    const parsed = new URL(
-      url,
-      typeof window === "undefined"
-        ? "https://example.invalid"
-        : window.location.origin
-    );
-
-    if (
-      typeof window !== "undefined" &&
-      parsed.origin === window.location.origin
-    ) {
-      return false;
-    }
-
-    return parsed.protocol === "http:" || parsed.protocol === "https:";
-  } catch {
-    return false;
-  }
-}
-
-function resolveMediaUrl(url: string): string {
-  if (!shouldProxyMediaUrl(url)) {
-    return url;
-  }
-
-  return STREAM_PROXY_ROUTE + encodeURIComponent(url);
-}
-
 function getPreferredMediaSourceConstructor(): typeof MediaSource | null {
   const mediaSourceGlobal = globalThis as MediaSourceGlobal;
   return (
@@ -70,23 +33,15 @@ function getPreferredMediaSourceConstructor(): typeof MediaSource | null {
   );
 }
 
-export function getMediaPlaybackCandidates(url: string): string[] {
-  const proxiedUrl = resolveMediaUrl(url);
-
-  if (proxiedUrl === url) {
-    return [url];
+function normalizePlaybackInput(input: PlaybackInput | string): PlaybackInput {
+  if (typeof input !== "string") {
+    return input;
   }
-
-  // HLS manifests typically reference segment URLs, so keep the direct URL
-  // first and only fall back to the single-URL proxy.
-  if (isHlsUrl(url)) {
-    return [url, proxiedUrl];
-  }
-
-  // Plain remote streams should stay on the same-origin proxy path. Falling
-  // back to the raw URL just produces noisy CORS failures and cannot be wired
-  // into the Web Audio graph reliably.
-  return [proxiedUrl];
+  return {
+    candidates: [
+      { format: isHlsUrl(input) ? "hls" : "progressive", src: input },
+    ],
+  };
 }
 
 function createMediaError(element: HTMLMediaElement): Error {
@@ -194,14 +149,17 @@ export class MediaElementPlaybackSource implements PlaybackSource {
     this.outputNode.gain.value = Math.max(0, Math.min(1, value));
   }
 
-  async load(url: string): Promise<void> {
+  async load(input: PlaybackInput | string): Promise<void> {
     const generation = ++this.generation;
     this.cancelPendingPlaybackIntent();
     this.resetMediaElement({ resetProgress: true });
 
     this._status = "connecting";
     this.setBuffering(false);
-    const loadPromise = this.loadWithFallbackCandidates(url, generation);
+    const loadPromise = this.loadWithFallbackCandidates(
+      normalizePlaybackInput(input),
+      generation
+    );
     this.currentLoadPromise = loadPromise;
     this.isLoadingPhase = true;
 
@@ -226,6 +184,7 @@ export class MediaElementPlaybackSource implements PlaybackSource {
   async play(): Promise<void> {
     const playbackIntent = ++this.playbackIntent;
     this.shouldResumeAfterLoad = true;
+    this.audio.autoplay = true;
 
     if (this.currentLoadPromise) {
       // Mobile browsers require media playback to be requested while the tap's
@@ -347,9 +306,12 @@ export class MediaElementPlaybackSource implements PlaybackSource {
     }
   }
 
-  async refreshUrl(newUrl: string, seekPosition?: number): Promise<void> {
+  async refreshUrl(
+    input: PlaybackInput | string,
+    seekPosition?: number
+  ): Promise<void> {
     const shouldResume = this.shouldResumeAfterLoad || !this.audio.paused;
-    await this.load(newUrl);
+    await this.load(input);
 
     if (
       seekPosition !== undefined &&
@@ -365,38 +327,49 @@ export class MediaElementPlaybackSource implements PlaybackSource {
   }
 
   private async loadWithFallbackCandidates(
-    url: string,
+    input: PlaybackInput,
     generation: number
   ): Promise<void> {
-    const candidates = getMediaPlaybackCandidates(url);
-    const treatAsHls = isHlsUrl(url);
-    let lastError: Error | DOMException | null = null;
+    const errors: Error[] = [];
 
-    for (const candidate of candidates) {
+    for (const candidate of input.candidates) {
       try {
-        await this.waitForReadyState(candidate, generation, treatAsHls);
+        await this.waitForReadyState(
+          candidate.src,
+          generation,
+          candidate.format === "hls",
+          candidate.credentials
+        );
         return;
       } catch (error) {
-        lastError =
+        const loadError =
           error instanceof Error || error instanceof DOMException
             ? error
             : new Error("Audio playback failed");
 
         if (generation !== this.generation) {
-          throw lastError;
+          throw loadError;
         }
 
-        this.resetMediaElement({ resetProgress: true });
+        errors.push(loadError);
+        this.resetMediaElement({
+          preservePlaybackIntent: this.shouldResumeAfterLoad,
+          resetProgress: true,
+        });
       }
     }
 
-    throw lastError ?? new Error("Audio playback failed");
+    throw new AggregateError(
+      errors,
+      "Audio playback failed after all candidates"
+    );
   }
 
   private async waitForReadyState(
     url: string,
     generation: number,
-    treatAsHls: boolean
+    treatAsHls: boolean,
+    credentials?: RequestCredentials
   ): Promise<void> {
     await new Promise<void>((resolve, reject) => {
       let settled = false;
@@ -472,6 +445,7 @@ export class MediaElementPlaybackSource implements PlaybackSource {
         treatAsHls,
         generation,
         mediaLoadAttempt,
+        credentials,
         (error) => {
           finish(() => {
             reject(error);
@@ -497,6 +471,7 @@ export class MediaElementPlaybackSource implements PlaybackSource {
     treatAsHls: boolean,
     generation: number,
     mediaLoadAttempt: number,
+    credentials: RequestCredentials | undefined,
     onFatalError: (error: Error) => void
   ): Promise<void> {
     this.destroyHls();
@@ -525,6 +500,12 @@ export class MediaElementPlaybackSource implements PlaybackSource {
     if (Hls.isSupported()) {
       const hls = new Hls({
         debug: false,
+        ...(credentials
+          ? {
+              fetchSetup: (context, init) =>
+                new Request(context.url, { ...init, credentials }),
+            }
+          : {}),
         startLevel: -1,
         maxBufferLength: 30,
         maxMaxBufferLength: 60,
@@ -571,11 +552,16 @@ export class MediaElementPlaybackSource implements PlaybackSource {
     throw new Error("HLS is not supported in this browser");
   }
 
-  private resetMediaElement(options: { resetProgress: boolean }): void {
+  private resetMediaElement(options: {
+    preservePlaybackIntent?: boolean;
+    resetProgress: boolean;
+  }): void {
     this.suppressPauseCallback = true;
     this.mediaLoadAttempt += 1;
     this.revokePendingMediaSourceObjectUrl();
-    this.audio.pause();
+    if (!options.preservePlaybackIntent) {
+      this.audio.pause();
+    }
     this.destroyHls();
     this.audio.removeAttribute("src");
     if (options.resetProgress && Number.isFinite(this.audio.duration)) {
@@ -595,6 +581,7 @@ export class MediaElementPlaybackSource implements PlaybackSource {
 
   private cancelPendingPlaybackIntent(): void {
     this.shouldResumeAfterLoad = false;
+    this.audio.autoplay = false;
     this.playbackIntent += 1;
   }
 

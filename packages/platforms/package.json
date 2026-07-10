@@ -22,6 +22,8 @@
     "./soundcloud/url-policy": "./src/soundcloud/url-policy.ts",
     "./radiogarden": "./src/radiogarden/index.ts",
     "./radiogarden/search": "./src/radiogarden/search.ts",
+    "./radiobrowser": "./src/radiobrowser/index.ts",
+    "./resolver": "./src/resolver/index.ts",
     "./youtube": "./src/youtube/index.ts",
     "./youtube/search": "./src/youtube/search.ts"
   },

@@ -1,3 +1,4 @@
+import type { RadioBrowserStation } from "@avoid.quest/platforms/radiobrowser";
 import type { Radio } from "@/lib/audio";
 import type { RadioRecord } from "@/lib/collections";
 import { createPlatformRadio } from "@/lib/external-url/utils";
@@ -28,13 +29,21 @@ type SessionStationDependencies = {
 };
 
 type RadioGardenResolveLoader = (
-  channelId: string
-) => Promise<ExternalStationResult<{ streamUrl: string }>>;
-
-type PlatformResolveLoader = (
-  url: string
+  channelId: string,
+  canonicalUrl: string
 ) => Promise<
-  ExternalStationResult<{ metadata: PlatformMetadata; streamUrl: string }>
+  ExternalStationResult<{
+    format?: "hls" | "progressive";
+    streamUrl: string;
+  }>
+>;
+
+type PlatformResolveLoader = (url: string) => Promise<
+  ExternalStationResult<{
+    format?: "hls" | "progressive";
+    metadata: PlatformMetadata;
+    streamUrl: string;
+  }>
 >;
 
 export type ExternalStationResolutionAdapters = {
@@ -129,12 +138,14 @@ function normalizePlatformMetadata(
 export function createRadioGardenRadio(
   result: RadioGardenSearchResult,
   streamUrl: string,
-  name = result.title
+  name = result.title,
+  streamFormat?: Radio["streamFormat"]
 ): Radio {
   return {
     id: `rg_${result.channelId}`,
     name: normalizeRequiredString(name),
     streamUrl: normalizeRequiredString(streamUrl),
+    ...(streamFormat ? { streamFormat } : {}),
     description: normalizeOptionalString(result.subtitle),
     placeTitle: normalizeOptionalString(result.placeTitle),
     countryTitle: normalizeOptionalString(result.countryTitle),
@@ -151,6 +162,32 @@ export function createRadioGardenRadio(
       placeTitle: normalizeOptionalString(result.placeTitle),
       countryTitle: normalizeOptionalString(result.countryTitle),
       website: normalizeOptionalString(result.website),
+    },
+  };
+}
+
+export function createRadioBrowserRadio(station: RadioBrowserStation): Radio {
+  const stationUuid = normalizeRequiredString(station.stationUuid);
+  const resolvedUrl = normalizeRequiredString(station.urlResolved);
+  const canonicalUrl = normalizeRequiredString(station.url) || resolvedUrl;
+
+  return {
+    id: `rb_${stationUuid}`,
+    name: normalizeRequiredString(station.name),
+    streamUrl: resolvedUrl || canonicalUrl,
+    logoUrl: normalizeOptionalString(station.favicon),
+    description: normalizeOptionalString(station.tags.join(", ")),
+    websiteUrl: normalizeOptionalString(station.homepage),
+    placeTitle: normalizeOptionalString(station.state),
+    countryTitle: normalizeOptionalString(station.country),
+    enabled: true,
+    isSystem: false,
+    platformMetadata: {
+      platform: "radio-browser",
+      itemType: "station",
+      url: canonicalUrl,
+      stationUuid,
+      hls: station.hls,
     },
   };
 }
@@ -190,6 +227,7 @@ export function toSavedRadioRecord(
   return {
     name: normalizeRequiredString(radio.name),
     streamUrl: normalizeRequiredString(radio.streamUrl),
+    ...(radio.streamFormat ? { streamFormat: radio.streamFormat } : {}),
     logoUrl: normalizeOptionalString(radio.logoUrl),
     description: normalizeOptionalString(radio.description),
     websiteUrl: normalizeOptionalString(radio.websiteUrl),
@@ -236,7 +274,7 @@ export async function resolveRadioGardenStation(
   options?: { name?: string }
 ): Promise<ExternalStationResult<Radio>> {
   try {
-    const resolved = await loadStream(result.channelId);
+    const resolved = await loadStream(result.channelId, result.url);
     if (!resolved.ok) {
       return resolved;
     }
@@ -246,7 +284,8 @@ export async function resolveRadioGardenStation(
       data: createRadioGardenRadio(
         result,
         resolved.data.streamUrl,
-        options?.name ?? result.title
+        options?.name ?? result.title,
+        resolved.data.format
       ),
     };
   } catch (error) {
@@ -274,7 +313,8 @@ export async function resolvePlatformStation(
       ok: true,
       data: createPlatformRadio(
         resolved.data.streamUrl,
-        resolved.data.metadata
+        resolved.data.metadata,
+        resolved.data.format
       ),
     };
   } catch (error) {

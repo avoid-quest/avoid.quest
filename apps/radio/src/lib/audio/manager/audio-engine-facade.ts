@@ -27,7 +27,8 @@ export type AudioEngineFacade = {
     refreshStreamUrl: (
       soundId: string,
       newUrl: string,
-      seekPosition?: number
+      seekPosition?: number,
+      streamFormat?: "hls" | "progressive"
     ) => Promise<void>;
   };
   volume: {
@@ -63,8 +64,15 @@ export function createAudioEngineFacade(
       play: (soundId, volume) => manager.playSound(soundId, volume),
       pause: (soundId) => manager.pauseSound(soundId),
       seek: (soundId, position) => manager.seekSound(soundId, position),
-      refreshStreamUrl: (soundId, newUrl, seekPosition) =>
-        manager.refreshStreamUrl(soundId, newUrl, seekPosition),
+      refreshStreamUrl: (soundId, newUrl, seekPosition, streamFormat) =>
+        streamFormat
+          ? manager.refreshStreamUrl(
+              soundId,
+              newUrl,
+              seekPosition,
+              streamFormat
+            )
+          : manager.refreshStreamUrl(soundId, newUrl, seekPosition),
     },
     volume: {
       setChannelVolume: (soundId, volume) => manager.setVolume(soundId, volume),

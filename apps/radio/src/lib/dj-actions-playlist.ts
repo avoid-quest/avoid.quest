@@ -1,7 +1,12 @@
 import type { Radio } from "@/lib/audio";
+import {
+  inferStreamFormat,
+  type StreamFormat,
+} from "@/lib/audio/playback/stream-format";
 import { validatePlaybackStreamUrl } from "@/lib/audio/playback/url-validation";
 
 type PlaylistTrack = {
+  format?: StreamFormat;
   streamUrl: string;
   videoId?: string;
 };
@@ -31,7 +36,8 @@ function isSupportedCollectionItem(
     (platform === "bandcamp" &&
       (itemType === "album" || itemType === "collection")) ||
     (platform === "soundcloud" && itemType === "playlist") ||
-    (platform === "youtube" && itemType === "playlist")
+    (platform === "youtube" && itemType === "playlist") ||
+    (platform === "static-audio" && itemType === "playlist")
   );
 }
 
@@ -39,7 +45,7 @@ function findPlayableTrackStreamUrl(
   tracks: PlaylistTrack[],
   platform: string,
   startIndex: number
-): string | null {
+): { streamFormat: StreamFormat; streamUrl: string } | null {
   for (let index = startIndex; index < tracks.length; index++) {
     const track = tracks[index];
     if (!track) {
@@ -48,7 +54,10 @@ function findPlayableTrackStreamUrl(
 
     const streamUrl = getTrackStreamUrl(track, platform);
     if (streamUrl) {
-      return streamUrl;
+      return {
+        streamFormat: track.format ?? inferStreamFormat(streamUrl),
+        streamUrl,
+      };
     }
   }
 
@@ -75,7 +84,9 @@ function findCurrentTrackIndex(
   return index;
 }
 
-const findNextTrack = (radio: Radio | null): { streamUrl: string } | null => {
+const findNextTrack = (
+  radio: Radio | null
+): { streamFormat: StreamFormat; streamUrl: string } | null => {
   if (
     !radio?.platformMetadata ||
     radio.platformMetadata.platform === "device-input" ||
@@ -96,13 +107,7 @@ const findNextTrack = (radio: Radio | null): { streamUrl: string } | null => {
 
   const currentIndex = findCurrentTrackIndex(tracks, radio.streamUrl, platform);
   const searchStartIndex = currentIndex === -1 ? 0 : currentIndex + 1;
-  const streamUrl = findPlayableTrackStreamUrl(
-    tracks,
-    platform,
-    searchStartIndex
-  );
-
-  return streamUrl ? { streamUrl } : null;
+  return findPlayableTrackStreamUrl(tracks, platform, searchStartIndex);
 };
 
 export { findNextTrack };

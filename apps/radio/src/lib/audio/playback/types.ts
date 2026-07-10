@@ -1,5 +1,6 @@
 import type { RadioMetadataConfig } from "@/lib/metadata/types";
 import type { PlatformMetadata } from "@/lib/platform-types";
+import type { StreamFormat } from "./stream-format.js";
 
 /**
  * Radio station/stream configuration
@@ -8,6 +9,7 @@ export type Radio = {
   id?: string | number;
   name: string;
   streamUrl: string;
+  streamFormat?: StreamFormat;
   logoUrl?: string;
   description?: string;
   websiteUrl?: string;

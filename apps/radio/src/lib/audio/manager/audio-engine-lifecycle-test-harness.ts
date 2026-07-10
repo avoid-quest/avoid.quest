@@ -26,7 +26,9 @@ type HarnessRecords = {
 
 type HarnessOptions = {
   analyserSample?: number;
+  failMediaUrlIncludes?: string;
   failWorkletModule?: boolean;
+  simulateWorkletSourceErrors?: boolean;
 };
 
 type AudioEngineLifecycleHarness = ReturnType<
@@ -251,12 +253,44 @@ function installGlobals(
   }
 
   class FakeAudioWorkletNode extends FakeAudioNode {
+    private readonly sources = new Set<string>();
     readonly port = {
       onmessage: null as
         | ((event: MessageEvent<WorkletPortMessage>) => void)
         | null,
       postMessage: (message: WorkletPortMessage) => {
         records.workletMessages.push(message);
+        const payload = message.payload as
+          | { effectId?: string; id?: string; sourceId?: string }
+          | undefined;
+        if (message.type === "CREATE_SOURCE" && payload?.id) {
+          this.sources.add(payload.id);
+        }
+        if (message.type === "REMOVE_SOURCE" && payload?.sourceId) {
+          this.sources.delete(payload.sourceId);
+        }
+        if (
+          options.simulateWorkletSourceErrors &&
+          message.type === "ADD_EFFECT" &&
+          payload?.sourceId &&
+          !this.sources.has(payload.sourceId)
+        ) {
+          queueMicrotask(() => {
+            this.port.onmessage?.({
+              data: {
+                type: "SOURCE_ERROR",
+                payload: {
+                  id: "source-error-1",
+                  sourceId: payload.sourceId,
+                  error: `Source ${payload.sourceId} not found`,
+                  code: "SOURCE_NOT_FOUND",
+                  effectId: payload.effectId,
+                  timestamp: 123,
+                },
+              },
+            } as MessageEvent<WorkletPortMessage>);
+          });
+        }
       },
     };
 
@@ -308,6 +342,20 @@ function installGlobals(
 
       records.loadedUrls.push(this.src);
       records.events.push(`media-load:${this.src}`);
+      if (
+        options.failMediaUrlIncludes &&
+        this.src.includes(options.failMediaUrlIncludes)
+      ) {
+        this.readyState = 0;
+        this.error = {
+          code: 2,
+          message: "Simulated media network failure",
+        } as MediaError;
+        queueMicrotask(() => {
+          this.dispatch("error");
+        });
+        return;
+      }
       this.readyState = 1;
       queueMicrotask(() => {
         this.dispatch("loadedmetadata");

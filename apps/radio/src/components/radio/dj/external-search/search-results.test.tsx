@@ -7,6 +7,7 @@ import {
   mock,
   test,
 } from "bun:test";
+import type { UnifiedSearchResult } from "@avoid.quest/platforms";
 import { cleanup, fireEvent, render } from "@testing-library/react";
 // @ts-expect-error jsdom types are not installed in this workspace.
 import { JSDOM } from "jsdom";
@@ -44,21 +45,17 @@ type TrackLoadOptions = {
 
 let trackLoadOptions: TrackLoadOptions | undefined;
 const mutateMock = mock((_url: string) => undefined);
-const searchResultsState = {
-  error: null as string | null,
-  results: [
-    {
-      id: "track-1",
-      url: "https://youtube.com/watch?v=track-1",
-      title: "Track One",
-      artist: "DJ Test",
-      duration: 95,
-      platform: "youtube" as const,
-      type: "track" as const,
-      thumbnail: null,
-    },
-  ],
-};
+const SEARCH_RESULTS: UnifiedSearchResult[] = [
+  {
+    artist: "DJ Test",
+    duration: 95,
+    id: "track-1",
+    platform: "youtube",
+    title: "Track One",
+    type: "track",
+    url: "https://youtube.com/watch?v=track-1",
+  },
+];
 
 mock.module("@avoid.quest/ui/components/scroll-area", () => ({
   ScrollArea: ({
@@ -80,12 +77,6 @@ mock.module("@/lib/hooks/use-dj-track-load", () => ({
   },
 }));
 
-mock.module("./search-results-store", () => ({
-  useSearchResultsStore: <T,>(
-    selector: (state: typeof searchResultsState) => T
-  ) => selector(searchResultsState),
-}));
-
 let SearchResults: typeof import("./search-results")["SearchResults"];
 
 beforeAll(async () => {
@@ -95,7 +86,6 @@ beforeAll(async () => {
 beforeEach(() => {
   trackLoadOptions = undefined;
   mutateMock.mockClear();
-  searchResultsState.error = null;
 });
 
 afterEach(() => {
@@ -104,7 +94,13 @@ afterEach(() => {
 
 describe("SearchResults", () => {
   test("shows track-load failures inline for result selections", () => {
-    const view = render(<SearchResults onLoad={() => undefined} />);
+    const view = render(
+      <SearchResults
+        error={null}
+        onLoad={() => undefined}
+        results={SEARCH_RESULTS}
+      />
+    );
 
     fireEvent.click(view.getByRole("button"));
 

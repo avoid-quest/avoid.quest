@@ -1,18 +1,112 @@
 import { describe, expect, mock, test } from "bun:test";
-import { createExternalStationResolutionWorkflow } from "./external-station-workflow";
+import type { RadioBrowserStation } from "@avoid.quest/platforms/radiobrowser";
+import {
+  createExternalStationResolutionWorkflow,
+  createRadioBrowserRadio,
+} from "./external-station-workflow";
+
+function createRadioBrowserStation(
+  overrides: Partial<RadioBrowserStation> = {}
+): RadioBrowserStation {
+  return {
+    stationUuid: "station-uuid",
+    name: "Radio Browser Station",
+    url: "https://radio.example/live",
+    urlResolved: "https://cdn.radio.example/live.mp3",
+    homepage: "https://radio.example",
+    favicon: "https://radio.example/favicon.png",
+    country: "Italy",
+    state: "Lazio",
+    tags: ["electronic", "experimental"],
+    codec: "MP3",
+    bitrate: 192,
+    hls: false,
+    lastCheckOk: true,
+    lastCheckTime: "2026-07-10T00:00:00Z",
+    ...overrides,
+  };
+}
+
+describe("createRadioBrowserRadio", () => {
+  test("maps a station to a stable direct-playback radio", () => {
+    const radio = createRadioBrowserRadio(
+      createRadioBrowserStation({
+        stationUuid: " stable-uuid ",
+        name: " Browser Radio ",
+        url: " https://radio.example/canonical ",
+        urlResolved: " https://cdn.radio.example/resolved.mp3 ",
+        homepage: " https://radio.example ",
+        favicon: " https://radio.example/logo.png ",
+        country: " Italy ",
+        state: " Lazio ",
+        tags: ["electronic", "experimental"],
+      })
+    );
+
+    expect(radio).toEqual({
+      id: "rb_stable-uuid",
+      name: "Browser Radio",
+      streamUrl: "https://cdn.radio.example/resolved.mp3",
+      logoUrl: "https://radio.example/logo.png",
+      description: "electronic, experimental",
+      websiteUrl: "https://radio.example",
+      placeTitle: "Lazio",
+      countryTitle: "Italy",
+      enabled: true,
+      isSystem: false,
+      platformMetadata: {
+        platform: "radio-browser",
+        itemType: "station",
+        url: "https://radio.example/canonical",
+        stationUuid: "stable-uuid",
+        hls: false,
+      },
+    });
+  });
+
+  test("falls back to the canonical station URL when no resolved URL exists", () => {
+    const radio = createRadioBrowserRadio(
+      createRadioBrowserStation({
+        url: "https://radio.example/canonical",
+        urlResolved: "",
+      })
+    );
+
+    expect(radio.streamUrl).toBe("https://radio.example/canonical");
+    expect(radio.platformMetadata?.url).toBe("https://radio.example/canonical");
+  });
+
+  test("persists the resolved URL when the canonical URL is missing", () => {
+    const radio = createRadioBrowserRadio(
+      createRadioBrowserStation({
+        url: "",
+        urlResolved: "https://radio.example/resolved.mp3",
+      })
+    );
+
+    expect(radio.streamUrl).toBe("https://radio.example/resolved.mp3");
+    expect(radio.platformMetadata?.url).toBe(
+      "https://radio.example/resolved.mp3"
+    );
+  });
+});
 
 describe("createExternalStationResolutionWorkflow", () => {
   test("resolves Radio Garden results into session-only radios", async () => {
     const sessionRadios: unknown[] = [];
+    const resolveStream = mock(() =>
+      Promise.resolve({
+        ok: true as const,
+        data: {
+          format: "hls" as const,
+          streamUrl: "https://stream.example/extensionless",
+        },
+      })
+    );
     const workflow = createExternalStationResolutionWorkflow({
       adapters: {
         radioGarden: {
-          resolveStream: mock(() =>
-            Promise.resolve({
-              ok: true as const,
-              data: { streamUrl: "https://stream.example/garden.mp3" },
-            })
-          ),
+          resolveStream,
         },
       },
       collection: {
@@ -41,10 +135,15 @@ describe("createExternalStationResolutionWorkflow", () => {
       expect(result.data.radio).toMatchObject({
         id: "rg_rg1",
         name: "Garden Radio",
-        streamUrl: "https://stream.example/garden.mp3",
+        streamFormat: "hls",
+        streamUrl: "https://stream.example/extensionless",
       });
     }
     expect(sessionRadios).toHaveLength(1);
+    expect(resolveStream).toHaveBeenCalledWith(
+      "rg1",
+      "https://radio.garden/listen/garden/rg1"
+    );
   });
 
   test("saves existing session-only Radio Garden radios with ordering and cleanup", async () => {
@@ -139,7 +238,10 @@ describe("createExternalStationResolutionWorkflow", () => {
           resolveStream: mock(() =>
             Promise.resolve({
               ok: true as const,
-              data: { streamUrl: "https://stream.example/garden.mp3" },
+              data: {
+                format: "hls" as const,
+                streamUrl: "https://stream.example/extensionless",
+              },
             })
           ),
         },
@@ -174,6 +276,10 @@ describe("createExternalStationResolutionWorkflow", () => {
       expect(result.data.removedSessionRadioId).toBeUndefined();
     }
     expect(saved).toHaveLength(1);
+    expect(saved[0]).toMatchObject({
+      streamFormat: "hls",
+      streamUrl: "https://stream.example/extensionless",
+    });
   });
 
   test("resolves platform URLs into playable radios and preserves provider failures", async () => {

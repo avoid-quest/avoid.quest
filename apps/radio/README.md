@@ -36,9 +36,9 @@ PWA internet radio player with advanced audio mixing, effects chain, and MIDI su
 |-------|-------------|
 | `/` | Main player — switches between Multiple / Single / DJ mode |
 | `/import` | Batch import radios from a URL or JSON |
-| `/api/stream-proxy` | CORS proxy for radio streams |
-| `/api/soundcloud-proxy` | SoundCloud CDN proxy (domain allowlisted) |
-| `/api/bandcamp-proxy` | Bandcamp stream proxy |
+| `/api/stream-proxy` | Optional generic compatibility fallback for blocked streams |
+| `/api/soundcloud-proxy` | Optional SoundCloud CDN compatibility fallback (domain allowlisted) |
+| `/api/bandcamp-proxy` | Optional Bandcamp stream compatibility fallback |
 | `/api/feedback` | GitHub issue feedback endpoint |
 | `/manifest` | PWA web app manifest (dynamic) |
 | `/tunnel` | Sentry envelope tunnel |
@@ -47,11 +47,18 @@ Server functions (TanStack Start `createServerFn`):
 
 | Function file | Description |
 |--------------|-------------|
-| `utils/platform.functions.ts` | Resolve Bandcamp/SoundCloud/YouTube/Radio Garden URLs |
-| `utils/search.functions.ts` | Search Bandcamp and SoundCloud |
-| `utils/youtube.functions.ts` | YouTube search + stream URL resolution (Invidious) |
-| `utils/radio-garden.functions.ts` | Radio Garden search, stream resolve, suggestions |
-| `utils/static-audio.functions.ts` | Static audio file probing and playlist parsing |
+| `utils/platform.functions.ts` | Last-resort Bandcamp/SoundCloud/Radio Garden resolver |
+| `utils/search.functions.ts` | Last-resort Bandcamp and SoundCloud search |
+| `utils/radio-garden.functions.ts` | Last-resort Radio Garden search and suggestions |
+
+YouTube search and resolution run in the browser through user-configured
+Invidious+Companion or Piped providers. Provider credentials are not supported.
+Static audio URLs and M3U/PLS playlists are also resolved in the browser. The
+generic stream relay remains a compatibility fallback when a playlist origin
+blocks cross-origin reads. Bandcamp, SoundCloud, and Radio Garden can use
+user-configured resolver services first. Settings → Relays can disable all
+avoid.quest resolver and audio-proxy fallbacks for client/external-service-only
+operation.
 
 ## Architecture
 
@@ -89,8 +96,6 @@ CueBus: PreFaderSend → CueSumNode → CueDelayNode
 ### Dev (Doppler)
 
 ```
-INVIDIOUS_INSTANCE_URL=   # Invidious instance for YouTube stream resolution
-INVIDIOUS_AUTH=           # Optional Invidious auth token
 GIT_FEEDBACK_GITHUB_TOKEN= # Fine-grained token with Issues read/write
 ```
 

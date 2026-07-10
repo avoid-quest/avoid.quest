@@ -1,10 +1,8 @@
 import { AppError, type AppErrorInit, captureError } from "@avoid.quest/error";
 import {
-  fetchPublicStreamWithRedirects,
-  type StreamAccessDecision,
-  type StreamRedirectFailure,
-  type StreamRedirectFailureDetails,
-} from "./stream-access";
+  fetchPublicHttpUrlWithValidatedRedirects,
+  type PublicHttpRedirectFailure,
+} from "@avoid.quest/platforms/url-policy";
 import {
   applyBoundedRangeHeader,
   getContentLengthLimitFailure,
@@ -32,14 +30,6 @@ const STREAM_PROXY_MAX_STREAM_DURATION_MS = 2 * 60 * 60 * 1000;
 const STREAM_PROXY_HIGH_LIVE_STREAM_BYTE_CAP = 8 * 1024 * 1024 * 1024;
 const STREAM_PROXY_FETCH_TIMEOUT_REASON = "stream-proxy-fetch-timeout";
 
-type StreamAccessInspector = (
-  url: string,
-  options: {
-    origin: string;
-    preparedHeaders?: Headers;
-  }
-) => Promise<StreamAccessDecision>;
-
 type StreamProxyPolicy = {
   errorHeaders: (request: Request) => HeadersInit;
   problem: (error: AppError, origin: string, requestId: string) => Response;
@@ -49,7 +39,6 @@ type StreamProxyWorkflowDependencies = {
   captureError?: typeof captureError;
   fetchTimeoutMs?: number;
   fetchImpl?: FetchLike;
-  inspectStreamAccess: StreamAccessInspector;
   maxRangeBytes?: number;
   maxStreamDurationMs?: number;
   maxStreamedBytes?: number;
@@ -155,7 +144,7 @@ const STREAM_REDIRECT_FAILURE_ERRORS = {
     expected: false,
     status: 502,
   },
-} as const satisfies Record<StreamRedirectFailure, AppErrorInit>;
+} as const satisfies Record<PublicHttpRedirectFailure, AppErrorInit>;
 
 function validateStreamUrl(urlParam: string | null): string | AppError {
   const validation = validatePublicStreamUrl(urlParam);
@@ -168,9 +157,9 @@ function validateStreamUrl(urlParam: string | null): string | AppError {
   );
 }
 
-function createRedirectFailureError(
-  failure: StreamRedirectFailureDetails
-): AppError {
+function createRedirectFailureError(failure: {
+  reason: PublicHttpRedirectFailure;
+}): AppError {
   return createStreamProxyError(STREAM_REDIRECT_FAILURE_ERRORS[failure.reason]);
 }
 
@@ -257,37 +246,10 @@ function createForwardedStreamHeaders(
   return headers;
 }
 
-function redirectToStream(
-  url: string,
-  request: Request,
-  requestId: string,
-  proxyPolicy: StreamProxyPolicy
-): Response {
-  const headers = new Headers(proxyPolicy.errorHeaders(request));
-  headers.set("Cache-Control", "private, no-store");
-  headers.set("Location", url);
-  headers.set("x-request-id", requestId);
-
-  return new Response(null, {
-    status: 307,
-    headers,
-  });
-}
-
-function canRedirectDirectStream(url: string, origin: string): boolean {
-  try {
-    const parsed = new URL(url);
-    return parsed.protocol === "https:" || parsed.origin === origin;
-  } catch {
-    return false;
-  }
-}
-
 export function createStreamProxyRequestWorkflow({
   captureError: captureErrorImpl = captureError,
   fetchImpl = fetch,
   fetchTimeoutMs = STREAM_PROXY_FETCH_TIMEOUT_MS,
-  inspectStreamAccess,
   maxRangeBytes = STREAM_PROXY_MAX_RANGE_BYTES,
   maxStreamDurationMs = STREAM_PROXY_MAX_STREAM_DURATION_MS,
   maxStreamedBytes = STREAM_PROXY_HIGH_LIVE_STREAM_BYTE_CAP,
@@ -304,14 +266,15 @@ export function createStreamProxyRequestWorkflow({
     }, fetchTimeoutMs);
 
     try {
-      const fetchResult = await fetchPublicStreamWithRedirects(
-        url,
-        {
+      const fetchResult = await fetchPublicHttpUrlWithValidatedRedirects({
+        fetchImpl,
+        init: {
           headers,
           signal: controller.signal,
         },
-        fetchImpl
-      );
+        maxRedirects: 5,
+        url,
+      });
       clearTimeout(timeout);
 
       if (!fetchResult.ok) {
@@ -405,56 +368,7 @@ export function createStreamProxyRequestWorkflow({
       return proxyPolicy.problem(headers, context.origin, context.requestId);
     }
 
-    const accessDecision = await inspectStreamAccess(urlValidation, {
-      origin: context.origin,
-      preparedHeaders: headers,
-    });
-
-    if (accessDecision.mode === "rejected") {
-      return proxyPolicy.problem(
-        createRedirectFailureError(accessDecision.failure),
-        context.origin,
-        context.requestId
-      );
-    }
-
-    if (accessDecision.mode === "direct" && accessDecision.resolvedUrl) {
-      const streamUrl = accessDecision.resolvedUrl;
-      if (canRedirectDirectStream(streamUrl, context.origin)) {
-        return redirectToStream(
-          streamUrl,
-          context.request,
-          context.requestId,
-          proxyPolicy
-        );
-      }
-    }
-
-    if (accessDecision.response?.ok) {
-      const sizeError = validateUpstreamResponseSize(
-        accessDecision.response,
-        maxStreamedBytes
-      );
-      if (sizeError) {
-        await accessDecision.response.body?.cancel();
-        return proxyPolicy.problem(
-          sizeError,
-          context.origin,
-          context.requestId
-        );
-      }
-
-      return buildStreamResponse(
-        accessDecision.response,
-        context.request,
-        context.requestId,
-        proxyPolicy,
-        maxStreamedBytes,
-        maxStreamDurationMs
-      );
-    }
-
-    return fetchStream(urlValidation, context, headers);
+    return await fetchStream(urlValidation, context, headers);
   };
 
   return { handle };

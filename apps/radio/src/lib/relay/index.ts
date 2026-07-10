@@ -1,0 +1,15 @@
+export {
+  addRelayService,
+  clearRelayConfiguration,
+  getRelayConfiguration,
+  getStreamRelayUrls,
+  type RelayCapability,
+  type RelayConfiguration,
+  RelayConfigurationError,
+  type RelayService,
+  type RelayServiceInput,
+  removeRelayService,
+  reorderRelayServices,
+  saveRelayConfiguration,
+  setRelayServiceEnabled,
+} from "./relay-configuration";

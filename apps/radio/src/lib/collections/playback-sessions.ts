@@ -9,7 +9,7 @@ import { radioMetadataConfigSchema } from "@/lib/metadata/schema";
 import { orderEffectsForPlayback } from "../effect-order.js";
 import { radiosCollection } from "./radios";
 import { platformMetadataSchema } from "./schemas";
-import { sessionRadiosCollection } from "./session-radios";
+import { isSessionRadio, sessionRadiosCollection } from "./session-radios";
 import { settingsCollection } from "./settings";
 
 const PLAYBACK_SESSIONS_STORAGE_KEY = "radio-app-playback-sessions";
@@ -32,6 +32,7 @@ const radioSchema = z
     id: z.union([z.string(), z.number()]).optional(),
     name: z.string(),
     streamUrl: z.string(),
+    streamFormat: z.enum(["hls", "progressive"]).optional(),
     logoUrl: z.string().optional(),
     description: z.string().optional(),
     websiteUrl: z.string().optional(),
@@ -196,10 +197,7 @@ function readLegacyCollectionState<
 }
 
 function isSessionOnlyRadio(radio: Radio | null): boolean {
-  if (!radio?.id) {
-    return false;
-  }
-  return String(radio.id).startsWith("rg_");
+  return radio ? isSessionRadio(radio) : false;
 }
 
 function readStoredSessionRadioIds(): Set<string> {

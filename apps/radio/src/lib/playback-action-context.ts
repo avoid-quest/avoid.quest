@@ -18,7 +18,10 @@ import {
   subscribeChannelRuntime,
 } from "@/lib/channel-state-manager";
 import type { PlaybackSessionId } from "@/lib/collections/playback-sessions";
-import type { PlatformStreamResolutionInput } from "@/lib/dj-platform-stream-port.js";
+import type {
+  PlatformStreamResolution,
+  PlatformStreamResolutionInput,
+} from "@/lib/dj-platform-stream-port.js";
 import { getMainOutputRouter } from "@/lib/main-output-router";
 import type { PlaybackActionErrorReporter } from "./playback-action-errors.js";
 
@@ -68,7 +71,7 @@ export type PlaybackActionChannelFacade = {
 export type PlaybackPlatformStreamFacade = {
   resolveStreamUrl: (
     input: PlatformStreamResolutionInput
-  ) => Promise<string | null>;
+  ) => Promise<PlatformStreamResolution | null>;
 };
 
 export type PlaybackActionContext = {

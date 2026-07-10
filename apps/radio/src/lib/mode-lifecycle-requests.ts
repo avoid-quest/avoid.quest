@@ -46,7 +46,7 @@ export function createModeLifecycleRequests({
       }
 
       const snapshot = manager.getSnapshot();
-      if (snapshot.currentMode === mode) {
+      if (snapshot.currentMode === mode || snapshot.requestedMode === mode) {
         return;
       }
 

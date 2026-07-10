@@ -1,4 +1,7 @@
-import type { SearchPlatform } from "@avoid.quest/platforms";
+import type {
+  SearchPlatform,
+  UnifiedSearchResult,
+} from "@avoid.quest/platforms";
 import { Button } from "@avoid.quest/ui/components/button";
 import { Input } from "@avoid.quest/ui/components/input";
 import {
@@ -11,19 +14,21 @@ import {
   SelectValue,
 } from "@avoid.quest/ui/components/select";
 import { Loader2Icon, SearchIcon } from "lucide-react";
-import { useState } from "react";
-import type { Radio } from "@/lib/audio";
+import { useLayoutEffect, useRef, useState } from "react";
 import { useExternalSearch } from "@/lib/hooks/use-external-search";
-import { useSearchResultsStore } from "./search-results-store";
+import { createSearchRequestGuard } from "./search-request-guard";
 
 type SearchInputProps = {
   platform: SearchPlatform;
   onPlatformChange: (platform: SearchPlatform) => void;
   bandcampFilter: "" | "t" | "a";
   onBandcampFilterChange: (filter: "" | "t" | "a") => void;
+  onClearResults: () => void;
+  onError: (message: string) => void;
+  onResults: (results: UnifiedSearchResult[]) => void;
   youtubeFilter: "songs" | "videos";
   onYoutubeFilterChange: (filter: "songs" | "videos") => void;
-  onLoad: (radio: Radio) => void;
+  searchContextKey: string;
   locked?: boolean;
 };
 
@@ -56,22 +61,30 @@ export function SearchInput({
   onPlatformChange,
   bandcampFilter,
   onBandcampFilterChange,
+  onClearResults,
+  onError,
+  onResults,
   youtubeFilter,
   onYoutubeFilterChange,
+  searchContextKey,
   locked,
 }: SearchInputProps) {
   const [query, setQuery] = useState("");
-  const { mutate: search, isPending } = useExternalSearch();
-  const setResults = useSearchResultsStore((s) => s.setResults);
-  const setError = useSearchResultsStore((s) => s.setError);
-  const clearResults = useSearchResultsStore((s) => s.clearResults);
+  const { mutate: search, isPending, reset } = useExternalSearch();
+  const requestGuard = useRef(createSearchRequestGuard()).current;
+
+  useLayoutEffect(() => {
+    requestGuard.setContext(searchContextKey);
+    reset();
+  }, [requestGuard, reset, searchContextKey]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!query.trim()) {
       return;
     }
-    clearResults();
+    onClearResults();
+    const isCurrentRequest = requestGuard.begin(searchContextKey);
     search(
       {
         query: query.trim(),
@@ -81,10 +94,14 @@ export function SearchInput({
       },
       {
         onSuccess: (results) => {
-          setResults(results);
+          if (isCurrentRequest()) {
+            onResults(results);
+          }
         },
         onError: (error) => {
-          setError(error.message);
+          if (isCurrentRequest()) {
+            onError(error.message);
+          }
         },
       }
     );

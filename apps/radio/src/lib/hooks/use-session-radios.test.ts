@@ -3,6 +3,7 @@ import { saveResolvedStationToCollection } from "@/lib/stations/external-station
 import {
   addSessionRadio,
   getSessionRadios,
+  isSessionRadio,
   removeSessionRadio,
   sessionRadiosCollection,
 } from "./use-session-radios";
@@ -57,6 +58,18 @@ afterEach(async () => {
 });
 
 describe("session radios", () => {
+  test("recognizes Radio Garden and Radio Browser temporary station IDs", () => {
+    expect(
+      isSessionRadio({ id: "rg_station", name: "Garden", streamUrl: "x" })
+    ).toBe(true);
+    expect(
+      isSessionRadio({ id: "rb_station", name: "Browser", streamUrl: "x" })
+    ).toBe(true);
+    expect(isSessionRadio({ id: "saved", name: "Saved", streamUrl: "x" })).toBe(
+      false
+    );
+  });
+
   test("stores session radios in newest-first order without duplicates and evicts old entries", async () => {
     await sessionRadiosCollection.stateWhenReady();
 
@@ -77,9 +90,33 @@ describe("session radios", () => {
 
     expect(radios).toHaveLength(20);
     expect(radios[0]?.id).toBe("rg_20");
-    expect(radios[0]?.name).toBe("Session 20");
+    expect(radios[0]?.name).toBe("Session 20 duplicate");
+    expect(radios[0]?.streamUrl).toBe("https://radio.example/20-duplicate.mp3");
     expect(radios.at(-1)?.id).toBe("rg_1");
     expect(radios.some((radio) => radio.id === "rg_0")).toBe(false);
+  });
+
+  test("refreshes a Radio Browser session record when its resolved stream changes", async () => {
+    await sessionRadiosCollection.stateWhenReady();
+
+    addSessionRadio({
+      id: "rb_station",
+      name: "Station",
+      streamUrl: "https://radio.example/old.mp3",
+    });
+    addSessionRadio({
+      id: "rb_station",
+      name: "Station",
+      streamUrl: "https://radio.example/new.mp3",
+    });
+
+    expect(getSessionRadios()).toEqual([
+      {
+        id: "rb_station",
+        name: "Station",
+        streamUrl: "https://radio.example/new.mp3",
+      },
+    ]);
   });
 
   test("removes a session radio from the session-backed collection", async () => {
@@ -108,13 +145,15 @@ describe("session radios", () => {
       id: "rg_restore",
       name: "Restore",
       streamUrl: "https://radio.example/restore.mp3",
+      streamFormat: "hls",
     });
 
     const stored = JSON.parse(
       sessionStorage.getItem("radio-session-radios") ?? "{}"
-    ) as Record<string, { data?: { name?: string } }>;
+    ) as Record<string, { data?: { name?: string; streamFormat?: string } }>;
 
     expect(stored["s:rg_restore"]?.data?.name).toBe("Restore");
+    expect(stored["s:rg_restore"]?.data?.streamFormat).toBe("hls");
   });
 
   test("restores legacy session radios from the previous session storage shape", async () => {

@@ -67,10 +67,10 @@ export function isDeviceInputMetadata(
 
 // Static audio track (for playlists)
 export type StaticAudioTrack = {
+  format?: "hls" | "progressive";
   title: string;
   streamUrl: string;
   duration?: number;
-  requiresProxy: boolean;
 };
 
 // Static audio metadata (local files and remote URLs)
@@ -89,7 +89,6 @@ export type StaticAudioMetadata = {
   // Stream handling
   streamUrl: string; // Blob URL (local) or HTTP URL (remote)
   isLocal: boolean;
-  requiresProxy: boolean;
 
   // Playlist only
   tracks?: StaticAudioTrack[];
@@ -130,6 +129,20 @@ export function isRadioGardenMetadata(
   return metadata?.platform === "radiogarden";
 }
 
+export type RadioBrowserMetadata = {
+  platform: "radio-browser";
+  itemType: "station";
+  url: string;
+  stationUuid: string;
+  hls: boolean;
+};
+
+export function isRadioBrowserMetadata(
+  metadata: PlatformMetadata | undefined | null
+): metadata is RadioBrowserMetadata {
+  return metadata?.platform === "radio-browser";
+}
+
 export function isYouTubeMetadata(
   metadata: PlatformMetadata | undefined | null
 ): metadata is YouTubeMetadata {
@@ -142,6 +155,7 @@ export type { FileAudioMetadata } from "@/lib/audio/file-metadata";
 // Unified platform types (app-level, includes device-input/static-audio/local-file)
 export type Platform =
   | "bandcamp"
+  | "radio-browser"
   | "radiogarden"
   | "soundcloud"
   | "youtube"
@@ -151,6 +165,7 @@ export type Platform =
   | "local-file"; // deprecated, use "static-audio"
 export type PlatformMetadata =
   | BandcampMetadata
+  | RadioBrowserMetadata
   | RadioGardenMetadata
   | SoundCloudMetadata
   | YouTubeMetadata
@@ -160,7 +175,8 @@ export type PlatformMetadata =
 export type PlatformTrack =
   | BandcampTrackInfo
   | SoundCloudTrackInfo
-  | YouTubeTrackInfo;
+  | YouTubeTrackInfo
+  | StaticAudioTrack;
 export type StaticAudioItemResult = {
   success: true;
   metadata: StaticAudioMetadata;

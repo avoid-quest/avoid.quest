@@ -12,10 +12,6 @@
  * Main delay is applied after all sound processing, before final output.
  */
 
-import {
-  getProxiedBandcampUrl,
-  getProxiedSoundCloudUrl,
-} from "@avoid.quest/platforms";
 import type { EffectConfig, EffectType } from "../dsp/effects/types.js";
 import {
   type AudioState,
@@ -27,11 +23,13 @@ import {
   type DeviceSource,
   getAudioContext,
   initialAudioState,
+  PlaybackSourcePreparer,
   type Radio,
   resumeAudioContext,
   type Unsubscribe,
   type WorkletManager,
 } from "../playback/index.js";
+import { inferStreamFormat } from "../playback/stream-format.js";
 import { cleanupSoundNodes, connectAudioGraph } from "./audio-manager-graph.js";
 import {
   createDeviceSourceCallbacks,
@@ -78,6 +76,7 @@ export class AudioManager {
   private static instance: AudioManager | null = null;
 
   private readonly soundRegistry = new SoundRegistry();
+  private readonly playbackSourcePreparer = new PlaybackSourcePreparer();
   private readonly listeners = new Map<string, Set<AudioStateCallback>>();
   readonly volume: VolumeController;
   readonly effects: EffectsController;
@@ -257,7 +256,6 @@ export class AudioManager {
       instance.playbackSource = createPlaybackSource(
         context,
         soundId,
-        this.getProxiedUrl(instance.radio.streamUrl),
         createPlaybackSourceCallbacks({
           instance,
           soundId,
@@ -265,12 +263,12 @@ export class AudioManager {
         })
       );
 
-      // Get proxied URL for Bandcamp/SoundCloud
-      const streamUrl = this.getProxiedUrl(instance.radio.streamUrl);
-
       // Load and connect
       const loadPromise = this.handleDeferredRejection(
-        instance.playbackSource.load(streamUrl)
+        this.playbackSourcePreparer.load(
+          instance.radio,
+          instance.playbackSource
+        )
       );
       playPromise = this.startPlayback(instance.playbackSource);
       await this.ensurePlaybackSetup(
@@ -924,14 +922,14 @@ export class AudioManager {
   async refreshStreamUrl(
     soundId: string,
     newUrl: string,
-    seekPosition?: number
+    seekPosition?: number,
+    streamFormat?: Radio["streamFormat"]
   ): Promise<void> {
     const instance = this.sounds.get(soundId);
     if (!instance?.playbackSource) {
-      console.warn(
-        `[AudioManager] refreshStreamUrl: sound ${soundId} not found or no playbackSource`
+      throw new Error(
+        `Cannot refresh sound ${soundId}: sound not found or playback is not initialized`
       );
-      return;
     }
 
     // Update loading state
@@ -942,13 +940,20 @@ export class AudioManager {
       error: null,
     });
 
+    const refreshedRadio = {
+      ...instance.radio,
+      streamFormat: streamFormat ?? inferStreamFormat(newUrl),
+      streamUrl: newUrl,
+    };
+
     try {
-      // Get proxied URL
-      const proxiedUrl = this.getProxiedUrl(newUrl);
+      await this.playbackSourcePreparer.refresh(
+        refreshedRadio,
+        instance.playbackSource,
+        seekPosition
+      );
 
-      // Refresh the playback source with new URL
-      await instance.playbackSource.refreshUrl(proxiedUrl, seekPosition);
-
+      instance.radio = refreshedRadio;
       instance.loading = false;
       instance.playing = true;
 
@@ -968,6 +973,7 @@ export class AudioManager {
         "STREAM_FETCH_FAILED",
         error instanceof Error ? error.message : "Failed to refresh stream"
       );
+      throw error;
     }
   }
 
@@ -1131,18 +1137,6 @@ export class AudioManager {
     // Load the worklet module once (will be used by all per-sound worklet managers)
     await context.audioWorklet.addModule(workletProcessorUrl);
     this.workletModuleLoaded = true;
-  }
-
-  /**
-   * Get proxied URL for CORS
-   */
-  private getProxiedUrl(url: string): string {
-    const bandcampUrl = getProxiedBandcampUrl(url);
-    if (bandcampUrl !== url) {
-      return bandcampUrl;
-    }
-    // YouTube URLs do not need additional proxying (handled at stream resolution time)
-    return getProxiedSoundCloudUrl(url);
   }
 
   /**

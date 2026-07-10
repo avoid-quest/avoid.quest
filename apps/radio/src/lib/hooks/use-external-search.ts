@@ -5,49 +5,38 @@ import {
   createExternalPlatformSearchWorkflow,
   type ExternalPlatformSearchParams,
 } from "@/lib/external-platform-search-workflow";
-import { radioGardenSearch } from "@/utils/radio-garden.functions";
-import { bandcampSearch, soundcloudSearch } from "@/utils/search.functions";
-import { youtubeSearch } from "@/utils/youtube.functions";
+import { createConfiguredResolverBroker } from "@/lib/resolver";
+import { getConfiguredYouTubeClient } from "@/lib/youtube";
 
 type SearchParams = ExternalPlatformSearchParams;
 
 const externalPlatformSearchWorkflow = createExternalPlatformSearchWorkflow({
   adapters: {
     bandcamp: {
-      search: async (query, filter) => {
-        const response = await bandcampSearch({ data: { query, filter } });
-        if (!response.ok) {
-          throw new Error(response.error.message);
-        }
-        return response.data.results;
-      },
+      search: async (query, filter) =>
+        await createConfiguredResolverBroker().search({
+          filter,
+          provider: "bandcamp",
+          query,
+        }),
     },
     radiogarden: {
-      search: async (query) => {
-        const response = await radioGardenSearch({ data: { query } });
-        if (!response.ok) {
-          throw new Error(response.error.message);
-        }
-        return response.data.results;
-      },
+      search: async (query) =>
+        await createConfiguredResolverBroker().search({
+          provider: "radiogarden",
+          query,
+        }),
     },
     soundcloud: {
-      search: async (query) => {
-        const response = await soundcloudSearch({ data: { query } });
-        if (!response.ok) {
-          throw new Error(response.error.message);
-        }
-        return response.data.results;
-      },
+      search: async (query) =>
+        await createConfiguredResolverBroker().search({
+          provider: "soundcloud",
+          query,
+        }),
     },
     youtube: {
-      search: async (query, filter) => {
-        const response = await youtubeSearch({ data: { query, filter } });
-        if (!response.ok) {
-          throw new Error(response.error.message);
-        }
-        return response.data.results;
-      },
+      search: async (query, filter) =>
+        await getConfiguredYouTubeClient().search(query, filter),
     },
   },
   reportProviderError: (provider, error) => {

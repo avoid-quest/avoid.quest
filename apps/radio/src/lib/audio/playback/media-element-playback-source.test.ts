@@ -1,8 +1,5 @@
 import { describe, expect, mock, test } from "bun:test";
-import {
-  getMediaPlaybackCandidates,
-  MediaElementPlaybackSource,
-} from "./media-element-playback-source";
+import { MediaElementPlaybackSource } from "./media-element-playback-source";
 
 type Deferred<T> = {
   promise: Promise<T>;
@@ -353,37 +350,42 @@ function createPlaybackSource(): MediaElementPlaybackSource {
   );
 }
 
-describe("getMediaPlaybackCandidates", () => {
-  test("prefers the stream proxy for remote non-HLS URLs", () => {
-    expect(
-      getMediaPlaybackCandidates("https://stream-relay-geo.ntslive.net/stream2")
-    ).toEqual([
-      "/api/stream-proxy?url=https%3A%2F%2Fstream-relay-geo.ntslive.net%2Fstream2",
-    ]);
-  });
-
-  test("keeps direct-first ordering for HLS manifests", () => {
-    expect(
-      getMediaPlaybackCandidates("https://radio.example/live/index.m3u8")
-    ).toEqual([
-      "https://radio.example/live/index.m3u8",
-      "/api/stream-proxy?url=https%3A%2F%2Fradio.example%2Flive%2Findex.m3u8",
-    ]);
-  });
-
-  test("does not rewrite same-origin or already proxied URLs", () => {
-    expect(getMediaPlaybackCandidates("/audio/local.mp3")).toEqual([
-      "/audio/local.mp3",
-    ]);
-    expect(
-      getMediaPlaybackCandidates(
-        "/api/stream-proxy?url=https%3A%2F%2Fradio.example%2Fstream"
-      )
-    ).toEqual(["/api/stream-proxy?url=https%3A%2F%2Fradio.example%2Fstream"]);
-  });
-});
-
 describe("MediaElementPlaybackSource HLS loading", () => {
+  test("reports one aggregate failure after every prepared candidate fails", async () => {
+    const mediaMocks = installMediaElementMocks();
+
+    try {
+      const source = createPlaybackSource();
+      const audio = mediaMocks.getAudio();
+      const load = source.load({
+        candidates: [
+          { format: "progressive", src: "https://one.example/audio.mp3" },
+          { format: "progressive", src: "https://two.example/audio.mp3" },
+        ],
+      });
+
+      await flushMicrotasks();
+      expect(audio.loadSources).toEqual(["https://one.example/audio.mp3"]);
+      audio.emit("error");
+      await flushMicrotasks();
+      expect(audio.loadSources).toEqual([
+        "https://one.example/audio.mp3",
+        "https://two.example/audio.mp3",
+      ]);
+      audio.emit("error");
+
+      const error = await load.catch((failure: unknown) => failure);
+      expect(error).toBeInstanceOf(AggregateError);
+      expect((error as AggregateError).errors).toHaveLength(2);
+      expect((error as Error).message).toBe(
+        "Audio playback failed after all candidates"
+      );
+      source.cleanup();
+    } finally {
+      mediaMocks.restore();
+    }
+  });
+
   test("keeps playback tied to the active request during a cold HLS import", async () => {
     const mediaMocks = installMediaElementMocks();
     const hlsMock = installDelayedHlsMock();
@@ -441,9 +443,18 @@ describe("MediaElementPlaybackSource HLS loading", () => {
 
       const fallbackSource = createPlaybackSource();
       const fallbackAudio = mediaMocks.getAudio();
-      const fallbackLoad = fallbackSource.load(
-        "https://radio.example/live/fallback.m3u8"
-      );
+      const fallbackLoad = fallbackSource.load({
+        candidates: [
+          {
+            format: "hls",
+            src: "https://radio.example/live/fallback.m3u8",
+          },
+          {
+            format: "hls",
+            src: "/api/stream-proxy?url=https%3A%2F%2Fradio.example%2Flive%2Ffallback.m3u8",
+          },
+        ],
+      });
       const fallbackPlay = fallbackSource.play();
       const fallbackPlayResult = fallbackPlay.then(
         () => "resolved" as const,
@@ -465,6 +476,7 @@ describe("MediaElementPlaybackSource HLS loading", () => {
       expect(await fallbackPlayResult).toBe("resolved");
       expect(pausedAudio.playCalls).toBe(1);
       expect(pausedAudio.paused).toBe(true);
+      expect(fallbackAudio.playCalls).toBe(1);
       expect(hlsMock.attachedMediaSources).toHaveLength(3);
       expect(hlsMock.attachedMediaSources.every(Boolean)).toBe(true);
       expect(hlsMock.loadedSources).toEqual([

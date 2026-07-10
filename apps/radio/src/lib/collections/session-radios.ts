@@ -51,6 +51,7 @@ const sessionRadioSchema = z.object({
   id: z.union([z.string(), z.number()]),
   name: z.string(),
   streamUrl: z.string(),
+  streamFormat: z.enum(["hls", "progressive"]).optional(),
   logoUrl: z.string().optional(),
   description: z.string().optional(),
   websiteUrl: z.string().optional(),
@@ -127,7 +128,8 @@ export function isSessionRadio(radio: Radio): boolean {
   if (!radio.id) {
     return false;
   }
-  return String(radio.id).startsWith("rg_");
+  const id = String(radio.id);
+  return id.startsWith("rb_") || id.startsWith("rg_");
 }
 
 function getOrderedSessionRadioRecords(): SessionRadioRecord[] {
@@ -157,7 +159,7 @@ function toSessionRadioRecord(radio: Radio): SessionRadioRecord {
 }
 
 export function toSessionRadio(record: SessionRadioRecord): Radio {
-  const { addedAt: _addedAt, ...radio } = record;
+  const { addedAt: _addedAt, ...radio } = sessionRadioSchema.parse(record);
   return radio;
 }
 
@@ -169,6 +171,9 @@ export function addSessionRadio(radio: Radio): void {
   const record = toSessionRadioRecord(radio);
   const id = String(record.id);
   if (sessionRadiosCollection.state.has(id)) {
+    sessionRadiosCollection.update(id, (draft) => {
+      Object.assign(draft, record);
+    });
     return;
   }
 

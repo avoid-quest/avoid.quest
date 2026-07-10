@@ -1,5 +1,7 @@
 export {
   isHostnameOrSubdomain,
+  isLoopbackHostname,
+  isLoopbackHttpUrl,
   normalizePlatformHostname,
   parseHttpUrl,
 } from "./hostname.js";

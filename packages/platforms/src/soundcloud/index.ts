@@ -347,6 +347,12 @@ function findBestTranscoding(
   return hlsAny ?? null;
 }
 
+function getTranscodingStreamFormat(
+  transcoding: SoundCloudTranscoding
+): "hls" | "progressive" {
+  return transcoding.format?.protocol === "hls" ? "hls" : "progressive";
+}
+
 async function processTrack(
   data: SoundCloudApiTrack,
   url: string,
@@ -378,6 +384,7 @@ async function processTrack(
 
   return {
     success: true,
+    format: getTranscodingStreamFormat(transcoding),
     metadata,
     streamUrl,
   };
@@ -422,6 +429,7 @@ async function processPlaylist(
       }
 
       return {
+        format: getTranscodingStreamFormat(transcoding),
         name: fullTrack.title ?? "",
         streamUrl,
         duration: Math.floor((fullTrack.duration ?? 0) / 1000),
@@ -430,8 +438,14 @@ async function processPlaylist(
   );
 
   const validTracks = processedTracks.filter(
-    (t): t is { name: string; streamUrl: string; duration: number } =>
-      t !== null
+    (
+      t
+    ): t is {
+      duration: number;
+      format: "hls" | "progressive";
+      name: string;
+      streamUrl: string;
+    } => t !== null
   );
 
   if (validTracks.length === 0) {
@@ -459,6 +473,7 @@ async function processPlaylist(
 
   return {
     success: true,
+    format: firstTrack.format,
     metadata,
     streamUrl: firstTrack.streamUrl,
   };
@@ -518,6 +533,7 @@ async function processUser(
       }
 
       return {
+        format: getTranscodingStreamFormat(transcoding),
         name: track.title ?? "",
         streamUrl,
         duration: Math.floor((track.duration ?? 0) / 1000),
@@ -526,8 +542,14 @@ async function processUser(
   );
 
   const validTracks = processedTracks.filter(
-    (t): t is { name: string; streamUrl: string; duration: number } =>
-      t !== null
+    (
+      t
+    ): t is {
+      duration: number;
+      format: "hls" | "progressive";
+      name: string;
+      streamUrl: string;
+    } => t !== null
   );
 
   if (validTracks.length === 0) {
@@ -556,6 +578,7 @@ async function processUser(
 
   return {
     success: true,
+    format: firstTrack.format,
     metadata,
     streamUrl: firstTrack.streamUrl,
   };

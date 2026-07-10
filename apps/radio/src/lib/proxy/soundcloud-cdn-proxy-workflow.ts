@@ -20,6 +20,7 @@ type SoundCloudProxyAuth = {
 };
 
 type SoundCloudCdnProxyWorkflowDependencies = {
+  logSSRFAttempt?: typeof logSSRFAttempt;
   proxyPolicy: CdnProxyPolicy;
 };
 
@@ -99,6 +100,7 @@ function createSoundCloudUpstreamHeaders(): HeadersInit {
 }
 
 export function createSoundCloudCdnProxyWorkflow({
+  logSSRFAttempt: logAttempt = logSSRFAttempt,
   proxyPolicy,
 }: SoundCloudCdnProxyWorkflowDependencies) {
   return createCdnProxyRequestWorkflow<
@@ -124,7 +126,7 @@ export function createSoundCloudCdnProxyWorkflow({
     },
     onUrlValidationFailure: ({ context, reason, urlParam }) => {
       if (reason === "invalid-domain") {
-        logSSRFAttempt(
+        logAttempt(
           context.auth.sessionId,
           urlParam ?? "",
           "soundcloud-proxy",

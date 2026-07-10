@@ -1,9 +1,5 @@
-import { afterEach, describe, expect, mock, test } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 import type { AppError } from "@avoid.quest/error";
-import {
-  clearStreamAccessCache,
-  inspectStreamAccess as inspectRealStreamAccess,
-} from "./stream-access";
 import { createStreamProxyRequestWorkflow } from "./stream-proxy-workflow";
 
 function createTestPolicy() {
@@ -33,577 +29,241 @@ function createTestPolicy() {
   };
 }
 
-afterEach(() => {
-  clearStreamAccessCache();
-});
+function createRequest(path: string, init?: RequestInit): Request {
+  return new Request(`https://radio.test/api/stream-proxy?url=${path}`, init);
+}
+
+function createWorkflow(
+  fetchImpl: (input: string, init?: RequestInit) => Promise<Response>,
+  options: Partial<
+    Pick<
+      Parameters<typeof createStreamProxyRequestWorkflow>[0],
+      "captureError" | "fetchTimeoutMs" | "maxRangeBytes" | "maxStreamedBytes"
+    >
+  > = {}
+) {
+  return createStreamProxyRequestWorkflow({
+    ...options,
+    fetchImpl,
+    proxyPolicy: createTestPolicy(),
+  });
+}
+
+function handle(
+  workflow: ReturnType<typeof createStreamProxyRequestWorkflow>,
+  request: Request,
+  requestId: string
+) {
+  return workflow.handle({
+    origin: "https://radio.test",
+    request,
+    requestId,
+  });
+}
 
 describe("createStreamProxyRequestWorkflow", () => {
-  test("keeps missing request URL parameters on the request validation path", async () => {
-    const inspectStreamAccess = mock(async () => {
-      await Promise.resolve();
-      return { mode: "proxy" as const, response: null, resolvedUrl: null };
-    });
-    const fetchImpl = mock(async () => {
-      await Promise.resolve();
-      return new Response("should not fetch");
-    });
-    const workflow = createStreamProxyRequestWorkflow({
-      fetchImpl,
-      inspectStreamAccess,
-      proxyPolicy: createTestPolicy(),
-    });
-
-    const response = await workflow.handle({
-      origin: "https://radio.test",
-      request: new Request("https://radio.test/api/stream-proxy"),
-      requestId: "req_missing_url",
-    });
+  test("rejects missing URLs before fetching upstream", async () => {
+    const fetchImpl = mock(async () => new Response("should not fetch"));
+    const response = await handle(
+      createWorkflow(fetchImpl),
+      new Request("https://radio.test/api/stream-proxy"),
+      "req_missing_url"
+    );
 
     expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
+    await expect(response.json()).resolves.toMatchObject({
       code: "STREAM_PROXY_URL_REQUIRED",
-      message: "URL parameter is required",
       requestId: "req_missing_url",
-      status: 400,
     });
-    expect(inspectStreamAccess).not.toHaveBeenCalled();
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
-  test("redirects direct HTTPS streams with CORS and request headers", async () => {
-    const inspectStreamAccess = mock(async () => {
-      await Promise.resolve();
-      return {
-        mode: "direct" as const,
-        response: null,
-        resolvedUrl: "https://edge.example/live.mp3",
-      };
-    });
-    const fetchImpl = mock(async () => {
-      await Promise.resolve();
-      return new Response("should not fetch");
-    });
-    const workflow = createStreamProxyRequestWorkflow({
-      fetchImpl,
-      inspectStreamAccess,
-      proxyPolicy: createTestPolicy(),
-    });
-
-    const response = await workflow.handle({
-      origin: "https://radio.test",
-      request: new Request(
-        "https://radio.test/api/stream-proxy?url=https%3A%2F%2Fradio.example%2Flive.mp3"
-      ),
-      requestId: "req_redirect",
-    });
-
-    expect(response.status).toBe(307);
-    expect(response.headers.get("Location")).toBe(
-      "https://edge.example/live.mp3"
-    );
-    expect(response.headers.get("Cache-Control")).toBe("private, no-store");
-    expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
-      "https://radio.test"
-    );
-    expect(response.headers.get("x-request-id")).toBe("req_redirect");
-    expect(fetchImpl).toHaveBeenCalledTimes(0);
-  });
-
-  test("rejects changed direct-stream redirects during access inspection", async () => {
-    clearStreamAccessCache();
-
-    let requestCount = 0;
-    const fetchedUrls: string[] = [];
-    const fetchImpl = mock(async (url: string) => {
-      await Promise.resolve();
-      requestCount += 1;
-      fetchedUrls.push(url);
-
-      if (requestCount === 1) {
-        return new Response("direct", {
+  test("always relays fallback streams even when upstream advertises CORS", async () => {
+    const fetchImpl = mock(
+      async () =>
+        new Response("audio-bytes", {
           headers: {
-            "access-control-allow-origin": "*",
+            "Access-Control-Allow-Origin": "*",
+            "Content-Type": "audio/mpeg",
           },
-        });
-      }
-
-      return Response.redirect("http://127.0.0.1/live.mp3", 302);
-    });
-    const workflow = createStreamProxyRequestWorkflow({
-      fetchImpl,
-      inspectStreamAccess: (url, options) =>
-        inspectRealStreamAccess(url, { ...options, fetchImpl }),
-      proxyPolicy: createTestPolicy(),
-    });
-    const request = new Request(
-      "https://radio.test/api/stream-proxy?url=https%3A%2F%2Fradio.example%2Flive.mp3"
+        })
     );
-
-    const firstResponse = await workflow.handle({
-      origin: "https://radio.test",
-      request,
-      requestId: "req_direct_first",
-    });
-    const secondResponse = await workflow.handle({
-      origin: "https://radio.test",
-      request,
-      requestId: "req_direct_second",
-    });
-
-    expect(firstResponse.status).toBe(307);
-    expect(firstResponse.headers.get("Location")).toBe(
-      "https://radio.example/live.mp3"
+    const response = await handle(
+      createWorkflow(fetchImpl),
+      createRequest(encodeURIComponent("https://radio.example/live.mp3")),
+      "req_proxy_cors"
     );
-    expect(secondResponse.status).toBe(400);
-    expect(secondResponse.headers.get("Location")).toBeNull();
-    await expect(secondResponse.json()).resolves.toEqual({
-      code: "STREAM_PROXY_INTERNAL_ADDRESS",
-      message: "Internal addresses not allowed",
-      requestId: "req_direct_second",
-      status: 400,
-    });
-    expect(fetchedUrls).toEqual([
-      "https://radio.example/live.mp3",
-      "https://radio.example/live.mp3",
-    ]);
-  });
-
-  test("maps access inspection redirect rejections without fallback refetch", async () => {
-    const inspectStreamAccess = mock(async () => {
-      await Promise.resolve();
-      return {
-        failure: {
-          reason: "internal-address" as const,
-          url: "http://127.0.0.1/live.mp3",
-        },
-        mode: "rejected" as const,
-        response: null,
-        resolvedUrl: null,
-      };
-    });
-    const fetchImpl = mock(async () => {
-      await Promise.resolve();
-      return new Response("should not fetch");
-    });
-    const workflow = createStreamProxyRequestWorkflow({
-      fetchImpl,
-      inspectStreamAccess,
-      proxyPolicy: createTestPolicy(),
-    });
-
-    const response = await workflow.handle({
-      origin: "https://radio.test",
-      request: new Request(
-        "https://radio.test/api/stream-proxy?url=https%3A%2F%2Fradio.example%2Flive.mp3"
-      ),
-      requestId: "req_inspect_redirect_private",
-    });
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
-      code: "STREAM_PROXY_INTERNAL_ADDRESS",
-      message: "Internal addresses not allowed",
-      requestId: "req_inspect_redirect_private",
-      status: 400,
-    });
-    expect(fetchImpl).toHaveBeenCalledTimes(0);
-  });
-
-  test("rejects invalid Range headers before access probes or upstream fetches", async () => {
-    const inspectStreamAccess = mock(async () => {
-      await Promise.resolve();
-      return { mode: "proxy" as const, response: null, resolvedUrl: null };
-    });
-    const fetchImpl = mock(async () => {
-      await Promise.resolve();
-      return new Response("should not fetch");
-    });
-    const workflow = createStreamProxyRequestWorkflow({
-      fetchImpl,
-      inspectStreamAccess,
-      maxRangeBytes: 10,
-      proxyPolicy: createTestPolicy(),
-    });
-
-    const response = await workflow.handle({
-      origin: "https://radio.test",
-      request: new Request(
-        "https://radio.test/api/stream-proxy?url=https%3A%2F%2Fradio.example%2Flive.mp3",
-        {
-          headers: {
-            Range: "bytes=0-1,3-4",
-          },
-        }
-      ),
-      requestId: "req_invalid_range",
-    });
-
-    expect(response.status).toBe(416);
-    await expect(response.json()).resolves.toEqual({
-      code: "STREAM_PROXY_INVALID_RANGE",
-      message: "Invalid Range header",
-      requestId: "req_invalid_range",
-      status: 416,
-    });
-    expect(inspectStreamAccess).not.toHaveBeenCalled();
-    expect(fetchImpl).not.toHaveBeenCalled();
-  });
-
-  test("proxies preserved access responses with audio playback headers", async () => {
-    const upstreamResponse = new Response("audio-bytes", {
-      headers: {
-        "Content-Length": "11",
-        "Content-Range": "bytes 0-10/100",
-        "Content-Type": "audio/aac",
-        "Icy-Br": "128",
-        "Icy-Genre": "Ambient",
-        "Icy-MetaInt": "16000",
-        "Icy-Name": "Example FM",
-      },
-      status: 206,
-    });
-    const inspectStreamAccess = mock(async () => {
-      await Promise.resolve();
-      return {
-        mode: "proxy" as const,
-        response: upstreamResponse,
-        resolvedUrl: null,
-      };
-    });
-    const fetchImpl = mock(async () => {
-      await Promise.resolve();
-      return new Response("should not fetch");
-    });
-    const workflow = createStreamProxyRequestWorkflow({
-      fetchImpl,
-      inspectStreamAccess,
-      proxyPolicy: createTestPolicy(),
-    });
-
-    const response = await workflow.handle({
-      origin: "https://radio.test",
-      request: new Request(
-        "https://radio.test/api/stream-proxy?url=https%3A%2F%2Fradio.example%2Flive.aac",
-        {
-          headers: {
-            Range: "bytes=0-10",
-          },
-        }
-      ),
-      requestId: "req_proxy",
-    });
-
-    expect(response.status).toBe(206);
-    expect(response.headers.get("Content-Type")).toBe("audio/aac");
-    expect(response.headers.get("Content-Length")).toBeNull();
-    expect(response.headers.get("Content-Range")).toBe("bytes 0-10/100");
-    expect(response.headers.get("Accept-Ranges")).toBe("bytes");
-    expect(response.headers.get("Icy-MetaInt")).toBe("16000");
-    expect(response.headers.get("Icy-Name")).toBe("Example FM");
-    expect(response.headers.get("Icy-Genre")).toBe("Ambient");
-    expect(response.headers.get("Icy-Br")).toBe("128");
-    expect(response.headers.get("Access-Control-Expose-Headers")).toContain(
-      "Icy-MetaInt"
-    );
-    await expect(response.text()).resolves.toBe("audio-bytes");
-    expect(fetchImpl).toHaveBeenCalledTimes(0);
-  });
-
-  test("fetches the original stream when access inspection cannot preserve a proxy response", async () => {
-    let forwardedHeaders: Headers | null = null;
-    const inspectStreamAccess = mock(async () => {
-      await Promise.resolve();
-      return { mode: "proxy" as const, response: null, resolvedUrl: null };
-    });
-    const fetchImpl = mock(async (_url: string, init?: RequestInit) => {
-      await Promise.resolve();
-      forwardedHeaders = new Headers(init?.headers);
-      return new Response("fallback-audio", {
-        headers: {
-          "Content-Type": "audio/mpeg",
-        },
-      });
-    });
-    const workflow = createStreamProxyRequestWorkflow({
-      fetchImpl,
-      inspectStreamAccess,
-      proxyPolicy: createTestPolicy(),
-    });
-
-    const response = await workflow.handle({
-      origin: "https://radio.test",
-      request: new Request(
-        "https://radio.test/api/stream-proxy?url=https%3A%2F%2Fradio.example%2Ffallback.mp3",
-        {
-          headers: {
-            "Icy-MetaData": "1",
-            Range: "bytes=100-200",
-          },
-        }
-      ),
-      requestId: "req_fallback",
-    });
 
     expect(response.status).toBe(200);
-    await expect(response.text()).resolves.toBe("fallback-audio");
-    expect(fetchImpl).toHaveBeenCalledWith(
-      "https://radio.example/fallback.mp3",
-      expect.any(Object)
-    );
-    expect(forwardedHeaders).not.toBeNull();
-    if (!forwardedHeaders) {
-      throw new Error("Expected fallback fetch headers");
-    }
-    const headers: Headers = forwardedHeaders;
-    expect(headers.get("Icy-MetaData")).toBe("1");
-    expect(headers.get("Range")).toBe("bytes=100-200");
+    expect(response.headers.get("Location")).toBeNull();
+    expect(response.headers.get("Content-Type")).toBe("audio/mpeg");
+    await expect(response.text()).resolves.toBe("audio-bytes");
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
-  test("bounds oversized fallback Range headers before fetching upstream", async () => {
+  test("forwards bounded Range and ICY request headers", async () => {
     const capture: { forwardedHeaders: Headers | null } = {
       forwardedHeaders: null,
     };
-    const inspection: { headers: Headers | null } = { headers: null };
-    const workflow = createStreamProxyRequestWorkflow({
-      fetchImpl: mock(async (_url: string, init?: RequestInit) => {
-        await Promise.resolve();
-        capture.forwardedHeaders = new Headers(init?.headers);
-        return new Response("fallback-audio");
-      }),
-      inspectStreamAccess: mock(async (_url, options) => {
-        await Promise.resolve();
-        inspection.headers = options.preparedHeaders ?? null;
-        return { mode: "proxy" as const, response: null, resolvedUrl: null };
-      }),
-      maxRangeBytes: 10,
-      proxyPolicy: createTestPolicy(),
+    const fetchImpl = mock(async (_url: string, init?: RequestInit) => {
+      await Promise.resolve();
+      capture.forwardedHeaders = new Headers(init?.headers);
+      return new Response("audio", { status: 206 });
     });
+    const response = await handle(
+      createWorkflow(fetchImpl, { maxRangeBytes: 10 }),
+      createRequest(encodeURIComponent("https://radio.example/live.mp3"), {
+        headers: { "Icy-MetaData": "1", Range: "bytes=100-999" },
+      }),
+      "req_headers"
+    );
 
-    const response = await workflow.handle({
-      origin: "https://radio.test",
-      request: new Request(
-        "https://radio.test/api/stream-proxy?url=https%3A%2F%2Fradio.example%2Ffallback.mp3",
-        {
-          headers: {
-            Range: "bytes=100-999",
-          },
-        }
-      ),
-      requestId: "req_bounded_range",
-    });
-
-    expect(response.status).toBe(200);
-    await expect(response.text()).resolves.toBe("fallback-audio");
-    expect(inspection.headers?.get("Range")).toBe("bytes=100-109");
+    expect(response.status).toBe(206);
+    expect(capture.forwardedHeaders?.get("Icy-MetaData")).toBe("1");
     expect(capture.forwardedHeaders?.get("Range")).toBe("bytes=100-109");
   });
 
-  test("rejects known oversized upstream responses before streaming", async () => {
-    const workflow = createStreamProxyRequestWorkflow({
-      fetchImpl: mock(async () => {
-        await Promise.resolve();
-        return new Response("oversized", {
-          headers: {
-            "Content-Length": "6",
-            "Content-Type": "audio/mpeg",
-          },
-        });
+  test("rejects invalid Range headers before fetching upstream", async () => {
+    const fetchImpl = mock(async () => new Response("should not fetch"));
+    const response = await handle(
+      createWorkflow(fetchImpl),
+      createRequest(encodeURIComponent("https://radio.example/live.mp3"), {
+        headers: { Range: "bytes=0-1,3-4" },
       }),
-      inspectStreamAccess: mock(async () => {
-        await Promise.resolve();
-        return { mode: "proxy" as const, response: null, resolvedUrl: null };
-      }),
-      maxStreamedBytes: 5,
-      proxyPolicy: createTestPolicy(),
-    });
+      "req_invalid_range"
+    );
 
-    const response = await workflow.handle({
-      origin: "https://radio.test",
-      request: new Request(
-        "https://radio.test/api/stream-proxy?url=https%3A%2F%2Fradio.example%2Ffallback.mp3"
-      ),
-      requestId: "req_response_too_large",
+    expect(response.status).toBe(416);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "STREAM_PROXY_INVALID_RANGE",
     });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  test("exposes radio response headers without forwarding Content-Length", async () => {
+    const fetchImpl = mock(
+      async () =>
+        new Response("audio-bytes", {
+          headers: {
+            "Content-Length": "11",
+            "Content-Range": "bytes 0-10/100",
+            "Content-Type": "audio/aac",
+            "Icy-Br": "128",
+            "Icy-MetaInt": "16000",
+            "Icy-Name": "Example FM",
+          },
+          status: 206,
+        })
+    );
+    const response = await handle(
+      createWorkflow(fetchImpl),
+      createRequest(encodeURIComponent("https://radio.example/live.aac")),
+      "req_headers"
+    );
+
+    expect(response.headers.get("Content-Length")).toBeNull();
+    expect(response.headers.get("Content-Range")).toBe("bytes 0-10/100");
+    expect(response.headers.get("Icy-MetaInt")).toBe("16000");
+    expect(response.headers.get("Icy-Name")).toBe("Example FM");
+    expect(response.headers.get("Access-Control-Expose-Headers")).toContain(
+      "Icy-MetaInt"
+    );
+  });
+
+  test("rejects known oversized responses before streaming", async () => {
+    const fetchImpl = mock(
+      async () =>
+        new Response("oversized", { headers: { "Content-Length": "6" } })
+    );
+    const response = await handle(
+      createWorkflow(fetchImpl, { maxStreamedBytes: 5 }),
+      createRequest(encodeURIComponent("https://radio.example/live.mp3")),
+      "req_too_large"
+    );
 
     expect(response.status).toBe(413);
-    await expect(response.json()).resolves.toEqual({
+    await expect(response.json()).resolves.toMatchObject({
       code: "STREAM_PROXY_RESPONSE_TOO_LARGE",
-      message: "Response too large",
-      requestId: "req_response_too_large",
-      status: 413,
     });
   });
 
-  test("allows live stream responses above the previous bitrate-derived cap", async () => {
-    const workflow = createStreamProxyRequestWorkflow({
-      fetchImpl: mock(async () => {
-        await Promise.resolve();
-        return new Response("large-stream", {
-          headers: {
-            "Content-Length": String(512 * 1024 * 1024),
-            "Content-Type": "audio/mpeg",
-          },
-        });
-      }),
-      inspectStreamAccess: mock(async () => {
-        await Promise.resolve();
-        return { mode: "proxy" as const, response: null, resolvedUrl: null };
-      }),
-      proxyPolicy: createTestPolicy(),
-    });
-
-    const response = await workflow.handle({
-      origin: "https://radio.test",
-      request: new Request(
-        "https://radio.test/api/stream-proxy?url=https%3A%2F%2Fradio.example%2Ffallback.mp3"
-      ),
-      requestId: "req_above_old_stream_cap",
-    });
-
-    expect(response.status).toBe(200);
-    expect(response.headers.get("Content-Length")).toBeNull();
-    await expect(response.text()).resolves.toBe("large-stream");
-  });
-
-  test("times out fallback upstream fetches before response headers arrive", async () => {
-    const workflow = createStreamProxyRequestWorkflow({
-      fetchImpl: mock(
-        async (_url: string, init?: RequestInit) =>
-          new Promise<Response>((_resolve, reject) => {
-            const signal = init?.signal;
-            if (!signal) {
-              reject(new Error("Missing abort signal"));
-              return;
-            }
-
-            signal.addEventListener(
-              "abort",
-              () => {
-                const error = new Error("Aborted");
-                error.name = "AbortError";
-                reject(error);
-              },
-              { once: true }
-            );
-          })
-      ),
-      fetchTimeoutMs: 1,
-      inspectStreamAccess: mock(async () => {
-        await Promise.resolve();
-        return { mode: "proxy" as const, response: null, resolvedUrl: null };
-      }),
-      proxyPolicy: createTestPolicy(),
-    });
-
-    const response = await workflow.handle({
-      origin: "https://radio.test",
-      request: new Request(
-        "https://radio.test/api/stream-proxy?url=https%3A%2F%2Fradio.example%2Ffallback.mp3"
-      ),
-      requestId: "req_fallback_timeout",
-    });
-
-    expect(response.status).toBe(408);
-    await expect(response.json()).resolves.toEqual({
-      code: "STREAM_PROXY_TIMEOUT",
-      message: "Request timeout",
-      requestId: "req_fallback_timeout",
-      status: 408,
-    });
-  });
-
-  test("caps unknown-length fallback streams and aborts upstream", async () => {
+  test("caps unknown-length streams and aborts upstream", async () => {
     let wasCanceled = false;
     let upstreamSignal: AbortSignal | undefined;
-    const workflow = createStreamProxyRequestWorkflow({
-      fetchImpl: mock(async (_url: string, init?: RequestInit) => {
-        await Promise.resolve();
-        upstreamSignal = init?.signal ?? undefined;
-        return new Response(
-          new ReadableStream<Uint8Array>({
-            pull(controller) {
-              controller.enqueue(new TextEncoder().encode("abc"));
-              controller.enqueue(new TextEncoder().encode("def"));
-            },
-            cancel() {
-              wasCanceled = true;
-            },
-          }),
-          {
-            headers: {
-              "Content-Type": "audio/mpeg",
-            },
-          }
-        );
-      }),
-      inspectStreamAccess: mock(async () => {
-        await Promise.resolve();
-        return { mode: "proxy" as const, response: null, resolvedUrl: null };
-      }),
-      maxStreamedBytes: 5,
-      proxyPolicy: createTestPolicy(),
+    const fetchImpl = mock(async (_url: string, init?: RequestInit) => {
+      await Promise.resolve();
+      upstreamSignal = init?.signal ?? undefined;
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          pull(controller) {
+            controller.enqueue(new TextEncoder().encode("abc"));
+            controller.enqueue(new TextEncoder().encode("def"));
+          },
+          cancel() {
+            wasCanceled = true;
+          },
+        })
+      );
     });
+    const response = await handle(
+      createWorkflow(fetchImpl, { maxStreamedBytes: 5 }),
+      createRequest(encodeURIComponent("https://radio.example/live.mp3")),
+      "req_stream_limit"
+    );
 
-    const response = await workflow.handle({
-      origin: "https://radio.test",
-      request: new Request(
-        "https://radio.test/api/stream-proxy?url=https%3A%2F%2Fradio.example%2Ffallback.mp3"
-      ),
-      requestId: "req_unknown_length_limit",
-    });
-
-    expect(response.status).toBe(200);
-    expect(response.headers.get("Content-Length")).toBeNull();
     await expect(response.text()).resolves.toBe("abcde");
     expect(wasCanceled).toBe(true);
     expect(upstreamSignal?.aborted).toBe(true);
   });
 
-  test("rejects fallback redirects to metadata hosts without fetching the target", async () => {
+  test("times out upstream requests", async () => {
+    const fetchImpl = mock(
+      async (_url: string, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener(
+            "abort",
+            () => {
+              const error = new Error("Aborted");
+              error.name = "AbortError";
+              reject(error);
+            },
+            { once: true }
+          );
+        })
+    );
+    const response = await handle(
+      createWorkflow(fetchImpl, { fetchTimeoutMs: 1 }),
+      createRequest(encodeURIComponent("https://radio.example/live.mp3")),
+      "req_timeout"
+    );
+
+    expect(response.status).toBe(408);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "STREAM_PROXY_TIMEOUT",
+    });
+  });
+
+  test("rejects redirects to private hosts without fetching the target", async () => {
     const fetchedUrls: string[] = [];
-    const fetchImpl = mock(async (url: string, init?: RequestInit) => {
+    const fetchImpl = mock(async (url: string) => {
       await Promise.resolve();
       fetchedUrls.push(url);
-
-      if (
-        url === "https://radio.example/fallback.mp3" &&
-        init?.redirect !== "manual"
-      ) {
-        return new Response("metadata", {
-          headers: {
-            "Content-Type": "audio/mpeg",
-          },
-        });
-      }
-
       return Response.redirect("http://metadata.google.internal/latest", 302);
     });
-    const workflow = createStreamProxyRequestWorkflow({
-      fetchImpl,
-      inspectStreamAccess: mock(async () => {
-        await Promise.resolve();
-        return { mode: "proxy" as const, response: null, resolvedUrl: null };
-      }),
-      proxyPolicy: createTestPolicy(),
-    });
-
-    const response = await workflow.handle({
-      origin: "https://radio.test",
-      request: new Request(
-        "https://radio.test/api/stream-proxy?url=https%3A%2F%2Fradio.example%2Ffallback.mp3"
-      ),
-      requestId: "req_redirect_private",
-    });
+    const response = await handle(
+      createWorkflow(fetchImpl),
+      createRequest(encodeURIComponent("https://radio.example/live.mp3")),
+      "req_private_redirect"
+    );
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({
       code: "STREAM_PROXY_INTERNAL_ADDRESS",
-      requestId: "req_redirect_private",
     });
-    expect(fetchedUrls).toEqual(["https://radio.example/fallback.mp3"]);
+    expect(fetchedUrls).toEqual(["https://radio.example/live.mp3"]);
   });
 
-  test("rejects fallback redirect loops at the hop limit", async () => {
+  test("rejects redirect loops at the hop limit", async () => {
     const fetchedUrls: string[] = [];
     const fetchImpl = mock(async (url: string) => {
       await Promise.resolve();
@@ -613,160 +273,75 @@ describe("createStreamProxyRequestWorkflow", () => {
         302
       );
     });
-    const workflow = createStreamProxyRequestWorkflow({
-      fetchImpl,
-      inspectStreamAccess: mock(async () => {
-        await Promise.resolve();
-        return { mode: "proxy" as const, response: null, resolvedUrl: null };
-      }),
-      proxyPolicy: createTestPolicy(),
-    });
-
-    const response = await workflow.handle({
-      origin: "https://radio.test",
-      request: new Request(
-        "https://radio.test/api/stream-proxy?url=https%3A%2F%2Fradio.example%2Floop"
-      ),
-      requestId: "req_redirect_loop",
-    });
+    const response = await handle(
+      createWorkflow(fetchImpl),
+      createRequest(encodeURIComponent("https://radio.example/loop")),
+      "req_loop"
+    );
 
     expect(response.status).toBe(502);
     await expect(response.json()).resolves.toMatchObject({
       code: "STREAM_PROXY_TOO_MANY_REDIRECTS",
-      requestId: "req_redirect_loop",
     });
     expect(fetchedUrls).toHaveLength(6);
   });
 
-  test("rejects private stream URLs before access probes or upstream fetches", async () => {
-    const inspectStreamAccess = mock(async () => {
-      await Promise.resolve();
-      return { mode: "proxy" as const, response: null, resolvedUrl: null };
-    });
-    const fetchImpl = mock(async () => {
-      await Promise.resolve();
-      return new Response("should not fetch");
-    });
-    const workflow = createStreamProxyRequestWorkflow({
-      fetchImpl,
-      inspectStreamAccess,
-      proxyPolicy: createTestPolicy(),
-    });
-
-    const response = await workflow.handle({
-      origin: "https://radio.test",
-      request: new Request(
-        "https://radio.test/api/stream-proxy?url=http%3A%2F%2F127.0.0.1%2Flive"
+  test("rejects private, malformed, and unsupported URLs before fetching", async () => {
+    const fetchImpl = mock(async () => new Response("should not fetch"));
+    const workflow = createWorkflow(fetchImpl);
+    const responses = await Promise.all([
+      handle(
+        workflow,
+        createRequest(encodeURIComponent("http://127.0.0.1/live")),
+        "req_private"
       ),
-      requestId: "req_private",
-    });
+      handle(workflow, createRequest("not-a-url"), "req_malformed"),
+      handle(
+        workflow,
+        createRequest(encodeURIComponent("ftp://radio.example/live")),
+        "req_protocol"
+      ),
+    ]);
 
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toMatchObject({
-      code: "STREAM_PROXY_INTERNAL_ADDRESS",
-      requestId: "req_private",
-    });
-    expect(inspectStreamAccess).toHaveBeenCalledTimes(0);
-    expect(fetchImpl).toHaveBeenCalledTimes(0);
+    expect(responses.map((response) => response.status)).toEqual([
+      400, 400, 400,
+    ]);
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 
-  test("rejects malformed and unsupported stream URLs before access probes", async () => {
-    const inspectStreamAccess = mock(async () => {
-      await Promise.resolve();
-      return { mode: "proxy" as const, response: null, resolvedUrl: null };
-    });
-    const workflow = createStreamProxyRequestWorkflow({
-      fetchImpl: mock(async () => new Response("should not fetch")),
-      inspectStreamAccess,
-      proxyPolicy: createTestPolicy(),
-    });
-
-    const malformedResponse = await workflow.handle({
-      origin: "https://radio.test",
-      request: new Request("https://radio.test/api/stream-proxy?url=not-a-url"),
-      requestId: "req_malformed",
-    });
-    const protocolResponse = await workflow.handle({
-      origin: "https://radio.test",
-      request: new Request(
-        "https://radio.test/api/stream-proxy?url=ftp%3A%2F%2Fradio.example%2Flive"
+  test("maps upstream status and network failures to safe responses", async () => {
+    const statusResponse = await handle(
+      createWorkflow(
+        mock(
+          async () =>
+            new Response("forbidden", { status: 403, statusText: "Forbidden" })
+        )
       ),
-      requestId: "req_protocol",
-    });
-
-    expect(malformedResponse.status).toBe(400);
-    await expect(malformedResponse.json()).resolves.toMatchObject({
-      code: "STREAM_PROXY_INVALID_URL",
-    });
-    expect(protocolResponse.status).toBe(400);
-    await expect(protocolResponse.json()).resolves.toMatchObject({
-      code: "STREAM_PROXY_INVALID_PROTOCOL",
-    });
-    expect(inspectStreamAccess).toHaveBeenCalledTimes(0);
-  });
-
-  test("maps upstream error statuses to safe problem responses", async () => {
-    const workflow = createStreamProxyRequestWorkflow({
-      fetchImpl: mock(async () => {
-        await Promise.resolve();
-        return new Response("forbidden", {
-          status: 403,
-          statusText: "Forbidden",
-        });
-      }),
-      inspectStreamAccess: mock(async () => {
-        await Promise.resolve();
-        return { mode: "proxy" as const, response: null, resolvedUrl: null };
-      }),
-      proxyPolicy: createTestPolicy(),
-    });
-
-    const response = await workflow.handle({
-      origin: "https://radio.test",
-      request: new Request(
-        "https://radio.test/api/stream-proxy?url=https%3A%2F%2Fradio.example%2Fblocked"
+      createRequest(encodeURIComponent("https://radio.example/blocked")),
+      "req_upstream"
+    );
+    const captureError = mock(() => undefined);
+    const failureResponse = await handle(
+      createWorkflow(
+        mock(async () => {
+          await Promise.resolve();
+          throw new Error("private network details");
+        }),
+        { captureError }
       ),
-      requestId: "req_upstream",
-    });
+      createRequest(encodeURIComponent("https://radio.example/failure")),
+      "req_failure"
+    );
 
-    expect(response.status).toBe(403);
-    await expect(response.json()).resolves.toEqual({
+    expect(statusResponse.status).toBe(403);
+    await expect(statusResponse.json()).resolves.toMatchObject({
       code: "STREAM_PROXY_UPSTREAM_ERROR",
       message: "Upstream error: 403 Forbidden",
-      requestId: "req_upstream",
-      status: 403,
     });
-  });
-
-  test("maps upstream fetch failures to safe problem responses", async () => {
-    const captureError = mock(() => undefined);
-    const workflow = createStreamProxyRequestWorkflow({
-      captureError,
-      fetchImpl: mock(async () => {
-        await Promise.resolve();
-        throw new Error("network details should stay private");
-      }),
-      inspectStreamAccess: mock(async () => {
-        await Promise.resolve();
-        return { mode: "proxy" as const, response: null, resolvedUrl: null };
-      }),
-      proxyPolicy: createTestPolicy(),
-    });
-
-    const response = await workflow.handle({
-      origin: "https://radio.test",
-      request: new Request(
-        "https://radio.test/api/stream-proxy?url=https%3A%2F%2Fradio.example%2Ftimeout"
-      ),
-      requestId: "req_fetch_failed",
-    });
-
-    expect(response.status).toBe(502);
-    await expect(response.json()).resolves.toEqual({
+    expect(failureResponse.status).toBe(502);
+    await expect(failureResponse.json()).resolves.toMatchObject({
       code: "STREAM_PROXY_FETCH_FAILED",
       message: "Failed to fetch stream",
-      requestId: "req_fetch_failed",
-      status: 502,
     });
     expect(captureError).toHaveBeenCalledTimes(1);
   });

@@ -1,5 +1,10 @@
 import type { Radio } from "@/lib/audio";
+import {
+  inferStreamFormat,
+  type StreamFormat,
+} from "@/lib/audio/playback/stream-format";
 import type { DeckId } from "@/lib/dj-actions-decks.js";
+import type { PlatformStreamResolution } from "@/lib/dj-platform-stream-port.js";
 import { isYouTubeMetadata } from "@/lib/platform-types";
 import type { DeckLoadDependencies } from "./dj-actions-deck-load.js";
 
@@ -7,6 +12,18 @@ type SourceLoadCurrentCheck = () => boolean;
 
 function isStillCurrent(isCurrent?: SourceLoadCurrentCheck): boolean {
   return isCurrent?.() ?? true;
+}
+
+function getSelectedTrackFormat(
+  radio: Radio,
+  streamUrl: string
+): StreamFormat | undefined {
+  const metadata = radio.platformMetadata;
+  if (!(metadata && "tracks" in metadata && metadata.tracks)) {
+    return;
+  }
+  const track = metadata.tracks.find((item) => item.streamUrl === streamUrl);
+  return track && "format" in track ? track.format : undefined;
 }
 
 async function resolveInitialYouTubeStreamUrl(
@@ -18,9 +35,9 @@ async function resolveInitialYouTubeStreamUrl(
     "reportDjError" | "resolvePlatformStreamUrl"
   >,
   isCurrent?: SourceLoadCurrentCheck
-): Promise<string | null> {
+): Promise<PlatformStreamResolution | null> {
   try {
-    const resolvedUrl = await dependencies.resolvePlatformStreamUrl({
+    const resolved = await dependencies.resolvePlatformStreamUrl({
       platform: "youtube",
       reason: "initial-load",
       videoId,
@@ -29,7 +46,7 @@ async function resolveInitialYouTubeStreamUrl(
     if (!isStillCurrent(isCurrent)) {
       return null;
     }
-    if (!resolvedUrl) {
+    if (!resolved) {
       dependencies.reportDjError(
         "Failed to resolve YouTube stream",
         "DJ_YOUTUBE_RESOLVE_FAILED",
@@ -48,11 +65,11 @@ async function resolveInitialYouTubeStreamUrl(
         (item) => "videoId" in item && item.videoId === videoId
       );
       if (track) {
-        track.streamUrl = resolvedUrl;
+        track.streamUrl = resolved.streamUrl;
       }
     }
 
-    return resolvedUrl;
+    return resolved;
   } catch (error) {
     if (!isStillCurrent(isCurrent)) {
       return null;
@@ -77,9 +94,16 @@ export async function resolveInitialTrackStreamUrl(
     "reportDjError" | "resolvePlatformStreamUrl"
   >,
   isCurrent?: SourceLoadCurrentCheck
-): Promise<string | null> {
+): Promise<PlatformStreamResolution | null> {
   if (!streamUrl.startsWith("yt:")) {
-    return streamUrl;
+    return {
+      streamFormat:
+        getSelectedTrackFormat(radio, streamUrl) ??
+        (streamUrl === radio.streamUrl && radio.streamFormat
+          ? radio.streamFormat
+          : inferStreamFormat(streamUrl)),
+      streamUrl,
+    };
   }
   return await resolveInitialYouTubeStreamUrl(
     deckId,

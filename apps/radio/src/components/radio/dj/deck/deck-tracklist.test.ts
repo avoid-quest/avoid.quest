@@ -3,6 +3,15 @@ import type { PlatformTrack } from "@/lib/platform-types";
 import { findTrackPlayUrlInDirection, getTrackPlayUrl } from "./deck-tracklist";
 
 describe("getTrackPlayUrl", () => {
+  test("returns static-audio playlist track URLs", () => {
+    expect(
+      getTrackPlayUrl({
+        streamUrl: "https://audio.example/live.m3u8",
+        title: "Live",
+      })
+    ).toBe("https://audio.example/live.m3u8");
+  });
+
   test("returns concrete stream URL when present", () => {
     const track = {
       name: "Track 1",

@@ -16,11 +16,8 @@ import { toast } from "sonner";
 import { radiosCollection } from "@/lib/collections";
 import { addRadio } from "@/lib/hooks/use-radios";
 import type { RadioGardenSearchResult } from "@/lib/platform-types";
+import { createConfiguredResolverBroker } from "@/lib/resolver";
 import { createExternalStationResolutionWorkflow } from "@/lib/stations/external-station-workflow";
-import {
-  radioGardenResolveStream,
-  radioGardenSearch,
-} from "@/utils/radio-garden.functions";
 
 type RadioGardenTabProps = {
   onSuccess: () => void;
@@ -37,26 +34,28 @@ export function RadioGardenTab({ onSuccess }: RadioGardenTabProps) {
   const workflow = createExternalStationResolutionWorkflow({
     adapters: {
       radioGarden: {
-        resolveStream: async (channelId) => {
-          const response = await radioGardenResolveStream({
-            data: { channelId },
-          });
-          if (!response.ok) {
+        resolveStream: async (_channelId, canonicalUrl) => {
+          try {
+            const resolved = await createConfiguredResolverBroker().resolve({
+              provider: "radiogarden",
+              url: canonicalUrl,
+            });
             return {
-              ok: false,
+              ok: true as const,
+              data: { format: resolved.format, streamUrl: resolved.streamUrl },
+            };
+          } catch (error) {
+            return {
+              ok: false as const,
               error: {
-                code: response.error.code,
-                message: response.error.message,
+                code: "RADIO_GARDEN_RESOLVER_FAILED",
+                message:
+                  error instanceof Error
+                    ? error.message
+                    : "Failed to resolve Radio Garden stream",
               },
             };
           }
-
-          return {
-            ok: true,
-            data: {
-              streamUrl: response.data.streamUrl,
-            },
-          };
         },
       },
     },
@@ -76,18 +75,12 @@ export function RadioGardenTab({ onSuccess }: RadioGardenTabProps) {
     setSearchError(null);
     setSelectedId(null);
     try {
-      const response = await radioGardenSearch({
-        data: { query: query.trim() },
+      const searchResults = await createConfiguredResolverBroker().search({
+        provider: "radiogarden",
+        query: query.trim(),
       });
-
-      if (!response.ok) {
-        setSearchError(response.error.message);
-        setResults([]);
-        return;
-      }
-
-      setResults(response.data.results);
-      if (response.data.results.length === 0) {
+      setResults(searchResults);
+      if (searchResults.length === 0) {
         setSearchError("No stations found. Try a different search.");
       }
     } catch (error) {

@@ -1,17 +1,8 @@
-import { beforeAll, describe, expect, mock, test } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 import type { AppError } from "@avoid.quest/error";
+import { createSoundCloudCdnProxyWorkflow } from "./soundcloud-cdn-proxy-workflow";
 
 const logSSRFAttempt = mock(() => undefined);
-
-mock.module("@/lib/logger", () => ({ logSSRFAttempt }));
-
-let createSoundCloudCdnProxyWorkflow: typeof import("./soundcloud-cdn-proxy-workflow")["createSoundCloudCdnProxyWorkflow"];
-
-beforeAll(async () => {
-  ({ createSoundCloudCdnProxyWorkflow } = await import(
-    "./soundcloud-cdn-proxy-workflow"
-  ));
-});
 
 function createProxyRequest(range = "bytes=0-10"): Request {
   return new Request("https://radio.test/api/soundcloud-proxy", {
@@ -21,6 +12,7 @@ function createProxyRequest(range = "bytes=0-10"): Request {
 
 function createWorkflow() {
   return createSoundCloudCdnProxyWorkflow({
+    logSSRFAttempt,
     proxyPolicy: {
       errorHeaders(request: Request) {
         return {

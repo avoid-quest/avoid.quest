@@ -16,6 +16,30 @@ describe("isCollection", () => {
 });
 
 describe("getCurrentTrackIndex", () => {
+  test("finds the selected static-audio playlist track", () => {
+    expect(
+      getCurrentTrackIndex(
+        {
+          displayName: "Playlist",
+          duration: 0,
+          fileName: "playlist.m3u",
+          fileSize: 0,
+          isLocal: false,
+          itemType: "playlist",
+          mimeType: "audio/x-mpegurl",
+          platform: "static-audio",
+          streamUrl: "https://audio.example/one.mp3",
+          tracks: [
+            { streamUrl: "https://audio.example/one.mp3", title: "One" },
+            { streamUrl: "https://audio.example/two.mp3", title: "Two" },
+          ],
+          url: "https://audio.example/playlist.m3u",
+        },
+        "https://audio.example/two.mp3"
+      )
+    ).toBe(1);
+  });
+
   test("resolves track index for Bandcamp collection entries", () => {
     const metadata = {
       platform: "bandcamp",

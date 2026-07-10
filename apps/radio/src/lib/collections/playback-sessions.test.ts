@@ -140,6 +140,7 @@ describe("buildDjSessionFromLegacyState", () => {
       id: "deck-a-radio",
       name: "Deck A",
       streamUrl: "https://radio.example/deck-a.mp3",
+      streamFormat: "hls" as const,
     };
     const deckBRadio = {
       id: "deck-b-radio",

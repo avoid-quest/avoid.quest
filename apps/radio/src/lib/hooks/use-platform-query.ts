@@ -1,62 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Radio } from "@/lib/audio";
-import { createExternalStationResolutionWorkflow } from "@/lib/stations/external-station-workflow";
-import { loadPlatformItem as loadPlatformItemFn } from "@/utils/platform.functions";
+import { loadConfiguredPlatformItem as loadPlatformItem } from "@/lib/platform-item-loader";
 
 export const platformKeys = {
   all: ["platform"] as const,
   item: (url: string) => [...platformKeys.all, "item", url] as const,
 };
-
-type LoadPlatformItemResult =
-  | { success: true; radio: Radio }
-  | { success: false; code: string; error: string };
-
-async function loadPlatformItem(url: string): Promise<LoadPlatformItemResult> {
-  const workflow = createExternalStationResolutionWorkflow({
-    adapters: {
-      platform: {
-        resolve: async (inputUrl) => {
-          const response = await loadPlatformItemFn({
-            data: { url: inputUrl },
-          });
-          if (!response.ok) {
-            return {
-              ok: false,
-              error: {
-                code: response.error.code,
-                message: response.error.message,
-              },
-            };
-          }
-
-          return {
-            ok: true,
-            data: {
-              metadata: response.data.metadata,
-              streamUrl: response.data.streamUrl,
-            },
-          };
-        },
-      },
-    },
-    collection: {
-      addSavedRadio: () => undefined,
-      getSavedRadios: () => [],
-    },
-  });
-  const result = await workflow.resolvePlatformUrl(url);
-
-  if (!result.ok) {
-    return {
-      success: false,
-      code: result.error.code,
-      error: result.error.message,
-    };
-  }
-
-  return { success: true, radio: result.data.radio };
-}
 
 type UsePlatformLoadOptions = {
   onSuccess?: (radio: Radio) => void;

@@ -7,7 +7,6 @@ import type {
 function createPlaybackSource(
   context: AudioContext,
   sourceId: string,
-  _url: string,
   callbacks: PlaybackSourceCallbacks = {}
 ): PlaybackSource {
   return new MediaElementPlaybackSource(context, sourceId, callbacks);

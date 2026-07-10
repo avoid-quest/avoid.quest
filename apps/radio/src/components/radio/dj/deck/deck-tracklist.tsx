@@ -48,7 +48,7 @@ function getTrackKey(track: PlatformTrack) {
   return [
     "videoId" in track ? track.videoId : "",
     track.streamUrl,
-    track.name,
+    "title" in track ? track.title : track.name,
     track.duration ?? "",
     "trackNumber" in track ? (track.trackNumber ?? "") : "",
   ].join(":");
@@ -177,7 +177,9 @@ function TrackRow({
         )}
       </div>
       <div className="min-w-0 flex-1">
-        <div className="truncate text-xs">{track.name}</div>
+        <div className="truncate text-xs">
+          {"title" in track ? track.title : track.name}
+        </div>
       </div>
       {track.duration && (
         <span className="shrink-0 font-mono text-[9px] text-muted-foreground tabular-nums">

@@ -6,6 +6,10 @@ import {
   radiosCollection,
   settingsCollection,
 } from "./collections";
+import { resetCompatibilityFallbacks } from "./compatibility-fallback-policy";
+import { clearRelayConfiguration } from "./relay";
+import { clearResolverConfiguration } from "./resolver";
+import { clearYouTubeProviderConfiguration } from "./youtube";
 
 const SETTINGS_ID = "app-settings";
 
@@ -40,6 +44,10 @@ export const resetAllSettings = async (): Promise<void> => {
   }
 
   if (typeof window !== "undefined") {
+    clearRelayConfiguration(window.localStorage);
+    clearResolverConfiguration(window.localStorage);
+    clearYouTubeProviderConfiguration(window.localStorage);
+    resetCompatibilityFallbacks(window.localStorage);
     window.localStorage.removeItem("radio-app-dj-decks");
     window.localStorage.removeItem("radio-app-dj-mixer");
     window.localStorage.removeItem("radio-app-single-state");

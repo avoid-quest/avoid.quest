@@ -3,7 +3,6 @@ import { type AppResult, runServerFn } from "@avoid.quest/error";
 import {
   getRadioGardenSuggestions,
   type RadioGardenSearchResult,
-  resolveRadioGardenStream as resolveStream,
   searchRadioGarden,
 } from "@avoid.quest/platforms/radiogarden/search";
 import { createServerFn } from "@tanstack/react-start";
@@ -35,38 +34,6 @@ export const radioGardenSearch = createServerFn({ method: "POST" })
         run: async () => {
           const results = await searchRadioGarden(data.query);
           return { results };
-        },
-      })
-  );
-
-const RadioGardenResolveSchema = z.object({
-  channelId: z
-    .string()
-    .min(1, "Channel ID is required")
-    .regex(/^[a-zA-Z0-9]+$/, "Invalid channel ID format"),
-});
-
-export type RadioGardenResolveResponse = AppResult<{
-  streamUrl: string;
-}>;
-
-export const radioGardenResolveStream = createServerFn({ method: "POST" })
-  .middleware([rateLimitMiddleware("radio-garden-resolve")])
-  .validator(RadioGardenResolveSchema)
-  .handler(
-    ({ data }): Promise<RadioGardenResolveResponse> =>
-      runServerFn({
-        operation: "radioGardenResolveStream",
-        fallback: {
-          code: "RADIO_GARDEN_RESOLVE_FAILED",
-          safeMessage: "Failed to resolve stream",
-          category: "dependency",
-          expected: false,
-          status: 500,
-        },
-        run: async () => {
-          const streamUrl = await resolveStream(data.channelId);
-          return { streamUrl };
         },
       })
   );

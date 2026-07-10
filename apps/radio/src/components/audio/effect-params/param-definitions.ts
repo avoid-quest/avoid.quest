@@ -9,6 +9,7 @@ export const paramFormatters: Record<string, ParamFormatter> = {
   },
   gain: (gain: number) => `${gain > 0 ? "+" : ""}${gain.toFixed(1)} dB`,
   percentage: (value: number) => `${Math.round(value * 100)}%`,
+  percentage100: (value: number) => `${Math.round(value)}%`,
   time: (seconds: number) => `${seconds.toFixed(2)}s`,
   timeMs: (seconds: number) => `${(seconds * 1000).toFixed(1)}ms`,
   db: (value: number) => `${value.toFixed(1)} dB`,

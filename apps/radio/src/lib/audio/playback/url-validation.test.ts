@@ -36,6 +36,9 @@ describe("validatePlaybackStreamUrl", () => {
       normalizedUrl: "/audio/track.mp3",
     });
     expect(isValidPlaybackStreamUrl("/audio/live.m3u8")).toBeTrue();
+    expect(isValidPlaybackStreamUrl("//evil.example/live.m3u8")).toBeFalse();
+    expect(isValidPlaybackStreamUrl("/\\evil.example/live.m3u8")).toBeFalse();
+    expect(isValidPlaybackStreamUrl("/\n/evil.example/live.m3u8")).toBeFalse();
   });
 
   test("rejects unsupported protocols and invalid URLs", () => {

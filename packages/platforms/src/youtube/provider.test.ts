@@ -10,6 +10,7 @@ import {
 
 const VIDEO_ID = "abcdefghijk";
 const PLAYLIST_ID = "PLabcdefghijk";
+const PUBLIC_ADDRESS = "93.184.216.34";
 
 function json(value: unknown): Response {
   return Response.json(value);
@@ -107,6 +108,7 @@ describe("browser Invidious adapter", () => {
   });
 
   test("maps search results and sends anonymous browser-safe requests", async () => {
+    const resolveHostname = mock(async () => ["203.0.113.8"]);
     const fetchImpl = mock((_input: RequestInfo | URL, init?: RequestInit) => {
       expect(init?.credentials).toBe("omit");
       expect(init?.referrerPolicy).toBe("no-referrer");
@@ -119,7 +121,10 @@ describe("browser Invidious adapter", () => {
             title: "Track",
             type: "video",
             videoId: VIDEO_ID,
-            videoThumbnails: [thumbnail()],
+            videoThumbnails: [
+              thumbnail(),
+              thumbnail("/vi/abcdefghijk/medium.jpg"),
+            ],
             viewCount: 1_200_000,
           },
         ])
@@ -128,6 +133,7 @@ describe("browser Invidious adapter", () => {
     const adapter = createBrowserInvidiousAdapter({
       baseUrl: "https://invidious.test",
       fetchImpl: fetchImpl as typeof fetch,
+      resolveHostname,
     });
 
     await expect(adapter.search("ambient", "songs")).resolves.toEqual([
@@ -143,6 +149,7 @@ describe("browser Invidious adapter", () => {
     expect(String(fetchImpl.mock.calls[0]?.[0])).toBe(
       "https://invidious.test/api/v1/search?q=ambient&type=video"
     );
+    expect(resolveHostname).toHaveBeenCalledTimes(1);
   });
 
   test("rejects a 200 HTML frontend as the wrong service", async () => {
@@ -207,6 +214,7 @@ describe("browser Invidious adapter", () => {
             : json(invidiousVideo())
         );
       }) as typeof fetch,
+      resolveHostname: async () => [PUBLIC_ADDRESS],
     });
 
     await expect(adapter.resolveStream(VIDEO_ID)).resolves.toBe(
@@ -216,6 +224,60 @@ describe("browser Invidious adapter", () => {
     expect(new Headers(requests[1]?.init?.headers).get("Range")).toBe(
       "bytes=0-0"
     );
+  });
+
+  test("rejects media URLs whose hostname resolves to a private address", async () => {
+    const video = invidiousVideo();
+    const stream = video.adaptiveFormats[0];
+    if (!stream) {
+      throw new Error("Expected fixture audio stream");
+    }
+    stream.url = "https://private-media.test/audio";
+    video.videoThumbnails = [thumbnail("https://public-images.test/thumb.jpg")];
+    const fetchImpl = mock(() => Promise.resolve(json(video)));
+    const adapter = createBrowserInvidiousAdapter({
+      baseUrl: "https://invidious.test",
+      fetchImpl: fetchImpl as typeof fetch,
+      resolveHostname: async (hostname) =>
+        hostname === "private-media.test" ? ["127.0.0.1"] : [PUBLIC_ADDRESS],
+    });
+
+    await expect(adapter.resolveStream(VIDEO_ID)).rejects.toMatchObject({
+      code: "invalid-schema",
+      retryable: true,
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  test("rejects thumbnails whose hostname resolves to a private address", async () => {
+    const fetchImpl = mock(() =>
+      Promise.resolve(
+        json([
+          {
+            author: "Artist",
+            lengthSeconds: 125,
+            title: "Track",
+            type: "video",
+            videoId: VIDEO_ID,
+            videoThumbnails: [
+              thumbnail("https://private-images.test/thumb.jpg"),
+            ],
+            viewCount: 1200,
+          },
+        ])
+      )
+    );
+    const adapter = createBrowserInvidiousAdapter({
+      baseUrl: "https://invidious.test",
+      fetchImpl: fetchImpl as typeof fetch,
+      resolveHostname: async () => ["192.168.1.10"],
+    });
+
+    await expect(adapter.search("ambient")).rejects.toMatchObject({
+      code: "invalid-schema",
+      retryable: true,
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
   test("maps playlists to lazy video IDs without resolving every stream", async () => {
@@ -371,6 +433,7 @@ describe("Piped adapter", () => {
             : json(pipedVideo())
         );
       }) as typeof fetch,
+      resolveHostname: async () => [PUBLIC_ADDRESS],
     });
 
     await expect(adapter.resolveStream(VIDEO_ID)).resolves.toBe(
@@ -422,6 +485,60 @@ describe("Piped adapter", () => {
     });
   });
 
+  test("rejects media URLs whose hostname resolves to a private address", async () => {
+    const video = pipedVideo();
+    const stream = video.audioStreams[0];
+    if (!stream) {
+      throw new Error("Expected fixture audio stream");
+    }
+    stream.url = "https://private-media.test/audio";
+    video.thumbnailUrl = "https://public-images.test/thumb.jpg";
+    const fetchImpl = mock(() => Promise.resolve(json(video)));
+    const adapter = createPipedAdapter({
+      baseUrl: "https://piped.test",
+      fetchImpl: fetchImpl as typeof fetch,
+      resolveHostname: async (hostname) =>
+        hostname === "private-media.test" ? ["10.0.0.1"] : [PUBLIC_ADDRESS],
+    });
+
+    await expect(adapter.resolveStream(VIDEO_ID)).rejects.toMatchObject({
+      code: "invalid-schema",
+      retryable: true,
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  test("rejects thumbnails whose hostname resolves to a private address", async () => {
+    const fetchImpl = mock(() =>
+      Promise.resolve(
+        json({
+          items: [
+            {
+              duration: 125,
+              thumbnail: "https://private-images.test/thumb.jpg",
+              title: "Track",
+              type: "stream",
+              uploaderName: "Artist",
+              url: `/watch?v=${VIDEO_ID}`,
+              views: 1200,
+            },
+          ],
+        })
+      )
+    );
+    const adapter = createPipedAdapter({
+      baseUrl: "https://piped.test",
+      fetchImpl: fetchImpl as typeof fetch,
+      resolveHostname: async () => ["172.16.0.1"],
+    });
+
+    await expect(adapter.search("ambient")).rejects.toMatchObject({
+      code: "invalid-schema",
+      retryable: true,
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
   test("rejects media URLs with embedded credentials", async () => {
     const video = pipedVideo();
     const stream = video.audioStreams[0];
@@ -447,15 +564,21 @@ describe("Piped adapter", () => {
       throw new Error("Expected fixture audio stream");
     }
     stream.url = "http://127.0.0.1:4100/audio";
+    video.thumbnailUrl = "http://127.0.0.1:4100/thumb.jpg";
+    const resolveHostname = mock(() =>
+      Promise.reject(new Error("Loopback media must not use public DNS"))
+    );
     const adapter = createPipedAdapter({
       baseUrl: "http://localhost:4100",
       fetchImpl: mock(() => Promise.resolve(json(video))) as typeof fetch,
+      resolveHostname,
       verifyMedia: false,
     });
 
     await expect(adapter.resolveStream(VIDEO_ID)).resolves.toBe(
       "http://127.0.0.1:4100/audio"
     );
+    expect(resolveHostname).not.toHaveBeenCalled();
   });
 
   test("maps playlists to lazy video IDs", async () => {
@@ -510,6 +633,45 @@ function fakeAdapter(
 }
 
 describe("ordered YouTube provider failover", () => {
+  test("falls through a provider that returns private-resolving media", async () => {
+    const video = pipedVideo();
+    const stream = video.audioStreams[0];
+    if (!stream) {
+      throw new Error("Expected fixture audio stream");
+    }
+    stream.url = "https://private-media.test/audio";
+    video.thumbnailUrl = "https://public-images.test/thumb.jpg";
+    const first = createPipedAdapter({
+      baseUrl: "https://piped.test",
+      fetchImpl: mock(() => Promise.resolve(json(video))) as typeof fetch,
+      id: "first",
+      resolveHostname: async (hostname) =>
+        hostname === "private-media.test" ? ["127.0.0.1"] : [PUBLIC_ADDRESS],
+    });
+    const secondResolveStream = mock(() =>
+      Promise.resolve("https://public-media.test/audio")
+    );
+    const second: YouTubeProviderAdapter = {
+      id: "second",
+      kind: "invidious",
+      probe: mock(() =>
+        Promise.resolve({
+          kind: "invidious",
+          providerId: "second",
+          status: "ready" as const,
+        })
+      ),
+      resolveItem: mock(() => Promise.reject(new Error("unused"))),
+      resolveStream: secondResolveStream,
+      search: mock(() => Promise.reject(new Error("unused"))),
+    };
+
+    await expect(
+      createYouTubeClient([first, second]).resolveStream(VIDEO_ID)
+    ).resolves.toBe("https://public-media.test/audio");
+    expect(secondResolveStream).toHaveBeenCalledTimes(1);
+  });
+
   test("falls through retryable protocol failures in configured order", async () => {
     const firstSearch = mock(() =>
       Promise.reject(

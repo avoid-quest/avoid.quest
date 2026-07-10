@@ -2,7 +2,7 @@ import { describe, expect, mock, test } from "bun:test";
 import { getSoundCloudItem } from "./index";
 
 describe("getSoundCloudItem", () => {
-  test("prefers HLS over progressive transcodings", async () => {
+  test("uses progressive by default and allows callers to prefer HLS", async () => {
     const originalFetch = globalThis.fetch;
     const requestedUrls: string[] = [];
     globalThis.fetch = mock((input: string | URL | Request) => {
@@ -56,12 +56,24 @@ describe("getSoundCloudItem", () => {
       await expect(
         getSoundCloudItem("https://soundcloud.com/artist/track")
       ).resolves.toMatchObject({
+        format: "progressive",
+        streamUrl: "https://cf-media.sndcdn.com/live.mp3",
+        success: true,
+      });
+      await expect(
+        getSoundCloudItem("https://soundcloud.com/artist/track", {
+          transcodingProtocols: ["hls", "progressive"],
+        })
+      ).resolves.toMatchObject({
         format: "hls",
         streamUrl: "https://cf-hls-media.sndcdn.com/live.m3u8",
         success: true,
       });
-      expect(requestedUrls).not.toContain(
+      expect(requestedUrls).toContain(
         "https://api-v2.soundcloud.com/media/progressive?client_id=test-client-id"
+      );
+      expect(requestedUrls).toContain(
+        "https://api-v2.soundcloud.com/media/hls?client_id=test-client-id"
       );
     } finally {
       globalThis.fetch = originalFetch;

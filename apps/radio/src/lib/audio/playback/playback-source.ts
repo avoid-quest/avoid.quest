@@ -1,6 +1,7 @@
 import type { StreamStatus } from "./types.js";
 
 type PlaybackInput = {
+  allowNativeHls?: boolean;
   credentials?: RequestCredentials;
   format: "hls" | "progressive";
   src: string;

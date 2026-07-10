@@ -6,8 +6,20 @@ import type {
 import { validateBandcampCdnUrl } from "@avoid.quest/platforms/bandcamp/url-policy";
 import type { RadioGardenSearchResult } from "@avoid.quest/platforms/radiogarden";
 import type { SoundCloudSearchResult } from "@avoid.quest/platforms/soundcloud";
-import { validateSoundCloudCdnUrl } from "@avoid.quest/platforms/soundcloud/url-policy";
-import { validatePublicHttpUrl } from "@avoid.quest/platforms/url-policy";
+import {
+  isSoundCloudCorsAllowedCdnHostname,
+  validateSoundCloudCdnUrl,
+} from "@avoid.quest/platforms/soundcloud/url-policy";
+import {
+  type PublicHostnameResolver,
+  resolvePublicHostnameWithDoh,
+  validateResolvedPublicHttpUrl,
+} from "@avoid.quest/platforms/url-policy";
+import {
+  type BrowserAudioFetch,
+  DEFAULT_BROWSER_AUDIO_PROBE_TIMEOUT_MS,
+  probeBrowserReadableAudio,
+} from "@/lib/audio/playback/browser-audio-probe";
 import type { PlatformMetadata } from "@/lib/platform-types";
 
 export const BANDCAMP_RELAY_BASE_URLS = [
@@ -19,7 +31,15 @@ export const BANDCAMP_RELAY_BASE_URLS = [
 type BandcampRelayBaseUrl = (typeof BANDCAMP_RELAY_BASE_URLS)[number];
 
 type BandcampRelaySelectionOptions = {
-  fetchImpl?: typeof fetch;
+  fetchImpl?: BrowserAudioFetch;
+  signal?: AbortSignal;
+  timeoutMs?: number;
+};
+
+type PlatformItemPreparationOptions = {
+  bandcampRelayBaseUrl?: BandcampRelayBaseUrl;
+  fetchImpl?: BrowserAudioFetch;
+  resolveHostname?: PublicHostnameResolver | false;
   signal?: AbortSignal;
   timeoutMs?: number;
 };
@@ -88,41 +108,39 @@ function toBandcampRelayUrl(
 async function probeBandcampRelay(
   relayBaseUrl: BandcampRelayBaseUrl,
   streamUrl: string,
-  fetchImpl: typeof fetch,
-  signal: AbortSignal
+  fetchImpl: BrowserAudioFetch,
+  signal: AbortSignal,
+  timeoutMs: number
 ): Promise<boolean> {
   try {
-    const response = await fetchImpl(relayBaseUrl + streamUrl, {
-      cache: "no-store",
-      credentials: "omit",
-      headers: {
-        Accept: "audio/*, application/octet-stream;q=0.8, */*;q=0.1",
-        Range: "bytes=0-0",
-      },
-      redirect: "error",
-      referrerPolicy: "no-referrer",
-      signal,
-    });
-    const contentType =
-      response.headers.get("content-type")?.toLowerCase() ?? "";
-    const contentRange =
-      response.headers.get("content-range")?.toLowerCase() ?? "";
-    const ready =
-      response.status === 206 &&
-      contentType.startsWith("audio/") &&
-      BANDCAMP_RELAY_CONTENT_RANGE_PATTERN.test(contentRange);
-    if (!ready || response.body === null) {
-      await response.body?.cancel();
-      return false;
-    }
+    return await probeBrowserReadableAudio(relayBaseUrl + streamUrl, {
+      accept: "audio/*, application/octet-stream;q=0.8, */*;q=0.1",
+      fetchImpl,
+      isPlayableResponse: async (response) => {
+        const contentType =
+          response.headers.get("content-type")?.toLowerCase() ?? "";
+        const contentRange =
+          response.headers.get("content-range")?.toLowerCase() ?? "";
+        const ready =
+          response.status === 206 &&
+          contentType.startsWith("audio/") &&
+          BANDCAMP_RELAY_CONTENT_RANGE_PATTERN.test(contentRange);
+        if (!ready || response.body === null) {
+          return false;
+        }
 
-    const reader = response.body.getReader();
-    try {
-      const { done, value } = await reader.read();
-      return !done && value !== undefined && value.byteLength > 0;
-    } finally {
-      await reader.cancel().catch(() => undefined);
-    }
+        const reader = response.body.getReader();
+        try {
+          const { done, value } = await reader.read();
+          return !done && value !== undefined && value.byteLength > 0;
+        } finally {
+          await reader.cancel().catch(() => undefined);
+          reader.releaseLock();
+        }
+      },
+      signal,
+      timeoutMs,
+    });
   } catch {
     return false;
   }
@@ -154,7 +172,13 @@ export async function selectBandcampRelayBaseUrl(
     timeoutMs
   );
   const probes = BANDCAMP_RELAY_BASE_URLS.map((relayBaseUrl) =>
-    probeBandcampRelay(relayBaseUrl, validatedUrl, fetchImpl, controller.signal)
+    probeBandcampRelay(
+      relayBaseUrl,
+      validatedUrl,
+      fetchImpl,
+      controller.signal,
+      timeoutMs
+    )
   );
 
   try {
@@ -208,27 +232,88 @@ function validateSoundCloudItem(item: PlatformItem): PlatformItem {
     ...(item.metadata.streamUrl === undefined ? [] : [item.metadata.streamUrl]),
     ...(item.metadata.tracks?.map((track) => track.streamUrl) ?? []),
   ];
-  if (streamUrls.some((url) => !validateSoundCloudCdnUrl(url).ok)) {
+  const hasUnsafeUrl = streamUrls.some((url) => {
+    const validation = validateSoundCloudCdnUrl(url);
+    return !(
+      validation.ok &&
+      isSoundCloudCorsAllowedCdnHostname(validation.parsed.hostname)
+    );
+  });
+  if (hasUnsafeUrl) {
     throw new Error("SoundCloud returned an unsafe media URL");
   }
   return item;
 }
 
-function validateRadioGardenItem(item: PlatformItem): PlatformItem {
-  if (
-    item.metadata.platform !== "radiogarden" ||
-    !validatePublicHttpUrl(item.streamUrl).ok
-  ) {
-    throw new Error("Radio Garden returned an unsafe media URL");
+async function validateRadioGardenItem(
+  item: PlatformItem,
+  fetchImpl: BrowserAudioFetch,
+  resolveHostname: PublicHostnameResolver | false,
+  signal: AbortSignal | undefined,
+  timeoutMs: number
+): Promise<PlatformItem> {
+  const controller = new AbortController();
+  const abort = () => controller.abort(signal?.reason);
+  signal?.addEventListener("abort", abort, { once: true });
+  if (signal?.aborted) {
+    abort();
   }
-  return item;
+  const timeout = setTimeout(
+    () => controller.abort(new DOMException("Probe timed out", "TimeoutError")),
+    timeoutMs
+  );
+  try {
+    const validation = await awaitWithSignal(
+      () =>
+        validateResolvedPublicHttpUrl(item.streamUrl, {
+          resolveHostname,
+          signal: controller.signal,
+        }),
+      controller.signal
+    );
+    if (
+      item.metadata.platform !== "radiogarden" ||
+      !validation.ok ||
+      validation.parsed.protocol !== "https:"
+    ) {
+      throw new Error("Radio Garden returned an unsafe media URL");
+    }
+
+    const playable = await probeBrowserReadableAudio(validation.url, {
+      accept: "audio/*",
+      fetchImpl,
+      signal: controller.signal,
+      timeoutMs,
+    });
+    if (!playable) {
+      throw new Error("Radio Garden returned an unplayable media URL");
+    }
+    return item;
+  } catch (error) {
+    signal?.throwIfAborted();
+    if (error instanceof Error && error.message.startsWith("Radio Garden")) {
+      throw error;
+    }
+    throw new Error("Radio Garden returned an unplayable media URL", {
+      cause: error,
+    });
+  } finally {
+    clearTimeout(timeout);
+    signal?.removeEventListener("abort", abort);
+  }
 }
 
-export function preparePlatformItem(
+export async function preparePlatformItem(
   requestUrl: string,
   item: PlatformItem,
-  bandcampRelayBaseUrl: BandcampRelayBaseUrl = BANDCAMP_RELAY_BASE_URLS[0]
-): PlatformItem {
+  {
+    bandcampRelayBaseUrl = BANDCAMP_RELAY_BASE_URLS[0],
+    fetchImpl = fetch,
+    resolveHostname = resolvePublicHostnameWithDoh,
+    signal,
+    timeoutMs = DEFAULT_BROWSER_AUDIO_PROBE_TIMEOUT_MS,
+  }: PlatformItemPreparationOptions = {}
+): Promise<PlatformItem> {
   const platform = detectPlayablePlatformFromUrl(requestUrl);
   if (
     (platform !== "bandcamp" &&
@@ -245,7 +330,13 @@ export function preparePlatformItem(
     case "soundcloud":
       return validateSoundCloudItem(item);
     case "radiogarden":
-      return validateRadioGardenItem(item);
+      return await validateRadioGardenItem(
+        item,
+        fetchImpl,
+        resolveHostname,
+        signal,
+        timeoutMs
+      );
     default:
       throw new Error("Platform returned mismatched metadata");
   }
@@ -270,7 +361,10 @@ export async function resolvePlatformItem(
     platform === "bandcamp" && result.data.metadata.platform === "bandcamp"
       ? await selectBandcampRelayBaseUrl(result.data.streamUrl, { signal })
       : undefined;
-  return preparePlatformItem(url, result.data, bandcampRelayBaseUrl);
+  return preparePlatformItem(url, result.data, {
+    bandcampRelayBaseUrl,
+    signal,
+  });
 }
 
 export async function searchBandcamp(

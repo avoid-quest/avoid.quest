@@ -9,6 +9,7 @@ import {
   selectBestAudioStream,
 } from "./invidious.js";
 import {
+  createYouTubeProviderOperationContext,
   createYouTubeProviderRequestContext,
   fetchProviderJson,
   invalidProviderInput,
@@ -40,27 +41,33 @@ function isNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }
 
-function thumbnails(context: YouTubeProviderRequestContext, value: unknown) {
+async function thumbnails(
+  context: YouTubeProviderRequestContext,
+  value: unknown,
+  signal?: AbortSignal
+) {
   if (!Array.isArray(value)) {
     throw invalidProviderSchema(context);
   }
-  return value.map((thumbnail) => {
-    if (
-      !isObject(thumbnail) ||
-      typeof thumbnail.quality !== "string" ||
-      typeof thumbnail.url !== "string" ||
-      !isNumber(thumbnail.width) ||
-      !isNumber(thumbnail.height)
-    ) {
-      throw invalidProviderSchema(context);
-    }
-    return {
-      height: thumbnail.height,
-      quality: thumbnail.quality,
-      url: resolveProviderUrl(context, thumbnail.url),
-      width: thumbnail.width,
-    };
-  });
+  return await Promise.all(
+    value.map(async (thumbnail) => {
+      if (
+        !isObject(thumbnail) ||
+        typeof thumbnail.quality !== "string" ||
+        typeof thumbnail.url !== "string" ||
+        !isNumber(thumbnail.width) ||
+        !isNumber(thumbnail.height)
+      ) {
+        throw invalidProviderSchema(context);
+      }
+      return {
+        height: thumbnail.height,
+        quality: thumbnail.quality,
+        url: await resolveProviderUrl(context, thumbnail.url, signal),
+        width: thumbnail.width,
+      };
+    })
+  );
 }
 
 function adaptiveFormats(
@@ -140,7 +147,7 @@ async function fetchVideo(
     liveNow: value.liveNow,
     title: value.title,
     videoId: value.videoId,
-    videoThumbnails: thumbnails(context, value.videoThumbnails),
+    videoThumbnails: await thumbnails(context, value.videoThumbnails, signal),
   };
 }
 
@@ -165,7 +172,7 @@ async function resolveVideoStream(
       "No YouTube audio stream found"
     );
   }
-  const streamUrl = resolveProviderUrl(context, stream.url);
+  const streamUrl = await resolveProviderUrl(context, stream.url, signal);
   await verifyProviderMedia(context, streamUrl, signal);
   return { streamUrl, video };
 }
@@ -220,27 +227,29 @@ async function resolvePlaylistItem(
     throw invalidProviderSchema(context);
   }
 
-  const tracks: YouTubeTrackInfo[] = value.videos.map((video) => {
-    if (
-      !isObject(video) ||
-      typeof video.title !== "string" ||
-      typeof video.videoId !== "string" ||
-      !isNumber(video.lengthSeconds)
-    ) {
-      throw invalidProviderSchema(context);
-    }
-    const videoId = requireVideoId(context, video.videoId);
-    return {
-      duration: video.lengthSeconds,
-      name: video.title,
-      streamUrl: `yt:${videoId}`,
-      thumbnail: getBestThumbnail(
-        thumbnails(context, video.videoThumbnails),
-        context.baseUrl
-      ),
-      videoId,
-    };
-  });
+  const tracks: YouTubeTrackInfo[] = await Promise.all(
+    value.videos.map(async (video) => {
+      if (
+        !isObject(video) ||
+        typeof video.title !== "string" ||
+        typeof video.videoId !== "string" ||
+        !isNumber(video.lengthSeconds)
+      ) {
+        throw invalidProviderSchema(context);
+      }
+      const videoId = requireVideoId(context, video.videoId);
+      return {
+        duration: video.lengthSeconds,
+        name: video.title,
+        streamUrl: `yt:${videoId}`,
+        thumbnail: getBestThumbnail(
+          await thumbnails(context, video.videoThumbnails, signal),
+          context.baseUrl
+        ),
+        videoId,
+      };
+    })
+  );
   if (!tracks[0]) {
     throw providerOperationError(
       context,
@@ -253,7 +262,7 @@ async function resolvePlaylistItem(
     metadata: {
       artist: value.author,
       artwork:
-        resolveProviderUrl(context, value.playlistThumbnail) ||
+        (await resolveProviderUrl(context, value.playlistThumbnail, signal)) ||
         tracks[0].thumbnail ||
         "",
       itemType: "playlist",
@@ -310,19 +319,24 @@ export function createBrowserInvidiousAdapter(
         status: "ready",
       };
     },
-    resolveItem: async (url, signal) =>
-      detectYouTubeItemType(url) === "playlist"
-        ? await resolvePlaylistItem(context, url, signal)
-        : await resolveVideoItem(context, url, signal),
-    resolveStream: async (videoId, signal) =>
-      (
+    resolveItem: async (url, signal) => {
+      const operationContext = createYouTubeProviderOperationContext(context);
+      return detectYouTubeItemType(url) === "playlist"
+        ? await resolvePlaylistItem(operationContext, url, signal)
+        : await resolveVideoItem(operationContext, url, signal);
+    },
+    resolveStream: async (videoId, signal) => {
+      const operationContext = createYouTubeProviderOperationContext(context);
+      return (
         await resolveVideoStream(
-          context,
-          requireVideoId(context, videoId),
+          operationContext,
+          requireVideoId(operationContext, videoId),
           signal
         )
-      ).streamUrl,
+      ).streamUrl;
+    },
     search: async (query, _filter, signal) => {
+      const operationContext = createYouTubeProviderOperationContext(context);
       const trimmedQuery = query.trim();
       if (!trimmedQuery) {
         throw invalidProviderInput(context, "YouTube search query is required");
@@ -334,34 +348,37 @@ export function createBrowserInvidiousAdapter(
       if (!Array.isArray(value)) {
         throw invalidProviderSchema(context);
       }
-      return value.flatMap((item): YouTubeSearchResult[] => {
-        if (!isObject(item) || item.type !== "video") {
-          return [];
-        }
-        if (
-          typeof item.videoId !== "string" ||
-          typeof item.title !== "string" ||
-          typeof item.author !== "string" ||
-          !isNumber(item.lengthSeconds) ||
-          !isNumber(item.viewCount)
-        ) {
-          throw invalidProviderSchema(context);
-        }
-        const image = getBestThumbnail(
-          thumbnails(context, item.videoThumbnails),
-          context.baseUrl
-        );
-        return [
-          {
+      const results = await Promise.all(
+        value.map(async (item): Promise<YouTubeSearchResult | null> => {
+          if (!isObject(item) || item.type !== "video") {
+            return null;
+          }
+          if (
+            typeof item.videoId !== "string" ||
+            typeof item.title !== "string" ||
+            typeof item.author !== "string" ||
+            !isNumber(item.lengthSeconds) ||
+            !isNumber(item.viewCount)
+          ) {
+            throw invalidProviderSchema(context);
+          }
+          const image = getBestThumbnail(
+            await thumbnails(operationContext, item.videoThumbnails, signal),
+            context.baseUrl
+          );
+          return {
             author: item.author,
             duration: item.lengthSeconds,
             thumbnail: image,
             title: item.title,
             videoId: requireVideoId(context, item.videoId),
             views: formatViews(item.viewCount),
-          },
-        ];
-      });
+          };
+        })
+      );
+      return results.filter(
+        (result): result is YouTubeSearchResult => result !== null
+      );
     },
   };
 }

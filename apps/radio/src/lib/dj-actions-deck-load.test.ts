@@ -1555,6 +1555,9 @@ describe("DJ deck channel lifecycle", () => {
       (_radio, soundId?: string) => soundId ?? "sound"
     );
     manager.cleanupSound = mock((_soundId: string) => undefined);
+    manager.getPreFaderNode = mock(
+      () => ({ connect: mock() }) as unknown as GainNode
+    );
     manager.subscribe = mock((_soundId, callback) => {
       onAudioState = callback;
       return mock(() => undefined);
@@ -1601,7 +1604,7 @@ describe("DJ deck channel lifecycle", () => {
     );
   });
 
-  test("restores cue routing and saved output devices during deck load", async () => {
+  test("defers Web Audio routing until playback is active", async () => {
     await playbackSessionsCollection.stateWhenReady();
     insertDjSession();
     updatePlaybackChannel("dj", "deck-a", (draft) => {
@@ -1613,7 +1616,16 @@ describe("DJ deck channel lifecycle", () => {
       (_radio, soundId?: string) => soundId ?? "sound"
     );
     manager.cleanupSound = mock((_soundId: string) => undefined);
-    manager.subscribe = mock((_soundId, _callback) => mock(() => undefined));
+    manager.getPreFaderNode = mock(
+      () => ({ connect: mock() }) as unknown as GainNode
+    );
+    let onAudioState: (audioState: AudioState) => void = () => {
+      throw new Error("Audio state subscriber was not registered");
+    };
+    manager.subscribe = mock((_soundId, callback) => {
+      onAudioState = callback;
+      return mock(() => undefined);
+    });
     manager.subscribeMeter = mock((_soundId, _callback) =>
       mock(() => undefined)
     );
@@ -1624,6 +1636,18 @@ describe("DJ deck channel lifecycle", () => {
       id: "station-1",
       name: "Station 1",
       streamUrl: "https://radio.example/one.mp3",
+    });
+
+    expect(dependencies.connectDeckCueBus).not.toHaveBeenCalled();
+    expect(dependencies.initializeAudioDevices).not.toHaveBeenCalled();
+
+    onAudioState({
+      isPlaying: true,
+      isLoading: false,
+      isBuffering: false,
+      hasEnded: false,
+      volume: 1,
+      error: null,
     });
     await Promise.resolve();
 
@@ -1699,7 +1723,7 @@ describe("DJ deck channel lifecycle", () => {
       error: null,
     });
 
-    expect(cueConnectionHadNode).toEqual([false, true]);
+    expect(cueConnectionHadNode).toEqual([true]);
   });
 
   test("keeps cue routing restored when saved output device initialization fails", async () => {
@@ -1714,7 +1738,16 @@ describe("DJ deck channel lifecycle", () => {
       (_radio, soundId?: string) => soundId ?? "sound"
     );
     manager.cleanupSound = mock((_soundId: string) => undefined);
-    manager.subscribe = mock((_soundId, _callback) => mock(() => undefined));
+    manager.getPreFaderNode = mock(
+      () => ({ connect: mock() }) as unknown as GainNode
+    );
+    let onAudioState: (audioState: AudioState) => void = () => {
+      throw new Error("Audio state subscriber was not registered");
+    };
+    manager.subscribe = mock((_soundId, callback) => {
+      onAudioState = callback;
+      return mock(() => undefined);
+    });
     manager.subscribeMeter = mock((_soundId, _callback) =>
       mock(() => undefined)
     );
@@ -1733,6 +1766,14 @@ describe("DJ deck channel lifecycle", () => {
         id: "station-1",
         name: "Station 1",
         streamUrl: "https://radio.example/one.mp3",
+      });
+      onAudioState({
+        isPlaying: true,
+        isLoading: false,
+        isBuffering: false,
+        hasEnded: false,
+        volume: 1,
+        error: null,
       });
       await Promise.resolve();
 

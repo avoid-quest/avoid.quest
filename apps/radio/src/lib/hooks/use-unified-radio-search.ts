@@ -7,6 +7,10 @@ import { useMutation } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Radio } from "@/lib/audio";
 import { searchRadioGarden } from "@/lib/platform-client";
+import {
+  filterPlayableRadioBrowserStations,
+  RADIO_BROWSER_RESULT_LIMIT,
+} from "@/lib/stations/radio-browser-playability";
 
 function filterLocalRadios(radios: Radio[], query: string): Radio[] {
   const q = query.toLowerCase();
@@ -83,8 +87,13 @@ export function useUnifiedRadioSearch(query: string, localRadios: Radio[]) {
   });
 
   const radioBrowserSearchMutation = useMutation({
-    mutationFn: ({ query: searchQuery, signal }: RemoteSearchRequest) =>
-      searchRadioBrowser(searchQuery, { signal }),
+    mutationFn: async ({ query: searchQuery, signal }: RemoteSearchRequest) => {
+      const stations = await searchRadioBrowser(searchQuery, {
+        limit: RADIO_BROWSER_RESULT_LIMIT,
+        signal,
+      });
+      return filterPlayableRadioBrowserStations(stations, { signal });
+    },
     onSuccess: (results, request) => {
       if (request.requestId !== requestIdRef.current) {
         return;

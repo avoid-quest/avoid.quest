@@ -106,7 +106,9 @@ async function resolveBandcampItem(url: string): Promise<ResolvedPlatformItem> {
 async function resolveSoundCloudItem(
   url: string
 ): Promise<ResolvedPlatformItem> {
-  const result = await getSoundCloudItem(url);
+  const result = await getSoundCloudItem(url, {
+    transcodingProtocols: ["hls", "progressive"],
+  });
   if (!result.success) {
     throw providerError(
       "soundcloud",

@@ -1,5 +1,19 @@
 const RESERVED_STREAM_TOKENS = new Set(["left", "right", "deck-a", "deck-b"]);
 const YOUTUBE_LAZY_PREFIX = "yt:";
+const SAME_ORIGIN_PATH_BASE = "https://same-origin.invalid";
+
+export function isSameOriginPlaybackPath(value: string): boolean {
+  if (!value.startsWith("/")) {
+    return false;
+  }
+  try {
+    return (
+      new URL(value, SAME_ORIGIN_PATH_BASE).origin === SAME_ORIGIN_PATH_BASE
+    );
+  } catch {
+    return false;
+  }
+}
 
 export type PlaybackStreamUrlValidation =
   | { ok: true; normalizedUrl: string }
@@ -27,6 +41,9 @@ export function validatePlaybackStreamUrl(
 
   // Relative paths support same-origin audio assets.
   if (normalizedUrl.startsWith("/")) {
+    if (!isSameOriginPlaybackPath(normalizedUrl)) {
+      return { ok: false, reason: "scheme-relative URL is not allowed" };
+    }
     return { ok: true, normalizedUrl };
   }
 

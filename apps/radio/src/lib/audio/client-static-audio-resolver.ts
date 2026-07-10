@@ -1,4 +1,10 @@
-import { isPublicHttpUrl } from "@avoid.quest/platforms/url-policy";
+import {
+  cachePublicHostnameResolver,
+  isPublicHttpUrl,
+  type PublicHostnameResolver,
+  resolvePublicHostnameWithDoh,
+  validateResolvedPublicHttpUrl,
+} from "@avoid.quest/platforms/url-policy";
 import type {
   StaticAudioMetadata,
   StaticAudioTrack,
@@ -9,6 +15,7 @@ import { getFilenameFromUrl, isAudioUrl, isPlaylistUrl } from "./remote-url.js";
 
 const DEFAULT_TIMEOUT_MS = 8000;
 const DEFAULT_MAX_RESPONSE_BYTES = 1024 * 1024;
+const MAX_PLAYLIST_RESOURCES = 1000;
 const BYTE_ORDER_MARK_PATTERN = /^\uFEFF/;
 const HLS_DIRECTIVE_PATTERN = /^#EXT-X-/m;
 const HLS_URI_ATTRIBUTE_PATTERN = /[,:](?:URI|SERVER-URI)="([^"]+)"/g;
@@ -51,6 +58,7 @@ export type ClientStaticAudioResolution = {
 export type ClientStaticAudioResolverDependencies = {
   fetchImpl?: FetchLike;
   maxResponseBytes?: number;
+  resolveHostname?: PublicHostnameResolver | false;
   signal?: AbortSignal;
   timeoutMs?: number;
 };
@@ -157,7 +165,12 @@ function playlistMetadata(
   };
 }
 
-function validatePlaylistResourceUrl(value: string, baseUrl?: string): void {
+async function validatePlaylistResourceUrl(
+  value: string,
+  resolveHostname: PublicHostnameResolver | false,
+  signal: AbortSignal,
+  baseUrl?: string
+): Promise<void> {
   let url: URL;
   try {
     url = new URL(value, baseUrl);
@@ -176,31 +189,64 @@ function validatePlaylistResourceUrl(value: string, baseUrl?: string): void {
   if (!isPublicHttpUrl(url.toString())) {
     throw new PlaylistError("Playlist contains a private resource URL");
   }
-}
-
-function validateTrackUrls(playlist: ParsedPlaylist): void {
-  for (const track of playlist.tracks) {
-    validatePlaylistResourceUrl(track.url);
+  const validation = await validateResolvedPublicHttpUrl(url.toString(), {
+    resolveHostname,
+    signal,
+  });
+  if (!validation.ok) {
+    throw new PlaylistError("Playlist contains a private resource URL");
   }
 }
 
-function validateHlsResourceUrls(content: string, manifestUrl: string): void {
+async function validateTrackUrls(
+  playlist: ParsedPlaylist,
+  resolveHostname: PublicHostnameResolver | false,
+  signal: AbortSignal
+): Promise<void> {
+  if (playlist.tracks.length > MAX_PLAYLIST_RESOURCES) {
+    throw new PlaylistError("Playlist contains too many resources");
+  }
+  for (const track of playlist.tracks) {
+    await validatePlaylistResourceUrl(track.url, resolveHostname, signal);
+  }
+}
+
+async function validateHlsResourceUrls(
+  content: string,
+  manifestUrl: string,
+  resolveHostname: PublicHostnameResolver | false,
+  signal: AbortSignal
+): Promise<void> {
+  const resourceUrls: string[] = [];
   for (const line of content.split(LINE_BREAK_PATTERN)) {
     const trimmed = line.trim();
     if (trimmed && !trimmed.startsWith("#")) {
-      validatePlaylistResourceUrl(trimmed, manifestUrl);
+      resourceUrls.push(trimmed);
     }
     for (const match of line.matchAll(HLS_URI_ATTRIBUTE_PATTERN)) {
-      validatePlaylistResourceUrl(match[1] ?? "", manifestUrl);
+      resourceUrls.push(match[1] ?? "");
     }
+    if (resourceUrls.length > MAX_PLAYLIST_RESOURCES) {
+      throw new PlaylistError("Playlist contains too many resources");
+    }
+  }
+  for (const resourceUrl of resourceUrls) {
+    await validatePlaylistResourceUrl(
+      resourceUrl,
+      resolveHostname,
+      signal,
+      manifestUrl
+    );
   }
 }
 
-function parsePlaylistContent(
+async function parsePlaylistContent(
   content: string,
   upstreamUrl: string,
-  expectedExtension: string
-): StaticAudioMetadata {
+  expectedExtension: string,
+  resolveHostname: PublicHostnameResolver | false,
+  signal: AbortSignal
+): Promise<StaticAudioMetadata> {
   const normalized = content.replace(BYTE_ORDER_MARK_PATTERN, "").trim();
   if (
     !normalized ||
@@ -211,7 +257,12 @@ function parsePlaylistContent(
   }
 
   if (HLS_DIRECTIVE_PATTERN.test(normalized)) {
-    validateHlsResourceUrls(normalized, upstreamUrl);
+    await validateHlsResourceUrls(
+      normalized,
+      upstreamUrl,
+      resolveHostname,
+      signal
+    );
     return trackMetadata(upstreamUrl, "application/vnd.apple.mpegurl");
   }
 
@@ -219,7 +270,7 @@ function parsePlaylistContent(
   if (expectedExtension === ".pls" && playlist.format !== "pls") {
     throw new PlaylistError("Response is not a valid PLS playlist");
   }
-  validateTrackUrls(playlist);
+  await validateTrackUrls(playlist, resolveHostname, signal);
   return playlistMetadata(upstreamUrl, playlist);
 }
 
@@ -327,6 +378,41 @@ function resolverError(
   );
 }
 
+async function validateUpstreamHost(
+  upstreamUrl: string,
+  resolveHostname: PublicHostnameResolver | false,
+  timeoutMs: number,
+  parentSignal?: AbortSignal
+): Promise<void> {
+  const requestSignal = createRequestSignal(parentSignal, timeoutMs);
+  try {
+    const validation = await runUntilAbort(
+      () =>
+        validateResolvedPublicHttpUrl(upstreamUrl, {
+          resolveHostname,
+          signal: requestSignal.signal,
+        }),
+      requestSignal.signal
+    );
+    if (!validation.ok) {
+      throw new ClientStaticAudioResolverError(
+        "Audio URL must resolve to a public host"
+      );
+    }
+  } catch (error) {
+    if (error instanceof ClientStaticAudioResolverError) {
+      throw error;
+    }
+    throw resolverError(
+      error,
+      requestSignal.timedOut(),
+      parentSignal?.aborted ?? false
+    );
+  } finally {
+    requestSignal.cleanup();
+  }
+}
+
 function requestInit(signal: AbortSignal): RequestInit {
   return {
     cache: "no-store",
@@ -371,6 +457,7 @@ async function resolvePlaylist(
   expectedExtension: string,
   timeoutMs: number,
   maxResponseBytes: number,
+  resolveHostname: PublicHostnameResolver | false,
   parentSignal?: AbortSignal
 ): Promise<StaticAudioMetadata> {
   const requestSignal = createRequestSignal(parentSignal, timeoutMs);
@@ -389,7 +476,9 @@ async function resolvePlaylist(
       return parsePlaylistContent(
         await readLimitedText(response, maxResponseBytes),
         upstreamUrl,
-        expectedExtension
+        expectedExtension,
+        resolveHostname,
+        requestSignal.signal
       );
     }, requestSignal.signal);
   } catch (error) {
@@ -465,6 +554,19 @@ export async function resolveClientStaticAudio(
     "Resolver timeout"
   );
   const fetchImpl = dependencies.fetchImpl ?? fetch;
+  const hostnameResolver =
+    dependencies.resolveHostname ??
+    (fetchImpl === globalThis.fetch ? resolvePublicHostnameWithDoh : false);
+  const resolveHostname =
+    hostnameResolver === false
+      ? false
+      : cachePublicHostnameResolver(hostnameResolver);
+  await validateUpstreamHost(
+    upstreamUrl,
+    resolveHostname,
+    timeoutMs,
+    dependencies.signal
+  );
   if (audioUrl) {
     await probeDirectAudio(
       fetchImpl,
@@ -493,6 +595,7 @@ export async function resolveClientStaticAudio(
     expectedExtension,
     timeoutMs,
     maxResponseBytes,
+    resolveHostname,
     dependencies.signal
   );
   return {

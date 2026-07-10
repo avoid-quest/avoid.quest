@@ -15,6 +15,7 @@ export type {
   PublicHttpUrlValidationResult,
 } from "./public-http-url.js";
 export {
+  cachePublicHostnameResolver,
   fetchPublicHttpUrlWithValidatedRedirects,
   isBlockedPublicHttpHostname,
   isPublicHttpUrl,

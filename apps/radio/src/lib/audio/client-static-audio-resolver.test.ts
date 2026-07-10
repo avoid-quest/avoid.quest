@@ -67,6 +67,20 @@ describe("resolveClientStaticAudio", () => {
     ).rejects.toThrow("Redirect blocked");
   });
 
+  test("rejects an upstream hostname that resolves to a private address", async () => {
+    const fetchImpl = mock(() =>
+      Promise.reject(new Error("private hosts must not be fetched"))
+    );
+
+    await expect(
+      resolveClientStaticAudio("https://audio.example/track.mp3", {
+        fetchImpl,
+        resolveHostname: async () => ["127.0.0.1"],
+      })
+    ).rejects.toThrow("must resolve to a public host");
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
   test("rejects unsupported, non-HTTP, and credential-bearing URLs", async () => {
     await expect(
       resolveClientStaticAudio("https://audio.example/readme.txt")
@@ -239,6 +253,53 @@ Length1=11`,
         ),
       })
     ).rejects.toThrow("private resource URL");
+  });
+
+  test("rejects a playlist resource hostname that resolves privately", async () => {
+    await expect(
+      resolveClientStaticAudio("https://audio.example/list.m3u", {
+        fetchImpl: mock(() =>
+          Promise.resolve(
+            playlistResponse(
+              "#EXTM3U\n#EXTINF:-1,Private\nhttps://media.example/audio.mp3"
+            )
+          )
+        ),
+        resolveHostname: async (hostname) =>
+          hostname === "media.example" ? ["10.0.0.8"] : ["203.0.113.8"],
+      })
+    ).rejects.toThrow("private resource URL");
+  });
+
+  test("bounds hostname resolution by the resolver timeout", async () => {
+    const fetchImpl = mock(() =>
+      Promise.reject(new Error("timed-out hosts must not be fetched"))
+    );
+
+    await expect(
+      resolveClientStaticAudio("https://audio.example/track.mp3", {
+        fetchImpl,
+        resolveHostname: () => new Promise(() => undefined),
+        timeoutMs: 1,
+      })
+    ).rejects.toThrow("timed out");
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  test("rejects playlists with excessive resource counts", async () => {
+    const tracks = Array.from(
+      { length: 1001 },
+      (_, index) => `https://media.example/${index}.mp3`
+    ).join("\n");
+
+    await expect(
+      resolveClientStaticAudio("https://audio.example/list.m3u", {
+        fetchImpl: mock(() =>
+          Promise.resolve(playlistResponse(`#EXTM3U\n${tracks}`))
+        ),
+        resolveHostname: async () => ["203.0.113.8"],
+      })
+    ).rejects.toThrow("too many resources");
   });
 
   test("enforces response type and size limits", async () => {

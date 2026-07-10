@@ -310,15 +310,6 @@ function initializeSavedAudioDevices(dependencies: DeckLoadDependencies): void {
   }
 }
 
-function restoreDeckRouting(
-  deckId: DeckId,
-  soundId: string,
-  dependencies: DeckLoadDependencies
-): void {
-  connectDeckCueRouting(deckId, soundId, dependencies);
-  initializeSavedAudioDevices(dependencies);
-}
-
 async function activateLoadedSource(
   deckId: DeckId,
   loadToken: symbol,
@@ -407,6 +398,7 @@ async function loadDeckRadio(
           currentDeck
         ) {
           hasAppliedChannelStrip = true;
+          initializeSavedAudioDevices(dependencies);
           dependencies.applyStoredEffectsAndFilters(
             dependencies.getAudioManager(),
             soundId,
@@ -518,7 +510,6 @@ async function loadDeckRadio(
         }
       },
     });
-    restoreDeckRouting(deckId, soundId, dependencies);
     const sourceActivation = await activateLoadedSource(
       deckId,
       loadToken,

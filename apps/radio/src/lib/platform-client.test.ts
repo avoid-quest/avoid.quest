@@ -31,7 +31,7 @@ describe("preparePlatformItem", () => {
     ]);
   });
 
-  test("routes every Bandcamp stream through the curated relay", () => {
+  test("routes every Bandcamp stream through the curated relay", async () => {
     const item: PlatformItem = {
       format: "progressive",
       metadata: {
@@ -50,7 +50,7 @@ describe("preparePlatformItem", () => {
       streamUrl: BANDCAMP_STREAM,
     };
 
-    const relayed = preparePlatformItem(BANDCAMP_URL, item);
+    const relayed = await preparePlatformItem(BANDCAMP_URL, item);
     if (relayed.metadata.platform !== "bandcamp") {
       throw new Error("Expected Bandcamp metadata");
     }
@@ -153,7 +153,7 @@ describe("preparePlatformItem", () => {
     ).rejects.toThrow("Resolution cancelled");
   });
 
-  test("rejects unsafe Bandcamp streams at every playable position", () => {
+  test("rejects unsafe Bandcamp streams at every playable position", async () => {
     const unsafe = "https://media.example/track.mp3";
     const items: PlatformItem[] = [
       {
@@ -185,18 +185,18 @@ describe("preparePlatformItem", () => {
     ];
 
     for (const item of items) {
-      expect(() => preparePlatformItem(BANDCAMP_URL, item)).toThrow(
+      await expect(preparePlatformItem(BANDCAMP_URL, item)).rejects.toThrow(
         "Bandcamp returned an unsafe media URL"
       );
     }
   });
 
-  test("keeps validated SoundCloud CDN streams unchanged", () => {
+  test("keeps browser-readable SoundCloud CDN streams unchanged", async () => {
     const item: PlatformItem = {
       metadata: {
         itemType: "playlist",
         platform: "soundcloud",
-        streamUrl: "https://cf-media.sndcdn.com/first.mp3",
+        streamUrl: "https://cf-hls-media.sndcdn.com/first.m3u8",
         tracks: [
           {
             name: "Second",
@@ -205,14 +205,14 @@ describe("preparePlatformItem", () => {
         ],
         url: SOUNDCLOUD_URL,
       },
-      streamUrl: "https://cf-media.sndcdn.com/first.mp3",
+      streamUrl: "https://cf-hls-media.sndcdn.com/first.m3u8",
     };
 
-    expect(preparePlatformItem(SOUNDCLOUD_URL, item)).toBe(item);
+    expect(await preparePlatformItem(SOUNDCLOUD_URL, item)).toBe(item);
   });
 
-  test("rejects unsafe SoundCloud streams at every playable position", () => {
-    const valid = "https://cf-media.sndcdn.com/track.mp3";
+  test("rejects unsafe SoundCloud streams at every playable position", async () => {
+    const valid = "https://cf-hls-media.sndcdn.com/track.m3u8";
     const items: PlatformItem[] = [
       {
         metadata: {
@@ -240,16 +240,24 @@ describe("preparePlatformItem", () => {
         },
         streamUrl: valid,
       },
+      {
+        metadata: {
+          itemType: "track",
+          platform: "soundcloud",
+          url: SOUNDCLOUD_URL,
+        },
+        streamUrl: "https://cf-media.sndcdn.com/track.mp3",
+      },
     ];
 
     for (const item of items) {
-      expect(() => preparePlatformItem(SOUNDCLOUD_URL, item)).toThrow(
+      await expect(preparePlatformItem(SOUNDCLOUD_URL, item)).rejects.toThrow(
         "SoundCloud returned an unsafe media URL"
       );
     }
   });
 
-  test("allows public Radio Garden streams and rejects unsafe ones", () => {
+  test("allows public Radio Garden streams and rejects unsafe ones", async () => {
     const requestUrl = "https://radio.garden/listen/station/abc";
     const publicItem: PlatformItem = {
       metadata: {
@@ -261,7 +269,12 @@ describe("preparePlatformItem", () => {
       streamUrl: "https://stream.example/live.mp3",
     };
 
-    expect(preparePlatformItem(requestUrl, publicItem)).toBe(publicItem);
+    expect(
+      await preparePlatformItem(requestUrl, publicItem, {
+        fetchImpl: mock(async () => rangedAudioResponse()),
+        resolveHostname: async () => ["203.0.113.8"],
+      })
+    ).toBe(publicItem);
 
     for (const streamUrl of [
       "http://localhost/live.mp3",
@@ -271,13 +284,72 @@ describe("preparePlatformItem", () => {
       "/api/stream",
       "//evil.example/stream",
     ]) {
-      expect(() =>
+      await expect(
         preparePlatformItem(requestUrl, { ...publicItem, streamUrl })
-      ).toThrow("Radio Garden returned an unsafe media URL");
+      ).rejects.toThrow("Radio Garden returned an unsafe media URL");
     }
   });
 
-  test("rejects request and response platform mismatches", () => {
+  test("rejects a Radio Garden hostname that resolves privately", async () => {
+    const requestUrl = "https://radio.garden/listen/station/abc";
+    const item: PlatformItem = {
+      metadata: {
+        channelId: "abc",
+        itemType: "channel",
+        platform: "radiogarden",
+        url: requestUrl,
+      },
+      streamUrl: "https://stream.example/live.mp3",
+    };
+
+    await expect(
+      preparePlatformItem(requestUrl, item, {
+        resolveHostname: async () => ["10.0.0.8"],
+      })
+    ).rejects.toThrow("Radio Garden returned an unsafe media URL");
+  });
+
+  test("rejects Radio Garden streams that the browser cannot read", async () => {
+    const requestUrl = "https://radio.garden/listen/station/abc";
+    const item: PlatformItem = {
+      metadata: {
+        channelId: "abc",
+        itemType: "channel",
+        platform: "radiogarden",
+        url: requestUrl,
+      },
+      streamUrl: "https://stream.example/live.mp3",
+    };
+
+    await expect(
+      preparePlatformItem(requestUrl, item, {
+        fetchImpl: mock(() => Promise.reject(new TypeError("CORS blocked"))),
+        resolveHostname: async () => ["203.0.113.8"],
+      })
+    ).rejects.toThrow("unplayable media URL");
+  });
+
+  test("bounds Radio Garden DNS resolution by the playback probe timeout", async () => {
+    const requestUrl = "https://radio.garden/listen/station/abc";
+    const item: PlatformItem = {
+      metadata: {
+        channelId: "abc",
+        itemType: "channel",
+        platform: "radiogarden",
+        url: requestUrl,
+      },
+      streamUrl: "https://stream.example/live.mp3",
+    };
+
+    await expect(
+      preparePlatformItem(requestUrl, item, {
+        resolveHostname: () => new Promise(() => undefined),
+        timeoutMs: 1,
+      })
+    ).rejects.toThrow("unplayable media URL");
+  });
+
+  test("rejects request and response platform mismatches", async () => {
     const item: PlatformItem = {
       metadata: {
         channelId: "abc",
@@ -288,7 +360,7 @@ describe("preparePlatformItem", () => {
       streamUrl: "https://stream.example/live.mp3",
     };
 
-    expect(() => preparePlatformItem(SOUNDCLOUD_URL, item)).toThrow(
+    await expect(preparePlatformItem(SOUNDCLOUD_URL, item)).rejects.toThrow(
       "Platform returned mismatched metadata"
     );
   });

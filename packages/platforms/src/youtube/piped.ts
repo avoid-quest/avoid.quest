@@ -4,6 +4,7 @@ import {
   extractVideoId,
 } from "./detect.js";
 import {
+  createYouTubeProviderOperationContext,
   createYouTubeProviderRequestContext,
   fetchProviderJson,
   fetchProviderText,
@@ -175,7 +176,7 @@ async function fetchVideo(
     audioStreams: parseAudioStreams(context, value.audioStreams),
     duration: value.duration,
     livestream: value.livestream,
-    thumbnailUrl: resolveProviderUrl(context, value.thumbnailUrl),
+    thumbnailUrl: await resolveProviderUrl(context, value.thumbnailUrl, signal),
     title: value.title,
     uploader: value.uploader,
   };
@@ -202,7 +203,7 @@ async function resolveVideoStream(
       "No YouTube audio stream found"
     );
   }
-  const streamUrl = resolveProviderUrl(context, stream.url);
+  const streamUrl = await resolveProviderUrl(context, stream.url, signal);
   await verifyProviderMedia(context, streamUrl, signal);
   return { streamUrl, video };
 }
@@ -235,10 +236,11 @@ async function resolveVideoItem(
   };
 }
 
-function parsePlaylistTrack(
+async function parsePlaylistTrack(
   context: YouTubeProviderRequestContext,
-  value: unknown
-): YouTubeTrackInfo {
+  value: unknown,
+  signal?: AbortSignal
+): Promise<YouTubeTrackInfo> {
   if (
     !isObject(value) ||
     typeof value.title !== "string" ||
@@ -252,7 +254,7 @@ function parsePlaylistTrack(
     duration: value.duration,
     name: value.title,
     streamUrl: `yt:${videoId}`,
-    thumbnail: resolveProviderUrl(context, value.thumbnail),
+    thumbnail: await resolveProviderUrl(context, value.thumbnail, signal),
     videoId,
   };
 }
@@ -278,8 +280,10 @@ async function resolvePlaylistItem(
   ) {
     throw invalidProviderSchema(context);
   }
-  const tracks = value.relatedStreams.map((track) =>
-    parsePlaylistTrack(context, track)
+  const tracks = await Promise.all(
+    value.relatedStreams.map((track) =>
+      parsePlaylistTrack(context, track, signal)
+    )
   );
   if (!tracks[0]) {
     throw providerOperationError(
@@ -292,7 +296,7 @@ async function resolvePlaylistItem(
     metadata: {
       artist: value.uploader,
       artwork:
-        resolveProviderUrl(context, value.thumbnailUrl) ||
+        (await resolveProviderUrl(context, value.thumbnailUrl, signal)) ||
         tracks[0].thumbnail ||
         "",
       itemType: "playlist",
@@ -330,19 +334,24 @@ export function createPipedAdapter(
         status: "ready",
       };
     },
-    resolveItem: async (url, signal) =>
-      detectYouTubeItemType(url) === "playlist"
-        ? await resolvePlaylistItem(context, url, signal)
-        : await resolveVideoItem(context, url, signal),
-    resolveStream: async (videoId, signal) =>
-      (
+    resolveItem: async (url, signal) => {
+      const operationContext = createYouTubeProviderOperationContext(context);
+      return detectYouTubeItemType(url) === "playlist"
+        ? await resolvePlaylistItem(operationContext, url, signal)
+        : await resolveVideoItem(operationContext, url, signal);
+    },
+    resolveStream: async (videoId, signal) => {
+      const operationContext = createYouTubeProviderOperationContext(context);
+      return (
         await resolveVideoStream(
-          context,
-          requireVideoId(context, videoId),
+          operationContext,
+          requireVideoId(operationContext, videoId),
           signal
         )
-      ).streamUrl,
+      ).streamUrl;
+    },
     search: async (query, filter, signal) => {
+      const operationContext = createYouTubeProviderOperationContext(context);
       const trimmedQuery = query.trim();
       if (!trimmedQuery) {
         throw invalidProviderInput(context, "YouTube search query is required");
@@ -357,30 +366,37 @@ export function createPipedAdapter(
       if (!(isObject(value) && Array.isArray(value.items))) {
         throw invalidProviderSchema(context);
       }
-      return value.items.flatMap((item): YouTubeSearchResult[] => {
-        if (!isObject(item) || item.type !== "stream") {
-          return [];
-        }
-        if (
-          typeof item.title !== "string" ||
-          typeof item.uploaderName !== "string" ||
-          typeof item.thumbnail !== "string" ||
-          !isNumber(item.duration) ||
-          !isNumber(item.views)
-        ) {
-          throw invalidProviderSchema(context);
-        }
-        return [
-          {
+      const results = await Promise.all(
+        value.items.map(async (item): Promise<YouTubeSearchResult | null> => {
+          if (!isObject(item) || item.type !== "stream") {
+            return null;
+          }
+          if (
+            typeof item.title !== "string" ||
+            typeof item.uploaderName !== "string" ||
+            typeof item.thumbnail !== "string" ||
+            !isNumber(item.duration) ||
+            !isNumber(item.views)
+          ) {
+            throw invalidProviderSchema(context);
+          }
+          return {
             author: item.uploaderName,
             duration: item.duration,
-            thumbnail: resolveProviderUrl(context, item.thumbnail),
+            thumbnail: await resolveProviderUrl(
+              operationContext,
+              item.thumbnail,
+              signal
+            ),
             title: item.title,
             videoId: videoIdFromPipedUrl(context, item.url),
             views: formatViews(item.views),
-          },
-        ];
-      });
+          };
+        })
+      );
+      return results.filter(
+        (result): result is YouTubeSearchResult => result !== null
+      );
     },
   };
 }

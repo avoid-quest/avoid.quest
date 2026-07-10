@@ -104,12 +104,14 @@ export {
 // SoundCloud
 export type {
   SoundCloudItemError,
+  SoundCloudItemOptions,
   SoundCloudItemResponse,
   SoundCloudItemResult,
   SoundCloudItemType,
   SoundCloudMetadata,
   SoundCloudSearchResult,
   SoundCloudTrackInfo,
+  SoundCloudTranscodingProtocol,
 } from "./soundcloud/index.js";
 export {
   getSoundCloudItem,

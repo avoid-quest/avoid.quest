@@ -1,4 +1,5 @@
 import {
+  cachePublicHostnameResolver,
   type PublicHostnameResolver,
   resolvePublicHostnameWithDoh,
   validatePublicHttpUrl,
@@ -44,12 +45,17 @@ function asSafeHttpUrl(value: unknown): string {
   return url;
 }
 
-async function asSafeResolvedHttpUrl(
+function asSafeHttpsUrl(value: unknown): string {
+  const url = asSafeHttpUrl(value);
+  return url && new URL(url).protocol === "https:" ? url : "";
+}
+
+async function asSafeResolvedHttpsUrl(
   value: unknown,
   resolveHostname: PublicHostnameResolver | false,
   signal?: AbortSignal
 ): Promise<string> {
-  const url = asSafeHttpUrl(value);
+  const url = asSafeHttpsUrl(value);
   if (!url) {
     return "";
   }
@@ -58,21 +64,6 @@ async function asSafeResolvedHttpUrl(
     signal,
   });
   return validation.ok ? url : "";
-}
-
-function cacheHostnameResolver(
-  resolveHostname: PublicHostnameResolver
-): PublicHostnameResolver {
-  const cache = new Map<string, Promise<readonly string[]>>();
-  return (hostname, options) => {
-    const cached = cache.get(hostname);
-    if (cached) {
-      return cached;
-    }
-    const pending = resolveHostname(hostname, options);
-    cache.set(hostname, pending);
-    return pending;
-  };
 }
 
 function asBoolean(value: unknown): boolean {
@@ -103,15 +94,15 @@ async function normalizeStation(
   resolveHostname: PublicHostnameResolver | false,
   signal?: AbortSignal
 ): Promise<RadioBrowserStation | null> {
-  const canonicalUrl = asSafeHttpUrl(station.url);
-  const urlResolved = await asSafeResolvedHttpUrl(
+  const canonicalUrl = asSafeHttpsUrl(station.url);
+  const urlResolved = await asSafeResolvedHttpsUrl(
     station.url_resolved,
     resolveHostname,
     signal
   );
   const url = urlResolved
     ? canonicalUrl
-    : await asSafeResolvedHttpUrl(canonicalUrl, resolveHostname, signal);
+    : await asSafeResolvedHttpsUrl(canonicalUrl, resolveHostname, signal);
   const normalized = {
     stationUuid: asString(station.stationuuid),
     name: asString(station.name),
@@ -208,6 +199,51 @@ function throwIfAborted(signal?: AbortSignal): void {
   }
 }
 
+function createTimeoutSignal(
+  parent: AbortSignal | undefined,
+  timeoutMs: number
+): { cleanup: () => void; signal: AbortSignal } {
+  const controller = new AbortController();
+  const abort = () =>
+    controller.abort(parent ? abortReason(parent) : undefined);
+  parent?.addEventListener("abort", abort, { once: true });
+  if (parent?.aborted) {
+    abort();
+  }
+  const timeout = setTimeout(
+    () =>
+      controller.abort(new DOMException("Request timed out", "TimeoutError")),
+    timeoutMs
+  );
+  return {
+    cleanup: () => {
+      clearTimeout(timeout);
+      parent?.removeEventListener("abort", abort);
+    },
+    signal: controller.signal,
+  };
+}
+
+function awaitWithSignal<T>(promise: Promise<T>, signal: AbortSignal) {
+  if (signal.aborted) {
+    return Promise.reject(abortReason(signal));
+  }
+  return new Promise<T>((resolve, reject) => {
+    const abort = () => reject(abortReason(signal));
+    signal.addEventListener("abort", abort, { once: true });
+    promise.then(
+      (value) => {
+        signal.removeEventListener("abort", abort);
+        resolve(value);
+      },
+      (error: unknown) => {
+        signal.removeEventListener("abort", abort);
+        reject(error);
+      }
+    );
+  });
+}
+
 async function fetchJson(
   url: URL | string,
   fetchImpl: RadioBrowserFetch,
@@ -287,6 +323,7 @@ function createSearchUrl(server: string, query: string, limit: number): URL {
   const url = new URL("/json/stations/search", server);
   url.searchParams.set("name", query);
   url.searchParams.set("hidebroken", "true");
+  url.searchParams.set("is_https", "true");
   url.searchParams.set("order", "clickcount");
   url.searchParams.set("reverse", "true");
   url.searchParams.set("limit", String(limit));
@@ -314,7 +351,9 @@ export async function searchRadioBrowser(
     options.resolveHostname ??
     (fetchImpl === globalThis.fetch ? resolvePublicHostnameWithDoh : false);
   const cachedResolveHostname =
-    resolveHostname === false ? false : cacheHostnameResolver(resolveHostname);
+    resolveHostname === false
+      ? false
+      : cachePublicHostnameResolver(resolveHostname);
   const timeoutMs = Math.max(1, options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
   const discoveredServers =
     options.servers === undefined
@@ -328,25 +367,33 @@ export async function searchRadioBrowser(
   let lastError: unknown = null;
   for (const server of servers) {
     throwIfAborted(options.signal);
+    const requestSignal = createTimeoutSignal(options.signal, timeoutMs);
     try {
       const payload = await fetchJson(
         createSearchUrl(server, normalizedQuery, normalizeLimit(options.limit)),
         fetchImpl,
-        options.signal,
+        requestSignal.signal,
         timeoutMs
       );
       if (!Array.isArray(payload)) {
         throw new Error("Radio Browser returned an invalid station list");
       }
-      const stations = await Promise.all(
-        payload
-          .filter(
-            (station): station is RadioBrowserStationResponse =>
-              typeof station === "object" && station !== null
-          )
-          .map((station) =>
-            normalizeStation(station, cachedResolveHostname, options.signal)
-          )
+      const stations = await awaitWithSignal(
+        Promise.all(
+          payload
+            .filter(
+              (station): station is RadioBrowserStationResponse =>
+                typeof station === "object" && station !== null
+            )
+            .map((station) =>
+              normalizeStation(
+                station,
+                cachedResolveHostname,
+                requestSignal.signal
+              )
+            )
+        ),
+        requestSignal.signal
       );
       throwIfAborted(options.signal);
       return stations.filter(
@@ -355,6 +402,8 @@ export async function searchRadioBrowser(
     } catch (error) {
       throwIfAborted(options.signal);
       lastError = error;
+    } finally {
+      requestSignal.cleanup();
     }
   }
 

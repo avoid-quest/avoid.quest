@@ -1,3 +1,4 @@
+import { createValidatedHlsFetchSetup } from "./hls-request.js";
 import type {
   PlaybackInput,
   PlaybackSource,
@@ -308,7 +309,8 @@ export class MediaElementPlaybackSource implements PlaybackSource {
         input.src,
         generation,
         input.format === "hls",
-        input.credentials
+        input.credentials,
+        input.allowNativeHls ?? false
       );
     } catch (error) {
       if (generation === this.generation) {
@@ -325,7 +327,8 @@ export class MediaElementPlaybackSource implements PlaybackSource {
     url: string,
     generation: number,
     treatAsHls: boolean,
-    credentials?: RequestCredentials
+    credentials: RequestCredentials | undefined,
+    allowNativeHls: boolean
   ): Promise<void> {
     await new Promise<void>((resolve, reject) => {
       let settled = false;
@@ -402,6 +405,7 @@ export class MediaElementPlaybackSource implements PlaybackSource {
         generation,
         mediaLoadAttempt,
         credentials,
+        allowNativeHls,
         (error) => {
           finish(() => {
             reject(error);
@@ -428,6 +432,7 @@ export class MediaElementPlaybackSource implements PlaybackSource {
     generation: number,
     mediaLoadAttempt: number,
     credentials: RequestCredentials | undefined,
+    allowNativeHls: boolean,
     onFatalError: (error: Error) => void
   ): Promise<void> {
     this.destroyHls();
@@ -439,7 +444,7 @@ export class MediaElementPlaybackSource implements PlaybackSource {
     }
 
     const mediaSource = this.attachMediaSourceForEarlyPlayback();
-    const { default: Hls } = await import("hls.js");
+    const { default: Hls, FetchLoader } = await import("hls.js");
     if (
       generation !== this.generation ||
       mediaLoadAttempt !== this.mediaLoadAttempt
@@ -450,12 +455,8 @@ export class MediaElementPlaybackSource implements PlaybackSource {
     if (Hls.isSupported()) {
       const hls = new Hls({
         debug: false,
-        ...(credentials
-          ? {
-              fetchSetup: (context, init) =>
-                new Request(context.url, { ...init, credentials }),
-            }
-          : {}),
+        fetchSetup: createValidatedHlsFetchSetup({ credentials }),
+        loader: FetchLoader,
         startLevel: -1,
         maxBufferLength: 30,
         maxMaxBufferLength: 60,
@@ -500,7 +501,10 @@ export class MediaElementPlaybackSource implements PlaybackSource {
     }
 
     this.revokePendingMediaSourceObjectUrl();
-    if (this.audio.canPlayType("application/vnd.apple.mpegurl")) {
+    if (
+      allowNativeHls &&
+      this.audio.canPlayType("application/vnd.apple.mpegurl")
+    ) {
       this.audio.src = url;
       this.audio.load();
       return;

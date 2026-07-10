@@ -64,7 +64,7 @@ describe("searchRadioBrowser", () => {
       {
         stationUuid: "station-1",
         name: "Test Radio",
-        url: "http://radio.example/original",
+        url: "",
         urlResolved: "https://radio.example/live.mp3",
         homepage: "https://radio.example",
         favicon: "https://radio.example/icon.png",
@@ -85,6 +85,7 @@ describe("searchRadioBrowser", () => {
     ]);
     expect(requested[1]?.searchParams.get("name")).toBe("test radio");
     expect(requested[1]?.searchParams.get("hidebroken")).toBe("true");
+    expect(requested[1]?.searchParams.get("is_https")).toBe("true");
     expect(requested[1]?.searchParams.get("order")).toBe("clickcount");
     expect(requested[1]?.searchParams.get("reverse")).toBe("true");
     expect(requested[1]?.searchParams.get("limit")).toBe("50");
@@ -151,6 +152,38 @@ describe("searchRadioBrowser", () => {
     ]);
   });
 
+  test("drops HTTP streams and falls back to an HTTPS canonical URL", async () => {
+    const fetchImpl = mock(async () =>
+      jsonResponse([
+        {
+          stationuuid: "station-http",
+          name: "HTTP only",
+          url: "http://radio.example/original",
+          url_resolved: "http://radio.example/live.mp3",
+        },
+        {
+          stationuuid: "station-https",
+          name: "HTTPS fallback",
+          url: "https://radio.example/original",
+          url_resolved: "http://radio.example/live.mp3",
+        },
+      ])
+    );
+
+    await expect(
+      searchRadioBrowser("secure", {
+        fetchImpl,
+        servers: ["https://radio-browser.example"],
+      })
+    ).resolves.toEqual([
+      expect.objectContaining({
+        stationUuid: "station-https",
+        url: "https://radio.example/original",
+        urlResolved: "",
+      }),
+    ]);
+  });
+
   test("drops stream URLs whose host resolves to a private address", async () => {
     const resolveHostname = mock(async (hostname: string) =>
       hostname === "private.example" ? ["127.0.0.1"] : ["203.0.113.10"]
@@ -207,6 +240,25 @@ describe("searchRadioBrowser", () => {
         servers: ["https://radio-browser.example"],
       })
     ).resolves.toEqual([]);
+  });
+
+  test("bounds station hostname resolution by the search timeout", async () => {
+    await expect(
+      searchRadioBrowser("slow dns", {
+        fetchImpl: mock(async () =>
+          jsonResponse([
+            {
+              stationuuid: "station-1",
+              name: "Slow DNS",
+              url: "https://slow.example/live.mp3",
+            },
+          ])
+        ),
+        resolveHostname: () => new Promise(() => undefined),
+        servers: ["https://radio-browser.example"],
+        timeoutMs: 1,
+      })
+    ).rejects.toThrow("every discovered server");
   });
 
   test("stops retries when the caller aborts", async () => {

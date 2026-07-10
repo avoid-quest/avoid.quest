@@ -1,7 +1,10 @@
 import {
+  cachePublicHostnameResolver,
   isLoopbackHostname,
   isLoopbackHttpUrl,
-  isPublicHttpUrl,
+  type PublicHostnameResolver,
+  resolvePublicHostnameWithDoh,
+  validateResolvedPublicHttpUrl,
 } from "../url-policy/index.js";
 import type { YouTubeItemResult, YouTubeSearchResult } from "./types.js";
 
@@ -93,6 +96,7 @@ export type YouTubeProviderAdapterOptions = {
   fetchImpl?: typeof fetch;
   id?: string;
   maxResponseBytes?: number;
+  resolveHostname?: PublicHostnameResolver | false;
   timeoutMs?: number;
   verifyMedia?: boolean;
 };
@@ -103,6 +107,7 @@ export type YouTubeProviderRequestContext = {
   kind: YouTubeProviderKind;
   maxResponseBytes: number;
   providerId: string;
+  resolveHostname: PublicHostnameResolver | false;
   timeoutMs: number;
   verifyMedia: boolean;
 };
@@ -160,6 +165,7 @@ export function createYouTubeProviderRequestContext(
   options: YouTubeProviderAdapterOptions
 ): YouTubeProviderRequestContext {
   const baseUrl = normalizeBaseUrl(options.baseUrl, kind);
+  const fetchImpl = options.fetchImpl ?? fetch;
   const maxResponseBytes =
     options.maxResponseBytes ?? DEFAULT_MAX_RESPONSE_BYTES;
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
@@ -175,13 +181,27 @@ export function createYouTubeProviderRequestContext(
 
   return {
     baseUrl,
-    fetchImpl: options.fetchImpl ?? fetch,
+    fetchImpl,
     kind,
     maxResponseBytes,
     providerId: options.id?.trim() || `${kind}:${new URL(baseUrl).host}`,
+    resolveHostname:
+      options.resolveHostname ??
+      (fetchImpl === globalThis.fetch ? resolvePublicHostnameWithDoh : false),
     timeoutMs,
     verifyMedia: options.verifyMedia ?? true,
   };
+}
+
+export function createYouTubeProviderOperationContext(
+  context: YouTubeProviderRequestContext
+): YouTubeProviderRequestContext {
+  return context.resolveHostname === false
+    ? context
+    : {
+        ...context,
+        resolveHostname: cachePublicHostnameResolver(context.resolveHostname),
+      };
 }
 
 export function providerUrl(
@@ -194,10 +214,11 @@ export function providerUrl(
   );
 }
 
-export function resolveProviderUrl(
+export async function resolveProviderUrl(
   context: YouTubeProviderRequestContext,
-  value: string
-): string {
+  value: string,
+  signal?: AbortSignal
+): Promise<string> {
   let url: URL;
   try {
     url = new URL(value, `${context.baseUrl}/`);
@@ -212,15 +233,25 @@ export function resolveProviderUrl(
   const providerIsLoopback = isLoopbackHostname(
     new URL(context.baseUrl).hostname
   );
-  const isAllowedPublicUrl =
-    url.protocol === "https:" && isPublicHttpUrl(url.toString());
   const isAllowedLoopbackUrl =
     providerIsLoopback && isLoopbackHttpUrl(url.toString());
-  if (
-    url.username ||
-    url.password ||
-    !(isAllowedPublicUrl || isAllowedLoopbackUrl)
-  ) {
+  if (url.username || url.password) {
+    throw invalidProviderSchema(
+      context,
+      "YouTube provider returned an unsafe media URL"
+    );
+  }
+  if (isAllowedLoopbackUrl) {
+    return url.toString();
+  }
+  const validation =
+    url.protocol === "https:"
+      ? await validateResolvedPublicHttpUrl(url.toString(), {
+          resolveHostname: context.resolveHostname,
+          signal,
+        })
+      : { ok: false as const };
+  if (!validation.ok) {
     throw invalidProviderSchema(
       context,
       "YouTube provider returned an unsafe media URL"

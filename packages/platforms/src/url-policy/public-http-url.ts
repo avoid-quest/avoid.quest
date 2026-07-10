@@ -63,6 +63,22 @@ export type PublicHostnameResolver = (
   options?: PublicHostnameResolutionOptions
 ) => Promise<readonly string[]>;
 
+export function cachePublicHostnameResolver(
+  resolveHostname: PublicHostnameResolver
+): PublicHostnameResolver {
+  const resolutions = new Map<string, Promise<readonly string[]>>();
+  return (hostname, options) => {
+    const cached = resolutions.get(hostname);
+    if (cached) {
+      return cached;
+    }
+    const pending = resolveHostname(hostname, options);
+    resolutions.set(hostname, pending);
+    pending.catch(() => resolutions.delete(hostname));
+    return pending;
+  };
+}
+
 type PublicHostnameResolutionOptions = {
   signal?: AbortSignal;
 };

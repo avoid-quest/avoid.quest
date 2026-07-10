@@ -25,6 +25,12 @@ type SoundCloudTranscoding = {
   format?: SoundCloudTranscodingFormat;
 };
 
+export type SoundCloudTranscodingProtocol = "progressive" | "hls";
+
+export type SoundCloudItemOptions = {
+  transcodingProtocols?: readonly SoundCloudTranscodingProtocol[];
+};
+
 type SoundCloudApiTrack = {
   kind?: string;
   id?: number;
@@ -94,6 +100,7 @@ export {
 } from "./url-policy.js";
 
 const SHORT_LINK_MAX_REDIRECTS = 5;
+const DEFAULT_TRANSCODING_PROTOCOLS = ["progressive", "hls"] as const;
 
 type ShortLinkRedirectValidationFailure =
   | "invalid-url"
@@ -271,23 +278,26 @@ export async function resolveShortLink(shortUrl: string): Promise<string> {
 }
 
 export async function getSoundCloudItem(
-  url: string
+  url: string,
+  options: SoundCloudItemOptions = {}
 ): Promise<SoundCloudItemResponse> {
   try {
     const itemType = detectSoundCloudItemType(url);
+    const transcodingProtocols =
+      options.transcodingProtocols ?? DEFAULT_TRANSCODING_PROTOCOLS;
     const clientId = await getClientId();
     const data = await resolveSoundCloudUrl(url, clientId);
 
     if (itemType === "track" && data.kind === "track") {
-      return await processTrack(data, url, clientId);
+      return await processTrack(data, url, clientId, transcodingProtocols);
     }
 
     if (itemType === "playlist" && data.kind === "playlist") {
-      return await processPlaylist(data, url, clientId);
+      return await processPlaylist(data, url, clientId, transcodingProtocols);
     }
 
     if (itemType === "user" && data.kind === "user") {
-      return await processUser(data, url, clientId);
+      return await processUser(data, url, clientId, transcodingProtocols);
     }
 
     return createErrorResponse("Unsupported SoundCloud item type or mismatch");
@@ -302,24 +312,27 @@ export async function getSoundCloudItem(
 
 /**
  * Find the best available transcoding for a track.
- * Prefers HLS for direct browser playback, then falls back to progressive.
+ * Uses the caller's protocol order, preferring MPEG audio within HLS.
  */
 function findBestTranscoding(
-  transcodings: SoundCloudTranscoding[]
+  transcodings: SoundCloudTranscoding[],
+  protocols: readonly SoundCloudTranscodingProtocol[]
 ): SoundCloudTranscoding | null {
-  const hlsMpeg = transcodings.find(
-    (t) => t.format?.protocol === "hls" && t.format?.mime_type === "audio/mpeg"
-  );
-  if (hlsMpeg) {
-    return hlsMpeg;
+  for (const protocol of protocols) {
+    const transcoding =
+      protocol === "hls"
+        ? (transcodings.find(
+            (item) =>
+              item.format?.protocol === "hls" &&
+              item.format.mime_type === "audio/mpeg"
+          ) ?? transcodings.find((item) => item.format?.protocol === "hls"))
+        : transcodings.find((item) => item.format?.protocol === "progressive");
+    if (transcoding) {
+      return transcoding;
+    }
   }
 
-  const hlsAny = transcodings.find((t) => t.format?.protocol === "hls");
-  if (hlsAny) {
-    return hlsAny;
-  }
-
-  return transcodings.find((t) => t.format?.protocol === "progressive") ?? null;
+  return null;
 }
 
 function getTranscodingStreamFormat(
@@ -331,9 +344,13 @@ function getTranscodingStreamFormat(
 async function processTrack(
   data: SoundCloudApiTrack,
   url: string,
-  clientId: string
+  clientId: string,
+  transcodingProtocols: readonly SoundCloudTranscodingProtocol[]
 ): Promise<SoundCloudItemResult | SoundCloudItemError> {
-  const transcoding = findBestTranscoding(data.media?.transcodings || []);
+  const transcoding = findBestTranscoding(
+    data.media?.transcodings || [],
+    transcodingProtocols
+  );
 
   if (!transcoding) {
     return createErrorResponse("No supported stream format found");
@@ -368,7 +385,8 @@ async function processTrack(
 async function processPlaylist(
   data: SoundCloudApiPlaylist,
   url: string,
-  clientId: string
+  clientId: string,
+  transcodingProtocols: readonly SoundCloudTranscodingProtocol[]
 ): Promise<SoundCloudItemResult | SoundCloudItemError> {
   if (!data.tracks || data.tracks.length === 0) {
     return createErrorResponse("No tracks found in playlist");
@@ -392,7 +410,10 @@ async function processPlaylist(
         return null;
       }
 
-      const transcoding = findBestTranscoding(fullTrack.media.transcodings);
+      const transcoding = findBestTranscoding(
+        fullTrack.media.transcodings,
+        transcodingProtocols
+      );
 
       if (!transcoding) {
         return null;
@@ -457,7 +478,8 @@ async function processPlaylist(
 async function processUser(
   data: SoundCloudApiUser,
   url: string,
-  clientId: string
+  clientId: string,
+  transcodingProtocols: readonly SoundCloudTranscodingProtocol[]
 ): Promise<SoundCloudItemResult | SoundCloudItemError> {
   // Try to resolve the user's tracks URL through the API
   const tracksUrl = `${url}/tracks`;
@@ -496,7 +518,10 @@ async function processUser(
         return null;
       }
 
-      const transcoding = findBestTranscoding(track.media.transcodings);
+      const transcoding = findBestTranscoding(
+        track.media.transcodings,
+        transcodingProtocols
+      );
 
       if (!transcoding) {
         return null;

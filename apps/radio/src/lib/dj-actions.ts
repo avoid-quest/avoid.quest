@@ -226,6 +226,7 @@ function createDeckLoadDependencies(
     pauseDeckSound: (soundId) => ctx.audioEngine.playback.pause(soundId),
     playDeckSound: (soundId, volume) =>
       ctx.audioEngine.playback.play(soundId, volume),
+    resumeAudioContext: ctx.resumeAudioContext,
     playDeviceSound: (soundId, deviceId) =>
       ctx.audio.playDeviceSound(soundId, deviceId),
     reportDjError: reportDjErrorSurface,

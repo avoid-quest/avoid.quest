@@ -107,6 +107,7 @@ function createDependencies(): DeckLoadDependencies {
     loadTrack: mock(async () => undefined),
     pauseDeckSound: mock((_soundId: string) => undefined),
     playDeckSound: mock(async (_soundId: string, _volume: number) => undefined),
+    resumeAudioContext: mock(async () => undefined),
     playDeviceSound: mock(
       async (_soundId: string, _deviceId: string) => undefined
     ),

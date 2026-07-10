@@ -216,6 +216,29 @@ describe("DJ deck command context", () => {
     }
   });
 
+  test("resumes cold audio before playing a deck loaded without autoplay", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertDjSession();
+    const resume = Promise.withResolvers<void>();
+    const { audioEngine, context } = createTestContext();
+    context.resumeAudioContext = mock(() => resume.promise);
+    const deckACommands = createDjDeckCommands(context)["deck-a"];
+
+    await deckACommands.setRadio(station);
+    setPlaybackChannelRuntime("deck-a", () => ({
+      soundId: "left_station-1",
+    }));
+    const play = deckACommands.play();
+
+    expect(context.resumeAudioContext).toHaveBeenCalledTimes(1);
+    expect(audioEngine.playback.play).not.toHaveBeenCalled();
+
+    resume.resolve();
+    await play;
+
+    expect(audioEngine.playback.play).toHaveBeenCalledWith("left_station-1", 1);
+  });
+
   test("uses the narrow audio engine facade for deck transport and crossfade", async () => {
     await playbackSessionsCollection.stateWhenReady();
     insertDjSession();

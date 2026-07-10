@@ -93,6 +93,7 @@ type DeckLoadDependencies = {
   ) => Promise<void>;
   pauseDeckSound: (soundId: string) => void;
   playDeckSound: (soundId: string, volume: number) => Promise<void>;
+  resumeAudioContext: () => Promise<void>;
   playDeviceSound: (soundId: string, deviceId: string) => Promise<void>;
   reportDjError: ReportDjError;
   reportPlaybackError?: (error: PlaybackActionError) => void;
@@ -655,6 +656,7 @@ async function playDeck(
   const playToken = beginDeckPlay(deckId);
 
   try {
+    await dependencies.resumeAudioContext();
     await dependencies.playDeckSound(soundId, deck.volume);
     if (!isCurrentDeckPlayTarget(deckId, playToken, soundId, radio, config)) {
       return;

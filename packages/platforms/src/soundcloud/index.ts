@@ -302,20 +302,11 @@ export async function getSoundCloudItem(
 
 /**
  * Find the best available transcoding for a track.
- * Prefers progressive (direct download), falls back to HLS.
+ * Prefers HLS for direct browser playback, then falls back to progressive.
  */
 function findBestTranscoding(
   transcodings: SoundCloudTranscoding[]
 ): SoundCloudTranscoding | null {
-  // First try progressive (easiest to work with)
-  const progressive = transcodings.find(
-    (t) => t.format?.protocol === "progressive"
-  );
-  if (progressive) {
-    return progressive;
-  }
-
-  // Fall back to HLS audio/mpeg (MP3 segments, widely compatible)
   const hlsMpeg = transcodings.find(
     (t) => t.format?.protocol === "hls" && t.format?.mime_type === "audio/mpeg"
   );
@@ -323,9 +314,12 @@ function findBestTranscoding(
     return hlsMpeg;
   }
 
-  // Fall back to any HLS stream
   const hlsAny = transcodings.find((t) => t.format?.protocol === "hls");
-  return hlsAny ?? null;
+  if (hlsAny) {
+    return hlsAny;
+  }
+
+  return transcodings.find((t) => t.format?.protocol === "progressive") ?? null;
 }
 
 function getTranscodingStreamFormat(

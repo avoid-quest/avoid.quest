@@ -216,7 +216,11 @@ export function resolveProviderUrl(
     url.protocol === "https:" && isPublicHttpUrl(url.toString());
   const isAllowedLoopbackUrl =
     providerIsLoopback && isLoopbackHttpUrl(url.toString());
-  if (!(isAllowedPublicUrl || isAllowedLoopbackUrl)) {
+  if (
+    url.username ||
+    url.password ||
+    !(isAllowedPublicUrl || isAllowedLoopbackUrl)
+  ) {
     throw invalidProviderSchema(
       context,
       "YouTube provider returned an unsafe media URL"

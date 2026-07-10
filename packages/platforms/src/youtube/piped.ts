@@ -70,17 +70,16 @@ function videoIdFromPipedUrl(
   if (typeof value !== "string") {
     throw invalidProviderSchema(context);
   }
+  let videoId: string | null;
   try {
-    return requireVideoId(
-      context,
-      new URL(value, "https://youtube.com").searchParams.get("v")
-    );
-  } catch (error) {
-    if (error instanceof TypeError) {
-      throw invalidProviderSchema(context);
-    }
-    throw error;
+    videoId = new URL(value, "https://youtube.com").searchParams.get("v");
+  } catch {
+    throw invalidProviderSchema(context);
   }
+  if (!(videoId && VIDEO_ID_PATTERN.test(videoId))) {
+    throw invalidProviderSchema(context);
+  }
+  return videoId;
 }
 
 function formatViews(views: number): string {

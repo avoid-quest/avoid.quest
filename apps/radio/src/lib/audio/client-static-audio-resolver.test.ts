@@ -60,6 +60,22 @@ describe("resolveClientStaticAudio", () => {
     ).rejects.toThrow("must not contain credentials");
   });
 
+  test.each([
+    "http://127.0.0.1:8000/track.mp3",
+    "http://10.0.0.1/track.mp3",
+    "http://192.168.1.10/list.m3u",
+    "http://metadata.google.internal/live.mp3",
+  ])("rejects private upstream URL %s", async (url) => {
+    const fetchImpl = mock(() =>
+      Promise.reject(new Error("private URLs must not be fetched"))
+    );
+
+    await expect(resolveClientStaticAudio(url, { fetchImpl })).rejects.toThrow(
+      "must be public"
+    );
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
   test("fetches and parses a direct M3U", async () => {
     const fetchImpl = mock((_input: RequestInfo | URL, init?: RequestInit) => {
       expect(init).toMatchObject({

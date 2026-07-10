@@ -5,7 +5,10 @@ import {
 } from "@/lib/audio/playback/stream-format";
 import type { DeckId } from "@/lib/dj-actions-decks.js";
 import type { PlatformStreamResolution } from "@/lib/dj-platform-stream-port.js";
-import { isYouTubeMetadata } from "@/lib/platform-types";
+import {
+  isRadioBrowserMetadata,
+  isYouTubeMetadata,
+} from "@/lib/platform-types";
 import type { DeckLoadDependencies } from "./dj-actions-deck-load.js";
 
 type SourceLoadCurrentCheck = () => boolean;
@@ -24,6 +27,24 @@ function getSelectedTrackFormat(
   }
   const track = metadata.tracks.find((item) => item.streamUrl === streamUrl);
   return track && "format" in track ? track.format : undefined;
+}
+
+function getInitialStreamFormat(radio: Radio, streamUrl: string): StreamFormat {
+  const selectedTrackFormat = getSelectedTrackFormat(radio, streamUrl);
+  if (selectedTrackFormat) {
+    return selectedTrackFormat;
+  }
+  if (streamUrl === radio.streamUrl && radio.streamFormat) {
+    return radio.streamFormat;
+  }
+  if (
+    streamUrl === radio.streamUrl &&
+    isRadioBrowserMetadata(radio.platformMetadata) &&
+    radio.platformMetadata.hls
+  ) {
+    return "hls";
+  }
+  return inferStreamFormat(streamUrl);
 }
 
 async function resolveInitialYouTubeStreamUrl(
@@ -97,11 +118,7 @@ export async function resolveInitialTrackStreamUrl(
 ): Promise<PlatformStreamResolution | null> {
   if (!streamUrl.startsWith("yt:")) {
     return {
-      streamFormat:
-        getSelectedTrackFormat(radio, streamUrl) ??
-        (streamUrl === radio.streamUrl && radio.streamFormat
-          ? radio.streamFormat
-          : inferStreamFormat(streamUrl)),
+      streamFormat: getInitialStreamFormat(radio, streamUrl),
       streamUrl,
     };
   }

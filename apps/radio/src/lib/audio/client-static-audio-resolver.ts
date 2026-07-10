@@ -1,7 +1,4 @@
-import {
-  isLoopbackHttpUrl,
-  isPublicHttpUrl,
-} from "@avoid.quest/platforms/url-policy";
+import { isPublicHttpUrl } from "@avoid.quest/platforms/url-policy";
 import type {
   StaticAudioMetadata,
   StaticAudioTrack,
@@ -158,11 +155,7 @@ function playlistMetadata(
   };
 }
 
-function validateTrackUrls(
-  playlist: ParsedPlaylist,
-  upstreamUrl: string
-): void {
-  const allowLoopback = isLoopbackHttpUrl(upstreamUrl);
+function validateTrackUrls(playlist: ParsedPlaylist): void {
   for (const track of playlist.tracks) {
     let url: URL;
     try {
@@ -179,12 +172,7 @@ function validateTrackUrls(
     ) {
       throw new PlaylistError("Playlist contains an unsafe track URL");
     }
-    if (
-      !(
-        isPublicHttpUrl(track.url) ||
-        (allowLoopback && isLoopbackHttpUrl(track.url))
-      )
-    ) {
+    if (!isPublicHttpUrl(track.url)) {
       throw new PlaylistError("Playlist contains a private track URL");
     }
   }
@@ -212,7 +200,7 @@ function parsePlaylistContent(
   if (expectedExtension === ".pls" && playlist.format !== "pls") {
     throw new PlaylistError("Response is not a valid PLS playlist");
   }
-  validateTrackUrls(playlist, upstreamUrl);
+  validateTrackUrls(playlist);
   return playlistMetadata(upstreamUrl, playlist);
 }
 
@@ -409,8 +397,18 @@ export async function resolveClientStaticAudio(
   const parsedUrl = parseUrl(value);
   const upstreamUrl = parsedUrl.toString();
   const expectedExtension = extension(parsedUrl);
+  const audioUrl = isAudioUrl(upstreamUrl);
+  const playlistUrl = isPlaylistUrl(upstreamUrl);
 
-  if (isAudioUrl(upstreamUrl)) {
+  if (!(audioUrl || playlistUrl)) {
+    throw new ClientStaticAudioResolverError(
+      "URL does not point to a supported audio file or playlist"
+    );
+  }
+  if (!isPublicHttpUrl(upstreamUrl)) {
+    throw new ClientStaticAudioResolverError("Audio URL must be public");
+  }
+  if (audioUrl) {
     const metadata = trackMetadata(
       upstreamUrl,
       MIME_TYPES[expectedExtension] ?? "audio/mpeg"
@@ -420,11 +418,6 @@ export async function resolveClientStaticAudio(
       metadata,
       streamUrl: upstreamUrl,
     };
-  }
-  if (!isPlaylistUrl(upstreamUrl)) {
-    throw new ClientStaticAudioResolverError(
-      "URL does not point to a supported audio file or playlist"
-    );
   }
 
   const timeoutMs = positiveLimit(

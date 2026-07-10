@@ -331,6 +331,34 @@ describe("Piped adapter", () => {
     );
   });
 
+  test("classifies malformed result URLs as retryable provider schema errors", async () => {
+    const adapter = createPipedAdapter({
+      baseUrl: "https://piped.test",
+      fetchImpl: mock(() =>
+        Promise.resolve(
+          json({
+            items: [
+              {
+                duration: 125,
+                thumbnail: "https://proxy.piped.test/thumb.jpg",
+                title: "Track",
+                type: "stream",
+                uploaderName: "Artist",
+                url: "/watch?v=invalid",
+                views: 1200,
+              },
+            ],
+          })
+        )
+      ) as typeof fetch,
+    });
+
+    await expect(adapter.search("ambient")).rejects.toMatchObject({
+      code: "invalid-schema",
+      retryable: true,
+    });
+  });
+
   test("selects and CORS-probes the best proxied audio stream", async () => {
     const requests: string[] = [];
     const adapter = createPipedAdapter({
@@ -383,6 +411,24 @@ describe("Piped adapter", () => {
       throw new Error("Expected fixture audio stream");
     }
     stream.url = "http://127.0.0.1/private-audio";
+    const adapter = createPipedAdapter({
+      baseUrl: "https://piped.test",
+      fetchImpl: mock(() => Promise.resolve(json(video))) as typeof fetch,
+      verifyMedia: false,
+    });
+
+    await expect(adapter.resolveStream(VIDEO_ID)).rejects.toMatchObject({
+      code: "invalid-schema",
+    });
+  });
+
+  test("rejects media URLs with embedded credentials", async () => {
+    const video = pipedVideo();
+    const stream = video.audioStreams[0];
+    if (!stream) {
+      throw new Error("Expected fixture audio stream");
+    }
+    stream.url = "https://user:password@proxy.piped.test/audio";
     const adapter = createPipedAdapter({
       baseUrl: "https://piped.test",
       fetchImpl: mock(() => Promise.resolve(json(video))) as typeof fetch,

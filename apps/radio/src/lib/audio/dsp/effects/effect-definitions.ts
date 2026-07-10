@@ -390,7 +390,7 @@ export const EFFECT_DEFINITIONS = {
         type: "slider",
         key: "amount",
         label: "Amount",
-        formatKey: "percentage",
+        formatKey: "percentage100",
         min: 0,
         max: 100,
         step: 1,

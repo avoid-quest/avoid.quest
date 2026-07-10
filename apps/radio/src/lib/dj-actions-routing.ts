@@ -21,8 +21,35 @@ type ReportDjError = (message: string, code: string, error?: unknown) => void;
 type GetAudioManager = () => AudioManager;
 
 let cueBus: CueBus | null = null;
-let audioDevicesInitialized = false;
-let outputRouterErrorCleanup: (() => void) | null = null;
+
+export function createDjRoutingLifecycleState() {
+  let audioDevicesInitialized = false;
+  let outputRouterErrorCleanup: (() => void) | null = null;
+
+  return {
+    beginAudioDeviceInitialization(): boolean {
+      if (audioDevicesInitialized) {
+        return false;
+      }
+      audioDevicesInitialized = true;
+      return true;
+    },
+    cleanup(): void {
+      audioDevicesInitialized = false;
+      outputRouterErrorCleanup?.();
+      outputRouterErrorCleanup = null;
+    },
+    replaceOutputRouterErrorListener(subscribe: () => () => void): void {
+      outputRouterErrorCleanup?.();
+      outputRouterErrorCleanup = subscribe();
+    },
+    resetAudioDeviceInitialization(): void {
+      audioDevicesInitialized = false;
+    },
+  };
+}
+
+const routingLifecycle = createDjRoutingLifecycleState();
 
 function getCueBus(audioContext: AudioContext): CueBus {
   if (typeof window === "undefined") {
@@ -89,13 +116,15 @@ function cleanupCueBus(): void {
     cueBus.cleanup();
     cueBus = null;
   }
+  routingLifecycle.cleanup();
 }
 
 function registerOutputRouterErrors(reportDjError: ReportDjError): void {
-  outputRouterErrorCleanup?.();
-  outputRouterErrorCleanup = onMainOutputRouterError((error) => {
-    reportDjError(error.message, "DJ_OUTPUT_ROUTER_ERROR", error);
-  });
+  routingLifecycle.replaceOutputRouterErrorListener(() =>
+    onMainOutputRouterError((error) => {
+      reportDjError(error.message, "DJ_OUTPUT_ROUTER_ERROR", error);
+    })
+  );
 }
 
 function getOutputRouter(reportDjError: ReportDjError) {
@@ -177,14 +206,13 @@ async function initializeAudioDevices(
   getAudioManager: GetAudioManager,
   reportDjError: ReportDjError
 ): Promise<void> {
-  if (audioDevicesInitialized) {
+  if (!routingLifecycle.beginAudioDeviceInitialization()) {
     return;
   }
 
-  audioDevicesInitialized = true;
   const router = getOutputRouter(reportDjError);
   if (!router) {
-    audioDevicesInitialized = false;
+    routingLifecycle.resetAudioDeviceInitialization();
     return;
   }
 

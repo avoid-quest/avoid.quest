@@ -64,7 +64,7 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
     },
     [selectRadio]
   );
-  const { resolve, saveToCollection, isResolving } =
+  const { resolve, saveToCollection, selectDiscoveredStation, isResolving } =
     useRadioGardenResolve(handleResolved);
 
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -177,6 +177,7 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
             <RadioSearchBar
               isResolving={isResolving}
               onSaveRemote={saveToCollection}
+              onSelectDiscovered={selectDiscoveredStation}
               onSelectLocal={(radio) => selectRadio(radio)}
               onSelectRemote={resolve}
               radios={radios ?? []}

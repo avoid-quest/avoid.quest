@@ -32,7 +32,9 @@ export {
   MicSource,
   type MicSourceCallbacks,
 } from "./mic-source.js";
+export { toPlaybackInput } from "./playback-input.js";
 export type {
+  PlaybackInput,
   PlaybackSource,
   PlaybackSourceCallbacks,
 } from "./playback-source.js";

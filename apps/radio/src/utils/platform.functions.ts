@@ -1,26 +1,25 @@
-import { env } from "cloudflare:workers";
+import { AppError, type AppResult, runServerFn } from "@avoid.quest/error";
 import {
-  AppError,
-  type AppErrorInit,
-  type AppResult,
-  type ProblemErrorPayload,
-  runServerFn,
-} from "@avoid.quest/error";
+  getBandcampItem,
+  isBandcampUrl,
+  normalizeBandcampUrl,
+} from "@avoid.quest/platforms/bandcamp";
 import {
-  createPlayablePlatformResolver,
-  detectPlayablePlatformFromUrl,
-  normalizePlayablePlatformUrl,
-  type PlayablePlatformResolutionError,
-} from "@avoid.quest/platforms";
+  extractChannelId,
+  getRadioGardenItem,
+  isRadioGardenUrl,
+} from "@avoid.quest/platforms/radiogarden";
+import {
+  getSoundCloudItem,
+  isSoundCloudUrl,
+  needsResolution,
+  normalizeSoundCloudUrl,
+  resolveShortLink,
+} from "@avoid.quest/platforms/soundcloud";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import type {
-  PlatformMetadata,
-  StaticAudioMetadata,
-} from "@/lib/platform-types";
-import { readInvidiousOptions } from "./invidious-env";
+import type { PlatformMetadata } from "@/lib/platform-types";
 import { rateLimitMiddleware } from "./middleware";
-import { getStaticAudioItem } from "./static-audio.functions";
 
 const LoadPlatformItemSchema = z.object({
   url: z
@@ -41,18 +40,24 @@ const LoadPlatformItemSchema = z.object({
 });
 
 export type LoadPlatformItemResponse = AppResult<{
+  format?: "hls" | "progressive";
   metadata: PlatformMetadata;
   streamUrl: string;
 }>;
 
 type ResolvedPlatformItem = {
+  format?: "hls" | "progressive";
   metadata: PlatformMetadata;
   streamUrl: string;
 };
 
 async function normalizePlatformUrl(url: string): Promise<string> {
   try {
-    return await normalizePlayablePlatformUrl(url);
+    let normalizedUrl = url.trim();
+    if (needsResolution(normalizedUrl)) {
+      normalizedUrl = await resolveShortLink(normalizedUrl);
+    }
+    return normalizeBandcampUrl(normalizeSoundCloudUrl(normalizedUrl));
   } catch {
     throw new AppError({
       code: "SOUNDCLOUD_SHORTLINK_RESOLVE_FAILED",
@@ -64,97 +69,118 @@ async function normalizePlatformUrl(url: string): Promise<string> {
   }
 }
 
-function toAppError(error: PlayablePlatformResolutionError): AppError {
-  if (error.code === "unsupported-url") {
-    return new AppError({
-      code: "PLATFORM_UNSUPPORTED_URL",
-      safeMessage:
-        "Unsupported URL. Please enter a Bandcamp, SoundCloud, YouTube, Radio Garden, or audio file URL.",
-      category: "validation",
-      expected: true,
-      status: 400,
-    });
-  }
-
-  if (error.code === "radiogarden-channel-id-missing") {
-    return new AppError({
-      code: "RADIO_GARDEN_CHANNEL_ID_MISSING",
-      safeMessage: error.message,
-      category: "validation",
-      expected: true,
-      status: 400,
-    });
-  }
-
-  const providerErrorCodes = {
+function providerError(
+  platform: "bandcamp" | "radiogarden" | "soundcloud",
+  message: string
+): AppError {
+  const codes = {
     bandcamp: "BANDCAMP_ITEM_LOAD_FAILED",
     radiogarden: "RADIO_GARDEN_ITEM_LOAD_FAILED",
     soundcloud: "SOUNDCLOUD_ITEM_LOAD_FAILED",
-    youtube: "YOUTUBE_ITEM_LOAD_FAILED",
   } as const;
 
   return new AppError({
-    code:
-      error.platform && error.platform in providerErrorCodes
-        ? providerErrorCodes[error.platform as keyof typeof providerErrorCodes]
-        : "PLATFORM_ITEM_RESOLUTION_FAILED",
-    safeMessage: error.message || "Failed to resolve platform item",
+    code: codes[platform],
+    safeMessage: message,
     category: "dependency",
     expected: false,
     status: 500,
   });
 }
 
-function appErrorCategoryForStatus(status: number): AppErrorInit["category"] {
-  if (status === 429) {
-    return "rate_limit";
+async function resolveBandcampItem(url: string): Promise<ResolvedPlatformItem> {
+  const result = await getBandcampItem(url);
+  if (!result.success) {
+    throw providerError(
+      "bandcamp",
+      result.error || "Failed to resolve Bandcamp item"
+    );
   }
-  if (status < 500) {
-    return "validation";
-  }
-  return "dependency";
+  return {
+    format: result.format,
+    metadata: result.metadata,
+    streamUrl: result.streamUrl,
+  };
 }
 
-function toServerFunctionAppError(error: ProblemErrorPayload): AppError {
-  return new AppError({
-    code: error.code,
-    safeMessage: error.message,
-    category: appErrorCategoryForStatus(error.status),
-    expected: error.status < 500,
-    status: error.status,
+async function resolveSoundCloudItem(
+  url: string
+): Promise<ResolvedPlatformItem> {
+  const result = await getSoundCloudItem(url, {
+    transcodingProtocols: ["hls", "progressive"],
   });
-}
-
-async function resolveStaticAudioItem(url: string): Promise<{
-  metadata: StaticAudioMetadata;
-  streamUrl: string;
-}> {
-  const result = await getStaticAudioItem({ data: { url } });
-  if (result.ok) {
-    return result.data;
+  if (!result.success) {
+    throw providerError(
+      "soundcloud",
+      result.error || "Failed to resolve SoundCloud item"
+    );
   }
-  throw toServerFunctionAppError(result.error);
+  return {
+    format: result.format,
+    metadata: result.metadata,
+    streamUrl: result.streamUrl,
+  };
 }
 
-async function resolvePlatformItem(
+async function resolveRadioGardenItem(
+  url: string
+): Promise<ResolvedPlatformItem> {
+  const channelId = extractChannelId(url);
+  if (!channelId) {
+    throw new AppError({
+      code: "RADIO_GARDEN_CHANNEL_ID_MISSING",
+      safeMessage: "Could not extract Radio Garden channel ID from URL",
+      category: "validation",
+      expected: true,
+      status: 400,
+    });
+  }
+
+  try {
+    const result = await getRadioGardenItem(channelId);
+    if (!result.success) {
+      throw providerError(
+        "radiogarden",
+        result.error || "Failed to resolve Radio Garden item"
+      );
+    }
+    return { metadata: result.metadata, streamUrl: result.streamUrl };
+  } catch (error) {
+    if (error instanceof AppError) {
+      throw error;
+    }
+    throw providerError(
+      "radiogarden",
+      error instanceof Error && error.message
+        ? error.message
+        : "Failed to resolve Radio Garden item"
+    );
+  }
+}
+
+function resolvePlatformItem(
   normalizedUrl: string
 ): Promise<ResolvedPlatformItem> {
-  if (detectPlayablePlatformFromUrl(normalizedUrl) === "static-audio") {
-    return resolveStaticAudioItem(normalizedUrl);
+  if (isBandcampUrl(normalizedUrl)) {
+    return resolveBandcampItem(normalizedUrl);
   }
 
-  const resolver = createPlayablePlatformResolver<StaticAudioMetadata>({
-    invidiousOptions: () => readInvidiousOptions(env),
+  if (isSoundCloudUrl(normalizedUrl)) {
+    return resolveSoundCloudItem(normalizedUrl);
+  }
+
+  if (isRadioGardenUrl(normalizedUrl)) {
+    return resolveRadioGardenItem(normalizedUrl);
+  }
+
+  throw new AppError({
+    code: "PLATFORM_UNSUPPORTED_URL",
+    safeMessage:
+      "Unsupported server-side URL. Please enter a Bandcamp, SoundCloud, or Radio Garden URL.",
+    category: "validation",
+    expected: true,
+    status: 400,
   });
-  const result = await resolver.resolveNormalizedItem(normalizedUrl);
-  if (!result.success) {
-    throw toAppError(result.error);
-  }
-
-  return {
-    metadata: result.item.metadata,
-    streamUrl: result.item.streamUrl,
-  };
 }
 
 export const loadPlatformItem = createServerFn({ method: "POST" })
@@ -185,22 +211,22 @@ export const loadPlatformItem = createServerFn({ method: "POST" })
             });
           }
 
-          if (
-            !(
-              item.streamUrl.startsWith("yt:") || item.streamUrl.startsWith("/")
-            )
-          ) {
-            try {
-              new URL(item.streamUrl);
-            } catch {
-              throw new AppError({
-                code: "PLATFORM_INVALID_STREAM_URL",
-                safeMessage: "Platform returned an invalid stream URL",
-                category: "dependency",
-                expected: false,
-                status: 500,
-              });
+          try {
+            const streamUrl = new URL(item.streamUrl);
+            if (
+              streamUrl.protocol !== "http:" &&
+              streamUrl.protocol !== "https:"
+            ) {
+              throw new TypeError("Unsupported stream URL protocol");
             }
+          } catch {
+            throw new AppError({
+              code: "PLATFORM_INVALID_STREAM_URL",
+              safeMessage: "Platform returned an invalid stream URL",
+              category: "dependency",
+              expected: false,
+              status: 500,
+            });
           }
 
           return item;

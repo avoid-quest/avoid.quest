@@ -59,9 +59,19 @@ function getRadioGardenDescription(
   return metadata.subtitle || "Radio Station";
 }
 
+function getRadioBrowserDescription(
+  metadata: PlatformMetadata
+): string | undefined {
+  if (metadata.platform !== "radio-browser") {
+    return;
+  }
+  return "Radio Station";
+}
+
 function getDescription(metadata: PlatformMetadata): string | undefined {
   return (
     getBandcampDescription(metadata) ??
+    getRadioBrowserDescription(metadata) ??
     getRadioGardenDescription(metadata) ??
     getSoundCloudDescription(metadata) ??
     getYouTubeDescription(metadata)
@@ -72,6 +82,7 @@ function getLogoUrl(metadata: PlatformMetadata): string | undefined {
   if (
     metadata.platform === "device-input" ||
     metadata.platform === "local-file" ||
+    metadata.platform === "radio-browser" ||
     metadata.platform === "static-audio" ||
     metadata.platform === "radiogarden"
   ) {
@@ -94,7 +105,8 @@ function getLogoUrl(metadata: PlatformMetadata): string | undefined {
 
 export function createPlatformRadio(
   streamUrl: string,
-  metadata: PlatformMetadata
+  metadata: PlatformMetadata,
+  streamFormat?: Radio["streamFormat"]
 ): Radio {
   const getName = (): string => {
     if (metadata.platform === "device-input") {
@@ -109,6 +121,9 @@ export function createPlatformRadio(
     if (metadata.platform === "radiogarden") {
       return metadata.name || "Radio Station";
     }
+    if (metadata.platform === "radio-browser") {
+      return "Radio Station";
+    }
     return metadata.name || metadata.artist || "Unknown";
   };
 
@@ -116,6 +131,7 @@ export function createPlatformRadio(
     id: Date.now(),
     name: getName(),
     streamUrl,
+    ...(streamFormat ? { streamFormat } : {}),
     logoUrl: getLogoUrl(metadata),
     description: getDescription(metadata),
     websiteUrl: metadata.url,
@@ -156,6 +172,10 @@ export function getPlatformItemTypeLabel(metadata: PlatformMetadata): string {
   }
 
   if (metadata.platform === "radiogarden") {
+    return "Radio Station";
+  }
+
+  if (metadata.platform === "radio-browser") {
     return "Radio Station";
   }
 

@@ -24,6 +24,10 @@ type EffectsControllerOptions = {
 
 class EffectsController {
   private readonly workletManagers = new Map<string, WorkletManager>();
+  private readonly workletManagerPromises = new Map<
+    string,
+    Promise<WorkletManager>
+  >();
   private readonly workletProcessorUrl: () => string;
   private readonly sounds: Map<string, SoundInstance>;
   private readonly meterListeners: Map<string, Set<MeterListener>>;
@@ -92,9 +96,14 @@ class EffectsController {
   }
 
   async getOrCreateWorkletManager(soundId: string): Promise<WorkletManager> {
-    let wm = this.workletManagers.get(soundId);
-    if (wm) {
-      return wm;
+    const existingManager = this.workletManagers.get(soundId);
+    if (existingManager) {
+      return existingManager;
+    }
+
+    const existingPromise = this.workletManagerPromises.get(soundId);
+    if (existingPromise) {
+      return existingPromise;
     }
 
     const context = getAudioContext();
@@ -102,19 +111,35 @@ class EffectsController {
       throw new Error("Audio context not available");
     }
 
-    wm = new WorkletManager(context, this.workletProcessorUrl());
-    await wm.init();
-    this.workletManagers.set(soundId, wm);
+    const manager = new WorkletManager(context, this.workletProcessorUrl());
+    let managerPromise: Promise<WorkletManager>;
+    managerPromise = manager.init().then(() => {
+      if (this.workletManagerPromises.get(soundId) !== managerPromise) {
+        manager.cleanup();
+        throw new Error(
+          `Effect runtime initialization canceled for ${soundId}`
+        );
+      }
 
-    attachWorkletManagerListeners({
-      wm,
-      soundId,
-      sounds: this.sounds,
-      meterListeners: this.meterListeners,
-      notifyListeners: this.notifyListeners,
+      this.workletManagers.set(soundId, manager);
+      attachWorkletManagerListeners({
+        wm: manager,
+        soundId,
+        sounds: this.sounds,
+        meterListeners: this.meterListeners,
+        notifyListeners: this.notifyListeners,
+      });
+      return manager;
     });
+    this.workletManagerPromises.set(soundId, managerPromise);
 
-    return wm;
+    try {
+      return await managerPromise;
+    } finally {
+      if (this.workletManagerPromises.get(soundId) === managerPromise) {
+        this.workletManagerPromises.delete(soundId);
+      }
+    }
   }
 
   pauseSource(soundId: string): void {
@@ -130,6 +155,12 @@ class EffectsController {
   }
 
   cleanupSound(soundId: string): void {
+    const managerPromise = this.workletManagerPromises.get(soundId);
+    if (managerPromise) {
+      this.workletManagerPromises.delete(soundId);
+      managerPromise.catch(() => undefined);
+    }
+
     const wm = this.workletManagers.get(soundId);
     if (wm) {
       wm.cleanup();
@@ -138,6 +169,10 @@ class EffectsController {
   }
 
   cleanup(): void {
+    for (const [soundId, managerPromise] of this.workletManagerPromises) {
+      this.workletManagerPromises.delete(soundId);
+      managerPromise.catch(() => undefined);
+    }
     for (const wm of this.workletManagers.values()) {
       wm.cleanup();
     }

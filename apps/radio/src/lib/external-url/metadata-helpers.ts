@@ -8,7 +8,8 @@ export function isCollection(metadata: PlatformMetadata): boolean {
     (metadata.platform === "bandcamp" &&
       (metadata.itemType === "album" || metadata.itemType === "collection")) ||
     (metadata.platform === "soundcloud" && metadata.itemType === "playlist") ||
-    (metadata.platform === "youtube" && metadata.itemType === "playlist")
+    (metadata.platform === "youtube" && metadata.itemType === "playlist") ||
+    (metadata.platform === "static-audio" && metadata.itemType === "playlist")
   );
 }
 
@@ -22,6 +23,7 @@ export function getCurrentTrackIndex(
   if (
     metadata.platform === "device-input" ||
     metadata.platform === "local-file" ||
+    metadata.platform === "radio-browser" ||
     metadata.platform === "radiogarden"
   ) {
     return 0;

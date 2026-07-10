@@ -17,6 +17,8 @@ import type {
   YouTubeTrackInfo,
 } from "./types.js";
 
+export type { YouTubeClient } from "./client.js";
+export { createYouTubeClient } from "./client.js";
 export {
   detectYouTubeItemType,
   extractVideoId,
@@ -30,6 +32,20 @@ export type {
   InvidiousSearchResult,
   InvidiousVideoResponse,
 } from "./invidious.js";
+export { createBrowserInvidiousAdapter } from "./invidious-browser.js";
+export { createPipedAdapter } from "./piped.js";
+export type {
+  YouTubeProviderAdapter,
+  YouTubeProviderAdapterOptions,
+  YouTubeProviderErrorCode,
+  YouTubeProviderKind,
+  YouTubeProviderProbe,
+  YouTubeProviderSearchFilter,
+} from "./provider.js";
+export {
+  YouTubeProviderAggregateError,
+  YouTubeProviderError,
+} from "./provider.js";
 export { searchYouTubeMusic } from "./search.js";
 export type {
   YouTubeItemError,

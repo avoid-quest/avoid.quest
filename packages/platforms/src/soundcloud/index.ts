@@ -11,11 +11,7 @@ import type {
   SoundCloudItemResult,
   SoundCloudMetadata,
 } from "./types.js";
-import {
-  isSoundCloudCorsAllowedCdnHostname,
-  isSoundCloudHostname,
-  validateSoundCloudCdnUrl,
-} from "./url-policy.js";
+import { isSoundCloudHostname } from "./url-policy.js";
 
 // Structural types for SoundCloud API responses (only properties we access)
 
@@ -27,6 +23,12 @@ type SoundCloudTranscodingFormat = {
 type SoundCloudTranscoding = {
   url: string;
   format?: SoundCloudTranscodingFormat;
+};
+
+export type SoundCloudTranscodingProtocol = "progressive" | "hls";
+
+export type SoundCloudItemOptions = {
+  transcodingProtocols?: readonly SoundCloudTranscodingProtocol[];
 };
 
 type SoundCloudApiTrack = {
@@ -98,6 +100,7 @@ export {
 } from "./url-policy.js";
 
 const SHORT_LINK_MAX_REDIRECTS = 5;
+const DEFAULT_TRANSCODING_PROTOCOLS = ["progressive", "hls"] as const;
 
 type ShortLinkRedirectValidationFailure =
   | "invalid-url"
@@ -137,21 +140,6 @@ function validateShortLinkRedirectTarget(
 
 function createShortLinkRedirectError(reason: ShortLinkRedirectFailure): Error {
   return new Error(SHORT_LINK_REDIRECT_ERROR_MESSAGES[reason]);
-}
-
-/** Proxies SoundCloud stream URLs to avoid CORS issues (skips HLS which has CORS enabled) */
-export function getProxiedSoundCloudUrl(url: string): string {
-  const validation = validateSoundCloudCdnUrl(url);
-  if (!validation.ok) {
-    return url;
-  }
-
-  // HLS CDN has CORS enabled, no proxy needed
-  if (isSoundCloudCorsAllowedCdnHostname(validation.parsed.hostname)) {
-    return url;
-  }
-
-  return `/api/soundcloud-proxy?url=${encodeURIComponent(url)}`;
 }
 
 function createErrorResponse(message: string): SoundCloudItemError {
@@ -210,7 +198,7 @@ async function getStreamUrl(
     }
 
     const data: { url: string } = await response.json();
-    // Return raw stream URL - consumers apply proxying as needed
+    // Return the raw stream URL for consumer-side validation and playback.
     return data.url;
   } catch (error) {
     console.warn("[SoundCloud] getStreamUrl failed:", error);
@@ -290,23 +278,26 @@ export async function resolveShortLink(shortUrl: string): Promise<string> {
 }
 
 export async function getSoundCloudItem(
-  url: string
+  url: string,
+  options: SoundCloudItemOptions = {}
 ): Promise<SoundCloudItemResponse> {
   try {
     const itemType = detectSoundCloudItemType(url);
+    const transcodingProtocols =
+      options.transcodingProtocols ?? DEFAULT_TRANSCODING_PROTOCOLS;
     const clientId = await getClientId();
     const data = await resolveSoundCloudUrl(url, clientId);
 
     if (itemType === "track" && data.kind === "track") {
-      return await processTrack(data, url, clientId);
+      return await processTrack(data, url, clientId, transcodingProtocols);
     }
 
     if (itemType === "playlist" && data.kind === "playlist") {
-      return await processPlaylist(data, url, clientId);
+      return await processPlaylist(data, url, clientId, transcodingProtocols);
     }
 
     if (itemType === "user" && data.kind === "user") {
-      return await processUser(data, url, clientId);
+      return await processUser(data, url, clientId, transcodingProtocols);
     }
 
     return createErrorResponse("Unsupported SoundCloud item type or mismatch");
@@ -321,38 +312,45 @@ export async function getSoundCloudItem(
 
 /**
  * Find the best available transcoding for a track.
- * Prefers progressive (direct download), falls back to HLS.
+ * Uses the caller's protocol order, preferring MPEG audio within HLS.
  */
 function findBestTranscoding(
-  transcodings: SoundCloudTranscoding[]
+  transcodings: SoundCloudTranscoding[],
+  protocols: readonly SoundCloudTranscodingProtocol[]
 ): SoundCloudTranscoding | null {
-  // First try progressive (easiest to work with)
-  const progressive = transcodings.find(
-    (t) => t.format?.protocol === "progressive"
-  );
-  if (progressive) {
-    return progressive;
+  for (const protocol of protocols) {
+    const transcoding =
+      protocol === "hls"
+        ? (transcodings.find(
+            (item) =>
+              item.format?.protocol === "hls" &&
+              item.format.mime_type === "audio/mpeg"
+          ) ?? transcodings.find((item) => item.format?.protocol === "hls"))
+        : transcodings.find((item) => item.format?.protocol === "progressive");
+    if (transcoding) {
+      return transcoding;
+    }
   }
 
-  // Fall back to HLS audio/mpeg (MP3 segments, widely compatible)
-  const hlsMpeg = transcodings.find(
-    (t) => t.format?.protocol === "hls" && t.format?.mime_type === "audio/mpeg"
-  );
-  if (hlsMpeg) {
-    return hlsMpeg;
-  }
+  return null;
+}
 
-  // Fall back to any HLS stream
-  const hlsAny = transcodings.find((t) => t.format?.protocol === "hls");
-  return hlsAny ?? null;
+function getTranscodingStreamFormat(
+  transcoding: SoundCloudTranscoding
+): "hls" | "progressive" {
+  return transcoding.format?.protocol === "hls" ? "hls" : "progressive";
 }
 
 async function processTrack(
   data: SoundCloudApiTrack,
   url: string,
-  clientId: string
+  clientId: string,
+  transcodingProtocols: readonly SoundCloudTranscodingProtocol[]
 ): Promise<SoundCloudItemResult | SoundCloudItemError> {
-  const transcoding = findBestTranscoding(data.media?.transcodings || []);
+  const transcoding = findBestTranscoding(
+    data.media?.transcodings || [],
+    transcodingProtocols
+  );
 
   if (!transcoding) {
     return createErrorResponse("No supported stream format found");
@@ -378,6 +376,7 @@ async function processTrack(
 
   return {
     success: true,
+    format: getTranscodingStreamFormat(transcoding),
     metadata,
     streamUrl,
   };
@@ -386,7 +385,8 @@ async function processTrack(
 async function processPlaylist(
   data: SoundCloudApiPlaylist,
   url: string,
-  clientId: string
+  clientId: string,
+  transcodingProtocols: readonly SoundCloudTranscodingProtocol[]
 ): Promise<SoundCloudItemResult | SoundCloudItemError> {
   if (!data.tracks || data.tracks.length === 0) {
     return createErrorResponse("No tracks found in playlist");
@@ -410,7 +410,10 @@ async function processPlaylist(
         return null;
       }
 
-      const transcoding = findBestTranscoding(fullTrack.media.transcodings);
+      const transcoding = findBestTranscoding(
+        fullTrack.media.transcodings,
+        transcodingProtocols
+      );
 
       if (!transcoding) {
         return null;
@@ -422,6 +425,7 @@ async function processPlaylist(
       }
 
       return {
+        format: getTranscodingStreamFormat(transcoding),
         name: fullTrack.title ?? "",
         streamUrl,
         duration: Math.floor((fullTrack.duration ?? 0) / 1000),
@@ -430,8 +434,14 @@ async function processPlaylist(
   );
 
   const validTracks = processedTracks.filter(
-    (t): t is { name: string; streamUrl: string; duration: number } =>
-      t !== null
+    (
+      t
+    ): t is {
+      duration: number;
+      format: "hls" | "progressive";
+      name: string;
+      streamUrl: string;
+    } => t !== null
   );
 
   if (validTracks.length === 0) {
@@ -459,6 +469,7 @@ async function processPlaylist(
 
   return {
     success: true,
+    format: firstTrack.format,
     metadata,
     streamUrl: firstTrack.streamUrl,
   };
@@ -467,7 +478,8 @@ async function processPlaylist(
 async function processUser(
   data: SoundCloudApiUser,
   url: string,
-  clientId: string
+  clientId: string,
+  transcodingProtocols: readonly SoundCloudTranscodingProtocol[]
 ): Promise<SoundCloudItemResult | SoundCloudItemError> {
   // Try to resolve the user's tracks URL through the API
   const tracksUrl = `${url}/tracks`;
@@ -506,7 +518,10 @@ async function processUser(
         return null;
       }
 
-      const transcoding = findBestTranscoding(track.media.transcodings);
+      const transcoding = findBestTranscoding(
+        track.media.transcodings,
+        transcodingProtocols
+      );
 
       if (!transcoding) {
         return null;
@@ -518,6 +533,7 @@ async function processUser(
       }
 
       return {
+        format: getTranscodingStreamFormat(transcoding),
         name: track.title ?? "",
         streamUrl,
         duration: Math.floor((track.duration ?? 0) / 1000),
@@ -526,8 +542,14 @@ async function processUser(
   );
 
   const validTracks = processedTracks.filter(
-    (t): t is { name: string; streamUrl: string; duration: number } =>
-      t !== null
+    (
+      t
+    ): t is {
+      duration: number;
+      format: "hls" | "progressive";
+      name: string;
+      streamUrl: string;
+    } => t !== null
   );
 
   if (validTracks.length === 0) {
@@ -556,6 +578,7 @@ async function processUser(
 
   return {
     success: true,
+    format: firstTrack.format,
     metadata,
     streamUrl: firstTrack.streamUrl,
   };

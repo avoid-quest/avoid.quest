@@ -25,16 +25,19 @@ import {
   releaseReplacedLocalFileUrl,
 } from "@/lib/dj-deck-source-radios.js";
 import { resolveInitialTrackStreamUrl } from "@/lib/dj-initial-stream-resolution.js";
-import {
-  createStaticAudioRadio,
-  type DeckSourceLoadIntent,
-  type DeckSourceLoadResult,
+import type {
+  DeckSourceLoadIntent,
+  DeckSourceLoadResult,
 } from "@/lib/dj-library-sources.js";
-import type { PlatformStreamResolutionInput } from "@/lib/dj-platform-stream-port.js";
+import type {
+  PlatformStreamResolution,
+  PlatformStreamResolutionInput,
+} from "@/lib/dj-platform-stream-port.js";
 import {
   type DeckRecord,
   resetDeck as resetDeckDb,
 } from "@/lib/hooks/use-dj-state";
+import type { LoadPlatformItemResult } from "@/lib/platform-item-loader";
 import { isDeviceInputMetadata } from "@/lib/platform-types";
 import type { PlaybackActionChannelFacade } from "./playback-action-context.js";
 import {
@@ -82,6 +85,7 @@ type DeckLoadDependencies = {
     getAudioManager: () => AudioManager,
     reportDjError: ReportDjError
   ) => Promise<void>;
+  loadPlatformItem: (url: string) => Promise<LoadPlatformItemResult>;
   loadTrack: (
     deckSide: DeckSide,
     radio: Radio | null,
@@ -89,12 +93,13 @@ type DeckLoadDependencies = {
   ) => Promise<void>;
   pauseDeckSound: (soundId: string) => void;
   playDeckSound: (soundId: string, volume: number) => Promise<void>;
+  resumeAudioContext: () => Promise<void>;
   playDeviceSound: (soundId: string, deviceId: string) => Promise<void>;
   reportDjError: ReportDjError;
   reportPlaybackError?: (error: PlaybackActionError) => void;
   resolvePlatformStreamUrl: (
     input: PlatformStreamResolutionInput
-  ) => Promise<string | null>;
+  ) => Promise<PlatformStreamResolution | null>;
   seekDeckSound: (soundId: string, position: number) => void;
   setDeviceChannelSelection: (
     soundId: string,
@@ -306,15 +311,6 @@ function initializeSavedAudioDevices(dependencies: DeckLoadDependencies): void {
   }
 }
 
-function restoreDeckRouting(
-  deckId: DeckId,
-  soundId: string,
-  dependencies: DeckLoadDependencies
-): void {
-  connectDeckCueRouting(deckId, soundId, dependencies);
-  initializeSavedAudioDevices(dependencies);
-}
-
 async function activateLoadedSource(
   deckId: DeckId,
   loadToken: symbol,
@@ -403,6 +399,7 @@ async function loadDeckRadio(
           currentDeck
         ) {
           hasAppliedChannelStrip = true;
+          initializeSavedAudioDevices(dependencies);
           dependencies.applyStoredEffectsAndFilters(
             dependencies.getAudioManager(),
             soundId,
@@ -514,7 +511,6 @@ async function loadDeckRadio(
         }
       },
     });
-    restoreDeckRouting(deckId, soundId, dependencies);
     const sourceActivation = await activateLoadedSource(
       deckId,
       loadToken,
@@ -588,18 +584,18 @@ async function loadDeckTrackRadio(
   const sourceLoadToken = beginDeckSourceLoad(deckId);
   const isCurrentSourceLoad = () =>
     isCurrentDeckSourceLoad(deckId, sourceLoadToken);
-  const resolvedStreamUrl = await resolveInitialTrackStreamUrl(
+  const resolvedStream = await resolveInitialTrackStreamUrl(
     deckId,
     radio,
     sourceStreamUrl ?? radio.streamUrl,
     dependencies,
     isCurrentSourceLoad
   );
-  if (!(resolvedStreamUrl && isCurrentSourceLoad())) {
+  if (!(resolvedStream && isCurrentSourceLoad())) {
     return;
   }
 
-  const streamValidation = validatePlaybackStreamUrl(resolvedStreamUrl);
+  const streamValidation = validatePlaybackStreamUrl(resolvedStream.streamUrl);
   if (!streamValidation.ok) {
     dependencies.reportDjError(
       "Invalid stream URL",
@@ -611,10 +607,11 @@ async function loadDeckTrackRadio(
     return;
   }
 
-  const normalizedRadio =
-    streamValidation.normalizedUrl === radio.streamUrl
-      ? radio
-      : { ...radio, streamUrl: streamValidation.normalizedUrl };
+  const normalizedRadio = {
+    ...radio,
+    streamFormat: resolvedStream.streamFormat,
+    streamUrl: streamValidation.normalizedUrl,
+  };
 
   const runtime = config.getRuntime();
   if (runtime.isLoading) {
@@ -659,6 +656,7 @@ async function playDeck(
   const playToken = beginDeckPlay(deckId);
 
   try {
+    await dependencies.resumeAudioContext();
     await dependencies.playDeckSound(soundId, deck.volume);
     if (!isCurrentDeckPlayTarget(deckId, playToken, soundId, radio, config)) {
       return;
@@ -751,6 +749,45 @@ async function loadDeckFile(
   }
 }
 
+async function loadDeckStaticAudioUrl(
+  deckId: DeckId,
+  url: string,
+  dependencies: DeckLoadDependencies
+): Promise<void> {
+  const sourceLoadToken = beginDeckSourceLoad(deckId);
+  const isCurrentSourceLoad = () =>
+    isCurrentDeckSourceLoad(deckId, sourceLoadToken);
+  try {
+    dependencies.clearDjError();
+    const result = await dependencies.loadPlatformItem(url);
+    if (!isCurrentSourceLoad()) {
+      return;
+    }
+    if (!result.success) {
+      dependencies.reportDjError(
+        result.error,
+        result.code,
+        undefined,
+        null,
+        deckId
+      );
+      return;
+    }
+    await loadDeckTrackRadio(deckId, result.radio, false, dependencies);
+  } catch (error) {
+    if (!isCurrentSourceLoad()) {
+      return;
+    }
+    dependencies.reportDjError(
+      error instanceof Error ? error.message : "Failed to resolve audio URL",
+      "DJ_STATIC_AUDIO_RESOLVE_FAILED",
+      error,
+      null,
+      deckId
+    );
+  }
+}
+
 async function loadDeckSource(
   deckId: DeckId,
   source: DeckSourceLoadIntent,
@@ -772,12 +809,7 @@ async function loadDeckSource(
       await loadDeckRadio(deckId, source.radio, dependencies);
       return { type: "loaded" };
     case "static-audio-url":
-      await loadDeckTrackRadio(
-        deckId,
-        createStaticAudioRadio(source.url),
-        false,
-        dependencies
-      );
+      await loadDeckStaticAudioUrl(deckId, source.url, dependencies);
       return { type: "loaded" };
     case "track":
       await loadDeckTrackRadio(

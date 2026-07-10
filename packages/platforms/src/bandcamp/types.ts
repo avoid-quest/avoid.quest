@@ -1,3 +1,5 @@
+import type { PlatformStreamFormat } from "../stream-format.js";
+
 export type BandcampItemType =
   | "album"
   | "track"
@@ -6,6 +8,7 @@ export type BandcampItemType =
   | "collection";
 
 export type BandcampTrackInfo = {
+  format?: PlatformStreamFormat;
   name: string;
   streamUrl: string;
   duration?: number;
@@ -28,6 +31,7 @@ export type BandcampMetadata = {
 };
 
 export type BandcampItemResult = {
+  format?: PlatformStreamFormat;
   success: true;
   metadata: BandcampMetadata;
   streamUrl: string;

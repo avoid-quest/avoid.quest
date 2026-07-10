@@ -11,11 +11,7 @@ export type {
   BandcampSearchResult,
   BandcampTrackInfo,
 } from "./bandcamp/index.js";
-export {
-  getBandcampItem,
-  getProxiedBandcampUrl,
-  searchBandcamp,
-} from "./bandcamp/index.js";
+export { getBandcampItem, searchBandcamp } from "./bandcamp/index.js";
 export type {
   BandcampCdnRedirectUrlValidationFailure,
   BandcampCdnRedirectUrlValidationResult,
@@ -60,6 +56,13 @@ export {
   normalizePlayablePlatformUrl,
   toPlayableSources,
 } from "./playable.js";
+// Radio Browser
+export type {
+  RadioBrowserFetch,
+  RadioBrowserSearchOptions,
+  RadioBrowserStation,
+} from "./radiobrowser/index.js";
+export { searchRadioBrowser } from "./radiobrowser/index.js";
 // Radio Garden
 export type {
   RadioGardenItemError,
@@ -101,15 +104,16 @@ export {
 // SoundCloud
 export type {
   SoundCloudItemError,
+  SoundCloudItemOptions,
   SoundCloudItemResponse,
   SoundCloudItemResult,
   SoundCloudItemType,
   SoundCloudMetadata,
   SoundCloudSearchResult,
   SoundCloudTrackInfo,
+  SoundCloudTranscodingProtocol,
 } from "./soundcloud/index.js";
 export {
-  getProxiedSoundCloudUrl,
   getSoundCloudItem,
   resolveShortLink,
   searchSoundCloud,
@@ -141,6 +145,7 @@ export {
   PLAYLIST_EXTENSIONS,
   validatePublicStaticAudioUrl,
 } from "./static-audio.js";
+export type { PlatformStreamFormat } from "./stream-format.js";
 export type {
   Platform,
   PlatformItemError,
@@ -162,6 +167,8 @@ export type {
 export {
   fetchPublicHttpUrlWithValidatedRedirects,
   isBlockedPublicHttpHostname,
+  isLoopbackHostname,
+  isLoopbackHttpUrl,
   isPublicHttpUrl,
   resolvePublicHostnameWithDoh,
   validatePublicHttpUrl,
@@ -176,18 +183,30 @@ export type {
   InvidiousPlaylistResponse,
   InvidiousSearchResult,
   InvidiousVideoResponse,
+  YouTubeClient,
   YouTubeItemError,
   YouTubeItemResponse,
   YouTubeItemResult,
   YouTubeItemType,
   YouTubeMetadata,
+  YouTubeProviderAdapter,
+  YouTubeProviderAdapterOptions,
+  YouTubeProviderErrorCode,
+  YouTubeProviderKind,
+  YouTubeProviderProbe,
+  YouTubeProviderSearchFilter,
   YouTubeSearchResponse,
   YouTubeSearchResult,
   YouTubeTrackInfo,
 } from "./youtube/index.js";
 export {
+  createBrowserInvidiousAdapter,
+  createPipedAdapter,
+  createYouTubeClient,
   getFullStreamUrl,
   getYouTubeItem,
   resolveStreamUrl,
   searchYouTubeMusic,
+  YouTubeProviderAggregateError,
+  YouTubeProviderError,
 } from "./youtube/index.js";

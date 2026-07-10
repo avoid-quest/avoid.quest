@@ -4,7 +4,12 @@ import {
   radiosCollection,
   settingsCollection,
 } from "@/lib/collections";
-import { mergeImportedData, validateImportData } from "./export-import";
+import {
+  mergeImportedData,
+  previewImportChanges,
+  replaceImportedData,
+  validateImportData,
+} from "./export-import";
 
 const SETTINGS_ID = "app-settings";
 
@@ -194,5 +199,124 @@ describe("mergeImportedData", () => {
       restoreStateOnLoad: false,
       single: undefined,
     });
+  });
+
+  test("imports stream formats for existing and new radios", async () => {
+    await radiosCollection.stateWhenReady();
+
+    radiosCollection.insert({
+      id: "radio-1",
+      name: "Existing",
+      streamUrl: "https://radio.example/live",
+      streamFormat: "progressive",
+      order: 1,
+      enabled: true,
+    });
+
+    mergeImportedData({
+      version: 2,
+      exportDate: "2026-07-10T00:00:00.000Z",
+      radios: [
+        {
+          id: "imported-existing",
+          name: "Existing",
+          streamUrl: "https://radio.example/live",
+          streamFormat: "hls",
+        },
+        {
+          id: "imported-new",
+          name: "New",
+          streamUrl: "https://radio.example/new",
+          streamFormat: "hls",
+        },
+      ],
+      settings: { player: { mode: "single" } },
+    });
+
+    expect(radiosCollection.state.get("radio-1")?.streamFormat).toBe("hls");
+    expect(
+      Array.from(radiosCollection.state.values()).find(
+        (radio) => radio.name === "New"
+      )?.streamFormat
+    ).toBe("hls");
+  });
+
+  test("keeps an existing stream format when a legacy import omits it", async () => {
+    await radiosCollection.stateWhenReady();
+
+    radiosCollection.insert({
+      id: "radio-1",
+      name: "Existing",
+      streamUrl: "https://radio.example/original",
+      streamFormat: "hls",
+      order: 1,
+      enabled: true,
+    });
+
+    mergeImportedData({
+      version: 1,
+      exportDate: "2026-04-16T00:00:00.000Z",
+      radios: [
+        {
+          id: "legacy-radio",
+          name: "Existing",
+          streamUrl: "https://radio.example/replaced",
+        },
+      ],
+      settings: { player: { mode: "single" } },
+    });
+
+    expect(radiosCollection.state.get("radio-1")?.streamFormat).toBe("hls");
+  });
+});
+
+describe("stream format imports", () => {
+  test("restores stream formats when replacing radios", async () => {
+    await radiosCollection.stateWhenReady();
+
+    replaceImportedData({
+      version: 2,
+      exportDate: "2026-07-10T00:00:00.000Z",
+      radios: [
+        {
+          id: "radio-1",
+          name: "HLS Radio",
+          streamUrl: "https://radio.example/live",
+          streamFormat: "hls",
+        },
+      ],
+      settings: { player: { mode: "single" } },
+    });
+
+    expect(radiosCollection.state.get("radio-1")?.streamFormat).toBe("hls");
+  });
+
+  test("previews a stream-format-only update", async () => {
+    await radiosCollection.stateWhenReady();
+
+    radiosCollection.insert({
+      id: "radio-1",
+      name: "Existing",
+      streamUrl: "https://radio.example/live",
+      streamFormat: "progressive",
+      order: 1,
+      enabled: true,
+    });
+
+    expect(
+      previewImportChanges({
+        version: 2,
+        exportDate: "2026-07-10T00:00:00.000Z",
+        radios: [
+          {
+            id: "imported-radio",
+            name: "Existing",
+            streamUrl: "https://radio.example/live",
+            streamFormat: "hls",
+          },
+        ],
+        settings: { player: { mode: "single" } },
+      })
+    ).toMatchObject({ updatedRadios: 1, unchangedRadios: 0 });
   });
 });

@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { getProxiedSoundCloudUrl } from "./index";
 import {
   isSoundCloudCdnHostname,
   isSoundCloudPageHostname,
@@ -69,24 +68,5 @@ describe("SoundCloud hostname policies", () => {
       false
     );
     expect(isSoundCloudPageHostname("WWW.SOUNDCLOUD.COM.")).toBe(true);
-  });
-});
-
-describe("getProxiedSoundCloudUrl", () => {
-  test("generates proxy URLs only for canonical SoundCloud CDN URLs", () => {
-    const cdnUrl = "https://cf-media.sndcdn.com/track.mp3";
-    const hlsUrl = "https://cf-hls-media.sndcdn.com/track.m3u8";
-    const aacHlsUrl =
-      "https://playback.media-streaming.soundcloud.cloud/track/aac_160k/id/playlist.m3u8";
-    const pageUrl = "https://soundcloud.com/artist/track";
-    const spoofedUrl = "https://cf-media.sndcdn.com.evil.test/track.mp3";
-
-    expect(getProxiedSoundCloudUrl(cdnUrl)).toBe(
-      `/api/soundcloud-proxy?url=${encodeURIComponent(cdnUrl)}`
-    );
-    expect(getProxiedSoundCloudUrl(hlsUrl)).toBe(hlsUrl);
-    expect(getProxiedSoundCloudUrl(aacHlsUrl)).toBe(aacHlsUrl);
-    expect(getProxiedSoundCloudUrl(pageUrl)).toBe(pageUrl);
-    expect(getProxiedSoundCloudUrl(spoofedUrl)).toBe(spoofedUrl);
   });
 });

@@ -60,6 +60,7 @@ import {
   setDeckCueEnabled as setDeckCueRoutingEnabled,
   toggleDeckCue as toggleDeckCueRouting,
 } from "@/lib/dj-actions-routing.js";
+import { calculateDjCrossfadeVolumes } from "@/lib/dj-crossfade.js";
 import {
   type DeckLibrarySourceIntent,
   type DeckSourceLoadIntent,
@@ -74,6 +75,7 @@ import {
   setPendingPlatformItem,
   updateMixer,
 } from "@/lib/hooks/use-dj-state";
+import { loadPlatformItem } from "@/lib/platform-item-loader";
 import {
   getDefaultPlaybackActionContext,
   type PlaybackActionContext,
@@ -188,9 +190,11 @@ export function applyCrossfade(ctx = getDefaultPlaybackActionContext()) {
 
   const { crossfadePosition } = mixer;
 
-  const angle = (crossfadePosition * Math.PI) / 2;
-  const leftFinalVol = Math.cos(angle) * deckA.volume;
-  const rightFinalVol = Math.sin(angle) * deckB.volume;
+  const [leftFinalVol, rightFinalVol] = calculateDjCrossfadeVolumes(
+    crossfadePosition,
+    deckA.volume,
+    deckB.volume
+  );
 
   if (runtimeA.soundId) {
     ctx.audioEngine.volume.setChannelVolume(runtimeA.soundId, leftFinalVol);
@@ -216,11 +220,13 @@ function createDeckLoadDependencies(
       ctx.audio.getDeviceSource(soundId)?.channelCount ?? null,
     getSoundId,
     initializeAudioDevices: initializeSavedAudioDevices,
+    loadPlatformItem,
     loadTrack: (deckSide, nextRadio, autoPlay) =>
       loadTrack(deckSide, nextRadio, autoPlay, ctx),
     pauseDeckSound: (soundId) => ctx.audioEngine.playback.pause(soundId),
     playDeckSound: (soundId, volume) =>
       ctx.audioEngine.playback.play(soundId, volume),
+    resumeAudioContext: ctx.resumeAudioContext,
     playDeviceSound: (soundId, deviceId) =>
       ctx.audio.playDeviceSound(soundId, deviceId),
     reportDjError: reportDjErrorSurface,

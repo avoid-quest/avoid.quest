@@ -1,7 +1,5 @@
 import type { Radio } from "@/lib/audio";
-import { getFilenameFromUrl } from "@/lib/audio/remote-url";
-import { createPlatformRadio } from "@/lib/external-url/utils";
-import type { Platform, StaticAudioMetadata } from "@/lib/platform-types";
+import type { Platform } from "@/lib/platform-types";
 
 export const AUDIO_INPUT_PLATFORM_ID = -3;
 export const STATIC_AUDIO_PLATFORM_ID = -4;
@@ -161,7 +159,6 @@ export const PLATFORM_SOURCE_DEFINITIONS = [
         mimeType: "",
         streamUrl: "",
         isLocal: true,
-        requiresProxy: false,
       },
     },
   },
@@ -227,22 +224,4 @@ export function getDeckLibrarySourceIntent(
     return { type: "load", source: { type: "radio", radio } };
   }
   return { type: "pending-platform", platform: definition.pendingPlatform };
-}
-
-export function createStaticAudioRadio(url: string): Radio {
-  const displayName = getFilenameFromUrl(url);
-  const metadata: StaticAudioMetadata = {
-    platform: "static-audio",
-    itemType: "track",
-    url,
-    fileName: displayName,
-    displayName,
-    duration: 0,
-    fileSize: 0,
-    mimeType: "audio/mpeg",
-    streamUrl: url,
-    isLocal: false,
-    requiresProxy: false,
-  };
-  return createPlatformRadio(url, metadata);
 }

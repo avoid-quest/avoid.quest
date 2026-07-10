@@ -5,30 +5,29 @@ import type { Radio } from "@/lib/audio";
 import { radiosCollection } from "@/lib/collections";
 import { addRadio } from "@/lib/hooks/use-radios";
 import { useSessionRadios } from "@/lib/hooks/use-session-radios";
+import { resolvePlatformItem } from "@/lib/platform-client";
 import { createExternalStationResolutionWorkflow } from "@/lib/stations/external-station-workflow";
-import { radioGardenResolveStream } from "@/utils/radio-garden.functions";
 
 function createRadioGardenResolveAdapter() {
-  return async (channelId: string) => {
-    const response = await radioGardenResolveStream({
-      data: { channelId },
-    });
-    if (!response.ok) {
+  return async (_channelId: string, canonicalUrl: string) => {
+    try {
+      const resolved = await resolvePlatformItem(canonicalUrl);
+      return {
+        ok: true as const,
+        data: { format: resolved.format, streamUrl: resolved.streamUrl },
+      };
+    } catch (error) {
       return {
         ok: false as const,
         error: {
-          code: response.error.code,
-          message: response.error.message,
+          code: "RADIO_GARDEN_RESOLVER_FAILED",
+          message:
+            error instanceof Error
+              ? error.message
+              : "Failed to resolve Radio Garden stream",
         },
       };
     }
-
-    return {
-      ok: true as const,
-      data: {
-        streamUrl: response.data.streamUrl,
-      },
-    };
   };
 }
 
@@ -79,9 +78,21 @@ export function useRadioGardenResolve(
     });
   };
 
+  const selectDiscoveredStation = (radio: Radio) => {
+    addSessionRadio(radio);
+    Promise.resolve()
+      .then(() => onResolved(radio))
+      .catch((error: unknown) => {
+        toast.error(
+          error instanceof Error ? error.message : "Failed to select station"
+        );
+      });
+  };
+
   return {
     resolve: resolveMutation.mutate,
     saveToCollection,
+    selectDiscoveredStation,
     isResolving: resolveMutation.isPending,
   };
 }

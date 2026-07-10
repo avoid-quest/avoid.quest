@@ -1,5 +1,8 @@
-import type { SearchPlatform } from "@avoid.quest/platforms";
-import { useState } from "react";
+import type {
+  SearchPlatform,
+  UnifiedSearchResult,
+} from "@avoid.quest/platforms";
+import { useEffect, useState } from "react";
 import type { Radio } from "@/lib/audio";
 import { SearchInput } from "./search-input";
 import { SearchResults } from "./search-results";
@@ -23,22 +26,66 @@ export function ExternalSearch({
   const [youtubeFilter, setYoutubeFilter] = useState<"songs" | "videos">(
     "songs"
   );
+  const [results, setResults] = useState<UnifiedSearchResult[]>([]);
+  const [error, setError] = useState<string | null>(null);
   const isLocked = initialPlatform !== undefined && initialPlatform !== "all";
+
+  const clearResults = () => {
+    setResults([]);
+    setError(null);
+  };
+
+  useEffect(() => {
+    setPlatform(initialPlatform ?? "all");
+    setResults([]);
+    setError(null);
+  }, [initialPlatform]);
+
+  const handlePlatformChange = (nextPlatform: SearchPlatform) => {
+    clearResults();
+    setPlatform(nextPlatform);
+  };
+
+  const handleBandcampFilterChange = (filter: "" | "t" | "a") => {
+    clearResults();
+    setBandcampFilter(filter);
+  };
+
+  const handleYoutubeFilterChange = (filter: "songs" | "videos") => {
+    clearResults();
+    setYoutubeFilter(filter);
+  };
+
+  const searchContextKey = [
+    initialPlatform ?? "unlocked",
+    platform,
+    bandcampFilter,
+    youtubeFilter,
+  ].join(":");
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden p-2">
       <SearchInput
         bandcampFilter={bandcampFilter}
         locked={isLocked}
-        onBandcampFilterChange={setBandcampFilter}
-        onLoad={onLoad}
-        onPlatformChange={setPlatform}
-        onYoutubeFilterChange={setYoutubeFilter}
+        onBandcampFilterChange={handleBandcampFilterChange}
+        onClearResults={clearResults}
+        onError={(message) => {
+          setError(message);
+          setResults([]);
+        }}
+        onPlatformChange={handlePlatformChange}
+        onResults={(nextResults) => {
+          setResults(nextResults);
+          setError(null);
+        }}
+        onYoutubeFilterChange={handleYoutubeFilterChange}
         platform={platform}
+        searchContextKey={searchContextKey}
         youtubeFilter={youtubeFilter}
       />
 
-      <SearchResults onLoad={onLoad} />
+      <SearchResults error={error} onLoad={onLoad} results={results} />
 
       <UrlInput onCancel={onCancel} onLoad={onLoad} />
     </div>

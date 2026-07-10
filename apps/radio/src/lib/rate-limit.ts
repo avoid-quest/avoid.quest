@@ -49,7 +49,7 @@ function formatRateLimitKey(
 /**
  * Check rate limit using Cloudflare Rate Limit API
  * @param env - The Cloudflare environment bindings
- * @param identifier - Unique identifier for this rate limit (e.g., 'soundcloud-proxy')
+ * @param identifier - Unique identifier for this rate limit (e.g., 'radio-metadata')
  * @param subject - Trusted subject to rate limit against
  * @returns Rate limit result with allowed status
  */

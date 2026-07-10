@@ -5,49 +5,29 @@ import {
   createExternalPlatformSearchWorkflow,
   type ExternalPlatformSearchParams,
 } from "@/lib/external-platform-search-workflow";
-import { radioGardenSearch } from "@/utils/radio-garden.functions";
-import { bandcampSearch, soundcloudSearch } from "@/utils/search.functions";
-import { youtubeSearch } from "@/utils/youtube.functions";
+import {
+  searchBandcamp,
+  searchRadioGarden,
+  searchSoundCloud,
+} from "@/lib/platform-client";
+import { getYouTubeClient } from "@/lib/youtube";
 
 type SearchParams = ExternalPlatformSearchParams;
 
 const externalPlatformSearchWorkflow = createExternalPlatformSearchWorkflow({
   adapters: {
     bandcamp: {
-      search: async (query, filter) => {
-        const response = await bandcampSearch({ data: { query, filter } });
-        if (!response.ok) {
-          throw new Error(response.error.message);
-        }
-        return response.data.results;
-      },
+      search: searchBandcamp,
     },
     radiogarden: {
-      search: async (query) => {
-        const response = await radioGardenSearch({ data: { query } });
-        if (!response.ok) {
-          throw new Error(response.error.message);
-        }
-        return response.data.results;
-      },
+      search: searchRadioGarden,
     },
     soundcloud: {
-      search: async (query) => {
-        const response = await soundcloudSearch({ data: { query } });
-        if (!response.ok) {
-          throw new Error(response.error.message);
-        }
-        return response.data.results;
-      },
+      search: searchSoundCloud,
     },
     youtube: {
-      search: async (query, filter) => {
-        const response = await youtubeSearch({ data: { query, filter } });
-        if (!response.ok) {
-          throw new Error(response.error.message);
-        }
-        return response.data.results;
-      },
+      search: async (query, filter) =>
+        await getYouTubeClient().search(query, filter),
     },
   },
   reportProviderError: (provider, error) => {

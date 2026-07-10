@@ -31,6 +31,7 @@ export function MultipleRadios({ radios }: { radios?: Radio[] }) {
     sessionRadios,
     resolve,
     saveToCollection,
+    selectDiscoveredStation,
     isResolving,
     dialogOpen,
     setDialogOpen,
@@ -101,6 +102,7 @@ export function MultipleRadios({ radios }: { radios?: Radio[] }) {
           className="mb-4 w-full max-w-md"
           isResolving={isResolving}
           onSaveRemote={saveToCollection}
+          onSelectDiscovered={selectDiscoveredStation}
           onSelectLocal={(radio) => addRadio(radio, true)}
           onSelectRemote={resolve}
           radios={radios ?? []}
@@ -122,6 +124,7 @@ export function MultipleRadios({ radios }: { radios?: Radio[] }) {
         className="mb-4"
         isResolving={isResolving}
         onSaveRemote={saveToCollection}
+        onSelectDiscovered={selectDiscoveredStation}
         onSelectLocal={(radio) => addRadio(radio, true)}
         onSelectRemote={resolve}
         radios={radios ?? []}

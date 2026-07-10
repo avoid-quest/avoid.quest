@@ -263,8 +263,11 @@ export const previewImportChanges = (
 
     if (existing) {
       const importsMetadataConfig = importedRadio.metadataConfig !== undefined;
+      const importsStreamFormat = importedRadio.streamFormat !== undefined;
       const hasChanged =
         existing.streamUrl !== importedRadio.streamUrl ||
+        (importsStreamFormat &&
+          existing.streamFormat !== importedRadio.streamFormat) ||
         existing.logoUrl !== importedRadio.logoUrl ||
         existing.description !== importedRadio.description ||
         existing.websiteUrl !== importedRadio.websiteUrl ||
@@ -312,6 +315,7 @@ export const replaceImportedData = (importData: DatabaseExport): void => {
         id,
         name: radio.name,
         streamUrl: radio.streamUrl,
+        streamFormat: radio.streamFormat,
         logoUrl: radio.logoUrl,
         description: radio.description,
         websiteUrl: radio.websiteUrl,
@@ -381,8 +385,11 @@ export const mergeImportedData = (importData: DatabaseExport): void => {
         // Check if radio data has changed
         const importsMetadataConfig =
           importedRadio.metadataConfig !== undefined;
+        const importsStreamFormat = importedRadio.streamFormat !== undefined;
         const hasChanged =
           existing.streamUrl !== importedRadio.streamUrl ||
+          (importsStreamFormat &&
+            existing.streamFormat !== importedRadio.streamFormat) ||
           existing.logoUrl !== importedRadio.logoUrl ||
           existing.description !== importedRadio.description ||
           existing.websiteUrl !== importedRadio.websiteUrl ||
@@ -394,6 +401,9 @@ export const mergeImportedData = (importData: DatabaseExport): void => {
           // Update existing radio with new data, preserving user preferences
           radiosCollection.update(existing.id, (draft) => {
             draft.streamUrl = importedRadio.streamUrl;
+            if (importsStreamFormat) {
+              draft.streamFormat = importedRadio.streamFormat;
+            }
             draft.logoUrl = importedRadio.logoUrl;
             draft.description = importedRadio.description;
             draft.websiteUrl = importedRadio.websiteUrl;
@@ -414,6 +424,7 @@ export const mergeImportedData = (importData: DatabaseExport): void => {
           id: generateId(),
           name: importedRadio.name,
           streamUrl: importedRadio.streamUrl,
+          streamFormat: importedRadio.streamFormat,
           logoUrl: importedRadio.logoUrl,
           description: importedRadio.description,
           websiteUrl: importedRadio.websiteUrl,

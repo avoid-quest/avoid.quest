@@ -213,8 +213,10 @@ describe("createDjModeLifecycleWorkflow", () => {
     const fadeOut = mock((_soundId: string, _duration: number) =>
       Promise.resolve()
     );
+    const cleanupCueBus = mock(() => undefined);
     const context = createTestContext();
     const workflow = createDjModeLifecycleWorkflow({
+      cleanupCueBus,
       ctx: context,
       fadeOutSound: fadeOut,
       fadeOutDurationMs: 120,
@@ -226,6 +228,7 @@ describe("createDjModeLifecycleWorkflow", () => {
     expect(fadeOut).toHaveBeenCalledWith("right_station-2", 120, true);
     expect(context.channels.deactivate).toHaveBeenCalledWith(DECK_A_CHANNEL_ID);
     expect(context.channels.deactivate).toHaveBeenCalledWith(DECK_B_CHANNEL_ID);
+    expect(cleanupCueBus).toHaveBeenCalledTimes(1);
     expect(getPlaybackChannelRuntime(DECK_A_CHANNEL_ID).soundId).toBeNull();
     expect(getPlaybackChannelRuntime(DECK_B_CHANNEL_ID).soundId).toBeNull();
     expect(getDjError()).toBeNull();

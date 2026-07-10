@@ -9,6 +9,7 @@ import {
 import { clearDjErrorSurface } from "@/lib/dj/dj-error-surface";
 import {
   cleanupAudioOnly,
+  cleanupCueBus as cleanupDjCueBus,
   createDjDeckCommands,
   setCrossfadePosition,
   setMasterVolume,
@@ -38,6 +39,7 @@ type FadeOutSound = (
 type DjDeckCommands = ReturnType<typeof createDjDeckCommands>;
 
 type CreateDjModeLifecycleWorkflowOptions = {
+  cleanupCueBus?: () => void;
   ctx?: PlaybackActionContext;
   fadeOutDurationMs?: number;
   fadeOutSound?: FadeOutSound;
@@ -132,12 +134,14 @@ async function activateDjMode(ctx: PlaybackActionContext): Promise<void> {
 async function deactivateDjMode(
   ctx: PlaybackActionContext,
   fadeOutSound: FadeOutSound,
-  fadeOutDurationMs: number
+  fadeOutDurationMs: number,
+  cleanupCueBus: () => void
 ): Promise<void> {
   const channelIds = getDjRuntimeCleanupChannelIds();
   const soundIds = getRuntimeSoundIds(channelIds);
   await fadeOutSoundIds(soundIds, fadeOutSound, fadeOutDurationMs);
   await cleanupAudioOnly(ctx);
+  cleanupCueBus();
   for (const channelId of channelIds) {
     resetPlaybackChannelRuntime(channelId);
   }
@@ -146,12 +150,14 @@ async function deactivateDjMode(
 }
 
 export function createDjModeLifecycleWorkflow({
+  cleanupCueBus = cleanupDjCueBus,
   ctx = getDefaultPlaybackActionContext(),
   fadeOutDurationMs = DJ_MODE_FADE_OUT_DURATION_MS,
   fadeOutSound = fadeOut,
 }: CreateDjModeLifecycleWorkflowOptions = {}): DjModeLifecycleWorkflow {
   return {
     activate: () => activateDjMode(ctx),
-    deactivate: () => deactivateDjMode(ctx, fadeOutSound, fadeOutDurationMs),
+    deactivate: () =>
+      deactivateDjMode(ctx, fadeOutSound, fadeOutDurationMs, cleanupCueBus),
   };
 }

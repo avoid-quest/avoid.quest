@@ -1,8 +1,5 @@
 import { describe, expect, mock, test } from "bun:test";
-import {
-  getMediaPlaybackCandidates,
-  MediaElementPlaybackSource,
-} from "./media-element-playback-source";
+import { MediaElementPlaybackSource } from "./media-element-playback-source";
 
 type Deferred<T> = {
   promise: Promise<T>;
@@ -353,63 +350,42 @@ function createPlaybackSource(): MediaElementPlaybackSource {
   );
 }
 
-describe("getMediaPlaybackCandidates", () => {
-  test("prefers the stream proxy for remote non-HLS URLs", () => {
-    expect(
-      getMediaPlaybackCandidates("https://stream-relay-geo.ntslive.net/stream2")
-    ).toEqual([
-      "/api/stream-proxy?url=https%3A%2F%2Fstream-relay-geo.ntslive.net%2Fstream2",
-    ]);
-  });
-
-  test("keeps direct-first ordering for HLS manifests", () => {
-    expect(
-      getMediaPlaybackCandidates("https://radio.example/live/index.m3u8")
-    ).toEqual([
-      "https://radio.example/live/index.m3u8",
-      "/api/stream-proxy?url=https%3A%2F%2Fradio.example%2Flive%2Findex.m3u8",
-    ]);
-  });
-
-  test("does not rewrite same-origin or already proxied URLs", () => {
-    expect(getMediaPlaybackCandidates("/audio/local.mp3")).toEqual([
-      "/audio/local.mp3",
-    ]);
-    expect(
-      getMediaPlaybackCandidates(
-        "/api/stream-proxy?url=https%3A%2F%2Fradio.example%2Fstream"
-      )
-    ).toEqual(["/api/stream-proxy?url=https%3A%2F%2Fradio.example%2Fstream"]);
-  });
-});
-
 describe("MediaElementPlaybackSource HLS loading", () => {
+  test("reports a direct media failure", async () => {
+    const mediaMocks = installMediaElementMocks();
+
+    try {
+      const source = createPlaybackSource();
+      const audio = mediaMocks.getAudio();
+      const load = source.load({
+        format: "progressive",
+        src: "https://one.example/audio.mp3",
+      });
+
+      await flushMicrotasks();
+      expect(audio.loadSources).toEqual(["https://one.example/audio.mp3"]);
+      audio.emit("error");
+
+      const error = await load.catch((failure: unknown) => failure);
+      expect(error).toBeInstanceOf(Error);
+      source.cleanup();
+    } finally {
+      mediaMocks.restore();
+    }
+  });
+
   test("keeps playback tied to the active request during a cold HLS import", async () => {
     const mediaMocks = installMediaElementMocks();
     const hlsMock = installDelayedHlsMock();
 
     try {
-      const nativeSource = createPlaybackSource();
-      const nativeAudio = mediaMocks.getAudio();
-      nativeAudio.nativeHlsSupport = "maybe";
-      const nativeLoad = nativeSource.load(
-        "https://radio.example/live/native.m3u8"
-      );
-      const nativePlay = nativeSource.play();
-      await flushMicrotasks();
-      expect(nativeAudio.playSources).toEqual([
-        "https://radio.example/live/native.m3u8",
-      ]);
-      expect(hlsMock.importStarted()).toBe(false);
-      nativeAudio.emit("loadedmetadata");
-      await expect(nativeLoad).resolves.toBeUndefined();
-      await expect(nativePlay).resolves.toBeUndefined();
-
       const activationSource = createPlaybackSource();
       const activationAudio = mediaMocks.getAudio();
-      const activationLoad = activationSource.load(
-        "https://radio.example/live/activation.m3u8"
-      );
+      activationAudio.nativeHlsSupport = "maybe";
+      const activationLoad = activationSource.load({
+        format: "hls",
+        src: "https://radio.example/live/activation.m3u8",
+      });
       const activationPlay = activationSource.play();
       const activationPlayResult = activationPlay.then(
         () => "resolved" as const,
@@ -418,14 +394,16 @@ describe("MediaElementPlaybackSource HLS loading", () => {
 
       await flushMicrotasks();
 
+      expect(hlsMock.importStarted()).toBe(true);
       expect(activationAudio.playCalls).toBe(1);
       expect(activationAudio.playSources).toEqual(["blob:mock-media-source-1"]);
 
       const pausedSource = createPlaybackSource();
       const pausedAudio = mediaMocks.getAudio();
-      const pausedLoad = pausedSource.load(
-        "https://radio.example/live/pause.m3u8"
-      );
+      const pausedLoad = pausedSource.load({
+        format: "hls",
+        src: "https://radio.example/live/pause.m3u8",
+      });
       const pausedPlay = pausedSource.play();
       const pausedPlayResult = pausedPlay.then(
         () => "resolved" as const,
@@ -439,43 +417,22 @@ describe("MediaElementPlaybackSource HLS loading", () => {
       pausedSource.pause();
       expect(pausedAudio.paused).toBe(true);
 
-      const fallbackSource = createPlaybackSource();
-      const fallbackAudio = mediaMocks.getAudio();
-      const fallbackLoad = fallbackSource.load(
-        "https://radio.example/live/fallback.m3u8"
-      );
-      const fallbackPlay = fallbackSource.play();
-      const fallbackPlayResult = fallbackPlay.then(
-        () => "resolved" as const,
-        (error: unknown) => error
-      );
-
-      await flushMicrotasks();
-      fallbackAudio.emit("abort");
-      await flushMicrotasks();
-      expect(fallbackAudio.playSources).toEqual(["blob:mock-media-source-3"]);
-
       hlsMock.importGate.resolve();
 
       await expect(activationLoad).resolves.toBeUndefined();
       await expect(pausedLoad).resolves.toBeUndefined();
-      await expect(fallbackLoad).resolves.toBeUndefined();
       expect(await activationPlayResult).toBe("resolved");
       expect(await pausedPlayResult).toBe("resolved");
-      expect(await fallbackPlayResult).toBe("resolved");
       expect(pausedAudio.playCalls).toBe(1);
       expect(pausedAudio.paused).toBe(true);
-      expect(hlsMock.attachedMediaSources).toHaveLength(3);
+      expect(hlsMock.attachedMediaSources).toHaveLength(2);
       expect(hlsMock.attachedMediaSources.every(Boolean)).toBe(true);
       expect(hlsMock.loadedSources).toEqual([
         "https://radio.example/live/activation.m3u8",
         "https://radio.example/live/pause.m3u8",
-        "/api/stream-proxy?url=https%3A%2F%2Fradio.example%2Flive%2Ffallback.m3u8",
       ]);
       activationSource.cleanup();
-      nativeSource.cleanup();
       pausedSource.cleanup();
-      fallbackSource.cleanup();
     } finally {
       mediaMocks.restore();
     }

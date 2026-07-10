@@ -1,5 +1,7 @@
 export {
   isHostnameOrSubdomain,
+  isLoopbackHostname,
+  isLoopbackHttpUrl,
   normalizePlatformHostname,
   parseHttpUrl,
 } from "./hostname.js";
@@ -13,6 +15,7 @@ export type {
   PublicHttpUrlValidationResult,
 } from "./public-http-url.js";
 export {
+  cachePublicHostnameResolver,
   fetchPublicHttpUrlWithValidatedRedirects,
   isBlockedPublicHttpHostname,
   isPublicHttpUrl,

@@ -43,8 +43,8 @@ describe("getPublicKodiStations", () => {
         enabled: false,
       },
       {
-        name: "Local proxy",
-        streamUrl: "/api/stream-proxy?url=https%3A%2F%2Fexample.com",
+        name: "Local asset",
+        streamUrl: "/audio/stream.mp3",
       },
       {
         name: "YouTube lazy token",

@@ -168,6 +168,49 @@ describe("mode lifecycle manager", () => {
     expect(switchTo).not.toHaveBeenCalled();
   });
 
+  test("coalesces duplicate startup synchronization for the same mode", async () => {
+    insertPlaybackSession("multiple");
+    const releaseActivation = Promise.withResolvers<void>();
+    const activateMultiple = mock(async () => {
+      await releaseActivation.promise;
+    });
+    const manager = createModeManager({
+      lifecycles: {
+        single: {
+          activate: mock(async () => undefined),
+          deactivate: mock(async () => undefined),
+          getPhase: () => "inactive",
+        },
+        multiple: {
+          activate: activateMultiple,
+          deactivate: mock(async () => undefined),
+          getPhase: () => "inactive",
+        },
+        dj: {
+          activate: mock(async () => undefined),
+          deactivate: mock(async () => undefined),
+          getPhase: () => "inactive",
+        },
+      },
+    });
+    const requests = createModeLifecycleRequests({ manager });
+
+    const firstSynchronization = requests.synchronizeMode("multiple");
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(manager.getSnapshot()).toMatchObject({
+      currentMode: null,
+      requestedMode: "multiple",
+      phase: "activating",
+    });
+
+    await requests.synchronizeMode("multiple");
+    expect(activateMultiple).toHaveBeenCalledTimes(1);
+
+    releaseActivation.resolve();
+    await firstSynchronization;
+  });
+
   test("waits for startup playback session readiness before activating mode", async () => {
     const activateInitialMode = mock(async (_mode: string) => undefined);
     const switchTo = mock(async (_mode: string) => undefined);

@@ -14,12 +14,9 @@ import { Route as PlaylistDotm3uRouteImport } from './routes/playlist[.]m3u'
 import { Route as ManifestRouteImport } from './routes/manifest'
 import { Route as ImportRouteImport } from './routes/import'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as ApiStreamProxyRouteImport } from './routes/api/stream-proxy'
 import { Route as ApiStationsDotjsonRouteImport } from './routes/api/stations[.]json'
-import { Route as ApiSoundcloudProxyRouteImport } from './routes/api/soundcloud-proxy'
 import { Route as ApiRadioMetadataRouteImport } from './routes/api/radio-metadata'
 import { Route as ApiFeedbackRouteImport } from './routes/api/feedback'
-import { Route as ApiBandcampProxyRouteImport } from './routes/api/bandcamp-proxy'
 
 const TunnelRoute = TunnelRouteImport.update({
   id: '/tunnel',
@@ -46,19 +43,9 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiStreamProxyRoute = ApiStreamProxyRouteImport.update({
-  id: '/api/stream-proxy',
-  path: '/api/stream-proxy',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ApiStationsDotjsonRoute = ApiStationsDotjsonRouteImport.update({
   id: '/api/stations.json',
   path: '/api/stations.json',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiSoundcloudProxyRoute = ApiSoundcloudProxyRouteImport.update({
-  id: '/api/soundcloud-proxy',
-  path: '/api/soundcloud-proxy',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiRadioMetadataRoute = ApiRadioMetadataRouteImport.update({
@@ -71,11 +58,6 @@ const ApiFeedbackRoute = ApiFeedbackRouteImport.update({
   path: '/api/feedback',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiBandcampProxyRoute = ApiBandcampProxyRouteImport.update({
-  id: '/api/bandcamp-proxy',
-  path: '/api/bandcamp-proxy',
-  getParentRoute: () => rootRouteImport,
-} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -83,12 +65,9 @@ export interface FileRoutesByFullPath {
   '/manifest': typeof ManifestRoute
   '/playlist.m3u': typeof PlaylistDotm3uRoute
   '/tunnel': typeof TunnelRoute
-  '/api/bandcamp-proxy': typeof ApiBandcampProxyRoute
   '/api/feedback': typeof ApiFeedbackRoute
   '/api/radio-metadata': typeof ApiRadioMetadataRoute
-  '/api/soundcloud-proxy': typeof ApiSoundcloudProxyRoute
   '/api/stations.json': typeof ApiStationsDotjsonRoute
-  '/api/stream-proxy': typeof ApiStreamProxyRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -96,12 +75,9 @@ export interface FileRoutesByTo {
   '/manifest': typeof ManifestRoute
   '/playlist.m3u': typeof PlaylistDotm3uRoute
   '/tunnel': typeof TunnelRoute
-  '/api/bandcamp-proxy': typeof ApiBandcampProxyRoute
   '/api/feedback': typeof ApiFeedbackRoute
   '/api/radio-metadata': typeof ApiRadioMetadataRoute
-  '/api/soundcloud-proxy': typeof ApiSoundcloudProxyRoute
   '/api/stations.json': typeof ApiStationsDotjsonRoute
-  '/api/stream-proxy': typeof ApiStreamProxyRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -110,12 +86,9 @@ export interface FileRoutesById {
   '/manifest': typeof ManifestRoute
   '/playlist.m3u': typeof PlaylistDotm3uRoute
   '/tunnel': typeof TunnelRoute
-  '/api/bandcamp-proxy': typeof ApiBandcampProxyRoute
   '/api/feedback': typeof ApiFeedbackRoute
   '/api/radio-metadata': typeof ApiRadioMetadataRoute
-  '/api/soundcloud-proxy': typeof ApiSoundcloudProxyRoute
   '/api/stations.json': typeof ApiStationsDotjsonRoute
-  '/api/stream-proxy': typeof ApiStreamProxyRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -125,12 +98,9 @@ export interface FileRouteTypes {
     | '/manifest'
     | '/playlist.m3u'
     | '/tunnel'
-    | '/api/bandcamp-proxy'
     | '/api/feedback'
     | '/api/radio-metadata'
-    | '/api/soundcloud-proxy'
     | '/api/stations.json'
-    | '/api/stream-proxy'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -138,12 +108,9 @@ export interface FileRouteTypes {
     | '/manifest'
     | '/playlist.m3u'
     | '/tunnel'
-    | '/api/bandcamp-proxy'
     | '/api/feedback'
     | '/api/radio-metadata'
-    | '/api/soundcloud-proxy'
     | '/api/stations.json'
-    | '/api/stream-proxy'
   id:
     | '__root__'
     | '/'
@@ -151,12 +118,9 @@ export interface FileRouteTypes {
     | '/manifest'
     | '/playlist.m3u'
     | '/tunnel'
-    | '/api/bandcamp-proxy'
     | '/api/feedback'
     | '/api/radio-metadata'
-    | '/api/soundcloud-proxy'
     | '/api/stations.json'
-    | '/api/stream-proxy'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -165,12 +129,9 @@ export interface RootRouteChildren {
   ManifestRoute: typeof ManifestRoute
   PlaylistDotm3uRoute: typeof PlaylistDotm3uRoute
   TunnelRoute: typeof TunnelRoute
-  ApiBandcampProxyRoute: typeof ApiBandcampProxyRoute
   ApiFeedbackRoute: typeof ApiFeedbackRoute
   ApiRadioMetadataRoute: typeof ApiRadioMetadataRoute
-  ApiSoundcloudProxyRoute: typeof ApiSoundcloudProxyRoute
   ApiStationsDotjsonRoute: typeof ApiStationsDotjsonRoute
-  ApiStreamProxyRoute: typeof ApiStreamProxyRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -210,25 +171,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/stream-proxy': {
-      id: '/api/stream-proxy'
-      path: '/api/stream-proxy'
-      fullPath: '/api/stream-proxy'
-      preLoaderRoute: typeof ApiStreamProxyRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/api/stations.json': {
       id: '/api/stations.json'
       path: '/api/stations.json'
       fullPath: '/api/stations.json'
       preLoaderRoute: typeof ApiStationsDotjsonRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/soundcloud-proxy': {
-      id: '/api/soundcloud-proxy'
-      path: '/api/soundcloud-proxy'
-      fullPath: '/api/soundcloud-proxy'
-      preLoaderRoute: typeof ApiSoundcloudProxyRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/radio-metadata': {
@@ -245,13 +192,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiFeedbackRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/bandcamp-proxy': {
-      id: '/api/bandcamp-proxy'
-      path: '/api/bandcamp-proxy'
-      fullPath: '/api/bandcamp-proxy'
-      preLoaderRoute: typeof ApiBandcampProxyRouteImport
-      parentRoute: typeof rootRouteImport
-    }
   }
 }
 
@@ -261,12 +201,9 @@ const rootRouteChildren: RootRouteChildren = {
   ManifestRoute: ManifestRoute,
   PlaylistDotm3uRoute: PlaylistDotm3uRoute,
   TunnelRoute: TunnelRoute,
-  ApiBandcampProxyRoute: ApiBandcampProxyRoute,
   ApiFeedbackRoute: ApiFeedbackRoute,
   ApiRadioMetadataRoute: ApiRadioMetadataRoute,
-  ApiSoundcloudProxyRoute: ApiSoundcloudProxyRoute,
   ApiStationsDotjsonRoute: ApiStationsDotjsonRoute,
-  ApiStreamProxyRoute: ApiStreamProxyRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

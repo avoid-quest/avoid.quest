@@ -18,7 +18,6 @@ import { load } from "cheerio";
 import { decode } from "html-entities";
 
 import { detectBandcampItemType } from "./detect.js";
-import { validateBandcampCdnUrl } from "./url-policy.js";
 
 export {
   BANDCAMP_HTML_MARKERS,
@@ -67,18 +66,16 @@ type BandcampExtraData = {
   trackinfo?: RawBandcampTrack[];
 };
 
-/** Proxies bcbits.com URLs through the API to avoid CORS issues. */
-export function getProxiedBandcampUrl(url: string): string {
-  if (validateBandcampCdnUrl(url).ok) {
-    return `/api/bandcamp-proxy?url=${encodeURIComponent(url)}`;
-  }
-  return url;
-}
-
 const REQUEST_TIMEOUT_MS = 10_000;
 const MAX_ARTIST_ALBUMS = 10;
 // Fetch more collection items since many won't have free streaming
 const MAX_COLLECTION_ITEMS = 50;
+
+function bandcampStreamFormat(
+  format?: BandcampTrackInfo["format"]
+): "hls" | "progressive" {
+  return format === "hls" ? "hls" : "progressive";
+}
 
 function createErrorResponse(message: string): BandcampItemError {
   return {
@@ -191,12 +188,24 @@ async function getBandcampAlbum(
     return createErrorResponse("No tracks found in album");
   }
 
-  const mappedTracks = extra.trackinfo.map((track, index) => ({
-    name: track.title,
-    streamUrl: track.file?.["mp3-128"] || "",
-    duration: track.duration,
-    trackNumber: track.track_num || index + 1,
-  }));
+  const mappedTracks = extra.trackinfo.flatMap((track, index) => {
+    const streamUrl = track.file?.["mp3-128"]?.trim();
+    return streamUrl
+      ? [
+          {
+            format: "progressive" as const,
+            name: track.title,
+            streamUrl,
+            duration: track.duration,
+            trackNumber: track.track_num || index + 1,
+          },
+        ]
+      : [];
+  });
+
+  if (mappedTracks.length === 0) {
+    return createErrorResponse("No playable tracks found in album");
+  }
 
   const totalDuration = mappedTracks.reduce(
     (sum, track) => sum + (track.duration || 0),
@@ -205,6 +214,7 @@ async function getBandcampAlbum(
 
   return {
     success: true,
+    format: "progressive",
     metadata: {
       platform: "bandcamp",
       itemType: "album",
@@ -236,6 +246,7 @@ async function getBandcampTrack(
 
   return {
     success: true,
+    format: "progressive",
     metadata: {
       platform: "bandcamp",
       itemType: "track",
@@ -332,6 +343,7 @@ function aggregateTracksFromResults(
       for (const track of meta.tracks) {
         if (track.streamUrl) {
           allTracks.push({
+            format: bandcampStreamFormat(track.format),
             name: `${meta.name} - ${track.name}`,
             streamUrl: track.streamUrl,
             duration: track.duration,
@@ -341,6 +353,7 @@ function aggregateTracksFromResults(
       }
     } else if (meta.streamUrl) {
       allTracks.push({
+        format: bandcampStreamFormat(result.value.format),
         name: meta.name || "Unknown Track",
         streamUrl: meta.streamUrl,
         duration: meta.duration,
@@ -390,6 +403,7 @@ async function getBandcampArtist(
 
   return {
     success: true,
+    format: allTracks[0]?.format ?? "progressive",
     metadata: {
       platform: "bandcamp",
       itemType: "artist",
@@ -568,6 +582,7 @@ function aggregateCollectionTracks(
           continue;
         }
         allTracks.push({
+          format: bandcampStreamFormat(track.format),
           name: formatCollectionTrackName(
             meta.artist || meta.name || "",
             track.name
@@ -579,6 +594,7 @@ function aggregateCollectionTracks(
       }
     } else if (meta.streamUrl) {
       allTracks.push({
+        format: bandcampStreamFormat(result.value.format),
         name: formatCollectionTrackName(meta.artist || "", meta.name || ""),
         streamUrl: meta.streamUrl,
         duration: meta.duration,
@@ -644,6 +660,7 @@ async function getBandcampCollection(
 
   return {
     success: true,
+    format: allTracks[0]?.format ?? "progressive",
     metadata: {
       platform: "bandcamp",
       itemType: "collection",

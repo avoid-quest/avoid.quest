@@ -39,7 +39,7 @@ export function useMultipleRadioManagement({
     },
     [addRadio]
   );
-  const { resolve, saveToCollection, isResolving } =
+  const { resolve, saveToCollection, selectDiscoveredStation, isResolving } =
     useRadioGardenResolve(handleResolved);
 
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -115,6 +115,7 @@ export function useMultipleRadioManagement({
     sessionRadios,
     resolve,
     saveToCollection,
+    selectDiscoveredStation,
     isResolving,
     dialogOpen,
     setDialogOpen,

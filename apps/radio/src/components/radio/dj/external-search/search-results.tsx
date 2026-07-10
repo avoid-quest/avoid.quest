@@ -5,10 +5,11 @@ import { useState } from "react";
 import type { Radio } from "@/lib/audio";
 import { formatPlatformDuration } from "@/lib/external-url/utils";
 import { useDjTrackLoad } from "@/lib/hooks/use-dj-track-load";
-import { useSearchResultsStore } from "./search-results-store";
 
 type SearchResultsProps = {
+  error: string | null;
   onLoad: (radio: Radio) => void;
+  results: UnifiedSearchResult[];
 };
 
 const PLATFORM_COLORS = {
@@ -124,9 +125,7 @@ function ResultItem({
   );
 }
 
-export function SearchResults({ onLoad }: SearchResultsProps) {
-  const results = useSearchResultsStore((s) => s.results);
-  const error = useSearchResultsStore((s) => s.error);
+export function SearchResults({ error, onLoad, results }: SearchResultsProps) {
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 

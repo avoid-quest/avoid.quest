@@ -16,7 +16,11 @@ import { usePeakLevel } from "@/lib/hooks/use-peak-level";
 import { usePlatformMetadata } from "@/lib/hooks/use-platform-metadata";
 import { useThrottledParam } from "@/lib/hooks/use-throttled-param";
 import { useTrackProgress } from "@/lib/hooks/use-track-progress";
-import { isDeviceInputMetadata, isFileMetadata } from "@/lib/platform-types";
+import {
+  isDeviceInputMetadata,
+  isFileMetadata,
+  isStaticAudioMetadata,
+} from "@/lib/platform-types";
 import {
   setDeckAPeakLevel,
   setDeckBPeakLevel,
@@ -33,6 +37,7 @@ import { LoadedDeckContent } from "./deck-loaded-content";
 import {
   calculateHasTracklist,
   isStreamingMetadata,
+  resolveDeckPanelContentKind,
 } from "./deck-panel-helpers";
 
 // ============================================================================
@@ -180,7 +185,9 @@ function DeckPanelInner({
       : undefined;
 
   const isDeviceInput = radio?.platformMetadata?.platform === "device-input";
-  const isFileSource = isFileMetadata(radio?.platformMetadata);
+  const isFileSource =
+    isFileMetadata(radio?.platformMetadata) ||
+    isStaticAudioMetadata(radio?.platformMetadata);
   const effectiveMetadata = metadata || radio?.platformMetadata;
   const hasTracklist = calculateHasTracklist(effectiveMetadata);
   const streamingMeta = isStreamingMetadata(effectiveMetadata)
@@ -271,6 +278,10 @@ function DeckPanelInner({
     }
   };
 
+  const handleCancelPendingSource = () => {
+    setPendingPlatformItem(null);
+  };
+
   const handleLoadTrack = async (streamUrl: string) => {
     if (!radio) {
       return;
@@ -342,8 +353,40 @@ function DeckPanelInner({
 
   // Determine which content to render
   let content: React.ReactNode;
+  const contentKind = resolveDeckPanelContentKind(!!radio, pendingPlatform);
 
-  if (radio) {
+  if (contentKind === "pending-device") {
+    content = (
+      <DeviceForm
+        onCancel={handleCancelPendingSource}
+        onLoad={handleLoadDeviceInput}
+      />
+    );
+  } else if (contentKind === "pending-file") {
+    content = (
+      <FileForm
+        onCancel={handleCancelPendingSource}
+        onLoad={handleFileDrop}
+        onLoadUrl={handleLoadRemoteUrl}
+      />
+    );
+  } else if (contentKind === "pending-external" && pendingPlatform) {
+    const searchPlatform =
+      pendingPlatform === "bandcamp" ||
+      pendingPlatform === "soundcloud" ||
+      pendingPlatform === "youtube" ||
+      pendingPlatform === "radiogarden"
+        ? pendingPlatform
+        : "all";
+    content = (
+      <ExternalSearch
+        initialPlatform={searchPlatform}
+        key={searchPlatform}
+        onCancel={handleCancelPendingSource}
+        onLoad={handleLoadPlatformItem}
+      />
+    );
+  } else if (contentKind === "loaded" && radio) {
     if (isChangingFile && isFileSource) {
       content = (
         <FileForm
@@ -370,6 +413,7 @@ function DeckPanelInner({
       content = (
         <ExternalSearch
           initialPlatform={searchPlatform}
+          key={searchPlatform}
           onCancel={() => setIsChangingUrl(false)}
           onLoad={handleUrlChanged}
         />
@@ -425,37 +469,6 @@ function DeckPanelInner({
         </DeckProvider>
       );
     }
-  } else if (pendingPlatform === "device-input") {
-    content = (
-      <DeviceForm onCancel={handleClear} onLoad={handleLoadDeviceInput} />
-    );
-  } else if (
-    pendingPlatform === "local-file" ||
-    pendingPlatform === "static-audio"
-  ) {
-    content = (
-      <FileForm
-        onCancel={handleClear}
-        onLoad={handleFileDrop}
-        onLoadUrl={handleLoadRemoteUrl}
-      />
-    );
-  } else if (
-    pendingPlatform === "external" ||
-    pendingPlatform === "bandcamp" ||
-    pendingPlatform === "soundcloud" ||
-    pendingPlatform === "youtube" ||
-    pendingPlatform === "radiogarden"
-  ) {
-    const searchPlatform =
-      pendingPlatform === "external" ? "all" : pendingPlatform;
-    content = (
-      <ExternalSearch
-        initialPlatform={searchPlatform}
-        onCancel={handleClear}
-        onLoad={handleLoadPlatformItem}
-      />
-    );
   } else if (isMobile) {
     content = (
       <div className="flex h-full min-h-0 flex-col gap-2">

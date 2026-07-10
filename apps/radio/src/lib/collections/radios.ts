@@ -62,6 +62,7 @@ const radioSchema = z.object({
   id: z.string(),
   name: z.string(),
   streamUrl: z.string(),
+  streamFormat: z.enum(["hls", "progressive"]).optional(),
   logoUrl: z.string().optional(),
   description: z.string().optional(),
   websiteUrl: z.string().optional(),
@@ -100,6 +101,7 @@ export type SyncChanges = {
 function hasRadioChanged(existing: RadioRecord, incoming: Radio): boolean {
   return (
     existing.streamUrl !== incoming.streamUrl ||
+    existing.streamFormat !== incoming.streamFormat ||
     existing.logoUrl !== incoming.logoUrl ||
     existing.description !== incoming.description ||
     existing.websiteUrl !== incoming.websiteUrl ||
@@ -164,6 +166,7 @@ export function applySyncChanges(changes: SyncChanges): void {
   for (const { existing, incoming } of changes.updates) {
     radiosCollection.update(existing.id, (draft) => {
       draft.streamUrl = incoming.streamUrl;
+      draft.streamFormat = incoming.streamFormat;
       draft.logoUrl = incoming.logoUrl;
       draft.description = incoming.description;
       draft.websiteUrl = incoming.websiteUrl;
@@ -178,6 +181,7 @@ export function applySyncChanges(changes: SyncChanges): void {
       id: generateId(),
       name: radio.name,
       streamUrl: radio.streamUrl,
+      streamFormat: radio.streamFormat,
       logoUrl: radio.logoUrl,
       description: radio.description,
       websiteUrl: radio.websiteUrl,
@@ -221,6 +225,7 @@ export async function initializeRadios(): Promise<SyncChanges | null> {
         id: generateId(),
         name: radio.name,
         streamUrl: radio.streamUrl,
+        streamFormat: radio.streamFormat,
         logoUrl: radio.logoUrl,
         description: radio.description,
         websiteUrl: radio.websiteUrl,

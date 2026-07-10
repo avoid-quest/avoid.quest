@@ -1,7 +1,10 @@
 import type { AudioManager, Radio } from "@/lib/audio";
 import type { DeckId, DeckSide } from "@/lib/dj-actions-decks.js";
 import { findNextTrack as findNextTrackInPlaylist } from "@/lib/dj-actions-playlist.js";
-import type { PlatformStreamResolutionInput } from "@/lib/dj-platform-stream-port.js";
+import type {
+  PlatformStreamResolution,
+  PlatformStreamResolutionInput,
+} from "@/lib/dj-platform-stream-port.js";
 import type { DeckRecord } from "@/lib/hooks/use-dj-state";
 import { isYouTubeMetadata } from "@/lib/platform-types";
 import {
@@ -31,7 +34,7 @@ type DjDeckContinuationDependencies = {
   reportPlaybackError?: (error: PlaybackActionError) => void;
   resolvePlatformStreamUrl: (
     input: PlatformStreamResolutionInput
-  ) => Promise<string | null>;
+  ) => Promise<PlatformStreamResolution | null>;
   seekDeckSound: (soundId: string, position: number) => void;
 };
 
@@ -51,6 +54,59 @@ type StreamInterruptedInput = {
 };
 
 type StreamInterruptedResult = "refreshed" | "not-refreshable" | "failed";
+
+type StreamRefreshRequest = {
+  failureCode: string;
+  failureMessage: string;
+  resolution: PlatformStreamResolutionInput;
+};
+
+function getStreamRefreshRequest(
+  currentRadio: Radio
+): StreamRefreshRequest | null {
+  const metadata = currentRadio.platformMetadata;
+  const videoId = isYouTubeMetadata(metadata)
+    ? (metadata.videoId ??
+      metadata.tracks?.find(
+        (track) => track.streamUrl === currentRadio.streamUrl
+      )?.videoId)
+    : undefined;
+  if (videoId) {
+    return {
+      failureCode: "DJ_YOUTUBE_REFRESH_FAILED",
+      failureMessage: "Failed to refresh YouTube stream - please reload",
+      resolution: {
+        platform: "youtube",
+        reason: "stream-refresh",
+        videoId,
+        radio: currentRadio,
+      },
+    };
+  }
+
+  if (
+    metadata?.platform !== "bandcamp" &&
+    metadata?.platform !== "soundcloud"
+  ) {
+    return null;
+  }
+  const canonicalUrl = metadata.url.trim();
+  if (!canonicalUrl) {
+    return null;
+  }
+  const providerName =
+    metadata.platform === "bandcamp" ? "Bandcamp" : "SoundCloud";
+  return {
+    failureCode: `DJ_${metadata.platform.toUpperCase()}_REFRESH_FAILED`,
+    failureMessage: `Failed to refresh ${providerName} stream - please reload`,
+    resolution: {
+      canonicalUrl,
+      platform: metadata.platform,
+      reason: "stream-refresh",
+      radio: currentRadio,
+    },
+  };
+}
 
 type DjDeckContinuationWorkflow = {
   handleTrackEnded: (input: TrackEndedInput) => Promise<void>;
@@ -94,13 +150,13 @@ async function resolveAndLoadYouTubeTrack(
   videoId: string,
   dependencies: DjDeckContinuationDependencies
 ): Promise<void> {
-  const resolvedUrl = await dependencies.resolvePlatformStreamUrl({
+  const resolved = await dependencies.resolvePlatformStreamUrl({
     platform: "youtube",
     reason: "playlist-next",
     videoId,
     radio: deckRadio,
   });
-  if (!resolvedUrl) {
+  if (!resolved) {
     dependencies.reportDjError(
       "Failed to resolve next track: no stream URL found",
       "DJ_NEXT_TRACK_RESOLVE_FAILED",
@@ -119,13 +175,17 @@ async function resolveAndLoadYouTubeTrack(
       (item) => "videoId" in item && item.videoId === videoId
     );
     if (track) {
-      track.streamUrl = resolvedUrl;
+      track.streamUrl = resolved.streamUrl;
     }
   }
 
   await dependencies.loadTrack(
     deckSide,
-    { ...deckRadio, streamUrl: resolvedUrl },
+    {
+      ...deckRadio,
+      streamFormat: resolved.streamFormat,
+      streamUrl: resolved.streamUrl,
+    },
     true
   );
 }
@@ -170,7 +230,7 @@ async function handleTrackEnded(
   }
 
   try {
-    const { streamUrl } = nextTrack;
+    const { streamFormat, streamUrl } = nextTrack;
     if (streamUrl.startsWith("yt:")) {
       await resolveAndLoadYouTubeTrack(
         deckId,
@@ -182,7 +242,15 @@ async function handleTrackEnded(
       return;
     }
 
-    await dependencies.loadTrack(deckSide, { ...deckRadio, streamUrl }, true);
+    await dependencies.loadTrack(
+      deckSide,
+      {
+        ...deckRadio,
+        streamFormat,
+        streamUrl,
+      },
+      true
+    );
   } catch (error) {
     reportContinuationFailure(dependencies, {
       code: "DJ_LOAD_NEXT_TRACK_FAILED",
@@ -199,34 +267,31 @@ async function handleStreamInterrupted(
   dependencies: DjDeckContinuationDependencies
 ): Promise<StreamInterruptedResult> {
   const { currentRadio, deckId, position, soundId } = input;
-  if (
-    !(
-      isYouTubeMetadata(currentRadio.platformMetadata) &&
-      currentRadio.platformMetadata.videoId
-    )
-  ) {
+  const refreshRequest = getStreamRefreshRequest(currentRadio);
+  if (!refreshRequest) {
     return "not-refreshable";
   }
 
   try {
-    const newUrl = await dependencies.resolvePlatformStreamUrl({
-      platform: "youtube",
-      reason: "stream-refresh",
-      videoId: currentRadio.platformMetadata.videoId,
-      radio: currentRadio,
-    });
-    if (newUrl) {
-      await dependencies
-        .getAudioManager()
-        .refreshStreamUrl(soundId, newUrl, position);
+    const resolved = await dependencies.resolvePlatformStreamUrl(
+      refreshRequest.resolution
+    );
+    if (resolved) {
+      const audioManager = dependencies.getAudioManager();
+      await audioManager.refreshStreamUrl(
+        soundId,
+        resolved.streamUrl,
+        position,
+        resolved.streamFormat
+      );
       dependencies.clearDjError(deckId);
       dependencies.applyCrossfade();
       return "refreshed";
     }
 
     dependencies.reportDjError(
-      "Failed to refresh YouTube stream - please reload",
-      "DJ_YOUTUBE_REFRESH_FAILED",
+      refreshRequest.failureMessage,
+      refreshRequest.failureCode,
       undefined,
       currentRadio,
       deckId
@@ -237,7 +302,7 @@ async function handleStreamInterrupted(
       code: "DJ_STREAM_REFRESH_FAILED",
       deckId,
       error,
-      fallbackMessage: "Failed to refresh YouTube stream - please reload",
+      fallbackMessage: refreshRequest.failureMessage,
       radio: currentRadio,
     });
     return "failed";

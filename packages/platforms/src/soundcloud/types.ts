@@ -1,6 +1,9 @@
+import type { PlatformStreamFormat } from "../stream-format.js";
+
 export type SoundCloudItemType = "track" | "playlist" | "user";
 
 export type SoundCloudTrackInfo = {
+  format?: PlatformStreamFormat;
   name: string;
   streamUrl: string;
   duration?: number;
@@ -21,6 +24,7 @@ export type SoundCloudMetadata = {
 };
 
 export type SoundCloudItemResult = {
+  format?: PlatformStreamFormat;
   success: true;
   metadata: SoundCloudMetadata;
   streamUrl: string;

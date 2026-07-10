@@ -2,12 +2,10 @@ import {
   isLoopbackHttpUrl,
   isPublicHttpUrl,
 } from "@avoid.quest/platforms/url-policy";
-import { getCompatibilityFallbacksEnabled } from "@/lib/compatibility-fallback-policy";
 import type {
   StaticAudioMetadata,
   StaticAudioTrack,
 } from "@/lib/platform-types";
-import { getStreamRelayUrls } from "@/lib/relay";
 import { inferStreamFormat } from "./playback/stream-format.js";
 import { type ParsedPlaylist, parsePlaylist } from "./playlist-parser.js";
 import { getFilenameFromUrl, isAudioUrl, isPlaylistUrl } from "./remote-url.js";
@@ -45,103 +43,31 @@ type FetchLike = (
   init?: RequestInit
 ) => Promise<Response>;
 
-export type ClientStaticAudioAttemptKind = "app-server" | "direct" | "relay";
-
-export type ClientStaticAudioAttemptFailure = {
-  code:
-    | "aborted"
-    | "http-error"
-    | "invalid-content"
-    | "invalid-content-type"
-    | "network-error"
-    | "response-too-large"
-    | "timeout";
-  kind: ClientStaticAudioAttemptKind;
-  message: string;
-  url: string;
-};
-
 export type ClientStaticAudioResolution = {
-  attemptFailures: ClientStaticAudioAttemptFailure[];
   format: "hls" | "progressive";
   metadata: StaticAudioMetadata;
   streamUrl: string;
 };
 
 export type ClientStaticAudioResolverDependencies = {
-  allowCompatibilityFallbacks?: boolean;
-  appServerFallback?: (
-    upstreamUrl: string,
-    init: RequestInit
-  ) => Promise<Response>;
   fetchImpl?: FetchLike;
-  getRelayUrls?: (
-    upstreamUrl: string,
-    format: "hls" | "progressive"
-  ) => readonly string[];
   maxResponseBytes?: number;
   signal?: AbortSignal;
   timeoutMs?: number;
 };
 
-class CandidateFailure extends Error {
-  readonly code: ClientStaticAudioAttemptFailure["code"];
-
-  constructor(
-    code: ClientStaticAudioAttemptFailure["code"],
-    message: string,
-    options?: ErrorOptions
-  ) {
+class PlaylistError extends Error {
+  constructor(message: string, options?: ErrorOptions) {
     super(message, options);
-    this.code = code;
-    this.name = "CandidateFailure";
-  }
-}
-
-class CandidateAttemptError extends Error {
-  readonly failure: ClientStaticAudioAttemptFailure;
-
-  constructor(failure: ClientStaticAudioAttemptFailure) {
-    super(failure.message);
-    this.failure = failure;
-    this.name = "CandidateAttemptError";
+    this.name = "PlaylistError";
   }
 }
 
 export class ClientStaticAudioResolverError extends Error {
-  readonly attemptFailures: ClientStaticAudioAttemptFailure[];
-
-  constructor(
-    message: string,
-    attemptFailures: ClientStaticAudioAttemptFailure[] = [],
-    options?: ErrorOptions
-  ) {
+  constructor(message: string, options?: ErrorOptions) {
     super(message, options);
-    this.attemptFailures = attemptFailures;
     this.name = "ClientStaticAudioResolverError";
   }
-}
-
-type Candidate = {
-  fetch: (init: RequestInit) => Promise<Response>;
-  kind: ClientStaticAudioAttemptKind;
-  url: string;
-};
-
-function appServerCandidates(
-  upstreamUrl: string,
-  fallback: ClientStaticAudioResolverDependencies["appServerFallback"],
-  enabled: boolean
-): Candidate[] {
-  return fallback && enabled
-    ? [
-        {
-          fetch: (init) => fallback(upstreamUrl, init),
-          kind: "app-server",
-          url: upstreamUrl,
-        },
-      ]
-    : [];
 }
 
 function parseUrl(value: string): URL {
@@ -149,7 +75,7 @@ function parseUrl(value: string): URL {
   try {
     url = new URL(value.trim());
   } catch (error) {
-    throw new ClientStaticAudioResolverError("Audio URL is invalid", [], {
+    throw new ClientStaticAudioResolverError("Audio URL is invalid", {
       cause: error,
     });
   }
@@ -212,10 +138,7 @@ function playlistMetadata(
   }));
   const firstTrack = tracks[0];
   if (!firstTrack) {
-    throw new CandidateFailure(
-      "invalid-content",
-      "Playlist contains no tracks"
-    );
+    throw new PlaylistError("Playlist contains no tracks");
   }
   const displayName = getFilenameFromUrl(url) || "Unknown";
   return {
@@ -245,23 +168,16 @@ function validateTrackUrls(
     try {
       url = new URL(track.url);
     } catch (error) {
-      throw new CandidateFailure(
-        "invalid-content",
-        "Playlist contains an invalid track URL",
-        {
-          cause: error,
-        }
-      );
+      throw new PlaylistError("Playlist contains an invalid track URL", {
+        cause: error,
+      });
     }
     if (
       (url.protocol !== "http:" && url.protocol !== "https:") ||
       url.username ||
       url.password
     ) {
-      throw new CandidateFailure(
-        "invalid-content",
-        "Playlist contains an unsafe track URL"
-      );
+      throw new PlaylistError("Playlist contains an unsafe track URL");
     }
     if (
       !(
@@ -269,10 +185,7 @@ function validateTrackUrls(
         (allowLoopback && isLoopbackHttpUrl(track.url))
       )
     ) {
-      throw new CandidateFailure(
-        "invalid-content",
-        "Playlist contains a private track URL"
-      );
+      throw new PlaylistError("Playlist contains a private track URL");
     }
   }
 }
@@ -288,10 +201,7 @@ function parsePlaylistContent(
     normalized.includes("\0") ||
     HTML_PATTERN.test(normalized)
   ) {
-    throw new CandidateFailure(
-      "invalid-content",
-      "Response is not a valid audio playlist"
-    );
+    throw new PlaylistError("Response is not a valid audio playlist");
   }
 
   if (HLS_DIRECTIVE_PATTERN.test(normalized)) {
@@ -300,10 +210,7 @@ function parsePlaylistContent(
 
   const playlist = parsePlaylist(normalized, upstreamUrl);
   if (expectedExtension === ".pls" && playlist.format !== "pls") {
-    throw new CandidateFailure(
-      "invalid-content",
-      "Response is not a valid PLS playlist"
-    );
+    throw new PlaylistError("Response is not a valid PLS playlist");
   }
   validateTrackUrls(playlist, upstreamUrl);
   return playlistMetadata(upstreamUrl, playlist);
@@ -316,8 +223,7 @@ function validateContentType(response: Response): void {
     ?.trim()
     .toLowerCase();
   if (!PLAYLIST_CONTENT_TYPES.has(contentType ?? "")) {
-    throw new CandidateFailure(
-      "invalid-content-type",
+    throw new PlaylistError(
       `Unexpected playlist content type: ${contentType || "unknown"}`
     );
   }
@@ -329,10 +235,7 @@ async function readLimitedText(
 ): Promise<string> {
   const declaredLength = Number(response.headers.get("content-length"));
   if (Number.isFinite(declaredLength) && declaredLength > maxResponseBytes) {
-    throw new CandidateFailure(
-      "response-too-large",
-      `Playlist exceeds ${maxResponseBytes} bytes`
-    );
+    throw new PlaylistError(`Playlist exceeds ${maxResponseBytes} bytes`);
   }
 
   if (!response.body) {
@@ -352,25 +255,18 @@ async function readLimitedText(
       bytesRead += chunk.value.byteLength;
       if (bytesRead > maxResponseBytes) {
         await reader.cancel();
-        throw new CandidateFailure(
-          "response-too-large",
-          `Playlist exceeds ${maxResponseBytes} bytes`
-        );
+        throw new PlaylistError(`Playlist exceeds ${maxResponseBytes} bytes`);
       }
       text += decoder.decode(chunk.value, { stream: true });
     }
     return text + decoder.decode();
   } catch (error) {
-    if (error instanceof CandidateFailure) {
+    if (error instanceof PlaylistError) {
       throw error;
     }
-    throw new CandidateFailure(
-      "invalid-content",
-      "Playlist response is not valid UTF-8 text",
-      {
-        cause: error,
-      }
-    );
+    throw new PlaylistError("Playlist response is not valid UTF-8 text", {
+      cause: error,
+    });
   } finally {
     reader.releaseLock();
   }
@@ -404,36 +300,24 @@ function createRequestSignal(
   };
 }
 
-function candidateFailure(
-  candidate: Candidate,
+function resolverError(
   error: unknown,
   timedOut: boolean,
   parentAborted: boolean
-): ClientStaticAudioAttemptFailure {
-  if (error instanceof CandidateFailure) {
-    return {
-      code: error.code,
-      kind: candidate.kind,
-      message: error.message,
-      url: candidate.url,
-    };
+): ClientStaticAudioResolverError {
+  if (error instanceof PlaylistError) {
+    return new ClientStaticAudioResolverError(error.message, { cause: error });
   }
   if (timedOut || parentAborted) {
-    return {
-      code: timedOut ? "timeout" : "aborted",
-      kind: candidate.kind,
-      message: timedOut
-        ? "Playlist request timed out"
-        : "Playlist request was aborted",
-      url: candidate.url,
-    };
+    return new ClientStaticAudioResolverError(
+      timedOut ? "Playlist request timed out" : "Playlist request was aborted",
+      { cause: error }
+    );
   }
-  return {
-    code: "network-error",
-    kind: candidate.kind,
-    message: error instanceof Error ? error.message : "Playlist request failed",
-    url: candidate.url,
-  };
+  return new ClientStaticAudioResolverError(
+    error instanceof Error ? error.message : "Playlist request failed",
+    { cause: error }
+  );
 }
 
 function requestInit(signal: AbortSignal): RequestInit {
@@ -473,8 +357,8 @@ function runUntilAbort<T>(
   });
 }
 
-async function resolveCandidate(
-  candidate: Candidate,
+async function resolvePlaylist(
+  fetchImpl: FetchLike,
   upstreamUrl: string,
   expectedExtension: string,
   timeoutMs: number,
@@ -484,10 +368,12 @@ async function resolveCandidate(
   const requestSignal = createRequestSignal(parentSignal, timeoutMs);
   try {
     return await runUntilAbort(async () => {
-      const response = await candidate.fetch(requestInit(requestSignal.signal));
+      const response = await fetchImpl(
+        upstreamUrl,
+        requestInit(requestSignal.signal)
+      );
       if (!response.ok) {
-        throw new CandidateFailure(
-          "http-error",
+        throw new PlaylistError(
           `Playlist request failed with status ${response.status}`
         );
       }
@@ -499,13 +385,10 @@ async function resolveCandidate(
       );
     }, requestSignal.signal);
   } catch (error) {
-    throw new CandidateAttemptError(
-      candidateFailure(
-        candidate,
-        error,
-        requestSignal.timedOut(),
-        parentSignal?.aborted ?? false
-      )
+    throw resolverError(
+      error,
+      requestSignal.timedOut(),
+      parentSignal?.aborted ?? false
     );
   } finally {
     requestSignal.cleanup();
@@ -533,7 +416,6 @@ export async function resolveClientStaticAudio(
       MIME_TYPES[expectedExtension] ?? "audio/mpeg"
     );
     return {
-      attemptFailures: [],
       format: metadataFormat(metadata),
       metadata,
       streamUrl: upstreamUrl,
@@ -554,69 +436,17 @@ export async function resolveClientStaticAudio(
     "Maximum response size"
   );
   const fetchImpl = dependencies.fetchImpl ?? fetch;
-  const format = expectedExtension === ".m3u8" ? "hls" : "progressive";
-  const getRelayUrls = dependencies.getRelayUrls ?? getStreamRelayUrls;
-  const relayFormats =
-    format === "hls"
-      ? (["hls", "progressive"] as const)
-      : (["progressive", "hls"] as const);
-  const relayUrls = [
-    ...new Set(
-      relayFormats.flatMap((relayFormat) =>
-        getRelayUrls(upstreamUrl, relayFormat)
-      )
-    ),
-  ];
-  const candidates: Candidate[] = [
-    {
-      fetch: (init) => fetchImpl(upstreamUrl, init),
-      kind: "direct",
-      url: upstreamUrl,
-    },
-    ...relayUrls.map((url) => ({
-      fetch: (init: RequestInit) => fetchImpl(url, init),
-      kind: "relay" as const,
-      url,
-    })),
-    ...appServerCandidates(
-      upstreamUrl,
-      dependencies.appServerFallback,
-      dependencies.allowCompatibilityFallbacks ??
-        getCompatibilityFallbacksEnabled()
-    ),
-  ];
-
-  const attemptFailures: ClientStaticAudioAttemptFailure[] = [];
-  for (const candidate of candidates) {
-    try {
-      const metadata = await resolveCandidate(
-        candidate,
-        upstreamUrl,
-        expectedExtension,
-        timeoutMs,
-        maxResponseBytes,
-        dependencies.signal
-      );
-      return {
-        attemptFailures,
-        format: metadataFormat(metadata),
-        metadata,
-        streamUrl: metadata.streamUrl,
-      };
-    } catch (error) {
-      if (error instanceof CandidateAttemptError) {
-        attemptFailures.push(error.failure);
-      } else {
-        attemptFailures.push(candidateFailure(candidate, error, false, false));
-      }
-      if (dependencies.signal?.aborted) {
-        break;
-      }
-    }
-  }
-
-  throw new ClientStaticAudioResolverError(
-    "Unable to read the audio playlist in this browser",
-    attemptFailures
+  const metadata = await resolvePlaylist(
+    fetchImpl,
+    upstreamUrl,
+    expectedExtension,
+    timeoutMs,
+    maxResponseBytes,
+    dependencies.signal
   );
+  return {
+    format: metadataFormat(metadata),
+    metadata,
+    streamUrl: metadata.streamUrl,
+  };
 }

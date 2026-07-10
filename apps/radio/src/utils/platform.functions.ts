@@ -209,18 +209,22 @@ export const loadPlatformItem = createServerFn({ method: "POST" })
             });
           }
 
-          if (!item.streamUrl.startsWith("/")) {
-            try {
-              new URL(item.streamUrl);
-            } catch {
-              throw new AppError({
-                code: "PLATFORM_INVALID_STREAM_URL",
-                safeMessage: "Platform returned an invalid stream URL",
-                category: "dependency",
-                expected: false,
-                status: 500,
-              });
+          try {
+            const streamUrl = new URL(item.streamUrl);
+            if (
+              streamUrl.protocol !== "http:" &&
+              streamUrl.protocol !== "https:"
+            ) {
+              throw new TypeError("Unsupported stream URL protocol");
             }
+          } catch {
+            throw new AppError({
+              code: "PLATFORM_INVALID_STREAM_URL",
+              safeMessage: "Platform returned an invalid stream URL",
+              category: "dependency",
+              expected: false,
+              status: 500,
+            });
           }
 
           return item;

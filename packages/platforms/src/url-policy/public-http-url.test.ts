@@ -45,6 +45,23 @@ describe("validatePublicHttpUrl", () => {
     const result = validatePublicHttpUrl("https://radio.example/live.mp3");
     expect(result.ok).toBeTrue();
   });
+
+  test("allows signed media URLs up to 4096 characters", () => {
+    const prefix = "https://media.example/";
+    const url = prefix + "x".repeat(4096 - prefix.length);
+
+    expect(validatePublicHttpUrl(url).ok).toBeTrue();
+  });
+
+  test("rejects public HTTP URLs longer than 4096 characters", () => {
+    const prefix = "https://media.example/";
+    const url = prefix + "x".repeat(4097 - prefix.length);
+
+    expect(validatePublicHttpUrl(url)).toEqual({
+      ok: false,
+      reason: "invalid-url",
+    });
+  });
 });
 
 describe("validatePublicHttpUrlParam", () => {

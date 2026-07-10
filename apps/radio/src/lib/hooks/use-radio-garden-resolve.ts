@@ -5,16 +5,13 @@ import type { Radio } from "@/lib/audio";
 import { radiosCollection } from "@/lib/collections";
 import { addRadio } from "@/lib/hooks/use-radios";
 import { useSessionRadios } from "@/lib/hooks/use-session-radios";
-import { createConfiguredResolverBroker } from "@/lib/resolver";
+import { resolvePlatformItem } from "@/lib/platform-client";
 import { createExternalStationResolutionWorkflow } from "@/lib/stations/external-station-workflow";
 
 function createRadioGardenResolveAdapter() {
   return async (_channelId: string, canonicalUrl: string) => {
     try {
-      const resolved = await createConfiguredResolverBroker().resolve({
-        provider: "radiogarden",
-        url: canonicalUrl,
-      });
+      const resolved = await resolvePlatformItem(canonicalUrl);
       return {
         ok: true as const,
         data: { format: resolved.format, streamUrl: resolved.streamUrl },

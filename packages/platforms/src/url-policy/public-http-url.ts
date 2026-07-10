@@ -5,7 +5,7 @@ import {
   type ValidatedRedirectResult,
 } from "../redirects/index.js";
 
-const MAX_PUBLIC_HTTP_URL_LENGTH = 2048;
+const MAX_PUBLIC_HTTP_URL_LENGTH = 4096;
 const BLOCKED_HOSTNAMES = new Set(["localhost", "metadata.google.internal"]);
 const BLOCKED_HOSTNAME_SUFFIXES = [
   ".localhost",

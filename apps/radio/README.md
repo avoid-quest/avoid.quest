@@ -9,7 +9,7 @@ PWA internet radio player with advanced audio mixing, effects chain, and MIDI su
   - **Single**: focused single-station player with crossfade transitions
   - **DJ**: two-deck mixer with crossfader, channel strip, effects chain, CUE monitoring, MIDI control
 - **Audio DSP**: custom AudioWorklet processor with real-time effects (7-band EQ, compressor, delay, reverb, distortion, bitcrusher, stereo tool, pitch shift)
-- **Platform support**: Bandcamp albums/tracks, SoundCloud playlists/tracks, YouTube playlists/videos, Radio Garden stations
+- **Platform support**: Bandcamp albums/tracks, SoundCloud playlists/tracks, YouTube playlists/videos, and Radio Browser/Radio Garden stations
 - **External inputs**: device audio input (mic/line-in), local file playback
 - **PWA**: installable, service worker, offline shell
 - **Persistence**: TanStack DB collections backed by localStorage — radios, settings, playback sessions
@@ -36,10 +36,8 @@ PWA internet radio player with advanced audio mixing, effects chain, and MIDI su
 |-------|-------------|
 | `/` | Main player — switches between Multiple / Single / DJ mode |
 | `/import` | Batch import radios from a URL or JSON |
-| `/api/stream-proxy` | Optional generic compatibility fallback for blocked streams |
-| `/api/soundcloud-proxy` | Optional SoundCloud CDN compatibility fallback (domain allowlisted) |
-| `/api/bandcamp-proxy` | Optional Bandcamp stream compatibility fallback |
 | `/api/feedback` | GitHub issue feedback endpoint |
+| `/api/radio-metadata` | Metadata lookup for configured radio streams |
 | `/manifest` | PWA web app manifest (dynamic) |
 | `/tunnel` | Sentry envelope tunnel |
 
@@ -47,18 +45,20 @@ Server functions (TanStack Start `createServerFn`):
 
 | Function file | Description |
 |--------------|-------------|
-| `utils/platform.functions.ts` | Last-resort Bandcamp/SoundCloud/Radio Garden resolver |
-| `utils/search.functions.ts` | Last-resort Bandcamp and SoundCloud search |
-| `utils/radio-garden.functions.ts` | Last-resort Radio Garden search and suggestions |
+| `utils/platform.functions.ts` | Bandcamp, SoundCloud, and Radio Garden metadata/URL resolution |
+| `utils/search.functions.ts` | Bandcamp and SoundCloud search |
+| `utils/radio-garden.functions.ts` | Radio Garden search and suggestions |
 
-YouTube search and resolution run in the browser through user-configured
-Invidious+Companion or Piped providers. Provider credentials are not supported.
-Static audio URLs and M3U/PLS playlists are also resolved in the browser. The
-generic stream relay remains a compatibility fallback when a playlist origin
-blocks cross-origin reads. Bandcamp, SoundCloud, and Radio Garden can use
-user-configured resolver services first. Settings → Relays can disable all
-avoid.quest resolver and audio-proxy fallbacks for client/external-service-only
-operation.
+Audio bytes never pass through the app server. Static audio URLs and M3U/PLS
+playlists are resolved directly in the browser. Bandcamp's fresh, validated
+`bcbits.com` media URLs use the curated, release-tested public relay pool
+`seep.eu.org`,
+`proxy.cors.sh`, then `cors.zme.ink`; the browser range-probes the pool under one
+deadline before selecting the highest-priority working relay. YouTube tries the
+curated, release-tested providers `pipedapi.wireway.ch`, `yt.omada.cafe`,
+`invidious.nikkosphere.com`, then `y.com.sb`, with per-provider and whole-pool
+deadlines. See `BANDCAMP_RELAY_RESEARCH.md` and
+`YOUTUBE_PROVIDER_RESEARCH.md` for the release probes and caveats.
 
 ## Architecture
 

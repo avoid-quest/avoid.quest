@@ -1,5 +1,8 @@
-import type { PlaybackInput, PlaybackSource } from "./playback-source.js";
-import type { PlaybackSourceCallbacks } from "./playback-source-shared.js";
+import type {
+  PlaybackInput,
+  PlaybackSource,
+  PlaybackSourceCallbacks,
+} from "./playback-source.js";
 import type { StreamStatus } from "./types.js";
 
 const MEDIA_LOAD_TIMEOUT_MS = 8000;
@@ -10,19 +13,6 @@ type MediaSourceGlobal = typeof globalThis & {
   WebKitMediaSource?: typeof MediaSource;
 };
 
-function isHlsUrl(url: string): boolean {
-  try {
-    return new URL(
-      url,
-      typeof window === "undefined"
-        ? "https://example.invalid"
-        : window.location.origin
-    ).pathname.endsWith(".m3u8");
-  } catch {
-    return url.includes(".m3u8");
-  }
-}
-
 function getPreferredMediaSourceConstructor(): typeof MediaSource | null {
   const mediaSourceGlobal = globalThis as MediaSourceGlobal;
   return (
@@ -31,17 +21,6 @@ function getPreferredMediaSourceConstructor(): typeof MediaSource | null {
     mediaSourceGlobal.WebKitMediaSource ??
     null
   );
-}
-
-function normalizePlaybackInput(input: PlaybackInput | string): PlaybackInput {
-  if (typeof input !== "string") {
-    return input;
-  }
-  return {
-    candidates: [
-      { format: isHlsUrl(input) ? "hls" : "progressive", src: input },
-    ],
-  };
 }
 
 function createMediaError(element: HTMLMediaElement): Error {
@@ -149,17 +128,14 @@ export class MediaElementPlaybackSource implements PlaybackSource {
     this.outputNode.gain.value = Math.max(0, Math.min(1, value));
   }
 
-  async load(input: PlaybackInput | string): Promise<void> {
+  async load(input: PlaybackInput): Promise<void> {
     const generation = ++this.generation;
     this.cancelPendingPlaybackIntent();
     this.resetMediaElement({ resetProgress: true });
 
     this._status = "connecting";
     this.setBuffering(false);
-    const loadPromise = this.loadWithFallbackCandidates(
-      normalizePlaybackInput(input),
-      generation
-    );
+    const loadPromise = this.loadSource(input, generation);
     this.currentLoadPromise = loadPromise;
     this.isLoadingPhase = true;
 
@@ -306,10 +282,7 @@ export class MediaElementPlaybackSource implements PlaybackSource {
     }
   }
 
-  async refreshUrl(
-    input: PlaybackInput | string,
-    seekPosition?: number
-  ): Promise<void> {
+  async refreshUrl(input: PlaybackInput, seekPosition?: number): Promise<void> {
     const shouldResume = this.shouldResumeAfterLoad || !this.audio.paused;
     await this.load(input);
 
@@ -326,43 +299,26 @@ export class MediaElementPlaybackSource implements PlaybackSource {
     }
   }
 
-  private async loadWithFallbackCandidates(
+  private async loadSource(
     input: PlaybackInput,
     generation: number
   ): Promise<void> {
-    const errors: Error[] = [];
-
-    for (const candidate of input.candidates) {
-      try {
-        await this.waitForReadyState(
-          candidate.src,
-          generation,
-          candidate.format === "hls",
-          candidate.credentials
-        );
-        return;
-      } catch (error) {
-        const loadError =
-          error instanceof Error || error instanceof DOMException
-            ? error
-            : new Error("Audio playback failed");
-
-        if (generation !== this.generation) {
-          throw loadError;
-        }
-
-        errors.push(loadError);
+    try {
+      await this.waitForReadyState(
+        input.src,
+        generation,
+        input.format === "hls",
+        input.credentials
+      );
+    } catch (error) {
+      if (generation === this.generation) {
         this.resetMediaElement({
           preservePlaybackIntent: this.shouldResumeAfterLoad,
           resetProgress: true,
         });
       }
+      throw error;
     }
-
-    throw new AggregateError(
-      errors,
-      "Audio playback failed after all candidates"
-    );
   }
 
   private async waitForReadyState(

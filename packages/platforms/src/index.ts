@@ -11,11 +11,7 @@ export type {
   BandcampSearchResult,
   BandcampTrackInfo,
 } from "./bandcamp/index.js";
-export {
-  getBandcampItem,
-  getProxiedBandcampUrl,
-  searchBandcamp,
-} from "./bandcamp/index.js";
+export { getBandcampItem, searchBandcamp } from "./bandcamp/index.js";
 export type {
   BandcampCdnRedirectUrlValidationFailure,
   BandcampCdnRedirectUrlValidationResult,
@@ -83,33 +79,6 @@ export {
   resolveRadioGardenStream,
   searchRadioGarden,
 } from "./radiogarden/index.js";
-export type {
-  HttpResolverAdapterOptions,
-  ResolverAdapter,
-  ResolverAttemptDiagnostic,
-  ResolverBroker,
-  ResolverCapability,
-  ResolverErrorCode,
-  ResolverManifest,
-  ResolverMetadataMap,
-  ResolverOperation,
-  ResolverProvider,
-  ResolverResolution,
-  ResolverResolveRequest,
-  ResolverSearchFilter,
-  ResolverSearchRequest,
-  ResolverSearchResultMap,
-  ResolverStreamFormat,
-} from "./resolver/index.js";
-export {
-  createHttpResolverAdapter,
-  createResolverBroker,
-  isResolverCapability,
-  RESOLVER_CAPABILITIES,
-  RESOLVER_PROVIDERS,
-  ResolverAdapterError,
-  ResolverAggregateError,
-} from "./resolver/index.js";
 // Unified search
 export type {
   ExternalPlatformSearchAdapters,
@@ -143,7 +112,6 @@ export type {
   SoundCloudTrackInfo,
 } from "./soundcloud/index.js";
 export {
-  getProxiedSoundCloudUrl,
   getSoundCloudItem,
   resolveShortLink,
   searchSoundCloud,

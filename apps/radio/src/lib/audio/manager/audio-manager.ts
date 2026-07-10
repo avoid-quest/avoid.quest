@@ -23,9 +23,9 @@ import {
   type DeviceSource,
   getAudioContext,
   initialAudioState,
-  PlaybackSourcePreparer,
   type Radio,
   resumeAudioContext,
+  toPlaybackInput,
   type Unsubscribe,
   type WorkletManager,
 } from "../playback/index.js";
@@ -76,7 +76,6 @@ export class AudioManager {
   private static instance: AudioManager | null = null;
 
   private readonly soundRegistry = new SoundRegistry();
-  private readonly playbackSourcePreparer = new PlaybackSourcePreparer();
   private readonly listeners = new Map<string, Set<AudioStateCallback>>();
   readonly volume: VolumeController;
   readonly effects: EffectsController;
@@ -265,10 +264,7 @@ export class AudioManager {
 
       // Load and connect
       const loadPromise = this.handleDeferredRejection(
-        this.playbackSourcePreparer.load(
-          instance.radio,
-          instance.playbackSource
-        )
+        instance.playbackSource.load(toPlaybackInput(instance.radio))
       );
       playPromise = this.startPlayback(instance.playbackSource);
       await this.ensurePlaybackSetup(
@@ -947,9 +943,8 @@ export class AudioManager {
     };
 
     try {
-      await this.playbackSourcePreparer.refresh(
-        refreshedRadio,
-        instance.playbackSource,
+      await instance.playbackSource.refreshUrl(
+        toPlaybackInput(refreshedRadio),
         seekPosition
       );
 

@@ -1,29 +1,20 @@
 import { detectPlayablePlatformFromUrl } from "@avoid.quest/platforms";
-import type { ResolverBroker } from "@avoid.quest/platforms/resolver";
 import type { YouTubeClient } from "@avoid.quest/platforms/youtube";
 import type { Radio } from "@/lib/audio";
 import { resolveClientStaticAudio } from "@/lib/audio/client-static-audio-resolver";
-import { STREAM_PROXY_ROUTE } from "@/lib/audio/playback/playback-source-shared";
 import { inferStreamFormat } from "@/lib/audio/playback/stream-format";
-import type { PlatformMetadata } from "@/lib/platform-types";
-import { createConfiguredResolverBroker } from "@/lib/resolver";
+import { type PlatformItem, resolvePlatformItem } from "@/lib/platform-client";
 import { resolvePlatformStation } from "@/lib/stations/external-station-workflow";
-import { getConfiguredYouTubeClient } from "@/lib/youtube";
-
-type PlatformItemPayload = {
-  format?: "hls" | "progressive";
-  metadata: PlatformMetadata;
-  streamUrl: string;
-};
+import { getYouTubeClient } from "@/lib/youtube";
 
 type PlatformItemPayloadResult =
-  | { data: PlatformItemPayload; ok: true }
+  | { data: PlatformItem; ok: true }
   | { error: { code: string; message: string }; ok: false };
 
 type PlatformItemLoaderDependencies = {
-  getResolverBroker: () => Pick<ResolverBroker, "resolve">;
   getYouTubeClient: () => Pick<YouTubeClient, "resolveItem">;
-  resolveStaticAudio: (url: string) => Promise<PlatformItemPayload>;
+  resolvePlatformItem: (url: string) => Promise<PlatformItem>;
+  resolveStaticAudio: (url: string) => Promise<PlatformItem>;
 };
 
 export type LoadPlatformItemResult =
@@ -75,12 +66,11 @@ async function resolveYouTube(
 }
 
 async function resolveExternalPlatform(
-  platform: "bandcamp" | "radiogarden" | "soundcloud",
   url: string,
-  getBroker: PlatformItemLoaderDependencies["getResolverBroker"]
+  resolver: PlatformItemLoaderDependencies["resolvePlatformItem"]
 ): Promise<PlatformItemPayloadResult> {
   try {
-    const result = await getBroker().resolve({ provider: platform, url });
+    const result = await resolver(url);
     const selectedTrack =
       "tracks" in result.metadata && result.metadata.tracks
         ? result.metadata.tracks.find(
@@ -127,8 +117,8 @@ function unsupportedPlatform(): PlatformItemPayloadResult {
 }
 
 export function createPlatformItemLoader({
-  getResolverBroker,
   getYouTubeClient,
+  resolvePlatformItem: resolveExternalItem,
   resolveStaticAudio,
 }: PlatformItemLoaderDependencies): (
   url: string
@@ -148,9 +138,8 @@ export function createPlatformItemLoader({
         platform === "soundcloud"
       ) {
         return await resolveExternalPlatform(
-          platform,
           normalizedUrl,
-          getResolverBroker
+          resolveExternalItem
         );
       }
       return unsupportedPlatform();
@@ -166,14 +155,11 @@ export function createPlatformItemLoader({
   };
 }
 
-export const loadConfiguredPlatformItem = createPlatformItemLoader({
-  getResolverBroker: createConfiguredResolverBroker,
-  getYouTubeClient: getConfiguredYouTubeClient,
+export const loadPlatformItem = createPlatformItemLoader({
+  getYouTubeClient,
+  resolvePlatformItem,
   resolveStaticAudio: async (url) => {
-    const resolved = await resolveClientStaticAudio(url, {
-      appServerFallback: async (upstreamUrl, init) =>
-        await fetch(STREAM_PROXY_ROUTE + encodeURIComponent(upstreamUrl), init),
-    });
+    const resolved = await resolveClientStaticAudio(url);
     return {
       format: resolved.format,
       metadata: resolved.metadata,

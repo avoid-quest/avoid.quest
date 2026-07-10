@@ -1,11 +1,10 @@
-import type { ResolverBroker } from "@avoid.quest/platforms/resolver";
 import type { Radio } from "@/lib/audio";
 import {
   inferStreamFormat,
   type StreamFormat,
 } from "@/lib/audio/playback/stream-format";
-import { createConfiguredResolverBroker } from "@/lib/resolver";
-import { getConfiguredYouTubeClient } from "@/lib/youtube";
+import { resolvePlatformItem } from "@/lib/platform-client";
+import { getYouTubeClient } from "@/lib/youtube";
 
 type StreamResolutionReason =
   | "initial-load"
@@ -35,10 +34,6 @@ type PlatformStreamResolution = {
   streamUrl: string;
 };
 
-type TrackCollection = {
-  tracks?: { format?: StreamFormat; streamUrl: string }[];
-};
-
 type SelectedCollectionStream = {
   format?: StreamFormat;
   streamUrl: string;
@@ -47,13 +42,19 @@ type SelectedCollectionStream = {
 function selectRefreshedCollectionStream(
   radio: Radio,
   resolvedStreamUrl: string,
-  resolvedMetadata: TrackCollection
+  resolvedMetadata: NonNullable<Radio["platformMetadata"]>
 ): SelectedCollectionStream {
   const currentMetadata = radio.platformMetadata;
   if (!(currentMetadata && "tracks" in currentMetadata)) {
     return { streamUrl: resolvedStreamUrl };
   }
-  if (!(currentMetadata.tracks && resolvedMetadata.tracks)) {
+  if (
+    !(
+      currentMetadata.tracks &&
+      "tracks" in resolvedMetadata &&
+      resolvedMetadata.tracks
+    )
+  ) {
     return { streamUrl: resolvedStreamUrl };
   }
   const currentIndex = currentMetadata.tracks.findIndex(
@@ -74,18 +75,15 @@ function resolvedStream(
 export async function resolveDjPlatformStreamUrl(
   input: PlatformStreamResolutionInput,
   dependencies: {
-    getResolverBroker?: () => Pick<ResolverBroker, "resolve">;
-    getYouTubeClient?: typeof getConfiguredYouTubeClient;
-    resolveCanonicalStream?: (
-      input: CanonicalPlatformStreamResolutionInput
-    ) => Promise<PlatformStreamResolution | null>;
+    getYouTubeClient?: typeof getYouTubeClient;
+    resolvePlatformItem?: typeof resolvePlatformItem;
   } = {}
 ): Promise<PlatformStreamResolution | null> {
   switch (input.platform) {
     case "youtube": {
       try {
         const streamUrl = await (
-          dependencies.getYouTubeClient ?? getConfiguredYouTubeClient
+          dependencies.getYouTubeClient ?? getYouTubeClient
         )().resolveStream(input.videoId);
         return resolvedStream(streamUrl);
       } catch {
@@ -95,15 +93,9 @@ export async function resolveDjPlatformStreamUrl(
     case "bandcamp":
     case "soundcloud": {
       try {
-        if (dependencies.resolveCanonicalStream) {
-          return (await dependencies.resolveCanonicalStream(input)) ?? null;
-        }
         const resolved = await (
-          dependencies.getResolverBroker ?? createConfiguredResolverBroker
-        )().resolve({
-          provider: input.platform,
-          url: input.canonicalUrl,
-        });
+          dependencies.resolvePlatformItem ?? resolvePlatformItem
+        )(input.canonicalUrl);
         const selected = selectRefreshedCollectionStream(
           input.radio,
           resolved.streamUrl,

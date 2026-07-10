@@ -6,7 +6,7 @@ import {
 import { useMutation } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Radio } from "@/lib/audio";
-import { createConfiguredResolverBroker } from "@/lib/resolver";
+import { searchRadioGarden } from "@/lib/platform-client";
 
 function filterLocalRadios(radios: Radio[], query: string): Radio[] {
   const q = query.toLowerCase();
@@ -65,11 +65,7 @@ export function useUnifiedRadioSearch(query: string, localRadios: Radio[]) {
 
   const radioGardenSearchMutation = useMutation({
     mutationFn: ({ query: searchQuery, signal }: RemoteSearchRequest) => {
-      const request = createConfiguredResolverBroker().search({
-        provider: "radiogarden",
-        query: searchQuery,
-        signal,
-      });
+      const request = searchRadioGarden(searchQuery);
       return stopWaitingOnAbort(request, signal);
     },
     onSuccess: (results, request) => {

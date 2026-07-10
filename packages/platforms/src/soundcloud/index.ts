@@ -11,11 +11,7 @@ import type {
   SoundCloudItemResult,
   SoundCloudMetadata,
 } from "./types.js";
-import {
-  isSoundCloudCorsAllowedCdnHostname,
-  isSoundCloudHostname,
-  validateSoundCloudCdnUrl,
-} from "./url-policy.js";
+import { isSoundCloudHostname } from "./url-policy.js";
 
 // Structural types for SoundCloud API responses (only properties we access)
 
@@ -139,21 +135,6 @@ function createShortLinkRedirectError(reason: ShortLinkRedirectFailure): Error {
   return new Error(SHORT_LINK_REDIRECT_ERROR_MESSAGES[reason]);
 }
 
-/** Proxies SoundCloud stream URLs to avoid CORS issues (skips HLS which has CORS enabled) */
-export function getProxiedSoundCloudUrl(url: string): string {
-  const validation = validateSoundCloudCdnUrl(url);
-  if (!validation.ok) {
-    return url;
-  }
-
-  // HLS CDN has CORS enabled, no proxy needed
-  if (isSoundCloudCorsAllowedCdnHostname(validation.parsed.hostname)) {
-    return url;
-  }
-
-  return `/api/soundcloud-proxy?url=${encodeURIComponent(url)}`;
-}
-
 function createErrorResponse(message: string): SoundCloudItemError {
   return {
     success: false,
@@ -210,7 +191,7 @@ async function getStreamUrl(
     }
 
     const data: { url: string } = await response.json();
-    // Return raw stream URL - consumers apply proxying as needed
+    // Return the raw stream URL for consumer-side validation and playback.
     return data.url;
   } catch (error) {
     console.warn("[SoundCloud] getStreamUrl failed:", error);

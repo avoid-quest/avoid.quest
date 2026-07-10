@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { getProxiedBandcampUrl } from "./index";
 import { isBandcampCdnHostname, validateBandcampCdnUrl } from "./url-policy";
 
 function expectInvalidBandcampUrl(
@@ -48,18 +47,5 @@ describe("isBandcampCdnHostname", () => {
   test("uses the shared hostname normalization", () => {
     expect(isBandcampCdnHostname("T4.BCBITS.COM.")).toBe(true);
     expect(isBandcampCdnHostname("bcbits.com.evil.test")).toBe(false);
-  });
-});
-
-describe("getProxiedBandcampUrl", () => {
-  test("generates proxy URLs only for canonical Bandcamp CDN URLs", () => {
-    const cdnUrl = "https://t4.bcbits.com/track.mp3";
-
-    expect(getProxiedBandcampUrl(cdnUrl)).toBe(
-      `/api/bandcamp-proxy?url=${encodeURIComponent(cdnUrl)}`
-    );
-    expect(
-      getProxiedBandcampUrl("https://bcbits.com.evil.test/track.mp3")
-    ).toBe("https://bcbits.com.evil.test/track.mp3");
   });
 });

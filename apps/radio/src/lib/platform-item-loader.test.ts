@@ -1,5 +1,4 @@
 import { describe, expect, mock, test } from "bun:test";
-import type { ResolverBroker } from "@avoid.quest/platforms/resolver";
 import type { YouTubeClient } from "@avoid.quest/platforms/youtube";
 import { createPlatformItemLoader } from "./platform-item-loader";
 
@@ -16,11 +15,10 @@ function youtubeClient(
 
 describe("browser platform item loader", () => {
   test("resolves YouTube URLs in the browser without calling the app server", async () => {
-    const getResolverBroker = mock(() => {
-      throw new Error("Resolver broker must remain unused");
+    const resolvePlatformItem = mock(() => {
+      throw new Error("Platform server must remain unused");
     });
     const load = createPlatformItemLoader({
-      getResolverBroker,
       getYouTubeClient: () =>
         youtubeClient(
           mock(() =>
@@ -38,6 +36,7 @@ describe("browser platform item loader", () => {
             })
           )
         ),
+      resolvePlatformItem,
       resolveStaticAudio: mock(() =>
         Promise.reject(new Error("static audio must remain unused"))
       ),
@@ -53,17 +52,17 @@ describe("browser platform item loader", () => {
         platformMetadata: { platform: "youtube", videoId: "abcdefghijk" },
       },
     });
-    expect(getResolverBroker).not.toHaveBeenCalled();
+    expect(resolvePlatformItem).not.toHaveBeenCalled();
   });
 
-  test("returns an actionable failure when no browser YouTube provider is configured", async () => {
+  test("returns an actionable failure when YouTube client initialization fails", async () => {
     const load = createPlatformItemLoader({
-      getResolverBroker: mock(() => {
-        throw new Error("Resolver broker must remain unused");
-      }),
       getYouTubeClient: () => {
-        throw new Error("Configure an Invidious or Piped provider");
+        throw new Error("No public YouTube provider is available");
       },
+      resolvePlatformItem: mock(() => {
+        throw new Error("Platform server must remain unused");
+      }),
       resolveStaticAudio: mock(() =>
         Promise.reject(new Error("static audio must remain unused"))
       ),
@@ -71,7 +70,7 @@ describe("browser platform item loader", () => {
 
     await expect(load("https://youtu.be/abcdefghijk")).resolves.toEqual({
       code: "YOUTUBE_CLIENT_RESOLUTION_FAILED",
-      error: "Configure an Invidious or Piped provider",
+      error: "No public YouTube provider is available",
       success: false,
     });
   });
@@ -113,22 +112,19 @@ describe("browser platform item loader", () => {
       platform: "radiogarden" as const,
       url: "https://radio.garden/listen/station/station-id",
     },
-  ])("resolves $platform URLs through the client broker", async (fixture) => {
+  ])("resolves $platform URLs through the platform server", async (fixture) => {
     const getYouTubeClient = mock(() => {
       throw new Error("YouTube client must remain unused");
     });
-    const resolve = mock(() =>
+    const resolvePlatformItem = mock(() =>
       Promise.resolve({
         metadata: fixture.metadata,
-        resolverId: "configured-resolver",
         streamUrl: "https://media.example/track.mp3",
       })
     );
     const load = createPlatformItemLoader({
-      getResolverBroker: () => ({
-        resolve: resolve as unknown as ResolverBroker["resolve"],
-      }),
       getYouTubeClient,
+      resolvePlatformItem,
       resolveStaticAudio: mock(() =>
         Promise.reject(new Error("static audio must remain unused"))
       ),
@@ -142,15 +138,12 @@ describe("browser platform item loader", () => {
       },
     });
     expect(getYouTubeClient).not.toHaveBeenCalled();
-    expect(resolve).toHaveBeenCalledWith({
-      provider: fixture.platform,
-      url: fixture.url,
-    });
+    expect(resolvePlatformItem).toHaveBeenCalledWith(fixture.url);
   });
 
   test("resolves static audio in the browser without calling the app server", async () => {
-    const getResolverBroker = mock(() => {
-      throw new Error("static audio must not use a platform resolver");
+    const resolvePlatformItem = mock(() => {
+      throw new Error("static audio must not use the platform server");
     });
     const resolveStaticAudio = mock(() =>
       Promise.resolve({
@@ -171,10 +164,10 @@ describe("browser platform item loader", () => {
       })
     );
     const load = createPlatformItemLoader({
-      getResolverBroker,
       getYouTubeClient: () => {
         throw new Error("YouTube client must remain unused");
       },
+      resolvePlatformItem,
       resolveStaticAudio,
     });
 
@@ -190,30 +183,27 @@ describe("browser platform item loader", () => {
     expect(resolveStaticAudio).toHaveBeenCalledWith(
       "https://audio.example/mix.ogg"
     );
-    expect(getResolverBroker).not.toHaveBeenCalled();
+    expect(resolvePlatformItem).not.toHaveBeenCalled();
   });
 
-  test("carries an external resolver's extensionless HLS format into playback", async () => {
+  test("carries an extensionless HLS format into playback", async () => {
     const url = "https://soundcloud.com/artist/live-set";
     const load = createPlatformItemLoader({
-      getResolverBroker: () => ({
-        resolve: mock(() =>
-          Promise.resolve({
-            format: "hls" as const,
-            metadata: {
-              itemType: "track" as const,
-              name: "Live set",
-              platform: "soundcloud" as const,
-              url,
-            },
-            resolverId: "configured-resolver",
-            streamUrl: "https://media.example/signed-stream",
-          })
-        ) as unknown as ResolverBroker["resolve"],
-      }),
       getYouTubeClient: () => {
         throw new Error("YouTube client must remain unused");
       },
+      resolvePlatformItem: mock(() =>
+        Promise.resolve({
+          format: "hls" as const,
+          metadata: {
+            itemType: "track" as const,
+            name: "Live set",
+            platform: "soundcloud" as const,
+            url,
+          },
+          streamUrl: "https://media.example/signed-stream",
+        })
+      ),
       resolveStaticAudio: mock(() =>
         Promise.reject(new Error("static audio must remain unused"))
       ),
@@ -228,34 +218,31 @@ describe("browser platform item loader", () => {
     });
   });
 
-  test("uses the selected nested-track format when the resolver omits its top-level format", async () => {
+  test("uses the selected nested-track format when the top-level format is omitted", async () => {
     const url = "https://soundcloud.com/artist/live-set";
     const streamUrl = "https://media.example/extensionless-live";
     const load = createPlatformItemLoader({
-      getResolverBroker: () => ({
-        resolve: mock(() =>
-          Promise.resolve({
-            metadata: {
-              itemType: "playlist" as const,
-              name: "Live set",
-              platform: "soundcloud" as const,
-              tracks: [
-                {
-                  format: "hls" as const,
-                  name: "Live track",
-                  streamUrl,
-                },
-              ],
-              url,
-            },
-            resolverId: "configured-resolver",
-            streamUrl,
-          })
-        ) as unknown as ResolverBroker["resolve"],
-      }),
       getYouTubeClient: () => {
         throw new Error("YouTube client must remain unused");
       },
+      resolvePlatformItem: mock(() =>
+        Promise.resolve({
+          metadata: {
+            itemType: "playlist" as const,
+            name: "Live set",
+            platform: "soundcloud" as const,
+            tracks: [
+              {
+                format: "hls" as const,
+                name: "Live track",
+                streamUrl,
+              },
+            ],
+            url,
+          },
+          streamUrl,
+        })
+      ),
       resolveStaticAudio: mock(() =>
         Promise.reject(new Error("static audio must remain unused"))
       ),

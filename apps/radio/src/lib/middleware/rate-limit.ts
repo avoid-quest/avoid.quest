@@ -26,7 +26,7 @@ export type AuthAndRateLimitResult =
  * Validate authentication and rate limiting for API routes
  * @param request - The request object
  * @param env - The Cloudflare environment bindings
- * @param identifier - Unique identifier for this rate limit (e.g., 'soundcloud-proxy')
+ * @param identifier - Unique identifier for this rate limit (e.g., 'radio-metadata')
  * @param options - Options for validation
  * @param options.createSessionIfMissing - Whether to create a session if one doesn't exist (default: true)
  * @returns Either session info or a Response error

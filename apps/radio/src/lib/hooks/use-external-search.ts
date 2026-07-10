@@ -5,38 +5,29 @@ import {
   createExternalPlatformSearchWorkflow,
   type ExternalPlatformSearchParams,
 } from "@/lib/external-platform-search-workflow";
-import { createConfiguredResolverBroker } from "@/lib/resolver";
-import { getConfiguredYouTubeClient } from "@/lib/youtube";
+import {
+  searchBandcamp,
+  searchRadioGarden,
+  searchSoundCloud,
+} from "@/lib/platform-client";
+import { getYouTubeClient } from "@/lib/youtube";
 
 type SearchParams = ExternalPlatformSearchParams;
 
 const externalPlatformSearchWorkflow = createExternalPlatformSearchWorkflow({
   adapters: {
     bandcamp: {
-      search: async (query, filter) =>
-        await createConfiguredResolverBroker().search({
-          filter,
-          provider: "bandcamp",
-          query,
-        }),
+      search: searchBandcamp,
     },
     radiogarden: {
-      search: async (query) =>
-        await createConfiguredResolverBroker().search({
-          provider: "radiogarden",
-          query,
-        }),
+      search: searchRadioGarden,
     },
     soundcloud: {
-      search: async (query) =>
-        await createConfiguredResolverBroker().search({
-          provider: "soundcloud",
-          query,
-        }),
+      search: searchSoundCloud,
     },
     youtube: {
       search: async (query, filter) =>
-        await getConfiguredYouTubeClient().search(query, filter),
+        await getYouTubeClient().search(query, filter),
     },
   },
   reportProviderError: (provider, error) => {

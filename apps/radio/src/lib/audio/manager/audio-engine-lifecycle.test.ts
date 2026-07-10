@@ -147,7 +147,7 @@ describe("audio engine lifecycle", () => {
         12,
         "progressive"
       )
-    ).rejects.toThrow("Audio playback failed after all candidates");
+    ).rejects.toThrow("Audio stream failed to load");
 
     expect(manager.getSoundRadio(soundId)).toEqual(radio);
     expect(states.at(-1)).toMatchObject({

@@ -351,35 +351,23 @@ function createPlaybackSource(): MediaElementPlaybackSource {
 }
 
 describe("MediaElementPlaybackSource HLS loading", () => {
-  test("reports one aggregate failure after every prepared candidate fails", async () => {
+  test("reports a direct media failure", async () => {
     const mediaMocks = installMediaElementMocks();
 
     try {
       const source = createPlaybackSource();
       const audio = mediaMocks.getAudio();
       const load = source.load({
-        candidates: [
-          { format: "progressive", src: "https://one.example/audio.mp3" },
-          { format: "progressive", src: "https://two.example/audio.mp3" },
-        ],
+        format: "progressive",
+        src: "https://one.example/audio.mp3",
       });
 
       await flushMicrotasks();
       expect(audio.loadSources).toEqual(["https://one.example/audio.mp3"]);
       audio.emit("error");
-      await flushMicrotasks();
-      expect(audio.loadSources).toEqual([
-        "https://one.example/audio.mp3",
-        "https://two.example/audio.mp3",
-      ]);
-      audio.emit("error");
 
       const error = await load.catch((failure: unknown) => failure);
-      expect(error).toBeInstanceOf(AggregateError);
-      expect((error as AggregateError).errors).toHaveLength(2);
-      expect((error as Error).message).toBe(
-        "Audio playback failed after all candidates"
-      );
+      expect(error).toBeInstanceOf(Error);
       source.cleanup();
     } finally {
       mediaMocks.restore();
@@ -394,9 +382,10 @@ describe("MediaElementPlaybackSource HLS loading", () => {
       const nativeSource = createPlaybackSource();
       const nativeAudio = mediaMocks.getAudio();
       nativeAudio.nativeHlsSupport = "maybe";
-      const nativeLoad = nativeSource.load(
-        "https://radio.example/live/native.m3u8"
-      );
+      const nativeLoad = nativeSource.load({
+        format: "hls",
+        src: "https://radio.example/live/native.m3u8",
+      });
       const nativePlay = nativeSource.play();
       await flushMicrotasks();
       expect(nativeAudio.playSources).toEqual([
@@ -409,9 +398,10 @@ describe("MediaElementPlaybackSource HLS loading", () => {
 
       const activationSource = createPlaybackSource();
       const activationAudio = mediaMocks.getAudio();
-      const activationLoad = activationSource.load(
-        "https://radio.example/live/activation.m3u8"
-      );
+      const activationLoad = activationSource.load({
+        format: "hls",
+        src: "https://radio.example/live/activation.m3u8",
+      });
       const activationPlay = activationSource.play();
       const activationPlayResult = activationPlay.then(
         () => "resolved" as const,
@@ -425,9 +415,10 @@ describe("MediaElementPlaybackSource HLS loading", () => {
 
       const pausedSource = createPlaybackSource();
       const pausedAudio = mediaMocks.getAudio();
-      const pausedLoad = pausedSource.load(
-        "https://radio.example/live/pause.m3u8"
-      );
+      const pausedLoad = pausedSource.load({
+        format: "hls",
+        src: "https://radio.example/live/pause.m3u8",
+      });
       const pausedPlay = pausedSource.play();
       const pausedPlayResult = pausedPlay.then(
         () => "resolved" as const,
@@ -441,53 +432,23 @@ describe("MediaElementPlaybackSource HLS loading", () => {
       pausedSource.pause();
       expect(pausedAudio.paused).toBe(true);
 
-      const fallbackSource = createPlaybackSource();
-      const fallbackAudio = mediaMocks.getAudio();
-      const fallbackLoad = fallbackSource.load({
-        candidates: [
-          {
-            format: "hls",
-            src: "https://radio.example/live/fallback.m3u8",
-          },
-          {
-            format: "hls",
-            src: "/api/stream-proxy?url=https%3A%2F%2Fradio.example%2Flive%2Ffallback.m3u8",
-          },
-        ],
-      });
-      const fallbackPlay = fallbackSource.play();
-      const fallbackPlayResult = fallbackPlay.then(
-        () => "resolved" as const,
-        (error: unknown) => error
-      );
-
-      await flushMicrotasks();
-      fallbackAudio.emit("abort");
-      await flushMicrotasks();
-      expect(fallbackAudio.playSources).toEqual(["blob:mock-media-source-3"]);
-
       hlsMock.importGate.resolve();
 
       await expect(activationLoad).resolves.toBeUndefined();
       await expect(pausedLoad).resolves.toBeUndefined();
-      await expect(fallbackLoad).resolves.toBeUndefined();
       expect(await activationPlayResult).toBe("resolved");
       expect(await pausedPlayResult).toBe("resolved");
-      expect(await fallbackPlayResult).toBe("resolved");
       expect(pausedAudio.playCalls).toBe(1);
       expect(pausedAudio.paused).toBe(true);
-      expect(fallbackAudio.playCalls).toBe(1);
-      expect(hlsMock.attachedMediaSources).toHaveLength(3);
+      expect(hlsMock.attachedMediaSources).toHaveLength(2);
       expect(hlsMock.attachedMediaSources.every(Boolean)).toBe(true);
       expect(hlsMock.loadedSources).toEqual([
         "https://radio.example/live/activation.m3u8",
         "https://radio.example/live/pause.m3u8",
-        "/api/stream-proxy?url=https%3A%2F%2Fradio.example%2Flive%2Ffallback.m3u8",
       ]);
       activationSource.cleanup();
       nativeSource.cleanup();
       pausedSource.cleanup();
-      fallbackSource.cleanup();
     } finally {
       mediaMocks.restore();
     }

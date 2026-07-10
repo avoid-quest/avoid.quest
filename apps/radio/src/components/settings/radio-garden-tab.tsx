@@ -15,8 +15,8 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { radiosCollection } from "@/lib/collections";
 import { addRadio } from "@/lib/hooks/use-radios";
+import { resolvePlatformItem, searchRadioGarden } from "@/lib/platform-client";
 import type { RadioGardenSearchResult } from "@/lib/platform-types";
-import { createConfiguredResolverBroker } from "@/lib/resolver";
 import { createExternalStationResolutionWorkflow } from "@/lib/stations/external-station-workflow";
 
 type RadioGardenTabProps = {
@@ -36,10 +36,7 @@ export function RadioGardenTab({ onSuccess }: RadioGardenTabProps) {
       radioGarden: {
         resolveStream: async (_channelId, canonicalUrl) => {
           try {
-            const resolved = await createConfiguredResolverBroker().resolve({
-              provider: "radiogarden",
-              url: canonicalUrl,
-            });
+            const resolved = await resolvePlatformItem(canonicalUrl);
             return {
               ok: true as const,
               data: { format: resolved.format, streamUrl: resolved.streamUrl },
@@ -75,10 +72,7 @@ export function RadioGardenTab({ onSuccess }: RadioGardenTabProps) {
     setSearchError(null);
     setSelectedId(null);
     try {
-      const searchResults = await createConfiguredResolverBroker().search({
-        provider: "radiogarden",
-        query: query.trim(),
-      });
+      const searchResults = await searchRadioGarden(query.trim());
       setResults(searchResults);
       if (searchResults.length === 0) {
         setSearchError("No stations found. Try a different search.");

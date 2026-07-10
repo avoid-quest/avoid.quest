@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Radio } from "@/lib/audio";
-import { loadConfiguredPlatformItem as loadPlatformItem } from "@/lib/platform-item-loader";
+import { loadPlatformItem } from "@/lib/platform-item-loader";
 
 export const platformKeys = {
   all: ["platform"] as const,

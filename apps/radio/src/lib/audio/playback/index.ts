@@ -32,14 +32,13 @@ export {
   MicSource,
   type MicSourceCallbacks,
 } from "./mic-source.js";
+export { toPlaybackInput } from "./playback-input.js";
 export type {
-  PlaybackCandidate,
   PlaybackInput,
   PlaybackSource,
   PlaybackSourceCallbacks,
 } from "./playback-source.js";
 export { createPlaybackSource } from "./playback-source-factory.js";
-export { PlaybackSourcePreparer } from "./playback-source-preparer.js";
 
 // Types
 export {

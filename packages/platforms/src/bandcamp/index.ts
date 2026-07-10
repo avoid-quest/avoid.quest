@@ -18,7 +18,6 @@ import { load } from "cheerio";
 import { decode } from "html-entities";
 
 import { detectBandcampItemType } from "./detect.js";
-import { validateBandcampCdnUrl } from "./url-policy.js";
 
 export {
   BANDCAMP_HTML_MARKERS,
@@ -66,14 +65,6 @@ type RawBandcampTrack = {
 type BandcampExtraData = {
   trackinfo?: RawBandcampTrack[];
 };
-
-/** Proxies bcbits.com URLs through the API to avoid CORS issues. */
-export function getProxiedBandcampUrl(url: string): string {
-  if (validateBandcampCdnUrl(url).ok) {
-    return `/api/bandcamp-proxy?url=${encodeURIComponent(url)}`;
-  }
-  return url;
-}
 
 const REQUEST_TIMEOUT_MS = 10_000;
 const MAX_ARTIST_ALBUMS = 10;

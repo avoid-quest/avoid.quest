@@ -75,7 +75,7 @@ import {
   setPendingPlatformItem,
   updateMixer,
 } from "@/lib/hooks/use-dj-state";
-import { loadConfiguredPlatformItem } from "@/lib/platform-item-loader";
+import { loadPlatformItem } from "@/lib/platform-item-loader";
 import {
   getDefaultPlaybackActionContext,
   type PlaybackActionContext,
@@ -220,7 +220,7 @@ function createDeckLoadDependencies(
       ctx.audio.getDeviceSource(soundId)?.channelCount ?? null,
     getSoundId,
     initializeAudioDevices: initializeSavedAudioDevices,
-    loadPlatformItem: loadConfiguredPlatformItem,
+    loadPlatformItem,
     loadTrack: (deckSide, nextRadio, autoPlay) =>
       loadTrack(deckSide, nextRadio, autoPlay, ctx),
     pauseDeckSound: (soundId) => ctx.audioEngine.playback.pause(soundId),

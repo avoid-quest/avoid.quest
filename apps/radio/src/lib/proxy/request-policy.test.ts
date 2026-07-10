@@ -47,7 +47,7 @@ describe("createProxyRequestPolicy", () => {
     });
 
     const response = policy.options(
-      new Request("https://radio.test/api/stream-proxy", {
+      new Request("https://radio.test/api/radio-metadata", {
         method: "OPTIONS",
       })
     );
@@ -72,12 +72,12 @@ describe("createProxyRequestPolicy", () => {
     );
     const policy = createProxyRequestPolicy({ validateAuthAndRateLimit });
     const response = await policy.run({
-      request: new Request("https://radio.test/api/stream-proxy"),
+      request: new Request("https://radio.test/api/radio-metadata"),
       env: {},
-      identifier: "stream-proxy",
-      operation: "stream-proxy.GET",
+      identifier: "radio-metadata",
+      operation: "radio-metadata.GET",
       fallback: {
-        code: "STREAM_PROXY_INTERNAL_ERROR",
+        code: "RADIO_METADATA_INTERNAL_ERROR",
         safeMessage: "Internal server error",
         category: "infrastructure",
         expected: false,
@@ -115,10 +115,10 @@ describe("createProxyRequestPolicy", () => {
     const policy = createProxyRequestPolicy({ validateAuthAndRateLimit });
     const get = policy.get({
       env: {},
-      identifier: "stream-proxy",
-      operation: "stream-proxy.GET",
+      identifier: "radio-metadata",
+      operation: "radio-metadata.GET",
       fallback: {
-        code: "STREAM_PROXY_INTERNAL_ERROR",
+        code: "RADIO_METADATA_INTERNAL_ERROR",
         safeMessage: "Internal server error",
         category: "infrastructure",
         expected: false,
@@ -126,13 +126,13 @@ describe("createProxyRequestPolicy", () => {
       },
       run: async ({ request }) => {
         await Promise.resolve();
-        expect(request.url).toBe("https://radio.test/api/stream-proxy");
+        expect(request.url).toBe("https://radio.test/api/radio-metadata");
         return new Response("ok");
       },
     });
 
     const response = await get({
-      request: new Request("https://radio.test/api/stream-proxy"),
+      request: new Request("https://radio.test/api/radio-metadata"),
     });
 
     expect(validateAuthAndRateLimit).toHaveBeenCalledTimes(1);
@@ -152,18 +152,18 @@ describe("createProxyRequestPolicy", () => {
     const policy = createProxyRequestPolicy({ validateAuthAndRateLimit });
     const body = new ReadableStream({
       start(controller) {
-        controller.enqueue(new TextEncoder().encode("audio-bytes"));
+        controller.enqueue(new TextEncoder().encode("metadata"));
         controller.close();
       },
     });
 
     const response = await policy.run({
-      request: new Request("https://radio.test/api/stream-proxy"),
+      request: new Request("https://radio.test/api/radio-metadata"),
       env: {},
-      identifier: "stream-proxy",
-      operation: "stream-proxy.GET",
+      identifier: "radio-metadata",
+      operation: "radio-metadata.GET",
       fallback: {
-        code: "STREAM_PROXY_INTERNAL_ERROR",
+        code: "RADIO_METADATA_INTERNAL_ERROR",
         safeMessage: "Internal server error",
         category: "infrastructure",
         expected: false,
@@ -172,9 +172,9 @@ describe("createProxyRequestPolicy", () => {
       run: async () => {
         await Promise.resolve();
         return new Response(body, {
-          status: 206,
+          status: 200,
           headers: {
-            "Content-Type": "audio/mpeg",
+            "Content-Type": "application/json",
             "Set-Cookie": "existing=1; Path=/",
             "x-upstream": "preserved",
           },
@@ -182,14 +182,14 @@ describe("createProxyRequestPolicy", () => {
       },
     });
 
-    expect(response.status).toBe(206);
-    expect(response.headers.get("Content-Type")).toBe("audio/mpeg");
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toBe("application/json");
     expect(response.headers.get("x-upstream")).toBe("preserved");
     expect(response.headers.get("set-cookie")).toContain("existing=1");
     expect(response.headers.get("set-cookie")).toContain(
       `radio_session_id=${GENERATED_SESSION_ID}`
     );
-    await expect(response.text()).resolves.toBe("audio-bytes");
+    await expect(response.text()).resolves.toBe("metadata");
   });
 
   test("does not set session cookies when auth reused an existing session", async () => {
@@ -204,12 +204,12 @@ describe("createProxyRequestPolicy", () => {
     const policy = createProxyRequestPolicy({ validateAuthAndRateLimit });
 
     const response = await policy.run({
-      request: new Request("https://radio.test/api/stream-proxy"),
+      request: new Request("https://radio.test/api/radio-metadata"),
       env: {},
-      identifier: "stream-proxy",
-      operation: "stream-proxy.GET",
+      identifier: "radio-metadata",
+      operation: "radio-metadata.GET",
       fallback: {
-        code: "STREAM_PROXY_INTERNAL_ERROR",
+        code: "RADIO_METADATA_INTERNAL_ERROR",
         safeMessage: "Internal server error",
         category: "infrastructure",
         expected: false,
@@ -240,12 +240,12 @@ describe("createProxyRequestPolicy", () => {
     });
 
     const response = await policy.run({
-      request: new Request("https://radio.test/api/stream-proxy"),
+      request: new Request("https://radio.test/api/radio-metadata"),
       env: {},
-      identifier: "stream-proxy",
-      operation: "stream-proxy.GET",
+      identifier: "radio-metadata",
+      operation: "radio-metadata.GET",
       fallback: {
-        code: "STREAM_PROXY_INTERNAL_ERROR",
+        code: "RADIO_METADATA_INTERNAL_ERROR",
         safeMessage: "Internal server error",
         category: "infrastructure",
         expected: false,

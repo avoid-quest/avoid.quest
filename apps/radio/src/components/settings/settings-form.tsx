@@ -19,7 +19,6 @@ import {
 import {
   DatabaseIcon,
   HeadphonesIcon,
-  NetworkIcon,
   RadioIcon,
   RotateCcwIcon,
   Settings2Icon,
@@ -58,10 +57,6 @@ const AudioSettings = lazy(() =>
 
 const MidiSettings = lazy(() =>
   import("./midi-settings").then((mod) => ({ default: mod.MidiSettings }))
-);
-
-const RelaySettings = lazy(() =>
-  import("./relay-settings").then((mod) => ({ default: mod.RelaySettings }))
 );
 
 const TAB_TRIGGER_CLASS =
@@ -145,10 +140,6 @@ export function SettingsForm({
           <TabsTrigger className={TAB_TRIGGER_CLASS} value="midi">
             <SlidersHorizontalIcon className="size-3.5 shrink-0" />
             <span className="truncate">MIDI</span>
-          </TabsTrigger>
-          <TabsTrigger className={TAB_TRIGGER_CLASS} value="relays">
-            <NetworkIcon className="size-3.5 shrink-0" />
-            <span className="truncate">Relays</span>
           </TabsTrigger>
           <TabsTrigger className={TAB_TRIGGER_CLASS} value="import-export">
             <DatabaseIcon className="size-3.5 shrink-0" />
@@ -256,19 +247,6 @@ export function SettingsForm({
             />
             <Suspense fallback={<LoadingFallback />}>
               <MidiSettings />
-            </Suspense>
-          </TabsContent>
-
-          <TabsContent
-            className="mt-0 flex min-h-0 flex-1 flex-col space-y-3 overflow-y-auto p-3"
-            value="relays"
-          >
-            <SectionHeader
-              description="Configure trusted external audio data planes."
-              title="Relays"
-            />
-            <Suspense fallback={<LoadingFallback />}>
-              <RelaySettings />
             </Suspense>
           </TabsContent>
 

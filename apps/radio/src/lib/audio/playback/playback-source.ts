@@ -1,13 +1,9 @@
 import type { StreamStatus } from "./types.js";
 
-type PlaybackCandidate = {
+type PlaybackInput = {
   credentials?: RequestCredentials;
   format: "hls" | "progressive";
   src: string;
-};
-
-type PlaybackInput = {
-  candidates: readonly PlaybackCandidate[];
 };
 
 type PlaybackSource = {
@@ -30,5 +26,14 @@ type PlaybackSource = {
   stop(): void;
 };
 
-export type { PlaybackSourceCallbacks } from "./playback-source-shared.js";
-export type { PlaybackCandidate, PlaybackInput, PlaybackSource };
+type PlaybackSourceCallbacks = {
+  onPlaying?: () => void;
+  onPaused?: () => void;
+  onBuffering?: (isBuffering: boolean) => void;
+  onReady?: () => void;
+  onError?: (error: Error) => void;
+  onEnded?: () => void;
+  onStreamError?: (position: number) => void;
+};
+
+export type { PlaybackInput, PlaybackSource, PlaybackSourceCallbacks };

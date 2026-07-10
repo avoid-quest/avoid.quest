@@ -1,5 +1,4 @@
 import { describe, expect, mock, test } from "bun:test";
-import type { ResolverBroker } from "@avoid.quest/platforms/resolver";
 import type { YouTubeClient } from "@avoid.quest/platforms/youtube";
 import type { Radio } from "@/lib/audio";
 import { resolveDjPlatformStreamUrl } from "./dj-platform-stream-port";
@@ -45,7 +44,7 @@ describe("DJ platform stream port", () => {
     expect(resolveStream).toHaveBeenCalledWith("abcdefghijk");
   });
 
-  test("fails closed when browser configuration or provider resolution fails", async () => {
+  test("fails closed when client initialization or provider resolution fails", async () => {
     const input = {
       platform: "youtube" as const,
       radio,
@@ -56,7 +55,7 @@ describe("DJ platform stream port", () => {
     await expect(
       resolveDjPlatformStreamUrl(input, {
         getYouTubeClient: () => {
-          throw new Error("No provider configured");
+          throw new Error("YouTube client unavailable");
         },
       })
     ).resolves.toBeNull();
@@ -68,7 +67,7 @@ describe("DJ platform stream port", () => {
     ).resolves.toBeNull();
   });
 
-  test("delegates canonical SoundCloud refreshes through the provider-agnostic resolver seam", async () => {
+  test("delegates canonical SoundCloud refreshes through the platform seam", async () => {
     const input = {
       canonicalUrl: "https://soundcloud.com/artist/canonical-track",
       platform: "soundcloud" as const,
@@ -80,23 +79,28 @@ describe("DJ platform stream port", () => {
       },
       reason: "stream-refresh" as const,
     };
-    const resolveCanonicalStream = mock(() =>
+    const resolvePlatformItem = mock(() =>
       Promise.resolve({
-        streamFormat: "progressive" as const,
+        format: "progressive" as const,
+        metadata: {
+          itemType: "track" as const,
+          platform: "soundcloud" as const,
+          url: input.canonicalUrl,
+        },
         streamUrl: "https://soundcloud-media.example/fresh.mp3",
       })
     );
 
     await expect(
-      resolveDjPlatformStreamUrl(input, { resolveCanonicalStream })
+      resolveDjPlatformStreamUrl(input, { resolvePlatformItem })
     ).resolves.toEqual({
       streamFormat: "progressive",
       streamUrl: "https://soundcloud-media.example/fresh.mp3",
     });
-    expect(resolveCanonicalStream).toHaveBeenCalledWith(input);
+    expect(resolvePlatformItem).toHaveBeenCalledWith(input.canonicalUrl);
   });
 
-  test("delegates canonical Bandcamp refreshes through the same resolver seam", async () => {
+  test("delegates canonical Bandcamp refreshes through the same platform seam", async () => {
     const input = {
       canonicalUrl: "https://artist.bandcamp.com/track/canonical-track",
       platform: "bandcamp" as const,
@@ -108,23 +112,28 @@ describe("DJ platform stream port", () => {
       },
       reason: "stream-refresh" as const,
     };
-    const resolveCanonicalStream = mock(() =>
+    const resolvePlatformItem = mock(() =>
       Promise.resolve({
-        streamFormat: "progressive" as const,
+        format: "progressive" as const,
+        metadata: {
+          itemType: "track" as const,
+          platform: "bandcamp" as const,
+          url: input.canonicalUrl,
+        },
         streamUrl: "https://bandcamp-media.example/fresh.mp3",
       })
     );
 
     await expect(
-      resolveDjPlatformStreamUrl(input, { resolveCanonicalStream })
+      resolveDjPlatformStreamUrl(input, { resolvePlatformItem })
     ).resolves.toEqual({
       streamFormat: "progressive",
       streamUrl: "https://bandcamp-media.example/fresh.mp3",
     });
-    expect(resolveCanonicalStream).toHaveBeenCalledWith(input);
+    expect(resolvePlatformItem).toHaveBeenCalledWith(input.canonicalUrl);
   });
 
-  test("fails canonical refresh closed when its configured resolver fails", async () => {
+  test("fails canonical refresh closed when platform resolution fails", async () => {
     await expect(
       resolveDjPlatformStreamUrl(
         {
@@ -139,7 +148,7 @@ describe("DJ platform stream port", () => {
           reason: "stream-refresh",
         },
         {
-          resolveCanonicalStream: () =>
+          resolvePlatformItem: () =>
             Promise.reject(new Error("resolver unavailable")),
         }
       )
@@ -181,7 +190,6 @@ describe("DJ platform stream port", () => {
           ],
           url: "https://soundcloud.com/artist/playlist",
         },
-        resolverId: "external:test",
         streamUrl: "https://media.example/fresh-first.mp3",
       })
     );
@@ -195,9 +203,7 @@ describe("DJ platform stream port", () => {
           reason: "stream-refresh",
         },
         {
-          getResolverBroker: () => ({
-            resolve: resolve as unknown as ResolverBroker["resolve"],
-          }),
+          resolvePlatformItem: resolve,
         }
       )
     ).resolves.toEqual({
@@ -207,17 +213,18 @@ describe("DJ platform stream port", () => {
     expect(playlistRadio.streamFormat).toBe("progressive");
   });
 
-  test("carries resolver format for its primary extensionless stream without mutating input", async () => {
+  test("carries the resolved format for an extensionless stream without mutating input", async () => {
+    const platformMetadata = {
+      itemType: "track" as const,
+      platform: "soundcloud" as const,
+      url: "https://soundcloud.com/artist/live",
+    };
     const inputRadio: Radio = {
       id: "soundcloud-live",
       name: "SoundCloud live",
       streamFormat: "progressive",
       streamUrl: "https://media.example/expired.mp3",
-      platformMetadata: {
-        itemType: "track",
-        platform: "soundcloud",
-        url: "https://soundcloud.com/artist/live",
-      },
+      platformMetadata,
     };
 
     await expect(
@@ -229,16 +236,13 @@ describe("DJ platform stream port", () => {
           reason: "stream-refresh",
         },
         {
-          getResolverBroker: () => ({
-            resolve: mock(() =>
-              Promise.resolve({
-                format: "hls" as const,
-                metadata: inputRadio.platformMetadata,
-                resolverId: "external:test",
-                streamUrl: "https://media.example/extensionless",
-              })
-            ) as unknown as ResolverBroker["resolve"],
-          }),
+          resolvePlatformItem: mock(() =>
+            Promise.resolve({
+              format: "hls" as const,
+              metadata: platformMetadata,
+              streamUrl: "https://media.example/extensionless",
+            })
+          ),
         }
       )
     ).resolves.toEqual({

@@ -10,6 +10,7 @@ import type { YouTubeItemResult, YouTubeSearchResult } from "./types.js";
 
 const DEFAULT_MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 const DEFAULT_TIMEOUT_MS = 15_000;
+const MEDIA_CONTENT_RANGE_PATTERN = /^bytes 0-65535\/[1-9]\d*$/;
 const LEADING_SLASH_PATTERN = /^\//;
 const TRAILING_SLASH_PATTERN = /\/$/;
 const TRAILING_SLASHES_PATTERN = /\/+$/;
@@ -545,28 +546,69 @@ export async function verifyProviderMedia(
     signal,
     {
       headers: {
-        Accept: "audio/*, application/octet-stream;q=0.8, */*;q=0.1",
-        Range: "bytes=0-0",
+        Accept: "audio/webm, audio/mp4",
+        Range: "bytes=0-65535",
       },
     },
     true,
     async (response) => {
-      assertSuccessfulResponse(context, response);
+      let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+      try {
+        assertSuccessfulResponse(context, response);
+        if (response.status !== 206) {
+          throw invalidProviderSchema(
+            context,
+            "YouTube media proxy did not honor the range request"
+          );
+        }
 
-      const contentType =
-        response.headers.get("content-type")?.toLowerCase() ?? "";
-      if (contentType.includes("text/html") || contentType.includes("json")) {
-        throw new YouTubeProviderError(
-          "YouTube media proxy returned a non-audio response",
-          {
-            code: "unexpected-content-type",
-            kind: context.kind,
-            providerId: context.providerId,
-          }
-        );
+        const contentType =
+          response.headers
+            .get("content-type")
+            ?.split(";", 1)[0]
+            ?.trim()
+            .toLowerCase() ?? "";
+        if (contentType !== "audio/webm" && contentType !== "audio/mp4") {
+          throw new YouTubeProviderError(
+            "YouTube media proxy returned a non-audio response",
+            {
+              code: "unexpected-content-type",
+              kind: context.kind,
+              providerId: context.providerId,
+            }
+          );
+        }
+
+        const contentRange = response.headers.get("content-range") ?? "";
+        if (!MEDIA_CONTENT_RANGE_PATTERN.test(contentRange)) {
+          throw invalidProviderSchema(
+            context,
+            "YouTube media proxy returned an invalid content range"
+          );
+        }
+
+        if (!response.body) {
+          throw invalidProviderSchema(
+            context,
+            "YouTube media proxy returned an empty response"
+          );
+        }
+        reader = response.body.getReader();
+        const { done, value } = await reader.read();
+        if (done || !value?.byteLength) {
+          throw invalidProviderSchema(
+            context,
+            "YouTube media proxy returned an empty response"
+          );
+        }
+      } finally {
+        if (reader) {
+          await reader.cancel().catch(() => undefined);
+          reader.releaseLock();
+        } else {
+          await response.body?.cancel().catch(() => undefined);
+        }
       }
-
-      await response.body?.cancel();
     }
   );
 }

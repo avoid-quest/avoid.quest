@@ -16,9 +16,16 @@ function json(value: unknown): Response {
   return Response.json(value);
 }
 
-function media(): Response {
-  return new Response(new Uint8Array([0]), {
-    headers: { "Content-Type": "audio/webm" },
+function media(
+  body: BodyInit | null = new Uint8Array([0]),
+  headers: Record<string, string> = {}
+): Response {
+  return new Response(body, {
+    headers: {
+      "Content-Range": "bytes 0-65535/65536",
+      "Content-Type": "audio/webm",
+      ...headers,
+    },
     status: 206,
   });
 }
@@ -222,7 +229,7 @@ describe("browser Invidious adapter", () => {
     );
     expect(requests[1]?.url).toBe("https://invidious.test/videoplayback/audio");
     expect(new Headers(requests[1]?.init?.headers).get("Range")).toBe(
-      "bytes=0-0"
+      "bytes=0-65535"
     );
   });
 
@@ -633,6 +640,49 @@ function fakeAdapter(
 }
 
 describe("ordered YouTube provider failover", () => {
+  const invalidMediaResponses: ReadonlyArray<
+    readonly [string, () => Response]
+  > = [
+    ["an empty response", () => media(null)],
+    [
+      "a plain-text response",
+      () => media("not audio", { "Content-Type": "text/plain" }),
+    ],
+    [
+      "an invalid content range",
+      () => media(new Uint8Array([0]), { "Content-Range": "bytes 1-1/2" }),
+    ],
+  ];
+
+  for (const [description, invalidMedia] of invalidMediaResponses) {
+    test(`falls through a provider that returns ${description}`, async () => {
+      const first = createPipedAdapter({
+        baseUrl: "https://piped.test",
+        fetchImpl: mock((input: RequestInfo | URL) =>
+          Promise.resolve(
+            String(input).includes("proxy.piped.test")
+              ? invalidMedia()
+              : json(pipedVideo())
+          )
+        ) as typeof fetch,
+        id: "first",
+        resolveHostname: async () => [PUBLIC_ADDRESS],
+      });
+      const secondResolveStream = mock(() =>
+        Promise.resolve("https://public-media.test/audio")
+      );
+      const second: YouTubeProviderAdapter = {
+        ...fakeAdapter("second", () => Promise.reject(new Error("unused"))),
+        resolveStream: secondResolveStream,
+      };
+
+      await expect(
+        createYouTubeClient([first, second]).resolveStream(VIDEO_ID)
+      ).resolves.toBe("https://public-media.test/audio");
+      expect(secondResolveStream).toHaveBeenCalledTimes(1);
+    });
+  }
+
   test("falls through a provider that returns private-resolving media", async () => {
     const video = pipedVideo();
     const stream = video.audioStreams[0];

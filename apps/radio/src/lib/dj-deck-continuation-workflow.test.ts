@@ -418,6 +418,56 @@ describe("DJ deck continuation workflow", () => {
     expect(dependencies.applyCrossfade).toHaveBeenCalledTimes(1);
   });
 
+  test("refreshes the selected YouTube playlist track by its video ID", async () => {
+    const staleUrl = "https://youtube.example/stale-playlist-track.mp3";
+    const { audioManager, dependencies } = createDependencies({
+      resolvePlatformStreamUrl: () =>
+        Promise.resolve(resolution("https://youtube.example/fresh.mp3")),
+    });
+    const workflow = createDjDeckContinuationWorkflow(dependencies);
+    const radio: Radio = {
+      id: "youtube-playlist-1",
+      name: "YouTube Playlist",
+      streamUrl: staleUrl,
+      platformMetadata: {
+        platform: "youtube",
+        itemType: "playlist",
+        url: "https://youtube.example/playlist?list=playlist123",
+        playlistId: "playlist123",
+        tracks: [
+          {
+            name: "First",
+            streamUrl: "https://youtube.example/first.mp3",
+            videoId: "first123",
+          },
+          { name: "Current", streamUrl: staleUrl, videoId: "current123" },
+        ],
+      },
+    };
+
+    await expect(
+      workflow.handleStreamInterrupted({
+        deckId: "deck-a",
+        currentRadio: radio,
+        position: 42,
+        soundId: "left_youtube-playlist-1",
+      })
+    ).resolves.toBe("refreshed");
+
+    expect(dependencies.resolvePlatformStreamUrl).toHaveBeenCalledWith({
+      platform: "youtube",
+      reason: "stream-refresh",
+      videoId: "current123",
+      radio,
+    });
+    expect(audioManager.refreshStreamUrl).toHaveBeenCalledWith(
+      "left_youtube-playlist-1",
+      "https://youtube.example/fresh.mp3",
+      42,
+      "progressive"
+    );
+  });
+
   test("does not report refreshed or clear the real error when media reload fails", async () => {
     const mediaError = new Error("media element rejected fresh URL");
     const { dependencies } = createDependencies({

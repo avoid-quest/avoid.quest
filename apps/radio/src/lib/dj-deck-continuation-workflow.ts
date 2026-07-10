@@ -65,14 +65,20 @@ function getStreamRefreshRequest(
   currentRadio: Radio
 ): StreamRefreshRequest | null {
   const metadata = currentRadio.platformMetadata;
-  if (isYouTubeMetadata(metadata) && metadata.videoId) {
+  const videoId = isYouTubeMetadata(metadata)
+    ? (metadata.videoId ??
+      metadata.tracks?.find(
+        (track) => track.streamUrl === currentRadio.streamUrl
+      )?.videoId)
+    : undefined;
+  if (videoId) {
     return {
       failureCode: "DJ_YOUTUBE_REFRESH_FAILED",
       failureMessage: "Failed to refresh YouTube stream - please reload",
       resolution: {
         platform: "youtube",
         reason: "stream-refresh",
-        videoId: metadata.videoId,
+        videoId,
         radio: currentRadio,
       },
     };

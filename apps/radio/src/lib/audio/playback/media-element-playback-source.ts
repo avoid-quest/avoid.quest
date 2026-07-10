@@ -438,12 +438,6 @@ export class MediaElementPlaybackSource implements PlaybackSource {
       return;
     }
 
-    if (this.audio.canPlayType("application/vnd.apple.mpegurl")) {
-      this.audio.src = url;
-      this.audio.load();
-      return;
-    }
-
     const mediaSource = this.attachMediaSourceForEarlyPlayback();
     const { default: Hls } = await import("hls.js");
     if (
@@ -502,6 +496,13 @@ export class MediaElementPlaybackSource implements PlaybackSource {
       }
       hls.loadSource(url);
       this.hls = hls;
+      return;
+    }
+
+    this.revokePendingMediaSourceObjectUrl();
+    if (this.audio.canPlayType("application/vnd.apple.mpegurl")) {
+      this.audio.src = url;
+      this.audio.load();
       return;
     }
 

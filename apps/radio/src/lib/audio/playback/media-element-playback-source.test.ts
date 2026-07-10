@@ -379,25 +379,9 @@ describe("MediaElementPlaybackSource HLS loading", () => {
     const hlsMock = installDelayedHlsMock();
 
     try {
-      const nativeSource = createPlaybackSource();
-      const nativeAudio = mediaMocks.getAudio();
-      nativeAudio.nativeHlsSupport = "maybe";
-      const nativeLoad = nativeSource.load({
-        format: "hls",
-        src: "https://radio.example/live/native.m3u8",
-      });
-      const nativePlay = nativeSource.play();
-      await flushMicrotasks();
-      expect(nativeAudio.playSources).toEqual([
-        "https://radio.example/live/native.m3u8",
-      ]);
-      expect(hlsMock.importStarted()).toBe(false);
-      nativeAudio.emit("loadedmetadata");
-      await expect(nativeLoad).resolves.toBeUndefined();
-      await expect(nativePlay).resolves.toBeUndefined();
-
       const activationSource = createPlaybackSource();
       const activationAudio = mediaMocks.getAudio();
+      activationAudio.nativeHlsSupport = "maybe";
       const activationLoad = activationSource.load({
         format: "hls",
         src: "https://radio.example/live/activation.m3u8",
@@ -410,6 +394,7 @@ describe("MediaElementPlaybackSource HLS loading", () => {
 
       await flushMicrotasks();
 
+      expect(hlsMock.importStarted()).toBe(true);
       expect(activationAudio.playCalls).toBe(1);
       expect(activationAudio.playSources).toEqual(["blob:mock-media-source-1"]);
 
@@ -447,7 +432,6 @@ describe("MediaElementPlaybackSource HLS loading", () => {
         "https://radio.example/live/pause.m3u8",
       ]);
       activationSource.cleanup();
-      nativeSource.cleanup();
       pausedSource.cleanup();
     } finally {
       mediaMocks.restore();

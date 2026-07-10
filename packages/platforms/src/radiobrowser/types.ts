@@ -1,3 +1,5 @@
+import type { PublicHostnameResolver } from "../url-policy/public-http-url.js";
+
 export type RadioBrowserStation = {
   stationUuid: string;
   name: string;
@@ -27,4 +29,5 @@ export type RadioBrowserSearchOptions = {
   fetchImpl?: RadioBrowserFetch;
   servers?: readonly string[];
   random?: () => number;
+  resolveHostname?: PublicHostnameResolver | false;
 };

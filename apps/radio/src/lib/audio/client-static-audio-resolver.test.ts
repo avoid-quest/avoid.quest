@@ -21,10 +21,16 @@ describe("resolveClientStaticAudio", () => {
     ["aac", "audio/aac"],
     ["webm", "audio/webm"],
     ["opus", "audio/ogg"],
-  ])("resolves .%s files without a network request", async (ext, mimeType) => {
-    const fetchImpl = mock(() =>
-      Promise.reject(new Error("audio files must not be probed"))
-    );
+  ])("probes and resolves .%s files", async (ext, mimeType) => {
+    const fetchImpl = mock((_input: RequestInfo | URL, init?: RequestInit) => {
+      expect(init).toMatchObject({
+        credentials: "omit",
+        headers: { Accept: "audio/*", Range: "bytes=0-0" },
+        method: "GET",
+        redirect: "error",
+      });
+      return Promise.resolve(new Response(null, { status: 206 }));
+    });
     const url = `https://audio.example/deep_mix-01.${ext}?token=abc`;
 
     await expect(resolveClientStaticAudio(url, { fetchImpl })).resolves.toEqual(
@@ -45,7 +51,20 @@ describe("resolveClientStaticAudio", () => {
         streamUrl: url,
       }
     );
-    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  test("rejects direct audio when the no-redirect probe fails", async () => {
+    const fetchImpl = mock((_input: RequestInfo | URL, init?: RequestInit) => {
+      expect(init?.redirect).toBe("error");
+      return Promise.reject(new TypeError("Redirect blocked"));
+    });
+
+    await expect(
+      resolveClientStaticAudio("https://audio.example/track.mp3", {
+        fetchImpl,
+      })
+    ).rejects.toThrow("Redirect blocked");
   });
 
   test("rejects unsupported, non-HTTP, and credential-bearing URLs", async () => {
@@ -81,6 +100,7 @@ describe("resolveClientStaticAudio", () => {
       expect(init).toMatchObject({
         cache: "no-store",
         credentials: "omit",
+        redirect: "error",
         referrerPolicy: "no-referrer",
       });
       return Promise.resolve(
@@ -171,6 +191,42 @@ Length1=11`,
     });
   });
 
+  test.each([
+    ["segment", "#EXTINF:6,\nhttp://127.0.0.1/segment.ts"],
+    ["key", '#EXT-X-KEY:METHOD=AES-128,URI="http://10.0.0.1/key"'],
+    ["map", '#EXT-X-MAP:URI="http://192.168.1.10/init.mp4"'],
+    [
+      "rendition",
+      '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aac",URI="http://[::1]/audio.m3u8"',
+    ],
+    [
+      "content steering",
+      '#EXT-X-CONTENT-STEERING:SERVER-URI="http://127.0.0.1/steering"',
+    ],
+  ])("rejects a private HLS %s URL", async (_kind, directive) => {
+    await expect(
+      resolveClientStaticAudio("https://audio.example/live.m3u8", {
+        fetchImpl: mock(() =>
+          Promise.resolve(playlistResponse(`#EXTM3U\n${directive}`))
+        ),
+      })
+    ).rejects.toThrow("private resource URL");
+  });
+
+  test("accepts relative HLS resource URLs", async () => {
+    await expect(
+      resolveClientStaticAudio("https://audio.example/live/main.m3u8", {
+        fetchImpl: mock(() =>
+          Promise.resolve(
+            playlistResponse(
+              '#EXTM3U\n#EXT-X-KEY:METHOD=AES-128,URI="keys/current"\nsegments/one.ts'
+            )
+          )
+        ),
+      })
+    ).resolves.toMatchObject({ format: "hls" });
+  });
+
   test("rejects private nested tracks from a public playlist", async () => {
     await expect(
       resolveClientStaticAudio("https://audio.example/list.m3u", {
@@ -182,7 +238,7 @@ Length1=11`,
           )
         ),
       })
-    ).rejects.toThrow("private track URL");
+    ).rejects.toThrow("private resource URL");
   });
 
   test("enforces response type and size limits", async () => {

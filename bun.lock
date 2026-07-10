@@ -35,7 +35,7 @@
     },
     "apps/radio": {
       "name": "@avoid.quest/radio",
-      "version": "0.5.8",
+      "version": "0.5.9",
       "dependencies": {
         "@avoid.quest/error": "workspace:*",
         "@avoid.quest/platforms": "workspace:*",

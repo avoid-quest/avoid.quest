@@ -151,6 +151,64 @@ describe("searchRadioBrowser", () => {
     ]);
   });
 
+  test("drops stream URLs whose host resolves to a private address", async () => {
+    const resolveHostname = mock(async (hostname: string) =>
+      hostname === "private.example" ? ["127.0.0.1"] : ["203.0.113.10"]
+    );
+    const fetchImpl = mock(async () =>
+      jsonResponse([
+        {
+          stationuuid: "station-private",
+          name: "Private",
+          url_resolved: "https://private.example/live.mp3",
+        },
+        {
+          stationuuid: "station-public",
+          name: "Public",
+          url: "https://radio.example/original.mp3",
+          url_resolved: "https://radio.example/live.mp3",
+        },
+      ])
+    );
+
+    await expect(
+      searchRadioBrowser("safe", {
+        fetchImpl,
+        resolveHostname,
+        servers: ["https://radio-browser.example"],
+      })
+    ).resolves.toEqual([
+      expect.objectContaining({
+        stationUuid: "station-public",
+        url: "https://radio.example/original.mp3",
+        urlResolved: "https://radio.example/live.mp3",
+      }),
+    ]);
+    expect(resolveHostname).toHaveBeenCalledTimes(2);
+  });
+
+  test("fails closed when a stream hostname cannot be resolved", async () => {
+    const resolveHostname = mock(() =>
+      Promise.reject(new Error("DNS unavailable"))
+    );
+
+    await expect(
+      searchRadioBrowser("unresolved", {
+        fetchImpl: mock(async () =>
+          jsonResponse([
+            {
+              stationuuid: "station-1",
+              name: "Unresolved",
+              url: "https://unresolved.example/live.mp3",
+            },
+          ])
+        ),
+        resolveHostname,
+        servers: ["https://radio-browser.example"],
+      })
+    ).resolves.toEqual([]);
+  });
+
   test("stops retries when the caller aborts", async () => {
     const controller = new AbortController();
     const abortError = new DOMException("Stopped", "AbortError");

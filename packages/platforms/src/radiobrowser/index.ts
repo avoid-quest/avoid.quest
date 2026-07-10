@@ -1,4 +1,9 @@
-import { validatePublicHttpUrl } from "../url-policy/public-http-url.js";
+import {
+  type PublicHostnameResolver,
+  resolvePublicHostnameWithDoh,
+  validatePublicHttpUrl,
+  validateResolvedPublicHttpUrl,
+} from "../url-policy/public-http-url.js";
 import type {
   RadioBrowserFetch,
   RadioBrowserSearchOptions,
@@ -39,6 +44,37 @@ function asSafeHttpUrl(value: unknown): string {
   return url;
 }
 
+async function asSafeResolvedHttpUrl(
+  value: unknown,
+  resolveHostname: PublicHostnameResolver | false,
+  signal?: AbortSignal
+): Promise<string> {
+  const url = asSafeHttpUrl(value);
+  if (!url) {
+    return "";
+  }
+  const validation = await validateResolvedPublicHttpUrl(url, {
+    resolveHostname,
+    signal,
+  });
+  return validation.ok ? url : "";
+}
+
+function cacheHostnameResolver(
+  resolveHostname: PublicHostnameResolver
+): PublicHostnameResolver {
+  const cache = new Map<string, Promise<readonly string[]>>();
+  return (hostname, options) => {
+    const cached = cache.get(hostname);
+    if (cached) {
+      return cached;
+    }
+    const pending = resolveHostname(hostname, options);
+    cache.set(hostname, pending);
+    return pending;
+  };
+}
+
 function asBoolean(value: unknown): boolean {
   return value === true || value === 1 || value === "1";
 }
@@ -62,14 +98,25 @@ function asTags(value: unknown): string[] {
     .filter(Boolean);
 }
 
-function normalizeStation(
-  station: RadioBrowserStationResponse
-): RadioBrowserStation | null {
+async function normalizeStation(
+  station: RadioBrowserStationResponse,
+  resolveHostname: PublicHostnameResolver | false,
+  signal?: AbortSignal
+): Promise<RadioBrowserStation | null> {
+  const canonicalUrl = asSafeHttpUrl(station.url);
+  const urlResolved = await asSafeResolvedHttpUrl(
+    station.url_resolved,
+    resolveHostname,
+    signal
+  );
+  const url = urlResolved
+    ? canonicalUrl
+    : await asSafeResolvedHttpUrl(canonicalUrl, resolveHostname, signal);
   const normalized = {
     stationUuid: asString(station.stationuuid),
     name: asString(station.name),
-    url: asSafeHttpUrl(station.url),
-    urlResolved: asSafeHttpUrl(station.url_resolved),
+    url,
+    urlResolved,
     homepage: asSafeHttpUrl(station.homepage),
     favicon: asSafeHttpUrl(station.favicon),
     country: asString(station.country),
@@ -263,6 +310,11 @@ export async function searchRadioBrowser(
   }
 
   const fetchImpl = options.fetchImpl ?? fetch;
+  const resolveHostname =
+    options.resolveHostname ??
+    (fetchImpl === globalThis.fetch ? resolvePublicHostnameWithDoh : false);
+  const cachedResolveHostname =
+    resolveHostname === false ? false : cacheHostnameResolver(resolveHostname);
   const timeoutMs = Math.max(1, options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
   const discoveredServers =
     options.servers === undefined
@@ -286,13 +338,20 @@ export async function searchRadioBrowser(
       if (!Array.isArray(payload)) {
         throw new Error("Radio Browser returned an invalid station list");
       }
-      return payload
-        .filter(
-          (station): station is RadioBrowserStationResponse =>
-            typeof station === "object" && station !== null
-        )
-        .map(normalizeStation)
-        .filter((station): station is RadioBrowserStation => station !== null);
+      const stations = await Promise.all(
+        payload
+          .filter(
+            (station): station is RadioBrowserStationResponse =>
+              typeof station === "object" && station !== null
+          )
+          .map((station) =>
+            normalizeStation(station, cachedResolveHostname, options.signal)
+          )
+      );
+      throwIfAborted(options.signal);
+      return stations.filter(
+        (station): station is RadioBrowserStation => station !== null
+      );
     } catch (error) {
       throwIfAborted(options.signal);
       lastError = error;

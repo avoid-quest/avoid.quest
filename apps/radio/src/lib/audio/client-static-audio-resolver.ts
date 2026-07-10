@@ -11,7 +11,9 @@ const DEFAULT_TIMEOUT_MS = 8000;
 const DEFAULT_MAX_RESPONSE_BYTES = 1024 * 1024;
 const BYTE_ORDER_MARK_PATTERN = /^\uFEFF/;
 const HLS_DIRECTIVE_PATTERN = /^#EXT-X-/m;
+const HLS_URI_ATTRIBUTE_PATTERN = /[,:](?:URI|SERVER-URI)="([^"]+)"/g;
 const HTML_PATTERN = /^\s*(?:<!doctype\s+html|<html|<body)/i;
+const LINE_BREAK_PATTERN = /\r?\n/;
 const PLAYLIST_CONTENT_TYPES = new Set([
   "",
   "application/octet-stream",
@@ -155,25 +157,41 @@ function playlistMetadata(
   };
 }
 
+function validatePlaylistResourceUrl(value: string, baseUrl?: string): void {
+  let url: URL;
+  try {
+    url = new URL(value, baseUrl);
+  } catch (error) {
+    throw new PlaylistError("Playlist contains an invalid resource URL", {
+      cause: error,
+    });
+  }
+  if (
+    (url.protocol !== "http:" && url.protocol !== "https:") ||
+    url.username ||
+    url.password
+  ) {
+    throw new PlaylistError("Playlist contains an unsafe resource URL");
+  }
+  if (!isPublicHttpUrl(url.toString())) {
+    throw new PlaylistError("Playlist contains a private resource URL");
+  }
+}
+
 function validateTrackUrls(playlist: ParsedPlaylist): void {
   for (const track of playlist.tracks) {
-    let url: URL;
-    try {
-      url = new URL(track.url);
-    } catch (error) {
-      throw new PlaylistError("Playlist contains an invalid track URL", {
-        cause: error,
-      });
+    validatePlaylistResourceUrl(track.url);
+  }
+}
+
+function validateHlsResourceUrls(content: string, manifestUrl: string): void {
+  for (const line of content.split(LINE_BREAK_PATTERN)) {
+    const trimmed = line.trim();
+    if (trimmed && !trimmed.startsWith("#")) {
+      validatePlaylistResourceUrl(trimmed, manifestUrl);
     }
-    if (
-      (url.protocol !== "http:" && url.protocol !== "https:") ||
-      url.username ||
-      url.password
-    ) {
-      throw new PlaylistError("Playlist contains an unsafe track URL");
-    }
-    if (!isPublicHttpUrl(track.url)) {
-      throw new PlaylistError("Playlist contains a private track URL");
+    for (const match of line.matchAll(HLS_URI_ATTRIBUTE_PATTERN)) {
+      validatePlaylistResourceUrl(match[1] ?? "", manifestUrl);
     }
   }
 }
@@ -193,6 +211,7 @@ function parsePlaylistContent(
   }
 
   if (HLS_DIRECTIVE_PATTERN.test(normalized)) {
+    validateHlsResourceUrls(normalized, upstreamUrl);
     return trackMetadata(upstreamUrl, "application/vnd.apple.mpegurl");
   }
 
@@ -316,6 +335,7 @@ function requestInit(signal: AbortSignal): RequestInit {
       Accept:
         "audio/x-mpegurl, audio/x-scpls, application/vnd.apple.mpegurl, text/plain;q=0.9",
     },
+    redirect: "error",
     referrerPolicy: "no-referrer",
     signal,
   };
@@ -383,6 +403,38 @@ async function resolvePlaylist(
   }
 }
 
+async function probeDirectAudio(
+  fetchImpl: FetchLike,
+  upstreamUrl: string,
+  timeoutMs: number,
+  parentSignal?: AbortSignal
+): Promise<void> {
+  const requestSignal = createRequestSignal(parentSignal, timeoutMs);
+  try {
+    await runUntilAbort(async () => {
+      const response = await fetchImpl(upstreamUrl, {
+        ...requestInit(requestSignal.signal),
+        headers: { Accept: "audio/*", Range: "bytes=0-0" },
+        method: "GET",
+      });
+      if (!response.ok) {
+        throw new PlaylistError(
+          `Audio request failed with status ${response.status}`
+        );
+      }
+      await response.body?.cancel();
+    }, requestSignal.signal);
+  } catch (error) {
+    throw resolverError(
+      error,
+      requestSignal.timedOut(),
+      parentSignal?.aborted ?? false
+    );
+  } finally {
+    requestSignal.cleanup();
+  }
+}
+
 function positiveLimit(value: number, label: string): number {
   if (!Number.isSafeInteger(value) || value <= 0) {
     throw new ClientStaticAudioResolverError(`${label} must be positive`);
@@ -408,7 +460,18 @@ export async function resolveClientStaticAudio(
   if (!isPublicHttpUrl(upstreamUrl)) {
     throw new ClientStaticAudioResolverError("Audio URL must be public");
   }
+  const timeoutMs = positiveLimit(
+    dependencies.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+    "Resolver timeout"
+  );
+  const fetchImpl = dependencies.fetchImpl ?? fetch;
   if (audioUrl) {
+    await probeDirectAudio(
+      fetchImpl,
+      upstreamUrl,
+      timeoutMs,
+      dependencies.signal
+    );
     const metadata = trackMetadata(
       upstreamUrl,
       MIME_TYPES[expectedExtension] ?? "audio/mpeg"
@@ -420,15 +483,10 @@ export async function resolveClientStaticAudio(
     };
   }
 
-  const timeoutMs = positiveLimit(
-    dependencies.timeoutMs ?? DEFAULT_TIMEOUT_MS,
-    "Resolver timeout"
-  );
   const maxResponseBytes = positiveLimit(
     dependencies.maxResponseBytes ?? DEFAULT_MAX_RESPONSE_BYTES,
     "Maximum response size"
   );
-  const fetchImpl = dependencies.fetchImpl ?? fetch;
   const metadata = await resolvePlaylist(
     fetchImpl,
     upstreamUrl,

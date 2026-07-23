@@ -1,5 +1,4 @@
 import {
-  copyFileSync,
   existsSync,
   mkdirSync,
   readdirSync,
@@ -203,6 +202,14 @@ function collectFiles(root: string, relative = ""): string[] {
   });
 }
 
+const SOURCE_MAP_DIRECTIVE = /\n\/\/# sourceMappingURL=[^\n]+\s*$/;
+
+function readOpenDawAsset(source: string): Buffer | string {
+  return source.endsWith(".js")
+    ? readFileSync(source, "utf8").replace(SOURCE_MAP_DIRECTIVE, "")
+    : readFileSync(source);
+}
+
 /**
  * Serve and emit the official openDAW engine/worklet/plugin artifacts at the
  * stable URLs expected by WasmEngine. Keeping this package-driven avoids
@@ -281,7 +288,7 @@ function openDawAssetsPlugin(): Plugin {
             ? "application/wasm"
             : "application/javascript"
         );
-        response.end(readFileSync(source));
+        response.end(readOpenDawAsset(source));
       });
     },
     writeBundle(options) {
@@ -302,7 +309,7 @@ function openDawAssetsPlugin(): Plugin {
         for (const [relative, source] of files) {
           const target = path.join(targetDir, relative);
           mkdirSync(path.dirname(target), { recursive: true });
-          copyFileSync(source, target);
+          writeFileSync(target, readOpenDawAsset(source));
         }
       }
     },

@@ -216,6 +216,13 @@ test -f apps/radio/dist/client/opendaw/nam.wasm
 find apps/radio/dist/client/opendaw/wasm/plugins -type f -name '*.wasm'
 ```
 
+Verify Cloudflare can package the complete build without uploading it:
+
+```sh
+WRANGLER_LOG_PATH=/tmp/radio-wrangler-dry-run.log \
+  bun run --filter @avoid.quest/radio cf-upload -- --dry-run
+```
+
 ## Licensing note
 
 The upstream terms observed during research are recorded in

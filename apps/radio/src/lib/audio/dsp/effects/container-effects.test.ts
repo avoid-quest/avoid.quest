@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 import { ContainerEffect } from "./container-effects";
 import { createDefaultEffectConfig } from "./registry";
 import type { EffectConfig, StereoChannels } from "./types";
@@ -75,5 +75,47 @@ describe("compatibility effect containers", () => {
       expect(output[0][index]).toBeCloseTo(input[0][index] ?? 0, 6);
       expect(output[1][index]).toBeCloseTo(input[1][index] ?? 0, 6);
     }
+  });
+
+  test("forwards sidechain input only to nested effects that request it", () => {
+    const config = createDefaultEffectConfig("fxComposite", "fx", 0);
+    const gate = createDefaultEffectConfig("gate", "gate", 0);
+    const compressor = createDefaultEffectConfig("compressor", "compressor", 0);
+    gate.sidechain = { channelId: "deck-b" };
+    const [firstChain, secondChain] = config.chains;
+    if (!(firstChain && secondChain)) {
+      throw new Error("Default composite must contain two chains");
+    }
+    firstChain.effects = [gate];
+    secondChain.effects = [compressor];
+    const sidechainSetters = new Map<
+      string,
+      ReturnType<typeof mock<(input: StereoChannels | null) => void>>
+    >();
+    const effect = new ContainerEffect(
+      "fxComposite",
+      SAMPLE_RATE,
+      config,
+      (child) => {
+        const setSidechainInput = mock(
+          (_input: StereoChannels | null) => undefined
+        );
+        sidechainSetters.set(child.id, setSidechainInput);
+        return {
+          process: (input, output, fromIndex, toIndex) => {
+            output[0].set(input[0].subarray(fromIndex, toIndex), fromIndex);
+            output[1].set(input[1].subarray(fromIndex, toIndex), fromIndex);
+          },
+          reset: () => undefined,
+          setSidechainInput,
+        };
+      }
+    );
+    const sidechain = buffers();
+
+    effect.setSidechainInput(sidechain);
+
+    expect(sidechainSetters.get("gate")).toHaveBeenLastCalledWith(sidechain);
+    expect(sidechainSetters.get("compressor")).toHaveBeenLastCalledWith(null);
   });
 });

@@ -33,7 +33,7 @@ describe("Delay Effect", () => {
     const delay = new Delay(SAMPLE_RATE);
 
     // Try to set delay longer than 2 second max
-    delay.setDelayTime(10); // 10 seconds
+    delay.setDelayTime(30);
 
     // Should still work (clamped to max)
     const input: [Float32Array, Float32Array] = [
@@ -46,6 +46,52 @@ describe("Delay Effect", () => {
     ];
 
     expect(() => delay.process(input, output, 0, 3)).not.toThrow();
+  });
+
+  test("supports the exposed whole-note delay at 30 BPM", () => {
+    const delay = new Delay(100);
+    delay.setTempo(30);
+    delay.setDelayMusical("1/1");
+    delay.setDelayMillis(0);
+    delay.setFeedback(0);
+    const input: [Float32Array, Float32Array] = [
+      new Float32Array(801),
+      new Float32Array(801),
+    ];
+    const output: [Float32Array, Float32Array] = [
+      new Float32Array(801),
+      new Float32Array(801),
+    ];
+    input[0][0] = 1;
+    input[1][0] = 1;
+
+    delay.process(input, output, 0, input[0].length);
+
+    expect(output[0][800]).toBe(1);
+    expect(output[1][800]).toBe(1);
+  });
+
+  test("routes cross-feedback within the configured feedback gain", () => {
+    const delay = new Delay(100);
+    delay.setDelayTime(0.01);
+    delay.setFeedback(0.5);
+    delay.setCrossFeedback(1);
+    const input: [Float32Array, Float32Array] = [
+      new Float32Array(4),
+      new Float32Array(4),
+    ];
+    const output: [Float32Array, Float32Array] = [
+      new Float32Array(4),
+      new Float32Array(4),
+    ];
+    input[0][0] = 1;
+    input[1][0] = 1;
+
+    delay.process(input, output, 0, input[0].length);
+
+    expect(output[0][1]).toBeCloseTo(1);
+    expect(output[0][2]).toBeCloseTo(0.5);
+    expect(output[0][3]).toBeCloseTo(0.25);
   });
 
   test("setFeedback clamps to 0.95 maximum", () => {

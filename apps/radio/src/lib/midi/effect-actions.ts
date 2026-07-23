@@ -10,37 +10,35 @@ import {
   getEffectSchema,
 } from "@/lib/audio/dsp/effects/schema";
 import {
+  findEffectInTree,
   isEffectContainer,
-  updateEffectInTree,
 } from "@/lib/audio/dsp/routing/effect-tree";
+import { getPlaybackChannel } from "@/lib/collections/playback-sessions";
 import { getDjDeckActions } from "@/lib/dj-actions";
 import { MidiController } from "./midi-controller";
 import type { MidiAction } from "./types";
 
 function collectEffectActions(
-  rootEffect: EffectConfig,
   effect: EffectConfig,
   targetPrefix: string,
   group: string,
-  updateRoot: (effect: EffectConfig) => void
+  getEffect: (effectId: string) => EffectConfig | undefined,
+  updateEffect: (effectId: string, effectConfig: Partial<EffectConfig>) => void
 ): MidiAction[] {
   const schema = getEffectSchema(effect.type);
   if (!schema) {
     return [];
   }
-  const patch = (config: Partial<EffectConfig>) => {
-    const [updatedRoot] = updateEffectInTree([rootEffect], effect.id, config);
-    if (updatedRoot) {
-      updateRoot(updatedRoot);
-    }
-  };
   const actions: MidiAction[] = [
     {
       targetId: `${targetPrefix}:enabled`,
       label: `${schema.name} - Enabled`,
       group,
       type: "button",
-      dispatch: () => patch({ enabled: !effect.enabled }),
+      dispatch: () =>
+        updateEffect(effect.id, {
+          enabled: !(getEffect(effect.id)?.enabled ?? effect.enabled),
+        }),
     },
   ];
 
@@ -51,7 +49,7 @@ function collectEffectActions(
       group,
       type: "continuous",
       dispatch: (value) =>
-        patch({
+        updateEffect(effect.id, {
           [param.key]: param.min + value * (param.max - param.min),
         }),
       range: { min: param.min, max: param.max, step: param.step },
@@ -70,25 +68,30 @@ function collectEffectActions(
           label: `${schema.name} - ${chain.name} ${label}`,
           group,
           type: "continuous",
-          dispatch: (value) =>
-            patch({
-              chains: effect.chains.map((item) =>
+          dispatch: (value) => {
+            const current = getEffect(effect.id);
+            if (!(current && isEffectContainer(current))) {
+              return;
+            }
+            updateEffect(effect.id, {
+              chains: current.chains.map((item) =>
                 item.id === chain.id
                   ? { ...item, [key]: min + value * (max - min) }
                   : item
               ),
-            } as Partial<EffectConfig>),
+            } as Partial<EffectConfig>);
+          },
           range: { min, max, step },
         });
       }
       for (const child of chain.effects) {
         actions.push(
           ...collectEffectActions(
-            rootEffect,
             child,
             `${chainPrefix}:effect:${child.id}`,
             group,
-            updateRoot
+            getEffect,
+            updateEffect
           )
         );
       }
@@ -113,14 +116,16 @@ export function registerEffectActions(
   }
 
   const { updateEffect } = getDjDeckActions(deckId);
+  const getEffect = (effectId: string) =>
+    findEffectInTree(getPlaybackChannel("dj", deckId)?.effects ?? [], effectId);
   const group = `${deckId}-effects`;
   const prefix = `${deckId}:effect:${effect.id}`;
   const actions = collectEffectActions(
     effect,
-    effect,
     prefix,
     group,
-    (updated) => updateEffect(effect.id, updated)
+    getEffect,
+    updateEffect
   );
 
   return MidiController.getInstance().registerAll(actions);

@@ -33,6 +33,14 @@ const copy = (
   }
 };
 
+const usesSidechain = (effect: EffectConfig): boolean =>
+  Boolean(effect.sidechain) ||
+  (effect.type === "fxComposite" ||
+  effect.type === "stereoSplit" ||
+  effect.type === "frequencySplit"
+    ? effect.chains.some((chain) => chain.effects.some(usesSidechain))
+    : false);
+
 const branchPanGains = (
   type: "fxComposite" | "stereoSplit" | "frequencySplit",
   pan: number
@@ -120,8 +128,8 @@ export class ContainerEffect implements EffectProcessor {
   setSidechainInput(input: StereoChannels | null): void {
     this.sidechain = input;
     for (const chain of this.chains) {
-      for (const { processor } of chain.processors) {
-        processor.setSidechainInput?.(input);
+      for (const { config, processor } of chain.processors) {
+        processor.setSidechainInput?.(usesSidechain(config) ? input : null);
       }
     }
   }

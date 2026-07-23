@@ -3,6 +3,11 @@ import { Input } from "@avoid.quest/ui/components/input";
 import { Label } from "@avoid.quest/ui/components/label";
 import { useState } from "react";
 import type { EffectConfig } from "@/lib/audio";
+import {
+  createLocalNamModelId,
+  deleteNamModel,
+  saveNamModel,
+} from "@/lib/audio/dsp/effects/nam-model-store";
 
 type Tone3000ModelParamsProps = {
   effect: Extract<EffectConfig, { type: "neuralAmp" }>;
@@ -12,10 +17,7 @@ type Tone3000ModelParamsProps = {
 export function parseNamModel(
   modelName: string,
   modelData: string
-): Pick<
-  Extract<EffectConfig, { type: "neuralAmp" }>,
-  "modelName" | "modelData"
-> {
+): { modelData: string; modelName: string } {
   const parsed = JSON.parse(modelData) as unknown;
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
     throw new Error("NAM model must contain a JSON object.");
@@ -32,11 +34,17 @@ export function Tone3000ModelParams({
   const loadFile = async (file: File) => {
     try {
       const model = parseNamModel(file.name, await file.text());
+      const modelId = createLocalNamModelId();
+      await saveNamModel(modelId, model.modelData);
       onUpdate({
-        ...model,
-        modelId: null,
+        modelName: model.modelName,
+        modelData: null,
+        modelId,
         modelUrl: null,
       } as Partial<EffectConfig>);
+      if (effect.modelId?.startsWith("local-nam:")) {
+        await deleteNamModel(effect.modelId);
+      }
       setStatus(`Loaded ${file.name} locally.`);
     } catch (cause) {
       setStatus(cause instanceof Error ? cause.message : "Invalid NAM model.");
@@ -61,14 +69,18 @@ export function Tone3000ModelParams({
         <p className="min-w-0 truncate text-muted-foreground text-xs">
           {effect.modelName ?? "No local model selected"}
         </p>
-        {effect.modelData && (
+        {effect.modelId && (
           <Button
-            onClick={() =>
+            onClick={() => {
+              if (effect.modelId?.startsWith("local-nam:")) {
+                deleteNamModel(effect.modelId).catch(() => undefined);
+              }
               onUpdate({
+                modelId: null,
                 modelName: null,
                 modelData: null,
-              } as Partial<EffectConfig>)
-            }
+              } as Partial<EffectConfig>);
+            }}
             size="sm"
             type="button"
             variant="ghost"
@@ -78,8 +90,9 @@ export function Tone3000ModelParams({
         )}
       </div>
       <p className="text-muted-foreground text-xs">
-        Read and persisted locally for the official engine adapter. No model,
-        credentials, or network request is bundled.
+        Stored in this browser&apos;s model database; sessions keep only its
+        identifier and name. No model, credentials, or network request is
+        bundled.
       </p>
       {status && <p className="text-xs">{status}</p>}
     </div>

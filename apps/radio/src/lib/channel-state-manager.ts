@@ -9,6 +9,7 @@ import {
 import {
   getPlaybackChannel,
   getPlaybackSession,
+  PLAYBACK_SESSION_IDS,
   type PlaybackChannelRecord,
   type PlaybackSessionId,
   playbackSessionsCollection,
@@ -145,6 +146,17 @@ function syncEffectSidechain(
   effects: readonly EffectConfig[]
 ): void {
   getAudioManager().setEffectsSidechain(soundId, findSidechainSoundId(effects));
+}
+
+function syncAllEffectSidechains(): void {
+  for (const sessionId of PLAYBACK_SESSION_IDS) {
+    for (const channel of getPlaybackSession(sessionId)?.channels ?? []) {
+      const soundId = getPlaybackChannelRuntime(channel.id).soundId;
+      if (soundId) {
+        syncEffectSidechain(soundId, channel.effects);
+      }
+    }
+  }
 }
 
 function mergeChannelState(
@@ -603,6 +615,7 @@ export function activateChannel(
     subscribeChannelRuntime(sessionId, channelId, soundId, {
       onAudioState: options.onAudioState,
     });
+    syncAllEffectSidechains();
   } catch (error) {
     setChannelSubscriptionCleanup(channelId, null);
     if (soundCreated) {
@@ -626,4 +639,5 @@ export function deactivateChannel(channelId: string): void {
     getAudioManager().cleanupSound(runtime.soundId);
   }
   resetPlaybackChannelRuntime(channelId);
+  syncAllEffectSidechains();
 }

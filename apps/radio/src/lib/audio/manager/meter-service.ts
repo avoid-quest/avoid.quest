@@ -13,7 +13,16 @@ type OpenDawMeterNode = AudioWorkletNode & {
 type MeterNodeFactory = (
   context: BaseAudioContext
 ) => Promise<OpenDawMeterNode>;
+type FallbackMeter = {
+  input: AudioNode;
+  terminate(): void;
+};
+type FallbackMeterFactory = (
+  context: BaseAudioContext,
+  observer: (level: MeterLevel) => void
+) => FallbackMeter;
 type MeterSlot = {
+  fallback: FallbackMeter | null;
   generation: number;
   initialization: Promise<void> | null;
   listeners: Set<MeterListener>;
@@ -23,6 +32,7 @@ type MeterSlot = {
 };
 
 const createMeterSlot = (): MeterSlot => ({
+  fallback: null,
   generation: 0,
   initialization: null,
   listeners: new Set(),
@@ -37,13 +47,52 @@ const createOpenDawMeterNode: MeterNodeFactory = async (context) => {
   return worklets.createMeter(2);
 };
 
+const peak = (samples: Float32Array): number => {
+  let value = 0;
+  for (const sample of samples) {
+    value = Math.max(value, Math.abs(sample));
+  }
+  return value;
+};
+
+const createNativeFallbackMeter: FallbackMeterFactory = (context, observer) => {
+  const splitter = context.createChannelSplitter(2);
+  const left = context.createAnalyser();
+  const right = context.createAnalyser();
+  left.fftSize = 256;
+  right.fftSize = 256;
+  splitter.connect(left, 0);
+  splitter.connect(right, 1);
+  const leftSamples = new Float32Array(left.fftSize);
+  const rightSamples = new Float32Array(right.fftSize);
+  const interval = globalThis.setInterval(() => {
+    left.getFloatTimeDomainData(leftSamples);
+    right.getFloatTimeDomainData(rightSamples);
+    observer({ left: peak(leftSamples), right: peak(rightSamples) });
+  }, 50);
+  return {
+    input: splitter,
+    terminate: () => {
+      globalThis.clearInterval(interval);
+      splitter.disconnect();
+      left.disconnect();
+      right.disconnect();
+    },
+  };
+};
+
 class MeterService {
   private readonly master = createMeterSlot();
   private readonly sounds = new Map<string, MeterSlot>();
   private readonly createMeterNode: MeterNodeFactory;
+  private readonly createFallbackMeter: FallbackMeterFactory;
 
-  constructor(createMeterNode: MeterNodeFactory = createOpenDawMeterNode) {
+  constructor(
+    createMeterNode: MeterNodeFactory = createOpenDawMeterNode,
+    createFallbackMeter: FallbackMeterFactory = createNativeFallbackMeter
+  ) {
     this.createMeterNode = createMeterNode;
+    this.createFallbackMeter = createFallbackMeter;
   }
 
   setMasterSource(source: AudioNode | null): Promise<void> {
@@ -124,6 +173,16 @@ class MeterService {
           `[MeterService] openDAW meter unavailable for ${label}`,
           error
         );
+        if (
+          slot.generation === generation &&
+          slot.source === source &&
+          slot.listeners.size > 0
+        ) {
+          slot.fallback = this.createFallbackMeter(source.context, (level) =>
+            this.notify(slot, level)
+          );
+          source.connect(slot.fallback.input);
+        }
       })
       .finally(() => {
         if (slot.initialization === initialization) {
@@ -138,6 +197,15 @@ class MeterService {
     slot.generation++;
     slot.subscription?.terminate();
     slot.subscription = null;
+    if (slot.fallback) {
+      try {
+        slot.source?.disconnect(slot.fallback.input);
+      } catch {
+        // The graph may already have been disconnected during a source swap.
+      }
+      slot.fallback.terminate();
+      slot.fallback = null;
+    }
     if (slot.node) {
       try {
         slot.source?.disconnect(slot.node);
@@ -183,5 +251,12 @@ class MeterService {
   }
 }
 
-export type { MeterLevel, MeterListener, MeterNodeFactory, OpenDawMeterNode };
+export type {
+  FallbackMeter,
+  FallbackMeterFactory,
+  MeterLevel,
+  MeterListener,
+  MeterNodeFactory,
+  OpenDawMeterNode,
+};
 export { MeterService };

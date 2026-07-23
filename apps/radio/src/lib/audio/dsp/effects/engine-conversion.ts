@@ -111,11 +111,26 @@ function applyStructuralParams(
         typeof config[key] === "boolean" ? Number(config[key]) : config[key];
     }
   }
-  if (
+  const usesSidechain =
     typeof config.sidechain === "object" &&
     config.sidechain !== null &&
-    typeof (config.sidechain as { channelId?: unknown }).channelId === "string"
-  ) {
+    typeof (config.sidechain as { channelId?: unknown }).channelId === "string";
+  const nestedUsesSidechain =
+    Array.isArray(config.chains) &&
+    config.chains.some(
+      (chain) =>
+        typeof chain === "object" &&
+        chain !== null &&
+        Array.isArray((chain as { effects?: unknown }).effects) &&
+        (chain as { effects: unknown[] }).effects.some(
+          (effect) =>
+            typeof effect === "object" &&
+            effect !== null &&
+            convertEffectConfigToEngine(effect as EffectConfig)
+              .sidechainEnabled === 1
+        )
+    );
+  if (usesSidechain || nestedUsesSidechain) {
     result.sidechainEnabled = 1;
   }
 }

@@ -3,17 +3,25 @@ import {
   localStorageCollectionOptions,
 } from "@tanstack/react-db";
 import { z } from "zod";
+import {
+  createLocalNamModelId,
+  getNamModel,
+  saveNamModel,
+} from "@/lib/audio/dsp/effects/nam-model-store";
 import { createDefaultEffectConfig } from "@/lib/audio/dsp/effects/registry";
 import {
   EFFECT_TYPES,
   type EffectChainConfig,
   type EffectConfig,
+  OPENDAW_TIDAL_FRACTIONS,
 } from "@/lib/audio/dsp/effects/types";
 import {
   DEFAULT_EFFECT_TEMPO,
   isValidFrequencySplitShape,
   normalizeEffectTree,
   normalizeTempoBpm,
+  updateEffectInTree,
+  visitEffectTree,
 } from "@/lib/audio/dsp/routing/effect-tree";
 import type { Radio } from "@/lib/audio/playback/types";
 import { radioMetadataConfigSchema } from "@/lib/metadata/schema";
@@ -79,6 +87,76 @@ const effectSidechainSchema = z.object({
 
 let effectConfigSchema: z.ZodType<EffectConfig>;
 
+function closestTidalDivision(rate: number): string {
+  const period = 1 / Math.max(0.001, rate);
+  const secondsPerBeat = 60 / DEFAULT_EFFECT_TEMPO;
+  return OPENDAW_TIDAL_FRACTIONS.reduce(
+    (best, division) => {
+      const [numerator = 1, denominator = 4] = division.split("/").map(Number);
+      const [bestNumerator = 1, bestDenominator = 4] = best
+        .split("/")
+        .map(Number);
+      const duration = secondsPerBeat * 4 * (numerator / denominator);
+      const bestDuration =
+        secondsPerBeat * 4 * (bestNumerator / bestDenominator);
+      return Math.abs(duration - period) < Math.abs(bestDuration - period)
+        ? division
+        : best;
+    },
+    "1/4" as (typeof OPENDAW_TIDAL_FRACTIONS)[number]
+  );
+}
+
+function migrateLegacyDelay(config: Record<string, unknown>): void {
+  if (config.delayMusical === undefined) {
+    config.delayMusical =
+      config.tempoSync === true && typeof config.tempoDivision === "string"
+        ? config.tempoDivision
+        : "Off";
+  }
+  if (config.delayMillis === undefined) {
+    config.delayMillis =
+      config.tempoSync === true
+        ? 0
+        : Math.max(0, Number(config.delayTime ?? 0.3)) * 1000;
+  }
+  if (config.cross === undefined) {
+    config.cross =
+      typeof config.crossFeedback === "number" ? config.crossFeedback : 0;
+  }
+}
+
+function migrateLegacyCompressor(config: Record<string, unknown>): void {
+  for (const [native, legacy] of [
+    ["automakeup", "autoMakeup"],
+    ["autoattack", "autoAttack"],
+    ["autorelease", "autoRelease"],
+  ] as const) {
+    if (config[native] === undefined && config[legacy] !== undefined) {
+      config[native] = config[legacy];
+    }
+  }
+}
+
+function migrateLegacyEffectConfig(value: unknown): unknown {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return value;
+  }
+  const migrated = { ...value } as Record<string, unknown>;
+  if (migrated.type === "delay") {
+    migrateLegacyDelay(migrated);
+  } else if (
+    migrated.type === "tidal" &&
+    migrated.rateDivision === undefined &&
+    typeof migrated.rate === "number"
+  ) {
+    migrated.rateDivision = closestTidalDivision(migrated.rate);
+  } else if (migrated.type === "compressor") {
+    migrateLegacyCompressor(migrated);
+  }
+  return migrated;
+}
+
 const effectChainConfigSchema: z.ZodType<EffectChainConfig> = z.lazy(() =>
   z.object({
     id: z.string(),
@@ -93,62 +171,65 @@ const effectChainConfigSchema: z.ZodType<EffectChainConfig> = z.lazy(() =>
 );
 
 effectConfigSchema = z.lazy(() =>
-  z
-    .object({
-      id: z.string(),
-      type: z.enum(EFFECT_TYPES),
-      enabled: z.boolean(),
-      order: z.number(),
-      dryWet: z.number(),
-      inputGain: z.number(),
-      outputGain: z.number(),
-      sidechain: effectSidechainSchema.optional(),
-      chains: z.array(effectChainConfigSchema).optional(),
-      crossoverFrequencies: z.array(z.number()).optional(),
-    })
-    .passthrough()
-    .superRefine((value, context) => {
-      if (
-        (value.type === "fxComposite" ||
-          value.type === "stereoSplit" ||
-          value.type === "frequencySplit") &&
-        !value.chains
-      ) {
-        context.addIssue({
-          code: "custom",
-          message: `${value.type} requires child chains`,
-          path: ["chains"],
-        });
-      }
-      if (value.type === "stereoSplit" && value.chains?.length !== 2) {
-        context.addIssue({
-          code: "custom",
-          message: "Stereo Split requires left and right chains",
-          path: ["chains"],
-        });
-      }
-      if (
-        value.type === "frequencySplit" &&
-        !isValidFrequencySplitShape(
-          value.chains ?? [],
-          value.crossoverFrequencies ?? []
-        )
-      ) {
-        context.addIssue({
-          code: "custom",
-          message:
-            "Frequency Split requires 2–4 bands with ascending crossovers",
-          path: ["chains"],
-        });
-      }
-    })
-    .transform(
-      (value) =>
-        ({
-          ...createDefaultEffectConfig(value.type, value.id, value.order),
-          ...value,
-        }) as EffectConfig
-    )
+  z.preprocess(
+    migrateLegacyEffectConfig,
+    z
+      .object({
+        id: z.string(),
+        type: z.enum(EFFECT_TYPES),
+        enabled: z.boolean(),
+        order: z.number(),
+        dryWet: z.number(),
+        inputGain: z.number(),
+        outputGain: z.number(),
+        sidechain: effectSidechainSchema.optional(),
+        chains: z.array(effectChainConfigSchema).optional(),
+        crossoverFrequencies: z.array(z.number()).optional(),
+      })
+      .passthrough()
+      .superRefine((value, context) => {
+        if (
+          (value.type === "fxComposite" ||
+            value.type === "stereoSplit" ||
+            value.type === "frequencySplit") &&
+          !value.chains
+        ) {
+          context.addIssue({
+            code: "custom",
+            message: `${value.type} requires child chains`,
+            path: ["chains"],
+          });
+        }
+        if (value.type === "stereoSplit" && value.chains?.length !== 2) {
+          context.addIssue({
+            code: "custom",
+            message: "Stereo Split requires left and right chains",
+            path: ["chains"],
+          });
+        }
+        if (
+          value.type === "frequencySplit" &&
+          !isValidFrequencySplitShape(
+            value.chains ?? [],
+            value.crossoverFrequencies ?? []
+          )
+        ) {
+          context.addIssue({
+            code: "custom",
+            message:
+              "Frequency Split requires 2–4 bands with ascending crossovers",
+            path: ["chains"],
+          });
+        }
+      })
+      .transform(
+        (value) =>
+          ({
+            ...createDefaultEffectConfig(value.type, value.id, value.order),
+            ...value,
+          }) as EffectConfig
+      )
+  )
 );
 
 const playbackChannelRoleSchema = z.enum([
@@ -557,6 +638,61 @@ function updatePlaybackSessionRecord(
   updateRecord.call(playbackSessionsCollection, id, updater);
 }
 
+function collectNamModels(
+  effects: readonly EffectConfig[]
+): Extract<EffectConfig, { type: "neuralAmp" }>[] {
+  const models: Extract<EffectConfig, { type: "neuralAmp" }>[] = [];
+  visitEffectTree(effects, (effect) => {
+    if (effect.type === "neuralAmp") {
+      models.push(effect);
+    }
+  });
+  return models;
+}
+
+async function externalizeChannelNamModels(
+  originalEffects: readonly EffectConfig[]
+): Promise<EffectConfig[]> {
+  let effects = [...originalEffects];
+  for (const model of collectNamModels(effects)) {
+    if (!model.modelData) {
+      if (model.modelId?.startsWith("local-nam:")) {
+        await getNamModel(model.modelId).catch(() => null);
+      }
+      continue;
+    }
+    const modelId = model.modelId?.startsWith("local-nam:")
+      ? model.modelId
+      : createLocalNamModelId();
+    try {
+      await saveNamModel(modelId, model.modelData);
+      effects = updateEffectInTree(effects, model.id, {
+        modelId,
+        modelData: null,
+      } as Partial<EffectConfig>);
+    } catch (error) {
+      console.warn(
+        `[playback-sessions] Could not externalize NAM model ${model.modelName ?? model.id}`,
+        error
+      );
+    }
+  }
+  return effects;
+}
+
+async function externalizeStoredNamModels(): Promise<void> {
+  for (const session of playbackSessionsCollection.state.values()) {
+    for (const channel of session.channels) {
+      const effects = await externalizeChannelNamModels(channel.effects);
+      if (effects.some((effect, index) => effect !== channel.effects[index])) {
+        updatePlaybackChannel(session.id, channel.id, (draft) => {
+          draft.effects = effects;
+        });
+      }
+    }
+  }
+}
+
 export async function initializePlaybackSessions(): Promise<void> {
   await Promise.all([
     playbackSessionsCollection.stateWhenReady(),
@@ -564,6 +700,7 @@ export async function initializePlaybackSessions(): Promise<void> {
     settingsCollection.stateWhenReady(),
     sessionRadiosCollection.stateWhenReady(),
   ]);
+  await externalizeStoredNamModels();
 
   const settings = settingsCollection.state.get(SETTINGS_ID);
   const shouldRestore = settings?.player.restoreStateOnLoad !== false;

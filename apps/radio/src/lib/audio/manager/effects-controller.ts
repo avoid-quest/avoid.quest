@@ -278,13 +278,14 @@ class EffectsController {
       return false;
     }
     this.graphConnections.set(soundId, { destination, source });
+    this.connectCompatibilityGraph(soundId);
     if (
       canUseOfficialOpenDawRuntime(this.effectConfigs.get(soundId) ?? []) &&
       (await this.connectOfficial(soundId, source, destination))
     ) {
+      this.disconnectCompatibilityGraph(soundId);
       return true;
     }
-    this.connectCompatibilityGraph(soundId);
     return true;
   }
 
@@ -442,33 +443,42 @@ class EffectsController {
     manager.outputNode.connect(connection.destination);
   }
 
+  private disconnectCompatibilityGraph(soundId: string): void {
+    const connection = this.graphConnections.get(soundId);
+    const manager = this.workletManagers.get(soundId);
+    if (!(connection && manager?.node && manager.outputNode)) {
+      return;
+    }
+    try {
+      connection.source.disconnect(manager.node);
+    } catch {
+      // Compatibility path was already disconnected.
+    }
+    try {
+      manager.outputNode.disconnect(connection.destination);
+    } catch {
+      // Compatibility path was already disconnected.
+    }
+  }
+
   private refreshRuntimeSelection(soundId: string): void {
     const connection = this.graphConnections.get(soundId);
     const manager = this.workletManagers.get(soundId);
     if (!(connection && manager?.node && manager.outputNode)) {
       return;
     }
-    const managerNode = manager.node;
-    const managerOutputNode = manager.outputNode;
     const effects = this.effectConfigs.get(soundId) ?? [];
     if (!canUseOfficialOpenDawRuntime(effects)) {
       this.officialRuntime?.disconnectSound(soundId);
       this.connectCompatibilityGraph(soundId);
       return;
     }
-    try {
-      connection.source.disconnect(managerNode);
-    } catch {
-      // Compatibility path may already be disconnected.
-    }
-    try {
-      managerOutputNode.disconnect(connection.destination);
-    } catch {
-      // Compatibility path may already be disconnected.
-    }
+    this.connectCompatibilityGraph(soundId);
     this.connectOfficial(soundId, connection.source, connection.destination)
       .then((connected) => {
-        if (!connected) {
+        if (connected) {
+          this.disconnectCompatibilityGraph(soundId);
+        } else {
           this.connectCompatibilityGraph(soundId);
         }
       })

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { AVAILABLE_EFFECTS } from "./registry";
+import { AVAILABLE_EFFECTS, createDefaultEffectConfig } from "./registry";
 import {
   convertEffectConfigToEngine,
   convertPartialEffectConfigToEngine,
@@ -94,6 +94,19 @@ describe("effect definitions", () => {
     ).toEqual({
       delayTime: 0.25,
     });
+  });
+
+  test("marks compatibility containers when a nested effect uses a sidechain", () => {
+    const config = createDefaultEffectConfig("fxComposite", "fx", 0);
+    const gate = createDefaultEffectConfig("gate", "gate", 0);
+    gate.sidechain = { channelId: "deck-b" };
+    const [firstChain] = config.chains;
+    if (!firstChain) {
+      throw new Error("Default composite must contain a chain");
+    }
+    firstChain.effects = [gate];
+
+    expect(convertEffectConfigToEngine(config).sidechainEnabled).toBe(1);
   });
 
   test("passes client-side script and model references through text params", () => {

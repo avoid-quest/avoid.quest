@@ -1,5 +1,6 @@
 import { describe, expect, mock, test } from "bun:test";
 import {
+  type FallbackMeterFactory,
   type MeterNodeFactory,
   MeterService,
   type OpenDawMeterNode,
@@ -132,5 +133,44 @@ describe("MeterService", () => {
 
     expect(factory).toHaveBeenCalledTimes(1);
     expect(levels).toEqual([{ left: 0.5, right: 0.25 }]);
+  });
+
+  test("falls back to a native meter when openDAW meter setup fails", async () => {
+    const source = new FakeAudioNode();
+    const fallbackInput = new FakeAudioNode();
+    const terminate = mock(() => undefined);
+    const observers: ((level: { left: number; right: number }) => void)[] = [];
+    const fallbackFactory = mock((_context, observer) => {
+      observers.push(observer);
+      return {
+        input: fallbackInput as unknown as AudioNode,
+        terminate,
+      };
+    }) as FallbackMeterFactory;
+    const service = new MeterService(
+      () => Promise.reject(new Error("meter assets unavailable")),
+      fallbackFactory
+    );
+    const levels: Array<{ left: number; right: number }> = [];
+    const originalWarn = console.warn;
+    console.warn = mock(() => undefined);
+
+    try {
+      const unsubscribe = service.subscribeMeter("deck-a", (level) =>
+        levels.push(level)
+      );
+      await service.setSoundSource("deck-a", source as unknown as AudioNode);
+      observers[0]?.({ left: 0.3, right: 0.6 });
+
+      expect(fallbackFactory).toHaveBeenCalledTimes(1);
+      expect(source.connections.has(fallbackInput)).toBe(true);
+      expect(levels).toEqual([{ left: 0.3, right: 0.6 }]);
+
+      unsubscribe();
+      expect(terminate).toHaveBeenCalledTimes(1);
+    } finally {
+      console.warn = originalWarn;
+      service.clear();
+    }
   });
 });

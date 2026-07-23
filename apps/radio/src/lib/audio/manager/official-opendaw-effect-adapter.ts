@@ -1,5 +1,6 @@
 import { UUID } from "@opendaw/lib-std";
 import type { Project } from "@opendaw/studio-core";
+import { getCachedNamModel } from "../dsp/effects/nam-model-store.js";
 import {
   isOfficialOpenDawEffect,
   OPENDAW_FACTORY_KEYS,
@@ -518,13 +519,17 @@ export function createOfficialEffectGroup(
   const device = insert(context, wetCell.audioEffects, factory, 1);
   created.push(device);
   configureDevice(device, config, context.bpm);
-  if (config.type === "neuralAmp" && config.modelData) {
+  const modelData =
+    config.type === "neuralAmp"
+      ? (config.modelData ?? getCachedNamModel(config.modelId))
+      : null;
+  if (config.type === "neuralAmp" && modelData) {
     const model = context.boxes.NeuralAmpModelBox.create(
       context.project.boxGraph,
       UUID.generate(),
       (box) => {
         box.label.setValue(config.modelName ?? config.modelId ?? "Local model");
-        box.model.setValue(config.modelData ?? "");
+        box.model.setValue(modelData);
       }
     ) as unknown as BoxLike;
     created.push(model);

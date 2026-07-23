@@ -78,10 +78,57 @@ describe("playback session effect migration", () => {
       { ...legacyEffects[0], order: 3 },
     ] as Record<string, unknown>[]);
     expect(migrated.channels[0]?.effects[3]).toMatchObject({
+      delayMusical: "Off",
+      delayMillis: 250,
       tempoSync: false,
       tempoDivision: "1/4",
+      cross: 0,
       crossFeedback: 0,
     });
+  });
+
+  test("derives native parameters from legacy delay, tidal, and compressor settings", () => {
+    const migrated = parsePlaybackSessionRecord({
+      id: "dj",
+      channels: [
+        channelWithEffects([
+          {
+            ...baseEffect("delay", "delay", 0),
+            delayTime: 0.625,
+            feedback: 0.4,
+          },
+          {
+            ...baseEffect("tidal", "tidal", 1),
+            rate: 1,
+            depth: 0.5,
+            slope: 0,
+            symmetry: 0,
+            offset: 0,
+            channelOffset: 0,
+          },
+          {
+            ...baseEffect("compressor", "compressor", 2),
+            threshold: -20,
+            ratio: 3,
+            attack: 4,
+            release: 180,
+            knee: 5,
+            makeup: 2,
+            mix: 0.75,
+            lookahead: true,
+            autoAttack: true,
+            autoRelease: false,
+            autoMakeup: false,
+          },
+        ]),
+      ],
+    });
+
+    expect(migrated.channels[0]?.effects).toMatchObject([
+      { delayMusical: "Off", delayMillis: 625, cross: 0 },
+      { rateDivision: "1/2" },
+      { autoattack: true, autorelease: false, automakeup: false },
+    ]);
   });
 
   test("round-trips nested routing, sidechains, and tempo through JSON", () => {

@@ -7,6 +7,7 @@
 import type { StereoChannels } from "./types.js";
 
 const dbToGain = (value: number): number => 10 ** (value / 20);
+const MAX_DELAY_SECONDS = 20;
 
 const fractionToBeats = (value: string): number => {
   if (value.toLowerCase() === "off") {
@@ -48,8 +49,7 @@ export class Delay {
 
   constructor(sampleRate: number) {
     this.sampleRate = sampleRate;
-    // Max 2 seconds of delay
-    this.maxDelaySamples = Math.ceil(sampleRate * 2);
+    this.maxDelaySamples = Math.ceil(sampleRate * MAX_DELAY_SECONDS);
     this.bufferL = new Float32Array(this.maxDelaySamples);
     this.bufferR = new Float32Array(this.maxDelaySamples);
     this.setDelayTime(0.3);
@@ -71,7 +71,7 @@ export class Delay {
   }
 
   setTempo(value: number): void {
-    this.tempo = Math.max(20, Math.min(400, value));
+    this.tempo = Math.max(30, Math.min(400, value));
   }
 
   setTempoSync(value: boolean): void {
@@ -227,14 +227,16 @@ export class Delay {
       const inR = inputR[i] ?? 0;
 
       // Write to buffer (input + feedback from delayed)
+      const straightFeedback = this.feedback * (1 - this.crossFeedback);
+      const crossFeedback = this.feedback * this.crossFeedback;
       this.bufferL[this.writeIndex] =
         inL +
-        this.filteredL * this.feedback +
-        this.filteredR * this.crossFeedback;
+        this.filteredL * straightFeedback +
+        this.filteredR * crossFeedback;
       this.bufferR[this.writeIndex] =
         inR +
-        this.filteredR * this.feedback +
-        this.filteredL * this.crossFeedback;
+        this.filteredR * straightFeedback +
+        this.filteredL * crossFeedback;
 
       // Match the stock device's independent dry and wet trims.
       outputL[i] = inL * this.dry + delayedL * this.wet;

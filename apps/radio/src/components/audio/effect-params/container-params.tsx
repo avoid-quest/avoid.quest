@@ -15,6 +15,7 @@ import {
   getEffectMetadata,
 } from "@/lib/audio";
 import { getEffectSchema } from "@/lib/audio/dsp/effects/schema";
+import { isEffectContainer } from "@/lib/audio/dsp/routing/effect-tree";
 import { EffectPicker } from "../effect-picker";
 import { DeclarativeParams } from "./declarative-params";
 import { ParamSelect } from "./param-select";
@@ -39,16 +40,6 @@ type ContainerParamsProps = {
 
 function createId(prefix: string): string {
   return `${prefix}-${crypto.randomUUID()}`;
-}
-
-function isContainerEffect(
-  effect: EffectConfig
-): effect is ContainerEffectConfig {
-  return (
-    effect.type === "fxComposite" ||
-    effect.type === "stereoSplit" ||
-    effect.type === "frequencySplit"
-  );
 }
 
 function nestedMidiTargetPrefix(
@@ -114,7 +105,7 @@ function NestedEffect({
       </div>
       {expanded && schema && (
         <div className="space-y-4 border-t p-3">
-          {isContainerEffect(effect) ? (
+          {isEffectContainer(effect) ? (
             <ContainerParams
               deckId={deckId}
               effect={effect}

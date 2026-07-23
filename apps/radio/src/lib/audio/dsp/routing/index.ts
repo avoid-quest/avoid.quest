@@ -15,6 +15,7 @@ export {
   findEffectChain,
   findEffectInTree,
   isEffectContainer,
+  isValidFrequencySplitShape,
   MAX_EFFECT_TREE_DEPTH,
   normalizeEffectTree,
   normalizeTempoBpm,

@@ -117,7 +117,7 @@ describe("effect tree routing", () => {
     ).toEqual([["nested-a", 0]]);
   });
 
-  test("validates fixed split routing and sidechain references", () => {
+  test("validates variable split routing and sidechain references", () => {
     const split: EffectConfig = {
       ...effect("split", 0),
       type: "frequencySplit",
@@ -137,13 +137,25 @@ describe("effect tree routing", () => {
           },
         ]),
       ],
-      crossoverFrequencies: [8000, 2000],
+      crossoverFrequencies: [2000],
     };
 
     expect(validateEffectTree([split], new Set(["deck-a"]))).toEqual([
-      "Frequency Split must contain exactly four chains",
-      "Frequency Split must contain three ascending crossover frequencies",
       "Unknown sidechain channel: missing",
     ]);
+
+    const threeBandSplit: EffectConfig = {
+      ...split,
+      chains: [...split.chains, chain("high", 2)],
+      crossoverFrequencies: [1000, 5000],
+    };
+    expect(validateEffectTree([threeBandSplit], new Set(["deck-a"]))).toEqual([
+      "Unknown sidechain channel: missing",
+    ]);
+
+    split.crossoverFrequencies = [8000, 2000];
+    expect(validateEffectTree([split], new Set(["deck-a"]))).toContain(
+      "Frequency Split requires 2–4 bands with ascending crossovers"
+    );
   });
 });

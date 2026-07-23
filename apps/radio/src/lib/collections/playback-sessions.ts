@@ -11,6 +11,7 @@ import {
 } from "@/lib/audio/dsp/effects/types";
 import {
   DEFAULT_EFFECT_TEMPO,
+  isValidFrequencySplitShape,
   normalizeEffectTree,
   normalizeTempoBpm,
 } from "@/lib/audio/dsp/routing/effect-tree";
@@ -128,15 +129,10 @@ effectConfigSchema = z.lazy(() =>
       }
       if (
         value.type === "frequencySplit" &&
-        (!value.chains ||
-          value.chains.length < 2 ||
-          value.chains.length > 4 ||
-          value.crossoverFrequencies?.length !== value.chains.length - 1 ||
-          (value.crossoverFrequencies ?? []).some(
-            (frequency, index, values) =>
-              frequency <= 0 ||
-              (index > 0 && frequency <= (values[index - 1] ?? 0))
-          ))
+        !isValidFrequencySplitShape(
+          value.chains ?? [],
+          value.crossoverFrequencies ?? []
+        )
       ) {
         context.addIssue({
           code: "custom",

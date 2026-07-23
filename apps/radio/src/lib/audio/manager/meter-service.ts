@@ -1,15 +1,12 @@
 import type { Unsubscribe } from "../playback/index.js";
-import {
-  DEFAULT_OPENDAW_PROCESSOR_URL,
-  ensureOpenDawAudioWorklets,
-} from "./opendaw-audio-worklets.js";
+import { ensureOpenDawAudioWorklets } from "./opendaw-audio-worklets.js";
 
 type MeterLevel = { left: number; right: number };
 type MeterListener = (level: MeterLevel) => void;
 type MeterSubscription = { terminate(): void };
 type OpenDawMeterNode = AudioWorkletNode & {
   subscribe(
-    observer: (values: { peak: Float32Array; rms: Float32Array }) => void
+    observer: (values: { peak: Float32Array }) => void
   ): MeterSubscription;
   terminate(): void;
 };
@@ -36,11 +33,7 @@ const createMeterSlot = (): MeterSlot => ({
 
 const createOpenDawMeterNode: MeterNodeFactory = async (context) => {
   const { AudioWorklets } = await import("@opendaw/studio-core");
-  const worklets = await ensureOpenDawAudioWorklets(
-    context,
-    AudioWorklets,
-    DEFAULT_OPENDAW_PROCESSOR_URL
-  );
+  const worklets = await ensureOpenDawAudioWorklets(context, AudioWorklets);
   return worklets.createMeter(2);
 };
 
@@ -118,10 +111,10 @@ class MeterService {
         }
 
         slot.node = node;
-        slot.subscription = node.subscribe(({ rms }) => {
+        slot.subscription = node.subscribe(({ peak }) => {
           this.notify(slot, {
-            left: rms[0] ?? 0,
-            right: rms[1] ?? rms[0] ?? 0,
+            left: peak[0] ?? 0,
+            right: peak[1] ?? peak[0] ?? 0,
           });
         });
         source.connect(node);
@@ -179,7 +172,7 @@ class MeterService {
     label: string
   ): Unsubscribe {
     slot.listeners.add(callback);
-    this.activate(slot, label).catch(() => undefined);
+    this.activate(slot, label);
 
     return () => {
       slot.listeners.delete(callback);

@@ -1,6 +1,6 @@
 import { BiquadFilter } from "./biquad-filter.js";
 import { PhaseVocoder } from "./phase-vocoder.js";
-import type { StereoChannels } from "./types.js";
+import { AUTOTUNE_KEYS, type StereoChannels } from "./types.js";
 
 const dbToGain = (value: number): number => 10 ** (value / 20);
 const clamp = (value: number, min: number, max: number): number =>
@@ -929,21 +929,9 @@ export class AutotuneEffect {
   }
 
   setKey(value: string): void {
-    const keyNames = [
-      "C",
-      "C#",
-      "D",
-      "D#",
-      "E",
-      "F",
-      "F#",
-      "G",
-      "G#",
-      "A",
-      "A#",
-      "B",
-    ];
-    const index = keyNames.indexOf(value);
+    const index = AUTOTUNE_KEYS.indexOf(
+      value as (typeof AUTOTUNE_KEYS)[number]
+    );
     this.key = index >= 0 ? index : 0;
   }
 

@@ -7,12 +7,13 @@ import {
 
 type MeterValues = {
   peak: Float32Array;
-  rms: Float32Array;
 };
 
 class FakeAudioNode {
   readonly connections = new Set<FakeAudioNode>();
-  readonly context = {} as BaseAudioContext;
+  readonly context = {
+    destination: {} as AudioDestinationNode,
+  } as BaseAudioContext;
 
   connect(destination: FakeAudioNode): FakeAudioNode {
     this.connections.add(destination);
@@ -35,7 +36,6 @@ class FakeMeterNode extends FakeAudioNode {
   emit(left: number, right: number): void {
     this.observer?.({
       peak: new Float32Array([left, right]),
-      rms: new Float32Array([left, right]),
     });
   }
 
@@ -117,5 +117,20 @@ describe("MeterService", () => {
 
     expect(meters[0].terminated).toBe(true);
     expect(levels.at(-1)).toEqual({ left: 0, right: 0 });
+  });
+
+  test("starts the master meter when its subscriber mounts before the graph", async () => {
+    const { factory, meters, service } = createHarness();
+    const source = new FakeAudioNode();
+    const levels: Array<{ left: number; right: number }> = [];
+
+    service.subscribeMasterMeter((level) => levels.push(level));
+    expect(factory).not.toHaveBeenCalled();
+
+    await service.setMasterSource(source as unknown as AudioNode);
+    meters[0].emit(0.5, 0.25);
+
+    expect(factory).toHaveBeenCalledTimes(1);
+    expect(levels).toEqual([{ left: 0.5, right: 0.25 }]);
   });
 });

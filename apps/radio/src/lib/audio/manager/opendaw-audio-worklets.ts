@@ -6,6 +6,17 @@ type AudioWorkletsFactory<T> = {
 const DEFAULT_OPENDAW_PROCESSOR_URL = "/opendaw/processors.js";
 const workletsByContext = new WeakMap<BaseAudioContext, Promise<unknown>>();
 
+async function startOpenDawAnimationFrames(): Promise<void> {
+  if (
+    typeof window === "undefined" ||
+    typeof window.requestAnimationFrame !== "function"
+  ) {
+    return;
+  }
+  const { AnimationFrame } = await import("@opendaw/lib-dom");
+  AnimationFrame.start(window);
+}
+
 function ensureOpenDawAudioWorklets<T>(
   context: BaseAudioContext,
   factory: AudioWorkletsFactory<T>,
@@ -17,7 +28,10 @@ function ensureOpenDawAudioWorklets<T>(
   }
 
   factory.install(processorUrl);
-  const created = factory.createFor(context);
+  const created = Promise.all([
+    startOpenDawAnimationFrames(),
+    factory.createFor(context),
+  ]).then(([, worklets]) => worklets);
   workletsByContext.set(context, created);
   created.catch(() => workletsByContext.delete(context));
   return created;

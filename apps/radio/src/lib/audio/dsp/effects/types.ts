@@ -435,6 +435,21 @@ export type WerkstattConfig = BaseEffectConfig & {
   samples?: Record<string, string>;
 };
 
+export const AUTOTUNE_KEYS = [
+  "C",
+  "C#",
+  "D",
+  "D#",
+  "E",
+  "F",
+  "F#",
+  "G",
+  "G#",
+  "A",
+  "A#",
+  "B",
+] as const;
+
 export const AUTOTUNE_SCALES = [
   "chromatic",
   "major",

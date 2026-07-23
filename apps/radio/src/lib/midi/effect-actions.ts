@@ -9,44 +9,13 @@ import {
   getEffectMidiParamDefs,
   getEffectSchema,
 } from "@/lib/audio/dsp/effects/schema";
+import {
+  isEffectContainer,
+  updateEffectInTree,
+} from "@/lib/audio/dsp/routing/effect-tree";
 import { getDjDeckActions } from "@/lib/dj-actions";
 import { MidiController } from "./midi-controller";
 import type { MidiAction } from "./types";
-
-type ContainerEffect = Extract<
-  EffectConfig,
-  { type: "fxComposite" | "stereoSplit" | "frequencySplit" }
->;
-
-function isContainer(effect: EffectConfig): effect is ContainerEffect {
-  return (
-    effect.type === "fxComposite" ||
-    effect.type === "stereoSplit" ||
-    effect.type === "frequencySplit"
-  );
-}
-
-function updateEffectTree(
-  effect: EffectConfig,
-  targetId: string,
-  update: (effect: EffectConfig) => EffectConfig
-): EffectConfig {
-  if (effect.id === targetId) {
-    return update(effect);
-  }
-  if (!isContainer(effect)) {
-    return effect;
-  }
-  return {
-    ...effect,
-    chains: effect.chains.map((chain) => ({
-      ...chain,
-      effects: chain.effects.map((child) =>
-        updateEffectTree(child, targetId, update)
-      ),
-    })),
-  };
-}
 
 function collectEffectActions(
   rootEffect: EffectConfig,
@@ -59,18 +28,12 @@ function collectEffectActions(
   if (!schema) {
     return [];
   }
-  const patch = (config: Partial<EffectConfig>) =>
-    updateRoot(
-      updateEffectTree(
-        rootEffect,
-        effect.id,
-        (current) =>
-          ({
-            ...current,
-            ...config,
-          }) as EffectConfig
-      )
-    );
+  const patch = (config: Partial<EffectConfig>) => {
+    const [updatedRoot] = updateEffectInTree([rootEffect], effect.id, config);
+    if (updatedRoot) {
+      updateRoot(updatedRoot);
+    }
+  };
   const actions: MidiAction[] = [
     {
       targetId: `${targetPrefix}:enabled`,
@@ -95,7 +58,7 @@ function collectEffectActions(
     });
   }
 
-  if (isContainer(effect)) {
+  if (isEffectContainer(effect)) {
     for (const chain of effect.chains) {
       const chainPrefix = `${targetPrefix}:chain:${chain.id}`;
       for (const [key, label, min, max, step] of [

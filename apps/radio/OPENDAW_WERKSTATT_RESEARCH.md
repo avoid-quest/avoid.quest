@@ -255,9 +255,9 @@ These should reuse the six official sources directly where practical rather
 than reimplement their DSP. Alienator can be included as an advanced/fun
 preset, but is not necessary for proving the editor/runtime contract.
 
-## Radio integration assessment
+## Pre-implementation radio integration assessment
 
-The current radio implementation:
+At the time of this research, the radio implementation:
 
 - inserts a fixed `// @werkstatt js 1 1` header manually
   (`src/lib/audio/manager/official-opendaw-effect-adapter.ts`);
@@ -272,6 +272,9 @@ The current radio implementation:
 That path can instantiate a simple script, but it bypasses the official editor
 lifecycle and makes the JSON record, rather than the code declarations, the
 control source of truth.
+
+The implementation now follows the compiler/declaration lifecycle described
+below. See `OPENDAW_EFFECTS_IMPLEMENTATION.md` for the current architecture.
 
 ## Recommended implementation seam (inference)
 

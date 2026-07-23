@@ -27,7 +27,6 @@ const MessageType = {
   SOURCE_ENDED: "SOURCE_ENDED",
   SOURCE_ERROR: "SOURCE_ERROR",
   STREAM_READY: "STREAM_READY",
-  PEAK_METER: "PEAK_METER",
 } as const;
 
 type FilterType =
@@ -44,7 +43,6 @@ type WorkletManagerEvents = {
   sourceEnded: SourceEndedPayload;
   sourceError: SourceErrorPayload;
   streamReady: StreamReadyPayload;
-  peakMeter: { peakL: number; peakR: number };
 };
 
 type ActiveSource = {

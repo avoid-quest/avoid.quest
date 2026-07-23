@@ -6,6 +6,7 @@ import type {
 } from "./param-types.js";
 import { defineEffect } from "./param-types.js";
 import {
+  AUTOTUNE_KEYS,
   AUTOTUNE_SCALES,
   OPENDAW_DELAY_FRACTIONS,
   OPENDAW_TIDAL_FRACTIONS,
@@ -79,20 +80,10 @@ const vocoderModulatorOptions: SelectOption[] = [
   { value: "external", label: "External sidechain" },
 ];
 
-const autotuneKeyOptions: SelectOption[] = [
-  "C",
-  "C#",
-  "D",
-  "D#",
-  "E",
-  "F",
-  "F#",
-  "G",
-  "G#",
-  "A",
-  "A#",
-  "B",
-].map((value) => ({ value, label: value }));
+const autotuneKeyOptions: SelectOption[] = AUTOTUNE_KEYS.map((value) => ({
+  value,
+  label: value,
+}));
 
 const autotuneScaleLabels: Record<(typeof AUTOTUNE_SCALES)[number], string> = {
   chromatic: "Chromatic",

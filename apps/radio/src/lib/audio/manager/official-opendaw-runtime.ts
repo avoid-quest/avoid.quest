@@ -1,6 +1,6 @@
 import { UUID } from "@opendaw/lib-std";
 import type { EngineWorklet, Project, ProjectEnv } from "@opendaw/studio-core";
-import type { EffectConfig, EffectType } from "../dsp/effects/types.js";
+import type { EffectConfig } from "../dsp/effects/types.js";
 import {
   clearWerkstattRuntimeStatus,
   setWerkstattRuntimeStatus,
@@ -380,105 +380,6 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     if (this.project) {
       this.project.editing.modify(() => this.bindSidechains());
     }
-  }
-
-  addEffect(soundId: string, config: EffectConfig): boolean {
-    const unit = this.soundUnits.get(soundId);
-    if (!unit) {
-      return false;
-    }
-    this.syncEffects(soundId, [...unit.effects, config]);
-    return true;
-  }
-
-  updateEffect(
-    soundId: string,
-    effectId: string,
-    _type: EffectType,
-    config: Partial<EffectConfig>
-  ): boolean {
-    const unit = this.soundUnits.get(soundId);
-    if (!unit) {
-      return false;
-    }
-    let found = false;
-    const update = (effects: readonly EffectConfig[]): EffectConfig[] =>
-      effects.map((effect) => {
-        if (effect.id === effectId) {
-          found = true;
-          return { ...effect, ...config } as EffectConfig;
-        }
-        if (
-          effect.type === "fxComposite" ||
-          effect.type === "stereoSplit" ||
-          effect.type === "frequencySplit"
-        ) {
-          return {
-            ...effect,
-            chains: effect.chains.map((chain) => ({
-              ...chain,
-              effects: update(chain.effects),
-            })),
-          };
-        }
-        return effect;
-      });
-    const effects = update(unit.effects);
-    if (found) {
-      this.syncEffects(soundId, effects);
-    }
-    return found;
-  }
-
-  removeEffect(soundId: string, effectId: string): void {
-    const unit = this.soundUnits.get(soundId);
-    if (!unit) {
-      return;
-    }
-    const remove = (effects: readonly EffectConfig[]): EffectConfig[] => {
-      const remaining: EffectConfig[] = [];
-      for (const effect of effects) {
-        if (effect.id === effectId) {
-          continue;
-        }
-        if (
-          effect.type === "fxComposite" ||
-          effect.type === "stereoSplit" ||
-          effect.type === "frequencySplit"
-        ) {
-          remaining.push({
-            ...effect,
-            chains: effect.chains.map((chain) => ({
-              ...chain,
-              effects: remove(chain.effects),
-            })),
-          });
-          continue;
-        }
-        remaining.push(effect);
-      }
-      return remaining;
-    };
-    this.syncEffects(soundId, remove(unit.effects));
-  }
-
-  reorderEffects(soundId: string, effectIds: readonly string[]): void {
-    const unit = this.soundUnits.get(soundId);
-    if (!unit) {
-      return;
-    }
-    const ranks = new Map(effectIds.map((id, index) => [id, index]));
-    this.syncEffects(
-      soundId,
-      unit.effects
-        .slice()
-        .sort(
-          (left, right) =>
-            (ranks.get(left.id) ?? left.order) -
-            (ranks.get(right.id) ?? right.order)
-        )
-        .map((effect, order) => ({ ...effect, order }))
-    );
   }
 
   setDryWet(soundId: string, value: number): void {

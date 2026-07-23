@@ -142,10 +142,7 @@ describe("recursive effect tree routing", () => {
     expect(errors).toContain("Duplicate effect id: duplicate-effect");
     expect(errors).toContain("Duplicate effect chain id: duplicate-chain");
     expect(errors).toContain(
-      "Frequency Split must contain exactly four chains"
-    );
-    expect(errors).toContain(
-      "Frequency Split must contain three ascending crossover frequencies"
+      "Frequency Split requires 2–4 bands with ascending crossovers"
     );
   });
 });

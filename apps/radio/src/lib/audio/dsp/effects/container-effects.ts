@@ -3,7 +3,6 @@ import type {
   EffectChainConfig,
   EffectConfig,
   EffectProcessor,
-  FrequencySplitConfig,
   StereoChannels,
 } from "./types.js";
 
@@ -297,12 +296,3 @@ export class ContainerEffect implements EffectProcessor {
     }
   }
 }
-
-export const isContainerEffect = (
-  config: EffectConfig
-): config is
-  | FrequencySplitConfig
-  | Extract<EffectConfig, { type: "fxComposite" | "stereoSplit" }> =>
-  config.type === "fxComposite" ||
-  config.type === "stereoSplit" ||
-  config.type === "frequencySplit";

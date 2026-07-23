@@ -1,5 +1,6 @@
 import { canUseOfficialOpenDawRuntime } from "../dsp/effects/official-opendaw-mapping.js";
 import type { EffectConfig, EffectType } from "../dsp/effects/types.js";
+import { updateEffectInTree } from "../dsp/routing/effect-tree.js";
 import {
   type AudioState,
   getAudioContext,
@@ -131,29 +132,13 @@ class EffectsController {
       plainConfig
     );
     wm.updateEffect(soundId, effectId, engineConfig);
-    const update = (effects: readonly EffectConfig[]): EffectConfig[] =>
-      effects.map((effect) => {
-        if (effect.id === effectId) {
-          return { ...effect, ...plainConfig } as EffectConfig;
-        }
-        if (
-          effect.type === "fxComposite" ||
-          effect.type === "stereoSplit" ||
-          effect.type === "frequencySplit"
-        ) {
-          return {
-            ...effect,
-            chains: effect.chains.map((chain) => ({
-              ...chain,
-              effects: update(chain.effects),
-            })),
-          };
-        }
-        return effect;
-      });
     this.effectConfigs.set(
       soundId,
-      update(this.effectConfigs.get(soundId) ?? [])
+      updateEffectInTree(
+        this.effectConfigs.get(soundId) ?? [],
+        effectId,
+        plainConfig
+      )
     );
     this.refreshRuntimeSelection(soundId);
     return true;

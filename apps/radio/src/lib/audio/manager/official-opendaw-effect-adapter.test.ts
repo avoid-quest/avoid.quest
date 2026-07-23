@@ -1,10 +1,16 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { OPENDAW_FACTORY_KEYS } from "../dsp/effects/official-opendaw-mapping.js";
 import { createDefaultEffectConfig } from "../dsp/effects/registry.js";
 import {
   createMasterRack,
   createOfficialEffectGroup,
 } from "./official-opendaw-effect-adapter.js";
+
+const originalAudioWorkletNode = globalThis.AudioWorkletNode;
+
+afterEach(() => {
+  Reflect.set(globalThis, "AudioWorkletNode", originalAudioWorkletNode);
+});
 
 describe("official openDAW BoxGraph adapter", () => {
   test("constructs every catalog effect with the published boxes", async () => {

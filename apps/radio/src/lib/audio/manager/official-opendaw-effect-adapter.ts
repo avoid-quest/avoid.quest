@@ -4,10 +4,15 @@ import {
   isOfficialOpenDawEffect,
   OPENDAW_FACTORY_KEYS,
 } from "../dsp/effects/official-opendaw-mapping.js";
-import type {
-  EffectChainConfig,
-  EffectConfig,
-  TempoDivision,
+import {
+  AUTOTUNE_KEYS,
+  AUTOTUNE_SCALES,
+  type EffectChainConfig,
+  type EffectConfig,
+  OPENDAW_DELAY_FRACTIONS,
+  OPENDAW_TIDAL_FRACTIONS,
+  TEMPO_DIVISIONS,
+  type TempoDivision,
 } from "../dsp/effects/types.js";
 
 type PrimitiveField = {
@@ -50,84 +55,6 @@ type CreateContext = AdapterModules & {
   bpm: number;
 };
 
-const DIVISIONS: readonly TempoDivision[] = [
-  "1/32",
-  "1/16",
-  "1/8",
-  "1/4",
-  "1/2",
-  "1/1",
-];
-
-const DELAY_FRACTIONS = [
-  "off",
-  "1/128",
-  "1/96",
-  "1/64",
-  "1/48",
-  "1/32",
-  "1/24",
-  "3/64",
-  "1/16",
-  "1/12",
-  "3/32",
-  "1/8",
-  "1/6",
-  "3/16",
-  "1/4",
-  "5/16",
-  "1/3",
-  "3/8",
-  "7/16",
-  "1/2",
-  "1/1",
-] as const;
-
-const TIDAL_FRACTIONS = [
-  "1/1",
-  "1/2",
-  "1/3",
-  "1/4",
-  "3/16",
-  "1/6",
-  "1/8",
-  "3/32",
-  "1/12",
-  "1/16",
-  "3/64",
-  "1/24",
-  "1/32",
-  "1/48",
-  "1/64",
-  "1/96",
-  "1/128",
-] as const;
-
-const AUTOTUNE_KEYS = [
-  "C",
-  "C#",
-  "D",
-  "D#",
-  "E",
-  "F",
-  "F#",
-  "G",
-  "G#",
-  "A",
-  "A#",
-  "B",
-] as const;
-
-const AUTOTUNE_SCALES = [
-  "chromatic",
-  "major",
-  "minor",
-  "majorPentatonic",
-  "minorPentatonic",
-  "blues",
-  "dorian",
-  "mixolydian",
-] as const;
 function field(box: BoxLike, key: string): PrimitiveField | undefined {
   const candidate = box[key];
   return candidate &&
@@ -260,7 +187,7 @@ function configureDevice(
         "delayMusical",
         (config.delayMusical ?? "1/4") === "Off"
           ? 0
-          : divisionIndex(config.delayMusical ?? "1/4", DELAY_FRACTIONS)
+          : divisionIndex(config.delayMusical ?? "1/4", OPENDAW_DELAY_FRACTIONS)
       );
       set(box, "delayMillis", config.delayMillis ?? config.delayTime * 1000);
       set(box, "feedback", config.feedback);
@@ -268,13 +195,13 @@ function configureDevice(
       set(
         box,
         "preSyncTimeLeft",
-        divisionIndex(config.preSyncTimeLeft ?? "1/16", DELAY_FRACTIONS)
+        divisionIndex(config.preSyncTimeLeft ?? "1/16", OPENDAW_DELAY_FRACTIONS)
       );
       set(box, "preMillisTimeLeft", config.preMillisTimeLeft ?? 0);
       set(
         box,
         "preSyncTimeRight",
-        divisionIndex(config.preSyncTimeRight ?? "Off", DELAY_FRACTIONS)
+        divisionIndex(config.preSyncTimeRight ?? "Off", OPENDAW_DELAY_FRACTIONS)
       );
       set(box, "preMillisTimeRight", config.preMillisTimeRight ?? 0);
       set(box, "filter", config.filter ?? 0);
@@ -308,7 +235,7 @@ function configureDevice(
       break;
     case "tidal": {
       const secondsPerBeat = 60 / Math.max(30, bpm);
-      const closestDivision = DIVISIONS.reduce((best, division) => {
+      const closestDivision = TEMPO_DIVISIONS.reduce((best, division) => {
         const [numerator, denominator] = division.split("/").map(Number);
         const duration = secondsPerBeat * 4 * (numerator / denominator);
         const bestParts = best.split("/").map(Number);
@@ -321,7 +248,10 @@ function configureDevice(
       set(
         box,
         "rate",
-        divisionIndex(config.rateDivision ?? closestDivision, TIDAL_FRACTIONS)
+        divisionIndex(
+          config.rateDivision ?? closestDivision,
+          OPENDAW_TIDAL_FRACTIONS
+        )
       );
       set(box, "depth", config.depth);
       set(box, "slope", config.slope);
@@ -420,7 +350,7 @@ function createCell(
   { boxes, project }: CreateContext,
   composite: BoxLike,
   chain: EffectChainConfig,
-  created: BoxLike[]
+  created?: BoxLike[]
 ): BoxLike {
   const cell = boxes.AudioEffectCompositeCellBox.create(
     project.boxGraph,
@@ -435,7 +365,7 @@ function createCell(
       box.solo.setValue(chain.solo);
     }
   ) as unknown as BoxLike;
-  created.push(cell);
+  created?.push(cell);
   return cell;
 }
 
@@ -709,37 +639,26 @@ export function createMasterRack(
   set(root, "enabled", true);
   set(root, "dry", Number.NEGATIVE_INFINITY);
   set(root, "wet", 0);
-  const created: BoxLike[] = [];
-  const dry = createCell(
-    context,
-    root,
-    {
-      id: "master-dry",
-      name: "Dry",
-      order: 0,
-      gain: 0,
-      pan: 0,
-      muted: false,
-      solo: false,
-      effects: [],
-    },
-    created
-  );
-  const wet = createCell(
-    context,
-    root,
-    {
-      id: "master-wet",
-      name: "Wet",
-      order: 1,
-      gain: 1,
-      pan: 0,
-      muted: false,
-      solo: false,
-      effects: [],
-    },
-    created
-  );
+  const dry = createCell(context, root, {
+    id: "master-dry",
+    name: "Dry",
+    order: 0,
+    gain: 0,
+    pan: 0,
+    muted: false,
+    solo: false,
+    effects: [],
+  });
+  const wet = createCell(context, root, {
+    id: "master-wet",
+    name: "Wet",
+    order: 1,
+    gain: 1,
+    pan: 0,
+    muted: false,
+    solo: false,
+    effects: [],
+  });
   return { root, dry, wet };
 }
 
@@ -751,5 +670,3 @@ export function setMasterRackDryWet(
   set(rack.dry, "gain", db(1 - wet));
   set(rack.wet, "gain", db(wet));
 }
-
-export type { AdapterModules, BoxLike, CreateContext, HostField };

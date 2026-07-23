@@ -651,13 +651,6 @@ export class WorkletManager {
         );
         break;
 
-      case MessageType.PEAK_METER:
-        this.eventEmitter.emit(
-          "peakMeter",
-          message.payload as { peakL: number; peakR: number }
-        );
-        break;
-
       default:
         console.warn("Unknown message from worklet:", message);
     }

@@ -48,10 +48,6 @@ export class DSPProcessor {
   private analysisFrameCounter = 0;
   private readonly analysisInterval = 3; // Send every N render quanta (~60fps)
 
-  // Peak meter (always active, independent of analysis)
-  private meterCounter = 0;
-  private readonly meterInterval = 6; // Send every N render quanta (~30fps)
-
   // Callback for emitting events to main thread
   private onMessage?: (message: { type: string; payload?: unknown }) => void;
 
@@ -315,19 +311,6 @@ export class DSPProcessor {
       fromIndex,
       toIndex
     );
-
-    // Emit peak meter data (always active, throttled to ~60fps)
-    this.meterCounter++;
-    if (this.meterCounter >= this.meterInterval) {
-      this.meterCounter = 0;
-      let peakL = 0;
-      let peakR = 0;
-      for (let i = fromIndex; i < toIndex; i++) {
-        peakL = Math.max(peakL, Math.abs(outputL[i] ?? 0));
-        peakR = Math.max(peakR, Math.abs(outputR[i] ?? 0));
-      }
-      this.emitMessage(MessageType.PEAK_METER, { peakL, peakR });
-    }
 
     // Run analysis if enabled (throttled)
     if (this.analysisEnabled && this.levelMeter && this.spectrumAnalyzer) {

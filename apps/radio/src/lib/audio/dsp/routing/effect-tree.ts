@@ -13,6 +13,21 @@ export function isEffectContainer(
   );
 }
 
+export function isValidFrequencySplitShape(
+  chains: readonly EffectChainConfig[],
+  crossoverFrequencies: readonly number[]
+): boolean {
+  return (
+    chains.length >= 2 &&
+    chains.length <= 4 &&
+    crossoverFrequencies.length === chains.length - 1 &&
+    crossoverFrequencies.every(
+      (frequency, index, values) =>
+        frequency > 0 && (index === 0 || frequency > (values[index - 1] ?? 0))
+    )
+  );
+}
+
 function orderEffects(effects: readonly EffectConfig[]): EffectConfig[] {
   return [...effects]
     .sort((left, right) => left.order - right.order)
@@ -268,20 +283,12 @@ export function validateEffectTree(
       if (effect.type === "stereoSplit" && effect.chains.length !== 2) {
         errors.push("Stereo Split must contain exactly two chains");
       }
-      if (effect.type === "frequencySplit" && effect.chains.length !== 4) {
-        errors.push("Frequency Split must contain exactly four chains");
-      }
       if (
         effect.type === "frequencySplit" &&
-        (effect.crossoverFrequencies.length !== 3 ||
-          effect.crossoverFrequencies.some(
-            (frequency, index, values) =>
-              frequency <= 0 ||
-              (index > 0 && frequency <= (values[index - 1] ?? 0))
-          ))
+        !isValidFrequencySplitShape(effect.chains, effect.crossoverFrequencies)
       ) {
         errors.push(
-          "Frequency Split must contain three ascending crossover frequencies"
+          "Frequency Split requires 2–4 bands with ascending crossovers"
         );
       }
       for (const chain of effect.chains) {

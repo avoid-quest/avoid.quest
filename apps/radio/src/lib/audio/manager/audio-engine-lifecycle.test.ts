@@ -223,27 +223,6 @@ describe("audio engine lifecycle", () => {
     manager.cleanupSound(soundId);
   });
 
-  test("connects the openDAW master meter when subscribers mount before audio initialization", async () => {
-    harness = installAudioEngineLifecycleHarness();
-    const manager = AudioManager.getInstance();
-    const radio: Radio = {
-      id: "radio-1",
-      name: "Lifecycle Radio",
-      streamUrl: "https://audio.example/stream.mp3",
-    };
-
-    const unsubscribe = manager.subscribeMasterMeter(() => undefined);
-    const soundId = manager.createSound(radio, "sound-lifecycle");
-
-    await manager.playSound(soundId, 0.4);
-
-    expect(harness.workletModules()).toContain("/opendaw/processors.js");
-    expect(harness.connectedNodePairs()).toContain("delay -> worklet");
-
-    unsubscribe();
-    manager.cleanupSound(soundId);
-  });
-
   test("stops early media playback if worklet initialization fails", async () => {
     harness = installAudioEngineLifecycleHarness({ failWorkletModule: true });
     const manager = AudioManager.getInstance();

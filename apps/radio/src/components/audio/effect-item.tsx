@@ -72,10 +72,10 @@ export function EffectItem({
       className={cn(
         "w-full gap-0 border py-0 transition-all duration-200",
         isDragging && "scale-[0.98] opacity-50 shadow-lg",
-        effect.enabled.valueOf()
+        effect.enabled
           ? "border-primary/20 bg-primary/5"
           : "opacity-60 grayscale-[30%]",
-        isExpanded.valueOf() && "shadow-md"
+        isExpanded && "shadow-md"
       )}
     >
       <CardHeader className="flex! items-center! justify-between! flex-row! gap-3 pt-4 pb-3">
@@ -142,7 +142,7 @@ export function EffectItem({
             aria-label={`${effectName} enabled`}
             className={cn(
               "transition-all",
-              effect.enabled.valueOf() && "bg-primary text-primary-foreground"
+              effect.enabled && "bg-primary text-primary-foreground"
             )}
             onPressedChange={handleEnabledChange}
             pressed={effect.enabled}
@@ -172,7 +172,7 @@ export function EffectItem({
         </div>
       </CardHeader>
 
-      {isExpanded.valueOf() && (
+      {isExpanded && (
         <CardContent className="space-y-4 border-t bg-muted/30 pt-4 pb-4">
           <EffectVisualization effect={effect} />
           <EffectParams

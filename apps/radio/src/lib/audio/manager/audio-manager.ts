@@ -390,7 +390,8 @@ export class AudioManager {
    * Connect the audio graph for a sound instance
    *
    * Routing (post-effects CUE):
-   *   Source → Pan → Filter → Worklet (effects) → PreFaderSend (CUE tap) → Gain (fader) → Analyser → Destination
+   *   Source → Pan → Filter → Effects → PreFaderSend (CUE tap) → Gain (fader) → Destination
+   *                                                              ↘ openDAW MeterWorklet
    *
    * The CUE tap is now AFTER effects, so headphone monitoring includes effects
    * but is still independent of the channel fader volume.
@@ -874,7 +875,7 @@ export class AudioManager {
 
   /**
    * Subscribe to master output meter (post-fader, post-crossfader, post-master volume).
-   * Returns left/right RMS levels (0-1) computed by openDAW's MeterWorklet.
+   * Returns left/right peak levels (0-1) computed by openDAW's MeterWorklet.
    */
   subscribeMasterMeter(
     callback: (level: { left: number; right: number }) => void
@@ -883,8 +884,8 @@ export class AudioManager {
   }
 
   /**
-   * Subscribe to RMS meter updates for a sound
-   * Returns left/right RMS levels (0-1)
+   * Subscribe to peak meter updates for a sound
+   * Returns left/right peak levels (0-1)
    */
   subscribeMeter(
     soundId: string,

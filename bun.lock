@@ -46,6 +46,7 @@
         "@hookform/resolvers": "^5.4.0",
         "@octokit/core": "^7.0.6",
         "@octokit/plugin-rest-endpoint-methods": "^17.0.0",
+        "@opendaw/lib-dom": "^0.0.87",
         "@opendaw/lib-dsp": "^0.0.88",
         "@opendaw/lib-std": "^0.0.82",
         "@opendaw/studio-adapters": "^0.1.3",

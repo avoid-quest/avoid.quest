@@ -25,7 +25,6 @@ type HarnessRecords = {
 };
 
 type HarnessOptions = {
-  analyserSample?: number;
   failMediaUrlIncludes?: string;
   failWorkletModule?: boolean;
   simulateWorkletSourceErrors?: boolean;
@@ -129,8 +128,8 @@ function installGlobals(
     readonly context: BaseAudioContext;
     readonly name: string;
 
-    constructor(name: string, context = {} as BaseAudioContext) {
-      this.context = context;
+    constructor(name: string, context: unknown = {}) {
+      this.context = context as BaseAudioContext;
       this.name = name;
     }
 
@@ -147,7 +146,7 @@ function installGlobals(
   class FakeGainNode extends FakeAudioNode {
     readonly gain = new FakeAudioParam();
 
-    constructor(context: BaseAudioContext, name = "gain") {
+    constructor(context: unknown, name = "gain") {
       super(name, context);
     }
   }
@@ -155,7 +154,7 @@ function installGlobals(
   class FakeStereoPannerNode extends FakeAudioNode {
     readonly pan = new FakeAudioParam();
 
-    constructor(context: BaseAudioContext) {
+    constructor(context: unknown) {
       super("stereo-panner", context);
     }
   }
@@ -166,21 +165,8 @@ function installGlobals(
     readonly gain = new FakeAudioParam();
     type = "allpass";
 
-    constructor(context: BaseAudioContext) {
+    constructor(context: unknown) {
       super("biquad", context);
-    }
-  }
-
-  class FakeAnalyserNode extends FakeAudioNode {
-    fftSize = 2048;
-    smoothingTimeConstant = 0.8;
-
-    constructor(context: BaseAudioContext, name = "analyser") {
-      super(name, context);
-    }
-
-    getFloatTimeDomainData(buffer: Float32Array): void {
-      buffer.fill(options.analyserSample ?? 0);
     }
   }
 
@@ -196,7 +182,10 @@ function installGlobals(
       },
     };
     currentTime = 0;
-    readonly destination = new FakeAudioNode("destination", this);
+    readonly destination: FakeAudioNode = new FakeAudioNode(
+      "destination",
+      this
+    );
     sampleRate = 44_100;
     state = "running";
     onstatechange: (() => void) | null = null;
@@ -206,10 +195,6 @@ function installGlobals(
       this.state = "closed";
       this.onstatechange?.();
       return Promise.resolve();
-    }
-
-    createAnalyser(): FakeAnalyserNode {
-      return new FakeAnalyserNode(this);
     }
 
     createBiquadFilter(): FakeBiquadFilterNode {

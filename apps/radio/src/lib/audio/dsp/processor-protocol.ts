@@ -35,7 +35,6 @@ export const MessageType = {
 
   // Analysis (worklet → main)
   ANALYSIS_DATA: "ANALYSIS_DATA",
-  PEAK_METER: "PEAK_METER",
 
   // Analysis control (main → worklet)
   ENABLE_ANALYSIS: "ENABLE_ANALYSIS",

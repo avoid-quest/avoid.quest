@@ -3,10 +3,19 @@ import {
   localStorageCollectionOptions,
 } from "@tanstack/react-db";
 import { z } from "zod";
-import { EFFECT_TYPES, type EffectConfig } from "@/lib/audio/dsp/effects/types";
+import { createDefaultEffectConfig } from "@/lib/audio/dsp/effects/registry";
+import {
+  EFFECT_TYPES,
+  type EffectChainConfig,
+  type EffectConfig,
+} from "@/lib/audio/dsp/effects/types";
+import {
+  DEFAULT_EFFECT_TEMPO,
+  normalizeEffectTree,
+  normalizeTempoBpm,
+} from "@/lib/audio/dsp/routing/effect-tree";
 import type { Radio } from "@/lib/audio/playback/types";
 import { radioMetadataConfigSchema } from "@/lib/metadata/schema";
-import { orderEffectsForPlayback } from "../effect-order.js";
 import { radiosCollection } from "./radios";
 import { platformMetadataSchema } from "./schemas";
 import { isSessionRadio, sessionRadiosCollection } from "./session-radios";
@@ -63,26 +72,88 @@ const filterConfigSchema = z.object({
   enabled: z.boolean(),
 });
 
-const effectConfigSchema = z
-  .object({
+const effectSidechainSchema = z.object({
+  channelId: z.string().min(1),
+});
+
+let effectConfigSchema: z.ZodType<EffectConfig>;
+
+const effectChainConfigSchema: z.ZodType<EffectChainConfig> = z.lazy(() =>
+  z.object({
     id: z.string(),
-    type: z.enum(EFFECT_TYPES),
-    enabled: z.boolean(),
+    name: z.string(),
     order: z.number(),
-    dryWet: z.number(),
-    inputGain: z.number(),
-    outputGain: z.number(),
+    gain: z.number(),
+    pan: z.number(),
+    muted: z.boolean(),
+    solo: z.boolean(),
+    effects: z.array(effectConfigSchema),
   })
-  .passthrough()
-  .pipe(
-    z.custom<EffectConfig>(
+);
+
+effectConfigSchema = z.lazy(() =>
+  z
+    .object({
+      id: z.string(),
+      type: z.enum(EFFECT_TYPES),
+      enabled: z.boolean(),
+      order: z.number(),
+      dryWet: z.number(),
+      inputGain: z.number(),
+      outputGain: z.number(),
+      sidechain: effectSidechainSchema.optional(),
+      chains: z.array(effectChainConfigSchema).optional(),
+      crossoverFrequencies: z.array(z.number()).optional(),
+    })
+    .passthrough()
+    .superRefine((value, context) => {
+      if (
+        (value.type === "fxComposite" ||
+          value.type === "stereoSplit" ||
+          value.type === "frequencySplit") &&
+        !value.chains
+      ) {
+        context.addIssue({
+          code: "custom",
+          message: `${value.type} requires child chains`,
+          path: ["chains"],
+        });
+      }
+      if (value.type === "stereoSplit" && value.chains?.length !== 2) {
+        context.addIssue({
+          code: "custom",
+          message: "Stereo Split requires left and right chains",
+          path: ["chains"],
+        });
+      }
+      if (
+        value.type === "frequencySplit" &&
+        (!value.chains ||
+          value.chains.length < 2 ||
+          value.chains.length > 4 ||
+          value.crossoverFrequencies?.length !== value.chains.length - 1 ||
+          (value.crossoverFrequencies ?? []).some(
+            (frequency, index, values) =>
+              frequency <= 0 ||
+              (index > 0 && frequency <= (values[index - 1] ?? 0))
+          ))
+      ) {
+        context.addIssue({
+          code: "custom",
+          message:
+            "Frequency Split requires 2–4 bands with ascending crossovers",
+          path: ["chains"],
+        });
+      }
+    })
+    .transform(
       (value) =>
-        value != null &&
-        typeof value === "object" &&
-        "id" in value &&
-        "type" in value
+        ({
+          ...createDefaultEffectConfig(value.type, value.id, value.order),
+          ...value,
+        }) as EffectConfig
     )
-  );
+);
 
 const playbackChannelRoleSchema = z.enum([
   "single-primary",
@@ -110,17 +181,33 @@ const playbackChannelSchema = z.object({
   order: z.number().default(0),
 });
 
-const playbackSessionSchema = z.object({
-  id: z.enum(PLAYBACK_SESSION_IDS),
-  channels: z.array(playbackChannelSchema),
-  masterVolume: z.number().default(1),
-  crossfadePosition: z.number().default(0.5),
-  headphoneVolume: z.number().default(1),
-  activeChannelId: z.string().nullable().default(null),
-});
+const playbackSessionSchema = z
+  .object({
+    id: z.enum(PLAYBACK_SESSION_IDS),
+    channels: z.array(playbackChannelSchema),
+    masterVolume: z.number().default(1),
+    crossfadePosition: z.number().default(0.5),
+    headphoneVolume: z.number().default(1),
+    tempo: z.number().positive().default(DEFAULT_EFFECT_TEMPO),
+    activeChannelId: z.string().nullable().default(null),
+  })
+  .transform((session) => ({
+    ...session,
+    tempo: normalizeTempoBpm(session.tempo),
+    channels: session.channels.map((channel) => ({
+      ...channel,
+      effects: normalizeEffectTree(channel.effects),
+    })),
+  }));
 
 export type PlaybackChannelRecord = z.infer<typeof playbackChannelSchema>;
 export type PlaybackSessionRecord = z.infer<typeof playbackSessionSchema>;
+
+export function parsePlaybackSessionRecord(
+  value: unknown
+): PlaybackSessionRecord {
+  return playbackSessionSchema.parse(value);
+}
 
 const DEFAULT_FILTER: PlaybackChannelRecord["filter"] = {
   type: "lowpass",
@@ -169,7 +256,7 @@ function normalizeChannel(
   }
   return {
     ...parsed.data,
-    effects: orderEffectsForPlayback(parsed.data.effects),
+    effects: normalizeEffectTree(parsed.data.effects),
   };
 }
 
@@ -239,6 +326,7 @@ export function buildSingleSessionFromLegacyState(legacySingle?: {
     masterVolume: 1,
     crossfadePosition: 0.5,
     headphoneVolume: 1,
+    tempo: DEFAULT_EFFECT_TEMPO,
     activeChannelId: radio ? SINGLE_ACTIVE_CHANNEL_ID : null,
   };
 }
@@ -314,6 +402,7 @@ export function buildDjSessionFromLegacyState(params?: {
     masterVolume: legacyMixer?.masterVolume ?? 1,
     crossfadePosition: legacyMixer?.crossfadePosition ?? 0.5,
     headphoneVolume: legacyMixer?.headphoneVolume ?? 1,
+    tempo: DEFAULT_EFFECT_TEMPO,
     activeChannelId: null,
   };
 }
@@ -391,6 +480,7 @@ export function buildMultipleSessionFromRadios(
     masterVolume: 1,
     crossfadePosition: 0.5,
     headphoneVolume: 1,
+    tempo: DEFAULT_EFFECT_TEMPO,
     activeChannelId: null,
   };
 }
@@ -602,6 +692,15 @@ export function setPlaybackSessionActiveChannel(
 ): void {
   updatePlaybackSession(sessionId, (draft) => {
     draft.activeChannelId = channelId;
+  });
+}
+
+export function setPlaybackSessionTempo(
+  sessionId: PlaybackSessionId,
+  tempo: number
+): void {
+  updatePlaybackSession(sessionId, (draft) => {
+    draft.tempo = normalizeTempoBpm(tempo);
   });
 }
 

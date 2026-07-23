@@ -12,6 +12,7 @@ export const paramFormatters: Record<string, ParamFormatter> = {
   percentage100: (value: number) => `${Math.round(value)}%`,
   time: (seconds: number) => `${seconds.toFixed(2)}s`,
   timeMs: (seconds: number) => `${(seconds * 1000).toFixed(1)}ms`,
+  milliseconds: (value: number) => `${value.toFixed(1)}ms`,
   db: (value: number) => `${value.toFixed(1)} dB`,
   ratio: (value: number) => `${value.toFixed(1)}:1`,
   pan: (pan: number) => {
@@ -36,6 +37,7 @@ export const paramFormatters: Record<string, ParamFormatter> = {
   bits: (value: number) => `${Math.round(value)} bits`,
   q: (value: number) => `Q ${value.toFixed(2)}`,
   hz: (value: number) => `${value.toFixed(2)} Hz`,
+  semitones: (value: number) => `${value > 0 ? "+" : ""}${value.toFixed(2)} st`,
   default: (value: number) => value.toFixed(2),
 };
 

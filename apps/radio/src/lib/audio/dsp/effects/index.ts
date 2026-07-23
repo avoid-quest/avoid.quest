@@ -21,6 +21,12 @@ export { Delay } from "./delay.js";
 export { Distortion } from "./distortion.js";
 export { FoldEffect } from "./fold.js";
 export { Limiter } from "./limiter.js";
+export {
+  canUseOfficialOpenDawRuntime,
+  isOfficialOpenDawEffect,
+  type OfficialOpenDawEffectType,
+  OPENDAW_FACTORY_KEYS,
+} from "./official-opendaw-mapping.js";
 export { PhaseVocoder } from "./phase-vocoder.js";
 // Registry
 export {
@@ -28,6 +34,8 @@ export {
   createDefaultEffectConfig,
   type EffectMetadata,
   getEffectMetadata,
+  OPENDAW_AVAILABLE_EFFECTS,
+  RADIO_AVAILABLE_EFFECTS,
 } from "./registry.js";
 export { RevampEffect } from "./revamp.js";
 export { DattorroReverb } from "./reverb.js";
@@ -36,9 +44,11 @@ export {
   convertEffectParamValue,
   convertPartialEffectConfigToEngine,
   EFFECT_DEFINITIONS,
+  EFFECT_PARAMETER_ROLE_MAP,
   EFFECT_SCHEMAS,
   type EffectDefinition,
   type EffectParamDef,
+  type EffectParameterRole,
   type EffectSchema,
   type EngineEffectConfig,
   type EngineEffectParamValue,
@@ -50,27 +60,66 @@ export {
   getEffectSliderParamDefs,
   type ParamDef,
   UNIVERSAL_EFFECT_PARAM_DEFS,
+  UNIVERSAL_EFFECT_PARAMETER_ROLES,
   type VisualizationType,
 } from "./schema.js";
 export { StereoToolEffect } from "./stereo-tool.js";
 export { TidalEffect } from "./tidal.js";
 // Types
 export type {
+  AutotuneConfig,
   BaseEffectConfig,
+  CheapReverbConfig,
   CompressorConfig,
   CrusherConfig,
   DelayConfig,
   DistortionConfig,
+  EffectChainConfig,
   EffectConfig,
   EffectProcessor,
+  EffectSidechainConfig,
   EffectType,
   FilterType,
   FoldConfig,
+  FrequencySplitConfig,
+  FxCompositeConfig,
+  GateConfig,
   LimiterConfig,
+  MaximizerConfig,
+  NeuralAmpConfig,
+  OpenDawEffectType,
   PitchShifterConfig,
   PlateReverbConfig,
+  RadioEffectType,
   RevampConfig,
   StereoChannels,
+  StereoSplitConfig,
   StereoToolConfig,
+  TempoDivision,
   TidalConfig,
+  VocoderConfig,
+  WaveshaperConfig,
+  WaveshaperCurve,
+  WerkstattConfig,
 } from "./types.js";
+export {
+  EFFECT_TYPES,
+  isEffectType,
+  OPENDAW_EFFECT_TYPES,
+  RADIO_EFFECT_TYPES,
+  TEMPO_DIVISIONS,
+  WAVESHAPER_CURVES,
+} from "./types.js";
+export {
+  parseWerkstattDeclarations,
+  reconcileWerkstattParameters,
+  type WerkstattDeclarationSection,
+  type WerkstattDeclarations,
+  type WerkstattParamDeclaration,
+  type WerkstattParamMapping,
+} from "./werkstatt-declarations.js";
+export {
+  DEFAULT_WERKSTATT_SOURCE,
+  WERKSTATT_PRESETS,
+  type WerkstattPreset,
+} from "./werkstatt-presets.js";

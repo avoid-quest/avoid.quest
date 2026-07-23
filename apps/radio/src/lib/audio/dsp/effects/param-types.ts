@@ -1,6 +1,6 @@
 import type { EffectConfig, EffectType } from "./types.js";
 
-export type ParamType = "slider" | "select" | "checkbox" | "group";
+export type ParamType = "slider" | "select" | "checkbox" | "text" | "group";
 
 export type VisualizationType = "eq-curve" | "compressor-curve" | "none";
 
@@ -10,7 +10,7 @@ export type UniversalEffectParamKey =
   | "inputGain"
   | "outputGain";
 
-export type EngineEffectParamValue = number | string;
+export type EngineEffectParamValue = unknown;
 export type EngineEffectConfig = Record<string, EngineEffectParamValue>;
 
 export type EffectDefaultConfig<TType extends EffectType = EffectType> = Omit<
@@ -58,6 +58,15 @@ export type CheckboxParamDef<TKey extends string = string> = {
   description?: string;
 };
 
+export type TextParamDef<TKey extends string = string> = {
+  type: "text";
+  key: TKey;
+  label: string;
+  description?: string;
+  placeholder?: string;
+  multiline?: boolean;
+};
+
 export type GroupParamDef<TKey extends string = string> = {
   type: "group";
   title: string;
@@ -71,6 +80,7 @@ export type ParamDef<TKey extends string = string> =
   | SliderParamDef<TKey>
   | SelectParamDef<TKey>
   | CheckboxParamDef<TKey>
+  | TextParamDef<TKey>
   | GroupParamDef<TKey>;
 export type EffectParamDef<TKey extends string = string> = Exclude<
   ParamDef<TKey>,

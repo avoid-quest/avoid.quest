@@ -38,6 +38,7 @@ class CacophonyProcessor extends AudioWorkletProcessor {
     _parameters: Record<string, Float32Array>
   ): boolean {
     const input = inputs[0];
+    const sidechain = inputs[1];
     const output = outputs[0];
 
     if (!output || output.length < 2) {
@@ -56,7 +57,16 @@ class CacophonyProcessor extends AudioWorkletProcessor {
     const inputL = input?.[0] ?? this.emptyBuffer;
     const inputR = input?.[1] ?? input?.[0] ?? this.emptyBuffer;
 
-    this.dsp.process(inputL, inputR, outputL, outputR, 0, outputL.length);
+    this.dsp.process(
+      inputL,
+      inputR,
+      outputL,
+      outputR,
+      0,
+      outputL.length,
+      sidechain?.[0],
+      sidechain?.[1] ?? sidechain?.[0]
+    );
 
     return true;
   }

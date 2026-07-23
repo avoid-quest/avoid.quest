@@ -33,7 +33,8 @@ export function EffectPicker({ onSelect, onClose }: EffectPickerProps) {
         <DialogHeader>
           <DialogTitle>Add Effect</DialogTitle>
           <DialogDescription>
-            Select an effect to add to the chain
+            Select an effect to add to the chain. All processing remains in your
+            browser.
           </DialogDescription>
         </DialogHeader>
 
@@ -47,6 +48,11 @@ export function EffectPicker({ onSelect, onClose }: EffectPickerProps) {
               value={searchQuery}
             />
           </div>
+          <p className="rounded-md border bg-muted/30 p-2 text-muted-foreground text-xs">
+            Stock-only chains use openDAW&apos;s client-side Rust/WASM engine.
+            Chains containing radio-only effects keep the compatibility engine
+            so existing sessions remain playable.
+          </p>
 
           {filteredEffects.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">
@@ -88,6 +94,9 @@ export function EffectPicker({ onSelect, onClose }: EffectPickerProps) {
                           <h3 className="font-semibold text-sm leading-tight">
                             {effect.name}
                           </h3>
+                          <span className="mt-1 inline-flex rounded bg-muted px-1.5 py-0.5 font-medium text-[10px] text-muted-foreground">
+                            {effect.family}
+                          </span>
                           <p className="mt-1 text-muted-foreground text-xs leading-relaxed">
                             {effect.description}
                           </p>

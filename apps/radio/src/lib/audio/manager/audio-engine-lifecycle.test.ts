@@ -83,7 +83,6 @@ describe("audio engine lifecycle", () => {
         "gain",
         "stereo-panner",
         "biquad",
-        "analyser",
         "worklet",
         "worklet-gain",
       ])
@@ -224,25 +223,22 @@ describe("audio engine lifecycle", () => {
     manager.cleanupSound(soundId);
   });
 
-  test("starts the master meter when subscribers mount before audio initialization", async () => {
-    harness = installAudioEngineLifecycleHarness({ analyserSample: 0.5 });
+  test("connects the openDAW master meter when subscribers mount before audio initialization", async () => {
+    harness = installAudioEngineLifecycleHarness();
     const manager = AudioManager.getInstance();
-    const levels: Array<{ left: number; right: number }> = [];
     const radio: Radio = {
       id: "radio-1",
       name: "Lifecycle Radio",
       streamUrl: "https://audio.example/stream.mp3",
     };
 
-    const unsubscribe = manager.subscribeMasterMeter((level) => {
-      levels.push(level);
-    });
+    const unsubscribe = manager.subscribeMasterMeter(() => undefined);
     const soundId = manager.createSound(radio, "sound-lifecycle");
 
     await manager.playSound(soundId, 0.4);
-    harness.runAnimationFrames(2);
 
-    expect(levels.at(-1)).toEqual({ left: 0.5, right: 0.5 });
+    expect(harness.workletModules()).toContain("/opendaw/processors.js");
+    expect(harness.connectedNodePairs()).toContain("delay -> worklet");
 
     unsubscribe();
     manager.cleanupSound(soundId);

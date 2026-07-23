@@ -2,6 +2,30 @@ import { describe, expect, test } from "bun:test";
 import { toPlaybackInput } from "./playback-input";
 
 describe("toPlaybackInput", () => {
+  test("upgrades persisted NTS relay URLs to Web Audio compatible sources", () => {
+    expect(
+      toPlaybackInput({
+        name: "NTS 1",
+        streamUrl: "https://stream-relay-geo.ntslive.net/stream",
+      })
+    ).toMatchObject({ src: "https://streams.radiomast.io/nts1" });
+    expect(
+      toPlaybackInput({
+        name: "NTS 2",
+        streamUrl: "https://stream-relay-geo.ntslive.net/stream2",
+      })
+    ).toMatchObject({ src: "https://streams.radiomast.io/nts2" });
+    expect(
+      toPlaybackInput({
+        name: "Lookalike",
+        streamUrl:
+          "https://example.com/https://stream-relay-geo.ntslive.net/stream",
+      })
+    ).toMatchObject({
+      src: "https://example.com/https://stream-relay-geo.ntslive.net/stream",
+    });
+  });
+
   test("uses the resolved URL as the only playback source", () => {
     expect(
       toPlaybackInput({

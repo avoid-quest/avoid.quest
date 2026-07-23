@@ -1,11 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import { createDefaultEffectConfig } from "../dsp/effects/registry";
 import { getEffectParamDefs } from "../dsp/effects/schema";
-import type { EffectConfig, EffectType } from "../dsp/effects/types";
+import type {
+  CompressorConfig,
+  EffectConfig,
+  EffectType,
+} from "../dsp/effects/types";
 import { EFFECT_TYPES } from "../dsp/effects/types";
 import {
   convertEffectConfig,
   convertPartialEffectConfig,
+  toPlainEffectConfig,
 } from "./audio-manager-effects";
 
 function readConfigValue(config: EffectConfig, key: string): unknown {
@@ -13,6 +18,16 @@ function readConfigValue(config: EffectConfig, key: string): unknown {
 }
 
 describe("audio manager effect config conversion", () => {
+  test("removes proxies before configs cross the AudioWorklet boundary", () => {
+    const config = new Proxy(
+      createDefaultEffectConfig("frequencySplit", "split", 0),
+      {}
+    );
+
+    expect(() => structuredClone(config)).toThrow();
+    expect(() => structuredClone(toPlainEffectConfig(config))).not.toThrow();
+  });
+
   test("converts every schema parameter from default configs into worklet params", () => {
     for (const type of EFFECT_TYPES) {
       const config = createDefaultEffectConfig(type, `effect-${type}`, 0);
@@ -31,7 +46,7 @@ describe("audio manager effect config conversion", () => {
     }
   });
 
-  test("converts universal parameters and dryWet split for full configs", () => {
+  test("converts universal parameters without aliasing native wet and dry", () => {
     const config = {
       ...createDefaultEffectConfig("compressor", "compressor-1", 2),
       enabled: true,
@@ -42,15 +57,14 @@ describe("audio manager effect config conversion", () => {
       autoAttack: true,
       autoRelease: true,
       autoMakeup: true,
-    };
+    } as CompressorConfig;
 
     expect(convertEffectConfig(config)).toEqual({
       enabled: 1,
       inputGain: 0.8,
       outputGain: 0.7,
-      wet: 0.25,
-      dry: 0.75,
       dryWet: 0.25,
+      type: "compressor",
       threshold: -10,
       ratio: 4,
       attack: 2,
@@ -62,6 +76,10 @@ describe("audio manager effect config conversion", () => {
       autoAttack: 1,
       autoRelease: 1,
       autoMakeup: 1,
+      inputgain: 0,
+      automakeup: 1,
+      autoattack: 0,
+      autorelease: 0,
     });
   });
 
@@ -85,8 +103,6 @@ describe("audio manager effect config conversion", () => {
       } as Partial<EffectConfig>)
     ).toEqual({
       enabled: 0,
-      wet: 0.4,
-      dry: 0.6,
       dryWet: 0.4,
       delayTime: 0.5,
       feedback: 0.2,

@@ -9,30 +9,70 @@ import {
   type EffectDefinition,
   getEffectDefinition,
 } from "./schema.js";
-import { EFFECT_TYPES, type EffectConfig, type EffectType } from "./types.js";
+import {
+  EFFECT_TYPES,
+  type EffectConfig,
+  type EffectType,
+  OPENDAW_EFFECT_TYPES,
+  RADIO_EFFECT_TYPES,
+} from "./types.js";
 
 export type EffectMetadata = Readonly<
   Pick<EffectDefinition, "type" | "name" | "description" | "defaultConfig">
 > & {
   readonly icon?: string;
+  readonly family: "openDAW" | "radio";
 };
+
+function effectMetadata(type: EffectType): EffectMetadata {
+  const definition = EFFECT_DEFINITIONS[type];
+  return {
+    type: definition.type,
+    name: definition.name,
+    description: definition.description,
+    defaultConfig: definition.defaultConfig,
+    family: (OPENDAW_EFFECT_TYPES as readonly string[]).includes(type)
+      ? "openDAW"
+      : "radio",
+  };
+}
 
 /**
  * Available effects with their default configurations.
  * Derived from EFFECT_DEFINITIONS so defaults and parameter metadata stay
  * coupled at the effect definition boundary.
  */
-export const AVAILABLE_EFFECTS: readonly EffectMetadata[] = EFFECT_TYPES.map(
-  (type) => {
-    const definition = EFFECT_DEFINITIONS[type];
-    return {
-      type: definition.type,
-      name: definition.name,
-      description: definition.description,
-      defaultConfig: definition.defaultConfig,
-    };
+export const OPENDAW_AVAILABLE_EFFECTS: readonly EffectMetadata[] =
+  OPENDAW_EFFECT_TYPES.map(effectMetadata);
+
+export const RADIO_AVAILABLE_EFFECTS: readonly EffectMetadata[] =
+  RADIO_EFFECT_TYPES.map(effectMetadata);
+
+export const AVAILABLE_EFFECTS: readonly EffectMetadata[] =
+  EFFECT_TYPES.map(effectMetadata);
+
+function scopeNestedIds(effect: EffectConfig): EffectConfig {
+  if (
+    effect.type !== "fxComposite" &&
+    effect.type !== "stereoSplit" &&
+    effect.type !== "frequencySplit"
+  ) {
+    return effect;
   }
-);
+  return {
+    ...effect,
+    chains: effect.chains.map((chain) => ({
+      ...chain,
+      id: `${effect.id}:${chain.id}`,
+      effects: chain.effects.map((child, index) =>
+        scopeNestedIds({
+          ...child,
+          id: `${effect.id}:${chain.id}:effect:${index}:${child.id}`,
+        } as EffectConfig)
+      ),
+    })),
+  };
+}
 
 export function getEffectMetadata(
   type: EffectType
@@ -47,22 +87,25 @@ export function getEffectMetadata(
     name: definition.name,
     description: definition.description,
     defaultConfig: definition.defaultConfig,
+    family: (OPENDAW_EFFECT_TYPES as readonly string[]).includes(type)
+      ? "openDAW"
+      : "radio",
   };
 }
 
-export function createDefaultEffectConfig(
-  type: EffectType,
+export function createDefaultEffectConfig<TType extends EffectType>(
+  type: TType,
   id: string,
   order: number
-): EffectConfig {
+): Extract<EffectConfig, { type: TType }> {
   const metadata = getEffectMetadata(type);
   if (!metadata) {
     throw new Error(`Unknown effect type: ${type}`);
   }
 
-  return {
-    ...metadata.defaultConfig,
+  return scopeNestedIds({
+    ...structuredClone(metadata.defaultConfig),
     id,
     order,
-  } as EffectConfig;
+  } as EffectConfig) as Extract<EffectConfig, { type: TType }>;
 }

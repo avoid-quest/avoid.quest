@@ -5,7 +5,8 @@
  * Uses browser-backed playback sources with native graph nodes for routing and effects.
  *
  * Audio routing (post-effects CUE):
- *   PlaybackSource → Pan → Filter → WorkletNode (effects) → PreFaderSend (CUE tap) → Gain (fader) → Analyser → MainDelayNode → Destination
+ *   PlaybackSource → Pan → Filter → Effects → PreFaderSend (CUE tap) → Gain (fader) → MainDelayNode → Destination
+ *                                                                            ↘ openDAW MeterWorklet
  *
  * The CUE tap point is now AFTER effects processing, so headphone monitoring
  * includes the effects but is still independent of the channel fader.
@@ -99,7 +100,6 @@ export class AudioManager {
     this.effects = new EffectsController({
       workletProcessorUrl: () => workletProcessorUrl,
       sounds: this.soundRegistry.asMap(),
-      meterListeners: this.meters.soundMeterListeners,
       notifyListeners: this.notifyListeners,
     });
   }
@@ -397,14 +397,18 @@ export class AudioManager {
    *
    * @returns true if graph was connected successfully, false otherwise
    */
-  private connectAudioGraph(instance: SoundInstance): Promise<boolean> {
-    return connectAudioGraph({
+  private async connectAudioGraph(instance: SoundInstance): Promise<boolean> {
+    const connected = await connectAudioGraph({
       instance,
       mainDelayNode: this.output.mainDelayNode,
       notifyListeners: this.notifyListeners,
-      getOrCreateWorkletManager: (soundId) =>
-        this.effects.getOrCreateWorkletManager(soundId),
+      connectEffectsGraph: (soundId, source, destination) =>
+        this.effects.connectGraph(soundId, source, destination),
     });
+    if (connected && instance.nodes) {
+      await this.meters.setSoundSource(instance.sourceId, instance.nodes.gain);
+    }
+    return connected;
   }
 
   /**
@@ -478,9 +482,7 @@ export class AudioManager {
     // Cleanup per-sound worklet manager
     this.effects.cleanupSound(soundId);
 
-    // Notify meter listeners with zero before removing the sound,
-    // so consumers (e.g. deck-panel) can reset their UI state.
-    this.meters.notifySoundZero(soundId);
+    this.meters.clearSoundSource(soundId);
 
     this.soundRegistry.delete(soundId);
     this.volume.deleteSound(soundId);
@@ -781,6 +783,17 @@ export class AudioManager {
     this.effects.reorder(soundId, effectIds);
   }
 
+  setEffectsTempo(soundId: string, bpm: number): void {
+    this.effects.setTempo(soundId, bpm);
+  }
+
+  setEffectsSidechain(
+    soundId: string,
+    sidechainSoundId: string | null
+  ): boolean {
+    return this.effects.setSidechain(soundId, sidechainSoundId);
+  }
+
   // ============================================
   // Filter Management (using native BiquadFilterNode)
   // ============================================
@@ -861,7 +874,7 @@ export class AudioManager {
 
   /**
    * Subscribe to master output meter (post-fader, post-crossfader, post-master volume).
-   * Returns left/right RMS levels (0-1) computed from real AnalyserNodes.
+   * Returns left/right RMS levels (0-1) computed by openDAW's MeterWorklet.
    */
   subscribeMasterMeter(
     callback: (level: { left: number; right: number }) => void
@@ -1124,13 +1137,12 @@ export class AudioManager {
     await resumeAudioContext();
 
     const masterGraph = this.output.initializeMasterGraph(context);
-    this.meters.setMasterAnalysers(
-      masterGraph.masterAnalyserL,
-      masterGraph.masterAnalyserR
-    );
 
     // Load the worklet module once (will be used by all per-sound worklet managers)
-    await context.audioWorklet.addModule(workletProcessorUrl);
+    await Promise.all([
+      context.audioWorklet.addModule(workletProcessorUrl),
+      this.meters.setMasterSource(masterGraph.mainDelayNode),
+    ]);
     this.workletModuleLoaded = true;
   }
 

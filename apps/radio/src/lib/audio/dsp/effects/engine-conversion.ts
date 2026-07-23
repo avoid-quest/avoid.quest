@@ -36,6 +36,8 @@ export function convertEffectParamValue(
         return typeof value === "number" ? value : undefined;
       }
       return typeof value === "string" ? value : undefined;
+    case "text":
+      return typeof value === "string" ? value : undefined;
     default:
       return;
   }
@@ -61,8 +63,6 @@ function applyUniversalParams(
   }
 
   if (typeof config.dryWet === "number") {
-    result.wet = config.dryWet;
-    result.dry = 1 - config.dryWet;
     result.dryWet = config.dryWet;
   }
 }
@@ -84,6 +84,42 @@ function applyEffectParams(
   }
 }
 
+function applyStructuralParams(
+  result: EngineEffectConfig,
+  config: Record<string, unknown>
+): void {
+  for (const key of [
+    "type",
+    "chains",
+    "crossoverFrequencies",
+    "frequencyBandCount",
+    "parameters",
+    "samples",
+    "code",
+    "modelId",
+    "modelUrl",
+    "modelName",
+    "modelData",
+    "delayTime",
+    "source",
+    "autoAttack",
+    "autoRelease",
+    "autoMakeup",
+  ]) {
+    if (config[key] !== undefined) {
+      result[key] =
+        typeof config[key] === "boolean" ? Number(config[key]) : config[key];
+    }
+  }
+  if (
+    typeof config.sidechain === "object" &&
+    config.sidechain !== null &&
+    typeof (config.sidechain as { channelId?: unknown }).channelId === "string"
+  ) {
+    result.sidechainEnabled = 1;
+  }
+}
+
 export function convertEffectConfigToEngine(
   config: EffectConfig
 ): EngineEffectConfig {
@@ -92,6 +128,7 @@ export function convertEffectConfigToEngine(
 
   applyUniversalParams(result, record);
   applyEffectParams(result, config.type, record);
+  applyStructuralParams(result, record);
 
   return result;
 }
@@ -105,6 +142,7 @@ export function convertPartialEffectConfigToEngine(
 
   applyUniversalParams(result, record);
   applyEffectParams(result, type, record);
+  applyStructuralParams(result, record);
 
   return result;
 }

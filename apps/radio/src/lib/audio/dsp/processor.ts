@@ -136,6 +136,15 @@ export class DSPProcessor {
         break;
       }
 
+      case MessageType.SET_TEMPO: {
+        const { sourceId, bpm } = payload as {
+          sourceId: string;
+          bpm: number;
+        };
+        this.setTempo(sourceId, bpm);
+        break;
+      }
+
       case MessageType.SET_PARAM: {
         const { target, value } = payload as { target: string; value: number };
         this.setParam(target, value);
@@ -180,7 +189,7 @@ export class DSPProcessor {
           sourceId: string;
           effectId: string;
           type: EffectType;
-          config: Record<string, number | boolean | string>;
+          config: Record<string, unknown>;
           order: number;
         };
         this.addEffect(sourceId, effectId, type, config, order);
@@ -200,7 +209,7 @@ export class DSPProcessor {
         const { sourceId, effectId, config } = payload as {
           sourceId: string;
           effectId: string;
-          config: Record<string, number | boolean | string>;
+          config: Record<string, unknown>;
         };
         this.updateEffect(sourceId, effectId, config);
         break;
@@ -239,7 +248,9 @@ export class DSPProcessor {
     outputL: Float32Array,
     outputR: Float32Array,
     fromIndex: number,
-    toIndex: number
+    toIndex: number,
+    sidechainL?: Float32Array,
+    sidechainR?: Float32Array
   ): void {
     // Use pre-allocated temp buffers
     const tempL = this.mixTempL;
@@ -265,7 +276,16 @@ export class DSPProcessor {
       if (source.isPlaying) {
         hasActiveSource = true;
         // Process effects for this source
-        source.process(tempL, tempR, outputL, outputR, fromIndex, toIndex);
+        source.process(
+          tempL,
+          tempR,
+          outputL,
+          outputR,
+          fromIndex,
+          toIndex,
+          sidechainL,
+          sidechainR
+        );
       }
     }
 
@@ -443,6 +463,19 @@ export class DSPProcessor {
     source.setEffectsDryWet(dryWet);
   }
 
+  private setTempo(sourceId: string, bpm: number): void {
+    const source = this.sources.get(sourceId);
+    if (!source) {
+      this.emitSourceError(
+        sourceId,
+        "SOURCE_NOT_FOUND",
+        `Cannot set tempo: source ${sourceId} not found`
+      );
+      return;
+    }
+    source.setTempo(bpm);
+  }
+
   private setParam(target: string, value: number): void {
     if (target === "channelStrip.volume") {
       this.channelStrip.setVolume(value);
@@ -508,7 +541,7 @@ export class DSPProcessor {
     sourceId: string,
     effectId: string,
     type: EffectType,
-    config: Record<string, number | boolean | string>,
+    config: Record<string, unknown>,
     order: number
   ): void {
     const source = this.sources.get(sourceId);
@@ -548,7 +581,7 @@ export class DSPProcessor {
   private updateEffect(
     sourceId: string,
     effectId: string,
-    config: Record<string, number | boolean | string>
+    config: Record<string, unknown>
   ): void {
     const source = this.sources.get(sourceId);
     if (!source) {

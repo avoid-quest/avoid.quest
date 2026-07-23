@@ -16,3 +16,9 @@ export function convertPartialEffectConfig(
 ): EngineEffectConfig {
   return convertPartialEffectConfigToEngine(type, config);
 }
+
+export function toPlainEffectConfig<
+  T extends EffectConfig | Partial<EffectConfig>,
+>(config: T): T {
+  return JSON.parse(JSON.stringify(config)) as T;
+}

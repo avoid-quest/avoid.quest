@@ -1,0 +1,79 @@
+import { describe, expect, test } from "bun:test";
+import { ContainerEffect } from "./container-effects";
+import { createDefaultEffectConfig } from "./registry";
+import type { EffectConfig, StereoChannels } from "./types";
+
+const SAMPLE_RATE = 48_000;
+const BLOCK_SIZE = 128;
+
+function buffers(): StereoChannels {
+  return [new Float32Array(BLOCK_SIZE), new Float32Array(BLOCK_SIZE)];
+}
+
+function createContainer(
+  type: "frequencySplit" | "fxComposite" | "stereoSplit"
+) {
+  const config = {
+    ...createDefaultEffectConfig(type, type, 0),
+    enabled: true,
+  } satisfies EffectConfig;
+  return new ContainerEffect(type, SAMPLE_RATE, config, () => null);
+}
+
+describe("compatibility effect containers", () => {
+  test("reconstructs a neutral frequency split at unity across representative bands", () => {
+    for (const frequency of [100, 500, 2000, 10_000]) {
+      const effect = createContainer("frequencySplit");
+      let inputEnergy = 0;
+      let outputEnergy = 0;
+
+      for (let block = 0; block < 100; block++) {
+        const input = buffers();
+        const output = buffers();
+        for (let index = 0; index < BLOCK_SIZE; index++) {
+          const sample = Math.sin(
+            (2 * Math.PI * frequency * (block * BLOCK_SIZE + index)) /
+              SAMPLE_RATE
+          );
+          input[0][index] = sample;
+          input[1][index] = sample;
+          inputEnergy += sample * sample;
+        }
+        effect.process(input, output, 0, BLOCK_SIZE);
+        for (const sample of output[0]) {
+          outputEnergy += sample * sample;
+        }
+      }
+
+      expect(10 * Math.log10(outputEnergy / inputEnergy)).toBeCloseTo(0, 1);
+    }
+  });
+
+  test("keeps centered stereo split branches at unity", () => {
+    const effect = createContainer("stereoSplit");
+    const input = buffers();
+    const output = buffers();
+    input[0].fill(0.25);
+    input[1].fill(-0.5);
+
+    effect.process(input, output, 0, BLOCK_SIZE);
+
+    expect(output[0]).toEqual(input[0]);
+    expect(output[1]).toEqual(input[1]);
+  });
+
+  test("keeps both default parallel branches without summing above unity", () => {
+    const effect = createContainer("fxComposite");
+    const input = buffers();
+    const output = buffers();
+    input[0].fill(0.25);
+    input[1].fill(-0.5);
+
+    effect.process(input, output, 0, BLOCK_SIZE);
+
+    for (let index = 0; index < BLOCK_SIZE; index++) {
+      expect(output[0][index]).toBeCloseTo(input[0][index] ?? 0, 6);
+      expect(output[1][index]).toBeCloseTo(input[1][index] ?? 0, 6);
+    }
+  });
+});

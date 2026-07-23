@@ -16,7 +16,7 @@ export class StereoToolEffect {
     invertR: false,
     swap: false,
   };
-  private readonly mixing = 0; // 0 = Linear, 1 = EqualPower (from openDAW)
+  private mixing = 0; // 0 = Linear, 1 = EqualPower (from openDAW)
   private needsUpdate = true;
   private processed = false;
 
@@ -31,6 +31,11 @@ export class StereoToolEffect {
 
   setPanning(value: number): void {
     this.params.panning = value;
+    this.needsUpdate = true;
+  }
+
+  setPanLaw(value: string): void {
+    this.mixing = value === "equalPower" ? 1 : 0;
     this.needsUpdate = true;
   }
 

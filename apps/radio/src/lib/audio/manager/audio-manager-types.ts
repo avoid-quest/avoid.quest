@@ -18,7 +18,6 @@ type AudioNodes = {
   gain: GainNode;
   pan: StereoPannerNode;
   filter: BiquadFilterNode;
-  analyser: AnalyserNode;
 };
 
 type SoundInstance = {
@@ -46,15 +45,11 @@ function createAudioNodes(context: AudioContext): AudioNodes {
   const gain = context.createGain();
   const pan = context.createStereoPanner();
   const filter = context.createBiquadFilter();
-  const analyser = context.createAnalyser();
 
   filter.type = "highpass";
   filter.frequency.value = 0;
 
-  analyser.fftSize = 2048;
-  analyser.smoothingTimeConstant = 0.8;
-
-  return { preFaderSend, gain, pan, filter, analyser };
+  return { preFaderSend, gain, pan, filter };
 }
 
 function createSoundInstance(radio: Radio, sourceId: string): SoundInstance {

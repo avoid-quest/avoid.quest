@@ -4,9 +4,11 @@ import { useDroppable } from "@dnd-kit/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Radio } from "@/lib/audio";
 import { isAudioFile } from "@/lib/audio/file-metadata";
+import { setSessionEffectsTempo } from "@/lib/channel-state-manager";
 import { getDjDeckActions } from "@/lib/dj-actions";
 import { isPlatformRadio } from "@/lib/external-url";
 import { useDeckAState, useDeckBState } from "@/lib/hooks/use-deck-state";
+import { useDjSession } from "@/lib/hooks/use-dj-session";
 import {
   setPendingPlatformItem,
   usePendingPlatformItem,
@@ -141,6 +143,8 @@ function DeckPanelInner({
     loadSource,
   } = deckState;
   const deckActions = getDjDeckActions(deckId);
+  const djSession = useDjSession();
+  const effectsTempo = djSession?.tempo ?? 120;
 
   const { currentTrackIndex, metadata } = usePlatformMetadata(radio);
   const trackProgress = useTrackProgress(soundId);
@@ -322,6 +326,7 @@ function DeckPanelInner({
     channelFilter,
     effectsDryWet,
     effects,
+    effectsTempo,
     repeat,
     autoplay,
     soundId,
@@ -341,6 +346,7 @@ function DeckPanelInner({
     updateEffect,
     removeEffect,
     reorderEffects,
+    setEffectsTempo: (tempo) => setSessionEffectsTempo("dj", tempo),
     trackProgress,
     peakLevel,
     metadata: effectiveMetadata,

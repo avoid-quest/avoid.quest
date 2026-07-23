@@ -15,6 +15,7 @@ export const MessageType = {
   SET_SOURCE_PAN: "SET_SOURCE_PAN",
   SET_EFFECTS_DRY_WET: "SET_EFFECTS_DRY_WET",
   SET_PARAM: "SET_PARAM",
+  SET_TEMPO: "SET_TEMPO",
 
   // Filters
   ADD_FILTER: "ADD_FILTER",

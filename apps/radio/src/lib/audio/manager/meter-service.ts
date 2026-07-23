@@ -1,104 +1,194 @@
 import type { Unsubscribe } from "../playback/index.js";
 import {
-  startMasterMeterLoop,
-  stopMasterMeterLoop,
-} from "./audio-manager-graph.js";
+  DEFAULT_OPENDAW_PROCESSOR_URL,
+  ensureOpenDawAudioWorklets,
+} from "./opendaw-audio-worklets.js";
 
 type MeterLevel = { left: number; right: number };
 type MeterListener = (level: MeterLevel) => void;
+type MeterSubscription = { terminate(): void };
+type OpenDawMeterNode = AudioWorkletNode & {
+  subscribe(
+    observer: (values: { peak: Float32Array; rms: Float32Array }) => void
+  ): MeterSubscription;
+  terminate(): void;
+};
+type MeterNodeFactory = (
+  context: BaseAudioContext
+) => Promise<OpenDawMeterNode>;
+type MeterSlot = {
+  generation: number;
+  initialization: Promise<void> | null;
+  listeners: Set<MeterListener>;
+  node: OpenDawMeterNode | null;
+  source: AudioNode | null;
+  subscription: MeterSubscription | null;
+};
+
+const createMeterSlot = (): MeterSlot => ({
+  generation: 0,
+  initialization: null,
+  listeners: new Set(),
+  node: null,
+  source: null,
+  subscription: null,
+});
+
+const createOpenDawMeterNode: MeterNodeFactory = async (context) => {
+  const { AudioWorklets } = await import("@opendaw/studio-core");
+  const worklets = await ensureOpenDawAudioWorklets(
+    context,
+    AudioWorklets,
+    DEFAULT_OPENDAW_PROCESSOR_URL
+  );
+  return worklets.createMeter(2);
+};
 
 class MeterService {
-  readonly soundMeterListeners = new Map<string, Set<MeterListener>>();
-  private readonly masterMeterListeners = new Set<MeterListener>();
-  private masterAnalyserL: AnalyserNode | null = null;
-  private masterAnalyserR: AnalyserNode | null = null;
-  private masterMeterRafId: number | null = null;
-  private readonly masterMeterFrame = { count: 0, value: 0 };
+  private readonly master = createMeterSlot();
+  private readonly sounds = new Map<string, MeterSlot>();
+  private readonly createMeterNode: MeterNodeFactory;
 
-  setMasterAnalysers(
-    analyserL: AnalyserNode | null,
-    analyserR: AnalyserNode | null
-  ): void {
-    this.stopMasterMeterLoop();
-    this.masterAnalyserL = analyserL;
-    this.masterAnalyserR = analyserR;
+  constructor(createMeterNode: MeterNodeFactory = createOpenDawMeterNode) {
+    this.createMeterNode = createMeterNode;
+  }
 
-    if (this.masterMeterListeners.size > 0) {
-      this.startMasterMeterLoop();
-    }
+  setMasterSource(source: AudioNode | null): Promise<void> {
+    return this.setSource(this.master, source, "master");
   }
 
   subscribeMasterMeter(callback: MeterListener): Unsubscribe {
-    this.masterMeterListeners.add(callback);
-
-    if (this.masterMeterListeners.size === 1) {
-      this.startMasterMeterLoop();
-    }
-
-    return () => {
-      this.masterMeterListeners.delete(callback);
-      if (this.masterMeterListeners.size === 0) {
-        this.stopMasterMeterLoop();
-      }
-    };
+    return this.subscribe(this.master, callback, "master");
   }
 
   subscribeMeter(soundId: string, callback: MeterListener): Unsubscribe {
-    if (!this.soundMeterListeners.has(soundId)) {
-      this.soundMeterListeners.set(soundId, new Set());
-    }
-
-    this.soundMeterListeners.get(soundId)?.add(callback);
-
-    return () => {
-      const callbacks = this.soundMeterListeners.get(soundId);
-      if (callbacks) {
-        callbacks.delete(callback);
-        if (callbacks.size === 0) {
-          this.soundMeterListeners.delete(soundId);
-        }
-      }
-    };
+    const slot = this.sounds.get(soundId) ?? createMeterSlot();
+    this.sounds.set(soundId, slot);
+    return this.subscribe(slot, callback, soundId);
   }
 
-  notifySoundZero(soundId: string): void {
-    const callbacks = this.soundMeterListeners.get(soundId);
-    if (!callbacks) {
+  setSoundSource(soundId: string, source: AudioNode): Promise<void> {
+    const slot = this.sounds.get(soundId) ?? createMeterSlot();
+    this.sounds.set(soundId, slot);
+    return this.setSource(slot, source, soundId);
+  }
+
+  clearSoundSource(soundId: string): void {
+    const slot = this.sounds.get(soundId);
+    if (!slot) {
       return;
     }
 
-    for (const callback of callbacks) {
-      callback({ left: 0, right: 0 });
-    }
+    this.deactivate(slot);
+    slot.source = null;
+    this.notify(slot, { left: 0, right: 0 });
   }
 
   clear(): void {
-    this.stopMasterMeterLoop();
-    this.soundMeterListeners.clear();
-    this.masterMeterListeners.clear();
-    this.setMasterAnalysers(null, null);
+    this.deactivate(this.master);
+    this.master.source = null;
+    this.master.listeners.clear();
+    for (const slot of this.sounds.values()) {
+      this.deactivate(slot);
+      slot.listeners.clear();
+    }
+    this.sounds.clear();
   }
 
-  private startMasterMeterLoop(): void {
-    if (!(this.masterAnalyserL && this.masterAnalyserR)) {
-      return;
+  private activate(slot: MeterSlot, label: string): Promise<void> {
+    if (
+      !(slot.source && slot.listeners.size > 0) ||
+      slot.node ||
+      slot.initialization
+    ) {
+      return slot.initialization ?? Promise.resolve();
     }
 
-    this.masterMeterRafId = startMasterMeterLoop(
-      this.masterAnalyserL,
-      this.masterAnalyserR,
-      this.masterMeterListeners,
-      this.masterMeterFrame
-    );
+    const generation = slot.generation;
+    const source = slot.source;
+    const initialization = this.createMeterNode(source.context)
+      .then((node) => {
+        if (
+          slot.generation !== generation ||
+          slot.source !== source ||
+          slot.listeners.size === 0
+        ) {
+          node.terminate();
+          return;
+        }
+
+        slot.node = node;
+        slot.subscription = node.subscribe(({ rms }) => {
+          this.notify(slot, {
+            left: rms[0] ?? 0,
+            right: rms[1] ?? rms[0] ?? 0,
+          });
+        });
+        source.connect(node);
+      })
+      .catch((error) => {
+        console.warn(
+          `[MeterService] openDAW meter unavailable for ${label}`,
+          error
+        );
+      })
+      .finally(() => {
+        if (slot.initialization === initialization) {
+          slot.initialization = null;
+        }
+      });
+    slot.initialization = initialization;
+    return initialization;
   }
 
-  private stopMasterMeterLoop(): void {
-    stopMasterMeterLoop(this.masterMeterFrame.value || this.masterMeterRafId);
-    this.masterMeterRafId = null;
-    this.masterMeterFrame.count = 0;
-    this.masterMeterFrame.value = 0;
+  private deactivate(slot: MeterSlot): void {
+    slot.generation++;
+    slot.subscription?.terminate();
+    slot.subscription = null;
+    if (slot.node) {
+      try {
+        slot.source?.disconnect(slot.node);
+      } catch {
+        // The graph may already have been disconnected during a source swap.
+      }
+      slot.node.disconnect();
+      slot.node.terminate();
+      slot.node = null;
+    }
+  }
+
+  private notify(slot: MeterSlot, level: MeterLevel): void {
+    for (const listener of slot.listeners) {
+      listener(level);
+    }
+  }
+
+  private setSource(
+    slot: MeterSlot,
+    source: AudioNode | null,
+    label: string
+  ): Promise<void> {
+    this.deactivate(slot);
+    slot.source = source;
+    return this.activate(slot, label);
+  }
+
+  private subscribe(
+    slot: MeterSlot,
+    callback: MeterListener,
+    label: string
+  ): Unsubscribe {
+    slot.listeners.add(callback);
+    this.activate(slot, label).catch(() => undefined);
+
+    return () => {
+      slot.listeners.delete(callback);
+      if (slot.listeners.size === 0) {
+        this.deactivate(slot);
+      }
+    };
   }
 }
 
-export type { MeterLevel, MeterListener };
+export type { MeterLevel, MeterListener, MeterNodeFactory, OpenDawMeterNode };
 export { MeterService };

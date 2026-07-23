@@ -19,6 +19,7 @@ export {
   SINGLE_ACTIVE_CHANNEL_ID,
   SINGLE_STANDBY_CHANNEL_ID,
   setPlaybackSessionActiveChannel,
+  setPlaybackSessionTempo,
   updatePlaybackChannel,
   updatePlaybackSession,
   upsertPlaybackChannel,

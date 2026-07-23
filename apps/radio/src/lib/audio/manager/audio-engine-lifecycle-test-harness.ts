@@ -126,9 +126,11 @@ function installGlobals(
   }
 
   class FakeAudioNode {
+    readonly context: BaseAudioContext;
     readonly name: string;
 
-    constructor(name: string) {
+    constructor(name: string, context = {} as BaseAudioContext) {
+      this.context = context;
       this.name = name;
     }
 
@@ -145,16 +147,16 @@ function installGlobals(
   class FakeGainNode extends FakeAudioNode {
     readonly gain = new FakeAudioParam();
 
-    constructor(name = "gain") {
-      super(name);
+    constructor(context: BaseAudioContext, name = "gain") {
+      super(name, context);
     }
   }
 
   class FakeStereoPannerNode extends FakeAudioNode {
     readonly pan = new FakeAudioParam();
 
-    constructor() {
-      super("stereo-panner");
+    constructor(context: BaseAudioContext) {
+      super("stereo-panner", context);
     }
   }
 
@@ -164,8 +166,8 @@ function installGlobals(
     readonly gain = new FakeAudioParam();
     type = "allpass";
 
-    constructor() {
-      super("biquad");
+    constructor(context: BaseAudioContext) {
+      super("biquad", context);
     }
   }
 
@@ -173,8 +175,8 @@ function installGlobals(
     fftSize = 2048;
     smoothingTimeConstant = 0.8;
 
-    constructor(name = "analyser") {
-      super(name);
+    constructor(context: BaseAudioContext, name = "analyser") {
+      super(name, context);
     }
 
     getFloatTimeDomainData(buffer: Float32Array): void {
@@ -194,7 +196,7 @@ function installGlobals(
       },
     };
     currentTime = 0;
-    readonly destination = new FakeAudioNode("destination");
+    readonly destination = new FakeAudioNode("destination", this);
     sampleRate = 44_100;
     state = "running";
     onstatechange: (() => void) | null = null;
@@ -207,36 +209,39 @@ function installGlobals(
     }
 
     createAnalyser(): FakeAnalyserNode {
-      return new FakeAnalyserNode();
+      return new FakeAnalyserNode(this);
     }
 
     createBiquadFilter(): FakeBiquadFilterNode {
-      return new FakeBiquadFilterNode();
+      return new FakeBiquadFilterNode(this);
     }
 
     createChannelSplitter(_channels: number): FakeAudioNode {
-      return new FakeAudioNode("channel-splitter");
+      return new FakeAudioNode("channel-splitter", this);
     }
 
     createDelay(_maxDelayTime?: number): FakeAudioNode & {
       delayTime: FakeAudioParam;
     } {
-      return Object.assign(new FakeAudioNode("delay"), {
+      return Object.assign(new FakeAudioNode("delay", this), {
         delayTime: new FakeAudioParam(),
       });
     }
 
     createGain(): FakeGainNode {
       this.gainCount += 1;
-      return new FakeGainNode(this.gainCount === 4 ? "worklet-gain" : "gain");
+      return new FakeGainNode(
+        this,
+        this.gainCount === 4 ? "worklet-gain" : "gain"
+      );
     }
 
     createMediaElementSource(_audio: FakeAudioElement): FakeAudioNode {
-      return new FakeAudioNode("media-source");
+      return new FakeAudioNode("media-source", this);
     }
 
     createStereoPanner(): FakeStereoPannerNode {
-      return new FakeStereoPannerNode();
+      return new FakeStereoPannerNode(this);
     }
 
     resume(): Promise<void> {
@@ -299,7 +304,7 @@ function installGlobals(
       _name: string,
       _options?: AudioWorkletNodeOptions
     ) {
-      super("worklet");
+      super("worklet", _context);
     }
   }
 

@@ -5,6 +5,9 @@
  * Single component that handles all effect types.
  */
 
+import { Input } from "@avoid.quest/ui/components/input";
+import { Label } from "@avoid.quest/ui/components/label";
+import { Textarea } from "@avoid.quest/ui/components/textarea";
 import { MidiControlWrapper } from "@/components/audio/midi-control-wrapper";
 import type { EffectConfig } from "@/lib/audio";
 import type {
@@ -14,6 +17,7 @@ import type {
   ParamDef,
   SelectParamDef,
   SliderParamDef,
+  TextParamDef,
 } from "@/lib/audio/dsp/effects/schema";
 import { ParamCheckbox } from "./param-checkbox";
 import { ParamGroup } from "./param-group";
@@ -27,6 +31,7 @@ type DeclarativeParamsProps = {
   onUpdate: (config: Partial<EffectConfig>) => void;
   deckId?: "deck-a" | "deck-b";
   effectId?: string;
+  midiTargetPrefix?: string;
 };
 
 function getEffectValue(effect: EffectConfig, key: string): unknown {
@@ -50,6 +55,7 @@ type RenderParamContext = {
   defaultConfig: Omit<EffectConfig, "id" | "order"> | undefined;
   deckId?: "deck-a" | "deck-b";
   effectId?: string;
+  midiTargetPrefix?: string;
 };
 
 function renderSlider(
@@ -76,11 +82,16 @@ function renderSlider(
     />
   );
 
-  if (ctx.deckId && ctx.effectId) {
+  const targetPrefix =
+    ctx.midiTargetPrefix ??
+    (ctx.deckId && ctx.effectId
+      ? `${ctx.deckId}:effect:${ctx.effectId}`
+      : undefined);
+  if (targetPrefix) {
     return (
       <MidiControlWrapper
         key={param.key}
-        targetId={`${ctx.deckId}:effect:${ctx.effectId}:${param.key}`}
+        targetId={`${targetPrefix}:${param.key}`}
       >
         {slider}
       </MidiControlWrapper>
@@ -131,6 +142,30 @@ function renderCheckbox(
   );
 }
 
+function renderText(
+  param: TextParamDef,
+  ctx: RenderParamContext
+): React.ReactNode {
+  const value = getEffectValue(ctx.effect, param.key);
+  const id = `${ctx.effect.id}-${param.key}`;
+  const Control = param.multiline ? Textarea : Input;
+
+  return (
+    <div className="space-y-2" key={param.key}>
+      <Label htmlFor={id}>{param.label}</Label>
+      <Control
+        id={id}
+        onChange={(event) => ctx.onUpdate({ [param.key]: event.target.value })}
+        placeholder={param.placeholder}
+        value={typeof value === "string" ? value : ""}
+      />
+      {param.description && (
+        <p className="text-muted-foreground text-xs">{param.description}</p>
+      )}
+    </div>
+  );
+}
+
 function renderGroup(
   param: GroupParamDef,
   ctx: RenderParamContext
@@ -175,6 +210,8 @@ function renderParam(
       return renderSelect(param, ctx);
     case "checkbox":
       return renderCheckbox(param, ctx);
+    case "text":
+      return renderText(param, ctx);
     case "group":
       return renderGroup(param, ctx);
     default:
@@ -188,6 +225,7 @@ export function DeclarativeParams({
   onUpdate,
   deckId,
   effectId,
+  midiTargetPrefix,
 }: DeclarativeParamsProps) {
   const ctx: RenderParamContext = {
     effect,
@@ -195,6 +233,7 @@ export function DeclarativeParams({
     defaultConfig: schema.defaultConfig,
     deckId,
     effectId,
+    midiTargetPrefix,
   };
 
   return (
@@ -204,6 +243,7 @@ export function DeclarativeParams({
         deckId={deckId}
         effect={effect}
         effectId={effectId}
+        midiTargetPrefix={midiTargetPrefix}
         onUpdate={onUpdate}
       />
     </div>

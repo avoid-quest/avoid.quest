@@ -1,6 +1,10 @@
 import { describe, expect, mock, test } from "bun:test";
 import type { AudioManager, EffectConfig, FilterConfig } from "@/lib/audio";
 import { createDefaultEffectConfig } from "@/lib/audio";
+import {
+  resetPlaybackChannelRuntime,
+  setPlaybackChannelSoundId,
+} from "@/lib/stores/playback-runtime-store";
 import { applyStoredEffectsAndFilters } from "./dj-actions-channel-strip";
 
 const defaultFilter: FilterConfig = {
@@ -85,5 +89,41 @@ describe("dj channel strip stored effect replay", () => {
     );
 
     expect(appliedEffectIds).toEqual(["limiter-1", "crusher-1", "delay-1"]);
+  });
+
+  test("restores tempo and resolves a persisted sidechain channel to its live sound", async () => {
+    setPlaybackChannelSoundId("deck-b", "sound-deck-b");
+    const gate = {
+      ...createDefaultEffectConfig("gate", "gate-1", 0),
+      sidechain: { channelId: "deck-b" },
+    };
+    const audioManager = {
+      getWorkletManager: mock(() => ({ isReady: true })),
+      ensureEffectsReady: mock(async () => true),
+      updateFilter: mock(() => undefined),
+      addEffect: mock(() => true),
+      setEffectsTempo: mock(() => undefined),
+      setEffectsSidechain: mock(() => true),
+    } as unknown as AudioManager;
+
+    try {
+      await applyStoredEffectsAndFilters(
+        audioManager,
+        "sound-deck-a",
+        [gate],
+        defaultFilter
+      );
+
+      expect(audioManager.setEffectsTempo).toHaveBeenCalledWith(
+        "sound-deck-a",
+        120
+      );
+      expect(audioManager.setEffectsSidechain).toHaveBeenCalledWith(
+        "sound-deck-a",
+        "sound-deck-b"
+      );
+    } finally {
+      resetPlaybackChannelRuntime("deck-b");
+    }
   });
 });

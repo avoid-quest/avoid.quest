@@ -17,7 +17,11 @@ import {
   RotateCcwIcon,
   XIcon,
 } from "lucide-react";
-import { type EffectConfig, getEffectMetadata } from "@/lib/audio";
+import {
+  createDefaultEffectConfig,
+  type EffectConfig,
+  getEffectMetadata,
+} from "@/lib/audio";
 import { EFFECT_ICONS } from "./effect-constants";
 import { EffectParams } from "./effect-params/effect-params";
 import { EffectVisualization } from "./visualizations/effect-visualization";
@@ -48,6 +52,7 @@ export function EffectItem({
   dragHandleAttributes,
 }: EffectItemProps) {
   const metadata = getEffectMetadata(effect.type);
+  const effectName = metadata?.name ?? effect.type;
 
   const Icon = EFFECT_ICONS[effect.type] ?? FilterIcon;
 
@@ -59,11 +64,7 @@ export function EffectItem({
     if (!metadata?.defaultConfig) {
       return;
     }
-    onUpdate({
-      ...metadata.defaultConfig,
-      id: effect.id,
-      order: effect.order,
-    });
+    onUpdate(createDefaultEffectConfig(effect.type, effect.id, effect.order));
   };
 
   return (
@@ -118,7 +119,7 @@ export function EffectItem({
             )}
             onClick={onExpand}
           >
-            {metadata?.name || effect.type}
+            {effectName}
           </CardTitle>
 
           {/* Bypassed badge */}
@@ -138,6 +139,7 @@ export function EffectItem({
           onTouchStart={(e) => e.stopPropagation()}
         >
           <Toggle
+            aria-label={`${effectName} enabled`}
             className={cn(
               "transition-all",
               effect.enabled.valueOf() && "bg-primary text-primary-foreground"
@@ -149,6 +151,7 @@ export function EffectItem({
             {effect.enabled ? "ON" : "OFF"}
           </Toggle>
           <Button
+            aria-label={`Reset ${effectName}`}
             className="h-8 w-8 p-0 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             onClick={handleReset}
             size="sm"
@@ -158,6 +161,7 @@ export function EffectItem({
             <RotateCcwIcon className="size-4" />
           </Button>
           <Button
+            aria-label={`Remove ${effectName}`}
             className="h-8 w-8 p-0 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
             onClick={onRemove}
             size="sm"

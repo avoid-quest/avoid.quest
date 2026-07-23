@@ -54,7 +54,7 @@ describe("Effect Registry", () => {
 
       expect(metadata).toBeDefined();
       expect(metadata?.type).toBe("plateReverb");
-      expect(metadata?.name).toBe("Plate Reverb");
+      expect(metadata?.name).toBe("Dattorro Reverb");
     });
 
     test("returns undefined for unknown effect type", () => {

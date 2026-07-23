@@ -137,6 +137,7 @@ export class CTAGCompressor {
   // Internal buffers
   readonly #sidechainSignal: Float32Array;
   readonly #originalSignal: StereoChannels;
+  #externalSidechain: StereoChannels | null = null;
 
   // State
   #inputGain = 1;
@@ -309,6 +310,10 @@ export class CTAGCompressor {
     return this.#reductionMin;
   }
 
+  setSidechainInput(input: StereoChannels | null): void {
+    this.#externalSidechain = input;
+  }
+
   process(
     input: StereoChannels,
     output: StereoChannels,
@@ -328,11 +333,12 @@ export class CTAGCompressor {
     }
 
     // Get max L/R amplitude for envelope follower (sidechain signal)
+    const detector = this.#externalSidechain ?? output;
     this.#sidechainSignal.fill(0, fromIndex, toIndex);
     for (let i = fromIndex; i < toIndex; i++) {
       this.#sidechainSignal[i] = Math.max(
-        Math.abs(outputL[i] ?? 0),
-        Math.abs(outputR[i] ?? 0)
+        Math.abs(detector[0][i] ?? 0),
+        Math.abs(detector[1][i] ?? 0)
       );
     }
 

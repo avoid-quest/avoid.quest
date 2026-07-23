@@ -1,4 +1,7 @@
 import type { AudioManager, EffectConfig, FilterConfig } from "@/lib/audio";
+import { visitEffectTree } from "@/lib/audio/dsp/routing/effect-tree";
+import { getPlaybackSession } from "@/lib/collections/playback-sessions";
+import { getPlaybackChannelRuntime } from "@/lib/stores/playback-runtime-store";
 import { orderEffectsForPlayback } from "./effect-order.js";
 
 async function applyStoredEffectsAndFilters(
@@ -20,8 +23,22 @@ async function applyStoredEffectsAndFilters(
       audioManager.updateFilter(soundId, filter);
     }
 
+    audioManager.setEffectsTempo?.(
+      soundId,
+      getPlaybackSession("dj")?.tempo ?? 120
+    );
     for (const effect of orderEffectsForPlayback(effects)) {
       audioManager.addEffect(soundId, effect);
+    }
+    let sidechainChannelId: string | null = null;
+    visitEffectTree(effects, (effect) => {
+      sidechainChannelId ??= effect.sidechain?.channelId ?? null;
+    });
+    if (sidechainChannelId) {
+      audioManager.setEffectsSidechain(
+        soundId,
+        getPlaybackChannelRuntime(sidechainChannelId).soundId
+      );
     }
   } catch (error) {
     console.warn("[dj-actions] Failed to apply stored effects:", error);

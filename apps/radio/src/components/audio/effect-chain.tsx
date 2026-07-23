@@ -1,4 +1,6 @@
 import { Button } from "@avoid.quest/ui/components/button";
+import { Input } from "@avoid.quest/ui/components/input";
+import { Label } from "@avoid.quest/ui/components/label";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import type { DragEndEvent, DragStartEvent } from "@dnd-kit/core";
 import {
@@ -35,6 +37,8 @@ type EffectChainProps = {
   showAddButton?: boolean;
   showEffectsList?: boolean;
   deckId?: "deck-a" | "deck-b";
+  tempo?: number;
+  onTempoChange?: (tempo: number) => void;
 };
 
 export function EffectChain({
@@ -47,6 +51,8 @@ export function EffectChain({
   showAddButton = true,
   showEffectsList = true,
   deckId,
+  tempo,
+  onTempoChange,
 }: EffectChainProps) {
   const [expandedEffectId, setExpandedEffectId] = useState<string | null>(null);
   const [showPicker, setShowPicker] = useState(false);
@@ -126,6 +132,31 @@ export function EffectChain({
     <div className="w-full min-w-0 space-y-2">
       {title?.trim() !== "" && (
         <div className="font-medium text-muted-foreground text-sm">{title}</div>
+      )}
+
+      {tempo !== undefined && onTempoChange && (
+        <div className="flex items-center gap-2 rounded-md border bg-muted/20 p-2">
+          <Label className="flex-1 text-xs" htmlFor={`${deckId}-effects-tempo`}>
+            Synced effect tempo
+          </Label>
+          <Input
+            className="h-8 w-24"
+            defaultValue={tempo}
+            id={`${deckId}-effects-tempo`}
+            key={tempo}
+            max={1000}
+            min={30}
+            onBlur={(event) => {
+              const value = Number(event.target.value);
+              if (Number.isFinite(value)) {
+                onTempoChange(Math.max(30, Math.min(1000, value)));
+              }
+            }}
+            step={0.1}
+            type="number"
+          />
+          <span className="text-muted-foreground text-xs">BPM</span>
+        </div>
       )}
 
       {showEffectsList.valueOf() && (

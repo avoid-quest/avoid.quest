@@ -1,0 +1,755 @@
+import { UUID } from "@opendaw/lib-std";
+import type { Project } from "@opendaw/studio-core";
+import {
+  isOfficialOpenDawEffect,
+  OPENDAW_FACTORY_KEYS,
+} from "../dsp/effects/official-opendaw-mapping.js";
+import type {
+  EffectChainConfig,
+  EffectConfig,
+  TempoDivision,
+} from "../dsp/effects/types.js";
+
+type PrimitiveField = {
+  getValue?(): boolean | number | string;
+  setValue(value: boolean | number | string): void;
+};
+
+type PointerField = {
+  defer(): void;
+  refer(target: unknown): void;
+};
+
+type BoxLike = {
+  delete(): void;
+  enabled?: PrimitiveField;
+  index?: PrimitiveField;
+  label?: PrimitiveField;
+  [key: string]: unknown;
+};
+
+type HostField = unknown;
+
+type AdapterModules = {
+  boxes: typeof import("@opendaw/studio-boxes");
+  core: typeof import("@opendaw/studio-core");
+};
+
+export type OfficialEffectGroup = {
+  children: OfficialEffectGroup[];
+  config: EffectConfig;
+  created: BoxLike[];
+  device: BoxLike;
+  inputTrim: BoxLike;
+  wrapper: BoxLike;
+  outputTrim: BoxLike;
+};
+
+type CreateContext = AdapterModules & {
+  project: Project;
+  bpm: number;
+};
+
+const DIVISIONS: readonly TempoDivision[] = [
+  "1/32",
+  "1/16",
+  "1/8",
+  "1/4",
+  "1/2",
+  "1/1",
+];
+
+const DELAY_FRACTIONS = [
+  "off",
+  "1/128",
+  "1/96",
+  "1/64",
+  "1/48",
+  "1/32",
+  "1/24",
+  "3/64",
+  "1/16",
+  "1/12",
+  "3/32",
+  "1/8",
+  "1/6",
+  "3/16",
+  "1/4",
+  "5/16",
+  "1/3",
+  "3/8",
+  "7/16",
+  "1/2",
+  "1/1",
+] as const;
+
+const TIDAL_FRACTIONS = [
+  "1/1",
+  "1/2",
+  "1/3",
+  "1/4",
+  "3/16",
+  "1/6",
+  "1/8",
+  "3/32",
+  "1/12",
+  "1/16",
+  "3/64",
+  "1/24",
+  "1/32",
+  "1/48",
+  "1/64",
+  "1/96",
+  "1/128",
+] as const;
+
+const AUTOTUNE_KEYS = [
+  "C",
+  "C#",
+  "D",
+  "D#",
+  "E",
+  "F",
+  "F#",
+  "G",
+  "G#",
+  "A",
+  "A#",
+  "B",
+] as const;
+
+const AUTOTUNE_SCALES = [
+  "chromatic",
+  "major",
+  "minor",
+  "majorPentatonic",
+  "minorPentatonic",
+  "blues",
+  "dorian",
+  "mixolydian",
+] as const;
+function field(box: BoxLike, key: string): PrimitiveField | undefined {
+  const candidate = box[key];
+  return candidate &&
+    typeof candidate === "object" &&
+    "setValue" in candidate &&
+    typeof candidate.setValue === "function"
+    ? (candidate as PrimitiveField)
+    : undefined;
+}
+
+function pointer(box: BoxLike, key: string): PointerField | undefined {
+  const candidate = box[key];
+  return candidate &&
+    typeof candidate === "object" &&
+    "refer" in candidate &&
+    typeof candidate.refer === "function" &&
+    "defer" in candidate &&
+    typeof candidate.defer === "function"
+    ? (candidate as PointerField)
+    : undefined;
+}
+
+function set(
+  box: BoxLike,
+  key: string,
+  value: boolean | number | string
+): void {
+  field(box, key)?.setValue(value);
+}
+
+function db(gain: number): number {
+  return gain <= 0 ? Number.NEGATIVE_INFINITY : 20 * Math.log10(gain);
+}
+
+function divisionIndex(
+  division: string | undefined,
+  fractions: readonly string[]
+): number {
+  const index = fractions.indexOf(division ?? "1/4");
+  return index < 0 ? 0 : index;
+}
+
+function configureRevamp(box: BoxLike, config: EffectConfig): void {
+  if (config.type !== "revamp") {
+    return;
+  }
+  for (const [prefix, key] of [
+    ["highPass", "highPass"],
+    ["lowShelf", "lowShelf"],
+    ["lowBell", "lowBell"],
+    ["midBell", "midBell"],
+    ["highBell", "highBell"],
+    ["highShelf", "highShelf"],
+    ["lowPass", "lowPass"],
+  ] as const) {
+    const section = box[key] as BoxLike | undefined;
+    if (!section) {
+      continue;
+    }
+    const configRecord = config as unknown as Record<string, unknown>;
+    set(section, "enabled", Boolean(configRecord[`${prefix}Enabled`]));
+    set(
+      section,
+      "frequency",
+      Number(configRecord[`${prefix}Frequency`] ?? 1000)
+    );
+    if (`${prefix}Gain` in configRecord) {
+      set(section, "gain", Number(configRecord[`${prefix}Gain`]));
+    }
+    if (`${prefix}Q` in configRecord) {
+      set(section, "q", Number(configRecord[`${prefix}Q`]));
+    }
+    if (`${prefix}Order` in configRecord) {
+      set(
+        section,
+        "order",
+        Math.max(0, Math.min(3, Number(configRecord[`${prefix}Order`]) - 1))
+      );
+    }
+  }
+}
+
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: exhaustive discriminated-union adapter for the upstream catalog
+function configureDevice(
+  box: BoxLike,
+  config: EffectConfig,
+  bpm: number
+): void {
+  set(box, "enabled", true);
+  switch (config.type) {
+    case "plateReverb":
+      for (const key of [
+        "preDelay",
+        "bandwidth",
+        "inputDiffusion1",
+        "inputDiffusion2",
+        "decay",
+        "decayDiffusion1",
+        "decayDiffusion2",
+        "damping",
+        "excursionRate",
+        "excursionDepth",
+      ] as const) {
+        set(box, key, config[key]);
+      }
+      set(box, "dry", config.dry ?? 0);
+      set(box, "wet", config.wet ?? -6);
+      break;
+    case "crusher":
+      set(box, "crush", config.crush);
+      set(box, "bits", config.bitDepth);
+      set(box, "boost", config.boost);
+      set(box, "mix", 1);
+      break;
+    case "fold":
+      set(box, "drive", config.amount);
+      set(
+        box,
+        "volume",
+        config.volume - (config.autoGain ? Math.max(0, config.amount) / 2 : 0)
+      );
+      set(box, "overSampling", { 2: 0, 4: 1, 8: 2 }[config.oversample]);
+      break;
+    case "revamp":
+      configureRevamp(box, config);
+      break;
+    case "delay":
+      set(
+        box,
+        "delayMusical",
+        (config.delayMusical ?? "1/4") === "Off"
+          ? 0
+          : divisionIndex(config.delayMusical ?? "1/4", DELAY_FRACTIONS)
+      );
+      set(box, "delayMillis", config.delayMillis ?? config.delayTime * 1000);
+      set(box, "feedback", config.feedback);
+      set(box, "cross", config.cross ?? config.crossFeedback ?? 0);
+      set(
+        box,
+        "preSyncTimeLeft",
+        divisionIndex(config.preSyncTimeLeft ?? "1/16", DELAY_FRACTIONS)
+      );
+      set(box, "preMillisTimeLeft", config.preMillisTimeLeft ?? 0);
+      set(
+        box,
+        "preSyncTimeRight",
+        divisionIndex(config.preSyncTimeRight ?? "Off", DELAY_FRACTIONS)
+      );
+      set(box, "preMillisTimeRight", config.preMillisTimeRight ?? 0);
+      set(box, "filter", config.filter ?? 0);
+      set(box, "lfoSpeed", config.lfoSpeed ?? config.lfoRate ?? 0);
+      set(box, "lfoDepth", config.lfoDepth ?? 0);
+      set(box, "dry", config.dry ?? 0);
+      set(box, "wet", config.wet ?? -6);
+      break;
+    case "compressor":
+      set(box, "lookahead", config.lookahead);
+      set(box, "automakeup", config.automakeup ?? config.autoMakeup);
+      set(box, "autoattack", config.autoattack ?? config.autoAttack);
+      set(box, "autorelease", config.autorelease ?? config.autoRelease);
+      set(box, "inputgain", config.inputgain ?? 0);
+      set(box, "threshold", config.threshold);
+      set(box, "ratio", config.ratio);
+      set(box, "knee", config.knee);
+      set(box, "attack", config.attack);
+      set(box, "release", config.release);
+      set(box, "makeup", config.makeup);
+      set(box, "mix", config.mix);
+      break;
+    case "stereoTool":
+      set(box, "volume", config.volume);
+      set(box, "panning", config.panning ?? 0);
+      set(box, "panningMixing", config.panLaw === "linear" ? 0 : 1);
+      set(box, "stereo", config.stereo);
+      set(box, "invertL", config.invertL);
+      set(box, "invertR", config.invertR);
+      set(box, "swap", config.swap);
+      break;
+    case "tidal": {
+      const secondsPerBeat = 60 / Math.max(30, bpm);
+      const closestDivision = DIVISIONS.reduce((best, division) => {
+        const [numerator, denominator] = division.split("/").map(Number);
+        const duration = secondsPerBeat * 4 * (numerator / denominator);
+        const bestParts = best.split("/").map(Number);
+        const bestDuration = secondsPerBeat * 4 * (bestParts[0] / bestParts[1]);
+        return Math.abs(duration - 1 / config.rate) <
+          Math.abs(bestDuration - 1 / config.rate)
+          ? division
+          : best;
+      }, "1/4" as TempoDivision);
+      set(
+        box,
+        "rate",
+        divisionIndex(config.rateDivision ?? closestDivision, TIDAL_FRACTIONS)
+      );
+      set(box, "depth", config.depth);
+      set(box, "slope", config.slope);
+      set(box, "symmetry", config.symmetry);
+      set(box, "offset", ((config.offset + 180) % 360) - 180);
+      set(box, "channelOffset", ((config.channelOffset + 180) % 360) - 180);
+      break;
+    }
+    case "cheapReverb":
+      set(box, "decay", config.decay ?? 0.5);
+      set(box, "preDelay", config.preDelay ?? 0.02);
+      set(box, "damp", config.damp ?? 0.5);
+      set(box, "filter", config.filter ?? 0);
+      set(box, "dry", config.dry ?? 0);
+      set(box, "wet", config.wet ?? -3);
+      break;
+    case "gate":
+      set(box, "threshold", config.threshold);
+      set(box, "return", config.return ?? 0);
+      set(box, "attack", config.attack);
+      set(box, "hold", config.hold);
+      set(box, "release", config.release);
+      set(box, "floor", config.floor);
+      set(box, "inverse", config.inverse);
+      break;
+    case "waveshaper":
+      set(box, "equation", config.equation ?? "hardclip");
+      set(box, "inputGain", config.deviceInputGain ?? 0);
+      set(box, "outputGain", config.deviceOutputGain ?? 0);
+      set(box, "mix", config.mix ?? 1);
+      break;
+    case "maximizer":
+      set(box, "threshold", config.threshold);
+      set(box, "lookahead", config.lookaheadEnabled ?? config.lookahead > 0);
+      break;
+    case "vocoder":
+      set(box, "carrierMinFreq", config.carrierMinFreq ?? 100);
+      set(box, "carrierMaxFreq", config.carrierMaxFreq ?? 12_000);
+      set(box, "modulatorMinFreq", config.modulatorMinFreq ?? 100);
+      set(box, "modulatorMaxFreq", config.modulatorMaxFreq ?? 12_000);
+      set(box, "qStart", config.qStart ?? 20);
+      set(box, "qEnd", config.qEnd ?? 2);
+      set(box, "envAttack", config.envAttack ?? 5);
+      set(box, "envRelease", config.envRelease ?? 30);
+      set(box, "gain", config.gain ?? 0);
+      set(box, "mix", config.mix ?? 1);
+      set(box, "bandCount", config.bandCount ?? config.bands);
+      set(
+        box,
+        "modulatorSource",
+        config.modulatorSource ??
+          (config.modulator === "noise" ? "noise-pink" : config.modulator)
+      );
+      break;
+    case "neuralAmp":
+      set(box, "inputGain", config.input);
+      set(box, "outputGain", config.output);
+      set(box, "mono", config.mono ?? true);
+      set(box, "mix", config.mix ?? 1);
+      break;
+    case "werkstatt":
+      // ScriptCompiler.compile owns code headers and declaration boxes.
+      break;
+    case "autotune": {
+      set(box, "key", Math.max(0, AUTOTUNE_KEYS.indexOf(config.key as never)));
+      let scale = config.scale;
+      if (scale === "pentatonicMajor") {
+        scale = "majorPentatonic";
+      } else if (scale === "pentatonicMinor") {
+        scale = "minorPentatonic";
+      }
+      set(box, "scale", Math.max(0, AUTOTUNE_SCALES.indexOf(scale as never)));
+      set(box, "amount", config.amount);
+      set(box, "retune", config.retuneAmount ?? config.retune / 80);
+      set(box, "shift", config.shift);
+      set(box, "smooth", config.smooth ?? config.smoothing);
+      break;
+    }
+    case "fxComposite":
+    case "stereoSplit":
+    case "frequencySplit":
+      set(box, "dry", Number.NEGATIVE_INFINITY);
+      set(box, "wet", 0);
+      if (config.type === "frequencySplit") {
+        set(box, "crossover1", config.crossoverFrequencies[0] ?? 200);
+        set(box, "crossover2", config.crossoverFrequencies[1] ?? 20_000);
+        set(box, "crossover3", config.crossoverFrequencies[2] ?? 20_000);
+      }
+      break;
+    default:
+      throw new Error(`Unsupported official openDAW effect: ${config.type}`);
+  }
+}
+
+function createCell(
+  { boxes, project }: CreateContext,
+  composite: BoxLike,
+  chain: EffectChainConfig,
+  created: BoxLike[]
+): BoxLike {
+  const cell = boxes.AudioEffectCompositeCellBox.create(
+    project.boxGraph,
+    UUID.generate(),
+    (box) => {
+      box.composite.refer(composite.entries as never);
+      box.index.setValue(chain.order);
+      box.label.setValue(chain.name);
+      box.gain.setValue(db(chain.gain));
+      box.pan.setValue(chain.pan);
+      box.mute.setValue(chain.muted);
+      box.solo.setValue(chain.solo);
+    }
+  ) as unknown as BoxLike;
+  created.push(cell);
+  return cell;
+}
+
+function fixedCells(composite: BoxLike): BoxLike[] {
+  const entries = composite.entries as
+    | {
+        pointerHub?: {
+          incoming(): Array<{ box: BoxLike }>;
+        };
+      }
+    | undefined;
+  return (
+    entries?.pointerHub
+      ?.incoming()
+      .map(({ box }) => box)
+      .sort(
+        (left, right) =>
+          Number((left.index as unknown as { getValue(): number }).getValue()) -
+          Number((right.index as unknown as { getValue(): number }).getValue())
+      ) ?? []
+  );
+}
+
+function createNestedChains(
+  context: CreateContext,
+  composite: BoxLike,
+  config: Extract<
+    EffectConfig,
+    { type: "fxComposite" | "stereoSplit" | "frequencySplit" }
+  >,
+  created: BoxLike[],
+  children: OfficialEffectGroup[]
+): void {
+  const cells =
+    config.type === "fxComposite"
+      ? config.chains
+          .slice()
+          .sort((left, right) => left.order - right.order)
+          .map((chain) => createCell(context, composite, chain, created))
+      : fixedCells(composite);
+
+  if (config.type === "frequencySplit") {
+    for (const cell of cells) {
+      set(cell, "mute", true);
+    }
+  }
+
+  config.chains
+    .slice()
+    .sort((left, right) => left.order - right.order)
+    .forEach((chain, index) => {
+      const cell = cells[index];
+      if (!cell) {
+        return;
+      }
+      set(cell, "label", chain.name);
+      set(cell, "gain", db(chain.gain));
+      set(cell, "pan", chain.pan);
+      set(cell, "mute", chain.muted);
+      set(cell, "solo", chain.solo);
+      chain.effects
+        .slice()
+        .sort((left, right) => left.order - right.order)
+        .forEach((effect, effectIndex) => {
+          const nested = createOfficialEffectGroup(
+            context,
+            effect,
+            cell.audioEffects,
+            effectIndex * 2
+          );
+          children.push(nested);
+          created.push(...nested.created);
+        });
+    });
+}
+
+function insert(
+  { core, project }: CreateContext,
+  host: HostField,
+  factory: keyof typeof core.EffectFactories.AudioNamed,
+  index: number
+): BoxLike {
+  return project.api.insertEffect(
+    host as never,
+    core.EffectFactories.AudioNamed[factory],
+    index
+  ) as unknown as BoxLike;
+}
+
+function createTrim(
+  context: CreateContext,
+  host: HostField,
+  index: number,
+  gain: number,
+  label: string,
+  created: BoxLike[]
+): BoxLike {
+  const trim = insert(context, host, "StereoTool", index);
+  set(trim, "label", label);
+  set(trim, "volume", db(gain));
+  set(trim, "enabled", true);
+  created.push(trim);
+  return trim;
+}
+
+export function createOfficialEffectGroup(
+  context: CreateContext,
+  config: EffectConfig,
+  host: HostField,
+  index: number
+): OfficialEffectGroup {
+  if (!isOfficialOpenDawEffect(config)) {
+    throw new Error(`Radio-only effect cannot use openDAW: ${config.type}`);
+  }
+
+  const created: BoxLike[] = [];
+  const children: OfficialEffectGroup[] = [];
+  const wrapper = insert(context, host, "AudioEffectComposite", index);
+  created.push(wrapper);
+  set(wrapper, "label", `Radio wrapper: ${config.type}`);
+  set(wrapper, "enabled", config.enabled);
+  set(wrapper, "dry", db(1 - config.dryWet));
+  set(wrapper, "wet", db(config.dryWet));
+
+  const wetCell = createCell(
+    context,
+    wrapper,
+    {
+      id: `${config.id}:wet`,
+      name: "Wet",
+      order: 0,
+      gain: 1,
+      pan: 0,
+      muted: false,
+      solo: false,
+      effects: [],
+    },
+    created
+  );
+  const inputTrim = createTrim(
+    context,
+    wetCell.audioEffects,
+    0,
+    config.inputGain,
+    "Input trim",
+    created
+  );
+
+  const factory = OPENDAW_FACTORY_KEYS[config.type];
+  const device = insert(context, wetCell.audioEffects, factory, 1);
+  created.push(device);
+  configureDevice(device, config, context.bpm);
+  if (config.type === "neuralAmp" && config.modelData) {
+    const model = context.boxes.NeuralAmpModelBox.create(
+      context.project.boxGraph,
+      UUID.generate(),
+      (box) => {
+        box.label.setValue(config.modelName ?? config.modelId ?? "Local model");
+        box.model.setValue(config.modelData ?? "");
+      }
+    ) as unknown as BoxLike;
+    created.push(model);
+    pointer(device, "model")?.refer(model);
+  }
+  if (
+    config.type === "fxComposite" ||
+    config.type === "stereoSplit" ||
+    config.type === "frequencySplit"
+  ) {
+    createNestedChains(context, device, config, created, children);
+  }
+
+  const outputTrim = createTrim(
+    context,
+    host,
+    index + 1,
+    config.type === "crusher" && !config.autoGain
+      ? config.outputGain * 10 ** (config.boost / 40)
+      : config.outputGain,
+    "Output trim",
+    created
+  );
+  set(outputTrim, "enabled", config.enabled);
+
+  return {
+    children,
+    config,
+    created,
+    device,
+    inputTrim,
+    wrapper,
+    outputTrim,
+  };
+}
+
+export function updateWerkstattEffectGroup(
+  group: OfficialEffectGroup,
+  config: Extract<EffectConfig, { type: "werkstatt" }>
+): void {
+  group.config = config;
+  set(group.wrapper, "enabled", config.enabled);
+  set(group.wrapper, "dry", db(1 - config.dryWet));
+  set(group.wrapper, "wet", db(config.dryWet));
+  set(group.inputTrim, "volume", db(config.inputGain));
+  set(group.outputTrim, "volume", db(config.outputGain));
+  set(group.outputTrim, "enabled", config.enabled);
+}
+
+export function restoreWerkstattParameterValues(
+  group: OfficialEffectGroup,
+  values: Readonly<Record<string, number>>
+): void {
+  const parameters = group.device.parameters as
+    | {
+        pointerHub?: {
+          filter(): Array<{ box: BoxLike }>;
+        };
+      }
+    | undefined;
+  for (const { box } of parameters?.pointerHub?.filter() ?? []) {
+    const label = field(box, "label")?.getValue?.();
+    if (typeof label !== "string") {
+      continue;
+    }
+    const value = values[label];
+    if (typeof value === "number" && Number.isFinite(value)) {
+      set(box, "value", value);
+    }
+  }
+}
+
+export function deleteOfficialEffectGroups(
+  groups: readonly OfficialEffectGroup[]
+): void {
+  const deleted = new Set<BoxLike>();
+  for (const group of [...groups].reverse()) {
+    for (const box of [...group.created].reverse()) {
+      if (!deleted.has(box)) {
+        deleted.add(box);
+        box.delete();
+      }
+    }
+  }
+}
+
+export function bindOfficialSidechain(
+  group: OfficialEffectGroup,
+  target: unknown | null
+): void {
+  const sidechain = pointer(group.device, "sideChain");
+  if (!sidechain) {
+    return;
+  }
+  if (target === null) {
+    sidechain.defer();
+  } else {
+    sidechain.refer(target);
+  }
+}
+
+export function createMasterRack(
+  context: CreateContext,
+  host: HostField
+): {
+  root: BoxLike;
+  dry: BoxLike;
+  wet: BoxLike;
+} {
+  const root = insert(context, host, "AudioEffectComposite", 0);
+  set(root, "label", "Radio Effects");
+  set(root, "enabled", true);
+  set(root, "dry", Number.NEGATIVE_INFINITY);
+  set(root, "wet", 0);
+  const created: BoxLike[] = [];
+  const dry = createCell(
+    context,
+    root,
+    {
+      id: "master-dry",
+      name: "Dry",
+      order: 0,
+      gain: 0,
+      pan: 0,
+      muted: false,
+      solo: false,
+      effects: [],
+    },
+    created
+  );
+  const wet = createCell(
+    context,
+    root,
+    {
+      id: "master-wet",
+      name: "Wet",
+      order: 1,
+      gain: 1,
+      pan: 0,
+      muted: false,
+      solo: false,
+      effects: [],
+    },
+    created
+  );
+  return { root, dry, wet };
+}
+
+export function setMasterRackDryWet(
+  rack: { dry: BoxLike; wet: BoxLike },
+  value: number
+): void {
+  const wet = Math.max(0, Math.min(1, value));
+  set(rack.dry, "gain", db(1 - wet));
+  set(rack.wet, "gain", db(wet));
+}
+
+export type { AdapterModules, BoxLike, CreateContext, HostField };

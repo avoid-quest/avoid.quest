@@ -29,7 +29,7 @@ export type {
   WorkletManagerEvents,
 } from "./worklet-manager-protocol.js";
 
-export type WorkletEffectConfig = Record<string, number | string>;
+export type WorkletEffectConfig = Record<string, unknown>;
 
 /**
  * Worklet Manager
@@ -299,6 +299,13 @@ export class WorkletManager {
     });
   }
 
+  setTempo(sourceId: string, bpm: number): void {
+    this.postMessage({
+      type: MessageType.SET_TEMPO,
+      payload: { sourceId, bpm },
+    });
+  }
+
   // ============================================
   // Effect Methods
   // ============================================
@@ -564,7 +571,7 @@ export class WorkletManager {
       nativeContext,
       "cacophony-processor",
       {
-        numberOfInputs: 1,
+        numberOfInputs: 2,
         numberOfOutputs: 1,
         outputChannelCount: [2],
       }

@@ -271,10 +271,14 @@ describe("Delay Effect", () => {
 
     // First echo
     expect(output[0][delaySamples]).toBeCloseTo(1.0);
-    // Second echo (reduced by feedback)
-    expect(output[0][delaySamples * 2]).toBeCloseTo(0.5, 1);
+    // Second echo is reduced by feedback and the feedback-path low-pass filter.
+    const secondEcho = output[0][delaySamples * 2] ?? 0;
+    expect(secondEcho).toBeGreaterThan(0.35);
+    expect(secondEcho).toBeLessThan(0.5);
     // Third echo (further reduced)
-    expect(output[0][delaySamples * 3]).toBeCloseTo(0.25, 1);
+    const thirdEcho = output[0][delaySamples * 3] ?? 0;
+    expect(thirdEcho).toBeGreaterThan(0.1);
+    expect(thirdEcho).toBeLessThan(secondEcho);
   });
 
   test("produces no NaN or Infinity", () => {

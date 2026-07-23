@@ -13,7 +13,6 @@ describe("radio metadata config fallback", () => {
               "Resonance Extra",
               "Internet Public Radio",
               "Radio Alhara",
-              "Gatto Misterioso",
             ].includes(radio.name)
           )
           .map((radio) => [radio.name, radio.metadataConfig?.kind])
@@ -22,8 +21,13 @@ describe("radio metadata config fallback", () => {
       "Resonance Extra": "icy",
       "Internet Public Radio": "airtime-live-info",
       "Radio Alhara": "icy",
-      "Gatto Misterioso": "azuracast-now-playing",
     });
+  });
+
+  test("does not seed permanently retired system stations", () => {
+    expect(
+      defaultRadios.some((radio) => radio.name === "Gatto Misterioso")
+    ).toBe(false);
   });
 
   test("matches default metadata by stream URL after a station is renamed", () => {

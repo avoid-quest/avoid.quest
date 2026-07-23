@@ -10,6 +10,7 @@ import {
   DECK_B_CHANNEL_ID,
   getPlaybackSession,
   initializePlaybackSessions,
+  parsePlaybackSessionRecord,
   playbackSessionsCollection,
   SINGLE_ACTIVE_CHANNEL_ID,
   updatePlaybackSession,
@@ -212,6 +213,114 @@ describe("buildDjSessionFromLegacyState", () => {
       "delay-1",
     ]);
     expect(deckA?.effects.map((effect) => effect.order)).toEqual([0, 1, 2]);
+  });
+});
+
+describe("effect session migration", () => {
+  test("adds the default tempo without changing a legacy flat chain", () => {
+    const delay = createDefaultEffectConfig("delay", "delay-1", 1);
+    const limiter = createDefaultEffectConfig("limiter", "limiter-1", 0);
+    const channel = createDefaultChannel(DECK_A_CHANNEL_ID, "deck-a");
+
+    const migrated = parsePlaybackSessionRecord({
+      id: "dj",
+      channels: [{ ...channel, effects: [delay, limiter] }],
+    });
+
+    expect(migrated.tempo).toBe(120);
+    expect(
+      migrated.channels[0]?.effects.map(({ id, order }) => [id, order])
+    ).toEqual([
+      ["limiter-1", 0],
+      ["delay-1", 1],
+    ]);
+  });
+
+  test("round-trips a nested composite tree and sidechain reference", () => {
+    const channel = createDefaultChannel(DECK_A_CHANNEL_ID, "deck-a");
+    const nestedGate = {
+      id: "gate-1",
+      type: "gate" as const,
+      enabled: true,
+      order: 0,
+      dryWet: 1,
+      inputGain: 1,
+      outputGain: 1,
+      sidechain: { channelId: DECK_B_CHANNEL_ID },
+      threshold: -24,
+      attack: 1,
+      hold: 10,
+      release: 100,
+      floor: -60,
+      inverse: false,
+    };
+    const composite = {
+      id: "composite-1",
+      type: "fxComposite" as const,
+      enabled: true,
+      order: 0,
+      dryWet: 1,
+      inputGain: 1,
+      outputGain: 1,
+      chains: [
+        {
+          id: "parallel-1",
+          name: "Parallel 1",
+          order: 0,
+          gain: 1,
+          pan: 0,
+          muted: false,
+          solo: false,
+          effects: [nestedGate],
+        },
+      ],
+    };
+
+    const original = parsePlaybackSessionRecord({
+      id: "dj",
+      tempo: 128,
+      channels: [{ ...channel, effects: [composite] }],
+    });
+    const restored = parsePlaybackSessionRecord(
+      JSON.parse(JSON.stringify(original))
+    );
+
+    expect(restored).toEqual(original);
+    expect(
+      restored.channels[0]?.effects[0]?.type === "fxComposite"
+        ? restored.channels[0].effects[0].chains[0]?.effects[0]?.sidechain
+        : null
+    ).toEqual({ channelId: DECK_B_CHANNEL_ID });
+  });
+
+  test("round-trips a three-band Frequency Split", () => {
+    const channel = createDefaultChannel(DECK_A_CHANNEL_ID, "deck-a");
+    const split = createDefaultEffectConfig(
+      "frequencySplit",
+      "frequency-split-1",
+      0
+    );
+    split.frequencyBandCount = 3;
+    split.chains = split.chains.slice(0, 3).map((chain, order) => ({
+      ...chain,
+      name: ["Low", "Mid", "High"][order] ?? chain.name,
+      order,
+    }));
+    split.crossoverFrequencies = [200, 1000];
+
+    const restored = parsePlaybackSessionRecord({
+      id: "dj",
+      channels: [{ ...channel, effects: [split] }],
+    }).channels[0]?.effects[0];
+
+    expect(restored).toMatchObject({
+      type: "frequencySplit",
+      frequencyBandCount: 3,
+      crossoverFrequencies: [200, 1000],
+    });
+    expect(restored?.type === "frequencySplit" && restored.chains).toHaveLength(
+      3
+    );
   });
 });
 

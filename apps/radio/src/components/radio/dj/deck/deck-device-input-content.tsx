@@ -58,8 +58,15 @@ export function DeviceInputContent({
   onChangeDevice,
   onClear,
 }: DeviceInputContentProps) {
-  const { effects, addEffect, updateEffect, removeEffect, reorderEffects } =
-    useDeckContext();
+  const {
+    effects,
+    effectsTempo,
+    addEffect,
+    updateEffect,
+    removeEffect,
+    reorderEffects,
+    setEffectsTempo,
+  } = useDeckContext();
   const isMobile = useIsMobile();
 
   const channelOptions = useMemo(
@@ -146,7 +153,9 @@ export function DeviceInputContent({
       onAddEffect={addEffect}
       onRemoveEffect={removeEffect}
       onReorderEffects={reorderEffects}
+      onTempoChange={setEffectsTempo}
       onUpdateEffect={updateEffect}
+      tempo={effectsTempo}
     />
   );
 

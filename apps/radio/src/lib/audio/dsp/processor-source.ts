@@ -306,18 +306,20 @@ export class EffectSource {
       this.tempR[i] = inputR[i] ?? 0;
     }
 
-    let current: [Float32Array, Float32Array] = [this.tempL, this.tempR];
+    const tempChannels: [Float32Array, Float32Array] = [this.tempL, this.tempR];
+    let current = tempChannels;
     const outputChannels: [Float32Array, Float32Array] = [outputL, outputR];
 
     for (const filterId of this.filterOrder) {
       const filter = this.filters.get(filterId);
       if (filter) {
-        filter.process(current, outputChannels, fromIndex, toIndex);
-        current = outputChannels;
+        const target =
+          current === outputChannels ? tempChannels : outputChannels;
+        filter.process(current, target, fromIndex, toIndex);
+        current = target;
       }
     }
 
-    let anyEffectProcessed = false;
     for (const effectId of this.effectOrder) {
       const effect = this.effects.get(effectId);
       const config = this.effectConfigs.get(effectId);
@@ -325,7 +327,6 @@ export class EffectSource {
         continue;
       }
 
-      anyEffectProcessed = true;
       effect.setSidechainInput?.(
         sidechainL && config.raw.sidechainEnabled === 1
           ? ([sidechainL, sidechainR ?? sidechainL] satisfies StereoChannels)
@@ -347,8 +348,9 @@ export class EffectSource {
         }
       }
 
-      effect.process(current, outputChannels, fromIndex, toIndex);
-      current = outputChannels;
+      const target = current === outputChannels ? tempChannels : outputChannels;
+      effect.process(current, target, fromIndex, toIndex);
+      current = target;
 
       if (needsDryMix) {
         const dry = 1.0 - config.dryWet;
@@ -368,10 +370,10 @@ export class EffectSource {
       }
     }
 
-    if (this.filterOrder.length === 0 && !anyEffectProcessed) {
+    if (current !== outputChannels) {
       for (let i = fromIndex; i < toIndex; i++) {
-        outputL[i] = this.tempL[i] ?? 0;
-        outputR[i] = this.tempR[i] ?? 0;
+        outputL[i] = current[0][i] ?? 0;
+        outputR[i] = current[1][i] ?? 0;
       }
     }
 

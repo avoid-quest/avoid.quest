@@ -28,6 +28,7 @@ type GraphConnection = { destination: AudioNode; source: AudioNode };
 type SidechainConnection = { source: AudioNode; target: AudioNode };
 
 type SoundEffectsState = {
+  compatibilitySourceCreated: boolean;
   desiredSidechainSoundId: string | null;
   dryWet: number;
   effects: EffectConfig[];
@@ -51,6 +52,7 @@ type EffectsControllerOptions = {
 };
 
 const createSoundState = (): SoundEffectsState => ({
+  compatibilitySourceCreated: false,
   desiredSidechainSoundId: null,
   dryWet: 1,
   effects: [],
@@ -116,14 +118,16 @@ class EffectsController {
 
     const plainConfig = toPlainEffectConfig(config);
     state.effects = appendEffectToTree(state.effects, plainConfig);
-    const engineConfig: EngineEffectConfig = convertEffectConfig(plainConfig);
-    state.manager.addEffect(
-      soundId,
-      plainConfig.id,
-      plainConfig.type,
-      engineConfig,
-      plainConfig.order
-    );
+    if (state.compatibilitySourceCreated) {
+      const engineConfig: EngineEffectConfig = convertEffectConfig(plainConfig);
+      state.manager.addEffect(
+        soundId,
+        plainConfig.id,
+        plainConfig.type,
+        engineConfig,
+        plainConfig.order
+      );
+    }
     this.refreshRuntimeSelection(soundId);
     return true;
   }
@@ -136,9 +140,9 @@ class EffectsController {
     const rootId = findRootEffectContainer(state.effects, effectId)?.id;
     state.effects = removeEffectFromTree(state.effects, effectId);
     const root = rootId ? findEffectInTree(state.effects, rootId) : undefined;
-    if (root) {
+    if (root && state.compatibilitySourceCreated) {
       state.manager?.updateEffect(soundId, root.id, convertEffectConfig(root));
-    } else {
+    } else if (state.compatibilitySourceCreated) {
       state.manager?.removeEffect(soundId, effectId);
     }
     this.refreshRuntimeSelection(soundId);
@@ -159,13 +163,15 @@ class EffectsController {
     const rootId = findRootEffectContainer(state.effects, effectId)?.id;
     state.effects = updateEffectInTree(state.effects, effectId, plainConfig);
     const root = rootId ? findEffectInTree(state.effects, rootId) : undefined;
-    state.manager.updateEffect(
-      soundId,
-      root?.id ?? effectId,
-      root
-        ? convertEffectConfig(root)
-        : convertPartialEffectConfig(type, plainConfig)
-    );
+    if (state.compatibilitySourceCreated) {
+      state.manager.updateEffect(
+        soundId,
+        root?.id ?? effectId,
+        root
+          ? convertEffectConfig(root)
+          : convertPartialEffectConfig(type, plainConfig)
+      );
+    }
     this.refreshRuntimeSelection(soundId);
     return true;
   }
@@ -175,7 +181,9 @@ class EffectsController {
     if (!state) {
       return;
     }
-    state.manager?.reorderEffects(soundId, effectIds);
+    if (state.compatibilitySourceCreated) {
+      state.manager?.reorderEffects(soundId, effectIds);
+    }
     state.effects = reorderEffectTreeChain(state.effects, effectIds);
     this.refreshRuntimeSelection(soundId);
   }
@@ -183,13 +191,18 @@ class EffectsController {
   setDryWet(soundId: string, value: number): void {
     const state = this.getState(soundId);
     state.dryWet = Math.max(0, Math.min(1, value));
-    state.manager?.setEffectsDryWet(soundId, state.dryWet);
+    if (state.compatibilitySourceCreated) {
+      state.manager?.setEffectsDryWet(soundId, state.dryWet);
+    }
     this.officialRuntime?.setDryWet(soundId, state.dryWet);
   }
 
   setTempo(soundId: string, bpm: number): void {
     this.bpm = clampEffectTempo(bpm);
-    this.states.get(soundId)?.manager?.setTempo(soundId, this.bpm);
+    const state = this.states.get(soundId);
+    if (state?.compatibilitySourceCreated) {
+      state.manager?.setTempo(soundId, this.bpm);
+    }
     this.officialRuntime?.setTempo(this.bpm);
   }
 
@@ -290,13 +303,17 @@ class EffectsController {
     destination: AudioNode
   ): Promise<boolean> {
     const manager = await this.getOrCreateWorkletManager(soundId);
-    manager.createStreamSource(soundId);
-    manager.startSource(soundId);
     if (!(manager.node && manager.outputNode)) {
       return false;
     }
 
     const state = this.getState(soundId);
+    manager.createStreamSource(soundId);
+    if (!state.compatibilitySourceCreated) {
+      state.compatibilitySourceCreated = true;
+      this.replayCompatibilityState(soundId, state);
+    }
+    manager.startSource(soundId);
     state.graph = { destination, source };
     const generation = this.advance(state);
     this.connectCompatibilityGraph(state);
@@ -311,6 +328,29 @@ class EffectsController {
       await this.registerCompatibilitySource(soundId, state, generation);
     }
     return true;
+  }
+
+  private replayCompatibilityState(
+    soundId: string,
+    state: SoundEffectsState
+  ): void {
+    const manager = state.manager;
+    if (!manager) {
+      return;
+    }
+    for (const effect of state.effects
+      .slice()
+      .sort((left, right) => left.order - right.order)) {
+      manager.addEffect(
+        soundId,
+        effect.id,
+        effect.type,
+        convertEffectConfig(effect),
+        effect.order
+      );
+    }
+    manager.setEffectsDryWet(soundId, state.dryWet);
+    manager.setTempo(soundId, this.bpm);
   }
 
   pauseSource(soundId: string): void {

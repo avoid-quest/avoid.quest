@@ -694,17 +694,43 @@ export function createOfficialEffectGroup(
   };
 }
 
-export function updateWerkstattEffectGroup(
+export function updateOfficialEffectGroup(
   group: OfficialEffectGroup,
-  config: Extract<EffectConfig, { type: "werkstatt" }>
+  config: EffectConfig,
+  bpm: number
 ): void {
   group.config = config;
   set(group.wrapper, "enabled", config.enabled);
   set(group.wrapper, "dry", db(1 - config.dryWet));
   set(group.wrapper, "wet", db(config.dryWet));
   set(group.inputTrim, "volume", db(config.inputGain));
-  set(group.outputTrim, "volume", db(config.outputGain));
+  configureDevice(group.device, config, bpm);
+  set(
+    group.outputTrim,
+    "volume",
+    db(
+      config.type === "crusher" && !config.autoGain
+        ? config.outputGain * 10 ** (config.boost / 40)
+        : config.outputGain
+    )
+  );
   set(group.outputTrim, "enabled", config.enabled);
+  if ("chains" in config) {
+    const cells = fixedCells(group.device);
+    config.chains
+      .slice()
+      .sort((left, right) => left.order - right.order)
+      .forEach((chain, index) => {
+        const cell = cells[index];
+        if (cell) {
+          set(cell, "label", chain.name);
+          set(cell, "gain", db(chain.gain));
+          set(cell, "pan", chain.pan);
+          set(cell, "mute", chain.muted);
+          set(cell, "solo", chain.solo);
+        }
+      });
+  }
 }
 
 export function restoreWerkstattParameterValues(

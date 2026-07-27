@@ -1,5 +1,21 @@
 import { describe, expect, test } from "bun:test";
-import { resizeFrequencyCrossovers } from "./container-params";
+import { MAX_EFFECT_TREE_DEPTH } from "@/lib/audio/dsp/routing/effect-tree";
+import {
+  canAddNestedEffect,
+  resizeFrequencyCrossovers,
+} from "./container-params";
+
+describe("Container nesting depth", () => {
+  test("allows only leaf effects at the maximum child depth", () => {
+    expect(canAddNestedEffect(MAX_EFFECT_TREE_DEPTH - 1, "compressor")).toBe(
+      true
+    );
+    expect(canAddNestedEffect(MAX_EFFECT_TREE_DEPTH - 1, "fxComposite")).toBe(
+      false
+    );
+    expect(canAddNestedEffect(MAX_EFFECT_TREE_DEPTH, "compressor")).toBe(false);
+  });
+});
 
 describe("Frequency Split band resizing", () => {
   test("preserves applicable crossovers when reducing the band count", () => {

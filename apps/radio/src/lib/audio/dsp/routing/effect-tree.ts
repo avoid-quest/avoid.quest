@@ -1,17 +1,21 @@
 import { clampEffectTempo, DEFAULT_EFFECT_TEMPO } from "../effects/tempo.js";
-import type { EffectChainConfig, EffectConfig } from "../effects/types.js";
+import type {
+  EffectChainConfig,
+  EffectConfig,
+  EffectType,
+} from "../effects/types.js";
 
 export { DEFAULT_EFFECT_TEMPO } from "../effects/tempo.js";
 export const MAX_EFFECT_TREE_DEPTH = 8;
 
+export function isEffectContainerType(type: EffectType): boolean {
+  return ["fxComposite", "stereoSplit", "frequencySplit"].includes(type);
+}
+
 export function isEffectContainer(
   effect: EffectConfig
 ): effect is Extract<EffectConfig, { chains: EffectChainConfig[] }> {
-  return (
-    effect.type === "fxComposite" ||
-    effect.type === "stereoSplit" ||
-    effect.type === "frequencySplit"
-  );
+  return isEffectContainerType(effect.type);
 }
 
 export function isValidFrequencySplitShape(

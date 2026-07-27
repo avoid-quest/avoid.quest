@@ -76,6 +76,29 @@ describe("worklet effect adapter", () => {
     expect(outputR).toEqual(input);
   });
 
+  test("keeps a container audible after an earlier compatibility effect", () => {
+    const source = new EffectSource("container-chain", 48_000);
+    const distortion = {
+      ...createDefaultEffectConfig("distortion", "distortion", 0),
+      enabled: true,
+    };
+    const container = {
+      ...createDefaultEffectConfig("fxComposite", "container", 1),
+      enabled: true,
+    };
+    source.addEffect(
+      distortion.id,
+      distortion.type,
+      distortion,
+      distortion.order
+    );
+    source.addEffect(container.id, container.type, container, container.order);
+
+    expect(processBlock(source, 0.25).some((sample) => sample !== 0)).toBe(
+      true
+    );
+  });
+
   test("applies stock effect parameters instead of silently using defaults", () => {
     const closedGate = new EffectSource("closed", 48_000);
     const openGate = new EffectSource("open", 48_000);

@@ -15,7 +15,11 @@ import {
   getEffectMetadata,
 } from "@/lib/audio";
 import { getEffectSchema } from "@/lib/audio/dsp/effects/schema";
-import { isEffectContainer } from "@/lib/audio/dsp/routing/effect-tree";
+import {
+  isEffectContainer,
+  isEffectContainerType,
+  MAX_EFFECT_TREE_DEPTH,
+} from "@/lib/audio/dsp/routing/effect-tree";
 import { EffectPicker } from "../effect-picker";
 import { DeclarativeParams } from "./declarative-params";
 import { ParamSelect } from "./param-select";
@@ -34,6 +38,7 @@ type ContainerParamsProps = {
   effect: ContainerEffectConfig;
   onUpdate: (config: Partial<EffectConfig>) => void;
   deckId?: "deck-a" | "deck-b";
+  depth?: number;
   effectId?: string;
   midiTargetPrefix?: string;
 };
@@ -42,6 +47,16 @@ const DEFAULT_CROSSOVER_FREQUENCIES = [200, 1000, 5000] as const;
 const MIN_CROSSOVER_FREQUENCY = 20;
 const MAX_CROSSOVER_FREQUENCY = 20_000;
 const MIN_CROSSOVER_SPACING = 20;
+
+export function canAddNestedEffect(
+  depth: number,
+  type: EffectConfig["type"]
+): boolean {
+  return (
+    depth < MAX_EFFECT_TREE_DEPTH &&
+    (depth + 1 < MAX_EFFECT_TREE_DEPTH || !isEffectContainerType(type))
+  );
+}
 
 export function resizeFrequencyCrossovers(
   frequencies: readonly number[],
@@ -88,12 +103,14 @@ function nestedMidiTargetPrefix(
 function NestedEffect({
   effect,
   deckId,
+  depth,
   onRemove,
   onUpdate,
   midiTargetPrefix,
 }: {
   effect: EffectConfig;
   deckId?: "deck-a" | "deck-b";
+  depth: number;
   onRemove: () => void;
   onUpdate: (config: Partial<EffectConfig>) => void;
   midiTargetPrefix?: string;
@@ -139,6 +156,7 @@ function NestedEffect({
           {isEffectContainer(effect) ? (
             <ContainerParams
               deckId={deckId}
+              depth={depth}
               effect={effect}
               effectId={effect.id}
               midiTargetPrefix={midiTargetPrefix}
@@ -181,6 +199,7 @@ export function ContainerParams({
   effect,
   onUpdate,
   deckId,
+  depth = 0,
   effectId,
   midiTargetPrefix,
 }: ContainerParamsProps) {
@@ -199,6 +218,9 @@ export function ContainerParams({
   };
 
   const addEffect = (chain: EffectChainConfig, type: EffectConfig["type"]) => {
+    if (!canAddNestedEffect(depth, type)) {
+      return;
+    }
     const child = createDefaultEffectConfig(
       type,
       createId("effect"),
@@ -374,6 +396,7 @@ export function ContainerParams({
                 .map((child) => (
                   <NestedEffect
                     deckId={deckId}
+                    depth={depth + 1}
                     effect={child}
                     key={child.id}
                     midiTargetPrefix={nestedMidiTargetPrefix(
@@ -401,19 +424,22 @@ export function ContainerParams({
                     }
                   />
                 ))}
-              <Button
-                className="w-full"
-                onClick={() => setPickerChainId(chain.id)}
-                size="sm"
-                variant="outline"
-              >
-                <PlusIcon className="mr-2 size-4" />
-                Add nested effect
-              </Button>
+              {depth < MAX_EFFECT_TREE_DEPTH && (
+                <Button
+                  className="w-full"
+                  onClick={() => setPickerChainId(chain.id)}
+                  size="sm"
+                  variant="outline"
+                >
+                  <PlusIcon className="mr-2 size-4" />
+                  Add nested effect
+                </Button>
+              )}
             </div>
 
             {pickerChainId === chain.id && (
               <EffectPicker
+                allowContainers={depth + 1 < MAX_EFFECT_TREE_DEPTH}
                 onClose={() => setPickerChainId(null)}
                 onSelect={(type) => addEffect(chain, type)}
               />

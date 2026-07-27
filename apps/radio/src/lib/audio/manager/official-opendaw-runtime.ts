@@ -15,7 +15,7 @@ import {
   type OfficialEffectGroup,
   restoreWerkstattParameterValues,
   setMasterRackDryWet,
-  updateWerkstattEffectGroup,
+  updateOfficialEffectGroup,
 } from "./official-opendaw-effect-adapter.js";
 import { ensureOpenDawAudioWorklets } from "./opendaw-audio-worklets.js";
 
@@ -406,35 +406,36 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       .sort((left, right) => left.order - right.order)
       .map((effect) => structuredClone(effect));
     const previousEffects = unit.effects;
-    const stableUpdates = stableWerkstattUpdates(previousEffects, nextEffects);
+    const stableUpdates = stableEffectUpdates(previousEffects, nextEffects);
     if (stableUpdates !== null) {
       const groupsById = new Map(
         flattenGroups(unit.groups).map((group) => [group.config.id, group])
       );
-      const nextById = new Map(
-        flattenEffects(nextEffects).map((config) => [config.id, config])
-      );
       project.editing.modify(() => {
-        for (const group of groupsById.values()) {
-          const next = nextById.get(group.config.id);
-          if (next) {
-            group.config = next;
-          }
-        }
         for (const { after, before } of stableUpdates) {
           const group = groupsById.get(after.id);
           if (group) {
-            updateWerkstattEffectGroup(group, after);
-            if (werkstattSource(before) === werkstattSource(after)) {
+            updateOfficialEffectGroup(group, after, this.bpm);
+            if (
+              after.type === "werkstatt" &&
+              before.type === "werkstatt" &&
+              werkstattSource(before) === werkstattSource(after)
+            ) {
               restoreWerkstattParameterValues(group, after.parameters);
             }
           }
         }
         unit.effects = nextEffects;
+        this.bindSidechains();
       });
       for (const { after, before } of stableUpdates) {
         const group = groupsById.get(after.id);
-        if (group && werkstattSource(before) !== werkstattSource(after)) {
+        if (
+          group &&
+          after.type === "werkstatt" &&
+          before.type === "werkstatt" &&
+          werkstattSource(before) !== werkstattSource(after)
+        ) {
           this.compileWerkstattGroup(group, after);
         }
       }
@@ -710,32 +711,24 @@ function flattenGroups(
   return groups.flatMap((group) => [group, ...flattenGroups(group.children)]);
 }
 
-function stableWerkstattUpdates(
+function stableEffectUpdates(
   previous: readonly EffectConfig[],
   next: readonly EffectConfig[]
-): Array<{
-  before: Extract<EffectConfig, { type: "werkstatt" }>;
-  after: Extract<EffectConfig, { type: "werkstatt" }>;
-}> | null {
-  const previousFlat = flattenEffects(previous);
-  const nextFlat = flattenEffects(next);
-  if (previousFlat.length !== nextFlat.length) {
+): Array<{ before: EffectConfig; after: EffectConfig }> | null {
+  if (!hasStableEffectLayout(previous, next)) {
     return null;
   }
+  const previousFlat = flattenEffects(previous);
+  const nextFlat = flattenEffects(next);
   const updates: Array<{
-    before: Extract<EffectConfig, { type: "werkstatt" }>;
-    after: Extract<EffectConfig, { type: "werkstatt" }>;
+    before: EffectConfig;
+    after: EffectConfig;
   }> = [];
   for (let index = 0; index < previousFlat.length; index++) {
     const before = previousFlat[index];
     const after = nextFlat[index];
-    if (
-      !(before && after) ||
-      before.id !== after.id ||
-      before.type !== after.type ||
-      before.order !== after.order
-    ) {
-      return null;
+    if (!(before && after)) {
+      continue;
     }
     if (
       JSON.stringify(localEffectConfig(before)) ===
@@ -743,12 +736,54 @@ function stableWerkstattUpdates(
     ) {
       continue;
     }
-    if (before.type !== "werkstatt" || after.type !== "werkstatt") {
+    if (
+      before.type === "neuralAmp" &&
+      after.type === "neuralAmp" &&
+      (before.modelId !== after.modelId || before.modelData !== after.modelData)
+    ) {
       return null;
     }
     updates.push({ after, before });
   }
   return updates;
+}
+
+function hasStableEffectLayout(
+  previous: readonly EffectConfig[],
+  next: readonly EffectConfig[]
+): boolean {
+  return (
+    previous.length === next.length &&
+    previous.every((before, index) => {
+      const after = next[index];
+      if (
+        !after ||
+        before.id !== after.id ||
+        before.type !== after.type ||
+        before.order !== after.order
+      ) {
+        return false;
+      }
+      if (!("chains" in before)) {
+        return !("chains" in after);
+      }
+      if (!("chains" in after)) {
+        return false;
+      }
+      return (
+        before.chains.length === after.chains.length &&
+        before.chains.every((chain, chainIndex) => {
+          const nextChain = after.chains[chainIndex];
+          return (
+            nextChain !== undefined &&
+            chain.id === nextChain.id &&
+            chain.order === nextChain.order &&
+            hasStableEffectLayout(chain.effects, nextChain.effects)
+          );
+        })
+      );
+    })
+  );
 }
 
 function flattenEffects(effects: readonly EffectConfig[]): EffectConfig[] {

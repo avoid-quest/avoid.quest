@@ -267,6 +267,42 @@ describe("EffectsController lifecycle", () => {
     ).toBe(false);
   });
 
+  test("replays queued effects and dry-wet state after creating the source", async () => {
+    const context = getAudioContext();
+    const filter = new TestAudioNode(context);
+    const destination = new TestAudioNode(context);
+    const manager = createManager(context);
+    const controller = new EffectsController({
+      createWorkletManager: () => manager,
+      notifyListeners: () => undefined,
+      sounds: new Map([["target", sound("target", filter)]]),
+      workletProcessorUrl: () => "/worklet.js",
+    });
+    controller.setDryWet("target", 0.35);
+    await controller.getOrCreateWorkletManager("target");
+    const distortion = createDefaultEffectConfig("distortion", "distortion", 0);
+    distortion.enabled = true;
+
+    expect(controller.add("target", distortion)).toBe(true);
+    expect(manager.addEffect).not.toHaveBeenCalled();
+    expect(manager.setEffectsDryWet).not.toHaveBeenCalled();
+
+    await controller.connectGraph(
+      "target",
+      filter as unknown as AudioNode,
+      destination as unknown as AudioNode
+    );
+
+    expect(manager.addEffect).toHaveBeenCalledWith(
+      "target",
+      distortion.id,
+      distortion.type,
+      expect.objectContaining({ enabled: 1 }),
+      distortion.order
+    );
+    expect(manager.setEffectsDryWet).toHaveBeenCalledWith("target", 0.35);
+  });
+
   test("keeps nested controller, worklet, and runtime selection in sync", async () => {
     const context = getAudioContext();
     const filter = new TestAudioNode(context);

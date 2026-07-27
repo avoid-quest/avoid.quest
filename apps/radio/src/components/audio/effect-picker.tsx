@@ -11,20 +11,27 @@ import { cn } from "@avoid.quest/ui/lib/utils";
 import { FilterIcon, SearchIcon } from "lucide-react";
 import { useState } from "react";
 import { AVAILABLE_EFFECTS, type EffectType } from "@/lib/audio";
+import { isEffectContainerType } from "@/lib/audio/dsp/routing/effect-tree";
 import { EFFECT_ICONS } from "./effect-constants";
 
 type EffectPickerProps = {
   onSelect: (effectType: EffectType) => void;
   onClose: () => void;
+  allowContainers?: boolean;
 };
 
-export function EffectPicker({ onSelect, onClose }: EffectPickerProps) {
+export function EffectPicker({
+  onSelect,
+  onClose,
+  allowContainers = true,
+}: EffectPickerProps) {
   const [searchQuery, setSearchQuery] = useState("");
 
   const filteredEffects = AVAILABLE_EFFECTS.filter(
     (effect) =>
-      effect.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      effect.description.toLowerCase().includes(searchQuery.toLowerCase())
+      (allowContainers || !isEffectContainerType(effect.type)) &&
+      (effect.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        effect.description.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
   return (

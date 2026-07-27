@@ -246,6 +246,9 @@ describe("OfficialOpenDawRuntime", () => {
     const compressor = createDefaultEffectConfig("compressor", "compressor", 0);
     compressor.sidechain = { channelId: "persisted-deck-b" };
     runtime.syncEffects("deck-a", [compressor]);
+    const boxesAfterCompressor = boxCount;
+    runtime.syncEffects("deck-a", [{ ...compressor, threshold: -18 }]);
+    expect(boxCount).toBe(boxesAfterCompressor);
     runtime.setSidechainTarget("deck-a", "deck-b");
     expect(() => runtime.setDryWet("deck-a", 1)).not.toThrow();
 

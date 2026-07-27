@@ -17,6 +17,55 @@ afterEach(() => {
 });
 
 describe("OfficialOpenDawRuntime", () => {
+  test("terminates a project when engine startup fails", async () => {
+    Reflect.set(globalThis, "AudioWorkletNode", class {});
+
+    const context = {
+      destination: {},
+    } as unknown as AudioContext;
+    let terminateCount = 0;
+    const startupError = new Error("engine startup failed");
+    const loader = (async () => ({
+      adapters: {
+        ScriptCompiler: { create: () => ({}) },
+      },
+      boxes: {},
+      core: {
+        AudioWorklets: {
+          install: () => undefined,
+          createFor: async () => ({ context }),
+        },
+        Project: {
+          new: () => ({
+            engine: {
+              isReady: () => Promise.reject(startupError),
+              play: () => undefined,
+            },
+            startAudioWorklet: () => ({
+              disconnect: () => undefined,
+            }),
+            terminate: () => {
+              terminateCount++;
+            },
+          }),
+        },
+        SampleService: class {},
+      },
+      wasm: {
+        WasmEngine: {
+          install: () => undefined,
+          ensureReady: async () => true,
+        },
+      },
+    })) as unknown as RuntimeModuleLoader;
+    const runtime = new OfficialOpenDawRuntime(context, undefined, loader);
+
+    await expect(runtime.initialize()).rejects.toThrow(startupError);
+
+    expect(terminateCount).toBe(1);
+    expect(runtime.isReady).toBe(false);
+  });
+
   test("shares one engine and creates one monitored AudioUnit per sound", async () => {
     Reflect.set(globalThis, "AudioWorkletNode", class {});
 

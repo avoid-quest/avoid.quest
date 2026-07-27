@@ -672,10 +672,10 @@ export function applyEffectConfig(
     }
     case "werkstatt": {
       const werkstatt = processor as WerkstattEffect;
-      if (typeof config.source === "string") {
-        werkstatt.setSource(config.source);
-      } else if (typeof config.code === "string") {
+      if (typeof config.code === "string") {
         werkstatt.setSource(config.code);
+      } else if (typeof config.source === "string") {
+        werkstatt.setSource(config.source);
       }
       if (typeof config.parameters === "object" && config.parameters !== null) {
         werkstatt.setParameters(config.parameters as Record<string, number>);

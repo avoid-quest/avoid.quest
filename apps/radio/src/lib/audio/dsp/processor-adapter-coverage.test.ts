@@ -362,6 +362,18 @@ describe("worklet effect adapter", () => {
       ...createDefaultEffectConfig("werkstatt", "werkstatt", 0),
       enabled: true,
       source: "return input * p.drive;",
+      code: `class Processor {
+        drive = 1
+        paramChanged(label, value) {
+          if (label === "drive") this.drive = value
+        }
+        process({ src, out }, { s0, s1 }) {
+          for (let index = s0; index < s1; index++) {
+            out[0][index] = src[0][index] * this.drive
+            out[1][index] = src[1][index] * this.drive
+          }
+        }
+      }`,
       parameters: { drive: 2 },
       inputGain: 0.5,
       dryWet: 0.25,
@@ -409,7 +421,7 @@ describe("worklet effect adapter", () => {
     expect(getProcessor(source, amp.id)).toMatchObject({ drive: -18 });
     expect(getProcessor(source, werkstatt.id)).toMatchObject({
       failed: false,
-      source: werkstatt.source,
+      source: werkstatt.code,
     });
   });
 });

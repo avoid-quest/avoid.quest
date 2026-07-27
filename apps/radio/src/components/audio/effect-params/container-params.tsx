@@ -44,6 +44,11 @@ type ContainerParamsProps = {
 };
 
 const DEFAULT_CROSSOVER_FREQUENCIES = [200, 1000, 5000] as const;
+const FREQUENCY_BAND_LABELS = {
+  2: ["Low", "High"],
+  3: ["Low", "Mid", "High"],
+  4: ["Low", "Low Mid", "High Mid", "High"],
+} as const;
 const MIN_CROSSOVER_FREQUENCY = 20;
 const MAX_CROSSOVER_FREQUENCY = 20_000;
 const MIN_CROSSOVER_SPACING = 20;
@@ -82,6 +87,37 @@ export function resizeFrequencyCrossovers(
     );
   }
   return result;
+}
+
+export function resizeFrequencyChains(
+  chains: readonly EffectChainConfig[],
+  bandCount: 2 | 3 | 4,
+  createBandId: () => string = () => createId("band")
+): EffectChainConfig[] {
+  const existing = [...chains].sort((a, b) => a.order - b.order);
+  const createBand = (): EffectChainConfig => ({
+    id: createBandId(),
+    name: "",
+    order: 0,
+    gain: 1,
+    pan: 0,
+    muted: false,
+    solo: false,
+    effects: [],
+  });
+  const low = existing[0] ?? createBand();
+  const high =
+    existing.length > 1 ? (existing.at(-1) ?? createBand()) : createBand();
+  const middleCount = bandCount - 2;
+  const middle = existing.slice(1, -1).slice(0, middleCount);
+  while (middle.length < middleCount) {
+    middle.push(createBand());
+  }
+  return [low, ...middle, high].map((chain, order) => ({
+    ...chain,
+    name: FREQUENCY_BAND_LABELS[bandCount][order] ?? chain.name,
+    order,
+  }));
 }
 
 function createId(prefix: string): string {
@@ -251,30 +287,9 @@ export function ContainerParams({
     if (effect.type !== "frequencySplit") {
       return;
     }
-    let labels = ["Low", "Low Mid", "High Mid", "High"];
-    if (bandCount === 2) {
-      labels = ["Low", "High"];
-    } else if (bandCount === 3) {
-      labels = ["Low", "Mid", "High"];
-    }
-    const existing = [...effect.chains].sort((a, b) => a.order - b.order);
-    const chains = labels.map(
-      (name, order): EffectChainConfig => ({
-        ...(existing[order] ?? {
-          id: createId("band"),
-          gain: 1,
-          pan: 0,
-          muted: false,
-          solo: false,
-          effects: [],
-        }),
-        name,
-        order,
-      })
-    );
     onUpdate({
       frequencyBandCount: bandCount,
-      chains,
+      chains: resizeFrequencyChains(effect.chains, bandCount),
       crossoverFrequencies: resizeFrequencyCrossovers(
         effect.crossoverFrequencies,
         bandCount

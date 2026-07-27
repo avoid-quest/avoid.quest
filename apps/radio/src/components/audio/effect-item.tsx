@@ -39,6 +39,15 @@ type EffectItemProps = {
   dragHandleAttributes?: DraggableAttributes;
 };
 
+export function createEffectResetPatch(
+  effect: EffectConfig
+): Partial<EffectConfig> {
+  return {
+    ...createDefaultEffectConfig(effect.type, effect.id, effect.order),
+    sidechain: undefined,
+  } as Partial<EffectConfig>;
+}
+
 export function EffectItem({
   effect,
   onUpdate,
@@ -64,7 +73,7 @@ export function EffectItem({
     if (!metadata?.defaultConfig) {
       return;
     }
-    onUpdate(createDefaultEffectConfig(effect.type, effect.id, effect.order));
+    onUpdate(createEffectResetPatch(effect));
   };
 
   return (

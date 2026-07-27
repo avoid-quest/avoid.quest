@@ -200,27 +200,31 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       sampleService: new SampleService(this.context),
       soundfontService: undefined as unknown as ProjectEnv["soundfontService"],
     });
-    const worklet = project.startAudioWorklet();
+    try {
+      const worklet = project.startAudioWorklet();
 
-    // Project.startAudioWorklet connects the normal master output. Live radio
-    // uses only the per-source monitor returns; leaving output 0 connected
-    // would duplicate the signal.
-    worklet.disconnect(this.context.destination, 0, 0);
-    await project.engine.isReady();
-    project.engine.play();
+      // Project.startAudioWorklet connects the normal master output. Live radio
+      // uses only the per-source monitor returns; leaving output 0 connected
+      // would duplicate the signal.
+      worklet.disconnect(this.context.destination, 0, 0);
+      await project.engine.isReady();
+      project.engine.play();
 
-    if (this.closed) {
+      if (this.closed) {
+        throw new Error("openDAW runtime initialization was canceled");
+      }
+
+      this.werkstattCompiler = modules.adapters.ScriptCompiler.create({
+        headerTag: "werkstatt",
+        registryName: "werkstattProcessors",
+        functionName: "werkstatt",
+      });
+      this.modules = modules;
+      this.project = project;
+    } catch (error) {
       project.terminate();
-      throw new Error("openDAW runtime initialization was canceled");
+      throw error;
     }
-
-    this.modules = modules;
-    this.project = project;
-    this.werkstattCompiler = modules.adapters.ScriptCompiler.create({
-      headerTag: "werkstatt",
-      registryName: "werkstattProcessors",
-      functionName: "werkstatt",
-    });
   }
 
   async connectSound(

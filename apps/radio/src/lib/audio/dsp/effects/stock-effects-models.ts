@@ -8,6 +8,14 @@ const WERKSTATT_FORBIDDEN_SOURCE =
   /(?:\b(?:for|while|do|function|class|new|this|globalThis|self|constructor|prototype|import|eval)\b|[[\]{}"'`;])/;
 const WERKSTATT_IDENTIFIER = /[A-Za-z_$][\w$]*/g;
 
+type WerkstattBlockProcessor = {
+  paramChanged?(label: string, value: number): void;
+  process(
+    audio: { src: StereoChannels; out: StereoChannels },
+    block: { s0: number; s1: number; flags: number }
+  ): void;
+};
+
 export class NeuralAmpEffect {
   private drive = 0;
   private tone = 0.5;
@@ -94,6 +102,7 @@ export class NeuralAmpEffect {
 
 export class WerkstattEffect {
   private readonly sampleRate: number;
+  private blockProcessor: WerkstattBlockProcessor | null = null;
   private sampleFunction: (input: number, channel: number) => number = (
     input
   ) => input;
@@ -105,6 +114,7 @@ export class WerkstattEffect {
   private phase = 0;
   private heldL = 0;
   private heldR = 0;
+  private resetPending = false;
 
   constructor(sampleRate = 48_000) {
     this.sampleRate = sampleRate;
@@ -113,8 +123,27 @@ export class WerkstattEffect {
   setSource(value: string): void {
     const source = value.trim();
     this.source = source;
+    this.blockProcessor = null;
     this.failed = false;
+    this.resetPending = true;
     if (source === "ring" || source === "rectify" || source === "sampleHold") {
+      return;
+    }
+    if (source.includes("class Processor")) {
+      try {
+        const Processor = Function(
+          "sampleRate",
+          `"use strict"; ${source}\nreturn Processor;`
+        )(this.sampleRate) as new () => WerkstattBlockProcessor;
+        const blockProcessor = new Processor();
+        if (typeof blockProcessor.process !== "function") {
+          throw new Error("Werkstatt Processor must define process()");
+        }
+        this.blockProcessor = blockProcessor;
+        this.applyBlockParameters();
+      } catch {
+        this.failed = true;
+      }
       return;
     }
     const expression = source
@@ -186,6 +215,10 @@ export class WerkstattEffect {
       0,
       1
     );
+    if (this.blockProcessor) {
+      this.applyBlockParameters();
+      return;
+    }
     this.setSource(this.source);
   }
 
@@ -193,6 +226,7 @@ export class WerkstattEffect {
     this.phase = 0;
     this.heldL = 0;
     this.heldR = 0;
+    this.resetPending = true;
   }
 
   process(
@@ -201,6 +235,23 @@ export class WerkstattEffect {
     fromIndex: number,
     toIndex: number
   ): void {
+    if (this.blockProcessor) {
+      try {
+        this.blockProcessor.process(
+          { src: input, out: output },
+          {
+            s0: fromIndex,
+            s1: toIndex,
+            flags: this.resetPending ? 2 : 0,
+          }
+        );
+        this.resetPending = false;
+        return;
+      } catch {
+        this.failed = true;
+        this.blockProcessor = null;
+      }
+    }
     for (let i = fromIndex; i < toIndex; i++) {
       const left = input[0][i] ?? 0;
       const right = input[1][i] ?? 0;
@@ -244,6 +295,20 @@ export class WerkstattEffect {
             output[1][i] = right;
           }
       }
+    }
+  }
+
+  private applyBlockParameters(): void {
+    if (!this.blockProcessor?.paramChanged) {
+      return;
+    }
+    try {
+      for (const [label, value] of Object.entries(this.parameters)) {
+        this.blockProcessor.paramChanged(label, value);
+      }
+    } catch {
+      this.failed = true;
+      this.blockProcessor = null;
     }
   }
 }

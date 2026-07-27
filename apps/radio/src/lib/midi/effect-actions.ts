@@ -12,11 +12,20 @@ import {
 import {
   findEffectInTree,
   isEffectContainer,
+  visitEffectTree,
 } from "@/lib/audio/dsp/routing/effect-tree";
 import { getPlaybackChannel } from "@/lib/collections/playback-sessions";
 import { getDjDeckActions } from "@/lib/dj-actions";
 import { MidiController } from "./midi-controller";
 import type { MidiAction } from "./types";
+
+export function collectEffectIds(
+  effects: readonly EffectConfig[]
+): Set<string> {
+  const ids = new Set<string>();
+  visitEffectTree(effects, ({ id }) => ids.add(id));
+  return ids;
+}
 
 export function collectEffectActions(
   effect: EffectConfig,

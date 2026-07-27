@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { applyEffectConfig } from "../effect-processor-factory";
 import { GateEffect, WaveshaperEffect, WerkstattEffect } from "./stock-effects";
 import type { StereoChannels } from "./types";
 
@@ -19,6 +20,31 @@ describe("stock compatibility processors", () => {
     effect.setSource("while (true) {}");
     effect.process(stereo(0.25), output, 0, 128);
     expect(output[0][64]).toBeCloseTo(0.25);
+  });
+
+  test("Werkstatt compatibility uses edited code over the legacy source", () => {
+    const effect = new WerkstattEffect(48_000);
+    const output = stereo(0);
+    applyEffectConfig(effect, "werkstatt", {
+      code: `class Processor {
+        drive = 1
+        paramChanged(label, value) {
+          if (label === "drive") this.drive = value
+        }
+        process({ src, out }, { s0, s1 }) {
+          for (let index = s0; index < s1; index++) {
+            out[0][index] = src[0][index] * this.drive
+            out[1][index] = src[1][index] * this.drive
+          }
+        }
+      }`,
+      parameters: { drive: 2 },
+      source: "return input;",
+    });
+
+    effect.process(stereo(0.25), output, 0, 128);
+
+    expect(output[0][64]).toBeCloseTo(0.5);
   });
 
   test("Gate uses an external sidechain when supplied", () => {

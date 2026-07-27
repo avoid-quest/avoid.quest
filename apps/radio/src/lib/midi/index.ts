@@ -1,4 +1,4 @@
-export { registerEffectActions } from "./effect-actions";
+export { collectEffectIds, registerEffectActions } from "./effect-actions";
 export { MidiController } from "./midi-controller";
 export { mappingKey, useMidiStore } from "./midi-store";
 export {

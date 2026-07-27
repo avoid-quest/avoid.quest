@@ -1,79 +1,24 @@
 import {
+  applyEffectConfig,
+  createEffectProcessor,
+} from "./effect-processor-factory.js";
+import {
   BiquadFilter,
   type BiquadFilterType,
 } from "./effects/biquad-filter.js";
-import { CrusherEffect } from "./effects/crusher.js";
-import { CTAGCompressor } from "./effects/ctag-compressor.js";
-import { Delay } from "./effects/delay.js";
-import { Distortion } from "./effects/distortion.js";
-import { FoldEffect } from "./effects/fold.js";
-import { Limiter } from "./effects/limiter.js";
-import { PhaseVocoder } from "./effects/phase-vocoder.js";
-import { RevampEffect } from "./effects/revamp.js";
-import { DattorroReverb } from "./effects/reverb.js";
-import { StereoToolEffect } from "./effects/stereo-tool.js";
-import { TidalEffect } from "./effects/tidal.js";
-import type { EffectProcessor, EffectType } from "./effects/types.js";
+import { ContainerEffect } from "./effects/container-effects.js";
+import { clampEffectTempo } from "./effects/tempo.js";
+import type {
+  EffectConfig,
+  EffectProcessor,
+  EffectType,
+  StereoChannels,
+} from "./effects/types.js";
 
-/**
- * Channel strip for volume and panning with smoothing
- */
-export class ChannelStrip {
-  volume = 1.0;
-  pan = 0.0;
-  private targetLeftGain = 1.0;
-  private targetRightGain = 1.0;
-  private currentLeftGain = 1.0;
-  private currentRightGain = 1.0;
+export { ChannelStrip } from "./channel-strip.js";
 
-  private static readonly GAIN_SMOOTH_COEFF = 0.1;
-
-  constructor() {
-    this.updateGains();
-  }
-
-  setVolume(value: number): void {
-    this.volume = Math.max(0, Math.min(1, value));
-    this.updateGains();
-  }
-
-  setPan(value: number): void {
-    this.pan = Math.max(-1, Math.min(1, value));
-    this.updateGains();
-  }
-
-  private updateGains(): void {
-    const angle = ((this.pan + 1) / 2) * (Math.PI / 2);
-    this.targetLeftGain = Math.cos(angle) * this.volume;
-    this.targetRightGain = Math.sin(angle) * this.volume;
-  }
-
-  private smoothGain(current: number, target: number): number {
-    return current + (target - current) * ChannelStrip.GAIN_SMOOTH_COEFF;
-  }
-
-  apply(
-    inputL: Float32Array,
-    inputR: Float32Array,
-    outputL: Float32Array,
-    outputR: Float32Array,
-    fromIndex: number,
-    toIndex: number
-  ): void {
-    for (let i = fromIndex; i < toIndex; i++) {
-      this.currentLeftGain = this.smoothGain(
-        this.currentLeftGain,
-        this.targetLeftGain
-      );
-      this.currentRightGain = this.smoothGain(
-        this.currentRightGain,
-        this.targetRightGain
-      );
-
-      outputL[i] = (inputL[i] ?? 0) * this.currentLeftGain;
-      outputR[i] = (inputR[i] ?? 0) * this.currentRightGain;
-    }
-  }
+function stereoBalanceGains(volume: number, pan: number): [number, number] {
+  return [(1 - Math.max(0, pan)) * volume, (1 + Math.min(0, pan)) * volume];
 }
 
 type EffectConfigData = {
@@ -82,37 +27,9 @@ type EffectConfigData = {
   outputGain: number;
   dryWet: number;
   order: number;
+  raw: Record<string, unknown>;
 };
 
-function readBooleanConfig(
-  config: Record<string, number | boolean | string>,
-  key: string
-): boolean | undefined {
-  const value = config[key];
-  if (typeof value === "boolean") {
-    return value;
-  }
-  if (typeof value === "number") {
-    return value !== 0;
-  }
-  return;
-}
-
-function applyBooleanConfig(
-  config: Record<string, number | boolean | string>,
-  key: string,
-  apply: (value: boolean) => void
-): void {
-  const value = readBooleanConfig(config, key);
-  if (value !== undefined) {
-    apply(value);
-  }
-}
-
-/**
- * Effect source - tracks effects and filters for a source
- * Audio comes from Web Audio graph, not from chunks
- */
 export class EffectSource {
   readonly id: string;
   private readonly sampleRate: number;
@@ -143,6 +60,7 @@ export class EffectSource {
   private playing = false;
   private paused = false;
   private masterEffectsDryWet = 1.0;
+  private tempo = 120;
 
   constructor(id: string, sampleRate: number) {
     this.id = id;
@@ -197,10 +115,18 @@ export class EffectSource {
     this.masterEffectsDryWet = Math.max(0, Math.min(1, value));
   }
 
+  setTempo(value: number): void {
+    this.tempo = clampEffectTempo(value);
+    for (const effect of this.effects.values()) {
+      effect.setTempo?.(this.tempo);
+    }
+  }
+
   private updateGains(): void {
-    const angle = ((this.pan + 1) / 2) * (Math.PI / 2);
-    this.targetLeftGain = Math.cos(angle) * this.volume;
-    this.targetRightGain = Math.sin(angle) * this.volume;
+    [this.targetLeftGain, this.targetRightGain] = stereoBalanceGains(
+      this.volume,
+      this.pan
+    );
   }
 
   private smoothGain(current: number, target: number): number {
@@ -259,15 +185,22 @@ export class EffectSource {
   addEffect(
     effectId: string,
     type: EffectType,
-    config: Record<string, number | boolean | string>,
+    config: Record<string, unknown>,
     order: number
   ): boolean {
-    const processor = this.createEffectProcessor(type);
+    const fullConfig = {
+      id: effectId,
+      type,
+      order,
+      ...config,
+    } as EffectConfig;
+    const processor = createEffectProcessor(type, this.sampleRate, fullConfig);
     if (!processor) {
       return false;
     }
 
-    this.applyEffectConfig(processor, type, config);
+    applyEffectConfig(processor, type, config);
+    processor.setTempo?.(this.tempo);
     this.effects.set(effectId, processor);
     this.effectTypes.set(effectId, type);
     this.effectConfigs.set(effectId, {
@@ -277,6 +210,7 @@ export class EffectSource {
         typeof config.outputGain === "number" ? config.outputGain : 1.0,
       dryWet: typeof config.dryWet === "number" ? config.dryWet : 1.0,
       order,
+      raw: { ...fullConfig },
     });
     this.insertEffectAtOrder(effectId, order);
     return true;
@@ -289,20 +223,21 @@ export class EffectSource {
     this.effectOrder = this.effectOrder.filter((id) => id !== effectId);
   }
 
-  updateEffect(
-    effectId: string,
-    config: Record<string, number | boolean | string>
-  ): void {
+  updateEffect(effectId: string, config: Record<string, unknown>): void {
     const processor = this.effects.get(effectId);
     const type = this.effectTypes.get(effectId);
     if (!(processor && type)) {
       return;
     }
 
-    this.applyEffectConfig(processor, type, config);
+    applyEffectConfig(processor, type, config);
 
     const existingConfig = this.effectConfigs.get(effectId);
     if (existingConfig) {
+      Object.assign(existingConfig.raw, config);
+      if (processor instanceof ContainerEffect) {
+        processor.configure(existingConfig.raw as EffectConfig);
+      }
       if (typeof config.enabled === "boolean") {
         existingConfig.enabled = config.enabled;
       } else if (typeof config.enabled === "number") {
@@ -322,316 +257,6 @@ export class EffectSource {
 
   reorderEffects(effectIds: string[]): void {
     this.effectOrder = effectIds.filter((id) => this.effects.has(id));
-  }
-
-  private createEffectProcessor(type: EffectType): EffectProcessor | null {
-    switch (type) {
-      case "plateReverb":
-        return new DattorroReverb(this.sampleRate);
-      case "pitchShifter":
-        return new PhaseVocoder();
-      case "limiter":
-        return new Limiter(this.sampleRate);
-      case "distortion":
-        return new Distortion(this.sampleRate);
-      case "compressor":
-        return new CTAGCompressor(this.sampleRate);
-      case "crusher":
-        return new CrusherEffect(this.sampleRate);
-      case "fold":
-        return new FoldEffect(this.sampleRate);
-      case "stereoTool":
-        return new StereoToolEffect(this.sampleRate);
-      case "revamp":
-        return new RevampEffect(this.sampleRate);
-      case "tidal":
-        return new TidalEffect(this.sampleRate);
-      case "delay":
-        return new Delay(this.sampleRate);
-      default:
-        return null;
-    }
-  }
-
-  private applyEffectConfig(
-    processor: EffectProcessor,
-    type: EffectType,
-    config: Record<string, number | boolean | string>
-  ): void {
-    switch (type) {
-      case "crusher": {
-        const crusher = processor as CrusherEffect;
-        if (typeof config.crush === "number") {
-          crusher.setCrush(config.crush);
-        }
-        if (typeof config.bitDepth === "number") {
-          crusher.setBitDepth(config.bitDepth);
-        }
-        if (typeof config.boost === "number") {
-          crusher.setBoost(config.boost);
-        }
-        applyBooleanConfig(config, "autoGain", (value) =>
-          crusher.setAutoGain(value)
-        );
-        break;
-      }
-      case "fold": {
-        const fold = processor as FoldEffect;
-        if (typeof config.amount === "number") {
-          fold.setAmount(config.amount);
-        }
-        if (typeof config.volume === "number") {
-          fold.setVolume(config.volume);
-        }
-        if (typeof config.oversample === "number") {
-          const os = config.oversample;
-          if (os === 2 || os === 4 || os === 8) {
-            fold.setOversample(os);
-          }
-        }
-        applyBooleanConfig(config, "autoGain", (value) =>
-          fold.setAutoGain(value)
-        );
-        break;
-      }
-      case "stereoTool": {
-        const stereo = processor as StereoToolEffect;
-        if (typeof config.volume === "number") {
-          stereo.setVolume(config.volume);
-        }
-        if (typeof config.stereo === "number") {
-          stereo.setStereoWidth(config.stereo);
-        }
-        applyBooleanConfig(config, "invertL", (value) =>
-          stereo.setInvertL(value)
-        );
-        applyBooleanConfig(config, "invertR", (value) =>
-          stereo.setInvertR(value)
-        );
-        applyBooleanConfig(config, "swap", (value) => stereo.setSwap(value));
-        break;
-      }
-      case "tidal": {
-        const tidal = processor as TidalEffect;
-        if (typeof config.rate === "number") {
-          tidal.setRate(config.rate);
-        }
-        if (typeof config.depth === "number") {
-          tidal.setDepth(config.depth);
-        }
-        if (typeof config.slope === "number") {
-          tidal.setSlope(config.slope);
-        }
-        if (typeof config.symmetry === "number") {
-          tidal.setSymmetry(config.symmetry);
-        }
-        if (typeof config.offset === "number") {
-          tidal.setOffset(config.offset);
-        }
-        if (typeof config.channelOffset === "number") {
-          tidal.setChannelOffset(config.channelOffset);
-        }
-        break;
-      }
-      case "plateReverb": {
-        const reverb = processor as DattorroReverb;
-        if (typeof config.preDelay === "number") {
-          reverb.setPreDelay(config.preDelay);
-        }
-        if (typeof config.bandwidth === "number") {
-          reverb.setBandwidth(config.bandwidth);
-        }
-        if (typeof config.inputDiffusion1 === "number") {
-          reverb.setInputDiffusion1(config.inputDiffusion1);
-        }
-        if (typeof config.inputDiffusion2 === "number") {
-          reverb.setInputDiffusion2(config.inputDiffusion2);
-        }
-        if (typeof config.decay === "number") {
-          reverb.setDecay(config.decay);
-        }
-        if (typeof config.decayDiffusion1 === "number") {
-          reverb.setDecayDiffusion1(config.decayDiffusion1);
-        }
-        if (typeof config.decayDiffusion2 === "number") {
-          reverb.setDecayDiffusion2(config.decayDiffusion2);
-        }
-        if (typeof config.damping === "number") {
-          reverb.setDamping(config.damping);
-        }
-        if (typeof config.excursionRate === "number") {
-          reverb.setExcursionRate(config.excursionRate);
-        }
-        if (typeof config.excursionDepth === "number") {
-          reverb.setExcursionDepth(config.excursionDepth);
-        }
-        if (typeof config.wet === "number") {
-          reverb.setWet(config.wet);
-        }
-        if (typeof config.dry === "number") {
-          reverb.setDry(config.dry);
-        }
-        break;
-      }
-      case "distortion": {
-        const dist = processor as Distortion;
-        if (typeof config.amount === "number") {
-          dist.setAmount(config.amount);
-        }
-        if (typeof config.oversample === "string") {
-          const os = config.oversample;
-          if (os === "none" || os === "2x" || os === "4x") {
-            dist.setOversample(os);
-          }
-        }
-        break;
-      }
-      case "compressor": {
-        const comp = processor as CTAGCompressor;
-        if (typeof config.threshold === "number") {
-          comp.setThreshold(config.threshold);
-        }
-        if (typeof config.ratio === "number") {
-          comp.setRatio(config.ratio);
-        }
-        if (typeof config.attack === "number") {
-          comp.setAttack(config.attack);
-        }
-        if (typeof config.release === "number") {
-          comp.setRelease(config.release);
-        }
-        if (typeof config.knee === "number") {
-          comp.setKnee(config.knee);
-        }
-        if (typeof config.makeup === "number") {
-          comp.setMakeup(config.makeup);
-        }
-        if (typeof config.mix === "number") {
-          comp.setMix(config.mix);
-        }
-        applyBooleanConfig(config, "lookahead", (value) =>
-          comp.setLookahead(value)
-        );
-        applyBooleanConfig(config, "autoAttack", (value) =>
-          comp.setAutoAttack(value)
-        );
-        applyBooleanConfig(config, "autoRelease", (value) =>
-          comp.setAutoRelease(value)
-        );
-        applyBooleanConfig(config, "autoMakeup", (value) =>
-          comp.setAutoMakeup(value)
-        );
-        break;
-      }
-      case "pitchShifter": {
-        const pv = processor as PhaseVocoder;
-        if (typeof config.pitchFactor === "number") {
-          pv.setPitchFactor(config.pitchFactor);
-        }
-        break;
-      }
-      case "limiter": {
-        const limiter = processor as Limiter;
-        if (typeof config.threshold === "number") {
-          limiter.setThreshold(config.threshold);
-        }
-        break;
-      }
-      case "revamp": {
-        const revamp = processor as RevampEffect;
-        applyBooleanConfig(config, "highPassEnabled", (value) =>
-          revamp.setHighPassEnabled(value)
-        );
-        if (typeof config.highPassFrequency === "number") {
-          revamp.setHighPassFrequency(config.highPassFrequency);
-        }
-        if (typeof config.highPassQ === "number") {
-          revamp.setHighPassQ(config.highPassQ);
-        }
-        if (typeof config.highPassOrder === "number") {
-          revamp.setHighPassOrder(config.highPassOrder);
-        }
-        applyBooleanConfig(config, "lowShelfEnabled", (value) =>
-          revamp.setLowShelfEnabled(value)
-        );
-        if (typeof config.lowShelfFrequency === "number") {
-          revamp.setLowShelfFrequency(config.lowShelfFrequency);
-        }
-        if (typeof config.lowShelfGain === "number") {
-          revamp.setLowShelfGain(config.lowShelfGain);
-        }
-        applyBooleanConfig(config, "lowBellEnabled", (value) =>
-          revamp.setLowBellEnabled(value)
-        );
-        if (typeof config.lowBellFrequency === "number") {
-          revamp.setLowBellFrequency(config.lowBellFrequency);
-        }
-        if (typeof config.lowBellGain === "number") {
-          revamp.setLowBellGain(config.lowBellGain);
-        }
-        if (typeof config.lowBellQ === "number") {
-          revamp.setLowBellQ(config.lowBellQ);
-        }
-        applyBooleanConfig(config, "midBellEnabled", (value) =>
-          revamp.setMidBellEnabled(value)
-        );
-        if (typeof config.midBellFrequency === "number") {
-          revamp.setMidBellFrequency(config.midBellFrequency);
-        }
-        if (typeof config.midBellGain === "number") {
-          revamp.setMidBellGain(config.midBellGain);
-        }
-        if (typeof config.midBellQ === "number") {
-          revamp.setMidBellQ(config.midBellQ);
-        }
-        applyBooleanConfig(config, "highBellEnabled", (value) =>
-          revamp.setHighBellEnabled(value)
-        );
-        if (typeof config.highBellFrequency === "number") {
-          revamp.setHighBellFrequency(config.highBellFrequency);
-        }
-        if (typeof config.highBellGain === "number") {
-          revamp.setHighBellGain(config.highBellGain);
-        }
-        if (typeof config.highBellQ === "number") {
-          revamp.setHighBellQ(config.highBellQ);
-        }
-        applyBooleanConfig(config, "highShelfEnabled", (value) =>
-          revamp.setHighShelfEnabled(value)
-        );
-        if (typeof config.highShelfFrequency === "number") {
-          revamp.setHighShelfFrequency(config.highShelfFrequency);
-        }
-        if (typeof config.highShelfGain === "number") {
-          revamp.setHighShelfGain(config.highShelfGain);
-        }
-        applyBooleanConfig(config, "lowPassEnabled", (value) =>
-          revamp.setLowPassEnabled(value)
-        );
-        if (typeof config.lowPassFrequency === "number") {
-          revamp.setLowPassFrequency(config.lowPassFrequency);
-        }
-        if (typeof config.lowPassQ === "number") {
-          revamp.setLowPassQ(config.lowPassQ);
-        }
-        if (typeof config.lowPassOrder === "number") {
-          revamp.setLowPassOrder(config.lowPassOrder);
-        }
-        break;
-      }
-      case "delay": {
-        const delay = processor as Delay;
-        if (typeof config.delayTime === "number") {
-          delay.setDelayTime(config.delayTime);
-        }
-        if (typeof config.feedback === "number") {
-          delay.setFeedback(config.feedback);
-        }
-        break;
-      }
-      default:
-        break;
-    }
   }
 
   private insertEffectAtOrder(effectId: string, order: number): void {
@@ -662,7 +287,9 @@ export class EffectSource {
     outputL: Float32Array,
     outputR: Float32Array,
     fromIndex: number,
-    toIndex: number
+    toIndex: number,
+    sidechainL?: Float32Array,
+    sidechainR?: Float32Array
   ): void {
     if (this.paused) {
       for (let i = fromIndex; i < toIndex; i++) {
@@ -679,18 +306,20 @@ export class EffectSource {
       this.tempR[i] = inputR[i] ?? 0;
     }
 
-    let current: [Float32Array, Float32Array] = [this.tempL, this.tempR];
+    const tempChannels: [Float32Array, Float32Array] = [this.tempL, this.tempR];
+    let current = tempChannels;
     const outputChannels: [Float32Array, Float32Array] = [outputL, outputR];
 
     for (const filterId of this.filterOrder) {
       const filter = this.filters.get(filterId);
       if (filter) {
-        filter.process(current, outputChannels, fromIndex, toIndex);
-        current = outputChannels;
+        const target =
+          current === outputChannels ? tempChannels : outputChannels;
+        filter.process(current, target, fromIndex, toIndex);
+        current = target;
       }
     }
 
-    let anyEffectProcessed = false;
     for (const effectId of this.effectOrder) {
       const effect = this.effects.get(effectId);
       const config = this.effectConfigs.get(effectId);
@@ -698,14 +327,11 @@ export class EffectSource {
         continue;
       }
 
-      anyEffectProcessed = true;
-
-      if (config.inputGain !== 1.0) {
-        for (let i = fromIndex; i < toIndex; i++) {
-          current[0][i] = (current[0][i] ?? 0) * config.inputGain;
-          current[1][i] = (current[1][i] ?? 0) * config.inputGain;
-        }
-      }
+      effect.setSidechainInput?.(
+        sidechainL && config.raw.sidechainEnabled === 1
+          ? ([sidechainL, sidechainR ?? sidechainL] satisfies StereoChannels)
+          : null
+      );
 
       const needsDryMix = config.dryWet < 1.0;
       if (needsDryMix) {
@@ -715,8 +341,16 @@ export class EffectSource {
         }
       }
 
-      effect.process(current, outputChannels, fromIndex, toIndex);
-      current = outputChannels;
+      if (config.inputGain !== 1.0) {
+        for (let i = fromIndex; i < toIndex; i++) {
+          current[0][i] = (current[0][i] ?? 0) * config.inputGain;
+          current[1][i] = (current[1][i] ?? 0) * config.inputGain;
+        }
+      }
+
+      const target = current === outputChannels ? tempChannels : outputChannels;
+      effect.process(current, target, fromIndex, toIndex);
+      current = target;
 
       if (needsDryMix) {
         const dry = 1.0 - config.dryWet;
@@ -736,10 +370,10 @@ export class EffectSource {
       }
     }
 
-    if (this.filterOrder.length === 0 && !anyEffectProcessed) {
+    if (current !== outputChannels) {
       for (let i = fromIndex; i < toIndex; i++) {
-        outputL[i] = this.tempL[i] ?? 0;
-        outputR[i] = this.tempR[i] ?? 0;
+        outputL[i] = current[0][i] ?? 0;
+        outputR[i] = current[1][i] ?? 0;
       }
     }
 

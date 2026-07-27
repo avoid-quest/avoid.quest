@@ -6,6 +6,12 @@
  */
 
 import { Smooth, TidalComputer } from "@opendaw/lib-dsp";
+import { clampEffectTempo } from "./tempo.js";
+
+const fractionToBeats = (value: string): number => {
+  const [numerator, denominator] = value.split("/").map(Number);
+  return numerator && denominator ? (numerator * 4) / denominator : 1;
+};
 
 export class TidalEffect {
   private readonly sampleRate: number;
@@ -14,6 +20,9 @@ export class TidalEffect {
   private readonly smoothGainR: Smooth;
 
   private rate = 1.0; // LFO frequency in Hz (1.0 = 1 cycle per second)
+  private tempo = 120;
+  private tempoSync = false;
+  private tempoDivision = "1/4";
   private depth = 0.0;
   private slope = 0.0;
   private symmetry = 0.0;
@@ -31,6 +40,23 @@ export class TidalEffect {
 
   setRate(value: number): void {
     this.rate = value;
+  }
+
+  setTempo(value: number): void {
+    this.tempo = clampEffectTempo(value);
+  }
+
+  setTempoSync(value: boolean): void {
+    this.tempoSync = value;
+  }
+
+  setTempoDivision(value: string): void {
+    this.tempoDivision = value;
+  }
+
+  setRateDivision(value: string): void {
+    this.tempoDivision = value;
+    this.tempoSync = true;
   }
 
   setDepth(value: number): void {
@@ -78,7 +104,10 @@ export class TidalEffect {
     const [outputL, outputR] = output;
     const offset0 = this.offset;
     const offset1 = offset0 + this.channelOffset;
-    const phaseIncrement = this.rate / this.sampleRate;
+    const rate = this.tempoSync
+      ? this.tempo / 60 / fractionToBeats(this.tempoDivision)
+      : this.rate;
+    const phaseIncrement = rate / this.sampleRate;
 
     for (let i = fromIndex; i < toIndex; i++) {
       const phaseL = this.phase + i * phaseIncrement + offset0;

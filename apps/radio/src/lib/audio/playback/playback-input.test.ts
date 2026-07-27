@@ -2,6 +2,49 @@ import { describe, expect, test } from "bun:test";
 import { toPlaybackInput } from "./playback-input";
 
 describe("toPlaybackInput", () => {
+  test("upgrades persisted NTS relay URLs to Web Audio compatible sources", () => {
+    expect(
+      toPlaybackInput({
+        name: "NTS 1",
+        streamUrl: "https://stream-relay-geo.ntslive.net/stream",
+      })
+    ).toMatchObject({ src: "https://streams.radiomast.io/nts1" });
+    expect(
+      toPlaybackInput({
+        name: "NTS 2",
+        streamUrl: "https://stream-relay-geo.ntslive.net/stream2",
+      })
+    ).toMatchObject({ src: "https://streams.radiomast.io/nts2" });
+    expect(
+      toPlaybackInput({
+        name: "Lookalike",
+        streamUrl:
+          "https://example.com/https://stream-relay-geo.ntslive.net/stream",
+      })
+    ).toMatchObject({
+      src: "https://example.com/https://stream-relay-geo.ntslive.net/stream",
+    });
+  });
+
+  test("routes Radio BlackOut through its CORS-compatible relay", () => {
+    expect(
+      toPlaybackInput({
+        name: "Radio BlackOut",
+        streamUrl: "https://zeppelin.streampunk.cc/_stream/blackout.mp3",
+      })
+    ).toMatchObject({
+      src: "https://seep.eu.org/https://s.streampunk.cc/blackout.mp3",
+    });
+    expect(
+      toPlaybackInput({
+        name: "Persisted Radio BlackOut",
+        streamUrl: "https://s.streampunk.cc/blackout.mp3",
+      })
+    ).toMatchObject({
+      src: "https://seep.eu.org/https://s.streampunk.cc/blackout.mp3",
+    });
+  });
+
   test("uses the resolved URL as the only playback source", () => {
     expect(
       toPlaybackInput({

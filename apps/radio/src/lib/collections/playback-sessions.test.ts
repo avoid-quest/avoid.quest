@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createDefaultEffectConfig } from "@/lib/audio";
+import {
+  createLocalNamModelId,
+  getCachedNamModel,
+  saveNamModel,
+} from "@/lib/audio/dsp/effects/nam-model-store";
 import { createManagedPlaybackSessionWorkflow } from "../managed-playback-session-workflow";
 import {
   buildDjSessionFromLegacyState,
@@ -8,10 +13,14 @@ import {
   createDefaultChannel,
   DECK_A_CHANNEL_ID,
   DECK_B_CHANNEL_ID,
+  deletePlaybackSession,
   getPlaybackSession,
   initializePlaybackSessions,
+  parsePlaybackSessionRecord,
   playbackSessionsCollection,
+  removePlaybackChannel,
   SINGLE_ACTIVE_CHANNEL_ID,
+  updatePlaybackChannel,
   updatePlaybackSession,
 } from "./playback-sessions";
 import { radiosCollection } from "./radios";
@@ -134,6 +143,89 @@ describe("buildSingleSessionFromLegacyState", () => {
   });
 });
 
+describe("local NAM model garbage collection", () => {
+  test("collects nested removals, replacements, channels, and sessions while preserving shared references", async () => {
+    const sharedId = createLocalNamModelId();
+    const nestedOnlyId = createLocalNamModelId();
+    const replacementId = createLocalNamModelId();
+    await Promise.all([
+      saveNamModel(sharedId, '{"shared":true}'),
+      saveNamModel(nestedOnlyId, '{"nested":true}'),
+      saveNamModel(replacementId, '{"replacement":true}'),
+    ]);
+
+    const shared = createDefaultEffectConfig("neuralAmp", "shared", 0);
+    shared.modelId = sharedId;
+    const nestedShared = {
+      ...shared,
+      id: "nested-shared",
+    };
+    const nestedOnly = createDefaultEffectConfig("neuralAmp", "nested-only", 1);
+    nestedOnly.modelId = nestedOnlyId;
+    const container = createDefaultEffectConfig("fxComposite", "container", 0);
+    const firstChain = container.chains[0];
+    if (!firstChain) {
+      throw new Error("Default composite requires a chain");
+    }
+    firstChain.effects = [nestedShared, nestedOnly];
+
+    playbackSessionsCollection.insert({
+      id: "single",
+      channels: [
+        {
+          ...createDefaultChannel("single-a", "single-primary", 0),
+          effects: [shared],
+        },
+      ],
+      masterVolume: 1,
+      crossfadePosition: 0.5,
+      headphoneVolume: 1,
+      activeChannelId: "single-a",
+      tempo: 120,
+    });
+    playbackSessionsCollection.insert({
+      id: "dj",
+      channels: [
+        {
+          ...createDefaultChannel("deck-a", "deck-a", 0),
+          effects: [container],
+        },
+      ],
+      masterVolume: 1,
+      crossfadePosition: 0.5,
+      headphoneVolume: 1,
+      activeChannelId: null,
+      tempo: 120,
+    });
+
+    updatePlaybackChannel("dj", "deck-a", (draft) => {
+      draft.effects = [];
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(getCachedNamModel(nestedOnlyId)).toBeNull();
+    expect(getCachedNamModel(sharedId)).toBe('{"shared":true}');
+
+    updatePlaybackChannel("single", "single-a", (draft) => {
+      const replacement = createDefaultEffectConfig("neuralAmp", "shared", 0);
+      replacement.modelId = replacementId;
+      draft.effects = [replacement];
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(getCachedNamModel(sharedId)).toBeNull();
+    expect(getCachedNamModel(replacementId)).toBe('{"replacement":true}');
+
+    removePlaybackChannel("single", "single-a");
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(getCachedNamModel(replacementId)).toBeNull();
+
+    deletePlaybackSession("dj");
+    deletePlaybackSession("single");
+  });
+});
+
 describe("buildDjSessionFromLegacyState", () => {
   test("preserves deck assignment and mixer values from legacy dj state", () => {
     const deckARadio = {
@@ -212,6 +304,114 @@ describe("buildDjSessionFromLegacyState", () => {
       "delay-1",
     ]);
     expect(deckA?.effects.map((effect) => effect.order)).toEqual([0, 1, 2]);
+  });
+});
+
+describe("effect session migration", () => {
+  test("adds the default tempo without changing a legacy flat chain", () => {
+    const delay = createDefaultEffectConfig("delay", "delay-1", 1);
+    const limiter = createDefaultEffectConfig("limiter", "limiter-1", 0);
+    const channel = createDefaultChannel(DECK_A_CHANNEL_ID, "deck-a");
+
+    const migrated = parsePlaybackSessionRecord({
+      id: "dj",
+      channels: [{ ...channel, effects: [delay, limiter] }],
+    });
+
+    expect(migrated.tempo).toBe(120);
+    expect(
+      migrated.channels[0]?.effects.map(({ id, order }) => [id, order])
+    ).toEqual([
+      ["limiter-1", 0],
+      ["delay-1", 1],
+    ]);
+  });
+
+  test("round-trips a nested composite tree and sidechain reference", () => {
+    const channel = createDefaultChannel(DECK_A_CHANNEL_ID, "deck-a");
+    const nestedGate = {
+      id: "gate-1",
+      type: "gate" as const,
+      enabled: true,
+      order: 0,
+      dryWet: 1,
+      inputGain: 1,
+      outputGain: 1,
+      sidechain: { channelId: DECK_B_CHANNEL_ID },
+      threshold: -24,
+      attack: 1,
+      hold: 10,
+      release: 100,
+      floor: -60,
+      inverse: false,
+    };
+    const composite = {
+      id: "composite-1",
+      type: "fxComposite" as const,
+      enabled: true,
+      order: 0,
+      dryWet: 1,
+      inputGain: 1,
+      outputGain: 1,
+      chains: [
+        {
+          id: "parallel-1",
+          name: "Parallel 1",
+          order: 0,
+          gain: 1,
+          pan: 0,
+          muted: false,
+          solo: false,
+          effects: [nestedGate],
+        },
+      ],
+    };
+
+    const original = parsePlaybackSessionRecord({
+      id: "dj",
+      tempo: 128,
+      channels: [{ ...channel, effects: [composite] }],
+    });
+    const restored = parsePlaybackSessionRecord(
+      JSON.parse(JSON.stringify(original))
+    );
+
+    expect(restored).toEqual(original);
+    expect(
+      restored.channels[0]?.effects[0]?.type === "fxComposite"
+        ? restored.channels[0].effects[0].chains[0]?.effects[0]?.sidechain
+        : null
+    ).toEqual({ channelId: DECK_B_CHANNEL_ID });
+  });
+
+  test("round-trips a three-band Frequency Split", () => {
+    const channel = createDefaultChannel(DECK_A_CHANNEL_ID, "deck-a");
+    const split = createDefaultEffectConfig(
+      "frequencySplit",
+      "frequency-split-1",
+      0
+    );
+    split.frequencyBandCount = 3;
+    split.chains = split.chains.slice(0, 3).map((chain, order) => ({
+      ...chain,
+      name: ["Low", "Mid", "High"][order] ?? chain.name,
+      order,
+    }));
+    split.crossoverFrequencies = [200, 1000];
+
+    const restored = parsePlaybackSessionRecord({
+      id: "dj",
+      channels: [{ ...channel, effects: [split] }],
+    }).channels[0]?.effects[0];
+
+    expect(restored).toMatchObject({
+      type: "frequencySplit",
+      frequencyBandCount: 3,
+      crossoverFrequencies: [200, 1000],
+    });
+    expect(restored?.type === "frequencySplit" && restored.chains).toHaveLength(
+      3
+    );
   });
 });
 
@@ -515,6 +715,16 @@ describe("multiple session persistence", () => {
       },
     });
 
+    const discardedModelId = createLocalNamModelId();
+    await saveNamModel(discardedModelId, '{"stored":true}');
+    const discardedModel = createDefaultEffectConfig(
+      "neuralAmp",
+      "discarded-model",
+      0
+    );
+    discardedModel.modelId = discardedModelId;
+    discardedModel.modelData = '{"inline":true}';
+
     playbackSessionsCollection.insert({
       id: "single",
       channels: [
@@ -529,6 +739,7 @@ describe("multiple session persistence", () => {
             name: "Persisted Single",
             streamUrl: "https://radio.example/single.mp3",
           },
+          effects: [discardedModel],
           volume: 0.25,
         },
         createDefaultChannel("single-b", "single-secondary", 1),
@@ -617,5 +828,8 @@ describe("multiple session persistence", () => {
     expect(deckA?.cueEnabled).toBe(false);
     expect(deckB?.radio).toBeNull();
     expect(deckB?.muted).toBe(false);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(getCachedNamModel(discardedModelId)).toBeNull();
   });
 });

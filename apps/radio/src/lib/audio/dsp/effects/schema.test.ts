@@ -1,11 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { AVAILABLE_EFFECTS } from "./registry";
+import { AVAILABLE_EFFECTS, createDefaultEffectConfig } from "./registry";
 import {
   convertEffectConfigToEngine,
   convertPartialEffectConfigToEngine,
   EFFECT_DEFINITIONS,
   getEffectDefaultConfig,
   getEffectMidiParamDefs,
+  getEffectParamDefs,
   UNIVERSAL_EFFECT_PARAM_DEFS,
 } from "./schema";
 import type { CompressorConfig, EffectConfig } from "./types";
@@ -45,6 +46,21 @@ describe("effect definitions", () => {
     }
   });
 
+  test("keeps every declared parameter unique and backed by a default field", () => {
+    for (const type of EFFECT_TYPES) {
+      const defaults = EFFECT_DEFINITIONS[type].defaultConfig as Record<
+        string,
+        unknown
+      >;
+      const keys = getEffectParamDefs(type).map((param) => param.key);
+
+      expect(new Set(keys)).toHaveLength(keys.length);
+      for (const key of keys) {
+        expect(defaults).toHaveProperty(key);
+      }
+    }
+  });
+
   test("converts engine params through the definition metadata", () => {
     const config = {
       ...EFFECT_DEFINITIONS.compressor.defaultConfig,
@@ -58,13 +74,13 @@ describe("effect definitions", () => {
     expect(convertEffectConfigToEngine(config)).toMatchObject({
       enabled: 1,
       dryWet: 1,
-      wet: 1,
-      dry: 0,
       threshold: -10,
       ratio: 4,
       lookahead: 0,
       autoAttack: 1,
     });
+    expect(convertEffectConfigToEngine(config)).not.toHaveProperty("wet");
+    expect(convertEffectConfigToEngine(config)).not.toHaveProperty("dry");
     expect(convertEffectConfigToEngine(config)).not.toHaveProperty("id");
     expect(convertEffectConfigToEngine(config)).not.toHaveProperty("order");
   });
@@ -80,6 +96,36 @@ describe("effect definitions", () => {
     });
   });
 
+  test("marks compatibility containers when a nested effect uses a sidechain", () => {
+    const config = createDefaultEffectConfig("fxComposite", "fx", 0);
+    const gate = createDefaultEffectConfig("gate", "gate", 0);
+    gate.sidechain = { channelId: "deck-b" };
+    const [firstChain] = config.chains;
+    if (!firstChain) {
+      throw new Error("Default composite must contain a chain");
+    }
+    firstChain.effects = [gate];
+
+    expect(convertEffectConfigToEngine(config).sidechainEnabled).toBe(1);
+  });
+
+  test("passes client-side script and model references through text params", () => {
+    expect(
+      convertPartialEffectConfigToEngine("werkstatt", {
+        source: "return input;",
+      })
+    ).toEqual({ source: "return input;" });
+    expect(
+      convertPartialEffectConfigToEngine("neuralAmp", {
+        modelId: "local-model",
+        modelUrl: "/models/local.nam",
+      })
+    ).toEqual({
+      modelId: "local-model",
+      modelUrl: "/models/local.nam",
+    });
+  });
+
   test("keeps serialized defaults compatible with effect configs", () => {
     for (const type of EFFECT_TYPES) {
       const config = {
@@ -92,5 +138,130 @@ describe("effect definitions", () => {
       expect(config.id).toBe(`effect-${type}`);
       expect(config.order).toBe(0);
     }
+  });
+
+  test("keeps native reverb and delay stages wet-only behind Effect Mix", () => {
+    for (const type of ["plateReverb", "delay", "cheapReverb"] as const) {
+      const defaults = EFFECT_DEFINITIONS[type].defaultConfig;
+      expect(defaults.dry).toBe(-72);
+      expect(defaults.wet).toBe(0);
+
+      const engine = convertEffectConfigToEngine({
+        ...defaults,
+        id: `${type}-wet-only`,
+        order: 0,
+      });
+      expect(engine.dry).toBe(-72);
+      expect(engine.wet).toBe(0);
+      expect(engine.dryWet).toBe(defaults.dryWet);
+    }
+  });
+
+  test("normalizes the default parallel composite without removing branches", () => {
+    const { chains } = EFFECT_DEFINITIONS.fxComposite.defaultConfig;
+    expect(chains).toHaveLength(2);
+    expect(chains.every(({ gain }) => gain === Math.SQRT1_2)).toBe(true);
+  });
+
+  test("exposes the official stock-device control surfaces", () => {
+    const expectedKeys = {
+      delay: [
+        "delayMusical",
+        "delayMillis",
+        "preSyncTimeLeft",
+        "preMillisTimeLeft",
+        "preSyncTimeRight",
+        "preMillisTimeRight",
+        "feedback",
+        "cross",
+        "filter",
+        "lfoSpeed",
+        "lfoDepth",
+        "dry",
+        "wet",
+      ],
+      compressor: [
+        "inputgain",
+        "threshold",
+        "ratio",
+        "knee",
+        "attack",
+        "release",
+        "makeup",
+        "mix",
+        "lookahead",
+        "automakeup",
+        "autoattack",
+        "autorelease",
+      ],
+      tidal: [
+        "rateDivision",
+        "depth",
+        "slope",
+        "symmetry",
+        "offset",
+        "channelOffset",
+      ],
+      cheapReverb: ["decay", "preDelay", "damp", "filter", "dry", "wet"],
+      gate: [
+        "threshold",
+        "return",
+        "attack",
+        "hold",
+        "release",
+        "floor",
+        "inverse",
+      ],
+      waveshaper: ["equation", "deviceInputGain", "deviceOutputGain", "mix"],
+      maximizer: ["threshold", "lookaheadEnabled"],
+      vocoder: [
+        "carrierMinFreq",
+        "carrierMaxFreq",
+        "modulatorMinFreq",
+        "modulatorMaxFreq",
+        "qStart",
+        "qEnd",
+        "envAttack",
+        "envRelease",
+        "gain",
+        "mix",
+        "bandCount",
+        "modulatorSource",
+      ],
+      neuralAmp: ["input", "output", "mono", "mix"],
+      autotune: ["key", "scale", "amount", "retuneAmount", "shift", "smooth"],
+    } as const;
+
+    for (const [type, expected] of Object.entries(expectedKeys)) {
+      const keys = getEffectParamDefs(type as EffectConfig["type"]).map(
+        ({ key }) => key
+      );
+      expect(keys).toEqual(expect.arrayContaining(expected));
+    }
+    expect(getEffectParamDefs("werkstatt")).toEqual([]);
+    expect(EFFECT_DEFINITIONS.werkstatt.defaultConfig).toMatchObject({
+      parameters: {},
+    });
+    expect(EFFECT_DEFINITIONS.werkstatt.defaultConfig.code).toContain(
+      "class Processor"
+    );
+  });
+
+  test("backfills integration state without removing legacy defaults", () => {
+    expect(EFFECT_DEFINITIONS.neuralAmp.defaultConfig).toMatchObject({
+      modelId: null,
+      modelUrl: null,
+      modelName: null,
+      modelData: null,
+    });
+    expect(EFFECT_DEFINITIONS.werkstatt.defaultConfig).toMatchObject({
+      source: "return input;",
+      parameters: {},
+      samples: {},
+    });
+    expect(EFFECT_DEFINITIONS.frequencySplit.defaultConfig).toMatchObject({
+      frequencyBandCount: 4,
+      crossoverFrequencies: [200, 1000, 5000],
+    });
   });
 });

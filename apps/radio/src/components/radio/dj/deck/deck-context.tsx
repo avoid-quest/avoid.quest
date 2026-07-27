@@ -16,6 +16,7 @@ type DeckContextValue = {
   channelFilter: number;
   effectsDryWet: number;
   effects: EffectConfig[];
+  effectsTempo: number;
   repeat: boolean;
   autoplay: boolean;
   soundId: string | null;
@@ -37,6 +38,7 @@ type DeckContextValue = {
   updateEffect: (id: string, config: Partial<EffectConfig>) => void;
   removeEffect: (id: string) => void;
   reorderEffects: (ids: string[]) => void;
+  setEffectsTempo: (tempo: number) => void;
   // Derived data
   trackProgress: { position: number; duration: number } | undefined;
   peakLevel: { left: number; right: number };

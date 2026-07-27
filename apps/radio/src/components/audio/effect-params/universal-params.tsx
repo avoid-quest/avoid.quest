@@ -11,6 +11,7 @@ type UniversalParamsProps = {
   onUpdate: (config: Partial<EffectConfig>) => void;
   deckId?: "deck-a" | "deck-b";
   effectId?: string;
+  midiTargetPrefix?: string;
 };
 
 export function UniversalParams({
@@ -18,15 +19,19 @@ export function UniversalParams({
   onUpdate,
   deckId,
   effectId,
+  midiTargetPrefix,
 }: UniversalParamsProps) {
   const defaultConfig = getEffectDefaultConfig(effect.type);
 
   const wrapSlider = (paramKey: string, slider: React.ReactNode) => {
-    if (deckId && effectId) {
+    const targetPrefix =
+      midiTargetPrefix ??
+      (deckId && effectId ? `${deckId}:effect:${effectId}` : undefined);
+    if (targetPrefix) {
       return (
         <MidiControlWrapper
           key={paramKey}
-          targetId={`${deckId}:effect:${effectId}:${paramKey}`}
+          targetId={`${targetPrefix}:${paramKey}`}
         >
           {slider}
         </MidiControlWrapper>
@@ -36,7 +41,7 @@ export function UniversalParams({
   };
 
   return (
-    <ParamGroup>
+    <ParamGroup title="Wrapper">
       {UNIVERSAL_EFFECT_PARAM_DEFS.map((param) => {
         const value = (effect as unknown as Record<string, unknown>)[param.key];
         if (typeof value !== "number") {

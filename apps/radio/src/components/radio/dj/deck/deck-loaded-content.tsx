@@ -34,6 +34,8 @@ export function LoadedDeckContent({
     updateEffect,
     removeEffect,
     reorderEffects,
+    effectsTempo,
+    setEffectsTempo,
   } = useDeckContext();
   const isMobile = useIsMobile();
   const { metadata } = useRadioMetadata({
@@ -48,7 +50,9 @@ export function LoadedDeckContent({
       onAddEffect={addEffect}
       onRemoveEffect={removeEffect}
       onReorderEffects={reorderEffects}
+      onTempoChange={setEffectsTempo}
       onUpdateEffect={updateEffect}
+      tempo={effectsTempo}
     />
   );
 

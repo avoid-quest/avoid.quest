@@ -7,42 +7,36 @@
 
 import { useEffect, useRef } from "react";
 import type { EffectConfig } from "@/lib/audio";
-import { registerEffectActions, useMidiStore } from "@/lib/midi";
+import {
+  collectEffectIds,
+  registerEffectActions,
+  useMidiStore,
+} from "@/lib/midi";
 
 export function useMidiEffectRegistration(
   deckId: "deck-a" | "deck-b",
   effects: EffectConfig[]
 ) {
-  const cleanupMapRef = useRef(new Map<string, () => void>());
+  const effectIdsRef = useRef(new Set<string>());
 
   useEffect(() => {
-    const currentIds = new Set(effects.map((e) => e.id));
-    const prevMap = cleanupMapRef.current;
+    const currentEffectIds = collectEffectIds(effects);
 
-    // Unregister removed effects
-    for (const [id, cleanup] of prevMap) {
-      if (!currentIds.has(id)) {
-        cleanup();
-        prevMap.delete(id);
-        // Clean up persisted mappings for removed effects
+    for (const id of effectIdsRef.current) {
+      if (!currentEffectIds.has(id)) {
         useMidiStore.getState().removeEffectMappings(id);
       }
     }
+    effectIdsRef.current = currentEffectIds;
 
-    // Register new effects
-    for (const effect of effects) {
-      if (!prevMap.has(effect.id)) {
-        const cleanup = registerEffectActions(deckId, effect);
-        prevMap.set(effect.id, cleanup);
-      }
-    }
+    const cleanups = effects.map((effect) =>
+      registerEffectActions(deckId, effect)
+    );
 
     return () => {
-      // Cleanup all on unmount
-      for (const cleanup of prevMap.values()) {
+      for (const cleanup of cleanups) {
         cleanup();
       }
-      prevMap.clear();
     };
   }, [deckId, effects]);
 }

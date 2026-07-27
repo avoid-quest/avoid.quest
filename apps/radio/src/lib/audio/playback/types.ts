@@ -167,8 +167,7 @@ export type WorkletEventType =
   | "SOURCE_ENDED"
   | "SOURCE_ERROR"
   | "STREAM_READY"
-  | "STREAM_UNDERRUN"
-  | "PEAK_METER";
+  | "STREAM_UNDERRUN";
 
 /**
  * Generic message structure for worklet communication

@@ -27,11 +27,13 @@ export {
   Distortion,
   type DistortionConfig,
   EFFECT_DEFINITIONS,
+  EFFECT_PARAMETER_ROLE_MAP,
   EFFECT_SCHEMAS,
   type EffectConfig,
   type EffectDefinition,
   type EffectMetadata,
   type EffectParamDef,
+  type EffectParameterRole,
   type EffectProcessor,
   type EffectSchema,
   type EffectType,
@@ -60,6 +62,7 @@ export {
   type TidalConfig,
   TidalEffect,
   UNIVERSAL_EFFECT_PARAM_DEFS,
+  UNIVERSAL_EFFECT_PARAMETER_ROLES,
   type VisualizationType,
 } from "./effects/index.js";
 // Processor

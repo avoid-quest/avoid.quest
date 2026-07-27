@@ -32,8 +32,8 @@ describe("Delay Effect", () => {
   test("setDelayTime clamps to maximum buffer size", () => {
     const delay = new Delay(SAMPLE_RATE);
 
-    // Try to set delay longer than 2 second max
-    delay.setDelayTime(10); // 10 seconds
+    // Try to set delay longer than the 20 second storage limit
+    delay.setDelayTime(30);
 
     // Should still work (clamped to max)
     const input: [Float32Array, Float32Array] = [
@@ -46,6 +46,98 @@ describe("Delay Effect", () => {
     ];
 
     expect(() => delay.process(input, output, 0, 3)).not.toThrow();
+  });
+
+  test("supports the exposed whole-note delay at 30 BPM", () => {
+    const delay = new Delay(100);
+    delay.setTempo(30);
+    delay.setDelayMusical("1/1");
+    delay.setDelayMillis(0);
+    delay.setFeedback(0);
+    const input: [Float32Array, Float32Array] = [
+      new Float32Array(801),
+      new Float32Array(801),
+    ];
+    const output: [Float32Array, Float32Array] = [
+      new Float32Array(801),
+      new Float32Array(801),
+    ];
+    input[0][0] = 1;
+    input[1][0] = 1;
+
+    delay.process(input, output, 0, input[0].length);
+
+    expect(output[0][800]).toBe(1);
+    expect(output[1][800]).toBe(1);
+  });
+
+  test("honors the exposed 1000 BPM tempo instead of clamping to 400", () => {
+    const delay = new Delay(100);
+    delay.setTempo(1000);
+    delay.setDelayMusical("1/1");
+    delay.setDelayMillis(0);
+    delay.setFeedback(0);
+    const input: [Float32Array, Float32Array] = [
+      new Float32Array(61),
+      new Float32Array(61),
+    ];
+    const output: [Float32Array, Float32Array] = [
+      new Float32Array(61),
+      new Float32Array(61),
+    ];
+    input[0][0] = 1;
+    input[1][0] = 1;
+
+    delay.process(input, output, 0, input[0].length);
+
+    expect(output[0][24]).toBe(1);
+    expect(output[0][60]).toBe(0);
+  });
+
+  test("uses official milliseconds when musical timing is off", () => {
+    const delay = new Delay(1000);
+    delay.setDelayTime(0.3);
+    delay.setDelayMusical("Off");
+    delay.setDelayMillis(50);
+    delay.setFeedback(0);
+    const input: [Float32Array, Float32Array] = [
+      new Float32Array(301),
+      new Float32Array(301),
+    ];
+    const output: [Float32Array, Float32Array] = [
+      new Float32Array(301),
+      new Float32Array(301),
+    ];
+    input[0][0] = 1;
+    input[1][0] = 1;
+
+    delay.process(input, output, 0, input[0].length);
+
+    expect(output[0][50]).toBe(1);
+    expect(output[0][300]).toBe(0);
+  });
+
+  test("routes cross-feedback within the configured feedback gain", () => {
+    const delay = new Delay(100);
+    delay.setDelayTime(0.01);
+    delay.setFeedback(0.5);
+    delay.setCrossFeedback(1);
+    const input: [Float32Array, Float32Array] = [
+      new Float32Array(4),
+      new Float32Array(4),
+    ];
+    const output: [Float32Array, Float32Array] = [
+      new Float32Array(4),
+      new Float32Array(4),
+    ];
+    input[0][0] = 1;
+    input[1][0] = 1;
+
+    delay.process(input, output, 0, input[0].length);
+
+    expect(output[0][1]).toBeCloseTo(1);
+    expect(output[0][2]).toBeCloseTo(0.5);
+    expect(output[0][3]).toBeCloseTo(0.25);
   });
 
   test("setFeedback clamps to 0.95 maximum", () => {
@@ -271,10 +363,14 @@ describe("Delay Effect", () => {
 
     // First echo
     expect(output[0][delaySamples]).toBeCloseTo(1.0);
-    // Second echo (reduced by feedback)
-    expect(output[0][delaySamples * 2]).toBeCloseTo(0.5, 1);
+    // Second echo is reduced by feedback and the feedback-path low-pass filter.
+    const secondEcho = output[0][delaySamples * 2] ?? 0;
+    expect(secondEcho).toBeGreaterThan(0.35);
+    expect(secondEcho).toBeLessThan(0.5);
     // Third echo (further reduced)
-    expect(output[0][delaySamples * 3]).toBeCloseTo(0.25, 1);
+    const thirdEcho = output[0][delaySamples * 3] ?? 0;
+    expect(thirdEcho).toBeGreaterThan(0.1);
+    expect(thirdEcho).toBeLessThan(secondEcho);
   });
 
   test("produces no NaN or Infinity", () => {

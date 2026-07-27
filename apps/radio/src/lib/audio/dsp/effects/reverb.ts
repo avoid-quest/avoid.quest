@@ -9,6 +9,7 @@
  * Delay line structure: [buffer, writeIndex, readIndex, mask]
  */
 type DelayLine = [Float32Array, number, number, number];
+const MAX_MIX_GAIN = 10 ** (12 / 20);
 
 export class DattorroReverb {
   private readonly delays: DelayLine[] = [];
@@ -166,11 +167,11 @@ export class DattorroReverb {
   }
 
   setWet(value: number): void {
-    this.wet = Math.max(0, Math.min(1, value));
+    this.wet = Math.max(0, Math.min(MAX_MIX_GAIN, value));
   }
 
   setDry(value: number): void {
-    this.dry = Math.max(0, Math.min(1, value));
+    this.dry = Math.max(0, Math.min(MAX_MIX_GAIN, value));
   }
 
   reset(): void {

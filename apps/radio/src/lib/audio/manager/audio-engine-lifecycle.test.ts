@@ -83,7 +83,6 @@ describe("audio engine lifecycle", () => {
         "gain",
         "stereo-panner",
         "biquad",
-        "analyser",
         "worklet",
         "worklet-gain",
       ])
@@ -221,30 +220,6 @@ describe("audio engine lifecycle", () => {
       harness.workletMessages().filter(({ type }) => type === "CREATE_SOURCE")
     ).toHaveLength(1);
 
-    manager.cleanupSound(soundId);
-  });
-
-  test("starts the master meter when subscribers mount before audio initialization", async () => {
-    harness = installAudioEngineLifecycleHarness({ analyserSample: 0.5 });
-    const manager = AudioManager.getInstance();
-    const levels: Array<{ left: number; right: number }> = [];
-    const radio: Radio = {
-      id: "radio-1",
-      name: "Lifecycle Radio",
-      streamUrl: "https://audio.example/stream.mp3",
-    };
-
-    const unsubscribe = manager.subscribeMasterMeter((level) => {
-      levels.push(level);
-    });
-    const soundId = manager.createSound(radio, "sound-lifecycle");
-
-    await manager.playSound(soundId, 0.4);
-    harness.runAnimationFrames(2);
-
-    expect(levels.at(-1)).toEqual({ left: 0.5, right: 0.5 });
-
-    unsubscribe();
     manager.cleanupSound(soundId);
   });
 

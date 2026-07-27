@@ -48,7 +48,7 @@ export const radios: Radio[] = [
     websiteUrl: "https://www.nts.live",
     description: "NTS | London Stream",
     logoUrl: "https://www.nts.live/apple-touch-icon.png?v=47rE43RRzB",
-    streamUrl: "https://stream-relay-geo.ntslive.net/stream",
+    streamUrl: "https://streams.radiomast.io/nts1",
     metadataConfig: { kind: "nts-live-api", channel: "1" },
     order: 5,
     isSystem: true,
@@ -58,7 +58,7 @@ export const radios: Radio[] = [
     websiteUrl: "https://www.nts.live",
     description: "NTS | NY Stream",
     logoUrl: "https://www.nts.live/apple-touch-icon.png?v=47rE43RRzB",
-    streamUrl: "https://stream-relay-geo.ntslive.net/stream2",
+    streamUrl: "https://streams.radiomast.io/nts2",
     metadataConfig: { kind: "nts-live-api", channel: "2" },
     order: 6,
     isSystem: true,
@@ -109,14 +109,6 @@ export const radios: Radio[] = [
     streamUrl: "https://n03.radiojar.com/78cxy6wkxtzuv",
     metadataConfig: { kind: "icy" },
     order: 11,
-    isSystem: true,
-  },
-  {
-    name: "Gatto Misterioso",
-    streamUrl:
-      "https://azuracast.gattomisterioso.top/listen/gatto_misterioso/radio.mp3",
-    metadataConfig: { kind: "azuracast-now-playing" },
-    order: 13,
     isSystem: true,
   },
 ];

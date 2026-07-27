@@ -15,7 +15,6 @@ export {
   type FilterConfig,
   setWorkletProcessorUrl,
 } from "./audio-manager.js";
-
 export {
   type CrossfadeCurve,
   type CrossfadeOptions,
@@ -24,3 +23,9 @@ export {
   fadeIn,
   fadeOut,
 } from "./crossfade.js";
+export type { EffectsGraphRuntime } from "./effects-graph-runtime.js";
+export {
+  DEFAULT_OPENDAW_RUNTIME_URLS,
+  OfficialOpenDawRuntime,
+  type OpenDawRuntimeUrls,
+} from "./official-opendaw-runtime.js";

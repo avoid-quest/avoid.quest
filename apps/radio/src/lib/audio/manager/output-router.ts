@@ -17,14 +17,6 @@ class OutputRouter {
     return this.masterGraph?.mainDelayNode ?? null;
   }
 
-  get masterAnalyserL(): AnalyserNode | null {
-    return this.masterGraph?.masterAnalyserL ?? null;
-  }
-
-  get masterAnalyserR(): AnalyserNode | null {
-    return this.masterGraph?.masterAnalyserR ?? null;
-  }
-
   initializeMasterGraph(context: AudioContext): MasterGraphNodes {
     const currentMainDelayMs = this.mainDelayMs;
     this.disconnectMasterGraph();
@@ -66,15 +58,6 @@ class OutputRouter {
   }
 
   private disconnectMasterGraph(): void {
-    if (this.masterGraph?.masterSplitter) {
-      safeDisconnect(this.masterGraph.masterSplitter, "AudioManager.cleanup");
-    }
-    if (this.masterGraph?.masterAnalyserL) {
-      safeDisconnect(this.masterGraph.masterAnalyserL, "AudioManager.cleanup");
-    }
-    if (this.masterGraph?.masterAnalyserR) {
-      safeDisconnect(this.masterGraph.masterAnalyserR, "AudioManager.cleanup");
-    }
     if (this.masterGraph?.mainDelayNode) {
       safeDisconnect(this.masterGraph.mainDelayNode, "AudioManager.cleanup");
     }

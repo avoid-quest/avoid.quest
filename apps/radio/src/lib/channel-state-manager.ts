@@ -8,9 +8,12 @@ import {
 } from "@/lib/audio";
 import {
   getPlaybackChannel,
+  getPlaybackSession,
+  PLAYBACK_SESSION_IDS,
   type PlaybackChannelRecord,
   type PlaybackSessionId,
   playbackSessionsCollection,
+  setPlaybackSessionTempo,
   updatePlaybackChannel,
 } from "@/lib/collections/playback-sessions";
 import {
@@ -22,6 +25,17 @@ import {
   setPlaybackChannelSoundId,
   usePlaybackChannelRuntime,
 } from "@/lib/stores/playback-runtime-store";
+import {
+  appendEffectToTree,
+  findEffectChain,
+  findEffectInTree,
+  findRootEffectContainer,
+  findRootEffectContainerForChain,
+  isEffectContainer,
+  removeEffectFromTree,
+  reorderEffectTreeChain,
+  updateEffectInTree,
+} from "./audio/dsp/routing/effect-tree.js";
 import {
   appendEffectInOrder,
   createOrderedEffectConfig,
@@ -67,9 +81,95 @@ const CHANNEL_AUDIO_SYNC_ORDER = [
 ] as const satisfies readonly ChannelAudioField[];
 
 const subscriptionCleanups = new Map<string, () => void>();
+const sidechainChannelIntents = new Map<string, string>();
 
 function getAudioManager(): AudioManager {
   return AudioManager.getInstance();
+}
+
+function syncRootContainer(soundId: string, root: EffectConfig | null): void {
+  if (root && isEffectContainer(root)) {
+    getAudioManager().updateEffect(soundId, root.id, root.type, {
+      chains: root.chains,
+      ...(root.type === "frequencySplit"
+        ? { crossoverFrequencies: root.crossoverFrequencies }
+        : {}),
+    } as Partial<EffectConfig>);
+  }
+}
+
+function updateChannelEffectTree(
+  sessionId: PlaybackSessionId,
+  channelId: string,
+  update: (effects: EffectConfig[]) => EffectConfig[],
+  reconcile: (
+    soundId: string,
+    effects: readonly EffectConfig[] | undefined
+  ) => void
+): void {
+  updateChannel(sessionId, channelId, (draft) => {
+    draft.effects = update(draft.effects);
+  });
+
+  const soundId = getPlaybackChannelRuntime(channelId).soundId;
+  if (soundId) {
+    reconcile(soundId, getPlaybackChannel(sessionId, channelId)?.effects);
+  }
+}
+
+function findSidechainChannelId(
+  effects: readonly EffectConfig[]
+): string | null {
+  for (const effect of effects) {
+    const sidechainChannelId = effect.sidechain?.channelId;
+    if (sidechainChannelId) {
+      return sidechainChannelId;
+    }
+    if (isEffectContainer(effect)) {
+      for (const chain of effect.chains) {
+        const nested = findSidechainChannelId(chain.effects);
+        if (nested) {
+          return nested;
+        }
+      }
+    }
+  }
+  return null;
+}
+
+function syncEffectSidechain(
+  soundId: string,
+  effects: readonly EffectConfig[]
+): void {
+  const channelId = findSidechainChannelId(effects);
+  if (!channelId) {
+    sidechainChannelIntents.delete(soundId);
+    getAudioManager().setEffectsSidechain(soundId, null);
+    return;
+  }
+  sidechainChannelIntents.set(soundId, channelId);
+  getAudioManager().setEffectsSidechain(
+    soundId,
+    getPlaybackChannelRuntime(channelId).soundId
+  );
+}
+
+function syncAllEffectSidechains(): void {
+  const activeSoundIds = new Set<string>();
+  for (const sessionId of PLAYBACK_SESSION_IDS) {
+    for (const channel of getPlaybackSession(sessionId)?.channels ?? []) {
+      const soundId = getPlaybackChannelRuntime(channel.id).soundId;
+      if (soundId) {
+        activeSoundIds.add(soundId);
+        syncEffectSidechain(soundId, channel.effects);
+      }
+    }
+  }
+  for (const soundId of sidechainChannelIntents.keys()) {
+    if (!activeSoundIds.has(soundId)) {
+      sidechainChannelIntents.delete(soundId);
+    }
+  }
 }
 
 function mergeChannelState(
@@ -234,6 +334,20 @@ export function setChannelEffectsDryWet(
   updateChannel(sessionId, channelId, { effectsDryWet }, ["effectsDryWet"]);
 }
 
+export function setSessionEffectsTempo(
+  sessionId: PlaybackSessionId,
+  tempo: number
+): void {
+  setPlaybackSessionTempo(sessionId, tempo);
+  const bpm = getPlaybackSession(sessionId)?.tempo ?? tempo;
+  for (const channel of getPlaybackSession(sessionId)?.channels ?? []) {
+    const soundId = getPlaybackChannelRuntime(channel.id).soundId;
+    if (soundId) {
+      getAudioManager().setEffectsTempo(soundId, bpm);
+    }
+  }
+}
+
 export function updateChannelFilter(
   sessionId: PlaybackSessionId,
   channelId: string,
@@ -248,15 +362,27 @@ export function addChannelEffect(
   effect: EffectConfig
 ): void {
   let orderedEffect: EffectConfig | null = null;
-  updateChannel(sessionId, channelId, (draft) => {
-    const effects = appendEffectInOrder(draft.effects, effect);
-    draft.effects = effects;
-    orderedEffect = effects.at(-1) ?? null;
-  });
-  const runtime = getPlaybackChannelRuntime(channelId);
-  if (orderedEffect && runtime.soundId) {
-    getAudioManager().addEffect(runtime.soundId, orderedEffect);
-  }
+  updateChannelEffectTree(
+    sessionId,
+    channelId,
+    (effects) => {
+      const updatedEffects = appendEffectInOrder(effects, effect);
+      orderedEffect = updatedEffects.at(-1) ?? null;
+      return updatedEffects;
+    },
+    (soundId, effects) => {
+      if (!orderedEffect) {
+        return;
+      }
+      const manager = getAudioManager();
+      manager.addEffect(soundId, orderedEffect);
+      manager.setEffectsTempo(
+        soundId,
+        getPlaybackSession(sessionId)?.tempo ?? 120
+      );
+      syncEffectSidechain(soundId, effects ?? []);
+    }
+  );
 }
 
 export function createAndAddChannelEffect(
@@ -274,6 +400,49 @@ export function createAndAddChannelEffect(
   addChannelEffect(sessionId, channelId, effect);
 }
 
+export function addChannelEffectToChain(
+  sessionId: PlaybackSessionId,
+  channelId: string,
+  chainId: string,
+  effect: EffectConfig
+): void {
+  updateChannelEffectTree(
+    sessionId,
+    channelId,
+    (effects) => appendEffectToTree(effects, effect, chainId),
+    (soundId, effects) => {
+      if (!effects) {
+        return;
+      }
+      syncRootContainer(
+        soundId,
+        findRootEffectContainerForChain(effects, chainId)
+      );
+      syncEffectSidechain(soundId, effects);
+    }
+  );
+}
+
+export function createAndAddChannelEffectToChain(
+  sessionId: PlaybackSessionId,
+  channelId: string,
+  chainId: string,
+  type: EffectType,
+  effectId: string
+): void {
+  const effects = getPlaybackChannel(sessionId, channelId)?.effects ?? [];
+  const chain = findEffectChain(effects, chainId);
+  if (!chain) {
+    throw new Error(`Effect chain not found: ${chainId}`);
+  }
+  addChannelEffectToChain(
+    sessionId,
+    channelId,
+    chainId,
+    createOrderedEffectConfig(type, effectId, chain.effects)
+  );
+}
+
 export function updateChannelEffect(
   sessionId: PlaybackSessionId,
   channelId: string,
@@ -282,23 +451,37 @@ export function updateChannelEffect(
 ): void {
   let effectFound = false;
   let effectType: EffectType | null = null;
-  updateChannel(sessionId, channelId, (draft) => {
-    const effect = draft.effects.find((entry) => entry.id === effectId);
-    if (effect) {
-      Object.assign(effect, effectConfig);
+  updateChannelEffectTree(
+    sessionId,
+    channelId,
+    (effects) => {
+      const effect = findEffectInTree(effects, effectId);
+      if (!effect) {
+        return effects;
+      }
       effectFound = true;
       effectType = effect.type;
+      return updateEffectInTree(effects, effectId, effectConfig);
+    },
+    (soundId, effects) => {
+      if (!(effectFound && effectType)) {
+        return;
+      }
+      const persistedEffects = effects ?? [];
+      const root = findRootEffectContainer(persistedEffects, effectId);
+      if (root) {
+        syncRootContainer(soundId, root);
+      } else {
+        getAudioManager().updateEffect(
+          soundId,
+          effectId,
+          effectType,
+          effectConfig
+        );
+      }
+      syncEffectSidechain(soundId, persistedEffects);
     }
-  });
-  const runtime = getPlaybackChannelRuntime(channelId);
-  if (effectFound && effectType && runtime.soundId) {
-    getAudioManager().updateEffect(
-      runtime.soundId,
-      effectId,
-      effectType,
-      effectConfig
-    );
-  }
+  );
 }
 
 export function removeChannelEffect(
@@ -306,13 +489,47 @@ export function removeChannelEffect(
   channelId: string,
   effectId: string
 ): void {
-  updateChannel(sessionId, channelId, (draft) => {
-    draft.effects = draft.effects.filter((effect) => effect.id !== effectId);
-  });
-  const runtime = getPlaybackChannelRuntime(channelId);
-  if (runtime.soundId) {
-    getAudioManager().removeEffect(runtime.soundId, effectId);
-  }
+  const existingEffects =
+    getPlaybackChannel(sessionId, channelId)?.effects ?? [];
+  const rootId = findRootEffectContainer(existingEffects, effectId)?.id;
+  updateChannelEffectTree(
+    sessionId,
+    channelId,
+    (effects) => removeEffectFromTree(effects, effectId),
+    (soundId, effects) => {
+      const persistedEffects = effects ?? [];
+      const root = rootId
+        ? (findEffectInTree(persistedEffects, rootId) ?? null)
+        : null;
+      if (root) {
+        syncRootContainer(soundId, root);
+      } else {
+        getAudioManager().removeEffect(soundId, effectId);
+      }
+      syncEffectSidechain(soundId, persistedEffects);
+    }
+  );
+}
+
+export function reorderChannelEffectChain(
+  sessionId: PlaybackSessionId,
+  channelId: string,
+  chainId: string,
+  effectIds: string[]
+): void {
+  updateChannelEffectTree(
+    sessionId,
+    channelId,
+    (effects) => reorderEffectTreeChain(effects, effectIds, chainId),
+    (soundId, effects) => {
+      if (effects) {
+        syncRootContainer(
+          soundId,
+          findRootEffectContainerForChain(effects, chainId)
+        );
+      }
+    }
+  );
 }
 
 export function reorderChannelEffects(
@@ -321,15 +538,20 @@ export function reorderChannelEffects(
   effectIds: string[]
 ): void {
   let serializedOrder: string[] | null = null;
-  updateChannel(sessionId, channelId, (draft) => {
-    const effects = reorderEffectsByIds(draft.effects, effectIds);
-    draft.effects = effects;
-    serializedOrder = effects.map((effect) => effect.id);
-  });
-  const runtime = getPlaybackChannelRuntime(channelId);
-  if (serializedOrder && runtime.soundId) {
-    getAudioManager().reorderEffects(runtime.soundId, serializedOrder);
-  }
+  updateChannelEffectTree(
+    sessionId,
+    channelId,
+    (effects) => {
+      const reorderedEffects = reorderEffectsByIds(effects, effectIds);
+      serializedOrder = reorderedEffects.map((effect) => effect.id);
+      return reorderedEffects;
+    },
+    (soundId) => {
+      if (serializedOrder) {
+        getAudioManager().reorderEffects(soundId, serializedOrder);
+      }
+    }
+  );
 }
 
 function setChannelSubscriptionCleanup(
@@ -432,6 +654,7 @@ export function activateChannel(
     subscribeChannelRuntime(sessionId, channelId, soundId, {
       onAudioState: options.onAudioState,
     });
+    syncAllEffectSidechains();
   } catch (error) {
     setChannelSubscriptionCleanup(channelId, null);
     if (soundCreated) {
@@ -452,7 +675,9 @@ export function deactivateChannel(channelId: string): void {
   const runtime = getPlaybackChannelRuntime(channelId);
   setChannelSubscriptionCleanup(channelId, null);
   if (runtime.soundId) {
+    sidechainChannelIntents.delete(runtime.soundId);
     getAudioManager().cleanupSound(runtime.soundId);
   }
   resetPlaybackChannelRuntime(channelId);
+  syncAllEffectSidechains();
 }

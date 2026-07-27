@@ -34,7 +34,6 @@ function attachTestWorkletListeners() {
         handlers[event] = callback;
       }),
     } as never,
-    soundId: "sound-1",
     sounds: new Map([
       [
         "sound-1",
@@ -46,7 +45,6 @@ function attachTestWorkletListeners() {
       ],
     ]),
     notifyListeners,
-    meterListeners: new Map(),
   });
 
   return { handlers, notifyListeners };

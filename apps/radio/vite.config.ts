@@ -1,4 +1,11 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { cloudflare } from "@cloudflare/vite-plugin";
 import babel from "@rolldown/plugin-babel";
@@ -7,10 +14,12 @@ import tailwindcss from "@tailwindcss/vite";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import react, { reactCompilerPreset } from "@vitejs/plugin-react";
 import { build, defineConfig, type Plugin } from "vite";
+import { rewriteOpenDawEngineWorklet } from "./opendaw-assets";
 
 const WORKLET_OUT_DIR = ".worklet-build";
 const WORKLET_FILENAME = "dsp-processor-bundle.js";
 const APP_VERSION = process.env.npm_package_version || "0.5.0";
+const moduleRequire = createRequire(import.meta.url);
 
 const sentryAuthToken = process.env.SENTRY_AUTH_TOKEN;
 const sentryOrg = process.env.SENTRY_ORG;
@@ -60,6 +69,15 @@ const VENDOR_CHUNK_GROUPS: Array<{
   {
     name: "vendor-tanstack",
     match: (id) => id.includes("/node_modules/@tanstack/"),
+  },
+  {
+    // These browser-only packages define AudioWorkletNode subclasses at
+    // module scope. Keep them out of the shared audio chunk so the dynamic
+    // runtime import remains an actual SSR boundary.
+    name: "vendor-opendaw-studio",
+    match: (id) =>
+      id.includes("/node_modules/@opendaw/studio-") ||
+      id.includes("/node_modules/@opendaw/nam-"),
   },
   {
     name: "vendor-audio",
@@ -176,9 +194,130 @@ function audioWorkletPlugin(): Plugin {
   };
 }
 
+function collectFiles(root: string, relative = ""): string[] {
+  return readdirSync(path.join(root, relative), {
+    withFileTypes: true,
+  }).flatMap((entry) => {
+    const entryPath = path.join(relative, entry.name);
+    return entry.isDirectory() ? collectFiles(root, entryPath) : [entryPath];
+  });
+}
+
+const SOURCE_MAP_DIRECTIVE = /\n\/\/# sourceMappingURL=[^\n]+\s*$/;
+
+function readOpenDawAsset(source: string): Buffer | string {
+  return source.endsWith(".js")
+    ? readFileSync(source, "utf8").replace(SOURCE_MAP_DIRECTIVE, "")
+    : readFileSync(source);
+}
+
+/**
+ * Serve and emit the official openDAW engine/worklet/plugin artifacts at the
+ * stable URLs expected by WasmEngine. Keeping this package-driven avoids
+ * committing or manually maintaining generated WASM binaries.
+ */
+function openDawAssetsPlugin(): Plugin {
+  const wasmProcessor = moduleRequire.resolve(
+    "@opendaw/studio-core-wasm/wasm-processor.js"
+  );
+  const offlineWorker = moduleRequire.resolve(
+    "@opendaw/studio-core-wasm/wasm-offline-worker.js"
+  );
+  const engineWasm = moduleRequire.resolve(
+    "@opendaw/studio-core-wasm/wasm/engine.wasm"
+  );
+  const wasmRoot = path.dirname(engineWasm);
+  const coreProcessor = moduleRequire.resolve(
+    "@opendaw/studio-core/processors.js"
+  );
+  const studioRequire = createRequire(
+    moduleRequire.resolve("@opendaw/studio-core")
+  );
+  const namWasm = studioRequire.resolve("@opendaw/nam-wasm/nam.wasm");
+  const files = new Map<string, string>([
+    ["opendaw/processors.js", coreProcessor],
+    ["opendaw/wasm-processor.js", wasmProcessor],
+    ["opendaw/wasm-offline-worker.js", offlineWorker],
+    ...collectFiles(wasmRoot).map((relative): [string, string] => [
+      path.posix.join("opendaw/wasm", relative.replaceAll(path.sep, "/")),
+      path.join(wasmRoot, relative),
+    ]),
+    ["assets/@opendaw/nam-wasm/nam.wasm", namWasm],
+    ["opendaw/nam.wasm", namWasm],
+  ]);
+  let resolvedOutDir = path.resolve(process.cwd(), "dist");
+
+  return {
+    name: "opendaw-assets",
+    enforce: "pre",
+    configResolved(config) {
+      resolvedOutDir = path.resolve(config.root, config.build.outDir);
+    },
+    transform(code, id) {
+      if (
+        id
+          .replaceAll(path.sep, "/")
+          .endsWith("/@opendaw/studio-core/dist/EngineWorklet.js")
+      ) {
+        return {
+          code: rewriteOpenDawEngineWorklet(code),
+          map: null,
+        };
+      }
+    },
+    configureServer(server) {
+      server.middlewares.use((request, response, next) => {
+        const pathname = new URL(
+          request.url ?? "/",
+          "http://localhost"
+        ).pathname.slice(1);
+        const source =
+          files.get(pathname) ??
+          (pathname.endsWith("@opendaw/nam-wasm/nam.wasm")
+            ? namWasm
+            : undefined);
+        if (!source) {
+          next();
+          return;
+        }
+        response.setHeader(
+          "Content-Type",
+          source.endsWith(".wasm")
+            ? "application/wasm"
+            : "application/javascript"
+        );
+        response.end(readOpenDawAsset(source));
+      });
+    },
+    writeBundle(options) {
+      const targetDirs = new Set<string>([resolvedOutDir]);
+      if (path.basename(resolvedOutDir) === "server") {
+        targetDirs.add(path.resolve(resolvedOutDir, "..", "client"));
+      } else if (path.basename(resolvedOutDir) !== "client") {
+        targetDirs.add(path.resolve(resolvedOutDir, "client"));
+      }
+      if (options.dir) {
+        const bundleDir = path.resolve(options.dir);
+        targetDirs.add(bundleDir);
+        if (path.basename(bundleDir) === "server") {
+          targetDirs.add(path.resolve(bundleDir, "..", "client"));
+        }
+      }
+      for (const targetDir of targetDirs) {
+        for (const [relative, source] of files) {
+          const target = path.join(targetDir, relative);
+          mkdirSync(path.dirname(target), { recursive: true });
+          writeFileSync(target, readOpenDawAsset(source));
+        }
+      }
+    },
+  };
+}
+
 export default defineConfig({
   plugins: [
     audioWorkletPlugin(),
+    openDawAssetsPlugin(),
     cloudflare({
       viteEnvironment: { name: "ssr" },
     }),

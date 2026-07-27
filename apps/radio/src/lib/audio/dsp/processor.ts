@@ -48,10 +48,6 @@ export class DSPProcessor {
   private analysisFrameCounter = 0;
   private readonly analysisInterval = 3; // Send every N render quanta (~60fps)
 
-  // Peak meter (always active, independent of analysis)
-  private meterCounter = 0;
-  private readonly meterInterval = 6; // Send every N render quanta (~30fps)
-
   // Callback for emitting events to main thread
   private onMessage?: (message: { type: string; payload?: unknown }) => void;
 
@@ -136,6 +132,15 @@ export class DSPProcessor {
         break;
       }
 
+      case MessageType.SET_TEMPO: {
+        const { sourceId, bpm } = payload as {
+          sourceId: string;
+          bpm: number;
+        };
+        this.setTempo(sourceId, bpm);
+        break;
+      }
+
       case MessageType.SET_PARAM: {
         const { target, value } = payload as { target: string; value: number };
         this.setParam(target, value);
@@ -180,7 +185,7 @@ export class DSPProcessor {
           sourceId: string;
           effectId: string;
           type: EffectType;
-          config: Record<string, number | boolean | string>;
+          config: Record<string, unknown>;
           order: number;
         };
         this.addEffect(sourceId, effectId, type, config, order);
@@ -200,7 +205,7 @@ export class DSPProcessor {
         const { sourceId, effectId, config } = payload as {
           sourceId: string;
           effectId: string;
-          config: Record<string, number | boolean | string>;
+          config: Record<string, unknown>;
         };
         this.updateEffect(sourceId, effectId, config);
         break;
@@ -239,7 +244,9 @@ export class DSPProcessor {
     outputL: Float32Array,
     outputR: Float32Array,
     fromIndex: number,
-    toIndex: number
+    toIndex: number,
+    sidechainL?: Float32Array,
+    sidechainR?: Float32Array
   ): void {
     // Use pre-allocated temp buffers
     const tempL = this.mixTempL;
@@ -265,7 +272,16 @@ export class DSPProcessor {
       if (source.isPlaying) {
         hasActiveSource = true;
         // Process effects for this source
-        source.process(tempL, tempR, outputL, outputR, fromIndex, toIndex);
+        source.process(
+          tempL,
+          tempR,
+          outputL,
+          outputR,
+          fromIndex,
+          toIndex,
+          sidechainL,
+          sidechainR
+        );
       }
     }
 
@@ -295,19 +311,6 @@ export class DSPProcessor {
       fromIndex,
       toIndex
     );
-
-    // Emit peak meter data (always active, throttled to ~60fps)
-    this.meterCounter++;
-    if (this.meterCounter >= this.meterInterval) {
-      this.meterCounter = 0;
-      let peakL = 0;
-      let peakR = 0;
-      for (let i = fromIndex; i < toIndex; i++) {
-        peakL = Math.max(peakL, Math.abs(outputL[i] ?? 0));
-        peakR = Math.max(peakR, Math.abs(outputR[i] ?? 0));
-      }
-      this.emitMessage(MessageType.PEAK_METER, { peakL, peakR });
-    }
 
     // Run analysis if enabled (throttled)
     if (this.analysisEnabled && this.levelMeter && this.spectrumAnalyzer) {
@@ -443,6 +446,19 @@ export class DSPProcessor {
     source.setEffectsDryWet(dryWet);
   }
 
+  private setTempo(sourceId: string, bpm: number): void {
+    const source = this.sources.get(sourceId);
+    if (!source) {
+      this.emitSourceError(
+        sourceId,
+        "SOURCE_NOT_FOUND",
+        `Cannot set tempo: source ${sourceId} not found`
+      );
+      return;
+    }
+    source.setTempo(bpm);
+  }
+
   private setParam(target: string, value: number): void {
     if (target === "channelStrip.volume") {
       this.channelStrip.setVolume(value);
@@ -508,7 +524,7 @@ export class DSPProcessor {
     sourceId: string,
     effectId: string,
     type: EffectType,
-    config: Record<string, number | boolean | string>,
+    config: Record<string, unknown>,
     order: number
   ): void {
     const source = this.sources.get(sourceId);
@@ -548,7 +564,7 @@ export class DSPProcessor {
   private updateEffect(
     sourceId: string,
     effectId: string,
-    config: Record<string, number | boolean | string>
+    config: Record<string, unknown>
   ): void {
     const source = this.sources.get(sourceId);
     if (!source) {

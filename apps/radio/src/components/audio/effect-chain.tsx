@@ -1,4 +1,6 @@
 import { Button } from "@avoid.quest/ui/components/button";
+import { Input } from "@avoid.quest/ui/components/input";
+import { Label } from "@avoid.quest/ui/components/label";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import type { DragEndEvent, DragStartEvent } from "@dnd-kit/core";
 import {
@@ -21,6 +23,11 @@ import { CSS } from "@dnd-kit/utilities";
 import { PlusIcon } from "lucide-react";
 import { useState } from "react";
 import type { EffectConfig, EffectType } from "@/lib/audio";
+import {
+  clampEffectTempo,
+  MAX_EFFECT_TEMPO,
+  MIN_EFFECT_TEMPO,
+} from "@/lib/audio/dsp/effects/tempo";
 import { serializeEffectOrder } from "@/lib/effect-order";
 import { EffectItem } from "./effect-item";
 import { EffectPicker } from "./effect-picker";
@@ -35,6 +42,8 @@ type EffectChainProps = {
   showAddButton?: boolean;
   showEffectsList?: boolean;
   deckId?: "deck-a" | "deck-b";
+  tempo?: number;
+  onTempoChange?: (tempo: number) => void;
 };
 
 export function EffectChain({
@@ -47,6 +56,8 @@ export function EffectChain({
   showAddButton = true,
   showEffectsList = true,
   deckId,
+  tempo,
+  onTempoChange,
 }: EffectChainProps) {
   const [expandedEffectId, setExpandedEffectId] = useState<string | null>(null);
   const [showPicker, setShowPicker] = useState(false);
@@ -124,11 +135,36 @@ export function EffectChain({
 
   return (
     <div className="w-full min-w-0 space-y-2">
-      {title?.trim() !== "" && (
+      {title?.trim() && (
         <div className="font-medium text-muted-foreground text-sm">{title}</div>
       )}
 
-      {showEffectsList.valueOf() && (
+      {tempo !== undefined && onTempoChange && (
+        <div className="flex items-center gap-2 rounded-md border bg-muted/20 p-2">
+          <Label className="flex-1 text-xs" htmlFor={`${deckId}-effects-tempo`}>
+            Synced effect tempo
+          </Label>
+          <Input
+            className="h-8 w-24"
+            defaultValue={tempo}
+            id={`${deckId}-effects-tempo`}
+            key={tempo}
+            max={MAX_EFFECT_TEMPO}
+            min={MIN_EFFECT_TEMPO}
+            onBlur={(event) => {
+              const value = Number(event.target.value);
+              if (Number.isFinite(value)) {
+                onTempoChange(clampEffectTempo(value));
+              }
+            }}
+            step={0.1}
+            type="number"
+          />
+          <span className="text-muted-foreground text-xs">BPM</span>
+        </div>
+      )}
+
+      {showEffectsList && (
         <DndContext
           collisionDetection={closestCenter}
           onDragEnd={handleDragEnd}
@@ -179,7 +215,7 @@ export function EffectChain({
         </DndContext>
       )}
 
-      {showAddButton.valueOf() && (
+      {showAddButton && (
         <>
           <Button
             className="w-full"
@@ -191,7 +227,7 @@ export function EffectChain({
             Add Effect
           </Button>
 
-          {showPicker.valueOf() && (
+          {showPicker && (
             <EffectPicker
               onClose={() => setShowPicker(false)}
               onSelect={handleAddEffect}

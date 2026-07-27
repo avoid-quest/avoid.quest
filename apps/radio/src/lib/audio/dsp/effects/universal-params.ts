@@ -6,31 +6,35 @@ export const UNIVERSAL_EFFECT_PARAM_DEFS: readonly SliderParamDef<
   {
     type: "slider",
     key: "dryWet",
-    label: "Dry/Wet",
+    label: "Effect Mix",
     formatKey: "percentage",
     min: 0,
     max: 1,
     step: 0.01,
     description:
-      "Effect Mix: 0% = dry (bypassed), 100% = fully wet (full effect)",
+      "Outer wrapper blend: 0% passes the original signal, 100% passes the complete device output.",
   },
   {
     type: "slider",
     key: "inputGain",
-    label: "Input Gain",
+    label: "Pre-FX Trim",
     formatKey: "linearGain",
     min: 0,
     max: 4.0,
     step: 0.01,
+    description:
+      "Linear trim applied before the device, independently of native drive or detector-input controls.",
   },
   {
     type: "slider",
     key: "outputGain",
-    label: "Output Gain",
+    label: "Post-FX Trim",
     formatKey: "linearGain",
     min: 0,
     max: 4.0,
     step: 0.01,
+    description:
+      "Linear trim applied after the wrapper blend, independently of native output or makeup controls.",
   },
 ];
 

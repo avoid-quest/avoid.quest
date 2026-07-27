@@ -19,12 +19,20 @@ export {
   SpectrumAnalyzer,
   type StereoLevels,
 } from "./dsp/analysis/index.js";
+export {
+  canUseOfficialOpenDawRuntime,
+  isOfficialOpenDawEffect,
+  type OfficialOpenDawEffectType,
+  OPENDAW_FACTORY_KEYS,
+} from "./dsp/effects/official-opendaw-mapping.js";
 // DSP effect defaults
 export {
   AVAILABLE_EFFECTS,
   createDefaultEffectConfig,
   type EffectMetadata,
   getEffectMetadata,
+  OPENDAW_AVAILABLE_EFFECTS,
+  RADIO_AVAILABLE_EFFECTS,
 } from "./dsp/effects/registry.js";
 // DSP effect schema (declarative params)
 export {
@@ -32,9 +40,11 @@ export {
   convertEffectParamValue,
   convertPartialEffectConfigToEngine,
   EFFECT_DEFINITIONS,
+  EFFECT_PARAMETER_ROLE_MAP,
   EFFECT_SCHEMAS,
   type EffectDefinition,
   type EffectParamDef,
+  type EffectParameterRole,
   type EffectSchema,
   type EngineEffectConfig,
   type EngineEffectParamValue,
@@ -46,28 +56,53 @@ export {
   getEffectSliderParamDefs,
   type ParamDef,
   UNIVERSAL_EFFECT_PARAM_DEFS,
+  UNIVERSAL_EFFECT_PARAMETER_ROLES,
   type VisualizationType,
 } from "./dsp/effects/schema.js";
 // DSP types (effect configs)
 export type {
+  AutotuneConfig,
   BaseEffectConfig,
+  CheapReverbConfig,
   CompressorConfig,
   CrusherConfig,
   DelayConfig,
   DistortionConfig,
+  EffectChainConfig,
   EffectConfig,
   EffectProcessor,
+  EffectSidechainConfig,
   EffectType,
   FilterType,
   FoldConfig,
+  FrequencySplitConfig,
+  FxCompositeConfig,
+  GateConfig,
   LimiterConfig,
+  MaximizerConfig,
+  NeuralAmpConfig,
+  OpenDawEffectType,
   PitchShifterConfig,
   PlateReverbConfig,
+  RadioEffectType,
   RevampConfig,
+  StereoSplitConfig,
   StereoToolConfig,
+  TempoDivision,
   TidalConfig,
+  VocoderConfig,
+  WaveshaperConfig,
+  WaveshaperCurve,
+  WerkstattConfig,
 } from "./dsp/effects/types.js";
-export { EFFECT_TYPES, isEffectType } from "./dsp/effects/types.js";
+export {
+  EFFECT_TYPES,
+  isEffectType,
+  OPENDAW_EFFECT_TYPES,
+  RADIO_EFFECT_TYPES,
+  TEMPO_DIVISIONS,
+  WAVESHAPER_CURVES,
+} from "./dsp/effects/types.js";
 // DSP Processor types (for worklet communication)
 export {
   type AnalysisData,
@@ -86,10 +121,14 @@ export {
   countAudioEngineFacadeMethods,
   createAudioEngineFacade,
   crossfade,
+  DEFAULT_OPENDAW_RUNTIME_URLS,
   duckSound,
+  type EffectsGraphRuntime,
   type FilterConfig,
   fadeIn,
   fadeOut,
+  OfficialOpenDawRuntime,
+  type OpenDawRuntimeUrls,
   setWorkletProcessorUrl,
 } from "./manager/index.js";
 // Playback infrastructure

@@ -38,6 +38,37 @@ type ContainerParamsProps = {
   midiTargetPrefix?: string;
 };
 
+const DEFAULT_CROSSOVER_FREQUENCIES = [200, 1000, 5000] as const;
+const MIN_CROSSOVER_FREQUENCY = 20;
+const MAX_CROSSOVER_FREQUENCY = 20_000;
+const MIN_CROSSOVER_SPACING = 20;
+
+export function resizeFrequencyCrossovers(
+  frequencies: readonly number[],
+  bandCount: 2 | 3 | 4
+): number[] {
+  const count = bandCount - 1;
+  const result: number[] = [];
+  for (let index = 0; index < count; index++) {
+    const minimum =
+      index === 0
+        ? MIN_CROSSOVER_FREQUENCY
+        : (result[index - 1] ?? MIN_CROSSOVER_FREQUENCY) +
+          MIN_CROSSOVER_SPACING;
+    const maximum =
+      MAX_CROSSOVER_FREQUENCY - (count - index - 1) * MIN_CROSSOVER_SPACING;
+    const preferred =
+      frequencies[index] ?? DEFAULT_CROSSOVER_FREQUENCIES[index] ?? minimum;
+    result.push(
+      Math.max(
+        minimum,
+        Math.min(maximum, Number.isFinite(preferred) ? preferred : minimum)
+      )
+    );
+  }
+  return result;
+}
+
 function createId(prefix: string): string {
   return `${prefix}-${crypto.randomUUID()}`;
 }
@@ -222,7 +253,10 @@ export function ContainerParams({
     onUpdate({
       frequencyBandCount: bandCount,
       chains,
-      crossoverFrequencies: [200, 1000, 5000].slice(0, bandCount - 1),
+      crossoverFrequencies: resizeFrequencyCrossovers(
+        effect.crossoverFrequencies,
+        bandCount
+      ),
     } as Partial<EffectConfig>);
   };
 

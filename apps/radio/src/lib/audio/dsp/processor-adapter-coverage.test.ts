@@ -1,6 +1,8 @@
 import { describe, expect, spyOn, test } from "bun:test";
 import { CTAGCompressor } from "./effects/ctag-compressor";
+import { Delay } from "./effects/delay";
 import { createDefaultEffectConfig } from "./effects/registry";
+import { DattorroReverb } from "./effects/reverb";
 import type { EffectProcessor } from "./effects/types";
 import { EFFECT_TYPES } from "./effects/types";
 import { EffectSource } from "./processor-source";
@@ -110,33 +112,40 @@ describe("worklet effect adapter", () => {
       ...createDefaultEffectConfig("fxComposite", "parallel", 0),
       enabled: true,
     };
+    const delay = {
+      ...createDefaultEffectConfig("delay", "nested-delay", 0),
+      enabled: true,
+    };
+    const firstChain = composite.chains[0];
+    if (!firstChain) {
+      throw new Error("Default composite must contain a chain");
+    }
+    firstChain.effects = [delay];
+    const reset = spyOn(Delay.prototype, "reset");
+    const setFeedback = spyOn(Delay.prototype, "setFeedback");
 
     expect(source.addEffect("parallel", "fxComposite", composite, 0)).toBe(
       true
     );
+    reset.mockClear();
+    setFeedback.mockClear();
     source.updateEffect("parallel", {
-      chains: [
-        {
-          id: "nested",
-          name: "Nested",
-          order: 0,
-          gain: 1,
-          pan: 0,
-          muted: false,
-          solo: false,
-          effects: [
-            {
-              ...createDefaultEffectConfig("limiter", "nested-limiter", 0),
-              enabled: true,
-            },
-          ],
-        },
-      ],
+      chains: composite.chains.map((chain) => ({
+        ...chain,
+        effects:
+          chain.id === firstChain.id
+            ? [{ ...delay, feedback: 0.73 }]
+            : chain.effects,
+      })),
     });
 
     const output = processBlock(source, 0.25);
+    expect(setFeedback).toHaveBeenLastCalledWith(0.73);
+    expect(reset).not.toHaveBeenCalled();
     expect(output.every(Number.isFinite)).toBe(true);
     expect(output.some((sample) => sample !== 0)).toBe(true);
+    reset.mockRestore();
+    setFeedback.mockRestore();
   });
 
   test("maps official schema keys into the radio compatibility processors", () => {
@@ -307,6 +316,21 @@ describe("worklet effect adapter", () => {
     compressorAttack.mockRestore();
     compressorRelease.mockRestore();
     compressorMakeup.mockRestore();
+  });
+
+  test("converts plate reverb pre-delay milliseconds to DSP seconds", () => {
+    const preDelay = spyOn(DattorroReverb.prototype, "setPreDelay");
+    const source = new EffectSource("reverb-units", 48_000);
+    const config = {
+      ...createDefaultEffectConfig("plateReverb", "reverb", 0),
+      enabled: true,
+      preDelay: 100,
+    };
+
+    source.addEffect(config.id, config.type, config, config.order);
+
+    expect(preDelay).toHaveBeenLastCalledWith(0.1);
+    preDelay.mockRestore();
   });
 
   test("composes generalized controls around the device exactly once", () => {

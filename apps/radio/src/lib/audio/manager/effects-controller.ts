@@ -322,7 +322,14 @@ class EffectsController {
   }
 
   stopSource(soundId: string): void {
-    this.states.get(soundId)?.manager?.stopSource(soundId);
+    const state = this.states.get(soundId);
+    if (!state) {
+      return;
+    }
+    state.manager?.stopSource(soundId);
+    const generation = this.advance(state);
+    this.officialRuntime?.disconnectSound(soundId, generation);
+    state.officialConnected = false;
   }
 
   cleanupSound(soundId: string): void {

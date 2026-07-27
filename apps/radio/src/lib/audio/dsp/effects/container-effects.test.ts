@@ -119,6 +119,81 @@ describe("compatibility effect containers", () => {
     expect(sidechainSetters.get("compressor")).toHaveBeenLastCalledWith(null);
   });
 
+  test("reuses stateful children by stable ID and resets only removals", () => {
+    const config = createDefaultEffectConfig("fxComposite", "fx", 0);
+    const delay = createDefaultEffectConfig("delay", "delay", 0);
+    const reverb = createDefaultEffectConfig("plateReverb", "reverb", 1);
+    const firstChain = config.chains[0];
+    if (!firstChain) {
+      throw new Error("Default composite must contain a chain");
+    }
+    firstChain.effects = [delay, reverb];
+    const states = new Map<
+      string,
+      { reset: ReturnType<typeof mock>; value: number }
+    >();
+    const updateProcessor = mock(
+      (
+        _processor: {
+          process(
+            input: StereoChannels,
+            output: StereoChannels,
+            fromIndex: number,
+            toIndex: number
+          ): void;
+          reset(): void;
+        },
+        _child: EffectConfig
+      ) => undefined
+    );
+    let creations = 0;
+    const effect = new ContainerEffect(
+      "fxComposite",
+      SAMPLE_RATE,
+      config,
+      (child) => {
+        creations++;
+        const state = { reset: mock(() => undefined), value: 0 };
+        states.set(child.id, state);
+        return {
+          process: (input, output, fromIndex, toIndex) => {
+            state.value++;
+            output[0].set(input[0].subarray(fromIndex, toIndex), fromIndex);
+            output[1].set(input[1].subarray(fromIndex, toIndex), fromIndex);
+          },
+          reset: state.reset,
+        };
+      },
+      updateProcessor
+    );
+    const delayState = states.get(delay.id);
+    if (!delayState) {
+      throw new Error("Delay processor was not created");
+    }
+    delayState.value = 42;
+
+    effect.configure({
+      ...config,
+      chains: config.chains.map((chain) => ({
+        ...chain,
+        gain: 0.75,
+        effects:
+          chain.id === firstChain.id
+            ? [{ ...delay, feedback: 0.73 }]
+            : chain.effects,
+      })),
+    });
+
+    expect(creations).toBe(2);
+    expect(states.get(delay.id)?.value).toBe(42);
+    expect(states.get(delay.id)?.reset).not.toHaveBeenCalled();
+    expect(states.get(reverb.id)?.reset).toHaveBeenCalledTimes(1);
+    expect(updateProcessor).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({ id: delay.id, feedback: 0.73 })
+    );
+  });
+
   test("propagates sidechains through multiple container levels to gate, compressor, and vocoder", () => {
     const root = createDefaultEffectConfig("fxComposite", "root", 0);
     const nested = createDefaultEffectConfig("fxComposite", "nested", 0);

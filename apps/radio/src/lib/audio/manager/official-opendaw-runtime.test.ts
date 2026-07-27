@@ -475,6 +475,32 @@ describe("OfficialOpenDawRuntime", () => {
     expect(canceledRuntime.soundCount).toBe(0);
     canceledRuntime.cleanup();
 
+    let releaseStopped:
+      | ((loaded: Awaited<ReturnType<RuntimeModuleLoader>>) => void)
+      | undefined;
+    const stoppedRuntime = new OfficialOpenDawRuntime(
+      context,
+      undefined,
+      () =>
+        new Promise((resolve) => {
+          releaseStopped = resolve;
+        })
+    );
+    const stoppedRegistrationCount = registered.length;
+    const stopped = stoppedRuntime.connectSound(
+      "stopped",
+      source,
+      destination,
+      1
+    );
+    stoppedRuntime.disconnectSound("stopped", 2);
+    releaseStopped?.(modules);
+
+    expect(await stopped).toBe(false);
+    expect(stoppedRuntime.soundCount).toBe(0);
+    expect(registered).toHaveLength(stoppedRegistrationCount);
+    stoppedRuntime.cleanup();
+
     let releaseReplacement:
       | ((loaded: Awaited<ReturnType<RuntimeModuleLoader>>) => void)
       | undefined;

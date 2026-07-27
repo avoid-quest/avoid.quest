@@ -107,21 +107,36 @@ export function createEffectProcessor(
     case "stereoSplit":
     case "frequencySplit":
       return config
-        ? new ContainerEffect(type, sampleRate, config, (child) => {
-            const childProcessor = createEffectProcessor(
-              child.type,
-              sampleRate,
-              child
-            );
-            if (childProcessor) {
+        ? new ContainerEffect(
+            type,
+            sampleRate,
+            config,
+            (child) => {
+              const childProcessor = createEffectProcessor(
+                child.type,
+                sampleRate,
+                child
+              );
+              if (childProcessor) {
+                applyEffectConfig(
+                  childProcessor,
+                  child.type,
+                  child as unknown as Record<string, unknown>
+                );
+              }
+              return childProcessor;
+            },
+            (processor, child) => {
               applyEffectConfig(
-                childProcessor,
+                processor,
                 child.type,
                 child as unknown as Record<string, unknown>
               );
+              if (processor instanceof ContainerEffect) {
+                processor.configure(child);
+              }
             }
-            return childProcessor;
-          })
+          )
         : null;
     default:
       return null;
@@ -226,7 +241,7 @@ export function applyEffectConfig(
     case "plateReverb": {
       const reverb = processor as DattorroReverb;
       if (typeof config.preDelay === "number") {
-        reverb.setPreDelay(config.preDelay);
+        reverb.setPreDelay(config.preDelay / 1000);
       }
       if (typeof config.bandwidth === "number") {
         reverb.setBandwidth(config.bandwidth);

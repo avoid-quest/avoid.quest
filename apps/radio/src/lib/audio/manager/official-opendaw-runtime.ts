@@ -348,7 +348,18 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     return true;
   }
 
-  disconnectSound(soundId: string): void {
+  disconnectSound(
+    soundId: string,
+    generation = (this.connectionGenerations.get(soundId) ?? 0) + 1
+  ): void {
+    this.connectionGenerations.set(
+      soundId,
+      Math.max(generation, this.connectionGenerations.get(soundId) ?? 0)
+    );
+    this.disconnectSoundUnit(soundId);
+  }
+
+  private disconnectSoundUnit(soundId: string): void {
     const unit = this.soundUnits.get(soundId);
     if (!(unit && this.worklet && unit.source)) {
       return;
@@ -371,7 +382,7 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     if (!unit) {
       return;
     }
-    this.disconnectSound(soundId);
+    this.disconnectSoundUnit(soundId);
     const project = this.project;
     if (project) {
       this.releaseWerkstattGroups(unit.groups);
@@ -486,7 +497,7 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     }
     this.closed = true;
     for (const soundId of this.soundUnits.keys()) {
-      this.disconnectSound(soundId);
+      this.disconnectSoundUnit(soundId);
     }
     this.soundUnits.clear();
     this.sidechainTargets.clear();

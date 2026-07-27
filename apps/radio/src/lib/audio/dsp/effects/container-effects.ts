@@ -8,6 +8,10 @@ import type {
 } from "./types.js";
 
 type ProcessorFactory = (config: EffectConfig) => EffectProcessor | null;
+type ProcessorUpdater = (
+  processor: EffectProcessor,
+  config: EffectConfig
+) => void;
 
 type ChainRuntime = {
   config: EffectChainConfig;
@@ -60,6 +64,7 @@ export class ContainerEffect implements EffectProcessor {
   private readonly type: "fxComposite" | "stereoSplit" | "frequencySplit";
   private readonly sampleRate: number;
   private readonly factory: ProcessorFactory;
+  private readonly updateProcessor: ProcessorUpdater;
   private chains: ChainRuntime[] = [];
   private crossovers: number[] = [];
   private crossoverFilters: BiquadFilter[] = [];
@@ -73,11 +78,13 @@ export class ContainerEffect implements EffectProcessor {
     type: "fxComposite" | "stereoSplit" | "frequencySplit",
     sampleRate: number,
     config: EffectConfig,
-    factory: ProcessorFactory
+    factory: ProcessorFactory,
+    updateProcessor: ProcessorUpdater = () => undefined
   ) {
     this.type = type;
     this.sampleRate = sampleRate;
     this.factory = factory;
+    this.updateProcessor = updateProcessor;
     this.configure(config);
   }
 
@@ -89,41 +96,73 @@ export class ContainerEffect implements EffectProcessor {
     ) {
       return;
     }
+    const previousChains = new Map(
+      this.chains.map((chain) => [chain.config.id, chain])
+    );
+    const previousProcessors = new Map(
+      this.chains.flatMap((chain) =>
+        chain.processors.map((entry) => [entry.config.id, entry] as const)
+      )
+    );
+    const retainedProcessors = new Set<EffectProcessor>();
     this.chains = [...config.chains]
       .sort((left, right) => left.order - right.order)
-      .map((chain) => ({
-        config: chain,
-        processors: [...chain.effects]
-          .sort((left, right) => left.order - right.order)
-          .flatMap((effect) => {
-            const processor = this.factory(effect);
-            return processor ? [{ config: effect, processor }] : [];
-          }),
-        first: createBuffer(),
-        second: createBuffer(),
-        dry: createBuffer(),
-      }));
+      .map((chain) => {
+        const previousChain = previousChains.get(chain.id);
+        return {
+          config: chain,
+          processors: [...chain.effects]
+            .sort((left, right) => left.order - right.order)
+            .flatMap((effect) => {
+              const previous = previousProcessors.get(effect.id);
+              if (previous?.config.type === effect.type) {
+                this.updateProcessor(previous.processor, effect);
+                retainedProcessors.add(previous.processor);
+                return [{ config: effect, processor: previous.processor }];
+              }
+              const processor = this.factory(effect);
+              if (processor) {
+                retainedProcessors.add(processor);
+                return [{ config: effect, processor }];
+              }
+              return [];
+            }),
+          first: previousChain?.first ?? createBuffer(),
+          second: previousChain?.second ?? createBuffer(),
+          dry: previousChain?.dry ?? createBuffer(),
+        };
+      });
+    for (const { processor } of previousProcessors.values()) {
+      if (!retainedProcessors.has(processor)) {
+        processor.reset();
+      }
+    }
     this.crossovers =
       config.type === "frequencySplit"
         ? [...config.crossoverFrequencies]
             .filter(Number.isFinite)
             .sort((left, right) => left - right)
         : [];
-    this.rebuildCrossoverFilters();
+    this.updateCrossoverFilters();
     this.setSidechainInput(this.sidechain);
     this.setTempo(this.tempo);
   }
 
-  private rebuildCrossoverFilters(): void {
+  private updateCrossoverFilters(): void {
+    const previousFilters = this.crossoverFilters;
     this.crossoverFilters = this.crossovers
       .slice(0, Math.max(0, this.chains.length - 1))
-      .map((frequency) => {
-        const filter = new BiquadFilter(this.sampleRate);
+      .map((frequency, index) => {
+        const filter =
+          previousFilters[index] ?? new BiquadFilter(this.sampleRate);
         filter.type = "lowpass";
         filter.frequency = frequency;
         filter.Q = Math.SQRT1_2;
         return filter;
       });
+    for (const filter of previousFilters.slice(this.crossoverFilters.length)) {
+      filter.reset();
+    }
   }
 
   setSidechainInput(input: StereoChannels | null): void {

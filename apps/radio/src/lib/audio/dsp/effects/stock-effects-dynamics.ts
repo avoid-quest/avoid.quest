@@ -24,7 +24,7 @@ export class GateEffect {
   }
 
   setAttack(value: number): void {
-    this.attack = clamp(value, 0.1, 500);
+    this.attack = clamp(value, 0, 1000);
   }
 
   setRelease(value: number): void {

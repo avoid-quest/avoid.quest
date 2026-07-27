@@ -71,6 +71,7 @@ function createRuntime() {
     connectSidechainSource: mock(() => Promise.resolve(true)),
     connectSound: mock(() => Promise.resolve(true)),
     deleteSound: mock(() => undefined),
+    disconnectSound: mock(() => undefined),
     setDryWet: mock(() => undefined),
     setSidechainTarget: mock(() => undefined),
     setTempo: mock(() => undefined),
@@ -326,6 +327,87 @@ describe("EffectsController lifecycle", () => {
       filter,
       expect.any(Number)
     );
+  });
+
+  test("silences the official route on stop and reconnects it on replay", async () => {
+    const context = getAudioContext();
+    const filter = new TestAudioNode(context);
+    const destination = new TestAudioNode(context);
+    const manager = createManager(context);
+    const runtime = createRuntime();
+    const controller = new EffectsController({
+      createOfficialRuntime: () => runtime as unknown as OfficialOpenDawRuntime,
+      createWorkletManager: () => manager,
+      notifyListeners: () => undefined,
+      sounds: new Map([["target", sound("target", filter)]]),
+      workletProcessorUrl: () => "/worklet.js",
+    });
+    await controller.getOrCreateWorkletManager("target");
+    const reverb = createDefaultEffectConfig("plateReverb", "reverb", 0);
+    reverb.enabled = true;
+    controller.add("target", reverb);
+    await controller.connectGraph(
+      "target",
+      filter as unknown as AudioNode,
+      destination as unknown as AudioNode
+    );
+
+    controller.stopSource("target");
+
+    expect(manager.stopSource).toHaveBeenCalledWith("target");
+    expect(runtime.disconnectSound).toHaveBeenCalledWith(
+      "target",
+      expect.any(Number)
+    );
+
+    await controller.connectGraph(
+      "target",
+      filter as unknown as AudioNode,
+      destination as unknown as AudioNode
+    );
+
+    expect(runtime.connectSound).toHaveBeenCalledTimes(2);
+    expect(
+      filter.connections.has(manager.node as unknown as TestAudioNode)
+    ).toBe(false);
+  });
+
+  test("stop cancels an in-flight official connection", async () => {
+    const context = getAudioContext();
+    const filter = new TestAudioNode(context);
+    const manager = createManager(context);
+    let resolveConnection: ((connected: boolean) => void) | undefined;
+    const runtime = createRuntime();
+    runtime.connectSound.mockImplementation(
+      () =>
+        new Promise<boolean>((resolve) => {
+          resolveConnection = resolve;
+        })
+    );
+    const controller = new EffectsController({
+      createOfficialRuntime: () => runtime as unknown as OfficialOpenDawRuntime,
+      createWorkletManager: () => manager,
+      notifyListeners: () => undefined,
+      sounds: new Map([["target", sound("target", filter)]]),
+      workletProcessorUrl: () => "/worklet.js",
+    });
+    await controller.getOrCreateWorkletManager("target");
+    const reverb = createDefaultEffectConfig("plateReverb", "reverb", 0);
+    reverb.enabled = true;
+    controller.add("target", reverb);
+    const connecting = controller.connectGraph(
+      "target",
+      filter as unknown as AudioNode,
+      new TestAudioNode(context) as unknown as AudioNode
+    );
+    await Promise.resolve();
+
+    controller.stopSource("target");
+    resolveConnection?.(true);
+    await connecting;
+
+    expect(runtime.disconnectSound).toHaveBeenCalledTimes(1);
+    expect(runtime.syncEffects).not.toHaveBeenCalled();
   });
 
   test("stale official initialization cannot register a cleaned-up sound", async () => {

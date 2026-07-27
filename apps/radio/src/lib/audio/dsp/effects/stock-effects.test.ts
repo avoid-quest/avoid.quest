@@ -42,6 +42,18 @@ describe("stock compatibility processors", () => {
     expect(Math.abs(output[0][127] ?? 0)).toBeLessThan(0.01);
   });
 
+  test("Gate honors the exposed 0–1000 ms attack range", () => {
+    const gate = new GateEffect(48_000);
+    const attack = () => (gate as unknown as { attack: number }).attack;
+
+    gate.setAttack(0);
+    expect(attack()).toBe(0);
+    gate.setAttack(750);
+    expect(attack()).toBe(750);
+    gate.setAttack(1000);
+    expect(attack()).toBe(1000);
+  });
+
   test("Waveshaper exposes all six finite transfer curves", () => {
     const effect = new WaveshaperEffect();
     const output = stereo(0);

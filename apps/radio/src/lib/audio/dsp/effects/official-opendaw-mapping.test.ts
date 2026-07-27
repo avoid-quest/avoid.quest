@@ -1,10 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import {
   canUseOfficialOpenDawRuntime,
+  isOfficialOpenDawEffectType,
   OPENDAW_FACTORY_KEYS,
 } from "./official-opendaw-mapping";
 import { createDefaultEffectConfig } from "./registry";
-import { OPENDAW_EFFECT_TYPES } from "./types";
+import { OPENDAW_EFFECT_TYPES, RADIO_EFFECT_TYPES } from "./types";
 
 describe("official openDAW effect mapping", () => {
   test("maps every current openDAW effect to its published factory key", () => {
@@ -12,6 +13,15 @@ describe("official openDAW effect mapping", () => {
       ...OPENDAW_EFFECT_TYPES,
     ]);
     expect(new Set(Object.values(OPENDAW_FACTORY_KEYS))).toHaveLength(19);
+  });
+
+  test("classifies effect families from the factory mapping", () => {
+    for (const type of OPENDAW_EFFECT_TYPES) {
+      expect(isOfficialOpenDawEffectType(type)).toBe(true);
+    }
+    for (const type of RADIO_EFFECT_TYPES) {
+      expect(isOfficialOpenDawEffectType(type)).toBe(false);
+    }
   });
 
   test("rejects radio-only effects at any container depth", () => {

@@ -112,8 +112,7 @@ describe("OfficialOpenDawRuntime", () => {
       return box;
     };
 
-    const worklet = {
-      disconnect: (...args: unknown[]) => disconnected.push(args),
+    const engine = {
       isReady: async () => undefined,
       play: () => {
         playCount++;
@@ -125,6 +124,9 @@ describe("OfficialOpenDawRuntime", () => {
         unregistered.push(String(uuid[0]));
       },
       subscribeDeviceMessage: () => ({ terminate: () => undefined }),
+    };
+    const worklet = {
+      disconnect: (...args: unknown[]) => disconnected.push(args),
     };
     const project = {
       api: {
@@ -161,6 +163,7 @@ describe("OfficialOpenDawRuntime", () => {
           };
         },
       },
+      engine,
       startAudioWorklet: () => worklet,
       boxGraph: {},
       terminate: () => {

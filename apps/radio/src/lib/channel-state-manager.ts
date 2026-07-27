@@ -98,6 +98,25 @@ function syncRootContainer(soundId: string, root: EffectConfig | null): void {
   }
 }
 
+function updateChannelEffectTree(
+  sessionId: PlaybackSessionId,
+  channelId: string,
+  update: (effects: EffectConfig[]) => EffectConfig[],
+  reconcile: (
+    soundId: string,
+    effects: readonly EffectConfig[] | undefined
+  ) => void
+): void {
+  updateChannel(sessionId, channelId, (draft) => {
+    draft.effects = update(draft.effects);
+  });
+
+  const soundId = getPlaybackChannelRuntime(channelId).soundId;
+  if (soundId) {
+    reconcile(soundId, getPlaybackChannel(sessionId, channelId)?.effects);
+  }
+}
+
 function findSidechainChannelId(
   effects: readonly EffectConfig[]
 ): string | null {
@@ -343,24 +362,27 @@ export function addChannelEffect(
   effect: EffectConfig
 ): void {
   let orderedEffect: EffectConfig | null = null;
-  updateChannel(sessionId, channelId, (draft) => {
-    const effects = appendEffectInOrder(draft.effects, effect);
-    draft.effects = effects;
-    orderedEffect = effects.at(-1) ?? null;
-  });
-  const runtime = getPlaybackChannelRuntime(channelId);
-  if (orderedEffect && runtime.soundId) {
-    const manager = getAudioManager();
-    manager.addEffect(runtime.soundId, orderedEffect);
-    manager.setEffectsTempo(
-      runtime.soundId,
-      getPlaybackSession(sessionId)?.tempo ?? 120
-    );
-    syncEffectSidechain(
-      runtime.soundId,
-      getPlaybackChannel(sessionId, channelId)?.effects ?? []
-    );
-  }
+  updateChannelEffectTree(
+    sessionId,
+    channelId,
+    (effects) => {
+      const updatedEffects = appendEffectInOrder(effects, effect);
+      orderedEffect = updatedEffects.at(-1) ?? null;
+      return updatedEffects;
+    },
+    (soundId, effects) => {
+      if (!orderedEffect) {
+        return;
+      }
+      const manager = getAudioManager();
+      manager.addEffect(soundId, orderedEffect);
+      manager.setEffectsTempo(
+        soundId,
+        getPlaybackSession(sessionId)?.tempo ?? 120
+      );
+      syncEffectSidechain(soundId, effects ?? []);
+    }
+  );
 }
 
 export function createAndAddChannelEffect(
@@ -384,18 +406,21 @@ export function addChannelEffectToChain(
   chainId: string,
   effect: EffectConfig
 ): void {
-  updateChannel(sessionId, channelId, (draft) => {
-    draft.effects = appendEffectToTree(draft.effects, effect, chainId);
-  });
-  const channel = getPlaybackChannel(sessionId, channelId);
-  const soundId = getPlaybackChannelRuntime(channelId).soundId;
-  if (channel && soundId) {
-    syncRootContainer(
-      soundId,
-      findRootEffectContainerForChain(channel.effects, chainId)
-    );
-    syncEffectSidechain(soundId, channel.effects);
-  }
+  updateChannelEffectTree(
+    sessionId,
+    channelId,
+    (effects) => appendEffectToTree(effects, effect, chainId),
+    (soundId, effects) => {
+      if (!effects) {
+        return;
+      }
+      syncRootContainer(
+        soundId,
+        findRootEffectContainerForChain(effects, chainId)
+      );
+      syncEffectSidechain(soundId, effects);
+    }
+  );
 }
 
 export function createAndAddChannelEffectToChain(
@@ -426,26 +451,37 @@ export function updateChannelEffect(
 ): void {
   let effectFound = false;
   let effectType: EffectType | null = null;
-  updateChannel(sessionId, channelId, (draft) => {
-    const effect = findEffectInTree(draft.effects, effectId);
-    if (effect) {
-      draft.effects = updateEffectInTree(draft.effects, effectId, effectConfig);
+  updateChannelEffectTree(
+    sessionId,
+    channelId,
+    (effects) => {
+      const effect = findEffectInTree(effects, effectId);
+      if (!effect) {
+        return effects;
+      }
       effectFound = true;
       effectType = effect.type;
+      return updateEffectInTree(effects, effectId, effectConfig);
+    },
+    (soundId, effects) => {
+      if (!(effectFound && effectType)) {
+        return;
+      }
+      const persistedEffects = effects ?? [];
+      const root = findRootEffectContainer(persistedEffects, effectId);
+      if (root) {
+        syncRootContainer(soundId, root);
+      } else {
+        getAudioManager().updateEffect(
+          soundId,
+          effectId,
+          effectType,
+          effectConfig
+        );
+      }
+      syncEffectSidechain(soundId, persistedEffects);
     }
-  });
-  const runtime = getPlaybackChannelRuntime(channelId);
-  if (effectFound && effectType && runtime.soundId) {
-    const manager = getAudioManager();
-    const effects = getPlaybackChannel(sessionId, channelId)?.effects ?? [];
-    const root = findRootEffectContainer(effects, effectId);
-    if (root) {
-      syncRootContainer(runtime.soundId, root);
-    } else {
-      manager.updateEffect(runtime.soundId, effectId, effectType, effectConfig);
-    }
-    syncEffectSidechain(runtime.soundId, effects);
-  }
+  );
 }
 
 export function removeChannelEffect(
@@ -456,21 +492,23 @@ export function removeChannelEffect(
   const existingEffects =
     getPlaybackChannel(sessionId, channelId)?.effects ?? [];
   const rootId = findRootEffectContainer(existingEffects, effectId)?.id;
-  updateChannel(sessionId, channelId, (draft) => {
-    draft.effects = removeEffectFromTree(draft.effects, effectId);
-  });
-  const runtime = getPlaybackChannelRuntime(channelId);
-  if (runtime.soundId) {
-    const manager = getAudioManager();
-    const effects = getPlaybackChannel(sessionId, channelId)?.effects ?? [];
-    const root = rootId ? (findEffectInTree(effects, rootId) ?? null) : null;
-    if (root) {
-      syncRootContainer(runtime.soundId, root);
-    } else {
-      manager.removeEffect(runtime.soundId, effectId);
+  updateChannelEffectTree(
+    sessionId,
+    channelId,
+    (effects) => removeEffectFromTree(effects, effectId),
+    (soundId, effects) => {
+      const persistedEffects = effects ?? [];
+      const root = rootId
+        ? (findEffectInTree(persistedEffects, rootId) ?? null)
+        : null;
+      if (root) {
+        syncRootContainer(soundId, root);
+      } else {
+        getAudioManager().removeEffect(soundId, effectId);
+      }
+      syncEffectSidechain(soundId, persistedEffects);
     }
-    syncEffectSidechain(runtime.soundId, effects);
-  }
+  );
 }
 
 export function reorderChannelEffectChain(
@@ -479,17 +517,19 @@ export function reorderChannelEffectChain(
   chainId: string,
   effectIds: string[]
 ): void {
-  updateChannel(sessionId, channelId, (draft) => {
-    draft.effects = reorderEffectTreeChain(draft.effects, effectIds, chainId);
-  });
-  const channel = getPlaybackChannel(sessionId, channelId);
-  const soundId = getPlaybackChannelRuntime(channelId).soundId;
-  if (channel && soundId) {
-    syncRootContainer(
-      soundId,
-      findRootEffectContainerForChain(channel.effects, chainId)
-    );
-  }
+  updateChannelEffectTree(
+    sessionId,
+    channelId,
+    (effects) => reorderEffectTreeChain(effects, effectIds, chainId),
+    (soundId, effects) => {
+      if (effects) {
+        syncRootContainer(
+          soundId,
+          findRootEffectContainerForChain(effects, chainId)
+        );
+      }
+    }
+  );
 }
 
 export function reorderChannelEffects(
@@ -498,15 +538,20 @@ export function reorderChannelEffects(
   effectIds: string[]
 ): void {
   let serializedOrder: string[] | null = null;
-  updateChannel(sessionId, channelId, (draft) => {
-    const effects = reorderEffectsByIds(draft.effects, effectIds);
-    draft.effects = effects;
-    serializedOrder = effects.map((effect) => effect.id);
-  });
-  const runtime = getPlaybackChannelRuntime(channelId);
-  if (serializedOrder && runtime.soundId) {
-    getAudioManager().reorderEffects(runtime.soundId, serializedOrder);
-  }
+  updateChannelEffectTree(
+    sessionId,
+    channelId,
+    (effects) => {
+      const reorderedEffects = reorderEffectsByIds(effects, effectIds);
+      serializedOrder = reorderedEffects.map((effect) => effect.id);
+      return reorderedEffects;
+    },
+    (soundId) => {
+      if (serializedOrder) {
+        getAudioManager().reorderEffects(soundId, serializedOrder);
+      }
+    }
+  );
 }
 
 function setChannelSubscriptionCleanup(

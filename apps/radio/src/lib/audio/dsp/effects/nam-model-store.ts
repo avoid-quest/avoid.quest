@@ -6,6 +6,13 @@ const LOCAL_NAM_PREFIX = "local-nam:";
 const cache = new Map<string, string>();
 let databasePromise: Promise<IDBDatabase> | null = null;
 
+export type LocalNamModelMetadata = {
+  modelData: null;
+  modelId: string;
+  modelName: string;
+  modelUrl: null;
+};
+
 function openDatabase(): Promise<IDBDatabase> | null {
   if (typeof indexedDB === "undefined") {
     return null;
@@ -30,6 +37,32 @@ function requestResult<T>(request: IDBRequest<T>): Promise<T> {
 
 export function createLocalNamModelId(): string {
   return `${LOCAL_NAM_PREFIX}${crypto.randomUUID()}`;
+}
+
+export function parseNamModel(
+  modelName: string,
+  modelData: string
+): { modelData: string; modelName: string } {
+  const parsed = JSON.parse(modelData) as unknown;
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    throw new Error("NAM model must contain a JSON object.");
+  }
+  return { modelName, modelData };
+}
+
+export async function ingestLocalNamModel(
+  modelName: string,
+  modelData: string
+): Promise<LocalNamModelMetadata> {
+  const model = parseNamModel(modelName, modelData);
+  const modelId = createLocalNamModelId();
+  await saveNamModel(modelId, model.modelData);
+  return {
+    modelData: null,
+    modelId,
+    modelName: model.modelName,
+    modelUrl: null,
+  };
 }
 
 export function collectLocalNamModelIds(

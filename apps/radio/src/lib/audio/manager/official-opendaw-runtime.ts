@@ -1,5 +1,5 @@
 import { UUID } from "@opendaw/lib-std";
-import type { EngineWorklet, Project, ProjectEnv } from "@opendaw/studio-core";
+import type { Project, ProjectEnv } from "@opendaw/studio-core";
 import { clampEffectTempo } from "../dsp/effects/tempo.js";
 import type { EffectConfig } from "../dsp/effects/types.js";
 import {
@@ -120,7 +120,6 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
   >();
   private initializePromise: Promise<void> | null = null;
   private project: Project | null = null;
-  private worklet: EngineWorklet | null = null;
   private modules: RuntimeModules | null = null;
   private werkstattCompiler: WerkstattCompiler | null = null;
   private silentDestination: GainNode | null = null;
@@ -139,7 +138,7 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
   }
 
   get isReady(): boolean {
-    return this.project !== null && this.worklet !== null;
+    return this.project !== null;
   }
 
   get soundCount(): number {
@@ -207,8 +206,8 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     // uses only the per-source monitor returns; leaving output 0 connected
     // would duplicate the signal.
     worklet.disconnect(this.context.destination, 0, 0);
-    await worklet.isReady();
-    worklet.play();
+    await project.engine.isReady();
+    project.engine.play();
 
     if (this.closed) {
       project.terminate();
@@ -217,7 +216,6 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
 
     this.modules = modules;
     this.project = project;
-    this.worklet = worklet;
     this.werkstattCompiler = modules.adapters.ScriptCompiler.create({
       headerTag: "werkstatt",
       registryName: "werkstattProcessors",
@@ -293,7 +291,6 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       return false;
     }
     const project = this.requireProject();
-    const worklet = this.requireWorklet();
     let unit = this.soundUnits.get(soundId);
 
     if (!unit) {
@@ -332,10 +329,10 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       this.bindSidechains();
       return true;
     } else if (unit.source !== null) {
-      worklet.unregisterMonitoringSource(unit.audioUnitBox.address.uuid);
+      project.engine.unregisterMonitoringSource(unit.audioUnitBox.address.uuid);
     }
 
-    worklet.registerMonitoringSource(
+    project.engine.registerMonitoringSource(
       unit.audioUnitBox.address.uuid,
       source,
       2,
@@ -361,10 +358,11 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
 
   private disconnectSoundUnit(soundId: string): void {
     const unit = this.soundUnits.get(soundId);
-    if (!(unit && this.worklet && unit.source)) {
+    const project = this.project;
+    if (!(unit && project && unit.source)) {
       return;
     }
-    this.worklet.unregisterMonitoringSource(unit.audioUnitBox.address.uuid);
+    project.engine.unregisterMonitoringSource(unit.audioUnitBox.address.uuid);
     unit.source = null;
     unit.destination = null;
     this.bindSidechains();
@@ -516,7 +514,6 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     this.silentDestination = null;
     this.project?.terminate();
     this.project = null;
-    this.worklet = null;
     this.modules = null;
     this.werkstattCompiler = null;
     this.initializePromise = null;
@@ -534,13 +531,6 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       throw new Error("openDAW runtime is not initialized");
     }
     return this.project;
-  }
-
-  private requireWorklet(): EngineWorklet {
-    if (!this.worklet) {
-      throw new Error("openDAW runtime is not initialized");
-    }
-    return this.worklet;
   }
 
   private adapterContext() {
@@ -638,7 +628,7 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     const device = group.device as unknown as {
       address: { uuid: Uint8Array };
     };
-    const subscription = this.requireWorklet().subscribeDeviceMessage(
+    const subscription = this.requireProject().engine.subscribeDeviceMessage(
       UUID.toString(device.address.uuid),
       (message) => {
         if (this.werkstattGroups.get(effectId) === group) {

@@ -65,6 +65,12 @@ describe("openDAW audio effect catalog", () => {
     expect(RADIO_AVAILABLE_EFFECTS.map(({ type }) => type)).toEqual([
       ...RADIO_EFFECT_TYPES,
     ]);
+    expect(
+      OPENDAW_AVAILABLE_EFFECTS.every(({ family }) => family === "openDAW")
+    ).toBe(true);
+    expect(
+      RADIO_AVAILABLE_EFFECTS.every(({ family }) => family === "radio")
+    ).toBe(true);
     expect(AVAILABLE_EFFECTS.map(({ type }) => type)).toEqual([
       ...EFFECT_TYPES,
     ]);

@@ -4,6 +4,7 @@
  * Compatibility registry derived from the deep effect definitions.
  */
 
+import { isOfficialOpenDawEffectType } from "./official-opendaw-mapping.js";
 import {
   EFFECT_DEFINITIONS,
   type EffectDefinition,
@@ -31,9 +32,7 @@ function effectMetadata(type: EffectType): EffectMetadata {
     name: definition.name,
     description: definition.description,
     defaultConfig: definition.defaultConfig,
-    family: (OPENDAW_EFFECT_TYPES as readonly string[]).includes(type)
-      ? "openDAW"
-      : "radio",
+    family: isOfficialOpenDawEffectType(type) ? "openDAW" : "radio",
   };
 }
 
@@ -87,9 +86,7 @@ export function getEffectMetadata(
     name: definition.name,
     description: definition.description,
     defaultConfig: definition.defaultConfig,
-    family: (OPENDAW_EFFECT_TYPES as readonly string[]).includes(type)
-      ? "openDAW"
-      : "radio",
+    family: isOfficialOpenDawEffectType(type) ? "openDAW" : "radio",
   };
 }
 

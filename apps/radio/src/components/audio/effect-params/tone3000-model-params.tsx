@@ -3,26 +3,14 @@ import { Input } from "@avoid.quest/ui/components/input";
 import { Label } from "@avoid.quest/ui/components/label";
 import { useState } from "react";
 import type { EffectConfig } from "@/lib/audio";
-import {
-  createLocalNamModelId,
-  saveNamModel,
-} from "@/lib/audio/dsp/effects/nam-model-store";
+import { ingestLocalNamModel } from "@/lib/audio/dsp/effects/nam-model-store";
+
+export { parseNamModel } from "@/lib/audio/dsp/effects/nam-model-store";
 
 type Tone3000ModelParamsProps = {
   effect: Extract<EffectConfig, { type: "neuralAmp" }>;
   onUpdate: (config: Partial<EffectConfig>) => void;
 };
-
-export function parseNamModel(
-  modelName: string,
-  modelData: string
-): { modelData: string; modelName: string } {
-  const parsed = JSON.parse(modelData) as unknown;
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-    throw new Error("NAM model must contain a JSON object.");
-  }
-  return { modelName, modelData };
-}
 
 export function Tone3000ModelParams({
   effect,
@@ -32,16 +20,9 @@ export function Tone3000ModelParams({
 
   const loadFile = async (file: File) => {
     try {
-      const model = parseNamModel(file.name, await file.text());
-      const modelId = createLocalNamModelId();
-      await saveNamModel(modelId, model.modelData);
-      onUpdate({
-        modelName: model.modelName,
-        modelData: null,
-        modelId,
-        modelUrl: null,
-      } as Partial<EffectConfig>);
-      setStatus(`Loaded ${file.name} locally.`);
+      const model = await ingestLocalNamModel(file.name, await file.text());
+      onUpdate(model);
+      setStatus(`Loaded ${model.modelName} locally.`);
     } catch (cause) {
       setStatus(cause instanceof Error ? cause.message : "Invalid NAM model.");
     }

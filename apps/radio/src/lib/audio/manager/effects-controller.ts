@@ -22,6 +22,7 @@ import {
 } from "./audio-manager-effects.js";
 import { attachWorkletManagerListeners } from "./audio-manager-graph.js";
 import type { SoundInstance } from "./audio-manager-types.js";
+import type { EffectsGraphRuntime } from "./effects-graph-runtime.js";
 import { OfficialOpenDawRuntime } from "./official-opendaw-runtime.js";
 
 type GraphConnection = { destination: AudioNode; source: AudioNode };
@@ -44,7 +45,7 @@ type EffectsControllerOptions = {
   workletProcessorUrl: () => string;
   sounds: Map<string, SoundInstance>;
   notifyListeners: (soundId: string, state: AudioState) => void;
-  createOfficialRuntime?: (context: AudioContext) => OfficialOpenDawRuntime;
+  createOfficialRuntime?: (context: AudioContext) => EffectsGraphRuntime;
   createWorkletManager?: (
     context: AudioContext,
     processorUrl: string
@@ -65,7 +66,7 @@ const createSoundState = (): SoundEffectsState => ({
 });
 
 class EffectsController {
-  private officialRuntime: OfficialOpenDawRuntime | null = null;
+  private officialRuntime: EffectsGraphRuntime | null = null;
   private officialRuntimeUnavailable = false;
   private bpm = 120;
   private nextGeneration = 0;
@@ -78,7 +79,7 @@ class EffectsController {
   ) => void;
   private readonly createOfficialRuntime: (
     context: AudioContext
-  ) => OfficialOpenDawRuntime;
+  ) => EffectsGraphRuntime;
   private readonly createWorkletManager: (
     context: AudioContext,
     processorUrl: string
@@ -475,7 +476,7 @@ class EffectsController {
   }
 
   private async registerCompatibilitySources(
-    runtime: OfficialOpenDawRuntime,
+    runtime: EffectsGraphRuntime,
     exceptSoundId: string
   ): Promise<void> {
     await Promise.all(

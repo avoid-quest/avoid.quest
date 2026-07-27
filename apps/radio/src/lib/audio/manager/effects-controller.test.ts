@@ -11,7 +11,7 @@ import {
 } from "./audio-engine-lifecycle-test-harness";
 import type { SoundInstance } from "./audio-manager-types";
 import { EffectsController } from "./effects-controller";
-import type { OfficialOpenDawRuntime } from "./official-opendaw-runtime";
+import type { EffectsGraphRuntime } from "./effects-graph-runtime";
 
 class TestAudioNode {
   readonly context: BaseAudioContext;
@@ -76,7 +76,7 @@ function createRuntime() {
     setSidechainTarget: mock(() => undefined),
     setTempo: mock(() => undefined),
     syncEffects: mock(() => undefined),
-  };
+  } satisfies EffectsGraphRuntime;
 }
 
 describe("EffectsController lifecycle", () => {
@@ -119,7 +119,7 @@ describe("EffectsController lifecycle", () => {
     ]);
     const runtime = createRuntime();
     const controller = new EffectsController({
-      createOfficialRuntime: () => runtime as unknown as OfficialOpenDawRuntime,
+      createOfficialRuntime: () => runtime,
       createWorkletManager: (audioContext) => createManager(audioContext),
       notifyListeners: () => undefined,
       sounds,
@@ -227,7 +227,7 @@ describe("EffectsController lifecycle", () => {
         })
     );
     const controller = new EffectsController({
-      createOfficialRuntime: () => runtime as unknown as OfficialOpenDawRuntime,
+      createOfficialRuntime: () => runtime,
       createWorkletManager: () => manager,
       notifyListeners: () => undefined,
       sounds: new Map([["target", sound("target", filter)]]),
@@ -310,7 +310,7 @@ describe("EffectsController lifecycle", () => {
     const manager = createManager(context);
     const runtime = createRuntime();
     const controller = new EffectsController({
-      createOfficialRuntime: () => runtime as unknown as OfficialOpenDawRuntime,
+      createOfficialRuntime: () => runtime,
       createWorkletManager: () => manager,
       notifyListeners: () => undefined,
       sounds: new Map([["target", sound("target", filter)]]),
@@ -372,7 +372,7 @@ describe("EffectsController lifecycle", () => {
     const manager = createManager(context);
     const runtime = createRuntime();
     const controller = new EffectsController({
-      createOfficialRuntime: () => runtime as unknown as OfficialOpenDawRuntime,
+      createOfficialRuntime: () => runtime,
       createWorkletManager: () => manager,
       notifyListeners: () => undefined,
       sounds: new Map([["target", sound("target", filter)]]),
@@ -421,7 +421,7 @@ describe("EffectsController lifecycle", () => {
         })
     );
     const controller = new EffectsController({
-      createOfficialRuntime: () => runtime as unknown as OfficialOpenDawRuntime,
+      createOfficialRuntime: () => runtime,
       createWorkletManager: () => manager,
       notifyListeners: () => undefined,
       sounds: new Map([["target", sound("target", filter)]]),
@@ -459,7 +459,7 @@ describe("EffectsController lifecycle", () => {
         })
     );
     const controller = new EffectsController({
-      createOfficialRuntime: () => runtime as unknown as OfficialOpenDawRuntime,
+      createOfficialRuntime: () => runtime,
       createWorkletManager: (audioContext) => createManager(audioContext),
       notifyListeners: () => undefined,
       sounds,

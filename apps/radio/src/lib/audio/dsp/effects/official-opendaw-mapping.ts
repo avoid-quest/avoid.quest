@@ -1,4 +1,4 @@
-import type { EffectConfig, EffectType } from "./types.js";
+import type { EffectConfig, OpenDawEffectType } from "./types.js";
 
 export const OPENDAW_FACTORY_KEYS = {
   plateReverb: "DattorroReverb",
@@ -20,19 +20,23 @@ export const OPENDAW_FACTORY_KEYS = {
   fxComposite: "AudioEffectComposite",
   stereoSplit: "StereoComposite",
   frequencySplit: "FrequencySplit",
-} as const satisfies Partial<
-  Record<
-    EffectType,
-    keyof typeof import("@opendaw/studio-core").EffectFactories.AudioNamed
-  >
+} as const satisfies Record<
+  OpenDawEffectType,
+  keyof typeof import("@opendaw/studio-core").EffectFactories.AudioNamed
 >;
 
 export type OfficialOpenDawEffectType = keyof typeof OPENDAW_FACTORY_KEYS;
 
+export function isOfficialOpenDawEffectType(
+  type: string
+): type is OfficialOpenDawEffectType {
+  return Object.hasOwn(OPENDAW_FACTORY_KEYS, type);
+}
+
 export function isOfficialOpenDawEffect(
   effect: EffectConfig
 ): effect is Extract<EffectConfig, { type: OfficialOpenDawEffectType }> {
-  return Object.hasOwn(OPENDAW_FACTORY_KEYS, effect.type);
+  return isOfficialOpenDawEffectType(effect.type);
 }
 
 /**

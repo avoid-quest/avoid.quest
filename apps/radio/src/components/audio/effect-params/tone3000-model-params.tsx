@@ -1,9 +1,13 @@
 import { Button } from "@avoid.quest/ui/components/button";
 import { Input } from "@avoid.quest/ui/components/input";
 import { Label } from "@avoid.quest/ui/components/label";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { EffectConfig } from "@/lib/audio";
-import { ingestLocalNamModel } from "@/lib/audio/dsp/effects/nam-model-store";
+import {
+  deleteNamModel,
+  ingestLocalNamModel,
+  type LocalNamModelMetadata,
+} from "@/lib/audio/dsp/effects/nam-model-store";
 
 export { parseNamModel } from "@/lib/audio/dsp/effects/nam-model-store";
 
@@ -12,15 +16,62 @@ type Tone3000ModelParamsProps = {
   onUpdate: (config: Partial<EffectConfig>) => void;
 };
 
+type NamModelFile = Pick<File, "name" | "text">;
+type NamModelLoaderDependencies = {
+  discard: (modelId: string) => Promise<void>;
+  ingest: (
+    modelName: string,
+    modelData: string
+  ) => Promise<LocalNamModelMetadata>;
+};
+
+export function createNamModelLoader({
+  discard = deleteNamModel,
+  ingest = ingestLocalNamModel,
+}: Partial<NamModelLoaderDependencies> = {}) {
+  let generation = 0;
+  return {
+    invalidate: () => {
+      generation++;
+    },
+    load: async (file: NamModelFile): Promise<LocalNamModelMetadata | null> => {
+      const request = ++generation;
+      try {
+        const modelData = await file.text();
+        if (request !== generation) {
+          return null;
+        }
+        const model = await ingest(file.name, modelData);
+        if (request !== generation) {
+          await discard(model.modelId);
+          return null;
+        }
+        return model;
+      } catch (cause) {
+        if (request !== generation) {
+          return null;
+        }
+        throw cause;
+      }
+    },
+  };
+}
+
 export function Tone3000ModelParams({
   effect,
   onUpdate,
 }: Tone3000ModelParamsProps) {
   const [status, setStatus] = useState<string | null>(null);
+  const [loader] = useState(createNamModelLoader);
+
+  useEffect(() => () => loader.invalidate(), [loader]);
 
   const loadFile = async (file: File) => {
     try {
-      const model = await ingestLocalNamModel(file.name, await file.text());
+      const model = await loader.load(file);
+      if (!model) {
+        return;
+      }
       onUpdate(model);
       setStatus(`Loaded ${model.modelName} locally.`);
     } catch (cause) {
@@ -49,6 +100,7 @@ export function Tone3000ModelParams({
         {effect.modelId && (
           <Button
             onClick={() => {
+              loader.invalidate();
               onUpdate({
                 modelId: null,
                 modelName: null,

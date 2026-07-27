@@ -356,6 +356,45 @@ describe("worklet effect adapter", () => {
     preDelay.mockRestore();
   });
 
+  test("preserves positive plate reverb wet and dry gains", () => {
+    const source = new EffectSource("reverb-positive-gain", 48_000);
+    const config = {
+      ...createDefaultEffectConfig("plateReverb", "reverb", 0),
+      dry: 12,
+      wet: 12,
+    };
+
+    source.addEffect(config.id, config.type, config, config.order);
+
+    expect(getProcessor(source, config.id)).toMatchObject({
+      dry: 10 ** (12 / 20),
+      wet: 10 ** (12 / 20),
+    });
+  });
+
+  test("bypasses a compatibility neural amp until a model is selected", () => {
+    const source = new EffectSource("model-less-amp", 48_000);
+    const config = {
+      ...createDefaultEffectConfig("neuralAmp", "amp", 0),
+      enabled: true,
+    };
+    source.addEffect(config.id, config.type, config, config.order);
+
+    const input = new Float32Array(BLOCK_SIZE).map(
+      (_, index) => (index - BLOCK_SIZE / 2) / BLOCK_SIZE
+    );
+    const outputL = new Float32Array(BLOCK_SIZE);
+    const outputR = new Float32Array(BLOCK_SIZE);
+    source.process(input, input, outputL, outputR, 0, BLOCK_SIZE);
+
+    expect(outputL).toEqual(input);
+    expect(outputR).toEqual(input);
+
+    source.updateEffect(config.id, { modelData: "{}" });
+    source.process(input, input, outputL, outputR, 0, BLOCK_SIZE);
+    expect(outputL).not.toEqual(input);
+  });
+
   test("composes generalized controls around the device exactly once", () => {
     const source = new EffectSource("wrapper", 48_000);
     const config = {

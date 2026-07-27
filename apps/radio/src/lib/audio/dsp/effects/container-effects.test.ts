@@ -49,6 +49,49 @@ describe("compatibility effect containers", () => {
     }
   });
 
+  test("keeps an isolated crossover branch at Linkwitz-Riley level", () => {
+    const frequency = 1000;
+    const config = createDefaultEffectConfig(
+      "frequencySplit",
+      "frequency-split",
+      0
+    );
+    config.crossoverFrequencies = [frequency];
+    config.chains = config.chains.slice(0, 2).map((chain, index) => ({
+      ...chain,
+      muted: index === 0,
+    }));
+    const effect = new ContainerEffect(
+      "frequencySplit",
+      SAMPLE_RATE,
+      config,
+      () => null
+    );
+    let inputEnergy = 0;
+    let outputEnergy = 0;
+
+    for (let block = 0; block < 100; block++) {
+      const input = buffers();
+      const output = buffers();
+      for (let index = 0; index < BLOCK_SIZE; index++) {
+        const sample = Math.sin(
+          (2 * Math.PI * frequency * (block * BLOCK_SIZE + index)) / SAMPLE_RATE
+        );
+        input[0][index] = sample;
+        input[1][index] = sample;
+      }
+      effect.process(input, output, 0, BLOCK_SIZE);
+      if (block >= 50) {
+        for (let index = 0; index < BLOCK_SIZE; index++) {
+          inputEnergy += (input[0][index] ?? 0) ** 2;
+          outputEnergy += (output[0][index] ?? 0) ** 2;
+        }
+      }
+    }
+
+    expect(10 * Math.log10(outputEnergy / inputEnergy)).toBeCloseTo(-6.02, 0);
+  });
+
   test("keeps centered stereo split branches at unity", () => {
     const effect = createContainer("stereoSplit");
     const input = buffers();

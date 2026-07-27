@@ -38,6 +38,7 @@ type SoundEffectsState = {
   manager: WorkletManager | null;
   managerPromise: Promise<WorkletManager> | null;
   officialConnected: boolean;
+  officialConnectingGeneration: number | null;
   sidechain: SidechainConnection | null;
 };
 
@@ -62,6 +63,7 @@ const createSoundState = (): SoundEffectsState => ({
   manager: null,
   managerPromise: null,
   officialConnected: false,
+  officialConnectingGeneration: null,
   sidechain: null,
 });
 
@@ -441,6 +443,7 @@ class EffectsController {
       this.officialRuntime ??
       this.createOfficialRuntime(graph.source.context as AudioContext);
     this.officialRuntime = runtime;
+    state.officialConnectingGeneration = generation;
     try {
       const connected = await runtime.connectSound(
         soundId,
@@ -485,6 +488,10 @@ class EffectsController {
       this.connectAllCompatibilityGraphs();
       this.reportOfficialRuntimeFailure(error);
       return false;
+    } finally {
+      if (state.officialConnectingGeneration === generation) {
+        state.officialConnectingGeneration = null;
+      }
     }
   }
 
@@ -498,6 +505,7 @@ class EffectsController {
           ([soundId, state]) =>
             soundId !== exceptSoundId &&
             !state.officialConnected &&
+            state.officialConnectingGeneration !== state.generation &&
             state.graph !== null
         )
         .map(([soundId, state]) =>
@@ -523,6 +531,7 @@ class EffectsController {
     if (
       !(runtime && graph) ||
       state.officialConnected ||
+      state.officialConnectingGeneration === state.generation ||
       this.states.get(soundId) !== state ||
       state.generation !== generation
     ) {

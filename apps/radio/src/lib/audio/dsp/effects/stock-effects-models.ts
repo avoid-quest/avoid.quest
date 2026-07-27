@@ -23,6 +23,7 @@ export class NeuralAmpEffect {
   private output = -6;
   private mono = false;
   private mix = 1;
+  private modelAvailable = false;
   private readonly highPass: BiquadFilter;
   private readonly lowPass: BiquadFilter;
 
@@ -67,6 +68,13 @@ export class NeuralAmpEffect {
     this.mix = clamp(value, 0, 1);
   }
 
+  setModelAvailable(value: boolean): void {
+    this.modelAvailable = value;
+    if (!value) {
+      this.reset();
+    }
+  }
+
   reset(): void {
     this.highPass.reset();
     this.lowPass.reset();
@@ -78,6 +86,11 @@ export class NeuralAmpEffect {
     fromIndex: number,
     toIndex: number
   ): void {
+    if (!this.modelAvailable) {
+      output[0].set(input[0].subarray(fromIndex, toIndex), fromIndex);
+      output[1].set(input[1].subarray(fromIndex, toIndex), fromIndex);
+      return;
+    }
     this.highPass.process(input, output, fromIndex, toIndex);
     const drive = dbToGain(this.drive);
     const makeup = dbToGain(this.output);

@@ -69,7 +69,14 @@ function createRuntime() {
   return {
     cleanup: mock(() => undefined),
     connectSidechainSource: mock(() => Promise.resolve(true)),
-    connectSound: mock(() => Promise.resolve(true)),
+    connectSound: mock(
+      (
+        _soundId: string,
+        _source: AudioNode,
+        _destination: AudioNode,
+        _generation: number
+      ) => Promise.resolve(true)
+    ),
     deleteSound: mock(() => undefined),
     disconnectSound: mock(() => undefined),
     setDryWet: mock(() => undefined),
@@ -534,5 +541,63 @@ describe("EffectsController lifecycle", () => {
     expect(runtime.deleteSound).toHaveBeenCalledTimes(1);
     expect(runtime.syncEffects).not.toHaveBeenCalled();
     expect(runtime.connectSidechainSource).not.toHaveBeenCalled();
+  });
+
+  test("does not register a pending official connection as a compatibility sidechain", async () => {
+    const context = getAudioContext();
+    const firstFilter = new TestAudioNode(context);
+    const secondFilter = new TestAudioNode(context);
+    const destination = new TestAudioNode(context);
+    const connections = new Map<string, (connected: boolean) => void>();
+    const runtime = createRuntime();
+    runtime.connectSound.mockImplementation(
+      (soundId) =>
+        new Promise<boolean>((resolve) => {
+          connections.set(soundId, resolve);
+        })
+    );
+    const controller = new EffectsController({
+      createOfficialRuntime: () => runtime,
+      createWorkletManager: (audioContext) => createManager(audioContext),
+      notifyListeners: () => undefined,
+      sounds: new Map([
+        ["first", sound("first", firstFilter)],
+        ["second", sound("second", secondFilter)],
+      ]),
+      workletProcessorUrl: () => "/worklet.js",
+    });
+    for (const soundId of ["first", "second"]) {
+      await controller.getOrCreateWorkletManager(soundId);
+      const reverb = createDefaultEffectConfig(
+        "plateReverb",
+        `${soundId}-reverb`,
+        0
+      );
+      reverb.enabled = true;
+      controller.add(soundId, reverb);
+    }
+
+    const firstConnection = controller.connectGraph(
+      "first",
+      firstFilter as unknown as AudioNode,
+      destination as unknown as AudioNode
+    );
+    const secondConnection = controller.connectGraph(
+      "second",
+      secondFilter as unknown as AudioNode,
+      destination as unknown as AudioNode
+    );
+    await Promise.resolve();
+    connections.get("first")?.(true);
+    await firstConnection;
+
+    expect(runtime.connectSidechainSource).not.toHaveBeenCalledWith(
+      "second",
+      secondFilter,
+      expect.any(Number)
+    );
+
+    connections.get("second")?.(true);
+    await secondConnection;
   });
 });

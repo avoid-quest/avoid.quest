@@ -21,6 +21,12 @@ type ChainRuntime = {
   dry: StereoChannels;
 };
 
+type LinkwitzRileyCrossover = {
+  high: [BiquadFilter, BiquadFilter];
+  low: [BiquadFilter, BiquadFilter];
+  phase: BiquadFilter[];
+};
+
 const createBuffer = (): StereoChannels => [
   new Float32Array(128),
   new Float32Array(128),
@@ -67,7 +73,7 @@ export class ContainerEffect implements EffectProcessor {
   private readonly updateProcessor: ProcessorUpdater;
   private chains: ChainRuntime[] = [];
   private crossovers: number[] = [];
-  private crossoverFilters: BiquadFilter[] = [];
+  private crossoverFilters: LinkwitzRileyCrossover[] = [];
   private readonly splitBuffers = Array.from({ length: 6 }, createBuffer);
   private readonly residualBuffers = [createBuffer(), createBuffer()];
   private readonly silent = createBuffer();
@@ -153,15 +159,48 @@ export class ContainerEffect implements EffectProcessor {
     this.crossoverFilters = this.crossovers
       .slice(0, Math.max(0, this.chains.length - 1))
       .map((frequency, index) => {
-        const filter =
-          previousFilters[index] ?? new BiquadFilter(this.sampleRate);
-        filter.type = "lowpass";
-        filter.frequency = frequency;
-        filter.Q = Math.SQRT1_2;
-        return filter;
+        const previous = previousFilters[index];
+        const crossover: LinkwitzRileyCrossover = previous ?? {
+          high: [
+            new BiquadFilter(this.sampleRate),
+            new BiquadFilter(this.sampleRate),
+          ],
+          low: [
+            new BiquadFilter(this.sampleRate),
+            new BiquadFilter(this.sampleRate),
+          ],
+          phase: [],
+        };
+        for (const filter of crossover.low) {
+          filter.type = "lowpass";
+          filter.frequency = frequency;
+          filter.Q = Math.SQRT1_2;
+        }
+        for (const filter of crossover.high) {
+          filter.type = "highpass";
+          filter.frequency = frequency;
+          filter.Q = Math.SQRT1_2;
+        }
+        crossover.phase = Array.from({ length: index }, (_, phaseIndex) => {
+          const filter =
+            crossover.phase[phaseIndex] ?? new BiquadFilter(this.sampleRate);
+          filter.type = "allpass";
+          filter.frequency = frequency;
+          filter.Q = Math.SQRT1_2;
+          return filter;
+        });
+        return crossover;
       });
-    for (const filter of previousFilters.slice(this.crossoverFilters.length)) {
-      filter.reset();
+    for (const crossover of previousFilters.slice(
+      this.crossoverFilters.length
+    )) {
+      for (const filter of [
+        ...crossover.low,
+        ...crossover.high,
+        ...crossover.phase,
+      ]) {
+        filter.reset();
+      }
     }
   }
 
@@ -189,8 +228,14 @@ export class ContainerEffect implements EffectProcessor {
         processor.reset();
       }
     }
-    for (const filter of this.crossoverFilters) {
-      filter.reset();
+    for (const crossover of this.crossoverFilters) {
+      for (const filter of [
+        ...crossover.low,
+        ...crossover.high,
+        ...crossover.phase,
+      ]) {
+        filter.reset();
+      }
     }
   }
 
@@ -272,15 +317,21 @@ export class ContainerEffect implements EffectProcessor {
 
     for (let index = 0; index < bands.length - 1; index++) {
       const band = bands[index];
-      const filter = this.crossoverFilters[index];
-      if (!(band && filter)) {
+      const crossover = this.crossoverFilters[index];
+      if (!(band && crossover)) {
         continue;
       }
-      filter.process(residual, band, fromIndex, toIndex);
-      for (let i = fromIndex; i < toIndex; i++) {
-        nextResidual[0][i] = (residual[0][i] ?? 0) - (band[0][i] ?? 0);
-        nextResidual[1][i] = (residual[1][i] ?? 0) - (band[1][i] ?? 0);
+      for (let bandIndex = 0; bandIndex < index; bandIndex++) {
+        const earlierBand = bands[bandIndex];
+        const phase = crossover.phase[bandIndex];
+        if (earlierBand && phase) {
+          phase.process(earlierBand, earlierBand, fromIndex, toIndex);
+        }
       }
+      crossover.low[0].process(residual, band, fromIndex, toIndex);
+      crossover.low[1].process(band, band, fromIndex, toIndex);
+      crossover.high[0].process(residual, nextResidual, fromIndex, toIndex);
+      crossover.high[1].process(nextResidual, nextResidual, fromIndex, toIndex);
       [residual, nextResidual] = [nextResidual, residual];
     }
 

@@ -222,10 +222,3 @@ Verify Cloudflare can package the complete build without uploading it:
 WRANGLER_LOG_PATH=/tmp/radio-wrangler-dry-run.log \
   bun run --filter @avoid.quest/radio cf-upload -- --dry-run
 ```
-
-## Licensing note
-
-The upstream terms observed during research are recorded in
-[`OPENDAW_UPDATE_RESEARCH.md`](./OPENDAW_UPDATE_RESEARCH.md). This checklist
-makes no legal conclusion and requires no external credentials or bundled model
-assets.

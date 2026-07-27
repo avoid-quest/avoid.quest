@@ -36,9 +36,6 @@ OPFS worker services. Stock effects and Tape monitoring do not need them.
 Project sample and soundfont managers therefore fail explicitly if a device
 tries to request those unavailable resources.
 
-See [`OPENDAW_UPDATE_RESEARCH.md`](./OPENDAW_UPDATE_RESEARCH.md) for the pinned
-upstream snapshot and official source references.
-
 ## Supported devices
 
 The picker exposes these exact 19 official devices and containers:
@@ -124,13 +121,6 @@ for effects.
   workaround pending an upstream declaration fix.
 - PWA service-worker requests are network-only. The worker does not cache
   engine, worklet, plugin, WASM, or cross-origin stream responses.
-
-## Licensing note
-
-The upstream terms and device-specific exceptions observed during research are
-recorded in [`OPENDAW_UPDATE_RESEARCH.md`](./OPENDAW_UPDATE_RESEARCH.md). This
-implementation note makes no legal conclusion and bundles no external
-credentials or model assets.
 
 Use [`OPENDAW_MANUAL_TEST_CHECKLIST.md`](./OPENDAW_MANUAL_TEST_CHECKLIST.md) for
 the practical browser verification pass.

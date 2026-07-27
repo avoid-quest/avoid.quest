@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { deleteNamModel, saveNamModel } from "../dsp/effects/nam-model-store";
 import { createDefaultEffectConfig } from "../dsp/effects/registry";
 import { getEffectParamDefs } from "../dsp/effects/schema";
 import type {
@@ -134,5 +135,26 @@ describe("audio manager effect config conversion", () => {
         sidechain: { channelId: "deck-b" },
       } as Partial<EffectConfig>)
     ).toEqual({ sidechainEnabled: 1 });
+  });
+
+  test("marks neural amps available only when model data is actually loaded", async () => {
+    const modelId = "local-nam:conversion-test";
+    const missing = {
+      ...createDefaultEffectConfig("neuralAmp", "missing", 0),
+      modelId: "local-nam:missing",
+    };
+    expect(convertEffectConfig(missing)).toHaveProperty("modelAvailable", 0);
+    expect(
+      convertPartialEffectConfig("neuralAmp", { modelData: "{}" })
+    ).toHaveProperty("modelAvailable", 1);
+
+    await saveNamModel(modelId, "{}");
+    try {
+      expect(
+        convertPartialEffectConfig("neuralAmp", { modelId })
+      ).toHaveProperty("modelAvailable", 1);
+    } finally {
+      await deleteNamModel(modelId);
+    }
   });
 });

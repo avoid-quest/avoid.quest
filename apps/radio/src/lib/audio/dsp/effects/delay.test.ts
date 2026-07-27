@@ -94,6 +94,29 @@ describe("Delay Effect", () => {
     expect(output[0][60]).toBe(0);
   });
 
+  test("uses official milliseconds when musical timing is off", () => {
+    const delay = new Delay(1000);
+    delay.setDelayTime(0.3);
+    delay.setDelayMusical("Off");
+    delay.setDelayMillis(50);
+    delay.setFeedback(0);
+    const input: [Float32Array, Float32Array] = [
+      new Float32Array(301),
+      new Float32Array(301),
+    ];
+    const output: [Float32Array, Float32Array] = [
+      new Float32Array(301),
+      new Float32Array(301),
+    ];
+    input[0][0] = 1;
+    input[1][0] = 1;
+
+    delay.process(input, output, 0, input[0].length);
+
+    expect(output[0][50]).toBe(1);
+    expect(output[0][300]).toBe(0);
+  });
+
   test("routes cross-feedback within the configured feedback gain", () => {
     const delay = new Delay(100);
     delay.setDelayTime(0.01);

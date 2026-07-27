@@ -135,6 +135,40 @@ describe("MeterService", () => {
     expect(levels).toEqual([{ left: 0.5, right: 0.25 }]);
   });
 
+  test("reactivates after the source changes during async meter setup", async () => {
+    const firstSource = new FakeAudioNode();
+    const secondSource = new FakeAudioNode();
+    const meters = [new FakeMeterNode(), new FakeMeterNode()];
+    let resolveFirst: ((meter: OpenDawMeterNode) => void) | undefined;
+    let factoryCalls = 0;
+    const factory = mock(() =>
+      ++factoryCalls === 1
+        ? new Promise<OpenDawMeterNode>((resolve) => {
+            resolveFirst = resolve;
+          })
+        : Promise.resolve(meters[1] as unknown as OpenDawMeterNode)
+    ) as MeterNodeFactory;
+    const service = new MeterService(factory);
+    service.subscribeMeter("deck-a", () => undefined);
+
+    const first = service.setSoundSource(
+      "deck-a",
+      firstSource as unknown as AudioNode
+    );
+    const second = service.setSoundSource(
+      "deck-a",
+      secondSource as unknown as AudioNode
+    );
+    resolveFirst?.(meters[0] as unknown as OpenDawMeterNode);
+    await Promise.all([first, second]);
+    await Promise.resolve();
+
+    expect(factory).toHaveBeenCalledTimes(2);
+    expect(meters[0].terminated).toBe(true);
+    expect(firstSource.connections.size).toBe(0);
+    expect(secondSource.connections.has(meters[1])).toBe(true);
+  });
+
   test("falls back to a native meter when openDAW meter setup fails", async () => {
     const source = new FakeAudioNode();
     const fallbackInput = new FakeAudioNode();

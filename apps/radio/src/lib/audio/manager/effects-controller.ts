@@ -609,9 +609,10 @@ class EffectsController {
       return;
     }
     const generation = this.advance(state);
-    this.connectCompatibilityGraph(state);
     if (!canUseOfficialOpenDawRuntime(state.effects)) {
+      this.officialRuntime?.disconnectSound(soundId, generation);
       state.officialConnected = false;
+      this.connectCompatibilityGraph(state);
       this.registerCompatibilitySource(soundId, state, generation).catch(
         (error: unknown) =>
           console.warn(
@@ -620,6 +621,9 @@ class EffectsController {
           )
       );
       return;
+    }
+    if (!state.officialConnected) {
+      this.connectCompatibilityGraph(state);
     }
     this.connectOfficial(soundId, state, generation)
       .then((connected) => {

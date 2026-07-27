@@ -8,6 +8,7 @@ import {
   XIcon,
 } from "lucide-react";
 import { useState } from "react";
+import { MidiControlWrapper } from "@/components/audio/midi-control-wrapper";
 import {
   createDefaultEffectConfig,
   type EffectChainConfig,
@@ -124,6 +125,17 @@ function createId(prefix: string): string {
   return `${prefix}-${crypto.randomUUID()}`;
 }
 
+export function getChainMidiTargetPrefix(
+  deckId: "deck-a" | "deck-b" | undefined,
+  effectId: string,
+  chainId: string,
+  parentPrefix?: string
+): string | undefined {
+  const prefix =
+    parentPrefix ?? (deckId ? `${deckId}:effect:${effectId}` : undefined);
+  return prefix ? `${prefix}:chain:${chainId}` : undefined;
+}
+
 function nestedMidiTargetPrefix(
   deckId: "deck-a" | "deck-b" | undefined,
   effectId: string,
@@ -131,9 +143,13 @@ function nestedMidiTargetPrefix(
   childId: string,
   parentPrefix?: string
 ): string | undefined {
-  const prefix =
-    parentPrefix ?? (deckId ? `${deckId}:effect:${effectId}` : undefined);
-  return prefix ? `${prefix}:chain:${chainId}:effect:${childId}` : undefined;
+  const prefix = getChainMidiTargetPrefix(
+    deckId,
+    effectId,
+    chainId,
+    parentPrefix
+  );
+  return prefix ? `${prefix}:effect:${childId}` : undefined;
 }
 
 function NestedEffect({
@@ -253,6 +269,26 @@ export function ContainerParams({
     );
   };
 
+  const wrapChainSlider = (
+    chainId: string,
+    param: "gain" | "pan",
+    slider: React.ReactNode
+  ) => {
+    const prefix = getChainMidiTargetPrefix(
+      deckId,
+      effectId ?? effect.id,
+      chainId,
+      midiTargetPrefix
+    );
+    return prefix ? (
+      <MidiControlWrapper targetId={`${prefix}:${param}`}>
+        {slider}
+      </MidiControlWrapper>
+    ) : (
+      slider
+    );
+  };
+
   const addEffect = (chain: EffectChainConfig, type: EffectConfig["type"]) => {
     if (!canAddNestedEffect(depth, type)) {
       return;
@@ -368,24 +404,32 @@ export function ContainerParams({
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">
-              <ParamSlider
-                formatKey="linearGain"
-                label="Branch gain"
-                max={4}
-                min={0}
-                onChange={(gain) => updateChain(chain.id, { gain })}
-                step={0.01}
-                value={chain.gain}
-              />
-              <ParamSlider
-                formatKey="pan"
-                label="Branch pan"
-                max={1}
-                min={-1}
-                onChange={(pan) => updateChain(chain.id, { pan })}
-                step={0.01}
-                value={chain.pan}
-              />
+              {wrapChainSlider(
+                chain.id,
+                "gain",
+                <ParamSlider
+                  formatKey="linearGain"
+                  label="Branch gain"
+                  max={4}
+                  min={0}
+                  onChange={(gain) => updateChain(chain.id, { gain })}
+                  step={0.01}
+                  value={chain.gain}
+                />
+              )}
+              {wrapChainSlider(
+                chain.id,
+                "pan",
+                <ParamSlider
+                  formatKey="pan"
+                  label="Branch pan"
+                  max={1}
+                  min={-1}
+                  onChange={(pan) => updateChain(chain.id, { pan })}
+                  step={0.01}
+                  value={chain.pan}
+                />
+              )}
             </div>
 
             <div className="flex gap-2">

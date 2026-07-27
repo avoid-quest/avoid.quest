@@ -14,6 +14,7 @@ import tailwindcss from "@tailwindcss/vite";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import react, { reactCompilerPreset } from "@vitejs/plugin-react";
 import { build, defineConfig, type Plugin } from "vite";
+import { rewriteOpenDawEngineWorklet } from "./opendaw-assets";
 
 const WORKLET_OUT_DIR = ".worklet-build";
 const WORKLET_FILENAME = "dsp-processor-bundle.js";
@@ -259,10 +260,7 @@ function openDawAssetsPlugin(): Plugin {
           .endsWith("/@opendaw/studio-core/dist/EngineWorklet.js")
       ) {
         return {
-          code: code.replace(
-            'new URL("@opendaw/nam-wasm/nam.wasm", import.meta.url)',
-            'new URL("/opendaw/nam.wasm", globalThis.location.origin)'
-          ),
+          code: rewriteOpenDawEngineWorklet(code),
           map: null,
         };
       }

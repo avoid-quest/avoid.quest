@@ -1,4 +1,6 @@
+import { getCachedNamModel } from "../dsp/effects/nam-model-store.js";
 import {
+  convertEffectConfigToEngine,
   convertPartialEffectConfigToEngine,
   type EngineEffectConfig,
 } from "../dsp/effects/schema.js";
@@ -8,13 +10,35 @@ export type {
   EngineEffectConfig,
   EngineEffectParamValue,
 } from "../dsp/effects/schema.js";
-export { convertEffectConfigToEngine as convertEffectConfig } from "../dsp/effects/schema.js";
+
+function modelAvailable(config: Partial<EffectConfig>): number {
+  const model = config as {
+    modelData?: string | null;
+    modelId?: string | null;
+  };
+  return model.modelData || getCachedNamModel(model.modelId ?? null) ? 1 : 0;
+}
+
+export function convertEffectConfig(config: EffectConfig): EngineEffectConfig {
+  const converted = convertEffectConfigToEngine(config);
+  if (config.type === "neuralAmp") {
+    converted.modelAvailable = modelAvailable(config);
+  }
+  return converted;
+}
 
 export function convertPartialEffectConfig(
   type: EffectType,
   config: Partial<EffectConfig>
 ): EngineEffectConfig {
-  return convertPartialEffectConfigToEngine(type, config);
+  const converted = convertPartialEffectConfigToEngine(type, config);
+  if (
+    type === "neuralAmp" &&
+    ("modelData" in config || "modelId" in config || "modelUrl" in config)
+  ) {
+    converted.modelAvailable = modelAvailable(config);
+  }
+  return converted;
 }
 
 export function toPlainEffectConfig<

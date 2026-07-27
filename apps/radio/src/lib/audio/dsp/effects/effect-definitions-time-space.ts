@@ -12,7 +12,7 @@ export const TIME_SPACE_EFFECT_DEFINITIONS = {
     defaultConfig: {
       type: "plateReverb",
       enabled: false,
-      preDelay: 0,
+      preDelayMillis: 0,
       bandwidth: 0.9999,
       inputDiffusion1: 0.75,
       inputDiffusion2: 0.625,
@@ -35,7 +35,7 @@ export const TIME_SPACE_EFFECT_DEFINITIONS = {
         children: [
           {
             type: "slider",
-            key: "preDelay",
+            key: "preDelayMillis",
             label: "Pre-Delay",
             formatKey: "milliseconds",
             min: 0,

@@ -142,7 +142,7 @@ export type OpenDawTidalFraction = (typeof OPENDAW_TIDAL_FRACTIONS)[number];
 
 export type PlateReverbConfig = BaseEffectConfig & {
   type: "plateReverb";
-  preDelay: number;
+  preDelayMillis: number;
   bandwidth: number;
   inputDiffusion1: number;
   inputDiffusion2: number;

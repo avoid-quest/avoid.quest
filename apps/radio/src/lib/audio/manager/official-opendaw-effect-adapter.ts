@@ -275,8 +275,8 @@ function configureDevice(
   set(box, "enabled", true);
   switch (config.type) {
     case "plateReverb":
+      set(box, "preDelay", config.preDelayMillis);
       for (const key of [
-        "preDelay",
         "bandwidth",
         "inputDiffusion1",
         "inputDiffusion2",

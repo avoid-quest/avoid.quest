@@ -240,8 +240,8 @@ export function applyEffectConfig(
     }
     case "plateReverb": {
       const reverb = processor as DattorroReverb;
-      if (typeof config.preDelay === "number") {
-        reverb.setPreDelay(config.preDelay / 1000);
+      if (typeof config.preDelayMillis === "number") {
+        reverb.setPreDelay(config.preDelayMillis / 1000);
       }
       if (typeof config.bandwidth === "number") {
         reverb.setBandwidth(config.bandwidth);
@@ -655,17 +655,9 @@ export function applyEffectConfig(
     }
     case "neuralAmp": {
       const amp = processor as NeuralAmpEffect;
-      if (
-        "modelData" in config ||
-        "modelId" in config ||
-        "modelUrl" in config
-      ) {
-        amp.setModelAvailable(
-          [config.modelData, config.modelId, config.modelUrl].some(
-            (value) => typeof value === "string" && value.length > 0
-          )
-        );
-      }
+      applyBooleanConfig(config, "modelAvailable", (value) =>
+        amp.setModelAvailable(value)
+      );
       if (typeof config.input === "number") {
         amp.setInput(config.input);
       }

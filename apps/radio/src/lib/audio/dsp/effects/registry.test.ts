@@ -136,7 +136,7 @@ describe("Effect Registry", () => {
       const reverb = createDefaultEffectConfig("plateReverb", "rev", 0);
       expect(reverb).toHaveProperty("decay");
       expect(reverb).toHaveProperty("damping");
-      expect(reverb).toHaveProperty("preDelay");
+      expect(reverb).toHaveProperty("preDelayMillis");
 
       const delay = createDefaultEffectConfig("delay", "del", 0);
       expect(delay).toHaveProperty("delayTime");

@@ -30,9 +30,16 @@ export function createNamModelLoader({
   ingest = ingestLocalNamModel,
 }: Partial<NamModelLoaderDependencies> = {}) {
   let generation = 0;
+  let identity: string | undefined;
   return {
     invalidate: () => {
       generation++;
+    },
+    synchronize: (nextIdentity: string) => {
+      if (nextIdentity !== identity) {
+        identity = nextIdentity;
+        generation++;
+      }
     },
     load: async (file: NamModelFile): Promise<LocalNamModelMetadata | null> => {
       const request = ++generation;
@@ -63,6 +70,9 @@ export function Tone3000ModelParams({
 }: Tone3000ModelParamsProps) {
   const [status, setStatus] = useState<string | null>(null);
   const [loader] = useState(createNamModelLoader);
+  loader.synchronize(
+    JSON.stringify([effect.modelId, effect.modelUrl, effect.modelData])
+  );
 
   useEffect(() => () => loader.invalidate(), [loader]);
 

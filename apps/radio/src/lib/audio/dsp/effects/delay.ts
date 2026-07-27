@@ -38,6 +38,7 @@ export class Delay {
   private lfoDepth = 0;
   private delayMusical = "Off";
   private delayMillis = 300;
+  private officialTimingConfigured = false;
   private preSyncTimeLeft = "Off";
   private preMillisTimeLeft = 0;
   private preSyncTimeRight = "Off";
@@ -64,6 +65,7 @@ export class Delay {
     );
     this.delayMusical = "Off";
     this.delayMillis = seconds * 1000;
+    this.officialTimingConfigured = false;
   }
 
   setFeedback(value: number): void {
@@ -85,10 +87,12 @@ export class Delay {
 
   setDelayMusical(value: string): void {
     this.delayMusical = value;
+    this.officialTimingConfigured = true;
   }
 
   setDelayMillis(value: number): void {
     this.delayMillis = Math.max(0, Math.min(1000, value));
+    this.officialTimingConfigured = true;
   }
 
   setPreSyncTimeLeft(value: string): void {
@@ -167,7 +171,7 @@ export class Delay {
       fractionToBeats(this.delayMusical) * secondsPerBeat +
       this.delayMillis * 0.001;
     let baseDelay = officialMain;
-    if (this.delayMusical === "Off") {
+    if (this.delayMusical === "Off" && !this.officialTimingConfigured) {
       baseDelay = this.tempoSync
         ? secondsPerBeat * fractionToBeats(this.tempoDivision)
         : this.delaySamples / this.sampleRate;

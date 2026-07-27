@@ -362,6 +362,14 @@ describe("EffectsController lifecycle", () => {
     controller.update("target", container.id, container.type, {
       chains: container.chains,
     });
+
+    expect(runtime.disconnectSound).toHaveBeenCalledWith(
+      "target",
+      expect.any(Number)
+    );
+    expect(
+      filter.connections.has(manager.node as unknown as TestAudioNode)
+    ).toBe(true);
     await Promise.resolve();
     await Promise.resolve();
 
@@ -370,6 +378,35 @@ describe("EffectsController lifecycle", () => {
       filter,
       expect.any(Number)
     );
+  });
+
+  test("keeps compatibility disconnected during an official effect update", async () => {
+    const context = getAudioContext();
+    const filter = new TestAudioNode(context);
+    const manager = createManager(context);
+    const runtime = createRuntime();
+    const controller = new EffectsController({
+      createOfficialRuntime: () => runtime,
+      createWorkletManager: () => manager,
+      notifyListeners: () => undefined,
+      sounds: new Map([["target", sound("target", filter)]]),
+      workletProcessorUrl: () => "/worklet.js",
+    });
+    await controller.getOrCreateWorkletManager("target");
+    const reverb = createDefaultEffectConfig("plateReverb", "reverb", 0);
+    reverb.enabled = true;
+    controller.add("target", reverb);
+    await controller.connectGraph(
+      "target",
+      filter as unknown as AudioNode,
+      new TestAudioNode(context) as unknown as AudioNode
+    );
+
+    controller.update("target", reverb.id, reverb.type, { decay: 0.75 });
+
+    expect(
+      filter.connections.has(manager.node as unknown as TestAudioNode)
+    ).toBe(false);
   });
 
   test("silences the official route on stop and reconnects it on replay", async () => {

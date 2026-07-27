@@ -347,7 +347,7 @@ describe("worklet effect adapter", () => {
     const config = {
       ...createDefaultEffectConfig("plateReverb", "reverb", 0),
       enabled: true,
-      preDelay: 100,
+      preDelayMillis: 100,
     };
 
     source.addEffect(config.id, config.type, config, config.order);
@@ -390,7 +390,7 @@ describe("worklet effect adapter", () => {
     expect(outputL).toEqual(input);
     expect(outputR).toEqual(input);
 
-    source.updateEffect(config.id, { modelData: "{}" });
+    source.updateEffect(config.id, { modelAvailable: 1 });
     source.process(input, input, outputL, outputR, 0, BLOCK_SIZE);
     expect(outputL).not.toEqual(input);
   });

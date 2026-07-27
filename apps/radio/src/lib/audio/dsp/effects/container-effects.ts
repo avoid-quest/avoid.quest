@@ -294,6 +294,20 @@ export class ContainerEffect implements EffectProcessor {
     }
     const result = this.processChain(chain, input, fromIndex, toIndex);
     const pan = Math.max(-1, Math.min(1, chain.config.pan));
+    if (this.type === "stereoSplit") {
+      for (let i = fromIndex; i < toIndex; i++) {
+        const left = result[0][i] ?? 0;
+        const right = result[1][i] ?? 0;
+        output[0][i] =
+          (output[0][i] ?? 0) +
+          (pan < 0 ? left - right * pan : left * (1 - pan)) * chain.config.gain;
+        output[1][i] =
+          (output[1][i] ?? 0) +
+          (pan > 0 ? right + left * pan : right * (1 + pan)) *
+            chain.config.gain;
+      }
+      return;
+    }
     const [leftPanGain, rightPanGain] = branchPanGains(this.type, pan);
     const leftGain = leftPanGain * chain.config.gain;
     const rightGain = rightPanGain * chain.config.gain;

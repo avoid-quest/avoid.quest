@@ -97,4 +97,40 @@ describe("createNamModelLoader", () => {
     expect(await pending).toBeNull();
     expect(discard).toHaveBeenCalledWith("local-nam:removed");
   });
+
+  test("discards a pending model when the effect is reset", async () => {
+    let resolveIngest:
+      | ((value: {
+          modelData: null;
+          modelId: string;
+          modelName: string;
+          modelUrl: null;
+        }) => void)
+      | undefined;
+    const discard = mock(async (_modelId: string) => undefined);
+    const loader = createNamModelLoader({
+      discard,
+      ingest: () =>
+        new Promise((resolve) => {
+          resolveIngest = resolve;
+        }),
+    });
+    loader.synchronize("selected");
+    const pending = loader.load({
+      name: "selected.nam",
+      text: async () => "model",
+    });
+    await Promise.resolve();
+
+    loader.synchronize("reset");
+    resolveIngest?.({
+      modelData: null,
+      modelId: "local-nam:selected",
+      modelName: "selected.nam",
+      modelUrl: null,
+    });
+
+    expect(await pending).toBeNull();
+    expect(discard).toHaveBeenCalledWith("local-nam:selected");
+  });
 });

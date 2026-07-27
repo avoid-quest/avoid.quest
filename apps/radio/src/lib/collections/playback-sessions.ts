@@ -140,6 +140,16 @@ function migrateLegacyCompressor(config: Record<string, unknown>): void {
   }
 }
 
+function migrateLegacyPlateReverb(
+  config: Record<string, unknown>
+): Record<string, unknown> {
+  const { preDelay, ...migrated } = config;
+  if (migrated.preDelayMillis === undefined && typeof preDelay === "number") {
+    migrated.preDelayMillis = preDelay / 48;
+  }
+  return migrated;
+}
+
 function migrateLegacyEffectConfig(value: unknown): unknown {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return value;
@@ -147,6 +157,8 @@ function migrateLegacyEffectConfig(value: unknown): unknown {
   const migrated = { ...value } as Record<string, unknown>;
   if (migrated.type === "delay") {
     migrateLegacyDelay(migrated);
+  } else if (migrated.type === "plateReverb") {
+    return migrateLegacyPlateReverb(migrated);
   } else if (
     migrated.type === "tidal" &&
     migrated.rateDivision === undefined &&

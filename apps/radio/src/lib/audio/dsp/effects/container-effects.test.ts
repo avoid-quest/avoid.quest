@@ -312,16 +312,12 @@ describe("compatibility effect containers", () => {
   });
 
   test.each([
-    { pan: -1, left: 1, right: 0 },
-    { pan: -0.5, left: 1, right: 0.5 },
-    { pan: 0, left: 1, right: 1 },
-    { pan: 0.5, left: 0.5, right: 1 },
-    { pan: 1, left: 0, right: 1 },
-  ])("applies stereo split branch pan $pan with gain and neutral reconstruction", ({
-    pan,
-    left,
-    right,
-  }) => {
+    { pan: -1, left: 0.2, right: 0 },
+    { pan: -0.5, left: 0.3, right: -0.1 },
+    { pan: 0, left: 0.4, right: -0.2 },
+    { pan: 0.5, left: 0.2, right: 0 },
+    { pan: 1, left: 0, right: 0.2 },
+  ])("cross-pans stereo split branches at $pan", ({ pan, left, right }) => {
     const config = createDefaultEffectConfig("stereoSplit", "stereo", 0);
     const [leftChain, rightChain] = config.chains;
     if (!(leftChain && rightChain)) {
@@ -344,7 +340,7 @@ describe("compatibility effect containers", () => {
 
     effect.process(input, output, 0, BLOCK_SIZE);
 
-    expect(output[0][0]).toBeCloseTo(0.8 * 0.5 * left, 6);
-    expect(output[1][0]).toBeCloseTo(-0.4 * 0.5 * right, 6);
+    expect(output[0][0]).toBeCloseTo(left, 6);
+    expect(output[1][0]).toBeCloseTo(right, 6);
   });
 });

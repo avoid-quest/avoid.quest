@@ -149,6 +149,30 @@ describe("playback session effect migration", () => {
     ]);
   });
 
+  test("migrates legacy plate pre-delay samples without re-migrating milliseconds", () => {
+    const migrated = parsePlaybackSessionRecord({
+      id: "dj",
+      channels: [
+        channelWithEffects([
+          {
+            ...baseEffect("legacy-plate", "plateReverb", 0),
+            preDelay: 4800,
+          },
+          {
+            ...baseEffect("current-plate", "plateReverb", 1),
+            preDelayMillis: 125,
+          },
+        ]),
+      ],
+    });
+
+    expect(migrated.channels[0]?.effects).toMatchObject([
+      { preDelayMillis: 100 },
+      { preDelayMillis: 125 },
+    ]);
+    expect(migrated.channels[0]?.effects[0]).not.toHaveProperty("preDelay");
+  });
+
   test("round-trips nested routing, sidechains, and tempo through JSON", () => {
     const nestedSession = {
       id: "dj",

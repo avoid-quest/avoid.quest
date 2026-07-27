@@ -3,9 +3,29 @@ import { createDefaultEffectConfig } from "@/lib/audio";
 import { MAX_EFFECT_TREE_DEPTH } from "@/lib/audio/dsp/routing/effect-tree";
 import {
   canAddNestedEffect,
+  getChainMidiTargetPrefix,
   resizeFrequencyChains,
   resizeFrequencyCrossovers,
 } from "./container-params";
+
+describe("Container MIDI targets", () => {
+  test("matches root and nested chain action prefixes", () => {
+    expect(getChainMidiTargetPrefix("deck-a", "root", "parallel")).toBe(
+      "deck-a:effect:root:chain:parallel"
+    );
+    expect(
+      getChainMidiTargetPrefix(
+        "deck-a",
+        "nested",
+        "inner",
+        "deck-a:effect:root:chain:parallel:effect:nested"
+      )
+    ).toBe("deck-a:effect:root:chain:parallel:effect:nested:chain:inner");
+    expect(
+      getChainMidiTargetPrefix(undefined, "root", "parallel")
+    ).toBeUndefined();
+  });
+});
 
 describe("Container nesting depth", () => {
   test("allows only leaf effects at the maximum child depth", () => {

@@ -138,13 +138,15 @@ class MeterService {
   }
 
   private activate(slot: MeterSlot, label: string): Promise<void> {
+    if (slot.initialization) {
+      return slot.initialization.then(() => this.activate(slot, label));
+    }
     if (
       !(slot.source && slot.listeners.size > 0) ||
       slot.node ||
-      slot.fallback ||
-      slot.initialization
+      slot.fallback
     ) {
-      return slot.initialization ?? Promise.resolve();
+      return Promise.resolve();
     }
 
     const generation = slot.generation;

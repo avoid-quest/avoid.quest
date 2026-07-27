@@ -6,6 +6,7 @@ export {
   createDefaultChannel,
   DECK_A_CHANNEL_ID,
   DECK_B_CHANNEL_ID,
+  deletePlaybackSession,
   getMultipleChannelId,
   getPlaybackChannel,
   getPlaybackSession,

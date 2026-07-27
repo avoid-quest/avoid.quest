@@ -20,5 +20,11 @@ export function convertPartialEffectConfig(
 export function toPlainEffectConfig<
   T extends EffectConfig | Partial<EffectConfig>,
 >(config: T): T {
-  return JSON.parse(JSON.stringify(config)) as T;
+  const plain = JSON.parse(JSON.stringify(config)) as Record<string, unknown>;
+  for (const key of Object.keys(config)) {
+    if ((config as Record<string, unknown>)[key] === undefined) {
+      plain[key] = undefined;
+    }
+  }
+  return plain as T;
 }

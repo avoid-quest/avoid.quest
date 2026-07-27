@@ -34,9 +34,17 @@ describe("OfficialOpenDawRuntime", () => {
     let terminated = false;
     let voidTransactionUnwraps = 0;
     let boxCount = 0;
+    let deletedUnitCount = 0;
     const audioUnitBoxes: unknown[] = [];
     const sidechainReferences: unknown[] = [];
     const compiledWerkstatt: Array<{ source: string; uuid: Uint8Array }> = [];
+    const restoredParameters: Array<{ uuid: number; value: number }> = [];
+    const pendingCompiles: Array<{
+      reject(cause: Error): void;
+      resolve(): void;
+      source: string;
+      uuid: number;
+    }> = [];
     const valueField = () => ({
       getValue: () => 0,
       setValue: () => undefined,
@@ -44,8 +52,19 @@ describe("OfficialOpenDawRuntime", () => {
     const createBox = (): Record<string, unknown> => {
       const incoming: unknown[] = [];
       boxCount++;
-      return {
-        address: { uuid: new Uint8Array([100 + boxCount]) },
+      const uuid = 100 + boxCount;
+      const parameterBox = {
+        label: {
+          getValue: () => "drive",
+          setValue: () => undefined,
+        },
+        value: {
+          getValue: () => 0,
+          setValue: (value: number) => restoredParameters.push({ uuid, value }),
+        },
+      };
+      const box: Record<string, unknown> = {
+        address: { uuid: new Uint8Array([uuid]) },
         audioEffects: {},
         delete: () => undefined,
         dry: valueField(),
@@ -60,7 +79,7 @@ describe("OfficialOpenDawRuntime", () => {
         mute: valueField(),
         pan: valueField(),
         parameters: {
-          pointerHub: { filter: () => [] },
+          pointerHub: { filter: () => [{ box: parameterBox }] },
         },
         sideChain: {
           defer: () => sidechainReferences.push(null),
@@ -69,6 +88,14 @@ describe("OfficialOpenDawRuntime", () => {
         solo: valueField(),
         wet: valueField(),
       };
+      return new Proxy(box, {
+        get(target, key) {
+          if (typeof key === "string" && !(key in target)) {
+            target[key] = valueField();
+          }
+          return target[key as string];
+        },
+      });
     };
     const createCell = (
       _graph: unknown,
@@ -115,7 +142,9 @@ describe("OfficialOpenDawRuntime", () => {
           };
         },
         insertEffect: () => createBox(),
-        deleteAudioUnit: () => undefined,
+        deleteAudioUnit: () => {
+          deletedUnitCount++;
+        },
         setBpm: () => undefined,
       },
       editing: {
@@ -153,6 +182,16 @@ describe("OfficialOpenDawRuntime", () => {
                 source,
                 uuid: device.address.uuid,
               });
+              if (source.startsWith("deferred:")) {
+                return new Promise<void>((resolve, reject) => {
+                  pendingCompiles.push({
+                    reject,
+                    resolve,
+                    source,
+                    uuid: device.address.uuid[0] ?? -1,
+                  });
+                });
+              }
               if (source.includes("syntax error")) {
                 return Promise.reject(new Error("Syntax error"));
               }
@@ -304,6 +343,82 @@ describe("OfficialOpenDawRuntime", () => {
     await Promise.resolve();
     expect(compiledWerkstatt.at(-1)?.uuid).toBe(nestedInitial?.uuid);
 
+    const race = {
+      ...werkstatt,
+      id: "werkstatt-race",
+      code: "deferred:old-success",
+      parameters: { drive: 0.1 },
+    };
+    runtime.syncEffects("deck-a", [race]);
+    const oldSuccess = pendingCompiles.at(-1);
+    runtime.syncEffects("deck-a", []);
+    runtime.syncEffects("deck-a", [
+      {
+        ...race,
+        code: "deferred:replacement-success",
+        parameters: { drive: 0.8 },
+      },
+    ]);
+    const replacementSuccess = pendingCompiles.at(-1);
+    if (!(oldSuccess && replacementSuccess)) {
+      throw new Error("Expected both Werkstatt compiles to be pending");
+    }
+    replacementSuccess?.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    oldSuccess?.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(getWerkstattRuntimeStatus(race.id)?.state).toBe("ready");
+    expect(
+      restoredParameters.some(
+        ({ uuid, value }) => uuid === oldSuccess?.uuid && value === 0.1
+      )
+    ).toBe(false);
+    expect(restoredParameters).toContainEqual({
+      uuid: replacementSuccess.uuid,
+      value: 0.8,
+    });
+
+    runtime.syncEffects("deck-a", []);
+    runtime.syncEffects("deck-a", [
+      {
+        ...race,
+        code: "deferred:old-failure",
+        parameters: { drive: 0.2 },
+      },
+    ]);
+    const oldFailure = pendingCompiles.at(-1);
+    runtime.syncEffects("deck-a", []);
+    runtime.syncEffects("deck-a", [
+      {
+        ...race,
+        code: "deferred:replacement-failure",
+        parameters: { drive: 0.9 },
+      },
+    ]);
+    const replacementFailure = pendingCompiles.at(-1);
+    if (!(oldFailure && replacementFailure)) {
+      throw new Error("Expected both Werkstatt failures to be pending");
+    }
+    replacementFailure?.reject(new Error("Replacement failed"));
+    await Promise.resolve();
+    await Promise.resolve();
+    oldFailure?.reject(new Error("Released compile failed"));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(getWerkstattRuntimeStatus(race.id)).toEqual({
+      state: "error",
+      message: "Replacement failed",
+    });
+    expect(
+      restoredParameters.some(
+        ({ uuid, value }) => uuid === oldFailure?.uuid && value === 0.2
+      )
+    ).toBe(false);
+
     expect(projectCount).toBe(1);
     expect(playCount).toBe(1);
     expect(unitCount).toBe(2);
@@ -313,8 +428,88 @@ describe("OfficialOpenDawRuntime", () => {
     expect(disconnected).toHaveLength(1);
     expect(voidTransactionUnwraps).toBe(0);
 
+    runtime.syncEffects("deck-a", []);
+    runtime.syncEffects("deck-a", [
+      {
+        ...race,
+        code: "deferred:cleanup",
+        parameters: { drive: 1 },
+      },
+    ]);
+    const cleanupCompile = pendingCompiles.at(-1);
     runtime.cleanup();
+    cleanupCompile?.resolve();
+    await Promise.resolve();
     expect(terminated).toBe(true);
+    expect(getWerkstattRuntimeStatus(race.id).state).toBe("idle");
+    expect(
+      restoredParameters.some(
+        ({ uuid, value }) => uuid === cleanupCompile?.uuid && value === 1
+      )
+    ).toBe(false);
     expect(unregistered).toEqual(["2", "1", "2"]);
+
+    const modules = await loader();
+    let releaseInitialization:
+      | ((loaded: Awaited<ReturnType<RuntimeModuleLoader>>) => void)
+      | undefined;
+    const deferredLoader = () =>
+      new Promise<Awaited<ReturnType<RuntimeModuleLoader>>>((resolve) => {
+        releaseInitialization = resolve;
+      });
+    const canceledRuntime = new OfficialOpenDawRuntime(
+      context,
+      undefined,
+      deferredLoader
+    );
+    const canceled = canceledRuntime.connectSound(
+      "canceled",
+      source,
+      destination,
+      1
+    );
+    canceledRuntime.deleteSound("canceled", 2);
+    releaseInitialization?.(modules);
+
+    expect(await canceled).toBe(false);
+    expect(canceledRuntime.soundCount).toBe(0);
+    canceledRuntime.cleanup();
+
+    let releaseReplacement:
+      | ((loaded: Awaited<ReturnType<RuntimeModuleLoader>>) => void)
+      | undefined;
+    const replacementRuntime = new OfficialOpenDawRuntime(
+      context,
+      undefined,
+      () =>
+        new Promise((resolve) => {
+          releaseReplacement = resolve;
+        })
+    );
+    const oldSource = { context } as unknown as AudioNode;
+    const newSource = { context } as unknown as AudioNode;
+    const registrationCount = registered.length;
+    const oldConnection = replacementRuntime.connectSound(
+      "replacement",
+      oldSource,
+      destination,
+      1
+    );
+    const newConnection = replacementRuntime.connectSound(
+      "replacement",
+      newSource,
+      destination,
+      2
+    );
+    releaseReplacement?.(modules);
+
+    expect(await oldConnection).toBe(false);
+    expect(await newConnection).toBe(true);
+    expect(registered).toHaveLength(registrationCount + 1);
+    replacementRuntime.deleteSound("replacement", 3);
+    replacementRuntime.deleteSound("replacement", 4);
+    expect(deletedUnitCount).toBe(1);
+    expect(unregistered.at(-1)).toBe(registered.at(-1));
+    replacementRuntime.cleanup();
   });
 });

@@ -5,7 +5,6 @@ import { useState } from "react";
 import type { EffectConfig } from "@/lib/audio";
 import {
   createLocalNamModelId,
-  deleteNamModel,
   saveNamModel,
 } from "@/lib/audio/dsp/effects/nam-model-store";
 
@@ -42,9 +41,6 @@ export function Tone3000ModelParams({
         modelId,
         modelUrl: null,
       } as Partial<EffectConfig>);
-      if (effect.modelId?.startsWith("local-nam:")) {
-        await deleteNamModel(effect.modelId);
-      }
       setStatus(`Loaded ${file.name} locally.`);
     } catch (cause) {
       setStatus(cause instanceof Error ? cause.message : "Invalid NAM model.");
@@ -72,9 +68,6 @@ export function Tone3000ModelParams({
         {effect.modelId && (
           <Button
             onClick={() => {
-              if (effect.modelId?.startsWith("local-nam:")) {
-                deleteNamModel(effect.modelId).catch(() => undefined);
-              }
               onUpdate({
                 modelId: null,
                 modelName: null,

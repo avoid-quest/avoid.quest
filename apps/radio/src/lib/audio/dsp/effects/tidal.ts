@@ -6,6 +6,7 @@
  */
 
 import { Smooth, TidalComputer } from "@opendaw/lib-dsp";
+import { clampEffectTempo } from "./tempo.js";
 
 const fractionToBeats = (value: string): number => {
   const [numerator, denominator] = value.split("/").map(Number);
@@ -42,7 +43,7 @@ export class TidalEffect {
   }
 
   setTempo(value: number): void {
-    this.tempo = Math.max(20, Math.min(400, value));
+    this.tempo = clampEffectTempo(value);
   }
 
   setTempoSync(value: boolean): void {

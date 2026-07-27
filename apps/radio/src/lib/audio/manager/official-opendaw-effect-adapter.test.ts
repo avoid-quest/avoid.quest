@@ -13,6 +13,73 @@ afterEach(() => {
 });
 
 describe("official openDAW BoxGraph adapter", () => {
+  test("fails visibly when a required device field is missing", () => {
+    const primitive = () => ({
+      getValue: () => 0,
+      setValue: () => undefined,
+    });
+    const makeBox = (missing?: string) =>
+      new Proxy(
+        {
+          audioEffects: {},
+          delete: () => undefined,
+          entries: {},
+        } as Record<string, unknown>,
+        {
+          get(target, key) {
+            if (key === missing) {
+              return;
+            }
+            if (key in target) {
+              return target[key as string];
+            }
+            return primitive();
+          },
+        }
+      );
+    const factories = {
+      AudioEffectComposite: "composite",
+      Compressor: "compressor",
+      StereoTool: "stereo-tool",
+    };
+    const project = {
+      api: {
+        insertEffect: (_host: unknown, factory: string) =>
+          makeBox(factory === factories.Compressor ? "threshold" : undefined),
+      },
+      boxGraph: {},
+    };
+    const boxes = {
+      AudioEffectCompositeCellBox: {
+        create: (
+          _graph: unknown,
+          _uuid: unknown,
+          configure: (box: Record<string, ReturnType<typeof primitive>>) => void
+        ) => {
+          const cell = makeBox();
+          Reflect.set(cell, "composite", { refer: () => undefined });
+          configure(cell as never);
+          return cell;
+        },
+      },
+    };
+    const compressor = createDefaultEffectConfig("compressor", "compressor", 0);
+
+    expect(() =>
+      createOfficialEffectGroup(
+        {
+          boxes,
+          core: { EffectFactories: { AudioNamed: factories } },
+          project,
+          bpm: 120,
+        } as never,
+        compressor,
+        {},
+        0
+      )
+    ).toThrow('openDAW box is missing required field "threshold"');
+  });
+
   test("constructs every catalog effect with the published boxes", async () => {
     Reflect.set(globalThis, "AudioWorkletNode", class {});
     const [adapters, boxes, core, { Option, Terminable }] = await Promise.all([
@@ -110,7 +177,11 @@ describe("official openDAW BoxGraph adapter", () => {
       key: string
     ) =>
       (
-        groups.find((group) => group.config.type === type)?.[target][key] as {
+        (
+          groups.find((group) => group.config.type === type)?.[
+            target
+          ] as unknown as Record<string, unknown>
+        )[key] as {
           getValue(): number;
         }
       ).getValue();

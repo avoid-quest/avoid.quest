@@ -141,6 +141,7 @@ class MeterService {
     if (
       !(slot.source && slot.listeners.size > 0) ||
       slot.node ||
+      slot.fallback ||
       slot.initialization
     ) {
       return slot.initialization ?? Promise.resolve();

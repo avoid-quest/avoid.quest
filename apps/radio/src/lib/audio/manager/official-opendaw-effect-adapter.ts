@@ -26,13 +26,127 @@ type PointerField = {
   refer(target: unknown): void;
 };
 
-type BoxLike = {
+const PRIMITIVE_FIELD_KEYS = [
+  "amount",
+  "attack",
+  "autoattack",
+  "automakeup",
+  "autorelease",
+  "bandwidth",
+  "bandCount",
+  "bits",
+  "boost",
+  "carrierMaxFreq",
+  "carrierMinFreq",
+  "channelOffset",
+  "cross",
+  "crossover1",
+  "crossover2",
+  "crossover3",
+  "crush",
+  "damp",
+  "damping",
+  "decay",
+  "decayDiffusion1",
+  "decayDiffusion2",
+  "delayMusical",
+  "delayMillis",
+  "depth",
+  "drive",
+  "dry",
+  "enabled",
+  "envAttack",
+  "envRelease",
+  "equation",
+  "excursionDepth",
+  "excursionRate",
+  "feedback",
+  "filter",
+  "floor",
+  "frequency",
+  "gain",
+  "hold",
+  "index",
+  "inputDiffusion1",
+  "inputDiffusion2",
+  "inputGain",
+  "inputgain",
+  "inverse",
+  "invertL",
+  "invertR",
+  "key",
+  "knee",
+  "label",
+  "lfoDepth",
+  "lfoSpeed",
+  "lookahead",
+  "makeup",
+  "mix",
+  "modulatorMaxFreq",
+  "modulatorMinFreq",
+  "modulatorSource",
+  "mono",
+  "mute",
+  "offset",
+  "order",
+  "outputGain",
+  "overSampling",
+  "pan",
+  "panning",
+  "panningMixing",
+  "preDelay",
+  "preMillisTimeLeft",
+  "preMillisTimeRight",
+  "preSyncTimeLeft",
+  "preSyncTimeRight",
+  "q",
+  "qEnd",
+  "qStart",
+  "rate",
+  "ratio",
+  "release",
+  "retune",
+  "return",
+  "scale",
+  "shift",
+  "slope",
+  "smooth",
+  "solo",
+  "stereo",
+  "swap",
+  "symmetry",
+  "threshold",
+  "value",
+  "volume",
+  "wet",
+] as const;
+
+type PrimitiveFieldKey = (typeof PRIMITIVE_FIELD_KEYS)[number];
+type PointerFieldKey = "model" | "sideChain";
+
+type PrimitiveBoxFields = Partial<Record<PrimitiveFieldKey, PrimitiveField>>;
+type PointerBoxFields = Partial<Record<PointerFieldKey, PointerField>>;
+
+interface BoxLike extends PrimitiveBoxFields, PointerBoxFields {
+  address?: { uuid: Uint8Array };
+  audioEffects?: HostField;
+  composite?: { refer(target: unknown): void };
   delete(): void;
-  enabled?: PrimitiveField;
-  index?: PrimitiveField;
-  label?: PrimitiveField;
-  [key: string]: unknown;
-};
+  entries?: {
+    incoming?: unknown[];
+    pointerHub?: { incoming(): Array<{ box: BoxLike }> };
+  };
+  highBell?: BoxLike;
+  highPass?: BoxLike;
+  highShelf?: BoxLike;
+  lowBell?: BoxLike;
+  lowPass?: BoxLike;
+  lowShelf?: BoxLike;
+  midBell?: BoxLike;
+  parameters?: {
+    pointerHub?: { filter(): Array<{ box: BoxLike }> };
+  };
+}
 
 type HostField = unknown;
 
@@ -56,17 +170,23 @@ type CreateContext = AdapterModules & {
   bpm: number;
 };
 
-function field(box: BoxLike, key: string): PrimitiveField | undefined {
+function field(box: BoxLike, key: PrimitiveFieldKey): PrimitiveField {
   const candidate = box[key];
-  return candidate &&
+  if (
+    candidate &&
     typeof candidate === "object" &&
     "setValue" in candidate &&
     typeof candidate.setValue === "function"
-    ? (candidate as PrimitiveField)
-    : undefined;
+  ) {
+    return candidate;
+  }
+  throw new Error(`openDAW box is missing required field "${key}"`);
 }
 
-function pointer(box: BoxLike, key: string): PointerField | undefined {
+function optionalPointer(
+  box: BoxLike,
+  key: PointerFieldKey
+): PointerField | undefined {
   const candidate = box[key];
   return candidate &&
     typeof candidate === "object" &&
@@ -78,12 +198,20 @@ function pointer(box: BoxLike, key: string): PointerField | undefined {
     : undefined;
 }
 
+function requiredPointer(box: BoxLike, key: PointerFieldKey): PointerField {
+  const candidate = optionalPointer(box, key);
+  if (!candidate) {
+    throw new Error(`openDAW box is missing required pointer "${key}"`);
+  }
+  return candidate;
+}
+
 function set(
   box: BoxLike,
-  key: string,
+  key: PrimitiveFieldKey,
   value: boolean | number | string
 ): void {
-  field(box, key)?.setValue(value);
+  field(box, key).setValue(value);
 }
 
 function db(gain: number): number {
@@ -111,9 +239,9 @@ function configureRevamp(box: BoxLike, config: EffectConfig): void {
     ["highShelf", "highShelf"],
     ["lowPass", "lowPass"],
   ] as const) {
-    const section = box[key] as BoxLike | undefined;
+    const section = box[key];
     if (!section) {
-      continue;
+      throw new Error(`openDAW Revamp box is missing section "${key}"`);
     }
     const configRecord = config as unknown as Record<string, unknown>;
     set(section, "enabled", Boolean(configRecord[`${prefix}Enabled`]));
@@ -533,7 +661,7 @@ export function createOfficialEffectGroup(
       }
     ) as unknown as BoxLike;
     created.push(model);
-    pointer(device, "model")?.refer(model);
+    requiredPointer(device, "model").refer(model);
   }
   if (
     config.type === "fxComposite" ||
@@ -620,7 +748,7 @@ export function bindOfficialSidechain(
   group: OfficialEffectGroup,
   target: unknown | null
 ): void {
-  const sidechain = pointer(group.device, "sideChain");
+  const sidechain = optionalPointer(group.device, "sideChain");
   if (!sidechain) {
     return;
   }

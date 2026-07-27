@@ -173,4 +173,106 @@ describe("MeterService", () => {
       service.clear();
     }
   });
+
+  test("shares one fallback across subscribers and releases it once", async () => {
+    const source = new FakeAudioNode();
+    const fallbackInput = new FakeAudioNode();
+    const terminate = mock(() => undefined);
+    let observer:
+      | ((level: { left: number; right: number }) => void)
+      | undefined;
+    const fallbackFactory = mock((_context, nextObserver) => {
+      observer = nextObserver;
+      return {
+        input: fallbackInput as unknown as AudioNode,
+        terminate,
+      };
+    }) as FallbackMeterFactory;
+    const service = new MeterService(
+      () => Promise.reject(new Error("meter assets unavailable")),
+      fallbackFactory
+    );
+    const first: Array<{ left: number; right: number }> = [];
+    const second: Array<{ left: number; right: number }> = [];
+    const originalWarn = console.warn;
+    console.warn = mock(() => undefined);
+
+    try {
+      const unsubscribeFirst = service.subscribeMeter("deck-a", (level) =>
+        first.push(level)
+      );
+      await service.setSoundSource("deck-a", source as unknown as AudioNode);
+      const unsubscribeSecond = service.subscribeMeter("deck-a", (level) =>
+        second.push(level)
+      );
+      await Promise.resolve();
+      observer?.({ left: 0.2, right: 0.4 });
+
+      expect(fallbackFactory).toHaveBeenCalledTimes(1);
+      expect(source.connections.size).toBe(1);
+      expect(first).toEqual([{ left: 0.2, right: 0.4 }]);
+      expect(second).toEqual([{ left: 0.2, right: 0.4 }]);
+
+      unsubscribeFirst();
+      expect(terminate).not.toHaveBeenCalled();
+      unsubscribeSecond();
+      expect(terminate).toHaveBeenCalledTimes(1);
+      expect(source.connections.size).toBe(0);
+    } finally {
+      console.warn = originalWarn;
+      service.clear();
+    }
+  });
+
+  test("replaces a fallback source without overlap and can reactivate later", async () => {
+    const firstSource = new FakeAudioNode();
+    const secondSource = new FakeAudioNode();
+    const fallbackInputs: FakeAudioNode[] = [];
+    const terminations: ReturnType<typeof mock>[] = [];
+    const fallbackFactory = mock(() => {
+      const input = new FakeAudioNode();
+      const terminate = mock(() => undefined);
+      fallbackInputs.push(input);
+      terminations.push(terminate);
+      return {
+        input: input as unknown as AudioNode,
+        terminate,
+      };
+    }) as FallbackMeterFactory;
+    const service = new MeterService(
+      () => Promise.reject(new Error("meter assets unavailable")),
+      fallbackFactory
+    );
+    const originalWarn = console.warn;
+    console.warn = mock(() => undefined);
+
+    try {
+      const unsubscribe = service.subscribeMeter("deck-a", () => undefined);
+      await service.setSoundSource(
+        "deck-a",
+        firstSource as unknown as AudioNode
+      );
+      await service.setSoundSource(
+        "deck-a",
+        secondSource as unknown as AudioNode
+      );
+
+      expect(fallbackFactory).toHaveBeenCalledTimes(2);
+      expect(terminations[0]).toHaveBeenCalledTimes(1);
+      expect(firstSource.connections.size).toBe(0);
+      expect(secondSource.connections.has(fallbackInputs[1])).toBe(true);
+
+      unsubscribe();
+      expect(terminations[1]).toHaveBeenCalledTimes(1);
+      const resubscribe = service.subscribeMeter("deck-a", () => undefined);
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(fallbackFactory).toHaveBeenCalledTimes(3);
+      resubscribe();
+      expect(terminations[2]).toHaveBeenCalledTimes(1);
+    } finally {
+      console.warn = originalWarn;
+      service.clear();
+    }
+  });
 });

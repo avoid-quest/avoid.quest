@@ -1,4 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import {
+  MAX_EFFECT_TEMPO,
+  MIN_EFFECT_TEMPO,
+} from "@/lib/audio/dsp/effects/tempo";
 import { DEFAULT_EFFECT_TEMPO } from "@/lib/audio/dsp/routing/effect-tree";
 import { parsePlaybackSessionRecord } from "./playback-sessions";
 
@@ -37,6 +41,20 @@ function baseEffect(id: string, type: string, order: number) {
 }
 
 describe("playback session effect migration", () => {
+  test("clamps persisted tempo to the product-supported range", () => {
+    const session = {
+      id: "dj",
+      channels: [channelWithEffects([])],
+    };
+
+    expect(parsePlaybackSessionRecord({ ...session, tempo: 1 }).tempo).toBe(
+      MIN_EFFECT_TEMPO
+    );
+    expect(parsePlaybackSessionRecord({ ...session, tempo: 2000 }).tempo).toBe(
+      MAX_EFFECT_TEMPO
+    );
+  });
+
   test("adds tempo without dropping legacy radio effects or parameters", () => {
     const legacyEffects = [
       {

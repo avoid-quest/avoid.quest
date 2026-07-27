@@ -130,8 +130,8 @@ function applyStructuralParams(
               .sidechainEnabled === 1
         )
     );
-  if (usesSidechain || nestedUsesSidechain) {
-    result.sidechainEnabled = 1;
+  if ("sidechain" in config || "chains" in config) {
+    result.sidechainEnabled = usesSidechain || nestedUsesSidechain ? 1 : 0;
   }
 }
 

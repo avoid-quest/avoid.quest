@@ -18,7 +18,7 @@ import { getDjDeckActions } from "@/lib/dj-actions";
 import { MidiController } from "./midi-controller";
 import type { MidiAction } from "./types";
 
-function collectEffectActions(
+export function collectEffectActions(
   effect: EffectConfig,
   targetPrefix: string,
   group: string,

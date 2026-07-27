@@ -1,6 +1,7 @@
+import { clampEffectTempo, DEFAULT_EFFECT_TEMPO } from "../effects/tempo.js";
 import type { EffectChainConfig, EffectConfig } from "../effects/types.js";
 
-export const DEFAULT_EFFECT_TEMPO = 120;
+export { DEFAULT_EFFECT_TEMPO } from "../effects/tempo.js";
 export const MAX_EFFECT_TREE_DEPTH = 8;
 
 export function isEffectContainer(
@@ -117,6 +118,32 @@ export function findEffectChain(
     }
   }
   return;
+}
+
+export function findRootEffectContainer(
+  effects: readonly EffectConfig[],
+  effectId: string
+): EffectConfig | null {
+  return (
+    effects.find(
+      (effect) =>
+        isEffectContainer(effect) &&
+        effect.id !== effectId &&
+        findEffectInTree([effect], effectId)
+    ) ?? null
+  );
+}
+
+export function findRootEffectContainerForChain(
+  effects: readonly EffectConfig[],
+  chainId: string
+): EffectConfig | null {
+  return (
+    effects.find(
+      (effect) =>
+        isEffectContainer(effect) && findEffectChain([effect], chainId)
+    ) ?? null
+  );
 }
 
 export function updateEffectInTree(
@@ -307,6 +334,6 @@ export function validateEffectTree(
 
 export function normalizeTempoBpm(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) && value > 0
-    ? value
+    ? clampEffectTempo(value)
     : DEFAULT_EFFECT_TEMPO;
 }

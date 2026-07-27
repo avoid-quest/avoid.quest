@@ -6,8 +6,9 @@ export type EffectsGraphRuntime = {
   connectSound(
     soundId: string,
     source: AudioNode,
-    destination: AudioNode
-  ): Promise<void>;
+    destination: AudioNode,
+    generation?: number
+  ): Promise<boolean>;
   disconnectSound(soundId: string): void;
   setTempo(bpm: number): void;
   cleanup(): void;

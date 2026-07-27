@@ -1,4 +1,5 @@
 import { BiquadFilter } from "./biquad-filter.js";
+import { clampEffectTempo } from "./tempo.js";
 import type {
   EffectChainConfig,
   EffectConfig,
@@ -46,7 +47,7 @@ const branchPanGains = (
   pan: number
 ): readonly [number, number] => {
   if (type === "stereoSplit") {
-    return [1, 1];
+    return [pan <= 0 ? 1 : 1 - pan, pan >= 0 ? 1 : 1 + pan];
   }
   if (type === "frequencySplit") {
     return [pan <= 0 ? 1 : 1 - pan, pan >= 0 ? 1 : 1 + pan];
@@ -135,7 +136,7 @@ export class ContainerEffect implements EffectProcessor {
   }
 
   setTempo(bpm: number): void {
-    this.tempo = Math.max(20, Math.min(400, bpm));
+    this.tempo = clampEffectTempo(bpm);
     for (const chain of this.chains) {
       for (const { processor } of chain.processors) {
         processor.setTempo?.(this.tempo);

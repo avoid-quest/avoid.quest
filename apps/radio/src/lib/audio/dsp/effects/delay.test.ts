@@ -32,7 +32,7 @@ describe("Delay Effect", () => {
   test("setDelayTime clamps to maximum buffer size", () => {
     const delay = new Delay(SAMPLE_RATE);
 
-    // Try to set delay longer than 2 second max
+    // Try to set delay longer than the 20 second storage limit
     delay.setDelayTime(30);
 
     // Should still work (clamped to max)
@@ -69,6 +69,29 @@ describe("Delay Effect", () => {
 
     expect(output[0][800]).toBe(1);
     expect(output[1][800]).toBe(1);
+  });
+
+  test("honors the exposed 1000 BPM tempo instead of clamping to 400", () => {
+    const delay = new Delay(100);
+    delay.setTempo(1000);
+    delay.setDelayMusical("1/1");
+    delay.setDelayMillis(0);
+    delay.setFeedback(0);
+    const input: [Float32Array, Float32Array] = [
+      new Float32Array(61),
+      new Float32Array(61),
+    ];
+    const output: [Float32Array, Float32Array] = [
+      new Float32Array(61),
+      new Float32Array(61),
+    ];
+    input[0][0] = 1;
+    input[1][0] = 1;
+
+    delay.process(input, output, 0, input[0].length);
+
+    expect(output[0][24]).toBe(1);
+    expect(output[0][60]).toBe(0);
   });
 
   test("routes cross-feedback within the configured feedback gain", () => {

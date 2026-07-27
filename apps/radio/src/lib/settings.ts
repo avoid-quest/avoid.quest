@@ -1,8 +1,8 @@
 import {
+  deletePlaybackSession,
   initializePlaybackSessions,
   initializeRadios,
   initializeSettings,
-  playbackSessionsCollection,
   radiosCollection,
   settingsCollection,
 } from "./collections";
@@ -33,10 +33,7 @@ export const resetAllSettings = async (): Promise<void> => {
   }
 
   for (const sessionId of ["single", "multiple", "dj"] as const) {
-    const session = playbackSessionsCollection.state.get(sessionId);
-    if (session) {
-      playbackSessionsCollection.delete(sessionId);
-    }
+    deletePlaybackSession(sessionId);
   }
 
   if (typeof window !== "undefined") {

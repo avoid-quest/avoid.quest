@@ -5,6 +5,11 @@
  */
 
 export {
+  clampEffectTempo,
+  MAX_EFFECT_TEMPO,
+  MIN_EFFECT_TEMPO,
+} from "../effects/tempo.js";
+export {
   EffectChain,
   type EffectChainConfig,
   type EffectInstance,

@@ -118,4 +118,115 @@ describe("compatibility effect containers", () => {
     expect(sidechainSetters.get("gate")).toHaveBeenLastCalledWith(sidechain);
     expect(sidechainSetters.get("compressor")).toHaveBeenLastCalledWith(null);
   });
+
+  test("propagates sidechains through multiple container levels to gate, compressor, and vocoder", () => {
+    const root = createDefaultEffectConfig("fxComposite", "root", 0);
+    const nested = createDefaultEffectConfig("fxComposite", "nested", 0);
+    const deepest = createDefaultEffectConfig("stereoSplit", "deepest", 0);
+    const gate = createDefaultEffectConfig("gate", "gate", 0);
+    const compressor = createDefaultEffectConfig("compressor", "compressor", 1);
+    const vocoder = createDefaultEffectConfig("vocoder", "vocoder", 0);
+    const internal = createDefaultEffectConfig("gate", "internal", 1);
+    gate.sidechain = { channelId: "deck-b" };
+    compressor.sidechain = { channelId: "deck-b" };
+    vocoder.sidechain = { channelId: "deck-b" };
+    const deepestLeft = deepest.chains[0];
+    const deepestRight = deepest.chains[1];
+    const nestedFirst = nested.chains[0];
+    const rootFirst = root.chains[0];
+    if (!(deepestLeft && deepestRight && nestedFirst && rootFirst)) {
+      throw new Error("Default containers require their fixed chains");
+    }
+    deepestLeft.effects = [gate, compressor];
+    deepestRight.effects = [vocoder, internal];
+    nestedFirst.effects = [deepest];
+    rootFirst.effects = [nested];
+
+    const setters = new Map<
+      string,
+      ReturnType<typeof mock<(input: StereoChannels | null) => void>>
+    >();
+    let factory: (config: EffectConfig) => {
+      process(
+        input: StereoChannels,
+        output: StereoChannels,
+        fromIndex: number,
+        toIndex: number
+      ): void;
+      reset(): void;
+      setSidechainInput?(input: StereoChannels | null): void;
+    };
+    factory = (config) => {
+      if (
+        config.type === "fxComposite" ||
+        config.type === "stereoSplit" ||
+        config.type === "frequencySplit"
+      ) {
+        return new ContainerEffect(config.type, SAMPLE_RATE, config, factory);
+      }
+      const setSidechainInput = mock(
+        (_input: StereoChannels | null) => undefined
+      );
+      setters.set(config.id, setSidechainInput);
+      return {
+        process: (input, output, fromIndex, toIndex) => {
+          output[0].set(input[0].subarray(fromIndex, toIndex), fromIndex);
+          output[1].set(input[1].subarray(fromIndex, toIndex), fromIndex);
+        },
+        reset: () => undefined,
+        setSidechainInput,
+      };
+    };
+    const effect = new ContainerEffect(
+      "fxComposite",
+      SAMPLE_RATE,
+      root,
+      factory
+    );
+    const sidechain = buffers();
+
+    effect.setSidechainInput(sidechain);
+
+    for (const id of ["gate", "compressor", "vocoder"]) {
+      expect(setters.get(id)).toHaveBeenLastCalledWith(sidechain);
+    }
+    expect(setters.get("internal")).toHaveBeenLastCalledWith(null);
+  });
+
+  test.each([
+    { pan: -1, left: 1, right: 0 },
+    { pan: -0.5, left: 1, right: 0.5 },
+    { pan: 0, left: 1, right: 1 },
+    { pan: 0.5, left: 0.5, right: 1 },
+    { pan: 1, left: 0, right: 1 },
+  ])("applies stereo split branch pan $pan with gain and neutral reconstruction", ({
+    pan,
+    left,
+    right,
+  }) => {
+    const config = createDefaultEffectConfig("stereoSplit", "stereo", 0);
+    const [leftChain, rightChain] = config.chains;
+    if (!(leftChain && rightChain)) {
+      throw new Error("Stereo Split requires two chains");
+    }
+    leftChain.pan = pan;
+    leftChain.gain = 0.5;
+    rightChain.pan = pan;
+    rightChain.gain = 0.5;
+    const effect = new ContainerEffect(
+      "stereoSplit",
+      SAMPLE_RATE,
+      config,
+      () => null
+    );
+    const input = buffers();
+    const output = buffers();
+    input[0].fill(0.8);
+    input[1].fill(-0.4);
+
+    effect.process(input, output, 0, BLOCK_SIZE);
+
+    expect(output[0][0]).toBeCloseTo(0.8 * 0.5 * left, 6);
+    expect(output[1][0]).toBeCloseTo(-0.4 * 0.5 * right, 6);
+  });
 });

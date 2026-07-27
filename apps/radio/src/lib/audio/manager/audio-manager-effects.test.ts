@@ -119,4 +119,20 @@ describe("audio manager effect config conversion", () => {
       delayTime: 0.25,
     });
   });
+
+  test("preserves explicit sidechain removal and disables only the updated effect", () => {
+    const plain = toPlainEffectConfig({
+      sidechain: undefined,
+    } as Partial<EffectConfig>);
+
+    expect(Object.hasOwn(plain, "sidechain")).toBe(true);
+    expect(convertPartialEffectConfig("compressor", plain)).toEqual({
+      sidechainEnabled: 0,
+    });
+    expect(
+      convertPartialEffectConfig("gate", {
+        sidechain: { channelId: "deck-b" },
+      } as Partial<EffectConfig>)
+    ).toEqual({ sidechainEnabled: 1 });
+  });
 });

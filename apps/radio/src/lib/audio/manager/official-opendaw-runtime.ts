@@ -1,5 +1,6 @@
 import { UUID } from "@opendaw/lib-std";
 import type { EngineWorklet, Project, ProjectEnv } from "@opendaw/studio-core";
+import { clampEffectTempo } from "../dsp/effects/tempo.js";
 import type { EffectConfig } from "../dsp/effects/types.js";
 import {
   clearWerkstattRuntimeStatus,
@@ -50,6 +51,7 @@ type Terminable = { terminate(): void };
 type SoundUnit = ReturnType<Project["api"]["createAnyInstrument"]> & {
   effects: EffectConfig[];
   groups: OfficialEffectGroup[];
+  monitoring: boolean;
   rack: ReturnType<typeof createMasterRack>;
   source: AudioNode | null;
   destination: AudioNode | null;
@@ -106,13 +108,23 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
   private readonly moduleLoader: RuntimeModuleLoader;
   private readonly sidechainTargets = new Map<string, string>();
   private readonly soundUnits = new Map<string, SoundUnit>();
-  private readonly werkstattRevisions = new Map<string, number>();
-  private readonly werkstattSubscriptions = new Map<string, Terminable>();
+  private readonly connectionGenerations = new Map<string, number>();
+  private readonly werkstattGenerations = new Map<
+    OfficialEffectGroup,
+    number
+  >();
+  private readonly werkstattGroups = new Map<string, OfficialEffectGroup>();
+  private readonly werkstattSubscriptions = new Map<
+    OfficialEffectGroup,
+    Terminable
+  >();
   private initializePromise: Promise<void> | null = null;
   private project: Project | null = null;
   private worklet: EngineWorklet | null = null;
   private modules: RuntimeModules | null = null;
   private werkstattCompiler: WerkstattCompiler | null = null;
+  private silentDestination: GainNode | null = null;
+  private nextWerkstattGeneration = 0;
   private bpm = 120;
   private closed = false;
 
@@ -216,8 +228,12 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
   async connectSound(
     soundId: string,
     source: AudioNode,
-    destination: AudioNode
-  ): Promise<void> {
+    destination: AudioNode,
+    generation = (this.connectionGenerations.get(soundId) ?? 0) + 1
+  ): Promise<boolean> {
+    if (!this.beginSoundConnection(soundId, generation)) {
+      return false;
+    }
     if (
       source.context !== this.context ||
       destination.context !== this.context
@@ -225,7 +241,57 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       throw new Error("openDAW monitoring nodes must share one AudioContext");
     }
     await this.initialize();
+    if (!this.isCurrentSoundConnection(soundId, generation)) {
+      return false;
+    }
+    return this.connectSoundUnit(
+      soundId,
+      source,
+      destination,
+      true,
+      generation
+    );
+  }
 
+  async connectSidechainSource(
+    soundId: string,
+    source: AudioNode,
+    generation = (this.connectionGenerations.get(soundId) ?? 0) + 1
+  ): Promise<boolean> {
+    if (!this.beginSoundConnection(soundId, generation)) {
+      return false;
+    }
+    if (source.context !== this.context) {
+      throw new Error("openDAW monitoring nodes must share one AudioContext");
+    }
+    await this.initialize();
+    if (!this.isCurrentSoundConnection(soundId, generation)) {
+      return false;
+    }
+    const existing = this.soundUnits.get(soundId);
+    if (existing && !existing.monitoring && existing.source === source) {
+      this.bindSidechains();
+      return true;
+    }
+    return this.connectSoundUnit(
+      soundId,
+      source,
+      this.getSilentDestination(),
+      false,
+      generation
+    );
+  }
+
+  private connectSoundUnit(
+    soundId: string,
+    source: AudioNode,
+    destination: AudioNode,
+    monitoring: boolean,
+    generation: number
+  ): boolean {
+    if (!this.isCurrentSoundConnection(soundId, generation)) {
+      return false;
+    }
     const project = this.requireProject();
     const worklet = this.requireWorklet();
     let unit = this.soundUnits.get(soundId);
@@ -253,13 +319,18 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
         ...product,
         effects: [],
         groups: [],
+        monitoring,
         source: null,
         destination: null,
       };
       this.soundUnits.set(soundId, unit);
-    } else if (unit.source === source && unit.destination === destination) {
+    } else if (
+      unit.source === source &&
+      unit.destination === destination &&
+      unit.monitoring === monitoring
+    ) {
       this.bindSidechains();
-      return;
+      return true;
     } else if (unit.source !== null) {
       worklet.unregisterMonitoringSource(unit.audioUnitBox.address.uuid);
     }
@@ -272,7 +343,9 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     );
     unit.source = source;
     unit.destination = destination;
+    unit.monitoring = monitoring;
     this.bindSidechains();
+    return true;
   }
 
   disconnectSound(soundId: string): void {
@@ -286,7 +359,14 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     this.bindSidechains();
   }
 
-  deleteSound(soundId: string): void {
+  deleteSound(
+    soundId: string,
+    generation = (this.connectionGenerations.get(soundId) ?? 0) + 1
+  ): void {
+    this.connectionGenerations.set(
+      soundId,
+      Math.max(generation, (this.connectionGenerations.get(soundId) ?? 0) + 1)
+    );
     const unit = this.soundUnits.get(soundId);
     if (!unit) {
       return;
@@ -396,7 +476,7 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     if (!project) {
       return;
     }
-    this.bpm = Math.max(30, Math.min(1000, bpm));
+    this.bpm = clampEffectTempo(bpm);
     project.editing.modify(() => project.api.setBpm(this.bpm));
   }
 
@@ -410,14 +490,18 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     }
     this.soundUnits.clear();
     this.sidechainTargets.clear();
+    this.connectionGenerations.clear();
     for (const subscription of this.werkstattSubscriptions.values()) {
       subscription.terminate();
     }
-    for (const effectId of this.werkstattSubscriptions.keys()) {
+    for (const effectId of this.werkstattGroups.keys()) {
       clearWerkstattRuntimeStatus(effectId);
     }
     this.werkstattSubscriptions.clear();
-    this.werkstattRevisions.clear();
+    this.werkstattGenerations.clear();
+    this.werkstattGroups.clear();
+    this.silentDestination?.disconnect();
+    this.silentDestination = null;
     this.project?.terminate();
     this.project = null;
     this.worklet = null;
@@ -457,6 +541,33 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     };
   }
 
+  private beginSoundConnection(soundId: string, generation: number): boolean {
+    const current = this.connectionGenerations.get(soundId) ?? 0;
+    if (generation < current) {
+      return false;
+    }
+    this.connectionGenerations.set(soundId, generation);
+    return true;
+  }
+
+  private isCurrentSoundConnection(
+    soundId: string,
+    generation: number
+  ): boolean {
+    return (
+      !this.closed && this.connectionGenerations.get(soundId) === generation
+    );
+  }
+
+  private getSilentDestination(): GainNode {
+    if (!this.silentDestination) {
+      this.silentDestination = this.context.createGain();
+      this.silentDestination.gain.value = 0;
+      this.silentDestination.connect(this.context.destination);
+    }
+    return this.silentDestination;
+  }
+
   private compileWerkstattGroup(
     group: OfficialEffectGroup,
     config: Extract<EffectConfig, { type: "werkstatt" }>
@@ -467,8 +578,9 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       return;
     }
     this.subscribeWerkstattMessages(group, config.id);
-    const revision = (this.werkstattRevisions.get(config.id) ?? 0) + 1;
-    this.werkstattRevisions.set(config.id, revision);
+    const generation = ++this.nextWerkstattGeneration;
+    this.werkstattGenerations.set(group, generation);
+    this.werkstattGroups.set(config.id, group);
     setWerkstattRuntimeStatus(config.id, {
       state: "compiling",
       message: "Compiling locally in the openDAW audio worklet…",
@@ -481,7 +593,7 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
         config.code ?? config.source
       )
       .then(() => {
-        if (this.werkstattRevisions.get(config.id) !== revision) {
+        if (!this.isCurrentWerkstattCompile(group, config.id, generation)) {
           return;
         }
         project.editing.modify(() =>
@@ -493,7 +605,7 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
         });
       })
       .catch((cause: unknown) => {
-        if (this.werkstattRevisions.get(config.id) !== revision) {
+        if (!this.isCurrentWerkstattCompile(group, config.id, generation)) {
           return;
         }
         setWerkstattRuntimeStatus(config.id, {
@@ -508,7 +620,7 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     group: OfficialEffectGroup,
     effectId: string
   ): void {
-    if (this.werkstattSubscriptions.has(effectId)) {
+    if (this.werkstattSubscriptions.has(group)) {
       return;
     }
     const device = group.device as unknown as {
@@ -516,13 +628,16 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     };
     const subscription = this.requireWorklet().subscribeDeviceMessage(
       UUID.toString(device.address.uuid),
-      (message) =>
-        setWerkstattRuntimeStatus(effectId, {
-          state: "error",
-          message,
-        })
+      (message) => {
+        if (this.werkstattGroups.get(effectId) === group) {
+          setWerkstattRuntimeStatus(effectId, {
+            state: "error",
+            message,
+          });
+        }
+      }
     );
-    this.werkstattSubscriptions.set(effectId, subscription);
+    this.werkstattSubscriptions.set(group, subscription);
   }
 
   private releaseWerkstattGroups(groups: readonly OfficialEffectGroup[]): void {
@@ -530,11 +645,26 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       if (group.config.type !== "werkstatt") {
         continue;
       }
-      this.werkstattSubscriptions.get(group.config.id)?.terminate();
-      this.werkstattSubscriptions.delete(group.config.id);
-      this.werkstattRevisions.delete(group.config.id);
-      clearWerkstattRuntimeStatus(group.config.id);
+      this.werkstattSubscriptions.get(group)?.terminate();
+      this.werkstattSubscriptions.delete(group);
+      this.werkstattGenerations.delete(group);
+      if (this.werkstattGroups.get(group.config.id) === group) {
+        this.werkstattGroups.delete(group.config.id);
+        clearWerkstattRuntimeStatus(group.config.id);
+      }
     }
+  }
+
+  private isCurrentWerkstattCompile(
+    group: OfficialEffectGroup,
+    effectId: string,
+    generation: number
+  ): boolean {
+    return (
+      !this.closed &&
+      this.werkstattGroups.get(effectId) === group &&
+      this.werkstattGenerations.get(group) === generation
+    );
   }
 
   private bindSidechains(): void {

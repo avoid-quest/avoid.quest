@@ -4,7 +4,9 @@ import {
 } from "@tanstack/react-db";
 import { z } from "zod";
 import {
+  collectLocalNamModelIds,
   createLocalNamModelId,
+  deleteUnreferencedNamModels,
   getNamModel,
   saveNamModel,
 } from "@/lib/audio/dsp/effects/nam-model-store";
@@ -638,6 +640,40 @@ function updatePlaybackSessionRecord(
   updateRecord.call(playbackSessionsCollection, id, updater);
 }
 
+function collectSessionNamModelIds(
+  session: PlaybackSessionRecord | undefined
+): Set<string> {
+  return new Set(
+    session?.channels.flatMap((channel) => [
+      ...collectLocalNamModelIds(channel.effects),
+    ]) ?? []
+  );
+}
+
+function collectReferencedNamModelIds(): Set<string> {
+  return new Set(
+    [...playbackSessionsCollection.state.values()].flatMap((session) => [
+      ...collectSessionNamModelIds(session),
+    ])
+  );
+}
+
+function scheduleNamModelCleanup(candidates: Iterable<string>): void {
+  const pending = [...new Set(candidates)];
+  if (pending.length === 0) {
+    return;
+  }
+  queueMicrotask(() => {
+    deleteUnreferencedNamModels(pending, collectReferencedNamModelIds()).catch(
+      (error) =>
+        console.warn(
+          "[playback-sessions] Could not garbage-collect local NAM models",
+          error
+        )
+    );
+  });
+}
+
 function collectNamModels(
   effects: readonly EffectConfig[]
 ): Extract<EffectConfig, { type: "neuralAmp" }>[] {
@@ -748,8 +784,20 @@ export function updatePlaybackSession(
 ): void {
   const existing = getPlaybackSession(id);
   if (existing) {
+    const previousModelIds = collectSessionNamModelIds(existing);
     updatePlaybackSessionRecord(id, updater);
+    scheduleNamModelCleanup(previousModelIds);
   }
+}
+
+export function deletePlaybackSession(id: PlaybackSessionId): void {
+  const existing = getPlaybackSession(id);
+  if (!existing) {
+    return;
+  }
+  const previousModelIds = collectSessionNamModelIds(existing);
+  playbackSessionsCollection.delete(id);
+  scheduleNamModelCleanup(previousModelIds);
 }
 
 export function getPlaybackChannel(

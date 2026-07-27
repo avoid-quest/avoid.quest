@@ -7,6 +7,7 @@ import {
 } from "@/lib/collections/playback-sessions";
 import { setPlaybackChannelSoundId } from "@/lib/stores/playback-runtime-store";
 import {
+  activateChannel,
   addChannelEffect,
   deactivateAllChannels,
   reorderChannelEffects,
@@ -152,5 +153,52 @@ describe("channel state manager", () => {
     reorderChannelEffects("dj", "deck-a", ["delay-1"]);
 
     expect(manager.reorderEffects).not.toHaveBeenCalled();
+  });
+
+  test("restores persisted sidechain intent when the source deck activates later", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    const gate = createDefaultEffectConfig("gate", "gate", 0);
+    gate.sidechain = { channelId: "deck-b" };
+    const radioA = {
+      id: "radio-a",
+      name: "Deck A",
+      streamUrl: "https://radio.example/a.mp3",
+    };
+    const radioB = {
+      id: "radio-b",
+      name: "Deck B",
+      streamUrl: "https://radio.example/b.mp3",
+    };
+    playbackSessionsCollection.insert({
+      id: "dj",
+      channels: [
+        { ...createDefaultChannel("deck-a", "deck-a", 0), effects: [gate] },
+        createDefaultChannel("deck-b", "deck-b", 1),
+      ],
+      masterVolume: 1,
+      crossfadePosition: 0.5,
+      headphoneVolume: 1,
+      activeChannelId: null,
+      tempo: 120,
+    });
+
+    const manager = AudioManager.getInstance();
+    manager.createSound = mock((_radio, soundId) => soundId ?? "generated");
+    manager.subscribe = mock(() => () => undefined);
+    manager.subscribeMeter = mock(() => () => undefined);
+    manager.cleanupSound = mock(() => undefined);
+    manager.setEffectsSidechain = mock(() => true);
+
+    activateChannel("dj", "deck-a", radioA, { soundId: "sound-a" });
+    expect(manager.setEffectsSidechain).toHaveBeenLastCalledWith(
+      "sound-a",
+      null
+    );
+
+    activateChannel("dj", "deck-b", radioB, { soundId: "sound-b" });
+    expect(manager.setEffectsSidechain).toHaveBeenCalledWith(
+      "sound-a",
+      "sound-b"
+    );
   });
 });

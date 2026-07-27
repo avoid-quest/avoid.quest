@@ -4,6 +4,7 @@
  * Stereo delay effect with feedback control.
  */
 
+import { clampEffectTempo } from "./tempo.js";
 import type { StereoChannels } from "./types.js";
 
 const dbToGain = (value: number): number => 10 ** (value / 20);
@@ -71,7 +72,7 @@ export class Delay {
   }
 
   setTempo(value: number): void {
-    this.tempo = Math.max(30, Math.min(400, value));
+    this.tempo = clampEffectTempo(value);
   }
 
   setTempoSync(value: boolean): void {

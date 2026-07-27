@@ -29,6 +29,8 @@ import {
   appendEffectToTree,
   findEffectChain,
   findEffectInTree,
+  findRootEffectContainer,
+  findRootEffectContainerForChain,
   isEffectContainer,
   removeEffectFromTree,
   reorderEffectTreeChain,
@@ -79,37 +81,10 @@ const CHANNEL_AUDIO_SYNC_ORDER = [
 ] as const satisfies readonly ChannelAudioField[];
 
 const subscriptionCleanups = new Map<string, () => void>();
+const sidechainChannelIntents = new Map<string, string>();
 
 function getAudioManager(): AudioManager {
   return AudioManager.getInstance();
-}
-
-function findRootContainerForEffect(
-  effects: readonly EffectConfig[],
-  effectId: string
-): EffectConfig | null {
-  for (const effect of effects) {
-    if (
-      isEffectContainer(effect) &&
-      effect.id !== effectId &&
-      findEffectInTree([effect], effectId)
-    ) {
-      return effect;
-    }
-  }
-  return null;
-}
-
-function findRootContainerForChain(
-  effects: readonly EffectConfig[],
-  chainId: string
-): EffectConfig | null {
-  return (
-    effects.find(
-      (effect) =>
-        isEffectContainer(effect) && findEffectChain([effect], chainId)
-    ) ?? null
-  );
 }
 
 function syncRootContainer(soundId: string, root: EffectConfig | null): void {
@@ -123,15 +98,17 @@ function syncRootContainer(soundId: string, root: EffectConfig | null): void {
   }
 }
 
-function findSidechainSoundId(effects: readonly EffectConfig[]): string | null {
+function findSidechainChannelId(
+  effects: readonly EffectConfig[]
+): string | null {
   for (const effect of effects) {
     const sidechainChannelId = effect.sidechain?.channelId;
     if (sidechainChannelId) {
-      return getPlaybackChannelRuntime(sidechainChannelId).soundId;
+      return sidechainChannelId;
     }
     if (isEffectContainer(effect)) {
       for (const chain of effect.chains) {
-        const nested = findSidechainSoundId(chain.effects);
+        const nested = findSidechainChannelId(chain.effects);
         if (nested) {
           return nested;
         }
@@ -145,16 +122,33 @@ function syncEffectSidechain(
   soundId: string,
   effects: readonly EffectConfig[]
 ): void {
-  getAudioManager().setEffectsSidechain(soundId, findSidechainSoundId(effects));
+  const channelId = findSidechainChannelId(effects);
+  if (!channelId) {
+    sidechainChannelIntents.delete(soundId);
+    getAudioManager().setEffectsSidechain(soundId, null);
+    return;
+  }
+  sidechainChannelIntents.set(soundId, channelId);
+  getAudioManager().setEffectsSidechain(
+    soundId,
+    getPlaybackChannelRuntime(channelId).soundId
+  );
 }
 
 function syncAllEffectSidechains(): void {
+  const activeSoundIds = new Set<string>();
   for (const sessionId of PLAYBACK_SESSION_IDS) {
     for (const channel of getPlaybackSession(sessionId)?.channels ?? []) {
       const soundId = getPlaybackChannelRuntime(channel.id).soundId;
       if (soundId) {
+        activeSoundIds.add(soundId);
         syncEffectSidechain(soundId, channel.effects);
       }
+    }
+  }
+  for (const soundId of sidechainChannelIntents.keys()) {
+    if (!activeSoundIds.has(soundId)) {
+      sidechainChannelIntents.delete(soundId);
     }
   }
 }
@@ -398,7 +392,7 @@ export function addChannelEffectToChain(
   if (channel && soundId) {
     syncRootContainer(
       soundId,
-      findRootContainerForChain(channel.effects, chainId)
+      findRootEffectContainerForChain(channel.effects, chainId)
     );
     syncEffectSidechain(soundId, channel.effects);
   }
@@ -444,7 +438,7 @@ export function updateChannelEffect(
   if (effectFound && effectType && runtime.soundId) {
     const manager = getAudioManager();
     const effects = getPlaybackChannel(sessionId, channelId)?.effects ?? [];
-    const root = findRootContainerForEffect(effects, effectId);
+    const root = findRootEffectContainer(effects, effectId);
     if (root) {
       syncRootContainer(runtime.soundId, root);
     } else {
@@ -461,7 +455,7 @@ export function removeChannelEffect(
 ): void {
   const existingEffects =
     getPlaybackChannel(sessionId, channelId)?.effects ?? [];
-  const rootId = findRootContainerForEffect(existingEffects, effectId)?.id;
+  const rootId = findRootEffectContainer(existingEffects, effectId)?.id;
   updateChannel(sessionId, channelId, (draft) => {
     draft.effects = removeEffectFromTree(draft.effects, effectId);
   });
@@ -493,7 +487,7 @@ export function reorderChannelEffectChain(
   if (channel && soundId) {
     syncRootContainer(
       soundId,
-      findRootContainerForChain(channel.effects, chainId)
+      findRootEffectContainerForChain(channel.effects, chainId)
     );
   }
 }
@@ -636,6 +630,7 @@ export function deactivateChannel(channelId: string): void {
   const runtime = getPlaybackChannelRuntime(channelId);
   setChannelSubscriptionCleanup(channelId, null);
   if (runtime.soundId) {
+    sidechainChannelIntents.delete(runtime.soundId);
     getAudioManager().cleanupSound(runtime.soundId);
   }
   resetPlaybackChannelRuntime(channelId);

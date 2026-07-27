@@ -1,5 +1,8 @@
+import type { EffectConfig } from "./types.js";
+
 const DATABASE_NAME = "avoid-quest-audio-models";
 const STORE_NAME = "nam-models";
+const LOCAL_NAM_PREFIX = "local-nam:";
 const cache = new Map<string, string>();
 let databasePromise: Promise<IDBDatabase> | null = null;
 
@@ -26,7 +29,44 @@ function requestResult<T>(request: IDBRequest<T>): Promise<T> {
 }
 
 export function createLocalNamModelId(): string {
-  return `local-nam:${crypto.randomUUID()}`;
+  return `${LOCAL_NAM_PREFIX}${crypto.randomUUID()}`;
+}
+
+export function collectLocalNamModelIds(
+  effects: readonly EffectConfig[]
+): Set<string> {
+  const modelIds = new Set<string>();
+  const visit = (current: readonly EffectConfig[]): void => {
+    for (const effect of current) {
+      if (
+        effect.type === "neuralAmp" &&
+        effect.modelId?.startsWith(LOCAL_NAM_PREFIX)
+      ) {
+        modelIds.add(effect.modelId);
+      }
+      if ("chains" in effect) {
+        for (const chain of effect.chains) {
+          visit(chain.effects);
+        }
+      }
+    }
+  };
+  visit(effects);
+  return modelIds;
+}
+
+export async function deleteUnreferencedNamModels(
+  candidates: Iterable<string>,
+  referenced: ReadonlySet<string>
+): Promise<void> {
+  await Promise.all(
+    [...new Set(candidates)]
+      .filter(
+        (modelId) =>
+          modelId.startsWith(LOCAL_NAM_PREFIX) && !referenced.has(modelId)
+      )
+      .map(deleteNamModel)
+  );
 }
 
 export function getCachedNamModel(modelId: string | null): string | null {

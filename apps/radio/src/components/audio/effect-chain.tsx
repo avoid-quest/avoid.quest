@@ -23,6 +23,11 @@ import { CSS } from "@dnd-kit/utilities";
 import { PlusIcon } from "lucide-react";
 import { useState } from "react";
 import type { EffectConfig, EffectType } from "@/lib/audio";
+import {
+  clampEffectTempo,
+  MAX_EFFECT_TEMPO,
+  MIN_EFFECT_TEMPO,
+} from "@/lib/audio/dsp/effects/tempo";
 import { serializeEffectOrder } from "@/lib/effect-order";
 import { EffectItem } from "./effect-item";
 import { EffectPicker } from "./effect-picker";
@@ -144,12 +149,12 @@ export function EffectChain({
             defaultValue={tempo}
             id={`${deckId}-effects-tempo`}
             key={tempo}
-            max={1000}
-            min={30}
+            max={MAX_EFFECT_TEMPO}
+            min={MIN_EFFECT_TEMPO}
             onBlur={(event) => {
               const value = Number(event.target.value);
               if (Number.isFinite(value)) {
-                onTempoChange(Math.max(30, Math.min(1000, value)));
+                onTempoChange(clampEffectTempo(value));
               }
             }}
             step={0.1}

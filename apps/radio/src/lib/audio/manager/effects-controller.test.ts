@@ -408,6 +408,57 @@ describe("EffectsController lifecycle", () => {
     ).toBe(false);
   });
 
+  test("silences the official route on pause and restores it on resume", async () => {
+    const context = getAudioContext();
+    const filter = new TestAudioNode(context);
+    const destination = new TestAudioNode(context);
+    const manager = createManager(context);
+    const runtime = createRuntime();
+    const controller = new EffectsController({
+      createOfficialRuntime: () => runtime,
+      createWorkletManager: () => manager,
+      notifyListeners: () => undefined,
+      sounds: new Map([["target", sound("target", filter)]]),
+      workletProcessorUrl: () => "/worklet.js",
+    });
+    await controller.getOrCreateWorkletManager("target");
+    const reverb = createDefaultEffectConfig("plateReverb", "reverb", 0);
+    reverb.enabled = true;
+    controller.add("target", reverb);
+    await controller.connectGraph(
+      "target",
+      filter as unknown as AudioNode,
+      destination as unknown as AudioNode
+    );
+
+    controller.pauseSource("target");
+
+    expect(manager.pauseSource).toHaveBeenCalledWith("target");
+    expect(runtime.disconnectSound).toHaveBeenCalledWith(
+      "target",
+      expect.any(Number)
+    );
+    expect(runtime.deleteSound).not.toHaveBeenCalled();
+    expect(
+      filter.connections.has(manager.node as unknown as TestAudioNode)
+    ).toBe(false);
+
+    controller.resumeSource("target");
+    expect(
+      filter.connections.has(manager.node as unknown as TestAudioNode)
+    ).toBe(true);
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(manager.resumeSource).toHaveBeenCalledWith("target");
+    expect(runtime.connectSound).toHaveBeenCalledTimes(2);
+    expect(
+      filter.connections.has(manager.node as unknown as TestAudioNode)
+    ).toBe(false);
+  });
+
   test("stop cancels an in-flight official connection", async () => {
     const context = getAudioContext();
     const filter = new TestAudioNode(context);

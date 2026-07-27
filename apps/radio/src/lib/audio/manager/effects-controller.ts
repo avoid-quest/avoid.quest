@@ -355,11 +355,24 @@ class EffectsController {
   }
 
   pauseSource(soundId: string): void {
-    this.states.get(soundId)?.manager?.pauseSource(soundId);
+    const state = this.states.get(soundId);
+    if (!state) {
+      return;
+    }
+    state.manager?.pauseSource(soundId);
+    const generation = this.advance(state);
+    this.officialRuntime?.disconnectSound(soundId, generation);
+    state.officialConnected = false;
+    this.disconnectCompatibilityGraph(state);
   }
 
   resumeSource(soundId: string): void {
-    this.states.get(soundId)?.manager?.resumeSource(soundId);
+    const state = this.states.get(soundId);
+    if (!state) {
+      return;
+    }
+    state.manager?.resumeSource(soundId);
+    this.refreshRuntimeSelection(soundId);
   }
 
   stopSource(soundId: string): void {

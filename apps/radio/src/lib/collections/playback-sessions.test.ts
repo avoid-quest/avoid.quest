@@ -715,6 +715,16 @@ describe("multiple session persistence", () => {
       },
     });
 
+    const discardedModelId = createLocalNamModelId();
+    await saveNamModel(discardedModelId, '{"stored":true}');
+    const discardedModel = createDefaultEffectConfig(
+      "neuralAmp",
+      "discarded-model",
+      0
+    );
+    discardedModel.modelId = discardedModelId;
+    discardedModel.modelData = '{"inline":true}';
+
     playbackSessionsCollection.insert({
       id: "single",
       channels: [
@@ -729,6 +739,7 @@ describe("multiple session persistence", () => {
             name: "Persisted Single",
             streamUrl: "https://radio.example/single.mp3",
           },
+          effects: [discardedModel],
           volume: 0.25,
         },
         createDefaultChannel("single-b", "single-secondary", 1),
@@ -817,5 +828,8 @@ describe("multiple session persistence", () => {
     expect(deckA?.cueEnabled).toBe(false);
     expect(deckB?.radio).toBeNull();
     expect(deckB?.muted).toBe(false);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(getCachedNamModel(discardedModelId)).toBeNull();
   });
 });

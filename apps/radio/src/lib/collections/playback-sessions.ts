@@ -736,15 +736,21 @@ export async function initializePlaybackSessions(): Promise<void> {
     settingsCollection.stateWhenReady(),
     sessionRadiosCollection.stateWhenReady(),
   ]);
-  await externalizeStoredNamModels();
 
   const settings = settingsCollection.state.get(SETTINGS_ID);
   const shouldRestore = settings?.player.restoreStateOnLoad !== false;
+  const discardedModelIds = shouldRestore
+    ? []
+    : [...collectReferencedNamModelIds()];
+  if (shouldRestore) {
+    await externalizeStoredNamModels();
+  }
 
   if (!shouldRestore) {
     upsertSession(buildSingleSessionFromLegacyState());
     upsertSession(buildMultipleSessionFromEnabledRadios());
     upsertSession(buildDjSessionFromLegacyState());
+    scheduleNamModelCleanup(discardedModelIds);
   } else if (playbackSessionsCollection.state.size === 0) {
     upsertSession(buildSingleSessionFromLegacy());
     upsertSession(buildMultipleSessionFromEnabledRadios());

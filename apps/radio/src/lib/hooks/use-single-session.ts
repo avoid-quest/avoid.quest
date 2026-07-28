@@ -60,6 +60,7 @@ export function useSingleSession(transitionDuration: number) {
   const [isCrossfading, setIsCrossfading] = useState(false);
 
   const currentRadio = activeChannel?.radio ?? null;
+  const nextRadio = isCrossfading ? (standbyChannel?.radio ?? null) : null;
   const volume = activeChannel?.volume ?? 1;
   const error =
     activeRuntime.error?.message ?? standbyRuntime.error?.message ?? null;
@@ -151,6 +152,7 @@ export function useSingleSession(transitionDuration: number) {
     () => ({
       session,
       currentRadio,
+      nextRadio,
       isPlaying: activeRuntime.isPlaying,
       isLoading: activeRuntime.isLoading,
       isCrossfading,
@@ -169,6 +171,7 @@ export function useSingleSession(transitionDuration: number) {
       currentRadio,
       error,
       isCrossfading,
+      nextRadio,
       pause,
       play,
       selectRadio,

@@ -34,6 +34,7 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
     settings?.player?.single?.transitionDuration ?? 2000;
   const {
     currentRadio,
+    nextRadio,
     isPlaying,
     isLoading,
     isCrossfading,
@@ -144,74 +145,77 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
   };
 
   return (
-    <div className="mx-auto flex h-full min-h-0 w-full max-w-5xl flex-col px-3 py-3 lg:flex-row">
-      <div className="flex h-full min-h-0 w-full flex-col overflow-hidden rounded-lg border border-border/50 bg-card/50 lg:flex-row">
-        {/* Mobile: now playing panel */}
-        <MobileNowPlayingPanel
-          error={error}
-          isCrossfading={isCrossfading}
-          isLoading={isLoading}
-          isMuted={isMuted}
-          isPlaying={isPlaying}
-          metadata={metadata}
-          onDelete={handleDeleteRadio}
-          onEdit={handleEditRadio}
-          onMuteToggle={handleMuteToggle}
-          onPlayPause={togglePlayPause}
-          onSave={handleSaveSessionRadio}
-          onToggle={handleToggleRadio}
-          onVolumeChange={handleVolumeChange}
-          radio={currentRadio}
-          volume={volume}
-        />
-
-        <StationList
-          currentRadioId={currentRadio?.id}
-          onDelete={handleDeleteRadio}
-          onEdit={handleEditRadio}
-          onSave={handleSaveSessionRadio}
-          onSelect={(radio) => selectRadio(radio)}
-          onToggle={handleToggleRadio}
-          radios={radios}
-          searchBar={
-            <RadioSearchBar
-              isResolving={isResolving}
-              onSaveRemote={saveToCollection}
-              onSelectDiscovered={selectDiscoveredStation}
-              onSelectLocal={(radio) => selectRadio(radio)}
-              onSelectRemote={resolve}
-              radios={radios ?? []}
-            />
-          }
-          sessionRadios={sessionRadios}
-        />
-
-        {/* Now playing — desktop */}
-        <div className="relative hidden min-h-0 flex-1 items-center justify-center p-6 lg:flex">
-          {currentRadio && (
-            <div className="absolute top-4 right-4 z-10">
-              <RadioItemActions
-                onDelete={handleDeleteRadio}
-                onEdit={handleEditRadio}
-                onSave={handleSaveSessionRadio}
-                onToggle={handleToggleRadio}
-                radio={currentRadio}
-              />
-            </div>
-          )}
-          <NowPlayingPanel
+    <>
+      <div className="mx-auto flex h-full min-h-0 w-full max-w-5xl flex-col px-3 py-3 lg:flex-row">
+        <div className="flex h-full min-h-0 w-full flex-col overflow-hidden rounded-lg border border-border/50 bg-card/50 lg:flex-row">
+          <MobileNowPlayingPanel
             error={error}
             isCrossfading={isCrossfading}
             isLoading={isLoading}
             isMuted={isMuted}
             isPlaying={isPlaying}
             metadata={metadata}
+            nextRadio={nextRadio}
+            onDelete={handleDeleteRadio}
+            onEdit={handleEditRadio}
             onMuteToggle={handleMuteToggle}
             onPlayPause={togglePlayPause}
+            onSave={handleSaveSessionRadio}
+            onToggle={handleToggleRadio}
             onVolumeChange={handleVolumeChange}
             radio={currentRadio}
             volume={volume}
           />
+
+          <StationList
+            currentRadioId={currentRadio?.id}
+            nextRadioId={nextRadio?.id}
+            onDelete={handleDeleteRadio}
+            onEdit={handleEditRadio}
+            onSave={handleSaveSessionRadio}
+            onSelect={selectRadio}
+            onToggle={handleToggleRadio}
+            radios={radios}
+            searchBar={
+              <RadioSearchBar
+                isResolving={isResolving}
+                onSaveRemote={saveToCollection}
+                onSelectDiscovered={selectDiscoveredStation}
+                onSelectLocal={selectRadio}
+                onSelectRemote={resolve}
+                radios={radios ?? []}
+              />
+            }
+            sessionRadios={sessionRadios}
+          />
+
+          <div className="relative hidden min-h-0 flex-1 items-center justify-center p-6 lg:flex">
+            {currentRadio && (
+              <div className="absolute top-4 right-4 z-10">
+                <RadioItemActions
+                  onDelete={handleDeleteRadio}
+                  onEdit={handleEditRadio}
+                  onSave={handleSaveSessionRadio}
+                  onToggle={handleToggleRadio}
+                  radio={currentRadio}
+                />
+              </div>
+            )}
+            <NowPlayingPanel
+              error={error}
+              isCrossfading={isCrossfading}
+              isLoading={isLoading}
+              isMuted={isMuted}
+              isPlaying={isPlaying}
+              metadata={metadata}
+              nextRadio={nextRadio}
+              onMuteToggle={handleMuteToggle}
+              onPlayPause={togglePlayPause}
+              onVolumeChange={handleVolumeChange}
+              radio={currentRadio}
+              volume={volume}
+            />
+          </div>
         </div>
       </div>
 
@@ -245,6 +249,6 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }

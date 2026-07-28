@@ -28,22 +28,24 @@ export function SettingsButton({ defaultTab, className }: SettingsButtonProps) {
     <Drawer handleOnly={true} onOpenChange={setIsOpen} open={isOpen}>
       <DrawerTrigger asChild>
         <Button
+          aria-label="Open settings"
           className={cn("size-7", className)}
           size="icon"
+          title="Settings"
           variant="outline"
         >
           <Settings2Icon className="size-3.5" />
         </Button>
       </DrawerTrigger>
       <DrawerContent>
-        <div className="mx-auto w-full max-w-4xl">
-          <DrawerHeader className="pb-4">
+        <div className="mx-auto w-full max-w-6xl">
+          <DrawerHeader className="pb-2">
             <DrawerTitle>Settings</DrawerTitle>
-            <DrawerDescription>
+            <DrawerDescription className="sr-only">
               Manage your radio stations and player settings.
             </DrawerDescription>
           </DrawerHeader>
-          <div className="px-4 pb-4">
+          <div className="px-3 pb-3 sm:px-4 sm:pb-4">
             <Suspense fallback={<Skeleton className="h-[70vh] w-full" />}>
               <SettingsForm defaultTab={defaultTab} />
             </Suspense>

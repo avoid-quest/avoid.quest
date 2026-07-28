@@ -72,7 +72,7 @@ function SortableRadioItem({
 
   return (
     <div
-      className={`flex items-center gap-2 rounded-lg border border-border/50 bg-card/50 px-3 py-2 transition-colors ${
+      className={`flex items-center gap-2 px-1 py-2 transition-colors ${
         isDragging ? "bg-muted/50" : ""
       } ${disabled ? "opacity-50" : ""}`}
       ref={setNodeRef}
@@ -240,9 +240,9 @@ export function RadioManagement() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-4">
-        <p className="font-mono text-[10px] text-muted-foreground/60 uppercase tracking-wider">
-          Drag to reorder • Toggle to enable
-        </p>
+        <span className="text-muted-foreground text-xs">
+          {radios.length} stations
+        </span>
         <Button
           className="h-7"
           onClick={handleAddRadio}
@@ -253,10 +253,7 @@ export function RadioManagement() {
           Add Station
         </Button>
       </div>
-      <div
-        className="max-h-72 overflow-y-auto sm:max-h-full"
-        style={{ touchAction: "pan-y" }}
-      >
+      <div style={{ touchAction: "pan-y" }}>
         <DndContext
           collisionDetection={closestCenter}
           onDragEnd={handleDragEnd}
@@ -266,7 +263,7 @@ export function RadioManagement() {
             items={radios.map((radio) => radio.id?.toString() ?? "")}
             strategy={verticalListSortingStrategy}
           >
-            <div className="space-y-2">
+            <div className="divide-y border-y">
               {radios.map((radio) => (
                 <SortableRadioItem
                   disabled={isUpdating}

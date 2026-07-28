@@ -6,7 +6,7 @@ export {
   MIDI_PRESETS,
   type MidiPreset,
 } from "./presets";
-export { registerStaticActions } from "./static-actions";
+export { getStaticMidiActions, registerStaticActions } from "./static-actions";
 export {
   applyTransform,
   DEFAULT_TRANSFORM,

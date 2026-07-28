@@ -13,10 +13,11 @@ import { Slider } from "@avoid.quest/ui/components/slider";
 import {
   ClockIcon,
   HeadphonesIcon,
+  type LucideIcon,
   RefreshCwIcon,
   Volume2Icon,
 } from "lucide-react";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { isSinkIdSupported, useAudioDevices } from "@/lib/audio";
 import {
   getAudioSettings,
@@ -112,108 +113,92 @@ export function AudioSettings() {
         </div>
       )}
 
-      {/* Refresh button */}
-      {permissionState === "granted" && (
-        <div className="flex justify-end">
-          <Button
-            disabled={isLoading}
-            onClick={refreshDevices}
-            size="sm"
-            variant="ghost"
-          >
-            <RefreshCwIcon
-              className={`mr-1.5 size-3.5 ${isLoading ? "animate-spin" : ""}`}
-            />
-            Refresh Devices
-          </Button>
-        </div>
-      )}
-
-      {/* Main Output Selection */}
-      <div className="space-y-3 rounded-lg border border-border/50 p-3">
-        <Label className="flex items-center gap-2 text-sm">
-          <Volume2Icon className="size-3.5" />
-          Main Output (PA/Speakers)
-        </Label>
-        {sinkIdSupported ? (
-          <>
-            <Select onValueChange={handleMainOutputChange} value={mainOutputId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select output device" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="default">System Default</SelectItem>
-                {outputDevices
-                  .filter((device) => device.deviceId)
-                  .map((device) => (
-                    <SelectItem key={device.deviceId} value={device.deviceId}>
-                      {device.label}
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
-            <p className="text-muted-foreground text-xs">
-              Main program output for audience
-            </p>
-          </>
-        ) : (
-          <p className="text-muted-foreground text-sm">
-            Output device selection not supported in this browser. Audio will
-            play through system default.
-          </p>
-        )}
-
-        {/* Main Output Delay */}
-        <div className="space-y-2 border-border/50 border-t pt-3">
-          <div className="flex items-center justify-between">
-            <Label className="flex items-center gap-2 text-sm">
-              <ClockIcon className="size-3" />
-              Delay
-            </Label>
-            <div className="flex items-center gap-2">
-              <span className="font-mono text-[10px] text-muted-foreground tabular-nums">
-                {mainDelayMs}ms
-              </span>
-              <Button
-                onClick={() => {
-                  const detected = autoCompensateLatency();
-                  if (detected !== null) {
-                    setMainDelayMsState(detected);
-                  }
-                }}
-                size="sm"
-                title="Auto-detect system latency"
-                variant="outline"
+      <div className="divide-y">
+        <AudioSettingRow icon={Volume2Icon} title="Main output">
+          {sinkIdSupported ? (
+            <div className="flex min-w-0 gap-2">
+              <Select
+                onValueChange={handleMainOutputChange}
+                value={mainOutputId}
               >
-                Auto
-              </Button>
+                <SelectTrigger className="min-w-0 flex-1">
+                  <SelectValue placeholder="Select output device" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="default">System Default</SelectItem>
+                  {outputDevices
+                    .filter(
+                      (device) =>
+                        device.deviceId && device.deviceId !== "default"
+                    )
+                    .map((device) => (
+                      <SelectItem key={device.deviceId} value={device.deviceId}>
+                        {device.label}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+              {permissionState === "granted" && (
+                <Button
+                  aria-label="Refresh audio devices"
+                  className="shrink-0"
+                  disabled={isLoading}
+                  onClick={refreshDevices}
+                  size="icon"
+                  title="Refresh audio devices"
+                  variant="outline"
+                >
+                  <RefreshCwIcon
+                    className={`size-3.5 ${isLoading ? "animate-spin" : ""}`}
+                  />
+                </Button>
+              )}
             </div>
-          </div>
-          <Slider
-            className="h-1.5"
-            defaultValue={[0]}
-            max={500}
-            min={0}
-            onValueChange={([v]) => handleMainDelayChange(v)}
-            step={1}
-            value={[mainDelayMs]}
-          />
-        </div>
-      </div>
+          ) : (
+            <p className="text-muted-foreground text-sm">
+              Output device selection not supported in this browser. Audio will
+              play through system default.
+            </p>
+          )}
+        </AudioSettingRow>
 
-      {/* CUE/Headphone Output Selection */}
-      <div className="space-y-3 rounded-lg border border-border/50 p-3">
-        <Label className="flex items-center gap-2 text-sm">
-          <HeadphonesIcon className="size-3.5" />
-          CUE/Headphones Output
-        </Label>
-        {sinkIdSupported ? (
-          <>
+        <AudioSettingRow icon={ClockIcon} title="Main delay">
+          <div className="flex min-w-0 items-center gap-3">
+            <Slider
+              className="min-w-24 flex-1"
+              defaultValue={[0]}
+              max={500}
+              min={0}
+              onValueChange={([v]) => handleMainDelayChange(v)}
+              step={1}
+              value={[mainDelayMs]}
+            />
+            <span className="w-10 text-right font-mono text-[10px] text-muted-foreground tabular-nums">
+              {mainDelayMs}ms
+            </span>
+            <Button
+              onClick={() => {
+                const detected = autoCompensateLatency();
+                if (detected !== null) {
+                  setMainDelayMsState(detected);
+                }
+              }}
+              size="sm"
+              title="Auto-detect system latency"
+              variant="outline"
+            >
+              Auto
+            </Button>
+          </div>
+        </AudioSettingRow>
+
+        <AudioSettingRow icon={HeadphonesIcon} title="CUE output">
+          {sinkIdSupported ? (
             <Select
               onValueChange={handleCueOutputChange}
               value={cueOutputId ?? "none"}
             >
-              <SelectTrigger>
+              <SelectTrigger className="w-full">
                 <SelectValue placeholder="Select CUE output" />
               </SelectTrigger>
               <SelectContent>
@@ -230,50 +215,62 @@ export function AudioSettings() {
                   ))}
               </SelectContent>
             </Select>
-            <p className="text-muted-foreground text-xs">
-              Select a device to enable CUE headphone monitoring
+          ) : (
+            <p className="text-muted-foreground text-sm">
+              CUE output requires Chrome or Edge for output device selection.
             </p>
-          </>
-        ) : (
-          <p className="text-muted-foreground text-sm">
-            CUE output requires Chrome or Edge for output device selection.
-          </p>
-        )}
+          )}
+        </AudioSettingRow>
 
-        {/* CUE Output Delay — only shown when CUE output is configured */}
         {cueOutputId && (
-          <div className="space-y-2 border-border/50 border-t pt-3">
-            <div className="flex items-center justify-between">
-              <Label className="flex items-center gap-2 text-sm">
-                <ClockIcon className="size-3" />
-                Delay
-              </Label>
-              <span className="font-mono text-[10px] text-muted-foreground tabular-nums">
+          <AudioSettingRow icon={ClockIcon} title="CUE delay">
+            <div className="flex min-w-0 items-center gap-3">
+              <Slider
+                className="min-w-24 flex-1"
+                defaultValue={[0]}
+                max={500}
+                min={0}
+                onValueChange={([v]) => handleCueDelayChange(v)}
+                step={1}
+                value={[cueDelayMs]}
+              />
+              <span className="w-10 text-right font-mono text-[10px] text-muted-foreground tabular-nums">
                 {cueDelayMs}ms
               </span>
             </div>
-            <Slider
-              className="h-1.5"
-              defaultValue={[0]}
-              max={500}
-              min={0}
-              onValueChange={([v]) => handleCueDelayChange(v)}
-              step={1}
-              value={[cueDelayMs]}
-            />
-          </div>
+          </AudioSettingRow>
         )}
       </div>
 
       {/* Browser compatibility note */}
       {!sinkIdSupported && (
-        <div className="rounded-lg border border-border/50 bg-muted/30 p-3">
+        <div className="border-t pt-3">
           <p className="text-muted-foreground text-xs">
             <strong>Note:</strong> Output device selection requires Chrome or
             Edge. Firefox and Safari use the system default output.
           </p>
         </div>
       )}
+    </div>
+  );
+}
+
+function AudioSettingRow({
+  title,
+  icon: Icon,
+  children,
+}: {
+  title: string;
+  icon: LucideIcon;
+  children: ReactNode;
+}) {
+  return (
+    <div className="grid gap-3 py-4 sm:grid-cols-[minmax(0,1fr)_minmax(18rem,28rem)] sm:items-center">
+      <Label className="flex items-center gap-2 text-sm">
+        <Icon className="size-3.5 text-muted-foreground" />
+        {title}
+      </Label>
+      {children}
     </div>
   );
 }

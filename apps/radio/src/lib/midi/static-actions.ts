@@ -122,11 +122,16 @@ const MIXER_ACTIONS: MidiAction[] = [
   },
 ];
 
+const STATIC_MIDI_ACTIONS = [
+  ...createDeckActions("deck-a"),
+  ...createDeckActions("deck-b"),
+  ...MIXER_ACTIONS,
+];
+
+export function getStaticMidiActions(): MidiAction[] {
+  return STATIC_MIDI_ACTIONS;
+}
+
 export function registerStaticActions(): () => void {
-  const allActions = [
-    ...createDeckActions("deck-a"),
-    ...createDeckActions("deck-b"),
-    ...MIXER_ACTIONS,
-  ];
-  return MidiController.getInstance().registerAll(allActions);
+  return MidiController.getInstance().registerAll(STATIC_MIDI_ACTIONS);
 }

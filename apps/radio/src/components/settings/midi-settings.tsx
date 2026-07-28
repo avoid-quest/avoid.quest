@@ -4,8 +4,8 @@
  * Connected device list, preset selector, mapping table with learn mode.
  */
 
+import { Alert, AlertDescription } from "@avoid.quest/ui/components/alert";
 import { Button } from "@avoid.quest/ui/components/button";
-import { ScrollArea } from "@avoid.quest/ui/components/scroll-area";
 import {
   Select,
   SelectContent,
@@ -13,10 +13,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@avoid.quest/ui/components/select";
+import { Switch } from "@avoid.quest/ui/components/switch";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { CircleIcon, RefreshCwIcon, Trash2Icon, XIcon } from "lucide-react";
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import {
+  CircleIcon,
+  InfoIcon,
+  RefreshCwIcon,
+  Trash2Icon,
+  XIcon,
+} from "lucide-react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import { usePlayerMode } from "@/lib/hooks/use-settings";
+import {
+  getStaticMidiActions,
   MIDI_PRESETS,
   type MidiAction,
   MidiController,
@@ -25,15 +34,17 @@ import {
 } from "@/lib/midi";
 
 const EMPTY_ACTIONS: MidiAction[] = [];
+const STATIC_ACTIONS = getStaticMidiActions();
 type MidiPermissionState = "prompt" | "granted" | "denied" | "error";
 
 function useActions(): MidiAction[] {
   const controller = MidiController.getInstance();
-  return useSyncExternalStore(
+  const registeredActions = useSyncExternalStore(
     (cb) => controller.subscribeActions(cb),
     () => controller.getAllActions(),
     () => EMPTY_ACTIONS
   );
+  return registeredActions.length > 0 ? registeredActions : STATIC_ACTIONS;
 }
 
 function formatMapping(mapping: MidiMapping | undefined): string {
@@ -73,7 +84,7 @@ function MappingRow({
       <span className="min-w-0 flex-1 truncate text-sm">{label}</span>
       <span
         className={cn(
-          "w-28 shrink-0 truncate text-right font-mono text-xs",
+          "w-24 shrink-0 truncate text-right font-mono text-xs",
           mapping ? "text-foreground" : "text-muted-foreground"
         )}
       >
@@ -81,7 +92,7 @@ function MappingRow({
       </span>
       {isLearningTarget ? (
         <Button
-          className="h-7 w-16 animate-pulse text-xs"
+          className="h-7 w-14 animate-pulse text-xs"
           onClick={onStopLearn}
           size="sm"
           variant="destructive"
@@ -90,7 +101,7 @@ function MappingRow({
         </Button>
       ) : (
         <Button
-          className="h-7 w-16 text-xs"
+          className="h-7 w-14 text-xs"
           disabled={isLearning}
           onClick={() => onStartLearn(targetId)}
           size="sm"
@@ -144,7 +155,7 @@ function MappingGroup({
       <h4 className="font-mono text-[10px] text-muted-foreground/60 uppercase tracking-wider">
         {title}
       </h4>
-      <div className="rounded-lg border border-border/50 bg-card/50 px-3 py-1">
+      <div className="divide-y border-y">
         {targetIds.map((id) => {
           const action = actions.find((a) => a.targetId === id);
           if (!action) {
@@ -171,7 +182,10 @@ function MappingGroup({
 }
 
 export function MidiSettings() {
-  const isSupported = useMidiStore((s) => s.isSupported);
+  const playerMode = usePlayerMode();
+  const isSupported =
+    typeof navigator !== "undefined" &&
+    typeof navigator.requestMIDIAccess === "function";
   const devices = useMidiStore((s) => s.devices);
   const mappings = useMidiStore((s) => s.mappings);
   const activePresetId = useMidiStore((s) => s.activePresetId);
@@ -303,141 +317,132 @@ export function MidiSettings() {
   const connectedDevices = devices.filter((d) => d.state === "connected");
 
   return (
-    <ScrollArea className="min-h-0 flex-1">
-      <div className="space-y-5 pr-3">
-        {permissionState !== "granted" && (
-          <div className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3">
-            <p className="mb-2 text-xs">
-              Grant MIDI permission to detect controllers and receive MIDI
-              messages.
-            </p>
-            <Button
-              disabled={isLoading}
-              onClick={requestPermission}
-              size="sm"
-              variant="outline"
-            >
-              {isLoading ? "Requesting..." : "Grant MIDI Permission"}
-            </Button>
-          </div>
-        )}
+    <div className="space-y-5">
+      {playerMode !== "dj" && (
+        <Alert className="py-2.5">
+          <InfoIcon />
+          <AlertDescription className="text-xs">
+            MIDI mappings are applied in DJ mode.
+          </AlertDescription>
+        </Alert>
+      )}
 
-        {permissionState === "granted" && (
-          <div className="flex justify-end">
-            <Button
-              disabled={isLoading}
-              onClick={refreshDevices}
-              size="sm"
-              variant="ghost"
-            >
-              <RefreshCwIcon
-                className={`mr-1.5 size-3.5 ${isLoading ? "animate-spin" : ""}`}
-              />
-              Refresh Devices
-            </Button>
-          </div>
-        )}
+      {permissionState !== "granted" && (
+        <div className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3">
+          <p className="mb-2 text-xs">
+            Grant MIDI permission to detect controllers and receive MIDI
+            messages.
+          </p>
+          <Button
+            disabled={isLoading}
+            onClick={requestPermission}
+            size="sm"
+            variant="outline"
+          >
+            {isLoading ? "Requesting..." : "Grant MIDI Permission"}
+          </Button>
+        </div>
+      )}
 
-        {/* Enable toggle */}
-        <div className="flex items-center justify-between rounded-lg border border-border/50 p-3">
-          <div className="space-y-0.5">
-            <label className="text-sm" htmlFor="midi-enabled">
-              Enable MIDI
-            </label>
-            <p className="text-[10px] text-muted-foreground/60">
-              Receive MIDI messages from connected controllers
-            </p>
-          </div>
-          <input
+      <div className="divide-y border-y">
+        <div className="grid gap-3 py-4 sm:grid-cols-[minmax(0,1fr)_minmax(18rem,28rem)] sm:items-center">
+          <label className="text-sm" htmlFor="midi-enabled">
+            Enable MIDI
+          </label>
+          <Switch
             checked={enabled}
-            className="size-4 cursor-pointer accent-primary"
             id="midi-enabled"
-            onChange={(e) => setEnabled(e.target.checked)}
-            type="checkbox"
+            onCheckedChange={setEnabled}
           />
         </div>
 
-        {/* Connected devices */}
-        <div className="space-y-2">
-          <h4 className="font-mono text-[10px] text-muted-foreground uppercase tracking-wider">
-            Connected Devices
-          </h4>
-          {connectedDevices.length === 0 ? (
-            <p className="text-[10px] text-muted-foreground/60">
-              No MIDI devices detected. Connect a controller and it will appear
-              here.
-            </p>
-          ) : (
-            <div className="space-y-1">
-              {connectedDevices.map((device) => (
-                <div
-                  className="flex items-center gap-2 rounded-lg border border-border/50 bg-card/50 px-3 py-2"
-                  key={device.id}
-                >
-                  <CircleIcon className="size-2.5 fill-emerald-500 text-emerald-500" />
-                  <span className="flex-1 text-sm">
-                    {device.name}
-                    {device.manufacturer && (
-                      <span className="ml-1 text-muted-foreground text-xs">
-                        ({device.manufacturer})
-                      </span>
-                    )}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Preset selector */}
-        <div className="space-y-2">
-          <h4 className="font-mono text-[10px] text-muted-foreground uppercase tracking-wider">
-            Preset
-          </h4>
-          <div className="flex items-center gap-2">
-            <Select
-              onValueChange={loadPreset}
-              value={activePresetId ?? undefined}
-            >
-              <SelectTrigger className="flex-1">
-                <SelectValue placeholder="Select a preset..." />
-              </SelectTrigger>
-              <SelectContent>
-                {MIDI_PRESETS.map((preset) => (
-                  <SelectItem key={preset.id} value={preset.id}>
-                    {preset.name}
-                    <span className="ml-1 text-muted-foreground text-xs">
-                      ({preset.vendor})
+        <div className="grid gap-3 py-4 sm:grid-cols-[minmax(0,1fr)_minmax(18rem,28rem)] sm:items-start">
+          <h4 className="text-sm">Connected devices</h4>
+          <div className="flex min-w-0 items-start gap-2">
+            {connectedDevices.length === 0 ? (
+              <p className="min-w-0 flex-1 text-muted-foreground text-xs">
+                No MIDI devices detected.
+              </p>
+            ) : (
+              <div className="min-w-0 flex-1 divide-y">
+                {connectedDevices.map((device) => (
+                  <div
+                    className="flex min-w-0 items-center gap-2 py-2 first:pt-0 last:pb-0"
+                    key={device.id}
+                  >
+                    <CircleIcon className="size-2 shrink-0 fill-emerald-500 text-emerald-500" />
+                    <span className="min-w-0 truncate text-sm">
+                      {device.name}
+                      {device.manufacturer && (
+                        <span className="ml-1 text-muted-foreground text-xs">
+                          ({device.manufacturer})
+                        </span>
+                      )}
                     </span>
-                  </SelectItem>
+                  </div>
                 ))}
-              </SelectContent>
-            </Select>
+              </div>
+            )}
+            {permissionState === "granted" && (
+              <Button
+                aria-label="Refresh MIDI devices"
+                className="shrink-0"
+                disabled={isLoading}
+                onClick={refreshDevices}
+                size="icon"
+                title="Refresh MIDI devices"
+                variant="outline"
+              >
+                <RefreshCwIcon
+                  className={`size-3.5 ${isLoading ? "animate-spin" : ""}`}
+                />
+              </Button>
+            )}
           </div>
-          <p className="text-[10px] text-muted-foreground/60">
-            Load a preset for your controller, or use Learn to map controls
-            manually.
-          </p>
         </div>
 
-        {/* Mapping table */}
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h4 className="font-mono text-[10px] text-muted-foreground uppercase tracking-wider">
-              Mappings
-            </h4>
-            <Button
-              className="h-7 text-xs"
-              disabled={mappings.length === 0 || isLearning}
-              onClick={clearMappings}
-              size="sm"
-              variant="ghost"
-            >
-              <Trash2Icon className="mr-1.5 size-3" />
-              Clear All
-            </Button>
-          </div>
+        <div className="grid gap-3 py-4 sm:grid-cols-[minmax(0,1fr)_minmax(18rem,28rem)] sm:items-center">
+          <h4 className="text-sm">Preset</h4>
+          <Select
+            onValueChange={loadPreset}
+            value={activePresetId ?? undefined}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="Select a preset..." />
+            </SelectTrigger>
+            <SelectContent>
+              {MIDI_PRESETS.map((preset) => (
+                <SelectItem key={preset.id} value={preset.id}>
+                  {preset.name}
+                  <span className="ml-1 text-muted-foreground text-xs">
+                    ({preset.vendor})
+                  </span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
 
+      {/* Mapping table */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h4 className="font-mono text-[10px] text-muted-foreground uppercase tracking-wider">
+            Mappings
+          </h4>
+          <Button
+            className="h-7 text-xs"
+            disabled={mappings.length === 0 || isLearning}
+            onClick={clearMappings}
+            size="sm"
+            variant="ghost"
+          >
+            <Trash2Icon className="mr-1.5 size-3" />
+            Clear All
+          </Button>
+        </div>
+
+        <div className="grid gap-x-6 gap-y-5 lg:grid-cols-2 2xl:grid-cols-3">
           <MappingGroup
             actions={actions}
             isLearning={isLearning}
@@ -499,6 +504,6 @@ export function MidiSettings() {
           />
         </div>
       </div>
-    </ScrollArea>
+    </div>
   );
 }

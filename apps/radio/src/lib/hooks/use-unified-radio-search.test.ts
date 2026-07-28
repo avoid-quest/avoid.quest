@@ -83,6 +83,57 @@ describe("mergeUnifiedRadioResults", () => {
     expect(result.results[0]?.sources).toEqual(["local", "radio-browser"]);
   });
 
+  test("keeps same-named stations with different streams when identity is incomplete", () => {
+    const result = mergeUnifiedRadioResults({
+      localRadios: [
+        {
+          id: "network-one",
+          name: "Network Radio",
+          streamUrl: "https://audio.example/network-one",
+        },
+        {
+          id: "network-two",
+          name: "Network Radio",
+          streamUrl: "https://audio.example/network-two",
+        },
+      ],
+      query: "network",
+      radioBrowserResults: [],
+      radioGardenResults: [],
+    });
+
+    expect(result.duplicateCount).toBe(0);
+    expect(result.results).toHaveLength(2);
+  });
+
+  test("merges distinct provider entries with matching name and location", () => {
+    const result = mergeUnifiedRadioResults({
+      localRadios: [],
+      query: "city radio",
+      radioBrowserResults: [
+        radioBrowserStation({
+          country: "Italy",
+          name: "City Radio",
+          state: "Rome",
+          url: "https://audio.example/city-rb",
+          urlResolved: "https://audio.example/city-rb",
+        }),
+      ],
+      radioGardenResults: [
+        radioGardenRadio({
+          countryTitle: "Italy",
+          id: "rg_city",
+          name: "City Radio",
+          placeTitle: "Rome",
+          streamUrl: "https://audio.example/city-rg",
+        }),
+      ],
+    });
+
+    expect(result.duplicateCount).toBe(1);
+    expect(result.results).toHaveLength(1);
+  });
+
   test("drops provider fuzzy matches when exact significant terms exist", () => {
     const result = mergeUnifiedRadioResults({
       localRadios: [],

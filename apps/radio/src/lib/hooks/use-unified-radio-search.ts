@@ -113,18 +113,27 @@ function resultStreamUrl(result: UnifiedRadioSearchResult): string {
   return normalizeStreamUrl(result.action.radio.streamUrl);
 }
 
-function locationsAreCompatible(
+function hasMatchingCrossProviderIdentity(
   first: UnifiedRadioSearchResult,
   second: UnifiedRadioSearchResult
 ): boolean {
+  if (
+    first.action.type === "local" ||
+    second.action.type === "local" ||
+    first.action.type === second.action.type ||
+    normalizeSearchText(first.name) !== normalizeSearchText(second.name)
+  ) {
+    return false;
+  }
+
   const firstCountry = normalizeSearchText(first.country);
   const secondCountry = normalizeSearchText(second.country);
-  if (firstCountry !== secondCountry) {
+  if (!(firstCountry && secondCountry && firstCountry === secondCountry)) {
     return false;
   }
   const firstLocation = normalizeSearchText(first.location);
   const secondLocation = normalizeSearchText(second.location);
-  return !(firstLocation && secondLocation) || firstLocation === secondLocation;
+  return !!firstLocation && firstLocation === secondLocation;
 }
 
 function isDuplicateResult(
@@ -136,10 +145,7 @@ function isDuplicateResult(
   if (firstStream && firstStream === secondStream) {
     return true;
   }
-  return (
-    normalizeSearchText(first.name) === normalizeSearchText(second.name) &&
-    locationsAreCompatible(first, second)
-  );
+  return hasMatchingCrossProviderIdentity(first, second);
 }
 
 function toLocalResult(radio: Radio): UnifiedRadioSearchResult {

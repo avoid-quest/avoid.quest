@@ -1,7 +1,7 @@
 import { Badge } from "@avoid.quest/ui/components/badge";
 import { ScrollArea } from "@avoid.quest/ui/components/scroll-area";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { AudioLinesIcon } from "lucide-react";
+import { ArrowRightIcon, AudioLinesIcon } from "lucide-react";
 import type { Radio } from "@/lib/audio";
 import { isSessionRadio } from "@/lib/hooks/use-session-radios";
 import { RadioItemActions } from "../radio-item-actions";
@@ -29,6 +29,7 @@ export function StationList({
   radios,
   sessionRadios,
   currentRadioId,
+  nextRadioId,
   onSelect,
   onEdit,
   onDelete,
@@ -39,6 +40,7 @@ export function StationList({
   radios: Radio[] | undefined;
   sessionRadios: Radio[];
   currentRadioId: string | number | undefined;
+  nextRadioId?: string | number;
   onSelect: (radio: Radio) => void;
   onEdit: (radio: Radio) => void;
   onDelete: (radio: Radio) => void;
@@ -70,13 +72,13 @@ export function StationList({
           <div className="flex flex-col gap-1 px-1.5 pb-1.5">
             {allRadios.map((radio) => {
               const isSession = isSessionRadio(radio);
+              const isCurrent = currentRadioId === radio.id;
+              const isNext = nextRadioId === radio.id;
               return (
                 <div
                   className={cn(
                     "group flex items-center gap-3 rounded-lg px-2.5 py-2.5 transition-colors",
-                    currentRadioId === radio.id
-                      ? "bg-primary/10"
-                      : "hover:bg-muted/40",
+                    "hover:bg-muted/40",
                     isSession && "border-l-2 border-l-[#00d084]/40"
                   )}
                   key={radio.id}
@@ -92,9 +94,31 @@ export function StationList({
                       size="md"
                     />
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm leading-snug">
-                        {radio.name}
-                      </p>
+                      <div className="flex items-center gap-1.5">
+                        <p
+                          className={cn(
+                            "truncate text-sm leading-snug",
+                            isCurrent && "font-semibold"
+                          )}
+                        >
+                          {radio.name}
+                        </p>
+                        {isCurrent && (
+                          <span title="Playing now">
+                            <AudioLinesIcon aria-hidden className="size-3.5" />
+                            <span className="sr-only">Playing now</span>
+                          </span>
+                        )}
+                        {isNext && (
+                          <span title="Up next">
+                            <ArrowRightIcon
+                              aria-hidden
+                              className="size-3.5 text-muted-foreground"
+                            />
+                            <span className="sr-only">Up next</span>
+                          </span>
+                        )}
+                      </div>
                       {isSession && (
                         <Badge
                           className="mt-1 h-4 w-fit border-[#00d084]/30 bg-[#00d084]/10 px-1 text-[#00d084] text-[10px]"

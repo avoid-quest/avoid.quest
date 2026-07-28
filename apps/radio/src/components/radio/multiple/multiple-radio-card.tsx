@@ -1,4 +1,3 @@
-import { Badge } from "@avoid.quest/ui/components/badge";
 import { PlayPauseButton } from "@avoid.quest/ui/components/play-pause-button";
 import { Slider } from "@avoid.quest/ui/components/slider";
 import { cn } from "@avoid.quest/ui/lib/utils";
@@ -80,19 +79,9 @@ export function MultipleRadioCard({
       <div className="flex items-center gap-2.5 px-3 py-2">
         <RadioLogo logoUrl={radio.logoUrl} name={radio.name} size="sm" />
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
-            <p className="truncate font-semibold text-sm leading-tight">
-              {radio.name}
-            </p>
-            {isSession && (
-              <Badge
-                className="h-4 shrink-0 border-[#00d084]/30 bg-[#00d084]/10 px-1 text-[#00d084] text-[10px]"
-                variant="outline"
-              >
-                Unsaved
-              </Badge>
-            )}
-          </div>
+          <p className="truncate font-semibold text-sm leading-tight">
+            {radio.name}
+          </p>
           {radio.placeTitle ? (
             <p className="truncate text-muted-foreground/60 text-xs leading-snug">
               {radio.placeTitle}, {radio.countryTitle}

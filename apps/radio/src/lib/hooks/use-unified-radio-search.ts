@@ -1,4 +1,3 @@
-import type { RadioGardenSearchResult } from "@avoid.quest/platforms";
 import {
   type RadioBrowserStation,
   searchRadioBrowser,
@@ -6,21 +5,230 @@ import {
 import { useMutation } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Radio } from "@/lib/audio";
-import { searchRadioGarden } from "@/lib/platform-client";
+import {
+  prepareRadioGardenSearchCandidate,
+  type RadioGardenSearchCandidate,
+  searchRadioGarden,
+} from "@/lib/platform-client";
+import {
+  createRadioBrowserRadio,
+  createRadioGardenRadio,
+} from "@/lib/stations/external-station-workflow";
 import {
   filterPlayableRadioBrowserStations,
   RADIO_BROWSER_RESULT_LIMIT,
 } from "@/lib/stations/radio-browser-playability";
 
-function filterLocalRadios(radios: Radio[], query: string): Radio[] {
-  const q = query.toLowerCase();
-  return radios.filter(
-    (r) =>
-      r.name.toLowerCase().includes(q) ||
-      r.description?.toLowerCase().includes(q) ||
-      r.placeTitle?.toLowerCase().includes(q) ||
-      r.countryTitle?.toLowerCase().includes(q)
+const SEARCH_RESULT_LIMIT = 8;
+const GENERIC_SEARCH_TERMS = new Set(["am", "fm", "radio", "station"]);
+const TRAILING_SLASH_PATTERN = /\/$/;
+
+export type UnifiedRadioSearchAction =
+  | { radio: Radio; type: "local" }
+  | { radio: Radio; type: "radio-browser" }
+  | { radio: Radio; type: "radio-garden" };
+
+export type UnifiedRadioSearchResult = {
+  action: UnifiedRadioSearchAction;
+  country?: string;
+  description?: string;
+  key: string;
+  location?: string;
+  logoUrl?: string;
+  name: string;
+  sources: UnifiedRadioSearchAction["type"][];
+};
+
+type UnifiedSearchInput = {
+  localRadios: Radio[];
+  query: string;
+  radioBrowserResults: RadioBrowserStation[];
+  radioGardenResults: Radio[];
+};
+
+export type UnifiedSearchOutput = {
+  duplicateCount: number;
+  results: UnifiedRadioSearchResult[];
+};
+
+function normalizeSearchText(value: string | undefined): string {
+  return (
+    value
+      ?.normalize("NFKD")
+      .replace(/\p{M}/gu, "")
+      .toLocaleLowerCase()
+      .replace(/[^\p{L}\p{N}]+/gu, " ")
+      .trim() ?? ""
   );
+}
+
+function normalizeStreamUrl(value: string | undefined): string {
+  try {
+    const url = new URL(value ?? "");
+    url.hash = "";
+    return url.toString().replace(TRAILING_SLASH_PATTERN, "");
+  } catch {
+    return "";
+  }
+}
+
+function normalizedLocation(
+  location: string | undefined,
+  country: string | undefined
+): string | undefined {
+  return normalizeSearchText(location) === normalizeSearchText(country)
+    ? undefined
+    : location || undefined;
+}
+
+function resultSearchText(result: UnifiedRadioSearchResult): string {
+  return normalizeSearchText(
+    [result.name, result.location, result.country, result.description]
+      .filter(Boolean)
+      .join(" ")
+  );
+}
+
+function significantQueryTerms(query: string): string[] {
+  return normalizeSearchText(query)
+    .split(" ")
+    .filter((term) => term && !GENERIC_SEARCH_TERMS.has(term));
+}
+
+function keepRelevantResults(
+  results: UnifiedRadioSearchResult[],
+  query: string
+): UnifiedRadioSearchResult[] {
+  const terms = significantQueryTerms(query);
+  if (terms.length === 0) {
+    return results;
+  }
+  return results.filter((result) => {
+    const searchText = resultSearchText(result);
+    return terms.every((term) => searchText.includes(term));
+  });
+}
+
+function resultStreamUrl(result: UnifiedRadioSearchResult): string {
+  return normalizeStreamUrl(result.action.radio.streamUrl);
+}
+
+function locationsAreCompatible(
+  first: UnifiedRadioSearchResult,
+  second: UnifiedRadioSearchResult
+): boolean {
+  const firstCountry = normalizeSearchText(first.country);
+  const secondCountry = normalizeSearchText(second.country);
+  if (firstCountry !== secondCountry) {
+    return false;
+  }
+  const firstLocation = normalizeSearchText(first.location);
+  const secondLocation = normalizeSearchText(second.location);
+  return !(firstLocation && secondLocation) || firstLocation === secondLocation;
+}
+
+function isDuplicateResult(
+  first: UnifiedRadioSearchResult,
+  second: UnifiedRadioSearchResult
+): boolean {
+  const firstStream = resultStreamUrl(first);
+  const secondStream = resultStreamUrl(second);
+  if (firstStream && firstStream === secondStream) {
+    return true;
+  }
+  return (
+    normalizeSearchText(first.name) === normalizeSearchText(second.name) &&
+    locationsAreCompatible(first, second)
+  );
+}
+
+function toLocalResult(radio: Radio): UnifiedRadioSearchResult {
+  return {
+    action: { radio, type: "local" },
+    country: radio.countryTitle,
+    description: radio.description,
+    key: `local:${radio.id ?? radio.streamUrl}`,
+    location: radio.placeTitle,
+    logoUrl: radio.logoUrl,
+    name: radio.name,
+    sources: ["local"],
+  };
+}
+
+function toRadioBrowserResult(
+  station: RadioBrowserStation
+): UnifiedRadioSearchResult {
+  const radio = createRadioBrowserRadio(station);
+  return {
+    action: { radio, type: "radio-browser" },
+    country: station.country || undefined,
+    description: station.tags.slice(0, 3).join(", ") || undefined,
+    key: `radio-browser:${station.stationUuid}`,
+    location: normalizedLocation(station.state, station.country),
+    logoUrl: station.favicon || undefined,
+    name: station.name,
+    sources: ["radio-browser"],
+  };
+}
+
+function toRadioGardenResult(radio: Radio): UnifiedRadioSearchResult {
+  return {
+    action: { radio, type: "radio-garden" },
+    country: radio.countryTitle,
+    description: radio.description,
+    key: `radio-garden:${radio.id ?? radio.streamUrl}`,
+    location: radio.placeTitle,
+    logoUrl: radio.logoUrl,
+    name: radio.name,
+    sources: ["radio-garden"],
+  };
+}
+
+export function mergeUnifiedRadioResults({
+  localRadios,
+  query,
+  radioBrowserResults,
+  radioGardenResults,
+}: UnifiedSearchInput): UnifiedSearchOutput {
+  const candidates = [
+    ...localRadios.map(toLocalResult),
+    ...radioBrowserResults.map(toRadioBrowserResult),
+    ...radioGardenResults.map(toRadioGardenResult),
+  ];
+  const merged: UnifiedRadioSearchResult[] = [];
+
+  for (const candidate of candidates) {
+    const duplicate = merged.find((result) =>
+      isDuplicateResult(result, candidate)
+    );
+    if (duplicate) {
+      duplicate.sources = [
+        ...new Set([...duplicate.sources, ...candidate.sources]),
+      ];
+    } else {
+      merged.push(candidate);
+    }
+  }
+
+  return {
+    duplicateCount: candidates.length - merged.length,
+    results: keepRelevantResults(merged, query).slice(0, SEARCH_RESULT_LIMIT),
+  };
+}
+
+function filterLocalRadios(radios: Radio[], query: string): Radio[] {
+  const terms = normalizeSearchText(query).split(" ").filter(Boolean);
+  if (terms.length === 0) {
+    return radios;
+  }
+  return radios.filter((radio) => {
+    const searchText = normalizeSearchText(
+      [radio.name, radio.description, radio.placeTitle, radio.countryTitle]
+        .filter(Boolean)
+        .join(" ")
+    );
+    return terms.every((term) => searchText.includes(term));
+  });
 }
 
 function stopWaitingOnAbort<T>(
@@ -57,10 +265,34 @@ type RemoteSearchRequest = {
   signal: AbortSignal;
 };
 
+async function loadPlayableRadioGardenResults(
+  candidates: RadioGardenSearchCandidate[],
+  signal: AbortSignal
+): Promise<Radio[]> {
+  const results = await Promise.all(
+    candidates.map(async (candidate) => {
+      try {
+        const prepared = await prepareRadioGardenSearchCandidate(
+          candidate,
+          signal
+        );
+        return createRadioGardenRadio(
+          candidate,
+          prepared.streamUrl,
+          candidate.title,
+          prepared.format
+        );
+      } catch {
+        signal.throwIfAborted();
+        return null;
+      }
+    })
+  );
+  return results.filter((radio): radio is Radio => radio !== null);
+}
+
 export function useUnifiedRadioSearch(query: string, localRadios: Radio[]) {
-  const [radioGardenResults, setRadioGardenResults] = useState<
-    RadioGardenSearchResult[]
-  >([]);
+  const [radioGardenResults, setRadioGardenResults] = useState<Radio[]>([]);
   const [radioBrowserResults, setRadioBrowserResults] = useState<
     RadioBrowserStation[]
   >([]);
@@ -68,21 +300,22 @@ export function useUnifiedRadioSearch(query: string, localRadios: Radio[]) {
   const abortRef = useRef<AbortController | null>(null);
 
   const radioGardenSearchMutation = useMutation({
-    mutationFn: ({ query: searchQuery, signal }: RemoteSearchRequest) => {
-      const request = searchRadioGarden(searchQuery);
-      return stopWaitingOnAbort(request, signal);
+    mutationFn: async ({ query: searchQuery, signal }: RemoteSearchRequest) => {
+      const candidates = await stopWaitingOnAbort(
+        searchRadioGarden(searchQuery),
+        signal
+      );
+      return loadPlayableRadioGardenResults(candidates, signal);
     },
     onSuccess: (results, request) => {
-      if (request.requestId !== requestIdRef.current) {
-        return;
+      if (request.requestId === requestIdRef.current) {
+        setRadioGardenResults(results);
       }
-      setRadioGardenResults(results);
     },
     onError: (_error, request) => {
-      if (request.requestId !== requestIdRef.current) {
-        return;
+      if (request.requestId === requestIdRef.current) {
+        setRadioGardenResults([]);
       }
-      setRadioGardenResults([]);
     },
   });
 
@@ -95,30 +328,27 @@ export function useUnifiedRadioSearch(query: string, localRadios: Radio[]) {
       return filterPlayableRadioBrowserStations(stations, { signal });
     },
     onSuccess: (results, request) => {
-      if (request.requestId !== requestIdRef.current) {
-        return;
+      if (request.requestId === requestIdRef.current) {
+        setRadioBrowserResults(results);
       }
-      setRadioBrowserResults(results);
     },
     onError: (_error, request) => {
-      if (request.requestId !== requestIdRef.current) {
-        return;
+      if (request.requestId === requestIdRef.current) {
+        setRadioBrowserResults([]);
       }
-      setRadioBrowserResults([]);
     },
   });
 
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
-
   const debouncedSearch = useCallback(
-    (q: string) => {
+    (value: string) => {
       requestIdRef.current += 1;
       abortRef.current?.abort();
       abortRef.current = null;
       if (debounceRef.current) {
         clearTimeout(debounceRef.current);
       }
-      const normalizedQuery = q.trim();
+      const normalizedQuery = value.trim();
       if (normalizedQuery.length < 2) {
         setRadioBrowserResults([]);
         setRadioGardenResults([]);
@@ -151,13 +381,6 @@ export function useUnifiedRadioSearch(query: string, localRadios: Radio[]) {
     };
   }, [query, debouncedSearch]);
 
-  useEffect(() => {
-    if (!query.trim()) {
-      setRadioBrowserResults([]);
-      setRadioGardenResults([]);
-    }
-  }, [query]);
-
   useEffect(
     () => () => {
       abortRef.current?.abort();
@@ -165,14 +388,16 @@ export function useUnifiedRadioSearch(query: string, localRadios: Radio[]) {
     []
   );
 
-  const localResults = query.trim()
-    ? filterLocalRadios(localRadios, query)
-    : localRadios;
-
-  return {
-    localResults,
+  const localResults = filterLocalRadios(localRadios, query);
+  const unified = mergeUnifiedRadioResults({
+    localRadios: localResults,
+    query,
     radioBrowserResults,
     radioGardenResults,
+  });
+
+  return {
+    ...unified,
     isSearching:
       radioBrowserSearchMutation.isPending ||
       radioGardenSearchMutation.isPending,

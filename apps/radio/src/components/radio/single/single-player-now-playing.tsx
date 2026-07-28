@@ -1,4 +1,3 @@
-import { Badge } from "@avoid.quest/ui/components/badge";
 import { PlayPauseButton } from "@avoid.quest/ui/components/play-pause-button";
 import { Slider } from "@avoid.quest/ui/components/slider";
 import { cn } from "@avoid.quest/ui/lib/utils";
@@ -9,7 +8,6 @@ import {
   VolumeXIcon,
 } from "lucide-react";
 import type { Radio } from "@/lib/audio";
-import { isSessionRadio } from "@/lib/hooks/use-session-radios";
 import { formatNowPlaying } from "@/lib/metadata/display";
 import type { RadioNowPlaying as RadioNowPlayingMetadata } from "@/lib/metadata/types";
 import { RadioItemActions } from "../radio-item-actions";
@@ -212,10 +210,7 @@ function PlayerIdentity({
         <p className="mb-1 font-mono text-[10px] text-muted-foreground uppercase tracking-wider">
           Playing
         </p>
-        <div className="flex items-center gap-2">
-          <p className="min-w-0 truncate font-semibold text-xl">{radio.name}</p>
-          {isSessionRadio(radio) && <UnsavedBadge />}
-        </div>
+        <p className="min-w-0 truncate font-semibold text-xl">{radio.name}</p>
         <NowPlayingLine metadata={metadata} />
         {radio.placeTitle && (
           <p className="mt-1 truncate text-muted-foreground text-sm">
@@ -258,14 +253,6 @@ function StationTarget({
         <NowPlayingLine centered metadata={metadata} />
       </div>
     </div>
-  );
-}
-
-function UnsavedBadge() {
-  return (
-    <Badge className="h-4 shrink-0 px-1 text-[10px]" variant="outline">
-      Unsaved
-    </Badge>
   );
 }
 

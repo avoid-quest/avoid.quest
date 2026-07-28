@@ -6,8 +6,8 @@ import {
 } from "@avoid.quest/platforms/bandcamp";
 import {
   extractChannelId,
-  getRadioGardenItem,
   isRadioGardenUrl,
+  resolveRadioGardenStream,
 } from "@avoid.quest/platforms/radiogarden";
 import {
   getSoundCloudItem,
@@ -137,14 +137,22 @@ async function resolveRadioGardenItem(
   }
 
   try {
-    const result = await getRadioGardenItem(channelId);
-    if (!result.success) {
-      throw providerError(
-        "radiogarden",
-        result.error || "Failed to resolve Radio Garden item"
-      );
-    }
-    return { metadata: result.metadata, streamUrl: result.streamUrl };
+    const slug = new URL(url).pathname.split("/").filter(Boolean).at(-2) ?? "";
+    const name = slug
+      .split("-")
+      .filter(Boolean)
+      .map((word) => word[0]?.toLocaleUpperCase() + word.slice(1))
+      .join(" ");
+    return {
+      metadata: {
+        platform: "radiogarden",
+        itemType: "channel",
+        url,
+        channelId,
+        name: name || undefined,
+      },
+      streamUrl: await resolveRadioGardenStream(channelId),
+    };
   } catch (error) {
     if (error instanceof AppError) {
       throw error;

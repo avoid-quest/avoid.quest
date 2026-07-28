@@ -2,8 +2,8 @@ import { Button } from "@avoid.quest/ui/components/button";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import type { Radio } from "@/lib/audio";
+import { useDiscoveredStationActions } from "@/lib/hooks/use-discovered-station-actions";
 import { useMediaSession } from "@/lib/hooks/use-media-session";
-import { useRadioGardenResolve } from "@/lib/hooks/use-radio-garden-resolve";
 import { useRadioMetadata } from "@/lib/hooks/use-radio-metadata";
 import {
   addRadio as addRadioToCollection,
@@ -65,8 +65,8 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
     },
     [selectRadio]
   );
-  const { resolve, saveToCollection, selectDiscoveredStation, isResolving } =
-    useRadioGardenResolve(handleResolved);
+  const { saveDiscoveredStation, selectDiscoveredStation } =
+    useDiscoveredStationActions(handleResolved);
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogMode, setDialogMode] = useState<"create" | "edit">("create");
@@ -178,11 +178,9 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
             radios={radios}
             searchBar={
               <RadioSearchBar
-                isResolving={isResolving}
-                onSaveRemote={saveToCollection}
+                onSaveDiscovered={saveDiscoveredStation}
                 onSelectDiscovered={selectDiscoveredStation}
                 onSelectLocal={selectRadio}
-                onSelectRemote={resolve}
                 radios={radios ?? []}
               />
             }

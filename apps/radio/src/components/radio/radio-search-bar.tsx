@@ -1,51 +1,70 @@
-import type { RadioGardenSearchResult } from "@avoid.quest/platforms";
+import { Button } from "@avoid.quest/ui/components/button";
 import { Input } from "@avoid.quest/ui/components/input";
 import { ScrollArea } from "@avoid.quest/ui/components/scroll-area";
-import { LoaderIcon, SearchIcon } from "lucide-react";
+import {
+  BookmarkPlusIcon,
+  CheckIcon,
+  LoaderIcon,
+  PlayIcon,
+  SearchIcon,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { Radio } from "@/lib/audio";
-import { useRadioGardenSuggestions } from "@/lib/hooks/use-radio-garden-suggestions";
-import { useUnifiedRadioSearch } from "@/lib/hooks/use-unified-radio-search";
-import { createRadioBrowserRadio } from "@/lib/stations/external-station-workflow";
-import { RadioBrowserResultItem } from "./radio-browser-result-item";
-import { RadioGardenResultItem } from "./radio-garden-result-item";
+import {
+  type UnifiedRadioSearchResult,
+  useUnifiedRadioSearch,
+} from "@/lib/hooks/use-unified-radio-search";
 import { RadioLogo } from "./radio-logo";
 
 type RadioSearchBarProps = {
   radios: Radio[];
   onSelectDiscovered: (radio: Radio) => void;
   onSelectLocal: (radio: Radio) => void;
-  onSelectRemote: (result: RadioGardenSearchResult) => void;
-  onSaveRemote?: (result: RadioGardenSearchResult) => void;
-  isResolving?: boolean;
+  onSaveDiscovered?: (radio: Radio) => void;
   className?: string;
 };
+
+function resultDetails(result: UnifiedRadioSearchResult): string | undefined {
+  const location = [result.location, result.country].filter(Boolean).join(", ");
+  return location || result.description;
+}
+
+function sourceLabel(result: UnifiedRadioSearchResult): string {
+  if (result.action.type === "local") {
+    return "Your collection";
+  }
+  if (result.sources.length > 1) {
+    return `${result.sources.length} station directories`;
+  }
+  return result.action.type === "radio-browser"
+    ? "Radio Browser"
+    : "Radio Garden";
+}
+
+function assertNever(value: never): never {
+  throw new Error(`Unsupported search result: ${String(value)}`);
+}
 
 export function RadioSearchBar({
   radios,
   onSelectDiscovered,
   onSelectLocal,
-  onSelectRemote,
-  onSaveRemote,
-  isResolving,
+  onSaveDiscovered,
   className,
 }: RadioSearchBarProps) {
   const [query, setQuery] = useState("");
   const [isFocused, setIsFocused] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const { duplicateCount, isSearching, results } = useUnifiedRadioSearch(
+    query,
+    radios
+  );
 
-  const { localResults, radioBrowserResults, radioGardenResults, isSearching } =
-    useUnifiedRadioSearch(query, radios);
-
-  const { data: suggestions, isLoading: isSuggestionsLoading } =
-    useRadioGardenSuggestions(isFocused && !query.trim());
-
-  // Close dropdown on outside click
   useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
+    function handleClickOutside(event: MouseEvent) {
       if (
         containerRef.current &&
-        !containerRef.current.contains(e.target as Node)
+        !containerRef.current.contains(event.target as Node)
       ) {
         setIsFocused(false);
       }
@@ -54,8 +73,43 @@ export function RadioSearchBar({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const showDropdown = isFocused && (query.trim() || suggestions?.length);
+  const resetSearch = () => {
+    setIsFocused(false);
+    setQuery("");
+  };
+
+  const selectResult = (result: UnifiedRadioSearchResult) => {
+    switch (result.action.type) {
+      case "local":
+        onSelectLocal(result.action.radio);
+        break;
+      case "radio-browser":
+        onSelectDiscovered(result.action.radio);
+        break;
+      case "radio-garden":
+        onSelectDiscovered(result.action.radio);
+        break;
+      default:
+        assertNever(result.action);
+    }
+    resetSearch();
+  };
+
+  const saveResult = (result: UnifiedRadioSearchResult) => {
+    if (result.action.type !== "local") {
+      onSaveDiscovered?.(result.action.radio);
+    }
+  };
+
   const hasQuery = query.trim().length > 0;
+  const showDropdown = isFocused;
+  let emptyLabel = "No stations in your collection";
+  if (hasQuery) {
+    emptyLabel = "No stations found";
+  }
+  if (isSearching) {
+    emptyLabel = "Checking station directories…";
+  }
 
   return (
     <div className={`relative ${className ?? ""}`} ref={containerRef}>
@@ -64,169 +118,107 @@ export function RadioSearchBar({
         <Input
           className="h-8 pl-8 text-xs"
           maxLength={200}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(event) => setQuery(event.target.value)}
           onFocus={() => setIsFocused(true)}
-          placeholder="Search stations, Radio Browser, or Radio Garden..."
+          placeholder="Search stations…"
           type="search"
           value={query}
         />
-        {(isSearching || isResolving) && (
+        {isSearching && (
           <LoaderIcon className="absolute top-1/2 right-2.5 size-3.5 -translate-y-1/2 animate-spin text-muted-foreground/50" />
         )}
       </div>
 
       {showDropdown && (
         <div className="absolute right-0 left-0 z-50 mt-1 overflow-hidden rounded-lg border border-border/50 bg-popover shadow-lg">
+          <div className="flex min-h-8 items-center justify-between gap-2 px-3 py-1.5">
+            <p className="font-mono text-[10px] text-muted-foreground/60 uppercase tracking-wider">
+              {hasQuery
+                ? `${results.length} result${results.length === 1 ? "" : "s"}`
+                : "Your stations"}
+            </p>
+            {hasQuery && duplicateCount > 0 && (
+              <p className="truncate text-[10px] text-muted-foreground/40">
+                {duplicateCount} duplicate{duplicateCount === 1 ? "" : "s"}{" "}
+                merged
+              </p>
+            )}
+          </div>
           <ScrollArea className="max-h-72 overflow-hidden">
-            {hasQuery ? (
-              <>
-                {/* Local results */}
-                {localResults.length > 0 && (
-                  <div className="px-1 py-1">
-                    <p className="px-2.5 py-1 font-mono text-[10px] text-muted-foreground/50 uppercase tracking-wider">
-                      Your stations
-                    </p>
-                    {localResults.slice(0, 5).map((radio) => (
+            {results.length > 0 ? (
+              <div className="px-1 pb-1">
+                {results.map((result) => {
+                  const details = resultDetails(result);
+                  const isLocal = result.action.type === "local";
+                  const canSave = !isLocal && onSaveDiscovered;
+                  return (
+                    <div
+                      className="group flex items-center gap-2 rounded-lg px-2.5 py-2 transition-colors hover:bg-muted/40"
+                      key={result.key}
+                      title={sourceLabel(result)}
+                    >
                       <button
-                        className="flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-muted/40"
-                        key={radio.id}
-                        onClick={() => {
-                          onSelectLocal(radio);
-                          setIsFocused(false);
-                          setQuery("");
-                        }}
+                        aria-label={`Listen to ${result.name}`}
+                        className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                        onClick={() => selectResult(result)}
                         type="button"
                       >
                         <RadioLogo
-                          logoUrl={radio.logoUrl}
-                          name={radio.name}
-                          size="sm"
+                          logoUrl={result.logoUrl}
+                          name={result.name}
+                          size="md"
                         />
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm leading-snug">
-                            {radio.name}
+                            {result.name}
                           </p>
-                          {(radio.placeTitle || radio.description) && (
+                          {details && (
                             <p className="mt-0.5 truncate text-muted-foreground/60 text-xs leading-snug">
-                              {radio.placeTitle
-                                ? `${radio.placeTitle}, ${radio.countryTitle}`
-                                : radio.description}
+                              {details}
                             </p>
                           )}
                         </div>
+                        <PlayIcon className="size-3.5 shrink-0 text-muted-foreground/0 transition-colors group-hover:text-muted-foreground/50" />
                       </button>
-                    ))}
-                  </div>
-                )}
-
-                {/* Divider */}
-                {localResults.length > 0 &&
-                  (radioBrowserResults.length > 0 ||
-                    radioGardenResults.length > 0) && (
-                    <div className="mx-2.5 border-border/50 border-t" />
-                  )}
-
-                {/* Radio Browser results */}
-                {radioBrowserResults.length > 0 && (
-                  <div className="px-1 py-1">
-                    <p className="px-2.5 py-1 font-mono text-[10px] text-muted-foreground/50 uppercase tracking-wider">
-                      Radio Browser
-                    </p>
-                    {radioBrowserResults.map((result) => (
-                      <RadioBrowserResultItem
-                        key={result.stationUuid}
-                        onSelect={(station) => {
-                          onSelectDiscovered(createRadioBrowserRadio(station));
-                          setIsFocused(false);
-                          setQuery("");
-                        }}
-                        result={result}
-                      />
-                    ))}
-                  </div>
-                )}
-
-                {radioBrowserResults.length > 0 &&
-                  radioGardenResults.length > 0 && (
-                    <div className="mx-2.5 border-border/50 border-t" />
-                  )}
-
-                {/* Radio Garden results */}
-                {radioGardenResults.length > 0 && (
-                  <div className="px-1 py-1">
-                    <p className="px-2.5 py-1 font-mono text-[10px] text-muted-foreground/50 uppercase tracking-wider">
-                      Radio Garden
-                    </p>
-                    {radioGardenResults.map((result) => (
-                      <RadioGardenResultItem
-                        isLoading={isResolving}
-                        key={result.channelId}
-                        onSave={onSaveRemote}
-                        onSelect={(r) => {
-                          onSelectRemote(r);
-                          setIsFocused(false);
-                          setQuery("");
-                        }}
-                        result={result}
-                      />
-                    ))}
-                  </div>
-                )}
-
-                {/* No results */}
-                {localResults.length === 0 &&
-                  radioBrowserResults.length === 0 &&
-                  radioGardenResults.length === 0 &&
-                  !isSearching && (
-                    <div className="px-4 py-6 text-center">
-                      <p className="text-muted-foreground/60 text-xs">
-                        No stations found
-                      </p>
+                      {isLocal ? (
+                        <span
+                          aria-label="In your collection"
+                          className="flex size-7 shrink-0 items-center justify-center text-emerald-500"
+                          role="img"
+                        >
+                          <CheckIcon className="size-3.5" />
+                        </span>
+                      ) : (
+                        canSave && (
+                          <Button
+                            aria-label={`Save ${result.name} to collection`}
+                            className="size-7 shrink-0"
+                            onClick={() => saveResult(result)}
+                            size="icon"
+                            variant="ghost"
+                          >
+                            <BookmarkPlusIcon className="size-3.5" />
+                          </Button>
+                        )
+                      )}
                     </div>
-                  )}
-
-                {/* Searching indicator */}
-                {isSearching &&
-                  radioBrowserResults.length === 0 &&
-                  radioGardenResults.length === 0 && (
-                    <div className="flex items-center justify-center gap-2 px-4 py-4">
-                      <LoaderIcon className="size-3 animate-spin text-muted-foreground/50" />
-                      <p className="text-muted-foreground/50 text-xs">
-                        Searching station directories...
-                      </p>
-                    </div>
-                  )}
-              </>
+                  );
+                })}
+              </div>
             ) : (
-              // Suggestions (no query)
-              <div className="px-1 py-1">
-                <p className="px-2.5 py-1 font-mono text-[10px] text-muted-foreground/50 uppercase tracking-wider">
-                  Popular on Radio Garden
-                </p>
-                {isSuggestionsLoading ? (
-                  <div className="flex items-center justify-center gap-2 px-4 py-4">
-                    <LoaderIcon className="size-3 animate-spin text-muted-foreground/50" />
-                    <p className="text-muted-foreground/50 text-xs">
-                      Loading suggestions...
-                    </p>
-                  </div>
-                ) : (
-                  suggestions?.map((result) => (
-                    <RadioGardenResultItem
-                      isLoading={isResolving}
-                      key={result.channelId}
-                      onSave={onSaveRemote}
-                      onSelect={(r) => {
-                        onSelectRemote(r);
-                        setIsFocused(false);
-                      }}
-                      result={result}
-                    />
-                  ))
+              <div className="flex items-center justify-center gap-2 px-4 py-6 text-center text-muted-foreground/60 text-xs">
+                {isSearching && (
+                  <LoaderIcon className="size-3.5 animate-spin" />
                 )}
+                {emptyLabel}
               </div>
             )}
           </ScrollArea>
+          {!hasQuery && results.length > 0 && (
+            <p className="border-border/40 border-t px-3 py-2 text-[10px] text-muted-foreground/40">
+              Type to search your collection and all station directories.
+            </p>
+          )}
         </div>
       )}
     </div>

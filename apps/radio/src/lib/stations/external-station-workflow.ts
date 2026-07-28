@@ -170,6 +170,12 @@ export function createRadioBrowserRadio(station: RadioBrowserStation): Radio {
   const stationUuid = normalizeRequiredString(station.stationUuid);
   const resolvedUrl = normalizeRequiredString(station.urlResolved);
   const canonicalUrl = normalizeRequiredString(station.url) || resolvedUrl;
+  const countryTitle = normalizeOptionalString(station.country);
+  const state = normalizeOptionalString(station.state);
+  const placeTitle =
+    state?.toLocaleLowerCase() === countryTitle?.toLocaleLowerCase()
+      ? undefined
+      : state;
 
   return {
     id: `rb_${stationUuid}`,
@@ -178,8 +184,8 @@ export function createRadioBrowserRadio(station: RadioBrowserStation): Radio {
     logoUrl: normalizeOptionalString(station.favicon),
     description: normalizeOptionalString(station.tags.join(", ")),
     websiteUrl: normalizeOptionalString(station.homepage),
-    placeTitle: normalizeOptionalString(station.state),
-    countryTitle: normalizeOptionalString(station.country),
+    placeTitle,
+    countryTitle,
     enabled: true,
     isSystem: false,
     platformMetadata: {

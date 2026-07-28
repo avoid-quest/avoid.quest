@@ -29,10 +29,8 @@ export function MultipleRadios({ radios }: { radios?: Radio[] }) {
 
   const {
     sessionRadios,
-    resolve,
-    saveToCollection,
+    saveDiscoveredStation,
     selectDiscoveredStation,
-    isResolving,
     dialogOpen,
     setDialogOpen,
     dialogMode,
@@ -100,11 +98,9 @@ export function MultipleRadios({ radios }: { radios?: Radio[] }) {
       <div className="mx-auto flex h-full min-h-0 w-full max-w-5xl flex-col items-center px-4 py-6">
         <RadioSearchBar
           className="mb-4 w-full max-w-md"
-          isResolving={isResolving}
-          onSaveRemote={saveToCollection}
+          onSaveDiscovered={saveDiscoveredStation}
           onSelectDiscovered={selectDiscoveredStation}
           onSelectLocal={(radio) => addRadio(radio, true)}
-          onSelectRemote={resolve}
           radios={radios ?? []}
         />
         <div className="flex flex-col items-center gap-3 rounded-lg border border-border/50 border-dashed bg-card/50 px-8 py-12">
@@ -122,11 +118,9 @@ export function MultipleRadios({ radios }: { radios?: Radio[] }) {
       {/* Search bar */}
       <RadioSearchBar
         className="mb-4"
-        isResolving={isResolving}
-        onSaveRemote={saveToCollection}
+        onSaveDiscovered={saveDiscoveredStation}
         onSelectDiscovered={selectDiscoveredStation}
         onSelectLocal={(radio) => addRadio(radio, true)}
-        onSelectRemote={resolve}
         radios={radios ?? []}
       />
 

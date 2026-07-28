@@ -1,4 +1,3 @@
-import { Badge } from "@avoid.quest/ui/components/badge";
 import { ScrollArea } from "@avoid.quest/ui/components/scroll-area";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import { ArrowRightIcon, AudioLinesIcon } from "lucide-react";
@@ -119,14 +118,6 @@ export function StationList({
                           </span>
                         )}
                       </div>
-                      {isSession && (
-                        <Badge
-                          className="mt-1 h-4 w-fit border-[#00d084]/30 bg-[#00d084]/10 px-1 text-[#00d084] text-[10px]"
-                          variant="outline"
-                        >
-                          Unsaved
-                        </Badge>
-                      )}
                       <StationLocationLabel radio={radio} />
                     </div>
                   </button>

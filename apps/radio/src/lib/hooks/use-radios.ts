@@ -3,7 +3,7 @@ import {
   addDismissedRadio,
   type RadioRecord,
   radiosCollection,
-} from "@/lib/collections";
+} from "@/lib/collections/radios";
 import { generateId } from "@/lib/types";
 
 /**

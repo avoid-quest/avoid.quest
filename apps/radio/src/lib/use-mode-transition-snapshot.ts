@@ -1,11 +1,33 @@
-import { useSyncExternalStore } from "react";
+import { useEffect, useState } from "react";
 import type { ModeTransitionSnapshot } from "./mode-lifecycle-manager";
-import { modeLifecycleRequests } from "./mode-lifecycle-requests";
+
+const INITIAL_SNAPSHOT: ModeTransitionSnapshot = {
+  currentMode: null,
+  requestedMode: null,
+  phase: "inactive",
+  error: null,
+};
 
 export function useModeTransitionSnapshot(): ModeTransitionSnapshot {
-  return useSyncExternalStore(
-    modeLifecycleRequests.subscribeTransitionSnapshot,
-    modeLifecycleRequests.getTransitionSnapshot,
-    modeLifecycleRequests.getTransitionSnapshot
-  );
+  const [snapshot, setSnapshot] = useState(INITIAL_SNAPSHOT);
+
+  useEffect(() => {
+    let cancelled = false;
+    let unsubscribe: (() => void) | undefined;
+    import("./mode-lifecycle-requests").then(({ modeLifecycleRequests }) => {
+      if (cancelled) {
+        return;
+      }
+      const update = () =>
+        setSnapshot(modeLifecycleRequests.getTransitionSnapshot());
+      update();
+      unsubscribe = modeLifecycleRequests.subscribeTransitionSnapshot(update);
+    });
+    return () => {
+      cancelled = true;
+      unsubscribe?.();
+    };
+  }, []);
+
+  return snapshot;
 }

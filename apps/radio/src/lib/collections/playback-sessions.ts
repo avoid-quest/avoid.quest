@@ -628,6 +628,7 @@ function pruneStaleMultipleSessionChannels(): void {
 export const playbackSessionsCollection = createCollection(
   localStorageCollectionOptions({
     id: "playback-sessions",
+    startSync: true,
     storageKey: PLAYBACK_SESSIONS_STORAGE_KEY,
     getKey: (item) => item.id,
     schema: playbackSessionSchema,

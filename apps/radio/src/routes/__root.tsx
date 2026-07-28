@@ -3,13 +3,30 @@ import favicon from "@avoid.quest/ui/assets/favicon/favicon.ico";
 import icon0 from "@avoid.quest/ui/assets/favicon/icon0.svg";
 import icon1 from "@avoid.quest/ui/assets/favicon/icon1.png";
 import globalsCss from "@avoid.quest/ui/globals.css?url";
-import { createRootRoute } from "@tanstack/react-router";
+import { createRootRoute, Outlet } from "@tanstack/react-router";
+import { useState } from "react";
+import { RadioLoadingSkeleton } from "@/components/radio/radio-loading-skeleton";
 import { NotFoundView, RootErrorView } from "@/components/root/root-error-view";
 import { RootShell } from "@/components/root/root-shell";
+import { SyncDialog } from "@/components/settings/sync-dialog";
+import type { SyncChanges } from "@/lib/collections/radios";
+import {
+  applyRootSyncChanges,
+  loadRootSyncChanges,
+} from "@/lib/root/root-bootstrap";
+
+function RootPending() {
+  return <RadioLoadingSkeleton phase="database" />;
+}
 
 export const Route = createRootRoute({
   ssr: false,
+  component: RootContent,
   errorComponent: RootErrorView,
+  loader: () => loadRootSyncChanges(),
+  pendingComponent: RootPending,
+  pendingMinMs: 0,
+  pendingMs: 0,
   headers: () => ({
     // Required for SharedArrayBuffer support in AudioWorklet
     "Cross-Origin-Opener-Policy": "same-origin",
@@ -91,3 +108,32 @@ export const Route = createRootRoute({
   shellComponent: RootShell,
   notFoundComponent: NotFoundView,
 });
+
+function RootContent() {
+  const initialSyncChanges = Route.useLoaderData();
+  const [syncChanges, setSyncChanges] = useState<SyncChanges | null>(
+    initialSyncChanges
+  );
+  const [showSyncDialog, setShowSyncDialog] = useState(
+    Boolean(initialSyncChanges)
+  );
+
+  const handleApplySyncChanges = (changes: SyncChanges) => {
+    applyRootSyncChanges(changes);
+    setSyncChanges(null);
+  };
+
+  return (
+    <>
+      <Outlet />
+      {syncChanges && (
+        <SyncDialog
+          changes={syncChanges}
+          onApply={handleApplySyncChanges}
+          onOpenChange={setShowSyncDialog}
+          open={showSyncDialog}
+        />
+      )}
+    </>
+  );
+}

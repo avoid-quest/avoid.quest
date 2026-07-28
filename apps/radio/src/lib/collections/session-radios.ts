@@ -112,6 +112,7 @@ function parseSessionRadiosStorage(data: string): unknown {
 export const sessionRadiosCollection = createCollection(
   localStorageCollectionOptions({
     id: "session-radios",
+    startSync: true,
     storageKey: SESSION_RADIOS_STORAGE_KEY,
     storage: sessionStorageApi,
     storageEventApi: sessionStorageEventApi,

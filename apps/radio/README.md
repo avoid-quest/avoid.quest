@@ -93,18 +93,15 @@ CueBus: PreFaderSend → CueSumNode → CueDelayNode
 
 ## Environment variables
 
-### Dev (Doppler)
+### Development (optional)
 
 ```
 GIT_FEEDBACK_GITHUB_TOKEN= # Fine-grained token with Issues read/write
 ```
 
-Local development reads these through Doppler. Run `bun run secrets:setup` from
-the repository root before starting the app. The radio `dev` script uses
-`doppler run` to inject secrets into the process environment and starts the
-Cloudflare Vite runtime with `CLOUDFLARE_INCLUDE_PROCESS_ENV=true`. Local type
-generation and local development do not depend on committed or generated
-`.dev.vars`/`.env` files.
+No secret manager or custom variable is required to start the radio app. Set
+`GIT_FEEDBACK_GITHUB_TOKEN` through the standard Cloudflare local environment
+only when exercising feedback submission locally.
 
 ### Build-time (Sentry sourcemap upload)
 
@@ -143,7 +140,7 @@ Workers Builds PR comments should include the branch preview URL after upload.
 ## Development
 
 ```bash
-bun run dev          # Start dev server with Doppler (port 3000)
+bun run dev          # Start dev server (port 3000)
 bun run build        # Production build
 bun run typecheck    # tsc --noEmit
 bun run test         # Run tests (bun test)

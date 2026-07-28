@@ -1,3 +1,4 @@
+import { Skeleton } from "@avoid.quest/ui/components/skeleton";
 import {
   ToggleGroup,
   ToggleGroupItem,
@@ -6,7 +7,6 @@ import { cn } from "@avoid.quest/ui/lib/utils";
 import { LayersIcon, ListMusicIcon, SwordsIcon } from "lucide-react";
 import { toast } from "sonner";
 import { useSettings } from "@/lib/hooks/use-settings";
-import { modeLifecycleRequests } from "@/lib/mode-lifecycle-requests";
 import { playerModes } from "@/lib/types";
 import { useModeTransitionSnapshot } from "@/lib/use-mode-transition-snapshot";
 
@@ -17,7 +17,7 @@ const modeIcons = {
 } as const;
 
 export function ModeSelect({ className }: { className?: string }) {
-  const { data: settings } = useSettings();
+  const { data: settings, isReady } = useSettings();
   const modeTransition = useModeTransitionSnapshot();
   const isTransitioning =
     modeTransition.phase === "activating" ||
@@ -29,11 +29,18 @@ export function ModeSelect({ className }: { className?: string }) {
     }
 
     try {
+      const { modeLifecycleRequests } = await import(
+        "@/lib/mode-lifecycle-requests"
+      );
       await modeLifecycleRequests.requestMode(value);
     } catch {
       toast.error("Failed to update mode");
     }
   };
+
+  if (!isReady) {
+    return <Skeleton className={cn("h-7 w-full max-w-xs", className)} />;
+  }
 
   return (
     <ToggleGroup

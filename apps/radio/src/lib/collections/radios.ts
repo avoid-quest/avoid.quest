@@ -80,6 +80,7 @@ export type RadioRecord = z.infer<typeof radioSchema>;
 export const radiosCollection = createCollection(
   localStorageCollectionOptions({
     id: "radios",
+    startSync: true,
     storageKey: "radio-app-radios",
     getKey: (item) => item.id,
     schema: radioSchema,

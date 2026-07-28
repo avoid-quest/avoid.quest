@@ -1,5 +1,8 @@
 import { eq, useLiveQuery } from "@tanstack/react-db";
-import { type SettingsRecord, settingsCollection } from "@/lib/collections";
+import {
+  type SettingsRecord,
+  settingsCollection,
+} from "@/lib/collections/settings";
 
 const SETTINGS_ID = "app-settings";
 
@@ -63,4 +66,4 @@ export {
   setPlayerMode,
   setRestoreStateOnLoad,
   setSingleModeTransitionDuration,
-} from "@/lib/collections";
+} from "@/lib/collections/settings";

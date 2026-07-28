@@ -5,48 +5,19 @@ import { HeadContent, Scripts } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { InstallPrompt } from "@/components/pwa/install-prompt";
 import { SWRegister } from "@/components/pwa/sw-register";
-import { SyncDialog } from "@/components/settings/sync-dialog";
 import { Header } from "@/components/theme/header";
 import { ThemeProvider } from "@/components/theme/theme-provider";
-import type { SyncChanges } from "@/lib/collections";
-import { modeLifecycleRequests } from "@/lib/mode-lifecycle-requests";
-import {
-  applyRootSyncChanges,
-  createRootQueryClient,
-  loadRootSyncChanges,
-  reportRootBootstrapError,
-} from "@/lib/root/root-bootstrap";
+import { createRootQueryClient } from "@/lib/root/root-bootstrap";
 
 export function RootShell({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(createRootQueryClient);
-  const [syncChanges, setSyncChanges] = useState<SyncChanges | null>(null);
-  const [showSyncDialog, setShowSyncDialog] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    loadRootSyncChanges()
-      .then((changes) => {
-        if (!(changes && !cancelled)) {
-          return;
-        }
-        setSyncChanges(changes);
-        setShowSyncDialog(true);
-      })
-      .catch((error) => {
-        if (!cancelled) {
-          reportRootBootstrapError(error);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   useEffect(() => {
     const handlePageHide = () => {
-      modeLifecycleRequests.resetPageLifecycleState();
+      import("@/lib/mode-lifecycle-requests").then(
+        ({ modeLifecycleRequests }) =>
+          modeLifecycleRequests.resetPageLifecycleState()
+      );
     };
 
     window.addEventListener("pagehide", handlePageHide);
@@ -55,11 +26,6 @@ export function RootShell({ children }: { children: React.ReactNode }) {
       window.removeEventListener("pagehide", handlePageHide);
     };
   }, []);
-
-  const handleApplySyncChanges = (changes: SyncChanges) => {
-    applyRootSyncChanges(changes);
-    setSyncChanges(null);
-  };
 
   return (
     <html lang="en" suppressHydrationWarning>
@@ -83,14 +49,6 @@ export function RootShell({ children }: { children: React.ReactNode }) {
                 {children}
               </main>
               <Toaster />
-              {syncChanges && (
-                <SyncDialog
-                  changes={syncChanges}
-                  onApply={handleApplySyncChanges}
-                  onOpenChange={setShowSyncDialog}
-                  open={showSyncDialog}
-                />
-              )}
             </div>
           </ThemeProvider>
         </QueryClientProvider>

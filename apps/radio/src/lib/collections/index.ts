@@ -1,7 +1,7 @@
-import { initializePlaybackSessions } from "./playback-sessions";
-import { initializeRadios, type SyncChanges } from "./radios";
-import { initializeSettings } from "./settings";
+import { initializeCriticalCollections } from "./initialize";
+import type { SyncChanges } from "./radios";
 
+export { initializeCriticalCollections } from "./initialize";
 export {
   createDefaultChannel,
   DECK_A_CHANNEL_ID,
@@ -82,8 +82,8 @@ export {
  * Returns sync changes if radio collection has pending updates/additions
  */
 export async function initializeCollections(): Promise<SyncChanges | null> {
-  const syncChanges = await initializeRadios();
-  await initializeSettings();
+  const syncChanges = await initializeCriticalCollections();
+  const { initializePlaybackSessions } = await import("./playback-sessions");
   await initializePlaybackSessions();
 
   return syncChanges;

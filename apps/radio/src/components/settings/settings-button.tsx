@@ -7,10 +7,14 @@ import {
   DrawerTitle,
   DrawerTrigger,
 } from "@avoid.quest/ui/components/drawer";
+import { Skeleton } from "@avoid.quest/ui/components/skeleton";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import { Settings2Icon } from "lucide-react";
-import { useState } from "react";
-import { SettingsForm } from "./settings-form";
+import { lazy, Suspense, useState } from "react";
+
+const SettingsForm = lazy(() =>
+  import("./settings-form").then((module) => ({ default: module.SettingsForm }))
+);
 
 type SettingsButtonProps = {
   defaultTab?: string;
@@ -40,7 +44,9 @@ export function SettingsButton({ defaultTab, className }: SettingsButtonProps) {
             </DrawerDescription>
           </DrawerHeader>
           <div className="px-4 pb-4">
-            <SettingsForm defaultTab={defaultTab} />
+            <Suspense fallback={<Skeleton className="h-[70vh] w-full" />}>
+              <SettingsForm defaultTab={defaultTab} />
+            </Suspense>
           </div>
         </div>
       </DrawerContent>

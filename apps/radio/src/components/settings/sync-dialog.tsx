@@ -12,7 +12,7 @@ import { Label } from "@avoid.quest/ui/components/label";
 import { ScrollArea } from "@avoid.quest/ui/components/scroll-area";
 import { PlusIcon, RefreshCwIcon } from "lucide-react";
 import { useState } from "react";
-import { addDismissedRadios, type SyncChanges } from "@/lib/collections";
+import { addDismissedRadios, type SyncChanges } from "@/lib/collections/radios";
 
 type SyncDialogProps = {
   changes: SyncChanges;

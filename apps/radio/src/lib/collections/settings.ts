@@ -52,6 +52,7 @@ const SETTINGS_ID = "app-settings";
 export const settingsCollection = createCollection(
   localStorageCollectionOptions({
     id: "settings",
+    startSync: true,
     storageKey: "radio-app-settings",
     getKey: (item) => item.id,
     schema: settingsSchema,

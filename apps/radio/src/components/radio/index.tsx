@@ -1,24 +1,24 @@
 import { lazy, type ReactElement, Suspense, useEffect } from "react";
 import type { Radio } from "@/lib/audio";
-import {
-  PLAYBACK_SESSION_IDS,
-  type PlaybackSessionId,
-} from "@/lib/collections/playback-sessions";
 import { useEnabledRadios } from "@/lib/hooks/use-radios";
 import { useSettings } from "@/lib/hooks/use-settings";
-import { modeLifecycleRequests } from "@/lib/mode-lifecycle-requests";
+import type { Settings } from "@/lib/types";
+import { RadioLoadingSkeleton } from "./radio-loading-skeleton";
+import {
+  loadDjPlayer,
+  loadMultipleRadios,
+  loadSingleRadio,
+} from "./radio-mode-loader";
 
-const SingleRadio = lazy(() =>
-  import("./single").then((mod) => ({ default: mod.SingleRadio }))
-);
-const MultipleRadios = lazy(() =>
-  import("./multiple").then((mod) => ({ default: mod.MultipleRadios }))
-);
-const DjPlayer = lazy(() =>
-  import("./dj/dj-player").then((mod) => ({ default: mod.DjPlayer }))
-);
+type RadioMode = Settings["player"]["mode"];
 
-const DEFAULT_RADIO_MODE: PlaybackSessionId = "multiple";
+const RADIO_MODES: RadioMode[] = ["single", "multiple", "dj"];
+
+const SingleRadio = lazy(loadSingleRadio);
+const MultipleRadios = lazy(loadMultipleRadios);
+const DjPlayer = lazy(loadDjPlayer);
+
+const DEFAULT_RADIO_MODE: RadioMode = "single";
 
 type RadioModeRenderer = (radios: Radio[]) => ReactElement;
 
@@ -26,48 +26,50 @@ const radioModeRenderers = {
   single: (radios) => <SingleRadio radios={radios} />,
   multiple: (radios) => <MultipleRadios radios={radios} />,
   dj: (radios) => <DjPlayer radios={radios} />,
-} satisfies Record<PlaybackSessionId, RadioModeRenderer>;
+} satisfies Record<RadioMode, RadioModeRenderer>;
 
-function RadioMode({
-  mode,
-  radios,
-}: {
-  mode: PlaybackSessionId;
-  radios: Radio[];
-}) {
+function RadioMode({ mode, radios }: { mode: RadioMode; radios: Radio[] }) {
   return radioModeRenderers[mode](radios);
 }
 
-function getConfiguredMode(mode: unknown): PlaybackSessionId | undefined {
-  return isPlaybackSessionId(mode) ? mode : undefined;
+function getConfiguredMode(mode: unknown): RadioMode | undefined {
+  return isRadioMode(mode) ? mode : undefined;
 }
 
-function isPlaybackSessionId(mode: unknown): mode is PlaybackSessionId {
+function isRadioMode(mode: unknown): mode is RadioMode {
   return (
     typeof mode === "string" &&
-    PLAYBACK_SESSION_IDS.some((sessionId) => sessionId === mode)
+    RADIO_MODES.some((radioMode) => radioMode === mode)
   );
 }
 
 export function Radios() {
-  const { data: radios } = useEnabledRadios();
-  const { data: settings } = useSettings();
-
-  const enabledRadios = radios ?? [];
-  const configuredMode = getConfiguredMode(settings?.player.mode);
+  const radiosQuery = useEnabledRadios();
+  const settingsQuery = useSettings();
+  const configuredMode = getConfiguredMode(settingsQuery.data?.player.mode);
   const mode = configuredMode ?? DEFAULT_RADIO_MODE;
 
   useEffect(() => {
     if (!configuredMode) {
       return;
     }
-    modeLifecycleRequests.synchronizeMode(configuredMode).catch((error) => {
-      console.error("[radio] Failed to synchronize playback mode:", error);
-    });
+    import("@/lib/mode-lifecycle-requests")
+      .then(({ modeLifecycleRequests }) =>
+        modeLifecycleRequests.synchronizeMode(configuredMode)
+      )
+      .catch((error) => {
+        console.error("[radio] Failed to synchronize playback mode:", error);
+      });
   }, [configuredMode]);
 
+  if (!(radiosQuery.isReady && settingsQuery.isReady)) {
+    return <RadioLoadingSkeleton mode={mode} phase="database" />;
+  }
+
+  const enabledRadios = radiosQuery.data ?? [];
+
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<RadioLoadingSkeleton mode={mode} phase="mode" />}>
       <RadioMode mode={mode} radios={enabledRadios} />
     </Suspense>
   );

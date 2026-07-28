@@ -1,9 +1,16 @@
 import { QueryClient } from "@tanstack/react-query";
-import {
-  applySyncChanges,
-  initializeCollections,
-  type SyncChanges,
-} from "@/lib/collections";
+import { preloadRadioMode } from "@/components/radio/radio-mode-loader";
+import { initializeCriticalCollections } from "@/lib/collections/initialize";
+import { applySyncChanges, type SyncChanges } from "@/lib/collections/radios";
+import { getSettings } from "@/lib/collections/settings";
+
+async function initializeRootCollections(): Promise<SyncChanges | null> {
+  const syncChanges = await initializeCriticalCollections();
+  preloadRadioMode(getSettings()?.player.mode ?? "single").catch((error) => {
+    console.error("[radio] Failed to preload radio mode:", error);
+  });
+  return syncChanges;
+}
 
 export function createRootQueryClient(): QueryClient {
   return new QueryClient({
@@ -17,7 +24,7 @@ export function createRootQueryClient(): QueryClient {
 }
 
 export async function loadRootSyncChanges(
-  initialize = initializeCollections
+  initialize = initializeRootCollections
 ): Promise<SyncChanges | null> {
   return (await initialize()) ?? null;
 }

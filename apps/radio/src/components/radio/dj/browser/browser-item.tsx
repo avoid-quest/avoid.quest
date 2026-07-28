@@ -7,7 +7,8 @@ import {
 } from "lucide-react";
 import type { Radio } from "@/lib/audio";
 import { getDjDeckActions } from "@/lib/dj-actions";
-import { isPlatformItem, RadioItemContent } from "../dj-radio-list";
+import { isPlatformPlaceholderItem } from "@/lib/dj-library-sources";
+import { RadioItemContent } from "../dj-radio-list";
 
 export function DraggableBrowserItem({ radio }: { radio: Radio }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } =
@@ -21,8 +22,7 @@ export function DraggableBrowserItem({ radio }: { radio: Radio }) {
         transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
       }
     : undefined;
-
-  const isPlatform = isPlatformItem(radio);
+  const isPlatform = isPlatformPlaceholderItem(radio);
 
   return (
     <div

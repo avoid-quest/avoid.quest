@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import type { Radio } from "@/lib/audio";
 import { getMultipleChannelId } from "@/lib/collections/playback-sessions";
-import { useRadioGardenResolve } from "@/lib/hooks/use-radio-garden-resolve";
+import { useDiscoveredStationActions } from "@/lib/hooks/use-discovered-station-actions";
 import {
   addRadio as addRadioToCollection,
   deleteRadio,
@@ -39,8 +39,8 @@ export function useMultipleRadioManagement({
     },
     [addRadio]
   );
-  const { resolve, saveToCollection, selectDiscoveredStation, isResolving } =
-    useRadioGardenResolve(handleResolved);
+  const { saveDiscoveredStation, selectDiscoveredStation } =
+    useDiscoveredStationActions(handleResolved);
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogMode, setDialogMode] = useState<"create" | "edit">("create");
@@ -113,10 +113,8 @@ export function useMultipleRadioManagement({
 
   return {
     sessionRadios,
-    resolve,
-    saveToCollection,
+    saveDiscoveredStation,
     selectDiscoveredStation,
-    isResolving,
     dialogOpen,
     setDialogOpen,
     dialogMode,

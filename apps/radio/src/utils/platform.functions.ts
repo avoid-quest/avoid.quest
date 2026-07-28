@@ -144,7 +144,10 @@ async function resolveRadioGardenItem(
         result.error || "Failed to resolve Radio Garden item"
       );
     }
-    return { metadata: result.metadata, streamUrl: result.streamUrl };
+    return {
+      metadata: result.metadata,
+      streamUrl: result.streamUrl,
+    };
   } catch (error) {
     if (error instanceof AppError) {
       throw error;

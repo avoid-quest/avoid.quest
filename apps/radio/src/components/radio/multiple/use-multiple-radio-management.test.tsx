@@ -43,11 +43,10 @@ mock.module("@/lib/hooks/use-session-radios", () => ({
     selector(sessionRadiosState),
 }));
 
-mock.module("@/lib/hooks/use-radio-garden-resolve", () => ({
-  useRadioGardenResolve: () => ({
-    resolve: mock(async (_radio: Radio) => undefined),
-    saveToCollection: mock((_radio: Radio) => undefined),
-    isResolving: false,
+mock.module("@/lib/hooks/use-discovered-station-actions", () => ({
+  useDiscoveredStationActions: () => ({
+    saveDiscoveredStation: mock((_radio: Radio) => undefined),
+    selectDiscoveredStation: mock((_radio: Radio) => undefined),
   }),
 }));
 

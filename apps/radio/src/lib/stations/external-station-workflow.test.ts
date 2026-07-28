@@ -89,6 +89,15 @@ describe("createRadioBrowserRadio", () => {
       "https://radio.example/resolved.mp3"
     );
   });
+
+  test("does not repeat the country as the station location", () => {
+    const radio = createRadioBrowserRadio(
+      createRadioBrowserStation({ country: "Italy", state: "italy" })
+    );
+
+    expect(radio.placeTitle).toBeUndefined();
+    expect(radio.countryTitle).toBe("Italy");
+  });
 });
 
 describe("createExternalStationResolutionWorkflow", () => {

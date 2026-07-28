@@ -53,6 +53,10 @@ export type PlatformItem = {
   streamUrl: string;
 };
 
+export type RadioGardenSearchCandidate = RadioGardenSearchResult & {
+  streamUrl: string;
+};
+
 function awaitWithSignal<T>(
   operation: () => Promise<T>,
   signal: AbortSignal | undefined
@@ -381,13 +385,57 @@ export async function searchBandcamp(
 
 export async function searchRadioGarden(
   query: string
-): Promise<RadioGardenSearchResult[]> {
+): Promise<RadioGardenSearchCandidate[]> {
   const { radioGardenSearch } = await import("@/utils/radio-garden.functions");
   const result = await radioGardenSearch({ data: { query } });
   if (!result.ok) {
     throw new Error(result.error.message);
   }
   return result.data.results;
+}
+
+export function prepareRadioGardenSearchCandidate(
+  candidate: RadioGardenSearchCandidate,
+  signal?: AbortSignal
+): Promise<PlatformItem> {
+  return preparePlatformItem(
+    candidate.url,
+    {
+      metadata: {
+        platform: "radiogarden",
+        itemType: "channel",
+        url: candidate.url,
+        channelId: candidate.channelId,
+        name: candidate.title,
+        subtitle: candidate.subtitle,
+        website: candidate.website,
+        placeTitle: candidate.placeTitle,
+        countryTitle: candidate.countryTitle,
+      },
+      streamUrl: candidate.streamUrl,
+    },
+    { signal }
+  );
+}
+
+export async function resolveRadioGardenStream(
+  channelId: string,
+  canonicalUrl: string
+): Promise<PlatformItem> {
+  const { radioGardenStream } = await import("@/utils/radio-garden.functions");
+  const result = await radioGardenStream({ data: { channelId } });
+  if (!result.ok) {
+    throw new Error(result.error.message);
+  }
+  return preparePlatformItem(canonicalUrl, {
+    metadata: {
+      platform: "radiogarden",
+      itemType: "channel",
+      url: canonicalUrl,
+      channelId,
+    },
+    streamUrl: result.data.streamUrl,
+  });
 }
 
 export async function searchSoundCloud(

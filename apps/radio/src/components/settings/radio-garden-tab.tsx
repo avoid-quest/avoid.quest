@@ -15,9 +15,10 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { radiosCollection } from "@/lib/collections";
 import { addRadio } from "@/lib/hooks/use-radios";
-import { resolvePlatformItem, searchRadioGarden } from "@/lib/platform-client";
+import { searchRadioGarden } from "@/lib/platform-client";
 import type { RadioGardenSearchResult } from "@/lib/platform-types";
 import { createExternalStationResolutionWorkflow } from "@/lib/stations/external-station-workflow";
+import { resolveRadioGardenStreamForWorkflow } from "@/lib/stations/radio-garden-resolve-adapter";
 
 type RadioGardenTabProps = {
   onSuccess: () => void;
@@ -34,26 +35,7 @@ export function RadioGardenTab({ onSuccess }: RadioGardenTabProps) {
   const workflow = createExternalStationResolutionWorkflow({
     adapters: {
       radioGarden: {
-        resolveStream: async (_channelId, canonicalUrl) => {
-          try {
-            const resolved = await resolvePlatformItem(canonicalUrl);
-            return {
-              ok: true as const,
-              data: { format: resolved.format, streamUrl: resolved.streamUrl },
-            };
-          } catch (error) {
-            return {
-              ok: false as const,
-              error: {
-                code: "RADIO_GARDEN_RESOLVER_FAILED",
-                message:
-                  error instanceof Error
-                    ? error.message
-                    : "Failed to resolve Radio Garden stream",
-              },
-            };
-          }
-        },
+        resolveStream: resolveRadioGardenStreamForWorkflow,
       },
     },
     collection: {

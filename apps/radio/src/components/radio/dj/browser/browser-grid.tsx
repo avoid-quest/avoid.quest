@@ -5,13 +5,18 @@ import { DraggableBrowserItem } from "./browser-item";
 type BrowserGridProps = {
   items: Radio[];
   className?: string;
+  emptyLabel?: string;
 };
 
-export function BrowserGrid({ items, className }: BrowserGridProps) {
+export function BrowserGrid({
+  items,
+  className,
+  emptyLabel = "No items found",
+}: BrowserGridProps) {
   if (items.length === 0) {
     return (
       <div className="flex items-center justify-center py-4 text-center">
-        <p className="text-muted-foreground text-sm">No items found</p>
+        <p className="text-muted-foreground text-sm">{emptyLabel}</p>
       </div>
     );
   }

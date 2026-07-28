@@ -1,8 +1,8 @@
 // Import from subpath to avoid pulling in incompatible deps (cheerio etc.)
 import { type AppResult, runServerFn } from "@avoid.quest/error";
 import {
-  getRadioGardenSuggestions,
   type RadioGardenSearchResult,
+  resolveRadioGardenStream,
   searchRadioGarden,
 } from "@avoid.quest/platforms/radiogarden/search";
 import { createServerFn } from "@tanstack/react-start";
@@ -13,8 +13,22 @@ const RadioGardenSearchSchema = z.object({
   query: z.string().min(1, "Search query is required").max(200),
 });
 
+const RADIO_GARDEN_SEARCH_LIMIT = 10;
+
+const RadioGardenStreamSchema = z.object({
+  channelId: z
+    .string()
+    .min(1, "Channel ID is required")
+    .max(100)
+    .regex(/^[\w-]+$/, "Invalid Radio Garden channel ID"),
+});
+
+export type RadioGardenSearchCandidate = RadioGardenSearchResult & {
+  streamUrl: string;
+};
+
 export type RadioGardenSearchResponse = AppResult<{
-  results: RadioGardenSearchResult[];
+  results: RadioGardenSearchCandidate[];
 }>;
 
 export const radioGardenSearch = createServerFn({ method: "POST" })
@@ -33,31 +47,46 @@ export const radioGardenSearch = createServerFn({ method: "POST" })
         },
         run: async () => {
           const results = await searchRadioGarden(data.query);
-          return { results };
+          const candidates = await Promise.all(
+            results.slice(0, RADIO_GARDEN_SEARCH_LIMIT).map(async (result) => {
+              try {
+                return {
+                  ...result,
+                  streamUrl: await resolveRadioGardenStream(result.channelId),
+                };
+              } catch {
+                return null;
+              }
+            })
+          );
+          return {
+            results: candidates.filter(
+              (candidate): candidate is RadioGardenSearchCandidate =>
+                candidate !== null
+            ),
+          };
         },
       })
   );
 
-export type RadioGardenSuggestionsResponse = AppResult<{
-  results: RadioGardenSearchResult[];
-}>;
+export type RadioGardenStreamResponse = AppResult<{ streamUrl: string }>;
 
-export const radioGardenSuggestions = createServerFn({ method: "GET" })
-  .middleware([rateLimitMiddleware("radio-garden-suggestions")])
+export const radioGardenStream = createServerFn({ method: "POST" })
+  .middleware([rateLimitMiddleware("radio-garden-stream")])
+  .validator(RadioGardenStreamSchema)
   .handler(
-    (): Promise<RadioGardenSuggestionsResponse> =>
+    ({ data }): Promise<RadioGardenStreamResponse> =>
       runServerFn({
-        operation: "radioGardenSuggestions",
+        operation: "radioGardenStream",
         fallback: {
-          code: "RADIO_GARDEN_SUGGESTIONS_FAILED",
-          safeMessage: "Failed to fetch suggestions",
+          code: "RADIO_GARDEN_STREAM_FAILED",
+          safeMessage: "Failed to resolve station stream",
           category: "dependency",
           expected: false,
           status: 500,
         },
-        run: async () => {
-          const results = await getRadioGardenSuggestions();
-          return { results };
-        },
+        run: async () => ({
+          streamUrl: await resolveRadioGardenStream(data.channelId),
+        }),
       })
   );

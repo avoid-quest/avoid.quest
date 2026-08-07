@@ -3,6 +3,7 @@ import {
   searchRadioBrowser,
 } from "@avoid.quest/platforms/radiobrowser";
 import { useMutation } from "@tanstack/react-query";
+import { useStore } from "@tanstack/react-store";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Radio } from "@/lib/audio";
 import {
@@ -15,9 +16,13 @@ import {
   createRadioGardenRadio,
 } from "@/lib/stations/external-station-workflow";
 import {
+  type AudioProbeScheduler,
+  createAudioProbeScheduler,
   filterPlayableRadioBrowserStations,
+  MAX_CONCURRENT_AUDIO_PROBES,
   RADIO_BROWSER_RESULT_LIMIT,
 } from "@/lib/stations/radio-browser-playability";
+import { playbackRuntimeStore } from "@/lib/stores/playback-runtime-store";
 
 const SEARCH_RESULT_LIMIT = 8;
 const GENERIC_SEARCH_TERMS = new Set(["am", "fm", "radio", "station"]);
@@ -268,19 +273,38 @@ function stopWaitingOnAbort<T>(
 type RemoteSearchRequest = {
   query: string;
   requestId: number;
+  scheduleProbe: AudioProbeScheduler;
   signal: AbortSignal;
 };
 
+type NetworkInformationNavigator = Navigator & {
+  connection?: {
+    effectiveType?: string;
+    saveData?: boolean;
+  };
+};
+
+function preferredProbeConcurrency(): number {
+  if (typeof navigator === "undefined") {
+    return MAX_CONCURRENT_AUDIO_PROBES;
+  }
+  const connection = (navigator as NetworkInformationNavigator).connection;
+  return connection?.saveData === true ||
+    connection?.effectiveType?.endsWith("2g") === true
+    ? 1
+    : MAX_CONCURRENT_AUDIO_PROBES;
+}
+
 async function loadPlayableRadioGardenResults(
   candidates: RadioGardenSearchCandidate[],
-  signal: AbortSignal
+  signal: AbortSignal,
+  scheduleProbe: AudioProbeScheduler
 ): Promise<Radio[]> {
   const results = await Promise.all(
     candidates.map(async (candidate) => {
       try {
-        const prepared = await prepareRadioGardenSearchCandidate(
-          candidate,
-          signal
+        const prepared = await scheduleProbe(() =>
+          prepareRadioGardenSearchCandidate(candidate, signal)
         );
         return createRadioGardenRadio(
           candidate,
@@ -298,6 +322,11 @@ async function loadPlayableRadioGardenResults(
 }
 
 export function useUnifiedRadioSearch(query: string, localRadios: Radio[]) {
+  const playbackNeedsNetwork = useStore(playbackRuntimeStore, (state) =>
+    Object.values(state.channels).some(
+      (channel) => channel.isLoading || channel.isBuffering
+    )
+  );
   const [radioGardenResults, setRadioGardenResults] = useState<Radio[]>([]);
   const [radioBrowserResults, setRadioBrowserResults] = useState<
     RadioBrowserStation[]
@@ -306,12 +335,16 @@ export function useUnifiedRadioSearch(query: string, localRadios: Radio[]) {
   const abortRef = useRef<AbortController | null>(null);
 
   const radioGardenSearchMutation = useMutation({
-    mutationFn: async ({ query: searchQuery, signal }: RemoteSearchRequest) => {
+    mutationFn: async ({
+      query: searchQuery,
+      scheduleProbe,
+      signal,
+    }: RemoteSearchRequest) => {
       const candidates = await stopWaitingOnAbort(
         searchRadioGarden(searchQuery),
         signal
       );
-      return loadPlayableRadioGardenResults(candidates, signal);
+      return loadPlayableRadioGardenResults(candidates, signal, scheduleProbe);
     },
     onSuccess: (results, request) => {
       if (request.requestId === requestIdRef.current) {
@@ -326,12 +359,19 @@ export function useUnifiedRadioSearch(query: string, localRadios: Radio[]) {
   });
 
   const radioBrowserSearchMutation = useMutation({
-    mutationFn: async ({ query: searchQuery, signal }: RemoteSearchRequest) => {
+    mutationFn: async ({
+      query: searchQuery,
+      scheduleProbe,
+      signal,
+    }: RemoteSearchRequest) => {
       const stations = await searchRadioBrowser(searchQuery, {
         limit: RADIO_BROWSER_RESULT_LIMIT,
         signal,
       });
-      return filterPlayableRadioBrowserStations(stations, { signal });
+      return filterPlayableRadioBrowserStations(stations, {
+        scheduleProbe,
+        signal,
+      });
     },
     onSuccess: (results, request) => {
       if (request.requestId === requestIdRef.current) {
@@ -360,6 +400,11 @@ export function useUnifiedRadioSearch(query: string, localRadios: Radio[]) {
         setRadioGardenResults([]);
         return;
       }
+      // Do not let directory health probes compete with initial buffering or
+      // recovery. The effect runs again and resumes discovery once healthy.
+      if (playbackNeedsNetwork) {
+        return;
+      }
       setRadioBrowserResults([]);
       setRadioGardenResults([]);
       const requestId = requestIdRef.current;
@@ -369,13 +414,21 @@ export function useUnifiedRadioSearch(query: string, localRadios: Radio[]) {
         const request = {
           query: normalizedQuery,
           requestId,
+          scheduleProbe: createAudioProbeScheduler(
+            preferredProbeConcurrency(),
+            controller.signal
+          ),
           signal: controller.signal,
         };
         radioBrowserSearchMutation.mutate(request);
         radioGardenSearchMutation.mutate(request);
       }, 300);
     },
-    [radioBrowserSearchMutation.mutate, radioGardenSearchMutation.mutate]
+    [
+      playbackNeedsNetwork,
+      radioBrowserSearchMutation.mutate,
+      radioGardenSearchMutation.mutate,
+    ]
   );
 
   useEffect(() => {
@@ -405,7 +458,8 @@ export function useUnifiedRadioSearch(query: string, localRadios: Radio[]) {
   return {
     ...unified,
     isSearching:
-      radioBrowserSearchMutation.isPending ||
-      radioGardenSearchMutation.isPending,
+      !playbackNeedsNetwork &&
+      (radioBrowserSearchMutation.isPending ||
+        radioGardenSearchMutation.isPending),
   };
 }

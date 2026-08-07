@@ -1,7 +1,9 @@
 import { describe, expect, mock, test } from "bun:test";
 import type { RadioBrowserStation } from "@avoid.quest/platforms/radiobrowser";
 import {
+  createAudioProbeScheduler,
   filterPlayableRadioBrowserStations,
+  MAX_CONCURRENT_AUDIO_PROBES,
   RADIO_BROWSER_RESULT_LIMIT,
 } from "./radio-browser-playability.js";
 
@@ -61,16 +63,12 @@ describe("filterPlayableRadioBrowserStations", () => {
   });
 
   test("filters failed and non-HTTPS probes while preserving provider order", async () => {
-    const fetchImpl = mock(async (input: RequestInfo | URL) => {
+    const fetchImpl = mock((input: RequestInfo | URL) => {
       const url = String(input);
-      if (url.endsWith("/first")) {
-        await Promise.resolve();
-        return new Response("first");
-      }
       if (url.endsWith("/failed")) {
-        return new Response("failed", { status: 503 });
+        return Promise.resolve(new Response("failed", { status: 503 }));
       }
-      return new Response("last");
+      return Promise.resolve(new Response("audio"));
     });
     const stations = [
       station("first"),
@@ -98,6 +96,67 @@ describe("filterPlayableRadioBrowserStations", () => {
 
     expect(results).toEqual(stations.slice(0, RADIO_BROWSER_RESULT_LIMIT));
     expect(fetchImpl).toHaveBeenCalledTimes(RADIO_BROWSER_RESULT_LIMIT);
+  });
+
+  test("never runs more than two stream probes concurrently", async () => {
+    let activeCount = 0;
+    let maxActiveCount = 0;
+    const releases: Array<() => void> = [];
+    const fetchImpl = mock(async () => {
+      activeCount += 1;
+      maxActiveCount = Math.max(maxActiveCount, activeCount);
+      await new Promise<void>((resolve) => releases.push(resolve));
+      activeCount -= 1;
+      return new Response("audio");
+    });
+    const result = filterPlayableRadioBrowserStations(
+      Array.from({ length: 5 }, (_, index) => station(String(index))),
+      { fetchImpl }
+    );
+
+    await Promise.resolve();
+    expect(activeCount).toBe(MAX_CONCURRENT_AUDIO_PROBES);
+    while (releases.length > 0 || activeCount > 0) {
+      for (const release of releases.splice(0)) {
+        release();
+      }
+      await Promise.resolve();
+      await Promise.resolve();
+    }
+    await result;
+
+    expect(maxActiveCount).toBe(MAX_CONCURRENT_AUDIO_PROBES);
+  });
+
+  test("shares a two-probe scheduler across independent providers", async () => {
+    let activeCount = 0;
+    let maxActiveCount = 0;
+    const scheduler = createAudioProbeScheduler(2);
+    const tasks = Array.from({ length: 8 }, () =>
+      scheduler(async () => {
+        activeCount += 1;
+        maxActiveCount = Math.max(maxActiveCount, activeCount);
+        await Promise.resolve();
+        activeCount -= 1;
+      })
+    );
+
+    await Promise.all(tasks);
+
+    expect(maxActiveCount).toBe(2);
+  });
+
+  test("releases a scheduler slot when a probe throws synchronously", async () => {
+    const scheduler = createAudioProbeScheduler(1);
+
+    await expect(
+      scheduler(() => {
+        throw new Error("synchronous probe failure");
+      })
+    ).rejects.toThrow("synchronous probe failure");
+    await expect(scheduler(() => Promise.resolve("next"))).resolves.toBe(
+      "next"
+    );
   });
 
   test("propagates caller aborts instead of presenting partial results", async () => {

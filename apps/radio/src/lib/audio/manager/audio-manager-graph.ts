@@ -151,9 +151,13 @@ async function connectAudioGraph({
 
   const finalDestination = mainDelayNode ?? context.destination;
 
+  // Connect the stable native shell before the first async effect-runtime
+  // boundary. AudioManager can then request media playback in the original
+  // user-activation task without exposing a disconnected or full-volume path.
+  preFaderSend.connect(gain);
+  gain.connect(finalDestination);
+
   if (await connectEffectsGraph(instance.sourceId, filter, preFaderSend)) {
-    preFaderSend.connect(gain);
-    gain.connect(finalDestination);
     return true;
   }
 
@@ -177,8 +181,6 @@ async function connectAudioGraph({
   });
 
   filter.connect(preFaderSend);
-  preFaderSend.connect(gain);
-  gain.connect(finalDestination);
   return true;
 }
 

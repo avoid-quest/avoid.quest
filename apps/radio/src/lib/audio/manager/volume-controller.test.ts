@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 import type { AudioState, Radio } from "../playback/index.js";
 import { createSoundInstance } from "./audio-manager-types.js";
 import { VolumeController } from "./volume-controller.js";
@@ -41,5 +41,38 @@ describe("VolumeController", () => {
     expect(volume.isGlobalMuted()).toBe(false);
 
     expect(stateUpdates.at(-1)?.volume).toBe(1);
+  });
+
+  test("holds the sampled curve value when cancelAndHoldAtTime is unavailable", () => {
+    const sound = createSoundInstance(radio, "deck-a");
+    let currentTime = 0;
+    const gain = {
+      value: 0.0001,
+      cancelScheduledValues: mock(() => undefined),
+      setTargetAtTime: mock(() => undefined),
+      setValueAtTime: mock((value: number) => {
+        gain.value = value;
+      }),
+      setValueCurveAtTime: mock(() => undefined),
+    };
+    sound.nodes = {
+      gain: { gain },
+    } as unknown as NonNullable<typeof sound.nodes>;
+    const volume = new VolumeController({
+      getContext: () => ({ currentTime }) as AudioContext,
+      getSound: (soundId) => (soundId === "deck-a" ? sound : null),
+      getSounds: () => [["deck-a", sound]],
+      notifyListeners: () => undefined,
+    });
+
+    volume.scheduleVolumeCurve("deck-a", new Float32Array([0, 1]), 1000);
+    currentTime = 0.5;
+    volume.set("deck-a", 0.25);
+
+    expect(gain.cancelScheduledValues).toHaveBeenLastCalledWith(0.5);
+    expect(gain.setValueAtTime).toHaveBeenCalledTimes(1);
+    expect(gain.setValueAtTime.mock.calls[0]?.[0]).toBeCloseTo(0.500_05, 5);
+    expect(gain.setValueAtTime.mock.calls[0]?.[1]).toBe(0.5);
+    expect(gain.setTargetAtTime).toHaveBeenLastCalledWith(0.25, 0.5, 0.02);
   });
 });

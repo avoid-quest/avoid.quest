@@ -44,16 +44,14 @@ describe("audio engine lifecycle", () => {
       "https://audio.example/stream.mp3",
     ]);
     expect(events.indexOf("media-play")).toBeGreaterThanOrEqual(0);
-    expect(
-      events.findIndex((event) => event.startsWith("worklet-module:"))
-    ).toBeGreaterThan(events.indexOf("media-play"));
+    expect(events.some((event) => event.startsWith("worklet-module:"))).toBe(
+      false
+    );
     expect(connectedNodePairs).toContain("media-source -> gain");
     expect(connectedNodePairs).toContain("gain -> stereo-panner");
     expect(connectedNodePairs).toContain("stereo-panner -> biquad");
-    expect(connectedNodePairs).toContain("biquad -> worklet");
-    expect(connectedNodePairs).toContain("worklet-gain -> gain");
-    expect(workletMessageTypes).toContain("CREATE_SOURCE");
-    expect(workletMessageTypes).toContain("START_SOURCE");
+    expect(connectedNodePairs).toContain("biquad -> gain");
+    expect(workletMessageTypes).toEqual([]);
     expect(states).toContainEqual(
       expect.objectContaining({
         isLoading: true,
@@ -83,13 +81,11 @@ describe("audio engine lifecycle", () => {
         "gain",
         "stereo-panner",
         "biquad",
-        "worklet",
-        "worklet-gain",
       ])
     );
   });
 
-  test("pauses and replays an active browser-backed sound with one worklet source", async () => {
+  test("pauses and replays a dry browser-backed sound without creating a worklet", async () => {
     harness = installAudioEngineLifecycleHarness();
     const manager = AudioManager.getInstance();
     const radio: Radio = {
@@ -111,14 +107,7 @@ describe("audio engine lifecycle", () => {
     expect(harness.events()).toEqual(
       expect.arrayContaining(["media-pause", "media-play"])
     );
-    expect(
-      workletMessageTypes.filter((type) => type === "CREATE_SOURCE")
-    ).toHaveLength(1);
-    expect(
-      workletMessageTypes.filter((type) => type === "START_SOURCE")
-    ).toHaveLength(1);
-    expect(workletMessageTypes).toContain("PAUSE_SOURCE");
-    expect(workletMessageTypes).toContain("RESUME_SOURCE");
+    expect(workletMessageTypes).toEqual([]);
 
     manager.cleanupSound(soundId);
   });
@@ -223,7 +212,7 @@ describe("audio engine lifecycle", () => {
     manager.cleanupSound(soundId);
   });
 
-  test("stops early media playback if worklet initialization fails", async () => {
+  test("stops early media playback if a required compatibility worklet fails", async () => {
     harness = installAudioEngineLifecycleHarness({ failWorkletModule: true });
     const manager = AudioManager.getInstance();
     const states: AudioState[] = [];
@@ -234,6 +223,10 @@ describe("audio engine lifecycle", () => {
     };
 
     const soundId = manager.createSound(radio, "sound-lifecycle");
+    manager.addEffect(
+      soundId,
+      createDefaultEffectConfig("pitchShifter", "pitch-1", 0)
+    );
     const unsubscribe = manager.subscribe(soundId, (state) => {
       states.push(state);
     });
@@ -250,8 +243,8 @@ describe("audio engine lifecycle", () => {
     const pauseIndex = events.lastIndexOf("media-pause");
 
     expect(playIndex).toBeGreaterThanOrEqual(0);
-    expect(workletIndex).toBeGreaterThan(playIndex);
-    expect(pauseIndex).toBeGreaterThan(workletIndex);
+    expect(workletIndex).toBeGreaterThanOrEqual(0);
+    expect(pauseIndex).toBeGreaterThan(playIndex);
     expect(states.at(-1)).toEqual(
       expect.objectContaining({
         isLoading: false,

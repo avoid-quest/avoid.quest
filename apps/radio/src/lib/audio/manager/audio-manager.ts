@@ -82,7 +82,7 @@ export class AudioManager {
   readonly effects: EffectsController;
   readonly output: OutputRouter;
   readonly meters: MeterService;
-  private workletModuleLoaded = false;
+  private audioSystemInitialized = false;
   private initPromise: Promise<void> | null = null;
 
   private get sounds(): Map<string, SoundInstance> {
@@ -125,10 +125,10 @@ export class AudioManager {
   }
 
   /**
-   * Initialize the audio system (loads worklet module)
+   * Initialize the native audio system. Effect runtimes are loaded on demand.
    */
   async init(): Promise<void> {
-    if (this.workletModuleLoaded) {
+    if (this.audioSystemInitialized) {
       return;
     }
 
@@ -146,10 +146,10 @@ export class AudioManager {
   }
 
   /**
-   * Check if audio system is ready (worklet module loaded)
+   * Check if the native audio system is ready.
    */
   get isReady(): boolean {
-    return this.workletModuleLoaded;
+    return this.audioSystemInitialized;
   }
 
   // ============================================
@@ -220,6 +220,9 @@ export class AudioManager {
       throw new Error("Audio context not available");
     }
     const resumePromise = resumeAudioContext();
+    // Build the native master shell synchronously so the media play request
+    // can remain in the originating user-activation task on mobile.
+    this.output.initializeMasterGraph(context);
 
     // Update instance state
     instance.volume = volume;
@@ -236,8 +239,15 @@ export class AudioManager {
 
     // Create audio nodes if not exists
     if (!instance.nodes) {
-      instance.nodes = createAudioNodes(context);
+      instance.nodes = createAudioNodes(
+        context,
+        volume * this.volume.getGlobalVolume()
+      );
     }
+
+    // Initialize the requested gain before any source is connected. This is
+    // especially important for muted incoming crossfade sources.
+    this.volume.set(soundId, volume);
 
     let playPromise: Promise<void> | null = null;
     const activePlaybackSource = instance.playbackSource?.isActive
@@ -262,23 +272,26 @@ export class AudioManager {
         })
       );
 
-      // Load and connect
+      // Start graph preparation before requesting media playback. The native
+      // shell is connected synchronously, while effect runtimes may continue
+      // preparing behind a muted branch. Request play in this same task to
+      // preserve mobile transient user activation.
       const loadPromise = this.handleDeferredRejection(
         instance.playbackSource.load(toPlaybackInput(instance.radio))
       );
-      playPromise = this.startPlayback(instance.playbackSource);
-      await this.ensurePlaybackSetup(
+      const setupPromise = this.ensurePlaybackSetup(
         soundId,
         instance,
         activePlaybackSource,
         resumePromise
       );
-      await loadPromise;
-      await this.connectAudioGraphOrRollback(
+      const graphPromise = this.connectAudioGraphOrRollback(
         soundId,
         instance,
         activePlaybackSource
       );
+      playPromise = this.startPlayback(instance.playbackSource);
+      await Promise.all([setupPromise, loadPromise, graphPromise]);
     }
 
     if (activePlaybackSource) {
@@ -289,9 +302,6 @@ export class AudioManager {
         resumePromise
       );
     }
-
-    // Set initial volume
-    this.volume.set(soundId, volume);
 
     if (activePlaybackSource) {
       this.effects.resumeSource(soundId);
@@ -335,7 +345,10 @@ export class AudioManager {
 
     // Create audio nodes
     if (!instance.nodes) {
-      instance.nodes = createAudioNodes(context);
+      instance.nodes = createAudioNodes(
+        context,
+        instance.volume * this.volume.getGlobalVolume()
+      );
     }
 
     // Create device source
@@ -745,8 +758,7 @@ export class AudioManager {
     }
 
     try {
-      const wm = await this.effects.getOrCreateWorkletManager(soundId);
-      return wm.isReady;
+      return await this.effects.prepare(soundId);
     } catch (error) {
       console.warn(
         `[AudioManager] ensureEffectsReady: failed for sound ${soundId}`,
@@ -1049,7 +1061,7 @@ export class AudioManager {
 
     // Cleanup all per-sound worklet managers
     this.effects.cleanup();
-    this.workletModuleLoaded = false;
+    this.audioSystemInitialized = false;
     this.output.cleanup();
   }
 
@@ -1126,7 +1138,8 @@ export class AudioManager {
   }
 
   /**
-   * Initialize audio system (loads worklet module)
+   * Initialize the native audio system. Compatibility and official effect
+   * worklets each own their module lifecycle and initialize only when selected.
    */
   private async doInit(): Promise<void> {
     const context = getAudioContext();
@@ -1139,12 +1152,8 @@ export class AudioManager {
 
     const masterGraph = this.output.initializeMasterGraph(context);
 
-    // Load the worklet module once (will be used by all per-sound worklet managers)
-    await Promise.all([
-      context.audioWorklet.addModule(workletProcessorUrl),
-      this.meters.setMasterSource(masterGraph.mainDelayNode),
-    ]);
-    this.workletModuleLoaded = true;
+    await this.meters.setMasterSource(masterGraph.mainDelayNode);
+    this.audioSystemInitialized = true;
   }
 
   /**

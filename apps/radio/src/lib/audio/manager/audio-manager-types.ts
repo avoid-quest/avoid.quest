@@ -38,11 +38,12 @@ type SoundInstance = {
 const MAX_MAIN_DELAY_MS = 500;
 const MAX_MAIN_DELAY_SECONDS = MAX_MAIN_DELAY_MS / 1000;
 
-function createAudioNodes(context: AudioContext): AudioNodes {
+function createAudioNodes(context: AudioContext, initialGain = 1): AudioNodes {
   const preFaderSend = context.createGain();
   preFaderSend.gain.value = 1;
 
   const gain = context.createGain();
+  gain.gain.value = Math.max(0, initialGain);
   const pan = context.createStereoPanner();
   const filter = context.createBiquadFilter();
 

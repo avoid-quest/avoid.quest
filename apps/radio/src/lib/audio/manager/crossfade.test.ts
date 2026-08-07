@@ -57,6 +57,54 @@ describe("crossfade utilities", () => {
     expect(manager.stopSound).toHaveBeenCalledWith("outgoing");
   });
 
+  test("uses complementary cosine and sine equal-power curves", async () => {
+    manager.getSoundVolume.mockImplementation((soundId: string) =>
+      soundId === "incoming" ? 0 : 1
+    );
+
+    await crossfade("outgoing", "incoming", {
+      duration: 1,
+      targetVolume: 1,
+      curve: "equalPower",
+    });
+
+    const outgoing = manager.scheduleVolumeCurve.mock.calls[0]?.[1];
+    const incoming = manager.scheduleVolumeCurve.mock.calls[1]?.[1];
+    expect(outgoing?.[24]).toBeCloseTo(Math.SQRT1_2, 5);
+    expect(incoming?.[24]).toBeCloseTo(Math.SQRT1_2, 5);
+    expect((outgoing?.[24] ?? 0) ** 2 + (incoming?.[24] ?? 0) ** 2).toBeCloseTo(
+      1,
+      5
+    );
+  });
+
+  test("can leave outgoing lifecycle ownership to a transaction", async () => {
+    await crossfade("outgoing", "incoming", {
+      duration: 1,
+      stopOutgoing: false,
+    });
+
+    expect(manager.stopSound).not.toHaveBeenCalled();
+  });
+
+  test("aborts by restoring both sounds without stopping the outgoing sound", async () => {
+    manager.getSoundVolume.mockImplementation((soundId: string) =>
+      soundId === "incoming" ? 0 : 0.7
+    );
+    const controller = new AbortController();
+    const transition = crossfade("outgoing", "incoming", {
+      duration: 100,
+      signal: controller.signal,
+    });
+
+    controller.abort(new DOMException("Superseded", "AbortError"));
+
+    await expect(transition).rejects.toHaveProperty("name", "AbortError");
+    expect(manager.setVolume).toHaveBeenCalledWith("outgoing", 0.7);
+    expect(manager.setVolume).toHaveBeenCalledWith("incoming", 0);
+    expect(manager.stopSound).not.toHaveBeenCalled();
+  });
+
   test("crossfade directly sets final volumes only for zero duration", async () => {
     await crossfade("outgoing", "incoming", {
       duration: 0,

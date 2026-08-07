@@ -1,4 +1,8 @@
-import { canUseOfficialOpenDawRuntime } from "../dsp/effects/official-opendaw-mapping.js";
+import {
+  canUseOfficialOpenDawRuntime,
+  hasEnabledEffects,
+  selectEnabledEffects,
+} from "../dsp/effects/official-opendaw-mapping.js";
 import { clampEffectTempo } from "../dsp/effects/tempo.js";
 import type { EffectConfig, EffectType } from "../dsp/effects/types.js";
 import {
@@ -25,7 +29,16 @@ import type { SoundInstance } from "./audio-manager-types.js";
 import type { EffectsGraphRuntime } from "./effects-graph-runtime.js";
 import { OfficialOpenDawRuntime } from "./official-opendaw-runtime.js";
 
-type GraphConnection = { destination: AudioNode; source: AudioNode };
+type EffectsBackend = "bypass" | "compatibility" | "muted" | "official";
+type GraphConnection = {
+  backend: EffectsBackend;
+  bypassGain: GainNode;
+  compatibilityGain: GainNode;
+  destination: AudioNode;
+  officialGain: GainNode;
+  source: AudioNode;
+  switchGeneration: number;
+};
 type SidechainConnection = { source: AudioNode; target: AudioNode };
 
 type SoundEffectsState = {
@@ -53,6 +66,9 @@ type EffectsControllerOptions = {
   ) => WorkletManager;
 };
 
+const BACKEND_SWITCH_SECONDS = 0.03;
+const BACKEND_RELEASE_DELAY_MS = 40;
+
 const createSoundState = (): SoundEffectsState => ({
   compatibilitySourceCreated: false,
   desiredSidechainSoundId: null,
@@ -67,9 +83,39 @@ const createSoundState = (): SoundEffectsState => ({
   sidechain: null,
 });
 
+function setGainTarget(gain: GainNode, value: number, endTime: number): void {
+  const parameter = gain.gain;
+  const now = gain.context.currentTime;
+  try {
+    parameter.cancelScheduledValues(now);
+    parameter.setValueAtTime(parameter.value, now);
+    parameter.linearRampToValueAtTime(value, endTime);
+  } catch {
+    // Minimal Web Audio implementations used by older browsers and tests may
+    // not expose the full automation API. A direct assignment is still safe.
+    parameter.value = value;
+  }
+}
+
+function disconnectNode(source: AudioNode, destination?: AudioNode): void {
+  try {
+    if (destination) {
+      source.disconnect(destination);
+    } else {
+      source.disconnect();
+    }
+  } catch {
+    // The edge may already have been removed by a concurrent generation.
+  }
+}
+
 class EffectsController {
   private officialRuntime: EffectsGraphRuntime | null = null;
   private officialRuntimeUnavailable = false;
+  private officialRuntimeWarningReported = false;
+  private readonly officialRegisteredSoundIds = new Set<string>();
+  private readonly officialSoundOwners = new Map<string, number>();
+  private nextOfficialRuntimeGeneration = 0;
   private bpm = 120;
   private nextGeneration = 0;
   private readonly states = new Map<string, SoundEffectsState>();
@@ -113,17 +159,48 @@ class EffectsController {
     return state.generation;
   }
 
-  add(soundId: string, config: EffectConfig): boolean {
-    const state = this.getState(soundId);
-    if (!state.manager) {
+  private advanceOfficialRuntime(): number {
+    this.nextOfficialRuntimeGeneration += 1;
+    return this.nextOfficialRuntimeGeneration;
+  }
+
+  private claimOfficialSound(soundId: string): number {
+    const generation = this.advanceOfficialRuntime();
+    this.officialSoundOwners.set(soundId, generation);
+    return generation;
+  }
+
+  private deleteOfficialSound(
+    soundId: string,
+    runtime = this.officialRuntime,
+    expectedOwner?: number
+  ): boolean {
+    if (
+      !runtime ||
+      (expectedOwner !== undefined &&
+        this.officialSoundOwners.get(soundId) !== expectedOwner)
+    ) {
       return false;
     }
+    runtime.deleteSound(soundId, this.claimOfficialSound(soundId));
+    this.officialRegisteredSoundIds.delete(soundId);
+    return true;
+  }
 
+  private shouldProcess(state: SoundEffectsState): boolean {
+    return state.dryWet > 0 && hasEnabledEffects(state.effects);
+  }
+
+  add(soundId: string, config: EffectConfig): boolean {
+    if (!this.sounds.has(soundId)) {
+      return false;
+    }
+    const state = this.getState(soundId);
     const plainConfig = toPlainEffectConfig(config);
     state.effects = appendEffectToTree(state.effects, plainConfig);
     if (state.compatibilitySourceCreated) {
       const engineConfig: EngineEffectConfig = convertEffectConfig(plainConfig);
-      state.manager.addEffect(
+      state.manager?.addEffect(
         soundId,
         plainConfig.id,
         plainConfig.type,
@@ -157,17 +234,16 @@ class EffectsController {
     type: EffectType,
     config: Partial<EffectConfig>
   ): boolean {
-    const state = this.getState(soundId);
-    if (!state.manager) {
+    if (!this.sounds.has(soundId)) {
       return false;
     }
-
+    const state = this.getState(soundId);
     const plainConfig = toPlainEffectConfig(config);
     const rootId = findRootEffectContainer(state.effects, effectId)?.id;
     state.effects = updateEffectInTree(state.effects, effectId, plainConfig);
     const root = rootId ? findEffectInTree(state.effects, rootId) : undefined;
     if (state.compatibilitySourceCreated) {
-      state.manager.updateEffect(
+      state.manager?.updateEffect(
         soundId,
         root?.id ?? effectId,
         root
@@ -198,6 +274,7 @@ class EffectsController {
       state.manager?.setEffectsDryWet(soundId, state.dryWet);
     }
     this.officialRuntime?.setDryWet(soundId, state.dryWet);
+    this.refreshRuntimeSelection(soundId);
   }
 
   setTempo(soundId: string, bpm: number): void {
@@ -213,6 +290,22 @@ class EffectsController {
     const state = this.getState(soundId);
     state.desiredSidechainSoundId = sidechainSoundId;
     this.officialRuntime?.setSidechainTarget(soundId, sidechainSoundId);
+    this.pruneOfficialSidechainSources();
+    if (sidechainSoundId) {
+      const targetState = this.states.get(sidechainSoundId);
+      if (targetState) {
+        this.registerNonOfficialSource(
+          sidechainSoundId,
+          targetState,
+          targetState.generation
+        ).catch((error: unknown) =>
+          console.warn(
+            "[EffectsController] Failed to register sidechain source",
+            error
+          )
+        );
+      }
+    }
     return this.bindCompatibilitySidechain(state);
   }
 
@@ -230,7 +323,7 @@ class EffectsController {
 
   private bindCompatibilitySidechain(state: SoundEffectsState): boolean {
     this.disconnectCompatibilitySidechain(state);
-    if (!state.desiredSidechainSoundId) {
+    if (!(state.desiredSidechainSoundId && state.compatibilitySourceCreated)) {
       return true;
     }
     const source = this.sounds.get(state.desiredSidechainSoundId)?.nodes
@@ -263,7 +356,9 @@ class EffectsController {
       return state.managerPromise;
     }
 
-    const context = getAudioContext();
+    const context =
+      (state.graph?.source.context as AudioContext | undefined) ??
+      getAudioContext();
     if (!context) {
       throw new Error("Audio context not available");
     }
@@ -300,36 +395,101 @@ class EffectsController {
     }
   }
 
+  async prepare(soundId: string): Promise<boolean> {
+    const state = this.getState(soundId);
+    if (
+      !this.shouldProcess(state) ||
+      canUseOfficialOpenDawRuntime(state.effects)
+    ) {
+      return true;
+    }
+    const manager = await this.getOrCreateWorkletManager(soundId);
+    return manager.isReady;
+  }
+
   async connectGraph(
     soundId: string,
     source: AudioNode,
     destination: AudioNode
   ): Promise<boolean> {
+    const state = this.getState(soundId);
+    this.disconnectGraph(state);
+
+    const context = source.context as AudioContext;
+    const bypassGain = context.createGain();
+    const compatibilityGain = context.createGain();
+    const officialGain = context.createGain();
+    const shouldProcess = this.shouldProcess(state);
+    // Keep effectful sources silent while their requested backend prepares,
+    // but make the dry path available synchronously for the mobile play call.
+    bypassGain.gain.value = shouldProcess ? 0 : 1;
+    compatibilityGain.gain.value = 0;
+    officialGain.gain.value = 0;
+
+    source.connect(bypassGain);
+    bypassGain.connect(destination);
+    compatibilityGain.connect(destination);
+    officialGain.connect(destination);
+
+    state.graph = {
+      backend: shouldProcess ? "muted" : "bypass",
+      bypassGain,
+      compatibilityGain,
+      destination,
+      officialGain,
+      source,
+      switchGeneration: 0,
+    };
+    const generation = this.advance(state);
+    // A source can be replaced independently of the compatibility effect that
+    // consumes it as a sidechain. Rebind existing intents to the new native
+    // graph without forcing this (possibly dry) source through a worklet.
+    this.refreshSidechains();
+    if (!shouldProcess) {
+      // A dry source may already feed an official sidechain. Its media graph
+      // can be reconstructed independently, so replace the official
+      // non-monitoring registration with this exact AudioNode. This does not
+      // create a compatibility runtime for the source.
+      this.registerNonOfficialSource(soundId, state, generation).catch(
+        (error: unknown) =>
+          console.warn(
+            "[EffectsController] Failed to re-register sidechain source",
+            error
+          )
+      );
+      return true;
+    }
+
+    await this.selectRuntime(soundId, state, generation);
+    // Runtime selection can be superseded by an effect edit while it awaits a
+    // worklet. The stable router is still valid and the newer generation owns
+    // the eventual backend; returning false here would make AudioManager add a
+    // second dry edge alongside this graph.
+    return state.graph?.source === source;
+  }
+
+  private async ensureCompatibilitySource(
+    soundId: string,
+    state: SoundEffectsState,
+    generation: number
+  ): Promise<boolean> {
     const manager = await this.getOrCreateWorkletManager(soundId);
-    if (!(manager.node && manager.outputNode)) {
+    if (
+      state.generation !== generation ||
+      this.states.get(soundId) !== state ||
+      !state.graph ||
+      !(manager.node && manager.outputNode)
+    ) {
       return false;
     }
-
-    const state = this.getState(soundId);
-    manager.createStreamSource(soundId);
     if (!state.compatibilitySourceCreated) {
+      manager.createStreamSource(soundId);
       state.compatibilitySourceCreated = true;
       this.replayCompatibilityState(soundId, state);
+      manager.startSource(soundId);
     }
-    manager.startSource(soundId);
-    state.graph = { destination, source };
-    const generation = this.advance(state);
     this.connectCompatibilityGraph(state);
     this.refreshSidechains();
-
-    if (
-      canUseOfficialOpenDawRuntime(state.effects) &&
-      (await this.connectOfficial(soundId, state, generation))
-    ) {
-      this.disconnectCompatibilityGraph(state);
-    } else {
-      await this.registerCompatibilitySource(soundId, state, generation);
-    }
     return true;
   }
 
@@ -363,9 +523,7 @@ class EffectsController {
     }
     state.manager?.pauseSource(soundId);
     const generation = this.advance(state);
-    this.officialRuntime?.disconnectSound(soundId, generation);
-    state.officialConnected = false;
-    this.disconnectCompatibilityGraph(state);
+    this.switchBackend(soundId, state, "muted", generation);
   }
 
   resumeSource(soundId: string): void {
@@ -384,8 +542,7 @@ class EffectsController {
     }
     state.manager?.stopSource(soundId);
     const generation = this.advance(state);
-    this.officialRuntime?.disconnectSound(soundId, generation);
-    state.officialConnected = false;
+    this.switchBackend(soundId, state, "muted", generation);
   }
 
   cleanupSound(soundId: string): void {
@@ -393,12 +550,13 @@ class EffectsController {
     if (!state) {
       return;
     }
-    const generation = this.advance(state);
+    this.advance(state);
     this.disconnectCompatibilitySidechain(state);
+    this.disconnectGraph(state);
     state.managerPromise = null;
     state.manager?.cleanup();
     state.manager = null;
-    this.officialRuntime?.deleteSound(soundId, generation);
+    this.deleteOfficialSound(soundId);
     this.states.delete(soundId);
 
     for (const other of this.states.values()) {
@@ -409,15 +567,100 @@ class EffectsController {
   }
 
   cleanup(): void {
-    for (const state of this.states.values()) {
+    for (const [soundId, state] of this.states) {
       this.advance(state);
       this.disconnectCompatibilitySidechain(state);
+      this.disconnectGraph(state);
       state.managerPromise = null;
       state.manager?.cleanup();
+      this.deleteOfficialSound(soundId);
     }
     this.states.clear();
+    this.officialRegisteredSoundIds.clear();
+    this.officialSoundOwners.clear();
     this.officialRuntime?.cleanup();
     this.officialRuntime = null;
+  }
+
+  private async selectRuntime(
+    soundId: string,
+    state: SoundEffectsState,
+    generation: number
+  ): Promise<void> {
+    if (!this.shouldProcess(state)) {
+      this.switchBackend(soundId, state, "bypass", generation);
+      await this.registerNonOfficialSource(soundId, state, generation);
+      return;
+    }
+
+    if (
+      canUseOfficialOpenDawRuntime(state.effects) &&
+      (await this.connectOfficial(soundId, state, generation))
+    ) {
+      this.switchBackend(soundId, state, "official", generation);
+      return;
+    }
+
+    if (await this.ensureCompatibilitySource(soundId, state, generation)) {
+      this.switchBackend(soundId, state, "compatibility", generation);
+      await this.registerNonOfficialSource(soundId, state, generation);
+    }
+  }
+
+  private isCurrentOfficialAttempt(
+    soundId: string,
+    state: SoundEffectsState,
+    generation: number,
+    graph: GraphConnection,
+    runtime: EffectsGraphRuntime,
+    runtimeGeneration: number
+  ): boolean {
+    return (
+      state.generation === generation &&
+      state.graph === graph &&
+      this.officialRuntime === runtime &&
+      this.officialSoundOwners.get(soundId) === runtimeGeneration &&
+      canUseOfficialOpenDawRuntime(state.effects)
+    );
+  }
+
+  private releaseOfficialAttemptIfOwned(
+    soundId: string,
+    state: SoundEffectsState,
+    runtime: EffectsGraphRuntime,
+    runtimeGeneration: number
+  ): boolean {
+    if (
+      this.states.get(soundId) !== state ||
+      !this.deleteOfficialSound(soundId, runtime, runtimeGeneration)
+    ) {
+      return false;
+    }
+    state.officialConnected = false;
+    this.pruneOfficialSidechainSources();
+    return true;
+  }
+
+  private handleOfficialConnectionFailure(
+    soundId: string,
+    state: SoundEffectsState,
+    runtime: EffectsGraphRuntime,
+    runtimeGeneration: number,
+    wasOfficialConnected: boolean,
+    isStale: boolean,
+    error: unknown
+  ): void {
+    if (!wasOfficialConnected) {
+      this.releaseOfficialAttemptIfOwned(
+        soundId,
+        state,
+        runtime,
+        runtimeGeneration
+      );
+    }
+    if (!isStale) {
+      this.reportOfficialRuntimeFailure(error);
+    }
   }
 
   private async connectOfficial(
@@ -429,6 +672,7 @@ class EffectsController {
       return false;
     }
     if (globalThis.crossOriginIsolated !== true) {
+      this.officialRuntimeUnavailable = true;
       this.reportOfficialRuntimeFailure(
         new Error("Cross-origin isolation is unavailable")
       );
@@ -444,49 +688,68 @@ class EffectsController {
       this.createOfficialRuntime(graph.source.context as AudioContext);
     this.officialRuntime = runtime;
     state.officialConnectingGeneration = generation;
+    const wasOfficialConnected = state.officialConnected;
+    const runtimeGeneration = this.claimOfficialSound(soundId);
     try {
       const connected = await runtime.connectSound(
         soundId,
         graph.source,
-        graph.destination,
-        generation
+        graph.officialGain,
+        runtimeGeneration
       );
       if (
-        !connected ||
-        state.generation !== generation ||
-        state.graph !== graph ||
-        this.officialRuntime !== runtime ||
-        !canUseOfficialOpenDawRuntime(state.effects)
+        !(
+          connected &&
+          this.isCurrentOfficialAttempt(
+            soundId,
+            state,
+            generation,
+            graph,
+            runtime,
+            runtimeGeneration
+          )
+        )
       ) {
+        if (connected && state.officialConnectingGeneration === generation) {
+          this.releaseOfficialAttemptIfOwned(
+            soundId,
+            state,
+            runtime,
+            runtimeGeneration
+          );
+        }
         return false;
       }
 
-      state.officialConnected = true;
+      this.officialRegisteredSoundIds.add(soundId);
       runtime.setTempo(this.bpm);
       runtime.setSidechainTarget(soundId, state.desiredSidechainSoundId);
-      runtime.syncEffects(soundId, state.effects);
+      runtime.syncEffects(soundId, selectEnabledEffects(state.effects));
       runtime.setDryWet(soundId, state.dryWet);
-      await this.registerCompatibilitySources(runtime, soundId);
+      state.officialConnected = true;
+      await this.registerNonOfficialSources(runtime, soundId);
       return (
         state.generation === generation &&
         state.graph === graph &&
         state.officialConnected
       );
     } catch (error) {
-      if (
+      const isStale =
         state.generation !== generation ||
         state.graph !== graph ||
-        this.officialRuntime !== runtime
-      ) {
-        return false;
-      }
-      runtime.cleanup();
-      this.officialRuntime = null;
-      for (const current of this.states.values()) {
-        current.officialConnected = false;
-      }
-      this.connectAllCompatibilityGraphs();
-      this.reportOfficialRuntimeFailure(error);
+        this.officialRuntime !== runtime;
+      // A rejected connect can leave a partially created unit behind. The
+      // owner token prevents stale work from deleting a newer monitoring or
+      // non-monitoring registration for the same sound.
+      this.handleOfficialConnectionFailure(
+        soundId,
+        state,
+        runtime,
+        runtimeGeneration,
+        wasOfficialConnected,
+        isStale,
+        error
+      );
       return false;
     } finally {
       if (state.officialConnectingGeneration === generation) {
@@ -495,41 +758,43 @@ class EffectsController {
     }
   }
 
-  private async registerCompatibilitySources(
+  private async registerNonOfficialSources(
     runtime: EffectsGraphRuntime,
     exceptSoundId: string
   ): Promise<void> {
-    await Promise.all(
-      [...this.states]
-        .filter(
-          ([soundId, state]) =>
-            soundId !== exceptSoundId &&
-            !state.officialConnected &&
-            state.officialConnectingGeneration !== state.generation &&
-            state.graph !== null
-        )
-        .map(([soundId, state]) =>
-          runtime.connectSidechainSource(
-            soundId,
-            state.graph?.source as AudioNode,
-            state.generation
-          )
-        )
-    );
+    const targets = this.officialSidechainTargets();
+    this.pruneOfficialSidechainSources(targets);
+    for (const [soundId, state] of this.states) {
+      if (
+        soundId === exceptSoundId ||
+        !targets.has(soundId) ||
+        state.officialConnected ||
+        state.officialConnectingGeneration === state.generation ||
+        !state.graph
+      ) {
+        continue;
+      }
+      await this.registerNonOfficialSource(soundId, state, state.generation);
+    }
     for (const [soundId, state] of this.states) {
       runtime.setSidechainTarget(soundId, state.desiredSidechainSoundId);
     }
   }
 
-  private async registerCompatibilitySource(
+  private async registerNonOfficialSource(
     soundId: string,
     state: SoundEffectsState,
     generation: number
   ): Promise<void> {
     const runtime = this.officialRuntime;
     const graph = state.graph;
+    const isOfficialSidechain = [...this.states.values()].some(
+      (candidate) =>
+        candidate.officialConnected &&
+        candidate.desiredSidechainSoundId === soundId
+    );
     if (
-      !(runtime && graph) ||
+      !(runtime && graph && isOfficialSidechain) ||
       state.officialConnected ||
       state.officialConnectingGeneration === state.generation ||
       this.states.get(soundId) !== state ||
@@ -537,18 +802,66 @@ class EffectsController {
     ) {
       return;
     }
-    await runtime.connectSidechainSource(soundId, graph.source, generation);
+    const runtimeGeneration = this.claimOfficialSound(soundId);
+    const connected = await runtime.connectSidechainSource(
+      soundId,
+      graph.source,
+      runtimeGeneration
+    );
+    if (!connected) {
+      return;
+    }
+    const remainsSidechain = this.officialSidechainTargets().has(soundId);
+    if (
+      this.officialSoundOwners.get(soundId) !== runtimeGeneration ||
+      this.states.get(soundId) !== state ||
+      state.generation !== generation ||
+      state.officialConnected ||
+      !remainsSidechain
+    ) {
+      this.deleteOfficialSound(soundId, runtime, runtimeGeneration);
+      return;
+    }
+    this.officialRegisteredSoundIds.add(soundId);
+  }
+
+  private officialSidechainTargets(): Set<string> {
+    return new Set(
+      [...this.states.values()]
+        .filter((state) => state.officialConnected)
+        .map((state) => state.desiredSidechainSoundId)
+        .filter((soundId): soundId is string => soundId !== null)
+    );
+  }
+
+  private pruneOfficialSidechainSources(
+    targets = this.officialSidechainTargets()
+  ): void {
+    const runtime = this.officialRuntime;
+    if (!runtime) {
+      return;
+    }
+    for (const [soundId, state] of this.states) {
+      if (
+        this.officialRegisteredSoundIds.has(soundId) &&
+        !state.officialConnected &&
+        state.officialConnectingGeneration === null &&
+        !targets.has(soundId)
+      ) {
+        this.deleteOfficialSound(soundId, runtime);
+      }
+    }
   }
 
   private reportOfficialRuntimeFailure(error: unknown): void {
-    if (this.officialRuntimeUnavailable) {
-      return;
-    }
-    this.officialRuntimeUnavailable = true;
     console.warn(
-      "[EffectsController] Official openDAW runtime unavailable; using compatibility effects",
+      "[EffectsController] Official openDAW runtime unavailable for this source; using compatibility effects",
       error
     );
+    if (this.officialRuntimeWarningReported) {
+      return;
+    }
+    this.officialRuntimeWarningReported = true;
     import("sonner")
       .then(({ toast }) =>
         toast.warning("openDAW effects are using compatibility mode", {
@@ -561,29 +874,15 @@ class EffectsController {
       .catch(() => undefined);
   }
 
-  private connectAllCompatibilityGraphs(): void {
-    for (const state of this.states.values()) {
-      this.connectCompatibilityGraph(state);
-    }
-  }
-
   private connectCompatibilityGraph(state: SoundEffectsState): void {
     const { graph, manager } = state;
     if (!(graph && manager?.node && manager.outputNode)) {
       return;
     }
-    try {
-      graph.source.disconnect(manager.node);
-    } catch {
-      // Compatibility path was not connected yet.
-    }
-    try {
-      manager.outputNode.disconnect(graph.destination);
-    } catch {
-      // Compatibility path was not connected yet.
-    }
+    disconnectNode(graph.source, manager.node);
+    disconnectNode(manager.outputNode, graph.compatibilityGain);
     graph.source.connect(manager.node);
-    manager.outputNode.connect(graph.destination);
+    manager.outputNode.connect(graph.compatibilityGain);
   }
 
   private disconnectCompatibilityGraph(state: SoundEffectsState): void {
@@ -591,62 +890,103 @@ class EffectsController {
     if (!(graph && manager?.node && manager.outputNode)) {
       return;
     }
-    try {
-      graph.source.disconnect(manager.node);
-    } catch {
-      // Compatibility path was already disconnected.
+    disconnectNode(graph.source, manager.node);
+    disconnectNode(manager.outputNode, graph.compatibilityGain);
+  }
+
+  private disconnectGraph(state: SoundEffectsState): void {
+    const graph = state.graph;
+    if (!graph) {
+      return;
     }
-    try {
-      manager.outputNode.disconnect(graph.destination);
-    } catch {
-      // Compatibility path was already disconnected.
+    graph.switchGeneration++;
+    disconnectNode(graph.source, graph.bypassGain);
+    this.disconnectCompatibilityGraph(state);
+    disconnectNode(graph.bypassGain);
+    disconnectNode(graph.compatibilityGain);
+    disconnectNode(graph.officialGain);
+    state.graph = null;
+  }
+
+  private releaseCompatibilityRuntime(state: SoundEffectsState): void {
+    this.disconnectCompatibilitySidechain(state);
+    this.disconnectCompatibilityGraph(state);
+    state.managerPromise = null;
+    state.manager?.cleanup();
+    state.manager = null;
+    state.compatibilitySourceCreated = false;
+  }
+
+  private switchBackend(
+    soundId: string,
+    state: SoundEffectsState,
+    backend: EffectsBackend,
+    generation: number
+  ): void {
+    const graph = state.graph;
+    if (!(graph && state.generation === generation)) {
+      return;
     }
+
+    const previous = graph.backend;
+    graph.backend = backend;
+    const switchGeneration = ++graph.switchGeneration;
+    const endTime = graph.source.context.currentTime + BACKEND_SWITCH_SECONDS;
+    setGainTarget(graph.bypassGain, backend === "bypass" ? 1 : 0, endTime);
+    setGainTarget(
+      graph.compatibilityGain,
+      backend === "compatibility" ? 1 : 0,
+      endTime
+    );
+    setGainTarget(graph.officialGain, backend === "official" ? 1 : 0, endTime);
+
+    if (previous === backend) {
+      return;
+    }
+    globalThis.setTimeout(() => {
+      if (
+        state.graph !== graph ||
+        state.generation !== generation ||
+        graph.switchGeneration !== switchGeneration
+      ) {
+        return;
+      }
+      if (backend !== "compatibility" && backend !== "muted" && state.manager) {
+        this.releaseCompatibilityRuntime(state);
+      }
+      if (
+        backend !== "official" &&
+        this.officialRegisteredSoundIds.has(soundId)
+      ) {
+        this.deleteOfficialSound(soundId);
+        state.officialConnected = false;
+        this.pruneOfficialSidechainSources();
+        this.registerNonOfficialSource(soundId, state, generation).catch(
+          (error: unknown) =>
+            console.warn(
+              "[EffectsController] Failed to register sidechain source",
+              error
+            )
+        );
+      }
+    }, BACKEND_RELEASE_DELAY_MS);
   }
 
   private refreshRuntimeSelection(soundId: string): void {
     const state = this.states.get(soundId);
-    if (!(state?.graph && state.manager?.node && state.manager.outputNode)) {
+    if (!state?.graph) {
       return;
     }
     const generation = this.advance(state);
-    if (!canUseOfficialOpenDawRuntime(state.effects)) {
-      this.officialRuntime?.disconnectSound(soundId, generation);
-      state.officialConnected = false;
-      this.connectCompatibilityGraph(state);
-      this.registerCompatibilitySource(soundId, state, generation).catch(
-        (error: unknown) =>
-          console.warn(
-            "[EffectsController] Failed to register sidechain source",
-            error
-          )
+    this.selectRuntime(soundId, state, generation).catch((error: unknown) => {
+      if (state.generation === generation) {
+        this.switchBackend(soundId, state, "bypass", generation);
+      }
+      console.warn(
+        "[EffectsController] Failed to select effects runtime",
+        error
       );
-      return;
-    }
-    if (!state.officialConnected) {
-      this.connectCompatibilityGraph(state);
-    }
-    this.connectOfficial(soundId, state, generation)
-      .then((connected) => {
-        if (state.generation !== generation) {
-          return;
-        }
-        if (connected) {
-          this.disconnectCompatibilityGraph(state);
-        } else {
-          state.officialConnected = false;
-          this.connectCompatibilityGraph(state);
-        }
-      })
-      .catch((error: unknown) => {
-        if (state.generation === generation) {
-          state.officialConnected = false;
-          this.connectCompatibilityGraph(state);
-        }
-        console.warn(
-          "[EffectsController] Failed to select effects runtime",
-          error
-        );
-      });
+    });
   }
 }
 

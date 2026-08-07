@@ -24,6 +24,7 @@ function createPlaybackSourceCallbacks({
     onPlaying: () => {
       instance.loading = false;
       instance.buffering = false;
+      instance.playing = true;
       notifySoundState(notifyListeners, soundId, instance, {
         isPlaying: true,
         error: null,

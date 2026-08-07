@@ -34,15 +34,11 @@ type AudioEngineLifecycleHarness = ReturnType<
   typeof installAudioEngineLifecycleHarness
 >;
 
-/**
- * Local browser-audio substitute for audio engine lifecycle tests.
- *
- * Keep this harness behavior-focused: it supplies just enough browser audio,
- * media element, graph, and worklet surface for AudioManager to run one real
- * lifecycle locally. Future lifecycle slices should extend this harness only
- * when they need another observable browser boundary, not to mock AudioManager
- * internals or replace the engine implementation.
- */
+const HAVE_NOTHING = 0;
+const HAVE_METADATA = 1;
+const HAVE_FUTURE_DATA = 3;
+
+/** Browser-audio substitute for AudioManager lifecycle tests. */
 function installAudioEngineLifecycleHarness(options: HarnessOptions = {}) {
   const records: HarnessRecords = {
     animationFrames: new Map(),
@@ -97,12 +93,15 @@ function installGlobals(
     value = 1;
 
     cancelAndHoldAtTime(_time: number): void {
-      // Fake params do not schedule automation curves.
+      // Scheduling is intentionally not simulated by this lifecycle harness.
     }
     cancelScheduledValues(_time: number): void {
-      // Fake params do not schedule automation curves.
+      // Scheduling is intentionally not simulated by this lifecycle harness.
     }
     exponentialRampToValueAtTime(value: number, _endTime: number): void {
+      this.value = value;
+    }
+    linearRampToValueAtTime(value: number, _endTime: number): void {
       this.value = value;
     }
     setTargetAtTime(
@@ -285,11 +284,11 @@ function installGlobals(
     };
 
     constructor(
-      _context: AudioContext,
+      context: AudioContext,
       _name: string,
       _options?: AudioWorkletNodeOptions
     ) {
-      super("worklet", _context);
+      super("worklet", context);
     }
   }
 
@@ -302,7 +301,7 @@ function installGlobals(
     paused = true;
     playbackRate = 1;
     preload = "";
-    readyState = 0;
+    readyState = HAVE_NOTHING;
     src = "";
     private readonly listeners = new Map<string, Listener[]>();
 
@@ -326,7 +325,7 @@ function installGlobals(
 
     load(): void {
       if (!this.src) {
-        this.readyState = 0;
+        this.readyState = HAVE_NOTHING;
         return;
       }
 
@@ -336,19 +335,18 @@ function installGlobals(
         options.failMediaUrlIncludes &&
         this.src.includes(options.failMediaUrlIncludes)
       ) {
-        this.readyState = 0;
+        this.readyState = HAVE_NOTHING;
         this.error = {
           code: 2,
           message: "Simulated media network failure",
         } as MediaError;
-        queueMicrotask(() => {
-          this.dispatch("error");
-        });
+        queueMicrotask(() => this.dispatch("error"));
         return;
       }
-      this.readyState = 1;
+      this.readyState = HAVE_FUTURE_DATA;
       queueMicrotask(() => {
         this.dispatch("loadedmetadata");
+        this.dispatch("canplay");
       });
     }
 
@@ -376,7 +374,6 @@ function installGlobals(
       if (!listeners) {
         return;
       }
-
       this.listeners.set(
         type,
         listeners.filter((listener) => listener.callback !== callback)
@@ -384,7 +381,7 @@ function installGlobals(
     }
 
     setAttribute(_name: string, _value: string): void {
-      // Attribute values are not observable in this lifecycle harness yet.
+      // Attribute storage is irrelevant to these media lifecycle assertions.
     }
 
     private dispatch(type: string): void {
@@ -405,7 +402,11 @@ function installGlobals(
   assignGlobal("cancelAnimationFrame", (id: number) => {
     records.animationFrames.delete(id);
   });
-  assignGlobal("HTMLMediaElement", { HAVE_METADATA: 1 });
+  assignGlobal("HTMLMediaElement", {
+    HAVE_NOTHING,
+    HAVE_METADATA,
+    HAVE_FUTURE_DATA,
+  });
   assignGlobal("MediaError", {
     MEDIA_ERR_ABORTED: 1,
     MEDIA_ERR_NETWORK: 2,
@@ -427,7 +428,6 @@ function restoreGlobals(originals: InstalledGlobal[]): void {
       Reflect.deleteProperty(globalThis, key);
       continue;
     }
-
     Object.defineProperty(globalThis, key, {
       configurable: true,
       value,

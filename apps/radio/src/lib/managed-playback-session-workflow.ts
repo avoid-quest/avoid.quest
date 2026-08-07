@@ -1,4 +1,4 @@
-import { crossfade, type Radio } from "@/lib/audio";
+import { type AudioState, crossfade, type Radio } from "@/lib/audio";
 import {
   createDefaultChannel,
   getMultipleChannelId,
@@ -52,6 +52,7 @@ type CreateManagedPlaybackSessionWorkflowOptions = {
   ctx?: PlaybackActionContext;
   fadeOutDurationMs?: number;
   fadeOutSound?: FadeOutSound;
+  transitionStableDurationMs?: number;
 };
 
 export type ManagedPlaybackSessionWorkflow = {
@@ -71,6 +72,307 @@ export type ManagedPlaybackSessionWorkflow = {
 };
 
 const DEFAULT_FADE_OUT_DURATION_MS = 150;
+const DEFAULT_TRANSITION_STABLE_DURATION_MS = 750;
+
+type SingleSelectionCoordinator = {
+  active: AbortController | null;
+  queue: Promise<void>;
+};
+
+// Hooks and mode lifecycle code create short-lived workflow facades. Keep the
+// transaction coordinator on their shared action context so rapid selections
+// and deactivation still cancel/serialize one another across facade instances.
+const singleSelectionCoordinators = new WeakMap<
+  PlaybackActionContext,
+  SingleSelectionCoordinator
+>();
+
+function getSingleSelectionCoordinator(
+  ctx: PlaybackActionContext
+): SingleSelectionCoordinator {
+  const existing = singleSelectionCoordinators.get(ctx);
+  if (existing) {
+    return existing;
+  }
+  const coordinator = {
+    active: null,
+    queue: Promise.resolve(),
+  };
+  singleSelectionCoordinators.set(ctx, coordinator);
+  return coordinator;
+}
+
+class IncomingPlaybackUnstableError extends Error {
+  constructor() {
+    super("Incoming stream became unstable during transition");
+    this.name = "IncomingPlaybackUnstableError";
+  }
+}
+
+function abortReason(signal: AbortSignal): unknown {
+  return (
+    signal.reason ?? new DOMException("Selection superseded", "AbortError")
+  );
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException
+    ? error.name === "AbortError"
+    : error instanceof Error && error.name === "AbortError";
+}
+
+function waitForAbortable<T>(
+  promise: Promise<T>,
+  signal: AbortSignal
+): Promise<T> {
+  if (signal.aborted) {
+    return Promise.reject(abortReason(signal));
+  }
+  return new Promise<T>((resolve, reject) => {
+    const handleAbort = () => {
+      signal.removeEventListener("abort", handleAbort);
+      reject(abortReason(signal));
+    };
+    signal.addEventListener("abort", handleAbort, { once: true });
+    promise.then(
+      (value) => {
+        signal.removeEventListener("abort", handleAbort);
+        resolve(value);
+      },
+      (error: unknown) => {
+        signal.removeEventListener("abort", handleAbort);
+        reject(error);
+      }
+    );
+  });
+}
+
+function playbackStateError(state: AudioState): Error | null {
+  if (!state.error) {
+    return null;
+  }
+  const error = new Error(state.error.message);
+  error.name = state.error.code;
+  return error;
+}
+
+function isStablePlaybackState(state: {
+  error: unknown;
+  isBuffering: boolean;
+  isLoading: boolean;
+  isPlaying: boolean;
+}): boolean {
+  return (
+    state.isPlaying && !state.isLoading && !state.isBuffering && !state.error
+  );
+}
+
+function normalizePlaybackStateError(error: unknown): Error {
+  if (error instanceof Error) {
+    return error;
+  }
+  if (typeof error === "object" && error !== null && "message" in error) {
+    return new Error(String(error.message));
+  }
+  return new Error(String(error));
+}
+
+/**
+ * Require a continuously healthy playback window before committing a station
+ * transition. AudioManager owns the transport-specific readiness/recovery
+ * policy; this gate consumes only its public state contract.
+ */
+function waitForStablePlayback(
+  ctx: PlaybackActionContext,
+  channelId: string,
+  soundId: string,
+  signal: AbortSignal,
+  stableDurationMs: number
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    let stableTimer: ReturnType<typeof setTimeout> | null = null;
+    let unsubscribe = () => undefined;
+
+    const clearStableTimer = () => {
+      if (stableTimer) {
+        clearTimeout(stableTimer);
+        stableTimer = null;
+      }
+    };
+    const cleanup = () => {
+      clearStableTimer();
+      signal.removeEventListener("abort", handleAbort);
+      unsubscribe();
+    };
+    const fail = (error: unknown) => {
+      cleanup();
+      reject(error);
+    };
+    const succeed = () => {
+      cleanup();
+      resolve();
+    };
+    const inspect = (state: {
+      error: unknown;
+      isBuffering: boolean;
+      isLoading: boolean;
+      isPlaying: boolean;
+    }) => {
+      if (state.error) {
+        fail(normalizePlaybackStateError(state.error));
+        return;
+      }
+      if (!isStablePlaybackState(state)) {
+        clearStableTimer();
+        return;
+      }
+      if (stableTimer) {
+        return;
+      }
+      if (stableDurationMs <= 0) {
+        succeed();
+        return;
+      }
+      stableTimer = setTimeout(succeed, stableDurationMs);
+    };
+    const handleAbort = () => fail(abortReason(signal));
+
+    if (signal.aborted) {
+      fail(abortReason(signal));
+      return;
+    }
+
+    signal.addEventListener("abort", handleAbort, { once: true });
+    unsubscribe = ctx.audio.subscribe(soundId, (state) => {
+      const error = playbackStateError(state);
+      inspect({ ...state, error });
+    });
+
+    const runtime = getPlaybackChannelRuntime(channelId);
+    if (runtime.soundId !== soundId) {
+      fail(new Error("Incoming playback was replaced before it became stable"));
+      return;
+    }
+    inspect(runtime);
+  });
+}
+
+type StableCrossfadeAttempt = {
+  incomingChannelId: string;
+  incomingSoundId: string;
+  outgoingSoundId: string;
+  targetVolume: number;
+  duration: number;
+  signal: AbortSignal;
+};
+
+async function attemptStableCrossfade(
+  ctx: PlaybackActionContext,
+  attempt: StableCrossfadeAttempt
+): Promise<boolean> {
+  const {
+    duration,
+    incomingChannelId,
+    incomingSoundId,
+    outgoingSoundId,
+    signal,
+    targetVolume,
+  } = attempt;
+  const fadeController = new AbortController();
+  const handleSelectionAbort = () => fadeController.abort(abortReason(signal));
+  signal.addEventListener("abort", handleSelectionAbort, { once: true });
+  const unsubscribe = ctx.audio.subscribe(incomingSoundId, (state) => {
+    const error = playbackStateError(state);
+    if (error) {
+      fadeController.abort(error);
+    } else if (!isStablePlaybackState(state)) {
+      fadeController.abort(new IncomingPlaybackUnstableError());
+    }
+  });
+
+  try {
+    const runtime = getPlaybackChannelRuntime(incomingChannelId);
+    if (runtime.soundId !== incomingSoundId) {
+      throw new Error("Incoming playback was replaced during transition");
+    }
+    if (!isStablePlaybackState(runtime)) {
+      fadeController.abort(new IncomingPlaybackUnstableError());
+    }
+
+    await crossfade(outgoingSoundId, incomingSoundId, {
+      duration,
+      targetVolume,
+      curve: "equalPower",
+      signal: fadeController.signal,
+      stopOutgoing: false,
+    });
+
+    const finalRuntime = getPlaybackChannelRuntime(incomingChannelId);
+    if (
+      finalRuntime.soundId === incomingSoundId &&
+      isStablePlaybackState(finalRuntime)
+    ) {
+      return true;
+    }
+    throw new IncomingPlaybackUnstableError();
+  } catch (error) {
+    // setVolume cancels active AudioParam curves. Keep the known-good stream
+    // audible while the incoming transport buffers and retries.
+    ctx.audio.setVolume(outgoingSoundId, targetVolume);
+    ctx.audio.setVolume(incomingSoundId, 0);
+
+    if (signal.aborted) {
+      throw abortReason(signal);
+    }
+    const runtime = getPlaybackChannelRuntime(incomingChannelId);
+    if (runtime.soundId !== incomingSoundId) {
+      throw error;
+    }
+    if (runtime.error) {
+      throw new Error(runtime.error.message);
+    }
+    if (!(error instanceof IncomingPlaybackUnstableError)) {
+      throw error;
+    }
+    // Buffering is recoverable. Wait for another stable window and retry.
+    return false;
+  } finally {
+    signal.removeEventListener("abort", handleSelectionAbort);
+    unsubscribe();
+  }
+}
+
+async function crossfadeStableIncoming(
+  ctx: PlaybackActionContext,
+  incomingChannelId: string,
+  incomingSoundId: string,
+  outgoingSoundId: string,
+  targetVolume: number,
+  duration: number,
+  stableDurationMs: number,
+  signal: AbortSignal
+): Promise<void> {
+  const attempt = {
+    duration,
+    incomingChannelId,
+    incomingSoundId,
+    outgoingSoundId,
+    signal,
+    targetVolume,
+  };
+  while (true) {
+    await waitForStablePlayback(
+      ctx,
+      incomingChannelId,
+      incomingSoundId,
+      signal,
+      stableDurationMs
+    );
+    if (await attemptStableCrossfade(ctx, attempt)) {
+      return;
+    }
+  }
+}
 
 const PLAYBACK_MODE_LABELS = {
   multiple: "Multiple",
@@ -331,10 +633,10 @@ async function setChannelPlaying(
   const gestureResume = startGestureAudioResume(ctx);
 
   try {
-    await ensureMainAudioSettingsApplied(ctx);
+    const settingsPromise = ensureMainAudioSettingsApplied(ctx);
     applySessionMasterVolume(sessionId, ctx);
-    await gestureResume.wait();
-    await ctx.audio.playSound(soundId, channel.volume);
+    const playPromise = ctx.audio.playSound(soundId, channel.volume);
+    await Promise.all([settingsPromise, gestureResume.wait(), playPromise]);
   } catch (error) {
     throw reportPlaybackActionError(ctx.reportError, {
       mode: sessionId,
@@ -346,25 +648,31 @@ async function setChannelPlaying(
   }
 }
 
-async function selectSingleRadio(
-  radio: Radio,
-  transitionDuration: number,
-  ctx: PlaybackActionContext
-): Promise<void> {
-  validateRadioForMode(radio, "single");
+type SingleRadioTransition = {
+  incomingChannelId: string;
+  incomingSoundId: string;
+  outgoingChannelId: string | null;
+  outgoingRuntime: ReturnType<typeof getPlaybackChannelRuntime> | null;
+  outgoingSoundId: string | null;
+  previousIncomingChannel: PlaybackChannelRecord;
+  previousVolume: number;
+};
 
+function prepareSingleRadioTransition(
+  radio: Radio,
+  ctx: PlaybackActionContext
+): SingleRadioTransition | null {
   const session = getPlaybackSession("single");
   if (!session) {
-    return;
+    return null;
   }
 
   const activeChannelId = session.activeChannelId;
   const activeChannel = activeChannelId
     ? (session.channels.find((entry) => entry.id === activeChannelId) ?? null)
     : null;
-
   if (isSameRadio(activeChannel?.radio, radio)) {
-    return;
+    return null;
   }
 
   const incomingChannelId =
@@ -373,18 +681,17 @@ async function selectSingleRadio(
       : SINGLE_ACTIVE_CHANNEL_ID;
   const outgoingChannelId =
     activeChannelId === incomingChannelId ? null : activeChannelId;
-
   const incomingChannel =
     getPlaybackChannel("single", incomingChannelId) ??
     createDefaultSingleChannel(incomingChannelId);
-
+  const previousIncomingChannel = { ...incomingChannel };
   const previousVolume = activeChannel?.volume ?? incomingChannel.volume;
+
   upsertPlaybackChannel("single", {
     ...incomingChannel,
     radio,
     volume: previousVolume,
   });
-
   const incomingSoundId = createManagedSound(
     "single",
     incomingChannelId,
@@ -392,6 +699,9 @@ async function selectSingleRadio(
     undefined,
     ctx
   );
+  // Persist muted intent before node construction so the graph cannot expose
+  // its default gain while the incoming stream is being primed.
+  ctx.audio.setVolume(incomingSoundId, 0);
 
   const outgoingRuntime = outgoingChannelId
     ? getPlaybackChannelRuntime(outgoingChannelId)
@@ -400,6 +710,43 @@ async function selectSingleRadio(
     outgoingRuntime?.isPlaying && outgoingRuntime.soundId
       ? outgoingRuntime.soundId
       : null;
+
+  return {
+    incomingChannelId,
+    incomingSoundId,
+    outgoingChannelId,
+    outgoingRuntime,
+    outgoingSoundId,
+    previousIncomingChannel,
+    previousVolume,
+  };
+}
+
+async function selectSingleRadio(
+  radio: Radio,
+  transitionDuration: number,
+  ctx: PlaybackActionContext,
+  signal: AbortSignal,
+  stableDurationMs: number
+): Promise<void> {
+  if (signal.aborted) {
+    throw abortReason(signal);
+  }
+  validateRadioForMode(radio, "single");
+
+  const transition = prepareSingleRadioTransition(radio, ctx);
+  if (!transition) {
+    return;
+  }
+  const {
+    incomingChannelId,
+    incomingSoundId,
+    outgoingChannelId,
+    outgoingRuntime,
+    outgoingSoundId,
+    previousIncomingChannel,
+    previousVolume,
+  } = transition;
 
   if (!(outgoingChannelId && outgoingSoundId)) {
     if (outgoingChannelId && outgoingRuntime?.soundId) {
@@ -412,16 +759,33 @@ async function selectSingleRadio(
   const gestureResume = startGestureAudioResume(ctx);
 
   try {
-    await ensureMainAudioSettingsApplied(ctx);
+    const settingsPromise = ensureMainAudioSettingsApplied(ctx);
     applySessionMasterVolume("single", ctx);
-    await gestureResume.wait();
-    await ctx.audio.playSound(incomingSoundId, 0);
-    await crossfade(outgoingSoundId, incomingSoundId, {
-      duration: transitionDuration,
-      targetVolume: previousVolume,
-      curve: "equalPower",
-    });
+    const playPromise = ctx.audio.playSound(incomingSoundId, 0);
+    await waitForAbortable(
+      Promise.all([settingsPromise, gestureResume.wait(), playPromise]),
+      signal
+    );
+    await crossfadeStableIncoming(
+      ctx,
+      incomingChannelId,
+      incomingSoundId,
+      outgoingSoundId,
+      previousVolume,
+      transitionDuration,
+      stableDurationMs,
+      signal
+    );
+    if (signal.aborted) {
+      throw abortReason(signal);
+    }
   } catch (error) {
+    ctx.audio.setVolume(outgoingSoundId, previousVolume);
+    cleanupManagedChannel(incomingChannelId, ctx);
+    upsertPlaybackChannel("single", previousIncomingChannel);
+    if (signal.aborted || isAbortError(error)) {
+      throw abortReason(signal);
+    }
     throw reportPlaybackActionError(ctx.reportError, {
       mode: "single",
       code: "PLAY_ERROR",
@@ -496,12 +860,17 @@ export function createManagedPlaybackSessionWorkflow(
     ctx = getDefaultPlaybackActionContext(),
     fadeOutDurationMs = DEFAULT_FADE_OUT_DURATION_MS,
     fadeOutSound = async () => undefined,
+    transitionStableDurationMs = DEFAULT_TRANSITION_STABLE_DURATION_MS,
   }: CreateManagedPlaybackSessionWorkflowOptions = {}
 ): ManagedPlaybackSessionWorkflow {
+  const singleSelection = getSingleSelectionCoordinator(ctx);
+
   return {
     activate: () => activateSession(sessionId, ctx),
-    deactivate: () =>
-      deactivateSession(sessionId, ctx, fadeOutSound, fadeOutDurationMs),
+    deactivate: () => {
+      singleSelection.active?.abort();
+      return deactivateSession(sessionId, ctx, fadeOutSound, fadeOutDurationMs);
+    },
     syncChannels(radios) {
       if (sessionId === "multiple") {
         syncMultipleChannels(radios, ctx);
@@ -524,7 +893,36 @@ export function createManagedPlaybackSessionWorkflow(
       if (sessionId !== "single") {
         throw new Error("Radio selection is only supported in single mode");
       }
-      return selectSingleRadio(radio, transitionDuration, ctx);
+      singleSelection.active?.abort();
+      const controller = new AbortController();
+      singleSelection.active = controller;
+      const selection = singleSelection.queue
+        .catch(() => undefined)
+        .then(() =>
+          selectSingleRadio(
+            radio,
+            transitionDuration,
+            ctx,
+            controller.signal,
+            transitionStableDurationMs
+          )
+        );
+      singleSelection.queue = selection.then(
+        () => undefined,
+        () => undefined
+      );
+      return selection
+        .catch((error: unknown) => {
+          if (controller.signal.aborted || isAbortError(error)) {
+            return;
+          }
+          throw error;
+        })
+        .finally(() => {
+          if (singleSelection.active === controller) {
+            singleSelection.active = null;
+          }
+        });
     },
     setPlaying(playing, channelId) {
       if (sessionId === "single") {

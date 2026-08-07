@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import type { AudioEngineFacade, AudioManager, Radio } from "@/lib/audio";
+import type {
+  AudioEngineFacade,
+  AudioManager,
+  AudioState,
+  Radio,
+} from "@/lib/audio";
 import {
   createDefaultChannel,
   playbackSessionsCollection,
@@ -9,6 +14,7 @@ import {
 import {
   getPlaybackChannelRuntime,
   resetAllPlaybackRuntime,
+  resetPlaybackChannelRuntime,
   setPlaybackChannelRuntime,
 } from "@/lib/stores/playback-runtime-store";
 import { createManagedPlaybackSessionWorkflow } from "./managed-playback-session-workflow";
@@ -59,8 +65,13 @@ function createTestContext(): PlaybackActionContext {
       hasSound: mock((_soundId: string) => false),
       pauseSound: mock((_soundId: string) => undefined),
       playSound: mock(async (_soundId: string, _volume: number) => undefined),
+      setVolume: mock((_soundId: string, _volume: number) => undefined),
       setGlobalVolume: mock((_volume: number) => undefined),
       setMainDelay: mock((_delayMs: number) => undefined),
+      subscribe: mock(
+        (_soundId: string, _callback: (state: AudioState) => void) => () =>
+          undefined
+      ),
     } as unknown as AudioManager,
     audioEngine,
     channels: {
@@ -79,6 +90,75 @@ function createTestContext(): PlaybackActionContext {
     resumeAudioContext: mock(async () => undefined),
     resetAudioManager: mock(() => undefined),
   } satisfies PlaybackActionContext;
+}
+
+function createDeferred<T = void>(): {
+  promise: Promise<T>;
+  resolve: (value: T | PromiseLike<T>) => void;
+} {
+  let resolve = (_value: T | PromiseLike<T>): void => undefined;
+  const promise = new Promise<T>((promiseResolve) => {
+    resolve = promiseResolve;
+  });
+  return { promise, resolve };
+}
+
+async function flushMicrotasks(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
+async function settlesBeforeDeadline(
+  promise: Promise<unknown>,
+  deadlineMs = 250
+): Promise<boolean> {
+  let timeout: ReturnType<typeof setTimeout> | null = null;
+  try {
+    return await Promise.race([
+      promise.then(() => true),
+      new Promise<boolean>((resolve) => {
+        timeout = setTimeout(() => resolve(false), deadlineMs);
+      }),
+    ]);
+  } finally {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+  }
+}
+
+function createStation(id: string): Radio {
+  return {
+    id,
+    name: `Station ${id}`,
+    streamUrl: `https://radio.example/${id}.mp3`,
+  };
+}
+
+function insertPlayingSingleSession(activeRadio: Radio): void {
+  playbackSessionsCollection.insert({
+    id: "single",
+    channels: [
+      {
+        ...createDefaultChannel(SINGLE_ACTIVE_CHANNEL_ID, "single-primary", 0),
+        radio: activeRadio,
+      },
+      createDefaultChannel(SINGLE_STANDBY_CHANNEL_ID, "single-secondary", 1),
+    ],
+    masterVolume: 0.8,
+    crossfadePosition: 0.5,
+    headphoneVolume: 1,
+    activeChannelId: SINGLE_ACTIVE_CHANNEL_ID,
+  });
+  setPlaybackChannelRuntime(SINGLE_ACTIVE_CHANNEL_ID, () => ({
+    soundId: "single:single-a",
+    isPlaying: true,
+    isLoading: false,
+    isBuffering: false,
+    error: null,
+  }));
 }
 
 beforeEach(async () => {
@@ -363,5 +443,101 @@ describe("managed playback session workflow", () => {
     await workflow.setPlaying(true, "multi:station-1");
 
     expect(events).toEqual(["resume", "settings", "play"]);
+  });
+
+  test("supersedes a pending selection across workflow facade instances", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertPlayingSingleSession(createStation("active"));
+    const context = createTestContext();
+    const pendingFirstPlay = createDeferred();
+    const deactivatedChannels: string[] = [];
+    let playCount = 0;
+
+    context.channels.deactivate = mock((channelId: string) => {
+      deactivatedChannels.push(channelId);
+      resetPlaybackChannelRuntime(channelId);
+    });
+    context.audio.playSound = mock(
+      (soundId: string, _volume: number): Promise<void> => {
+        playCount += 1;
+        if (playCount === 1) {
+          return pendingFirstPlay.promise;
+        }
+        setPlaybackChannelRuntime(SINGLE_STANDBY_CHANNEL_ID, () => ({
+          soundId,
+          isPlaying: true,
+          isLoading: false,
+          isBuffering: false,
+          error: null,
+        }));
+        return Promise.resolve();
+      }
+    );
+
+    const firstFacade = createManagedPlaybackSessionWorkflow("single", {
+      ctx: context,
+      transitionStableDurationMs: 0,
+    });
+    const secondFacade = createManagedPlaybackSessionWorkflow("single", {
+      ctx: context,
+      transitionStableDurationMs: 0,
+    });
+
+    const firstSelection = firstFacade.selectRadio(createStation("first"), 0);
+    await flushMicrotasks();
+    expect(context.audio.playSound).toHaveBeenCalledTimes(1);
+
+    const secondSelection = secondFacade.selectRadio(
+      createStation("second"),
+      0
+    );
+
+    expect(await settlesBeforeDeadline(secondSelection)).toBe(true);
+    await firstSelection;
+    expect(context.audio.playSound).toHaveBeenCalledTimes(2);
+    expect(deactivatedChannels).toContain(SINGLE_STANDBY_CHANNEL_ID);
+    expect(context.channels.activate).toHaveBeenCalledWith(
+      "single",
+      SINGLE_STANDBY_CHANNEL_ID,
+      expect.objectContaining({ id: "second" }),
+      "single:single-b"
+    );
+  });
+
+  test("deactivation from another facade aborts a pending selection", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertPlayingSingleSession(createStation("active"));
+    const context = createTestContext();
+    const pendingPlay = createDeferred();
+    const deactivatedChannels: string[] = [];
+
+    context.channels.deactivate = mock((channelId: string) => {
+      deactivatedChannels.push(channelId);
+      resetPlaybackChannelRuntime(channelId);
+    });
+    context.audio.playSound = mock(
+      (_soundId: string, _volume: number) => pendingPlay.promise
+    );
+
+    const selectionFacade = createManagedPlaybackSessionWorkflow("single", {
+      ctx: context,
+      transitionStableDurationMs: 0,
+    });
+    const lifecycleFacade = createManagedPlaybackSessionWorkflow("single", {
+      ctx: context,
+      transitionStableDurationMs: 0,
+    });
+
+    const selection = selectionFacade.selectRadio(createStation("next"), 0);
+    await flushMicrotasks();
+    expect(context.audio.playSound).toHaveBeenCalledTimes(1);
+
+    const deactivation = lifecycleFacade.deactivate();
+
+    expect(
+      await settlesBeforeDeadline(Promise.all([selection, deactivation]))
+    ).toBe(true);
+    expect(deactivatedChannels).toContain(SINGLE_STANDBY_CHANNEL_ID);
+    expect(deactivatedChannels).toContain(SINGLE_ACTIVE_CHANNEL_ID);
   });
 });

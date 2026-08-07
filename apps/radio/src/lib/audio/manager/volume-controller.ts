@@ -11,8 +11,38 @@ type VolumeControllerOptions = {
   getContext?: () => AudioContext | null;
 };
 
+type ScheduledVolumeCurve = {
+  endTime: number;
+  startTime: number;
+  values: Float32Array;
+};
+
 function clampVolume(volume: number): number {
   return Math.max(0, Math.min(1, volume));
+}
+
+function sampleScheduledCurve(
+  curve: ScheduledVolumeCurve,
+  time: number
+): number {
+  if (curve.values.length === 0) {
+    return MIN_GAIN;
+  }
+  if (time <= curve.startTime) {
+    return curve.values[0] ?? MIN_GAIN;
+  }
+  if (time >= curve.endTime) {
+    return curve.values.at(-1) ?? MIN_GAIN;
+  }
+
+  const progress = (time - curve.startTime) / (curve.endTime - curve.startTime);
+  const position = progress * (curve.values.length - 1);
+  const leftIndex = Math.floor(position);
+  const rightIndex = Math.min(leftIndex + 1, curve.values.length - 1);
+  const mix = position - leftIndex;
+  const left = curve.values[leftIndex] ?? MIN_GAIN;
+  const right = curve.values[rightIndex] ?? left;
+  return left + (right - left) * mix;
 }
 
 class VolumeController {
@@ -24,6 +54,7 @@ class VolumeController {
   ) => void;
   private readonly getContext: () => AudioContext | null;
   private readonly volumeCurveEndTimes = new Map<string, number>();
+  private readonly volumeCurves = new Map<string, ScheduledVolumeCurve>();
   private readonly lastSoundVolumes = new Map<string, number>();
   private globalVolume = 1;
   private globalMuted = false;
@@ -85,13 +116,17 @@ class VolumeController {
     const gainNode = nodes.gain.gain;
     const activeCurveEndTime = this.volumeCurveEndTimes.get(soundId) ?? 0;
     const cancelAndHoldAtTime = gainNode.cancelAndHoldAtTime?.bind(gainNode);
-    const curveStartTime =
-      activeCurveEndTime > now && !cancelAndHoldAtTime
-        ? activeCurveEndTime + 0.001
-        : now;
+    const curveStartTime = now;
 
     if (activeCurveEndTime > now && cancelAndHoldAtTime) {
       cancelAndHoldAtTime(now);
+    } else if (activeCurveEndTime > now) {
+      const activeCurve = this.volumeCurves.get(soundId);
+      const heldValue = activeCurve
+        ? sampleScheduledCurve(activeCurve, now)
+        : gainNode.value;
+      gainNode.cancelScheduledValues(now);
+      gainNode.setValueAtTime(heldValue, now);
     } else {
       gainNode.cancelScheduledValues(curveStartTime);
     }
@@ -102,6 +137,7 @@ class VolumeController {
         curveStartTime
       );
       this.volumeCurveEndTimes.delete(soundId);
+      this.volumeCurves.delete(soundId);
       this.notifyVolumeChange(soundId, instance, lastVolume);
       return;
     }
@@ -110,7 +146,13 @@ class VolumeController {
       this.scaleForGlobalVolume(clampVolume(value))
     );
     gainNode.setValueCurveAtTime(scaledCurve, curveStartTime, durationSeconds);
-    this.volumeCurveEndTimes.set(soundId, curveStartTime + durationSeconds);
+    const curveEndTime = curveStartTime + durationSeconds;
+    this.volumeCurveEndTimes.set(soundId, curveEndTime);
+    this.volumeCurves.set(soundId, {
+      endTime: curveEndTime,
+      startTime: curveStartTime,
+      values: scaledCurve,
+    });
     this.notifyVolumeChange(soundId, instance, lastVolume);
   }
 
@@ -176,11 +218,13 @@ class VolumeController {
   deleteSound(soundId: string): void {
     this.lastSoundVolumes.delete(soundId);
     this.volumeCurveEndTimes.delete(soundId);
+    this.volumeCurves.delete(soundId);
   }
 
   clear(): void {
     this.lastSoundVolumes.clear();
     this.volumeCurveEndTimes.clear();
+    this.volumeCurves.clear();
     this.globalVolume = 1;
     this.globalMuted = false;
     this.lastGlobalVolume = 1;
@@ -211,16 +255,23 @@ class VolumeController {
 
       if (cancelAndHoldAtTime) {
         cancelAndHoldAtTime(now);
-        this.volumeCurveEndTimes.delete(soundId);
-        gainParam.setTargetAtTime(targetVolume, now, 0.05);
-        return;
+      } else {
+        const activeCurve = this.volumeCurves.get(soundId);
+        const heldValue = activeCurve
+          ? sampleScheduledCurve(activeCurve, now)
+          : gainParam.value;
+        gainParam.cancelScheduledValues(now);
+        gainParam.setValueAtTime(heldValue, now);
       }
 
-      gainParam.setTargetAtTime(targetVolume, activeCurveEndTime + 0.001, 0.05);
+      this.volumeCurveEndTimes.delete(soundId);
+      this.volumeCurves.delete(soundId);
+      gainParam.setTargetAtTime(targetVolume, now, 0.02);
       return;
     }
 
     this.volumeCurveEndTimes.delete(soundId);
+    this.volumeCurves.delete(soundId);
     gainParam.cancelScheduledValues(now);
     gainParam.setTargetAtTime(targetVolume, now, 0.05);
   }

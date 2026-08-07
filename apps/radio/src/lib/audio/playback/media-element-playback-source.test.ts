@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from "bun:test";
+import { describe, expect, jest, mock, test } from "bun:test";
 import { MediaElementPlaybackSource } from "./media-element-playback-source";
 
 type Deferred<T> = {
@@ -89,8 +89,12 @@ class MockAudioElement {
   }
 
   emit(type: string): void {
-    if (type === "canplay" || type === "loadedmetadata") {
+    if (type === "loadedmetadata") {
       this.readyState = HTMLMediaElement.HAVE_METADATA;
+    } else if (type === "canplay" || type === "playing") {
+      this.readyState = HTMLMediaElement.HAVE_FUTURE_DATA;
+    } else if (type === "waiting") {
+      this.readyState = HTMLMediaElement.HAVE_CURRENT_DATA;
     }
     this.dispatchEvent(new Event(type));
   }
@@ -178,7 +182,13 @@ function installMediaElementMocks(): {
   });
   Object.defineProperty(globalThis, "HTMLMediaElement", {
     configurable: true,
-    value: { HAVE_METADATA: 1 },
+    value: {
+      HAVE_NOTHING: 0,
+      HAVE_METADATA: 1,
+      HAVE_CURRENT_DATA: 2,
+      HAVE_FUTURE_DATA: 3,
+      HAVE_ENOUGH_DATA: 4,
+    },
   });
   Object.defineProperty(globalThis, "MediaError", {
     configurable: true,
@@ -319,7 +329,7 @@ function installDelayedHlsMock(): {
       loadSource(url: string): void {
         loadedSources.push(url);
         queueMicrotask(() => {
-          this.#media?.emit("loadedmetadata");
+          this.#media?.emit("canplay");
         });
       }
 
@@ -329,6 +339,10 @@ function installDelayedHlsMock(): {
 
       recoverMediaError(): void {
         // Error handling is not exercised by these tests.
+      }
+
+      startLoad(): void {
+        // Fatal HLS recovery is covered by browser-level integration tests.
       }
     }
 
@@ -370,6 +384,192 @@ describe("MediaElementPlaybackSource HLS loading", () => {
       expect(error).toBeInstanceOf(Error);
       source.cleanup();
     } finally {
+      mediaMocks.restore();
+    }
+  });
+
+  test("does not report metadata-only media as ready", async () => {
+    const mediaMocks = installMediaElementMocks();
+
+    try {
+      const source = createPlaybackSource();
+      const audio = mediaMocks.getAudio();
+      let resolved = false;
+      const load = source
+        .load({
+          format: "progressive",
+          src: "https://streams.radiomast.io/nts1",
+        })
+        .then(() => {
+          resolved = true;
+        });
+
+      await flushMicrotasks();
+      audio.emit("loadedmetadata");
+      await flushMicrotasks();
+      expect(resolved).toBe(false);
+
+      audio.emit("canplay");
+      await expect(load).resolves.toBeUndefined();
+      expect(resolved).toBe(true);
+      source.cleanup();
+    } finally {
+      mediaMocks.restore();
+    }
+  });
+
+  test("prefers explicitly allowed native HLS", async () => {
+    const mediaMocks = installMediaElementMocks();
+    const hlsMock = installDelayedHlsMock();
+
+    try {
+      const source = createPlaybackSource();
+      const audio = mediaMocks.getAudio();
+      audio.nativeHlsSupport = "maybe";
+      const load = source.load({
+        allowNativeHls: true,
+        format: "hls",
+        src: "https://trusted.example/live/native.m3u8",
+      });
+
+      await flushMicrotasks();
+      expect(audio.loadSources).toEqual([
+        "https://trusted.example/live/native.m3u8",
+      ]);
+      expect(hlsMock.importStarted()).toBe(false);
+      audio.emit("canplay");
+      await expect(load).resolves.toBeUndefined();
+      source.cleanup();
+    } finally {
+      hlsMock.importGate.resolve();
+      mediaMocks.restore();
+    }
+  });
+
+  test("waits for no progress before reloading a live progressive stream", async () => {
+    jest.useFakeTimers();
+    const mediaMocks = installMediaElementMocks();
+
+    try {
+      const source = createPlaybackSource();
+      const audio = mediaMocks.getAudio();
+      const url = "https://streams.radiomast.io/nts1";
+      const load = source.load({ format: "progressive", src: url });
+      await flushMicrotasks();
+      audio.emit("canplay");
+      await load;
+      await source.play();
+      audio.emit("playing");
+
+      audio.emit("waiting");
+      jest.advanceTimersByTime(5999);
+      await flushMicrotasks();
+      expect(audio.loadSources).toEqual([url]);
+
+      jest.advanceTimersByTime(1);
+      await flushMicrotasks();
+      expect(audio.loadSources).toEqual([url, url]);
+
+      audio.emit("canplay");
+      await flushMicrotasks();
+      audio.emit("playing");
+      expect(source.status).toBe("streaming");
+      expect(source.isBuffering).toBe(false);
+      source.cleanup();
+    } finally {
+      jest.useRealTimers();
+      mediaMocks.restore();
+    }
+  });
+
+  test("does not reload for a stalled event while playable data remains", async () => {
+    jest.useFakeTimers();
+    const mediaMocks = installMediaElementMocks();
+
+    try {
+      const source = createPlaybackSource();
+      const audio = mediaMocks.getAudio();
+      const url = "https://streams.radiomast.io/nts2";
+      const load = source.load({ format: "progressive", src: url });
+      await flushMicrotasks();
+      audio.emit("canplay");
+      await load;
+      await source.play();
+      audio.emit("playing");
+
+      audio.emit("stalled");
+      expect(source.isBuffering).toBe(false);
+      audio.currentTime = 1;
+      jest.advanceTimersByTime(6000);
+      await flushMicrotasks();
+      expect(audio.loadSources).toEqual([url]);
+      source.cleanup();
+    } finally {
+      jest.useRealTimers();
+      mediaMocks.restore();
+    }
+  });
+
+  test("caps fetch-only grace when the media clock remains frozen", async () => {
+    jest.useFakeTimers();
+    const mediaMocks = installMediaElementMocks();
+
+    try {
+      const source = createPlaybackSource();
+      const audio = mediaMocks.getAudio();
+      const url = "https://streams.radiomast.io/nts1";
+      const load = source.load({ format: "progressive", src: url });
+      await flushMicrotasks();
+      audio.emit("canplay");
+      await load;
+      await source.play();
+      audio.emit("playing");
+
+      audio.emit("waiting");
+      audio.emit("progress");
+      jest.advanceTimersByTime(6000);
+      audio.emit("progress");
+      jest.advanceTimersByTime(6000);
+      await flushMicrotasks();
+      expect(audio.loadSources).toEqual([url, url]);
+      source.cleanup();
+    } finally {
+      jest.useRealTimers();
+      mediaMocks.restore();
+    }
+  });
+
+  test("preserves advancing buffered playback across a network handoff", async () => {
+    jest.useFakeTimers();
+    const mediaMocks = installMediaElementMocks();
+
+    try {
+      const source = createPlaybackSource();
+      const audio = mediaMocks.getAudio();
+      const url = "https://streams.radiomast.io/nts2";
+      const load = source.load({ format: "progressive", src: url });
+      await flushMicrotasks();
+      audio.emit("canplay");
+      await load;
+      await source.play();
+      audio.emit("playing");
+
+      const networkHandlers = source as unknown as {
+        handleOffline: () => void;
+        handleOnline: () => void;
+      };
+      networkHandlers.handleOffline();
+      expect(source.isBuffering).toBe(false);
+      networkHandlers.handleOnline();
+      audio.currentTime = 1;
+      jest.advanceTimersByTime(6000);
+      await flushMicrotasks();
+
+      expect(audio.loadSources).toEqual([url]);
+      expect(source.status).toBe("streaming");
+      source.cleanup();
+    } finally {
+      jest.useRealTimers();
       mediaMocks.restore();
     }
   });

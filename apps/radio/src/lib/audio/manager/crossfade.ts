@@ -21,16 +21,30 @@ export type CrossfadeOptions = {
   targetVolume?: number;
   /** Crossfade curve type (default: 'linear') */
   curve?: CrossfadeCurve;
+  /** Abort the transition without stopping the outgoing sound. */
+  signal?: AbortSignal;
+  /** Stop the outgoing sound after completion (default: true). */
+  stopOutgoing?: boolean;
 };
+
+type CurveDirection = "in" | "out";
 
 /**
  * Apply crossfade curve to progress value
  */
-function applyCurve(progress: number, curve: CrossfadeCurve): number {
+function applyCurve(
+  progress: number,
+  curve: CrossfadeCurve,
+  direction: CurveDirection
+): number {
   switch (curve) {
     case "equalPower":
-      // Equal power crossfade - maintains constant perceived loudness
-      return Math.sin((progress * Math.PI) / 2);
+      // Incoming sine and outgoing cosine keep the sum of squared gains at 1.
+      // createVolumeCurve interpolates start -> end, so an outgoing cosine
+      // needs the complementary interpolation progress (1 - cosine).
+      return direction === "in"
+        ? Math.sin((progress * Math.PI) / 2)
+        : 1 - Math.cos((progress * Math.PI) / 2);
     case "exponential":
       // Exponential curve for more dramatic transitions
       return progress * progress;
@@ -44,28 +58,74 @@ function createVolumeCurve(
   startVolume: number,
   endVolume: number,
   curve: CrossfadeCurve,
-  transformProgress: (progress: number) => number
+  direction: CurveDirection
 ): Float32Array {
   const stepCount = 48;
   const values = new Float32Array(stepCount + 1);
 
   for (let index = 0; index <= stepCount; index++) {
     const rawProgress = index / stepCount;
-    const curvedProgress = transformProgress(applyCurve(rawProgress, curve));
+    const curvedProgress = applyCurve(rawProgress, curve, direction);
     values[index] = startVolume + (endVolume - startVolume) * curvedProgress;
   }
 
   return values;
 }
 
-function wait(duration: number): Promise<void> {
+function abortReason(signal: AbortSignal): unknown {
+  return signal.reason ?? new DOMException("Transition aborted", "AbortError");
+}
+
+function wait(duration: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) {
+    return Promise.reject(abortReason(signal));
+  }
   if (duration <= 0) {
     return Promise.resolve();
   }
 
-  return new Promise((resolve) => {
-    setTimeout(resolve, duration);
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      signal?.removeEventListener("abort", handleAbort);
+      resolve();
+    }, duration);
+    const handleAbort = () => {
+      clearTimeout(timeout);
+      reject(signal ? abortReason(signal) : undefined);
+    };
+    signal?.addEventListener("abort", handleAbort, { once: true });
   });
+}
+
+function setVolumeIfPresent(
+  manager: AudioManager,
+  soundId: string,
+  volume: number
+): void {
+  if (manager.hasSound(soundId)) {
+    manager.setVolume(soundId, volume);
+  }
+}
+
+function stopIfRequested(
+  manager: AudioManager,
+  soundId: string,
+  stop: boolean
+): void {
+  if (stop && manager.hasSound(soundId)) {
+    manager.stopSound(soundId);
+  }
+}
+
+function restoreCrossfadeVolumes(
+  manager: AudioManager,
+  fromSoundId: string,
+  fromVolume: number,
+  toSoundId: string,
+  toVolume: number
+): void {
+  setVolumeIfPresent(manager, fromSoundId, fromVolume);
+  setVolumeIfPresent(manager, toSoundId, toVolume);
 }
 
 /**
@@ -85,52 +145,64 @@ export function crossfade(
   options: CrossfadeOptions
 ): Promise<void> {
   const manager = AudioManager.getInstance();
-  const { duration, targetVolume = 1, curve = "linear" } = options;
+  const {
+    duration,
+    targetVolume = 1,
+    curve = "linear",
+    signal,
+    stopOutgoing = true,
+  } = options;
   const clampedDuration = Math.max(0, duration);
 
   return (async () => {
     if (!manager.hasSound(toSoundId)) {
       return;
     }
+    if (signal?.aborted) {
+      throw abortReason(signal);
+    }
 
     const fromStartVolume = manager.getSoundVolume(fromSoundId) ?? 1;
     const toStartVolume = manager.getSoundVolume(toSoundId) ?? 0;
 
     if (clampedDuration === 0) {
-      if (manager.hasSound(fromSoundId)) {
-        manager.setVolume(fromSoundId, 0);
-      }
-      manager.setVolume(toSoundId, targetVolume);
-      if (manager.hasSound(fromSoundId)) {
-        manager.stopSound(fromSoundId);
-      }
+      setVolumeIfPresent(manager, fromSoundId, 0);
+      setVolumeIfPresent(manager, toSoundId, targetVolume);
+      stopIfRequested(manager, fromSoundId, stopOutgoing);
       return;
     }
 
     if (manager.hasSound(fromSoundId)) {
       manager.scheduleVolumeCurve(
         fromSoundId,
-        createVolumeCurve(fromStartVolume, 0, curve, (progress) => progress),
+        createVolumeCurve(fromStartVolume, 0, curve, "out"),
         clampedDuration
       );
     }
 
     manager.scheduleVolumeCurve(
       toSoundId,
-      createVolumeCurve(
-        toStartVolume,
-        targetVolume,
-        curve,
-        (progress) => progress
-      ),
+      createVolumeCurve(toStartVolume, targetVolume, curve, "in"),
       clampedDuration
     );
 
-    await wait(clampedDuration);
-
-    if (manager.hasSound(fromSoundId)) {
-      manager.stopSound(fromSoundId);
+    try {
+      await wait(clampedDuration, signal);
+    } catch (error) {
+      // Scheduling automation is fire-and-forget at the Web Audio layer. An
+      // aborted owner must explicitly cancel both curves and restore the
+      // pre-transition state so this helper is safe outside managed sessions.
+      restoreCrossfadeVolumes(
+        manager,
+        fromSoundId,
+        fromStartVolume,
+        toSoundId,
+        toStartVolume
+      );
+      throw error;
     }
+
+    stopIfRequested(manager, fromSoundId, stopOutgoing);
   })();
 }
 
@@ -165,7 +237,7 @@ export function fadeIn(
 
     manager.scheduleVolumeCurve(
       soundId,
-      createVolumeCurve(0, targetVolume, curve, (progress) => progress),
+      createVolumeCurve(0, targetVolume, curve, "in"),
       clampedDuration
     );
     await wait(clampedDuration);
@@ -206,7 +278,7 @@ export function fadeOut(
 
     manager.scheduleVolumeCurve(
       soundId,
-      createVolumeCurve(startVolume, 0, curve, (progress) => progress),
+      createVolumeCurve(startVolume, 0, curve, "out"),
       clampedDuration
     );
     await wait(clampedDuration);
@@ -243,12 +315,7 @@ export async function duckSound(
     } else {
       manager.scheduleVolumeCurve(
         soundId,
-        createVolumeCurve(
-          startVolume,
-          duckLevel,
-          "linear",
-          (progress) => progress
-        ),
+        createVolumeCurve(startVolume, duckLevel, "linear", "out"),
         clampedDuration
       );
       await wait(clampedDuration);
@@ -268,12 +335,7 @@ export async function duckSound(
 
     manager.scheduleVolumeCurve(
       soundId,
-      createVolumeCurve(
-        duckLevel,
-        startVolume,
-        "linear",
-        (progress) => progress
-      ),
+      createVolumeCurve(duckLevel, startVolume, "linear", "in"),
       clampedDuration
     );
     await wait(clampedDuration);

@@ -47,23 +47,52 @@ export function isOfficialOpenDawEffect(
 function areOfficialOpenDawEffects(effects: readonly EffectConfig[]): boolean {
   return effects.every(
     (effect) =>
-      isOfficialOpenDawEffect(effect) &&
-      (!effect.sidechain ||
-        effect.type === "compressor" ||
-        effect.type === "gate" ||
-        effect.type === "vocoder") &&
-      (!("chains" in effect) ||
-        effect.chains.every((chain) =>
-          areOfficialOpenDawEffects(chain.effects)
-        ))
+      !effect.enabled ||
+      (isOfficialOpenDawEffect(effect) &&
+        (!effect.sidechain ||
+          effect.type === "compressor" ||
+          effect.type === "gate" ||
+          effect.type === "vocoder") &&
+        (!("chains" in effect) ||
+          effect.chains.every((chain) =>
+            areOfficialOpenDawEffects(chain.effects)
+          )))
   );
+}
+
+export function hasEnabledEffects(effects: readonly EffectConfig[]): boolean {
+  return effects.some((effect) => effect.enabled);
+}
+
+/**
+ * Disabled radio-only records remain in the persisted controller state, but
+ * must not be handed to the official adapter while an official-only active
+ * chain is selected.
+ */
+export function selectEnabledEffects(
+  effects: readonly EffectConfig[]
+): EffectConfig[] {
+  return effects.flatMap((effect) => {
+    if (!effect.enabled) {
+      return [];
+    }
+    if (!("chains" in effect)) {
+      return [effect];
+    }
+    return [
+      {
+        ...effect,
+        chains: effect.chains.map((chain) => ({
+          ...chain,
+          effects: selectEnabledEffects(chain.effects),
+        })),
+      } as EffectConfig,
+    ];
+  });
 }
 
 export function canUseOfficialOpenDawRuntime(
   effects: readonly EffectConfig[]
 ): boolean {
-  return (
-    effects.some((effect) => effect.enabled) &&
-    areOfficialOpenDawEffects(effects)
-  );
+  return hasEnabledEffects(effects) && areOfficialOpenDawEffects(effects);
 }

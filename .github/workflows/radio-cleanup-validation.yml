@@ -1,0 +1,64 @@
+name: Radio cleanup validation
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "apps/radio/**"
+      - "packages/**"
+      - "package.json"
+      - "bun.lock"
+      - "bunfig.toml"
+      - "turbo.json"
+      - ".github/workflows/radio-cleanup-validation.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: radio-cleanup-validation-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - run: bun install --frozen-lockfile
+      - run: bun run check
+      - run: bun run typecheck
+      - name: Focused radio regressions
+        if: always()
+        run: |
+          status=0
+          for test_file in \
+            apps/radio/src/lib/audio/playback/media-element-playback-source.test.ts \
+            apps/radio/src/lib/audio/manager/effects-controller.test.ts \
+            apps/radio/src/lib/audio/manager/audio-engine-lifecycle.test.ts \
+            apps/radio/src/lib/audio/manager/crossfade.test.ts \
+            apps/radio/src/lib/audio/manager/volume-controller.test.ts \
+            apps/radio/src/lib/managed-playback-session-workflow.test.ts \
+            apps/radio/src/lib/stations/radio-browser-playability.test.ts \
+            apps/radio/src/lib/hooks/use-unified-radio-search.test.ts
+          do
+            timeout --foreground 2m bun test "$test_file" || status=1
+          done
+          exit "$status"
+      - if: always()
+        run: timeout --foreground 8m bun run --filter @avoid.quest/radio test
+      - if: always()
+        run: timeout --foreground 8m bun run test
+      - if: always()
+        run: timeout --foreground 8m bun run --filter @avoid.quest/radio build
+      - if: always()
+        run: timeout --foreground 8m bun run build
+      - name: Report radio bundle sizes
+        if: always()
+        run: |
+          find apps/radio/dist -type f -printf "%s %p\n" 2>/dev/null |
+            sort -nr |
+            head -100

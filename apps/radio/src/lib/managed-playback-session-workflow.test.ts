@@ -554,7 +554,11 @@ describe("managed playback session workflow", () => {
 
     await expect(
       workflow.selectRadio(createStation("next"), 0)
-    ).rejects.toBeInstanceOf(Error);
+    ).rejects.toMatchObject({
+      mode: "single",
+      code: "PLAY_ERROR",
+      cause: transportAbort,
+    });
     expect(context.reportError).toHaveBeenCalledTimes(1);
     expect(context.audio.setVolume).toHaveBeenCalledWith("single:single-a", 1);
     expect(
@@ -569,9 +573,10 @@ describe("managed playback session workflow", () => {
     await playbackSessionsCollection.stateWhenReady();
     insertPlayingSingleSession(createStation("active"));
     const context = createTestContext();
+    const setupFailure = new Error("gain setup failed");
     context.audio.setVolume = mock((soundId: string, _volume: number) => {
       if (soundId === "single:single-b") {
-        throw new Error("gain setup failed");
+        throw setupFailure;
       }
     });
     const workflow = createManagedPlaybackSessionWorkflow("single", {
@@ -581,7 +586,11 @@ describe("managed playback session workflow", () => {
 
     await expect(
       workflow.selectRadio(createStation("next"), 0)
-    ).rejects.toBeInstanceOf(Error);
+    ).rejects.toMatchObject({
+      mode: "single",
+      code: "PLAY_ERROR",
+      cause: setupFailure,
+    });
 
     const session = playbackSessionsCollection.state.get("single");
     expect(session?.activeChannelId).toBe(SINGLE_ACTIVE_CHANNEL_ID);

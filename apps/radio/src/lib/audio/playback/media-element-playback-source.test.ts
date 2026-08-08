@@ -705,39 +705,7 @@ describe("MediaElementPlaybackSource HLS loading", () => {
     }
   });
 
-  test("recovers fatal hls.js network and media errors in place first", async () => {
-    jest.useFakeTimers();
-    const mediaMocks = installMediaElementMocks();
-    const hlsMock = installDelayedHlsMock();
-
-    try {
-      hlsMock.importGate.resolve();
-      const source = createPlaybackSource();
-      const audio = mediaMocks.getAudio();
-      const url = "https://radio.example/live/fallback.m3u8";
-      await source.load({ format: "hls", src: url });
-      await source.play();
-      audio.emit("playing");
-
-      hlsMock.emitFatalError("networkError");
-      expect(hlsMock.startLoadCalls()).toBe(1);
-      expect(hlsMock.loadedSources).toEqual([url]);
-
-      audio.currentTime = 1;
-      jest.advanceTimersByTime(6000);
-      await flushMicrotasks();
-      expect(hlsMock.loadedSources).toEqual([url]);
-
-      hlsMock.emitFatalError("mediaError");
-      expect(hlsMock.recoverMediaErrorCalls()).toBe(1);
-      source.cleanup();
-    } finally {
-      jest.useRealTimers();
-      mediaMocks.restore();
-    }
-  });
-
-  test("keeps playback tied to the active request during a cold HLS import", async () => {
+  test("keeps cold HLS playback tied to active requests and recovers fatal errors in place", async () => {
     const mediaMocks = installMediaElementMocks();
     const hlsMock = installDelayedHlsMock();
 
@@ -794,6 +762,10 @@ describe("MediaElementPlaybackSource HLS loading", () => {
         "https://radio.example/live/activation.m3u8",
         "https://radio.example/live/pause.m3u8",
       ]);
+      hlsMock.emitFatalError("networkError");
+      expect(hlsMock.startLoadCalls()).toBe(1);
+      hlsMock.emitFatalError("mediaError");
+      expect(hlsMock.recoverMediaErrorCalls()).toBe(1);
       activationSource.cleanup();
       pausedSource.cleanup();
       expect(mediaMocks.revokedObjectUrls()).toEqual([

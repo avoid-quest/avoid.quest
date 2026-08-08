@@ -127,17 +127,27 @@ describe("filterPlayableRadioBrowserStations", () => {
       settled = true;
     });
 
-    await Promise.resolve();
-    expect(activeCount).toBe(MAX_CONCURRENT_AUDIO_PROBES);
-    while (!settled) {
-      for (const release of releases.splice(0)) {
-        release();
-      }
-      await Promise.resolve();
-      await Promise.resolve();
+    for (
+      let attempt = 0;
+      attempt < 20 && activeCount < MAX_CONCURRENT_AUDIO_PROBES;
+      attempt += 1
+    ) {
       await Promise.resolve();
     }
-    await result;
+
+    try {
+      expect(activeCount).toBe(MAX_CONCURRENT_AUDIO_PROBES);
+    } finally {
+      while (!settled) {
+        for (const release of releases.splice(0)) {
+          release();
+        }
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+      }
+      await result;
+    }
 
     expect(maxActiveCount).toBe(MAX_CONCURRENT_AUDIO_PROBES);
   });

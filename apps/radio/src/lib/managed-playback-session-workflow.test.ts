@@ -540,4 +540,81 @@ describe("managed playback session workflow", () => {
     expect(deactivatedChannels).toContain(SINGLE_STANDBY_CHANNEL_ID);
     expect(deactivatedChannels).toContain(SINGLE_ACTIVE_CHANNEL_ID);
   });
+
+  test("reports a transport AbortError that was not caused by supersession", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertPlayingSingleSession(createStation("active"));
+    const context = createTestContext();
+    const transportAbort = new DOMException("Transport aborted", "AbortError");
+    context.audio.playSound = mock(() => Promise.reject(transportAbort));
+    const workflow = createManagedPlaybackSessionWorkflow("single", {
+      ctx: context,
+      transitionStableDurationMs: 0,
+    });
+
+    await expect(
+      workflow.selectRadio(createStation("next"), 0)
+    ).rejects.toBeInstanceOf(Error);
+    expect(context.reportError).toHaveBeenCalledTimes(1);
+    expect(context.audio.setVolume).toHaveBeenCalledWith("single:single-a", 1);
+    expect(
+      playbackSessionsCollection.state
+        .get("single")
+        ?.channels.find((channel) => channel.id === SINGLE_STANDBY_CHANNEL_ID)
+        ?.radio
+    ).toBeNull();
+  });
+
+  test("rolls back when incoming setup fails synchronously", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertPlayingSingleSession(createStation("active"));
+    const context = createTestContext();
+    context.audio.setVolume = mock((soundId: string, _volume: number) => {
+      if (soundId === "single:single-b") {
+        throw new Error("gain setup failed");
+      }
+    });
+    const workflow = createManagedPlaybackSessionWorkflow("single", {
+      ctx: context,
+      transitionStableDurationMs: 0,
+    });
+
+    await expect(
+      workflow.selectRadio(createStation("next"), 0)
+    ).rejects.toBeInstanceOf(Error);
+
+    const session = playbackSessionsCollection.state.get("single");
+    expect(session?.activeChannelId).toBe(SINGLE_ACTIVE_CHANNEL_ID);
+    expect(
+      session?.channels.find(
+        (channel) => channel.id === SINGLE_STANDBY_CHANNEL_ID
+      )?.radio
+    ).toBeNull();
+    expect(context.channels.deactivate).toHaveBeenCalledWith(
+      SINGLE_STANDBY_CHANNEL_ID
+    );
+  });
+
+  test("Multiple deactivation does not cancel a pending Single selection", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertPlayingSingleSession(createStation("active"));
+    const context = createTestContext();
+    const pendingPlay = createDeferred();
+    context.audio.playSound = mock(() => pendingPlay.promise);
+    const single = createManagedPlaybackSessionWorkflow("single", {
+      ctx: context,
+      transitionStableDurationMs: 0,
+    });
+    const multiple = createManagedPlaybackSessionWorkflow("multiple", {
+      ctx: context,
+    });
+
+    const selection = single.selectRadio(createStation("next"), 0);
+    await flushMicrotasks();
+    await multiple.deactivate();
+
+    expect(await settlesBeforeDeadline(selection, 20)).toBe(false);
+    await single.deactivate();
+    await selection;
+  });
 });

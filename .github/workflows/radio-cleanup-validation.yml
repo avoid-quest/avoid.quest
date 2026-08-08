@@ -52,13 +52,13 @@ jobs:
             apps/radio/src/lib/stations/radio-browser-playability.test.ts \
             apps/radio/src/lib/hooks/use-unified-radio-search.test.ts
           do
-            timeout --foreground 2m bun test "$test_file" || status=1
+            timeout --foreground 30s bun test "$test_file" || status=1
           done
           exit "$status"
       - if: always()
-        run: timeout --foreground 8m bun run --filter @avoid.quest/radio test
+        run: timeout --foreground 2m bun run --filter @avoid.quest/radio test
       - if: always()
-        run: timeout --foreground 8m bun run test
+        run: timeout --foreground 2m bun run test
       - if: always()
         run: timeout --foreground 8m bun run --filter @avoid.quest/radio build
       - if: always()

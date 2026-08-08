@@ -1,9 +1,10 @@
-import type {
-  SearchPlatform,
-  UnifiedSearchResult,
-} from "@avoid.quest/platforms";
-import { useEffect, useState } from "react";
+import type { SearchPlatform } from "@avoid.quest/platforms";
+import { useEffect, useReducer, useState } from "react";
 import type { Radio } from "@/lib/audio";
+import {
+  createExternalSearchState,
+  reduceExternalSearchState,
+} from "./external-search-state";
 import { SearchInput } from "./search-input";
 import { SearchResults } from "./search-results";
 import { UrlInput } from "./url-input";
@@ -19,31 +20,27 @@ export function ExternalSearch({
   onCancel,
   initialPlatform,
 }: ExternalSearchProps) {
-  const [platform, setPlatform] = useState<SearchPlatform>(
-    initialPlatform ?? "all"
+  const [{ error, platform, results }, dispatchSearchState] = useReducer(
+    reduceExternalSearchState,
+    initialPlatform,
+    createExternalSearchState
   );
   const [bandcampFilter, setBandcampFilter] = useState<"" | "t" | "a">("t");
   const [youtubeFilter, setYoutubeFilter] = useState<"songs" | "videos">(
     "songs"
   );
-  const [results, setResults] = useState<UnifiedSearchResult[]>([]);
-  const [error, setError] = useState<string | null>(null);
   const isLocked = initialPlatform !== undefined && initialPlatform !== "all";
 
   const clearResults = () => {
-    setResults([]);
-    setError(null);
+    dispatchSearchState({ type: "clear" });
   };
 
   useEffect(() => {
-    setPlatform(initialPlatform ?? "all");
-    setResults([]);
-    setError(null);
+    dispatchSearchState({ initialPlatform, type: "reset" });
   }, [initialPlatform]);
 
   const handlePlatformChange = (nextPlatform: SearchPlatform) => {
-    clearResults();
-    setPlatform(nextPlatform);
+    dispatchSearchState({ platform: nextPlatform, type: "platform" });
   };
 
   const handleBandcampFilterChange = (filter: "" | "t" | "a") => {
@@ -71,13 +68,11 @@ export function ExternalSearch({
         onBandcampFilterChange={handleBandcampFilterChange}
         onClearResults={clearResults}
         onError={(message) => {
-          setError(message);
-          setResults([]);
+          dispatchSearchState({ error: message, type: "error" });
         }}
         onPlatformChange={handlePlatformChange}
         onResults={(nextResults) => {
-          setResults(nextResults);
-          setError(null);
+          dispatchSearchState({ results: nextResults, type: "results" });
         }}
         onYoutubeFilterChange={handleYoutubeFilterChange}
         platform={platform}

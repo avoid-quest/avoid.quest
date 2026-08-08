@@ -32,7 +32,6 @@ jobs:
       - run: bun run check
       - run: bun run typecheck
       - name: Focused radio regressions
-        if: ${{ !cancelled() }}
         run: |
           status=0
           for test_file in \
@@ -55,16 +54,11 @@ jobs:
             timeout --foreground 30s bun test "$test_file" || status=1
           done
           exit "$status"
-      - if: ${{ !cancelled() }}
-        run: timeout --foreground 2m bun run --filter @avoid.quest/radio test
-      - if: ${{ !cancelled() }}
-        run: timeout --foreground 2m bun run test
-      - if: ${{ !cancelled() }}
-        run: timeout --foreground 8m bun run --filter @avoid.quest/radio build
-      - if: ${{ !cancelled() }}
-        run: timeout --foreground 8m bun run build
+      - run: timeout --foreground 2m bun run --filter @avoid.quest/radio test
+      - run: timeout --foreground 2m bun run test
+      - run: timeout --foreground 8m bun run --filter @avoid.quest/radio build
+      - run: timeout --foreground 8m bun run build
       - name: Report radio bundle sizes
-        if: ${{ !cancelled() }}
         run: |
           find apps/radio/dist -type f -printf "%s %p\n" 2>/dev/null |
             sort -nr |

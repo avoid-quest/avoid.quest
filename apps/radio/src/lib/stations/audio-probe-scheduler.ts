@@ -58,7 +58,12 @@ export function createAudioProbePool(
       task.state = "active";
       activeCount += 1;
       Promise.resolve()
-        .then(task.run)
+        .then(() => {
+          if (task.signal?.aborted) {
+            throw abortReason(task.signal);
+          }
+          return task.run();
+        })
         .then(task.resolve, task.reject)
         .finally(() => {
           activeCount -= 1;

@@ -112,6 +112,24 @@ describe("audio probe scheduler", () => {
     expect(nextStarted).toBe(true);
   });
 
+  test("does not invoke a probe aborted before its start microtask", async () => {
+    const controller = new AbortController();
+    const scheduler = createAudioProbePool(() => 1).forSignal(
+      controller.signal
+    );
+    let invoked = false;
+    const probe = scheduler(() => {
+      invoked = true;
+      return Promise.resolve();
+    });
+
+    controller.abort(new DOMException("Stopped", "AbortError"));
+
+    await expect(probe).rejects.toHaveProperty("name", "AbortError");
+    await flushMicrotasks();
+    expect(invoked).toBe(false);
+  });
+
   test("releases a slot when a probe throws synchronously", async () => {
     const scheduler = createAudioProbeScheduler(1);
 

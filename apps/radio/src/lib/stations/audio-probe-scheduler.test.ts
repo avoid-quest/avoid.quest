@@ -74,7 +74,7 @@ describe("audio probe scheduler", () => {
     const canceledController = new AbortController();
     const canceledClient = pool.forSignal(canceledController.signal);
     const survivingClient = pool.forSignal();
-    let release = () => undefined;
+    let release: () => void = () => undefined;
     const first = blocker(
       () =>
         new Promise<void>((resolve) => {
@@ -97,7 +97,7 @@ describe("audio probe scheduler", () => {
     const pool = createAudioProbePool(() => 1);
     const activeClient = pool.forSignal(controller.signal);
     const nextClient = pool.forSignal();
-    let release = () => undefined;
+    let release: () => void = () => undefined;
     let nextStarted = false;
     const active = activeClient(
       () =>

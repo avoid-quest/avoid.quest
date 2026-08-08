@@ -167,7 +167,10 @@ describe("filterPlayableRadioBrowserStations", () => {
     );
     const result = filterPlayableRadioBrowserStations([station("one")], {
       fetchImpl,
-      scheduleProbe: createAudioProbeScheduler(),
+      scheduleProbe: createAudioProbeScheduler(
+        MAX_CONCURRENT_AUDIO_PROBES,
+        controller.signal
+      ),
       signal: controller.signal,
     });
 

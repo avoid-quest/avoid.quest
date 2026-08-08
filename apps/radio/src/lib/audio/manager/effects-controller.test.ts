@@ -68,7 +68,10 @@ function sound(soundId: string, filter: TestAudioNode): SoundInstance {
 function createRuntime() {
   return {
     cleanup: mock(() => undefined),
-    connectSidechainSource: mock(() => Promise.resolve(true)),
+    connectSidechainSource: mock(
+      (_soundId: string, _source: AudioNode, _generation: number) =>
+        Promise.resolve(true)
+    ),
     connectSound: mock(
       (
         _soundId: string,
@@ -157,6 +160,51 @@ describe("EffectsController lifecycle", () => {
       expect.any(Number)
     );
     expect(runtime.setSidechainTarget).toHaveBeenCalledWith("target", "source");
+  });
+
+  test("releases a dry sidechain source when its official target is cleaned up", async () => {
+    const context = getAudioContext();
+    const sourceFilter = new TestAudioNode(context);
+    const targetFilter = new TestAudioNode(context);
+    const runtime = createRuntime();
+    const controller = new EffectsController({
+      createOfficialRuntime: () => runtime,
+      createWorkletManager: (audioContext) => createManager(audioContext),
+      notifyListeners: () => undefined,
+      sounds: new Map([
+        ["source", sound("source", sourceFilter)],
+        ["target", sound("target", targetFilter)],
+      ]),
+      workletProcessorUrl: () => "/worklet.js",
+    });
+    const destination = new TestAudioNode(context);
+    await controller.connectGraph(
+      "source",
+      sourceFilter as unknown as AudioNode,
+      destination as unknown as AudioNode
+    );
+    const compressor = createDefaultEffectConfig("compressor", "compressor", 0);
+    compressor.enabled = true;
+    compressor.sidechain = { channelId: "source-channel" };
+    controller.add("target", compressor);
+    controller.setSidechain("target", "source");
+    await controller.connectGraph(
+      "target",
+      targetFilter as unknown as AudioNode,
+      destination as unknown as AudioNode
+    );
+    runtime.deleteSound.mockClear();
+
+    controller.cleanupSound("target");
+
+    expect(runtime.deleteSound).toHaveBeenCalledWith(
+      "target",
+      expect.any(Number)
+    );
+    expect(runtime.deleteSound).toHaveBeenCalledWith(
+      "source",
+      expect.any(Number)
+    );
   });
 
   test("re-registers a dry official sidechain after source graph reconstruction", async () => {

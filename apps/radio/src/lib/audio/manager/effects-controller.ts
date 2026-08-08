@@ -26,19 +26,13 @@ import {
 } from "./audio-manager-effects.js";
 import { attachWorkletManagerListeners } from "./audio-manager-graph.js";
 import type { SoundInstance } from "./audio-manager-types.js";
+import {
+  type EffectsBackend,
+  EffectsBackendRouter,
+} from "./effects-backend-router.js";
 import type { EffectsGraphRuntime } from "./effects-graph-runtime.js";
 import { OfficialOpenDawRuntime } from "./official-opendaw-runtime.js";
 
-type EffectsBackend = "bypass" | "compatibility" | "muted" | "official";
-type GraphConnection = {
-  backend: EffectsBackend;
-  bypassGain: GainNode;
-  compatibilityGain: GainNode;
-  destination: AudioNode;
-  officialGain: GainNode;
-  source: AudioNode;
-  switchGeneration: number;
-};
 type SidechainConnection = { source: AudioNode; target: AudioNode };
 
 type SoundEffectsState = {
@@ -47,7 +41,7 @@ type SoundEffectsState = {
   dryWet: number;
   effects: EffectConfig[];
   generation: number;
-  graph: GraphConnection | null;
+  graph: EffectsBackendRouter | null;
   manager: WorkletManager | null;
   managerPromise: Promise<WorkletManager> | null;
   officialConnected: boolean;
@@ -66,9 +60,6 @@ type EffectsControllerOptions = {
   ) => WorkletManager;
 };
 
-const BACKEND_SWITCH_SECONDS = 0.03;
-const BACKEND_RELEASE_DELAY_MS = 40;
-
 const createSoundState = (): SoundEffectsState => ({
   compatibilitySourceCreated: false,
   desiredSidechainSoundId: null,
@@ -82,32 +73,6 @@ const createSoundState = (): SoundEffectsState => ({
   officialConnectingGeneration: null,
   sidechain: null,
 });
-
-function setGainTarget(gain: GainNode, value: number, endTime: number): void {
-  const parameter = gain.gain;
-  const now = gain.context.currentTime;
-  try {
-    parameter.cancelScheduledValues(now);
-    parameter.setValueAtTime(parameter.value, now);
-    parameter.linearRampToValueAtTime(value, endTime);
-  } catch {
-    // Minimal Web Audio implementations used by older browsers and tests may
-    // not expose the full automation API. A direct assignment is still safe.
-    parameter.value = value;
-  }
-}
-
-function disconnectNode(source: AudioNode, destination?: AudioNode): void {
-  try {
-    if (destination) {
-      source.disconnect(destination);
-    } else {
-      source.disconnect();
-    }
-  } catch {
-    // The edge may already have been removed by a concurrent generation.
-  }
-}
 
 class EffectsController {
   private officialRuntime: EffectsGraphRuntime | null = null;
@@ -413,33 +378,12 @@ class EffectsController {
     destination: AudioNode
   ): Promise<boolean> {
     const state = this.getState(soundId);
-    this.disconnectGraph(state);
+    this.disconnectGraph(soundId, state);
 
-    const context = source.context as AudioContext;
-    const bypassGain = context.createGain();
-    const compatibilityGain = context.createGain();
-    const officialGain = context.createGain();
     const shouldProcess = this.shouldProcess(state);
     // Keep effectful sources silent while their requested backend prepares,
     // but make the dry path available synchronously for the mobile play call.
-    bypassGain.gain.value = shouldProcess ? 0 : 1;
-    compatibilityGain.gain.value = 0;
-    officialGain.gain.value = 0;
-
-    source.connect(bypassGain);
-    bypassGain.connect(destination);
-    compatibilityGain.connect(destination);
-    officialGain.connect(destination);
-
-    state.graph = {
-      backend: shouldProcess ? "muted" : "bypass",
-      bypassGain,
-      compatibilityGain,
-      destination,
-      officialGain,
-      source,
-      switchGeneration: 0,
-    };
+    state.graph = new EffectsBackendRouter(source, destination, shouldProcess);
     const generation = this.advance(state);
     // A source can be replaced independently of the compatibility effect that
     // consumes it as a sidechain. Rebind existing intents to the new native
@@ -552,11 +496,14 @@ class EffectsController {
     }
     this.advance(state);
     this.disconnectCompatibilitySidechain(state);
-    this.disconnectGraph(state);
+    this.disconnectGraph(soundId, state);
+    if (state.officialConnectingGeneration !== null) {
+      this.deleteOfficialSound(soundId);
+      state.officialConnectingGeneration = null;
+    }
     state.managerPromise = null;
     state.manager?.cleanup();
     state.manager = null;
-    this.deleteOfficialSound(soundId);
     this.states.delete(soundId);
 
     for (const other of this.states.values()) {
@@ -564,16 +511,20 @@ class EffectsController {
         this.bindCompatibilitySidechain(other);
       }
     }
+    this.pruneOfficialSidechainSources();
   }
 
   cleanup(): void {
     for (const [soundId, state] of this.states) {
       this.advance(state);
       this.disconnectCompatibilitySidechain(state);
-      this.disconnectGraph(state);
+      this.disconnectGraph(soundId, state);
+      if (state.officialConnectingGeneration !== null) {
+        this.deleteOfficialSound(soundId);
+        state.officialConnectingGeneration = null;
+      }
       state.managerPromise = null;
       state.manager?.cleanup();
-      this.deleteOfficialSound(soundId);
     }
     this.states.clear();
     this.officialRegisteredSoundIds.clear();
@@ -611,7 +562,7 @@ class EffectsController {
     soundId: string,
     state: SoundEffectsState,
     generation: number,
-    graph: GraphConnection,
+    graph: EffectsBackendRouter,
     runtime: EffectsGraphRuntime,
     runtimeGeneration: number
   ): boolean {
@@ -879,10 +830,7 @@ class EffectsController {
     if (!(graph && manager?.node && manager.outputNode)) {
       return;
     }
-    disconnectNode(graph.source, manager.node);
-    disconnectNode(manager.outputNode, graph.compatibilityGain);
-    graph.source.connect(manager.node);
-    manager.outputNode.connect(graph.compatibilityGain);
+    graph.connectCompatibility(manager.node, manager.outputNode);
   }
 
   private disconnectCompatibilityGraph(state: SoundEffectsState): void {
@@ -890,22 +838,22 @@ class EffectsController {
     if (!(graph && manager?.node && manager.outputNode)) {
       return;
     }
-    disconnectNode(graph.source, manager.node);
-    disconnectNode(manager.outputNode, graph.compatibilityGain);
+    graph.disconnectCompatibility(manager.node, manager.outputNode);
   }
 
-  private disconnectGraph(state: SoundEffectsState): void {
+  private disconnectGraph(soundId: string, state: SoundEffectsState): void {
     const graph = state.graph;
     if (!graph) {
       return;
     }
-    graph.switchGeneration++;
-    disconnectNode(graph.source, graph.bypassGain);
     this.disconnectCompatibilityGraph(state);
-    disconnectNode(graph.bypassGain);
-    disconnectNode(graph.compatibilityGain);
-    disconnectNode(graph.officialGain);
+    graph.disconnect();
     state.graph = null;
+    if (this.officialRegisteredSoundIds.has(soundId)) {
+      this.deleteOfficialSound(soundId);
+      state.officialConnected = false;
+      this.pruneOfficialSidechainSources();
+    }
   }
 
   private releaseCompatibilityRuntime(state: SoundEffectsState): void {
@@ -928,27 +876,8 @@ class EffectsController {
       return;
     }
 
-    const previous = graph.backend;
-    graph.backend = backend;
-    const switchGeneration = ++graph.switchGeneration;
-    const endTime = graph.source.context.currentTime + BACKEND_SWITCH_SECONDS;
-    setGainTarget(graph.bypassGain, backend === "bypass" ? 1 : 0, endTime);
-    setGainTarget(
-      graph.compatibilityGain,
-      backend === "compatibility" ? 1 : 0,
-      endTime
-    );
-    setGainTarget(graph.officialGain, backend === "official" ? 1 : 0, endTime);
-
-    if (previous === backend) {
-      return;
-    }
-    globalThis.setTimeout(() => {
-      if (
-        state.graph !== graph ||
-        state.generation !== generation ||
-        graph.switchGeneration !== switchGeneration
-      ) {
+    graph.switchTo(backend, () => {
+      if (state.graph !== graph || state.generation !== generation) {
         return;
       }
       if (backend !== "compatibility" && backend !== "muted" && state.manager) {
@@ -969,7 +898,7 @@ class EffectsController {
             )
         );
       }
-    }, BACKEND_RELEASE_DELAY_MS);
+    });
   }
 
   private refreshRuntimeSelection(soundId: string): void {

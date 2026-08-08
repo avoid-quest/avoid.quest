@@ -133,7 +133,9 @@ function installGlobals(
     }
 
     connect(destination: FakeAudioNode): FakeAudioNode {
-      records.connections.push(`${this.name} -> ${destination.name}`);
+      const connection = `${this.name} -> ${destination.name}`;
+      records.connections.push(connection);
+      records.events.push(`connect:${connection}`);
       return destination;
     }
 

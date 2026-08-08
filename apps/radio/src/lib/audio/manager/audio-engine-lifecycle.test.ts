@@ -50,7 +50,18 @@ describe("audio engine lifecycle", () => {
     expect(connectedNodePairs).toContain("media-source -> gain");
     expect(connectedNodePairs).toContain("gain -> stereo-panner");
     expect(connectedNodePairs).toContain("stereo-panner -> biquad");
-    expect(connectedNodePairs).toContain("biquad -> gain");
+    expect(connectedNodePairs).toContain("biquad -> worklet-gain");
+    expect(connectedNodePairs).toContain("worklet-gain -> gain");
+    const playIndex = events.indexOf("media-play");
+    for (const connection of [
+      "connect:media-source -> gain",
+      "connect:gain -> stereo-panner",
+      "connect:stereo-panner -> biquad",
+      "connect:biquad -> worklet-gain",
+      "connect:worklet-gain -> gain",
+    ]) {
+      expect(events.indexOf(connection)).toBeLessThan(playIndex);
+    }
     expect(workletMessageTypes).toEqual([]);
     expect(states).toContainEqual(
       expect.objectContaining({
@@ -223,10 +234,13 @@ describe("audio engine lifecycle", () => {
     };
 
     const soundId = manager.createSound(radio, "sound-lifecycle");
-    manager.addEffect(
-      soundId,
-      createDefaultEffectConfig("pitchShifter", "pitch-1", 0)
+    const pitchShifter = createDefaultEffectConfig(
+      "pitchShifter",
+      "pitch-1",
+      0
     );
+    pitchShifter.enabled = true;
+    manager.addEffect(soundId, pitchShifter);
     const unsubscribe = manager.subscribe(soundId, (state) => {
       states.push(state);
     });

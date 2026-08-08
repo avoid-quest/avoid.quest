@@ -587,6 +587,11 @@ describe("OfficialOpenDawRuntime", () => {
     expect(await oldConnection).toBe(false);
     expect(await newConnection).toBe(true);
     expect(registered).toHaveLength(registrationCount + 1);
+    const unregisterCount = unregistered.length;
+    replacementRuntime.disconnectSound("replacement", 1);
+    replacementRuntime.deleteSound("replacement", 1);
+    expect(replacementRuntime.soundCount).toBe(1);
+    expect(unregistered).toHaveLength(unregisterCount);
     replacementRuntime.deleteSound("replacement", 3);
     replacementRuntime.deleteSound("replacement", 4);
     expect(deletedUnitCount).toBe(1);

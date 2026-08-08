@@ -353,10 +353,11 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     soundId: string,
     generation = (this.connectionGenerations.get(soundId) ?? 0) + 1
   ): void {
-    this.connectionGenerations.set(
-      soundId,
-      Math.max(generation, this.connectionGenerations.get(soundId) ?? 0)
-    );
+    const current = this.connectionGenerations.get(soundId) ?? 0;
+    if (generation < current) {
+      return;
+    }
+    this.connectionGenerations.set(soundId, Math.max(generation, current + 1));
     this.disconnectSoundUnit(soundId);
   }
 
@@ -376,10 +377,11 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     soundId: string,
     generation = (this.connectionGenerations.get(soundId) ?? 0) + 1
   ): void {
-    this.connectionGenerations.set(
-      soundId,
-      Math.max(generation, (this.connectionGenerations.get(soundId) ?? 0) + 1)
-    );
+    const current = this.connectionGenerations.get(soundId) ?? 0;
+    if (generation < current) {
+      return;
+    }
+    this.connectionGenerations.set(soundId, Math.max(generation, current + 1));
     const unit = this.soundUnits.get(soundId);
     if (!unit) {
       return;

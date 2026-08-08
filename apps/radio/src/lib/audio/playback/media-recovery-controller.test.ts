@@ -19,21 +19,20 @@ describe("MediaRecoveryController", () => {
 
   test("preserves the absolute stall epoch across watchdog and retry phases", () => {
     jest.useFakeTimers();
-    jest.setSystemTime(1000);
     const recovery = new MediaRecoveryController();
     const watchdog = mock(() => undefined);
     const retry = mock(() => undefined);
-    recovery.noteStall(new Error("waiting"));
+    recovery.noteStall(new Error("waiting"), 1000);
     expect(recovery.scheduleWatchdog(6000, watchdog)).toBe(true);
 
     jest.advanceTimersByTime(6000);
     expect(watchdog).toHaveBeenCalledTimes(1);
-    recovery.noteStall(new Error("still waiting"));
-    expect(recovery.stalledDuration()).toBe(6000);
+    recovery.noteStall(new Error("still waiting"), 7000);
+    expect(recovery.stalledDuration(7000)).toBe(6000);
     expect(recovery.scheduleRetry(retry)).toBe(true);
     jest.advanceTimersByTime(0);
     expect(retry).toHaveBeenCalledTimes(1);
-    expect(recovery.stalledDuration()).toBe(6000);
+    expect(recovery.stalledDuration(7000)).toBe(6000);
 
     recovery.markRecovered();
     expect(recovery.error).toBeNull();

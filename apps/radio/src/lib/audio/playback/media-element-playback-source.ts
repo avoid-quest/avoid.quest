@@ -541,7 +541,9 @@ export class MediaElementPlaybackSource implements PlaybackSource {
       });
 
       hls.on(Hls.Events.ERROR, (_event, data) => {
-        if (!(data.fatal && this.isCurrentLoad(generation, loadController))) {
+        if (
+          !(data.fatal && this.isCurrentAttachment(generation, loadController))
+        ) {
           return;
         }
 
@@ -639,7 +641,7 @@ export class MediaElementPlaybackSource implements PlaybackSource {
       this.ignoredPauseEvents += 1;
     }
     this.revokePendingMediaSourceObjectUrl();
-    if (!options.preservePlaybackIntent) {
+    if (!(options.preservePlaybackIntent || this.audio.paused)) {
       this.audio.pause();
     }
     this.destroyHls();
@@ -692,6 +694,13 @@ export class MediaElementPlaybackSource implements PlaybackSource {
       this.loadAbortController === controller &&
       !controller.signal.aborted
     );
+  }
+
+  private isCurrentAttachment(
+    generation: number,
+    controller: AbortController
+  ): boolean {
+    return generation === this.generation && !controller.signal.aborted;
   }
 
   private handlePlaybackFailure(error: Error): void {

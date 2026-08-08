@@ -1,6 +1,9 @@
 import { describe, expect, mock, test } from "bun:test";
 import type { RadioBrowserStation } from "@avoid.quest/platforms/radiobrowser";
-import { MAX_CONCURRENT_AUDIO_PROBES } from "./audio-probe-scheduler.js";
+import {
+  createAudioProbeScheduler,
+  MAX_CONCURRENT_AUDIO_PROBES,
+} from "./audio-probe-scheduler.js";
 import {
   filterPlayableRadioBrowserStations,
   RADIO_BROWSER_RESULT_LIMIT,
@@ -46,7 +49,10 @@ describe("filterPlayableRadioBrowserStations", () => {
     );
 
     await expect(
-      filterPlayableRadioBrowserStations([station("one")], { fetchImpl })
+      filterPlayableRadioBrowserStations([station("one")], {
+        fetchImpl,
+        scheduleProbe: createAudioProbeScheduler(),
+      })
     ).resolves.toEqual([station("one")]);
 
     const init = fetchImpl.mock.calls[0]?.[1];
@@ -77,7 +83,10 @@ describe("filterPlayableRadioBrowserStations", () => {
     ];
 
     await expect(
-      filterPlayableRadioBrowserStations(stations, { fetchImpl })
+      filterPlayableRadioBrowserStations(stations, {
+        fetchImpl,
+        scheduleProbe: createAudioProbeScheduler(),
+      })
     ).resolves.toEqual([stations[0], stations[3]]);
     expect(fetchImpl).toHaveBeenCalledTimes(3);
   });
@@ -91,6 +100,7 @@ describe("filterPlayableRadioBrowserStations", () => {
 
     const results = await filterPlayableRadioBrowserStations(stations, {
       fetchImpl,
+      scheduleProbe: createAudioProbeScheduler(),
     });
 
     expect(results).toEqual(stations.slice(0, RADIO_BROWSER_RESULT_LIMIT));
@@ -110,7 +120,7 @@ describe("filterPlayableRadioBrowserStations", () => {
     });
     const result = filterPlayableRadioBrowserStations(
       Array.from({ length: 5 }, (_, index) => station(String(index))),
-      { fetchImpl }
+      { fetchImpl, scheduleProbe: createAudioProbeScheduler() }
     );
     let settled = false;
     result.finally(() => {
@@ -147,6 +157,7 @@ describe("filterPlayableRadioBrowserStations", () => {
     );
     const result = filterPlayableRadioBrowserStations([station("one")], {
       fetchImpl,
+      scheduleProbe: createAudioProbeScheduler(),
       signal: controller.signal,
     });
 
@@ -170,6 +181,7 @@ describe("filterPlayableRadioBrowserStations", () => {
     await expect(
       filterPlayableRadioBrowserStations([station("slow")], {
         fetchImpl,
+        scheduleProbe: createAudioProbeScheduler(),
         timeoutMs: 1,
       })
     ).resolves.toEqual([]);

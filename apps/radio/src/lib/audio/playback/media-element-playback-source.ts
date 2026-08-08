@@ -1,4 +1,5 @@
 import { createValidatedHlsFetchSetup } from "./hls-request.js";
+import { MediaRecoveryController } from "./media-recovery-controller.js";
 import type {
   PlaybackInput,
   PlaybackSource,
@@ -11,7 +12,6 @@ import type { StreamStatus } from "./types.js";
 const MEDIA_READY_TIMEOUT_MS = 20_000;
 const NO_PROGRESS_WATCHDOG_MS = 6000;
 const MAX_FETCH_WITHOUT_MEDIA_PROGRESS_MS = NO_PROGRESS_WATCHDOG_MS * 2;
-const MAX_RECONNECT_DELAY_MS = 30_000;
 const MIN_MEDIA_TIME_PROGRESS_SECONDS = 0.1;
 type HlsConstructor = typeof import("hls.js").default;
 type HlsInstance = InstanceType<HlsConstructor>;
@@ -63,21 +63,17 @@ export class MediaElementPlaybackSource implements PlaybackSource {
   private _status: StreamStatus = "idle";
   private _isBuffering = false;
   private generation = 0;
-  private mediaLoadAttempt = 0;
   private playbackIntent = 0;
   private playbackRate = 1;
   private shouldResumeAfterLoad = false;
   private currentLoadPromise: Promise<void> | null = null;
+  private loadAbortController: AbortController | null = null;
   private currentInput: PlaybackInput | null = null;
   private pendingMediaSourceObjectUrl: string | null = null;
   private isLoadingPhase = false;
-  private suppressPauseCallback = false;
-  private reconnectAttempt = 0;
-  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-  private noProgressTimer: ReturnType<typeof setTimeout> | null = null;
+  private ignoredPauseEvents = 0;
+  private readonly recovery = new MediaRecoveryController();
   private progressEpoch = 0;
-  private noMediaProgressSince: number | null = null;
-  private pendingRecoveryError: Error | null = null;
   private hlsMediaRecoveryAttempt = 0;
   private recoveryLoadActive = false;
 
@@ -243,11 +239,10 @@ export class MediaElementPlaybackSource implements PlaybackSource {
     this.cancelPendingPlaybackIntent();
     this.cancelRecovery();
     this._status = "buffering";
-    this.suppressPauseCallback = true;
+    if (!this.audio.paused) {
+      this.ignoredPauseEvents += 1;
+    }
     this.audio.pause();
-    queueMicrotask(() => {
-      this.suppressPauseCallback = false;
-    });
     this.callbacks.onPaused?.();
   }
 
@@ -367,136 +362,142 @@ export class MediaElementPlaybackSource implements PlaybackSource {
     credentials: RequestCredentials | undefined,
     allowNativeHls: boolean
   ): Promise<void> {
-    await new Promise<void>((resolve, reject) => {
-      let settled = false;
-      let timeoutId: ReturnType<typeof setTimeout> | null = null;
-      let sourceAttached = false;
-      let mediaLoadAttempt = 0;
+    this.loadAbortController?.abort();
+    const loadController = new AbortController();
+    this.loadAbortController = loadController;
+    try {
+      await new Promise<void>((resolve, reject) => {
+        let settled = false;
+        let timeoutId: ReturnType<typeof setTimeout> | null = null;
+        let sourceAttached = false;
 
-      const cleanup = () => {
-        this.audio.removeEventListener("canplay", handleReady);
-        this.audio.removeEventListener("error", handleError);
-        this.audio.removeEventListener("abort", handleAbort);
-        if (timeoutId !== null) {
-          clearTimeout(timeoutId);
-          timeoutId = null;
-        }
-      };
+        const cleanup = () => {
+          this.audio.removeEventListener("canplay", handleReady);
+          this.audio.removeEventListener("error", handleError);
+          this.audio.removeEventListener("abort", handleAbort);
+          loadController.signal.removeEventListener("abort", handleAbort);
+          if (timeoutId !== null) {
+            clearTimeout(timeoutId);
+            timeoutId = null;
+          }
+        };
 
-      const finish = (fn: () => void) => {
-        if (settled) {
-          return;
-        }
-        settled = true;
-        cleanup();
-        fn();
-      };
+        const finish = (fn: () => void) => {
+          if (settled) {
+            return;
+          }
+          settled = true;
+          cleanup();
+          fn();
+        };
 
-      const handleReady = () => {
-        if (
-          !sourceAttached ||
-          this.audio.readyState < HTMLMediaElement.HAVE_FUTURE_DATA
-        ) {
-          return;
-        }
-        if (
-          generation !== this.generation ||
-          mediaLoadAttempt !== this.mediaLoadAttempt
-        ) {
-          finish(() => {
-            reject(new Error("Stale media playback generation"));
-          });
-          return;
-        }
-
-        finish(() => {
-          this._status = this.audio.paused ? "buffering" : "streaming";
-          this.setBuffering(false);
-          this.callbacks.onReady?.();
-          resolve();
-        });
-      };
-
-      const handleError = () => {
-        finish(() => {
-          reject(createMediaError(this.audio));
-        });
-      };
-
-      const handleAbort = () => {
-        finish(() => {
-          reject(new DOMException("Load aborted", "AbortError"));
-        });
-      };
-
-      const handleTimeout = () => {
-        finish(() => {
-          reject(
-            new Error(
-              `Audio stream timed out after ${MEDIA_READY_TIMEOUT_MS}ms`
-            )
-          );
-        });
-      };
-
-      this.audio.addEventListener("canplay", handleReady, { once: true });
-      this.audio.addEventListener("error", handleError, { once: true });
-      this.audio.addEventListener("abort", handleAbort, { once: true });
-
-      mediaLoadAttempt = ++this.mediaLoadAttempt;
-      const sourceAttachmentPromise = this.loadIntoMediaElement(
-        url,
-        treatAsHls,
-        generation,
-        mediaLoadAttempt,
-        credentials,
-        allowNativeHls,
-        (error) => {
-          finish(() => {
-            reject(error);
-          });
-        }
-      );
-      sourceAttachmentPromise.then(
-        () => {
+        const handleReady = () => {
           if (
-            generation !== this.generation ||
-            mediaLoadAttempt !== this.mediaLoadAttempt
+            !sourceAttached ||
+            this.audio.readyState < HTMLMediaElement.HAVE_FUTURE_DATA
           ) {
+            return;
+          }
+          if (!this.isCurrentLoad(generation, loadController)) {
             finish(() => {
-              reject(new DOMException("Load aborted", "AbortError"));
+              reject(new Error("Stale media playback generation"));
             });
             return;
           }
 
-          sourceAttached = true;
-          // The readiness clock intentionally begins after the HLS runtime and
-          // source attachment have completed.
-          timeoutId = setTimeout(handleTimeout, MEDIA_READY_TIMEOUT_MS);
-          handleReady();
-        },
-        (error: unknown) => {
+          finish(() => {
+            this._status = this.audio.paused ? "buffering" : "streaming";
+            this.setBuffering(false);
+            this.callbacks.onReady?.();
+            resolve();
+          });
+        };
+
+        const handleError = () => {
+          finish(() => {
+            reject(createMediaError(this.audio));
+          });
+        };
+
+        const handleAbort = () => {
+          finish(() => {
+            reject(new DOMException("Load aborted", "AbortError"));
+          });
+        };
+
+        const handleTimeout = () => {
           finish(() => {
             reject(
-              error instanceof Error
-                ? error
-                : new Error("Audio playback failed")
+              new Error(
+                `Audio stream timed out after ${MEDIA_READY_TIMEOUT_MS}ms`
+              )
             );
           });
-        }
-      );
-    });
+        };
+
+        this.audio.addEventListener("canplay", handleReady, { once: true });
+        this.audio.addEventListener("error", handleError, { once: true });
+        this.audio.addEventListener("abort", handleAbort, { once: true });
+        loadController.signal.addEventListener("abort", handleAbort, {
+          once: true,
+        });
+
+        const sourceAttachmentPromise = this.loadIntoMediaElement(
+          url,
+          treatAsHls,
+          generation,
+          loadController,
+          credentials,
+          allowNativeHls,
+          (error) => {
+            finish(() => {
+              reject(error);
+            });
+          }
+        );
+        sourceAttachmentPromise.then(
+          () => {
+            if (!this.isCurrentLoad(generation, loadController)) {
+              finish(() => {
+                reject(new DOMException("Load aborted", "AbortError"));
+              });
+              return;
+            }
+
+            sourceAttached = true;
+            // The readiness clock intentionally begins after the HLS runtime and
+            // source attachment have completed.
+            timeoutId = setTimeout(handleTimeout, MEDIA_READY_TIMEOUT_MS);
+            handleReady();
+          },
+          (error: unknown) => {
+            finish(() => {
+              reject(
+                error instanceof Error
+                  ? error
+                  : new Error("Audio playback failed")
+              );
+            });
+          }
+        );
+      });
+    } finally {
+      if (this.loadAbortController === loadController) {
+        this.loadAbortController = null;
+      }
+    }
   }
 
   private async loadIntoMediaElement(
     url: string,
     treatAsHls: boolean,
     generation: number,
-    mediaLoadAttempt: number,
+    loadController: AbortController,
     credentials: RequestCredentials | undefined,
     allowNativeHls: boolean,
     onFatalError: (error: Error) => void
   ): Promise<void> {
+    this.revokePendingMediaSourceObjectUrl();
     this.destroyHls();
 
     if (!treatAsHls) {
@@ -519,10 +520,7 @@ export class MediaElementPlaybackSource implements PlaybackSource {
 
     const mediaSource = this.attachMediaSourceForEarlyPlayback();
     const { default: Hls, FetchLoader } = await import("hls.js");
-    if (
-      generation !== this.generation ||
-      mediaLoadAttempt !== this.mediaLoadAttempt
-    ) {
+    if (!this.isCurrentLoad(generation, loadController)) {
       throw new DOMException("Load aborted", "AbortError");
     }
 
@@ -543,11 +541,7 @@ export class MediaElementPlaybackSource implements PlaybackSource {
       });
 
       hls.on(Hls.Events.ERROR, (_event, data) => {
-        if (
-          !data.fatal ||
-          generation !== this.generation ||
-          mediaLoadAttempt !== this.mediaLoadAttempt
-        ) {
+        if (!(data.fatal && this.isCurrentLoad(generation, loadController))) {
           return;
         }
 
@@ -564,7 +558,6 @@ export class MediaElementPlaybackSource implements PlaybackSource {
 
       if (mediaSource) {
         hls.attachMedia({ media: this.audio, mediaSource });
-        this.pendingMediaSourceObjectUrl = null;
       } else {
         hls.attachMedia(this.audio);
       }
@@ -642,8 +635,9 @@ export class MediaElementPlaybackSource implements PlaybackSource {
     preservePlaybackIntent?: boolean;
     resetProgress: boolean;
   }): void {
-    this.suppressPauseCallback = true;
-    this.mediaLoadAttempt += 1;
+    if (!(options.preservePlaybackIntent || this.audio.paused)) {
+      this.ignoredPauseEvents += 1;
+    }
     this.revokePendingMediaSourceObjectUrl();
     if (!options.preservePlaybackIntent) {
       this.audio.pause();
@@ -659,10 +653,6 @@ export class MediaElementPlaybackSource implements PlaybackSource {
     }
 
     this.audio.load();
-
-    queueMicrotask(() => {
-      this.suppressPauseCallback = false;
-    });
   }
 
   private cancelPendingPlaybackIntent(): void {
@@ -686,9 +676,22 @@ export class MediaElementPlaybackSource implements PlaybackSource {
 
   private cancelPendingLoad(): void {
     this.generation += 1;
+    this.loadAbortController?.abort();
+    this.loadAbortController = null;
     this.currentLoadPromise = null;
     this.isLoadingPhase = false;
     this.recoveryLoadActive = false;
+  }
+
+  private isCurrentLoad(
+    generation: number,
+    controller: AbortController
+  ): boolean {
+    return (
+      generation === this.generation &&
+      this.loadAbortController === controller &&
+      !controller.signal.aborted
+    );
   }
 
   private handlePlaybackFailure(error: Error): void {
@@ -711,7 +714,7 @@ export class MediaElementPlaybackSource implements PlaybackSource {
   }
 
   private reportTerminalError(error: Error): void {
-    this.clearRecoveryTimers();
+    this.recovery.cancel();
     this._status = "error";
     this.setBuffering(false);
     this.callbacks.onError?.(error);
@@ -722,14 +725,13 @@ export class MediaElementPlaybackSource implements PlaybackSource {
       return;
     }
 
-    this.pendingRecoveryError = error;
-    this.noMediaProgressSince ??= Date.now();
+    this.recovery.noteStall(error);
     if (markBuffering) {
       this._status = "buffering";
       this.setBuffering(true);
     }
 
-    if (this.isOffline() || this.noProgressTimer !== null) {
+    if (this.isOffline() || this.recovery.hasTimer) {
       return;
     }
 
@@ -737,8 +739,7 @@ export class MediaElementPlaybackSource implements PlaybackSource {
     const observedTime = this.audio.currentTime;
     const observedProgressEpoch = this.progressEpoch;
     const observedReadyState = this.audio.readyState;
-    this.noProgressTimer = setTimeout(() => {
-      this.noProgressTimer = null;
+    this.recovery.scheduleWatchdog(NO_PROGRESS_WATCHDOG_MS, () => {
       if (
         generation !== this.generation ||
         !this.shouldResumeAfterLoad ||
@@ -752,11 +753,7 @@ export class MediaElementPlaybackSource implements PlaybackSource {
         Number.isFinite(currentTime) &&
         currentTime >= observedTime + MIN_MEDIA_TIME_PROGRESS_SECONDS
       ) {
-        this.pendingRecoveryError = null;
-        this.noMediaProgressSince = null;
-        this.reconnectAttempt = 0;
-        this._status = "streaming";
-        this.setBuffering(false);
+        this.markRecoveryProgress();
         return;
       }
 
@@ -766,8 +763,7 @@ export class MediaElementPlaybackSource implements PlaybackSource {
       if (
         (this.progressEpoch !== observedProgressEpoch ||
           this.audio.readyState > observedReadyState) &&
-        Date.now() - (this.noMediaProgressSince ?? Date.now()) <
-          MAX_FETCH_WITHOUT_MEDIA_PROGRESS_MS
+        this.recovery.stalledDuration() < MAX_FETCH_WITHOUT_MEDIA_PROGRESS_MS
       ) {
         if (this.audio.paused) {
           this.audio.play().catch(() => {
@@ -778,8 +774,8 @@ export class MediaElementPlaybackSource implements PlaybackSource {
         return;
       }
 
-      this.scheduleReconnect(error, generation);
-    }, NO_PROGRESS_WATCHDOG_MS);
+      this.scheduleReconnect(this.recovery.error ?? error, generation);
+    });
   }
 
   private scheduleReconnect(error: Error, generation: number): void {
@@ -791,22 +787,12 @@ export class MediaElementPlaybackSource implements PlaybackSource {
       return;
     }
 
-    this.pendingRecoveryError = error;
-    this.clearNoProgressTimer();
-    if (this.isOffline() || this.reconnectTimer !== null) {
+    this.recovery.noteStall(error);
+    if (this.isOffline() || this.recovery.hasTimer) {
       return;
     }
 
-    const delay =
-      this.reconnectAttempt === 0
-        ? 0
-        : Math.min(
-            1000 * 2 ** Math.min(this.reconnectAttempt - 1, 10),
-            MAX_RECONNECT_DELAY_MS
-          );
-    this.reconnectAttempt += 1;
-    this.reconnectTimer = setTimeout(() => {
-      this.reconnectTimer = null;
+    this.recovery.scheduleRetry(() => {
       this.recoverCurrentSource(generation).catch((recoveryError: unknown) => {
         this.handlePlaybackFailure(
           recoveryError instanceof Error
@@ -814,7 +800,7 @@ export class MediaElementPlaybackSource implements PlaybackSource {
             : new Error("Audio stream recovery failed")
         );
       });
-    }, delay);
+    });
   }
 
   private async recoverCurrentSource(generation: number): Promise<void> {
@@ -864,29 +850,18 @@ export class MediaElementPlaybackSource implements PlaybackSource {
 
   private cancelRecovery(): void {
     if (this.recoveryLoadActive) {
-      this.mediaLoadAttempt += 1;
+      this.loadAbortController?.abort();
     }
-    this.clearRecoveryTimers();
-    this.reconnectAttempt = 0;
-    this.pendingRecoveryError = null;
-    this.noMediaProgressSince = null;
+    this.recovery.cancel();
     this.hlsMediaRecoveryAttempt = 0;
     this.recoveryLoadActive = false;
   }
 
-  private clearRecoveryTimers(): void {
-    this.clearNoProgressTimer();
-    if (this.reconnectTimer !== null) {
-      clearTimeout(this.reconnectTimer);
-      this.reconnectTimer = null;
-    }
-  }
-
-  private clearNoProgressTimer(): void {
-    if (this.noProgressTimer !== null) {
-      clearTimeout(this.noProgressTimer);
-      this.noProgressTimer = null;
-    }
+  private markRecoveryProgress(): void {
+    this.recovery.markRecovered();
+    this.hlsMediaRecoveryAttempt = 0;
+    this._status = "streaming";
+    this.setBuffering(false);
   }
 
   private isOffline(): boolean {
@@ -933,14 +908,16 @@ export class MediaElementPlaybackSource implements PlaybackSource {
   }
 
   private readonly handlePlaying = (): void => {
-    this.clearRecoveryTimers();
-    this.pendingRecoveryError = null;
-    this.noMediaProgressSince = null;
-    this.reconnectAttempt = 0;
-    this.hlsMediaRecoveryAttempt = 0;
+    if (!(this.shouldResumeAfterLoad && this.currentInput)) {
+      return;
+    }
     this._status = "streaming";
     this.setBuffering(false);
     this.callbacks.onPlaying?.();
+    const recoveryError = this.recovery.error;
+    if (recoveryError) {
+      this.beginRecoveryWatchdog(recoveryError, false);
+    }
   };
 
   private readonly handleWaiting = (): void => {
@@ -993,11 +970,11 @@ export class MediaElementPlaybackSource implements PlaybackSource {
   };
 
   private readonly handlePause = (): void => {
-    if (
-      this.suppressPauseCallback ||
-      this.recoveryLoadActive ||
-      this.audio.ended
-    ) {
+    if (this.ignoredPauseEvents > 0) {
+      this.ignoredPauseEvents -= 1;
+      return;
+    }
+    if (this.isLoadingPhase || this.recoveryLoadActive || this.audio.ended) {
       return;
     }
 
@@ -1005,6 +982,9 @@ export class MediaElementPlaybackSource implements PlaybackSource {
   };
 
   private readonly handleEnded = (): void => {
+    if (this.isLoadingPhase || this.recoveryLoadActive || !this.audio.ended) {
+      return;
+    }
     this.shouldResumeAfterLoad = false;
     this.cancelRecovery();
     this._status = "ended";
@@ -1026,8 +1006,10 @@ export class MediaElementPlaybackSource implements PlaybackSource {
       return;
     }
 
-    this.pendingRecoveryError ??= new Error("Network connection is offline");
-    this.clearRecoveryTimers();
+    if (!this.recovery.error) {
+      this.recovery.noteStall(new Error("Network connection is offline"));
+    }
+    this.recovery.suspend();
     if (
       this.audio.paused ||
       this.audio.readyState < HTMLMediaElement.HAVE_FUTURE_DATA
@@ -1046,7 +1028,7 @@ export class MediaElementPlaybackSource implements PlaybackSource {
     // progress watchdog and preserve buffered playback; only reload if the
     // media clock remains frozen through the watchdog window.
     this.beginRecoveryWatchdog(
-      this.pendingRecoveryError ?? new Error("Network connection restored"),
+      this.recovery.error ?? new Error("Network connection restored"),
       this._isBuffering
     );
   };

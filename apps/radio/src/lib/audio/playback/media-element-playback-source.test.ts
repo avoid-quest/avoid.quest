@@ -41,6 +41,7 @@ class MockAudioElement {
   readyState = 0;
   playCalls = 0;
   nativeHlsSupport = "";
+  pauseEventsAreAsync = false;
   readonly loadSources: string[] = [];
   readonly playSources: string[] = [];
   #src = "";
@@ -93,8 +94,11 @@ class MockAudioElement {
       this.readyState = HTMLMediaElement.HAVE_METADATA;
     } else if (type === "canplay" || type === "playing") {
       this.readyState = HTMLMediaElement.HAVE_FUTURE_DATA;
+      this.ended = false;
     } else if (type === "waiting") {
       this.readyState = HTMLMediaElement.HAVE_CURRENT_DATA;
+    } else if (type === "ended") {
+      this.ended = true;
     }
     this.dispatchEvent(new Event(type));
   }
@@ -105,7 +109,11 @@ class MockAudioElement {
 
   pause(): void {
     this.paused = true;
-    this.emit("pause");
+    if (this.pauseEventsAreAsync) {
+      setTimeout(() => this.emit("pause"), 0);
+    } else {
+      this.emit("pause");
+    }
   }
 
   play(): Promise<void> {
@@ -145,6 +153,7 @@ class MockAudioElement {
 
 function installMediaElementMocks(): {
   getAudio: () => MockAudioElement;
+  revokedObjectUrls: () => string[];
   restore: () => void;
 } {
   const originalAudio = Object.getOwnPropertyDescriptor(globalThis, "Audio");
@@ -170,6 +179,7 @@ function installMediaElementMocks(): {
   );
   let audio: MockAudioElement | null = null;
   let mediaSourceId = 0;
+  const revokeObjectUrl = mock((_url: string) => undefined);
 
   Object.defineProperty(globalThis, "Audio", {
     configurable: true,
@@ -220,7 +230,7 @@ function installMediaElementMocks(): {
   });
   Object.defineProperty(URL, "revokeObjectURL", {
     configurable: true,
-    value: mock(),
+    value: revokeObjectUrl,
   });
 
   return {
@@ -230,6 +240,8 @@ function installMediaElementMocks(): {
       }
       return audio;
     },
+    revokedObjectUrls: () =>
+      revokeObjectUrl.mock.calls.map(([objectUrl]) => objectUrl),
     restore: () => {
       restoreDescriptor("Audio", originalAudio);
       restoreDescriptor("HTMLMediaElement", originalHtmlMediaElement);
@@ -281,14 +293,25 @@ function createMockAudioContext(): AudioContext {
 
 function installDelayedHlsMock(): {
   attachedMediaSources: Array<MediaSource | null | undefined>;
+  emitFatalError: (type: "mediaError" | "networkError") => void;
   importStarted: () => boolean;
   importGate: Deferred<void>;
   loadedSources: string[];
+  recoverMediaErrorCalls: () => number;
+  startLoadCalls: () => number;
 } {
   const importGate = createDeferred<void>();
   let importStarted = false;
   const attachedMediaSources: Array<MediaSource | null | undefined> = [];
   const loadedSources: string[] = [];
+  const errorHandlers: Array<
+    (
+      event: string,
+      data: { details: string; fatal: boolean; type: string }
+    ) => void
+  > = [];
+  let recoverMediaErrorCalls = 0;
+  let startLoadCalls = 0;
 
   mock.module("hls.js", async () => {
     importStarted = true;
@@ -333,16 +356,22 @@ function installDelayedHlsMock(): {
         });
       }
 
-      on(): void {
-        // Error handling is not exercised by these tests.
+      on(
+        _event: string,
+        handler: (
+          event: string,
+          data: { details: string; fatal: boolean; type: string }
+        ) => void
+      ): void {
+        errorHandlers.push(handler);
       }
 
       recoverMediaError(): void {
-        // Error handling is not exercised by these tests.
+        recoverMediaErrorCalls += 1;
       }
 
       startLoad(): void {
-        // Fatal HLS recovery is covered by browser-level integration tests.
+        startLoadCalls += 1;
       }
     }
 
@@ -351,16 +380,28 @@ function installDelayedHlsMock(): {
 
   return {
     attachedMediaSources,
+    emitFatalError: (type) => {
+      errorHandlers.at(-1)?.("ERROR", {
+        details: "test-failure",
+        fatal: true,
+        type,
+      });
+    },
     importGate,
     importStarted: () => importStarted,
     loadedSources,
+    recoverMediaErrorCalls: () => recoverMediaErrorCalls,
+    startLoadCalls: () => startLoadCalls,
   };
 }
 
-function createPlaybackSource(): MediaElementPlaybackSource {
+function createPlaybackSource(
+  callbacks: ConstructorParameters<typeof MediaElementPlaybackSource>[2] = {}
+): MediaElementPlaybackSource {
   return new MediaElementPlaybackSource(
     createMockAudioContext(),
-    "test-source"
+    "test-source",
+    callbacks
   );
 }
 
@@ -418,6 +459,26 @@ describe("MediaElementPlaybackSource HLS loading", () => {
     }
   });
 
+  test("aborts readiness immediately when the source is stopped", async () => {
+    const mediaMocks = installMediaElementMocks();
+
+    try {
+      const source = createPlaybackSource();
+      const load = source.load({
+        format: "progressive",
+        src: "https://streams.radiomast.io/pending",
+      });
+      await flushMicrotasks();
+
+      source.stop();
+
+      await expect(load).rejects.toHaveProperty("name", "AbortError");
+      source.cleanup();
+    } finally {
+      mediaMocks.restore();
+    }
+  });
+
   test("prefers explicitly allowed native HLS", async () => {
     const mediaMocks = installMediaElementMocks();
     const hlsMock = installDelayedHlsMock();
@@ -467,6 +528,7 @@ describe("MediaElementPlaybackSource HLS loading", () => {
       expect(audio.loadSources).toEqual([url]);
 
       jest.advanceTimersByTime(1);
+      jest.advanceTimersByTime(0);
       await flushMicrotasks();
       expect(audio.loadSources).toEqual([url, url]);
 
@@ -530,7 +592,45 @@ describe("MediaElementPlaybackSource HLS loading", () => {
       jest.advanceTimersByTime(6000);
       audio.emit("progress");
       jest.advanceTimersByTime(6000);
+      jest.advanceTimersByTime(0);
       await flushMicrotasks();
+      expect(audio.loadSources).toEqual([url, url]);
+      source.cleanup();
+    } finally {
+      jest.useRealTimers();
+      mediaMocks.restore();
+    }
+  });
+
+  test("keeps the no-progress deadline across repeated playing events", async () => {
+    jest.useFakeTimers();
+    const mediaMocks = installMediaElementMocks();
+
+    try {
+      const source = createPlaybackSource();
+      const audio = mediaMocks.getAudio();
+      const url = "https://streams.radiomast.io/nts1";
+      const load = source.load({ format: "progressive", src: url });
+      await flushMicrotasks();
+      audio.emit("canplay");
+      await load;
+      await source.play();
+      audio.emit("playing");
+
+      audio.emit("waiting");
+      audio.emit("progress");
+      jest.advanceTimersByTime(3000);
+      audio.emit("playing");
+      audio.emit("progress");
+      jest.advanceTimersByTime(3000);
+      audio.emit("progress");
+      jest.advanceTimersByTime(3000);
+      audio.emit("playing");
+      audio.emit("progress");
+      jest.advanceTimersByTime(3000);
+      jest.advanceTimersByTime(0);
+      await flushMicrotasks();
+
       expect(audio.loadSources).toEqual([url, url]);
       source.cleanup();
     } finally {
@@ -567,6 +667,69 @@ describe("MediaElementPlaybackSource HLS loading", () => {
 
       expect(audio.loadSources).toEqual([url]);
       expect(source.status).toBe("streaming");
+      source.cleanup();
+    } finally {
+      jest.useRealTimers();
+      mediaMocks.restore();
+    }
+  });
+
+  test("publishes one pause when the media event is task-queued", async () => {
+    jest.useFakeTimers();
+    const mediaMocks = installMediaElementMocks();
+    const onPaused = mock(() => undefined);
+
+    try {
+      const source = createPlaybackSource({ onPaused });
+      const audio = mediaMocks.getAudio();
+      const load = source.load({
+        format: "progressive",
+        src: "https://streams.radiomast.io/nts2",
+      });
+      await flushMicrotasks();
+      audio.emit("canplay");
+      await load;
+      await source.play();
+      audio.emit("playing");
+      audio.pauseEventsAreAsync = true;
+
+      source.pause();
+      expect(onPaused).toHaveBeenCalledTimes(1);
+      jest.advanceTimersByTime(0);
+      await flushMicrotasks();
+      expect(onPaused).toHaveBeenCalledTimes(1);
+      source.cleanup();
+    } finally {
+      jest.useRealTimers();
+      mediaMocks.restore();
+    }
+  });
+
+  test("recovers fatal hls.js network and media errors in place first", async () => {
+    jest.useFakeTimers();
+    const mediaMocks = installMediaElementMocks();
+    const hlsMock = installDelayedHlsMock();
+
+    try {
+      hlsMock.importGate.resolve();
+      const source = createPlaybackSource();
+      const audio = mediaMocks.getAudio();
+      const url = "https://radio.example/live/fallback.m3u8";
+      await source.load({ format: "hls", src: url });
+      await source.play();
+      audio.emit("playing");
+
+      hlsMock.emitFatalError("networkError");
+      expect(hlsMock.startLoadCalls()).toBe(1);
+      expect(hlsMock.loadedSources).toEqual([url]);
+
+      audio.currentTime = 1;
+      jest.advanceTimersByTime(6000);
+      await flushMicrotasks();
+      expect(hlsMock.loadedSources).toEqual([url]);
+
+      hlsMock.emitFatalError("mediaError");
+      expect(hlsMock.recoverMediaErrorCalls()).toBe(1);
       source.cleanup();
     } finally {
       jest.useRealTimers();
@@ -633,6 +796,10 @@ describe("MediaElementPlaybackSource HLS loading", () => {
       ]);
       activationSource.cleanup();
       pausedSource.cleanup();
+      expect(mediaMocks.revokedObjectUrls()).toEqual([
+        "blob:mock-media-source-1",
+        "blob:mock-media-source-2",
+      ]);
     } finally {
       mediaMocks.restore();
     }

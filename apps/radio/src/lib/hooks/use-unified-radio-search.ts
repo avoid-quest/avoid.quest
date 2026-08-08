@@ -12,14 +12,15 @@ import {
   searchRadioGarden,
 } from "@/lib/platform-client";
 import {
+  type AudioProbeScheduler,
+  createGlobalAudioProbeScheduler,
+} from "@/lib/stations/audio-probe-scheduler";
+import {
   createRadioBrowserRadio,
   createRadioGardenRadio,
 } from "@/lib/stations/external-station-workflow";
 import {
-  type AudioProbeScheduler,
-  createAudioProbeScheduler,
   filterPlayableRadioBrowserStations,
-  MAX_CONCURRENT_AUDIO_PROBES,
   RADIO_BROWSER_RESULT_LIMIT,
 } from "@/lib/stations/radio-browser-playability";
 import { playbackRuntimeStore } from "@/lib/stores/playback-runtime-store";
@@ -277,24 +278,6 @@ type RemoteSearchRequest = {
   signal: AbortSignal;
 };
 
-type NetworkInformationNavigator = Navigator & {
-  connection?: {
-    effectiveType?: string;
-    saveData?: boolean;
-  };
-};
-
-function preferredProbeConcurrency(): number {
-  if (typeof navigator === "undefined") {
-    return MAX_CONCURRENT_AUDIO_PROBES;
-  }
-  const connection = (navigator as NetworkInformationNavigator).connection;
-  return connection?.saveData === true ||
-    connection?.effectiveType?.endsWith("2g") === true
-    ? 1
-    : MAX_CONCURRENT_AUDIO_PROBES;
-}
-
 async function loadPlayableRadioGardenResults(
   candidates: RadioGardenSearchCandidate[],
   signal: AbortSignal,
@@ -414,10 +397,7 @@ export function useUnifiedRadioSearch(query: string, localRadios: Radio[]) {
         const request = {
           query: normalizedQuery,
           requestId,
-          scheduleProbe: createAudioProbeScheduler(
-            preferredProbeConcurrency(),
-            controller.signal
-          ),
+          scheduleProbe: createGlobalAudioProbeScheduler(controller.signal),
           signal: controller.signal,
         };
         radioBrowserSearchMutation.mutate(request);

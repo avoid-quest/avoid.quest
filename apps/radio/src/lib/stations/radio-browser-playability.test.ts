@@ -1,9 +1,8 @@
 import { describe, expect, mock, test } from "bun:test";
 import type { RadioBrowserStation } from "@avoid.quest/platforms/radiobrowser";
+import { MAX_CONCURRENT_AUDIO_PROBES } from "./audio-probe-scheduler.js";
 import {
-  createAudioProbeScheduler,
   filterPlayableRadioBrowserStations,
-  MAX_CONCURRENT_AUDIO_PROBES,
   RADIO_BROWSER_RESULT_LIMIT,
 } from "./radio-browser-playability.js";
 
@@ -113,50 +112,24 @@ describe("filterPlayableRadioBrowserStations", () => {
       Array.from({ length: 5 }, (_, index) => station(String(index))),
       { fetchImpl }
     );
+    let settled = false;
+    result.finally(() => {
+      settled = true;
+    });
 
     await Promise.resolve();
     expect(activeCount).toBe(MAX_CONCURRENT_AUDIO_PROBES);
-    while (releases.length > 0 || activeCount > 0) {
+    while (!settled) {
       for (const release of releases.splice(0)) {
         release();
       }
+      await Promise.resolve();
       await Promise.resolve();
       await Promise.resolve();
     }
     await result;
 
     expect(maxActiveCount).toBe(MAX_CONCURRENT_AUDIO_PROBES);
-  });
-
-  test("shares a two-probe scheduler across independent providers", async () => {
-    let activeCount = 0;
-    let maxActiveCount = 0;
-    const scheduler = createAudioProbeScheduler(2);
-    const tasks = Array.from({ length: 8 }, () =>
-      scheduler(async () => {
-        activeCount += 1;
-        maxActiveCount = Math.max(maxActiveCount, activeCount);
-        await Promise.resolve();
-        activeCount -= 1;
-      })
-    );
-
-    await Promise.all(tasks);
-
-    expect(maxActiveCount).toBe(2);
-  });
-
-  test("releases a scheduler slot when a probe throws synchronously", async () => {
-    const scheduler = createAudioProbeScheduler(1);
-
-    await expect(
-      scheduler(() => {
-        throw new Error("synchronous probe failure");
-      })
-    ).rejects.toThrow("synchronous probe failure");
-    await expect(scheduler(() => Promise.resolve("next"))).resolves.toBe(
-      "next"
-    );
   });
 
   test("propagates caller aborts instead of presenting partial results", async () => {

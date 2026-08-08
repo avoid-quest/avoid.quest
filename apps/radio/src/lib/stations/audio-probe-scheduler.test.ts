@@ -35,15 +35,21 @@ describe("audio probe scheduler", () => {
       settled = true;
     });
 
-    await flushMicrotasks();
-    expect(activeCount).toBe(2);
-    while (!settled) {
-      for (const release of releases.splice(0)) {
-        release();
-      }
+    for (let attempt = 0; attempt < 20 && activeCount < 2; attempt += 1) {
       await flushMicrotasks();
     }
-    await Promise.all(tasks);
+
+    try {
+      expect(activeCount).toBe(2);
+    } finally {
+      while (!settled) {
+        for (const release of releases.splice(0)) {
+          release();
+        }
+        await flushMicrotasks();
+      }
+      await Promise.all(tasks);
+    }
 
     expect(maxActiveCount).toBe(2);
   });

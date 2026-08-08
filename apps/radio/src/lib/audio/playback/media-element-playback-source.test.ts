@@ -789,6 +789,7 @@ describe("MediaElementPlaybackSource HLS loading", () => {
       pausedSource.cleanup();
       expect(mediaMocks.revokedObjectUrls()).toEqual([
         "blob:mock-media-source-1",
+        "blob:mock-media-source-3",
         "blob:mock-media-source-2",
       ]);
     } finally {

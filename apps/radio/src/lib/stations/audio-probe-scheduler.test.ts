@@ -87,6 +87,7 @@ describe("audio probe scheduler", () => {
           release = resolve;
         })
     );
+    await flushMicrotasks();
     const canceled = canceledClient(() => Promise.resolve("canceled"));
     const surviving = survivingClient(() => Promise.resolve("surviving"));
 

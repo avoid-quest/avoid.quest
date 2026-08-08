@@ -53,7 +53,7 @@ describe("SingleSelectionCoordinator", () => {
     ).rejects.toBe(transportAbort);
   });
 
-  test("cancelAndDrain waits for abort cleanup to finish", async () => {
+  test("deactivation drains abort cleanup and excludes racing selections", async () => {
     const coordinator = getSingleSelectionCoordinator(
       {} as PlaybackActionContext
     );
@@ -76,12 +76,30 @@ describe("SingleSelectionCoordinator", () => {
     );
     await Promise.resolve();
 
-    const drain = coordinator.cancelAndDrain();
+    const deactivation = createDeferred();
+    let deactivationStarted = false;
+    const drain = coordinator.cancelAndRun(async () => {
+      deactivationStarted = true;
+      await deactivation.promise;
+    });
     await Promise.resolve();
     expect(cleanupFinished).toBe(false);
+    expect(deactivationStarted).toBe(false);
 
     cleanup.resolve();
-    await Promise.all([selection, drain]);
+    await selection;
+    await Promise.resolve();
     expect(cleanupFinished).toBe(true);
+    expect(deactivationStarted).toBe(true);
+
+    let racingSelectionStarted = false;
+    await coordinator.run(() => {
+      racingSelectionStarted = true;
+      return Promise.resolve();
+    });
+    expect(racingSelectionStarted).toBe(false);
+
+    deactivation.resolve();
+    await drain;
   });
 });

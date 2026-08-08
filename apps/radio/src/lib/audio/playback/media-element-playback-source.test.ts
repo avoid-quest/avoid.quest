@@ -293,7 +293,10 @@ function createMockAudioContext(): AudioContext {
 
 function installDelayedHlsMock(): {
   attachedMediaSources: Array<MediaSource | null | undefined>;
-  emitFatalError: (type: "mediaError" | "networkError") => void;
+  emitFatalError: (
+    type: "mediaError" | "networkError",
+    handlerIndex?: number
+  ) => void;
   importStarted: () => boolean;
   importGate: Deferred<void>;
   loadedSources: string[];
@@ -380,8 +383,8 @@ function installDelayedHlsMock(): {
 
   return {
     attachedMediaSources,
-    emitFatalError: (type) => {
-      errorHandlers.at(-1)?.("ERROR", {
+    emitFatalError: (type, handlerIndex = errorHandlers.length - 1) => {
+      errorHandlers[handlerIndex]?.("ERROR", {
         details: "test-failure",
         fatal: true,
         type,
@@ -706,6 +709,7 @@ describe("MediaElementPlaybackSource HLS loading", () => {
   });
 
   test("keeps cold HLS playback tied to active requests and recovers fatal errors in place", async () => {
+    jest.useFakeTimers();
     const mediaMocks = installMediaElementMocks();
     const hlsMock = installDelayedHlsMock();
 
@@ -762,9 +766,24 @@ describe("MediaElementPlaybackSource HLS loading", () => {
         "https://radio.example/live/activation.m3u8",
         "https://radio.example/live/pause.m3u8",
       ]);
-      hlsMock.emitFatalError("networkError");
+      hlsMock.emitFatalError("networkError", 0);
       expect(hlsMock.startLoadCalls()).toBe(1);
-      hlsMock.emitFatalError("mediaError");
+
+      jest.advanceTimersByTime(6000);
+      jest.advanceTimersByTime(0);
+      await flushMicrotasks();
+      expect(hlsMock.loadedSources).toEqual([
+        "https://radio.example/live/activation.m3u8",
+        "https://radio.example/live/pause.m3u8",
+        "https://radio.example/live/activation.m3u8",
+      ]);
+
+      // A destroyed same-generation HLS instance must not recover or re-arm
+      // the replacement attachment when it emits a queued fatal event.
+      hlsMock.emitFatalError("networkError", 0);
+      expect(hlsMock.startLoadCalls()).toBe(1);
+
+      hlsMock.emitFatalError("mediaError", 2);
       expect(hlsMock.recoverMediaErrorCalls()).toBe(1);
       activationSource.cleanup();
       pausedSource.cleanup();
@@ -773,6 +792,7 @@ describe("MediaElementPlaybackSource HLS loading", () => {
         "blob:mock-media-source-2",
       ]);
     } finally {
+      jest.useRealTimers();
       mediaMocks.restore();
     }
   });

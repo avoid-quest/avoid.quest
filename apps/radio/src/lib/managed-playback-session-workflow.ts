@@ -585,8 +585,13 @@ export function createManagedPlaybackSessionWorkflow(
   return {
     activate: () => activateSession(sessionId, ctx),
     deactivate: async () => {
-      await singleSelection?.cancelAndDrain();
-      await deactivateSession(sessionId, ctx, fadeOutSound, fadeOutDurationMs);
+      const deactivate = () =>
+        deactivateSession(sessionId, ctx, fadeOutSound, fadeOutDurationMs);
+      if (singleSelection) {
+        await singleSelection.cancelAndRun(deactivate);
+      } else {
+        await deactivate();
+      }
     },
     syncChannels(radios) {
       if (sessionId === "multiple") {

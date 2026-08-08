@@ -539,10 +539,15 @@ export class MediaElementPlaybackSource implements PlaybackSource {
         maxBufferLength: 60,
         maxMaxBufferLength: 120,
       });
+      this.hls = hls;
 
       hls.on(Hls.Events.ERROR, (_event, data) => {
         if (
-          !(data.fatal && this.isCurrentAttachment(generation, loadController))
+          !(
+            data.fatal &&
+            this.hls === hls &&
+            this.isCurrentAttachment(generation, loadController)
+          )
         ) {
           return;
         }
@@ -564,7 +569,6 @@ export class MediaElementPlaybackSource implements PlaybackSource {
         hls.attachMedia(this.audio);
       }
       hls.loadSource(url);
-      this.hls = hls;
       return;
     }
 
@@ -911,8 +915,9 @@ export class MediaElementPlaybackSource implements PlaybackSource {
   }
 
   private destroyHls(): void {
-    this.hls?.destroy();
+    const hls = this.hls;
     this.hls = null;
+    hls?.destroy();
     this.hlsMediaRecoveryAttempt = 0;
   }
 

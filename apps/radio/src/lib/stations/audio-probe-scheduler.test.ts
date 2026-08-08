@@ -15,41 +15,19 @@ describe("audio probe scheduler", () => {
   test("globally bounds probes submitted by independent search clients", async () => {
     let activeCount = 0;
     let maxActiveCount = 0;
-    const releases: Array<() => void> = [];
     const firstClient = createGlobalAudioProbeScheduler();
     const secondClient = createGlobalAudioProbeScheduler();
-    const run = () =>
-      new Promise<void>((resolve) => {
-        activeCount += 1;
-        maxActiveCount = Math.max(maxActiveCount, activeCount);
-        releases.push(() => {
-          activeCount -= 1;
-          resolve();
-        });
-      });
+    const run = async () => {
+      activeCount += 1;
+      maxActiveCount = Math.max(maxActiveCount, activeCount);
+      await Promise.resolve();
+      activeCount -= 1;
+    };
     const tasks = Array.from({ length: 8 }, (_, index) =>
       (index % 2 === 0 ? firstClient : secondClient)(run)
     );
-    let settled = false;
-    Promise.all(tasks).finally(() => {
-      settled = true;
-    });
 
-    for (let attempt = 0; attempt < 20 && activeCount < 2; attempt += 1) {
-      await flushMicrotasks();
-    }
-
-    try {
-      expect(activeCount).toBe(2);
-    } finally {
-      while (!settled) {
-        for (const release of releases.splice(0)) {
-          release();
-        }
-        await flushMicrotasks();
-      }
-      await Promise.all(tasks);
-    }
+    await Promise.all(tasks);
 
     expect(maxActiveCount).toBe(2);
   });

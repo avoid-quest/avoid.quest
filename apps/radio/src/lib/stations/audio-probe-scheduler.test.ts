@@ -11,6 +11,14 @@ async function flushMicrotasks(): Promise<void> {
   await Promise.resolve();
 }
 
+function createDeferred(): { promise: Promise<void>; resolve: () => void } {
+  let resolve: () => void = () => undefined;
+  const promise = new Promise<void>((promiseResolve) => {
+    resolve = promiseResolve;
+  });
+  return { promise, resolve };
+}
+
 describe("audio probe scheduler", () => {
   test("globally bounds probes submitted by independent search clients", async () => {
     let activeCount = 0;
@@ -58,19 +66,18 @@ describe("audio probe scheduler", () => {
     const canceledController = new AbortController();
     const canceledClient = pool.forSignal(canceledController.signal);
     const survivingClient = pool.forSignal();
-    let release: () => void = () => undefined;
-    const first = blocker(
-      () =>
-        new Promise<void>((resolve) => {
-          release = resolve;
-        })
-    );
-    await flushMicrotasks();
+    const gate = createDeferred();
+    const started = createDeferred();
+    const first = blocker(async () => {
+      started.resolve();
+      await gate.promise;
+    });
+    await started.promise;
     const canceled = canceledClient(() => Promise.resolve("canceled"));
     const surviving = survivingClient(() => Promise.resolve("surviving"));
 
     canceledController.abort(new DOMException("Superseded", "AbortError"));
-    release();
+    gate.resolve();
 
     await expect(canceled).rejects.toHaveProperty("name", "AbortError");
     await expect(first).resolves.toBeUndefined();
@@ -82,15 +89,14 @@ describe("audio probe scheduler", () => {
     const pool = createAudioProbePool(() => 1);
     const activeClient = pool.forSignal(controller.signal);
     const nextClient = pool.forSignal();
-    let release: () => void = () => undefined;
+    const gate = createDeferred();
+    const started = createDeferred();
     let nextStarted = false;
-    const active = activeClient(
-      () =>
-        new Promise<void>((resolve) => {
-          release = resolve;
-        })
-    );
-    await flushMicrotasks();
+    const active = activeClient(async () => {
+      started.resolve();
+      await gate.promise;
+    });
+    await started.promise;
     const next = nextClient(() => {
       nextStarted = true;
       return Promise.resolve();
@@ -101,7 +107,7 @@ describe("audio probe scheduler", () => {
     await flushMicrotasks();
     expect(nextStarted).toBe(false);
 
-    release();
+    gate.resolve();
     await next;
     expect(nextStarted).toBe(true);
   });

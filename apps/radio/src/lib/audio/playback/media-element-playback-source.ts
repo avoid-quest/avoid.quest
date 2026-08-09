@@ -16,6 +16,20 @@ const MIN_MEDIA_TIME_PROGRESS_SECONDS = 0.1;
 type HlsConstructor = typeof import("hls.js").default;
 type HlsInstance = InstanceType<HlsConstructor>;
 type HlsFetchSetup = ReturnType<typeof createValidatedHlsFetchSetup>;
+type MediaSourceGlobal = typeof globalThis & {
+  ManagedMediaSource?: typeof MediaSource;
+  WebKitMediaSource?: typeof MediaSource;
+};
+
+function getPreferredMediaSourceConstructor(): typeof MediaSource | null {
+  const mediaSourceGlobal = globalThis as MediaSourceGlobal;
+  return (
+    mediaSourceGlobal.ManagedMediaSource ??
+    mediaSourceGlobal.MediaSource ??
+    mediaSourceGlobal.WebKitMediaSource ??
+    null
+  );
+}
 
 function createMediaError(element: HTMLMediaElement): Error {
   const code = element.error?.code;
@@ -861,15 +875,16 @@ export class MediaElementPlaybackSource implements PlaybackSource {
   }
 
   private attachMediaSourceForPlaybackGesture(): MediaSource | null {
+    const MediaSourceConstructor = getPreferredMediaSourceConstructor();
     if (
-      typeof MediaSource === "undefined" ||
+      !MediaSourceConstructor ||
       typeof URL === "undefined" ||
       typeof URL.createObjectURL !== "function"
     ) {
       return null;
     }
 
-    const mediaSource = new MediaSource();
+    const mediaSource = new MediaSourceConstructor();
     const objectUrl = URL.createObjectURL(mediaSource);
     this.pendingMediaSourceObjectUrl = objectUrl;
     this.audio.src = objectUrl;

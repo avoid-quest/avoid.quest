@@ -5,7 +5,14 @@ const BACKEND_SWITCH_SECONDS = 0.03;
 function setGainTarget(gain: GainNode, value: number, endTime: number): void {
   const parameter = gain.gain;
   const now = gain.context.currentTime;
-  parameter.cancelAndHoldAtTime(now);
+  const cancelAndHoldAtTime = parameter.cancelAndHoldAtTime?.bind(parameter);
+  if (cancelAndHoldAtTime) {
+    cancelAndHoldAtTime(now);
+  } else {
+    const heldValue = parameter.value;
+    parameter.cancelScheduledValues(now);
+    parameter.setValueAtTime(heldValue, now);
+  }
   parameter.linearRampToValueAtTime(value, endTime);
 }
 

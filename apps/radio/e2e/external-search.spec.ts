@@ -19,7 +19,7 @@ test("a locked provider follows props and resets its UI state", async ({
 
   await page.evaluate(() => {
     (
-      window as Window & {
+      window as unknown as Window & {
         __setExternalSearchPlatform: (platform: string) => void;
       }
     ).__setExternalSearchPlatform("soundcloud");

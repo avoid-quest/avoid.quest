@@ -11,7 +11,7 @@ test("new selections supersede old work and deactivation stays exclusive", async
     const coordinator = getSingleSelectionCoordinator({});
     const recorded: string[] = [];
 
-    let markFirstStarted = () => undefined;
+    let markFirstStarted: () => void = () => undefined;
     const firstStarted = new Promise<void>((resolve) => {
       markFirstStarted = resolve;
     });
@@ -37,7 +37,7 @@ test("new selections supersede old work and deactivation stays exclusive", async
     });
     await Promise.all([first, second]);
 
-    let markThirdStarted = () => undefined;
+    let markThirdStarted: () => void = () => undefined;
     const thirdStarted = new Promise<void>((resolve) => {
       markThirdStarted = resolve;
     });

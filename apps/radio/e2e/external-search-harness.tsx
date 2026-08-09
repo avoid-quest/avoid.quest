@@ -21,7 +21,7 @@ const queryClient = new QueryClient({
   },
 });
 const root = createRoot(container);
-const testWindow = window as ExternalSearchTestWindow;
+const testWindow = window as unknown as ExternalSearchTestWindow;
 
 function render(platform: SearchPlatform) {
   root.render(

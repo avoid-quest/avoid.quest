@@ -242,7 +242,7 @@ test("supersedes a pending progressive load without stale callbacks", async ({
       },
       { once: true }
     );
-    document.body.append(playButton);
+    document.documentElement.append(playButton);
 
     return {
       firstLoad: await testWindow.__transportFirstLoad,
@@ -341,7 +341,7 @@ test("plays HLS through the real hls.js MediaSource lifecycle", async ({
       },
       { once: true }
     );
-    document.body.append(playButton);
+    document.documentElement.append(playButton);
     Object.assign(window, { __hlsContext: audioContext, __hlsSource: source });
 
     return {

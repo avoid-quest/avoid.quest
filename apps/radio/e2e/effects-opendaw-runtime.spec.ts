@@ -18,7 +18,7 @@ test("boots the installed openDAW runtime and binds a real sidechain", async ({
       },
       { once: true }
     );
-    document.body.append(start);
+    document.documentElement.append(start);
   });
   await page.locator("#start-audio").click();
 

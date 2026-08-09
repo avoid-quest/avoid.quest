@@ -15,3 +15,5 @@ todos.json
 .dev.vars*
 !.env.example
 .worklet-build
+playwright-report
+test-results

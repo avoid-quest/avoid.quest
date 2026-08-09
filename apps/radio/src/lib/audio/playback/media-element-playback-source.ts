@@ -16,20 +16,6 @@ const MIN_MEDIA_TIME_PROGRESS_SECONDS = 0.1;
 type HlsConstructor = typeof import("hls.js").default;
 type HlsInstance = InstanceType<HlsConstructor>;
 type HlsFetchSetup = ReturnType<typeof createValidatedHlsFetchSetup>;
-type MediaSourceGlobal = typeof globalThis & {
-  ManagedMediaSource?: typeof MediaSource;
-  WebKitMediaSource?: typeof MediaSource;
-};
-
-function getPreferredMediaSourceConstructor(): typeof MediaSource | null {
-  const mediaSourceGlobal = globalThis as MediaSourceGlobal;
-  return (
-    mediaSourceGlobal.ManagedMediaSource ??
-    mediaSourceGlobal.MediaSource ??
-    mediaSourceGlobal.WebKitMediaSource ??
-    null
-  );
-}
 
 function createMediaError(element: HTMLMediaElement): Error {
   const code = element.error?.code;
@@ -69,7 +55,6 @@ export class MediaElementPlaybackSource implements PlaybackSource {
   private currentLoadPromise: Promise<void> | null = null;
   private loadAbortController: AbortController | null = null;
   private currentInput: PlaybackInput | null = null;
-  private pendingMediaSourceObjectUrl: string | null = null;
   private isLoadingPhase = false;
   private ignoredPauseEvents = 0;
   private readonly recovery = new MediaRecoveryController();
@@ -287,7 +272,6 @@ export class MediaElementPlaybackSource implements PlaybackSource {
     this._status = "idle";
     this.setBuffering(false);
     this.currentLoadPromise = null;
-    this.revokePendingMediaSourceObjectUrl();
     this.isLoadingPhase = false;
     this.currentInput = null;
     this.cancelRecovery();
@@ -497,7 +481,6 @@ export class MediaElementPlaybackSource implements PlaybackSource {
     allowNativeHls: boolean,
     onFatalError: (error: Error) => void
   ): Promise<void> {
-    this.revokePendingMediaSourceObjectUrl();
     this.destroyHls();
 
     if (!treatAsHls) {
@@ -518,7 +501,6 @@ export class MediaElementPlaybackSource implements PlaybackSource {
       return;
     }
 
-    const mediaSource = this.attachMediaSourceForEarlyPlayback();
     const { default: Hls, FetchLoader } = await import("hls.js");
     if (!this.isCurrentLoad(generation, loadController)) {
       throw new DOMException("Load aborted", "AbortError");
@@ -526,18 +508,8 @@ export class MediaElementPlaybackSource implements PlaybackSource {
 
     if (Hls.isSupported()) {
       const hls = new Hls({
-        debug: false,
         fetchSetup: this.getHlsFetchSetup(credentials),
         loader: FetchLoader,
-        startLevel: -1,
-        // Radio favors continuity over glass-to-glass latency. Keep hls.js out
-        // of low-latency mode and allow a deeper forward buffer on unstable
-        // mobile links; Safari/iOS uses native HLS above instead.
-        lowLatencyMode: false,
-        liveSyncDurationCount: 4,
-        liveMaxLatencyDurationCount: 10,
-        maxBufferLength: 60,
-        maxMaxBufferLength: 120,
       });
       this.hls = hls;
 
@@ -563,16 +535,14 @@ export class MediaElementPlaybackSource implements PlaybackSource {
         );
       });
 
-      if (mediaSource) {
-        hls.attachMedia({ media: this.audio, mediaSource });
-      } else {
-        hls.attachMedia(this.audio);
-      }
+      // hls.js owns MediaSource/ManagedMediaSource selection and attachment.
+      // Calling the documented API directly keeps its lifecycle and cleanup
+      // guarantees intact across browser implementations.
+      hls.attachMedia(this.audio);
       hls.loadSource(url);
       return;
     }
 
-    this.revokePendingMediaSourceObjectUrl();
     throw new Error("HLS is not supported in this browser");
   }
 
@@ -601,36 +571,25 @@ export class MediaElementPlaybackSource implements PlaybackSource {
     if (errorType === networkErrorType) {
       if (loadIsPending) {
         onFatalError(error);
-        return;
+      } else {
+        // A fatal network event means hls.js exhausted its manifest, playlist,
+        // or fragment load policy. Avoid an immediate startLoad() loop; the
+        // normal source recovery path performs one generation-safe reload.
+        this.handlePlaybackFailure(error);
       }
-
-      // A fatal hls.js network error means its internal retries are exhausted.
-      // Restart loading without replacing the media element or graph, then let
-      // the no-progress watchdog decide whether HLS must be recreated.
-      hls.startLoad();
-      this.beginRecoveryWatchdog(error);
-      return;
-    }
-
-    if (errorType === mediaErrorType) {
+    } else if (errorType === mediaErrorType) {
       if (this.hlsMediaRecoveryAttempt === 0) {
         this.hlsMediaRecoveryAttempt = 1;
         hls.recoverMediaError();
         if (!loadIsPending) {
           this.beginRecoveryWatchdog(error);
         }
-        return;
-      }
-
-      if (loadIsPending) {
+      } else if (loadIsPending) {
         onFatalError(error);
       } else {
-        this.beginRecoveryWatchdog(error);
+        this.handlePlaybackFailure(error);
       }
-      return;
-    }
-
-    if (loadIsPending) {
+    } else if (loadIsPending) {
       onFatalError(error);
     } else {
       this.handlePlaybackFailure(error);
@@ -644,7 +603,6 @@ export class MediaElementPlaybackSource implements PlaybackSource {
     if (!(options.preservePlaybackIntent || this.audio.paused)) {
       this.ignoredPauseEvents += 1;
     }
-    this.revokePendingMediaSourceObjectUrl();
     if (!(options.preservePlaybackIntent || this.audio.paused)) {
       this.audio.pause();
     }
@@ -885,33 +843,6 @@ export class MediaElementPlaybackSource implements PlaybackSource {
     return (
       playbackIntent !== this.playbackIntent || !this.shouldResumeAfterLoad
     );
-  }
-
-  private attachMediaSourceForEarlyPlayback(): MediaSource | null {
-    const MediaSourceConstructor = getPreferredMediaSourceConstructor();
-    if (
-      !MediaSourceConstructor ||
-      typeof URL === "undefined" ||
-      typeof URL.createObjectURL !== "function"
-    ) {
-      return null;
-    }
-
-    const mediaSource = new MediaSourceConstructor();
-    const objectUrl = URL.createObjectURL(mediaSource);
-    this.pendingMediaSourceObjectUrl = objectUrl;
-    this.audio.src = objectUrl;
-    this.audio.load();
-    return mediaSource;
-  }
-
-  private revokePendingMediaSourceObjectUrl(): void {
-    if (!this.pendingMediaSourceObjectUrl) {
-      return;
-    }
-
-    URL.revokeObjectURL(this.pendingMediaSourceObjectUrl);
-    this.pendingMediaSourceObjectUrl = null;
   }
 
   private destroyHls(): void {

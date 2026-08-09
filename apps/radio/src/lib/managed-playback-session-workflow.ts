@@ -24,6 +24,7 @@ import {
   resetPlaybackChannelRuntime,
   setPlaybackChannelRuntime,
 } from "@/lib/stores/playback-runtime-store";
+import { planManagedSessionRestore } from "./managed-playback-session-workflow-policy.js";
 import {
   getDefaultPlaybackActionContext,
   type PlaybackActionContext,
@@ -47,6 +48,8 @@ import {
   getSingleSelectionCoordinator,
   singleSelectionAbortReason,
 } from "./single-selection-coordinator.js";
+
+export { mergeMultiplePlaybackRadios } from "./managed-playback-session-workflow-policy.js";
 
 type ManagedPlaybackSessionId = Exclude<PlaybackSessionId, "dj">;
 
@@ -114,24 +117,6 @@ function startGestureAudioResume(ctx: PlaybackActionContext): {
   };
 }
 
-function isRestorableManagedRadio(
-  radio: Radio | null,
-  sessionId: ManagedPlaybackSessionId
-): radio is Radio {
-  if (!radio) {
-    return false;
-  }
-  if (radio.platformMetadata?.platform === "local-file") {
-    return false;
-  }
-  try {
-    validateRadioForMode(radio, sessionId);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 async function getReadyPlaybackSession(
   sessionId: ManagedPlaybackSessionId
 ): Promise<PlaybackSessionRecord> {
@@ -145,36 +130,36 @@ async function getReadyPlaybackSession(
   return session;
 }
 
-function getRestoreChannels(
-  sessionId: ManagedPlaybackSessionId,
-  session: PlaybackSessionRecord
-): PlaybackSessionRecord["channels"] {
-  if (sessionId === "single") {
-    return session.channels.filter(
-      (channel) => channel.id === session.activeChannelId
-    );
-  }
-  return session.channels;
-}
-
 function restoreSessionSounds(
   sessionId: ManagedPlaybackSessionId,
   session: PlaybackSessionRecord,
   ctx: PlaybackActionContext
 ): void {
-  for (const channel of getRestoreChannels(sessionId, session)) {
-    const runtime = getPlaybackChannelRuntime(channel.id);
-    if (!isRestorableManagedRadio(channel.radio, sessionId)) {
-      if (runtime.soundId) {
-        cleanupManagedChannel(channel.id, ctx);
-      }
-      resetPlaybackChannelRuntime(channel.id);
+  const actions = planManagedSessionRestore(
+    sessionId,
+    session.activeChannelId,
+    session.channels.map((channel) => ({
+      channelId: channel.id,
+      radio: channel.radio,
+      soundId: getPlaybackChannelRuntime(channel.id).soundId,
+    }))
+  );
+
+  for (const action of actions) {
+    if (action.type === "create") {
+      createManagedSound(
+        sessionId,
+        action.channelId,
+        action.radio,
+        undefined,
+        ctx
+      );
       continue;
     }
-    if (runtime.soundId) {
-      continue;
+    if (action.cleanupSound) {
+      cleanupManagedChannel(action.channelId, ctx);
     }
-    createManagedSound(sessionId, channel.id, channel.radio, undefined, ctx);
+    resetPlaybackChannelRuntime(action.channelId);
   }
 }
 
@@ -258,18 +243,6 @@ function syncMultipleChannels(
     };
   });
   replacePlaybackChannels("multiple", channels);
-}
-
-export function mergeMultiplePlaybackRadios(
-  radios: Radio[],
-  sessionRadios: Radio[]
-): Radio[] {
-  return [
-    ...radios,
-    ...sessionRadios.filter(
-      (sessionRadio) => !radios.some((radio) => radio.id === sessionRadio.id)
-    ),
-  ];
 }
 
 function addMultipleChannel(

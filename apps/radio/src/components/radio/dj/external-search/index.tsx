@@ -1,10 +1,9 @@
-import type { SearchPlatform } from "@avoid.quest/platforms";
-import { useEffect, useReducer, useState } from "react";
+import type {
+  SearchPlatform,
+  UnifiedSearchResult,
+} from "@avoid.quest/platforms";
+import { useState } from "react";
 import type { Radio } from "@/lib/audio";
-import {
-  createExternalSearchState,
-  reduceExternalSearchState,
-} from "./external-search-state";
 import { SearchInput } from "./search-input";
 import { SearchResults } from "./search-results";
 import { UrlInput } from "./url-input";
@@ -15,32 +14,35 @@ type ExternalSearchProps = {
   initialPlatform?: SearchPlatform;
 };
 
-export function ExternalSearch({
+type ExternalSearchContentProps = {
+  onLoad: (radio: Radio) => void;
+  onCancel?: () => void;
+  lockedPlatform?: SearchPlatform;
+};
+
+function ExternalSearchContent({
   onLoad,
   onCancel,
-  initialPlatform,
-}: ExternalSearchProps) {
-  const [{ error, platform, results }, dispatchSearchState] = useReducer(
-    reduceExternalSearchState,
-    initialPlatform,
-    createExternalSearchState
-  );
+  lockedPlatform,
+}: ExternalSearchContentProps) {
+  const [selectedPlatform, setSelectedPlatform] =
+    useState<SearchPlatform>("all");
+  const [error, setError] = useState<string | null>(null);
+  const [results, setResults] = useState<UnifiedSearchResult[]>([]);
   const [bandcampFilter, setBandcampFilter] = useState<"" | "t" | "a">("t");
   const [youtubeFilter, setYoutubeFilter] = useState<"songs" | "videos">(
     "songs"
   );
-  const isLocked = initialPlatform !== undefined && initialPlatform !== "all";
+  const platform = lockedPlatform ?? selectedPlatform;
 
   const clearResults = () => {
-    dispatchSearchState({ type: "clear" });
+    setError(null);
+    setResults([]);
   };
 
-  useEffect(() => {
-    dispatchSearchState({ initialPlatform, type: "reset" });
-  }, [initialPlatform]);
-
   const handlePlatformChange = (nextPlatform: SearchPlatform) => {
-    dispatchSearchState({ platform: nextPlatform, type: "platform" });
+    clearResults();
+    setSelectedPlatform(nextPlatform);
   };
 
   const handleBandcampFilterChange = (filter: "" | "t" | "a") => {
@@ -54,7 +56,7 @@ export function ExternalSearch({
   };
 
   const searchContextKey = [
-    initialPlatform ?? "unlocked",
+    lockedPlatform ?? "unlocked",
     platform,
     bandcampFilter,
     youtubeFilter,
@@ -64,15 +66,17 @@ export function ExternalSearch({
     <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden p-2">
       <SearchInput
         bandcampFilter={bandcampFilter}
-        locked={isLocked}
+        locked={lockedPlatform !== undefined}
         onBandcampFilterChange={handleBandcampFilterChange}
         onClearResults={clearResults}
         onError={(message) => {
-          dispatchSearchState({ error: message, type: "error" });
+          setError(message);
+          setResults([]);
         }}
         onPlatformChange={handlePlatformChange}
         onResults={(nextResults) => {
-          dispatchSearchState({ results: nextResults, type: "results" });
+          setError(null);
+          setResults(nextResults);
         }}
         onYoutubeFilterChange={handleYoutubeFilterChange}
         platform={platform}
@@ -84,5 +88,21 @@ export function ExternalSearch({
 
       <UrlInput onCancel={onCancel} onLoad={onLoad} />
     </div>
+  );
+}
+
+export function ExternalSearch(props: ExternalSearchProps) {
+  const lockedPlatform =
+    props.initialPlatform && props.initialPlatform !== "all"
+      ? props.initialPlatform
+      : undefined;
+
+  return (
+    <ExternalSearchContent
+      key={lockedPlatform ?? "unlocked"}
+      lockedPlatform={lockedPlatform}
+      onCancel={props.onCancel}
+      onLoad={props.onLoad}
+    />
   );
 }

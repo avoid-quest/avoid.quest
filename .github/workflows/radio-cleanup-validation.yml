@@ -24,40 +24,29 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.14
       - run: bun install --frozen-lockfile
       - run: bun run check
       - run: bun run typecheck
-      - name: Focused radio regressions
-        run: |
-          status=0
-          for test_file in \
-            apps/radio/src/lib/audio/playback/media-element-playback-source.test.ts \
-            apps/radio/src/lib/audio/playback/media-recovery-controller.test.ts \
-            apps/radio/src/lib/audio/dsp/effects/official-opendaw-mapping.test.ts \
-            apps/radio/src/lib/audio/manager/effects-backend-router.test.ts \
-            apps/radio/src/lib/audio/manager/effects-controller.test.ts \
-            apps/radio/src/lib/audio/manager/official-opendaw-runtime.test.ts \
-            apps/radio/src/lib/audio/manager/audio-engine-lifecycle.test.ts \
-            apps/radio/src/lib/audio/manager/crossfade.test.ts \
-            apps/radio/src/lib/audio/manager/volume-controller.test.ts \
-            apps/radio/src/lib/managed-playback-session-workflow.test.ts \
-            apps/radio/src/lib/single-radio-transition.test.ts \
-            apps/radio/src/lib/single-selection-coordinator.test.ts \
-            apps/radio/src/lib/stations/audio-probe-scheduler.test.ts \
-            apps/radio/src/lib/stations/radio-browser-playability.test.ts \
-            apps/radio/src/lib/hooks/use-unified-radio-search.test.ts
-          do
-            timeout --foreground 30s bun test "$test_file" || status=1
-          done
-          exit "$status"
-      - run: timeout --foreground 2m bun run --filter @avoid.quest/radio test
-      - run: timeout --foreground 2m bun run test
-      - run: timeout --foreground 8m bun run --filter @avoid.quest/radio build
-      - run: timeout --foreground 8m bun run build
+      - run: bun run test
+      - run: bun run build
+      - name: Install Chromium
+        run: bunx playwright install --with-deps chromium
+      - name: Real browser integration tests
+        run: bun run --filter @avoid.quest/radio test:e2e
+      - name: Upload Playwright diagnostics
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v5
+        with:
+          name: radio-playwright-${{ github.run_attempt }}
+          path: |
+            apps/radio/playwright-report/
+            apps/radio/test-results/
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Report radio bundle sizes
         run: |
           find apps/radio/dist -type f -printf "%s %p\n" 2>/dev/null |

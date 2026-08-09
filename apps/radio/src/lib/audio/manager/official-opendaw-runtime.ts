@@ -272,7 +272,7 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     }
     const existing = this.soundUnits.get(soundId);
     if (existing && !existing.monitoring && existing.source === source) {
-      this.bindSidechains();
+      this.rebindSidechains();
       return true;
     }
     return this.connectSoundUnit(
@@ -330,7 +330,7 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       unit.destination === destination &&
       unit.monitoring === monitoring
     ) {
-      this.bindSidechains();
+      this.rebindSidechains();
       return true;
     } else if (unit.source !== null) {
       project.engine.unregisterMonitoringSource(unit.audioUnitBox.address.uuid);
@@ -345,7 +345,7 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     unit.source = source;
     unit.destination = destination;
     unit.monitoring = monitoring;
-    this.bindSidechains();
+    this.rebindSidechains();
     return true;
   }
 
@@ -370,7 +370,7 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     project.engine.unregisterMonitoringSource(unit.audioUnitBox.address.uuid);
     unit.source = null;
     unit.destination = null;
-    this.bindSidechains();
+    this.rebindSidechains();
   }
 
   deleteSound(
@@ -396,7 +396,7 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     }
     this.soundUnits.delete(soundId);
     this.sidechainTargets.delete(soundId);
-    this.bindSidechains();
+    this.rebindSidechains();
   }
 
   syncEffects(soundId: string, effects: readonly EffectConfig[]): void {
@@ -473,9 +473,7 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     } else {
       this.sidechainTargets.set(soundId, targetSoundId);
     }
-    if (this.project) {
-      this.project.editing.modify(() => this.bindSidechains());
-    }
+    this.rebindSidechains();
   }
 
   setDryWet(soundId: string, value: number): void {
@@ -696,6 +694,10 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
         bind(group, target);
       }
     }
+  }
+
+  private rebindSidechains(): void {
+    this.project?.editing.modify(() => this.bindSidechains());
   }
 }
 

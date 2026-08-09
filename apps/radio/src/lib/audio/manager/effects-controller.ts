@@ -53,11 +53,6 @@ type EffectsControllerOptions = {
   workletProcessorUrl: () => string;
   sounds: Map<string, SoundInstance>;
   notifyListeners: (soundId: string, state: AudioState) => void;
-  createOfficialRuntime?: (context: AudioContext) => EffectsGraphRuntime;
-  createWorkletManager?: (
-    context: AudioContext,
-    processorUrl: string
-  ) => WorkletManager;
 };
 
 const createSoundState = (): SoundEffectsState => ({
@@ -90,27 +85,15 @@ class EffectsController {
     soundId: string,
     state: AudioState
   ) => void;
-  private readonly createOfficialRuntime: (
-    context: AudioContext
-  ) => EffectsGraphRuntime;
-  private readonly createWorkletManager: (
-    context: AudioContext,
-    processorUrl: string
-  ) => WorkletManager;
 
   constructor({
     workletProcessorUrl,
     sounds,
     notifyListeners,
-    createOfficialRuntime = (context) => new OfficialOpenDawRuntime(context),
-    createWorkletManager = (context, processorUrl) =>
-      new WorkletManager(context, processorUrl),
   }: EffectsControllerOptions) {
     this.workletProcessorUrl = workletProcessorUrl;
     this.sounds = sounds;
     this.notifyListeners = notifyListeners;
-    this.createOfficialRuntime = createOfficialRuntime;
-    this.createWorkletManager = createWorkletManager;
   }
 
   private getState(soundId: string): SoundEffectsState {
@@ -328,10 +311,7 @@ class EffectsController {
       throw new Error("Audio context not available");
     }
 
-    const manager = this.createWorkletManager(
-      context,
-      this.workletProcessorUrl()
-    );
+    const manager = new WorkletManager(context, this.workletProcessorUrl());
     let managerPromise: Promise<WorkletManager>;
     managerPromise = manager.init().then(() => {
       if (state.managerPromise !== managerPromise) {
@@ -636,7 +616,7 @@ class EffectsController {
 
     const runtime =
       this.officialRuntime ??
-      this.createOfficialRuntime(graph.source.context as AudioContext);
+      new OfficialOpenDawRuntime(graph.source.context as AudioContext);
     this.officialRuntime = runtime;
     state.officialConnectingGeneration = generation;
     const wasOfficialConnected = state.officialConnected;

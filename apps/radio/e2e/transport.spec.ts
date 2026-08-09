@@ -72,10 +72,10 @@ async function installMediaRoutes(
   const [wave, manifest, ...segments] = await Promise.all([
     readFile(`${FIXTURE_DIRECTORY}tone.wav`),
     readFile(`${FIXTURE_DIRECTORY}playlist.m3u8`),
-    readFile(`${FIXTURE_DIRECTORY}segment-00.ts`),
-    readFile(`${FIXTURE_DIRECTORY}segment-01.ts`),
-    readFile(`${FIXTURE_DIRECTORY}segment-02.ts`),
-    readFile(`${FIXTURE_DIRECTORY}segment-03.ts`),
+    readFile(`${FIXTURE_DIRECTORY}segment-00.m2ts`),
+    readFile(`${FIXTURE_DIRECTORY}segment-01.m2ts`),
+    readFile(`${FIXTURE_DIRECTORY}segment-02.m2ts`),
+    readFile(`${FIXTURE_DIRECTORY}segment-03.m2ts`),
   ]);
   const fixtures = new Map<string, MediaFixture>([
     ["/progressive-a.wav", { body: wave, contentType: "audio/wav" }],
@@ -87,7 +87,7 @@ async function installMediaRoutes(
     ...segments.map(
       (body, index) =>
         [
-          `/segment-${index.toString().padStart(2, "0")}.ts`,
+          `/segment-${index.toString().padStart(2, "0")}.m2ts`,
           { body, contentType: "video/mp2t" },
         ] as const
     ),
@@ -394,5 +394,5 @@ test("plays HLS through the real hls.js MediaSource lifecycle", async ({
     status: "idle",
   });
   expect(requests).toContain("/playlist.m3u8");
-  expect(requests.some((path) => path.endsWith(".ts"))).toBe(true);
+  expect(requests.some((path) => path.endsWith(".m2ts"))).toBe(true);
 });

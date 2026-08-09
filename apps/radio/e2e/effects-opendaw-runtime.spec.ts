@@ -5,9 +5,15 @@ test("boots the installed openDAW runtime and binds a real sidechain", async ({
 }) => {
   await page.goto("/e2e/testbed.html");
   await page.evaluate(() => {
-    const start = document.createElement("button");
-    start.id = "start-audio";
-    start.textContent = "Start audio";
+    const root = document.querySelector("#root");
+    if (!root) {
+      throw new Error("The testbed root was not created");
+    }
+    root.innerHTML = '<button id="start-audio">Start audio</button>';
+    const start = document.querySelector("#start-audio");
+    if (!(start instanceof HTMLButtonElement)) {
+      throw new Error("The audio start button was not created");
+    }
     start.addEventListener(
       "click",
       () => {
@@ -18,7 +24,6 @@ test("boots the installed openDAW runtime and binds a real sidechain", async ({
       },
       { once: true }
     );
-    document.documentElement.append(start);
   });
   await page.locator("#start-audio").click();
 

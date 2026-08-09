@@ -224,9 +224,15 @@ test("supersedes a pending progressive load without stale callbacks", async ({
       testWindow;
     await source.load({ format: "progressive", src: secondUrl });
 
-    const playButton = document.createElement("button");
-    playButton.dataset.testid = "play-transport";
-    playButton.textContent = "Play";
+    const root = document.querySelector("#root");
+    if (!root) {
+      throw new Error("The testbed root was not created");
+    }
+    root.innerHTML = '<button data-testid="play-transport">Play</button>';
+    const playButton = document.querySelector('[data-testid="play-transport"]');
+    if (!(playButton instanceof HTMLButtonElement)) {
+      throw new Error("The transport play button was not created");
+    }
     playButton.addEventListener(
       "click",
       () => {
@@ -242,7 +248,6 @@ test("supersedes a pending progressive load without stale callbacks", async ({
       },
       { once: true }
     );
-    document.documentElement.append(playButton);
 
     return {
       firstLoad: await testWindow.__transportFirstLoad,
@@ -323,9 +328,15 @@ test("plays HLS through the real hls.js MediaSource lifecycle", async ({
       audio: HTMLAudioElement;
       hls: { media: HTMLMediaElement | null } | null;
     };
-    const playButton = document.createElement("button");
-    playButton.dataset.testid = "play-hls";
-    playButton.textContent = "Play HLS";
+    const root = document.querySelector("#root");
+    if (!root) {
+      throw new Error("The testbed root was not created");
+    }
+    root.innerHTML = '<button data-testid="play-hls">Play HLS</button>';
+    const playButton = document.querySelector('[data-testid="play-hls"]');
+    if (!(playButton instanceof HTMLButtonElement)) {
+      throw new Error("The HLS play button was not created");
+    }
     playButton.addEventListener(
       "click",
       () => {
@@ -341,7 +352,6 @@ test("plays HLS through the real hls.js MediaSource lifecycle", async ({
       },
       { once: true }
     );
-    document.documentElement.append(playButton);
     Object.assign(window, { __hlsContext: audioContext, __hlsSource: source });
 
     return {

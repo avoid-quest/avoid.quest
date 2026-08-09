@@ -55,6 +55,7 @@ export class MediaElementPlaybackSource implements PlaybackSource {
   private currentLoadPromise: Promise<void> | null = null;
   private loadAbortController: AbortController | null = null;
   private currentInput: PlaybackInput | null = null;
+  private pendingMediaSourceObjectUrl: string | null = null;
   private isLoadingPhase = false;
   private ignoredPauseEvents = 0;
   private readonly recovery = new MediaRecoveryController();
@@ -481,6 +482,7 @@ export class MediaElementPlaybackSource implements PlaybackSource {
     allowNativeHls: boolean,
     onFatalError: (error: Error) => void
   ): Promise<void> {
+    this.revokePendingMediaSourceObjectUrl();
     this.destroyHls();
 
     if (!treatAsHls) {
@@ -501,6 +503,10 @@ export class MediaElementPlaybackSource implements PlaybackSource {
       return;
     }
 
+    // Give play() a real source synchronously while the lazy hls.js chunk is
+    // loading. This preserves the originating mobile playback gesture without
+    // making progressive sessions download hls.js.
+    const mediaSource = this.attachMediaSourceForPlaybackGesture();
     const { default: Hls, FetchLoader } = await import("hls.js");
     if (!this.isCurrentLoad(generation, loadController)) {
       throw new DOMException("Load aborted", "AbortError");
@@ -510,6 +516,11 @@ export class MediaElementPlaybackSource implements PlaybackSource {
       const hls = new Hls({
         fetchSetup: this.getHlsFetchSetup(credentials),
         loader: FetchLoader,
+        lowLatencyMode: false,
+        liveSyncDurationCount: 4,
+        liveMaxLatencyDurationCount: 10,
+        maxBufferLength: 60,
+        maxMaxBufferLength: 120,
       });
       this.hls = hls;
 
@@ -535,14 +546,14 @@ export class MediaElementPlaybackSource implements PlaybackSource {
         );
       });
 
-      // hls.js owns MediaSource/ManagedMediaSource selection and attachment.
-      // Calling the documented API directly keeps its lifecycle and cleanup
-      // guarantees intact across browser implementations.
-      hls.attachMedia(this.audio);
+      hls.attachMedia(
+        mediaSource ? { media: this.audio, mediaSource } : this.audio
+      );
       hls.loadSource(url);
       return;
     }
 
+    this.revokePendingMediaSourceObjectUrl();
     throw new Error("HLS is not supported in this browser");
   }
 
@@ -568,6 +579,9 @@ export class MediaElementPlaybackSource implements PlaybackSource {
     onFatalError: (error: Error) => void
   ): void {
     const loadIsPending = this.isLoadingPhase || this.recoveryLoadActive;
+    if (!(loadIsPending || this.shouldResumeAfterLoad)) {
+      return;
+    }
     if (errorType === networkErrorType) {
       if (loadIsPending) {
         onFatalError(error);
@@ -606,6 +620,7 @@ export class MediaElementPlaybackSource implements PlaybackSource {
     if (!(options.preservePlaybackIntent || this.audio.paused)) {
       this.audio.pause();
     }
+    this.revokePendingMediaSourceObjectUrl();
     this.destroyHls();
     this.audio.removeAttribute("src");
     if (options.resetProgress && Number.isFinite(this.audio.duration)) {
@@ -843,6 +858,31 @@ export class MediaElementPlaybackSource implements PlaybackSource {
     return (
       playbackIntent !== this.playbackIntent || !this.shouldResumeAfterLoad
     );
+  }
+
+  private attachMediaSourceForPlaybackGesture(): MediaSource | null {
+    if (
+      typeof MediaSource === "undefined" ||
+      typeof URL === "undefined" ||
+      typeof URL.createObjectURL !== "function"
+    ) {
+      return null;
+    }
+
+    const mediaSource = new MediaSource();
+    const objectUrl = URL.createObjectURL(mediaSource);
+    this.pendingMediaSourceObjectUrl = objectUrl;
+    this.audio.src = objectUrl;
+    this.audio.load();
+    return mediaSource;
+  }
+
+  private revokePendingMediaSourceObjectUrl(): void {
+    if (!this.pendingMediaSourceObjectUrl) {
+      return;
+    }
+    URL.revokeObjectURL(this.pendingMediaSourceObjectUrl);
+    this.pendingMediaSourceObjectUrl = null;
   }
 
   private destroyHls(): void {

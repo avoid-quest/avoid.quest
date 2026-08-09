@@ -6,11 +6,9 @@
   "type": "module",
   "scripts": {
     "dev": "NODE_OPTIONS='--import ./instrument.server.mjs' vite dev --port 3000",
-    "dev:e2e": "vite dev --config playwright.vite.config.ts --port 3000 --strictPort",
     "build": "vite build && cp instrument.server.mjs dist/server",
     "start": "node --import ./dist/server/instrument.server.mjs dist/server/index.mjs",
-    "test": "bun test src",
-    "test:e2e": "playwright test",
+    "test": "bun test",
     "typecheck": "tsc --noEmit",
     "cf-deploy": "wrangler deploy",
     "cf-upload": "wrangler versions upload",
@@ -56,7 +54,6 @@
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.42.3",
     "@cloudflare/workers-types": "catalog:",
-    "@playwright/test": "^1.62.1",
     "@rolldown/plugin-babel": "^0.2.3",
     "@sentry/tanstackstart-react": "^10.61.0",
     "@tailwindcss/vite": "catalog:",

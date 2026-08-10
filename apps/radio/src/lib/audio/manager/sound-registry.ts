@@ -2,6 +2,7 @@ import type { Radio } from "../playback/index.js";
 import {
   createSoundInstance,
   type SoundInstance,
+  type SoundOutputMode,
 } from "./audio-manager-types.js";
 
 type CleanupExistingSound = (soundId: string) => void;
@@ -12,7 +13,8 @@ class SoundRegistry {
   create(
     radio: Radio,
     soundId?: string,
-    cleanupExisting?: CleanupExistingSound
+    cleanupExisting?: CleanupExistingSound,
+    outputMode: SoundOutputMode = "audio-graph"
   ): string {
     const id = soundId ?? `sound_${radio.id ?? Date.now()}`;
 
@@ -20,7 +22,7 @@ class SoundRegistry {
       cleanupExisting?.(id);
     }
 
-    this.sounds.set(id, createSoundInstance(radio, id));
+    this.sounds.set(id, createSoundInstance(radio, id, outputMode));
     return id;
   }
 

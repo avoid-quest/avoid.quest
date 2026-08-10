@@ -65,5 +65,4 @@ export {
   setMainDelayMs,
   setPlayerMode,
   setRestoreStateOnLoad,
-  setSingleModeTransitionDuration,
 } from "@/lib/collections/settings";

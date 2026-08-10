@@ -7,7 +7,6 @@ import {
   SINGLE_STANDBY_CHANNEL_ID,
 } from "@/lib/collections/playback-sessions";
 import { updatePlayerSettings } from "@/lib/collections/settings";
-import { DEFAULT_TRANSITION_DURATION } from "@/lib/const";
 import {
   getDefaultPlaybackActionContext,
   type PlaybackActionContext,
@@ -237,13 +236,7 @@ export function createModeLifecycleRegistry({
 }
 
 function defaultCommitMode(mode: PlaybackSessionId): void {
-  updatePlayerSettings((player) => ({
-    mode,
-    single: {
-      transitionDuration:
-        player.single?.transitionDuration ?? DEFAULT_TRANSITION_DURATION,
-    },
-  }));
+  updatePlayerSettings(() => ({ mode }));
 }
 
 export function createModeManager({

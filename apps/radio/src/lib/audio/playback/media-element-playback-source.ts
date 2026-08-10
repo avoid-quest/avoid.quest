@@ -52,8 +52,9 @@ export class MediaElementPlaybackSource implements PlaybackSource {
   private readonly callbacks: PlaybackSourceCallbacks;
   private readonly sourceId: string;
   private readonly audio: HTMLAudioElement;
-  private readonly mediaSourceNode: MediaElementAudioSourceNode;
-  private readonly outputNode: GainNode;
+  private readonly mediaSourceNode: MediaElementAudioSourceNode | null;
+  private readonly outputNode: GainNode | null;
+  private readonly useManagedRecovery: boolean;
 
   private hls: HlsInstance | null = null;
   private readonly hlsFetchSetups = new Map<
@@ -78,22 +79,28 @@ export class MediaElementPlaybackSource implements PlaybackSource {
   private recoveryLoadActive = false;
 
   constructor(
-    context: AudioContext,
+    context: AudioContext | null,
     sourceId: string,
     callbacks: PlaybackSourceCallbacks = {}
   ) {
     this.callbacks = callbacks;
     this.sourceId = sourceId;
+    this.useManagedRecovery = context !== null;
     this.audio = new Audio();
-    this.audio.crossOrigin = "anonymous";
+    if (context) {
+      this.audio.crossOrigin = "anonymous";
+    }
     this.audio.preload = "auto";
     this.audio.autoplay = false;
     this.audio.setAttribute("playsinline", "");
 
-    this.mediaSourceNode = context.createMediaElementSource(this.audio);
-    this.outputNode = context.createGain();
-    this.outputNode.gain.value = 1;
-    this.mediaSourceNode.connect(this.outputNode);
+    this.mediaSourceNode =
+      context?.createMediaElementSource(this.audio) ?? null;
+    this.outputNode = context?.createGain() ?? null;
+    if (this.mediaSourceNode && this.outputNode) {
+      this.outputNode.gain.value = 1;
+      this.mediaSourceNode.connect(this.outputNode);
+    }
 
     this.audio.addEventListener("playing", this.handlePlaying);
     this.audio.addEventListener("waiting", this.handleWaiting);
@@ -134,7 +141,7 @@ export class MediaElementPlaybackSource implements PlaybackSource {
     return this._isBuffering;
   }
 
-  get output(): AudioNode {
+  get output(): AudioNode | null {
     return this.outputNode;
   }
 
@@ -143,11 +150,16 @@ export class MediaElementPlaybackSource implements PlaybackSource {
   }
 
   get volume(): number {
-    return this.outputNode.gain.value;
+    return this.outputNode?.gain.value ?? this.audio.volume;
   }
 
   set volume(value: number) {
-    this.outputNode.gain.value = Math.max(0, Math.min(1, value));
+    const volume = Math.max(0, Math.min(1, value));
+    if (this.outputNode) {
+      this.outputNode.gain.value = volume;
+    } else {
+      this.audio.volume = volume;
+    }
   }
 
   async load(input: PlaybackInput): Promise<void> {
@@ -275,12 +287,12 @@ export class MediaElementPlaybackSource implements PlaybackSource {
     this.audio.removeAttribute("src");
     this.audio.load();
     try {
-      this.mediaSourceNode.disconnect();
+      this.mediaSourceNode?.disconnect();
     } catch {
       // Ignore disconnect errors during teardown.
     }
     try {
-      this.outputNode.disconnect();
+      this.outputNode?.disconnect();
     } catch {
       // Ignore disconnect errors during teardown.
     }
@@ -699,6 +711,10 @@ export class MediaElementPlaybackSource implements PlaybackSource {
       this.reportTerminalError(error);
       return;
     }
+    if (!this.useManagedRecovery) {
+      this.reportTerminalError(error);
+      return;
+    }
 
     // Finite platform media can have expiring URLs. Preserve the existing DJ
     // continuation contract for those sources instead of repeatedly loading a
@@ -721,7 +737,13 @@ export class MediaElementPlaybackSource implements PlaybackSource {
   }
 
   private beginRecoveryWatchdog(error: Error, markBuffering = true): void {
-    if (!(this.shouldResumeAfterLoad && this.currentInput)) {
+    if (
+      !(
+        this.useManagedRecovery &&
+        this.shouldResumeAfterLoad &&
+        this.currentInput
+      )
+    ) {
       return;
     }
 
@@ -911,13 +933,8 @@ export class MediaElementPlaybackSource implements PlaybackSource {
     if (!(this.shouldResumeAfterLoad && this.currentInput)) {
       return;
     }
-    this._status = "streaming";
-    this.setBuffering(false);
+    this.markRecoveryProgress();
     this.callbacks.onPlaying?.();
-    const recoveryError = this.recovery.error;
-    if (recoveryError) {
-      this.beginRecoveryWatchdog(recoveryError, false);
-    }
   };
 
   private readonly handleWaiting = (): void => {
@@ -946,10 +963,11 @@ export class MediaElementPlaybackSource implements PlaybackSource {
       this._status = "buffering";
       this.setBuffering(true);
     }
-    this.beginRecoveryWatchdog(
-      new Error("Audio stream stopped making network progress"),
-      isActuallyBuffering
-    );
+    if (isActuallyBuffering) {
+      this.beginRecoveryWatchdog(
+        new Error("Audio stream stopped making network progress")
+      );
+    }
   };
 
   private readonly handleCanPlay = (): void => {

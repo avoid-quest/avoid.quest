@@ -13,7 +13,7 @@ type PlaybackSource = {
   readonly id: string;
   readonly isActive: boolean;
   readonly isBuffering: boolean;
-  readonly output: AudioNode;
+  readonly output: AudioNode | null;
   readonly status: StreamStatus;
   volume: number;
   cleanup(): void;

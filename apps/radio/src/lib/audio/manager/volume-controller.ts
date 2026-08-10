@@ -101,6 +101,7 @@ class VolumeController {
 
     const nodes = instance.nodes;
     if (!nodes) {
+      this.setSoundGainTarget(soundId, instance, lastVolume);
       this.notifyVolumeChange(soundId, instance, lastVolume);
       return;
     }
@@ -168,9 +169,7 @@ class VolumeController {
     this.globalVolume = clampVolume(volume);
 
     for (const [soundId, instance] of this.getSounds()) {
-      if (instance.nodes) {
-        this.setSoundGainTarget(soundId, instance, instance.volume);
-      }
+      this.setSoundGainTarget(soundId, instance, instance.volume);
     }
   }
 
@@ -235,6 +234,15 @@ class VolumeController {
     instance: SoundInstance,
     volume: number
   ): void {
+    if (instance.outputMode === "native") {
+      if (instance.playbackSource) {
+        instance.playbackSource.volume = clampVolume(
+          volume * this.globalVolume
+        );
+      }
+      return;
+    }
+
     if (!instance.nodes) {
       return;
     }

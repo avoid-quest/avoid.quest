@@ -1,7 +1,5 @@
 import type { Radio, Settings } from "./types";
 
-export const DEFAULT_TRANSITION_DURATION = 2000;
-
 export const radios: Radio[] = [
   {
     name: "Sygma Radio",
@@ -117,8 +115,5 @@ export const settings: Settings = {
   player: {
     mode: "single",
     restoreStateOnLoad: true,
-    single: {
-      transitionDuration: DEFAULT_TRANSITION_DURATION,
-    },
   },
 };

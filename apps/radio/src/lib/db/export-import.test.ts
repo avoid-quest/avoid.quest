@@ -38,7 +38,7 @@ afterEach(async () => {
 });
 
 describe("validateImportData", () => {
-  test("accepts version 1 exports and drops legacy playerType", () => {
+  test("accepts version 1 exports and drops legacy player fields", () => {
     const imported = validateImportData({
       version: 1,
       exportDate: "2026-04-16T00:00:00.000Z",
@@ -57,9 +57,9 @@ describe("validateImportData", () => {
     expect(imported.settings.player).toEqual({
       mode: "single",
       restoreStateOnLoad: false,
-      single: { transitionDuration: 3456 },
     });
     expect("playerType" in imported.settings.player).toBe(false);
+    expect("single" in imported.settings.player).toBe(false);
   });
 
   test("preserves omitted restoreStateOnLoad so merge imports can keep local value", () => {
@@ -77,7 +77,6 @@ describe("validateImportData", () => {
     expect(imported.settings.player).toEqual({
       mode: "dj",
       restoreStateOnLoad: undefined,
-      single: undefined,
     });
   });
 
@@ -95,7 +94,6 @@ describe("validateImportData", () => {
 
     expect(imported.settings.player.mode).toBeUndefined();
     expect(imported.settings.player.restoreStateOnLoad).toBe(false);
-    expect(imported.settings.player.single).toBeUndefined();
   });
 });
 
@@ -166,7 +164,6 @@ describe("mergeImportedData", () => {
     expect(getSettings()?.player).toEqual({
       mode: "dj",
       restoreStateOnLoad: false,
-      single: undefined,
     });
   });
 
@@ -197,7 +194,6 @@ describe("mergeImportedData", () => {
     expect(getSettings()?.player).toEqual({
       mode: "multiple",
       restoreStateOnLoad: false,
-      single: undefined,
     });
   });
 

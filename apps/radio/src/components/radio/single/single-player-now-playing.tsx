@@ -1,12 +1,7 @@
 import { PlayPauseButton } from "@avoid.quest/ui/components/play-pause-button";
 import { Slider } from "@avoid.quest/ui/components/slider";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import {
-  ArrowRightIcon,
-  Music2Icon,
-  Volume2Icon,
-  VolumeXIcon,
-} from "lucide-react";
+import { Music2Icon, Volume2Icon, VolumeXIcon } from "lucide-react";
 import type { Radio } from "@/lib/audio";
 import { formatNowPlaying } from "@/lib/metadata/display";
 import type { RadioNowPlaying as RadioNowPlayingMetadata } from "@/lib/metadata/types";
@@ -16,10 +11,8 @@ import { RadioNowPlaying } from "../radio-now-playing";
 
 type SharedPanelProps = {
   radio: Radio | null;
-  nextRadio?: Radio | null;
   isPlaying: boolean;
   isLoading: boolean;
-  isCrossfading: boolean;
   error: string | null;
   volume: number;
   isMuted: boolean;
@@ -70,10 +63,8 @@ export function MobileNowPlayingPanel({
 
 function PlayerPanel({
   radio,
-  nextRadio,
   isPlaying,
   isLoading,
-  isCrossfading,
   error,
   volume,
   isMuted,
@@ -94,8 +85,6 @@ function PlayerPanel({
     );
   }
 
-  const incomingRadio = isCrossfading ? nextRadio : null;
-
   return (
     <div
       className={cn(
@@ -103,12 +92,7 @@ function PlayerPanel({
         mode === "mobile" && "pt-2"
       )}
     >
-      <PlayerIdentity
-        incomingRadio={incomingRadio}
-        metadata={metadata}
-        mode={mode}
-        radio={radio}
-      />
+      <PlayerIdentity metadata={metadata} mode={mode} radio={radio} />
 
       {radio.description && !radio.placeTitle && (
         <div className="min-w-0 border-border/50 border-t pt-4 text-left">
@@ -127,9 +111,9 @@ function PlayerPanel({
       <div className="flex items-center gap-4 border-border/50 border-t pt-4">
         <PlayPauseButton
           className="size-12 shrink-0"
-          disabled={isLoading || isCrossfading}
+          disabled={isLoading}
           iconClassName="size-5"
-          isLoading={isLoading || isCrossfading}
+          isLoading={isLoading}
           isPlaying={isPlaying}
           onClick={onPlayPause}
           size="sm"
@@ -166,35 +150,13 @@ function PlayerPanel({
 
 function PlayerIdentity({
   radio,
-  incomingRadio,
   metadata,
   mode,
 }: {
   radio: Radio;
-  incomingRadio?: Radio | null;
   metadata?: RadioNowPlayingMetadata | null;
   mode: "desktop" | "mobile";
 }) {
-  if (incomingRadio) {
-    return (
-      <div
-        aria-label={`Playing ${radio.name}; next is ${incomingRadio.name}`}
-        aria-live="polite"
-        className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3"
-        role="status"
-      >
-        <StationTarget
-          label="Playing"
-          metadata={metadata}
-          mode={mode}
-          radio={radio}
-        />
-        <ArrowRightIcon className="size-4 text-muted-foreground" />
-        <StationTarget label="Next" mode={mode} radio={incomingRadio} />
-      </div>
-    );
-  }
-
   return (
     <div className="flex min-w-0 items-center gap-4 pr-7">
       <RadioLogo
@@ -222,57 +184,16 @@ function PlayerIdentity({
   );
 }
 
-function StationTarget({
-  radio,
-  label,
-  metadata,
-  mode,
-}: {
-  radio: Radio;
-  label: "Playing" | "Next";
-  metadata?: RadioNowPlayingMetadata | null;
-  mode: "desktop" | "mobile";
-}) {
-  return (
-    <div className="flex min-w-0 flex-col items-center gap-2 text-center">
-      <RadioLogo
-        className={cn("rounded-xl", mode === "desktop" ? "size-24" : "size-16")}
-        logoUrl={radio.logoUrl}
-        name={radio.name}
-        size={mode === "desktop" ? "2xl" : "xl"}
-      />
-      <div className="min-w-0">
-        <p className="font-mono text-[10px] text-muted-foreground uppercase tracking-wider">
-          {label}
-        </p>
-        <div className="mt-0.5 flex items-center justify-center gap-1.5">
-          <p className="break-words font-semibold text-sm leading-snug">
-            {radio.name}
-          </p>
-        </div>
-        <NowPlayingLine centered metadata={metadata} />
-      </div>
-    </div>
-  );
-}
-
 function NowPlayingLine({
   metadata,
-  centered = false,
 }: {
   metadata?: RadioNowPlayingMetadata | null;
-  centered?: boolean;
 }) {
   if (!formatNowPlaying(metadata)) {
     return null;
   }
   return (
-    <div
-      className={cn(
-        "mt-1.5 flex min-w-0 items-center",
-        centered && "justify-center"
-      )}
-    >
+    <div className="mt-1.5 flex min-w-0 items-center">
       <RadioNowPlaying
         className="min-w-0 max-w-full text-muted-foreground text-xs"
         metadata={metadata}

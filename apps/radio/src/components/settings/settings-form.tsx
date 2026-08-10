@@ -9,11 +9,9 @@ import {
   DialogTrigger,
 } from "@avoid.quest/ui/components/dialog";
 import { DrawerClose } from "@avoid.quest/ui/components/drawer";
-import { Slider } from "@avoid.quest/ui/components/slider";
 import { Switch } from "@avoid.quest/ui/components/switch";
 import {
   DatabaseIcon,
-  ListMusicIcon,
   type LucideIcon,
   RadioIcon,
   RotateCcwIcon,
@@ -22,12 +20,7 @@ import {
 } from "lucide-react";
 import { lazy, Suspense, useState } from "react";
 import { toast } from "sonner";
-import {
-  type SettingsRecord,
-  setRestoreStateOnLoad,
-  setSingleModeTransitionDuration,
-} from "@/lib/collections";
-import { DEFAULT_TRANSITION_DURATION } from "@/lib/const";
+import { type SettingsRecord, setRestoreStateOnLoad } from "@/lib/collections";
 import { useSettings } from "@/lib/hooks/use-settings";
 import { resetAllSettings } from "@/lib/settings";
 import { RadioManagement } from "./radio-management";
@@ -42,8 +35,6 @@ const AudioSettings = lazy(() =>
 const MidiSettings = lazy(() =>
   import("./midi-settings").then((mod) => ({ default: mod.MidiSettings }))
 );
-
-const MAX_TRANSITION_DURATION = 10_000;
 
 type SettingsSection = "radios" | "playback" | "midi" | "data";
 
@@ -115,23 +106,8 @@ export function SettingsForm({
   const [dataPanel, setDataPanel] = useState<DataPanel>(() =>
     getInitialDataPanel(defaultTab)
   );
-  const [transitionDuration, setTransitionDuration] = useState(
-    settings?.player.single?.transitionDuration ?? DEFAULT_TRANSITION_DURATION
-  );
   const [isResetting, setIsResetting] = useState(false);
   const [showResetDialog, setShowResetDialog] = useState(false);
-
-  const handleTransitionDurationChange = (value: number[]) => {
-    const nextDuration = value[0] ?? 0;
-    const previousDuration = transitionDuration;
-    setTransitionDuration(nextDuration);
-    try {
-      setSingleModeTransitionDuration(nextDuration);
-    } catch {
-      setTransitionDuration(previousDuration);
-      toast.error("Failed to update transition duration. Changes reverted.");
-    }
-  };
 
   const handleReset = async () => {
     setIsResetting(true);
@@ -182,12 +158,10 @@ export function SettingsForm({
             onPlaybackPanelChange={setPlaybackPanel}
             onReset={handleReset}
             onResetDialogChange={setShowResetDialog}
-            onTransitionDurationChange={handleTransitionDurationChange}
             playbackPanel={playbackPanel}
             section={active}
             settings={settings}
             showResetDialog={showResetDialog}
-            transitionDuration={transitionDuration}
           />
         </div>
       </div>
@@ -211,8 +185,6 @@ type SectionContentProps = {
   playbackPanel: PlaybackPanel;
   dataPanel: DataPanel;
   settings: SettingsRecord;
-  transitionDuration: number;
-  onTransitionDurationChange: (value: number[]) => void;
   isResetting: boolean;
   showResetDialog: boolean;
   onResetDialogChange: (open: boolean) => void;
@@ -312,14 +284,7 @@ function SectionNav({
   );
 }
 
-function PlayerSettings({
-  settings,
-  transitionDuration,
-  onTransitionDurationChange,
-}: Pick<
-  SectionContentProps,
-  "settings" | "transitionDuration" | "onTransitionDurationChange"
->) {
+function PlayerSettings({ settings }: Pick<SectionContentProps, "settings">) {
   const handleRestoreStateToggle = (checked: boolean) => {
     try {
       setRestoreStateOnLoad(checked);
@@ -341,26 +306,6 @@ function PlayerSettings({
         }
         title="Restore playback state"
       />
-      {settings.player.mode === "single" && (
-        <SettingRow
-          control={
-            <div className="flex min-w-56 items-center gap-4">
-              <Slider
-                className="flex-1"
-                max={MAX_TRANSITION_DURATION}
-                onValueChange={onTransitionDurationChange}
-                step={100}
-                value={[transitionDuration]}
-              />
-              <span className="w-8 font-mono text-[10px] tabular-nums">
-                {(transitionDuration / 1000).toFixed(1)}s
-              </span>
-            </div>
-          }
-          icon={ListMusicIcon}
-          title="Crossfade duration"
-        />
-      )}
     </div>
   );
 }

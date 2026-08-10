@@ -1,5 +1,5 @@
 import { eq, useLiveQuery } from "@tanstack/react-db";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
 import type { Radio } from "@/lib/audio";
 import {
   type PlaybackSessionRecord,
@@ -38,58 +38,31 @@ function useSingleSessionRecord(): PlaybackSessionRecord | undefined {
   return result.data?.[0] as PlaybackSessionRecord | undefined;
 }
 
-export function useSingleSession(transitionDuration: number) {
+export function useSingleSession() {
   const session = useSingleSessionRecord();
   const activeChannelId = session?.activeChannelId;
   const activeChannel = session?.channels.find(
     (channel) => channel.id === activeChannelId
   );
-  const standbyChannel = session?.channels.find(
-    (channel) =>
-      channel.id ===
-      (activeChannelId === SINGLE_ACTIVE_CHANNEL_ID
-        ? SINGLE_STANDBY_CHANNEL_ID
-        : SINGLE_ACTIVE_CHANNEL_ID)
-  );
   const activeRuntime = usePlaybackChannelRuntime(
     activeChannelId ?? "__none__"
   );
-  const standbyRuntime = usePlaybackChannelRuntime(
-    standbyChannel?.id ?? "__none__"
-  );
-  const [isCrossfading, setIsCrossfading] = useState(false);
 
   const currentRadio = activeChannel?.radio ?? null;
-  const nextRadio = isCrossfading ? (standbyChannel?.radio ?? null) : null;
   const volume = activeChannel?.volume ?? 1;
-  const error =
-    activeRuntime.error?.message ?? standbyRuntime.error?.message ?? null;
+  const error = activeRuntime.error?.message ?? null;
 
   const selectRadio = useCallback(
     async (radio: Radio) => {
-      const shouldCrossfade =
-        !!currentRadio &&
-        activeRuntime.isPlaying &&
-        radio.streamUrl !== currentRadio.streamUrl;
       const errorChannelId = activeChannelId ?? SINGLE_ACTIVE_CHANNEL_ID;
-      if (shouldCrossfade) {
-        setIsCrossfading(true);
-      }
       try {
         clearSingleSessionErrors();
-        await createManagedPlaybackSessionWorkflow("single").selectRadio(
-          radio,
-          transitionDuration
-        );
+        await createManagedPlaybackSessionWorkflow("single").selectRadio(radio);
       } catch (error) {
         setSingleSessionError(errorChannelId, error, radio);
-      } finally {
-        if (shouldCrossfade) {
-          setIsCrossfading(false);
-        }
       }
     },
-    [activeChannelId, activeRuntime.isPlaying, currentRadio, transitionDuration]
+    [activeChannelId]
   );
 
   const togglePlayPause = useCallback(async () => {
@@ -152,10 +125,8 @@ export function useSingleSession(transitionDuration: number) {
     () => ({
       session,
       currentRadio,
-      nextRadio,
       isPlaying: activeRuntime.isPlaying,
       isLoading: activeRuntime.isLoading,
-      isCrossfading,
       error,
       volume,
       selectRadio,
@@ -170,8 +141,6 @@ export function useSingleSession(transitionDuration: number) {
       activeRuntime.isPlaying,
       currentRadio,
       error,
-      isCrossfading,
-      nextRadio,
       pause,
       play,
       selectRadio,

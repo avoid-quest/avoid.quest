@@ -11,9 +11,7 @@ import {
   removePlaybackChannel,
   replacePlaybackChannels,
   SINGLE_ACTIVE_CHANNEL_ID,
-  SINGLE_STANDBY_CHANNEL_ID,
   setPlaybackSessionActiveChannel,
-  updatePlaybackChannel,
   updatePlaybackSession,
   upsertPlaybackChannel,
 } from "@/lib/collections/playback-sessions";
@@ -41,10 +39,6 @@ import {
   isSameRadio,
 } from "./playback-actions-shared.js";
 import {
-  crossfadeStableIncoming,
-  waitForAbortable,
-} from "./single-radio-transition.js";
-import {
   getSingleSelectionCoordinator,
   singleSelectionAbortReason,
 } from "./single-selection-coordinator.js";
@@ -63,7 +57,6 @@ type CreateManagedPlaybackSessionWorkflowOptions = {
   ctx?: PlaybackActionContext;
   fadeOutDurationMs?: number;
   fadeOutSound?: FadeOutSound;
-  transitionStableDurationMs?: number;
 };
 
 export type ManagedPlaybackSessionWorkflow = {
@@ -72,7 +65,7 @@ export type ManagedPlaybackSessionWorkflow = {
   syncChannels: (radios: Radio[]) => void;
   addChannel: (radio: Radio, order?: number) => PlaybackChannelRecord;
   removeChannel: (channelId: string) => void;
-  selectRadio: (radio: Radio, transitionDuration: number) => Promise<void>;
+  selectRadio: (radio: Radio) => Promise<void>;
   setPlaying: (playing: boolean, channelId?: string) => Promise<void>;
   setChannelVolume: (channelId: string, volume: number) => void;
   setMasterVolume: (volume: number) => void;
@@ -83,7 +76,6 @@ export type ManagedPlaybackSessionWorkflow = {
 };
 
 const DEFAULT_FADE_OUT_DURATION_MS = 150;
-const DEFAULT_TRANSITION_STABLE_DURATION_MS = 750;
 
 const PLAYBACK_MODE_LABELS = {
   multiple: "Multiple",
@@ -115,6 +107,29 @@ function startGestureAudioResume(ctx: PlaybackActionContext): {
       }
     },
   };
+}
+
+function waitForAbortable<T>(
+  promise: Promise<T>,
+  signal: AbortSignal
+): Promise<T> {
+  if (signal.aborted) {
+    return Promise.reject(singleSelectionAbortReason(signal));
+  }
+  return new Promise<T>((resolve, reject) => {
+    const handleAbort = () => reject(singleSelectionAbortReason(signal));
+    signal.addEventListener("abort", handleAbort, { once: true });
+    promise.then(
+      (value) => {
+        signal.removeEventListener("abort", handleAbort);
+        resolve(value);
+      },
+      (error: unknown) => {
+        signal.removeEventListener("abort", handleAbort);
+        reject(error);
+      }
+    );
+  });
 }
 
 async function getReadyPlaybackSession(
@@ -268,13 +283,6 @@ function addMultipleChannel(
   return channel;
 }
 
-function createDefaultSingleChannel(channelId: string): PlaybackChannelRecord {
-  if (channelId === SINGLE_ACTIVE_CHANNEL_ID) {
-    return createDefaultChannel(channelId, "single-primary", 0);
-  }
-  return createDefaultChannel(channelId, "single-secondary", 1);
-}
-
 async function setSinglePlaying(
   playing: boolean,
   ctx: PlaybackActionContext
@@ -311,13 +319,17 @@ async function setChannelPlaying(
   const soundId =
     runtime.soundId ??
     createManagedSound(sessionId, channelId, channel.radio, undefined, ctx);
-  const gestureResume = startGestureAudioResume(ctx);
-
   try {
-    const settingsPromise = ensureMainAudioSettingsApplied(ctx);
-    applySessionMasterVolume(sessionId, ctx);
-    const playPromise = ctx.audio.playSound(soundId, channel.volume);
-    await Promise.all([settingsPromise, gestureResume.wait(), playPromise]);
+    if (sessionId === "single") {
+      applySessionMasterVolume(sessionId, ctx);
+      await ctx.audio.playSound(soundId, channel.volume);
+    } else {
+      const gestureResume = startGestureAudioResume(ctx);
+      const settingsPromise = ensureMainAudioSettingsApplied(ctx);
+      applySessionMasterVolume(sessionId, ctx);
+      const playPromise = ctx.audio.playSound(soundId, channel.volume);
+      await Promise.all([settingsPromise, gestureResume.wait(), playPromise]);
+    }
   } catch (error) {
     throw reportPlaybackActionError(ctx.reportError, {
       mode: sessionId,
@@ -329,146 +341,61 @@ async function setChannelPlaying(
   }
 }
 
-type SingleRadioTransition = {
-  incomingChannel: PlaybackChannelRecord;
-  incomingChannelId: string;
-  outgoingChannelId: string | null;
-  outgoingRuntime: ReturnType<typeof getPlaybackChannelRuntime> | null;
-  outgoingSoundId: string | null;
-  previousIncomingChannel: PlaybackChannelRecord;
-  previousVolume: number;
-};
-
-function planSingleRadioTransition(radio: Radio): SingleRadioTransition | null {
+function getSingleSelectionChannel(): PlaybackChannelRecord | null {
   const session = getPlaybackSession("single");
   if (!session) {
     return null;
   }
 
-  const activeChannelId = session.activeChannelId;
-  const activeChannel = activeChannelId
-    ? (session.channels.find((entry) => entry.id === activeChannelId) ?? null)
-    : null;
-  if (isSameRadio(activeChannel?.radio, radio)) {
-    return null;
-  }
-
-  const incomingChannelId =
-    activeChannelId === SINGLE_ACTIVE_CHANNEL_ID
-      ? SINGLE_STANDBY_CHANNEL_ID
-      : SINGLE_ACTIVE_CHANNEL_ID;
-  const outgoingChannelId =
-    activeChannelId === incomingChannelId ? null : activeChannelId;
-  const incomingChannel =
-    getPlaybackChannel("single", incomingChannelId) ??
-    createDefaultSingleChannel(incomingChannelId);
-  const previousIncomingChannel = { ...incomingChannel };
-  const previousVolume = activeChannel?.volume ?? incomingChannel.volume;
-
-  const outgoingRuntime = outgoingChannelId
-    ? getPlaybackChannelRuntime(outgoingChannelId)
-    : null;
-  const outgoingSoundId =
-    outgoingRuntime?.isPlaying && outgoingRuntime.soundId
-      ? outgoingRuntime.soundId
-      : null;
-
-  return {
-    incomingChannel,
-    incomingChannelId,
-    outgoingChannelId,
-    outgoingRuntime,
-    outgoingSoundId,
-    previousIncomingChannel,
-    previousVolume,
-  };
+  const channelId = session.activeChannelId ?? SINGLE_ACTIVE_CHANNEL_ID;
+  return (
+    getPlaybackChannel("single", channelId) ??
+    createDefaultChannel(channelId, "single-primary", 0)
+  );
 }
 
 async function selectSingleRadio(
   radio: Radio,
-  transitionDuration: number,
   ctx: PlaybackActionContext,
-  signal: AbortSignal,
-  stableDurationMs: number
+  signal: AbortSignal
 ): Promise<void> {
   if (signal.aborted) {
     throw singleSelectionAbortReason(signal);
   }
   validateRadioForMode(radio, "single");
 
-  const transition = planSingleRadioTransition(radio);
-  if (!transition) {
+  const channel = getSingleSelectionChannel();
+  if (!channel || isSameRadio(channel.radio, radio)) {
     return;
   }
-  const {
-    incomingChannel,
-    incomingChannelId,
-    outgoingChannelId,
-    outgoingRuntime,
-    outgoingSoundId,
-    previousIncomingChannel,
-    previousVolume,
-  } = transition;
-  let incomingSoundId: string | null = null;
+  const runtime = getPlaybackChannelRuntime(channel.id);
+  const shouldPlay = runtime.isPlaying;
 
+  cleanupManagedChannel(channel.id, ctx);
+  upsertPlaybackChannel("single", { ...channel, radio });
+  setPlaybackSessionActiveChannel("single", channel.id);
   try {
-    upsertPlaybackChannel("single", {
-      ...incomingChannel,
-      radio,
-      volume: previousVolume,
-    });
-    incomingSoundId = createManagedSound(
+    const soundId = createManagedSound(
       "single",
-      incomingChannelId,
+      channel.id,
       radio,
       undefined,
       ctx
     );
-    // Persist muted intent before node construction so the graph cannot expose
-    // its default gain while the incoming stream is being primed.
-    ctx.audio.setVolume(incomingSoundId, 0);
-
-    if (!(outgoingChannelId && outgoingSoundId)) {
-      if (outgoingChannelId && outgoingRuntime?.soundId) {
-        cleanupManagedChannel(outgoingChannelId, ctx);
-      }
-      setPlaybackSessionActiveChannel("single", incomingChannelId);
+    if (!shouldPlay) {
       return;
     }
 
-    const gestureResume = startGestureAudioResume(ctx);
-    const settingsPromise = ensureMainAudioSettingsApplied(ctx);
     applySessionMasterVolume("single", ctx);
-    const playPromise = ctx.audio.playSound(incomingSoundId, 0);
     await waitForAbortable(
-      Promise.all([settingsPromise, gestureResume.wait(), playPromise]),
-      signal
-    );
-    await crossfadeStableIncoming(
-      ctx,
-      incomingChannelId,
-      incomingSoundId,
-      outgoingSoundId,
-      previousVolume,
-      transitionDuration,
-      stableDurationMs,
+      ctx.audio.playSound(soundId, channel.volume),
       signal
     );
     if (signal.aborted) {
       throw singleSelectionAbortReason(signal);
     }
   } catch (error) {
-    try {
-      if (outgoingSoundId) {
-        ctx.audio.setVolume(outgoingSoundId, previousVolume);
-      }
-    } finally {
-      try {
-        cleanupManagedChannel(incomingChannelId, ctx);
-      } finally {
-        upsertPlaybackChannel("single", previousIncomingChannel);
-      }
-    }
+    cleanupManagedChannel(channel.id, ctx);
     if (signal.aborted) {
       throw singleSelectionAbortReason(signal);
     }
@@ -476,21 +403,10 @@ async function selectSingleRadio(
       mode: "single",
       code: "PLAY_ERROR",
       cause: error,
-      channelId: incomingChannelId,
+      channelId: channel.id,
       radio,
     });
   }
-
-  if (!outgoingChannelId) {
-    return;
-  }
-  cleanupManagedChannel(outgoingChannelId, ctx);
-  updatePlaybackChannel("single", outgoingChannelId, (draft) => {
-    draft.radio = null;
-    draft.volume = previousVolume;
-  });
-
-  setPlaybackSessionActiveChannel("single", incomingChannelId);
 }
 
 function setSessionMasterVolume(
@@ -549,7 +465,6 @@ export function createManagedPlaybackSessionWorkflow(
     ctx = getDefaultPlaybackActionContext(),
     fadeOutDurationMs = DEFAULT_FADE_OUT_DURATION_MS,
     fadeOutSound = async () => undefined,
-    transitionStableDurationMs = DEFAULT_TRANSITION_STABLE_DURATION_MS,
   }: CreateManagedPlaybackSessionWorkflowOptions = {}
 ): ManagedPlaybackSessionWorkflow {
   const singleSelection =
@@ -584,18 +499,12 @@ export function createManagedPlaybackSessionWorkflow(
       cleanupManagedChannel(channelId, ctx);
       removePlaybackChannel("multiple", channelId);
     },
-    selectRadio(radio, transitionDuration) {
+    selectRadio(radio) {
       if (sessionId !== "single" || !singleSelection) {
         throw new Error("Radio selection is only supported in single mode");
       }
       return singleSelection.run((signal) =>
-        selectSingleRadio(
-          radio,
-          transitionDuration,
-          ctx,
-          signal,
-          transitionStableDurationMs
-        )
+        selectSingleRadio(radio, ctx, signal)
       );
     },
     setPlaying(playing, channelId) {

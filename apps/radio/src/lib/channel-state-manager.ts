@@ -643,7 +643,11 @@ export function activateChannel(
 
   deactivateChannel(channelId);
   try {
-    manager.createSound(radio, soundId);
+    manager.createSound(
+      radio,
+      soundId,
+      sessionId === "single" ? "native" : "audio-graph"
+    );
     soundCreated = true;
     if (options.persistRadio) {
       updatePlaybackChannel(sessionId, channelId, (draft) => {

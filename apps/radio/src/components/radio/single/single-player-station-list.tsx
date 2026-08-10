@@ -1,6 +1,6 @@
 import { ScrollArea } from "@avoid.quest/ui/components/scroll-area";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { ArrowRightIcon, AudioLinesIcon } from "lucide-react";
+import { AudioLinesIcon } from "lucide-react";
 import type { Radio } from "@/lib/audio";
 import { isSessionRadio } from "@/lib/hooks/use-session-radios";
 import { RadioItemActions } from "../radio-item-actions";
@@ -28,7 +28,6 @@ export function StationList({
   radios,
   sessionRadios,
   currentRadioId,
-  nextRadioId,
   onSelect,
   onEdit,
   onDelete,
@@ -39,7 +38,6 @@ export function StationList({
   radios: Radio[] | undefined;
   sessionRadios: Radio[];
   currentRadioId: string | number | undefined;
-  nextRadioId?: string | number;
   onSelect: (radio: Radio) => void;
   onEdit: (radio: Radio) => void;
   onDelete: (radio: Radio) => void;
@@ -72,7 +70,6 @@ export function StationList({
             {allRadios.map((radio) => {
               const isSession = isSessionRadio(radio);
               const isCurrent = currentRadioId === radio.id;
-              const isNext = nextRadioId === radio.id;
               return (
                 <div
                   className={cn(
@@ -106,15 +103,6 @@ export function StationList({
                           <span title="Playing now">
                             <AudioLinesIcon aria-hidden className="size-3.5" />
                             <span className="sr-only">Playing now</span>
-                          </span>
-                        )}
-                        {isNext && (
-                          <span title="Up next">
-                            <ArrowRightIcon
-                              aria-hidden
-                              className="size-3.5 text-muted-foreground"
-                            />
-                            <span className="sr-only">Up next</span>
                           </span>
                         )}
                       </div>

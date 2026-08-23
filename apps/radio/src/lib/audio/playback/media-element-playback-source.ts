@@ -54,7 +54,7 @@ export class MediaElementPlaybackSource implements PlaybackSource {
   private readonly audio: HTMLAudioElement;
   private readonly mediaSourceNode: MediaElementAudioSourceNode | null;
   private readonly outputNode: GainNode | null;
-  private readonly useManagedRecovery: boolean;
+  private readonly useStallRecovery: boolean;
 
   private hls: HlsInstance | null = null;
   private readonly hlsFetchSetups = new Map<
@@ -85,7 +85,7 @@ export class MediaElementPlaybackSource implements PlaybackSource {
   ) {
     this.callbacks = callbacks;
     this.sourceId = sourceId;
-    this.useManagedRecovery = context !== null;
+    this.useStallRecovery = context !== null;
     this.audio = new Audio();
     if (context) {
       this.audio.crossOrigin = "anonymous";
@@ -711,11 +711,6 @@ export class MediaElementPlaybackSource implements PlaybackSource {
       this.reportTerminalError(error);
       return;
     }
-    if (!this.useManagedRecovery) {
-      this.reportTerminalError(error);
-      return;
-    }
-
     // Finite platform media can have expiring URLs. Preserve the existing DJ
     // continuation contract for those sources instead of repeatedly loading a
     // URL which needs to be re-resolved. Live radio reports an infinite
@@ -726,7 +721,7 @@ export class MediaElementPlaybackSource implements PlaybackSource {
       return;
     }
 
-    this.beginRecoveryWatchdog(error);
+    this.beginRecoveryWatchdog(error, true, true);
   }
 
   private reportTerminalError(error: Error): void {
@@ -736,10 +731,14 @@ export class MediaElementPlaybackSource implements PlaybackSource {
     this.callbacks.onError?.(error);
   }
 
-  private beginRecoveryWatchdog(error: Error, markBuffering = true): void {
+  private beginRecoveryWatchdog(
+    error: Error,
+    markBuffering = true,
+    recoverNativeSource = false
+  ): void {
     if (
       !(
-        this.useManagedRecovery &&
+        (this.useStallRecovery || recoverNativeSource) &&
         this.shouldResumeAfterLoad &&
         this.currentInput
       )
@@ -792,7 +791,7 @@ export class MediaElementPlaybackSource implements PlaybackSource {
             // A later user gesture or reconnect attempt can resume playback.
           });
         }
-        this.beginRecoveryWatchdog(error);
+        this.beginRecoveryWatchdog(error, true, recoverNativeSource);
         return;
       }
 

@@ -1148,6 +1148,10 @@ export class AudioManager {
     instance: SoundInstance,
     activePlaybackSource: NonNullable<SoundInstance["playbackSource"]> | null
   ): void {
+    if (this.soundRegistry.get(soundId) !== instance) {
+      return;
+    }
+
     if (activePlaybackSource) {
       activePlaybackSource.pause();
     } else {

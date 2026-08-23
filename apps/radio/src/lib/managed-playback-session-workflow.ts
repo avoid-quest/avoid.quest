@@ -15,7 +15,10 @@ import {
   updatePlaybackSession,
   upsertPlaybackChannel,
 } from "@/lib/collections/playback-sessions";
-import { getSettings } from "@/lib/collections/settings";
+import {
+  getSettings,
+  shouldUseNativeSinglePlayback,
+} from "@/lib/collections/settings";
 import { validateRadioForMode } from "@/lib/external-url/utils";
 import {
   getPlaybackChannelRuntime,
@@ -283,6 +286,24 @@ function addMultipleChannel(
   return channel;
 }
 
+async function playManagedSound(
+  sessionId: ManagedPlaybackSessionId,
+  soundId: string,
+  volume: number,
+  ctx: PlaybackActionContext
+): Promise<void> {
+  applySessionMasterVolume(sessionId, ctx);
+  if (sessionId === "single" && shouldUseNativeSinglePlayback()) {
+    await ctx.audio.playSound(soundId, volume);
+    return;
+  }
+
+  const gestureResume = startGestureAudioResume(ctx);
+  const settingsPromise = ensureMainAudioSettingsApplied(ctx);
+  const playPromise = ctx.audio.playSound(soundId, volume);
+  await Promise.all([settingsPromise, gestureResume.wait(), playPromise]);
+}
+
 async function setSinglePlaying(
   playing: boolean,
   ctx: PlaybackActionContext
@@ -320,16 +341,7 @@ async function setChannelPlaying(
     runtime.soundId ??
     createManagedSound(sessionId, channelId, channel.radio, undefined, ctx);
   try {
-    if (sessionId === "single") {
-      applySessionMasterVolume(sessionId, ctx);
-      await ctx.audio.playSound(soundId, channel.volume);
-    } else {
-      const gestureResume = startGestureAudioResume(ctx);
-      const settingsPromise = ensureMainAudioSettingsApplied(ctx);
-      applySessionMasterVolume(sessionId, ctx);
-      const playPromise = ctx.audio.playSound(soundId, channel.volume);
-      await Promise.all([settingsPromise, gestureResume.wait(), playPromise]);
-    }
+    await playManagedSound(sessionId, soundId, channel.volume, ctx);
   } catch (error) {
     throw reportPlaybackActionError(ctx.reportError, {
       mode: sessionId,
@@ -386,9 +398,8 @@ async function selectSingleRadio(
       return;
     }
 
-    applySessionMasterVolume("single", ctx);
     await waitForAbortable(
-      ctx.audio.playSound(soundId, channel.volume),
+      playManagedSound("single", soundId, channel.volume, ctx),
       signal
     );
     if (signal.aborted) {

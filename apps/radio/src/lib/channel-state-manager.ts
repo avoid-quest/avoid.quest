@@ -16,6 +16,7 @@ import {
   setPlaybackSessionTempo,
   updatePlaybackChannel,
 } from "@/lib/collections/playback-sessions";
+import { shouldUseNativeSinglePlayback } from "@/lib/collections/settings";
 import {
   getPlaybackChannelRuntime,
   getPlaybackRuntimeChannelIds,
@@ -646,7 +647,9 @@ export function activateChannel(
     manager.createSound(
       radio,
       soundId,
-      sessionId === "single" ? "native" : "audio-graph"
+      sessionId === "single" && shouldUseNativeSinglePlayback()
+        ? "native"
+        : "audio-graph"
     );
     soundCreated = true;
     if (options.persistRadio) {

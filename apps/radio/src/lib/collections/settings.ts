@@ -166,6 +166,12 @@ export function getDelaySettings(): {
   return audio.delay ?? { mainDelayMs: 0, cueDelayMs: 0 };
 }
 
+export function shouldUseNativeSinglePlayback(): boolean {
+  const audio = getAudioSettings();
+  const mainDelayMs = audio.delay?.mainDelayMs ?? 0;
+  return audio.mainOutputId === "default" && mainDelayMs === 0;
+}
+
 /**
  * Set main output device
  */

@@ -53,6 +53,7 @@ class VolumeController {
     state: AudioState
   ) => void;
   private readonly getContext: () => AudioContext | null;
+  private readonly nativeVolumeAnimationFrames = new Map<string, number>();
   private readonly volumeCurveEndTimes = new Map<string, number>();
   private readonly volumeCurves = new Map<string, ScheduledVolumeCurve>();
   private readonly lastSoundVolumes = new Map<string, number>();
@@ -98,6 +99,17 @@ class VolumeController {
 
     const lastVolume = clampVolume(volumeCurve.at(-1) ?? instance.volume);
     instance.volume = lastVolume;
+
+    if (instance.outputMode === "native") {
+      this.scheduleNativeVolumeCurve(
+        soundId,
+        instance,
+        volumeCurve,
+        durationMs
+      );
+      this.notifyVolumeChange(soundId, instance, lastVolume);
+      return;
+    }
 
     const nodes = instance.nodes;
     if (!nodes) {
@@ -215,12 +227,17 @@ class VolumeController {
   }
 
   deleteSound(soundId: string): void {
+    this.cancelNativeVolumeRamp(soundId);
     this.lastSoundVolumes.delete(soundId);
     this.volumeCurveEndTimes.delete(soundId);
     this.volumeCurves.delete(soundId);
   }
 
   clear(): void {
+    for (const animationFrame of this.nativeVolumeAnimationFrames.values()) {
+      globalThis.cancelAnimationFrame(animationFrame);
+    }
+    this.nativeVolumeAnimationFrames.clear();
     this.lastSoundVolumes.clear();
     this.volumeCurveEndTimes.clear();
     this.volumeCurves.clear();
@@ -229,12 +246,66 @@ class VolumeController {
     this.lastGlobalVolume = 1;
   }
 
+  private cancelNativeVolumeRamp(soundId: string): void {
+    const animationFrame = this.nativeVolumeAnimationFrames.get(soundId);
+    if (animationFrame === undefined) {
+      return;
+    }
+    globalThis.cancelAnimationFrame(animationFrame);
+    this.nativeVolumeAnimationFrames.delete(soundId);
+  }
+
+  private scheduleNativeVolumeCurve(
+    soundId: string,
+    instance: SoundInstance,
+    volumeCurve: Float32Array,
+    durationMs: number
+  ): void {
+    this.cancelNativeVolumeRamp(soundId);
+    const playbackSource = instance.playbackSource;
+    if (!playbackSource) {
+      return;
+    }
+
+    const duration = Math.max(0, durationMs);
+    const startedAt = performance.now();
+    const scheduledCurve: ScheduledVolumeCurve = {
+      endTime: 1,
+      startTime: 0,
+      values: volumeCurve,
+    };
+    const updateVolume = (now: number) => {
+      if (
+        this.getSound(soundId) !== instance ||
+        instance.playbackSource !== playbackSource
+      ) {
+        this.nativeVolumeAnimationFrames.delete(soundId);
+        return;
+      }
+
+      const progress =
+        duration === 0 ? 1 : Math.min(1, (now - startedAt) / duration);
+      const volume = sampleScheduledCurve(scheduledCurve, progress);
+      playbackSource.volume = clampVolume(volume * this.globalVolume);
+      if (progress >= 1) {
+        this.nativeVolumeAnimationFrames.delete(soundId);
+        return;
+      }
+
+      const animationFrame = globalThis.requestAnimationFrame(updateVolume);
+      this.nativeVolumeAnimationFrames.set(soundId, animationFrame);
+    };
+
+    updateVolume(startedAt);
+  }
+
   private setSoundGainTarget(
     soundId: string,
     instance: SoundInstance,
     volume: number
   ): void {
     if (instance.outputMode === "native") {
+      this.cancelNativeVolumeRamp(soundId);
       if (instance.playbackSource) {
         instance.playbackSource.volume = clampVolume(
           volume * this.globalVolume

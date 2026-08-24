@@ -20,6 +20,8 @@ import {
 } from "@/lib/stores/playback-runtime-store";
 import { deactivateAllChannels } from "./channel-state-manager";
 import {
+  applyCueOutputDevice,
+  cleanupCueBus,
   createDjDeckCommands,
   seekDeck,
   setDeckAutoplay,
@@ -29,6 +31,7 @@ import {
   setDeckSpeed,
   setDeckVolume,
 } from "./dj-actions";
+import { getOutputRouting } from "./output-routing";
 import type { PlaybackActionContext } from "./playback-action-context";
 import type { PlaybackActionError } from "./playback-action-errors";
 
@@ -165,6 +168,45 @@ afterEach(async () => {
 });
 
 describe("DJ deck command context", () => {
+  test("clearing CUE disables persisted flags without loaded decks", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    insertDjSession();
+    updatePlaybackChannel("dj", DECK_A_CHANNEL_ID, (draft) => {
+      draft.cueEnabled = true;
+    });
+    updatePlaybackChannel("dj", DECK_B_CHANNEL_ID, (draft) => {
+      draft.cueEnabled = true;
+    });
+    cleanupCueBus();
+    const routing = getOutputRouting();
+    const applySettings = routing.applySettings;
+    routing.applySettings = mock(async () => ({
+      cueActive: false,
+      deckCueEnabled: {},
+      headphoneVolume: 1,
+      settings: {
+        cueDelayMs: 0,
+        cueOutputId: null,
+        mainDelayMs: 0,
+        mainOutputId: "default",
+      },
+      sinkSelectionSupported: true,
+    }));
+
+    try {
+      await applyCueOutputDevice(null);
+
+      expect(getPlaybackChannel("dj", DECK_A_CHANNEL_ID)?.cueEnabled).toBe(
+        false
+      );
+      expect(getPlaybackChannel("dj", DECK_B_CHANNEL_ID)?.cueEnabled).toBe(
+        false
+      );
+    } finally {
+      routing.applySettings = applySettings;
+    }
+  });
+
   test("keeps deprecated A/B command aliases as adapters over the keyed commands", () => {
     const { context } = createTestContext();
     const commands = createDjDeckCommands(context);

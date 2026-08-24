@@ -123,10 +123,13 @@ export function isCueBusInitialized(): boolean {
 }
 
 function disableCueDecks(): void {
-  for (const [deckId, registration] of deckCueRegistrations) {
+  for (const registration of deckCueRegistrations.values()) {
     registration.setEnabled(false);
-    updateDeckCueState(deckId, false);
   }
+  updateMixer((draft) => {
+    draft.deckACueEnabled = false;
+    draft.deckBCueEnabled = false;
+  });
 }
 
 function getOutputDeviceActions() {

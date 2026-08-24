@@ -679,7 +679,6 @@ class OutputRouting {
     this.graph?.dispose();
     this.graph = null;
     this.runtimeSettings = DEFAULT_OUTPUT_SETTINGS;
-    this.errorListeners.clear();
   }
 
   releaseCue(): void {

@@ -569,7 +569,7 @@ describe("OutputRouting", () => {
     expect(errors.map((error) => error.message)).toEqual(["first failure"]);
   });
 
-  test("cleanup releases graph, sink, Deck, source, and error resources", async () => {
+  test("cleanup releases graph, sink, Deck, and source resources", async () => {
     const { browser, routing } = setup();
     await routing.applySettings({ cueOutputId: "headphones" });
     const main = node("main", browser.context);
@@ -593,7 +593,7 @@ describe("OutputRouting", () => {
     await expect(
       routing.applySettings({ cueOutputId: "headphones" })
     ).rejects.toThrow("after cleanup");
-    expect(errors).toEqual([]);
+    expect(errors.map((error) => error.message)).toEqual(["after cleanup"]);
   });
 
   test("keeps Deck registrations usable after shared routing cleanup", async () => {

@@ -16,12 +16,14 @@ function createHarness(options?: {
   const addSaved = mock((radio: Omit<RadioRecord, "id">) => {
     saved.push({ id: `saved-${saved.length + 1}`, ...radio });
   });
-  const enableSaved = mock((id: string) => {
-    const radio = saved.find((candidate) => candidate.id === id);
-    if (radio) {
-      radio.enabled = true;
+  const updateSaved = mock(
+    (id: string, updates: Partial<Omit<RadioRecord, "id" | "order">>) => {
+      const radio = saved.find((candidate) => candidate.id === id);
+      if (radio) {
+        Object.assign(radio, updates);
+      }
     }
-  });
+  );
   const addSession = mock((radio: Radio) => {
     const index = session.findIndex((candidate) => candidate.id === radio.id);
     if (index === -1) {
@@ -44,8 +46,8 @@ function createHarness(options?: {
       adapters: options?.adapters ?? {},
       saved: {
         add: addSaved,
-        enable: enableSaved,
         getAll: () => saved,
+        update: updateSaved,
       },
       session: {
         add: addSession,
@@ -268,6 +270,45 @@ describe("createStationIntake", () => {
     expect(harness.removeSession).toHaveBeenCalledTimes(2);
   });
 
+  test("removes every matching Session station after saving", async () => {
+    const staleSession = {
+      id: "rb_stale",
+      name: "Stale Session station",
+      streamUrl: "https://radio.example/shared-stream",
+    };
+    const replacement = {
+      id: "rg_replacement",
+      name: "Replacement Session station",
+      streamUrl: staleSession.streamUrl,
+    };
+    const harness = createHarness({ session: [staleSession] });
+    harness.removeSession.mockImplementationOnce(() => {
+      throw new Error("Session cleanup unavailable");
+    });
+
+    const created = await harness.intake.createSession({
+      origin: "discovery",
+      radio: replacement,
+    });
+    const saved = await harness.intake.save({
+      origin: "discovery",
+      radio: replacement,
+    });
+
+    expect(created).toEqual({
+      data: {
+        radio: expect.any(Object),
+        sessionCleanupPending: true,
+      },
+      ok: true,
+    });
+    expect(saved.ok).toBe(true);
+    if (saved.ok) {
+      expect(saved.data.sessionCleanupPending).toBeUndefined();
+    }
+    expect(harness.session).toEqual([]);
+  });
+
   test("saves a normalized Station at the next Saved station order", async () => {
     const harness = createHarness({
       saved: [
@@ -375,6 +416,66 @@ describe("createStationIntake", () => {
       ok: true,
     });
     expect(harness.saved[0]?.enabled).toBe(true);
+  });
+
+  test("refreshes a Saved provider station when its resolved stream changes", async () => {
+    const harness = createHarness({
+      saved: [
+        {
+          enabled: true,
+          id: "saved-provider",
+          isSystem: false,
+          name: "Custom saved name",
+          order: 4,
+          platformMetadata: {
+            hls: false,
+            itemType: "station",
+            platform: "radio-browser",
+            stationUuid: "station-1",
+            url: "https://radio.example/canonical",
+          },
+          streamFormat: "progressive",
+          streamUrl: "https://radio.example/old-stream",
+        },
+      ],
+    });
+
+    const result = await harness.intake.save({
+      origin: "discovery",
+      radio: {
+        id: "rb_station-1",
+        name: "Directory name",
+        platformMetadata: {
+          hls: true,
+          itemType: "station",
+          platform: "radio-browser",
+          stationUuid: "station-1",
+          url: "https://radio.example/canonical",
+        },
+        streamFormat: "hls",
+        streamUrl: "https://radio.example/new-stream",
+      },
+    });
+
+    expect(result).toEqual({
+      data: {
+        order: 4,
+        radio: expect.objectContaining({
+          id: "saved-provider",
+          name: "Custom saved name",
+          streamFormat: "hls",
+          streamUrl: "https://radio.example/new-stream",
+        }),
+      },
+      ok: true,
+    });
+    expect(harness.saved[0]).toMatchObject({
+      id: "saved-provider",
+      name: "Custom saved name",
+      order: 4,
+      streamFormat: "hls",
+      streamUrl: "https://radio.example/new-stream",
+    });
   });
 
   test("promotes the matching Session station and removes it after saving", async () => {

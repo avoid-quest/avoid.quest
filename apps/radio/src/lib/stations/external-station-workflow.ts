@@ -81,8 +81,11 @@ export type StationIntakeDependencies = {
   adapters: ExternalStationResolutionAdapters;
   saved: {
     add: (radio: Omit<RadioRecord, "id">) => void;
-    enable: (id: string) => void;
     getAll: () => Iterable<RadioRecord>;
+    update: (
+      id: string,
+      updates: Partial<Omit<RadioRecord, "id" | "order">>
+    ) => void;
   };
   session: {
     add: (radio: Radio) => void;
@@ -96,6 +99,8 @@ export type StationIntakeResult = ExternalStationResult<{
   radio: Radio;
   sessionCleanupPending?: true;
 }>;
+
+type SavedStationUpdates = Partial<Omit<RadioRecord, "id" | "order">>;
 
 function normalizeWorkflowError(
   error: unknown,
@@ -205,13 +210,41 @@ function normalizeStreamIdentity(streamUrl: string): string {
   }
 }
 
-function getStationIdentityKeys(radio: Radio): Set<string> {
-  const keys = new Set<string>();
+function getProviderIdentity(radio: Radio): string | undefined {
   const metadata = radio.platformMetadata;
   if (metadata?.platform === "radio-browser") {
-    keys.add(`radio-browser:${metadata.stationUuid}`);
-  } else if (metadata?.platform === "radiogarden") {
-    keys.add(`radiogarden:${metadata.channelId}`);
+    return `radio-browser:${metadata.stationUuid}`;
+  }
+  if (metadata?.platform === "radiogarden") {
+    return `radiogarden:${metadata.channelId}`;
+  }
+}
+
+function getSavedStationUpdates(
+  existing: RadioRecord,
+  incoming: Radio
+): SavedStationUpdates {
+  const providerIdentity = getProviderIdentity(incoming);
+  const refreshProvider =
+    providerIdentity !== undefined &&
+    providerIdentity === getProviderIdentity(existing);
+  return {
+    ...(existing.enabled ? {} : { enabled: true }),
+    ...(refreshProvider
+      ? {
+          platformMetadata: incoming.platformMetadata,
+          streamFormat: incoming.streamFormat,
+          streamUrl: incoming.streamUrl,
+        }
+      : {}),
+  };
+}
+
+function getStationIdentityKeys(radio: Radio): Set<string> {
+  const keys = new Set<string>();
+  const providerIdentity = getProviderIdentity(radio);
+  if (providerIdentity) {
+    keys.add(providerIdentity);
   }
   const streamIdentity = normalizeStreamIdentity(radio.streamUrl);
   if (streamIdentity) {
@@ -543,9 +576,6 @@ export function createStationIntake(dependencies: StationIntakeDependencies) {
     return sessionCleanupPending ? { sessionCleanupPending: true } : {};
   };
 
-  const tryCleanupSession = (session: Radio | undefined) =>
-    tryCleanupSessions(session ? [session] : []);
-
   return {
     async createSession(
       candidate: StationCandidate
@@ -585,10 +615,11 @@ export function createStationIntake(dependencies: StationIntakeDependencies) {
       if (!prepared.ok) {
         return prepared;
       }
-      const existingSession = findStationByIdentity(
+      const matchingSessions = findStationsByIdentity(
         dependencies.session.getAll(),
         prepared.data.radio
       );
+      const existingSession = matchingSessions[0];
       const radio =
         existingSession && candidate.origin === "discovery"
           ? normalizeRadio(existingSession)
@@ -598,9 +629,10 @@ export function createStationIntake(dependencies: StationIntakeDependencies) {
         radio
       );
       if (existingSaved) {
-        if (!existingSaved.enabled) {
+        const updates = getSavedStationUpdates(existingSaved, radio);
+        if (Object.keys(updates).length > 0) {
           try {
-            dependencies.saved.enable(existingSaved.id);
+            dependencies.saved.update(existingSaved.id, updates);
           } catch (error) {
             return {
               error: normalizeWorkflowError(error, {
@@ -614,8 +646,8 @@ export function createStationIntake(dependencies: StationIntakeDependencies) {
         return {
           data: {
             order: existingSaved.order,
-            radio: { ...existingSaved, enabled: true },
-            ...tryCleanupSession(existingSession),
+            radio: { ...existingSaved, ...updates },
+            ...tryCleanupSessions(matchingSessions),
           },
           ok: true,
         };
@@ -633,7 +665,7 @@ export function createStationIntake(dependencies: StationIntakeDependencies) {
         };
       }
       return {
-        data: { order, radio, ...tryCleanupSession(existingSession) },
+        data: { order, radio, ...tryCleanupSessions(matchingSessions) },
         ok: true,
       };
     },
@@ -647,11 +679,11 @@ export function createBrowserStationIntake(
     adapters,
     saved: {
       add: (radio) => radiosCollection.insert({ id: generateId(), ...radio }),
-      enable: (id) =>
-        radiosCollection.update(id, (draft) => {
-          draft.enabled = true;
-        }),
       getAll: () => radiosCollection.state.values(),
+      update: (id, updates) =>
+        radiosCollection.update(id, (draft) => {
+          Object.assign(draft, updates);
+        }),
     },
     session: {
       add: addSessionRadio,

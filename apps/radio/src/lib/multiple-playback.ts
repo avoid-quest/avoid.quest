@@ -12,11 +12,11 @@ import {
   getPlaybackChannelRuntime,
   getPlaybackRuntimeChannelIds,
   resetPlaybackChannelRuntime,
+  setPlaybackChannelRuntime,
 } from "@/lib/stores/playback-runtime-store";
 import {
   clearManagedPlaybackErrors,
   getReadyManagedPlaybackSession,
-  pauseManagedSession,
   restoreManagedChannels,
   setManagedChannelPlaying,
   setManagedPlaybackError,
@@ -62,6 +62,10 @@ type GetMultiplePlaybackOptions = {
   fadeOutSound?: FadeOutSound;
 };
 
+type PlayAllGeneration = {
+  cancellation: "deactivate" | "pause" | null;
+};
+
 const DEFAULT_FADE_OUT_DURATION_MS = 150;
 const PLAY_ALL_CONCURRENCY = 3;
 const instances = new WeakMap<PlaybackActionContext, MultiplePlayback>();
@@ -73,18 +77,25 @@ function yieldToBrowser(): Promise<void> {
 async function runWithConcurrency<T>(
   items: readonly T[],
   limit: number,
-  task: (item: T) => Promise<void>
+  task: (item: T) => Promise<void>,
+  shouldContinue: () => boolean = () => true
 ): Promise<void> {
   let index = 0;
   await Promise.all(
     Array.from({ length: Math.min(limit, items.length) }, async () => {
       while (index < items.length) {
+        if (!shouldContinue()) {
+          return;
+        }
         const item = items[index];
         index += 1;
         if (item === undefined) {
           return;
         }
         await task(item);
+        if (!shouldContinue()) {
+          return;
+        }
         await yieldToBrowser();
       }
     })
@@ -153,11 +164,17 @@ function createMultiplePlayback(
   fadeOutDurationMs: number
 ): MultiplePlayback {
   const initialSession = getPlaybackSession("multiple");
-  const unmutedVolumes = new Map(
-    initialSession?.channels.map((channel) => [channel.id, channel.volume]) ??
-      []
-  );
-  let unmutedMasterVolume = initialSession?.masterVolume ?? 1;
+  const activePlayAllGenerations = new Set<PlayAllGeneration>();
+  const unmutedVolumes = new Map<string, number>();
+  for (const channel of initialSession?.channels ?? []) {
+    if (channel.volume > 0) {
+      unmutedVolumes.set(channel.id, channel.volume);
+    }
+  }
+  let unmutedMasterVolume =
+    initialSession && initialSession.masterVolume > 0
+      ? initialSession.masterVolume
+      : 1;
 
   const setVolume = (channelId: string, volume: number) => {
     if (volume > 0) {
@@ -183,14 +200,48 @@ function createMultiplePlayback(
     }
   };
 
+  const pauseChannel = (channelId: string) => {
+    const runtime = getPlaybackChannelRuntime(channelId);
+    if (runtime.soundId) {
+      ctx.audio.pauseSound(runtime.soundId);
+    }
+    if (
+      runtime.soundId ||
+      runtime.isPlaying ||
+      runtime.isLoading ||
+      runtime.isBuffering
+    ) {
+      setPlaybackChannelRuntime(channelId, () => ({
+        isBuffering: false,
+        isLoading: false,
+        isPlaying: false,
+      }));
+    }
+  };
+
+  const pauseAll = () => {
+    for (const generation of activePlayAllGenerations) {
+      if (generation.cancellation === null) {
+        generation.cancellation = "pause";
+      }
+    }
+    for (const channel of getPlaybackSession("multiple")?.channels ?? []) {
+      pauseChannel(channel.id);
+    }
+  };
+
   return {
     async activate() {
       const session = await getReadyManagedPlaybackSession("multiple");
       restoreManagedChannels("multiple", session.channels, ctx);
       applySessionMasterVolume("multiple", ctx);
-      unmutedMasterVolume = session.masterVolume;
+      if (session.masterVolume > 0) {
+        unmutedMasterVolume = session.masterVolume;
+      }
       for (const channel of session.channels) {
-        unmutedVolumes.set(channel.id, channel.volume);
+        if (channel.volume > 0) {
+          unmutedVolumes.set(channel.id, channel.volume);
+        }
       }
     },
     async addStation(station, autoPlay = false) {
@@ -201,6 +252,9 @@ function createMultiplePlayback(
       return channel.id;
     },
     async deactivate() {
+      for (const generation of activePlayAllGenerations) {
+        generation.cancellation = "deactivate";
+      }
       const channelIds = Array.from(
         new Set([
           ...(getPlaybackSession("multiple")?.channels.map(
@@ -223,14 +277,34 @@ function createMultiplePlayback(
       }
       cleanupOrphanedSounds(soundIds, ctx, "multiple");
     },
-    pauseAll: () => pauseManagedSession("multiple", ctx),
+    pauseAll,
     async playAll() {
+      const generation: PlayAllGeneration = { cancellation: null };
+      activePlayAllGenerations.add(generation);
       const channels = (getPlaybackSession("multiple")?.channels ?? []).filter(
         (channel) => !getPlaybackChannelRuntime(channel.id).isPlaying
       );
-      await runWithConcurrency(channels, PLAY_ALL_CONCURRENCY, (channel) =>
-        setPlaying(channel.id, true)
-      );
+      try {
+        await runWithConcurrency(
+          channels,
+          PLAY_ALL_CONCURRENCY,
+          async (channel) => {
+            await setPlaying(channel.id, true);
+            if (generation.cancellation === null) {
+              return;
+            }
+            if (generation.cancellation === "deactivate") {
+              cleanupManagedChannel(channel.id, ctx);
+              resetPlaybackChannelRuntime(channel.id);
+            } else {
+              pauseChannel(channel.id);
+            }
+          },
+          () => generation.cancellation === null
+        );
+      } finally {
+        activePlayAllGenerations.delete(generation);
+      }
     },
     removeChannel(channelId) {
       cleanupManagedChannel(channelId, ctx);

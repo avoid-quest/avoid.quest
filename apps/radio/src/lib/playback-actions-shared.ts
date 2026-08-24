@@ -136,37 +136,3 @@ export function cleanupManagedChannel(
 ): void {
   ctx.channels.deactivate(channelId);
 }
-
-/**
- * Temporary compatibility helper for legacy managed-session callers. Mode
- * transitions should prefer mode-lifecycle-manager boundaries.
- */
-export function cleanupPlaybackSessionAudio(
-  sessionId: PlaybackSessionId,
-  ctx = getDefaultPlaybackActionContext()
-): void {
-  const session = getPlaybackSession(sessionId);
-  if (!session) {
-    return;
-  }
-  for (const channel of session.channels) {
-    cleanupManagedChannel(channel.id, ctx);
-  }
-}
-
-/**
- * Temporary compatibility helper for legacy managed-session callers. Mode
- * transitions should prefer mode-lifecycle-manager boundaries.
- */
-export function cleanupAudioForModeChange(
-  nextMode: PlaybackSessionId,
-  ctx = getDefaultPlaybackActionContext()
-): void {
-  for (const sessionId of ["single", "multiple", "dj"] as const) {
-    if (sessionId !== nextMode) {
-      cleanupPlaybackSessionAudio(sessionId, ctx);
-    }
-  }
-  ctx.lifecycle.mainOutputSettingsApplied = false;
-  applySessionMasterVolume(nextMode, ctx);
-}

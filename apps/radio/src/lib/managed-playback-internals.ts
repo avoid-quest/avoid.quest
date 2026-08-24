@@ -197,15 +197,3 @@ export function setManagedSessionMasterVolume(
     ctx.audio.setGlobalVolume(volume);
   }
 }
-
-export function pauseManagedSession(
-  sessionId: ManagedPlaybackSessionId,
-  ctx: PlaybackActionContext
-): void {
-  for (const channel of getPlaybackSession(sessionId)?.channels ?? []) {
-    const soundId = getPlaybackChannelRuntime(channel.id).soundId;
-    if (soundId) {
-      ctx.audio.pauseSound(soundId);
-    }
-  }
-}

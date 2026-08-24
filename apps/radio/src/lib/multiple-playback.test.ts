@@ -6,6 +6,7 @@ import {
   getPlaybackSession,
   playbackSessionsCollection,
   updatePlaybackChannel,
+  updatePlaybackSession,
 } from "@/lib/collections/playback-sessions";
 import { settingsCollection } from "@/lib/collections/settings";
 import {
@@ -186,6 +187,34 @@ describe("Multiple Playback", () => {
     expect(getPlaybackSession("multiple")?.masterVolume).toBe(0.8);
   });
 
+  test("restores a positive Channel volume when persisted state starts muted", async () => {
+    const radio = station("muted");
+    const channelId = getMultipleChannelId(radio);
+    insertMultipleSession([radio]);
+    updatePlaybackChannel("multiple", channelId, (draft) => {
+      draft.volume = 0;
+    });
+    const playback = getMultiplePlayback({ ctx: createTestContext() });
+
+    await playback.activate();
+    playback.toggleMute(channelId);
+
+    expect(getPlaybackSession("multiple")?.channels[0]?.volume).toBe(1);
+  });
+
+  test("restores a positive master volume when persisted state starts muted", async () => {
+    insertMultipleSession();
+    updatePlaybackSession("multiple", (draft) => {
+      draft.masterVolume = 0;
+    });
+    const playback = getMultiplePlayback({ ctx: createTestContext() });
+
+    await playback.activate();
+    playback.toggleMasterMute();
+
+    expect(getPlaybackSession("multiple")?.masterVolume).toBe(1);
+  });
+
   test("bounds play-all network pressure to three Channels", async () => {
     const radios = Array.from({ length: 5 }, (_, index) =>
       station(String(index + 1))
@@ -224,6 +253,107 @@ describe("Multiple Playback", () => {
     await playing;
 
     expect(maximumActive).toBe(3);
+  });
+
+  test("pause-all cancels queued starts and re-pauses late completions", async () => {
+    const radios = Array.from({ length: 5 }, (_, index) =>
+      station(String(index + 1))
+    );
+    insertMultipleSession(radios);
+    const releases: Array<() => void> = [];
+    const startedSoundIds: string[] = [];
+    const context = createTestContext();
+    context.audio.playSound = mock(
+      (soundId: string) =>
+        new Promise<void>((resolve) => {
+          startedSoundIds.push(soundId);
+          releases.push(() => {
+            setPlaybackChannelRuntime(
+              soundId.slice("multiple:".length),
+              () => ({ isPlaying: true })
+            );
+            resolve();
+          });
+        })
+    );
+    context.audio.pauseSound = mock((soundId: string) => {
+      setPlaybackChannelRuntime(soundId.slice("multiple:".length), () => ({
+        isPlaying: false,
+      }));
+    });
+    const playback = getMultiplePlayback({ ctx: context });
+
+    const playing = playback.playAll();
+    await Promise.resolve();
+    await Promise.resolve();
+    const initialReleases = releases.splice(0);
+    playback.pauseAll();
+    for (const release of initialReleases) {
+      release();
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    for (const release of releases.splice(0)) {
+      release();
+    }
+    await playing;
+
+    expect(startedSoundIds).toHaveLength(3);
+    for (const radio of radios) {
+      expect(
+        getPlaybackChannelRuntime(getMultipleChannelId(radio)).isPlaying
+      ).toBe(false);
+    }
+  });
+
+  test("deactivation cancels queued starts and cleans late completions", async () => {
+    const radios = Array.from({ length: 5 }, (_, index) =>
+      station(String(index + 1))
+    );
+    insertMultipleSession(radios);
+    const releases: Array<() => void> = [];
+    const startedSoundIds: string[] = [];
+    const context = createTestContext();
+    context.audio.playSound = mock(
+      (soundId: string) =>
+        new Promise<void>((resolve) => {
+          startedSoundIds.push(soundId);
+          releases.push(() => {
+            setPlaybackChannelRuntime(
+              soundId.slice("multiple:".length),
+              () => ({ isPlaying: true })
+            );
+            resolve();
+          });
+        })
+    );
+    const playback = getMultiplePlayback({
+      ctx: context,
+      fadeOutSound: mock(async () => undefined),
+    });
+
+    const playing = playback.playAll();
+    await Promise.resolve();
+    await Promise.resolve();
+    const initialReleases = releases.splice(0);
+    await playback.deactivate();
+    for (const release of initialReleases) {
+      release();
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    for (const release of releases.splice(0)) {
+      release();
+    }
+    await playing;
+
+    expect(startedSoundIds).toHaveLength(3);
+    for (const radio of radios) {
+      expect(
+        getPlaybackChannelRuntime(getMultipleChannelId(radio))
+      ).toMatchObject({
+        isPlaying: false,
+        soundId: null,
+      });
+    }
   });
 
   test("keeps play-all failures local to their Channel", async () => {

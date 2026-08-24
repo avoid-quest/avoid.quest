@@ -93,6 +93,7 @@ export type StationIntakeDependencies = {
 export type StationIntakeResult = ExternalStationResult<{
   order?: number;
   radio: Radio;
+  sessionCleanupPending?: true;
 }>;
 
 function normalizeWorkflowError(
@@ -515,6 +516,20 @@ export function createStationIntake(dependencies: StationIntakeDependencies) {
       : validated;
   };
 
+  const tryCleanupSession = (
+    session: Radio | undefined
+  ): { sessionCleanupPending?: true } => {
+    if (session?.id === undefined) {
+      return {};
+    }
+    try {
+      dependencies.session.remove(session.id);
+      return {};
+    } catch {
+      return { sessionCleanupPending: true };
+    }
+  };
+
   return {
     async createSession(
       candidate: StationCandidate
@@ -566,20 +581,18 @@ export function createStationIntake(dependencies: StationIntakeDependencies) {
         radio
       );
       if (existingSaved) {
-        if (existingSession?.id !== undefined) {
-          dependencies.session.remove(existingSession.id);
-        }
         return {
-          data: { order: existingSaved.order, radio: existingSaved },
+          data: {
+            order: existingSaved.order,
+            radio: existingSaved,
+            ...tryCleanupSession(existingSession),
+          },
           ok: true,
         };
       }
       const order = getNextSavedRadioOrder(dependencies.saved.getAll());
       try {
         dependencies.saved.add(toSavedRadioRecord(radio, order));
-        if (existingSession?.id !== undefined) {
-          dependencies.session.remove(existingSession.id);
-        }
       } catch (error) {
         return {
           error: normalizeWorkflowError(error, {
@@ -589,7 +602,10 @@ export function createStationIntake(dependencies: StationIntakeDependencies) {
           ok: false,
         };
       }
-      return { data: { order, radio }, ok: true };
+      return {
+        data: { order, radio, ...tryCleanupSession(existingSession) },
+        ok: true,
+      };
     },
   };
 }

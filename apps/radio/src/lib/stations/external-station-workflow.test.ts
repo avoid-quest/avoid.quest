@@ -457,4 +457,113 @@ describe("createStationIntake", () => {
     expect(harness.session).toEqual([sessionRadio]);
     expect(harness.removeSession).not.toHaveBeenCalled();
   });
+
+  test("reports cleanup pending after a new Saved station commits", async () => {
+    const sessionRadio = {
+      id: "rg_cleanup-pending",
+      name: "Cleanup pending",
+      streamUrl: "https://stream.example/cleanup-pending",
+    };
+    const harness = createHarness({ session: [sessionRadio] });
+    harness.removeSession.mockImplementationOnce(() => {
+      throw new Error("Session storage unavailable");
+    });
+
+    const result = await harness.intake.save({
+      origin: "discovery",
+      radio: sessionRadio,
+    });
+
+    expect(result).toEqual({
+      data: {
+        order: 1,
+        radio: expect.objectContaining({
+          id: "rg_cleanup-pending",
+          name: "Cleanup pending",
+        }),
+        sessionCleanupPending: true,
+      },
+      ok: true,
+    });
+    expect(harness.saved).toHaveLength(1);
+    expect(harness.session).toEqual([sessionRadio]);
+  });
+
+  test("retries pending cleanup on repeated save without duplicating the Saved station", async () => {
+    const sessionRadio = {
+      id: "rg_retry-cleanup",
+      name: "Retry cleanup",
+      streamUrl: "https://stream.example/retry-cleanup",
+    };
+    const harness = createHarness({ session: [sessionRadio] });
+    harness.removeSession.mockImplementationOnce(() => {
+      throw new Error("Session storage unavailable");
+    });
+
+    const first = await harness.intake.save({
+      origin: "discovery",
+      radio: sessionRadio,
+    });
+    const second = await harness.intake.save({
+      origin: "discovery",
+      radio: sessionRadio,
+    });
+
+    expect(first).toEqual({
+      data: {
+        order: 1,
+        radio: expect.any(Object),
+        sessionCleanupPending: true,
+      },
+      ok: true,
+    });
+    expect(second.ok).toBe(true);
+    if (second.ok) {
+      expect(second.data.sessionCleanupPending).toBeUndefined();
+    }
+    expect(harness.addSaved).toHaveBeenCalledTimes(1);
+    expect(harness.saved).toHaveLength(1);
+    expect(harness.session).toEqual([]);
+    expect(harness.removeSession).toHaveBeenCalledTimes(2);
+  });
+
+  test("reports cleanup pending when the Saved station already exists", async () => {
+    const sessionRadio = {
+      id: "rg_existing-cleanup",
+      name: "Existing cleanup",
+      streamUrl: "https://stream.example/existing-cleanup",
+    };
+    const harness = createHarness({
+      saved: [
+        {
+          enabled: true,
+          id: "saved-existing",
+          isSystem: false,
+          name: "Already saved",
+          order: 8,
+          streamUrl: sessionRadio.streamUrl,
+        },
+      ],
+      session: [sessionRadio],
+    });
+    harness.removeSession.mockImplementationOnce(() => {
+      throw new Error("Session storage unavailable");
+    });
+
+    const result = await harness.intake.save({
+      origin: "discovery",
+      radio: sessionRadio,
+    });
+
+    expect(result).toEqual({
+      data: {
+        order: 8,
+        radio: expect.objectContaining({ id: "saved-existing" }),
+        sessionCleanupPending: true,
+      },
+      ok: true,
+    });
+    expect(harness.addSaved).not.toHaveBeenCalled();
+    expect(harness.session).toEqual([sessionRadio]);
+  });
 });

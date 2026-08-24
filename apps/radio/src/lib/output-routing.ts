@@ -13,6 +13,11 @@ export type OutputRoutingSettings = {
   mainOutputId: string;
 };
 
+export type MainOutputRoutingSettings = Pick<
+  OutputRoutingSettings,
+  "mainDelayMs" | "mainOutputId"
+>;
+
 export type OutputRoutingSnapshot = {
   cueActive: boolean;
   deckCueEnabled: Record<string, boolean>;
@@ -128,7 +133,9 @@ class OutputRouting {
   private headphoneVolume: number;
   private readonly mainSources = new Set<AudioNode>();
   private readonly options: CreateOutputRoutingOptions;
+  private pendingSettingsTransactions = 0;
   private runtimeSettings = DEFAULT_OUTPUT_SETTINGS;
+  private settingsTransactionTail: Promise<void> = Promise.resolve();
 
   constructor(options: CreateOutputRoutingOptions) {
     this.options = options;
@@ -138,11 +145,57 @@ class OutputRouting {
     );
   }
 
-  async applySettings(
+  applySettings(
     patch: Partial<OutputRoutingSettings> = {}
   ): Promise<OutputRoutingSnapshot> {
+    return this.queueSettingsTransaction(() =>
+      this.applyReportedSettingsTransaction(() =>
+        this.applySettingsTransaction(patch)
+      )
+    );
+  }
+
+  applyMainSettings(
+    patch: Partial<MainOutputRoutingSettings> = {}
+  ): Promise<OutputRoutingSnapshot> {
+    return this.queueSettingsTransaction(() =>
+      this.applyReportedSettingsTransaction(() =>
+        this.applyMainSettingsTransaction(patch)
+      )
+    );
+  }
+
+  private queueSettingsTransaction(
+    run: () => Promise<OutputRoutingSnapshot>
+  ): Promise<OutputRoutingSnapshot> {
+    const transaction =
+      this.pendingSettingsTransactions === 0
+        ? run()
+        : this.settingsTransactionTail.then(run);
+    this.pendingSettingsTransactions += 1;
+    const settled = transaction.then(
+      () => undefined,
+      () => undefined
+    );
+    this.settingsTransactionTail = settled;
+    settled.then(() => {
+      this.pendingSettingsTransactions -= 1;
+    });
+    return transaction;
+  }
+
+  subscribeErrors(listener: (error: Error) => void): () => void {
+    this.errorListeners.add(listener);
+    return () => {
+      this.errorListeners.delete(listener);
+    };
+  }
+
+  private async applyReportedSettingsTransaction(
+    transaction: () => Promise<OutputRoutingSnapshot>
+  ): Promise<OutputRoutingSnapshot> {
     try {
-      return await this.applySettingsTransaction(patch);
+      return await transaction();
     } catch (error) {
       const reportedError =
         error instanceof Error ? error : new Error(String(error));
@@ -153,11 +206,64 @@ class OutputRouting {
     }
   }
 
-  subscribeErrors(listener: (error: Error) => void): () => void {
-    this.errorListeners.add(listener);
-    return () => {
-      this.errorListeners.delete(listener);
+  private async applyMainSettingsTransaction(
+    patch: Partial<MainOutputRoutingSettings>
+  ): Promise<OutputRoutingSnapshot> {
+    const persisted = this.options.settings.read();
+    const mainSettings = {
+      mainDelayMs: Math.max(
+        0,
+        Math.min(500, patch.mainDelayMs ?? persisted.mainDelayMs)
+      ),
+      mainOutputId: patch.mainOutputId ?? persisted.mainOutputId,
     };
+    const settings = {
+      ...this.runtimeSettings,
+      ...mainSettings,
+    };
+    const graph = this.ensureGraph();
+    const previous = this.runtimeSettings;
+    if (
+      settings.mainOutputId === previous.mainOutputId &&
+      settings.mainDelayMs === previous.mainDelayMs
+    ) {
+      return this.snapshot(settings);
+    }
+    const sinkSelectionSupported =
+      this.options.browser.isSinkSelectionSupported();
+    if (!sinkSelectionSupported && settings.mainOutputId !== "default") {
+      throw new Error("Output device selection is not supported");
+    }
+    const mainChanged = settings.mainOutputId !== previous.mainOutputId;
+
+    try {
+      await this.applyMainSink(
+        graph,
+        settings,
+        mainChanged,
+        sinkSelectionSupported
+      );
+      graph.setMainDelay(settings.mainDelayMs);
+      if (
+        mainSettings.mainOutputId !== persisted.mainOutputId ||
+        mainSettings.mainDelayMs !== persisted.mainDelayMs
+      ) {
+        this.options.settings.write({
+          ...persisted,
+          ...mainSettings,
+        });
+      }
+      this.runtimeSettings = settings;
+      return this.snapshot(settings);
+    } catch (error) {
+      if (mainChanged && sinkSelectionSupported) {
+        await this.options.browser
+          .setMainSink(graph.context, previous.mainOutputId)
+          .catch(() => undefined);
+      }
+      graph.setMainDelay(previous.mainDelayMs);
+      throw error;
+    }
   }
 
   private async applySettingsTransaction(

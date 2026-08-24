@@ -57,7 +57,7 @@ export async function applyCurrentMainAudioSettings(
 
   const settings = getAudioSettings();
   const { mainDelayMs } = getDelaySettings();
-  await router.applySettings({
+  await router.applyMainSettings({
     mainDelayMs,
     mainOutputId: settings.mainOutputId,
   });

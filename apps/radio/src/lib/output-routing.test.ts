@@ -68,6 +68,11 @@ class InMemoryBrowserAdapter implements OutputBrowserAdapter {
   readonly cueSinkDisposals: string[] = [];
   readonly graphs: InMemoryGraph[] = [];
   readonly mainSinkChanges: string[] = [];
+  readonly mainSinkErrors = new Map<string, Error>();
+  readonly mainSinkDeferrals: Array<{
+    promise: Promise<void>;
+    resolve(): void;
+  }> = [];
   context = { id: "context-1" } as unknown as AudioContext;
   cueSinkError: Error | null = null;
   supported = true;
@@ -99,9 +104,26 @@ class InMemoryBrowserAdapter implements OutputBrowserAdapter {
     return this.supported;
   }
 
+  deferNextMainSink() {
+    let resolvePromise!: () => void;
+    const promise = new Promise<void>((resolve) => {
+      resolvePromise = resolve;
+    });
+    const deferral = {
+      promise,
+      resolve: resolvePromise,
+    };
+    this.mainSinkDeferrals.push(deferral);
+    return deferral;
+  }
+
   setMainSink(_context: AudioContext, deviceId: string): Promise<void> {
     this.mainSinkChanges.push(deviceId);
-    return Promise.resolve();
+    const error = this.mainSinkErrors.get(deviceId);
+    if (error) {
+      return Promise.reject(error);
+    }
+    return this.mainSinkDeferrals.shift()?.promise ?? Promise.resolve();
   }
 }
 
@@ -145,6 +167,44 @@ function setup(
 }
 
 describe("OutputRouting", () => {
+  test("serializes overlapping settings transactions", async () => {
+    const { browser, persistence, routing } = setup();
+    const firstSink = browser.deferNextMainSink();
+    const secondSink = browser.deferNextMainSink();
+
+    const first = routing.applySettings({ mainOutputId: "speakers" });
+    const second = routing.applySettings({ mainOutputId: "studio" });
+
+    expect(browser.mainSinkChanges).toEqual(["speakers"]);
+    firstSink.resolve();
+    await first;
+    secondSink.resolve();
+    await second;
+
+    expect(browser.mainSinkChanges).toEqual(["speakers", "studio"]);
+    expect(persistence.read().mainOutputId).toBe("studio");
+    expect(persistence.writes.map((settings) => settings.mainOutputId)).toEqual(
+      ["speakers", "studio"]
+    );
+  });
+
+  test("continues queued settings transactions after a failure", async () => {
+    const { browser, persistence, routing } = setup();
+    browser.mainSinkErrors.set("broken", new Error("main sink failed"));
+
+    const failed = routing.applySettings({ mainOutputId: "broken" });
+    const recovered = routing.applySettings({ mainOutputId: "studio" });
+
+    await expect(failed).rejects.toThrow("main sink failed");
+    await expect(recovered).resolves.toMatchObject({
+      settings: { mainOutputId: "studio" },
+    });
+    expect(browser.mainSinkChanges).toEqual(["broken", "default", "studio"]);
+    expect(persistence.writes.map((settings) => settings.mainOutputId)).toEqual(
+      ["studio"]
+    );
+  });
+
   test("applies main and CUE settings as one transaction", async () => {
     const { browser, persistence, routing } = setup();
 
@@ -166,6 +226,25 @@ describe("OutputRouting", () => {
     expect(browser.graphs[0]?.mainDelayMs).toBe(120);
     expect(browser.graphs[0]?.cueDelayMs).toBe(35);
     expect(persistence.writes).toEqual([snapshot.settings]);
+  });
+
+  test("applies persisted main settings without staging an invalid CUE sink", async () => {
+    const { browser, routing } = setup({
+      cueDelayMs: 25,
+      cueOutputId: "invalid-headphones",
+      mainDelayMs: 80,
+      mainOutputId: "speakers",
+    });
+    browser.cueSinkError = new Error("invalid CUE sink");
+
+    const snapshot = await routing.applyMainSettings();
+
+    expect(snapshot.settings.mainOutputId).toBe("speakers");
+    expect(snapshot.settings.mainDelayMs).toBe(80);
+    expect(snapshot.settings.cueOutputId).toBeNull();
+    expect(snapshot.cueActive).toBe(false);
+    expect(browser.mainSinkChanges).toEqual(["speakers"]);
+    expect(browser.cueSinkCreations).toEqual([]);
   });
 
   test("rolls back main output when CUE application fails", async () => {

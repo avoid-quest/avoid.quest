@@ -6,34 +6,28 @@ import {
   playbackSessionsCollection,
 } from "@/lib/collections/playback-sessions";
 import { setPlaybackChannelSoundId } from "@/lib/stores/playback-runtime-store";
+import type { DesiredEffectsState } from "./channel-effects";
 import {
   activateChannel,
-  addChannelEffect,
-  addChannelEffectToChain,
   deactivateAllChannels,
-  removeChannelEffect,
-  reorderChannelEffectChain,
-  reorderChannelEffects,
   setChannelVolume,
-  updateChannelEffect,
 } from "./channel-state-manager";
 
-async function resetPlaybackSessions() {
+async function resetPlaybackSessions(): Promise<void> {
   await playbackSessionsCollection.stateWhenReady();
-
-  for (const sessionId of Array.from(playbackSessionsCollection.state.keys())) {
+  for (const sessionId of playbackSessionsCollection.state.keys()) {
     playbackSessionsCollection.delete(sessionId);
   }
 }
 
 beforeEach(async () => {
-  await resetPlaybackSessions();
   deactivateAllChannels();
+  await resetPlaybackSessions();
 });
 
 afterEach(async () => {
-  await resetPlaybackSessions();
   deactivateAllChannels();
+  await resetPlaybackSessions();
   AudioManager.resetInstance();
 });
 
@@ -69,208 +63,57 @@ describe("channel state manager", () => {
     expect(setVolume).toHaveBeenCalledWith("sound-1", 0.42);
   });
 
-  test("owns effect order assignment when effects are added", async () => {
+  test("binds the persisted desired Effects state during Channel activation", async () => {
     await playbackSessionsCollection.stateWhenReady();
-    playbackSessionsCollection.insert({
-      id: "dj",
-      channels: [createDefaultChannel("deck-a", "deck-a", 0)],
-      masterVolume: 1,
-      crossfadePosition: 0.5,
-      headphoneVolume: 1,
-      activeChannelId: null,
-    });
-
-    const delay = createDefaultEffectConfig("delay", "delay-1", 99);
-    const limiter = createDefaultEffectConfig("limiter", "limiter-1", 99);
-
-    addChannelEffect("dj", "deck-a", delay);
-    addChannelEffect("dj", "deck-a", limiter);
-
-    const effects = getPlaybackChannel("dj", "deck-a")?.effects ?? [];
-    expect(effects.map((effect) => effect.id)).toEqual([
-      "delay-1",
-      "limiter-1",
-    ]);
-    expect(effects.map((effect) => effect.order)).toEqual([0, 1]);
-  });
-
-  test("serializes persisted effect order before syncing reorder commands", async () => {
-    await playbackSessionsCollection.stateWhenReady();
-    playbackSessionsCollection.insert({
-      id: "dj",
-      channels: [createDefaultChannel("deck-a", "deck-a", 0)],
-      masterVolume: 1,
-      crossfadePosition: 0.5,
-      headphoneVolume: 1,
-      activeChannelId: null,
-    });
-
-    const delay = createDefaultEffectConfig("delay", "delay-1", 99);
-    const limiter = createDefaultEffectConfig("limiter", "limiter-1", 99);
-    const crusher = createDefaultEffectConfig("crusher", "crusher-1", 99);
-    const manager = AudioManager.getInstance();
-    manager.reorderEffects = mock(
-      (_soundId: string, _effectIds: string[]) => undefined
-    );
-    setPlaybackChannelSoundId("deck-a", "sound-1");
-
-    addChannelEffect("dj", "deck-a", delay);
-    addChannelEffect("dj", "deck-a", limiter);
-    addChannelEffect("dj", "deck-a", crusher);
-    reorderChannelEffects("dj", "deck-a", [
-      "crusher-1",
-      "missing-effect",
-      "delay-1",
-    ]);
-
-    const effects = getPlaybackChannel("dj", "deck-a")?.effects ?? [];
-    expect(effects.map((effect) => effect.id)).toEqual([
-      "crusher-1",
-      "delay-1",
-      "limiter-1",
-    ]);
-    expect(effects.map((effect) => effect.order)).toEqual([0, 1, 2]);
-    expect(manager.reorderEffects).toHaveBeenCalledWith("sound-1", [
-      "crusher-1",
-      "delay-1",
-      "limiter-1",
-    ]);
-  });
-
-  test("skips audio reorder sync when the persisted channel is missing", async () => {
-    await playbackSessionsCollection.stateWhenReady();
-    playbackSessionsCollection.insert({
-      id: "dj",
-      channels: [createDefaultChannel("deck-b", "deck-b", 1)],
-      masterVolume: 1,
-      crossfadePosition: 0.5,
-      headphoneVolume: 1,
-      activeChannelId: null,
-    });
-
-    const manager = AudioManager.getInstance();
-    manager.reorderEffects = mock(
-      (_soundId: string, _effectIds: string[]) => undefined
-    );
-    setPlaybackChannelSoundId("deck-a", "sound-1");
-
-    reorderChannelEffects("dj", "deck-a", ["delay-1"]);
-
-    expect(manager.reorderEffects).not.toHaveBeenCalled();
-  });
-
-  test("reconciles nested effect changes through their persisted root container", async () => {
-    await playbackSessionsCollection.stateWhenReady();
-    const container = createDefaultEffectConfig(
-      "fxComposite",
-      "container-1",
-      0
-    );
+    const effect = createDefaultEffectConfig("delay", "delay", 0);
+    effect.enabled = true;
     playbackSessionsCollection.insert({
       id: "dj",
       channels: [
         {
           ...createDefaultChannel("deck-a", "deck-a", 0),
-          effects: [container],
+          effects: [effect],
+          effectsDryWet: 0.6,
         },
       ],
       masterVolume: 1,
       crossfadePosition: 0.5,
       headphoneVolume: 1,
       activeChannelId: null,
+      tempo: 126,
     });
-
     const manager = AudioManager.getInstance();
-    manager.updateEffect = mock(() => true);
-    manager.removeEffect = mock(() => undefined);
-    manager.setEffectsSidechain = mock(() => true);
-    setPlaybackChannelSoundId("deck-a", "sound-1");
-
-    const chainId = container.chains[0]?.id;
-    expect(chainId).toBeDefined();
-    if (!chainId) {
-      return;
-    }
-    const delay = createDefaultEffectConfig("delay", "delay-1", 99);
-    const limiter = createDefaultEffectConfig("limiter", "limiter-1", 99);
-
-    addChannelEffectToChain("dj", "deck-a", chainId, delay);
-    addChannelEffectToChain("dj", "deck-a", chainId, limiter);
-    updateChannelEffect("dj", "deck-a", "delay-1", { enabled: false });
-    reorderChannelEffectChain("dj", "deck-a", chainId, [
-      "limiter-1",
-      "delay-1",
-    ]);
-    removeChannelEffect("dj", "deck-a", "delay-1");
-
-    const persistedContainer = getPlaybackChannel("dj", "deck-a")?.effects[0];
-    expect(persistedContainer).toMatchObject({
-      id: "container-1",
-      type: "fxComposite",
-    });
-    const persistedChain =
-      persistedContainer?.type === "fxComposite"
-        ? persistedContainer.chains.find((chain) => chain.id === chainId)
-        : undefined;
-    expect(persistedChain?.effects).toEqual([
-      expect.objectContaining({ id: "limiter-1", order: 0 }),
-    ]);
-    expect(manager.updateEffect).toHaveBeenCalledTimes(5);
-    expect(manager.updateEffect).toHaveBeenLastCalledWith(
-      "sound-1",
-      "container-1",
-      "fxComposite",
-      expect.objectContaining({
-        chains: expect.any(Array),
-      })
-    );
-    expect(manager.removeEffect).not.toHaveBeenCalled();
-  });
-
-  test("restores persisted sidechain intent when the source deck activates later", async () => {
-    await playbackSessionsCollection.stateWhenReady();
-    const gate = createDefaultEffectConfig("gate", "gate", 0);
-    gate.sidechain = { channelId: "deck-b" };
-    const radioA = {
-      id: "radio-a",
-      name: "Deck A",
-      streamUrl: "https://radio.example/a.mp3",
-    };
-    const radioB = {
-      id: "radio-b",
-      name: "Deck B",
-      streamUrl: "https://radio.example/b.mp3",
-    };
-    playbackSessionsCollection.insert({
-      id: "dj",
-      channels: [
-        { ...createDefaultChannel("deck-a", "deck-a", 0), effects: [gate] },
-        createDefaultChannel("deck-b", "deck-b", 1),
-      ],
-      masterVolume: 1,
-      crossfadePosition: 0.5,
-      headphoneVolume: 1,
-      activeChannelId: null,
-      tempo: 120,
-    });
-
-    const manager = AudioManager.getInstance();
-    manager.createSound = mock((_radio, soundId) => soundId ?? "generated");
+    const desired: DesiredEffectsState[] = [];
+    manager.createSound = mock((_radio, soundId) => soundId ?? "sound-a");
     manager.subscribe = mock(() => () => undefined);
     manager.subscribeMeter = mock(() => () => undefined);
     manager.cleanupSound = mock(() => undefined);
-    manager.setEffectsSidechain = mock(() => true);
+    manager.reconcileEffects = mock((_soundId, state) => {
+      desired.push(state);
+      return Promise.resolve({
+        backend: null,
+        ready: false,
+        status: "inactive" as const,
+      });
+    });
 
-    activateChannel("dj", "deck-a", radioA, { soundId: "sound-a" });
-    expect(manager.setEffectsSidechain).toHaveBeenLastCalledWith(
-      "sound-a",
-      null
+    activateChannel(
+      "dj",
+      "deck-a",
+      {
+        id: "radio-a",
+        name: "Deck A",
+        streamUrl: "https://radio.example/a.mp3",
+      },
+      { soundId: "sound-a" }
     );
+    await Promise.resolve();
 
-    activateChannel("dj", "deck-b", radioB, { soundId: "sound-b" });
-    expect(manager.setEffectsSidechain).toHaveBeenCalledWith(
-      "sound-a",
-      "sound-b"
-    );
+    expect(desired.at(-1)).toEqual({
+      tree: [effect],
+      dryWet: 0.6,
+      sidechainSoundId: null,
+      tempo: 126,
+    });
   });
 });

@@ -3049,7 +3049,7 @@ describe("DJ deck channel lifecycle", () => {
     );
   });
 
-  test("persists strip field changes and syncs active audio through the lifecycle boundary", async () => {
+  test("persists strip fields and reconciles the desired Effects state", async () => {
     await playbackSessionsCollection.stateWhenReady();
     insertDjSession();
 
@@ -3067,8 +3067,14 @@ describe("DJ deck channel lifecycle", () => {
     manager.setChannelFilter = mock((_soundId: string, _value: number) => {
       calls.push("channelFilter");
     });
-    manager.setEffectsDryWet = mock((_soundId: string, _value: number) => {
-      calls.push("effectsDryWet");
+    const effectsSnapshots: EffectConfig[][] = [];
+    manager.reconcileEffects = mock((_soundId, desired) => {
+      effectsSnapshots.push([...desired.tree]);
+      return Promise.resolve({
+        backend: "bypass" as const,
+        ready: true,
+        status: "ready" as const,
+      });
     });
     manager.updateFilter = mock((_soundId, _filter) => {
       calls.push("filter");
@@ -3088,6 +3094,7 @@ describe("DJ deck channel lifecycle", () => {
       gain: 2,
       enabled: true,
     });
+    await flushContinuation();
 
     expect(calls).toEqual([]);
 
@@ -3135,32 +3142,31 @@ describe("DJ deck channel lifecycle", () => {
       "left_station-1",
       0.45
     );
-    expect(manager.setEffectsDryWet).toHaveBeenCalledWith(
+    expect(manager.reconcileEffects).toHaveBeenLastCalledWith(
       "left_station-1",
-      0.5
+      expect.objectContaining({ dryWet: 0.5 })
     );
+    expect(effectsSnapshots.at(-1)).toEqual([]);
     expect(manager.updateFilter).toHaveBeenCalledWith(
       "left_station-1",
       expect.objectContaining({ type: "highpass", frequency: 500 })
     );
   });
 
-  test("persists effect lifecycle changes and syncs active audio through the lifecycle boundary", async () => {
+  test("persists effect lifecycle changes and reconciles the resulting tree", async () => {
     await playbackSessionsCollection.stateWhenReady();
     insertDjSession();
 
     const manager = AudioManager.getInstance();
-    manager.addEffect = mock((_soundId: string, _effect: EffectConfig) => true);
-    manager.updateEffect = mock(
-      (
-        _soundId: string,
-        _effectId: string,
-        _type: EffectType,
-        _config: Partial<EffectConfig>
-      ) => true
-    );
-    manager.removeEffect = mock((_soundId, _effectId) => undefined);
-    manager.reorderEffects = mock((_soundId, _effectIds) => undefined);
+    const effectsSnapshots: EffectConfig[][] = [];
+    manager.reconcileEffects = mock((_soundId, desired) => {
+      effectsSnapshots.push([...desired.tree]);
+      return Promise.resolve({
+        backend: "compatibility" as const,
+        ready: true,
+        status: "ready" as const,
+      });
+    });
     let nextEffectId = "delay-1";
     const dependencies = {
       ...createDependencies(),
@@ -3179,7 +3185,7 @@ describe("DJ deck channel lifecycle", () => {
     expect(getPlaybackChannel("dj", "deck-a")?.effects).toEqual([
       expect.objectContaining({ id: "delay-1", order: 0 }),
     ]);
-    expect(manager.addEffect).not.toHaveBeenCalled();
+    expect(manager.reconcileEffects).not.toHaveBeenCalled();
 
     await workflow.loadDeckRadio("deck-a", {
       id: "station-1",
@@ -3191,27 +3197,17 @@ describe("DJ deck channel lifecycle", () => {
     workflow.updateDeckEffect("deck-a", "delay-1", { dryWet: 0.4 });
     workflow.reorderDeckEffects("deck-a", ["limiter-1", "delay-1"]);
     workflow.removeDeckEffect("deck-a", "delay-1");
+    await flushContinuation();
 
-    expect(manager.addEffect).toHaveBeenCalledWith(
+    expect(manager.reconcileEffects).toHaveBeenLastCalledWith(
       "left_station-1",
-      expect.objectContaining({ id: "limiter-1", order: 1 })
+      expect.objectContaining({
+        tree: [expect.objectContaining({ id: "limiter-1", order: 0 })],
+      })
     );
-    expect(manager.updateEffect).toHaveBeenCalledWith(
-      "left_station-1",
-      "delay-1",
-      "delay",
-      {
-        dryWet: 0.4,
-      }
-    );
-    expect(manager.reorderEffects).toHaveBeenCalledWith("left_station-1", [
-      "limiter-1",
-      "delay-1",
+    expect(effectsSnapshots.at(-1)).toEqual([
+      expect.objectContaining({ id: "limiter-1", order: 0 }),
     ]);
-    expect(manager.removeEffect).toHaveBeenCalledWith(
-      "left_station-1",
-      "delay-1"
-    );
     expect(getPlaybackChannel("dj", "deck-a")?.effects).toEqual([
       expect.objectContaining({ id: "limiter-1", order: 0 }),
     ]);

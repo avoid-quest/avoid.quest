@@ -14,6 +14,10 @@
  */
 
 import { getOutputRouting, type OutputRouting } from "../../output-routing.js";
+import type {
+  DesiredEffectsState,
+  EffectsRuntimeOutcome,
+} from "../../channel-effects.js";
 import type { EffectConfig, EffectType } from "../dsp/effects/types.js";
 import {
   type AudioState,
@@ -739,6 +743,13 @@ export class AudioManager {
   // ============================================
   // Effect Management
   // ============================================
+
+  reconcileEffects(
+    soundId: string,
+    desired: DesiredEffectsState
+  ): Promise<EffectsRuntimeOutcome> {
+    return this.effects.reconcile(soundId, desired);
+  }
 
   /**
    * Add an effect to a sound

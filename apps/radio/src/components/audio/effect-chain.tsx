@@ -28,7 +28,6 @@ import {
   MAX_EFFECT_TEMPO,
   MIN_EFFECT_TEMPO,
 } from "@/lib/audio/dsp/effects/tempo";
-import { serializeEffectOrder } from "@/lib/effect-order";
 import { EffectItem } from "./effect-item";
 import { EffectPicker } from "./effect-picker";
 
@@ -82,7 +81,7 @@ export function EffectChain({
   // Local optimistic order — prevents snap-back when external store update
   // hasn't propagated yet at the time dnd-kit clears transforms on drag end
   const [localOrder, setLocalOrder] = useState<string[]>(() =>
-    serializeEffectOrder(effects)
+    effects.map((effect) => effect.id)
   );
 
   // Sync local order when effects are added/removed externally.
@@ -100,7 +99,7 @@ export function EffectChain({
     .join(",");
   if (currentIdKey !== prevIdKey) {
     setPrevIdKey(currentIdKey);
-    setLocalOrder(serializeEffectOrder(effects));
+    setLocalOrder(effects.map((effect) => effect.id));
   }
 
   const effectsById = new Map(effects.map((e) => [e.id, e]));

@@ -2,7 +2,6 @@ import { PlayPauseButton } from "@avoid.quest/ui/components/play-pause-button";
 import { Slider } from "@avoid.quest/ui/components/slider";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import { Volume2Icon, VolumeXIcon } from "lucide-react";
-import { useState } from "react";
 import type { Radio } from "@/lib/audio";
 import type { MultipleSessionPlayerState } from "@/lib/hooks/use-multiple-session";
 import { useRadioMetadata } from "@/lib/hooks/use-radio-metadata";
@@ -15,6 +14,7 @@ type MultipleRadioCardProps = {
   radio: Radio;
   playerState: MultipleSessionPlayerState | null;
   onTogglePlayPause: () => void;
+  onToggleMute: () => void;
   onVolumeChange: (volume: number) => void;
   onEdit?: (radio: Radio) => void;
   onDelete?: (radio: Radio) => void;
@@ -26,18 +26,17 @@ export function MultipleRadioCard({
   radio,
   playerState,
   onTogglePlayPause,
+  onToggleMute,
   onVolumeChange,
   onEdit,
   onDelete,
   onToggle,
   onSave,
 }: MultipleRadioCardProps) {
-  const [isMuted, setIsMuted] = useState(false);
-  const [unmutedVolume, setUnmutedVolume] = useState(1);
-
   const isPlaying = playerState?.isPlaying ?? false;
   const isLoading = playerState?.isLoading ?? false;
   const volume = playerState?.volume ?? 1;
+  const isMuted = playerState?.isMuted ?? volume === 0;
   const error = playerState?.error ?? null;
   const { metadata } = useRadioMetadata({
     radio,
@@ -45,24 +44,7 @@ export function MultipleRadioCard({
   });
 
   const handleVolumeChange = (value: number[]) => {
-    const newVolume = value[0] ?? 0;
-    onVolumeChange(newVolume);
-
-    if (isMuted && newVolume > 0) {
-      setUnmutedVolume(newVolume);
-      setIsMuted(false);
-    }
-  };
-
-  const handleMuteToggle = () => {
-    if (isMuted) {
-      onVolumeChange(unmutedVolume);
-      setIsMuted(false);
-    } else {
-      setUnmutedVolume(volume);
-      onVolumeChange(0);
-      setIsMuted(true);
-    }
+    onVolumeChange(value[0] ?? 0);
   };
 
   const isSession = isSessionRadio(radio);
@@ -127,7 +109,7 @@ export function MultipleRadioCard({
         <button
           aria-label={isMuted ? "Unmute" : "Mute"}
           className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground"
-          onClick={handleMuteToggle}
+          onClick={onToggleMute}
           type="button"
         >
           {isMuted || volume === 0 ? (

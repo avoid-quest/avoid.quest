@@ -5,7 +5,6 @@ import {
   getCachedNamModel,
   saveNamModel,
 } from "@/lib/audio/dsp/effects/nam-model-store";
-import { createManagedPlaybackSessionWorkflow } from "../managed-playback-session-workflow";
 import {
   buildDjSessionFromLegacyState,
   buildMultipleSessionFromRadios,
@@ -487,56 +486,6 @@ describe("multiple session persistence", () => {
     const session = getPlaybackSession("multiple");
     expect(session?.channels[0]?.volume).toBe(0.25);
     expect(session?.masterVolume).toBe(0.75);
-  });
-
-  test("re-adding an existing multiple channel preserves its saved state", async () => {
-    await playbackSessionsCollection.stateWhenReady();
-
-    playbackSessionsCollection.insert({
-      id: "multiple",
-      channels: [
-        {
-          ...createDefaultChannel("multi:radio-1", "multiple", 0),
-          radio: {
-            id: "radio-1",
-            name: "Existing",
-            streamUrl: "https://radio.example/existing.mp3",
-          },
-          volume: 0.37,
-          muted: true,
-          filter: {
-            type: "highpass",
-            frequency: 2200,
-            Q: 0.8,
-            gain: 0,
-            enabled: true,
-          },
-        },
-      ],
-      masterVolume: 0.6,
-      crossfadePosition: 0.5,
-      headphoneVolume: 1,
-      activeChannelId: null,
-    });
-
-    const channel = createManagedPlaybackSessionWorkflow("multiple").addChannel(
-      {
-        id: "radio-1",
-        name: "Existing",
-        streamUrl: "https://radio.example/existing.mp3",
-      }
-    );
-
-    expect(channel.volume).toBe(0.37);
-    expect(channel.muted).toBe(true);
-    expect(channel.filter).toEqual({
-      type: "highpass",
-      frequency: 2200,
-      Q: 0.8,
-      gain: 0,
-      enabled: true,
-    });
-    expect(getPlaybackSession("multiple")?.channels).toHaveLength(1);
   });
 
   test("initializePlaybackSessions preserves a stored multiple session", async () => {

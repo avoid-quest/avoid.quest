@@ -59,7 +59,6 @@ import {
   setPendingPlatformItem,
   updateMixer,
 } from "@/lib/hooks/use-dj-state";
-import { createManagedPlaybackSessionWorkflow } from "@/lib/managed-playback-session-workflow";
 import {
   type CueDeckRegistration,
   getOutputRouting,
@@ -69,6 +68,7 @@ import {
   getDefaultPlaybackActionContext,
   type PlaybackActionContext,
 } from "@/lib/playback-action-context";
+import { getSinglePlayback } from "@/lib/single-playback";
 import {
   getDeckARuntime,
   getDeckBRuntime,
@@ -146,8 +146,7 @@ function disableCueDecks(): void {
 function getOutputDeviceActions() {
   return createDjOutputDeviceActions({
     disableCueDecks,
-    reconcileSingleRouting: () =>
-      createManagedPlaybackSessionWorkflow("single").reconcileRouting(),
+    reconcileSingleRouting: () => getSinglePlayback().reconcileRouting(),
     routing: getOutputRouting(),
   });
 }
@@ -235,7 +234,7 @@ export function cleanupCueBus(): void {
 
 export async function setMainOutputDelay(ms: number): Promise<void> {
   await getOutputRouting().applyMainSettings({ mainDelayMs: ms });
-  await createManagedPlaybackSessionWorkflow("single").reconcileRouting();
+  await getSinglePlayback().reconcileRouting();
 }
 
 export async function setCueOutputDelay(ms: number): Promise<void> {
@@ -268,7 +267,7 @@ export async function autoCompensateLatency(): Promise<number | null> {
   const latency = detectSystemLatency();
   if (latency !== null) {
     await getOutputRouting().applyMainSettings({ mainDelayMs: latency });
-    await createManagedPlaybackSessionWorkflow("single").reconcileRouting();
+    await getSinglePlayback().reconcileRouting();
   }
   return latency;
 }

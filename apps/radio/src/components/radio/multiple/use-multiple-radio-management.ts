@@ -8,12 +8,11 @@ import {
   isSessionRadio,
   useSessionRadios,
 } from "@/lib/hooks/use-session-radios";
-import { mergeMultiplePlaybackRadios } from "@/lib/playback-actions";
 
 type UseMultipleRadioManagementOptions = {
   radios?: Radio[];
   hasMultipleSession: boolean;
-  syncRadios: (radios: Radio[]) => void;
+  syncRadios: (saved: Radio[], session: Radio[]) => void;
   addRadio: (radio: Radio, persistSelection?: boolean) => void;
   removeRadio: (playerId: string) => void;
 };
@@ -48,7 +47,7 @@ export function useMultipleRadioManagement({
     if (!(radios && hasMultipleSession)) {
       return;
     }
-    syncRadios(mergeMultiplePlaybackRadios(radios, sessionRadios));
+    syncRadios(radios, sessionRadios);
   }, [hasMultipleSession, radios, sessionRadios, syncRadios]);
 
   const handleEditRadio = useCallback((radio: Radio) => {

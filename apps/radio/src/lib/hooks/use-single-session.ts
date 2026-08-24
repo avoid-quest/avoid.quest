@@ -4,30 +4,9 @@ import type { Radio } from "@/lib/audio";
 import {
   type PlaybackSessionRecord,
   playbackSessionsCollection,
-  SINGLE_ACTIVE_CHANNEL_ID,
-  SINGLE_STANDBY_CHANNEL_ID,
 } from "@/lib/collections/playback-sessions";
-import { createManagedPlaybackSessionWorkflow } from "@/lib/playback-actions";
+import { getSinglePlayback } from "@/lib/single-playback";
 import { usePlaybackChannelRuntime } from "@/lib/stores/playback-runtime-store";
-
-function clearSingleSessionErrors(): void {
-  createManagedPlaybackSessionWorkflow("single").clearPlaybackErrors([
-    SINGLE_ACTIVE_CHANNEL_ID,
-    SINGLE_STANDBY_CHANNEL_ID,
-  ]);
-}
-
-function setSingleSessionError(
-  channelId: string,
-  error: unknown,
-  radio?: Radio
-): void {
-  createManagedPlaybackSessionWorkflow("single").setPlaybackError(
-    channelId,
-    error,
-    radio
-  );
-}
 
 function useSingleSessionRecord(): PlaybackSessionRecord | undefined {
   const result = useLiveQuery((q) =>
@@ -39,6 +18,7 @@ function useSingleSessionRecord(): PlaybackSessionRecord | undefined {
 }
 
 export function useSingleSession() {
+  const playback = getSinglePlayback();
   const session = useSingleSessionRecord();
   const activeChannelId = session?.activeChannelId;
   const activeChannel = session?.channels.find(
@@ -53,72 +33,24 @@ export function useSingleSession() {
   const error = activeRuntime.error?.message ?? null;
 
   const selectRadio = useCallback(
-    async (radio: Radio) => {
-      const errorChannelId = activeChannelId ?? SINGLE_ACTIVE_CHANNEL_ID;
-      try {
-        clearSingleSessionErrors();
-        await createManagedPlaybackSessionWorkflow("single").selectRadio(radio);
-      } catch (error) {
-        setSingleSessionError(errorChannelId, error, radio);
-      }
-    },
-    [activeChannelId]
+    (radio: Radio) => playback.selectStation(radio),
+    [playback]
   );
 
-  const togglePlayPause = useCallback(async () => {
-    try {
-      clearSingleSessionErrors();
-      await createManagedPlaybackSessionWorkflow("single").setPlaying(
-        !activeRuntime.isPlaying
-      );
-    } catch (error) {
-      setSingleSessionError(
-        activeChannelId ?? SINGLE_ACTIVE_CHANNEL_ID,
-        error,
-        currentRadio ?? undefined
-      );
-    }
-  }, [activeChannelId, activeRuntime.isPlaying, currentRadio]);
+  const togglePlayPause = useCallback(
+    () => playback.setPlaying(!activeRuntime.isPlaying),
+    [activeRuntime.isPlaying, playback]
+  );
 
-  const play = useCallback(async () => {
-    try {
-      clearSingleSessionErrors();
-      await createManagedPlaybackSessionWorkflow("single").setPlaying(true);
-    } catch (error) {
-      setSingleSessionError(
-        activeChannelId ?? SINGLE_ACTIVE_CHANNEL_ID,
-        error,
-        currentRadio ?? undefined
-      );
-    }
-  }, [activeChannelId, currentRadio]);
+  const play = useCallback(() => playback.setPlaying(true), [playback]);
 
-  const pause = useCallback(async () => {
-    try {
-      clearSingleSessionErrors();
-      await createManagedPlaybackSessionWorkflow("single").setPlaying(false);
-    } catch (error) {
-      setSingleSessionError(
-        activeChannelId ?? SINGLE_ACTIVE_CHANNEL_ID,
-        error,
-        currentRadio ?? undefined
-      );
-    }
-  }, [activeChannelId, currentRadio]);
+  const pause = useCallback(() => playback.setPlaying(false), [playback]);
 
   const stop = pause;
 
   const setVolume = useCallback(
-    (nextVolume: number) => {
-      if (!activeChannelId) {
-        return;
-      }
-      createManagedPlaybackSessionWorkflow("single").setChannelVolume(
-        activeChannelId,
-        nextVolume
-      );
-    },
-    [activeChannelId]
+    (nextVolume: number) => playback.setVolume(nextVolume),
+    [playback]
   );
 
   return useMemo(

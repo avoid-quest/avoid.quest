@@ -21,6 +21,7 @@ export function MultipleRadios({ radios }: { radios?: Radio[] }) {
     removeRadio,
     togglePlayPause,
     setVolume,
+    toggleMute,
     setGlobalVolume,
     toggleGlobalMute,
     playAll,
@@ -142,6 +143,12 @@ export function MultipleRadios({ radios }: { radios?: Radio[] }) {
             onEdit={handleEditRadio}
             onSave={handleSaveSessionRadio}
             onToggle={handleToggleRadio}
+            onToggleMute={() => {
+              const player = getPlayerState(radio);
+              if (player) {
+                toggleMute(player.id);
+              }
+            }}
             onTogglePlayPause={() => handleTogglePlayPause(radio)}
             onVolumeChange={(vol) => handleVolumeChange(radio, vol)}
             playerState={getPlayerState(radio)}

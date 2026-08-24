@@ -1,0 +1,279 @@
+import { fadeOut, type Radio } from "@/lib/audio";
+import {
+  createDefaultChannel,
+  getMultipleChannelId,
+  getPlaybackChannel,
+  getPlaybackSession,
+  removePlaybackChannel,
+  replacePlaybackChannels,
+  upsertPlaybackChannel,
+} from "@/lib/collections/playback-sessions";
+import {
+  getPlaybackChannelRuntime,
+  getPlaybackRuntimeChannelIds,
+  resetPlaybackChannelRuntime,
+} from "@/lib/stores/playback-runtime-store";
+import {
+  clearManagedPlaybackErrors,
+  getReadyManagedPlaybackSession,
+  pauseManagedSession,
+  restoreManagedChannels,
+  setManagedChannelPlaying,
+  setManagedPlaybackError,
+  setManagedSessionMasterVolume,
+} from "./managed-playback-internals.js";
+import {
+  cleanupOrphanedSounds,
+  getRuntimeSoundIds,
+} from "./mode-lifecycle-cleanup.js";
+import {
+  getDefaultPlaybackActionContext,
+  type PlaybackActionContext,
+} from "./playback-action-context.js";
+import {
+  applySessionMasterVolume,
+  cleanupManagedChannel,
+} from "./playback-actions-shared.js";
+
+export type MultiplePlayback = {
+  activate: () => Promise<void>;
+  addStation: (station: Radio, autoPlay?: boolean) => Promise<string>;
+  deactivate: () => Promise<void>;
+  pauseAll: () => void;
+  playAll: () => Promise<void>;
+  removeChannel: (channelId: string) => void;
+  setMasterVolume: (volume: number) => void;
+  setPlaying: (channelId: string, playing: boolean) => Promise<void>;
+  setVolume: (channelId: string, volume: number) => void;
+  synchronizeStations: (saved: Radio[], session: Radio[]) => void;
+  toggleMasterMute: () => void;
+  toggleMute: (channelId: string) => void;
+};
+
+type FadeOutSound = (
+  soundId: string,
+  durationMs: number,
+  stopAfter: boolean
+) => Promise<void>;
+
+type GetMultiplePlaybackOptions = {
+  ctx?: PlaybackActionContext;
+  fadeOutDurationMs?: number;
+  fadeOutSound?: FadeOutSound;
+};
+
+const DEFAULT_FADE_OUT_DURATION_MS = 150;
+const PLAY_ALL_CONCURRENCY = 3;
+const instances = new WeakMap<PlaybackActionContext, MultiplePlayback>();
+
+function yieldToBrowser(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+async function runWithConcurrency<T>(
+  items: readonly T[],
+  limit: number,
+  task: (item: T) => Promise<void>
+): Promise<void> {
+  let index = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, async () => {
+      while (index < items.length) {
+        const item = items[index];
+        index += 1;
+        if (item === undefined) {
+          return;
+        }
+        await task(item);
+        await yieldToBrowser();
+      }
+    })
+  );
+}
+
+function synchronizeStations(
+  saved: Radio[],
+  session: Radio[],
+  ctx: PlaybackActionContext
+): void {
+  const radios = [
+    ...saved,
+    ...session.filter(
+      (sessionStation) =>
+        !saved.some((station) => station.id === sessionStation.id)
+    ),
+  ];
+  const existingChannels = getPlaybackSession("multiple")?.channels ?? [];
+  const existingChannelsById = new Map(
+    existingChannels.map((channel) => [channel.id, channel])
+  );
+  const nextChannelIds = new Set(radios.map(getMultipleChannelId));
+
+  for (const channel of existingChannels) {
+    if (!nextChannelIds.has(channel.id)) {
+      cleanupManagedChannel(channel.id, ctx);
+    }
+  }
+
+  replacePlaybackChannels(
+    "multiple",
+    radios.map((radio, order) => {
+      const channelId = getMultipleChannelId(radio);
+      return {
+        ...(existingChannelsById.get(channelId) ??
+          createDefaultChannel(channelId, "multiple", order)),
+        id: channelId,
+        role: "multiple" as const,
+        radio,
+        order,
+      };
+    })
+  );
+}
+
+function addStationChannel(radio: Radio) {
+  const channelId = getMultipleChannelId(radio);
+  const existing = getPlaybackChannel("multiple", channelId);
+  const order =
+    existing?.order ?? getPlaybackSession("multiple")?.channels.length ?? 0;
+  const channel = {
+    ...(existing ?? createDefaultChannel(channelId, "multiple", order)),
+    id: channelId,
+    role: "multiple" as const,
+    radio,
+    order,
+  };
+  upsertPlaybackChannel("multiple", channel);
+  return channel;
+}
+
+function createMultiplePlayback(
+  ctx: PlaybackActionContext,
+  fadeOutSound: FadeOutSound,
+  fadeOutDurationMs: number
+): MultiplePlayback {
+  const initialSession = getPlaybackSession("multiple");
+  const unmutedVolumes = new Map(
+    initialSession?.channels.map((channel) => [channel.id, channel.volume]) ??
+      []
+  );
+  let unmutedMasterVolume = initialSession?.masterVolume ?? 1;
+
+  const setVolume = (channelId: string, volume: number) => {
+    if (volume > 0) {
+      unmutedVolumes.set(channelId, volume);
+    }
+    ctx.channels.setVolume("multiple", channelId, volume);
+  };
+
+  const setMasterVolume = (volume: number) => {
+    if (volume > 0) {
+      unmutedMasterVolume = volume;
+    }
+    setManagedSessionMasterVolume("multiple", volume, ctx);
+  };
+
+  const setPlaying = async (channelId: string, playing: boolean) => {
+    clearManagedPlaybackErrors([channelId]);
+    const channel = getPlaybackChannel("multiple", channelId);
+    try {
+      await setManagedChannelPlaying("multiple", channel, playing, ctx);
+    } catch (error) {
+      setManagedPlaybackError(channelId, error, channel?.radio ?? undefined);
+    }
+  };
+
+  return {
+    async activate() {
+      const session = await getReadyManagedPlaybackSession("multiple");
+      restoreManagedChannels("multiple", session.channels, ctx);
+      applySessionMasterVolume("multiple", ctx);
+      unmutedMasterVolume = session.masterVolume;
+      for (const channel of session.channels) {
+        unmutedVolumes.set(channel.id, channel.volume);
+      }
+    },
+    async addStation(station, autoPlay = false) {
+      const channel = addStationChannel(station);
+      if (autoPlay) {
+        await setPlaying(channel.id, true);
+      }
+      return channel.id;
+    },
+    async deactivate() {
+      const channelIds = Array.from(
+        new Set([
+          ...(getPlaybackSession("multiple")?.channels.map(
+            (channel) => channel.id
+          ) ?? []),
+          ...getPlaybackRuntimeChannelIds().filter((channelId) =>
+            channelId.startsWith("multi:")
+          ),
+        ])
+      );
+      const soundIds = getRuntimeSoundIds(channelIds);
+      await Promise.all(
+        soundIds.map((soundId) =>
+          fadeOutSound(soundId, fadeOutDurationMs, true)
+        )
+      );
+      for (const channelId of channelIds) {
+        cleanupManagedChannel(channelId, ctx);
+        resetPlaybackChannelRuntime(channelId);
+      }
+      cleanupOrphanedSounds(soundIds, ctx, "multiple");
+    },
+    pauseAll: () => pauseManagedSession("multiple", ctx),
+    async playAll() {
+      const channels = (getPlaybackSession("multiple")?.channels ?? []).filter(
+        (channel) => !getPlaybackChannelRuntime(channel.id).isPlaying
+      );
+      await runWithConcurrency(channels, PLAY_ALL_CONCURRENCY, (channel) =>
+        setPlaying(channel.id, true)
+      );
+    },
+    removeChannel(channelId) {
+      cleanupManagedChannel(channelId, ctx);
+      resetPlaybackChannelRuntime(channelId);
+      unmutedVolumes.delete(channelId);
+      removePlaybackChannel("multiple", channelId);
+    },
+    setMasterVolume,
+    setPlaying,
+    setVolume,
+    synchronizeStations: (saved, session) =>
+      synchronizeStations(saved, session, ctx),
+    toggleMasterMute() {
+      const volume = getPlaybackSession("multiple")?.masterVolume ?? 1;
+      if (volume > 0) {
+        unmutedMasterVolume = volume;
+        setMasterVolume(0);
+        return;
+      }
+      setMasterVolume(unmutedMasterVolume);
+    },
+    toggleMute(channelId) {
+      const volume = getPlaybackChannel("multiple", channelId)?.volume ?? 1;
+      if (volume > 0) {
+        unmutedVolumes.set(channelId, volume);
+        setVolume(channelId, 0);
+        return;
+      }
+      setVolume(channelId, unmutedVolumes.get(channelId) ?? 1);
+    },
+  };
+}
+
+export function getMultiplePlayback({
+  ctx = getDefaultPlaybackActionContext(),
+  fadeOutDurationMs = DEFAULT_FADE_OUT_DURATION_MS,
+  fadeOutSound = fadeOut,
+}: GetMultiplePlaybackOptions = {}): MultiplePlayback {
+  const existing = instances.get(ctx);
+  if (existing) {
+    return existing;
+  }
+  const playback = createMultiplePlayback(ctx, fadeOutSound, fadeOutDurationMs);
+  instances.set(ctx, playback);
+  return playback;
+}

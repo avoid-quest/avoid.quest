@@ -1,12 +1,12 @@
 import { eq, useLiveQuery } from "@tanstack/react-db";
 import { useStore } from "@tanstack/react-store";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useMemo } from "react";
 import type { Radio } from "@/lib/audio";
 import {
   type PlaybackSessionRecord,
   playbackSessionsCollection,
 } from "@/lib/collections/playback-sessions";
-import { createManagedPlaybackSessionWorkflow } from "@/lib/playback-actions";
+import { getMultiplePlayback } from "@/lib/multiple-playback";
 import { playbackRuntimeStore } from "@/lib/stores/playback-runtime-store";
 
 export type MultipleSessionPlayerState = {
@@ -14,42 +14,10 @@ export type MultipleSessionPlayerState = {
   radio: Radio;
   isPlaying: boolean;
   isLoading: boolean;
+  isMuted: boolean;
   volume: number;
   error: string | null;
 };
-
-const PLAY_ALL_CONCURRENCY = 3;
-
-function yieldToBrowser(): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, 0);
-  });
-}
-
-async function runWithConcurrency<T>(
-  items: T[],
-  limit: number,
-  task: (item: T) => Promise<void>
-): Promise<void> {
-  let index = 0;
-
-  const workerCount = Math.min(limit, items.length);
-  await Promise.all(
-    Array.from({ length: workerCount }, async () => {
-      while (index < items.length) {
-        const currentItem = items[index];
-        index += 1;
-
-        if (currentItem === undefined) {
-          return;
-        }
-
-        await task(currentItem);
-        await yieldToBrowser();
-      }
-    })
-  );
-}
 
 function useMultipleSessionRecord(): PlaybackSessionRecord | undefined {
   const result = useLiveQuery((q) =>
@@ -60,36 +28,12 @@ function useMultipleSessionRecord(): PlaybackSessionRecord | undefined {
   return result.data?.[0] as PlaybackSessionRecord | undefined;
 }
 
-function clearMultipleChannelError(channelId: string): void {
-  createManagedPlaybackSessionWorkflow("multiple").clearPlaybackErrors([
-    channelId,
-  ]);
-}
-
-function setMultipleChannelError(
-  channelId: string,
-  error: unknown,
-  radio?: Radio
-): void {
-  createManagedPlaybackSessionWorkflow("multiple").setPlaybackError(
-    channelId,
-    error,
-    radio
-  );
-}
-
 export function useMultipleSession() {
+  const playback = getMultiplePlayback();
   const session = useMultipleSessionRecord();
-  const lastGlobalVolumeRef = useRef(session?.masterVolume ?? 1);
   const runtimes = useStore(playbackRuntimeStore, (state) => state.channels);
   const globalVolume = session?.masterVolume ?? 1;
   const globalMuted = globalVolume === 0;
-
-  useEffect(() => {
-    if (globalVolume > 0) {
-      lastGlobalVolumeRef.current = globalVolume;
-    }
-  }, [globalVolume]);
 
   const players = useMemo<MultipleSessionPlayerState[]>(() => {
     if (!session) {
@@ -106,99 +50,61 @@ export function useMultipleSession() {
           radio: channel.radio,
           isPlaying: runtime?.isPlaying ?? false,
           isLoading: runtime?.isLoading ?? false,
+          isMuted: channel.volume === 0,
           volume: channel.volume,
           error: runtime?.error?.message ?? null,
         };
       });
   }, [runtimes, session]);
 
-  const syncRadios = useCallback((radios: Radio[]) => {
-    createManagedPlaybackSessionWorkflow("multiple").syncChannels(radios);
-  }, []);
+  const syncRadios = useCallback(
+    (saved: Radio[], sessionRadios: Radio[] = []) =>
+      playback.synchronizeStations(saved, sessionRadios),
+    [playback]
+  );
 
-  const addRadio = useCallback(async (radio: Radio, autoPlay = false) => {
-    const channel =
-      createManagedPlaybackSessionWorkflow("multiple").addChannel(radio);
-    if (autoPlay) {
-      try {
-        clearMultipleChannelError(channel.id);
-        await createManagedPlaybackSessionWorkflow("multiple").setPlaying(
-          true,
-          channel.id
-        );
-      } catch (error) {
-        setMultipleChannelError(channel.id, error, radio);
-      }
-    }
-    return channel.id;
-  }, []);
+  const addRadio = useCallback(
+    (radio: Radio, autoPlay = false) => playback.addStation(radio, autoPlay),
+    [playback]
+  );
 
-  const removeRadio = useCallback((channelId: string) => {
-    createManagedPlaybackSessionWorkflow("multiple").removeChannel(channelId);
-  }, []);
+  const removeRadio = useCallback(
+    (channelId: string) => playback.removeChannel(channelId),
+    [playback]
+  );
 
   const togglePlayPause = useCallback(
     async (channelId: string) => {
       const player = players.find((entry) => entry.id === channelId);
-      try {
-        clearMultipleChannelError(channelId);
-        await createManagedPlaybackSessionWorkflow("multiple").setPlaying(
-          !(player?.isPlaying ?? false),
-          channelId
-        );
-      } catch (error) {
-        setMultipleChannelError(channelId, error, player?.radio);
-      }
+      await playback.setPlaying(channelId, !(player?.isPlaying ?? false));
     },
-    [players]
+    [playback, players]
   );
 
-  const setVolume = useCallback((channelId: string, volume: number) => {
-    createManagedPlaybackSessionWorkflow("multiple").setChannelVolume(
-      channelId,
-      volume
-    );
-  }, []);
+  const setVolume = useCallback(
+    (channelId: string, volume: number) =>
+      playback.setVolume(channelId, volume),
+    [playback]
+  );
 
-  const setGlobalVolume = useCallback((volume: number) => {
-    if (volume > 0) {
-      lastGlobalVolumeRef.current = volume;
-    }
-    createManagedPlaybackSessionWorkflow("multiple").setMasterVolume(volume);
-  }, []);
+  const toggleMute = useCallback(
+    (channelId: string) => playback.toggleMute(channelId),
+    [playback]
+  );
 
-  const toggleGlobalMute = useCallback(() => {
-    if (globalMuted) {
-      createManagedPlaybackSessionWorkflow("multiple").setMasterVolume(
-        lastGlobalVolumeRef.current
-      );
-      return;
-    }
-    lastGlobalVolumeRef.current = globalVolume || lastGlobalVolumeRef.current;
-    createManagedPlaybackSessionWorkflow("multiple").setMasterVolume(0);
-  }, [globalMuted, globalVolume]);
+  const setGlobalVolume = useCallback(
+    (volume: number) => playback.setMasterVolume(volume),
+    [playback]
+  );
 
-  const playAll = useCallback(async () => {
-    await runWithConcurrency(
-      players.filter((player) => !player.isPlaying),
-      PLAY_ALL_CONCURRENCY,
-      async (player) => {
-        try {
-          clearMultipleChannelError(player.id);
-          await createManagedPlaybackSessionWorkflow("multiple").setPlaying(
-            true,
-            player.id
-          );
-        } catch (error) {
-          setMultipleChannelError(player.id, error, player.radio);
-        }
-      }
-    );
-  }, [players]);
+  const toggleGlobalMute = useCallback(
+    () => playback.toggleMasterMute(),
+    [playback]
+  );
 
-  const pauseAll = useCallback(() => {
-    createManagedPlaybackSessionWorkflow("multiple").pauseAll();
-  }, []);
+  const playAll = useCallback(() => playback.playAll(), [playback]);
+
+  const pauseAll = useCallback(() => playback.pauseAll(), [playback]);
 
   return {
     session,
@@ -210,6 +116,7 @@ export function useMultipleSession() {
     removeRadio,
     togglePlayPause,
     setVolume,
+    toggleMute,
     setGlobalVolume,
     toggleGlobalMute,
     playAll,

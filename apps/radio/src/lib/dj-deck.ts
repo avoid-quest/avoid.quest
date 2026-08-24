@@ -782,9 +782,9 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
   ): void => {
     deactivateDeck(deckId);
     updatePlaybackChannel("dj", deckId, (draft) => {
-      draft.radio = previous;
+      draft.radio = null;
     });
-    releaseReplacedFile(radio, previous);
+    releaseReplacedFile(previous, null);
     reportFailure(
       deckId,
       "DJ_LOAD_DECK_FAILED",

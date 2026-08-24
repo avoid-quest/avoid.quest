@@ -81,6 +81,7 @@ export type StationIntakeDependencies = {
   adapters: ExternalStationResolutionAdapters;
   saved: {
     add: (radio: Omit<RadioRecord, "id">) => void;
+    enable: (id: string) => void;
     getAll: () => Iterable<RadioRecord>;
   };
   session: {
@@ -588,18 +589,32 @@ export function createStationIntake(dependencies: StationIntakeDependencies) {
         dependencies.session.getAll(),
         prepared.data.radio
       );
-      const radio = existingSession
-        ? normalizeRadio(existingSession)
-        : prepared.data.radio;
+      const radio =
+        existingSession && candidate.origin === "discovery"
+          ? normalizeRadio(existingSession)
+          : prepared.data.radio;
       const existingSaved = findStationByIdentity(
         dependencies.saved.getAll(),
         radio
       );
       if (existingSaved) {
+        if (!existingSaved.enabled) {
+          try {
+            dependencies.saved.enable(existingSaved.id);
+          } catch (error) {
+            return {
+              error: normalizeWorkflowError(error, {
+                code: "SAVED_STATION_SAVE_FAILED",
+                message: "Failed to save Station",
+              }),
+              ok: false,
+            };
+          }
+        }
         return {
           data: {
             order: existingSaved.order,
-            radio: existingSaved,
+            radio: { ...existingSaved, enabled: true },
             ...tryCleanupSession(existingSession),
           },
           ok: true,
@@ -632,6 +647,10 @@ export function createBrowserStationIntake(
     adapters,
     saved: {
       add: (radio) => radiosCollection.insert({ id: generateId(), ...radio }),
+      enable: (id) =>
+        radiosCollection.update(id, (draft) => {
+          draft.enabled = true;
+        }),
       getAll: () => radiosCollection.state.values(),
     },
     session: {

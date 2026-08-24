@@ -16,6 +16,12 @@ function createHarness(options?: {
   const addSaved = mock((radio: Omit<RadioRecord, "id">) => {
     saved.push({ id: `saved-${saved.length + 1}`, ...radio });
   });
+  const enableSaved = mock((id: string) => {
+    const radio = saved.find((candidate) => candidate.id === id);
+    if (radio) {
+      radio.enabled = true;
+    }
+  });
   const addSession = mock((radio: Radio) => {
     const index = session.findIndex((candidate) => candidate.id === radio.id);
     if (index === -1) {
@@ -38,6 +44,7 @@ function createHarness(options?: {
       adapters: options?.adapters ?? {},
       saved: {
         add: addSaved,
+        enable: enableSaved,
         getAll: () => saved,
       },
       session: {
@@ -335,6 +342,41 @@ describe("createStationIntake", () => {
     expect(harness.saved[0]?.name).toBe("First name");
   });
 
+  test("re-enables a disabled Saved station when saving the same station", async () => {
+    const harness = createHarness({
+      saved: [
+        {
+          enabled: false,
+          id: "saved-disabled",
+          isSystem: false,
+          name: "Disabled station",
+          order: 3,
+          streamUrl: "https://radio.example/disabled",
+        },
+      ],
+    });
+
+    const result = await harness.intake.save({
+      fields: {
+        name: "Disabled station",
+        streamUrl: "https://radio.example/disabled",
+      },
+      origin: "manual",
+    });
+
+    expect(result).toEqual({
+      data: {
+        order: 3,
+        radio: expect.objectContaining({
+          enabled: true,
+          id: "saved-disabled",
+        }),
+      },
+      ok: true,
+    });
+    expect(harness.saved[0]?.enabled).toBe(true);
+  });
+
   test("promotes the matching Session station and removes it after saving", async () => {
     const harness = createHarness({
       saved: [
@@ -387,6 +429,52 @@ describe("createStationIntake", () => {
     });
     expect(harness.session).toEqual([]);
     expect(harness.removeSession).toHaveBeenCalledWith("rb_station-1");
+  });
+
+  test("preserves submitted fields when saving over a matching Session station", async () => {
+    const harness = createHarness({
+      session: [
+        {
+          description: "Old description",
+          id: "session-station",
+          logoUrl: "https://radio.example/old.png",
+          name: "Old Session name",
+          streamUrl: "https://radio.example/shared",
+          websiteUrl: "https://radio.example/old",
+        },
+      ],
+    });
+
+    const result = await harness.intake.save({
+      fields: {
+        description: "Submitted description",
+        logoUrl: "https://radio.example/submitted.png",
+        name: "Submitted name",
+        streamUrl: "https://radio.example/shared",
+        websiteUrl: "https://radio.example/submitted",
+      },
+      origin: "manual",
+    });
+
+    expect(result).toEqual({
+      data: {
+        order: 1,
+        radio: expect.objectContaining({
+          description: "Submitted description",
+          logoUrl: "https://radio.example/submitted.png",
+          name: "Submitted name",
+          websiteUrl: "https://radio.example/submitted",
+        }),
+      },
+      ok: true,
+    });
+    expect(harness.saved[0]).toMatchObject({
+      description: "Submitted description",
+      logoUrl: "https://radio.example/submitted.png",
+      name: "Submitted name",
+      websiteUrl: "https://radio.example/submitted",
+    });
+    expect(harness.session).toEqual([]);
   });
 
   test("resolves and prepares a Radio Garden candidate", async () => {

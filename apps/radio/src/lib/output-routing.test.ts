@@ -257,6 +257,7 @@ describe("OutputRouting", () => {
 
     const snapshot = await routing.applyMainSettings();
 
+    expect(snapshot.cueOutputCleared).toBe(false);
     expect(snapshot.settings.mainOutputId).toBe("speakers");
     expect(snapshot.settings.mainDelayMs).toBe(80);
     expect(snapshot.settings.cueOutputId).toBeNull();
@@ -283,6 +284,7 @@ describe("OutputRouting", () => {
       mainOutputId: "headphones",
     });
 
+    expect(snapshot.cueOutputCleared).toBe(true);
     expect(snapshot.settings.mainOutputId).toBe("headphones");
     expect(snapshot.settings.cueOutputId).toBeNull();
     expect(snapshot.cueActive).toBe(false);
@@ -434,6 +436,21 @@ describe("OutputRouting", () => {
     expect(browser.graphs[0]?.cueDelayMs).toBe(0);
     expect(browser.graphs[0]?.mainDelayMs).toBe(500);
     expect(persistence.read()).toEqual(snapshot.settings);
+  });
+
+  test("persists normalized output collisions when runtime is unchanged", async () => {
+    const { persistence, routing } = setup({
+      cueDelayMs: 0,
+      cueOutputId: "default",
+      mainDelayMs: 0,
+      mainOutputId: "default",
+    });
+
+    const snapshot = await routing.applySettings();
+
+    expect(snapshot.settings.cueOutputId).toBeNull();
+    expect(persistence.read()).toEqual(snapshot.settings);
+    expect(persistence.writes).toHaveLength(1);
   });
 
   test("applies delay-only settings before returning the transaction promise", async () => {

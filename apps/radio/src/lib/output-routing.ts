@@ -26,6 +26,10 @@ export type OutputRoutingSnapshot = {
   sinkSelectionSupported: boolean;
 };
 
+export type MainOutputRoutingSnapshot = OutputRoutingSnapshot & {
+  cueOutputCleared: boolean;
+};
+
 export type OutputBrowserGraph = {
   readonly context: AudioContext;
   readonly mainOutput: AudioNode;
@@ -185,7 +189,7 @@ class OutputRouting {
 
   applyMainSettings(
     patch: Partial<MainOutputRoutingSettings> = {}
-  ): Promise<OutputRoutingSnapshot> {
+  ): Promise<MainOutputRoutingSnapshot> {
     const cleanupGeneration = this.cleanupGeneration;
     return this.queueSettingsTransaction(() =>
       this.applyReportedSettingsTransaction(() =>
@@ -194,9 +198,7 @@ class OutputRouting {
     );
   }
 
-  private queueSettingsTransaction(
-    run: () => Promise<OutputRoutingSnapshot>
-  ): Promise<OutputRoutingSnapshot> {
+  private queueSettingsTransaction<T>(run: () => Promise<T>): Promise<T> {
     const transaction =
       this.pendingSettingsTransactions === 0
         ? run()
@@ -220,9 +222,9 @@ class OutputRouting {
     };
   }
 
-  private async applyReportedSettingsTransaction(
-    transaction: () => Promise<OutputRoutingSnapshot>
-  ): Promise<OutputRoutingSnapshot> {
+  private async applyReportedSettingsTransaction<T>(
+    transaction: () => Promise<T>
+  ): Promise<T> {
     try {
       return await transaction();
     } catch (error) {
@@ -238,7 +240,7 @@ class OutputRouting {
   private async applyMainSettingsTransaction(
     patch: Partial<MainOutputRoutingSettings>,
     cleanupGeneration: number
-  ): Promise<OutputRoutingSnapshot> {
+  ): Promise<MainOutputRoutingSnapshot> {
     this.throwIfTransactionCancelled(cleanupGeneration);
 
     while (true) {
@@ -255,7 +257,7 @@ class OutputRouting {
   private applyMainSettingsAttempt(
     patch: Partial<MainOutputRoutingSettings>,
     cleanupGeneration: number
-  ): Promise<OutputRoutingSnapshot | null> {
+  ): Promise<MainOutputRoutingSnapshot | null> {
     const persisted = this.options.settings.read();
     const mainSettings = {
       mainDelayMs: Math.max(
@@ -279,7 +281,7 @@ class OutputRouting {
       settings.mainDelayMs === previous.mainDelayMs &&
       !cueCollision
     ) {
-      return Promise.resolve(this.snapshot(settings));
+      return Promise.resolve(this.mainSnapshot(settings, false));
     }
     const sinkSelectionSupported =
       this.options.browser.isSinkSelectionSupported();
@@ -307,7 +309,7 @@ class OutputRouting {
   private async applyChangedMainSettingsAttempt(
     attempt: MainSettingsAttempt,
     cleanupGeneration: number
-  ): Promise<OutputRoutingSnapshot | null> {
+  ): Promise<MainOutputRoutingSnapshot | null> {
     try {
       await this.applyMainSink(
         attempt.graph,
@@ -340,7 +342,7 @@ class OutputRouting {
           : this.runtimeSettings.cueOutputId,
       };
       this.runtimeSettings = committedSettings;
-      return this.snapshot(committedSettings);
+      return this.mainSnapshot(committedSettings, attempt.cueCollision);
     } catch (error) {
       if (this.shouldRetryGraphAttempt(attempt, cleanupGeneration)) {
         return null;
@@ -381,13 +383,17 @@ class OutputRouting {
     cueGeneration: number
   ): Promise<OutputRoutingSnapshot | null> {
     this.throwIfCueTransactionCancelled(cueGeneration);
+    const persisted = this.options.settings.read();
     const settings = normalizeSettings({
-      ...this.options.settings.read(),
+      ...persisted,
       ...patch,
     });
     const graph = this.ensureGraph();
     const previous = this.runtimeSettings;
     if (settingsMatch(settings, previous)) {
+      if (!settingsMatch(settings, persisted)) {
+        this.options.settings.write(settings);
+      }
       return Promise.resolve(this.snapshot(settings));
     }
     const sinkSelectionSupported =
@@ -834,6 +840,13 @@ class OutputRouting {
       settings: { ...settings },
       sinkSelectionSupported: this.options.browser.isSinkSelectionSupported(),
     };
+  }
+
+  private mainSnapshot(
+    settings: OutputRoutingSettings,
+    cueOutputCleared: boolean
+  ): MainOutputRoutingSnapshot {
+    return { ...this.snapshot(settings), cueOutputCleared };
   }
 }
 

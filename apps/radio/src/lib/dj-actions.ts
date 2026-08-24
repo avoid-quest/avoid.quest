@@ -132,7 +132,6 @@ function disableCueDecks(): void {
 function getOutputDeviceActions() {
   return createDjOutputDeviceActions({
     disableCueDecks,
-    readCueOutputId: () => getAudioSettings().cueOutputId,
     reconcileSingleRouting: () =>
       createManagedPlaybackSessionWorkflow("single").reconcileRouting(),
     routing: getOutputRouting(),

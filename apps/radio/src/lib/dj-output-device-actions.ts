@@ -2,14 +2,12 @@ import type { OutputRouting } from "./output-routing.js";
 
 type DjOutputDeviceActionOptions = {
   disableCueDecks: () => void;
-  readCueOutputId: () => string | null;
   reconcileSingleRouting: () => Promise<void>;
   routing: Pick<OutputRouting, "applyMainSettings" | "applySettings">;
 };
 
 export function createDjOutputDeviceActions({
   disableCueDecks,
-  readCueOutputId,
   reconcileSingleRouting,
   routing,
 }: DjOutputDeviceActionOptions) {
@@ -21,11 +19,10 @@ export function createDjOutputDeviceActions({
       }
     },
     async applyMainOutputDevice(deviceId: string): Promise<void> {
-      const previousCueOutputId = readCueOutputId();
-      await routing.applyMainSettings({
+      const state = await routing.applyMainSettings({
         mainOutputId: deviceId,
       });
-      if (previousCueOutputId !== null && readCueOutputId() === null) {
+      if (state.cueOutputCleared) {
         disableCueDecks();
       }
       await reconcileSingleRouting();

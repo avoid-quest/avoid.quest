@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { createDjOutputDeviceActions } from "./dj-output-device-actions";
-import type { OutputRouting, OutputRoutingSnapshot } from "./output-routing";
+import type {
+  MainOutputRoutingSnapshot,
+  OutputRouting,
+  OutputRoutingSnapshot,
+} from "./output-routing";
 
 function createSnapshot(cueOutputId: string | null): OutputRoutingSnapshot {
   return {
@@ -17,20 +21,28 @@ function createSnapshot(cueOutputId: string | null): OutputRoutingSnapshot {
   };
 }
 
+function createMainSnapshot(
+  cueOutputId: string | null,
+  cueOutputCleared = false
+): MainOutputRoutingSnapshot {
+  return { ...createSnapshot(cueOutputId), cueOutputCleared };
+}
+
 describe("DJ output device actions", () => {
   test("reconciles Single playback after the main output is persisted", async () => {
     let persistedMainOutput = "default";
     let finishSettings: (() => void) | undefined;
-    const settingsApplied = new Promise<OutputRoutingSnapshot>((resolve) => {
-      finishSettings = () => {
-        persistedMainOutput = "speakers";
-        resolve(createSnapshot("headphones"));
-      };
-    });
+    const settingsApplied = new Promise<MainOutputRoutingSnapshot>(
+      (resolve) => {
+        finishSettings = () => {
+          persistedMainOutput = "speakers";
+          resolve(createMainSnapshot("headphones"));
+        };
+      }
+    );
     const reconciledOutputs: string[] = [];
     const actions = createDjOutputDeviceActions({
       disableCueDecks: () => undefined,
-      readCueOutputId: () => "headphones",
       reconcileSingleRouting: () => {
         reconciledOutputs.push(persistedMainOutput);
         return Promise.resolve();
@@ -58,10 +70,9 @@ describe("DJ output device actions", () => {
       disableCueDecks: () => {
         cueEnabled = false;
       },
-      readCueOutputId: () => "headphones",
       reconcileSingleRouting: async () => undefined,
       routing: {
-        applyMainSettings: async () => createSnapshot(null),
+        applyMainSettings: async () => createMainSnapshot(null),
         applySettings: async () => createSnapshot("headphones"),
       } as Pick<OutputRouting, "applyMainSettings" | "applySettings">,
     });
@@ -73,18 +84,13 @@ describe("DJ output device actions", () => {
 
   test("disables deck CUE when a main collision clears the configured device", async () => {
     let cueEnabled = true;
-    let cueOutputId: string | null = "headphones";
     const actions = createDjOutputDeviceActions({
       disableCueDecks: () => {
         cueEnabled = false;
       },
-      readCueOutputId: () => cueOutputId,
       reconcileSingleRouting: async () => undefined,
       routing: {
-        applyMainSettings: () => {
-          cueOutputId = null;
-          return Promise.resolve(createSnapshot(null));
-        },
+        applyMainSettings: async () => createMainSnapshot(null, true),
         applySettings: async () => createSnapshot(null),
       } as Pick<OutputRouting, "applyMainSettings" | "applySettings">,
     });
@@ -94,21 +100,20 @@ describe("DJ output device actions", () => {
     expect(cueEnabled).toBe(false);
   });
 
-  test("disables deck CUE when output collision clears the persisted device", async () => {
+  test("disables deck CUE when the CUE output is cleared", async () => {
     let cueEnabled = true;
     const actions = createDjOutputDeviceActions({
       disableCueDecks: () => {
         cueEnabled = false;
       },
-      readCueOutputId: () => null,
       reconcileSingleRouting: async () => undefined,
       routing: {
-        applyMainSettings: async () => createSnapshot(null),
+        applyMainSettings: async () => createMainSnapshot(null),
         applySettings: async () => createSnapshot(null),
       } as Pick<OutputRouting, "applyMainSettings" | "applySettings">,
     });
 
-    await actions.applyCueOutputDevice("speakers");
+    await actions.applyCueOutputDevice(null);
 
     expect(cueEnabled).toBe(false);
   });

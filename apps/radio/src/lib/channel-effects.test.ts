@@ -330,6 +330,9 @@ describe("ChannelEffects", () => {
     const nonSoloGate = createDefaultEffectConfig("gate", "non-solo-gate", 0);
     nonSoloGate.enabled = true;
     nonSoloGate.sidechain = { channelId: "deck-a" };
+    const zeroGainGate = createDefaultEffectConfig("gate", "zero-gain-gate", 0);
+    zeroGainGate.enabled = true;
+    zeroGainGate.sidechain = { channelId: "deck-a" };
     const soloGate = createDefaultEffectConfig("gate", "solo-gate", 0);
     soloGate.enabled = true;
     soloGate.sidechain = { channelId: "deck-b" };
@@ -349,8 +352,16 @@ describe("ChannelEffects", () => {
       },
       {
         ...template,
-        id: "solo",
+        id: "zero-gain",
         order: 2,
+        solo: true,
+        gain: 0,
+        effects: [zeroGainGate],
+      },
+      {
+        ...template,
+        id: "solo",
+        order: 3,
         solo: true,
         effects: [soloGate],
       },

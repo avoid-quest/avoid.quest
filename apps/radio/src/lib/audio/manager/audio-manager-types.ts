@@ -25,6 +25,7 @@ type SoundOutputMode = "audio-graph" | "native";
 type SoundInstance = {
   radio: Radio;
   sourceId: string;
+  mainOutputCleanup: (() => void) | null;
   playbackSource: PlaybackSource | null;
   deviceSource: DeviceSource | null;
   isDeviceInput: boolean;
@@ -37,9 +38,6 @@ type SoundInstance = {
   filterEnabled: boolean;
   outputMode: SoundOutputMode;
 };
-
-const MAX_MAIN_DELAY_MS = 500;
-const MAX_MAIN_DELAY_SECONDS = MAX_MAIN_DELAY_MS / 1000;
 
 function createAudioNodes(context: AudioContext, initialGain = 1): AudioNodes {
   const preFaderSend = context.createGain();
@@ -64,6 +62,7 @@ function createSoundInstance(
   return {
     radio,
     sourceId,
+    mainOutputCleanup: null,
     playbackSource: null,
     deviceSource: null,
     isDeviceInput: false,
@@ -79,9 +78,4 @@ function createSoundInstance(
 }
 
 export type { AudioNodes, FilterConfig, SoundInstance, SoundOutputMode };
-export {
-  createAudioNodes,
-  createSoundInstance,
-  MAX_MAIN_DELAY_MS,
-  MAX_MAIN_DELAY_SECONDS,
-};
+export { createAudioNodes, createSoundInstance };

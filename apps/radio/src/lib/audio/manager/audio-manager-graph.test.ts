@@ -1,6 +1,10 @@
 import { describe, expect, mock, test } from "bun:test";
 import type { Radio } from "@/lib/audio";
-import { attachWorkletManagerListeners } from "./audio-manager-graph";
+import {
+  attachWorkletManagerListeners,
+  cleanupSoundNodes,
+  connectAudioGraph,
+} from "./audio-manager-graph";
 import type { SoundInstance } from "./audio-manager-types";
 
 type WorkletEventHandlers = Record<string, (payload: unknown) => void>;
@@ -20,6 +24,23 @@ function createTestSoundInstance(radio: Radio): SoundInstance {
     meterUnsubscribe: null,
     isDeviceInput: false,
   } as unknown as SoundInstance;
+}
+
+class TestAudioNode {
+  readonly outputs = new Set<TestAudioNode>();
+
+  connect(destination: TestAudioNode): TestAudioNode {
+    this.outputs.add(destination);
+    return destination;
+  }
+
+  disconnect(destination?: TestAudioNode): void {
+    if (destination) {
+      this.outputs.delete(destination);
+    } else {
+      this.outputs.clear();
+    }
+  }
 }
 
 function attachTestWorkletListeners() {
@@ -97,5 +118,59 @@ describe("audio manager graph worklet errors", () => {
         }),
       })
     );
+  });
+});
+
+describe("audio manager output registration", () => {
+  test("preserves a registered CUE connection when rebuilding a sound graph", async () => {
+    const cueOutput = new TestAudioNode();
+    const filter = new TestAudioNode();
+    const gain = new TestAudioNode();
+    const pan = new TestAudioNode();
+    const preFaderSend = new TestAudioNode();
+    const sourceOutput = new TestAudioNode();
+    preFaderSend.connect(cueOutput);
+    const instance = {
+      ...createTestSoundInstance({
+        id: "station-1",
+        name: "Station 1",
+        streamUrl: "https://radio.example/one.mp3",
+      }),
+      nodes: { filter, gain, pan, preFaderSend },
+      playbackSource: { output: sourceOutput },
+    } as unknown as SoundInstance;
+
+    await connectAudioGraph({
+      instance,
+      connectEffectsGraph: async () => true,
+      connectMainOutput: () => () => undefined,
+      notifyListeners: () => undefined,
+    });
+
+    expect(preFaderSend.outputs.has(cueOutput)).toBe(true);
+    expect(preFaderSend.outputs.has(gain)).toBe(true);
+  });
+
+  test("releases the main output registration when sound nodes are cleaned", () => {
+    const releaseMainOutput = mock(() => undefined);
+    const instance = {
+      ...createTestSoundInstance({
+        id: "station-1",
+        name: "Station 1",
+        streamUrl: "https://radio.example/one.mp3",
+      }),
+      mainOutputCleanup: releaseMainOutput,
+      nodes: {
+        filter: { disconnect: mock(() => undefined) },
+        gain: { disconnect: mock(() => undefined) },
+        pan: { disconnect: mock(() => undefined) },
+        preFaderSend: { disconnect: mock(() => undefined) },
+      },
+    } as unknown as SoundInstance;
+
+    cleanupSoundNodes(instance);
+
+    expect(releaseMainOutput).toHaveBeenCalledTimes(1);
+    expect(instance.mainOutputCleanup).toBeNull();
   });
 });

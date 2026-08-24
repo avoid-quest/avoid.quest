@@ -13,6 +13,7 @@
  * Main delay is applied after all sound processing, before final output.
  */
 
+import { getOutputRouting, type OutputRouting } from "../../output-routing.js";
 import type { EffectConfig, EffectType } from "../dsp/effects/types.js";
 import {
   type AudioState,
@@ -45,7 +46,6 @@ import {
 } from "./audio-manager-types.js";
 import { EffectsController } from "./effects-controller.js";
 import { MeterService } from "./meter-service.js";
-import { OutputRouter } from "./output-router.js";
 import { SoundRegistry } from "./sound-registry.js";
 import { VolumeController } from "./volume-controller.js";
 
@@ -81,7 +81,7 @@ export class AudioManager {
   private readonly listeners = new Map<string, Set<AudioStateCallback>>();
   readonly volume: VolumeController;
   readonly effects: EffectsController;
-  readonly output: OutputRouter;
+  private readonly output: OutputRouting;
   readonly meters: MeterService;
   private audioSystemInitialized = false;
   private initPromise: Promise<void> | null = null;
@@ -92,7 +92,7 @@ export class AudioManager {
 
   private constructor() {
     this.meters = new MeterService();
-    this.output = new OutputRouter();
+    this.output = getOutputRouting();
     this.volume = new VolumeController({
       getSound: (soundId) => this.soundRegistry.get(soundId),
       getSounds: () => this.soundRegistry.entries(),
@@ -237,7 +237,8 @@ export class AudioManager {
     const resumePromise = resumeAudioContext();
     // Build the native master shell synchronously so the media play request
     // can remain in the originating user-activation task on mobile.
-    this.output.initializeMasterGraph(context);
+    this.output.getMainOutput(context);
+    this.output.replaceContext(context).catch(console.error);
 
     // Update instance state
     instance.volume = volume;
@@ -429,7 +430,7 @@ export class AudioManager {
   private async connectAudioGraph(instance: SoundInstance): Promise<boolean> {
     const connected = await connectAudioGraph({
       instance,
-      mainDelayNode: this.output.mainDelayNode,
+      connectMainOutput: (source) => this.output.connectMain(source),
       notifyListeners: this.notifyListeners,
       connectEffectsGraph: (soundId, source, destination) =>
         this.effects.connectGraph(soundId, source, destination),
@@ -712,21 +713,6 @@ export class AudioManager {
    */
   isGlobalMuted(): boolean {
     return this.volume.isGlobalMuted();
-  }
-
-  /**
-   * Get current main output delay in milliseconds
-   */
-  getMainDelay(): number {
-    return this.output.getMainDelay();
-  }
-
-  /**
-   * Set main output delay (0-500ms)
-   * Applies to all audio going to the main output
-   */
-  setMainDelay(ms: number): void {
-    this.output.setMainDelay(ms);
   }
 
   /**
@@ -1217,9 +1203,9 @@ export class AudioManager {
     // Resume the audio context first
     await resumeAudioContext();
 
-    const masterGraph = this.output.initializeMasterGraph(context);
-
-    await this.meters.setMasterSource(masterGraph.mainDelayNode);
+    this.output.getMainOutput(context);
+    this.output.replaceContext(context).catch(console.error);
+    await this.meters.setMasterSource(this.output.getMainOutput(context));
     this.audioSystemInitialized = true;
   }
 

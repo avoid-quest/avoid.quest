@@ -1,12 +1,9 @@
 import { Badge } from "@avoid.quest/ui/components/badge";
 import { ClockIcon, HeadphonesIcon, Volume2Icon } from "lucide-react";
 import { SettingsButton } from "@/components/settings/settings-button";
-import {
-  type AudioDeviceInfo,
-  isSinkIdSupported,
-  useAudioDevices,
-} from "@/lib/audio";
+import { type AudioDeviceInfo, useAudioDevices } from "@/lib/audio";
 import { useAudioSettings, useDelaySettings } from "@/lib/hooks/use-settings";
+import { getOutputRouting } from "@/lib/output-routing.js";
 
 function resolveDeviceLabel(
   deviceId: string | null,
@@ -26,7 +23,8 @@ export function MixerRouting() {
 
   const mainOutputId = audioSettings.mainOutputId ?? "default";
   const cueOutputId = audioSettings.cueOutputId;
-  const canResolveDevices = isSinkIdSupported();
+  const canResolveDevices =
+    getOutputRouting().getSnapshot().sinkSelectionSupported;
 
   const mainLabel = canResolveDevices
     ? resolveDeviceLabel(mainOutputId, outputDevices)

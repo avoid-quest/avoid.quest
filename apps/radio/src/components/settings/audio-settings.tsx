@@ -19,13 +19,8 @@ import {
 } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { toast } from "sonner";
-import { isSinkIdSupported, useAudioDevices } from "@/lib/audio";
-import {
-  getAudioSettings,
-  getDelaySettings,
-  setCueOutputDevice,
-  setMainOutputDevice,
-} from "@/lib/collections";
+import { useAudioDevices } from "@/lib/audio";
+import { getAudioSettings, getDelaySettings } from "@/lib/collections";
 import {
   applyCueOutputDevice,
   applyMainOutputDevice,
@@ -33,13 +28,15 @@ import {
   setCueOutputDelay,
   setMainOutputDelay,
 } from "@/lib/dj-actions";
+import { getOutputRouting } from "@/lib/output-routing.js";
 
 /**
  * Audio settings panel for the main settings form.
  * Manages input/output device selection with persistence.
  */
 export function AudioSettings() {
-  const sinkIdSupported = isSinkIdSupported();
+  const sinkIdSupported =
+    getOutputRouting().getSnapshot().sinkSelectionSupported;
 
   const {
     outputDevices,
@@ -64,42 +61,48 @@ export function AudioSettings() {
   const [cueDelayMs, setCueDelayMsState] = useState(delaySettings.cueDelayMs);
 
   const handleMainOutputChange = async (value: string) => {
-    setMainOutputId(value);
-    setMainOutputDevice(value);
     try {
-      // If the new main device matches the current CUE device, auto-disable CUE
-      if (cueOutputId && cueOutputId === value) {
-        setCueOutputId(null);
-        setCueOutputDevice(null);
-        await applyCueOutputDevice(null);
-      }
-      // Apply to audio routing
       await applyMainOutputDevice(value);
+      const applied = getAudioSettings();
+      setMainOutputId(applied.mainOutputId);
+      setCueOutputId(applied.cueOutputId);
     } catch {
+      const current = getAudioSettings();
+      setMainOutputId(current.mainOutputId);
+      setCueOutputId(current.cueOutputId);
       toast.error("Failed to apply the main output settings");
     }
   };
 
   const handleCueOutputChange = async (value: string) => {
     const newValue = value === "none" ? null : value;
-    setCueOutputId(newValue);
-    setCueOutputDevice(newValue);
-    // Apply to audio routing
-    await applyCueOutputDevice(newValue);
+    try {
+      await applyCueOutputDevice(newValue);
+      setCueOutputId(getAudioSettings().cueOutputId);
+    } catch {
+      setCueOutputId(getAudioSettings().cueOutputId);
+      toast.error("Failed to apply the CUE output settings");
+    }
   };
 
   const handleMainDelayChange = async (value: number) => {
-    setMainDelayMsState(value);
     try {
       await setMainOutputDelay(value);
+      setMainDelayMsState(getDelaySettings().mainDelayMs);
     } catch {
+      setMainDelayMsState(getDelaySettings().mainDelayMs);
       toast.error("Failed to apply the main output settings");
     }
   };
 
-  const handleCueDelayChange = (value: number) => {
-    setCueDelayMsState(value);
-    setCueOutputDelay(value);
+  const handleCueDelayChange = async (value: number) => {
+    try {
+      await setCueOutputDelay(value);
+      setCueDelayMsState(getDelaySettings().cueDelayMs);
+    } catch {
+      setCueDelayMsState(getDelaySettings().cueDelayMs);
+      toast.error("Failed to apply the CUE output settings");
+    }
   };
 
   return (

@@ -15,6 +15,7 @@ import type {
 import {
   type AudioManager,
   createAudioEngineFacade,
+  getAudioContext,
   type Radio,
 } from "@/lib/audio";
 import {
@@ -26,6 +27,7 @@ import {
   updateChannelEffect,
   updateChannelFilter,
 } from "@/lib/channel-state-manager";
+import { getAudioSettings, getDelaySettings } from "@/lib/collections";
 import {
   clearDjErrorSurface,
   reportDjErrorSurface,
@@ -41,25 +43,6 @@ import {
 } from "@/lib/dj-actions-deck-load.js";
 import type { DeckId, DeckSide } from "@/lib/dj-actions-decks.js";
 import { findNextTrack as findNextTrackInPlaylist } from "@/lib/dj-actions-playlist.js";
-import {
-  setCueOutputDelay as applyCueOutputDelay,
-  applyCueOutputDevice as applyCueOutputDeviceSetting,
-  setMainOutputDelay as applyMainOutputDelay,
-  applyMainOutputDevice as applyMainOutputDeviceSetting,
-  applyCurrentAudioSettings as applySavedAudioSettings,
-  autoCompensateLatency as autoCompensateOutputLatency,
-  cleanupCueBus as cleanupDjCueBus,
-  connectDeckToCueBus as connectDeckCueBus,
-  detectSystemLatency as detectOutputLatency,
-  getOutputDelays as getConfiguredOutputDelays,
-  getCueBus as getDjCueBus,
-  initializeAudioDevices as initializeSavedAudioDevices,
-  initializeOutputDelays as initializeSavedOutputDelays,
-  isCueBusInitialized as isDjCueBusInitialized,
-  setHeadphoneVolume as setCueHeadphoneVolume,
-  setDeckCueEnabled as setDeckCueRoutingEnabled,
-  toggleDeckCue as toggleDeckCueRouting,
-} from "@/lib/dj-actions-routing.js";
 import { calculateDjCrossfadeVolumes } from "@/lib/dj-crossfade.js";
 import {
   type DeckLibrarySourceIntent,
@@ -67,6 +50,7 @@ import {
   type DeckSourceLoadResult,
   getDeckLibrarySourceIntent,
 } from "@/lib/dj-library-sources.js";
+import { createDjOutputDeviceActions } from "@/lib/dj-output-device-actions.js";
 import { resolveDjPlatformStreamUrl } from "@/lib/dj-platform-stream-port.js";
 import {
   getDeckA,
@@ -76,6 +60,10 @@ import {
   updateMixer,
 } from "@/lib/hooks/use-dj-state";
 import { createManagedPlaybackSessionWorkflow } from "@/lib/managed-playback-session-workflow";
+import {
+  type CueDeckRegistration,
+  getOutputRouting,
+} from "@/lib/output-routing.js";
 import { loadPlatformItem } from "@/lib/platform-item-loader";
 import {
   getDefaultPlaybackActionContext,
@@ -103,30 +91,107 @@ export type DeckLibrarySourceLoadResult =
   | DeckSourceLoadResult
   | Extract<DeckLibrarySourceIntent, { type: "pending-platform" }>;
 
-export const getCueBus = getDjCueBus;
-export const isCueBusInitialized = isDjCueBusInitialized;
+const deckCueRegistrations = new Map<DeckId, CueDeckRegistration>();
+let cueBusInitialized = false;
+let outputSettingsInitialized = false;
+let outputErrorCleanup: (() => void) | null = null;
+
+function subscribeToOutputErrors(): void {
+  outputErrorCleanup?.();
+  outputErrorCleanup = getOutputRouting().subscribeErrors((error) => {
+    reportDjErrorSurface(error.message, "DJ_OUTPUT_ROUTER_ERROR", error);
+  });
+}
+
+export function getCueBus() {
+  if (typeof window === "undefined") {
+    throw new Error("Output routing can only be used in browser environment");
+  }
+  const routing = getOutputRouting();
+  if (!cueBusInitialized) {
+    const headphoneVolume = getMixer()?.headphoneVolume;
+    if (headphoneVolume !== undefined) {
+      routing.setHeadphoneVolume(headphoneVolume);
+    }
+    cueBusInitialized = true;
+  }
+  return routing;
+}
+
+export function isCueBusInitialized(): boolean {
+  return cueBusInitialized;
+}
+
+function disableCueDecks(): void {
+  for (const registration of deckCueRegistrations.values()) {
+    registration.setEnabled(false);
+  }
+  updateMixer((draft) => {
+    draft.deckACueEnabled = false;
+    draft.deckBCueEnabled = false;
+  });
+}
+
+function getOutputDeviceActions() {
+  return createDjOutputDeviceActions({
+    disableCueDecks,
+    reconcileSingleRouting: () =>
+      createManagedPlaybackSessionWorkflow("single").reconcileRouting(),
+    routing: getOutputRouting(),
+  });
+}
 
 export async function applyMainOutputDevice(deviceId: string): Promise<void> {
-  await Promise.all([
-    applyMainOutputDeviceSetting(deviceId, reportDjErrorSurface),
-    createManagedPlaybackSessionWorkflow("single").reconcileRouting(),
-  ]);
+  subscribeToOutputErrors();
+  await getOutputDeviceActions().applyMainOutputDevice(deviceId);
 }
 
 export async function applyCueOutputDevice(
   deviceId: string | null
 ): Promise<void> {
-  await applyCueOutputDeviceSetting(deviceId);
+  await getOutputDeviceActions().applyCueOutputDevice(deviceId);
 }
 
 export async function applyCurrentAudioSettings(): Promise<void> {
-  await applySavedAudioSettings(getAudioManager, reportDjErrorSurface);
+  subscribeToOutputErrors();
+  await getOutputRouting().applySettings();
 }
 
-export const setDeckCueEnabled = setDeckCueRoutingEnabled;
+function updateDeckCueState(deckId: DeckId, enabled: boolean): void {
+  updateMixer((draft) => {
+    if (deckId === "deck-a") {
+      draft.deckACueEnabled = enabled;
+    } else {
+      draft.deckBCueEnabled = enabled;
+    }
+  });
+}
+
+export function setDeckCueEnabled(deckId: DeckId, enabled: boolean): void {
+  const existing = deckCueRegistrations.get(deckId);
+  if (existing) {
+    existing.setEnabled(enabled);
+  } else {
+    deckCueRegistrations.set(
+      deckId,
+      getOutputRouting().registerCueDeck(deckId, null, enabled)
+    );
+  }
+  updateDeckCueState(deckId, enabled);
+}
 
 export function toggleDeckCue(deckId: DeckId): void {
-  toggleDeckCueRouting(deckId);
+  if (!getAudioSettings().cueOutputId) {
+    return;
+  }
+  const mixer = getMixer();
+  if (!mixer) {
+    return;
+  }
+  setDeckCueEnabled(
+    deckId,
+    deckId === "deck-a" ? !mixer.deckACueEnabled : !mixer.deckBCueEnabled
+  );
 }
 
 export function toggleDeckACue(): void {
@@ -138,43 +203,98 @@ export function toggleDeckBCue(): void {
 }
 
 export function setHeadphoneVolume(volume: number): void {
-  setCueHeadphoneVolume(volume);
+  const clampedVolume = Math.max(0, Math.min(1, volume));
+  getOutputRouting().setHeadphoneVolume(clampedVolume);
+  updateMixer((draft) => {
+    draft.headphoneVolume = clampedVolume;
+  });
 }
 
 export function cleanupCueBus(): void {
-  cleanupDjCueBus();
+  for (const registration of deckCueRegistrations.values()) {
+    registration.cleanup();
+  }
+  deckCueRegistrations.clear();
+  getOutputRouting().releaseCue();
+  outputErrorCleanup?.();
+  outputErrorCleanup = null;
+  outputSettingsInitialized = false;
+  cueBusInitialized = false;
 }
 
 export async function setMainOutputDelay(ms: number): Promise<void> {
-  applyMainOutputDelay(ms, getAudioManager);
+  await getOutputRouting().applyMainSettings({ mainDelayMs: ms });
   await createManagedPlaybackSessionWorkflow("single").reconcileRouting();
 }
 
-export function setCueOutputDelay(ms: number): void {
-  applyCueOutputDelay(ms);
+export async function setCueOutputDelay(ms: number): Promise<void> {
+  await getOutputRouting().applySettings({ cueDelayMs: ms });
 }
 
 export function getOutputDelays(): {
   mainDelayMs: number;
   cueDelayMs: number;
 } {
-  return getConfiguredOutputDelays();
+  return getDelaySettings();
 }
 
 export function initializeOutputDelays(): void {
-  initializeSavedOutputDelays(getAudioManager);
+  const { mainDelayMs, cueDelayMs } = getDelaySettings();
+  getOutputRouting()
+    .applySettings({ cueDelayMs, mainDelayMs })
+    .catch(() => undefined);
 }
 
 export function detectSystemLatency(): number | null {
-  return detectOutputLatency();
+  const context = getAudioContext();
+  const latencyMs = Math.round(
+    ((context.outputLatency ?? 0) + (context.baseLatency ?? 0)) * 1000
+  );
+  return latencyMs === 0 ? null : latencyMs;
 }
 
 export async function autoCompensateLatency(): Promise<number | null> {
-  const latency = autoCompensateOutputLatency(getAudioManager);
+  const latency = detectSystemLatency();
   if (latency !== null) {
+    await getOutputRouting().applyMainSettings({ mainDelayMs: latency });
     await createManagedPlaybackSessionWorkflow("single").reconcileRouting();
   }
   return latency;
+}
+
+async function initializeSavedAudioDevices(): Promise<void> {
+  if (outputSettingsInitialized) {
+    return;
+  }
+  await applyCurrentAudioSettings();
+  outputSettingsInitialized = true;
+}
+
+function connectDeckCueBus(
+  deckId: DeckId,
+  soundId: string,
+  getManager: () => AudioManager
+): void {
+  const tap = getManager().getPreFaderNode(soundId);
+  if (!tap) {
+    return;
+  }
+  const mixer = getMixer();
+  const enabled =
+    deckId === "deck-a"
+      ? (mixer?.deckACueEnabled ?? false)
+      : (mixer?.deckBCueEnabled ?? false);
+  const existing = deckCueRegistrations.get(deckId);
+  if (existing) {
+    existing.replaceTap(tap);
+    existing.setEnabled(enabled);
+    return;
+  }
+  getCueBus();
+  deckCueRegistrations.set(
+    deckId,
+    getOutputRouting().registerCueDeck(deckId, tap, enabled)
+  );
 }
 
 export const findNextTrack = (

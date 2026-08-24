@@ -1,10 +1,9 @@
 import {
   generateErrorId,
-  getAudioContext,
   type WorkletManager,
   type WorkletManagerEvents,
 } from "../playback/index.js";
-import { safeDisconnect } from "../utils.js";
+import { safeDisconnect, safeDisconnectFrom } from "../utils.js";
 import {
   type NotifySoundListeners,
   notifySoundError,
@@ -12,13 +11,9 @@ import {
 } from "./audio-manager-state.js";
 import type { SoundInstance } from "./audio-manager-types.js";
 
-type MasterGraphNodes = {
-  mainDelayNode: DelayNode;
-};
-
 type ConnectAudioGraphParams = {
   instance: SoundInstance;
-  mainDelayNode: DelayNode | null;
+  connectMainOutput: (source: AudioNode) => () => void;
   notifyListeners: NotifySoundListeners;
   connectEffectsGraph: (
     soundId: string,
@@ -36,25 +31,17 @@ type WorkletListenerParams = {
 const STALE_SOURCE_CONTROL_ERROR = /^Cannot (pause|resume):/;
 
 function cleanupSoundNodes(instance: SoundInstance): void {
+  instance.mainOutputCleanup?.();
+  instance.mainOutputCleanup = null;
   if (!instance.nodes) {
     return;
   }
 
+  safeDisconnect(instance.nodes.preFaderSend, "AudioManager.cleanupSound");
   safeDisconnect(instance.nodes.gain, "AudioManager.cleanupSound");
   safeDisconnect(instance.nodes.pan, "AudioManager.cleanupSound");
   safeDisconnect(instance.nodes.filter, "AudioManager.cleanupSound");
   instance.nodes = null;
-}
-
-function createMasterGraphNodes(
-  context: AudioContext,
-  maxDelaySeconds: number
-): MasterGraphNodes {
-  const mainDelayNode = context.createDelay(maxDelaySeconds);
-  mainDelayNode.delayTime.value = 0;
-  mainDelayNode.connect(context.destination);
-
-  return { mainDelayNode };
 }
 
 function attachWorkletManagerListeners({
@@ -117,7 +104,7 @@ function attachWorkletManagerListeners({
 
 async function connectAudioGraph({
   instance,
-  mainDelayNode,
+  connectMainOutput,
   notifyListeners,
   connectEffectsGraph,
 }: ConnectAudioGraphParams): Promise<boolean> {
@@ -130,18 +117,12 @@ async function connectAudioGraph({
     return false;
   }
 
-  const context = getAudioContext();
-  if (!context) {
-    console.warn(
-      "[AudioManager] Cannot connect graph: no AudioContext available"
-    );
-    return false;
-  }
-
   const { preFaderSend, gain, pan, filter } = instance.nodes;
 
+  instance.mainOutputCleanup?.();
+  instance.mainOutputCleanup = null;
   safeDisconnect(sourceOutput, "AudioManager.connectAudioGraph");
-  safeDisconnect(preFaderSend, "AudioManager.connectAudioGraph");
+  safeDisconnectFrom(preFaderSend, gain, "AudioManager.connectAudioGraph");
   safeDisconnect(gain, "AudioManager.connectAudioGraph");
   safeDisconnect(pan, "AudioManager.connectAudioGraph");
   safeDisconnect(filter, "AudioManager.connectAudioGraph");
@@ -149,13 +130,11 @@ async function connectAudioGraph({
   sourceOutput.connect(pan);
   pan.connect(filter);
 
-  const finalDestination = mainDelayNode ?? context.destination;
-
   // Connect the stable native shell before the first async effect-runtime
   // boundary. AudioManager can then request media playback in the original
   // user-activation task without exposing a disconnected or full-volume path.
   preFaderSend.connect(gain);
-  gain.connect(finalDestination);
+  instance.mainOutputCleanup = connectMainOutput(gain);
 
   if (await connectEffectsGraph(instance.sourceId, filter, preFaderSend)) {
     return true;
@@ -184,10 +163,4 @@ async function connectAudioGraph({
   return true;
 }
 
-export type { MasterGraphNodes };
-export {
-  attachWorkletManagerListeners,
-  cleanupSoundNodes,
-  connectAudioGraph,
-  createMasterGraphNodes,
-};
+export { attachWorkletManagerListeners, cleanupSoundNodes, connectAudioGraph };

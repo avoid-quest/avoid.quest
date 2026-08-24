@@ -18,6 +18,13 @@ export function isEffectContainer(
   return isEffectContainerType(effect.type);
 }
 
+export function isEffectChainActive(
+  chain: EffectChainConfig,
+  hasSolo: boolean
+): boolean {
+  return !chain.muted && (!hasSolo || chain.solo);
+}
+
 export function isValidFrequencySplitShape(
   chains: readonly EffectChainConfig[],
   crossoverFrequencies: readonly number[]

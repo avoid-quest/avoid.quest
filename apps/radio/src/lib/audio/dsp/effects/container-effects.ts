@@ -1,3 +1,4 @@
+import { isEffectChainActive } from "../routing/effect-tree.js";
 import { BiquadFilter } from "./biquad-filter.js";
 import { clampEffectTempo } from "./tempo.js";
 import type {
@@ -289,9 +290,6 @@ export class ContainerEffect implements EffectProcessor {
     fromIndex: number,
     toIndex: number
   ): void {
-    if (chain.config.muted) {
-      return;
-    }
     const result = this.processChain(chain, input, fromIndex, toIndex);
     const pan = Math.max(-1, Math.min(1, chain.config.pan));
     if (this.type === "stereoSplit") {
@@ -378,7 +376,7 @@ export class ContainerEffect implements EffectProcessor {
       const inputs = [leftInput, rightInput];
       for (let index = 0; index < Math.min(2, this.chains.length); index++) {
         const chain = this.chains[index];
-        if (chain && (!hasSolo || chain.config.solo)) {
+        if (chain && isEffectChainActive(chain.config, hasSolo)) {
           this.mixChain(
             chain,
             inputs[index] ?? this.silent,
@@ -397,7 +395,7 @@ export class ContainerEffect implements EffectProcessor {
         : this.chains.map(() => input);
     for (let index = 0; index < this.chains.length; index++) {
       const chain = this.chains[index];
-      if (chain && (!hasSolo || chain.config.solo)) {
+      if (chain && isEffectChainActive(chain.config, hasSolo)) {
         this.mixChain(
           chain,
           inputs[index] ?? input,

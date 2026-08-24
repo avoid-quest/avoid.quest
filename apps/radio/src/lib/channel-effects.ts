@@ -2,6 +2,7 @@ import type { EffectConfig } from "@/lib/audio/dsp/effects/types";
 import {
   appendEffectToTree,
   findEffectInTree,
+  isEffectChainActive,
   isEffectContainer,
   normalizeEffectTree,
   removeEffectFromTree,
@@ -100,7 +101,7 @@ function findSidechainChannelId(tree: readonly EffectConfig[]): string | null {
       const hasSolo = effect.chains.some((chain) => chain.solo);
       const nested = findSidechainChannelId(
         effect.chains.flatMap((chain) =>
-          chain.gain !== 0 && !chain.muted && (!hasSolo || chain.solo)
+          chain.gain !== 0 && isEffectChainActive(chain, hasSolo)
             ? chain.effects
             : []
         )

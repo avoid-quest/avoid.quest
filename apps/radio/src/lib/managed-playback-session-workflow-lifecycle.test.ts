@@ -207,6 +207,54 @@ describe("managed playback selection lifecycle", () => {
     expect(context.reportError).not.toHaveBeenCalled();
   });
 
+  test("a failed superseding selection restores the original playing station", async () => {
+    const active = station("active");
+    insertPlayingSingleSession(active);
+    const context = createTestContext();
+    const firstPlay = createDeferred();
+    let playCount = 0;
+    context.audio.playSound = mock(() => {
+      playCount += 1;
+      if (playCount === 1) {
+        return firstPlay.promise;
+      }
+      if (playCount === 2) {
+        return Promise.reject(new Error("latest stream failure"));
+      }
+      return Promise.resolve();
+    });
+    const firstFacade = createManagedPlaybackSessionWorkflow("single", {
+      ctx: context,
+    });
+    const secondFacade = createManagedPlaybackSessionWorkflow("single", {
+      ctx: context,
+    });
+
+    const firstSelection = firstFacade.selectRadio(station("first"));
+    await flushMicrotasks();
+    const secondSelection = secondFacade.selectRadio(station("second"));
+
+    await firstSelection;
+    await expect(secondSelection).rejects.toMatchObject({
+      code: "PLAY_ERROR",
+      radio: station("second"),
+    });
+
+    expect(
+      getPlaybackChannel("single", SINGLE_ACTIVE_CHANNEL_ID)?.radio
+    ).toEqual(active);
+    expect(context.channels.activate).toHaveBeenLastCalledWith(
+      "single",
+      SINGLE_ACTIVE_CHANNEL_ID,
+      active,
+      "single:single-a"
+    );
+    expect(context.audio.playSound).toHaveBeenLastCalledWith(
+      "single:single-a",
+      1
+    );
+  });
+
   test("superseding a paused selection does not start playback", async () => {
     insertPlayingSingleSession(station("active"));
     setPlaybackChannelRuntime(SINGLE_ACTIVE_CHANNEL_ID, () => ({

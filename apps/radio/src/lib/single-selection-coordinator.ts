@@ -10,24 +10,32 @@ export function singleSelectionAbortReason(signal: AbortSignal): unknown {
 class SingleSelectionCoordinator {
   private active: AbortController | null = null;
   private activePlaybackIntent: boolean | null = null;
+  private activeRollbackSoundId: string | null = null;
   private readonly queue = new PQueue({ concurrency: 1 });
   private deactivationCount = 0;
 
   run(task: (signal: AbortSignal) => Promise<void>): Promise<void> {
-    return this.enqueue(task, null);
+    return this.enqueue(task, null, null);
   }
 
   runSelection(
     playbackIntent: boolean,
-    task: (signal: AbortSignal, playbackIntent: boolean) => Promise<void>
+    rollbackSoundId: string | null,
+    task: (
+      signal: AbortSignal,
+      playbackIntent: boolean,
+      rollbackSoundId: string | null
+    ) => Promise<void>
   ): Promise<void> {
-    const inheritedIntent =
+    const inheritedIntent = this.activePlaybackIntent ?? playbackIntent;
+    const inheritedRollbackSoundId =
       this.activePlaybackIntent === null
-        ? playbackIntent
-        : this.activePlaybackIntent;
+        ? rollbackSoundId
+        : this.activeRollbackSoundId;
     return this.enqueue(
-      (signal) => task(signal, inheritedIntent),
-      inheritedIntent
+      (signal) => task(signal, inheritedIntent, inheritedRollbackSoundId),
+      inheritedIntent,
+      inheritedRollbackSoundId
     );
   }
 
@@ -50,7 +58,8 @@ class SingleSelectionCoordinator {
 
   private enqueue(
     task: (signal: AbortSignal) => Promise<void>,
-    playbackIntent: boolean | null
+    playbackIntent: boolean | null,
+    rollbackSoundId: string | null
   ): Promise<void> {
     if (this.deactivationCount > 0) {
       return Promise.resolve();
@@ -60,6 +69,7 @@ class SingleSelectionCoordinator {
     const controller = new AbortController();
     this.active = controller;
     this.activePlaybackIntent = playbackIntent;
+    this.activeRollbackSoundId = rollbackSoundId;
 
     return this.queue
       .add(() => task(controller.signal), { signal: controller.signal })
@@ -72,6 +82,7 @@ class SingleSelectionCoordinator {
         if (this.active === controller) {
           this.active = null;
           this.activePlaybackIntent = null;
+          this.activeRollbackSoundId = null;
         }
       });
   }

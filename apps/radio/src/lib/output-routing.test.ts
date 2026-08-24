@@ -333,6 +333,39 @@ describe("OutputRouting", () => {
     expect(persistence.writes).toEqual([]);
   });
 
+  test("main-only settings preserve CUE release before a later restore", async () => {
+    const { browser, persistence, routing } = setup();
+    await routing.applySettings({
+      cueOutputId: "headphones",
+      mainOutputId: "speakers",
+    });
+    browser.mainSinkChanges.length = 0;
+    const deferredSink = browser.deferNextMainSink();
+    const applyingMain = routing.applyMainSettings({
+      mainOutputId: "studio",
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(browser.mainSinkChanges).toEqual(["studio"]);
+    routing.releaseCue();
+    deferredSink.resolve();
+    const mainSnapshot = await applyingMain;
+
+    expect(mainSnapshot.settings.mainOutputId).toBe("studio");
+    expect(mainSnapshot.settings.cueOutputId).toBeNull();
+    expect(mainSnapshot.cueActive).toBe(false);
+    expect(persistence.read()).toMatchObject({
+      cueOutputId: "headphones",
+      mainOutputId: "studio",
+    });
+
+    const restored = await routing.applySettings();
+
+    expect(restored.settings.cueOutputId).toBe("headphones");
+    expect(restored.cueActive).toBe(true);
+    expect(browser.cueSinkCreations).toEqual(["headphones", "headphones"]);
+  });
+
   test("rolls back main output when CUE application fails", async () => {
     const { browser, persistence, routing } = setup();
     await routing.applySettings({

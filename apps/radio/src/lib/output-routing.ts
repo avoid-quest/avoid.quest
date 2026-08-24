@@ -333,8 +333,14 @@ class OutputRouting {
       if (attempt.cueCollision) {
         this.commitCueSink(null, true);
       }
-      this.runtimeSettings = attempt.settings;
-      return this.snapshot(attempt.settings);
+      const committedSettings = {
+        ...attempt.settings,
+        cueOutputId: attempt.cueCollision
+          ? null
+          : this.runtimeSettings.cueOutputId,
+      };
+      this.runtimeSettings = committedSettings;
+      return this.snapshot(committedSettings);
     } catch (error) {
       if (this.shouldRetryGraphAttempt(attempt, cleanupGeneration)) {
         return null;

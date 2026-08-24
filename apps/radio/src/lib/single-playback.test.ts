@@ -64,24 +64,36 @@ function insertSettings(): void {
   });
 }
 
-function insertSingleSession(radio: Radio, playing = false): void {
+function insertSingleSession(
+  radio: Radio,
+  playing = false,
+  activeChannelId = SINGLE_ACTIVE_CHANNEL_ID
+): void {
   playbackSessionsCollection.insert({
     id: "single",
     channels: [
       {
         ...createDefaultChannel(SINGLE_ACTIVE_CHANNEL_ID, "single-primary", 0),
-        radio,
+        radio: activeChannelId === SINGLE_ACTIVE_CHANNEL_ID ? radio : null,
         volume: 0.42,
       },
-      createDefaultChannel(SINGLE_STANDBY_CHANNEL_ID, "single-secondary", 1),
+      {
+        ...createDefaultChannel(
+          SINGLE_STANDBY_CHANNEL_ID,
+          "single-secondary",
+          1
+        ),
+        radio: activeChannelId === SINGLE_STANDBY_CHANNEL_ID ? radio : null,
+        volume: 0.42,
+      },
     ],
     masterVolume: 0.75,
     crossfadePosition: 0.5,
     headphoneVolume: 1,
-    activeChannelId: SINGLE_ACTIVE_CHANNEL_ID,
+    activeChannelId,
   });
-  setPlaybackChannelRuntime(SINGLE_ACTIVE_CHANNEL_ID, () => ({
-    soundId: "single:single-a",
+  setPlaybackChannelRuntime(activeChannelId, () => ({
+    soundId: `single:${activeChannelId}`,
     isPlaying: playing,
   }));
 }
@@ -214,6 +226,25 @@ describe("Single Playback", () => {
     expect(context.reportError).toHaveBeenCalledTimes(1);
   });
 
+  test("reports replacement errors on the active Single Channel", async () => {
+    const current = station("current");
+    const replacement = station("replacement");
+    insertSingleSession(current, true, SINGLE_STANDBY_CHANNEL_ID);
+    const context = createTestContext();
+    context.audio.playSound = mock(() =>
+      Promise.reject(new Error("replacement failed"))
+    );
+
+    await getSinglePlayback({ ctx: context }).selectStation(replacement);
+
+    expect(
+      getPlaybackChannelRuntime(SINGLE_STANDBY_CHANNEL_ID).error
+    ).toMatchObject({ code: "PLAY_ERROR" });
+    expect(
+      getPlaybackChannelRuntime(SINGLE_ACTIVE_CHANNEL_ID).error
+    ).toBeNull();
+  });
+
   test("keeps only the latest overlapping selection intent", async () => {
     insertSingleSession(station("current"), true);
     const stalledPlay = createDeferred();
@@ -286,6 +317,23 @@ describe("Single Playback", () => {
     expect(context.reportError).not.toHaveBeenCalled();
   });
 
+  test("reports direct start errors on the active Single Channel", async () => {
+    insertSingleSession(station("current"), false, SINGLE_STANDBY_CHANNEL_ID);
+    const context = createTestContext();
+    context.audio.playSound = mock(() =>
+      Promise.reject(new Error("start failed"))
+    );
+
+    await getSinglePlayback({ ctx: context }).setPlaying(true);
+
+    expect(
+      getPlaybackChannelRuntime(SINGLE_STANDBY_CHANNEL_ID).error
+    ).toMatchObject({ code: "PLAY_ERROR" });
+    expect(
+      getPlaybackChannelRuntime(SINGLE_ACTIVE_CHANNEL_ID).error
+    ).toBeNull();
+  });
+
   test("ignores a rejected direct start after a newer start wins", async () => {
     insertSingleSession(station("current"));
     const stalePlay = createDeferred();
@@ -330,6 +378,26 @@ describe("Single Playback", () => {
       getPlaybackChannelRuntime(SINGLE_ACTIVE_CHANNEL_ID).error
     ).toBeNull();
     expect(context.reportError).not.toHaveBeenCalled();
+  });
+
+  test("keeps a pending start current after a no-op Station selection", async () => {
+    const current = station("current");
+    insertSingleSession(current);
+    const pendingPlay = createDeferred();
+    const context = createTestContext();
+    context.audio.playSound = mock(() => pendingPlay.promise);
+    const playback = getSinglePlayback({ ctx: context });
+
+    const starting = playback.setPlaying(true);
+    await Promise.resolve();
+    await playback.selectStation(current);
+    pendingPlay.reject(new Error("start failed"));
+    await starting;
+
+    expect(
+      getPlaybackChannelRuntime(SINGLE_ACTIVE_CHANNEL_ID).error
+    ).toMatchObject({ code: "PLAY_ERROR" });
+    expect(context.reportError).toHaveBeenCalledTimes(1);
   });
 
   test("ignores a rejected direct start after deactivation", async () => {
@@ -431,6 +499,35 @@ describe("Single Playback", () => {
     });
   });
 
+  test("deactivation cleans a persisted legacy Single Channel", async () => {
+    const channelId = "legacy-single";
+    playbackSessionsCollection.insert({
+      id: "single",
+      channels: [
+        {
+          ...createDefaultChannel(channelId, "single-primary", 0),
+          radio: station("legacy"),
+        },
+      ],
+      masterVolume: 1,
+      crossfadePosition: 0.5,
+      headphoneVolume: 1,
+      activeChannelId: channelId,
+    });
+    setPlaybackChannelRuntime(channelId, () => ({
+      soundId: "single:legacy",
+      isPlaying: true,
+    }));
+    const context = createTestContext();
+    const fadeOutSound = mock(async () => undefined);
+
+    await getSinglePlayback({ ctx: context, fadeOutSound }).deactivate();
+
+    expect(fadeOutSound).toHaveBeenCalledWith("single:legacy", 150, true);
+    expect(context.channels.deactivate).toHaveBeenCalledWith(channelId);
+    expect(getPlaybackChannelRuntime(channelId).soundId).toBeNull();
+  });
+
   test("reconciles a playing Station route without changing its runtime intent", async () => {
     insertSingleSession(station("current"), true);
     setMainDelayMs(120);
@@ -449,6 +546,26 @@ describe("Single Playback", () => {
     expect(
       getPlaybackChannel("single", SINGLE_ACTIVE_CHANNEL_ID)?.radio
     ).toEqual(station("current"));
+  });
+
+  test("reports routing errors on the active Single Channel", async () => {
+    insertSingleSession(station("current"), true, SINGLE_STANDBY_CHANNEL_ID);
+    const context = createTestContext();
+    context.channels.getOutputMode = mock(() => "native" as const);
+    context.audio.playSound = mock(() =>
+      Promise.reject(new Error("route failed"))
+    );
+
+    await expect(
+      getSinglePlayback({ ctx: context }).reconcileRouting()
+    ).rejects.toThrow();
+
+    expect(
+      getPlaybackChannelRuntime(SINGLE_STANDBY_CHANNEL_ID).error
+    ).toMatchObject({ code: "PLAY_ERROR" });
+    expect(
+      getPlaybackChannelRuntime(SINGLE_ACTIVE_CHANNEL_ID).error
+    ).toBeNull();
   });
 
   test("activation resets a non-restorable active Station", async () => {

@@ -50,7 +50,7 @@ export function useMultipleSession() {
           radio: channel.radio,
           isPlaying: runtime?.isPlaying ?? false,
           isLoading: runtime?.isLoading ?? false,
-          isMuted: channel.volume === 0,
+          isMuted: channel.muted || channel.volume === 0,
           volume: channel.volume,
           error: runtime?.error?.message ?? null,
         };

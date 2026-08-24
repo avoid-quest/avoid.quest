@@ -349,6 +349,18 @@ function createMultiplePlayback(
     removePlaybackChannel("multiple", channelId);
   };
 
+  const getOwnedChannelIds = () =>
+    Array.from(
+      new Set([
+        ...(getPlaybackSession("multiple")?.channels.map(
+          (channel) => channel.id
+        ) ?? []),
+        ...getPlaybackRuntimeChannelIds().filter((channelId) =>
+          channelId.startsWith("multi:")
+        ),
+      ])
+    );
+
   return {
     async activate() {
       const session = await getReadyManagedPlaybackSession("multiple");
@@ -375,21 +387,22 @@ function createMultiplePlayback(
         generation.cancellation = "deactivate";
       }
       cancelChannelStarts("deactivate");
-      const channelIds = Array.from(
-        new Set([
-          ...(getPlaybackSession("multiple")?.channels.map(
-            (channel) => channel.id
-          ) ?? []),
-          ...getPlaybackRuntimeChannelIds().filter((channelId) =>
-            channelId.startsWith("multi:")
-          ),
-        ])
-      );
-      const soundIds = getRuntimeSoundIds(channelIds);
+      const initialChannelIds = getOwnedChannelIds();
+      const initialSoundIds = getRuntimeSoundIds(initialChannelIds);
       await Promise.all(
-        soundIds.map((soundId) =>
+        initialSoundIds.map((soundId) =>
           fadeOutSound(soundId, fadeOutDurationMs, true)
         )
+      );
+      for (const generation of activePlayAllGenerations) {
+        generation.cancellation = "deactivate";
+      }
+      cancelChannelStarts("deactivate");
+      const channelIds = Array.from(
+        new Set([...initialChannelIds, ...getOwnedChannelIds()])
+      );
+      const soundIds = Array.from(
+        new Set([...initialSoundIds, ...getRuntimeSoundIds(channelIds)])
       );
       for (const channelId of channelIds) {
         cleanupManagedChannel(channelId, ctx);
@@ -433,13 +446,19 @@ function createMultiplePlayback(
       setMasterVolume(unmutedMasterVolume);
     },
     toggleMute(channelId) {
-      const volume = getPlaybackChannel("multiple", channelId)?.volume ?? 1;
-      if (volume > 0) {
-        unmutedVolumes.set(channelId, volume);
-        setVolume(channelId, 0);
+      const channel = getPlaybackChannel("multiple", channelId);
+      if (!channel) {
         return;
       }
-      setVolume(channelId, unmutedVolumes.get(channelId) ?? 1);
+      if (channel.muted) {
+        ctx.channels.setMuted("multiple", channelId, false);
+        return;
+      }
+      if (channel.volume === 0) {
+        setVolume(channelId, unmutedVolumes.get(channelId) ?? 1);
+        return;
+      }
+      ctx.channels.setMuted("multiple", channelId, true);
     },
   };
 }

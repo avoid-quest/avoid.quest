@@ -113,7 +113,11 @@ function createTestContext(): PlaybackActionContext {
       }),
       deactivateAll: mock(() => undefined),
       getOutputMode: mock((_channelId: string) => "audio-graph" as const),
-      setMuted: mock((_sessionId, _channelId, _muted) => undefined),
+      setMuted: mock((sessionId, channelId, muted) => {
+        updatePlaybackChannel(sessionId, channelId, (draft) => {
+          draft.muted = muted;
+        });
+      }),
       setPan: mock((_sessionId, _channelId, _pan) => undefined),
       setSpeed: mock((_sessionId, _channelId, _speed) => undefined),
       setVolume: mock((sessionId, channelId, volume) => {
@@ -168,7 +172,7 @@ describe("Multiple Playback", () => {
     ).toBeNull();
   });
 
-  test("remembers Channel and master volume across mute toggles", () => {
+  test("preserves Channel and master volume across mute toggles", () => {
     const radio = station("saved");
     const channelId = getMultipleChannelId(radio);
     insertMultipleSession([radio]);
@@ -178,9 +182,15 @@ describe("Multiple Playback", () => {
     const playback = getMultiplePlayback({ ctx: createTestContext() });
 
     playback.toggleMute(channelId);
-    expect(getPlaybackSession("multiple")?.channels[0]?.volume).toBe(0);
+    expect(getPlaybackSession("multiple")?.channels[0]).toMatchObject({
+      muted: true,
+      volume: 0.35,
+    });
     playback.toggleMute(channelId);
-    expect(getPlaybackSession("multiple")?.channels[0]?.volume).toBe(0.35);
+    expect(getPlaybackSession("multiple")?.channels[0]).toMatchObject({
+      muted: false,
+      volume: 0.35,
+    });
 
     playback.toggleMasterMute();
     expect(getPlaybackSession("multiple")?.masterVolume).toBe(0);
@@ -203,6 +213,29 @@ describe("Multiple Playback", () => {
     expect(getPlaybackSession("multiple")?.channels[0]?.volume).toBe(1);
   });
 
+  test("toggles persisted Channel mute without discarding its volume", () => {
+    const radio = station("persisted-muted");
+    const channelId = getMultipleChannelId(radio);
+    insertMultipleSession([radio]);
+    updatePlaybackChannel("multiple", channelId, (draft) => {
+      draft.muted = true;
+      draft.volume = 0.35;
+    });
+    const context = createTestContext();
+
+    getMultiplePlayback({ ctx: context }).toggleMute(channelId);
+
+    expect(getPlaybackSession("multiple")?.channels[0]).toMatchObject({
+      muted: false,
+      volume: 0.35,
+    });
+    expect(context.channels.setMuted).toHaveBeenCalledWith(
+      "multiple",
+      channelId,
+      false
+    );
+  });
+
   test("restores a positive master volume when persisted state starts muted", async () => {
     insertMultipleSession();
     updatePlaybackSession("multiple", (draft) => {
@@ -214,6 +247,31 @@ describe("Multiple Playback", () => {
     playback.toggleMasterMute();
 
     expect(getPlaybackSession("multiple")?.masterVolume).toBe(1);
+  });
+
+  test("pauses an existing Channel even when its persisted Station is invalid", async () => {
+    const invalid = {
+      ...station("invalid"),
+      platformMetadata: {
+        platform: "youtube",
+        itemType: "video",
+        url: "https://youtube.example/watch?v=invalid",
+      },
+    } as Radio;
+    const channelId = getMultipleChannelId(invalid);
+    insertMultipleSession([invalid]);
+    setPlaybackChannelRuntime(channelId, () => ({
+      soundId: `multiple:${channelId}`,
+      isPlaying: true,
+    }));
+    const context = createTestContext();
+
+    await getMultiplePlayback({ ctx: context }).setPlaying(channelId, false);
+
+    expect(context.audio.pauseSound).toHaveBeenCalledWith(
+      `multiple:${channelId}`
+    );
+    expect(context.reportError).not.toHaveBeenCalled();
   });
 
   test("bounds play-all network pressure to three Channels", async () => {
@@ -412,6 +470,34 @@ describe("Multiple Playback", () => {
       soundId: null,
     });
     expect(context.reportError).not.toHaveBeenCalled();
+  });
+
+  test("deactivation cleans a Channel added while another Channel fades", async () => {
+    const initial = station("initial");
+    const late = station("late");
+    const initialChannelId = getMultipleChannelId(initial);
+    const lateChannelId = getMultipleChannelId(late);
+    insertMultipleSession([initial]);
+    setPlaybackChannelRuntime(initialChannelId, () => ({
+      soundId: `multiple:${initialChannelId}`,
+      isPlaying: true,
+    }));
+    const fade = Promise.withResolvers<void>();
+    const context = createTestContext();
+    const fadeOutSound = mock(() => fade.promise);
+    const playback = getMultiplePlayback({ ctx: context, fadeOutSound });
+
+    const deactivation = playback.deactivate();
+    await Promise.resolve();
+    expect(fadeOutSound).toHaveBeenCalled();
+    await playback.addStation(late, true);
+    fade.resolve();
+    await deactivation;
+
+    expect(getPlaybackChannelRuntime(lateChannelId)).toMatchObject({
+      isPlaying: false,
+      soundId: null,
+    });
   });
 
   test("keeps a newer play-all start after a deactivated worker settles", async () => {

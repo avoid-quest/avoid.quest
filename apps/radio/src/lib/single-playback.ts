@@ -72,6 +72,16 @@ const SINGLE_CHANNEL_IDS = [
 ] as const;
 const instances = new WeakMap<PlaybackActionContext, SinglePlayback>();
 
+function getSingleOwnedChannelIds(): string[] {
+  return Array.from(
+    new Set([
+      ...SINGLE_CHANNEL_IDS,
+      ...(getPlaybackSession("single")?.channels.map((channel) => channel.id) ??
+        []),
+    ])
+  );
+}
+
 function abortReason(signal: AbortSignal): unknown {
   return (
     signal.reason ?? new DOMException("Selection superseded", "AbortError")
@@ -310,13 +320,14 @@ function createSinglePlayback(
     async deactivate() {
       playingRevision += 1;
       await selection.cancelAndRun(async () => {
-        const soundIds = getRuntimeSoundIds(SINGLE_CHANNEL_IDS);
+        const channelIds = getSingleOwnedChannelIds();
+        const soundIds = getRuntimeSoundIds(channelIds);
         await Promise.all(
           soundIds.map((soundId) =>
             fadeOutSound(soundId, fadeOutDurationMs, true)
           )
         );
-        for (const channelId of SINGLE_CHANNEL_IDS) {
+        for (const channelId of channelIds) {
           cleanupManagedChannel(channelId, ctx);
           resetPlaybackChannelRuntime(channelId);
         }
@@ -327,14 +338,20 @@ function createSinglePlayback(
       try {
         await selection.runAfterCurrent(() => reconcileRouting(ctx));
       } catch (error) {
-        setManagedPlaybackError(SINGLE_ACTIVE_CHANNEL_ID, error);
+        setManagedPlaybackError(
+          getSelectionChannel()?.id ?? SINGLE_ACTIVE_CHANNEL_ID,
+          error
+        );
         throw error;
       }
     },
     async selectStation(station) {
+      const channel = getSelectionChannel();
+      if (channel && isSameRadio(channel.radio, station)) {
+        return;
+      }
       playingRevision += 1;
       clearManagedPlaybackErrors(SINGLE_CHANNEL_IDS);
-      const channel = getSelectionChannel();
       const runtime = channel ? getPlaybackChannelRuntime(channel.id) : null;
       try {
         await selection.runSelection(
@@ -343,7 +360,11 @@ function createSinglePlayback(
           (signal, state) => selectStation(station, state, ctx, signal)
         );
       } catch (error) {
-        setManagedPlaybackError(SINGLE_ACTIVE_CHANNEL_ID, error, station);
+        setManagedPlaybackError(
+          channel?.id ?? SINGLE_ACTIVE_CHANNEL_ID,
+          error,
+          station
+        );
       }
     },
     async setPlaying(playing) {
@@ -369,7 +390,7 @@ function createSinglePlayback(
             radio: channel?.radio ?? undefined,
           });
           setManagedPlaybackError(
-            SINGLE_ACTIVE_CHANNEL_ID,
+            channel?.id ?? SINGLE_ACTIVE_CHANNEL_ID,
             reportedError,
             channel?.radio ?? undefined
           );

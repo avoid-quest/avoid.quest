@@ -138,7 +138,6 @@ export async function setManagedChannelPlaying(
     return;
   }
 
-  validateRadioForMode(channel.radio, sessionId);
   const runtime = getPlaybackChannelRuntime(channel.id);
   if (!playing) {
     if (runtime.soundId) {
@@ -147,6 +146,7 @@ export async function setManagedChannelPlaying(
     return;
   }
 
+  validateRadioForMode(channel.radio, sessionId);
   const soundId =
     runtime.soundId ??
     createManagedSound(sessionId, channel.id, channel.radio, undefined, ctx);

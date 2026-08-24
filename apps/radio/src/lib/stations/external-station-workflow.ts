@@ -219,18 +219,28 @@ function getStationIdentityKeys(radio: Radio): Set<string> {
   return keys;
 }
 
+function findStationsByIdentity<T extends Radio>(
+  stations: Iterable<T>,
+  radio: Radio
+): T[] {
+  const identityKeys = getStationIdentityKeys(radio);
+  const matches: T[] = [];
+  for (const station of stations) {
+    for (const key of getStationIdentityKeys(station)) {
+      if (identityKeys.has(key)) {
+        matches.push(station);
+        break;
+      }
+    }
+  }
+  return matches;
+}
+
 function findStationByIdentity<T extends Radio>(
   stations: Iterable<T>,
   radio: Radio
 ): T | undefined {
-  const identityKeys = getStationIdentityKeys(radio);
-  for (const station of stations) {
-    for (const key of getStationIdentityKeys(station)) {
-      if (identityKeys.has(key)) {
-        return station;
-      }
-    }
-  }
+  return findStationsByIdentity(stations, radio)[0];
 }
 
 function validatePreparedRadio(radio: Radio): ExternalStationResult<Radio> {
@@ -516,19 +526,24 @@ export function createStationIntake(dependencies: StationIntakeDependencies) {
       : validated;
   };
 
-  const tryCleanupSession = (
-    session: Radio | undefined
+  const tryCleanupSessions = (
+    sessions: Iterable<Radio>
   ): { sessionCleanupPending?: true } => {
-    if (session?.id === undefined) {
-      return {};
+    let sessionCleanupPending = false;
+    for (const session of sessions) {
+      if (session.id !== undefined) {
+        try {
+          dependencies.session.remove(session.id);
+        } catch {
+          sessionCleanupPending = true;
+        }
+      }
     }
-    try {
-      dependencies.session.remove(session.id);
-      return {};
-    } catch {
-      return { sessionCleanupPending: true };
-    }
+    return sessionCleanupPending ? { sessionCleanupPending: true } : {};
   };
+
+  const tryCleanupSession = (session: Radio | undefined) =>
+    tryCleanupSessions(session ? [session] : []);
 
   return {
     async createSession(
@@ -538,18 +553,12 @@ export function createStationIntake(dependencies: StationIntakeDependencies) {
       if (!prepared.ok) {
         return prepared;
       }
-      const existingSession = findStationByIdentity(
+      const staleSessions = findStationsByIdentity(
         dependencies.session.getAll(),
         prepared.data.radio
-      );
+      ).filter((session) => session.id !== prepared.data.radio.id);
       try {
         dependencies.session.add(prepared.data.radio);
-        if (
-          existingSession?.id !== undefined &&
-          existingSession.id !== prepared.data.radio.id
-        ) {
-          dependencies.session.remove(existingSession.id);
-        }
       } catch (error) {
         return {
           error: normalizeWorkflowError(error, {
@@ -559,7 +568,13 @@ export function createStationIntake(dependencies: StationIntakeDependencies) {
           ok: false,
         };
       }
-      return prepared;
+      return {
+        data: {
+          ...prepared.data,
+          ...tryCleanupSessions(staleSessions),
+        },
+        ok: true,
+      };
     },
 
     prepare,

@@ -19,7 +19,7 @@ function createHarness(options?: {
   const addSession = mock((radio: Radio) => {
     const index = session.findIndex((candidate) => candidate.id === radio.id);
     if (index === -1) {
-      session.push(radio);
+      session.unshift(radio);
     } else {
       session[index] = radio;
     }
@@ -181,6 +181,84 @@ describe("createStationIntake", () => {
       name: "Fresh name",
       streamUrl: "https://cdn.radio.example/new.mp3",
     });
+  });
+
+  test("reports cleanup pending when Session replacement commits but stale cleanup fails", async () => {
+    const staleSession = {
+      id: "rb_stale",
+      name: "Stale Session station",
+      streamUrl: "https://radio.example/shared-stream",
+    };
+    const replacement = {
+      id: "rg_replacement",
+      name: "Replacement Session station",
+      streamUrl: staleSession.streamUrl,
+    };
+    const harness = createHarness({ session: [staleSession] });
+    harness.removeSession.mockImplementationOnce(() => {
+      throw new Error("Session cleanup unavailable");
+    });
+
+    const result = await harness.intake.createSession({
+      origin: "discovery",
+      radio: replacement,
+    });
+
+    expect(result).toEqual({
+      data: {
+        radio: expect.objectContaining({ id: "rg_replacement" }),
+        sessionCleanupPending: true,
+      },
+      ok: true,
+    });
+    expect(harness.session).toHaveLength(2);
+    expect(harness.session).toContainEqual(
+      expect.objectContaining({ id: "rg_replacement" })
+    );
+    expect(harness.session).toContainEqual(staleSession);
+  });
+
+  test("retries stale Session cleanup when the committed replacement is newest", async () => {
+    const staleSession = {
+      id: "rb_stale",
+      name: "Stale Session station",
+      streamUrl: "https://radio.example/shared-stream",
+    };
+    const replacement = {
+      id: "rg_replacement",
+      name: "Replacement Session station",
+      streamUrl: staleSession.streamUrl,
+    };
+    const harness = createHarness({ session: [staleSession] });
+    harness.removeSession.mockImplementationOnce(() => {
+      throw new Error("Session cleanup unavailable");
+    });
+
+    const first = await harness.intake.createSession({
+      origin: "discovery",
+      radio: replacement,
+    });
+    const second = await harness.intake.createSession({
+      origin: "discovery",
+      radio: replacement,
+    });
+
+    expect(first).toEqual({
+      data: {
+        radio: expect.any(Object),
+        sessionCleanupPending: true,
+      },
+      ok: true,
+    });
+    expect(second.ok).toBe(true);
+    if (second.ok) {
+      expect(second.data.sessionCleanupPending).toBeUndefined();
+    }
+    expect(harness.session).toEqual([
+      expect.objectContaining({ id: "rg_replacement" }),
+    ]);
+    expect(harness.addSession).toHaveBeenCalledTimes(2);
+    expect(harness.removeSession).toHaveBeenCalledTimes(2);
   });
 
   test("saves a normalized Station at the next Saved station order", async () => {

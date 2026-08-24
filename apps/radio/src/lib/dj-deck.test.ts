@@ -1182,6 +1182,47 @@ describe("DjDeckModule", () => {
     expect(getPlaybackChannelRuntime("deck-a").error).toBeNull();
   });
 
+  test("preserves browser audio error codes when reporting state failures", async () => {
+    const audio = createAudioAdapter();
+    const context = createContext();
+    const module = createDjDeckModule({
+      audio,
+      context,
+      effects: createEffects(),
+      output: createOutput(),
+      platform: createPlatform(),
+    });
+    await module.deck("deck-a").load({
+      type: "radio",
+      radio: {
+        id: "station-1",
+        name: "Station 1",
+        streamUrl: "https://radio.example/one.mp3",
+      },
+    });
+
+    audio.emit("left_station-1:1", {
+      isPlaying: false,
+      isLoading: false,
+      isBuffering: false,
+      volume: 1,
+      error: {
+        id: "error-1",
+        code: "STREAM_DECODE_FAILED",
+        message: "decoder failed",
+        timestamp: Date.now(),
+      },
+      hasEnded: false,
+    });
+
+    expect(context.reportError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: "STREAM_DECODE_FAILED",
+        mode: "dj",
+      })
+    );
+  });
+
   test("reports an interrupted provider stream that cannot be resolved", async () => {
     const audio = createAudioAdapter();
     const module = createDjDeckModule({
@@ -1223,7 +1264,9 @@ describe("DjDeckModule", () => {
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(getDjError()).toBe("Failed to refresh stream - please reload");
+    expect(getDjError()).toBe(
+      "Failed to refresh YouTube stream - please reload"
+    );
   });
 
   test("deactivation releases Deck bindings, CUE, Effects, and file URLs", async () => {

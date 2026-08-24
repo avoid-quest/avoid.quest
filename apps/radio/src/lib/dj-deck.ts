@@ -1,4 +1,5 @@
 import type {
+  AudioErrorCode,
   AudioState,
   ChannelSelection,
   EffectConfig,
@@ -248,7 +249,13 @@ function getTrackFormat(radio: Radio, streamUrl: string): StreamFormat {
   return inferStreamFormat(streamUrl);
 }
 
-function getRefreshRequest(radio: Radio): PlatformStreamResolutionInput | null {
+type StreamRefreshRequest = {
+  failureCode: string;
+  failureMessage: string;
+  resolution: PlatformStreamResolutionInput;
+};
+
+function getRefreshRequest(radio: Radio): StreamRefreshRequest | null {
   const metadata = radio.platformMetadata;
   const videoId = isYouTubeMetadata(metadata)
     ? (metadata.videoId ??
@@ -257,10 +264,14 @@ function getRefreshRequest(radio: Radio): PlatformStreamResolutionInput | null {
     : undefined;
   if (videoId) {
     return {
-      platform: "youtube",
-      reason: "stream-refresh",
-      videoId,
-      radio,
+      failureCode: "DJ_YOUTUBE_REFRESH_FAILED",
+      failureMessage: "Failed to refresh YouTube stream - please reload",
+      resolution: {
+        platform: "youtube",
+        reason: "stream-refresh",
+        videoId,
+        radio,
+      },
     };
   }
   if (
@@ -270,14 +281,21 @@ function getRefreshRequest(radio: Radio): PlatformStreamResolutionInput | null {
     return null;
   }
   const canonicalUrl = metadata.url.trim();
-  return canonicalUrl
-    ? {
-        canonicalUrl,
-        platform: metadata.platform,
-        reason: "stream-refresh",
-        radio,
-      }
-    : null;
+  if (!canonicalUrl) {
+    return null;
+  }
+  const providerName =
+    metadata.platform === "bandcamp" ? "Bandcamp" : "SoundCloud";
+  return {
+    failureCode: `DJ_${metadata.platform.toUpperCase()}_REFRESH_FAILED`,
+    failureMessage: `Failed to refresh ${providerName} stream - please reload`,
+    resolution: {
+      canonicalUrl,
+      platform: metadata.platform,
+      reason: "stream-refresh",
+      radio,
+    },
+  };
 }
 
 function createBrowserAudioAdapter(
@@ -491,11 +509,12 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
     code: string,
     fallbackMessage: string,
     error: unknown,
-    radio = getPlaybackChannel("dj", deckId)?.radio ?? null
+    radio = getPlaybackChannel("dj", deckId)?.radio ?? null,
+    playbackCode: AudioErrorCode = "PLAY_ERROR"
   ): void => {
     const playbackError = createPlaybackActionError({
       mode: "dj",
-      code: "PLAY_ERROR",
+      code: playbackCode,
       cause: error,
       channelId: deckId,
       radio: radio ?? undefined,
@@ -623,7 +642,8 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
         `DJ_${state.error.code}`,
         state.error.message,
         new Error(state.error.message),
-        radio
+        radio,
+        state.error.code
       );
     }
     if (state.hasEnded) {
@@ -960,7 +980,7 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
       return;
     }
     try {
-      const resolved = await options.platform.resolveStream(request);
+      const resolved = await options.platform.resolveStream(request.resolution);
       if (
         !isCurrent(deckId, generation) ||
         getPlaybackChannelRuntime(deckId).soundId !== soundId
@@ -968,7 +988,14 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
         return;
       }
       if (!resolved) {
-        throw new Error("Resolver returned no result");
+        reportDjErrorSurface(
+          request.failureMessage,
+          request.failureCode,
+          undefined,
+          radio,
+          deckId
+        );
+        return;
       }
       const validation = validatePlaybackStreamUrl(resolved.streamUrl);
       if (!validation.ok) {
@@ -991,7 +1018,7 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
         reportFailure(
           deckId,
           "DJ_STREAM_REFRESH_FAILED",
-          "Failed to refresh stream - please reload",
+          request.failureMessage,
           error,
           radio
         );

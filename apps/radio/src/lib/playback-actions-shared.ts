@@ -36,16 +36,6 @@ function getPlaybackOutputRouter(ctx: PlaybackActionContext) {
   return ctx.getMainOutputRouter() ?? getOutputRouting();
 }
 
-export async function applyMainOutputDevice(
-  deviceId: string,
-  ctx = getDefaultPlaybackActionContext()
-): Promise<void> {
-  const router = getPlaybackOutputRouter(ctx);
-  if (router) {
-    await router.applyMainSettings({ mainOutputId: deviceId });
-  }
-}
-
 export async function applyCurrentMainAudioSettings(
   ctx = getDefaultPlaybackActionContext()
 ): Promise<void> {

@@ -159,12 +159,12 @@ function scheduleAudioProbe<T>(
       } catch (error) {
         pending = Promise.reject(error);
       }
-      stopWaitingOnAbort(pending, signal)
-        .then(resolve, reject)
-        .finally(() => {
-          activeAudioProbeCount -= 1;
-          drainAudioProbeQueue();
-        });
+      stopWaitingOnAbort(pending, signal).then(resolve, reject);
+      const releasePhysicalSlot = () => {
+        activeAudioProbeCount -= 1;
+        drainAudioProbeQueue();
+      };
+      pending.then(releasePhysicalSlot, releasePhysicalSlot);
     };
 
     if (signal.aborted) {
@@ -360,55 +360,69 @@ export function createStationDiscovery(
       publish(snapshot(localResults, true, query));
       const controller = new AbortController();
       activeController = controller;
-      debounce = setTimeout(async () => {
-        const settled = await Promise.allSettled([
-          adapters.radioBrowser.search(query, {
-            limit: 10,
-            signal: controller.signal,
-          }),
-          adapters.radioGarden.search(query, {
-            limit: 10,
-            signal: controller.signal,
-          }),
-        ]);
-        if (controller.signal.aborted || requestGeneration !== generation) {
-          return;
-        }
-        const candidates = settled
-          .flatMap((result) =>
-            result.status === "fulfilled" ? result.value : []
-          )
-          .filter(hasSafeStreamUrl);
-        const probed = await Promise.all(
-          candidates.map(async (candidate) => {
-            try {
-              return await scheduleAudioProbe(
-                () =>
-                  adapters.streamProbe.prepare(candidate, controller.signal),
-                controller.signal
-              );
-            } catch {
-              if (controller.signal.aborted) {
-                throw abortReason(controller.signal);
+      debounce = setTimeout(() => {
+        let pendingProviderCount = 2;
+        let radioBrowserResults: StationDiscoveryResult[] = [];
+        let radioGardenResults: StationDiscoveryResult[] = [];
+
+        const loadProvider = async (
+          adapter: StationDirectoryAdapter
+        ): Promise<StationDiscoveryResult[]> => {
+          let candidates: StationDiscoveryCandidate[];
+          try {
+            candidates = await adapter.search(query, {
+              limit: 10,
+              signal: controller.signal,
+            });
+          } catch {
+            return [];
+          }
+          const probed = await Promise.all(
+            candidates.filter(hasSafeStreamUrl).map(async (candidate) => {
+              try {
+                return await scheduleAudioProbe(
+                  () =>
+                    adapters.streamProbe.prepare(candidate, controller.signal),
+                  controller.signal
+                );
+              } catch {
+                return null;
               }
-              return null;
-            }
-          })
-        ).catch(() => []);
-        if (controller.signal.aborted || requestGeneration !== generation) {
-          return;
-        }
-        publish(
-          snapshot(
-            [
-              ...localResults,
-              ...probed.flatMap((candidate) =>
-                candidate ? [toRemoteResult(candidate)] : []
-              ),
-            ],
-            false,
-            query
-          )
+            })
+          );
+          return probed.flatMap((candidate) =>
+            candidate ? [toRemoteResult(candidate)] : []
+          );
+        };
+
+        const settleProvider = async (
+          source: Exclude<StationDiscoverySource, "local">,
+          adapter: StationDirectoryAdapter
+        ) => {
+          const results = await loadProvider(adapter);
+          if (controller.signal.aborted || requestGeneration !== generation) {
+            return;
+          }
+          if (source === "radio-browser") {
+            radioBrowserResults = results;
+          } else {
+            radioGardenResults = results;
+          }
+          pendingProviderCount -= 1;
+          publish(
+            snapshot(
+              [...localResults, ...radioBrowserResults, ...radioGardenResults],
+              pendingProviderCount > 0,
+              query
+            )
+          );
+        };
+
+        settleProvider("radio-browser", adapters.radioBrowser).catch(
+          () => undefined
+        );
+        settleProvider("radio-garden", adapters.radioGarden).catch(
+          () => undefined
         );
       }, SEARCH_DEBOUNCE_MS);
 

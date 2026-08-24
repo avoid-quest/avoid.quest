@@ -71,6 +71,48 @@ describe("StationDiscovery", () => {
     });
   });
 
+  test("publishes a healthy provider before a deferred provider settles", async () => {
+    let resolveRadioBrowser: (value: StationDiscoveryCandidate[]) => void =
+      () => undefined;
+    const snapshots: StationDiscoverySnapshot[] = [];
+    const discovery = createStationDiscovery({
+      radioBrowser: {
+        search: () =>
+          new Promise((resolve) => {
+            resolveRadioBrowser = resolve;
+          }),
+      },
+      radioGarden: {
+        search: () =>
+          Promise.resolve([candidate("radio-garden", "Garden Radio")]),
+      },
+      streamProbe: {
+        prepare: (entry) => Promise.resolve(entry),
+      },
+    });
+
+    discovery.search({ knownStations: [], query: "radio" }, (snapshot) =>
+      snapshots.push(snapshot)
+    );
+    await waitForSearch();
+
+    expect(snapshots.at(-1)).toMatchObject({
+      isSearching: true,
+      results: [{ name: "Garden Radio", sources: ["radio-garden"] }],
+    });
+
+    resolveRadioBrowser([candidate("radio-browser", "Browser Radio")]);
+    await Bun.sleep(0);
+
+    expect(snapshots.at(-1)).toMatchObject({
+      isSearching: false,
+      results: [
+        { name: "Browser Radio", sources: ["radio-browser"] },
+        { name: "Garden Radio", sources: ["radio-garden"] },
+      ],
+    });
+  });
+
   test("cancels discovery before its debounce starts provider work", async () => {
     const providerQueries: string[] = [];
     const discovery = createStationDiscovery({
@@ -374,7 +416,11 @@ describe("StationDiscovery", () => {
     });
   });
 
-  test("releases shared probe capacity when canceled probes ignore their signals", async () => {
+  test("keeps non-cooperative canceled probes inside the physical concurrency limit", async () => {
+    const finishOlderProbes: Array<() => void> = [];
+    let activePhysicalProbes = 0;
+    let peakPhysicalProbes = 0;
+    let newerProbeStarted = false;
     const snapshots: StationDiscoverySnapshot[] = [];
     const discovery = createStationDiscovery({
       radioBrowser: {
@@ -390,21 +436,47 @@ describe("StationDiscovery", () => {
       },
       radioGarden: { search: () => Promise.resolve([]) },
       streamProbe: {
-        prepare: (entry) =>
-          entry.radio.name.startsWith("Older")
-            ? new Promise(() => undefined)
-            : Promise.resolve(entry),
+        prepare: (entry) => {
+          activePhysicalProbes += 1;
+          peakPhysicalProbes = Math.max(
+            peakPhysicalProbes,
+            activePhysicalProbes
+          );
+          if (entry.radio.name.startsWith("Older")) {
+            return new Promise((resolve) => {
+              finishOlderProbes.push(() => {
+                activePhysicalProbes -= 1;
+                resolve(entry);
+              });
+            });
+          }
+          newerProbeStarted = true;
+          activePhysicalProbes -= 1;
+          return Promise.resolve(entry);
+        },
       },
     });
 
     discovery.search({ knownStations: [], query: "older" }, () => undefined);
     await waitForSearch();
+    expect(activePhysicalProbes).toBe(2);
+
     discovery.search({ knownStations: [], query: "newer" }, (snapshot) =>
       snapshots.push(snapshot)
     );
     await waitForSearch();
     await Promise.resolve();
 
+    expect(newerProbeStarted).toBe(false);
+    expect(peakPhysicalProbes).toBe(2);
+
+    for (const finishProbe of finishOlderProbes) {
+      finishProbe();
+    }
+    await Bun.sleep(0);
+
+    expect(newerProbeStarted).toBe(true);
+    expect(peakPhysicalProbes).toBe(2);
     expect(snapshots.at(-1)?.results.map((result) => result.name)).toEqual([
       "Newer Radio",
     ]);

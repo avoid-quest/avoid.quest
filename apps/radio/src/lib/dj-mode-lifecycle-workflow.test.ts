@@ -16,6 +16,7 @@ import {
   getPlaybackChannelRuntime,
   setPlaybackChannelRuntime,
 } from "@/lib/stores/playback-runtime-store";
+import type { DjDeckModule } from "./dj-deck";
 import { createDjModeLifecycleWorkflow } from "./dj-mode-lifecycle-workflow";
 import type { PlaybackActionContext } from "./playback-action-context";
 
@@ -96,6 +97,21 @@ function createTestContext() {
   } satisfies PlaybackActionContext;
 }
 
+function createTestDecks(): DjDeckModule & {
+  load: ReturnType<typeof mock>;
+} {
+  const load = mock(async () => ({ type: "loaded" as const }));
+  return {
+    load,
+    deck: mock(() => ({
+      load,
+      transport: mock(async () => undefined),
+      change: mock(() => undefined),
+    })),
+    deactivate: mock(() => undefined),
+  };
+}
+
 beforeEach(async () => {
   await resetPlaybackSessions();
   resetAllDjRuntime();
@@ -150,17 +166,15 @@ describe("createDjModeLifecycleWorkflow", () => {
       activeChannelId: null,
     });
     const context = createTestContext();
-    const workflow = createDjModeLifecycleWorkflow({ ctx: context });
+    const decks = createTestDecks();
+    const workflow = createDjModeLifecycleWorkflow({ ctx: context, decks });
 
     await workflow.activate();
 
-    expect(context.channels.activate).toHaveBeenCalledTimes(1);
-    expect(context.channels.activate).toHaveBeenCalledWith(
-      "dj",
-      DECK_A_CHANNEL_ID,
-      streamRadio,
-      expect.objectContaining({ soundId: "left_station-1" })
-    );
+    expect(decks.load).toHaveBeenCalledWith({
+      type: "radio",
+      radio: streamRadio,
+    });
     expect(getPlaybackChannel("dj", DECK_B_CHANNEL_ID)?.radio).toBeNull();
     expect(context.audio.setGlobalVolume).toHaveBeenCalledWith(0.7);
     expect(context.audioEngine.volume.setMasterVolume).toHaveBeenCalledWith(
@@ -180,12 +194,13 @@ describe("createDjModeLifecycleWorkflow", () => {
     });
     setDjError("stale deck load failed");
     const context = createTestContext();
-    const workflow = createDjModeLifecycleWorkflow({ ctx: context });
+    const decks = createTestDecks();
+    const workflow = createDjModeLifecycleWorkflow({ ctx: context, decks });
 
     await workflow.activate();
 
     expect(getDjError()).toBeNull();
-    expect(context.channels.activate).not.toHaveBeenCalled();
+    expect(decks.load).not.toHaveBeenCalled();
   });
 
   test("deactivation fades deck sounds, clears runtime state, and clears surfaced errors", async () => {
@@ -213,11 +228,11 @@ describe("createDjModeLifecycleWorkflow", () => {
     const fadeOut = mock((_soundId: string, _duration: number) =>
       Promise.resolve()
     );
-    const cleanupCueBus = mock(() => undefined);
     const context = createTestContext();
+    const decks = createTestDecks();
     const workflow = createDjModeLifecycleWorkflow({
-      cleanupCueBus,
       ctx: context,
+      decks,
       fadeOutSound: fadeOut,
       fadeOutDurationMs: 120,
     });
@@ -226,9 +241,7 @@ describe("createDjModeLifecycleWorkflow", () => {
 
     expect(fadeOut).toHaveBeenCalledWith("left_station-1", 120, true);
     expect(fadeOut).toHaveBeenCalledWith("right_station-2", 120, true);
-    expect(context.channels.deactivate).toHaveBeenCalledWith(DECK_A_CHANNEL_ID);
-    expect(context.channels.deactivate).toHaveBeenCalledWith(DECK_B_CHANNEL_ID);
-    expect(cleanupCueBus).toHaveBeenCalledTimes(1);
+    expect(decks.deactivate).toHaveBeenCalledTimes(1);
     expect(getPlaybackChannelRuntime(DECK_A_CHANNEL_ID).soundId).toBeNull();
     expect(getPlaybackChannelRuntime(DECK_B_CHANNEL_ID).soundId).toBeNull();
     expect(getDjError()).toBeNull();
@@ -256,8 +269,10 @@ describe("createDjModeLifecycleWorkflow", () => {
       Promise.resolve()
     );
     const context = createTestContext();
+    const decks = createTestDecks();
     const workflow = createDjModeLifecycleWorkflow({
       ctx: context,
+      decks,
       fadeOutSound: fadeOut,
       fadeOutDurationMs: 120,
     });
@@ -306,8 +321,10 @@ describe("createDjModeLifecycleWorkflow", () => {
     context.audio.cleanupSound = mock((soundId: string) => {
       liveSoundIds.delete(soundId);
     });
+    const decks = createTestDecks();
     const workflow = createDjModeLifecycleWorkflow({
       ctx: context,
+      decks,
       fadeOutSound: fadeOut,
       fadeOutDurationMs: 120,
     });

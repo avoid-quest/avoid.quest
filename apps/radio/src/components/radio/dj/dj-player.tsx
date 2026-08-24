@@ -12,11 +12,11 @@ import { Volume2Icon } from "lucide-react";
 import type { Radio } from "@/lib/audio";
 import {
   clearDeckLibrarySourcePending,
-  getDjDeckActions,
   setCrossfadePosition,
   setHeadphoneVolume,
   setMasterVolume,
 } from "@/lib/dj-actions";
+import { getDjDeckModule } from "@/lib/dj-deck";
 import { useDjKeyboard } from "@/lib/hooks/use-dj-keyboard";
 import {
   setActiveDragRadio,
@@ -83,8 +83,9 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
   const audioSettings = useAudioSettings();
   const deckA = useDeckA();
   const deckB = useDeckB();
-  const deckAActions = getDjDeckActions("deck-a");
-  const deckBActions = getDjDeckActions("deck-b");
+  const decks = getDjDeckModule();
+  const deckAHandle = decks.deck("deck-a");
+  const deckBHandle = decks.deck("deck-b");
 
   const isPlaying = (deckA?.isPlaying ?? false) || (deckB?.isPlaying ?? false);
   useMediaSession({
@@ -131,8 +132,9 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
     const deckId = over.id as string;
 
     if (isDeckId(deckId)) {
-      getDjDeckActions(deckId)
-        .loadLibrarySource(radio)
+      decks
+        .deck(deckId)
+        .load({ type: "library", radio })
         .catch((error) => {
           console.error("[dj] Failed to load dragged source:", error);
         });
@@ -159,8 +161,12 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
             isCueActive={isCueActive}
             masterVolume={masterVolume}
             onCrossfadeChange={setCrossfadePosition}
-            onDeckACueChange={deckAActions.setCueEnabled}
-            onDeckBCueChange={deckBActions.setCueEnabled}
+            onDeckACueChange={(enabled) =>
+              deckAHandle.change({ type: "cue", enabled })
+            }
+            onDeckBCueChange={(enabled) =>
+              deckBHandle.change({ type: "cue", enabled })
+            }
             onMasterVolumeChange={setMasterVolume}
             radios={radios}
           />
@@ -173,8 +179,12 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
             isCueActive={isCueActive}
             masterVolume={masterVolume}
             onCrossfadeChange={setCrossfadePosition}
-            onDeckACueChange={deckAActions.setCueEnabled}
-            onDeckBCueChange={deckBActions.setCueEnabled}
+            onDeckACueChange={(enabled) =>
+              deckAHandle.change({ type: "cue", enabled })
+            }
+            onDeckBCueChange={(enabled) =>
+              deckBHandle.change({ type: "cue", enabled })
+            }
             onHeadphoneVolumeChange={setHeadphoneVolume}
             onMasterVolumeChange={setMasterVolume}
             radios={radios}

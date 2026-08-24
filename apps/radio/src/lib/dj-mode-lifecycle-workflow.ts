@@ -7,14 +7,12 @@ import {
   playbackSessionsCollection,
 } from "@/lib/collections/playback-sessions";
 import { clearDjErrorSurface } from "@/lib/dj/dj-error-surface";
+import { setCrossfadePosition, setMasterVolume } from "@/lib/dj-actions";
 import {
-  cleanupAudioOnly,
-  cleanupCueBus as cleanupDjCueBus,
-  createDjDeckCommands,
-  setCrossfadePosition,
-  setMasterVolume,
-} from "@/lib/dj-actions";
-import type { DeckId } from "@/lib/dj-actions-decks.js";
+  type DeckId,
+  type DjDeckModule,
+  getDjDeckModule,
+} from "@/lib/dj-deck.js";
 import { resetDeck } from "@/lib/hooks/use-dj-state";
 import {
   getDefaultPlaybackActionContext,
@@ -36,11 +34,9 @@ type FadeOutSound = (
   stopAfter: boolean
 ) => Promise<void>;
 
-type DjDeckCommands = ReturnType<typeof createDjDeckCommands>;
-
 type CreateDjModeLifecycleWorkflowOptions = {
-  cleanupCueBus?: () => void;
   ctx?: PlaybackActionContext;
+  decks?: DjDeckModule;
   fadeOutDurationMs?: number;
   fadeOutSound?: FadeOutSound;
 };
@@ -89,7 +85,7 @@ async function prepareReadyDjPlaybackSession(
 async function restoreDjDeckRadio(
   deckId: DeckId,
   radio: Radio | null,
-  deckCommands: DjDeckCommands
+  decks: DjDeckModule
 ): Promise<void> {
   if (!radio) {
     return;
@@ -100,15 +96,16 @@ async function restoreDjDeckRadio(
     return;
   }
 
-  await deckCommands[deckId].setRadio(radio);
+  await decks.deck(deckId).load({ type: "radio", radio });
 }
 
-async function activateDjMode(ctx: PlaybackActionContext): Promise<void> {
+async function activateDjMode(
+  ctx: PlaybackActionContext,
+  decks: DjDeckModule
+): Promise<void> {
   const session = await prepareReadyDjPlaybackSession(ctx);
   clearDjErrorSurface();
   applySessionMasterVolume("dj", ctx);
-  const deckCommands = createDjDeckCommands(ctx);
-
   const deckA = session.channels.find(
     (channel) => channel.id === DECK_A_CHANNEL_ID
   );
@@ -116,16 +113,8 @@ async function activateDjMode(ctx: PlaybackActionContext): Promise<void> {
     (channel) => channel.id === DECK_B_CHANNEL_ID
   );
 
-  await restoreDjDeckRadio(
-    DECK_A_CHANNEL_ID,
-    deckA?.radio ?? null,
-    deckCommands
-  );
-  await restoreDjDeckRadio(
-    DECK_B_CHANNEL_ID,
-    deckB?.radio ?? null,
-    deckCommands
-  );
+  await restoreDjDeckRadio(DECK_A_CHANNEL_ID, deckA?.radio ?? null, decks);
+  await restoreDjDeckRadio(DECK_B_CHANNEL_ID, deckB?.radio ?? null, decks);
 
   setMasterVolume(session.masterVolume, ctx);
   setCrossfadePosition(session.crossfadePosition, ctx);
@@ -133,15 +122,14 @@ async function activateDjMode(ctx: PlaybackActionContext): Promise<void> {
 
 async function deactivateDjMode(
   ctx: PlaybackActionContext,
+  decks: DjDeckModule,
   fadeOutSound: FadeOutSound,
-  fadeOutDurationMs: number,
-  cleanupCueBus: () => void
+  fadeOutDurationMs: number
 ): Promise<void> {
   const channelIds = getDjRuntimeCleanupChannelIds();
   const soundIds = getRuntimeSoundIds(channelIds);
   await fadeOutSoundIds(soundIds, fadeOutSound, fadeOutDurationMs);
-  await cleanupAudioOnly(ctx);
-  cleanupCueBus();
+  decks.deactivate();
   for (const channelId of channelIds) {
     resetPlaybackChannelRuntime(channelId);
   }
@@ -150,14 +138,14 @@ async function deactivateDjMode(
 }
 
 export function createDjModeLifecycleWorkflow({
-  cleanupCueBus = cleanupDjCueBus,
   ctx = getDefaultPlaybackActionContext(),
+  decks = getDjDeckModule(ctx),
   fadeOutDurationMs = DJ_MODE_FADE_OUT_DURATION_MS,
   fadeOutSound = fadeOut,
 }: CreateDjModeLifecycleWorkflowOptions = {}): DjModeLifecycleWorkflow {
   return {
-    activate: () => activateDjMode(ctx),
+    activate: () => activateDjMode(ctx, decks),
     deactivate: () =>
-      deactivateDjMode(ctx, fadeOutSound, fadeOutDurationMs, cleanupCueBus),
+      deactivateDjMode(ctx, decks, fadeOutSound, fadeOutDurationMs),
   };
 }

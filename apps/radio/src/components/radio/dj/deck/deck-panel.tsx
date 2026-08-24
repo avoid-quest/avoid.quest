@@ -2,10 +2,15 @@ import { useIsMobile } from "@avoid.quest/ui/hooks/use-mobile";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import { useDroppable } from "@dnd-kit/core";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Radio } from "@/lib/audio";
+import type {
+  ChannelSelection,
+  EffectConfig,
+  EffectType,
+  Radio,
+} from "@/lib/audio";
 import { isAudioFile } from "@/lib/audio/file-metadata";
 import { channelEffects } from "@/lib/channel-effects";
-import { getDjDeckActions } from "@/lib/dj-actions";
+import { createDjDeckEffectChange, getDjDeckModule } from "@/lib/dj-deck";
 import { isPlatformRadio } from "@/lib/external-url";
 import { useDeckAState, useDeckBState } from "@/lib/hooks/use-deck-state";
 import { useDjSession } from "@/lib/hooks/use-dj-session";
@@ -142,7 +147,7 @@ function DeckPanelInner({
     seek,
     loadSource,
   } = deckState;
-  const deckActions = getDjDeckActions(deckId);
+  const deck = getDjDeckModule().deck(deckId);
   const djSession = useDjSession();
   const effectsTempo = djSession?.tempo ?? 120;
 
@@ -168,13 +173,22 @@ function DeckPanelInner({
   useMidiEffectRegistration(deckId, effects);
 
   // Effect actions
-  const {
-    addEffect,
-    updateEffect,
-    removeEffect,
-    reorderEffects,
-    setChannelSelection,
-  } = deckActions;
+  const addEffect = (type: EffectType) =>
+    deck.change(createDjDeckEffectChange(type));
+  const updateEffect = (effectId: string, patch: Partial<EffectConfig>) =>
+    deck.change({
+      type: "effect",
+      change: { type: "update", effectId, patch },
+    });
+  const removeEffect = (effectId: string) =>
+    deck.change({ type: "effect", change: { type: "remove", effectId } });
+  const reorderEffects = (effectIds: string[]) =>
+    deck.change({
+      type: "effect",
+      change: { type: "reorder", effectIds },
+    });
+  const setChannelSelection = (selection: ChannelSelection) =>
+    deck.change({ type: "device-channel-selection", selection });
 
   const pendingPlatformItem = usePendingPlatformItem();
   const deckSide = deckId === "deck-a" ? "left" : "right";

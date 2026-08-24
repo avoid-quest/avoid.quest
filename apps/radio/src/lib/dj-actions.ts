@@ -20,38 +20,24 @@ import {
   type Radio,
 } from "@/lib/audio";
 import {
-  type ChannelEffectsChange,
-  channelEffects,
-} from "@/lib/channel-effects";
-import {
-  setChannelFilterValue,
-  updateChannelFilter,
-} from "@/lib/channel-state-manager";
-import { getAudioSettings, getDelaySettings } from "@/lib/collections";
-import {
-  clearDjErrorSurface,
-  reportDjErrorSurface,
-} from "@/lib/dj/dj-error-surface";
-import {
-  applyStoredChannelStrip,
-  applyStoredFilter,
-} from "@/lib/dj-actions-channel-strip.js";
-import {
-  createDjDeckLoadWorkflow,
-  type DeckLoadDependencies,
-  type DjDeckLoadWorkflow,
-} from "@/lib/dj-actions-deck-load.js";
-import type { DeckId, DeckSide } from "@/lib/dj-actions-decks.js";
+  getAudioSettings,
+  getDelaySettings,
+} from "@/lib/collections/settings";
+import { reportDjErrorSurface } from "@/lib/dj/dj-error-surface";
 import { findNextTrack as findNextTrackInPlaylist } from "@/lib/dj-actions-playlist.js";
 import { calculateDjCrossfadeVolumes } from "@/lib/dj-crossfade.js";
+import {
+  createDjDeckEffectChange,
+  type DeckId,
+  type DeckSide,
+  getDjDeckModule,
+} from "@/lib/dj-deck.js";
 import {
   type DeckLibrarySourceIntent,
   type DeckSourceLoadIntent,
   type DeckSourceLoadResult,
   getDeckLibrarySourceIntent,
 } from "@/lib/dj-library-sources.js";
-import { createDjOutputDeviceActions } from "@/lib/dj-output-device-actions.js";
-import { resolveDjPlatformStreamUrl } from "@/lib/dj-platform-stream-port.js";
 import {
   getDeckA,
   getDeckB,
@@ -60,20 +46,19 @@ import {
   updateMixer,
 } from "@/lib/hooks/use-dj-state";
 import {
-  type CueDeckRegistration,
-  getOutputRouting,
-} from "@/lib/output-routing.js";
-import { loadPlatformItem } from "@/lib/platform-item-loader";
-import {
   getDefaultPlaybackActionContext,
   type PlaybackActionContext,
 } from "@/lib/playback-action-context";
+import {
+  getOutputRouting,
+  type MainOutputRoutingSettings,
+  type OutputRoutingSettings,
+} from "@/lib/output-routing.js";
 import { getSinglePlayback } from "@/lib/single-playback";
 import {
   getDeckARuntime,
   getDeckBRuntime,
 } from "@/lib/stores/dj-runtime-store";
-import { generateId } from "@/lib/types";
 
 const getAudioManager = (): AudioManager => {
   if (typeof window === "undefined") {
@@ -84,124 +69,71 @@ const getAudioManager = (): AudioManager => {
 
 const getAudioEngine = () => createAudioEngineFacade(getAudioManager());
 
-function changeDeckEffects(deckId: DeckId, change: ChannelEffectsChange): void {
-  channelEffects
-    .change({ sessionId: "dj", channelId: deckId }, change)
-    .catch((error: unknown) =>
-      console.warn(
-        "[ChannelEffects] Could not reconcile Channel Effects",
-        error
-      )
-    );
-}
-
-const getSoundId = (radio: Radio, side: DeckSide): string =>
-  `${side}_${radio.id}`;
-
 export type DeckLibrarySourceLoadResult =
   | DeckSourceLoadResult
   | Extract<DeckLibrarySourceIntent, { type: "pending-platform" }>;
 
-const deckCueRegistrations = new Map<DeckId, CueDeckRegistration>();
-let cueBusInitialized = false;
-let outputSettingsInitialized = false;
-let outputErrorCleanup: (() => void) | null = null;
-
-function subscribeToOutputErrors(): void {
-  outputErrorCleanup?.();
-  outputErrorCleanup = getOutputRouting().subscribeErrors((error) => {
-    reportDjErrorSurface(error.message, "DJ_OUTPUT_ROUTER_ERROR", error);
-  });
-}
-
-export function getCueBus() {
-  if (typeof window === "undefined") {
-    throw new Error("Output routing can only be used in browser environment");
+async function applyOutputSettings(
+  patch: Partial<OutputRoutingSettings> = {}
+) {
+  try {
+    return await getOutputRouting().applySettings(patch);
+  } catch (error) {
+    reportDjErrorSurface(
+      error instanceof Error ? error.message : "Failed to apply output settings",
+      "DJ_OUTPUT_ROUTER_ERROR",
+      error
+    );
+    throw error;
   }
-  const routing = getOutputRouting();
-  if (!cueBusInitialized) {
-    const headphoneVolume = getMixer()?.headphoneVolume;
-    if (headphoneVolume !== undefined) {
-      routing.setHeadphoneVolume(headphoneVolume);
-    }
-    cueBusInitialized = true;
+}
+
+async function applyMainOutputSettings(
+  patch: Partial<MainOutputRoutingSettings>
+) {
+  try {
+    return await getOutputRouting().applyMainSettings(patch);
+  } catch (error) {
+    reportDjErrorSurface(
+      error instanceof Error ? error.message : "Failed to apply output settings",
+      "DJ_OUTPUT_ROUTER_ERROR",
+      error
+    );
+    throw error;
   }
-  return routing;
-}
-
-export function isCueBusInitialized(): boolean {
-  return cueBusInitialized;
-}
-
-function disableCueDecks(): void {
-  for (const registration of deckCueRegistrations.values()) {
-    registration.setEnabled(false);
-  }
-  updateMixer((draft) => {
-    draft.deckACueEnabled = false;
-    draft.deckBCueEnabled = false;
-  });
-}
-
-function getOutputDeviceActions() {
-  return createDjOutputDeviceActions({
-    disableCueDecks,
-    reconcileSingleRouting: () => getSinglePlayback().reconcileRouting(),
-    routing: getOutputRouting(),
-  });
 }
 
 export async function applyMainOutputDevice(deviceId: string): Promise<void> {
-  subscribeToOutputErrors();
-  await getOutputDeviceActions().applyMainOutputDevice(deviceId);
+  await Promise.all([
+    applyMainOutputSettings({ mainOutputId: deviceId }),
+    getSinglePlayback().reconcileRouting(),
+  ]);
+  if (!getAudioSettings().cueOutputId) {
+    setDeckCueEnabled("deck-a", false);
+    setDeckCueEnabled("deck-b", false);
+  }
 }
 
 export async function applyCueOutputDevice(
   deviceId: string | null
 ): Promise<void> {
-  await getOutputDeviceActions().applyCueOutputDevice(deviceId);
+  await applyOutputSettings({ cueOutputId: deviceId });
+  if (deviceId === null) {
+    setDeckCueEnabled("deck-a", false);
+    setDeckCueEnabled("deck-b", false);
+  }
 }
 
 export async function applyCurrentAudioSettings(): Promise<void> {
-  subscribeToOutputErrors();
-  await getOutputRouting().applySettings();
-}
-
-function updateDeckCueState(deckId: DeckId, enabled: boolean): void {
-  updateMixer((draft) => {
-    if (deckId === "deck-a") {
-      draft.deckACueEnabled = enabled;
-    } else {
-      draft.deckBCueEnabled = enabled;
-    }
-  });
+  await applyOutputSettings();
 }
 
 export function setDeckCueEnabled(deckId: DeckId, enabled: boolean): void {
-  const existing = deckCueRegistrations.get(deckId);
-  if (existing) {
-    existing.setEnabled(enabled);
-  } else {
-    deckCueRegistrations.set(
-      deckId,
-      getOutputRouting().registerCueDeck(deckId, null, enabled)
-    );
-  }
-  updateDeckCueState(deckId, enabled);
+  getDjDeckModule().deck(deckId).change({ type: "cue", enabled });
 }
 
 export function toggleDeckCue(deckId: DeckId): void {
-  if (!getAudioSettings().cueOutputId) {
-    return;
-  }
-  const mixer = getMixer();
-  if (!mixer) {
-    return;
-  }
-  setDeckCueEnabled(
-    deckId,
-    deckId === "deck-a" ? !mixer.deckACueEnabled : !mixer.deckBCueEnabled
-  );
+  getDjDeckModule().deck(deckId).change({ type: "cue" });
 }
 
 export function toggleDeckACue(): void {
@@ -220,25 +152,13 @@ export function setHeadphoneVolume(volume: number): void {
   });
 }
 
-export function cleanupCueBus(): void {
-  for (const registration of deckCueRegistrations.values()) {
-    registration.cleanup();
-  }
-  deckCueRegistrations.clear();
-  getOutputRouting().releaseCue();
-  outputErrorCleanup?.();
-  outputErrorCleanup = null;
-  outputSettingsInitialized = false;
-  cueBusInitialized = false;
-}
-
 export async function setMainOutputDelay(ms: number): Promise<void> {
-  await getOutputRouting().applyMainSettings({ mainDelayMs: ms });
+  await applyMainOutputSettings({ mainDelayMs: ms });
   await getSinglePlayback().reconcileRouting();
 }
 
 export async function setCueOutputDelay(ms: number): Promise<void> {
-  await getOutputRouting().applySettings({ cueDelayMs: ms });
+  await applyOutputSettings({ cueDelayMs: ms });
 }
 
 export function getOutputDelays(): {
@@ -250,9 +170,7 @@ export function getOutputDelays(): {
 
 export function initializeOutputDelays(): void {
   const { mainDelayMs, cueDelayMs } = getDelaySettings();
-  getOutputRouting()
-    .applySettings({ cueDelayMs, mainDelayMs })
-    .catch(() => undefined);
+  applyOutputSettings({ cueDelayMs, mainDelayMs }).catch(() => undefined);
 }
 
 export function detectSystemLatency(): number | null {
@@ -266,45 +184,10 @@ export function detectSystemLatency(): number | null {
 export async function autoCompensateLatency(): Promise<number | null> {
   const latency = detectSystemLatency();
   if (latency !== null) {
-    await getOutputRouting().applyMainSettings({ mainDelayMs: latency });
+    await applyMainOutputSettings({ mainDelayMs: latency });
     await getSinglePlayback().reconcileRouting();
   }
   return latency;
-}
-
-async function initializeSavedAudioDevices(): Promise<void> {
-  if (outputSettingsInitialized) {
-    return;
-  }
-  await applyCurrentAudioSettings();
-  outputSettingsInitialized = true;
-}
-
-function connectDeckCueBus(
-  deckId: DeckId,
-  soundId: string,
-  getManager: () => AudioManager
-): void {
-  const tap = getManager().getPreFaderNode(soundId);
-  if (!tap) {
-    return;
-  }
-  const mixer = getMixer();
-  const enabled =
-    deckId === "deck-a"
-      ? (mixer?.deckACueEnabled ?? false)
-      : (mixer?.deckBCueEnabled ?? false);
-  const existing = deckCueRegistrations.get(deckId);
-  if (existing) {
-    existing.replaceTap(tap);
-    existing.setEnabled(enabled);
-    return;
-  }
-  getCueBus();
-  deckCueRegistrations.set(
-    deckId,
-    getOutputRouting().registerCueDeck(deckId, tap, enabled)
-  );
 }
 
 export const findNextTrack = (
@@ -343,81 +226,12 @@ export function applyCrossfade(ctx = getDefaultPlaybackActionContext()) {
   }
 }
 
-function createDeckLoadDependencies(
-  ctx: PlaybackActionContext
-): DeckLoadDependencies {
-  return {
-    activateChannel: ctx.channels.activate,
-    applyCrossfade: () => applyCrossfade(ctx),
-    applyStoredChannelStrip,
-    applyStoredFilter,
-    clearDjError: clearDjErrorSurface,
-    connectDeckCueBus,
-    deactivateChannel: ctx.channels.deactivate,
-    getAudioManager: () => ctx.audio,
-    getDeviceChannelCount: (soundId) =>
-      ctx.audio.getDeviceSource(soundId)?.channelCount ?? null,
-    getSoundId,
-    initializeAudioDevices: initializeSavedAudioDevices,
-    loadPlatformItem,
-    loadTrack: (deckSide, nextRadio, autoPlay) =>
-      loadTrack(deckSide, nextRadio, autoPlay, ctx),
-    pauseDeckSound: (soundId) => ctx.audioEngine.playback.pause(soundId),
-    playDeckSound: (soundId, volume) =>
-      ctx.audioEngine.playback.play(soundId, volume),
-    resumeAudioContext: ctx.resumeAudioContext,
-    playDeviceSound: (soundId, deviceId) =>
-      ctx.audio.playDeviceSound(soundId, deviceId),
-    reportDjError: reportDjErrorSurface,
-    reportPlaybackError: ctx.reportError,
-    resolvePlatformStreamUrl:
-      ctx.platformStreams?.resolveStreamUrl ?? resolveDjPlatformStreamUrl,
-    seekDeckSound: (soundId, position) =>
-      ctx.audioEngine.playback.seek(soundId, position),
-    setDeviceChannelSelection: (soundId, selection) =>
-      ctx.audio.setDeviceChannelSelection(soundId, selection),
-    addDeckEffect: (deckId, type, effectId) =>
-      changeDeckEffects(deckId, {
-        type: "add",
-        effect: createDefaultEffectConfig(type, effectId, 0),
-      }),
-    createEffectId: generateId,
-    removeDeckEffect: (deckId, effectId) =>
-      changeDeckEffects(deckId, { type: "remove", effectId }),
-    reorderDeckEffects: (deckId, effectIds) =>
-      changeDeckEffects(deckId, { type: "reorder", effectIds }),
-    setDeckChannelFilter: (deckId, value) =>
-      setChannelFilterValue("dj", deckId, value),
-    setDeckEffectsDryWet: (deckId, value) =>
-      changeDeckEffects(deckId, { type: "set-dry-wet", value }),
-    setDeckMute: (deckId, muted) => ctx.channels.setMuted("dj", deckId, muted),
-    setDeckPan: (deckId, pan) => ctx.channels.setPan("dj", deckId, pan),
-    setDeckSpeed: (deckId, speed) => ctx.channels.setSpeed("dj", deckId, speed),
-    setDeckVolume: (deckId, volume) =>
-      ctx.channels.setVolume("dj", deckId, volume),
-    updateDeckEffect: (deckId, effectId, effectConfig) =>
-      changeDeckEffects(deckId, {
-        type: "update",
-        effectId,
-        patch: effectConfig,
-      }),
-    updateDeckFilter: (deckId, filter) =>
-      updateChannelFilter("dj", deckId, filter),
-  };
-}
-
-function createDeckLoadWorkflow(
-  ctx: PlaybackActionContext
-): DjDeckLoadWorkflow {
-  return createDjDeckLoadWorkflow(createDeckLoadDependencies(ctx));
-}
-
 export async function setDeckRadio(
   deckId: DeckId,
   radio: Radio | null,
   ctx = getDefaultPlaybackActionContext()
 ) {
-  await createDeckLoadWorkflow(ctx).loadDeckSource(deckId, {
+  await getDjDeckModule(ctx).deck(deckId).load({
     type: "radio",
     radio,
   });
@@ -428,36 +242,21 @@ export async function loadDeckLibrarySource(
   radio: Radio,
   ctx = getDefaultPlaybackActionContext()
 ): Promise<DeckLibrarySourceLoadResult> {
-  const intent = getDeckLibrarySourceIntent(radio);
-  if (intent.type === "pending-platform") {
-    setPendingPlatformItem({ deckId, platform: intent.platform });
-    return intent;
-  }
-
-  setPendingPlatformItem(null);
-  return await createDeckLoadWorkflow(ctx).loadDeckSource(
-    deckId,
-    intent.source
-  );
+  return (await getDjDeckModule(ctx)
+    .deck(deckId)
+    .load({ type: "library", radio })) as DeckLibrarySourceLoadResult;
 }
 
 export function clearDeckLibrarySourcePending(): void {
   setPendingPlatformItem(null);
 }
 
-const bindDeckAction =
-  <Args extends unknown[], Result>(
-    deckId: DeckId,
-    action: (deckId: DeckId, ...args: Args) => Result
-  ) =>
-  (...args: Args): Result =>
-    action(deckId, ...args);
-
 export type DjDeckActions = {
   loadLibrarySource: (radio: Radio) => Promise<DeckLibrarySourceLoadResult>;
   loadSource: (source: DeckSourceLoadIntent) => Promise<DeckSourceLoadResult>;
   setRadio: (radio: Radio | null) => Promise<void>;
   play: () => Promise<void>;
+  togglePlayback: () => Promise<void>;
   pause: () => void;
   reset: () => Promise<void>;
   setVolume: (volume: number) => void;
@@ -488,14 +287,21 @@ export async function playDeck(
   deckId: DeckId,
   ctx = getDefaultPlaybackActionContext()
 ) {
-  await createDeckLoadWorkflow(ctx).playDeck(deckId);
+  await getDjDeckModule(ctx).deck(deckId).transport({ type: "play" });
 }
 
 export function pauseDeck(
   deckId: DeckId,
   ctx = getDefaultPlaybackActionContext()
 ) {
-  createDeckLoadWorkflow(ctx).pauseDeck(deckId);
+  return getDjDeckModule(ctx).deck(deckId).transport({ type: "pause" });
+}
+
+export async function toggleDeckPlayback(
+  deckId: DeckId,
+  ctx = getDefaultPlaybackActionContext()
+): Promise<void> {
+  await getDjDeckModule(ctx).deck(deckId).transport({ type: "toggle" });
 }
 
 // Generic reset deck function
@@ -503,7 +309,7 @@ export async function resetDeck(
   deckId: DeckId,
   ctx = getDefaultPlaybackActionContext()
 ) {
-  await createDeckLoadWorkflow(ctx).resetDeck(deckId);
+  await getDjDeckModule(ctx).deck(deckId).transport({ type: "reset" });
 }
 
 function createDeckActions(
@@ -515,9 +321,12 @@ function createDeckActions(
     setRadio: (radio) => setDeckRadio(deckId, radio, getContext()),
     loadLibrarySource: (radio) =>
       loadDeckLibrarySource(deckId, radio, getContext()),
-    loadSource: (source) =>
-      createDeckLoadWorkflow(getContext()).loadDeckSource(deckId, source),
+    loadSource: async (source) =>
+      (await getDjDeckModule(getContext())
+        .deck(deckId)
+        .load(source)) as DeckSourceLoadResult,
     play: () => playDeck(deckId, getContext()),
+    togglePlayback: () => toggleDeckPlayback(deckId, getContext()),
     pause: () => pauseDeck(deckId, getContext()),
     reset: () => resetDeck(deckId, getContext()),
     setVolume: (volume) => setDeckVolume(deckId, volume, getContext()),
@@ -564,51 +373,6 @@ export function getDjDeckActions(deckId: DeckId): DjDeckActions {
   return defaultDjDeckActions[deckId];
 }
 
-export function createDjDeckCommands(ctx = getDefaultPlaybackActionContext()) {
-  const deckCommands = createDjDeckCommandMap(ctx);
-  const deckA = deckCommands["deck-a"];
-  const deckB = deckCommands["deck-b"];
-  return {
-    ...deckCommands,
-    /** @deprecated Prefer commands["deck-a"].setRadio. */
-    setDeckARadio: deckA.setRadio,
-    /** @deprecated Prefer commands["deck-b"].setRadio. */
-    setDeckBRadio: deckB.setRadio,
-    /** @deprecated Prefer commands["deck-a"].play. */
-    playDeckA: deckA.play,
-    /** @deprecated Prefer commands["deck-b"].play. */
-    playDeckB: deckB.play,
-    /** @deprecated Prefer commands["deck-a"].pause. */
-    pauseDeckA: deckA.pause,
-    /** @deprecated Prefer commands["deck-b"].pause. */
-    pauseDeckB: deckB.pause,
-    /** @deprecated Prefer commands["deck-a"].reset. */
-    resetDeckA: deckA.reset,
-    /** @deprecated Prefer commands["deck-b"].reset. */
-    resetDeckB: deckB.reset,
-    loadTrack: (deckSide: DeckSide, radio: Radio | null, autoPlay = false) =>
-      loadTrack(deckSide, radio, autoPlay, ctx),
-  };
-}
-
-// Cleanup all decks
-export async function cleanupAll(ctx = getDefaultPlaybackActionContext()) {
-  await Promise.all([
-    setDeckRadio("deck-a", null, ctx),
-    setDeckRadio("deck-b", null, ctx),
-  ]);
-}
-
-// Cleanup audio only (keep radio state)
-export function cleanupAudioOnly(
-  ctx = getDefaultPlaybackActionContext()
-): Promise<void> {
-  ctx.channels.deactivate("deck-a");
-  ctx.channels.deactivate("deck-b");
-  clearDjErrorSurface();
-  return Promise.resolve();
-}
-
 // Unified track loading
 export async function loadTrack(
   deckSide: DeckSide,
@@ -617,7 +381,7 @@ export async function loadTrack(
   ctx = getDefaultPlaybackActionContext()
 ) {
   const deckId = deckSide === "left" ? "deck-a" : "deck-b";
-  await createDeckLoadWorkflow(ctx).loadDeckSource(deckId, {
+  await getDjDeckModule(ctx).deck(deckId).load({
     type: "track",
     radio,
     autoPlay,
@@ -649,7 +413,7 @@ export function setDeckVolume(
   volume: number,
   ctx = getDefaultPlaybackActionContext()
 ) {
-  createDeckLoadWorkflow(ctx).setDeckVolume(deckId, volume);
+  getDjDeckModule(ctx).deck(deckId).change({ type: "volume", volume });
 }
 
 // Mute actions with audio manager sync
@@ -658,7 +422,7 @@ export function setDeckMute(
   muted: boolean,
   ctx = getDefaultPlaybackActionContext()
 ) {
-  createDeckLoadWorkflow(ctx).setDeckMute(deckId, muted);
+  getDjDeckModule(ctx).deck(deckId).change({ type: "mute", muted });
 }
 
 // Channel strip actions with audio manager sync
@@ -667,7 +431,7 @@ export function setDeckPan(
   pan: number,
   ctx = getDefaultPlaybackActionContext()
 ) {
-  createDeckLoadWorkflow(ctx).setDeckPan(deckId, pan);
+  getDjDeckModule(ctx).deck(deckId).change({ type: "pan", pan });
 }
 
 export function setDeckSpeed(
@@ -675,7 +439,7 @@ export function setDeckSpeed(
   speed: number,
   ctx = getDefaultPlaybackActionContext()
 ) {
-  createDeckLoadWorkflow(ctx).setDeckSpeed(deckId, speed);
+  getDjDeckModule(ctx).deck(deckId).change({ type: "speed", speed });
 }
 
 export function setDeckRepeat(
@@ -683,7 +447,7 @@ export function setDeckRepeat(
   enabled: boolean,
   ctx = getDefaultPlaybackActionContext()
 ) {
-  createDeckLoadWorkflow(ctx).setDeckRepeat(deckId, enabled);
+  getDjDeckModule(ctx).deck(deckId).change({ type: "repeat", enabled });
 }
 
 export function setDeckAutoplay(
@@ -691,7 +455,7 @@ export function setDeckAutoplay(
   enabled: boolean,
   ctx = getDefaultPlaybackActionContext()
 ) {
-  createDeckLoadWorkflow(ctx).setDeckAutoplay(deckId, enabled);
+  getDjDeckModule(ctx).deck(deckId).change({ type: "autoplay", enabled });
 }
 
 export function seekDeck(
@@ -699,7 +463,9 @@ export function seekDeck(
   position: number,
   ctx = getDefaultPlaybackActionContext()
 ) {
-  createDeckLoadWorkflow(ctx).seekDeck(deckId, position);
+  return getDjDeckModule(ctx)
+    .deck(deckId)
+    .transport({ type: "seek", position });
 }
 
 export function setDeckChannelFilter(
@@ -707,7 +473,7 @@ export function setDeckChannelFilter(
   value: number,
   ctx = getDefaultPlaybackActionContext()
 ) {
-  createDeckLoadWorkflow(ctx).setDeckChannelFilter(deckId, value);
+  getDjDeckModule(ctx).deck(deckId).change({ type: "channel-filter", value });
 }
 
 export function setDeckEffectsDryWet(
@@ -715,7 +481,7 @@ export function setDeckEffectsDryWet(
   value: number,
   ctx = getDefaultPlaybackActionContext()
 ) {
-  createDeckLoadWorkflow(ctx).setDeckEffectsDryWet(deckId, value);
+  getDjDeckModule(ctx).deck(deckId).change({ type: "effects-dry-wet", value });
 }
 
 // Filter actions with audio manager sync
@@ -724,7 +490,7 @@ export function updateDeckFilter(
   filter: FilterConfig,
   ctx = getDefaultPlaybackActionContext()
 ) {
-  createDeckLoadWorkflow(ctx).updateDeckFilter(deckId, filter);
+  getDjDeckModule(ctx).deck(deckId).change({ type: "filter", filter });
 }
 
 // Effect actions with audio manager sync
@@ -733,7 +499,7 @@ export function addDeckEffect(
   type: EffectType,
   ctx = getDefaultPlaybackActionContext()
 ) {
-  createDeckLoadWorkflow(ctx).addDeckEffect(deckId, type);
+  getDjDeckModule(ctx).deck(deckId).change(createDjDeckEffectChange(type));
 }
 
 export function updateDeckEffect(
@@ -742,7 +508,12 @@ export function updateDeckEffect(
   effectConfig: Partial<EffectConfig>,
   ctx = getDefaultPlaybackActionContext()
 ) {
-  createDeckLoadWorkflow(ctx).updateDeckEffect(deckId, effectId, effectConfig);
+  getDjDeckModule(ctx)
+    .deck(deckId)
+    .change({
+      type: "effect",
+      change: { type: "update", effectId, patch: effectConfig },
+    });
 }
 
 export function removeDeckEffect(
@@ -750,7 +521,12 @@ export function removeDeckEffect(
   effectId: string,
   ctx = getDefaultPlaybackActionContext()
 ) {
-  createDeckLoadWorkflow(ctx).removeDeckEffect(deckId, effectId);
+  getDjDeckModule(ctx)
+    .deck(deckId)
+    .change({
+      type: "effect",
+      change: { type: "remove", effectId },
+    });
 }
 
 export function reorderDeckEffects(
@@ -758,7 +534,12 @@ export function reorderDeckEffects(
   effectIds: string[],
   ctx = getDefaultPlaybackActionContext()
 ) {
-  createDeckLoadWorkflow(ctx).reorderDeckEffects(deckId, effectIds);
+  getDjDeckModule(ctx)
+    .deck(deckId)
+    .change({
+      type: "effect",
+      change: { type: "reorder", effectIds },
+    });
 }
 
 export async function setDeckDeviceSource(
@@ -767,7 +548,7 @@ export async function setDeckDeviceSource(
   deviceLabel: string,
   ctx = getDefaultPlaybackActionContext()
 ): Promise<void> {
-  await createDeckLoadWorkflow(ctx).loadDeckSource(deckId, {
+  await getDjDeckModule(ctx).deck(deckId).load({
     type: "device-input",
     deviceId,
     deviceLabel,
@@ -779,7 +560,9 @@ export function setDeckChannelSelection(
   selection: ChannelSelection,
   ctx = getDefaultPlaybackActionContext()
 ): void {
-  createDeckLoadWorkflow(ctx).setDeckDeviceChannelSelection(deckId, selection);
+  getDjDeckModule(ctx)
+    .deck(deckId)
+    .change({ type: "device-channel-selection", selection });
 }
 
 export async function setDeckFileSource(
@@ -787,7 +570,7 @@ export async function setDeckFileSource(
   file: File,
   ctx = getDefaultPlaybackActionContext()
 ): Promise<void> {
-  await createDeckLoadWorkflow(ctx).loadDeckSource(deckId, {
+  await getDjDeckModule(ctx).deck(deckId).load({
     type: "file",
     file,
   });
@@ -804,72 +587,3 @@ export type {
   DeckSourceLoadIntent,
   DeckSourceLoadResult,
 } from "@/lib/dj-library-sources.js";
-
-export const setDeckARadio = bindDeckAction("deck-a", setDeckRadio);
-export const setDeckBRadio = bindDeckAction("deck-b", setDeckRadio);
-export const playDeckA = bindDeckAction("deck-a", playDeck);
-export const playDeckB = bindDeckAction("deck-b", playDeck);
-export const pauseDeckA = bindDeckAction("deck-a", pauseDeck);
-export const pauseDeckB = bindDeckAction("deck-b", pauseDeck);
-export const resetDeckA = bindDeckAction("deck-a", resetDeck);
-export const resetDeckB = bindDeckAction("deck-b", resetDeck);
-export const setDeckAVolume = bindDeckAction("deck-a", setDeckVolume);
-export const setDeckBVolume = bindDeckAction("deck-b", setDeckVolume);
-export const setDeckAMute = bindDeckAction("deck-a", setDeckMute);
-export const setDeckBMute = bindDeckAction("deck-b", setDeckMute);
-export const setDeckAPan = bindDeckAction("deck-a", setDeckPan);
-export const setDeckBPan = bindDeckAction("deck-b", setDeckPan);
-export const setDeckASpeed = bindDeckAction("deck-a", setDeckSpeed);
-export const setDeckBSpeed = bindDeckAction("deck-b", setDeckSpeed);
-export const setDeckARepeat = bindDeckAction("deck-a", setDeckRepeat);
-export const setDeckBRepeat = bindDeckAction("deck-b", setDeckRepeat);
-export const setDeckAAutoplay = bindDeckAction("deck-a", setDeckAutoplay);
-export const setDeckBAutoplay = bindDeckAction("deck-b", setDeckAutoplay);
-export const seekDeckA = bindDeckAction("deck-a", seekDeck);
-export const seekDeckB = bindDeckAction("deck-b", seekDeck);
-export const setDeckAChannelFilter = bindDeckAction(
-  "deck-a",
-  setDeckChannelFilter
-);
-export const setDeckBChannelFilter = bindDeckAction(
-  "deck-b",
-  setDeckChannelFilter
-);
-export const setDeckAEffectsDryWet = bindDeckAction(
-  "deck-a",
-  setDeckEffectsDryWet
-);
-export const setDeckBEffectsDryWet = bindDeckAction(
-  "deck-b",
-  setDeckEffectsDryWet
-);
-export const updateDeckAFilter = bindDeckAction("deck-a", updateDeckFilter);
-export const updateDeckBFilter = bindDeckAction("deck-b", updateDeckFilter);
-export const addDeckAEffect = bindDeckAction("deck-a", addDeckEffect);
-export const addDeckBEffect = bindDeckAction("deck-b", addDeckEffect);
-export const updateDeckAEffect = bindDeckAction("deck-a", updateDeckEffect);
-export const updateDeckBEffect = bindDeckAction("deck-b", updateDeckEffect);
-export const removeDeckAEffect = bindDeckAction("deck-a", removeDeckEffect);
-export const removeDeckBEffect = bindDeckAction("deck-b", removeDeckEffect);
-export const reorderDeckAEffects = bindDeckAction("deck-a", reorderDeckEffects);
-export const reorderDeckBEffects = bindDeckAction("deck-b", reorderDeckEffects);
-export const setDeckACueEnabled = bindDeckAction("deck-a", setDeckCueEnabled);
-export const setDeckBCueEnabled = bindDeckAction("deck-b", setDeckCueEnabled);
-export const setDeckADeviceSource = bindDeckAction(
-  "deck-a",
-  setDeckDeviceSource
-);
-export const setDeckBDeviceSource = bindDeckAction(
-  "deck-b",
-  setDeckDeviceSource
-);
-export const setDeckAChannelSelection = bindDeckAction(
-  "deck-a",
-  setDeckChannelSelection
-);
-export const setDeckBChannelSelection = bindDeckAction(
-  "deck-b",
-  setDeckChannelSelection
-);
-export const setDeckAFileSource = bindDeckAction("deck-a", setDeckFileSource);
-export const setDeckBFileSource = bindDeckAction("deck-b", setDeckFileSource);

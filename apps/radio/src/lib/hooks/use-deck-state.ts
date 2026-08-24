@@ -1,9 +1,10 @@
 import { useMemo } from "react";
 import {
-  type DjDeckActions,
-  getDjDeckActions,
-  loadTrack,
-} from "@/lib/dj-actions";
+  type DjDeckHandle,
+  type DjDeckLoadIntent,
+  type DjDeckLoadResult,
+  getDjDeckModule,
+} from "@/lib/dj-deck";
 import { type DeckState, useDeckA, useDeckB } from "@/lib/hooks/use-dj-state";
 
 const DEFAULT_FILTER = {
@@ -14,8 +15,40 @@ const DEFAULT_FILTER = {
   enabled: false,
 };
 
-const deckAActions = getDjDeckActions("deck-a");
-const deckBActions = getDjDeckActions("deck-b");
+type DeckStateActions = {
+  loadSource: (intent: DjDeckLoadIntent) => Promise<DjDeckLoadResult>;
+  pause: () => void;
+  play: () => Promise<void>;
+  reset: () => Promise<void>;
+  seek: (position: number) => void;
+  setAutoplay: (enabled: boolean) => void;
+  setChannelFilter: (value: number) => void;
+  setEffectsDryWet: (value: number) => void;
+  setMute: (muted: boolean) => void;
+  setPan: (pan: number) => void;
+  setRepeat: (enabled: boolean) => void;
+  setSpeed: (speed: number) => void;
+  setVolume: (volume: number) => void;
+};
+
+function createDeckActions(deck: DjDeckHandle): DeckStateActions {
+  return {
+    loadSource: deck.load,
+    pause: () => deck.transport({ type: "pause" }),
+    play: () => deck.transport({ type: "play" }),
+    reset: () => deck.transport({ type: "reset" }),
+    seek: (position) => deck.transport({ type: "seek", position }),
+    setAutoplay: (enabled) => deck.change({ type: "autoplay", enabled }),
+    setChannelFilter: (value) => deck.change({ type: "channel-filter", value }),
+    setEffectsDryWet: (value) =>
+      deck.change({ type: "effects-dry-wet", value }),
+    setMute: (muted) => deck.change({ type: "mute", muted }),
+    setPan: (pan) => deck.change({ type: "pan", pan }),
+    setRepeat: (enabled) => deck.change({ type: "repeat", enabled }),
+    setSpeed: (speed) => deck.change({ type: "speed", speed }),
+    setVolume: (volume) => deck.change({ type: "volume", volume }),
+  };
+}
 
 type DeckStateResult = {
   radio: DeckState["radio"];
@@ -33,25 +66,24 @@ type DeckStateResult = {
   effectsDryWet: number;
   repeat: boolean;
   autoplay: boolean;
-  play: DjDeckActions["play"];
-  pause: DjDeckActions["pause"];
-  setVolume: DjDeckActions["setVolume"];
-  setMute: DjDeckActions["setMute"];
-  reset: DjDeckActions["reset"];
-  setPan: DjDeckActions["setPan"];
-  setSpeed: DjDeckActions["setSpeed"];
-  setChannelFilter: DjDeckActions["setChannelFilter"];
-  setEffectsDryWet: DjDeckActions["setEffectsDryWet"];
-  seek: DjDeckActions["seek"];
-  setRepeat: DjDeckActions["setRepeat"];
-  setAutoplay: DjDeckActions["setAutoplay"];
-  loadSource: DjDeckActions["loadSource"];
-  loadTrack: typeof loadTrack;
+  play: DeckStateActions["play"];
+  pause: DeckStateActions["pause"];
+  setVolume: DeckStateActions["setVolume"];
+  setMute: DeckStateActions["setMute"];
+  reset: DeckStateActions["reset"];
+  setPan: DeckStateActions["setPan"];
+  setSpeed: DeckStateActions["setSpeed"];
+  setChannelFilter: DeckStateActions["setChannelFilter"];
+  setEffectsDryWet: DeckStateActions["setEffectsDryWet"];
+  seek: DeckStateActions["seek"];
+  setRepeat: DeckStateActions["setRepeat"];
+  setAutoplay: DeckStateActions["setAutoplay"];
+  loadSource: DeckStateActions["loadSource"];
 };
 
 function createDeckStateResult(
   deckState: DeckState | null,
-  actions: DjDeckActions
+  actions: DeckStateActions
 ): DeckStateResult {
   return {
     radio: deckState?.radio ?? null,
@@ -70,7 +102,6 @@ function createDeckStateResult(
     repeat: deckState?.repeat ?? false,
     autoplay: deckState?.autoplay ?? true,
     ...actions,
-    loadTrack,
   };
 }
 
@@ -79,9 +110,11 @@ function createDeckStateResult(
  */
 export function useDeckAState(): DeckStateResult {
   const deckState = useDeckA();
+  const deck = getDjDeckModule().deck("deck-a");
+  const actions = useMemo(() => createDeckActions(deck), [deck]);
   return useMemo(
-    () => createDeckStateResult(deckState, deckAActions),
-    [deckState]
+    () => createDeckStateResult(deckState, actions),
+    [deckState, actions]
   );
 }
 
@@ -90,8 +123,10 @@ export function useDeckAState(): DeckStateResult {
  */
 export function useDeckBState(): DeckStateResult {
   const deckState = useDeckB();
+  const deck = getDjDeckModule().deck("deck-b");
+  const actions = useMemo(() => createDeckActions(deck), [deck]);
   return useMemo(
-    () => createDeckStateResult(deckState, deckBActions),
-    [deckState]
+    () => createDeckStateResult(deckState, actions),
+    [deckState, actions]
   );
 }

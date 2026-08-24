@@ -146,12 +146,12 @@ export function cleanupCueBus(): void {
 }
 
 export async function setMainOutputDelay(ms: number): Promise<void> {
-  applyMainOutputDelay(ms, getAudioManager);
+  await applyMainOutputDelay(ms, getAudioManager);
   await createManagedPlaybackSessionWorkflow("single").reconcileRouting();
 }
 
-export function setCueOutputDelay(ms: number): void {
-  applyCueOutputDelay(ms);
+export async function setCueOutputDelay(ms: number): Promise<void> {
+  await applyCueOutputDelay(ms);
 }
 
 export function getOutputDelays(): {

@@ -1,222 +1,110 @@
-import {
-  type AudioManager,
-  type CueBus,
-  createCueBus,
-  getAudioContext,
-} from "@/lib/audio";
-import {
-  getAudioSettings,
-  getDelaySettings,
-  setCueDelayMs as setCueDelayMsSetting,
-  setMainDelayMs as setMainDelayMsSetting,
-} from "@/lib/collections";
+import { type AudioManager, getAudioContext } from "@/lib/audio";
+import { getAudioSettings, getDelaySettings } from "@/lib/collections";
 import type { DeckId } from "@/lib/dj-actions-decks.js";
 import { getMixer, updateMixer } from "@/lib/hooks/use-dj-state";
 import {
-  getMainOutputRouter,
-  onMainOutputRouterError,
-} from "@/lib/main-output-router";
+  type CueDeckRegistration,
+  getOutputRouting,
+} from "@/lib/output-routing.js";
 
 type ReportDjError = (message: string, code: string, error?: unknown) => void;
 type GetAudioManager = () => AudioManager;
 
-let cueBus: CueBus | null = null;
+const deckRegistrations = new Map<DeckId, CueDeckRegistration>();
+let cueInitialized = false;
+let outputSettingsInitialized = false;
+let outputErrorCleanup: (() => void) | null = null;
 
-export function createDjRoutingLifecycleState() {
-  let audioDevicesInitialized = false;
-  let outputRouterErrorCleanup: (() => void) | null = null;
-
-  return {
-    beginAudioDeviceInitialization(): boolean {
-      if (audioDevicesInitialized) {
-        return false;
-      }
-      audioDevicesInitialized = true;
-      return true;
-    },
-    cleanup(): void {
-      audioDevicesInitialized = false;
-      outputRouterErrorCleanup?.();
-      outputRouterErrorCleanup = null;
-    },
-    replaceOutputRouterErrorListener(subscribe: () => () => void): void {
-      outputRouterErrorCleanup?.();
-      outputRouterErrorCleanup = subscribe();
-    },
-    resetAudioDeviceInitialization(): void {
-      audioDevicesInitialized = false;
-    },
-  };
+function registerOutputErrors(reportDjError: ReportDjError): void {
+  outputErrorCleanup?.();
+  outputErrorCleanup = getOutputRouting().subscribeErrors((error) => {
+    reportDjError(error.message, "DJ_OUTPUT_ROUTER_ERROR", error);
+  });
 }
 
-const routingLifecycle = createDjRoutingLifecycleState();
-
-function getCueBus(audioContext: AudioContext): CueBus {
+function getCueBus(_audioContext?: AudioContext) {
   if (typeof window === "undefined") {
-    throw new Error("CueBus can only be used in browser environment");
+    throw new Error("Output routing can only be used in browser environment");
   }
-
-  if (!cueBus) {
-    cueBus = createCueBus(audioContext, {
-      onHeadphoneVolumeChange: (volume) => {
-        updateMixer((draft) => {
-          draft.headphoneVolume = volume;
-        });
-      },
-      onDeckCueChange: (deckId, enabled) => {
-        updateMixer((draft) => {
-          if (deckId === "deck-a") {
-            draft.deckACueEnabled = enabled;
-          } else if (deckId === "deck-b") {
-            draft.deckBCueEnabled = enabled;
-          }
-        });
-      },
-    });
-
-    cueBus.registerDeck("deck-a");
-    cueBus.registerDeck("deck-b");
-
-    const mixer = getMixer();
-    if (mixer) {
-      if (mixer.headphoneVolume !== undefined) {
-        cueBus.setHeadphoneVolume(mixer.headphoneVolume);
-      }
-      if (mixer.deckACueEnabled) {
-        cueBus.setCueEnabled("deck-a", true);
-      }
-      if (mixer.deckBCueEnabled) {
-        cueBus.setCueEnabled("deck-b", true);
-      }
+  const routing = getOutputRouting();
+  if (!cueInitialized) {
+    const headphoneVolume = getMixer()?.headphoneVolume;
+    if (headphoneVolume !== undefined) {
+      routing.setHeadphoneVolume(headphoneVolume);
     }
+    cueInitialized = true;
   }
-
-  return cueBus;
+  return routing;
 }
 
 function isCueBusInitialized(): boolean {
-  return cueBus !== null;
+  return cueInitialized;
 }
 
-function ensureCueBus(): CueBus | null {
-  if (cueBus) {
-    return cueBus;
-  }
-
-  const context = getAudioContext();
-  if (!context) {
-    return null;
-  }
-
-  return getCueBus(context);
-}
-
-function cleanupCueBus(): void {
-  if (cueBus) {
-    cueBus.cleanup();
-    cueBus = null;
-  }
-  routingLifecycle.cleanup();
-}
-
-function registerOutputRouterErrors(reportDjError: ReportDjError): void {
-  routingLifecycle.replaceOutputRouterErrorListener(() =>
-    onMainOutputRouterError((error) => {
-      reportDjError(error.message, "DJ_OUTPUT_ROUTER_ERROR", error);
-    })
-  );
-}
-
-function getOutputRouter(reportDjError: ReportDjError) {
+function ensureCueBus() {
   if (typeof window === "undefined") {
     return null;
   }
+  return getCueBus(getAudioContext());
+}
 
-  registerOutputRouterErrors(reportDjError);
-  return getMainOutputRouter();
+function cleanupCueBus(): void {
+  for (const registration of deckRegistrations.values()) {
+    registration.cleanup();
+  }
+  deckRegistrations.clear();
+  getOutputRouting().releaseCue();
+  outputErrorCleanup?.();
+  outputErrorCleanup = null;
+  outputSettingsInitialized = false;
+  cueInitialized = false;
 }
 
 async function applyMainOutputDevice(
   deviceId: string,
   reportDjError: ReportDjError
 ): Promise<void> {
-  const router = getOutputRouter(reportDjError);
-  if (router) {
-    await router.setMainOutput(deviceId);
+  registerOutputErrors(reportDjError);
+  const snapshot = await getOutputRouting().applySettings({
+    mainOutputId: deviceId,
+  });
+  if (snapshot.settings.cueOutputId === null) {
+    disableCueDecks();
   }
 }
 
 async function applyCueOutputDevice(deviceId: string | null): Promise<void> {
-  const bus = ensureCueBus();
-  if (!bus) {
+  await getOutputRouting().applySettings({ cueOutputId: deviceId });
+  if (deviceId !== null) {
     return;
   }
+  disableCueDecks();
+}
 
-  await bus.setCueOutputDevice(deviceId);
-
-  if (!deviceId) {
-    bus.setCueEnabled("deck-a", false);
-    bus.setCueEnabled("deck-b", false);
-    updateMixer((draft) => {
-      draft.deckACueEnabled = false;
-      draft.deckBCueEnabled = false;
-    });
+function disableCueDecks(): void {
+  for (const [deckId, registration] of deckRegistrations) {
+    registration.setEnabled(false);
+    updateDeckCueState(deckId, false);
   }
 }
 
 async function applyCurrentAudioSettings(
-  getAudioManager: GetAudioManager,
+  _getAudioManager: GetAudioManager,
   reportDjError: ReportDjError
 ): Promise<void> {
-  const router = getOutputRouter(reportDjError);
-  if (!router) {
-    return;
-  }
-
-  try {
-    const settings = getAudioSettings();
-    if (settings.mainOutputId && settings.mainOutputId !== "default") {
-      await router.setMainOutput(settings.mainOutputId);
-    }
-    if (settings.cueOutputId) {
-      const bus = ensureCueBus();
-      if (bus) {
-        await bus.setCueOutputDevice(settings.cueOutputId);
-      }
-    }
-
-    const delaySettings = getDelaySettings();
-    if (delaySettings.mainDelayMs > 0) {
-      getAudioManager().setMainDelay(delaySettings.mainDelayMs);
-    }
-    if (delaySettings.cueDelayMs > 0) {
-      const bus = ensureCueBus();
-      if (bus) {
-        bus.setCueDelay(delaySettings.cueDelayMs);
-      }
-    }
-  } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Failed to apply audio settings";
-    reportDjError(message, "DJ_APPLY_AUDIO_SETTINGS_FAILED", error);
-  }
+  registerOutputErrors(reportDjError);
+  await getOutputRouting().applySettings();
 }
 
 async function initializeAudioDevices(
   getAudioManager: GetAudioManager,
   reportDjError: ReportDjError
 ): Promise<void> {
-  if (!routingLifecycle.beginAudioDeviceInitialization()) {
+  if (outputSettingsInitialized) {
     return;
   }
-
-  const router = getOutputRouter(reportDjError);
-  if (!router) {
-    routingLifecycle.resetAudioDeviceInitialization();
-    return;
-  }
-
   await applyCurrentAudioSettings(getAudioManager, reportDjError);
+  outputSettingsInitialized = true;
 }
 
 function connectDeckToCueBus(
@@ -224,34 +112,29 @@ function connectDeckToCueBus(
   soundId: string,
   getAudioManager: GetAudioManager
 ): void {
-  const bus = ensureCueBus();
-  if (!bus) {
+  const tap = getAudioManager().getPreFaderNode(soundId);
+  if (!tap) {
     return;
   }
-
-  const preFaderNode = getAudioManager().getPreFaderNode(soundId);
-  if (preFaderNode) {
-    bus.connectPreFader(deckId, preFaderNode);
-  }
-
   const mixer = getMixer();
-  if (!mixer) {
+  const enabled =
+    deckId === "deck-a"
+      ? (mixer?.deckACueEnabled ?? false)
+      : (mixer?.deckBCueEnabled ?? false);
+  const existing = deckRegistrations.get(deckId);
+  if (existing) {
+    existing.replaceTap(tap);
+    existing.setEnabled(enabled);
     return;
   }
-
-  const enabled =
-    deckId === "deck-a" ? mixer.deckACueEnabled : mixer.deckBCueEnabled;
-  if (enabled) {
-    bus.setCueEnabled(deckId, true);
-  }
+  ensureCueBus();
+  deckRegistrations.set(
+    deckId,
+    getOutputRouting().registerCueDeck(deckId, tap, enabled)
+  );
 }
 
-function setDeckCueEnabled(deckId: DeckId, enabled: boolean): void {
-  const bus = ensureCueBus();
-  if (bus) {
-    bus.setCueEnabled(deckId, enabled);
-  }
-
+function updateDeckCueState(deckId: DeckId, enabled: boolean): void {
   updateMixer((draft) => {
     if (deckId === "deck-a") {
       draft.deckACueEnabled = enabled;
@@ -261,76 +144,76 @@ function setDeckCueEnabled(deckId: DeckId, enabled: boolean): void {
   });
 }
 
+function setDeckCueEnabled(deckId: DeckId, enabled: boolean): void {
+  const existing = deckRegistrations.get(deckId);
+  if (existing) {
+    existing.setEnabled(enabled);
+  } else {
+    deckRegistrations.set(
+      deckId,
+      getOutputRouting().registerCueDeck(deckId, null, enabled)
+    );
+  }
+  updateDeckCueState(deckId, enabled);
+}
+
 function toggleDeckCue(deckId: DeckId): void {
   if (!getAudioSettings().cueOutputId) {
     return;
   }
-
   const mixer = getMixer();
   if (!mixer) {
     return;
   }
-
-  const enabled =
-    deckId === "deck-a" ? !mixer.deckACueEnabled : !mixer.deckBCueEnabled;
-  setDeckCueEnabled(deckId, enabled);
+  setDeckCueEnabled(
+    deckId,
+    deckId === "deck-a" ? !mixer.deckACueEnabled : !mixer.deckBCueEnabled
+  );
 }
 
 function setHeadphoneVolume(volume: number): void {
-  const bus = ensureCueBus();
+  const clampedVolume = Math.max(0, Math.min(1, volume));
+  getOutputRouting().setHeadphoneVolume(clampedVolume);
   updateMixer((draft) => {
-    draft.headphoneVolume = volume;
+    draft.headphoneVolume = clampedVolume;
   });
-  if (bus) {
-    bus.setHeadphoneVolume(volume);
-  }
+}
+
+function reportAsyncOutputError(operation: Promise<unknown>): void {
+  operation.catch(() => undefined);
 }
 
 function setMainOutputDelay(
   ms: number,
-  getAudioManager: GetAudioManager
-): void {
-  setMainDelayMsSetting(ms);
-  getAudioManager().setMainDelay(ms);
+  _getAudioManager: GetAudioManager
+): Promise<void> {
+  return getOutputRouting()
+    .applySettings({ mainDelayMs: ms })
+    .then(() => undefined);
 }
 
-function setCueOutputDelay(ms: number): void {
-  setCueDelayMsSetting(ms);
-  const bus = ensureCueBus();
-  if (bus) {
-    bus.setCueDelay(ms);
-  }
+function setCueOutputDelay(ms: number): Promise<void> {
+  return getOutputRouting()
+    .applySettings({ cueDelayMs: ms })
+    .then(() => undefined);
 }
 
 function getOutputDelays(): { mainDelayMs: number; cueDelayMs: number } {
   return getDelaySettings();
 }
 
-function initializeOutputDelays(getAudioManager: GetAudioManager): void {
+function initializeOutputDelays(_getAudioManager: GetAudioManager): void {
   const { mainDelayMs, cueDelayMs } = getDelaySettings();
-
-  if (mainDelayMs > 0) {
-    getAudioManager().setMainDelay(mainDelayMs);
-  }
-
-  if (cueDelayMs > 0) {
-    const bus = ensureCueBus();
-    if (bus) {
-      bus.setCueDelay(cueDelayMs);
-    }
-  }
+  reportAsyncOutputError(
+    getOutputRouting().applySettings({ cueDelayMs, mainDelayMs })
+  );
 }
 
 function detectSystemLatency(): number | null {
   const context = getAudioContext();
-  if (!context) {
-    return null;
-  }
-
   const outputLatency = context.outputLatency ?? 0;
   const baseLatency = context.baseLatency ?? 0;
   const totalLatencyMs = Math.round((outputLatency + baseLatency) * 1000);
-
   return totalLatencyMs === 0 ? null : totalLatencyMs;
 }
 
@@ -341,8 +224,7 @@ function autoCompensateLatency(
   if (latencyMs === null) {
     return null;
   }
-
-  setMainOutputDelay(latencyMs, getAudioManager);
+  setMainOutputDelay(latencyMs, getAudioManager).catch(() => undefined);
   return latencyMs;
 }
 

@@ -4,7 +4,7 @@ import {
   type PlaybackSessionId,
 } from "@/lib/collections/playback-sessions";
 import { getAudioSettings, getDelaySettings } from "@/lib/collections/settings";
-import { getMainOutputRouter } from "@/lib/main-output-router";
+import { getOutputRouting } from "@/lib/output-routing.js";
 import type {
   ChannelActivationOptions,
   ChannelRuntimeSubscriptionOptions,
@@ -33,7 +33,7 @@ export function isSameRadio(
 }
 
 function getPlaybackOutputRouter(ctx: PlaybackActionContext) {
-  return ctx.getMainOutputRouter() ?? getMainOutputRouter();
+  return ctx.getMainOutputRouter() ?? getOutputRouting();
 }
 
 export async function applyMainOutputDevice(
@@ -42,7 +42,7 @@ export async function applyMainOutputDevice(
 ): Promise<void> {
   const router = getPlaybackOutputRouter(ctx);
   if (router) {
-    await router.setMainOutput(deviceId);
+    await router.applySettings({ mainOutputId: deviceId });
   }
 }
 
@@ -56,12 +56,11 @@ export async function applyCurrentMainAudioSettings(
   }
 
   const settings = getAudioSettings();
-  if (settings.mainOutputId && settings.mainOutputId !== "default") {
-    await router.setMainOutput(settings.mainOutputId);
-  }
-
   const { mainDelayMs } = getDelaySettings();
-  ctx.audio.setMainDelay(mainDelayMs);
+  await router.applySettings({
+    mainDelayMs,
+    mainOutputId: settings.mainOutputId,
+  });
   ctx.lifecycle.mainOutputSettingsApplied = true;
 }
 

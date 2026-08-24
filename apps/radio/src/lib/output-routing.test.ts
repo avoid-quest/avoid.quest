@@ -1,0 +1,391 @@
+import { describe, expect, test } from "bun:test";
+import {
+  createOutputRouting,
+  type OutputBrowserAdapter,
+  type OutputBrowserGraph,
+  type OutputRoutingSettings,
+  type OutputSettingsAdapter,
+} from "./output-routing";
+
+type TestNode = AudioNode & { id: string };
+
+function node(id: string, context: AudioContext): TestNode {
+  return { context, id } as unknown as TestNode;
+}
+
+class InMemoryGraph implements OutputBrowserGraph {
+  readonly context: AudioContext;
+  readonly cueConnections = new Set<AudioNode>();
+  readonly mainConnections = new Set<AudioNode>();
+  cueDelayMs = 0;
+  disposed = false;
+  headphoneVolume = 1;
+  mainDelayMs = 0;
+  readonly mainOutput: AudioNode;
+
+  constructor(context: AudioContext) {
+    this.context = context;
+    this.mainOutput = node("main-output", context);
+  }
+
+  connectCue(source: AudioNode): void {
+    this.cueConnections.add(source);
+  }
+
+  connectMain(source: AudioNode): void {
+    this.mainConnections.add(source);
+  }
+
+  disconnectCue(source: AudioNode): void {
+    this.cueConnections.delete(source);
+  }
+
+  disconnectMain(source: AudioNode): void {
+    this.mainConnections.delete(source);
+  }
+
+  dispose(): void {
+    this.disposed = true;
+    this.cueConnections.clear();
+    this.mainConnections.clear();
+  }
+
+  setCueDelay(delayMs: number): void {
+    this.cueDelayMs = delayMs;
+  }
+
+  setHeadphoneVolume(volume: number): void {
+    this.headphoneVolume = volume;
+  }
+
+  setMainDelay(delayMs: number): void {
+    this.mainDelayMs = delayMs;
+  }
+}
+
+class InMemoryBrowserAdapter implements OutputBrowserAdapter {
+  readonly cueSinkCreations: string[] = [];
+  readonly cueSinkDisposals: string[] = [];
+  readonly graphs: InMemoryGraph[] = [];
+  readonly mainSinkChanges: string[] = [];
+  context = { id: "context-1" } as unknown as AudioContext;
+  cueSinkError: Error | null = null;
+  supported = true;
+
+  createCueSink(_graph: OutputBrowserGraph, deviceId: string) {
+    this.cueSinkCreations.push(deviceId);
+    if (this.cueSinkError) {
+      return Promise.reject(this.cueSinkError);
+    }
+    return Promise.resolve({
+      deviceId,
+      dispose: () => {
+        this.cueSinkDisposals.push(deviceId);
+      },
+    });
+  }
+
+  createGraph(context: AudioContext): OutputBrowserGraph {
+    const graph = new InMemoryGraph(context);
+    this.graphs.push(graph);
+    return graph;
+  }
+
+  getContext(): AudioContext {
+    return this.context;
+  }
+
+  isSinkSelectionSupported(): boolean {
+    return this.supported;
+  }
+
+  setMainSink(_context: AudioContext, deviceId: string): Promise<void> {
+    this.mainSinkChanges.push(deviceId);
+    return Promise.resolve();
+  }
+}
+
+class InMemorySettingsAdapter implements OutputSettingsAdapter {
+  private settings: OutputRoutingSettings;
+  readonly writes: OutputRoutingSettings[] = [];
+
+  constructor(
+    settings: OutputRoutingSettings = {
+      cueDelayMs: 0,
+      cueOutputId: null,
+      mainDelayMs: 0,
+      mainOutputId: "default",
+    }
+  ) {
+    this.settings = settings;
+  }
+
+  read(): OutputRoutingSettings {
+    return { ...this.settings };
+  }
+
+  write(settings: OutputRoutingSettings): void {
+    this.settings = { ...settings };
+    this.writes.push({ ...settings });
+  }
+}
+
+function setup(
+  settings?: OutputRoutingSettings,
+  onDeckCueChange?: (deckId: string, enabled: boolean) => void
+) {
+  const browser = new InMemoryBrowserAdapter();
+  const persistence = new InMemorySettingsAdapter(settings);
+  const routing = createOutputRouting({
+    browser,
+    onDeckCueChange,
+    settings: persistence,
+  });
+  return { browser, persistence, routing };
+}
+
+describe("OutputRouting", () => {
+  test("applies main and CUE settings as one transaction", async () => {
+    const { browser, persistence, routing } = setup();
+
+    const snapshot = await routing.applySettings({
+      cueDelayMs: 35,
+      cueOutputId: "headphones",
+      mainDelayMs: 120,
+      mainOutputId: "speakers",
+    });
+
+    expect(snapshot.settings).toEqual({
+      cueDelayMs: 35,
+      cueOutputId: "headphones",
+      mainDelayMs: 120,
+      mainOutputId: "speakers",
+    });
+    expect(browser.mainSinkChanges).toEqual(["speakers"]);
+    expect(browser.cueSinkCreations).toEqual(["headphones"]);
+    expect(browser.graphs[0]?.mainDelayMs).toBe(120);
+    expect(browser.graphs[0]?.cueDelayMs).toBe(35);
+    expect(persistence.writes).toEqual([snapshot.settings]);
+  });
+
+  test("rolls back main output when CUE application fails", async () => {
+    const { browser, persistence, routing } = setup();
+    await routing.applySettings({
+      cueDelayMs: 15,
+      cueOutputId: "old-headphones",
+      mainDelayMs: 40,
+      mainOutputId: "old-speakers",
+    });
+    browser.mainSinkChanges.length = 0;
+    browser.cueSinkError = new Error("CUE sink failed");
+
+    await expect(
+      routing.applySettings({
+        cueDelayMs: 25,
+        cueOutputId: "new-headphones",
+        mainDelayMs: 70,
+        mainOutputId: "new-speakers",
+      })
+    ).rejects.toThrow("CUE sink failed");
+
+    expect(browser.mainSinkChanges).toEqual(["new-speakers", "old-speakers"]);
+    expect(browser.graphs[0]?.mainDelayMs).toBe(40);
+    expect(browser.graphs[0]?.cueDelayMs).toBe(15);
+    expect(browser.cueSinkDisposals).toEqual([]);
+    expect(persistence.writes).toHaveLength(1);
+    expect(persistence.read()).toEqual({
+      cueDelayMs: 15,
+      cueOutputId: "old-headphones",
+      mainDelayMs: 40,
+      mainOutputId: "old-speakers",
+    });
+  });
+
+  test("rejects custom sinks when selection is unsupported but keeps defaults", async () => {
+    const { browser, persistence, routing } = setup();
+    browser.supported = false;
+
+    await expect(
+      routing.applySettings({ mainOutputId: "speakers" })
+    ).rejects.toThrow("Output device selection is not supported");
+    expect(browser.mainSinkChanges).toEqual([]);
+    expect(persistence.writes).toEqual([]);
+
+    const snapshot = await routing.applySettings({
+      cueOutputId: null,
+      mainOutputId: "default",
+    });
+
+    expect(snapshot.settings.mainOutputId).toBe("default");
+    expect(snapshot.settings.cueOutputId).toBeNull();
+    expect(snapshot.sinkSelectionSupported).toBe(false);
+    expect(browser.mainSinkChanges).toEqual([]);
+    expect(browser.cueSinkCreations).toEqual([]);
+  });
+
+  test("normalizes delays before applying and persisting them", async () => {
+    const { browser, persistence, routing } = setup();
+
+    const snapshot = await routing.applySettings({
+      cueDelayMs: -10,
+      mainDelayMs: 900,
+    });
+
+    expect(snapshot.settings.cueDelayMs).toBe(0);
+    expect(snapshot.settings.mainDelayMs).toBe(500);
+    expect(browser.graphs[0]?.cueDelayMs).toBe(0);
+    expect(browser.graphs[0]?.mainDelayMs).toBe(500);
+    expect(persistence.read()).toEqual(snapshot.settings);
+  });
+
+  test("applies delay-only settings before returning the transaction promise", async () => {
+    const { persistence, routing } = setup();
+
+    const transaction = routing.applySettings({ mainDelayMs: 140 });
+
+    expect(persistence.read().mainDelayMs).toBe(140);
+    await transaction;
+  });
+
+  test("replaces an enabled CUE Deck tap without duplicating connections", async () => {
+    const { browser, routing } = setup();
+    await routing.applySettings({ cueOutputId: "headphones" });
+    const firstTap = node("first", browser.context);
+    const secondTap = node("second", browser.context);
+    const registration = routing.registerCueDeck("deck-a", firstTap, true);
+
+    registration.replaceTap(secondTap);
+    registration.replaceTap(secondTap);
+
+    expect(browser.graphs[0]?.cueConnections).toEqual(new Set([secondTap]));
+    expect(registration.enabled).toBe(true);
+  });
+
+  test("replaces the graph and reapplies settings when the context changes", async () => {
+    const { browser, routing } = setup();
+    await routing.applySettings({
+      cueOutputId: "headphones",
+      mainDelayMs: 90,
+      mainOutputId: "speakers",
+    });
+    const firstMain = node("first-main", browser.context);
+    routing.connectMain(firstMain);
+    routing.registerCueDeck("deck-a", node("first-cue", browser.context), true);
+
+    browser.context = { id: "context-2" } as unknown as AudioContext;
+    const secondMain = node("second-main", browser.context);
+    await routing.replaceContext(browser.context);
+    routing.connectMain(secondMain);
+
+    expect(browser.graphs).toHaveLength(2);
+    expect(browser.graphs[0]?.disposed).toBe(true);
+    expect(browser.graphs[1]?.mainConnections).toEqual(new Set([secondMain]));
+    expect(browser.graphs[1]?.cueConnections).toEqual(new Set());
+    expect(browser.graphs[1]?.mainDelayMs).toBe(90);
+    expect(browser.mainSinkChanges).toEqual(["speakers", "speakers"]);
+    expect(browser.cueSinkCreations).toEqual(["headphones", "headphones"]);
+    expect(browser.cueSinkDisposals).toEqual(["headphones"]);
+  });
+
+  test("reports transaction errors until the listener unsubscribes", async () => {
+    const { browser, routing } = setup();
+    const errors: Error[] = [];
+    const unsubscribe = routing.subscribeErrors((error) => {
+      errors.push(error);
+    });
+    browser.cueSinkError = new Error("first failure");
+
+    await expect(
+      routing.applySettings({ cueOutputId: "headphones" })
+    ).rejects.toThrow("first failure");
+    expect(errors.map((error) => error.message)).toEqual(["first failure"]);
+
+    unsubscribe();
+    browser.cueSinkError = new Error("second failure");
+    await expect(
+      routing.applySettings({ cueOutputId: "headphones" })
+    ).rejects.toThrow("second failure");
+    expect(errors.map((error) => error.message)).toEqual(["first failure"]);
+  });
+
+  test("cleanup releases graph, sink, Deck, source, and error resources", async () => {
+    const { browser, routing } = setup();
+    await routing.applySettings({ cueOutputId: "headphones" });
+    const main = node("main", browser.context);
+    const cue = node("cue", browser.context);
+    routing.connectMain(main);
+    const registration = routing.registerCueDeck("deck-a", cue, true);
+    routing.setHeadphoneVolume(0.6);
+    const errors: Error[] = [];
+    routing.subscribeErrors((error) => errors.push(error));
+
+    routing.cleanup();
+    routing.cleanup();
+
+    expect(browser.graphs[0]?.disposed).toBe(true);
+    expect(browser.graphs[0]?.mainConnections).toEqual(new Set());
+    expect(browser.graphs[0]?.cueConnections).toEqual(new Set());
+    expect(browser.cueSinkDisposals).toEqual(["headphones"]);
+    expect(registration.enabled).toBe(false);
+
+    browser.cueSinkError = new Error("after cleanup");
+    await expect(
+      routing.applySettings({ cueOutputId: "headphones" })
+    ).rejects.toThrow("after cleanup");
+    expect(errors).toEqual([]);
+  });
+
+  test("replaying unchanged settings is idempotent", async () => {
+    const { browser, persistence, routing } = setup();
+    const settings = {
+      cueDelayMs: 20,
+      cueOutputId: "headphones",
+      mainDelayMs: 80,
+      mainOutputId: "speakers",
+    };
+    await routing.applySettings(settings);
+
+    const snapshot = await routing.applySettings();
+
+    expect(snapshot.settings).toEqual(settings);
+    expect(browser.graphs).toHaveLength(1);
+    expect(browser.mainSinkChanges).toEqual(["speakers"]);
+    expect(browser.cueSinkCreations).toEqual(["headphones"]);
+    expect(browser.cueSinkDisposals).toEqual([]);
+    expect(persistence.writes).toHaveLength(1);
+  });
+
+  test("selecting the CUE device as main atomically disables CUE", async () => {
+    const cueChanges: [string, boolean][] = [];
+    const { browser, persistence, routing } = setup(
+      undefined,
+      (deckId, enabled) => {
+        cueChanges.push([deckId, enabled]);
+      }
+    );
+    await routing.applySettings({
+      cueOutputId: "headphones",
+      mainOutputId: "speakers",
+    });
+    const registration = routing.registerCueDeck(
+      "deck-a",
+      node("cue", browser.context),
+      true
+    );
+
+    const snapshot = await routing.applySettings({
+      mainOutputId: "headphones",
+    });
+
+    expect(snapshot.settings.mainOutputId).toBe("headphones");
+    expect(snapshot.settings.cueOutputId).toBeNull();
+    expect(snapshot.cueActive).toBe(false);
+    expect(registration.enabled).toBe(false);
+    expect(cueChanges).toEqual([
+      ["deck-a", true],
+      ["deck-a", false],
+    ]);
+    expect(browser.cueSinkDisposals).toEqual(["headphones"]);
+    expect(persistence.read()).toEqual(snapshot.settings);
+  });
+});

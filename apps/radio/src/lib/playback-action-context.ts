@@ -24,10 +24,10 @@ import type {
   PlatformStreamResolution,
   PlatformStreamResolutionInput,
 } from "@/lib/dj-platform-stream-port.js";
-import { getMainOutputRouter } from "@/lib/main-output-router";
+import { getOutputRouting, type OutputRouting } from "@/lib/output-routing.js";
 import type { PlaybackActionErrorReporter } from "./playback-action-errors.js";
 
-export type MainOutputRouter = ReturnType<typeof getMainOutputRouter>;
+export type MainOutputRouter = OutputRouting | null;
 
 export type PlaybackAudioRoutingLifecycle = {
   mainOutputSettingsApplied: boolean;
@@ -118,7 +118,7 @@ export function createDefaultPlaybackActionContext(): PlaybackActionContext {
       return createAudioEngineFacade(AudioManager.getInstance());
     },
     channels: defaultChannels,
-    getMainOutputRouter,
+    getMainOutputRouter: getOutputRouting,
     lifecycle: defaultLifecycle,
     reportError: noopReportError,
     resumeAudioContext,

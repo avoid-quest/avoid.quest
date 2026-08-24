@@ -163,17 +163,4 @@ export {
   type Unsubscribe,
   WorkletManager,
 } from "./playback/index.js";
-// Routing (output device selection, CUE monitoring, delays)
-export {
-  CueBus,
-  type CueBusCallbacks,
-  type CueBusState,
-  type CueMode,
-  createCueBus,
-  createOutputRouter,
-  isSinkIdSupported,
-  OutputRouter,
-  type OutputRouterCallbacks,
-  type OutputRouterState,
-  safeDisconnectFrom,
-} from "./routing/index.js";
+export { isSinkIdSupported, safeDisconnectFrom } from "./routing/index.js";

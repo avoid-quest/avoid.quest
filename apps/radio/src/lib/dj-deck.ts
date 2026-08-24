@@ -44,7 +44,7 @@ import {
   type PlatformStreamResolutionInput,
   resolveDjPlatformStreamUrl,
 } from "@/lib/dj-platform-stream-port.js";
-import { getMixer, setPendingPlatformItem } from "@/lib/hooks/use-dj-state";
+import { getMixer } from "@/lib/hooks/use-dj-state";
 import { getOutputRouting, type OutputRouting } from "@/lib/output-routing.js";
 import { loadPlatformItem } from "@/lib/platform-item-loader";
 import type { Platform } from "@/lib/platform-types";
@@ -156,9 +156,19 @@ export type DjDeckHandle = {
   change(change: DjDeckChange): void;
 };
 
+export type DjDeckPendingSource = {
+  deckId: DeckId;
+  platform: Platform;
+} | null;
+
 export type DjDeckModule = {
   deck(deckId: DeckId): DjDeckHandle;
   deactivate(): void;
+  pendingSource: {
+    cancel(): void;
+    getSnapshot(): DjDeckPendingSource;
+    subscribe(listener: () => void): () => void;
+  };
 };
 
 type DjDeckModuleOptions = {
@@ -398,6 +408,28 @@ function reportOutputError(error: unknown): void {
 
 export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
   const releasedFileUrls = new Set<string>();
+  let pendingSourceSnapshot: DjDeckPendingSource = null;
+  const pendingSourceListeners = new Set<() => void>();
+  const setPendingSource = (next: DjDeckPendingSource): void => {
+    if (
+      pendingSourceSnapshot?.deckId === next?.deckId &&
+      pendingSourceSnapshot?.platform === next?.platform
+    ) {
+      return;
+    }
+    pendingSourceSnapshot = next;
+    for (const listener of pendingSourceListeners) {
+      listener();
+    }
+  };
+  const pendingSource: DjDeckModule["pendingSource"] = {
+    cancel: () => setPendingSource(null),
+    getSnapshot: () => pendingSourceSnapshot,
+    subscribe(listener) {
+      pendingSourceListeners.add(listener);
+      return () => pendingSourceListeners.delete(listener);
+    },
+  };
   const runtimes: Record<DeckId, DeckRuntime> = {
     "deck-a": {
       bindingCleanup: null,
@@ -1034,10 +1066,9 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
   ): Promise<DjDeckLoadResult> {
     const intent = getDeckLibrarySourceIntent(radio);
     if (intent.type === "pending-platform") {
-      setPendingPlatformItem({ deckId, platform: intent.platform });
+      setPendingSource({ deckId, platform: intent.platform });
       return intent;
     }
-    setPendingPlatformItem(null);
     return await load(deckId, intent.source);
   }
 
@@ -1195,6 +1226,7 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
       clearDjErrorSurface(deckId);
       return await loadLibraryIntent(deckId, intent.radio);
     }
+    setPendingSource(null);
     const generation = beginGeneration(deckId);
     clearDjErrorSurface(deckId);
     switch (intent.type) {
@@ -1387,7 +1419,9 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
 
   return {
     deck: (deckId) => handles[deckId],
+    pendingSource,
     deactivate() {
+      pendingSource.cancel();
       for (const deckId of ["deck-a", "deck-b"] as const) {
         const fileUrl = getLocalFileUrl(
           getPlaybackChannel("dj", deckId)?.radio ?? null

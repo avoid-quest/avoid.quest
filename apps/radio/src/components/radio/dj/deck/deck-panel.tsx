@@ -14,10 +14,6 @@ import { createDjDeckEffectChange, getDjDeckModule } from "@/lib/dj-deck";
 import { isPlatformRadio } from "@/lib/external-url";
 import { useDeckAState, useDeckBState } from "@/lib/hooks/use-deck-state";
 import { useDjSession } from "@/lib/hooks/use-dj-session";
-import {
-  setPendingPlatformItem,
-  usePendingPlatformItem,
-} from "@/lib/hooks/use-dj-state";
 import { useMidiEffectRegistration } from "@/lib/hooks/use-midi-effect-registration";
 import { usePeakLevel } from "@/lib/hooks/use-peak-level";
 import { usePlatformMetadata } from "@/lib/hooks/use-platform-metadata";
@@ -146,6 +142,8 @@ function DeckPanelInner({
     setAutoplay,
     seek,
     loadSource,
+    pendingPlatform,
+    cancelPendingSource,
   } = deckState;
   const deck = getDjDeckModule().deck(deckId);
   const djSession = useDjSession();
@@ -190,17 +188,11 @@ function DeckPanelInner({
   const setChannelSelection = (selection: ChannelSelection) =>
     deck.change({ type: "device-channel-selection", selection });
 
-  const pendingPlatformItem = usePendingPlatformItem();
   const deckSide = deckId === "deck-a" ? "left" : "right";
   const [isChangingUrl, setIsChangingUrl] = useState(false);
   const [isChangingDevice, setIsChangingDevice] = useState(false);
   const [isChangingFile, setIsChangingFile] = useState(false);
   const isMobile = useIsMobile();
-
-  const pendingPlatform =
-    pendingPlatformItem?.deckId === deckId
-      ? pendingPlatformItem.platform
-      : undefined;
 
   const isDeviceInput = radio?.platformMetadata?.platform === "device-input";
   const isFileSource =
@@ -227,7 +219,6 @@ function DeckPanelInner({
       loadSource({ type: "file", file }).catch((error) => {
         console.error("[dj] Failed to load file source:", error);
       });
-      setPendingPlatformItem(null);
     },
     [loadSource]
   );
@@ -237,7 +228,6 @@ function DeckPanelInner({
       loadSource({ type: "static-audio-url", url }).catch((error) => {
         console.error("[dj] Failed to load static audio URL:", error);
       });
-      setPendingPlatformItem(null);
     },
     [loadSource]
   );
@@ -291,13 +281,6 @@ function DeckPanelInner({
         console.error("[dj] Failed to clear deck source:", error);
       }
     );
-    if (pendingPlatformItem?.deckId === deckId) {
-      setPendingPlatformItem(null);
-    }
-  };
-
-  const handleCancelPendingSource = () => {
-    setPendingPlatformItem(null);
   };
 
   const handleLoadTrack = async (streamUrl: string) => {
@@ -309,7 +292,6 @@ function DeckPanelInner({
 
   const handleLoadPlatformItem = async (newRadio: Radio) => {
     await loadSource({ type: "track", radio: newRadio, autoPlay: false });
-    setPendingPlatformItem(null);
   };
 
   const handleLoadDeviceInput = async (
@@ -317,7 +299,6 @@ function DeckPanelInner({
     deviceLabel: string
   ) => {
     await loadSource({ type: "device-input", deviceId, deviceLabel });
-    setPendingPlatformItem(null);
     setIsChangingDevice(false);
   };
 
@@ -387,14 +368,14 @@ function DeckPanelInner({
   if (contentKind === "pending-device") {
     content = (
       <DeviceForm
-        onCancel={handleCancelPendingSource}
+        onCancel={cancelPendingSource}
         onLoad={handleLoadDeviceInput}
       />
     );
   } else if (contentKind === "pending-file") {
     content = (
       <FileForm
-        onCancel={handleCancelPendingSource}
+        onCancel={cancelPendingSource}
         onLoad={handleFileDrop}
         onLoadUrl={handleLoadRemoteUrl}
       />
@@ -411,7 +392,7 @@ function DeckPanelInner({
       <ExternalSearch
         initialPlatform={searchPlatform}
         key={searchPlatform}
-        onCancel={handleCancelPendingSource}
+        onCancel={cancelPendingSource}
         onLoad={handleLoadPlatformItem}
       />
     );

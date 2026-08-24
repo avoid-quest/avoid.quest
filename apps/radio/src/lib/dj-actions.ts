@@ -21,7 +21,6 @@ import {
   getDeckA,
   getDeckB,
   getMixer,
-  setPendingPlatformItem,
   updateMixer,
 } from "@/lib/hooks/use-dj-state";
 import {
@@ -169,10 +168,6 @@ function applyCrossfade(ctx = getDefaultPlaybackActionContext()) {
   if (runtimeB.soundId) {
     ctx.audioEngine.volume.setChannelVolume(runtimeB.soundId, rightFinalVol);
   }
-}
-
-export function clearDeckLibrarySourcePending(): void {
-  setPendingPlatformItem(null);
 }
 
 type MidiDjDeckActions = {

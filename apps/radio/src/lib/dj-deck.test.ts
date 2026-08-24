@@ -252,6 +252,45 @@ describe("DjDeckModule", () => {
     );
   });
 
+  test("owns pending platform-source observation and cancellation", async () => {
+    const module = createDjDeckModule({
+      audio: createAudioAdapter(),
+      context: createContext(),
+      effects: createEffects(),
+      output: createOutput(),
+      platform: createPlatform(),
+    });
+    const pendingItem = PLATFORM_ITEMS[0];
+    if (!pendingItem) {
+      throw new Error("Expected a platform picker library item");
+    }
+    const listener = mock(() => undefined);
+    const unsubscribe = module.pendingSource.subscribe(listener);
+
+    await module.deck("deck-a").load({
+      type: "library",
+      radio: pendingItem,
+    });
+
+    expect(module.pendingSource.getSnapshot()).toEqual({
+      deckId: "deck-a",
+      platform: "external",
+    });
+    expect(listener).toHaveBeenCalledTimes(1);
+
+    module.pendingSource.cancel();
+
+    expect(module.pendingSource.getSnapshot()).toBeNull();
+    expect(listener).toHaveBeenCalledTimes(2);
+
+    unsubscribe();
+    await module.deck("deck-b").load({
+      type: "library",
+      radio: pendingItem,
+    });
+    expect(listener).toHaveBeenCalledTimes(2);
+  });
+
   test("replaces a Deck source as one persisted and runtime transaction", async () => {
     const audio = createAudioAdapter();
     const module = createDjDeckModule({

@@ -121,6 +121,11 @@ function createTestDecks(onLoad: () => void = () => undefined): DjDeckModule & {
       change: mock(() => undefined),
     })),
     deactivate: mock(() => undefined),
+    pendingSource: {
+      cancel: mock(() => undefined),
+      getSnapshot: mock(() => null),
+      subscribe: mock(() => () => undefined),
+    },
   };
 }
 

@@ -1,11 +1,13 @@
-import { useMemo } from "react";
+import { useMemo, useSyncExternalStore } from "react";
 import {
   type DjDeckHandle,
   type DjDeckLoadIntent,
   type DjDeckLoadResult,
+  type DjDeckModule,
   getDjDeckModule,
 } from "@/lib/dj-deck";
 import { type DeckState, useDeckA, useDeckB } from "@/lib/hooks/use-dj-state";
+import type { Platform } from "@/lib/platform-types";
 
 const DEFAULT_FILTER = {
   type: "lowpass" as const,
@@ -16,6 +18,7 @@ const DEFAULT_FILTER = {
 };
 
 type DeckStateActions = {
+  cancelPendingSource: () => void;
   loadSource: (intent: DjDeckLoadIntent) => Promise<DjDeckLoadResult>;
   pause: () => void;
   play: () => Promise<void>;
@@ -31,8 +34,12 @@ type DeckStateActions = {
   setVolume: (volume: number) => void;
 };
 
-function createDeckActions(deck: DjDeckHandle): DeckStateActions {
+function createDeckActions(
+  deck: DjDeckHandle,
+  pendingSource: DjDeckModule["pendingSource"]
+): DeckStateActions {
   return {
+    cancelPendingSource: pendingSource.cancel,
     loadSource: deck.load,
     pause: () => deck.transport({ type: "pause" }),
     play: () => deck.transport({ type: "play" }),
@@ -66,6 +73,8 @@ type DeckStateResult = {
   effectsDryWet: number;
   repeat: boolean;
   autoplay: boolean;
+  pendingPlatform: Platform | undefined;
+  cancelPendingSource: DeckStateActions["cancelPendingSource"];
   play: DeckStateActions["play"];
   pause: DeckStateActions["pause"];
   setVolume: DeckStateActions["setVolume"];
@@ -83,7 +92,8 @@ type DeckStateResult = {
 
 function createDeckStateResult(
   deckState: DeckState | null,
-  actions: DeckStateActions
+  actions: DeckStateActions,
+  pendingPlatform: Platform | undefined
 ): DeckStateResult {
   return {
     radio: deckState?.radio ?? null,
@@ -101,8 +111,21 @@ function createDeckStateResult(
     effectsDryWet: deckState?.effectsDryWet ?? 1,
     repeat: deckState?.repeat ?? false,
     autoplay: deckState?.autoplay ?? true,
+    pendingPlatform,
     ...actions,
   };
+}
+
+function usePendingPlatform(
+  module: DjDeckModule,
+  deckId: "deck-a" | "deck-b"
+): Platform | undefined {
+  const pendingSource = useSyncExternalStore(
+    module.pendingSource.subscribe,
+    module.pendingSource.getSnapshot,
+    module.pendingSource.getSnapshot
+  );
+  return pendingSource?.deckId === deckId ? pendingSource.platform : undefined;
 }
 
 /**
@@ -110,11 +133,16 @@ function createDeckStateResult(
  */
 export function useDeckAState(): DeckStateResult {
   const deckState = useDeckA();
-  const deck = getDjDeckModule().deck("deck-a");
-  const actions = useMemo(() => createDeckActions(deck), [deck]);
+  const module = getDjDeckModule();
+  const deck = module.deck("deck-a");
+  const pendingPlatform = usePendingPlatform(module, "deck-a");
+  const actions = useMemo(
+    () => createDeckActions(deck, module.pendingSource),
+    [deck, module.pendingSource]
+  );
   return useMemo(
-    () => createDeckStateResult(deckState, actions),
-    [deckState, actions]
+    () => createDeckStateResult(deckState, actions, pendingPlatform),
+    [deckState, actions, pendingPlatform]
   );
 }
 
@@ -123,10 +151,15 @@ export function useDeckAState(): DeckStateResult {
  */
 export function useDeckBState(): DeckStateResult {
   const deckState = useDeckB();
-  const deck = getDjDeckModule().deck("deck-b");
-  const actions = useMemo(() => createDeckActions(deck), [deck]);
+  const module = getDjDeckModule();
+  const deck = module.deck("deck-b");
+  const pendingPlatform = usePendingPlatform(module, "deck-b");
+  const actions = useMemo(
+    () => createDeckActions(deck, module.pendingSource),
+    [deck, module.pendingSource]
+  );
   return useMemo(
-    () => createDeckStateResult(deckState, actions),
-    [deckState, actions]
+    () => createDeckStateResult(deckState, actions, pendingPlatform),
+    [deckState, actions, pendingPlatform]
   );
 }

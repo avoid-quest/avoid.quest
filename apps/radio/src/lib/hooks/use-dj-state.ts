@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import type { EffectConfig, FilterConfig, Radio } from "@/lib/audio";
-import { getChannelState, useChannelState } from "@/lib/channel-state-manager";
+import { useChannelState } from "@/lib/channel-state-manager";
 import {
   DECK_A_CHANNEL_ID,
   DECK_B_CHANNEL_ID,
@@ -112,39 +112,11 @@ export function useDecks() {
 }
 
 export {
-  getDeckARuntime,
-  getDeckBRuntime,
-  resetDeckARuntime,
-  resetDeckBRuntime,
   setActiveDragRadio,
-  setDeckARuntimeState,
-  setDeckASoundId,
-  setDeckBRuntimeState,
-  setDeckBSoundId,
   setDjError,
-  setPendingPlatformItem,
   useActiveDragRadio,
-  useDeckAIsLoading,
-  useDeckAIsPlaying,
-  useDeckASoundId,
-  useDeckBIsLoading,
-  useDeckBIsPlaying,
-  useDeckBSoundId,
   useDjError,
-  usePendingPlatformItem,
 } from "@/lib/stores/dj-runtime-store";
-
-export function getDeckAState(): DeckState | null {
-  return getChannelState("dj", DECK_A_CHANNEL_ID) as DeckState | null;
-}
-
-export function getDeckBState(): DeckState | null {
-  return getChannelState("dj", DECK_B_CHANNEL_ID) as DeckState | null;
-}
-
-export function getMixerState(): MixerRecord | undefined {
-  return toMixerRecord();
-}
 
 export function getDeckA(): DeckRecord | undefined {
   return getPlaybackChannel("dj", DECK_A_CHANNEL_ID);
@@ -156,14 +128,6 @@ export function getDeckB(): DeckRecord | undefined {
 
 export function getMixer(): MixerRecord | undefined {
   return toMixerRecord();
-}
-
-export function updateDeckA(updater: (draft: DeckRecord) => void) {
-  updatePlaybackChannel("dj", DECK_A_CHANNEL_ID, updater);
-}
-
-export function updateDeckB(updater: (draft: DeckRecord) => void) {
-  updatePlaybackChannel("dj", DECK_B_CHANNEL_ID, updater);
 }
 
 export function updateMixer(updater: (draft: MixerRecord) => void) {

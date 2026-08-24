@@ -11,12 +11,11 @@ import {
 import { Volume2Icon } from "lucide-react";
 import type { Radio } from "@/lib/audio";
 import {
-  clearDeckLibrarySourcePending,
   setCrossfadePosition,
   setHeadphoneVolume,
   setMasterVolume,
 } from "@/lib/dj-actions";
-import { getDjDeckModule } from "@/lib/dj-deck";
+import { type DeckId, getDjDeckModule } from "@/lib/dj-deck";
 import { useDjKeyboard } from "@/lib/hooks/use-dj-keyboard";
 import {
   setActiveDragRadio,
@@ -28,7 +27,6 @@ import {
 import { useMediaSession } from "@/lib/hooks/use-media-session";
 import { useMidi } from "@/lib/hooks/use-midi";
 import { useAudioSettings } from "@/lib/hooks/use-settings";
-import type { DeckId } from "@/lib/stores/dj-runtime-store";
 import { RadioLogo } from "../radio-logo";
 import { DjConsole } from "./dj-console";
 import { DjConsoleMobile } from "./dj-console-mobile";
@@ -124,7 +122,7 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
     setActiveDragRadio(null);
 
     if (!over) {
-      clearDeckLibrarySourcePending();
+      decks.pendingSource.cancel();
       return;
     }
 

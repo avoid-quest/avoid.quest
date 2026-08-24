@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { AudioEngineFacade, AudioManager } from "@/lib/audio";
 import {
   createDefaultChannel,
+  getPlaybackSession,
   playbackSessionsCollection,
   SINGLE_ACTIVE_CHANNEL_ID,
 } from "@/lib/collections/playback-sessions";
@@ -189,5 +190,82 @@ describe("single playback actions", () => {
       "Playback could not start. Check the station stream and try again."
     );
     expect(reportedErrors[0]?.rawMessage).toBe(rawError.message);
+  });
+
+  test("restores the playing station when its replacement fails", async () => {
+    const currentRadio = {
+      id: "working-station",
+      name: "Working Station",
+      streamUrl: "https://radio.example/working.mp3",
+    };
+    const replacementRadio = {
+      id: "dead-station",
+      name: "Dead Station",
+      streamUrl: "https://radio.example/dead.mp3",
+    };
+    playbackSessionsCollection.insert({
+      id: "single",
+      channels: [
+        {
+          ...createDefaultChannel(
+            SINGLE_ACTIVE_CHANNEL_ID,
+            "single-primary",
+            0
+          ),
+          radio: currentRadio,
+          volume: 0.42,
+        },
+      ],
+      masterVolume: 0.75,
+      crossfadePosition: 0.5,
+      headphoneVolume: 1,
+      activeChannelId: SINGLE_ACTIVE_CHANNEL_ID,
+    });
+    setPlaybackChannelRuntime(SINGLE_ACTIVE_CHANNEL_ID, () => ({
+      soundId: "single:single-a",
+      isPlaying: true,
+    }));
+    let playAttempt = 0;
+    const { context } = createTestContext({
+      playSound: mock(() => {
+        playAttempt += 1;
+        if (playAttempt === 1) {
+          return Promise.reject(new Error("replacement unavailable"));
+        }
+        return Promise.resolve();
+      }) as AudioManager["playSound"],
+    });
+    const workflow = createManagedPlaybackSessionWorkflow("single", {
+      ctx: context,
+    });
+
+    await expect(workflow.selectRadio(replacementRadio)).rejects.toMatchObject({
+      code: "PLAY_ERROR",
+      radio: replacementRadio,
+    });
+
+    expect(getPlaybackSession("single")?.channels[0]?.radio).toEqual(
+      currentRadio
+    );
+    expect(context.channels.activate).toHaveBeenLastCalledWith(
+      "single",
+      SINGLE_ACTIVE_CHANNEL_ID,
+      currentRadio,
+      "single:single-a"
+    );
+    expect(context.audio.playSound).toHaveBeenLastCalledWith(
+      "single:single-a",
+      0.42
+    );
+
+    resetAllPlaybackRuntime();
+    await workflow.activate();
+
+    expect(context.channels.activate).toHaveBeenLastCalledWith(
+      "single",
+      SINGLE_ACTIVE_CHANNEL_ID,
+      currentRadio,
+      "single:single-a"
+    );
   });
 });

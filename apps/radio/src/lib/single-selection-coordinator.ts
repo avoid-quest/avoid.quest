@@ -9,10 +9,49 @@ export function singleSelectionAbortReason(signal: AbortSignal): unknown {
 
 class SingleSelectionCoordinator {
   private active: AbortController | null = null;
+  private activePlaybackIntent: boolean | null = null;
   private readonly queue = new PQueue({ concurrency: 1 });
   private deactivationCount = 0;
 
   run(task: (signal: AbortSignal) => Promise<void>): Promise<void> {
+    return this.enqueue(task, null);
+  }
+
+  runSelection(
+    playbackIntent: boolean,
+    task: (signal: AbortSignal, playbackIntent: boolean) => Promise<void>
+  ): Promise<void> {
+    const inheritedIntent =
+      this.activePlaybackIntent === null
+        ? playbackIntent
+        : this.activePlaybackIntent;
+    return this.enqueue(
+      (signal) => task(signal, inheritedIntent),
+      inheritedIntent
+    );
+  }
+
+  updatePlaybackIntent(playbackIntent: boolean): void {
+    if (this.activePlaybackIntent !== null) {
+      this.activePlaybackIntent = playbackIntent;
+    }
+  }
+
+  async runAfterCurrent(task: () => Promise<void>): Promise<void> {
+    if (this.deactivationCount > 0) {
+      return;
+    }
+    await this.queue.add(async () => {
+      if (this.deactivationCount === 0) {
+        await task();
+      }
+    });
+  }
+
+  private enqueue(
+    task: (signal: AbortSignal) => Promise<void>,
+    playbackIntent: boolean | null
+  ): Promise<void> {
     if (this.deactivationCount > 0) {
       return Promise.resolve();
     }
@@ -20,6 +59,7 @@ class SingleSelectionCoordinator {
     this.active?.abort();
     const controller = new AbortController();
     this.active = controller;
+    this.activePlaybackIntent = playbackIntent;
 
     return this.queue
       .add(() => task(controller.signal), { signal: controller.signal })
@@ -31,6 +71,7 @@ class SingleSelectionCoordinator {
       .finally(() => {
         if (this.active === controller) {
           this.active = null;
+          this.activePlaybackIntent = null;
         }
       });
   }

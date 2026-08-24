@@ -8,9 +8,11 @@ import {
 import {
   activateChannel,
   type ChannelActivationOptions,
+  type ChannelOutputMode,
   type ChannelRuntimeSubscriptionOptions,
   deactivateAllChannels,
   deactivateChannel,
+  getChannelOutputMode,
   setChannelMuted,
   setChannelPan,
   setChannelSpeed,
@@ -40,6 +42,7 @@ export type PlaybackActionChannelFacade = {
   ) => string;
   deactivateAll: () => void;
   deactivate: (channelId: string) => void;
+  getOutputMode?: (channelId: string) => ChannelOutputMode | null;
   setVolume: (
     sessionId: PlaybackSessionId,
     channelId: string,
@@ -94,6 +97,7 @@ const defaultChannels: PlaybackActionChannelFacade = {
   activate: activateChannel,
   deactivateAll: deactivateAllChannels,
   deactivate: deactivateChannel,
+  getOutputMode: getChannelOutputMode,
   setVolume: setChannelVolume,
   setMuted: setChannelMuted,
   setPan: setChannelPan,

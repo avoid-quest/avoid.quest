@@ -25,6 +25,7 @@ export {
   type DeviceSourceCallbacks,
 } from "./device-source.js";
 export { MediaElementPlaybackSource } from "./media-element-playback-source.js";
+export { supportsMediaElementVolumeControl } from "./media-element-volume-control.js";
 // Microphone Source (for future live looper)
 export {
   createMicSource,

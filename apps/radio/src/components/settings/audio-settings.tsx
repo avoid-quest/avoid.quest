@@ -18,6 +18,7 @@ import {
   Volume2Icon,
 } from "lucide-react";
 import { type ReactNode, useState } from "react";
+import { toast } from "sonner";
 import { isSinkIdSupported, useAudioDevices } from "@/lib/audio";
 import {
   getAudioSettings,
@@ -65,14 +66,18 @@ export function AudioSettings() {
   const handleMainOutputChange = async (value: string) => {
     setMainOutputId(value);
     setMainOutputDevice(value);
-    // If the new main device matches the current CUE device, auto-disable CUE
-    if (cueOutputId && cueOutputId === value) {
-      setCueOutputId(null);
-      setCueOutputDevice(null);
-      await applyCueOutputDevice(null);
+    try {
+      // If the new main device matches the current CUE device, auto-disable CUE
+      if (cueOutputId && cueOutputId === value) {
+        setCueOutputId(null);
+        setCueOutputDevice(null);
+        await applyCueOutputDevice(null);
+      }
+      // Apply to audio routing
+      await applyMainOutputDevice(value);
+    } catch {
+      toast.error("Failed to apply the main output settings");
     }
-    // Apply to audio routing
-    await applyMainOutputDevice(value);
   };
 
   const handleCueOutputChange = async (value: string) => {
@@ -83,9 +88,13 @@ export function AudioSettings() {
     await applyCueOutputDevice(newValue);
   };
 
-  const handleMainDelayChange = (value: number) => {
+  const handleMainDelayChange = async (value: number) => {
     setMainDelayMsState(value);
-    setMainOutputDelay(value);
+    try {
+      await setMainOutputDelay(value);
+    } catch {
+      toast.error("Failed to apply the main output settings");
+    }
   };
 
   const handleCueDelayChange = (value: number) => {
@@ -177,10 +186,14 @@ export function AudioSettings() {
               {mainDelayMs}ms
             </span>
             <Button
-              onClick={() => {
-                const detected = autoCompensateLatency();
-                if (detected !== null) {
-                  setMainDelayMsState(detected);
+              onClick={async () => {
+                try {
+                  const detected = await autoCompensateLatency();
+                  if (detected !== null) {
+                    setMainDelayMsState(detected);
+                  }
+                } catch {
+                  toast.error("Failed to apply the main output settings");
                 }
               }}
               size="sm"

@@ -75,6 +75,7 @@ import {
   setPendingPlatformItem,
   updateMixer,
 } from "@/lib/hooks/use-dj-state";
+import { createManagedPlaybackSessionWorkflow } from "@/lib/managed-playback-session-workflow";
 import { loadPlatformItem } from "@/lib/platform-item-loader";
 import {
   getDefaultPlaybackActionContext,
@@ -106,7 +107,10 @@ export const getCueBus = getDjCueBus;
 export const isCueBusInitialized = isDjCueBusInitialized;
 
 export async function applyMainOutputDevice(deviceId: string): Promise<void> {
-  await applyMainOutputDeviceSetting(deviceId, reportDjErrorSurface);
+  await Promise.all([
+    applyMainOutputDeviceSetting(deviceId, reportDjErrorSurface),
+    createManagedPlaybackSessionWorkflow("single").reconcileRouting(),
+  ]);
 }
 
 export async function applyCueOutputDevice(
@@ -141,8 +145,9 @@ export function cleanupCueBus(): void {
   cleanupDjCueBus();
 }
 
-export function setMainOutputDelay(ms: number): void {
+export async function setMainOutputDelay(ms: number): Promise<void> {
   applyMainOutputDelay(ms, getAudioManager);
+  await createManagedPlaybackSessionWorkflow("single").reconcileRouting();
 }
 
 export function setCueOutputDelay(ms: number): void {
@@ -164,8 +169,12 @@ export function detectSystemLatency(): number | null {
   return detectOutputLatency();
 }
 
-export function autoCompensateLatency(): number | null {
-  return autoCompensateOutputLatency(getAudioManager);
+export async function autoCompensateLatency(): Promise<number | null> {
+  const latency = autoCompensateOutputLatency(getAudioManager);
+  if (latency !== null) {
+    await createManagedPlaybackSessionWorkflow("single").reconcileRouting();
+  }
+  return latency;
 }
 
 export const findNextTrack = (

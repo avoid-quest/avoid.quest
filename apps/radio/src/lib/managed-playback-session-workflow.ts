@@ -68,6 +68,7 @@ export type ManagedPlaybackSessionWorkflow = {
   syncChannels: (radios: Radio[]) => void;
   addChannel: (radio: Radio, order?: number) => PlaybackChannelRecord;
   removeChannel: (channelId: string) => void;
+  reconcileRouting: () => Promise<void>;
   selectRadio: (radio: Radio) => Promise<void>;
   setPlaying: (playing: boolean, channelId?: string) => Promise<void>;
   setChannelVolume: (channelId: string, volume: number) => void;
@@ -316,6 +317,42 @@ async function setSinglePlaying(
   await setChannelPlaying("single", activeChannelId, playing, ctx);
 }
 
+async function reconcileSingleRouting(
+  ctx: PlaybackActionContext
+): Promise<void> {
+  const channel = getSingleSelectionChannel();
+  if (!channel?.radio) {
+    return;
+  }
+  const runtime = getPlaybackChannelRuntime(channel.id);
+  const outputMode = shouldUseNativeSinglePlayback() ? "native" : "audio-graph";
+  if (
+    !runtime.soundId ||
+    ctx.channels.getOutputMode?.(channel.id) === outputMode
+  ) {
+    return;
+  }
+
+  const soundId = runtime.soundId;
+  const shouldResume = runtime.isPlaying;
+  cleanupManagedChannel(channel.id, ctx);
+  createManagedSound("single", channel.id, channel.radio, soundId, ctx);
+  if (!shouldResume) {
+    return;
+  }
+  try {
+    await playManagedSound("single", soundId, channel.volume, ctx);
+  } catch (error) {
+    throw reportPlaybackActionError(ctx.reportError, {
+      mode: "single",
+      code: "PLAY_ERROR",
+      cause: error,
+      channelId: channel.id,
+      radio: channel.radio,
+    });
+  }
+}
+
 async function setChannelPlaying(
   sessionId: ManagedPlaybackSessionId,
   channelId: string,
@@ -381,6 +418,7 @@ async function selectSingleRadio(
   if (!channel || isSameRadio(channel.radio, radio)) {
     return;
   }
+  const previousSoundId = getPlaybackChannelRuntime(channel.id).soundId;
 
   cleanupManagedChannel(channel.id, ctx);
   upsertPlaybackChannel("single", { ...channel, radio });
@@ -406,8 +444,21 @@ async function selectSingleRadio(
     }
   } catch (error) {
     cleanupManagedChannel(channel.id, ctx);
+    upsertPlaybackChannel("single", channel);
     if (signal.aborted) {
       throw singleSelectionAbortReason(signal);
+    }
+    if (channel.radio && previousSoundId) {
+      const restoredSoundId = createManagedSound(
+        "single",
+        channel.id,
+        channel.radio,
+        previousSoundId,
+        ctx
+      );
+      if (shouldPlay) {
+        await playManagedSound("single", restoredSoundId, channel.volume, ctx);
+      }
     }
     throw reportPlaybackActionError(ctx.reportError, {
       mode: "single",
@@ -509,6 +560,12 @@ export function createManagedPlaybackSessionWorkflow(
       cleanupManagedChannel(channelId, ctx);
       removePlaybackChannel("multiple", channelId);
     },
+    reconcileRouting() {
+      if (sessionId !== "single" || !singleSelection) {
+        return Promise.resolve();
+      }
+      return singleSelection.runAfterCurrent(() => reconcileSingleRouting(ctx));
+    },
     selectRadio(radio) {
       if (sessionId !== "single" || !singleSelection) {
         throw new Error("Radio selection is only supported in single mode");
@@ -517,12 +574,13 @@ export function createManagedPlaybackSessionWorkflow(
       const shouldPlay = channel
         ? getPlaybackChannelRuntime(channel.id).isPlaying
         : false;
-      return singleSelection.run((signal) =>
-        selectSingleRadio(radio, shouldPlay, ctx, signal)
+      return singleSelection.runSelection(shouldPlay, (signal, intent) =>
+        selectSingleRadio(radio, intent, ctx, signal)
       );
     },
     setPlaying(playing, channelId) {
       if (sessionId === "single") {
+        singleSelection?.updatePlaybackIntent(playing);
         return setSinglePlaying(playing, ctx);
       }
       if (!channelId) {

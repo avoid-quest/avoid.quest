@@ -441,17 +441,22 @@ describe("MidiControl", () => {
     expect(values).toEqual([1]);
   });
 
-  test("dispatches static actions through DJ Deck and OutputRouting", async () => {
+  test("dispatches static actions through DJ Deck and composite mixer commands", async () => {
     const browser = new FakeBrowser();
     const transport = mock(() => Promise.resolve());
     const change = mock(() => undefined);
-    const setHeadphoneVolume = mock(() => undefined);
+    let persistedHeadphoneVolume = 1;
+    let runtimeHeadphoneVolume = 1;
+    const setHeadphoneVolume = mock((volume: number) => {
+      persistedHeadphoneVolume = volume;
+      runtimeHeadphoneVolume = volume;
+    });
     const staticActions = createStaticMidiActions({
       decks: {
         deck: () => ({ change, load: mock(), transport }),
       },
-      output: { setHeadphoneVolume },
       setCrossfadePosition: mock(),
+      setHeadphoneVolume,
       setMasterVolume: mock(),
     });
     const control = createMidiControl({
@@ -488,6 +493,8 @@ describe("MidiControl", () => {
 
     expect(transport).toHaveBeenCalledWith({ type: "toggle" });
     expect(setHeadphoneVolume).toHaveBeenCalledWith(64 / 127);
+    expect(runtimeHeadphoneVolume).toBe(64 / 127);
+    expect(persistedHeadphoneVolume).toBe(64 / 127);
     expect(change).not.toHaveBeenCalled();
   });
 
@@ -510,8 +517,8 @@ describe("MidiControl", () => {
       decks: {
         deck: () => currentDeck,
       },
-      output: { setHeadphoneVolume: mock() },
       setCrossfadePosition: mock(),
+      setHeadphoneVolume: mock(),
       setMasterVolume: mock(),
     });
     const control = createMidiControl({
@@ -597,6 +604,62 @@ describe("MidiControl", () => {
           (action) => action.targetId === "deck-a:effect:limiter:enabled"
         )
     ).toBe(true);
+  });
+
+  test("keeps a newer external Effect reconcile after an older MIDI change settles", async () => {
+    const browser = new FakeBrowser();
+    const limiter = createDefaultEffectConfig("limiter", "limiter", 0);
+    limiter.enabled = false;
+    const staleResult = {
+      desired: {
+        dryWet: 1,
+        sidechainSoundId: null,
+        tempo: 120,
+        tree: [{ ...limiter, enabled: true }],
+      },
+      runtime: { backend: null, ready: false, status: "inactive" as const },
+    };
+    const deferred = Promise.withResolvers<typeof staleResult>();
+    const effectChange = mock(() => deferred.promise);
+    const control = createMidiControl({
+      browser,
+      effects: { change: effectChange },
+      persistence: new MemoryPersistence({
+        state: {
+          activePresetId: null,
+          enabled: true,
+          mappings: [
+            {
+              channel: 0,
+              control: 21,
+              targetId: "deck-a:effect:limiter:enabled",
+              type: "note",
+            },
+          ],
+        },
+        version: 2,
+      }),
+      staticActions: [],
+    });
+    const binding = control.bindDeckEffects("deck-a");
+    binding.reconcile([limiter]);
+    control.activateDj();
+    await control.connect();
+    browser.emit([0x90, 21, 127]);
+    await Promise.resolve();
+    expect(effectChange).toHaveBeenCalledTimes(1);
+
+    const delay = createDefaultEffectConfig("delay", "new-delay", 0);
+    binding.reconcile([delay]);
+    deferred.resolve(staleResult);
+    await deferred.promise;
+    await Promise.resolve();
+
+    const targets = control
+      .getSnapshot()
+      .actions.map((action) => action.targetId);
+    expect(targets).toContain("deck-a:effect:new-delay:enabled");
+    expect(targets).not.toContain("deck-a:effect:limiter:enabled");
   });
 
   test("filters note-off and contact bounce for button actions", async () => {

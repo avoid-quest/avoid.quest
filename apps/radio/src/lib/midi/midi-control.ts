@@ -116,6 +116,7 @@ type EffectBinding = {
   deckId: DeckId;
   disposed: boolean;
   pending: Promise<void>;
+  revision: number;
   tree: readonly EffectConfig[];
 };
 
@@ -349,13 +350,18 @@ export function createMidiControl({
         if (!effects) {
           throw new Error("ChannelEffects is unavailable");
         }
+        const revision = binding.revision;
         const result = await effects.change(
           { channelId: binding.deckId, sessionId: "dj" },
           change
         );
-        if (effectBindings.get(binding.deckId) !== binding) {
+        if (
+          effectBindings.get(binding.deckId) !== binding ||
+          binding.revision !== revision
+        ) {
           return;
         }
+        binding.revision += 1;
         binding.tree = result.desired.tree;
         binding.actions = createEffectMidiActions({
           change: (next) => enqueueEffectChange(binding, next),
@@ -577,6 +583,7 @@ export function createMidiControl({
         deckId,
         disposed: false,
         pending: Promise.resolve(),
+        revision: 0,
         tree: [],
       };
       effectBindings.set(deckId, binding);
@@ -585,6 +592,7 @@ export function createMidiControl({
           if (binding.disposed) {
             return;
           }
+          binding.revision += 1;
           const previousIds = collectEffectIds(binding.tree);
           const nextIds = collectEffectIds(tree);
           removeMappingsForEffects(

@@ -1,11 +1,10 @@
 import type { DjDeckModule } from "@/lib/dj-deck";
-import type { OutputRouting } from "@/lib/output-routing";
 import type { MidiAction } from "./types";
 
 type StaticMidiActionDependencies = {
   decks: Pick<DjDeckModule, "deck">;
-  output: Pick<OutputRouting, "setHeadphoneVolume">;
   setCrossfadePosition(position: number): void;
+  setHeadphoneVolume(volume: number): void;
   setMasterVolume(volume: number): void;
 };
 
@@ -85,8 +84,8 @@ function createDeckActions(
 
 export function createStaticMidiActions({
   decks,
-  output,
   setCrossfadePosition,
+  setHeadphoneVolume,
   setMasterVolume,
 }: StaticMidiActionDependencies): MidiAction[] {
   return [
@@ -113,7 +112,7 @@ export function createStaticMidiActions({
       label: "Headphone Volume",
       group: "mixer",
       type: "continuous",
-      dispatch: (volume) => output.setHeadphoneVolume(volume),
+      dispatch: setHeadphoneVolume,
       range: { min: 0, max: 1, step: 0.01 },
     },
   ];

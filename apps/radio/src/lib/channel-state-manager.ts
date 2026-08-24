@@ -1,12 +1,5 @@
 import { eq, useLiveQuery } from "@tanstack/react-db";
-import {
-  AudioManager,
-  type AudioState,
-  createDefaultEffectConfig,
-  type EffectConfig,
-  type EffectType,
-  type FilterConfig,
-} from "@/lib/audio";
+import { AudioManager, type AudioState, type FilterConfig } from "@/lib/audio";
 import {
   getPlaybackChannel,
   PLAYBACK_SESSION_IDS,
@@ -162,7 +155,7 @@ export function useChannelState(
   return mergeChannelState(persisted, runtime);
 }
 
-export function updateChannel(
+function updateChannel(
   sessionId: PlaybackSessionId,
   channelId: string,
   update: ChannelUpdate,
@@ -224,126 +217,12 @@ export function setChannelFilterValue(
   updateChannel(sessionId, channelId, { channelFilter }, ["channelFilter"]);
 }
 
-export function setChannelEffectsDryWet(
-  sessionId: PlaybackSessionId,
-  channelId: string,
-  effectsDryWet: number
-): void {
-  channelEffects
-    .change(
-      { sessionId, channelId },
-      { type: "set-dry-wet", value: effectsDryWet }
-    )
-    .catch(reportChannelEffectsError);
-}
-
-export function setSessionEffectsTempo(
-  sessionId: PlaybackSessionId,
-  tempo: number
-): void {
-  channelEffects.setTempo(sessionId, tempo).catch(reportChannelEffectsError);
-}
-
 export function updateChannelFilter(
   sessionId: PlaybackSessionId,
   channelId: string,
   filter: FilterConfig
 ): void {
   updateChannel(sessionId, channelId, { filter }, ["filter"]);
-}
-
-export function addChannelEffect(
-  sessionId: PlaybackSessionId,
-  channelId: string,
-  effect: EffectConfig
-): void {
-  channelEffects
-    .change({ sessionId, channelId }, { type: "add", effect })
-    .catch(reportChannelEffectsError);
-}
-
-export function createAndAddChannelEffect(
-  sessionId: PlaybackSessionId,
-  channelId: string,
-  type: EffectType,
-  effectId: string
-): void {
-  addChannelEffect(
-    sessionId,
-    channelId,
-    createDefaultEffectConfig(type, effectId, 0)
-  );
-}
-
-export function addChannelEffectToChain(
-  sessionId: PlaybackSessionId,
-  channelId: string,
-  chainId: string,
-  effect: EffectConfig
-): void {
-  channelEffects
-    .change({ sessionId, channelId }, { type: "add", effect, chainId })
-    .catch(reportChannelEffectsError);
-}
-
-export function createAndAddChannelEffectToChain(
-  sessionId: PlaybackSessionId,
-  channelId: string,
-  chainId: string,
-  type: EffectType,
-  effectId: string
-): void {
-  addChannelEffectToChain(
-    sessionId,
-    channelId,
-    chainId,
-    createDefaultEffectConfig(type, effectId, 0)
-  );
-}
-
-export function updateChannelEffect(
-  sessionId: PlaybackSessionId,
-  channelId: string,
-  effectId: string,
-  effectConfig: Partial<EffectConfig>
-): void {
-  channelEffects
-    .change(
-      { sessionId, channelId },
-      { type: "update", effectId, patch: effectConfig }
-    )
-    .catch(reportChannelEffectsError);
-}
-
-export function removeChannelEffect(
-  sessionId: PlaybackSessionId,
-  channelId: string,
-  effectId: string
-): void {
-  channelEffects
-    .change({ sessionId, channelId }, { type: "remove", effectId })
-    .catch(reportChannelEffectsError);
-}
-
-export function reorderChannelEffectChain(
-  sessionId: PlaybackSessionId,
-  channelId: string,
-  chainId: string,
-  effectIds: string[]
-): void {
-  channelEffects
-    .change({ sessionId, channelId }, { type: "reorder", effectIds, chainId })
-    .catch(reportChannelEffectsError);
-}
-
-export function reorderChannelEffects(
-  sessionId: PlaybackSessionId,
-  channelId: string,
-  effectIds: string[]
-): void {
-  channelEffects
-    .change({ sessionId, channelId }, { type: "reorder", effectIds })
-    .catch(reportChannelEffectsError);
 }
 
 function reportChannelEffectsError(error: unknown): void {

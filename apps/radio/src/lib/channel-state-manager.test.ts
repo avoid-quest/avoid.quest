@@ -32,6 +32,27 @@ afterEach(async () => {
 });
 
 describe("channel state manager", () => {
+  test("does not expose an alternate Effects mutation interface", async () => {
+    const channelStateManager = await import("./channel-state-manager");
+    const alternateEffectsMutations = [
+      "updateChannel",
+      "setChannelEffectsDryWet",
+      "setSessionEffectsTempo",
+      "addChannelEffect",
+      "createAndAddChannelEffect",
+      "addChannelEffectToChain",
+      "createAndAddChannelEffectToChain",
+      "updateChannelEffect",
+      "removeChannelEffect",
+      "reorderChannelEffectChain",
+      "reorderChannelEffects",
+    ];
+
+    expect(
+      alternateEffectsMutations.filter((name) => name in channelStateManager)
+    ).toEqual([]);
+  });
+
   test("persists volume updates and syncs the active audio sound", async () => {
     await playbackSessionsCollection.stateWhenReady();
     playbackSessionsCollection.insert({

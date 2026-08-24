@@ -17,20 +17,15 @@ import {
   updatePlaybackChannel,
 } from "@/lib/collections/playback-sessions";
 import { getPlaybackChannelRuntime } from "@/lib/stores/playback-runtime-store";
+import { type ChannelEffectsChange, channelEffects } from "./channel-effects";
 import {
   activateChannel,
-  addChannelEffect,
-  createAndAddChannelEffect,
   deactivateAllChannels,
   deactivateChannel,
-  removeChannelEffect,
-  reorderChannelEffects,
-  setChannelEffectsDryWet,
   setChannelFilterValue,
   setChannelMuted,
   setChannelPan,
   setChannelSpeed,
-  updateChannelEffect,
   updateChannelFilter,
 } from "./channel-state-manager";
 import {
@@ -66,6 +61,10 @@ function insertDjSession() {
     headphoneVolume: 1,
     activeChannelId: null,
   });
+}
+
+function changeDeckEffects(deckId: DeckId, change: ChannelEffectsChange): void {
+  channelEffects.change({ sessionId: "dj", channelId: deckId }, change);
 }
 
 function createDependencies(): DeckLoadDependencies {
@@ -118,22 +117,29 @@ function createDependencies(): DeckLoadDependencies {
       (_soundId: string, _selection: ChannelSelection) => undefined
     ),
     addDeckEffect: (deckId, type, effectId) =>
-      createAndAddChannelEffect("dj", deckId, type, effectId),
+      changeDeckEffects(deckId, {
+        type: "add",
+        effect: createDefaultEffectConfig(type, effectId, 0),
+      }),
     createEffectId: mock(() => "effect-1"),
     removeDeckEffect: (deckId, effectId) =>
-      removeChannelEffect("dj", deckId, effectId),
+      changeDeckEffects(deckId, { type: "remove", effectId }),
     reorderDeckEffects: (deckId, effectIds) =>
-      reorderChannelEffects("dj", deckId, effectIds),
+      changeDeckEffects(deckId, { type: "reorder", effectIds }),
     setDeckChannelFilter: (deckId, value) =>
       setChannelFilterValue("dj", deckId, value),
     setDeckEffectsDryWet: (deckId, value) =>
-      setChannelEffectsDryWet("dj", deckId, value),
+      changeDeckEffects(deckId, { type: "set-dry-wet", value }),
     setDeckMute: (deckId, muted) => setChannelMuted("dj", deckId, muted),
     setDeckPan: (deckId, pan) => setChannelPan("dj", deckId, pan),
     setDeckSpeed: (deckId, speed) => setChannelSpeed("dj", deckId, speed),
     setDeckVolume: mock((_deckId: DeckId, _volume: number) => undefined),
     updateDeckEffect: (deckId, effectId, effectConfig) =>
-      updateChannelEffect("dj", deckId, effectId, effectConfig),
+      changeDeckEffects(deckId, {
+        type: "update",
+        effectId,
+        patch: effectConfig,
+      }),
     updateDeckFilter: (deckId, filter) =>
       updateChannelFilter("dj", deckId, filter),
   };
@@ -3169,11 +3175,10 @@ describe("DJ deck channel lifecycle", () => {
     const dependencies = {
       ...createDependencies(),
       addDeckEffect: (deckId: DeckId, type: EffectType, effectId: string) =>
-        addChannelEffect(
-          "dj",
-          deckId,
-          createDefaultEffectConfig(type, effectId, 99)
-        ),
+        changeDeckEffects(deckId, {
+          type: "add",
+          effect: createDefaultEffectConfig(type, effectId, 99),
+        }),
       createEffectId: mock(() => nextEffectId),
     };
     const workflow = createDjDeckLoadWorkflow(dependencies);

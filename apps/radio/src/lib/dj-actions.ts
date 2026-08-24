@@ -15,16 +15,16 @@ import type {
 import {
   type AudioManager,
   createAudioEngineFacade,
+  createDefaultEffectConfig,
   getAudioContext,
   type Radio,
 } from "@/lib/audio";
 import {
-  createAndAddChannelEffect,
-  removeChannelEffect,
-  reorderChannelEffects,
-  setChannelEffectsDryWet,
+  type ChannelEffectsChange,
+  channelEffects,
+} from "@/lib/channel-effects";
+import {
   setChannelFilterValue,
-  updateChannelEffect,
   updateChannelFilter,
 } from "@/lib/channel-state-manager";
 import { getAudioSettings, getDelaySettings } from "@/lib/collections";
@@ -83,6 +83,17 @@ const getAudioManager = (): AudioManager => {
 };
 
 const getAudioEngine = () => createAudioEngineFacade(getAudioManager());
+
+function changeDeckEffects(deckId: DeckId, change: ChannelEffectsChange): void {
+  channelEffects
+    .change({ sessionId: "dj", channelId: deckId }, change)
+    .catch((error: unknown) =>
+      console.warn(
+        "[ChannelEffects] Could not reconcile Channel Effects",
+        error
+      )
+    );
+}
 
 const getSoundId = (radio: Radio, side: DeckSide): string =>
   `${side}_${radio.id}`;
@@ -367,23 +378,30 @@ function createDeckLoadDependencies(
     setDeviceChannelSelection: (soundId, selection) =>
       ctx.audio.setDeviceChannelSelection(soundId, selection),
     addDeckEffect: (deckId, type, effectId) =>
-      createAndAddChannelEffect("dj", deckId, type, effectId),
+      changeDeckEffects(deckId, {
+        type: "add",
+        effect: createDefaultEffectConfig(type, effectId, 0),
+      }),
     createEffectId: generateId,
     removeDeckEffect: (deckId, effectId) =>
-      removeChannelEffect("dj", deckId, effectId),
+      changeDeckEffects(deckId, { type: "remove", effectId }),
     reorderDeckEffects: (deckId, effectIds) =>
-      reorderChannelEffects("dj", deckId, effectIds),
+      changeDeckEffects(deckId, { type: "reorder", effectIds }),
     setDeckChannelFilter: (deckId, value) =>
       setChannelFilterValue("dj", deckId, value),
     setDeckEffectsDryWet: (deckId, value) =>
-      setChannelEffectsDryWet("dj", deckId, value),
+      changeDeckEffects(deckId, { type: "set-dry-wet", value }),
     setDeckMute: (deckId, muted) => ctx.channels.setMuted("dj", deckId, muted),
     setDeckPan: (deckId, pan) => ctx.channels.setPan("dj", deckId, pan),
     setDeckSpeed: (deckId, speed) => ctx.channels.setSpeed("dj", deckId, speed),
     setDeckVolume: (deckId, volume) =>
       ctx.channels.setVolume("dj", deckId, volume),
     updateDeckEffect: (deckId, effectId, effectConfig) =>
-      updateChannelEffect("dj", deckId, effectId, effectConfig),
+      changeDeckEffects(deckId, {
+        type: "update",
+        effectId,
+        patch: effectConfig,
+      }),
     updateDeckFilter: (deckId, filter) =>
       updateChannelFilter("dj", deckId, filter),
   };

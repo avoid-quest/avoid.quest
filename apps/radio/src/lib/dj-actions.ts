@@ -50,6 +50,7 @@ import {
   type DeckSourceLoadResult,
   getDeckLibrarySourceIntent,
 } from "@/lib/dj-library-sources.js";
+import { createDjOutputDeviceActions } from "@/lib/dj-output-device-actions.js";
 import { resolveDjPlatformStreamUrl } from "@/lib/dj-platform-stream-port.js";
 import {
   getDeckA,
@@ -128,27 +129,24 @@ function disableCueDecks(): void {
   }
 }
 
+function getOutputDeviceActions() {
+  return createDjOutputDeviceActions({
+    disableCueDecks,
+    reconcileSingleRouting: () =>
+      createManagedPlaybackSessionWorkflow("single").reconcileRouting(),
+    routing: getOutputRouting(),
+  });
+}
+
 export async function applyMainOutputDevice(deviceId: string): Promise<void> {
   subscribeToOutputErrors();
-  await Promise.all([
-    getOutputRouting()
-      .applyMainSettings({ mainOutputId: deviceId })
-      .then((state) => {
-        if (state.settings.cueOutputId === null) {
-          disableCueDecks();
-        }
-      }),
-    createManagedPlaybackSessionWorkflow("single").reconcileRouting(),
-  ]);
+  await getOutputDeviceActions().applyMainOutputDevice(deviceId);
 }
 
 export async function applyCueOutputDevice(
   deviceId: string | null
 ): Promise<void> {
-  await getOutputRouting().applySettings({ cueOutputId: deviceId });
-  if (deviceId === null) {
-    disableCueDecks();
-  }
+  await getOutputDeviceActions().applyCueOutputDevice(deviceId);
 }
 
 export async function applyCurrentAudioSettings(): Promise<void> {

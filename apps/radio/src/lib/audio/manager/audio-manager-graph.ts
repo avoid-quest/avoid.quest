@@ -3,7 +3,7 @@ import {
   type WorkletManager,
   type WorkletManagerEvents,
 } from "../playback/index.js";
-import { safeDisconnect } from "../utils.js";
+import { safeDisconnect, safeDisconnectFrom } from "../utils.js";
 import {
   type NotifySoundListeners,
   notifySoundError,
@@ -122,7 +122,7 @@ async function connectAudioGraph({
   instance.mainOutputCleanup?.();
   instance.mainOutputCleanup = null;
   safeDisconnect(sourceOutput, "AudioManager.connectAudioGraph");
-  safeDisconnect(preFaderSend, "AudioManager.connectAudioGraph");
+  safeDisconnectFrom(preFaderSend, gain, "AudioManager.connectAudioGraph");
   safeDisconnect(gain, "AudioManager.connectAudioGraph");
   safeDisconnect(pan, "AudioManager.connectAudioGraph");
   safeDisconnect(filter, "AudioManager.connectAudioGraph");

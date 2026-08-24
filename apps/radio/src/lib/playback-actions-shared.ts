@@ -42,7 +42,7 @@ export async function applyMainOutputDevice(
 ): Promise<void> {
   const router = getPlaybackOutputRouter(ctx);
   if (router) {
-    await router.applySettings({ mainOutputId: deviceId });
+    await router.applyMainSettings({ mainOutputId: deviceId });
   }
 }
 

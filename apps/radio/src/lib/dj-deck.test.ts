@@ -10,6 +10,7 @@ import {
   playbackSessionsCollection,
   updatePlaybackChannel,
 } from "@/lib/collections/playback-sessions";
+import { getDjError } from "@/lib/stores/dj-runtime-store";
 import { getPlaybackChannelRuntime } from "@/lib/stores/playback-runtime-store";
 import {
   type ChannelEffects,
@@ -291,6 +292,57 @@ describe("DjDeckModule", () => {
     expect(listener).toHaveBeenCalledTimes(2);
   });
 
+  test("keeps the active source generation when a replacement is rejected", async () => {
+    const audio = createAudioAdapter();
+    const module = createDjDeckModule({
+      audio,
+      context: createContext(),
+      effects: createEffects(),
+      output: createOutput(),
+      platform: createPlatform(),
+    });
+    const deck = module.deck("deck-a");
+    await deck.load({
+      type: "radio",
+      radio: {
+        id: "station-1",
+        name: "Station 1",
+        streamUrl: "https://radio.example/one.mp3",
+      },
+    });
+    audio.emit("left_station-1:1", {
+      isPlaying: true,
+      isLoading: false,
+      isBuffering: false,
+      volume: 1,
+      error: null,
+      hasEnded: false,
+    });
+
+    await deck.load({
+      type: "track-url",
+      radio: {
+        id: "unsafe",
+        name: "Unsafe",
+        streamUrl: "https://radio.example/safe.mp3",
+      },
+      streamUrl: "javascript:alert(1)",
+    });
+    audio.emit("left_station-1:1", {
+      isPlaying: false,
+      isLoading: false,
+      isBuffering: false,
+      volume: 1,
+      error: null,
+      hasEnded: false,
+    });
+
+    expect(getPlaybackChannelRuntime("deck-a")).toMatchObject({
+      soundId: "left_station-1:1",
+      isPlaying: false,
+    });
+  });
+
   test("replaces a Deck source as one persisted and runtime transaction", async () => {
     const audio = createAudioAdapter();
     const module = createDjDeckModule({
@@ -322,7 +374,50 @@ describe("DjDeckModule", () => {
     expect(audio.activeSounds).toEqual(new Set(["left_station-2:2"]));
   });
 
-  test("rolls back persisted and runtime state when source activation fails", async () => {
+  test("replaces a loading source when a track is requested", async () => {
+    const audio = createAudioAdapter();
+    const module = createDjDeckModule({
+      audio,
+      context: createContext(),
+      effects: createEffects(),
+      output: createOutput(),
+      platform: createPlatform(),
+    });
+    const deck = module.deck("deck-a");
+    await deck.load({
+      type: "radio",
+      radio: {
+        id: "station-1",
+        name: "Station 1",
+        streamUrl: "https://radio.example/one.mp3",
+      },
+    });
+    audio.emit("left_station-1:1", {
+      isPlaying: false,
+      isLoading: true,
+      isBuffering: false,
+      volume: 1,
+      error: null,
+      hasEnded: false,
+    });
+
+    await deck.load({
+      type: "track-url",
+      radio: {
+        id: "station-2",
+        name: "Station 2",
+        streamUrl: "https://radio.example/two.mp3",
+      },
+      streamUrl: "https://radio.example/two.mp3",
+    });
+
+    expect(getPlaybackChannel("dj", "deck-a")?.radio?.id).toBe("station-2");
+    expect(getPlaybackChannelRuntime("deck-a").soundId).toBe(
+      "left_station-2:2"
+    );
+  });
+
+  test("clears persisted and runtime state when source activation fails", async () => {
     const audio = createAudioAdapter();
     const module = createDjDeckModule({
       audio,
@@ -351,7 +446,7 @@ describe("DjDeckModule", () => {
       },
     });
 
-    expect(getPlaybackChannel("dj", "deck-a")?.radio).toEqual(previous);
+    expect(getPlaybackChannel("dj", "deck-a")?.radio).toBeNull();
     expect(getPlaybackChannelRuntime("deck-a").soundId).toBeNull();
     expect(audio.activeSounds).toEqual(new Set());
   });
@@ -595,6 +690,42 @@ describe("DjDeckModule", () => {
       expect.objectContaining({ muted: true, cueEnabled: true })
     );
     expect(output.registerCueDeck).toHaveBeenCalledWith("deck-a", tap, true);
+  });
+
+  test("reports a saved CUE output that cannot be restored", async () => {
+    const audio = createAudioAdapter();
+    const output = createOutput();
+    output.applySettings = mock(() =>
+      Promise.reject(new Error("Saved CUE output unavailable"))
+    );
+    const module = createDjDeckModule({
+      audio,
+      context: createContext(),
+      effects: createEffects(),
+      output,
+      platform: createPlatform(),
+    });
+    await module.deck("deck-a").load({
+      type: "radio",
+      radio: {
+        id: "station-1",
+        name: "Station 1",
+        streamUrl: "https://radio.example/one.mp3",
+      },
+    });
+
+    audio.emit("left_station-1:1", {
+      isPlaying: true,
+      isLoading: false,
+      isBuffering: false,
+      volume: 1,
+      error: null,
+      hasEnded: false,
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(getDjError()).toBe("Saved CUE output unavailable");
   });
 
   test("persists channel changes and reconciles the Effects tree", async () => {
@@ -1049,6 +1180,50 @@ describe("DjDeckModule", () => {
       "progressive"
     );
     expect(getPlaybackChannelRuntime("deck-a").error).toBeNull();
+  });
+
+  test("reports an interrupted provider stream that cannot be resolved", async () => {
+    const audio = createAudioAdapter();
+    const module = createDjDeckModule({
+      audio,
+      context: createContext(),
+      effects: createEffects(),
+      output: createOutput(),
+      platform: createPlatform(),
+    });
+    await module.deck("deck-a").load({
+      type: "radio",
+      radio: {
+        id: "yt-1",
+        name: "YouTube",
+        streamUrl: "https://radio.example/old.mp3",
+        platformMetadata: {
+          platform: "youtube",
+          itemType: "video",
+          url: "https://youtube.com/watch?v=abc",
+          videoId: "abc",
+        },
+      },
+    });
+
+    audio.emit("left_yt-1:1", {
+      isPlaying: false,
+      isLoading: false,
+      isBuffering: false,
+      volume: 1,
+      error: {
+        id: "error-1",
+        code: "STREAM_INTERRUPTED",
+        message: "expired",
+        position: 42,
+        timestamp: Date.now(),
+      },
+      hasEnded: false,
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(getDjError()).toBe("Failed to refresh stream - please reload");
   });
 
   test("deactivation releases Deck bindings, CUE, Effects, and file URLs", async () => {

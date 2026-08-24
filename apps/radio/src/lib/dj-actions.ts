@@ -10,7 +10,6 @@ import type { EffectConfig } from "@/lib/audio";
 import {
   type AudioManager,
   createAudioEngineFacade,
-  createDefaultEffectConfig,
   getAudioContext,
 } from "@/lib/audio";
 import { getAudioSettings } from "@/lib/collections/settings";

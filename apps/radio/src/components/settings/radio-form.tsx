@@ -13,10 +13,10 @@ import { CheckCircleIcon } from "lucide-react";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import type { Radio } from "@/lib/audio";
-import { radiosCollection } from "@/lib/collections";
-import { addRadio, updateRadio } from "@/lib/hooks/use-radios";
+import { updateRadio } from "@/lib/hooks/use-radios";
 import type { RadioMetadata } from "@/lib/platform-types";
 import { type RadioFormData, radioSchema } from "@/lib/schemas/radio-schema";
+import { stationIntake } from "@/lib/stations/external-station-workflow";
 import { RadioFieldPreview } from "./radio-field-preview";
 
 type RadioFormProps = {
@@ -63,7 +63,7 @@ const getAutoFilledFields = (scrapedData: RadioMetadata | null) => {
   };
 };
 
-const handleFormSubmit = (
+const handleFormSubmit = async (
   data: RadioFormData,
   mode: "create" | "edit",
   radio: Radio | undefined,
@@ -71,16 +71,14 @@ const handleFormSubmit = (
 ) => {
   try {
     if (mode === "create") {
-      // Get the maximum order value and add 1 for the new radio
-      const existingRadios = Array.from(radiosCollection.state.values());
-      const maxOrder = Math.max(...existingRadios.map((r) => r.order || 0), 0);
-
-      addRadio({
-        ...data,
-        order: maxOrder + 1,
-        enabled: true,
-        isSystem: false,
+      const result = await stationIntake.save({
+        fields: data,
+        origin: "manual",
       });
+      if (!result.ok) {
+        toast.error(result.error.message);
+        return;
+      }
       toast.success("Radio station created successfully");
     } else if (mode === "edit" && radio?.id) {
       updateRadio(String(radio.id), data);
@@ -120,9 +118,8 @@ export function RadioForm({
 
   const autoFilledFields = getAutoFilledFields(scrapedData ?? null);
 
-  const onSubmit = (data: RadioFormData) => {
+  const onSubmit = (data: RadioFormData) =>
     handleFormSubmit(data, mode, radio, onSuccess);
-  };
 
   return (
     <form className="space-y-4" onSubmit={form.handleSubmit(onSubmit)}>

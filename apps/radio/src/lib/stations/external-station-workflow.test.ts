@@ -1,384 +1,422 @@
 import { describe, expect, mock, test } from "bun:test";
-import type { RadioBrowserStation } from "@avoid.quest/platforms/radiobrowser";
+import type { Radio } from "@/lib/audio";
+import type { RadioRecord } from "@/lib/collections";
 import {
-  createExternalStationResolutionWorkflow,
-  createRadioBrowserRadio,
+  createStationIntake,
+  type StationIntakeDependencies,
 } from "./external-station-workflow";
 
-function createRadioBrowserStation(
-  overrides: Partial<RadioBrowserStation> = {}
-): RadioBrowserStation {
+function createHarness(options?: {
+  adapters?: StationIntakeDependencies["adapters"];
+  saved?: RadioRecord[];
+  session?: Radio[];
+}) {
+  const saved = [...(options?.saved ?? [])];
+  const session = [...(options?.session ?? [])];
+  const addSaved = mock((radio: Omit<RadioRecord, "id">) => {
+    saved.push({ id: `saved-${saved.length + 1}`, ...radio });
+  });
+  const addSession = mock((radio: Radio) => {
+    const index = session.findIndex((candidate) => candidate.id === radio.id);
+    if (index === -1) {
+      session.push(radio);
+    } else {
+      session[index] = radio;
+    }
+  });
+  const removeSession = mock((id: string | number) => {
+    const index = session.findIndex((radio) => radio.id === id);
+    if (index !== -1) {
+      session.splice(index, 1);
+    }
+  });
+
   return {
-    stationUuid: "station-uuid",
-    name: "Radio Browser Station",
-    url: "https://radio.example/live",
-    urlResolved: "https://cdn.radio.example/live.mp3",
-    homepage: "https://radio.example",
-    favicon: "https://radio.example/favicon.png",
-    country: "Italy",
-    state: "Lazio",
-    tags: ["electronic", "experimental"],
-    codec: "MP3",
-    bitrate: 192,
-    hls: false,
-    lastCheckOk: true,
-    lastCheckTime: "2026-07-10T00:00:00Z",
-    ...overrides,
+    addSaved,
+    addSession,
+    intake: createStationIntake({
+      adapters: options?.adapters ?? {},
+      saved: {
+        add: addSaved,
+        getAll: () => saved,
+      },
+      session: {
+        add: addSession,
+        getAll: () => session,
+        remove: removeSession,
+      },
+    }),
+    removeSession,
+    saved,
+    session,
   };
 }
 
-describe("createRadioBrowserRadio", () => {
-  test("maps a station to a stable direct-playback radio", () => {
-    const radio = createRadioBrowserRadio(
-      createRadioBrowserStation({
-        stationUuid: " stable-uuid ",
-        name: " Browser Radio ",
-        url: " https://radio.example/canonical ",
-        urlResolved: " https://cdn.radio.example/resolved.mp3 ",
-        homepage: " https://radio.example ",
-        favicon: " https://radio.example/logo.png ",
-        country: " Italy ",
-        state: " Lazio ",
-        tags: ["electronic", "experimental"],
-      })
-    );
+describe("createStationIntake", () => {
+  test("rejects invalid candidates without changing Saved or Session stations", async () => {
+    const harness = createHarness();
 
-    expect(radio).toEqual({
-      id: "rb_stable-uuid",
-      name: "Browser Radio",
-      streamUrl: "https://cdn.radio.example/resolved.mp3",
-      logoUrl: "https://radio.example/logo.png",
-      description: "electronic, experimental",
-      websiteUrl: "https://radio.example",
-      placeTitle: "Lazio",
-      countryTitle: "Italy",
-      enabled: true,
-      isSystem: false,
-      platformMetadata: {
-        platform: "radio-browser",
-        itemType: "station",
-        url: "https://radio.example/canonical",
-        stationUuid: "stable-uuid",
-        hls: false,
+    const result = await harness.intake.prepare({
+      fields: {
+        name: "   ",
+        streamUrl: "not a URL",
       },
+      origin: "manual",
+    });
+
+    expect(result).toEqual({
+      error: {
+        code: "INVALID_STATION_CANDIDATE",
+        message: "Name and Stream URL are required",
+      },
+      ok: false,
+    });
+    expect(harness.saved).toEqual([]);
+    expect(harness.session).toEqual([]);
+  });
+
+  test("rejects malformed stream URLs", async () => {
+    const harness = createHarness();
+
+    const result = await harness.intake.prepare({
+      fields: {
+        name: "Invalid stream",
+        streamUrl: "not a URL",
+      },
+      origin: "website",
+    });
+
+    expect(result).toEqual({
+      error: {
+        code: "INVALID_STATION_CANDIDATE",
+        message: "Stream URL must be a valid URL",
+      },
+      ok: false,
     });
   });
 
-  test("falls back to the canonical station URL when no resolved URL exists", () => {
-    const radio = createRadioBrowserRadio(
-      createRadioBrowserStation({
-        url: "https://radio.example/canonical",
-        urlResolved: "",
-      })
-    );
+  test("creates a normalized Session station from unified discovery", async () => {
+    const harness = createHarness();
 
-    expect(radio.streamUrl).toBe("https://radio.example/canonical");
-    expect(radio.platformMetadata?.url).toBe("https://radio.example/canonical");
+    const result = await harness.intake.createSession({
+      origin: "discovery",
+      radio: {
+        description: "  Local station  ",
+        id: "rb_station-1",
+        name: "  Browser Radio  ",
+        platformMetadata: {
+          hls: false,
+          itemType: "station",
+          platform: "radio-browser",
+          stationUuid: " station-1 ",
+          url: " https://radio.example/live ",
+        },
+        streamUrl: " https://cdn.radio.example/live.mp3 ",
+      },
+    });
+
+    expect(result).toEqual({
+      data: {
+        radio: {
+          description: "Local station",
+          enabled: true,
+          id: "rb_station-1",
+          isSystem: false,
+          name: "Browser Radio",
+          platformMetadata: {
+            hls: false,
+            itemType: "station",
+            platform: "radio-browser",
+            stationUuid: "station-1",
+            url: "https://radio.example/live",
+          },
+          streamUrl: "https://cdn.radio.example/live.mp3",
+        },
+      },
+      ok: true,
+    });
+    if (result.ok) {
+      expect(harness.session).toEqual([result.data.radio]);
+    }
+    expect(harness.saved).toEqual([]);
   });
 
-  test("persists the resolved URL when the canonical URL is missing", () => {
-    const radio = createRadioBrowserRadio(
-      createRadioBrowserStation({
-        url: "",
-        urlResolved: "https://radio.example/resolved.mp3",
-      })
-    );
+  test("replaces a Session station with the same provider identity", async () => {
+    const harness = createHarness({
+      session: [
+        {
+          id: "rb_station-1",
+          name: "Old name",
+          platformMetadata: {
+            hls: false,
+            itemType: "station",
+            platform: "radio-browser",
+            stationUuid: "station-1",
+            url: "https://radio.example/live",
+          },
+          streamUrl: "https://cdn.radio.example/old.mp3",
+        },
+      ],
+    });
 
-    expect(radio.streamUrl).toBe("https://radio.example/resolved.mp3");
-    expect(radio.platformMetadata?.url).toBe(
-      "https://radio.example/resolved.mp3"
-    );
+    await harness.intake.createSession({
+      origin: "discovery",
+      radio: {
+        id: "caller-provided-id",
+        name: "Fresh name",
+        platformMetadata: {
+          hls: false,
+          itemType: "station",
+          platform: "radio-browser",
+          stationUuid: "station-1",
+          url: "https://radio.example/live",
+        },
+        streamUrl: "https://cdn.radio.example/new.mp3",
+      },
+    });
+
+    expect(harness.session).toHaveLength(1);
+    expect(harness.session[0]).toMatchObject({
+      id: "rb_station-1",
+      name: "Fresh name",
+      streamUrl: "https://cdn.radio.example/new.mp3",
+    });
   });
 
-  test("does not repeat the country as the station location", () => {
-    const radio = createRadioBrowserRadio(
-      createRadioBrowserStation({ country: "Italy", state: "italy" })
-    );
+  test("saves a normalized Station at the next Saved station order", async () => {
+    const harness = createHarness({
+      saved: [
+        {
+          enabled: true,
+          id: "saved-1",
+          isSystem: false,
+          name: "First",
+          order: 2,
+          streamUrl: "https://radio.example/first",
+        },
+        {
+          enabled: true,
+          id: "saved-2",
+          isSystem: false,
+          name: "Second",
+          order: 6,
+          streamUrl: "https://radio.example/second",
+        },
+      ],
+    });
 
-    expect(radio.placeTitle).toBeUndefined();
-    expect(radio.countryTitle).toBe("Italy");
+    const result = await harness.intake.save({
+      fields: {
+        description: "  New station  ",
+        name: "  New Radio  ",
+        streamUrl: " https://radio.example/new ",
+      },
+      origin: "manual",
+    });
+
+    expect(result).toEqual({
+      data: {
+        order: 7,
+        radio: {
+          description: "New station",
+          enabled: true,
+          isSystem: false,
+          name: "New Radio",
+          streamUrl: "https://radio.example/new",
+        },
+      },
+      ok: true,
+    });
+    expect(harness.saved.at(-1)).toMatchObject({
+      name: "New Radio",
+      order: 7,
+      streamUrl: "https://radio.example/new",
+    });
   });
-});
 
-describe("createExternalStationResolutionWorkflow", () => {
-  test("resolves Radio Garden results into session-only radios", async () => {
-    const sessionRadios: unknown[] = [];
+  test("makes repeated saves idempotent by normalized stream identity", async () => {
+    const harness = createHarness();
+
+    await harness.intake.save({
+      fields: {
+        name: "First name",
+        streamUrl: "https://radio.example/live/",
+      },
+      origin: "manual",
+    });
+    await harness.intake.save({
+      fields: {
+        name: "Repeated name",
+        streamUrl: "https://radio.example/live/#now-playing",
+      },
+      origin: "website",
+    });
+
+    expect(harness.addSaved).toHaveBeenCalledTimes(1);
+    expect(harness.saved).toHaveLength(1);
+    expect(harness.saved[0]?.name).toBe("First name");
+  });
+
+  test("promotes the matching Session station and removes it after saving", async () => {
+    const harness = createHarness({
+      saved: [
+        {
+          enabled: true,
+          id: "saved-1",
+          isSystem: false,
+          name: "Saved",
+          order: 4,
+          streamUrl: "https://radio.example/saved",
+        },
+      ],
+      session: [
+        {
+          id: "rb_station-1",
+          name: "Fresh Session station",
+          platformMetadata: {
+            hls: false,
+            itemType: "station",
+            platform: "radio-browser",
+            stationUuid: "station-1",
+            url: "https://radio.example/canonical",
+          },
+          streamUrl: "https://radio.example/fresh",
+        },
+      ],
+    });
+
+    const result = await harness.intake.save({
+      origin: "discovery",
+      radio: {
+        id: "rb_station-1",
+        name: "Directory result",
+        platformMetadata: {
+          hls: false,
+          itemType: "station",
+          platform: "radio-browser",
+          stationUuid: "station-1",
+          url: "https://radio.example/canonical",
+        },
+        streamUrl: "https://radio.example/stale",
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(harness.saved.at(-1)).toMatchObject({
+      name: "Fresh Session station",
+      order: 5,
+      streamUrl: "https://radio.example/fresh",
+    });
+    expect(harness.session).toEqual([]);
+    expect(harness.removeSession).toHaveBeenCalledWith("rb_station-1");
+  });
+
+  test("resolves and prepares a Radio Garden candidate", async () => {
     const resolveStream = mock(() =>
       Promise.resolve({
-        ok: true as const,
         data: {
           format: "hls" as const,
-          streamUrl: "https://stream.example/extensionless",
+          streamUrl: " https://stream.example/live ",
         },
+        ok: true as const,
       })
     );
-    const workflow = createExternalStationResolutionWorkflow({
-      adapters: {
-        radioGarden: {
-          resolveStream,
-        },
-      },
-      collection: {
-        addSavedRadio: mock(() => undefined),
-        getSavedRadios: () => [],
-      },
-      session: {
-        addSessionRadio: (radio) => sessionRadios.push(radio),
-        getSessionRadios: () => [],
-        removeSessionRadio: mock(() => undefined),
-      },
+    const harness = createHarness({
+      adapters: { radioGarden: { resolveStream } },
     });
 
-    const result = await workflow.resolveRadioGardenToSession({
-      channelId: "rg1",
-      title: " Garden Radio ",
-      subtitle: "Live",
-      url: "https://radio.garden/listen/garden/rg1",
-      placeTitle: "Tokyo",
-      countryTitle: "Japan",
-      website: " https://radio.example ",
+    const result = await harness.intake.prepare({
+      name: "  Edited Garden  ",
+      origin: "radio-garden",
+      result: {
+        channelId: "garden-1",
+        countryTitle: "Italy",
+        placeTitle: "Rome",
+        subtitle: "Live",
+        title: "Garden",
+        url: "https://radio.garden/listen/garden/garden-1",
+        website: "https://garden.example",
+      },
     });
 
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.data.radio).toMatchObject({
-        id: "rg_rg1",
-        name: "Garden Radio",
+        id: "rg_garden-1",
+        name: "Edited Garden",
         streamFormat: "hls",
-        streamUrl: "https://stream.example/extensionless",
+        streamUrl: "https://stream.example/live",
       });
     }
-    expect(sessionRadios).toHaveLength(1);
     expect(resolveStream).toHaveBeenCalledWith(
-      "rg1",
-      "https://radio.garden/listen/garden/rg1"
+      "garden-1",
+      "https://radio.garden/listen/garden/garden-1"
     );
   });
 
-  test("saves existing session-only Radio Garden radios with ordering and cleanup", async () => {
-    const saved: unknown[] = [];
-    const removed: unknown[] = [];
-    const sessionRadio = {
-      id: "rg_rg1",
-      name: " Session Garden ",
-      streamUrl: " https://stream.example/garden.mp3 ",
-      description: " ",
-      enabled: true,
-      platformMetadata: {
-        platform: "radiogarden" as const,
-        itemType: "channel" as const,
-        url: " https://radio.garden/listen/garden/rg1 ",
-        channelId: "rg1",
-        name: " Session Garden ",
-        subtitle: " ",
-        placeTitle: " Tokyo ",
-        countryTitle: " Japan ",
-        website: " ",
-      },
-    };
-    const workflow = createExternalStationResolutionWorkflow({
-      adapters: {
-        radioGarden: {
-          resolveStream: mock(() =>
-            Promise.reject(new Error("radio garden should not resolve again"))
-          ),
-        },
-      },
-      collection: {
-        addSavedRadio: (radio) => saved.push(radio),
-        getSavedRadios: () => [{ order: 2 }, { order: 6 }],
-      },
-      session: {
-        addSessionRadio: mock(() => undefined),
-        getSessionRadios: () => [sessionRadio],
-        removeSessionRadio: (id) => removed.push(id),
+  test("prepares a Radio Browser candidate with canonical identity", async () => {
+    const harness = createHarness();
+
+    const result = await harness.intake.prepare({
+      origin: "radio-browser",
+      station: {
+        bitrate: 192,
+        codec: "MP3",
+        country: " Italy ",
+        favicon: " https://radio.example/logo.png ",
+        hls: false,
+        homepage: " https://radio.example ",
+        lastCheckOk: true,
+        lastCheckTime: "2026-08-24T00:00:00Z",
+        name: " Browser Radio ",
+        state: " Lazio ",
+        stationUuid: " station-1 ",
+        tags: ["electronic"],
+        url: " https://radio.example/live ",
+        urlResolved: " https://cdn.radio.example/live.mp3 ",
       },
     });
-
-    const result = await workflow.resolveRadioGardenToCollection({
-      channelId: "rg1",
-      title: "Garden Radio",
-      subtitle: "Live",
-      url: "https://radio.garden/listen/garden/rg1",
-      placeTitle: "Tokyo",
-      countryTitle: "Japan",
-      website: "https://radio.example",
-    });
-
-    expect(result).toEqual({
-      ok: true,
-      data: {
-        order: 7,
-        radio: sessionRadio,
-        removedSessionRadioId: "rg_rg1",
-      },
-    });
-    expect(saved).toEqual([
-      {
-        countryTitle: undefined,
-        description: undefined,
-        enabled: true,
-        isSystem: false,
-        logoUrl: undefined,
-        name: "Session Garden",
-        order: 7,
-        placeTitle: undefined,
-        platformMetadata: {
-          platform: "radiogarden",
-          itemType: "channel",
-          url: "https://radio.garden/listen/garden/rg1",
-          channelId: "rg1",
-          name: "Session Garden",
-          placeTitle: "Tokyo",
-          countryTitle: "Japan",
-        },
-        streamUrl: "https://stream.example/garden.mp3",
-        websiteUrl: undefined,
-      },
-    ]);
-    expect(removed).toEqual(["rg_rg1"]);
-  });
-
-  test("resolves Radio Garden results directly into saved radios when no session radio exists", async () => {
-    const saved: unknown[] = [];
-    const workflow = createExternalStationResolutionWorkflow({
-      adapters: {
-        radioGarden: {
-          resolveStream: mock(() =>
-            Promise.resolve({
-              ok: true as const,
-              data: {
-                format: "hls" as const,
-                streamUrl: "https://stream.example/extensionless",
-              },
-            })
-          ),
-        },
-      },
-      collection: {
-        addSavedRadio: (radio) => saved.push(radio),
-        getSavedRadios: () => [{ order: 4 }],
-      },
-      session: {
-        addSessionRadio: mock(() => undefined),
-        getSessionRadios: () => [],
-        removeSessionRadio: mock(() => undefined),
-      },
-    });
-
-    const result = await workflow.resolveRadioGardenToCollection(
-      {
-        channelId: "rg1",
-        title: "Garden Radio",
-        subtitle: "Live",
-        url: "https://radio.garden/listen/garden/rg1",
-        placeTitle: "Tokyo",
-        countryTitle: "Japan",
-        website: "https://radio.example",
-      },
-      { name: " Saved Garden " }
-    );
 
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.data.order).toBe(5);
-      expect(result.data.removedSessionRadioId).toBeUndefined();
+      expect(result.data.radio).toMatchObject({
+        id: "rb_station-1",
+        name: "Browser Radio",
+        streamUrl: "https://cdn.radio.example/live.mp3",
+      });
     }
-    expect(saved).toHaveLength(1);
-    expect(saved[0]).toMatchObject({
-      streamFormat: "hls",
-      streamUrl: "https://stream.example/extensionless",
-    });
   });
 
-  test("resolves platform URLs into playable radios and preserves provider failures", async () => {
-    const workflow = createExternalStationResolutionWorkflow({
-      adapters: {
-        platform: {
-          resolve: mock((url: string) => {
-            if (url.includes("missing")) {
-              return Promise.resolve({
-                ok: false as const,
-                error: {
-                  code: "PLATFORM_ITEM_LOAD_FAILED",
-                  message: "Failed to load platform item",
-                },
-              });
-            }
-            return Promise.resolve({
-              ok: true as const,
-              data: {
-                streamUrl: "https://stream.example/track.mp3",
-                metadata: {
-                  platform: "soundcloud" as const,
-                  itemType: "track" as const,
-                  url,
-                  name: "Example Track",
-                  artist: "Example Artist",
-                },
-              },
-            });
-          }),
-        },
+  test("keeps the Session station when promotion cannot save", async () => {
+    const sessionRadio = {
+      id: "rg_garden-1",
+      name: "Garden",
+      platformMetadata: {
+        channelId: "garden-1",
+        itemType: "channel" as const,
+        platform: "radiogarden" as const,
+        url: "https://radio.garden/listen/garden/garden-1",
       },
-      collection: {
-        addSavedRadio: mock(() => undefined),
-        getSavedRadios: () => [],
-      },
-    });
-
-    const loaded = await workflow.resolvePlatformUrl(
-      " https://soundcloud.com/example/track "
-    );
-    const failed = await workflow.resolvePlatformUrl(
-      "https://soundcloud.com/missing"
-    );
-
-    expect(loaded.ok).toBe(true);
-    if (loaded.ok) {
-      expect(loaded.data.radio.name).toBe("Example Track");
-      expect(loaded.data.radio.platformMetadata?.platform).toBe("soundcloud");
-    }
-    expect(failed).toEqual({
-      ok: false,
-      error: {
-        code: "PLATFORM_ITEM_LOAD_FAILED",
-        message: "Failed to load platform item",
-      },
-    });
-  });
-
-  test("saveRadioToCollection removes a session radio when the workflow has session cleanup", () => {
-    const saved: unknown[] = [];
-    const removed: unknown[] = [];
-    const workflow = createExternalStationResolutionWorkflow({
-      adapters: {},
-      collection: {
-        addSavedRadio: (radio) => saved.push(radio),
-        getSavedRadios: () => [],
-      },
-      session: {
-        addSessionRadio: mock(() => undefined),
-        getSessionRadios: () => [],
-        removeSessionRadio: (id) => removed.push(id),
-      },
-    });
-
-    const radio = {
-      id: "rg_rg1",
-      name: "Garden Radio",
-      streamUrl: "https://stream.example/garden.mp3",
+      streamUrl: "https://stream.example/live",
     };
-    const result = workflow.saveRadioToCollection(radio, {
-      removeSessionRadioId: "rg_rg1",
+    const harness = createHarness({ session: [sessionRadio] });
+    harness.addSaved.mockImplementationOnce(() => {
+      throw new Error("Storage unavailable");
+    });
+
+    const result = await harness.intake.save({
+      origin: "discovery",
+      radio: sessionRadio,
     });
 
     expect(result).toEqual({
-      order: 1,
-      radio,
-      removedSessionRadioId: "rg_rg1",
+      error: {
+        code: "SAVED_STATION_SAVE_FAILED",
+        message: "Storage unavailable",
+      },
+      ok: false,
     });
-    expect(saved).toHaveLength(1);
-    expect(removed).toEqual(["rg_rg1"]);
+    expect(harness.session).toEqual([sessionRadio]);
+    expect(harness.removeSession).not.toHaveBeenCalled();
   });
 });

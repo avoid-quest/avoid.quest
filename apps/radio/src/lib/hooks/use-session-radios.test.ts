@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { saveResolvedStationToCollection } from "@/lib/stations/external-station-workflow";
 import {
   addSessionRadio,
   getSessionRadios,
@@ -214,28 +213,5 @@ describe("session radios", () => {
       "rg_new",
       "rg_restored",
     ]);
-  });
-
-  test("saving a resolved session radio removes its temporary session entry", async () => {
-    await sessionRadiosCollection.stateWhenReady();
-
-    const radio = {
-      id: "rg_station",
-      name: "Station",
-      streamUrl: "https://radio.example/station.mp3",
-    };
-
-    addSessionRadio(radio);
-    saveResolvedStationToCollection(
-      radio,
-      {
-        addSavedRadio: () => undefined,
-        getSavedRadios: () => [],
-        removeSessionRadio,
-      },
-      { removeSessionRadioId: radio.id }
-    );
-
-    expect(getSessionRadios()).toEqual([]);
   });
 });

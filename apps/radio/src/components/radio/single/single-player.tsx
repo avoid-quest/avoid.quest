@@ -5,10 +5,7 @@ import type { Radio } from "@/lib/audio";
 import { useDiscoveredStationActions } from "@/lib/hooks/use-discovered-station-actions";
 import { useMediaSession } from "@/lib/hooks/use-media-session";
 import { useRadioMetadata } from "@/lib/hooks/use-radio-metadata";
-import {
-  addRadio as addRadioToCollection,
-  deleteRadio,
-} from "@/lib/hooks/use-radios";
+import { deleteRadio } from "@/lib/hooks/use-radios";
 import {
   isSessionRadio,
   useSessionRadios,
@@ -96,17 +93,7 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
   };
 
   const handleSaveSessionRadio = (radio: Radio) => {
-    const { id: _id, ...radioData } = radio;
-    addRadioToCollection({
-      ...radioData,
-      order: 0,
-      enabled: true,
-      isSystem: false,
-    });
-    if (radio.id) {
-      removeSessionRadio(radio.id);
-    }
-    toast.success(`Saved "${radio.name}" to collection`);
+    saveDiscoveredStation(radio);
   };
 
   const confirmDelete = () => {

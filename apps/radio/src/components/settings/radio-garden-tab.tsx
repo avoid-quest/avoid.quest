@@ -13,11 +13,9 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { radiosCollection } from "@/lib/collections";
-import { addRadio } from "@/lib/hooks/use-radios";
 import { searchRadioGarden } from "@/lib/platform-client";
 import type { RadioGardenSearchResult } from "@/lib/platform-types";
-import { createExternalStationResolutionWorkflow } from "@/lib/stations/external-station-workflow";
+import { createBrowserStationIntake } from "@/lib/stations/external-station-workflow";
 import { resolveRadioGardenStreamForWorkflow } from "@/lib/stations/radio-garden-resolve-adapter";
 
 type RadioGardenTabProps = {
@@ -32,15 +30,9 @@ export function RadioGardenTab({ onSuccess }: RadioGardenTabProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editedName, setEditedName] = useState("");
   const [isAdding, setIsAdding] = useState(false);
-  const workflow = createExternalStationResolutionWorkflow({
-    adapters: {
-      radioGarden: {
-        resolveStream: resolveRadioGardenStreamForWorkflow,
-      },
-    },
-    collection: {
-      addSavedRadio: addRadio,
-      getSavedRadios: () => radiosCollection.state.values(),
+  const stationIntake = createBrowserStationIntake({
+    radioGarden: {
+      resolveStream: resolveRadioGardenStreamForWorkflow,
     },
   });
 
@@ -87,8 +79,10 @@ export function RadioGardenTab({ onSuccess }: RadioGardenTabProps) {
   const handleAdd = async (result: RadioGardenSearchResult) => {
     setIsAdding(true);
     try {
-      const resolved = await workflow.resolveRadioGardenToCollection(result, {
+      const resolved = await stationIntake.save({
         name: editedName || result.title,
+        origin: "radio-garden",
+        result,
       });
 
       if (!resolved.ok) {

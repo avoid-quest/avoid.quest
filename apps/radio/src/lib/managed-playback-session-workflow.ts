@@ -368,6 +368,7 @@ function getSingleSelectionChannel(): PlaybackChannelRecord | null {
 
 async function selectSingleRadio(
   radio: Radio,
+  shouldPlay: boolean,
   ctx: PlaybackActionContext,
   signal: AbortSignal
 ): Promise<void> {
@@ -380,8 +381,6 @@ async function selectSingleRadio(
   if (!channel || isSameRadio(channel.radio, radio)) {
     return;
   }
-  const runtime = getPlaybackChannelRuntime(channel.id);
-  const shouldPlay = runtime.isPlaying;
 
   cleanupManagedChannel(channel.id, ctx);
   upsertPlaybackChannel("single", { ...channel, radio });
@@ -514,8 +513,12 @@ export function createManagedPlaybackSessionWorkflow(
       if (sessionId !== "single" || !singleSelection) {
         throw new Error("Radio selection is only supported in single mode");
       }
+      const channel = getSingleSelectionChannel();
+      const shouldPlay = channel
+        ? getPlaybackChannelRuntime(channel.id).isPlaying
+        : false;
       return singleSelection.run((signal) =>
-        selectSingleRadio(radio, ctx, signal)
+        selectSingleRadio(radio, shouldPlay, ctx, signal)
       );
     },
     setPlaying(playing, channelId) {

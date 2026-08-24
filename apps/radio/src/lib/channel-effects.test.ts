@@ -333,9 +333,16 @@ describe("ChannelEffects", () => {
     const zeroGainGate = createDefaultEffectConfig("gate", "zero-gain-gate", 0);
     zeroGainGate.enabled = true;
     zeroGainGate.sidechain = { channelId: "deck-a" };
-    const soloGate = createDefaultEffectConfig("gate", "solo-gate", 0);
-    soloGate.enabled = true;
-    soloGate.sidechain = { channelId: "deck-b" };
+    const negativeGainGate = createDefaultEffectConfig(
+      "gate",
+      "negative-gain-gate",
+      0
+    );
+    negativeGainGate.enabled = true;
+    negativeGainGate.sidechain = { channelId: "deck-b" };
+    const audibleGate = createDefaultEffectConfig("gate", "audible-gate", 0);
+    audibleGate.enabled = true;
+    audibleGate.sidechain = { channelId: "deck-a" };
     root.chains = [
       {
         ...template,
@@ -360,10 +367,18 @@ describe("ChannelEffects", () => {
       },
       {
         ...template,
-        id: "solo",
+        id: "negative-gain",
         order: 3,
         solo: true,
-        effects: [soloGate],
+        gain: -1,
+        effects: [negativeGainGate],
+      },
+      {
+        ...template,
+        id: "audible",
+        order: 4,
+        solo: true,
+        effects: [audibleGate],
       },
     ];
     await effects.change(

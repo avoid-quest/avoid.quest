@@ -100,7 +100,7 @@ function findSidechainChannelId(tree: readonly EffectConfig[]): string | null {
       const hasSolo = effect.chains.some((chain) => chain.solo);
       const nested = findSidechainChannelId(
         effect.chains.flatMap((chain) =>
-          chain.gain > 0 && !chain.muted && (!hasSolo || chain.solo)
+          chain.gain !== 0 && !chain.muted && (!hasSolo || chain.solo)
             ? chain.effects
             : []
         )

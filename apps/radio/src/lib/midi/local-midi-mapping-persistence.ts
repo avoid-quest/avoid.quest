@@ -11,19 +11,23 @@ export function createLocalMidiMappingPersistence(): MidiMappingPersistence {
       if (typeof localStorage === "undefined") {
         return null;
       }
-      const value = localStorage.getItem(MIDI_MAPPING_STORAGE_KEY);
-      if (!value) {
-        return null;
-      }
       try {
+        const value = localStorage.getItem(MIDI_MAPPING_STORAGE_KEY);
+        if (!value) {
+          return null;
+        }
         return JSON.parse(value) as PersistedMidiControl;
       } catch {
         return null;
       }
     },
     write(value) {
-      if (typeof localStorage !== "undefined") {
-        localStorage.setItem(MIDI_MAPPING_STORAGE_KEY, JSON.stringify(value));
+      try {
+        if (typeof localStorage !== "undefined") {
+          localStorage.setItem(MIDI_MAPPING_STORAGE_KEY, JSON.stringify(value));
+        }
+      } catch {
+        // Mapping updates remain usable when browser storage is unavailable.
       }
     },
   };

@@ -1094,6 +1094,19 @@ describe("MidiControl", () => {
     expect(persistence.value?.version).toBe(2);
   });
 
+  test("starts without mappings when version-one storage has a malformed mapping list", () => {
+    const control = createMidiControl({
+      browser: unsupportedBrowser,
+      persistence: new MemoryPersistence({
+        state: { activePresetId: null, enabled: true, mappings: {} },
+        version: 1,
+      } as unknown as PersistedMidiControl),
+      staticActions: [],
+    });
+
+    expect(control.getSnapshot().mappings).toEqual([]);
+  });
+
   test("owns permission observation for its application lifetime", () => {
     const browser = new FakeBrowser();
     const control = createMidiControl({

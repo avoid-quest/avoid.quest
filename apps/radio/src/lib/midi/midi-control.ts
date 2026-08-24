@@ -170,7 +170,9 @@ function migratePersistedControl(
     return stored;
   }
   const mappings = (
-    stored.state.mappings as unknown as Record<string, unknown>[]
+    Array.isArray(stored.state.mappings)
+      ? (stored.state.mappings as unknown as Record<string, unknown>[])
+      : []
   )
     .map((mapping) => {
       const legacyId = String(mapping.actionId ?? mapping.targetId ?? "");

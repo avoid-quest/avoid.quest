@@ -8,10 +8,7 @@ import {
   type RadioGardenSearchCandidate,
   searchRadioGarden,
 } from "@/lib/platform-client";
-import {
-  createRadioBrowserRadio,
-  createRadioGardenRadio,
-} from "./external-station-workflow";
+import { stationIntake } from "./external-station-workflow";
 import {
   createStationDiscovery,
   type StationDiscoveryAdapters,
@@ -42,10 +39,17 @@ function stopWaitingOnAbort<T>(
   });
 }
 
-function toRadioBrowserCandidate(
+async function toRadioBrowserCandidate(
   station: RadioBrowserStation
-): StationDiscoveryCandidate {
-  const radio = createRadioBrowserRadio(station);
+): Promise<StationDiscoveryCandidate | null> {
+  const prepared = await stationIntake.prepare({
+    origin: "radio-browser",
+    station,
+  });
+  if (!prepared.ok) {
+    return null;
+  }
+  const { radio } = prepared.data;
   return {
     country: station.country || undefined,
     description: station.tags.slice(0, 3).join(", ") || undefined,
@@ -57,10 +61,18 @@ function toRadioBrowserCandidate(
   };
 }
 
-function toRadioGardenCandidate(
+async function toRadioGardenCandidate(
   result: RadioGardenSearchCandidate
-): StationDiscoveryCandidate {
-  const radio = createRadioGardenRadio(result, result.streamUrl);
+): Promise<StationDiscoveryCandidate | null> {
+  const prepared = await stationIntake.prepare({
+    origin: "radio-garden",
+    resolved: { streamUrl: result.streamUrl },
+    result,
+  });
+  if (!prepared.ok) {
+    return null;
+  }
+  const { radio } = prepared.data;
   return {
     country: radio.countryTitle,
     description: radio.description,
@@ -93,19 +105,33 @@ function radioGardenSearchCandidate(
 
 export const productionStationDiscoveryAdapters: StationDiscoveryAdapters = {
   radioBrowser: {
-    search: async (query, { limit, signal }) =>
-      (
-        await searchRadioBrowser(query, {
-          limit,
-          signal,
-        })
-      ).map(toRadioBrowserCandidate),
+    search: async (query, { limit, signal }) => {
+      const candidates = await Promise.all(
+        (
+          await searchRadioBrowser(query, {
+            limit,
+            signal,
+          })
+        ).map(toRadioBrowserCandidate)
+      );
+      return candidates.filter(
+        (candidate): candidate is StationDiscoveryCandidate =>
+          candidate !== null
+      );
+    },
   },
   radioGarden: {
-    search: async (query, { limit, signal }) =>
-      (await stopWaitingOnAbort(searchRadioGarden(query), signal))
-        .slice(0, limit)
-        .map(toRadioGardenCandidate),
+    search: async (query, { limit, signal }) => {
+      const candidates = await Promise.all(
+        (await stopWaitingOnAbort(searchRadioGarden(query), signal))
+          .slice(0, limit)
+          .map(toRadioGardenCandidate)
+      );
+      return candidates.filter(
+        (candidate): candidate is StationDiscoveryCandidate =>
+          candidate !== null
+      );
+    },
   },
   streamProbe: {
     prepare: async (candidate, signal) => {
@@ -118,13 +144,20 @@ export const productionStationDiscoveryAdapters: StationDiscoveryAdapters = {
           searchCandidate,
           signal
         );
-        return {
-          ...candidate,
-          radio: {
-            ...candidate.radio,
-            ...(prepared.format ? { streamFormat: prepared.format } : {}),
+        const station = await stationIntake.prepare({
+          origin: "radio-garden",
+          resolved: {
+            ...(prepared.format ? { format: prepared.format } : {}),
             streamUrl: prepared.streamUrl,
           },
+          result: searchCandidate,
+        });
+        if (!station.ok) {
+          return null;
+        }
+        return {
+          ...candidate,
+          radio: station.data.radio,
         };
       }
 

@@ -247,6 +247,29 @@ describe("OutputRouting", () => {
     expect(browser.cueSinkCreations).toEqual([]);
   });
 
+  test("replays main-only settings after a synchronous graph replacement", async () => {
+    const { browser, persistence, routing } = setup({
+      cueDelayMs: 25,
+      cueOutputId: "invalid-headphones",
+      mainDelayMs: 80,
+      mainOutputId: "speakers",
+    });
+    const firstSink = browser.deferNextMainSink();
+    const replaySink = browser.deferNextMainSink();
+    const applying = routing.applyMainSettings();
+
+    browser.context = { id: "context-2" } as unknown as AudioContext;
+    routing.getMainOutput(browser.context);
+    firstSink.resolve();
+    replaySink.resolve();
+    await applying;
+
+    expect(browser.graphs[1]?.mainDelayMs).toBe(80);
+    expect(browser.mainSinkChanges).toEqual(["speakers", "speakers"]);
+    expect(browser.cueSinkCreations).toEqual([]);
+    expect(persistence.writes).toEqual([]);
+  });
+
   test("rolls back main output when CUE application fails", async () => {
     const { browser, persistence, routing } = setup();
     await routing.applySettings({
@@ -366,6 +389,52 @@ describe("OutputRouting", () => {
     expect(browser.cueSinkDisposals).toEqual(["headphones"]);
   });
 
+  test("queues context replacement behind a deferred settings transaction", async () => {
+    const { browser, persistence, routing } = setup();
+    const firstSink = browser.deferNextMainSink();
+    const replaySink = browser.deferNextMainSink();
+    const applying = routing.applySettings({
+      mainDelayMs: 90,
+      mainOutputId: "speakers",
+    });
+
+    browser.context = { id: "context-2" } as unknown as AudioContext;
+    const replacing = routing.replaceContext(browser.context);
+
+    expect(browser.graphs).toHaveLength(1);
+    firstSink.resolve();
+    replaySink.resolve();
+    await Promise.all([applying, replacing]);
+
+    expect(browser.graphs).toHaveLength(2);
+    expect(browser.graphs[0]?.disposed).toBe(true);
+    expect(browser.graphs[1]?.mainDelayMs).toBe(90);
+    expect(browser.mainSinkChanges).toEqual(["speakers", "speakers"]);
+    expect(persistence.read().mainOutputId).toBe("speakers");
+  });
+
+  test("replays a deferred transaction when main output replaces its graph", async () => {
+    const { browser, persistence, routing } = setup();
+    const firstSink = browser.deferNextMainSink();
+    const replaySink = browser.deferNextMainSink();
+    const applying = routing.applySettings({
+      mainDelayMs: 70,
+      mainOutputId: "speakers",
+    });
+
+    browser.context = { id: "context-2" } as unknown as AudioContext;
+    const mainOutput = routing.getMainOutput(browser.context);
+    firstSink.resolve();
+    replaySink.resolve();
+    await applying;
+
+    expect(mainOutput).toBe(browser.graphs[1]?.mainOutput);
+    expect(browser.graphs[0]?.disposed).toBe(true);
+    expect(browser.graphs[1]?.mainDelayMs).toBe(70);
+    expect(browser.mainSinkChanges).toEqual(["speakers", "speakers"]);
+    expect(persistence.writes).toHaveLength(1);
+  });
+
   test("reports transaction errors until the listener unsubscribes", async () => {
     const { browser, routing } = setup();
     const errors: Error[] = [];
@@ -412,6 +481,39 @@ describe("OutputRouting", () => {
       routing.applySettings({ cueOutputId: "headphones" })
     ).rejects.toThrow("after cleanup");
     expect(errors).toEqual([]);
+  });
+
+  test("cleanup cancels a deferred transaction without recreating its graph", async () => {
+    const { browser, persistence, routing } = setup();
+    const deferredSink = browser.deferNextMainSink();
+    const applying = routing.applySettings({
+      mainDelayMs: 80,
+      mainOutputId: "speakers",
+    });
+    const queued = routing.applySettings({ mainDelayMs: 20 });
+
+    routing.cleanup();
+    deferredSink.resolve();
+
+    await expect(applying).rejects.toThrow(
+      "Output routing transaction was cancelled by cleanup"
+    );
+    await expect(queued).rejects.toThrow(
+      "Output routing transaction was cancelled by cleanup"
+    );
+    expect(browser.graphs).toHaveLength(1);
+    expect(browser.graphs[0]?.disposed).toBe(true);
+    expect(persistence.writes).toEqual([]);
+    expect(routing.getSnapshot().settings).toEqual({
+      cueDelayMs: 0,
+      cueOutputId: null,
+      mainDelayMs: 0,
+      mainOutputId: "default",
+    });
+
+    await expect(
+      routing.applySettings({ mainDelayMs: 30 })
+    ).resolves.toMatchObject({ settings: { mainDelayMs: 30 } });
   });
 
   test("replaying unchanged settings is idempotent", async () => {

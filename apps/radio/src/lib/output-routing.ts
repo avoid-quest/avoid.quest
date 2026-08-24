@@ -72,6 +72,28 @@ type DeckConnection = {
   tap: AudioNode | null;
 };
 
+type GraphAttempt = {
+  graph: OutputBrowserGraph;
+  graphGeneration: number;
+};
+
+type SettingsAttempt = GraphAttempt & {
+  cueChanged: boolean;
+  mainChanged: boolean;
+  previous: OutputRoutingSettings;
+  settings: OutputRoutingSettings;
+  sinkSelectionSupported: boolean;
+};
+
+type MainSettingsAttempt = GraphAttempt & {
+  mainChanged: boolean;
+  mainSettings: MainOutputRoutingSettings;
+  persisted: OutputRoutingSettings;
+  previous: OutputRoutingSettings;
+  settings: OutputRoutingSettings;
+  sinkSelectionSupported: boolean;
+};
+
 type CreateOutputRoutingOptions = {
   browser: OutputBrowserAdapter;
   initialHeadphoneVolume?: number;
@@ -130,12 +152,14 @@ class OutputRouting {
   private readonly decks = new Map<string, DeckConnection>();
   private readonly errorListeners = new Set<(error: Error) => void>();
   private graph: OutputBrowserGraph | null = null;
+  private graphGeneration = 0;
   private headphoneVolume: number;
   private readonly mainSources = new Set<AudioNode>();
   private readonly options: CreateOutputRoutingOptions;
   private pendingSettingsTransactions = 0;
   private runtimeSettings = DEFAULT_OUTPUT_SETTINGS;
   private settingsTransactionTail: Promise<void> = Promise.resolve();
+  private cleanupGeneration = 0;
 
   constructor(options: CreateOutputRoutingOptions) {
     this.options = options;
@@ -148,9 +172,10 @@ class OutputRouting {
   applySettings(
     patch: Partial<OutputRoutingSettings> = {}
   ): Promise<OutputRoutingSnapshot> {
+    const cleanupGeneration = this.cleanupGeneration;
     return this.queueSettingsTransaction(() =>
       this.applyReportedSettingsTransaction(() =>
-        this.applySettingsTransaction(patch)
+        this.applySettingsTransaction(patch, cleanupGeneration)
       )
     );
   }
@@ -158,9 +183,10 @@ class OutputRouting {
   applyMainSettings(
     patch: Partial<MainOutputRoutingSettings> = {}
   ): Promise<OutputRoutingSnapshot> {
+    const cleanupGeneration = this.cleanupGeneration;
     return this.queueSettingsTransaction(() =>
       this.applyReportedSettingsTransaction(() =>
-        this.applyMainSettingsTransaction(patch)
+        this.applyMainSettingsTransaction(patch, cleanupGeneration)
       )
     );
   }
@@ -207,8 +233,26 @@ class OutputRouting {
   }
 
   private async applyMainSettingsTransaction(
-    patch: Partial<MainOutputRoutingSettings>
+    patch: Partial<MainOutputRoutingSettings>,
+    cleanupGeneration: number
   ): Promise<OutputRoutingSnapshot> {
+    this.throwIfTransactionCancelled(cleanupGeneration);
+
+    while (true) {
+      const snapshot = await this.applyMainSettingsAttempt(
+        patch,
+        cleanupGeneration
+      );
+      if (snapshot) {
+        return snapshot;
+      }
+    }
+  }
+
+  private applyMainSettingsAttempt(
+    patch: Partial<MainOutputRoutingSettings>,
+    cleanupGeneration: number
+  ): Promise<OutputRoutingSnapshot | null> {
     const persisted = this.options.settings.read();
     const mainSettings = {
       mainDelayMs: Math.max(
@@ -217,58 +261,98 @@ class OutputRouting {
       ),
       mainOutputId: patch.mainOutputId ?? persisted.mainOutputId,
     };
-    const settings = {
-      ...this.runtimeSettings,
-      ...mainSettings,
-    };
+    const settings = { ...this.runtimeSettings, ...mainSettings };
     const graph = this.ensureGraph();
     const previous = this.runtimeSettings;
     if (
       settings.mainOutputId === previous.mainOutputId &&
       settings.mainDelayMs === previous.mainDelayMs
     ) {
-      return this.snapshot(settings);
+      return Promise.resolve(this.snapshot(settings));
     }
     const sinkSelectionSupported =
       this.options.browser.isSinkSelectionSupported();
     if (!sinkSelectionSupported && settings.mainOutputId !== "default") {
-      throw new Error("Output device selection is not supported");
+      return Promise.reject(
+        new Error("Output device selection is not supported")
+      );
     }
-    const mainChanged = settings.mainOutputId !== previous.mainOutputId;
+    return this.applyChangedMainSettingsAttempt(
+      {
+        graph,
+        graphGeneration: this.graphGeneration,
+        mainChanged: settings.mainOutputId !== previous.mainOutputId,
+        mainSettings,
+        persisted,
+        previous,
+        settings,
+        sinkSelectionSupported,
+      },
+      cleanupGeneration
+    );
+  }
 
+  private async applyChangedMainSettingsAttempt(
+    attempt: MainSettingsAttempt,
+    cleanupGeneration: number
+  ): Promise<OutputRoutingSnapshot | null> {
     try {
       await this.applyMainSink(
-        graph,
-        settings,
-        mainChanged,
-        sinkSelectionSupported
+        attempt.graph,
+        attempt.settings,
+        attempt.mainChanged,
+        attempt.sinkSelectionSupported
       );
-      graph.setMainDelay(settings.mainDelayMs);
+      if (this.shouldRetryGraphAttempt(attempt, cleanupGeneration)) {
+        return null;
+      }
+      attempt.graph.setMainDelay(attempt.settings.mainDelayMs);
       if (
-        mainSettings.mainOutputId !== persisted.mainOutputId ||
-        mainSettings.mainDelayMs !== persisted.mainDelayMs
+        attempt.mainSettings.mainOutputId !== attempt.persisted.mainOutputId ||
+        attempt.mainSettings.mainDelayMs !== attempt.persisted.mainDelayMs
       ) {
         this.options.settings.write({
-          ...persisted,
-          ...mainSettings,
+          ...attempt.persisted,
+          ...attempt.mainSettings,
         });
       }
-      this.runtimeSettings = settings;
-      return this.snapshot(settings);
+      this.runtimeSettings = attempt.settings;
+      return this.snapshot(attempt.settings);
     } catch (error) {
-      if (mainChanged && sinkSelectionSupported) {
+      if (this.shouldRetryGraphAttempt(attempt, cleanupGeneration)) {
+        return null;
+      }
+      if (attempt.mainChanged && attempt.sinkSelectionSupported) {
         await this.options.browser
-          .setMainSink(graph.context, previous.mainOutputId)
+          .setMainSink(attempt.graph.context, attempt.previous.mainOutputId)
           .catch(() => undefined);
       }
-      graph.setMainDelay(previous.mainDelayMs);
+      attempt.graph.setMainDelay(attempt.previous.mainDelayMs);
       throw error;
     }
   }
 
   private async applySettingsTransaction(
-    patch: Partial<OutputRoutingSettings>
+    patch: Partial<OutputRoutingSettings>,
+    cleanupGeneration: number
   ): Promise<OutputRoutingSnapshot> {
+    this.throwIfTransactionCancelled(cleanupGeneration);
+
+    while (true) {
+      const snapshot = await this.applySettingsAttempt(
+        patch,
+        cleanupGeneration
+      );
+      if (snapshot) {
+        return snapshot;
+      }
+    }
+  }
+
+  private applySettingsAttempt(
+    patch: Partial<OutputRoutingSettings>,
+    cleanupGeneration: number
+  ): Promise<OutputRoutingSnapshot | null> {
     const settings = normalizeSettings({
       ...this.options.settings.read(),
       ...patch,
@@ -276,42 +360,101 @@ class OutputRouting {
     const graph = this.ensureGraph();
     const previous = this.runtimeSettings;
     if (settingsMatch(settings, previous)) {
-      return this.snapshot(settings);
+      return Promise.resolve(this.snapshot(settings));
     }
     const sinkSelectionSupported =
       this.options.browser.isSinkSelectionSupported();
     assertSinkSelectionSupported(settings, sinkSelectionSupported);
-    const mainChanged = settings.mainOutputId !== previous.mainOutputId;
-    const cueChanged = settings.cueOutputId !== previous.cueOutputId;
-    if (!(mainChanged || cueChanged)) {
+    const attempt = {
+      cueChanged: settings.cueOutputId !== previous.cueOutputId,
+      graph,
+      graphGeneration: this.graphGeneration,
+      mainChanged: settings.mainOutputId !== previous.mainOutputId,
+      previous,
+      settings,
+      sinkSelectionSupported,
+    };
+    if (!(attempt.mainChanged || attempt.cueChanged)) {
       this.applySettingsState(graph, settings);
       this.runtimeSettings = settings;
-      return this.snapshot(settings);
+      return Promise.resolve(this.snapshot(settings));
     }
-    let nextCueSink = this.cueSink;
+    return this.applyChangedSettingsAttempt(attempt, cleanupGeneration);
+  }
+
+  private async applyChangedSettingsAttempt(
+    attempt: SettingsAttempt,
+    cleanupGeneration: number
+  ): Promise<OutputRoutingSnapshot | null> {
+    let nextCueSink: OutputCueSink | null = null;
 
     try {
       await this.applyMainSink(
-        graph,
-        settings,
-        mainChanged,
-        sinkSelectionSupported
+        attempt.graph,
+        attempt.settings,
+        attempt.mainChanged,
+        attempt.sinkSelectionSupported
       );
-      nextCueSink = await this.stageCueSink(graph, settings, cueChanged);
-      this.applySettingsState(graph, settings);
-      this.commitCueSink(nextCueSink, cueChanged);
-      this.runtimeSettings = settings;
-      return this.snapshot(settings);
+      if (this.shouldRetryGraphAttempt(attempt, cleanupGeneration)) {
+        return null;
+      }
+      nextCueSink = await this.stageCueSink(
+        attempt.graph,
+        attempt.settings,
+        attempt.cueChanged
+      );
+      if (this.shouldRetryGraphAttempt(attempt, cleanupGeneration)) {
+        this.disposeStagedCueSink(attempt.cueChanged, nextCueSink);
+        return null;
+      }
+      this.applySettingsState(attempt.graph, attempt.settings);
+      this.commitCueSink(nextCueSink, attempt.cueChanged);
+      this.runtimeSettings = attempt.settings;
+      return this.snapshot(attempt.settings);
     } catch (error) {
+      this.disposeStagedCueSink(attempt.cueChanged, nextCueSink);
+      if (this.shouldRetryGraphAttempt(attempt, cleanupGeneration)) {
+        return null;
+      }
       await this.rollbackSettingsTransaction({
-        cueChanged,
-        graph,
-        mainChanged,
-        nextCueSink,
-        previous,
-        sinkSelectionSupported,
+        graph: attempt.graph,
+        mainChanged: attempt.mainChanged,
+        previous: attempt.previous,
+        sinkSelectionSupported: attempt.sinkSelectionSupported,
       });
       throw error;
+    }
+  }
+
+  private disposeStagedCueSink(
+    cueChanged: boolean,
+    cueSink: OutputCueSink | null
+  ): void {
+    if (cueChanged && cueSink !== this.cueSink) {
+      cueSink?.dispose();
+    }
+  }
+
+  private isCurrentGraph(
+    graph: OutputBrowserGraph,
+    generation: number
+  ): boolean {
+    return this.graph === graph && this.graphGeneration === generation;
+  }
+
+  private shouldRetryGraphAttempt(
+    attempt: GraphAttempt,
+    cleanupGeneration: number
+  ): boolean {
+    if (this.cleanupGeneration !== cleanupGeneration) {
+      throw new Error("Output routing transaction was cancelled by cleanup");
+    }
+    return !this.isCurrentGraph(attempt.graph, attempt.graphGeneration);
+  }
+
+  private throwIfTransactionCancelled(cleanupGeneration: number): void {
+    if (this.cleanupGeneration !== cleanupGeneration) {
+      throw new Error("Output routing transaction was cancelled by cleanup");
     }
   }
 
@@ -367,23 +510,16 @@ class OutputRouting {
   }
 
   private async rollbackSettingsTransaction({
-    cueChanged,
     graph,
     mainChanged,
-    nextCueSink,
     previous,
     sinkSelectionSupported,
   }: {
-    cueChanged: boolean;
     graph: OutputBrowserGraph;
     mainChanged: boolean;
-    nextCueSink: OutputCueSink | null;
     previous: OutputRoutingSettings;
     sinkSelectionSupported: boolean;
   }): Promise<void> {
-    if (cueChanged && nextCueSink !== this.cueSink) {
-      nextCueSink?.dispose();
-    }
     if (mainChanged && sinkSelectionSupported) {
       await this.options.browser
         .setMainSink(graph.context, previous.mainOutputId)
@@ -436,8 +572,14 @@ class OutputRouting {
   }
 
   replaceContext(context: AudioContext): Promise<OutputRoutingSnapshot> {
-    this.ensureGraph(context);
-    return this.applySettings();
+    const cleanupGeneration = this.cleanupGeneration;
+    return this.queueSettingsTransaction(() =>
+      this.applyReportedSettingsTransaction(() => {
+        this.throwIfTransactionCancelled(cleanupGeneration);
+        this.ensureGraph(context);
+        return this.applySettingsTransaction({}, cleanupGeneration);
+      })
+    );
   }
 
   setHeadphoneVolume(volume: number): void {
@@ -447,6 +589,8 @@ class OutputRouting {
   }
 
   cleanup(): void {
+    this.cleanupGeneration += 1;
+    this.graphGeneration += 1;
     if (this.graph) {
       for (const source of this.mainSources) {
         this.graph.disconnectMain(source);
@@ -508,6 +652,7 @@ class OutputRouting {
     }
 
     this.graph = this.options.browser.createGraph(context);
+    this.graphGeneration += 1;
     this.graph.setHeadphoneVolume(this.headphoneVolume);
     return this.graph;
   }

@@ -163,4 +163,4 @@ export {
   type Unsubscribe,
   WorkletManager,
 } from "./playback/index.js";
-export { isSinkIdSupported, safeDisconnectFrom } from "./routing/index.js";
+export { safeDisconnectFrom } from "./utils.js";

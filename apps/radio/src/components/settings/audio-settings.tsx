@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { toast } from "sonner";
-import { isSinkIdSupported, useAudioDevices } from "@/lib/audio";
+import { useAudioDevices } from "@/lib/audio";
 import { getAudioSettings, getDelaySettings } from "@/lib/collections";
 import {
   applyCueOutputDevice,
@@ -28,13 +28,15 @@ import {
   setCueOutputDelay,
   setMainOutputDelay,
 } from "@/lib/dj-actions";
+import { getOutputRouting } from "@/lib/output-routing.js";
 
 /**
  * Audio settings panel for the main settings form.
  * Manages input/output device selection with persistence.
  */
 export function AudioSettings() {
-  const sinkIdSupported = isSinkIdSupported();
+  const sinkIdSupported =
+    getOutputRouting().getSnapshot().sinkSelectionSupported;
 
   const {
     outputDevices,

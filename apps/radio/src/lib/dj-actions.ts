@@ -132,7 +132,7 @@ export async function applyMainOutputDevice(deviceId: string): Promise<void> {
   subscribeToOutputErrors();
   await Promise.all([
     getOutputRouting()
-      .applySettings({ mainOutputId: deviceId })
+      .applyMainSettings({ mainOutputId: deviceId })
       .then((state) => {
         if (state.settings.cueOutputId === null) {
           disableCueDecks();
@@ -222,7 +222,7 @@ export function cleanupCueBus(): void {
 }
 
 export async function setMainOutputDelay(ms: number): Promise<void> {
-  await getOutputRouting().applySettings({ mainDelayMs: ms });
+  await getOutputRouting().applyMainSettings({ mainDelayMs: ms });
   await createManagedPlaybackSessionWorkflow("single").reconcileRouting();
 }
 
@@ -255,7 +255,7 @@ export function detectSystemLatency(): number | null {
 export async function autoCompensateLatency(): Promise<number | null> {
   const latency = detectSystemLatency();
   if (latency !== null) {
-    await getOutputRouting().applySettings({ mainDelayMs: latency });
+    await getOutputRouting().applyMainSettings({ mainDelayMs: latency });
     await createManagedPlaybackSessionWorkflow("single").reconcileRouting();
   }
   return latency;

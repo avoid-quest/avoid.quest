@@ -70,7 +70,9 @@ async function applyMainOutputSettings(
     return await getOutputRouting().applyMainSettings(patch);
   } catch (error) {
     reportDjErrorSurface(
-      error instanceof Error ? error.message : "Failed to apply output settings",
+      error instanceof Error
+        ? error.message
+        : "Failed to apply output settings",
       "DJ_OUTPUT_ROUTER_ERROR",
       error
     );

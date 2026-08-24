@@ -13,7 +13,7 @@ import {
   createDefaultEffectConfig,
   getAudioContext,
 } from "@/lib/audio";
-import { getAudioSettings, getDelaySettings } from "@/lib/collections/settings";
+import { getAudioSettings } from "@/lib/collections/settings";
 import { reportDjErrorSurface } from "@/lib/dj/dj-error-surface";
 import { calculateDjCrossfadeVolumes } from "@/lib/dj-crossfade.js";
 import { type DeckId, getDjDeckModule } from "@/lib/dj-deck.js";
@@ -99,10 +99,6 @@ export async function applyCueOutputDevice(
   }
 }
 
-export async function applyCurrentAudioSettings(): Promise<void> {
-  await applyOutputSettings();
-}
-
 function setDeckCueEnabled(deckId: DeckId, enabled: boolean): void {
   getDjDeckModule().deck(deckId).change({ type: "cue", enabled });
 }
@@ -124,19 +120,7 @@ export async function setCueOutputDelay(ms: number): Promise<void> {
   await applyOutputSettings({ cueDelayMs: ms });
 }
 
-export function getOutputDelays(): {
-  mainDelayMs: number;
-  cueDelayMs: number;
-} {
-  return getDelaySettings();
-}
-
-export function initializeOutputDelays(): void {
-  const { mainDelayMs, cueDelayMs } = getDelaySettings();
-  applyOutputSettings({ cueDelayMs, mainDelayMs }).catch(() => undefined);
-}
-
-export function detectSystemLatency(): number | null {
+function detectSystemLatency(): number | null {
   const context = getAudioContext();
   const latencyMs = Math.round(
     ((context.outputLatency ?? 0) + (context.baseLatency ?? 0)) * 1000

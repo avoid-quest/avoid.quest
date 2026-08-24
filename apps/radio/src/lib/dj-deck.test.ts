@@ -171,7 +171,29 @@ function createOutput(): OutputRouting {
       setEnabled: mock(() => undefined),
     })),
     releaseCue: mock(() => undefined),
+    subscribeErrors: mock(() => () => undefined),
   } as unknown as OutputRouting;
+}
+
+function createReportingOutput(): {
+  output: OutputRouting;
+  reportError: (error: Error) => void;
+} {
+  let listener: ((error: Error) => void) | null = null;
+  return {
+    output: {
+      ...createOutput(),
+      subscribeErrors: mock((next) => {
+        listener = next;
+        return () => {
+          listener = null;
+        };
+      }),
+    } as unknown as OutputRouting,
+    reportError(error) {
+      listener?.(error);
+    },
+  };
 }
 
 function createPlatform(): DjDeckPlatformAdapter {
@@ -426,7 +448,7 @@ describe("DjDeckModule", () => {
     );
   });
 
-  test("clears persisted and runtime state when source activation fails", async () => {
+  test("keeps the previous source when replacement activation fails", async () => {
     const audio = createAudioAdapter();
     const module = createDjDeckModule({
       audio,
@@ -437,9 +459,20 @@ describe("DjDeckModule", () => {
     });
     const deck = module.deck("deck-a");
     const previous: Radio = {
-      id: "station-1",
-      name: "Station 1",
-      streamUrl: "https://radio.example/one.mp3",
+      id: "local-file-left-1",
+      name: "Local",
+      streamUrl: "blob:https://radio.example/local",
+      platformMetadata: {
+        platform: "local-file",
+        itemType: "track",
+        url: "",
+        fileName: "local.mp3",
+        displayName: "Local",
+        duration: 120,
+        fileSize: 1024,
+        mimeType: "audio/mpeg",
+        objectUrl: "blob:https://radio.example/local",
+      },
     };
 
     await deck.load({ type: "radio", radio: previous });
@@ -455,9 +488,10 @@ describe("DjDeckModule", () => {
       },
     });
 
-    expect(getPlaybackChannel("dj", "deck-a")?.radio).toBeNull();
+    expect(getPlaybackChannel("dj", "deck-a")?.radio).toEqual(previous);
     expect(getPlaybackChannelRuntime("deck-a").soundId).toBeNull();
     expect(audio.activeSounds).toEqual(new Set());
+    expect(audio.releaseFileUrl).not.toHaveBeenCalled();
   });
 
   test("loads a device input and persists its runtime channel shape", async () => {
@@ -785,6 +819,29 @@ describe("DjDeckModule", () => {
     await Promise.resolve();
 
     expect(getDjError()).toBe("Saved CUE output unavailable");
+  });
+
+  test("reports output routing failures while a Deck is active", async () => {
+    const routing = createReportingOutput();
+    const module = createDjDeckModule({
+      audio: createAudioAdapter(),
+      context: createContext(),
+      effects: createEffects(),
+      output: routing.output,
+      platform: createPlatform(),
+    });
+
+    await module.deck("deck-a").load({
+      type: "radio",
+      radio: {
+        id: "station-1",
+        name: "Station 1",
+        streamUrl: "https://radio.example/one.mp3",
+      },
+    });
+    routing.reportError(new Error("Output graph replacement failed"));
+
+    expect(getDjError()).toBe("Output graph replacement failed");
   });
 
   test("persists channel changes and reconciles the Effects tree", async () => {

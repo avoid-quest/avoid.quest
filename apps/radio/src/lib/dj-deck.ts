@@ -433,6 +433,12 @@ function reportOutputError(error: unknown, deckId: DeckId): void {
 
 export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
   const releasedFileUrls = new Set<string>();
+  let outputErrorCleanup: (() => void) | null = null;
+  const subscribeToOutputErrors = (): void => {
+    outputErrorCleanup ??= options.output.subscribeErrors((error) => {
+      reportDjErrorSurface(error.message, "DJ_OUTPUT_ROUTER_ERROR", error);
+    });
+  };
   let pendingSourceSnapshot: DjDeckPendingSource = null;
   const pendingSourceListeners = new Set<() => void>();
   const setPendingSource = (next: DjDeckPendingSource): void => {
@@ -774,9 +780,9 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
   ): void => {
     deactivateDeck(deckId);
     updatePlaybackChannel("dj", deckId, (draft) => {
-      draft.radio = null;
+      draft.radio = previous;
     });
-    releaseReplacedFile(previous, null);
+    releaseReplacedFile(radio, previous);
     reportFailure(
       deckId,
       "DJ_LOAD_DECK_FAILED",
@@ -1485,9 +1491,18 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
   const handles = {} as Record<DeckId, DjDeckHandle>;
   for (const deckId of ["deck-a", "deck-b"] as const) {
     handles[deckId] = {
-      load: (intent) => load(deckId, intent),
-      transport: (intent) => transport(deckId, intent),
-      change: (input) => change(deckId, input),
+      load: (intent) => {
+        subscribeToOutputErrors();
+        return load(deckId, intent);
+      },
+      transport: (intent) => {
+        subscribeToOutputErrors();
+        return transport(deckId, intent);
+      },
+      change: (input) => {
+        subscribeToOutputErrors();
+        change(deckId, input);
+      },
     };
   }
 
@@ -1510,6 +1525,8 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
         runtimes[deckId].cueRegistration = null;
       }
       options.output.releaseCue();
+      outputErrorCleanup?.();
+      outputErrorCleanup = null;
       clearDjErrorSurface();
     },
   };

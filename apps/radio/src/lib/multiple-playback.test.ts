@@ -236,6 +236,29 @@ describe("Multiple Playback", () => {
     );
   });
 
+  test("raising a Channel volume clears persisted mute", () => {
+    const radio = station("raise-muted");
+    const channelId = getMultipleChannelId(radio);
+    insertMultipleSession([radio]);
+    updatePlaybackChannel("multiple", channelId, (draft) => {
+      draft.muted = true;
+      draft.volume = 0.35;
+    });
+    const context = createTestContext();
+
+    getMultiplePlayback({ ctx: context }).setVolume(channelId, 0.7);
+
+    expect(getPlaybackSession("multiple")?.channels[0]).toMatchObject({
+      muted: false,
+      volume: 0.7,
+    });
+    expect(context.channels.setMuted).toHaveBeenCalledWith(
+      "multiple",
+      channelId,
+      false
+    );
+  });
+
   test("restores a positive master volume when persisted state starts muted", async () => {
     insertMultipleSession();
     updatePlaybackSession("multiple", (draft) => {
@@ -1004,5 +1027,23 @@ describe("Multiple Playback", () => {
       isPlaying: false,
       error: null,
     });
+  });
+
+  test("activation reapplies persisted Channel mute", async () => {
+    const radio = station("restored-muted");
+    const channelId = getMultipleChannelId(radio);
+    insertMultipleSession([radio]);
+    updatePlaybackChannel("multiple", channelId, (draft) => {
+      draft.muted = true;
+    });
+    const context = createTestContext();
+
+    await getMultiplePlayback({ ctx: context }).activate();
+
+    expect(context.channels.setMuted).toHaveBeenCalledWith(
+      "multiple",
+      channelId,
+      true
+    );
   });
 });

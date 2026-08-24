@@ -189,6 +189,9 @@ function createMultiplePlayback(
   const setVolume = (channelId: string, volume: number) => {
     if (volume > 0) {
       unmutedVolumes.set(channelId, volume);
+      if (getPlaybackChannel("multiple", channelId)?.muted) {
+        ctx.channels.setMuted("multiple", channelId, false);
+      }
     }
     ctx.channels.setVolume("multiple", channelId, volume);
   };

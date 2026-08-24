@@ -104,6 +104,7 @@ export function restoreManagedChannels(
     }
     if (!runtime.soundId) {
       createManagedSound(sessionId, channel.id, channel.radio, undefined, ctx);
+      ctx.channels.setMuted(sessionId, channel.id, channel.muted);
     }
   }
 }

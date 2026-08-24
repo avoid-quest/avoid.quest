@@ -1,48 +1,18 @@
-import type { AudioManager, EffectConfig, FilterConfig } from "@/lib/audio";
-import { visitEffectTree } from "@/lib/audio/dsp/routing/effect-tree";
-import { getPlaybackSession } from "@/lib/collections/playback-sessions";
-import { getPlaybackChannelRuntime } from "@/lib/stores/playback-runtime-store";
-import { orderEffectsForPlayback } from "./effect-order.js";
+import type { AudioManager, FilterConfig } from "@/lib/audio";
 
-async function applyStoredEffectsAndFilters(
+function applyStoredFilter(
   audioManager: AudioManager,
   soundId: string,
-  effects: EffectConfig[],
   filter: FilterConfig
 ): Promise<void> {
   try {
-    const workletManager = audioManager.getWorkletManager(soundId);
-    if (!workletManager?.isReady) {
-      const ready = await audioManager.ensureEffectsReady(soundId);
-      if (!ready) {
-        return;
-      }
-    }
-
     if (filter.enabled) {
       audioManager.updateFilter(soundId, filter);
     }
-
-    audioManager.setEffectsTempo?.(
-      soundId,
-      getPlaybackSession("dj")?.tempo ?? 120
-    );
-    for (const effect of orderEffectsForPlayback(effects)) {
-      audioManager.addEffect(soundId, effect);
-    }
-    let sidechainChannelId: string | null = null;
-    visitEffectTree(effects, (effect) => {
-      sidechainChannelId ??= effect.sidechain?.channelId ?? null;
-    });
-    if (sidechainChannelId) {
-      audioManager.setEffectsSidechain(
-        soundId,
-        getPlaybackChannelRuntime(sidechainChannelId).soundId
-      );
-    }
   } catch (error) {
-    console.warn("[dj-actions] Failed to apply stored effects:", error);
+    console.warn("[dj-actions] Failed to apply stored filter:", error);
   }
+  return Promise.resolve();
 }
 
 function applyStoredChannelStrip(
@@ -51,8 +21,7 @@ function applyStoredChannelStrip(
   muted: boolean,
   pan: number,
   speed: number,
-  channelFilter: number,
-  effectsDryWet: number
+  channelFilter: number
 ): void {
   try {
     if (muted) {
@@ -67,12 +36,9 @@ function applyStoredChannelStrip(
     if (channelFilter !== 0) {
       audioManager.setChannelFilter(soundId, channelFilter);
     }
-    if (effectsDryWet !== 1) {
-      audioManager.setEffectsDryWet(soundId, effectsDryWet);
-    }
   } catch (error) {
     console.warn("[dj-actions] Failed to apply stored channel strip:", error);
   }
 }
 
-export { applyStoredChannelStrip, applyStoredEffectsAndFilters };
+export { applyStoredChannelStrip, applyStoredFilter };

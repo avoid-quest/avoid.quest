@@ -4,7 +4,7 @@ import { useDroppable } from "@dnd-kit/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Radio } from "@/lib/audio";
 import { isAudioFile } from "@/lib/audio/file-metadata";
-import { setSessionEffectsTempo } from "@/lib/channel-state-manager";
+import { channelEffects } from "@/lib/channel-effects";
 import { getDjDeckActions } from "@/lib/dj-actions";
 import { isPlatformRadio } from "@/lib/external-url";
 import { useDeckAState, useDeckBState } from "@/lib/hooks/use-deck-state";
@@ -346,7 +346,16 @@ function DeckPanelInner({
     updateEffect,
     removeEffect,
     reorderEffects,
-    setEffectsTempo: (tempo) => setSessionEffectsTempo("dj", tempo),
+    setEffectsTempo: (tempo) => {
+      channelEffects
+        .setTempo("dj", tempo)
+        .catch((error: unknown) =>
+          console.warn(
+            "[ChannelEffects] Could not reconcile Channel Effects",
+            error
+          )
+        );
+    },
     trackProgress,
     peakLevel,
     metadata: effectiveMetadata,

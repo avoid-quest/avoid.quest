@@ -1,16 +1,13 @@
 import { useMemo } from "react";
 import type { EffectConfig, FilterConfig, Radio } from "@/lib/audio";
-import {
-  getChannelState,
-  updateChannel,
-  useChannelState,
-} from "@/lib/channel-state-manager";
+import { getChannelState, useChannelState } from "@/lib/channel-state-manager";
 import {
   DECK_A_CHANNEL_ID,
   DECK_B_CHANNEL_ID,
   getPlaybackChannel,
   getPlaybackSession,
   type PlaybackChannelRecord,
+  updatePlaybackChannel,
   updatePlaybackSession,
 } from "@/lib/collections/playback-sessions";
 import { useDjSession } from "@/lib/hooks/use-dj-session";
@@ -138,7 +135,7 @@ export {
 } from "@/lib/stores/dj-runtime-store";
 
 export function resetDeck(deckId: "deck-a" | "deck-b") {
-  updateChannel("dj", deckId, (draft) => {
+  updatePlaybackChannel("dj", deckId, (draft) => {
     const next = getPlaybackChannel("dj", deckId);
     Object.assign(draft, {
       ...(next ?? draft),
@@ -199,11 +196,11 @@ export function getMixer(): MixerRecord | undefined {
 }
 
 export function updateDeckA(updater: (draft: DeckRecord) => void) {
-  updateChannel("dj", DECK_A_CHANNEL_ID, updater);
+  updatePlaybackChannel("dj", DECK_A_CHANNEL_ID, updater);
 }
 
 export function updateDeckB(updater: (draft: DeckRecord) => void) {
-  updateChannel("dj", DECK_B_CHANNEL_ID, updater);
+  updatePlaybackChannel("dj", DECK_B_CHANNEL_ID, updater);
 }
 
 export function updateMixer(updater: (draft: MixerRecord) => void) {
@@ -218,10 +215,10 @@ export function updateMixer(updater: (draft: MixerRecord) => void) {
     session.masterVolume = draft.masterVolume;
     session.headphoneVolume = draft.headphoneVolume;
   });
-  updateChannel("dj", DECK_A_CHANNEL_ID, (channel) => {
+  updatePlaybackChannel("dj", DECK_A_CHANNEL_ID, (channel) => {
     channel.cueEnabled = draft.deckACueEnabled;
   });
-  updateChannel("dj", DECK_B_CHANNEL_ID, (channel) => {
+  updatePlaybackChannel("dj", DECK_B_CHANNEL_ID, (channel) => {
     channel.cueEnabled = draft.deckBCueEnabled;
   });
 }

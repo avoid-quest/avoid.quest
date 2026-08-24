@@ -13,8 +13,11 @@
  * Main delay is applied after all sound processing, before final output.
  */
 
+import type {
+  DesiredEffectsState,
+  EffectsRuntimeOutcome,
+} from "../../channel-effects.js";
 import { getOutputRouting, type OutputRouting } from "../../output-routing.js";
-import type { EffectConfig, EffectType } from "../dsp/effects/types.js";
 import {
   type AudioState,
   type AudioStateCallback,
@@ -29,7 +32,6 @@ import {
   resumeAudioContext,
   toPlaybackInput,
   type Unsubscribe,
-  type WorkletManager,
 } from "../playback/index.js";
 import { inferStreamFormat } from "../playback/stream-format.js";
 import { cleanupSoundNodes, connectAudioGraph } from "./audio-manager-graph.js";
@@ -80,7 +82,7 @@ export class AudioManager {
   private readonly soundRegistry = new SoundRegistry();
   private readonly listeners = new Map<string, Set<AudioStateCallback>>();
   readonly volume: VolumeController;
-  readonly effects: EffectsController;
+  private readonly effects: EffectsController;
   private readonly output: OutputRouting;
   readonly meters: MeterService;
   private audioSystemInitialized = false;
@@ -664,20 +666,6 @@ export class AudioManager {
   }
 
   /**
-   * Set master dry/wet for the effect chain (0 = bypass all, 1 = full effects)
-   */
-  setEffectsDryWet(soundId: string, value: number): void {
-    if (!this.soundRegistry.has(soundId)) {
-      console.warn(
-        `[AudioManager] setEffectsDryWet: sound ${soundId} not found`
-      );
-      return;
-    }
-
-    this.effects.setDryWet(soundId, value);
-  }
-
-  /**
    * Get global volume
    */
   getGlobalVolume(): number {
@@ -740,72 +728,11 @@ export class AudioManager {
   // Effect Management
   // ============================================
 
-  /**
-   * Add an effect to a sound
-   *
-   * @returns true if effect was added, false if no worklet manager exists
-   */
-  addEffect(soundId: string, config: EffectConfig): boolean {
-    return this.effects.add(soundId, config);
-  }
-
-  /**
-   * Ensure the effect worklet exists and has finished initialization.
-   */
-  async ensureEffectsReady(soundId: string): Promise<boolean> {
-    const instance = this.sounds.get(soundId);
-    if (!instance) {
-      return false;
-    }
-
-    try {
-      return await this.effects.prepare(soundId);
-    } catch (error) {
-      console.warn(
-        `[AudioManager] ensureEffectsReady: failed for sound ${soundId}`,
-        error
-      );
-      return false;
-    }
-  }
-
-  /**
-   * Remove an effect from a sound
-   */
-  removeEffect(soundId: string, effectId: string): void {
-    this.effects.remove(soundId, effectId);
-  }
-
-  /**
-   * Update an effect's configuration
-   *
-   * @returns true if effect was updated, false if no worklet manager exists
-   */
-  updateEffect(
+  reconcileEffects(
     soundId: string,
-    effectId: string,
-    type: EffectType,
-    config: Partial<EffectConfig>
-  ): boolean {
-    return this.effects.update(soundId, effectId, type, config);
-  }
-
-  /**
-   * Reorder effects in a sound's chain
-   */
-  reorderEffects(soundId: string, effectIds: string[]): void {
-    this.effects.reorder(soundId, effectIds);
-  }
-
-  setEffectsTempo(soundId: string, bpm: number): void {
-    this.effects.setTempo(soundId, bpm);
-  }
-
-  setEffectsSidechain(
-    soundId: string,
-    sidechainSoundId: string | null
-  ): boolean {
-    return this.effects.setSidechain(soundId, sidechainSoundId);
+    desired: DesiredEffectsState
+  ): Promise<EffectsRuntimeOutcome> {
+    return this.effects.reconcile(soundId, desired);
   }
 
   // ============================================
@@ -1032,15 +959,6 @@ export class AudioManager {
   getPostFaderNode(soundId: string): GainNode | null {
     const instance = this.sounds.get(soundId);
     return instance?.nodes?.gain ?? null;
-  }
-
-  /**
-   * Get the WorkletManager for a sound
-   * This provides access to the master output node for CUE/MIX monitoring
-   * Returns null if the sound doesn't exist or worklet isn't initialized
-   */
-  getWorkletManager(soundId: string): WorkletManager | null {
-    return this.effects.getWorkletManager(soundId);
   }
 
   // ============================================

@@ -1,18 +1,14 @@
+import type {
+  DesiredEffectsState,
+  EffectsRuntimeOutcome,
+} from "../../channel-effects.js";
 import {
   canUseOfficialOpenDawRuntime,
   hasEnabledEffects,
   selectEnabledEffects,
 } from "../dsp/effects/official-opendaw-mapping.js";
 import { clampEffectTempo } from "../dsp/effects/tempo.js";
-import type { EffectConfig, EffectType } from "../dsp/effects/types.js";
-import {
-  appendEffectToTree,
-  findEffectInTree,
-  findRootEffectContainer,
-  removeEffectFromTree,
-  reorderEffectTreeChain,
-  updateEffectInTree,
-} from "../dsp/routing/effect-tree.js";
+import type { EffectConfig } from "../dsp/effects/types.js";
 import {
   type AudioState,
   getAudioContext,
@@ -20,8 +16,6 @@ import {
 } from "../playback/index.js";
 import {
   convertEffectConfig,
-  convertPartialEffectConfig,
-  type EngineEffectConfig,
   toPlainEffectConfig,
 } from "./audio-manager-effects.js";
 import { attachWorkletManagerListeners } from "./audio-manager-graph.js";
@@ -46,7 +40,9 @@ type SoundEffectsState = {
   managerPromise: Promise<WorkletManager> | null;
   officialConnected: boolean;
   officialConnectingGeneration: number | null;
+  outcome: EffectsRuntimeOutcome;
   sidechain: SidechainConnection | null;
+  tempo: number;
 };
 
 type EffectsControllerOptions = {
@@ -71,7 +67,9 @@ const createSoundState = (): SoundEffectsState => ({
   managerPromise: null,
   officialConnected: false,
   officialConnectingGeneration: null,
+  outcome: { backend: null, ready: false, status: "inactive" },
   sidechain: null,
+  tempo: 120,
 });
 
 class EffectsController {
@@ -81,7 +79,6 @@ class EffectsController {
   private readonly officialRegisteredSoundIds = new Set<string>();
   private readonly officialSoundOwners = new Map<string, number>();
   private nextOfficialRuntimeGeneration = 0;
-  private bpm = 120;
   private nextGeneration = 0;
   private readonly states = new Map<string, SoundEffectsState>();
   private readonly workletProcessorUrl: () => string;
@@ -156,122 +153,148 @@ class EffectsController {
     return state.dryWet > 0 && hasEnabledEffects(state.effects);
   }
 
-  add(soundId: string, config: EffectConfig): boolean {
-    if (!this.sounds.has(soundId)) {
-      return false;
-    }
-    const state = this.getState(soundId);
-    const plainConfig = toPlainEffectConfig(config);
-    state.effects = appendEffectToTree(state.effects, plainConfig);
-    if (state.compatibilitySourceCreated) {
-      const engineConfig: EngineEffectConfig = convertEffectConfig(plainConfig);
-      state.manager?.addEffect(
-        soundId,
-        plainConfig.id,
-        plainConfig.type,
-        engineConfig,
-        plainConfig.order
-      );
-    }
-    this.refreshRuntimeSelection(soundId);
-    return true;
+  getRuntimeOutcome(soundId: string): EffectsRuntimeOutcome {
+    return (
+      this.states.get(soundId)?.outcome ?? {
+        backend: null,
+        ready: false,
+        status: "inactive",
+      }
+    );
   }
 
-  remove(soundId: string, effectId: string): void {
-    const state = this.states.get(soundId);
-    if (!state) {
-      return;
-    }
-    const rootId = findRootEffectContainer(state.effects, effectId)?.id;
-    state.effects = removeEffectFromTree(state.effects, effectId);
-    const root = rootId ? findEffectInTree(state.effects, rootId) : undefined;
-    if (root && state.compatibilitySourceCreated) {
-      state.manager?.updateEffect(soundId, root.id, convertEffectConfig(root));
-    } else if (state.compatibilitySourceCreated) {
-      state.manager?.removeEffect(soundId, effectId);
-    }
-    this.refreshRuntimeSelection(soundId);
-  }
-
-  update(
+  async reconcile(
     soundId: string,
-    effectId: string,
-    type: EffectType,
-    config: Partial<EffectConfig>
-  ): boolean {
+    desired: DesiredEffectsState
+  ): Promise<EffectsRuntimeOutcome> {
     if (!this.sounds.has(soundId)) {
-      return false;
+      return {
+        backend: null,
+        error: new Error(`Sound with id ${soundId} not found`),
+        ready: false,
+        status: "failed",
+      };
     }
     const state = this.getState(soundId);
-    const plainConfig = toPlainEffectConfig(config);
-    const rootId = findRootEffectContainer(state.effects, effectId)?.id;
-    state.effects = updateEffectInTree(state.effects, effectId, plainConfig);
-    const root = rootId ? findEffectInTree(state.effects, rootId) : undefined;
-    if (state.compatibilitySourceCreated) {
-      state.manager?.updateEffect(
-        soundId,
-        root?.id ?? effectId,
-        root
-          ? convertEffectConfig(root)
-          : convertPartialEffectConfig(type, plainConfig)
-      );
+    const previousEffects = state.effects;
+    const nextEffects = desired.tree.map((effect) =>
+      toPlainEffectConfig(effect)
+    );
+    const nextDryWet = Math.max(0, Math.min(1, desired.dryWet));
+    const nextTempo = clampEffectTempo(desired.tempo);
+    const unchanged =
+      JSON.stringify({
+        dryWet: state.dryWet,
+        effects: previousEffects,
+        sidechainSoundId: state.desiredSidechainSoundId,
+        tempo: state.tempo,
+      }) ===
+      JSON.stringify({
+        dryWet: nextDryWet,
+        effects: nextEffects,
+        sidechainSoundId: desired.sidechainSoundId,
+        tempo: nextTempo,
+      });
+
+    state.effects = nextEffects;
+    state.dryWet = nextDryWet;
+    state.desiredSidechainSoundId = desired.sidechainSoundId;
+    state.tempo = nextTempo;
+
+    if (state.compatibilitySourceCreated && !unchanged) {
+      this.reconcileCompatibility(soundId, state, previousEffects, nextEffects);
     }
-    this.refreshRuntimeSelection(soundId);
-    return true;
+    this.bindCompatibilitySidechain(state);
+    this.pruneOfficialSidechainSources();
+
+    if (!state.graph) {
+      state.outcome = { backend: null, ready: false, status: "inactive" };
+      return state.outcome;
+    }
+    if (unchanged && state.outcome.status === "ready") {
+      return state.outcome;
+    }
+
+    const generation = this.advance(state);
+    try {
+      await this.selectRuntime(soundId, state, generation);
+      if (state.generation !== generation) {
+        return { backend: null, ready: false, status: "superseded" };
+      }
+      state.outcome = this.readyOutcome(state);
+    } catch (error) {
+      if (state.generation !== generation) {
+        return { backend: null, ready: false, status: "superseded" };
+      }
+      state.outcome = {
+        backend: "bypass",
+        error: error instanceof Error ? error : new Error(String(error)),
+        ready: true,
+        status: "failed",
+      };
+      this.switchBackend(soundId, state, "bypass", generation);
+    }
+    return state.outcome;
   }
 
-  reorder(soundId: string, effectIds: string[]): void {
-    const state = this.states.get(soundId);
-    if (!state) {
+  private readyOutcome(state: SoundEffectsState): EffectsRuntimeOutcome {
+    if (!this.shouldProcess(state)) {
+      return { backend: "bypass", ready: true, status: "ready" };
+    }
+    if (state.officialConnected) {
+      return { backend: "official", ready: true, status: "ready" };
+    }
+    if (state.compatibilitySourceCreated) {
+      return { backend: "compatibility", ready: true, status: "ready" };
+    }
+    return {
+      backend: null,
+      error: new Error("No Effects runtime became ready"),
+      ready: false,
+      status: "failed",
+    };
+  }
+
+  private reconcileCompatibility(
+    soundId: string,
+    state: SoundEffectsState,
+    previous: readonly EffectConfig[],
+    next: readonly EffectConfig[]
+  ): void {
+    const manager = state.manager;
+    if (!manager) {
       return;
     }
-    if (state.compatibilitySourceCreated) {
-      state.manager?.reorderEffects(soundId, effectIds);
-    }
-    state.effects = reorderEffectTreeChain(state.effects, effectIds);
-    this.refreshRuntimeSelection(soundId);
-  }
+    const previousById = new Map(previous.map((effect) => [effect.id, effect]));
+    const nextById = new Map(next.map((effect) => [effect.id, effect]));
 
-  setDryWet(soundId: string, value: number): void {
-    const state = this.getState(soundId);
-    state.dryWet = Math.max(0, Math.min(1, value));
-    if (state.compatibilitySourceCreated) {
-      state.manager?.setEffectsDryWet(soundId, state.dryWet);
-    }
-    this.officialRuntime?.setDryWet(soundId, state.dryWet);
-    this.refreshRuntimeSelection(soundId);
-  }
-
-  setTempo(soundId: string, bpm: number): void {
-    this.bpm = clampEffectTempo(bpm);
-    const state = this.states.get(soundId);
-    if (state?.compatibilitySourceCreated) {
-      state.manager?.setTempo(soundId, this.bpm);
-    }
-    this.officialRuntime?.setTempo(this.bpm);
-  }
-
-  setSidechain(soundId: string, sidechainSoundId: string | null): boolean {
-    const state = this.getState(soundId);
-    state.desiredSidechainSoundId = sidechainSoundId;
-    this.officialRuntime?.setSidechainTarget(soundId, sidechainSoundId);
-    this.pruneOfficialSidechainSources();
-    if (sidechainSoundId) {
-      const targetState = this.states.get(sidechainSoundId);
-      if (targetState) {
-        this.registerNonOfficialSource(
-          sidechainSoundId,
-          targetState,
-          targetState.generation
-        ).catch((error: unknown) =>
-          console.warn(
-            "[EffectsController] Failed to register sidechain source",
-            error
-          )
-        );
+    for (const effect of previous) {
+      const replacement = nextById.get(effect.id);
+      if (!replacement || replacement.type !== effect.type) {
+        manager.removeEffect(soundId, effect.id);
       }
     }
-    return this.bindCompatibilitySidechain(state);
+    for (const effect of next) {
+      const existing = previousById.get(effect.id);
+      if (!existing || existing.type !== effect.type) {
+        manager.addEffect(
+          soundId,
+          effect.id,
+          effect.type,
+          convertEffectConfig(effect),
+          effect.order
+        );
+      } else if (JSON.stringify(existing) !== JSON.stringify(effect)) {
+        manager.updateEffect(soundId, effect.id, convertEffectConfig(effect));
+      }
+    }
+    manager.reorderEffects(
+      soundId,
+      next.map((effect) => effect.id)
+    );
+    manager.setEffectsDryWet(soundId, state.dryWet);
+    manager.setTempo(soundId, state.tempo);
+    this.bindCompatibilitySidechain(state);
   }
 
   private disconnectCompatibilitySidechain(state: SoundEffectsState): void {
@@ -308,11 +331,9 @@ class EffectsController {
     }
   }
 
-  getWorkletManager(soundId: string): WorkletManager | null {
-    return this.states.get(soundId)?.manager ?? null;
-  }
-
-  async getOrCreateWorkletManager(soundId: string): Promise<WorkletManager> {
+  private async getOrCreateWorkletManager(
+    soundId: string
+  ): Promise<WorkletManager> {
     const state = this.getState(soundId);
     if (state.manager) {
       return state.manager;
@@ -360,18 +381,6 @@ class EffectsController {
     }
   }
 
-  async prepare(soundId: string): Promise<boolean> {
-    const state = this.getState(soundId);
-    if (
-      !this.shouldProcess(state) ||
-      canUseOfficialOpenDawRuntime(state.effects)
-    ) {
-      return true;
-    }
-    const manager = await this.getOrCreateWorkletManager(soundId);
-    return manager.isReady;
-  }
-
   async connectGraph(
     soundId: string,
     source: AudioNode,
@@ -401,15 +410,38 @@ class EffectsController {
             error
           )
       );
+      state.outcome = { backend: "bypass", ready: true, status: "ready" };
       return true;
     }
 
-    await this.selectRuntime(soundId, state, generation);
+    try {
+      await this.selectRuntime(soundId, state, generation);
+    } catch (error) {
+      const ownsGraph = state.graph?.source === source;
+      if (ownsGraph && state.generation === generation) {
+        this.switchBackend(soundId, state, "bypass", generation);
+        state.outcome = {
+          backend: "bypass",
+          error: error instanceof Error ? error : new Error(String(error)),
+          ready: true,
+          status: "failed",
+        };
+      }
+      console.warn(
+        "[EffectsController] Failed to select effects runtime",
+        error
+      );
+      return ownsGraph;
+    }
     // Runtime selection can be superseded by an effect edit while it awaits a
     // worklet. The stable router is still valid and the newer generation owns
     // the eventual backend; returning false here would make AudioManager add a
     // second dry edge alongside this graph.
-    return state.graph?.source === source;
+    const ownsGraph = state.graph?.source === source;
+    if (ownsGraph && state.generation === generation) {
+      state.outcome = this.readyOutcome(state);
+    }
+    return ownsGraph;
   }
 
   private async ensureCompatibilitySource(
@@ -464,7 +496,7 @@ class EffectsController {
       );
     }
     manager.setEffectsDryWet(soundId, state.dryWet);
-    manager.setTempo(soundId, this.bpm);
+    manager.setTempo(soundId, state.tempo);
   }
 
   pauseSource(soundId: string): void {
@@ -680,7 +712,7 @@ class EffectsController {
       }
 
       this.officialRegisteredSoundIds.add(soundId);
-      runtime.setTempo(this.bpm);
+      runtime.setTempo(state.tempo);
       runtime.setSidechainTarget(soundId, state.desiredSidechainSoundId);
       runtime.syncEffects(soundId, selectEnabledEffects(state.effects));
       runtime.setDryWet(soundId, state.dryWet);
@@ -914,15 +946,27 @@ class EffectsController {
       return;
     }
     const generation = this.advance(state);
-    this.selectRuntime(soundId, state, generation).catch((error: unknown) => {
-      if (state.generation === generation) {
-        this.switchBackend(soundId, state, "bypass", generation);
-      }
-      console.warn(
-        "[EffectsController] Failed to select effects runtime",
-        error
-      );
-    });
+    this.selectRuntime(soundId, state, generation)
+      .then(() => {
+        if (state.generation === generation) {
+          state.outcome = this.readyOutcome(state);
+        }
+      })
+      .catch((error: unknown) => {
+        if (state.generation === generation) {
+          this.switchBackend(soundId, state, "bypass", generation);
+          state.outcome = {
+            backend: "bypass",
+            error: error instanceof Error ? error : new Error(String(error)),
+            ready: true,
+            status: "failed",
+          };
+        }
+        console.warn(
+          "[EffectsController] Failed to select effects runtime",
+          error
+        );
+      });
   }
 }
 

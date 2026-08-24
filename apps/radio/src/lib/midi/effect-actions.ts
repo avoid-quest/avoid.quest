@@ -10,14 +10,14 @@ import {
 } from "@/lib/audio/dsp/routing/effect-tree";
 import type { ChannelEffectsChange } from "@/lib/channel-effects";
 import type { DeckId } from "@/lib/dj-deck";
-import type { MidiAction } from "./types";
+import type { MidiAction, MidiTargetId } from "./types";
 
 export type EffectChangeFactory = (
   tree: readonly EffectConfig[]
 ) => ChannelEffectsChange | null;
 
 type EffectActionOptions = {
-  change(factory: EffectChangeFactory): void;
+  change(factory: EffectChangeFactory, coalesceKey?: MidiTargetId): void;
   deckId: DeckId;
   tree: readonly EffectConfig[];
 };
@@ -61,17 +61,23 @@ function collectActions(
   ];
 
   for (const param of getEffectMidiParamDefs(effect.type)) {
+    const targetId = `${targetPrefix}:${param.key}`;
     actions.push({
-      targetId: `${targetPrefix}:${param.key}`,
+      targetId,
       label: `${schema.name} - ${param.label}`,
       group,
       type: "continuous",
       dispatch: (value) =>
-        change(() => ({
-          type: "update",
-          effectId: effect.id,
-          patch: { [param.key]: param.min + value * (param.max - param.min) },
-        })),
+        change(
+          () => ({
+            type: "update",
+            effectId: effect.id,
+            patch: {
+              [param.key]: param.min + value * (param.max - param.min),
+            },
+          }),
+          targetId
+        ),
       range: { min: param.min, max: param.max, step: param.step },
     });
   }
@@ -85,18 +91,22 @@ function collectActions(
       ["gain", "Gain", 0, 4, 0.01],
       ["pan", "Pan", -1, 1, 0.01],
     ] as const) {
+      const targetId = `${chainPrefix}:${key}`;
       actions.push({
-        targetId: `${chainPrefix}:${key}`,
+        targetId,
         label: `${schema.name} - ${chain.name} ${label}`,
         group,
         type: "continuous",
         dispatch: (value) =>
-          change(() => ({
-            type: "update-chain",
-            effectId: effect.id,
-            chainId: chain.id,
-            patch: { [key]: min + value * (max - min) },
-          })),
+          change(
+            () => ({
+              type: "update-chain",
+              effectId: effect.id,
+              chainId: chain.id,
+              patch: { [key]: min + value * (max - min) },
+            }),
+            targetId
+          ),
         range: { min, max, step },
       });
     }

@@ -703,6 +703,165 @@ describe("MidiControl", () => {
     ).toBe(true);
   });
 
+  test("coalesces queued continuous Effect changes to the latest target value", async () => {
+    const browser = new FakeBrowser();
+    const limiter = createDefaultEffectConfig("limiter", "limiter", 0);
+    const result = (threshold: number) => ({
+      desired: {
+        dryWet: 1,
+        sidechainSoundId: null,
+        tempo: 120,
+        tree: [{ ...limiter, threshold }],
+      },
+      runtime: { backend: null, ready: false, status: "inactive" as const },
+    });
+    const first = Promise.withResolvers<ReturnType<typeof result>>();
+    const second = Promise.withResolvers<ReturnType<typeof result>>();
+    let callCount = 0;
+    const effectChange = mock(() => {
+      callCount += 1;
+      return callCount === 1 ? first.promise : second.promise;
+    });
+    const targetId = "deck-a:effect:limiter:threshold";
+    const control = createMidiControl({
+      browser,
+      effects: { change: effectChange },
+      persistence: new MemoryPersistence({
+        state: {
+          activePresetId: null,
+          enabled: true,
+          mappings: [{ channel: 0, control: 21, targetId, type: "cc" }],
+        },
+        version: 2,
+      }),
+      staticActions: [],
+    });
+    control.bindDeckEffects("deck-a").reconcile([limiter]);
+    control.activateDj();
+    await control.connect();
+
+    browser.emit([0xb0, 21, 64]);
+    browser.flushFrame();
+    await Promise.resolve();
+    browser.time = 134;
+    browser.emit([0xb0, 21, 0]);
+    browser.flushFrame();
+    browser.time = 168;
+    browser.emit([0xb0, 21, 127]);
+    browser.flushFrame();
+    expect(effectChange).toHaveBeenCalledTimes(1);
+
+    first.resolve(result(-60));
+    await first.promise;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(effectChange).toHaveBeenCalledTimes(2);
+    expect(effectChange).toHaveBeenLastCalledWith(
+      { channelId: "deck-a", sessionId: "dj" },
+      { effectId: "limiter", patch: { threshold: 0 }, type: "update" }
+    );
+    second.resolve(result(0));
+    await second.promise;
+  });
+
+  test("keeps button Effect changes ordered between continuous updates", async () => {
+    const browser = new FakeBrowser();
+    const limiter = createDefaultEffectConfig("limiter", "limiter", 0);
+    const result = {
+      desired: {
+        dryWet: 1,
+        sidechainSoundId: null,
+        tempo: 120,
+        tree: [limiter],
+      },
+      runtime: { backend: null, ready: false, status: "inactive" as const },
+    };
+    const deferred = Array.from({ length: 4 }, () =>
+      Promise.withResolvers<typeof result>()
+    );
+    let callCount = 0;
+    const effectChange = mock(() => {
+      const request = deferred[callCount];
+      callCount += 1;
+      if (!request) {
+        throw new Error("Unexpected Effect change");
+      }
+      return request.promise;
+    });
+    const thresholdTarget = "deck-a:effect:limiter:threshold";
+    const enabledTarget = "deck-a:effect:limiter:enabled";
+    const control = createMidiControl({
+      browser,
+      effects: { change: effectChange },
+      persistence: new MemoryPersistence({
+        state: {
+          activePresetId: null,
+          enabled: true,
+          mappings: [
+            {
+              channel: 0,
+              control: 21,
+              targetId: thresholdTarget,
+              type: "cc",
+            },
+            {
+              channel: 0,
+              control: 22,
+              targetId: enabledTarget,
+              type: "note",
+            },
+          ],
+        },
+        version: 2,
+      }),
+      staticActions: [],
+    });
+    control.bindDeckEffects("deck-a").reconcile([limiter]);
+    control.activateDj();
+    await control.connect();
+
+    browser.emit([0xb0, 21, 64]);
+    browser.flushFrame();
+    await Promise.resolve();
+    browser.time = 134;
+    browser.emit([0xb0, 21, 0]);
+    browser.flushFrame();
+    browser.emit([0x90, 22, 127]);
+    browser.time = 168;
+    browser.emit([0xb0, 21, 127]);
+    browser.flushFrame();
+
+    deferred[0]?.resolve(result);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(effectChange).toHaveBeenNthCalledWith(
+      2,
+      { channelId: "deck-a", sessionId: "dj" },
+      {
+        effectId: "limiter",
+        patch: { threshold: -60 },
+        type: "update",
+      }
+    );
+
+    deferred[1]?.resolve(result);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(effectChange).toHaveBeenNthCalledWith(
+      3,
+      { channelId: "deck-a", sessionId: "dj" },
+      { effectId: "limiter", patch: { enabled: true }, type: "update" }
+    );
+
+    deferred[2]?.resolve(result);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(effectChange).toHaveBeenNthCalledWith(
+      4,
+      { channelId: "deck-a", sessionId: "dj" },
+      { effectId: "limiter", patch: { threshold: 0 }, type: "update" }
+    );
+    deferred[3]?.resolve(result);
+    await deferred[3]?.promise;
+  });
+
   test("keeps a newer external Effect reconcile after an older MIDI change settles", async () => {
     const browser = new FakeBrowser();
     const limiter = createDefaultEffectConfig("limiter", "limiter", 0);

@@ -116,8 +116,14 @@ type EffectBinding = {
   deckId: DeckId;
   disposed: boolean;
   pending: Promise<void>;
+  queuedContinuous: Map<MidiTargetId, QueuedEffectChange>;
   revision: number;
   tree: readonly EffectConfig[];
+};
+
+type QueuedEffectChange = {
+  coalesceKey?: MidiTargetId;
+  factory: EffectChangeFactory;
 };
 
 type ParsedMidiMessage = {
@@ -340,15 +346,38 @@ export function createMidiControl({
 
   const enqueueEffectChange = (
     binding: EffectBinding,
-    factory: EffectChangeFactory
+    factory: EffectChangeFactory,
+    coalesceKey?: MidiTargetId
   ) => {
+    const queued = coalesceKey
+      ? binding.queuedContinuous.get(coalesceKey)
+      : undefined;
+    if (queued) {
+      queued.factory = factory;
+      return;
+    }
+    if (!coalesceKey) {
+      binding.queuedContinuous.clear();
+    }
+    const changeRequest: QueuedEffectChange = { factory };
+    if (coalesceKey) {
+      changeRequest.coalesceKey = coalesceKey;
+      binding.queuedContinuous.set(coalesceKey, changeRequest);
+    }
     const lifecycle = lifecycleRevision;
     binding.pending = binding.pending
       .then(async () => {
+        if (
+          changeRequest.coalesceKey &&
+          binding.queuedContinuous.get(changeRequest.coalesceKey) ===
+            changeRequest
+        ) {
+          binding.queuedContinuous.delete(changeRequest.coalesceKey);
+        }
         if (binding.disposed) {
           return;
         }
-        const change = factory(binding.tree);
+        const change = changeRequest.factory(binding.tree);
         if (!change) {
           return;
         }
@@ -369,7 +398,7 @@ export function createMidiControl({
         binding.revision += 1;
         binding.tree = result.desired.tree;
         binding.actions = createEffectMidiActions({
-          change: (next) => enqueueEffectChange(binding, next),
+          change: (next, key) => enqueueEffectChange(binding, next, key),
           deckId: binding.deckId,
           tree: binding.tree,
         });
@@ -618,6 +647,7 @@ export function createMidiControl({
         deckId,
         disposed: false,
         pending: Promise.resolve(),
+        queuedContinuous: new Map(),
         revision: 0,
         tree: [],
       };
@@ -635,7 +665,7 @@ export function createMidiControl({
           );
           binding.tree = tree;
           binding.actions = createEffectMidiActions({
-            change: (next) => enqueueEffectChange(binding, next),
+            change: (next, key) => enqueueEffectChange(binding, next, key),
             deckId,
             tree,
           });

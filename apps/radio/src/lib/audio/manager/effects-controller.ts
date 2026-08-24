@@ -414,7 +414,25 @@ class EffectsController {
       return true;
     }
 
-    await this.selectRuntime(soundId, state, generation);
+    try {
+      await this.selectRuntime(soundId, state, generation);
+    } catch (error) {
+      const ownsGraph = state.graph?.source === source;
+      if (ownsGraph && state.generation === generation) {
+        this.switchBackend(soundId, state, "bypass", generation);
+        state.outcome = {
+          backend: "bypass",
+          error: error instanceof Error ? error : new Error(String(error)),
+          ready: true,
+          status: "failed",
+        };
+      }
+      console.warn(
+        "[EffectsController] Failed to select effects runtime",
+        error
+      );
+      return ownsGraph;
+    }
     // Runtime selection can be superseded by an effect edit while it awaits a
     // worklet. The stable router is still valid and the newer generation owns
     // the eventual backend; returning false here would make AudioManager add a

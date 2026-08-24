@@ -239,6 +239,37 @@ describe("EffectsController", () => {
     });
   });
 
+  test("keeps the dry graph active when compatibility initialization fails", async () => {
+    const context = new TestAudioContext();
+    const filter = new TestAudioNode(context);
+    const manager = createManager(context);
+    const failure = new Error("compatibility unavailable");
+    (manager.init as ReturnType<typeof mock>).mockRejectedValue(failure);
+    const controller = new EffectsController({
+      createWorkletManager: () => manager,
+      notifyListeners: () => undefined,
+      sounds: new Map([["target", sound("target", filter)]]),
+      workletProcessorUrl: () => "/worklet.js",
+    });
+    const distortion = createDefaultEffectConfig("distortion", "distortion", 0);
+    distortion.enabled = true;
+    await controller.reconcile("target", desiredEffects([distortion]));
+
+    expect(
+      await controller.connectGraph(
+        "target",
+        filter as unknown as AudioNode,
+        new TestAudioNode(context) as unknown as AudioNode
+      )
+    ).toBe(true);
+    expect(controller.getRuntimeOutcome("target")).toEqual({
+      backend: "bypass",
+      error: failure,
+      ready: true,
+      status: "failed",
+    });
+  });
+
   test("connects a dry graph without creating an effects runtime", async () => {
     const context = new TestAudioContext();
     const filter = new TestAudioNode(context);

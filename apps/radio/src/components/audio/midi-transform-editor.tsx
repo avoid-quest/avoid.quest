@@ -12,9 +12,9 @@ import {
 import { Slider } from "@avoid.quest/ui/components/slider";
 import {
   DEFAULT_TRANSFORM,
+  getMidiControl,
   type MidiTargetId,
   type MidiTransform,
-  useMidiStore,
 } from "@/lib/midi";
 
 type MidiTransformEditorProps = {
@@ -26,7 +26,12 @@ export function MidiTransformEditor({
   targetId,
   transform,
 }: MidiTransformEditorProps) {
-  const updateMappingTransform = useMidiStore((s) => s.updateMappingTransform);
+  const updateMappingTransform = (patch: Partial<MidiTransform>) =>
+    getMidiControl().change({
+      type: "update-transform",
+      targetId,
+      patch,
+    });
 
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: stopPropagation for context menu
@@ -38,9 +43,7 @@ export function MidiTransformEditor({
         <input
           checked={transform.invert}
           className="size-3.5 cursor-pointer accent-violet-500"
-          onChange={(e) =>
-            updateMappingTransform(targetId, { invert: e.target.checked })
-          }
+          onChange={(e) => updateMappingTransform({ invert: e.target.checked })}
           type="checkbox"
         />
         <span className="text-xs">Invert</span>
@@ -58,7 +61,7 @@ export function MidiTransformEditor({
           defaultValue={[DEFAULT_TRANSFORM.min]}
           max={1}
           min={0}
-          onValueChange={([v]) => updateMappingTransform(targetId, { min: v })}
+          onValueChange={([v]) => updateMappingTransform({ min: v })}
           step={0.01}
           value={[transform.min]}
         />
@@ -76,7 +79,7 @@ export function MidiTransformEditor({
           defaultValue={[DEFAULT_TRANSFORM.max]}
           max={1}
           min={0}
-          onValueChange={([v]) => updateMappingTransform(targetId, { max: v })}
+          onValueChange={([v]) => updateMappingTransform({ max: v })}
           step={0.01}
           value={[transform.max]}
         />
@@ -87,7 +90,7 @@ export function MidiTransformEditor({
         <span className="text-muted-foreground text-xs">Curve</span>
         <Select
           onValueChange={(v) =>
-            updateMappingTransform(targetId, {
+            updateMappingTransform({
               curve: v as MidiTransform["curve"],
             })
           }
@@ -107,9 +110,7 @@ export function MidiTransformEditor({
       {/* Reset */}
       <button
         className="w-full rounded-md border px-2 py-1 text-muted-foreground text-xs transition-colors hover:bg-muted"
-        onClick={() =>
-          updateMappingTransform(targetId, { ...DEFAULT_TRANSFORM })
-        }
+        onClick={() => updateMappingTransform({ ...DEFAULT_TRANSFORM })}
         type="button"
       >
         Reset Transform

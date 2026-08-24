@@ -7,10 +7,12 @@ import { InstallPrompt } from "@/components/pwa/install-prompt";
 import { SWRegister } from "@/components/pwa/sw-register";
 import { Header } from "@/components/theme/header";
 import { ThemeProvider } from "@/components/theme/theme-provider";
+import { useMidiControlLifecycle } from "@/lib/hooks/use-midi";
 import { createRootQueryClient } from "@/lib/root/root-bootstrap";
 
 export function RootShell({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(createRootQueryClient);
+  useMidiControlLifecycle();
 
   useEffect(() => {
     const handlePageHide = () => {

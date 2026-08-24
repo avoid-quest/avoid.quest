@@ -15,7 +15,12 @@ import {
   ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from "@avoid.quest/ui/components/context-menu";
-import { DEFAULT_TRANSFORM, type MidiTargetId, useMidiStore } from "@/lib/midi";
+import { useMidiControlSnapshot } from "@/lib/hooks/use-midi";
+import {
+  DEFAULT_TRANSFORM,
+  getMidiControl,
+  type MidiTargetId,
+} from "@/lib/midi";
 import { MidiBadge } from "./midi-badge";
 import { MidiTransformEditor } from "./midi-transform-editor";
 
@@ -28,11 +33,10 @@ export function MidiControlWrapper({
   targetId,
   children,
 }: MidiControlWrapperProps) {
-  const learningTarget = useMidiStore((s) => s.learningTarget);
-  const mapping = useMidiStore((s) => s.mappingsByTarget.get(targetId));
-  const startLearn = useMidiStore((s) => s.startLearn);
-  const stopLearn = useMidiStore((s) => s.stopLearn);
-  const removeMapping = useMidiStore((s) => s.removeMapping);
+  const control = getMidiControl();
+  const snapshot = useMidiControlSnapshot();
+  const { learningTarget } = snapshot;
+  const mapping = snapshot.mappingsByTarget.get(targetId);
   const hasMidi = !!mapping;
   const isThisLearning = learningTarget === targetId;
 
@@ -49,11 +53,15 @@ export function MidiControlWrapper({
       </ContextMenuTrigger>
       <ContextMenuContent className="w-52">
         {isThisLearning ? (
-          <ContextMenuItem onClick={() => stopLearn()}>
+          <ContextMenuItem
+            onClick={() => control.change({ type: "stop-learn" })}
+          >
             Cancel Learn
           </ContextMenuItem>
         ) : (
-          <ContextMenuItem onClick={() => startLearn(targetId)}>
+          <ContextMenuItem
+            onClick={() => control.change({ type: "start-learn", targetId })}
+          >
             {hasMidi ? "Re-learn MIDI" : "Learn MIDI"}
           </ContextMenuItem>
         )}
@@ -74,7 +82,9 @@ export function MidiControlWrapper({
 
             <ContextMenuItem
               className="text-destructive focus:text-destructive"
-              onClick={() => removeMapping(targetId)}
+              onClick={() =>
+                control.change({ type: "remove-mapping", targetId })
+              }
             >
               Clear Mapping
             </ContextMenuItem>

@@ -41,16 +41,19 @@ mock.module("@/lib/hooks/use-settings", () => ({
 }));
 
 let MidiSettings: typeof import("./midi-settings")["MidiSettings"];
-let useMidiStore: typeof import("@/lib/midi")["useMidiStore"];
+let getMidiControl: typeof import("@/lib/midi")["getMidiControl"];
 
 beforeAll(async () => {
   ({ MidiSettings } = await import("./midi-settings"));
-  ({ useMidiStore } = await import("@/lib/midi"));
+  ({ getMidiControl } = await import("@/lib/midi"));
 });
 
 afterEach(() => {
   cleanup();
-  useMidiStore.getState().reset();
+  const control = getMidiControl();
+  control.change({ type: "clear-mappings" });
+  control.change({ type: "set-enabled", enabled: false });
+  control.cleanup();
 });
 
 test("keeps MIDI settings available outside DJ mode in Chromium", () => {

@@ -43,6 +43,7 @@ import {
 } from "./playback-actions-shared.js";
 import {
   getSingleSelectionCoordinator,
+  type SingleSelectionState,
   singleSelectionAbortReason,
 } from "./single-selection-coordinator.js";
 
@@ -405,8 +406,7 @@ function getSingleSelectionChannel(): PlaybackChannelRecord | null {
 
 async function selectSingleRadio(
   radio: Radio,
-  shouldPlay: boolean,
-  previousSoundId: string | null,
+  selection: SingleSelectionState,
   ctx: PlaybackActionContext,
   signal: AbortSignal
 ): Promise<void> {
@@ -431,7 +431,7 @@ async function selectSingleRadio(
       undefined,
       ctx
     );
-    if (!shouldPlay) {
+    if (!selection.playbackIntent) {
       return;
     }
 
@@ -448,15 +448,15 @@ async function selectSingleRadio(
     if (signal.aborted) {
       throw singleSelectionAbortReason(signal);
     }
-    if (channel.radio && previousSoundId) {
+    if (channel.radio && selection.rollbackSoundId) {
       const restoredSoundId = createManagedSound(
         "single",
         channel.id,
         channel.radio,
-        previousSoundId,
+        selection.rollbackSoundId,
         ctx
       );
-      if (shouldPlay) {
+      if (selection.playbackIntent) {
         await playManagedSound("single", restoredSoundId, channel.volume, ctx);
       }
     }
@@ -575,8 +575,7 @@ export function createManagedPlaybackSessionWorkflow(
       return singleSelection.runSelection(
         runtime?.isPlaying ?? false,
         runtime?.soundId ?? null,
-        (signal, intent, rollbackSoundId) =>
-          selectSingleRadio(radio, intent, rollbackSoundId, ctx, signal)
+        (signal, selection) => selectSingleRadio(radio, selection, ctx, signal)
       );
     },
     setPlaying(playing, channelId) {

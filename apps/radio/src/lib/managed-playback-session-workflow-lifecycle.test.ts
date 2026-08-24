@@ -255,6 +255,38 @@ describe("managed playback selection lifecycle", () => {
     );
   });
 
+  test("pausing a failing selection keeps the restored station paused", async () => {
+    const active = station("active");
+    insertPlayingSingleSession(active);
+    const context = createTestContext();
+    const replacementPlay = createDeferred();
+    let playCount = 0;
+    context.audio.playSound = mock(() => {
+      playCount += 1;
+      return playCount === 1 ? replacementPlay.promise : Promise.resolve();
+    });
+    const workflow = createManagedPlaybackSessionWorkflow("single", {
+      ctx: context,
+    });
+
+    const selection = workflow.selectRadio(station("replacement"));
+    await flushMicrotasks();
+    await workflow.setPlaying(false);
+    replacementPlay.reject(new Error("replacement failed"));
+
+    await expect(selection).rejects.toMatchObject({ code: "PLAY_ERROR" });
+    expect(
+      getPlaybackChannel("single", SINGLE_ACTIVE_CHANNEL_ID)?.radio
+    ).toEqual(active);
+    expect(context.channels.activate).toHaveBeenLastCalledWith(
+      "single",
+      SINGLE_ACTIVE_CHANNEL_ID,
+      active,
+      "single:single-a"
+    );
+    expect(context.audio.playSound).toHaveBeenCalledTimes(1);
+  });
+
   test("superseding a paused selection does not start playback", async () => {
     insertPlayingSingleSession(station("active"));
     setPlaybackChannelRuntime(SINGLE_ACTIVE_CHANNEL_ID, () => ({

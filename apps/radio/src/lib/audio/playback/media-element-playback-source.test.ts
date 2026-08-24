@@ -227,8 +227,10 @@ async function startNativeStream(
 function installHlsMock(): {
   emitFatalNetworkError: () => void;
   loadedSources: string[];
+  restartedLoads: true[];
 } {
   const loadedSources: string[] = [];
+  const restartedLoads: true[] = [];
   const errorHandlers: Array<
     (
       event: string,
@@ -282,6 +284,10 @@ function installHlsMock(): {
       recoverMediaError(): void {
         // This test covers fatal network recovery.
       }
+
+      startLoad(): void {
+        restartedLoads.push(true);
+      }
     },
   }));
 
@@ -294,6 +300,7 @@ function installHlsMock(): {
       });
     },
     loadedSources,
+    restartedLoads,
   };
 }
 
@@ -399,6 +406,29 @@ describe("MediaElementPlaybackSource native playback", () => {
       await flushMicrotasks();
 
       expect(hls.loadedSources).toEqual([url, url]);
+      source.cleanup();
+    } finally {
+      browser.restore();
+    }
+  });
+
+  test("restarts HLS loading immediately after a fatal network error", async () => {
+    const browser = installBrowser();
+    const hls = installHlsMock();
+
+    try {
+      const source = new MediaElementPlaybackSource(null, "native");
+      const audio = browser.audio();
+      await source.load({
+        format: "hls",
+        src: "https://radio.example/live.m3u8",
+      });
+      await source.play();
+      audio.emit("playing");
+
+      hls.emitFatalNetworkError();
+
+      expect(hls.restartedLoads).toHaveLength(1);
       source.cleanup();
     } finally {
       browser.restore();

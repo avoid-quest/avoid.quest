@@ -169,6 +169,11 @@ export class MediaElementAttachment {
         onFatal({ error, recoveredInPlace: true });
         return;
       }
+      if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+        hls.startLoad();
+        onFatal({ error, recoveredInPlace: true });
+        return;
+      }
       onFatal({ error, recoveredInPlace: false });
     });
     hls.attachMedia(

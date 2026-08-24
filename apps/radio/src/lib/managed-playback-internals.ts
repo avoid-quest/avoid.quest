@@ -148,9 +148,17 @@ export async function setManagedChannelPlaying(
   }
 
   validateRadioForMode(channel.radio, sessionId);
-  const soundId =
-    runtime.soundId ??
-    createManagedSound(sessionId, channel.id, channel.radio, undefined, ctx);
+  let soundId = runtime.soundId;
+  if (!soundId) {
+    soundId = createManagedSound(
+      sessionId,
+      channel.id,
+      channel.radio,
+      undefined,
+      ctx
+    );
+    ctx.channels.setMuted(sessionId, channel.id, channel.muted);
+  }
   await playManagedSound(sessionId, soundId, channel.volume, ctx);
 }
 

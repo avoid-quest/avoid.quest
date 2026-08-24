@@ -314,6 +314,25 @@ describe("Multiple Playback", () => {
     expect(context.reportError).not.toHaveBeenCalled();
   });
 
+  test("first play reapplies persisted Channel mute after lazy creation", async () => {
+    const radio = station("lazy-muted");
+    const channelId = getMultipleChannelId(radio);
+    insertMultipleSession([radio]);
+    updatePlaybackChannel("multiple", channelId, (draft) => {
+      draft.muted = true;
+      draft.volume = 0.35;
+    });
+    const context = createTestContext();
+
+    await getMultiplePlayback({ ctx: context }).setPlaying(channelId, true);
+
+    expect(context.channels.setMuted).toHaveBeenCalledWith(
+      "multiple",
+      channelId,
+      true
+    );
+  });
+
   test("bounds play-all network pressure to three Channels", async () => {
     const radios = Array.from({ length: 5 }, (_, index) =>
       station(String(index + 1))

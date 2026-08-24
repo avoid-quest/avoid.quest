@@ -42,6 +42,7 @@ type SoundEffectsState = {
   officialConnectingGeneration: number | null;
   outcome: EffectsRuntimeOutcome;
   sidechain: SidechainConnection | null;
+  tempo: number;
 };
 
 type EffectsControllerOptions = {
@@ -68,6 +69,7 @@ const createSoundState = (): SoundEffectsState => ({
   officialConnectingGeneration: null,
   outcome: { backend: null, ready: false, status: "inactive" },
   sidechain: null,
+  tempo: 120,
 });
 
 class EffectsController {
@@ -77,7 +79,6 @@ class EffectsController {
   private readonly officialRegisteredSoundIds = new Set<string>();
   private readonly officialSoundOwners = new Map<string, number>();
   private nextOfficialRuntimeGeneration = 0;
-  private bpm = 120;
   private nextGeneration = 0;
   private readonly states = new Map<string, SoundEffectsState>();
   private readonly workletProcessorUrl: () => string;
@@ -186,7 +187,7 @@ class EffectsController {
         dryWet: state.dryWet,
         effects: previousEffects,
         sidechainSoundId: state.desiredSidechainSoundId,
-        tempo: this.bpm,
+        tempo: state.tempo,
       }) ===
       JSON.stringify({
         dryWet: nextDryWet,
@@ -198,7 +199,7 @@ class EffectsController {
     state.effects = nextEffects;
     state.dryWet = nextDryWet;
     state.desiredSidechainSoundId = desired.sidechainSoundId;
-    this.bpm = nextTempo;
+    state.tempo = nextTempo;
 
     if (state.compatibilitySourceCreated && !unchanged) {
       this.reconcileCompatibility(soundId, state, previousEffects, nextEffects);
@@ -292,7 +293,7 @@ class EffectsController {
       next.map((effect) => effect.id)
     );
     manager.setEffectsDryWet(soundId, state.dryWet);
-    manager.setTempo(soundId, this.bpm);
+    manager.setTempo(soundId, state.tempo);
     this.bindCompatibilitySidechain(state);
   }
 
@@ -477,7 +478,7 @@ class EffectsController {
       );
     }
     manager.setEffectsDryWet(soundId, state.dryWet);
-    manager.setTempo(soundId, this.bpm);
+    manager.setTempo(soundId, state.tempo);
   }
 
   pauseSource(soundId: string): void {
@@ -693,7 +694,7 @@ class EffectsController {
       }
 
       this.officialRegisteredSoundIds.add(soundId);
-      runtime.setTempo(this.bpm);
+      runtime.setTempo(state.tempo);
       runtime.setSidechainTarget(soundId, state.desiredSidechainSoundId);
       runtime.syncEffects(soundId, selectEnabledEffects(state.effects));
       runtime.setDryWet(soundId, state.dryWet);
@@ -937,9 +938,9 @@ class EffectsController {
         if (state.generation === generation) {
           this.switchBackend(soundId, state, "bypass", generation);
           state.outcome = {
-            backend: null,
+            backend: "bypass",
             error: error instanceof Error ? error : new Error(String(error)),
-            ready: false,
+            ready: true,
             status: "failed",
           };
         }

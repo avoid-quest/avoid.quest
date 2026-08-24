@@ -92,7 +92,9 @@ const refKey = ({ sessionId, channelId }: ChannelEffectsRef): string =>
 function findSidechainChannelId(tree: readonly EffectConfig[]): string | null {
   let channelId: string | null = null;
   visitEffectTree(tree, (effect) => {
-    channelId ??= effect.sidechain?.channelId ?? null;
+    if (effect.enabled) {
+      channelId ??= effect.sidechain?.channelId ?? null;
+    }
   });
   return channelId;
 }

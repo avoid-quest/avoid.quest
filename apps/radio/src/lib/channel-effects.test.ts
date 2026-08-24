@@ -222,6 +222,7 @@ describe("ChannelEffects", () => {
     };
     const effects = createChannelEffects({ runtime });
     const gate = createDefaultEffectConfig("gate", "gate", 0);
+    gate.enabled = true;
     gate.sidechain = { channelId: "deck-b" };
     await effects.change(
       { sessionId: "dj", channelId: "deck-a" },
@@ -240,5 +241,37 @@ describe("ChannelEffects", () => {
     effects.unbind({ sessionId: "dj", channelId: "deck-b" });
     await Promise.resolve();
     expect(snapshots.get("sound-a")?.sidechainSoundId).toBeNull();
+  });
+
+  test("selects the first enabled sidechain effect", async () => {
+    insertDjSession();
+    const snapshots = new Map<string, DesiredEffectsState>();
+    const effects = createChannelEffects({
+      runtime: {
+        reconcile: mock((soundId: string, desired: DesiredEffectsState) => {
+          snapshots.set(soundId, desired);
+          return Promise.resolve(readyCompatibility());
+        }),
+      },
+    });
+    const disabledGate = createDefaultEffectConfig("gate", "disabled-gate", 0);
+    disabledGate.enabled = false;
+    disabledGate.sidechain = { channelId: "deck-a" };
+    const enabledGate = createDefaultEffectConfig("gate", "enabled-gate", 1);
+    enabledGate.enabled = true;
+    enabledGate.sidechain = { channelId: "deck-b" };
+    await effects.change(
+      { sessionId: "dj", channelId: "deck-a" },
+      { type: "add", effect: disabledGate }
+    );
+    await effects.change(
+      { sessionId: "dj", channelId: "deck-a" },
+      { type: "add", effect: enabledGate }
+    );
+
+    await effects.bind({ sessionId: "dj", channelId: "deck-a" }, "sound-a");
+    await effects.bind({ sessionId: "dj", channelId: "deck-b" }, "sound-b");
+
+    expect(snapshots.get("sound-a")?.sidechainSoundId).toBe("sound-b");
   });
 });

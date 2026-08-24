@@ -338,6 +338,43 @@ describe("EffectsController", () => {
     });
   });
 
+  test("reports a ready bypass when resumed runtime selection fails", async () => {
+    const context = new TestAudioContext();
+    const filter = new TestAudioNode(context);
+    const manager = createManager(context);
+    const failure = new Error("compatibility unavailable");
+    (manager.init as ReturnType<typeof mock>).mockRejectedValue(failure);
+    const controller = new EffectsController({
+      createWorkletManager: () => manager,
+      notifyListeners: () => undefined,
+      sounds: new Map([["target", sound("target", filter)]]),
+      workletProcessorUrl: () => "/worklet.js",
+    });
+    await controller.connectGraph(
+      "target",
+      filter as unknown as AudioNode,
+      new TestAudioNode(context) as unknown as AudioNode
+    );
+    const distortion = createDefaultEffectConfig("distortion", "distortion", 0);
+    distortion.enabled = true;
+    const failed = await controller.reconcile(
+      "target",
+      desiredEffects([distortion])
+    );
+    expect(failed).toEqual({
+      backend: "bypass",
+      error: failure,
+      ready: true,
+      status: "failed",
+    });
+
+    controller.pauseSource("target");
+    controller.resumeSource("target");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(controller.getRuntimeOutcome("target")).toEqual(failed);
+  });
+
   test("switches an active official graph to compatibility from one snapshot", async () => {
     const context = new TestAudioContext();
     const filter = new TestAudioNode(context);
@@ -417,6 +454,60 @@ describe("EffectsController", () => {
       ready: true,
       status: "ready",
     });
+  });
+
+  test("applies a shared tempo update to every compatibility sound", async () => {
+    const context = new TestAudioContext();
+    const firstFilter = new TestAudioNode(context);
+    const secondFilter = new TestAudioNode(context);
+    const firstManager = createManager(context);
+    const secondManager = createManager(context);
+    const managers = [firstManager, secondManager];
+    const controller = new EffectsController({
+      createWorkletManager: () => {
+        const manager = managers.shift();
+        if (!manager) {
+          throw new Error("Unexpected compatibility manager request");
+        }
+        return manager;
+      },
+      notifyListeners: () => undefined,
+      sounds: new Map([
+        ["first", sound("first", firstFilter)],
+        ["second", sound("second", secondFilter)],
+      ]),
+      workletProcessorUrl: () => "/worklet.js",
+    });
+    const distortion = createDefaultEffectConfig("distortion", "distortion", 0);
+    distortion.enabled = true;
+    await controller.reconcile("first", desiredEffects([distortion]));
+    await controller.reconcile("second", desiredEffects([distortion]));
+    await controller.connectGraph(
+      "first",
+      firstFilter as unknown as AudioNode,
+      new TestAudioNode(context) as unknown as AudioNode
+    );
+    await controller.connectGraph(
+      "second",
+      secondFilter as unknown as AudioNode,
+      new TestAudioNode(context) as unknown as AudioNode
+    );
+    const firstSetTempo = firstManager.setTempo as ReturnType<typeof mock>;
+    const secondSetTempo = secondManager.setTempo as ReturnType<typeof mock>;
+    firstSetTempo.mockClear();
+    secondSetTempo.mockClear();
+
+    await controller.reconcile(
+      "first",
+      desiredEffects([distortion], { tempo: 140 })
+    );
+    await controller.reconcile(
+      "second",
+      desiredEffects([distortion], { tempo: 140 })
+    );
+
+    expect(firstSetTempo).toHaveBeenCalledWith("first", 140);
+    expect(secondSetTempo).toHaveBeenCalledWith("second", 140);
   });
 
   test("stop cancels an in-flight official connection", async () => {

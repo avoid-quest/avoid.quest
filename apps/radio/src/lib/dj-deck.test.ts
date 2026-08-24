@@ -10,6 +10,7 @@ import {
   playbackSessionsCollection,
   updatePlaybackChannel,
 } from "@/lib/collections/playback-sessions";
+import { reportDjErrorSurface } from "@/lib/dj/dj-error-surface";
 import { getDjError } from "@/lib/stores/dj-runtime-store";
 import { getPlaybackChannelRuntime } from "@/lib/stores/playback-runtime-store";
 import {
@@ -220,6 +221,13 @@ describe("DjDeckModule", () => {
     if (!pendingItem) {
       throw new Error("Expected a platform picker library item");
     }
+    reportDjErrorSurface(
+      "Reload the active source",
+      "DJ_PLAYBACK_FAILED",
+      undefined,
+      current,
+      "deck-a"
+    );
     const result = await deck.load({
       type: "library",
       radio: pendingItem,
@@ -234,6 +242,7 @@ describe("DjDeckModule", () => {
     });
 
     expect(result).toEqual({ type: "pending-platform", platform: "external" });
+    expect(getDjError()).toBe("Reload the active source");
     expect(getPlaybackChannel("dj", "deck-a")?.radio).toEqual(current);
     expect(getPlaybackChannelRuntime("deck-a")).toMatchObject({
       soundId: "left_station-1:1",
@@ -621,6 +630,56 @@ describe("DjDeckModule", () => {
     );
   });
 
+  test("keeps a resolved remote URL paused when replacing a playing source", async () => {
+    const audio = createAudioAdapter();
+    const platform = createPlatform();
+    platform.loadItem = mock(() =>
+      Promise.resolve({
+        success: true as const,
+        radio: {
+          id: "remote-1",
+          name: "Remote file",
+          streamUrl: "https://radio.example/remote.mp3",
+        },
+      })
+    );
+    const module = createDjDeckModule({
+      audio,
+      context: createContext(),
+      effects: createEffects(),
+      output: createOutput(),
+      platform,
+    });
+    const deck = module.deck("deck-a");
+    await deck.load({
+      type: "radio",
+      radio: {
+        id: "station-1",
+        name: "Station 1",
+        streamUrl: "https://radio.example/one.mp3",
+      },
+    });
+    audio.emit("left_station-1:1", {
+      isPlaying: true,
+      isLoading: false,
+      isBuffering: false,
+      volume: 1,
+      error: null,
+      hasEnded: false,
+    });
+
+    await deck.load({
+      type: "static-audio-url",
+      url: "https://radio.example/remote.mp3",
+    });
+
+    expect(getPlaybackChannel("dj", "deck-a")?.radio?.id).toBe("remote-1");
+    expect(audio.transport).not.toHaveBeenCalledWith(
+      "left_remote-1:2",
+      expect.objectContaining({ type: "play" })
+    );
+  });
+
   test("rejects unsafe track streams before activating browser audio", async () => {
     const audio = createAudioAdapter();
     const module = createDjDeckModule({
@@ -814,6 +873,56 @@ describe("DjDeckModule", () => {
       "left_station-1:2"
     );
     expect(audio.activeSounds).toEqual(new Set(["left_station-1:2"]));
+  });
+
+  test("does not let a pending reset replace a newer source", async () => {
+    const audio = createAudioAdapter();
+    const { effects } = createPersistingEffects();
+    const change = effects.change;
+    let releaseReset: (() => void) | null = null;
+    const resetGate = new Promise<void>((resolve) => {
+      releaseReset = resolve;
+    });
+    effects.change = mock(async (ref, input) => {
+      if (input.type === "replace") {
+        await resetGate;
+      }
+      return await change(ref, input);
+    });
+    const module = createDjDeckModule({
+      audio,
+      context: createContext(),
+      effects,
+      output: createOutput(),
+      platform: createPlatform(),
+    });
+    const deck = module.deck("deck-a");
+    await deck.load({
+      type: "radio",
+      radio: {
+        id: "station-1",
+        name: "Station 1",
+        streamUrl: "https://radio.example/one.mp3",
+      },
+    });
+
+    const reset = deck.transport({ type: "reset" });
+    await Promise.resolve();
+    await deck.load({
+      type: "radio",
+      radio: {
+        id: "station-2",
+        name: "Station 2",
+        streamUrl: "https://radio.example/two.mp3",
+      },
+    });
+    (releaseReset as (() => void) | null)?.();
+    await reset;
+
+    expect(getPlaybackChannel("dj", "deck-a")?.radio?.id).toBe("station-2");
+    expect(getPlaybackChannelRuntime("deck-a").soundId).toBe(
+      "left_station-2:2"
+    );
   });
 
   test("clears a Deck source and Effects through the same interface", async () => {

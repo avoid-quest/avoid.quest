@@ -504,6 +504,13 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
   const isLoadCurrent = (deckId: DeckId, generation: number): boolean =>
     runtimes[deckId].loadGeneration === generation;
 
+  const beginSourceLoad = (deckId: DeckId): number => {
+    setPendingSource(null);
+    const loadGeneration = beginLoad(deckId);
+    clearDjErrorSurface(deckId);
+    return loadGeneration;
+  };
+
   const reportFailure = (
     deckId: DeckId,
     code: string,
@@ -782,14 +789,17 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
   const commitRadio = async (
     deckId: DeckId,
     loadGeneration: number,
-    radio: Radio | null
+    radio: Radio | null,
+    playbackPolicy: "paused" | "preserve" = "preserve"
   ): Promise<void> => {
     if (!isLoadCurrent(deckId, loadGeneration)) {
       return;
     }
     const generation = beginGeneration(deckId);
     const previous = getPlaybackChannel("dj", deckId)?.radio ?? null;
-    const wasPlaying = getPlaybackChannelRuntime(deckId).isPlaying;
+    const wasPlaying =
+      playbackPolicy === "preserve" &&
+      getPlaybackChannelRuntime(deckId).isPlaying;
     deactivateDeck(deckId);
     if (!radio) {
       await resetPersistedState(deckId, true);
@@ -1192,6 +1202,12 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
     return loaded();
   }
 
+  async function pausePlayingSource(deckId: DeckId): Promise<void> {
+    if (getPlaybackChannelRuntime(deckId).isPlaying) {
+      await pause(deckId);
+    }
+  }
+
   async function loadStaticUrlIntent(
     deckId: DeckId,
     loadGeneration: number,
@@ -1218,12 +1234,19 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
         result.radio,
         result.radio.streamUrl
       );
-      if (resolved && isLoadCurrent(deckId, loadGeneration)) {
-        await commitRadio(deckId, loadGeneration, {
-          ...result.radio,
-          ...resolved,
-        });
+      if (!(resolved && isLoadCurrent(deckId, loadGeneration))) {
+        return loaded();
       }
+      await pausePlayingSource(deckId);
+      if (!isLoadCurrent(deckId, loadGeneration)) {
+        return loaded();
+      }
+      await commitRadio(
+        deckId,
+        loadGeneration,
+        { ...result.radio, ...resolved },
+        "paused"
+      );
     } catch (error) {
       if (isLoadCurrent(deckId, loadGeneration)) {
         reportDjErrorSurface(
@@ -1260,9 +1283,9 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
     if (!(resolved && isLoadCurrent(deckId, loadGeneration))) {
       return loaded();
     }
-    const runtime = getPlaybackChannelRuntime(deckId);
-    if (runtime.isPlaying) {
-      await pause(deckId);
+    await pausePlayingSource(deckId);
+    if (!isLoadCurrent(deckId, loadGeneration)) {
+      return loaded();
     }
     await commitRadio(deckId, loadGeneration, { ...intent.radio, ...resolved });
     if (intent.autoPlay && isLoadCurrent(deckId, loadGeneration)) {
@@ -1276,12 +1299,9 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
     intent: DjDeckLoadIntent
   ): Promise<DjDeckLoadResult> => {
     if (intent.type === "library") {
-      clearDjErrorSurface(deckId);
       return await loadLibraryIntent(deckId, intent.radio);
     }
-    setPendingSource(null);
-    const loadGeneration = beginLoad(deckId);
-    clearDjErrorSurface(deckId);
+    const loadGeneration = beginSourceLoad(deckId);
     switch (intent.type) {
       case "radio":
         await commitRadio(deckId, loadGeneration, intent.radio);
@@ -1331,8 +1351,9 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
     if (!radio) {
       return;
     }
+    const loadGeneration = beginSourceLoad(deckId);
     await resetPersistedState(deckId, false);
-    await load(deckId, { type: "radio", radio });
+    await commitRadio(deckId, loadGeneration, radio);
   };
 
   const changeActiveSound = (

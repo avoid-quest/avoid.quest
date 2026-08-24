@@ -448,7 +448,7 @@ describe("DjDeckModule", () => {
     );
   });
 
-  test("clears a deactivated source when replacement activation fails", async () => {
+  test("keeps the previous source when replacement activation fails", async () => {
     const audio = createAudioAdapter();
     const module = createDjDeckModule({
       audio,
@@ -488,10 +488,10 @@ describe("DjDeckModule", () => {
       },
     });
 
-    expect(getPlaybackChannel("dj", "deck-a")?.radio).toBeNull();
+    expect(getPlaybackChannel("dj", "deck-a")?.radio).toEqual(previous);
     expect(getPlaybackChannelRuntime("deck-a").soundId).toBeNull();
     expect(audio.activeSounds).toEqual(new Set());
-    expect(audio.releaseFileUrl).toHaveBeenCalledWith(previous.streamUrl);
+    expect(audio.releaseFileUrl).not.toHaveBeenCalled();
   });
 
   test("loads a device input and persists its runtime channel shape", async () => {

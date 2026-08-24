@@ -739,16 +739,28 @@ class OutputRouting {
         this.decks.delete(deckId);
       },
       replaceTap: (tap) => {
-        if (this.decks.get(deckId) === connection) {
+        if (this.restoreDeckRegistration(deckId, connection)) {
           this.replaceDeckTap(connection, tap);
         }
       },
       setEnabled: (enabled) => {
-        if (this.decks.get(deckId) === connection) {
+        if (this.restoreDeckRegistration(deckId, connection)) {
           this.setDeckEnabled(deckId, connection, enabled);
         }
       },
     };
+  }
+
+  private restoreDeckRegistration(
+    deckId: string,
+    connection: DeckConnection
+  ): boolean {
+    const current = this.decks.get(deckId);
+    if (current) {
+      return current === connection;
+    }
+    this.decks.set(deckId, connection);
+    return true;
   }
 
   private reconcileDeckConnections(): void {

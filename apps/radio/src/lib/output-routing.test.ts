@@ -579,6 +579,25 @@ describe("OutputRouting", () => {
     expect(errors).toEqual([]);
   });
 
+  test("keeps Deck registrations usable after shared routing cleanup", async () => {
+    const { browser, routing } = setup();
+    await routing.applySettings({ cueOutputId: "headphones" });
+    const registration = routing.registerCueDeck(
+      "deck-a",
+      node("first-cue", browser.context),
+      true
+    );
+
+    routing.cleanup();
+    await routing.applySettings({ cueOutputId: "headphones" });
+    const restoredCue = node("restored-cue", browser.context);
+    registration.replaceTap(restoredCue);
+    registration.setEnabled(true);
+
+    expect(browser.graphs[1]?.cueConnections).toEqual(new Set([restoredCue]));
+    expect(registration.enabled).toBe(true);
+  });
+
   test("cleanup cancels a deferred transaction without recreating its graph", async () => {
     const { browser, persistence, routing } = setup();
     const deferredSink = browser.deferNextMainSink();

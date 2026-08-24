@@ -13,7 +13,6 @@ import {
   type DjDeckModule,
   getDjDeckModule,
 } from "@/lib/dj-deck.js";
-import { resetDeck } from "@/lib/hooks/use-dj-state";
 import { getOutputRouting } from "@/lib/output-routing.js";
 import {
   getDefaultPlaybackActionContext,
@@ -93,7 +92,7 @@ async function restoreDjDeckRadio(
   }
 
   if (radio.platformMetadata?.platform === "local-file") {
-    resetDeck(deckId);
+    await decks.deck(deckId).load({ type: "radio", radio: null });
     return;
   }
 

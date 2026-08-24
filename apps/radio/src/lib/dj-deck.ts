@@ -44,11 +44,7 @@ import {
   type PlatformStreamResolutionInput,
   resolveDjPlatformStreamUrl,
 } from "@/lib/dj-platform-stream-port.js";
-import {
-  getMixer,
-  resetDeck as resetPersistedDeck,
-  setPendingPlatformItem,
-} from "@/lib/hooks/use-dj-state";
+import { getMixer, setPendingPlatformItem } from "@/lib/hooks/use-dj-state";
 import { getOutputRouting, type OutputRouting } from "@/lib/output-routing.js";
 import { loadPlatformItem } from "@/lib/platform-item-loader";
 import type { Platform } from "@/lib/platform-types";
@@ -653,6 +649,43 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
     }
   };
 
+  const resetEffects = async (deckId: DeckId): Promise<void> => {
+    await options.effects
+      .change(effectsRef(deckId), { type: "replace", tree: [] })
+      .catch(reportEffectsError);
+    await options.effects
+      .change(effectsRef(deckId), { type: "set-dry-wet", value: 1 })
+      .catch(reportEffectsError);
+  };
+
+  const resetPersistedState = async (
+    deckId: DeckId,
+    clearSource: boolean
+  ): Promise<void> => {
+    updatePlaybackChannel("dj", deckId, (draft) => {
+      Object.assign(draft, {
+        volume: 1,
+        muted: false,
+        pan: 0,
+        speed: 1,
+        channelFilter: 0,
+        filter: {
+          type: "lowpass",
+          frequency: 1000,
+          Q: 1,
+          gain: 0,
+          enabled: false,
+        },
+      });
+      if (clearSource) {
+        draft.radio = null;
+        draft.repeat = false;
+        draft.autoplay = true;
+      }
+    });
+    await resetEffects(deckId);
+  };
+
   const rollbackSource = (
     deckId: DeckId,
     previous: Radio | null,
@@ -684,7 +717,7 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
     const wasPlaying = getPlaybackChannelRuntime(deckId).isPlaying;
     deactivateDeck(deckId);
     if (!radio) {
-      resetPersistedDeck(deckId);
+      await resetPersistedState(deckId, true);
       releaseReplacedFile(previous, null);
       return;
     }
@@ -908,35 +941,64 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
     }
   }
 
+  const isContinuationCurrent = (
+    deckId: DeckId,
+    generation: number,
+    soundId: string
+  ): boolean =>
+    isCurrent(deckId, generation) &&
+    getPlaybackChannelRuntime(deckId).soundId === soundId;
+
+  async function repeatAfterEnd(
+    deckId: DeckId,
+    generation: number,
+    soundId: string,
+    radio: Radio,
+    volume: number
+  ): Promise<void> {
+    runtimes[deckId].stripRestored = false;
+    try {
+      await options.audio.transport(soundId, { type: "seek", position: 0 });
+      if (!isContinuationCurrent(deckId, generation, soundId)) {
+        return;
+      }
+      await options.audio.transport(soundId, { type: "play", volume });
+      if (!isContinuationCurrent(deckId, generation, soundId)) {
+        return;
+      }
+      applyCrossfade();
+    } catch (error) {
+      if (isContinuationCurrent(deckId, generation, soundId)) {
+        reportFailure(
+          deckId,
+          "DJ_REPEAT_TRACK_FAILED",
+          "Failed to repeat track",
+          error,
+          radio
+        );
+      }
+    }
+  }
+
   async function continueAfterEnd(
     deckId: DeckId,
     generation: number,
     soundId: string
   ): Promise<void> {
     const channel = getPlaybackChannel("dj", deckId);
-    if (!(channel?.radio && isCurrent(deckId, generation))) {
+    if (
+      !(channel?.radio && isContinuationCurrent(deckId, generation, soundId))
+    ) {
       return;
     }
     if (channel.repeat) {
-      runtimes[deckId].stripRestored = false;
-      try {
-        await options.audio.transport(soundId, { type: "seek", position: 0 });
-        await options.audio.transport(soundId, {
-          type: "play",
-          volume: channel.volume,
-        });
-        if (isCurrent(deckId, generation)) {
-          applyCrossfade();
-        }
-      } catch (error) {
-        reportFailure(
-          deckId,
-          "DJ_REPEAT_TRACK_FAILED",
-          "Failed to repeat track",
-          error,
-          channel.radio
-        );
-      }
+      await repeatAfterEnd(
+        deckId,
+        generation,
+        soundId,
+        channel.radio,
+        channel.volume
+      );
       return;
     }
     if (!channel.autoplay) {
@@ -1184,24 +1246,7 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
     if (!radio) {
       return;
     }
-    updatePlaybackChannel("dj", deckId, (draft) => {
-      Object.assign(draft, {
-        volume: 1,
-        muted: false,
-        pan: 0,
-        speed: 1,
-        channelFilter: 0,
-        effectsDryWet: 1,
-        effects: [],
-        filter: {
-          type: "lowpass",
-          frequency: 1000,
-          Q: 1,
-          gain: 0,
-          enabled: false,
-        },
-      });
-    });
+    await resetPersistedState(deckId, false);
     await load(deckId, { type: "radio", radio });
   };
 

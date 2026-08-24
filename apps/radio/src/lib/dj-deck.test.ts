@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import type { AudioState, Radio } from "@/lib/audio";
+import {
+  type AudioState,
+  createDefaultEffectConfig,
+  type Radio,
+} from "@/lib/audio";
 import {
   createDefaultChannel,
   getPlaybackChannel,
@@ -7,7 +11,12 @@ import {
   updatePlaybackChannel,
 } from "@/lib/collections/playback-sessions";
 import { getPlaybackChannelRuntime } from "@/lib/stores/playback-runtime-store";
-import type { ChannelEffects } from "./channel-effects";
+import {
+  type ChannelEffects,
+  type ChannelEffectsChange,
+  type ChannelEffectsRef,
+  createChannelEffects,
+} from "./channel-effects";
 import {
   createDjDeckModule,
   type DjDeckAudioAdapter,
@@ -110,6 +119,30 @@ function createEffects(): ChannelEffects {
     ),
     setTempo: mock(() => Promise.resolve([])),
     unbind: mock(() => undefined),
+  };
+}
+
+function createPersistingEffects(): {
+  change: ReturnType<typeof mock>;
+  effects: ChannelEffects;
+} {
+  const implementation = createChannelEffects({
+    runtime: {
+      reconcile: mock(() =>
+        Promise.resolve({
+          backend: "compatibility" as const,
+          ready: true,
+          status: "ready" as const,
+        })
+      ),
+    },
+  });
+  const change = mock((ref: ChannelEffectsRef, input: ChannelEffectsChange) =>
+    implementation.change(ref, input)
+  );
+  return {
+    change,
+    effects: { ...implementation, change },
   };
 }
 
@@ -560,6 +593,102 @@ describe("DjDeckModule", () => {
     );
   });
 
+  test("resets persisted controls and Effects through the Deck interface", async () => {
+    const audio = createAudioAdapter();
+    const { change, effects } = createPersistingEffects();
+    const module = createDjDeckModule({
+      audio,
+      context: createContext(),
+      effects,
+      output: createOutput(),
+      platform: createPlatform(),
+    });
+    const deck = module.deck("deck-a");
+    const radio: Radio = {
+      id: "station-1",
+      name: "Station 1",
+      streamUrl: "https://radio.example/one.mp3",
+    };
+    await deck.load({ type: "radio", radio });
+    updatePlaybackChannel("dj", "deck-a", (draft) => {
+      draft.volume = 0.4;
+      draft.muted = true;
+      draft.pan = 0.25;
+      draft.speed = 1.2;
+      draft.channelFilter = 0.5;
+      draft.effects = [createDefaultEffectConfig("delay", "delay-1", 0)];
+      draft.effectsDryWet = 0.3;
+    });
+
+    await deck.transport({ type: "reset" });
+
+    expect(getPlaybackChannel("dj", "deck-a")).toMatchObject({
+      radio,
+      volume: 1,
+      muted: false,
+      pan: 0,
+      speed: 1,
+      channelFilter: 0,
+      effects: [],
+      effectsDryWet: 1,
+    });
+    expect(change).toHaveBeenCalledWith(
+      { sessionId: "dj", channelId: "deck-a" },
+      { type: "replace", tree: [] }
+    );
+    expect(change).toHaveBeenCalledWith(
+      { sessionId: "dj", channelId: "deck-a" },
+      { type: "set-dry-wet", value: 1 }
+    );
+    expect(getPlaybackChannelRuntime("deck-a").soundId).toBe(
+      "left_station-1:2"
+    );
+    expect(audio.activeSounds).toEqual(new Set(["left_station-1:2"]));
+  });
+
+  test("clears a Deck source and Effects through the same interface", async () => {
+    const audio = createAudioAdapter();
+    const { change, effects } = createPersistingEffects();
+    const module = createDjDeckModule({
+      audio,
+      context: createContext(),
+      effects,
+      output: createOutput(),
+      platform: createPlatform(),
+    });
+    const deck = module.deck("deck-a");
+    await deck.load({
+      type: "radio",
+      radio: {
+        id: "station-1",
+        name: "Station 1",
+        streamUrl: "https://radio.example/one.mp3",
+      },
+    });
+    updatePlaybackChannel("dj", "deck-a", (draft) => {
+      draft.effects = [createDefaultEffectConfig("delay", "delay-1", 0)];
+      draft.effectsDryWet = 0.3;
+    });
+
+    await deck.load({ type: "radio", radio: null });
+
+    expect(getPlaybackChannel("dj", "deck-a")).toMatchObject({
+      radio: null,
+      effects: [],
+      effectsDryWet: 1,
+    });
+    expect(change).toHaveBeenCalledWith(
+      { sessionId: "dj", channelId: "deck-a" },
+      { type: "replace", tree: [] }
+    );
+    expect(change).toHaveBeenCalledWith(
+      { sessionId: "dj", channelId: "deck-a" },
+      { type: "set-dry-wet", value: 1 }
+    );
+    expect(getPlaybackChannelRuntime("deck-a").soundId).toBeNull();
+    expect(audio.activeSounds).toEqual(new Set());
+  });
+
   test("supersedes a pending play when a newer source owns the Deck", async () => {
     const audio = createAudioAdapter();
     let resume: (() => void) | null = null;
@@ -645,6 +774,123 @@ describe("DjDeckModule", () => {
       volume: 1,
     });
     expect(audio.activeSounds).toEqual(new Set(["left_station-1:1"]));
+  });
+
+  test("does not continue a repeated source after a replacement wins during seek", async () => {
+    const audio = createAudioAdapter();
+    let finishSeek: (() => void) | null = null;
+    audio.transport = mock((_soundId, intent) => {
+      if (intent.type !== "seek") {
+        return Promise.resolve();
+      }
+      return new Promise<void>((resolve) => {
+        finishSeek = resolve;
+      });
+    });
+    const module = createDjDeckModule({
+      audio,
+      context: createContext(),
+      effects: createEffects(),
+      output: createOutput(),
+      platform: createPlatform(),
+    });
+    const deck = module.deck("deck-a");
+    await deck.load({
+      type: "radio",
+      radio: {
+        id: "station-1",
+        name: "Station 1",
+        streamUrl: "https://radio.example/one.mp3",
+      },
+    });
+    deck.change({ type: "repeat", enabled: true });
+    audio.emit("left_station-1:1", {
+      isPlaying: false,
+      isLoading: false,
+      isBuffering: false,
+      volume: 1,
+      error: null,
+      hasEnded: true,
+    });
+    await Promise.resolve();
+
+    await deck.load({
+      type: "radio",
+      radio: {
+        id: "station-2",
+        name: "Station 2",
+        streamUrl: "https://radio.example/two.mp3",
+      },
+    });
+    (finishSeek as (() => void) | null)?.();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(getPlaybackChannel("dj", "deck-a")?.radio?.id).toBe("station-2");
+    expect(audio.transport).not.toHaveBeenCalledWith("left_station-1:1", {
+      type: "play",
+      volume: 1,
+    });
+  });
+
+  test("suppresses a stale repeat play rejection after a replacement owns the Deck", async () => {
+    const audio = createAudioAdapter();
+    const context = createContext();
+    let rejectPlay: ((error: Error) => void) | null = null;
+    audio.transport = mock((_soundId, intent) => {
+      if (intent.type !== "play") {
+        return Promise.resolve();
+      }
+      return new Promise<void>((_resolve, reject) => {
+        rejectPlay = reject;
+      });
+    });
+    const module = createDjDeckModule({
+      audio,
+      context,
+      effects: createEffects(),
+      output: createOutput(),
+      platform: createPlatform(),
+    });
+    const deck = module.deck("deck-a");
+    await deck.load({
+      type: "radio",
+      radio: {
+        id: "station-1",
+        name: "Station 1",
+        streamUrl: "https://radio.example/one.mp3",
+      },
+    });
+    deck.change({ type: "repeat", enabled: true });
+    audio.emit("left_station-1:1", {
+      isPlaying: false,
+      isLoading: false,
+      isBuffering: false,
+      volume: 1,
+      error: null,
+      hasEnded: true,
+    });
+    await Promise.resolve();
+
+    await deck.load({
+      type: "radio",
+      radio: {
+        id: "station-2",
+        name: "Station 2",
+        streamUrl: "https://radio.example/two.mp3",
+      },
+    });
+    (rejectPlay as ((error: Error) => void) | null)?.(
+      new Error("stale play failed")
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(context.reportError).not.toHaveBeenCalled();
+    expect(getPlaybackChannelRuntime("deck-a")).toMatchObject({
+      soundId: "left_station-2:2",
+      error: null,
+    });
   });
 
   test("continues a YouTube playlist without restarting after lazy resolution", async () => {

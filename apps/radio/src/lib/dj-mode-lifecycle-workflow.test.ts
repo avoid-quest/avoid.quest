@@ -6,6 +6,7 @@ import {
   DECK_B_CHANNEL_ID,
   getPlaybackChannel,
   playbackSessionsCollection,
+  updatePlaybackChannel,
 } from "@/lib/collections/playback-sessions";
 import {
   getDjError,
@@ -16,7 +17,7 @@ import {
   getPlaybackChannelRuntime,
   setPlaybackChannelRuntime,
 } from "@/lib/stores/playback-runtime-store";
-import type { DjDeckModule } from "./dj-deck";
+import type { DeckId, DjDeckLoadIntent, DjDeckModule } from "./dj-deck";
 import { createDjModeLifecycleWorkflow } from "./dj-mode-lifecycle-workflow";
 import type { OutputRouting } from "./output-routing";
 import type { PlaybackActionContext } from "./playback-action-context";
@@ -101,14 +102,21 @@ function createTestContext(): PlaybackActionContext {
 function createTestDecks(onLoad: () => void = () => undefined): DjDeckModule & {
   load: ReturnType<typeof mock>;
 } {
-  const load = mock(() => {
+  const load = mock((_intent: DjDeckLoadIntent) => {
     onLoad();
     return Promise.resolve({ type: "loaded" as const });
   });
   return {
     load,
-    deck: mock(() => ({
-      load,
+    deck: mock((deckId: DeckId) => ({
+      load: (intent: DjDeckLoadIntent) => {
+        if (intent.type === "radio" && intent.radio === null) {
+          updatePlaybackChannel("dj", deckId, (draft) => {
+            draft.radio = null;
+          });
+        }
+        return load(intent);
+      },
       transport: mock(async () => undefined),
       change: mock(() => undefined),
     })),
@@ -185,13 +193,14 @@ describe("createDjModeLifecycleWorkflow", () => {
       type: "radio",
       radio: streamRadio,
     });
+    expect(decks.load).toHaveBeenCalledWith({ type: "radio", radio: null });
     expect(getPlaybackChannel("dj", DECK_B_CHANNEL_ID)?.radio).toBeNull();
     expect(context.audio.setGlobalVolume).toHaveBeenCalledWith(0.7);
     expect(context.audioEngine.volume.setMasterVolume).toHaveBeenCalledWith(
       0.7
     );
     expect(setHeadphoneVolume).toHaveBeenCalledWith(0.65);
-    expect(activationOrder).toEqual(["headphone", "deck"]);
+    expect(activationOrder.slice(0, 2)).toEqual(["headphone", "deck"]);
   });
 
   test("clears stale surfaced errors during activation even when no decks restore", async () => {

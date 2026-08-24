@@ -134,43 +134,6 @@ export {
   usePendingPlatformItem,
 } from "@/lib/stores/dj-runtime-store";
 
-export function resetDeck(deckId: "deck-a" | "deck-b") {
-  updatePlaybackChannel("dj", deckId, (draft) => {
-    const next = getPlaybackChannel("dj", deckId);
-    Object.assign(draft, {
-      ...(next ?? draft),
-      radio: null,
-      volume: 1,
-      muted: false,
-      pan: 0,
-      speed: 1,
-      channelFilter: 0,
-      effects: [],
-      filter: {
-        type: "lowpass",
-        frequency: 1000,
-        Q: 1,
-        gain: 0,
-        enabled: false,
-      },
-      effectsDryWet: 1,
-      repeat: false,
-      autoplay: true,
-      cueEnabled: next?.cueEnabled ?? draft.cueEnabled,
-    });
-  });
-}
-
-export function resetAllDjState() {
-  resetDeck(DECK_A_CHANNEL_ID);
-  resetDeck(DECK_B_CHANNEL_ID);
-  updatePlaybackSession("dj", (draft) => {
-    draft.crossfadePosition = 0.5;
-    draft.masterVolume = 1;
-    draft.headphoneVolume = 1;
-  });
-}
-
 export function getDeckAState(): DeckState | null {
   return getChannelState("dj", DECK_A_CHANNEL_ID) as DeckState | null;
 }

@@ -1,5 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import { createLocalMidiMappingPersistence } from "./local-midi-mapping-persistence";
+import { createMidiControl, type MidiBrowserAdapter } from "./midi-control";
+
+const unsupportedBrowser: MidiBrowserAdapter = {
+  cancelFrame: () => undefined,
+  isSupported: () => false,
+  now: () => 0,
+  requestAccess: () => Promise.reject(new Error("unsupported")),
+  requestFrame: () => 1,
+  subscribePermission: () => () => undefined,
+};
 
 function withLocalStorage(
   storage: Partial<Pick<Storage, "getItem" | "setItem">>,
@@ -57,5 +67,27 @@ describe("createLocalMidiMappingPersistence", () => {
         ).not.toThrow();
       }
     );
+  });
+
+  test("starts with defaults when stored JSON has an invalid MIDI envelope", () => {
+    for (const stored of ["{}", '{"version":2,"state":{}}']) {
+      withLocalStorage(
+        {
+          getItem() {
+            return stored;
+          },
+        },
+        () => {
+          const control = createMidiControl({
+            browser: unsupportedBrowser,
+            persistence: createLocalMidiMappingPersistence(),
+            staticActions: [],
+          });
+
+          expect(control.getSnapshot().mappings).toEqual([]);
+          expect(control.getSnapshot().enabled).toBe(false);
+        }
+      );
+    }
   });
 });

@@ -238,6 +238,7 @@ describe("Single Playback", () => {
     expect(
       getPlaybackChannelRuntime(SINGLE_ACTIVE_CHANNEL_ID).error
     ).toBeNull();
+    expect(context.reportError).not.toHaveBeenCalled();
   });
 
   test("pausing a pending selection keeps rollback paused", async () => {
@@ -260,6 +261,76 @@ describe("Single Playback", () => {
     expect(getPlaybackChannelRuntime(SINGLE_ACTIVE_CHANNEL_ID).isPlaying).toBe(
       false
     );
+    expect(
+      getPlaybackChannelRuntime(SINGLE_ACTIVE_CHANNEL_ID).error
+    ).toBeNull();
+    expect(context.reportError).not.toHaveBeenCalled();
+  });
+
+  test("ignores a rejected direct start after manual pause", async () => {
+    insertSingleSession(station("current"));
+    const pendingPlay = createDeferred();
+    const context = createTestContext();
+    context.audio.playSound = mock(() => pendingPlay.promise);
+    const playback = getSinglePlayback({ ctx: context });
+
+    const starting = playback.setPlaying(true);
+    await Promise.resolve();
+    await playback.setPlaying(false);
+    pendingPlay.reject(new Error("stale start failure"));
+    await starting;
+
+    expect(
+      getPlaybackChannelRuntime(SINGLE_ACTIVE_CHANNEL_ID).error
+    ).toBeNull();
+    expect(context.reportError).not.toHaveBeenCalled();
+  });
+
+  test("ignores a rejected direct start after a newer start wins", async () => {
+    insertSingleSession(station("current"));
+    const stalePlay = createDeferred();
+    let attempt = 0;
+    const context = createTestContext();
+    context.audio.playSound = mock(() => {
+      attempt += 1;
+      return attempt === 1 ? stalePlay.promise : Promise.resolve();
+    });
+    const playback = getSinglePlayback({ ctx: context });
+
+    const staleStart = playback.setPlaying(true);
+    await Promise.resolve();
+    await playback.setPlaying(true);
+    stalePlay.reject(new Error("superseded start failure"));
+    await staleStart;
+
+    expect(
+      getPlaybackChannelRuntime(SINGLE_ACTIVE_CHANNEL_ID).error
+    ).toBeNull();
+    expect(context.reportError).not.toHaveBeenCalled();
+  });
+
+  test("ignores a rejected direct start after deactivation", async () => {
+    insertSingleSession(station("current"));
+    const pendingPlay = createDeferred();
+    const context = createTestContext();
+    context.audio.playSound = mock(() => pendingPlay.promise);
+    const playback = getSinglePlayback({
+      ctx: context,
+      fadeOutSound: mock(async () => undefined),
+    });
+
+    const starting = playback.setPlaying(true);
+    await Promise.resolve();
+    await playback.deactivate();
+    pendingPlay.reject(new Error("failure after deactivation"));
+    await starting;
+
+    expect(getPlaybackChannelRuntime(SINGLE_ACTIVE_CHANNEL_ID)).toMatchObject({
+      error: null,
+      isPlaying: false,
+      soundId: null,
+    });
+    expect(context.reportError).not.toHaveBeenCalled();
   });
 
   test("deactivation supersedes an in-flight selection", async () => {
@@ -273,6 +344,8 @@ describe("Single Playback", () => {
     const selection = playback.selectStation(station("replacement"));
     await Promise.resolve();
     await Promise.all([selection, playback.deactivate()]);
+    pendingPlay.reject(new Error("failure after deactivation"));
+    await Promise.resolve();
 
     expect(
       getPlaybackChannel("single", SINGLE_ACTIVE_CHANNEL_ID)?.radio
@@ -282,6 +355,7 @@ describe("Single Playback", () => {
       isPlaying: false,
       error: null,
     });
+    expect(context.reportError).not.toHaveBeenCalled();
   });
 
   test("deactivation owns orphan cleanup and runtime reset", async () => {

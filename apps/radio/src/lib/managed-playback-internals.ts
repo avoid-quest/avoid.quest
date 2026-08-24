@@ -18,10 +18,7 @@ import {
   setPlaybackChannelRuntime,
 } from "@/lib/stores/playback-runtime-store";
 import type { PlaybackActionContext } from "./playback-action-context.js";
-import {
-  reportPlaybackActionError,
-  toRuntimeAudioError,
-} from "./playback-action-errors.js";
+import { toRuntimeAudioError } from "./playback-action-errors.js";
 import {
   applySessionMasterVolume,
   cleanupManagedChannel,
@@ -153,17 +150,7 @@ export async function setManagedChannelPlaying(
   const soundId =
     runtime.soundId ??
     createManagedSound(sessionId, channel.id, channel.radio, undefined, ctx);
-  try {
-    await playManagedSound(sessionId, soundId, channel.volume, ctx);
-  } catch (error) {
-    throw reportPlaybackActionError(ctx.reportError, {
-      mode: sessionId,
-      code: "PLAY_ERROR",
-      cause: error,
-      channelId: channel.id,
-      radio: channel.radio,
-    });
-  }
+  await playManagedSound(sessionId, soundId, channel.volume, ctx);
 }
 
 export function clearManagedPlaybackErrors(

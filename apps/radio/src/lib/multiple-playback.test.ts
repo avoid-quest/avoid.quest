@@ -306,6 +306,31 @@ describe("Multiple Playback", () => {
     }
   });
 
+  test("pause-all suppresses a rejected in-flight Channel start", async () => {
+    const radio = station("rejected-after-pause");
+    const channelId = getMultipleChannelId(radio);
+    insertMultipleSession([radio]);
+    let rejectStart: (reason?: unknown) => void = () => undefined;
+    const context = createTestContext();
+    context.audio.playSound = mock(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          rejectStart = reject;
+        })
+    );
+    const playback = getMultiplePlayback({ ctx: context });
+
+    const playing = playback.playAll();
+    await Promise.resolve();
+    await Promise.resolve();
+    playback.pauseAll();
+    rejectStart(new Error("failure after pause"));
+    await playing;
+
+    expect(getPlaybackChannelRuntime(channelId).error).toBeNull();
+    expect(context.reportError).not.toHaveBeenCalled();
+  });
+
   test("deactivation cancels queued starts and cleans late completions", async () => {
     const radios = Array.from({ length: 5 }, (_, index) =>
       station(String(index + 1))
@@ -355,6 +380,38 @@ describe("Multiple Playback", () => {
         soundId: null,
       });
     }
+  });
+
+  test("deactivation suppresses a rejected in-flight Channel start", async () => {
+    const radio = station("rejected-after-deactivation");
+    const channelId = getMultipleChannelId(radio);
+    insertMultipleSession([radio]);
+    let rejectStart: (reason?: unknown) => void = () => undefined;
+    const context = createTestContext();
+    context.audio.playSound = mock(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          rejectStart = reject;
+        })
+    );
+    const playback = getMultiplePlayback({
+      ctx: context,
+      fadeOutSound: mock(async () => undefined),
+    });
+
+    const playing = playback.playAll();
+    await Promise.resolve();
+    await Promise.resolve();
+    await playback.deactivate();
+    rejectStart(new Error("failure after deactivation"));
+    await playing;
+
+    expect(getPlaybackChannelRuntime(channelId)).toMatchObject({
+      error: null,
+      isPlaying: false,
+      soundId: null,
+    });
+    expect(context.reportError).not.toHaveBeenCalled();
   });
 
   test("keeps a newer play-all start after a deactivated worker settles", async () => {
@@ -442,6 +499,269 @@ describe("Multiple Playback", () => {
       isPlaying: true,
       soundId: `multiple:${channelId}`,
     });
+  });
+
+  test("a newer pause reclaims an older paused start from a manual resume", async () => {
+    const radio = station("repaused-resume");
+    const channelId = getMultipleChannelId(radio);
+    insertMultipleSession([radio]);
+    let releaseOldStart: () => void = () => undefined;
+    let startCount = 0;
+    const context = createTestContext();
+    context.audio.playSound = mock(
+      (soundId: string) =>
+        new Promise<void>((resolve) => {
+          startCount += 1;
+          if (startCount === 1) {
+            releaseOldStart = () => {
+              setPlaybackChannelRuntime(channelId, () => ({
+                isPlaying: true,
+                soundId,
+              }));
+              resolve();
+            };
+            return;
+          }
+          setPlaybackChannelRuntime(channelId, () => ({
+            isPlaying: true,
+            soundId,
+          }));
+          resolve();
+        })
+    );
+    context.audio.pauseSound = mock(() => {
+      setPlaybackChannelRuntime(channelId, () => ({ isPlaying: false }));
+    });
+    const playback = getMultiplePlayback({ ctx: context });
+
+    const oldPlayAll = playback.playAll();
+    await Promise.resolve();
+    await Promise.resolve();
+    playback.pauseAll();
+    await playback.setPlaying(channelId, true);
+    playback.pauseAll();
+    releaseOldStart();
+    await oldPlayAll;
+
+    expect(getPlaybackChannelRuntime(channelId).isPlaying).toBe(false);
+  });
+
+  test("ignores a rejected Channel start after a newer start wins", async () => {
+    const radio = station("superseded-rejection");
+    const channelId = getMultipleChannelId(radio);
+    insertMultipleSession([radio]);
+    let rejectStaleStart: (reason?: unknown) => void = () => undefined;
+    let attempt = 0;
+    const context = createTestContext();
+    context.audio.playSound = mock(
+      (soundId: string) =>
+        new Promise<void>((resolve, reject) => {
+          attempt += 1;
+          if (attempt === 1) {
+            rejectStaleStart = reject;
+            return;
+          }
+          setPlaybackChannelRuntime(channelId, () => ({
+            isPlaying: true,
+            soundId,
+          }));
+          resolve();
+        })
+    );
+    const playback = getMultiplePlayback({ ctx: context });
+
+    const staleStart = playback.playAll();
+    await Promise.resolve();
+    await Promise.resolve();
+    await playback.setPlaying(channelId, true);
+    rejectStaleStart(new Error("superseded start failure"));
+    await staleStart;
+
+    expect(getPlaybackChannelRuntime(channelId)).toMatchObject({
+      error: null,
+      isPlaying: true,
+      soundId: `multiple:${channelId}`,
+    });
+    expect(context.reportError).not.toHaveBeenCalled();
+  });
+
+  test("removing a Channel suppresses its deferred start rejection", async () => {
+    const radio = station("removed-rejection");
+    const channelId = getMultipleChannelId(radio);
+    insertMultipleSession([radio]);
+    let rejectStart: (reason?: unknown) => void = () => undefined;
+    const context = createTestContext();
+    context.audio.playSound = mock(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          rejectStart = reject;
+        })
+    );
+    const playback = getMultiplePlayback({ ctx: context });
+
+    const playing = playback.playAll();
+    await Promise.resolve();
+    await Promise.resolve();
+    playback.removeChannel(channelId);
+    rejectStart(new Error("failure after removal"));
+    await playing;
+
+    expect(getPlaybackSession("multiple")?.channels).toEqual([]);
+    expect(getPlaybackChannelRuntime(channelId)).toMatchObject({
+      error: null,
+      isPlaying: false,
+      soundId: null,
+    });
+    expect(context.reportError).not.toHaveBeenCalled();
+  });
+
+  test("removing a Channel cleans its deferred start completion", async () => {
+    const radio = station("removed-completion");
+    const channelId = getMultipleChannelId(radio);
+    insertMultipleSession([radio]);
+    let resolveStart: () => void = () => undefined;
+    const context = createTestContext();
+    context.audio.playSound = mock(
+      (soundId: string) =>
+        new Promise<void>((resolve) => {
+          resolveStart = () => {
+            setPlaybackChannelRuntime(channelId, () => ({
+              isPlaying: true,
+              soundId,
+            }));
+            resolve();
+          };
+        })
+    );
+    const playback = getMultiplePlayback({ ctx: context });
+
+    const playing = playback.playAll();
+    await Promise.resolve();
+    await Promise.resolve();
+    playback.removeChannel(channelId);
+    resolveStart();
+    await playing;
+
+    expect(getPlaybackSession("multiple")?.channels).toEqual([]);
+    expect(getPlaybackChannelRuntime(channelId)).toMatchObject({
+      error: null,
+      isPlaying: false,
+      soundId: null,
+    });
+    expect(context.reportError).not.toHaveBeenCalled();
+  });
+
+  test("removing a Channel cleans an older superseded start completion", async () => {
+    const radio = station("removed-superseded-completion");
+    const channelId = getMultipleChannelId(radio);
+    insertMultipleSession([radio]);
+    let resolveStaleStart: () => void = () => undefined;
+    let attempt = 0;
+    const context = createTestContext();
+    context.audio.playSound = mock(
+      (soundId: string) =>
+        new Promise<void>((resolve) => {
+          attempt += 1;
+          if (attempt === 1) {
+            resolveStaleStart = () => {
+              setPlaybackChannelRuntime(channelId, () => ({
+                isPlaying: true,
+                soundId,
+              }));
+              resolve();
+            };
+            return;
+          }
+          setPlaybackChannelRuntime(channelId, () => ({
+            isPlaying: true,
+            soundId,
+          }));
+          resolve();
+        })
+    );
+    const playback = getMultiplePlayback({ ctx: context });
+
+    const staleStart = playback.playAll();
+    await Promise.resolve();
+    await Promise.resolve();
+    await playback.setPlaying(channelId, true);
+    playback.removeChannel(channelId);
+    resolveStaleStart();
+    await staleStart;
+
+    expect(getPlaybackSession("multiple")?.channels).toEqual([]);
+    expect(getPlaybackChannelRuntime(channelId)).toMatchObject({
+      error: null,
+      isPlaying: false,
+      soundId: null,
+    });
+    expect(context.reportError).not.toHaveBeenCalled();
+  });
+
+  test("Station synchronization suppresses a removed Channel rejection", async () => {
+    const radio = station("synchronized-rejection");
+    const channelId = getMultipleChannelId(radio);
+    insertMultipleSession([radio]);
+    let rejectStart: (reason?: unknown) => void = () => undefined;
+    const context = createTestContext();
+    context.audio.playSound = mock(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          rejectStart = reject;
+        })
+    );
+    const playback = getMultiplePlayback({ ctx: context });
+
+    const playing = playback.playAll();
+    await Promise.resolve();
+    await Promise.resolve();
+    playback.synchronizeStations([], []);
+    rejectStart(new Error("failure after synchronization"));
+    await playing;
+
+    expect(getPlaybackSession("multiple")?.channels).toEqual([]);
+    expect(getPlaybackChannelRuntime(channelId)).toMatchObject({
+      error: null,
+      isPlaying: false,
+      soundId: null,
+    });
+    expect(context.reportError).not.toHaveBeenCalled();
+  });
+
+  test("Station synchronization cleans a removed Channel completion", async () => {
+    const radio = station("synchronized-completion");
+    const channelId = getMultipleChannelId(radio);
+    insertMultipleSession([radio]);
+    let resolveStart: () => void = () => undefined;
+    const context = createTestContext();
+    context.audio.playSound = mock(
+      (soundId: string) =>
+        new Promise<void>((resolve) => {
+          resolveStart = () => {
+            setPlaybackChannelRuntime(channelId, () => ({
+              isPlaying: true,
+              soundId,
+            }));
+            resolve();
+          };
+        })
+    );
+    const playback = getMultiplePlayback({ ctx: context });
+
+    const playing = playback.playAll();
+    await Promise.resolve();
+    await Promise.resolve();
+    playback.synchronizeStations([], []);
+    resolveStart();
+    await playing;
+
+    expect(getPlaybackSession("multiple")?.channels).toEqual([]);
+    expect(getPlaybackChannelRuntime(channelId)).toMatchObject({
+      error: null,
+      isPlaying: false,
+      soundId: null,
+    });
+    expect(context.reportError).not.toHaveBeenCalled();
   });
 
   test("keeps play-all failures local to their Channel", async () => {

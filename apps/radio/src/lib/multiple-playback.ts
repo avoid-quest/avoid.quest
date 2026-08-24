@@ -30,6 +30,7 @@ import {
   getDefaultPlaybackActionContext,
   type PlaybackActionContext,
 } from "./playback-action-context.js";
+import { reportPlaybackActionError } from "./playback-action-errors.js";
 import {
   applySessionMasterVolume,
   cleanupManagedChannel,
@@ -62,12 +63,13 @@ type GetMultiplePlaybackOptions = {
   fadeOutSound?: FadeOutSound;
 };
 
-type PlaybackCancellation = "deactivate" | "pause";
+type PlaybackCancellation = "deactivate" | "pause" | "remove";
 
 type PlayAllGeneration = { cancellation: PlaybackCancellation | null };
 
 type ChannelStartOwnership = {
   cancellation: PlaybackCancellation | null;
+  cancellationRevision: number | null;
   channelId: string;
   revision: number;
 };
@@ -111,7 +113,7 @@ async function runWithConcurrency<T>(
 function synchronizeStations(
   saved: Radio[],
   session: Radio[],
-  ctx: PlaybackActionContext
+  removeChannel: (channelId: string) => void
 ): void {
   const radios = [
     ...saved,
@@ -128,7 +130,7 @@ function synchronizeStations(
 
   for (const channel of existingChannels) {
     if (!nextChannelIds.has(channel.id)) {
-      cleanupManagedChannel(channel.id, ctx);
+      removeChannel(channel.id);
     }
   }
 
@@ -206,7 +208,12 @@ function createMultiplePlayback(
 
   const beginChannelStart = (channelId: string): ChannelStartOwnership => {
     const revision = advanceChannelRevision(channelId);
-    const ownership = { cancellation: null, channelId, revision };
+    const ownership = {
+      cancellation: null,
+      cancellationRevision: null,
+      channelId,
+      revision,
+    };
     activeChannelStarts.add(ownership);
     return ownership;
   };
@@ -214,15 +221,27 @@ function createMultiplePlayback(
   const setChannelPlaying = async (
     channelId: string,
     playing: boolean,
-    revision: number
+    revision: number,
+    shouldReportError = () => channelStartRevisions.get(channelId) === revision
   ) => {
     clearManagedPlaybackErrors([channelId]);
     const channel = getPlaybackChannel("multiple", channelId);
     try {
       await setManagedChannelPlaying("multiple", channel, playing, ctx);
     } catch (error) {
-      if (channelStartRevisions.get(channelId) === revision) {
-        setManagedPlaybackError(channelId, error, channel?.radio ?? undefined);
+      if (shouldReportError()) {
+        const reportedError = reportPlaybackActionError(ctx.reportError, {
+          mode: "multiple",
+          code: "PLAY_ERROR",
+          cause: error,
+          channelId,
+          radio: channel?.radio ?? undefined,
+        });
+        setManagedPlaybackError(
+          channelId,
+          reportedError,
+          channel?.radio ?? undefined
+        );
       }
     }
   };
@@ -255,10 +274,17 @@ function createMultiplePlayback(
       if (channelId && ownership.channelId !== channelId) {
         continue;
       }
-      if (cancellation === "deactivate" || ownership.cancellation === null) {
-        ownership.cancellation = cancellation;
-        cancelled = true;
+      if (
+        cancellation === "pause" &&
+        ownership.cancellation !== null &&
+        ownership.cancellation !== "pause"
+      ) {
+        continue;
       }
+      ownership.cancellation = cancellation;
+      ownership.cancellationRevision =
+        channelStartRevisions.get(ownership.channelId) ?? ownership.revision;
+      cancelled = true;
     }
     return cancelled;
   };
@@ -266,18 +292,25 @@ function createMultiplePlayback(
   const startChannel = async (channelId: string) => {
     const ownership = beginChannelStart(channelId);
     try {
-      await setChannelPlaying(channelId, true, ownership.revision);
+      await setChannelPlaying(
+        channelId,
+        true,
+        ownership.revision,
+        () =>
+          ownership.cancellation === null &&
+          channelStartRevisions.get(channelId) === ownership.revision
+      );
     } finally {
       activeChannelStarts.delete(ownership);
       if (
         ownership.cancellation !== null &&
-        channelStartRevisions.get(channelId) === ownership.revision
+        channelStartRevisions.get(channelId) === ownership.cancellationRevision
       ) {
-        if (ownership.cancellation === "deactivate") {
+        if (ownership.cancellation === "pause") {
+          pauseChannel(channelId);
+        } else {
           cleanupManagedChannel(channelId, ctx);
           resetPlaybackChannelRuntime(channelId);
-        } else {
-          pauseChannel(channelId);
         }
       }
     }
@@ -306,6 +339,14 @@ function createMultiplePlayback(
     for (const channel of getPlaybackSession("multiple")?.channels ?? []) {
       pauseChannel(channel.id);
     }
+  };
+
+  const removeChannelMembership = (channelId: string) => {
+    cancelChannelStarts("remove", channelId);
+    cleanupManagedChannel(channelId, ctx);
+    resetPlaybackChannelRuntime(channelId);
+    unmutedVolumes.delete(channelId);
+    removePlaybackChannel("multiple", channelId);
   };
 
   return {
@@ -376,17 +417,12 @@ function createMultiplePlayback(
         activePlayAllGenerations.delete(generation);
       }
     },
-    removeChannel(channelId) {
-      cleanupManagedChannel(channelId, ctx);
-      resetPlaybackChannelRuntime(channelId);
-      unmutedVolumes.delete(channelId);
-      removePlaybackChannel("multiple", channelId);
-    },
+    removeChannel: removeChannelMembership,
     setMasterVolume,
     setPlaying,
     setVolume,
     synchronizeStations: (saved, session) =>
-      synchronizeStations(saved, session, ctx),
+      synchronizeStations(saved, session, removeChannelMembership),
     toggleMasterMute() {
       const volume = getPlaybackSession("multiple")?.masterVolume ?? 1;
       if (volume > 0) {

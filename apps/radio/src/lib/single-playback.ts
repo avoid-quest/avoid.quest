@@ -239,6 +239,9 @@ async function selectStation(
         await playManagedSound("single", restoredSoundId, channel.volume, ctx);
       }
     }
+    if (!selection.playbackIntent) {
+      return;
+    }
     throw reportPlaybackActionError(ctx.reportError, {
       mode: "single",
       code: "PLAY_ERROR",
@@ -289,6 +292,7 @@ function createSinglePlayback(
   fadeOutDurationMs: number
 ): SinglePlayback {
   const selection = new SelectionCoordinator();
+  let playingRevision = 0;
 
   return {
     async activate() {
@@ -303,8 +307,9 @@ function createSinglePlayback(
       );
       applySessionMasterVolume("single", ctx);
     },
-    deactivate: () =>
-      selection.cancelAndRun(async () => {
+    async deactivate() {
+      playingRevision += 1;
+      await selection.cancelAndRun(async () => {
         const soundIds = getRuntimeSoundIds(SINGLE_CHANNEL_IDS);
         await Promise.all(
           soundIds.map((soundId) =>
@@ -316,7 +321,8 @@ function createSinglePlayback(
           resetPlaybackChannelRuntime(channelId);
         }
         cleanupOrphanedSounds(soundIds, ctx, "single");
-      }),
+      });
+    },
     async reconcileRouting() {
       try {
         await selection.runAfterCurrent(() => reconcileRouting(ctx));
@@ -340,6 +346,8 @@ function createSinglePlayback(
       }
     },
     async setPlaying(playing) {
+      playingRevision += 1;
+      const revision = playingRevision;
       clearManagedPlaybackErrors(SINGLE_CHANNEL_IDS);
       selection.updatePlaybackIntent(playing);
       const channel = getSelectionChannel();
@@ -351,11 +359,20 @@ function createSinglePlayback(
           ctx
         );
       } catch (error) {
-        setManagedPlaybackError(
-          SINGLE_ACTIVE_CHANNEL_ID,
-          error,
-          channel?.radio ?? undefined
-        );
+        if (revision === playingRevision) {
+          const reportedError = reportPlaybackActionError(ctx.reportError, {
+            mode: "single",
+            code: "PLAY_ERROR",
+            cause: error,
+            channelId: channel?.id ?? SINGLE_ACTIVE_CHANNEL_ID,
+            radio: channel?.radio ?? undefined,
+          });
+          setManagedPlaybackError(
+            SINGLE_ACTIVE_CHANNEL_ID,
+            reportedError,
+            channel?.radio ?? undefined
+          );
+        }
       }
     },
     setVolume(volume) {

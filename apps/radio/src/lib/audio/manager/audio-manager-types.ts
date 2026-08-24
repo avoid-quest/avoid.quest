@@ -20,6 +20,8 @@ type AudioNodes = {
   filter: BiquadFilterNode;
 };
 
+type SoundOutputMode = "audio-graph" | "native";
+
 type SoundInstance = {
   radio: Radio;
   sourceId: string;
@@ -33,6 +35,7 @@ type SoundInstance = {
   loading: boolean;
   buffering: boolean;
   filterEnabled: boolean;
+  outputMode: SoundOutputMode;
 };
 
 const MAX_MAIN_DELAY_MS = 500;
@@ -53,7 +56,11 @@ function createAudioNodes(context: AudioContext, initialGain = 1): AudioNodes {
   return { preFaderSend, gain, pan, filter };
 }
 
-function createSoundInstance(radio: Radio, sourceId: string): SoundInstance {
+function createSoundInstance(
+  radio: Radio,
+  sourceId: string,
+  outputMode: SoundOutputMode = "audio-graph"
+): SoundInstance {
   return {
     radio,
     sourceId,
@@ -67,10 +74,11 @@ function createSoundInstance(radio: Radio, sourceId: string): SoundInstance {
     loading: false,
     buffering: false,
     filterEnabled: false,
+    outputMode,
   };
 }
 
-export type { AudioNodes, FilterConfig, SoundInstance };
+export type { AudioNodes, FilterConfig, SoundInstance, SoundOutputMode };
 export {
   createAudioNodes,
   createSoundInstance,

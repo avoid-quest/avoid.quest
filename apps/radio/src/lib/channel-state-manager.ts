@@ -16,6 +16,7 @@ import {
   setPlaybackSessionTempo,
   updatePlaybackChannel,
 } from "@/lib/collections/playback-sessions";
+import { shouldUseNativeSinglePlayback } from "@/lib/collections/settings";
 import {
   getPlaybackChannelRuntime,
   getPlaybackRuntimeChannelIds,
@@ -45,6 +46,8 @@ import { toRuntimeAudioError } from "./playback-action-errors.js";
 
 export type ChannelState = PlaybackChannelRecord &
   ReturnType<typeof getPlaybackChannelRuntime>;
+
+export type ChannelOutputMode = "audio-graph" | "native";
 
 type ChannelAudioField =
   | "volume"
@@ -81,6 +84,7 @@ const CHANNEL_AUDIO_SYNC_ORDER = [
 ] as const satisfies readonly ChannelAudioField[];
 
 const subscriptionCleanups = new Map<string, () => void>();
+const channelOutputModes = new Map<string, ChannelOutputMode>();
 const sidechainChannelIntents = new Map<string, string>();
 
 function getAudioManager(): AudioManager {
@@ -569,12 +573,19 @@ function setChannelSubscriptionCleanup(
 export function deactivateAllChannels(): void {
   const channelIds = new Set([
     ...subscriptionCleanups.keys(),
+    ...channelOutputModes.keys(),
     ...getPlaybackRuntimeChannelIds(),
   ]);
 
   for (const channelId of channelIds) {
     deactivateChannel(channelId);
   }
+}
+
+export function getChannelOutputMode(
+  channelId: string
+): ChannelOutputMode | null {
+  return channelOutputModes.get(channelId) ?? null;
 }
 
 export function subscribeChannelRuntime(
@@ -639,12 +650,17 @@ export function activateChannel(
   const soundId = options.soundId ?? `${sessionId}:${channelId}`;
   const previousRadio = getPlaybackChannel(sessionId, channelId)?.radio ?? null;
   const manager = getAudioManager();
+  const outputMode: ChannelOutputMode =
+    sessionId === "single" && shouldUseNativeSinglePlayback()
+      ? "native"
+      : "audio-graph";
   let soundCreated = false;
 
   deactivateChannel(channelId);
   try {
-    manager.createSound(radio, soundId);
+    manager.createSound(radio, soundId, outputMode);
     soundCreated = true;
+    channelOutputModes.set(channelId, outputMode);
     if (options.persistRadio) {
       updatePlaybackChannel(sessionId, channelId, (draft) => {
         draft.radio = radio;
@@ -657,6 +673,7 @@ export function activateChannel(
     syncAllEffectSidechains();
   } catch (error) {
     setChannelSubscriptionCleanup(channelId, null);
+    channelOutputModes.delete(channelId);
     if (soundCreated) {
       manager.cleanupSound(soundId);
     }
@@ -674,6 +691,7 @@ export function activateChannel(
 export function deactivateChannel(channelId: string): void {
   const runtime = getPlaybackChannelRuntime(channelId);
   setChannelSubscriptionCleanup(channelId, null);
+  channelOutputModes.delete(channelId);
   if (runtime.soundId) {
     sidechainChannelIntents.delete(runtime.soundId);
     getAudioManager().cleanupSound(runtime.soundId);

@@ -9,18 +9,12 @@ export type Settings = {
   player: {
     mode: (typeof playerModes)[number]["value"];
     restoreStateOnLoad?: boolean;
-    single?: {
-      transitionDuration: number;
-    };
   };
 };
 
 export type SingleModeSettings = Settings & {
   player: Settings["player"] & {
     mode: "single";
-    single: {
-      transitionDuration: number;
-    };
   };
 };
 

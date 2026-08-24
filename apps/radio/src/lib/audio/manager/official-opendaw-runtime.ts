@@ -272,7 +272,7 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     }
     const existing = this.soundUnits.get(soundId);
     if (existing && !existing.monitoring && existing.source === source) {
-      this.bindSidechains();
+      this.rebindSidechains();
       return true;
     }
     return this.connectSoundUnit(
@@ -330,7 +330,7 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       unit.destination === destination &&
       unit.monitoring === monitoring
     ) {
-      this.bindSidechains();
+      this.rebindSidechains();
       return true;
     } else if (unit.source !== null) {
       project.engine.unregisterMonitoringSource(unit.audioUnitBox.address.uuid);
@@ -345,7 +345,7 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     unit.source = source;
     unit.destination = destination;
     unit.monitoring = monitoring;
-    this.bindSidechains();
+    this.rebindSidechains();
     return true;
   }
 
@@ -353,10 +353,11 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     soundId: string,
     generation = (this.connectionGenerations.get(soundId) ?? 0) + 1
   ): void {
-    this.connectionGenerations.set(
-      soundId,
-      Math.max(generation, this.connectionGenerations.get(soundId) ?? 0)
-    );
+    const current = this.connectionGenerations.get(soundId) ?? 0;
+    if (generation < current) {
+      return;
+    }
+    this.connectionGenerations.set(soundId, Math.max(generation, current + 1));
     this.disconnectSoundUnit(soundId);
   }
 
@@ -369,17 +370,18 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     project.engine.unregisterMonitoringSource(unit.audioUnitBox.address.uuid);
     unit.source = null;
     unit.destination = null;
-    this.bindSidechains();
+    this.rebindSidechains();
   }
 
   deleteSound(
     soundId: string,
     generation = (this.connectionGenerations.get(soundId) ?? 0) + 1
   ): void {
-    this.connectionGenerations.set(
-      soundId,
-      Math.max(generation, (this.connectionGenerations.get(soundId) ?? 0) + 1)
-    );
+    const current = this.connectionGenerations.get(soundId) ?? 0;
+    if (generation < current) {
+      return;
+    }
+    this.connectionGenerations.set(soundId, Math.max(generation, current + 1));
     const unit = this.soundUnits.get(soundId);
     if (!unit) {
       return;
@@ -394,7 +396,7 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     }
     this.soundUnits.delete(soundId);
     this.sidechainTargets.delete(soundId);
-    this.bindSidechains();
+    this.rebindSidechains();
   }
 
   syncEffects(soundId: string, effects: readonly EffectConfig[]): void {
@@ -471,9 +473,7 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     } else {
       this.sidechainTargets.set(soundId, targetSoundId);
     }
-    if (this.project) {
-      this.project.editing.modify(() => this.bindSidechains());
-    }
+    this.rebindSidechains();
   }
 
   setDryWet(soundId: string, value: number): void {
@@ -694,6 +694,10 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
         bind(group, target);
       }
     }
+  }
+
+  private rebindSidechains(): void {
+    this.project?.editing.modify(() => this.bindSidechains());
   }
 }
 

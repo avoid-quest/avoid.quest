@@ -5,7 +5,7 @@ import type {
 } from "./playback-source.js";
 
 function createPlaybackSource(
-  context: AudioContext,
+  context: AudioContext | null,
   sourceId: string,
   callbacks: PlaybackSourceCallbacks = {}
 ): PlaybackSource {

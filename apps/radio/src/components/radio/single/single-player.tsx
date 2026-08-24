@@ -13,7 +13,6 @@ import {
   isSessionRadio,
   useSessionRadios,
 } from "@/lib/hooks/use-session-radios";
-import { useSettings } from "@/lib/hooks/use-settings";
 import { useSingleSession } from "@/lib/hooks/use-single-session";
 import { RadioDialog } from "../../settings/radio-dialog";
 import { RadioItemActions } from "../radio-item-actions";
@@ -29,21 +28,16 @@ type SinglePlayerProps = {
 };
 
 export function SinglePlayer({ radios }: SinglePlayerProps) {
-  const { data: settings } = useSettings();
-  const transitionDuration =
-    settings?.player?.single?.transitionDuration ?? 2000;
   const {
     currentRadio,
-    nextRadio,
     isPlaying,
     isLoading,
-    isCrossfading,
     error,
     volume,
     selectRadio,
     togglePlayPause,
     setVolume,
-  } = useSingleSession(transitionDuration);
+  } = useSingleSession();
 
   const { metadata } = useRadioMetadata({
     radio: currentRadio,
@@ -150,12 +144,10 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
         <div className="flex h-full min-h-0 w-full flex-col overflow-hidden rounded-lg border border-border/50 bg-card/50 lg:flex-row">
           <MobileNowPlayingPanel
             error={error}
-            isCrossfading={isCrossfading}
             isLoading={isLoading}
             isMuted={isMuted}
             isPlaying={isPlaying}
             metadata={metadata}
-            nextRadio={nextRadio}
             onDelete={handleDeleteRadio}
             onEdit={handleEditRadio}
             onMuteToggle={handleMuteToggle}
@@ -169,7 +161,6 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
 
           <StationList
             currentRadioId={currentRadio?.id}
-            nextRadioId={nextRadio?.id}
             onDelete={handleDeleteRadio}
             onEdit={handleEditRadio}
             onSave={handleSaveSessionRadio}
@@ -201,12 +192,10 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
             )}
             <NowPlayingPanel
               error={error}
-              isCrossfading={isCrossfading}
               isLoading={isLoading}
               isMuted={isMuted}
               isPlaying={isPlaying}
               metadata={metadata}
-              nextRadio={nextRadio}
               onMuteToggle={handleMuteToggle}
               onPlayPause={togglePlayPause}
               onVolumeChange={handleVolumeChange}

@@ -1,6 +1,6 @@
 {
   "name": "@avoid.quest/radio",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "private": true,
   "license": "UNLICENSED",
   "type": "module",
@@ -43,6 +43,7 @@
     "lucide-react": "catalog:",
     "lz-string": "^1.5.0",
     "next-themes": "catalog:",
+    "p-queue": "^9.3.3",
     "react": "catalog:",
     "react-dom": "catalog:",
     "react-hook-form": "^7.80.0",

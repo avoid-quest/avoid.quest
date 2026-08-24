@@ -3,18 +3,14 @@ import {
   localStorageCollectionOptions,
 } from "@tanstack/react-db";
 import { z } from "zod";
+import { supportsMediaElementVolumeControl } from "../audio/playback/media-element-volume-control.js";
 import { settings as defaultSettings } from "../const";
 
 const playerModeSchema = z.enum(["multiple", "single", "dj"]);
 
-const singleModeSettingsSchema = z.object({
-  transitionDuration: z.number().default(2000),
-});
-
 const playerSettingsSchema = z.object({
   mode: playerModeSchema.default("single"),
   restoreStateOnLoad: z.boolean().default(true),
-  single: singleModeSettingsSchema.optional(),
 });
 
 const delaySettingsSchema = z.object({
@@ -72,7 +68,6 @@ export async function initializeSettings(): Promise<void> {
       player: {
         mode: defaultSettings.player.mode,
         restoreStateOnLoad: defaultSettings.player.restoreStateOnLoad ?? true,
-        single: defaultSettings.player.single,
       },
     });
   }
@@ -118,29 +113,12 @@ export function setRestoreStateOnLoad(restore: boolean): void {
 }
 
 /**
- * Update single mode transition duration
- */
-export function setSingleModeTransitionDuration(duration: number): void {
-  const existing = getSettings();
-  if (existing) {
-    settingsCollection.update(SETTINGS_ID, (draft) => {
-      if (draft.player.single) {
-        draft.player.single.transitionDuration = duration;
-      } else {
-        draft.player.single = { transitionDuration: duration };
-      }
-    });
-  }
-}
-
-/**
  * Update full player settings
  */
 export function updatePlayerSettings(
   updater: (player: SettingsRecord["player"]) => Partial<{
     mode: "single" | "multiple" | "dj";
     restoreStateOnLoad: boolean;
-    single: { transitionDuration: number };
   }>
 ): void {
   const existing = getSettings();
@@ -152,9 +130,6 @@ export function updatePlayerSettings(
       }
       if (updates.restoreStateOnLoad !== undefined) {
         draft.player.restoreStateOnLoad = updates.restoreStateOnLoad;
-      }
-      if (updates.single !== undefined) {
-        draft.player.single = updates.single;
       }
     });
   }
@@ -190,6 +165,16 @@ export function getDelaySettings(): {
 } {
   const audio = getAudioSettings();
   return audio.delay ?? { mainDelayMs: 0, cueDelayMs: 0 };
+}
+
+export function shouldUseNativeSinglePlayback(): boolean {
+  const audio = getAudioSettings();
+  const mainDelayMs = audio.delay?.mainDelayMs ?? 0;
+  return (
+    audio.mainOutputId === "default" &&
+    mainDelayMs === 0 &&
+    supportsMediaElementVolumeControl()
+  );
 }
 
 /**

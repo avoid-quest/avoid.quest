@@ -50,7 +50,7 @@ describe("VolumeController", () => {
       value: 0.0001,
       cancelScheduledValues: mock(() => undefined),
       setTargetAtTime: mock(() => undefined),
-      setValueAtTime: mock((value: number) => {
+      setValueAtTime: mock((value: number, _time: number) => {
         gain.value = value;
       }),
       setValueCurveAtTime: mock(() => undefined),

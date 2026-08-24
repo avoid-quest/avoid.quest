@@ -17,7 +17,6 @@ const SETTINGS_ID = "app-settings";
 type ImportedPlayerSettings = {
   mode?: DatabaseExport["settings"]["player"]["mode"];
   restoreStateOnLoad?: DatabaseExport["settings"]["player"]["restoreStateOnLoad"];
-  single?: DatabaseExport["settings"]["player"]["single"];
 };
 
 function normalizeImportedSettings(
@@ -27,7 +26,6 @@ function normalizeImportedSettings(
   return {
     mode: importedPlayer?.mode,
     restoreStateOnLoad: importedPlayer?.restoreStateOnLoad,
-    single: importedPlayer?.single,
   };
 }
 
@@ -336,9 +334,6 @@ export const replaceImportedData = (importData: DatabaseExport): void => {
           draft.player.restoreStateOnLoad =
             importPlayer.restoreStateOnLoad ??
             existingSettings.player.restoreStateOnLoad;
-          if (importPlayer.single) {
-            draft.player.single = importPlayer.single;
-          }
         });
       } else {
         settingsCollection.insert({
@@ -346,7 +341,6 @@ export const replaceImportedData = (importData: DatabaseExport): void => {
           player: {
             mode: importPlayer.mode ?? "single",
             restoreStateOnLoad: importPlayer.restoreStateOnLoad ?? true,
-            single: importPlayer.single,
           },
         });
       }
@@ -447,9 +441,6 @@ export const mergeImportedData = (importData: DatabaseExport): void => {
         if (importPlayer.restoreStateOnLoad !== undefined) {
           draft.player.restoreStateOnLoad = importPlayer.restoreStateOnLoad;
         }
-        if (!draft.player.single && importPlayer.single) {
-          draft.player.single = importPlayer.single;
-        }
       });
     } else if (importData.settings) {
       const importPlayer = normalizeImportedSettings(importData.settings);
@@ -458,7 +449,6 @@ export const mergeImportedData = (importData: DatabaseExport): void => {
         player: {
           mode: importPlayer.mode ?? "single",
           restoreStateOnLoad: importPlayer.restoreStateOnLoad ?? true,
-          single: importPlayer.single,
         },
       });
     }

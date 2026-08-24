@@ -71,7 +71,6 @@ export {
   setMainOutputDevice,
   setPlayerMode,
   setRestoreStateOnLoad,
-  setSingleModeTransitionDuration,
   settingsCollection,
   updateInputDeckSettings,
   updatePlayerSettings,

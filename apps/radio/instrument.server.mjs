@@ -9,5 +9,5 @@ const SENTRY_DSN =
 initServerSentry({
   dsn: SENTRY_DSN,
   environment: process.env.NODE_ENV || "development",
-  release: `radio@${process.env.npm_package_version || "0.6.1"}`,
+  release: `radio@${process.env.npm_package_version || "0.6.2"}`,
 });

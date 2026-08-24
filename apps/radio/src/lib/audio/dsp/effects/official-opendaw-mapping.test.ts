@@ -2,9 +2,16 @@ import { describe, expect, test } from "bun:test";
 import {
   canUseOfficialOpenDawRuntime,
   hasEnabledEffects,
+  isOfficialOpenDawEffectType,
+  OPENDAW_FACTORY_KEYS,
   selectEnabledEffects,
 } from "./official-opendaw-mapping";
-import type { EffectConfig } from "./types";
+import { createDefaultEffectConfig } from "./registry";
+import {
+  type EffectConfig,
+  OPENDAW_EFFECT_TYPES,
+  RADIO_EFFECT_TYPES,
+} from "./types";
 
 const effect = (
   type: EffectConfig["type"],
@@ -22,6 +29,18 @@ const effect = (
   }) as EffectConfig;
 
 describe("official openDAW runtime selection", () => {
+  test("maps every official effect exactly once and no radio-only effect", () => {
+    expect(Object.keys(OPENDAW_FACTORY_KEYS).sort()).toEqual(
+      [...OPENDAW_EFFECT_TYPES].sort()
+    );
+    expect(new Set(Object.values(OPENDAW_FACTORY_KEYS)).size).toBe(
+      OPENDAW_EFFECT_TYPES.length
+    );
+    expect(
+      RADIO_EFFECT_TYPES.every((type) => !isOfficialOpenDawEffectType(type))
+    ).toBe(true);
+  });
+
   test("does not initialize an effect runtime for an empty or disabled chain", () => {
     expect(hasEnabledEffects([])).toBe(false);
     expect(hasEnabledEffects([effect("pitchShifter", "legacy", false)])).toBe(
@@ -48,5 +67,19 @@ describe("official openDAW runtime selection", () => {
         effect("limiter", "legacy", true),
       ])
     ).toBe(false);
+  });
+
+  test("an enabled nested legacy effect keeps the chain compatible", () => {
+    const container = createDefaultEffectConfig("fxComposite", "container", 0);
+    const legacy = createDefaultEffectConfig("limiter", "nested-legacy", 0);
+    container.enabled = true;
+    legacy.enabled = true;
+    const chain = container.chains[0];
+    if (!chain) {
+      throw new Error("Composite effect requires a chain");
+    }
+    chain.effects = [legacy];
+
+    expect(canUseOfficialOpenDawRuntime([container])).toBe(false);
   });
 });

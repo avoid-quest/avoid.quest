@@ -41,6 +41,7 @@ import {
   type FilterConfig as AudioManagerFilterConfig,
   createAudioNodes,
   type SoundInstance,
+  type SoundOutputMode,
 } from "./audio-manager-types.js";
 import { EffectsController } from "./effects-controller.js";
 import { MeterService } from "./meter-service.js";
@@ -164,10 +165,19 @@ export class AudioManager {
    * browser autoplay policy issues (AudioContext must be created/resumed
    * after a user gesture).
    */
-  createSound(radio: Radio, soundId?: string): string {
-    const id = this.soundRegistry.create(radio, soundId, (existingSoundId) => {
-      this.cleanupSound(existingSoundId);
-    });
+  createSound(
+    radio: Radio,
+    soundId?: string,
+    outputMode: SoundOutputMode = "audio-graph"
+  ): string {
+    const id = this.soundRegistry.create(
+      radio,
+      soundId,
+      (existingSoundId) => {
+        this.cleanupSound(existingSoundId);
+      },
+      outputMode
+    );
     const instance = this.soundRegistry.get(id);
     if (!instance) {
       throw new Error(`Failed to create sound with id ${id}`);
@@ -212,6 +222,11 @@ export class AudioManager {
         volume,
         error: null,
       });
+      return;
+    }
+
+    if (instance.outputMode === "native") {
+      await this.playNativeSound(soundId, instance, volume);
       return;
     }
 
@@ -1074,6 +1089,54 @@ export class AudioManager {
     return promise;
   }
 
+  private async playNativeSound(
+    soundId: string,
+    instance: SoundInstance,
+    volume: number
+  ): Promise<void> {
+    instance.volume = volume;
+    instance.playing = true;
+    instance.loading = true;
+    notifySoundState(this.notifyListeners, soundId, instance, {
+      isPlaying: true,
+      isLoading: true,
+      volume,
+      error: null,
+    });
+
+    const activePlaybackSource = instance.playbackSource?.isActive
+      ? instance.playbackSource
+      : null;
+    try {
+      if (activePlaybackSource) {
+        this.volume.set(soundId, volume);
+        await this.startPlayback(activePlaybackSource);
+        return;
+      }
+
+      instance.playbackSource?.cleanup();
+      instance.playbackSource = createPlaybackSource(
+        null,
+        soundId,
+        createPlaybackSourceCallbacks({
+          instance,
+          soundId,
+          notifyListeners: this.notifyListeners,
+        })
+      );
+      this.volume.set(soundId, volume);
+
+      const loadPromise = this.handleDeferredRejection(
+        instance.playbackSource.load(toPlaybackInput(instance.radio))
+      );
+      const playPromise = this.startPlayback(instance.playbackSource);
+      await Promise.all([loadPromise, playPromise]);
+    } catch (error) {
+      this.rollbackEarlyPlayback(soundId, instance, activePlaybackSource);
+      throw error;
+    }
+  }
+
   private startPlayback(
     playbackSource: NonNullable<SoundInstance["playbackSource"]>
   ): Promise<void> {
@@ -1085,6 +1148,10 @@ export class AudioManager {
     instance: SoundInstance,
     activePlaybackSource: NonNullable<SoundInstance["playbackSource"]> | null
   ): void {
+    if (this.soundRegistry.get(soundId) !== instance) {
+      return;
+    }
+
     if (activePlaybackSource) {
       activePlaybackSource.pause();
     } else {

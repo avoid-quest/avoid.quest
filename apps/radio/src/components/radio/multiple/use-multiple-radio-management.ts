@@ -3,10 +3,7 @@ import { toast } from "sonner";
 import type { Radio } from "@/lib/audio";
 import { getMultipleChannelId } from "@/lib/collections/playback-sessions";
 import { useDiscoveredStationActions } from "@/lib/hooks/use-discovered-station-actions";
-import {
-  addRadio as addRadioToCollection,
-  deleteRadio,
-} from "@/lib/hooks/use-radios";
+import { deleteRadio } from "@/lib/hooks/use-radios";
 import {
   isSessionRadio,
   useSessionRadios,
@@ -76,19 +73,9 @@ export function useMultipleRadioManagement({
 
   const handleSaveSessionRadio = useCallback(
     (radio: Radio) => {
-      const { id: _id, ...radioData } = radio;
-      addRadioToCollection({
-        ...radioData,
-        order: 0,
-        enabled: true,
-        isSystem: false,
-      });
-      if (radio.id) {
-        removeSessionRadio(radio.id);
-      }
-      toast.success(`Saved "${radio.name}" to collection`);
+      saveDiscoveredStation(radio);
     },
-    [removeSessionRadio]
+    [saveDiscoveredStation]
   );
 
   const handleToggleRadio = useCallback(

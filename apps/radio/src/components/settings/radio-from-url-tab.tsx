@@ -12,10 +12,10 @@ import { Spinner } from "@avoid.quest/ui/components/spinner";
 import { CheckCircleIcon, LinkIcon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { radiosCollection } from "@/lib/collections";
-import { addRadio } from "@/lib/hooks/use-radios";
 import type { RadioMetadata } from "@/lib/platform-types";
+import { stationIntake } from "@/lib/stations/external-station-workflow";
 import { createBrowserManualWebsiteImportWorkflow } from "@/lib/stations/manual-website-import-workflow";
+import { notifyStationSave } from "@/lib/stations/station-save-notification";
 import { RadioFieldPreview } from "./radio-field-preview";
 
 type RadioFromUrlTabProps = {
@@ -35,11 +35,7 @@ export function RadioFromUrlTab({ onSuccess }: RadioFromUrlTabProps) {
   const [description, setDescription] = useState("");
   const [isAdding, setIsAdding] = useState(false);
 
-  const createWorkflow = () =>
-    createBrowserManualWebsiteImportWorkflow({
-      addSavedRadio: addRadio,
-      getSavedRadios: () => radiosCollection.state.values(),
-    });
+  const createWorkflow = createBrowserManualWebsiteImportWorkflow;
 
   const handleFetch = async () => {
     const workflow = createWorkflow();
@@ -72,7 +68,7 @@ export function RadioFromUrlTab({ onSuccess }: RadioFromUrlTabProps) {
     }
   };
 
-  const handleAdd = () => {
+  const handleAdd = async () => {
     if (!(name.trim() && streamUrl.trim())) {
       toast.error("Name and Stream URL are required");
       return;
@@ -80,12 +76,15 @@ export function RadioFromUrlTab({ onSuccess }: RadioFromUrlTabProps) {
 
     setIsAdding(true);
     try {
-      const result = createWorkflow().saveDraft({
-        name,
-        streamUrl,
-        logoUrl,
-        description,
-        websiteUrl: url,
+      const result = await stationIntake.save({
+        fields: {
+          name,
+          streamUrl,
+          logoUrl,
+          description,
+          websiteUrl: url,
+        },
+        origin: "website",
       });
 
       if (!result.ok) {
@@ -93,7 +92,10 @@ export function RadioFromUrlTab({ onSuccess }: RadioFromUrlTabProps) {
         return;
       }
 
-      toast.success(`Added "${name.trim()}" to your collection`);
+      notifyStationSave(
+        result.data,
+        `Added "${name.trim()}" to your collection`
+      );
       onSuccess();
     } catch (error) {
       captureError(error, {

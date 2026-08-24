@@ -1,11 +1,5 @@
-import type { Radio } from "@/lib/audio";
-import type { RadioRecord } from "@/lib/collections";
 import type { RadioMetadata, ScrapedOption } from "@/lib/platform-types";
 import { parseRadioMetadataFromDocument } from "@/lib/radio-scraper";
-import {
-  createImportedStationRadio,
-  saveResolvedStationToCollection,
-} from "./external-station-workflow";
 
 export type ManualWebsiteImportError = {
   code: ManualWebsiteImportErrorCode;
@@ -14,7 +8,6 @@ export type ManualWebsiteImportError = {
 
 export type ManualWebsiteImportErrorCode =
   | "INVALID_WEBSITE_URL"
-  | "MISSING_REQUIRED_STATION_FIELDS"
   | "MISSING_WEBSITE_URL"
   | "WEBSITE_FETCH_FAILED"
   | "WEBSITE_PARSE_FAILED";
@@ -40,15 +33,8 @@ type FetchWebsiteResult = {
   html: string;
 };
 
-type BrowserManualWebsiteImportDependencies = Pick<
-  ManualWebsiteImportDependencies,
-  "addSavedRadio" | "getSavedRadios"
->;
-
 export type ManualWebsiteImportDependencies = {
-  addSavedRadio: (radio: Omit<RadioRecord, "id">) => void;
   fetchWebsite: (websiteUrl: string) => Promise<FetchWebsiteResult>;
-  getSavedRadios: () => Iterable<Pick<RadioRecord, "order">>;
   parseHtml: (html: string) => Document;
 };
 
@@ -163,9 +149,7 @@ function parseHtml(html: string): Document {
 }
 
 export function createManualWebsiteImportWorkflow({
-  addSavedRadio,
   fetchWebsite,
-  getSavedRadios,
   parseHtml,
 }: ManualWebsiteImportDependencies) {
   return {
@@ -208,42 +192,12 @@ export function createManualWebsiteImportWorkflow({
       };
     },
 
-    saveDraft(
-      fields: ManualWebsiteImportFields
-    ): ManualWebsiteImportResult<{ order: number; radio: Radio }> {
-      if (!(fields.name.trim() && fields.streamUrl.trim())) {
-        return {
-          ok: false,
-          error: {
-            code: "MISSING_REQUIRED_STATION_FIELDS",
-            message: "Name and Stream URL are required",
-          },
-        };
-      }
-
-      const saved = saveResolvedStationToCollection(
-        createImportedStationRadio(fields),
-        {
-          addSavedRadio,
-          getSavedRadios,
-        }
-      );
-
-      return {
-        ok: true,
-        data: saved,
-      };
-    },
-
     validateWebsiteUrl: validateManualWebsiteImportUrl,
   };
 }
 
-export function createBrowserManualWebsiteImportWorkflow(
-  dependencies: BrowserManualWebsiteImportDependencies
-) {
+export function createBrowserManualWebsiteImportWorkflow() {
   return createManualWebsiteImportWorkflow({
-    ...dependencies,
     fetchWebsite,
     parseHtml,
   });

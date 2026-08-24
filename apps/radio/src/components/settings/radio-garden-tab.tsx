@@ -17,6 +17,7 @@ import { searchRadioGarden } from "@/lib/platform-client";
 import type { RadioGardenSearchResult } from "@/lib/platform-types";
 import { createBrowserStationIntake } from "@/lib/stations/external-station-workflow";
 import { resolveRadioGardenStreamForWorkflow } from "@/lib/stations/radio-garden-resolve-adapter";
+import { notifyStationSave } from "@/lib/stations/station-save-notification";
 
 type RadioGardenTabProps = {
   onSuccess: () => void;
@@ -90,7 +91,10 @@ export function RadioGardenTab({ onSuccess }: RadioGardenTabProps) {
         return;
       }
 
-      toast.success(`Added "${editedName || result.title}" to your collection`);
+      notifyStationSave(
+        resolved.data,
+        `Added "${editedName || result.title}" to your collection`
+      );
       onSuccess();
     } catch (error) {
       captureError(error, {

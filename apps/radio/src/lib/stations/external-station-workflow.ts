@@ -277,6 +277,33 @@ function findStationByIdentity<T extends Radio>(
   return findStationsByIdentity(stations, radio)[0];
 }
 
+function reuseRadioGardenSession(
+  candidate: StationCandidate,
+  sessions: Iterable<Radio>
+): StationCandidate {
+  if (candidate.origin !== "radio-garden" || candidate.resolved) {
+    return candidate;
+  }
+  const session = findStationByIdentity(
+    sessions,
+    createRadioGardenRadio(
+      candidate.result,
+      "",
+      candidate.name ?? candidate.result.title
+    )
+  );
+  if (!(session && normalizeStreamIdentity(session.streamUrl))) {
+    return candidate;
+  }
+  return {
+    ...candidate,
+    resolved: {
+      ...(session.streamFormat ? { format: session.streamFormat } : {}),
+      streamUrl: session.streamUrl,
+    },
+  };
+}
+
 function validatePreparedRadio(radio: Radio): ExternalStationResult<Radio> {
   if (!(radio.name && radio.streamUrl)) {
     return {
@@ -611,7 +638,9 @@ export function createStationIntake(dependencies: StationIntakeDependencies) {
     prepare,
 
     async save(candidate: StationCandidate): Promise<StationIntakeResult> {
-      const prepared = await prepare(candidate);
+      const prepared = await prepare(
+        reuseRadioGardenSession(candidate, dependencies.session.getAll())
+      );
       if (!prepared.ok) {
         return prepared;
       }

@@ -659,6 +659,56 @@ describe("createStationIntake", () => {
     expect(resolveStream).not.toHaveBeenCalled();
   });
 
+  test("promotes a matching Radio Garden Session stream without resolving again", async () => {
+    const sessionRadio = {
+      id: "rg_garden-1",
+      name: "Session Garden",
+      platformMetadata: {
+        channelId: "garden-1",
+        itemType: "channel" as const,
+        platform: "radiogarden" as const,
+        url: "https://radio.garden/listen/garden/garden-1",
+      },
+      streamFormat: "hls" as const,
+      streamUrl: "https://stream.example/session",
+    };
+    const resolveStream = mock(() =>
+      Promise.reject(new Error("Radio Garden is unavailable"))
+    );
+    const harness = createHarness({
+      adapters: { radioGarden: { resolveStream } },
+      session: [sessionRadio],
+    });
+
+    const result = await harness.intake.save({
+      name: "Edited Garden",
+      origin: "radio-garden",
+      result: {
+        channelId: "garden-1",
+        countryTitle: "Italy",
+        placeTitle: "Rome",
+        subtitle: "Live",
+        title: "Garden",
+        url: "https://radio.garden/listen/garden/garden-1",
+        website: "https://garden.example",
+      },
+    });
+
+    expect(result).toEqual({
+      data: {
+        order: 1,
+        radio: expect.objectContaining({
+          name: "Edited Garden",
+          streamFormat: "hls",
+          streamUrl: "https://stream.example/session",
+        }),
+      },
+      ok: true,
+    });
+    expect(resolveStream).not.toHaveBeenCalled();
+    expect(harness.session).toEqual([]);
+  });
+
   test("prepares a Radio Browser candidate with canonical identity", async () => {
     const harness = createHarness();
 

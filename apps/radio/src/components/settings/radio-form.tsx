@@ -17,6 +17,7 @@ import { updateRadio } from "@/lib/hooks/use-radios";
 import type { RadioMetadata } from "@/lib/platform-types";
 import { type RadioFormData, radioSchema } from "@/lib/schemas/radio-schema";
 import { stationIntake } from "@/lib/stations/external-station-workflow";
+import { notifyStationSave } from "@/lib/stations/station-save-notification";
 import { RadioFieldPreview } from "./radio-field-preview";
 
 type RadioFormProps = {
@@ -79,7 +80,7 @@ const handleFormSubmit = async (
         toast.error(result.error.message);
         return;
       }
-      toast.success("Radio station created successfully");
+      notifyStationSave(result.data, "Radio station created successfully");
     } else if (mode === "edit" && radio?.id) {
       updateRadio(String(radio.id), data);
       toast.success("Radio station updated successfully");

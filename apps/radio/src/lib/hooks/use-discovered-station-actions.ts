@@ -1,6 +1,7 @@
 import { toast } from "sonner";
 import type { Radio } from "@/lib/audio";
 import { stationIntake } from "@/lib/stations/external-station-workflow";
+import { notifyStationSave } from "@/lib/stations/station-save-notification";
 
 export function useDiscoveredStationActions(
   onSelected: (radio: Radio) => void | Promise<void>
@@ -30,7 +31,10 @@ export function useDiscoveredStationActions(
           toast.error(result.error.message);
           return;
         }
-        toast.success(`Saved "${result.data.radio.name}" to collection`);
+        notifyStationSave(
+          result.data,
+          `Saved "${result.data.radio.name}" to collection`
+        );
       })
       .catch((error: unknown) => {
         toast.error(

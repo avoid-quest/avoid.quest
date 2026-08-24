@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import type { RadioMetadata } from "@/lib/platform-types";
 import { stationIntake } from "@/lib/stations/external-station-workflow";
 import { createBrowserManualWebsiteImportWorkflow } from "@/lib/stations/manual-website-import-workflow";
+import { notifyStationSave } from "@/lib/stations/station-save-notification";
 import { RadioFieldPreview } from "./radio-field-preview";
 
 type RadioFromUrlTabProps = {
@@ -91,7 +92,10 @@ export function RadioFromUrlTab({ onSuccess }: RadioFromUrlTabProps) {
         return;
       }
 
-      toast.success(`Added "${name.trim()}" to your collection`);
+      notifyStationSave(
+        result.data,
+        `Added "${name.trim()}" to your collection`
+      );
       onSuccess();
     } catch (error) {
       captureError(error, {

@@ -123,6 +123,7 @@ type EffectBinding = {
 
 type QueuedEffectChange = {
   coalesceKey?: MidiTargetId;
+  dispatchRevision: number;
   factory: EffectChangeFactory;
 };
 
@@ -247,6 +248,7 @@ export function createMidiControl({
   let devices: readonly MidiDeviceInfo[] = [];
   let djActive = false;
   let error: Error | null = null;
+  let effectDispatchRevision = 0;
   let frameId: number | null = null;
   let learningTarget: MidiTargetId | null = null;
   let lastCcDispatchTime = 0;
@@ -285,6 +287,10 @@ export function createMidiControl({
   };
 
   const cancelPendingDispatch = () => {
+    effectDispatchRevision += 1;
+    for (const binding of effectBindings.values()) {
+      binding.queuedContinuous.clear();
+    }
     if (frameId !== null) {
       browser.cancelFrame(frameId);
       frameId = null;
@@ -359,7 +365,10 @@ export function createMidiControl({
     if (!coalesceKey) {
       binding.queuedContinuous.clear();
     }
-    const changeRequest: QueuedEffectChange = { factory };
+    const changeRequest: QueuedEffectChange = {
+      dispatchRevision: effectDispatchRevision,
+      factory,
+    };
     if (coalesceKey) {
       changeRequest.coalesceKey = coalesceKey;
       binding.queuedContinuous.set(coalesceKey, changeRequest);
@@ -374,7 +383,10 @@ export function createMidiControl({
         ) {
           binding.queuedContinuous.delete(changeRequest.coalesceKey);
         }
-        if (binding.disposed) {
+        if (
+          binding.disposed ||
+          changeRequest.dispatchRevision !== effectDispatchRevision
+        ) {
           return;
         }
         const change = changeRequest.factory(binding.tree);

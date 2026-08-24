@@ -764,6 +764,53 @@ describe("MidiControl", () => {
     await second.promise;
   });
 
+  test("cancels queued Effect changes when MIDI is disabled", async () => {
+    const browser = new FakeBrowser();
+    const limiter = createDefaultEffectConfig("limiter", "limiter", 0);
+    const result = {
+      desired: {
+        dryWet: 1,
+        sidechainSoundId: null,
+        tempo: 120,
+        tree: [limiter],
+      },
+      runtime: { backend: null, ready: false, status: "inactive" as const },
+    };
+    const first = Promise.withResolvers<typeof result>();
+    const effectChange = mock(() => first.promise);
+    const targetId = "deck-a:effect:limiter:threshold";
+    const control = createMidiControl({
+      browser,
+      effects: { change: effectChange },
+      persistence: new MemoryPersistence({
+        state: {
+          activePresetId: null,
+          enabled: true,
+          mappings: [{ channel: 0, control: 21, targetId, type: "cc" }],
+        },
+        version: 2,
+      }),
+      staticActions: [],
+    });
+    control.bindDeckEffects("deck-a").reconcile([limiter]);
+    control.activateDj();
+    await control.connect();
+
+    browser.emit([0xb0, 21, 64]);
+    browser.flushFrame();
+    await Promise.resolve();
+    browser.time = 134;
+    browser.emit([0xb0, 21, 127]);
+    browser.flushFrame();
+    control.change({ type: "set-enabled", enabled: false });
+
+    first.resolve(result);
+    await first.promise;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(effectChange).toHaveBeenCalledTimes(1);
+  });
+
   test("keeps button Effect changes ordered between continuous updates", async () => {
     const browser = new FakeBrowser();
     const limiter = createDefaultEffectConfig("limiter", "limiter", 0);

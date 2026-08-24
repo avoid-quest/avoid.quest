@@ -1,179 +1,88 @@
-import { describe, expect, test } from "bun:test";
-import type { RadioBrowserStation } from "@avoid.quest/platforms/radiobrowser";
+import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
+import { cleanup, render } from "@testing-library/react";
+// @ts-expect-error jsdom types are not installed in this workspace.
+import { JSDOM } from "jsdom";
+import { act, createElement } from "react";
 import type { Radio } from "@/lib/audio";
-import { mergeUnifiedRadioResults } from "./use-unified-radio-search";
+import type {
+  StationDiscoveryInput,
+  StationDiscoverySnapshot,
+} from "@/lib/stations/station-discovery";
 
-function radioBrowserStation(
-  overrides: Partial<RadioBrowserStation> = {}
-): RadioBrowserStation {
-  return {
-    bitrate: 192,
-    codec: "MP3",
-    country: "Italy",
-    favicon: "",
-    homepage: "https://www.fangoradio.com",
-    hls: false,
-    lastCheckOk: true,
-    lastCheckTime: "2026-07-28T00:00:00Z",
-    name: "Fango Radio",
-    state: "Italy",
-    stationUuid: "fango-1",
-    tags: ["independent"],
-    url: "https://pantano.ovh:8444/pantano",
-    urlResolved: "https://pantano.ovh:8444/pantano",
-    ...overrides,
-  };
+const dom = new JSDOM("<!doctype html><html><body></body></html>", {
+  url: "https://radio.test",
+});
+
+for (const [key, value] of Object.entries({
+  window: dom.window,
+  document: dom.window.document,
+  navigator: dom.window.navigator,
+  HTMLElement: dom.window.HTMLElement,
+})) {
+  Object.defineProperty(globalThis, key, {
+    configurable: true,
+    writable: true,
+    value,
+  });
 }
 
-function radioGardenRadio(overrides: Partial<Radio> = {}): Radio {
-  return {
-    countryTitle: "Italy",
-    description: "Pistoia, Italy",
-    id: "rg_3qF-CmzK",
-    name: "Fango Radio",
-    placeTitle: "Pistoia",
-    streamUrl: "https://pantano.ovh:8444/pantano",
-    ...overrides,
-  };
+const inputs: StationDiscoveryInput[] = [];
+const search = mock(
+  (
+    input: StationDiscoveryInput,
+    publish: (snapshot: StationDiscoverySnapshot) => void
+  ) => {
+    inputs.push(input);
+    if (inputs.length === 1) {
+      publish({ duplicateCount: 0, isSearching: false, results: [] });
+    }
+    return () => undefined;
+  }
+);
+
+mock.module("@/lib/stations/station-discovery-adapters", () => ({
+  createProductionStationDiscovery: () => ({ search }),
+}));
+
+let useUnifiedRadioSearch: typeof import("./use-unified-radio-search")["useUnifiedRadioSearch"];
+
+beforeAll(async () => {
+  ({ useUnifiedRadioSearch } = await import("./use-unified-radio-search"));
+});
+
+afterEach(() => {
+  cleanup();
+  inputs.length = 0;
+  search.mockClear();
+});
+
+function TestHarness({ stationName }: { stationName: string }) {
+  useUnifiedRadioSearch("rome", [
+    {
+      name: stationName,
+      streamUrl: "https://radio.example/live",
+    } satisfies Radio,
+  ]);
+  return null;
 }
 
-describe("mergeUnifiedRadioResults", () => {
-  test("merges duplicate directory entries and prefers the playable Radio Browser action", () => {
-    const radioBrowserResults = Array.from({ length: 4 }, (_, index) =>
-      radioBrowserStation({ stationUuid: `fango-${index}` })
-    );
+describe("useUnifiedRadioSearch", () => {
+  test("restarts discovery only when inline station contents change", async () => {
+    const view = render(createElement(TestHarness, { stationName: "Rome" }));
 
-    const result = mergeUnifiedRadioResults({
-      localRadios: [],
-      query: "fango radio",
-      radioBrowserResults,
-      radioGardenResults: [radioGardenRadio()],
-    });
+    await act(async () => Promise.resolve());
 
-    expect(result.duplicateCount).toBe(4);
-    expect(result.results).toHaveLength(1);
-    expect(result.results[0]?.action.type).toBe("radio-browser");
-    expect(result.results[0]?.sources).toEqual([
-      "radio-browser",
-      "radio-garden",
-    ]);
-  });
+    expect(search).toHaveBeenCalledTimes(1);
 
-  test("keeps a collection station as the action when a directory also returns it", () => {
-    const localRadio: Radio = {
-      countryTitle: "Italy",
-      enabled: true,
-      id: "saved-fango",
-      name: "Fango Radio",
-      streamUrl: "https://pantano.ovh:8444/pantano",
-    };
+    view.rerender(createElement(TestHarness, { stationName: "Rome" }));
+    await act(async () => Promise.resolve());
 
-    const result = mergeUnifiedRadioResults({
-      localRadios: [localRadio],
-      query: "fango",
-      radioBrowserResults: [radioBrowserStation()],
-      radioGardenResults: [],
-    });
+    expect(search).toHaveBeenCalledTimes(1);
 
-    expect(result.results).toHaveLength(1);
-    expect(result.results[0]?.action).toEqual({
-      radio: localRadio,
-      type: "local",
-    });
-    expect(result.results[0]?.sources).toEqual(["local", "radio-browser"]);
-  });
+    view.rerender(createElement(TestHarness, { stationName: "Roma" }));
+    await act(async () => Promise.resolve());
 
-  test("keeps same-named stations with different streams when identity is incomplete", () => {
-    const result = mergeUnifiedRadioResults({
-      localRadios: [
-        {
-          id: "network-one",
-          name: "Network Radio",
-          streamUrl: "https://audio.example/network-one",
-        },
-        {
-          id: "network-two",
-          name: "Network Radio",
-          streamUrl: "https://audio.example/network-two",
-        },
-      ],
-      query: "network",
-      radioBrowserResults: [],
-      radioGardenResults: [],
-    });
-
-    expect(result.duplicateCount).toBe(0);
-    expect(result.results).toHaveLength(2);
-  });
-
-  test("merges distinct provider entries with matching name and location", () => {
-    const result = mergeUnifiedRadioResults({
-      localRadios: [],
-      query: "city radio",
-      radioBrowserResults: [
-        radioBrowserStation({
-          country: "Italy",
-          name: "City Radio",
-          state: "Rome",
-          url: "https://audio.example/city-rb",
-          urlResolved: "https://audio.example/city-rb",
-        }),
-      ],
-      radioGardenResults: [
-        radioGardenRadio({
-          countryTitle: "Italy",
-          id: "rg_city",
-          name: "City Radio",
-          placeTitle: "Rome",
-          streamUrl: "https://audio.example/city-rg",
-        }),
-      ],
-    });
-
-    expect(result.duplicateCount).toBe(1);
-    expect(result.results).toHaveLength(1);
-  });
-
-  test("drops provider fuzzy matches when exact significant terms exist", () => {
-    const result = mergeUnifiedRadioResults({
-      localRadios: [],
-      query: "fango radio",
-      radioBrowserResults: [radioBrowserStation()],
-      radioGardenResults: [
-        radioGardenRadio({
-          id: "rg_fano",
-          name: "Radio Fano FM 101.1",
-          placeTitle: "Fano",
-          streamUrl: "https://audio.example/fano",
-        }),
-        radioGardenRadio({
-          countryTitle: "United States",
-          id: "rg_fargo",
-          name: "The Eagle 106.9 FM",
-          placeTitle: "Fargo ND",
-          streamUrl: "https://audio.example/fargo",
-        }),
-      ],
-    });
-
-    expect(result.results.map((entry) => entry.name)).toEqual(["Fango Radio"]);
-  });
-
-  test("does not replace an unavailable exact station with fuzzy alternatives", () => {
-    const result = mergeUnifiedRadioResults({
-      localRadios: [],
-      query: "radio fano fm 101.1",
-      radioBrowserResults: [],
-      radioGardenResults: [
-        radioGardenRadio({
-          id: "rg_fan",
-          name: "Radio FAN FM 103.9",
-          placeTitle: "Buenos Aires",
-          streamUrl: "https://audio.example/fan",
-        }),
-      ],
-    });
-
-    expect(result.results).toEqual([]);
+    expect(search).toHaveBeenCalledTimes(2);
+    expect(inputs.at(-1)?.knownStations[0]?.name).toBe("Roma");
   });
 });

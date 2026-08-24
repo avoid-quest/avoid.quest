@@ -69,12 +69,45 @@ describe("createLocalMidiMappingPersistence", () => {
     );
   });
 
-  test("starts with defaults when stored JSON has an invalid MIDI envelope", () => {
-    for (const stored of ["{}", '{"version":2,"state":{}}']) {
+  test("starts with defaults when stored JSON has invalid MIDI state", () => {
+    const invalidStates = [
+      {},
+      { version: 2, state: {} },
+      {
+        version: 2,
+        state: {
+          activePresetId: null,
+          enabled: true,
+          mappings: [{ channel: 0, control: 1, targetId: 42, type: "cc" }],
+        },
+      },
+      {
+        version: 2,
+        state: {
+          activePresetId: null,
+          enabled: true,
+          mappings: [
+            {
+              channel: 0,
+              control: 1,
+              targetId: "deck-a:volume",
+              transform: {
+                curve: "linear",
+                invert: false,
+                max: 1,
+                min: "0",
+              },
+              type: "cc",
+            },
+          ],
+        },
+      },
+    ];
+    for (const state of invalidStates) {
       withLocalStorage(
         {
           getItem() {
-            return stored;
+            return JSON.stringify(state);
           },
         },
         () => {

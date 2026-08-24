@@ -598,6 +598,17 @@ describe("OutputRouting", () => {
     expect(registration.enabled).toBe(true);
   });
 
+  test("keeps headphone volume when routing resumes after cleanup", async () => {
+    const { browser, routing } = setup();
+    routing.setHeadphoneVolume(0.35);
+
+    routing.cleanup();
+    await routing.applySettings({ cueOutputId: "headphones" });
+
+    expect(browser.graphs[1]?.headphoneVolume).toBe(0.35);
+    expect(routing.getSnapshot().headphoneVolume).toBe(0.35);
+  });
+
   test("cleanup cancels a deferred transaction without recreating its graph", async () => {
     const { browser, persistence, routing } = setup();
     const deferredSink = browser.deferNextMainSink();

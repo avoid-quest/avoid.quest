@@ -672,7 +672,6 @@ class OutputRouting {
     this.cueSink = null;
     this.graph?.dispose();
     this.graph = null;
-    this.headphoneVolume = 1;
     this.runtimeSettings = DEFAULT_OUTPUT_SETTINGS;
     this.errorListeners.clear();
   }

@@ -213,6 +213,7 @@ async function selectStation(
   cleanupManagedChannel(channel.id, ctx);
   upsertPlaybackChannel("single", { ...channel, radio: station });
   setPlaybackSessionActiveChannel("single", channel.id);
+  let playbackAttempted = false;
   try {
     const soundId = createManagedSound(
       "single",
@@ -224,6 +225,7 @@ async function selectStation(
     if (!selection.playbackIntent) {
       return;
     }
+    playbackAttempted = true;
     await waitForAbortable(
       playManagedSound("single", soundId, channel.volume, ctx),
       signal
@@ -249,7 +251,7 @@ async function selectStation(
         await playManagedSound("single", restoredSoundId, channel.volume, ctx);
       }
     }
-    if (!selection.playbackIntent) {
+    if (!selection.playbackIntent && playbackAttempted) {
       return;
     }
     throw reportPlaybackActionError(ctx.reportError, {

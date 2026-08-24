@@ -226,6 +226,36 @@ describe("Single Playback", () => {
     expect(context.reportError).toHaveBeenCalledTimes(1);
   });
 
+  test("reports sound creation failures for an initially paused selection", async () => {
+    const current = station("current");
+    const replacement = station("replacement");
+    insertSingleSession(current);
+    const context = createTestContext();
+    context.channels.activate = mock(
+      (_sessionId, channelId, radio, optionsOrSoundId) => {
+        if (radio.id === replacement.id) {
+          throw new Error("sound creation failed");
+        }
+        const soundId =
+          typeof optionsOrSoundId === "string"
+            ? optionsOrSoundId
+            : (optionsOrSoundId?.soundId ?? `sound:${channelId}`);
+        setPlaybackChannelRuntime(channelId, () => ({ soundId }));
+        return soundId;
+      }
+    );
+
+    await getSinglePlayback({ ctx: context }).selectStation(replacement);
+
+    expect(
+      getPlaybackChannel("single", SINGLE_ACTIVE_CHANNEL_ID)?.radio
+    ).toEqual(current);
+    expect(
+      getPlaybackChannelRuntime(SINGLE_ACTIVE_CHANNEL_ID).error
+    ).toMatchObject({ code: "PLAY_ERROR" });
+    expect(context.reportError).toHaveBeenCalledTimes(1);
+  });
+
   test("reports replacement errors on the active Single Channel", async () => {
     const current = station("current");
     const replacement = station("replacement");

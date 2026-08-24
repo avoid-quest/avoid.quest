@@ -213,6 +213,23 @@ describe("Multiple Playback", () => {
     expect(getPlaybackSession("multiple")?.channels[0]?.volume).toBe(1);
   });
 
+  test("unmuting a persisted muted zero-volume Channel restores volume", () => {
+    const radio = station("muted-zero");
+    const channelId = getMultipleChannelId(radio);
+    insertMultipleSession([radio]);
+    updatePlaybackChannel("multiple", channelId, (draft) => {
+      draft.muted = true;
+      draft.volume = 0;
+    });
+
+    getMultiplePlayback({ ctx: createTestContext() }).toggleMute(channelId);
+
+    expect(getPlaybackSession("multiple")?.channels[0]).toMatchObject({
+      muted: false,
+      volume: 1,
+    });
+  });
+
   test("toggles persisted Channel mute without discarding its volume", () => {
     const radio = station("persisted-muted");
     const channelId = getMultipleChannelId(radio);

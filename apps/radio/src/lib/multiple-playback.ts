@@ -454,7 +454,11 @@ function createMultiplePlayback(
         return;
       }
       if (channel.muted) {
-        ctx.channels.setMuted("multiple", channelId, false);
+        if (channel.volume === 0) {
+          setVolume(channelId, unmutedVolumes.get(channelId) ?? 1);
+        } else {
+          ctx.channels.setMuted("multiple", channelId, false);
+        }
         return;
       }
       if (channel.volume === 0) {

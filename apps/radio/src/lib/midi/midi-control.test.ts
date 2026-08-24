@@ -149,6 +149,86 @@ class FakeBrowser implements MidiBrowserAdapter {
   }
 }
 
+class DeferredMidiAccess implements MidiBrowserAccess {
+  private readonly deviceState: "connected" | "disconnected" = "connected";
+  private readonly messageListeners = new Set<(data: Uint8Array) => void>();
+  private readonly stateListeners = new Set<() => void>();
+  private readonly input: MidiBrowserInput;
+
+  constructor(id: string) {
+    const access = this;
+    this.input = {
+      get device() {
+        return {
+          id,
+          manufacturer: "Test",
+          name: id,
+          state: access.deviceState,
+          type: "input" as const,
+        };
+      },
+      subscribe: (listener) => {
+        this.messageListeners.add(listener);
+        return () => this.messageListeners.delete(listener);
+      },
+    };
+  }
+
+  get messageListenerCount(): number {
+    return this.messageListeners.size;
+  }
+
+  get stateListenerCount(): number {
+    return this.stateListeners.size;
+  }
+
+  inputs(): readonly MidiBrowserInput[] {
+    return [this.input];
+  }
+
+  subscribeStateChange(listener: () => void): () => void {
+    this.stateListeners.add(listener);
+    return () => this.stateListeners.delete(listener);
+  }
+}
+
+class DeferredBrowser implements MidiBrowserAdapter {
+  private readonly accessResolvers: Array<(access: MidiBrowserAccess) => void> =
+    [];
+
+  cancelFrame(): void {
+    return;
+  }
+
+  isSupported(): boolean {
+    return true;
+  }
+
+  now(): number {
+    return 100;
+  }
+
+  requestAccess(): Promise<MidiBrowserAccess> {
+    return new Promise((resolve) => this.accessResolvers.push(resolve));
+  }
+
+  requestFrame(): number {
+    return 1;
+  }
+
+  resolveAccess(index: number, access: MidiBrowserAccess): void {
+    const resolve = this.accessResolvers[index];
+    if (!resolve) {
+      throw new Error(`Missing MIDI access request ${index}`);
+    }
+    resolve(access);
+  }
+
+  subscribePermission(): () => void {
+    return () => undefined;
+  }
+}
+
 describe("MidiControl", () => {
   test("synchronizes mapping transforms with target lookup and persistence", () => {
     const persistence = new MemoryPersistence({
@@ -441,6 +521,23 @@ describe("MidiControl", () => {
     expect(values).toEqual([1]);
   });
 
+  test("keeps reconnect observation after an idempotent connect replay", async () => {
+    const browser = new FakeBrowser();
+    const control = createMidiControl({
+      browser,
+      persistence: new MemoryPersistence(),
+      staticActions: [],
+    });
+
+    await control.connect();
+    await control.connect();
+    browser.setDeviceState("disconnected");
+
+    expect(control.getSnapshot().devices[0]?.state).toBe("disconnected");
+    expect(browser.messageListenerCount).toBe(1);
+    expect(browser.stateListenerCount).toBe(1);
+  });
+
   test("dispatches static actions through DJ Deck and composite mixer commands", async () => {
     const browser = new FakeBrowser();
     const transport = mock(() => Promise.resolve());
@@ -662,6 +759,50 @@ describe("MidiControl", () => {
     expect(targets).not.toContain("deck-a:effect:limiter:enabled");
   });
 
+  test("discards a deferred Effect rejection after cleanup", async () => {
+    const browser = new FakeBrowser();
+    const limiter = createDefaultEffectConfig("limiter", "limiter", 0);
+    limiter.enabled = false;
+    const deferred = Promise.withResolvers<never>();
+    const effectChange = mock(() => deferred.promise);
+    const control = createMidiControl({
+      browser,
+      effects: { change: effectChange },
+      persistence: new MemoryPersistence({
+        state: {
+          activePresetId: null,
+          enabled: true,
+          mappings: [
+            {
+              channel: 0,
+              control: 21,
+              targetId: "deck-a:effect:limiter:enabled",
+              type: "note",
+            },
+          ],
+        },
+        version: 2,
+      }),
+      staticActions: [],
+    });
+    const binding = control.bindDeckEffects("deck-a");
+    binding.reconcile([limiter]);
+    control.activateDj();
+    await control.connect();
+    browser.emit([0x90, 21, 127]);
+    await Promise.resolve();
+    expect(effectChange).toHaveBeenCalledTimes(1);
+
+    control.cleanup();
+    const cleanedSnapshot = control.getSnapshot();
+    deferred.reject(new Error("late Effect failure"));
+    await deferred.promise.catch(() => undefined);
+    await Promise.resolve();
+
+    expect(control.getSnapshot()).toBe(cleanedSnapshot);
+    expect(control.getSnapshot().error).toBeNull();
+  });
+
   test("filters note-off and contact bounce for button actions", async () => {
     const browser = new FakeBrowser();
     const dispatch = mock(() => undefined);
@@ -738,6 +879,60 @@ describe("MidiControl", () => {
     expect(browser.stateListenerCount).toBe(0);
     expect(control.getSnapshot().devices).toEqual([]);
     expect(control.getSnapshot().djActive).toBe(false);
+  });
+
+  test("discards deferred MIDI access that settles after cleanup", async () => {
+    const browser = new DeferredBrowser();
+    const staleAccess = new DeferredMidiAccess("stale-input");
+    const control = createMidiControl({
+      browser,
+      persistence: new MemoryPersistence(),
+      staticActions: [],
+    });
+    const pending = control.connect();
+
+    control.cleanup();
+    const cleanedSnapshot = control.getSnapshot();
+    browser.resolveAccess(0, staleAccess);
+    await pending;
+
+    expect(control.getSnapshot()).toBe(cleanedSnapshot);
+    expect(control.getSnapshot().status).toBe("prompt");
+    expect(control.getSnapshot().devices).toEqual([]);
+    expect(staleAccess.messageListenerCount).toBe(0);
+    expect(staleAccess.stateListenerCount).toBe(0);
+  });
+
+  test("keeps a newer MIDI connection when an older request settles", async () => {
+    const browser = new DeferredBrowser();
+    const staleAccess = new DeferredMidiAccess("stale-input");
+    const currentAccess = new DeferredMidiAccess("current-input");
+    const control = createMidiControl({
+      browser,
+      persistence: new MemoryPersistence(),
+      staticActions: [],
+    });
+    const staleConnect = control.connect();
+    control.cleanup();
+    const currentConnect = control.connect();
+
+    browser.resolveAccess(1, currentAccess);
+    await currentConnect;
+    browser.resolveAccess(0, staleAccess);
+    await staleConnect;
+
+    expect(control.getSnapshot().status).toBe("connected");
+    expect(control.getSnapshot().devices.map((device) => device.id)).toEqual([
+      "current-input",
+    ]);
+    expect(staleAccess.messageListenerCount).toBe(0);
+    expect(staleAccess.stateListenerCount).toBe(0);
+    expect(currentAccess.messageListenerCount).toBe(1);
+    expect(currentAccess.stateListenerCount).toBe(1);
+
+    control.cleanup();
+    expect(currentAccess.messageListenerCount).toBe(0);
+    expect(currentAccess.stateListenerCount).toBe(0);
   });
 
   test("reconciles chain actions and removes mappings for deleted Effects", async () => {

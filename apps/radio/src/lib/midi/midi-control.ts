@@ -235,12 +235,14 @@ export function createMidiControl({
   const pendingValues = new Map<MidiTargetId, number>();
   let accessCleanup: (() => void) | null = null;
   let access: MidiBrowserAccess | null = null;
+  let connectRevision = 0;
   let devices: readonly MidiDeviceInfo[] = [];
   let djActive = false;
   let error: Error | null = null;
   let frameId: number | null = null;
   let learningTarget: MidiTargetId | null = null;
   let lastCcDispatchTime = 0;
+  let lifecycleRevision = 0;
   let permissionCleanup: (() => void) | null = null;
   let status: MidiControlSnapshot["status"] = browser.isSupported()
     ? "prompt"
@@ -338,6 +340,7 @@ export function createMidiControl({
     binding: EffectBinding,
     factory: EffectChangeFactory
   ) => {
+    const lifecycle = lifecycleRevision;
     binding.pending = binding.pending
       .then(async () => {
         if (binding.disposed) {
@@ -371,6 +374,13 @@ export function createMidiControl({
         rebuildActions();
       })
       .catch((caught) => {
+        if (
+          lifecycleRevision !== lifecycle ||
+          binding.disposed ||
+          effectBindings.get(binding.deckId) !== binding
+        ) {
+          return;
+        }
         error = caught instanceof Error ? caught : new Error(String(caught));
         notify();
       });
@@ -473,6 +483,9 @@ export function createMidiControl({
     notify();
   };
 
+  const isStaleConnect = (lifecycle: number, revision: number) =>
+    lifecycleRevision !== lifecycle || connectRevision !== revision;
+
   return {
     change(change: MidiControlChange): void {
       switch (change.type) {
@@ -557,15 +570,35 @@ export function createMidiControl({
         notify();
         return snapshot;
       }
+      const lifecycle = lifecycleRevision;
+      const revision = ++connectRevision;
       status = "connecting";
       notify();
       try {
-        access ??= await browser.requestAccess();
-        accessCleanup ??= access.subscribeStateChange(attachInputs);
+        const requestedAccess = access ?? (await browser.requestAccess());
+        if (isStaleConnect(lifecycle, revision)) {
+          return snapshot;
+        }
+        access = requestedAccess;
+        if (!accessCleanup) {
+          const cleanup = access.subscribeStateChange(() => {
+            if (lifecycleRevision === lifecycle && access === requestedAccess) {
+              attachInputs();
+            }
+          });
+          if (isStaleConnect(lifecycle, revision)) {
+            cleanup();
+            return snapshot;
+          }
+          accessCleanup = cleanup;
+        }
         status = "connected";
         error = null;
         attachInputs();
       } catch (caught) {
+        if (isStaleConnect(lifecycle, revision)) {
+          return snapshot;
+        }
         error = caught instanceof Error ? caught : new Error(String(caught));
         status = "denied";
         devices = [];
@@ -620,7 +653,11 @@ export function createMidiControl({
       if (permissionCleanup || !browser.isSupported()) {
         return;
       }
+      const lifecycle = lifecycleRevision;
       permissionCleanup = browser.subscribePermission((permission) => {
+        if (lifecycleRevision !== lifecycle) {
+          return;
+        }
         if (status !== "connected" || permission !== "granted") {
           status = permission;
         }
@@ -628,6 +665,8 @@ export function createMidiControl({
       });
     },
     cleanup(): void {
+      lifecycleRevision += 1;
+      connectRevision += 1;
       cancelPendingDispatch();
       lastButtonDispatch.clear();
       lastCcDispatchTime = 0;

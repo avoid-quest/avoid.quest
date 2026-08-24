@@ -64,6 +64,10 @@ class InMemoryGraph implements OutputBrowserGraph {
 }
 
 class InMemoryBrowserAdapter implements OutputBrowserAdapter {
+  readonly cueSinkDeferrals: Array<{
+    promise: Promise<void>;
+    resolve(): void;
+  }> = [];
   readonly cueSinkCreations: string[] = [];
   readonly cueSinkDisposals: string[] = [];
   readonly graphs: InMemoryGraph[] = [];
@@ -77,17 +81,18 @@ class InMemoryBrowserAdapter implements OutputBrowserAdapter {
   cueSinkError: Error | null = null;
   supported = true;
 
-  createCueSink(_graph: OutputBrowserGraph, deviceId: string) {
+  async createCueSink(_graph: OutputBrowserGraph, deviceId: string) {
     this.cueSinkCreations.push(deviceId);
     if (this.cueSinkError) {
-      return Promise.reject(this.cueSinkError);
+      throw this.cueSinkError;
     }
-    return Promise.resolve({
+    await this.cueSinkDeferrals.shift()?.promise;
+    return {
       deviceId,
       dispose: () => {
         this.cueSinkDisposals.push(deviceId);
       },
-    });
+    };
   }
 
   createGraph(context: AudioContext): OutputBrowserGraph {
@@ -114,6 +119,19 @@ class InMemoryBrowserAdapter implements OutputBrowserAdapter {
       resolve: resolvePromise,
     };
     this.mainSinkDeferrals.push(deferral);
+    return deferral;
+  }
+
+  deferNextCueSink() {
+    let resolvePromise!: () => void;
+    const promise = new Promise<void>((resolve) => {
+      resolvePromise = resolve;
+    });
+    const deferral = {
+      promise,
+      resolve: resolvePromise,
+    };
+    this.cueSinkDeferrals.push(deferral);
     return deferral;
   }
 
@@ -229,7 +247,7 @@ describe("OutputRouting", () => {
   });
 
   test("applies persisted main settings without staging an invalid CUE sink", async () => {
-    const { browser, routing } = setup({
+    const { browser, persistence, routing } = setup({
       cueDelayMs: 25,
       cueOutputId: "invalid-headphones",
       mainDelayMs: 80,
@@ -245,6 +263,51 @@ describe("OutputRouting", () => {
     expect(snapshot.cueActive).toBe(false);
     expect(browser.mainSinkChanges).toEqual(["speakers"]);
     expect(browser.cueSinkCreations).toEqual([]);
+    expect(persistence.read().cueOutputId).toBe("invalid-headphones");
+    expect(persistence.writes).toEqual([]);
+  });
+
+  test("main-only settings atomically clear a colliding CUE output", async () => {
+    const { browser, persistence, routing } = setup();
+    await routing.applySettings({
+      cueOutputId: "headphones",
+      mainOutputId: "speakers",
+    });
+    const registration = routing.registerCueDeck(
+      "deck-a",
+      node("cue", browser.context),
+      true
+    );
+
+    const snapshot = await routing.applyMainSettings({
+      mainOutputId: "headphones",
+    });
+
+    expect(snapshot.settings.mainOutputId).toBe("headphones");
+    expect(snapshot.settings.cueOutputId).toBeNull();
+    expect(snapshot.cueActive).toBe(false);
+    expect(registration.enabled).toBe(false);
+    expect(browser.cueSinkDisposals).toEqual(["headphones"]);
+    expect(persistence.read().cueOutputId).toBeNull();
+  });
+
+  test("main-only settings clear a persisted collision without staging CUE", async () => {
+    const { browser, persistence, routing } = setup({
+      cueDelayMs: 0,
+      cueOutputId: "headphones",
+      mainDelayMs: 0,
+      mainOutputId: "speakers",
+    });
+
+    const snapshot = await routing.applyMainSettings({
+      mainOutputId: "headphones",
+    });
+
+    expect(snapshot.settings.cueOutputId).toBeNull();
+    expect(snapshot.cueActive).toBe(false);
+    expect(browser.cueSinkCreations).toEqual([]);
+    expect(browser.cueSinkDisposals).toEqual([]);
+    expect(persistence.read().cueOutputId).toBeNull();
   });
 
   test("replays main-only settings after a synchronous graph replacement", async () => {
@@ -514,6 +577,46 @@ describe("OutputRouting", () => {
     await expect(
       routing.applySettings({ mainDelayMs: 30 })
     ).resolves.toMatchObject({ settings: { mainDelayMs: 30 } });
+  });
+
+  test("CUE release cancels and disposes a deferred sink creation", async () => {
+    const { browser, persistence, routing } = setup();
+    const deferredSink = browser.deferNextCueSink();
+    const applying = routing.applySettings({ cueOutputId: "headphones" });
+
+    await Promise.resolve();
+    expect(browser.cueSinkCreations).toEqual(["headphones"]);
+    routing.releaseCue();
+    deferredSink.resolve();
+
+    await expect(applying).rejects.toThrow(
+      "Output routing transaction was cancelled by CUE release"
+    );
+    expect(browser.cueSinkDisposals).toEqual(["headphones"]);
+    expect(routing.getSnapshot().cueActive).toBe(false);
+    expect(routing.getSnapshot().settings.cueOutputId).toBeNull();
+    expect(persistence.writes).toEqual([]);
+  });
+
+  test("CUE release owns a deferred sink switch without restoring either sink", async () => {
+    const { browser, persistence, routing } = setup();
+    await routing.applySettings({ cueOutputId: "headphones-a" });
+    const deferredSink = browser.deferNextCueSink();
+    const switching = routing.applySettings({ cueOutputId: "headphones-b" });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(browser.cueSinkCreations).toEqual(["headphones-a", "headphones-b"]);
+    routing.releaseCue();
+    deferredSink.resolve();
+
+    await expect(switching).rejects.toThrow(
+      "Output routing transaction was cancelled by CUE release"
+    );
+    expect(browser.cueSinkDisposals).toEqual(["headphones-a", "headphones-b"]);
+    expect(routing.getSnapshot().cueActive).toBe(false);
+    expect(routing.getSnapshot().settings.cueOutputId).toBeNull();
+    expect(persistence.read().cueOutputId).toBe("headphones-a");
+    expect(persistence.writes).toHaveLength(1);
   });
 
   test("replaying unchanged settings is idempotent", async () => {

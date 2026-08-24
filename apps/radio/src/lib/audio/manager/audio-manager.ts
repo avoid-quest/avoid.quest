@@ -716,21 +716,6 @@ export class AudioManager {
   }
 
   /**
-   * Get current main output delay in milliseconds
-   */
-  getMainDelay(): number {
-    return this.output.getSnapshot().settings.mainDelayMs;
-  }
-
-  /**
-   * Set main output delay (0-500ms)
-   * Applies to all audio going to the main output
-   */
-  setMainDelay(ms: number): void {
-    this.output.applySettings({ mainDelayMs: ms }).catch(console.error);
-  }
-
-  /**
    * Mute a specific sound
    */
   muteSound(soundId: string): void {

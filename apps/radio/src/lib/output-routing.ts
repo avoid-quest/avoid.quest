@@ -86,6 +86,7 @@ type SettingsAttempt = GraphAttempt & {
 };
 
 type MainSettingsAttempt = GraphAttempt & {
+  cueCollision: boolean;
   mainChanged: boolean;
   mainSettings: MainOutputRoutingSettings;
   persisted: OutputRoutingSettings;
@@ -148,6 +149,7 @@ function assertSinkSelectionSupported(
 }
 
 class OutputRouting {
+  private cueGeneration = 0;
   private cueSink: OutputCueSink | null = null;
   private readonly decks = new Map<string, DeckConnection>();
   private readonly errorListeners = new Set<(error: Error) => void>();
@@ -173,9 +175,10 @@ class OutputRouting {
     patch: Partial<OutputRoutingSettings> = {}
   ): Promise<OutputRoutingSnapshot> {
     const cleanupGeneration = this.cleanupGeneration;
+    const cueGeneration = this.cueGeneration;
     return this.queueSettingsTransaction(() =>
       this.applyReportedSettingsTransaction(() =>
-        this.applySettingsTransaction(patch, cleanupGeneration)
+        this.applySettingsTransaction(patch, cleanupGeneration, cueGeneration)
       )
     );
   }
@@ -261,12 +264,20 @@ class OutputRouting {
       ),
       mainOutputId: patch.mainOutputId ?? persisted.mainOutputId,
     };
-    const settings = { ...this.runtimeSettings, ...mainSettings };
+    const cueCollision =
+      mainSettings.mainOutputId === persisted.cueOutputId ||
+      mainSettings.mainOutputId === this.runtimeSettings.cueOutputId;
+    const settings = {
+      ...this.runtimeSettings,
+      ...mainSettings,
+      ...(cueCollision ? { cueOutputId: null } : {}),
+    };
     const graph = this.ensureGraph();
     const previous = this.runtimeSettings;
     if (
       settings.mainOutputId === previous.mainOutputId &&
-      settings.mainDelayMs === previous.mainDelayMs
+      settings.mainDelayMs === previous.mainDelayMs &&
+      !cueCollision
     ) {
       return Promise.resolve(this.snapshot(settings));
     }
@@ -279,6 +290,7 @@ class OutputRouting {
     }
     return this.applyChangedMainSettingsAttempt(
       {
+        cueCollision,
         graph,
         graphGeneration: this.graphGeneration,
         mainChanged: settings.mainOutputId !== previous.mainOutputId,
@@ -309,12 +321,17 @@ class OutputRouting {
       attempt.graph.setMainDelay(attempt.settings.mainDelayMs);
       if (
         attempt.mainSettings.mainOutputId !== attempt.persisted.mainOutputId ||
-        attempt.mainSettings.mainDelayMs !== attempt.persisted.mainDelayMs
+        attempt.mainSettings.mainDelayMs !== attempt.persisted.mainDelayMs ||
+        (attempt.cueCollision && attempt.persisted.cueOutputId !== null)
       ) {
         this.options.settings.write({
           ...attempt.persisted,
           ...attempt.mainSettings,
+          ...(attempt.cueCollision ? { cueOutputId: null } : {}),
         });
+      }
+      if (attempt.cueCollision) {
+        this.commitCueSink(null, true);
       }
       this.runtimeSettings = attempt.settings;
       return this.snapshot(attempt.settings);
@@ -334,14 +351,17 @@ class OutputRouting {
 
   private async applySettingsTransaction(
     patch: Partial<OutputRoutingSettings>,
-    cleanupGeneration: number
+    cleanupGeneration: number,
+    cueGeneration: number
   ): Promise<OutputRoutingSnapshot> {
     this.throwIfTransactionCancelled(cleanupGeneration);
+    this.throwIfCueTransactionCancelled(cueGeneration);
 
     while (true) {
       const snapshot = await this.applySettingsAttempt(
         patch,
-        cleanupGeneration
+        cleanupGeneration,
+        cueGeneration
       );
       if (snapshot) {
         return snapshot;
@@ -351,8 +371,10 @@ class OutputRouting {
 
   private applySettingsAttempt(
     patch: Partial<OutputRoutingSettings>,
-    cleanupGeneration: number
+    cleanupGeneration: number,
+    cueGeneration: number
   ): Promise<OutputRoutingSnapshot | null> {
+    this.throwIfCueTransactionCancelled(cueGeneration);
     const settings = normalizeSettings({
       ...this.options.settings.read(),
       ...patch,
@@ -379,12 +401,17 @@ class OutputRouting {
       this.runtimeSettings = settings;
       return Promise.resolve(this.snapshot(settings));
     }
-    return this.applyChangedSettingsAttempt(attempt, cleanupGeneration);
+    return this.applyChangedSettingsAttempt(
+      attempt,
+      cleanupGeneration,
+      cueGeneration
+    );
   }
 
   private async applyChangedSettingsAttempt(
     attempt: SettingsAttempt,
-    cleanupGeneration: number
+    cleanupGeneration: number,
+    cueGeneration: number
   ): Promise<OutputRoutingSnapshot | null> {
     let nextCueSink: OutputCueSink | null = null;
 
@@ -398,6 +425,7 @@ class OutputRouting {
       if (this.shouldRetryGraphAttempt(attempt, cleanupGeneration)) {
         return null;
       }
+      this.throwIfCueTransactionCancelled(cueGeneration);
       nextCueSink = await this.stageCueSink(
         attempt.graph,
         attempt.settings,
@@ -407,12 +435,27 @@ class OutputRouting {
         this.disposeStagedCueSink(attempt.cueChanged, nextCueSink);
         return null;
       }
+      this.throwIfCueTransactionCancelled(cueGeneration);
       this.applySettingsState(attempt.graph, attempt.settings);
       this.commitCueSink(nextCueSink, attempt.cueChanged);
       this.runtimeSettings = attempt.settings;
       return this.snapshot(attempt.settings);
     } catch (error) {
       this.disposeStagedCueSink(attempt.cueChanged, nextCueSink);
+      this.throwIfTransactionCancelled(cleanupGeneration);
+      if (this.cueGeneration !== cueGeneration) {
+        if (this.isCurrentGraph(attempt.graph, attempt.graphGeneration)) {
+          await this.rollbackSettingsTransaction({
+            graph: attempt.graph,
+            mainChanged: attempt.mainChanged,
+            previous: attempt.previous,
+            sinkSelectionSupported: attempt.sinkSelectionSupported,
+          });
+        }
+        throw new Error(
+          "Output routing transaction was cancelled by CUE release"
+        );
+      }
       if (this.shouldRetryGraphAttempt(attempt, cleanupGeneration)) {
         return null;
       }
@@ -455,6 +498,14 @@ class OutputRouting {
   private throwIfTransactionCancelled(cleanupGeneration: number): void {
     if (this.cleanupGeneration !== cleanupGeneration) {
       throw new Error("Output routing transaction was cancelled by cleanup");
+    }
+  }
+
+  private throwIfCueTransactionCancelled(cueGeneration: number): void {
+    if (this.cueGeneration !== cueGeneration) {
+      throw new Error(
+        "Output routing transaction was cancelled by CUE release"
+      );
     }
   }
 
@@ -573,11 +624,17 @@ class OutputRouting {
 
   replaceContext(context: AudioContext): Promise<OutputRoutingSnapshot> {
     const cleanupGeneration = this.cleanupGeneration;
+    const cueGeneration = this.cueGeneration;
     return this.queueSettingsTransaction(() =>
       this.applyReportedSettingsTransaction(() => {
         this.throwIfTransactionCancelled(cleanupGeneration);
+        this.throwIfCueTransactionCancelled(cueGeneration);
         this.ensureGraph(context);
-        return this.applySettingsTransaction({}, cleanupGeneration);
+        return this.applySettingsTransaction(
+          {},
+          cleanupGeneration,
+          cueGeneration
+        );
       })
     );
   }
@@ -615,6 +672,7 @@ class OutputRouting {
   }
 
   releaseCue(): void {
+    this.cueGeneration += 1;
     for (const connection of this.decks.values()) {
       if (connection.enabled && connection.tap) {
         this.graph?.disconnectCue(connection.tap);

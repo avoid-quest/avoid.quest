@@ -163,4 +163,3 @@ export {
   type Unsubscribe,
   WorkletManager,
 } from "./playback/index.js";
-export { safeDisconnectFrom } from "./utils.js";

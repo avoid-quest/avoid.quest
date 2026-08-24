@@ -3,25 +3,16 @@ import {
   getPlaybackSession,
   type PlaybackSessionId,
   playbackSessionsCollection,
-  SINGLE_ACTIVE_CHANNEL_ID,
-  SINGLE_STANDBY_CHANNEL_ID,
 } from "@/lib/collections/playback-sessions";
 import { updatePlayerSettings } from "@/lib/collections/settings";
 import {
   getDefaultPlaybackActionContext,
   type PlaybackActionContext,
 } from "@/lib/playback-action-context";
-import {
-  getPlaybackRuntimeChannelIds,
-  resetPlaybackChannelRuntime,
-} from "@/lib/stores/playback-runtime-store";
 import { createDjModeLifecycleWorkflow } from "./dj-mode-lifecycle-workflow.js";
-import { createManagedPlaybackSessionWorkflow } from "./managed-playback-session-workflow.js";
-import {
-  cleanupOrphanedSounds,
-  getRuntimeSoundIds,
-} from "./mode-lifecycle-cleanup.js";
+import { getMultiplePlayback } from "./multiple-playback.js";
 import { resetManagedAudioState } from "./playback-actions-shared.js";
+import { getSinglePlayback } from "./single-playback.js";
 
 export type ModePhase = "inactive" | "activating" | "active" | "deactivating";
 
@@ -55,8 +46,6 @@ type CreateModeManagerOptions = {
   lifecycles?: Record<PlaybackSessionId, ModeLifecycle>;
   commitMode?: (mode: PlaybackSessionId) => void;
 };
-
-type ManagedPlaybackSessionId = Exclude<PlaybackSessionId, "dj">;
 
 export type ModeManager = {
   getSnapshot: () => ModeTransitionSnapshot;
@@ -140,68 +129,6 @@ function createLifecycle(
   };
 }
 
-function getModeRuntimeCleanupChannelIds(
-  sessionId: PlaybackSessionId
-): string[] {
-  const persistedChannelIds =
-    getPlaybackSession(sessionId)?.channels.map((channel) => channel.id) ?? [];
-  const runtimeChannelIds = getPlaybackRuntimeChannelIds().filter((channelId) =>
-    isRuntimeChannelOwnedByMode(sessionId, channelId)
-  );
-  return Array.from(new Set([...persistedChannelIds, ...runtimeChannelIds]));
-}
-
-function finalizeModeRuntimeCleanup(
-  sessionId: PlaybackSessionId,
-  channelIds: string[],
-  soundIds: string[],
-  ctx: PlaybackActionContext
-): void {
-  for (const channelId of channelIds) {
-    ctx.channels.deactivate(channelId);
-    resetPlaybackChannelRuntime(channelId);
-  }
-  cleanupOrphanedSounds(soundIds, ctx, sessionId);
-}
-
-function isRuntimeChannelOwnedByMode(
-  sessionId: PlaybackSessionId,
-  channelId: string
-): boolean {
-  if (sessionId === "single") {
-    return (
-      channelId === SINGLE_ACTIVE_CHANNEL_ID ||
-      channelId === SINGLE_STANDBY_CHANNEL_ID
-    );
-  }
-  if (sessionId === "multiple") {
-    return channelId.startsWith("multi:");
-  }
-  return false;
-}
-
-function createManagedModeLifecycle(
-  sessionId: ManagedPlaybackSessionId,
-  ctx: PlaybackActionContext,
-  fadeOutSound: FadeOutSound,
-  fadeOutDurationMs: number
-): ModeLifecycle {
-  const workflow = createManagedPlaybackSessionWorkflow(sessionId, {
-    ctx,
-    fadeOutDurationMs,
-    fadeOutSound,
-  });
-  return createLifecycle(
-    () => workflow.activate(),
-    async () => {
-      const channelIds = getModeRuntimeCleanupChannelIds(sessionId);
-      const soundIds = getRuntimeSoundIds(channelIds);
-      await workflow.deactivate();
-      finalizeModeRuntimeCleanup(sessionId, channelIds, soundIds, ctx);
-    }
-  );
-}
-
 export function createModeLifecycleRegistry({
   ctx = getDefaultPlaybackActionContext(),
   fadeOutDurationMs = MODE_FADE_OUT_DURATION_MS,
@@ -215,19 +142,19 @@ export function createModeLifecycleRegistry({
     fadeOutDurationMs,
     fadeOutSound,
   });
+  const single = getSinglePlayback({
+    ctx,
+    fadeOutDurationMs,
+    fadeOutSound,
+  });
+  const multiple = getMultiplePlayback({
+    ctx,
+    fadeOutDurationMs,
+    fadeOutSound,
+  });
   return {
-    single: createManagedModeLifecycle(
-      "single",
-      ctx,
-      fadeOutSound,
-      fadeOutDurationMs
-    ),
-    multiple: createManagedModeLifecycle(
-      "multiple",
-      ctx,
-      fadeOutSound,
-      fadeOutDurationMs
-    ),
+    single: createLifecycle(single.activate, single.deactivate),
+    multiple: createLifecycle(multiple.activate, multiple.deactivate),
     dj: createLifecycle(
       () => djWorkflow.activate(),
       () => djWorkflow.deactivate()

@@ -1,23 +1,16 @@
-import type { AudioManager, Radio } from "@/lib/audio";
+import type { Radio } from "@/lib/audio";
 import {
   getPlaybackSession,
   type PlaybackSessionId,
 } from "@/lib/collections/playback-sessions";
 import { getAudioSettings, getDelaySettings } from "@/lib/collections/settings";
 import { getOutputRouting } from "@/lib/output-routing.js";
-import type {
-  ChannelActivationOptions,
-  ChannelRuntimeSubscriptionOptions,
-} from "./channel-state-manager.js";
+import type { ChannelActivationOptions } from "./channel-state-manager.js";
 import {
   getDefaultPlaybackActionContext,
   type PlaybackActionContext,
   resetDefaultPlaybackActionContext,
 } from "./playback-action-context.js";
-
-export function getAudioManager(): AudioManager {
-  return getDefaultPlaybackActionContext().audio;
-}
 
 export function isSameRadio(
   a: Radio | null | undefined,
@@ -36,17 +29,7 @@ function getPlaybackOutputRouter(ctx: PlaybackActionContext) {
   return ctx.getMainOutputRouter() ?? getOutputRouting();
 }
 
-export async function applyMainOutputDevice(
-  deviceId: string,
-  ctx = getDefaultPlaybackActionContext()
-): Promise<void> {
-  const router = getPlaybackOutputRouter(ctx);
-  if (router) {
-    await router.applyMainSettings({ mainOutputId: deviceId });
-  }
-}
-
-export async function applyCurrentMainAudioSettings(
+async function applyCurrentMainAudioSettings(
   ctx = getDefaultPlaybackActionContext()
 ): Promise<void> {
   const router = getPlaybackOutputRouter(ctx);
@@ -92,21 +75,11 @@ export function applySessionMasterVolume(
   ctx.audio.setGlobalVolume(getSessionMasterVolume(sessionId));
 }
 
-export function getDefaultSoundId(
+function getDefaultSoundId(
   sessionId: PlaybackSessionId,
   channelId: string
 ): string {
   return `${sessionId}:${channelId}`;
-}
-
-export function subscribeManagedChannel(
-  sessionId: PlaybackSessionId,
-  channelId: string,
-  soundId: string,
-  options: ChannelRuntimeSubscriptionOptions = {},
-  ctx: PlaybackActionContext = getDefaultPlaybackActionContext()
-): void {
-  ctx.channels.subscribeRuntime(sessionId, channelId, soundId, options);
 }
 
 export function createManagedSound(
@@ -135,38 +108,4 @@ export function cleanupManagedChannel(
   ctx = getDefaultPlaybackActionContext()
 ): void {
   ctx.channels.deactivate(channelId);
-}
-
-/**
- * Temporary compatibility helper for legacy managed-session callers. Mode
- * transitions should prefer mode-lifecycle-manager boundaries.
- */
-export function cleanupPlaybackSessionAudio(
-  sessionId: PlaybackSessionId,
-  ctx = getDefaultPlaybackActionContext()
-): void {
-  const session = getPlaybackSession(sessionId);
-  if (!session) {
-    return;
-  }
-  for (const channel of session.channels) {
-    cleanupManagedChannel(channel.id, ctx);
-  }
-}
-
-/**
- * Temporary compatibility helper for legacy managed-session callers. Mode
- * transitions should prefer mode-lifecycle-manager boundaries.
- */
-export function cleanupAudioForModeChange(
-  nextMode: PlaybackSessionId,
-  ctx = getDefaultPlaybackActionContext()
-): void {
-  for (const sessionId of ["single", "multiple", "dj"] as const) {
-    if (sessionId !== nextMode) {
-      cleanupPlaybackSessionAudio(sessionId, ctx);
-    }
-  }
-  ctx.lifecycle.mainOutputSettingsApplied = false;
-  applySessionMasterVolume(nextMode, ctx);
 }

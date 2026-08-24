@@ -76,7 +76,7 @@ function TestHarness({
 }: {
   hasMultipleSession: boolean;
   radios?: Radio[];
-  syncRadios: (radios: Radio[]) => void;
+  syncRadios: (saved: Radio[], session: Radio[]) => void;
 }) {
   useMultipleRadioManagement({
     radios,
@@ -90,7 +90,7 @@ function TestHarness({
 }
 
 describe("useMultipleRadioManagement", () => {
-  test("waits for multiple-session readiness before syncing and preserves merged session radios", async () => {
+  test("waits for readiness before passing Saved and Session Stations", async () => {
     const savedRadio = {
       id: "saved-radio",
       name: "Saved Radio",
@@ -101,7 +101,7 @@ describe("useMultipleRadioManagement", () => {
       name: "Session Radio",
       streamUrl: "https://radio.example/session.mp3",
     } satisfies Radio;
-    const syncRadios = mock((_radios: Radio[]) => undefined);
+    const syncRadios = mock((_saved: Radio[], _session: Radio[]) => undefined);
 
     sessionRadiosState.radios = [sessionRadio];
 
@@ -128,6 +128,6 @@ describe("useMultipleRadioManagement", () => {
     await act(async () => Promise.resolve());
 
     expect(syncRadios).toHaveBeenCalledTimes(1);
-    expect(syncRadios).toHaveBeenCalledWith([savedRadio, sessionRadio]);
+    expect(syncRadios).toHaveBeenCalledWith([savedRadio], [sessionRadio]);
   });
 });

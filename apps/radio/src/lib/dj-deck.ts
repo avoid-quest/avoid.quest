@@ -401,6 +401,7 @@ function reportOutputError(error: unknown): void {
 }
 
 export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
+  const releasedFileUrls = new Set<string>();
   const runtimes: Record<DeckId, DeckRuntime> = {
     "deck-a": {
       bindingCleanup: null,
@@ -634,13 +635,21 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
     applyCrossfade();
   };
 
+  const releaseFileUrl = (url: string): void => {
+    if (releasedFileUrls.has(url)) {
+      return;
+    }
+    releasedFileUrls.add(url);
+    options.audio.releaseFileUrl(url);
+  };
+
   const releaseReplacedFile = (
     previous: Radio | null,
     radio: Radio | null
   ): void => {
     const previousUrl = getLocalFileUrl(previous);
     if (previousUrl && previousUrl !== getLocalFileUrl(radio)) {
-      options.audio.releaseFileUrl(previousUrl);
+      releaseFileUrl(previousUrl);
     }
   };
 
@@ -1031,7 +1040,7 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
       }
     } finally {
       if (unownedUrl) {
-        options.audio.releaseFileUrl(unownedUrl);
+        releaseFileUrl(unownedUrl);
       }
     }
     return loaded();
@@ -1120,11 +1129,13 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
     deckId: DeckId,
     intent: DjDeckLoadIntent
   ): Promise<DjDeckLoadResult> => {
+    if (intent.type === "library") {
+      clearDjErrorSurface(deckId);
+      return await loadLibraryIntent(deckId, intent.radio);
+    }
     const generation = beginGeneration(deckId);
     clearDjErrorSurface(deckId);
     switch (intent.type) {
-      case "library":
-        return await loadLibraryIntent(deckId, intent.radio);
       case "radio":
         await commitRadio(deckId, generation, intent.radio);
         return loaded();
@@ -1333,6 +1344,12 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
     deck: (deckId) => handles[deckId],
     deactivate() {
       for (const deckId of ["deck-a", "deck-b"] as const) {
+        const fileUrl = getLocalFileUrl(
+          getPlaybackChannel("dj", deckId)?.radio ?? null
+        );
+        if (fileUrl) {
+          releaseFileUrl(fileUrl);
+        }
         beginGeneration(deckId);
         deactivateDeck(deckId);
         runtimes[deckId].cueRegistration?.cleanup();

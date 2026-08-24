@@ -14,6 +14,7 @@ import {
   getDjDeckModule,
 } from "@/lib/dj-deck.js";
 import { resetDeck } from "@/lib/hooks/use-dj-state";
+import { getOutputRouting } from "@/lib/output-routing.js";
 import {
   getDefaultPlaybackActionContext,
   type PlaybackActionContext,
@@ -106,6 +107,9 @@ async function activateDjMode(
   const session = await prepareReadyDjPlaybackSession(ctx);
   clearDjErrorSurface();
   applySessionMasterVolume("dj", ctx);
+  (ctx.getMainOutputRouter() ?? getOutputRouting()).setHeadphoneVolume(
+    session.headphoneVolume
+  );
   const deckA = session.channels.find(
     (channel) => channel.id === DECK_A_CHANNEL_ID
   );

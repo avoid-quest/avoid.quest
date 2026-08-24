@@ -18,6 +18,7 @@ import {
 } from "@/lib/stores/playback-runtime-store";
 import type { DjDeckModule } from "./dj-deck";
 import { createDjModeLifecycleWorkflow } from "./dj-mode-lifecycle-workflow";
+import type { OutputRouting } from "./output-routing";
 import type { PlaybackActionContext } from "./playback-action-context";
 
 type ChannelActivationSoundIdOption = string | { soundId?: string };
@@ -40,7 +41,7 @@ function getActivatedSoundId(
   return optionsOrSoundId?.soundId ?? `sound:${channelId}`;
 }
 
-function createTestContext() {
+function createTestContext(): PlaybackActionContext {
   const audioEngine = {
     playback: {
       play: mock(async (_soundId: string, _volume?: number) => undefined),
@@ -97,10 +98,13 @@ function createTestContext() {
   } satisfies PlaybackActionContext;
 }
 
-function createTestDecks(): DjDeckModule & {
+function createTestDecks(onLoad: () => void = () => undefined): DjDeckModule & {
   load: ReturnType<typeof mock>;
 } {
-  const load = mock(async () => ({ type: "loaded" as const }));
+  const load = mock(() => {
+    onLoad();
+    return Promise.resolve({ type: "loaded" as const });
+  });
   return {
     load,
     deck: mock(() => ({
@@ -162,11 +166,17 @@ describe("createDjModeLifecycleWorkflow", () => {
       ],
       masterVolume: 0.7,
       crossfadePosition: 0.25,
-      headphoneVolume: 1,
+      headphoneVolume: 0.65,
       activeChannelId: null,
     });
     const context = createTestContext();
-    const decks = createTestDecks();
+    const activationOrder: string[] = [];
+    const setHeadphoneVolume = mock((_volume: number) => {
+      activationOrder.push("headphone");
+    });
+    context.getMainOutputRouter = () =>
+      ({ setHeadphoneVolume }) as unknown as OutputRouting;
+    const decks = createTestDecks(() => activationOrder.push("deck"));
     const workflow = createDjModeLifecycleWorkflow({ ctx: context, decks });
 
     await workflow.activate();
@@ -180,6 +190,8 @@ describe("createDjModeLifecycleWorkflow", () => {
     expect(context.audioEngine.volume.setMasterVolume).toHaveBeenCalledWith(
       0.7
     );
+    expect(setHeadphoneVolume).toHaveBeenCalledWith(0.65);
+    expect(activationOrder).toEqual(["headphone", "deck"]);
   });
 
   test("clears stale surfaced errors during activation even when no decks restore", async () => {
@@ -189,11 +201,14 @@ describe("createDjModeLifecycleWorkflow", () => {
       channels: [],
       masterVolume: 0.7,
       crossfadePosition: 0.25,
-      headphoneVolume: 1,
+      headphoneVolume: 0.35,
       activeChannelId: null,
     });
     setDjError("stale deck load failed");
     const context = createTestContext();
+    const setHeadphoneVolume = mock((_volume: number) => undefined);
+    context.getMainOutputRouter = () =>
+      ({ setHeadphoneVolume }) as unknown as OutputRouting;
     const decks = createTestDecks();
     const workflow = createDjModeLifecycleWorkflow({ ctx: context, decks });
 
@@ -201,6 +216,7 @@ describe("createDjModeLifecycleWorkflow", () => {
 
     expect(getDjError()).toBeNull();
     expect(decks.load).not.toHaveBeenCalled();
+    expect(setHeadphoneVolume).toHaveBeenCalledWith(0.35);
   });
 
   test("deactivation fades deck sounds, clears runtime state, and clears surfaced errors", async () => {

@@ -13,6 +13,7 @@ import {
   type DjDeckAudioAdapter,
   type DjDeckPlatformAdapter,
 } from "./dj-deck";
+import { PLATFORM_ITEMS } from "./dj-library-sources";
 import type { OutputRouting } from "./output-routing";
 import type { PlaybackActionContext } from "./playback-action-context";
 
@@ -164,6 +165,60 @@ beforeEach(async () => {
 });
 
 describe("DjDeckModule", () => {
+  test("keeps the current generation active when a library item only opens a platform picker", async () => {
+    const audio = createAudioAdapter();
+    const module = createDjDeckModule({
+      audio,
+      context: createContext(),
+      effects: createEffects(),
+      output: createOutput(),
+      platform: createPlatform(),
+    });
+    const deck = module.deck("deck-a");
+    const current: Radio = {
+      id: "station-1",
+      name: "Station 1",
+      streamUrl: "https://radio.example/one.mp3",
+    };
+
+    await deck.load({ type: "radio", radio: current });
+    const pendingItem = PLATFORM_ITEMS[0];
+    if (!pendingItem) {
+      throw new Error("Expected a platform picker library item");
+    }
+    const result = await deck.load({
+      type: "library",
+      radio: pendingItem,
+    });
+    audio.emit("left_station-1:1", {
+      isPlaying: true,
+      isLoading: false,
+      isBuffering: false,
+      volume: 1,
+      error: null,
+      hasEnded: false,
+    });
+
+    expect(result).toEqual({ type: "pending-platform", platform: "external" });
+    expect(getPlaybackChannel("dj", "deck-a")?.radio).toEqual(current);
+    expect(getPlaybackChannelRuntime("deck-a")).toMatchObject({
+      soundId: "left_station-1:1",
+      isPlaying: true,
+    });
+
+    await deck.load({
+      type: "radio",
+      radio: {
+        id: "station-2",
+        name: "Station 2",
+        streamUrl: "https://radio.example/two.mp3",
+      },
+    });
+    expect(getPlaybackChannelRuntime("deck-a").soundId).toBe(
+      "left_station-2:2"
+    );
+  });
+
   test("replaces a Deck source as one persisted and runtime transaction", async () => {
     const audio = createAudioAdapter();
     const module = createDjDeckModule({
@@ -746,6 +801,13 @@ describe("DjDeckModule", () => {
     });
     expect(output.releaseCue).toHaveBeenCalledTimes(1);
     expect(getPlaybackChannelRuntime("deck-a").soundId).toBeNull();
+    expect(audio.releaseFileUrl).toHaveBeenCalledTimes(1);
+    expect(audio.releaseFileUrl).toHaveBeenCalledWith(
+      "blob:https://radio.example/local"
+    );
+
+    module.deactivate();
+    expect(audio.releaseFileUrl).toHaveBeenCalledTimes(1);
   });
 
   test("replaces the registered CUE tap when a new source becomes playable", async () => {

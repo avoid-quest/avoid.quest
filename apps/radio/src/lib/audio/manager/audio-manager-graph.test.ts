@@ -1,6 +1,9 @@
 import { describe, expect, mock, test } from "bun:test";
 import type { Radio } from "@/lib/audio";
-import { attachWorkletManagerListeners } from "./audio-manager-graph";
+import {
+  attachWorkletManagerListeners,
+  cleanupSoundNodes,
+} from "./audio-manager-graph";
 import type { SoundInstance } from "./audio-manager-types";
 
 type WorkletEventHandlers = Record<string, (payload: unknown) => void>;
@@ -97,5 +100,30 @@ describe("audio manager graph worklet errors", () => {
         }),
       })
     );
+  });
+});
+
+describe("audio manager output registration", () => {
+  test("releases the main output registration when sound nodes are cleaned", () => {
+    const releaseMainOutput = mock(() => undefined);
+    const instance = {
+      ...createTestSoundInstance({
+        id: "station-1",
+        name: "Station 1",
+        streamUrl: "https://radio.example/one.mp3",
+      }),
+      mainOutputCleanup: releaseMainOutput,
+      nodes: {
+        filter: { disconnect: mock(() => undefined) },
+        gain: { disconnect: mock(() => undefined) },
+        pan: { disconnect: mock(() => undefined) },
+        preFaderSend: { disconnect: mock(() => undefined) },
+      },
+    } as unknown as SoundInstance;
+
+    cleanupSoundNodes(instance);
+
+    expect(releaseMainOutput).toHaveBeenCalledTimes(1);
+    expect(instance.mainOutputCleanup).toBeNull();
   });
 });

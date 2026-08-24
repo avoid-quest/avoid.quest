@@ -274,4 +274,95 @@ describe("ChannelEffects", () => {
 
     expect(snapshots.get("sound-a")?.sidechainSoundId).toBe("sound-b");
   });
+
+  test("ignores sidechains inside a disabled container", async () => {
+    insertDjSession();
+    const snapshots = new Map<string, DesiredEffectsState>();
+    const effects = createChannelEffects({
+      runtime: {
+        reconcile: mock((soundId: string, desired: DesiredEffectsState) => {
+          snapshots.set(soundId, desired);
+          return Promise.resolve(readyCompatibility());
+        }),
+      },
+    });
+    const root = createDefaultEffectConfig("fxComposite", "root", 0);
+    root.enabled = false;
+    const nestedGate = createDefaultEffectConfig("gate", "nested-gate", 0);
+    nestedGate.enabled = true;
+    nestedGate.sidechain = { channelId: "deck-a" };
+    root.chains[0]?.effects.push(nestedGate);
+    const activeGate = createDefaultEffectConfig("gate", "active-gate", 1);
+    activeGate.enabled = true;
+    activeGate.sidechain = { channelId: "deck-b" };
+    await effects.change(
+      { sessionId: "dj", channelId: "deck-a" },
+      { type: "replace", tree: [root, activeGate] }
+    );
+
+    await effects.bind({ sessionId: "dj", channelId: "deck-a" }, "sound-a");
+    await effects.bind({ sessionId: "dj", channelId: "deck-b" }, "sound-b");
+
+    expect(snapshots.get("sound-a")?.sidechainSoundId).toBe("sound-b");
+  });
+
+  test("selects sidechains only from audible container branches", async () => {
+    insertDjSession();
+    const snapshots = new Map<string, DesiredEffectsState>();
+    const effects = createChannelEffects({
+      runtime: {
+        reconcile: mock((soundId: string, desired: DesiredEffectsState) => {
+          snapshots.set(soundId, desired);
+          return Promise.resolve(readyCompatibility());
+        }),
+      },
+    });
+    const root = createDefaultEffectConfig("fxComposite", "root", 0);
+    root.enabled = true;
+    const template = root.chains[0];
+    expect(template).toBeDefined();
+    if (!template) {
+      return;
+    }
+    const mutedGate = createDefaultEffectConfig("gate", "muted-gate", 0);
+    mutedGate.enabled = true;
+    mutedGate.sidechain = { channelId: "deck-a" };
+    const nonSoloGate = createDefaultEffectConfig("gate", "non-solo-gate", 0);
+    nonSoloGate.enabled = true;
+    nonSoloGate.sidechain = { channelId: "deck-a" };
+    const soloGate = createDefaultEffectConfig("gate", "solo-gate", 0);
+    soloGate.enabled = true;
+    soloGate.sidechain = { channelId: "deck-b" };
+    root.chains = [
+      {
+        ...template,
+        id: "muted",
+        order: 0,
+        muted: true,
+        effects: [mutedGate],
+      },
+      {
+        ...template,
+        id: "non-solo",
+        order: 1,
+        effects: [nonSoloGate],
+      },
+      {
+        ...template,
+        id: "solo",
+        order: 2,
+        solo: true,
+        effects: [soloGate],
+      },
+    ];
+    await effects.change(
+      { sessionId: "dj", channelId: "deck-a" },
+      { type: "replace", tree: [root] }
+    );
+
+    await effects.bind({ sessionId: "dj", channelId: "deck-a" }, "sound-a");
+    await effects.bind({ sessionId: "dj", channelId: "deck-b" }, "sound-b");
+
+    expect(snapshots.get("sound-a")?.sidechainSoundId).toBe("sound-b");
+  });
 });

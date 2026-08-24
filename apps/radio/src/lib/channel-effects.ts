@@ -7,7 +7,6 @@ import {
   removeEffectFromTree,
   reorderEffectTreeChain,
   updateEffectInTree,
-  visitEffectTree,
 } from "@/lib/audio/dsp/routing/effect-tree";
 import { AudioManager } from "@/lib/audio/manager/audio-manager";
 import {
@@ -90,13 +89,26 @@ const refKey = ({ sessionId, channelId }: ChannelEffectsRef): string =>
   `${sessionId}:${channelId}`;
 
 function findSidechainChannelId(tree: readonly EffectConfig[]): string | null {
-  let channelId: string | null = null;
-  visitEffectTree(tree, (effect) => {
-    if (effect.enabled) {
-      channelId ??= effect.sidechain?.channelId ?? null;
+  for (const effect of tree) {
+    if (!effect.enabled) {
+      continue;
     }
-  });
-  return channelId;
+    if (effect.sidechain?.channelId) {
+      return effect.sidechain.channelId;
+    }
+    if (isEffectContainer(effect)) {
+      const hasSolo = effect.chains.some((chain) => chain.solo);
+      const nested = findSidechainChannelId(
+        effect.chains.flatMap((chain) =>
+          !chain.muted && (!hasSolo || chain.solo) ? chain.effects : []
+        )
+      );
+      if (nested) {
+        return nested;
+      }
+    }
+  }
+  return null;
 }
 
 export function createChannelEffects({

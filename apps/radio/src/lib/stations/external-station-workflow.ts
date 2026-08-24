@@ -66,6 +66,10 @@ export type StationCandidate =
   | {
       name?: string;
       origin: "radio-garden";
+      resolved?: {
+        format?: Radio["streamFormat"];
+        streamUrl: string;
+      };
       result: RadioGardenSearchResult;
     }
   | {
@@ -448,6 +452,17 @@ function resolveStationCandidate(
           message: "Radio Garden identity is required",
         },
         ok: false,
+      };
+    }
+    if (candidate.resolved) {
+      return {
+        data: createRadioGardenRadio(
+          candidate.result,
+          candidate.resolved.streamUrl,
+          candidate.name ?? candidate.result.title,
+          candidate.resolved.format
+        ),
+        ok: true,
       };
     }
     if (!adapters.radioGarden) {

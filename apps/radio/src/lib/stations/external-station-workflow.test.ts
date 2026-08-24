@@ -354,6 +354,44 @@ describe("createStationIntake", () => {
     );
   });
 
+  test("prepares an already resolved Radio Garden candidate without resolving again", async () => {
+    const resolveStream = mock(() =>
+      Promise.reject(new Error("the resolved stream should be reused"))
+    );
+    const harness = createHarness({
+      adapters: { radioGarden: { resolveStream } },
+    });
+
+    const result = await harness.intake.prepare({
+      origin: "radio-garden",
+      resolved: {
+        format: "progressive",
+        streamUrl: " https://stream.example/probed ",
+      },
+      result: {
+        channelId: "garden-1",
+        countryTitle: "Italy",
+        placeTitle: "Rome",
+        subtitle: "Live",
+        title: "Garden",
+        url: "https://radio.garden/listen/garden/garden-1",
+        website: "https://garden.example",
+      },
+    });
+
+    expect(result).toEqual({
+      data: {
+        radio: expect.objectContaining({
+          id: "rg_garden-1",
+          streamFormat: "progressive",
+          streamUrl: "https://stream.example/probed",
+        }),
+      },
+      ok: true,
+    });
+    expect(resolveStream).not.toHaveBeenCalled();
+  });
+
   test("prepares a Radio Browser candidate with canonical identity", async () => {
     const harness = createHarness();
 

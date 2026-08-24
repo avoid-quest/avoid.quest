@@ -1,42 +1,33 @@
-/**
- * Hook for dynamically registering MIDI actions for deck effects.
- *
- * Tracks effect IDs; registers new effects, unregisters removed ones,
- * and cleans up persisted mappings when effects are removed.
- */
-
 import { useEffect, useRef } from "react";
 import type { EffectConfig } from "@/lib/audio";
-import {
-  collectEffectIds,
-  registerEffectActions,
-  useMidiStore,
-} from "@/lib/midi";
+import type { DeckId } from "@/lib/dj-deck";
+import { getMidiControl } from "@/lib/midi";
+
+type EffectsBinding = ReturnType<
+  ReturnType<typeof getMidiControl>["bindDeckEffects"]
+>;
 
 export function useMidiEffectRegistration(
-  deckId: "deck-a" | "deck-b",
-  effects: EffectConfig[]
-) {
-  const effectIdsRef = useRef(new Set<string>());
+  deckId: DeckId,
+  effects: readonly EffectConfig[]
+): void {
+  const bindingRef = useRef<EffectsBinding | null>(null);
+  const latestEffectsRef = useRef(effects);
+  latestEffectsRef.current = effects;
 
   useEffect(() => {
-    const currentEffectIds = collectEffectIds(effects);
-
-    for (const id of effectIdsRef.current) {
-      if (!currentEffectIds.has(id)) {
-        useMidiStore.getState().removeEffectMappings(id);
-      }
-    }
-    effectIdsRef.current = currentEffectIds;
-
-    const cleanups = effects.map((effect) =>
-      registerEffectActions(deckId, effect)
-    );
-
+    const binding = getMidiControl().bindDeckEffects(deckId);
+    bindingRef.current = binding;
+    binding.reconcile(latestEffectsRef.current);
     return () => {
-      for (const cleanup of cleanups) {
-        cleanup();
+      binding.dispose();
+      if (bindingRef.current === binding) {
+        bindingRef.current = null;
       }
     };
-  }, [deckId, effects]);
+  }, [deckId]);
+
+  useEffect(() => {
+    bindingRef.current?.reconcile(effects);
+  }, [effects]);
 }

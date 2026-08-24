@@ -6,7 +6,6 @@
  * TanStack Store for runtime state.
  */
 
-import type { EffectConfig } from "@/lib/audio";
 import {
   type AudioManager,
   createAudioEngineFacade,
@@ -170,48 +169,6 @@ function applyCrossfade(ctx = getDefaultPlaybackActionContext()) {
   if (runtimeB.soundId) {
     ctx.audioEngine.volume.setChannelVolume(runtimeB.soundId, rightFinalVol);
   }
-}
-
-type MidiDjDeckActions = {
-  play: () => Promise<void>;
-  pause: () => Promise<void>;
-  setVolume: (volume: number) => void;
-  setPan: (pan: number) => void;
-  setSpeed: (speed: number) => void;
-  setChannelFilter: (value: number) => void;
-  setEffectsDryWet: (value: number) => void;
-  updateEffect: (effectId: string, effectConfig: Partial<EffectConfig>) => void;
-  toggleCue: () => void;
-};
-
-function createMidiDeckActions(deckId: DeckId): MidiDjDeckActions {
-  const deck = () => getDjDeckModule().deck(deckId);
-  return {
-    play: () => deck().transport({ type: "play" }),
-    pause: () => deck().transport({ type: "pause" }),
-    setVolume: (volume) => deck().change({ type: "volume", volume }),
-    setPan: (pan) => deck().change({ type: "pan", pan }),
-    setSpeed: (speed) => deck().change({ type: "speed", speed }),
-    setChannelFilter: (value) =>
-      deck().change({ type: "channel-filter", value }),
-    setEffectsDryWet: (value) =>
-      deck().change({ type: "effects-dry-wet", value }),
-    updateEffect: (effectId, effectConfig) =>
-      deck().change({
-        type: "effect",
-        change: { type: "update", effectId, patch: effectConfig },
-      }),
-    toggleCue: () => deck().change({ type: "cue" }),
-  };
-}
-
-const midiDeckActions: Record<DeckId, MidiDjDeckActions> = {
-  "deck-a": createMidiDeckActions("deck-a"),
-  "deck-b": createMidiDeckActions("deck-b"),
-};
-
-export function getDjDeckActions(deckId: DeckId): MidiDjDeckActions {
-  return midiDeckActions[deckId];
 }
 
 // Mixer actions

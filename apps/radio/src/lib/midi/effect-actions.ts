@@ -1,23 +1,26 @@
-/**
- * Dynamic Effect MIDI Actions
- *
- * Registers MIDI actions for effect parameters based on effect schemas.
- */
-
-import type { EffectConfig } from "@/lib/audio";
 import {
   getEffectMidiParamDefs,
   getEffectSchema,
 } from "@/lib/audio/dsp/effects/schema";
+import type { EffectConfig } from "@/lib/audio/dsp/effects/types";
 import {
   findEffectInTree,
   isEffectContainer,
   visitEffectTree,
 } from "@/lib/audio/dsp/routing/effect-tree";
-import { getPlaybackChannel } from "@/lib/collections/playback-sessions";
-import { getDjDeckActions } from "@/lib/dj-actions";
-import { MidiController } from "./midi-controller";
-import type { MidiAction } from "./types";
+import type { ChannelEffectsChange } from "@/lib/channel-effects";
+import type { DeckId } from "@/lib/dj-deck";
+import type { MidiAction, MidiTargetId } from "./types";
+
+export type EffectChangeFactory = (
+  tree: readonly EffectConfig[]
+) => ChannelEffectsChange | null;
+
+type EffectActionOptions = {
+  change(factory: EffectChangeFactory, coalesceKey?: MidiTargetId): void;
+  deckId: DeckId;
+  tree: readonly EffectConfig[];
+};
 
 export function collectEffectIds(
   effects: readonly EffectConfig[]
@@ -27,12 +30,11 @@ export function collectEffectIds(
   return ids;
 }
 
-export function collectEffectActions(
+function collectActions(
   effect: EffectConfig,
   targetPrefix: string,
   group: string,
-  getEffect: (effectId: string) => EffectConfig | undefined,
-  updateEffect: (effectId: string, effectConfig: Partial<EffectConfig>) => void
+  change: EffectActionOptions["change"]
 ): MidiAction[] {
   const schema = getEffectSchema(effect.type);
   if (!schema) {
@@ -45,97 +47,94 @@ export function collectEffectActions(
       group,
       type: "button",
       dispatch: () =>
-        updateEffect(effect.id, {
-          enabled: !(getEffect(effect.id)?.enabled ?? effect.enabled),
+        change((tree) => {
+          const current = findEffectInTree(tree, effect.id);
+          return current
+            ? {
+                type: "update",
+                effectId: effect.id,
+                patch: { enabled: !current.enabled },
+              }
+            : null;
         }),
     },
   ];
 
   for (const param of getEffectMidiParamDefs(effect.type)) {
+    const targetId = `${targetPrefix}:${param.key}`;
     actions.push({
-      targetId: `${targetPrefix}:${param.key}`,
+      targetId,
       label: `${schema.name} - ${param.label}`,
       group,
       type: "continuous",
       dispatch: (value) =>
-        updateEffect(effect.id, {
-          [param.key]: param.min + value * (param.max - param.min),
-        }),
+        change(
+          () => ({
+            type: "update",
+            effectId: effect.id,
+            patch: {
+              [param.key]: param.min + value * (param.max - param.min),
+            },
+          }),
+          targetId
+        ),
       range: { min: param.min, max: param.max, step: param.step },
     });
   }
 
-  if (isEffectContainer(effect)) {
-    for (const chain of effect.chains) {
-      const chainPrefix = `${targetPrefix}:chain:${chain.id}`;
-      for (const [key, label, min, max, step] of [
-        ["gain", "Gain", 0, 4, 0.01],
-        ["pan", "Pan", -1, 1, 0.01],
-      ] as const) {
-        actions.push({
-          targetId: `${chainPrefix}:${key}`,
-          label: `${schema.name} - ${chain.name} ${label}`,
+  if (!isEffectContainer(effect)) {
+    return actions;
+  }
+  for (const chain of effect.chains) {
+    const chainPrefix = `${targetPrefix}:chain:${chain.id}`;
+    for (const [key, label, min, max, step] of [
+      ["gain", "Gain", 0, 4, 0.01],
+      ["pan", "Pan", -1, 1, 0.01],
+    ] as const) {
+      const targetId = `${chainPrefix}:${key}`;
+      actions.push({
+        targetId,
+        label: `${schema.name} - ${chain.name} ${label}`,
+        group,
+        type: "continuous",
+        dispatch: (value) =>
+          change(
+            () => ({
+              type: "update-chain",
+              effectId: effect.id,
+              chainId: chain.id,
+              patch: { [key]: min + value * (max - min) },
+            }),
+            targetId
+          ),
+        range: { min, max, step },
+      });
+    }
+    for (const child of chain.effects) {
+      actions.push(
+        ...collectActions(
+          child,
+          `${chainPrefix}:effect:${child.id}`,
           group,
-          type: "continuous",
-          dispatch: (value) => {
-            const current = getEffect(effect.id);
-            if (!(current && isEffectContainer(current))) {
-              return;
-            }
-            updateEffect(effect.id, {
-              chains: current.chains.map((item) =>
-                item.id === chain.id
-                  ? { ...item, [key]: min + value * (max - min) }
-                  : item
-              ),
-            } as Partial<EffectConfig>);
-          },
-          range: { min, max, step },
-        });
-      }
-      for (const child of chain.effects) {
-        actions.push(
-          ...collectEffectActions(
-            child,
-            `${chainPrefix}:effect:${child.id}`,
-            group,
-            getEffect,
-            updateEffect
-          )
-        );
-      }
+          change
+        )
+      );
     }
   }
-
   return actions;
 }
 
-/**
- * Register MIDI actions for a single effect instance on a deck.
- * Returns an unregister function.
- */
-export function registerEffectActions(
-  deckId: "deck-a" | "deck-b",
-  effect: EffectConfig
-): () => void {
-  const schema = getEffectSchema(effect.type);
-  if (!schema) {
-    // biome-ignore lint/suspicious/noEmptyBlockStatements: intentional no-op cleanup
-    return () => {};
-  }
-
-  const { updateEffect } = getDjDeckActions(deckId);
-  const getEffect = (effectId: string) =>
-    findEffectInTree(getPlaybackChannel("dj", deckId)?.effects ?? [], effectId);
-  const group = `${deckId}-effects`;
-  const prefix = `${deckId}:effect:${effect.id}`;
-  const actions = collectEffectActions(
-    effect,
-    prefix,
-    group,
-    getEffect,
-    updateEffect
+export function createEffectMidiActions({
+  change,
+  deckId,
+  tree,
+}: EffectActionOptions): MidiAction[] {
+  return tree.flatMap((effect) =>
+    collectActions(
+      effect,
+      `${deckId}:effect:${effect.id}`,
+      `${deckId}-effects`,
+      change
+    )
   );
-
-  return MidiController.getInstance().registerAll(actions);
 }

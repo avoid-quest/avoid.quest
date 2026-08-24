@@ -22,30 +22,14 @@ import {
   Trash2Icon,
   XIcon,
 } from "lucide-react";
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import { useMidiControlSnapshot } from "@/lib/hooks/use-midi";
 import { usePlayerMode } from "@/lib/hooks/use-settings";
 import {
-  getStaticMidiActions,
+  getMidiControl,
   MIDI_PRESETS,
-  type MidiAction,
-  MidiController,
+  type MidiActionDescriptor,
   type MidiMapping,
-  useMidiStore,
 } from "@/lib/midi";
-
-const EMPTY_ACTIONS: MidiAction[] = [];
-const STATIC_ACTIONS = getStaticMidiActions();
-type MidiPermissionState = "prompt" | "granted" | "denied" | "error";
-
-function useActions(): MidiAction[] {
-  const controller = MidiController.getInstance();
-  const registeredActions = useSyncExternalStore(
-    (cb) => controller.subscribeActions(cb),
-    () => controller.getAllActions(),
-    () => EMPTY_ACTIONS
-  );
-  return registeredActions.length > 0 ? registeredActions : STATIC_ACTIONS;
-}
 
 function formatMapping(mapping: MidiMapping | undefined): string {
   if (!mapping) {
@@ -126,8 +110,8 @@ function MappingRow({
 type MappingGroupProps = {
   title: string;
   targetIds: string[];
-  actions: MidiAction[];
-  mappings: MidiMapping[];
+  actions: readonly MidiActionDescriptor[];
+  mappings: readonly MidiMapping[];
   isLearning: boolean;
   learningTarget: string | null;
   onStartLearn: (targetId: string) => void;
@@ -183,29 +167,23 @@ function MappingGroup({
 
 export function MidiSettings() {
   const playerMode = usePlayerMode();
-  const isSupported =
-    typeof navigator !== "undefined" &&
-    typeof navigator.requestMIDIAccess === "function";
-  const devices = useMidiStore((s) => s.devices);
-  const mappings = useMidiStore((s) => s.mappings);
-  const activePresetId = useMidiStore((s) => s.activePresetId);
-  const learningTarget = useMidiStore((s) => s.learningTarget);
-  const enabled = useMidiStore((s) => s.enabled);
-  const startLearn = useMidiStore((s) => s.startLearn);
-  const stopLearn = useMidiStore((s) => s.stopLearn);
-  const loadPreset = useMidiStore((s) => s.loadPreset);
-  const clearMappings = useMidiStore((s) => s.clearMappings);
-  const removeMapping = useMidiStore((s) => s.removeMapping);
-  const setEnabled = useMidiStore((s) => s.setEnabled);
-  const setDevices = useMidiStore((s) => s.setDevices);
-
-  const [permissionState, setPermissionState] =
-    useState<MidiPermissionState>("prompt");
-  const [isLoading, setIsLoading] = useState(false);
+  const control = getMidiControl();
+  const snapshot = useMidiControlSnapshot();
+  const {
+    actions,
+    activePresetId,
+    devices,
+    enabled,
+    learningTarget,
+    mappings,
+    status,
+  } = snapshot;
+  const isSupported = status !== "unsupported";
+  const permissionGranted = status === "connected" || status === "granted";
+  const isLoading = status === "connecting";
 
   const isLearning = learningTarget !== null;
 
-  const actions = useActions();
   const deckATargets = actions
     .filter((a) => a.group === "deck-a")
     .map((a) => a.targetId);
@@ -222,81 +200,12 @@ export function MidiSettings() {
     .filter((a) => a.group === "deck-b-effects")
     .map((a) => a.targetId);
 
-  const requestPermission = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const controller = MidiController.getInstance();
-      const success = await controller.init();
-      if (!success) {
-        setPermissionState("denied");
-        setDevices([]);
-        return;
-      }
-      setDevices(controller.getDevices());
-      setPermissionState("granted");
-    } catch {
-      setPermissionState("error");
-      setDevices([]);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [setDevices]);
-
-  const refreshDevices = useCallback(async () => {
-    if (permissionState !== "granted") {
-      return;
-    }
-    setIsLoading(true);
-    try {
-      const controller = MidiController.getInstance();
-      const success = await controller.init();
-      if (!success) {
-        setPermissionState("denied");
-        setDevices([]);
-        return;
-      }
-      setDevices(controller.getDevices());
-    } finally {
-      setIsLoading(false);
-    }
-  }, [permissionState, setDevices]);
-
-  useEffect(() => {
-    if (devices.length > 0) {
-      setPermissionState("granted");
-    }
-  }, [devices.length]);
-
-  useEffect(() => {
-    if (typeof navigator === "undefined" || !("permissions" in navigator)) {
-      return;
-    }
-    let isCancelled = false;
-    let status: PermissionStatus | null = null;
-    const onChange = () => {
-      if (!status || isCancelled) {
-        return;
-      }
-      setPermissionState(status.state as MidiPermissionState);
-    };
-    navigator.permissions
-      .query({ name: "midi", sysex: false } as PermissionDescriptor)
-      .then((permissionStatus) => {
-        if (isCancelled) {
-          return;
-        }
-        status = permissionStatus;
-        setPermissionState(permissionStatus.state as MidiPermissionState);
-        permissionStatus.addEventListener("change", onChange);
-      })
-      .catch(() => {
-        // Some browsers expose Web MIDI but not permissions.query({ name: "midi" })
-      });
-    return () => {
-      isCancelled = true;
-      status?.removeEventListener("change", onChange);
-    };
-  }, []);
+  const requestPermission = () => {
+    control.connect().catch(() => undefined);
+  };
+  const refreshDevices = () => {
+    control.connect().catch(() => undefined);
+  };
 
   if (!isSupported) {
     return (
@@ -327,7 +236,7 @@ export function MidiSettings() {
         </Alert>
       )}
 
-      {permissionState !== "granted" && (
+      {!permissionGranted && (
         <div className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3">
           <p className="mb-2 text-xs">
             Grant MIDI permission to detect controllers and receive MIDI
@@ -352,7 +261,9 @@ export function MidiSettings() {
           <Switch
             checked={enabled}
             id="midi-enabled"
-            onCheckedChange={setEnabled}
+            onCheckedChange={(nextEnabled) =>
+              control.change({ type: "set-enabled", enabled: nextEnabled })
+            }
           />
         </div>
 
@@ -383,7 +294,7 @@ export function MidiSettings() {
                 ))}
               </div>
             )}
-            {permissionState === "granted" && (
+            {permissionGranted && (
               <Button
                 aria-label="Refresh MIDI devices"
                 className="shrink-0"
@@ -404,7 +315,9 @@ export function MidiSettings() {
         <div className="grid gap-3 py-4 sm:grid-cols-[minmax(0,1fr)_minmax(18rem,28rem)] sm:items-center">
           <h4 className="text-sm">Preset</h4>
           <Select
-            onValueChange={loadPreset}
+            onValueChange={(presetId) =>
+              control.change({ type: "load-preset", presetId })
+            }
             value={activePresetId ?? undefined}
           >
             <SelectTrigger className="w-full">
@@ -433,7 +346,7 @@ export function MidiSettings() {
           <Button
             className="h-7 text-xs"
             disabled={mappings.length === 0 || isLearning}
-            onClick={clearMappings}
+            onClick={() => control.change({ type: "clear-mappings" })}
             size="sm"
             variant="ghost"
           >
@@ -448,9 +361,13 @@ export function MidiSettings() {
             isLearning={isLearning}
             learningTarget={learningTarget}
             mappings={mappings}
-            onRemove={removeMapping}
-            onStartLearn={startLearn}
-            onStopLearn={stopLearn}
+            onRemove={(targetId) =>
+              control.change({ type: "remove-mapping", targetId })
+            }
+            onStartLearn={(targetId) =>
+              control.change({ type: "start-learn", targetId })
+            }
+            onStopLearn={() => control.change({ type: "stop-learn" })}
             targetIds={deckATargets}
             title="Deck A"
           />
@@ -460,9 +377,13 @@ export function MidiSettings() {
             isLearning={isLearning}
             learningTarget={learningTarget}
             mappings={mappings}
-            onRemove={removeMapping}
-            onStartLearn={startLearn}
-            onStopLearn={stopLearn}
+            onRemove={(targetId) =>
+              control.change({ type: "remove-mapping", targetId })
+            }
+            onStartLearn={(targetId) =>
+              control.change({ type: "start-learn", targetId })
+            }
+            onStopLearn={() => control.change({ type: "stop-learn" })}
             targetIds={deckBTargets}
             title="Deck B"
           />
@@ -472,9 +393,13 @@ export function MidiSettings() {
             isLearning={isLearning}
             learningTarget={learningTarget}
             mappings={mappings}
-            onRemove={removeMapping}
-            onStartLearn={startLearn}
-            onStopLearn={stopLearn}
+            onRemove={(targetId) =>
+              control.change({ type: "remove-mapping", targetId })
+            }
+            onStartLearn={(targetId) =>
+              control.change({ type: "start-learn", targetId })
+            }
+            onStopLearn={() => control.change({ type: "stop-learn" })}
             targetIds={mixerTargets}
             title="Mixer"
           />
@@ -484,9 +409,13 @@ export function MidiSettings() {
             isLearning={isLearning}
             learningTarget={learningTarget}
             mappings={mappings}
-            onRemove={removeMapping}
-            onStartLearn={startLearn}
-            onStopLearn={stopLearn}
+            onRemove={(targetId) =>
+              control.change({ type: "remove-mapping", targetId })
+            }
+            onStartLearn={(targetId) =>
+              control.change({ type: "start-learn", targetId })
+            }
+            onStopLearn={() => control.change({ type: "stop-learn" })}
             targetIds={deckAEffectTargets}
             title="Deck A Effects"
           />
@@ -496,9 +425,13 @@ export function MidiSettings() {
             isLearning={isLearning}
             learningTarget={learningTarget}
             mappings={mappings}
-            onRemove={removeMapping}
-            onStartLearn={startLearn}
-            onStopLearn={stopLearn}
+            onRemove={(targetId) =>
+              control.change({ type: "remove-mapping", targetId })
+            }
+            onStartLearn={(targetId) =>
+              control.change({ type: "start-learn", targetId })
+            }
+            onStopLearn={() => control.change({ type: "stop-learn" })}
             targetIds={deckBEffectTargets}
             title="Deck B Effects"
           />

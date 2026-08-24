@@ -8,15 +8,7 @@ import {
   selectEnabledEffects,
 } from "../dsp/effects/official-opendaw-mapping.js";
 import { clampEffectTempo } from "../dsp/effects/tempo.js";
-import type { EffectConfig, EffectType } from "../dsp/effects/types.js";
-import {
-  appendEffectToTree,
-  findEffectInTree,
-  findRootEffectContainer,
-  removeEffectFromTree,
-  reorderEffectTreeChain,
-  updateEffectInTree,
-} from "../dsp/routing/effect-tree.js";
+import type { EffectConfig } from "../dsp/effects/types.js";
 import {
   type AudioState,
   getAudioContext,
@@ -24,8 +16,6 @@ import {
 } from "../playback/index.js";
 import {
   convertEffectConfig,
-  convertPartialEffectConfig,
-  type EngineEffectConfig,
   toPlainEffectConfig,
 } from "./audio-manager-effects.js";
 import { attachWorkletManagerListeners } from "./audio-manager-graph.js";
@@ -306,124 +296,6 @@ class EffectsController {
     this.bindCompatibilitySidechain(state);
   }
 
-  add(soundId: string, config: EffectConfig): boolean {
-    if (!this.sounds.has(soundId)) {
-      return false;
-    }
-    const state = this.getState(soundId);
-    const plainConfig = toPlainEffectConfig(config);
-    state.effects = appendEffectToTree(state.effects, plainConfig);
-    if (state.compatibilitySourceCreated) {
-      const engineConfig: EngineEffectConfig = convertEffectConfig(plainConfig);
-      state.manager?.addEffect(
-        soundId,
-        plainConfig.id,
-        plainConfig.type,
-        engineConfig,
-        plainConfig.order
-      );
-    }
-    this.refreshRuntimeSelection(soundId);
-    return true;
-  }
-
-  remove(soundId: string, effectId: string): void {
-    const state = this.states.get(soundId);
-    if (!state) {
-      return;
-    }
-    const rootId = findRootEffectContainer(state.effects, effectId)?.id;
-    state.effects = removeEffectFromTree(state.effects, effectId);
-    const root = rootId ? findEffectInTree(state.effects, rootId) : undefined;
-    if (root && state.compatibilitySourceCreated) {
-      state.manager?.updateEffect(soundId, root.id, convertEffectConfig(root));
-    } else if (state.compatibilitySourceCreated) {
-      state.manager?.removeEffect(soundId, effectId);
-    }
-    this.refreshRuntimeSelection(soundId);
-  }
-
-  update(
-    soundId: string,
-    effectId: string,
-    type: EffectType,
-    config: Partial<EffectConfig>
-  ): boolean {
-    if (!this.sounds.has(soundId)) {
-      return false;
-    }
-    const state = this.getState(soundId);
-    const plainConfig = toPlainEffectConfig(config);
-    const rootId = findRootEffectContainer(state.effects, effectId)?.id;
-    state.effects = updateEffectInTree(state.effects, effectId, plainConfig);
-    const root = rootId ? findEffectInTree(state.effects, rootId) : undefined;
-    if (state.compatibilitySourceCreated) {
-      state.manager?.updateEffect(
-        soundId,
-        root?.id ?? effectId,
-        root
-          ? convertEffectConfig(root)
-          : convertPartialEffectConfig(type, plainConfig)
-      );
-    }
-    this.refreshRuntimeSelection(soundId);
-    return true;
-  }
-
-  reorder(soundId: string, effectIds: string[]): void {
-    const state = this.states.get(soundId);
-    if (!state) {
-      return;
-    }
-    if (state.compatibilitySourceCreated) {
-      state.manager?.reorderEffects(soundId, effectIds);
-    }
-    state.effects = reorderEffectTreeChain(state.effects, effectIds);
-    this.refreshRuntimeSelection(soundId);
-  }
-
-  setDryWet(soundId: string, value: number): void {
-    const state = this.getState(soundId);
-    state.dryWet = Math.max(0, Math.min(1, value));
-    if (state.compatibilitySourceCreated) {
-      state.manager?.setEffectsDryWet(soundId, state.dryWet);
-    }
-    this.officialRuntime?.setDryWet(soundId, state.dryWet);
-    this.refreshRuntimeSelection(soundId);
-  }
-
-  setTempo(soundId: string, bpm: number): void {
-    this.bpm = clampEffectTempo(bpm);
-    const state = this.states.get(soundId);
-    if (state?.compatibilitySourceCreated) {
-      state.manager?.setTempo(soundId, this.bpm);
-    }
-    this.officialRuntime?.setTempo(this.bpm);
-  }
-
-  setSidechain(soundId: string, sidechainSoundId: string | null): boolean {
-    const state = this.getState(soundId);
-    state.desiredSidechainSoundId = sidechainSoundId;
-    this.officialRuntime?.setSidechainTarget(soundId, sidechainSoundId);
-    this.pruneOfficialSidechainSources();
-    if (sidechainSoundId) {
-      const targetState = this.states.get(sidechainSoundId);
-      if (targetState) {
-        this.registerNonOfficialSource(
-          sidechainSoundId,
-          targetState,
-          targetState.generation
-        ).catch((error: unknown) =>
-          console.warn(
-            "[EffectsController] Failed to register sidechain source",
-            error
-          )
-        );
-      }
-    }
-    return this.bindCompatibilitySidechain(state);
-  }
-
   private disconnectCompatibilitySidechain(state: SoundEffectsState): void {
     if (!state.sidechain) {
       return;
@@ -458,11 +330,9 @@ class EffectsController {
     }
   }
 
-  getWorkletManager(soundId: string): WorkletManager | null {
-    return this.states.get(soundId)?.manager ?? null;
-  }
-
-  async getOrCreateWorkletManager(soundId: string): Promise<WorkletManager> {
+  private async getOrCreateWorkletManager(
+    soundId: string
+  ): Promise<WorkletManager> {
     const state = this.getState(soundId);
     if (state.manager) {
       return state.manager;
@@ -508,18 +378,6 @@ class EffectsController {
         state.managerPromise = null;
       }
     }
-  }
-
-  async prepare(soundId: string): Promise<boolean> {
-    const state = this.getState(soundId);
-    if (
-      !this.shouldProcess(state) ||
-      canUseOfficialOpenDawRuntime(state.effects)
-    ) {
-      return true;
-    }
-    const manager = await this.getOrCreateWorkletManager(soundId);
-    return manager.isReady;
   }
 
   async connectGraph(

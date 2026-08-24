@@ -1,6 +1,6 @@
 import { describe, expect, mock, test } from "bun:test";
 import type { AudioManager, FilterConfig } from "@/lib/audio";
-import { applyStoredEffectsAndFilters } from "./dj-actions-channel-strip";
+import { applyStoredFilter } from "./dj-actions-channel-strip";
 
 describe("DJ Channel filter restoration", () => {
   test("restores the stored native filter without replaying Effects", async () => {
@@ -15,7 +15,7 @@ describe("DJ Channel filter restoration", () => {
       updateFilter: mock(() => undefined),
     } as unknown as AudioManager;
 
-    await applyStoredEffectsAndFilters(audioManager, "sound-a", [], filter);
+    await applyStoredFilter(audioManager, "sound-a", filter);
 
     expect(audioManager.updateFilter).toHaveBeenCalledWith("sound-a", filter);
   });

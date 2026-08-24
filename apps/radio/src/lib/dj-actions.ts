@@ -34,7 +34,7 @@ import {
 } from "@/lib/dj/dj-error-surface";
 import {
   applyStoredChannelStrip,
-  applyStoredEffectsAndFilters,
+  applyStoredFilter,
 } from "@/lib/dj-actions-channel-strip.js";
 import {
   createDjDeckLoadWorkflow,
@@ -340,7 +340,7 @@ function createDeckLoadDependencies(
     activateChannel: ctx.channels.activate,
     applyCrossfade: () => applyCrossfade(ctx),
     applyStoredChannelStrip,
-    applyStoredEffectsAndFilters,
+    applyStoredFilter,
     clearDjError: clearDjErrorSurface,
     connectDeckCueBus,
     deactivateChannel: ctx.channels.deactivate,

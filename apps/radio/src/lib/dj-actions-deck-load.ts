@@ -62,13 +62,11 @@ type DeckLoadDependencies = {
     muted: boolean,
     pan: number,
     speed: number,
-    channelFilter: number,
-    effectsDryWet: number
+    channelFilter: number
   ) => void;
-  applyStoredEffectsAndFilters: (
+  applyStoredFilter: (
     audioManager: AudioManager,
     soundId: string,
-    effects: DeckRecord["effects"],
     filter: DeckRecord["filter"]
   ) => Promise<void>;
   clearDjError: (deckId?: DeckId) => void;
@@ -400,10 +398,9 @@ async function loadDeckRadio(
         ) {
           hasAppliedChannelStrip = true;
           initializeSavedAudioDevices(dependencies);
-          dependencies.applyStoredEffectsAndFilters(
+          dependencies.applyStoredFilter(
             dependencies.getAudioManager(),
             soundId,
-            currentDeck.effects,
             currentDeck.filter
           );
           dependencies.applyStoredChannelStrip(
@@ -412,8 +409,7 @@ async function loadDeckRadio(
             currentDeck.muted,
             currentDeck.pan,
             currentDeck.speed,
-            currentDeck.channelFilter,
-            currentDeck.effectsDryWet
+            currentDeck.channelFilter
           );
         }
         if (

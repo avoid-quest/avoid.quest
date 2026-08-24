@@ -39,7 +39,6 @@ type ChannelAudioField =
   | "pan"
   | "speed"
   | "channelFilter"
-  | "effectsDryWet"
   | "filter";
 
 type ChannelUpdate =
@@ -63,7 +62,6 @@ const CHANNEL_AUDIO_SYNC_ORDER = [
   "pan",
   "speed",
   "channelFilter",
-  "effectsDryWet",
   "filter",
 ] as const satisfies readonly ChannelAudioField[];
 
@@ -113,9 +111,6 @@ function syncChannelAudioField(
       break;
     case "channelFilter":
       manager.setChannelFilter(soundId, channel.channelFilter);
-      break;
-    case "effectsDryWet":
-      manager.setEffectsDryWet(soundId, channel.effectsDryWet);
       break;
     case "filter":
       manager.updateFilter(soundId, channel.filter as FilterConfig);

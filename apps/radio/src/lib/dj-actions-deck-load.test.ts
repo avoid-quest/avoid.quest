@@ -73,7 +73,7 @@ function createDependencies(): DeckLoadDependencies {
     activateChannel,
     applyCrossfade: mock(() => undefined),
     applyStoredChannelStrip: mock(() => undefined),
-    applyStoredEffectsAndFilters: mock(async () => undefined),
+    applyStoredFilter: mock(async () => undefined),
     clearDjError: mock(() => undefined),
     connectDeckCueBus: mock(() => undefined),
     deactivateChannel,
@@ -1515,7 +1515,7 @@ describe("DJ deck channel lifecycle", () => {
     );
   });
 
-  test("replays stored strip, effects, and cue routing when a loaded deck becomes active", async () => {
+  test("restores the non-Effects strip, filter, and cue routing when a loaded deck becomes active", async () => {
     await playbackSessionsCollection.stateWhenReady();
     insertDjSession();
     updatePlaybackChannel("dj", "deck-a", (draft) => {
@@ -1583,10 +1583,9 @@ describe("DJ deck channel lifecycle", () => {
       error: null,
     });
 
-    expect(dependencies.applyStoredEffectsAndFilters).toHaveBeenCalledWith(
+    expect(dependencies.applyStoredFilter).toHaveBeenCalledWith(
       manager,
       "left_station-1",
-      expect.arrayContaining([expect.objectContaining({ id: "delay-1" })]),
       expect.objectContaining({ type: "highpass", enabled: true })
     );
     expect(dependencies.applyStoredChannelStrip).toHaveBeenCalledWith(
@@ -1595,8 +1594,7 @@ describe("DJ deck channel lifecycle", () => {
       true,
       -0.35,
       1.1,
-      0.25,
-      0.6
+      0.25
     );
     expect(dependencies.connectDeckCueBus).toHaveBeenCalledWith(
       "deck-a",
@@ -2186,7 +2184,7 @@ describe("DJ deck channel lifecycle", () => {
     expect(manager.playSound).not.toHaveBeenCalled();
     expect(dependencies.applyCrossfade).toHaveBeenCalledTimes(1);
     expect(dependencies.applyStoredChannelStrip).toHaveBeenCalledTimes(2);
-    expect(dependencies.applyStoredEffectsAndFilters).toHaveBeenCalledTimes(2);
+    expect(dependencies.applyStoredFilter).toHaveBeenCalledTimes(2);
   });
 
   test("autoplays the next playable collection item through the lifecycle boundary", async () => {

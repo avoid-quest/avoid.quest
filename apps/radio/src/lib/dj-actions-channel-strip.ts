@@ -1,9 +1,8 @@
-import type { AudioManager, EffectConfig, FilterConfig } from "@/lib/audio";
+import type { AudioManager, FilterConfig } from "@/lib/audio";
 
-function applyStoredEffectsAndFilters(
+function applyStoredFilter(
   audioManager: AudioManager,
   soundId: string,
-  _effects: EffectConfig[],
   filter: FilterConfig
 ): Promise<void> {
   try {
@@ -22,8 +21,7 @@ function applyStoredChannelStrip(
   muted: boolean,
   pan: number,
   speed: number,
-  channelFilter: number,
-  effectsDryWet: number
+  channelFilter: number
 ): void {
   try {
     if (muted) {
@@ -38,12 +36,9 @@ function applyStoredChannelStrip(
     if (channelFilter !== 0) {
       audioManager.setChannelFilter(soundId, channelFilter);
     }
-    if (effectsDryWet !== 1) {
-      audioManager.setEffectsDryWet(soundId, effectsDryWet);
-    }
   } catch (error) {
     console.warn("[dj-actions] Failed to apply stored channel strip:", error);
   }
 }
 
-export { applyStoredChannelStrip, applyStoredEffectsAndFilters };
+export { applyStoredChannelStrip, applyStoredFilter };

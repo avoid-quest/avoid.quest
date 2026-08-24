@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { DesiredEffectsState } from "../../channel-effects.js";
 import { createDefaultEffectConfig } from "../dsp/effects/registry.js";
 import type { WorkletManager } from "../playback/index.js";
+import type { AudioManager } from "./audio-manager.js";
 import type { SoundInstance } from "./audio-manager-types.js";
 import { EffectsController } from "./effects-controller.js";
 import type { EffectsGraphRuntime } from "./effects-graph-runtime.js";
@@ -125,6 +126,19 @@ function createRuntime() {
   } satisfies EffectsGraphRuntime;
 }
 
+function desiredEffects(
+  tree: DesiredEffectsState["tree"],
+  overrides: Partial<Omit<DesiredEffectsState, "tree">> = {}
+): DesiredEffectsState {
+  return {
+    tree,
+    dryWet: 1,
+    sidechainSoundId: null,
+    tempo: 120,
+    ...overrides,
+  };
+}
+
 let originalCrossOriginIsolated: PropertyDescriptor | undefined;
 
 beforeEach(() => {
@@ -151,6 +165,42 @@ afterEach(() => {
 });
 
 describe("EffectsController", () => {
+  test("exposes desired-state reconciliation instead of granular Effects mutations", () => {
+    const controllerMutations = [
+      "add",
+      "remove",
+      "update",
+      "reorder",
+      "setDryWet",
+      "setTempo",
+      "setSidechain",
+      "prepare",
+      "getWorkletManager",
+    ];
+    const managerMutations = [
+      "addEffect",
+      "removeEffect",
+      "updateEffect",
+      "reorderEffects",
+      "setEffectsDryWet",
+      "setEffectsTempo",
+      "setEffectsSidechain",
+      "ensureEffectsReady",
+      "getWorkletManager",
+    ] as const;
+    const managerHasNoGranularMutation: Extract<
+      keyof AudioManager,
+      (typeof managerMutations)[number]
+    > extends never
+      ? true
+      : false = true;
+
+    expect(
+      controllerMutations.filter((name) => name in EffectsController.prototype)
+    ).toEqual([]);
+    expect(managerHasNoGranularMutation).toBe(true);
+  });
+
   test("reconciles one desired snapshot when the graph becomes ready", async () => {
     const context = new TestAudioContext();
     const filter = new TestAudioNode(context);
@@ -187,15 +237,6 @@ describe("EffectsController", () => {
       ready: true,
       status: "ready",
     });
-    expect(manager.addEffect).toHaveBeenCalledWith(
-      "target",
-      "distortion",
-      "distortion",
-      expect.objectContaining({ enabled: 1 }),
-      0
-    );
-    expect(manager.setEffectsDryWet).toHaveBeenCalledWith("target", 0.4);
-    expect(manager.setTempo).toHaveBeenCalledWith("target", 128);
   });
 
   test("connects a dry graph without creating an effects runtime", async () => {
@@ -295,13 +336,6 @@ describe("EffectsController", () => {
       ready: true,
       status: "ready",
     });
-    expect(manager.addEffect).toHaveBeenCalledWith(
-      "target",
-      "reverb",
-      "plateReverb",
-      expect.objectContaining({ enabled: 1 }),
-      0
-    );
   });
 
   test("switches an active official graph to compatibility from one snapshot", async () => {
@@ -344,13 +378,6 @@ describe("EffectsController", () => {
       ready: true,
       status: "ready",
     });
-    expect(manager.addEffect).toHaveBeenCalledWith(
-      "target",
-      "distortion",
-      "distortion",
-      expect.objectContaining({ enabled: 1 }),
-      0
-    );
   });
 
   test("replaying an unchanged desired tree is idempotent", async () => {
@@ -378,47 +405,18 @@ describe("EffectsController", () => {
       new TestAudioNode(context) as unknown as AudioNode
     );
 
-    await controller.reconcile("target", desired);
+    const outcome = await controller.reconcile("target", desired);
 
-    expect(manager.addEffect).toHaveBeenCalledTimes(1);
+    expect(outcome).toEqual({
+      backend: "compatibility",
+      ready: true,
+      status: "ready",
+    });
     expect(controller.getRuntimeOutcome("target")).toEqual({
       backend: "compatibility",
       ready: true,
       status: "ready",
     });
-  });
-
-  test("creates compatibility processing through the supplied runtime factory", async () => {
-    const context = new TestAudioContext();
-    const filter = new TestAudioNode(context);
-    const destination = new TestAudioNode(context);
-    const manager = createManager(context);
-    const createWorkletManager = mock(() => manager);
-    const controller = new EffectsController({
-      createWorkletManager,
-      notifyListeners: () => undefined,
-      sounds: new Map([["target", sound("target", filter)]]),
-      workletProcessorUrl: () => "/worklet.js",
-    });
-    const distortion = createDefaultEffectConfig("distortion", "distortion", 0);
-    distortion.enabled = true;
-    controller.add("target", distortion);
-
-    await controller.connectGraph(
-      "target",
-      filter as unknown as AudioNode,
-      destination as unknown as AudioNode
-    );
-
-    expect(createWorkletManager).toHaveBeenCalledWith(context, "/worklet.js");
-    expect(manager.createStreamSource).toHaveBeenCalledWith("target");
-    expect(manager.addEffect).toHaveBeenCalledWith(
-      "target",
-      "distortion",
-      "distortion",
-      expect.objectContaining({ enabled: 1 }),
-      0
-    );
   });
 
   test("stop cancels an in-flight official connection", async () => {
@@ -441,7 +439,7 @@ describe("EffectsController", () => {
     });
     const reverb = createDefaultEffectConfig("plateReverb", "reverb", 0);
     reverb.enabled = true;
-    controller.add("target", reverb);
+    await controller.reconcile("target", desiredEffects([reverb]));
     const connecting = controller.connectGraph(
       "target",
       filter as unknown as AudioNode,
@@ -483,7 +481,7 @@ describe("EffectsController", () => {
     });
     const reverb = createDefaultEffectConfig("plateReverb", "reverb", 0);
     reverb.enabled = true;
-    controller.add("target", reverb);
+    await controller.reconcile("target", desiredEffects([reverb]));
     const destination = new TestAudioNode(context);
     const originalConnection = controller.connectGraph(
       "target",
@@ -542,7 +540,7 @@ describe("EffectsController", () => {
     });
     const compressor = createDefaultEffectConfig("compressor", "compressor", 0);
     compressor.enabled = true;
-    controller.add("target", compressor);
+    await controller.reconcile("target", desiredEffects([compressor]));
     const connecting = controller.connectGraph(
       "target",
       filter as unknown as AudioNode,
@@ -580,7 +578,7 @@ describe("EffectsController", () => {
     });
     const reverb = createDefaultEffectConfig("plateReverb", "reverb", 0);
     reverb.enabled = true;
-    controller.add("target", reverb);
+    await controller.reconcile("target", desiredEffects([reverb]));
     const connecting = controller.connectGraph(
       "target",
       filter as unknown as AudioNode,
@@ -588,7 +586,11 @@ describe("EffectsController", () => {
     );
     await Promise.resolve();
 
-    controller.update("target", reverb.id, reverb.type, { decay: 0.7 });
+    const updatedReverb = { ...reverb, decay: 0.7 };
+    const reconciling = controller.reconcile(
+      "target",
+      desiredEffects([updatedReverb])
+    );
     await Promise.resolve();
     pendingConnections[0]?.(true);
 
@@ -596,9 +598,12 @@ describe("EffectsController", () => {
     expect(filter.connections).toHaveLength(1);
 
     pendingConnections[1]?.(true);
-    await Promise.resolve();
-    await Promise.resolve();
+    await reconciling;
 
-    expect(runtime.syncEffects).toHaveBeenCalledTimes(1);
+    expect(controller.getRuntimeOutcome("target")).toEqual({
+      backend: "official",
+      ready: true,
+      status: "ready",
+    });
   });
 });

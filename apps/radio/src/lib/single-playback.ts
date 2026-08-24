@@ -332,6 +332,7 @@ function createSinglePlayback(
       }
     },
     async selectStation(station) {
+      playingRevision += 1;
       clearManagedPlaybackErrors(SINGLE_CHANNEL_IDS);
       const channel = getSelectionChannel();
       const runtime = channel ? getPlaybackChannelRuntime(channel.id) : null;

@@ -309,6 +309,29 @@ describe("Single Playback", () => {
     expect(context.reportError).not.toHaveBeenCalled();
   });
 
+  test("ignores a rejected direct start after Station selection wins", async () => {
+    const replacement = station("replacement");
+    insertSingleSession(station("current"));
+    const stalePlay = createDeferred();
+    const context = createTestContext();
+    context.audio.playSound = mock(() => stalePlay.promise);
+    const playback = getSinglePlayback({ ctx: context });
+
+    const staleStart = playback.setPlaying(true);
+    await Promise.resolve();
+    await playback.selectStation(replacement);
+    stalePlay.reject(new Error("superseded start failure"));
+    await staleStart;
+
+    expect(
+      getPlaybackChannel("single", SINGLE_ACTIVE_CHANNEL_ID)?.radio
+    ).toEqual(replacement);
+    expect(
+      getPlaybackChannelRuntime(SINGLE_ACTIVE_CHANNEL_ID).error
+    ).toBeNull();
+    expect(context.reportError).not.toHaveBeenCalled();
+  });
+
   test("ignores a rejected direct start after deactivation", async () => {
     insertSingleSession(station("current"));
     const pendingPlay = createDeferred();

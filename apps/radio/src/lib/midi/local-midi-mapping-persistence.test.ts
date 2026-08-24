@@ -69,6 +69,55 @@ describe("createLocalMidiMappingPersistence", () => {
     );
   });
 
+  test("reloads partial transform updates written through MidiControl", () => {
+    let stored = JSON.stringify({
+      state: {
+        activePresetId: "custom",
+        enabled: true,
+        mappings: [
+          {
+            channel: 0,
+            control: 7,
+            targetId: "deck-a:volume",
+            type: "cc",
+          },
+        ],
+      },
+      version: 2,
+    });
+    withLocalStorage(
+      {
+        getItem: () => stored,
+        setItem: (_key, value) => {
+          stored = value;
+        },
+      },
+      () => {
+        const persistence = createLocalMidiMappingPersistence();
+        const control = createMidiControl({
+          browser: unsupportedBrowser,
+          persistence,
+          staticActions: [],
+        });
+        control.change({
+          patch: { invert: true },
+          targetId: "deck-a:volume",
+          type: "update-transform",
+        });
+
+        const reloaded = createMidiControl({
+          browser: unsupportedBrowser,
+          persistence,
+          staticActions: [],
+        }).getSnapshot();
+        expect(reloaded.enabled).toBe(true);
+        expect(
+          reloaded.mappingsByTarget.get("deck-a:volume")?.transform
+        ).toEqual({ curve: "linear", invert: true, max: 1, min: 0 });
+      }
+    );
+  });
+
   test("starts with defaults when stored JSON has invalid MIDI state", () => {
     const invalidStates = [
       {},

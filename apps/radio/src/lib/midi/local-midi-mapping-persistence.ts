@@ -2,7 +2,11 @@ import type {
   MidiMappingPersistence,
   PersistedMidiControl,
 } from "./midi-control";
-import type { MidiMapping, MidiTransform } from "./types";
+import {
+  DEFAULT_TRANSFORM,
+  type MidiMapping,
+  type MidiTransform,
+} from "./types";
 
 export const MIDI_MAPPING_STORAGE_KEY = "radio-midi-mappings";
 
@@ -10,17 +14,24 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-function isMidiTransform(value: unknown): value is MidiTransform {
+type StoredMidiMapping = Omit<MidiMapping, "transform"> & {
+  transform?: Partial<MidiTransform>;
+};
+
+function isMidiTransform(value: unknown): value is Partial<MidiTransform> {
   return (
     isRecord(value) &&
-    typeof value.invert === "boolean" &&
-    typeof value.min === "number" &&
-    typeof value.max === "number" &&
-    (value.curve === "linear" || value.curve === "log" || value.curve === "exp")
+    (value.invert === undefined || typeof value.invert === "boolean") &&
+    (value.min === undefined || typeof value.min === "number") &&
+    (value.max === undefined || typeof value.max === "number") &&
+    (value.curve === undefined ||
+      value.curve === "linear" ||
+      value.curve === "log" ||
+      value.curve === "exp")
   );
 }
 
-function isMidiMapping(value: unknown): value is MidiMapping {
+function isMidiMapping(value: unknown): value is StoredMidiMapping {
   return (
     isRecord(value) &&
     typeof value.channel === "number" &&
@@ -31,19 +42,42 @@ function isMidiMapping(value: unknown): value is MidiMapping {
   );
 }
 
-function isPersistedMidiControl(value: unknown): value is PersistedMidiControl {
+function parsePersistedMidiControl(
+  value: unknown
+): PersistedMidiControl | null {
   if (!(isRecord(value) && isRecord(value.state))) {
-    return false;
+    return null;
   }
   const { state } = value;
-  return (
-    typeof value.version === "number" &&
-    (state.activePresetId === null ||
-      typeof state.activePresetId === "string") &&
-    typeof state.enabled === "boolean" &&
-    Array.isArray(state.mappings) &&
-    state.mappings.every(value.version < 2 ? isRecord : isMidiMapping)
-  );
+  if (
+    !(
+      typeof value.version === "number" &&
+      (state.activePresetId === null ||
+        typeof state.activePresetId === "string") &&
+      typeof state.enabled === "boolean" &&
+      Array.isArray(state.mappings) &&
+      state.mappings.every(value.version < 2 ? isRecord : isMidiMapping)
+    )
+  ) {
+    return null;
+  }
+  if (value.version < 2) {
+    return value as unknown as PersistedMidiControl;
+  }
+  const mappings = state.mappings as StoredMidiMapping[];
+  return {
+    state: {
+      activePresetId: state.activePresetId,
+      enabled: state.enabled,
+      mappings: mappings.map(({ transform, ...mapping }) => ({
+        ...mapping,
+        ...(transform
+          ? { transform: { ...DEFAULT_TRANSFORM, ...transform } }
+          : {}),
+      })),
+    },
+    version: value.version,
+  };
 }
 
 export function createLocalMidiMappingPersistence(): MidiMappingPersistence {
@@ -58,7 +92,7 @@ export function createLocalMidiMappingPersistence(): MidiMappingPersistence {
           return null;
         }
         const parsed: unknown = JSON.parse(value);
-        return isPersistedMidiControl(parsed) ? parsed : null;
+        return parsePersistedMidiControl(parsed);
       } catch {
         return null;
       }

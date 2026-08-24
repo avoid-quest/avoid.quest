@@ -130,8 +130,8 @@ type QueuedEffectChange = {
 type ParsedMidiMessage = {
   channel: number;
   control: number;
-  message: number;
   rawValue: number;
+  statusType: number;
   type: MidiMapping["type"];
 };
 
@@ -155,8 +155,8 @@ function parseMidiMessage(data: Uint8Array): ParsedMidiMessage | null {
   }
   const statusByte = data[0] ?? 0;
   // biome-ignore lint/suspicious/noBitwiseOperators: MIDI protocol encodes the message kind in the high nibble.
-  const message = statusByte & 0xf0;
-  if (!(message === 0xb0 || message === 0x90 || message === 0x80)) {
+  const statusType = statusByte & 0xf0;
+  if (!(statusType === 0xb0 || statusType === 0x90 || statusType === 0x80)) {
     return null;
   }
   // biome-ignore lint/suspicious/noBitwiseOperators: MIDI protocol encodes the channel in the low nibble.
@@ -164,10 +164,18 @@ function parseMidiMessage(data: Uint8Array): ParsedMidiMessage | null {
   return {
     channel,
     control: data[1] ?? 0,
-    message,
     rawValue: data[2] ?? 0,
-    type: message === 0xb0 ? "cc" : "note",
+    statusType,
+    type: statusType === 0xb0 ? "cc" : "note",
   };
+}
+
+function mappingKey({
+  channel,
+  control,
+  type,
+}: Pick<MidiMapping, "channel" | "control" | "type">) {
+  return `${channel}:${control}:${type}`;
 }
 
 function migratePersistedControl(
@@ -223,13 +231,7 @@ export function createMidiControl({
     mappings.map((mapping) => [mapping.targetId, mapping] as const)
   );
   let mappingsByKey = new Map(
-    mappings.map(
-      (mapping) =>
-        [
-          `${mapping.channel}:${mapping.control}:${mapping.type}`,
-          mapping,
-        ] as const
-    )
+    mappings.map((mapping) => [mappingKey(mapping), mapping] as const)
   );
   const listeners = new Set<() => void>();
   const actions = new Map(
@@ -303,13 +305,7 @@ export function createMidiControl({
       mappings.map((mapping) => [mapping.targetId, mapping] as const)
     );
     mappingsByKey = new Map(
-      mappings.map(
-        (mapping) =>
-          [
-            `${mapping.channel}:${mapping.control}:${mapping.type}`,
-            mapping,
-          ] as const
-      )
+      mappings.map((mapping) => [mappingKey(mapping), mapping] as const)
     );
   };
 
@@ -476,7 +472,7 @@ export function createMidiControl({
     if (action.type !== "button") {
       return false;
     }
-    if (message.message === 0x80 || message.rawValue === 0) {
+    if (message.statusType === 0x80 || message.rawValue === 0) {
       return true;
     }
     const now = browser.now();
@@ -493,9 +489,7 @@ export function createMidiControl({
     if (!message || learnFromMessage(message)) {
       return;
     }
-    const mapping = mappingsByKey.get(
-      `${message.channel}:${message.control}:${message.type}`
-    );
+    const mapping = mappingsByKey.get(mappingKey(message));
     if (!(mapping && persisted.enabled && djActive)) {
       return;
     }

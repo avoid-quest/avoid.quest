@@ -12,10 +12,10 @@ import {
   createAudioEngineFacade,
   getAudioContext,
 } from "@/lib/audio";
-import { getAudioSettings } from "@/lib/collections/settings";
 import { reportDjErrorSurface } from "@/lib/dj/dj-error-surface";
 import { calculateDjCrossfadeVolumes } from "@/lib/dj-crossfade.js";
 import { type DeckId, getDjDeckModule } from "@/lib/dj-deck.js";
+import { createDjOutputDeviceActions } from "@/lib/dj-output-device-actions.js";
 import {
   getDeckA,
   getDeckB,
@@ -78,25 +78,28 @@ async function applyMainOutputSettings(
   }
 }
 
+function getOutputDeviceActions() {
+  return createDjOutputDeviceActions({
+    disableCueDecks: () => {
+      setDeckCueEnabled("deck-a", false);
+      setDeckCueEnabled("deck-b", false);
+    },
+    reconcileSingleRouting: () => getSinglePlayback().reconcileRouting(),
+    routing: {
+      applyMainSettings: applyMainOutputSettings,
+      applySettings: applyOutputSettings,
+    },
+  });
+}
+
 export async function applyMainOutputDevice(deviceId: string): Promise<void> {
-  await Promise.all([
-    applyMainOutputSettings({ mainOutputId: deviceId }),
-    getSinglePlayback().reconcileRouting(),
-  ]);
-  if (!getAudioSettings().cueOutputId) {
-    setDeckCueEnabled("deck-a", false);
-    setDeckCueEnabled("deck-b", false);
-  }
+  await getOutputDeviceActions().applyMainOutputDevice(deviceId);
 }
 
 export async function applyCueOutputDevice(
   deviceId: string | null
 ): Promise<void> {
-  await applyOutputSettings({ cueOutputId: deviceId });
-  if (deviceId === null) {
-    setDeckCueEnabled("deck-a", false);
-    setDeckCueEnabled("deck-b", false);
-  }
+  await getOutputDeviceActions().applyCueOutputDevice(deviceId);
 }
 
 function setDeckCueEnabled(deckId: DeckId, enabled: boolean): void {

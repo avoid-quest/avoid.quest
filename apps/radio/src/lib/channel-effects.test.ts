@@ -147,6 +147,42 @@ describe("ChannelEffects", () => {
     ]);
   });
 
+  test("updates container chain controls without exposing root rewriting", async () => {
+    insertDjSession();
+    const effects = createChannelEffects({
+      runtime: {
+        reconcile: mock(() => Promise.resolve(readyCompatibility())),
+      },
+    });
+    const root = createDefaultEffectConfig("fxComposite", "root", 0);
+    const chainId = root.chains[0]?.id;
+    expect(chainId).toBeDefined();
+    if (!chainId) {
+      return;
+    }
+    await effects.change(
+      { sessionId: "dj", channelId: "deck-a" },
+      { type: "add", effect: root }
+    );
+
+    const result = await effects.change(
+      { sessionId: "dj", channelId: "deck-a" },
+      {
+        type: "update-chain",
+        chainId,
+        effectId: root.id,
+        patch: { gain: 1.5, pan: -0.25 },
+      }
+    );
+
+    const persistedRoot = result.desired.tree[0];
+    expect(
+      persistedRoot && "chains" in persistedRoot
+        ? persistedRoot.chains[0]
+        : undefined
+    ).toMatchObject({ gain: 1.5, pan: -0.25 });
+  });
+
   test("reconciles dry wet and tempo from persisted state", async () => {
     insertDjSession();
     const snapshots = new Map<string, DesiredEffectsState>();

@@ -2,6 +2,7 @@ import type { EffectConfig } from "@/lib/audio/dsp/effects/types";
 import {
   appendEffectToTree,
   findEffectInTree,
+  isEffectContainer,
   normalizeEffectTree,
   removeEffectFromTree,
   reorderEffectTreeChain,
@@ -25,6 +26,12 @@ export type ChannelEffectsRef = {
 export type ChannelEffectsChange =
   | { type: "add"; effect: EffectConfig; chainId?: string }
   | { type: "update"; effectId: string; patch: Partial<EffectConfig> }
+  | {
+      type: "update-chain";
+      effectId: string;
+      chainId: string;
+      patch: { gain?: number; pan?: number };
+    }
   | { type: "remove"; effectId: string }
   | { type: "reorder"; effectIds: string[]; chainId?: string }
   | { type: "replace"; tree: readonly EffectConfig[] }
@@ -175,6 +182,32 @@ export function createChannelEffects({
               );
             }
             break;
+          case "update-chain": {
+            const effect = findEffectInTree(draft.effects, change.effectId);
+            if (!(effect && isEffectContainer(effect))) {
+              break;
+            }
+            draft.effects = normalizeEffectTree(
+              updateEffectInTree(draft.effects, change.effectId, {
+                chains: effect.chains.map((chain) =>
+                  chain.id === change.chainId
+                    ? {
+                        ...chain,
+                        gain:
+                          change.patch.gain === undefined
+                            ? chain.gain
+                            : Math.max(0, Math.min(4, change.patch.gain)),
+                        pan:
+                          change.patch.pan === undefined
+                            ? chain.pan
+                            : Math.max(-1, Math.min(1, change.patch.pan)),
+                      }
+                    : chain
+                ),
+              } as Partial<EffectConfig>)
+            );
+            break;
+          }
           case "remove":
             draft.effects = removeEffectFromTree(
               draft.effects,

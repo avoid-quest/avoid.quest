@@ -273,6 +273,42 @@ describe("StationDiscovery", () => {
     expect(peakActiveProbes).toBe(2);
   });
 
+  test("gives both providers a probe slot before continuing either batch", async () => {
+    const probedSources: StationDiscoveryCandidate["source"][] = [];
+    const discovery = createStationDiscovery({
+      radioBrowser: {
+        search: () =>
+          Promise.resolve(
+            Array.from({ length: 3 }, (_, index) =>
+              candidate("radio-browser", `Browser Radio ${index}`)
+            )
+          ),
+      },
+      radioGarden: {
+        search: () =>
+          Promise.resolve(
+            Array.from({ length: 3 }, (_, index) =>
+              candidate("radio-garden", `Garden Radio ${index}`)
+            )
+          ),
+      },
+      streamProbe: {
+        prepare: (entry) => {
+          probedSources.push(entry.source);
+          return Promise.resolve(entry);
+        },
+      },
+    });
+
+    discovery.search({ knownStations: [], query: "radio" }, () => undefined);
+    await waitForSearch();
+
+    expect(probedSources.slice(0, 2)).toEqual([
+      "radio-browser",
+      "radio-garden",
+    ]);
+  });
+
   test("drops unsafe and unreadable streams before publishing results", async () => {
     const probedNames: string[] = [];
     const snapshots: StationDiscoverySnapshot[] = [];

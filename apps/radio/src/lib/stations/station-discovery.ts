@@ -377,19 +377,18 @@ export function createStationDiscovery(
           } catch {
             return [];
           }
-          const probed = await Promise.all(
-            candidates.filter(hasSafeStreamUrl).map(async (candidate) => {
-              try {
-                return await scheduleAudioProbe(
-                  () =>
-                    adapters.streamProbe.prepare(candidate, controller.signal),
-                  controller.signal
-                );
-              } catch {
-                return null;
-              }
-            })
-          );
+          const probes: Promise<StationDiscoveryCandidate | null>[] = [];
+          for (const candidate of candidates.filter(hasSafeStreamUrl)) {
+            probes.push(
+              scheduleAudioProbe(
+                () =>
+                  adapters.streamProbe.prepare(candidate, controller.signal),
+                controller.signal
+              ).catch(() => null)
+            );
+            await Promise.resolve();
+          }
+          const probed = await Promise.all(probes);
           return probed.flatMap((candidate) =>
             candidate ? [toRemoteResult(candidate)] : []
           );

@@ -1,5 +1,5 @@
 import { useStore } from "@tanstack/react-store";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Radio } from "@/lib/audio";
 import type {
   StationDiscoveryResult,
@@ -27,19 +27,32 @@ export function useUnifiedRadioSearch(query: string, localRadios: Radio[]) {
   const [discovery] = useState(createProductionStationDiscovery);
   const [snapshot, setSnapshot] =
     useState<StationDiscoverySnapshot>(INITIAL_SNAPSHOT);
+  const localRadiosSignature = JSON.stringify(localRadios);
+  const latestLocalRadios = useRef({
+    signature: localRadiosSignature,
+    value: localRadios,
+  });
 
-  useEffect(
-    () =>
-      discovery.search(
-        {
-          knownStations: localRadios,
-          playbackNeedsNetwork,
-          query,
-        },
-        setSnapshot
-      ),
-    [discovery, localRadios, playbackNeedsNetwork, query]
-  );
+  useEffect(() => {
+    latestLocalRadios.current = {
+      signature: localRadiosSignature,
+      value: localRadios,
+    };
+  }, [localRadios, localRadiosSignature]);
+
+  useEffect(() => {
+    if (latestLocalRadios.current.signature !== localRadiosSignature) {
+      return;
+    }
+    return discovery.search(
+      {
+        knownStations: latestLocalRadios.current.value,
+        playbackNeedsNetwork,
+        query,
+      },
+      setSnapshot
+    );
+  }, [discovery, localRadiosSignature, playbackNeedsNetwork, query]);
 
   return snapshot;
 }

@@ -736,12 +736,14 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
   };
 
   const resetEffects = async (deckId: DeckId): Promise<void> => {
-    await options.effects
-      .change(effectsRef(deckId), { type: "replace", tree: [] })
-      .catch(reportEffectsError);
-    await options.effects
-      .change(effectsRef(deckId), { type: "set-dry-wet", value: 1 })
-      .catch(reportEffectsError);
+    await Promise.all([
+      options.effects
+        .change(effectsRef(deckId), { type: "replace", tree: [] })
+        .catch(reportEffectsError),
+      options.effects
+        .change(effectsRef(deckId), { type: "set-dry-wet", value: 1 })
+        .catch(reportEffectsError),
+    ]);
   };
 
   const resetPersistedState = async (

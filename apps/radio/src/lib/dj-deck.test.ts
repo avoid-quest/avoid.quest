@@ -932,6 +932,49 @@ describe("DjDeckModule", () => {
     expect(audio.activeSounds).toEqual(new Set(["left_station-1:2"]));
   });
 
+  test("persists both Effects resets before yielding to a newer change", async () => {
+    const effects = createEffects();
+    const change = effects.change;
+    const firstReset = Promise.withResolvers<void>();
+    const changes: ChannelEffectsChange[] = [];
+    effects.change = mock((ref, input) => {
+      changes.push(input);
+      if (input.type === "replace") {
+        return firstReset.promise.then(() => change(ref, input));
+      }
+      return change(ref, input);
+    });
+    const module = createDjDeckModule({
+      audio: createAudioAdapter(),
+      context: createContext(),
+      effects,
+      output: createOutput(),
+      platform: createPlatform(),
+    });
+    const deck = module.deck("deck-a");
+    await deck.load({
+      type: "radio",
+      radio: {
+        id: "station-1",
+        name: "Station 1",
+        streamUrl: "https://radio.example/one.mp3",
+      },
+    });
+
+    const reset = deck.transport({ type: "reset" });
+    deck.change({ type: "effects-dry-wet", value: 0.4 });
+    try {
+      expect(changes).toEqual([
+        { type: "replace", tree: [] },
+        { type: "set-dry-wet", value: 1 },
+        { type: "set-dry-wet", value: 0.4 },
+      ]);
+    } finally {
+      firstReset.resolve();
+    }
+    await reset;
+  });
+
   test("does not let a pending reset replace a newer source", async () => {
     const audio = createAudioAdapter();
     const { effects } = createPersistingEffects();

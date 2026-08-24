@@ -7,7 +7,6 @@ import type { OutputRouting } from "./output-routing";
 import type { PlaybackActionContext } from "./playback-action-context";
 import {
   applyCurrentMainAudioSettings,
-  applyMainOutputDevice,
   resetManagedAudioState,
 } from "./playback-actions-shared";
 
@@ -37,28 +36,7 @@ describe("resetManagedAudioState", () => {
     });
   });
 });
-
 describe("managed playback output routing", () => {
-  test("changes the main output without reconciling persisted CUE settings", async () => {
-    const patches: unknown[] = [];
-    const routing = {
-      applyMainSettings: (patch: unknown) => {
-        patches.push(patch);
-        return Promise.resolve({});
-      },
-      applySettings: () => {
-        throw new Error("full output transaction should not run");
-      },
-    } as unknown as OutputRouting;
-    const context = {
-      getMainOutputRouter: () => routing,
-    } as PlaybackActionContext;
-
-    await applyMainOutputDevice("speakers", context);
-
-    expect(patches).toEqual([{ mainOutputId: "speakers" }]);
-  });
-
   test("reconciles only main output settings during activation", async () => {
     const patches: unknown[] = [];
     const routing = {

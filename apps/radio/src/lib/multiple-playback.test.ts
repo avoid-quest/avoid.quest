@@ -16,6 +16,7 @@ import {
   setPlaybackChannelRuntime,
 } from "@/lib/stores/playback-runtime-store";
 import { getMultiplePlayback } from "./multiple-playback";
+import type { OutputRouting } from "./output-routing";
 import type { PlaybackActionContext } from "./playback-action-context";
 
 function station(id: string): Radio {
@@ -356,6 +357,93 @@ describe("Multiple Playback", () => {
     }
   });
 
+  test("keeps a newer play-all start after a deactivated worker settles", async () => {
+    const radio = station("restart");
+    const channelId = getMultipleChannelId(radio);
+    insertMultipleSession([radio]);
+    let releaseOldStart: () => void = () => undefined;
+    let startCount = 0;
+    const context = createTestContext();
+    context.audio.playSound = mock(
+      (soundId: string) =>
+        new Promise<void>((resolve) => {
+          startCount += 1;
+          if (startCount === 1) {
+            releaseOldStart = () => {
+              setPlaybackChannelRuntime(channelId, () => ({
+                isPlaying: true,
+              }));
+              resolve();
+            };
+            return;
+          }
+          setPlaybackChannelRuntime(channelId, () => ({
+            isPlaying: true,
+            soundId,
+          }));
+          resolve();
+        })
+    );
+    const playback = getMultiplePlayback({
+      ctx: context,
+      fadeOutSound: mock(async () => undefined),
+    });
+
+    const oldPlayAll = playback.playAll();
+    await Promise.resolve();
+    await Promise.resolve();
+    await playback.deactivate();
+    await playback.playAll();
+    releaseOldStart();
+    await oldPlayAll;
+
+    expect(getPlaybackChannelRuntime(channelId)).toMatchObject({
+      isPlaying: true,
+      soundId: `multiple:${channelId}`,
+    });
+  });
+
+  test("keeps a manual resume after a paused play-all worker settles", async () => {
+    const radio = station("resume");
+    const channelId = getMultipleChannelId(radio);
+    insertMultipleSession([radio]);
+    let releaseOldStart: () => void = () => undefined;
+    let startCount = 0;
+    const context = createTestContext();
+    context.audio.playSound = mock(
+      (soundId: string) =>
+        new Promise<void>((resolve) => {
+          startCount += 1;
+          if (startCount === 1) {
+            releaseOldStart = resolve;
+            return;
+          }
+          setPlaybackChannelRuntime(channelId, () => ({
+            isPlaying: true,
+            soundId,
+          }));
+          resolve();
+        })
+    );
+    context.audio.pauseSound = mock(() => {
+      setPlaybackChannelRuntime(channelId, () => ({ isPlaying: false }));
+    });
+    const playback = getMultiplePlayback({ ctx: context });
+
+    const oldPlayAll = playback.playAll();
+    await Promise.resolve();
+    await Promise.resolve();
+    playback.pauseAll();
+    await playback.setPlaying(channelId, true);
+    releaseOldStart();
+    await oldPlayAll;
+
+    expect(getPlaybackChannelRuntime(channelId)).toMatchObject({
+      isPlaying: true,
+      soundId: `multiple:${channelId}`,
+    });
+  });
+
   test("keeps play-all failures local to their Channel", async () => {
     const good = station("good");
     const bad = station("bad");
@@ -380,6 +468,35 @@ describe("Multiple Playback", () => {
         "The stream could not be reached. Check the station URL and try again.",
     });
     expect(context.reportError).toHaveBeenCalledTimes(1);
+  });
+
+  test("reconciles main output settings when playback activates a Channel", async () => {
+    const radio = station("routed");
+    const channelId = getMultipleChannelId(radio);
+    insertMultipleSession([radio]);
+    const patches: unknown[] = [];
+    const context = createTestContext();
+    context.lifecycle.mainOutputSettingsApplied = false;
+    context.getMainOutputRouter = () =>
+      ({
+        applyMainSettings: (patch: unknown) => {
+          patches.push(patch);
+          return Promise.resolve({});
+        },
+        applySettings: () => {
+          throw new Error("full output transaction should not run");
+        },
+      }) as unknown as OutputRouting;
+
+    await getMultiplePlayback({ ctx: context }).setPlaying(channelId, true);
+
+    expect(patches).toEqual([
+      {
+        mainDelayMs: expect.any(Number),
+        mainOutputId: expect.any(String),
+      },
+    ]);
+    expect(context.lifecycle.mainOutputSettingsApplied).toBe(true);
   });
 
   test("deactivation owns orphan cleanup and runtime reset", async () => {

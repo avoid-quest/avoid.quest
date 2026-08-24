@@ -529,8 +529,6 @@ describe("mode lifecycle manager", () => {
 
     expect(fadeOut).toHaveBeenCalledWith("left_station-1", 120, true);
     expect(fadeOut).toHaveBeenCalledWith("right_station-2", 120, true);
-    expect(context.channels.deactivate).toHaveBeenCalledWith(DECK_A_CHANNEL_ID);
-    expect(context.channels.deactivate).toHaveBeenCalledWith(DECK_B_CHANNEL_ID);
     expect(getPlaybackChannelRuntime(DECK_A_CHANNEL_ID).soundId).toBeNull();
     expect(getPlaybackChannelRuntime(DECK_B_CHANNEL_ID).soundId).toBeNull();
     expect(manager.getSnapshot()).toMatchObject({

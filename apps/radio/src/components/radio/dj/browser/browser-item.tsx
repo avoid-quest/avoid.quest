@@ -6,7 +6,7 @@ import {
   GripVerticalIcon,
 } from "lucide-react";
 import type { Radio } from "@/lib/audio";
-import { getDjDeckActions } from "@/lib/dj-actions";
+import { getDjDeckModule } from "@/lib/dj-deck";
 import { isPlatformPlaceholderItem } from "@/lib/dj-library-sources";
 import { RadioItemContent } from "../dj-radio-list";
 
@@ -49,8 +49,9 @@ export function DraggableBrowserItem({ radio }: { radio: Radio }) {
 
 export function MobileBrowserItem({ radio }: { radio: Radio }) {
   const handleLoad = (deckId: "deck-a" | "deck-b") => {
-    getDjDeckActions(deckId)
-      .loadLibrarySource(radio)
+    getDjDeckModule()
+      .deck(deckId)
+      .load({ type: "library", radio })
       .catch((error) => {
         console.error("[dj] Failed to load browser source:", error);
       });

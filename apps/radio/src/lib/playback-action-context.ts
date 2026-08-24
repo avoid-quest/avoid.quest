@@ -20,10 +20,6 @@ import {
   subscribeChannelRuntime,
 } from "@/lib/channel-state-manager";
 import type { PlaybackSessionId } from "@/lib/collections/playback-sessions";
-import type {
-  PlatformStreamResolution,
-  PlatformStreamResolutionInput,
-} from "@/lib/dj-platform-stream-port.js";
 import { getOutputRouting, type OutputRouting } from "@/lib/output-routing.js";
 import type { PlaybackActionErrorReporter } from "./playback-action-errors.js";
 
@@ -71,19 +67,12 @@ export type PlaybackActionChannelFacade = {
   ) => void;
 };
 
-export type PlaybackPlatformStreamFacade = {
-  resolveStreamUrl: (
-    input: PlatformStreamResolutionInput
-  ) => Promise<PlatformStreamResolution | null>;
-};
-
 export type PlaybackActionContext = {
   audio: AudioManager;
   audioEngine: AudioEngineFacade;
   channels: PlaybackActionChannelFacade;
   getMainOutputRouter: () => MainOutputRouter;
   lifecycle: PlaybackAudioRoutingLifecycle;
-  platformStreams?: PlaybackPlatformStreamFacade;
   reportError: PlaybackActionErrorReporter;
   resumeAudioContext: () => Promise<void>;
   resetAudioManager: () => void;

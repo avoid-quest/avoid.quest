@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import type { Radio } from "@/lib/audio";
-import { getDjDeckActions } from "@/lib/dj-actions";
+import { getDjDeckModule } from "@/lib/dj-deck";
 import {
   AUDIO_INPUT_PLATFORM_ID,
   getPlatformFromPlaceholderItem,
@@ -114,8 +114,9 @@ export function RadioItemContent({ radio }: { radio: Radio }) {
 
 function MobileRadioItem({ radio }: { radio: Radio }) {
   const load = (deckId: "deck-a" | "deck-b") => {
-    getDjDeckActions(deckId)
-      .loadLibrarySource(radio)
+    getDjDeckModule()
+      .deck(deckId)
+      .load({ type: "library", radio })
       .catch((error) => {
         console.error("[dj] Failed to load mobile source:", error);
       });

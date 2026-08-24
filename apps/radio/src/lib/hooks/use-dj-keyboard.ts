@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { getAudioSettings } from "@/lib/collections";
-import { toggleDeckCue } from "@/lib/dj-actions";
+import { getDjDeckModule } from "@/lib/dj-deck";
 
 /**
  * Keyboard shortcuts for DJ mode:
@@ -35,11 +35,11 @@ export function useDjKeyboard() {
       switch (e.key.toLowerCase()) {
         case "q":
           e.preventDefault();
-          toggleDeckCue("deck-a");
+          getDjDeckModule().deck("deck-a").change({ type: "cue" });
           break;
         case "w":
           e.preventDefault();
-          toggleDeckCue("deck-b");
+          getDjDeckModule().deck("deck-b").change({ type: "cue" });
           break;
         default:
           break;

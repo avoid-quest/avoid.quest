@@ -259,7 +259,7 @@ function validatePreparedRadio(radio: Radio): ExternalStationResult<Radio> {
   return { data: radio, ok: true };
 }
 
-function createRadioGardenRadio(
+export function createRadioGardenRadio(
   result: RadioGardenSearchResult,
   streamUrl: string,
   name = result.title,
@@ -290,7 +290,7 @@ function createRadioGardenRadio(
   };
 }
 
-function createRadioBrowserRadio(station: RadioBrowserStation): Radio {
+export function createRadioBrowserRadio(station: RadioBrowserStation): Radio {
   const stationUuid = normalizeRequiredString(station.stationUuid);
   const resolvedUrl = normalizeRequiredString(station.urlResolved);
   const canonicalUrl = normalizeRequiredString(station.url) || resolvedUrl;

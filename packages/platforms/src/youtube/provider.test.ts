@@ -233,6 +233,30 @@ describe("browser Invidious adapter", () => {
     );
   });
 
+  test("accepts a range response whose Content-Range is not CORS-exposed", async () => {
+    const adapter = createBrowserInvidiousAdapter({
+      baseUrl: "https://invidious.test",
+      fetchImpl: mock((input: RequestInfo | URL) =>
+        Promise.resolve(
+          String(input).includes("/videoplayback/")
+            ? new Response(new Uint8Array([0]), {
+                headers: {
+                  "Content-Length": "65536",
+                  "Content-Type": "audio/webm",
+                },
+                status: 206,
+              })
+            : json(invidiousVideo())
+        )
+      ) as typeof fetch,
+      resolveHostname: async () => [PUBLIC_ADDRESS],
+    });
+
+    await expect(adapter.resolveStream(VIDEO_ID)).resolves.toBe(
+      "https://invidious.test/videoplayback/audio"
+    );
+  });
+
   test("rejects media URLs whose hostname resolves to a private address", async () => {
     const video = invidiousVideo();
     const stream = video.adaptiveFormats[0];
@@ -651,6 +675,17 @@ describe("ordered YouTube provider failover", () => {
     [
       "an invalid content range",
       () => media(new Uint8Array([0]), { "Content-Range": "bytes 1-1/2" }),
+    ],
+    [
+      "a hidden content range with the wrong response length",
+      () =>
+        new Response(new Uint8Array([0]), {
+          headers: {
+            "Content-Length": "1",
+            "Content-Type": "audio/webm",
+          },
+          status: 206,
+        }),
     ],
   ];
 

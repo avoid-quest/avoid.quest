@@ -583,10 +583,10 @@ export async function verifyProviderMedia(
         // Content-Range is not CORS-safelisted, so otherwise valid public
         // relays can hide it from browser JavaScript. Content-Length is safe.
         const contentRange = response.headers.get("content-range");
-        const hasValidRange = contentRange
-          ? MEDIA_CONTENT_RANGE_PATTERN.test(contentRange)
-          : response.headers.get("content-length") ===
-            MEDIA_PROBE_CONTENT_LENGTH;
+        const hasValidRange = contentRange === null
+          ? response.headers.get("content-length") ===
+            MEDIA_PROBE_CONTENT_LENGTH
+          : MEDIA_CONTENT_RANGE_PATTERN.test(contentRange);
         if (!hasValidRange) {
           throw invalidProviderSchema(
             context,

@@ -2,6 +2,15 @@ import { describe, expect, test } from "bun:test";
 import { toPlaybackInput } from "./playback-input";
 
 describe("toPlaybackInput", () => {
+  test("upgrades the retired Sygma Ogg mount to its current MP3 stream", () => {
+    expect(
+      toPlaybackInput({
+        name: "Sygma Radio",
+        streamUrl: "https://radio.syg.ma/audio.ogg",
+      })
+    ).toMatchObject({ src: "https://radio.syg.ma/audio.mp3" });
+  });
+
   test("upgrades persisted NTS relay URLs to Web Audio compatible sources", () => {
     expect(
       toPlaybackInput({

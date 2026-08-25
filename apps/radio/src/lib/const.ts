@@ -6,7 +6,7 @@ export const radios: Radio[] = [
     description:
       "A community platform for mixes, podcasts, live recordings and releases by independent musicians, sound artists and collectives.",
     websiteUrl: "https://radio.syg.ma",
-    streamUrl: "https://radio.syg.ma/audio.ogg",
+    streamUrl: "https://radio.syg.ma/audio.mp3",
     logoUrl: "https://radio.syg.ma/icons/android-icon-192x192.png",
     metadataConfig: {
       kind: "airtime-live-info",

@@ -10,6 +10,7 @@ import type { YouTubeItemResult, YouTubeSearchResult } from "./types.js";
 
 const DEFAULT_MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 const DEFAULT_TIMEOUT_MS = 15_000;
+const MEDIA_PROBE_CONTENT_LENGTH = "65536";
 const MEDIA_CONTENT_RANGE_PATTERN = /^bytes 0-65535\/[1-9]\d*$/;
 const LEADING_SLASH_PATTERN = /^\//;
 const TRAILING_SLASH_PATTERN = /\/$/;
@@ -579,8 +580,14 @@ export async function verifyProviderMedia(
           );
         }
 
-        const contentRange = response.headers.get("content-range") ?? "";
-        if (!MEDIA_CONTENT_RANGE_PATTERN.test(contentRange)) {
+        // Content-Range is not CORS-safelisted, so otherwise valid public
+        // relays can hide it from browser JavaScript. Content-Length is safe.
+        const contentRange = response.headers.get("content-range");
+        const hasValidRange = contentRange === null
+          ? response.headers.get("content-length") ===
+            MEDIA_PROBE_CONTENT_LENGTH
+          : MEDIA_CONTENT_RANGE_PATTERN.test(contentRange);
+        if (!hasValidRange) {
           throw invalidProviderSchema(
             context,
             "YouTube media proxy returned an invalid content range"

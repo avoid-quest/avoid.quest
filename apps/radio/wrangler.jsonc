@@ -5,15 +5,12 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "radio",
-	"compatibility_date": "2026-02-06",
-	"compatibility_flags": [
-		"nodejs_compat",
-		"enable_nodejs_http_modules"
-	],
+	"compatibility_date": "2026-08-26",
 	"main": "@tanstack/react-start/server-entry",
 	"workers_dev": true,
 	"preview_urls": true,
 	"observability": {
+		"enabled": true,
 		"logs": {
 			"enabled": true
 		}

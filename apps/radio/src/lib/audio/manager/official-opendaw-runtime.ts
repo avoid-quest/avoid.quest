@@ -197,7 +197,10 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       audioWorklets,
       sampleManager: unavailableAssetManager(),
       soundfontManager: unavailableSoundfontManager(),
-      sampleService: new SampleService(this.context),
+      sampleService: new SampleService(
+        this.context,
+        modules.adapters.BpmDetector.Unknown
+      ),
       soundfontService: undefined as unknown as ProjectEnv["soundfontService"],
     });
     try {

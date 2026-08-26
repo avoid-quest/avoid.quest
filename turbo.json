@@ -1,9 +1,15 @@
 {
-  "$schema": "https://turbo.build/schema.json",
+  "$schema": "https://turborepo.dev/schema.json",
   "ui": "tui",
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
+      "env": [
+        "SENTRY_AUTH_TOKEN",
+        "SENTRY_ORG",
+        "SENTRY_PROJECT",
+        "SENTRY_RELEASE"
+      ],
       "inputs": ["$TURBO_DEFAULT$", ".env*"],
       "outputs": [".next/**", "out/**", "dist/**"]
     },
@@ -25,15 +31,35 @@
     },
     "cf-build": {
       "cache": false,
-      "dependsOn": ["^cf-build"]
+      "dependsOn": ["^cf-build"],
+      "env": [
+        "SENTRY_AUTH_TOKEN",
+        "SENTRY_ORG",
+        "SENTRY_PROJECT",
+        "SENTRY_RELEASE"
+      ]
     },
     "cf-deploy": {
       "cache": false,
-      "dependsOn": ["^cf-deploy"]
+      "dependsOn": ["^cf-deploy"],
+      "env": [
+        "SENTRY_AUTH_TOKEN",
+        "SENTRY_ORG",
+        "SENTRY_PROJECT",
+        "SENTRY_RELEASE"
+      ],
+      "passThroughEnv": ["CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_API_TOKEN"]
     },
     "cf-upload": {
       "cache": false,
-      "dependsOn": ["^cf-upload"]
+      "dependsOn": ["^cf-upload"],
+      "env": [
+        "SENTRY_AUTH_TOKEN",
+        "SENTRY_ORG",
+        "SENTRY_PROJECT",
+        "SENTRY_RELEASE"
+      ],
+      "passThroughEnv": ["CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_API_TOKEN"]
     },
     "cf-typegen": {
       "cache": false,

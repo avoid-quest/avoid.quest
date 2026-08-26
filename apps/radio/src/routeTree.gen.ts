@@ -9,28 +9,18 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as TunnelRouteImport } from './routes/tunnel'
-import { Route as PlaylistDotm3uRouteImport } from './routes/playlist[.]m3u'
-import { Route as ManifestRouteImport } from './routes/manifest'
-import { Route as ImportRouteImport } from './routes/import'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as ApiStationsDotjsonRouteImport } from './routes/api/stations[.]json'
-import { Route as ApiRadioMetadataRouteImport } from './routes/api/radio-metadata'
+import { Route as ImportRouteImport } from './routes/import'
+import { Route as ManifestRouteImport } from './routes/manifest'
+import { Route as PlaylistDotm3uRouteImport } from './routes/playlist[.]m3u'
+import { Route as TunnelRouteImport } from './routes/tunnel'
 import { Route as ApiFeedbackRouteImport } from './routes/api/feedback'
+import { Route as ApiRadioMetadataRouteImport } from './routes/api/radio-metadata'
+import { Route as ApiStationsDotjsonRouteImport } from './routes/api/stations[.]json'
 
-const TunnelRoute = TunnelRouteImport.update({
-  id: '/tunnel',
-  path: '/tunnel',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const PlaylistDotm3uRoute = PlaylistDotm3uRouteImport.update({
-  id: '/playlist.m3u',
-  path: '/playlist.m3u',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ManifestRoute = ManifestRouteImport.update({
-  id: '/manifest',
-  path: '/manifest',
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ImportRoute = ImportRouteImport.update({
@@ -38,14 +28,24 @@ const ImportRoute = ImportRouteImport.update({
   path: '/import',
   getParentRoute: () => rootRouteImport,
 } as any)
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+const ManifestRoute = ManifestRouteImport.update({
+  id: '/manifest',
+  path: '/manifest',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiStationsDotjsonRoute = ApiStationsDotjsonRouteImport.update({
-  id: '/api/stations.json',
-  path: '/api/stations.json',
+const PlaylistDotm3uRoute = PlaylistDotm3uRouteImport.update({
+  id: '/playlist.m3u',
+  path: '/playlist.m3u',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TunnelRoute = TunnelRouteImport.update({
+  id: '/tunnel',
+  path: '/tunnel',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiFeedbackRoute = ApiFeedbackRouteImport.update({
+  id: '/api/feedback',
+  path: '/api/feedback',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiRadioMetadataRoute = ApiRadioMetadataRouteImport.update({
@@ -53,9 +53,9 @@ const ApiRadioMetadataRoute = ApiRadioMetadataRouteImport.update({
   path: '/api/radio-metadata',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiFeedbackRoute = ApiFeedbackRouteImport.update({
-  id: '/api/feedback',
-  path: '/api/feedback',
+const ApiStationsDotjsonRoute = ApiStationsDotjsonRouteImport.update({
+  id: '/api/stations.json',
+  path: '/api/stations.json',
   getParentRoute: () => rootRouteImport,
 } as any)
 
@@ -136,25 +136,11 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/tunnel': {
-      id: '/tunnel'
-      path: '/tunnel'
-      fullPath: '/tunnel'
-      preLoaderRoute: typeof TunnelRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/playlist.m3u': {
-      id: '/playlist.m3u'
-      path: '/playlist.m3u'
-      fullPath: '/playlist.m3u'
-      preLoaderRoute: typeof PlaylistDotm3uRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/manifest': {
-      id: '/manifest'
-      path: '/manifest'
-      fullPath: '/manifest'
-      preLoaderRoute: typeof ManifestRouteImport
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/import': {
@@ -164,18 +150,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ImportRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
+    '/manifest': {
+      id: '/manifest'
+      path: '/manifest'
+      fullPath: '/manifest'
+      preLoaderRoute: typeof ManifestRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/stations.json': {
-      id: '/api/stations.json'
-      path: '/api/stations.json'
-      fullPath: '/api/stations.json'
-      preLoaderRoute: typeof ApiStationsDotjsonRouteImport
+    '/playlist.m3u': {
+      id: '/playlist.m3u'
+      path: '/playlist.m3u'
+      fullPath: '/playlist.m3u'
+      preLoaderRoute: typeof PlaylistDotm3uRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/tunnel': {
+      id: '/tunnel'
+      path: '/tunnel'
+      fullPath: '/tunnel'
+      preLoaderRoute: typeof TunnelRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/feedback': {
+      id: '/api/feedback'
+      path: '/api/feedback'
+      fullPath: '/api/feedback'
+      preLoaderRoute: typeof ApiFeedbackRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/radio-metadata': {
@@ -185,11 +185,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiRadioMetadataRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/feedback': {
-      id: '/api/feedback'
-      path: '/api/feedback'
-      fullPath: '/api/feedback'
-      preLoaderRoute: typeof ApiFeedbackRouteImport
+    '/api/stations.json': {
+      id: '/api/stations.json'
+      path: '/api/stations.json'
+      fullPath: '/api/stations.json'
+      preLoaderRoute: typeof ApiStationsDotjsonRouteImport
       parentRoute: typeof rootRouteImport
     }
   }

@@ -16,14 +16,14 @@
     "@avoid.quest/platforms": "workspace:*",
     "@discordjs/opus": "^0.10.0",
     "@discordjs/voice": "^0.19.2",
-    "discord.js": "^14.26.4",
+    "discord.js": "^14.27.0",
     "sodium-native": "^5.1.0"
   },
   "devDependencies": {
     "@avoid.quest/config": "workspace:*",
     "@types/node": "catalog:",
     "tsup": "^8.5.1",
-    "tsx": "^4.22.4",
+    "tsx": "^4.23.12",
     "typescript": "catalog:"
   }
 }

@@ -14,7 +14,7 @@ import tailwindcss from "@tailwindcss/vite";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import react, { reactCompilerPreset } from "@vitejs/plugin-react";
 import { build, defineConfig, type Plugin } from "vite";
-import { rewriteOpenDawEngineWorklet } from "./opendaw-assets";
+import { rewriteOpenDawEngineWorklet } from "./opendaw-assets.ts";
 
 const WORKLET_OUT_DIR = ".worklet-build";
 const WORKLET_FILENAME = "dsp-processor-bundle.js";

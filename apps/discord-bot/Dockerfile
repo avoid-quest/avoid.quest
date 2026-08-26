@@ -1,8 +1,8 @@
 # --- PREPARE: prune monorepo ---
 
-FROM node:20-alpine AS prepare
+FROM node:24-alpine AS prepare
 
-RUN npm i -g turbo@2.9.15
+RUN npm i -g turbo@2.10.12
 
 WORKDIR /app
 COPY . .
@@ -10,11 +10,11 @@ RUN turbo prune @avoid.quest/discord-bot --docker
 
 # --- BASE: bun + native build tools ---
 
-FROM node:20-alpine AS base
+FROM node:24-alpine AS base
 
 RUN apk add --no-cache python3 make g++ curl bash unzip
 
-RUN curl -fsSL https://bun.sh/install | bash -s "bun-v1.3.14"
+RUN curl -fsSL https://bun.sh/install | bash -s "bun-v1.4.0"
 
 ENV PATH="/root/.bun/bin:$PATH"
 
@@ -45,7 +45,7 @@ RUN bun install --frozen-lockfile --omit dev
 
 # --- RUNTIME ---
 
-FROM node:20-alpine AS runtime
+FROM node:24-alpine AS runtime
 
 RUN apk add --no-cache ffmpeg
 

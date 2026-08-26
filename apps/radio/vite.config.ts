@@ -14,7 +14,7 @@ import tailwindcss from "@tailwindcss/vite";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import react, { reactCompilerPreset } from "@vitejs/plugin-react";
 import { build, defineConfig, type Plugin } from "vite";
-import { rewriteOpenDawEngineWorklet } from "./opendaw-assets";
+import { rewriteOpenDawEngineWorklet } from "./opendaw-assets.ts";
 
 const WORKLET_OUT_DIR = ".worklet-build";
 const WORKLET_FILENAME = "dsp-processor-bundle.js";
@@ -65,6 +65,14 @@ const VENDOR_CHUNK_GROUPS: Array<{
       id.includes("/node_modules/react/") ||
       id.includes("/node_modules/react-dom/") ||
       id.includes("/node_modules/scheduler/"),
+  },
+  {
+    // React DB is client-only here. Keep it out of the TanStack Start chunk so
+    // attaching the Worker entry does not evaluate its browser-side modules.
+    name: "vendor-tanstack-db",
+    match: (id) =>
+      id.includes("/node_modules/@tanstack/db/") ||
+      id.includes("/node_modules/@tanstack/react-db/"),
   },
   {
     name: "vendor-tanstack",

@@ -17,6 +17,7 @@ for (const [key, value] of Object.entries({
   document: dom.window.document,
   navigator: dom.window.navigator,
   HTMLElement: dom.window.HTMLElement,
+  HTMLFormElement: dom.window.HTMLFormElement,
   DocumentFragment: dom.window.DocumentFragment,
   Element: dom.window.Element,
   Node: dom.window.Node,

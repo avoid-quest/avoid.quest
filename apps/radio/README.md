@@ -144,7 +144,8 @@ bun run dev          # Start dev server (port 3000)
 bun run build        # Production build
 bun run typecheck    # tsc --noEmit
 bun run test         # Run tests (bun test)
-bun run cf-deploy    # Deploy to Cloudflare Workers
-bun run cf-upload    # Upload new version without promoting
+bun run cf-build     # Build the Cloudflare Worker
+bun run cf-deploy    # Build and deploy to Cloudflare Workers
+bun run cf-upload    # Build and upload a version without promoting
 bun run cf-typegen   # Regenerate cloudflare-env.d.ts
 ```

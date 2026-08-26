@@ -34,12 +34,18 @@ Use this update flow:
    install proves compatibility. These are the current major or pre-1.0 jumps
    reported by the local `bun outdated -r` audit.
 
-The checkout pins Bun 1.3.14 in the root
-[`packageManager`](../../package.json) and the Discord bot
-[`Dockerfile`](../discord-bot/Dockerfile). Bun 1.4.0 is the current stable
-release on the captured date, and the official upgrade command is
-`bun upgrade` ([Bun installation and upgrading](https://bun.sh/docs/installation)).
-If the project adopts Bun 1.4, update both pins together.
+After the compatible updates, `bun outdated -r` reports only TypeScript 7.0.2.
+Keep TypeScript 6.0.3 for this update: TypeScript 7 intentionally ships without
+the compiler API until 7.1, and the TypeScript team documents a side-by-side
+TypeScript 6 compatibility package for tools that still import that API. Moving
+this workspace to 7 is therefore a toolchain migration, not a safe dependency
+bump ([TypeScript 7.0 release](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/)).
+
+The root [`packageManager`](../../package.json) and the Discord bot
+[`Dockerfile`](../discord-bot/Dockerfile) now pin Bun 1.4.0 together. Bun 1.4.0
+is the current stable release on the captured date, and the official upgrade
+command is `bun upgrade`
+([Bun installation and upgrading](https://bun.sh/docs/installation)).
 
 The root already uses Turborepo 2, so the 1-to-2 codemod is not needed. Update
 the root `turbo` dependency and the Dockerfile's global Turbo pin together so
@@ -68,6 +74,77 @@ If CI runs deploy or upload through Turbo, put `CLOUDFLARE_API_TOKEN` and
 Wrangler but do not change build output
 ([Wrangler system environment variables](https://developers.cloudflare.com/workers/wrangler/system-environment-variables/),
 [Turbo `passThroughEnv`](https://turborepo.dev/docs/reference/configuration#passthroughenv)).
+
+### TanStack DB and Worker startup
+
+Keep the current stable `@tanstack/react-db@0.3.5` and its exact
+`@tanstack/db@0.8.5` dependency. TanStack DB commit
+[`d8defd2`](https://github.com/TanStack/db/commit/d8defd2a8eb96162cbd4e24970d519eac217bb95)
+introduced a runtime-reference singleton whose released source generates a
+random namespace while the module is evaluated
+([React DB 0.3.5 metadata](https://registry.npmjs.org/%40tanstack%2Freact-db/0.3.5),
+[DB 0.8.5 source](https://github.com/TanStack/db/blob/5695db966ca6b4476b10aade33795cae57e68826/packages/db/src/query/runtime-reference-identity.ts#L7-L34)).
+Cloudflare supports `crypto.getRandomValues()`, but forbids generating random
+values in Worker global scope; a top-level startup failure produces validation
+error 10021
+([Web Crypto](https://developers.cloudflare.com/workers/runtime-apis/web-crypto/),
+[global-scope restriction](https://developers.cloudflare.com/hyperdrive/observability/troubleshooting/#workers-runtime-errors),
+[validation error 10021](https://developers.cloudflare.com/workers/observability/errors/#validation-errors-10021)).
+
+The radio app uses React DB for `localStorage` and `sessionStorage` collections
+under routes with `ssr: false`, so it should not be evaluated while the Worker
+entry starts. TanStack documents browser storage as client-only, supports
+`.client.*` files and the `@tanstack/react-start/client-only` marker, and notes
+that the HTML shell remains server-rendered even when the root route disables
+SSR
+([execution model](https://tanstack.com/start/latest/docs/framework/react/guide/execution-model),
+[import protection](https://tanstack.com/start/latest/docs/framework/react/guide/import-protection),
+[selective SSR](https://tanstack.com/start/latest/docs/framework/react/guide/selective-ssr)).
+Those framework boundaries are appropriate when the collection import graph is
+refactored to be wholly client-only. Wrapping collection initialization or
+moving it into a request handler is not sufficient while a static package
+import still evaluates the singleton.
+
+The immediate failure came from the app's custom `manualChunks` rule grouping
+all TanStack packages together. That made the eagerly imported Start runtime
+pull React DB into the Worker startup graph even though the DB consumers were
+otherwise lazy. Rollup explicitly warns that manual chunks can change behavior
+by triggering side effects before a module is used
+([`output.manualChunks`](https://rollupjs.org/configuration-options/#output-manualchunks));
+Vite exposes the underlying output options through its build configuration
+([Vite build options](https://vite.dev/config/build-options.html#build-rollupoptions)).
+Match `@tanstack/db` and `@tanstack/react-db` in a dedicated chunk before the
+generic TanStack group. The generated Worker entry must not statically import
+that DB chunk, and the server-rendered root shell must not load it while
+handling a request. It may remain in client-only lazy modules, but evaluating
+the released singleton anywhere in the Worker runtime still violates
+Cloudflare's global-scope entropy restriction. The local Wrangler request test
+is therefore required in addition to inspecting the entry chunk.
+
+An upstream correction exists in commit
+[`01e9cb5`](https://github.com/TanStack/db/commit/01e9cb5817619d8dadc801d6e105f1c5d0d1f88a),
+which defers namespace generation until an identity is requested and tests
+that constructing the factory consumes no entropy. It is still on open
+[PR #1774](https://github.com/TanStack/db/pull/1774), outside `main`, with no
+fixed npm release or prerelease on the captured date. TanStack's
+[`049e0ce` CI preview](https://pkg.pr.new/TanStack/db/@tanstack/react-db@049e0ce)
+is suitable for testing the upstream fix, not as the stable production source.
+
+No Cloudflare switch is a substitute for this boundary. `nodejs_compat` is
+already automatic for compatibility dates on or after 2026-08-04 and does not
+relax the global entropy rule; `allow_eval_during_startup` only covers `eval`
+and `new Function`; and Wrangler's `unsafe` configuration exposes unsupported
+upload bindings and metadata, not a runtime-operation allowlist
+([Node.js compatibility](https://developers.cloudflare.com/workers/runtime-apis/nodejs/),
+[compatibility flags](https://developers.cloudflare.com/workers/configuration/compatibility-flags/),
+[Wrangler `unsafe` schema](https://github.com/cloudflare/workers-sdk/blob/5377aaed47144ef5dc873d77a4e3aba0d0232f7c/packages/workers-utils/src/config/environment.ts#L1481-L1510)).
+Vite aliases or transforms could rewrite the package, and Bun supports durable
+dependency patches, but both approaches would maintain a private fork of
+upstream behavior. Do not use them for this project; the application boundary
+keeps the latest stable packages without patching dependencies
+([Vite aliases](https://vite.dev/config/shared-options.html#resolve-alias),
+[Vite plugin transforms](https://vite.dev/guide/api-plugin.html),
+[`bun patch`](https://bun.sh/docs/pm/cli/patch)).
 
 ## Radio Worker findings
 
@@ -168,12 +245,18 @@ bun run check
 bun run typecheck
 bun run --filter @avoid.quest/radio test
 bun run --filter @avoid.quest/radio build
+! rg 'vendor-tanstack-db' apps/radio/dist/server/index.js
 bun run --filter @avoid.quest/radio cf-typegen
 (cd apps/radio && bunx wrangler types --env-interface CloudflareEnv ./cloudflare-env.d.ts --check)
 (cd apps/radio && bunx wrangler deploy --dry-run)
+(cd apps/radio && bunx wrangler dev --local)
 ```
 
 `wrangler deploy --dry-run` compiles the deployment without publishing it
 ([Wrangler deploy](https://developers.cloudflare.com/workers/wrangler/commands/workers/#deploy)).
+The `rg` assertion checks that the built Worker entry does not eagerly import
+the dedicated React DB chunk. `wrangler deploy --dry-run` does not boot the
+Worker, so confirm that `wrangler dev --local` reaches `Ready` and serves a
+request before stopping it.
 Run a real deploy or version upload only when explicitly requested and when
 Cloudflare credentials and the rate-limit namespace have been verified.

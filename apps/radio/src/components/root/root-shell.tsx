@@ -2,17 +2,22 @@ import { Toaster } from "@avoid.quest/ui/components/sonner";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { HeadContent, Scripts } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
+import { ClientOnly } from "@/components/client-only";
 import { InstallPrompt } from "@/components/pwa/install-prompt";
 import { SWRegister } from "@/components/pwa/sw-register";
 import { Header } from "@/components/theme/header";
 import { ThemeProvider } from "@/components/theme/theme-provider";
-import { useMidiControlLifecycle } from "@/lib/hooks/use-midi";
-import { createRootQueryClient } from "@/lib/root/root-bootstrap";
+import { createRootQueryClient } from "@/lib/root/root-query-client";
+
+const RootClientEffects = lazy(() =>
+  import("./root-client-effects").then((module) => ({
+    default: module.RootClientEffects,
+  }))
+);
 
 export function RootShell({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(createRootQueryClient);
-  useMidiControlLifecycle();
 
   useEffect(() => {
     const handlePageHide = () => {
@@ -36,6 +41,11 @@ export function RootShell({ children }: { children: React.ReactNode }) {
         <HeadContent />
       </head>
       <body className={cn("min-h-screen bg-background antialiased")}>
+        <ClientOnly>
+          <Suspense fallback={null}>
+            <RootClientEffects />
+          </Suspense>
+        </ClientOnly>
         <QueryClientProvider client={queryClient}>
           <ThemeProvider
             attribute="class"

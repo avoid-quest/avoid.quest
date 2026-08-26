@@ -4,16 +4,17 @@ import icon0 from "@avoid.quest/ui/assets/favicon/icon0.svg";
 import icon1 from "@avoid.quest/ui/assets/favicon/icon1.png";
 import globalsCss from "@avoid.quest/ui/globals.css?url";
 import { createRootRoute, Outlet } from "@tanstack/react-router";
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { RadioLoadingSkeleton } from "@/components/radio/radio-loading-skeleton";
 import { NotFoundView, RootErrorView } from "@/components/root/root-error-view";
 import { RootShell } from "@/components/root/root-shell";
-import { SyncDialog } from "@/components/settings/sync-dialog";
 import type { SyncChanges } from "@/lib/collections/radios";
-import {
-  applyRootSyncChanges,
-  loadRootSyncChanges,
-} from "@/lib/root/root-bootstrap";
+
+const SyncDialog = lazy(() =>
+  import("@/components/settings/sync-dialog").then((module) => ({
+    default: module.SyncDialog,
+  }))
+);
 
 function RootPending() {
   return <RadioLoadingSkeleton phase="database" />;
@@ -23,7 +24,10 @@ export const Route = createRootRoute({
   ssr: false,
   component: RootContent,
   errorComponent: RootErrorView,
-  loader: () => loadRootSyncChanges(),
+  loader: async () => {
+    const { loadRootSyncChanges } = await import("@/lib/root/root-bootstrap");
+    return loadRootSyncChanges();
+  },
   pendingComponent: RootPending,
   pendingMinMs: 0,
   pendingMs: 0,
@@ -119,20 +123,28 @@ function RootContent() {
   );
 
   const handleApplySyncChanges = (changes: SyncChanges) => {
-    applyRootSyncChanges(changes);
-    setSyncChanges(null);
+    import("@/lib/root/root-bootstrap")
+      .then(({ applyRootSyncChanges }) => {
+        applyRootSyncChanges(changes);
+        setSyncChanges(null);
+      })
+      .catch((error) => {
+        console.error("[radio] Failed to apply radio sync changes:", error);
+      });
   };
 
   return (
     <>
       <Outlet />
       {syncChanges && (
-        <SyncDialog
-          changes={syncChanges}
-          onApply={handleApplySyncChanges}
-          onOpenChange={setShowSyncDialog}
-          open={showSyncDialog}
-        />
+        <Suspense fallback={null}>
+          <SyncDialog
+            changes={syncChanges}
+            onApply={handleApplySyncChanges}
+            onOpenChange={setShowSyncDialog}
+            open={showSyncDialog}
+          />
+        </Suspense>
       )}
     </>
   );

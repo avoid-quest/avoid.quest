@@ -1,8 +1,9 @@
-import { QueryClient } from "@tanstack/react-query";
 import { preloadRadioMode } from "@/components/radio/radio-mode-loader";
 import { initializeCriticalCollections } from "@/lib/collections/initialize";
 import { applySyncChanges, type SyncChanges } from "@/lib/collections/radios";
 import { getSettings } from "@/lib/collections/settings";
+
+export { createRootQueryClient } from "./root-query-client";
 
 async function initializeRootCollections(): Promise<SyncChanges | null> {
   const syncChanges = await initializeCriticalCollections();
@@ -10,17 +11,6 @@ async function initializeRootCollections(): Promise<SyncChanges | null> {
     console.error("[radio] Failed to preload radio mode:", error);
   });
   return syncChanges;
-}
-
-export function createRootQueryClient(): QueryClient {
-  return new QueryClient({
-    defaultOptions: {
-      queries: {
-        staleTime: 60 * 1000,
-        gcTime: 5 * 60 * 1000,
-      },
-    },
-  });
 }
 
 export async function loadRootSyncChanges(

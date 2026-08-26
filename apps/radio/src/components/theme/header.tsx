@@ -1,10 +1,24 @@
 import AvoidLogo from "@avoid.quest/ui/components/avoid-logo";
 import { ModeToggle } from "@avoid.quest/ui/components/mode-toggle";
 import { Skeleton } from "@avoid.quest/ui/components/skeleton";
+import { lazy, Suspense } from "react";
 import { ClientOnly } from "../client-only";
-import { AppFeedback } from "../feedback/app-feedback";
-import { ModeSelect } from "../settings/mode-select";
-import { SettingsButton } from "../settings/settings-button";
+
+const AppFeedback = lazy(() =>
+  import("../feedback/app-feedback").then((module) => ({
+    default: module.AppFeedback,
+  }))
+);
+const ModeSelect = lazy(() =>
+  import("../settings/mode-select").then((module) => ({
+    default: module.ModeSelect,
+  }))
+);
+const SettingsButton = lazy(() =>
+  import("../settings/settings-button").then((module) => ({
+    default: module.SettingsButton,
+  }))
+);
 
 export function Header() {
   return (
@@ -17,14 +31,22 @@ export function Header() {
       </a>
 
       <ClientOnly fallback={<Skeleton className="h-7 w-full max-w-xs" />}>
-        <ModeSelect />
+        <Suspense fallback={<Skeleton className="h-7 w-full max-w-xs" />}>
+          <ModeSelect />
+        </Suspense>
       </ClientOnly>
 
       <div className="flex shrink-0 items-center gap-1.5 [&_button]:size-7 [&_button]:text-xs">
         <ClientOnly>
-          <AppFeedback />
+          <Suspense fallback={null}>
+            <AppFeedback />
+          </Suspense>
         </ClientOnly>
-        <SettingsButton />
+        <ClientOnly fallback={<Skeleton className="size-7" />}>
+          <Suspense fallback={<Skeleton className="size-7" />}>
+            <SettingsButton />
+          </Suspense>
+        </ClientOnly>
         <ModeToggle />
       </div>
     </header>

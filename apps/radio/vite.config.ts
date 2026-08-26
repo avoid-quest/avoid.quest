@@ -67,6 +67,14 @@ const VENDOR_CHUNK_GROUPS: Array<{
       id.includes("/node_modules/scheduler/"),
   },
   {
+    // React DB is client-only here. Keep it out of the TanStack Start chunk so
+    // attaching the Worker entry does not evaluate its browser-side modules.
+    name: "vendor-tanstack-db",
+    match: (id) =>
+      id.includes("/node_modules/@tanstack/db/") ||
+      id.includes("/node_modules/@tanstack/react-db/"),
+  },
+  {
     name: "vendor-tanstack",
     match: (id) => id.includes("/node_modules/@tanstack/"),
   },

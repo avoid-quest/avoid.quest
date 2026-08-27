@@ -470,7 +470,8 @@ export class AudioManager {
     const connected = await connectAudioGraph({
       connectEffectsGraph: (soundId, source, destination, inputChannels) =>
         this.effects.connectGraph(soundId, source, destination, inputChannels),
-      connectMainOutput: (source) => this.output.connectMain(source),
+      connectMainOutput: (source, realtime) =>
+        this.output.connectMain(source, realtime),
       instance,
       notifyListeners: this.notifyListeners,
     });

@@ -17,6 +17,7 @@ class InMemoryGraph implements OutputBrowserGraph {
   readonly context: AudioContext;
   readonly cueConnections = new Set<AudioNode>();
   readonly mainConnections = new Set<AudioNode>();
+  readonly realtimeMainConnections = new Set<AudioNode>();
   cueDelayMs = 0;
   disposed = false;
   headphoneVolume = 1;
@@ -32,8 +33,10 @@ class InMemoryGraph implements OutputBrowserGraph {
     this.cueConnections.add(source);
   }
 
-  connectMain(source: AudioNode): void {
-    this.mainConnections.add(source);
+  connectMain(source: AudioNode, realtime = false): void {
+    (realtime ? this.realtimeMainConnections : this.mainConnections).add(
+      source
+    );
   }
 
   disconnectCue(source: AudioNode): void {
@@ -42,12 +45,14 @@ class InMemoryGraph implements OutputBrowserGraph {
 
   disconnectMain(source: AudioNode): void {
     this.mainConnections.delete(source);
+    this.realtimeMainConnections.delete(source);
   }
 
   dispose(): void {
     this.disposed = true;
     this.cueConnections.clear();
     this.mainConnections.clear();
+    this.realtimeMainConnections.clear();
   }
 
   setCueDelay(delayMs: number): void {
@@ -66,7 +71,7 @@ class InMemoryGraph implements OutputBrowserGraph {
 class InMemoryBrowserAdapter implements OutputBrowserAdapter {
   readonly cueSinkDeferrals: Array<{
     promise: Promise<void>;
-    resolve(): void;
+    resolve: () => void;
   }> = [];
   readonly cueSinkCreations: string[] = [];
   readonly cueSinkDisposals: string[] = [];
@@ -75,7 +80,7 @@ class InMemoryBrowserAdapter implements OutputBrowserAdapter {
   readonly mainSinkErrors = new Map<string, Error>();
   readonly mainSinkDeferrals: Array<{
     promise: Promise<void>;
-    resolve(): void;
+    resolve: () => void;
   }> = [];
   context = { id: "context-1" } as unknown as AudioContext;
   cueSinkError: Error | null = null;
@@ -474,6 +479,18 @@ describe("OutputRouting", () => {
 
     expect(browser.graphs[0]?.cueConnections).toEqual(new Set([secondTap]));
     expect(registration.enabled).toBe(true);
+  });
+
+  test("routes realtime microphone monitoring around the main sync delay", () => {
+    const { browser, routing } = setup();
+    const microphone = node("microphone", browser.context);
+
+    routing.connectMain(microphone, true);
+
+    expect(browser.graphs[0]?.mainConnections).toEqual(new Set());
+    expect(browser.graphs[0]?.realtimeMainConnections).toEqual(
+      new Set([microphone])
+    );
   });
 
   test("replaces the graph and reapplies settings when the context changes", async () => {

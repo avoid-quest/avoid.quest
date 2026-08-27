@@ -33,42 +33,42 @@ export type MainOutputRoutingSnapshot = OutputRoutingSnapshot & {
 export type OutputBrowserGraph = {
   readonly context: AudioContext;
   readonly mainOutput: AudioNode;
-  connectCue(source: AudioNode): void;
-  connectMain(source: AudioNode): void;
-  disconnectCue(source: AudioNode): void;
-  disconnectMain(source: AudioNode): void;
-  dispose(): void;
-  setCueDelay(delayMs: number): void;
-  setHeadphoneVolume(volume: number): void;
-  setMainDelay(delayMs: number): void;
+  connectCue: (source: AudioNode) => void;
+  connectMain: (source: AudioNode, realtime?: boolean) => void;
+  disconnectCue: (source: AudioNode) => void;
+  disconnectMain: (source: AudioNode) => void;
+  dispose: () => void;
+  setCueDelay: (delayMs: number) => void;
+  setHeadphoneVolume: (volume: number) => void;
+  setMainDelay: (delayMs: number) => void;
 };
 
 export type OutputCueSink = {
   readonly deviceId: string;
-  dispose(): void;
+  dispose: () => void;
 };
 
 export type OutputBrowserAdapter = {
-  createCueSink(
+  createCueSink: (
     graph: OutputBrowserGraph,
     deviceId: string
-  ): Promise<OutputCueSink>;
-  createGraph(context: AudioContext): OutputBrowserGraph;
-  getContext(): AudioContext;
-  isSinkSelectionSupported(): boolean;
-  setMainSink(context: AudioContext, deviceId: string): Promise<void>;
+  ) => Promise<OutputCueSink>;
+  createGraph: (context: AudioContext) => OutputBrowserGraph;
+  getContext: () => AudioContext;
+  isSinkSelectionSupported: () => boolean;
+  setMainSink: (context: AudioContext, deviceId: string) => Promise<void>;
 };
 
 export type OutputSettingsAdapter = {
-  read(): OutputRoutingSettings;
-  write(settings: OutputRoutingSettings): void;
+  read: () => OutputRoutingSettings;
+  write: (settings: OutputRoutingSettings) => void;
 };
 
 export type CueDeckRegistration = {
   readonly enabled: boolean;
-  cleanup(): void;
-  replaceTap(tap: AudioNode | null): void;
-  setEnabled(enabled: boolean): void;
+  cleanup: () => void;
+  replaceTap: (tap: AudioNode | null) => void;
+  setEnabled: (enabled: boolean) => void;
 };
 
 type DeckConnection = {
@@ -178,8 +178,7 @@ class OutputRouting {
   applySettings(
     patch: Partial<OutputRoutingSettings> = {}
   ): Promise<OutputRoutingSnapshot> {
-    const cleanupGeneration = this.cleanupGeneration;
-    const cueGeneration = this.cueGeneration;
+    const { cleanupGeneration, cueGeneration } = this;
     return this.queueSettingsTransaction(() =>
       this.applyReportedSettingsTransaction(() =>
         this.applySettingsTransaction(patch, cleanupGeneration, cueGeneration)
@@ -190,7 +189,7 @@ class OutputRouting {
   applyMainSettings(
     patch: Partial<MainOutputRoutingSettings> = {}
   ): Promise<MainOutputRoutingSnapshot> {
-    const cleanupGeneration = this.cleanupGeneration;
+    const { cleanupGeneration } = this;
     return this.queueSettingsTransaction(() =>
       this.applyReportedSettingsTransaction(() =>
         this.applyMainSettingsTransaction(patch, cleanupGeneration)
@@ -243,15 +242,13 @@ class OutputRouting {
   ): Promise<MainOutputRoutingSnapshot> {
     this.throwIfTransactionCancelled(cleanupGeneration);
 
-    while (true) {
-      const snapshot = await this.applyMainSettingsAttempt(
-        patch,
-        cleanupGeneration
-      );
-      if (snapshot) {
-        return snapshot;
-      }
-    }
+    const snapshot = await this.applyMainSettingsAttempt(
+      patch,
+      cleanupGeneration
+    );
+    return (
+      snapshot ?? this.applyMainSettingsTransaction(patch, cleanupGeneration)
+    );
   }
 
   private applyMainSettingsAttempt(
@@ -365,16 +362,15 @@ class OutputRouting {
     this.throwIfTransactionCancelled(cleanupGeneration);
     this.throwIfCueTransactionCancelled(cueGeneration);
 
-    while (true) {
-      const snapshot = await this.applySettingsAttempt(
-        patch,
-        cleanupGeneration,
-        cueGeneration
-      );
-      if (snapshot) {
-        return snapshot;
-      }
-    }
+    const snapshot = await this.applySettingsAttempt(
+      patch,
+      cleanupGeneration,
+      cueGeneration
+    );
+    return (
+      snapshot ??
+      this.applySettingsTransaction(patch, cleanupGeneration, cueGeneration)
+    );
   }
 
   private applySettingsAttempt(
@@ -465,7 +461,8 @@ class OutputRouting {
           });
         }
         throw new Error(
-          "Output routing transaction was cancelled by CUE release"
+          "Output routing transaction was cancelled by CUE release",
+          { cause: error }
         );
       }
       if (this.shouldRetryGraphAttempt(attempt, cleanupGeneration)) {
@@ -610,11 +607,11 @@ class OutputRouting {
     return this.createDeckRegistration(deckId, connection);
   }
 
-  connectMain(source: AudioNode): () => void {
+  connectMain(source: AudioNode, realtime = false): () => void {
     const graph = this.ensureGraph(source.context as AudioContext);
     if (!this.mainSources.has(source)) {
       this.mainSources.add(source);
-      graph.connectMain(source);
+      graph.connectMain(source, realtime);
     }
     return () => {
       if (!this.mainSources.delete(source)) {
@@ -635,8 +632,7 @@ class OutputRouting {
   }
 
   replaceContext(context: AudioContext): Promise<OutputRoutingSnapshot> {
-    const cleanupGeneration = this.cleanupGeneration;
-    const cueGeneration = this.cueGeneration;
+    const { cleanupGeneration, cueGeneration } = this;
     return this.queueSettingsTransaction(() =>
       this.applyReportedSettingsTransaction(() => {
         this.throwIfTransactionCancelled(cleanupGeneration);
@@ -730,9 +726,6 @@ class OutputRouting {
     connection: DeckConnection
   ): CueDeckRegistration {
     return {
-      get enabled() {
-        return connection.enabled;
-      },
       cleanup: () => {
         if (this.decks.get(deckId) !== connection) {
           return;
@@ -741,6 +734,9 @@ class OutputRouting {
           this.graph?.disconnectCue(connection.tap);
         }
         this.decks.delete(deckId);
+      },
+      get enabled() {
+        return connection.enabled;
       },
       replaceTap: (tap) => {
         if (this.restoreDeckRegistration(deckId, connection)) {

@@ -11,18 +11,23 @@
  * which we treat as "suspended" for simplicity.
  */
 type NormalizedContextState = "suspended" | "running" | "closed";
+const MOBILE_USER_AGENT = /(android|iphone|ipad|ipod|mobile)/;
 
 /**
  * Callback for context state changes
  */
 export type ContextStateCallback = (state: NormalizedContextState) => void;
 
-/** Match openDAW's production context profile for live monitoring. */
+/** Keep openDAW's 48 kHz profile with one extra device quantum of mobile headroom. */
 export function getAudioContextOptions(): AudioContextOptions {
-  const isFirefox =
-    typeof navigator !== "undefined" &&
-    navigator.userAgent.toLowerCase().includes("firefox");
-  return { latencyHint: 0, ...(isFirefox ? {} : { sampleRate: 48_000 }) };
+  const userAgent =
+    typeof navigator === "undefined" ? "" : navigator.userAgent.toLowerCase();
+  const isFirefox = userAgent.includes("firefox");
+  const isMobile = MOBILE_USER_AGENT.test(userAgent);
+  return {
+    latencyHint: isMobile ? 256 / 48_000 : 0,
+    ...(isFirefox ? {} : { sampleRate: 48_000 }),
+  };
 }
 
 type NativePlaybackStats = {
@@ -45,6 +50,7 @@ export type AudioContextPerformanceSnapshot = {
     underrunDurationMs: number;
     underrunEvents: number;
   } | null;
+  renderQuantumSize: number | null;
   sampleRate: number;
   state: AudioContextState;
 };
@@ -52,9 +58,12 @@ export type AudioContextPerformanceSnapshot = {
 export function snapshotAudioContext(
   context: AudioContext
 ): AudioContextPerformanceSnapshot {
-  const stats = (
-    context as AudioContext & { playbackStats?: NativePlaybackStats }
-  ).playbackStats;
+  const { renderQuantumSize } = context as AudioContext & {
+    renderQuantumSize?: number;
+  };
+  const { playbackStats: stats } = context as AudioContext & {
+    playbackStats?: NativePlaybackStats;
+  };
   return {
     baseLatencyMs: context.baseLatency * 1000,
     outputLatencyMs:
@@ -71,6 +80,8 @@ export function snapshotAudioContext(
           underrunEvents: stats.underrunEvents,
         }
       : null,
+    renderQuantumSize:
+      typeof renderQuantumSize === "number" ? renderQuantumSize : null,
     sampleRate: context.sampleRate,
     state: context.state,
   };

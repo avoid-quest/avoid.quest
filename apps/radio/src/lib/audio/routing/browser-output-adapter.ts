@@ -36,8 +36,8 @@ class BrowserOutputGraph implements OutputBrowserGraph {
     source.connect(this.cueInput);
   }
 
-  connectMain(source: AudioNode): void {
-    source.connect(this.mainDelay);
+  connectMain(source: AudioNode, realtime = false): void {
+    source.connect(realtime ? this.context.destination : this.mainDelay);
   }
 
   disconnectCue(source: AudioNode): void {
@@ -46,6 +46,11 @@ class BrowserOutputGraph implements OutputBrowserGraph {
 
   disconnectMain(source: AudioNode): void {
     safeDisconnectFrom(source, this.mainDelay, "OutputRouting.disconnectMain");
+    safeDisconnectFrom(
+      source,
+      this.context.destination,
+      "OutputRouting.disconnectMainRealtime"
+    );
   }
 
   dispose(): void {
@@ -82,7 +87,7 @@ class BrowserOutputGraph implements OutputBrowserGraph {
 
 class BrowserCueSink implements OutputCueSink {
   readonly deviceId: string;
-  private disposed = false;
+  private disposed = false as boolean;
   private readonly destination: MediaStreamAudioDestinationNode;
   private readonly element: HTMLAudioElement;
   private readonly graph: BrowserOutputGraph;

@@ -12,14 +12,15 @@ import {
 import { Slider } from "@avoid.quest/ui/components/slider";
 import {
   ClockIcon,
+  CopyIcon,
   HeadphonesIcon,
   type LucideIcon,
   RefreshCwIcon,
   Volume2Icon,
 } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useCallback, useState } from "react";
 import { toast } from "sonner";
-import { useAudioDevices } from "@/lib/audio";
+import { captureMobileAudioDiagnostic, useAudioDevices } from "@/lib/audio";
 import { getAudioSettings, getDelaySettings } from "@/lib/collections";
 import {
   applyCueOutputDevice,
@@ -59,8 +60,10 @@ export function AudioSettings() {
     delaySettings.mainDelayMs
   );
   const [cueDelayMs, setCueDelayMsState] = useState(delaySettings.cueDelayMs);
+  const [diagnostic, setDiagnostic] = useState<string | null>(null);
+  const [isCapturingDiagnostic, setIsCapturingDiagnostic] = useState(false);
 
-  const handleMainOutputChange = async (value: string) => {
+  const handleMainOutputChange = useCallback(async (value: string) => {
     try {
       await applyMainOutputDevice(value);
       const applied = getAudioSettings();
@@ -72,9 +75,9 @@ export function AudioSettings() {
       setCueOutputId(current.cueOutputId);
       toast.error("Failed to apply the main output settings");
     }
-  };
+  }, []);
 
-  const handleCueOutputChange = async (value: string) => {
+  const handleCueOutputChange = useCallback(async (value: string) => {
     const newValue = value === "none" ? null : value;
     try {
       await applyCueOutputDevice(newValue);
@@ -83,9 +86,9 @@ export function AudioSettings() {
       setCueOutputId(getAudioSettings().cueOutputId);
       toast.error("Failed to apply the CUE output settings");
     }
-  };
+  }, []);
 
-  const handleMainDelayChange = async (value: number) => {
+  const handleMainDelayChange = useCallback(async (value: number) => {
     try {
       await setMainOutputDelay(value);
       setMainDelayMsState(getDelaySettings().mainDelayMs);
@@ -93,9 +96,9 @@ export function AudioSettings() {
       setMainDelayMsState(getDelaySettings().mainDelayMs);
       toast.error("Failed to apply the main output settings");
     }
-  };
+  }, []);
 
-  const handleCueDelayChange = async (value: number) => {
+  const handleCueDelayChange = useCallback(async (value: number) => {
     try {
       await setCueOutputDelay(value);
       setCueDelayMsState(getDelaySettings().cueDelayMs);
@@ -103,7 +106,53 @@ export function AudioSettings() {
       setCueDelayMsState(getDelaySettings().cueDelayMs);
       toast.error("Failed to apply the CUE output settings");
     }
-  };
+  }, []);
+  const handleMainDelayValues = useCallback(
+    ([value]: number[]) => handleMainDelayChange(value),
+    [handleMainDelayChange]
+  );
+  const handleCueDelayValues = useCallback(
+    ([value]: number[]) => handleCueDelayChange(value),
+    [handleCueDelayChange]
+  );
+  const handleAutoLatency = useCallback(async () => {
+    try {
+      const detected = await autoCompensateLatency();
+      if (detected !== null) {
+        setMainDelayMsState(detected);
+      }
+    } catch {
+      toast.error("Failed to apply the main output settings");
+    }
+  }, []);
+  const handleDiagnostic = useCallback(async () => {
+    if (diagnostic) {
+      try {
+        await navigator.clipboard.writeText(diagnostic);
+        setDiagnostic(null);
+        toast.success("Audio diagnostic copied");
+      } catch {
+        toast.error("Could not copy the audio diagnostic");
+      }
+      return;
+    }
+    setIsCapturingDiagnostic(true);
+    try {
+      const report = await captureMobileAudioDiagnostic();
+      setDiagnostic(JSON.stringify(report, null, 2));
+      toast.success("Audio diagnostic ready to copy");
+    } catch {
+      toast.error("Could not capture the audio diagnostic");
+    } finally {
+      setIsCapturingDiagnostic(false);
+    }
+  }, [diagnostic]);
+  let diagnosticLabel = "Capture audio diagnostic";
+  if (isCapturingDiagnostic) {
+    diagnosticLabel = "Capturing 5s...";
+  } else if (diagnostic) {
+    diagnosticLabel = "Copy audio diagnostic";
+  }
 
   return (
     <div className="space-y-4">
@@ -181,7 +230,7 @@ export function AudioSettings() {
               defaultValue={[0]}
               max={500}
               min={0}
-              onValueChange={([v]) => handleMainDelayChange(v)}
+              onValueChange={handleMainDelayValues}
               step={1}
               value={[mainDelayMs]}
             />
@@ -189,16 +238,7 @@ export function AudioSettings() {
               {mainDelayMs}ms
             </span>
             <Button
-              onClick={async () => {
-                try {
-                  const detected = await autoCompensateLatency();
-                  if (detected !== null) {
-                    setMainDelayMsState(detected);
-                  }
-                } catch {
-                  toast.error("Failed to apply the main output settings");
-                }
-              }}
+              onClick={handleAutoLatency}
               size="sm"
               title="Auto-detect system latency"
               variant="outline"
@@ -238,7 +278,7 @@ export function AudioSettings() {
           )}
         </AudioSettingRow>
 
-        {cueOutputId && (
+        {Boolean(cueOutputId) && (
           <AudioSettingRow icon={ClockIcon} title="CUE delay">
             <div className="flex min-w-0 items-center gap-3">
               <Slider
@@ -246,7 +286,7 @@ export function AudioSettings() {
                 defaultValue={[0]}
                 max={500}
                 min={0}
-                onValueChange={([v]) => handleCueDelayChange(v)}
+                onValueChange={handleCueDelayValues}
                 step={1}
                 value={[cueDelayMs]}
               />
@@ -257,6 +297,16 @@ export function AudioSettings() {
           </AudioSettingRow>
         )}
       </div>
+
+      <Button
+        disabled={isCapturingDiagnostic}
+        onClick={handleDiagnostic}
+        size="sm"
+        variant="outline"
+      >
+        <CopyIcon className="size-3.5" />
+        {diagnosticLabel}
+      </Button>
 
       {/* Browser compatibility note */}
       {!sinkIdSupported && (

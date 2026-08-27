@@ -167,15 +167,17 @@ describe("audio manager output registration", () => {
       nodes: { filter, gain, pan, preFaderSend },
     } as unknown as SoundInstance;
 
+    const connectMainOutput = mock(() => () => undefined);
     await connectAudioGraph({
       connectEffectsGraph,
-      connectMainOutput: () => () => undefined,
+      connectMainOutput,
       instance,
       notifyListeners: () => undefined,
     });
 
     expect(sourceOutput.outputs.has(filter)).toBe(true);
     expect(connectEffectsGraph).toHaveBeenCalledWith("sound-1", filter, pan, 1);
+    expect(connectMainOutput).toHaveBeenCalledWith(gain, true);
     expect(pan.outputs.has(preFaderSend)).toBe(true);
   });
 

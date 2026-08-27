@@ -14,7 +14,7 @@ import type { SoundInstance } from "./audio-manager-types.js";
 
 type ConnectAudioGraphParams = {
   instance: SoundInstance;
-  connectMainOutput: (source: AudioNode) => () => void;
+  connectMainOutput: (source: AudioNode, realtime: boolean) => () => void;
   notifyListeners: NotifySoundListeners;
   connectEffectsGraph: (
     soundId: string,
@@ -149,7 +149,7 @@ async function connectAudioGraph({
   // boundary. AudioManager can then request media playback in the original
   // user-activation task without exposing a disconnected or full-volume path.
   preFaderSend.connect(gain);
-  instance.mainOutputCleanup = connectMainOutput(gain);
+  instance.mainOutputCleanup = connectMainOutput(gain, instance.isDeviceInput);
 
   const inputChannels = instance.deviceSource?.outputChannelCount ?? 2;
   if (

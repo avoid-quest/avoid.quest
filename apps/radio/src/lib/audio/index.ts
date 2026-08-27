@@ -119,6 +119,7 @@ export {
   type AudioPerformanceDiagnostics,
   type CrossfadeCurve,
   type CrossfadeOptions,
+  captureMobileAudioDiagnostic,
   countAudioEngineFacadeMethods,
   createAudioEngineFacade,
   crossfade,

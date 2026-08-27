@@ -11,7 +11,7 @@ afterEach(() => {
 });
 
 describe("DeviceSource capture policy", () => {
-  test("matches openDAW's production capture constraints", async () => {
+  test("requests the lowest capture latency without browser voice processing", async () => {
     let muted = false;
     let readyState: MediaStreamTrackState = "live";
     const settings = {
@@ -24,6 +24,7 @@ describe("DeviceSource capture policy", () => {
       sampleRate: 48_000,
     };
     const track = {
+      getCapabilities: () => ({ latency: { max: 0.1, min: 0.005 } }),
       getSettings: () => settings,
       label: "Pixel microphone",
       get muted() {
@@ -43,6 +44,7 @@ describe("DeviceSource capture policy", () => {
       value: {
         mediaDevices: {
           addEventListener: () => undefined,
+          getSupportedConstraints: () => ({ latency: true }),
           getUserMedia,
           removeEventListener: () => undefined,
         },
@@ -69,6 +71,7 @@ describe("DeviceSource capture policy", () => {
         channelCount: { ideal: 2 },
         deviceId: { exact: "pixel-mic" },
         echoCancellation: false,
+        latency: { ideal: 0 },
         noiseSuppression: false,
       },
     });
@@ -76,7 +79,9 @@ describe("DeviceSource capture policy", () => {
     expect(createChannelMerger).not.toHaveBeenCalled();
     expect(source.getDiagnostics()).toEqual({
       actual: settings,
+      capabilities: { latency: { max: 0.1, min: 0.005 } },
       label: "Pixel microphone",
+      latencyConstraintSupported: true,
       muted: false,
       readyState: "live",
       requested: {
@@ -84,6 +89,7 @@ describe("DeviceSource capture policy", () => {
         channelCount: { ideal: 2 },
         deviceId: { exact: "pixel-mic" },
         echoCancellation: false,
+        latency: { ideal: 0 },
         noiseSuppression: false,
       },
     });

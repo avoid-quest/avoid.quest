@@ -27,6 +27,18 @@ describe("AudioContextManager latency policy", () => {
     expect(getAudioContextOptions()).toEqual({ latencyHint: 0 });
   });
 
+  test("requests a 256-frame device buffer on mobile", () => {
+    Object.defineProperty(globalThis, "navigator", {
+      configurable: true,
+      value: { userAgent: "Mozilla/5.0 (Linux; Android 16) Mobile" },
+    });
+
+    expect(getAudioContextOptions()).toEqual({
+      latencyHint: 256 / 48_000,
+      sampleRate: 48_000,
+    });
+  });
+
   test("exports native playback underruns and latency with explicit units", () => {
     const context = {
       baseLatency: 0.002,
@@ -39,6 +51,7 @@ describe("AudioContextManager latency policy", () => {
         underrunDuration: 0.004,
         underrunEvents: 2,
       },
+      renderQuantumSize: 128,
       sampleRate: 48_000,
       state: "running",
     } as unknown as AudioContext;
@@ -54,6 +67,7 @@ describe("AudioContextManager latency policy", () => {
         underrunDurationMs: 4,
         underrunEvents: 2,
       },
+      renderQuantumSize: 128,
       sampleRate: 48_000,
       state: "running",
     });

@@ -50,16 +50,31 @@ export type DeviceAudioConstraints = {
   echoCancellation?: boolean;
   noiseSuppression?: boolean;
   autoGainControl?: boolean;
+  latency?: number;
   sampleRate?: number;
   channelCount?: number;
 };
 
+type DeviceTrackConstraints = MediaTrackConstraints & {
+  latency?: ConstrainDouble;
+};
+
+type DeviceSupportedConstraints = MediaTrackSupportedConstraints & {
+  latency?: boolean;
+};
+
+type DeviceTrackCapabilities = MediaTrackCapabilities & {
+  latency?: { max: number; min: number };
+};
+
 export type DeviceSourceDiagnostics = {
   actual: MediaTrackSettings & { latency?: number };
+  capabilities: DeviceTrackCapabilities | null;
   label: string;
+  latencyConstraintSupported: boolean;
   muted: boolean;
   readyState: MediaStreamTrackState;
-  requested: MediaTrackConstraints;
+  requested: DeviceTrackConstraints;
 };
 
 /**
@@ -381,11 +396,21 @@ export class DeviceSource {
     }
 
     const mergedConstraints = { ...DEFAULT_CONSTRAINTS, ...constraints };
-    const requested: MediaTrackConstraints = {
+    const supportsLatency = Boolean(
+      (
+        navigator.mediaDevices.getSupportedConstraints?.() as
+          | DeviceSupportedConstraints
+          | undefined
+      )?.latency
+    );
+    const requested: DeviceTrackConstraints = {
       autoGainControl: mergedConstraints.autoGainControl,
       channelCount: mergedConstraints.channelCount ?? { ideal: 2 },
       deviceId: deviceId ? { exact: deviceId } : undefined,
       echoCancellation: mergedConstraints.echoCancellation,
+      ...(supportsLatency
+        ? { latency: { ideal: mergedConstraints.latency ?? 0 } }
+        : {}),
       noiseSuppression: mergedConstraints.noiseSuppression,
       ...(mergedConstraints.sampleRate === undefined
         ? {}
@@ -415,7 +440,10 @@ export class DeviceSource {
         this.diagnosticsTrack = audioTrack;
         this.diagnostics = {
           actual: settings,
+          capabilities:
+            (audioTrack.getCapabilities?.() as DeviceTrackCapabilities) ?? null,
           label: audioTrack.label,
+          latencyConstraintSupported: supportsLatency,
           muted: audioTrack.muted,
           readyState: audioTrack.readyState,
           requested,

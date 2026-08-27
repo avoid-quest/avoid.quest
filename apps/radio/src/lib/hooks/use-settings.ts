@@ -1,4 +1,8 @@
-import { eq, useLiveQuery } from "@tanstack/react-db";
+import {
+  type Collection,
+  type NonSingleResult,
+  useLiveQuery,
+} from "@tanstack/react-db";
 import {
   type SettingsRecord,
   settingsCollection,
@@ -12,17 +16,16 @@ const SETTINGS_ID = "app-settings";
  * Components using this hook must be wrapped in <ClientOnly>.
  */
 export function useSettings() {
-  const result = useLiveQuery((q) =>
-    q
-      .from({ settings: settingsCollection })
-      .where(({ settings }) => eq(settings.id, SETTINGS_ID))
+  const result = useLiveQuery(
+    settingsCollection as Collection<SettingsRecord, string> & NonSingleResult
   );
 
-  // Return only the properties we need to preserve TanStack DB's tracked property optimization
   return {
-    data: result.data?.[0] as SettingsRecord | undefined,
-    status: result.status,
+    data: result.data.find((settings) => settings.id === SETTINGS_ID) as
+      | SettingsRecord
+      | undefined,
     isReady: result.isReady,
+    status: result.status,
   };
 }
 

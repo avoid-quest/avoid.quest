@@ -116,6 +116,7 @@ export {
   AUDIO_ENGINE_FACADE_PUBLIC_METHOD_BUDGET,
   type AudioEngineFacade,
   AudioManager,
+  type AudioPerformanceDiagnostics,
   type CrossfadeCurve,
   type CrossfadeOptions,
   countAudioEngineFacadeMethods,

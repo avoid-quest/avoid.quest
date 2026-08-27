@@ -10,21 +10,21 @@ The comparison uses openDAW source, package exports, Web Audio and Media Capture
 
 ## Implementation status
 
-The “Radio currently” comparisons below describe the pre-change baseline inspected during this research. The accompanying implementation now uses openDAW's numeric-zero context policy, keeps mono capture mono through the effects boundary, registers the actual one-or-two-channel width with openDAW, and exposes the engine timing ring, CPU load, native playback statistics, selected track settings, and graph topology. Pixel 9 validation remains a numbers-only follow-up; no listening result is claimed here.
+The baseline comparisons below describe Radio before the accompanying implementation. Radio now uses openDAW's numeric-zero context policy, keeps single-channel capture and same-channel device selections mono through the effects boundary, reconnects the effects graph when a selection changes its logical width, and exposes the engine timing ring, CPU load, native playback statistics, selected track settings, live track state, and graph topology. Pixel 9 validation remains a numbers-only follow-up; no listening result is claimed here.
 
 ## Conclusion
 
 Radio already adopted the most important openDAW performance feature: supported effects for all sources share one openDAW engine worklet through `Engine.registerMonitoringSource`. It should make that route the measured default for live input and should not recreate openDAW's internal monitoring router.
 
-The first likely mobile regression is outside openDAW. Radio creates its singleton context with `latencyHint: "playback"`, while openDAW creates it with `latencyHint: 0`. The Web Audio specification defines `"playback"` as prioritizing uninterrupted playback over latency and `"interactive"` as the lowest latency the user agent can provide without glitches. This context policy is fixed when `playDeviceSound` starts because Radio initializes the context before requesting the input stream.
+The first likely mobile regression identified in the baseline was outside openDAW. Radio created its singleton context with `latencyHint: "playback"`, while openDAW used `latencyHint: 0`. The implementation now uses numeric `0`. The Web Audio specification defines `"playback"` as prioritizing uninterrupted playback over latency and `"interactive"` as the lowest latency the user agent can provide without glitches. The selected context policy is fixed when `playDeviceSound` starts because Radio initializes the context before requesting the input stream.
 
-The second mismatch is input width. Radio requests up to 32 ideal input channels and sends every official monitoring source to openDAW as stereo. openDAW requests only one or two channels, caps the observed stream at two, and lets its public engine API distinguish mono from stereo. A microphone should be requested and registered as mono unless the user explicitly selects stereo. This reduces graph width and lets the eight-channel openDAW monitoring pool hold eight mono inputs instead of four stereo inputs.
+The second baseline mismatch was input width. Radio requested up to 32 ideal input channels and sent every official monitoring source to openDAW as stereo. The implementation now requests two ideal channels by default, treats either a single-channel capture or the same device channel selected for both sides as mono, and registers that logical width. When an active selection changes between mono and stereo, Radio reconnects the effects graph so openDAW receives the new width. Explicit mono capture remains worth benchmarking because it reduces graph width and lets the eight-channel openDAW monitoring pool hold eight mono inputs instead of four stereo inputs.
 
 The recommended direction is:
 
-1. Adopt openDAW's numeric low-latency context policy as an experiment, first `0`, with `"interactive"` as the fallback candidate.
-2. Keep Radio's device lifecycle, but adopt openDAW's one-or-two-channel capture policy and pass the actual channel count into the already adopted public monitoring API.
-3. Expose the existing openDAW engine's public performance counters from `OfficialOpenDawRuntime` and collect native `AudioContext.playbackStats` when available.
+1. Use the adopted numeric `0` context policy as the benchmark baseline, with `"interactive"` and the former `"playback"` policy as comparison cases.
+2. Use the implemented one-or-two-channel effects path as the baseline, then compare explicit mono and stereo capture on the target device.
+3. Collect the performance counters now exposed by `OfficialOpenDawRuntime` and native `AudioContext.playbackStats` when available.
 4. Benchmark bypass, pooled official effects, and compatibility effects independently. Keep the compatibility processor only for the three Radio-only types: `pitchShifter`, `distortion`, and `limiter`.
 5. Select a policy from repeated numeric runs on the Pixel 9. Do not add a guessed buffer size or a second effects engine before these measurements identify the failing layer.
 
@@ -78,11 +78,11 @@ For measurement, direct sampling of `playbackStats` is more useful than adopting
 
 ## What Radio already adopts
 
-Radio's [`OfficialOpenDawRuntime`](./src/lib/audio/manager/official-opendaw-runtime.ts#L164-L214) already installs `WasmEngine`, creates openDAW `AudioWorklets`, creates one `Project`, starts its engine worklet, waits for readiness, and starts the engine. It disconnects the normal master output because Radio consumes per-source monitor returns.
+Radio's [`OfficialOpenDawRuntime`](./src/lib/audio/manager/official-opendaw-runtime.ts#L214-L286) already installs `WasmEngine`, creates openDAW `AudioWorklets`, creates one `Project`, starts its engine worklet, waits for readiness, and starts the engine. It disconnects the normal master output because Radio consumes per-source monitor returns.
 
-For each supported effects source, Radio creates an openDAW audio unit and calls the public [`project.engine.registerMonitoringSource`](./src/lib/audio/manager/official-opendaw-runtime.ts#L290-L347). All those sources use the same project and engine worklet. This is the upstream pooled architecture, not a Radio copy.
+For each supported effects source, Radio creates an openDAW audio unit and calls the public [`project.engine.registerMonitoringSource`](./src/lib/audio/manager/official-opendaw-runtime.ts#L401-L475). All those sources use the same project and engine worklet. This is the upstream pooled architecture, not a Radio copy.
 
-Radio's [`EffectsController`](./src/lib/audio/manager/effects-controller.ts#L575-L597) chooses:
+Radio's [`EffectsController`](./src/lib/audio/manager/effects-controller.ts#L592-L615) chooses:
 
 - native bypass when no enabled processing is needed;
 - the shared official openDAW runtime when every enabled effect is supported;
@@ -90,15 +90,15 @@ Radio's [`EffectsController`](./src/lib/audio/manager/effects-controller.ts#L575
 
 The official mapping contains 19 openDAW effect types in [`official-opendaw-mapping.ts`](./src/lib/audio/dsp/effects/official-opendaw-mapping.ts#L3-L26). The only Radio-only types are [`pitchShifter`, `distortion`, and `limiter`](./src/lib/audio/dsp/effects/types.ts#L43-L47). A Radio-only effect anywhere in a nested chain keeps the complete source on compatibility processing, so one unsupported effect currently forfeits pooled processing for that source.
 
-The compatibility backend creates one two-input stereo [`cacophony-processor` worklet per source](./src/lib/audio/playback/worklet-manager.ts#L563-L587). Radio also creates lazy per-source and master openDAW meter worklets while UI listeners exist in [`MeterService`](./src/lib/audio/manager/meter-service.ts#L44-L48) and [`MeterService.activate`](./src/lib/audio/manager/meter-service.ts#L140-L173). These worklets may be inexpensive, but their cost must be included in a mobile benchmark instead of assumed away.
+The compatibility backend creates one two-input stereo [`cacophony-processor` worklet per source](./src/lib/audio/playback/worklet-manager.ts#L563-L587). Radio also creates lazy per-source and master openDAW meter worklets while UI listeners exist in [`MeterService`](./src/lib/audio/manager/meter-service.ts#L44-L48) and [`MeterService.activate`](./src/lib/audio/manager/meter-service.ts#L157-L190). These worklets may be inexpensive, but their cost must be included in a mobile benchmark instead of assumed away.
 
 ## Public openDAW features Radio can adopt directly
 
 | API or feature | Export and support status | Current Radio state | Recommendation |
 | --- | --- | --- | --- |
 | `Project`, `AudioWorklets`, `WasmEngine` | Public package APIs. `Project` and `AudioWorklets` are root exports of `@opendaw/studio-core`; `WasmEngine` is supplied by `@opendaw/studio-core-wasm`. | Already adopted by `OfficialOpenDawRuntime`. | Keep one project and one realtime engine per `AudioContext`. Do not create an engine per live source. |
-| `Engine.registerMonitoringSource` and `unregisterMonitoringSource` | Public, root-exported `Engine` methods with explicit `1 | 2` channel support. | Already adopted, but every source is registered with `2`. | Pass the actual mono or stereo width. Make this the default effects route on supported devices. |
-| `Engine.cpuLoad`, `perfBuffer`, `perfIndex`, and `preferences` | Public members of the root-exported `Engine` interface. | The runtime owns the project but does not expose diagnostics. | Add a narrow read-only diagnostics surface. During benchmark runs, enable `dspLoadMeasurement`, snapshot the ring buffer and CPU load, then disable it. |
+| `Engine.registerMonitoringSource` and `unregisterMonitoringSource` | Public, root-exported `Engine` methods with explicit `1 | 2` channel support. | Already adopted. Device inputs pass the logical output width derived from capture and channel selection; active width changes reconnect the effects graph. Playback sources default to stereo. | Keep passing the effective width and make this the default effects route on supported devices. |
+| `Engine.cpuLoad`, `perfBuffer`, `perfIndex`, and `preferences` | Public members of the root-exported `Engine` interface. | Exposed through a narrow read-only performance snapshot. | During benchmark runs, enable `dspLoadMeasurement`, snapshot the ring buffer and CPU load, then disable it. |
 | `AudioDevices.requestStream` | Public root export. It wraps `getUserMedia`, error reporting, and openDAW's device list. | Radio uses `getUserMedia` directly. | Optional adoption for shared permission and device enumeration behavior. It provides no direct latency improvement and does not replace Radio's channel-routing lifecycle. |
 | `CaptureAudio` and `MonitoringMode` | Public through the package root's `capture` exports. | Not used. | Do not adopt `CaptureAudio` just for a DJ deck. It is coupled to openDAW capture boxes, project recording, timeline state, and sample services. Adopt it only if Radio moves the complete input and recording lifecycle into an openDAW project. |
 | `MeterWorklet` through `AudioWorklets.createMeter` | Public root exports. | Already adopted lazily by `MeterService`. | Keep it, but benchmark meters enabled and disabled. Avoid adding diagnostic meters when engine and playback counters answer the question. |
@@ -108,23 +108,23 @@ The compatibility backend creates one two-input stereo [`cacophony-processor` wo
 
 The package root export evidence is [`packages/studio/core/src/index.ts`](https://github.com/andremichelle/openDAW/blob/2588853288d300063a3691b8d7cb2bcf1240bbc3/packages/studio/core/src/index.ts#L1-L40) and [`capture/index.ts`](https://github.com/andremichelle/openDAW/blob/2588853288d300063a3691b8d7cb2bcf1240bbc3/packages/studio/core/src/capture/index.ts#L1-L8). Radio's installed package exposes only its root plus named worker and processor entry points, so an emitted file that is not in that export map is not a supported import.
 
-## Material differences in Radio
+## Material differences found in the baseline
 
-### The context currently asks for playback latency
+### The context asked for playback latency
 
-Radio's singleton [`createContext`](./src/lib/audio/playback/audio-context.ts#L216-L237) uses `latencyHint: "playback"`. [`playDeviceSound`](./src/lib/audio/manager/audio-manager.ts#L334-L387) calls `init()` before `getUserMedia`, so the microphone cannot select a lower-latency context later.
+At the inspected baseline, Radio's singleton `createContext` used `latencyHint: "playback"`. The current [`getAudioContextOptions`](./src/lib/audio/playback/audio-context.ts#L20-L26) returns `latencyHint: 0`. [`playDeviceSound`](./src/lib/audio/manager/audio-manager.ts#L370-L420) still calls `init()` before starting the device source, so the microphone cannot select a different context policy later.
 
-There is no standards-based API for changing an existing context's latency category. Numeric A/B runs therefore need a context creation policy selected before initialization, with a fresh context or page reload between cases.
+There is no standards-based API for changing an existing context's latency category. A/B runs still need a benchmark policy selected before initialization, with a fresh context or page reload between cases.
 
-### Capture requests unnecessary width
+### Capture requested unnecessary width
 
-Radio disables capture processing and requests 48 kHz, but defaults to [`channelCount: {ideal: 32}`](./src/lib/audio/playback/device-source.ts#L336-L362). Its graph immediately treats the result as at most stereo and the official runtime registers two channels regardless of actual settings. This differs from openDAW's one-or-two-channel contract and spends two of its eight monitoring channels for every microphone.
+At the inspected baseline, Radio disabled capture processing and requested 48 kHz, but defaulted to `channelCount: {ideal: 32}`. The graph treated the result as at most stereo and the official runtime registered every source with two channels. The current [`DeviceSource.start`](./src/lib/audio/playback/device-source.ts#L370-L431) defaults to `channelCount: {ideal: 2}`, snapshots the selected track settings, and initializes channel routing. Its [`outputChannelCount` and routing](./src/lib/audio/playback/device-source.ts#L182-L274) keep a one-channel capture or same-channel selection mono. The [audio graph](./src/lib/audio/manager/audio-manager-graph.ts#L113-L211) passes that logical width to the runtime and reconnects an active input when a selection changes between mono and stereo.
 
-Radio should record the complete selected settings needed to interpret each run: `channelCount`, `sampleRate`, `latency`, `echoCancellation`, `noiseSuppression`, `autoGainControl`, `deviceId`, and track label. A requested constraint without the selected setting is not evidence that the browser honored it.
+Radio now records the requested constraints, selected track settings, and track label. [`DeviceSource.getDiagnostics`](./src/lib/audio/playback/device-source.ts#L155-L166) also reads `muted` and `readyState` from the current track, while [`stop`](./src/lib/audio/playback/device-source.ts#L484-L507) clears the diagnostics. Benchmark records should retain `channelCount`, `sampleRate`, `latency`, `echoCancellation`, `noiseSuppression`, `autoGainControl`, `deviceId`, the label, and the live track state. A requested constraint without the selected setting is not evidence that the browser honored it.
 
 ### Unsupported effects change the whole execution model
 
-The native graph is [`source -> pan -> filter -> effects router -> pre-fader send -> gain -> output`](./src/lib/audio/manager/audio-manager-graph.ts#L105-L163). Supported chains take the pooled official path. Adding one Radio-only effect moves the source to its own compatibility worklet. Mobile results therefore need to name the active backend and effect chain. An aggregate "effects on" result would mix two different engines and conceal the likely cause of crackles.
+The native graph is [`source -> pan -> filter -> effects router -> pre-fader send -> gain -> output`](./src/lib/audio/manager/audio-manager-graph.ts#L128-L160) for playback sources; device inputs place pan after effects to preserve mono input width. Supported chains take the pooled official path. Adding one Radio-only effect moves the source to its own compatibility worklet. Mobile results therefore need to name the active backend and effect chain. An aggregate "effects on" result would mix two different engines and conceal the likely cause of crackles.
 
 For unsupported effects, the efficient long-term choices are:
 
@@ -142,7 +142,7 @@ Use the same Pixel 9, Chrome build, physical input and output route, input signa
 
 | Dimension | Cases |
 | --- | --- |
-| Context policy | current `"playback"`; `"interactive"`; numeric `0` |
+| Context policy | current numeric `0`; `"interactive"`; former `"playback"` baseline |
 | Capture width | mono `{ideal: 1}`; stereo `{ideal: 2}` |
 | Capture latency constraint | omitted, matching openDAW; `{ideal: 0}` only as a separate Radio experiment |
 | Processing route | native bypass; official pooled engine; compatibility engine |
@@ -168,7 +168,7 @@ Collect one structured record per run:
 | Backend and worklet count | Radio runtime state plus instrumentation | Separates official pooled, compatibility, meter, and recording worklets. |
 | Effect algorithmic delay | deterministic `OfflineAudioContext` impulse test | First significant output frame minus input impulse frame for every effect and representative chain. This is stable and does not depend on a phone's scheduler. |
 
-The first implementation should expose a snapshot method from `OfficialOpenDawRuntime` rather than making its `Project` public. The snapshot can return copied timing values, current load, sample rate, quantum budget, and registered monitoring channel count. Copy the ring data while reading so later worklet updates do not mutate a stored result.
+The implemented [`OfficialOpenDawRuntime` snapshot](./src/lib/audio/manager/official-opendaw-runtime.ts#L157-L196) keeps its `Project` private and returns copied timing values, current load, the quantum budget, and registered monitoring channel count. The context snapshot supplies the sample rate. Copying the ring data prevents later worklet updates from mutating a stored result.
 
 ### Acceptance rules
 
@@ -189,12 +189,12 @@ CI should test option propagation, backend selection, metric-delta arithmetic, t
 
 For exact microphone-to-speaker latency, use a physical loopback fixture and automated cross-correlation: emit a known pulse or maximum-length sequence into the input, record the device output, and calculate the sample offset. Repeat for bypass, official effects, and compatibility effects. This remains a numbers-only test and detects both buffering and algorithmic delay. Without a loopback, describe latency results as browser-reported output latency plus reported input settings, not "near zero end-to-end latency."
 
-## Recommended implementation sequence
+## Recommended follow-up sequence
 
-1. Add benchmark-only structured capture for native playback stats, context latency, complete track settings, selected backend, source/channel counts, and meter state.
-2. Expose public openDAW engine telemetry through a narrow `OfficialOpenDawRuntime` snapshot and add deterministic tests for the snapshot calculations.
-3. Add a context-creation policy seam and A/B `"playback"`, `"interactive"`, and `0` on the Pixel 9. Make no default change until underrun and latency results identify the winning case.
-4. Replace the 32-channel ideal with an explicit one-or-two-channel request. Register the actual width with the official engine. Test that mono stays mono at registration and returns stereo monitoring as openDAW specifies.
+1. Use the implemented structured diagnostics to capture native playback stats, context latency, complete selected track settings, live track state, backend counts, source and channel counts, and meter state.
+2. Enable the implemented `OfficialOpenDawRuntime` timing snapshot during each run and retain deterministic tests for its calculations.
+3. Add a benchmark-only context-creation policy seam and A/B the current numeric `0` against `"interactive"` and the former `"playback"` baseline on the Pixel 9. Keep numeric `0` as the product default until the results justify another change.
+4. Compare explicit mono and stereo capture, plus a same-channel logical mono selection, through the implemented one-or-two-channel effects boundary. Verify on the Pixel 9 that the browser selects the requested capture width, Radio registers a same-channel selection as mono, and mono returns as stereo monitoring as openDAW specifies.
 5. Run the full matrix for bypass and official effects. If official effects pass but compatibility fails, profile `pitchShifter`, `distortion`, and `limiter` independently and decide whether to optimize or port each one.
 6. Measure meters on and off. Change meter behavior only if the delta is material.
 7. Add an automated physical loopback run only if product acceptance requires a defensible end-to-end latency number.

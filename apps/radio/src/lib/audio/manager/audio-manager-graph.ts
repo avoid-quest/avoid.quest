@@ -1,4 +1,5 @@
 import {
+  type ChannelSelection,
   generateErrorId,
   type WorkletManager,
   type WorkletManagerEvents,
@@ -27,6 +28,12 @@ type WorkletListenerParams = {
   wm: WorkletManager;
   sounds: Map<string, SoundInstance>;
   notifyListeners: NotifySoundListeners;
+};
+
+type UpdateDeviceChannelSelectionParams = {
+  instance: SoundInstance;
+  reconnectGraph: (instance: SoundInstance) => Promise<boolean>;
+  selection: ChannelSelection;
 };
 
 const STALE_SOURCE_CONTROL_ERROR = /^Cannot (pause|resume):/;
@@ -143,7 +150,7 @@ async function connectAudioGraph({
   preFaderSend.connect(gain);
   instance.mainOutputCleanup = connectMainOutput(gain);
 
-  const inputChannels = instance.deviceSource?.channelCount === 1 ? 1 : 2;
+  const inputChannels = instance.deviceSource?.outputChannelCount ?? 2;
   if (
     await connectEffectsGraph(
       instance.sourceId,
@@ -178,4 +185,34 @@ async function connectAudioGraph({
   return true;
 }
 
-export { attachWorkletManagerListeners, cleanupSoundNodes, connectAudioGraph };
+function updateDeviceChannelSelection({
+  instance,
+  reconnectGraph,
+  selection,
+}: UpdateDeviceChannelSelectionParams): void {
+  const { deviceSource } = instance;
+  if (!deviceSource) {
+    return;
+  }
+  const previousOutputChannelCount = deviceSource.outputChannelCount;
+  deviceSource.setChannelSelection(selection);
+  if (
+    deviceSource.isActive &&
+    deviceSource.outputChannelCount !== previousOutputChannelCount &&
+    instance.nodes
+  ) {
+    reconnectGraph(instance).catch((error: unknown) =>
+      console.warn(
+        `[AudioManager] Failed to reconnect device input ${instance.sourceId}`,
+        error
+      )
+    );
+  }
+}
+
+export {
+  attachWorkletManagerListeners,
+  cleanupSoundNodes,
+  connectAudioGraph,
+  updateDeviceChannelSelection,
+};

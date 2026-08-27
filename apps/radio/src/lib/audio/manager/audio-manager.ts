@@ -35,7 +35,11 @@ import {
   type Unsubscribe,
 } from "../playback/index.js";
 import { inferStreamFormat } from "../playback/stream-format.js";
-import { cleanupSoundNodes, connectAudioGraph } from "./audio-manager-graph.js";
+import {
+  cleanupSoundNodes,
+  connectAudioGraph,
+  updateDeviceChannelSelection,
+} from "./audio-manager-graph.js";
 import {
   createDeviceSourceCallbacks,
   createPlaybackSourceCallbacks,
@@ -432,10 +436,14 @@ export class AudioManager {
     selection: ChannelSelection
   ): void {
     const instance = this.sounds.get(soundId);
-    if (!instance?.deviceSource) {
+    if (!instance) {
       return;
     }
-    instance.deviceSource.setChannelSelection(selection);
+    updateDeviceChannelSelection({
+      instance,
+      reconnectGraph: (sound) => this.connectAudioGraph(sound),
+      selection,
+    });
   }
 
   /**

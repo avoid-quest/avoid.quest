@@ -93,6 +93,7 @@ export class DeviceSource {
   private _channelSelection: ChannelSelection = { left: 0, right: 1 };
   private _channelCount = 2;
   private diagnostics: DeviceSourceDiagnostics | null = null;
+  private diagnosticsTrack: MediaStreamTrack | null = null;
   private splitter: ChannelSplitterNode | null = null;
   private merger: ChannelMergerNode | null = null;
   private routingOutput: GainNode | null = null;
@@ -152,12 +153,14 @@ export class DeviceSource {
   }
 
   getDiagnostics(): DeviceSourceDiagnostics | null {
-    if (!this.diagnostics) {
+    if (!(this.diagnostics && this.diagnosticsTrack)) {
       return null;
     }
     return {
       ...this.diagnostics,
       actual: { ...this.diagnostics.actual },
+      muted: this.diagnosticsTrack.muted,
+      readyState: this.diagnosticsTrack.readyState,
       requested: { ...this.diagnostics.requested },
     };
   }
@@ -174,6 +177,13 @@ export class DeviceSource {
    */
   get channelCount(): number {
     return this._channelCount;
+  }
+
+  get outputChannelCount(): 1 | 2 {
+    return this._channelCount === 1 ||
+      this._channelSelection.left === this._channelSelection.right
+      ? 1
+      : 2;
   }
 
   /**
@@ -212,6 +222,8 @@ export class DeviceSource {
     safeDisconnect(this.source, "DeviceSource.applyChannelRouting");
     safeDisconnect(this.splitter, "DeviceSource.applyChannelRouting");
     safeDisconnect(this.merger, "DeviceSource.applyChannelRouting");
+    this.splitter = null;
+    this.merger = null;
 
     // Ensure routing output exists
     if (!this.routingOutput) {
@@ -221,13 +233,20 @@ export class DeviceSource {
 
     const { left, right } = this._channelSelection;
     const count = this._channelCount;
-    this.routingOutput.channelCount = count === 1 ? 1 : 2;
+    this.routingOutput.channelCount = this.outputChannelCount;
     this.routingOutput.channelCountMode = "explicit";
 
     // Keep a microphone mono until the post-effects panner. openDAW then
     // spends one monitoring channel and duplicates its mono return to stereo.
-    if (count === 1) {
-      this.source.connect(this.routingOutput);
+    if (this.outputChannelCount === 1) {
+      if (count === 1) {
+        this.source.connect(this.routingOutput);
+        return;
+      }
+      this.splitter = this.context.createChannelSplitter(count);
+      this.source.connect(this.splitter);
+      const channel = Math.max(0, Math.min(left, count - 1));
+      this.splitter.connect(this.routingOutput, channel, 0);
       return;
     }
 
@@ -373,6 +392,7 @@ export class DeviceSource {
         : { sampleRate: mergedConstraints.sampleRate }),
     };
     this.diagnostics = null;
+    this.diagnosticsTrack = null;
 
     try {
       // Use 'exact' for device selection to ensure the correct device is captured
@@ -392,6 +412,7 @@ export class DeviceSource {
       this._currentDeviceId = settings?.deviceId ?? deviceId ?? null;
       this._channelCount = settings?.channelCount ?? 2;
       if (audioTrack && settings) {
+        this.diagnosticsTrack = audioTrack;
         this.diagnostics = {
           actual: settings,
           label: audioTrack.label,
@@ -461,6 +482,8 @@ export class DeviceSource {
    * Stop capturing and release resources
    */
   stop(): void {
+    this.diagnostics = null;
+    this.diagnosticsTrack = null;
     if (!this._isActive) {
       return;
     }

@@ -19,7 +19,10 @@ export type ContextStateCallback = (state: NormalizedContextState) => void;
 
 /** Match openDAW's production context profile for live monitoring. */
 export function getAudioContextOptions(): AudioContextOptions {
-  return { latencyHint: 0, sampleRate: 48_000 };
+  const isFirefox =
+    typeof navigator !== "undefined" &&
+    navigator.userAgent.toLowerCase().includes("firefox");
+  return { latencyHint: 0, ...(isFirefox ? {} : { sampleRate: 48_000 }) };
 }
 
 type NativePlaybackStats = {

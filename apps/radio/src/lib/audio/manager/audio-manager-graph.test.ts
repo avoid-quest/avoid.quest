@@ -4,6 +4,7 @@ import {
   attachWorkletManagerListeners,
   cleanupSoundNodes,
   connectAudioGraph,
+  updateDeviceChannelSelection,
 } from "./audio-manager-graph";
 import type { SoundInstance } from "./audio-manager-types";
 
@@ -41,6 +42,27 @@ class TestAudioNode {
       this.outputs.clear();
     }
   }
+}
+
+function createDeviceInputSelectionFixture(initialOutputChannelCount: 1 | 2) {
+  let outputChannelCount = initialOutputChannelCount;
+  const deviceSource = {
+    isActive: true,
+    get outputChannelCount() {
+      return outputChannelCount;
+    },
+    setChannelSelection: mock((selection: { left: number; right: number }) => {
+      outputChannelCount = selection.left === selection.right ? 1 : 2;
+    }),
+  };
+  const instance = {
+    deviceSource,
+    nodes: {},
+    sourceId: "sound-1",
+  } as unknown as SoundInstance;
+  const reconnectGraph = mock(async () => true);
+
+  return { instance, reconnectGraph };
 }
 
 function attachTestWorkletListeners() {
@@ -122,7 +144,7 @@ describe("audio manager graph worklet errors", () => {
 });
 
 describe("audio manager output registration", () => {
-  test("keeps mono device input mono until openDAW, then pans its return", async () => {
+  test("registers a mono selection from a stereo device as mono", async () => {
     const filter = new TestAudioNode();
     const gain = new TestAudioNode();
     const pan = new TestAudioNode();
@@ -135,7 +157,12 @@ describe("audio manager output registration", () => {
         name: "Microphone",
         streamUrl: "device://microphone",
       }),
-      deviceSource: { channelCount: 1, output: sourceOutput },
+      deviceSource: {
+        channelCount: 2,
+        currentChannelSelection: { left: 0, right: 0 },
+        output: sourceOutput,
+        outputChannelCount: 1,
+      },
       isDeviceInput: true,
       nodes: { filter, gain, pan, preFaderSend },
     } as unknown as SoundInstance;
@@ -150,6 +177,28 @@ describe("audio manager output registration", () => {
     expect(sourceOutput.outputs.has(filter)).toBe(true);
     expect(connectEffectsGraph).toHaveBeenCalledWith("sound-1", filter, pan, 1);
     expect(pan.outputs.has(preFaderSend)).toBe(true);
+  });
+
+  test("reconnects the effects graph when the selected width changes", () => {
+    const { instance, reconnectGraph } = createDeviceInputSelectionFixture(2);
+
+    updateDeviceChannelSelection({
+      instance,
+      reconnectGraph,
+      selection: { left: 0, right: 0 },
+    });
+    expect(reconnectGraph).toHaveBeenCalledWith(instance);
+  });
+
+  test("does not reconnect for selections of the same width", () => {
+    const { instance, reconnectGraph } = createDeviceInputSelectionFixture(1);
+
+    updateDeviceChannelSelection({
+      instance,
+      reconnectGraph,
+      selection: { left: 1, right: 1 },
+    });
+    expect(reconnectGraph).not.toHaveBeenCalled();
   });
 
   test("preserves a registered CUE connection when rebuilding a sound graph", async () => {

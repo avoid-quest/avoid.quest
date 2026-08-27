@@ -356,6 +356,7 @@ describe("EffectsController", () => {
     });
     const reverb = createDefaultEffectConfig("plateReverb", "reverb", 0);
     reverb.enabled = true;
+    controller.setPerformanceMeasurementEnabled(true);
     await controller.reconcile("target", {
       tree: [reverb],
       dryWet: 0.7,
@@ -376,6 +377,7 @@ describe("EffectsController", () => {
       ready: true,
       status: "ready",
     });
+    expect(runtime.setPerformanceMeasurementEnabled).toHaveBeenCalledWith(true);
     expect(createWorkletManager).not.toHaveBeenCalled();
     expect(runtime.connectSound.mock.calls[0]).toHaveLength(5);
     expect(runtime.connectSound.mock.calls[0]?.[4]).toBe(1);

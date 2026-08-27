@@ -1,5 +1,14 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { getAudioContextOptions, snapshotAudioContext } from "./audio-context";
+
+const originalNavigator = globalThis.navigator;
+
+afterEach(() => {
+  Object.defineProperty(globalThis, "navigator", {
+    configurable: true,
+    value: originalNavigator,
+  });
+});
 
 describe("AudioContextManager latency policy", () => {
   test("uses openDAW's low-latency 48 kHz context profile", () => {
@@ -7,6 +16,15 @@ describe("AudioContextManager latency policy", () => {
       latencyHint: 0,
       sampleRate: 48_000,
     });
+  });
+
+  test("lets Firefox use the system sample rate", () => {
+    Object.defineProperty(globalThis, "navigator", {
+      configurable: true,
+      value: { userAgent: "Mozilla/5.0 Firefox/142.0" },
+    });
+
+    expect(getAudioContextOptions()).toEqual({ latencyHint: 0 });
   });
 
   test("exports native playback underruns and latency with explicit units", () => {

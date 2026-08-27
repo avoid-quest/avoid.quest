@@ -147,13 +147,11 @@ function benchmarkVocoderUpdates(): void {
     bandCount: 16,
     modulatorSource: "noise-pink",
   });
+  applyEffectConfig(effect, "vocoder", config as Record<string, unknown>);
   const times: number[] = [];
   for (let index = 0; index < measuredQuanta; index += 1) {
     const before = performance.now();
-    applyEffectConfig(effect, "vocoder", {
-      ...config,
-      gain: index % 2,
-    });
+    applyEffectConfig(effect, "vocoder", { gain: index % 2 });
     times.push((performance.now() - before) * 1000);
   }
   times.sort((left, right) => left - right);

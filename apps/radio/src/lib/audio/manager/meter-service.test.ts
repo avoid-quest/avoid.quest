@@ -146,13 +146,14 @@ describe("MeterService", () => {
     const meters = [new FakeMeterNode(), new FakeMeterNode()];
     let resolveFirst: ((meter: OpenDawMeterNode) => void) | undefined;
     let factoryCalls = 0;
-    const factory = mock(() =>
-      ++factoryCalls === 1
+    const factory = mock(() => {
+      factoryCalls += 1;
+      return factoryCalls === 1
         ? new Promise<OpenDawMeterNode>((resolve) => {
             resolveFirst = resolve;
           })
-        : Promise.resolve(meters[1] as unknown as OpenDawMeterNode)
-    ) as MeterNodeFactory;
+        : Promise.resolve(meters[1] as unknown as OpenDawMeterNode);
+    }) as MeterNodeFactory;
     const service = new MeterService(factory);
     service.subscribeMeter("deck-a", () => undefined);
 

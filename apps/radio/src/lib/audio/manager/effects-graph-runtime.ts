@@ -23,26 +23,26 @@ export type EffectsPerformanceSnapshot = {
 
 /** EffectsController seam implemented by the openDAW and test adapters. */
 export type EffectsGraphRuntime = {
-  cleanup(): void;
-  connectSidechainSource(
+  cleanup: () => void;
+  connectSidechainSource: (
     soundId: string,
     source: AudioNode,
     generation?: number,
     inputChannels?: 1 | 2
-  ): Promise<boolean>;
-  connectSound(
+  ) => Promise<boolean>;
+  connectSound: (
     soundId: string,
     source: AudioNode,
     destination: AudioNode,
     generation?: number,
     inputChannels?: 1 | 2
-  ): Promise<boolean>;
-  deleteSound(soundId: string, generation?: number): void;
-  disconnectSound(soundId: string, generation?: number): void;
-  getPerformanceSnapshot?(): EffectsPerformanceSnapshot | null;
-  setDryWet(soundId: string, value: number): void;
-  setSidechainTarget(soundId: string, targetSoundId: string | null): void;
-  setPerformanceMeasurementEnabled?(enabled: boolean): void;
-  setTempo(bpm: number): void;
-  syncEffects(soundId: string, effects: readonly EffectConfig[]): void;
+  ) => Promise<boolean>;
+  deleteSound: (soundId: string, generation?: number) => void;
+  disconnectSound: (soundId: string, generation?: number) => void;
+  getPerformanceSnapshot?: () => EffectsPerformanceSnapshot | null;
+  setDryWet: (soundId: string, value: number) => void;
+  setSidechainTarget: (soundId: string, targetSoundId: string | null) => void;
+  setPerformanceMeasurementEnabled?: (enabled: boolean) => void;
+  setTempo: (bpm: number) => void;
+  syncEffects: (soundId: string, effects: readonly EffectConfig[]) => void;
 };

@@ -71,9 +71,9 @@ describe("official openDAW BoxGraph adapter", () => {
       createOfficialEffectGroup(
         {
           boxes,
+          bpm: 120,
           core: { EffectFactories: { AudioNamed: factories } },
           project,
-          bpm: 120,
         } as never,
         compressor,
         {},
@@ -95,17 +95,17 @@ describe("official openDAW BoxGraph adapter", () => {
         get data() {
           return Option.None;
         },
+        invalidate: () => undefined,
         get peaks() {
           return Option.None;
         },
         get state() {
           return { type: "idle" as const };
         },
+        subscribe: () => Terminable.Empty,
         get uuid() {
           return uuid;
         },
-        invalidate: () => undefined,
-        subscribe: () => Terminable.Empty,
       }),
       invalidate: () => undefined,
       record: () => undefined,
@@ -143,7 +143,7 @@ describe("official openDAW BoxGraph adapter", () => {
           adapters.InstrumentFactories.Tape
         );
         const rack = createMasterRack(
-          { boxes, core, project, bpm: 120 },
+          { boxes, bpm: 120, core, project },
           unit.audioUnitBox.audioEffects
         );
         return Object.keys(OPENDAW_FACTORY_KEYS).map((type, index) => {
@@ -166,7 +166,7 @@ describe("official openDAW BoxGraph adapter", () => {
             config.autoGain = true;
           }
           return createOfficialEffectGroup(
-            { boxes, core, project, bpm: 120 },
+            { boxes, bpm: 120, core, project },
             config,
             rack.wet.audioEffects,
             index * 2
@@ -179,16 +179,18 @@ describe("official openDAW BoxGraph adapter", () => {
       type: keyof typeof OPENDAW_FACTORY_KEYS,
       target: "device" | "outputTrim",
       key: string
-    ) =>
-      (
-        (
-          groups.find((group) => group.config.type === type)?.[
-            target
-          ] as unknown as Record<string, unknown>
-        )[key] as {
-          getValue(): number;
+    ): number => {
+      const group = groups.find((candidate) => candidate.config.type === type);
+      const box = group?.[target];
+      if (!box) {
+        throw new Error(`Missing ${target} for ${type}`);
+      }
+      return (
+        (box as unknown as Record<string, unknown>)[key] as {
+          getValue: () => number;
         }
       ).getValue();
+    };
 
     expect(groups).toHaveLength(19);
     expect(

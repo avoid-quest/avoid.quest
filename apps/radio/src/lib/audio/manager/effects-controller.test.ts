@@ -97,8 +97,8 @@ function createManager(context: TestAudioContext) {
 
 function sound(soundId: string, filter: TestAudioNode): SoundInstance {
   return {
-    sourceId: soundId,
     nodes: { filter },
+    sourceId: soundId,
   } as unknown as SoundInstance;
 }
 
@@ -156,10 +156,10 @@ function desiredEffects(
   overrides: Partial<Omit<DesiredEffectsState, "tree">> = {}
 ): DesiredEffectsState {
   return {
-    tree,
     dryWet: 1,
     sidechainSoundId: null,
     tempo: 120,
+    tree,
     ...overrides,
   };
 }
@@ -258,10 +258,10 @@ describe("EffectsController", () => {
     const distortion = createDefaultEffectConfig("distortion", "distortion", 0);
     distortion.enabled = true;
     const desired: DesiredEffectsState = {
-      tree: [distortion],
       dryWet: 0.4,
       sidechainSoundId: null,
       tempo: 128,
+      tree: [distortion],
     };
 
     expect(await controller.reconcile("target", desired)).toEqual({
@@ -358,10 +358,10 @@ describe("EffectsController", () => {
     reverb.enabled = true;
     controller.setPerformanceMeasurementEnabled(true);
     await controller.reconcile("target", {
-      tree: [reverb],
       dryWet: 0.7,
       sidechainSoundId: null,
       tempo: 124,
+      tree: [reverb],
     });
     const destination = new TestAudioNode(context);
 
@@ -399,10 +399,10 @@ describe("EffectsController", () => {
     const reverb = createDefaultEffectConfig("plateReverb", "reverb", 0);
     reverb.enabled = true;
     await controller.reconcile("target", {
-      tree: [reverb],
       dryWet: 0.7,
       sidechainSoundId: null,
       tempo: 124,
+      tree: [reverb],
     });
 
     await controller.connectGraph(
@@ -470,10 +470,10 @@ describe("EffectsController", () => {
     const reverb = createDefaultEffectConfig("plateReverb", "reverb", 0);
     reverb.enabled = true;
     await controller.reconcile("target", {
-      tree: [reverb],
       dryWet: 1,
       sidechainSoundId: null,
       tempo: 120,
+      tree: [reverb],
     });
     await controller.connectGraph(
       "target",
@@ -484,10 +484,10 @@ describe("EffectsController", () => {
     distortion.enabled = true;
 
     const outcome = await controller.reconcile("target", {
-      tree: [distortion],
       dryWet: 1,
       sidechainSoundId: null,
       tempo: 120,
+      tree: [distortion],
     });
 
     expect(outcome).toEqual({
@@ -510,10 +510,10 @@ describe("EffectsController", () => {
     const distortion = createDefaultEffectConfig("distortion", "distortion", 0);
     distortion.enabled = true;
     const desired: DesiredEffectsState = {
-      tree: [distortion],
       dryWet: 1,
       sidechainSoundId: null,
       tempo: 120,
+      tree: [distortion],
     };
     await controller.reconcile("target", desired);
     await controller.connectGraph(

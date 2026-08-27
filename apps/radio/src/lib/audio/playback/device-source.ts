@@ -84,7 +84,7 @@ export class DeviceSource {
   private readonly callbacks: DeviceSourceCallbacks;
   private readonly sourceId: string;
 
-  private _isActive = false;
+  private _isActive = false as boolean;
   private _permissionState: DevicePermissionState = "prompt";
   private _currentDeviceId: string | null = null;
   private deviceChangeHandler: (() => void) | null = null;
@@ -291,11 +291,11 @@ export class DeviceSource {
       )
       .map((d) => ({
         deviceId: d.deviceId,
+        groupId: d.groupId,
+        kind: d.kind,
         label:
           d.label ||
           `${d.kind === "audioinput" ? "Input" : "Output"} ${d.deviceId.slice(0, 8)}`,
-        kind: d.kind,
-        groupId: d.groupId,
       }));
   }
 
@@ -348,7 +348,7 @@ export class DeviceSource {
         const result = await navigator.permissions.query({
           name: "microphone",
         });
-        const state = result.state;
+        const { state } = result;
         if (state === "granted" || state === "denied" || state === "prompt") {
           this._permissionState = state;
           return state;

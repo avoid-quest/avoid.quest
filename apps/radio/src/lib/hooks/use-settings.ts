@@ -44,9 +44,9 @@ export function useAudioSettings() {
   const { data } = useSettings();
   return (
     data?.audio ?? {
-      mainOutputId: "default" as string,
       cueOutputId: null as string | null,
-      delay: { mainDelayMs: 0, cueDelayMs: 0 },
+      delay: { cueDelayMs: 0, mainDelayMs: 0 },
+      mainOutputId: "default" as string,
     }
   );
 }
@@ -59,7 +59,7 @@ export function useDelaySettings(): {
   cueDelayMs: number;
 } {
   const { data } = useSettings();
-  return data?.audio?.delay ?? { mainDelayMs: 0, cueDelayMs: 0 };
+  return data?.audio?.delay ?? { cueDelayMs: 0, mainDelayMs: 0 };
 }
 
 // Re-export mutation functions

@@ -12,18 +12,18 @@ type WorkletEventHandlers = Record<string, (payload: unknown) => void>;
 
 function createTestSoundInstance(radio: Radio): SoundInstance {
   return {
-    radio,
-    sourceId: "sound-1",
-    volume: 1,
-    playing: true,
-    loading: false,
     buffering: false,
+    deviceSource: null,
+    isDeviceInput: false,
+    loading: false,
+    meterUnsubscribe: null,
     nodes: null,
     playbackSource: null,
-    deviceSource: null,
+    playing: true,
+    radio,
+    sourceId: "sound-1",
     unsubscribe: null,
-    meterUnsubscribe: null,
-    isDeviceInput: false,
+    volume: 1,
   } as unknown as SoundInstance;
 }
 
@@ -72,11 +72,7 @@ function attachTestWorkletListeners() {
   );
 
   attachWorkletManagerListeners({
-    wm: {
-      on: mock((event: string, callback: (payload: unknown) => void) => {
-        handlers[event] = callback;
-      }),
-    } as never,
+    notifyListeners,
     sounds: new Map([
       [
         "sound-1",
@@ -87,47 +83,51 @@ function attachTestWorkletListeners() {
         }),
       ],
     ]),
-    notifyListeners,
+    wm: {
+      on: mock((event: string, callback: (payload: unknown) => void) => {
+        handlers[event] = callback;
+      }),
+    } as never,
   });
 
   return { handlers, notifyListeners };
 }
 
 describe("audio manager graph worklet errors", () => {
-  test.each([
-    "pause",
-    "resume",
-  ])("does not surface stale worklet SOURCE_NOT_FOUND from %s cleanup", (action) => {
-    const { handlers, notifyListeners } = attachTestWorkletListeners();
-    const originalWarn = console.warn;
-    console.warn = mock(() => undefined);
+  test.each(["pause", "resume"])(
+    "does not surface stale worklet SOURCE_NOT_FOUND from %s cleanup",
+    (action) => {
+      const { handlers, notifyListeners } = attachTestWorkletListeners();
+      const originalWarn = console.warn;
+      console.warn = mock(() => undefined);
 
-    try {
-      handlers.sourceError?.({
-        id: "err-1",
-        sourceId: "sound-1",
-        error: `Cannot ${action}: source sound-1 not found`,
-        code: "SOURCE_NOT_FOUND",
-        timestamp: 123,
-      });
+      try {
+        handlers.sourceError({
+          code: "SOURCE_NOT_FOUND",
+          error: `Cannot ${action}: source sound-1 not found`,
+          id: "err-1",
+          sourceId: "sound-1",
+          timestamp: 123,
+        });
 
-      expect(notifyListeners).not.toHaveBeenCalled();
-      expect(console.warn).toHaveBeenCalledWith(
-        `[AudioManager] Ignoring stale worklet source error: Cannot ${action}: source sound-1 not found`
-      );
-    } finally {
-      console.warn = originalWarn;
+        expect(notifyListeners).not.toHaveBeenCalled();
+        expect(console.warn).toHaveBeenCalledWith(
+          `[AudioManager] Ignoring stale worklet source error: Cannot ${action}: source sound-1 not found`
+        );
+      } finally {
+        console.warn = originalWarn;
+      }
     }
-  });
+  );
 
   test("surfaces non-pause SOURCE_NOT_FOUND worklet errors", () => {
     const { handlers, notifyListeners } = attachTestWorkletListeners();
 
-    handlers.sourceError?.({
+    handlers.sourceError({
+      code: "SOURCE_NOT_FOUND",
+      error: "Cannot start: source sound-1 not found",
       id: "err-1",
       sourceId: "sound-1",
-      error: "Cannot start: source sound-1 not found",
-      code: "SOURCE_NOT_FOUND",
       timestamp: 123,
     });
 
@@ -168,9 +168,9 @@ describe("audio manager output registration", () => {
     } as unknown as SoundInstance;
 
     await connectAudioGraph({
-      instance,
       connectEffectsGraph,
       connectMainOutput: () => () => undefined,
+      instance,
       notifyListeners: () => undefined,
     });
 
@@ -201,6 +201,38 @@ describe("audio manager output registration", () => {
     expect(reconnectGraph).not.toHaveBeenCalled();
   });
 
+  test("serializes device-width graph reconnects", async () => {
+    const { instance } = createDeviceInputSelectionFixture(2);
+    let finishFirst = (): void => undefined;
+    const firstReconnect = new Promise<boolean>((resolve) => {
+      finishFirst = () => resolve(true);
+    });
+    let reconnectCount = 0;
+    const reconnectGraph = mock(() => {
+      reconnectCount += 1;
+      return reconnectCount === 1 ? firstReconnect : Promise.resolve(true);
+    });
+
+    updateDeviceChannelSelection({
+      instance,
+      reconnectGraph,
+      selection: { left: 0, right: 0 },
+    });
+    updateDeviceChannelSelection({
+      instance,
+      reconnectGraph,
+      selection: { left: 0, right: 1 },
+    });
+
+    expect(reconnectGraph).toHaveBeenCalledTimes(1);
+    finishFirst();
+    await firstReconnect;
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(reconnectGraph).toHaveBeenCalledTimes(2);
+  });
+
   test("preserves a registered CUE connection when rebuilding a sound graph", async () => {
     const cueOutput = new TestAudioNode();
     const filter = new TestAudioNode();
@@ -221,9 +253,9 @@ describe("audio manager output registration", () => {
     } as unknown as SoundInstance;
 
     await connectAudioGraph({
-      instance,
       connectEffectsGraph,
       connectMainOutput: () => () => undefined,
+      instance,
       notifyListeners: () => undefined,
     });
 

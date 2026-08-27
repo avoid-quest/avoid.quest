@@ -17,13 +17,13 @@ import {
 } from "../dsp/effects/types.js";
 
 type PrimitiveField = {
-  getValue?(): boolean | number | string;
-  setValue(value: boolean | number | string): void;
+  getValue?: () => boolean | number | string;
+  setValue: (value: boolean | number | string) => void;
 };
 
 type PointerField = {
-  defer(): void;
-  refer(target: unknown): void;
+  defer: () => void;
+  refer: (target: unknown) => void;
 };
 
 const PRIMITIVE_FIELD_KEYS = [
@@ -130,11 +130,11 @@ type PointerBoxFields = Partial<Record<PointerFieldKey, PointerField>>;
 interface BoxLike extends PrimitiveBoxFields, PointerBoxFields {
   address?: { uuid: Uint8Array };
   audioEffects?: HostField;
-  composite?: { refer(target: unknown): void };
-  delete(): void;
+  composite?: { refer: (target: unknown) => void };
+  delete: () => void;
   entries?: {
     incoming?: unknown[];
-    pointerHub?: { incoming(): Array<{ box: BoxLike }> };
+    pointerHub?: { incoming: () => Array<{ box: BoxLike }> };
   };
   highBell?: BoxLike;
   highPass?: BoxLike;
@@ -144,7 +144,7 @@ interface BoxLike extends PrimitiveBoxFields, PointerBoxFields {
   lowShelf?: BoxLike;
   midBell?: BoxLike;
   parameters?: {
-    pointerHub?: { filter(): Array<{ box: BoxLike }> };
+    pointerHub?: { filter: () => Array<{ box: BoxLike }> };
   };
 }
 
@@ -218,9 +218,7 @@ function db(gain: number): number {
   return gain <= 0 ? Number.NEGATIVE_INFINITY : 20 * Math.log10(gain);
 }
 
-export function usesDirectOfficialEffectLayout(
-  config: EffectConfig
-): boolean {
+export function usesDirectOfficialEffectLayout(config: EffectConfig): boolean {
   // The generic wrapper adds six openDAW processors. Default Autotune needs
   // none of them, so keep its native device directly in the host chain.
   return (
@@ -460,7 +458,7 @@ function configureDevice(
       break;
     case "autotune": {
       set(box, "key", Math.max(0, AUTOTUNE_KEYS.indexOf(config.key as never)));
-      let scale = config.scale;
+      let { scale } = config;
       if (scale === "pentatonicMajor") {
         scale = "majorPentatonic";
       } else if (scale === "pentatonicMinor") {
@@ -516,7 +514,7 @@ function fixedCells(composite: BoxLike): BoxLike[] {
   const entries = composite.entries as
     | {
         pointerHub?: {
-          incoming(): Array<{ box: BoxLike }>;
+          incoming: () => Array<{ box: BoxLike }>;
         };
       }
     | undefined;
@@ -526,8 +524,12 @@ function fixedCells(composite: BoxLike): BoxLike[] {
       .map(({ box }) => box)
       .sort(
         (left, right) =>
-          Number((left.index as unknown as { getValue(): number }).getValue()) -
-          Number((right.index as unknown as { getValue(): number }).getValue())
+          Number(
+            (left.index as unknown as { getValue: () => number }).getValue()
+          ) -
+          Number(
+            (right.index as unknown as { getValue: () => number }).getValue()
+          )
       ) ?? []
   );
 }
@@ -637,8 +639,8 @@ export function createOfficialEffectGroup(
       created,
       device,
       inputTrim: null,
-      wrapper: null,
       outputTrim: null,
+      wrapper: null,
     };
   }
 
@@ -653,14 +655,14 @@ export function createOfficialEffectGroup(
     context,
     wrapper,
     {
+      effects: [],
+      gain: 1,
       id: `${config.id}:wet`,
+      muted: false,
       name: "Wet",
       order: 0,
-      gain: 1,
       pan: 0,
-      muted: false,
       solo: false,
-      effects: [],
     },
     created
   );
@@ -718,8 +720,8 @@ export function createOfficialEffectGroup(
     created,
     device,
     inputTrim,
-    wrapper,
     outputTrim,
+    wrapper,
   };
 }
 
@@ -780,12 +782,12 @@ export function restoreWerkstattParameterValues(
   const parameters = group.device.parameters as
     | {
         pointerHub?: {
-          filter(): Array<{ box: BoxLike }>;
+          filter: () => Array<{ box: BoxLike }>;
         };
       }
     | undefined;
   for (const { box } of parameters?.pointerHub?.filter() ?? []) {
-    const label = field(box, "label")?.getValue?.();
+    const label = field(box, "label").getValue?.();
     if (typeof label !== "string") {
       continue;
     }
@@ -839,26 +841,26 @@ export function createMasterRack(
   set(root, "dry", Number.NEGATIVE_INFINITY);
   set(root, "wet", 0);
   const dry = createCell(context, root, {
+    effects: [],
+    gain: 0,
     id: "master-dry",
+    muted: false,
     name: "Dry",
     order: 0,
-    gain: 0,
     pan: 0,
-    muted: false,
     solo: false,
-    effects: [],
   });
   const wet = createCell(context, root, {
+    effects: [],
+    gain: 1,
     id: "master-wet",
+    muted: false,
     name: "Wet",
     order: 1,
-    gain: 1,
     pan: 0,
-    muted: false,
     solo: false,
-    effects: [],
   });
-  return { root, dry, wet };
+  return { dry, root, wet };
 }
 
 export function setMasterRackDryWet(

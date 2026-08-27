@@ -101,7 +101,7 @@ class AudioContextManager {
   private context: AudioContext | null = null;
   private readonly stateListeners = new Set<ContextStateCallback>();
   private resumePromise: Promise<void> | null = null;
-  private userInteractionBound = false;
+  private userInteractionBound = false as boolean;
 
   private constructor() {}
 

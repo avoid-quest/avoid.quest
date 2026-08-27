@@ -37,6 +37,7 @@ type UpdateDeviceChannelSelectionParams = {
 };
 
 const STALE_SOURCE_CONTROL_ERROR = /^Cannot (pause|resume):/;
+const deviceGraphReconnects = new WeakMap<SoundInstance, Promise<void>>();
 
 function cleanupSoundNodes(instance: SoundInstance): void {
   instance.mainOutputCleanup?.();
@@ -65,8 +66,8 @@ function attachWorkletManagerListeners({
 
     instance.playing = false;
     notifySoundState(notifyListeners, sourceId, instance, {
-      isPlaying: false,
       hasEnded: true,
+      isPlaying: false,
     });
   });
 
@@ -166,19 +167,19 @@ async function connectAudioGraph({
     `[AudioManager] Worklet unavailable for ${instance.sourceId}, effects bypassed`
   );
   notifyListeners(instance.sourceId, {
-    isPlaying: false,
-    isLoading: false,
-    isBuffering: false,
-    volume: instance.volume,
     error: {
+      code: "WORKLET_UNAVAILABLE",
       id: generateErrorId(),
       message: "Audio effects unavailable - worklet failed to initialize",
-      code: "WORKLET_UNAVAILABLE",
       radio: instance.radio,
-      timestamp: Date.now(),
       sourceId: instance.sourceId,
+      timestamp: Date.now(),
     },
     hasEnded: false,
+    isBuffering: false,
+    isLoading: false,
+    isPlaying: false,
+    volume: instance.volume,
   });
 
   filter.connect(panAfterEffects ? pan : preFaderSend);
@@ -201,12 +202,18 @@ function updateDeviceChannelSelection({
     deviceSource.outputChannelCount !== previousOutputChannelCount &&
     instance.nodes
   ) {
-    reconnectGraph(instance).catch((error: unknown) =>
-      console.warn(
-        `[AudioManager] Failed to reconnect device input ${instance.sourceId}`,
-        error
-      )
+    const reconnect = async (): Promise<void> => {
+      await reconnectGraph(instance);
+    };
+    const previous = deviceGraphReconnects.get(instance);
+    const pending = (previous ? previous.then(reconnect) : reconnect()).catch(
+      (error: unknown) =>
+        console.warn(
+          `[AudioManager] Failed to reconnect device input ${instance.sourceId}`,
+          error
+        )
     );
+    deviceGraphReconnects.set(instance, pending);
   }
 }
 

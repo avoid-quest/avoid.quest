@@ -125,13 +125,13 @@ describe("stock compatibility processors", () => {
     const output = stereo(0);
 
     gate.setSidechainInput(stereo(1));
-    for (let block = 0; block < 10; block++) {
+    for (let block = 0; block < 10; block += 1) {
       gate.process(stereo(0.25), output, 0, 128);
     }
     expect(output[0][127]).toBeGreaterThan(0.2);
 
     gate.setSidechainInput(stereo(0));
-    for (let block = 0; block < 10; block++) {
+    for (let block = 0; block < 10; block += 1) {
       gate.process(stereo(0.25), output, 0, 128);
     }
     expect(Math.abs(output[0][127] ?? 0)).toBeLessThan(0.01);

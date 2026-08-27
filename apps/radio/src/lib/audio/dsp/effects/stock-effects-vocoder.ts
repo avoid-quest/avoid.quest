@@ -206,14 +206,14 @@ export class VocoderEffect {
       -1 / (this.sampleRate * this.release * 0.001)
     );
     const attackCoeff = Math.exp(-1 / (this.sampleRate * this.attack * 0.001));
-    for (let band = 0; band < this.bands; band++) {
+    for (let band = 0; band < this.bands; band += 1) {
       const carrierFilter = this.carrierFilters[band];
       const modulatorFilter = this.modulatorFilters[band];
       if (!(carrierFilter && modulatorFilter)) {
         continue;
       }
       if (this.modulator === "noise") {
-        for (let i = fromIndex; i < toIndex; i++) {
+        for (let i = fromIndex; i < toIndex; i += 1) {
           this.noiseState ^= this.noiseState << 13;
           this.noiseState ^= this.noiseState >>> 17;
           this.noiseState ^= this.noiseState << 5;
@@ -245,7 +245,7 @@ export class VocoderEffect {
       }
       carrierFilter.process(input, this.carrierChannels, fromIndex, toIndex);
       let envelope = this.envelopes[band] ?? 0;
-      for (let i = fromIndex; i < toIndex; i++) {
+      for (let i = fromIndex; i < toIndex; i += 1) {
         const detected =
           Math.max(Math.abs(this.modL[i] ?? 0), Math.abs(this.modR[i] ?? 0)) *
           this.modulatorGain;
@@ -261,7 +261,7 @@ export class VocoderEffect {
       this.envelopes[band] = envelope;
     }
     const gain = 2 / Math.sqrt(this.bands);
-    for (let i = fromIndex; i < toIndex; i++) {
+    for (let i = fromIndex; i < toIndex; i += 1) {
       output[0][i] =
         (input[0][i] ?? 0) * (1 - this.mix) +
         (output[0][i] ?? 0) * gain * this.gain * this.mix;

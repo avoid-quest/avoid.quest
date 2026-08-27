@@ -68,6 +68,7 @@ const scenarios: ReadonlyArray<readonly [string, readonly EffectConfig[]]> = [
       }),
     ],
   ],
+  ["autotune", [configured("autotune", "autotune", 0)]],
   ["radio-limiter", [configured("limiter", "limiter", 0)]],
   [
     "vocoder-16-pink",

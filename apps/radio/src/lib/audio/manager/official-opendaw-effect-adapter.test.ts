@@ -4,6 +4,8 @@ import { createDefaultEffectConfig } from "../dsp/effects/registry.js";
 import {
   createMasterRack,
   createOfficialEffectGroup,
+  updateOfficialEffectGroup,
+  usesDirectOfficialEffectLayout,
 } from "./official-opendaw-effect-adapter.js";
 
 const originalAudioWorkletNode = globalThis.AudioWorkletNode;
@@ -129,9 +131,10 @@ describe("official openDAW BoxGraph adapter", () => {
         soundfontService: undefined,
       } as never,
       adapters.ProjectSkeleton.empty({
-        createDefaultUser: true,
+        createDefaultUser: false,
         createOutputMaximizer: false,
-      })
+      }),
+      false
     );
 
     const groups = project.editing
@@ -154,6 +157,7 @@ describe("official openDAW BoxGraph adapter", () => {
             config.boost = 20;
           }
           if (config.type === "autotune") {
+            config.enabled = true;
             config.scale = "majorPentatonic";
           }
           if (config.type === "fold") {
@@ -187,7 +191,14 @@ describe("official openDAW BoxGraph adapter", () => {
       ).getValue();
 
     expect(groups).toHaveLength(19);
-    expect(groups.every((group) => group.created.length >= 4)).toBe(true);
+    expect(
+      groups.find((group) => group.config.type === "autotune")?.created
+    ).toHaveLength(1);
+    expect(
+      groups
+        .filter((group) => group.config.type !== "autotune")
+        .every((group) => group.created.length >= 4)
+    ).toBe(true);
     expect(value("plateReverb", "device", "dry")).toBe(-72);
     expect(value("plateReverb", "device", "wet")).toBe(0);
     expect(value("delay", "device", "dry")).toBe(-72);
@@ -197,6 +208,22 @@ describe("official openDAW BoxGraph adapter", () => {
     expect(value("crusher", "outputTrim", "volume")).toBeCloseTo(10);
     expect(value("fold", "device", "volume")).toBeCloseTo(-7);
     expect(value("autotune", "device", "scale")).toBe(3);
+    const autotune = groups.find((group) => group.config.type === "autotune");
+    if (autotune?.config.type !== "autotune") {
+      throw new Error("Autotune group missing");
+    }
+    const updatedAutotune = { ...autotune.config, key: "D" as const };
+    expect(usesDirectOfficialEffectLayout(updatedAutotune)).toBe(true);
+    project.editing.modify(() =>
+      updateOfficialEffectGroup(autotune, updatedAutotune, 120)
+    );
+    expect(value("autotune", "device", "key")).toBe(2);
+    expect(
+      usesDirectOfficialEffectLayout({
+        ...updatedAutotune,
+        inputGain: 0.5,
+      })
+    ).toBe(false);
     project.terminate();
   });
 });

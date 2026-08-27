@@ -20,6 +20,7 @@ import {
   restoreWerkstattParameterValues,
   setMasterRackDryWet,
   updateOfficialEffectGroup,
+  usesDirectOfficialEffectLayout,
 } from "./official-opendaw-effect-adapter.js";
 import { ensureOpenDawAudioWorklets } from "./opendaw-audio-worklets.js";
 
@@ -242,7 +243,7 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       throw new Error("openDAW WASM engine assets failed to load");
     }
 
-    const project = Project.new({
+    const env = {
       audioContext: this.context,
       audioWorklets,
       sampleManager: unavailableAssetManager(),
@@ -252,7 +253,16 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
         modules.adapters.BpmDetector.Unknown
       ),
       soundfontService: undefined as unknown as ProjectEnv["soundfontService"],
-    });
+    };
+    // Live monitoring does not use openDAW's editor user or output maximizer.
+    const project = Project.fromSkeleton(
+      env,
+      modules.adapters.ProjectSkeleton.empty({
+        createDefaultUser: false,
+        createOutputMaximizer: false,
+      }),
+      false
+    );
     try {
       const worklet = project.startAudioWorklet();
 
@@ -261,7 +271,6 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       // would duplicate the signal.
       worklet.disconnect(this.context.destination, 0, 0);
       await project.engine.isReady();
-      project.engine.play();
 
       if (this.closed) {
         throw new Error("openDAW runtime initialization was canceled");
@@ -883,7 +892,9 @@ function hasStableEffectLayout(
         !after ||
         before.id !== after.id ||
         before.type !== after.type ||
-        before.order !== after.order
+        before.order !== after.order ||
+        usesDirectOfficialEffectLayout(before) !==
+          usesDirectOfficialEffectLayout(after)
       ) {
         return false;
       }

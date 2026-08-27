@@ -123,18 +123,21 @@ describe("OfficialOpenDawRuntime performance diagnostics", () => {
     const preferences = {
       settings: { debug: { dspLoadMeasurement: false } },
     };
+    const skeleton = {};
+    const createSkeleton = mock(() => skeleton);
     const project = {
       engine: {
         cpuLoad: { getValue: () => 0 },
         isReady: () => Promise.resolve(),
         perfBuffer: new Float32Array(4),
         perfIndex: 0,
-        play: () => undefined,
+        play: mock(() => undefined),
         preferences,
       },
       startAudioWorklet: () => ({ disconnect: () => undefined }),
       terminate: () => undefined,
     };
+    const createProject = mock(() => project);
     const context = {
       currentTime: 0,
       destination: {},
@@ -147,6 +150,7 @@ describe("OfficialOpenDawRuntime performance diagnostics", () => {
         ({
           adapters: {
             BpmDetector: { Unknown: "unknown" },
+            ProjectSkeleton: { empty: createSkeleton },
             ScriptCompiler: { create: () => ({}) },
           },
           boxes: {},
@@ -155,7 +159,10 @@ describe("OfficialOpenDawRuntime performance diagnostics", () => {
               createFor: () => Promise.resolve({}),
               install: () => undefined,
             },
-            Project: { new: () => project },
+            Project: {
+              fromSkeleton: createProject,
+              new: () => project,
+            },
             SampleService: class {},
           },
           wasm: {
@@ -171,6 +178,16 @@ describe("OfficialOpenDawRuntime performance diagnostics", () => {
       runtime.setPerformanceMeasurementEnabled(true);
       await runtime.initialize();
 
+      expect(createSkeleton).toHaveBeenCalledWith({
+        createDefaultUser: false,
+        createOutputMaximizer: false,
+      });
+      expect(createProject).toHaveBeenCalledWith(
+        expect.anything(),
+        skeleton,
+        false
+      );
+      expect(project.engine.play).not.toHaveBeenCalled();
       expect(preferences.settings.debug.dspLoadMeasurement).toBe(true);
     } finally {
       runtime.cleanup();

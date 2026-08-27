@@ -160,9 +160,9 @@ export type OfficialEffectGroup = {
   config: EffectConfig;
   created: BoxLike[];
   device: BoxLike;
-  inputTrim: BoxLike;
-  wrapper: BoxLike;
-  outputTrim: BoxLike;
+  inputTrim: BoxLike | null;
+  wrapper: BoxLike | null;
+  outputTrim: BoxLike | null;
 };
 
 type CreateContext = AdapterModules & {
@@ -216,6 +216,20 @@ function set(
 
 function db(gain: number): number {
   return gain <= 0 ? Number.NEGATIVE_INFINITY : 20 * Math.log10(gain);
+}
+
+export function usesDirectOfficialEffectLayout(
+  config: EffectConfig
+): boolean {
+  // The generic wrapper adds six openDAW processors. Default Autotune needs
+  // none of them, so keep its native device directly in the host chain.
+  return (
+    config.enabled &&
+    config.type === "autotune" &&
+    config.dryWet === 1 &&
+    config.inputGain === 1 &&
+    config.outputGain === 1
+  );
 }
 
 function divisionIndex(
@@ -612,6 +626,22 @@ export function createOfficialEffectGroup(
 
   const created: BoxLike[] = [];
   const children: OfficialEffectGroup[] = [];
+  const factory = OPENDAW_FACTORY_KEYS[config.type];
+  if (usesDirectOfficialEffectLayout(config)) {
+    const device = insert(context, host, factory, index);
+    created.push(device);
+    configureDevice(device, config, context.bpm);
+    return {
+      children,
+      config,
+      created,
+      device,
+      inputTrim: null,
+      wrapper: null,
+      outputTrim: null,
+    };
+  }
+
   const wrapper = insert(context, host, "AudioEffectComposite", index);
   created.push(wrapper);
   set(wrapper, "label", `Radio wrapper: ${config.type}`);
@@ -643,7 +673,6 @@ export function createOfficialEffectGroup(
     created
   );
 
-  const factory = OPENDAW_FACTORY_KEYS[config.type];
   const device = insert(context, wetCell.audioEffects, factory, 1);
   created.push(device);
   configureDevice(device, config, context.bpm);
@@ -699,6 +728,17 @@ export function updateOfficialEffectGroup(
   config: EffectConfig,
   bpm: number
 ): void {
+  if (group.wrapper === null) {
+    if (!usesDirectOfficialEffectLayout(config)) {
+      throw new Error("Direct openDAW effect layout requires unity controls");
+    }
+    group.config = config;
+    configureDevice(group.device, config, bpm);
+    return;
+  }
+  if (!(group.inputTrim && group.outputTrim)) {
+    throw new Error("Wrapped openDAW effect layout is incomplete");
+  }
   group.config = config;
   set(group.wrapper, "enabled", config.enabled);
   set(group.wrapper, "dry", db(1 - config.dryWet));

@@ -7,5 +7,5 @@
 
 // biome-ignore lint/style/useConsistentTypeDefinitions: interface needed for declaration merging with global AudioContext
 interface AudioContext {
-  setSinkId(sinkId: string): Promise<void>;
+  setSinkId: (sinkId: string) => Promise<void>;
 }

@@ -46,13 +46,13 @@ export function useMultipleSession() {
       .map((channel) => {
         const runtime = runtimes[channel.id];
         return {
+          error: runtime?.error?.message ?? null,
           id: channel.id,
-          radio: channel.radio,
-          isPlaying: runtime?.isPlaying ?? false,
           isLoading: runtime?.isLoading ?? false,
           isMuted: channel.muted || channel.volume === 0,
+          isPlaying: runtime?.isPlaying ?? false,
+          radio: channel.radio,
           volume: channel.volume,
-          error: runtime?.error?.message ?? null,
         };
       });
   }, [runtimes, session]);
@@ -107,19 +107,19 @@ export function useMultipleSession() {
   const pauseAll = useCallback(() => playback.pauseAll(), [playback]);
 
   return {
-    session,
-    players,
-    globalVolume,
-    globalMuted,
-    syncRadios,
     addRadio,
-    removeRadio,
-    togglePlayPause,
-    setVolume,
-    toggleMute,
-    setGlobalVolume,
-    toggleGlobalMute,
-    playAll,
+    globalMuted,
+    globalVolume,
     pauseAll,
+    playAll,
+    players,
+    removeRadio,
+    session,
+    setGlobalVolume,
+    setVolume,
+    syncRadios,
+    toggleGlobalMute,
+    toggleMute,
+    togglePlayPause,
   };
 }

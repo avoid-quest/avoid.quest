@@ -36,10 +36,29 @@ describe("audio performance diagnostics", () => {
     ).toEqual({
       deadlineMisses: 1,
       maxMs: 3,
+      observedSampleCount: 5,
       p95Ms: 3,
       p99LoadPercent: 150,
       p99Ms: 3,
       sampleCount: 4,
+      status: "measured",
+      zeroSampleCount: 1,
     });
+  });
+
+  test("distinguishes a stalled timing clock from an empty interval", () => {
+    expect(summarizeQuantumPerformance(new Float32Array([0, 0, 0]), 2)).toEqual(
+      {
+        deadlineMisses: 0,
+        maxMs: 0,
+        observedSampleCount: 3,
+        p95Ms: 0,
+        p99LoadPercent: 0,
+        p99Ms: 0,
+        sampleCount: 0,
+        status: "clock-unavailable",
+        zeroSampleCount: 3,
+      }
+    );
   });
 });

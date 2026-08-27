@@ -438,45 +438,45 @@ class Processor {
 
 export const WERKSTATT_PRESETS: readonly WerkstattPreset[] = [
   {
+    description: "Neutral baseline and safe recovery source.",
     id: "pass-through",
     label: "Pass Through",
-    description: "Neutral baseline and safe recovery source.",
     source: PASS_THROUGH,
   },
   {
+    description: "Official threshold clipper with hard and soft modes.",
     id: "hard-clipper",
     label: "Hard Clipper",
-    description: "Official threshold clipper with hard and soft modes.",
     source: HARD_CLIPPER,
   },
   {
+    description: "Official stateful oscillator example.",
     id: "ring-modulator",
     label: "Ring Modulator",
-    description: "Official stateful oscillator example.",
     source: RING_MODULATOR,
   },
   {
+    description: "Official two-second feedback delay.",
     id: "simple-delay",
     label: "Simple Delay",
-    description: "Official two-second feedback delay.",
     source: SIMPLE_DELAY,
   },
   {
+    description: "Official resonant low-pass filter.",
     id: "biquad-lowpass",
     label: "Biquad Lowpass",
-    description: "Official resonant low-pass filter.",
     source: BIQUAD_LOWPASS,
   },
   {
+    description: "Official multi-stage experimental mangler.",
     id: "alienator",
     label: "Alienator",
-    description: "Official multi-stage experimental mangler.",
     source: ALIENATOR,
   },
   {
+    description: "Official mastering enhancer for full-program audio.",
     id: "beautifier",
     label: "Beautifier",
-    description: "Official mastering enhancer for full-program audio.",
     source: BEAUTIFIER,
   },
 ];

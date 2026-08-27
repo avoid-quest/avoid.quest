@@ -1,3 +1,4 @@
+// biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers
 "use client";
 
 import { Button } from "@avoid.quest/ui/components/button";
@@ -18,7 +19,7 @@ import {
   RefreshCwIcon,
   Volume2Icon,
 } from "lucide-react";
-import { type ReactNode, useCallback, useState } from "react";
+import { type ReactNode, useState } from "react";
 import { toast } from "sonner";
 import { captureMobileAudioDiagnostic, useAudioDevices } from "@/lib/audio";
 import { getAudioSettings, getDelaySettings } from "@/lib/collections";
@@ -63,7 +64,7 @@ export function AudioSettings() {
   const [diagnostic, setDiagnostic] = useState<string | null>(null);
   const [isCapturingDiagnostic, setIsCapturingDiagnostic] = useState(false);
 
-  const handleMainOutputChange = useCallback(async (value: string) => {
+  const handleMainOutputChange = async (value: string) => {
     try {
       await applyMainOutputDevice(value);
       const applied = getAudioSettings();
@@ -75,9 +76,9 @@ export function AudioSettings() {
       setCueOutputId(current.cueOutputId);
       toast.error("Failed to apply the main output settings");
     }
-  }, []);
+  };
 
-  const handleCueOutputChange = useCallback(async (value: string) => {
+  const handleCueOutputChange = async (value: string) => {
     const newValue = value === "none" ? null : value;
     try {
       await applyCueOutputDevice(newValue);
@@ -86,9 +87,9 @@ export function AudioSettings() {
       setCueOutputId(getAudioSettings().cueOutputId);
       toast.error("Failed to apply the CUE output settings");
     }
-  }, []);
+  };
 
-  const handleMainDelayChange = useCallback(async (value: number) => {
+  const handleMainDelayChange = async (value: number) => {
     try {
       await setMainOutputDelay(value);
       setMainDelayMsState(getDelaySettings().mainDelayMs);
@@ -96,9 +97,9 @@ export function AudioSettings() {
       setMainDelayMsState(getDelaySettings().mainDelayMs);
       toast.error("Failed to apply the main output settings");
     }
-  }, []);
+  };
 
-  const handleCueDelayChange = useCallback(async (value: number) => {
+  const handleCueDelayChange = async (value: number) => {
     try {
       await setCueOutputDelay(value);
       setCueDelayMsState(getDelaySettings().cueDelayMs);
@@ -106,16 +107,12 @@ export function AudioSettings() {
       setCueDelayMsState(getDelaySettings().cueDelayMs);
       toast.error("Failed to apply the CUE output settings");
     }
-  }, []);
-  const handleMainDelayValues = useCallback(
-    ([value]: number[]) => handleMainDelayChange(value),
-    [handleMainDelayChange]
-  );
-  const handleCueDelayValues = useCallback(
-    ([value]: number[]) => handleCueDelayChange(value),
-    [handleCueDelayChange]
-  );
-  const handleAutoLatency = useCallback(async () => {
+  };
+  const handleMainDelayValues = ([value]: number[]) =>
+    handleMainDelayChange(value);
+  const handleCueDelayValues = ([value]: number[]) =>
+    handleCueDelayChange(value);
+  const handleAutoLatency = async () => {
     try {
       const detected = await autoCompensateLatency();
       if (detected !== null) {
@@ -124,8 +121,8 @@ export function AudioSettings() {
     } catch {
       toast.error("Failed to apply the main output settings");
     }
-  }, []);
-  const handleDiagnostic = useCallback(async () => {
+  };
+  const handleDiagnostic = async () => {
     if (diagnostic) {
       try {
         await navigator.clipboard.writeText(diagnostic);
@@ -146,7 +143,7 @@ export function AudioSettings() {
     } finally {
       setIsCapturingDiagnostic(false);
     }
-  }, [diagnostic]);
+  };
   let diagnosticLabel = "Capture audio diagnostic";
   if (isCapturingDiagnostic) {
     diagnosticLabel = "Capturing 5s...";

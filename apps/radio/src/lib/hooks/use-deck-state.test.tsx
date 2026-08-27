@@ -11,22 +11,22 @@ const dom = new JSDOM("<!doctype html><html><body></body></html>", {
 });
 
 for (const [key, value] of Object.entries({
-  window: dom.window,
   document: dom.window.document,
-  navigator: dom.window.navigator,
   HTMLElement: dom.window.HTMLElement,
+  navigator: dom.window.navigator,
+  window: dom.window,
 })) {
   Object.defineProperty(globalThis, key, {
     configurable: true,
-    writable: true,
     value,
+    writable: true,
   });
 }
 
 Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", {
   configurable: true,
-  writable: true,
   value: true,
+  writable: true,
 });
 
 let latestLoad: ReturnType<typeof useDeckAState>["loadSource"];
@@ -63,13 +63,13 @@ test("resolves a new Deck handle after the default playback context resets", () 
 
 test("observes and cancels a pending platform source through the Deck adapter", async () => {
   render(<Harness revision={0} />);
-  const pendingItem = PLATFORM_ITEMS[0];
+  const [pendingItem] = PLATFORM_ITEMS;
   if (!pendingItem) {
     throw new Error("Expected a platform picker library item");
   }
 
   await act(async () => {
-    await latestLoad({ type: "library", radio: pendingItem });
+    await latestLoad({ radio: pendingItem, type: "library" });
   });
 
   expect(latestPendingPlatform).toBe("external");

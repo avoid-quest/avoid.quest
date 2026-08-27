@@ -48,7 +48,7 @@ export class ChannelStrip {
     fromIndex: number,
     toIndex: number
   ): void {
-    for (let i = fromIndex; i < toIndex; i++) {
+    for (let i = fromIndex; i < toIndex; i += 1) {
       this.currentLeftGain = this.smoothGain(
         this.currentLeftGain,
         this.targetLeftGain

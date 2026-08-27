@@ -89,24 +89,24 @@ async function runWithConcurrency<T>(
   shouldContinue: () => boolean = () => true
 ): Promise<void> {
   let index = 0;
+  const runNext = async (): Promise<void> => {
+    if (!shouldContinue()) {
+      return;
+    }
+    const item = items[index];
+    index += 1;
+    if (item === undefined) {
+      return;
+    }
+    await task(item);
+    if (!shouldContinue()) {
+      return;
+    }
+    await yieldToBrowser();
+    return runNext();
+  };
   await Promise.all(
-    Array.from({ length: Math.min(limit, items.length) }, async () => {
-      while (index < items.length) {
-        if (!shouldContinue()) {
-          return;
-        }
-        const item = items[index];
-        index += 1;
-        if (item === undefined) {
-          return;
-        }
-        await task(item);
-        if (!shouldContinue()) {
-          return;
-        }
-        await yieldToBrowser();
-      }
-    })
+    Array.from({ length: Math.min(limit, items.length) }, runNext)
   );
 }
 
@@ -142,9 +142,9 @@ function synchronizeStations(
         ...(existingChannelsById.get(channelId) ??
           createDefaultChannel(channelId, "multiple", order)),
         id: channelId,
-        role: "multiple" as const,
-        radio,
         order,
+        radio,
+        role: "multiple" as const,
       };
     })
   );
@@ -158,9 +158,9 @@ function addStationChannel(radio: Radio) {
   const channel = {
     ...(existing ?? createDefaultChannel(channelId, "multiple", order)),
     id: channelId,
-    role: "multiple" as const,
-    radio,
     order,
+    radio,
+    role: "multiple" as const,
   };
   upsertPlaybackChannel("multiple", channel);
   return channel;
@@ -234,10 +234,10 @@ function createMultiplePlayback(
     } catch (error) {
       if (shouldReportError()) {
         const reportedError = reportPlaybackActionError(ctx.reportError, {
-          mode: "multiple",
-          code: "PLAY_ERROR",
           cause: error,
           channelId,
+          code: "PLAY_ERROR",
+          mode: "multiple",
           radio: channel?.radio ?? undefined,
         });
         setManagedPlaybackError(

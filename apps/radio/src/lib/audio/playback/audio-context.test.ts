@@ -1,12 +1,21 @@
-import { afterEach, describe, expect, test } from "bun:test";
-import { getAudioContextOptions, snapshotAudioContext } from "./audio-context";
+import { afterEach, describe, expect, mock, test } from "bun:test";
+import {
+  getAudioContextOptions,
+  resetAudioContextPlaybackLatency,
+  snapshotAudioContext,
+} from "./audio-context";
 
 const originalNavigator = globalThis.navigator;
+const originalLocation = globalThis.location;
 
 afterEach(() => {
   Object.defineProperty(globalThis, "navigator", {
     configurable: true,
     value: originalNavigator,
+  });
+  Object.defineProperty(globalThis, "location", {
+    configurable: true,
+    value: originalLocation,
   });
 });
 
@@ -35,6 +44,22 @@ describe("AudioContextManager latency policy", () => {
 
     expect(getAudioContextOptions()).toEqual({
       latencyHint: 256 / 48_000,
+      sampleRate: 48_000,
+    });
+  });
+
+  test("accepts a cold-start mobile buffer override", () => {
+    Object.defineProperty(globalThis, "navigator", {
+      configurable: true,
+      value: { userAgent: "Mozilla/5.0 (Linux; Android 16) Mobile" },
+    });
+    Object.defineProperty(globalThis, "location", {
+      configurable: true,
+      value: { search: "?audio-buffer=512" },
+    });
+
+    expect(getAudioContextOptions()).toEqual({
+      latencyHint: 512 / 48_000,
       sampleRate: 48_000,
     });
   });
@@ -71,5 +96,18 @@ describe("AudioContextManager latency policy", () => {
       sampleRate: 48_000,
       state: "running",
     });
+  });
+
+  test("resets native playback latency statistics when supported", () => {
+    const resetLatency = mock(() => undefined);
+    const context = {
+      playbackStats: { resetLatency },
+    } as unknown as AudioContext;
+
+    expect(resetAudioContextPlaybackLatency(context)).toBe(true);
+    expect(resetLatency).toHaveBeenCalledTimes(1);
+    expect(
+      resetAudioContextPlaybackLatency({} as unknown as AudioContext)
+    ).toBe(false);
   });
 });

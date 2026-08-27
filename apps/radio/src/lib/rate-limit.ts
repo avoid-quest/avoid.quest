@@ -54,7 +54,7 @@ function formatRateLimitKey(
  * @returns Rate limit result with allowed status
  */
 export async function checkRateLimit(
-  env: RateLimitEnv,
+  env: RateLimitEnv | undefined,
   identifier: string,
   subject: RateLimitSubject | null
 ): Promise<RateLimitResult> {

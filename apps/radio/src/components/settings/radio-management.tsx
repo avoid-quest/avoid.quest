@@ -1,3 +1,4 @@
+// biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers
 import { Button } from "@avoid.quest/ui/components/button";
 import { Checkbox } from "@avoid.quest/ui/components/checkbox";
 import {
@@ -65,9 +66,12 @@ function SortableRadioItem({
 
   const OPACITY_DRAGGING = 0.5;
   const style = {
+    opacity: isDragging ? OPACITY_DRAGGING : 1,
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? OPACITY_DRAGGING : 1,
+  };
+  const handleToggle = (checked: boolean | "indeterminate") => {
+    onToggle(radio, checked === true);
   };
 
   return (
@@ -115,7 +119,7 @@ function SortableRadioItem({
           checked={radio.enabled ?? true}
           className="shrink-0"
           disabled={disabled}
-          onCheckedChange={(checked) => onToggle(radio, checked as boolean)}
+          onCheckedChange={handleToggle}
         />
       </div>
     </div>
@@ -157,6 +161,23 @@ export function RadioManagement() {
     }
   };
 
+  const handleReorder = (reorderedRadios: Radio[]) => {
+    setIsUpdating(true);
+    try {
+      // Get IDs in new order
+      const orderedIds = reorderedRadios
+        .map((radio) => (radio.id ? String(radio.id) : undefined))
+        .filter((id): id is string => id !== undefined);
+
+      reorderRadios(orderedIds);
+      toast.success("Radio order updated");
+    } catch {
+      toast.error("Failed to reorder radios");
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
 
@@ -174,23 +195,6 @@ export function RadioManagement() {
     if (oldIndex !== -1 && newIndex !== -1) {
       const reorderedRadios = arrayMove(radios, oldIndex, newIndex);
       handleReorder(reorderedRadios);
-    }
-  };
-
-  const handleReorder = (reorderedRadios: Radio[]) => {
-    setIsUpdating(true);
-    try {
-      // Get IDs in new order
-      const orderedIds = reorderedRadios
-        .map((r) => (r.id ? String(r.id) : undefined))
-        .filter((id): id is string => id !== undefined);
-
-      reorderRadios(orderedIds);
-      toast.success("Radio order updated");
-    } catch {
-      toast.error("Failed to reorder radios");
-    } finally {
-      setIsUpdating(false);
     }
   };
 
@@ -225,6 +229,14 @@ export function RadioManagement() {
       setIsUpdating(false);
       setDeleteConfirm(null);
     }
+  };
+  const handleDeleteDialogOpenChange = (open: boolean) => {
+    if (!open) {
+      setDeleteConfirm(null);
+    }
+  };
+  const handleCancelDelete = () => {
+    setDeleteConfirm(null);
   };
 
   if (!radios) {
@@ -287,11 +299,8 @@ export function RadioManagement() {
       />
 
       {/* Delete Confirmation Dialog */}
-      {deleteConfirm && (
-        <Dialog
-          onOpenChange={() => setDeleteConfirm(null)}
-          open={!!deleteConfirm}
-        >
+      {deleteConfirm ? (
+        <Dialog onOpenChange={handleDeleteDialogOpenChange} open>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Delete Radio Station</DialogTitle>
@@ -301,11 +310,7 @@ export function RadioManagement() {
               </DialogDescription>
             </DialogHeader>
             <div className="flex justify-end gap-2 pt-4">
-              <Button
-                onClick={() => setDeleteConfirm(null)}
-                size="sm"
-                variant="outline"
-              >
+              <Button onClick={handleCancelDelete} size="sm" variant="outline">
                 Cancel
               </Button>
               <Button
@@ -319,7 +324,7 @@ export function RadioManagement() {
             </div>
           </DialogContent>
         </Dialog>
-      )}
+      ) : null}
     </div>
   );
 }

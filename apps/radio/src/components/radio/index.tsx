@@ -23,9 +23,9 @@ const DEFAULT_RADIO_MODE: RadioMode = "single";
 type RadioModeRenderer = (radios: Radio[]) => ReactElement;
 
 const radioModeRenderers = {
-  single: (radios) => <SingleRadio radios={radios} />,
-  multiple: (radios) => <MultipleRadios radios={radios} />,
   dj: (radios) => <DjPlayer radios={radios} />,
+  multiple: (radios) => <MultipleRadios radios={radios} />,
+  single: (radios) => <SingleRadio radios={radios} />,
 } satisfies Record<RadioMode, RadioModeRenderer>;
 
 function RadioMode({ mode, radios }: { mode: RadioMode; radios: Radio[] }) {

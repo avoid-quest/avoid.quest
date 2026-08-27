@@ -1,3 +1,4 @@
+/** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 import { Button } from "@avoid.quest/ui/components/button";
 import { DownloadIcon, XIcon } from "lucide-react";
 import { useEffect, useState } from "react";

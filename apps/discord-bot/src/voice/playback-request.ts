@@ -48,7 +48,7 @@ export async function requestPlayback(
     return { status: "missing-guild" };
   }
 
-  const member = interaction.member;
+  const { member } = interaction;
 
   if (!(member instanceof GuildMember && member.voice.channel)) {
     await interaction.reply({
@@ -69,8 +69,8 @@ export async function requestPlayback(
     const tracks = Array.isArray(loadedTracks) ? loadedTracks : [loadedTracks];
     const firstTrack = await startGuildPlayback({
       guildId: interaction.guildId,
-      voiceChannel: member.voice.channel,
       tracks,
+      voiceChannel: member.voice.channel,
     });
 
     if (!firstTrack) {
@@ -92,13 +92,13 @@ export async function requestPlayback(
       });
     }
 
-    return { status: "played", firstTrack, trackCount: tracks.length };
+    return { firstTrack, status: "played", trackCount: tracks.length };
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "An unknown error occurred";
     await interaction.editReply({
       content: `${options.messages.failurePrefix}: ${message}`,
     });
-    return { status: "failed", message };
+    return { message, status: "failed" };
   }
 }

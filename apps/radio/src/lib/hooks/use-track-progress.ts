@@ -20,9 +20,9 @@ export function useTrackProgress(soundId: string | null): TrackProgress {
   const activeSoundIdRef = useRef(soundId);
   activeSoundIdRef.current = soundId;
   const [progress, setProgress] = useState<TrackProgressState>({
-    soundId,
-    position: 0,
     duration: 0,
+    position: 0,
+    soundId,
   });
   const rafRef = useRef<number | null>(null);
 
@@ -32,7 +32,7 @@ export function useTrackProgress(soundId: string | null): TrackProgress {
         setProgress({ duration, position, soundId: sourceId });
       }
     },
-    { wait: 250, leading: true, trailing: true }
+    { leading: true, trailing: true, wait: 250 }
   );
 
   const tick = useCallback(() => {
@@ -40,9 +40,9 @@ export function useTrackProgress(soundId: string | null): TrackProgress {
       return;
     }
     const audioManager = AudioManager.getInstance();
-    const progress = audioManager.getTrackProgress(soundId);
-    if (progress) {
-      updateState(soundId, progress.position, progress.duration);
+    const currentProgress = audioManager.getTrackProgress(soundId);
+    if (currentProgress) {
+      updateState(soundId, currentProgress.position, currentProgress.duration);
     }
     rafRef.current = requestAnimationFrame(tick);
   }, [soundId, updateState]);

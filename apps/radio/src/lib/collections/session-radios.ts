@@ -48,21 +48,21 @@ function createStorageVersionKey(): string {
 }
 
 const sessionRadioSchema = z.object({
-  id: z.union([z.string(), z.number()]),
-  name: z.string(),
-  streamUrl: z.string(),
-  streamFormat: z.enum(["hls", "progressive"]).optional(),
-  logoUrl: z.string().optional(),
-  description: z.string().optional(),
-  websiteUrl: z.string().optional(),
-  placeTitle: z.string().optional(),
-  countryTitle: z.string().optional(),
-  order: z.number().optional(),
-  enabled: z.boolean().optional(),
-  isSystem: z.boolean().optional(),
-  platformMetadata: platformMetadataSchema,
-  metadataConfig: radioMetadataConfigSchema.optional(),
   addedAt: z.number(),
+  countryTitle: z.string().optional(),
+  description: z.string().optional(),
+  enabled: z.boolean().optional(),
+  id: z.union([z.string(), z.number()]),
+  isSystem: z.boolean().optional(),
+  logoUrl: z.string().optional(),
+  metadataConfig: radioMetadataConfigSchema.optional(),
+  name: z.string(),
+  order: z.number().optional(),
+  placeTitle: z.string().optional(),
+  platformMetadata: platformMetadataSchema,
+  streamFormat: z.enum(["hls", "progressive"]).optional(),
+  streamUrl: z.string(),
+  websiteUrl: z.string().optional(),
 });
 
 export type SessionRadioRecord = z.infer<typeof sessionRadioSchema>;
@@ -100,8 +100,8 @@ function parseSessionRadiosStorage(data: string): unknown {
         [
           `s:${String(record.data.id)}`,
           {
-            versionKey: createStorageVersionKey(),
             data: record.data,
+            versionKey: createStorageVersionKey(),
           },
         ],
       ];
@@ -111,17 +111,17 @@ function parseSessionRadiosStorage(data: string): unknown {
 
 export const sessionRadiosCollection = createCollection(
   localStorageCollectionOptions({
+    getKey: (item) => String(item.id),
     id: "session-radios",
-    startSync: true,
-    storageKey: SESSION_RADIOS_STORAGE_KEY,
-    storage: sessionStorageApi,
-    storageEventApi: sessionStorageEventApi,
     parser: {
       parse: parseSessionRadiosStorage,
       stringify: JSON.stringify,
     },
-    getKey: (item) => String(item.id),
     schema: sessionRadioSchema,
+    startSync: true,
+    storage: sessionStorageApi,
+    storageEventApi: sessionStorageEventApi,
+    storageKey: SESSION_RADIOS_STORAGE_KEY,
   })
 );
 
@@ -154,8 +154,8 @@ function getNextAddedAt(): number {
 function toSessionRadioRecord(radio: Radio): SessionRadioRecord {
   return {
     ...radio,
-    id: radio.id ?? radio.name,
     addedAt: getNextAddedAt(),
+    id: radio.id ?? radio.name,
   };
 }
 

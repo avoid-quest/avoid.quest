@@ -37,10 +37,10 @@ const DIRECT_AUDIO_HEADER_FETCH_TIMEOUT_MS = 10_000;
 const DIRECT_AUDIO_USER_AGENT = "avoid.quest-discord-bot/1.0";
 
 const DIRECT_AUDIO_ERROR_MESSAGES = {
-  "invalid-url": "Invalid direct audio URL.",
-  "invalid-protocol": "Direct audio URLs must use HTTP or HTTPS.",
-  "internal-address": "Direct audio URLs cannot point to internal addresses.",
   "hostname-resolution-failed": "Failed to resolve direct audio host.",
+  "internal-address": "Direct audio URLs cannot point to internal addresses.",
+  "invalid-protocol": "Direct audio URLs must use HTTP or HTTPS.",
+  "invalid-url": "Invalid direct audio URL.",
   "missing-location": "Direct audio redirect missing Location header.",
   "too-many-redirects": "Too many direct audio redirects.",
 } as const satisfies Record<PublicHttpRedirectFailure, string>;
@@ -123,7 +123,8 @@ function createPublicSocketLookup(
     resolveSocketAddresses(hostname, options)
       .then((addresses) => {
         const publicAddresses = addresses.filter(
-          ({ address }) => !isBlockedPublicHttpHostname(address)
+          ({ address: candidateAddress }) =>
+            !isBlockedPublicHttpHostname(candidateAddress)
         );
 
         if (publicAddresses.length === 0) {

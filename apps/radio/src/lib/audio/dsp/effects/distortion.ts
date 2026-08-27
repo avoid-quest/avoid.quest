@@ -56,7 +56,7 @@ export class Distortion {
   }
 
   setOversample(factor: "none" | "2x" | "4x"): void {
-    const factorMap = { none: 1, "2x": 2, "4x": 4 } as const;
+    const factorMap = { "2x": 2, "4x": 4, none: 1 } as const;
     const numeric = factorMap[factor];
     this.oversamplingFactor = numeric;
     this.resampler =
@@ -74,7 +74,7 @@ export class Distortion {
 
     if (this.drive <= 1) {
       // No distortion - pass through
-      for (let i = fromIndex; i < toIndex; i++) {
+      for (let i = fromIndex; i < toIndex; i += 1) {
         outputL[i] = inputL[i] ?? 0;
         outputR[i] = inputR[i] ?? 0;
       }
@@ -85,7 +85,7 @@ export class Distortion {
 
     // No oversampling - direct processing
     if (this.oversamplingFactor === 1 || !this.resampler) {
-      for (let i = fromIndex; i < toIndex; i++) {
+      for (let i = fromIndex; i < toIndex; i += 1) {
         outputL[i] = inv * Math.atan(this.drive * (inputL[i] ?? 0));
         outputR[i] = inv * Math.atan(this.drive * (inputR[i] ?? 0));
       }
@@ -98,7 +98,7 @@ export class Distortion {
     const [oversampledL, oversampledR] = this.buffer;
 
     // Process at higher sample rate
-    for (let i = 0; i < oversampledLength; i++) {
+    for (let i = 0; i < oversampledLength; i += 1) {
       oversampledL[i] = inv * Math.atan(this.drive * (oversampledL[i] ?? 0));
       oversampledR[i] = inv * Math.atan(this.drive * (oversampledR[i] ?? 0));
     }

@@ -21,13 +21,13 @@ export async function execute(
   const url = interaction.options.getString("url", true);
 
   await requestPlayback(interaction, {
+    loadTracks: (requestedBy) => resolveTrack(url, requestedBy),
     messages: {
+      failurePrefix: "Failed to play",
+      noPlayableTracks: "No playable tracks found.",
+      serverRequired: "This command can only be used in a server.",
       voiceChannelRequired:
         "You need to be in a voice channel to use this command.",
-      serverRequired: "This command can only be used in a server.",
-      noPlayableTracks: "No playable tracks found.",
-      failurePrefix: "Failed to play",
     },
-    loadTracks: (requestedBy) => resolveTrack(url, requestedBy),
   });
 }

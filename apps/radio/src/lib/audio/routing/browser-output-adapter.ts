@@ -23,7 +23,7 @@ class BrowserOutputGraph implements OutputBrowserGraph {
   constructor(context: AudioContext) {
     this.context = context;
     this.mainDelay = context.createDelay(MAX_OUTPUT_DELAY_SECONDS);
-    this.mainOutput = this.mainDelay;
+    this.mainOutput = context.createGain();
     this.cueInput = context.createGain();
     this.cueDelay = context.createDelay(MAX_OUTPUT_DELAY_SECONDS);
     this.headphoneGain = context.createGain();
@@ -37,6 +37,7 @@ class BrowserOutputGraph implements OutputBrowserGraph {
   }
 
   connectMain(source: AudioNode, realtime = false): void {
+    source.connect(this.mainOutput);
     source.connect(realtime ? this.context.destination : this.mainDelay);
   }
 
@@ -45,6 +46,11 @@ class BrowserOutputGraph implements OutputBrowserGraph {
   }
 
   disconnectMain(source: AudioNode): void {
+    safeDisconnectFrom(
+      source,
+      this.mainOutput,
+      "OutputRouting.disconnectMainMeter"
+    );
     safeDisconnectFrom(source, this.mainDelay, "OutputRouting.disconnectMain");
     safeDisconnectFrom(
       source,
@@ -54,6 +60,7 @@ class BrowserOutputGraph implements OutputBrowserGraph {
   }
 
   dispose(): void {
+    safeDisconnect(this.mainOutput, "OutputRouting.cleanup");
     safeDisconnect(this.mainDelay, "OutputRouting.cleanup");
     safeDisconnect(this.cueInput, "OutputRouting.cleanup");
     safeDisconnect(this.cueDelay, "OutputRouting.cleanup");

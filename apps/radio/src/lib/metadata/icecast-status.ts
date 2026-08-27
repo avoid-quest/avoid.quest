@@ -91,28 +91,28 @@ export function normalizeIcecastSource(input: {
   const rawTitle = asString(input.source.title);
   const parsedTitle = parseRadioTitle(rawTitle);
   const artist = asString(input.source.artist) ?? parsedTitle.artist;
-  const title = parsedTitle.title;
+  const { title } = parsedTitle;
 
   if (!(title || artist)) {
     return null;
   }
 
   return {
-    streamUrl: input.streamUrl,
-    resolvedUrl: input.resolvedUrl,
-    source: "icecast-status-json",
-    title,
-    artist,
-    rawTitle: parsedTitle.rawTitle,
     album: null,
+    artist,
     artworkUrl: null,
-    itemUrl: null,
-    stationName: asString(input.source.server_name),
-    stationDescription: asString(input.source.server_description),
-    genre: asString(input.source.genre),
     bitrate: asNumber(input.source.bitrate),
-    sampledAt: input.sampledAt,
     expiresAt: input.expiresAt,
+    genre: asString(input.source.genre),
+    itemUrl: null,
+    rawTitle: parsedTitle.rawTitle,
+    resolvedUrl: input.resolvedUrl,
+    sampledAt: input.sampledAt,
+    source: "icecast-status-json",
+    stationDescription: asString(input.source.server_description),
+    stationName: asString(input.source.server_name),
+    streamUrl: input.streamUrl,
+    title,
   };
 }
 

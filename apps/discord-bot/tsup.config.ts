@@ -1,9 +1,9 @@
 import { defineConfig } from "tsup";
 
 export default defineConfig({
+  clean: true,
   entry: ["src/index.ts"],
   format: ["cjs"],
-  target: "node24",
-  clean: true,
   noExternal: ["@avoid.quest/platforms"],
+  target: "node24",
 });

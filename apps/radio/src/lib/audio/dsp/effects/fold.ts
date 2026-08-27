@@ -22,7 +22,7 @@ export class FoldEffect {
   private smoothOutputGain = 1.0;
   private targetInputGain = 1.0;
   private targetOutputGain = 1.0;
-  private autoGain = true;
+  private autoGain = true as boolean;
 
   constructor(_sampleRate: number) {
     this.buffer = [
@@ -74,7 +74,7 @@ export class FoldEffect {
       (this.targetOutputGain - this.smoothOutputGain) / oversampledLength;
 
     // Process with wave folding
-    for (let i = 0; i < oversampledLength; i++) {
+    for (let i = 0; i < oversampledLength; i += 1) {
       this.smoothInputGain += inputGainStep;
       this.smoothOutputGain += outputGainStep;
 

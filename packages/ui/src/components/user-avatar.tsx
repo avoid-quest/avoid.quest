@@ -6,6 +6,7 @@ import {
   AvatarImage,
 } from "@avoid.quest/ui/components/avatar";
 import { UserIcon } from "lucide-react";
+import type { SyntheticEvent } from "react";
 
 type UserAvatarProps = {
   className?: string;
@@ -17,16 +18,20 @@ type UserAvatarProps = {
 };
 
 const sizeClasses = {
-  sm: "h-6 w-6",
-  md: "h-8 w-8",
   lg: "h-12 w-12",
+  md: "h-8 w-8",
+  sm: "h-6 w-6",
 };
 
 const iconSizes = {
-  sm: "h-3 w-3",
-  md: "h-4 w-4",
   lg: "h-6 w-6",
+  md: "h-4 w-4",
+  sm: "h-3 w-3",
 };
+
+function hideFailedAvatar(event: SyntheticEvent<HTMLImageElement>) {
+  event.currentTarget.style.display = "none";
+}
 
 export default function UserAvatar({
   className = "",
@@ -54,14 +59,7 @@ export default function UserAvatar({
 
   return (
     <Avatar className={`${sizeClass} ${className}`}>
-      <AvatarImage
-        alt={alt}
-        onError={(e) => {
-          // Hide the image if it fails to load, let fallback show
-          e.currentTarget.style.display = "none";
-        }}
-        src={src}
-      />
+      <AvatarImage alt={alt} onError={hideFailedAvatar} src={src} />
       <AvatarFallback className="flex items-center justify-center">
         {username ? (
           <span className="font-medium text-xs">{getInitials()}</span>

@@ -117,14 +117,14 @@ export function transformBandcampResults(
   results: BandcampSearchResult[]
 ): UnifiedSearchResult[] {
   return results.map((r) => ({
+    albumTitle: r.albumTitle,
+    artist: r.artist,
     id: `bc-${r.id}`,
     platform: "bandcamp" as const,
-    type: r.type,
-    title: r.title,
-    artist: r.artist,
     thumbnail: r.thumbnail,
+    title: r.title,
+    type: r.type,
     url: r.url,
-    albumTitle: r.albumTitle,
   }));
 }
 
@@ -132,13 +132,13 @@ export function transformSoundCloudResults(
   results: SoundCloudSearchResult[]
 ): UnifiedSearchResult[] {
   return results.map((r) => ({
+    artist: r.artist,
+    duration: r.duration,
     id: `sc-${r.id}`,
     platform: "soundcloud" as const,
-    type: "track" as const,
-    title: r.title,
-    artist: r.artist,
     thumbnail: r.thumbnail,
-    duration: r.duration,
+    title: r.title,
+    type: "track" as const,
     url: r.url,
   }));
 }
@@ -147,13 +147,13 @@ export function transformYouTubeResults(
   results: YouTubeSearchResult[]
 ): UnifiedSearchResult[] {
   return results.map((r) => ({
+    artist: r.author,
+    duration: r.duration,
     id: `yt-${r.videoId}`,
     platform: "youtube" as const,
-    type: "video" as const,
-    title: r.title,
-    artist: r.author,
     thumbnail: r.thumbnail,
-    duration: r.duration,
+    title: r.title,
+    type: "video" as const,
     url: `https://youtube.com/watch?v=${r.videoId}`,
   }));
 }
@@ -162,11 +162,11 @@ export function transformRadioGardenResults(
   results: RadioGardenSearchResult[]
 ): UnifiedSearchResult[] {
   return results.map((r) => ({
+    artist: `${r.placeTitle}, ${r.countryTitle}`,
     id: `rg-${r.channelId}`,
     platform: "radiogarden" as const,
-    type: "station" as const,
     title: r.title,
-    artist: `${r.placeTitle}, ${r.countryTitle}`,
+    type: "station" as const,
     url: r.url,
   }));
 }
@@ -211,7 +211,7 @@ function interleaveResults(
 ): UnifiedSearchResult[] {
   const interleaved: UnifiedSearchResult[] = [];
 
-  for (let index = 0; index < MAX_INTERLEAVE_ROUNDS; index++) {
+  for (let index = 0; index < MAX_INTERLEAVE_ROUNDS; index += 1) {
     for (const provider of ALL_PROVIDER_ORDER) {
       const result = resultsByProvider[provider][index];
       if (result) {

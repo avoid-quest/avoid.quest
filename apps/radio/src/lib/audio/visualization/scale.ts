@@ -75,7 +75,7 @@ export function generateLogFrequencies(
   const logMin = Math.log10(minHz);
   const logMax = Math.log10(maxHz);
 
-  for (let i = 0; i < numPoints; i++) {
+  for (let i = 0; i < numPoints; i += 1) {
     const t = i / (numPoints - 1);
     const logFreq = logMin + t * (logMax - logMin);
     frequencies[i] = 10 ** logFreq;
@@ -98,7 +98,7 @@ export function generateNormalizedFrequencies(
   const logMin = Math.log10(minHz);
   const logMax = Math.log10(Math.min(maxHz, sampleRate / 2));
 
-  for (let i = 0; i < numPoints; i++) {
+  for (let i = 0; i < numPoints; i += 1) {
     const t = i / (numPoints - 1);
     const logFreq = logMin + t * (logMax - logMin);
     frequencies[i] = 10 ** logFreq / sampleRate;

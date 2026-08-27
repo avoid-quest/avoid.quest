@@ -30,8 +30,8 @@ describe("createRadioMetadataWorkflow", () => {
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({
-      ok: false,
       error: { code: "RADIO_METADATA_INVALID_URL" },
+      ok: false,
     });
   });
 

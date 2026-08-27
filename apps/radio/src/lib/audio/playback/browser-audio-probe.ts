@@ -54,7 +54,7 @@ export async function probeBrowserReadableAudio(
     return await isPlayableResponse(response);
   } catch {
     if (signal?.aborted) {
-      throw abortReason(signal);
+      return Promise.reject(abortReason(signal));
     }
     return false;
   } finally {

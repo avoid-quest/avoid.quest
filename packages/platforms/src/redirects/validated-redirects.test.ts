@@ -10,8 +10,8 @@ import {
 type TestFetchUrlFailure = "invalid-url" | "invalid-domain";
 
 const TEST_REDIRECT_FAILURE_MESSAGES = {
-  "invalid-url": "Invalid URL",
   "invalid-domain": "Invalid domain",
+  "invalid-url": "Invalid URL",
   "missing-location": "Missing Location",
   "too-many-redirects": "Too many redirects",
 } as const satisfies Record<

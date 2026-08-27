@@ -84,13 +84,13 @@ const defaultLifecycle: PlaybackAudioRoutingLifecycle = {
 
 const defaultChannels: PlaybackActionChannelFacade = {
   activate: activateChannel,
-  deactivateAll: deactivateAllChannels,
   deactivate: deactivateChannel,
+  deactivateAll: deactivateAllChannels,
   getOutputMode: getChannelOutputMode,
-  setVolume: setChannelVolume,
   setMuted: setChannelMuted,
   setPan: setChannelPan,
   setSpeed: setChannelSpeed,
+  setVolume: setChannelVolume,
   subscribeRuntime: subscribeChannelRuntime,
 };
 
@@ -110,8 +110,8 @@ export function createDefaultPlaybackActionContext(): PlaybackActionContext {
     getMainOutputRouter: getOutputRouting,
     lifecycle: defaultLifecycle,
     reportError: noopReportError,
-    resumeAudioContext,
     resetAudioManager: AudioManager.resetInstance,
+    resumeAudioContext,
   };
 }
 

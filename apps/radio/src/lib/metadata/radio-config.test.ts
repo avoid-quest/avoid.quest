@@ -18,9 +18,9 @@ describe("radio metadata config fallback", () => {
           .map((radio) => [radio.name, radio.metadataConfig?.kind])
       )
     ).toEqual({
-      "Resonance Extra": "icy",
       "Internet Public Radio": "airtime-live-info",
       "Radio Alhara": "icy",
+      "Resonance Extra": "icy",
     });
   });
 
@@ -31,7 +31,9 @@ describe("radio metadata config fallback", () => {
   });
 
   test("matches default metadata by stream URL after a station is renamed", () => {
-    const defaultRadio = defaultRadios.find((radio) => radio.metadataConfig);
+    const defaultRadio = defaultRadios.find(
+      (candidate) => candidate.metadataConfig
+    );
     if (!defaultRadio) {
       throw new Error(
         "Expected at least one default radio with metadata config"
@@ -40,8 +42,8 @@ describe("radio metadata config fallback", () => {
 
     const renamedRadio: Radio = {
       ...defaultRadio,
-      name: `${defaultRadio.name} renamed`,
       metadataConfig: undefined,
+      name: `${defaultRadio.name} renamed`,
     };
 
     expect(getRadioMetadataConfig(renamedRadio)).toEqual(
@@ -50,7 +52,9 @@ describe("radio metadata config fallback", () => {
   });
 
   test("prefers explicit radio metadata config over the default fallback", () => {
-    const defaultRadio = defaultRadios.find((radio) => radio.metadataConfig);
+    const defaultRadio = defaultRadios.find(
+      (candidate) => candidate.metadataConfig
+    );
     if (!defaultRadio) {
       throw new Error(
         "Expected at least one default radio with metadata config"

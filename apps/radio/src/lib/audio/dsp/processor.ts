@@ -44,7 +44,7 @@ export class DSPProcessor {
   // Analysis components (lazily initialized)
   private levelMeter: LevelMeter | null = null;
   private spectrumAnalyzer: SpectrumAnalyzer | null = null;
-  private analysisEnabled = false;
+  private analysisEnabled = false as boolean;
   private analysisFrameCounter = 0;
   private readonly analysisInterval = 3; // Send every N render quanta (~60fps)
 
@@ -81,9 +81,9 @@ export class DSPProcessor {
    * Handle incoming message
    */
   handleMessage(message: { type: string; payload?: unknown }): void {
-    const { type, payload } = message;
+    const { payload, type: messageType } = message;
 
-    switch (type) {
+    switch (messageType) {
       case MessageType.CREATE_SOURCE:
         this.createSource((payload as { id: string }).id);
         break;
@@ -228,7 +228,7 @@ export class DSPProcessor {
       default:
         // Log unknown message types for debugging version mismatches
         // Note: console.warn in AudioWorklet goes to browser console
-        console.warn(`[DSPProcessor] Unknown message type: ${type}`);
+        console.warn(`[DSPProcessor] Unknown message type: ${messageType}`);
         break;
     }
   }
@@ -253,13 +253,13 @@ export class DSPProcessor {
     const tempR = this.mixTempR;
 
     // Copy input to temp for processing
-    for (let i = fromIndex; i < toIndex; i++) {
+    for (let i = fromIndex; i < toIndex; i += 1) {
       tempL[i] = inputL[i] ?? 0;
       tempR[i] = inputR[i] ?? 0;
     }
 
     // Clear output first
-    for (let i = fromIndex; i < toIndex; i++) {
+    for (let i = fromIndex; i < toIndex; i += 1) {
       outputL[i] = 0;
       outputR[i] = 0;
     }
@@ -287,7 +287,7 @@ export class DSPProcessor {
 
     // If no active sources with effects, pass through input directly
     if (!hasActiveSource) {
-      for (let i = fromIndex; i < toIndex; i++) {
+      for (let i = fromIndex; i < toIndex; i += 1) {
         outputL[i] = tempL[i] ?? 0;
         outputR[i] = tempR[i] ?? 0;
       }
@@ -314,7 +314,7 @@ export class DSPProcessor {
 
     // Run analysis if enabled (throttled)
     if (this.analysisEnabled && this.levelMeter && this.spectrumAnalyzer) {
-      this.analysisFrameCounter++;
+      this.analysisFrameCounter += 1;
       if (this.analysisFrameCounter >= this.analysisInterval) {
         this.analysisFrameCounter = 0;
 
@@ -376,8 +376,8 @@ export class DSPProcessor {
     }
     source.stop();
     this.emitMessage(MessageType.SOURCE_ENDED, {
-      sourceId,
       reason: "stopped",
+      sourceId,
     });
   }
 
@@ -593,7 +593,7 @@ export class DSPProcessor {
 
   private emitMessage(type: string, payload?: unknown): void {
     if (this.onMessage) {
-      this.onMessage({ type, payload });
+      this.onMessage({ payload, type });
     }
   }
 
@@ -607,11 +607,11 @@ export class DSPProcessor {
     effectId?: string
   ): void {
     this.emitMessage(MessageType.SOURCE_ERROR, {
-      id: generateWorkletErrorId(),
-      sourceId,
-      error: message,
       code,
       effectId,
+      error: message,
+      id: generateWorkletErrorId(),
+      sourceId,
       timestamp: Date.now(),
     });
   }

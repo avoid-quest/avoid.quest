@@ -32,20 +32,20 @@ describe("searchRadioBrowser", () => {
       return Promise.resolve(
         jsonResponse([
           {
-            stationuuid: "station-1",
-            name: "Test Radio",
-            url: "http://radio.example/original",
-            url_resolved: "https://radio.example/live.mp3",
-            homepage: "https://radio.example",
-            favicon: "https://radio.example/icon.png",
-            country: "Italy",
-            state: "Lazio",
-            tags: "ambient, experimental",
-            codec: "MP3",
             bitrate: 192,
+            codec: "MP3",
+            country: "Italy",
+            favicon: "https://radio.example/icon.png",
             hls: 0,
+            homepage: "https://radio.example",
             lastcheckok: 1,
             lastchecktime: "2026-07-10 12:00:00",
+            name: "Test Radio",
+            state: "Lazio",
+            stationuuid: "station-1",
+            tags: "ambient, experimental",
+            url: "http://radio.example/original",
+            url_resolved: "https://radio.example/live.mp3",
           },
           {
             name: "Missing stream",
@@ -62,20 +62,20 @@ describe("searchRadioBrowser", () => {
 
     expect(stations).toEqual([
       {
-        stationUuid: "station-1",
-        name: "Test Radio",
-        url: "",
-        urlResolved: "https://radio.example/live.mp3",
-        homepage: "https://radio.example",
-        favicon: "https://radio.example/icon.png",
-        country: "Italy",
-        state: "Lazio",
-        tags: ["ambient", "experimental"],
-        codec: "MP3",
         bitrate: 192,
+        codec: "MP3",
+        country: "Italy",
+        favicon: "https://radio.example/icon.png",
         hls: false,
+        homepage: "https://radio.example",
         lastCheckOk: true,
         lastCheckTime: "2026-07-10 12:00:00",
+        name: "Test Radio",
+        state: "Lazio",
+        stationUuid: "station-1",
+        tags: ["ambient", "experimental"],
+        url: "",
+        urlResolved: "https://radio.example/live.mp3",
       },
     ]);
     expect(requested.map((url) => url.hostname)).toEqual([
@@ -121,16 +121,16 @@ describe("searchRadioBrowser", () => {
     const fetchImpl = mock(async () =>
       jsonResponse([
         {
-          stationuuid: "station-1",
+          favicon: "data:image/svg+xml,unsafe",
+          homepage: "javascript:alert(1)",
           name: "Unsafe metadata",
+          stationuuid: "station-1",
           url: "javascript:alert(1)",
           url_resolved: "https://radio.example/live.mp3",
-          homepage: "javascript:alert(1)",
-          favicon: "data:image/svg+xml,unsafe",
         },
         {
-          stationuuid: "station-2",
           name: "No playable URL",
+          stationuuid: "station-2",
           url: "file:///tmp/audio.mp3",
         },
       ])
@@ -143,11 +143,11 @@ describe("searchRadioBrowser", () => {
       })
     ).resolves.toEqual([
       expect.objectContaining({
+        favicon: "",
+        homepage: "",
         stationUuid: "station-1",
         url: "",
         urlResolved: "https://radio.example/live.mp3",
-        homepage: "",
-        favicon: "",
       }),
     ]);
   });
@@ -156,14 +156,14 @@ describe("searchRadioBrowser", () => {
     const fetchImpl = mock(async () =>
       jsonResponse([
         {
-          stationuuid: "station-http",
           name: "HTTP only",
+          stationuuid: "station-http",
           url: "http://radio.example/original",
           url_resolved: "http://radio.example/live.mp3",
         },
         {
-          stationuuid: "station-https",
           name: "HTTPS fallback",
+          stationuuid: "station-https",
           url: "https://radio.example/original",
           url_resolved: "http://radio.example/live.mp3",
         },
@@ -191,13 +191,13 @@ describe("searchRadioBrowser", () => {
     const fetchImpl = mock(async () =>
       jsonResponse([
         {
-          stationuuid: "station-private",
           name: "Private",
+          stationuuid: "station-private",
           url_resolved: "https://private.example/live.mp3",
         },
         {
-          stationuuid: "station-public",
           name: "Public",
+          stationuuid: "station-public",
           url: "https://radio.example/original.mp3",
           url_resolved: "https://radio.example/live.mp3",
         },
@@ -230,8 +230,8 @@ describe("searchRadioBrowser", () => {
         fetchImpl: mock(async () =>
           jsonResponse([
             {
-              stationuuid: "station-1",
               name: "Unresolved",
+              stationuuid: "station-1",
               url: "https://unresolved.example/live.mp3",
             },
           ])
@@ -248,8 +248,8 @@ describe("searchRadioBrowser", () => {
         fetchImpl: mock(async () =>
           jsonResponse([
             {
-              stationuuid: "station-1",
               name: "Slow DNS",
+              stationuuid: "station-1",
               url: "https://slow.example/live.mp3",
             },
           ])

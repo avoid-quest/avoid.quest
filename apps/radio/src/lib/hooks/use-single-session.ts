@@ -55,18 +55,18 @@ export function useSingleSession() {
 
   return useMemo(
     () => ({
-      session,
       currentRadio,
-      isPlaying: activeRuntime.isPlaying,
-      isLoading: activeRuntime.isLoading,
       error,
-      volume,
-      selectRadio,
-      togglePlayPause,
-      setVolume,
-      play,
+      isLoading: activeRuntime.isLoading,
+      isPlaying: activeRuntime.isPlaying,
       pause,
+      play,
+      selectRadio,
+      session,
+      setVolume,
       stop,
+      togglePlayPause,
+      volume,
     }),
     [
       activeRuntime.isLoading,

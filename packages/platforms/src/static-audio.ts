@@ -73,7 +73,7 @@ export function validatePublicStaticAudioUrl(
 export function getFilenameFromUrl(url: string): string {
   try {
     const parsed = new URL(url);
-    const pathname = parsed.pathname;
+    const { pathname } = parsed;
     const lastSlash = pathname.lastIndexOf("/");
     const filename =
       lastSlash === -1 ? pathname : pathname.slice(lastSlash + 1);

@@ -19,11 +19,12 @@ describe("DeviceSource capture policy", () => {
       channelCount: 1,
       deviceId: "pixel-mic",
       echoCancellation: false,
-      latency: 0.012,
+      latency: 0.04,
       noiseSuppression: false,
       sampleRate: 48_000,
     };
-    const track = {
+    const probeStop = mock(() => undefined);
+    const probeTrack = {
       getCapabilities: () => ({ latency: { max: 0.1, min: 0.005 } }),
       getSettings: () => settings,
       label: "Pixel microphone",
@@ -33,12 +34,30 @@ describe("DeviceSource capture policy", () => {
       get readyState() {
         return readyState;
       },
-      stop: () => undefined,
+      stop: probeStop,
     };
-    const getUserMedia = mock(async () => ({
-      getAudioTracks: () => [track],
-      getTracks: () => [],
-    }));
+    const lowLatencySettings = { ...settings, latency: 0.005 };
+    const lowLatencyTrack = {
+      getCapabilities: () => ({ latency: { max: 0.1, min: 0.005 } }),
+      getSettings: () => lowLatencySettings,
+      label: "Pixel microphone",
+      get muted() {
+        return muted;
+      },
+      get readyState() {
+        return readyState;
+      },
+      stop: mock(() => undefined),
+    };
+    let requestCount = 0;
+    const getUserMedia = mock(() => {
+      requestCount += 1;
+      const track = requestCount === 1 ? probeTrack : lowLatencyTrack;
+      return Promise.resolve({
+        getAudioTracks: () => [track],
+        getTracks: () => [track],
+      });
+    });
     Object.defineProperty(globalThis, "navigator", {
       configurable: true,
       value: {
@@ -65,7 +84,7 @@ describe("DeviceSource capture policy", () => {
 
     await source.start("pixel-mic");
 
-    expect(getUserMedia).toHaveBeenCalledWith({
+    expect(getUserMedia).toHaveBeenNthCalledWith(1, {
       audio: {
         autoGainControl: false,
         channelCount: { ideal: 2 },
@@ -75,21 +94,33 @@ describe("DeviceSource capture policy", () => {
         noiseSuppression: false,
       },
     });
+    expect(getUserMedia).toHaveBeenNthCalledWith(2, {
+      audio: {
+        autoGainControl: false,
+        channelCount: { exact: 1 },
+        deviceId: { exact: "pixel-mic" },
+        echoCancellation: false,
+        latency: { exact: 0.005 },
+        noiseSuppression: false,
+      },
+    });
     expect(source.channelCount).toBe(1);
+    expect(probeStop).toHaveBeenCalledTimes(1);
     expect(createChannelMerger).not.toHaveBeenCalled();
     expect(source.getDiagnostics()).toEqual({
-      actual: settings,
+      actual: lowLatencySettings,
       capabilities: { latency: { max: 0.1, min: 0.005 } },
       label: "Pixel microphone",
       latencyConstraintSupported: true,
+      latencyTrial: { result: "applied", target: 0.005 },
       muted: false,
       readyState: "live",
       requested: {
         autoGainControl: false,
-        channelCount: { ideal: 2 },
+        channelCount: { exact: 1 },
         deviceId: { exact: "pixel-mic" },
         echoCancellation: false,
-        latency: { ideal: 0 },
+        latency: { exact: 0.005 },
         noiseSuppression: false,
       },
     });
@@ -163,5 +194,138 @@ describe("DeviceSource capture policy", () => {
     expect(splitter.connect).toHaveBeenCalledWith(routingOutput, 0, 0);
 
     source.stop();
+  });
+
+  test("reopens with the safe request when exact latency is rejected", async () => {
+    const settings = {
+      channelCount: 1,
+      deviceId: "pixel-mic",
+      latency: 0.04,
+    };
+    const createTrack = () => ({
+      getCapabilities: () => ({ latency: { max: 0.04, min: 0.02 } }),
+      getSettings: () => settings,
+      label: "Pixel microphone",
+      muted: false,
+      readyState: "live" as const,
+      stop: mock(() => undefined),
+    });
+    const probeTrack = createTrack();
+    const fallbackTrack = createTrack();
+    let requestCount = 0;
+    const getUserMedia = mock(() => {
+      requestCount += 1;
+      if (requestCount === 2) {
+        return Promise.reject(
+          new DOMException("Unsupported latency", "OverconstrainedError")
+        );
+      }
+      const track = requestCount === 1 ? probeTrack : fallbackTrack;
+      return Promise.resolve({
+        getAudioTracks: () => [track],
+        getTracks: () => [track],
+      });
+    });
+    Object.defineProperty(globalThis, "navigator", {
+      configurable: true,
+      value: {
+        mediaDevices: {
+          addEventListener: () => undefined,
+          getSupportedConstraints: () => ({ latency: true }),
+          getUserMedia,
+          removeEventListener: () => undefined,
+        },
+      },
+    });
+    const node = {
+      connect: () => undefined,
+      disconnect: () => undefined,
+    };
+    const context = {
+      createChannelMerger: () => node,
+      createChannelSplitter: () => node,
+      createGain: () => ({ ...node, gain: { value: 0 } }),
+      createMediaStreamSource: () => node,
+    } as unknown as AudioContext;
+    const source = new DeviceSource(context, "mic");
+
+    await source.start("pixel-mic");
+
+    expect(getUserMedia).toHaveBeenCalledTimes(3);
+    expect(source.getDiagnostics()).toMatchObject({
+      actual: settings,
+      latencyTrial: { result: "rejected", target: 0.02 },
+      requested: { latency: { ideal: 0 } },
+    });
+  });
+
+  test("rejects a low-latency stream that enables voice processing", async () => {
+    const rawSettings = {
+      autoGainControl: false,
+      channelCount: 1,
+      echoCancellation: false,
+      latency: 0.04,
+      noiseSuppression: false,
+    };
+    const createTrack = (
+      settings: MediaTrackSettings & { latency: number }
+    ) => ({
+      getCapabilities: () => ({ latency: { max: 0.04, min: 0.02 } }),
+      getSettings: () => settings,
+      label: "Pixel microphone",
+      muted: false,
+      readyState: "live" as const,
+      stop: mock(() => undefined),
+    });
+    const rawTrack = createTrack(rawSettings);
+    const processedTrack = createTrack({
+      ...rawSettings,
+      echoCancellation: true,
+      latency: 0.02,
+    });
+    let requestCount = 0;
+    const getUserMedia = mock(() => {
+      requestCount += 1;
+      let track = createTrack(rawSettings);
+      if (requestCount === 1) {
+        track = rawTrack;
+      } else if (requestCount === 2) {
+        track = processedTrack;
+      }
+      return Promise.resolve({
+        getAudioTracks: () => [track],
+        getTracks: () => [track],
+      });
+    });
+    Object.defineProperty(globalThis, "navigator", {
+      configurable: true,
+      value: {
+        mediaDevices: {
+          addEventListener: () => undefined,
+          getSupportedConstraints: () => ({ latency: true }),
+          getUserMedia,
+          removeEventListener: () => undefined,
+        },
+      },
+    });
+    const node = {
+      connect: () => undefined,
+      disconnect: () => undefined,
+    };
+    const context = {
+      createChannelMerger: () => node,
+      createChannelSplitter: () => node,
+      createGain: () => ({ ...node, gain: { value: 0 } }),
+      createMediaStreamSource: () => node,
+    } as unknown as AudioContext;
+    const source = new DeviceSource(context, "mic");
+
+    await source.start();
+
+    expect(source.getDiagnostics()).toMatchObject({
+      actual: rawSettings,
+      latencyTrial: { result: "ignored", target: 0.02 },
+      requested: { latency: { ideal: 0 } },
+    });
   });
 });

@@ -29,8 +29,8 @@ type BandcampSearchApiResult = {
 };
 
 type BandcampSearchApiResponse = {
-  auto: {
-    results: BandcampSearchApiResult[];
+  auto?: {
+    results?: BandcampSearchApiResult[];
   };
 };
 
@@ -59,7 +59,6 @@ function getArtworkUrl(artId?: number, img?: string): string | undefined {
   if (artId) {
     return `https://f4.bcbits.com/img/a${artId}_2.jpg`;
   }
-  return;
 }
 
 /**
@@ -107,17 +106,17 @@ export async function searchBandcamp(
   const response = await fetch(
     "https://bandcamp.com/api/bcsearch_public_api/1/autocomplete_elastic",
     {
-      method: "POST",
+      body: JSON.stringify({
+        full_page: true,
+        search_filter: filter,
+        search_text: query,
+      }),
       headers: {
         "Content-Type": "application/json",
         "User-Agent":
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
       },
-      body: JSON.stringify({
-        search_text: query,
-        search_filter: filter,
-        full_page: true,
-      }),
+      method: "POST",
       signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS),
     }
   );
@@ -130,12 +129,12 @@ export async function searchBandcamp(
   const results = data.auto?.results ?? [];
 
   return results.slice(0, limit).map((item) => ({
-    id: String(item.id),
-    type: mapItemType(item.type),
-    title: item.name,
-    artist: item.band_name || "",
-    thumbnail: getArtworkUrl(item.art_id, item.img),
-    url: buildUrl(item.item_url_path),
     albumTitle: item.album_name,
+    artist: item.band_name || "",
+    id: String(item.id),
+    thumbnail: getArtworkUrl(item.art_id, item.img),
+    title: item.name,
+    type: mapItemType(item.type),
+    url: buildUrl(item.item_url_path),
   }));
 }

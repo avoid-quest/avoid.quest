@@ -18,9 +18,9 @@ export function logSecurityEvent(
 ): void {
   const timestamp = new Date().toISOString();
   const logEntry = {
-    timestamp,
     level,
     message,
+    timestamp,
     ...context,
   };
 
@@ -51,9 +51,9 @@ export function logRateLimitViolation(
   ip?: string
 ): void {
   logSecurityEvent("warn", "Rate limit exceeded", {
-    sessionId,
     endpoint,
     ip,
+    sessionId,
   });
 }
 
@@ -67,10 +67,10 @@ export function logSSRFAttempt(
   ip?: string
 ): void {
   logSecurityEvent("warn", "SSRF attempt detected", {
-    sessionId,
     attemptedUrl,
     endpoint,
     ip,
+    sessionId,
   });
 }
 

@@ -12,6 +12,21 @@
  */
 type NormalizedContextState = "suspended" | "running" | "closed";
 const MOBILE_USER_AGENT = /(android|iphone|ipad|ipod|mobile)/;
+const DEFAULT_MOBILE_BUFFER_FRAMES = 256;
+
+export function getMobileAudioBufferFrames(): 128 | 256 | 512 {
+  const requested =
+    typeof location === "undefined"
+      ? null
+      : new URLSearchParams(location.search).get("audio-buffer");
+  if (requested === "128") {
+    return 128;
+  }
+  if (requested === "512") {
+    return 512;
+  }
+  return DEFAULT_MOBILE_BUFFER_FRAMES;
+}
 
 /**
  * Callback for context state changes
@@ -25,7 +40,7 @@ export function getAudioContextOptions(): AudioContextOptions {
   const isFirefox = userAgent.includes("firefox");
   const isMobile = MOBILE_USER_AGENT.test(userAgent);
   return {
-    latencyHint: isMobile ? 256 / 48_000 : 0,
+    latencyHint: isMobile ? getMobileAudioBufferFrames() / 48_000 : 0,
     ...(isFirefox ? {} : { sampleRate: 48_000 }),
   };
 }
@@ -34,10 +49,24 @@ type NativePlaybackStats = {
   averageLatency: number;
   maximumLatency: number;
   minimumLatency: number;
+  resetLatency?: () => void;
   totalDuration: number;
   underrunDuration: number;
   underrunEvents: number;
 };
+
+export function resetAudioContextPlaybackLatency(
+  context: AudioContext
+): boolean {
+  const { playbackStats } = context as AudioContext & {
+    playbackStats?: NativePlaybackStats;
+  };
+  if (typeof playbackStats?.resetLatency !== "function") {
+    return false;
+  }
+  playbackStats.resetLatency();
+  return true;
+}
 
 export type AudioContextPerformanceSnapshot = {
   baseLatencyMs: number;
@@ -285,6 +314,12 @@ class AudioContextManager {
 
   getPerformanceSnapshot(): AudioContextPerformanceSnapshot | null {
     return this.context ? snapshotAudioContext(this.context) : null;
+  }
+
+  resetPlaybackLatency(): boolean {
+    return this.context
+      ? resetAudioContextPlaybackLatency(this.context)
+      : false;
   }
 
   /**

@@ -2,6 +2,7 @@ import { beforeAll, describe, expect, mock, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 
 const renderedDeckIds: string[] = [];
+const handleChange = () => undefined;
 
 mock.module("./deck/deck-panel", () => ({
   DeckPanel: ({ deckId }: { deckId: string }) => {
@@ -36,10 +37,10 @@ describe("DjConsoleMobile", () => {
         deckBCueEnabled={false}
         isCueActive={false}
         masterVolume={0.8}
-        onCrossfadeChange={() => undefined}
-        onDeckACueChange={() => undefined}
-        onDeckBCueChange={() => undefined}
-        onMasterVolumeChange={() => undefined}
+        onCrossfadeChange={handleChange}
+        onDeckACueChange={handleChange}
+        onDeckBCueChange={handleChange}
+        onMasterVolumeChange={handleChange}
         radios={[]}
       />
     );

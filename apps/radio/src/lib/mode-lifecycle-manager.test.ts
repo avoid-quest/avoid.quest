@@ -39,12 +39,12 @@ async function resetSettings() {
 
 function insertPlaybackSession(id: PlaybackSessionId) {
   playbackSessionsCollection.insert({
-    id,
+    activeChannelId: null,
     channels: [],
-    masterVolume: 1,
     crossfadePosition: 0.5,
     headphoneVolume: 1,
-    activeChannelId: null,
+    id,
+    masterVolume: 1,
   });
 }
 
@@ -73,13 +73,13 @@ function getActivatedSoundId(
 function createModeLifecycleTestContext() {
   const audioEngine = {
     playback: {
-      play: mock(async (_soundId: string, _volume?: number) => undefined),
       pause: mock((_soundId: string) => undefined),
-      seek: mock((_soundId: string, _position: number) => undefined),
+      play: mock(async (_soundId: string, _volume?: number) => undefined),
       refreshStreamUrl: mock(
         async (_soundId: string, _newUrl: string, _seekPosition?: number) =>
           undefined
       ),
+      seek: mock((_soundId: string, _position: number) => undefined),
     },
     volume: {
       setChannelVolume: mock((_soundId: string, _volume: number) => undefined),
@@ -111,19 +111,19 @@ function createModeLifecycleTestContext() {
           return soundId;
         }
       ),
-      deactivateAll: mock(() => undefined),
       deactivate: mock((_channelId: string) => undefined),
-      setVolume: mock((_sessionId, _channelId, _volume) => undefined),
+      deactivateAll: mock(() => undefined),
       setMuted: mock((_sessionId, _channelId, _muted) => undefined),
       setPan: mock((_sessionId, _channelId, _pan) => undefined),
       setSpeed: mock((_sessionId, _channelId, _speed) => undefined),
+      setVolume: mock((_sessionId, _channelId, _volume) => undefined),
       subscribeRuntime: mock((_sessionId, _channelId, _soundId) => undefined),
     },
     getMainOutputRouter: () => null,
     lifecycle: { mainOutputSettingsApplied: true },
     reportError: mock(() => undefined),
-    resumeAudioContext: mock(async () => undefined),
     resetAudioManager: mock(() => undefined),
+    resumeAudioContext: mock(async () => undefined),
   } satisfies PlaybackActionContext;
 }
 
@@ -151,14 +151,14 @@ describe("mode lifecycle manager", () => {
     const activateInitialMode = mock(async (_mode: string) => undefined);
     const switchTo = mock(async (_mode: string) => undefined);
     const manager = {
+      activateInitialMode,
       getSnapshot: () => ({
         currentMode: null,
-        requestedMode: null,
-        phase: "inactive" as const,
         error: null,
+        phase: "inactive" as const,
+        requestedMode: null,
       }),
       subscribe: mock((_listener: () => void) => () => undefined),
-      activateInitialMode,
       switchTo,
     };
 
@@ -176,7 +176,7 @@ describe("mode lifecycle manager", () => {
     });
     const manager = createModeManager({
       lifecycles: {
-        single: {
+        dj: {
           activate: mock(async () => undefined),
           deactivate: mock(async () => undefined),
           getPhase: () => "inactive",
@@ -186,7 +186,7 @@ describe("mode lifecycle manager", () => {
           deactivate: mock(async () => undefined),
           getPhase: () => "inactive",
         },
-        dj: {
+        single: {
           activate: mock(async () => undefined),
           deactivate: mock(async () => undefined),
           getPhase: () => "inactive",
@@ -200,8 +200,8 @@ describe("mode lifecycle manager", () => {
     await Promise.resolve();
     expect(manager.getSnapshot()).toMatchObject({
       currentMode: null,
-      requestedMode: "multiple",
       phase: "activating",
+      requestedMode: "multiple",
     });
 
     await requests.synchronizeMode("multiple");
@@ -216,14 +216,14 @@ describe("mode lifecycle manager", () => {
     const switchTo = mock(async (_mode: string) => undefined);
     const getSnapshot = mock(() => ({
       currentMode: null,
-      requestedMode: null,
-      phase: "inactive" as const,
       error: null,
+      phase: "inactive" as const,
+      requestedMode: null,
     }));
     const manager = {
+      activateInitialMode,
       getSnapshot,
       subscribe: mock((_listener: () => void) => () => undefined),
-      activateInitialMode,
       switchTo,
     };
 
@@ -249,14 +249,14 @@ describe("mode lifecycle manager", () => {
     const activateInitialMode = mock(async (_mode: string) => undefined);
     const switchTo = mock(async (_mode: string) => undefined);
     const manager = {
+      activateInitialMode,
       getSnapshot: mock(() => ({
         currentMode: "single" as const,
-        requestedMode: null,
-        phase: "active" as const,
         error: null,
+        phase: "active" as const,
+        requestedMode: null,
       })),
       subscribe: mock((_listener: () => void) => () => undefined),
-      activateInitialMode,
       switchTo,
     };
 
@@ -281,9 +281,12 @@ describe("mode lifecycle manager", () => {
     const releaseActivation = Promise.withResolvers<void>();
     const committedModes: string[] = [];
     const manager = createModeManager({
+      commitMode: mock((mode) => {
+        committedModes.push(mode);
+      }),
       initialMode: "single",
       lifecycles: {
-        single: {
+        dj: {
           activate: mock(async () => undefined),
           deactivate: mock(async () => undefined),
           getPhase: () => "inactive",
@@ -295,15 +298,12 @@ describe("mode lifecycle manager", () => {
           deactivate: mock(async () => undefined),
           getPhase: () => "inactive",
         },
-        dj: {
+        single: {
           activate: mock(async () => undefined),
           deactivate: mock(async () => undefined),
           getPhase: () => "inactive",
         },
       },
-      commitMode: mock((mode) => {
-        committedModes.push(mode);
-      }),
     });
 
     const firstSwitch = manager.switchTo("multiple");
@@ -312,8 +312,8 @@ describe("mode lifecycle manager", () => {
     await Promise.resolve();
     expect(manager.getSnapshot()).toMatchObject({
       currentMode: "single",
-      requestedMode: "multiple",
       phase: "activating",
+      requestedMode: "multiple",
     });
     expect(committedModes).toEqual([]);
 
@@ -335,10 +335,11 @@ describe("mode lifecycle manager", () => {
     const commitMode = mock((_mode: string) => undefined);
     const singleActivate = mock(async () => undefined);
     const manager = createModeManager({
+      commitMode,
       initialMode: "single",
       lifecycles: {
-        single: {
-          activate: singleActivate,
+        dj: {
+          activate: mock(async () => undefined),
           deactivate: mock(async () => undefined),
           getPhase: () => "inactive",
         },
@@ -347,13 +348,12 @@ describe("mode lifecycle manager", () => {
           deactivate: mock(async () => undefined),
           getPhase: () => "inactive",
         },
-        dj: {
-          activate: mock(async () => undefined),
+        single: {
+          activate: singleActivate,
           deactivate: mock(async () => undefined),
           getPhase: () => "inactive",
         },
       },
-      commitMode,
     });
 
     await expect(manager.switchTo("multiple")).rejects.toThrow(
@@ -375,10 +375,11 @@ describe("mode lifecycle manager", () => {
       throw new Error("settings commit failed");
     });
     const manager = createModeManager({
+      commitMode,
       initialMode: "single",
       lifecycles: {
-        single: {
-          activate: singleActivate,
+        dj: {
+          activate: mock(async () => undefined),
           deactivate: mock(async () => undefined),
           getPhase: () => "inactive",
         },
@@ -387,13 +388,12 @@ describe("mode lifecycle manager", () => {
           deactivate: multipleDeactivate,
           getPhase: () => "inactive",
         },
-        dj: {
-          activate: mock(async () => undefined),
+        single: {
+          activate: singleActivate,
           deactivate: mock(async () => undefined),
           getPhase: () => "inactive",
         },
       },
-      commitMode,
     });
 
     await expect(manager.switchTo("multiple")).rejects.toThrow(
@@ -404,8 +404,8 @@ describe("mode lifecycle manager", () => {
     expect(singleActivate).toHaveBeenCalledTimes(1);
     expect(manager.getSnapshot()).toMatchObject({
       currentMode: "single",
-      phase: "active",
       error: "Mode could not be changed. Try again.",
+      phase: "active",
     });
   });
 
@@ -415,10 +415,13 @@ describe("mode lifecycle manager", () => {
       Promise.reject(new Error("cleanup failed"))
     );
     const manager = createModeManager({
+      commitMode: mock(() => {
+        throw new Error("settings commit failed");
+      }),
       initialMode: "single",
       lifecycles: {
-        single: {
-          activate: singleActivate,
+        dj: {
+          activate: mock(async () => undefined),
           deactivate: mock(async () => undefined),
           getPhase: () => "inactive",
         },
@@ -427,15 +430,12 @@ describe("mode lifecycle manager", () => {
           deactivate: multipleDeactivate,
           getPhase: () => "inactive",
         },
-        dj: {
-          activate: mock(async () => undefined),
+        single: {
+          activate: singleActivate,
           deactivate: mock(async () => undefined),
           getPhase: () => "inactive",
         },
       },
-      commitMode: mock(() => {
-        throw new Error("settings commit failed");
-      }),
     });
 
     await expect(manager.switchTo("multiple")).rejects.toThrow(
@@ -446,16 +446,17 @@ describe("mode lifecycle manager", () => {
     expect(singleActivate).toHaveBeenCalledTimes(1);
     expect(manager.getSnapshot()).toMatchObject({
       currentMode: "single",
-      phase: "active",
       error: "Mode could not be changed. Try again.",
+      phase: "active",
     });
   });
 
   test("surfaces safe mode transition errors without leaking implementation details", async () => {
     const manager = createModeManager({
+      commitMode: mock(() => undefined),
       initialMode: "single",
       lifecycles: {
-        single: {
+        dj: {
           activate: mock(async () => undefined),
           deactivate: mock(async () => undefined),
           getPhase: () => "inactive",
@@ -471,13 +472,12 @@ describe("mode lifecycle manager", () => {
           deactivate: mock(async () => undefined),
           getPhase: () => "inactive",
         },
-        dj: {
+        single: {
           activate: mock(async () => undefined),
           deactivate: mock(async () => undefined),
           getPhase: () => "inactive",
         },
       },
-      commitMode: mock(() => undefined),
     });
 
     await expect(manager.switchTo("multiple")).rejects.toThrow(
@@ -492,37 +492,37 @@ describe("mode lifecycle manager", () => {
   test("switching out of DJ mode cleans up deck audio through lifecycle boundaries", async () => {
     await playbackSessionsCollection.stateWhenReady();
     playbackSessionsCollection.insert({
-      id: "dj",
+      activeChannelId: null,
       channels: [
         createDefaultChannel(DECK_A_CHANNEL_ID, "deck-a", 0),
         createDefaultChannel(DECK_B_CHANNEL_ID, "deck-b", 1),
       ],
-      masterVolume: 0.5,
       crossfadePosition: 0.5,
       headphoneVolume: 1,
-      activeChannelId: null,
+      id: "dj",
+      masterVolume: 0.5,
     });
     insertPlaybackSession("single");
     setPlaybackChannelRuntime(DECK_A_CHANNEL_ID, () => ({
-      soundId: "left_station-1",
       isPlaying: true,
+      soundId: "left_station-1",
     }));
     setPlaybackChannelRuntime(DECK_B_CHANNEL_ID, () => ({
-      soundId: "right_station-2",
       isPlaying: true,
+      soundId: "right_station-2",
     }));
     const context = createModeLifecycleTestContext();
     const fadeOut = mock((_soundId: string, _durationMs: number) =>
       Promise.resolve()
     );
     const manager = createModeManager({
+      commitMode: mock(() => undefined),
       initialMode: "dj",
       lifecycles: createModeLifecycleRegistry({
         ctx: context,
         fadeOutDurationMs: 120,
         fadeOutSound: fadeOut,
       }),
-      commitMode: mock(() => undefined),
     });
 
     await manager.switchTo("single");
@@ -540,28 +540,28 @@ describe("mode lifecycle manager", () => {
   test("switching modes cleans orphaned sounds owned by the deactivated mode", async () => {
     await playbackSessionsCollection.stateWhenReady();
     playbackSessionsCollection.insert({
-      id: "single",
+      activeChannelId: "single-a",
       channels: [
         createDefaultChannel("single-a", "single-primary", 0),
         createDefaultChannel("single-b", "single-secondary", 1),
       ],
-      masterVolume: 0.5,
       crossfadePosition: 0.5,
       headphoneVolume: 1,
-      activeChannelId: "single-a",
+      id: "single",
+      masterVolume: 0.5,
     });
     insertPlaybackSession("multiple");
     setPlaybackChannelRuntime("single-a", () => ({
-      soundId: "single:orphan",
-      isPlaying: true,
-      isLoading: true,
-      isBuffering: true,
       error: {
+        code: "STREAM_ABORTED",
         id: "stale-error",
         message: "stale",
-        code: "STREAM_ABORTED",
         timestamp: 1,
       },
+      isBuffering: true,
+      isLoading: true,
+      isPlaying: true,
+      soundId: "single:orphan",
     }));
     const context = createModeLifecycleTestContext();
     const liveSoundIds = new Set(["single:orphan"]);
@@ -572,56 +572,56 @@ describe("mode lifecycle manager", () => {
       liveSoundIds.delete(soundId);
     });
     const manager = createModeManager({
+      commitMode: mock(() => undefined),
       initialMode: "single",
       lifecycles: createModeLifecycleRegistry({ ctx: context }),
-      commitMode: mock(() => undefined),
     });
 
     await manager.switchTo("multiple");
 
     expect(context.audio.cleanupSound).toHaveBeenCalledWith("single:orphan");
     expect(getPlaybackChannelRuntime("single-a")).toMatchObject({
-      soundId: null,
-      isPlaying: false,
-      isLoading: false,
-      isBuffering: false,
       error: null,
+      isBuffering: false,
+      isLoading: false,
+      isPlaying: false,
+      soundId: null,
     });
   });
 
   test("switch cleanup preserves sounds that belong to the newly active mode", async () => {
     await playbackSessionsCollection.stateWhenReady();
     playbackSessionsCollection.insert({
-      id: "single",
+      activeChannelId: "single-a",
       channels: [
         createDefaultChannel("single-a", "single-primary", 0),
         createDefaultChannel("single-b", "single-secondary", 1),
       ],
-      masterVolume: 0.5,
       crossfadePosition: 0.5,
       headphoneVolume: 1,
-      activeChannelId: "single-a",
+      id: "single",
+      masterVolume: 0.5,
     });
     playbackSessionsCollection.insert({
-      id: "multiple",
+      activeChannelId: null,
       channels: [
         {
           ...createDefaultChannel("multi:station-1", "multiple", 0),
           radio: stationRadio,
         },
       ],
-      masterVolume: 0.5,
       crossfadePosition: 0.5,
       headphoneVolume: 1,
-      activeChannelId: null,
+      id: "multiple",
+      masterVolume: 0.5,
     });
     setPlaybackChannelRuntime("single-a", () => ({
-      soundId: "single:orphan",
       isPlaying: true,
+      soundId: "single:orphan",
     }));
     setPlaybackChannelRuntime("multi:station-1", () => ({
-      soundId: "multiple:kept",
       isPlaying: true,
+      soundId: "multiple:kept",
     }));
     const context = createModeLifecycleTestContext();
     const liveSoundIds = new Set(["single:orphan", "multiple:kept"]);
@@ -632,9 +632,9 @@ describe("mode lifecycle manager", () => {
       liveSoundIds.delete(soundId);
     });
     const manager = createModeManager({
+      commitMode: mock(() => undefined),
       initialMode: "single",
       lifecycles: createModeLifecycleRegistry({ ctx: context }),
-      commitMode: mock(() => undefined),
     });
 
     await manager.switchTo("multiple");
@@ -651,46 +651,46 @@ describe("mode lifecycle manager", () => {
   test("cleans partially activated mode runtime before rolling back", async () => {
     await playbackSessionsCollection.stateWhenReady();
     playbackSessionsCollection.insert({
-      id: "single",
+      activeChannelId: "single-a",
       channels: [createDefaultChannel("single-a", "single-primary", 0)],
-      masterVolume: 0.5,
       crossfadePosition: 0.5,
       headphoneVolume: 1,
-      activeChannelId: "single-a",
+      id: "single",
+      masterVolume: 0.5,
     });
     playbackSessionsCollection.insert({
-      id: "multiple",
+      activeChannelId: null,
       channels: [
         {
           ...createDefaultChannel("multi:station-1", "multiple", 0),
           radio: stationRadio,
         },
       ],
-      masterVolume: 0.5,
       crossfadePosition: 0.5,
       headphoneVolume: 1,
-      activeChannelId: null,
+      id: "multiple",
+      masterVolume: 0.5,
     });
     const context = createModeLifecycleTestContext();
     context.channels.activate = mock((_sessionId, channelId) => {
       setPlaybackChannelRuntime(channelId, () => ({
-        soundId: "multiple:partial",
-        isLoading: true,
-        isPlaying: true,
-        isBuffering: true,
         error: {
+          code: "STREAM_ABORTED",
           id: "partial-error",
           message: "stale",
-          code: "STREAM_ABORTED",
           timestamp: 1,
         },
+        isBuffering: true,
+        isLoading: true,
+        isPlaying: true,
+        soundId: "multiple:partial",
       }));
       throw new Error("activation failed midway");
     });
     const manager = createModeManager({
+      commitMode: mock(() => undefined),
       initialMode: "single",
       lifecycles: createModeLifecycleRegistry({ ctx: context }),
-      commitMode: mock(() => undefined),
     });
 
     await expect(manager.switchTo("multiple")).rejects.toThrow(
@@ -699,11 +699,11 @@ describe("mode lifecycle manager", () => {
 
     expect(context.channels.deactivate).toHaveBeenCalledWith("multi:station-1");
     expect(getPlaybackChannelRuntime("multi:station-1")).toMatchObject({
-      soundId: null,
-      isPlaying: false,
-      isLoading: false,
-      isBuffering: false,
       error: null,
+      isBuffering: false,
+      isLoading: false,
+      isPlaying: false,
+      soundId: null,
     });
     expect(manager.getSnapshot()).toMatchObject({
       currentMode: "single",
@@ -722,9 +722,10 @@ describe("mode lifecycle manager", () => {
     });
     const commitMode = mock((_mode: string) => undefined);
     const manager = createModeManager({
+      commitMode,
       lifecycles: {
-        single: {
-          activate: activateSingle,
+        dj: {
+          activate: mock(async () => undefined),
           deactivate: mock(async () => undefined),
           getPhase: () => "inactive",
         },
@@ -733,13 +734,12 @@ describe("mode lifecycle manager", () => {
           deactivate: mock(async () => undefined),
           getPhase: () => "inactive",
         },
-        dj: {
-          activate: mock(async () => undefined),
+        single: {
+          activate: activateSingle,
           deactivate: mock(async () => undefined),
           getPhase: () => "inactive",
         },
       },
-      commitMode,
     });
 
     await expect(manager.activateInitialMode("single")).rejects.toThrow(
@@ -748,8 +748,8 @@ describe("mode lifecycle manager", () => {
 
     expect(manager.getSnapshot()).toMatchObject({
       currentMode: null,
-      phase: "inactive",
       error: "Playback mode could not start. Try again.",
+      phase: "inactive",
     });
     expect(commitMode).not.toHaveBeenCalled();
 
@@ -759,8 +759,8 @@ describe("mode lifecycle manager", () => {
     expect(commitMode).not.toHaveBeenCalled();
     expect(manager.getSnapshot()).toMatchObject({
       currentMode: "single",
-      phase: "active",
       error: null,
+      phase: "active",
     });
   });
 

@@ -7,7 +7,7 @@ describe("createValidatedHlsFetchSetup", () => {
       credentials: "omit",
       resolveHostname: async () => ["203.0.113.8"],
     });
-    const signal = new AbortController().signal;
+    const { signal } = new AbortController();
     const request = await fetchSetup(
       { url: "https://media.example/segment.ts" },
       {

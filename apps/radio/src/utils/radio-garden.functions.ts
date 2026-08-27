@@ -37,14 +37,14 @@ export const radioGardenSearch = createServerFn({ method: "POST" })
   .handler(
     ({ data }): Promise<RadioGardenSearchResponse> =>
       runServerFn({
-        operation: "radioGardenSearch",
         fallback: {
-          code: "RADIO_GARDEN_SEARCH_FAILED",
-          safeMessage: "Search failed",
           category: "dependency",
+          code: "RADIO_GARDEN_SEARCH_FAILED",
           expected: false,
+          safeMessage: "Search failed",
           status: 500,
         },
+        operation: "radioGardenSearch",
         run: async () => {
           const results = await searchRadioGarden(data.query);
           const candidates = await Promise.all(
@@ -77,14 +77,14 @@ export const radioGardenStream = createServerFn({ method: "POST" })
   .handler(
     ({ data }): Promise<RadioGardenStreamResponse> =>
       runServerFn({
-        operation: "radioGardenStream",
         fallback: {
-          code: "RADIO_GARDEN_STREAM_FAILED",
-          safeMessage: "Failed to resolve station stream",
           category: "dependency",
+          code: "RADIO_GARDEN_STREAM_FAILED",
           expected: false,
+          safeMessage: "Failed to resolve station stream",
           status: 500,
         },
+        operation: "radioGardenStream",
         run: async () => ({
           streamUrl: await resolveRadioGardenStream(data.channelId),
         }),

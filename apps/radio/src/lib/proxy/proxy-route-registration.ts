@@ -20,10 +20,10 @@ function createInternalErrorFallback(
   internalErrorCode: AppErrorInit["code"]
 ): Omit<AppErrorInit, "cause"> {
   return {
-    code: internalErrorCode,
-    safeMessage: "Internal server error",
     category: "infrastructure",
+    code: internalErrorCode,
     expected: false,
+    safeMessage: "Internal server error",
     status: 500,
   };
 }
@@ -42,9 +42,9 @@ export function createProxyRouteRegistration({
     handlers: {
       GET: proxyPolicy.get({
         env,
+        fallback: createInternalErrorFallback(internalErrorCode),
         identifier,
         operation,
-        fallback: createInternalErrorFallback(internalErrorCode),
         run: workflow.handle,
       }),
       OPTIONS: ({ request }: { request: Request }) =>

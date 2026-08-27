@@ -56,7 +56,7 @@ describe("channel state manager", () => {
   test("persists volume updates and syncs the active audio sound", async () => {
     await playbackSessionsCollection.stateWhenReady();
     playbackSessionsCollection.insert({
-      id: "single",
+      activeChannelId: "single-a",
       channels: [
         {
           ...createDefaultChannel("single-a", "single-primary", 0),
@@ -67,10 +67,10 @@ describe("channel state manager", () => {
           },
         },
       ],
-      masterVolume: 1,
       crossfadePosition: 0.5,
       headphoneVolume: 1,
-      activeChannelId: "single-a",
+      id: "single",
+      masterVolume: 1,
     });
 
     const manager = AudioManager.getInstance();
@@ -89,7 +89,7 @@ describe("channel state manager", () => {
     const effect = createDefaultEffectConfig("delay", "delay", 0);
     effect.enabled = true;
     playbackSessionsCollection.insert({
-      id: "dj",
+      activeChannelId: null,
       channels: [
         {
           ...createDefaultChannel("deck-a", "deck-a", 0),
@@ -97,10 +97,10 @@ describe("channel state manager", () => {
           effectsDryWet: 0.6,
         },
       ],
-      masterVolume: 1,
       crossfadePosition: 0.5,
       headphoneVolume: 1,
-      activeChannelId: null,
+      id: "dj",
+      masterVolume: 1,
       tempo: 126,
     });
     const manager = AudioManager.getInstance();
@@ -131,10 +131,10 @@ describe("channel state manager", () => {
     await Promise.resolve();
 
     expect(desired.at(-1)).toEqual({
-      tree: [effect],
       dryWet: 0.6,
       sidechainSoundId: null,
       tempo: 126,
+      tree: [effect],
     });
   });
 });

@@ -15,10 +15,10 @@ describe("createProxyRequestPolicy", () => {
     });
     const response = policy.problem(
       new AppError({
-        code: "PROXY_INVALID_URL",
-        safeMessage: "Invalid URL",
         category: "validation",
+        code: "PROXY_INVALID_URL",
         expected: true,
+        safeMessage: "Invalid URL",
         status: 400,
       }),
       "https://radio.test",
@@ -64,32 +64,32 @@ describe("createProxyRequestPolicy", () => {
       async (_request, _env, _identifier, options) => {
         await Promise.resolve();
         return {
-          sessionId: "session_123",
           ip: "127.0.0.1",
+          sessionId: "session_123",
           shouldSetCookie: options?.createSessionIfMissing ?? true,
         };
       }
     );
     const policy = createProxyRequestPolicy({ validateAuthAndRateLimit });
     const response = await policy.run({
-      request: new Request("https://radio.test/api/radio-metadata"),
       env: {},
-      identifier: "radio-metadata",
-      operation: "radio-metadata.GET",
       fallback: {
-        code: "RADIO_METADATA_INTERNAL_ERROR",
-        safeMessage: "Internal server error",
         category: "infrastructure",
+        code: "RADIO_METADATA_INTERNAL_ERROR",
         expected: false,
+        safeMessage: "Internal server error",
         status: 500,
       },
+      identifier: "radio-metadata",
+      operation: "radio-metadata.GET",
+      request: new Request("https://radio.test/api/radio-metadata"),
       run: async ({ auth, origin, requestId }) => {
         await Promise.resolve();
         expect(origin).toBe("https://radio.test");
         expect(requestId).toBeTruthy();
         expect(auth).toEqual({
-          sessionId: "session_123",
           ip: "127.0.0.1",
+          sessionId: "session_123",
           shouldSetCookie: true,
         });
         return new Response("ok");
@@ -106,8 +106,8 @@ describe("createProxyRequestPolicy", () => {
       async (_request, _env, _identifier, options) => {
         await Promise.resolve();
         return {
-          sessionId: "session_123",
           ip: "127.0.0.1",
+          sessionId: "session_123",
           shouldSetCookie: options?.createSessionIfMissing ?? true,
         };
       }
@@ -115,15 +115,15 @@ describe("createProxyRequestPolicy", () => {
     const policy = createProxyRequestPolicy({ validateAuthAndRateLimit });
     const get = policy.get({
       env: {},
-      identifier: "radio-metadata",
-      operation: "radio-metadata.GET",
       fallback: {
-        code: "RADIO_METADATA_INTERNAL_ERROR",
-        safeMessage: "Internal server error",
         category: "infrastructure",
+        code: "RADIO_METADATA_INTERNAL_ERROR",
         expected: false,
+        safeMessage: "Internal server error",
         status: 500,
       },
+      identifier: "radio-metadata",
+      operation: "radio-metadata.GET",
       run: async ({ request }) => {
         await Promise.resolve();
         expect(request.url).toBe("https://radio.test/api/radio-metadata");
@@ -144,8 +144,8 @@ describe("createProxyRequestPolicy", () => {
     const validateAuthAndRateLimit = mock(async () => {
       await Promise.resolve();
       return {
-        sessionId: GENERATED_SESSION_ID,
         ip: "127.0.0.1",
+        sessionId: GENERATED_SESSION_ID,
         shouldSetCookie: true,
       };
     });
@@ -158,26 +158,26 @@ describe("createProxyRequestPolicy", () => {
     });
 
     const response = await policy.run({
-      request: new Request("https://radio.test/api/radio-metadata"),
       env: {},
-      identifier: "radio-metadata",
-      operation: "radio-metadata.GET",
       fallback: {
-        code: "RADIO_METADATA_INTERNAL_ERROR",
-        safeMessage: "Internal server error",
         category: "infrastructure",
+        code: "RADIO_METADATA_INTERNAL_ERROR",
         expected: false,
+        safeMessage: "Internal server error",
         status: 500,
       },
+      identifier: "radio-metadata",
+      operation: "radio-metadata.GET",
+      request: new Request("https://radio.test/api/radio-metadata"),
       run: async () => {
         await Promise.resolve();
         return new Response(body, {
-          status: 200,
           headers: {
             "Content-Type": "application/json",
             "Set-Cookie": "existing=1; Path=/",
             "x-upstream": "preserved",
           },
+          status: 200,
         });
       },
     });
@@ -196,25 +196,25 @@ describe("createProxyRequestPolicy", () => {
     const validateAuthAndRateLimit = mock(async () => {
       await Promise.resolve();
       return {
-        sessionId: EXISTING_SESSION_ID,
         ip: "127.0.0.1",
+        sessionId: EXISTING_SESSION_ID,
         shouldSetCookie: false,
       };
     });
     const policy = createProxyRequestPolicy({ validateAuthAndRateLimit });
 
     const response = await policy.run({
-      request: new Request("https://radio.test/api/radio-metadata"),
       env: {},
-      identifier: "radio-metadata",
-      operation: "radio-metadata.GET",
       fallback: {
-        code: "RADIO_METADATA_INTERNAL_ERROR",
-        safeMessage: "Internal server error",
         category: "infrastructure",
+        code: "RADIO_METADATA_INTERNAL_ERROR",
         expected: false,
+        safeMessage: "Internal server error",
         status: 500,
       },
+      identifier: "radio-metadata",
+      operation: "radio-metadata.GET",
+      request: new Request("https://radio.test/api/radio-metadata"),
       run: async () => {
         await Promise.resolve();
         return new Response("ok");
@@ -227,10 +227,10 @@ describe("createProxyRequestPolicy", () => {
 
   test("returns auth responses unchanged when the policy blocks the request", async () => {
     const blockedResponse = new Response("blocked", {
-      status: 429,
       headers: {
         "x-request-id": "req_blocked",
       },
+      status: 429,
     });
     const policy = createProxyRequestPolicy({
       validateAuthAndRateLimit: mock(async () => {
@@ -240,17 +240,17 @@ describe("createProxyRequestPolicy", () => {
     });
 
     const response = await policy.run({
-      request: new Request("https://radio.test/api/radio-metadata"),
       env: {},
-      identifier: "radio-metadata",
-      operation: "radio-metadata.GET",
       fallback: {
-        code: "RADIO_METADATA_INTERNAL_ERROR",
-        safeMessage: "Internal server error",
         category: "infrastructure",
+        code: "RADIO_METADATA_INTERNAL_ERROR",
         expected: false,
+        safeMessage: "Internal server error",
         status: 500,
       },
+      identifier: "radio-metadata",
+      operation: "radio-metadata.GET",
+      request: new Request("https://radio.test/api/radio-metadata"),
       run: async () => {
         await Promise.resolve();
         return new Response("should not run");

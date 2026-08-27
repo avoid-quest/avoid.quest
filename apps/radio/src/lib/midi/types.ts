@@ -17,10 +17,10 @@ export type MidiTransform = {
 };
 
 export const DEFAULT_TRANSFORM: MidiTransform = {
-  invert: false,
-  min: 0,
-  max: 1,
   curve: "linear",
+  invert: false,
+  max: 1,
+  min: 0,
 };
 
 /** Apply transform pipeline: invert -> curve -> range clamp */

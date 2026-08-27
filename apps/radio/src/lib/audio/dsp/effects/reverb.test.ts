@@ -132,7 +132,7 @@ describe("DattorroReverb", () => {
 
     // At least some output should be non-zero
     let hasNonZero = false;
-    for (let i = 0; i < 128; i++) {
+    for (let i = 0; i < 128; i += 1) {
       if (output[0][i] !== 0 || output[1][i] !== 0) {
         hasNonZero = true;
         break;
@@ -196,7 +196,7 @@ describe("DattorroReverb", () => {
     ];
 
     // Process impulse multiple times to fill delay lines
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < 10; i += 1) {
       reverb.process(impulse, output, 0, 128);
     }
 
@@ -213,7 +213,7 @@ describe("DattorroReverb", () => {
 
     // Some reverb tail should be present
     let hasTail = false;
-    for (let i = 0; i < 128; i++) {
+    for (let i = 0; i < 128; i += 1) {
       if (
         Math.abs(tailOutput[0][i]) > 0.0001 ||
         Math.abs(tailOutput[1][i]) > 0.0001
@@ -257,13 +257,13 @@ describe("DattorroReverb", () => {
     ];
 
     // Process multiple times to accumulate modulation differences
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < 10; i += 1) {
       reverb.process(input, output, 0, 128);
     }
 
     // Check if L and R outputs differ (due to modulation and different taps)
     let hasDifference = false;
-    for (let i = 0; i < 128; i++) {
+    for (let i = 0; i < 128; i += 1) {
       if (Math.abs(output[0][i] - output[1][i]) > 0.0001) {
         hasDifference = true;
         break;

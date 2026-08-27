@@ -64,20 +64,20 @@ describe("effect definitions", () => {
   test("converts engine params through the definition metadata", () => {
     const config = {
       ...EFFECT_DEFINITIONS.compressor.defaultConfig,
-      id: "compressor-1",
-      order: 0,
-      enabled: true,
-      lookahead: false,
       autoAttack: true,
+      enabled: true,
+      id: "compressor-1",
+      lookahead: false,
+      order: 0,
     } satisfies CompressorConfig;
 
     expect(convertEffectConfigToEngine(config)).toMatchObject({
-      enabled: 1,
-      dryWet: 1,
-      threshold: -10,
-      ratio: 4,
-      lookahead: 0,
       autoAttack: 1,
+      dryWet: 1,
+      enabled: 1,
+      lookahead: 0,
+      ratio: 4,
+      threshold: -10,
     });
     expect(convertEffectConfigToEngine(config)).not.toHaveProperty("wet");
     expect(convertEffectConfigToEngine(config)).not.toHaveProperty("dry");
@@ -165,6 +165,22 @@ describe("effect definitions", () => {
 
   test("exposes the official stock-device control surfaces", () => {
     const expectedKeys = {
+      autotune: ["key", "scale", "amount", "retuneAmount", "shift", "smooth"],
+      cheapReverb: ["decay", "preDelay", "damp", "filter", "dry", "wet"],
+      compressor: [
+        "inputgain",
+        "threshold",
+        "ratio",
+        "knee",
+        "attack",
+        "release",
+        "makeup",
+        "mix",
+        "lookahead",
+        "automakeup",
+        "autoattack",
+        "autorelease",
+      ],
       delay: [
         "delayMusical",
         "delayMillis",
@@ -180,29 +196,6 @@ describe("effect definitions", () => {
         "dry",
         "wet",
       ],
-      compressor: [
-        "inputgain",
-        "threshold",
-        "ratio",
-        "knee",
-        "attack",
-        "release",
-        "makeup",
-        "mix",
-        "lookahead",
-        "automakeup",
-        "autoattack",
-        "autorelease",
-      ],
-      tidal: [
-        "rateDivision",
-        "depth",
-        "slope",
-        "symmetry",
-        "offset",
-        "channelOffset",
-      ],
-      cheapReverb: ["decay", "preDelay", "damp", "filter", "dry", "wet"],
       gate: [
         "threshold",
         "return",
@@ -212,8 +205,16 @@ describe("effect definitions", () => {
         "floor",
         "inverse",
       ],
-      waveshaper: ["equation", "deviceInputGain", "deviceOutputGain", "mix"],
       maximizer: ["threshold", "lookaheadEnabled"],
+      neuralAmp: ["input", "output", "mono", "mix"],
+      tidal: [
+        "rateDivision",
+        "depth",
+        "slope",
+        "symmetry",
+        "offset",
+        "channelOffset",
+      ],
       vocoder: [
         "carrierMinFreq",
         "carrierMaxFreq",
@@ -228,8 +229,7 @@ describe("effect definitions", () => {
         "bandCount",
         "modulatorSource",
       ],
-      neuralAmp: ["input", "output", "mono", "mix"],
-      autotune: ["key", "scale", "amount", "retuneAmount", "shift", "smooth"],
+      waveshaper: ["equation", "deviceInputGain", "deviceOutputGain", "mix"],
     } as const;
 
     for (const [type, expected] of Object.entries(expectedKeys)) {
@@ -249,19 +249,19 @@ describe("effect definitions", () => {
 
   test("backfills integration state without removing legacy defaults", () => {
     expect(EFFECT_DEFINITIONS.neuralAmp.defaultConfig).toMatchObject({
-      modelId: null,
-      modelUrl: null,
-      modelName: null,
       modelData: null,
+      modelId: null,
+      modelName: null,
+      modelUrl: null,
     });
     expect(EFFECT_DEFINITIONS.werkstatt.defaultConfig).toMatchObject({
-      source: "return input;",
       parameters: {},
       samples: {},
+      source: "return input;",
     });
     expect(EFFECT_DEFINITIONS.frequencySplit.defaultConfig).toMatchObject({
-      frequencyBandCount: 4,
       crossoverFrequencies: [200, 1000, 5000],
+      frequencyBandCount: 4,
     });
   });
 });

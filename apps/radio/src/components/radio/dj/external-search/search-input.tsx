@@ -1,3 +1,4 @@
+// biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers
 import type {
   SearchPlatform,
   UnifiedSearchResult,
@@ -78,8 +79,8 @@ export function SearchInput({
     reset();
   }, [requestGuard, reset, searchContextKey]);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = (event: React.FormEvent) => {
+    event.preventDefault();
     if (!query.trim()) {
       return;
     }
@@ -87,25 +88,33 @@ export function SearchInput({
     const isCurrentRequest = requestGuard.begin(searchContextKey);
     search(
       {
-        query: query.trim(),
-        platform,
         bandcampFilter: platform === "bandcamp" ? bandcampFilter : undefined,
+        platform,
+        query: query.trim(),
         youtubeFilter: platform === "youtube" ? youtubeFilter : undefined,
       },
       {
-        onSuccess: (results) => {
-          if (isCurrentRequest()) {
-            onResults(results);
-          }
-        },
         onError: (error) => {
           if (isCurrentRequest()) {
             onError(error.message);
           }
         },
+        onSuccess: (results) => {
+          if (isCurrentRequest()) {
+            onResults(results);
+          }
+        },
       }
     );
   };
+  const handlePlatformChange = (value: string) =>
+    onPlatformChange(value as SearchPlatform);
+  const handleQueryChange = (event: React.ChangeEvent<HTMLInputElement>) =>
+    setQuery(event.target.value);
+  const handleBandcampFilterChange = (value: string) =>
+    onBandcampFilterChange(value === "all" ? "" : (value as "t" | "a"));
+  const handleYoutubeFilterChange = (value: string) =>
+    onYoutubeFilterChange(value as "songs" | "videos");
 
   return (
     <form className="flex flex-col gap-2" onSubmit={handleSubmit}>
@@ -119,10 +128,7 @@ export function SearchInput({
             <span className="truncate">{PLATFORM_LABELS[platform]}</span>
           </div>
         ) : (
-          <Select
-            onValueChange={(v) => onPlatformChange(v as SearchPlatform)}
-            value={platform}
-          >
+          <Select onValueChange={handlePlatformChange} value={platform}>
             <SelectTrigger className="h-8 w-[120px] shrink-0 text-xs">
               <SelectValue />
             </SelectTrigger>
@@ -181,7 +187,7 @@ export function SearchInput({
           <Input
             className="h-8 pl-8 text-xs"
             disabled={isPending}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={handleQueryChange}
             placeholder="Search tracks, albums..."
             value={query}
           />
@@ -211,9 +217,7 @@ export function SearchInput({
         <div className="flex items-center gap-2">
           <span className="text-muted-foreground text-xs">Type:</span>
           <Select
-            onValueChange={(v) =>
-              onBandcampFilterChange(v === "all" ? "" : (v as "t" | "a"))
-            }
+            onValueChange={handleBandcampFilterChange}
             value={bandcampFilter === "" ? "all" : bandcampFilter}
           >
             <SelectTrigger className="h-6 w-[90px] text-xs">
@@ -232,9 +236,7 @@ export function SearchInput({
         <div className="flex items-center gap-2">
           <span className="text-muted-foreground text-xs">Type:</span>
           <Select
-            onValueChange={(v) =>
-              onYoutubeFilterChange(v as "songs" | "videos")
-            }
+            onValueChange={handleYoutubeFilterChange}
             value={youtubeFilter}
           >
             <SelectTrigger className="h-6 w-[90px] text-xs">

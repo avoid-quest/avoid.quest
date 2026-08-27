@@ -3,10 +3,13 @@ import type { EffectConfig } from "../dsp/effects/types.js";
 export type QuantumPerformanceSummary = {
   deadlineMisses: number;
   maxMs: number;
+  observedSampleCount: number;
   p95Ms: number;
   p99LoadPercent: number;
   p99Ms: number;
   sampleCount: number;
+  status: "clock-unavailable" | "measured" | "no-samples";
+  zeroSampleCount: number;
 };
 
 export type EffectsPerformanceSnapshot = {

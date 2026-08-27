@@ -1,3 +1,4 @@
+// biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers
 import { captureError } from "@avoid.quest/error";
 import { Button } from "@avoid.quest/ui/components/button";
 import { Input } from "@avoid.quest/ui/components/input";
@@ -23,6 +24,12 @@ type RadioGardenTabProps = {
   onSuccess: () => void;
 };
 
+const stationIntake = createBrowserStationIntake({
+  radioGarden: {
+    resolveStream: resolveRadioGardenStreamForWorkflow,
+  },
+});
+
 export function RadioGardenTab({ onSuccess }: RadioGardenTabProps) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<RadioGardenSearchResult[]>([]);
@@ -31,14 +38,10 @@ export function RadioGardenTab({ onSuccess }: RadioGardenTabProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editedName, setEditedName] = useState("");
   const [isAdding, setIsAdding] = useState(false);
-  const stationIntake = createBrowserStationIntake({
-    radioGarden: {
-      resolveStream: resolveRadioGardenStreamForWorkflow,
-    },
-  });
+  const selected = results.find((result) => result.channelId === selectedId);
 
-  const handleSearch = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSearch = async (event: React.FormEvent) => {
+    event.preventDefault();
     if (!query.trim()) {
       return;
     }
@@ -54,8 +57,8 @@ export function RadioGardenTab({ onSuccess }: RadioGardenTabProps) {
       }
     } catch (error) {
       captureError(error, {
-        surface: "ui",
         operation: "radio-garden.search",
+        surface: "ui",
       });
       setSearchError(
         error instanceof Error
@@ -68,22 +71,35 @@ export function RadioGardenTab({ onSuccess }: RadioGardenTabProps) {
     }
   };
 
-  const handleSelect = (result: RadioGardenSearchResult) => {
-    if (selectedId === result.channelId) {
+  const handleSelect = (event: React.MouseEvent<HTMLButtonElement>) => {
+    const { channelId } = event.currentTarget.dataset;
+    if (!channelId) {
+      return;
+    }
+    if (selectedId === channelId) {
       setSelectedId(null);
       return;
     }
-    setSelectedId(result.channelId);
-    setEditedName(result.title);
+    const result = results.find((item) => item.channelId === channelId);
+    if (!result) {
+      return;
+    }
+    const { title } = result;
+    setSelectedId(channelId);
+    setEditedName(title);
   };
 
-  const handleAdd = async (result: RadioGardenSearchResult) => {
+  const handleAdd = async () => {
+    if (!selected) {
+      setSelectedId(null);
+      return;
+    }
     setIsAdding(true);
     try {
       const resolved = await stationIntake.save({
-        name: editedName || result.title,
+        name: editedName || selected.title,
         origin: "radio-garden",
-        result,
+        result: selected,
       });
 
       if (!resolved.ok) {
@@ -93,13 +109,13 @@ export function RadioGardenTab({ onSuccess }: RadioGardenTabProps) {
 
       notifyStationSave(
         resolved.data,
-        `Added "${editedName || result.title}" to your collection`
+        `Added "${editedName || selected.title}" to your collection`
       );
       onSuccess();
     } catch (error) {
       captureError(error, {
-        surface: "ui",
         operation: "radio-garden.add",
+        surface: "ui",
       });
       toast.error(
         error instanceof Error
@@ -110,8 +126,14 @@ export function RadioGardenTab({ onSuccess }: RadioGardenTabProps) {
       setIsAdding(false);
     }
   };
-
-  const selected = results.find((r) => r.channelId === selectedId);
+  const handleQueryChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setQuery(event.target.value);
+  };
+  const handleEditedNameChange = (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    setEditedName(event.target.value);
+  };
 
   return (
     <div className="flex flex-col gap-3">
@@ -121,7 +143,7 @@ export function RadioGardenTab({ onSuccess }: RadioGardenTabProps) {
           <Input
             className="pl-9"
             disabled={isSearching}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={handleQueryChange}
             placeholder="Search 40,000+ radio stations..."
             value={query}
           />
@@ -135,11 +157,11 @@ export function RadioGardenTab({ onSuccess }: RadioGardenTabProps) {
         </Button>
       </form>
 
-      {searchError && (
+      {searchError ? (
         <div className="rounded-md bg-destructive/10 p-3">
           <p className="text-destructive text-sm">{searchError}</p>
         </div>
-      )}
+      ) : null}
 
       {results.length > 0 && (
         <ScrollArea className="max-h-[50vh]">
@@ -148,8 +170,9 @@ export function RadioGardenTab({ onSuccess }: RadioGardenTabProps) {
               <div key={result.channelId}>
                 <button
                   className="flex w-full items-center gap-3 rounded-md p-2.5 text-left transition-colors hover:bg-accent data-[selected=true]:bg-accent"
+                  data-channel-id={result.channelId}
                   data-selected={selectedId === result.channelId}
-                  onClick={() => handleSelect(result)}
+                  onClick={handleSelect}
                   type="button"
                 >
                   <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-emerald-500/10">
@@ -166,7 +189,7 @@ export function RadioGardenTab({ onSuccess }: RadioGardenTabProps) {
                   </div>
                 </button>
 
-                {selectedId === result.channelId && selected && (
+                {selectedId === result.channelId && selected ? (
                   <div className="mx-2 mb-2 space-y-3 rounded-md border bg-muted/30 p-3">
                     <div className="space-y-2">
                       <label
@@ -177,7 +200,7 @@ export function RadioGardenTab({ onSuccess }: RadioGardenTabProps) {
                       </label>
                       <Input
                         id="rg-station-name"
-                        onChange={(e) => setEditedName(e.target.value)}
+                        onChange={handleEditedNameChange}
                         value={editedName}
                       />
                     </div>
@@ -187,7 +210,7 @@ export function RadioGardenTab({ onSuccess }: RadioGardenTabProps) {
                         {result.placeTitle}, {result.countryTitle}
                       </span>
                     </div>
-                    {result.website && (
+                    {result.website ? (
                       <a
                         className="flex items-center gap-1 text-primary text-xs hover:underline"
                         href={result.website}
@@ -197,11 +220,11 @@ export function RadioGardenTab({ onSuccess }: RadioGardenTabProps) {
                         <ExternalLinkIcon className="size-3" />
                         {result.website}
                       </a>
-                    )}
+                    ) : null}
                     <Button
                       className="w-full"
                       disabled={isAdding}
-                      onClick={() => handleAdd(result)}
+                      onClick={handleAdd}
                       size="sm"
                     >
                       {isAdding ? (
@@ -217,7 +240,7 @@ export function RadioGardenTab({ onSuccess }: RadioGardenTabProps) {
                       )}
                     </Button>
                   </div>
-                )}
+                ) : null}
               </div>
             ))}
           </div>

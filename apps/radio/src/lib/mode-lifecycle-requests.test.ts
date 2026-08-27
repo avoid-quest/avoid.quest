@@ -24,12 +24,12 @@ async function resetSettings() {
 
 function insertPlaybackSession(id: PlaybackSessionId) {
   playbackSessionsCollection.insert({
-    id,
+    activeChannelId: null,
     channels: [],
-    masterVolume: 1,
     crossfadePosition: 0.5,
     headphoneVolume: 1,
-    activeChannelId: null,
+    id,
+    masterVolume: 1,
   });
 }
 
@@ -53,16 +53,16 @@ describe("mode lifecycle requests", () => {
     const switchTo = mock(async (_mode: PlaybackSessionId) => undefined);
     const requests = createModeLifecycleRequests({
       manager: {
-        getSnapshot: mock(() => ({
-          currentMode: "single" as const,
-          requestedMode: null,
-          phase: "active" as const,
-          error: null,
-        })),
-        subscribe: mock((_listener: () => void) => () => undefined),
         activateInitialMode: mock(
           async (_mode: PlaybackSessionId) => undefined
         ),
+        getSnapshot: mock(() => ({
+          currentMode: "single" as const,
+          error: null,
+          phase: "active" as const,
+          requestedMode: null,
+        })),
+        subscribe: mock((_listener: () => void) => () => undefined),
         switchTo,
       },
     });
@@ -77,16 +77,16 @@ describe("mode lifecycle requests", () => {
     const switchTo = mock(async (_mode: PlaybackSessionId) => undefined);
     const requests = createModeLifecycleRequests({
       manager: {
-        getSnapshot: mock(() => ({
-          currentMode: "single" as const,
-          requestedMode: null,
-          phase: "active" as const,
-          error: null,
-        })),
-        subscribe: mock((_listener: () => void) => () => undefined),
         activateInitialMode: mock(
           async (_mode: PlaybackSessionId) => undefined
         ),
+        getSnapshot: mock(() => ({
+          currentMode: "single" as const,
+          error: null,
+          phase: "active" as const,
+          requestedMode: null,
+        })),
+        subscribe: mock((_listener: () => void) => () => undefined),
         switchTo,
       },
     });
@@ -105,14 +105,14 @@ describe("mode lifecycle requests", () => {
     const switchTo = mock(async (_mode: PlaybackSessionId) => undefined);
     const requests = createModeLifecycleRequests({
       manager: {
+        activateInitialMode,
         getSnapshot: mock(() => ({
           currentMode: "single" as const,
-          requestedMode: null,
-          phase: "active" as const,
           error: null,
+          phase: "active" as const,
+          requestedMode: null,
         })),
         subscribe: mock((_listener: () => void) => () => undefined),
-        activateInitialMode,
         switchTo,
       },
     });

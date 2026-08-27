@@ -121,17 +121,16 @@ describe("createLocalMidiMappingPersistence", () => {
   test("starts with defaults when stored JSON has invalid MIDI state", () => {
     const invalidStates = [
       {},
-      { version: 2, state: {} },
+      { state: {}, version: 2 },
       {
-        version: 2,
         state: {
           activePresetId: null,
           enabled: true,
           mappings: [{ channel: 0, control: 1, targetId: 42, type: "cc" }],
         },
+        version: 2,
       },
       {
-        version: 2,
         state: {
           activePresetId: null,
           enabled: true,
@@ -150,6 +149,7 @@ describe("createLocalMidiMappingPersistence", () => {
             },
           ],
         },
+        version: 2,
       },
     ];
     for (const state of invalidStates) {

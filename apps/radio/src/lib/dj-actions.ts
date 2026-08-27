@@ -102,7 +102,7 @@ export async function applyCueOutputDevice(
 }
 
 function setDeckCueEnabled(deckId: DeckId, enabled: boolean): void {
-  getDjDeckModule().deck(deckId).change({ type: "cue", enabled });
+  getDjDeckModule().deck(deckId).change({ enabled, type: "cue" });
 }
 
 export function setHeadphoneVolume(volume: number): void {

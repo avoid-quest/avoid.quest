@@ -1,3 +1,4 @@
+// biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers
 import { Button } from "@avoid.quest/ui/components/button";
 import { Input } from "@avoid.quest/ui/components/input";
 import {
@@ -116,11 +117,13 @@ function MobileRadioItem({ radio }: { radio: Radio }) {
   const load = (deckId: "deck-a" | "deck-b") => {
     getDjDeckModule()
       .deck(deckId)
-      .load({ type: "library", radio })
+      .load({ radio, type: "library" })
       .catch((error) => {
         console.error("[dj] Failed to load mobile source:", error);
       });
   };
+  const handleLoadDeckA = () => load("deck-a");
+  const handleLoadDeckB = () => load("deck-b");
 
   return (
     <div className="flex w-full shrink-0 items-center justify-between gap-2 rounded-lg border bg-card p-3">
@@ -129,7 +132,7 @@ function MobileRadioItem({ radio }: { radio: Radio }) {
         <Button
           aria-label="Load to Deck A"
           className="h-8 w-8 p-0"
-          onClick={() => load("deck-a")}
+          onClick={handleLoadDeckA}
           size="sm"
           title="Load to Deck A"
           variant="outline"
@@ -139,7 +142,7 @@ function MobileRadioItem({ radio }: { radio: Radio }) {
         <Button
           aria-label="Load to Deck B"
           className="h-8 w-8 p-0"
-          onClick={() => load("deck-b")}
+          onClick={handleLoadDeckB}
           size="sm"
           title="Load to Deck B"
           variant="outline"
@@ -188,6 +191,8 @@ export function DjRadioList({ radios }: { radios: Radio[] }) {
   const { isSearching, results } = useUnifiedRadioSearch(query, allRadios);
   const hasQuery = query.trim().length > 0;
   const visibleRadios = hasQuery ? results.map(toDjBrowserRadio) : allRadios;
+  const handleQueryChange = (event: React.ChangeEvent<HTMLInputElement>) =>
+    setQuery(event.target.value);
 
   return (
     <Tabs
@@ -210,7 +215,7 @@ export function DjRadioList({ radios }: { radios: Radio[] }) {
             aria-label="Search stations"
             className="h-8 pl-8 text-xs"
             maxLength={200}
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={handleQueryChange}
             placeholder="Search stations…"
             type="search"
             value={query}

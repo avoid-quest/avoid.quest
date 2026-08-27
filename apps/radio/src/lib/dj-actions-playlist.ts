@@ -46,7 +46,7 @@ function findPlayableTrackStreamUrl(
   platform: string,
   startIndex: number
 ): { streamFormat: StreamFormat; streamUrl: string } | null {
-  for (let index = startIndex; index < tracks.length; index++) {
+  for (let index = startIndex; index < tracks.length; index += 1) {
     const track = tracks[index];
     if (!track) {
       continue;

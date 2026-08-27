@@ -67,11 +67,19 @@ type DeviceTrackCapabilities = MediaTrackCapabilities & {
   latency?: { max: number; min: number };
 };
 
+type DeviceTrackSettings = MediaTrackSettings & {
+  latency?: number;
+};
+
 export type DeviceSourceDiagnostics = {
   actual: MediaTrackSettings & { latency?: number };
   capabilities: DeviceTrackCapabilities | null;
   label: string;
   latencyConstraintSupported: boolean;
+  latencyTrial: {
+    result: "applied" | "ignored" | "rejected";
+    target: number;
+  } | null;
   muted: boolean;
   readyState: MediaStreamTrackState;
   requested: DeviceTrackConstraints;
@@ -85,6 +93,132 @@ const DEFAULT_CONSTRAINTS: DeviceAudioConstraints = {
   echoCancellation: false,
   noiseSuppression: false,
 };
+
+type CaptureState = {
+  audioTrack: MediaStreamTrack | undefined;
+  capabilities: DeviceTrackCapabilities | null;
+  settings: DeviceTrackSettings | undefined;
+  stream: MediaStream;
+};
+
+type CaptureSelection = CaptureState & {
+  latencyTrial: DeviceSourceDiagnostics["latencyTrial"];
+  requested: DeviceTrackConstraints;
+};
+
+function getCaptureState(stream: MediaStream): CaptureState {
+  const [audioTrack] = stream.getAudioTracks();
+  return {
+    audioTrack,
+    capabilities:
+      (audioTrack?.getCapabilities?.() as DeviceTrackCapabilities) ?? null,
+    settings: audioTrack?.getSettings() as DeviceTrackSettings | undefined,
+    stream,
+  };
+}
+
+function stopCapture(stream: MediaStream): void {
+  for (const track of stream.getTracks()) {
+    track.stop();
+  }
+}
+
+function preservesDisabledProcessing(
+  request: DeviceTrackConstraints,
+  settings: DeviceTrackSettings
+): boolean {
+  return !(
+    (request.autoGainControl === false && settings.autoGainControl === true) ||
+    (request.echoCancellation === false &&
+      settings.echoCancellation === true) ||
+    (request.noiseSuppression === false && settings.noiseSuppression === true)
+  );
+}
+
+async function requestExactCapture(
+  request: DeviceTrackConstraints,
+  targetLatency: number
+): Promise<
+  | (CaptureState & {
+      latencyTrial: NonNullable<CaptureSelection["latencyTrial"]>;
+    })
+  | { latencyTrial: NonNullable<CaptureSelection["latencyTrial"]> }
+> {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: request,
+    });
+    const capture = getCaptureState(stream);
+    if (
+      capture.audioTrack &&
+      capture.settings?.latency === targetLatency &&
+      preservesDisabledProcessing(request, capture.settings)
+    ) {
+      return {
+        ...capture,
+        latencyTrial: { result: "applied", target: targetLatency },
+      };
+    }
+    stopCapture(stream);
+    return {
+      latencyTrial: { result: "ignored", target: targetLatency },
+    };
+  } catch {
+    return {
+      latencyTrial: { result: "rejected", target: targetLatency },
+    };
+  }
+}
+
+async function requestCapture(
+  initialRequest: DeviceTrackConstraints,
+  requestedLatency: number | undefined,
+  supportsLatency: boolean,
+  fallbackChannelCount: number
+): Promise<CaptureSelection> {
+  const initialStream = await navigator.mediaDevices.getUserMedia({
+    audio: initialRequest,
+  });
+  const initialCapture = getCaptureState(initialStream);
+  const targetLatency =
+    requestedLatency ?? initialCapture.capabilities?.latency?.min;
+  const shouldTryExactLatency =
+    initialCapture.audioTrack !== undefined &&
+    initialCapture.settings !== undefined &&
+    supportsLatency &&
+    typeof targetLatency === "number" &&
+    typeof initialCapture.settings.latency === "number" &&
+    targetLatency < initialCapture.settings.latency;
+  if (!shouldTryExactLatency) {
+    return {
+      ...initialCapture,
+      latencyTrial: null,
+      requested: initialRequest,
+    };
+  }
+
+  const exactRequest: DeviceTrackConstraints = {
+    ...initialRequest,
+    channelCount: {
+      exact: initialCapture.settings?.channelCount ?? fallbackChannelCount,
+    },
+    latency: { exact: targetLatency },
+  };
+  stopCapture(initialStream);
+  const exactCapture = await requestExactCapture(exactRequest, targetLatency);
+  if ("stream" in exactCapture) {
+    return { ...exactCapture, requested: exactRequest };
+  }
+
+  const fallbackStream = await navigator.mediaDevices.getUserMedia({
+    audio: initialRequest,
+  });
+  return {
+    ...getCaptureState(fallbackStream),
+    latencyTrial: exactCapture.latencyTrial,
+    requested: initialRequest,
+  };
+}
 
 /**
  * DeviceSource
@@ -403,7 +537,7 @@ export class DeviceSource {
           | undefined
       )?.latency
     );
-    const requested: DeviceTrackConstraints = {
+    const initialRequest: DeviceTrackConstraints = {
       autoGainControl: mergedConstraints.autoGainControl,
       channelCount: mergedConstraints.channelCount ?? { ideal: 2 },
       deviceId: deviceId ? { exact: deviceId } : undefined,
@@ -422,9 +556,20 @@ export class DeviceSource {
     try {
       // Use 'exact' for device selection to ensure the correct device is captured
       // If the device is unavailable, NotFoundError is thrown and handled by handleStartError
-      this.stream = await navigator.mediaDevices.getUserMedia({
-        audio: requested,
-      });
+      const {
+        audioTrack,
+        capabilities,
+        latencyTrial,
+        requested,
+        settings,
+        stream,
+      } = await requestCapture(
+        initialRequest,
+        mergedConstraints.latency,
+        supportsLatency,
+        this._channelCount
+      );
+      this.stream = stream;
 
       this._permissionState = "granted";
       this.callbacks.onPermissionChange?.("granted");
@@ -432,18 +577,16 @@ export class DeviceSource {
       // Get actual device ID and channel count from track settings.
       // Match openDAW's capture policy: request at most stereo and use the
       // browser-reported shape for routing.
-      const [audioTrack] = this.stream.getAudioTracks();
-      const settings = audioTrack?.getSettings();
       this._currentDeviceId = settings?.deviceId ?? deviceId ?? null;
       this._channelCount = settings?.channelCount ?? 2;
       if (audioTrack && settings) {
         this.diagnosticsTrack = audioTrack;
         this.diagnostics = {
           actual: settings,
-          capabilities:
-            (audioTrack.getCapabilities?.() as DeviceTrackCapabilities) ?? null,
+          capabilities,
           label: audioTrack.label,
           latencyConstraintSupported: supportsLatency,
+          latencyTrial,
           muted: audioTrack.muted,
           readyState: audioTrack.readyState,
           requested,

@@ -3,7 +3,7 @@ import { getPlaybackChannelRuntime } from "@/lib/stores/playback-runtime-store";
 
 export function getRuntimeSoundIds(channelIds: readonly string[]): string[] {
   return channelIds.flatMap((channelId) => {
-    const soundId = getPlaybackChannelRuntime(channelId).soundId;
+    const { soundId } = getPlaybackChannelRuntime(channelId);
     return soundId ? [soundId] : [];
   });
 }

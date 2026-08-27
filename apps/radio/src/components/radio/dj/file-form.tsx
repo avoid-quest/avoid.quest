@@ -1,3 +1,4 @@
+// biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers
 import { Button } from "@avoid.quest/ui/components/button";
 import { Input } from "@avoid.quest/ui/components/input";
 import {
@@ -24,8 +25,8 @@ export function FileForm({ onLoad, onLoadUrl, onCancel }: FileFormProps) {
   const [urlInput, setUrlInput] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
     if (!file) {
       return;
     }
@@ -77,11 +78,17 @@ export function FileForm({ onLoad, onLoadUrl, onCancel }: FileFormProps) {
     onLoadUrl?.(trimmed);
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !isLoading) {
+  const handleKeyDown = (event: React.KeyboardEvent) => {
+    if (event.key === "Enter" && !isLoading) {
       handleUrlSubmit();
     }
   };
+  const handleTabChange = (value: string) => {
+    setActiveTab(value as "file" | "url");
+    setError(null);
+  };
+  const handleUrlChange = (event: React.ChangeEvent<HTMLInputElement>) =>
+    setUrlInput(event.target.value);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-y-auto p-4">
@@ -91,19 +98,13 @@ export function FileForm({ onLoad, onLoadUrl, onCancel }: FileFormProps) {
           <h3 className="font-medium text-sm">Load Audio</h3>
         </div>
 
-        {error && (
+        {error ? (
           <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3">
             <p className="text-center text-destructive text-sm">{error}</p>
           </div>
-        )}
+        ) : null}
 
-        <Tabs
-          onValueChange={(v) => {
-            setActiveTab(v as "file" | "url");
-            setError(null);
-          }}
-          value={activeTab}
-        >
+        <Tabs onValueChange={handleTabChange} value={activeTab}>
           <TabsList className="w-full">
             <TabsTrigger className="flex-1" value="file">
               <FileAudioIcon className="mr-2 size-4" />
@@ -144,7 +145,7 @@ export function FileForm({ onLoad, onLoadUrl, onCancel }: FileFormProps) {
           <TabsContent className="mt-4 space-y-2" value="url">
             <Input
               disabled={isLoading}
-              onChange={(e) => setUrlInput(e.target.value)}
+              onChange={handleUrlChange}
               onKeyDown={handleKeyDown}
               placeholder="https://example.com/track.mp3"
               value={urlInput}
@@ -169,7 +170,7 @@ export function FileForm({ onLoad, onLoadUrl, onCancel }: FileFormProps) {
         </Tabs>
 
         <div className="flex gap-2">
-          {onCancel && (
+          {onCancel ? (
             <Button
               className="flex-1"
               disabled={isLoading}
@@ -178,7 +179,7 @@ export function FileForm({ onLoad, onLoadUrl, onCancel }: FileFormProps) {
             >
               Cancel
             </Button>
-          )}
+          ) : null}
         </div>
       </div>
     </div>

@@ -9,13 +9,13 @@ import { isSameOriginPlaybackPath } from "./url-validation.js";
 
 const STREAM_URL_OVERRIDES: Readonly<Record<string, string>> = {
   "https://radio.syg.ma/audio.ogg": "https://radio.syg.ma/audio.mp3",
+  "https://s.streampunk.cc/blackout.mp3":
+    "https://seep.eu.org/https://s.streampunk.cc/blackout.mp3",
   "https://stream-relay-geo.ntslive.net/stream":
     "https://streams.radiomast.io/nts1",
   "https://stream-relay-geo.ntslive.net/stream2":
     "https://streams.radiomast.io/nts2",
   "https://zeppelin.streampunk.cc/_stream/blackout.mp3":
-    "https://seep.eu.org/https://s.streampunk.cc/blackout.mp3",
-  "https://s.streampunk.cc/blackout.mp3":
     "https://seep.eu.org/https://s.streampunk.cc/blackout.mp3",
 };
 

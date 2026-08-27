@@ -114,10 +114,13 @@ function createRuntime() {
     timing: {
       deadlineMisses: 0,
       maxMs: 0.1,
+      observedSampleCount: 1,
       p95Ms: 0.1,
       p99LoadPercent: 3.75,
       p99Ms: 0.1,
       sampleCount: 1,
+      status: "measured" as const,
+      zeroSampleCount: 0,
     },
     workletCount: 1 as const,
   };

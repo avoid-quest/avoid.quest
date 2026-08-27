@@ -3,9 +3,9 @@ import type { MidiAction } from "./types";
 
 type StaticMidiActionDependencies = {
   decks: Pick<DjDeckModule, "deck">;
-  setCrossfadePosition(position: number): void;
-  setHeadphoneVolume(volume: number): void;
-  setMasterVolume(volume: number): void;
+  setCrossfadePosition: (position: number) => void;
+  setHeadphoneVolume: (volume: number) => void;
+  setMasterVolume: (volume: number) => void;
 };
 
 function createDeckActions(
@@ -14,70 +14,70 @@ function createDeckActions(
 ): MidiAction[] {
   return [
     {
-      targetId: `${deckId}:play-pause`,
-      label: "Play/Pause",
-      group: deckId,
-      type: "button",
       dispatch: () => {
         decks
           .deck(deckId)
           .transport({ type: "toggle" })
           .catch(() => undefined);
       },
-    },
-    {
-      targetId: `${deckId}:cue`,
-      label: "CUE",
       group: deckId,
+      label: "Play/Pause",
+      targetId: `${deckId}:play-pause`,
       type: "button",
-      dispatch: () => decks.deck(deckId).change({ type: "cue" }),
     },
     {
-      targetId: `${deckId}:volume`,
-      label: "Volume",
+      dispatch: () => decks.deck(deckId).change({ type: "cue" }),
       group: deckId,
-      type: "continuous",
+      label: "CUE",
+      targetId: `${deckId}:cue`,
+      type: "button",
+    },
+    {
       dispatch: (volume) =>
         decks.deck(deckId).change({ type: "volume", volume }),
-      range: { min: 0, max: 1.585, step: 0.01 },
+      group: deckId,
+      label: "Volume",
+      range: { max: 1.585, min: 0, step: 0.01 },
+      targetId: `${deckId}:volume`,
+      type: "continuous",
     },
     {
-      targetId: `${deckId}:speed`,
-      label: "Speed",
-      group: deckId,
-      type: "continuous",
       dispatch: (value) =>
-        decks.deck(deckId).change({ type: "speed", speed: 0.5 + value * 1.5 }),
-      range: { min: 0.5, max: 2, step: 0.01 },
+        decks.deck(deckId).change({ speed: 0.5 + value * 1.5, type: "speed" }),
+      group: deckId,
+      label: "Speed",
+      range: { max: 2, min: 0.5, step: 0.01 },
+      targetId: `${deckId}:speed`,
+      type: "continuous",
     },
     {
-      targetId: `${deckId}:filter`,
-      label: "Filter",
-      group: deckId,
-      type: "continuous",
       dispatch: (value) =>
         decks
           .deck(deckId)
           .change({ type: "channel-filter", value: value * 2 - 1 }),
-      range: { min: -1, max: 1, step: 0.01 },
+      group: deckId,
+      label: "Filter",
+      range: { max: 1, min: -1, step: 0.01 },
+      targetId: `${deckId}:filter`,
+      type: "continuous",
     },
     {
-      targetId: `${deckId}:effects-drywet`,
-      label: "FX Dry/Wet",
-      group: deckId,
-      type: "continuous",
       dispatch: (value) =>
         decks.deck(deckId).change({ type: "effects-dry-wet", value }),
-      range: { min: 0, max: 1, step: 0.01 },
+      group: deckId,
+      label: "FX Dry/Wet",
+      range: { max: 1, min: 0, step: 0.01 },
+      targetId: `${deckId}:effects-drywet`,
+      type: "continuous",
     },
     {
-      targetId: `${deckId}:pan`,
-      label: "Pan",
-      group: deckId,
-      type: "continuous",
       dispatch: (value) =>
-        decks.deck(deckId).change({ type: "pan", pan: value * 2 - 1 }),
-      range: { min: -1, max: 1, step: 0.01 },
+        decks.deck(deckId).change({ pan: value * 2 - 1, type: "pan" }),
+      group: deckId,
+      label: "Pan",
+      range: { max: 1, min: -1, step: 0.01 },
+      targetId: `${deckId}:pan`,
+      type: "continuous",
     },
   ];
 }
@@ -92,28 +92,28 @@ export function createStaticMidiActions({
     ...createDeckActions("deck-a", decks),
     ...createDeckActions("deck-b", decks),
     {
-      targetId: "mixer:crossfader",
-      label: "Crossfader",
-      group: "mixer",
-      type: "continuous",
       dispatch: setCrossfadePosition,
-      range: { min: 0, max: 1, step: 0.01 },
+      group: "mixer",
+      label: "Crossfader",
+      range: { max: 1, min: 0, step: 0.01 },
+      targetId: "mixer:crossfader",
+      type: "continuous",
     },
     {
-      targetId: "mixer:master-volume",
-      label: "Master Volume",
-      group: "mixer",
-      type: "continuous",
       dispatch: setMasterVolume,
-      range: { min: 0, max: 1, step: 0.01 },
+      group: "mixer",
+      label: "Master Volume",
+      range: { max: 1, min: 0, step: 0.01 },
+      targetId: "mixer:master-volume",
+      type: "continuous",
     },
     {
-      targetId: "mixer:headphone-volume",
-      label: "Headphone Volume",
-      group: "mixer",
-      type: "continuous",
       dispatch: setHeadphoneVolume,
-      range: { min: 0, max: 1, step: 0.01 },
+      group: "mixer",
+      label: "Headphone Volume",
+      range: { max: 1, min: 0, step: 0.01 },
+      targetId: "mixer:headphone-volume",
+      type: "continuous",
     },
   ];
 }

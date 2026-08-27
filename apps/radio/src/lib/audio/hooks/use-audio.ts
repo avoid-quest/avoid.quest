@@ -13,20 +13,28 @@ import {
   type Radio,
 } from "../playback/types.js";
 
+type AudioResources = {
+  soundId: string | null;
+  unsubscribe: (() => void) | null;
+};
+
+function createAudioResources(): AudioResources {
+  return { soundId: null, unsubscribe: null };
+}
+
 export function useAudio(radio: Radio | null) {
   // Memoize AudioManager instance to ensure stable reference across renders
   const audioManager = useMemo(() => AudioManager.getInstance(), []);
   const [state, setState] = useState<AudioState>({
-    isPlaying: false,
-    isLoading: false,
-    isBuffering: false,
-    volume: 1,
     error: null,
     hasEnded: false,
+    isBuffering: false,
+    isLoading: false,
+    isPlaying: false,
+    volume: 1,
   });
 
-  const soundIdRef = useRef<string | null>(null);
-  const unsubscribeRef = useRef<(() => void) | null>(null);
+  const resourcesRef = useRef(createAudioResources());
   const volumeRef = useRef<number>(state.volume);
 
   // Generate unique sound ID
@@ -38,14 +46,15 @@ export function useAudio(radio: Radio | null) {
 
   // Cleanup function
   const cleanup = useCallback(() => {
-    if (unsubscribeRef.current) {
-      unsubscribeRef.current();
-      unsubscribeRef.current = null;
+    const resources = resourcesRef.current;
+    if (resources.unsubscribe) {
+      resources.unsubscribe();
+      resources.unsubscribe = null;
     }
 
-    if (soundIdRef.current) {
-      audioManager.cleanupSound(soundIdRef.current);
-      soundIdRef.current = null;
+    if (resources.soundId) {
+      audioManager.cleanupSound(resources.soundId);
+      resources.soundId = null;
     }
   }, [audioManager]);
 
@@ -53,21 +62,24 @@ export function useAudio(radio: Radio | null) {
   const loadRadio = useCallback(
     (newRadio: Radio) => {
       try {
-        setState((prev) => ({ ...prev, isLoading: true, error: null }));
+        setState((prev) => ({ ...prev, error: null, isLoading: true }));
 
         // Cleanup previous sound
         cleanup();
 
         const soundId = getSoundId(newRadio);
-        soundIdRef.current = soundId;
+        resourcesRef.current.soundId = soundId;
 
         // Create sound
         audioManager.createSound(newRadio, soundId);
 
         // Subscribe to state changes
-        unsubscribeRef.current = audioManager.subscribe(soundId, (newState) => {
-          setState(newState);
-        });
+        resourcesRef.current.unsubscribe = audioManager.subscribe(
+          soundId,
+          (newState) => {
+            setState(newState);
+          }
+        );
 
         setState((prev) => ({ ...prev, isLoading: false }));
       } catch (error) {
@@ -75,14 +87,14 @@ export function useAudio(radio: Radio | null) {
           error instanceof Error ? error : new Error("Unknown error");
         setState((prev) => ({
           ...prev,
-          isLoading: false,
           error: {
+            code: "LOAD_ERROR",
             id: generateErrorId(),
             message: errorObj.message,
-            code: "LOAD_ERROR",
             radio: newRadio,
             timestamp: Date.now(),
           },
+          isLoading: false,
         }));
       }
     },
@@ -95,9 +107,9 @@ export function useAudio(radio: Radio | null) {
     setState((prev) => ({
       ...prev,
       error: {
+        code,
         id: generateErrorId(),
         message: errorObj.message,
-        code,
         timestamp: Date.now(),
       },
     }));
@@ -117,19 +129,20 @@ export function useAudio(radio: Radio | null) {
       return false;
     }
 
-    if (!soundIdRef.current) {
+    if (!resourcesRef.current.soundId) {
       await loadRadio(radio);
     }
 
-    return soundIdRef.current !== null;
+    return resourcesRef.current.soundId !== null;
   }, [radio, loadRadio]);
 
   // Helper: Attempt to play the sound
   const attemptPlaySound = useCallback(async (): Promise<void> => {
-    if (!soundIdRef.current) {
+    const { soundId } = resourcesRef.current;
+    if (!soundId) {
       return;
     }
-    await audioManager.playSound(soundIdRef.current, volumeRef.current);
+    await audioManager.playSound(soundId, volumeRef.current);
   }, [audioManager]);
 
   // Helper: Reload radio and play sound
@@ -186,18 +199,20 @@ export function useAudio(radio: Radio | null) {
 
   // Pause function
   const pause = useCallback(() => {
-    if (!soundIdRef.current) {
+    const { soundId } = resourcesRef.current;
+    if (!soundId) {
       return;
     }
-    audioManager.pauseSound(soundIdRef.current);
+    audioManager.pauseSound(soundId);
   }, [audioManager]);
 
   // Stop function
   const stop = useCallback(() => {
-    if (!soundIdRef.current) {
+    const { soundId } = resourcesRef.current;
+    if (!soundId) {
       return;
     }
-    audioManager.stopSound(soundIdRef.current);
+    audioManager.stopSound(soundId);
   }, [audioManager]);
 
   // Toggle play/pause
@@ -212,10 +227,11 @@ export function useAudio(radio: Radio | null) {
   // Set volume
   const setVolume = useCallback(
     (volume: number) => {
-      if (!soundIdRef.current) {
+      const { soundId } = resourcesRef.current;
+      if (!soundId) {
         return;
       }
-      audioManager.setVolume(soundIdRef.current, volume);
+      audioManager.setVolume(soundId, volume);
     },
     [audioManager]
   );
@@ -244,11 +260,11 @@ export function useAudio(radio: Radio | null) {
 
   return {
     ...state,
-    play,
-    pause,
-    stop,
-    setVolume,
-    togglePlayPause,
     loadRadio,
+    pause,
+    play,
+    setVolume,
+    stop,
+    togglePlayPause,
   };
 }

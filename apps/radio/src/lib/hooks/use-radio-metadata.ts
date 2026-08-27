@@ -45,8 +45,8 @@ async function fetchRadioMetadata(
   metadataConfig: Exclude<RadioMetadataConfig, { kind: "none" }>
 ): Promise<RadioMetadataResponse> {
   const params = new URLSearchParams({
-    url: streamUrl,
     kind: metadataConfig.kind,
+    url: streamUrl,
   });
   if ("url" in metadataConfig && metadataConfig.url) {
     params.set("metadataUrl", metadataConfig.url);
@@ -112,26 +112,26 @@ export function useRadioMetadata({
     isMetadataEligibleStreamUrl(streamUrl);
 
   const query = useQuery({
-    queryKey: radioMetadataKeys.stream(streamUrl, metadataConfig ?? undefined),
+    enabled,
+    gcTime: 60_000,
     queryFn: () => {
       if (!(metadataConfig && streamUrl)) {
         throw new Error("Missing radio metadata configuration");
       }
       return fetchRadioMetadata(streamUrl, metadataConfig);
     },
-    enabled,
+    queryKey: radioMetadataKeys.stream(streamUrl, metadataConfig ?? undefined),
     refetchInterval: enabled ? POLL_INTERVAL_MS : false,
-    staleTime: 15_000,
-    gcTime: 60_000,
     retry: 1,
+    staleTime: 15_000,
   });
 
   if (!enabled) {
     return {
-      metadata: null,
+      error: null,
       isLoading: false,
       isSupported: false,
-      error: null,
+      metadata: null,
     };
   }
 
@@ -141,9 +141,9 @@ export function useRadioMetadata({
   const error = getMetadataErrorMessage(query.error);
 
   return {
-    metadata: response?.ok ? response.data : null,
+    error: unsupported ? null : error,
     isLoading: query.isLoading,
     isSupported,
-    error: unsupported ? null : error,
+    metadata: response?.ok ? response.data : null,
   };
 }

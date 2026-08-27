@@ -1,3 +1,4 @@
+// biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers
 import { Button } from "@avoid.quest/ui/components/button";
 import { Input } from "@avoid.quest/ui/components/input";
 import { Label } from "@avoid.quest/ui/components/label";
@@ -5,7 +6,7 @@ import {
   RadioGroup,
   RadioGroupItem,
 } from "@avoid.quest/ui/components/radio-group";
-import { type ReactNode, useRef, useState } from "react";
+import { type ReactNode, useState } from "react";
 import { toast } from "sonner";
 import {
   copyShareUrlToClipboard,
@@ -34,7 +35,7 @@ export function ImportExport({
   const [isImporting, setIsImporting] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [shareUrl, setShareUrl] = useState<string>("");
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [fileInputKey, setFileInputKey] = useState(0);
 
   const lastExportDate = getLastExportDate();
 
@@ -134,10 +135,7 @@ export function ImportExport({
         window as Window & { pendingImportData?: DatabaseExport }
       ).pendingImportData = undefined;
 
-      // Clear file input
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
+      setFileInputKey((key) => key + 1);
     } catch {
       toast.error("Failed to apply import");
     } finally {
@@ -151,10 +149,10 @@ export function ImportExport({
       window as Window & { pendingImportData?: DatabaseExport }
     ).pendingImportData = undefined;
 
-    // Clear file input
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
+    setFileInputKey((key) => key + 1);
+  };
+  const handleImportModeChange = (value: string) => {
+    setImportMode(value as ImportMode);
   };
 
   return (
@@ -255,8 +253,8 @@ export function ImportExport({
                   accept=".json"
                   disabled={isImporting}
                   id="import-file"
+                  key={fileInputKey}
                   onChange={handleFileImport}
-                  ref={fileInputRef}
                   type="file"
                 />
               </div>
@@ -305,9 +303,7 @@ export function ImportExport({
                     Import Mode
                   </Label>
                   <RadioGroup
-                    onValueChange={(value) =>
-                      setImportMode(value as ImportMode)
-                    }
+                    onValueChange={handleImportModeChange}
                     value={importMode}
                   >
                     <div className="flex items-center space-x-2">

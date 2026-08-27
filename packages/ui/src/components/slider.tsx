@@ -1,3 +1,4 @@
+/** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 "use client";
 
 import { cn } from "@avoid.quest/ui/lib/utils";
@@ -41,8 +42,6 @@ function getDefaultValues(defaultValue: SliderProps["defaultValue"]) {
   if (defaultValue !== undefined) {
     return [defaultValue];
   }
-
-  return;
 }
 
 function getPercent(value: number, min: number, max: number) {
@@ -100,6 +99,10 @@ function getMarkerStyle({
   } satisfies CSSProperties;
 }
 
+function getThumbIndex(event: React.SyntheticEvent<HTMLElement>) {
+  return Number(event.currentTarget.dataset.index);
+}
+
 function Slider({
   className,
   defaultValue,
@@ -122,22 +125,6 @@ function Slider({
     [defaultValue]
   );
 
-  const handleReset = (
-    index: number,
-    e?: React.MouseEvent | React.TouchEvent
-  ) => {
-    if (!(onValueChange && defaultValues)) {
-      return;
-    }
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-    const newValues = [...values];
-    newValues[index] = defaultValues[index] ?? defaultValues[0] ?? min;
-    onValueChange(newValues);
-  };
-
   const markerPercent =
     defaultMarkerValue === undefined
       ? undefined
@@ -157,16 +144,23 @@ function Slider({
     orientation,
   });
 
-  const handleClick = (index: number, e: React.MouseEvent) => {
-    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.detail === 2) {
-      handleReset(index, e);
+  const handleThumbInteraction = (
+    e: React.MouseEvent<HTMLElement> | React.TouchEvent<HTMLElement>
+  ) => {
+    const isModifiedClick =
+      "metaKey" in e && (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey);
+    const shouldReset =
+      isModifiedClick || e.detail === 2 || e.type === "dblclick";
+    if (!(onValueChange && defaultValues && shouldReset)) {
+      return;
     }
-  };
 
-  const handleTouchEnd = (index: number, e: React.TouchEvent) => {
-    if (e.detail === 2) {
-      handleReset(index, e);
-    }
+    e.preventDefault();
+    e.stopPropagation();
+    const index = getThumbIndex(e);
+    const newValues = [...values];
+    newValues[index] = defaultValues[index] ?? defaultValues[0] ?? min;
+    onValueChange(newValues);
   };
 
   return (
@@ -217,12 +211,13 @@ function Slider({
       {Array.from({ length: values.length }, (_, index) => (
         <Thumb
           className="block size-4 shrink-0 rounded-full border border-primary light:border-primary/80 bg-white light:bg-background shadow-sm ring-ring/50 transition-[color,box-shadow] hover:ring-4 focus-visible:outline-hidden focus-visible:ring-4 disabled:pointer-events-none disabled:opacity-50 dark:bg-white"
+          data-index={index}
           data-slot="slider-thumb"
           // biome-ignore lint/suspicious/noArrayIndexKey: shadcn
           key={index}
-          onClick={(e) => handleClick(index, e)}
-          onDoubleClick={(e) => handleReset(index, e)}
-          onTouchEnd={(e) => handleTouchEnd(index, e)}
+          onClick={handleThumbInteraction}
+          onDoubleClick={handleThumbInteraction}
+          onTouchEnd={handleThumbInteraction}
         />
       ))}
     </Root>

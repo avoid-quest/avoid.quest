@@ -5,16 +5,16 @@
   "license": "UNLICENSED",
   "type": "module",
   "scripts": {
-    "dev": "NODE_OPTIONS='--import ./instrument.server.mjs' vite dev --port 3000",
     "build": "vite build && cp instrument.server.mjs dist/server",
-    "start": "node --import ./dist/server/instrument.server.mjs dist/server/index.mjs",
-    "test": "bun test",
-    "typecheck": "tsc --noEmit",
     "cf-build": "bun run build",
     "cf-deploy": "bun run build && wrangler deploy",
+    "cf-typegen": "wrangler types --env-interface CloudflareEnv ./cloudflare-env.d.ts",
     "cf-upload": "bun run build && wrangler versions upload",
+    "dev": "NODE_OPTIONS='--import ./instrument.server.mjs' vite dev --port 3000",
     "preview": "vite preview",
-    "cf-typegen": "wrangler types --env-interface CloudflareEnv ./cloudflare-env.d.ts"
+    "start": "node --import ./dist/server/instrument.server.mjs dist/server/index.mjs",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@avoid.quest/error": "workspace:*",
@@ -26,8 +26,8 @@
     "@hookform/resolvers": "^5.9.1",
     "@octokit/core": "^7.0.7",
     "@octokit/plugin-rest-endpoint-methods": "^18.0.0",
-    "@opendaw/lib-dsp": "^0.0.91",
     "@opendaw/lib-dom": "^0.0.88",
+    "@opendaw/lib-dsp": "^0.0.91",
     "@opendaw/lib-std": "^0.0.83",
     "@opendaw/studio-adapters": "^0.3.1",
     "@opendaw/studio-boxes": "^0.0.107",

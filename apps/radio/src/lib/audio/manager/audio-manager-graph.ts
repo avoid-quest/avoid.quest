@@ -18,7 +18,8 @@ type ConnectAudioGraphParams = {
   connectEffectsGraph: (
     soundId: string,
     source: AudioNode,
-    destination: AudioNode
+    destination: AudioNode,
+    inputChannels: 1 | 2
   ) => Promise<boolean>;
 };
 
@@ -127,8 +128,14 @@ async function connectAudioGraph({
   safeDisconnect(pan, "AudioManager.connectAudioGraph");
   safeDisconnect(filter, "AudioManager.connectAudioGraph");
 
-  sourceOutput.connect(pan);
-  pan.connect(filter);
+  const panAfterEffects = instance.isDeviceInput;
+  if (panAfterEffects) {
+    sourceOutput.connect(filter);
+    pan.connect(preFaderSend);
+  } else {
+    sourceOutput.connect(pan);
+    pan.connect(filter);
+  }
 
   // Connect the stable native shell before the first async effect-runtime
   // boundary. AudioManager can then request media playback in the original
@@ -136,7 +143,15 @@ async function connectAudioGraph({
   preFaderSend.connect(gain);
   instance.mainOutputCleanup = connectMainOutput(gain);
 
-  if (await connectEffectsGraph(instance.sourceId, filter, preFaderSend)) {
+  const inputChannels = instance.deviceSource?.channelCount === 1 ? 1 : 2;
+  if (
+    await connectEffectsGraph(
+      instance.sourceId,
+      filter,
+      panAfterEffects ? pan : preFaderSend,
+      inputChannels
+    )
+  ) {
     return true;
   }
 
@@ -159,7 +174,7 @@ async function connectAudioGraph({
     hasEnded: false,
   });
 
-  filter.connect(preFaderSend);
+  filter.connect(panAfterEffects ? pan : preFaderSend);
   return true;
 }
 

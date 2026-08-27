@@ -56,6 +56,9 @@ export class EffectSource {
   private readonly dryR: Float32Array;
   private readonly originalL: Float32Array;
   private readonly originalR: Float32Array;
+  private readonly outputChannels: StereoChannels;
+  private readonly sidechainChannels: StereoChannels;
+  private readonly tempChannels: StereoChannels;
 
   private playing = false;
   private paused = false;
@@ -71,6 +74,9 @@ export class EffectSource {
     this.dryR = new Float32Array(128);
     this.originalL = new Float32Array(128);
     this.originalR = new Float32Array(128);
+    this.tempChannels = [this.tempL, this.tempR];
+    this.outputChannels = [this.tempL, this.tempR];
+    this.sidechainChannels = [this.tempL, this.tempR];
     this.updateGains();
   }
 
@@ -306,9 +312,10 @@ export class EffectSource {
       this.tempR[i] = inputR[i] ?? 0;
     }
 
-    const tempChannels: [Float32Array, Float32Array] = [this.tempL, this.tempR];
+    const { outputChannels, tempChannels } = this;
+    outputChannels[0] = outputL;
+    outputChannels[1] = outputR;
     let current = tempChannels;
-    const outputChannels: [Float32Array, Float32Array] = [outputL, outputR];
 
     for (const filterId of this.filterOrder) {
       const filter = this.filters.get(filterId);
@@ -327,11 +334,13 @@ export class EffectSource {
         continue;
       }
 
-      effect.setSidechainInput?.(
-        sidechainL && config.raw.sidechainEnabled === 1
-          ? ([sidechainL, sidechainR ?? sidechainL] satisfies StereoChannels)
-          : null
-      );
+      if (sidechainL && config.raw.sidechainEnabled === 1) {
+        this.sidechainChannels[0] = sidechainL;
+        this.sidechainChannels[1] = sidechainR ?? sidechainL;
+        effect.setSidechainInput?.(this.sidechainChannels);
+      } else {
+        effect.setSidechainInput?.(null);
+      }
 
       const needsDryMix = config.dryWet < 1.0;
       if (needsDryMix) {

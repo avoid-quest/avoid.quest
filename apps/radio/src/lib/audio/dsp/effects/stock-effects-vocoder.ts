@@ -28,8 +28,13 @@ export class VocoderEffect {
   private envelopes: number[] = [];
   private readonly carrierL = new Float32Array(128);
   private readonly carrierR = new Float32Array(128);
+  private readonly carrierChannels: StereoChannels = [
+    this.carrierL,
+    this.carrierR,
+  ];
   private readonly modL = new Float32Array(128);
   private readonly modR = new Float32Array(128);
+  private readonly modChannels: StereoChannels = [this.modL, this.modR];
   private noiseState = 0x12_34_ab_cd;
 
   constructor(sampleRate: number) {
@@ -75,32 +80,56 @@ export class VocoderEffect {
   }
 
   setCarrierMinFreq(value: number): void {
-    this.carrierMinFreq = clamp(value, 20, this.sampleRate / 2 - 1);
+    const next = clamp(value, 20, this.sampleRate / 2 - 1);
+    if (next === this.carrierMinFreq) {
+      return;
+    }
+    this.carrierMinFreq = next;
     this.rebuildBands();
   }
 
   setCarrierMaxFreq(value: number): void {
-    this.carrierMaxFreq = clamp(value, 20, this.sampleRate / 2 - 1);
+    const next = clamp(value, 20, this.sampleRate / 2 - 1);
+    if (next === this.carrierMaxFreq) {
+      return;
+    }
+    this.carrierMaxFreq = next;
     this.rebuildBands();
   }
 
   setModulatorMinFreq(value: number): void {
-    this.modulatorMinFreq = clamp(value, 20, this.sampleRate / 2 - 1);
+    const next = clamp(value, 20, this.sampleRate / 2 - 1);
+    if (next === this.modulatorMinFreq) {
+      return;
+    }
+    this.modulatorMinFreq = next;
     this.rebuildBands();
   }
 
   setModulatorMaxFreq(value: number): void {
-    this.modulatorMaxFreq = clamp(value, 20, this.sampleRate / 2 - 1);
+    const next = clamp(value, 20, this.sampleRate / 2 - 1);
+    if (next === this.modulatorMaxFreq) {
+      return;
+    }
+    this.modulatorMaxFreq = next;
     this.rebuildBands();
   }
 
   setQStart(value: number): void {
-    this.qStart = clamp(value, 1, 60);
+    const next = clamp(value, 1, 60);
+    if (next === this.qStart) {
+      return;
+    }
+    this.qStart = next;
     this.rebuildBands();
   }
 
   setQEnd(value: number): void {
-    this.qEnd = clamp(value, 1, 60);
+    const next = clamp(value, 1, 60);
+    if (next === this.qEnd) {
+      return;
+    }
+    this.qEnd = next;
     this.rebuildBands();
   }
 
@@ -201,25 +230,20 @@ export class VocoderEffect {
           this.modR[i] = noise;
         }
         modulatorFilter.process(
-          [this.modL, this.modR],
-          [this.modL, this.modR],
+          this.modChannels,
+          this.modChannels,
           fromIndex,
           toIndex
         );
       } else {
         modulatorFilter.process(
           modulator,
-          [this.modL, this.modR],
+          this.modChannels,
           fromIndex,
           toIndex
         );
       }
-      carrierFilter.process(
-        input,
-        [this.carrierL, this.carrierR],
-        fromIndex,
-        toIndex
-      );
+      carrierFilter.process(input, this.carrierChannels, fromIndex, toIndex);
       let envelope = this.envelopes[band] ?? 0;
       for (let i = fromIndex; i < toIndex; i++) {
         const detected =

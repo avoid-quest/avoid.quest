@@ -95,6 +95,23 @@ class MeterService {
     this.createFallbackMeter = createFallbackMeter;
   }
 
+  getDiagnostics(): {
+    activeFallbackMeters: number;
+    activeOpenDawMeters: number;
+    listenerCount: number;
+  } {
+    const slots = [this.master, ...this.sounds.values()];
+    return {
+      activeFallbackMeters: slots.filter(({ fallback }) => fallback !== null)
+        .length,
+      activeOpenDawMeters: slots.filter(({ node }) => node !== null).length,
+      listenerCount: slots.reduce(
+        (count, { listeners }) => count + listeners.size,
+        0
+      ),
+    };
+  }
+
   setMasterSource(source: AudioNode | null): Promise<void> {
     return this.setSource(this.master, source, "master");
   }

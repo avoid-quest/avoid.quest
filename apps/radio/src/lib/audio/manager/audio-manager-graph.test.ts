@@ -122,6 +122,36 @@ describe("audio manager graph worklet errors", () => {
 });
 
 describe("audio manager output registration", () => {
+  test("keeps mono device input mono until openDAW, then pans its return", async () => {
+    const filter = new TestAudioNode();
+    const gain = new TestAudioNode();
+    const pan = new TestAudioNode();
+    const preFaderSend = new TestAudioNode();
+    const sourceOutput = new TestAudioNode();
+    const connectEffectsGraph = mock(async () => true);
+    const instance = {
+      ...createTestSoundInstance({
+        id: "microphone",
+        name: "Microphone",
+        streamUrl: "device://microphone",
+      }),
+      deviceSource: { channelCount: 1, output: sourceOutput },
+      isDeviceInput: true,
+      nodes: { filter, gain, pan, preFaderSend },
+    } as unknown as SoundInstance;
+
+    await connectAudioGraph({
+      instance,
+      connectEffectsGraph,
+      connectMainOutput: () => () => undefined,
+      notifyListeners: () => undefined,
+    });
+
+    expect(sourceOutput.outputs.has(filter)).toBe(true);
+    expect(connectEffectsGraph).toHaveBeenCalledWith("sound-1", filter, pan, 1);
+    expect(pan.outputs.has(preFaderSend)).toBe(true);
+  });
+
   test("preserves a registered CUE connection when rebuilding a sound graph", async () => {
     const cueOutput = new TestAudioNode();
     const filter = new TestAudioNode();
@@ -129,6 +159,7 @@ describe("audio manager output registration", () => {
     const pan = new TestAudioNode();
     const preFaderSend = new TestAudioNode();
     const sourceOutput = new TestAudioNode();
+    const connectEffectsGraph = mock(async () => true);
     preFaderSend.connect(cueOutput);
     const instance = {
       ...createTestSoundInstance({
@@ -142,13 +173,21 @@ describe("audio manager output registration", () => {
 
     await connectAudioGraph({
       instance,
-      connectEffectsGraph: async () => true,
+      connectEffectsGraph,
       connectMainOutput: () => () => undefined,
       notifyListeners: () => undefined,
     });
 
     expect(preFaderSend.outputs.has(cueOutput)).toBe(true);
     expect(preFaderSend.outputs.has(gain)).toBe(true);
+    expect(sourceOutput.outputs.has(pan)).toBe(true);
+    expect(pan.outputs.has(filter)).toBe(true);
+    expect(connectEffectsGraph).toHaveBeenCalledWith(
+      "sound-1",
+      filter,
+      preFaderSend,
+      2
+    );
   });
 
   test("releases the main output registration when sound nodes are cleaned", () => {

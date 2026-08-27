@@ -6,7 +6,11 @@ import {
   clearWerkstattRuntimeStatus,
   setWerkstattRuntimeStatus,
 } from "../dsp/effects/werkstatt-runtime-status.js";
-import type { EffectsGraphRuntime } from "./effects-graph-runtime.js";
+import type {
+  EffectsGraphRuntime,
+  EffectsPerformanceSnapshot,
+} from "./effects-graph-runtime.js";
+import { summarizeQuantumPerformance } from "./audio-performance.js";
 import {
   bindOfficialSidechain,
   createMasterRack,
@@ -19,7 +23,7 @@ import {
 } from "./official-opendaw-effect-adapter.js";
 import { ensureOpenDawAudioWorklets } from "./opendaw-audio-worklets.js";
 
-const MAX_STEREO_MONITORING_SOURCES = 4;
+const MAX_MONITORING_CHANNELS = 8;
 
 export const DEFAULT_OPENDAW_RUNTIME_URLS = {
   processorUrl: "/opendaw/processors.js",
@@ -51,6 +55,7 @@ type Terminable = { terminate(): void };
 type SoundUnit = ReturnType<Project["api"]["createAnyInstrument"]> & {
   effects: EffectConfig[];
   groups: OfficialEffectGroup[];
+  inputChannels: 1 | 2;
   monitoring: boolean;
   rack: ReturnType<typeof createMasterRack>;
   source: AudioNode | null;
@@ -145,6 +150,37 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     return this.soundUnits.size;
   }
 
+  setPerformanceMeasurementEnabled(enabled: boolean): void {
+    const { project } = this;
+    if (project) {
+      project.engine.preferences.settings.debug.dspLoadMeasurement = enabled;
+    }
+  }
+
+  getPerformanceSnapshot(): EffectsPerformanceSnapshot | null {
+    const { project } = this;
+    if (!project) {
+      return null;
+    }
+    const perfBufferMs = project.engine.perfBuffer.slice();
+    const quantumBudgetMs = (128 / this.context.sampleRate) * 1000;
+    return {
+      backend: "official",
+      cpuLoadPercent: project.engine.cpuLoad.getValue(),
+      monitoringChannelCount: [...this.soundUnits.values()].reduce(
+        (total, unit) =>
+          unit.source === null ? total : total + unit.inputChannels,
+        0
+      ),
+      perfBufferMs,
+      perfIndex: project.engine.perfIndex,
+      quantumBudgetMs,
+      soundCount: this.soundUnits.size,
+      timing: summarizeQuantumPerformance(perfBufferMs, quantumBudgetMs),
+      workletCount: 1,
+    };
+  }
+
   async initialize(): Promise<void> {
     if (this.closed) {
       throw new Error("openDAW runtime has been closed");
@@ -234,7 +270,8 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     soundId: string,
     source: AudioNode,
     destination: AudioNode,
-    generation = (this.connectionGenerations.get(soundId) ?? 0) + 1
+    generation = (this.connectionGenerations.get(soundId) ?? 0) + 1,
+    inputChannels: 1 | 2 = 2
   ): Promise<boolean> {
     if (!this.beginSoundConnection(soundId, generation)) {
       return false;
@@ -254,14 +291,16 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       source,
       destination,
       true,
-      generation
+      generation,
+      inputChannels
     );
   }
 
   async connectSidechainSource(
     soundId: string,
     source: AudioNode,
-    generation = (this.connectionGenerations.get(soundId) ?? 0) + 1
+    generation = (this.connectionGenerations.get(soundId) ?? 0) + 1,
+    inputChannels: 1 | 2 = 2
   ): Promise<boolean> {
     if (!this.beginSoundConnection(soundId, generation)) {
       return false;
@@ -274,7 +313,12 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       return false;
     }
     const existing = this.soundUnits.get(soundId);
-    if (existing && !existing.monitoring && existing.source === source) {
+    if (
+      existing &&
+      !existing.monitoring &&
+      existing.source === source &&
+      existing.inputChannels === inputChannels
+    ) {
       this.rebindSidechains();
       return true;
     }
@@ -283,7 +327,8 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       source,
       this.getSilentDestination(),
       false,
-      generation
+      generation,
+      inputChannels
     );
   }
 
@@ -292,20 +337,28 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     source: AudioNode,
     destination: AudioNode,
     monitoring: boolean,
-    generation: number
+    generation: number,
+    inputChannels: 1 | 2
   ): boolean {
     if (!this.isCurrentSoundConnection(soundId, generation)) {
       return false;
     }
     const project = this.requireProject();
     let unit = this.soundUnits.get(soundId);
+    const occupiedChannels = [...this.soundUnits.entries()].reduce(
+      (total, [id, candidate]) =>
+        id === soundId || candidate.source === null
+          ? total
+          : total + candidate.inputChannels,
+      0
+    );
+    if (occupiedChannels + inputChannels > MAX_MONITORING_CHANNELS) {
+      throw new Error(
+        `openDAW monitoring supports at most ${MAX_MONITORING_CHANNELS} input channels`
+      );
+    }
 
     if (!unit) {
-      if (this.soundUnits.size >= MAX_STEREO_MONITORING_SOURCES) {
-        throw new Error(
-          `openDAW monitoring supports at most ${MAX_STEREO_MONITORING_SOURCES} stereo sounds`
-        );
-      }
       const product = project.editing
         .modify(() => {
           const created = project.api.createInstrument(
@@ -321,17 +374,19 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
         .unwrap();
       unit = {
         ...product,
+        destination: null,
         effects: [],
         groups: [],
+        inputChannels,
         monitoring,
         source: null,
-        destination: null,
       };
       this.soundUnits.set(soundId, unit);
     } else if (
       unit.source === source &&
       unit.destination === destination &&
-      unit.monitoring === monitoring
+      unit.monitoring === monitoring &&
+      unit.inputChannels === inputChannels
     ) {
       this.rebindSidechains();
       return true;
@@ -342,11 +397,12 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     project.engine.registerMonitoringSource(
       unit.audioUnitBox.address.uuid,
       source,
-      2,
+      inputChannels,
       destination
     );
     unit.source = source;
     unit.destination = destination;
+    unit.inputChannels = inputChannels;
     unit.monitoring = monitoring;
     this.rebindSidechains();
     return true;

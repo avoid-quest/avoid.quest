@@ -54,14 +54,21 @@ export type DeviceAudioConstraints = {
   channelCount?: number;
 };
 
+export type DeviceSourceDiagnostics = {
+  actual: MediaTrackSettings & { latency?: number };
+  label: string;
+  muted: boolean;
+  readyState: MediaStreamTrackState;
+  requested: MediaTrackConstraints;
+};
+
 /**
  * Default constraints optimized for DJ/audio production (no processing)
  */
 const DEFAULT_CONSTRAINTS: DeviceAudioConstraints = {
+  autoGainControl: false,
   echoCancellation: false,
   noiseSuppression: false,
-  autoGainControl: false,
-  sampleRate: 48_000,
 };
 
 /**
@@ -85,6 +92,7 @@ export class DeviceSource {
   // Channel routing
   private _channelSelection: ChannelSelection = { left: 0, right: 1 };
   private _channelCount = 2;
+  private diagnostics: DeviceSourceDiagnostics | null = null;
   private splitter: ChannelSplitterNode | null = null;
   private merger: ChannelMergerNode | null = null;
   private routingOutput: GainNode | null = null;
@@ -141,6 +149,17 @@ export class DeviceSource {
    */
   get currentDeviceId(): string | null {
     return this._currentDeviceId;
+  }
+
+  getDiagnostics(): DeviceSourceDiagnostics | null {
+    if (!this.diagnostics) {
+      return null;
+    }
+    return {
+      ...this.diagnostics,
+      actual: { ...this.diagnostics.actual },
+      requested: { ...this.diagnostics.requested },
+    };
   }
 
   /**
@@ -202,6 +221,15 @@ export class DeviceSource {
 
     const { left, right } = this._channelSelection;
     const count = this._channelCount;
+    this.routingOutput.channelCount = count === 1 ? 1 : 2;
+    this.routingOutput.channelCountMode = "explicit";
+
+    // Keep a microphone mono until the post-effects panner. openDAW then
+    // spends one monitoring channel and duplicates its mono return to stereo.
+    if (count === 1) {
+      this.source.connect(this.routingOutput);
+      return;
+    }
 
     // If default stereo passthrough (ch0 → L, ch1 → R) on a 2-channel device, skip splitter/merger
     if (left === 0 && right === 1 && count === 2) {
@@ -334,32 +362,44 @@ export class DeviceSource {
     }
 
     const mergedConstraints = { ...DEFAULT_CONSTRAINTS, ...constraints };
+    const requested: MediaTrackConstraints = {
+      autoGainControl: mergedConstraints.autoGainControl,
+      channelCount: mergedConstraints.channelCount ?? { ideal: 2 },
+      deviceId: deviceId ? { exact: deviceId } : undefined,
+      echoCancellation: mergedConstraints.echoCancellation,
+      noiseSuppression: mergedConstraints.noiseSuppression,
+      ...(mergedConstraints.sampleRate === undefined
+        ? {}
+        : { sampleRate: mergedConstraints.sampleRate }),
+    };
+    this.diagnostics = null;
 
     try {
       // Use 'exact' for device selection to ensure the correct device is captured
       // If the device is unavailable, NotFoundError is thrown and handled by handleStartError
       this.stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          deviceId: deviceId ? { exact: deviceId } : undefined,
-          echoCancellation: mergedConstraints.echoCancellation,
-          noiseSuppression: mergedConstraints.noiseSuppression,
-          autoGainControl: mergedConstraints.autoGainControl,
-          sampleRate: mergedConstraints.sampleRate,
-          channelCount: mergedConstraints.channelCount ?? { ideal: 32 },
-        },
+        audio: requested,
       });
 
       this._permissionState = "granted";
       this.callbacks.onPermissionChange?.("granted");
 
       // Get actual device ID and channel count from track settings.
-      // Note: browsers currently cap getUserMedia audio input at 2 channels
-      // regardless of hardware capabilities. We request { ideal: 32 } in case
-      // future browser versions lift this restriction.
-      const audioTrack = this.stream.getAudioTracks()[0];
+      // Match openDAW's capture policy: request at most stereo and use the
+      // browser-reported shape for routing.
+      const [audioTrack] = this.stream.getAudioTracks();
       const settings = audioTrack?.getSettings();
       this._currentDeviceId = settings?.deviceId ?? deviceId ?? null;
       this._channelCount = settings?.channelCount ?? 2;
+      if (audioTrack && settings) {
+        this.diagnostics = {
+          actual: settings,
+          label: audioTrack.label,
+          muted: audioTrack.muted,
+          readyState: audioTrack.readyState,
+          requested,
+        };
+      }
 
       // Create Web Audio source from stream
       this.source = this.context.createMediaStreamSource(this.stream);

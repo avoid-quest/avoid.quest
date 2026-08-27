@@ -17,6 +17,62 @@ type NormalizedContextState = "suspended" | "running" | "closed";
  */
 export type ContextStateCallback = (state: NormalizedContextState) => void;
 
+/** Match openDAW's production context profile for live monitoring. */
+export function getAudioContextOptions(): AudioContextOptions {
+  return { latencyHint: 0, sampleRate: 48_000 };
+}
+
+type NativePlaybackStats = {
+  averageLatency: number;
+  maximumLatency: number;
+  minimumLatency: number;
+  totalDuration: number;
+  underrunDuration: number;
+  underrunEvents: number;
+};
+
+export type AudioContextPerformanceSnapshot = {
+  baseLatencyMs: number;
+  outputLatencyMs: number | null;
+  playbackStats: {
+    averageLatencyMs: number;
+    maximumLatencyMs: number;
+    minimumLatencyMs: number;
+    totalDurationMs: number;
+    underrunDurationMs: number;
+    underrunEvents: number;
+  } | null;
+  sampleRate: number;
+  state: AudioContextState;
+};
+
+export function snapshotAudioContext(
+  context: AudioContext
+): AudioContextPerformanceSnapshot {
+  const stats = (
+    context as AudioContext & { playbackStats?: NativePlaybackStats }
+  ).playbackStats;
+  return {
+    baseLatencyMs: context.baseLatency * 1000,
+    outputLatencyMs:
+      typeof context.outputLatency === "number"
+        ? context.outputLatency * 1000
+        : null,
+    playbackStats: stats
+      ? {
+          averageLatencyMs: stats.averageLatency * 1000,
+          maximumLatencyMs: stats.maximumLatency * 1000,
+          minimumLatencyMs: stats.minimumLatency * 1000,
+          totalDurationMs: stats.totalDuration * 1000,
+          underrunDurationMs: stats.underrunDuration * 1000,
+          underrunEvents: stats.underrunEvents,
+        }
+      : null,
+    sampleRate: context.sampleRate,
+    state: context.state,
+  };
+}
+
 /**
  * Normalize the native AudioContext state to our simplified type
  */
@@ -213,16 +269,15 @@ class AudioContextManager {
     return this.context?.destination ?? null;
   }
 
+  getPerformanceSnapshot(): AudioContextPerformanceSnapshot | null {
+    return this.context ? snapshotAudioContext(this.context) : null;
+  }
+
   /**
    * Create the audio context with appropriate options
    */
   private createContext(): AudioContext {
-    const options: AudioContextOptions = {
-      // Use playback latency hint for better audio quality
-      latencyHint: "playback",
-    };
-
-    const context = new AudioContext(options);
+    const context = new AudioContext(getAudioContextOptions());
 
     // Set up state change listener
     context.onstatechange = () => {

@@ -103,23 +103,48 @@ function sound(soundId: string, filter: TestAudioNode): SoundInstance {
 }
 
 function createRuntime() {
+  const performanceSnapshot = {
+    backend: "official" as const,
+    cpuLoadPercent: 12,
+    monitoringChannelCount: 2,
+    perfBufferMs: new Float32Array([0.1]),
+    perfIndex: 0,
+    quantumBudgetMs: 128 / 48,
+    soundCount: 1,
+    timing: {
+      deadlineMisses: 0,
+      maxMs: 0.1,
+      p95Ms: 0.1,
+      p99LoadPercent: 3.75,
+      p99Ms: 0.1,
+      sampleCount: 1,
+    },
+    workletCount: 1 as const,
+  };
   return {
     cleanup: mock(() => undefined),
     connectSidechainSource: mock(
-      (_soundId: string, _source: AudioNode, _generation?: number) =>
-        Promise.resolve(true)
+      (
+        _soundId: string,
+        _source: AudioNode,
+        _generation?: number,
+        _inputChannels?: 1 | 2
+      ) => Promise.resolve(true)
     ),
     connectSound: mock(
       (
         _soundId: string,
         _source: AudioNode,
         _destination: AudioNode,
-        _generation?: number
+        _generation?: number,
+        _inputChannels?: 1 | 2
       ) => Promise.resolve(true)
     ),
     deleteSound: mock(() => undefined),
     disconnectSound: mock(() => undefined),
+    getPerformanceSnapshot: mock(() => performanceSnapshot),
     setDryWet: mock(() => undefined),
+    setPerformanceMeasurementEnabled: mock(() => undefined),
     setSidechainTarget: mock(() => undefined),
     setTempo: mock(() => undefined),
     syncEffects: mock(() => undefined),
@@ -165,6 +190,24 @@ afterEach(() => {
 });
 
 describe("EffectsController", () => {
+  test("exposes openDAW performance measurement without exposing its Project", () => {
+    const runtime = createRuntime();
+    const controller = new EffectsController({
+      createOfficialRuntime: () => runtime,
+      notifyListeners: () => undefined,
+      sounds: new Map(),
+      workletProcessorUrl: () => "/worklet.js",
+    });
+    Object.assign(controller as object, { officialRuntime: runtime });
+
+    controller.setPerformanceMeasurementEnabled(true);
+
+    expect(runtime.setPerformanceMeasurementEnabled).toHaveBeenCalledWith(true);
+    expect(controller.getPerformanceSnapshot()).toBe(
+      runtime.getPerformanceSnapshot()
+    );
+  });
+
   test("exposes desired-state reconciliation instead of granular Effects mutations", () => {
     const controllerMutations = [
       "add",
@@ -319,11 +362,13 @@ describe("EffectsController", () => {
       sidechainSoundId: null,
       tempo: 124,
     });
+    const destination = new TestAudioNode(context);
 
     await controller.connectGraph(
       "target",
       filter as unknown as AudioNode,
-      new TestAudioNode(context) as unknown as AudioNode
+      destination as unknown as AudioNode,
+      1
     );
 
     expect(controller.getRuntimeOutcome("target")).toEqual({
@@ -332,6 +377,8 @@ describe("EffectsController", () => {
       status: "ready",
     });
     expect(createWorkletManager).not.toHaveBeenCalled();
+    expect(runtime.connectSound.mock.calls[0]).toHaveLength(5);
+    expect(runtime.connectSound.mock.calls[0]?.[4]).toBe(1);
   });
 
   test("falls back to compatibility with the same desired tree", async () => {
@@ -632,7 +679,8 @@ describe("EffectsController", () => {
       "target",
       replacementFilter,
       expect.anything(),
-      expect.any(Number)
+      expect.any(Number),
+      2
     );
     expect(controller.getRuntimeOutcome("target")).toEqual({
       backend: "official",

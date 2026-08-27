@@ -80,6 +80,11 @@ describe("MeterService", () => {
 
     expect(factory).toHaveBeenCalledTimes(1);
     expect(source.connections.has(meters[0])).toBe(true);
+    expect(service.getDiagnostics()).toEqual({
+      activeFallbackMeters: 0,
+      activeOpenDawMeters: 1,
+      listenerCount: 1,
+    });
 
     meters[0].emit(0.25, 0.5);
     meters[0].emit(0.125, 0.75);

@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { applyEffectConfig } from "../effect-processor-factory";
-import { GateEffect, WaveshaperEffect, WerkstattEffect } from "./stock-effects";
+import { createDefaultEffectConfig } from "./registry";
+import {
+  GateEffect,
+  VocoderEffect,
+  WaveshaperEffect,
+  WerkstattEffect,
+} from "./stock-effects";
 import type { StereoChannels } from "./types";
 
 const stereo = (value: number): StereoChannels => [
@@ -9,6 +15,69 @@ const stereo = (value: number): StereoChannels => [
 ];
 
 describe("stock compatibility processors", () => {
+  test("Vocoder reuses its filter channel views across render quanta", () => {
+    const effect = new VocoderEffect(48_000);
+    const internals = effect as unknown as {
+      carrierFilters: Array<{
+        process: (
+          input: StereoChannels,
+          output: StereoChannels,
+          fromIndex: number,
+          toIndex: number
+        ) => void;
+      }>;
+      modulatorFilters: Array<{
+        process: (
+          input: StereoChannels,
+          output: StereoChannels,
+          fromIndex: number,
+          toIndex: number
+        ) => void;
+      }>;
+    };
+    const outputs: StereoChannels[] = [];
+    for (const filter of [
+      internals.modulatorFilters[0],
+      internals.carrierFilters[0],
+    ]) {
+      if (!filter) {
+        throw new Error("Vocoder filter missing");
+      }
+      const process = filter.process.bind(filter);
+      filter.process = (input, output, fromIndex, toIndex) => {
+        outputs.push(output);
+        process(input, output, fromIndex, toIndex);
+      };
+    }
+
+    effect.process(stereo(0.25), stereo(0), 0, 128);
+    effect.process(stereo(0.25), stereo(0), 0, 128);
+
+    expect(outputs[0]).toBe(outputs[2]);
+    expect(outputs[1]).toBe(outputs[3]);
+  });
+
+  test("Vocoder keeps its filter bank when unrelated config changes", () => {
+    const effect = new VocoderEffect(48_000);
+    const config = createDefaultEffectConfig("vocoder", "vocoder", 0);
+    applyEffectConfig(
+      effect,
+      "vocoder",
+      config as unknown as Record<string, unknown>
+    );
+    const filterBank = (effect as unknown as { carrierFilters: unknown[] })
+      .carrierFilters;
+
+    applyEffectConfig(effect, "vocoder", {
+      ...config,
+      gain: (config.gain ?? 0) + 1,
+    });
+
+    expect(
+      (effect as unknown as { carrierFilters: unknown[] }).carrierFilters
+    ).toBe(filterBank);
+  });
+
   test("Werkstatt hot-swaps bounded expressions and bypasses unsafe source", () => {
     const effect = new WerkstattEffect(48_000);
     const output = stereo(0);

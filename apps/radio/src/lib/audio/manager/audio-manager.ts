@@ -27,6 +27,7 @@ import {
   type DeviceAudioConstraints,
   type DeviceSource,
   getAudioContext,
+  getAudioContextManager,
   initialAudioState,
   type Radio,
   resumeAudioContext,
@@ -46,6 +47,10 @@ import {
   type SoundInstance,
   type SoundOutputMode,
 } from "./audio-manager-types.js";
+import {
+  createAudioPerformanceDiagnostics,
+  type AudioPerformanceDiagnostics,
+} from "./audio-performance.js";
 import { EffectsController } from "./effects-controller.js";
 import { MeterService } from "./meter-service.js";
 import { SoundRegistry } from "./sound-registry.js";
@@ -64,6 +69,8 @@ export function setWorkletProcessorUrl(url: string): void {
 }
 
 export type { FilterConfig } from "./audio-manager-types.js";
+
+export type { AudioPerformanceDiagnostics } from "./audio-performance.js";
 
 /**
  * Audio Manager singleton
@@ -153,6 +160,28 @@ export class AudioManager {
    */
   get isReady(): boolean {
     return this.audioSystemInitialized;
+  }
+
+  setPerformanceMeasurementEnabled(enabled: boolean): void {
+    this.effects.setPerformanceMeasurementEnabled(enabled);
+  }
+
+  getPerformanceDiagnostics(): AudioPerformanceDiagnostics {
+    const meter = this.meters.getDiagnostics();
+    const backends = [...this.sounds.keys()].map(
+      (soundId) => this.effects.getRuntimeOutcome(soundId).backend
+    );
+    return createAudioPerformanceDiagnostics({
+      backends,
+      context: getAudioContextManager().getPerformanceSnapshot(),
+      effects: this.effects.getPerformanceSnapshot(),
+      inputs: [...this.sounds.entries()].flatMap(([soundId, sound]) => {
+        const diagnostics = sound.deviceSource?.getDiagnostics();
+        return diagnostics ? [{ soundId, diagnostics }] : [];
+      }),
+      meter,
+      soundCount: this.sounds.size,
+    });
   }
 
   // ============================================
@@ -421,8 +450,8 @@ export class AudioManager {
    * Connect the audio graph for a sound instance
    *
    * Routing (post-effects CUE):
-   *   Source → Pan → Filter → Effects → PreFaderSend (CUE tap) → Gain (fader) → Destination
-   *                                                              ↘ openDAW MeterWorklet
+   *   Device:  Source → Filter → Effects → Pan → PreFaderSend → Gain → Destination
+   *   Playback: Source → Pan → Filter → Effects → PreFaderSend → Gain → Destination
    *
    * The CUE tap is now AFTER effects, so headphone monitoring includes effects
    * but is still independent of the channel fader volume.
@@ -434,8 +463,8 @@ export class AudioManager {
       instance,
       connectMainOutput: (source) => this.output.connectMain(source),
       notifyListeners: this.notifyListeners,
-      connectEffectsGraph: (soundId, source, destination) =>
-        this.effects.connectGraph(soundId, source, destination),
+      connectEffectsGraph: (soundId, source, destination, inputChannels) =>
+        this.effects.connectGraph(soundId, source, destination, inputChannels),
     });
     if (connected && instance.nodes) {
       await this.meters.setSoundSource(instance.sourceId, instance.nodes.gain);

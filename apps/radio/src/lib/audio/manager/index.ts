@@ -12,7 +12,6 @@ export {
 
 export {
   AudioManager,
-  type AudioPerformanceDiagnostics,
   type FilterConfig,
   setWorkletProcessorUrl,
 } from "./audio-manager.js";

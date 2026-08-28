@@ -14,10 +14,7 @@ import tailwindcss from "@tailwindcss/vite";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import react, { reactCompilerPreset } from "@vitejs/plugin-react";
 import { build, defineConfig, type Plugin } from "vite";
-import {
-  rewriteOpenDawEngineWorklet,
-  rewriteOpenDawWasmProcessorTiming,
-} from "./opendaw-assets.ts";
+import { rewriteOpenDawEngineWorklet } from "./opendaw-assets.ts";
 
 const WORKLET_OUT_DIR = ".worklet-build";
 const WORKLET_FILENAME = "dsp-processor-bundle.js";
@@ -219,10 +216,7 @@ function readOpenDawAsset(source: string): Buffer | string {
   if (!source.endsWith(".js")) {
     return readFileSync(source);
   }
-  const code = readFileSync(source, "utf8").replace(SOURCE_MAP_DIRECTIVE, "");
-  return path.basename(source) === "wasm-processor.js"
-    ? rewriteOpenDawWasmProcessorTiming(code)
-    : code;
+  return readFileSync(source, "utf8").replace(SOURCE_MAP_DIRECTIVE, "");
 }
 
 /**

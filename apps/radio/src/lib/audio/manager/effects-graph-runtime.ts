@@ -1,26 +1,9 @@
 import type { EffectConfig } from "../dsp/effects/types.js";
 
-export type QuantumPerformanceSummary = {
-  deadlineMisses: number;
-  maxMs: number;
-  observedSampleCount: number;
-  p95Ms: number;
-  p99LoadPercent: number;
-  p99Ms: number;
-  sampleCount: number;
-  status: "clock-unavailable" | "measured" | "no-samples";
-  zeroSampleCount: number;
-};
-
 export type EffectsPerformanceSnapshot = {
   backend: "official";
-  cpuLoadPercent: number;
   monitoringChannelCount: number;
-  perfBufferMs: Float32Array;
-  perfIndex: number;
-  quantumBudgetMs: number;
   soundCount: number;
-  timing: QuantumPerformanceSummary;
   workletCount: 1;
 };
 
@@ -45,7 +28,6 @@ export type EffectsGraphRuntime = {
   getPerformanceSnapshot?: () => EffectsPerformanceSnapshot | null;
   setDryWet: (soundId: string, value: number) => void;
   setSidechainTarget: (soundId: string, targetSoundId: string | null) => void;
-  setPerformanceMeasurementEnabled?: (enabled: boolean) => void;
   setTempo: (bpm: number) => void;
   syncEffects: (soundId: string, effects: readonly EffectConfig[]) => void;
 };

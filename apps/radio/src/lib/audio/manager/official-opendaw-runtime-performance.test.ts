@@ -1,145 +1,42 @@
 import { describe, expect, mock, test } from "bun:test";
 import { OfficialOpenDawRuntime } from "./official-opendaw-runtime";
 
-describe("OfficialOpenDawRuntime performance diagnostics", () => {
-  test("delegates measurement and samples to openDAW's engine", () => {
-    const perfBuffer = new Float32Array([0.1, 0.2, 0.3, 0]);
+describe("OfficialOpenDawRuntime diagnostics", () => {
+  test("reports openDAW's monitoring topology", () => {
     const runtime = Object.create(
       OfficialOpenDawRuntime.prototype
     ) as OfficialOpenDawRuntime;
     const project = {
-      engine: {
-        cpuLoad: { getValue: () => 37 },
-        perfBuffer,
-        perfIndex: 0,
-        preferences: {
-          settings: { debug: { dspLoadMeasurement: false } },
-        },
-      },
+      engine: {},
     };
     Object.assign(runtime as object, {
-      context: { currentTime: 0, sampleRate: 48_000 },
       project,
       soundUnits: new Map([["deck-a", { inputChannels: 2, source: {} }]]),
     });
 
-    runtime.setPerformanceMeasurementEnabled(true);
-    project.engine.perfIndex = 3;
-
-    expect(project.engine.preferences.settings.debug.dspLoadMeasurement).toBe(
-      true
-    );
-    const snapshot = runtime.getPerformanceSnapshot();
-    expect(snapshot).toMatchObject({
+    expect(runtime.getPerformanceSnapshot()).toEqual({
       backend: "official",
-      cpuLoadPercent: 37,
       monitoringChannelCount: 2,
-      perfBufferMs: new Float32Array([0.1, 0.2, 0.3]),
-      perfIndex: 3,
-      quantumBudgetMs: 128 / 48,
       soundCount: 1,
       workletCount: 1,
     });
-    expect(snapshot?.timing.sampleCount).toBe(3);
-    expect(snapshot?.timing.p99LoadPercent).toBeCloseTo(11.25);
-    expect(snapshot?.perfBufferMs).not.toBe(perfBuffer);
   });
 
-  test("summarizes only samples from the current measurement interval", () => {
-    const context = { currentTime: 0, sampleRate: 48_000 };
-    const perfBuffer = new Float32Array([9, 8, 7, 6]);
-    const runtime = Object.create(
-      OfficialOpenDawRuntime.prototype
-    ) as OfficialOpenDawRuntime;
-    const project = {
-      engine: {
-        cpuLoad: { getValue: () => 0 },
-        perfBuffer,
-        perfIndex: 2,
-        preferences: {
-          settings: { debug: { dspLoadMeasurement: false } },
-        },
-      },
-    };
-    Object.assign(runtime as object, {
-      context,
-      project,
-      soundUnits: new Map(),
-    });
-
-    runtime.setPerformanceMeasurementEnabled(true);
-    perfBuffer.set([0.2, 0.3], 2);
-    project.engine.perfIndex = 0;
-    context.currentTime = 0.006;
-
-    expect(runtime.getPerformanceSnapshot()?.perfBufferMs).toEqual(
-      new Float32Array([0.2, 0.3])
-    );
-
-    runtime.setPerformanceMeasurementEnabled(false);
-    context.currentTime = 0.01;
-    runtime.setPerformanceMeasurementEnabled(true);
-    perfBuffer[0] = 0.4;
-    project.engine.perfIndex = 1;
-
-    expect(runtime.getPerformanceSnapshot()?.perfBufferMs).toEqual(
-      new Float32Array([0.4])
-    );
-  });
-
-  test("keeps the latest full ring after the current interval wraps", () => {
-    const context = { currentTime: 0, sampleRate: 128 };
-    const perfBuffer = new Float32Array([0.4, 0.1, 0.2, 0.3]);
-    const runtime = Object.create(
-      OfficialOpenDawRuntime.prototype
-    ) as OfficialOpenDawRuntime;
-    const project = {
-      engine: {
-        cpuLoad: { getValue: () => 0 },
-        perfBuffer,
-        perfIndex: 1,
-        preferences: {
-          settings: { debug: { dspLoadMeasurement: false } },
-        },
-      },
-    };
-    Object.assign(runtime as object, {
-      context,
-      project,
-      soundUnits: new Map(),
-    });
-
-    runtime.setPerformanceMeasurementEnabled(true);
-    context.currentTime = 4;
-
-    expect(runtime.getPerformanceSnapshot()?.perfBufferMs).toEqual(
-      new Float32Array([0.1, 0.2, 0.3, 0.4])
-    );
-  });
-
-  test("applies a pre-initialization measurement request to the engine", async () => {
+  test("initializes a low-overhead project skeleton", async () => {
     const originalAudioWorkletNode = globalThis.AudioWorkletNode;
     Reflect.set(globalThis, "AudioWorkletNode", class {});
-    const preferences = {
-      settings: { debug: { dspLoadMeasurement: false } },
-    };
     const skeleton = {};
     const createSkeleton = mock(() => skeleton);
     const project = {
       engine: {
-        cpuLoad: { getValue: () => 0 },
         isReady: () => Promise.resolve(),
-        perfBuffer: new Float32Array(4),
-        perfIndex: 0,
         play: mock(() => undefined),
-        preferences,
       },
       startAudioWorklet: () => ({ disconnect: () => undefined }),
       terminate: () => undefined,
     };
     const createProject = mock(() => project);
     const context = {
-      currentTime: 0,
       destination: {},
       sampleRate: 48_000,
     } as unknown as AudioContext;
@@ -175,7 +72,6 @@ describe("OfficialOpenDawRuntime performance diagnostics", () => {
     );
 
     try {
-      runtime.setPerformanceMeasurementEnabled(true);
       await runtime.initialize();
 
       expect(createSkeleton).toHaveBeenCalledWith({
@@ -188,19 +84,17 @@ describe("OfficialOpenDawRuntime performance diagnostics", () => {
         false
       );
       expect(project.engine.play).not.toHaveBeenCalled();
-      expect(preferences.settings.debug.dspLoadMeasurement).toBe(true);
     } finally {
       runtime.cleanup();
       Reflect.set(globalThis, "AudioWorkletNode", originalAudioWorkletNode);
     }
   });
 
-  test("reports no official sample before the project exists", () => {
+  test("reports no official snapshot before the project exists", () => {
     const runtime = Object.create(
       OfficialOpenDawRuntime.prototype
     ) as OfficialOpenDawRuntime;
     Object.assign(runtime as object, {
-      context: { currentTime: 0, sampleRate: 48_000 },
       project: null,
       soundUnits: new Map(),
     });

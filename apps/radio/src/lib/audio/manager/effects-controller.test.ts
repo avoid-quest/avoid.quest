@@ -105,23 +105,8 @@ function sound(soundId: string, filter: TestAudioNode): SoundInstance {
 function createRuntime() {
   const performanceSnapshot = {
     backend: "official" as const,
-    cpuLoadPercent: 12,
     monitoringChannelCount: 2,
-    perfBufferMs: new Float32Array([0.1]),
-    perfIndex: 0,
-    quantumBudgetMs: 128 / 48,
     soundCount: 1,
-    timing: {
-      deadlineMisses: 0,
-      maxMs: 0.1,
-      observedSampleCount: 1,
-      p95Ms: 0.1,
-      p99LoadPercent: 3.75,
-      p99Ms: 0.1,
-      sampleCount: 1,
-      status: "measured" as const,
-      zeroSampleCount: 0,
-    },
     workletCount: 1 as const,
   };
   return {
@@ -147,7 +132,6 @@ function createRuntime() {
     disconnectSound: mock(() => undefined),
     getPerformanceSnapshot: mock(() => performanceSnapshot),
     setDryWet: mock(() => undefined),
-    setPerformanceMeasurementEnabled: mock(() => undefined),
     setSidechainTarget: mock(() => undefined),
     setTempo: mock(() => undefined),
     syncEffects: mock(() => undefined),
@@ -193,7 +177,7 @@ afterEach(() => {
 });
 
 describe("EffectsController", () => {
-  test("exposes openDAW performance measurement without exposing its Project", () => {
+  test("exposes openDAW performance data without exposing its Project", () => {
     const runtime = createRuntime();
     const controller = new EffectsController({
       createOfficialRuntime: () => runtime,
@@ -203,9 +187,6 @@ describe("EffectsController", () => {
     });
     Object.assign(controller as object, { officialRuntime: runtime });
 
-    controller.setPerformanceMeasurementEnabled(true);
-
-    expect(runtime.setPerformanceMeasurementEnabled).toHaveBeenCalledWith(true);
     expect(controller.getPerformanceSnapshot()).toBe(
       runtime.getPerformanceSnapshot()
     );
@@ -359,7 +340,6 @@ describe("EffectsController", () => {
     });
     const reverb = createDefaultEffectConfig("plateReverb", "reverb", 0);
     reverb.enabled = true;
-    controller.setPerformanceMeasurementEnabled(true);
     await controller.reconcile("target", {
       dryWet: 0.7,
       sidechainSoundId: null,
@@ -380,7 +360,6 @@ describe("EffectsController", () => {
       ready: true,
       status: "ready",
     });
-    expect(runtime.setPerformanceMeasurementEnabled).toHaveBeenCalledWith(true);
     expect(createWorkletManager).not.toHaveBeenCalled();
     expect(runtime.connectSound.mock.calls[0]).toHaveLength(5);
     expect(runtime.connectSound.mock.calls[0]?.[4]).toBe(1);

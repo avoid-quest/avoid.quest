@@ -6,7 +6,6 @@ import {
   clearWerkstattRuntimeStatus,
   setWerkstattRuntimeStatus,
 } from "../dsp/effects/werkstatt-runtime-status.js";
-import { summarizeQuantumPerformance } from "./audio-performance.js";
 import type {
   EffectsGraphRuntime,
   EffectsPerformanceSnapshot,
@@ -132,10 +131,6 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
   private nextWerkstattGeneration = 0;
   private bpm = 120;
   private closed = false as boolean;
-  private performanceMeasurementEnabled = false as boolean;
-  private performanceMeasurementStartIndex: number | null = null;
-  private performanceMeasurementStartTime = 0;
-  private performanceMeasurementWrapped = false as boolean;
 
   constructor(
     context: AudioContext,
@@ -155,43 +150,19 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     return this.soundUnits.size;
   }
 
-  setPerformanceMeasurementEnabled(enabled: boolean): void {
-    const wasEnabled = this.performanceMeasurementEnabled;
-    this.performanceMeasurementEnabled = enabled;
-    const { project } = this;
-    if (!project) {
-      return;
-    }
-    if (enabled && !wasEnabled) {
-      this.beginPerformanceMeasurement(project);
-    } else if (!enabled && wasEnabled) {
-      this.updatePerformanceMeasurementWrapped(
-        project.engine.perfBuffer.length
-      );
-    }
-    project.engine.preferences.settings.debug.dspLoadMeasurement = enabled;
-  }
-
   getPerformanceSnapshot(): EffectsPerformanceSnapshot | null {
     const { project } = this;
     if (!project) {
       return null;
     }
-    const perfBufferMs = this.getPerformanceSamples(project);
-    const quantumBudgetMs = (128 / this.context.sampleRate) * 1000;
     return {
       backend: "official",
-      cpuLoadPercent: project.engine.cpuLoad.getValue(),
       monitoringChannelCount: [...this.soundUnits.values()].reduce(
         (total, unit) =>
           unit.source === null ? total : total + unit.inputChannels,
         0
       ),
-      perfBufferMs,
-      perfIndex: project.engine.perfIndex,
-      quantumBudgetMs,
       soundCount: this.soundUnits.size,
-      timing: summarizeQuantumPerformance(perfBufferMs, quantumBudgetMs),
       workletCount: 1,
     };
   }
@@ -287,62 +258,10 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       });
       this.modules = modules;
       this.project = project;
-      if (this.performanceMeasurementEnabled) {
-        this.beginPerformanceMeasurement(project);
-      }
-      project.engine.preferences.settings.debug.dspLoadMeasurement =
-        this.performanceMeasurementEnabled;
     } catch (error) {
       project.terminate();
       throw error;
     }
-  }
-
-  private beginPerformanceMeasurement(project: Project): void {
-    this.performanceMeasurementStartIndex = project.engine.perfIndex;
-    this.performanceMeasurementStartTime = this.context.currentTime;
-    this.performanceMeasurementWrapped = false;
-  }
-
-  private updatePerformanceMeasurementWrapped(bufferLength: number): void {
-    if (
-      this.performanceMeasurementWrapped ||
-      this.performanceMeasurementStartIndex === null ||
-      bufferLength === 0
-    ) {
-      return;
-    }
-    // openDAW exposes only the ring's modulo index. AudioContext.currentTime
-    // supplies the monotonic render time needed to distinguish a full wrap.
-    this.performanceMeasurementWrapped =
-      this.context.currentTime - this.performanceMeasurementStartTime >=
-      (bufferLength * 128) / this.context.sampleRate;
-  }
-
-  private getPerformanceSamples(project: Project): Float32Array {
-    const buffer = project.engine.perfBuffer;
-    const start = this.performanceMeasurementStartIndex;
-    if (start === null || buffer.length === 0) {
-      return new Float32Array(0);
-    }
-    if (this.performanceMeasurementEnabled) {
-      this.updatePerformanceMeasurementWrapped(buffer.length);
-    }
-    const end = project.engine.perfIndex;
-    if (!this.performanceMeasurementWrapped && start <= end) {
-      return buffer.slice(start, end);
-    }
-    const samples = new Float32Array(
-      this.performanceMeasurementWrapped
-        ? buffer.length
-        : buffer.length - start + end
-    );
-    const tail = buffer.subarray(
-      this.performanceMeasurementWrapped ? end : start
-    );
-    samples.set(tail);
-    samples.set(buffer.subarray(0, end), tail.length);
-    return samples;
   }
 
   async connectSound(

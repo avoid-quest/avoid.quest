@@ -12,35 +12,21 @@
  */
 type NormalizedContextState = "suspended" | "running" | "closed";
 const MOBILE_USER_AGENT = /(android|iphone|ipad|ipod|mobile)/;
-const DEFAULT_MOBILE_BUFFER_FRAMES = 256;
-
-export function getMobileAudioBufferFrames(): 128 | 256 | 512 {
-  const requested =
-    typeof location === "undefined"
-      ? null
-      : new URLSearchParams(location.search).get("audio-buffer");
-  if (requested === "128") {
-    return 128;
-  }
-  if (requested === "512") {
-    return 512;
-  }
-  return DEFAULT_MOBILE_BUFFER_FRAMES;
-}
+const MOBILE_LATENCY_HINT_SECONDS = 128 / 48_000;
 
 /**
  * Callback for context state changes
  */
 export type ContextStateCallback = (state: NormalizedContextState) => void;
 
-/** Keep openDAW's 48 kHz profile with one extra device quantum of mobile headroom. */
+/** Keep openDAW's 48 kHz profile and use the lowest measured-stable mobile hint. */
 export function getAudioContextOptions(): AudioContextOptions {
   const userAgent =
     typeof navigator === "undefined" ? "" : navigator.userAgent.toLowerCase();
   const isFirefox = userAgent.includes("firefox");
   const isMobile = MOBILE_USER_AGENT.test(userAgent);
   return {
-    latencyHint: isMobile ? getMobileAudioBufferFrames() / 48_000 : 0,
+    latencyHint: isMobile ? MOBILE_LATENCY_HINT_SECONDS : 0,
     ...(isFirefox ? {} : { sampleRate: 48_000 }),
   };
 }

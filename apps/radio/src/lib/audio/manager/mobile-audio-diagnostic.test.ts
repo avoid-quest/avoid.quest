@@ -12,14 +12,12 @@ describe("mobile audio diagnostic", () => {
       summarizeCaptureLatency({
         actual: { latency: 0.04 },
         capabilities: { latency: { max: 0.04, min: 0.02 } },
-        latencyTrial: { result: "rejected", target: 0.02 },
       } as never)
     ).toEqual({
       capabilityMaxMs: 40,
       capabilityMinMs: 20,
       selectedMs: 40,
       selection: "maximum",
-      trial: { result: "rejected", targetMs: 20 },
     });
   });
 
@@ -93,7 +91,6 @@ describe("mobile audio diagnostic", () => {
       },
       label: "Default",
       latencyConstraintSupported: true,
-      latencyTrial: null,
       muted: false,
       readyState: "live",
       requested: { deviceId: { exact: "requested-device" } },

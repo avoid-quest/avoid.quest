@@ -81,7 +81,6 @@ class EffectsController {
   private officialRuntime: EffectsGraphRuntime | null = null;
   private officialRuntimeUnavailable = false as boolean;
   private officialRuntimeWarningReported = false as boolean;
-  private performanceMeasurementEnabled = false as boolean;
   private readonly officialRegisteredSoundIds = new Set<string>();
   private readonly officialSoundOwners = new Map<string, number>();
   private nextOfficialRuntimeGeneration = 0;
@@ -168,11 +167,6 @@ class EffectsController {
         status: "inactive",
       }
     );
-  }
-
-  setPerformanceMeasurementEnabled(enabled: boolean): void {
-    this.performanceMeasurementEnabled = enabled;
-    this.officialRuntime?.setPerformanceMeasurementEnabled?.(enabled);
   }
 
   getPerformanceSnapshot(): EffectsPerformanceSnapshot | null {
@@ -695,9 +689,6 @@ class EffectsController {
       this.officialRuntime ??
       this.createOfficialRuntime(graph.source.context as AudioContext);
     this.officialRuntime = runtime;
-    runtime.setPerformanceMeasurementEnabled?.(
-      this.performanceMeasurementEnabled
-    );
     state.officialConnectingGeneration = generation;
     const wasOfficialConnected = state.officialConnected;
     const runtimeGeneration = this.claimOfficialSound(soundId);

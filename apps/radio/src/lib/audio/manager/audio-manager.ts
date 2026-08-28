@@ -74,8 +74,6 @@ export function setWorkletProcessorUrl(url: string): void {
 
 export type { FilterConfig } from "./audio-manager-types.js";
 
-export type { AudioPerformanceDiagnostics } from "./audio-performance.js";
-
 /**
  * Audio Manager singleton
  *
@@ -164,10 +162,6 @@ export class AudioManager {
    */
   get isReady(): boolean {
     return this.audioSystemInitialized;
-  }
-
-  setPerformanceMeasurementEnabled(enabled: boolean): void {
-    this.effects.setPerformanceMeasurementEnabled(enabled);
   }
 
   getPerformanceDiagnostics(): AudioPerformanceDiagnostics {

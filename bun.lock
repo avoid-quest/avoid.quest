@@ -46,13 +46,13 @@
         "@hookform/resolvers": "^5.9.1",
         "@octokit/core": "^7.0.7",
         "@octokit/plugin-rest-endpoint-methods": "^18.0.0",
-        "@opendaw/lib-dom": "^0.0.88",
-        "@opendaw/lib-dsp": "^0.0.91",
-        "@opendaw/lib-std": "^0.0.83",
-        "@opendaw/studio-adapters": "^0.3.1",
-        "@opendaw/studio-boxes": "^0.0.107",
-        "@opendaw/studio-core": "^0.2.3",
-        "@opendaw/studio-core-wasm": "^0.0.14",
+        "@opendaw/lib-dom": "^0.0.89",
+        "@opendaw/lib-dsp": "^0.0.92",
+        "@opendaw/lib-std": "^0.0.84",
+        "@opendaw/studio-adapters": "^0.3.2",
+        "@opendaw/studio-boxes": "^0.0.108",
+        "@opendaw/studio-core": "^0.2.4",
+        "@opendaw/studio-core-wasm": "^0.0.15",
         "@tanstack/react-db": "^0.3.5",
         "@tanstack/react-pacer": "^0.23.0",
         "@tanstack/react-query": "^5.102.5",
@@ -635,35 +635,35 @@
 
     "@oozcitak/util": ["@oozcitak/util@10.0.0", "", {}, "sha512-hAX0pT/73190NLqBPPWSdBVGtbY6VOhWYK3qqHqtXQ1gK7kS2yz4+ivsN07hpJ6I3aeMtKP6J6npsEKOAzuTLA=="],
 
-    "@opendaw/lib-box": ["@opendaw/lib-box@0.0.92", "", { "dependencies": { "@opendaw/lib-runtime": "^0.0.84", "@opendaw/lib-std": "^0.0.83" } }, "sha512-Pe/i3Pn2QshSNkyC8A8E6gGy8Tpl1JnZnlyhNdSlTo/+w7CX6Ne8RomdZbsFCSEgNzeylcbDf9TULYvOw65nOg=="],
+    "@opendaw/lib-box": ["@opendaw/lib-box@0.0.93", "", { "dependencies": { "@opendaw/lib-runtime": "^0.0.85", "@opendaw/lib-std": "^0.0.84" } }, "sha512-y/SEUc/VYKXaCOURSMMwxxxxs0WXrZCSXjQQyb1+KitmlkfdX15PT4VXRwYPTA+Zqr5m05SvjR4iPBThyTz7xg=="],
 
-    "@opendaw/lib-dawproject": ["@opendaw/lib-dawproject@0.0.76", "", { "dependencies": { "@opendaw/lib-dsp": "^0.0.91", "@opendaw/lib-runtime": "^0.0.84", "@opendaw/lib-xml": "^0.0.69", "jszip": "^3.10.1" } }, "sha512-oHg8GSlp4/9xn3EmAFIX1bh02xHCiViuaaDjMWJhfPTJalVeLGqki0RU1RU/8L9WKLlR8Fx2a/vraU8rAZoNhQ=="],
+    "@opendaw/lib-dawproject": ["@opendaw/lib-dawproject@0.0.77", "", { "dependencies": { "@opendaw/lib-dsp": "^0.0.92", "@opendaw/lib-runtime": "^0.0.85", "@opendaw/lib-xml": "^0.0.70", "jszip": "^3.10.1" } }, "sha512-RYR/VR5f0hV0oO/SA78jZ0fIj1M0BaxIWCLEUdTOI/w40xKyC1wOz3qq5isSit9j0B8JuiwtXvuU/+F1X6k5HA=="],
 
-    "@opendaw/lib-dom": ["@opendaw/lib-dom@0.0.88", "", { "dependencies": { "@opendaw/lib-runtime": "^0.0.84", "@opendaw/lib-std": "^0.0.83", "@types/wicg-file-system-access": "^2023.10.6" } }, "sha512-xXrAMZWCofxC0kQOlQ1m3y7ySZyXiyobhqeOs0FE88h2AW0bQfXzfRAJ1cQH17XUvGDWsDBrSOmEtKByfioW1g=="],
+    "@opendaw/lib-dom": ["@opendaw/lib-dom@0.0.89", "", { "dependencies": { "@opendaw/lib-runtime": "^0.0.85", "@opendaw/lib-std": "^0.0.84", "@types/wicg-file-system-access": "^2023.10.6" } }, "sha512-X2b8BsNBsJRXlttckOKCRu4m9F9UfLpyoPL+SMWs4qNiltkqOo3S6YLtAOiihZl3M6JeHSjYH5Zy31tVlPbirA=="],
 
-    "@opendaw/lib-dsp": ["@opendaw/lib-dsp@0.0.91", "", { "dependencies": { "@opendaw/lib-std": "^0.0.83" } }, "sha512-FWrcKMBm20murnldRrwkk2iJ8DNdD0upeMUNMOxggI0Xn88eTCC2GCB5yvY+DnPXBhotUnyNrIicms0fayTy3w=="],
+    "@opendaw/lib-dsp": ["@opendaw/lib-dsp@0.0.92", "", { "dependencies": { "@opendaw/lib-std": "^0.0.84" } }, "sha512-Q2LM42Y894Sa3VYXjwYS7a41MD6G2bJuNy8j7uODK3C50H50B46E9i7JnV/EPIij7Ufk54kil0zHnd6EIe4kBg=="],
 
-    "@opendaw/lib-fusion": ["@opendaw/lib-fusion@0.0.101", "", { "dependencies": { "@opendaw/lib-box": "^0.0.92", "@opendaw/lib-dom": "^0.0.88", "@opendaw/lib-runtime": "^0.0.84", "@opendaw/lib-std": "^0.0.83" } }, "sha512-A/ZjXfcGQiMqWcPvYT6xYhHsMSn/RUkTyVS7TWt8QEq4FM+jFssP57piEhxgKkDIW6ebuvYcyHv7SR52s0hNkg=="],
+    "@opendaw/lib-fusion": ["@opendaw/lib-fusion@0.0.102", "", { "dependencies": { "@opendaw/lib-box": "^0.0.93", "@opendaw/lib-dom": "^0.0.89", "@opendaw/lib-runtime": "^0.0.85", "@opendaw/lib-std": "^0.0.84" } }, "sha512-Xi9re8b8EWuOc9S+Sogp7kdQhV5TQprwGTkSe18P5GK0/z4e3l9PAg9u1rXffPlI/I0VpBHNvmzvofYqoGneSQ=="],
 
-    "@opendaw/lib-midi": ["@opendaw/lib-midi@0.0.72", "", { "dependencies": { "@opendaw/lib-dsp": "^0.0.91", "@opendaw/lib-std": "^0.0.83" } }, "sha512-UlOfsLTnvHb5bv/dJOrsqIJJ99lixixkj7KtLJjJJzr4jgA0HYxiJ64dIYFXI5dPnRjmjL1spt8Yl878380RMQ=="],
+    "@opendaw/lib-midi": ["@opendaw/lib-midi@0.0.73", "", { "dependencies": { "@opendaw/lib-dsp": "^0.0.92", "@opendaw/lib-std": "^0.0.84" } }, "sha512-D5YVqn6GDmwmQ+VvdRQ+sr574G5N/BlV7Lq5Hm+ugqJPGuJf7BJEymYfQvFcMYFPm0GZGqgW4911n/72ESbLYg=="],
 
-    "@opendaw/lib-runtime": ["@opendaw/lib-runtime@0.0.84", "", { "dependencies": { "@opendaw/lib-std": "^0.0.83" } }, "sha512-+qPzTiN9/pcAU7eG/lpZZtd2G8IUWVJ1v/+ygx3LhG0ao0gL5XC9LA3/XIhySrmH/Qyj6zV5E6QPBX5jIWlS/A=="],
+    "@opendaw/lib-runtime": ["@opendaw/lib-runtime@0.0.85", "", { "dependencies": { "@opendaw/lib-std": "^0.0.84" } }, "sha512-EV8Ii4F4uboiQxWurt8Lc2SMGD28nJBt6gsv2Z0cbpAS0/MeYsfXU3hk7amYFr+yOUS6pNhcCeHXRYxHaypnZg=="],
 
-    "@opendaw/lib-std": ["@opendaw/lib-std@0.0.83", "", {}, "sha512-PcybAkP30rNwwx3q0nSkYjjx6Np8NVkcONlrcAIKk2xosgBWZqeIS+XA/W6w1vgfZJvyadAkXW6vRUn2YSjK/Q=="],
+    "@opendaw/lib-std": ["@opendaw/lib-std@0.0.84", "", {}, "sha512-Ymwpgy4owKAFILZgyKfBgvhkm4ZfjSlz/ukbD+NsJN7Q8ndYd2CpZRcp+mFxvxu5T74t782l77FkLpr9qYCIQA=="],
 
-    "@opendaw/lib-xml": ["@opendaw/lib-xml@0.0.69", "", { "dependencies": { "@opendaw/lib-std": "^0.0.83" } }, "sha512-O8aJ2TNARQtjf6LJHDNSaa6fyuTRblNL/wukJ3rPKe+QYEcSgqPY5oeL8pZWAmVzTgzicZLfSIeHMcURRUFBog=="],
+    "@opendaw/lib-xml": ["@opendaw/lib-xml@0.0.70", "", { "dependencies": { "@opendaw/lib-std": "^0.0.84" } }, "sha512-+niHPTYbQWWYmVpXZNaiSzcCu8DkgMWMX4YFc7j3aupUAbIWiH33Hams791QNk3zwchnPpJc9JQMdwjUARg7SA=="],
 
     "@opendaw/nam-wasm": ["@opendaw/nam-wasm@1.2.0", "", {}, "sha512-j8NoRtVfpqBhdYlifN4EWGHGs3D938znVVq/DxB6CvzOPJ5eFH/KW+Quy/m8ODPkR71XBGSxT+g6afx30HjePw=="],
 
-    "@opendaw/studio-adapters": ["@opendaw/studio-adapters@0.3.1", "", { "dependencies": { "@opendaw/lib-box": "^0.0.92", "@opendaw/lib-dsp": "^0.0.91", "@opendaw/lib-fusion": "^0.0.101", "@opendaw/lib-midi": "^0.0.72", "@opendaw/lib-runtime": "^0.0.84", "@opendaw/lib-std": "^0.0.83", "@opendaw/studio-boxes": "^0.0.107", "@opendaw/studio-enums": "^0.1.0", "soundfont2": "^0.5.0" } }, "sha512-RnqwiTvyrzK8okLP5qsCHAxswh8BfDNnFECtkUWNvYbCawAbGwycscET1Y/+WuaYEeno4W/9TbNw56jvf3wu+A=="],
+    "@opendaw/studio-adapters": ["@opendaw/studio-adapters@0.3.2", "", { "dependencies": { "@opendaw/lib-box": "^0.0.93", "@opendaw/lib-dsp": "^0.0.92", "@opendaw/lib-fusion": "^0.0.102", "@opendaw/lib-midi": "^0.0.73", "@opendaw/lib-runtime": "^0.0.85", "@opendaw/lib-std": "^0.0.84", "@opendaw/studio-boxes": "^0.0.108", "@opendaw/studio-enums": "^0.1.1", "soundfont2": "^0.5.0" } }, "sha512-KB5fh7RH81Bft7KYH+9Oy4y6CJHcPWXYDbnOSTY0X5Dx+PRxr3bAQ4AYj9rKheYr32dvhGTiZWQBGOuUMVVpEw=="],
 
-    "@opendaw/studio-boxes": ["@opendaw/studio-boxes@0.0.107", "", { "dependencies": { "@opendaw/lib-box": "^0.0.92", "@opendaw/lib-std": "^0.0.83", "@opendaw/studio-enums": "^0.1.0" } }, "sha512-r6WDY7QakPfkPrwGQUjsQqOJ29mh4Wr8Hw56cuz5OQYLQ1ppEWFBpMlLxjjYyw+NOU+r6votjXevmqQ3i8Tuwg=="],
+    "@opendaw/studio-boxes": ["@opendaw/studio-boxes@0.0.108", "", { "dependencies": { "@opendaw/lib-box": "^0.0.93", "@opendaw/lib-std": "^0.0.84", "@opendaw/studio-enums": "^0.1.1" } }, "sha512-n25uhFk/x9UoavIzjUzy34QAj1JcYVNxHxUQ9no2JTkGasUMX8VmQI3kchWHE4EP1xeezhWB1DQgtVG4oXJ1cQ=="],
 
-    "@opendaw/studio-core": ["@opendaw/studio-core@0.2.3", "", { "dependencies": { "@opendaw/lib-box": "^0.0.92", "@opendaw/lib-dawproject": "^0.0.76", "@opendaw/lib-dom": "^0.0.88", "@opendaw/lib-dsp": "^0.0.91", "@opendaw/lib-fusion": "^0.0.101", "@opendaw/lib-midi": "^0.0.72", "@opendaw/lib-runtime": "^0.0.84", "@opendaw/lib-std": "^0.0.83", "@opendaw/nam-wasm": "^1.2.0", "@opendaw/studio-adapters": "^0.3.1", "@opendaw/studio-boxes": "^0.0.107", "@opendaw/studio-enums": "^0.1.0", "dropbox": "^10.34.0", "y-websocket": "^1.4.5", "yjs": "^13.6.27", "zod": "^4.1.12" }, "peerDependencies": { "@ffmpeg/ffmpeg": "^0.12.15", "@ffmpeg/util": "^0.12.2" } }, "sha512-86rEA/B9BHk9ZekXUr54am8I6Btaw0202zqU8sEqs2fCCpR9V04cjaGLdI8tcm6Q0vdFaaR19SQaKvUR6fUZ3A=="],
+    "@opendaw/studio-core": ["@opendaw/studio-core@0.2.4", "", { "dependencies": { "@opendaw/lib-box": "^0.0.93", "@opendaw/lib-dawproject": "^0.0.77", "@opendaw/lib-dom": "^0.0.89", "@opendaw/lib-dsp": "^0.0.92", "@opendaw/lib-fusion": "^0.0.102", "@opendaw/lib-midi": "^0.0.73", "@opendaw/lib-runtime": "^0.0.85", "@opendaw/lib-std": "^0.0.84", "@opendaw/nam-wasm": "^1.2.0", "@opendaw/studio-adapters": "^0.3.2", "@opendaw/studio-boxes": "^0.0.108", "@opendaw/studio-enums": "^0.1.1", "dropbox": "^10.34.0", "y-websocket": "^1.4.5", "yjs": "^13.6.27", "zod": "^4.1.12" }, "peerDependencies": { "@ffmpeg/ffmpeg": "^0.12.15", "@ffmpeg/util": "^0.12.2" } }, "sha512-QfO8D9UP+OduJA5V6p8vluZEbLV9vJM2JtDji1afwIH3FgltJK9k7RnPgui3r4jAl21vQRQnG8NDGNQwSz4PFQ=="],
 
-    "@opendaw/studio-core-wasm": ["@opendaw/studio-core-wasm@0.0.14", "", { "dependencies": { "@opendaw/lib-box": "^0.0.92", "@opendaw/lib-dsp": "^0.0.91", "@opendaw/lib-fusion": "^0.0.101", "@opendaw/lib-runtime": "^0.0.84", "@opendaw/lib-std": "^0.0.83", "@opendaw/nam-wasm": "^1.2.0", "@opendaw/studio-adapters": "^0.3.1", "@opendaw/studio-boxes": "^0.0.107", "@opendaw/studio-core": "^0.2.3", "soundfont2": "^0.5.0" } }, "sha512-bS/GhJMhc/HO3jAX+VtFJZ3qWFuVUa7OTH1+uFNbkPX671sI/Ku/twouULgh8QeutHYsA1o/C6hU166qiHQmyw=="],
+    "@opendaw/studio-core-wasm": ["@opendaw/studio-core-wasm@0.0.15", "", { "dependencies": { "@opendaw/lib-box": "^0.0.93", "@opendaw/lib-dsp": "^0.0.92", "@opendaw/lib-fusion": "^0.0.102", "@opendaw/lib-runtime": "^0.0.85", "@opendaw/lib-std": "^0.0.84", "@opendaw/nam-wasm": "^1.2.0", "@opendaw/studio-adapters": "^0.3.2", "@opendaw/studio-boxes": "^0.0.108", "@opendaw/studio-core": "^0.2.4", "soundfont2": "^0.5.0" } }, "sha512-fiLlogzDnPDsp7TfSSP2KS+VuWQ3pyKDu8xv03+GFHlqePB37R04AR9MJtr6mQNFCDduOczqJJdyh/kpOK74HA=="],
 
-    "@opendaw/studio-enums": ["@opendaw/studio-enums@0.1.0", "", { "dependencies": { "@opendaw/lib-std": "^0.0.83" } }, "sha512-0nwFQ2onWf1bMREarG0H1sHuAWST+8AO8mt5i4hbxseIJ9G/NI9cHXMpEL1Q3dy93961tVCeqMXsqfjqXuWqyw=="],
+    "@opendaw/studio-enums": ["@opendaw/studio-enums@0.1.1", "", { "dependencies": { "@opendaw/lib-std": "^0.0.84" } }, "sha512-dvv2FbzV8Zv/4GAC/DTczyrUsIAdsVNetVLpP9MwMXae5TdEQ7aT2jlG2iYgjV9isYKrLmsBXEN//pijEosa2g=="],
 
     "@opentelemetry/api": ["@opentelemetry/api@1.9.1", "", {}, "sha512-gLyJlPHPZYdAk1JENA9LeHejZe1Ti77/pTeFm/nMXmQH/HFZlcS/O2XJB+L8fkbrNSqhdtlvjBVjxwUYanNH5Q=="],
 

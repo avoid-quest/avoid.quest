@@ -2,10 +2,7 @@ import type {
   AudioContextPerformanceSnapshot,
   DeviceSource,
 } from "../playback/index.js";
-import type {
-  EffectsPerformanceSnapshot,
-  QuantumPerformanceSummary,
-} from "./effects-graph-runtime.js";
+import type { EffectsPerformanceSnapshot } from "./effects-graph-runtime.js";
 
 export type AudioPerformanceDiagnostics = {
   context: AudioContextPerformanceSnapshot | null;
@@ -37,41 +34,6 @@ type AudioPerformanceInputs = Pick<
   };
   soundCount: number;
 };
-
-export function summarizeQuantumPerformance(
-  perfBufferMs: Float32Array,
-  quantumBudgetMs: number
-): QuantumPerformanceSummary {
-  const observedSamples = [...perfBufferMs].filter((sample) =>
-    Number.isFinite(sample)
-  );
-  const samples = observedSamples
-    .filter((sample) => sample > 0)
-    .sort((left, right) => left - right);
-  const percentile = (fraction: number) =>
-    samples[
-      Math.min(samples.length - 1, Math.floor(samples.length * fraction))
-    ] ?? 0;
-  const p99Ms = percentile(0.99);
-  let status: QuantumPerformanceSummary["status"] = "measured";
-  if (observedSamples.length === 0) {
-    status = "no-samples";
-  } else if (samples.length === 0) {
-    status = "clock-unavailable";
-  }
-  return {
-    deadlineMisses: samples.filter((sample) => sample >= quantumBudgetMs)
-      .length,
-    maxMs: samples.at(-1) ?? 0,
-    observedSampleCount: observedSamples.length,
-    p95Ms: percentile(0.95),
-    p99LoadPercent: quantumBudgetMs > 0 ? (p99Ms / quantumBudgetMs) * 100 : 0,
-    p99Ms,
-    sampleCount: samples.length,
-    status,
-    zeroSampleCount: observedSamples.length - samples.length,
-  };
-}
 
 export function createAudioPerformanceDiagnostics({
   backends,

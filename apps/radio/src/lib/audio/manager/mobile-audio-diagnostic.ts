@@ -5,7 +5,6 @@ import {
 import {
   type AudioContextPerformanceSnapshot,
   getAudioContextManager,
-  getMobileAudioBufferFrames,
 } from "../playback/audio-context.js";
 import type { DeviceSourceDiagnostics } from "../playback/device-source.js";
 import { AudioManager } from "./audio-manager.js";
@@ -124,12 +123,6 @@ export function summarizeCaptureLatency(input: DeviceSourceDiagnostics) {
       typeof capabilityMin === "number" ? capabilityMin * 1000 : null,
     selectedMs: typeof selected === "number" ? selected * 1000 : null,
     selection,
-    trial: input.latencyTrial
-      ? {
-          result: input.latencyTrial.result,
-          targetMs: input.latencyTrial.target * 1000,
-        }
-      : null,
   };
 }
 
@@ -137,15 +130,8 @@ function compactDiagnostics(diagnostics: AudioPerformanceDiagnostics) {
   const effects = diagnostics.effects
     ? {
         backend: diagnostics.effects.backend,
-        cpuLoadPercent:
-          diagnostics.effects.timing.status === "measured"
-            ? diagnostics.effects.cpuLoadPercent
-            : null,
         monitoringChannelCount: diagnostics.effects.monitoringChannelCount,
-        perfIndex: diagnostics.effects.perfIndex,
-        quantumBudgetMs: diagnostics.effects.quantumBudgetMs,
         soundCount: diagnostics.effects.soundCount,
-        timing: diagnostics.effects.timing,
         workletCount: diagnostics.effects.workletCount,
       }
     : null;
@@ -173,37 +159,31 @@ function compactDiagnostics(diagnostics: AudioPerformanceDiagnostics) {
 
 export async function captureMobileAudioDiagnostic(durationMs = 5000) {
   const manager = AudioManager.getInstance();
-  manager.setPerformanceMeasurementEnabled(true);
   const start = manager.getPerformanceDiagnostics();
   const latencyResetAtStart = getAudioContextManager().resetPlaybackLatency();
   const startedAt = performance.now();
-  try {
-    await wait(durationMs);
-    const elapsedWallTimeMs = performance.now() - startedAt;
-    const end = manager.getPerformanceDiagnostics();
-    const playbackWindow = summarizePlaybackWindow(
-      start.context?.playbackStats ?? null,
-      end.context?.playbackStats ?? null,
-      elapsedWallTimeMs,
-      latencyResetAtStart
-    );
-    return {
-      capturedAt: new Date().toISOString(),
-      durationMs,
-      elapsedWallTimeMs,
-      end: compactDiagnostics(end),
-      environment: {
-        crossOriginIsolated: globalThis.crossOriginIsolated,
-        hardwareConcurrency: navigator.hardwareConcurrency ?? null,
-        requestedMobileBufferFrames: getMobileAudioBufferFrames(),
-        userAgent: navigator.userAgent,
-      },
-      output: redactMobileOutputSnapshot(getOutputRouting().getSnapshot()),
-      playbackUnderrunEventsDelta: playbackWindow?.underrunEventsDelta ?? null,
-      playbackWindow,
-      start: compactDiagnostics(start),
-    };
-  } finally {
-    manager.setPerformanceMeasurementEnabled(false);
-  }
+  await wait(durationMs);
+  const elapsedWallTimeMs = performance.now() - startedAt;
+  const end = manager.getPerformanceDiagnostics();
+  const playbackWindow = summarizePlaybackWindow(
+    start.context?.playbackStats ?? null,
+    end.context?.playbackStats ?? null,
+    elapsedWallTimeMs,
+    latencyResetAtStart
+  );
+  return {
+    capturedAt: new Date().toISOString(),
+    durationMs,
+    elapsedWallTimeMs,
+    end: compactDiagnostics(end),
+    environment: {
+      crossOriginIsolated: globalThis.crossOriginIsolated,
+      hardwareConcurrency: navigator.hardwareConcurrency ?? null,
+      userAgent: navigator.userAgent,
+    },
+    output: redactMobileOutputSnapshot(getOutputRouting().getSnapshot()),
+    playbackUnderrunEventsDelta: playbackWindow?.underrunEventsDelta ?? null,
+    playbackWindow,
+    start: compactDiagnostics(start),
+  };
 }

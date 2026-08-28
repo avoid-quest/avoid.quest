@@ -6,16 +6,11 @@ import {
 } from "./audio-context";
 
 const originalNavigator = globalThis.navigator;
-const originalLocation = globalThis.location;
 
 afterEach(() => {
   Object.defineProperty(globalThis, "navigator", {
     configurable: true,
     value: originalNavigator,
-  });
-  Object.defineProperty(globalThis, "location", {
-    configurable: true,
-    value: originalLocation,
   });
 });
 
@@ -36,30 +31,14 @@ describe("AudioContextManager latency policy", () => {
     expect(getAudioContextOptions()).toEqual({ latencyHint: 0 });
   });
 
-  test("requests a 256-frame device buffer on mobile", () => {
+  test("uses the measured 2.67 ms latency hint on mobile", () => {
     Object.defineProperty(globalThis, "navigator", {
       configurable: true,
       value: { userAgent: "Mozilla/5.0 (Linux; Android 16) Mobile" },
     });
 
     expect(getAudioContextOptions()).toEqual({
-      latencyHint: 256 / 48_000,
-      sampleRate: 48_000,
-    });
-  });
-
-  test("accepts a cold-start mobile buffer override", () => {
-    Object.defineProperty(globalThis, "navigator", {
-      configurable: true,
-      value: { userAgent: "Mozilla/5.0 (Linux; Android 16) Mobile" },
-    });
-    Object.defineProperty(globalThis, "location", {
-      configurable: true,
-      value: { search: "?audio-buffer=512" },
-    });
-
-    expect(getAudioContextOptions()).toEqual({
-      latencyHint: 512 / 48_000,
+      latencyHint: 128 / 48_000,
       sampleRate: 48_000,
     });
   });

@@ -5,14 +5,15 @@
   "license": "UNLICENSED",
   "type": "module",
   "scripts": {
-    "dev": "doppler run -- astro dev --port 3000",
     "build": "astro build",
-    "preview": "astro preview",
-    "typecheck": "astro check && tsc --noEmit",
-    "deploy": "bun run build && wrangler deploy",
     "cf-build": "astro build",
     "cf-deploy": "wrangler deploy",
-    "cf-upload": "wrangler versions upload"
+    "cf-upload": "wrangler versions upload",
+    "deploy": "bun run build && wrangler deploy",
+    "dev": "doppler run -- astro dev --port 3000",
+    "preview": "astro preview",
+    "test": "bun run build && grep -qF '<!DOCTYPE html>' dist/client/index.html",
+    "typecheck": "astro check && tsc --noEmit"
   },
   "dependencies": {
     "@astrojs/cloudflare": "^14.2.5",

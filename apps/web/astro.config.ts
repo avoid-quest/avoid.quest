@@ -4,10 +4,11 @@ import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "astro/config";
 
 export default defineConfig({
-  integrations: [react()],
   adapter: cloudflare({
     imageService: "passthrough",
+    prerenderEnvironment: "node",
   }),
+  integrations: [react()],
   vite: {
     plugins: [tailwindcss() as unknown as never],
   },

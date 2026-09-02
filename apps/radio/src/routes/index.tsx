@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Radios } from "@/components/radio";
 
 const STREAM_CANDIDATES = [
+  ["same-origin-http", "/api/radio-blackout-stream"],
   ["s.ogg", "https://s.streampunk.cc/blackout.ogg"],
   ["blimp.ogg", "https://blimp.streampunk.cc/_stream/blackout.ogg"],
   ["zeppelin.ogg", "https://zeppelin.streampunk.cc/_stream/blackout.ogg"],

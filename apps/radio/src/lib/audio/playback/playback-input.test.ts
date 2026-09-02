@@ -35,7 +35,7 @@ describe("toPlaybackInput", () => {
     });
   });
 
-  test("uses Radio BlackOut's official stream without a CORS relay", () => {
+  test("routes Radio BlackOut through its same-origin stream endpoint", () => {
     for (const streamUrl of [
       "https://zeppelin.streampunk.cc/_stream/blackout.mp3",
       "https://s.streampunk.cc/blackout.mp3",
@@ -47,7 +47,7 @@ describe("toPlaybackInput", () => {
           name: "Radio BlackOut",
           streamUrl,
         })
-      ).toMatchObject({ src: "https://s.streampunk.cc/blackout.mp3" });
+      ).toMatchObject({ src: "/api/radio-blackout-stream" });
     }
     expect(
       toPlaybackInput({

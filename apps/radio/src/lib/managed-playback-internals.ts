@@ -113,11 +113,10 @@ export async function playManagedSound(
   sessionId: ManagedPlaybackSessionId,
   soundId: string,
   volume: number,
-  ctx: PlaybackActionContext,
-  radio?: Radio
+  ctx: PlaybackActionContext
 ): Promise<void> {
   applySessionMasterVolume(sessionId, ctx);
-  if (sessionId === "single" && shouldUseNativeSinglePlayback(radio)) {
+  if (sessionId === "single" && shouldUseNativeSinglePlayback()) {
     await ctx.audio.playSound(soundId, volume);
     return;
   }
@@ -160,7 +159,7 @@ export async function setManagedChannelPlaying(
     );
     ctx.channels.setMuted(sessionId, channel.id, channel.muted);
   }
-  await playManagedSound(sessionId, soundId, channel.volume, ctx, channel.radio);
+  await playManagedSound(sessionId, soundId, channel.volume, ctx);
 }
 
 export function clearManagedPlaybackErrors(

@@ -15,7 +15,6 @@ import { Route as ManifestRouteImport } from './routes/manifest'
 import { Route as PlaylistDotm3uRouteImport } from './routes/playlist[.]m3u'
 import { Route as TunnelRouteImport } from './routes/tunnel'
 import { Route as ApiFeedbackRouteImport } from './routes/api/feedback'
-import { Route as ApiRadioBlackoutStreamRouteImport } from './routes/api/radio-blackout-stream'
 import { Route as ApiRadioMetadataRouteImport } from './routes/api/radio-metadata'
 import { Route as ApiStationsDotjsonRouteImport } from './routes/api/stations[.]json'
 
@@ -49,11 +48,6 @@ const ApiFeedbackRoute = ApiFeedbackRouteImport.update({
   path: '/api/feedback',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiRadioBlackoutStreamRoute = ApiRadioBlackoutStreamRouteImport.update({
-  id: '/api/radio-blackout-stream',
-  path: '/api/radio-blackout-stream',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ApiRadioMetadataRoute = ApiRadioMetadataRouteImport.update({
   id: '/api/radio-metadata',
   path: '/api/radio-metadata',
@@ -72,7 +66,6 @@ export interface FileRoutesByFullPath {
   '/playlist.m3u': typeof PlaylistDotm3uRoute
   '/tunnel': typeof TunnelRoute
   '/api/feedback': typeof ApiFeedbackRoute
-  '/api/radio-blackout-stream': typeof ApiRadioBlackoutStreamRoute
   '/api/radio-metadata': typeof ApiRadioMetadataRoute
   '/api/stations.json': typeof ApiStationsDotjsonRoute
 }
@@ -83,7 +76,6 @@ export interface FileRoutesByTo {
   '/playlist.m3u': typeof PlaylistDotm3uRoute
   '/tunnel': typeof TunnelRoute
   '/api/feedback': typeof ApiFeedbackRoute
-  '/api/radio-blackout-stream': typeof ApiRadioBlackoutStreamRoute
   '/api/radio-metadata': typeof ApiRadioMetadataRoute
   '/api/stations.json': typeof ApiStationsDotjsonRoute
 }
@@ -95,7 +87,6 @@ export interface FileRoutesById {
   '/playlist.m3u': typeof PlaylistDotm3uRoute
   '/tunnel': typeof TunnelRoute
   '/api/feedback': typeof ApiFeedbackRoute
-  '/api/radio-blackout-stream': typeof ApiRadioBlackoutStreamRoute
   '/api/radio-metadata': typeof ApiRadioMetadataRoute
   '/api/stations.json': typeof ApiStationsDotjsonRoute
 }
@@ -108,7 +99,6 @@ export interface FileRouteTypes {
     | '/playlist.m3u'
     | '/tunnel'
     | '/api/feedback'
-    | '/api/radio-blackout-stream'
     | '/api/radio-metadata'
     | '/api/stations.json'
   fileRoutesByTo: FileRoutesByTo
@@ -119,7 +109,6 @@ export interface FileRouteTypes {
     | '/playlist.m3u'
     | '/tunnel'
     | '/api/feedback'
-    | '/api/radio-blackout-stream'
     | '/api/radio-metadata'
     | '/api/stations.json'
   id:
@@ -130,7 +119,6 @@ export interface FileRouteTypes {
     | '/playlist.m3u'
     | '/tunnel'
     | '/api/feedback'
-    | '/api/radio-blackout-stream'
     | '/api/radio-metadata'
     | '/api/stations.json'
   fileRoutesById: FileRoutesById
@@ -142,7 +130,6 @@ export interface RootRouteChildren {
   PlaylistDotm3uRoute: typeof PlaylistDotm3uRoute
   TunnelRoute: typeof TunnelRoute
   ApiFeedbackRoute: typeof ApiFeedbackRoute
-  ApiRadioBlackoutStreamRoute: typeof ApiRadioBlackoutStreamRoute
   ApiRadioMetadataRoute: typeof ApiRadioMetadataRoute
   ApiStationsDotjsonRoute: typeof ApiStationsDotjsonRoute
 }
@@ -191,13 +178,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiFeedbackRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/radio-blackout-stream': {
-      id: '/api/radio-blackout-stream'
-      path: '/api/radio-blackout-stream'
-      fullPath: '/api/radio-blackout-stream'
-      preLoaderRoute: typeof ApiRadioBlackoutStreamRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/api/radio-metadata': {
       id: '/api/radio-metadata'
       path: '/api/radio-metadata'
@@ -222,7 +202,6 @@ const rootRouteChildren: RootRouteChildren = {
   PlaylistDotm3uRoute: PlaylistDotm3uRoute,
   TunnelRoute: TunnelRoute,
   ApiFeedbackRoute: ApiFeedbackRoute,
-  ApiRadioBlackoutStreamRoute: ApiRadioBlackoutStreamRoute,
   ApiRadioMetadataRoute: ApiRadioMetadataRoute,
   ApiStationsDotjsonRoute: ApiStationsDotjsonRoute,
 }

@@ -323,7 +323,7 @@ export function activateChannel(
   const previousRadio = getPlaybackChannel(sessionId, channelId)?.radio ?? null;
   const manager = getAudioManager();
   const outputMode: ChannelOutputMode =
-    sessionId === "single" && shouldUseNativeSinglePlayback()
+    sessionId === "single" && shouldUseNativeSinglePlayback(radio)
       ? "native"
       : "audio-graph";
   let soundCreated = false;

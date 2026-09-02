@@ -227,7 +227,7 @@ async function selectStation(
     }
     playbackAttempted = true;
     await waitForAbortable(
-      playManagedSound("single", soundId, channel.volume, ctx),
+      playManagedSound("single", soundId, channel.volume, ctx, station),
       signal
     );
     if (signal.aborted) {
@@ -248,7 +248,13 @@ async function selectStation(
         ctx
       );
       if (selection.playbackIntent) {
-        await playManagedSound("single", restoredSoundId, channel.volume, ctx);
+        await playManagedSound(
+          "single",
+          restoredSoundId,
+          channel.volume,
+          ctx,
+          channel.radio
+        );
       }
     }
     if (!selection.playbackIntent && playbackAttempted) {
@@ -270,7 +276,9 @@ async function reconcileRouting(ctx: PlaybackActionContext): Promise<void> {
     return;
   }
   const runtime = getPlaybackChannelRuntime(channel.id);
-  const outputMode = shouldUseNativeSinglePlayback() ? "native" : "audio-graph";
+  const outputMode = shouldUseNativeSinglePlayback(channel.radio)
+    ? "native"
+    : "audio-graph";
   if (
     !runtime.soundId ||
     ctx.channels.getOutputMode?.(channel.id) === outputMode
@@ -286,7 +294,13 @@ async function reconcileRouting(ctx: PlaybackActionContext): Promise<void> {
     return;
   }
   try {
-    await playManagedSound("single", soundId, channel.volume, ctx);
+    await playManagedSound(
+      "single",
+      soundId,
+      channel.volume,
+      ctx,
+      channel.radio
+    );
   } catch (error) {
     throw reportPlaybackActionError(ctx.reportError, {
       mode: "single",

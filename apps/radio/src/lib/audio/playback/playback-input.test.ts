@@ -35,20 +35,19 @@ describe("toPlaybackInput", () => {
     });
   });
 
-  test("routes Radio BlackOut through its working CORS relay", () => {
-    const relayUrl =
-      "https://proxy.cors.sh/https://s.streampunk.cc/blackout.mp3";
+  test("routes Radio BlackOut through its same-origin stream endpoint", () => {
     for (const streamUrl of [
       "https://zeppelin.streampunk.cc/_stream/blackout.mp3",
       "https://s.streampunk.cc/blackout.mp3",
       "https://seep.eu.org/https://s.streampunk.cc/blackout.mp3",
+      "https://proxy.cors.sh/https://s.streampunk.cc/blackout.mp3",
     ]) {
       expect(
         toPlaybackInput({
           name: "Radio BlackOut",
           streamUrl,
         })
-      ).toMatchObject({ src: relayUrl });
+      ).toMatchObject({ src: "/api/radio-blackout-stream" });
     }
   });
 

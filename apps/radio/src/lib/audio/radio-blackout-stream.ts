@@ -1,5 +1,5 @@
 const RADIO_BLACKOUT_UPSTREAM_URL =
-  "https://s.streampunk.cc/blackout.mp3";
+  "https://zeppelin.streampunk.cc/_stream/blackout.mp3";
 
 const RESPONSE_HEADERS = [
   "Accept-Ranges",
@@ -22,6 +22,16 @@ export async function handleRadioBlackoutStreamRequest(
   request: Request,
   fetchImpl: FetchLike = fetch
 ): Promise<Response> {
+  if (request.method === "HEAD") {
+    return new Response(null, {
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Cache-Control": "no-store",
+        "Content-Type": "audio/mpeg",
+      },
+    });
+  }
+
   const upstreamHeaders = new Headers({ Accept: "audio/mpeg" });
   const range = request.headers.get("Range");
   if (range) {
@@ -30,7 +40,7 @@ export async function handleRadioBlackoutStreamRequest(
 
   const upstream = await fetchImpl(RADIO_BLACKOUT_UPSTREAM_URL, {
     headers: upstreamHeaders,
-    method: request.method === "HEAD" ? "HEAD" : "GET",
+    method: "GET",
     signal: request.signal,
   });
 
@@ -48,7 +58,7 @@ export async function handleRadioBlackoutStreamRequest(
     responseHeaders.set("Content-Type", "audio/mpeg");
   }
 
-  return new Response(request.method === "HEAD" ? null : upstream.body, {
+  return new Response(upstream.body, {
     headers: responseHeaders,
     status: upstream.status,
     statusText: upstream.statusText,

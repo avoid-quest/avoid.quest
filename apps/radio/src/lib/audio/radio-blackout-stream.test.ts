@@ -24,7 +24,7 @@ describe("handleRadioBlackoutStreamRequest", () => {
     );
 
     expect(upstreamRequest?.url).toBe(
-      "https://s.streampunk.cc/blackout.mp3"
+      "https://zeppelin.streampunk.cc/_stream/blackout.mp3"
     );
     expect(upstreamRequest?.method).toBe("GET");
     expect(upstreamRequest?.headers.get("Accept")).toBe("audio/mpeg");
@@ -39,22 +39,21 @@ describe("handleRadioBlackoutStreamRequest", () => {
     expect(await response.text()).toBe("audio bytes");
   });
 
-  test("forwards HEAD without a response body", async () => {
-    let method: string | undefined;
+  test("answers HEAD without opening the streaming upstream", async () => {
+    let fetched = false;
     const response = await handleRadioBlackoutStreamRequest(
       new Request("https://radio.example/api/radio-blackout-stream", {
         method: "HEAD",
       }),
-      async (input, init) => {
-        method = new Request(input, init).method;
-        return new Response(null, {
-          headers: { "Content-Type": "audio/mpeg" },
-          status: 200,
-        });
+      async () => {
+        fetched = true;
+        return new Response(null);
       }
     );
 
-    expect(method).toBe("HEAD");
+    expect(fetched).toBe(false);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toBe("audio/mpeg");
     expect(response.body).toBeNull();
   });
 });

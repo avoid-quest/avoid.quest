@@ -35,7 +35,7 @@ describe("toPlaybackInput", () => {
     });
   });
 
-  test("routes Radio BlackOut through its same-origin stream endpoint", () => {
+  test("uses Radio BlackOut's official Ogg stream for Web Audio", () => {
     for (const streamUrl of [
       "https://zeppelin.streampunk.cc/_stream/blackout.mp3",
       "https://s.streampunk.cc/blackout.mp3",
@@ -47,7 +47,7 @@ describe("toPlaybackInput", () => {
           name: "Radio BlackOut",
           streamUrl,
         })
-      ).toMatchObject({ src: "/api/radio-blackout-stream" });
+      ).toMatchObject({ src: "https://s.streampunk.cc/blackout.ogg" });
     }
     expect(
       toPlaybackInput({

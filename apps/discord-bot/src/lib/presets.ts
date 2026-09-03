@@ -74,6 +74,14 @@ export const presets: PresetRadio[] = [
     websiteUrl: "https://www.internetpublicradio.live/",
   },
   {
+    description:
+      "A community platform and independent radio station featuring underground music from Hong Kong, Asia and around the world.",
+    logoUrl: "https://hkcr.live/assets/logo.png",
+    name: "HKCR",
+    streamUrl: "https://stream-test.hkcr.live/hls/main.m3u8",
+    websiteUrl: "https://hkcr.live/",
+  },
+  {
     description: "Radio AlHara",
     logoUrl: "https://www.radioalhara.net/img/radio-alhara-logo.svg",
     name: "Radio Alhara",

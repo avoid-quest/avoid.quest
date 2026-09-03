@@ -79,8 +79,8 @@ function bandcampStreamFormat(
 
 function createErrorResponse(message: string): BandcampItemError {
   return {
-    success: false,
     error: message,
+    success: false,
   };
 }
 
@@ -133,7 +133,9 @@ async function fetchBandcampPage(url: string): Promise<string> {
     return await response.text();
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
-      throw new Error(`Request to ${url} timed out after 10 seconds`);
+      throw new Error(`Request to ${url} timed out after 10 seconds`, {
+        cause: error,
+      });
     }
     throw error;
   } finally {
@@ -159,7 +161,7 @@ function parseBandcampData(html: string) {
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(
       `Failed to parse "basic" JSON-LD data: ${message}. Raw payload: ${rawBasic}`,
-      { cause: error instanceof Error ? error : undefined }
+      { cause: error }
     );
   }
 
@@ -171,7 +173,7 @@ function parseBandcampData(html: string) {
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(
       `Failed to parse "extra" tralbum data: ${message}. Raw payload: ${rawExtra}`,
-      { cause: error instanceof Error ? error : undefined }
+      { cause: error }
     );
   }
 
@@ -193,10 +195,10 @@ async function getBandcampAlbum(
     return streamUrl
       ? [
           {
+            duration: track.duration,
             format: "progressive" as const,
             name: track.title,
             streamUrl,
-            duration: track.duration,
             trackNumber: track.track_num || index + 1,
           },
         ]
@@ -213,22 +215,22 @@ async function getBandcampAlbum(
   );
 
   return {
-    success: true,
     format: "progressive",
     metadata: {
-      platform: "bandcamp",
-      itemType: "album",
-      url,
-      name: basic.name,
+      albumName: basic.name,
       artist: basic.byArtist.name,
       artwork: basic.image,
-      albumName: basic.name,
-      trackCount: mappedTracks.length,
       duration: totalDuration > 0 ? totalDuration : undefined,
-      tracks: mappedTracks,
+      itemType: "album",
+      name: basic.name,
+      platform: "bandcamp",
       streamUrl: mappedTracks[0]?.streamUrl,
+      trackCount: mappedTracks.length,
+      tracks: mappedTracks,
+      url,
     },
     streamUrl: mappedTracks[0]?.streamUrl || "",
+    success: true,
   };
 }
 
@@ -245,20 +247,20 @@ async function getBandcampTrack(
   }
 
   return {
-    success: true,
     format: "progressive",
     metadata: {
-      platform: "bandcamp",
-      itemType: "track",
-      url,
-      name: basic.name,
+      albumName: basic.inAlbum?.name,
       artist: basic.byArtist.name,
       artwork: basic.image || basic.album?.image,
-      albumName: basic.inAlbum?.name,
       duration: trackInfo.duration,
+      itemType: "track",
+      name: basic.name,
+      platform: "bandcamp",
       streamUrl: trackInfo.file["mp3-128"],
+      url,
     },
     streamUrl: trackInfo.file["mp3-128"],
+    success: true,
   };
 }
 
@@ -343,26 +345,26 @@ function aggregateTracksFromResults(
       for (const track of meta.tracks) {
         if (track.streamUrl) {
           allTracks.push({
+            duration: track.duration,
             format: bandcampStreamFormat(track.format),
             name: `${meta.name} - ${track.name}`,
             streamUrl: track.streamUrl,
-            duration: track.duration,
             trackNumber: allTracks.length + 1,
           });
         }
       }
     } else if (meta.streamUrl) {
       allTracks.push({
+        duration: meta.duration,
         format: bandcampStreamFormat(result.value.format),
         name: meta.name || "Unknown Track",
         streamUrl: meta.streamUrl,
-        duration: meta.duration,
         trackNumber: allTracks.length + 1,
       });
     }
   }
 
-  return { tracks: allTracks, artwork: firstArtwork };
+  return { artwork: firstArtwork, tracks: allTracks };
 }
 
 async function getBandcampArtist(
@@ -402,21 +404,21 @@ async function getBandcampArtist(
   );
 
   return {
-    success: true,
     format: allTracks[0]?.format ?? "progressive",
     metadata: {
-      platform: "bandcamp",
-      itemType: "artist",
-      url,
-      name: artistName,
       artist: artistName,
       artwork: finalArtwork,
-      trackCount: allTracks.length,
       duration: totalDuration > 0 ? totalDuration : undefined,
-      tracks: allTracks,
+      itemType: "artist",
+      name: artistName,
+      platform: "bandcamp",
       streamUrl: allTracks[0]?.streamUrl,
+      trackCount: allTracks.length,
+      tracks: allTracks,
+      url,
     },
     streamUrl: allTracks[0]?.streamUrl || "",
+    success: true,
   };
 }
 
@@ -497,7 +499,7 @@ function parseVisibleCollectionItems(html: string): CollectionItem[] {
         parent.find(".collection-item-artist, .item-artist").text().trim() ||
         "";
 
-      items.push({ url: href, name, artist });
+      items.push({ artist, name, url: href });
     }
   );
 
@@ -517,17 +519,17 @@ async function fetchCollectionFromApi(
 ): Promise<CollectionItem[]> {
   const apiUrl = "https://bandcamp.com/api/fancollection/1/collection_items";
   const response = await fetch(apiUrl, {
-    method: "POST",
+    body: JSON.stringify({
+      count: MAX_COLLECTION_ITEMS,
+      fan_id: Number(fanId),
+      older_than_token: null,
+    }),
     headers: {
       "Content-Type": "application/json",
       "User-Agent":
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
     },
-    body: JSON.stringify({
-      fan_id: Number(fanId),
-      count: MAX_COLLECTION_ITEMS,
-      older_than_token: null,
-    }),
+    method: "POST",
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
 
@@ -544,9 +546,9 @@ async function fetchCollectionFromApi(
   return data.items
     .filter((item) => item.item_url)
     .map((item) => ({
-      url: item.item_url || "",
-      name: item.item_title || "Unknown",
       artist: item.band_name || "",
+      name: item.item_title || "Unknown",
+      url: item.item_url || "",
     }));
 }
 
@@ -582,28 +584,28 @@ function aggregateCollectionTracks(
           continue;
         }
         allTracks.push({
+          duration: track.duration,
           format: bandcampStreamFormat(track.format),
           name: formatCollectionTrackName(
             meta.artist || meta.name || "",
             track.name
           ),
           streamUrl: track.streamUrl,
-          duration: track.duration,
           trackNumber: allTracks.length + 1,
         });
       }
     } else if (meta.streamUrl) {
       allTracks.push({
+        duration: meta.duration,
         format: bandcampStreamFormat(result.value.format),
         name: formatCollectionTrackName(meta.artist || "", meta.name || ""),
         streamUrl: meta.streamUrl,
-        duration: meta.duration,
         trackNumber: allTracks.length + 1,
       });
     }
   }
 
-  return { tracks: allTracks, artwork: firstArtwork };
+  return { artwork: firstArtwork, tracks: allTracks };
 }
 
 async function getBandcampCollection(
@@ -659,20 +661,20 @@ async function getBandcampCollection(
   );
 
   return {
-    success: true,
     format: allTracks[0]?.format ?? "progressive",
     metadata: {
-      platform: "bandcamp",
-      itemType: "collection",
-      url,
-      name: `${username}'s Collection`,
       artist: username,
       artwork,
-      trackCount: allTracks.length,
       duration: totalDuration > 0 ? totalDuration : undefined,
-      tracks: allTracks,
+      itemType: "collection",
+      name: `${username}'s Collection`,
+      platform: "bandcamp",
       streamUrl: allTracks[0]?.streamUrl,
+      trackCount: allTracks.length,
+      tracks: allTracks,
+      url,
     },
     streamUrl: allTracks[0]?.streamUrl || "",
+    success: true,
   };
 }

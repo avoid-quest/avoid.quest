@@ -82,7 +82,7 @@ export function getFullStreamUrl(url: string, instanceUrl?: string): string {
 // ============================================
 
 function createError(message: string): YouTubeItemError {
-  return { success: false, error: message };
+  return { error: message, success: false };
 }
 
 /**
@@ -154,19 +154,19 @@ async function processVideo(
     );
 
     return {
-      success: true,
-      streamUrl,
       metadata: {
-        platform: "youtube",
-        itemType: "video",
-        url,
-        name: data.title,
         artist: data.author,
         artwork,
-        videoId,
         duration: data.lengthSeconds,
+        itemType: "video",
+        name: data.title,
+        platform: "youtube",
         streamUrl,
+        url,
+        videoId,
       },
+      streamUrl,
+      success: true,
     };
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Unknown error";
@@ -193,30 +193,30 @@ async function processPlaylist(
     // Convert Invidious tracks to our format
     // Note: streamUrl uses yt:{videoId} convention - resolved on play
     const tracks: YouTubeTrackInfo[] = data.videos.map((video) => ({
+      duration: video.lengthSeconds,
       name: video.title,
       streamUrl: `yt:${video.videoId}`,
-      duration: video.lengthSeconds,
-      videoId: video.videoId,
       thumbnail: getBestThumbnail(video.videoThumbnails, options?.instanceUrl),
+      videoId: video.videoId,
     }));
 
     // Use playlist thumbnail or first track's thumbnail
     const artwork = data.playlistThumbnail || tracks[0]?.thumbnail || "";
 
     return {
-      success: true,
-      streamUrl: tracks[0]?.streamUrl ?? "",
       metadata: {
-        platform: "youtube",
-        itemType: "playlist",
-        url,
-        name: data.title,
         artist: data.author,
         artwork,
+        itemType: "playlist",
+        name: data.title,
+        platform: "youtube",
         playlistId,
         trackCount: data.videoCount,
         tracks,
+        url,
       },
+      streamUrl: tracks[0]?.streamUrl ?? "",
+      success: true,
     };
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Unknown error";

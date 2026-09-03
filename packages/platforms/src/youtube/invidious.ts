@@ -106,8 +106,8 @@ async function fetchInvidious<T>(
   }
 
   const response = await fetch(url, {
-    signal: AbortSignal.timeout(15_000),
     headers,
+    signal: AbortSignal.timeout(15_000),
   });
 
   if (!response.ok) {

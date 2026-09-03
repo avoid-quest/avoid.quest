@@ -47,7 +47,7 @@ function errorResponse(
   code: RadioMetadataErrorCode,
   message: string
 ): Extract<RadioMetadataResponse, { ok: false }> {
-  return { ok: false, error: { code, message } };
+  return { error: { code, message }, ok: false };
 }
 
 function unsupportedMetadataResponse(): Extract<
@@ -103,7 +103,7 @@ async function retrieveExternalProvider(
 ): Promise<RadioMetadataResponse> {
   const externalResult = await retrieveExternalResult(input, config);
   return externalResult
-    ? { ok: true, data: externalResult }
+    ? { data: externalResult, ok: true }
     : unsupportedMetadataResponse();
 }
 
@@ -193,25 +193,25 @@ export function createRadioMetadataRetrieval({
 
     const expiresAt = sampledAt + RADIO_METADATA_SUCCESS_TTL_MS;
     return {
-      ok: true,
       data: {
-        streamUrl,
-        resolvedUrl: response.url || undefined,
-        source: "icy",
-        title: icy.title,
-        artist: icy.artist,
-        rawTitle: icy.rawTitle,
         album: null,
+        artist: icy.artist,
         artworkUrl: icy.artworkUrl,
-        itemUrl: null,
-        stationName: response.headers.get("icy-name"),
-        stationDescription: response.headers.get("icy-description"),
-        genre: response.headers.get("icy-genre"),
         bitrate:
           Number.parseInt(response.headers.get("icy-br") ?? "", 10) || null,
-        sampledAt,
         expiresAt,
+        genre: response.headers.get("icy-genre"),
+        itemUrl: null,
+        rawTitle: icy.rawTitle,
+        resolvedUrl: response.url || undefined,
+        sampledAt,
+        source: "icy",
+        stationDescription: response.headers.get("icy-description"),
+        stationName: response.headers.get("icy-name"),
+        streamUrl,
+        title: icy.title,
       },
+      ok: true,
     };
   };
 
@@ -247,13 +247,13 @@ export function createRadioMetadataRetrieval({
 
     const expiresAt = sampledAt + RADIO_METADATA_SUCCESS_TTL_MS;
     const data = normalizeIcecastSource({
-      source,
-      streamUrl,
+      expiresAt,
       resolvedUrl: response.url || undefined,
       sampledAt,
-      expiresAt,
+      source,
+      streamUrl,
     });
-    return data ? { ok: true, data } : null;
+    return data ? { data, ok: true } : null;
   };
 
   const retrieveWithSignal = async (
@@ -266,10 +266,10 @@ export function createRadioMetadataRetrieval({
     const expiresAt = sampledAt + RADIO_METADATA_SUCCESS_TTL_MS;
     const providerFetch = fetchWithSignal(signal);
     const input = {
-      fetchImpl: providerFetch,
-      streamUrl,
-      sampledAt,
       expiresAt,
+      fetchImpl: providerFetch,
+      sampledAt,
+      streamUrl,
     };
 
     switch (config.kind) {
@@ -335,8 +335,8 @@ export function createRadioMetadataRetrieval({
       }
 
       captureErrorImpl(error, {
-        surface: "api-route",
         operation: "radio-metadata.resolve",
+        surface: "api-route",
         tags: { endpoint: "radio-metadata" },
       });
 

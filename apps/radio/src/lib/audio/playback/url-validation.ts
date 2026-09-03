@@ -36,7 +36,7 @@ export function validatePlaybackStreamUrl(
     if (!videoId) {
       return { ok: false, reason: "missing YouTube video ID" };
     }
-    return { ok: true, normalizedUrl: `${YOUTUBE_LAZY_PREFIX}${videoId}` };
+    return { normalizedUrl: `${YOUTUBE_LAZY_PREFIX}${videoId}`, ok: true };
   }
 
   // Relative paths support same-origin audio assets.
@@ -44,7 +44,7 @@ export function validatePlaybackStreamUrl(
     if (!isSameOriginPlaybackPath(normalizedUrl)) {
       return { ok: false, reason: "scheme-relative URL is not allowed" };
     }
-    return { ok: true, normalizedUrl };
+    return { normalizedUrl, ok: true };
   }
 
   try {
@@ -60,7 +60,7 @@ export function validatePlaybackStreamUrl(
       };
     }
 
-    return { ok: true, normalizedUrl };
+    return { normalizedUrl, ok: true };
   } catch {
     return { ok: false, reason: "invalid URL format" };
   }

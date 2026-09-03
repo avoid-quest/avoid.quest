@@ -59,7 +59,7 @@ export class PhaseVocoder {
 
     // If pitch factor is 1.0, pass through
     if (Math.abs(this.pitchFactor - 1.0) < 0.001) {
-      for (let i = fromIndex; i < toIndex; i++) {
+      for (let i = fromIndex; i < toIndex; i += 1) {
         outputL[i] = inputL[i] ?? 0;
         outputR[i] = inputR[i] ?? 0;
       }
@@ -68,7 +68,7 @@ export class PhaseVocoder {
 
     // Simple resampling-based pitch shift (basic implementation)
     // Write input to buffer
-    for (let i = fromIndex; i < toIndex; i++) {
+    for (let i = fromIndex; i < toIndex; i += 1) {
       this.bufferL[this.writePosition] = inputL[i] ?? 0;
       this.bufferR[this.writePosition] = inputR[i] ?? 0;
       this.writePosition = (this.writePosition + 1) & (this.bufferSize - 1);
@@ -77,7 +77,7 @@ export class PhaseVocoder {
     // Read from buffer with pitch-shifted rate
     const step = this.pitchFactor;
 
-    for (let i = fromIndex; i < toIndex; i++) {
+    for (let i = fromIndex; i < toIndex; i += 1) {
       const pos = this.readPosition;
       const posInt = Math.floor(pos);
       const posFrac = pos - posInt;

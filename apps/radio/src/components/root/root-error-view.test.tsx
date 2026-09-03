@@ -9,15 +9,15 @@ const dom = new JSDOM("<!doctype html><html><body></body></html>", {
 });
 
 for (const [key, value] of Object.entries({
-  window: dom.window,
   document: dom.window.document,
-  navigator: dom.window.navigator,
   HTMLElement: dom.window.HTMLElement,
+  navigator: dom.window.navigator,
+  window: dom.window,
 })) {
   Object.defineProperty(globalThis, key, {
     configurable: true,
-    writable: true,
     value,
+    writable: true,
   });
 }
 
@@ -35,6 +35,7 @@ mock.module("@tanstack/react-router", () => ({
 }));
 
 let RootErrorView: typeof import("./root-error-view")["RootErrorView"];
+const resetError = () => undefined;
 
 beforeAll(async () => {
   ({ RootErrorView } = await import("./root-error-view"));
@@ -46,16 +47,16 @@ afterEach(() => {
 });
 
 function renderError(error: Error) {
-  return render(<RootErrorView error={error} reset={() => undefined} />);
+  return render(<RootErrorView error={error} reset={resetError} />);
 }
 
 describe("RootErrorView", () => {
   test("renders the safe AppError message and reports it", () => {
     const error = new AppError({
-      code: "ROOT_FAILURE",
-      safeMessage: "Readable failure",
       category: "infrastructure",
+      code: "ROOT_FAILURE",
       expected: false,
+      safeMessage: "Readable failure",
       status: 500,
     });
 
@@ -65,8 +66,8 @@ describe("RootErrorView", () => {
     expect(captureErrorMock).toHaveBeenCalledWith(
       error,
       expect.objectContaining({
-        surface: "ui",
         operation: "root-error-boundary",
+        surface: "ui",
       })
     );
   });

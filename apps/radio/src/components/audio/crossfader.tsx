@@ -1,3 +1,4 @@
+/** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 import { Slider } from "@avoid.quest/ui/components/slider";
 import { cn } from "@avoid.quest/ui/lib/utils";
 
@@ -26,20 +27,20 @@ export function Crossfader({
   disabled = false,
   defaultValue = 0.5, // Default to center (50%)
 }: CrossfaderProps) {
-  const handleValueChange = (value: number[]) => {
+  function handleValueChange(value: number[]) {
     onPositionChange((value[0] ?? 0) / MAX_POSITION);
-  };
+  }
 
   const sizeClasses = {
-    sm: "h-2",
-    md: "h-3",
     lg: "h-4",
+    md: "h-3",
+    sm: "h-2",
   };
 
   const thumbSizeClasses = {
-    sm: "h-4 w-4",
-    md: "h-6 w-6",
     lg: "h-8 w-8",
+    md: "h-6 w-6",
+    sm: "h-4 w-4",
   };
 
   return (

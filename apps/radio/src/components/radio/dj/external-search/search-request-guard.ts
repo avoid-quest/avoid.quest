@@ -4,7 +4,8 @@ export function createSearchRequestGuard() {
 
   return {
     begin(requestContext: string): () => boolean {
-      const requestGeneration = ++generation;
+      generation += 1;
+      const requestGeneration = generation;
       return () =>
         requestGeneration === generation && requestContext === context;
     },

@@ -1,3 +1,4 @@
+/** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 import { Button } from "@avoid.quest/ui/components/button";
 import { Card } from "@avoid.quest/ui/components/card";
 import { Label } from "@avoid.quest/ui/components/label";
@@ -82,6 +83,9 @@ export function ImportPage() {
   const handleCancel = () => {
     navigate({ to: "/" });
   };
+  const handleImportModeChange = (value: string) => {
+    setImportMode(value as ImportMode);
+  };
 
   if (isLoading) {
     return (
@@ -165,10 +169,7 @@ export function ImportPage() {
             </p>
           </div>
 
-          <RadioGroup
-            onValueChange={(value) => setImportMode(value as ImportMode)}
-            value={importMode}
-          >
+          <RadioGroup onValueChange={handleImportModeChange} value={importMode}>
             <div className="space-y-3">
               <div className="flex items-start space-x-3 rounded-lg border p-3">
                 <RadioGroupItem className="mt-1" id="merge" value="merge" />

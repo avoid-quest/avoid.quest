@@ -29,8 +29,8 @@ export function BrowserGrid({
         className
       )}
       style={{
-        touchAction: "pan-y",
         position: "relative",
+        touchAction: "pan-y",
         zIndex: 1,
       }}
     >

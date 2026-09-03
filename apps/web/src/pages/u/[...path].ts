@@ -5,7 +5,7 @@ export const prerender = false;
 const UMAMI_ORIGIN = "https://umami.net-work.studio";
 
 export const ALL: APIRoute = async ({ params, request }) => {
-  const path = params.path;
+  const { path } = params;
 
   if (!path) {
     return new Response("Not found", { status: 404 });
@@ -35,18 +35,17 @@ export const ALL: APIRoute = async ({ params, request }) => {
   }
 
   const upstream = await fetch(upstreamUrl, {
-    method: request.method,
-    headers,
     body:
       request.method === "GET" || request.method === "HEAD"
         ? undefined
         : await request.arrayBuffer(),
+    headers,
+    method: request.method,
   });
 
   const isScript = path.endsWith(".js");
 
   return new Response(upstream.body, {
-    status: upstream.status,
     headers: {
       "Cache-Control": isScript
         ? "public, max-age=3600, s-maxage=86400"
@@ -57,5 +56,6 @@ export const ALL: APIRoute = async ({ params, request }) => {
           ? "application/javascript; charset=utf-8"
           : "application/json"),
     },
+    status: upstream.status,
   });
 };

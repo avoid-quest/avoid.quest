@@ -47,13 +47,13 @@ describe("VolumeController", () => {
     const sound = createSoundInstance(radio, "deck-a");
     let currentTime = 0;
     const gain = {
-      value: 0.0001,
       cancelScheduledValues: mock(() => undefined),
       setTargetAtTime: mock(() => undefined),
       setValueAtTime: mock((value: number, _time: number) => {
         gain.value = value;
       }),
       setValueCurveAtTime: mock(() => undefined),
+      value: 0.0001,
     };
     sound.nodes = {
       gain: { gain },

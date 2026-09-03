@@ -102,7 +102,7 @@ export function validateSoundCloudCdnRedirectUrl(
     return { ok: false, reason: "invalid-domain" };
   }
 
-  return { ok: true, url, parsed };
+  return { ok: true, parsed, url };
 }
 
 export function validateSoundCloudCdnUrl(

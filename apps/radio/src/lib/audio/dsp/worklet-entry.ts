@@ -37,16 +37,14 @@ class CacophonyProcessor extends AudioWorkletProcessor {
     outputs: Float32Array[][],
     _parameters: Record<string, Float32Array>
   ): boolean {
-    const input = inputs[0];
-    const sidechain = inputs[1];
-    const output = outputs[0];
+    const [input, sidechain] = inputs;
+    const [output] = outputs;
 
     if (!output || output.length < 2) {
       return true;
     }
 
-    const outputL = output[0];
-    const outputR = output[1];
+    const [outputL, outputR] = output;
 
     if (!(outputL && outputR)) {
       return true;

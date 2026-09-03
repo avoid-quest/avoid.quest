@@ -217,7 +217,7 @@ export class BiquadFilter {
     const [inputL, inputR] = input;
     const [outputL, outputR] = output;
 
-    for (let i = fromIndex; i < toIndex; i++) {
+    for (let i = fromIndex; i < toIndex; i += 1) {
       // Left channel
       const xL = inputL[i] ?? 0;
       const yL = b0 * xL + z1L;

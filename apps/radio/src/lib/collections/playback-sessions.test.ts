@@ -38,9 +38,6 @@ function createMemoryStorage(): Storage {
   const state = new Map<string, string>();
 
   return {
-    get length() {
-      return state.size;
-    },
     clear() {
       state.clear();
     },
@@ -49,6 +46,9 @@ function createMemoryStorage(): Storage {
     },
     key(index) {
       return Array.from(state.keys())[index] ?? null;
+    },
+    get length() {
+      return state.size;
     },
     removeItem(key) {
       state.delete(key);
@@ -61,8 +61,8 @@ function createMemoryStorage(): Storage {
 
 if (typeof sessionStorage === "undefined") {
   Object.defineProperty(globalThis, "sessionStorage", {
-    value: createMemoryStorage(),
     configurable: true,
+    value: createMemoryStorage(),
   });
 }
 
@@ -162,38 +162,38 @@ describe("local NAM model garbage collection", () => {
     const nestedOnly = createDefaultEffectConfig("neuralAmp", "nested-only", 1);
     nestedOnly.modelId = nestedOnlyId;
     const container = createDefaultEffectConfig("fxComposite", "container", 0);
-    const firstChain = container.chains[0];
+    const [firstChain] = container.chains;
     if (!firstChain) {
       throw new Error("Default composite requires a chain");
     }
     firstChain.effects = [nestedShared, nestedOnly];
 
     playbackSessionsCollection.insert({
-      id: "single",
+      activeChannelId: "single-a",
       channels: [
         {
           ...createDefaultChannel("single-a", "single-primary", 0),
           effects: [shared],
         },
       ],
-      masterVolume: 1,
       crossfadePosition: 0.5,
       headphoneVolume: 1,
-      activeChannelId: "single-a",
+      id: "single",
+      masterVolume: 1,
       tempo: 120,
     });
     playbackSessionsCollection.insert({
-      id: "dj",
+      activeChannelId: null,
       channels: [
         {
           ...createDefaultChannel("deck-a", "deck-a", 0),
           effects: [container],
         },
       ],
-      masterVolume: 1,
       crossfadePosition: 0.5,
       headphoneVolume: 1,
-      activeChannelId: null,
+      id: "dj",
+      masterVolume: 1,
       tempo: 120,
     });
 
@@ -230,8 +230,8 @@ describe("buildDjSessionFromLegacyState", () => {
     const deckARadio = {
       id: "deck-a-radio",
       name: "Deck A",
-      streamUrl: "https://radio.example/deck-a.mp3",
       streamFormat: "hls" as const,
+      streamUrl: "https://radio.example/deck-a.mp3",
     };
     const deckBRadio = {
       id: "deck-b-radio",
@@ -243,24 +243,24 @@ describe("buildDjSessionFromLegacyState", () => {
       legacyDecks: [
         {
           id: DECK_A_CHANNEL_ID,
-          radio: deckARadio,
-          volume: 0.7,
           pan: -0.25,
+          radio: deckARadio,
           speed: 1.1,
+          volume: 0.7,
         },
         {
           id: DECK_B_CHANNEL_ID,
+          muted: true,
           radio: deckBRadio,
           volume: 0.9,
-          muted: true,
         },
       ],
       legacyMixer: {
         crossfadePosition: 0.2,
-        masterVolume: 0.8,
-        headphoneVolume: 0.6,
         deckACueEnabled: true,
         deckBCueEnabled: false,
+        headphoneVolume: 0.6,
+        masterVolume: 0.8,
       },
     });
 
@@ -290,8 +290,8 @@ describe("buildDjSessionFromLegacyState", () => {
     const session = buildDjSessionFromLegacyState({
       legacyDecks: [
         {
-          id: DECK_A_CHANNEL_ID,
           effects: [delay, limiter, crusher],
+          id: DECK_A_CHANNEL_ID,
         },
       ],
     });
@@ -313,8 +313,8 @@ describe("effect session migration", () => {
     const channel = createDefaultChannel(DECK_A_CHANNEL_ID, "deck-a");
 
     const migrated = parsePlaybackSessionRecord({
-      id: "dj",
       channels: [{ ...channel, effects: [delay, limiter] }],
+      id: "dj",
     });
 
     expect(migrated.tempo).toBe(120);
@@ -329,47 +329,47 @@ describe("effect session migration", () => {
   test("round-trips a nested composite tree and sidechain reference", () => {
     const channel = createDefaultChannel(DECK_A_CHANNEL_ID, "deck-a");
     const nestedGate = {
-      id: "gate-1",
-      type: "gate" as const,
-      enabled: true,
-      order: 0,
+      attack: 1,
       dryWet: 1,
+      enabled: true,
+      floor: -60,
+      hold: 10,
+      id: "gate-1",
       inputGain: 1,
+      inverse: false,
+      order: 0,
       outputGain: 1,
+      release: 100,
       sidechain: { channelId: DECK_B_CHANNEL_ID },
       threshold: -24,
-      attack: 1,
-      hold: 10,
-      release: 100,
-      floor: -60,
-      inverse: false,
+      type: "gate" as const,
     };
     const composite = {
-      id: "composite-1",
-      type: "fxComposite" as const,
-      enabled: true,
-      order: 0,
-      dryWet: 1,
-      inputGain: 1,
-      outputGain: 1,
       chains: [
         {
+          effects: [nestedGate],
+          gain: 1,
           id: "parallel-1",
+          muted: false,
           name: "Parallel 1",
           order: 0,
-          gain: 1,
           pan: 0,
-          muted: false,
           solo: false,
-          effects: [nestedGate],
         },
       ],
+      dryWet: 1,
+      enabled: true,
+      id: "composite-1",
+      inputGain: 1,
+      order: 0,
+      outputGain: 1,
+      type: "fxComposite" as const,
     };
 
     const original = parsePlaybackSessionRecord({
+      channels: [{ ...channel, effects: [composite] }],
       id: "dj",
       tempo: 128,
-      channels: [{ ...channel, effects: [composite] }],
     });
     const restored = parsePlaybackSessionRecord(
       JSON.parse(JSON.stringify(original))
@@ -399,14 +399,14 @@ describe("effect session migration", () => {
     split.crossoverFrequencies = [200, 1000];
 
     const restored = parsePlaybackSessionRecord({
-      id: "dj",
       channels: [{ ...channel, effects: [split] }],
+      id: "dj",
     }).channels[0]?.effects[0];
 
     expect(restored).toMatchObject({
-      type: "frequencySplit",
-      frequencyBandCount: 3,
       crossoverFrequencies: [200, 1000],
+      frequencyBandCount: 3,
+      type: "frequencySplit",
     });
     expect(restored?.type === "frequencySplit" && restored.chains).toHaveLength(
       3
@@ -418,25 +418,25 @@ describe("buildMultipleSessionFromRadios", () => {
   test("creates one multiple-mode channel per enabled radio in order", () => {
     const session = buildMultipleSessionFromRadios([
       {
+        enabled: false,
         id: "radio-2",
         name: "Disabled",
-        streamUrl: "https://radio.example/disabled.mp3",
-        enabled: false,
         order: 0,
+        streamUrl: "https://radio.example/disabled.mp3",
       },
       {
+        enabled: true,
         id: "radio-3",
         name: "Second",
-        streamUrl: "https://radio.example/second.mp3",
-        enabled: true,
         order: 2,
+        streamUrl: "https://radio.example/second.mp3",
       },
       {
+        enabled: true,
         id: "radio-1",
         name: "First",
-        streamUrl: "https://radio.example/first.mp3",
-        enabled: true,
         order: 1,
+        streamUrl: "https://radio.example/first.mp3",
       },
     ]);
 
@@ -457,7 +457,7 @@ describe("multiple session persistence", () => {
     await playbackSessionsCollection.stateWhenReady();
 
     playbackSessionsCollection.insert({
-      id: "multiple",
+      activeChannelId: null,
       channels: [
         {
           ...createDefaultChannel("multi:radio-1", "multiple", 0),
@@ -468,14 +468,14 @@ describe("multiple session persistence", () => {
           },
         },
       ],
-      masterVolume: 1,
       crossfadePosition: 0.5,
       headphoneVolume: 1,
-      activeChannelId: null,
+      id: "multiple",
+      masterVolume: 1,
     });
 
     updatePlaybackSession("multiple", (draft) => {
-      const channel = draft.channels[0];
+      const [channel] = draft.channels;
       if (!channel) {
         throw new Error("Expected seeded multiple channel");
       }
@@ -496,12 +496,12 @@ describe("multiple session persistence", () => {
     ]);
 
     radiosCollection.insert({
-      id: "radio-1",
-      name: "Persisted",
-      streamUrl: "https://radio.example/persisted.mp3",
-      order: 0,
       enabled: true,
+      id: "radio-1",
       isSystem: false,
+      name: "Persisted",
+      order: 0,
+      streamUrl: "https://radio.example/persisted.mp3",
     });
 
     settingsCollection.insert({
@@ -513,23 +513,23 @@ describe("multiple session persistence", () => {
     });
 
     playbackSessionsCollection.insert({
-      id: "multiple",
+      activeChannelId: null,
       channels: [
         {
           ...createDefaultChannel("multi:radio-1", "multiple", 0),
+          muted: true,
           radio: {
             id: "radio-1",
             name: "Persisted",
             streamUrl: "https://radio.example/persisted.mp3",
           },
           volume: 0.44,
-          muted: true,
         },
       ],
-      masterVolume: 0.23,
       crossfadePosition: 0.5,
       headphoneVolume: 0.7,
-      activeChannelId: null,
+      id: "multiple",
+      masterVolume: 0.23,
     });
 
     await initializePlaybackSessions();
@@ -558,7 +558,7 @@ describe("multiple session persistence", () => {
     });
 
     playbackSessionsCollection.insert({
-      id: "multiple",
+      activeChannelId: "multi:rg_hidden",
       channels: [
         {
           ...createDefaultChannel("multi:radio-1", "multiple", 0),
@@ -578,10 +578,10 @@ describe("multiple session persistence", () => {
           volume: 0.5,
         },
       ],
-      masterVolume: 0.4,
       crossfadePosition: 0.5,
       headphoneVolume: 1,
-      activeChannelId: "multi:rg_hidden",
+      id: "multiple",
+      masterVolume: 0.4,
     });
 
     await initializePlaybackSessions();
@@ -614,7 +614,7 @@ describe("multiple session persistence", () => {
     });
 
     playbackSessionsCollection.insert({
-      id: "multiple",
+      activeChannelId: "multi:rg_live",
       channels: [
         {
           ...createDefaultChannel("multi:rg_live", "multiple", 0),
@@ -626,10 +626,10 @@ describe("multiple session persistence", () => {
           volume: 0.33,
         },
       ],
-      masterVolume: 0.4,
       crossfadePosition: 0.5,
       headphoneVolume: 1,
-      activeChannelId: "multi:rg_live",
+      id: "multiple",
+      masterVolume: 0.4,
     });
 
     await initializePlaybackSessions();
@@ -648,12 +648,12 @@ describe("multiple session persistence", () => {
     ]);
 
     radiosCollection.insert({
-      id: "saved-radio-1",
-      name: "Saved Radio",
-      streamUrl: "https://radio.example/saved.mp3",
-      order: 0,
       enabled: true,
+      id: "saved-radio-1",
       isSystem: false,
+      name: "Saved Radio",
+      order: 0,
+      streamUrl: "https://radio.example/saved.mp3",
     });
 
     settingsCollection.insert({
@@ -675,7 +675,7 @@ describe("multiple session persistence", () => {
     discardedModel.modelData = '{"inline":true}';
 
     playbackSessionsCollection.insert({
-      id: "single",
+      activeChannelId: SINGLE_ACTIVE_CHANNEL_ID,
       channels: [
         {
           ...createDefaultChannel(
@@ -683,69 +683,69 @@ describe("multiple session persistence", () => {
             "single-primary",
             0
           ),
+          effects: [discardedModel],
           radio: {
             id: "single-radio",
             name: "Persisted Single",
             streamUrl: "https://radio.example/single.mp3",
           },
-          effects: [discardedModel],
           volume: 0.25,
         },
         createDefaultChannel("single-b", "single-secondary", 1),
       ],
-      masterVolume: 0.6,
       crossfadePosition: 0.5,
       headphoneVolume: 1,
-      activeChannelId: SINGLE_ACTIVE_CHANNEL_ID,
+      id: "single",
+      masterVolume: 0.6,
     });
 
     playbackSessionsCollection.insert({
-      id: "multiple",
+      activeChannelId: null,
       channels: [
         {
           ...createDefaultChannel("multi:session-only", "multiple", 0),
+          muted: true,
           radio: {
             id: "session-only",
             name: "Session Only",
             streamUrl: "https://radio.example/session-only.mp3",
           },
           volume: 0.11,
-          muted: true,
         },
       ],
-      masterVolume: 0.23,
       crossfadePosition: 0.5,
       headphoneVolume: 0.7,
-      activeChannelId: null,
+      id: "multiple",
+      masterVolume: 0.23,
     });
 
     playbackSessionsCollection.insert({
-      id: "dj",
+      activeChannelId: null,
       channels: [
         {
           ...createDefaultChannel(DECK_A_CHANNEL_ID, "deck-a", 0),
+          cueEnabled: true,
           radio: {
             id: "deck-a-radio",
             name: "Deck A Radio",
             streamUrl: "https://radio.example/deck-a.mp3",
           },
           volume: 0.8,
-          cueEnabled: true,
         },
         {
           ...createDefaultChannel(DECK_B_CHANNEL_ID, "deck-b", 1),
+          muted: true,
           radio: {
             id: "deck-b-radio",
             name: "Deck B Radio",
             streamUrl: "https://radio.example/deck-b.mp3",
           },
-          muted: true,
         },
       ],
-      masterVolume: 0.4,
       crossfadePosition: 0.2,
       headphoneVolume: 0.3,
-      activeChannelId: null,
+      id: "dj",
+      masterVolume: 0.4,
     });
 
     await initializePlaybackSessions();

@@ -85,9 +85,9 @@ export function extractFileMetadata(file: File): Promise<FileAudioMetadata> {
     const onLoaded = () => {
       cleanup();
       resolve({
-        fileName: file.name,
         displayName: getDisplayName(file.name),
         duration: Number.isFinite(audio.duration) ? audio.duration : 0,
+        fileName: file.name,
         fileSize: file.size,
         mimeType: file.type || "audio/unknown",
         objectUrl,

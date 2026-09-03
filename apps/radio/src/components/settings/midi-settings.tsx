@@ -1,3 +1,4 @@
+// biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers
 /**
  * MIDI Settings UI
  *
@@ -63,6 +64,13 @@ function MappingRow({
   onStopLearn,
   onRemove,
 }: MappingRowProps) {
+  const handleStartLearn = () => {
+    onStartLearn(targetId);
+  };
+  const handleRemove = () => {
+    onRemove(targetId);
+  };
+
   return (
     <div className="flex items-center gap-2 py-1.5">
       <span className="min-w-0 flex-1 truncate text-sm">{label}</span>
@@ -87,7 +95,7 @@ function MappingRow({
         <Button
           className="h-7 w-14 text-xs"
           disabled={isLearning}
-          onClick={() => onStartLearn(targetId)}
+          onClick={handleStartLearn}
           size="sm"
           variant="outline"
         >
@@ -97,7 +105,7 @@ function MappingRow({
       <Button
         className="h-7 w-7 p-0"
         disabled={!mapping || isLearning}
-        onClick={() => onRemove(targetId)}
+        onClick={handleRemove}
         size="sm"
         variant="ghost"
       >
@@ -200,11 +208,26 @@ export function MidiSettings() {
     .filter((a) => a.group === "deck-b-effects")
     .map((a) => a.targetId);
 
-  const requestPermission = () => {
+  const handleConnect = () => {
     control.connect().catch(() => undefined);
   };
-  const refreshDevices = () => {
-    control.connect().catch(() => undefined);
+  const handleEnabledChange = (nextEnabled: boolean) => {
+    control.change({ enabled: nextEnabled, type: "set-enabled" });
+  };
+  const handlePresetChange = (presetId: string) => {
+    control.change({ presetId, type: "load-preset" });
+  };
+  const handleClearMappings = () => {
+    control.change({ type: "clear-mappings" });
+  };
+  const handleRemoveMapping = (targetId: string) => {
+    control.change({ targetId, type: "remove-mapping" });
+  };
+  const handleStartLearn = (targetId: string) => {
+    control.change({ targetId, type: "start-learn" });
+  };
+  const handleStopLearn = () => {
+    control.change({ type: "stop-learn" });
   };
 
   if (!isSupported) {
@@ -244,7 +267,7 @@ export function MidiSettings() {
           </p>
           <Button
             disabled={isLoading}
-            onClick={requestPermission}
+            onClick={handleConnect}
             size="sm"
             variant="outline"
           >
@@ -261,9 +284,7 @@ export function MidiSettings() {
           <Switch
             checked={enabled}
             id="midi-enabled"
-            onCheckedChange={(nextEnabled) =>
-              control.change({ type: "set-enabled", enabled: nextEnabled })
-            }
+            onCheckedChange={handleEnabledChange}
           />
         </div>
 
@@ -284,22 +305,22 @@ export function MidiSettings() {
                     <CircleIcon className="size-2 shrink-0 fill-emerald-500 text-emerald-500" />
                     <span className="min-w-0 truncate text-sm">
                       {device.name}
-                      {device.manufacturer && (
+                      {device.manufacturer ? (
                         <span className="ml-1 text-muted-foreground text-xs">
                           ({device.manufacturer})
                         </span>
-                      )}
+                      ) : null}
                     </span>
                   </div>
                 ))}
               </div>
             )}
-            {permissionGranted && (
+            {permissionGranted ? (
               <Button
                 aria-label="Refresh MIDI devices"
                 className="shrink-0"
                 disabled={isLoading}
-                onClick={refreshDevices}
+                onClick={handleConnect}
                 size="icon"
                 title="Refresh MIDI devices"
                 variant="outline"
@@ -308,16 +329,14 @@ export function MidiSettings() {
                   className={`size-3.5 ${isLoading ? "animate-spin" : ""}`}
                 />
               </Button>
-            )}
+            ) : null}
           </div>
         </div>
 
         <div className="grid gap-3 py-4 sm:grid-cols-[minmax(0,1fr)_minmax(18rem,28rem)] sm:items-center">
           <h4 className="text-sm">Preset</h4>
           <Select
-            onValueChange={(presetId) =>
-              control.change({ type: "load-preset", presetId })
-            }
+            onValueChange={handlePresetChange}
             value={activePresetId ?? undefined}
           >
             <SelectTrigger className="w-full">
@@ -346,7 +365,7 @@ export function MidiSettings() {
           <Button
             className="h-7 text-xs"
             disabled={mappings.length === 0 || isLearning}
-            onClick={() => control.change({ type: "clear-mappings" })}
+            onClick={handleClearMappings}
             size="sm"
             variant="ghost"
           >
@@ -361,13 +380,9 @@ export function MidiSettings() {
             isLearning={isLearning}
             learningTarget={learningTarget}
             mappings={mappings}
-            onRemove={(targetId) =>
-              control.change({ type: "remove-mapping", targetId })
-            }
-            onStartLearn={(targetId) =>
-              control.change({ type: "start-learn", targetId })
-            }
-            onStopLearn={() => control.change({ type: "stop-learn" })}
+            onRemove={handleRemoveMapping}
+            onStartLearn={handleStartLearn}
+            onStopLearn={handleStopLearn}
             targetIds={deckATargets}
             title="Deck A"
           />
@@ -377,13 +392,9 @@ export function MidiSettings() {
             isLearning={isLearning}
             learningTarget={learningTarget}
             mappings={mappings}
-            onRemove={(targetId) =>
-              control.change({ type: "remove-mapping", targetId })
-            }
-            onStartLearn={(targetId) =>
-              control.change({ type: "start-learn", targetId })
-            }
-            onStopLearn={() => control.change({ type: "stop-learn" })}
+            onRemove={handleRemoveMapping}
+            onStartLearn={handleStartLearn}
+            onStopLearn={handleStopLearn}
             targetIds={deckBTargets}
             title="Deck B"
           />
@@ -393,13 +404,9 @@ export function MidiSettings() {
             isLearning={isLearning}
             learningTarget={learningTarget}
             mappings={mappings}
-            onRemove={(targetId) =>
-              control.change({ type: "remove-mapping", targetId })
-            }
-            onStartLearn={(targetId) =>
-              control.change({ type: "start-learn", targetId })
-            }
-            onStopLearn={() => control.change({ type: "stop-learn" })}
+            onRemove={handleRemoveMapping}
+            onStartLearn={handleStartLearn}
+            onStopLearn={handleStopLearn}
             targetIds={mixerTargets}
             title="Mixer"
           />
@@ -409,13 +416,9 @@ export function MidiSettings() {
             isLearning={isLearning}
             learningTarget={learningTarget}
             mappings={mappings}
-            onRemove={(targetId) =>
-              control.change({ type: "remove-mapping", targetId })
-            }
-            onStartLearn={(targetId) =>
-              control.change({ type: "start-learn", targetId })
-            }
-            onStopLearn={() => control.change({ type: "stop-learn" })}
+            onRemove={handleRemoveMapping}
+            onStartLearn={handleStartLearn}
+            onStopLearn={handleStopLearn}
             targetIds={deckAEffectTargets}
             title="Deck A Effects"
           />
@@ -425,13 +428,9 @@ export function MidiSettings() {
             isLearning={isLearning}
             learningTarget={learningTarget}
             mappings={mappings}
-            onRemove={(targetId) =>
-              control.change({ type: "remove-mapping", targetId })
-            }
-            onStartLearn={(targetId) =>
-              control.change({ type: "start-learn", targetId })
-            }
-            onStopLearn={() => control.change({ type: "stop-learn" })}
+            onRemove={handleRemoveMapping}
+            onStartLearn={handleStartLearn}
+            onStopLearn={handleStopLearn}
             targetIds={deckBEffectTargets}
             title="Deck B Effects"
           />

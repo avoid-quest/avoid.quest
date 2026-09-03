@@ -13,14 +13,14 @@ https://example.com/track2.mp3`;
     expect(result.format).toBe("m3u");
     expect(result.tracks).toHaveLength(2);
     expect(result.tracks[0]).toEqual({
+      duration: 180,
       title: "Artist - Track One",
       url: "https://example.com/track1.mp3",
-      duration: 180,
     });
     expect(result.tracks[1]).toEqual({
+      duration: 240,
       title: "Artist - Track Two",
       url: "https://example.com/track2.mp3",
-      duration: 240,
     });
   });
 
@@ -142,14 +142,14 @@ Version=2`;
     expect(result.format).toBe("pls");
     expect(result.tracks).toHaveLength(2);
     expect(result.tracks[0]).toEqual({
+      duration: 180,
       title: "First Track",
       url: "https://example.com/track1.mp3",
-      duration: 180,
     });
     expect(result.tracks[1]).toEqual({
+      duration: 240,
       title: "Second Track",
       url: "https://example.com/track2.mp3",
-      duration: 240,
     });
   });
 

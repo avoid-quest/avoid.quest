@@ -91,15 +91,17 @@ export async function fetchWithValidatedRedirectResult<Failure extends string>({
     return redirectFailure<Failure>(initialValidation.reason, url);
   }
 
-  let currentUrl = initialValidation.url;
-  for (let redirectCount = 0; ; redirectCount += 1) {
+  const followRedirect = async (
+    currentUrl: string,
+    redirectCount: number
+  ): Promise<ValidatedRedirectResult<Failure>> => {
     const response = await fetchImpl(currentUrl, {
       ...init,
       redirect: "manual",
     });
 
     if (!isRedirectStatus(response.status)) {
-      return { ok: true, response, resolvedUrl: currentUrl };
+      return { ok: true, resolvedUrl: currentUrl, response };
     }
 
     await cancelResponseBody(response);
@@ -125,8 +127,10 @@ export async function fetchWithValidatedRedirectResult<Failure extends string>({
       return redirectFailure<Failure>(validation.reason, nextUrl);
     }
 
-    currentUrl = validation.url;
-  }
+    return followRedirect(validation.url, redirectCount + 1);
+  };
+
+  return followRedirect(initialValidation.url, 0);
 }
 
 export async function fetchWithValidatedRedirects<Failure extends string>(
@@ -138,7 +142,7 @@ export async function fetchWithValidatedRedirects<Failure extends string>(
   }
 
   return {
-    response: result.response,
     resolvedUrl: result.resolvedUrl,
+    response: result.response,
   };
 }

@@ -1,3 +1,4 @@
+// biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers
 import { Button } from "@avoid.quest/ui/components/button";
 import { useDraggable } from "@dnd-kit/core";
 import {
@@ -13,8 +14,8 @@ import { RadioItemContent } from "../dj-radio-list";
 export function DraggableBrowserItem({ radio }: { radio: Radio }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } =
     useDraggable({
-      id: `radio-${radio.id}`,
       data: { radio },
+      id: `radio-${radio.id}`,
     });
 
   const style = transform
@@ -51,11 +52,13 @@ export function MobileBrowserItem({ radio }: { radio: Radio }) {
   const handleLoad = (deckId: "deck-a" | "deck-b") => {
     getDjDeckModule()
       .deck(deckId)
-      .load({ type: "library", radio })
+      .load({ radio, type: "library" })
       .catch((error) => {
         console.error("[dj] Failed to load browser source:", error);
       });
   };
+  const handleLoadDeckA = () => handleLoad("deck-a");
+  const handleLoadDeckB = () => handleLoad("deck-b");
 
   return (
     <div className="flex w-full shrink-0 items-center justify-between gap-2 rounded-lg border bg-card p-2.5">
@@ -64,7 +67,7 @@ export function MobileBrowserItem({ radio }: { radio: Radio }) {
         <Button
           aria-label="Load to Deck A"
           className="h-7 w-7 p-0"
-          onClick={() => handleLoad("deck-a")}
+          onClick={handleLoadDeckA}
           size="sm"
           title="Load to Deck A"
           variant="outline"
@@ -74,7 +77,7 @@ export function MobileBrowserItem({ radio }: { radio: Radio }) {
         <Button
           aria-label="Load to Deck B"
           className="h-7 w-7 p-0"
-          onClick={() => handleLoad("deck-b")}
+          onClick={handleLoadDeckB}
           size="sm"
           title="Load to Deck B"
           variant="outline"

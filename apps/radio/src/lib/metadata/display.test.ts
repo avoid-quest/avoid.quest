@@ -11,18 +11,18 @@ function nowPlaying(
   metadata: Pick<RadioNowPlaying, "artist" | "title">
 ): RadioNowPlaying {
   return {
-    streamUrl: "https://example.com/radio.mp3",
-    source: "icy",
-    rawTitle: null,
     album: null,
     artworkUrl: null,
-    itemUrl: null,
-    stationName: null,
-    stationDescription: null,
-    genre: null,
     bitrate: null,
-    sampledAt: 1,
     expiresAt: 2,
+    genre: null,
+    itemUrl: null,
+    rawTitle: null,
+    sampledAt: 1,
+    source: "icy",
+    stationDescription: null,
+    stationName: null,
+    streamUrl: "https://example.com/radio.mp3",
     ...metadata,
   };
 }
@@ -51,30 +51,30 @@ describe("metadata display formatting", () => {
 
     expect(
       formatRadioDocumentTitle({
-        radio,
         isPlaying: true,
         metadata: nowPlaying({ artist: "Artist", title: "" }),
+        radio,
       })
     ).toBe("Station — radio.avoid.quest");
     expect(
       getMediaSessionText({
-        radio,
         metadata: nowPlaying({ artist: null, title: "" }),
+        radio,
       }).title
     ).toBe("Station");
   });
 
   test("uses station context before repeating the station name as artist", () => {
     const radio: Radio = {
-      name: "Station",
-      streamUrl: "https://example.com/radio.mp3",
       description: "Independent radio",
+      name: "Station",
       placeTitle: "Torino",
+      streamUrl: "https://example.com/radio.mp3",
     };
 
-    expect(getMediaSessionText({ radio, metadata: null })).toEqual({
-      title: "Station",
+    expect(getMediaSessionText({ metadata: null, radio })).toEqual({
       artist: "Independent radio",
+      title: "Station",
     });
   });
 });

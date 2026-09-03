@@ -19,7 +19,7 @@ class MockGainProcessor implements EffectProcessor {
     fromIndex: number,
     toIndex: number
   ): void {
-    for (let i = fromIndex; i < toIndex; i++) {
+    for (let i = fromIndex; i < toIndex; i += 1) {
       output[0][i] = (input[0][i] ?? 0) * this.gain;
       output[1][i] = (input[1][i] ?? 0) * this.gain;
     }
@@ -39,15 +39,15 @@ function createMockConfig(
   enabled = true
 ): EffectConfig {
   return {
-    id,
-    type: "delay",
-    order,
-    enabled,
-    dryWet: 1,
-    inputGain: 1,
-    outputGain: 1,
     delayTime: 0.5,
+    dryWet: 1,
+    enabled,
     feedback: 0.3,
+    id,
+    inputGain: 1,
+    order,
+    outputGain: 1,
+    type: "delay",
   } as EffectConfig;
 }
 
@@ -59,7 +59,7 @@ describe("EffectChain", () => {
   });
 
   test("creates with custom block size", () => {
-    const chain = new EffectChain({ sampleRate: 44_100, blockSize: 256 });
+    const chain = new EffectChain({ blockSize: 256, sampleRate: 44_100 });
     expect(chain).toBeDefined();
   });
 

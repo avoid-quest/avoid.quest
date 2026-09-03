@@ -17,12 +17,12 @@ type PlaybackRuntimeState = {
 };
 
 export const initialChannelRuntimeState: ChannelRuntimeState = {
-  soundId: null,
-  isPlaying: false,
-  isLoading: false,
-  isBuffering: false,
   error: null,
+  isBuffering: false,
+  isLoading: false,
+  isPlaying: false,
   peakLevel: { left: 0, right: 0 },
+  soundId: null,
 };
 
 export const playbackRuntimeStore = new Store<PlaybackRuntimeState>({

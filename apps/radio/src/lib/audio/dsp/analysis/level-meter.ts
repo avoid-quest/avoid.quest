@@ -46,7 +46,7 @@ export class LevelMeter {
     const levelR = this.rmsR.processBlock(right, fromIndex, toIndex);
 
     // Track peaks with decay
-    for (let i = fromIndex; i < toIndex; i++) {
+    for (let i = fromIndex; i < toIndex; i += 1) {
       const absL = Math.abs(left[i] ?? 0);
       const absR = Math.abs(right[i] ?? 0);
       if (absL > this.peakL) {
@@ -63,9 +63,9 @@ export class LevelMeter {
 
     return {
       left: levelL,
-      right: levelR,
       mono: (levelL + levelR) / 2,
       peak: Math.max(this.peakL, this.peakR),
+      right: levelR,
     };
   }
 

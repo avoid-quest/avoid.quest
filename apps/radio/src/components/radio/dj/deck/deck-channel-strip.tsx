@@ -22,7 +22,7 @@ export function DeckChannelStrip({ className }: { className?: string }) {
     setEffectsDryWet,
   } = useDeckContext();
 
-  const prefix = deckId ? `${deckId}:` : "";
+  const prefix = `${deckId}:`;
 
   return (
     <div className={className}>
@@ -35,7 +35,7 @@ export function DeckChannelStrip({ className }: { className?: string }) {
           min={0}
           onChange={setVolume}
           step={0.01}
-          targetId={prefix ? `${prefix}volume` : undefined}
+          targetId={`${prefix}volume`}
           value={volume}
         />
         <ChannelSlider
@@ -47,7 +47,7 @@ export function DeckChannelStrip({ className }: { className?: string }) {
           min={-1}
           onChange={setPan}
           step={0.01}
-          targetId={prefix ? `${prefix}pan` : undefined}
+          targetId={`${prefix}pan`}
           value={pan}
         />
         <ChannelSlider
@@ -59,7 +59,7 @@ export function DeckChannelStrip({ className }: { className?: string }) {
           min={-1}
           onChange={setChannelFilter}
           step={0.01}
-          targetId={prefix ? `${prefix}filter` : undefined}
+          targetId={`${prefix}filter`}
           value={channelFilter}
         />
         <ChannelSlider
@@ -71,7 +71,7 @@ export function DeckChannelStrip({ className }: { className?: string }) {
           min={0.5}
           onChange={setSpeed}
           step={0.01}
-          targetId={prefix ? `${prefix}speed` : undefined}
+          targetId={`${prefix}speed`}
           value={speed}
         />
         <ChannelSlider
@@ -82,7 +82,7 @@ export function DeckChannelStrip({ className }: { className?: string }) {
           min={0}
           onChange={setEffectsDryWet}
           step={0.01}
-          targetId={prefix ? `${prefix}effects-drywet` : undefined}
+          targetId={`${prefix}effects-drywet`}
           value={effectsDryWet}
         />
       </div>

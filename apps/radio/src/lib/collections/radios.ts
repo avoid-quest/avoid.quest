@@ -59,31 +59,31 @@ export function clearDismissedRadios(): void {
 }
 
 const radioSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  streamUrl: z.string(),
-  streamFormat: z.enum(["hls", "progressive"]).optional(),
-  logoUrl: z.string().optional(),
-  description: z.string().optional(),
-  websiteUrl: z.string().optional(),
-  placeTitle: z.string().optional(),
   countryTitle: z.string().optional(),
-  order: z.number().default(0),
+  description: z.string().optional(),
   enabled: z.boolean().default(true),
-  platformMetadata: platformMetadataSchema,
-  metadataConfig: radioMetadataConfigSchema.optional(),
+  id: z.string(),
   isSystem: z.boolean().default(false),
+  logoUrl: z.string().optional(),
+  metadataConfig: radioMetadataConfigSchema.optional(),
+  name: z.string(),
+  order: z.number().default(0),
+  placeTitle: z.string().optional(),
+  platformMetadata: platformMetadataSchema,
+  streamFormat: z.enum(["hls", "progressive"]).optional(),
+  streamUrl: z.string(),
+  websiteUrl: z.string().optional(),
 });
 
 export type RadioRecord = z.infer<typeof radioSchema>;
 
 export const radiosCollection = createCollection(
   localStorageCollectionOptions({
+    getKey: (item) => item.id,
     id: "radios",
+    schema: radioSchema,
     startSync: true,
     storageKey: "radio-app-radios",
-    getKey: (item) => item.id,
-    schema: radioSchema,
   })
 );
 
@@ -155,7 +155,7 @@ export function getSyncChanges(): SyncChanges {
     }
   }
 
-  return { updates, additions, deletions };
+  return { additions, deletions, updates };
 }
 
 /**
@@ -179,17 +179,17 @@ export function applySyncChanges(changes: SyncChanges): void {
   // Apply additions
   for (const radio of changes.additions) {
     radiosCollection.insert({
-      id: generateId(),
-      name: radio.name,
-      streamUrl: radio.streamUrl,
-      streamFormat: radio.streamFormat,
-      logoUrl: radio.logoUrl,
       description: radio.description,
-      websiteUrl: radio.websiteUrl,
-      metadataConfig: radio.metadataConfig,
-      order: radio.order ?? 0,
       enabled: true,
+      id: generateId(),
       isSystem: true,
+      logoUrl: radio.logoUrl,
+      metadataConfig: radio.metadataConfig,
+      name: radio.name,
+      order: radio.order ?? 0,
+      streamFormat: radio.streamFormat,
+      streamUrl: radio.streamUrl,
+      websiteUrl: radio.websiteUrl,
     });
   }
 
@@ -223,17 +223,17 @@ export async function initializeRadios(): Promise<SyncChanges | null> {
     // Seed with defaults, marking all as system radios
     for (const radio of defaultRadios) {
       radiosCollection.insert({
-        id: generateId(),
-        name: radio.name,
-        streamUrl: radio.streamUrl,
-        streamFormat: radio.streamFormat,
-        logoUrl: radio.logoUrl,
         description: radio.description,
-        websiteUrl: radio.websiteUrl,
-        metadataConfig: radio.metadataConfig,
-        order: radio.order ?? 0,
         enabled: true,
+        id: generateId(),
         isSystem: true,
+        logoUrl: radio.logoUrl,
+        metadataConfig: radio.metadataConfig,
+        name: radio.name,
+        order: radio.order ?? 0,
+        streamFormat: radio.streamFormat,
+        streamUrl: radio.streamUrl,
+        websiteUrl: radio.websiteUrl,
       });
     }
     return null;

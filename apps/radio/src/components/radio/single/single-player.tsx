@@ -1,3 +1,4 @@
+/** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 import { Button } from "@avoid.quest/ui/components/button";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -24,6 +25,10 @@ type SinglePlayerProps = {
   radios?: Radio[];
 };
 
+async function handleToggleRadio(_radio: Radio, _enabled: boolean) {
+  // Handled by RadioItemActions component
+}
+
 export function SinglePlayer({ radios }: SinglePlayerProps) {
   const {
     currentRadio,
@@ -37,15 +42,15 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
   } = useSingleSession();
 
   const { metadata } = useRadioMetadata({
-    radio: currentRadio,
     enabled: isPlaying && !isLoading,
+    radio: currentRadio,
   });
 
   useMediaSession({
-    mode: "single",
-    radio: currentRadio,
     isPlaying,
     metadata,
+    mode: "single",
+    radio: currentRadio,
   });
 
   const sessionRadios = useSessionRadios((s) => s.radios);
@@ -88,10 +93,6 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
     setDeleteConfirm(radio);
   };
 
-  const handleToggleRadio = async (_radio: Radio, _enabled: boolean) => {
-    // Handled by RadioItemActions component
-  };
-
   const handleSaveSessionRadio = (radio: Radio) => {
     saveDiscoveredStation(radio);
   };
@@ -124,6 +125,7 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
       setVolume(0);
     }
   };
+  const handleCancelDelete = () => setDeleteConfirm(null);
 
   return (
     <>
@@ -166,7 +168,7 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
           />
 
           <div className="relative hidden min-h-0 flex-1 items-center justify-center p-6 lg:flex">
-            {currentRadio && (
+            {currentRadio ? (
               <div className="absolute top-4 right-4 z-10">
                 <RadioItemActions
                   onDelete={handleDeleteRadio}
@@ -176,7 +178,7 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
                   radio={currentRadio}
                 />
               </div>
-            )}
+            ) : null}
             <NowPlayingPanel
               error={error}
               isLoading={isLoading}
@@ -200,7 +202,7 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
         radio={selectedRadio}
       />
 
-      {deleteConfirm && (
+      {deleteConfirm ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
           <div className="w-full max-w-md rounded-lg border border-border/50 bg-card p-6">
             <h3 className="mb-2 font-semibold text-sm">Delete Radio Station</h3>
@@ -209,11 +211,7 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
               &rdquo;? This action cannot be undone.
             </p>
             <div className="flex justify-end gap-2">
-              <Button
-                onClick={() => setDeleteConfirm(null)}
-                size="sm"
-                variant="outline"
-              >
+              <Button onClick={handleCancelDelete} size="sm" variant="outline">
                 Cancel
               </Button>
               <Button onClick={confirmDelete} size="sm" variant="destructive">
@@ -222,7 +220,7 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
             </div>
           </div>
         </div>
-      )}
+      ) : null}
     </>
   );
 }

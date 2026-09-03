@@ -29,7 +29,7 @@ type SoundCloudSearchApiTrack = {
 };
 
 type SoundCloudSearchApiResponse = {
-  collection: SoundCloudSearchApiTrack[];
+  collection?: SoundCloudSearchApiTrack[];
   total_results?: number;
   next_href?: string;
 };
@@ -78,11 +78,11 @@ export async function searchSoundCloud(
   return tracks
     .filter((track) => track.media?.transcodings?.length)
     .map((track) => ({
-      id: String(track.id),
-      title: track.title,
       artist: track.user?.username || "Unknown Artist",
-      thumbnail: getHighResArtwork(track.artwork_url || track.user?.avatar_url),
-      url: track.permalink_url,
       duration: Math.floor(track.duration / 1000),
+      id: String(track.id),
+      thumbnail: getHighResArtwork(track.artwork_url || track.user?.avatar_url),
+      title: track.title,
+      url: track.permalink_url,
     }));
 }

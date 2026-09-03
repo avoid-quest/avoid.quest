@@ -1,6 +1,6 @@
 type AudioWorkletsFactory<T> = {
-  createFor(context: BaseAudioContext): Promise<T>;
-  install(url: string): void;
+  createFor: (context: BaseAudioContext) => Promise<T>;
+  install: (url: string) => void;
 };
 
 const DEFAULT_OPENDAW_PROCESSOR_URL = "/opendaw/processors.js";

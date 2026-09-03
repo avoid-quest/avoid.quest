@@ -27,7 +27,7 @@ export function DeckFooter({
 
   return (
     <div className="flex gap-1 border-border/50 border-t pt-1.5">
-      {changeHandler && (
+      {changeHandler ? (
         <Button
           className="h-7 flex-1 text-xs"
           onClick={changeHandler}
@@ -37,7 +37,7 @@ export function DeckFooter({
           <ChangeIcon className="mr-1.5 size-3" />
           {changeLabel}
         </Button>
-      )}
+      ) : null}
       <Button
         className="h-7 flex-1 text-xs hover:bg-destructive/10 hover:text-destructive"
         onClick={onClear}

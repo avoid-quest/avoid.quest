@@ -17,7 +17,7 @@ export type EffectChangeFactory = (
 ) => ChannelEffectsChange | null;
 
 type EffectActionOptions = {
-  change(factory: EffectChangeFactory, coalesceKey?: MidiTargetId): void;
+  change: (factory: EffectChangeFactory, coalesceKey?: MidiTargetId) => void;
   deckId: DeckId;
   tree: readonly EffectConfig[];
 };
@@ -42,43 +42,43 @@ function collectActions(
   }
   const actions: MidiAction[] = [
     {
-      targetId: `${targetPrefix}:enabled`,
-      label: `${schema.name} - Enabled`,
-      group,
-      type: "button",
       dispatch: () =>
         change((tree) => {
           const current = findEffectInTree(tree, effect.id);
           return current
             ? {
-                type: "update",
                 effectId: effect.id,
                 patch: { enabled: !current.enabled },
+                type: "update",
               }
             : null;
         }),
+      group,
+      label: `${schema.name} - Enabled`,
+      targetId: `${targetPrefix}:enabled`,
+      type: "button",
     },
   ];
 
   for (const param of getEffectMidiParamDefs(effect.type)) {
     const targetId = `${targetPrefix}:${param.key}`;
     actions.push({
-      targetId,
-      label: `${schema.name} - ${param.label}`,
-      group,
-      type: "continuous",
       dispatch: (value) =>
         change(
           () => ({
-            type: "update",
             effectId: effect.id,
             patch: {
               [param.key]: param.min + value * (param.max - param.min),
             },
+            type: "update",
           }),
           targetId
         ),
-      range: { min: param.min, max: param.max, step: param.step },
+      group,
+      label: `${schema.name} - ${param.label}`,
+      range: { max: param.max, min: param.min, step: param.step },
+      targetId,
+      type: "continuous",
     });
   }
 
@@ -93,21 +93,21 @@ function collectActions(
     ] as const) {
       const targetId = `${chainPrefix}:${key}`;
       actions.push({
-        targetId,
-        label: `${schema.name} - ${chain.name} ${label}`,
-        group,
-        type: "continuous",
         dispatch: (value) =>
           change(
             () => ({
-              type: "update-chain",
-              effectId: effect.id,
               chainId: chain.id,
+              effectId: effect.id,
               patch: { [key]: min + value * (max - min) },
+              type: "update-chain",
             }),
             targetId
           ),
-        range: { min, max, step },
+        group,
+        label: `${schema.name} - ${chain.name} ${label}`,
+        range: { max, min, step },
+        targetId,
+        type: "continuous",
       });
     }
     for (const child of chain.effects) {

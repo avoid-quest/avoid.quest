@@ -10,11 +10,11 @@ import { type DeckState, useDeckA, useDeckB } from "@/lib/hooks/use-dj-state";
 import type { Platform } from "@/lib/platform-types";
 
 const DEFAULT_FILTER = {
-  type: "lowpass" as const,
-  frequency: 1000,
-  Q: 1,
-  gain: 0,
   enabled: false,
+  frequency: 1000,
+  gain: 0,
+  Q: 1,
+  type: "lowpass" as const,
 };
 
 type DeckStateActions = {
@@ -44,15 +44,15 @@ function createDeckActions(
     pause: () => deck.transport({ type: "pause" }),
     play: () => deck.transport({ type: "play" }),
     reset: () => deck.transport({ type: "reset" }),
-    seek: (position) => deck.transport({ type: "seek", position }),
-    setAutoplay: (enabled) => deck.change({ type: "autoplay", enabled }),
+    seek: (position) => deck.transport({ position, type: "seek" }),
+    setAutoplay: (enabled) => deck.change({ enabled, type: "autoplay" }),
     setChannelFilter: (value) => deck.change({ type: "channel-filter", value }),
     setEffectsDryWet: (value) =>
       deck.change({ type: "effects-dry-wet", value }),
-    setMute: (muted) => deck.change({ type: "mute", muted }),
-    setPan: (pan) => deck.change({ type: "pan", pan }),
-    setRepeat: (enabled) => deck.change({ type: "repeat", enabled }),
-    setSpeed: (speed) => deck.change({ type: "speed", speed }),
+    setMute: (muted) => deck.change({ muted, type: "mute" }),
+    setPan: (pan) => deck.change({ pan, type: "pan" }),
+    setRepeat: (enabled) => deck.change({ enabled, type: "repeat" }),
+    setSpeed: (speed) => deck.change({ speed, type: "speed" }),
     setVolume: (volume) => deck.change({ type: "volume", volume }),
   };
 }
@@ -96,22 +96,22 @@ function createDeckStateResult(
   pendingPlatform: Platform | undefined
 ): DeckStateResult {
   return {
-    radio: deckState?.radio ?? null,
-    isPlaying: deckState?.isPlaying ?? false,
-    isLoading: deckState?.isLoading ?? false,
-    isBuffering: deckState?.isBuffering ?? false,
-    volume: deckState?.volume ?? 1,
-    muted: deckState?.muted ?? false,
-    effects: deckState?.effects ?? [],
-    filter: deckState?.filter ?? DEFAULT_FILTER,
-    soundId: deckState?.soundId ?? null,
-    pan: deckState?.pan ?? 0,
-    speed: deckState?.speed ?? 1,
-    channelFilter: deckState?.channelFilter ?? 0,
-    effectsDryWet: deckState?.effectsDryWet ?? 1,
-    repeat: deckState?.repeat ?? false,
     autoplay: deckState?.autoplay ?? true,
+    channelFilter: deckState?.channelFilter ?? 0,
+    effects: deckState?.effects ?? [],
+    effectsDryWet: deckState?.effectsDryWet ?? 1,
+    filter: deckState?.filter ?? DEFAULT_FILTER,
+    isBuffering: deckState?.isBuffering ?? false,
+    isLoading: deckState?.isLoading ?? false,
+    isPlaying: deckState?.isPlaying ?? false,
+    muted: deckState?.muted ?? false,
+    pan: deckState?.pan ?? 0,
     pendingPlatform,
+    radio: deckState?.radio ?? null,
+    repeat: deckState?.repeat ?? false,
+    soundId: deckState?.soundId ?? null,
+    speed: deckState?.speed ?? 1,
+    volume: deckState?.volume ?? 1,
     ...actions,
   };
 }

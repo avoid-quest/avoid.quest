@@ -1,3 +1,4 @@
+// biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers
 import { Button } from "@avoid.quest/ui/components/button";
 
 type MixerCueProps = {
@@ -13,11 +14,14 @@ export function MixerCue({
   onDeckACueChange,
   onDeckBCueChange,
 }: MixerCueProps) {
+  const handleDeckACueChange = () => onDeckACueChange(!deckACueEnabled);
+  const handleDeckBCueChange = () => onDeckBCueChange(!deckBCueEnabled);
+
   return (
     <div className="flex items-center justify-center gap-3">
       <Button
         className="h-7 w-14 font-bold font-mono text-[10px] uppercase tracking-wider"
-        onClick={() => onDeckACueChange(!deckACueEnabled)}
+        onClick={handleDeckACueChange}
         size="sm"
         variant={deckACueEnabled ? "default" : "outline"}
       >
@@ -25,7 +29,7 @@ export function MixerCue({
       </Button>
       <Button
         className="h-7 w-14 font-bold font-mono text-[10px] uppercase tracking-wider"
-        onClick={() => onDeckBCueChange(!deckBCueEnabled)}
+        onClick={handleDeckBCueChange}
         size="sm"
         variant={deckBCueEnabled ? "default" : "outline"}
       >

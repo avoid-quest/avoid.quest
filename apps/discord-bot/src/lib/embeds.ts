@@ -4,10 +4,10 @@ import type { PresetRadio } from "./presets.js";
 
 const PLATFORM_COLORS: Record<string, number> = {
   bandcamp: 0x1d_a0_c3,
-  soundcloud: 0xff_55_00,
-  youtube: 0xff_00_00,
   radiogarden: 0x00_c8_53,
+  soundcloud: 0xff_55_00,
   "static-audio": 0x80_80_80,
+  youtube: 0xff_00_00,
 };
 
 function formatDuration(seconds: number): string {
@@ -26,17 +26,17 @@ export function nowPlayingEmbed(track: QueueTrack): EmbedBuilder {
     .setTitle(track.title)
     .setColor(PLATFORM_COLORS[track.platform] ?? 0x58_65_f2)
     .addFields(
-      { name: "Artist", value: track.artist, inline: true },
-      { name: "Platform", value: track.platform, inline: true }
+      { inline: true, name: "Artist", value: track.artist },
+      { inline: true, name: "Platform", value: track.platform }
     );
 
   if (track.isLiveStream) {
-    embed.addFields({ name: "Duration", value: "LIVE", inline: true });
+    embed.addFields({ inline: true, name: "Duration", value: "LIVE" });
   } else if (track.duration) {
     embed.addFields({
+      inline: true,
       name: "Duration",
       value: formatDuration(track.duration),
-      inline: true,
     });
   }
 
@@ -95,9 +95,9 @@ export function presetListEmbed(presetRadios: PresetRadio[]): EmbedBuilder {
 
   for (const radio of presetRadios) {
     embed.addFields({
+      inline: false,
       name: radio.name,
       value: radio.description,
-      inline: false,
     });
   }
 

@@ -148,7 +148,7 @@ export async function setManagedChannelPlaying(
   }
 
   validateRadioForMode(channel.radio, sessionId);
-  let soundId = runtime.soundId;
+  let { soundId } = runtime;
   if (!soundId) {
     soundId = createManagedSound(
       sessionId,
@@ -176,8 +176,8 @@ export function setManagedPlaybackError(
   radio?: Radio
 ): void {
   setPlaybackChannelRuntime(channelId, () => ({
-    isLoading: false,
     error: toRuntimeAudioError(error, "PLAY_ERROR", radio),
+    isLoading: false,
   }));
 }
 

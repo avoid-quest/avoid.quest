@@ -1,3 +1,4 @@
+// biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers
 import { useIsMobile } from "@avoid.quest/ui/hooks/use-mobile";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import { useDroppable } from "@dnd-kit/core";
@@ -175,18 +176,18 @@ function DeckPanelInner({
     deck.change(createDjDeckEffectChange(type));
   const updateEffect = (effectId: string, patch: Partial<EffectConfig>) =>
     deck.change({
+      change: { effectId, patch, type: "update" },
       type: "effect",
-      change: { type: "update", effectId, patch },
     });
   const removeEffect = (effectId: string) =>
-    deck.change({ type: "effect", change: { type: "remove", effectId } });
+    deck.change({ change: { effectId, type: "remove" }, type: "effect" });
   const reorderEffects = (effectIds: string[]) =>
     deck.change({
+      change: { effectIds, type: "reorder" },
       type: "effect",
-      change: { type: "reorder", effectIds },
     });
   const setChannelSelection = (selection: ChannelSelection) =>
-    deck.change({ type: "device-channel-selection", selection });
+    deck.change({ selection, type: "device-channel-selection" });
 
   const deckSide = deckId === "deck-a" ? "left" : "right";
   const [isChangingUrl, setIsChangingUrl] = useState(false);
@@ -206,7 +207,7 @@ function DeckPanelInner({
   const tracks = streamingMeta?.tracks;
 
   const isSeekable =
-    trackProgress?.duration != null &&
+    trackProgress?.duration !== null &&
     Number.isFinite(trackProgress.duration) &&
     trackProgress.duration > 0;
 
@@ -216,7 +217,7 @@ function DeckPanelInner({
 
   const handleFileDrop = useCallback(
     (file: File) => {
-      loadSource({ type: "file", file }).catch((error) => {
+      loadSource({ file, type: "file" }).catch((error) => {
         console.error("[dj] Failed to load file source:", error);
       });
     },
@@ -267,7 +268,7 @@ function DeckPanelInner({
       e.preventDefault();
       fileDragCounter.current = 0;
       setIsFileDragOver(false);
-      const file = e.dataTransfer.files[0];
+      const [file] = e.dataTransfer.files;
       if (file && isAudioFile(file)) {
         handleFileDrop(file);
       }
@@ -276,7 +277,7 @@ function DeckPanelInner({
   );
 
   const handleClear = () => {
-    loadSource({ type: "track", radio: null, autoPlay: false }).catch(
+    loadSource({ autoPlay: false, radio: null, type: "track" }).catch(
       (error) => {
         console.error("[dj] Failed to clear deck source:", error);
       }
@@ -287,18 +288,18 @@ function DeckPanelInner({
     if (!radio) {
       return;
     }
-    await loadSource({ type: "track-url", radio, streamUrl, autoPlay: true });
+    await loadSource({ autoPlay: true, radio, streamUrl, type: "track-url" });
   };
 
   const handleLoadPlatformItem = async (newRadio: Radio) => {
-    await loadSource({ type: "track", radio: newRadio, autoPlay: false });
+    await loadSource({ autoPlay: false, radio: newRadio, type: "track" });
   };
 
   const handleLoadDeviceInput = async (
     deviceId: string,
     deviceLabel: string
   ) => {
-    await loadSource({ type: "device-input", deviceId, deviceLabel });
+    await loadSource({ deviceId, deviceLabel, type: "device-input" });
     setIsChangingDevice(false);
   };
 
@@ -306,59 +307,86 @@ function DeckPanelInner({
     setIsChangingUrl(false);
     handleLoadPlatformItem(newRadio);
   };
+  const handleTempoChange = (tempo: number) => {
+    channelEffects
+      .setTempo("dj", tempo)
+      .catch((error: unknown) =>
+        console.warn(
+          "[ChannelEffects] Could not reconcile Channel Effects",
+          error
+        )
+      );
+  };
+  const handleCancelFileChange = () => setIsChangingFile(false);
+  const handleFileChanged = (file: File) => {
+    setIsChangingFile(false);
+    handleFileDrop(file);
+  };
+  const handleRemoteUrlChanged = (url: string) => {
+    setIsChangingFile(false);
+    handleLoadRemoteUrl(url);
+  };
+  const handleCancelUrlChange = () => setIsChangingUrl(false);
+  const handleCancelDeviceChange = () => setIsChangingDevice(false);
+  const handleChangeDevice = () => setIsChangingDevice(true);
+  const handleToggleMute = () => {
+    if (isPlaying) {
+      pause();
+    } else {
+      play();
+    }
+  };
+  const handleChangeSource = () => {
+    if (isFileSource) {
+      setIsChangingFile(true);
+    } else {
+      setIsChangingUrl(true);
+    }
+  };
 
   // Build the DeckContext value for child components
   const contextValue: DeckContextValue = {
+    addEffect,
+    autoplay,
+    channelFilter,
+    currentTrackIndex,
     deckId,
     deckSide,
-    radio,
-    isPlaying,
-    isLoading,
-    isBuffering,
-    volume,
-    pan,
-    speed,
-    channelFilter,
-    effectsDryWet,
     effects,
+    effectsDryWet,
     effectsTempo,
-    repeat,
-    autoplay,
-    soundId,
-    play,
-    pause,
-    setVolume: throttledSetVolume,
-    setPan: throttledSetPan,
-    setSpeed: throttledSetSpeed,
-    setChannelFilter: throttledSetChannelFilter,
-    setEffectsDryWet: throttledSetEffectsDryWet,
-    setRepeat,
-    setAutoplay,
-    seek,
+    hasTracklist,
+    isBuffering,
+    isFileSource,
+    isLoading,
+    isPlaying,
+    isSeekable,
     loadTrack: handleLoadTrack,
-    reset,
-    addEffect,
-    updateEffect,
+    metadata: effectiveMetadata,
+    pan,
+    pause,
+    peakLevel,
+    play,
+    radio,
     removeEffect,
     reorderEffects,
-    setEffectsTempo: (tempo) => {
-      channelEffects
-        .setTempo("dj", tempo)
-        .catch((error: unknown) =>
-          console.warn(
-            "[ChannelEffects] Could not reconcile Channel Effects",
-            error
-          )
-        );
-    },
+    repeat,
+    reset,
+    seek,
+    setAutoplay,
+    setChannelFilter: throttledSetChannelFilter,
+    setEffectsDryWet: throttledSetEffectsDryWet,
+    setEffectsTempo: handleTempoChange,
+    setPan: throttledSetPan,
+    setRepeat,
+    setSpeed: throttledSetSpeed,
+    setVolume: throttledSetVolume,
+    soundId,
+    speed,
     trackProgress,
-    peakLevel,
-    metadata: effectiveMetadata,
-    currentTrackIndex,
-    hasTracklist,
     tracks,
-    isFileSource,
-    isSeekable,
+    updateEffect,
+    volume,
   };
 
   // Determine which content to render
@@ -400,15 +428,9 @@ function DeckPanelInner({
     if (isChangingFile && isFileSource) {
       content = (
         <FileForm
-          onCancel={() => setIsChangingFile(false)}
-          onLoad={(file) => {
-            setIsChangingFile(false);
-            handleFileDrop(file);
-          }}
-          onLoadUrl={(url) => {
-            setIsChangingFile(false);
-            handleLoadRemoteUrl(url);
-          }}
+          onCancel={handleCancelFileChange}
+          onLoad={handleFileChanged}
+          onLoadUrl={handleRemoteUrlChanged}
         />
       );
     } else if (isChangingUrl && isPlatformRadio(radio)) {
@@ -424,14 +446,14 @@ function DeckPanelInner({
         <ExternalSearch
           initialPlatform={searchPlatform}
           key={searchPlatform}
-          onCancel={() => setIsChangingUrl(false)}
+          onCancel={handleCancelUrlChange}
           onLoad={handleUrlChanged}
         />
       );
     } else if (isChangingDevice && isDeviceInput) {
       content = (
         <DeviceForm
-          onCancel={() => setIsChangingDevice(false)}
+          onCancel={handleCancelDeviceChange}
           onLoad={handleLoadDeviceInput}
         />
       );
@@ -448,30 +470,18 @@ function DeckPanelInner({
             deviceLabel={deviceMeta.deviceLabel ?? radio.name}
             isLoading={isLoading}
             isPlaying={isPlaying}
-            onChangeDevice={() => setIsChangingDevice(true)}
+            onChangeDevice={handleChangeDevice}
             onChannelSelectionChange={setChannelSelection}
             onClear={handleClear}
-            onToggleMute={() => {
-              if (isPlaying) {
-                pause();
-              } else {
-                play();
-              }
-            }}
+            onToggleMute={handleToggleMute}
           />
         </DeckProvider>
       );
     } else {
       // Normal deck (streaming/file)
-      const onChangeUrl = (() => {
-        if (!(radio && isPlatformRadio(radio))) {
-          return;
-        }
-        if (isFileSource) {
-          return () => setIsChangingFile(true);
-        }
-        return () => setIsChangingUrl(true);
-      })();
+      const onChangeUrl = isPlatformRadio(radio)
+        ? handleChangeSource
+        : undefined;
 
       content = (
         <DeckProvider value={contextValue}>

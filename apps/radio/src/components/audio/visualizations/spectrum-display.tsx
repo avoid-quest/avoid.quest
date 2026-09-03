@@ -49,33 +49,33 @@ function getAverageBinValue(
 
   let sum = 0;
   let count = 0;
-  for (let i = startBin; i < Math.min(endBin, spectrum.length); i++) {
+  for (let i = startBin; i < Math.min(endBin, spectrum.length); i += 1) {
     sum += spectrum[i] ?? -100;
-    count++;
+    count += 1;
   }
   return count > 0 ? sum / count : -100;
 }
 
 const colorSchemes = {
-  green: {
-    start: "rgba(34, 197, 94, 0.8)",
-    end: "rgba(22, 163, 74, 1)",
-  },
   blue: {
-    start: "rgba(59, 130, 246, 0.8)",
     end: "rgba(37, 99, 235, 1)",
+    start: "rgba(59, 130, 246, 0.8)",
+  },
+  green: {
+    end: "rgba(22, 163, 74, 1)",
+    start: "rgba(34, 197, 94, 0.8)",
   },
   purple: {
-    start: "rgba(168, 85, 247, 0.8)",
     end: "rgba(147, 51, 234, 1)",
+    start: "rgba(168, 85, 247, 0.8)",
   },
   rainbow: {
-    start: "hsl(var(--bar-hue), 70%, 60%)",
     end: "hsl(var(--bar-hue), 70%, 50%)",
+    start: "hsl(var(--bar-hue), 70%, 60%)",
   },
 };
 
-export const SpectrumDisplay = memo(function SpectrumDisplay({
+export const SpectrumDisplay = memo(function SpectrumDisplayComponent({
   spectrum,
   barCount = 32,
   minDb = -60,
@@ -87,15 +87,11 @@ export const SpectrumDisplay = memo(function SpectrumDisplay({
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) {
-      return;
-    }
-
-    const ctx = canvas.getContext("2d");
+    const ctx = canvasRef.current?.getContext("2d");
     if (!ctx) {
       return;
     }
+    const { canvas } = ctx;
 
     const draw = () => {
       const { width, height } = canvas;
@@ -110,7 +106,7 @@ export const SpectrumDisplay = memo(function SpectrumDisplay({
         // Draw empty state
         ctx.fillStyle = "rgba(128, 128, 128, 0.2)";
         const barWidth = (scaledWidth - barGap * (barCount - 1)) / barCount;
-        for (let i = 0; i < barCount; i++) {
+        for (let i = 0; i < barCount; i += 1) {
           const x = i * (barWidth + barGap);
           ctx.fillRect(
             x * dpr,
@@ -125,7 +121,7 @@ export const SpectrumDisplay = memo(function SpectrumDisplay({
       const barWidth = (scaledWidth - barGap * (barCount - 1)) / barCount;
       const dbRange = maxDb - minDb;
 
-      for (let i = 0; i < barCount; i++) {
+      for (let i = 0; i < barCount; i += 1) {
         // Get bin range for this bar
         const startBin = getLogFrequencyIndex(i, barCount, spectrum.length);
         const endBin = getLogFrequencyIndex(i + 1, barCount, spectrum.length);

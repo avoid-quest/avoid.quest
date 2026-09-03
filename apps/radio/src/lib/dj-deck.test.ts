@@ -37,15 +37,15 @@ async function resetPlaybackSessions(): Promise<void> {
 
 function insertDjSession(): void {
   playbackSessionsCollection.insert({
-    id: "dj",
+    activeChannelId: null,
     channels: [
       createDefaultChannel("deck-a", "deck-a", 0),
       createDefaultChannel("deck-b", "deck-b", 1),
     ],
-    masterVolume: 1,
     crossfadePosition: 0.5,
     headphoneVolume: 1,
-    activeChannelId: null,
+    id: "dj",
+    masterVolume: 1,
     tempo: 120,
   });
 }
@@ -53,14 +53,12 @@ function insertDjSession(): void {
 function createAudioAdapter(): DjDeckAudioAdapter & {
   activeSounds: Set<string>;
   cleanedSounds: string[];
-  emit(soundId: string, state: AudioState): void;
+  emit: (soundId: string, state: AudioState) => void;
 } {
   const activeSounds = new Set<string>();
   const cleanedSounds: string[] = [];
   const listeners = new Map<string, (state: AudioState) => void>();
   return {
-    activeSounds,
-    cleanedSounds,
     activate({ onState, soundId }) {
       activeSounds.add(soundId);
       listeners.set(soundId, onState);
@@ -70,8 +68,10 @@ function createAudioAdapter(): DjDeckAudioAdapter & {
         listeners.delete(soundId);
       };
     },
+    activeSounds,
     applyStrip: mock(() => undefined),
     change: mock(() => undefined),
+    cleanedSounds,
     emit(soundId, state) {
       listeners.get(soundId)?.(state);
     },
@@ -92,10 +92,10 @@ function createEffects(): ChannelEffects {
     bind: mock(() =>
       Promise.resolve({
         desired: {
-          tree: [],
           dryWet: 1,
-          tempo: 120,
           sidechainSoundId: null,
+          tempo: 120,
+          tree: [],
         },
         runtime: {
           backend: "compatibility" as const,
@@ -107,10 +107,10 @@ function createEffects(): ChannelEffects {
     change: mock(() =>
       Promise.resolve({
         desired: {
-          tree: [],
           dryWet: 1,
-          tempo: 120,
           sidechainSoundId: null,
+          tempo: 120,
+          tree: [],
         },
         runtime: {
           backend: "compatibility" as const,
@@ -165,8 +165,8 @@ function createOutput(): OutputRouting {
       })
     ),
     registerCueDeck: mock(() => ({
-      enabled: false,
       cleanup: mock(() => undefined),
+      enabled: false,
       replaceTap: mock(() => undefined),
       setEnabled: mock(() => undefined),
     })),
@@ -211,8 +211,8 @@ function createContext(): PlaybackActionContext {
     getMainOutputRouter: () => null,
     lifecycle: { mainOutputSettingsApplied: true },
     reportError: mock(() => undefined),
-    resumeAudioContext: mock(() => Promise.resolve()),
     resetAudioManager: mock(() => undefined),
+    resumeAudioContext: mock(() => Promise.resolve()),
   };
 }
 
@@ -238,8 +238,8 @@ describe("DjDeckModule", () => {
       streamUrl: "https://radio.example/one.mp3",
     };
 
-    await deck.load({ type: "radio", radio: current });
-    const pendingItem = PLATFORM_ITEMS[0];
+    await deck.load({ radio: current, type: "radio" });
+    const [pendingItem] = PLATFORM_ITEMS;
     if (!pendingItem) {
       throw new Error("Expected a platform picker library item");
     }
@@ -251,33 +251,33 @@ describe("DjDeckModule", () => {
       "deck-a"
     );
     const result = await deck.load({
-      type: "library",
       radio: pendingItem,
+      type: "library",
     });
     audio.emit("left_station-1:1", {
-      isPlaying: true,
-      isLoading: false,
-      isBuffering: false,
-      volume: 1,
       error: null,
       hasEnded: false,
+      isBuffering: false,
+      isLoading: false,
+      isPlaying: true,
+      volume: 1,
     });
 
-    expect(result).toEqual({ type: "pending-platform", platform: "external" });
+    expect(result).toEqual({ platform: "external", type: "pending-platform" });
     expect(getDjError()).toBe("Reload the active source");
     expect(getPlaybackChannel("dj", "deck-a")?.radio).toEqual(current);
     expect(getPlaybackChannelRuntime("deck-a")).toMatchObject({
-      soundId: "left_station-1:1",
       isPlaying: true,
+      soundId: "left_station-1:1",
     });
 
     await deck.load({
-      type: "radio",
       radio: {
         id: "station-2",
         name: "Station 2",
         streamUrl: "https://radio.example/two.mp3",
       },
+      type: "radio",
     });
     expect(getPlaybackChannelRuntime("deck-a").soundId).toBe(
       "left_station-2:2"
@@ -292,7 +292,7 @@ describe("DjDeckModule", () => {
       output: createOutput(),
       platform: createPlatform(),
     });
-    const pendingItem = PLATFORM_ITEMS[0];
+    const [pendingItem] = PLATFORM_ITEMS;
     if (!pendingItem) {
       throw new Error("Expected a platform picker library item");
     }
@@ -300,8 +300,8 @@ describe("DjDeckModule", () => {
     const unsubscribe = module.pendingSource.subscribe(listener);
 
     await module.deck("deck-a").load({
-      type: "library",
       radio: pendingItem,
+      type: "library",
     });
 
     expect(module.pendingSource.getSnapshot()).toEqual({
@@ -317,8 +317,8 @@ describe("DjDeckModule", () => {
 
     unsubscribe();
     await module.deck("deck-b").load({
-      type: "library",
       radio: pendingItem,
+      type: "library",
     });
     expect(listener).toHaveBeenCalledTimes(2);
   });
@@ -334,43 +334,43 @@ describe("DjDeckModule", () => {
     });
     const deck = module.deck("deck-a");
     await deck.load({
-      type: "radio",
       radio: {
         id: "station-1",
         name: "Station 1",
         streamUrl: "https://radio.example/one.mp3",
       },
+      type: "radio",
     });
     audio.emit("left_station-1:1", {
-      isPlaying: true,
-      isLoading: false,
-      isBuffering: false,
-      volume: 1,
       error: null,
       hasEnded: false,
+      isBuffering: false,
+      isLoading: false,
+      isPlaying: true,
+      volume: 1,
     });
 
     await deck.load({
-      type: "track-url",
       radio: {
         id: "unsafe",
         name: "Unsafe",
         streamUrl: "https://radio.example/safe.mp3",
       },
       streamUrl: "javascript:alert(1)",
+      type: "track-url",
     });
     audio.emit("left_station-1:1", {
-      isPlaying: false,
-      isLoading: false,
-      isBuffering: false,
-      volume: 1,
       error: null,
       hasEnded: false,
+      isBuffering: false,
+      isLoading: false,
+      isPlaying: false,
+      volume: 1,
     });
 
     expect(getPlaybackChannelRuntime("deck-a")).toMatchObject({
-      soundId: "left_station-1:1",
       isPlaying: false,
+      soundId: "left_station-1:1",
     });
   });
 
@@ -395,8 +395,8 @@ describe("DjDeckModule", () => {
       streamUrl: "https://radio.example/two.mp3",
     };
 
-    await deck.load({ type: "radio", radio: first });
-    await deck.load({ type: "radio", radio: second });
+    await deck.load({ radio: first, type: "radio" });
+    await deck.load({ radio: second, type: "radio" });
 
     expect(getPlaybackChannel("dj", "deck-a")?.radio).toEqual(second);
     expect(getPlaybackChannelRuntime("deck-a").soundId).toBe(
@@ -416,30 +416,30 @@ describe("DjDeckModule", () => {
     });
     const deck = module.deck("deck-a");
     await deck.load({
-      type: "radio",
       radio: {
         id: "station-1",
         name: "Station 1",
         streamUrl: "https://radio.example/one.mp3",
       },
+      type: "radio",
     });
     audio.emit("left_station-1:1", {
-      isPlaying: false,
-      isLoading: true,
-      isBuffering: false,
-      volume: 1,
       error: null,
       hasEnded: false,
+      isBuffering: false,
+      isLoading: true,
+      isPlaying: false,
+      volume: 1,
     });
 
     await deck.load({
-      type: "track-url",
       radio: {
         id: "station-2",
         name: "Station 2",
         streamUrl: "https://radio.example/two.mp3",
       },
       streamUrl: "https://radio.example/two.mp3",
+      type: "track-url",
     });
 
     expect(getPlaybackChannel("dj", "deck-a")?.radio?.id).toBe("station-2");
@@ -461,31 +461,31 @@ describe("DjDeckModule", () => {
     const previous: Radio = {
       id: "local-file-left-1",
       name: "Local",
-      streamUrl: "blob:https://radio.example/local",
       platformMetadata: {
-        platform: "local-file",
-        itemType: "track",
-        url: "",
-        fileName: "local.mp3",
         displayName: "Local",
         duration: 120,
+        fileName: "local.mp3",
         fileSize: 1024,
+        itemType: "track",
         mimeType: "audio/mpeg",
         objectUrl: "blob:https://radio.example/local",
+        platform: "local-file",
+        url: "",
       },
+      streamUrl: "blob:https://radio.example/local",
     };
 
-    await deck.load({ type: "radio", radio: previous });
+    await deck.load({ radio: previous, type: "radio" });
     audio.activate = mock(() => {
       throw new Error("decoder unavailable");
     });
     await deck.load({
-      type: "radio",
       radio: {
         id: "station-2",
         name: "Station 2",
         streamUrl: "https://radio.example/two.mp3",
       },
+      type: "radio",
     });
 
     expect(getPlaybackChannel("dj", "deck-a")?.radio).toBeNull();
@@ -506,19 +506,19 @@ describe("DjDeckModule", () => {
     });
 
     await module.deck("deck-a").load({
-      type: "device-input",
       deviceId: "interface-1",
       deviceLabel: "Audio Interface",
+      type: "device-input",
     });
 
     expect(getPlaybackChannel("dj", "deck-a")?.radio).toMatchObject({
       id: "device-input-left",
       name: "Audio Interface",
       platformMetadata: {
-        platform: "device-input",
-        deviceId: "interface-1",
         channelCount: 4,
         channelSelection: { left: 0, right: 1 },
+        deviceId: "interface-1",
+        platform: "device-input",
       },
     });
     expect(audio.startDevice).toHaveBeenCalledWith(
@@ -552,15 +552,15 @@ describe("DjDeckModule", () => {
     const deck = module.deck("deck-a");
 
     const stale = deck.load({
-      type: "device-input",
       deviceId: "interface-1",
       deviceLabel: "Old Interface",
+      type: "device-input",
     });
     await Promise.resolve();
     await deck.load({
-      type: "device-input",
       deviceId: "interface-2",
       deviceLabel: "New Interface",
+      type: "device-input",
     });
     (finishFirst as (() => void) | null)?.();
     await stale;
@@ -596,9 +596,9 @@ describe("DjDeckModule", () => {
     });
     const deck = module.deck("deck-a");
     const intent = {
-      type: "device-input" as const,
       deviceId: "interface-1",
       deviceLabel: "Audio Interface",
+      type: "device-input" as const,
     };
 
     const stale = deck.load(intent);
@@ -626,9 +626,9 @@ describe("DjDeckModule", () => {
     const audio = createAudioAdapter();
     audio.loadFile = mock(() =>
       Promise.resolve({
-        fileName: "local.mp3",
         displayName: "Local",
         duration: 120,
+        fileName: "local.mp3",
         fileSize: 1024,
         mimeType: "audio/mpeg",
         objectUrl: "blob:https://radio.example/local",
@@ -644,18 +644,18 @@ describe("DjDeckModule", () => {
     const deck = module.deck("deck-a");
 
     await deck.load({
-      type: "file",
       file: new File(["audio"], "local.mp3", { type: "audio/mpeg" }),
+      type: "file",
     });
     expect(audio.releaseFileUrl).not.toHaveBeenCalled();
 
     await deck.load({
-      type: "radio",
       radio: {
         id: "station-1",
         name: "Station 1",
         streamUrl: "https://radio.example/one.mp3",
       },
+      type: "radio",
     });
 
     expect(audio.releaseFileUrl).toHaveBeenCalledTimes(1);
@@ -669,12 +669,12 @@ describe("DjDeckModule", () => {
     const platform = createPlatform();
     platform.loadItem = mock(() =>
       Promise.resolve({
-        success: true as const,
         radio: {
           id: "remote-1",
           name: "Remote file",
           streamUrl: "https://radio.example/remote.mp3",
         },
+        success: true as const,
       })
     );
     const module = createDjDeckModule({
@@ -686,20 +686,20 @@ describe("DjDeckModule", () => {
     });
     const deck = module.deck("deck-a");
     await deck.load({
-      type: "radio",
       radio: {
         id: "station-1",
         name: "Station 1",
         streamUrl: "https://radio.example/one.mp3",
       },
+      type: "radio",
     });
     audio.emit("left_station-1:1", {
-      isPlaying: true,
-      isLoading: false,
-      isBuffering: false,
-      volume: 1,
       error: null,
       hasEnded: false,
+      isBuffering: false,
+      isLoading: false,
+      isPlaying: true,
+      volume: 1,
     });
 
     await deck.load({
@@ -725,13 +725,13 @@ describe("DjDeckModule", () => {
     });
 
     await module.deck("deck-a").load({
-      type: "track-url",
       radio: {
         id: "unsafe",
         name: "Unsafe",
         streamUrl: "https://radio.example/safe.mp3",
       },
       streamUrl: "javascript:alert(1)",
+      type: "track-url",
     });
 
     expect(audio.activeSounds).toEqual(new Set());
@@ -756,31 +756,31 @@ describe("DjDeckModule", () => {
       platform: createPlatform(),
     });
     await module.deck("deck-a").load({
-      type: "radio",
       radio: {
         id: "station-1",
         name: "Station 1",
         streamUrl: "https://radio.example/one.mp3",
       },
+      type: "radio",
     });
 
     audio.emit("left_station-1:1", {
-      isPlaying: true,
-      isLoading: false,
-      isBuffering: false,
-      volume: 1,
       error: null,
       hasEnded: false,
+      isBuffering: false,
+      isLoading: false,
+      isPlaying: true,
+      volume: 1,
     });
     await Promise.resolve();
 
     expect(effects.bind).toHaveBeenCalledWith(
-      { sessionId: "dj", channelId: "deck-a" },
+      { channelId: "deck-a", sessionId: "dj" },
       "left_station-1:1"
     );
     expect(audio.applyStrip).toHaveBeenCalledWith(
       "left_station-1:1",
-      expect.objectContaining({ muted: true, cueEnabled: true })
+      expect.objectContaining({ cueEnabled: true, muted: true })
     );
     expect(output.registerCueDeck).toHaveBeenCalledWith("deck-a", tap, true);
   });
@@ -799,21 +799,21 @@ describe("DjDeckModule", () => {
       platform: createPlatform(),
     });
     await module.deck("deck-a").load({
-      type: "radio",
       radio: {
         id: "station-1",
         name: "Station 1",
         streamUrl: "https://radio.example/one.mp3",
       },
+      type: "radio",
     });
 
     audio.emit("left_station-1:1", {
-      isPlaying: true,
-      isLoading: false,
-      isBuffering: false,
-      volume: 1,
       error: null,
       hasEnded: false,
+      isBuffering: false,
+      isLoading: false,
+      isPlaying: true,
+      volume: 1,
     });
     await Promise.resolve();
     await Promise.resolve();
@@ -832,12 +832,12 @@ describe("DjDeckModule", () => {
     });
 
     await module.deck("deck-a").load({
-      type: "radio",
       radio: {
         id: "station-1",
         name: "Station 1",
         streamUrl: "https://radio.example/one.mp3",
       },
+      type: "radio",
     });
     routing.reportError(new Error("Output graph replacement failed"));
 
@@ -856,25 +856,25 @@ describe("DjDeckModule", () => {
     });
     const deck = module.deck("deck-a");
     await deck.load({
-      type: "radio",
       radio: {
         id: "station-1",
         name: "Station 1",
         streamUrl: "https://radio.example/one.mp3",
       },
+      type: "radio",
     });
 
-    deck.change({ type: "pan", pan: 0.25 });
+    deck.change({ pan: 0.25, type: "pan" });
     deck.change({ type: "effects-dry-wet", value: 0.4 });
     await Promise.resolve();
 
     expect(getPlaybackChannel("dj", "deck-a")?.pan).toBe(0.25);
     expect(audio.change).toHaveBeenCalledWith("left_station-1:1", {
-      type: "pan",
       pan: 0.25,
+      type: "pan",
     });
     expect(effects.change).toHaveBeenCalledWith(
-      { sessionId: "dj", channelId: "deck-a" },
+      { channelId: "deck-a", sessionId: "dj" },
       { type: "set-dry-wet", value: 0.4 }
     );
   });
@@ -895,7 +895,7 @@ describe("DjDeckModule", () => {
       name: "Station 1",
       streamUrl: "https://radio.example/one.mp3",
     };
-    await deck.load({ type: "radio", radio });
+    await deck.load({ radio, type: "radio" });
     updatePlaybackChannel("dj", "deck-a", (draft) => {
       draft.volume = 0.4;
       draft.muted = true;
@@ -909,21 +909,21 @@ describe("DjDeckModule", () => {
     await deck.transport({ type: "reset" });
 
     expect(getPlaybackChannel("dj", "deck-a")).toMatchObject({
-      radio,
-      volume: 1,
-      muted: false,
-      pan: 0,
-      speed: 1,
       channelFilter: 0,
       effects: [],
       effectsDryWet: 1,
+      muted: false,
+      pan: 0,
+      radio,
+      speed: 1,
+      volume: 1,
     });
     expect(change).toHaveBeenCalledWith(
-      { sessionId: "dj", channelId: "deck-a" },
-      { type: "replace", tree: [] }
+      { channelId: "deck-a", sessionId: "dj" },
+      { tree: [], type: "replace" }
     );
     expect(change).toHaveBeenCalledWith(
-      { sessionId: "dj", channelId: "deck-a" },
+      { channelId: "deck-a", sessionId: "dj" },
       { type: "set-dry-wet", value: 1 }
     );
     expect(getPlaybackChannelRuntime("deck-a").soundId).toBe(
@@ -934,7 +934,7 @@ describe("DjDeckModule", () => {
 
   test("persists both Effects resets before yielding to a newer change", async () => {
     const effects = createEffects();
-    const change = effects.change;
+    const { change } = effects;
     const firstReset = Promise.withResolvers<void>();
     const changes: ChannelEffectsChange[] = [];
     effects.change = mock((ref, input) => {
@@ -953,19 +953,19 @@ describe("DjDeckModule", () => {
     });
     const deck = module.deck("deck-a");
     await deck.load({
-      type: "radio",
       radio: {
         id: "station-1",
         name: "Station 1",
         streamUrl: "https://radio.example/one.mp3",
       },
+      type: "radio",
     });
 
     const reset = deck.transport({ type: "reset" });
     deck.change({ type: "effects-dry-wet", value: 0.4 });
     try {
       expect(changes).toEqual([
-        { type: "replace", tree: [] },
+        { tree: [], type: "replace" },
         { type: "set-dry-wet", value: 1 },
         { type: "set-dry-wet", value: 0.4 },
       ]);
@@ -978,7 +978,7 @@ describe("DjDeckModule", () => {
   test("does not let a pending reset replace a newer source", async () => {
     const audio = createAudioAdapter();
     const { effects } = createPersistingEffects();
-    const change = effects.change;
+    const { change } = effects;
     let releaseReset: (() => void) | null = null;
     const resetGate = new Promise<void>((resolve) => {
       releaseReset = resolve;
@@ -998,23 +998,23 @@ describe("DjDeckModule", () => {
     });
     const deck = module.deck("deck-a");
     await deck.load({
-      type: "radio",
       radio: {
         id: "station-1",
         name: "Station 1",
         streamUrl: "https://radio.example/one.mp3",
       },
+      type: "radio",
     });
 
     const reset = deck.transport({ type: "reset" });
     await Promise.resolve();
     await deck.load({
-      type: "radio",
       radio: {
         id: "station-2",
         name: "Station 2",
         streamUrl: "https://radio.example/two.mp3",
       },
+      type: "radio",
     });
     (releaseReset as (() => void) | null)?.();
     await reset;
@@ -1037,31 +1037,31 @@ describe("DjDeckModule", () => {
     });
     const deck = module.deck("deck-a");
     await deck.load({
-      type: "radio",
       radio: {
         id: "station-1",
         name: "Station 1",
         streamUrl: "https://radio.example/one.mp3",
       },
+      type: "radio",
     });
     updatePlaybackChannel("dj", "deck-a", (draft) => {
       draft.effects = [createDefaultEffectConfig("delay", "delay-1", 0)];
       draft.effectsDryWet = 0.3;
     });
 
-    await deck.load({ type: "radio", radio: null });
+    await deck.load({ radio: null, type: "radio" });
 
     expect(getPlaybackChannel("dj", "deck-a")).toMatchObject({
-      radio: null,
       effects: [],
       effectsDryWet: 1,
+      radio: null,
     });
     expect(change).toHaveBeenCalledWith(
-      { sessionId: "dj", channelId: "deck-a" },
-      { type: "replace", tree: [] }
+      { channelId: "deck-a", sessionId: "dj" },
+      { tree: [], type: "replace" }
     );
     expect(change).toHaveBeenCalledWith(
-      { sessionId: "dj", channelId: "deck-a" },
+      { channelId: "deck-a", sessionId: "dj" },
       { type: "set-dry-wet", value: 1 }
     );
     expect(getPlaybackChannelRuntime("deck-a").soundId).toBeNull();
@@ -1086,23 +1086,23 @@ describe("DjDeckModule", () => {
     });
     const deck = module.deck("deck-a");
     await deck.load({
-      type: "radio",
       radio: {
         id: "station-1",
         name: "Station 1",
         streamUrl: "https://radio.example/one.mp3",
       },
+      type: "radio",
     });
 
     const stalePlay = deck.transport({ type: "play" });
     await Promise.resolve();
     await deck.load({
-      type: "radio",
       radio: {
         id: "station-2",
         name: "Station 2",
         streamUrl: "https://radio.example/two.mp3",
       },
+      type: "radio",
     });
     (resume as (() => void) | null)?.();
     await stalePlay;
@@ -1124,29 +1124,29 @@ describe("DjDeckModule", () => {
     });
     const deck = module.deck("deck-a");
     await deck.load({
-      type: "radio",
       radio: {
         id: "station-1",
         name: "Station 1",
         streamUrl: "https://radio.example/one.mp3",
       },
+      type: "radio",
     });
-    deck.change({ type: "repeat", enabled: true });
+    deck.change({ enabled: true, type: "repeat" });
 
     audio.emit("left_station-1:1", {
-      isPlaying: false,
-      isLoading: false,
-      isBuffering: false,
-      volume: 1,
       error: null,
       hasEnded: true,
+      isBuffering: false,
+      isLoading: false,
+      isPlaying: false,
+      volume: 1,
     });
     await Promise.resolve();
     await Promise.resolve();
 
     expect(audio.transport).toHaveBeenCalledWith("left_station-1:1", {
-      type: "seek",
       position: 0,
+      type: "seek",
     });
     expect(audio.transport).toHaveBeenCalledWith("left_station-1:1", {
       type: "play",
@@ -1175,31 +1175,31 @@ describe("DjDeckModule", () => {
     });
     const deck = module.deck("deck-a");
     await deck.load({
-      type: "radio",
       radio: {
         id: "station-1",
         name: "Station 1",
         streamUrl: "https://radio.example/one.mp3",
       },
+      type: "radio",
     });
-    deck.change({ type: "repeat", enabled: true });
+    deck.change({ enabled: true, type: "repeat" });
     audio.emit("left_station-1:1", {
-      isPlaying: false,
-      isLoading: false,
-      isBuffering: false,
-      volume: 1,
       error: null,
       hasEnded: true,
+      isBuffering: false,
+      isLoading: false,
+      isPlaying: false,
+      volume: 1,
     });
     await Promise.resolve();
 
     await deck.load({
-      type: "radio",
       radio: {
         id: "station-2",
         name: "Station 2",
         streamUrl: "https://radio.example/two.mp3",
       },
+      type: "radio",
     });
     (finishSeek as (() => void) | null)?.();
     await Promise.resolve();
@@ -1233,31 +1233,31 @@ describe("DjDeckModule", () => {
     });
     const deck = module.deck("deck-a");
     await deck.load({
-      type: "radio",
       radio: {
         id: "station-1",
         name: "Station 1",
         streamUrl: "https://radio.example/one.mp3",
       },
+      type: "radio",
     });
-    deck.change({ type: "repeat", enabled: true });
+    deck.change({ enabled: true, type: "repeat" });
     audio.emit("left_station-1:1", {
-      isPlaying: false,
-      isLoading: false,
-      isBuffering: false,
-      volume: 1,
       error: null,
       hasEnded: true,
+      isBuffering: false,
+      isLoading: false,
+      isPlaying: false,
+      volume: 1,
     });
     await Promise.resolve();
 
     await deck.load({
-      type: "radio",
       radio: {
         id: "station-2",
         name: "Station 2",
         streamUrl: "https://radio.example/two.mp3",
       },
+      type: "radio",
     });
     (rejectPlay as ((error: Error) => void) | null)?.(
       new Error("stale play failed")
@@ -1267,8 +1267,8 @@ describe("DjDeckModule", () => {
 
     expect(context.reportError).not.toHaveBeenCalled();
     expect(getPlaybackChannelRuntime("deck-a")).toMatchObject({
-      soundId: "left_station-2:2",
       error: null,
+      soundId: "left_station-2:2",
     });
   });
 
@@ -1277,8 +1277,8 @@ describe("DjDeckModule", () => {
     const platform = createPlatform();
     platform.resolveStream = mock(() =>
       Promise.resolve({
-        streamUrl: "https://radio.example/second.mp3",
         streamFormat: "progressive" as const,
+        streamUrl: "https://radio.example/second.mp3",
       })
     );
     const module = createDjDeckModule({
@@ -1291,11 +1291,9 @@ describe("DjDeckModule", () => {
     const radio: Radio = {
       id: "playlist-1",
       name: "Playlist",
-      streamUrl: "https://radio.example/first.mp3",
       platformMetadata: {
-        platform: "youtube",
         itemType: "playlist",
-        url: "https://youtube.com/playlist?list=playlist-1",
+        platform: "youtube",
         tracks: [
           {
             name: "First",
@@ -1304,27 +1302,29 @@ describe("DjDeckModule", () => {
           },
           { name: "Second", streamUrl: "", videoId: "second" },
         ],
+        url: "https://youtube.com/playlist?list=playlist-1",
       },
+      streamUrl: "https://radio.example/first.mp3",
     };
-    await module.deck("deck-a").load({ type: "radio", radio });
+    await module.deck("deck-a").load({ radio, type: "radio" });
 
     audio.emit("left_playlist-1:1", {
-      isPlaying: false,
-      isLoading: false,
-      isBuffering: false,
-      volume: 1,
       error: null,
       hasEnded: true,
+      isBuffering: false,
+      isLoading: false,
+      isPlaying: false,
+      volume: 1,
     });
     await new Promise((resolve) => setTimeout(resolve, 0));
     const continuedSound = getPlaybackChannelRuntime("deck-a").soundId;
     audio.emit(continuedSound ?? "", {
-      isPlaying: false,
-      isLoading: false,
-      isBuffering: false,
-      volume: 1,
       error: null,
       hasEnded: true,
+      isBuffering: false,
+      isLoading: false,
+      isPlaying: false,
+      volume: 1,
     });
     await new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -1339,8 +1339,8 @@ describe("DjDeckModule", () => {
     const platform = createPlatform();
     platform.resolveStream = mock(() =>
       Promise.resolve({
-        streamUrl: "https://radio.example/refreshed.mp3",
         streamFormat: "progressive" as const,
+        streamUrl: "https://radio.example/refreshed.mp3",
       })
     );
     const module = createDjDeckModule({
@@ -1351,33 +1351,33 @@ describe("DjDeckModule", () => {
       platform,
     });
     await module.deck("deck-a").load({
-      type: "radio",
       radio: {
         id: "yt-1",
         name: "YouTube",
-        streamUrl: "https://radio.example/old.mp3",
         platformMetadata: {
-          platform: "youtube",
           itemType: "video",
+          platform: "youtube",
           url: "https://youtube.com/watch?v=abc",
           videoId: "abc",
         },
+        streamUrl: "https://radio.example/old.mp3",
       },
+      type: "radio",
     });
 
     audio.emit("left_yt-1:1", {
-      isPlaying: false,
-      isLoading: false,
-      isBuffering: false,
-      volume: 1,
       error: {
-        id: "error-1",
         code: "STREAM_INTERRUPTED",
+        id: "error-1",
         message: "expired",
         position: 42,
         timestamp: Date.now(),
       },
       hasEnded: false,
+      isBuffering: false,
+      isLoading: false,
+      isPlaying: false,
+      volume: 1,
     });
     await Promise.resolve();
     await Promise.resolve();
@@ -1402,26 +1402,26 @@ describe("DjDeckModule", () => {
       platform: createPlatform(),
     });
     await module.deck("deck-a").load({
-      type: "radio",
       radio: {
         id: "station-1",
         name: "Station 1",
         streamUrl: "https://radio.example/one.mp3",
       },
+      type: "radio",
     });
 
     audio.emit("left_station-1:1", {
-      isPlaying: false,
-      isLoading: false,
-      isBuffering: false,
-      volume: 1,
       error: {
-        id: "error-1",
         code: "STREAM_DECODE_FAILED",
+        id: "error-1",
         message: "decoder failed",
         timestamp: Date.now(),
       },
       hasEnded: false,
+      isBuffering: false,
+      isLoading: false,
+      isPlaying: false,
+      volume: 1,
     });
 
     expect(context.reportError).toHaveBeenCalledWith(
@@ -1442,33 +1442,33 @@ describe("DjDeckModule", () => {
       platform: createPlatform(),
     });
     await module.deck("deck-a").load({
-      type: "radio",
       radio: {
         id: "yt-1",
         name: "YouTube",
-        streamUrl: "https://radio.example/old.mp3",
         platformMetadata: {
-          platform: "youtube",
           itemType: "video",
+          platform: "youtube",
           url: "https://youtube.com/watch?v=abc",
           videoId: "abc",
         },
+        streamUrl: "https://radio.example/old.mp3",
       },
+      type: "radio",
     });
 
     audio.emit("left_yt-1:1", {
-      isPlaying: false,
-      isLoading: false,
-      isBuffering: false,
-      volume: 1,
       error: {
-        id: "error-1",
         code: "STREAM_INTERRUPTED",
+        id: "error-1",
         message: "expired",
         position: 42,
         timestamp: Date.now(),
       },
       hasEnded: false,
+      isBuffering: false,
+      isLoading: false,
+      isPlaying: false,
+      volume: 1,
     });
     await Promise.resolve();
     await Promise.resolve();
@@ -1482,9 +1482,9 @@ describe("DjDeckModule", () => {
     const audio = createAudioAdapter();
     audio.loadFile = mock(() =>
       Promise.resolve({
-        fileName: "local.mp3",
         displayName: "Local",
         duration: 120,
+        fileName: "local.mp3",
         fileSize: 1024,
         mimeType: "audio/mpeg",
         objectUrl: "blob:https://radio.example/local",
@@ -1500,16 +1500,16 @@ describe("DjDeckModule", () => {
       platform: createPlatform(),
     });
     await module.deck("deck-a").load({
-      type: "file",
       file: new File(["audio"], "local.mp3", { type: "audio/mpeg" }),
+      type: "file",
     });
 
     module.deactivate();
 
     expect(audio.activeSounds).toEqual(new Set());
     expect(effects.unbind).toHaveBeenCalledWith({
-      sessionId: "dj",
       channelId: "deck-a",
+      sessionId: "dj",
     });
     expect(output.releaseCue).toHaveBeenCalledTimes(1);
     expect(getPlaybackChannelRuntime("deck-a").soundId).toBeNull();
@@ -1527,8 +1527,8 @@ describe("DjDeckModule", () => {
     const output = createOutput();
     const replaceTap = mock(() => undefined);
     const registration = {
-      enabled: true,
       cleanup: mock(() => undefined),
+      enabled: true,
       replaceTap,
       setEnabled: mock(() => undefined),
     };
@@ -1547,36 +1547,36 @@ describe("DjDeckModule", () => {
     });
     const deck = module.deck("deck-a");
     await deck.load({
-      type: "radio",
       radio: {
         id: "station-1",
         name: "Station 1",
         streamUrl: "https://radio.example/one.mp3",
       },
+      type: "radio",
     });
     audio.emit("left_station-1:1", {
-      isPlaying: true,
-      isLoading: false,
-      isBuffering: false,
-      volume: 1,
       error: null,
       hasEnded: false,
+      isBuffering: false,
+      isLoading: false,
+      isPlaying: true,
+      volume: 1,
     });
     await deck.load({
-      type: "radio",
       radio: {
         id: "station-2",
         name: "Station 2",
         streamUrl: "https://radio.example/two.mp3",
       },
+      type: "radio",
     });
     audio.emit("left_station-2:2", {
-      isPlaying: true,
-      isLoading: false,
-      isBuffering: false,
-      volume: 1,
       error: null,
       hasEnded: false,
+      isBuffering: false,
+      isLoading: false,
+      isPlaying: true,
+      volume: 1,
     });
 
     expect(output.registerCueDeck).toHaveBeenCalledTimes(1);
@@ -1599,22 +1599,22 @@ describe("DjDeckModule", () => {
     });
     const deck = module.deck("deck-a");
     await deck.load({
-      type: "radio",
       radio: {
         id: "station-1",
         name: "Station 1",
         streamUrl: "https://radio.example/one.mp3",
       },
+      type: "radio",
     });
 
     await deck.transport({ type: "play" });
 
     expect(context.reportError).toHaveBeenCalledWith(
       expect.objectContaining({
-        mode: "dj",
         channelId: "deck-a",
-        userMessage: "Failed to play deck-a",
+        mode: "dj",
         rawMessage: "decoder internals 73",
+        userMessage: "Failed to play deck-a",
       })
     );
   });

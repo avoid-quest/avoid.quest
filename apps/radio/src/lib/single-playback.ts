@@ -255,10 +255,10 @@ async function selectStation(
       return;
     }
     throw reportPlaybackActionError(ctx.reportError, {
-      mode: "single",
-      code: "PLAY_ERROR",
       cause: error,
       channelId: channel.id,
+      code: "PLAY_ERROR",
+      mode: "single",
       radio: station,
     });
   }
@@ -278,8 +278,7 @@ async function reconcileRouting(ctx: PlaybackActionContext): Promise<void> {
     return;
   }
 
-  const soundId = runtime.soundId;
-  const shouldResume = runtime.isPlaying;
+  const { isPlaying: shouldResume, soundId } = runtime;
   cleanupManagedChannel(channel.id, ctx);
   createManagedSound("single", channel.id, channel.radio, soundId, ctx);
   if (!shouldResume) {
@@ -289,10 +288,10 @@ async function reconcileRouting(ctx: PlaybackActionContext): Promise<void> {
     await playManagedSound("single", soundId, channel.volume, ctx);
   } catch (error) {
     throw reportPlaybackActionError(ctx.reportError, {
-      mode: "single",
-      code: "PLAY_ERROR",
       cause: error,
       channelId: channel.id,
+      code: "PLAY_ERROR",
+      mode: "single",
       radio: channel.radio,
     });
   }
@@ -385,10 +384,10 @@ function createSinglePlayback(
       } catch (error) {
         if (revision === playingRevision) {
           const reportedError = reportPlaybackActionError(ctx.reportError, {
-            mode: "single",
-            code: "PLAY_ERROR",
             cause: error,
             channelId: channel?.id ?? SINGLE_ACTIVE_CHANNEL_ID,
+            code: "PLAY_ERROR",
+            mode: "single",
             radio: channel?.radio ?? undefined,
           });
           setManagedPlaybackError(

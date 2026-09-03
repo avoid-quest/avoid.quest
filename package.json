@@ -29,27 +29,20 @@
     }
   },
   "scripts": {
+    "build": "turbo build",
     "cf-build": "turbo cf-build",
     "cf-deploy": "turbo cf-deploy",
-    "cf-upload": "turbo cf-upload",
     "cf-typegen": "turbo cf-typegen",
+    "cf-upload": "turbo cf-upload",
+    "check": "ultracite check",
+    "dev": "turbo dev",
+    "fix": "ultracite fix",
+    "preview": "turbo preview",
     "secrets:setup": "doppler setup",
     "secrets:status": "doppler configure --scope .",
-    "ui": "bun --filter @avoid.quest/ui ui",
-    "dev": "turbo dev",
-    "build": "turbo build",
-    "check": "ultracite check",
-    "fix": "ultracite fix",
+    "test": "turbo test",
     "typecheck": "turbo typecheck",
-    "preview": "turbo preview",
-    "test": "turbo test"
-  },
-  "devDependencies": {
-    "@biomejs/biome": "2.5.10",
-    "@types/bun": "^1.4.0",
-    "@types/node": "^26.3.0",
-    "turbo": "^2.10.12",
-    "ultracite": "^7.10.6"
+    "ui": "bun --filter @avoid.quest/ui ui"
   },
   "overrides": {
     "@babel/core": "^7.29.7",
@@ -68,8 +61,15 @@
     "ws": "^8.21.3",
     "yaml": "^2.9.0"
   },
-  "packageManager": "bun@1.4.0",
+  "devDependencies": {
+    "@biomejs/biome": "2.5.10",
+    "@types/bun": "^1.4.0",
+    "@types/node": "^26.3.0",
+    "turbo": "^2.10.12",
+    "ultracite": "^7.10.7"
+  },
   "peerDependencies": {
     "typescript": "^6.0.3"
-  }
+  },
+  "packageManager": "bun@1.4.0"
 }

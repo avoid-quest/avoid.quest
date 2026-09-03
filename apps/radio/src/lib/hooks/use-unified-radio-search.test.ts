@@ -14,15 +14,15 @@ const dom = new JSDOM("<!doctype html><html><body></body></html>", {
 });
 
 for (const [key, value] of Object.entries({
-  window: dom.window,
   document: dom.window.document,
-  navigator: dom.window.navigator,
   HTMLElement: dom.window.HTMLElement,
+  navigator: dom.window.navigator,
+  window: dom.window,
 })) {
   Object.defineProperty(globalThis, key, {
     configurable: true,
-    writable: true,
     value,
+    writable: true,
   });
 }
 

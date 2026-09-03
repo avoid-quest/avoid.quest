@@ -56,7 +56,7 @@ export class PeakMeter {
     let blockPeakL = 0;
     let blockPeakR = 0;
 
-    for (let i = fromIndex; i < toIndex; i++) {
+    for (let i = fromIndex; i < toIndex; i += 1) {
       const absL = Math.abs(inputL[i] ?? 0);
       const absR = Math.abs(inputR[i] ?? 0);
 

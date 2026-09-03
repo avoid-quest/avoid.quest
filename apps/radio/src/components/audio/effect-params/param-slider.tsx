@@ -1,3 +1,4 @@
+/** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 import { Label } from "@avoid.quest/ui/components/label";
 import { Slider } from "@avoid.quest/ui/components/slider";
 import { useThrottledParam } from "@/lib/hooks/use-throttled-param";
@@ -33,6 +34,11 @@ export function ParamSlider({
 }: ParamSliderProps) {
   // Throttle onChange to ~30fps to prevent overwhelming audio manager
   const throttledOnChange = useThrottledParam(onChange);
+  function handleValueChange([newValue]: number[]) {
+    if (newValue !== undefined) {
+      throttledOnChange(newValue);
+    }
+  }
 
   const displayValue = formatter
     ? formatter(value)
@@ -55,12 +61,7 @@ export function ParamSlider({
         disabled={disabled}
         max={max}
         min={min}
-        onValueChange={(values) => {
-          const newValue = values[0];
-          if (newValue !== undefined) {
-            throttledOnChange(newValue);
-          }
-        }}
+        onValueChange={handleValueChange}
         step={step}
         value={[value]}
       />

@@ -1,3 +1,4 @@
+// biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers
 import { Button } from "@avoid.quest/ui/components/button";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import {
@@ -24,29 +25,29 @@ type DeckEmptyProps = {
 
 const SOURCES = [
   {
+    hint: "Drag from the browser below",
     icon: RadioIcon,
     label: "Radio stations",
-    hint: "Drag from the browser below",
   },
   {
+    hint: "MP3, FLAC, WAV, M3U playlists",
     icon: FileAudioIcon,
     label: "Audio files",
-    hint: "MP3, FLAC, WAV, M3U playlists",
   },
   {
+    hint: "Search or paste a URL",
     icon: SearchIcon,
     label: "Bandcamp, SoundCloud, YouTube",
-    hint: "Search or paste a URL",
   },
   {
+    hint: "Direct links, remote streams",
     icon: GlobeIcon,
     label: "Any audio URL",
-    hint: "Direct links, remote streams",
   },
   {
+    hint: "Mic or line-in from your interface",
     icon: MicIcon,
     label: "Audio input",
-    hint: "Mic or line-in from your interface",
   },
 ];
 
@@ -60,6 +61,13 @@ export function DeckEmpty({
   className,
 }: DeckEmptyProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file && isAudioFile(file)) {
+      onFileDrop(file);
+    }
+  };
+  const handleOpenFile = () => fileInputRef.current?.click();
 
   return (
     <div className={cn("flex h-full min-h-0 flex-col", className)}>
@@ -87,18 +95,13 @@ export function DeckEmpty({
         <input
           accept="audio/*"
           className="hidden"
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file && isAudioFile(file)) {
-              onFileDrop(file);
-            }
-          }}
+          onChange={handleFileChange}
           ref={fileInputRef}
           type="file"
         />
         <Button
           className="h-7 w-full gap-1.5 text-xs"
-          onClick={() => fileInputRef.current?.click()}
+          onClick={handleOpenFile}
           size="sm"
           variant="outline"
         >

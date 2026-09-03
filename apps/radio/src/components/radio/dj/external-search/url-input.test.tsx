@@ -23,22 +23,22 @@ const dom = new JSDOM("<!doctype html><html><body></body></html>", {
 });
 
 for (const [key, value] of Object.entries({
-  window: dom.window,
   document: dom.window.document,
-  navigator: dom.window.navigator,
   HTMLElement: dom.window.HTMLElement,
+  navigator: dom.window.navigator,
+  window: dom.window,
 })) {
   Object.defineProperty(globalThis, key, {
     configurable: true,
-    writable: true,
     value,
+    writable: true,
   });
 }
 
 Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", {
   configurable: true,
-  writable: true,
   value: true,
+  writable: true,
 });
 
 type TrackLoadOptions = {
@@ -49,6 +49,7 @@ type TrackLoadOptions = {
 
 let trackLoadOptions: TrackLoadOptions | undefined;
 const mutateMock = mock((_url: string) => undefined);
+const handleLoad = () => undefined;
 
 mock.module("@avoid.quest/ui/components/button", () => ({
   Button: ({ children, ...props }: ButtonHTMLAttributes<HTMLButtonElement>) => (
@@ -74,8 +75,8 @@ mock.module("@/lib/hooks/use-dj-track-load", () => ({
   useDjTrackLoad: (options: TrackLoadOptions) => {
     trackLoadOptions = options;
     return {
-      mutate: mutateMock,
       isPending: false,
+      mutate: mutateMock,
     };
   },
 }));
@@ -97,7 +98,7 @@ afterEach(() => {
 
 describe("UrlInput", () => {
   test("shows track-load failures inline after submitting a URL", () => {
-    const view = render(<UrlInput onLoad={() => undefined} />);
+    const view = render(<UrlInput onLoad={handleLoad} />);
     fireEvent.change(view.getByPlaceholderText("https://..."), {
       target: { value: "https://soundcloud.com/test/track" },
     });

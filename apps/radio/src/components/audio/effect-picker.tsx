@@ -1,3 +1,4 @@
+/** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 import { Card, CardContent } from "@avoid.quest/ui/components/card";
 import {
   Dialog,
@@ -9,7 +10,7 @@ import {
 import { Input } from "@avoid.quest/ui/components/input";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import { FilterIcon, SearchIcon } from "lucide-react";
-import { useState } from "react";
+import { type ChangeEvent, type KeyboardEvent, useState } from "react";
 import { AVAILABLE_EFFECTS, type EffectType } from "@/lib/audio";
 import { isEffectContainerType } from "@/lib/audio/dsp/routing/effect-tree";
 import { EFFECT_ICONS } from "./effect-constants";
@@ -20,12 +21,69 @@ type EffectPickerProps = {
   allowContainers?: boolean;
 };
 
+type AvailableEffect = (typeof AVAILABLE_EFFECTS)[number];
+
+function EffectPickerOption({
+  effect,
+  onSelect,
+}: {
+  effect: AvailableEffect;
+  onSelect: (effectType: EffectType) => void;
+}) {
+  function selectEffect() {
+    onSelect(effect.type);
+  }
+
+  function selectEffectWithKeyboard(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      onSelect(effect.type);
+    }
+  }
+  const Icon = EFFECT_ICONS[effect.type] ?? FilterIcon;
+
+  return (
+    <Card
+      className={cn(
+        "group cursor-pointer border-2 transition-all duration-200 hover:border-primary/50 hover:shadow-md active:scale-[0.98]",
+        "focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20"
+      )}
+      onClick={selectEffect}
+      onKeyDown={selectEffectWithKeyboard}
+      role="button"
+      tabIndex={0}
+    >
+      <CardContent className="p-4">
+        <div className="flex items-start gap-3">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition-colors group-hover:bg-primary/20">
+            <Icon className="size-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h3 className="font-semibold text-sm leading-tight">
+              {effect.name}
+            </h3>
+            <span className="mt-1 inline-flex rounded bg-muted px-1.5 py-0.5 font-medium text-[10px] text-muted-foreground">
+              {effect.family}
+            </span>
+            <p className="mt-1 text-muted-foreground text-xs leading-relaxed">
+              {effect.description}
+            </p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export function EffectPicker({
   onSelect,
   onClose,
   allowContainers = true,
 }: EffectPickerProps) {
   const [searchQuery, setSearchQuery] = useState("");
+  function updateSearchQuery(event: ChangeEvent<HTMLInputElement>) {
+    setSearchQuery(event.target.value);
+  }
 
   const filteredEffects = AVAILABLE_EFFECTS.filter(
     (effect) =>
@@ -50,7 +108,7 @@ export function EffectPicker({
             <SearchIcon className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               className="pl-9"
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={updateSearchQuery}
               placeholder="Search effects..."
               value={searchQuery}
             />
@@ -73,46 +131,13 @@ export function EffectPicker({
             </div>
           ) : (
             <div className="grid max-h-128 grid-cols-1 gap-3 overflow-y-auto pr-1 sm:grid-cols-2">
-              {filteredEffects.map((effect) => {
-                const Icon = EFFECT_ICONS[effect.type] ?? FilterIcon;
-                return (
-                  <Card
-                    className={cn(
-                      "group cursor-pointer border-2 transition-all duration-200 hover:border-primary/50 hover:shadow-md active:scale-[0.98]",
-                      "focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20"
-                    )}
-                    key={effect.type}
-                    onClick={() => onSelect(effect.type)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        onSelect(effect.type);
-                      }
-                    }}
-                    role="button"
-                    tabIndex={0}
-                  >
-                    <CardContent className="p-4">
-                      <div className="flex items-start gap-3">
-                        <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition-colors group-hover:bg-primary/20">
-                          <Icon className="size-5" />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <h3 className="font-semibold text-sm leading-tight">
-                            {effect.name}
-                          </h3>
-                          <span className="mt-1 inline-flex rounded bg-muted px-1.5 py-0.5 font-medium text-[10px] text-muted-foreground">
-                            {effect.family}
-                          </span>
-                          <p className="mt-1 text-muted-foreground text-xs leading-relaxed">
-                            {effect.description}
-                          </p>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              })}
+              {filteredEffects.map((effect) => (
+                <EffectPickerOption
+                  effect={effect}
+                  key={effect.type}
+                  onSelect={onSelect}
+                />
+              ))}
             </div>
           )}
         </div>

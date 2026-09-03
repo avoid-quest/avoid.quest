@@ -53,27 +53,27 @@ function normalizeSafeMessage(message: unknown): string {
 }
 
 const DEFAULT_SEVERITY_BY_CATEGORY: Record<ErrorCategory, ErrorSeverity> = {
-  validation: "warning",
   auth: "warning",
-  rate_limit: "warning",
-  network: "error",
   dependency: "error",
-  security: "critical",
   infrastructure: "critical",
+  network: "error",
   playback: "error",
+  rate_limit: "warning",
+  security: "critical",
   unknown: "error",
+  validation: "warning",
 };
 
 const DEFAULT_STATUS_BY_CATEGORY: Record<ErrorCategory, number> = {
-  validation: 400,
   auth: 401,
-  rate_limit: 429,
-  network: 502,
   dependency: 502,
-  security: 403,
   infrastructure: 500,
+  network: 502,
   playback: 500,
+  rate_limit: 429,
+  security: 403,
   unknown: 500,
+  validation: 400,
 };
 
 let currentApp = "unknown";
@@ -109,18 +109,18 @@ export class AppError extends Error {
 }
 
 export function ok<T>(data: T): AppResult<T> {
-  return { ok: true, data };
+  return { data, ok: true };
 }
 
 export function fail(error: AppError, requestId: string): AppResult<never> {
   return {
-    ok: false,
     error: {
       code: error.code,
       message: error.safeMessage,
       requestId,
       status: error.status,
     },
+    ok: false,
   };
 }
 
@@ -199,11 +199,11 @@ function makeBaseSentryOptions(config: {
   return {
     dsn: config.dsn,
     environment: config.environment,
+    maxBreadcrumbs: 0,
     release: config.release,
+    sampleRate: 1.0,
     sendDefaultPii: false,
     tracesSampleRate: 0,
-    sampleRate: 1.0,
-    maxBreadcrumbs: 0,
   } as const;
 }
 
@@ -240,13 +240,13 @@ export function initClientSentry(config: {
 
   Sentry.init({
     ...makeBaseSentryOptions(config),
-    tunnel: config.tunnel,
     beforeSend(event) {
       if (shouldDropKnownBrowserApiNoise(event)) {
         return null;
       }
       return event;
     },
+    tunnel: config.tunnel,
   });
 }
 
@@ -294,11 +294,11 @@ function asStringTagValue(value: string | number | boolean): string {
 
 function resolveCaptureError(error: unknown): AppError {
   return toAppError(error, {
-    code: "UNEXPECTED_ERROR",
-    safeMessage: DEFAULT_SAFE_MESSAGE,
     category: "unknown",
-    severity: "error",
+    code: "UNEXPECTED_ERROR",
     expected: false,
+    safeMessage: DEFAULT_SAFE_MESSAGE,
+    severity: "error",
     status: 500,
   });
 }
@@ -371,10 +371,10 @@ export function captureError(
     }
 
     scope.setContext("app_error", {
-      code: appError.code,
       category: appError.category,
-      severity: appError.severity,
+      code: appError.code,
       expected: appError.expected,
+      severity: appError.severity,
       status: appError.status,
     });
 
@@ -417,8 +417,8 @@ export function problemResponse(
   headers.set("x-request-id", requestId);
 
   return new Response(JSON.stringify(payload), {
-    status: payload.status,
     headers,
+    status: payload.status,
   });
 }
 
@@ -430,9 +430,9 @@ export function withRequestIdHeader(
   headers.set("x-request-id", requestId);
 
   return new Response(response.body, {
+    headers,
     status: response.status,
     statusText: response.statusText,
-    headers,
   });
 }
 
@@ -452,19 +452,19 @@ export async function runApiRoute(options: {
     return withRequestIdHeader(response, requestId);
   } catch (error) {
     const fallback = options.fallback ?? {
-      code: "API_ROUTE_ERROR",
-      safeMessage: DEFAULT_SAFE_MESSAGE,
       category: "infrastructure" as const,
-      severity: "critical" as const,
+      code: "API_ROUTE_ERROR",
       expected: false,
+      safeMessage: DEFAULT_SAFE_MESSAGE,
+      severity: "critical" as const,
       status: 500,
     };
     const appError = toAppError(error, fallback);
 
     captureError(appError, {
       operation: options.operation,
-      surface: "api-route",
       requestId,
+      surface: "api-route",
     });
 
     const headers =
@@ -472,7 +472,7 @@ export async function runApiRoute(options: {
         ? options.errorHeaders({ request: options.request, requestId })
         : options.errorHeaders;
 
-    return problemResponse(appError, { requestId, headers });
+    return problemResponse(appError, { headers, requestId });
   }
 }
 
@@ -491,8 +491,8 @@ export async function runServerFn<T>(options: {
     const appError = toAppError(error, options.fallback);
     captureError(appError, {
       operation: options.operation,
-      surface: "server-fn",
       requestId,
+      surface: "server-fn",
     });
     return fail(appError, requestId);
   }
@@ -591,47 +591,47 @@ export function capturePlaybackError(
   const streamHost = payload.streamHost ?? hostFromUrl(payload.streamUrl);
   const dedupeKey = buildPlaybackEventKey({
     ...payload,
-    streamHost,
     errorMessage: safeMessage,
+    streamHost,
   });
 
   const appError = new AppError({
-    code: payload.errorCode,
-    safeMessage,
     category: "playback",
-    severity: "error",
-    expected: false,
-    status: 500,
     cause: error,
-    tags: {
-      mode: payload.mode,
-      stream_host: streamHost,
-      retry_phase: payload.retryPhase ?? "none",
-      feature: "radio-playback",
-    },
+    code: payload.errorCode,
     context: {
-      radioName: payload.radioName,
       radioId: payload.radioId,
+      radioName: payload.radioName,
       streamHost,
+    },
+    expected: false,
+    safeMessage,
+    severity: "error",
+    status: 500,
+    tags: {
+      feature: "radio-playback",
+      mode: payload.mode,
+      retry_phase: payload.retryPhase ?? "none",
+      stream_host: streamHost,
     },
   });
 
   return captureError(appError, {
-    surface: "ui",
-    operation: "playback",
-    tags: {
-      mode: payload.mode,
-      stream_host: streamHost,
-      retry_phase: payload.retryPhase ?? "none",
-      feature: "radio-playback",
-    },
+    dedupeKey,
+    dedupeTtlMs: 30_000,
     fingerprint: [
       "radio-playback",
       payload.mode,
       payload.errorCode,
       streamHost,
     ],
-    dedupeKey,
-    dedupeTtlMs: 30_000,
+    operation: "playback",
+    surface: "ui",
+    tags: {
+      feature: "radio-playback",
+      mode: payload.mode,
+      retry_phase: payload.retryPhase ?? "none",
+      stream_host: streamHost,
+    },
   });
 }

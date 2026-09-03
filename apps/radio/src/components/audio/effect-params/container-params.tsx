@@ -1,3 +1,4 @@
+/** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 import { Button } from "@avoid.quest/ui/components/button";
 import { Input } from "@avoid.quest/ui/components/input";
 import { Toggle } from "@avoid.quest/ui/components/toggle";
@@ -7,7 +8,12 @@ import {
   PlusIcon,
   XIcon,
 } from "lucide-react";
-import { useState } from "react";
+import {
+  type ChangeEvent,
+  type Dispatch,
+  type SetStateAction,
+  useState,
+} from "react";
 import { MidiControlWrapper } from "@/components/audio/midi-control-wrapper";
 import {
   createDefaultEffectConfig,
@@ -70,7 +76,7 @@ export function resizeFrequencyCrossovers(
 ): number[] {
   const count = bandCount - 1;
   const result: number[] = [];
-  for (let index = 0; index < count; index++) {
+  for (let index = 0; index < count; index += 1) {
     const minimum =
       index === 0
         ? MIN_CROSSOVER_FREQUENCY
@@ -97,14 +103,14 @@ export function resizeFrequencyChains(
 ): EffectChainConfig[] {
   const existing = [...chains].sort((a, b) => a.order - b.order);
   const createBand = (): EffectChainConfig => ({
+    effects: [],
+    gain: 1,
     id: createBandId(),
+    muted: false,
     name: "",
     order: 0,
-    gain: 1,
     pan: 0,
-    muted: false,
     solo: false,
-    effects: [],
   });
   const low = existing[0] ?? createBand();
   const high =
@@ -170,13 +176,20 @@ function NestedEffect({
   const [expanded, setExpanded] = useState(false);
   const metadata = getEffectMetadata(effect.type);
   const schema = getEffectSchema(effect.type);
+  function toggleExpanded() {
+    setExpanded((value) => !value);
+  }
+
+  function updateEnabled(enabled: boolean) {
+    onUpdate({ enabled });
+  }
 
   return (
     <div className="rounded-md border bg-background/70">
       <div className="flex items-center gap-2 p-2">
         <Button
           className="h-7 flex-1 justify-start px-2"
-          onClick={() => setExpanded((value) => !value)}
+          onClick={toggleExpanded}
           size="sm"
           variant="ghost"
         >
@@ -188,7 +201,7 @@ function NestedEffect({
           {metadata?.name ?? effect.type}
         </Button>
         <Toggle
-          onPressedChange={(enabled) => onUpdate({ enabled })}
+          onPressedChange={updateEnabled}
           pressed={effect.enabled}
           size="sm"
         >
@@ -203,7 +216,7 @@ function NestedEffect({
           <XIcon className="size-3.5" />
         </Button>
       </div>
-      {expanded && schema && (
+      {expanded && schema ? (
         <div className="space-y-4 border-t p-3">
           {isEffectContainer(effect) ? (
             <ContainerParams
@@ -242,7 +255,277 @@ function NestedEffect({
             </>
           )}
         </div>
+      ) : null}
+    </div>
+  );
+}
+
+function CrossoverSlider({
+  effect,
+  frequency,
+  index,
+  onUpdate,
+}: {
+  effect: Extract<ContainerEffectConfig, { type: "frequencySplit" }>;
+  frequency: number;
+  index: number;
+  onUpdate: (config: Partial<EffectConfig>) => void;
+}) {
+  const previous = effect.crossoverFrequencies[index - 1];
+  const next = effect.crossoverFrequencies[index + 1];
+  function updateFrequency(value: number) {
+    const crossoverFrequencies = [...effect.crossoverFrequencies];
+    crossoverFrequencies[index] = value;
+    onUpdate({ crossoverFrequencies } as Partial<EffectConfig>);
+  }
+
+  return (
+    <ParamSlider
+      formatKey="frequency"
+      label={`Crossover ${index + 1}`}
+      max={next === undefined ? 20_000 : next - 20}
+      min={previous === undefined ? 20 : previous + 20}
+      onChange={updateFrequency}
+      step={1}
+      value={frequency}
+    />
+  );
+}
+
+function NestedEffectRow({
+  chain,
+  child,
+  deckId,
+  depth,
+  effectId,
+  midiTargetPrefix,
+  updateChain,
+}: {
+  chain: EffectChainConfig;
+  child: EffectConfig;
+  deckId?: "deck-a" | "deck-b";
+  depth: number;
+  effectId: string;
+  midiTargetPrefix?: string;
+  updateChain: (chainId: string, update: Partial<EffectChainConfig>) => void;
+}) {
+  function remove() {
+    updateChain(chain.id, {
+      effects: chain.effects
+        .filter((item) => item.id !== child.id)
+        .map((item, order) => ({ ...item, order })),
+    });
+  }
+
+  function update(config: Partial<EffectConfig>) {
+    updateChain(chain.id, {
+      effects: chain.effects.map((item) =>
+        item.id === child.id ? ({ ...item, ...config } as EffectConfig) : item
+      ),
+    });
+  }
+
+  return (
+    <NestedEffect
+      deckId={deckId}
+      depth={depth + 1}
+      effect={child}
+      midiTargetPrefix={nestedMidiTargetPrefix(
+        deckId,
+        effectId,
+        chain.id,
+        child.id,
+        midiTargetPrefix
       )}
+      onRemove={remove}
+      onUpdate={update}
+    />
+  );
+}
+
+function ChainEditor({
+  chain,
+  deckId,
+  depth,
+  effect,
+  effectId,
+  midiTargetPrefix,
+  pickerChainId,
+  setPickerChainId,
+  updateChain,
+  updateChains,
+}: {
+  chain: EffectChainConfig;
+  deckId?: "deck-a" | "deck-b";
+  depth: number;
+  effect: ContainerEffectConfig;
+  effectId: string;
+  midiTargetPrefix?: string;
+  pickerChainId: string | null;
+  setPickerChainId: Dispatch<SetStateAction<string | null>>;
+  updateChain: (chainId: string, update: Partial<EffectChainConfig>) => void;
+  updateChains: (chains: EffectChainConfig[]) => void;
+}) {
+  const targetPrefix = getChainMidiTargetPrefix(
+    deckId,
+    effectId,
+    chain.id,
+    midiTargetPrefix
+  );
+  function updateName(event: ChangeEvent<HTMLInputElement>) {
+    updateChain(chain.id, { name: event.target.value });
+  }
+
+  function removeChain() {
+    updateChains(
+      effect.chains
+        .filter((item) => item.id !== chain.id)
+        .map((item, order) => ({ ...item, order }))
+    );
+  }
+
+  function updateGain(gain: number) {
+    updateChain(chain.id, { gain });
+  }
+
+  function updatePan(pan: number) {
+    updateChain(chain.id, { pan });
+  }
+
+  function updateMuted(muted: boolean) {
+    updateChain(chain.id, { muted });
+  }
+
+  function updateSolo(solo: boolean) {
+    updateChain(chain.id, { solo });
+  }
+
+  function openPicker() {
+    setPickerChainId(chain.id);
+  }
+
+  function closePicker() {
+    setPickerChainId(null);
+  }
+
+  function addEffect(type: EffectConfig["type"]) {
+    if (!canAddNestedEffect(depth, type)) {
+      return;
+    }
+    const child = createDefaultEffectConfig(
+      type,
+      createId("effect"),
+      chain.effects.length
+    );
+    updateChain(chain.id, { effects: [...chain.effects, child] });
+    setPickerChainId(null);
+  }
+  const gainSlider = (
+    <ParamSlider
+      formatKey="linearGain"
+      label="Branch gain"
+      max={4}
+      min={0}
+      onChange={updateGain}
+      step={0.01}
+      value={chain.gain}
+    />
+  );
+  const panSlider = (
+    <ParamSlider
+      formatKey="pan"
+      label="Branch pan"
+      max={1}
+      min={-1}
+      onChange={updatePan}
+      step={0.01}
+      value={chain.pan}
+    />
+  );
+
+  return (
+    <div className="space-y-3 rounded-lg border p-3">
+      <div className="flex items-center gap-2">
+        <Input
+          aria-label="Chain name"
+          className="h-8 font-medium"
+          disabled={effect.type !== "fxComposite"}
+          onChange={updateName}
+          value={chain.name}
+        />
+        {effect.type === "fxComposite" && effect.chains.length > 1 ? (
+          <Button
+            className="size-8 p-0"
+            onClick={removeChain}
+            size="sm"
+            variant="ghost"
+          >
+            <XIcon className="size-4" />
+          </Button>
+        ) : null}
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        {targetPrefix ? (
+          <MidiControlWrapper targetId={`${targetPrefix}:gain`}>
+            {gainSlider}
+          </MidiControlWrapper>
+        ) : (
+          gainSlider
+        )}
+        {targetPrefix ? (
+          <MidiControlWrapper targetId={`${targetPrefix}:pan`}>
+            {panSlider}
+          </MidiControlWrapper>
+        ) : (
+          panSlider
+        )}
+      </div>
+
+      <div className="flex gap-2">
+        <Toggle onPressedChange={updateMuted} pressed={chain.muted} size="sm">
+          Mute
+        </Toggle>
+        <Toggle onPressedChange={updateSolo} pressed={chain.solo} size="sm">
+          Solo
+        </Toggle>
+      </div>
+
+      <div className="space-y-2">
+        {[...chain.effects]
+          .sort((a, b) => a.order - b.order)
+          .map((child) => (
+            <NestedEffectRow
+              chain={chain}
+              child={child}
+              deckId={deckId}
+              depth={depth}
+              effectId={effectId}
+              key={child.id}
+              midiTargetPrefix={midiTargetPrefix}
+              updateChain={updateChain}
+            />
+          ))}
+        {depth < MAX_EFFECT_TREE_DEPTH ? (
+          <Button
+            className="w-full"
+            onClick={openPicker}
+            size="sm"
+            variant="outline"
+          >
+            <PlusIcon className="mr-2 size-4" />
+            Add nested effect
+          </Button>
+        ) : null}
+      </div>
+
+      {pickerChainId === chain.id ? (
+        <EffectPicker
+          allowContainers={depth + 1 < MAX_EFFECT_TREE_DEPTH}
+          onClose={closePicker}
+          onSelect={addEffect}
+        />
+      ) : null}
     </div>
   );
 }
@@ -257,253 +540,91 @@ export function ContainerParams({
 }: ContainerParamsProps) {
   const [pickerChainId, setPickerChainId] = useState<string | null>(null);
 
-  const updateChains = (chains: EffectChainConfig[]) => {
+  function updateChains(chains: EffectChainConfig[]) {
     onUpdate({ chains } as Partial<EffectConfig>);
-  };
+  }
 
-  const updateChain = (chainId: string, update: Partial<EffectChainConfig>) => {
+  function updateChain(chainId: string, update: Partial<EffectChainConfig>) {
     updateChains(
       effect.chains.map((chain) =>
         chain.id === chainId ? { ...chain, ...update } : chain
       )
     );
-  };
+  }
 
-  const wrapChainSlider = (
-    chainId: string,
-    param: "gain" | "pan",
-    slider: React.ReactNode
-  ) => {
-    const prefix = getChainMidiTargetPrefix(
-      deckId,
-      effectId ?? effect.id,
-      chainId,
-      midiTargetPrefix
-    );
-    return prefix ? (
-      <MidiControlWrapper targetId={`${prefix}:${param}`}>
-        {slider}
-      </MidiControlWrapper>
-    ) : (
-      slider
-    );
-  };
-
-  const addEffect = (chain: EffectChainConfig, type: EffectConfig["type"]) => {
-    if (!canAddNestedEffect(depth, type)) {
-      return;
-    }
-    const child = createDefaultEffectConfig(
-      type,
-      createId("effect"),
-      chain.effects.length
-    );
-    updateChain(chain.id, { effects: [...chain.effects, child] });
-    setPickerChainId(null);
-  };
-
-  const addChain = () => {
+  function addChain() {
     const order = effect.chains.length;
     updateChains([
       ...effect.chains,
       {
+        effects: [],
+        gain: 1,
         id: createId("chain"),
+        muted: false,
         name: `Chain ${order + 1}`,
         order,
-        gain: 1,
         pan: 0,
-        muted: false,
         solo: false,
-        effects: [],
       },
     ]);
-  };
+  }
 
-  const setFrequencyBandCount = (bandCount: 2 | 3 | 4) => {
+  function updateFrequencyBandCount(value: string) {
     if (effect.type !== "frequencySplit") {
       return;
     }
+    const bandCount = Number.parseInt(value, 10) as 2 | 3 | 4;
     onUpdate({
-      frequencyBandCount: bandCount,
       chains: resizeFrequencyChains(effect.chains, bandCount),
       crossoverFrequencies: resizeFrequencyCrossovers(
         effect.crossoverFrequencies,
         bandCount
       ),
+      frequencyBandCount: bandCount,
     } as Partial<EffectConfig>);
-  };
+  }
 
   return (
     <div className="space-y-4">
       {effect.type === "frequencySplit" && (
         <ParamSelect
           label="Bands"
-          onChange={(value) =>
-            setFrequencyBandCount(Number.parseInt(value, 10) as 2 | 3 | 4)
-          }
+          onChange={updateFrequencyBandCount}
           options={[
-            { value: "2", label: "2 bands" },
-            { value: "3", label: "3 bands" },
-            { value: "4", label: "4 bands" },
+            { label: "2 bands", value: "2" },
+            { label: "3 bands", value: "3" },
+            { label: "4 bands", value: "4" },
           ]}
           value={String(effect.frequencyBandCount ?? effect.chains.length)}
         />
       )}
       {effect.type === "frequencySplit" &&
-        effect.crossoverFrequencies.map((frequency, index) => {
-          const previous = effect.crossoverFrequencies[index - 1];
-          const next = effect.crossoverFrequencies[index + 1];
-          return (
-            <ParamSlider
-              formatKey="frequency"
-              key={`crossover-${effect.chains[index + 1]?.id}`}
-              label={`Crossover ${index + 1}`}
-              max={next === undefined ? 20_000 : next - 20}
-              min={previous === undefined ? 20 : previous + 20}
-              onChange={(value) => {
-                const crossoverFrequencies = [...effect.crossoverFrequencies];
-                crossoverFrequencies[index] = value;
-                onUpdate({ crossoverFrequencies } as Partial<EffectConfig>);
-              }}
-              step={1}
-              value={frequency}
-            />
-          );
-        })}
+        effect.crossoverFrequencies.map((frequency, index) => (
+          <CrossoverSlider
+            effect={effect}
+            frequency={frequency}
+            index={index}
+            key={`crossover-${effect.chains[index + 1]?.id}`}
+            onUpdate={onUpdate}
+          />
+        ))}
 
       {[...effect.chains]
         .sort((a, b) => a.order - b.order)
         .map((chain) => (
-          <div className="space-y-3 rounded-lg border p-3" key={chain.id}>
-            <div className="flex items-center gap-2">
-              <Input
-                aria-label="Chain name"
-                className="h-8 font-medium"
-                disabled={effect.type !== "fxComposite"}
-                onChange={(event) =>
-                  updateChain(chain.id, { name: event.target.value })
-                }
-                value={chain.name}
-              />
-              {effect.type === "fxComposite" && effect.chains.length > 1 && (
-                <Button
-                  className="size-8 p-0"
-                  onClick={() =>
-                    updateChains(
-                      effect.chains
-                        .filter((item) => item.id !== chain.id)
-                        .map((item, order) => ({ ...item, order }))
-                    )
-                  }
-                  size="sm"
-                  variant="ghost"
-                >
-                  <XIcon className="size-4" />
-                </Button>
-              )}
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              {wrapChainSlider(
-                chain.id,
-                "gain",
-                <ParamSlider
-                  formatKey="linearGain"
-                  label="Branch gain"
-                  max={4}
-                  min={0}
-                  onChange={(gain) => updateChain(chain.id, { gain })}
-                  step={0.01}
-                  value={chain.gain}
-                />
-              )}
-              {wrapChainSlider(
-                chain.id,
-                "pan",
-                <ParamSlider
-                  formatKey="pan"
-                  label="Branch pan"
-                  max={1}
-                  min={-1}
-                  onChange={(pan) => updateChain(chain.id, { pan })}
-                  step={0.01}
-                  value={chain.pan}
-                />
-              )}
-            </div>
-
-            <div className="flex gap-2">
-              <Toggle
-                onPressedChange={(muted) => updateChain(chain.id, { muted })}
-                pressed={chain.muted}
-                size="sm"
-              >
-                Mute
-              </Toggle>
-              <Toggle
-                onPressedChange={(solo) => updateChain(chain.id, { solo })}
-                pressed={chain.solo}
-                size="sm"
-              >
-                Solo
-              </Toggle>
-            </div>
-
-            <div className="space-y-2">
-              {[...chain.effects]
-                .sort((a, b) => a.order - b.order)
-                .map((child) => (
-                  <NestedEffect
-                    deckId={deckId}
-                    depth={depth + 1}
-                    effect={child}
-                    key={child.id}
-                    midiTargetPrefix={nestedMidiTargetPrefix(
-                      deckId,
-                      effectId ?? effect.id,
-                      chain.id,
-                      child.id,
-                      midiTargetPrefix
-                    )}
-                    onRemove={() =>
-                      updateChain(chain.id, {
-                        effects: chain.effects
-                          .filter((item) => item.id !== child.id)
-                          .map((item, order) => ({ ...item, order })),
-                      })
-                    }
-                    onUpdate={(config) =>
-                      updateChain(chain.id, {
-                        effects: chain.effects.map((item) =>
-                          item.id === child.id
-                            ? ({ ...item, ...config } as EffectConfig)
-                            : item
-                        ),
-                      })
-                    }
-                  />
-                ))}
-              {depth < MAX_EFFECT_TREE_DEPTH && (
-                <Button
-                  className="w-full"
-                  onClick={() => setPickerChainId(chain.id)}
-                  size="sm"
-                  variant="outline"
-                >
-                  <PlusIcon className="mr-2 size-4" />
-                  Add nested effect
-                </Button>
-              )}
-            </div>
-
-            {pickerChainId === chain.id && (
-              <EffectPicker
-                allowContainers={depth + 1 < MAX_EFFECT_TREE_DEPTH}
-                onClose={() => setPickerChainId(null)}
-                onSelect={(type) => addEffect(chain, type)}
-              />
-            )}
-          </div>
+          <ChainEditor
+            chain={chain}
+            deckId={deckId}
+            depth={depth}
+            effect={effect}
+            effectId={effectId ?? effect.id}
+            key={chain.id}
+            midiTargetPrefix={midiTargetPrefix}
+            pickerChainId={pickerChainId}
+            setPickerChainId={setPickerChainId}
+            updateChain={updateChain}
+            updateChains={updateChains}
+          />
         ))}
 
       {effect.type === "fxComposite" && (

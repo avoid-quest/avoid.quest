@@ -112,6 +112,19 @@ function shouldPropagateFetchError(error: unknown): boolean {
   return isAbortError(error) || error instanceof RadioMetadataValidationError;
 }
 
+async function findSequential<T, TResult>(
+  items: readonly T[],
+  resolve: (item: T) => Promise<TResult | null>,
+  index = 0
+): Promise<TResult | null> {
+  const item = items[index];
+  if (item === undefined) {
+    return null;
+  }
+  const result = await resolve(item);
+  return result ?? findSequential(items, resolve, index + 1);
+}
+
 function asNumber(value: unknown): number | null {
   if (typeof value === "number" && Number.isFinite(value)) {
     return value;
@@ -148,21 +161,21 @@ function buildNowPlaying(input: {
   }
 
   return {
-    streamUrl: input.streamUrl,
-    resolvedUrl: input.resolvedUrl,
-    source: input.source,
-    title: parsed.title,
-    artist: parsed.artist,
-    rawTitle: parsed.rawTitle,
     album: input.album ?? null,
+    artist: parsed.artist,
     artworkUrl: input.artworkUrl ?? null,
-    itemUrl: input.itemUrl ?? null,
-    stationName: input.stationName ?? null,
-    stationDescription: input.stationDescription ?? null,
-    genre: input.genre ?? null,
     bitrate: input.bitrate ?? null,
-    sampledAt: input.sampledAt,
     expiresAt: input.expiresAt,
+    genre: input.genre ?? null,
+    itemUrl: input.itemUrl ?? null,
+    rawTitle: parsed.rawTitle,
+    resolvedUrl: input.resolvedUrl,
+    sampledAt: input.sampledAt,
+    source: input.source,
+    stationDescription: input.stationDescription ?? null,
+    stationName: input.stationName ?? null,
+    streamUrl: input.streamUrl,
+    title: parsed.title,
   };
 }
 
@@ -210,21 +223,21 @@ function normalizeAirtimeLiveInfo(input: {
   }
 
   return buildNowPlaying({
-    streamUrl: input.streamUrl,
-    resolvedUrl: input.resolvedUrl,
-    source: "airtime-live-info",
-    rawTitle,
     album: asString(metadata?.album_title),
     artworkUrl: asString(metadata?.artwork_url) ?? asString(show?.image_path),
+    expiresAt: input.expiresAt,
+    genre: asString(metadata?.genre),
     itemUrl: getAirtimeItemUrl({
-      streamUrl: input.streamUrl,
       metadata,
       show,
+      streamUrl: input.streamUrl,
     }),
-    stationDescription: asString(show?.description),
-    genre: asString(metadata?.genre),
+    rawTitle,
+    resolvedUrl: input.resolvedUrl,
     sampledAt: input.sampledAt,
-    expiresAt: input.expiresAt,
+    source: "airtime-live-info",
+    stationDescription: asString(show?.description),
+    streamUrl: input.streamUrl,
   });
 }
 
@@ -283,7 +296,7 @@ async function fetchText(
   }
   try {
     const text = await response.text();
-    return text.trim() ? { text, response } : null;
+    return text.trim() ? { response, text } : null;
   } catch {
     return null;
   }
@@ -359,19 +372,19 @@ function normalizeAzuraCastNowPlaying(input: {
   }
 
   return buildNowPlaying({
-    streamUrl: input.streamUrl,
-    resolvedUrl: input.resolvedUrl,
-    source: "azuracast-now-playing",
-    rawTitle,
     album: asString(song?.album),
     artworkUrl: asString(song?.art),
-    stationName: asString(station?.station?.name),
+    expiresAt: input.expiresAt,
+    genre: asString(song?.genre),
+    rawTitle,
+    resolvedUrl: input.resolvedUrl,
+    sampledAt: input.sampledAt,
+    source: "azuracast-now-playing",
     stationDescription:
       asString(station?.station?.description) ??
       asString(station?.live?.streamer_name),
-    genre: asString(song?.genre),
-    sampledAt: input.sampledAt,
-    expiresAt: input.expiresAt,
+    stationName: asString(station?.station?.name),
+    streamUrl: input.streamUrl,
   });
 }
 
@@ -382,7 +395,7 @@ export async function tryAzuraCastNowPlaying(
   const urls = endpoint
     ? [endpoint]
     : getAzuraCastCandidateUrls(input.streamUrl);
-  for (const url of [...new Set(urls)]) {
+  return await findSequential([...new Set(urls)], async (url) => {
     let result: Awaited<ReturnType<typeof fetchObjectJson>>;
     try {
       result = await fetchObjectJson(input.fetchImpl, url);
@@ -390,27 +403,22 @@ export async function tryAzuraCastNowPlaying(
       if (shouldPropagateFetchError(error)) {
         throw error;
       }
-      continue;
+      return null;
     }
-    if (!result) {
-      continue;
-    }
-    const normalized = normalizeAzuraCastNowPlaying({
-      data: result.data,
-      streamUrl: input.streamUrl,
-      resolvedUrl: result.response.url || url,
-      sampledAt: input.sampledAt,
-      expiresAt: input.expiresAt,
-    });
-    if (normalized) {
-      return normalized;
-    }
-  }
-  return null;
+    return result
+      ? normalizeAzuraCastNowPlaying({
+          data: result.data,
+          expiresAt: input.expiresAt,
+          resolvedUrl: result.response.url || url,
+          sampledAt: input.sampledAt,
+          streamUrl: input.streamUrl,
+        })
+      : null;
+  });
 }
 
 function getShoutcastCandidateUrls(streamUrl: string, sid = "1"): string[] {
-  const origin = new URL(streamUrl).origin;
+  const { origin } = new URL(streamUrl);
   return [
     new URL(`/stats?sid=${sid}&json=1`, origin).toString(),
     new URL(`/currentsong?sid=${sid}`, origin).toString(),
@@ -434,15 +442,15 @@ function normalizeShoutcastJson(input: {
     return null;
   }
   return buildNowPlaying({
-    streamUrl: input.streamUrl,
-    resolvedUrl: input.resolvedUrl,
-    source: "shoutcast-status",
-    rawTitle,
-    stationName: asString(data.servertitle),
-    genre: asString(data.servergenre),
     bitrate: asNumber(data.bitrate),
-    sampledAt: input.sampledAt,
     expiresAt: input.expiresAt,
+    genre: asString(data.servergenre),
+    rawTitle,
+    resolvedUrl: input.resolvedUrl,
+    sampledAt: input.sampledAt,
+    source: "shoutcast-status",
+    stationName: asString(data.servertitle),
+    streamUrl: input.streamUrl,
   });
 }
 
@@ -479,12 +487,12 @@ function normalizeShoutcastText(input: {
     return null;
   }
   return buildNowPlaying({
-    streamUrl: input.streamUrl,
-    resolvedUrl: input.resolvedUrl,
-    source: "shoutcast-status",
-    rawTitle,
-    sampledAt: input.sampledAt,
     expiresAt: input.expiresAt,
+    rawTitle,
+    resolvedUrl: input.resolvedUrl,
+    sampledAt: input.sampledAt,
+    source: "shoutcast-status",
+    streamUrl: input.streamUrl,
   });
 }
 
@@ -497,10 +505,10 @@ async function tryShoutcastUrl(
     return result
       ? normalizeShoutcastJson({
           data: result.data,
-          streamUrl: input.streamUrl,
+          expiresAt: input.expiresAt,
           resolvedUrl: result.response.url || url,
           sampledAt: input.sampledAt,
-          expiresAt: input.expiresAt,
+          streamUrl: input.streamUrl,
         })
       : null;
   }
@@ -508,12 +516,12 @@ async function tryShoutcastUrl(
   const result = await fetchText(input.fetchImpl, url);
   return result
     ? normalizeShoutcastText({
-        text: result.text,
-        streamUrl: input.streamUrl,
-        resolvedUrl: result.response.url || url,
-        isSevenHtml: url.includes("/7.html"),
-        sampledAt: input.sampledAt,
         expiresAt: input.expiresAt,
+        isSevenHtml: url.includes("/7.html"),
+        resolvedUrl: result.response.url || url,
+        sampledAt: input.sampledAt,
+        streamUrl: input.streamUrl,
+        text: result.text,
       })
     : null;
 }
@@ -525,27 +533,23 @@ export async function tryShoutcastStatus(
   const urls = options.endpoint
     ? [options.endpoint]
     : getShoutcastCandidateUrls(input.streamUrl, options.sid);
-  for (const url of [...new Set(urls)]) {
+  return await findSequential([...new Set(urls)], async (url) => {
     try {
-      const normalized = await tryShoutcastUrl(input, url);
-      if (normalized) {
-        return normalized;
-      }
+      return await tryShoutcastUrl(input, url);
     } catch (error) {
       if (shouldPropagateFetchError(error)) {
         throw error;
       }
-      // Continue trying lower-fidelity legacy endpoints.
+      return null;
     }
-  }
-  return null;
+  });
 }
 
 export async function tryAirtimeLiveInfo(
   input: ExternalMetadataProviderInput,
   urls = getAirtimeCandidateUrls(input.streamUrl)
 ): Promise<RadioNowPlaying | null> {
-  for (const url of [...new Set(urls)]) {
+  return await findSequential([...new Set(urls)], async (url) => {
     let result: Awaited<ReturnType<typeof fetchObjectJson>>;
     try {
       result = await fetchObjectJson(input.fetchImpl, url);
@@ -553,23 +557,18 @@ export async function tryAirtimeLiveInfo(
       if (shouldPropagateFetchError(error)) {
         throw error;
       }
-      continue;
+      return null;
     }
-    if (!result) {
-      continue;
-    }
-    const normalized = normalizeAirtimeLiveInfo({
-      data: result.data as AirtimeLiveInfo,
-      streamUrl: input.streamUrl,
-      resolvedUrl: result.response.url || url,
-      sampledAt: input.sampledAt,
-      expiresAt: input.expiresAt,
-    });
-    if (normalized) {
-      return normalized;
-    }
-  }
-  return null;
+    return result
+      ? normalizeAirtimeLiveInfo({
+          data: result.data as AirtimeLiveInfo,
+          expiresAt: input.expiresAt,
+          resolvedUrl: result.response.url || url,
+          sampledAt: input.sampledAt,
+          streamUrl: input.streamUrl,
+        })
+      : null;
+  });
 }
 
 export async function tryNtsLiveApi(
@@ -594,7 +593,7 @@ export async function tryNtsLiveApi(
   const channelName =
     requestedChannel ??
     (new URL(input.streamUrl).pathname === "/stream2" ? "2" : "1");
-  const results = (result.data as { results?: unknown }).results;
+  const { results } = result.data as { results?: unknown };
   const channel = Array.isArray(results)
     ? results.find(
         (item) =>
@@ -634,16 +633,16 @@ export async function tryNtsLiveApi(
   );
 
   return buildNowPlaying({
-    streamUrl: input.streamUrl,
-    resolvedUrl: result.response.url || "https://www.nts.live/api/v2/live",
-    source: "nts-live-api",
-    rawTitle: title,
     artworkUrl: asString(now?.embeds?.details?.media?.picture_medium),
-    itemUrl,
-    stationDescription: asString(now?.embeds?.details?.description),
-    genre: asString(now?.embeds?.details?.genres?.[0]?.value),
-    sampledAt: input.sampledAt,
     expiresAt: input.expiresAt,
+    genre: asString(now?.embeds?.details?.genres?.[0]?.value),
+    itemUrl,
+    rawTitle: title,
+    resolvedUrl: result.response.url || "https://www.nts.live/api/v2/live",
+    sampledAt: input.sampledAt,
+    source: "nts-live-api",
+    stationDescription: asString(now?.embeds?.details?.description),
+    streamUrl: input.streamUrl,
   });
 }
 
@@ -669,14 +668,14 @@ export async function tryRadioBlackoutApi(
     return null;
   }
   return buildNowPlaying({
-    streamUrl: input.streamUrl,
-    resolvedUrl: result.response.url || endpoint,
-    source: "radio-blackout-api",
-    rawTitle: title,
     artworkUrl: asString(data.featured_media),
-    itemUrl: asPublicUrl(data.link),
-    stationDescription: asString(data.excerpt),
-    sampledAt: input.sampledAt,
     expiresAt: input.expiresAt,
+    itemUrl: asPublicUrl(data.link),
+    rawTitle: title,
+    resolvedUrl: result.response.url || endpoint,
+    sampledAt: input.sampledAt,
+    source: "radio-blackout-api",
+    stationDescription: asString(data.excerpt),
+    streamUrl: input.streamUrl,
   });
 }

@@ -56,46 +56,46 @@ const VENDOR_CHUNK_GROUPS: Array<{
   match: (normalizedId: string) => boolean;
 }> = [
   {
-    name: "vendor-hls",
     match: (id) => id.includes("/node_modules/hls.js/"),
+    name: "vendor-hls",
   },
   {
-    name: "vendor-react",
     match: (id) =>
       id.includes("/node_modules/react/") ||
       id.includes("/node_modules/react-dom/") ||
       id.includes("/node_modules/scheduler/"),
+    name: "vendor-react",
   },
   {
-    // React DB is client-only here. Keep it out of the TanStack Start chunk so
-    // attaching the Worker entry does not evaluate its browser-side modules.
-    name: "vendor-tanstack-db",
     match: (id) =>
       id.includes("/node_modules/@tanstack/db/") ||
       id.includes("/node_modules/@tanstack/react-db/"),
+    // React DB is client-only here. Keep it out of the TanStack Start chunk so
+    // attaching the Worker entry does not evaluate its browser-side modules.
+    name: "vendor-tanstack-db",
   },
   {
-    name: "vendor-tanstack",
     match: (id) => id.includes("/node_modules/@tanstack/"),
+    name: "vendor-tanstack",
   },
   {
+    match: (id) =>
+      id.includes("/node_modules/@opendaw/studio-") ||
+      id.includes("/node_modules/@opendaw/nam-"),
     // These browser-only packages define AudioWorkletNode subclasses at
     // module scope. Keep them out of the shared audio chunk so the dynamic
     // runtime import remains an actual SSR boundary.
     name: "vendor-opendaw-studio",
-    match: (id) =>
-      id.includes("/node_modules/@opendaw/studio-") ||
-      id.includes("/node_modules/@opendaw/nam-"),
   },
   {
-    name: "vendor-audio",
     match: (id) => id.includes("/node_modules/@opendaw/"),
+    name: "vendor-audio",
   },
   {
-    name: "vendor-ui",
     match: (id) =>
       id.includes("/node_modules/@dnd-kit/") ||
       id.includes("/node_modules/lucide-react/"),
+    name: "vendor-ui",
   },
 ];
 
@@ -121,32 +121,25 @@ function audioWorkletPlugin(): Plugin {
   let resolvedOutDir = path.resolve(process.cwd(), "dist");
 
   return {
-    name: "audio-worklet-plugin",
-
-    configResolved(config) {
-      resolvedRootDir = config.root;
-      resolvedOutDir = path.resolve(config.root, config.build.outDir);
-    },
-
     async buildStart() {
       // Build worklet to a temporary directory
       await build({
-        configFile: false,
-        publicDir: false,
         build: {
+          copyPublicDir: false,
+          emptyOutDir: true,
           lib: {
             entry: "src/lib/audio/dsp/worklet-entry.ts",
+            fileName: () => WORKLET_FILENAME,
             formats: ["iife"],
             name: "DSPWorklet",
-            fileName: () => WORKLET_FILENAME,
           },
-          outDir: path.resolve(resolvedRootDir, WORKLET_OUT_DIR),
-          emptyOutDir: true,
-          copyPublicDir: false,
           minify: "esbuild",
+          outDir: path.resolve(resolvedRootDir, WORKLET_OUT_DIR),
           sourcemap: false,
         },
+        configFile: false,
         logLevel: "warn",
+        publicDir: false,
       });
 
       // Read the built worklet for serving in dev mode
@@ -160,6 +153,11 @@ function audioWorkletPlugin(): Plugin {
       }
     },
 
+    configResolved(config) {
+      resolvedRootDir = config.root;
+      resolvedOutDir = path.resolve(config.root, config.build.outDir);
+    },
+
     // Serve the worklet during development
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
@@ -171,6 +169,7 @@ function audioWorkletPlugin(): Plugin {
         next();
       });
     },
+    name: "audio-worklet-plugin",
 
     // Copy worklet to dist during production build
     writeBundle(options) {
@@ -214,9 +213,10 @@ function collectFiles(root: string, relative = ""): string[] {
 const SOURCE_MAP_DIRECTIVE = /\n\/\/# sourceMappingURL=[^\n]+\s*$/;
 
 function readOpenDawAsset(source: string): Buffer | string {
-  return source.endsWith(".js")
-    ? readFileSync(source, "utf8").replace(SOURCE_MAP_DIRECTIVE, "")
-    : readFileSync(source);
+  if (!source.endsWith(".js")) {
+    return readFileSync(source);
+  }
+  return readFileSync(source, "utf8").replace(SOURCE_MAP_DIRECTIVE, "");
 }
 
 /**
@@ -256,22 +256,8 @@ function openDawAssetsPlugin(): Plugin {
   let resolvedOutDir = path.resolve(process.cwd(), "dist");
 
   return {
-    name: "opendaw-assets",
-    enforce: "pre",
     configResolved(config) {
       resolvedOutDir = path.resolve(config.root, config.build.outDir);
-    },
-    transform(code, id) {
-      if (
-        id
-          .replaceAll(path.sep, "/")
-          .endsWith("/@opendaw/studio-core/dist/EngineWorklet.js")
-      ) {
-        return {
-          code: rewriteOpenDawEngineWorklet(code),
-          map: null,
-        };
-      }
     },
     configureServer(server) {
       server.middlewares.use((request, response, next) => {
@@ -296,6 +282,20 @@ function openDawAssetsPlugin(): Plugin {
         );
         response.end(readOpenDawAsset(source));
       });
+    },
+    enforce: "pre",
+    name: "opendaw-assets",
+    transform(code, id) {
+      if (
+        id
+          .replaceAll(path.sep, "/")
+          .endsWith("/@opendaw/studio-core/dist/EngineWorklet.js")
+      ) {
+        return {
+          code: rewriteOpenDawEngineWorklet(code),
+          map: null,
+        };
+      }
     },
     writeBundle(options) {
       const targetDirs = new Set<string>([resolvedOutDir]);
@@ -323,6 +323,20 @@ function openDawAssetsPlugin(): Plugin {
 }
 
 export default defineConfig({
+  build: {
+    minify: "esbuild",
+    rollupOptions: {
+      output: {
+        manualChunks: manualVendorChunks,
+      },
+    },
+    // "hidden" generates source maps for Sentry upload but omits
+    // sourceMappingURL from production bundles (unlike true/inline).
+    sourcemap: "hidden",
+  },
+  define: {
+    __APP_VERSION__: JSON.stringify(APP_VERSION),
+  },
   plugins: [
     audioWorkletPlugin(),
     openDawAssetsPlugin(),
@@ -335,33 +349,19 @@ export default defineConfig({
     babel({ presets: [reactCompilerPreset()] }),
     ...(sentryBuildEnabled
       ? sentryTanstackStart({
+          authToken: sentryAuthToken,
+          autoInstrumentMiddleware: false,
           org: sentryOrg,
           project: sentryProject,
-          authToken: sentryAuthToken,
           release: { name: sentryReleaseName },
-          telemetry: false,
-          autoInstrumentMiddleware: false,
           sourcemaps: {
             filesToDeleteAfterUpload: ["./dist/**/*.map"],
           },
+          telemetry: false,
         })
       : []),
   ],
-  define: {
-    __APP_VERSION__: JSON.stringify(APP_VERSION),
-  },
   resolve: {
     tsconfigPaths: true,
-  },
-  build: {
-    minify: "esbuild",
-    // "hidden" generates source maps for Sentry upload but omits
-    // sourceMappingURL from production bundles (unlike true/inline).
-    sourcemap: "hidden",
-    rollupOptions: {
-      output: {
-        manualChunks: manualVendorChunks,
-      },
-    },
   },
 });

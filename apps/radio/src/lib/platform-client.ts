@@ -187,6 +187,7 @@ export async function selectBandcampRelayBaseUrl(
 
   try {
     for (const [index, relayBaseUrl] of BANDCAMP_RELAY_BASE_URLS.entries()) {
+      // biome-ignore lint/performance/noAwaitInLoops: preserve relay priority while probes run concurrently
       const ready = await probes[index];
       parentSignal?.throwIfAborted();
       if (ready) {
@@ -402,15 +403,15 @@ export function prepareRadioGardenSearchCandidate(
     candidate.url,
     {
       metadata: {
-        platform: "radiogarden",
-        itemType: "channel",
-        url: candidate.url,
         channelId: candidate.channelId,
-        name: candidate.title,
-        subtitle: candidate.subtitle,
-        website: candidate.website,
-        placeTitle: candidate.placeTitle,
         countryTitle: candidate.countryTitle,
+        itemType: "channel",
+        name: candidate.title,
+        placeTitle: candidate.placeTitle,
+        platform: "radiogarden",
+        subtitle: candidate.subtitle,
+        url: candidate.url,
+        website: candidate.website,
       },
       streamUrl: candidate.streamUrl,
     },
@@ -429,10 +430,10 @@ export async function resolveRadioGardenStream(
   }
   return preparePlatformItem(canonicalUrl, {
     metadata: {
-      platform: "radiogarden",
-      itemType: "channel",
-      url: canonicalUrl,
       channelId,
+      itemType: "channel",
+      platform: "radiogarden",
+      url: canonicalUrl,
     },
     streamUrl: result.data.streamUrl,
   });

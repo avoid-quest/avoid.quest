@@ -51,7 +51,7 @@ export class WorkletManager {
   private readonly activeSources = new Map<string, ActiveSource>();
   private readonly createdSources = new Set<string>();
   private initPromise: Promise<void> | null = null;
-  private initFailed = false;
+  private initFailed: boolean;
   private readonly processorUrl: string;
 
   /** Queue for messages sent before worklet is ready */
@@ -72,6 +72,7 @@ export class WorkletManager {
   constructor(context: AudioContext, processorUrl: string) {
     this.context = context;
     this.processorUrl = processorUrl;
+    this.initFailed = false;
   }
 
   /**
@@ -165,11 +166,11 @@ export class WorkletManager {
     }
     this.createdSources.add(sourceId);
     this.postMessage({
-      type: MessageType.CREATE_SOURCE,
       payload: {
         id: sourceId,
         options: { type: "stream" },
       },
+      type: MessageType.CREATE_SOURCE,
     });
   }
 
@@ -184,8 +185,8 @@ export class WorkletManager {
     }
     this.createdSources.delete(sourceId);
     this.postMessage({
-      type: MessageType.REMOVE_SOURCE,
       payload: { sourceId },
+      type: MessageType.REMOVE_SOURCE,
     });
   }
 
@@ -197,18 +198,18 @@ export class WorkletManager {
     options: { when?: number; offset?: number; duration?: number } = {}
   ): void {
     this.postMessage({
-      type: MessageType.START_SOURCE,
       payload: {
+        duration: options.duration,
+        offset: options.offset,
         sourceId,
         when: options.when,
-        offset: options.offset,
-        duration: options.duration,
       },
+      type: MessageType.START_SOURCE,
     });
 
     this.activeSources.set(sourceId, {
-      playing: true,
       offset: options.offset ?? 0,
+      playing: true,
     });
   }
 
@@ -217,8 +218,8 @@ export class WorkletManager {
    */
   stopSource(sourceId: string): void {
     this.postMessage({
-      type: MessageType.STOP_SOURCE,
       payload: { sourceId },
+      type: MessageType.STOP_SOURCE,
     });
 
     this.activeSources.delete(sourceId);
@@ -229,8 +230,8 @@ export class WorkletManager {
    */
   pauseSource(sourceId: string): void {
     this.postMessage({
-      type: MessageType.PAUSE_SOURCE,
       payload: { sourceId },
+      type: MessageType.PAUSE_SOURCE,
     });
 
     const state = this.activeSources.get(sourceId);
@@ -244,8 +245,8 @@ export class WorkletManager {
    */
   resumeSource(sourceId: string): void {
     this.postMessage({
-      type: MessageType.RESUME_SOURCE,
       payload: { sourceId },
+      type: MessageType.RESUME_SOURCE,
     });
 
     const state = this.activeSources.get(sourceId);
@@ -259,8 +260,8 @@ export class WorkletManager {
    */
   seekSource(sourceId: string, position: number): void {
     this.postMessage({
+      payload: { position, sourceId },
       type: MessageType.SEEK_SOURCE,
-      payload: { sourceId, position },
     });
 
     const state = this.activeSources.get(sourceId);
@@ -274,8 +275,8 @@ export class WorkletManager {
    */
   setSourceVolume(sourceId: string, volume: number): void {
     this.postMessage({
-      type: MessageType.SET_SOURCE_VOLUME,
       payload: { sourceId, volume },
+      type: MessageType.SET_SOURCE_VOLUME,
     });
   }
 
@@ -284,8 +285,8 @@ export class WorkletManager {
    */
   setSourcePan(sourceId: string, pan: number): void {
     this.postMessage({
+      payload: { pan, sourceId },
       type: MessageType.SET_SOURCE_PAN,
-      payload: { sourceId, pan },
     });
   }
 
@@ -294,15 +295,15 @@ export class WorkletManager {
    */
   setEffectsDryWet(sourceId: string, dryWet: number): void {
     this.postMessage({
+      payload: { dryWet, sourceId },
       type: MessageType.SET_EFFECTS_DRY_WET,
-      payload: { sourceId, dryWet },
     });
   }
 
   setTempo(sourceId: string, bpm: number): void {
     this.postMessage({
+      payload: { bpm, sourceId },
       type: MessageType.SET_TEMPO,
-      payload: { sourceId, bpm },
     });
   }
 
@@ -321,8 +322,8 @@ export class WorkletManager {
     order: number
   ): void {
     this.postMessage({
+      payload: { config, effectId, order, sourceId, type },
       type: MessageType.ADD_EFFECT,
-      payload: { sourceId, effectId, type, config, order },
     });
   }
 
@@ -331,8 +332,8 @@ export class WorkletManager {
    */
   removeEffect(sourceId: string, effectId: string): void {
     this.postMessage({
+      payload: { effectId, sourceId },
       type: MessageType.REMOVE_EFFECT,
-      payload: { sourceId, effectId },
     });
   }
 
@@ -345,8 +346,8 @@ export class WorkletManager {
     config: Partial<WorkletEffectConfig>
   ): void {
     this.postMessage({
+      payload: { config, effectId, sourceId },
       type: MessageType.UPDATE_EFFECT,
-      payload: { sourceId, effectId, config },
     });
   }
 
@@ -355,8 +356,8 @@ export class WorkletManager {
    */
   reorderEffects(sourceId: string, effectIds: string[]): void {
     this.postMessage({
+      payload: { effectIds, sourceId },
       type: MessageType.REORDER_EFFECTS,
-      payload: { sourceId, effectIds },
     });
   }
 
@@ -376,8 +377,8 @@ export class WorkletManager {
     gain: number
   ): void {
     this.postMessage({
+      payload: { filterId, frequency, gain, Q, sourceId, type },
       type: MessageType.ADD_FILTER,
-      payload: { sourceId, filterId, type, frequency, Q, gain },
     });
   }
 
@@ -386,8 +387,8 @@ export class WorkletManager {
    */
   removeFilter(sourceId: string, filterId: string): void {
     this.postMessage({
+      payload: { filterId, sourceId },
       type: MessageType.REMOVE_FILTER,
-      payload: { sourceId, filterId },
     });
   }
 
@@ -401,8 +402,8 @@ export class WorkletManager {
     value: number | string
   ): void {
     this.postMessage({
+      payload: { filterId, param, sourceId, value },
       type: MessageType.SET_FILTER_PARAM,
-      payload: { sourceId, filterId, param, value },
     });
   }
 
@@ -446,11 +447,11 @@ export class WorkletManager {
    */
   setPan(pan: number): void {
     this.postMessage({
-      type: MessageType.SET_PARAM,
       payload: {
         target: "channelStrip.pan",
         value: pan,
       },
+      type: MessageType.SET_PARAM,
     });
   }
 
@@ -624,18 +625,15 @@ export class WorkletManager {
    */
   private handleWorkletMessage(message: WorkletPortMessage): void {
     switch (message.type) {
-      case MessageType.SOURCE_ENDED:
-        this.eventEmitter.emit(
-          "sourceEnded",
-          message.payload as SourceEndedPayload
-        );
+      case MessageType.SOURCE_ENDED: {
+        const payload = message.payload as SourceEndedPayload;
+        this.eventEmitter.emit("sourceEnded", payload);
         // Clean up tracking
-        if ((message.payload as SourceEndedPayload)?.sourceId) {
-          this.activeSources.delete(
-            (message.payload as SourceEndedPayload).sourceId
-          );
+        if (payload.sourceId) {
+          this.activeSources.delete(payload.sourceId);
         }
         break;
+      }
 
       case MessageType.SOURCE_ERROR:
         this.eventEmitter.emit(

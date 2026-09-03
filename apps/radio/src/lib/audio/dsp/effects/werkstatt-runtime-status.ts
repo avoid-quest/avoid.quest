@@ -5,8 +5,8 @@ export type WerkstattRuntimeStatus =
   | { state: "error"; message: string };
 
 const IDLE_STATUS: WerkstattRuntimeStatus = {
-  state: "idle",
   message: "Play a deck to start the openDAW runtime.",
+  state: "idle",
 };
 
 const listeners = new Map<string, Set<() => void>>();

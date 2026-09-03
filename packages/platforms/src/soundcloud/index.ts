@@ -110,9 +110,9 @@ type ShortLinkRedirectFailure =
   ValidatedRedirectFailure<ShortLinkRedirectValidationFailure>;
 
 const SHORT_LINK_REDIRECT_ERROR_MESSAGES = {
-  "invalid-url": "Invalid SoundCloud short link redirect target",
-  "invalid-protocol": "Unsupported SoundCloud short link redirect protocol",
   "invalid-domain": "Non-SoundCloud short link redirect target",
+  "invalid-protocol": "Unsupported SoundCloud short link redirect protocol",
+  "invalid-url": "Invalid SoundCloud short link redirect target",
   "missing-location": "SoundCloud short link redirect missing Location header",
   "too-many-redirects": "Too many SoundCloud short link redirects",
 } as const satisfies Record<ShortLinkRedirectFailure, string>;
@@ -144,8 +144,8 @@ function createShortLinkRedirectError(reason: ShortLinkRedirectFailure): Error {
 
 function createErrorResponse(message: string): SoundCloudItemError {
   return {
-    success: false,
     error: message,
+    success: false,
   };
 }
 
@@ -363,22 +363,22 @@ async function processTrack(
   }
 
   const metadata: SoundCloudMetadata = {
-    platform: "soundcloud",
-    itemType: "track",
-    url,
-    name: data.title,
     artist: data.user?.username,
     artwork:
       data.artwork_url?.replace("-large", "-t500x500") || data.artwork_url,
     duration: Math.floor((data.duration ?? 0) / 1000),
+    itemType: "track",
+    name: data.title,
+    platform: "soundcloud",
     streamUrl,
+    url,
   };
 
   return {
-    success: true,
     format: getTranscodingStreamFormat(transcoding),
     metadata,
     streamUrl,
+    success: true,
   };
 }
 
@@ -425,10 +425,10 @@ async function processPlaylist(
       }
 
       return {
+        duration: Math.floor((fullTrack.duration ?? 0) / 1000),
         format: getTranscodingStreamFormat(transcoding),
         name: fullTrack.title ?? "",
         streamUrl,
-        duration: Math.floor((fullTrack.duration ?? 0) / 1000),
       };
     })
   );
@@ -449,29 +449,29 @@ async function processPlaylist(
   }
 
   // Safe: we checked validTracks.length > 0 above
-  const firstTrack = validTracks[0];
+  const [firstTrack] = validTracks;
   if (!firstTrack) {
     return createErrorResponse("No playable tracks found in playlist");
   }
   const metadata: SoundCloudMetadata = {
-    platform: "soundcloud",
-    itemType: "playlist",
-    url,
-    name: data.title,
     artist: data.user?.username,
     artwork:
       data.artwork_url?.replace("-large", "-t500x500") || data.artwork_url,
     duration: Math.floor((data.duration ?? 0) / 1000),
+    itemType: "playlist",
+    name: data.title,
+    platform: "soundcloud",
+    streamUrl: firstTrack.streamUrl,
     trackCount: data.track_count,
     tracks: validTracks,
-    streamUrl: firstTrack.streamUrl,
+    url,
   };
 
   return {
-    success: true,
     format: firstTrack.format,
     metadata,
     streamUrl: firstTrack.streamUrl,
+    success: true,
   };
 }
 
@@ -533,10 +533,10 @@ async function processUser(
       }
 
       return {
+        duration: Math.floor((track.duration ?? 0) / 1000),
         format: getTranscodingStreamFormat(transcoding),
         name: track.title ?? "",
         streamUrl,
-        duration: Math.floor((track.duration ?? 0) / 1000),
       };
     })
   );
@@ -556,7 +556,7 @@ async function processUser(
     return createErrorResponse("No playable tracks found for this user");
   }
 
-  const firstTrack = validTracks[0];
+  const [firstTrack] = validTracks;
   if (!firstTrack) {
     return createErrorResponse("No playable tracks found for this user");
   }
@@ -565,21 +565,21 @@ async function processUser(
   const artwork = data.avatar_url?.replace("-large", "-t500x500");
 
   const metadata: SoundCloudMetadata = {
-    platform: "soundcloud",
-    itemType: "user",
-    url,
-    name: data.full_name || data.username,
     artist: data.username,
     artwork,
+    itemType: "user",
+    name: data.full_name || data.username,
+    platform: "soundcloud",
+    streamUrl: firstTrack.streamUrl,
     trackCount: data.track_count,
     tracks: validTracks,
-    streamUrl: firstTrack.streamUrl,
+    url,
   };
 
   return {
-    success: true,
     format: firstTrack.format,
     metadata,
     streamUrl: firstTrack.streamUrl,
+    success: true,
   };
 }

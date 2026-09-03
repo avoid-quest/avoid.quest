@@ -51,7 +51,7 @@ function createAudioNodes(context: AudioContext, initialGain = 1): AudioNodes {
   filter.type = "highpass";
   filter.frequency.value = 0;
 
-  return { preFaderSend, gain, pan, filter };
+  return { filter, gain, pan, preFaderSend };
 }
 
 function createSoundInstance(
@@ -60,20 +60,20 @@ function createSoundInstance(
   outputMode: SoundOutputMode = "audio-graph"
 ): SoundInstance {
   return {
+    buffering: false,
+    deviceSource: null,
+    filterEnabled: false,
+    isDeviceInput: false,
+    loading: false,
+    mainOutputCleanup: null,
+    nodes: null,
+    outputMode,
+    pan: 0,
+    playbackSource: null,
+    playing: false,
     radio,
     sourceId,
-    mainOutputCleanup: null,
-    playbackSource: null,
-    deviceSource: null,
-    isDeviceInput: false,
-    nodes: null,
     volume: 1,
-    pan: 0,
-    playing: false,
-    loading: false,
-    buffering: false,
-    filterEnabled: false,
-    outputMode,
   };
 }
 

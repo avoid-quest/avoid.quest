@@ -1,3 +1,4 @@
+/** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 import { Button } from "@avoid.quest/ui/components/button";
 import { AudioLinesIcon } from "lucide-react";
 import { useCallback } from "react";
@@ -44,11 +45,11 @@ export function MultipleRadios({ radios }: { radios?: Radio[] }) {
     handleToggleRadio,
     confirmDelete,
   } = useMultipleRadioManagement({
-    radios,
-    hasMultipleSession: Boolean(session),
-    syncRadios,
     addRadio,
+    hasMultipleSession: Boolean(session),
+    radios,
     removeRadio,
+    syncRadios,
   });
 
   const getPlayerState = useCallback(
@@ -76,9 +77,17 @@ export function MultipleRadios({ radios }: { radios?: Radio[] }) {
     [players, setVolume]
   );
 
+  const handleToggleMute = (radio: Radio) => {
+    const player = getPlayerState(radio);
+    if (player) {
+      toggleMute(player.id);
+    }
+  };
   const handleGlobalVolumeChange = (value: number[]) => {
     setGlobalVolume(value[0] ?? 1);
   };
+  const handleSelectLocal = (radio: Radio) => addRadio(radio, true);
+  const handleCancelDelete = () => setDeleteConfirm(null);
 
   const allRadios = [
     ...(radios ?? []),
@@ -90,8 +99,8 @@ export function MultipleRadios({ radios }: { radios?: Radio[] }) {
 
   useMediaSession({
     mode: "multiple",
-    radios: allRadios,
     playingCount,
+    radios: allRadios,
   });
 
   if (allRadios.length === 0) {
@@ -101,7 +110,7 @@ export function MultipleRadios({ radios }: { radios?: Radio[] }) {
           className="mb-4 w-full max-w-md"
           onSaveDiscovered={saveDiscoveredStation}
           onSelectDiscovered={selectDiscoveredStation}
-          onSelectLocal={(radio) => addRadio(radio, true)}
+          onSelectLocal={handleSelectLocal}
           radios={radios ?? []}
         />
         <div className="flex flex-col items-center gap-3 rounded-lg border border-border/50 border-dashed bg-card/50 px-8 py-12">
@@ -121,7 +130,7 @@ export function MultipleRadios({ radios }: { radios?: Radio[] }) {
         className="mb-4"
         onSaveDiscovered={saveDiscoveredStation}
         onSelectDiscovered={selectDiscoveredStation}
-        onSelectLocal={(radio) => addRadio(radio, true)}
+        onSelectLocal={handleSelectLocal}
         radios={radios ?? []}
       />
 
@@ -143,14 +152,9 @@ export function MultipleRadios({ radios }: { radios?: Radio[] }) {
             onEdit={handleEditRadio}
             onSave={handleSaveSessionRadio}
             onToggle={handleToggleRadio}
-            onToggleMute={() => {
-              const player = getPlayerState(radio);
-              if (player) {
-                toggleMute(player.id);
-              }
-            }}
-            onTogglePlayPause={() => handleTogglePlayPause(radio)}
-            onVolumeChange={(vol) => handleVolumeChange(radio, vol)}
+            onToggleMute={handleToggleMute}
+            onTogglePlayPause={handleTogglePlayPause}
+            onVolumeChange={handleVolumeChange}
             playerState={getPlayerState(radio)}
             radio={radio}
           />
@@ -174,11 +178,7 @@ export function MultipleRadios({ radios }: { radios?: Radio[] }) {
               &rdquo;? This action cannot be undone.
             </p>
             <div className="flex justify-end gap-2">
-              <Button
-                onClick={() => setDeleteConfirm(null)}
-                size="sm"
-                variant="outline"
-              >
+              <Button onClick={handleCancelDelete} size="sm" variant="outline">
                 Cancel
               </Button>
               <Button onClick={confirmDelete} size="sm" variant="destructive">

@@ -98,19 +98,19 @@ export function useMultipleRadioManagement({
   }, [deleteConfirm]);
 
   return {
-    sessionRadios,
-    saveDiscoveredStation,
-    selectDiscoveredStation,
-    dialogOpen,
-    setDialogOpen,
-    dialogMode,
-    selectedRadio,
+    confirmDelete,
     deleteConfirm,
-    setDeleteConfirm,
-    handleEditRadio,
+    dialogMode,
+    dialogOpen,
     handleDeleteRadio,
+    handleEditRadio,
     handleSaveSessionRadio,
     handleToggleRadio,
-    confirmDelete,
+    saveDiscoveredStation,
+    selectDiscoveredStation,
+    selectedRadio,
+    sessionRadios,
+    setDeleteConfirm,
+    setDialogOpen,
   };
 }

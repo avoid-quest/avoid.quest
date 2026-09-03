@@ -13,14 +13,14 @@ import {
 
 function effect(id: string, order: number): EffectConfig {
   return {
-    dryWet: 1,
-    enabled: true,
     id,
-    inputGain: 1,
+    type: "limiter",
+    enabled: true,
     order,
+    dryWet: 1,
+    inputGain: 1,
     outputGain: 1,
     threshold: -1,
-    type: "limiter",
   };
 }
 
@@ -30,14 +30,14 @@ function chain(
   effects: EffectConfig[] = []
 ): EffectChainConfig {
   return {
-    effects,
-    gain: 1,
     id,
-    muted: false,
     name: id,
     order,
+    gain: 1,
     pan: 0,
+    muted: false,
     solo: false,
+    effects,
   };
 }
 
@@ -45,15 +45,15 @@ describe("effect tree routing", () => {
   test("normalizes persisted order recursively", () => {
     const composite: EffectConfig = {
       ...effect("composite", 0),
+      type: "fxComposite",
       chains: [
         chain("second", 2, [effect("nested-b", 4), effect("nested-a", 1)]),
         chain("first", 0),
       ],
-      type: "fxComposite",
     };
 
     const normalized = normalizeEffectTree([effect("last", 9), composite]);
-    const [normalizedComposite] = normalized;
+    const normalizedComposite = normalized[0];
 
     expect(normalized.map(({ id, order }) => [id, order])).toEqual([
       ["composite", 0],
@@ -82,8 +82,8 @@ describe("effect tree routing", () => {
     const tree: EffectConfig[] = [
       {
         ...effect("composite", 0),
-        chains: [chain("parallel", 0)],
         type: "fxComposite",
+        chains: [chain("parallel", 0)],
       },
     ];
 
@@ -120,24 +120,24 @@ describe("effect tree routing", () => {
   test("validates variable split routing and sidechain references", () => {
     const split: EffectConfig = {
       ...effect("split", 0),
+      type: "frequencySplit",
       chains: [
         chain("low", 0),
         chain("low-mid", 1, [
           {
             ...effect("gate", 0),
-            attack: 1,
-            floor: -60,
-            hold: 10,
-            inverse: false,
-            release: 100,
-            sidechain: { channelId: "missing" },
-            threshold: -24,
             type: "gate",
+            threshold: -24,
+            attack: 1,
+            hold: 10,
+            release: 100,
+            floor: -60,
+            inverse: false,
+            sidechain: { channelId: "missing" },
           },
         ]),
       ],
       crossoverFrequencies: [2000],
-      type: "frequencySplit",
     };
 
     expect(validateEffectTree([split], new Set(["deck-a"]))).toEqual([

@@ -10,5 +10,5 @@ import { useThrottledCallback } from "@tanstack/react-pacer";
  * @returns A throttled version of the setter
  */
 export function useThrottledParam<T>(setter: (value: T) => void, wait = 32) {
-  return useThrottledCallback(setter, { leading: true, trailing: true, wait });
+  return useThrottledCallback(setter, { wait, leading: true, trailing: true });
 }

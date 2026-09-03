@@ -28,29 +28,29 @@ export type PersistedMidiControl = {
 };
 
 export type MidiMappingPersistence = {
-  read: () => PersistedMidiControl | null;
-  write: (value: PersistedMidiControl) => void;
+  read(): PersistedMidiControl | null;
+  write(value: PersistedMidiControl): void;
 };
 
 export type MidiBrowserInput = {
   device: MidiDeviceInfo;
-  subscribe: (listener: (data: Uint8Array) => void) => () => void;
+  subscribe(listener: (data: Uint8Array) => void): () => void;
 };
 
 export type MidiBrowserAccess = {
-  inputs: () => readonly MidiBrowserInput[];
-  subscribeStateChange: (listener: () => void) => () => void;
+  inputs(): readonly MidiBrowserInput[];
+  subscribeStateChange(listener: () => void): () => void;
 };
 
 export type MidiBrowserAdapter = {
-  cancelFrame: (frameId: number) => void;
-  isSupported: () => boolean;
-  now: () => number;
-  requestAccess: () => Promise<MidiBrowserAccess>;
-  requestFrame: (callback: () => void) => number;
-  subscribePermission: (
+  cancelFrame(frameId: number): void;
+  isSupported(): boolean;
+  now(): number;
+  requestAccess(): Promise<MidiBrowserAccess>;
+  requestFrame(callback: () => void): number;
+  subscribePermission(
     listener: (permission: "denied" | "granted" | "prompt") => void
-  ) => () => void;
+  ): () => void;
 };
 
 export type MidiActionDescriptor = Omit<MidiAction, "dispatch">;
@@ -136,7 +136,6 @@ type ParsedMidiMessage = {
 };
 
 const LEGACY_TARGET_IDS: Record<string, string> = {
-  crossfader: "mixer:crossfader",
   "deck-a:effect-drywet": "deck-a:effects-drywet",
   "deck-a:pause": "",
   "deck-a:pitch": "deck-a:speed",
@@ -145,6 +144,7 @@ const LEGACY_TARGET_IDS: Record<string, string> = {
   "deck-b:pause": "",
   "deck-b:pitch": "deck-b:speed",
   "deck-b:play": "deck-b:play-pause",
+  crossfader: "mixer:crossfader",
   "headphone-volume": "mixer:headphone-volume",
   "master-volume": "mixer:master-volume",
 };
@@ -198,8 +198,8 @@ function migratePersistedControl(
       return {
         channel: mapping.channel,
         control: mapping.control,
-        targetId,
         type: mapping.type,
+        targetId,
         ...(mapping.transform ? { transform: mapping.transform } : {}),
       } as MidiMapping;
     })
@@ -226,7 +226,7 @@ export function createMidiControl({
     enabled: false,
     mappings: [],
   };
-  let { mappings } = persisted;
+  let mappings = persisted.mappings;
   let mappingsByTarget = new Map(
     mappings.map((mapping) => [mapping.targetId, mapping] as const)
   );
@@ -392,7 +392,7 @@ export function createMidiControl({
         if (!effects) {
           throw new Error("ChannelEffects is unavailable");
         }
-        const { revision } = binding;
+        const revision = binding.revision;
         const result = await effects.change(
           { channelId: binding.deckId, sessionId: "dj" },
           change
@@ -451,8 +451,8 @@ export function createMidiControl({
       {
         channel: message.channel,
         control: message.control,
-        targetId: learningTarget,
         type: message.type,
+        targetId: learningTarget,
       },
     ];
     learningTarget = null;
@@ -524,59 +524,6 @@ export function createMidiControl({
     lifecycleRevision !== lifecycle || connectRevision !== revision;
 
   return {
-    activateDj(): () => void {
-      djActive = true;
-      notify();
-      return () => {
-        cancelPendingDispatch();
-        djActive = false;
-        notify();
-      };
-    },
-    bindDeckEffects(deckId: DeckId) {
-      const existing = effectBindings.get(deckId);
-      if (existing) {
-        existing.disposed = true;
-      }
-      const binding: EffectBinding = {
-        actions: [],
-        deckId,
-        disposed: false,
-        pending: Promise.resolve(),
-        queuedContinuous: new Map(),
-        revision: 0,
-        tree: [],
-      };
-      effectBindings.set(deckId, binding);
-      return {
-        dispose() {
-          if (effectBindings.get(deckId) !== binding) {
-            return;
-          }
-          binding.disposed = true;
-          effectBindings.delete(deckId);
-          rebuildActions();
-        },
-        reconcile(tree: readonly EffectConfig[]) {
-          if (binding.disposed) {
-            return;
-          }
-          binding.revision += 1;
-          const previousIds = collectEffectIds(binding.tree);
-          const nextIds = collectEffectIds(tree);
-          removeMappingsForEffects(
-            new Set([...previousIds].filter((id) => !nextIds.has(id)))
-          );
-          binding.tree = tree;
-          binding.actions = createEffectMidiActions({
-            change: (next, key) => enqueueEffectChange(binding, next, key),
-            deckId,
-            tree,
-          });
-          rebuildActions();
-        },
-      };
-    },
     change(change: MidiControlChange): void {
       switch (change.type) {
         case "start-learn":
@@ -645,32 +592,14 @@ export function createMidiControl({
       persist();
       notify();
     },
-    cleanup(): void {
-      lifecycleRevision += 1;
-      connectRevision += 1;
-      cancelPendingDispatch();
-      lastButtonDispatch.clear();
-      lastCcDispatchTime = 0;
-      permissionCleanup?.();
-      permissionCleanup = null;
-      accessCleanup?.();
-      accessCleanup = null;
-      for (const cleanup of inputCleanups) {
-        cleanup();
-      }
-      inputCleanups.clear();
-      access = null;
-      devices = [];
-      djActive = false;
-      learningTarget = null;
-      error = null;
-      for (const binding of effectBindings.values()) {
-        binding.disposed = true;
-      }
-      effectBindings.clear();
-      status = browser.isSupported() ? "prompt" : "unsupported";
-      rebuildActions();
-      listeners.clear();
+    activateDj(): () => void {
+      djActive = true;
+      notify();
+      return () => {
+        cancelPendingDispatch();
+        djActive = false;
+        notify();
+      };
     },
     async connect(): Promise<MidiControlSnapshot> {
       if (!browser.isSupported()) {
@@ -679,8 +608,7 @@ export function createMidiControl({
         return snapshot;
       }
       const lifecycle = lifecycleRevision;
-      connectRevision += 1;
-      const revision = connectRevision;
+      const revision = ++connectRevision;
       status = "connecting";
       notify();
       try {
@@ -715,7 +643,50 @@ export function createMidiControl({
       }
       return snapshot;
     },
-    getSnapshot: () => snapshot,
+    bindDeckEffects(deckId: DeckId) {
+      const existing = effectBindings.get(deckId);
+      if (existing) {
+        existing.disposed = true;
+      }
+      const binding: EffectBinding = {
+        actions: [],
+        deckId,
+        disposed: false,
+        pending: Promise.resolve(),
+        queuedContinuous: new Map(),
+        revision: 0,
+        tree: [],
+      };
+      effectBindings.set(deckId, binding);
+      return {
+        reconcile(tree: readonly EffectConfig[]) {
+          if (binding.disposed) {
+            return;
+          }
+          binding.revision += 1;
+          const previousIds = collectEffectIds(binding.tree);
+          const nextIds = collectEffectIds(tree);
+          removeMappingsForEffects(
+            new Set([...previousIds].filter((id) => !nextIds.has(id)))
+          );
+          binding.tree = tree;
+          binding.actions = createEffectMidiActions({
+            change: (next, key) => enqueueEffectChange(binding, next, key),
+            deckId,
+            tree,
+          });
+          rebuildActions();
+        },
+        dispose() {
+          if (effectBindings.get(deckId) !== binding) {
+            return;
+          }
+          binding.disposed = true;
+          effectBindings.delete(deckId);
+          rebuildActions();
+        },
+      };
+    },
     start(): void {
       if (permissionCleanup || !browser.isSupported()) {
         return;
@@ -731,6 +702,34 @@ export function createMidiControl({
         notify();
       });
     },
+    cleanup(): void {
+      lifecycleRevision += 1;
+      connectRevision += 1;
+      cancelPendingDispatch();
+      lastButtonDispatch.clear();
+      lastCcDispatchTime = 0;
+      permissionCleanup?.();
+      permissionCleanup = null;
+      accessCleanup?.();
+      accessCleanup = null;
+      for (const cleanup of inputCleanups) {
+        cleanup();
+      }
+      inputCleanups.clear();
+      access = null;
+      devices = [];
+      djActive = false;
+      learningTarget = null;
+      error = null;
+      for (const binding of effectBindings.values()) {
+        binding.disposed = true;
+      }
+      effectBindings.clear();
+      status = browser.isSupported() ? "prompt" : "unsupported";
+      rebuildActions();
+      listeners.clear();
+    },
+    getSnapshot: () => snapshot,
     subscribe(listener: () => void): () => void {
       listeners.add(listener);
       return () => listeners.delete(listener);

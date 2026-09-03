@@ -43,13 +43,13 @@ export const exportDatabase = (): void => {
     const settings = getSettings();
 
     const exportData: DatabaseExport = {
+      version: EXPORT_VERSION,
       exportDate: new Date().toISOString(),
       radios: radios as unknown as Radio[],
       settings: (settings || {
         id: SETTINGS_ID,
         player: { mode: "single" },
       }) as unknown as DatabaseExport["settings"],
-      version: EXPORT_VERSION,
     };
 
     const jsonString = JSON.stringify(exportData, null, 2);
@@ -89,13 +89,13 @@ export const generateShareUrl = (): string => {
     const settings = getSettings();
 
     const exportData: DatabaseExport = {
+      version: EXPORT_VERSION,
       exportDate: new Date().toISOString(),
       radios: radios as unknown as Radio[],
       settings: (settings || {
         id: SETTINGS_ID,
         player: { mode: "single" },
       }) as unknown as DatabaseExport["settings"],
-      version: EXPORT_VERSION,
     };
 
     const jsonString = JSON.stringify(exportData);
@@ -110,7 +110,7 @@ export const generateShareUrl = (): string => {
     return importUrl.toString();
   } catch (error) {
     console.error("Share URL generation failed:", error);
-    throw new Error("Failed to generate share URL", { cause: error });
+    throw new Error("Failed to generate share URL");
   }
 };
 
@@ -142,8 +142,8 @@ export const parseImportData = (dataString: string): DatabaseExport => {
   try {
     const data = JSON.parse(dataString);
     return validateImportData(data);
-  } catch (error) {
-    throw new Error("Invalid JSON format", { cause: error });
+  } catch {
+    throw new Error("Invalid JSON format");
   }
 };
 
@@ -208,7 +208,7 @@ export const importFromUrl = (url: string): DatabaseExport => {
     return parseImportData(jsonString);
   } catch (error) {
     console.error("URL import failed:", error);
-    throw new Error("Failed to import from URL", { cause: error });
+    throw new Error("Failed to import from URL");
   }
 };
 
@@ -289,9 +289,9 @@ export const previewImportChanges = (
 
   return {
     newRadios,
-    settingsChanged,
-    unchangedRadios,
     updatedRadios,
+    unchangedRadios,
+    settingsChanged,
   };
 };
 
@@ -310,38 +310,40 @@ export const replaceImportedData = (importData: DatabaseExport): void => {
     for (const radio of importData.radios) {
       const id = radio.id ? String(radio.id) : generateId();
       radiosCollection.insert({
-        description: radio.description,
-        enabled: radio.enabled ?? true,
         id,
-        logoUrl: radio.logoUrl,
-        metadataConfig: radio.metadataConfig,
         name: radio.name,
-        order: radio.order ?? 0,
-        platformMetadata: radio.platformMetadata,
-        streamFormat: radio.streamFormat,
         streamUrl: radio.streamUrl,
+        streamFormat: radio.streamFormat,
+        logoUrl: radio.logoUrl,
+        description: radio.description,
         websiteUrl: radio.websiteUrl,
+        metadataConfig: radio.metadataConfig,
+        order: radio.order ?? 0,
+        enabled: radio.enabled ?? true,
+        platformMetadata: radio.platformMetadata,
       });
     }
 
     // Replace settings
-    const existingSettings = getSettings();
-    const importPlayer = normalizeImportedSettings(importData.settings);
-    if (existingSettings) {
-      settingsCollection.update(SETTINGS_ID, (draft) => {
-        draft.player.mode = importPlayer.mode ?? existingSettings.player.mode;
-        draft.player.restoreStateOnLoad =
-          importPlayer.restoreStateOnLoad ??
-          existingSettings.player.restoreStateOnLoad;
-      });
-    } else {
-      settingsCollection.insert({
-        id: SETTINGS_ID,
-        player: {
-          mode: importPlayer.mode ?? "single",
-          restoreStateOnLoad: importPlayer.restoreStateOnLoad ?? true,
-        },
-      });
+    if (importData.settings) {
+      const existingSettings = getSettings();
+      const importPlayer = normalizeImportedSettings(importData.settings);
+      if (existingSettings) {
+        settingsCollection.update(SETTINGS_ID, (draft) => {
+          draft.player.mode = importPlayer.mode ?? existingSettings.player.mode;
+          draft.player.restoreStateOnLoad =
+            importPlayer.restoreStateOnLoad ??
+            existingSettings.player.restoreStateOnLoad;
+        });
+      } else {
+        settingsCollection.insert({
+          id: SETTINGS_ID,
+          player: {
+            mode: importPlayer.mode ?? "single",
+            restoreStateOnLoad: importPlayer.restoreStateOnLoad ?? true,
+          },
+        });
+      }
     }
 
     toast.success(
@@ -413,23 +415,23 @@ export const mergeImportedData = (importData: DatabaseExport): void => {
           0
         );
         radiosCollection.insert({
-          description: importedRadio.description,
-          enabled: false, // New radios are disabled by default
           id: generateId(),
-          logoUrl: importedRadio.logoUrl,
-          metadataConfig: importedRadio.metadataConfig,
           name: importedRadio.name,
-          order: maxOrder + newRadiosCount + 1,
-          streamFormat: importedRadio.streamFormat,
           streamUrl: importedRadio.streamUrl,
+          streamFormat: importedRadio.streamFormat,
+          logoUrl: importedRadio.logoUrl,
+          description: importedRadio.description,
           websiteUrl: importedRadio.websiteUrl,
+          metadataConfig: importedRadio.metadataConfig,
+          order: maxOrder + newRadiosCount + 1,
+          enabled: false, // New radios are disabled by default
         });
         newRadiosCount += 1;
       }
     }
 
     // Merge settings (be careful not to overwrite volatile data)
-    if (existingSettings) {
+    if (importData.settings && existingSettings) {
       const importPlayer = normalizeImportedSettings(importData.settings);
       settingsCollection.update(SETTINGS_ID, (draft) => {
         // Merge player settings
@@ -440,7 +442,7 @@ export const mergeImportedData = (importData: DatabaseExport): void => {
           draft.player.restoreStateOnLoad = importPlayer.restoreStateOnLoad;
         }
       });
-    } else {
+    } else if (importData.settings) {
       const importPlayer = normalizeImportedSettings(importData.settings);
       settingsCollection.insert({
         id: SETTINGS_ID,

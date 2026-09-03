@@ -39,13 +39,13 @@ const DB_GRID_LINES = [-24, -12, 0, 12, 24];
 
 // Band colors
 const BAND_COLORS = {
-  highBell: "rgba(59, 130, 246, 0.4)",
   highPass: "rgba(239, 68, 68, 0.4)",
-  highShelf: "rgba(139, 92, 246, 0.4)",
-  lowBell: "rgba(234, 179, 8, 0.4)",
-  lowPass: "rgba(236, 72, 153, 0.4)",
   lowShelf: "rgba(249, 115, 22, 0.4)",
+  lowBell: "rgba(234, 179, 8, 0.4)",
   midBell: "rgba(34, 197, 94, 0.4)",
+  highBell: "rgba(59, 130, 246, 0.4)",
+  highShelf: "rgba(139, 92, 246, 0.4)",
+  lowPass: "rgba(236, 72, 153, 0.4)",
 };
 
 const TOTAL_CURVE_COLOR = "rgba(255, 255, 255, 0.9)";
@@ -100,7 +100,7 @@ function drawFilledCurve(
   const zeroY = yScale.scale(0);
 
   ctx.beginPath();
-  for (let i = 0; i < NUM_POINTS; i += 1) {
+  for (let i = 0; i < NUM_POINTS; i++) {
     const freq = frequencies[i];
     if (freq === undefined) {
       continue;
@@ -131,7 +131,7 @@ function drawStrokeCurve(
   const { ctx, xScale, yScale, frequencies, minDb, maxDb } = dc;
 
   ctx.beginPath();
-  for (let i = 0; i < NUM_POINTS; i += 1) {
+  for (let i = 0; i < NUM_POINTS; i++) {
     const freq = frequencies[i];
     if (freq === undefined) {
       continue;
@@ -176,7 +176,7 @@ function drawBandCurves(dc: DrawContext, bands: EQCurveResult["bands"]): void {
   }
 }
 
-export const EQCanvas = memo(function EQCanvasComponent({
+export const EQCanvas = memo(function EQCanvas({
   config,
   className,
   sampleRate = 48_000,
@@ -184,7 +184,7 @@ export const EQCanvas = memo(function EQCanvasComponent({
   maxDb = 36,
 }: EQCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const sizeRef = useRef<CanvasSize>({ height: 0, width: 0 });
+  const sizeRef = useRef<CanvasSize>({ width: 0, height: 0 });
 
   const frequencies = useMemo(
     () => generateLogFrequencies(MIN_FREQ, MAX_FREQ, NUM_POINTS),
@@ -197,11 +197,15 @@ export const EQCanvas = memo(function EQCanvasComponent({
   );
 
   useEffect(() => {
-    const ctx = canvasRef.current?.getContext("2d");
+    const canvas = canvasRef.current;
+    if (!canvas) {
+      return;
+    }
+
+    const ctx = canvas.getContext("2d");
     if (!ctx) {
       return;
     }
-    const { canvas } = ctx;
 
     const draw = () => {
       const { width, height } = sizeRef.current;
@@ -224,13 +228,13 @@ export const EQCanvas = memo(function EQCanvasComponent({
 
       const dc: DrawContext = {
         ctx,
-        frequencies,
-        h,
-        maxDb,
-        minDb,
         w,
+        h,
         xScale,
         yScale,
+        frequencies,
+        minDb,
+        maxDb,
       };
 
       drawGrid(dc);
@@ -243,7 +247,7 @@ export const EQCanvas = memo(function EQCanvasComponent({
     const resizeObserver = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const { width, height } = entry.contentRect;
-        sizeRef.current = { height, width };
+        sizeRef.current = { width, height };
       }
       draw();
     });

@@ -1,4 +1,3 @@
-/** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 import { Checkbox } from "@avoid.quest/ui/components/checkbox";
 import { Label } from "@avoid.quest/ui/components/label";
 
@@ -19,17 +18,13 @@ export function ParamCheckbox({
   description,
   disabled = false,
 }: ParamCheckboxProps) {
-  function handleCheckedChange(value: boolean | "indeterminate") {
-    onChange(value === true);
-  }
-
   return (
     <div className="flex items-center gap-2" title={description}>
       <Checkbox
         checked={checked}
         disabled={disabled}
         id={id}
-        onCheckedChange={handleCheckedChange}
+        onCheckedChange={(c) => onChange(c === true)}
       />
       <Label className="text-xs" htmlFor={id}>
         {label}

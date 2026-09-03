@@ -8,43 +8,43 @@ import { parsePlaybackSessionRecord } from "./playback-sessions";
 
 function channelWithEffects(effects: unknown[]) {
   return {
-    channelFilter: 0,
-    effects,
-    effectsDryWet: 1,
-    filter: {
-      enabled: false,
-      frequency: 1000,
-      gain: 0,
-      Q: 1,
-      type: "lowpass",
-    },
     id: "deck-a",
+    role: "deck-a",
+    radio: null,
+    volume: 1,
     muted: false,
     pan: 0,
-    radio: null,
-    role: "deck-a",
     speed: 1,
-    volume: 1,
+    channelFilter: 0,
+    effects,
+    filter: {
+      type: "lowpass",
+      frequency: 1000,
+      Q: 1,
+      gain: 0,
+      enabled: false,
+    },
+    effectsDryWet: 1,
   };
 }
 
 function baseEffect(id: string, type: string, order: number) {
   return {
-    dryWet: 1,
-    enabled: true,
     id,
-    inputGain: 1,
-    order,
-    outputGain: 1,
     type,
+    enabled: true,
+    order,
+    dryWet: 1,
+    inputGain: 1,
+    outputGain: 1,
   };
 }
 
 describe("playback session effect migration", () => {
   test("clamps persisted tempo to the product-supported range", () => {
     const session = {
-      channels: [channelWithEffects([])],
       id: "dj",
+      channels: [channelWithEffects([])],
     };
 
     expect(parsePlaybackSessionRecord({ ...session, tempo: 1 }).tempo).toBe(
@@ -78,8 +78,8 @@ describe("playback session effect migration", () => {
     ];
 
     const migrated = parsePlaybackSessionRecord({
-      channels: [channelWithEffects(legacyEffects)],
       id: "dj",
+      channels: [channelWithEffects(legacyEffects)],
     });
 
     expect(migrated.tempo).toBe(DEFAULT_EFFECT_TEMPO);
@@ -96,17 +96,18 @@ describe("playback session effect migration", () => {
       { ...legacyEffects[0], order: 3 },
     ] as Record<string, unknown>[]);
     expect(migrated.channels[0]?.effects[3]).toMatchObject({
+      delayMusical: "Off",
+      delayMillis: 250,
+      tempoSync: false,
+      tempoDivision: "1/4",
       cross: 0,
       crossFeedback: 0,
-      delayMillis: 250,
-      delayMusical: "Off",
-      tempoDivision: "1/4",
-      tempoSync: false,
     });
   });
 
   test("derives native parameters from legacy delay, tidal, and compressor settings", () => {
     const migrated = parsePlaybackSessionRecord({
+      id: "dj",
       channels: [
         channelWithEffects([
           {
@@ -116,41 +117,41 @@ describe("playback session effect migration", () => {
           },
           {
             ...baseEffect("tidal", "tidal", 1),
-            channelOffset: 0,
-            depth: 0.5,
-            offset: 0,
             rate: 1,
+            depth: 0.5,
             slope: 0,
             symmetry: 0,
+            offset: 0,
+            channelOffset: 0,
           },
           {
             ...baseEffect("compressor", "compressor", 2),
+            threshold: -20,
+            ratio: 3,
             attack: 4,
-            autoAttack: true,
-            autoMakeup: false,
-            autoRelease: false,
+            release: 180,
             knee: 5,
-            lookahead: true,
             makeup: 2,
             mix: 0.75,
-            ratio: 3,
-            release: 180,
-            threshold: -20,
+            lookahead: true,
+            autoAttack: true,
+            autoRelease: false,
+            autoMakeup: false,
           },
         ]),
       ],
-      id: "dj",
     });
 
     expect(migrated.channels[0]?.effects).toMatchObject([
-      { cross: 0, delayMillis: 625, delayMusical: "Off" },
+      { delayMusical: "Off", delayMillis: 625, cross: 0 },
       { rateDivision: "1/2" },
-      { autoattack: true, automakeup: false, autorelease: false },
+      { autoattack: true, autorelease: false, automakeup: false },
     ]);
   });
 
   test("migrates legacy plate pre-delay samples without re-migrating milliseconds", () => {
     const migrated = parsePlaybackSessionRecord({
+      id: "dj",
       channels: [
         channelWithEffects([
           {
@@ -163,7 +164,6 @@ describe("playback session effect migration", () => {
           },
         ]),
       ],
-      id: "dj",
     });
 
     expect(migrated.channels[0]?.effects).toMatchObject([
@@ -175,38 +175,38 @@ describe("playback session effect migration", () => {
 
   test("round-trips nested routing, sidechains, and tempo through JSON", () => {
     const nestedSession = {
+      id: "dj",
+      tempo: 128,
       channels: [
         channelWithEffects([
           {
             ...baseEffect("parallel", "fxComposite", 0),
             chains: [
               {
+                id: "parallel-a",
+                name: "Parallel A",
+                order: 0,
+                gain: 0.75,
+                pan: -0.25,
+                muted: false,
+                solo: true,
                 effects: [
                   {
                     ...baseEffect("gate", "gate", 0),
-                    attack: 5,
-                    floor: -80,
-                    hold: 20,
-                    inverse: false,
-                    release: 120,
                     sidechain: { channelId: "deck-b" },
                     threshold: -24,
+                    attack: 5,
+                    hold: 20,
+                    release: 120,
+                    floor: -80,
+                    inverse: false,
                   },
                 ],
-                gain: 0.75,
-                id: "parallel-a",
-                muted: false,
-                name: "Parallel A",
-                order: 0,
-                pan: -0.25,
-                solo: true,
               },
             ],
           },
         ]),
       ],
-      id: "dj",
-      tempo: 128,
     };
 
     const parsed = parsePlaybackSessionRecord(nestedSession);
@@ -217,31 +217,31 @@ describe("playback session effect migration", () => {
     expect(roundTripped).toEqual(parsed);
     expect(roundTripped.tempo).toBe(128);
     expect(roundTripped.channels[0]?.effects[0]).toMatchObject({
+      id: "parallel",
+      type: "fxComposite",
       chains: [
         {
+          id: "parallel-a",
           effects: [
             {
               id: "gate",
               sidechain: { channelId: "deck-b" },
             },
           ],
-          id: "parallel-a",
         },
       ],
-      id: "parallel",
-      type: "fxComposite",
     });
   });
 
   test("rejects malformed containers instead of silently dropping children", () => {
     expect(() =>
       parsePlaybackSessionRecord({
+        id: "dj",
         channels: [
           channelWithEffects([
             baseEffect("missing-children", "frequencySplit", 0),
           ]),
         ],
-        id: "dj",
       })
     ).toThrow();
   });

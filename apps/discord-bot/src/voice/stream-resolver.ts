@@ -23,16 +23,16 @@ function getSoundCloudClientId(): Promise<string> {
 
 function getInvidiousOptions(): InvidiousOptions {
   return {
-    auth: config.invidiousAuth(),
     instanceUrl: config.invidiousInstanceUrl(),
+    auth: config.invidiousAuth(),
   };
 }
 
 const STATIC_AUDIO_VALIDATION_MESSAGES = {
-  "hostname-resolution-failed": "Failed to resolve direct audio host.",
-  "internal-address": "Direct audio URLs cannot point to internal addresses.",
-  "invalid-protocol": "Direct audio URLs must use HTTP or HTTPS.",
   "invalid-url": "Invalid direct audio URL.",
+  "invalid-protocol": "Direct audio URLs must use HTTP or HTTPS.",
+  "internal-address": "Direct audio URLs cannot point to internal addresses.",
+  "hostname-resolution-failed": "Failed to resolve direct audio host.",
   "unsupported-url":
     "Direct audio URL must point to a supported audio file or playlist.",
 } as const satisfies Record<PublicStaticAudioUrlFailure, string>;

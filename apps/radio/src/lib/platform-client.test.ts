@@ -184,13 +184,11 @@ describe("preparePlatformItem", () => {
       },
     ];
 
-    await Promise.all(
-      items.map((item) =>
-        expect(preparePlatformItem(BANDCAMP_URL, item)).rejects.toThrow(
-          "Bandcamp returned an unsafe media URL"
-        )
-      )
-    );
+    for (const item of items) {
+      await expect(preparePlatformItem(BANDCAMP_URL, item)).rejects.toThrow(
+        "Bandcamp returned an unsafe media URL"
+      );
+    }
   });
 
   test("keeps browser-readable SoundCloud CDN streams unchanged", async () => {
@@ -252,13 +250,11 @@ describe("preparePlatformItem", () => {
       },
     ];
 
-    await Promise.all(
-      items.map((item) =>
-        expect(preparePlatformItem(SOUNDCLOUD_URL, item)).rejects.toThrow(
-          "SoundCloud returned an unsafe media URL"
-        )
-      )
-    );
+    for (const item of items) {
+      await expect(preparePlatformItem(SOUNDCLOUD_URL, item)).rejects.toThrow(
+        "SoundCloud returned an unsafe media URL"
+      );
+    }
   });
 
   test("allows public Radio Garden streams and rejects unsafe ones", async () => {
@@ -280,20 +276,18 @@ describe("preparePlatformItem", () => {
       })
     ).toBe(publicItem);
 
-    await Promise.all(
-      [
-        "http://localhost/live.mp3",
-        "http://10.0.0.1/live.mp3",
-        "http://[::1]/live.mp3",
-        "data:audio/mpeg;base64,AA==",
-        "/api/stream",
-        "//evil.example/stream",
-      ].map((streamUrl) =>
-        expect(
-          preparePlatformItem(requestUrl, { ...publicItem, streamUrl })
-        ).rejects.toThrow("Radio Garden returned an unsafe media URL")
-      )
-    );
+    for (const streamUrl of [
+      "http://localhost/live.mp3",
+      "http://10.0.0.1/live.mp3",
+      "http://[::1]/live.mp3",
+      "data:audio/mpeg;base64,AA==",
+      "/api/stream",
+      "//evil.example/stream",
+    ]) {
+      await expect(
+        preparePlatformItem(requestUrl, { ...publicItem, streamUrl })
+      ).rejects.toThrow("Radio Garden returned an unsafe media URL");
+    }
   });
 
   test("rejects a Radio Garden hostname that resolves privately", async () => {

@@ -39,8 +39,8 @@ export function LoadedDeckContent({
   } = useDeckContext();
   const isMobile = useIsMobile();
   const { metadata } = useRadioMetadata({
-    enabled: isPlaying && !isLoading,
     radio,
+    enabled: isPlaying && !isLoading,
   });
 
   const effectsPanel = (
@@ -70,14 +70,14 @@ export function LoadedDeckContent({
               <DeckChannelStrip />
             </div>
             <Accordion className="space-y-1" defaultValue={[]} type="multiple">
-              {hasTracklist && tracks ? (
+              {hasTracklist && tracks && (
                 <AccordionSection
                   title={`Tracks (${currentTrackIndex + 1}/${tracks.length})`}
                   value="tracks"
                 >
                   <DeckTracklist />
                 </AccordionSection>
-              ) : null}
+              )}
               <AccordionSection
                 title={`Effects${effects.length > 0 ? ` (${effects.length})` : ""}`}
                 value="effects"
@@ -112,14 +112,14 @@ export function LoadedDeckContent({
           defaultValue={["effects"]}
           type="multiple"
         >
-          {hasTracklist && tracks ? (
+          {hasTracklist && tracks && (
             <AccordionSection
               title={`Tracks (${currentTrackIndex + 1}/${tracks.length})`}
               value="tracks"
             >
               <DeckTracklist />
             </AccordionSection>
-          ) : null}
+          )}
           <AccordionSection
             title={`Effects${effects.length > 0 ? ` (${effects.length})` : ""}`}
             value="effects"

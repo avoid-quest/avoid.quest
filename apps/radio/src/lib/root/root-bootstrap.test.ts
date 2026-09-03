@@ -10,15 +10,15 @@ import {
 const sampleChanges: SyncChanges = {
   additions: [
     {
-      enabled: true,
-      isSystem: false,
       name: "New Radio",
       order: 1,
+      enabled: true,
+      isSystem: false,
       streamUrl: "https://radio.example/live.mp3",
     },
   ],
-  deletions: [],
   updates: [],
+  deletions: [],
 };
 
 describe("createRootQueryClient", () => {

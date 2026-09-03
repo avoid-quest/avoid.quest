@@ -47,25 +47,27 @@ export function validateManualWebsiteImportUrl(
   const trimmedUrl = websiteUrl.trim();
   if (!trimmedUrl) {
     return {
+      ok: false,
       error: {
         code: "MISSING_WEBSITE_URL",
         message: "Please enter a URL",
       },
-      ok: false,
     };
   }
 
-  if (!URL.canParse(trimmedUrl)) {
+  try {
+    new URL(trimmedUrl);
+  } catch {
     return {
+      ok: false,
       error: {
         code: "INVALID_WEBSITE_URL",
         message: "Please enter a valid URL",
       },
-      ok: false,
     };
   }
 
-  return { data: trimmedUrl, ok: true };
+  return { ok: true, data: trimmedUrl };
 }
 
 function getBestValue(options?: ScrapedOption[]): string {
@@ -99,11 +101,11 @@ function createSafeFailure(
       : fallbackMessage;
 
   return {
+    ok: false,
     error: {
       code,
       message,
     },
-    ok: false,
   };
 }
 
@@ -147,8 +149,8 @@ function parseHtml(html: string): Document {
 }
 
 export function createManualWebsiteImportWorkflow({
-  fetchWebsite: fetchWebsiteContent,
-  parseHtml: parseWebsiteHtml,
+  fetchWebsite,
+  parseHtml,
 }: ManualWebsiteImportDependencies) {
   return {
     async fetchDefaults(
@@ -161,7 +163,7 @@ export function createManualWebsiteImportWorkflow({
 
       let fetched: FetchWebsiteResult;
       try {
-        fetched = await fetchWebsiteContent(validatedUrl.data);
+        fetched = await fetchWebsite(validatedUrl.data);
       } catch (error) {
         return createSafeFailure(
           "WEBSITE_FETCH_FAILED",
@@ -173,7 +175,7 @@ export function createManualWebsiteImportWorkflow({
       let metadata: RadioMetadata;
       try {
         metadata = parseRadioMetadataFromDocument(
-          parseWebsiteHtml(fetched.html),
+          parseHtml(fetched.html),
           validatedUrl.data
         );
       } catch (error) {
@@ -185,8 +187,8 @@ export function createManualWebsiteImportWorkflow({
       }
 
       return {
-        data: createDraftFromMetadata(metadata, validatedUrl.data),
         ok: true,
+        data: createDraftFromMetadata(metadata, validatedUrl.data),
       };
     },
 

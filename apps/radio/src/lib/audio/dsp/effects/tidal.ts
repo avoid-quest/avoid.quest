@@ -21,7 +21,7 @@ export class TidalEffect {
 
   private rate = 1.0; // LFO frequency in Hz (1.0 = 1 cycle per second)
   private tempo = 120;
-  private tempoSync = false as boolean;
+  private tempoSync = false;
   private tempoDivision = "1/4";
   private depth = 0.0;
   private slope = 0.0;
@@ -29,7 +29,7 @@ export class TidalEffect {
   private offset = 0.0; // Phase offset in cycles (0-1)
   private channelOffset = 0.0; // Channel offset in cycles (0-1)
   private phase = 0.0;
-  private needsUpdate = true as boolean;
+  private needsUpdate = true;
 
   constructor(sampleRate: number) {
     this.sampleRate = sampleRate;
@@ -109,7 +109,7 @@ export class TidalEffect {
       : this.rate;
     const phaseIncrement = rate / this.sampleRate;
 
-    for (let i = fromIndex; i < toIndex; i += 1) {
+    for (let i = fromIndex; i < toIndex; i++) {
       const phaseL = this.phase + i * phaseIncrement + offset0;
       const phaseR = this.phase + i * phaseIncrement + offset1;
 

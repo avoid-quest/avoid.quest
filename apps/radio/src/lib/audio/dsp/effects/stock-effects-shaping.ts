@@ -17,13 +17,13 @@ export class WaveshaperEffect {
 
   setCurve(value: string): void {
     const shapes: Record<string, WaveshaperShape> = {
+      hardclip: "hardclip",
+      hardClip: "hardclip",
+      cubicSoft: "cubic",
+      tanh: "tanh",
+      sigmoid: "sigmoid",
       arctan: "arctan",
       asymmetric: "asymmetric",
-      cubicSoft: "cubic",
-      hardClip: "hardclip",
-      hardclip: "hardclip",
-      sigmoid: "sigmoid",
-      tanh: "tanh",
     };
     const shape = shapes[value];
     if (shape) {
@@ -72,7 +72,7 @@ export class WaveshaperEffect {
     fromIndex: number,
     toIndex: number
   ): void {
-    for (let i = fromIndex; i < toIndex; i += 1) {
+    for (let i = fromIndex; i < toIndex; i++) {
       const left = input[0][i] ?? 0;
       const right = input[1][i] ?? 0;
       output[0][i] =

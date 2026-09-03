@@ -19,13 +19,13 @@ const effect = (
   enabled: boolean
 ): EffectConfig =>
   ({
-    dryWet: 1,
-    enabled,
     id,
-    inputGain: 1,
-    order: 0,
-    outputGain: 1,
     type,
+    enabled,
+    order: 0,
+    dryWet: 1,
+    inputGain: 1,
+    outputGain: 1,
   }) as EffectConfig;
 
 describe("official openDAW runtime selection", () => {
@@ -74,7 +74,7 @@ describe("official openDAW runtime selection", () => {
     const legacy = createDefaultEffectConfig("limiter", "nested-legacy", 0);
     container.enabled = true;
     legacy.enabled = true;
-    const [chain] = container.chains;
+    const chain = container.chains[0];
     if (!chain) {
       throw new Error("Composite effect requires a chain");
     }

@@ -25,10 +25,10 @@ type SessionRadiosState = {
 
 function buildSessionRadiosState(radios: Radio[]): SessionRadiosState {
   return {
-    addSessionRadio,
-    getSessionRadios,
     radios,
+    addSessionRadio,
     removeSessionRadio,
+    getSessionRadios,
   };
 }
 

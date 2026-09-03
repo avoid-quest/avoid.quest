@@ -17,9 +17,9 @@ import {
 describe("AppError", () => {
   test("creates default severity and status from category", () => {
     const error = new AppError({
-      category: "rate_limit",
       code: "RATE_LIMITED",
       safeMessage: "Too many requests",
+      category: "rate_limit",
     });
 
     expect(error.severity).toBe("warning");
@@ -29,11 +29,11 @@ describe("AppError", () => {
 
   test("normalizes unknown errors using fallback", () => {
     const normalized = toAppError("boom", {
-      category: "unknown",
       code: "UNKNOWN",
-      expected: false,
       safeMessage: "Unexpected",
+      category: "unknown",
       severity: "error",
+      expected: false,
       status: 500,
     });
 
@@ -43,9 +43,9 @@ describe("AppError", () => {
 
   test("falls back to default safe message when empty", () => {
     const error = new AppError({
-      category: "unknown",
       code: "EMPTY_MESSAGE",
       safeMessage: "   ",
+      category: "unknown",
     });
 
     expect(error.safeMessage).toBe("Something went wrong. Please try again.");
@@ -56,10 +56,10 @@ describe("AppError", () => {
 describe("reporting policy", () => {
   test("does not report expected warning errors", () => {
     const error = new AppError({
-      category: "validation",
       code: "INVALID_INPUT",
-      expected: true,
       safeMessage: "Bad input",
+      category: "validation",
+      expected: true,
     });
 
     expect(shouldReportToSentry(error)).toBe(false);
@@ -67,10 +67,10 @@ describe("reporting policy", () => {
 
   test("reports expected critical errors", () => {
     const error = new AppError({
-      category: "security",
       code: "SECURITY_BLOCK",
-      expected: true,
       safeMessage: "Blocked",
+      category: "security",
+      expected: true,
       severity: "critical",
     });
 
@@ -82,9 +82,9 @@ describe("problem payload", () => {
   test("returns safe payload shape", () => {
     const payload = problemJson(
       new AppError({
-        category: "network",
         code: "NETWORK_DOWN",
         safeMessage: "Network unavailable",
+        category: "network",
       }),
       "req-1"
     );
@@ -115,8 +115,8 @@ describe("api route wrapper", () => {
     });
 
     const response = await runApiRoute({
-      operation: "api.test",
       request,
+      operation: "api.test",
       run: async () => new Response(null, { status: 204 }),
     });
 
@@ -128,16 +128,16 @@ describe("api route wrapper", () => {
     const request = new Request("https://example.com/api/test");
 
     const response = await runApiRoute({
-      errorHeaders: { "x-test-header": "1" },
+      request,
+      operation: "api.test",
       fallback: {
-        category: "dependency",
         code: "API_TEST_FAILED",
-        expected: false,
         safeMessage: "Operation failed",
+        category: "dependency",
+        expected: false,
         status: 502,
       },
-      operation: "api.test",
-      request,
+      errorHeaders: { "x-test-header": "1" },
       run: () => Promise.reject(new Error("boom")),
     });
 
@@ -173,22 +173,22 @@ describe("dedupe", () => {
 
   test("captureError dedupe key returns undefined on duplicate", () => {
     const baseError = new AppError({
-      category: "playback",
       code: "PLAYBACK_FAIL",
-      expected: false,
       safeMessage: "Playback failed",
+      category: "playback",
+      expected: false,
     });
 
     const first = captureError(baseError, {
-      dedupeKey: "dup-key",
       operation: "playback",
       surface: "ui",
+      dedupeKey: "dup-key",
     });
 
     const second = captureError(baseError, {
-      dedupeKey: "dup-key",
       operation: "playback",
       surface: "ui",
+      dedupeKey: "dup-key",
     });
 
     expect(second).toBeUndefined();
@@ -206,9 +206,9 @@ describe("playback helpers", () => {
 
   test("builds stable playback keys from mode and host only", () => {
     const key = buildPlaybackEventKey({
+      mode: "single",
       errorCode: "MEDIA_ERROR_4",
       errorMessage: "Unsupported stream format for this browser",
-      mode: "single",
       streamUrl: "https://example.test/live",
     });
 
@@ -217,8 +217,8 @@ describe("playback helpers", () => {
 
   test("dedupes errors with different errorCode but same mode and host", () => {
     const base = {
-      errorMessage: "some error",
       mode: "single" as const,
+      errorMessage: "some error",
       streamUrl: "https://example.test/live",
     };
 
@@ -249,9 +249,9 @@ describe("playback helpers", () => {
 
   test("capturePlaybackError dedupes repeats", () => {
     const payload = {
+      mode: "single" as const,
       errorCode: "MEDIA_ERROR_4",
       errorMessage: "Unsupported stream format for this browser",
-      mode: "single" as const,
       streamUrl: "https://example.test/live",
     };
 

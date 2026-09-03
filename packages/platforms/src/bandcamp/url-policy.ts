@@ -65,7 +65,7 @@ export function validateBandcampCdnRedirectUrl(
     return { ok: false, reason: "invalid-domain" };
   }
 
-  return { ok: true, parsed, url };
+  return { ok: true, url, parsed };
 }
 
 export function validateBandcampCdnUrl(

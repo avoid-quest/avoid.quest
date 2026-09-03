@@ -1,4 +1,3 @@
-// biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers
 import { Slider } from "@avoid.quest/ui/components/slider";
 import { HeadphonesIcon, Volume2Icon } from "lucide-react";
 import { MidiControlWrapper } from "@/components/audio/midi-control-wrapper";
@@ -21,10 +20,6 @@ export function MixerMaster({
   onHeadphoneVolumeChange,
 }: MixerMasterProps) {
   const masterPeak = useMasterPeakLevel();
-  const handleMasterVolumeChange = ([value]: number[]) =>
-    onMasterVolumeChange((value ?? 0) / 100);
-  const handleHeadphoneVolumeChange = ([value]: number[]) =>
-    onHeadphoneVolumeChange((value ?? 0) / 100);
 
   return (
     <div className="space-y-3">
@@ -52,7 +47,7 @@ export function MixerMaster({
             defaultValue={[100]}
             max={100}
             min={0}
-            onValueChange={handleMasterVolumeChange}
+            onValueChange={([v]) => onMasterVolumeChange(v / 100)}
             step={1}
             value={[masterVolume * 100]}
           />
@@ -63,7 +58,7 @@ export function MixerMaster({
       </MidiControlWrapper>
 
       {/* Headphone Volume */}
-      {isCueActive ? (
+      {isCueActive && (
         <MidiControlWrapper targetId="mixer:headphone-volume">
           <div className="flex items-center gap-2">
             <HeadphonesIcon className="size-3.5 shrink-0 text-muted-foreground" />
@@ -75,7 +70,7 @@ export function MixerMaster({
               defaultValue={[100]}
               max={100}
               min={0}
-              onValueChange={handleHeadphoneVolumeChange}
+              onValueChange={([v]) => onHeadphoneVolumeChange(v / 100)}
               step={1}
               value={[headphoneVolume * 100]}
             />
@@ -84,7 +79,7 @@ export function MixerMaster({
             </span>
           </div>
         </MidiControlWrapper>
-      ) : null}
+      )}
     </div>
   );
 }

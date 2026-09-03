@@ -15,17 +15,17 @@ const dom = new JSDOM("<!doctype html><html><body></body></html>", {
 });
 
 for (const [key, value] of Object.entries({
+  window: dom.window,
   document: dom.window.document,
+  navigator: dom.window.navigator,
   HTMLElement: dom.window.HTMLElement,
   localStorage: dom.window.localStorage,
-  navigator: dom.window.navigator,
   sessionStorage: dom.window.sessionStorage,
-  window: dom.window,
 })) {
   Object.defineProperty(globalThis, key, {
     configurable: true,
-    value,
     writable: true,
+    value,
   });
 }
 
@@ -66,7 +66,7 @@ describe("useMultipleSession", () => {
       streamUrl: "https://radio.example/muted.mp3",
     };
     playbackSessionsCollection.insert({
-      activeChannelId: null,
+      id: "multiple",
       channels: [
         {
           ...createDefaultChannel("multi:muted", "multiple", 0),
@@ -75,10 +75,10 @@ describe("useMultipleSession", () => {
           volume: 0.35,
         },
       ],
+      masterVolume: 1,
       crossfadePosition: 0.5,
       headphoneVolume: 1,
-      id: "multiple",
-      masterVolume: 1,
+      activeChannelId: null,
     });
 
     const { result } = renderHook(() => useMultipleSession());

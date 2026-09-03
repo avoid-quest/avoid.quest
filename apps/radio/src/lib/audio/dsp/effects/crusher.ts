@@ -11,7 +11,7 @@ import type { StereoChannels } from "./types.js";
 
 export class CrusherEffect {
   private readonly dsp: Crusher;
-  private autoGain = true as boolean;
+  private autoGain = true;
   private boost = 0;
 
   constructor(sampleRate: number) {
@@ -57,7 +57,7 @@ export class CrusherEffect {
     if (!this.autoGain && this.boost !== 0) {
       const compensationGain = dbToGain(this.boost / 2);
       const [outL, outR] = output;
-      for (let i = fromIndex; i < toIndex; i += 1) {
+      for (let i = fromIndex; i < toIndex; i++) {
         outL[i] = (outL[i] ?? 0) * compensationGain;
         outR[i] = (outR[i] ?? 0) * compensationGain;
       }

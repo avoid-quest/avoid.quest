@@ -1,4 +1,3 @@
-// biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers
 import { Button } from "@avoid.quest/ui/components/button";
 import { Checkbox } from "@avoid.quest/ui/components/checkbox";
 import {
@@ -21,102 +20,6 @@ type SyncDialogProps = {
   onOpenChange: (open: boolean) => void;
   onApply: (changes: SyncChanges) => void;
 };
-
-type SyncUpdate = SyncChanges["updates"][number];
-
-function SyncUpdateRow({
-  update: { existing, incoming },
-  checked,
-  onToggle,
-}: {
-  update: SyncUpdate;
-  checked: boolean;
-  onToggle: (id: string) => void;
-}) {
-  const handleToggle = () => {
-    onToggle(existing.id);
-  };
-
-  return (
-    <div className="flex items-start gap-3 rounded-lg border p-3">
-      <Checkbox
-        checked={checked}
-        id={`update-${existing.id}`}
-        onCheckedChange={handleToggle}
-      />
-      <Label
-        className="min-w-0 flex-1 cursor-pointer"
-        htmlFor={`update-${existing.id}`}
-      >
-        <div className="truncate font-medium">{existing.name}</div>
-        <div className="text-muted-foreground text-xs">
-          {existing.streamUrl === incoming.streamUrl ? null : (
-            <div>Stream URL changed</div>
-          )}
-          {existing.description === incoming.description ? null : (
-            <div>Description updated</div>
-          )}
-          {existing.logoUrl === incoming.logoUrl ? null : (
-            <div>Logo updated</div>
-          )}
-          {existing.websiteUrl === incoming.websiteUrl ? null : (
-            <div>Website URL changed</div>
-          )}
-        </div>
-      </Label>
-    </div>
-  );
-}
-
-type SyncAddition = SyncChanges["additions"][number];
-
-function SyncAdditionRow({
-  radio,
-  checked,
-  onToggle,
-}: {
-  radio: SyncAddition;
-  checked: boolean;
-  onToggle: (name: string) => void;
-}) {
-  const handleToggle = () => {
-    onToggle(radio.name);
-  };
-
-  return (
-    <div className="flex items-start gap-3 rounded-lg border p-3">
-      <Checkbox
-        checked={checked}
-        id={`add-${radio.name}`}
-        onCheckedChange={handleToggle}
-      />
-      <Label
-        className="min-w-0 flex-1 cursor-pointer"
-        htmlFor={`add-${radio.name}`}
-      >
-        <div className="truncate font-medium">{radio.name}</div>
-        {radio.description ? (
-          <div className="line-clamp-2 text-muted-foreground text-xs">
-            {radio.description}
-          </div>
-        ) : null}
-      </Label>
-    </div>
-  );
-}
-
-function getDescription(changes: SyncChanges) {
-  const hasUpdates = changes.updates.length > 0;
-  const hasAdditions = changes.additions.length > 0;
-
-  if (hasUpdates && hasAdditions) {
-    return `${changes.updates.length} radio(s) updated, ${changes.additions.length} new radio(s) available`;
-  }
-  if (hasUpdates) {
-    return `${changes.updates.length} radio(s) have updated metadata`;
-  }
-  return `${changes.additions.length} new radio(s) available`;
-}
 
 export function SyncDialog({
   changes,
@@ -166,11 +69,11 @@ export function SyncDialog({
     }
 
     const filteredChanges: SyncChanges = {
-      additions: changes.additions.filter((a) => selectedAdditions.has(a.name)),
-      deletions: [], // Deletions are auto-applied, not shown in dialog
       updates: changes.updates.filter((u) =>
         selectedUpdates.has(u.existing.id)
       ),
+      additions: changes.additions.filter((a) => selectedAdditions.has(a.name)),
+      deletions: [], // Deletions are auto-applied, not shown in dialog
     };
     onApply(filteredChanges);
     onOpenChange(false);
@@ -188,12 +91,25 @@ export function SyncDialog({
   const totalSelected = selectedUpdates.size + selectedAdditions.size;
   const totalChanges = changes.updates.length + changes.additions.length;
 
+  const getDescription = () => {
+    const hasUpdates = changes.updates.length > 0;
+    const hasAdditions = changes.additions.length > 0;
+
+    if (hasUpdates && hasAdditions) {
+      return `${changes.updates.length} radio(s) updated, ${changes.additions.length} new radio(s) available`;
+    }
+    if (hasUpdates) {
+      return `${changes.updates.length} radio(s) have updated metadata`;
+    }
+    return `${changes.additions.length} new radio(s) available`;
+  };
+
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogContent className="max-h-[calc(100dvh-2rem)] max-w-md overflow-hidden p-4 sm:p-6">
         <DialogHeader className="shrink-0 pr-8 sm:pr-0">
           <DialogTitle>Radio Updates Available</DialogTitle>
-          <DialogDescription>{getDescription(changes)}</DialogDescription>
+          <DialogDescription>{getDescription()}</DialogDescription>
         </DialogHeader>
 
         <ScrollArea className="min-h-0 flex-1 pr-4">
@@ -205,13 +121,39 @@ export function SyncDialog({
                   Updated Radios
                 </h4>
                 <div className="space-y-2">
-                  {changes.updates.map((update) => (
-                    <SyncUpdateRow
-                      checked={selectedUpdates.has(update.existing.id)}
-                      key={update.existing.id}
-                      onToggle={toggleUpdate}
-                      update={update}
-                    />
+                  {changes.updates.map(({ existing, incoming }) => (
+                    <div
+                      className="flex items-start gap-3 rounded-lg border p-3"
+                      key={existing.id}
+                    >
+                      <Checkbox
+                        checked={selectedUpdates.has(existing.id)}
+                        id={`update-${existing.id}`}
+                        onCheckedChange={() => toggleUpdate(existing.id)}
+                      />
+                      <Label
+                        className="min-w-0 flex-1 cursor-pointer"
+                        htmlFor={`update-${existing.id}`}
+                      >
+                        <div className="truncate font-medium">
+                          {existing.name}
+                        </div>
+                        <div className="text-muted-foreground text-xs">
+                          {existing.streamUrl !== incoming.streamUrl && (
+                            <div>Stream URL changed</div>
+                          )}
+                          {existing.description !== incoming.description && (
+                            <div>Description updated</div>
+                          )}
+                          {existing.logoUrl !== incoming.logoUrl && (
+                            <div>Logo updated</div>
+                          )}
+                          {existing.websiteUrl !== incoming.websiteUrl && (
+                            <div>Website URL changed</div>
+                          )}
+                        </div>
+                      </Label>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -225,12 +167,27 @@ export function SyncDialog({
                 </h4>
                 <div className="space-y-2">
                   {changes.additions.map((radio) => (
-                    <SyncAdditionRow
-                      checked={selectedAdditions.has(radio.name)}
+                    <div
+                      className="flex items-start gap-3 rounded-lg border p-3"
                       key={radio.name}
-                      onToggle={toggleAddition}
-                      radio={radio}
-                    />
+                    >
+                      <Checkbox
+                        checked={selectedAdditions.has(radio.name)}
+                        id={`add-${radio.name}`}
+                        onCheckedChange={() => toggleAddition(radio.name)}
+                      />
+                      <Label
+                        className="min-w-0 flex-1 cursor-pointer"
+                        htmlFor={`add-${radio.name}`}
+                      >
+                        <div className="truncate font-medium">{radio.name}</div>
+                        {radio.description && (
+                          <div className="line-clamp-2 text-muted-foreground text-xs">
+                            {radio.description}
+                          </div>
+                        )}
+                      </Label>
+                    </div>
                   ))}
                 </div>
               </div>

@@ -77,7 +77,7 @@ export function RotaryKnob({
     (e: React.TouchEvent) => {
       e.preventDefault();
       setIsDragging(true);
-      const { 0: touch } = e.touches;
+      const touch = e.touches[0];
       startPositionRef.current =
         orientation === "vertical"
           ? (touch?.clientY ?? 0)
@@ -105,7 +105,7 @@ export function RotaryKnob({
         return;
       }
 
-      const { 0: touch } = e.touches;
+      const touch = e.touches[0];
       const currentPos =
         orientation === "vertical"
           ? (touch?.clientY ?? 0)
@@ -150,7 +150,7 @@ export function RotaryKnob({
         onMouseDown={handleMouseDown}
         onTouchStart={handleTouchStart}
         ref={knobRef}
-        style={{ height: size, width: size }}
+        style={{ width: size, height: size }}
       >
         <div className="absolute inset-0 rounded-full border border-border bg-background shadow-sm" />
 

@@ -19,22 +19,22 @@ const dom = new JSDOM("<!doctype html><html><body></body></html>", {
 });
 
 for (const [key, value] of Object.entries({
-  document: dom.window.document,
-  HTMLElement: dom.window.HTMLElement,
-  navigator: dom.window.navigator,
   window: dom.window,
+  document: dom.window.document,
+  navigator: dom.window.navigator,
+  HTMLElement: dom.window.HTMLElement,
 })) {
   Object.defineProperty(globalThis, key, {
     configurable: true,
-    value,
     writable: true,
+    value,
   });
 }
 
 Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", {
   configurable: true,
-  value: true,
   writable: true,
+  value: true,
 });
 
 type TrackLoadOptions = {
@@ -45,7 +45,6 @@ type TrackLoadOptions = {
 
 let trackLoadOptions: TrackLoadOptions | undefined;
 const mutateMock = mock((_url: string) => undefined);
-const handleLoad = () => undefined;
 const SEARCH_RESULTS: UnifiedSearchResult[] = [
   {
     artist: "DJ Test",
@@ -72,8 +71,8 @@ mock.module("@/lib/hooks/use-dj-track-load", () => ({
   useDjTrackLoad: (options: TrackLoadOptions) => {
     trackLoadOptions = options;
     return {
-      isPending: false,
       mutate: mutateMock,
+      isPending: false,
     };
   },
 }));
@@ -98,7 +97,7 @@ describe("SearchResults", () => {
     const view = render(
       <SearchResults
         error={null}
-        onLoad={handleLoad}
+        onLoad={() => undefined}
         results={SEARCH_RESULTS}
       />
     );

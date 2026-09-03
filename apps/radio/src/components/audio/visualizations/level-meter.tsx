@@ -38,9 +38,9 @@ function LevelBar({
   const clampedPeak = Math.max(0, Math.min(1, peak ?? 0));
 
   const sizeClasses = {
-    lg: orientation === "vertical" ? "w-4" : "h-4",
-    md: orientation === "vertical" ? "w-3" : "h-3",
     sm: orientation === "vertical" ? "w-2" : "h-2",
+    md: orientation === "vertical" ? "w-3" : "h-3",
+    lg: orientation === "vertical" ? "w-4" : "h-4",
   };
 
   // Calculate color based on level
@@ -86,14 +86,14 @@ function LevelBar({
           ...(orientation === "vertical"
             ? {
                 bottom: 0,
-                height: `${clampedLevel * 100}%`,
                 left: 0,
                 right: 0,
+                height: `${clampedLevel * 100}%`,
               }
             : {
+                top: 0,
                 bottom: 0,
                 left: 0,
-                top: 0,
                 width: `${clampedLevel * 100}%`,
               }),
         }}
@@ -107,17 +107,17 @@ function LevelBar({
             orientation === "vertical"
               ? {
                   bottom: `${clampedPeak * 100}%`,
-                  height: "2px",
                   left: 0,
                   right: 0,
+                  height: "2px",
                   transform: "translateY(50%)",
                 }
               : {
-                  bottom: 0,
                   left: `${clampedPeak * 100}%`,
                   top: 0,
-                  transform: "translateX(-50%)",
+                  bottom: 0,
                   width: "2px",
+                  transform: "translateX(-50%)",
                 }
           }
         />
@@ -126,7 +126,7 @@ function LevelBar({
   );
 }
 
-export const LevelMeterDisplay = memo(function LevelMeterDisplayComponent({
+export const LevelMeterDisplay = memo(function LevelMeterDisplay({
   leftLevel,
   rightLevel,
   peakLevel,

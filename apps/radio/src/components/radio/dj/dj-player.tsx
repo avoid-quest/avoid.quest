@@ -72,45 +72,6 @@ function isDeckId(value: string): value is DeckId {
   return value === "deck-a" || value === "deck-b";
 }
 
-function handleDragStart(event: DragStartEvent) {
-  const { active } = event;
-  const radio = active.data.current?.radio;
-  if (radio) {
-    setActiveDragRadio(radio);
-  }
-}
-
-function handleDragEnd(event: DragEndEvent) {
-  const { active, over } = event;
-  const decks = getDjDeckModule();
-  setActiveDragRadio(null);
-
-  if (!over) {
-    decks.pendingSource.cancel();
-    return;
-  }
-
-  const radio = active.data.current?.radio as Radio;
-  const deckId = over.id as string;
-
-  if (isDeckId(deckId)) {
-    decks
-      .deck(deckId)
-      .load({ radio, type: "library" })
-      .catch((error) => {
-        console.error("[dj] Failed to load dragged source:", error);
-      });
-  }
-}
-
-function handleDeckACueChange(enabled: boolean) {
-  getDjDeckModule().deck("deck-a").change({ enabled, type: "cue" });
-}
-
-function handleDeckBCueChange(enabled: boolean) {
-  getDjDeckModule().deck("deck-b").change({ enabled, type: "cue" });
-}
-
 export function DjPlayer({ radios = [] }: DjPlayerProps) {
   useDjKeyboard();
   useMidi();
@@ -120,13 +81,16 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
   const audioSettings = useAudioSettings();
   const deckA = useDeckA();
   const deckB = useDeckB();
+  const decks = getDjDeckModule();
+  const deckAHandle = decks.deck("deck-a");
+  const deckBHandle = decks.deck("deck-b");
 
   const isPlaying = (deckA?.isPlaying ?? false) || (deckB?.isPlaying ?? false);
   useMediaSession({
+    mode: "dj",
     deckA: deckA?.radio ?? null,
     deckB: deckB?.radio ?? null,
     isPlaying,
-    mode: "dj",
   });
 
   const crossfadePosition = mixer?.crossfadePosition ?? 0.5;
@@ -144,6 +108,36 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
       activationConstraint: { delay: 50, tolerance: 5 },
     })
   );
+
+  const handleDragStart = (event: DragStartEvent) => {
+    const { active } = event;
+    const radio = active.data.current?.radio;
+    if (radio) {
+      setActiveDragRadio(radio);
+    }
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    setActiveDragRadio(null);
+
+    if (!over) {
+      decks.pendingSource.cancel();
+      return;
+    }
+
+    const radio = active.data.current?.radio as Radio;
+    const deckId = over.id as string;
+
+    if (isDeckId(deckId)) {
+      decks
+        .deck(deckId)
+        .load({ type: "library", radio })
+        .catch((error) => {
+          console.error("[dj] Failed to load dragged source:", error);
+        });
+    }
+  };
 
   const isMobile = useIsMobile();
 
@@ -165,8 +159,12 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
             isCueActive={isCueActive}
             masterVolume={masterVolume}
             onCrossfadeChange={setCrossfadePosition}
-            onDeckACueChange={handleDeckACueChange}
-            onDeckBCueChange={handleDeckBCueChange}
+            onDeckACueChange={(enabled) =>
+              deckAHandle.change({ type: "cue", enabled })
+            }
+            onDeckBCueChange={(enabled) =>
+              deckBHandle.change({ type: "cue", enabled })
+            }
             onMasterVolumeChange={setMasterVolume}
             radios={radios}
           />
@@ -179,8 +177,12 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
             isCueActive={isCueActive}
             masterVolume={masterVolume}
             onCrossfadeChange={setCrossfadePosition}
-            onDeckACueChange={handleDeckACueChange}
-            onDeckBCueChange={handleDeckBCueChange}
+            onDeckACueChange={(enabled) =>
+              deckAHandle.change({ type: "cue", enabled })
+            }
+            onDeckBCueChange={(enabled) =>
+              deckBHandle.change({ type: "cue", enabled })
+            }
             onHeadphoneVolumeChange={setHeadphoneVolume}
             onMasterVolumeChange={setMasterVolume}
             radios={radios}
@@ -188,7 +190,7 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
         )}
       </div>
 
-      <DragOverlay style={{ position: "fixed", zIndex: 9999 }}>
+      <DragOverlay style={{ zIndex: 9999, position: "fixed" }}>
         <DjPlayerDragOverlay activeDragRadio={activeDragRadio} />
       </DragOverlay>
     </DndContext>

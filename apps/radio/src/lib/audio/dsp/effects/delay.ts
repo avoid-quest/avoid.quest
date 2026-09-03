@@ -29,7 +29,7 @@ export class Delay {
   private delaySamples = 0;
   private feedback = 0.3;
   private tempo = 120;
-  private tempoSync = false as boolean;
+  private tempoSync = false;
   private tempoDivision = "1/4";
   private preDelay = 0;
   private crossFeedback = 0;
@@ -186,7 +186,7 @@ export class Delay {
       (-2 * Math.PI * this.filterFrequency) / this.sampleRate
     );
 
-    for (let i = fromIndex; i < toIndex; i += 1) {
+    for (let i = fromIndex; i < toIndex; i++) {
       const modulation =
         Math.sin(this.lfoPhase * Math.PI * 2) * this.lfoDepth * 0.001;
       const activeDelaySamplesL = Math.max(

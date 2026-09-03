@@ -87,11 +87,11 @@ function toKodiStation(
   }
 
   const station: KodiStation = {
-    groupTitle: cleanM3uText(groupTitle) || KODI_DEFAULT_GROUP_TITLE,
     id: toStableStationId(radio),
     name,
-    order: radio.order ?? Number.MAX_SAFE_INTEGER,
     streamUrl,
+    groupTitle: cleanM3uText(groupTitle) || KODI_DEFAULT_GROUP_TITLE,
+    order: radio.order ?? Number.MAX_SAFE_INTEGER,
   };
 
   if (isPublicLogoUrl(radio.logoUrl)) {

@@ -54,8 +54,8 @@ function normalizeChains(
     .sort((left, right) => left.order - right.order)
     .map((chain, order) => ({
       ...chain,
-      effects: normalizeEffectTree(chain.effects, depth + 1),
       order,
+      effects: normalizeEffectTree(chain.effects, depth + 1),
     }));
 }
 
@@ -128,6 +128,7 @@ export function findEffectChain(
       }
     }
   }
+  return;
 }
 
 export function findRootEffectContainer(

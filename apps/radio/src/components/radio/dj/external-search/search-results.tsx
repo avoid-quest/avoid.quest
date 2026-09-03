@@ -1,4 +1,3 @@
-// biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers
 import type { UnifiedSearchResult } from "@avoid.quest/platforms";
 import { ScrollArea } from "@avoid.quest/ui/components/scroll-area";
 import { Loader2Icon, MusicIcon, PlayIcon } from "lucide-react";
@@ -43,11 +42,11 @@ function ResultItem({
   onLoadingChange: (loading: boolean) => void;
 }) {
   const { mutate: loadItem, isPending } = useDjTrackLoad({
-    onError,
     onLoad: (radio) => {
       onError("");
       onLoad(radio);
     },
+    onError,
     onSettled: () => onLoadingChange(false),
   });
 
@@ -126,34 +125,6 @@ function ResultItem({
   );
 }
 
-function ManagedResultItem({
-  result,
-  loadingId,
-  onLoad,
-  onError,
-  onLoadingIdChange,
-}: {
-  result: UnifiedSearchResult;
-  loadingId: string | null;
-  onLoad: (radio: Radio) => void;
-  onError: (message: string) => void;
-  onLoadingIdChange: (id: string | null) => void;
-}) {
-  const handleLoadingChange = (loading: boolean) =>
-    onLoadingIdChange(loading ? result.id : null);
-
-  return (
-    <ResultItem
-      isDisabled={loadingId !== null}
-      isLoading={loadingId === result.id}
-      onError={onError}
-      onLoad={onLoad}
-      onLoadingChange={handleLoadingChange}
-      result={result}
-    />
-  );
-}
-
 export function SearchResults({ error, onLoad, results }: SearchResultsProps) {
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -179,12 +150,15 @@ export function SearchResults({ error, onLoad, results }: SearchResultsProps) {
 
         <div className="space-y-0.5">
           {results.map((result) => (
-            <ManagedResultItem
+            <ResultItem
+              isDisabled={loadingId !== null}
+              isLoading={loadingId === result.id}
               key={result.id}
-              loadingId={loadingId}
               onError={setLoadError}
               onLoad={onLoad}
-              onLoadingIdChange={setLoadingId}
+              onLoadingChange={(loading) =>
+                setLoadingId(loading ? result.id : null)
+              }
               result={result}
             />
           ))}

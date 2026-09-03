@@ -31,11 +31,11 @@ export async function searchYouTubeMusic(
       : thumbnail;
 
     return {
+      videoId: item.videoId,
+      title: item.title,
       author: item.author,
       duration: item.lengthSeconds,
       thumbnail: fullThumbnail,
-      title: item.title,
-      videoId: item.videoId,
       views,
     };
   });

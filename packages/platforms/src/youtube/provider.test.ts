@@ -259,7 +259,10 @@ describe("browser Invidious adapter", () => {
 
   test("rejects media URLs whose hostname resolves to a private address", async () => {
     const video = invidiousVideo();
-    const [stream] = video.adaptiveFormats;
+    const stream = video.adaptiveFormats[0];
+    if (!stream) {
+      throw new Error("Expected fixture audio stream");
+    }
     stream.url = "https://private-media.test/audio";
     video.videoThumbnails = [thumbnail("https://public-images.test/thumb.jpg")];
     const fetchImpl = mock(() => Promise.resolve(json(video)));
@@ -497,7 +500,10 @@ describe("Piped adapter", () => {
 
   test("rejects internal stream URLs returned by a public provider", async () => {
     const video = pipedVideo();
-    const [stream] = video.audioStreams;
+    const stream = video.audioStreams[0];
+    if (!stream) {
+      throw new Error("Expected fixture audio stream");
+    }
     stream.url = "http://127.0.0.1/private-audio";
     const adapter = createPipedAdapter({
       baseUrl: "https://piped.test",
@@ -512,7 +518,10 @@ describe("Piped adapter", () => {
 
   test("rejects media URLs whose hostname resolves to a private address", async () => {
     const video = pipedVideo();
-    const [stream] = video.audioStreams;
+    const stream = video.audioStreams[0];
+    if (!stream) {
+      throw new Error("Expected fixture audio stream");
+    }
     stream.url = "https://private-media.test/audio";
     video.thumbnailUrl = "https://public-images.test/thumb.jpg";
     const fetchImpl = mock(() => Promise.resolve(json(video)));
@@ -563,7 +572,10 @@ describe("Piped adapter", () => {
 
   test("rejects media URLs with embedded credentials", async () => {
     const video = pipedVideo();
-    const [stream] = video.audioStreams;
+    const stream = video.audioStreams[0];
+    if (!stream) {
+      throw new Error("Expected fixture audio stream");
+    }
     stream.url = "https://user:password@proxy.piped.test/audio";
     const adapter = createPipedAdapter({
       baseUrl: "https://piped.test",
@@ -578,7 +590,10 @@ describe("Piped adapter", () => {
 
   test("allows loopback media returned by a loopback development provider", async () => {
     const video = pipedVideo();
-    const [stream] = video.audioStreams;
+    const stream = video.audioStreams[0];
+    if (!stream) {
+      throw new Error("Expected fixture audio stream");
+    }
     stream.url = "http://127.0.0.1:4100/audio";
     video.thumbnailUrl = "http://127.0.0.1:4100/thumb.jpg";
     const resolveHostname = mock(() =>
@@ -705,7 +720,10 @@ describe("ordered YouTube provider failover", () => {
 
   test("falls through a provider that returns private-resolving media", async () => {
     const video = pipedVideo();
-    const [stream] = video.audioStreams;
+    const stream = video.audioStreams[0];
+    if (!stream) {
+      throw new Error("Expected fixture audio stream");
+    }
     stream.url = "https://private-media.test/audio";
     video.thumbnailUrl = "https://public-images.test/thumb.jpg";
     const first = createPipedAdapter({

@@ -41,6 +41,7 @@ function readBooleanConfig(
   if (typeof value === "number") {
     return value !== 0;
   }
+  return;
 }
 
 function applyBooleanConfig(

@@ -43,7 +43,7 @@ function useSmoothedLevel(level: number) {
       return;
     }
     const target = amplify(level);
-    const { current } = smoothedRef;
+    const current = smoothedRef.current;
     if (target >= current) {
       // Attack: jump to 70% immediately, ease the rest
       smoothedRef.current = current + (target - current) * 0.7;
@@ -130,16 +130,16 @@ function MeterBar({
           style={
             isVertical
               ? {
-                  background: getPeakHoldColor(peakPercent),
+                  insetInline: 0,
                   bottom: `${peakPercent}%`,
                   height: 1,
-                  insetInline: 0,
+                  background: getPeakHoldColor(peakPercent),
                 }
               : {
-                  background: getPeakHoldColor(peakPercent),
                   insetBlock: 0,
                   left: `${peakPercent}%`,
                   width: 1,
+                  background: getPeakHoldColor(peakPercent),
                 }
           }
         />
@@ -149,8 +149,8 @@ function MeterBar({
           className="absolute rounded-full bg-red-500"
           style={
             isVertical
-              ? { height: 3, right: 1, top: 2, width: 3 }
-              : { height: 2, right: 2, top: 1, width: 2 }
+              ? { top: 2, right: 1, width: 3, height: 3 }
+              : { top: 1, right: 2, width: 2, height: 2 }
           }
         />
       )}

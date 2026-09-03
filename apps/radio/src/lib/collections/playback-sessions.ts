@@ -49,28 +49,24 @@ const LEGACY_DJ_MIXER_KEY = "radio-app-dj-mixer";
 
 const radioSchema = z
   .object({
-    countryTitle: z.string().optional(),
-    description: z.string().optional(),
-    enabled: z.boolean().optional(),
     id: z.union([z.string(), z.number()]).optional(),
-    isSystem: z.boolean().optional(),
-    logoUrl: z.string().optional(),
-    metadataConfig: radioMetadataConfigSchema.optional(),
     name: z.string(),
-    order: z.number().optional(),
-    placeTitle: z.string().optional(),
-    platformMetadata: platformMetadataSchema,
-    streamFormat: z.enum(["hls", "progressive"]).optional(),
     streamUrl: z.string(),
+    streamFormat: z.enum(["hls", "progressive"]).optional(),
+    logoUrl: z.string().optional(),
+    description: z.string().optional(),
     websiteUrl: z.string().optional(),
+    placeTitle: z.string().optional(),
+    countryTitle: z.string().optional(),
+    order: z.number().optional(),
+    enabled: z.boolean().optional(),
+    isSystem: z.boolean().optional(),
+    platformMetadata: platformMetadataSchema,
+    metadataConfig: radioMetadataConfigSchema.optional(),
   })
   .nullable();
 
 const filterConfigSchema = z.object({
-  enabled: z.boolean(),
-  frequency: z.number(),
-  gain: z.number(),
-  Q: z.number(),
   type: z.enum([
     "lowpass",
     "highpass",
@@ -81,6 +77,10 @@ const filterConfigSchema = z.object({
     "notch",
     "allpass",
   ]),
+  frequency: z.number(),
+  Q: z.number(),
+  gain: z.number(),
+  enabled: z.boolean(),
 });
 
 const effectSidechainSchema = z.object({
@@ -173,14 +173,14 @@ function migrateLegacyEffectConfig(value: unknown): unknown {
 
 const effectChainConfigSchema: z.ZodType<EffectChainConfig> = z.lazy(() =>
   z.object({
-    effects: z.array(effectConfigSchema),
-    gain: z.number(),
     id: z.string(),
-    muted: z.boolean(),
     name: z.string(),
     order: z.number(),
+    gain: z.number(),
     pan: z.number(),
+    muted: z.boolean(),
     solo: z.boolean(),
+    effects: z.array(effectConfigSchema),
   })
 );
 
@@ -189,16 +189,16 @@ effectConfigSchema = z.lazy(() =>
     migrateLegacyEffectConfig,
     z
       .object({
-        chains: z.array(effectChainConfigSchema).optional(),
-        crossoverFrequencies: z.array(z.number()).optional(),
-        dryWet: z.number(),
-        enabled: z.boolean(),
         id: z.string(),
-        inputGain: z.number(),
+        type: z.enum(EFFECT_TYPES),
+        enabled: z.boolean(),
         order: z.number(),
+        dryWet: z.number(),
+        inputGain: z.number(),
         outputGain: z.number(),
         sidechain: effectSidechainSchema.optional(),
-        type: z.enum(EFFECT_TYPES),
+        chains: z.array(effectChainConfigSchema).optional(),
+        crossoverFrequencies: z.array(z.number()).optional(),
       })
       .passthrough()
       .superRefine((value, context) => {
@@ -255,40 +255,40 @@ const playbackChannelRoleSchema = z.enum([
 ]);
 
 const playbackChannelSchema = z.object({
-  autoplay: z.boolean().default(true),
-  channelFilter: z.number(),
-  cueEnabled: z.boolean().default(false),
-  effects: z.array(effectConfigSchema),
-  effectsDryWet: z.number(),
-  filter: filterConfigSchema,
   id: z.string(),
-  muted: z.boolean(),
-  order: z.number().default(0),
-  pan: z.number(),
-  radio: radioSchema,
-  repeat: z.boolean().default(false),
   role: playbackChannelRoleSchema,
-  speed: z.number(),
+  radio: radioSchema,
   volume: z.number(),
+  muted: z.boolean(),
+  pan: z.number(),
+  speed: z.number(),
+  channelFilter: z.number(),
+  effects: z.array(effectConfigSchema),
+  filter: filterConfigSchema,
+  effectsDryWet: z.number(),
+  repeat: z.boolean().default(false),
+  autoplay: z.boolean().default(true),
+  cueEnabled: z.boolean().default(false),
+  order: z.number().default(0),
 });
 
 const playbackSessionSchema = z
   .object({
-    activeChannelId: z.string().nullable().default(null),
+    id: z.enum(PLAYBACK_SESSION_IDS),
     channels: z.array(playbackChannelSchema),
+    masterVolume: z.number().default(1),
     crossfadePosition: z.number().default(0.5),
     headphoneVolume: z.number().default(1),
-    id: z.enum(PLAYBACK_SESSION_IDS),
-    masterVolume: z.number().default(1),
     tempo: z.number().positive().default(DEFAULT_EFFECT_TEMPO),
+    activeChannelId: z.string().nullable().default(null),
   })
   .transform((session) => ({
     ...session,
+    tempo: normalizeTempoBpm(session.tempo),
     channels: session.channels.map((channel) => ({
       ...channel,
       effects: normalizeEffectTree(channel.effects),
     })),
-    tempo: normalizeTempoBpm(session.tempo),
   }));
 
 export type PlaybackChannelRecord = z.infer<typeof playbackChannelSchema>;
@@ -301,11 +301,11 @@ export function parsePlaybackSessionRecord(
 }
 
 const DEFAULT_FILTER: PlaybackChannelRecord["filter"] = {
-  enabled: false,
-  frequency: 1000,
-  gain: 0,
-  Q: 1,
   type: "lowpass",
+  frequency: 1000,
+  Q: 1,
+  gain: 0,
+  enabled: false,
 };
 
 export function createDefaultChannel(
@@ -314,21 +314,21 @@ export function createDefaultChannel(
   order = 0
 ): PlaybackChannelRecord {
   return {
-    autoplay: true,
-    channelFilter: 0,
-    cueEnabled: false,
-    effects: [],
-    effectsDryWet: 1,
-    filter: { ...DEFAULT_FILTER },
     id,
-    muted: false,
-    order,
-    pan: 0,
-    radio: null,
-    repeat: false,
     role,
-    speed: 1,
+    radio: null,
     volume: 1,
+    muted: false,
+    pan: 0,
+    speed: 1,
+    channelFilter: 0,
+    effects: [],
+    filter: { ...DEFAULT_FILTER },
+    effectsDryWet: 1,
+    repeat: false,
+    autoplay: true,
+    cueEnabled: false,
+    order,
   };
 }
 
@@ -405,7 +405,7 @@ export function buildSingleSessionFromLegacyState(legacySingle?: {
     typeof legacySingle?.volume === "number" ? legacySingle.volume : 1;
 
   return {
-    activeChannelId: radio ? SINGLE_ACTIVE_CHANNEL_ID : null,
+    id: "single",
     channels: [
       {
         ...defaultPrimary,
@@ -414,11 +414,11 @@ export function buildSingleSessionFromLegacyState(legacySingle?: {
       },
       defaultSecondary,
     ],
+    masterVolume: 1,
     crossfadePosition: 0.5,
     headphoneVolume: 1,
-    id: "single",
-    masterVolume: 1,
     tempo: DEFAULT_EFFECT_TEMPO,
+    activeChannelId: radio ? SINGLE_ACTIVE_CHANNEL_ID : null,
   };
 }
 
@@ -468,10 +468,10 @@ export function buildDjSessionFromLegacyState(params?: {
     {
       ...defaultDeckA,
       ...legacyDeckA,
-      cueEnabled: legacyMixer?.deckACueEnabled ?? false,
       id: DECK_A_CHANNEL_ID,
-      radio: normalizeRadio(legacyDeckA?.radio ?? null),
       role: "deck-a",
+      radio: normalizeRadio(legacyDeckA?.radio ?? null),
+      cueEnabled: legacyMixer?.deckACueEnabled ?? false,
     },
     defaultDeckA
   );
@@ -479,22 +479,22 @@ export function buildDjSessionFromLegacyState(params?: {
     {
       ...defaultDeckB,
       ...legacyDeckB,
-      cueEnabled: legacyMixer?.deckBCueEnabled ?? false,
       id: DECK_B_CHANNEL_ID,
-      radio: normalizeRadio(legacyDeckB?.radio ?? null),
       role: "deck-b",
+      radio: normalizeRadio(legacyDeckB?.radio ?? null),
+      cueEnabled: legacyMixer?.deckBCueEnabled ?? false,
     },
     defaultDeckB
   );
 
   return {
-    activeChannelId: null,
+    id: "dj",
     channels: [deckA, deckB],
+    masterVolume: legacyMixer?.masterVolume ?? 1,
     crossfadePosition: legacyMixer?.crossfadePosition ?? 0.5,
     headphoneVolume: legacyMixer?.headphoneVolume ?? 1,
-    id: "dj",
-    masterVolume: legacyMixer?.masterVolume ?? 1,
     tempo: DEFAULT_EFFECT_TEMPO,
+    activeChannelId: null,
   };
 }
 
@@ -563,16 +563,16 @@ export function buildMultipleSessionFromRadios(
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 
   return {
-    activeChannelId: null,
+    id: "multiple",
     channels: enabledRadios.map((radio, index) => ({
       ...createDefaultChannel(getMultipleChannelId(radio), "multiple", index),
       radio,
     })),
+    masterVolume: 1,
     crossfadePosition: 0.5,
     headphoneVolume: 1,
-    id: "multiple",
-    masterVolume: 1,
     tempo: DEFAULT_EFFECT_TEMPO,
+    activeChannelId: null,
   };
 }
 
@@ -627,11 +627,11 @@ function pruneStaleMultipleSessionChannels(): void {
 
 export const playbackSessionsCollection = createCollection(
   localStorageCollectionOptions({
-    getKey: (item) => item.id,
     id: "playback-sessions",
-    schema: playbackSessionSchema,
     startSync: true,
     storageKey: PLAYBACK_SESSIONS_STORAGE_KEY,
+    getKey: (item) => item.id,
+    schema: playbackSessionSchema,
   })
 );
 
@@ -702,61 +702,42 @@ function collectNamModels(
 async function externalizeChannelNamModels(
   originalEffects: readonly EffectConfig[]
 ): Promise<EffectConfig[]> {
-  const effects = [...originalEffects];
-  const externalized = await Promise.all(
-    collectNamModels(effects).map(async (model) => {
-      const { modelData } = model;
-      if (!modelData) {
-        if (model.modelId?.startsWith("local-nam:")) {
-          await getNamModel(model.modelId).catch(() => null);
-        }
-        return null;
+  let effects = [...originalEffects];
+  for (const model of collectNamModels(effects)) {
+    if (!model.modelData) {
+      if (model.modelId?.startsWith("local-nam:")) {
+        await getNamModel(model.modelId).catch(() => null);
       }
-      const modelId = model.modelId?.startsWith("local-nam:")
-        ? model.modelId
-        : createLocalNamModelId();
-      try {
-        await saveNamModel(modelId, modelData);
-        return { model, modelId };
-      } catch (error) {
-        console.warn(
-          `[playback-sessions] Could not externalize NAM model ${model.modelName ?? model.id}`,
-          error
-        );
-        return null;
-      }
-    })
-  );
-  return externalized.reduce<EffectConfig[]>((updatedEffects, result) => {
-    if (!result) {
-      return updatedEffects;
+      continue;
     }
-    return updateEffectInTree(updatedEffects, result.model.id, {
-      modelData: null,
-      modelId: result.modelId,
-    } as Partial<EffectConfig>);
-  }, effects);
+    const modelId = model.modelId?.startsWith("local-nam:")
+      ? model.modelId
+      : createLocalNamModelId();
+    try {
+      await saveNamModel(modelId, model.modelData);
+      effects = updateEffectInTree(effects, model.id, {
+        modelId,
+        modelData: null,
+      } as Partial<EffectConfig>);
+    } catch (error) {
+      console.warn(
+        `[playback-sessions] Could not externalize NAM model ${model.modelName ?? model.id}`,
+        error
+      );
+    }
+  }
+  return effects;
 }
 
 async function externalizeStoredNamModels(): Promise<void> {
-  const channels = [...playbackSessionsCollection.state.values()].flatMap(
-    (session) =>
-      session.channels.map((channel) => ({
-        channel,
-        sessionId: session.id,
-      }))
-  );
-  const updates = await Promise.all(
-    channels.map(async ({ channel, sessionId }) => {
+  for (const session of playbackSessionsCollection.state.values()) {
+    for (const channel of session.channels) {
       const effects = await externalizeChannelNamModels(channel.effects);
-      return { channel, effects, sessionId };
-    })
-  );
-  for (const { channel, effects, sessionId } of updates) {
-    if (effects.some((effect, index) => effect !== channel.effects[index])) {
-      updatePlaybackChannel(sessionId, channel.id, (draft) => {
-        draft.effects = effects;
-      });
+      if (effects.some((effect, index) => effect !== channel.effects[index])) {
+        updatePlaybackChannel(session.id, channel.id, (draft) => {
+          draft.effects = effects;
+        });
+      }
     }
   }
 }

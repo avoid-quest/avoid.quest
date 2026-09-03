@@ -22,7 +22,7 @@ export function RadioNowPlaying({ metadata, className }: RadioNowPlayingProps) {
       )}
     >
       <span className="truncate">{nowPlaying}</span>
-      {metadata?.itemUrl ? (
+      {metadata?.itemUrl && (
         <a
           aria-label="More info about this show or track"
           className="ml-1 inline-flex shrink-0 items-center text-primary/80 transition-colors hover:text-primary"
@@ -33,7 +33,7 @@ export function RadioNowPlaying({ metadata, className }: RadioNowPlayingProps) {
         >
           <ExternalLinkIcon className="size-3" />
         </a>
-      ) : null}
+      )}
     </span>
   );
 }

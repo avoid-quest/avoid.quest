@@ -13,74 +13,74 @@ import {
 
 // Order options for HP/LP filters
 export const orderOptions: SelectOption[] = [
-  { label: "6 dB/oct", value: "1" },
-  { label: "12 dB/oct", value: "2" },
-  { label: "18 dB/oct", value: "3" },
-  { label: "24 dB/oct", value: "4" },
+  { value: "1", label: "6 dB/oct" },
+  { value: "2", label: "12 dB/oct" },
+  { value: "3", label: "18 dB/oct" },
+  { value: "4", label: "24 dB/oct" },
 ];
 
 // Oversample options for distortion
 export const distortionOversampleOptions: SelectOption[] = [
-  { label: "None", value: "none" },
-  { label: "2x", value: "2x" },
-  { label: "4x", value: "4x" },
+  { value: "none", label: "None" },
+  { value: "2x", label: "2x" },
+  { value: "4x", label: "4x" },
 ];
 
 // Oversample options for fold
 export const foldOversampleOptions: SelectOption[] = [
-  { label: "2x", value: "2" },
-  { label: "4x", value: "4" },
-  { label: "8x", value: "8" },
+  { value: "2", label: "2x" },
+  { value: "4", label: "4x" },
+  { value: "8", label: "8x" },
 ];
 
 export const delayFractionOptions: SelectOption[] = OPENDAW_DELAY_FRACTIONS.map(
-  (value) => ({ label: value, value })
+  (value) => ({ value, label: value })
 );
 
 export const tidalFractionOptions: SelectOption[] = OPENDAW_TIDAL_FRACTIONS.map(
-  (value) => ({ label: value, value })
+  (value) => ({ value, label: value })
 );
 
 export const panLawOptions: SelectOption[] = [
-  { label: "Linear", value: "linear" },
-  { label: "Equal power", value: "equalPower" },
+  { value: "linear", label: "Linear" },
+  { value: "equalPower", label: "Equal power" },
 ];
 
 export const waveshaperEquationLabels: Record<
   (typeof OPENDAW_WAVESHAPER_EQUATIONS)[number],
   string
 > = {
+  hardclip: "Hard clip",
+  cubicSoft: "Cubic soft",
+  tanh: "Tanh",
+  sigmoid: "Sigmoid",
   arctan: "Arctangent",
   asymmetric: "Asymmetric",
-  cubicSoft: "Cubic soft",
-  hardclip: "Hard clip",
-  sigmoid: "Sigmoid",
-  tanh: "Tanh",
 };
 
 export const waveshaperEquationOptions: SelectOption[] =
   OPENDAW_WAVESHAPER_EQUATIONS.map((value) => ({
-    label: waveshaperEquationLabels[value],
     value,
+    label: waveshaperEquationLabels[value],
   }));
 
 export const vocoderBandOptions: SelectOption[] = [8, 12, 16].map((value) => ({
-  label: `${value} bands`,
   value: String(value),
+  label: `${value} bands`,
 }));
 
 export const vocoderModulatorOptions: SelectOption[] = [
-  { label: "White noise", value: "noise-white" },
-  { label: "Pink noise", value: "noise-pink" },
-  { label: "Brown noise", value: "noise-brown" },
-  { label: "Self", value: "self" },
-  { label: "External sidechain", value: "external" },
+  { value: "noise-white", label: "White noise" },
+  { value: "noise-pink", label: "Pink noise" },
+  { value: "noise-brown", label: "Brown noise" },
+  { value: "self", label: "Self" },
+  { value: "external", label: "External sidechain" },
 ];
 
 export const autotuneKeyOptions: SelectOption[] = AUTOTUNE_KEYS.map(
   (value) => ({
-    label: value,
     value,
+    label: value,
   })
 );
 
@@ -88,20 +88,20 @@ export const autotuneScaleLabels: Record<
   (typeof AUTOTUNE_SCALES)[number],
   string
 > = {
-  blues: "Blues",
   chromatic: "Chromatic",
-  dorian: "Dorian",
   major: "Major",
-  majorPentatonic: "Major pentatonic",
   minor: "Minor",
+  majorPentatonic: "Major pentatonic",
   minorPentatonic: "Minor pentatonic",
+  blues: "Blues",
+  dorian: "Dorian",
   mixolydian: "Mixolydian",
 };
 
 export const autotuneScaleOptions: SelectOption[] = AUTOTUNE_SCALES.map(
   (value) => ({
-    label: autotuneScaleLabels[value],
     value,
+    label: autotuneScaleLabels[value],
   })
 );
 
@@ -121,40 +121,40 @@ export function createBellBandGroup(
   const qKey = `${prefix}Q` as RevampParamKey;
 
   return {
-    children: [
-      { key: enabledKey, label: "Enabled", type: "checkbox" },
-      {
-        formatKey: "frequency",
-        key: frequencyKey,
-        label: "Frequency",
-        max: 20_000,
-        min: 20,
-        step: 1,
-        type: "slider",
-      },
-      {
-        formatKey: "db",
-        key: gainKey,
-        label: "Gain",
-        max: 40,
-        min: -40,
-        step: 0.1,
-        type: "slider",
-      },
-      {
-        formatKey: "q",
-        key: qKey,
-        label: "Q",
-        max: 30,
-        min: 0.1,
-        step: 0.1,
-        type: "slider",
-      },
-    ],
+    type: "group",
+    title,
     collapsible: true,
     enabledKey,
-    title,
-    type: "group",
+    children: [
+      { type: "checkbox", key: enabledKey, label: "Enabled" },
+      {
+        type: "slider",
+        key: frequencyKey,
+        label: "Frequency",
+        formatKey: "frequency",
+        min: 20,
+        max: 20_000,
+        step: 1,
+      },
+      {
+        type: "slider",
+        key: gainKey,
+        label: "Gain",
+        formatKey: "db",
+        min: -40,
+        max: 40,
+        step: 0.1,
+      },
+      {
+        type: "slider",
+        key: qKey,
+        label: "Q",
+        formatKey: "q",
+        min: 0.1,
+        max: 30,
+        step: 0.1,
+      },
+    ],
   };
 }
 
@@ -168,31 +168,31 @@ export function createShelfBandGroup(
   const gainKey = `${prefix}Gain` as RevampParamKey;
 
   return {
-    children: [
-      { key: enabledKey, label: "Enabled", type: "checkbox" },
-      {
-        formatKey: "frequency",
-        key: frequencyKey,
-        label: "Frequency",
-        max: 20_000,
-        min: 20,
-        step: 1,
-        type: "slider",
-      },
-      {
-        formatKey: "db",
-        key: gainKey,
-        label: "Gain",
-        max: 40,
-        min: -40,
-        step: 0.1,
-        type: "slider",
-      },
-    ],
+    type: "group",
+    title,
     collapsible: true,
     enabledKey,
-    title,
-    type: "group",
+    children: [
+      { type: "checkbox", key: enabledKey, label: "Enabled" },
+      {
+        type: "slider",
+        key: frequencyKey,
+        label: "Frequency",
+        formatKey: "frequency",
+        min: 20,
+        max: 20_000,
+        step: 1,
+      },
+      {
+        type: "slider",
+        key: gainKey,
+        label: "Gain",
+        formatKey: "db",
+        min: -40,
+        max: 40,
+        step: 0.1,
+      },
+    ],
   };
 }
 
@@ -207,37 +207,37 @@ export function createPassFilterGroup(
   const orderKey = `${prefix}Order` as RevampParamKey;
 
   return {
+    type: "group",
+    title,
+    collapsible: true,
+    enabledKey,
     children: [
-      { key: enabledKey, label: "Enabled", type: "checkbox" },
+      { type: "checkbox", key: enabledKey, label: "Enabled" },
       {
-        formatKey: "frequency",
+        type: "slider",
         key: frequencyKey,
         label: "Frequency",
-        max: 20_000,
+        formatKey: "frequency",
         min: 20,
+        max: 20_000,
         step: 1,
-        type: "slider",
       },
       {
-        formatKey: "q",
+        type: "slider",
         key: qKey,
         label: "Q",
-        max: 30,
+        formatKey: "q",
         min: 0.1,
+        max: 30,
         step: 0.1,
-        type: "slider",
       },
       {
+        type: "select",
         key: orderKey,
         label: "Slope",
         options: orderOptions,
-        type: "select",
         valueType: "number",
       },
     ],
-    collapsible: true,
-    enabledKey,
-    title,
-    type: "group",
   };
 }

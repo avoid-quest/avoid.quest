@@ -28,6 +28,12 @@ export async function execute(
   let station: PresetRadio | undefined;
 
   await requestPlayback(interaction, {
+    messages: {
+      voiceChannelRequired:
+        "You need to be in a voice channel to use this command.",
+      serverRequired: "This command can only be used in a server.",
+      failurePrefix: "Failed to play station",
+    },
     beforeDefer: async () => {
       const query = name.toLowerCase();
       station = presets.find(
@@ -52,23 +58,17 @@ export async function execute(
       }
 
       const track: QueueTrack = {
+        title: station.name,
         artist: station.description,
-        isLiveStream: true,
+        url: station.websiteUrl,
+        streamUrl: station.streamUrl,
         platform: "radio",
         requestedBy,
-        streamUrl: station.streamUrl,
+        isLiveStream: true,
         thumbnail: station.logoUrl,
-        title: station.name,
-        url: station.websiteUrl,
       };
 
       return track;
-    },
-    messages: {
-      failurePrefix: "Failed to play station",
-      serverRequired: "This command can only be used in a server.",
-      voiceChannelRequired:
-        "You need to be in a voice channel to use this command.",
     },
   });
 }

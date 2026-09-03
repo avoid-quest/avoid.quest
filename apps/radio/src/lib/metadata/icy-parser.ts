@@ -43,8 +43,8 @@ export function parseIcyMetadataBlock(block: Uint8Array): IcyMetadataFields {
   let match = pattern.exec(text);
 
   while (match) {
-    const [, key, matchedValue] = match;
-    const value = cleanMetadataText(matchedValue);
+    const key = match[1];
+    const value = cleanMetadataText(match[2]);
     if (key) {
       fields[key] = value;
     }
@@ -52,11 +52,9 @@ export function parseIcyMetadataBlock(block: Uint8Array): IcyMetadataFields {
   }
 
   return {
-    fields,
-    // biome-ignore lint/suspicious/noUnnecessaryConditions: ICY metadata fields are sparse at runtime.
     streamTitle: fields.StreamTitle ?? null,
-    // biome-ignore lint/suspicious/noUnnecessaryConditions: ICY metadata fields are sparse at runtime.
     streamUrl: fields.StreamUrl ?? null,
+    fields,
   };
 }
 
@@ -154,9 +152,9 @@ export async function readFirstIcyMetadataBlock(
     blockStart: metaInt,
     metadataLength: null,
   };
+
   try {
     while (state.blockIndex < MAX_ICY_METADATA_BLOCKS) {
-      // biome-ignore lint/performance/noAwaitInLoops: stream chunks must be read sequentially
       const { done, value } = await reader.read();
       if (done) {
         return null;
@@ -174,6 +172,7 @@ export async function readFirstIcyMetadataBlock(
         return block;
       }
     }
+
     return null;
   } finally {
     try {

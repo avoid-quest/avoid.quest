@@ -62,7 +62,7 @@ export class FFTAnalyzer {
    */
   analyze(input: Float32Array, fromIndex = 0): Float32Array {
     // Copy input with window function
-    for (let i = 0; i < this.fftSize; i += 1) {
+    for (let i = 0; i < this.fftSize; i++) {
       this.realBuffer[i] = (input[fromIndex + i] ?? 0) * this.windowBuffer[i];
       this.imagBuffer[i] = 0;
     }
@@ -71,7 +71,7 @@ export class FFTAnalyzer {
     this.fft(this.realBuffer, this.imagBuffer);
 
     // Calculate magnitudes (only first half - positive frequencies)
-    for (let i = 0; i < this.fftSize / 2; i += 1) {
+    for (let i = 0; i < this.fftSize / 2; i++) {
       const real = this.realBuffer[i] ?? 0;
       const imag = this.imagBuffer[i] ?? 0;
       const magnitude = Math.sqrt(real * real + imag * imag);
@@ -88,7 +88,7 @@ export class FFTAnalyzer {
     const normalized = new Float32Array(this.binCount);
     const range = this.maxDb - this.minDb;
 
-    for (let i = 0; i < this.binCount; i += 1) {
+    for (let i = 0; i < this.binCount; i++) {
       const magnitude = this.magnitudeBuffer[i] ?? 0;
       const db = magnitude > 1e-10 ? 20 * Math.log10(magnitude) : this.minDb;
       normalized[i] = Math.max(0, Math.min(1, (db - this.minDb) / range));
@@ -103,7 +103,7 @@ export class FFTAnalyzer {
   getMagnitudesDb(): Float32Array {
     const dbBuffer = new Float32Array(this.binCount);
 
-    for (let i = 0; i < this.binCount; i += 1) {
+    for (let i = 0; i < this.binCount; i++) {
       const magnitude = this.magnitudeBuffer[i] ?? 0;
       dbBuffer[i] =
         magnitude > 1e-10
@@ -119,7 +119,7 @@ export class FFTAnalyzer {
    */
   private createHannWindow(size: number): Float32Array {
     const window = new Float32Array(size);
-    for (let i = 0; i < size; i += 1) {
+    for (let i = 0; i < size; i++) {
       window[i] = 0.5 * (1 - Math.cos((2 * Math.PI * i) / (size - 1)));
     }
     return window;
@@ -133,7 +133,7 @@ export class FFTAnalyzer {
     const levels = Math.log2(n);
 
     // Bit-reversal permutation
-    for (let i = 0; i < n; i += 1) {
+    for (let i = 0; i < n; i++) {
       const j = this.reverseBits(i, levels);
       if (j > i) {
         // Swap real
@@ -153,7 +153,7 @@ export class FFTAnalyzer {
       const tableStep = n / size;
 
       for (let i = 0; i < n; i += size) {
-        for (let j = i, k = 0; j < i + halfSize; j += 1, k += tableStep) {
+        for (let j = i, k = 0; j < i + halfSize; j++, k += tableStep) {
           const l = j + halfSize;
           const angle = (-2 * Math.PI * k) / n;
           const tpReal = Math.cos(angle);
@@ -181,7 +181,7 @@ export class FFTAnalyzer {
   private reverseBits(input: number, bits: number): number {
     let result = 0;
     let value = input;
-    for (let i = 0; i < bits; i += 1) {
+    for (let i = 0; i < bits; i++) {
       result = (result << 1) | (value & 1);
       value >>>= 1;
     }

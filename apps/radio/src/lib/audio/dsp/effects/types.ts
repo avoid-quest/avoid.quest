@@ -541,13 +541,13 @@ export type StereoChannels = [Float32Array, Float32Array];
  * Uses openDAW-compatible signature with stereo channel pairs.
  */
 export type EffectProcessor = {
-  process: (
+  process(
     input: StereoChannels,
     output: StereoChannels,
     fromIndex: number,
     toIndex: number
-  ) => void;
-  setSidechainInput?: (input: StereoChannels | null) => void;
-  setTempo?: (bpm: number) => void;
-  reset: () => void;
+  ): void;
+  setSidechainInput?(input: StereoChannels | null): void;
+  setTempo?(bpm: number): void;
+  reset(): void;
 };

@@ -56,45 +56,45 @@ class Processor {}`)
   test("preserves, clamps, rounds, and resets persisted values", () => {
     const declarations = [
       {
-        defaultValue: 0.5,
         label: "gain",
+        defaultValue: 0.5,
+        min: 0,
+        max: 1,
         mapping: "linear" as const,
-        max: 1,
-        min: 0,
         unit: "",
       },
       {
-        defaultValue: 1,
         label: "mode",
-        mapping: "int" as const,
-        max: 3,
+        defaultValue: 1,
         min: 0,
+        max: 3,
+        mapping: "int" as const,
         unit: "",
       },
       {
-        defaultValue: 0,
         label: "active",
-        mapping: "bool" as const,
-        max: 1,
+        defaultValue: 0,
         min: 0,
+        max: 1,
+        mapping: "bool" as const,
         unit: "",
       },
     ];
 
     expect(
       reconcileWerkstattParameters(declarations, {
-        active: 0.8,
         gain: 2,
         mode: 1.6,
+        active: 0.8,
         removed: 99,
       })
-    ).toEqual({ active: 1, gain: 1, mode: 2 });
+    ).toEqual({ gain: 1, mode: 2, active: 1 });
     expect(
       reconcileWerkstattParameters(
         declarations,
-        { active: 1, gain: 0.9, mode: 3 },
+        { gain: 0.9, mode: 3, active: 1 },
         true
       )
-    ).toEqual({ active: 0, gain: 0.5, mode: 1 });
+    ).toEqual({ gain: 0.5, mode: 1, active: 0 });
   });
 });

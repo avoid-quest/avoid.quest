@@ -357,7 +357,7 @@ export function toPlayableSources(
     ];
   }
 
-  const { metadata } = item;
+  const metadata = item.metadata;
 
   if (metadata.platform === "radiogarden") {
     return [

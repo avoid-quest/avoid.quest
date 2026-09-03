@@ -1,6 +1,5 @@
 import {
   type AudioPlayer,
-  type AudioPlayerState,
   AudioPlayerStatus,
   type AudioResource,
   createAudioPlayer,
@@ -179,21 +178,18 @@ class GuildPlayer {
   private volume = 0.5;
   private disconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private activePlayAbortController: AbortController | null = null;
-  private readonly ignoredIdleResources = new WeakSet<AudioResource>();
+  private skipping = false;
   private playId = 0;
 
   constructor(guildId: string) {
     this.guildId = guildId;
     this.player = createAudioPlayer();
 
-    this.player.on(AudioPlayerStatus.Idle, (oldState: AudioPlayerState) => {
-      if (
-        "resource" in oldState &&
-        this.ignoredIdleResources.delete(oldState.resource)
-      ) {
+    this.player.on(AudioPlayerStatus.Idle, () => {
+      if (this.skipping) {
         return;
       }
-      const { current } = this.queue;
+      const current = this.queue.current;
       if (current?.isLiveStream) {
         return;
       }
@@ -236,21 +232,19 @@ class GuildPlayer {
 
     this.channel = channel;
     this.connection = joinVoiceChannel({
-      adapterCreator: channel.guild.voiceAdapterCreator,
       channelId: channel.id,
       guildId: channel.guild.id,
+      adapterCreator: channel.guild.voiceAdapterCreator,
     });
 
     this.connection.subscribe(this.player);
 
     try {
       await entersState(this.connection, VoiceConnectionStatus.Ready, 20_000);
-    } catch (error) {
+    } catch {
       this.connection.destroy();
       this.connection = null;
-      throw new Error("Failed to connect to voice channel within 20 seconds", {
-        cause: error,
-      });
+      throw new Error("Failed to connect to voice channel within 20 seconds");
     }
 
     patchConnectionForStereo(this.connection);
@@ -288,8 +282,7 @@ class GuildPlayer {
   private beginPlay(): { controller: AbortController; id: number } {
     this.abortActivePlay();
     const controller = new AbortController();
-    this.playId += 1;
-    const { playId: id } = this;
+    const id = ++this.playId;
     this.activePlayAbortController = controller;
     return { controller, id };
   }
@@ -398,16 +391,11 @@ class GuildPlayer {
       return { status: "not-playing" };
     }
 
-    const { state } = this.player;
-    const skippedResource = "resource" in state ? state.resource : null;
-    if (skippedResource) {
-      this.ignoredIdleResources.add(skippedResource);
-    }
+    this.skipping = true;
     const next = this.queue.next();
     this.invalidateActivePlay();
-    if (!this.player.stop() && skippedResource) {
-      this.ignoredIdleResources.delete(skippedResource);
-    }
+    this.player.stop();
+    this.skipping = false;
     if (next) {
       this.play(next).catch((err) => {
         console.error("[GuildPlayer] Skip play failed:", err);
@@ -469,7 +457,7 @@ class GuildPlayer {
   }
 
   private async enqueue(tracks: QueueTrack[]): Promise<QueueTrack | null> {
-    const [firstTrack] = tracks;
+    const firstTrack = tracks[0];
     if (!firstTrack) {
       return null;
     }
@@ -482,11 +470,13 @@ class GuildPlayer {
 
   setPlaybackVolume(percent: number): SetVolumeResult {
     this.volume = Math.max(0, Math.min(1, percent / 100));
-    const { resource } = this.player.state as {
-      resource?: { volume?: { setVolume: (v: number) => void } };
-    };
+    const resource = (
+      this.player.state as {
+        resource?: { volume?: { setVolume: (v: number) => void } };
+      }
+    ).resource;
     resource?.volume?.setVolume(this.volume);
-    return { percent, status: "volume-set" };
+    return { status: "volume-set", percent };
   }
 
   updateOccupancy(

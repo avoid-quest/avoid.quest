@@ -105,10 +105,10 @@ export function useAudioDevices(
 
   return {
     inputDevices,
-    isLoading,
     outputDevices,
     permissionState,
-    refreshDevices,
+    isLoading,
     requestPermission,
+    refreshDevices,
   };
 }

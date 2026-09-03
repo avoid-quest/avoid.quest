@@ -13,28 +13,28 @@ Object.defineProperty(dom.window.navigator, "requestMIDIAccess", {
 });
 
 for (const [key, value] of Object.entries({
-  DocumentFragment: dom.window.DocumentFragment,
+  window: dom.window,
   document: dom.window.document,
-  Element: dom.window.Element,
-  getComputedStyle: dom.window.getComputedStyle,
+  navigator: dom.window.navigator,
   HTMLElement: dom.window.HTMLElement,
   HTMLFormElement: dom.window.HTMLFormElement,
-  MutationObserver: dom.window.MutationObserver,
+  DocumentFragment: dom.window.DocumentFragment,
+  Element: dom.window.Element,
   Node: dom.window.Node,
-  navigator: dom.window.navigator,
-  window: dom.window,
+  MutationObserver: dom.window.MutationObserver,
+  getComputedStyle: dom.window.getComputedStyle,
 })) {
   Object.defineProperty(globalThis, key, {
     configurable: true,
-    value,
     writable: true,
+    value,
   });
 }
 
 Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", {
   configurable: true,
-  value: true,
   writable: true,
+  value: true,
 });
 
 mock.module("@/lib/hooks/use-settings", () => ({
@@ -53,7 +53,7 @@ afterEach(() => {
   cleanup();
   const control = getMidiControl();
   control.change({ type: "clear-mappings" });
-  control.change({ enabled: false, type: "set-enabled" });
+  control.change({ type: "set-enabled", enabled: false });
   control.cleanup();
 });
 

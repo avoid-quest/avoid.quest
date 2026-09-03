@@ -11,7 +11,7 @@ export class SpectrumAnalyzer {
   private readonly analyser: AudioAnalyser;
 
   constructor(size = 512) {
-    this.analyser = new AudioAnalyser({ decay: 0.95, size }); // Enable smooth decay for better visuals
+    this.analyser = new AudioAnalyser({ size, decay: 0.95 }); // Enable smooth decay for better visuals
   }
 
   /**

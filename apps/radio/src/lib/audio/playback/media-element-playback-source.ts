@@ -24,10 +24,10 @@ export class MediaElementPlaybackSource implements PlaybackSource {
   private generation = 0;
   private playbackIntent = 0;
   private playbackRate = 1;
-  private shouldResumeAfterLoad: boolean;
+  private shouldResumeAfterLoad = false;
   private currentLoadPromise: Promise<void> | null = null;
   private currentInput: PlaybackInput | null = null;
-  private isLoadingPhase: boolean;
+  private isLoadingPhase = false;
   private ignoredPauseEvents = 0;
   private readonly recovery: MediaPlaybackRecovery;
 
@@ -38,8 +38,6 @@ export class MediaElementPlaybackSource implements PlaybackSource {
   ) {
     this.callbacks = callbacks;
     this.sourceId = sourceId;
-    this.shouldResumeAfterLoad = false;
-    this.isLoadingPhase = false;
     this.audio = new Audio();
     if (context) {
       this.audio.crossOrigin = "anonymous";
@@ -151,8 +149,7 @@ export class MediaElementPlaybackSource implements PlaybackSource {
   }
 
   async load(input: PlaybackInput): Promise<void> {
-    this.generation += 1;
-    const { generation } = this;
+    const generation = ++this.generation;
     this.cancelPendingPlaybackIntent();
     this.cancelRecovery();
     this.resetMediaElement({ resetProgress: true });
@@ -183,8 +180,7 @@ export class MediaElementPlaybackSource implements PlaybackSource {
   }
 
   async play(): Promise<void> {
-    this.playbackIntent += 1;
-    const { playbackIntent } = this;
+    const playbackIntent = ++this.playbackIntent;
     this.shouldResumeAfterLoad = true;
     this.audio.autoplay = true;
 

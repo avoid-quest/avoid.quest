@@ -27,12 +27,12 @@ export const reportDjErrorSurface: ReportDjError = (
 ) => {
   setDjError(message, channelId ?? null);
   capturePlaybackError(error ?? new Error(message), {
-    errorCode: code,
-    errorMessage: message,
     mode: "dj",
     radioId: radio?.id,
     radioName: radio?.name,
-    retryPhase: "none",
     streamUrl: radio?.streamUrl,
+    errorCode: code,
+    errorMessage: message,
+    retryPhase: "none",
   });
 };

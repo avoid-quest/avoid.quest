@@ -1,4 +1,3 @@
-/** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 import { Button } from "@avoid.quest/ui/components/button";
 import {
   Dialog,
@@ -57,8 +56,8 @@ const feedbackCategoryLabels: Record<
 const feedbackCopy = {
   categoryLabel: "Type",
   messageLabel: "Message",
-  sendingLabel: "Sending...",
   sendLabel: "Send feedback",
+  sendingLabel: "Sending...",
   successMessage: "Feedback sent",
   title: "Radio feedback",
   triggerLabel: "Feedback",
@@ -104,11 +103,11 @@ function FeedbackTrigger({ viewModel }: FeedbackTriggerSlotProps) {
 }
 
 function FeedbackDialog({ children, viewModel }: FeedbackDialogSlotProps) {
-  const handleOpenChange = (open: boolean) =>
-    open ? viewModel.show() : viewModel.close();
-
   return (
-    <Dialog onOpenChange={handleOpenChange} open={viewModel.open}>
+    <Dialog
+      onOpenChange={(open) => (open ? viewModel.show() : viewModel.close())}
+      open={viewModel.open}
+    >
       <DialogContent
         aria-describedby={viewModel.statusId}
         aria-labelledby={viewModel.titleId}
@@ -143,14 +142,6 @@ function FeedbackHeader({ viewModel }: FeedbackHeaderSlotProps) {
 
 function FeedbackMessageField({ viewModel }: FeedbackMessageFieldSlotProps) {
   const { contactEmail, setContactEmail } = useContactEmail();
-  const handleContactEmailChange = (
-    event: React.ChangeEvent<HTMLInputElement>
-  ) => {
-    setContactEmail(event.target.value);
-  };
-  const handleBodyChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
-    viewModel.setBody(event.target.value);
-  };
 
   return (
     <>
@@ -163,7 +154,7 @@ function FeedbackMessageField({ viewModel }: FeedbackMessageFieldSlotProps) {
           id="feedback-contact-email"
           inputMode="email"
           maxLength={254}
-          onChange={handleContactEmailChange}
+          onChange={(event) => setContactEmail(event.target.value)}
           placeholder="you@example.com"
           type="email"
           value={contactEmail}
@@ -175,7 +166,7 @@ function FeedbackMessageField({ viewModel }: FeedbackMessageFieldSlotProps) {
           className="min-h-32 resize-none bg-background/60"
           disabled={viewModel.isSubmitting}
           id={viewModel.bodyId}
-          onChange={handleBodyChange}
+          onChange={(event) => viewModel.setBody(event.target.value)}
           placeholder="Describe what happened, what you expected, or what would make radio better."
           required
           value={viewModel.body}
@@ -271,17 +262,6 @@ function FeedbackSubmitAction({ viewModel }: FeedbackSubmitActionSlotProps) {
 export function AppFeedback() {
   const [contactEmail, setContactEmail] = useState("");
   const mode = usePlayerMode();
-  const handleAfterSubmit = () => {
-    setContactEmail("");
-    toast.success(feedbackCopy.successMessage);
-  };
-  const getUntrustedMetadata = () => {
-    const email = contactEmail.trim();
-    return {
-      ...(email ? { contactEmail: email } : {}),
-      mode,
-    };
-  };
 
   return (
     <ContactEmailContext.Provider value={{ contactEmail, setContactEmail }}>
@@ -300,8 +280,17 @@ export function AppFeedback() {
         }}
         copy={feedbackCopy}
         endpoint={FEEDBACK_ENDPOINT}
-        onAfterSubmit={handleAfterSubmit}
-        untrustedMetadata={getUntrustedMetadata}
+        onAfterSubmit={() => {
+          setContactEmail("");
+          toast.success(feedbackCopy.successMessage);
+        }}
+        untrustedMetadata={() => {
+          const email = contactEmail.trim();
+          return {
+            ...(email ? { contactEmail: email } : {}),
+            mode,
+          };
+        }}
       />
     </ContactEmailContext.Provider>
   );

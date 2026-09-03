@@ -1,4 +1,3 @@
-// biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers
 import { ImageIcon, Volume2Icon } from "lucide-react";
 import { useState } from "react";
 import { RadioLogo } from "../radio/radio-logo";
@@ -15,13 +14,14 @@ export function RadioFieldPreview({
   radioName,
 }: RadioFieldPreviewProps) {
   const [audioError, setAudioError] = useState(false);
-  const handleAudioError = () => {
-    setAudioError(true);
-  };
 
   if (!value) {
     return null;
   }
+
+  const handleAudioError = () => {
+    setAudioError(true);
+  };
 
   const renderPreview = () => {
     switch (field) {

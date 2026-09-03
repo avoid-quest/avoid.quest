@@ -1,4 +1,3 @@
-// biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers
 import { Button } from "@avoid.quest/ui/components/button";
 import {
   Dialog,
@@ -58,10 +57,10 @@ type SectionDefinition = {
 };
 
 const SETTINGS_SECTIONS: SectionDefinition[] = [
-  { icon: RadioIcon, key: "radios", label: "Radios" },
-  { icon: Settings2Icon, key: "playback", label: "Playback" },
-  { icon: SlidersHorizontalIcon, key: "midi", label: "MIDI" },
-  { icon: DatabaseIcon, key: "data", label: "Data" },
+  { key: "radios", label: "Radios", icon: RadioIcon },
+  { key: "playback", label: "Playback", icon: Settings2Icon },
+  { key: "midi", label: "MIDI", icon: SlidersHorizontalIcon },
+  { key: "data", label: "Data", icon: DatabaseIcon },
 ];
 
 function getInitialSection(defaultTab?: string): SettingsSection {
@@ -122,9 +121,6 @@ export function SettingsForm({
       setIsResetting(false);
     }
   };
-  const handleSectionChange = (event: React.MouseEvent<HTMLButtonElement>) => {
-    setActive(event.currentTarget.value as SettingsSection);
-  };
 
   if (!settings) {
     return <LoadingFallback />;
@@ -140,9 +136,8 @@ export function SettingsForm({
               <Button
                 className="min-w-0 justify-center gap-1 px-1 has-[>svg]:px-1 md:justify-start md:gap-2 md:px-3 md:has-[>svg]:px-3"
                 key={section.key}
-                onClick={handleSectionChange}
+                onClick={() => setActive(section.key)}
                 size="sm"
-                value={section.key}
                 variant={active === section.key ? "secondary" : "ghost"}
               >
                 <Icon className="size-3.5 shrink-0" />
@@ -213,7 +208,9 @@ function SectionContent({
     return (
       <div className="space-y-3">
         <SectionNav
-          onValueChange={onPlaybackPanelChange}
+          onValueChange={(value) =>
+            onPlaybackPanelChange(value as PlaybackPanel)
+          }
           options={[
             { label: "Audio", value: "audio" },
             { label: "Player", value: "player" },
@@ -240,11 +237,11 @@ function SectionContent({
   return (
     <div className="space-y-3">
       <SectionNav
-        onValueChange={onDataPanelChange}
+        onValueChange={(value) => onDataPanelChange(value as DataPanel)}
         options={[
           { label: "Export", value: "export" },
           { label: "Import", value: "import" },
-          { destructive: true, label: "Reset", value: "reset" },
+          { label: "Reset", value: "reset", destructive: true },
         ]}
         value={dataPanel}
       />
@@ -261,28 +258,23 @@ function SectionContent({
   );
 }
 
-function SectionNav<T extends string>({
+function SectionNav({
   options,
   value,
   onValueChange,
 }: {
-  options: { label: string; value: T; destructive?: boolean }[];
-  value: T;
-  onValueChange: (value: T) => void;
+  options: { label: string; value: string; destructive?: boolean }[];
+  value: string;
+  onValueChange: (value: string) => void;
 }) {
-  const handleValueChange = (event: React.MouseEvent<HTMLButtonElement>) => {
-    onValueChange(event.currentTarget.value as T);
-  };
-
   return (
     <div className="flex gap-1 border-b pb-3">
       {options.map((option) => (
         <Button
           className={option.destructive ? "text-destructive" : undefined}
           key={option.value}
-          onClick={handleValueChange}
+          onClick={() => onValueChange(option.value)}
           size="sm"
-          value={option.value}
           variant={option.value === value ? "secondary" : "ghost"}
         >
           {option.label}
@@ -330,7 +322,7 @@ function SettingRow({
   return (
     <div className="flex flex-col justify-between gap-3 py-4 sm:flex-row sm:items-center">
       <span className="flex items-center gap-2 text-sm">
-        {Icon ? <Icon className="size-3.5 text-muted-foreground" /> : null}
+        {Icon && <Icon className="size-3.5 text-muted-foreground" />}
         {title}
       </span>
       {control}
@@ -347,10 +339,6 @@ function ResetSettings({
   SectionContentProps,
   "isResetting" | "showResetDialog" | "onResetDialogChange" | "onReset"
 >) {
-  const handleCancel = () => {
-    onResetDialogChange(false);
-  };
-
   return (
     <div className="flex flex-col justify-between gap-3 py-4 sm:flex-row sm:items-center">
       <span className="text-sm">Restore stations and playback settings</span>
@@ -371,7 +359,7 @@ function ResetSettings({
           <DialogFooter>
             <Button
               disabled={isResetting}
-              onClick={handleCancel}
+              onClick={() => onResetDialogChange(false)}
               size="sm"
               variant="outline"
             >

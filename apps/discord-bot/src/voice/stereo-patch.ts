@@ -11,7 +11,7 @@ export function patchConnectionForStereo(connection: VoiceConnection): void {
       return;
     }
 
-    const { networking } = state;
+    const networking = state.networking;
     networking.setSpeaking = function (speaking: boolean) {
       const ns = this.state;
       if (ns.code !== 4) {
@@ -22,12 +22,12 @@ export function patchConnectionForStereo(connection: VoiceConnection): void {
       }
       ns.connectionData.speaking = speaking;
       ns.ws.sendPacket({
+        op: 5, // VoiceOpcodes.Speaking
         d: {
-          delay: 0,
           speaking: speaking ? 3 : 0, // Microphone|Soundshare (1|2) → stereo
+          delay: 0,
           ssrc: ns.connectionData.ssrc,
         },
-        op: 5, // VoiceOpcodes.Speaking
       });
     };
   };

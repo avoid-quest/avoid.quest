@@ -153,12 +153,12 @@ export function createModeLifecycleRegistry({
     fadeOutSound,
   });
   return {
+    single: createLifecycle(single.activate, single.deactivate),
+    multiple: createLifecycle(multiple.activate, multiple.deactivate),
     dj: createLifecycle(
       () => djWorkflow.activate(),
       () => djWorkflow.deactivate()
     ),
-    multiple: createLifecycle(multiple.activate, multiple.deactivate),
-    single: createLifecycle(single.activate, single.deactivate),
   };
 }
 
@@ -173,9 +173,9 @@ export function createModeManager({
 }: CreateModeManagerOptions = {}): ModeManager {
   let snapshot: ModeTransitionSnapshot = {
     currentMode: initialMode,
-    error: null,
-    phase: initialMode ? "active" : "inactive",
     requestedMode: null,
+    phase: initialMode ? "active" : "inactive",
+    error: null,
   };
   const listeners = new Set<() => void>();
 
@@ -222,9 +222,9 @@ export function createModeManager({
     } catch (rollbackError) {
       emit({
         currentMode: previousMode,
-        error: getUserFacingErrorMessage(rollbackError),
-        phase: previousMode ? "active" : "inactive",
         requestedMode: null,
+        phase: previousMode ? "active" : "inactive",
+        error: getUserFacingErrorMessage(rollbackError),
       });
     }
   }
@@ -237,7 +237,7 @@ export function createModeManager({
     const previousMode = snapshot.currentMode;
     let activatedNextMode = false;
     let nextModeActivationStarted = false;
-    emit({ error: null, phase: "deactivating", requestedMode: nextMode });
+    emit({ requestedMode: nextMode, phase: "deactivating", error: null });
 
     try {
       if (previousMode) {
@@ -252,9 +252,9 @@ export function createModeManager({
       commitMode(nextMode);
       emit({
         currentMode: nextMode,
-        error: null,
-        phase: "active",
         requestedMode: null,
+        phase: "active",
+        error: null,
       });
     } catch (error) {
       const message = getUserFacingErrorMessage(error);
@@ -272,25 +272,6 @@ export function createModeManager({
   }
 
   return {
-    activateInitialMode(mode: PlaybackSessionId): Promise<void> {
-      return (async () => {
-        if (snapshot.currentMode === mode || snapshot.phase !== "inactive") {
-          return;
-        }
-        emit({ error: null, phase: "activating", requestedMode: mode });
-        try {
-          await lifecycles[mode].activate();
-          emit({ currentMode: mode, phase: "active", requestedMode: null });
-        } catch (error) {
-          emit({
-            error: getUserFacingErrorMessage(error, MODE_STARTUP_ERROR_MESSAGE),
-            phase: "inactive",
-            requestedMode: null,
-          });
-          throw error;
-        }
-      })();
-    },
     getSnapshot() {
       return snapshot;
     },
@@ -299,6 +280,25 @@ export function createModeManager({
       return () => {
         listeners.delete(listener);
       };
+    },
+    activateInitialMode(mode: PlaybackSessionId): Promise<void> {
+      return (async () => {
+        if (snapshot.currentMode === mode || snapshot.phase !== "inactive") {
+          return;
+        }
+        emit({ requestedMode: mode, phase: "activating", error: null });
+        try {
+          await lifecycles[mode].activate();
+          emit({ currentMode: mode, requestedMode: null, phase: "active" });
+        } catch (error) {
+          emit({
+            requestedMode: null,
+            phase: "inactive",
+            error: getUserFacingErrorMessage(error, MODE_STARTUP_ERROR_MESSAGE),
+          });
+          throw error;
+        }
+      })();
     },
     switchTo(nextMode: PlaybackSessionId): Promise<void> {
       if (isTransitionInProgress()) {

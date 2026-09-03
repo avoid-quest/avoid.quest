@@ -22,9 +22,9 @@ function getProcessor(
   source: EffectSource,
   effectId: string
 ): Record<string, unknown> {
-  const { effects } = source as unknown as {
-    effects: Map<string, EffectProcessor>;
-  };
+  const effects = (
+    source as unknown as { effects: Map<string, EffectProcessor> }
+  ).effects;
   return effects.get(effectId) as unknown as Record<string, unknown>;
 }
 
@@ -56,8 +56,8 @@ describe("worklet effect adapter", () => {
         config.type,
         {
           ...config,
-          dryWet: 0.37,
           enabled: false,
+          dryWet: 0.37,
           inputGain: 2.5,
           outputGain: 3.5,
         },
@@ -104,11 +104,11 @@ describe("worklet effect adapter", () => {
     const openGate = new EffectSource("open", 48_000);
     const base = {
       ...createDefaultEffectConfig("gate", "gate", 0),
-      attack: 0.1,
       enabled: true,
-      floor: -120,
+      attack: 0.1,
       hold: 0,
       release: 1,
+      floor: -120,
     };
 
     expect(
@@ -120,7 +120,7 @@ describe("worklet effect adapter", () => {
 
     let closed: Float32Array<ArrayBufferLike> = new Float32Array(BLOCK_SIZE);
     let open: Float32Array<ArrayBufferLike> = new Float32Array(BLOCK_SIZE);
-    for (let block = 0; block < 20; block += 1) {
+    for (let block = 0; block < 20; block++) {
       closed = processBlock(closedGate, 0.5);
       open = processBlock(openGate, 0.5);
     }
@@ -139,7 +139,7 @@ describe("worklet effect adapter", () => {
       ...createDefaultEffectConfig("delay", "nested-delay", 0),
       enabled: true,
     };
-    const [firstChain] = composite.chains;
+    const firstChain = composite.chains[0];
     if (!firstChain) {
       throw new Error("Default composite must contain a chain");
     }
@@ -191,25 +191,25 @@ describe("worklet effect adapter", () => {
     const configs = [
       {
         ...createDefaultEffectConfig("delay", "delay", 1),
-        cross: 0.44,
-        delayMillis: 41,
         delayMusical: "1/12",
-        dry: -8,
-        filter: -0.45,
-        lfoDepth: 47,
-        lfoSpeed: 4.6,
-        preMillisTimeLeft: 42,
-        preMillisTimeRight: 43,
+        delayMillis: 41,
         preSyncTimeLeft: "3/32",
+        preMillisTimeLeft: 42,
         preSyncTimeRight: "1/6",
+        preMillisTimeRight: 43,
+        cross: 0.44,
+        filter: -0.45,
+        lfoSpeed: 4.6,
+        lfoDepth: 47,
+        dry: -8,
         wet: -9,
       },
       {
         ...createDefaultEffectConfig("compressor", "compressor", 2),
-        autoattack: true,
-        automakeup: false,
-        autorelease: true,
         inputgain: 3,
+        autoattack: true,
+        autorelease: true,
+        automakeup: false,
       },
       {
         ...createDefaultEffectConfig("tidal", "tidal", 3),
@@ -217,11 +217,11 @@ describe("worklet effect adapter", () => {
       },
       {
         ...createDefaultEffectConfig("cheapReverb", "reverb", 4),
-        damp: 0.63,
         decay: 0.61,
-        dry: -6.5,
-        filter: -0.64,
         preDelay: 0.062,
+        damp: 0.63,
+        filter: -0.64,
+        dry: -6.5,
         wet: -7.5,
       },
       {
@@ -230,9 +230,9 @@ describe("worklet effect adapter", () => {
       },
       {
         ...createDefaultEffectConfig("waveshaper", "waveshaper", 6),
+        equation: "hardclip",
         deviceInputGain: 17,
         deviceOutputGain: -7,
-        equation: "hardclip",
         mix: 0.68,
       },
       {
@@ -241,28 +241,28 @@ describe("worklet effect adapter", () => {
       },
       {
         ...createDefaultEffectConfig("vocoder", "vocoder", 8),
-        bandCount: 8,
-        carrierMaxFreq: 11_111,
         carrierMinFreq: 111,
+        carrierMaxFreq: 11_111,
+        modulatorMinFreq: 222,
+        modulatorMaxFreq: 12_222,
+        qStart: 23,
+        qEnd: 4,
         envAttack: 7,
         envRelease: 70,
         gain: 3,
         mix: 0.69,
-        modulatorMaxFreq: 12_222,
-        modulatorMinFreq: 222,
+        bandCount: 8,
         modulatorSource: "noise-brown",
-        qEnd: 4,
-        qStart: 23,
       },
       {
         ...createDefaultEffectConfig("neuralAmp", "amp", 9),
-        mix: 0.71,
         mono: false,
+        mix: 0.71,
       },
       {
         ...createDefaultEffectConfig("autotune", "autotune", 10),
-        retuneAmount: 0.75,
         scale: "majorPentatonic",
+        retuneAmount: 0.75,
         smooth: 0.72,
       },
     ];
@@ -279,60 +279,60 @@ describe("worklet effect adapter", () => {
     }
 
     expect(getProcessor(source, "delay")).toMatchObject({
-      crossFeedback: 0.44,
-      delayMillis: 41,
       delayMusical: "1/12",
-      lfoDepth: 47,
-      lfoRate: 4.6,
-      preMillisTimeLeft: 42,
-      preMillisTimeRight: 43,
+      delayMillis: 41,
       preSyncTimeLeft: "3/32",
+      preMillisTimeLeft: 42,
       preSyncTimeRight: "1/6",
+      preMillisTimeRight: 43,
+      crossFeedback: 0.44,
+      lfoRate: 4.6,
+      lfoDepth: 47,
     });
     expect(compressorInput).toHaveBeenLastCalledWith(3);
     expect(compressorAttack).toHaveBeenLastCalledWith(true);
     expect(compressorRelease).toHaveBeenLastCalledWith(true);
     expect(compressorMakeup).toHaveBeenLastCalledWith(false);
     expect(getProcessor(source, "tidal")).toMatchObject({
-      tempoDivision: "1/12",
       tempoSync: true,
+      tempoDivision: "1/12",
     });
     expect(getProcessor(source, "reverb")).toMatchObject({
+      roomSize: 0.61,
       damping: 0.63,
       filter: -0.64,
-      roomSize: 0.61,
     });
     expect(getProcessor(source, "gate")).toMatchObject({
       returnAmount: 6.6,
     });
     expect(getProcessor(source, "waveshaper")).toMatchObject({
-      mix: 0.68,
       shape: "hardclip",
+      mix: 0.68,
     });
     expect(getProcessor(source, "maximizer")).toMatchObject({
       lookahead: 0,
     });
     expect(getProcessor(source, "vocoder")).toMatchObject({
-      attack: 7,
       bands: 8,
-      carrierMaxFreq: 11_111,
-      carrierMinFreq: 111,
-      mix: 0.69,
       modulator: "noise",
-      modulatorMaxFreq: 12_222,
-      modulatorMinFreq: 222,
       noiseKind: "brown",
-      qEnd: 4,
+      carrierMinFreq: 111,
+      carrierMaxFreq: 11_111,
+      modulatorMinFreq: 222,
+      modulatorMaxFreq: 12_222,
       qStart: 23,
+      qEnd: 4,
+      attack: 7,
       release: 70,
+      mix: 0.69,
     });
     expect(getProcessor(source, "amp")).toMatchObject({
-      mix: 0.71,
       mono: false,
+      mix: 0.71,
     });
     expect(getProcessor(source, "autotune")).toMatchObject({
-      retune: 60,
       scale: "majorPentatonic",
+      retune: 60,
       smoothing: 0.72,
     });
     compressorInput.mockRestore();
@@ -399,6 +399,8 @@ describe("worklet effect adapter", () => {
     const source = new EffectSource("wrapper", 48_000);
     const config = {
       ...createDefaultEffectConfig("werkstatt", "werkstatt", 0),
+      enabled: true,
+      source: "return input * p.drive;",
       code: `class Processor {
         drive = 1
         paramChanged(label, value) {
@@ -411,12 +413,10 @@ describe("worklet effect adapter", () => {
           }
         }
       }`,
-      dryWet: 0.25,
-      enabled: true,
-      inputGain: 0.5,
-      outputGain: 0.8,
       parameters: { drive: 2 },
-      source: "return input * p.drive;",
+      inputGain: 0.5,
+      dryWet: 0.25,
+      outputGain: 0.8,
     };
 
     expect(source.addEffect(config.id, config.type, config, config.order)).toBe(
@@ -435,8 +435,8 @@ describe("worklet effect adapter", () => {
     const source = new EffectSource("native-mapping", 48_000);
     const plate = {
       ...createDefaultEffectConfig("plateReverb", "plate", 0),
-      dry: -12,
       wet: -6,
+      dry: -12,
     };
     const amp = {
       ...createDefaultEffectConfig("neuralAmp", "amp", 1),
@@ -444,9 +444,9 @@ describe("worklet effect adapter", () => {
     };
     const werkstatt = {
       ...createDefaultEffectConfig("werkstatt", "werkstatt", 2),
+      source: "return input * p.drive;",
       code: "class Processor { process() { throw new Error('official only'); } }",
       parameters: { drive: 2 },
-      source: "return input * p.drive;",
     };
 
     source.addEffect(plate.id, plate.type, plate, plate.order);
@@ -454,8 +454,8 @@ describe("worklet effect adapter", () => {
     source.addEffect(werkstatt.id, werkstatt.type, werkstatt, werkstatt.order);
 
     expect(getProcessor(source, plate.id)).toMatchObject({
-      dry: 10 ** (-12 / 20),
       wet: 10 ** (-6 / 20),
+      dry: 10 ** (-12 / 20),
     });
     expect(getProcessor(source, amp.id)).toMatchObject({ drive: -18 });
     expect(getProcessor(source, werkstatt.id)).toMatchObject({

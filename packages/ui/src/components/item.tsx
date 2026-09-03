@@ -34,20 +34,20 @@ function ItemSeparator({
 const itemVariants = cva(
   "group/item flex flex-wrap items-center rounded-md border border-transparent text-sm outline-none transition-colors duration-100 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 [a]:transition-colors [a]:hover:bg-accent/50",
   {
-    defaultVariants: {
-      size: "default",
-      variant: "default",
-    },
     variants: {
+      variant: {
+        default: "bg-transparent",
+        outline: "border-border",
+        muted: "bg-muted/50",
+      },
       size: {
         default: "gap-4 p-4",
         sm: "gap-2.5 px-4 py-3",
       },
-      variant: {
-        default: "bg-transparent",
-        muted: "bg-muted/50",
-        outline: "border-border",
-      },
+    },
+    defaultVariants: {
+      variant: "default",
+      size: "default",
     },
   }
 );
@@ -63,7 +63,7 @@ function Item({
   const Comp = asChild ? Slot : "div";
   return (
     <Comp
-      className={cn(itemVariants({ className, size, variant }))}
+      className={cn(itemVariants({ variant, size, className }))}
       data-size={size}
       data-slot="item"
       data-variant={variant}
@@ -75,9 +75,6 @@ function Item({
 const itemMediaVariants = cva(
   "flex shrink-0 items-center justify-center gap-2 group-has-[[data-slot=item-description]]/item:translate-y-0.5 group-has-[[data-slot=item-description]]/item:self-start [&_svg]:pointer-events-none",
   {
-    defaultVariants: {
-      variant: "default",
-    },
     variants: {
       variant: {
         default: "bg-transparent",
@@ -85,6 +82,9 @@ const itemMediaVariants = cva(
         image:
           "size-10 overflow-hidden rounded-sm [&_img]:size-full [&_img]:object-cover",
       },
+    },
+    defaultVariants: {
+      variant: "default",
     },
   }
 );
@@ -96,7 +96,7 @@ function ItemMedia({
 }: React.ComponentProps<"div"> & VariantProps<typeof itemMediaVariants>) {
   return (
     <div
-      className={cn(itemMediaVariants({ className, variant }))}
+      className={cn(itemMediaVariants({ variant, className }))}
       data-slot="item-media"
       data-variant={variant}
       {...props}

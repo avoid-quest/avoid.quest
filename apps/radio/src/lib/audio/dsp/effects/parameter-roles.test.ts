@@ -36,19 +36,19 @@ describe("effect parameter roles", () => {
 
   test("distinguishes every native control that resembles a wrapper control", () => {
     const expectedNativeRoles = {
-      cheapReverb: ["dry", "wet"],
+      plateReverb: ["dry", "wet"],
+      delay: ["dry", "wet"],
       compressor: ["inputgain", "makeup", "automakeup", "mix"],
       crusher: ["boost", "autoGain"],
-      delay: ["dry", "wet"],
       fold: ["amount", "volume", "autoGain"],
-      frequencySplit: ["chains"],
-      fxComposite: ["chains"],
-      neuralAmp: ["input", "output", "mix"],
-      plateReverb: ["dry", "wet"],
-      stereoSplit: ["chains"],
       stereoTool: ["volume"],
-      vocoder: ["gain", "mix"],
+      cheapReverb: ["dry", "wet"],
       waveshaper: ["deviceInputGain", "deviceOutputGain", "mix"],
+      vocoder: ["gain", "mix"],
+      neuralAmp: ["input", "output", "mix"],
+      fxComposite: ["chains"],
+      stereoSplit: ["chains"],
+      frequencySplit: ["chains"],
     } as const;
 
     for (const [type, keys] of Object.entries(expectedNativeRoles)) {

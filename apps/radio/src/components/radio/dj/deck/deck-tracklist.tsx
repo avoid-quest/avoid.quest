@@ -1,4 +1,3 @@
-// biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers
 import { Button } from "@avoid.quest/ui/components/button";
 import { ScrollArea } from "@avoid.quest/ui/components/scroll-area";
 import { cn } from "@avoid.quest/ui/lib/utils";
@@ -84,24 +83,6 @@ export function DeckTracklist({ className }: { className?: string }) {
 function TracklistNavigation() {
   const { tracks, currentTrackIndex, loadTrack } = useDeckContext();
 
-  const handleNavigate = (direction: -1 | 1) => {
-    if (!tracks) {
-      return;
-    }
-    const url = findTrackPlayUrlInDirection(
-      tracks,
-      currentTrackIndex,
-      direction
-    );
-    if (url) {
-      loadTrack(url).catch(() => {
-        // Errors are surfaced by deck actions/telemetry.
-      });
-    }
-  };
-  const handlePrevious = () => handleNavigate(-1);
-  const handleNext = () => handleNavigate(1);
-
   if (!tracks) {
     return null;
   }
@@ -115,13 +96,26 @@ function TracklistNavigation() {
   const hasNext = Boolean(nextUrl);
   const hasPrevious = Boolean(previousUrl);
 
+  const handleNavigate = (direction: -1 | 1) => {
+    const url = findTrackPlayUrlInDirection(
+      tracks,
+      currentTrackIndex,
+      direction
+    );
+    if (url) {
+      loadTrack(url).catch(() => {
+        // Errors are surfaced by deck actions/telemetry.
+      });
+    }
+  };
+
   return (
     <div className="flex items-center gap-1">
       <Button
         aria-label="Previous track"
         className="h-6 w-6 p-0"
         disabled={!hasPrevious}
-        onClick={handlePrevious}
+        onClick={() => handleNavigate(-1)}
         size="sm"
         variant="ghost"
       >
@@ -131,7 +125,7 @@ function TracklistNavigation() {
         aria-label="Next track"
         className="h-6 w-6 p-0"
         disabled={!hasNext}
-        onClick={handleNext}
+        onClick={() => handleNavigate(1)}
         size="sm"
         variant="ghost"
       >
@@ -187,11 +181,11 @@ function TrackRow({
           {"title" in track ? track.title : track.name}
         </div>
       </div>
-      {track.duration ? (
+      {track.duration && (
         <span className="shrink-0 font-mono text-[9px] text-muted-foreground tabular-nums">
           {formatPlatformDuration(track.duration)}
         </span>
-      ) : null}
+      )}
     </button>
   );
 }

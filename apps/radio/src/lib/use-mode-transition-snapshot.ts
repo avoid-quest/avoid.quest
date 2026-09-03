@@ -3,9 +3,9 @@ import type { ModeTransitionSnapshot } from "./mode-lifecycle-manager";
 
 const INITIAL_SNAPSHOT: ModeTransitionSnapshot = {
   currentMode: null,
-  error: null,
-  phase: "inactive",
   requestedMode: null,
+  phase: "inactive",
+  error: null,
 };
 
 export function useModeTransitionSnapshot(): ModeTransitionSnapshot {

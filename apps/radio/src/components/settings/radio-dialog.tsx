@@ -1,4 +1,3 @@
-// biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers
 import {
   Dialog,
   DialogContent,
@@ -30,7 +29,11 @@ export function RadioDialog({
   open,
   onOpenChange,
 }: RadioDialogProps) {
-  const handleClose = () => {
+  const handleSuccess = () => {
+    onOpenChange(false);
+  };
+
+  const handleCancel = () => {
     onOpenChange(false);
   };
 
@@ -53,8 +56,8 @@ export function RadioDialog({
           {isEdit ? (
             <RadioForm
               mode="edit"
-              onCancel={handleClose}
-              onSuccess={handleClose}
+              onCancel={handleCancel}
+              onSuccess={handleSuccess}
               radio={radio}
             />
           ) : (
@@ -65,16 +68,16 @@ export function RadioDialog({
                 <TabsTrigger value="manual">Manual</TabsTrigger>
               </TabsList>
               <TabsContent value="radiogarden">
-                <RadioGardenTab onSuccess={handleClose} />
+                <RadioGardenTab onSuccess={handleSuccess} />
               </TabsContent>
               <TabsContent value="from-url">
-                <RadioFromUrlTab onSuccess={handleClose} />
+                <RadioFromUrlTab onSuccess={handleSuccess} />
               </TabsContent>
               <TabsContent value="manual">
                 <RadioForm
                   mode="create"
-                  onCancel={handleClose}
-                  onSuccess={handleClose}
+                  onCancel={handleCancel}
+                  onSuccess={handleSuccess}
                 />
               </TabsContent>
             </Tabs>

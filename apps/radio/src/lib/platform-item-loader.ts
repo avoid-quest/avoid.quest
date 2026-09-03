@@ -117,7 +117,7 @@ function unsupportedPlatform(): PlatformItemPayloadResult {
 }
 
 export function createPlatformItemLoader({
-  getYouTubeClient: getClient,
+  getYouTubeClient,
   resolvePlatformItem: resolveExternalItem,
   resolveStaticAudio,
 }: PlatformItemLoaderDependencies): (
@@ -130,7 +130,7 @@ export function createPlatformItemLoader({
         return await resolveStaticAudioItem(normalizedUrl, resolveStaticAudio);
       }
       if (platform === "youtube") {
-        return await resolveYouTube(normalizedUrl, getClient);
+        return await resolveYouTube(normalizedUrl, getYouTubeClient);
       }
       if (
         platform === "bandcamp" ||

@@ -20,12 +20,12 @@ function buildSoundState(
   overrides: AudioStateOverride = {}
 ): AudioState {
   return {
+    isPlaying: instance.playing,
+    isLoading: instance.loading,
+    isBuffering: instance.buffering,
+    volume: instance.volume,
     error: null,
     hasEnded: false,
-    isBuffering: instance.buffering,
-    isLoading: instance.loading,
-    isPlaying: instance.playing,
-    volume: instance.volume,
     ...overrides,
   };
 }
@@ -38,13 +38,13 @@ function buildSoundError(
   options: SoundErrorOptions = {}
 ) {
   return {
-    code,
     id: options.id ?? generateErrorId(),
     message,
-    position: options.position,
+    code,
     radio: instance.radio,
-    sourceId: soundId,
     timestamp: options.timestamp ?? Date.now(),
+    sourceId: soundId,
+    position: options.position,
   };
 }
 
@@ -66,11 +66,11 @@ function notifySoundError(
   options: SoundErrorOptions = {}
 ): void {
   notifySoundState(notifyListeners, soundId, instance, {
-    error: buildSoundError(instance, soundId, code, message, options),
-    hasEnded: false,
-    isBuffering: false,
-    isLoading: false,
     isPlaying: false,
+    isLoading: false,
+    isBuffering: false,
+    hasEnded: false,
+    error: buildSoundError(instance, soundId, code, message, options),
   });
 }
 

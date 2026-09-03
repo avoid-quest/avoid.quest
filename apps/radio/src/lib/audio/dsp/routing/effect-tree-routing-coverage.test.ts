@@ -18,14 +18,14 @@ import {
 
 function limiter(id: string, order: number): LimiterConfig {
   return {
-    dryWet: 1,
-    enabled: true,
     id,
-    inputGain: 1,
+    type: "limiter",
+    enabled: true,
     order,
+    dryWet: 1,
+    inputGain: 1,
     outputGain: 1,
     threshold: -1,
-    type: "limiter",
   };
 }
 
@@ -35,22 +35,22 @@ function chain(
   effects: EffectConfig[]
 ): EffectChainConfig {
   return {
-    effects,
-    gain: 1,
     id,
-    muted: false,
     name: id,
     order,
+    gain: 1,
     pan: 0,
+    muted: false,
     solo: false,
+    effects,
   };
 }
 
 const containerBase = {
-  dryWet: 1,
   enabled: true,
-  inputGain: 1,
   order: 0,
+  dryWet: 1,
+  inputGain: 1,
   outputGain: 1,
 } as const;
 
@@ -58,19 +58,19 @@ describe("recursive effect tree routing", () => {
   test("normalizes and JSON-round-trips nested container ordering", () => {
     const stereoSplit: StereoSplitConfig = {
       ...containerBase,
+      id: "stereo",
+      type: "stereoSplit",
       chains: [
         chain("right", 1, [limiter("right-2", 4), limiter("right-1", 1)]),
         chain("left", 0, [limiter("left-1", 5)]),
       ],
-      id: "stereo",
-      type: "stereoSplit",
     };
     const composite: FxCompositeConfig = {
       ...containerBase,
-      chains: [chain("parallel", 0, [stereoSplit])],
       id: "composite",
-      order: 2,
       type: "fxComposite",
+      order: 2,
+      chains: [chain("parallel", 0, [stereoSplit])],
     };
 
     const normalized = normalizeEffectTree([
@@ -93,9 +93,9 @@ describe("recursive effect tree routing", () => {
   test("appends, reorders, and removes effects inside a nested chain", () => {
     const composite: FxCompositeConfig = {
       ...containerBase,
-      chains: [chain("parallel", 0, [limiter("first", 0)])],
       id: "composite",
       type: "fxComposite",
+      chains: [chain("parallel", 0, [limiter("first", 0)])],
     };
 
     const appended = appendEffectToTree(
@@ -119,6 +119,9 @@ describe("recursive effect tree routing", () => {
   test("rejects invalid sidechains, duplicate IDs, and container shapes", () => {
     const invalidFrequencySplit: FrequencySplitConfig = {
       ...containerBase,
+      id: "frequency",
+      type: "frequencySplit",
+      crossoverFrequencies: [400, 200, 2000],
       chains: [
         chain("duplicate-chain", 0, [
           {
@@ -128,9 +131,6 @@ describe("recursive effect tree routing", () => {
         ]),
         chain("duplicate-chain", 1, [limiter("duplicate-effect", 0)]),
       ],
-      crossoverFrequencies: [400, 200, 2000],
-      id: "frequency",
-      type: "frequencySplit",
     };
 
     const errors = validateEffectTree(

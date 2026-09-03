@@ -52,7 +52,7 @@ export function buildChannelOptions(channelCount: number): ChannelOption[] {
       selection,
     });
   }
-  for (let index = 0; index < channelCount; index += 1) {
+  for (let index = 0; index < channelCount; index++) {
     const selection = { left: index, right: index };
     options.push({
       key: serializeSelection(selection),

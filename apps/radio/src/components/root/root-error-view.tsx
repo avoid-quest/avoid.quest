@@ -13,8 +13,8 @@ export function RootErrorView({ error, reset }: ErrorComponentProps) {
 
   useEffect(() => {
     captureError(error, {
-      operation: "root-error-boundary",
       surface: "ui",
+      operation: "root-error-boundary",
       tags: { route: "__root" },
     });
   }, [error]);

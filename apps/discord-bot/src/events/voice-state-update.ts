@@ -16,8 +16,8 @@ export function handleVoiceStateUpdate(
     const members = channel.members.filter((m) => !m.user.bot);
     updateGuildVoiceOccupancy({
       guildId: channel.guild.id,
-      nonBotMemberCount: members.size,
       voiceChannel: channel,
+      nonBotMemberCount: members.size,
     });
   }
 }

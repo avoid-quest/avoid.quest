@@ -1,4 +1,3 @@
-// biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers
 import { cn } from "@avoid.quest/ui/lib/utils";
 import {
   ListMusicIcon,
@@ -36,9 +35,9 @@ function TransportArtwork({
           <Music2Icon className="size-4 text-muted-foreground/40" />
         </div>
       )}
-      {isBuffering && isPlaying ? (
+      {isBuffering && isPlaying && (
         <div className="absolute inset-0 animate-pulse bg-muted-foreground/10" />
-      ) : null}
+      )}
     </div>
   );
 }
@@ -78,67 +77,10 @@ function TransportPlayButton({
       type="button"
     >
       {icon}
-      {isBuffering && isPlaying ? (
+      {isBuffering && isPlaying && (
         <span className="pointer-events-none absolute inset-0 animate-pulse rounded-full ring-2 ring-muted-foreground/40" />
-      ) : null}
+      )}
     </button>
-  );
-}
-
-function TransportToggles({
-  autoplay,
-  hasTracklist,
-  isSeekable,
-  repeat,
-  setAutoplay,
-  setRepeat,
-}: {
-  autoplay: boolean;
-  hasTracklist: boolean;
-  isSeekable: boolean;
-  repeat: boolean;
-  setAutoplay: (autoplay: boolean) => void;
-  setRepeat: (repeat: boolean) => void;
-}) {
-  const handleRepeatToggle = () => setRepeat(!repeat);
-  const handleAutoplayToggle = () => setAutoplay(!autoplay);
-
-  return (
-    <div className="flex shrink-0 items-center gap-0.5">
-      {isSeekable ? (
-        <button
-          aria-label={repeat ? "Disable repeat" : "Enable repeat"}
-          className={cn(
-            "flex size-6 items-center justify-center rounded-full transition-all",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
-            repeat
-              ? "bg-primary/15 text-primary"
-              : "text-muted-foreground/40 hover:text-muted-foreground"
-          )}
-          onClick={handleRepeatToggle}
-          type="button"
-        >
-          <Repeat1Icon className="size-3" />
-        </button>
-      ) : null}
-      {hasTracklist ? (
-        <button
-          aria-label={autoplay ? "Disable autoplay" : "Enable autoplay"}
-          className={cn(
-            "flex size-6 items-center justify-center rounded-full transition-all",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
-            autoplay
-              ? "bg-primary/15 text-primary"
-              : "text-muted-foreground/40 hover:text-muted-foreground"
-          )}
-          onClick={handleAutoplayToggle}
-          title={autoplay ? "Autoplay enabled" : "Autoplay disabled"}
-          type="button"
-        >
-          <ListMusicIcon className="size-3" />
-        </button>
-      ) : null}
-    </div>
   );
 }
 
@@ -162,7 +104,6 @@ export function DeckTransport({ className }: { className?: string }) {
     seek,
   } = useDeckContext();
 
-  const handlePlayPause = isPlaying ? pause : play;
   if (!radio) {
     return null;
   }
@@ -171,6 +112,14 @@ export function DeckTransport({ className }: { className?: string }) {
     metadata && "artwork" in metadata ? metadata.artwork : radio.logoUrl;
   const title =
     metadata && "name" in metadata ? metadata.name || radio.name : radio.name;
+
+  const handlePlayPause = () => {
+    if (isPlaying) {
+      pause();
+    } else {
+      play();
+    }
+  };
 
   const isRight = deckSide === "right";
 
@@ -197,14 +146,41 @@ export function DeckTransport({ className }: { className?: string }) {
         />
 
         {/* Repeat / Autoplay toggles */}
-        <TransportToggles
-          autoplay={autoplay}
-          hasTracklist={hasTracklist}
-          isSeekable={isSeekable}
-          repeat={repeat}
-          setAutoplay={setAutoplay}
-          setRepeat={setRepeat}
-        />
+        <div className="flex shrink-0 items-center gap-0.5">
+          {isSeekable && (
+            <button
+              aria-label={repeat ? "Disable repeat" : "Enable repeat"}
+              className={cn(
+                "flex size-6 items-center justify-center rounded-full transition-all",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
+                repeat
+                  ? "bg-primary/15 text-primary"
+                  : "text-muted-foreground/40 hover:text-muted-foreground"
+              )}
+              onClick={() => setRepeat(!repeat)}
+              type="button"
+            >
+              <Repeat1Icon className="size-3" />
+            </button>
+          )}
+          {hasTracklist && (
+            <button
+              aria-label={autoplay ? "Disable autoplay" : "Enable autoplay"}
+              className={cn(
+                "flex size-6 items-center justify-center rounded-full transition-all",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
+                autoplay
+                  ? "bg-primary/15 text-primary"
+                  : "text-muted-foreground/40 hover:text-muted-foreground"
+              )}
+              onClick={() => setAutoplay(!autoplay)}
+              title={autoplay ? "Autoplay enabled" : "Autoplay disabled"}
+              type="button"
+            >
+              <ListMusicIcon className="size-3" />
+            </button>
+          )}
+        </div>
 
         {/* Title + progress */}
         <div
@@ -264,36 +240,13 @@ function TransportProgress({
     return null;
   }
 
-  return (
-    <SeekableProgress
-      duration={trackProgress.duration}
-      isBuffering={isBuffering}
-      isPlaying={isPlaying}
-      onSeek={onSeek}
-      position={trackProgress.position}
-    />
-  );
-}
+  const progress = (trackProgress.position / trackProgress.duration) * 100;
 
-function SeekableProgress({
-  duration,
-  position,
-  isBuffering,
-  isPlaying,
-  onSeek,
-}: {
-  duration: number;
-  position: number;
-  isBuffering: boolean;
-  isPlaying: boolean;
-  onSeek: (position: number) => void;
-}) {
-  const progress = (position / duration) * 100;
-  const handleBarClick = (event: React.MouseEvent<HTMLButtonElement>) => {
-    const rect = event.currentTarget.getBoundingClientRect();
-    const clickX = event.clientX - rect.left;
-    const nextPosition = (clickX / rect.width) * duration;
-    onSeek(Math.max(0, Math.min(nextPosition, duration)));
+  const handleBarClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const clickX = e.clientX - rect.left;
+    const position = (clickX / rect.width) * trackProgress.duration;
+    onSeek(Math.max(0, Math.min(position, trackProgress.duration)));
   };
 
   let fillColor = "bg-primary/60";
@@ -320,8 +273,8 @@ function SeekableProgress({
         />
       </button>
       <div className="flex justify-between font-mono text-[10px] text-muted-foreground tabular-nums">
-        <span>{formatTime(position)}</span>
-        <span>{formatTime(duration)}</span>
+        <span>{formatTime(trackProgress.position)}</span>
+        <span>{formatTime(trackProgress.duration)}</span>
       </div>
     </div>
   );

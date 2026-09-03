@@ -5,10 +5,10 @@
   "license": "UNLICENSED",
   "type": "module",
   "scripts": {
-    "build": "tsup",
-    "deploy-commands": "doppler run -- tsx src/deploy-commands.ts",
     "dev": "doppler run -- tsx --watch src/index.ts",
+    "build": "tsup",
     "start": "node dist/index.cjs",
+    "deploy-commands": "doppler run -- tsx src/deploy-commands.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit"
   },

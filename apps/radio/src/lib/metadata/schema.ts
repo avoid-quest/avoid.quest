@@ -20,8 +20,8 @@ export const radioMetadataConfigSchema = z.discriminatedUnion("kind", [
     url: z.string().optional(),
   }),
   z.object({
-    channel: z.enum(["1", "2"]),
     kind: z.literal("nts-live-api"),
+    channel: z.enum(["1", "2"]),
   }),
   z.object({
     kind: z.literal("radio-blackout-api"),

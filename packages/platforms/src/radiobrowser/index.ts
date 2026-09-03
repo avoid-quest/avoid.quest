@@ -104,20 +104,20 @@ async function normalizeStation(
     ? canonicalUrl
     : await asSafeResolvedHttpsUrl(canonicalUrl, resolveHostname, signal);
   const normalized = {
-    bitrate: asBitrate(station.bitrate),
-    codec: asString(station.codec),
-    country: asString(station.country),
-    favicon: asSafeHttpUrl(station.favicon),
-    hls: asBoolean(station.hls),
-    homepage: asSafeHttpUrl(station.homepage),
-    lastCheckOk: asBoolean(station.lastcheckok),
-    lastCheckTime: asString(station.lastchecktime),
-    name: asString(station.name),
-    state: asString(station.state),
     stationUuid: asString(station.stationuuid),
-    tags: asTags(station.tags),
+    name: asString(station.name),
     url,
     urlResolved,
+    homepage: asSafeHttpUrl(station.homepage),
+    favicon: asSafeHttpUrl(station.favicon),
+    country: asString(station.country),
+    state: asString(station.state),
+    tags: asTags(station.tags),
+    codec: asString(station.codec),
+    bitrate: asBitrate(station.bitrate),
+    hls: asBoolean(station.hls),
+    lastCheckOk: asBoolean(station.lastcheckok),
+    lastCheckTime: asString(station.lastchecktime),
   } satisfies RadioBrowserStation;
 
   if (
@@ -364,20 +364,8 @@ export async function searchRadioBrowser(
     throw new Error("Radio Browser returned no valid HTTPS servers");
   }
 
-  const searchServer = async (
-    serverIndex: number,
-    lastError: unknown = null
-  ): Promise<RadioBrowserStation[]> => {
-    const server = servers[serverIndex];
-    if (!server) {
-      throw new Error(
-        "Radio Browser search failed on every discovered server",
-        {
-          cause: lastError,
-        }
-      );
-    }
-
+  let lastError: unknown = null;
+  for (const server of servers) {
     throwIfAborted(options.signal);
     const requestSignal = createTimeoutSignal(options.signal, timeoutMs);
     try {
@@ -408,17 +396,18 @@ export async function searchRadioBrowser(
         requestSignal.signal
       );
       throwIfAborted(options.signal);
-      const validStations = stations.filter(
+      return stations.filter(
         (station): station is RadioBrowserStation => station !== null
       );
-      requestSignal.cleanup();
-      return validStations;
     } catch (error) {
-      requestSignal.cleanup();
       throwIfAborted(options.signal);
-      return searchServer(serverIndex + 1, error);
+      lastError = error;
+    } finally {
+      requestSignal.cleanup();
     }
-  };
+  }
 
-  return searchServer(0);
+  throw new Error("Radio Browser search failed on every discovered server", {
+    cause: lastError,
+  });
 }

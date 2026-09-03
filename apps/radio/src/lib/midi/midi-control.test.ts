@@ -15,8 +15,8 @@ import type { MidiAction, MidiMapping, MidiTransform } from "./types";
 const mapping: MidiMapping = {
   channel: 0,
   control: 7,
-  targetId: "deck-a:volume",
   type: "cc",
+  targetId: "deck-a:volume",
 };
 
 class MemoryPersistence implements MidiMappingPersistence {
@@ -94,7 +94,7 @@ class FakeBrowser implements MidiBrowserAdapter {
   }
 
   flushFrame(): void {
-    const { frame } = this;
+    const frame = this.frame;
     this.frame = null;
     frame?.();
   }
@@ -197,7 +197,7 @@ class DeferredBrowser implements MidiBrowserAdapter {
     [];
 
   cancelFrame(): void {
-    // The deferred adapter never schedules animation frames.
+    return;
   }
 
   isSupported(): boolean {
@@ -242,9 +242,9 @@ describe("MidiControl", () => {
     });
 
     control.change({
-      patch: { invert: true },
-      targetId: mapping.targetId,
       type: "update-transform",
+      targetId: mapping.targetId,
+      patch: { invert: true },
     });
 
     const updated = control
@@ -283,38 +283,36 @@ describe("MidiControl", () => {
       },
     ];
 
-    await Promise.all(
-      cases.map(async (testCase) => {
-        const browser = new FakeBrowser();
-        const values: number[] = [];
-        const action: MidiAction = {
-          dispatch: (value) => values.push(value),
-          group: "deck-a",
-          label: "Volume",
-          targetId: mapping.targetId,
-          type: "continuous",
-        };
-        const control = createMidiControl({
-          browser,
-          persistence: new MemoryPersistence({
-            state: {
-              activePresetId: null,
-              enabled: true,
-              mappings: [{ ...mapping, transform: testCase.transform }],
-            },
-            version: 2,
-          }),
-          staticActions: [action],
-        });
+    for (const testCase of cases) {
+      const browser = new FakeBrowser();
+      const values: number[] = [];
+      const action: MidiAction = {
+        dispatch: (value) => values.push(value),
+        group: "deck-a",
+        label: "Volume",
+        targetId: mapping.targetId,
+        type: "continuous",
+      };
+      const control = createMidiControl({
+        browser,
+        persistence: new MemoryPersistence({
+          state: {
+            activePresetId: null,
+            enabled: true,
+            mappings: [{ ...mapping, transform: testCase.transform }],
+          },
+          version: 2,
+        }),
+        staticActions: [action],
+      });
 
-        control.activateDj();
-        await control.connect();
-        browser.emit([0xb0, 7, 64]);
-        browser.flushFrame();
+      control.activateDj();
+      await control.connect();
+      browser.emit([0xb0, 7, 64]);
+      browser.flushFrame();
 
-        expect(values[0]).toBeCloseTo(testCase.expected, 10);
-      })
-    );
+      expect(values[0]).toBeCloseTo(testCase.expected, 10);
+    }
   });
 
   test("learn mode replaces a target mapping and persists it", async () => {
@@ -329,7 +327,7 @@ describe("MidiControl", () => {
       staticActions: [],
     });
 
-    control.change({ targetId: mapping.targetId, type: "start-learn" });
+    control.change({ type: "start-learn", targetId: mapping.targetId });
     await control.connect();
     browser.emit([0xb0, 9, 127]);
 
@@ -369,7 +367,7 @@ describe("MidiControl", () => {
     await control.connect();
     browser.emit([0xb0, 7, 32]);
     browser.flushFrame();
-    control.change({ enabled: true, type: "set-enabled" });
+    control.change({ type: "set-enabled", enabled: true });
     browser.emit([0xb0, 7, 96]);
     browser.flushFrame();
 
@@ -405,7 +403,7 @@ describe("MidiControl", () => {
     };
 
     const disabled = await setup();
-    disabled.control.change({ enabled: false, type: "set-enabled" });
+    disabled.control.change({ type: "set-enabled", enabled: false });
     expect(disabled.browser.hasPendingFrame).toBe(false);
     disabled.browser.flushFrame();
     expect(disabled.dispatch).not.toHaveBeenCalled();
@@ -431,37 +429,35 @@ describe("MidiControl", () => {
       { presetId: "generic-2-deck", type: "load-preset" },
     ];
 
-    await Promise.all(
-      transactions.map(async (transaction) => {
-        const browser = new FakeBrowser();
-        const dispatch = mock(() => undefined);
-        const control = createMidiControl({
-          browser,
-          persistence: new MemoryPersistence({
-            state: { activePresetId: null, enabled: true, mappings: [mapping] },
-            version: 2,
-          }),
-          staticActions: [
-            {
-              dispatch,
-              group: "deck-a",
-              label: "Volume",
-              targetId: mapping.targetId,
-              type: "continuous",
-            },
-          ],
-        });
-        control.activateDj();
-        await control.connect();
-        browser.emit([0xb0, 7, 127]);
+    for (const transaction of transactions) {
+      const browser = new FakeBrowser();
+      const dispatch = mock(() => undefined);
+      const control = createMidiControl({
+        browser,
+        persistence: new MemoryPersistence({
+          state: { activePresetId: null, enabled: true, mappings: [mapping] },
+          version: 2,
+        }),
+        staticActions: [
+          {
+            dispatch,
+            group: "deck-a",
+            label: "Volume",
+            targetId: mapping.targetId,
+            type: "continuous",
+          },
+        ],
+      });
+      control.activateDj();
+      await control.connect();
+      browser.emit([0xb0, 7, 127]);
 
-        control.change(transaction);
+      control.change(transaction);
 
-        expect(browser.hasPendingFrame).toBe(false);
-        browser.flushFrame();
-        expect(dispatch).not.toHaveBeenCalled();
-      })
-    );
+      expect(browser.hasPendingFrame).toBe(false);
+      browser.flushFrame();
+      expect(dispatch).not.toHaveBeenCalled();
+    }
 
     const browser = new FakeBrowser();
     const dispatch = mock(() => undefined);
@@ -484,7 +480,7 @@ describe("MidiControl", () => {
     control.activateDj();
     await control.connect();
     browser.emit([0xb0, 7, 127]);
-    control.change({ targetId: mapping.targetId, type: "start-learn" });
+    control.change({ type: "start-learn", targetId: mapping.targetId });
     browser.emit([0xb0, 9, 127]);
 
     expect(browser.hasPendingFrame).toBe(false);
@@ -806,7 +802,7 @@ describe("MidiControl", () => {
     browser.time = 134;
     browser.emit([0xb0, 21, 127]);
     browser.flushFrame();
-    control.change({ enabled: false, type: "set-enabled" });
+    control.change({ type: "set-enabled", enabled: false });
 
     first.resolve(result);
     await first.promise;
@@ -1148,7 +1144,7 @@ describe("MidiControl", () => {
   test("reconciles chain actions and removes mappings for deleted Effects", async () => {
     const browser = new FakeBrowser();
     const container = createDefaultEffectConfig("fxComposite", "root", 0);
-    const [chain] = container.chains;
+    const chain = container.chains[0];
     if (!chain) {
       throw new Error("Default FX Composite must contain a chain");
     }
@@ -1208,7 +1204,7 @@ describe("MidiControl", () => {
   test("cancels queued Effect dispatch when reconciliation removes its mapping", async () => {
     const browser = new FakeBrowser();
     const container = createDefaultEffectConfig("fxComposite", "root", 0);
-    const [chain] = container.chains;
+    const chain = container.chains[0];
     if (!chain) {
       throw new Error("Default FX Composite must contain a chain");
     }
@@ -1248,17 +1244,17 @@ describe("MidiControl", () => {
       staticActions: [],
     });
 
-    control.change({ presetId: "generic-2-deck", type: "load-preset" });
+    control.change({ type: "load-preset", presetId: "generic-2-deck" });
     expect(control.getSnapshot().activePresetId).toBe("generic-2-deck");
     expect(control.getSnapshot().mappings.length).toBeGreaterThan(0);
 
-    control.change({ targetId: "deck-a:volume", type: "remove-mapping" });
+    control.change({ type: "remove-mapping", targetId: "deck-a:volume" });
     expect(control.getSnapshot().mappingsByTarget.has("deck-a:volume")).toBe(
       false
     );
     expect(control.getSnapshot().activePresetId).toBeNull();
 
-    control.change({ targetId: "deck-a:volume", type: "start-learn" });
+    control.change({ type: "start-learn", targetId: "deck-a:volume" });
     control.change({ type: "stop-learn" });
     expect(control.getSnapshot().learningTarget).toBeNull();
 

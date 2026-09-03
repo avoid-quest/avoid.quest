@@ -18,17 +18,17 @@ const dom = new JSDOM("<!doctype html><html><body></body></html>", {
 });
 
 for (const [key, value] of Object.entries({
+  window: dom.window,
   document: dom.window.document,
+  navigator: dom.window.navigator,
   HTMLElement: dom.window.HTMLElement,
   localStorage: dom.window.localStorage,
-  navigator: dom.window.navigator,
   sessionStorage: dom.window.sessionStorage,
-  window: dom.window,
 })) {
   Object.defineProperty(globalThis, key, {
     configurable: true,
-    value,
     writable: true,
+    value,
   });
 }
 
@@ -79,11 +79,11 @@ function TestHarness({
   syncRadios: (saved: Radio[], session: Radio[]) => void;
 }) {
   useMultipleRadioManagement({
-    addRadio: () => undefined,
-    hasMultipleSession,
     radios,
-    removeRadio: () => undefined,
+    hasMultipleSession,
     syncRadios,
+    addRadio: () => undefined,
+    removeRadio: () => undefined,
   });
 
   return null;

@@ -1,4 +1,3 @@
-/** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 /**
  * Declarative Parameter Renderer
  *
@@ -9,7 +8,6 @@
 import { Input } from "@avoid.quest/ui/components/input";
 import { Label } from "@avoid.quest/ui/components/label";
 import { Textarea } from "@avoid.quest/ui/components/textarea";
-import type { ChangeEvent } from "react";
 import { MidiControlWrapper } from "@/components/audio/midi-control-wrapper";
 import type { EffectConfig } from "@/lib/audio";
 import type {
@@ -60,18 +58,11 @@ type RenderParamContext = {
   midiTargetPrefix?: string;
 };
 
-function SliderControl({
-  param,
-  ctx,
-}: {
-  param: SliderParamDef;
-  ctx: RenderParamContext;
-}) {
+function renderSlider(
+  param: SliderParamDef,
+  ctx: RenderParamContext
+): React.ReactNode {
   const value = getEffectValue(ctx.effect, param.key);
-  function updateValue(nextValue: number) {
-    ctx.onUpdate({ [param.key]: nextValue });
-  }
-
   if (typeof value !== "number") {
     return null;
   }
@@ -81,10 +72,11 @@ function SliderControl({
       defaultValue={getDefaultValue(ctx.defaultConfig, param.key)}
       description={param.description}
       formatKey={param.formatKey ?? "default"}
+      key={param.key}
       label={param.label}
       max={param.max}
       min={param.min}
-      onChange={updateValue}
+      onChange={(v) => ctx.onUpdate({ [param.key]: v })}
       step={param.step}
       value={value}
     />
@@ -109,94 +101,75 @@ function SliderControl({
   return slider;
 }
 
-function SelectControl({
-  param,
-  ctx,
-}: {
-  param: SelectParamDef;
-  ctx: RenderParamContext;
-}) {
+function renderSelect(
+  param: SelectParamDef,
+  ctx: RenderParamContext
+): React.ReactNode {
   const value = getEffectValue(ctx.effect, param.key);
   const stringValue = String(value);
-  function updateValue(nextValue: string) {
-    const parsed =
-      param.valueType === "number" ? Number.parseInt(nextValue, 10) : nextValue;
-    ctx.onUpdate({ [param.key]: parsed });
-  }
 
   return (
     <ParamSelect
+      key={param.key}
       label={param.label}
-      onChange={updateValue}
+      onChange={(v) => {
+        const parsed =
+          param.valueType === "number" ? Number.parseInt(v, 10) : v;
+        ctx.onUpdate({ [param.key]: parsed });
+      }}
       options={param.options}
       value={stringValue}
     />
   );
 }
 
-function CheckboxControl({
-  param,
-  ctx,
-}: {
-  param: CheckboxParamDef;
-  ctx: RenderParamContext;
-}) {
+function renderCheckbox(
+  param: CheckboxParamDef,
+  ctx: RenderParamContext
+): React.ReactNode {
   const value = getEffectValue(ctx.effect, param.key);
   const checked = value === true;
-  function updateChecked(isChecked: boolean) {
-    ctx.onUpdate({ [param.key]: isChecked });
-  }
 
   return (
     <ParamCheckbox
       checked={checked}
       description={param.description}
       id={`${ctx.effect.id}-${param.key}`}
+      key={param.key}
       label={param.label}
-      onChange={updateChecked}
+      onChange={(c) => ctx.onUpdate({ [param.key]: c })}
     />
   );
 }
 
-function TextControl({
-  param,
-  ctx,
-}: {
-  param: TextParamDef;
-  ctx: RenderParamContext;
-}) {
+function renderText(
+  param: TextParamDef,
+  ctx: RenderParamContext
+): React.ReactNode {
   const value = getEffectValue(ctx.effect, param.key);
   const id = `${ctx.effect.id}-${param.key}`;
   const Control = param.multiline ? Textarea : Input;
-  function updateText(
-    event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
-  ) {
-    ctx.onUpdate({ [param.key]: event.target.value });
-  }
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-2" key={param.key}>
       <Label htmlFor={id}>{param.label}</Label>
       <Control
         id={id}
-        onChange={updateText}
+        onChange={(event) => ctx.onUpdate({ [param.key]: event.target.value })}
         placeholder={param.placeholder}
         value={typeof value === "string" ? value : ""}
       />
-      {Boolean(param.description) && (
+      {param.description && (
         <p className="text-muted-foreground text-xs">{param.description}</p>
       )}
     </div>
   );
 }
 
-function GroupControl({
-  param,
-  ctx,
-}: {
-  param: GroupParamDef;
-  ctx: RenderParamContext;
-}) {
+function renderGroup(
+  param: GroupParamDef,
+  ctx: RenderParamContext
+): React.ReactNode {
   // Check if group is controlled by enabled key
   const isEnabled = param.enabledKey
     ? getEffectValue(ctx.effect, param.enabledKey) === true
@@ -218,37 +191,29 @@ function GroupControl({
     <ParamGroup
       collapsible={param.collapsible}
       defaultOpen={isEnabled}
+      key={param.title}
       title={param.title}
     >
-      {childrenToRender.map((child) => (
-        <ParamControl
-          ctx={ctx}
-          key={child.type === "group" ? child.title : child.key}
-          param={child}
-        />
-      ))}
+      {childrenToRender.map((child) => renderParam(child, ctx))}
     </ParamGroup>
   );
 }
 
-function ParamControl({
-  param,
-  ctx,
-}: {
-  param: ParamDef;
-  ctx: RenderParamContext;
-}) {
+function renderParam(
+  param: ParamDef,
+  ctx: RenderParamContext
+): React.ReactNode {
   switch (param.type) {
     case "slider":
-      return <SliderControl ctx={ctx} param={param} />;
+      return renderSlider(param, ctx);
     case "select":
-      return <SelectControl ctx={ctx} param={param} />;
+      return renderSelect(param, ctx);
     case "checkbox":
-      return <CheckboxControl ctx={ctx} param={param} />;
+      return renderCheckbox(param, ctx);
     case "text":
-      return <TextControl ctx={ctx} param={param} />;
+      return renderText(param, ctx);
     case "group":
-      return <GroupControl ctx={ctx} param={param} />;
+      return renderGroup(param, ctx);
     default:
       return null;
   }
@@ -263,23 +228,17 @@ export function DeclarativeParams({
   midiTargetPrefix,
 }: DeclarativeParamsProps) {
   const ctx: RenderParamContext = {
-    deckId,
-    defaultConfig: schema.defaultConfig,
     effect,
+    onUpdate,
+    defaultConfig: schema.defaultConfig,
+    deckId,
     effectId,
     midiTargetPrefix,
-    onUpdate,
   };
 
   return (
     <div className="space-y-4">
-      {schema.params.map((param) => (
-        <ParamControl
-          ctx={ctx}
-          key={param.type === "group" ? param.title : param.key}
-          param={param}
-        />
-      ))}
+      {schema.params.map((param) => renderParam(param, ctx))}
       <UniversalParams
         deckId={deckId}
         effect={effect}

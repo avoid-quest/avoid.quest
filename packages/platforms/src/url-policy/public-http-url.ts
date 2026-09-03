@@ -211,7 +211,8 @@ function ipv4FromIpv6(
     return null;
   }
 
-  const [, , , , , , word6, word7] = words;
+  const word6 = words[6];
+  const word7 = words[7];
   if (word6 === undefined || word7 === undefined) {
     return null;
   }
@@ -230,7 +231,7 @@ function isBlockedIpv6(words: number[]): boolean {
     return true;
   }
 
-  const [firstWord] = words;
+  const firstWord = words[0];
   if (firstWord === undefined) {
     return true;
   }
@@ -379,7 +380,7 @@ export function validatePublicHttpUrl(url: string): PublicHttpUrlResult {
     return { ok: false, reason: "internal-address" };
   }
 
-  return { ok: true, parsed, url };
+  return { ok: true, url, parsed };
 }
 
 export async function validateResolvedPublicHttpUrl(

@@ -1,4 +1,3 @@
-// biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers
 import { Input } from "@avoid.quest/ui/components/input";
 import {
   Tabs,
@@ -43,15 +42,12 @@ export function BrowserPanel({ radios, className }: BrowserPanelProps) {
   );
   const hasQuery = searchQuery.trim().length > 0;
   const visibleRadios = hasQuery ? results.map(toDjBrowserRadio) : allRadios;
-  const handleToggleOpen = () => setIsOpen((open) => !open);
-  const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) =>
-    setSearchQuery(event.target.value);
 
   return (
     <div className={cn("border-border/50 border-t", className)}>
       <button
         className="flex w-full items-center gap-3 px-3 py-2 transition-colors hover:bg-muted/30"
-        onClick={handleToggleOpen}
+        onClick={() => setIsOpen(!isOpen)}
         type="button"
       >
         <span className="font-mono text-foreground/80 text-xs uppercase tracking-wider">
@@ -78,7 +74,7 @@ export function BrowserPanel({ radios, className }: BrowserPanelProps) {
         )}
       </button>
 
-      {isOpen ? (
+      {isOpen && (
         <div className="px-3 pb-3">
           <Tabs onValueChange={setActiveTab} value={activeTab}>
             <div className="mb-2 flex items-center gap-2">
@@ -97,7 +93,7 @@ export function BrowserPanel({ radios, className }: BrowserPanelProps) {
                     aria-label="Search stations"
                     className="h-8 pl-8 text-xs"
                     maxLength={200}
-                    onChange={handleSearchChange}
+                    onChange={(event) => setSearchQuery(event.target.value)}
                     placeholder="Search stations…"
                     type="search"
                     value={searchQuery}
@@ -123,7 +119,7 @@ export function BrowserPanel({ radios, className }: BrowserPanelProps) {
             </TabsContent>
           </Tabs>
         </div>
-      ) : null}
+      )}
     </div>
   );
 }

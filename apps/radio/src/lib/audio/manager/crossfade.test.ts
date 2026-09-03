@@ -35,9 +35,9 @@ describe("crossfade utilities", () => {
     );
 
     await crossfade("outgoing", "incoming", {
-      curve: "equalPower",
       duration: 1,
       targetVolume: 0.8,
+      curve: "equalPower",
     });
 
     expect(manager.scheduleVolumeCurve).toHaveBeenCalledTimes(2);
@@ -63,9 +63,9 @@ describe("crossfade utilities", () => {
     );
 
     await crossfade("outgoing", "incoming", {
-      curve: "equalPower",
       duration: 1,
       targetVolume: 1,
+      curve: "equalPower",
     });
 
     const outgoing = manager.scheduleVolumeCurve.mock.calls[0]?.[1];
@@ -107,9 +107,9 @@ describe("crossfade utilities", () => {
 
   test("crossfade directly sets final volumes only for zero duration", async () => {
     await crossfade("outgoing", "incoming", {
-      curve: "equalPower",
       duration: 0,
       targetVolume: 0.18,
+      curve: "equalPower",
     });
 
     expect(manager.scheduleVolumeCurve).not.toHaveBeenCalled();

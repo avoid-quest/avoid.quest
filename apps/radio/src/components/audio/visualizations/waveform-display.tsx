@@ -17,7 +17,7 @@ export type WaveformDisplayProps = {
   fillOpacity?: number;
 };
 
-export const WaveformDisplay = memo(function WaveformDisplayComponent({
+export const WaveformDisplay = memo(function WaveformDisplay({
   waveform,
   lineWidth = 2,
   className,
@@ -27,11 +27,15 @@ export const WaveformDisplay = memo(function WaveformDisplayComponent({
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
-    const ctx = canvasRef.current?.getContext("2d");
+    const canvas = canvasRef.current;
+    if (!canvas) {
+      return;
+    }
+
+    const ctx = canvas.getContext("2d");
     if (!ctx) {
       return;
     }
-    const { canvas } = ctx;
 
     const draw = () => {
       const { width, height } = canvas;
@@ -61,7 +65,7 @@ export const WaveformDisplay = memo(function WaveformDisplayComponent({
       ctx.beginPath();
       ctx.moveTo(0, centerY * dpr);
 
-      for (let i = 0; i < waveform.length; i += 1) {
+      for (let i = 0; i < waveform.length; i++) {
         const x = i * sliceWidth;
         const sample = waveform[i] ?? 0;
         const y = centerY + sample * centerY * 0.9; // 0.9 for some margin
@@ -79,7 +83,7 @@ export const WaveformDisplay = memo(function WaveformDisplayComponent({
       ctx.lineJoin = "round";
       ctx.beginPath();
 
-      for (let i = 0; i < waveform.length; i += 1) {
+      for (let i = 0; i < waveform.length; i++) {
         const x = i * sliceWidth;
         const sample = waveform[i] ?? 0;
         const y = centerY + sample * centerY * 0.9;

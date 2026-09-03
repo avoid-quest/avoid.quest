@@ -17,11 +17,6 @@ export function usePlatformLoad(options: UsePlatformLoadOptions = {}) {
 
   return useMutation({
     mutationFn: loadPlatformItem,
-    onError: (error) => {
-      options.onError?.(
-        error instanceof Error ? error.message : "Failed to load platform item"
-      );
-    },
     onSuccess: (result) => {
       if (result.success) {
         const url = result.radio.platformMetadata?.url;
@@ -33,13 +28,17 @@ export function usePlatformLoad(options: UsePlatformLoadOptions = {}) {
         options.onError?.(result.error, result.code);
       }
     },
+    onError: (error) => {
+      options.onError?.(
+        error instanceof Error ? error.message : "Failed to load platform item"
+      );
+    },
   });
 }
 
 export function usePlatformItem(url: string | null) {
   return useQuery({
-    enabled: !!url,
-    gcTime: 1000 * 60 * 30,
+    queryKey: platformKeys.item(url ?? ""),
     queryFn: async () => {
       if (!url) {
         return null;
@@ -50,8 +49,9 @@ export function usePlatformItem(url: string | null) {
       }
       return result.radio;
     },
-    queryKey: platformKeys.item(url ?? ""),
-    retry: 2,
+    enabled: !!url,
     staleTime: 1000 * 60 * 5,
+    gcTime: 1000 * 60 * 30,
+    retry: 2,
   });
 }

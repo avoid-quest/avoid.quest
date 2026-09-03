@@ -1,4 +1,3 @@
-/** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 import appleIcon from "@avoid.quest/ui/assets/favicon/apple-icon.png";
 import favicon from "@avoid.quest/ui/assets/favicon/favicon.ico";
 import icon0 from "@avoid.quest/ui/assets/favicon/icon0.svg";
@@ -22,96 +21,96 @@ function RootPending() {
 }
 
 export const Route = createRootRoute({
+  ssr: false,
   component: RootContent,
   errorComponent: RootErrorView,
+  loader: async () => {
+    const { loadRootSyncChanges } = await import("@/lib/root/root-bootstrap");
+    return loadRootSyncChanges();
+  },
+  pendingComponent: RootPending,
+  pendingMinMs: 0,
+  pendingMs: 0,
+  headers: () => ({
+    // Required for SharedArrayBuffer support in AudioWorklet
+    "Cross-Origin-Opener-Policy": "same-origin",
+    "Cross-Origin-Embedder-Policy": "credentialless",
+  }),
   head: () => ({
-    links: [
-      {
-        href: globalsCss,
-        precedence: "default",
-        rel: "stylesheet",
-      },
-      {
-        href: "/manifest.json",
-        rel: "manifest",
-      },
-      {
-        href: favicon,
-        rel: "icon",
-        type: "image/x-icon",
-      },
-      {
-        href: appleIcon,
-        rel: "apple-touch-icon",
-      },
-      {
-        href: icon0,
-        rel: "icon",
-        type: "image/svg+xml",
-      },
-      {
-        href: icon1,
-        rel: "icon",
-        type: "image/png",
-      },
-    ],
     meta: [
       {
         charSet: "utf-8",
       },
       {
-        content: "width=device-width, initial-scale=1",
         name: "viewport",
+        content: "width=device-width, initial-scale=1",
       },
       {
         title: "radio - avoid.quest",
       },
       {
-        content: "Enhanced internet radio",
         name: "description",
+        content: "Enhanced internet radio",
       },
       {
-        content: "radio.avoid.quest",
         name: "apple-mobile-web-app-title",
+        content: "radio.avoid.quest",
       },
       {
-        content: "yes",
         name: "mobile-web-app-capable",
+        content: "yes",
       },
       {
-        content: "black",
         name: "apple-mobile-web-app-status-bar-style",
+        content: "black",
       },
       {
-        content: "Radio - avoid.quest",
         name: "application-name",
+        content: "Radio - avoid.quest",
       },
       {
-        content: "#000000",
         name: "theme-color",
+        content: "#000000",
       },
       {
-        content: "#000000",
         name: "msapplication-TileColor",
+        content: "#000000",
+      },
+    ],
+    links: [
+      {
+        rel: "stylesheet",
+        href: globalsCss,
+        precedence: "default",
+      },
+      {
+        rel: "manifest",
+        href: "/manifest.json",
+      },
+      {
+        rel: "icon",
+        type: "image/x-icon",
+        href: favicon,
+      },
+      {
+        rel: "apple-touch-icon",
+        href: appleIcon,
+      },
+      {
+        rel: "icon",
+        type: "image/svg+xml",
+        href: icon0,
+      },
+      {
+        rel: "icon",
+        type: "image/png",
+        href: icon1,
       },
     ],
   }),
-  headers: () => ({
-    "Cross-Origin-Embedder-Policy": "credentialless",
-    // Required for SharedArrayBuffer support in AudioWorklet
-    "Cross-Origin-Opener-Policy": "same-origin",
-  }),
-  loader: async () => {
-    const { loadRootSyncChanges } = await import("@/lib/root/root-bootstrap");
-    return loadRootSyncChanges();
-  },
-  notFoundComponent: NotFoundView,
-  pendingComponent: RootPending,
-  pendingMinMs: 0,
-  pendingMs: 0,
 
   shellComponent: RootShell,
-  ssr: false,
+  notFoundComponent: NotFoundView,
 });
 
 function RootContent() {
@@ -137,7 +136,7 @@ function RootContent() {
   return (
     <>
       <Outlet />
-      {syncChanges ? (
+      {syncChanges && (
         <Suspense fallback={null}>
           <SyncDialog
             changes={syncChanges}
@@ -146,7 +145,7 @@ function RootContent() {
             open={showSyncDialog}
           />
         </Suspense>
-      ) : null}
+      )}
     </>
   );
 }

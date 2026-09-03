@@ -222,9 +222,9 @@ describe("DJ platform stream port", () => {
     const inputRadio: Radio = {
       id: "soundcloud-live",
       name: "SoundCloud live",
-      platformMetadata,
       streamFormat: "progressive",
       streamUrl: "https://media.example/expired.mp3",
+      platformMetadata,
     };
 
     await expect(

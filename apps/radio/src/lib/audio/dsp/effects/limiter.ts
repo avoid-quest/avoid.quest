@@ -59,7 +59,7 @@ export class Limiter {
     const [outputL, outputR] = output;
     let env = this.#envelope;
 
-    for (let i = fromIndex; i < toIndex; i += 1) {
+    for (let i = fromIndex; i < toIndex; i++) {
       const sampleL = inputL[i] ?? 0;
       const sampleR = inputR[i] ?? 0;
 

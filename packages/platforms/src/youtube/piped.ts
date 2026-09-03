@@ -74,8 +74,8 @@ function videoIdFromPipedUrl(
   let videoId: string | null;
   try {
     videoId = new URL(value, "https://youtube.com").searchParams.get("v");
-  } catch (error) {
-    throw invalidProviderSchema(context, undefined, error);
+  } catch {
+    throw invalidProviderSchema(context);
   }
   if (!(videoId && VIDEO_ID_PATTERN.test(videoId))) {
     throw invalidProviderSchema(context);

@@ -45,12 +45,12 @@ describe("browser platform item loader", () => {
     await expect(
       load("https://youtube.com/watch?v=abcdefghijk")
     ).resolves.toMatchObject({
+      success: true,
       radio: {
         name: "Browser Track",
-        platformMetadata: { platform: "youtube", videoId: "abcdefghijk" },
         streamUrl: "https://media.example/audio.webm",
+        platformMetadata: { platform: "youtube", videoId: "abcdefghijk" },
       },
-      success: true,
     });
     expect(resolvePlatformItem).not.toHaveBeenCalled();
   });
@@ -131,11 +131,11 @@ describe("browser platform item loader", () => {
     });
 
     await expect(load(fixture.url)).resolves.toMatchObject({
+      success: true,
       radio: {
         name: fixture.name,
         streamUrl: "https://media.example/track.mp3",
       },
-      success: true,
     });
     expect(getYouTubeClient).not.toHaveBeenCalled();
     expect(resolvePlatformItem).toHaveBeenCalledWith(fixture.url);
@@ -147,7 +147,6 @@ describe("browser platform item loader", () => {
     });
     const resolveStaticAudio = mock(() =>
       Promise.resolve({
-        format: "progressive" as const,
         metadata: {
           displayName: "mix",
           duration: 0,
@@ -160,6 +159,7 @@ describe("browser platform item loader", () => {
           streamUrl: "https://audio.example/mix.ogg",
           url: "https://audio.example/mix.ogg",
         },
+        format: "progressive" as const,
         streamUrl: "https://audio.example/mix.ogg",
       })
     );
@@ -172,13 +172,13 @@ describe("browser platform item loader", () => {
     });
 
     await expect(load("https://audio.example/mix.ogg")).resolves.toMatchObject({
+      success: true,
       radio: {
         name: "mix",
-        platformMetadata: { platform: "static-audio" },
-        streamFormat: "progressive",
         streamUrl: "https://audio.example/mix.ogg",
+        streamFormat: "progressive",
+        platformMetadata: { platform: "static-audio" },
       },
-      success: true,
     });
     expect(resolveStaticAudio).toHaveBeenCalledWith(
       "https://audio.example/mix.ogg"
@@ -210,11 +210,11 @@ describe("browser platform item loader", () => {
     });
 
     await expect(load(url)).resolves.toMatchObject({
+      success: true,
       radio: {
         streamFormat: "hls",
         streamUrl: "https://media.example/signed-stream",
       },
-      success: true,
     });
   });
 
@@ -249,8 +249,8 @@ describe("browser platform item loader", () => {
     });
 
     await expect(load(url)).resolves.toMatchObject({
-      radio: { streamFormat: "hls", streamUrl },
       success: true,
+      radio: { streamFormat: "hls", streamUrl },
     });
   });
 });

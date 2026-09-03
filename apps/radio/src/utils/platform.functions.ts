@@ -1,9 +1,4 @@
-import {
-  AppError,
-  type AppErrorInit,
-  type AppResult,
-  runServerFn,
-} from "@avoid.quest/error";
+import { AppError, type AppResult, runServerFn } from "@avoid.quest/error";
 import {
   getBandcampItem,
   isBandcampUrl,
@@ -31,7 +26,17 @@ const LoadPlatformItemSchema = z.object({
     .string()
     .min(1, "URL is required")
     .max(2048, "URL too long")
-    .refine((val) => URL.canParse(val), { message: "Invalid URL format" }),
+    .refine(
+      (val) => {
+        try {
+          new URL(val);
+          return true;
+        } catch {
+          return false;
+        }
+      },
+      { message: "Invalid URL format" }
+    ),
 });
 
 export type LoadPlatformItemResponse = AppResult<{
@@ -46,13 +51,6 @@ type ResolvedPlatformItem = {
   streamUrl: string;
 };
 
-function appErrorFromCause(
-  cause: unknown,
-  init: Omit<AppErrorInit, "cause">
-): AppError {
-  return new AppError({ ...init, cause });
-}
-
 async function normalizePlatformUrl(url: string): Promise<string> {
   try {
     let normalizedUrl = url.trim();
@@ -60,12 +58,12 @@ async function normalizePlatformUrl(url: string): Promise<string> {
       normalizedUrl = await resolveShortLink(normalizedUrl);
     }
     return normalizeBandcampUrl(normalizeSoundCloudUrl(normalizedUrl));
-  } catch (error) {
-    throw appErrorFromCause(error, {
-      category: "dependency",
+  } catch {
+    throw new AppError({
       code: "SOUNDCLOUD_SHORTLINK_RESOLVE_FAILED",
-      expected: true,
       safeMessage: "Failed to resolve SoundCloud short link",
+      category: "dependency",
+      expected: true,
       status: 400,
     });
   }
@@ -82,10 +80,10 @@ function providerError(
   } as const;
 
   return new AppError({
-    category: "dependency",
     code: codes[platform],
-    expected: false,
     safeMessage: message,
+    category: "dependency",
+    expected: false,
     status: 500,
   });
 }
@@ -130,10 +128,10 @@ async function resolveRadioGardenItem(
   const channelId = extractChannelId(url);
   if (!channelId) {
     throw new AppError({
-      category: "validation",
       code: "RADIO_GARDEN_CHANNEL_ID_MISSING",
-      expected: true,
       safeMessage: "Could not extract Radio Garden channel ID from URL",
+      category: "validation",
+      expected: true,
       status: 400,
     });
   }
@@ -179,11 +177,11 @@ function resolvePlatformItem(
   }
 
   throw new AppError({
-    category: "validation",
     code: "PLATFORM_UNSUPPORTED_URL",
-    expected: true,
     safeMessage:
       "Unsupported server-side URL. Please enter a Bandcamp, SoundCloud, or Radio Garden URL.",
+    category: "validation",
+    expected: true,
     status: 400,
   });
 }
@@ -194,24 +192,24 @@ export const loadPlatformItem = createServerFn({ method: "POST" })
   .handler(
     ({ data }): Promise<LoadPlatformItemResponse> =>
       runServerFn({
+        operation: "loadPlatformItem",
         fallback: {
-          category: "dependency",
           code: "PLATFORM_ITEM_LOAD_FAILED",
-          expected: false,
           safeMessage: "Failed to load platform item",
+          category: "dependency",
+          expected: false,
           status: 500,
         },
-        operation: "loadPlatformItem",
         run: async () => {
           const normalizedUrl = await normalizePlatformUrl(data.url);
           const item = await resolvePlatformItem(normalizedUrl);
 
-          if (!item.streamUrl.trim()) {
+          if (!item.streamUrl?.trim()) {
             throw new AppError({
-              category: "dependency",
               code: "PLATFORM_EMPTY_STREAM_URL",
-              expected: false,
               safeMessage: "Platform returned no playable stream URL",
+              category: "dependency",
+              expected: false,
               status: 500,
             });
           }
@@ -224,12 +222,12 @@ export const loadPlatformItem = createServerFn({ method: "POST" })
             ) {
               throw new TypeError("Unsupported stream URL protocol");
             }
-          } catch (error) {
-            throw appErrorFromCause(error, {
-              category: "dependency",
+          } catch {
+            throw new AppError({
               code: "PLATFORM_INVALID_STREAM_URL",
-              expected: false,
               safeMessage: "Platform returned an invalid stream URL",
+              category: "dependency",
+              expected: false,
               status: 500,
             });
           }

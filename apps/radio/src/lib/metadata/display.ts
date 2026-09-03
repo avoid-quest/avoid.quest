@@ -47,5 +47,5 @@ export function getMediaSessionText(input: {
     input.radio.placeTitle ||
     input.radio.name ||
     "";
-  return { artist, title };
+  return { title, artist };
 }

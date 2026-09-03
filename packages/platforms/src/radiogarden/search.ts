@@ -64,9 +64,7 @@ export async function searchRadioGarden(
     });
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
-      throw new Error("Radio Garden search timed out — try again", {
-        cause: error,
-      });
+      throw new Error("Radio Garden search timed out — try again");
     }
     throw error;
   }
@@ -78,26 +76,24 @@ export async function searchRadioGarden(
   let data: RadioGardenApiSearchResponse;
   try {
     data = (await response.json()) as RadioGardenApiSearchResponse;
-  } catch (error) {
-    throw new Error("Radio Garden returned an invalid response", {
-      cause: error,
-    });
+  } catch {
+    throw new Error("Radio Garden returned an invalid response");
   }
 
   return data.hits.hits
     .filter((hit) => hit._source.type === "channel")
     .map((hit) => {
-      const { page } = hit._source;
+      const page = hit._source.page;
       // URL format: /listen/{slug}/{id}
       const channelId = page.url.split("/").pop() ?? "";
       return {
         channelId,
-        countryTitle: page.country.title,
-        placeTitle: page.place.title,
-        subtitle: page.subtitle,
         title: page.title,
+        subtitle: page.subtitle,
         url: `https://radio.garden${page.url}`,
         website: page.website || undefined,
+        placeTitle: page.place.title,
+        countryTitle: page.country.title,
       };
     })
     .filter((result) => result.channelId !== "");
@@ -118,9 +114,7 @@ export async function resolveRadioGardenStream(
     );
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
-      throw new Error("Radio Garden stream resolution timed out — try again", {
-        cause: error,
-      });
+      throw new Error("Radio Garden stream resolution timed out — try again");
     }
     throw error;
   }
@@ -171,9 +165,7 @@ export async function getRadioGardenSuggestions(): Promise<
     });
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
-      throw new Error("Radio Garden suggestions timed out — try again", {
-        cause: error,
-      });
+      throw new Error("Radio Garden suggestions timed out — try again");
     }
     throw error;
   }
@@ -185,10 +177,8 @@ export async function getRadioGardenSuggestions(): Promise<
   let data: RadioGardenSuggestionsResponse;
   try {
     data = (await response.json()) as RadioGardenSuggestionsResponse;
-  } catch (error) {
-    throw new Error("Radio Garden returned an invalid response", {
-      cause: error,
-    });
+  } catch {
+    throw new Error("Radio Garden returned an invalid response");
   }
 
   const results: RadioGardenSearchResult[] = [];
@@ -204,12 +194,12 @@ export async function getRadioGardenSuggestions(): Promise<
       }
       results.push({
         channelId,
-        countryTitle: item.country.title,
-        placeTitle: item.place.title,
-        subtitle: item.subtitle,
         title: item.title,
+        subtitle: item.subtitle,
         url: `https://radio.garden${item.url}`,
         website: item.website || undefined,
+        placeTitle: item.place.title,
+        countryTitle: item.country.title,
       });
     }
   }
@@ -232,8 +222,8 @@ export async function getRadioGardenItem(
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
       return {
-        error: "Radio Garden channel lookup timed out — try again",
         success: false,
+        error: "Radio Garden channel lookup timed out — try again",
       };
     }
     throw error;
@@ -241,8 +231,8 @@ export async function getRadioGardenItem(
 
   if (!metaResponse.ok) {
     return {
-      error: `Failed to fetch channel info: ${metaResponse.status}`,
       success: false,
+      error: `Failed to fetch channel info: ${metaResponse.status}`,
     };
   }
 
@@ -251,8 +241,8 @@ export async function getRadioGardenItem(
     metaData = (await metaResponse.json()) as RadioGardenApiChannelResponse;
   } catch {
     return {
-      error: "Radio Garden returned an invalid response",
       success: false,
+      error: "Radio Garden returned an invalid response",
     };
   }
 
@@ -260,19 +250,19 @@ export async function getRadioGardenItem(
   const streamUrl = await resolveRadioGardenStream(channelId);
 
   return {
+    success: true,
     metadata: {
-      channelId: channel.id,
-      countryTitle: channel.country.title,
+      platform: "radiogarden",
       itemType: "channel",
+      url: `https://radio.garden${channel.url}`,
+      channelId: channel.id,
       name: channel.title,
+      subtitle: `${channel.place.title}, ${channel.country.title}`,
+      website: channel.website || undefined,
       placeId: channel.place.id,
       placeTitle: channel.place.title,
-      platform: "radiogarden",
-      subtitle: `${channel.place.title}, ${channel.country.title}`,
-      url: `https://radio.garden${channel.url}`,
-      website: channel.website || undefined,
+      countryTitle: channel.country.title,
     },
     streamUrl,
-    success: true,
   };
 }

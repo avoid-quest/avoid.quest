@@ -47,7 +47,7 @@ export function parseNamModel(
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
     throw new Error("NAM model must contain a JSON object.");
   }
-  return { modelData, modelName };
+  return { modelName, modelData };
 }
 
 export async function ingestLocalNamModel(

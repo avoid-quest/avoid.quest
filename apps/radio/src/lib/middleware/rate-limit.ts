@@ -39,7 +39,7 @@ export async function validateAuthAndRateLimit(
 ): Promise<AuthAndRateLimitResult> {
   let origin = "*";
   try {
-    ({ origin } = new URL(request.url));
+    origin = new URL(request.url).origin;
   } catch {
     // Fallback if URL parsing fails
   }
@@ -58,8 +58,9 @@ export async function validateAuthAndRateLimit(
       const { getOrCreateSessionFromRequest } = await import(
         "./session-creation"
       );
-      ({ sessionId, shouldSetCookie } =
-        getOrCreateSessionFromRequest(cookieHeader));
+      const result = getOrCreateSessionFromRequest(cookieHeader);
+      sessionId = result.sessionId;
+      shouldSetCookie = result.shouldSetCookie;
     } else {
       // Require existing session
       sessionId = getSessionId(cookieHeader);
@@ -67,15 +68,15 @@ export async function validateAuthAndRateLimit(
         logAuthFailure(identifier, ip);
         return problemResponse(
           new AppError({
-            category: "auth",
             code: "UNAUTHORIZED",
-            expected: true,
             safeMessage: "Unauthorized",
+            category: "auth",
+            expected: true,
             status: 401,
           }),
           {
-            headers: getCorsHeaders(origin),
             requestId,
+            headers: getCorsHeaders(origin),
           }
         );
       }
@@ -93,20 +94,20 @@ export async function validateAuthAndRateLimit(
       logRateLimitViolation(sessionId, identifier, ip);
       return problemResponse(
         new AppError({
-          category: "rate_limit",
           code: "RATE_LIMITED",
-          expected: true,
           safeMessage: "Rate limit exceeded",
+          category: "rate_limit",
+          expected: true,
           status: 429,
         }),
         {
-          headers: getCorsHeaders(origin),
           requestId,
+          headers: getCorsHeaders(origin),
         }
       );
     }
 
-    return { ip, sessionId, shouldSetCookie };
+    return { sessionId, ip, shouldSetCookie };
   } catch (error) {
     const errorMessage =
       error instanceof Error ? error.message : "Unknown error";
@@ -114,15 +115,15 @@ export async function validateAuthAndRateLimit(
     // Fail closed - return unauthorized on error
     return problemResponse(
       new AppError({
-        category: "infrastructure",
         code: "AUTHENTICATION_FAILED",
-        expected: false,
         safeMessage: "Authentication failed",
+        category: "infrastructure",
+        expected: false,
         status: 500,
       }),
       {
-        headers: getCorsHeaders(origin),
         requestId,
+        headers: getCorsHeaders(origin),
       }
     );
   }

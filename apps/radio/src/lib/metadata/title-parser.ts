@@ -54,7 +54,7 @@ export function parseRadioTitle(
 ): ParsedRadioTitle {
   const rawTitle = normalizeRawTitle(value);
   if (!rawTitle) {
-    return { artist: null, rawTitle: null, title: null };
+    return { title: null, artist: null, rawTitle: null };
   }
 
   const separatorIndex = rawTitle.indexOf(" - ");
@@ -62,9 +62,9 @@ export function parseRadioTitle(
     const artist = cleanMetadataText(rawTitle.slice(0, separatorIndex));
     const title = cleanMetadataText(rawTitle.slice(separatorIndex + 3));
     if (artist && title) {
-      return { artist, rawTitle, title };
+      return { title, artist, rawTitle };
     }
   }
 
-  return { artist: null, rawTitle, title: rawTitle };
+  return { title: rawTitle, artist: null, rawTitle };
 }

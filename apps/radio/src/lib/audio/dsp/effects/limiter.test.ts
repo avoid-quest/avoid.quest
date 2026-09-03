@@ -159,9 +159,8 @@ describe("Limiter Effect", () => {
 
     // Both channels should be affected by the louder channel
     // (limiter uses max of both channels for detection)
-    const [outputL, outputR] = output;
-    const lastL = outputL.at(-1);
-    const lastR = outputR.at(-1);
+    const lastL = output[0][63];
+    const lastR = output[1][63];
 
     expect(lastL).toBeLessThan(1.0); // Limited
     expect(lastR).toBeLessThan(0.1); // Also reduced due to shared gain
@@ -217,7 +216,7 @@ describe("Limiter Effect", () => {
 
     limiter.process(input, output, 0, 128);
 
-    for (let i = 0; i < 128; i += 1) {
+    for (let i = 0; i < 128; i++) {
       expect(Number.isFinite(output[0][i])).toBe(true);
       expect(Number.isFinite(output[1][i])).toBe(true);
     }

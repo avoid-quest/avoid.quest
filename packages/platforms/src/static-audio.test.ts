@@ -36,21 +36,18 @@ describe("validatePublicStaticAudioUrl", () => {
   });
 
   test("rejects private, loopback, link-local, and metadata static audio URLs", async () => {
-    const unsafeUrls = [
+    for (const url of [
       "http://127.0.0.1/live.mp3",
       "http://localhost/live.mp3",
       "http://169.254.169.254/latest/meta-data.mp3",
       "http://metadata.google.internal/live.mp3",
       "http://[fe80::1]/live.mp3",
-    ];
-    await Promise.all(
-      unsafeUrls.map(async (url) => {
-        await expect(validatePublicStaticAudioUrl(url)).resolves.toEqual({
-          ok: false,
-          reason: "internal-address",
-        });
-      })
-    );
+    ]) {
+      await expect(validatePublicStaticAudioUrl(url)).resolves.toEqual({
+        ok: false,
+        reason: "internal-address",
+      });
+    }
   });
 
   test("rejects public hostnames that resolve to private addresses", async () => {

@@ -65,7 +65,7 @@ function computeCompressorOutput(
   return outputDb + makeup;
 }
 
-export const CompressorCanvas = memo(function CompressorCanvasComponent({
+export const CompressorCanvas = memo(function CompressorCanvas({
   config,
   className,
   gainReduction = 0,
@@ -73,14 +73,18 @@ export const CompressorCanvas = memo(function CompressorCanvasComponent({
   maxDb = 0,
 }: CompressorCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const sizeRef = useRef({ height: 0, width: 0 });
+  const sizeRef = useRef({ width: 0, height: 0 });
 
   useEffect(() => {
-    const ctx = canvasRef.current?.getContext("2d");
+    const canvas = canvasRef.current;
+    if (!canvas) {
+      return;
+    }
+
+    const ctx = canvas.getContext("2d");
     if (!ctx) {
       return;
     }
-    const { canvas } = ctx;
 
     const draw = () => {
       const { width: cssWidth, height: cssHeight } = sizeRef.current;
@@ -156,7 +160,7 @@ export const CompressorCanvas = memo(function CompressorCanvasComponent({
       ctx.beginPath();
 
       const numPoints = Math.floor(w);
-      for (let i = 0; i <= numPoints; i += 1) {
+      for (let i = 0; i <= numPoints; i++) {
         const inputDb = minDb + (i / numPoints) * dbRange;
         const outputDb = computeCompressorOutput(
           inputDb,
@@ -197,7 +201,7 @@ export const CompressorCanvas = memo(function CompressorCanvasComponent({
     const resizeObserver = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const { width, height } = entry.contentRect;
-        sizeRef.current = { height, width };
+        sizeRef.current = { width, height };
       }
       draw();
     });

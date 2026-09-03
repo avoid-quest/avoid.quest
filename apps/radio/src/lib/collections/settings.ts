@@ -14,31 +14,31 @@ const playerSettingsSchema = z.object({
 });
 
 const delaySettingsSchema = z.object({
-  cueDelayMs: z.number().min(0).max(500).default(0),
   mainDelayMs: z.number().min(0).max(500).default(0),
+  cueDelayMs: z.number().min(0).max(500).default(0),
 });
 
 const inputDeckSettingsSchema = z.object({
-  channelFilter: z.number().min(-1).max(1),
-  collapsed: z.boolean(),
   deviceId: z.string().nullable(),
+  volume: z.number().min(0).max(1.585),
+  pan: z.number().min(-1).max(1),
+  channelFilter: z.number().min(-1).max(1),
   effectsDryWet: z.number().min(0).max(1),
   goLiveOnStart: z.boolean(),
-  pan: z.number().min(-1).max(1),
-  volume: z.number().min(0).max(1.585),
+  collapsed: z.boolean(),
 });
 
 const audioSettingsSchema = z.object({
+  mainOutputId: z.string().default("default"),
   cueOutputId: z.string().nullable().default(null),
   delay: delaySettingsSchema.optional(),
   inputDeck: inputDeckSettingsSchema.optional(),
-  mainOutputId: z.string().default("default"),
 });
 
 const settingsSchema = z.object({
-  audio: audioSettingsSchema.optional(),
   id: z.string(),
   player: playerSettingsSchema,
+  audio: audioSettingsSchema.optional(),
 });
 
 export type SettingsRecord = z.infer<typeof settingsSchema>;
@@ -47,11 +47,11 @@ const SETTINGS_ID = "app-settings";
 
 export const settingsCollection = createCollection(
   localStorageCollectionOptions({
-    getKey: (item) => item.id,
     id: "settings",
-    schema: settingsSchema,
     startSync: true,
     storageKey: "radio-app-settings",
+    getKey: (item) => item.id,
+    schema: settingsSchema,
   })
 );
 
@@ -146,12 +146,12 @@ export function getAudioSettings(): NonNullable<SettingsRecord["audio"]> {
   const settings = getSettings();
   return (
     settings?.audio ?? {
+      mainOutputId: "default",
       cueOutputId: null,
       delay: {
-        cueDelayMs: 0,
         mainDelayMs: 0,
+        cueDelayMs: 0,
       },
-      mainOutputId: "default",
     }
   );
 }
@@ -164,7 +164,7 @@ export function getDelaySettings(): {
   cueDelayMs: number;
 } {
   const audio = getAudioSettings();
-  return audio.delay ?? { cueDelayMs: 0, mainDelayMs: 0 };
+  return audio.delay ?? { mainDelayMs: 0, cueDelayMs: 0 };
 }
 
 export function shouldUseNativeSinglePlayback(): boolean {
@@ -188,8 +188,8 @@ export function setMainOutputDevice(deviceId: string): void {
         draft.audio.mainOutputId = deviceId;
       } else {
         draft.audio = {
-          cueOutputId: null,
           mainOutputId: deviceId,
+          cueOutputId: null,
         };
       }
     });
@@ -207,8 +207,8 @@ export function setCueOutputDevice(deviceId: string | null): void {
         draft.audio.cueOutputId = deviceId;
       } else {
         draft.audio = {
-          cueOutputId: deviceId,
           mainOutputId: "default",
+          cueOutputId: deviceId,
         };
       }
     });
@@ -226,13 +226,13 @@ export function setMainDelayMs(delayMs: number): void {
         if (draft.audio.delay) {
           draft.audio.delay.mainDelayMs = delayMs;
         } else {
-          draft.audio.delay = { cueDelayMs: 0, mainDelayMs: delayMs };
+          draft.audio.delay = { mainDelayMs: delayMs, cueDelayMs: 0 };
         }
       } else {
         draft.audio = {
-          cueOutputId: null,
-          delay: { cueDelayMs: 0, mainDelayMs: delayMs },
           mainOutputId: "default",
+          cueOutputId: null,
+          delay: { mainDelayMs: delayMs, cueDelayMs: 0 },
         };
       }
     });
@@ -250,13 +250,13 @@ export function setCueDelayMs(delayMs: number): void {
         if (draft.audio.delay) {
           draft.audio.delay.cueDelayMs = delayMs;
         } else {
-          draft.audio.delay = { cueDelayMs: delayMs, mainDelayMs: 0 };
+          draft.audio.delay = { mainDelayMs: 0, cueDelayMs: delayMs };
         }
       } else {
         draft.audio = {
-          cueOutputId: null,
-          delay: { cueDelayMs: delayMs, mainDelayMs: 0 },
           mainOutputId: "default",
+          cueOutputId: null,
+          delay: { mainDelayMs: 0, cueDelayMs: delayMs },
         };
       }
     });
@@ -270,13 +270,13 @@ export function setCueDelayMs(delayMs: number): void {
 export type InputDeckSettings = z.infer<typeof inputDeckSettingsSchema>;
 
 const defaultInputDeckSettings: InputDeckSettings = {
-  channelFilter: 0,
-  collapsed: true,
   deviceId: null,
+  volume: 1,
+  pan: 0,
+  channelFilter: 0,
   effectsDryWet: 1,
   goLiveOnStart: false,
-  pan: 0,
-  volume: 1,
+  collapsed: true,
 };
 
 /**
@@ -304,9 +304,9 @@ export function updateInputDeckSettings(
         draft.audio.inputDeck = { ...currentSettings, ...updates };
       } else {
         draft.audio = {
+          mainOutputId: "default",
           cueOutputId: null,
           inputDeck: { ...currentSettings, ...updates },
-          mainOutputId: "default",
         };
       }
     });

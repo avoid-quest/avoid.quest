@@ -1,4 +1,3 @@
-// biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers
 import { Button } from "@avoid.quest/ui/components/button";
 import {
   Collapsible,
@@ -25,18 +24,18 @@ export function UrlInput({ onLoad, onCancel }: UrlInputProps) {
   const detectedPlatform = detectPlatformFromUrl(url);
 
   const { mutate: loadItem, isPending } = useDjTrackLoad({
-    onError: (message) => {
-      setError(message);
-    },
     onLoad: (radio) => {
       onLoad(radio);
       setUrl("");
       setError(null);
     },
+    onError: (message) => {
+      setError(message);
+    },
   });
 
-  const handleSubmit = (event: React.FormEvent) => {
-    event.preventDefault();
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
     if (!url.trim()) {
       setError("Please enter a URL");
       return;
@@ -45,24 +44,20 @@ export function UrlInput({ onLoad, onCancel }: UrlInputProps) {
     loadItem(url);
   };
 
-  const handlePaste = (event: React.ClipboardEvent<HTMLInputElement>) => {
-    const pastedText = event.clipboardData.getData("text");
+  const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    const pastedText = e.clipboardData.getData("text");
     if (pastedText?.trim() && detectPlatformFromUrl(pastedText)) {
-      event.preventDefault();
+      e.preventDefault();
       setUrl(pastedText.trim());
       setError(null);
     }
-  };
-  const handleUrlChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setUrl(event.target.value);
-    setError(null);
   };
 
   const platformLabels: Record<string, string> = {
     bandcamp: "Bandcamp",
     soundcloud: "SoundCloud",
-    "static-audio": "Audio File",
     youtube: "YouTube",
+    "static-audio": "Audio File",
   };
 
   return (
@@ -80,7 +75,7 @@ export function UrlInput({ onLoad, onCancel }: UrlInputProps) {
             Or paste a URL directly
           </Button>
         </CollapsibleTrigger>
-        {onCancel ? (
+        {onCancel && (
           <Button
             className="h-7 shrink-0 text-xs"
             onClick={onCancel}
@@ -89,7 +84,7 @@ export function UrlInput({ onLoad, onCancel }: UrlInputProps) {
           >
             Cancel
           </Button>
-        ) : null}
+        )}
       </div>
 
       <CollapsibleContent className="pt-2">
@@ -98,7 +93,10 @@ export function UrlInput({ onLoad, onCancel }: UrlInputProps) {
             <Input
               className="h-8 flex-1 text-xs"
               disabled={isPending}
-              onChange={handleUrlChange}
+              onChange={(e) => {
+                setUrl(e.target.value);
+                setError(null);
+              }}
               onPaste={handlePaste}
               placeholder="https://..."
               type="url"

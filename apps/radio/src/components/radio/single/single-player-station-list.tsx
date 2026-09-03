@@ -1,4 +1,3 @@
-/** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 import { ScrollArea } from "@avoid.quest/ui/components/scroll-area";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import { AudioLinesIcon } from "lucide-react";
@@ -23,78 +22,6 @@ function StationLocationLabel({ radio }: { radio: Radio }) {
     );
   }
   return null;
-}
-
-function StationRow({
-  radio,
-  isCurrent,
-  onSelect,
-  onEdit,
-  onDelete,
-  onSave,
-  onToggle,
-}: {
-  radio: Radio;
-  isCurrent: boolean;
-  onSelect: (radio: Radio) => void;
-  onEdit: (radio: Radio) => void;
-  onDelete: (radio: Radio) => void;
-  onSave: (radio: Radio) => void;
-  onToggle: (radio: Radio, enabled: boolean) => void;
-}) {
-  const isSession = isSessionRadio(radio);
-  const handleSelect = () => onSelect(radio);
-
-  return (
-    <div
-      className={cn(
-        "group flex items-center gap-3 rounded-lg px-2.5 py-2.5 transition-colors",
-        "hover:bg-muted/40",
-        isSession && "border-l-2 border-l-[#00d084]/40"
-      )}
-    >
-      <button
-        className="flex min-w-0 flex-1 items-center gap-3 text-left"
-        onClick={handleSelect}
-        type="button"
-      >
-        <RadioLogo logoUrl={radio.logoUrl} name={radio.name} size="md" />
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
-            <p
-              className={cn(
-                "truncate text-sm leading-snug",
-                isCurrent && "font-semibold"
-              )}
-            >
-              {radio.name}
-            </p>
-            {isCurrent ? (
-              <span title="Playing now">
-                <AudioLinesIcon aria-hidden className="size-3.5" />
-                <span className="sr-only">Playing now</span>
-              </span>
-            ) : null}
-          </div>
-          <StationLocationLabel radio={radio} />
-        </div>
-      </button>
-      <div
-        className={cn(
-          "shrink-0",
-          !isSession && "opacity-0 group-hover:opacity-100"
-        )}
-      >
-        <RadioItemActions
-          onDelete={onDelete}
-          onEdit={onEdit}
-          onSave={onSave}
-          onToggle={onToggle}
-          radio={radio}
-        />
-      </div>
-    </div>
-  );
 }
 
 export function StationList({
@@ -140,18 +67,65 @@ export function StationList({
       <ScrollArea className="min-h-0 flex-1">
         {allRadios.length > 0 ? (
           <div className="flex flex-col gap-1 px-1.5 pb-1.5">
-            {allRadios.map((radio) => (
-              <StationRow
-                isCurrent={currentRadioId === radio.id}
-                key={radio.id}
-                onDelete={onDelete}
-                onEdit={onEdit}
-                onSave={onSave}
-                onSelect={onSelect}
-                onToggle={onToggle}
-                radio={radio}
-              />
-            ))}
+            {allRadios.map((radio) => {
+              const isSession = isSessionRadio(radio);
+              const isCurrent = currentRadioId === radio.id;
+              return (
+                <div
+                  className={cn(
+                    "group flex items-center gap-3 rounded-lg px-2.5 py-2.5 transition-colors",
+                    "hover:bg-muted/40",
+                    isSession && "border-l-2 border-l-[#00d084]/40"
+                  )}
+                  key={radio.id}
+                >
+                  <button
+                    className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                    onClick={() => onSelect(radio)}
+                    type="button"
+                  >
+                    <RadioLogo
+                      logoUrl={radio.logoUrl}
+                      name={radio.name}
+                      size="md"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <p
+                          className={cn(
+                            "truncate text-sm leading-snug",
+                            isCurrent && "font-semibold"
+                          )}
+                        >
+                          {radio.name}
+                        </p>
+                        {isCurrent && (
+                          <span title="Playing now">
+                            <AudioLinesIcon aria-hidden className="size-3.5" />
+                            <span className="sr-only">Playing now</span>
+                          </span>
+                        )}
+                      </div>
+                      <StationLocationLabel radio={radio} />
+                    </div>
+                  </button>
+                  <div
+                    className={cn(
+                      "shrink-0",
+                      !isSession && "opacity-0 group-hover:opacity-100"
+                    )}
+                  >
+                    <RadioItemActions
+                      onDelete={onDelete}
+                      onEdit={onEdit}
+                      onSave={onSave}
+                      onToggle={onToggle}
+                      radio={radio}
+                    />
+                  </div>
+                </div>
+              );
+            })}
           </div>
         ) : (
           <div className="flex flex-col items-center justify-center px-4 py-10 text-center">

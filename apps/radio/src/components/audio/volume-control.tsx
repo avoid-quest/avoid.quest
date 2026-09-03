@@ -1,4 +1,3 @@
-/** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 import { Button } from "@avoid.quest/ui/components/button";
 import { Slider } from "@avoid.quest/ui/components/slider";
 import { cn } from "@avoid.quest/ui/lib/utils";
@@ -29,13 +28,13 @@ export function VolumeControl({
   orientation = "horizontal",
   defaultValue = 1,
 }: VolumeControlProps) {
-  function handleSliderChange(value: number[]) {
+  const handleSliderChange = (value: number[]) => {
     onVolumeChange((value[0] ?? 0) / MAX_VOLUME);
-  }
+  };
 
-  function handleMute() {
+  const handleMute = () => {
     onVolumeChange(volume > 0 ? 0 : 1);
-  }
+  };
 
   const getVolumeIcon = () => {
     if (volume === 0) {
@@ -50,15 +49,15 @@ export function VolumeControl({
   const VolumeIcon = getVolumeIcon();
 
   const sizeClasses = {
-    lg: "h-10 w-10",
-    md: "h-8 w-8",
     sm: "h-6 w-6",
+    md: "h-8 w-8",
+    lg: "h-10 w-10",
   };
 
   const sliderSizeClasses = {
-    lg: "h-3",
-    md: "h-2",
     sm: "h-1",
+    md: "h-2",
+    lg: "h-3",
   };
 
   return (

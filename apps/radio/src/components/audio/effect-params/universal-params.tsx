@@ -1,4 +1,3 @@
-/** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 import { MidiControlWrapper } from "@/components/audio/midi-control-wrapper";
 import type { EffectConfig } from "@/lib/audio";
 import {
@@ -15,52 +14,6 @@ type UniversalParamsProps = {
   midiTargetPrefix?: string;
 };
 
-type UniversalParam = (typeof UNIVERSAL_EFFECT_PARAM_DEFS)[number];
-
-function UniversalParamSlider({
-  defaultConfig,
-  midiTargetPrefix,
-  onUpdate,
-  param,
-  value,
-}: {
-  defaultConfig: ReturnType<typeof getEffectDefaultConfig>;
-  midiTargetPrefix?: string;
-  onUpdate: (config: Partial<EffectConfig>) => void;
-  param: UniversalParam;
-  value: number;
-}) {
-  function updateValue(nextValue: number) {
-    onUpdate({ [param.key]: nextValue });
-  }
-  const defaultValue = defaultConfig
-    ? (defaultConfig as Record<string, unknown>)[param.key]
-    : undefined;
-  const slider = (
-    <ParamSlider
-      defaultValue={typeof defaultValue === "number" ? defaultValue : undefined}
-      description={param.description}
-      formatKey={param.formatKey ?? "default"}
-      label={param.label}
-      max={param.max}
-      min={param.min}
-      onChange={updateValue}
-      step={param.step}
-      value={value}
-    />
-  );
-
-  if (!midiTargetPrefix) {
-    return slider;
-  }
-
-  return (
-    <MidiControlWrapper targetId={`${midiTargetPrefix}:${param.key}`}>
-      {slider}
-    </MidiControlWrapper>
-  );
-}
-
 export function UniversalParams({
   effect,
   onUpdate,
@@ -69,9 +22,23 @@ export function UniversalParams({
   midiTargetPrefix,
 }: UniversalParamsProps) {
   const defaultConfig = getEffectDefaultConfig(effect.type);
-  const targetPrefix =
-    midiTargetPrefix ??
-    (deckId && effectId ? `${deckId}:effect:${effectId}` : undefined);
+
+  const wrapSlider = (paramKey: string, slider: React.ReactNode) => {
+    const targetPrefix =
+      midiTargetPrefix ??
+      (deckId && effectId ? `${deckId}:effect:${effectId}` : undefined);
+    if (targetPrefix) {
+      return (
+        <MidiControlWrapper
+          key={paramKey}
+          targetId={`${targetPrefix}:${paramKey}`}
+        >
+          {slider}
+        </MidiControlWrapper>
+      );
+    }
+    return slider;
+  };
 
   return (
     <ParamGroup title="Wrapper">
@@ -81,13 +48,24 @@ export function UniversalParams({
           return null;
         }
 
-        return (
-          <UniversalParamSlider
-            defaultConfig={defaultConfig}
+        const defaultValue = defaultConfig
+          ? (defaultConfig as Record<string, unknown>)[param.key]
+          : undefined;
+
+        return wrapSlider(
+          param.key,
+          <ParamSlider
+            defaultValue={
+              typeof defaultValue === "number" ? defaultValue : undefined
+            }
+            description={param.description}
+            formatKey={param.formatKey ?? "default"}
             key={param.key}
-            midiTargetPrefix={targetPrefix}
-            onUpdate={onUpdate}
-            param={param}
+            label={param.label}
+            max={param.max}
+            min={param.min}
+            onChange={(value) => onUpdate({ [param.key]: value })}
+            step={param.step}
             value={value}
           />
         );

@@ -120,15 +120,15 @@ function Carousel({
   return (
     <CarouselContext.Provider
       value={{
-        api,
-        canScrollNext,
-        canScrollPrev,
         carouselRef,
+        api,
         opts,
         orientation:
           orientation || (opts?.axis === "y" ? "vertical" : "horizontal"),
-        scrollNext,
         scrollPrev,
+        scrollNext,
+        canScrollPrev,
+        canScrollNext,
       }}
     >
       {/** biome-ignore lint/a11y/useSemanticElements: shadcn */}

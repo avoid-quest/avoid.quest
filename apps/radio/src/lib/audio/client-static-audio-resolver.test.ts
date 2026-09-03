@@ -133,6 +133,7 @@ tracks/first.mp3
 
     expect(result).toMatchObject({
       format: "progressive",
+      streamUrl: "https://audio.example/lists/tracks/first.mp3",
       metadata: {
         duration: 18,
         itemType: "playlist",
@@ -150,7 +151,6 @@ tracks/first.mp3
           },
         ],
       },
-      streamUrl: "https://audio.example/lists/tracks/first.mp3",
     });
   });
 

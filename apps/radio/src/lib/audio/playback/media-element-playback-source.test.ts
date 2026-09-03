@@ -143,19 +143,19 @@ function installBrowser(): InstalledBrowser {
     HTMLMediaElement: {
       configurable: true,
       value: {
-        HAVE_CURRENT_DATA: 2,
-        HAVE_ENOUGH_DATA: 4,
-        HAVE_FUTURE_DATA: 3,
-        HAVE_METADATA: 1,
         HAVE_NOTHING: 0,
+        HAVE_METADATA: 1,
+        HAVE_CURRENT_DATA: 2,
+        HAVE_FUTURE_DATA: 3,
+        HAVE_ENOUGH_DATA: 4,
       },
     },
     MediaError: {
       configurable: true,
       value: {
         MEDIA_ERR_ABORTED: 1,
-        MEDIA_ERR_DECODE: 3,
         MEDIA_ERR_NETWORK: 2,
+        MEDIA_ERR_DECODE: 3,
         MEDIA_ERR_SRC_NOT_SUPPORTED: 4,
       },
     },
@@ -435,30 +435,30 @@ describe("MediaElementPlaybackSource native playback", () => {
     }
   });
 
-  test.each(["waiting", "stalled"] as const)(
-    "reloads after six seconds without progress after %s",
-    async (eventType) => {
-      jest.useFakeTimers();
-      const browser = installBrowser();
+  test.each([
+    "waiting",
+    "stalled",
+  ] as const)("reloads after six seconds without progress after %s", async (eventType) => {
+    jest.useFakeTimers();
+    const browser = installBrowser();
 
-      try {
-        const source = new MediaElementPlaybackSource(null, "native");
-        const audio = browser.audio();
-        const url = "https://radio.example/live.mp3";
-        await startNativeStream(source, audio, url);
+    try {
+      const source = new MediaElementPlaybackSource(null, "native");
+      const audio = browser.audio();
+      const url = "https://radio.example/live.mp3";
+      await startNativeStream(source, audio, url);
 
-        audio.emit(eventType);
-        jest.advanceTimersByTime(6000);
-        jest.advanceTimersByTime(0);
-        await flushMicrotasks();
+      audio.emit(eventType);
+      jest.advanceTimersByTime(6000);
+      jest.advanceTimersByTime(0);
+      await flushMicrotasks();
 
-        expect(audio.loadSources).toEqual([url, url]);
-        source.cleanup();
-      } finally {
-        browser.restore();
-      }
+      expect(audio.loadSources).toEqual([url, url]);
+      source.cleanup();
+    } finally {
+      browser.restore();
     }
-  );
+  });
 
   test("reloads after connectivity returns without media progress", async () => {
     jest.useFakeTimers();

@@ -1,4 +1,3 @@
-// biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers
 import { Button } from "@avoid.quest/ui/components/button";
 import { Slider } from "@avoid.quest/ui/components/slider";
 import { cn } from "@avoid.quest/ui/lib/utils";
@@ -41,14 +40,6 @@ export function DjConsoleMobile({
   const [mobileTab, setMobileTab] = useState<"left" | "right">("left");
   const deckAPeakLevel = useDeckAPeakLevel();
   const deckBPeakLevel = useDeckBPeakLevel();
-  const handleDeckACueChange = () => onDeckACueChange(!deckACueEnabled);
-  const handleDeckBCueChange = () => onDeckBCueChange(!deckBCueEnabled);
-  const handleCrossfadeChange = ([value]: number[]) =>
-    onCrossfadeChange((value ?? 0) / 100);
-  const handleMasterVolumeChange = ([value]: number[]) =>
-    onMasterVolumeChange((value ?? 0) / 100);
-  const handleSelectDeckA = () => setMobileTab("left");
-  const handleSelectDeckB = () => setMobileTab("right");
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-1.5 sm:gap-2">
@@ -80,38 +71,38 @@ export function DjConsoleMobile({
 
         {/* Controls row */}
         <div className="flex items-center gap-1.5">
-          {isCueActive ? (
+          {isCueActive && (
             <Button
               className="h-6 w-11 p-0 font-bold font-mono text-[9px]"
-              onClick={handleDeckACueChange}
+              onClick={() => onDeckACueChange(!deckACueEnabled)}
               size="sm"
               variant={deckACueEnabled ? "default" : "outline"}
             >
               CUE A
             </Button>
-          ) : null}
+          )}
 
           <div className="min-w-0 flex-1" style={{ touchAction: "none" }}>
             <Slider
               className="h-2"
               max={100}
               min={0}
-              onValueChange={handleCrossfadeChange}
+              onValueChange={([v]) => onCrossfadeChange(v / 100)}
               step={1}
               value={[crossfadePosition * 100]}
             />
           </div>
 
-          {isCueActive ? (
+          {isCueActive && (
             <Button
               className="h-6 w-11 p-0 font-bold font-mono text-[9px]"
-              onClick={handleDeckBCueChange}
+              onClick={() => onDeckBCueChange(!deckBCueEnabled)}
               size="sm"
               variant={deckBCueEnabled ? "default" : "outline"}
             >
               CUE B
             </Button>
-          ) : null}
+          )}
 
           <div className="flex w-20 shrink-0 items-center gap-1">
             <Volume2Icon className="size-3 shrink-0 text-muted-foreground" />
@@ -120,7 +111,7 @@ export function DjConsoleMobile({
                 className="h-2"
                 max={100}
                 min={0}
-                onValueChange={handleMasterVolumeChange}
+                onValueChange={([v]) => onMasterVolumeChange(v / 100)}
                 step={1}
                 value={[masterVolume * 100]}
               />
@@ -135,7 +126,7 @@ export function DjConsoleMobile({
       <div className="grid grid-cols-2 gap-1.5 rounded-lg bg-muted p-0.5">
         <Button
           className="h-7 w-full font-mono text-xs"
-          onClick={handleSelectDeckA}
+          onClick={() => setMobileTab("left")}
           size="sm"
           variant={mobileTab === "left" ? "default" : "ghost"}
         >
@@ -143,7 +134,7 @@ export function DjConsoleMobile({
         </Button>
         <Button
           className="h-7 w-full font-mono text-xs"
-          onClick={handleSelectDeckB}
+          onClick={() => setMobileTab("right")}
           size="sm"
           variant={mobileTab === "right" ? "default" : "ghost"}
         >

@@ -111,8 +111,8 @@ export async function execute(
     );
 
     await interaction.editReply({
-      components: [row],
       content: `Found ${results.length} results for "${query}":`,
+      components: [row],
     });
 
     setTimeout(() => pendingSearches.delete(interaction.id), 60_000);
@@ -126,7 +126,7 @@ export async function execute(
 export async function handleSelection(
   interaction: StringSelectMenuInteraction
 ): Promise<void> {
-  const [, interactionId] = interaction.customId.split(":");
+  const interactionId = interaction.customId.split(":")[1];
   if (!interactionId) {
     return;
   }
@@ -151,12 +151,12 @@ export async function handleSelection(
   }
 
   const playback = await requestPlayback(interaction, {
-    loadTracks: (requestedBy) => resolveTrack(selected.url, requestedBy),
     messages: {
-      failurePrefix: "Failed to play",
-      serverRequired: "This selection can only be used in a server.",
       voiceChannelRequired: "You need to be in a voice channel.",
+      serverRequired: "This selection can only be used in a server.",
+      failurePrefix: "Failed to play",
     },
+    loadTracks: (requestedBy) => resolveTrack(selected.url, requestedBy),
   });
 
   if (playback.status === "played") {

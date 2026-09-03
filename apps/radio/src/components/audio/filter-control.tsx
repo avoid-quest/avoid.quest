@@ -33,47 +33,47 @@ const FILTER_TYPES: {
   value: FilterType;
   label: string;
 }[] = [
-  { label: "Low Pass", value: "lowpass" },
-  { label: "High Pass", value: "highpass" },
-  { label: "Band Pass", value: "bandpass" },
-  { label: "Low Shelf", value: "lowshelf" },
-  { label: "High Shelf", value: "highshelf" },
-  { label: "Peaking", value: "peaking" },
-  { label: "Notch", value: "notch" },
-  { label: "All Pass", value: "allpass" },
+  { value: "lowpass", label: "Low Pass" },
+  { value: "highpass", label: "High Pass" },
+  { value: "bandpass", label: "Band Pass" },
+  { value: "lowshelf", label: "Low Shelf" },
+  { value: "highshelf", label: "High Shelf" },
+  { value: "peaking", label: "Peaking" },
+  { value: "notch", label: "Notch" },
+  { value: "allpass", label: "All Pass" },
 ];
 
 const FREQUENCY_RANGES = {
-  allpass: { default: 1000, max: 20_000, min: 20 },
-  bandpass: { default: 1000, max: 20_000, min: 20 },
-  highpass: { default: 1000, max: 20_000, min: 20 },
-  highshelf: { default: 5000, max: 20_000, min: 2000 },
-  lowpass: { default: 1000, max: 20_000, min: 20 },
-  lowshelf: { default: 500, max: 2000, min: 20 },
-  notch: { default: 1000, max: 20_000, min: 20 },
-  peaking: { default: 1000, max: 20_000, min: 20 },
+  lowpass: { min: 20, max: 20_000, default: 1000 },
+  highpass: { min: 20, max: 20_000, default: 1000 },
+  bandpass: { min: 20, max: 20_000, default: 1000 },
+  lowshelf: { min: 20, max: 2000, default: 500 },
+  highshelf: { min: 2000, max: 20_000, default: 5000 },
+  peaking: { min: 20, max: 20_000, default: 1000 },
+  notch: { min: 20, max: 20_000, default: 1000 },
+  allpass: { min: 20, max: 20_000, default: 1000 },
 };
 
 const Q_RANGES = {
-  allpass: { default: 1, max: 30, min: 0.1 },
-  bandpass: { default: 1, max: 30, min: 0.1 },
-  highpass: { default: 1, max: 30, min: 0.1 },
-  highshelf: { default: 1, max: 10, min: 0.1 },
-  lowpass: { default: 1, max: 30, min: 0.1 },
-  lowshelf: { default: 1, max: 10, min: 0.1 },
-  notch: { default: 1, max: 30, min: 0.1 },
-  peaking: { default: 1, max: 30, min: 0.1 },
+  lowpass: { min: 0.1, max: 30, default: 1 },
+  highpass: { min: 0.1, max: 30, default: 1 },
+  bandpass: { min: 0.1, max: 30, default: 1 },
+  lowshelf: { min: 0.1, max: 10, default: 1 },
+  highshelf: { min: 0.1, max: 10, default: 1 },
+  peaking: { min: 0.1, max: 30, default: 1 },
+  notch: { min: 0.1, max: 30, default: 1 },
+  allpass: { min: 0.1, max: 30, default: 1 },
 };
 
 const GAIN_RANGES = {
-  allpass: { default: 0, max: 40, min: -40 },
-  bandpass: { default: 0, max: 40, min: -40 },
-  highpass: { default: 0, max: 40, min: -40 },
-  highshelf: { default: 0, max: 40, min: -40 },
-  lowpass: { default: 0, max: 40, min: -40 },
-  lowshelf: { default: 0, max: 40, min: -40 },
-  notch: { default: 0, max: 40, min: -40 },
-  peaking: { default: 0, max: 40, min: -40 },
+  lowpass: { min: -40, max: 40, default: 0 },
+  highpass: { min: -40, max: 40, default: 0 },
+  bandpass: { min: -40, max: 40, default: 0 },
+  lowshelf: { min: -40, max: 40, default: 0 },
+  highshelf: { min: -40, max: 40, default: 0 },
+  peaking: { min: -40, max: 40, default: 0 },
+  notch: { min: -40, max: 40, default: 0 },
+  allpass: { min: -40, max: 40, default: 0 },
 };
 
 export function FilterControl({
@@ -84,11 +84,11 @@ export function FilterControl({
   initialConfig = {},
 }: FilterControlProps) {
   const [config, setConfig] = useState<FilterConfig>({
-    enabled: false,
-    frequency: 1000,
-    gain: 0,
-    Q: 1,
     type: "lowpass",
+    frequency: 1000,
+    Q: 1,
+    gain: 0,
+    enabled: false,
     ...initialConfig,
   });
 
@@ -98,6 +98,7 @@ export function FilterControl({
   useEffect(() => {
     if (!soundId) {
       filterRef.current = null;
+      return;
     }
 
     // This will be handled by the parent component that manages the audio
@@ -122,10 +123,10 @@ export function FilterControl({
       const gainRange = GAIN_RANGES[type];
 
       updateConfig({
-        frequency: freqRange.default,
-        gain: gainRange.default,
-        Q: qRange.default,
         type,
+        frequency: freqRange.default,
+        Q: qRange.default,
+        gain: gainRange.default,
       });
     },
     [updateConfig]

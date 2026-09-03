@@ -148,8 +148,8 @@ export function useChannelState(
       .from({ session: playbackSessionsCollection })
       .where(({ session }) => eq(session.id, sessionId))
   );
-  const persistedSession = result.data?.[0];
-  const persisted = persistedSession?.channels.find(
+  const session = result.data?.[0];
+  const persisted = session?.channels.find(
     (channel) => channel.id === channelId
   ) as PlaybackChannelRecord | undefined;
   return mergeChannelState(persisted, runtime);
@@ -270,6 +270,10 @@ export function subscribeChannelRuntime(
   const cleanup = manager.subscribe(soundId, (audioState) => {
     const channel = getPlaybackChannel(sessionId, channelId);
     setPlaybackChannelRuntime(channelId, () => ({
+      soundId,
+      isPlaying: audioState.isPlaying,
+      isLoading: audioState.isLoading,
+      isBuffering: audioState.isBuffering,
       error: audioState.error
         ? toRuntimeAudioError(
             audioState.error,
@@ -277,10 +281,6 @@ export function subscribeChannelRuntime(
             channel?.radio ?? undefined
           )
         : null,
-      isBuffering: audioState.isBuffering,
-      isLoading: audioState.isLoading,
-      isPlaying: audioState.isPlaying,
-      soundId,
     }));
     options.onAudioState?.(audioState);
   });
@@ -341,7 +341,7 @@ export function activateChannel(
     }
     setPlaybackChannelSoundId(channelId, soundId);
     channelEffects
-      .bind({ channelId, sessionId }, soundId)
+      .bind({ sessionId, channelId }, soundId)
       .catch(reportChannelEffectsError);
     subscribeChannelRuntime(sessionId, channelId, soundId, {
       onAudioState: options.onAudioState,
@@ -354,7 +354,7 @@ export function activateChannel(
       manager.cleanupSound(soundId);
     }
     resetPlaybackChannelRuntime(channelId);
-    channelEffects.unbind({ channelId, sessionId });
+    channelEffects.unbind({ sessionId, channelId });
     if (options.persistRadio) {
       updatePlaybackChannel(sessionId, channelId, (draft) => {
         draft.radio = previousRadio;
@@ -380,6 +380,6 @@ export function deactivateChannel(channelId: string): void {
   }
   resetPlaybackChannelRuntime(channelId);
   if (sessionId) {
-    channelEffects.unbind({ channelId, sessionId });
+    channelEffects.unbind({ sessionId, channelId });
   }
 }

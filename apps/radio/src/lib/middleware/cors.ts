@@ -11,10 +11,10 @@ export type CorsHeaders = Record<string, string>;
  */
 export function getCorsHeaders(origin: string): CorsHeaders {
   return {
-    "Access-Control-Allow-Credentials": "true",
-    "Access-Control-Allow-Headers": "Content-Type, Range",
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
     "Access-Control-Allow-Origin": origin,
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Range",
+    "Access-Control-Allow-Credentials": "true",
   };
 }
 

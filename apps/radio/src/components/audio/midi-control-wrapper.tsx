@@ -1,4 +1,3 @@
-/** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 /**
  * Wraps any controllable UI element with MIDI learn context menu and badge.
  *
@@ -40,17 +39,6 @@ export function MidiControlWrapper({
   const mapping = snapshot.mappingsByTarget.get(targetId);
   const hasMidi = !!mapping;
   const isThisLearning = learningTarget === targetId;
-  function stopLearning() {
-    control.change({ type: "stop-learn" });
-  }
-
-  function startLearning() {
-    control.change({ targetId, type: "start-learn" });
-  }
-
-  function removeMapping() {
-    control.change({ targetId, type: "remove-mapping" });
-  }
 
   return (
     <ContextMenu>
@@ -65,9 +53,15 @@ export function MidiControlWrapper({
       </ContextMenuTrigger>
       <ContextMenuContent className="w-52">
         {isThisLearning ? (
-          <ContextMenuItem onClick={stopLearning}>Cancel Learn</ContextMenuItem>
+          <ContextMenuItem
+            onClick={() => control.change({ type: "stop-learn" })}
+          >
+            Cancel Learn
+          </ContextMenuItem>
         ) : (
-          <ContextMenuItem onClick={startLearning}>
+          <ContextMenuItem
+            onClick={() => control.change({ type: "start-learn", targetId })}
+          >
             {hasMidi ? "Re-learn MIDI" : "Learn MIDI"}
           </ContextMenuItem>
         )}
@@ -88,7 +82,9 @@ export function MidiControlWrapper({
 
             <ContextMenuItem
               className="text-destructive focus:text-destructive"
-              onClick={removeMapping}
+              onClick={() =>
+                control.change({ type: "remove-mapping", targetId })
+              }
             >
               Clear Mapping
             </ContextMenuItem>

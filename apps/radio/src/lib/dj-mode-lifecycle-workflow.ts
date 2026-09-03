@@ -92,11 +92,11 @@ async function restoreDjDeckRadio(
   }
 
   if (radio.platformMetadata?.platform === "local-file") {
-    await decks.deck(deckId).load({ radio: null, type: "radio" });
+    await decks.deck(deckId).load({ type: "radio", radio: null });
     return;
   }
 
-  await decks.deck(deckId).load({ radio, type: "radio" });
+  await decks.deck(deckId).load({ type: "radio", radio });
 }
 
 async function activateDjMode(

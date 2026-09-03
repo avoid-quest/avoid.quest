@@ -10,14 +10,14 @@ export class StereoToolEffect {
   private readonly matrix: Ramp.StereoMatrixRamp;
   private readonly params: StereoMatrix.Params = {
     gain: 0.0,
-    invertL: false,
-    invertR: false,
     panning: 0.0,
     stereo: 0.0,
+    invertL: false,
+    invertR: false,
     swap: false,
   };
   private mixing = 0; // 0 = Linear, 1 = EqualPower (from openDAW)
-  private needsUpdate = true as boolean;
+  private needsUpdate = true;
   private processed = false;
 
   constructor(sampleRate: number) {

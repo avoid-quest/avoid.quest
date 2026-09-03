@@ -11,13 +11,13 @@ describe("getPublicKodiStations", () => {
     const radios: Radio[] = [
       {
         name: "Second Station",
-        order: 2,
         streamUrl: "https://example.com/second.mp3",
+        order: 2,
       },
       {
         name: "First Station",
-        order: 1,
         streamUrl: "https://example.com/first.mp3",
+        order: 1,
       },
     ];
 
@@ -38,9 +38,9 @@ describe("getPublicKodiStations", () => {
         streamUrl: "https://example.com/live.aac",
       },
       {
-        enabled: false,
         name: "Disabled",
         streamUrl: "https://example.com/disabled.mp3",
+        enabled: false,
       },
       {
         name: "Local asset",
@@ -65,14 +65,14 @@ describe("getPublicKodiStations", () => {
   test("keeps only public logo URLs", () => {
     const stations = getPublicKodiStations([
       {
-        logoUrl: "https://example.com/logo.png",
         name: "With Logo",
         streamUrl: "https://example.com/live.mp3",
+        logoUrl: "https://example.com/logo.png",
       },
       {
-        logoUrl: "/logo.png",
         name: "Local Logo",
         streamUrl: "https://example.com/local.mp3",
+        logoUrl: "/logo.png",
       },
     ]);
 
@@ -88,12 +88,12 @@ describe("renderKodiM3uPlaylist", () => {
   test("renders Kodi-compatible radio M3U with escaped attributes", () => {
     const playlist = renderKodiM3uPlaylist([
       {
-        groupTitle: 'avoid "radio"',
         id: 'station-"one"',
-        logoUrl: 'https://example.com/logo"one".png',
         name: 'Station "One"\nLive',
-        order: 1,
         streamUrl: "https://example.com/live.m3u8",
+        logoUrl: 'https://example.com/logo"one".png',
+        groupTitle: 'avoid "radio"',
+        order: 1,
       },
     ]);
 

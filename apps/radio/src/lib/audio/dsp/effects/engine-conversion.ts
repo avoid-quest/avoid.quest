@@ -19,6 +19,7 @@ function convertBoolean(value: unknown): number | undefined {
   if (typeof value === "number") {
     return value === 0 ? 0 : 1;
   }
+  return;
 }
 
 export function convertEffectParamValue(

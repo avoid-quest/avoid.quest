@@ -4,8 +4,8 @@ import { createNamModelLoader, parseNamModel } from "./tone3000-model-params";
 describe("parseNamModel", () => {
   test("keeps a valid local NAM JSON model for the official adapter", () => {
     expect(parseNamModel("amp.nam", '{"version":"0.5.2"}')).toEqual({
-      modelData: '{"version":"0.5.2"}',
       modelName: "amp.nam",
+      modelData: '{"version":"0.5.2"}',
     });
   });
 

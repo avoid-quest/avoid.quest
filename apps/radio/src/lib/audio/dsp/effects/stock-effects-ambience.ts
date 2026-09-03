@@ -87,7 +87,7 @@ export class CheapReverbEffect {
   ): void {
     const [inputL, inputR] = input;
     const [outputL, outputR] = output;
-    for (let i = fromIndex; i < toIndex; i += 1) {
+    for (let i = fromIndex; i < toIndex; i++) {
       const inputSampleL = inputL[i] ?? 0;
       const inputSampleR = inputR[i] ?? 0;
       this.preDelayL[this.preDelayIndex] = inputSampleL;
@@ -103,7 +103,7 @@ export class CheapReverbEffect {
       this.preDelayIndex = (this.preDelayIndex + 1) % this.preDelayL.length;
       let even = 0;
       let odd = 0;
-      for (let line = 0; line < this.delays.length; line += 1) {
+      for (let line = 0; line < this.delays.length; line++) {
         const delay = this.delays[line];
         const index = this.indices[line] ?? 0;
         const delayed = delay?.[index] ?? 0;

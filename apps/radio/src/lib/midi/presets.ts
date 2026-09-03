@@ -19,7 +19,7 @@ function mapping(
   type: MidiMessageType,
   targetId: MidiTargetId
 ): MidiMapping {
-  return { channel, control, targetId, type };
+  return { channel, control, type, targetId };
 }
 
 /**
@@ -30,6 +30,8 @@ function mapping(
  */
 const PIONEER_DDJ_200: MidiPreset = {
   id: "pioneer-ddj-200",
+  name: "Pioneer DDJ-200",
+  vendor: "Pioneer DJ",
   mappings: [
     // Deck A (channel 0)
     mapping(0, 0x0b, "note", "deck-a:play-pause"),
@@ -51,8 +53,6 @@ const PIONEER_DDJ_200: MidiPreset = {
     mapping(0, 0x1f, "cc", "mixer:crossfader"),
     mapping(0, 0x05, "cc", "mixer:master-volume"),
   ],
-  name: "Pioneer DDJ-200",
-  vendor: "Pioneer DJ",
 };
 
 /**
@@ -63,6 +63,8 @@ const PIONEER_DDJ_200: MidiPreset = {
  */
 const NUMARK_DJ2GO2_TOUCH: MidiPreset = {
   id: "numark-dj2go2-touch",
+  name: "Numark DJ2GO2 Touch",
+  vendor: "Numark",
   mappings: [
     // Deck A
     mapping(0, 0x3b, "note", "deck-a:play-pause"),
@@ -82,8 +84,6 @@ const NUMARK_DJ2GO2_TOUCH: MidiPreset = {
     mapping(0, 0x03, "cc", "mixer:crossfader"),
     mapping(0, 0x06, "cc", "mixer:master-volume"),
   ],
-  name: "Numark DJ2GO2 Touch",
-  vendor: "Numark",
 };
 
 /**
@@ -94,6 +94,8 @@ const NUMARK_DJ2GO2_TOUCH: MidiPreset = {
  */
 const GENERIC_2_DECK: MidiPreset = {
   id: "generic-2-deck",
+  name: "Generic 2-Deck",
+  vendor: "Generic",
   mappings: [
     // Deck A (channel 0)
     mapping(0, 0x30, "note", "deck-a:play-pause"),
@@ -118,8 +120,6 @@ const GENERIC_2_DECK: MidiPreset = {
     mapping(0, 0x0c, "cc", "mixer:master-volume"),
     mapping(0, 0x0d, "cc", "mixer:headphone-volume"),
   ],
-  name: "Generic 2-Deck",
-  vendor: "Generic",
 };
 
 export const MIDI_PRESETS: MidiPreset[] = [

@@ -1,4 +1,3 @@
-// biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers
 import { Button } from "@avoid.quest/ui/components/button";
 import {
   DropdownMenu,
@@ -32,11 +31,8 @@ export function DeckHeader({
   const label = deckId === "deck-a" ? "A" : "B";
   const isRight = deckId === "deck-b";
 
-  const handleStopPropagation = (event: React.MouseEvent) => {
-    event.stopPropagation();
-  };
-  const handleCopyStreamLink = async (event: React.MouseEvent) => {
-    event.stopPropagation();
+  const handleCopyStreamLink = async (e: React.MouseEvent) => {
+    e.stopPropagation();
     if (!radio) {
       return;
     }
@@ -47,23 +43,13 @@ export function DeckHeader({
       toast.error("Failed to copy stream link");
     }
   };
-  const handleGoToWebsite = (event: React.MouseEvent) => {
-    event.stopPropagation();
+
+  const handleGoToWebsite = (e: React.MouseEvent) => {
+    e.stopPropagation();
     if (!radio?.websiteUrl) {
       return;
     }
     window.open(radio.websiteUrl, "_blank", "noopener,noreferrer");
-  };
-  const handleReset = async (event: React.MouseEvent) => {
-    event.stopPropagation();
-    try {
-      await onReset();
-      toast.success("Deck reset");
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Failed to reset deck";
-      toast.error(message);
-    }
   };
 
   return (
@@ -90,7 +76,7 @@ export function DeckHeader({
           <Button
             className="h-6 w-6 p-0"
             disabled={!radio}
-            onClick={handleStopPropagation}
+            onClick={(e) => e.stopPropagation()}
             size="sm"
             style={{ visibility: radio ? "visible" : "hidden" }}
             variant="ghost"
@@ -98,7 +84,7 @@ export function DeckHeader({
             <MoreHorizontalIcon className="size-3.5" />
           </Button>
         </DropdownMenuTrigger>
-        {radio ? (
+        {radio && (
           <DropdownMenuContent align={isRight ? "start" : "end"}>
             <DropdownMenuItem onClick={handleCopyStreamLink}>
               <CopyIcon className="mr-2 size-3.5" />
@@ -110,12 +96,26 @@ export function DeckHeader({
                 Go to Website
               </DropdownMenuItem>
             )}
-            <DropdownMenuItem onClick={handleReset}>
+            <DropdownMenuItem
+              onClick={async (e) => {
+                e.stopPropagation();
+                try {
+                  await onReset();
+                  toast.success("Deck reset");
+                } catch (error) {
+                  const message =
+                    error instanceof Error
+                      ? error.message
+                      : "Failed to reset deck";
+                  toast.error(message);
+                }
+              }}
+            >
               <RefreshCwIcon className="mr-2 size-3.5" />
               Reset Deck
             </DropdownMenuItem>
           </DropdownMenuContent>
-        ) : null}
+        )}
       </DropdownMenu>
     </div>
   );

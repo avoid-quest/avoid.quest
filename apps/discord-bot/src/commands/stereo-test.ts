@@ -15,7 +15,7 @@ export const data = new SlashCommandBuilder()
 export async function execute(
   interaction: ChatInputCommandInteraction
 ): Promise<void> {
-  const { member } = interaction;
+  const member = interaction.member;
   if (!(member instanceof GuildMember && member.voice.channel)) {
     await interaction.reply({
       content: "You need to be in a voice channel.",
@@ -38,10 +38,10 @@ export async function execute(
   const totalFrames = samplesPerSide * 2 * reps; // L+R per rep
   const buf = Buffer.alloc(totalFrames * 4); // 4 bytes per stereo frame (s16le x 2ch)
 
-  for (let rep = 0; rep < reps; rep += 1) {
+  for (let rep = 0; rep < reps; rep++) {
     const baseOffset = rep * samplesPerSide * 2 * 4;
     // Left-only section
-    for (let i = 0; i < samplesPerSide; i += 1) {
+    for (let i = 0; i < samplesPerSide; i++) {
       const off = baseOffset + i * 4;
       const s = Math.floor(
         Math.sin((2 * Math.PI * 440 * i) / sampleRate) * 16_000
@@ -50,7 +50,7 @@ export async function execute(
       buf.writeInt16LE(0, off + 2); // R silent
     }
     // Right-only section
-    for (let i = 0; i < samplesPerSide; i += 1) {
+    for (let i = 0; i < samplesPerSide; i++) {
       const off = baseOffset + samplesPerSide * 4 + i * 4;
       const s = Math.floor(
         Math.sin((2 * Math.PI * 554 * i) / sampleRate) * 16_000
@@ -62,8 +62,8 @@ export async function execute(
 
   const stream = Readable.from(buf);
   const resource = createAudioResource(stream, {
-    inlineVolume: true,
     inputType: StreamType.Raw,
+    inlineVolume: true,
   });
   resource.volume?.setVolume(0.5);
 
@@ -71,8 +71,8 @@ export async function execute(
 
   await playGuildDiagnosticResource({
     guildId: interaction.guildId,
-    resource,
     voiceChannel: member.voice.channel,
+    resource,
   });
 
   await interaction.editReply(

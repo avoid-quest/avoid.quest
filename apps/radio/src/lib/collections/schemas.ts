@@ -11,70 +11,70 @@ import type { PlatformMetadata } from "@/lib/platform-types";
  */
 const bandcampMetadataSchema = z
   .object({
-    itemType: z.enum(["album", "track", "artist", "label", "collection"]),
     platform: z.literal("bandcamp"),
+    itemType: z.enum(["album", "track", "artist", "label", "collection"]),
     url: z.string(),
   })
   .passthrough();
 
 const soundcloudMetadataSchema = z
   .object({
-    itemType: z.enum(["track", "playlist", "user"]),
     platform: z.literal("soundcloud"),
+    itemType: z.enum(["track", "playlist", "user"]),
     url: z.string(),
   })
   .passthrough();
 
 const youtubeMetadataSchema = z
   .object({
-    itemType: z.enum(["video", "playlist"]),
     platform: z.literal("youtube"),
+    itemType: z.enum(["video", "playlist"]),
     url: z.string(),
   })
   .passthrough();
 
 const deviceInputMetadataSchema = z
   .object({
+    platform: z.literal("device-input"),
+    itemType: z.literal("track"),
+    url: z.literal(""),
     deviceId: z.string(),
     deviceLabel: z.string(),
-    itemType: z.literal("track"),
-    platform: z.literal("device-input"),
-    url: z.literal(""),
   })
   .passthrough();
 
 const staticAudioMetadataSchema = z
   .object({
-    fileName: z.string(),
-    itemType: z.enum(["track", "playlist"]),
     platform: z.literal("static-audio"),
+    itemType: z.enum(["track", "playlist"]),
     url: z.string(),
+    fileName: z.string(),
   })
   .passthrough();
 
 const radioGardenMetadataSchema = z
   .object({
-    channelId: z.string(),
-    itemType: z.literal("channel"),
     platform: z.literal("radiogarden"),
+    itemType: z.literal("channel"),
     url: z.string(),
+    channelId: z.string(),
   })
   .passthrough();
 
 const radioBrowserMetadataSchema = z
   .object({
-    hls: z.boolean().default(false),
-    itemType: z.literal("station"),
     platform: z.literal("radio-browser"),
-    stationUuid: z.string(),
+    itemType: z.literal("station"),
     url: z.string(),
+    stationUuid: z.string(),
+    hls: z.boolean().default(false),
   })
   .passthrough();
 
 const fileMetadataSchema = z
   .object({
-    itemType: z.literal("track"),
     platform: z.literal("local-file"),
+    itemType: z.literal("track"),
     url: z.literal(""),
   })
   .passthrough();
@@ -92,7 +92,7 @@ export const platformMetadataSchema = z
   ])
   .pipe(
     z.custom<PlatformMetadata>(
-      (val) => val !== null && typeof val === "object" && "platform" in val
+      (val) => val != null && typeof val === "object" && "platform" in val
     )
   )
   .optional();

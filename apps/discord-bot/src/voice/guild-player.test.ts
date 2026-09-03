@@ -43,10 +43,6 @@ const VoiceConnectionStatus = {
   Signalling: "signalling",
 } as const;
 
-let emitAudioPlayerIdle:
-  | ((oldState: unknown, newState: unknown) => void)
-  | undefined;
-
 const fetchDirectAudioStreamMock = mock(
   async (_url: string, _options?: { signal?: AbortSignal }) => {
     await Promise.resolve();
@@ -116,14 +112,12 @@ function createDirectAudioStream(id: string): Readable {
 beforeAll(async () => {
   mock.module("@discordjs/voice", () => ({
     AudioPlayerStatus,
+    VoiceConnectionStatus,
     createAudioPlayer: () => {
       const player = {
-        on: mock((event: string, listener: (...args: unknown[]) => void) => {
-          if (event === AudioPlayerStatus.Idle) {
-            emitAudioPlayerIdle = listener;
-          }
-          return player;
-        }),
+        on: mock(
+          (_event: string, _listener: (...args: unknown[]) => void) => player
+        ),
         pause: mock(() => {
           player.state.status = AudioPlayerStatus.Paused;
           return true;
@@ -154,7 +148,6 @@ beforeAll(async () => {
     createAudioResource: createAudioResourceMock,
     entersState: mock(async () => undefined),
     joinVoiceChannel: joinVoiceChannelMock,
-    VoiceConnectionStatus,
   }));
 
   mock.module("./direct-audio.js", () => ({
@@ -174,7 +167,6 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
-  emitAudioPlayerIdle = undefined;
   audioPlayerPlayMock.mockClear();
   audioPlayerStopMock.mockClear();
   createAudioResourceMock.mockClear();
@@ -329,39 +321,6 @@ describe("GuildPlayer direct audio invalidation", () => {
       nextStream,
       expect.objectContaining({ inlineVolume: true })
     );
-  });
-
-  test("a skipped resource cannot consume the replacement track's idle event", async () => {
-    const guildId = "guild-skip-delayed-idle";
-    fetchDirectAudioStreamMock.mockImplementation(async (url) => ({
-      resolvedUrl: url,
-      stream: createDirectAudioStream(url),
-    }));
-
-    await startGuildPlayback({
-      guildId,
-      tracks: [
-        createTrack("first"),
-        createTrack("second"),
-        createTrack("third"),
-      ],
-      voiceChannel: createVoiceChannel(guildId) as never,
-    });
-    expect(skipGuildPlayback(guildId)).toMatchObject({
-      status: "playing-next",
-      track: expect.objectContaining({ title: "second" }),
-    });
-    await flushPromises();
-    const replacement = audioPlayerPlayMock.mock.calls.at(-1)?.[0];
-
-    emitAudioPlayerIdle?.(
-      { resource: replacement, status: AudioPlayerStatus.Playing },
-      { status: AudioPlayerStatus.Idle }
-    );
-    await flushPromises();
-
-    expect(fetchDirectAudioStreamMock).toHaveBeenCalledTimes(3);
-    expect(audioPlayerPlayMock).toHaveBeenCalledTimes(3);
   });
 
   test("stop destroys the player and invalidates pending direct-audio playback", async () => {

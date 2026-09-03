@@ -22,7 +22,7 @@ const STREAM_URL_OVERRIDES: Readonly<Record<string, string>> = {
 export function toPlaybackInput(radio: Radio): PlaybackInput {
   const src = isRadioBlackoutStreamUrl(radio.streamUrl)
     ? RADIO_BLACKOUT_STREAM_URL
-    : (STREAM_URL_OVERRIDES[radio.streamUrl] ?? radio.streamUrl);
+    : STREAM_URL_OVERRIDES[radio.streamUrl] ?? radio.streamUrl;
   const format =
     radio.streamFormat ??
     (radio.platformMetadata?.platform === "radio-browser" &&

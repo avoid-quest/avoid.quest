@@ -21,18 +21,18 @@ describe("createManualWebsiteImportWorkflow", () => {
     });
 
     await expect(workflow.fetchDefaults("   ")).resolves.toEqual({
+      ok: false,
       error: {
         code: "MISSING_WEBSITE_URL",
         message: "Please enter a URL",
       },
-      ok: false,
     });
     await expect(workflow.fetchDefaults("not a url")).resolves.toEqual({
+      ok: false,
       error: {
         code: "INVALID_WEBSITE_URL",
         message: "Please enter a valid URL",
       },
-      ok: false,
     });
     expect(fetches).toEqual([]);
   });
@@ -89,11 +89,11 @@ describe("createManualWebsiteImportWorkflow", () => {
     const result = await workflow.fetchDefaults("https://radio.example");
 
     expect(result).toEqual({
+      ok: false,
       error: {
         code: "WEBSITE_FETCH_FAILED",
         message: "Failed to fetch website data: Network unavailable",
       },
-      ok: false,
     });
   });
 
@@ -108,11 +108,11 @@ describe("createManualWebsiteImportWorkflow", () => {
     const result = await workflow.fetchDefaults("https://radio.example");
 
     expect(result).toEqual({
+      ok: false,
       error: {
         code: "WEBSITE_PARSE_FAILED",
         message: "Failed to parse website data: Malformed HTML",
       },
-      ok: false,
     });
   });
 });

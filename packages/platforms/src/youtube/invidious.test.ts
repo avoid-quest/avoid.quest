@@ -9,12 +9,12 @@ describe("selectBestAudioStream", () => {
   const makeFormat = (
     overrides: Partial<InvidiousAdaptiveFormat>
   ): InvidiousAdaptiveFormat => ({
+    url: "https://rr.googlevideo.com/stream",
     bitrate: "128000",
+    type: "audio/webm",
     clen: "1000000",
     container: "webm",
     encoding: "opus",
-    type: "audio/webm",
-    url: "https://rr.googlevideo.com/stream",
     ...overrides,
   });
 
@@ -24,7 +24,7 @@ describe("selectBestAudioStream", () => {
 
   test("returns null when no audio formats exist", () => {
     const formats = [
-      makeFormat({ container: "mp4", encoding: "h264", type: "video/mp4" }),
+      makeFormat({ type: "video/mp4", encoding: "h264", container: "mp4" }),
     ];
     expect(selectBestAudioStream(formats)).toBeNull();
   });
@@ -32,16 +32,16 @@ describe("selectBestAudioStream", () => {
   test("prefers Opus over AAC", () => {
     const formats = [
       makeFormat({
-        bitrate: "256000",
-        container: "m4a",
-        encoding: "aac",
         type: "audio/mp4",
+        encoding: "aac",
+        container: "m4a",
+        bitrate: "256000",
       }),
       makeFormat({
-        bitrate: "128000",
-        container: "webm",
-        encoding: "opus",
         type: "audio/webm",
+        encoding: "opus",
+        container: "webm",
+        bitrate: "128000",
       }),
     ];
     const result = selectBestAudioStream(formats);
@@ -50,9 +50,9 @@ describe("selectBestAudioStream", () => {
 
   test("selects highest bitrate Opus stream", () => {
     const formats = [
-      makeFormat({ bitrate: "64000", container: "webm", encoding: "opus" }),
-      makeFormat({ bitrate: "160000", container: "webm", encoding: "opus" }),
-      makeFormat({ bitrate: "128000", container: "webm", encoding: "opus" }),
+      makeFormat({ encoding: "opus", container: "webm", bitrate: "64000" }),
+      makeFormat({ encoding: "opus", container: "webm", bitrate: "160000" }),
+      makeFormat({ encoding: "opus", container: "webm", bitrate: "128000" }),
     ];
     const result = selectBestAudioStream(formats);
     expect(result?.bitrate).toBe("160000");
@@ -61,16 +61,16 @@ describe("selectBestAudioStream", () => {
   test("falls back to AAC when no Opus available", () => {
     const formats = [
       makeFormat({
-        bitrate: "128000",
-        container: "m4a",
-        encoding: "aac",
         type: "audio/mp4",
+        encoding: "aac",
+        container: "m4a",
+        bitrate: "128000",
       }),
       makeFormat({
-        bitrate: "256000",
-        container: "m4a",
-        encoding: "aac",
         type: "audio/mp4",
+        encoding: "aac",
+        container: "m4a",
+        bitrate: "256000",
       }),
     ];
     const result = selectBestAudioStream(formats);
@@ -81,10 +81,10 @@ describe("selectBestAudioStream", () => {
   test("falls back to any audio when no Opus or AAC", () => {
     const formats = [
       makeFormat({
-        bitrate: "128000",
-        container: "ogg",
-        encoding: "vorbis",
         type: "audio/ogg",
+        encoding: "vorbis",
+        container: "ogg",
+        bitrate: "128000",
       }),
     ];
     const result = selectBestAudioStream(formats);
@@ -94,16 +94,16 @@ describe("selectBestAudioStream", () => {
   test("filters out video formats", () => {
     const formats = [
       makeFormat({
-        bitrate: "5000000",
-        container: "mp4",
-        encoding: "h264",
         type: "video/mp4",
+        encoding: "h264",
+        container: "mp4",
+        bitrate: "5000000",
       }),
       makeFormat({
-        bitrate: "128000",
-        container: "webm",
-        encoding: "opus",
         type: "audio/webm",
+        encoding: "opus",
+        container: "webm",
+        bitrate: "128000",
       }),
     ];
     const result = selectBestAudioStream(formats);
@@ -116,10 +116,10 @@ describe("getBestThumbnail", () => {
     quality: string,
     url = `/vi/test/${quality}.jpg`
   ): InvidiousVideoThumbnail => ({
-    height: 480,
     quality,
     url,
     width: 640,
+    height: 480,
   });
 
   test("returns empty string for empty array", () => {

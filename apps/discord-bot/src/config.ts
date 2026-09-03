@@ -7,10 +7,10 @@ function required(name: string): string {
 }
 
 export const config = {
+  discordToken: () => required("DISCORD_TOKEN"),
   discordClientId: () => required("DISCORD_CLIENT_ID"),
   discordGuildId: () => process.env.DISCORD_GUILD_ID,
-  discordToken: () => required("DISCORD_TOKEN"),
-  invidiousAuth: () => process.env.INVIDIOUS_AUTH,
   invidiousInstanceUrl: () =>
     process.env.INVIDIOUS_INSTANCE_URL || "https://yt.avoid.quest",
+  invidiousAuth: () => process.env.INVIDIOUS_AUTH,
 } as const;

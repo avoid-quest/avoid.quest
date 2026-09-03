@@ -27,8 +27,8 @@ export function usePlatformMetadata(radio: Radio | null) {
 
   return {
     currentTrackIndex,
-    isCollection: isPlaylistOrAlbum,
-    isPlatformItem,
     metadata: radio?.platformMetadata,
+    isPlatformItem,
+    isCollection: isPlaylistOrAlbum,
   };
 }

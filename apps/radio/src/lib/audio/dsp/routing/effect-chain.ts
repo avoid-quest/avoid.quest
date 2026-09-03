@@ -62,11 +62,11 @@ export class EffectChain {
     config: EffectConfig
   ): void {
     const instance: EffectInstance = {
+      id,
+      type,
+      processor,
       config,
       enabled: config.enabled,
-      id,
-      processor,
-      type,
     };
 
     this.effects.set(id, instance);
@@ -186,7 +186,7 @@ export class EffectChain {
 
     if (enabledEffects.length === 0) {
       // No effects enabled - pass through
-      for (let i = fromIndex; i < toIndex; i += 1) {
+      for (let i = fromIndex; i < toIndex; i++) {
         outputL[i] = inputL[i] ?? 0;
         outputR[i] = inputR[i] ?? 0;
       }
@@ -201,7 +201,7 @@ export class EffectChain {
     for (
       let effectIndex = 0;
       effectIndex < enabledEffects.length;
-      effectIndex += 1
+      effectIndex++
     ) {
       const effect = enabledEffects[effectIndex];
       if (!effect) {
@@ -212,11 +212,11 @@ export class EffectChain {
       const target = isLast ? output : temp;
       const [currentL, currentR] = current;
       const [targetL, targetR] = target;
-      const { dryWet, inputGain, outputGain } = effect.config;
 
       // Apply input gain
+      const inputGain = effect.config.inputGain;
       if (inputGain !== 1.0) {
-        for (let i = fromIndex; i < toIndex; i += 1) {
+        for (let i = fromIndex; i < toIndex; i++) {
           targetL[i] = (currentL[i] ?? 0) * inputGain;
           targetR[i] = (currentR[i] ?? 0) * inputGain;
         }
@@ -224,9 +224,10 @@ export class EffectChain {
       }
 
       // Store dry signal before effect processing for dry/wet mix
+      const dryWet = effect.config.dryWet;
       const needsDryMix = dryWet < 1.0;
       if (needsDryMix) {
-        for (let i = fromIndex; i < toIndex; i += 1) {
+        for (let i = fromIndex; i < toIndex; i++) {
           this.dryL[i] = current[0][i] ?? 0;
           this.dryR[i] = current[1][i] ?? 0;
         }
@@ -238,15 +239,16 @@ export class EffectChain {
       // Apply dry/wet mix using saved dry signal
       if (needsDryMix) {
         const dryAmount = 1.0 - dryWet;
-        for (let i = fromIndex; i < toIndex; i += 1) {
+        for (let i = fromIndex; i < toIndex; i++) {
           targetL[i] = this.dryL[i] * dryAmount + (targetL[i] ?? 0) * dryWet;
           targetR[i] = this.dryR[i] * dryAmount + (targetR[i] ?? 0) * dryWet;
         }
       }
 
       // Apply output gain
+      const outputGain = effect.config.outputGain;
       if (outputGain !== 1.0) {
-        for (let i = fromIndex; i < toIndex; i += 1) {
+        for (let i = fromIndex; i < toIndex; i++) {
           targetL[i] = (targetL[i] ?? 0) * outputGain;
           targetR[i] = (targetR[i] ?? 0) * outputGain;
         }
@@ -289,7 +291,7 @@ export class EffectChain {
   private insertAtOrder(id: string, order: number): void {
     let insertIndex = 0;
 
-    for (let i = 0; i < this.effectOrder.length; i += 1) {
+    for (let i = 0; i < this.effectOrder.length; i++) {
       const existingId = this.effectOrder[i];
       if (existingId) {
         const existingEffect = this.effects.get(existingId);

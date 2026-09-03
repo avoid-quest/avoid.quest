@@ -1,4 +1,3 @@
-// biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers
 import { Skeleton } from "@avoid.quest/ui/components/skeleton";
 import {
   ToggleGroup,
@@ -12,9 +11,9 @@ import { playerModes } from "@/lib/types";
 import { useModeTransitionSnapshot } from "@/lib/use-mode-transition-snapshot";
 
 const modeIcons = {
-  dj: SwordsIcon,
   multiple: LayersIcon,
   single: ListMusicIcon,
+  dj: SwordsIcon,
 } as const;
 
 export function ModeSelect({ className }: { className?: string }) {

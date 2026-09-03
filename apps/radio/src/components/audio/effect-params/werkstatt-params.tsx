@@ -1,13 +1,7 @@
-/** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 import { Button } from "@avoid.quest/ui/components/button";
 import { Label } from "@avoid.quest/ui/components/label";
 import { Textarea } from "@avoid.quest/ui/components/textarea";
-import {
-  type ChangeEvent,
-  useEffect,
-  useState,
-  useSyncExternalStore,
-} from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import type { EffectConfig } from "@/lib/audio";
 import {
   parseWerkstattDeclarations,
@@ -51,18 +45,13 @@ function DynamicControl({
 }) {
   const value =
     effect.parameters[declaration.label] ?? declaration.defaultValue;
-  function update(nextValue: number) {
+  const update = (nextValue: number) =>
     onUpdate({
       parameters: {
         ...effect.parameters,
         [declaration.label]: nextValue,
       },
     } as Partial<EffectConfig>);
-  }
-
-  function updateBoolean(checked: boolean) {
-    update(Number(checked));
-  }
 
   if (declaration.mapping === "bool") {
     return (
@@ -70,7 +59,7 @@ function DynamicControl({
         checked={value >= 0.5}
         id={`${effect.id}-werkstatt-${declaration.label}`}
         label={declaration.label}
-        onChange={updateBoolean}
+        onChange={(checked) => update(Number(checked))}
       />
     );
   }
@@ -131,7 +120,7 @@ export function WerkstattParams({ effect, onUpdate }: WerkstattParamsProps) {
     };
   }, [draft]);
 
-  async function applySource(source: string, reset: boolean) {
+  const applySource = async (source: string, reset: boolean) => {
     setDraft(source);
     try {
       const parsed = await parseWerkstattDeclarations(source);
@@ -150,30 +139,7 @@ export function WerkstattParams({ effect, onUpdate }: WerkstattParamsProps) {
         cause instanceof Error ? cause.message : "Invalid Werkstatt source."
       );
     }
-  }
-
-  function selectPreset(id: string) {
-    const preset = WERKSTATT_PRESETS.find((item) => item.id === id);
-    if (preset) {
-      applySource(preset.source, true);
-    }
-  }
-
-  function updateDraft(event: ChangeEvent<HTMLTextAreaElement>) {
-    setDraft(event.target.value);
-  }
-
-  function compileDraft() {
-    applySource(draft, false);
-  }
-
-  function resetParameters() {
-    if (declarations) {
-      onUpdate({
-        parameters: reconcileWerkstattParameters(declarations.params, {}, true),
-      } as Partial<EffectConfig>);
-    }
-  }
+  };
 
   const selectedPreset =
     WERKSTATT_PRESETS.find(({ source }) => source === draft)?.id ?? "custom";
@@ -184,7 +150,12 @@ export function WerkstattParams({ effect, onUpdate }: WerkstattParamsProps) {
       <ParamGroup defaultOpen title="Playground">
         <ParamSelect
           label="Example"
-          onChange={selectPreset}
+          onChange={(id) => {
+            const preset = WERKSTATT_PRESETS.find((item) => item.id === id);
+            if (preset) {
+              applySource(preset.source, true);
+            }
+          }}
           options={[
             ...WERKSTATT_PRESETS.map(({ id, label }) => ({
               label,
@@ -210,14 +181,14 @@ export function WerkstattParams({ effect, onUpdate }: WerkstattParamsProps) {
           <Textarea
             className="min-h-72 font-mono text-xs"
             id={`${effect.id}-werkstatt-source`}
-            onChange={updateDraft}
+            onChange={(event) => setDraft(event.target.value)}
             spellCheck={false}
             value={draft}
           />
           <div className="flex flex-wrap gap-2">
             <Button
               disabled={draft === appliedSource || declarationError !== null}
-              onClick={compileDraft}
+              onClick={() => applySource(draft, false)}
               size="sm"
               type="button"
             >
@@ -225,7 +196,17 @@ export function WerkstattParams({ effect, onUpdate }: WerkstattParamsProps) {
             </Button>
             <Button
               disabled={!declarations}
-              onClick={resetParameters}
+              onClick={() => {
+                if (declarations) {
+                  onUpdate({
+                    parameters: reconcileWerkstattParameters(
+                      declarations.params,
+                      {},
+                      true
+                    ),
+                  } as Partial<EffectConfig>);
+                }
+              }}
               size="sm"
               type="button"
               variant="outline"
@@ -233,7 +214,7 @@ export function WerkstattParams({ effect, onUpdate }: WerkstattParamsProps) {
               Reset parameters
             </Button>
           </div>
-          {declarationError === null ? null : (
+          {declarationError && (
             <p className="text-destructive text-xs">{declarationError}</p>
           )}
           {!(controlsAreApplied || declarationError) && (
@@ -244,28 +225,27 @@ export function WerkstattParams({ effect, onUpdate }: WerkstattParamsProps) {
         </div>
       </ParamGroup>
 
-      {controlsAreApplied && declarations
-        ? declarations.sections.map((section, sectionIndex) => {
-            if (section.params.length === 0) {
-              return null;
-            }
-            return (
-              <ParamGroup
-                key={section.group?.label ?? `parameters-${sectionIndex}`}
-                title={section.group?.label ?? "Script parameters"}
-              >
-                {section.params.map((declaration) => (
-                  <DynamicControl
-                    declaration={declaration}
-                    effect={effect}
-                    key={declaration.label}
-                    onUpdate={onUpdate}
-                  />
-                ))}
-              </ParamGroup>
-            );
-          })
-        : null}
+      {controlsAreApplied &&
+        declarations?.sections.map((section, sectionIndex) => {
+          if (section.params.length === 0) {
+            return null;
+          }
+          return (
+            <ParamGroup
+              key={section.group?.label ?? `parameters-${sectionIndex}`}
+              title={section.group?.label ?? "Script parameters"}
+            >
+              {section.params.map((declaration) => (
+                <DynamicControl
+                  declaration={declaration}
+                  effect={effect}
+                  key={declaration.label}
+                  onUpdate={onUpdate}
+                />
+              ))}
+            </ParamGroup>
+          );
+        })}
 
       <div
         className="rounded-md border p-3 text-xs"

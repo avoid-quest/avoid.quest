@@ -17,7 +17,7 @@ function wrapInput(input: MIDIInput): MidiBrowserInput {
     },
     subscribe(listener) {
       const handleMessage = (event: Event) => {
-        const { data } = event as MIDIMessageEvent;
+        const data = (event as MIDIMessageEvent).data;
         if (data) {
           listener(Uint8Array.from(data));
         }

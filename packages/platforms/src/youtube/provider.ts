@@ -83,17 +83,14 @@ export type YouTubeProviderSearchFilter = "songs" | "videos";
 export type YouTubeProviderAdapter = {
   readonly id: string;
   readonly kind: YouTubeProviderKind;
-  probe: (signal?: AbortSignal) => Promise<YouTubeProviderProbe>;
-  resolveItem: (
-    url: string,
-    signal?: AbortSignal
-  ) => Promise<YouTubeItemResult>;
-  resolveStream: (videoId: string, signal?: AbortSignal) => Promise<string>;
-  search: (
+  probe(signal?: AbortSignal): Promise<YouTubeProviderProbe>;
+  resolveItem(url: string, signal?: AbortSignal): Promise<YouTubeItemResult>;
+  resolveStream(videoId: string, signal?: AbortSignal): Promise<string>;
+  search(
     query: string,
     filter?: YouTubeProviderSearchFilter,
     signal?: AbortSignal
-  ) => Promise<YouTubeSearchResult[]>;
+  ): Promise<YouTubeSearchResult[]>;
 };
 
 export type YouTubeProviderAdapterOptions = {
@@ -301,9 +298,7 @@ async function readBoundedText(
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let total = 0;
-  // biome-ignore lint/suspicious/noUnnecessaryConditions: reader completion determines loop termination
   while (true) {
-    // biome-ignore lint/performance/noAwaitInLoops: stream chunks must be read sequentially
     const { done, value } = await reader.read();
     if (done) {
       break;
@@ -503,11 +498,9 @@ export async function fetchProviderText(
 
 export function invalidProviderSchema(
   context: YouTubeProviderRequestContext,
-  message = "YouTube provider response has an unexpected schema",
-  cause?: unknown
+  message = "YouTube provider response has an unexpected schema"
 ): YouTubeProviderError {
   return new YouTubeProviderError(message, {
-    cause,
     code: "invalid-schema",
     kind: context.kind,
     providerId: context.providerId,
@@ -590,11 +583,10 @@ export async function verifyProviderMedia(
         // Content-Range is not CORS-safelisted, so otherwise valid public
         // relays can hide it from browser JavaScript. Content-Length is safe.
         const contentRange = response.headers.get("content-range");
-        const hasValidRange =
-          contentRange === null
-            ? response.headers.get("content-length") ===
-              MEDIA_PROBE_CONTENT_LENGTH
-            : MEDIA_CONTENT_RANGE_PATTERN.test(contentRange);
+        const hasValidRange = contentRange === null
+          ? response.headers.get("content-length") ===
+            MEDIA_PROBE_CONTENT_LENGTH
+          : MEDIA_CONTENT_RANGE_PATTERN.test(contentRange);
         if (!hasValidRange) {
           throw invalidProviderSchema(
             context,

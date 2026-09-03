@@ -50,7 +50,7 @@ function resolveUrl(url: string, baseUrl?: string): string {
 function getFilenameFromPath(path: string): string {
   try {
     const url = new URL(path);
-    const { pathname } = url;
+    const pathname = url.pathname;
     const lastSlash = pathname.lastIndexOf("/");
     const filename =
       lastSlash === -1 ? pathname : pathname.slice(lastSlash + 1);
@@ -118,9 +118,9 @@ export function parseM3U(content: string, baseUrl?: string): ParsedPlaylist {
     // This is a URL line
     const url = resolveUrl(trimmed, baseUrl);
     tracks.push({
-      duration: currentDuration,
       title: currentTitle || getFilenameFromPath(url),
       url,
+      duration: currentDuration,
     });
 
     // Reset for next track
@@ -215,9 +215,9 @@ export function parsePLS(content: string, baseUrl?: string): ParsedPlaylist {
     const entry = entries.get(index);
     if (entry?.url) {
       tracks.push({
-        duration: entry.duration,
         title: entry.title || getFilenameFromPath(entry.url),
         url: entry.url,
+        duration: entry.duration,
       });
     }
   }

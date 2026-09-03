@@ -21,8 +21,8 @@ export function MixerRouting() {
   const delaySettings = useDelaySettings();
   const { outputDevices } = useAudioDevices();
 
-  const { cueOutputId, mainOutputId: configuredMainOutputId } = audioSettings;
-  const mainOutputId = configuredMainOutputId ?? "default";
+  const mainOutputId = audioSettings.mainOutputId ?? "default";
+  const cueOutputId = audioSettings.cueOutputId;
   const canResolveDevices =
     getOutputRouting().getSnapshot().sinkSelectionSupported;
 

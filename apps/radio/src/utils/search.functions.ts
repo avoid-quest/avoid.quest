@@ -14,8 +14,8 @@ import { z } from "zod";
 import { rateLimitMiddleware } from "./middleware";
 
 const BandcampSearchSchema = z.object({
-  filter: z.enum(["", "t", "a", "b"]).optional().default(""),
   query: z.string().min(1, "Search query is required").max(200),
+  filter: z.enum(["", "t", "a", "b"]).optional().default(""),
 });
 
 export type BandcampSearchResponse = AppResult<{
@@ -28,14 +28,14 @@ export const bandcampSearch = createServerFn({ method: "POST" })
   .handler(
     ({ data }): Promise<BandcampSearchResponse> =>
       runServerFn({
+        operation: "bandcampSearch",
         fallback: {
-          category: "dependency",
           code: "BANDCAMP_SEARCH_FAILED",
-          expected: false,
           safeMessage: "Search failed",
+          category: "dependency",
+          expected: false,
           status: 500,
         },
-        operation: "bandcampSearch",
         run: async () => {
           const results = await searchBandcamp(data.query, data.filter);
           return { results };
@@ -78,14 +78,14 @@ export const soundcloudSearch = createServerFn({ method: "POST" })
   .handler(
     ({ data }): Promise<SoundCloudSearchResponse> =>
       runServerFn({
+        operation: "soundcloudSearch",
         fallback: {
-          category: "dependency",
           code: "SOUNDCLOUD_SEARCH_FAILED",
-          expected: false,
           safeMessage: "Search failed",
+          category: "dependency",
+          expected: false,
           status: 500,
         },
-        operation: "soundcloudSearch",
         run: async () => {
           const clientId = await getSoundCloudClientId();
           const results = await searchSoundCloud(data.query, clientId);

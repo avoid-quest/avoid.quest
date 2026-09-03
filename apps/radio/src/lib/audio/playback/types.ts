@@ -87,12 +87,12 @@ export type AudioState = {
  * Initial default audio state
  */
 export const initialAudioState: AudioState = {
+  isPlaying: false,
+  isLoading: false,
+  isBuffering: false,
+  volume: 1,
   error: null,
   hasEnded: false,
-  isBuffering: false,
-  isLoading: false,
-  isPlaying: false,
-  volume: 1,
 };
 
 /**
@@ -134,12 +134,12 @@ export type StreamBufferConfig = {
  * processor. These chunk-based values are for legacy mode and initial buffering.
  */
 export const defaultStreamBufferConfig: StreamBufferConfig = {
-  highWatermarkChunks: 4, // Exit buffering state when reaching 4 chunks (~800ms)
-  lowWatermarkChunks: 2, // Enter buffering state when below 2 chunks (~400ms)
-  maxBufferSize: 512 * 1024, // 512KB - fewer partial decodes
   minBufferSize: 48 * 1024, // 48KB (~3 sec at 128kbps) - balanced startup vs codec alignment
-  minPreBufferChunks: 4, // 4 chunks = ~800ms of audio before playback
+  maxBufferSize: 512 * 1024, // 512KB - fewer partial decodes
   retainOnError: 64 * 1024, // 64KB - less data loss on failure
+  minPreBufferChunks: 4, // 4 chunks = ~800ms of audio before playback
+  lowWatermarkChunks: 2, // Enter buffering state when below 2 chunks (~400ms)
+  highWatermarkChunks: 4, // Exit buffering state when reaching 4 chunks (~800ms)
 };
 
 /**

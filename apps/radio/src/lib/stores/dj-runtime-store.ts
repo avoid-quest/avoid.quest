@@ -79,14 +79,14 @@ export function resetAllDjRuntime() {
 export function getDjRuntimeState() {
   return {
     deckA: getPlaybackChannelRuntime(DECK_A_CHANNEL_ID),
-    deckAPeakLevel: getPlaybackChannelRuntime(DECK_A_CHANNEL_ID).peakLevel,
     deckB: getPlaybackChannelRuntime(DECK_B_CHANNEL_ID),
-    deckBPeakLevel: getPlaybackChannelRuntime(DECK_B_CHANNEL_ID).peakLevel,
-    error: djUiStore.state.error,
-    errorChannelId: djUiStore.state.errorChannelId,
     ui: {
       activeDragRadio: djUiStore.state.activeDragRadio,
     },
+    deckAPeakLevel: getPlaybackChannelRuntime(DECK_A_CHANNEL_ID).peakLevel,
+    deckBPeakLevel: getPlaybackChannelRuntime(DECK_B_CHANNEL_ID).peakLevel,
+    error: djUiStore.state.error,
+    errorChannelId: djUiStore.state.errorChannelId,
   };
 }
 

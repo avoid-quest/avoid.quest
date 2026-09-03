@@ -37,7 +37,7 @@ export class EffectsBackendRouter {
   private releaseSignal: ConstantSourceNode | null = null;
 
   constructor(source: AudioNode, destination: AudioNode, muted: boolean) {
-    const { context } = source;
+    const context = source.context;
     this.source = source;
     this.bypassGain = context.createGain();
     this.compatibilityGain = context.createGain();
@@ -98,7 +98,7 @@ export class EffectsBackendRouter {
   }
 
   private cancelReleaseSignal(): void {
-    const { releaseSignal } = this;
+    const releaseSignal = this.releaseSignal;
     if (!releaseSignal) {
       return;
     }

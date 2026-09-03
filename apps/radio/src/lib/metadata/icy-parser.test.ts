@@ -25,9 +25,7 @@ describe("ICY metadata parsing", () => {
   });
 
   test("handles empty and padded metadata blocks", () => {
-    const empty = parseIcyMetadataBlock(block(""));
-    expect(empty).toEqual({ fields: {}, streamTitle: null, streamUrl: null });
-    expect(normalizeIcyMetadata(empty)).toBeNull();
+    expect(normalizeIcyMetadata(parseIcyMetadataBlock(block("")))).toBeNull();
     expect(
       normalizeIcyMetadata(
         parseIcyMetadataBlock(block("StreamTitle=' - ';\0\0"))

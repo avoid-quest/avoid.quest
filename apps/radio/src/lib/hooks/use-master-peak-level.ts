@@ -14,9 +14,9 @@ export function useMasterPeakLevel(): PeakLevel {
   const [level, setLevel] = useState<PeakLevel>({ left: 0, right: 0 });
 
   const throttledSetLevel = useThrottledCallback(setLevel, {
+    wait: METER_THROTTLE_MS,
     leading: true,
     trailing: true,
-    wait: METER_THROTTLE_MS,
   });
 
   useEffect(() => {

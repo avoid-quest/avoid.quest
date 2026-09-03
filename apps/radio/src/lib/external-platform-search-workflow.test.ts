@@ -9,10 +9,10 @@ describe("createExternalPlatformSearchWorkflow", () => {
         bandcamp: {
           search: mock(async () => [
             {
-              artist: "Bandcamp Artist",
               id: "bc-1",
-              title: "Bandcamp Track",
               type: "track" as const,
+              title: "Bandcamp Track",
+              artist: "Bandcamp Artist",
               url: "https://artist.bandcamp.com/track/one",
             },
           ]),
@@ -21,11 +21,11 @@ describe("createExternalPlatformSearchWorkflow", () => {
           search: mock(async () => [
             {
               channelId: "rg1",
-              countryTitle: "Japan",
-              placeTitle: "Tokyo",
-              subtitle: "Live",
               title: "Garden Radio",
+              subtitle: "Live",
               url: "https://radio.garden/listen/garden/rg1",
+              placeTitle: "Tokyo",
+              countryTitle: "Japan",
             },
           ]),
         },
@@ -37,9 +37,9 @@ describe("createExternalPlatformSearchWorkflow", () => {
         youtube: {
           search: mock(async () => [
             {
-              author: "YouTube Artist",
-              title: "YouTube Track",
               videoId: "yt1",
+              title: "YouTube Track",
+              author: "YouTube Artist",
             },
           ]),
         },
@@ -62,8 +62,8 @@ describe("createExternalPlatformSearchWorkflow", () => {
       title: "Bandcamp Track",
     });
     expect(results[1]).toMatchObject({
-      artist: "Tokyo, Japan",
       id: "rg-rg1",
+      artist: "Tokyo, Japan",
     });
     expect(results[2]).toMatchObject({
       id: "yt-yt1",
@@ -131,10 +131,10 @@ describe("createExternalPlatformSearchWorkflow", () => {
         bandcamp: {
           search: mock(async () =>
             Array.from({ length: 9 }, (_, index) => ({
-              artist: "Bandcamp Artist",
               id: `bc-${index}`,
-              title: `Bandcamp ${index}`,
               type: "track" as const,
+              title: `Bandcamp ${index}`,
+              artist: "Bandcamp Artist",
               url: `https://bandcamp.example/${index}`,
             }))
           ),
@@ -143,21 +143,21 @@ describe("createExternalPlatformSearchWorkflow", () => {
           search: mock(async () => [
             {
               channelId: "rg1",
-              countryTitle: "Japan",
-              placeTitle: "Tokyo",
-              subtitle: "Live",
               title: "Garden Radio",
+              subtitle: "Live",
               url: "https://radio.garden/listen/garden/rg1",
+              placeTitle: "Tokyo",
+              countryTitle: "Japan",
             },
           ]),
         },
         soundcloud: {
           search: mock(async () => [
             {
-              artist: "Cloud Artist",
-              duration: 120,
               id: "sc1",
               title: "Cloud Track",
+              artist: "Cloud Artist",
+              duration: 120,
               url: "https://soundcloud.com/cloud/track",
             },
           ]),
@@ -165,9 +165,9 @@ describe("createExternalPlatformSearchWorkflow", () => {
         youtube: {
           search: mock(async () => [
             {
-              author: "Video Artist",
-              title: "Video Track",
               videoId: "yt1",
+              title: "Video Track",
+              author: "Video Artist",
             },
           ]),
         },

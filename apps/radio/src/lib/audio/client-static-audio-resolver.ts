@@ -143,7 +143,7 @@ function playlistMetadata(
     streamUrl: track.url,
     title: track.title,
   }));
-  const [firstTrack] = tracks;
+  const firstTrack = tracks[0];
   if (!firstTrack) {
     throw new PlaylistError("Playlist contains no tracks");
   }
@@ -207,7 +207,6 @@ async function validateTrackUrls(
     throw new PlaylistError("Playlist contains too many resources");
   }
   for (const track of playlist.tracks) {
-    // biome-ignore lint/performance/noAwaitInLoops: bound hostname lookups and fail at the first unsafe URL
     await validatePlaylistResourceUrl(track.url, resolveHostname, signal);
   }
 }
@@ -232,7 +231,6 @@ async function validateHlsResourceUrls(
     }
   }
   for (const resourceUrl of resourceUrls) {
-    // biome-ignore lint/performance/noAwaitInLoops: bound hostname lookups and fail at the first unsafe URL
     await validatePlaylistResourceUrl(
       resourceUrl,
       resolveHostname,
@@ -298,28 +296,27 @@ async function readLimitedText(
     throw new PlaylistError(`Playlist exceeds ${maxResponseBytes} bytes`);
   }
 
-  const { body } = response;
-  if (!body) {
+  if (!response.body) {
     return "";
   }
 
+  const reader = response.body.getReader();
   const decoder = new TextDecoder("utf-8", { fatal: true });
   let bytesRead = 0;
   let text = "";
   try {
-    await body.pipeTo(
-      new WritableStream<Uint8Array>({
-        write(chunk) {
-          bytesRead += chunk.byteLength;
-          if (bytesRead > maxResponseBytes) {
-            throw new PlaylistError(
-              `Playlist exceeds ${maxResponseBytes} bytes`
-            );
-          }
-          text += decoder.decode(chunk, { stream: true });
-        },
-      })
-    );
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) {
+        break;
+      }
+      bytesRead += chunk.value.byteLength;
+      if (bytesRead > maxResponseBytes) {
+        await reader.cancel();
+        throw new PlaylistError(`Playlist exceeds ${maxResponseBytes} bytes`);
+      }
+      text += decoder.decode(chunk.value, { stream: true });
+    }
     return text + decoder.decode();
   } catch (error) {
     if (error instanceof PlaylistError) {
@@ -328,6 +325,8 @@ async function readLimitedText(
     throw new PlaylistError("Playlist response is not valid UTF-8 text", {
       cause: error,
     });
+  } finally {
+    reader.releaseLock();
   }
 }
 

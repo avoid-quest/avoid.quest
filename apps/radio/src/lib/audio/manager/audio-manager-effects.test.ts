@@ -50,37 +50,37 @@ describe("audio manager effect config conversion", () => {
   test("converts universal parameters without aliasing native wet and dry", () => {
     const config = {
       ...createDefaultEffectConfig("compressor", "compressor-1", 2),
-      autoAttack: true,
-      autoMakeup: true,
-      autoRelease: true,
-      dryWet: 0.25,
       enabled: true,
+      dryWet: 0.25,
       inputGain: 0.8,
-      lookahead: false,
       outputGain: 0.7,
+      lookahead: false,
+      autoAttack: true,
+      autoRelease: true,
+      autoMakeup: true,
     } as CompressorConfig;
 
     expect(convertEffectConfig(config)).toEqual({
-      attack: 2,
-      autoAttack: 1,
-      autoattack: 0,
-      autoMakeup: 1,
-      automakeup: 1,
-      autoRelease: 1,
-      autorelease: 0,
-      dryWet: 0.25,
       enabled: 1,
       inputGain: 0.8,
-      inputgain: 0,
+      outputGain: 0.7,
+      dryWet: 0.25,
+      type: "compressor",
+      threshold: -10,
+      ratio: 4,
+      attack: 2,
+      release: 140,
       knee: 6,
-      lookahead: 0,
       makeup: 0,
       mix: 1,
-      outputGain: 0.7,
-      ratio: 4,
-      release: 140,
-      threshold: -10,
-      type: "compressor",
+      lookahead: 0,
+      autoAttack: 1,
+      autoRelease: 1,
+      autoMakeup: 1,
+      inputgain: 0,
+      automakeup: 1,
+      autoattack: 0,
+      autorelease: 0,
     });
   });
 
@@ -97,15 +97,15 @@ describe("audio manager effect config conversion", () => {
   test("converts partial configs using the explicit effect type", () => {
     expect(
       convertPartialEffectConfig("delay", {
-        delayTime: 0.5,
-        dryWet: 0.4,
         enabled: false,
+        dryWet: 0.4,
+        delayTime: 0.5,
         feedback: 0.2,
       } as Partial<EffectConfig>)
     ).toEqual({
-      delayTime: 0.5,
-      dryWet: 0.4,
       enabled: 0,
+      dryWet: 0.4,
+      delayTime: 0.5,
       feedback: 0.2,
     });
   });

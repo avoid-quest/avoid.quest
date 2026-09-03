@@ -30,7 +30,6 @@ export function createModeLifecycleRequests({
   getCurrentSettings = getSettings,
 }: CreateModeLifecycleRequestsOptions = {}): ModeLifecycleRequests {
   return {
-    getTransitionSnapshot: manager.getSnapshot,
     async requestMode(value: string) {
       if (!isPlaybackSessionId(value)) {
         return;
@@ -38,8 +37,6 @@ export function createModeLifecycleRequests({
 
       await manager.switchTo(value);
     },
-    resetPageLifecycleState: resetPlaybackLifecycleState,
-    subscribeTransitionSnapshot: manager.subscribe,
     async synchronizeMode(mode: PlaybackSessionId) {
       await waitForPlaybackSession(mode);
 
@@ -59,6 +56,9 @@ export function createModeLifecycleRequests({
 
       return manager.switchTo(mode);
     },
+    resetPageLifecycleState: resetPlaybackLifecycleState,
+    getTransitionSnapshot: manager.getSnapshot,
+    subscribeTransitionSnapshot: manager.subscribe,
   };
 }
 

@@ -4,37 +4,37 @@ export const UNIVERSAL_EFFECT_PARAM_DEFS: readonly SliderParamDef<
   Exclude<UniversalEffectParamKey, "enabled">
 >[] = [
   {
-    description:
-      "Outer wrapper blend: 0% passes the original signal, 100% passes the complete device output.",
-    formatKey: "percentage",
+    type: "slider",
     key: "dryWet",
     label: "Effect Mix",
-    max: 1,
+    formatKey: "percentage",
     min: 0,
+    max: 1,
     step: 0.01,
-    type: "slider",
+    description:
+      "Outer wrapper blend: 0% passes the original signal, 100% passes the complete device output.",
   },
   {
-    description:
-      "Linear trim applied before the device, independently of native drive or detector-input controls.",
-    formatKey: "linearGain",
+    type: "slider",
     key: "inputGain",
     label: "Pre-FX Trim",
-    max: 4.0,
+    formatKey: "linearGain",
     min: 0,
+    max: 4.0,
     step: 0.01,
-    type: "slider",
+    description:
+      "Linear trim applied before the device, independently of native drive or detector-input controls.",
   },
   {
-    description:
-      "Linear trim applied after the wrapper blend, independently of native output or makeup controls.",
-    formatKey: "linearGain",
+    type: "slider",
     key: "outputGain",
     label: "Post-FX Trim",
-    max: 4.0,
+    formatKey: "linearGain",
     min: 0,
+    max: 4.0,
     step: 0.01,
-    type: "slider",
+    description:
+      "Linear trim applied after the wrapper blend, independently of native output or makeup controls.",
   },
 ];
 

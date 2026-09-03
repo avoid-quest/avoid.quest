@@ -19,9 +19,9 @@ export type SingleModeSettings = Settings & {
 };
 
 export const playerModes = [
-  { icon: "list-music", label: "Single", value: "single" },
-  { icon: "square-stack", label: "Multiple", value: "multiple" },
-  { icon: "swords", label: "DJ", value: "dj" },
+  { value: "single", label: "Single", icon: "list-music" },
+  { value: "multiple", label: "Multiple", icon: "square-stack" },
+  { value: "dj", label: "DJ", icon: "swords" },
 ] as const;
 
 export type DatabaseExport = {

@@ -91,16 +91,16 @@ export function createPlaybackActionError(
   input: PlaybackActionErrorInput
 ): PlaybackActionError {
   return {
-    cause: input.cause,
-    channelId: input.channelId,
-    code: input.code ?? "PLAY_ERROR",
     mode: input.mode,
-    radio: input.radio,
-    rawMessage: getRawErrorMessage(input.cause),
+    code: input.code ?? "PLAY_ERROR",
     userMessage: getFriendlyPlaybackErrorMessage(
       input.cause,
       input.fallbackMessage
     ),
+    rawMessage: getRawErrorMessage(input.cause),
+    cause: input.cause,
+    channelId: input.channelId,
+    radio: input.radio,
   };
 }
 
@@ -112,16 +112,16 @@ export function toRuntimeAudioError(
   const normalized = hasPlaybackActionErrorShape(error)
     ? error
     : createPlaybackActionError({
-        cause: error,
-        code,
         mode: "single",
+        code,
+        cause: error,
         radio,
       });
 
   return {
-    code: normalized.code,
     id: generateErrorId(),
     message: normalized.userMessage,
+    code: normalized.code,
     radio: normalized.radio ?? radio,
     timestamp: Date.now(),
   };

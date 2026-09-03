@@ -1,4 +1,3 @@
-// biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers
 import { Button } from "@avoid.quest/ui/components/button";
 import {
   Select,
@@ -135,7 +134,7 @@ export function DeviceForm({ onLoad, onCancel }: DeviceFormProps) {
         )}
 
         <div className="flex gap-2">
-          {onCancel ? (
+          {onCancel && (
             <Button
               className="flex-1"
               disabled={isLoading}
@@ -144,7 +143,7 @@ export function DeviceForm({ onLoad, onCancel }: DeviceFormProps) {
             >
               {validDevices.length > 0 ? "Eject" : "Cancel"}
             </Button>
-          ) : null}
+          )}
           {validDevices.length > 0 && (
             <Button
               className="flex-1"

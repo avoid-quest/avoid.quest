@@ -1,4 +1,3 @@
-// biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers
 import { Badge } from "@avoid.quest/ui/components/badge";
 import { Button } from "@avoid.quest/ui/components/button";
 import { ScrollArea } from "@avoid.quest/ui/components/scroll-area";
@@ -75,8 +74,6 @@ export function DeviceInputContent({
     [channelCount]
   );
   const selectedKey = serializeSelection(channelSelection);
-  const handleChannelSelectionChange = (value: string) =>
-    onChannelSelectionChange(deserializeSelection(value));
 
   const sharedControls = (
     <>
@@ -109,7 +106,9 @@ export function DeviceInputContent({
           )}
         </span>
         <Select
-          onValueChange={handleChannelSelectionChange}
+          onValueChange={(value) =>
+            onChannelSelectionChange(deserializeSelection(value))
+          }
           value={selectedKey}
         >
           <SelectTrigger className="h-7 flex-1 text-xs">

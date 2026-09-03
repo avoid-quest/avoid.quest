@@ -112,6 +112,7 @@ describe("createPlayablePlatformResolver", () => {
       if (url.includes("/ara/content/channel/abc123")) {
         return Response.json({
           apiVersion: 1,
+          version: "1",
           data: {
             country: {
               id: "jp",
@@ -129,7 +130,6 @@ describe("createPlayablePlatformResolver", () => {
             type: "channel",
             url: "/listen/garden/abc123",
           },
-          version: "1",
         });
       }
 

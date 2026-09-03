@@ -1,7 +1,7 @@
 export type TrackProgress = { position: number; duration: number };
 export type TrackProgressState = TrackProgress & { soundId: string | null };
 
-const EMPTY_TRACK_PROGRESS: TrackProgress = { duration: 0, position: 0 };
+const EMPTY_TRACK_PROGRESS: TrackProgress = { position: 0, duration: 0 };
 
 export function getVisibleTrackProgress(
   soundId: string | null,

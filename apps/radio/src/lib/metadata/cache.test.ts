@@ -8,23 +8,23 @@ import {
 import type { RadioMetadataResponse } from "./types";
 
 const success: RadioMetadataResponse = {
-  data: {
-    album: null,
-    artist: null,
-    artworkUrl: null,
-    bitrate: null,
-    expiresAt: 2000,
-    genre: null,
-    itemUrl: null,
-    rawTitle: "Title",
-    sampledAt: 1000,
-    source: "icy",
-    stationDescription: null,
-    stationName: null,
-    streamUrl: "https://radio.example/live",
-    title: "Title",
-  },
   ok: true,
+  data: {
+    streamUrl: "https://radio.example/live",
+    source: "icy",
+    title: "Title",
+    artist: null,
+    rawTitle: "Title",
+    album: null,
+    artworkUrl: null,
+    itemUrl: null,
+    stationName: null,
+    stationDescription: null,
+    genre: null,
+    bitrate: null,
+    sampledAt: 1000,
+    expiresAt: 2000,
+  },
 };
 
 describe("radio metadata cache", () => {
@@ -46,14 +46,14 @@ describe("radio metadata cache", () => {
 
     const [first, second] = await Promise.all([
       getOrSetCachedRadioMetadata("same", {
-        now: () => 1000,
         retrieve,
         ttlForResponse: () => 1000,
+        now: () => 1000,
       }),
       getOrSetCachedRadioMetadata("same", {
-        now: () => 1000,
         retrieve,
         ttlForResponse: () => 1000,
+        now: () => 1000,
       }),
     ]);
 

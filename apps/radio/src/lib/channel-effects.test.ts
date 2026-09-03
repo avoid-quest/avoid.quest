@@ -20,15 +20,15 @@ async function resetPlaybackSessions(): Promise<void> {
 
 function insertDjSession(): void {
   playbackSessionsCollection.insert({
-    activeChannelId: null,
+    id: "dj",
     channels: [
       createDefaultChannel("deck-a", "deck-a", 0),
       createDefaultChannel("deck-b", "deck-b", 1),
     ],
+    masterVolume: 1,
     crossfadePosition: 0.5,
     headphoneVolume: 1,
-    id: "dj",
-    masterVolume: 1,
+    activeChannelId: null,
     tempo: 120,
   });
 }
@@ -52,20 +52,20 @@ describe("ChannelEffects", () => {
       }),
     };
     const effects = createChannelEffects({ runtime });
-    await effects.bind({ channelId: "deck-a", sessionId: "dj" }, "sound-a");
+    await effects.bind({ sessionId: "dj", channelId: "deck-a" }, "sound-a");
 
     await effects.change(
-      { channelId: "deck-a", sessionId: "dj" },
+      { sessionId: "dj", channelId: "deck-a" },
       {
-        effect: createDefaultEffectConfig("delay", "delay-1", 99),
         type: "add",
+        effect: createDefaultEffectConfig("delay", "delay-1", 99),
       }
     );
     const result = await effects.change(
-      { channelId: "deck-a", sessionId: "dj" },
+      { sessionId: "dj", channelId: "deck-a" },
       {
-        effect: createDefaultEffectConfig("limiter", "limiter-1", 99),
         type: "add",
+        effect: createDefaultEffectConfig("limiter", "limiter-1", 99),
       }
     );
 
@@ -95,47 +95,47 @@ describe("ChannelEffects", () => {
       return;
     }
     await effects.change(
-      { channelId: "deck-a", sessionId: "dj" },
-      { effect: root, type: "add" }
+      { sessionId: "dj", channelId: "deck-a" },
+      { type: "add", effect: root }
     );
     await effects.change(
-      { channelId: "deck-a", sessionId: "dj" },
+      { sessionId: "dj", channelId: "deck-a" },
       {
+        type: "add",
         chainId,
         effect: createDefaultEffectConfig("delay", "delay", 42),
-        type: "add",
       }
     );
     await effects.change(
-      { channelId: "deck-a", sessionId: "dj" },
+      { sessionId: "dj", channelId: "deck-a" },
       {
+        type: "add",
         chainId,
         effect: createDefaultEffectConfig("limiter", "limiter", 42),
-        type: "add",
       }
     );
     await effects.change(
-      { channelId: "deck-a", sessionId: "dj" },
+      { sessionId: "dj", channelId: "deck-a" },
       {
+        type: "update",
         effectId: "delay",
         patch: { enabled: false },
-        type: "update",
       }
     );
     await effects.change(
-      { channelId: "deck-a", sessionId: "dj" },
+      { sessionId: "dj", channelId: "deck-a" },
       {
+        type: "reorder",
         chainId,
         effectIds: ["limiter", "delay"],
-        type: "reorder",
       }
     );
     const result = await effects.change(
-      { channelId: "deck-a", sessionId: "dj" },
-      { effectId: "delay", type: "remove" }
+      { sessionId: "dj", channelId: "deck-a" },
+      { type: "remove", effectId: "delay" }
     );
 
-    const [persistedRoot] = result.desired.tree;
+    const persistedRoot = result.desired.tree[0];
     expect(persistedRoot).toMatchObject({ id: "root", order: 0 });
     expect(
       persistedRoot && "chains" in persistedRoot
@@ -161,21 +161,21 @@ describe("ChannelEffects", () => {
       return;
     }
     await effects.change(
-      { channelId: "deck-a", sessionId: "dj" },
-      { effect: root, type: "add" }
+      { sessionId: "dj", channelId: "deck-a" },
+      { type: "add", effect: root }
     );
 
     const result = await effects.change(
-      { channelId: "deck-a", sessionId: "dj" },
+      { sessionId: "dj", channelId: "deck-a" },
       {
+        type: "update-chain",
         chainId,
         effectId: root.id,
         patch: { gain: 1.5, pan: -0.25 },
-        type: "update-chain",
       }
     );
 
-    const [persistedRoot] = result.desired.tree;
+    const persistedRoot = result.desired.tree[0];
     expect(
       persistedRoot && "chains" in persistedRoot
         ? persistedRoot.chains[0]
@@ -193,11 +193,11 @@ describe("ChannelEffects", () => {
       }),
     };
     const effects = createChannelEffects({ runtime });
-    await effects.bind({ channelId: "deck-a", sessionId: "dj" }, "sound-a");
-    await effects.bind({ channelId: "deck-b", sessionId: "dj" }, "sound-b");
+    await effects.bind({ sessionId: "dj", channelId: "deck-a" }, "sound-a");
+    await effects.bind({ sessionId: "dj", channelId: "deck-b" }, "sound-b");
 
     const dryWet = await effects.change(
-      { channelId: "deck-a", sessionId: "dj" },
+      { sessionId: "dj", channelId: "deck-a" },
       { type: "set-dry-wet", value: 0.35 }
     );
     const tempo = await effects.setTempo("dj", 140);
@@ -225,20 +225,20 @@ describe("ChannelEffects", () => {
     gate.enabled = true;
     gate.sidechain = { channelId: "deck-b" };
     await effects.change(
-      { channelId: "deck-a", sessionId: "dj" },
-      { effect: gate, type: "add" }
+      { sessionId: "dj", channelId: "deck-a" },
+      { type: "add", effect: gate }
     );
 
-    await effects.bind({ channelId: "deck-a", sessionId: "dj" }, "sound-a");
+    await effects.bind({ sessionId: "dj", channelId: "deck-a" }, "sound-a");
     expect(snapshots.get("sound-a")?.sidechainSoundId).toBeNull();
 
-    await effects.bind({ channelId: "deck-b", sessionId: "dj" }, "sound-b-1");
+    await effects.bind({ sessionId: "dj", channelId: "deck-b" }, "sound-b-1");
     expect(snapshots.get("sound-a")?.sidechainSoundId).toBe("sound-b-1");
 
-    await effects.bind({ channelId: "deck-b", sessionId: "dj" }, "sound-b-2");
+    await effects.bind({ sessionId: "dj", channelId: "deck-b" }, "sound-b-2");
     expect(snapshots.get("sound-a")?.sidechainSoundId).toBe("sound-b-2");
 
-    effects.unbind({ channelId: "deck-b", sessionId: "dj" });
+    effects.unbind({ sessionId: "dj", channelId: "deck-b" });
     await Promise.resolve();
     expect(snapshots.get("sound-a")?.sidechainSoundId).toBeNull();
   });
@@ -261,16 +261,16 @@ describe("ChannelEffects", () => {
     enabledGate.enabled = true;
     enabledGate.sidechain = { channelId: "deck-b" };
     await effects.change(
-      { channelId: "deck-a", sessionId: "dj" },
-      { effect: disabledGate, type: "add" }
+      { sessionId: "dj", channelId: "deck-a" },
+      { type: "add", effect: disabledGate }
     );
     await effects.change(
-      { channelId: "deck-a", sessionId: "dj" },
-      { effect: enabledGate, type: "add" }
+      { sessionId: "dj", channelId: "deck-a" },
+      { type: "add", effect: enabledGate }
     );
 
-    await effects.bind({ channelId: "deck-a", sessionId: "dj" }, "sound-a");
-    await effects.bind({ channelId: "deck-b", sessionId: "dj" }, "sound-b");
+    await effects.bind({ sessionId: "dj", channelId: "deck-a" }, "sound-a");
+    await effects.bind({ sessionId: "dj", channelId: "deck-b" }, "sound-b");
 
     expect(snapshots.get("sound-a")?.sidechainSoundId).toBe("sound-b");
   });
@@ -296,12 +296,12 @@ describe("ChannelEffects", () => {
     activeGate.enabled = true;
     activeGate.sidechain = { channelId: "deck-b" };
     await effects.change(
-      { channelId: "deck-a", sessionId: "dj" },
-      { tree: [root, activeGate], type: "replace" }
+      { sessionId: "dj", channelId: "deck-a" },
+      { type: "replace", tree: [root, activeGate] }
     );
 
-    await effects.bind({ channelId: "deck-a", sessionId: "dj" }, "sound-a");
-    await effects.bind({ channelId: "deck-b", sessionId: "dj" }, "sound-b");
+    await effects.bind({ sessionId: "dj", channelId: "deck-a" }, "sound-a");
+    await effects.bind({ sessionId: "dj", channelId: "deck-b" }, "sound-b");
 
     expect(snapshots.get("sound-a")?.sidechainSoundId).toBe("sound-b");
   });
@@ -319,7 +319,7 @@ describe("ChannelEffects", () => {
     });
     const root = createDefaultEffectConfig("fxComposite", "root", 0);
     root.enabled = true;
-    const [template] = root.chains;
+    const template = root.chains[0];
     expect(template).toBeDefined();
     if (!template) {
       return;
@@ -346,48 +346,48 @@ describe("ChannelEffects", () => {
     root.chains = [
       {
         ...template,
-        effects: [mutedGate],
         id: "muted",
-        muted: true,
         order: 0,
+        muted: true,
+        effects: [mutedGate],
       },
       {
         ...template,
-        effects: [nonSoloGate],
         id: "non-solo",
         order: 1,
+        effects: [nonSoloGate],
       },
       {
         ...template,
-        effects: [zeroGainGate],
-        gain: 0,
         id: "zero-gain",
         order: 2,
         solo: true,
+        gain: 0,
+        effects: [zeroGainGate],
       },
       {
         ...template,
-        effects: [negativeGainGate],
-        gain: -1,
         id: "negative-gain",
         order: 3,
         solo: true,
+        gain: -1,
+        effects: [negativeGainGate],
       },
       {
         ...template,
-        effects: [audibleGate],
         id: "audible",
         order: 4,
         solo: true,
+        effects: [audibleGate],
       },
     ];
     await effects.change(
-      { channelId: "deck-a", sessionId: "dj" },
-      { tree: [root], type: "replace" }
+      { sessionId: "dj", channelId: "deck-a" },
+      { type: "replace", tree: [root] }
     );
 
-    await effects.bind({ channelId: "deck-a", sessionId: "dj" }, "sound-a");
-    await effects.bind({ channelId: "deck-b", sessionId: "dj" }, "sound-b");
+    await effects.bind({ sessionId: "dj", channelId: "deck-a" }, "sound-a");
+    await effects.bind({ sessionId: "dj", channelId: "deck-b" }, "sound-b");
 
     expect(snapshots.get("sound-a")?.sidechainSoundId).toBe("sound-b");
   });

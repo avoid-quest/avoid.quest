@@ -1,4 +1,3 @@
-/** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 import { Button } from "@avoid.quest/ui/components/button";
 import { Slider } from "@avoid.quest/ui/components/slider";
 import { Spinner } from "@avoid.quest/ui/components/spinner";
@@ -13,10 +12,6 @@ import {
 import { type Radio, useAudio } from "@/lib/audio";
 
 const MAX_VOLUME = 100;
-
-function reloadPage() {
-  window.location.reload();
-}
 
 export type AudioPlayerProps = {
   radio: Radio | null;
@@ -41,14 +36,13 @@ export function AudioPlayer({
     togglePlayPause,
   } = useAudio(radio);
 
-  function handleVolumeChange(value: number[]) {
+  const handleVolumeChange = (value: number[]) => {
     const raw = value[0] ?? 0;
     setVolume(raw / MAX_VOLUME);
-  }
-
-  function handleMute() {
+  };
+  const handleMute = () => {
     setVolume(volume > 0 ? 0 : 1);
-  }
+  };
 
   if (error) {
     return (
@@ -56,7 +50,11 @@ export function AudioPlayer({
         className={cn("flex items-center gap-2 text-destructive", className)}
       >
         <div className="text-sm">{error.message}</div>
-        <Button onClick={reloadPage} size="sm" variant="outline">
+        <Button
+          onClick={() => window.location.reload()}
+          size="sm"
+          variant="outline"
+        >
           Retry
         </Button>
       </div>

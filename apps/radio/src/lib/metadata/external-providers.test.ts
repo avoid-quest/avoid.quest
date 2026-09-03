@@ -19,27 +19,27 @@ describe("external radio metadata providers", () => {
   test("normalizes Sygma/Airtime live-info style current tracks", async () => {
     const calls: string[] = [];
     const result = await tryAirtimeLiveInfo({
-      expiresAt: 2000,
       fetchImpl: (url) => {
         calls.push(url);
         return Promise.resolve(
           json({
             tracks: {
               current: {
-                metadata: {
-                  album_title: "Guests",
-                  artist_name: "",
-                  info_url: "guests-179-naive",
-                  track_title: "GUESTS 179 – naîve",
-                },
                 name: " - ignored fallback",
+                metadata: {
+                  artist_name: "",
+                  track_title: "GUESTS 179 – naîve",
+                  album_title: "Guests",
+                  info_url: "guests-179-naive",
+                },
               },
             },
           })
         );
       },
-      sampledAt: 1000,
       streamUrl: "https://radio.syg.ma/audio.ogg",
+      sampledAt: 1000,
+      expiresAt: 2000,
     });
 
     expect(calls[0]).toBe("https://radio.syg.ma/stats-icecast.json");
@@ -55,7 +55,6 @@ describe("external radio metadata providers", () => {
     const calls: string[] = [];
     const result = await tryAirtimeLiveInfo(
       {
-        expiresAt: 2000,
         fetchImpl: (url) => {
           calls.push(url);
           if (url === "https://bad.example/live-info") {
@@ -71,8 +70,9 @@ describe("external radio metadata providers", () => {
             })
           );
         },
-        sampledAt: 1000,
         streamUrl: "https://radio.example/audio.mp3",
+        sampledAt: 1000,
+        expiresAt: 2000,
       },
       ["https://bad.example/live-info", "https://good.example/live-info"]
     );
@@ -92,12 +92,12 @@ describe("external radio metadata providers", () => {
     await expect(
       tryAirtimeLiveInfo(
         {
-          expiresAt: 2000,
           fetchImpl: () => {
             throw abortError;
           },
-          sampledAt: 1000,
           streamUrl: "https://radio.example/audio.mp3",
+          sampledAt: 1000,
+          expiresAt: 2000,
         },
         ["https://bad.example/live-info", "https://good.example/live-info"]
       )
@@ -107,7 +107,6 @@ describe("external radio metadata providers", () => {
   test("tries Cashmere Airtime v2 before legacy live-info fallback", async () => {
     const calls: string[] = [];
     const result = await tryAirtimeLiveInfo({
-      expiresAt: 2000,
       fetchImpl: (url) => {
         calls.push(url);
         return Promise.resolve(
@@ -120,8 +119,9 @@ describe("external radio metadata providers", () => {
           })
         );
       },
-      sampledAt: 1000,
       streamUrl: "https://cashmereradio.out.airtime.pro/cashmereradio_b",
+      sampledAt: 1000,
+      expiresAt: 2000,
     });
 
     expect(calls[0]).toBe("https://cashmereradio.airtime.pro/api/live-info-v2");
@@ -131,63 +131,63 @@ describe("external radio metadata providers", () => {
   test("normalizes AzuraCast now-playing API responses", async () => {
     const calls: string[] = [];
     const result = await tryAzuraCastNowPlaying({
-      expiresAt: 2000,
       fetchImpl: (url) => {
         calls.push(url);
         return Promise.resolve(
           json({
-            now_playing: {
-              song: {
-                album: "Album",
-                art: "https://radio.example/art.jpg",
-                artist: "Artist",
-                genre: "Genre",
-                title: "Title",
-              },
-            },
             station: {
+              name: "Gatto Misterioso",
               description: "AzuraCast station",
               listen_url:
                 "https://azuracast.gattomisterioso.top/listen/gatto_misterioso/radio.mp3",
-              name: "Gatto Misterioso",
+            },
+            now_playing: {
+              song: {
+                artist: "Artist",
+                title: "Title",
+                album: "Album",
+                genre: "Genre",
+                art: "https://radio.example/art.jpg",
+              },
             },
           })
         );
       },
-      sampledAt: 1000,
       streamUrl:
         "https://azuracast.gattomisterioso.top/listen/gatto_misterioso/radio.mp3",
+      sampledAt: 1000,
+      expiresAt: 2000,
     });
 
     expect(calls).toEqual([
       "https://azuracast.gattomisterioso.top/api/nowplaying/gatto_misterioso",
     ]);
     expect(result).toMatchObject({
-      album: "Album",
-      artist: "Artist",
-      artworkUrl: "https://radio.example/art.jpg",
-      genre: "Genre",
       source: "azuracast-now-playing",
-      stationName: "Gatto Misterioso",
+      artist: "Artist",
       title: "Title",
+      artworkUrl: "https://radio.example/art.jpg",
+      album: "Album",
+      genre: "Genre",
+      stationName: "Gatto Misterioso",
     });
   });
 
   test("does not default AzuraCast multi-station responses to the first station", async () => {
     const result = await tryAzuraCastNowPlaying({
-      expiresAt: 2000,
       fetchImpl: async () =>
         json([
           {
-            now_playing: { song: { title: "Wrong Station" } },
             station: {
               listen_url: "https://azuracast.example/listen/other/radio.mp3",
               name: "Other Station",
             },
+            now_playing: { song: { title: "Wrong Station" } },
           },
         ]),
-      sampledAt: 1000,
       streamUrl: "https://azuracast.example/listen/right/radio.mp3",
+      sampledAt: 1000,
+      expiresAt: 2000,
     });
 
     expect(result).toBeNull();
@@ -195,17 +195,17 @@ describe("external radio metadata providers", () => {
 
   test("does not accept a single AzuraCast response for a different stream", async () => {
     const result = await tryAzuraCastNowPlaying({
-      expiresAt: 2000,
       fetchImpl: async () =>
         json({
-          now_playing: { song: { title: "Wrong Station" } },
           station: {
             listen_url: "https://azuracast.example/listen/other/radio.mp3",
             name: "Other Station",
           },
+          now_playing: { song: { title: "Wrong Station" } },
         }),
-      sampledAt: 1000,
       streamUrl: "https://azuracast.example/listen/right/radio.mp3",
+      sampledAt: 1000,
+      expiresAt: 2000,
     });
 
     expect(result).toBeNull();
@@ -217,12 +217,12 @@ describe("external radio metadata providers", () => {
 
     await expect(
       tryAzuraCastNowPlaying({
-        expiresAt: 2000,
         fetchImpl: () => {
           throw abortError;
         },
-        sampledAt: 1000,
         streamUrl: "https://azuracast.example/listen/right/radio.mp3",
+        sampledAt: 1000,
+        expiresAt: 2000,
       })
     ).rejects.toThrow("aborted");
   });
@@ -230,12 +230,12 @@ describe("external radio metadata providers", () => {
   test("propagates AzuraCast URL validation errors instead of falling back", async () => {
     await expect(
       tryAzuraCastNowPlaying({
-        expiresAt: 2000,
         fetchImpl: () => {
           throw new RadioMetadataValidationError("internal-address");
         },
-        sampledAt: 1000,
         streamUrl: "https://azuracast.example/listen/right/radio.mp3",
+        sampledAt: 1000,
+        expiresAt: 2000,
       })
     ).rejects.toBeInstanceOf(RadioMetadataValidationError);
   });
@@ -243,37 +243,36 @@ describe("external radio metadata providers", () => {
   test("normalizes SHOUTcast JSON stats responses", async () => {
     const calls: string[] = [];
     const result = await tryShoutcastStatus({
-      expiresAt: 2000,
       fetchImpl: (url) => {
         calls.push(url);
         return Promise.resolve(
           json({
-            bitrate: "128",
-            servergenre: "Eclectic",
-            servertitle: "SHOUTcast Station",
             songtitle: "Artist - Title",
+            servertitle: "SHOUTcast Station",
+            servergenre: "Eclectic",
+            bitrate: "128",
           })
         );
       },
-      sampledAt: 1000,
       streamUrl: "https://shoutcast.example/stream",
+      sampledAt: 1000,
+      expiresAt: 2000,
     });
 
     expect(calls).toEqual(["https://shoutcast.example/stats?sid=1&json=1"]);
     expect(result).toMatchObject({
-      artist: "Artist",
-      bitrate: 128,
-      genre: "Eclectic",
       source: "shoutcast-status",
-      stationName: "SHOUTcast Station",
+      artist: "Artist",
       title: "Title",
+      stationName: "SHOUTcast Station",
+      genre: "Eclectic",
+      bitrate: 128,
     });
   });
 
   test("falls back to legacy SHOUTcast 7.html text responses", async () => {
     const calls: string[] = [];
     const result = await tryShoutcastStatus({
-      expiresAt: 2000,
       fetchImpl: (url) => {
         calls.push(url);
         if (url.includes("/stats") || url.includes("/currentsong")) {
@@ -281,8 +280,9 @@ describe("external radio metadata providers", () => {
         }
         return Promise.resolve(new Response("1,1,1,128,1,Artist - Title"));
       },
-      sampledAt: 1000,
       streamUrl: "https://shoutcast.example/stream",
+      sampledAt: 1000,
+      expiresAt: 2000,
     });
 
     expect(calls).toEqual([
@@ -291,15 +291,14 @@ describe("external radio metadata providers", () => {
       "https://shoutcast.example/7.html?sid=1",
     ]);
     expect(result).toMatchObject({
-      artist: "Artist",
       source: "shoutcast-status",
+      artist: "Artist",
       title: "Title",
     });
   });
 
   test("keeps comma-containing titles from legacy SHOUTcast 7.html responses", async () => {
     const result = await tryShoutcastStatus({
-      expiresAt: 2000,
       fetchImpl: (url) => {
         if (url.includes("/stats") || url.includes("/currentsong")) {
           return Promise.resolve(new Response("", { status: 404 }));
@@ -308,8 +307,9 @@ describe("external radio metadata providers", () => {
           new Response("1,1,1,128,1,Artist - Title, Part Two")
         );
       },
-      sampledAt: 1000,
       streamUrl: "https://shoutcast.example/stream",
+      sampledAt: 1000,
+      expiresAt: 2000,
     });
 
     expect(result).toMatchObject({
@@ -324,19 +324,18 @@ describe("external radio metadata providers", () => {
 
     await expect(
       tryShoutcastStatus({
-        expiresAt: 2000,
         fetchImpl: () => {
           throw abortError;
         },
-        sampledAt: 1000,
         streamUrl: "https://shoutcast.example/stream",
+        sampledAt: 1000,
+        expiresAt: 2000,
       })
     ).rejects.toThrow("aborted");
   });
 
   test("uses the NTS live API channel matching the stream path", async () => {
     const result = await tryNtsLiveApi({
-      expiresAt: 2000,
       fetchImpl: async () =>
         json({
           results: [
@@ -345,23 +344,24 @@ describe("external radio metadata providers", () => {
               channel_name: "2",
               now: {
                 broadcast_title: "MUTUALISM",
+                links: [
+                  {
+                    rel: "details",
+                    href: "https://www.nts.live/api/v2/shows/mutualism/episodes/mutualism-1st-january-2026",
+                  },
+                ],
                 embeds: {
                   details: {
                     genres: [{ value: "Experimental" }],
                   },
                 },
-                links: [
-                  {
-                    href: "https://www.nts.live/api/v2/shows/mutualism/episodes/mutualism-1st-january-2026",
-                    rel: "details",
-                  },
-                ],
               },
             },
           ],
         }),
-      sampledAt: 1000,
       streamUrl: "https://stream-relay-geo.ntslive.net/stream2",
+      sampledAt: 1000,
+      expiresAt: 2000,
     });
 
     expect(result?.source).toBe("nts-live-api");
@@ -374,12 +374,12 @@ describe("external radio metadata providers", () => {
 
   test("returns null for NTS network failures so ICY fallback can run", async () => {
     const result = await tryNtsLiveApi({
-      expiresAt: 2000,
       fetchImpl: () => {
         throw new Error("network failed");
       },
-      sampledAt: 1000,
       streamUrl: "https://stream-relay-geo.ntslive.net/stream",
+      sampledAt: 1000,
+      expiresAt: 2000,
     });
 
     expect(result).toBeNull();
@@ -391,28 +391,28 @@ describe("external radio metadata providers", () => {
 
     await expect(
       tryNtsLiveApi({
-        expiresAt: 2000,
         fetchImpl: () => {
           throw abortError;
         },
-        sampledAt: 1000,
         streamUrl: "https://stream-relay-geo.ntslive.net/stream",
+        sampledAt: 1000,
+        expiresAt: 2000,
       })
     ).rejects.toThrow("aborted");
   });
 
   test("normalizes Radio BlackOut listening endpoint", async () => {
     const result = await tryRadioBlackoutApi({
-      expiresAt: 2000,
       fetchImpl: async () =>
         json({
+          title: "B-Rave Ragazze",
           excerpt: "Current show",
           featured_media: "https://radioblackout.org/logo.png",
           link: "https://radioblackout.org/shows/b-rave-ragazze/",
-          title: "B-Rave Ragazze",
         }),
-      sampledAt: 1000,
       streamUrl: "https://zeppelin.streampunk.cc/_stream/blackout.mp3",
+      sampledAt: 1000,
+      expiresAt: 2000,
     });
 
     expect(result?.source).toBe("radio-blackout-api");
@@ -425,12 +425,12 @@ describe("external radio metadata providers", () => {
 
   test("returns null for Radio BlackOut network failures so ICY fallback can run", async () => {
     const result = await tryRadioBlackoutApi({
-      expiresAt: 2000,
       fetchImpl: () => {
         throw new Error("network failed");
       },
-      sampledAt: 1000,
       streamUrl: "https://zeppelin.streampunk.cc/_stream/blackout.mp3",
+      sampledAt: 1000,
+      expiresAt: 2000,
     });
 
     expect(result).toBeNull();
@@ -439,12 +439,12 @@ describe("external radio metadata providers", () => {
   test("propagates Radio BlackOut URL validation errors", async () => {
     await expect(
       tryRadioBlackoutApi({
-        expiresAt: 2000,
         fetchImpl: () => {
           throw new RadioMetadataValidationError("internal-address");
         },
-        sampledAt: 1000,
         streamUrl: "https://zeppelin.streampunk.cc/_stream/blackout.mp3",
+        sampledAt: 1000,
+        expiresAt: 2000,
       })
     ).rejects.toBeInstanceOf(RadioMetadataValidationError);
   });

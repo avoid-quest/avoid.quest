@@ -36,9 +36,9 @@ function getProblemMessage(data: unknown, fallback: string): string {
       return value;
     }
   }
-  const { error } = data;
+  const error = data.error;
   if (isRecord(error)) {
-    const { message } = error;
+    const message = error.message;
     if (isNonEmptyString(message)) {
       return message;
     }
@@ -58,7 +58,8 @@ export function decodeRadioMetadataResponse(
   }
 
   if (isRecord(data) && data.ok === false && isRecord(data.error)) {
-    const { code, message } = data.error;
+    const code = data.error.code;
+    const message = data.error.message;
     if (typeof code === "string" && RADIO_METADATA_ERROR_CODES.has(code)) {
       const decoded = data as Extract<RadioMetadataResponse, { ok: false }>;
       if (code === "RADIO_METADATA_UNSUPPORTED") {

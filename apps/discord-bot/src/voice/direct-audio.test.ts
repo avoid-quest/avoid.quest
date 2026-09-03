@@ -24,23 +24,20 @@ describe("fetchDirectAudioStream", () => {
       throw new Error("Unsafe direct audio URLs should not be fetched");
     });
 
-    const unsafeUrls = [
+    for (const url of [
       "http://127.0.0.1/live.mp3",
       "http://localhost/live.mp3",
       "http://169.254.169.254/latest/meta-data.mp3",
       "http://metadata.google.internal/live.mp3",
       "http://[fe80::1]/live.mp3",
-    ];
-    await Promise.all(
-      unsafeUrls.map(async (url) => {
-        await expect(
-          fetchDirectAudioStream(url, { fetchImpl })
-        ).rejects.toMatchObject({
-          reason: "internal-address",
-          url,
-        });
-      })
-    );
+    ]) {
+      await expect(
+        fetchDirectAudioStream(url, { fetchImpl })
+      ).rejects.toMatchObject({
+        reason: "internal-address",
+        url,
+      });
+    }
 
     expect(fetchImpl).not.toHaveBeenCalled();
   });

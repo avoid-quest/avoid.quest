@@ -70,6 +70,40 @@ describe("external radio metadata providers", () => {
     expect(result?.stationName).toBe("Sygma Radio");
   });
 
+  test("keeps base Airtime metadata when optional enrichment aborts", async () => {
+    const abortError = new Error("aborted");
+    abortError.name = "AbortError";
+
+    const result = await tryAirtimeLiveInfo({
+      expiresAt: 2000,
+      fetchImpl: (url) => {
+        if (url === "https://radio.syg.ma/stats-icecast.json") {
+          return Promise.resolve(
+            json({
+              tracks: {
+                current: {
+                  metadata: {
+                    info_url: "guests-179-naive",
+                    track_title: "GUESTS 179 – naîve",
+                  },
+                },
+              },
+            })
+          );
+        }
+        throw abortError;
+      },
+      sampledAt: 1000,
+      streamUrl: "https://radio.syg.ma/audio.ogg",
+    });
+
+    expect(result).toMatchObject({
+      artworkUrl: null,
+      itemUrl: "https://radio.syg.ma/episodes/guests-179-naive",
+      title: "GUESTS 179 – naîve",
+    });
+  });
+
   test("continues Airtime fallbacks after a candidate fetch throws", async () => {
     const calls: string[] = [];
     const result = await tryAirtimeLiveInfo(
@@ -177,6 +211,108 @@ describe("external radio metadata providers", () => {
     expect(result?.itemUrl).toBe("https://cashmereradio.com/episode/v2-show/");
     expect(result?.stationName).toBe("Cashmere Radio");
     expect(result?.title).toBe("V2 Show");
+  });
+
+  test("rejects non-HTTP Cashmere episode links", async () => {
+    const result = await tryAirtimeLiveInfo({
+      expiresAt: 2000,
+      fetchImpl: (url) =>
+        Promise.resolve(
+          url === "https://backstage.cashmereradio.com/graphql"
+            ? json({
+                data: {
+                  episodes: {
+                    nodes: [
+                      {
+                        title: "Unsafe Link Show",
+                        uri: "javascript:alert(1)",
+                      },
+                    ],
+                  },
+                },
+              })
+            : json({
+                tracks: {
+                  current: {
+                    metadata: { track_title: "Unsafe Link Show" },
+                  },
+                },
+              })
+        ),
+      sampledAt: 1000,
+      streamUrl: "https://cashmereradio.out.airtime.pro/cashmereradio_b",
+    });
+
+    expect(result?.itemUrl).toBeNull();
+  });
+
+  test("enriches an exact Cashmere archive episode from its REST record", async () => {
+    const calls: string[] = [];
+    const result = await tryAirtimeLiveInfo({
+      expiresAt: 2000,
+      fetchImpl: (url) => {
+        calls.push(url);
+        if (url === "https://cashmereradio.airtime.pro/api/live-info-v2") {
+          return Promise.resolve(
+            json({
+              tracks: {
+                current: {
+                  metadata: { track_title: "Archive Show" },
+                },
+              },
+            })
+          );
+        }
+        if (url === "https://backstage.cashmereradio.com/graphql") {
+          return Promise.resolve(
+            json({
+              data: {
+                episodes: {
+                  nodes: [
+                    {
+                      databaseId: 42,
+                      title: "Archive Show",
+                      uri: "/episode/archive-show/",
+                    },
+                  ],
+                },
+              },
+            })
+          );
+        }
+        if (
+          url.startsWith(
+            "https://backstage.cashmereradio.com/wp-json/wp/v2/episode/42?"
+          )
+        ) {
+          return Promise.resolve(
+            json({
+              acf: {
+                episode_filter_genre: ["Ambient", "Experimental"],
+                episode_filter_mood: ["Dreamy"],
+              },
+              content: {
+                rendered: "<p>Archive &amp; episode description.</p>",
+              },
+              id: 42,
+              link: "https://backstage.cashmereradio.com/episode/archive-show/",
+              slug: "archive-show",
+            })
+          );
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      },
+      sampledAt: 1000,
+      streamUrl: "https://cashmereradio.out.airtime.pro/cashmereradio_b",
+    });
+
+    expect(calls).toHaveLength(3);
+    expect(result).toMatchObject({
+      genre: "Ambient, Experimental, Dreamy",
+      itemUrl: "https://cashmereradio.com/episode/archive-show/",
+      stationDescription: "Archive & episode description.",
+      title: "Archive Show",
+    });
   });
 
   test("enriches an exact Cashmere live show from its first-party page record", async () => {
@@ -349,6 +485,52 @@ describe("external radio metadata providers", () => {
         "https://cdn.sanity.io/images/7rbo2iih/production/abc123-1200x1200.jpg",
       itemUrl: null,
       stationName: "Internet Public Radio",
+      title: "Memory Archive w/ FDG (R)",
+    });
+  });
+
+  test("rejects the only IPR episode when its date contradicts the feed", async () => {
+    const liveInfoUrl =
+      "https://stream-relay-geo.internetpublicradio.live/api-filtered.php";
+    const result = await tryAirtimeLiveInfo(
+      {
+        expiresAt: 2000,
+        fetchImpl: async (url) =>
+          url.startsWith("https://www.internetpublicradio.live/api/search?")
+            ? json([
+                {
+                  _type: "episode",
+                  date: "2024-07-02",
+                  image: {
+                    asset: { _ref: "image-abc123-1200x1200-jpg" },
+                  },
+                  label: "Memory Archive w/ FDG",
+                  resident: {
+                    slug: { current: "memory-archive-w-fdg" },
+                  },
+                  slug: { current: "memory-archive-w-fdg-2nd-july-2024" },
+                },
+              ])
+            : json({
+                tracks: {
+                  current: {
+                    metadata: {
+                      comments: "02.04.24",
+                      track_title: "Memory Archive w/ FDG (R)",
+                    },
+                  },
+                },
+              }),
+        sampledAt: 1000,
+        streamUrl:
+          "https://stream-relay-geo.internetpublicradio.live/stream/main",
+      },
+      [liveInfoUrl]
+    );
+
+    expect(result).toMatchObject({
+      artworkUrl: null,
+      itemUrl: null,
       title: "Memory Archive w/ FDG (R)",
     });
   });
@@ -646,6 +828,58 @@ describe("external radio metadata providers", () => {
       stationName: "HKCR",
       title: "Current Show",
     });
+  });
+
+  test("rejects an HKCR entry with an invalid calendar date", async () => {
+    const result = await tryHkcrSchedule({
+      expiresAt: Date.parse("2026-03-03T04:00:00Z"),
+      fetchImpl: async () =>
+        json([
+          {
+            date: "2026-02-31",
+            endTime: "12:00",
+            resident: { name: "Resident", slug: "resident" },
+            startTime: "11:00",
+            title: "Invalid Date Show",
+          },
+        ]),
+      sampledAt: Date.parse("2026-03-03T03:30:00Z"),
+      streamUrl: "https://stream-test.hkcr.live/hls/main.m3u8",
+    });
+
+    expect(result).toBeNull();
+  });
+
+  test("prefers an HKCR show page over the resident fallback", async () => {
+    const calls: string[] = [];
+    const result = await tryHkcrSchedule({
+      expiresAt: Date.parse("2026-09-03T04:00:00Z"),
+      fetchImpl: (url) => {
+        calls.push(url);
+        return Promise.resolve(
+          url === "https://cms.hkcr.live/shows/show-id"
+            ? json({ slug: "actual-show" })
+            : json([
+                {
+                  date: "2026-09-03",
+                  endTime: "12:00",
+                  resident: { name: "Resident", slug: "resident" },
+                  show: "show-id",
+                  startTime: "11:00",
+                  title: "Current Show",
+                },
+              ])
+        );
+      },
+      sampledAt: Date.parse("2026-09-03T03:30:00Z"),
+      streamUrl: "https://stream-test.hkcr.live/hls/main.m3u8",
+    });
+
+    expect(calls).toEqual([
+      "https://cms.hkcr.live/schedule/current",
+      "https://cms.hkcr.live/shows/show-id",
+    ]);
+    expect(result?.itemUrl).toBe("https://hkcr.live/shows/actual-show");
   });
 
   test("normalizes the current Resonance Extra episode", async () => {

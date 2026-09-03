@@ -12,11 +12,14 @@ const AIRTIME_STATION_NAMES: Record<string, string> = {
 };
 const CASHMERE_GRAPHQL_URL = "https://backstage.cashmereradio.com/graphql";
 const CASHMERE_REST_URL = "https://backstage.cashmereradio.com/wp-json/wp/v2";
+const CASHMERE_EPISODE_PATH_PATTERN = /^\/episode\/([^/]+)\/?$/;
 const CASHMERE_SHOW_PATH_PATTERN = /^\/shows\/([^/]+)\/?$/;
 const DATE_STAMP_PATTERN = /^(\d{2})\.(\d{2})\.(\d{2}|\d{4})$/;
 const HKCR_SCHEDULE_URL = "https://cms.hkcr.live/schedule/current";
+const HKCR_SHOW_URL = "https://cms.hkcr.live/shows";
 const HKCR_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const HKCR_TIME_PATTERN = /^\d{2}:\d{2}$/;
+const HKCR_UTC_OFFSET_MS = 8 * 60 * 60 * 1000;
 const IPR_REPLAY_SUFFIX_PATTERN = /\s*\((?:r|replay)\)\s*$/i;
 const IPR_SEARCH_URL = "https://www.internetpublicradio.live/api/search";
 const INTEGER_FIELD_PATTERN = /^\d+$/;
@@ -70,9 +73,21 @@ type AirtimeShow = {
 };
 
 type CashmereEpisode = {
+  databaseId?: unknown;
   featuredImage?: { node?: { sourceUrl?: unknown } };
   title?: unknown;
   uri?: unknown;
+};
+
+type CashmereEpisodeRecord = {
+  acf?: {
+    episode_filter_genre?: unknown;
+    episode_filter_mood?: unknown;
+  };
+  content?: { rendered?: unknown };
+  id?: unknown;
+  link?: unknown;
+  slug?: unknown;
 };
 
 type CashmereShow = {
@@ -144,10 +159,13 @@ type HkcrScheduleEntry = {
   endTime?: unknown;
   picture?: { url?: unknown };
   resident?: { name?: unknown; slug?: unknown };
+  show?: unknown;
   startTime?: unknown;
   thumbnail?: { url?: unknown };
   title?: unknown;
 };
+
+type HkcrShow = { slug?: unknown };
 
 type ResonanceExtraSchedule = {
   now?: {
@@ -199,6 +217,12 @@ function resolvePublicUrl(value: unknown, base: string): string | null {
   } catch {
     return null;
   }
+}
+
+function asStringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.map(asString).filter((item): item is string => Boolean(item))
+    : [];
 }
 
 function isAbortError(error: unknown): boolean {
@@ -478,7 +502,7 @@ async function enrichCashmereNowPlaying(
     if (
       shows.length !== 1 ||
       asString(show?.slug) !== showUrl.slug ||
-      !cashmereShowLinkMatches(show?.link, showUrl.pathname)
+      !cashmereBackendLinkMatches(show?.link, showUrl.pathname)
     ) {
       return nowPlaying;
     }
@@ -497,7 +521,7 @@ async function enrichCashmereNowPlaying(
   const result = await fetchObjectJson(fetchImpl, CASHMERE_GRAPHQL_URL, {
     body: JSON.stringify({
       query:
-        "query SearchEpisode($q: String!) { episodes(where: {search: $q}, first: 10) { nodes { title uri featuredImage { node { sourceUrl } } } } }",
+        "query SearchEpisode($q: String!) { episodes(where: {search: $q}, first: 10) { nodes { databaseId title uri featuredImage { node { sourceUrl } } } } }",
       variables: { q: nowPlaying.title },
     }),
     headers: { "Content-Type": "application/json" },
@@ -517,15 +541,72 @@ async function enrichCashmereNowPlaying(
   const [episode] = matches;
   const uri = asString(episode?.uri);
   const itemUrl = uri
-    ? new URL(uri, "https://cashmereradio.com").toString()
+    ? resolvePublicUrl(uri, "https://cashmereradio.com")
     : null;
-  return {
+  const enriched = {
     ...nowPlaying,
     artworkUrl:
       nowPlaying.artworkUrl ??
       asPublicUrl(episode?.featuredImage?.node?.sourceUrl),
     itemUrl: nowPlaying.itemUrl ?? itemUrl,
   };
+  return await enrichCashmereEpisodeRecord(fetchImpl, enriched, episode);
+}
+
+async function enrichCashmereEpisodeRecord(
+  fetchImpl: FetchLike,
+  nowPlaying: RadioNowPlaying,
+  episode: CashmereEpisode | undefined
+): Promise<RadioNowPlaying> {
+  const databaseId = episode?.databaseId;
+  const episodeUrl = getCashmereEpisodeUrl(nowPlaying.itemUrl);
+  if (
+    !(
+      typeof databaseId === "number" &&
+      Number.isSafeInteger(databaseId) &&
+      episodeUrl
+    )
+  ) {
+    return nowPlaying;
+  }
+  const detailResult = await fetchObjectJson(
+    fetchImpl,
+    `${CASHMERE_REST_URL}/episode/${databaseId}?_fields=id%2Cslug%2Clink%2Ccontent%2Cacf`
+  );
+  const record = detailResult?.data as CashmereEpisodeRecord | undefined;
+  if (
+    record?.id !== databaseId ||
+    asString(record.slug) !== episodeUrl.slug ||
+    !cashmereBackendLinkMatches(record.link, episodeUrl.pathname)
+  ) {
+    return nowPlaying;
+  }
+  const tags = [
+    ...asStringArray(record.acf?.episode_filter_genre),
+    ...asStringArray(record.acf?.episode_filter_mood),
+  ];
+  return {
+    ...nowPlaying,
+    genre: nowPlaying.genre ?? ([...new Set(tags)].join(", ") || null),
+    stationDescription:
+      nowPlaying.stationDescription ?? plainText(record.content?.rendered),
+  };
+}
+
+function getCashmereEpisodeUrl(
+  value: string | null
+): { pathname: string; slug: string } | null {
+  try {
+    const url = value ? new URL(value) : null;
+    const match = url?.pathname.match(CASHMERE_EPISODE_PATH_PATTERN);
+    return url?.protocol === "https:" &&
+      url.hostname === "cashmereradio.com" &&
+      match?.[1]
+      ? { pathname: url.pathname, slug: decodeURIComponent(match[1]) }
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 function getCashmereShowUrl(
@@ -544,7 +625,7 @@ function getCashmereShowUrl(
   }
 }
 
-function cashmereShowLinkMatches(value: unknown, pathname: string): boolean {
+function cashmereBackendLinkMatches(value: unknown, pathname: string): boolean {
   try {
     const url = new URL(asString(value) ?? "");
     return (
@@ -652,7 +733,7 @@ async function enrichIprNowPlaying(
   let episode: IprSearchResult | undefined;
   if (datedEpisodes.length === 1) {
     [episode] = datedEpisodes;
-  } else if (episodes.length === 1) {
+  } else if (!episodeDate && episodes.length === 1) {
     [episode] = episodes;
   }
   const shows = matches.filter((candidate) => {
@@ -690,7 +771,7 @@ async function enrichAirtimeNowPlaying(input: {
       return await enrichIprNowPlaying(fetchImpl, nowPlaying, track?.metadata);
     }
   } catch (error) {
-    if (shouldPropagateFetchError(error)) {
+    if (error instanceof RadioMetadataValidationError) {
       throw error;
     }
   }
@@ -1073,7 +1154,16 @@ function getHkcrScheduleWindow(
 
   const start = Date.parse(`${date}T${startTime}:00+08:00`);
   let end = Date.parse(`${date}T${endTime}:00+08:00`);
-  if (!(Number.isFinite(start) && Number.isFinite(end))) {
+  if (
+    !(
+      Number.isFinite(start) &&
+      Number.isFinite(end) &&
+      new Date(start + HKCR_UTC_OFFSET_MS).toISOString().slice(0, 16) ===
+        `${date}T${startTime}` &&
+      new Date(end + HKCR_UTC_OFFSET_MS).toISOString().slice(0, 16) ===
+        `${date}T${endTime}`
+    )
+  ) {
     return null;
   }
   if (end <= start) {
@@ -1082,24 +1172,32 @@ function getHkcrScheduleWindow(
   return { end, start };
 }
 
+function findCurrentHkcrEntry(
+  data: object,
+  sampledAt: number
+): HkcrScheduleEntry | null {
+  if (!Array.isArray(data)) {
+    return null;
+  }
+  return (
+    data.find((candidate) => {
+      const window = getHkcrScheduleWindow(candidate as HkcrScheduleEntry);
+      return window && sampledAt >= window.start && sampledAt < window.end;
+    }) ?? null
+  );
+}
+
 function normalizeHkcrSchedule(input: {
-  data: object;
+  entry: HkcrScheduleEntry;
   streamUrl: string;
   resolvedUrl?: string;
   sampledAt: number;
   expiresAt: number;
+  showUrl?: string | null;
 }): RadioNowPlaying | null {
-  if (!Array.isArray(input.data)) {
-    return null;
-  }
-  const entry = input.data.find((candidate) => {
-    const window = getHkcrScheduleWindow(candidate as HkcrScheduleEntry);
-    return (
-      window && input.sampledAt >= window.start && input.sampledAt < window.end
-    );
-  }) as HkcrScheduleEntry | undefined;
-  const title = asString(entry?.title);
-  if (!(entry && title)) {
+  const { entry } = input;
+  const title = asString(entry.title);
+  if (!title) {
     return null;
   }
 
@@ -1109,12 +1207,14 @@ function normalizeHkcrSchedule(input: {
     artworkUrl:
       asPublicUrl(entry.thumbnail?.url) ?? asPublicUrl(entry.picture?.url),
     expiresAt: input.expiresAt,
-    itemUrl: residentSlug
-      ? new URL(
-          `/residents/${encodeURIComponent(residentSlug)}`,
-          "https://hkcr.live"
-        ).toString()
-      : null,
+    itemUrl:
+      input.showUrl ??
+      (residentSlug
+        ? new URL(
+            `/residents/${encodeURIComponent(residentSlug)}`,
+            "https://hkcr.live"
+          ).toString()
+        : null),
     rawTitle: artist && artist !== title ? `${artist} - ${title}` : title,
     resolvedUrl: input.resolvedUrl,
     sampledAt: input.sampledAt,
@@ -1137,15 +1237,42 @@ export async function tryHkcrSchedule(
     }
     return null;
   }
-  return result
-    ? normalizeHkcrSchedule({
-        data: result.data,
-        expiresAt: input.expiresAt,
-        resolvedUrl: result.response.url || HKCR_SCHEDULE_URL,
-        sampledAt: input.sampledAt,
-        streamUrl: input.streamUrl,
-      })
-    : null;
+  if (!result) {
+    return null;
+  }
+  const entry = findCurrentHkcrEntry(result.data, input.sampledAt);
+  if (!entry) {
+    return null;
+  }
+  let showUrl: string | null = null;
+  const showId = asString(entry.show);
+  if (showId) {
+    try {
+      const showResult = await fetchObjectJson(
+        input.fetchImpl,
+        `${HKCR_SHOW_URL}/${encodeURIComponent(showId)}`
+      );
+      const slug = asString((showResult?.data as HkcrShow | undefined)?.slug);
+      showUrl = slug
+        ? new URL(
+            `/shows/${encodeURIComponent(slug)}`,
+            "https://hkcr.live"
+          ).toString()
+        : null;
+    } catch (error) {
+      if (error instanceof RadioMetadataValidationError) {
+        throw error;
+      }
+    }
+  }
+  return normalizeHkcrSchedule({
+    entry,
+    expiresAt: input.expiresAt,
+    resolvedUrl: result.response.url || HKCR_SCHEDULE_URL,
+    sampledAt: input.sampledAt,
+    showUrl,
+    streamUrl: input.streamUrl,
+  });
 }
 
 function normalizeResonanceExtraSchedule(input: {

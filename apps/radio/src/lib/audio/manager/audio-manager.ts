@@ -266,7 +266,7 @@ export class AudioManager {
     const resumePromise = resumeAudioContext();
     // Build the native master shell synchronously so the media play request
     // can remain in the originating user-activation task on mobile.
-    this.output.getMainOutput(context);
+    this.output.getMainMeterSource(context);
     this.output.replaceContext(context).catch(console.error);
 
     // Update instance state
@@ -1153,9 +1153,9 @@ export class AudioManager {
     // Resume the audio context first
     await resumeAudioContext();
 
-    this.output.getMainOutput(context);
+    this.output.getMainMeterSource(context);
     this.output.replaceContext(context).catch(console.error);
-    await this.meters.setMasterSource(this.output.getMainOutput(context));
+    await this.meters.setMasterSource(this.output.getMainMeterSource(context));
     this.audioSystemInitialized = true;
   }
 

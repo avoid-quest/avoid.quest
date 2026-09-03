@@ -74,19 +74,19 @@ describe("BrowserOutputAdapter", () => {
     const meter = createSource(graph.context);
     const mainDelay = context.delays[0] as unknown as AudioNode;
 
-    graph.mainOutput.connect(meter as unknown as AudioNode);
+    graph.mainMeterTap.connect(meter as unknown as AudioNode);
     graph.connectMain(delayedSource as unknown as AudioNode);
     graph.connectMain(realtimeSource as unknown as AudioNode, true);
 
     expect(delayedSource.connections).toEqual(
-      new Set([graph.mainOutput, mainDelay])
+      new Set([graph.mainMeterTap, mainDelay])
     );
     expect(realtimeSource.connections).toEqual(
-      new Set([graph.mainOutput, context.destination])
+      new Set([graph.mainMeterTap, context.destination])
     );
-    expect((graph.mainOutput as unknown as FakeAudioNode).connections).toEqual(
-      new Set([meter as unknown as AudioNode])
-    );
+    expect(
+      (graph.mainMeterTap as unknown as FakeAudioNode).connections
+    ).toEqual(new Set([meter as unknown as AudioNode]));
 
     graph.disconnectMain(delayedSource as unknown as AudioNode);
     graph.disconnectMain(realtimeSource as unknown as AudioNode);

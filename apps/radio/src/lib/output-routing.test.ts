@@ -22,11 +22,11 @@ class InMemoryGraph implements OutputBrowserGraph {
   disposed = false;
   headphoneVolume = 1;
   mainDelayMs = 0;
-  readonly mainOutput: AudioNode;
+  readonly mainMeterTap: AudioNode;
 
   constructor(context: AudioContext) {
     this.context = context;
-    this.mainOutput = node("main-output", context);
+    this.mainMeterTap = node("main-meter-tap", context);
   }
 
   connectCue(source: AudioNode): void {
@@ -329,7 +329,7 @@ describe("OutputRouting", () => {
     const applying = routing.applyMainSettings();
 
     browser.context = { id: "context-2" } as unknown as AudioContext;
-    routing.getMainOutput(browser.context);
+    routing.getMainMeterSource(browser.context);
     firstSink.resolve();
     replaySink.resolve();
     await applying;
@@ -543,7 +543,7 @@ describe("OutputRouting", () => {
     expect(persistence.read().mainOutputId).toBe("speakers");
   });
 
-  test("replays a deferred transaction when main output replaces its graph", async () => {
+  test("replays a deferred transaction when the main meter source replaces its graph", async () => {
     const { browser, persistence, routing } = setup();
     const firstSink = browser.deferNextMainSink();
     const replaySink = browser.deferNextMainSink();
@@ -553,12 +553,12 @@ describe("OutputRouting", () => {
     });
 
     browser.context = { id: "context-2" } as unknown as AudioContext;
-    const mainOutput = routing.getMainOutput(browser.context);
+    const mainMeterSource = routing.getMainMeterSource(browser.context);
     firstSink.resolve();
     replaySink.resolve();
     await applying;
 
-    expect(mainOutput).toBe(browser.graphs[1]?.mainOutput);
+    expect(mainMeterSource).toBe(browser.graphs[1]?.mainMeterTap);
     expect(browser.graphs[0]?.disposed).toBe(true);
     expect(browser.graphs[1]?.mainDelayMs).toBe(70);
     expect(browser.mainSinkChanges).toEqual(["speakers", "speakers"]);

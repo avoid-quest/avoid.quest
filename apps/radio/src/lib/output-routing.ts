@@ -32,7 +32,7 @@ export type MainOutputRoutingSnapshot = OutputRoutingSnapshot & {
 
 export type OutputBrowserGraph = {
   readonly context: AudioContext;
-  readonly mainOutput: AudioNode;
+  readonly mainMeterTap: AudioNode;
   connectCue: (source: AudioNode) => void;
   connectMain: (source: AudioNode, realtime?: boolean) => void;
   disconnectCue: (source: AudioNode) => void;
@@ -623,8 +623,8 @@ class OutputRouting {
     };
   }
 
-  getMainOutput(context = this.options.browser.getContext()): AudioNode {
-    return this.ensureGraph(context).mainOutput;
+  getMainMeterSource(context = this.options.browser.getContext()): AudioNode {
+    return this.ensureGraph(context).mainMeterTap;
   }
 
   getSnapshot(): OutputRoutingSnapshot {

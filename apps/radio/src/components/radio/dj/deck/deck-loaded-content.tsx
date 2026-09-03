@@ -2,7 +2,6 @@ import { Accordion } from "@avoid.quest/ui/components/accordion";
 import { ScrollArea } from "@avoid.quest/ui/components/scroll-area";
 import { useIsMobile } from "@avoid.quest/ui/hooks/use-mobile";
 import { EffectChain } from "@/components/audio/effect-chain";
-import { RadioNowPlaying } from "@/components/radio/radio-now-playing";
 import { useRadioMetadata } from "@/lib/hooks/use-radio-metadata";
 import { DeckChannelStrip } from "./deck-channel-strip";
 import { useDeckContext } from "./deck-context";
@@ -61,11 +60,7 @@ export function LoadedDeckContent({
       <div className="flex h-full min-h-0 flex-col">
         <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
           <div className="flex w-full min-w-0 max-w-full flex-col gap-1.5 pr-0 sm:gap-2 sm:pr-3">
-            <DeckTransport />
-            <RadioNowPlaying
-              className="truncate px-1 text-muted-foreground"
-              metadata={metadata}
-            />
+            <DeckTransport nowPlaying={metadata} />
             <div className="rounded-lg border border-border/50 bg-muted/30 px-2 py-2">
               <DeckChannelStrip />
             </div>
@@ -98,11 +93,7 @@ export function LoadedDeckContent({
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-2">
-      <DeckTransport />
-      <RadioNowPlaying
-        className="truncate px-1 text-muted-foreground"
-        metadata={metadata}
-      />
+      <DeckTransport nowPlaying={metadata} />
       <div className="rounded-lg border border-border/50 bg-muted/30 px-2 py-2">
         <DeckChannelStrip />
       </div>

@@ -1,5 +1,7 @@
-import { beforeAll, describe, expect, mock, test } from "bun:test";
+import { beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
+import type { RadioNowPlaying } from "@/lib/metadata/types";
+import type { PlatformMetadata } from "@/lib/platform-types";
 
 const LONG_TITLE =
   "ARSIDER VIDEOCHAT #2 original super long station title with no predictable length";
@@ -10,7 +12,7 @@ const deckContextMock = {
   channelFilter: 0,
   currentTrackIndex: 0,
   deckId: "deck-a" as const,
-  deckSide: "left" as const,
+  deckSide: "left" as "left" | "right",
   effects: [],
   effectsDryWet: 0,
   hasTracklist: false,
@@ -20,7 +22,7 @@ const deckContextMock = {
   isPlaying: false,
   isSeekable: false,
   loadTrack: async (_streamUrl: string) => undefined,
-  metadata: undefined,
+  metadata: undefined as PlatformMetadata | undefined,
   pan: 0,
   pause: () => undefined,
   peakLevel: { left: 0, right: 0 },
@@ -60,7 +62,32 @@ beforeAll(async () => {
 });
 
 describe("DeckTransport", () => {
-  test("keeps long titles constrained to one truncated line", () => {
+  beforeEach(() => {
+    deckContextMock.metadata = undefined;
+    deckContextMock.deckSide = "left";
+  });
+
+  test("keeps long station titles constrained and offers full details", () => {
+    const html = renderToStaticMarkup(<DeckTransport />);
+
+    expect(html.includes("block truncate")).toBeTrue();
+    expect(html.includes(`title="${LONG_TITLE}"`)).toBeTrue();
+    expect(html.includes(`Details for ${LONG_TITLE}`)).toBeTrue();
+  });
+
+  test("preserves the existing file transport and progress layout", () => {
+    deckContextMock.metadata = {
+      displayName: LONG_TITLE,
+      duration: 100,
+      fileName: "track.mp3",
+      fileSize: 1000,
+      isLocal: true,
+      itemType: "track",
+      mimeType: "audio/mpeg",
+      platform: "static-audio",
+      streamUrl: "blob:track",
+      url: "",
+    };
     const html = renderToStaticMarkup(<DeckTransport />);
 
     expect(
@@ -71,5 +98,36 @@ describe("DeckTransport", () => {
     expect(html.includes("text-ellipsis")).toBeTrue();
     expect(html.includes("whitespace-nowrap")).toBeTrue();
     expect(html.includes(`title="${LONG_TITLE}"`)).toBeTrue();
+    expect(html.includes("Details for")).toBeFalse();
   });
+
+  for (const side of ["left", "right"] as const) {
+    test(`shows current radio metadata inside the ${side} transport`, () => {
+      deckContextMock.deckSide = side;
+      const nowPlaying: RadioNowPlaying = {
+        album: null,
+        artist: "Current Host",
+        artworkUrl: "https://example.com/show.jpg",
+        bitrate: null,
+        expiresAt: 2000,
+        genre: "Ambient",
+        itemUrl: "https://example.com/show",
+        rawTitle: "Current Host - Current Show",
+        sampledAt: 1000,
+        source: "icy",
+        stationDescription: "Current description",
+        stationName: LONG_TITLE,
+        streamUrl: deckContextMock.radio.streamUrl,
+        title: "Current Show",
+      };
+      const html = renderToStaticMarkup(
+        <DeckTransport nowPlaying={nowPlaying} />
+      );
+      expect(html.includes("Current Host")).toBeTrue();
+      expect(html.includes("Details for Current Show")).toBeTrue();
+      expect(html.includes('src="https://example.com/show.jpg"')).toBeTrue();
+      expect(html.includes('href="https://example.com/show"')).toBeTrue();
+      expect(html.includes('aria-label="Play"')).toBeTrue();
+    });
+  }
 });

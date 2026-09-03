@@ -168,18 +168,18 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
           />
 
           <div className="relative hidden min-h-0 flex-1 items-center justify-center p-6 lg:flex">
-            {currentRadio ? (
-              <div className="absolute top-4 right-4 z-10">
-                <RadioItemActions
-                  onDelete={handleDeleteRadio}
-                  onEdit={handleEditRadio}
-                  onSave={handleSaveSessionRadio}
-                  onToggle={handleToggleRadio}
-                  radio={currentRadio}
-                />
-              </div>
-            ) : null}
             <NowPlayingPanel
+              actions={
+                currentRadio ? (
+                  <RadioItemActions
+                    onDelete={handleDeleteRadio}
+                    onEdit={handleEditRadio}
+                    onSave={handleSaveSessionRadio}
+                    onToggle={handleToggleRadio}
+                    radio={currentRadio}
+                  />
+                ) : null
+              }
               error={error}
               isLoading={isLoading}
               isMuted={isMuted}

@@ -6,7 +6,6 @@ import { useState } from "react";
 type RadioLogoProps = {
   logoUrl?: string;
   name: string;
-  alt?: string;
   size?: "sm" | "md" | "lg" | "xl" | "2xl" | "3xl" | "4xl";
   className?: string;
   fallbackIcon?: React.ReactNode;
@@ -55,7 +54,6 @@ const imagePaddingMap = {
 export function RadioLogo({
   logoUrl,
   name,
-  alt,
   size = "md",
   className,
   fallbackIcon,
@@ -100,7 +98,7 @@ export function RadioLogo({
     >
       {/* biome-ignore lint/a11y/noNoninteractiveElementInteractions: onError and onLoad are valid img event handlers */}
       <img
-        alt={alt ?? `${name} logo`}
+        alt={`${name} logo`}
         className={cn(
           "size-full rounded-sm object-contain transition-opacity",
           imagePaddingMap[size],
@@ -114,12 +112,7 @@ export function RadioLogo({
       />
       {/* Loading state */}
       {!(imageLoaded || imageError) && (
-        <div
-          className={cn(
-            "absolute inset-0 flex items-center justify-center rounded-sm bg-muted",
-            sizeMap[size]
-          )}
-        >
+        <div className="absolute inset-0 flex items-center justify-center rounded-sm bg-muted">
           <AudioLinesIcon
             className={cn(
               iconSizeMap[size],

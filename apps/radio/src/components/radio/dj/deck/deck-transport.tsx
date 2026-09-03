@@ -7,6 +7,8 @@ import {
   PlayIcon,
   Repeat1Icon,
 } from "lucide-react";
+import { RadioNowPlaying } from "@/components/radio/radio-now-playing";
+import type { RadioNowPlaying as RadioNowPlayingMetadata } from "@/lib/metadata/types";
 import { formatTime } from "../shared/format-utils";
 import { useDeckContext } from "./deck-context";
 
@@ -55,6 +57,7 @@ function TransportPlayButton({
   onPlayPause: () => void;
 }) {
   let icon = <PlayIcon className="ml-0.5 size-3.5" />;
+  const playPauseLabel = isPlaying ? "Pause" : "Play";
   if (isLoading) {
     icon = (
       <div className="size-3.5 animate-spin rounded-full border-2 border-primary-foreground/30 border-t-primary-foreground" />
@@ -65,6 +68,7 @@ function TransportPlayButton({
 
   return (
     <button
+      aria-label={isLoading ? "Loading" : playPauseLabel}
       className={cn(
         "relative flex size-9 shrink-0 items-center justify-center rounded-full transition-all",
         "bg-primary text-primary-foreground shadow-sm",
@@ -142,7 +146,13 @@ function TransportToggles({
   );
 }
 
-export function DeckTransport({ className }: { className?: string }) {
+export function DeckTransport({
+  className,
+  nowPlaying,
+}: {
+  className?: string;
+  nowPlaying?: RadioNowPlayingMetadata | null;
+}) {
   const {
     radio,
     isPlaying,
@@ -173,6 +183,11 @@ export function DeckTransport({ className }: { className?: string }) {
     metadata && "name" in metadata ? metadata.name || radio.name : radio.name;
 
   const isRight = deckSide === "right";
+  const isRadioSource =
+    !metadata ||
+    metadata.platform === "radiogarden" ||
+    metadata.platform === "radio-browser" ||
+    Boolean(nowPlaying);
 
   return (
     <div className={cn("flex w-full min-w-0 flex-col gap-1.5", className)}>
@@ -182,12 +197,22 @@ export function DeckTransport({ className }: { className?: string }) {
           isRight && "flex-row-reverse"
         )}
       >
-        <TransportArtwork
-          artworkUrl={artworkUrl}
-          isBuffering={isBuffering}
-          isPlaying={isPlaying}
-          title={title}
-        />
+        {isRadioSource ? (
+          <RadioNowPlaying
+            className="flex-1"
+            isLoading={isLoading}
+            isPlaying={isPlaying}
+            metadata={nowPlaying}
+            radio={radio}
+          />
+        ) : (
+          <TransportArtwork
+            artworkUrl={artworkUrl}
+            isBuffering={isBuffering}
+            isPlaying={isPlaying}
+            title={title}
+          />
+        )}
 
         <TransportPlayButton
           isBuffering={isBuffering}
@@ -207,29 +232,39 @@ export function DeckTransport({ className }: { className?: string }) {
         />
 
         {/* Title + progress */}
-        <div
-          className={cn(
-            "flex min-w-0 flex-1 flex-col justify-center gap-0.5 overflow-hidden",
-            isRight && "items-end"
-          )}
-        >
-          <span
+        {!isRadioSource && (
+          <div
             className={cn(
-              "block w-full overflow-hidden truncate text-ellipsis whitespace-nowrap font-semibold text-sm leading-tight",
-              isRight && "text-right"
+              "flex min-w-0 flex-1 flex-col justify-center gap-0.5 overflow-hidden",
+              isRight && "items-end"
             )}
-            title={title}
           >
-            {title}
-          </span>
-          <TransportProgress
-            isBuffering={isBuffering}
-            isPlaying={isPlaying}
-            onSeek={seek}
-            trackProgress={trackProgress}
-          />
-        </div>
+            <span
+              className={cn(
+                "block w-full overflow-hidden truncate text-ellipsis whitespace-nowrap font-semibold text-sm leading-tight",
+                isRight && "text-right"
+              )}
+              title={title}
+            >
+              {title}
+            </span>
+            <TransportProgress
+              isBuffering={isBuffering}
+              isPlaying={isPlaying}
+              onSeek={seek}
+              trackProgress={trackProgress}
+            />
+          </div>
+        )}
       </div>
+      {isRadioSource ? (
+        <TransportProgress
+          isBuffering={isBuffering}
+          isPlaying={isPlaying}
+          onSeek={seek}
+          trackProgress={trackProgress}
+        />
+      ) : null}
     </div>
   );
 }

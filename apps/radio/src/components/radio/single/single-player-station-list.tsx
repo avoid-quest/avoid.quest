@@ -70,9 +70,9 @@ function StationRow({
               {radio.name}
             </p>
             {isCurrent ? (
-              <span title="Playing now">
+              <span title="Selected">
                 <AudioLinesIcon aria-hidden className="size-3.5" />
-                <span className="sr-only">Playing now</span>
+                <span className="sr-only">Selected</span>
               </span>
             ) : null}
           </div>

@@ -8,7 +8,6 @@ import type { MultipleSessionPlayerState } from "@/lib/hooks/use-multiple-sessio
 import { useRadioMetadata } from "@/lib/hooks/use-radio-metadata";
 import { isSessionRadio } from "@/lib/hooks/use-session-radios";
 import { RadioItemActions } from "../radio-item-actions";
-import { RadioLogo } from "../radio-logo";
 import { RadioNowPlaying } from "../radio-now-playing";
 
 type MultipleRadioCardProps = {
@@ -22,24 +21,6 @@ type MultipleRadioCardProps = {
   onToggle?: (radio: Radio, enabled: boolean) => void;
   onSave?: (radio: Radio) => void;
 };
-
-function RadioSubtitle({ radio }: { radio: Radio }) {
-  if (radio.placeTitle) {
-    return (
-      <p className="truncate text-muted-foreground/60 text-xs leading-snug">
-        {radio.placeTitle}, {radio.countryTitle}
-      </p>
-    );
-  }
-  if (radio.description) {
-    return (
-      <p className="truncate text-muted-foreground/60 text-xs leading-snug">
-        {radio.description}
-      </p>
-    );
-  }
-  return null;
-}
 
 export function MultipleRadioCard({
   radio,
@@ -78,22 +59,20 @@ export function MultipleRadioCard({
       )}
     >
       {/* Header */}
-      <div className="flex items-center gap-2.5 px-3 py-2">
-        <RadioLogo logoUrl={radio.logoUrl} name={radio.name} size="sm" />
-        <div className="min-w-0 flex-1">
-          <p className="truncate font-semibold text-sm leading-tight">
-            {radio.name}
-          </p>
-          <RadioSubtitle radio={radio} />
-          {isPlaying ? (
-            <RadioNowPlaying className="truncate" metadata={metadata} />
-          ) : null}
-        </div>
-        <RadioItemActions
-          onDelete={onDelete}
-          onEdit={onEdit}
-          onSave={onSave}
-          onToggle={onToggle}
+      <div className="px-3 py-3">
+        <RadioNowPlaying
+          actions={
+            <RadioItemActions
+              onDelete={onDelete}
+              onEdit={onEdit}
+              onSave={onSave}
+              onToggle={onToggle}
+              radio={radio}
+            />
+          }
+          isLoading={isLoading}
+          isPlaying={isPlaying}
+          metadata={metadata}
           radio={radio}
         />
       </div>
@@ -106,7 +85,7 @@ export function MultipleRadioCard({
       ) : null}
 
       {/* Controls */}
-      <div className="flex items-center gap-2 border-border/50 border-t px-3 py-2">
+      <div className="mt-auto flex items-center gap-2 border-border/50 border-t px-3 py-2">
         <PlayPauseButton
           className="size-7 shrink-0"
           iconClassName="size-3.5"

@@ -12,6 +12,7 @@
     "deploy": "bun run build && wrangler deploy",
     "dev": "doppler run -- astro dev --port 3000",
     "preview": "astro preview",
+    "test": "bun run build && grep -qF '<!DOCTYPE html>' dist/client/index.html",
     "typecheck": "astro check && tsc --noEmit"
   },
   "dependencies": {

@@ -6,6 +6,7 @@ import { defineConfig } from "astro/config";
 export default defineConfig({
   adapter: cloudflare({
     imageService: "passthrough",
+    prerenderEnvironment: "node",
   }),
   integrations: [react()],
   vite: {

@@ -872,15 +872,14 @@ const collectionOutputSettings: OutputSettingsAdapter = {
       return;
     }
     settingsCollection.update(current.id, (draft) => {
-      draft.audio ??= {
-        cueOutputId: null,
-        mainOutputId: "default",
-      };
-      draft.audio.mainOutputId = settings.mainOutputId;
-      draft.audio.cueOutputId = settings.cueOutputId;
-      draft.audio.delay = {
-        cueDelayMs: settings.cueDelayMs,
-        mainDelayMs: settings.mainDelayMs,
+      draft.audio = {
+        ...current.audio,
+        cueOutputId: settings.cueOutputId,
+        delay: {
+          cueDelayMs: settings.cueDelayMs,
+          mainDelayMs: settings.mainDelayMs,
+        },
+        mainOutputId: settings.mainOutputId,
       };
     });
   },

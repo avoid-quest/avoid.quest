@@ -8,10 +8,14 @@ export function getRadioMetadataConfig(
   if (!radio) {
     return;
   }
+  const defaultRadio = defaultRadios.find(
+    (candidate) => candidate.streamUrl === radio.streamUrl
+  );
+  if (radio.isSystem && defaultRadio?.name === radio.name) {
+    return defaultRadio.metadataConfig;
+  }
   if (radio.metadataConfig) {
     return radio.metadataConfig;
   }
-  return defaultRadios.find(
-    (defaultRadio) => defaultRadio.streamUrl === radio.streamUrl
-  )?.metadataConfig;
+  return defaultRadio?.metadataConfig;
 }

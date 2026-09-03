@@ -94,13 +94,15 @@ function PlayerPanel({
     >
       <PlayerIdentity metadata={metadata} mode={mode} radio={radio} />
 
-      {radio.description && !radio.placeTitle && (
-        <div className="min-w-0 border-border/50 border-t pt-4 text-left">
-          <p className="line-clamp-2 text-muted-foreground text-sm leading-relaxed">
-            {radio.description}
-          </p>
-        </div>
-      )}
+      {radio.description &&
+        !radio.placeTitle &&
+        !metadata?.stationDescription && (
+          <div className="min-w-0 border-border/50 border-t pt-4 text-left">
+            <p className="line-clamp-2 text-muted-foreground text-sm leading-relaxed">
+              {radio.description}
+            </p>
+          </div>
+        )}
 
       {!!error?.trim() && (
         <div className="rounded-md bg-destructive/10 px-3 py-1.5">
@@ -160,11 +162,17 @@ function PlayerIdentity({
   return (
     <div className="flex min-w-0 items-center gap-4 pr-7">
       <RadioLogo
+        alt={
+          metadata?.artworkUrl
+            ? `${metadata.title || radio.name} artwork`
+            : undefined
+        }
         className={cn(
           "shrink-0 rounded-xl",
           mode === "desktop" ? "size-28" : "size-20"
         )}
-        logoUrl={radio.logoUrl}
+        key={metadata?.artworkUrl ?? radio.logoUrl}
+        logoUrl={metadata?.artworkUrl ?? radio.logoUrl}
         name={radio.name}
         size={mode === "desktop" ? "3xl" : "xl"}
       />
@@ -197,6 +205,7 @@ function NowPlayingLine({
       <RadioNowPlaying
         className="min-w-0 max-w-full text-muted-foreground text-xs"
         metadata={metadata}
+        showDetails={true}
       />
     </div>
   );

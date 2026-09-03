@@ -66,6 +66,22 @@ describe("radio metadata config fallback", () => {
     );
   });
 
+  test("uses the current strategy for an unchanged system default", () => {
+    const defaultRadio = defaultRadios.find(
+      (candidate) => candidate.name === "Lyl Radio"
+    );
+    if (!defaultRadio) {
+      throw new Error("Expected Lyl Radio in the default list");
+    }
+
+    const persistedRadio: Radio = {
+      ...defaultRadio,
+      metadataConfig: { kind: "icecast-status" },
+    };
+
+    expect(getRadioMetadataConfig(persistedRadio)).toEqual({ kind: "lyl-api" });
+  });
+
   test("prefers explicit radio metadata config over the default fallback", () => {
     const defaultRadio = defaultRadios.find(
       (candidate) => candidate.metadataConfig
@@ -78,6 +94,7 @@ describe("radio metadata config fallback", () => {
 
     const radio: Radio = {
       ...defaultRadio,
+      isSystem: false,
       metadataConfig: { kind: "none" },
     };
 

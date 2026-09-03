@@ -49,12 +49,12 @@ describe("radio metadata retrieval", () => {
     });
 
     expect(response).toMatchObject({
-      ok: true,
       data: {
-        source: "icecast-status-json",
         artist: "Artist",
+        source: "icecast-status-json",
         title: "Title",
       },
+      ok: true,
     });
     expect(calls).toEqual(["https://radio.example/status-json.xsl"]);
   });
@@ -86,12 +86,12 @@ describe("radio metadata retrieval", () => {
     });
 
     expect(response).toMatchObject({
-      ok: true,
       data: {
-        source: "airtime-live-info",
         artist: "Artist",
+        source: "airtime-live-info",
         title: "Title",
       },
+      ok: true,
     });
     expect(calls).toEqual(["https://metadata.example/live-info"]);
   });
@@ -116,12 +116,12 @@ describe("radio metadata retrieval", () => {
     });
 
     expect(response).toMatchObject({
-      ok: true,
       data: {
-        source: "azuracast-now-playing",
         artist: "Artist",
+        source: "azuracast-now-playing",
         title: "Title",
       },
+      ok: true,
     });
     expect(calls).toEqual(["https://metadata.example/api/nowplaying/main"]);
   });
@@ -150,13 +150,13 @@ describe("radio metadata retrieval", () => {
     });
 
     expect(response).toMatchObject({
-      ok: true,
       data: {
-        source: "icy",
         artist: "Artist",
-        title: "Fallback Title",
+        source: "icy",
         stationName: "Gatto Misterioso",
+        title: "Fallback Title",
       },
+      ok: true,
     });
     expect(calls).toEqual([
       "https://azuracast.gattomisterioso.top/api/nowplaying/gatto_misterioso",
@@ -181,17 +181,17 @@ describe("radio metadata retrieval", () => {
 
     const response = await retrieval.retrieve("https://radio.example/live", {
       kind: "shoutcast-status",
-      url: "https://metadata.example/stats?sid=2&json=1",
       sid: "2",
+      url: "https://metadata.example/stats?sid=2&json=1",
     });
 
     expect(response).toMatchObject({
-      ok: true,
       data: {
-        source: "shoutcast-status",
         artist: "Artist",
+        source: "shoutcast-status",
         title: "Title",
       },
+      ok: true,
     });
     expect(calls).toEqual(["https://metadata.example/stats?sid=2&json=1"]);
   });

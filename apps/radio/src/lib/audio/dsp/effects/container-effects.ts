@@ -39,7 +39,7 @@ const copy = (
   fromIndex: number,
   toIndex: number
 ): void => {
-  for (let i = fromIndex; i < toIndex; i++) {
+  for (let i = fromIndex; i < toIndex; i += 1) {
     target[0][i] = source[0][i] ?? 0;
     target[1][i] = source[1][i] ?? 0;
   }
@@ -118,6 +118,8 @@ export class ContainerEffect implements EffectProcessor {
         const previousChain = previousChains.get(chain.id);
         return {
           config: chain,
+          dry: previousChain?.dry ?? createBuffer(),
+          first: previousChain?.first ?? createBuffer(),
           processors: [...chain.effects]
             .sort((left, right) => left.order - right.order)
             .flatMap((effect) => {
@@ -134,9 +136,7 @@ export class ContainerEffect implements EffectProcessor {
               }
               return [];
             }),
-          first: previousChain?.first ?? createBuffer(),
           second: previousChain?.second ?? createBuffer(),
-          dry: previousChain?.dry ?? createBuffer(),
         };
       });
     for (const { processor } of previousProcessors.values()) {
@@ -257,7 +257,7 @@ export class ContainerEffect implements EffectProcessor {
         copy(current, chain.dry, fromIndex, toIndex);
       }
       if (config.inputGain !== 1) {
-        for (let i = fromIndex; i < toIndex; i++) {
+        for (let i = fromIndex; i < toIndex; i += 1) {
           current[0][i] = (current[0][i] ?? 0) * config.inputGain;
           current[1][i] = (current[1][i] ?? 0) * config.inputGain;
         }
@@ -265,7 +265,7 @@ export class ContainerEffect implements EffectProcessor {
       processor.process(current, target, fromIndex, toIndex);
       if (config.dryWet < 1) {
         const dry = 1 - config.dryWet;
-        for (let i = fromIndex; i < toIndex; i++) {
+        for (let i = fromIndex; i < toIndex; i += 1) {
           target[0][i] =
             (chain.dry[0][i] ?? 0) * dry + (target[0][i] ?? 0) * config.dryWet;
           target[1][i] =
@@ -273,7 +273,7 @@ export class ContainerEffect implements EffectProcessor {
         }
       }
       if (config.outputGain !== 1) {
-        for (let i = fromIndex; i < toIndex; i++) {
+        for (let i = fromIndex; i < toIndex; i += 1) {
           target[0][i] = (target[0][i] ?? 0) * config.outputGain;
           target[1][i] = (target[1][i] ?? 0) * config.outputGain;
         }
@@ -293,7 +293,7 @@ export class ContainerEffect implements EffectProcessor {
     const result = this.processChain(chain, input, fromIndex, toIndex);
     const pan = Math.max(-1, Math.min(1, chain.config.pan));
     if (this.type === "stereoSplit") {
-      for (let i = fromIndex; i < toIndex; i++) {
+      for (let i = fromIndex; i < toIndex; i += 1) {
         const left = result[0][i] ?? 0;
         const right = result[1][i] ?? 0;
         output[0][i] =
@@ -309,7 +309,7 @@ export class ContainerEffect implements EffectProcessor {
     const [leftPanGain, rightPanGain] = branchPanGains(this.type, pan);
     const leftGain = leftPanGain * chain.config.gain;
     const rightGain = rightPanGain * chain.config.gain;
-    for (let i = fromIndex; i < toIndex; i++) {
+    for (let i = fromIndex; i < toIndex; i += 1) {
       output[0][i] = (output[0][i] ?? 0) + (result[0][i] ?? 0) * leftGain;
       output[1][i] = (output[1][i] ?? 0) + (result[1][i] ?? 0) * rightGain;
     }
@@ -323,17 +323,16 @@ export class ContainerEffect implements EffectProcessor {
     const bands = this.chains.map(
       (_, index) => this.splitBuffers[index] ?? createBuffer()
     );
-    let residual = this.residualBuffers[0] ?? createBuffer();
-    let nextResidual = this.residualBuffers[1] ?? createBuffer();
+    let [residual, nextResidual] = this.residualBuffers;
     copy(input, residual, fromIndex, toIndex);
 
-    for (let index = 0; index < bands.length - 1; index++) {
+    for (let index = 0; index < bands.length - 1; index += 1) {
       const band = bands[index];
       const crossover = this.crossoverFilters[index];
       if (!(band && crossover)) {
         continue;
       }
-      for (let bandIndex = 0; bandIndex < index; bandIndex++) {
+      for (let bandIndex = 0; bandIndex < index; bandIndex += 1) {
         const earlierBand = bands[bandIndex];
         const phase = crossover.phase[bandIndex];
         if (earlierBand && phase) {
@@ -367,14 +366,14 @@ export class ContainerEffect implements EffectProcessor {
     if (this.type === "stereoSplit") {
       const leftInput = this.splitBuffers[0] ?? createBuffer();
       const rightInput = this.splitBuffers[1] ?? createBuffer();
-      for (let i = fromIndex; i < toIndex; i++) {
+      for (let i = fromIndex; i < toIndex; i += 1) {
         leftInput[0][i] = input[0][i] ?? 0;
         leftInput[1][i] = 0;
         rightInput[0][i] = 0;
         rightInput[1][i] = input[1][i] ?? 0;
       }
       const inputs = [leftInput, rightInput];
-      for (let index = 0; index < Math.min(2, this.chains.length); index++) {
+      for (let index = 0; index < Math.min(2, this.chains.length); index += 1) {
         const chain = this.chains[index];
         if (chain && isEffectChainActive(chain.config, hasSolo)) {
           this.mixChain(
@@ -393,7 +392,7 @@ export class ContainerEffect implements EffectProcessor {
       this.type === "frequencySplit"
         ? this.prepareFrequencyBands(input, fromIndex, toIndex)
         : this.chains.map(() => input);
-    for (let index = 0; index < this.chains.length; index++) {
+    for (let index = 0; index < this.chains.length; index += 1) {
       const chain = this.chains[index];
       if (chain && isEffectChainActive(chain.config, hasSolo)) {
         this.mixChain(

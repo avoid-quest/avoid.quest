@@ -30,7 +30,7 @@ async function fetchWithTimeout(
     return response;
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
-      throw new ClientFetchError(errorMessage);
+      throw new ClientFetchError(errorMessage, { cause: error });
     }
     throw error;
   } finally {

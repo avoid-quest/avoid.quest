@@ -68,11 +68,11 @@ describe("handleFeedbackRequest", () => {
       success: true,
     }));
     const request = new Request("https://radio.test/api/feedback", {
-      method: "POST",
       headers: {
         "cf-connecting-ip": "203.0.113.10",
         cookie: `radio_session_id=${VALID_SESSION_ID}`,
       },
+      method: "POST",
     });
 
     const response = await handleFeedbackRequest(request, {
@@ -125,10 +125,10 @@ describe("handleFeedbackRequest", () => {
       success: true,
     }));
     const request = new Request("https://radio.test/api/feedback", {
-      method: "POST",
       headers: {
         "cf-connecting-ip": "203.0.113.10",
       },
+      method: "POST",
     });
 
     const response = await handleFeedbackRequest(request, {
@@ -148,10 +148,10 @@ describe("handleFeedbackRequest", () => {
       success: false,
     }));
     const request = new Request("https://radio.test/api/feedback", {
-      method: "POST",
       headers: {
         "cf-connecting-ip": "203.0.113.10",
       },
+      method: "POST",
     });
 
     const response = await handleFeedbackRequest(request, {
@@ -168,10 +168,10 @@ describe("handleFeedbackRequest", () => {
       success: true,
     }));
     const request = new Request("https://radio.test/api/feedback", {
-      method: "POST",
       headers: {
         "cf-connecting-ip": "203.0.113.10",
       },
+      method: "POST",
     });
 
     await handleFeedbackRequest(request, {

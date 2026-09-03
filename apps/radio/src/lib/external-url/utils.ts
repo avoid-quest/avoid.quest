@@ -100,7 +100,6 @@ function getLogoUrl(metadata: PlatformMetadata): string | undefined {
   if (metadata.platform === "youtube") {
     return "https://www.youtube.com/s/desktop/bc4637ea/img/favicon_144x144.png";
   }
-  return;
 }
 
 export function createPlatformRadio(
@@ -132,11 +131,11 @@ export function createPlatformRadio(
     name: getName(),
     streamUrl,
     ...(streamFormat ? { streamFormat } : {}),
-    logoUrl: getLogoUrl(metadata),
     description: getDescription(metadata),
-    websiteUrl: metadata.url,
-    platformMetadata: metadata,
     enabled: true,
+    logoUrl: getLogoUrl(metadata),
+    platformMetadata: metadata,
+    websiteUrl: metadata.url,
   };
 }
 
@@ -154,18 +153,18 @@ export function getPlatformItemTypeLabel(metadata: PlatformMetadata): string {
   if (metadata.platform === "bandcamp") {
     const labels: Record<typeof metadata.itemType, string> = {
       album: "Album",
-      track: "Track",
       artist: "Artist",
-      label: "Label",
       collection: "Collection",
+      label: "Label",
+      track: "Track",
     };
     return labels[metadata.itemType];
   }
 
   if (metadata.platform === "soundcloud") {
     const labels: Record<typeof metadata.itemType, string> = {
-      track: "Track",
       playlist: "Playlist",
+      track: "Track",
       user: "User",
     };
     return labels[metadata.itemType];
@@ -181,8 +180,8 @@ export function getPlatformItemTypeLabel(metadata: PlatformMetadata): string {
 
   if (metadata.platform === "youtube") {
     const labels: Record<typeof metadata.itemType, string> = {
-      video: "Video",
       playlist: "Playlist",
+      video: "Video",
     };
     return labels[metadata.itemType];
   }

@@ -24,6 +24,7 @@ export {
   fadeOut,
 } from "./crossfade.js";
 export type { EffectsGraphRuntime } from "./effects-graph-runtime.js";
+export { captureMobileAudioDiagnostic } from "./mobile-audio-diagnostic.js";
 export {
   DEFAULT_OPENDAW_RUNTIME_URLS,
   OfficialOpenDawRuntime,

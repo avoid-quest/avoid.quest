@@ -24,41 +24,41 @@ export class RevampEffect {
   private readonly enabled: boolean[];
 
   // Highpass
-  private highPassEnabled = true;
+  private highPassEnabled = true as boolean;
   private highPassFrequency = 20;
   private highPassQ = Math.SQRT1_2;
   private highPassOrder = 1;
 
   // Low shelf
-  private lowShelfEnabled = true;
+  private lowShelfEnabled = true as boolean;
   private lowShelfFrequency = 80;
   private lowShelfGain = 0;
 
   // Low bell
-  private lowBellEnabled = true;
+  private lowBellEnabled = true as boolean;
   private lowBellFrequency = 200;
   private lowBellGain = 0;
   private lowBellQ = Math.SQRT1_2;
 
   // Mid bell
-  private midBellEnabled = true;
+  private midBellEnabled = true as boolean;
   private midBellFrequency = 1000;
   private midBellGain = 0;
   private midBellQ = Math.SQRT1_2;
 
   // High bell
-  private highBellEnabled = true;
+  private highBellEnabled = true as boolean;
   private highBellFrequency = 5000;
   private highBellGain = 0;
   private highBellQ = Math.SQRT1_2;
 
   // High shelf
-  private highShelfEnabled = true;
+  private highShelfEnabled = true as boolean;
   private highShelfFrequency = 10_000;
   private highShelfGain = 0;
 
   // Lowpass
-  private lowPassEnabled = true;
+  private lowPassEnabled = true as boolean;
   private lowPassFrequency = 20_000;
   private lowPassQ = Math.SQRT1_2;
   private lowPassOrder = 1;
@@ -337,7 +337,7 @@ export class RevampEffect {
       }
     } else {
       // No filters enabled, pass through
-      for (let i = fromIndex; i < toIndex; i++) {
+      for (let i = fromIndex; i < toIndex; i += 1) {
         outputL[i] = inputL[i] ?? 0;
         outputR[i] = inputR[i] ?? 0;
       }

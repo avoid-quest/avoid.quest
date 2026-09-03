@@ -9,11 +9,11 @@ const WERKSTATT_FORBIDDEN_SOURCE =
 const WERKSTATT_IDENTIFIER = /[A-Za-z_$][\w$]*/g;
 
 type WerkstattBlockProcessor = {
-  paramChanged?(label: string, value: number): void;
-  process(
+  paramChanged?: (label: string, value: number) => void;
+  process: (
     audio: { src: StereoChannels; out: StereoChannels },
     block: { s0: number; s1: number; flags: number }
-  ): void;
+  ) => void;
 };
 
 export class NeuralAmpEffect {
@@ -21,9 +21,9 @@ export class NeuralAmpEffect {
   private tone = 0.5;
   private presence = 0.5;
   private output = -6;
-  private mono = false;
+  private mono = false as boolean;
   private mix = 1;
-  private modelAvailable = false;
+  private modelAvailable = false as boolean;
   private readonly highPass: BiquadFilter;
   private readonly lowPass: BiquadFilter;
 
@@ -94,12 +94,12 @@ export class NeuralAmpEffect {
     this.highPass.process(input, output, fromIndex, toIndex);
     const drive = dbToGain(this.drive);
     const makeup = dbToGain(this.output);
-    for (let i = fromIndex; i < toIndex; i++) {
+    for (let i = fromIndex; i < toIndex; i += 1) {
       output[0][i] = Math.tanh((output[0][i] ?? 0) * drive) * makeup;
       output[1][i] = Math.tanh((output[1][i] ?? 0) * drive) * makeup;
     }
     this.lowPass.process(output, output, fromIndex, toIndex);
-    for (let i = fromIndex; i < toIndex; i++) {
+    for (let i = fromIndex; i < toIndex; i += 1) {
       const left = input[0][i] ?? 0;
       const right = input[1][i] ?? 0;
       const processedLeft = output[0][i] ?? 0;
@@ -119,15 +119,15 @@ export class WerkstattEffect {
   private sampleFunction: (input: number, channel: number) => number = (
     input
   ) => input;
-  private source = "return input;";
+  private source = "return input;" as string;
   private parameters: Record<string, number> = {};
-  private failed = false;
+  private failed = false as boolean;
   private parameterA = 0.5;
   private parameterB = 0.5;
   private phase = 0;
   private heldL = 0;
   private heldR = 0;
-  private resetPending = false;
+  private resetPending = false as boolean;
 
   constructor(sampleRate = 48_000) {
     this.sampleRate = sampleRate;
@@ -212,7 +212,7 @@ export class WerkstattEffect {
     }
   }
 
-  setParameters(value: Record<string, number>): void {
+  setParameters(value: Partial<Record<string, number>>): void {
     this.parameters = Object.fromEntries(
       Object.entries(value).filter((entry): entry is [string, number] =>
         Number.isFinite(entry[1])
@@ -251,11 +251,11 @@ export class WerkstattEffect {
     if (this.blockProcessor) {
       try {
         this.blockProcessor.process(
-          { src: input, out: output },
+          { out: output, src: input },
           {
+            flags: this.resetPending ? 2 : 0,
             s0: fromIndex,
             s1: toIndex,
-            flags: this.resetPending ? 2 : 0,
           }
         );
         this.resetPending = false;
@@ -265,7 +265,7 @@ export class WerkstattEffect {
         this.blockProcessor = null;
       }
     }
-    for (let i = fromIndex; i < toIndex; i++) {
+    for (let i = fromIndex; i < toIndex; i += 1) {
       const left = input[0][i] ?? 0;
       const right = input[1][i] ?? 0;
       switch (this.source) {

@@ -97,28 +97,40 @@ function createManager(context: TestAudioContext) {
 
 function sound(soundId: string, filter: TestAudioNode): SoundInstance {
   return {
-    sourceId: soundId,
     nodes: { filter },
+    sourceId: soundId,
   } as unknown as SoundInstance;
 }
 
 function createRuntime() {
+  const performanceSnapshot = {
+    backend: "official" as const,
+    monitoringChannelCount: 2,
+    soundCount: 1,
+    workletCount: 1 as const,
+  };
   return {
     cleanup: mock(() => undefined),
     connectSidechainSource: mock(
-      (_soundId: string, _source: AudioNode, _generation?: number) =>
-        Promise.resolve(true)
+      (
+        _soundId: string,
+        _source: AudioNode,
+        _generation?: number,
+        _inputChannels?: 1 | 2
+      ) => Promise.resolve(true)
     ),
     connectSound: mock(
       (
         _soundId: string,
         _source: AudioNode,
         _destination: AudioNode,
-        _generation?: number
+        _generation?: number,
+        _inputChannels?: 1 | 2
       ) => Promise.resolve(true)
     ),
     deleteSound: mock(() => undefined),
     disconnectSound: mock(() => undefined),
+    getPerformanceSnapshot: mock(() => performanceSnapshot),
     setDryWet: mock(() => undefined),
     setSidechainTarget: mock(() => undefined),
     setTempo: mock(() => undefined),
@@ -131,10 +143,10 @@ function desiredEffects(
   overrides: Partial<Omit<DesiredEffectsState, "tree">> = {}
 ): DesiredEffectsState {
   return {
-    tree,
     dryWet: 1,
     sidechainSoundId: null,
     tempo: 120,
+    tree,
     ...overrides,
   };
 }
@@ -165,6 +177,21 @@ afterEach(() => {
 });
 
 describe("EffectsController", () => {
+  test("exposes openDAW performance data without exposing its Project", () => {
+    const runtime = createRuntime();
+    const controller = new EffectsController({
+      createOfficialRuntime: () => runtime,
+      notifyListeners: () => undefined,
+      sounds: new Map(),
+      workletProcessorUrl: () => "/worklet.js",
+    });
+    Object.assign(controller as object, { officialRuntime: runtime });
+
+    expect(controller.getPerformanceSnapshot()).toBe(
+      runtime.getPerformanceSnapshot()
+    );
+  });
+
   test("exposes desired-state reconciliation instead of granular Effects mutations", () => {
     const controllerMutations = [
       "add",
@@ -215,10 +242,10 @@ describe("EffectsController", () => {
     const distortion = createDefaultEffectConfig("distortion", "distortion", 0);
     distortion.enabled = true;
     const desired: DesiredEffectsState = {
-      tree: [distortion],
       dryWet: 0.4,
       sidechainSoundId: null,
       tempo: 128,
+      tree: [distortion],
     };
 
     expect(await controller.reconcile("target", desired)).toEqual({
@@ -314,16 +341,18 @@ describe("EffectsController", () => {
     const reverb = createDefaultEffectConfig("plateReverb", "reverb", 0);
     reverb.enabled = true;
     await controller.reconcile("target", {
-      tree: [reverb],
       dryWet: 0.7,
       sidechainSoundId: null,
       tempo: 124,
+      tree: [reverb],
     });
+    const destination = new TestAudioNode(context);
 
     await controller.connectGraph(
       "target",
       filter as unknown as AudioNode,
-      new TestAudioNode(context) as unknown as AudioNode
+      destination as unknown as AudioNode,
+      1
     );
 
     expect(controller.getRuntimeOutcome("target")).toEqual({
@@ -332,6 +361,8 @@ describe("EffectsController", () => {
       status: "ready",
     });
     expect(createWorkletManager).not.toHaveBeenCalled();
+    expect(runtime.connectSound.mock.calls[0]).toHaveLength(5);
+    expect(runtime.connectSound.mock.calls[0]?.[4]).toBe(1);
   });
 
   test("falls back to compatibility with the same desired tree", async () => {
@@ -350,10 +381,10 @@ describe("EffectsController", () => {
     const reverb = createDefaultEffectConfig("plateReverb", "reverb", 0);
     reverb.enabled = true;
     await controller.reconcile("target", {
-      tree: [reverb],
       dryWet: 0.7,
       sidechainSoundId: null,
       tempo: 124,
+      tree: [reverb],
     });
 
     await controller.connectGraph(
@@ -421,10 +452,10 @@ describe("EffectsController", () => {
     const reverb = createDefaultEffectConfig("plateReverb", "reverb", 0);
     reverb.enabled = true;
     await controller.reconcile("target", {
-      tree: [reverb],
       dryWet: 1,
       sidechainSoundId: null,
       tempo: 120,
+      tree: [reverb],
     });
     await controller.connectGraph(
       "target",
@@ -435,10 +466,10 @@ describe("EffectsController", () => {
     distortion.enabled = true;
 
     const outcome = await controller.reconcile("target", {
-      tree: [distortion],
       dryWet: 1,
       sidechainSoundId: null,
       tempo: 120,
+      tree: [distortion],
     });
 
     expect(outcome).toEqual({
@@ -461,10 +492,10 @@ describe("EffectsController", () => {
     const distortion = createDefaultEffectConfig("distortion", "distortion", 0);
     distortion.enabled = true;
     const desired: DesiredEffectsState = {
-      tree: [distortion],
       dryWet: 1,
       sidechainSoundId: null,
       tempo: 120,
+      tree: [distortion],
     };
     await controller.reconcile("target", desired);
     await controller.connectGraph(
@@ -632,7 +663,8 @@ describe("EffectsController", () => {
       "target",
       replacementFilter,
       expect.anything(),
-      expect.any(Number)
+      expect.any(Number),
+      2
     );
     expect(controller.getRuntimeOutcome("target")).toEqual({
       backend: "official",

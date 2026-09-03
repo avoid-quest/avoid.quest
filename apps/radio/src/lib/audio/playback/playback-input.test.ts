@@ -52,8 +52,7 @@ describe("toPlaybackInput", () => {
     expect(
       toPlaybackInput({
         name: "Lookalike",
-        streamUrl:
-          "https://example.com/https://s.streampunk.cc/blackout.mp3",
+        streamUrl: "https://example.com/https://s.streampunk.cc/blackout.mp3",
       })
     ).toMatchObject({
       src: "https://example.com/https://s.streampunk.cc/blackout.mp3",

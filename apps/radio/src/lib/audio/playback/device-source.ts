@@ -50,19 +50,61 @@ export type DeviceAudioConstraints = {
   echoCancellation?: boolean;
   noiseSuppression?: boolean;
   autoGainControl?: boolean;
+  latency?: number;
   sampleRate?: number;
   channelCount?: number;
+};
+
+type DeviceTrackConstraints = MediaTrackConstraints & {
+  latency?: ConstrainDouble;
+};
+
+type DeviceSupportedConstraints = MediaTrackSupportedConstraints & {
+  latency?: boolean;
+};
+
+type DeviceTrackCapabilities = MediaTrackCapabilities & {
+  latency?: { max: number; min: number };
+};
+
+type DeviceTrackSettings = MediaTrackSettings & {
+  latency?: number;
+};
+
+export type DeviceSourceDiagnostics = {
+  actual: MediaTrackSettings & { latency?: number };
+  capabilities: DeviceTrackCapabilities | null;
+  label: string;
+  latencyConstraintSupported: boolean;
+  muted: boolean;
+  readyState: MediaStreamTrackState;
+  requested: DeviceTrackConstraints;
 };
 
 /**
  * Default constraints optimized for DJ/audio production (no processing)
  */
 const DEFAULT_CONSTRAINTS: DeviceAudioConstraints = {
+  autoGainControl: false,
   echoCancellation: false,
   noiseSuppression: false,
-  autoGainControl: false,
-  sampleRate: 48_000,
 };
+
+type CaptureState = {
+  audioTrack: MediaStreamTrack | undefined;
+  capabilities: DeviceTrackCapabilities | null;
+  settings: DeviceTrackSettings | undefined;
+};
+
+function getCaptureState(stream: MediaStream): CaptureState {
+  const [audioTrack] = stream.getAudioTracks();
+  return {
+    audioTrack,
+    capabilities:
+      (audioTrack?.getCapabilities?.() as DeviceTrackCapabilities) ?? null,
+    settings: audioTrack?.getSettings() as DeviceTrackSettings | undefined,
+  };
+}
 
 /**
  * DeviceSource
@@ -77,7 +119,7 @@ export class DeviceSource {
   private readonly callbacks: DeviceSourceCallbacks;
   private readonly sourceId: string;
 
-  private _isActive = false;
+  private _isActive = false as boolean;
   private _permissionState: DevicePermissionState = "prompt";
   private _currentDeviceId: string | null = null;
   private deviceChangeHandler: (() => void) | null = null;
@@ -85,6 +127,8 @@ export class DeviceSource {
   // Channel routing
   private _channelSelection: ChannelSelection = { left: 0, right: 1 };
   private _channelCount = 2;
+  private diagnostics: DeviceSourceDiagnostics | null = null;
+  private diagnosticsTrack: MediaStreamTrack | null = null;
   private splitter: ChannelSplitterNode | null = null;
   private merger: ChannelMergerNode | null = null;
   private routingOutput: GainNode | null = null;
@@ -143,6 +187,19 @@ export class DeviceSource {
     return this._currentDeviceId;
   }
 
+  getDiagnostics(): DeviceSourceDiagnostics | null {
+    if (!(this.diagnostics && this.diagnosticsTrack)) {
+      return null;
+    }
+    return {
+      ...this.diagnostics,
+      actual: { ...this.diagnostics.actual },
+      muted: this.diagnosticsTrack.muted,
+      readyState: this.diagnosticsTrack.readyState,
+      requested: { ...this.diagnostics.requested },
+    };
+  }
+
   /**
    * Get audio output node for connecting to Web Audio graph
    */
@@ -155,6 +212,13 @@ export class DeviceSource {
    */
   get channelCount(): number {
     return this._channelCount;
+  }
+
+  get outputChannelCount(): 1 | 2 {
+    return this._channelCount === 1 ||
+      this._channelSelection.left === this._channelSelection.right
+      ? 1
+      : 2;
   }
 
   /**
@@ -193,6 +257,8 @@ export class DeviceSource {
     safeDisconnect(this.source, "DeviceSource.applyChannelRouting");
     safeDisconnect(this.splitter, "DeviceSource.applyChannelRouting");
     safeDisconnect(this.merger, "DeviceSource.applyChannelRouting");
+    this.splitter = null;
+    this.merger = null;
 
     // Ensure routing output exists
     if (!this.routingOutput) {
@@ -202,6 +268,22 @@ export class DeviceSource {
 
     const { left, right } = this._channelSelection;
     const count = this._channelCount;
+    this.routingOutput.channelCount = this.outputChannelCount;
+    this.routingOutput.channelCountMode = "explicit";
+
+    // Keep a microphone mono until the post-effects panner. openDAW then
+    // spends one monitoring channel and duplicates its mono return to stereo.
+    if (this.outputChannelCount === 1) {
+      if (count === 1) {
+        this.source.connect(this.routingOutput);
+        return;
+      }
+      this.splitter = this.context.createChannelSplitter(count);
+      this.source.connect(this.splitter);
+      const channel = Math.max(0, Math.min(left, count - 1));
+      this.splitter.connect(this.routingOutput, channel, 0);
+      return;
+    }
 
     // If default stereo passthrough (ch0 → L, ch1 → R) on a 2-channel device, skip splitter/merger
     if (left === 0 && right === 1 && count === 2) {
@@ -244,11 +326,11 @@ export class DeviceSource {
       )
       .map((d) => ({
         deviceId: d.deviceId,
+        groupId: d.groupId,
+        kind: d.kind,
         label:
           d.label ||
           `${d.kind === "audioinput" ? "Input" : "Output"} ${d.deviceId.slice(0, 8)}`,
-        kind: d.kind,
-        groupId: d.groupId,
       }));
   }
 
@@ -301,7 +383,7 @@ export class DeviceSource {
         const result = await navigator.permissions.query({
           name: "microphone",
         });
-        const state = result.state;
+        const { state } = result;
         if (state === "granted" || state === "denied" || state === "prompt") {
           this._permissionState = state;
           return state;
@@ -334,32 +416,58 @@ export class DeviceSource {
     }
 
     const mergedConstraints = { ...DEFAULT_CONSTRAINTS, ...constraints };
+    const supportsLatency = Boolean(
+      (
+        navigator.mediaDevices.getSupportedConstraints?.() as
+          | DeviceSupportedConstraints
+          | undefined
+      )?.latency
+    );
+    const initialRequest: DeviceTrackConstraints = {
+      autoGainControl: mergedConstraints.autoGainControl,
+      channelCount: mergedConstraints.channelCount ?? { ideal: 2 },
+      deviceId: deviceId ? { exact: deviceId } : undefined,
+      echoCancellation: mergedConstraints.echoCancellation,
+      ...(supportsLatency
+        ? { latency: { ideal: mergedConstraints.latency ?? 0 } }
+        : {}),
+      noiseSuppression: mergedConstraints.noiseSuppression,
+      ...(mergedConstraints.sampleRate === undefined
+        ? {}
+        : { sampleRate: mergedConstraints.sampleRate }),
+    };
+    this.diagnostics = null;
+    this.diagnosticsTrack = null;
 
     try {
       // Use 'exact' for device selection to ensure the correct device is captured
       // If the device is unavailable, NotFoundError is thrown and handled by handleStartError
-      this.stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          deviceId: deviceId ? { exact: deviceId } : undefined,
-          echoCancellation: mergedConstraints.echoCancellation,
-          noiseSuppression: mergedConstraints.noiseSuppression,
-          autoGainControl: mergedConstraints.autoGainControl,
-          sampleRate: mergedConstraints.sampleRate,
-          channelCount: mergedConstraints.channelCount ?? { ideal: 32 },
-        },
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: initialRequest,
       });
+      const { audioTrack, capabilities, settings } = getCaptureState(stream);
+      this.stream = stream;
 
       this._permissionState = "granted";
       this.callbacks.onPermissionChange?.("granted");
 
       // Get actual device ID and channel count from track settings.
-      // Note: browsers currently cap getUserMedia audio input at 2 channels
-      // regardless of hardware capabilities. We request { ideal: 32 } in case
-      // future browser versions lift this restriction.
-      const audioTrack = this.stream.getAudioTracks()[0];
-      const settings = audioTrack?.getSettings();
+      // Match openDAW's capture policy: request at most stereo and use the
+      // browser-reported shape for routing.
       this._currentDeviceId = settings?.deviceId ?? deviceId ?? null;
       this._channelCount = settings?.channelCount ?? 2;
+      if (audioTrack && settings) {
+        this.diagnosticsTrack = audioTrack;
+        this.diagnostics = {
+          actual: settings,
+          capabilities,
+          label: audioTrack.label,
+          latencyConstraintSupported: supportsLatency,
+          muted: audioTrack.muted,
+          readyState: audioTrack.readyState,
+          requested: initialRequest,
+        };
+      }
 
       // Create Web Audio source from stream
       this.source = this.context.createMediaStreamSource(this.stream);
@@ -421,6 +529,8 @@ export class DeviceSource {
    * Stop capturing and release resources
    */
   stop(): void {
+    this.diagnostics = null;
+    this.diagnosticsTrack = null;
     if (!this._isActive) {
       return;
     }

@@ -57,8 +57,8 @@ export function rateLimitMiddleware(
 
     const result = await next({
       context: {
-        sessionId,
         ip,
+        sessionId,
         shouldSetCookie,
       },
     });
@@ -87,8 +87,8 @@ export function authMiddleware(options?: { createSessionIfMissing?: boolean }) {
 
     return next({
       context: {
-        sessionId,
         ip,
+        sessionId,
         shouldSetCookie,
       },
     });

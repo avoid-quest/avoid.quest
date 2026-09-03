@@ -18,11 +18,11 @@ function forwardTunnelEnvelope(
 ): Promise<Response> {
   const upstreamUrl = `https://${target.host}/api/${target.projectId}/envelope/`;
   return fetchImpl(upstreamUrl, {
-    method: "POST",
+    body: envelope,
     headers: {
       "Content-Type": "application/x-sentry-envelope",
     },
-    body: envelope,
+    method: "POST",
   });
 }
 
@@ -31,8 +31,8 @@ export async function handleSentryTunnelRequest(
   options: TunnelServiceOptions = {}
 ): Promise<Response> {
   const target = resolveTunnelTarget({
-    runtimeDsn: options.runtimeDsn,
     fallbackDsn: options.fallbackDsn,
+    runtimeDsn: options.runtimeDsn,
   });
 
   if (!target) {
@@ -65,10 +65,10 @@ export async function handleSentryTunnelRequest(
     );
 
     return new Response(null, {
-      status: upstream.status,
       headers: {
         "Cache-Control": "no-store",
       },
+      status: upstream.status,
     });
   } catch {
     return new Response("Error tunneling to Sentry", { status: 502 });

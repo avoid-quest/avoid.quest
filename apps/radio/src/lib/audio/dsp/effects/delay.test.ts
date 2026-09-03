@@ -161,7 +161,7 @@ describe("Delay Effect", () => {
     delay.process(input, output, 0, 1000);
 
     // Output should not explode (no runaway gain)
-    for (let i = 0; i < 1000; i++) {
+    for (let i = 0; i < 1000; i += 1) {
       expect(Number.isFinite(output[0][i])).toBe(true);
       expect(Math.abs(output[0][i])).toBeLessThan(100); // Reasonable bound
     }
@@ -238,14 +238,14 @@ describe("Delay Effect", () => {
     ];
 
     // Process many blocks (more than buffer length)
-    for (let block = 0; block < 1000; block++) {
+    for (let block = 0; block < 1000; block += 1) {
       input[0].fill(0.1);
       input[1].fill(0.1);
 
       expect(() => delay.process(input, output, 0, blockSize)).not.toThrow();
 
       // Output should be finite
-      for (let i = 0; i < blockSize; i++) {
+      for (let i = 0; i < blockSize; i += 1) {
         expect(Number.isFinite(output[0][i])).toBe(true);
         expect(Number.isFinite(output[1][i])).toBe(true);
       }
@@ -283,7 +283,7 @@ describe("Delay Effect", () => {
     delay.process(silentInput, silentOutput, 0, 1000);
 
     // All output should be silent or near-silent
-    for (let i = 0; i < 1000; i++) {
+    for (let i = 0; i < 1000; i += 1) {
       expect(Math.abs(silentOutput[0][i])).toBeLessThan(0.001);
       expect(Math.abs(silentOutput[1][i])).toBeLessThan(0.001);
     }
@@ -389,7 +389,7 @@ describe("Delay Effect", () => {
 
     delay.process(input, output, 0, 10_000);
 
-    for (let i = 0; i < 10_000; i++) {
+    for (let i = 0; i < 10_000; i += 1) {
       expect(Number.isFinite(output[0][i])).toBe(true);
       expect(Number.isFinite(output[1][i])).toBe(true);
     }

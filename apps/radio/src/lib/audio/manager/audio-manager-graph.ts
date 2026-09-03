@@ -1,4 +1,5 @@
 import {
+  type ChannelSelection,
   generateErrorId,
   type WorkletManager,
   type WorkletManagerEvents,
@@ -13,12 +14,13 @@ import type { SoundInstance } from "./audio-manager-types.js";
 
 type ConnectAudioGraphParams = {
   instance: SoundInstance;
-  connectMainOutput: (source: AudioNode) => () => void;
+  connectMainOutput: (source: AudioNode, realtime: boolean) => () => void;
   notifyListeners: NotifySoundListeners;
   connectEffectsGraph: (
     soundId: string,
     source: AudioNode,
-    destination: AudioNode
+    destination: AudioNode,
+    inputChannels: 1 | 2
   ) => Promise<boolean>;
 };
 
@@ -28,7 +30,14 @@ type WorkletListenerParams = {
   notifyListeners: NotifySoundListeners;
 };
 
+type UpdateDeviceChannelSelectionParams = {
+  instance: SoundInstance;
+  reconnectGraph: (instance: SoundInstance) => Promise<boolean>;
+  selection: ChannelSelection;
+};
+
 const STALE_SOURCE_CONTROL_ERROR = /^Cannot (pause|resume):/;
+const deviceGraphReconnects = new WeakMap<SoundInstance, Promise<void>>();
 
 function cleanupSoundNodes(instance: SoundInstance): void {
   instance.mainOutputCleanup?.();
@@ -57,8 +66,8 @@ function attachWorkletManagerListeners({
 
     instance.playing = false;
     notifySoundState(notifyListeners, sourceId, instance, {
-      isPlaying: false,
       hasEnded: true,
+      isPlaying: false,
     });
   });
 
@@ -127,16 +136,30 @@ async function connectAudioGraph({
   safeDisconnect(pan, "AudioManager.connectAudioGraph");
   safeDisconnect(filter, "AudioManager.connectAudioGraph");
 
-  sourceOutput.connect(pan);
-  pan.connect(filter);
+  const panAfterEffects = instance.isDeviceInput;
+  if (panAfterEffects) {
+    sourceOutput.connect(filter);
+    pan.connect(preFaderSend);
+  } else {
+    sourceOutput.connect(pan);
+    pan.connect(filter);
+  }
 
   // Connect the stable native shell before the first async effect-runtime
   // boundary. AudioManager can then request media playback in the original
   // user-activation task without exposing a disconnected or full-volume path.
   preFaderSend.connect(gain);
-  instance.mainOutputCleanup = connectMainOutput(gain);
+  instance.mainOutputCleanup = connectMainOutput(gain, instance.isDeviceInput);
 
-  if (await connectEffectsGraph(instance.sourceId, filter, preFaderSend)) {
+  const inputChannels = instance.deviceSource?.outputChannelCount ?? 2;
+  if (
+    await connectEffectsGraph(
+      instance.sourceId,
+      filter,
+      panAfterEffects ? pan : preFaderSend,
+      inputChannels
+    )
+  ) {
     return true;
   }
 
@@ -144,23 +167,59 @@ async function connectAudioGraph({
     `[AudioManager] Worklet unavailable for ${instance.sourceId}, effects bypassed`
   );
   notifyListeners(instance.sourceId, {
-    isPlaying: false,
-    isLoading: false,
-    isBuffering: false,
-    volume: instance.volume,
     error: {
+      code: "WORKLET_UNAVAILABLE",
       id: generateErrorId(),
       message: "Audio effects unavailable - worklet failed to initialize",
-      code: "WORKLET_UNAVAILABLE",
       radio: instance.radio,
-      timestamp: Date.now(),
       sourceId: instance.sourceId,
+      timestamp: Date.now(),
     },
     hasEnded: false,
+    isBuffering: false,
+    isLoading: false,
+    isPlaying: false,
+    volume: instance.volume,
   });
 
-  filter.connect(preFaderSend);
+  filter.connect(panAfterEffects ? pan : preFaderSend);
   return true;
 }
 
-export { attachWorkletManagerListeners, cleanupSoundNodes, connectAudioGraph };
+function updateDeviceChannelSelection({
+  instance,
+  reconnectGraph,
+  selection,
+}: UpdateDeviceChannelSelectionParams): void {
+  const { deviceSource } = instance;
+  if (!deviceSource) {
+    return;
+  }
+  const previousOutputChannelCount = deviceSource.outputChannelCount;
+  deviceSource.setChannelSelection(selection);
+  if (
+    deviceSource.isActive &&
+    deviceSource.outputChannelCount !== previousOutputChannelCount &&
+    instance.nodes
+  ) {
+    const reconnect = async (): Promise<void> => {
+      await reconnectGraph(instance);
+    };
+    const previous = deviceGraphReconnects.get(instance);
+    const pending = (previous ? previous.then(reconnect) : reconnect()).catch(
+      (error: unknown) =>
+        console.warn(
+          `[AudioManager] Failed to reconnect device input ${instance.sourceId}`,
+          error
+        )
+    );
+    deviceGraphReconnects.set(instance, pending);
+  }
+}
+
+export {
+  attachWorkletManagerListeners,
+  cleanupSoundNodes,
+  connectAudioGraph,
+  updateDeviceChannelSelection,
+};

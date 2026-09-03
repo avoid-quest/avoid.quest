@@ -27,6 +27,7 @@ import {
   type DeviceAudioConstraints,
   type DeviceSource,
   getAudioContext,
+  getAudioContextManager,
   initialAudioState,
   type Radio,
   resumeAudioContext,
@@ -34,7 +35,11 @@ import {
   type Unsubscribe,
 } from "../playback/index.js";
 import { inferStreamFormat } from "../playback/stream-format.js";
-import { cleanupSoundNodes, connectAudioGraph } from "./audio-manager-graph.js";
+import {
+  cleanupSoundNodes,
+  connectAudioGraph,
+  updateDeviceChannelSelection,
+} from "./audio-manager-graph.js";
 import {
   createDeviceSourceCallbacks,
   createPlaybackSourceCallbacks,
@@ -46,6 +51,10 @@ import {
   type SoundInstance,
   type SoundOutputMode,
 } from "./audio-manager-types.js";
+import {
+  type AudioPerformanceDiagnostics,
+  createAudioPerformanceDiagnostics,
+} from "./audio-performance.js";
 import { EffectsController } from "./effects-controller.js";
 import { MeterService } from "./meter-service.js";
 import { SoundRegistry } from "./sound-registry.js";
@@ -85,7 +94,7 @@ export class AudioManager {
   private readonly effects: EffectsController;
   private readonly output: OutputRouting;
   readonly meters: MeterService;
-  private audioSystemInitialized = false;
+  private audioSystemInitialized = false as boolean;
   private initPromise: Promise<void> | null = null;
 
   private get sounds(): Map<string, SoundInstance> {
@@ -101,9 +110,9 @@ export class AudioManager {
       notifyListeners: this.notifyListeners,
     });
     this.effects = new EffectsController({
-      workletProcessorUrl: () => workletProcessorUrl,
-      sounds: this.soundRegistry.asMap(),
       notifyListeners: this.notifyListeners,
+      sounds: this.soundRegistry.asMap(),
+      workletProcessorUrl: () => workletProcessorUrl,
     });
   }
 
@@ -155,6 +164,24 @@ export class AudioManager {
     return this.audioSystemInitialized;
   }
 
+  getPerformanceDiagnostics(): AudioPerformanceDiagnostics {
+    const meter = this.meters.getDiagnostics();
+    const backends = [...this.sounds.keys()].map(
+      (soundId) => this.effects.getRuntimeOutcome(soundId).backend
+    );
+    return createAudioPerformanceDiagnostics({
+      backends,
+      context: getAudioContextManager().getPerformanceSnapshot(),
+      effects: this.effects.getPerformanceSnapshot(),
+      inputs: [...this.sounds.entries()].flatMap(([soundId, sound]) => {
+        const diagnostics = sound.deviceSource?.getDiagnostics();
+        return diagnostics ? [{ diagnostics, soundId }] : [];
+      }),
+      meter,
+      soundCount: this.sounds.size,
+    });
+  }
+
   // ============================================
   // Sound Lifecycle
   // ============================================
@@ -187,11 +214,11 @@ export class AudioManager {
 
     // Notify ready state (sound is registered but not initialized)
     notifySoundState(this.notifyListeners, id, instance, {
-      isPlaying: false,
-      isLoading: false,
-      isBuffering: false,
       error: null,
       hasEnded: false,
+      isBuffering: false,
+      isLoading: false,
+      isPlaying: false,
     });
 
     return id;
@@ -220,9 +247,9 @@ export class AudioManager {
       instance.volume = volume;
       instance.playing = true;
       notifySoundState(this.notifyListeners, soundId, instance, {
+        error: null,
         isPlaying: true,
         volume,
-        error: null,
       });
       return;
     }
@@ -239,7 +266,7 @@ export class AudioManager {
     const resumePromise = resumeAudioContext();
     // Build the native master shell synchronously so the media play request
     // can remain in the originating user-activation task on mobile.
-    this.output.getMainOutput(context);
+    this.output.getMainMeterSource(context);
     this.output.replaceContext(context).catch(console.error);
 
     // Update instance state
@@ -249,10 +276,10 @@ export class AudioManager {
 
     // Notify loading state
     notifySoundState(this.notifyListeners, soundId, instance, {
-      isPlaying: true,
-      isLoading: true,
-      volume,
       error: null,
+      isLoading: true,
+      isPlaying: true,
+      volume,
     });
 
     // Create audio nodes if not exists
@@ -285,8 +312,8 @@ export class AudioManager {
         soundId,
         createPlaybackSourceCallbacks({
           instance,
-          soundId,
           notifyListeners: this.notifyListeners,
+          soundId,
         })
       );
 
@@ -356,9 +383,9 @@ export class AudioManager {
     instance.loading = true;
 
     notifySoundState(this.notifyListeners, soundId, instance, {
-      isPlaying: false,
-      isLoading: true,
       error: null,
+      isLoading: true,
+      isPlaying: false,
     });
 
     // Create audio nodes
@@ -375,8 +402,8 @@ export class AudioManager {
       soundId,
       createDeviceSourceCallbacks({
         instance,
-        soundId,
         notifyListeners: this.notifyListeners,
+        soundId,
       })
     );
 
@@ -403,10 +430,14 @@ export class AudioManager {
     selection: ChannelSelection
   ): void {
     const instance = this.sounds.get(soundId);
-    if (!instance?.deviceSource) {
+    if (!instance) {
       return;
     }
-    instance.deviceSource.setChannelSelection(selection);
+    updateDeviceChannelSelection({
+      instance,
+      reconnectGraph: (sound) => this.connectAudioGraph(sound),
+      selection,
+    });
   }
 
   /**
@@ -421,8 +452,8 @@ export class AudioManager {
    * Connect the audio graph for a sound instance
    *
    * Routing (post-effects CUE):
-   *   Source → Pan → Filter → Effects → PreFaderSend (CUE tap) → Gain (fader) → Destination
-   *                                                              ↘ openDAW MeterWorklet
+   *   Device:  Source → Filter → Effects → Pan → PreFaderSend → Gain → Destination
+   *   Playback: Source → Pan → Filter → Effects → PreFaderSend → Gain → Destination
    *
    * The CUE tap is now AFTER effects, so headphone monitoring includes effects
    * but is still independent of the channel fader volume.
@@ -431,11 +462,12 @@ export class AudioManager {
    */
   private async connectAudioGraph(instance: SoundInstance): Promise<boolean> {
     const connected = await connectAudioGraph({
+      connectEffectsGraph: (soundId, source, destination, inputChannels) =>
+        this.effects.connectGraph(soundId, source, destination, inputChannels),
+      connectMainOutput: (source, realtime) =>
+        this.output.connectMain(source, realtime),
       instance,
-      connectMainOutput: (source) => this.output.connectMain(source),
       notifyListeners: this.notifyListeners,
-      connectEffectsGraph: (soundId, source, destination) =>
-        this.effects.connectGraph(soundId, source, destination),
     });
     if (connected && instance.nodes) {
       await this.meters.setSoundSource(instance.sourceId, instance.nodes.gain);
@@ -467,8 +499,8 @@ export class AudioManager {
     }
 
     notifySoundState(this.notifyListeners, soundId, instance, {
-      isPlaying: false,
       error: null,
+      isPlaying: false,
     });
   }
 
@@ -487,9 +519,9 @@ export class AudioManager {
     this.effects.stopSource(soundId);
 
     notifySoundState(this.notifyListeners, soundId, instance, {
+      error: null,
       isPlaying: false,
       volume: 0,
-      error: null,
     });
   }
 
@@ -637,7 +669,7 @@ export class AudioManager {
     }
 
     const now = context.currentTime;
-    const filter = instance.nodes.filter;
+    const { filter } = instance.nodes;
 
     // If value is near center, bypass filter
     if (Math.abs(clampedValue) < 0.05) {
@@ -781,10 +813,10 @@ export class AudioManager {
   removeFilter(soundId: string): void {
     this.updateFilter(soundId, {
       enabled: false,
-      type: "lowpass",
       frequency: 20_000,
-      Q: 1,
       gain: 0,
+      Q: 1,
+      type: "lowpass",
     });
   }
 
@@ -852,8 +884,8 @@ export class AudioManager {
     }
 
     return {
-      position: instance.playbackSource.currentTime,
       duration: instance.playbackSource.duration,
+      position: instance.playbackSource.currentTime,
     };
   }
 
@@ -885,9 +917,9 @@ export class AudioManager {
     // Update loading state
     instance.loading = true;
     notifySoundState(this.notifyListeners, soundId, instance, {
-      isPlaying: false,
-      isLoading: true,
       error: null,
+      isLoading: true,
+      isPlaying: false,
     });
 
     const refreshedRadio = {
@@ -907,9 +939,9 @@ export class AudioManager {
       instance.playing = true;
 
       notifySoundState(this.notifyListeners, soundId, instance, {
-        isPlaying: true,
-        isLoading: false,
         error: null,
+        isLoading: false,
+        isPlaying: true,
       });
     } catch (error) {
       instance.loading = false;
@@ -1002,10 +1034,10 @@ export class AudioManager {
     instance.playing = true;
     instance.loading = true;
     notifySoundState(this.notifyListeners, soundId, instance, {
-      isPlaying: true,
-      isLoading: true,
-      volume,
       error: null,
+      isLoading: true,
+      isPlaying: true,
+      volume,
     });
 
     const activePlaybackSource = instance.playbackSource?.isActive
@@ -1024,8 +1056,8 @@ export class AudioManager {
         soundId,
         createPlaybackSourceCallbacks({
           instance,
-          soundId,
           notifyListeners: this.notifyListeners,
+          soundId,
         })
       );
       this.volume.set(soundId, volume);
@@ -1068,9 +1100,9 @@ export class AudioManager {
     instance.loading = false;
     instance.buffering = false;
     notifySoundState(this.notifyListeners, soundId, instance, {
-      isPlaying: false,
-      isLoading: false,
       isBuffering: false,
+      isLoading: false,
+      isPlaying: false,
     });
   }
 
@@ -1121,9 +1153,9 @@ export class AudioManager {
     // Resume the audio context first
     await resumeAudioContext();
 
-    this.output.getMainOutput(context);
+    this.output.getMainMeterSource(context);
     this.output.replaceContext(context).catch(console.error);
-    await this.meters.setMasterSource(this.output.getMainOutput(context));
+    await this.meters.setMasterSource(this.output.getMainMeterSource(context));
     this.audioSystemInitialized = true;
   }
 

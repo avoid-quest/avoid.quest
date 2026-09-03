@@ -40,7 +40,8 @@ export async function scrapeRadioMetadata(
   } catch (error) {
     console.error("Error scraping radio metadata:", error);
     throw new Error(
-      `Failed to fetch website data: ${error instanceof Error ? error.message : "Unknown error"}`
+      `Failed to fetch website data: ${error instanceof Error ? error.message : "Unknown error"}`,
+      { cause: error }
     );
   }
 }
@@ -50,9 +51,9 @@ export function parseRadioMetadataFromDocument(
   websiteUrl: string
 ): RadioMetadata {
   const metadata: RadioMetadata = {
-    websiteUrl,
     foundFields: [],
     missingFields: [],
+    websiteUrl,
   };
 
   const nameOptions = extractNameOptions(doc);
@@ -119,9 +120,9 @@ function extractNameOptions(doc: Document): ScrapedOption[] {
     ?.getAttribute("content");
   if (ogTitle) {
     options.push({
-      value: ogTitle,
-      label: `Open Graph: ${ogTitle}`,
       confidence: 0.9,
+      label: `Open Graph: ${ogTitle}`,
+      value: ogTitle,
     });
   }
 
@@ -129,9 +130,9 @@ function extractNameOptions(doc: Document): ScrapedOption[] {
   const title = doc.querySelector("title")?.textContent?.trim();
   if (title && title !== ogTitle) {
     options.push({
-      value: title,
-      label: `Page Title: ${title}`,
       confidence: 0.8,
+      label: `Page Title: ${title}`,
+      value: title,
     });
   }
 
@@ -139,9 +140,9 @@ function extractNameOptions(doc: Document): ScrapedOption[] {
   const h1 = doc.querySelector("h1")?.textContent?.trim();
   if (h1 && h1 !== ogTitle && h1 !== title) {
     options.push({
-      value: h1,
-      label: `Heading: ${h1}`,
       confidence: 0.7,
+      label: `Heading: ${h1}`,
+      value: h1,
     });
   }
 
@@ -154,9 +155,9 @@ function extractNameOptions(doc: Document): ScrapedOption[] {
       const data = JSON.parse(script.textContent || "{}");
       if (data.name && typeof data.name === "string") {
         options.push({
-          value: data.name,
-          label: `JSON-LD: ${data.name}`,
           confidence: 0.8,
+          label: `JSON-LD: ${data.name}`,
+          value: data.name,
         });
       }
     } catch {
@@ -199,9 +200,9 @@ function extractDirectAudioElements(
         audio.getAttribute("aria-label") ||
         "Audio Stream";
       options.push({
-        value: resolveUrl(src, baseUrl),
-        label: `Audio Element: ${label}`,
         confidence: 0.95,
+        label: `Audio Element: ${label}`,
+        value: resolveUrl(src, baseUrl),
       });
     }
   }
@@ -228,9 +229,9 @@ function extractAudioSourceElements(
         `${type} stream`;
 
       options.push({
-        value: resolveUrl(src, baseUrl),
-        label: `Audio Source: ${label}`,
         confidence: 0.9,
+        label: `Audio Source: ${label}`,
+        value: resolveUrl(src, baseUrl),
       });
     }
   }
@@ -242,9 +243,9 @@ function extractAudioSourceElements(
     const type = source.getAttribute("type");
     if (src && type?.startsWith("audio/") && isValidAudioUrl(src)) {
       options.push({
-        value: resolveUrl(src, baseUrl),
-        label: `Audio Source: ${type}`,
         confidence: 0.85,
+        label: `Audio Source: ${type}`,
+        value: resolveUrl(src, baseUrl),
       });
     }
   }
@@ -271,12 +272,12 @@ function extractCommentedAudioElements(
   for (const pattern of commentedAudioPatterns) {
     const matches = htmlContent.matchAll(pattern);
     for (const match of matches) {
-      const src = match[1];
+      const [, src] = match;
       if (src && isValidAudioUrl(src)) {
         options.push({
-          value: resolveUrl(src, baseUrl),
-          label: "Commented Audio Element",
           confidence: 0.8,
+          label: "Commented Audio Element",
+          value: resolveUrl(src, baseUrl),
         });
       }
     }
@@ -309,9 +310,9 @@ function extractAudioLinksFromAnchors(
     if (href && isValidAudioUrl(href)) {
       const label = createAudioLinkLabel(link);
       options.push({
-        value: resolveUrl(href, baseUrl),
-        label,
         confidence: 0.8,
+        label,
+        value: resolveUrl(href, baseUrl),
       });
     }
   }
@@ -353,15 +354,15 @@ function extractAudioLinksFromButtons(
       // Extract URLs from onclick handlers
       const urlMatch = onclick.match(AUDIO_URL_PATTERN);
       if (urlMatch) {
-        const url = urlMatch[0];
+        const [url] = urlMatch;
         const text =
           button.textContent?.trim() ||
           button.getAttribute("value") ||
           "Audio Button";
         options.push({
-          value: resolveUrl(url, baseUrl),
-          label: `Audio Button: ${text}`,
           confidence: 0.7,
+          label: `Audio Button: ${text}`,
+          value: resolveUrl(url, baseUrl),
         });
       }
     }
@@ -409,9 +410,9 @@ function extractRadioPlatformLinks(
           : `Radio Platform: ${href}`;
 
         options.push({
-          value: fullUrl,
-          label,
           confidence: 0.6,
+          label,
+          value: fullUrl,
         });
       }
     }
@@ -431,9 +432,9 @@ function extractJsonLdAudio(doc: Document, baseUrl: string): ScrapedOption[] {
       const data = JSON.parse(script.textContent || "{}");
       if (data["@type"] === "AudioObject" && data.contentUrl) {
         options.push({
-          value: resolveUrl(data.contentUrl, baseUrl),
-          label: `JSON-LD Audio: ${data.contentUrl}`,
           confidence: 0.8,
+          label: `JSON-LD Audio: ${data.contentUrl}`,
+          value: resolveUrl(data.contentUrl, baseUrl),
         });
       }
     } catch {
@@ -505,9 +506,9 @@ function extractDataAttributes(
           const label = className || id || `${tagName} element`;
 
           options.push({
-            value: resolveUrl(url, baseUrl),
-            label: `Data Attribute: ${label}`,
             confidence: 0.75,
+            label: `Data Attribute: ${label}`,
+            value: resolveUrl(url, baseUrl),
           });
         }
       }
@@ -543,9 +544,9 @@ function extractJavaScriptAudio(
         const url = match[1] || match[0];
         if (url && isValidAudioUrl(url)) {
           options.push({
-            value: resolveUrl(url, baseUrl),
-            label: "JavaScript Audio URL",
             confidence: 0.6,
+            label: "JavaScript Audio URL",
+            value: resolveUrl(url, baseUrl),
           });
         }
       }
@@ -619,10 +620,10 @@ function extractImageLogos(doc: Document, baseUrl: string): ScrapedOption[] {
         const label = alt || className || `Logo: ${selector}`;
 
         options.push({
-          value: resolveUrl(src, baseUrl),
-          label: `Logo: ${label}`,
           confidence: 0.95,
+          label: `Logo: ${label}`,
           preview: resolveUrl(src, baseUrl),
+          value: resolveUrl(src, baseUrl),
         });
       }
     }
@@ -650,10 +651,10 @@ function extractSvgLogos(doc: Document, baseUrl: string): ScrapedOption[] {
         const label = alt || className || `Logo: ${selector}`;
 
         options.push({
-          value: resolveUrl(src, baseUrl),
-          label: `Logo: ${label}`,
           confidence: 0.95,
+          label: `Logo: ${label}`,
           preview: resolveUrl(src, baseUrl),
+          value: resolveUrl(src, baseUrl),
         });
       }
     }
@@ -697,10 +698,10 @@ function extractContainerLogos(
         const label = alt || className || `Logo: ${selector}`;
 
         options.push({
-          value: resolveUrl(src, baseUrl),
-          label: `Logo: ${label}`,
           confidence: 0.95,
+          label: `Logo: ${label}`,
           preview: resolveUrl(src, baseUrl),
+          value: resolveUrl(src, baseUrl),
         });
       }
     }
@@ -725,10 +726,10 @@ function extractLogosByFilename(
       const filename = src.split("/").pop() || "";
 
       options.push({
-        value: resolveUrl(src, baseUrl),
-        label: `Logo: ${alt || filename}`,
         confidence: 0.9,
+        label: `Logo: ${alt || filename}`,
         preview: resolveUrl(src, baseUrl),
+        value: resolveUrl(src, baseUrl),
       });
     }
   }
@@ -767,10 +768,10 @@ function extractHeaderLogos(doc: Document, baseUrl: string): ScrapedOption[] {
           "";
         const elementType = headerElement.tagName.toLowerCase();
         options.push({
-          value: resolveUrl(src, baseUrl),
-          label: `Header ${elementType.toUpperCase()}: ${alt || "Logo"}`,
           confidence: 0.8,
+          label: `Header ${elementType.toUpperCase()}: ${alt || "Logo"}`,
           preview: resolveUrl(src, baseUrl),
+          value: resolveUrl(src, baseUrl),
         });
       }
     }
@@ -788,10 +789,10 @@ function extractMetaLogos(doc: Document, baseUrl: string): ScrapedOption[] {
     ?.getAttribute("content");
   if (ogImage && !isFavicon(ogImage)) {
     options.push({
-      value: resolveUrl(ogImage, baseUrl),
-      label: "Open Graph Image",
       confidence: 0.7,
+      label: "Open Graph Image",
       preview: resolveUrl(ogImage, baseUrl),
+      value: resolveUrl(ogImage, baseUrl),
     });
   }
 
@@ -801,10 +802,10 @@ function extractMetaLogos(doc: Document, baseUrl: string): ScrapedOption[] {
     ?.getAttribute("href");
   if (appleTouchIcon && !isFavicon(appleTouchIcon)) {
     options.push({
-      value: resolveUrl(appleTouchIcon, baseUrl),
-      label: "Apple Touch Icon",
       confidence: 0.6,
+      label: "Apple Touch Icon",
       preview: resolveUrl(appleTouchIcon, baseUrl),
+      value: resolveUrl(appleTouchIcon, baseUrl),
     });
   }
 
@@ -820,10 +821,10 @@ function extractLargeFavicons(doc: Document, baseUrl: string): ScrapedOption[] {
     const sizes = favicon.getAttribute("sizes");
     if (href && !isFavicon(href) && isLargeFavicon(sizes)) {
       options.push({
-        value: resolveUrl(href, baseUrl),
-        label: `Large Favicon (${sizes})`,
         confidence: 0.5,
+        label: `Large Favicon (${sizes})`,
         preview: resolveUrl(href, baseUrl),
+        value: resolveUrl(href, baseUrl),
       });
     }
   }
@@ -869,10 +870,10 @@ function extractModernLinkImages(
         const format = getImageFormat(type);
 
         options.push({
-          value: resolveUrl(href, baseUrl),
-          label: `${format} Icon${sizes ? ` (${sizes})` : ""}`,
           confidence: 0.7,
+          label: `${format} Icon${sizes ? ` (${sizes})` : ""}`,
           preview: resolveUrl(href, baseUrl),
+          value: resolveUrl(href, baseUrl),
         });
       }
     }
@@ -901,10 +902,10 @@ function extractModernMetaImages(
         const format = getImageFormatFromContent(content);
 
         options.push({
-          value: resolveUrl(content, baseUrl),
-          label: `Open Graph ${format} Image`,
           confidence: 0.6,
+          label: `Open Graph ${format} Image`,
           preview: resolveUrl(content, baseUrl),
+          value: resolveUrl(content, baseUrl),
         });
       }
     }
@@ -1040,9 +1041,9 @@ function extractDescriptionOptions(doc: Document): ScrapedOption[] {
     ?.getAttribute("content");
   if (ogDescription) {
     options.push({
-      value: ogDescription,
-      label: "Open Graph Description",
       confidence: 0.9,
+      label: "Open Graph Description",
+      value: ogDescription,
     });
   }
 
@@ -1052,9 +1053,9 @@ function extractDescriptionOptions(doc: Document): ScrapedOption[] {
     ?.getAttribute("content");
   if (metaDescription && metaDescription !== ogDescription) {
     options.push({
-      value: metaDescription,
-      label: "Meta Description",
       confidence: 0.8,
+      label: "Meta Description",
+      value: metaDescription,
     });
   }
 
@@ -1067,9 +1068,9 @@ function extractDescriptionOptions(doc: Document): ScrapedOption[] {
       const data = JSON.parse(script.textContent || "{}");
       if (data.description && typeof data.description === "string") {
         options.push({
-          value: data.description,
-          label: "JSON-LD Description",
           confidence: 0.8,
+          label: "JSON-LD Description",
+          value: data.description,
         });
       }
     } catch {
@@ -1085,9 +1086,9 @@ function extractDescriptionOptions(doc: Document): ScrapedOption[] {
     firstParagraph.length < FIRST_PARAGRAPH_MAX_LENGTH
   ) {
     options.push({
-      value: firstParagraph,
-      label: "First Paragraph",
       confidence: 0.5,
+      label: "First Paragraph",
+      value: firstParagraph,
     });
   }
 

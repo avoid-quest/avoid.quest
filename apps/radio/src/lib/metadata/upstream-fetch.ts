@@ -41,9 +41,10 @@ export function createMetadataUpstreamFetch(
     init: RequestInit,
     signal: AbortSignal
   ): Promise<Response> {
-    let currentUrl = url;
-
-    for (let redirects = 0; redirects <= MAX_REDIRECTS; redirects += 1) {
+    const fetchRedirect = async (
+      currentUrl: string,
+      redirects: number
+    ): Promise<Response> => {
       const currentValidation = await validateResolvedPublicStreamUrl(
         currentUrl,
         {
@@ -54,9 +55,9 @@ export function createMetadataUpstreamFetch(
       if (!currentValidation.ok) {
         throw new RadioMetadataValidationError(currentValidation.reason);
       }
-      currentUrl = currentValidation.url;
+      const validatedUrl = currentValidation.url;
 
-      const response = await fetchImpl(currentUrl, {
+      const response = await fetchImpl(validatedUrl, {
         ...init,
         redirect: "manual",
         signal,
@@ -72,7 +73,7 @@ export function createMetadataUpstreamFetch(
       }
 
       await cancelResponseBody(response);
-      const nextUrl = new URL(location, currentUrl).toString();
+      const nextUrl = new URL(location, validatedUrl).toString();
       const validation = await validateResolvedPublicStreamUrl(nextUrl, {
         resolveHostname,
         signal,
@@ -80,10 +81,13 @@ export function createMetadataUpstreamFetch(
       if (!validation.ok) {
         throw new RadioMetadataValidationError(validation.reason);
       }
-      currentUrl = validation.url;
-    }
+      if (redirects >= MAX_REDIRECTS) {
+        throw new Error("Radio metadata upstream exceeded redirect limit");
+      }
+      return await fetchRedirect(validation.url, redirects + 1);
+    };
 
-    throw new Error("Radio metadata upstream exceeded redirect limit");
+    return await fetchRedirect(url, 0);
   };
 }
 

@@ -1,3 +1,4 @@
+/** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 import { Button } from "@avoid.quest/ui/components/button";
 import { Input } from "@avoid.quest/ui/components/input";
 import { Label } from "@avoid.quest/ui/components/label";
@@ -21,7 +22,12 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { PlusIcon } from "lucide-react";
-import { useState } from "react";
+import {
+  type Dispatch,
+  type FocusEvent,
+  type SetStateAction,
+  useState,
+} from "react";
 import type { EffectConfig, EffectType } from "@/lib/audio";
 import {
   clampEffectTempo,
@@ -44,6 +50,51 @@ type EffectChainProps = {
   tempo?: number;
   onTempoChange?: (tempo: number) => void;
 };
+
+function ignoreEffectUpdate(_config: Partial<EffectConfig>) {
+  return null;
+}
+
+function noop() {
+  return null;
+}
+
+function EffectTempoControl({
+  deckId,
+  onTempoChange,
+  tempo,
+}: {
+  deckId?: "deck-a" | "deck-b";
+  onTempoChange: (tempo: number) => void;
+  tempo: number;
+}) {
+  function updateTempo(event: FocusEvent<HTMLInputElement>) {
+    const nextTempo = Number(event.target.value);
+    if (Number.isFinite(nextTempo)) {
+      onTempoChange(clampEffectTempo(nextTempo));
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-2 rounded-md border bg-muted/20 p-2">
+      <Label className="flex-1 text-xs" htmlFor={`${deckId}-effects-tempo`}>
+        Synced effect tempo
+      </Label>
+      <Input
+        className="h-8 w-24"
+        defaultValue={tempo}
+        id={`${deckId}-effects-tempo`}
+        key={tempo}
+        max={MAX_EFFECT_TEMPO}
+        min={MIN_EFFECT_TEMPO}
+        onBlur={updateTempo}
+        step={0.1}
+        type="number"
+      />
+      <span className="text-muted-foreground text-xs">BPM</span>
+    </div>
+  );
+}
 
 export function EffectChain({
   effects,
@@ -73,10 +124,18 @@ export function EffectChain({
     })
   );
 
-  const handleAddEffect = (type: EffectType) => {
+  function handleAddEffect(type: EffectType) {
     onAddEffect(type);
     setShowPicker(false);
-  };
+  }
+
+  function openPicker() {
+    setShowPicker(true);
+  }
+
+  function closePicker() {
+    setShowPicker(false);
+  }
 
   // Local optimistic order — prevents snap-back when external store update
   // hasn't propagated yet at the time dnd-kit clears transforms on drag end
@@ -110,11 +169,11 @@ export function EffectChain({
 
   const activeEffect = activeId ? (effectsById.get(activeId) ?? null) : null;
 
-  const handleDragStart = (event: DragStartEvent) => {
+  function handleDragStart(event: DragStartEvent) {
     setActiveId(event.active.id as string);
-  };
+  }
 
-  const handleDragEnd = (event: DragEndEvent) => {
+  function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
     setActiveId(null);
 
@@ -130,40 +189,23 @@ export function EffectChain({
       setLocalOrder(newOrder);
       onReorderEffects(newOrder);
     }
-  };
+  }
 
   return (
     <div className="w-full min-w-0 space-y-2">
-      {title?.trim() && (
+      {Boolean(title?.trim()) && (
         <div className="font-medium text-muted-foreground text-sm">{title}</div>
       )}
 
-      {tempo !== undefined && onTempoChange && (
-        <div className="flex items-center gap-2 rounded-md border bg-muted/20 p-2">
-          <Label className="flex-1 text-xs" htmlFor={`${deckId}-effects-tempo`}>
-            Synced effect tempo
-          </Label>
-          <Input
-            className="h-8 w-24"
-            defaultValue={tempo}
-            id={`${deckId}-effects-tempo`}
-            key={tempo}
-            max={MAX_EFFECT_TEMPO}
-            min={MIN_EFFECT_TEMPO}
-            onBlur={(event) => {
-              const value = Number(event.target.value);
-              if (Number.isFinite(value)) {
-                onTempoChange(clampEffectTempo(value));
-              }
-            }}
-            step={0.1}
-            type="number"
-          />
-          <span className="text-muted-foreground text-xs">BPM</span>
-        </div>
-      )}
+      {tempo !== undefined && onTempoChange !== undefined ? (
+        <EffectTempoControl
+          deckId={deckId}
+          onTempoChange={onTempoChange}
+          tempo={tempo}
+        />
+      ) : null}
 
-      {showEffectsList && (
+      {showEffectsList ? (
         <DndContext
           collisionDetection={closestCenter}
           onDragEnd={handleDragEnd}
@@ -176,19 +218,15 @@ export function EffectChain({
               strategy={verticalListSortingStrategy}
             >
               {sortedEffects.map((effect) => (
-                <SortableEffectItem
+                <EffectListItem
                   deckId={deckId}
                   effect={effect}
+                  expandedEffectId={expandedEffectId}
                   isDraggingAny={activeId !== null}
-                  isExpanded={expandedEffectId === effect.id}
                   key={effect.id}
-                  onExpand={() =>
-                    setExpandedEffectId(
-                      expandedEffectId === effect.id ? null : effect.id
-                    )
-                  }
-                  onRemove={() => onRemoveEffect(effect.id)}
-                  onUpdate={(config) => onUpdateEffect(effect.id, config)}
+                  onRemoveEffect={onRemoveEffect}
+                  onUpdateEffect={onUpdateEffect}
+                  setExpandedEffectId={setExpandedEffectId}
                 />
               ))}
             </SortableContext>
@@ -204,21 +242,21 @@ export function EffectChain({
                 <EffectItem
                   effect={activeEffect}
                   isExpanded={false}
-                  onExpand={() => undefined}
-                  onRemove={() => undefined}
-                  onUpdate={() => undefined}
+                  onExpand={noop}
+                  onRemove={noop}
+                  onUpdate={ignoreEffectUpdate}
                 />
               </div>
             ) : null}
           </DragOverlay>
         </DndContext>
-      )}
+      ) : null}
 
-      {showAddButton && (
+      {showAddButton ? (
         <>
           <Button
             className="w-full"
-            onClick={() => setShowPicker(true)}
+            onClick={openPicker}
             size="sm"
             variant="outline"
           >
@@ -226,15 +264,56 @@ export function EffectChain({
             Add Effect
           </Button>
 
-          {showPicker && (
-            <EffectPicker
-              onClose={() => setShowPicker(false)}
-              onSelect={handleAddEffect}
-            />
-          )}
+          {showPicker ? (
+            <EffectPicker onClose={closePicker} onSelect={handleAddEffect} />
+          ) : null}
         </>
-      )}
+      ) : null}
     </div>
+  );
+}
+
+function EffectListItem({
+  deckId,
+  effect,
+  expandedEffectId,
+  isDraggingAny,
+  onRemoveEffect,
+  onUpdateEffect,
+  setExpandedEffectId,
+}: {
+  deckId?: "deck-a" | "deck-b";
+  effect: EffectConfig;
+  expandedEffectId: string | null;
+  isDraggingAny: boolean;
+  onRemoveEffect: (effectId: string) => void;
+  onUpdateEffect: (effectId: string, config: Partial<EffectConfig>) => void;
+  setExpandedEffectId: Dispatch<SetStateAction<string | null>>;
+}) {
+  function expand() {
+    setExpandedEffectId((currentId) =>
+      currentId === effect.id ? null : effect.id
+    );
+  }
+
+  function remove() {
+    onRemoveEffect(effect.id);
+  }
+
+  function update(config: Partial<EffectConfig>) {
+    onUpdateEffect(effect.id, config);
+  }
+
+  return (
+    <SortableEffectItem
+      deckId={deckId}
+      effect={effect}
+      isDraggingAny={isDraggingAny}
+      isExpanded={expandedEffectId === effect.id}
+      onExpand={expand}
+      onRemove={remove}
+      onUpdate={update}
+    />
   );
 }
 

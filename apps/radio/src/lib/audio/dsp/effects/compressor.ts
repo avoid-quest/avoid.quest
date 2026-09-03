@@ -96,7 +96,7 @@ export class Compressor {
     const [inputL, inputR] = input;
     const [outputL, outputR] = output;
 
-    for (let i = fromIndex; i < toIndex; i++) {
+    for (let i = fromIndex; i < toIndex; i += 1) {
       const sampleL = inputL[i] ?? 0;
       const sampleR = inputR[i] ?? 0;
 

@@ -69,7 +69,7 @@ export class AudioBuffer {
     toIndex = this.length
   ): void {
     const [targetL, targetR] = target;
-    for (let i = fromIndex; i < toIndex; i++) {
+    for (let i = fromIndex; i < toIndex; i += 1) {
       targetL[i] += this.#left[i];
       targetR[i] += this.#right[i];
     }
@@ -82,7 +82,7 @@ export class AudioBuffer {
     toIndex = this.length
   ): void {
     const [sourceL, sourceR] = source;
-    for (let i = fromIndex; i < toIndex; i++) {
+    for (let i = fromIndex; i < toIndex; i += 1) {
       this.#left[i] = sourceL[i];
       this.#right[i] = sourceR[i];
     }
@@ -90,7 +90,7 @@ export class AudioBuffer {
 
   /** Apply gain to the buffer */
   applyGain(gain: number, fromIndex = 0, toIndex = this.length): void {
-    for (let i = fromIndex; i < toIndex; i++) {
+    for (let i = fromIndex; i < toIndex; i += 1) {
       this.#left[i] *= gain;
       this.#right[i] *= gain;
     }
@@ -103,7 +103,7 @@ export class AudioBuffer {
     fromIndex = 0,
     toIndex = this.length
   ): void {
-    for (let i = fromIndex; i < toIndex; i++) {
+    for (let i = fromIndex; i < toIndex; i += 1) {
       this.#left[i] *= leftGain;
       this.#right[i] *= rightGain;
     }

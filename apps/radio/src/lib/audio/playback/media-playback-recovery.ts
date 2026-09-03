@@ -34,10 +34,11 @@ export class MediaPlaybackRecovery {
   private readonly actions: RecoveryActions;
   private readonly timer = new MediaRecoveryController();
   private progressEpoch = 0;
-  private _isReloading = false;
+  private _isReloading: boolean;
 
   constructor(actions: RecoveryActions) {
     this.actions = actions;
+    this._isReloading = false;
   }
 
   get isReloading(): boolean {

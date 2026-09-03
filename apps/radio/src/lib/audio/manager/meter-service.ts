@@ -3,19 +3,19 @@ import { ensureOpenDawAudioWorklets } from "./opendaw-audio-worklets.js";
 
 type MeterLevel = { left: number; right: number };
 type MeterListener = (level: MeterLevel) => void;
-type MeterSubscription = { terminate(): void };
+type MeterSubscription = { terminate: () => void };
 type OpenDawMeterNode = AudioWorkletNode & {
-  subscribe(
+  subscribe: (
     observer: (values: { peak: Float32Array }) => void
-  ): MeterSubscription;
-  terminate(): void;
+  ) => MeterSubscription;
+  terminate: () => void;
 };
 type MeterNodeFactory = (
   context: BaseAudioContext
 ) => Promise<OpenDawMeterNode>;
 type FallbackMeter = {
   input: AudioNode;
-  terminate(): void;
+  terminate: () => void;
 };
 type FallbackMeterFactory = (
   context: BaseAudioContext,
@@ -95,6 +95,23 @@ class MeterService {
     this.createFallbackMeter = createFallbackMeter;
   }
 
+  getDiagnostics(): {
+    activeFallbackMeters: number;
+    activeOpenDawMeters: number;
+    listenerCount: number;
+  } {
+    const slots = [this.master, ...this.sounds.values()];
+    return {
+      activeFallbackMeters: slots.filter(({ fallback }) => fallback !== null)
+        .length,
+      activeOpenDawMeters: slots.filter(({ node }) => node !== null).length,
+      listenerCount: slots.reduce(
+        (count, { listeners }) => count + listeners.size,
+        0
+      ),
+    };
+  }
+
   setMasterSource(source: AudioNode | null): Promise<void> {
     return this.setSource(this.master, source, "master");
   }
@@ -149,8 +166,7 @@ class MeterService {
       return Promise.resolve();
     }
 
-    const generation = slot.generation;
-    const source = slot.source;
+    const { generation, source } = slot;
     const initialization = this.createMeterNode(source.context)
       .then((node) => {
         if (
@@ -163,10 +179,10 @@ class MeterService {
         }
 
         slot.node = node;
-        slot.subscription = node.subscribe(({ peak }) => {
+        slot.subscription = node.subscribe(({ peak: peaks }) => {
           this.notify(slot, {
-            left: peak[0] ?? 0,
-            right: peak[1] ?? peak[0] ?? 0,
+            left: peaks[0] ?? 0,
+            right: peaks[1] ?? peaks[0] ?? 0,
           });
         });
         source.connect(node);
@@ -197,7 +213,7 @@ class MeterService {
   }
 
   private deactivate(slot: MeterSlot): void {
-    slot.generation++;
+    slot.generation += 1;
     slot.subscription?.terminate();
     slot.subscription = null;
     if (slot.fallback) {

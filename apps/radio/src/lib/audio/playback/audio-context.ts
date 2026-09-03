@@ -11,11 +11,96 @@
  * which we treat as "suspended" for simplicity.
  */
 type NormalizedContextState = "suspended" | "running" | "closed";
+const MOBILE_USER_AGENT = /(android|iphone|ipad|ipod|mobile)/;
+const MOBILE_LATENCY_HINT_SECONDS = 128 / 48_000;
 
 /**
  * Callback for context state changes
  */
 export type ContextStateCallback = (state: NormalizedContextState) => void;
+
+/** Keep openDAW's 48 kHz profile and use the lowest measured-stable mobile hint. */
+export function getAudioContextOptions(): AudioContextOptions {
+  const userAgent =
+    typeof navigator === "undefined" ? "" : navigator.userAgent.toLowerCase();
+  const isFirefox = userAgent.includes("firefox");
+  const isMobile = MOBILE_USER_AGENT.test(userAgent);
+  return {
+    latencyHint: isMobile ? MOBILE_LATENCY_HINT_SECONDS : 0,
+    ...(isFirefox ? {} : { sampleRate: 48_000 }),
+  };
+}
+
+type NativePlaybackStats = {
+  averageLatency: number;
+  maximumLatency: number;
+  minimumLatency: number;
+  resetLatency?: () => void;
+  totalDuration: number;
+  underrunDuration: number;
+  underrunEvents: number;
+};
+
+export function resetAudioContextPlaybackLatency(
+  context: AudioContext
+): boolean {
+  const { playbackStats } = context as AudioContext & {
+    playbackStats?: NativePlaybackStats;
+  };
+  if (typeof playbackStats?.resetLatency !== "function") {
+    return false;
+  }
+  playbackStats.resetLatency();
+  return true;
+}
+
+export type AudioContextPerformanceSnapshot = {
+  baseLatencyMs: number;
+  outputLatencyMs: number | null;
+  playbackStats: {
+    averageLatencyMs: number;
+    maximumLatencyMs: number;
+    minimumLatencyMs: number;
+    totalDurationMs: number;
+    underrunDurationMs: number;
+    underrunEvents: number;
+  } | null;
+  renderQuantumSize: number | null;
+  sampleRate: number;
+  state: AudioContextState;
+};
+
+export function snapshotAudioContext(
+  context: AudioContext
+): AudioContextPerformanceSnapshot {
+  const { renderQuantumSize } = context as AudioContext & {
+    renderQuantumSize?: number;
+  };
+  const { playbackStats: stats } = context as AudioContext & {
+    playbackStats?: NativePlaybackStats;
+  };
+  return {
+    baseLatencyMs: context.baseLatency * 1000,
+    outputLatencyMs:
+      typeof context.outputLatency === "number"
+        ? context.outputLatency * 1000
+        : null,
+    playbackStats: stats
+      ? {
+          averageLatencyMs: stats.averageLatency * 1000,
+          maximumLatencyMs: stats.maximumLatency * 1000,
+          minimumLatencyMs: stats.minimumLatency * 1000,
+          totalDurationMs: stats.totalDuration * 1000,
+          underrunDurationMs: stats.underrunDuration * 1000,
+          underrunEvents: stats.underrunEvents,
+        }
+      : null,
+    renderQuantumSize:
+      typeof renderQuantumSize === "number" ? renderQuantumSize : null,
+    sampleRate: context.sampleRate,
+    state: context.state,
+  };
+}
 
 /**
  * Normalize the native AudioContext state to our simplified type
@@ -42,7 +127,7 @@ class AudioContextManager {
   private context: AudioContext | null = null;
   private readonly stateListeners = new Set<ContextStateCallback>();
   private resumePromise: Promise<void> | null = null;
-  private userInteractionBound = false;
+  private userInteractionBound = false as boolean;
 
   private constructor() {}
 
@@ -213,16 +298,21 @@ class AudioContextManager {
     return this.context?.destination ?? null;
   }
 
+  getPerformanceSnapshot(): AudioContextPerformanceSnapshot | null {
+    return this.context ? snapshotAudioContext(this.context) : null;
+  }
+
+  resetPlaybackLatency(): boolean {
+    return this.context
+      ? resetAudioContextPlaybackLatency(this.context)
+      : false;
+  }
+
   /**
    * Create the audio context with appropriate options
    */
   private createContext(): AudioContext {
-    const options: AudioContextOptions = {
-      // Use playback latency hint for better audio quality
-      latencyHint: "playback",
-    };
-
-    const context = new AudioContext(options);
+    const context = new AudioContext(getAudioContextOptions());
 
     // Set up state change listener
     context.onstatechange = () => {

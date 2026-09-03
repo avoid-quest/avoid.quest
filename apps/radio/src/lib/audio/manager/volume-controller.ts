@@ -58,7 +58,7 @@ class VolumeController {
   private readonly volumeCurves = new Map<string, ScheduledVolumeCurve>();
   private readonly lastSoundVolumes = new Map<string, number>();
   private globalVolume = 1;
-  private globalMuted = false;
+  private globalMuted: boolean;
   private lastGlobalVolume = 1;
 
   constructor({
@@ -71,6 +71,7 @@ class VolumeController {
     this.getSounds = getSounds;
     this.notifyListeners = notifyListeners;
     this.getContext = getContext;
+    this.globalMuted = false;
   }
 
   set(soundId: string, volume: number): void {
@@ -111,7 +112,7 @@ class VolumeController {
       return;
     }
 
-    const nodes = instance.nodes;
+    const { nodes } = instance;
     if (!nodes) {
       this.setSoundGainTarget(soundId, instance, lastVolume);
       this.notifyVolumeChange(soundId, instance, lastVolume);
@@ -262,7 +263,7 @@ class VolumeController {
     durationMs: number
   ): void {
     this.cancelNativeVolumeRamp(soundId);
-    const playbackSource = instance.playbackSource;
+    const { playbackSource } = instance;
     if (!playbackSource) {
       return;
     }
@@ -361,8 +362,8 @@ class VolumeController {
     volume: number
   ): void {
     notifySoundState(this.notifyListeners, soundId, instance, {
-      volume,
       error: null,
+      volume,
     });
   }
 

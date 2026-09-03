@@ -5,10 +5,10 @@ import { getCurrentTrackIndex, isCollection } from "./metadata-helpers";
 describe("isCollection", () => {
   test("treats Bandcamp collection as collection metadata", () => {
     const metadata = {
-      platform: "bandcamp",
       itemType: "collection",
-      url: "https://bandcamp.com/example",
+      platform: "bandcamp",
       tracks: [],
+      url: "https://bandcamp.com/example",
     } as PlatformMetadata;
 
     expect(isCollection(metadata)).toBeTrue();
@@ -42,13 +42,13 @@ describe("getCurrentTrackIndex", () => {
 
   test("resolves track index for Bandcamp collection entries", () => {
     const metadata = {
-      platform: "bandcamp",
       itemType: "collection",
-      url: "https://bandcamp.com/example",
+      platform: "bandcamp",
       tracks: [
         { name: "Track 1", streamUrl: "https://radio.example/1.mp3" },
         { name: "Track 2", streamUrl: "https://radio.example/2.mp3" },
       ],
+      url: "https://bandcamp.com/example",
     } as PlatformMetadata;
 
     expect(getCurrentTrackIndex(metadata, "https://radio.example/2.mp3")).toBe(

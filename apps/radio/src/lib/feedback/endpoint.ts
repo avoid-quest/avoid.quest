@@ -43,7 +43,7 @@ type FeedbackEnv = {
 type SubmissionErrorCode = "bad_request" | "issue_create_failed";
 
 function feedbackError(error: SubmissionErrorCode, status: number): Response {
-  return Response.json({ ok: false, error }, { status });
+  return Response.json({ error, ok: false }, { status });
 }
 
 function readFeedbackEnv(bindings: unknown): FeedbackEnv {
@@ -109,11 +109,6 @@ function createRadioFeedbackEndpoint(token: string) {
   return createFeedbackEndpoint({
     adapter: createGitHubAdapter({
       client: octokit,
-      input: {
-        labels: ["git-feedback", "radio"],
-        owner: FEEDBACK_REPOSITORY_OWNER,
-        repo: FEEDBACK_REPOSITORY_NAME,
-      },
       customizeIssueInput(input, { issue }) {
         const labels = new Set(input.labels ?? []);
         const categoryLabel = issue.category
@@ -127,6 +122,11 @@ function createRadioFeedbackEndpoint(token: string) {
         }
 
         return { ...input, labels: [...labels] };
+      },
+      input: {
+        labels: ["git-feedback", "radio"],
+        owner: FEEDBACK_REPOSITORY_OWNER,
+        repo: FEEDBACK_REPOSITORY_NAME,
       },
     }),
     categories: FEEDBACK_CATEGORIES,

@@ -17,23 +17,26 @@ class InMemoryGraph implements OutputBrowserGraph {
   readonly context: AudioContext;
   readonly cueConnections = new Set<AudioNode>();
   readonly mainConnections = new Set<AudioNode>();
+  readonly realtimeMainConnections = new Set<AudioNode>();
   cueDelayMs = 0;
   disposed = false;
   headphoneVolume = 1;
   mainDelayMs = 0;
-  readonly mainOutput: AudioNode;
+  readonly mainMeterTap: AudioNode;
 
   constructor(context: AudioContext) {
     this.context = context;
-    this.mainOutput = node("main-output", context);
+    this.mainMeterTap = node("main-meter-tap", context);
   }
 
   connectCue(source: AudioNode): void {
     this.cueConnections.add(source);
   }
 
-  connectMain(source: AudioNode): void {
-    this.mainConnections.add(source);
+  connectMain(source: AudioNode, realtime = false): void {
+    (realtime ? this.realtimeMainConnections : this.mainConnections).add(
+      source
+    );
   }
 
   disconnectCue(source: AudioNode): void {
@@ -42,12 +45,14 @@ class InMemoryGraph implements OutputBrowserGraph {
 
   disconnectMain(source: AudioNode): void {
     this.mainConnections.delete(source);
+    this.realtimeMainConnections.delete(source);
   }
 
   dispose(): void {
     this.disposed = true;
     this.cueConnections.clear();
     this.mainConnections.clear();
+    this.realtimeMainConnections.clear();
   }
 
   setCueDelay(delayMs: number): void {
@@ -66,7 +71,7 @@ class InMemoryGraph implements OutputBrowserGraph {
 class InMemoryBrowserAdapter implements OutputBrowserAdapter {
   readonly cueSinkDeferrals: Array<{
     promise: Promise<void>;
-    resolve(): void;
+    resolve: () => void;
   }> = [];
   readonly cueSinkCreations: string[] = [];
   readonly cueSinkDisposals: string[] = [];
@@ -75,7 +80,7 @@ class InMemoryBrowserAdapter implements OutputBrowserAdapter {
   readonly mainSinkErrors = new Map<string, Error>();
   readonly mainSinkDeferrals: Array<{
     promise: Promise<void>;
-    resolve(): void;
+    resolve: () => void;
   }> = [];
   context = { id: "context-1" } as unknown as AudioContext;
   cueSinkError: Error | null = null;
@@ -324,7 +329,7 @@ describe("OutputRouting", () => {
     const applying = routing.applyMainSettings();
 
     browser.context = { id: "context-2" } as unknown as AudioContext;
-    routing.getMainOutput(browser.context);
+    routing.getMainMeterSource(browser.context);
     firstSink.resolve();
     replaySink.resolve();
     await applying;
@@ -476,6 +481,18 @@ describe("OutputRouting", () => {
     expect(registration.enabled).toBe(true);
   });
 
+  test("routes realtime microphone monitoring around the main sync delay", () => {
+    const { browser, routing } = setup();
+    const microphone = node("microphone", browser.context);
+
+    routing.connectMain(microphone, true);
+
+    expect(browser.graphs[0]?.mainConnections).toEqual(new Set());
+    expect(browser.graphs[0]?.realtimeMainConnections).toEqual(
+      new Set([microphone])
+    );
+  });
+
   test("replaces the graph and reapplies settings when the context changes", async () => {
     const { browser, routing } = setup();
     await routing.applySettings({
@@ -526,7 +543,7 @@ describe("OutputRouting", () => {
     expect(persistence.read().mainOutputId).toBe("speakers");
   });
 
-  test("replays a deferred transaction when main output replaces its graph", async () => {
+  test("replays a deferred transaction when the main meter source replaces its graph", async () => {
     const { browser, persistence, routing } = setup();
     const firstSink = browser.deferNextMainSink();
     const replaySink = browser.deferNextMainSink();
@@ -536,12 +553,12 @@ describe("OutputRouting", () => {
     });
 
     browser.context = { id: "context-2" } as unknown as AudioContext;
-    const mainOutput = routing.getMainOutput(browser.context);
+    const mainMeterSource = routing.getMainMeterSource(browser.context);
     firstSink.resolve();
     replaySink.resolve();
     await applying;
 
-    expect(mainOutput).toBe(browser.graphs[1]?.mainOutput);
+    expect(mainMeterSource).toBe(browser.graphs[1]?.mainMeterTap);
     expect(browser.graphs[0]?.disposed).toBe(true);
     expect(browser.graphs[1]?.mainDelayMs).toBe(70);
     expect(browser.mainSinkChanges).toEqual(["speakers", "speakers"]);

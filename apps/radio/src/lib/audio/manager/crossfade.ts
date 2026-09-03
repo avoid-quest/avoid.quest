@@ -63,7 +63,7 @@ function createVolumeCurve(
   const stepCount = 48;
   const values = new Float32Array(stepCount + 1);
 
-  for (let index = 0; index <= stepCount; index++) {
+  for (let index = 0; index <= stepCount; index += 1) {
     const rawProgress = index / stepCount;
     const curvedProgress = applyCurve(rawProgress, curve, direction);
     values[index] = startVolume + (endVolume - startVolume) * curvedProgress;

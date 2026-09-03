@@ -27,11 +27,11 @@ function normalizeCoeffs(
 ): BiquadCoeffs {
   const inv = 1 / a0;
   return {
+    a1: a1 * inv,
+    a2: a2 * inv,
     b0: b0 * inv,
     b1: b1 * inv,
     b2: b2 * inv,
-    a1: a1 * inv,
-    a2: a2 * inv,
   };
 }
 
@@ -239,7 +239,7 @@ export function computeEQCurve(
   const highShelfDb = new Float32Array(numPoints);
   const lowPassDb = new Float32Array(numPoints);
 
-  for (let i = 0; i < numPoints; i++) {
+  for (let i = 0; i < numPoints; i += 1) {
     const freq = frequencies[i];
     if (freq === undefined) {
       continue;
@@ -342,15 +342,15 @@ export function computeEQCurve(
   }
 
   return {
-    totalDb,
     bands: {
-      highPass: { enabled: config.highPassEnabled, dbResponse: highPassDb },
-      lowShelf: { enabled: config.lowShelfEnabled, dbResponse: lowShelfDb },
-      lowBell: { enabled: config.lowBellEnabled, dbResponse: lowBellDb },
-      midBell: { enabled: config.midBellEnabled, dbResponse: midBellDb },
-      highBell: { enabled: config.highBellEnabled, dbResponse: highBellDb },
-      highShelf: { enabled: config.highShelfEnabled, dbResponse: highShelfDb },
-      lowPass: { enabled: config.lowPassEnabled, dbResponse: lowPassDb },
+      highBell: { dbResponse: highBellDb, enabled: config.highBellEnabled },
+      highPass: { dbResponse: highPassDb, enabled: config.highPassEnabled },
+      highShelf: { dbResponse: highShelfDb, enabled: config.highShelfEnabled },
+      lowBell: { dbResponse: lowBellDb, enabled: config.lowBellEnabled },
+      lowPass: { dbResponse: lowPassDb, enabled: config.lowPassEnabled },
+      lowShelf: { dbResponse: lowShelfDb, enabled: config.lowShelfEnabled },
+      midBell: { dbResponse: midBellDb, enabled: config.midBellEnabled },
     },
+    totalDb,
   };
 }

@@ -34,7 +34,7 @@ export class MicSource {
   private readonly callbacks: MicSourceCallbacks;
   private readonly sourceId: string;
 
-  private _isActive = false;
+  private _isActive: boolean;
   private _permissionState: MicPermissionState = "prompt";
 
   constructor(
@@ -45,6 +45,7 @@ export class MicSource {
     this.context = context;
     this.sourceId = sourceId;
     this.callbacks = callbacks;
+    this._isActive = false;
   }
 
   /**
@@ -110,9 +111,9 @@ export class MicSource {
       // Request microphone access
       this.stream = await navigator.mediaDevices.getUserMedia({
         audio: {
+          autoGainControl: false,
           echoCancellation: false,
           noiseSuppression: false,
-          autoGainControl: false,
         },
       });
 
@@ -132,7 +133,7 @@ export class MicSource {
       ) {
         this._permissionState = "denied";
         this.callbacks.onPermissionChange?.("denied");
-        throw new Error("Microphone permission denied");
+        throw new Error("Microphone permission denied", { cause: error });
       }
 
       // Handle other errors (no device, etc)

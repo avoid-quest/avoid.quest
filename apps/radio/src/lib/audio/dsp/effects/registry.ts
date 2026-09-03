@@ -28,11 +28,11 @@ export type EffectMetadata = Readonly<
 function effectMetadata(type: EffectType): EffectMetadata {
   const definition = EFFECT_DEFINITIONS[type];
   return {
-    type: definition.type,
-    name: definition.name,
-    description: definition.description,
     defaultConfig: definition.defaultConfig,
+    description: definition.description,
     family: isOfficialOpenDawEffectType(type) ? "openDAW" : "radio",
+    name: definition.name,
+    type: definition.type,
   };
 }
 
@@ -62,13 +62,13 @@ function scopeNestedIds(effect: EffectConfig): EffectConfig {
     ...effect,
     chains: effect.chains.map((chain) => ({
       ...chain,
-      id: `${effect.id}:${chain.id}`,
       effects: chain.effects.map((child, index) =>
         scopeNestedIds({
           ...child,
           id: `${effect.id}:${chain.id}:effect:${index}:${child.id}`,
         } as EffectConfig)
       ),
+      id: `${effect.id}:${chain.id}`,
     })),
   };
 }
@@ -82,11 +82,11 @@ export function getEffectMetadata(
   }
 
   return {
-    type: definition.type,
-    name: definition.name,
-    description: definition.description,
     defaultConfig: definition.defaultConfig,
+    description: definition.description,
     family: isOfficialOpenDawEffectType(type) ? "openDAW" : "radio",
+    name: definition.name,
+    type: definition.type,
   };
 }
 

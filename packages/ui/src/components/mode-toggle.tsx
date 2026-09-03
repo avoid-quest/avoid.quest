@@ -1,3 +1,4 @@
+/** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 "use client";
 
 import { Button } from "@avoid.quest/ui/components/button";

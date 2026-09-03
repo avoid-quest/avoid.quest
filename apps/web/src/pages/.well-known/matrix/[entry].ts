@@ -10,7 +10,7 @@ export const GET = async ({
   params: { entry?: string };
   request: Request;
 }) => {
-  const entry = params.entry;
+  const { entry } = params;
 
   if (!(entry && ALLOWED_ENTRIES.has(entry))) {
     return new Response("Not found", {
@@ -28,7 +28,6 @@ export const GET = async ({
     const body = await upstream.text();
 
     return new Response(body, {
-      status: upstream.status,
       headers: {
         "Access-Control-Allow-Origin":
           upstream.headers.get("Access-Control-Allow-Origin") ?? "*",
@@ -38,6 +37,7 @@ export const GET = async ({
           upstream.headers.get("Content-Type") ??
           "application/json; charset=utf-8",
       },
+      status: upstream.status,
     });
   } catch {
     return new Response("Upstream Matrix well-known endpoint unavailable", {

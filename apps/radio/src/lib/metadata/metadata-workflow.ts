@@ -55,12 +55,12 @@ function jsonResponse(
   status = response.ok ? 200 : 400
 ): Response {
   return Response.json(response, {
-    status,
     headers: {
       "Access-Control-Allow-Origin": origin,
       "Cache-Control": "private, no-store",
       "x-request-id": requestId,
     },
+    status,
   });
 }
 
@@ -96,11 +96,11 @@ function invalidConfigResponse(message = "Invalid metadata configuration") {
   return {
     ok: false,
     response: {
-      ok: false,
       error: {
         code: "RADIO_METADATA_INVALID_URL",
         message,
       },
+      ok: false,
     },
   } satisfies MetadataConfigResult;
 }
@@ -124,8 +124,8 @@ function parseAirtimeConfig(params: URLSearchParams): MetadataConfigResult {
     return invalidConfigResponse();
   }
   return {
-    ok: true,
     config: { kind: "airtime-live-info", urls: validatedUrls },
+    ok: true,
   };
 }
 
@@ -137,7 +137,7 @@ function parseMetadataUrlConfig(
   if (metadataUrl && !metadataUrl.ok) {
     return invalidConfigResponse();
   }
-  return { ok: true, config: { kind, url: metadataUrl?.url } };
+  return { config: { kind, url: metadataUrl?.url }, ok: true };
 }
 
 function parseShoutcastConfig(params: URLSearchParams): MetadataConfigResult {
@@ -150,8 +150,8 @@ function parseShoutcastConfig(params: URLSearchParams): MetadataConfigResult {
     return invalidConfigResponse("Invalid SHOUTcast stream id");
   }
   return {
-    ok: true,
     config: { kind: "shoutcast-status", sid, url: metadataUrl?.url },
+    ok: true,
   };
 }
 
@@ -159,11 +159,11 @@ function unsupportedConfigResponse(): MetadataConfigResult {
   return {
     ok: false,
     response: {
-      ok: false,
       error: {
         code: "RADIO_METADATA_UNSUPPORTED",
         message: "No metadata source is configured for this stream",
       },
+      ok: false,
     },
   };
 }
@@ -184,12 +184,12 @@ function parseMetadataConfig(params: URLSearchParams): MetadataConfigResult {
       if (channel !== "1" && channel !== "2") {
         return invalidConfigResponse("Invalid NTS channel");
       }
-      return { ok: true, config: { kind, channel } };
+      return { config: { channel, kind }, ok: true };
     }
     case "radio-blackout-api":
       return parseMetadataUrlConfig(kind, params);
     case "icy":
-      return { ok: true, config: { kind } };
+      return { config: { kind }, ok: true };
     case "none":
     case null:
       return unsupportedConfigResponse();

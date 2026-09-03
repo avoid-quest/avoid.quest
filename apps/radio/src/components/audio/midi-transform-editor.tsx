@@ -1,3 +1,4 @@
+/** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 /**
  * Inline editor for MIDI mapping transforms (invert, min/max, curve).
  */
@@ -10,6 +11,7 @@ import {
   SelectValue,
 } from "@avoid.quest/ui/components/select";
 import { Slider } from "@avoid.quest/ui/components/slider";
+import type { ChangeEvent, MouseEvent } from "react";
 import {
   DEFAULT_TRANSFORM,
   getMidiControl,
@@ -26,24 +28,49 @@ export function MidiTransformEditor({
   targetId,
   transform,
 }: MidiTransformEditorProps) {
-  const updateMappingTransform = (patch: Partial<MidiTransform>) =>
+  function updateMappingTransform(patch: Partial<MidiTransform>) {
     getMidiControl().change({
-      type: "update-transform",
-      targetId,
       patch,
+      targetId,
+      type: "update-transform",
     });
+  }
+
+  function stopClickPropagation(event: MouseEvent<HTMLDivElement>) {
+    event.stopPropagation();
+  }
+
+  function updateInvert(event: ChangeEvent<HTMLInputElement>) {
+    updateMappingTransform({ invert: event.target.checked });
+  }
+
+  function updateMin([min]: number[]) {
+    updateMappingTransform({ min });
+  }
+
+  function updateMax([max]: number[]) {
+    updateMappingTransform({ max });
+  }
+
+  function updateCurve(curve: MidiTransform["curve"]) {
+    updateMappingTransform({ curve });
+  }
+
+  function resetTransform() {
+    updateMappingTransform({ ...DEFAULT_TRANSFORM });
+  }
 
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: stopPropagation for context menu
     // biome-ignore lint/a11y/noNoninteractiveElementInteractions: stopPropagation for context menu
     // biome-ignore lint/a11y/useKeyWithClickEvents: stopPropagation for context menu
-    <div className="space-y-3 p-2" onClick={(e) => e.stopPropagation()}>
+    <div className="space-y-3 p-2" onClick={stopClickPropagation}>
       {/* Invert */}
       <label className="flex items-center gap-2">
         <input
           checked={transform.invert}
           className="size-3.5 cursor-pointer accent-violet-500"
-          onChange={(e) => updateMappingTransform({ invert: e.target.checked })}
+          onChange={updateInvert}
           type="checkbox"
         />
         <span className="text-xs">Invert</span>
@@ -61,7 +88,7 @@ export function MidiTransformEditor({
           defaultValue={[DEFAULT_TRANSFORM.min]}
           max={1}
           min={0}
-          onValueChange={([v]) => updateMappingTransform({ min: v })}
+          onValueChange={updateMin}
           step={0.01}
           value={[transform.min]}
         />
@@ -79,7 +106,7 @@ export function MidiTransformEditor({
           defaultValue={[DEFAULT_TRANSFORM.max]}
           max={1}
           min={0}
-          onValueChange={([v]) => updateMappingTransform({ max: v })}
+          onValueChange={updateMax}
           step={0.01}
           value={[transform.max]}
         />
@@ -88,14 +115,7 @@ export function MidiTransformEditor({
       {/* Curve */}
       <div className="space-y-0.5">
         <span className="text-muted-foreground text-xs">Curve</span>
-        <Select
-          onValueChange={(v) =>
-            updateMappingTransform({
-              curve: v as MidiTransform["curve"],
-            })
-          }
-          value={transform.curve}
-        >
+        <Select onValueChange={updateCurve} value={transform.curve}>
           <SelectTrigger className="h-7 text-xs">
             <SelectValue />
           </SelectTrigger>
@@ -110,7 +130,7 @@ export function MidiTransformEditor({
       {/* Reset */}
       <button
         className="w-full rounded-md border px-2 py-1 text-muted-foreground text-xs transition-colors hover:bg-muted"
-        onClick={() => updateMappingTransform({ ...DEFAULT_TRANSFORM })}
+        onClick={resetTransform}
         type="button"
       >
         Reset Transform

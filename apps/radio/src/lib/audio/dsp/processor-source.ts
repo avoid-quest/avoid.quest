@@ -56,9 +56,12 @@ export class EffectSource {
   private readonly dryR: Float32Array;
   private readonly originalL: Float32Array;
   private readonly originalR: Float32Array;
+  private readonly outputChannels: StereoChannels;
+  private readonly sidechainChannels: StereoChannels;
+  private readonly tempChannels: StereoChannels;
 
-  private playing = false;
-  private paused = false;
+  private playing = false as boolean;
+  private paused = false as boolean;
   private masterEffectsDryWet = 1.0;
   private tempo = 120;
 
@@ -71,6 +74,9 @@ export class EffectSource {
     this.dryR = new Float32Array(128);
     this.originalL = new Float32Array(128);
     this.originalR = new Float32Array(128);
+    this.tempChannels = [this.tempL, this.tempR];
+    this.outputChannels = [this.tempL, this.tempR];
+    this.sidechainChannels = [this.tempL, this.tempR];
     this.updateGains();
   }
 
@@ -190,8 +196,8 @@ export class EffectSource {
   ): boolean {
     const fullConfig = {
       id: effectId,
-      type,
       order,
+      type,
       ...config,
     } as EffectConfig;
     const processor = createEffectProcessor(type, this.sampleRate, fullConfig);
@@ -204,12 +210,12 @@ export class EffectSource {
     this.effects.set(effectId, processor);
     this.effectTypes.set(effectId, type);
     this.effectConfigs.set(effectId, {
+      dryWet: typeof config.dryWet === "number" ? config.dryWet : 1.0,
       enabled: !!config.enabled,
       inputGain: typeof config.inputGain === "number" ? config.inputGain : 1.0,
+      order,
       outputGain:
         typeof config.outputGain === "number" ? config.outputGain : 1.0,
-      dryWet: typeof config.dryWet === "number" ? config.dryWet : 1.0,
-      order,
       raw: { ...fullConfig },
     });
     this.insertEffectAtOrder(effectId, order);
@@ -292,23 +298,24 @@ export class EffectSource {
     sidechainR?: Float32Array
   ): void {
     if (this.paused) {
-      for (let i = fromIndex; i < toIndex; i++) {
+      for (let i = fromIndex; i < toIndex; i += 1) {
         outputL[i] = 0;
         outputR[i] = 0;
       }
       return;
     }
 
-    for (let i = fromIndex; i < toIndex; i++) {
+    for (let i = fromIndex; i < toIndex; i += 1) {
       this.originalL[i] = inputL[i] ?? 0;
       this.originalR[i] = inputR[i] ?? 0;
       this.tempL[i] = inputL[i] ?? 0;
       this.tempR[i] = inputR[i] ?? 0;
     }
 
-    const tempChannels: [Float32Array, Float32Array] = [this.tempL, this.tempR];
+    const { outputChannels, tempChannels } = this;
+    outputChannels[0] = outputL;
+    outputChannels[1] = outputR;
     let current = tempChannels;
-    const outputChannels: [Float32Array, Float32Array] = [outputL, outputR];
 
     for (const filterId of this.filterOrder) {
       const filter = this.filters.get(filterId);
@@ -327,22 +334,24 @@ export class EffectSource {
         continue;
       }
 
-      effect.setSidechainInput?.(
-        sidechainL && config.raw.sidechainEnabled === 1
-          ? ([sidechainL, sidechainR ?? sidechainL] satisfies StereoChannels)
-          : null
-      );
+      if (sidechainL && config.raw.sidechainEnabled === 1) {
+        this.sidechainChannels[0] = sidechainL;
+        this.sidechainChannels[1] = sidechainR ?? sidechainL;
+        effect.setSidechainInput?.(this.sidechainChannels);
+      } else {
+        effect.setSidechainInput?.(null);
+      }
 
       const needsDryMix = config.dryWet < 1.0;
       if (needsDryMix) {
-        for (let i = fromIndex; i < toIndex; i++) {
+        for (let i = fromIndex; i < toIndex; i += 1) {
           this.dryL[i] = current[0][i] ?? 0;
           this.dryR[i] = current[1][i] ?? 0;
         }
       }
 
       if (config.inputGain !== 1.0) {
-        for (let i = fromIndex; i < toIndex; i++) {
+        for (let i = fromIndex; i < toIndex; i += 1) {
           current[0][i] = (current[0][i] ?? 0) * config.inputGain;
           current[1][i] = (current[1][i] ?? 0) * config.inputGain;
         }
@@ -354,7 +363,7 @@ export class EffectSource {
 
       if (needsDryMix) {
         const dry = 1.0 - config.dryWet;
-        for (let i = fromIndex; i < toIndex; i++) {
+        for (let i = fromIndex; i < toIndex; i += 1) {
           current[0][i] =
             (this.dryL[i] ?? 0) * dry + (current[0][i] ?? 0) * config.dryWet;
           current[1][i] =
@@ -363,7 +372,7 @@ export class EffectSource {
       }
 
       if (config.outputGain !== 1.0) {
-        for (let i = fromIndex; i < toIndex; i++) {
+        for (let i = fromIndex; i < toIndex; i += 1) {
           current[0][i] = (current[0][i] ?? 0) * config.outputGain;
           current[1][i] = (current[1][i] ?? 0) * config.outputGain;
         }
@@ -371,7 +380,7 @@ export class EffectSource {
     }
 
     if (current !== outputChannels) {
-      for (let i = fromIndex; i < toIndex; i++) {
+      for (let i = fromIndex; i < toIndex; i += 1) {
         outputL[i] = current[0][i] ?? 0;
         outputR[i] = current[1][i] ?? 0;
       }
@@ -380,13 +389,13 @@ export class EffectSource {
     if (this.masterEffectsDryWet < 1.0 && this.effectOrder.length > 0) {
       const wet = this.masterEffectsDryWet;
       const dry = 1.0 - wet;
-      for (let i = fromIndex; i < toIndex; i++) {
+      for (let i = fromIndex; i < toIndex; i += 1) {
         outputL[i] = (this.originalL[i] ?? 0) * dry + (outputL[i] ?? 0) * wet;
         outputR[i] = (this.originalR[i] ?? 0) * dry + (outputR[i] ?? 0) * wet;
       }
     }
 
-    for (let i = fromIndex; i < toIndex; i++) {
+    for (let i = fromIndex; i < toIndex; i += 1) {
       this.currentLeftGain = this.smoothGain(
         this.currentLeftGain,
         this.targetLeftGain

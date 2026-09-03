@@ -13,8 +13,8 @@ const TEST_SENTRY_DSN =
 describe("resolveTunnelTarget", () => {
   test("uses runtime DSN when available", () => {
     const target = resolveTunnelTarget({
-      runtimeDsn: TEST_SENTRY_DSN,
       fallbackDsn: "https://fallbackPublicKey@o999.ingest.us.sentry.io/111",
+      runtimeDsn: TEST_SENTRY_DSN,
     });
 
     expect(target).toEqual({
@@ -25,8 +25,8 @@ describe("resolveTunnelTarget", () => {
 
   test("falls back to configured client DSN when runtime DSN is missing", () => {
     const target = resolveTunnelTarget({
-      runtimeDsn: undefined,
       fallbackDsn: TEST_SENTRY_DSN,
+      runtimeDsn: undefined,
     });
 
     expect(target).not.toBeNull();
@@ -36,8 +36,8 @@ describe("resolveTunnelTarget", () => {
 
   test("returns null when no valid DSN is provided", () => {
     const target = resolveTunnelTarget({
-      runtimeDsn: "not-a-url",
       fallbackDsn: "also-not-a-url",
+      runtimeDsn: "not-a-url",
     });
 
     expect(target).toBeNull();
@@ -45,8 +45,8 @@ describe("resolveTunnelTarget", () => {
 
   test("returns null when runtime DSN is invalid even if fallback exists", () => {
     const target = resolveTunnelTarget({
-      runtimeDsn: "not-a-url",
       fallbackDsn: TEST_SENTRY_DSN,
+      runtimeDsn: "not-a-url",
     });
 
     expect(target).toBeNull();
@@ -140,8 +140,8 @@ describe("handleSentryTunnelRequest", () => {
       `{"dsn":"${TEST_SENTRY_DSN}"}\n{"type":"event"}\n{}`
     );
     const request = new Request("https://radio.test/tunnel", {
-      method: "POST",
       body: envelope,
+      method: "POST",
     });
 
     const response = await handleSentryTunnelRequest(request, {
@@ -155,10 +155,10 @@ describe("handleSentryTunnelRequest", () => {
 
   test("rejects envelopes for the wrong DSN", async () => {
     const request = new Request("https://radio.test/tunnel", {
-      method: "POST",
       body: new TextEncoder().encode(
         '{"dsn":"https://abc@o999.ingest.us.sentry.io/9876543210"}\n{"type":"event"}\n{}'
       ),
+      method: "POST",
     });
 
     const response = await handleSentryTunnelRequest(request, {
@@ -171,10 +171,10 @@ describe("handleSentryTunnelRequest", () => {
 
   test("returns a tunnel error when forwarding fails", async () => {
     const request = new Request("https://radio.test/tunnel", {
-      method: "POST",
       body: new TextEncoder().encode(
         `{"dsn":"${TEST_SENTRY_DSN}"}\n{"type":"event"}\n{}`
       ),
+      method: "POST",
     });
 
     const response = await handleSentryTunnelRequest(request, {
@@ -191,10 +191,10 @@ describe("handleSentryTunnelRequest", () => {
 
   test("returns unavailable when no Sentry DSN is configured", async () => {
     const request = new Request("https://radio.test/tunnel", {
-      method: "POST",
       body: new TextEncoder().encode(
         `{"dsn":"${TEST_SENTRY_DSN}"}\n{"type":"event"}\n{}`
       ),
+      method: "POST",
     });
 
     const response = await handleSentryTunnelRequest(request);

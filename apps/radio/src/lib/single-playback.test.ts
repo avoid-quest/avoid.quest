@@ -54,13 +54,13 @@ async function resetPlaybackSessions(): Promise<void> {
 
 function insertSettings(): void {
   settingsCollection.insert({
+    audio: {
+      cueOutputId: null,
+      delay: { cueDelayMs: 0, mainDelayMs: 0 },
+      mainOutputId: "default",
+    },
     id: "app-settings",
     player: { mode: "single", restoreStateOnLoad: true },
-    audio: {
-      mainOutputId: "default",
-      cueOutputId: null,
-      delay: { mainDelayMs: 0, cueDelayMs: 0 },
-    },
   });
 }
 
@@ -70,7 +70,7 @@ function insertSingleSession(
   activeChannelId = SINGLE_ACTIVE_CHANNEL_ID
 ): void {
   playbackSessionsCollection.insert({
-    id: "single",
+    activeChannelId,
     channels: [
       {
         ...createDefaultChannel(SINGLE_ACTIVE_CHANNEL_ID, "single-primary", 0),
@@ -87,22 +87,22 @@ function insertSingleSession(
         volume: 0.42,
       },
     ],
-    masterVolume: 0.75,
     crossfadePosition: 0.5,
     headphoneVolume: 1,
-    activeChannelId,
+    id: "single",
+    masterVolume: 0.75,
   });
   setPlaybackChannelRuntime(activeChannelId, () => ({
-    soundId: `single:${activeChannelId}`,
     isPlaying: playing,
+    soundId: `single:${activeChannelId}`,
   }));
 }
 
 function createTestContext(): PlaybackActionContext {
   return {
     audio: {
-      hasSound: mock((_soundId: string) => false),
       cleanupSound: mock((_soundId: string) => undefined),
+      hasSound: mock((_soundId: string) => false),
       pauseSound: mock((_soundId: string) => {
         setPlaybackChannelRuntime(SINGLE_ACTIVE_CHANNEL_ID, () => ({
           isPlaying: false,
@@ -163,8 +163,8 @@ function createTestContext(): PlaybackActionContext {
     getMainOutputRouter: () => null,
     lifecycle: { mainOutputSettingsApplied: true },
     reportError: mock(() => undefined),
-    resumeAudioContext: mock(async () => undefined),
     resetAudioManager: mock(() => undefined),
+    resumeAudioContext: mock(async () => undefined),
   };
 }
 
@@ -216,12 +216,12 @@ describe("Single Playback", () => {
       getPlaybackChannel("single", SINGLE_ACTIVE_CHANNEL_ID)?.radio
     ).toEqual(current);
     expect(getPlaybackChannelRuntime(SINGLE_ACTIVE_CHANNEL_ID)).toMatchObject({
-      isPlaying: false,
       error: {
         code: "PLAY_ERROR",
         message:
           "Playback could not start. Check the station stream and try again.",
       },
+      isPlaying: false,
     });
     expect(context.reportError).toHaveBeenCalledTimes(1);
   });
@@ -472,16 +472,16 @@ describe("Single Playback", () => {
       getPlaybackChannel("single", SINGLE_ACTIVE_CHANNEL_ID)?.radio
     ).toEqual(current);
     expect(getPlaybackChannelRuntime(SINGLE_ACTIVE_CHANNEL_ID)).toMatchObject({
-      soundId: null,
-      isPlaying: false,
       error: null,
+      isPlaying: false,
+      soundId: null,
     });
     expect(context.reportError).not.toHaveBeenCalled();
   });
 
   test("deactivation owns orphan cleanup and runtime reset", async () => {
     playbackSessionsCollection.insert({
-      id: "single",
+      activeChannelId: SINGLE_ACTIVE_CHANNEL_ID,
       channels: [
         {
           ...createDefaultChannel(
@@ -492,20 +492,20 @@ describe("Single Playback", () => {
           radio: station("current"),
         },
       ],
-      masterVolume: 1,
       crossfadePosition: 0.5,
       headphoneVolume: 1,
-      activeChannelId: SINGLE_ACTIVE_CHANNEL_ID,
+      id: "single",
+      masterVolume: 1,
     });
     setPlaybackChannelRuntime(SINGLE_STANDBY_CHANNEL_ID, () => ({
-      soundId: "single:orphan",
-      isPlaying: true,
       error: {
-        id: "stale",
         code: "STREAM_ABORTED",
+        id: "stale",
         message: "stale",
         timestamp: 1,
       },
+      isPlaying: true,
+      soundId: "single:orphan",
     }));
     const liveSounds = new Set(["single:orphan"]);
     const context = createTestContext();
@@ -523,30 +523,30 @@ describe("Single Playback", () => {
 
     expect(liveSounds.size).toBe(0);
     expect(getPlaybackChannelRuntime(SINGLE_STANDBY_CHANNEL_ID)).toMatchObject({
-      soundId: null,
-      isPlaying: false,
       error: null,
+      isPlaying: false,
+      soundId: null,
     });
   });
 
   test("deactivation cleans a persisted legacy Single Channel", async () => {
     const channelId = "legacy-single";
     playbackSessionsCollection.insert({
-      id: "single",
+      activeChannelId: channelId,
       channels: [
         {
           ...createDefaultChannel(channelId, "single-primary", 0),
           radio: station("legacy"),
         },
       ],
-      masterVolume: 1,
       crossfadePosition: 0.5,
       headphoneVolume: 1,
-      activeChannelId: channelId,
+      id: "single",
+      masterVolume: 1,
     });
     setPlaybackChannelRuntime(channelId, () => ({
-      soundId: "single:legacy",
       isPlaying: true,
+      soundId: "single:legacy",
     }));
     const context = createTestContext();
     const fadeOutSound = mock(async () => undefined);
@@ -569,9 +569,9 @@ describe("Single Playback", () => {
     await getSinglePlayback({ ctx: context }).reconcileRouting();
 
     expect(getPlaybackChannelRuntime(SINGLE_ACTIVE_CHANNEL_ID)).toMatchObject({
-      soundId: "single:single-a",
-      isPlaying: true,
       error: null,
+      isPlaying: true,
+      soundId: "single:single-a",
     });
     expect(
       getPlaybackChannel("single", SINGLE_ACTIVE_CHANNEL_ID)?.radio
@@ -602,15 +602,15 @@ describe("Single Playback", () => {
     const localFile = {
       ...station("local"),
       platformMetadata: {
-        platform: "local-file",
-        itemType: "track",
-        url: "",
-        fileName: "local.mp3",
         displayName: "Local",
         duration: 10,
+        fileName: "local.mp3",
         fileSize: 100,
+        itemType: "track",
         mimeType: "audio/mpeg",
         objectUrl: "blob:https://radio.example/local",
+        platform: "local-file",
+        url: "",
       },
     } as Radio;
     insertSingleSession(localFile, true);
@@ -618,9 +618,9 @@ describe("Single Playback", () => {
     await getSinglePlayback({ ctx: createTestContext() }).activate();
 
     expect(getPlaybackChannelRuntime(SINGLE_ACTIVE_CHANNEL_ID)).toMatchObject({
-      soundId: null,
-      isPlaying: false,
       error: null,
+      isPlaying: false,
+      soundId: null,
     });
   });
 });

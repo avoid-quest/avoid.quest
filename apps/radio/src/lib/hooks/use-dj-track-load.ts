@@ -13,15 +13,15 @@ type UseDjTrackLoadOptions = {
 
 export function useDjTrackLoad(options: UseDjTrackLoadOptions) {
   return usePlatformLoad({
-    onSuccess: (radio) => {
-      clearDjErrorSurface();
-      options.onLoad(radio);
-      options.onSettled?.();
-    },
     onError: (message, code) => {
       const errorCode = code ?? "DJ_TRACK_RESOLUTION_FAILED";
       reportDjErrorSurface(message, errorCode);
       options.onError?.(message, errorCode);
+      options.onSettled?.();
+    },
+    onSuccess: (radio) => {
+      clearDjErrorSurface();
+      options.onLoad(radio);
       options.onSettled?.();
     },
   });

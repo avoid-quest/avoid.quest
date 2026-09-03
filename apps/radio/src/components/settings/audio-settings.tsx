@@ -1,3 +1,4 @@
+// biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers
 "use client";
 
 import { Button } from "@avoid.quest/ui/components/button";
@@ -12,6 +13,7 @@ import {
 import { Slider } from "@avoid.quest/ui/components/slider";
 import {
   ClockIcon,
+  CopyIcon,
   HeadphonesIcon,
   type LucideIcon,
   RefreshCwIcon,
@@ -19,7 +21,7 @@ import {
 } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { toast } from "sonner";
-import { useAudioDevices } from "@/lib/audio";
+import { captureMobileAudioDiagnostic, useAudioDevices } from "@/lib/audio";
 import { getAudioSettings, getDelaySettings } from "@/lib/collections";
 import {
   applyCueOutputDevice,
@@ -59,6 +61,8 @@ export function AudioSettings() {
     delaySettings.mainDelayMs
   );
   const [cueDelayMs, setCueDelayMsState] = useState(delaySettings.cueDelayMs);
+  const [diagnostic, setDiagnostic] = useState<string | null>(null);
+  const [isCapturingDiagnostic, setIsCapturingDiagnostic] = useState(false);
 
   const handleMainOutputChange = async (value: string) => {
     try {
@@ -104,6 +108,48 @@ export function AudioSettings() {
       toast.error("Failed to apply the CUE output settings");
     }
   };
+  const handleMainDelayValues = ([value]: number[]) =>
+    handleMainDelayChange(value);
+  const handleCueDelayValues = ([value]: number[]) =>
+    handleCueDelayChange(value);
+  const handleAutoLatency = async () => {
+    try {
+      const detected = await autoCompensateLatency();
+      if (detected !== null) {
+        setMainDelayMsState(detected);
+      }
+    } catch {
+      toast.error("Failed to apply the main output settings");
+    }
+  };
+  const handleDiagnostic = async () => {
+    if (diagnostic) {
+      try {
+        await navigator.clipboard.writeText(diagnostic);
+        setDiagnostic(null);
+        toast.success("Audio diagnostic copied");
+      } catch {
+        toast.error("Could not copy the audio diagnostic");
+      }
+      return;
+    }
+    setIsCapturingDiagnostic(true);
+    try {
+      const report = await captureMobileAudioDiagnostic();
+      setDiagnostic(JSON.stringify(report, null, 2));
+      toast.success("Audio diagnostic ready to copy");
+    } catch {
+      toast.error("Could not capture the audio diagnostic");
+    } finally {
+      setIsCapturingDiagnostic(false);
+    }
+  };
+  let diagnosticLabel = "Capture audio diagnostic";
+  if (isCapturingDiagnostic) {
+    diagnosticLabel = "Capturing 5s...";
+  } else if (diagnostic) {
+    diagnosticLabel = "Copy audio diagnostic";
+  }
 
   return (
     <div className="space-y-4">
@@ -181,7 +227,7 @@ export function AudioSettings() {
               defaultValue={[0]}
               max={500}
               min={0}
-              onValueChange={([v]) => handleMainDelayChange(v)}
+              onValueChange={handleMainDelayValues}
               step={1}
               value={[mainDelayMs]}
             />
@@ -189,16 +235,7 @@ export function AudioSettings() {
               {mainDelayMs}ms
             </span>
             <Button
-              onClick={async () => {
-                try {
-                  const detected = await autoCompensateLatency();
-                  if (detected !== null) {
-                    setMainDelayMsState(detected);
-                  }
-                } catch {
-                  toast.error("Failed to apply the main output settings");
-                }
-              }}
+              onClick={handleAutoLatency}
               size="sm"
               title="Auto-detect system latency"
               variant="outline"
@@ -238,7 +275,7 @@ export function AudioSettings() {
           )}
         </AudioSettingRow>
 
-        {cueOutputId && (
+        {Boolean(cueOutputId) && (
           <AudioSettingRow icon={ClockIcon} title="CUE delay">
             <div className="flex min-w-0 items-center gap-3">
               <Slider
@@ -246,7 +283,7 @@ export function AudioSettings() {
                 defaultValue={[0]}
                 max={500}
                 min={0}
-                onValueChange={([v]) => handleCueDelayChange(v)}
+                onValueChange={handleCueDelayValues}
                 step={1}
                 value={[cueDelayMs]}
               />
@@ -257,6 +294,16 @@ export function AudioSettings() {
           </AudioSettingRow>
         )}
       </div>
+
+      <Button
+        disabled={isCapturingDiagnostic}
+        onClick={handleDiagnostic}
+        size="sm"
+        variant="outline"
+      >
+        <CopyIcon className="size-3.5" />
+        {diagnosticLabel}
+      </Button>
 
       {/* Browser compatibility note */}
       {!sinkIdSupported && (

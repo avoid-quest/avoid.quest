@@ -6,15 +6,17 @@ describe("handleRadioBlackoutStreamRequest", () => {
     const requests: Request[] = [];
     const response = await handleRadioBlackoutStreamRequest(
       new Request("https://radio.example/api/radio-blackout-stream"),
-      async (input, init) => {
+      (input, init) => {
         const request = new Request(input, init);
         requests.push(request);
         if (request.url === "http://s.streampunk.cc/blackout.ogg") {
-          throw new Error("primary unavailable");
+          return Promise.reject(new Error("primary unavailable"));
         }
-        return new Response(new Uint8Array([1, 2, 3]), {
-          headers: { "Content-Type": "audio/ogg" },
-        });
+        return Promise.resolve(
+          new Response(new Uint8Array([1, 2, 3]), {
+            headers: { "Content-Type": "audio/ogg" },
+          })
+        );
       }
     );
 
@@ -41,9 +43,9 @@ describe("handleRadioBlackoutStreamRequest", () => {
       new Request("https://radio.example/api/radio-blackout-stream", {
         method: "HEAD",
       }),
-      async () => {
+      () => {
         fetched = true;
-        return new Response(null);
+        return Promise.resolve(new Response(null));
       }
     );
 

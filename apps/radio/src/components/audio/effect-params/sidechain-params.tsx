@@ -1,4 +1,6 @@
+/** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 import { Label } from "@avoid.quest/ui/components/label";
+import type { ChangeEvent } from "react";
 import type { EffectConfig } from "@/lib/audio";
 
 type SidechainParamsProps = {
@@ -12,6 +14,14 @@ export function SidechainParams({
   effect,
   onUpdate,
 }: SidechainParamsProps) {
+  function handleSidechainChange(event: ChangeEvent<HTMLSelectElement>) {
+    onUpdate({
+      sidechain: event.target.value
+        ? { channelId: event.target.value }
+        : undefined,
+    } as Partial<EffectConfig>);
+  }
+
   if (
     !deckId ||
     (effect.type === "vocoder" &&
@@ -30,13 +40,7 @@ export function SidechainParams({
       <select
         className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
         id={id}
-        onChange={(event) =>
-          onUpdate({
-            sidechain: event.target.value
-              ? { channelId: event.target.value }
-              : undefined,
-          } as Partial<EffectConfig>)
-        }
+        onChange={handleSidechainChange}
         value={effect.sidechain?.channelId ?? ""}
       >
         <option value="">Internal input</option>

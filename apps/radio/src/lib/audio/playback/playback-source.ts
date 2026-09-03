@@ -16,15 +16,15 @@ type PlaybackSource = {
   readonly output: AudioNode | null;
   readonly status: StreamStatus;
   volume: number;
-  cleanup(): void;
-  getPlaybackRate(): number;
-  load(input: PlaybackInput): Promise<void>;
-  pause(): void;
-  play(): Promise<void>;
-  refreshUrl(input: PlaybackInput, seekPosition?: number): Promise<void>;
-  seek(position: number): void;
-  setPlaybackRate(rate: number): void;
-  stop(): void;
+  cleanup: () => void;
+  getPlaybackRate: () => number;
+  load: (input: PlaybackInput) => Promise<void>;
+  pause: () => void;
+  play: () => Promise<void>;
+  refreshUrl: (input: PlaybackInput, seekPosition?: number) => Promise<void>;
+  seek: (position: number) => void;
+  setPlaybackRate: (rate: number) => void;
+  stop: () => void;
 };
 
 type PlaybackSourceCallbacks = {

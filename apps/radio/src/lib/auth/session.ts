@@ -27,6 +27,6 @@ export function getSessionId(cookieHeader: string | null): string | null {
     return null;
   }
 
-  const sessionId = sessionCookie.split("=")[1];
+  const [, sessionId] = sessionCookie.split("=");
   return isValidSessionId(sessionId) ? sessionId : null;
 }

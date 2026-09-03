@@ -8,13 +8,16 @@ import type { YouTubeItemResult, YouTubeSearchResult } from "./types.js";
 
 export type YouTubeClient = {
   readonly providers: readonly YouTubeProviderAdapter[];
-  resolveItem(url: string, signal?: AbortSignal): Promise<YouTubeItemResult>;
-  resolveStream(videoId: string, signal?: AbortSignal): Promise<string>;
-  search(
+  resolveItem: (
+    url: string,
+    signal?: AbortSignal
+  ) => Promise<YouTubeItemResult>;
+  resolveStream: (videoId: string, signal?: AbortSignal) => Promise<string>;
+  search: (
     query: string,
     filter?: YouTubeProviderSearchFilter,
     signal?: AbortSignal
-  ): Promise<YouTubeSearchResult[]>;
+  ) => Promise<YouTubeSearchResult[]>;
 };
 
 function normalizeProviderError(
@@ -32,12 +35,17 @@ function normalizeProviderError(
   });
 }
 
-async function runWithFailover<T>(
+function runWithFailover<T>(
   providers: readonly YouTubeProviderAdapter[],
   operation: (provider: YouTubeProviderAdapter) => Promise<T>
 ): Promise<T> {
   const errors: YouTubeProviderError[] = [];
-  for (const provider of providers) {
+  const runProvider = async (providerIndex: number): Promise<T> => {
+    const provider = providers[providerIndex];
+    if (!provider) {
+      throw new YouTubeProviderAggregateError(errors);
+    }
+
     try {
       return await operation(provider);
     } catch (error) {
@@ -46,9 +54,11 @@ async function runWithFailover<T>(
         throw providerError;
       }
       errors.push(providerError);
+      return runProvider(providerIndex + 1);
     }
-  }
-  throw new YouTubeProviderAggregateError(errors);
+  };
+
+  return runProvider(0);
 }
 
 export function createYouTubeClient(

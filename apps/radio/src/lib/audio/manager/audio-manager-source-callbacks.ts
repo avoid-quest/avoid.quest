@@ -21,28 +21,18 @@ function createPlaybackSourceCallbacks({
   notifyListeners,
 }: SourceCallbackParams): PlaybackSourceCallbacks {
   return {
-    onPlaying: () => {
-      instance.loading = false;
-      instance.buffering = false;
-      instance.playing = true;
-      notifySoundState(notifyListeners, soundId, instance, {
-        isPlaying: true,
-        error: null,
-      });
-    },
-    onPaused: () => {
-      instance.playing = false;
-      instance.buffering = false;
-      notifySoundState(notifyListeners, soundId, instance, {
-        isPlaying: false,
-        error: null,
-      });
-    },
     onBuffering: (isBuffering) => {
       instance.buffering = isBuffering;
       notifySoundState(notifyListeners, soundId, instance, {
-        isPlaying: instance.playing,
         error: null,
+        isPlaying: instance.playing,
+      });
+    },
+    onEnded: () => {
+      instance.playing = false;
+      notifySoundState(notifyListeners, soundId, instance, {
+        hasEnded: true,
+        isPlaying: false,
       });
     },
     onError: (error) => {
@@ -56,11 +46,21 @@ function createPlaybackSourceCallbacks({
         error.message
       );
     },
-    onEnded: () => {
+    onPaused: () => {
       instance.playing = false;
+      instance.buffering = false;
       notifySoundState(notifyListeners, soundId, instance, {
+        error: null,
         isPlaying: false,
-        hasEnded: true,
+      });
+    },
+    onPlaying: () => {
+      instance.loading = false;
+      instance.buffering = false;
+      instance.playing = true;
+      notifySoundState(notifyListeners, soundId, instance, {
+        error: null,
+        isPlaying: true,
       });
     },
     onStreamError: (position) => {
@@ -86,15 +86,8 @@ function createDeviceSourceCallbacks({
       instance.loading = false;
       instance.playing = true;
       notifySoundState(notifyListeners, soundId, instance, {
+        error: null,
         isPlaying: true,
-        error: null,
-      });
-    },
-    onInactive: () => {
-      instance.playing = false;
-      notifySoundState(notifyListeners, soundId, instance, {
-        isPlaying: false,
-        error: null,
       });
     },
     onError: (error) => {
@@ -107,6 +100,13 @@ function createDeviceSourceCallbacks({
         "PLAYBACK_FAILED",
         error.message
       );
+    },
+    onInactive: () => {
+      instance.playing = false;
+      notifySoundState(notifyListeners, soundId, instance, {
+        error: null,
+        isPlaying: false,
+      });
     },
   };
 }

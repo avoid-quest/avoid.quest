@@ -42,14 +42,14 @@ describe("Container nesting depth", () => {
 describe("Frequency Split band resizing", () => {
   test("preserves low and high endpoint chains when adding or removing bands", () => {
     const chain = (id: string, order: number) => ({
+      effects: [createDefaultEffectConfig("limiter", `${id}-effect`, 0)],
+      gain: 1,
       id,
+      muted: false,
       name: id,
       order,
-      gain: 1,
       pan: 0,
-      muted: false,
       solo: false,
-      effects: [createDefaultEffectConfig("limiter", `${id}-effect`, 0)],
     });
     const twoBands = [chain("low", 0), chain("high", 1)];
     const expanded = resizeFrequencyChains(twoBands, 3, () => "new-mid");

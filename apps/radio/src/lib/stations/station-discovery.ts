@@ -84,7 +84,7 @@ function preferredAudioProbeConcurrency(): number {
   if (typeof navigator === "undefined") {
     return MAX_CONCURRENT_AUDIO_PROBES;
   }
-  const connection = (navigator as NetworkInformationNavigator).connection;
+  const { connection } = navigator as NetworkInformationNavigator;
   return connection?.saveData === true ||
     connection?.effectiveType?.endsWith("2g") === true
     ? 1
@@ -377,9 +377,16 @@ export function createStationDiscovery(
           } catch {
             return [];
           }
-          const probes: Promise<StationDiscoveryCandidate | null>[] = [];
-          for (const candidate of candidates.filter(hasSafeStreamUrl)) {
-            probes.push(
+          const safeCandidates = candidates.filter(hasSafeStreamUrl);
+          const scheduleProbes = async (
+            index = 0,
+            scheduled: Promise<StationDiscoveryCandidate | null>[] = []
+          ): Promise<Promise<StationDiscoveryCandidate | null>[]> => {
+            const candidate = safeCandidates[index];
+            if (!candidate) {
+              return scheduled;
+            }
+            scheduled.push(
               scheduleAudioProbe(
                 () =>
                   adapters.streamProbe.prepare(candidate, controller.signal),
@@ -387,7 +394,9 @@ export function createStationDiscovery(
               ).catch(() => null)
             );
             await Promise.resolve();
-          }
+            return scheduleProbes(index + 1, scheduled);
+          };
+          const probes = await scheduleProbes();
           const probed = await Promise.all(probes);
           return probed.flatMap((candidate) =>
             candidate ? [toRemoteResult(candidate)] : []

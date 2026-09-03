@@ -57,18 +57,18 @@ export type CTAGCompressorConfig = {
 };
 
 export const DEFAULT_CTAG_CONFIG: CTAGCompressorConfig = {
-  threshold: -10,
-  ratio: 4,
-  knee: 6,
   attack: 2,
-  release: 140,
+  autoAttack: false,
+  autoMakeup: false,
+  autoRelease: false,
+  inputGain: 0,
+  knee: 6,
+  lookahead: true,
   makeup: 0,
   mix: 1,
-  inputGain: 0,
-  lookahead: true,
-  autoAttack: false,
-  autoRelease: false,
-  autoMakeup: false,
+  ratio: 4,
+  release: 140,
+  threshold: -10,
 };
 
 /**
@@ -102,7 +102,7 @@ class StereoDelay {
       this.#bufferSize;
     let writePos = this.#writePosition;
 
-    for (let i = fromIndex; i < toIndex; i++) {
+    for (let i = fromIndex; i < toIndex; i += 1) {
       const delayedL = this.#bufferL[readPos] ?? 0;
       const delayedR = this.#bufferR[readPos] ?? 0;
       this.#bufferL[writePos] = channelL[i] ?? 0;
@@ -142,8 +142,8 @@ export class CTAGCompressor {
   // State
   #inputGain = 1;
   #targetInputGain = 1;
-  #lookahead = true;
-  #autoMakeup = false;
+  #lookahead = true as boolean;
+  #autoMakeup = false as boolean;
   #makeup = 0;
   #mix = 1;
   #autoMakeupValue = 0;
@@ -326,7 +326,7 @@ export class CTAGCompressor {
     // Apply input gain with smoothing
     const inputGainStep =
       (this.#targetInputGain - this.#inputGain) / (toIndex - fromIndex);
-    for (let i = fromIndex; i < toIndex; i++) {
+    for (let i = fromIndex; i < toIndex; i += 1) {
       this.#inputGain += inputGainStep;
       outputL[i] = (inputL[i] ?? 0) * this.#inputGain;
       outputR[i] = (inputR[i] ?? 0) * this.#inputGain;
@@ -335,7 +335,7 @@ export class CTAGCompressor {
     // Get max L/R amplitude for envelope follower (sidechain signal)
     const detector = this.#externalSidechain ?? output;
     this.#sidechainSignal.fill(0, fromIndex, toIndex);
-    for (let i = fromIndex; i < toIndex; i++) {
+    for (let i = fromIndex; i < toIndex; i += 1) {
       this.#sidechainSignal[i] = Math.max(
         Math.abs(detector[0][i] ?? 0),
         Math.abs(detector[1][i] ?? 0)
@@ -343,7 +343,7 @@ export class CTAGCompressor {
     }
 
     // Track detection signal peak
-    for (let i = fromIndex; i < toIndex; i++) {
+    for (let i = fromIndex; i < toIndex; i += 1) {
       const peak = this.#sidechainSignal[i];
       if (this.#inputPeak <= peak) {
         this.#inputPeak = peak;
@@ -370,7 +370,7 @@ export class CTAGCompressor {
     this.#ballistics.applyBallistics(this.#sidechainSignal, fromIndex, toIndex);
 
     // Track minimum gain reduction
-    for (let i = fromIndex; i < toIndex; i++) {
+    for (let i = fromIndex; i < toIndex; i += 1) {
       const peak = this.#sidechainSignal[i];
       if (this.#reductionMin >= peak) {
         this.#reductionMin = peak;
@@ -386,7 +386,7 @@ export class CTAGCompressor {
     if (this.#lookahead) {
       // Copy output to temp buffer for delay line
       const blockSize = toIndex - fromIndex;
-      for (let i = 0; i < blockSize; i++) {
+      for (let i = 0; i < blockSize; i += 1) {
         this.#lookaheadBuffer[0][i] = outputL[fromIndex + i] ?? 0;
         this.#lookaheadBuffer[1][i] = outputR[fromIndex + i] ?? 0;
       }
@@ -395,7 +395,7 @@ export class CTAGCompressor {
       this.#delay.process(this.#lookaheadBuffer, 0, blockSize);
 
       // Copy delayed audio back
-      for (let i = 0; i < blockSize; i++) {
+      for (let i = 0; i < blockSize; i += 1) {
         outputL[fromIndex + i] = this.#lookaheadBuffer[0][i];
         outputR[fromIndex + i] = this.#lookaheadBuffer[1][i];
       }
@@ -409,20 +409,20 @@ export class CTAGCompressor {
     }
 
     // Convert sidechain from dB to linear gain and apply makeup
-    for (let i = fromIndex; i < toIndex; i++) {
+    for (let i = fromIndex; i < toIndex; i += 1) {
       this.#sidechainSignal[i] = decibelsToGain(
         this.#sidechainSignal[i] + this.#makeup + this.#autoMakeupValue
       );
     }
 
     // Store original signal for dry/wet mixing
-    for (let i = fromIndex; i < toIndex; i++) {
+    for (let i = fromIndex; i < toIndex; i += 1) {
       this.#originalSignal[0][i - fromIndex] = outputL[i] ?? 0;
       this.#originalSignal[1][i - fromIndex] = outputR[i] ?? 0;
     }
 
     // Apply compression gain
-    for (let i = fromIndex; i < toIndex; i++) {
+    for (let i = fromIndex; i < toIndex; i += 1) {
       outputL[i] = (outputL[i] ?? 0) * this.#sidechainSignal[i];
       outputR[i] = (outputR[i] ?? 0) * this.#sidechainSignal[i];
     }
@@ -430,7 +430,7 @@ export class CTAGCompressor {
     // Mix dry and wet signals
     if (this.#mix < 1) {
       const dryMix = 1 - this.#mix;
-      for (let i = fromIndex; i < toIndex; i++) {
+      for (let i = fromIndex; i < toIndex; i += 1) {
         const origIdx = i - fromIndex;
         const wet = this.#mix;
         outputL[i] =
@@ -441,7 +441,7 @@ export class CTAGCompressor {
     }
 
     // Track output peak
-    for (let i = fromIndex; i < toIndex; i++) {
+    for (let i = fromIndex; i < toIndex; i += 1) {
       const peak = Math.max(
         Math.abs(outputL[i] ?? 0),
         Math.abs(outputR[i] ?? 0)
@@ -456,7 +456,7 @@ export class CTAGCompressor {
 
   #calculateAutoMakeup(fromIndex: number, toIndex: number): number {
     let sum = 0;
-    for (let i = fromIndex; i < toIndex; i++) {
+    for (let i = fromIndex; i < toIndex; i += 1) {
       sum += this.#sidechainSignal[i];
     }
     this.#smoothedAutoMakeup.process(-sum / (toIndex - fromIndex));

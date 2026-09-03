@@ -11,9 +11,6 @@ function createMemoryStorage(): Storage {
   const state = new Map<string, string>();
 
   return {
-    get length() {
-      return state.size;
-    },
     clear() {
       state.clear();
     },
@@ -22,6 +19,9 @@ function createMemoryStorage(): Storage {
     },
     key(index) {
       return Array.from(state.keys())[index] ?? null;
+    },
+    get length() {
+      return state.size;
     },
     removeItem(key) {
       state.delete(key);
@@ -34,8 +34,8 @@ function createMemoryStorage(): Storage {
 
 if (typeof sessionStorage === "undefined") {
   Object.defineProperty(globalThis, "sessionStorage", {
-    value: createMemoryStorage(),
     configurable: true,
+    value: createMemoryStorage(),
   });
 }
 
@@ -143,16 +143,16 @@ describe("session radios", () => {
     addSessionRadio({
       id: "rg_restore",
       name: "Restore",
-      streamUrl: "https://radio.example/restore.mp3",
       streamFormat: "hls",
+      streamUrl: "https://radio.example/restore.mp3",
     });
 
     const stored = JSON.parse(
       sessionStorage.getItem("radio-session-radios") ?? "{}"
     ) as Record<string, { data?: { name?: string; streamFormat?: string } }>;
 
-    expect(stored["s:rg_restore"]?.data?.name).toBe("Restore");
-    expect(stored["s:rg_restore"]?.data?.streamFormat).toBe("hls");
+    expect(stored["s:rg_restore"].data?.name).toBe("Restore");
+    expect(stored["s:rg_restore"].data?.streamFormat).toBe("hls");
   });
 
   test("restores legacy session radios from the previous session storage shape", async () => {
@@ -188,13 +188,13 @@ describe("session radios", () => {
       "radio-session-radios",
       JSON.stringify({
         "s:rg_restored": {
-          versionKey: "restored",
           data: {
+            addedAt: Date.now() + 60_000,
             id: "rg_restored",
             name: "Restored",
             streamUrl: "https://radio.example/restored.mp3",
-            addedAt: Date.now() + 60_000,
           },
+          versionKey: "restored",
         },
       })
     );

@@ -61,9 +61,8 @@ export function createAudioEngineFacade(
 ): AudioEngineFacade {
   return {
     playback: {
-      play: (soundId, volume) => manager.playSound(soundId, volume),
       pause: (soundId) => manager.pauseSound(soundId),
-      seek: (soundId, position) => manager.seekSound(soundId, position),
+      play: (soundId, volume) => manager.playSound(soundId, volume),
       refreshStreamUrl: (soundId, newUrl, seekPosition, streamFormat) =>
         streamFormat
           ? manager.refreshStreamUrl(
@@ -73,6 +72,7 @@ export function createAudioEngineFacade(
               streamFormat
             )
           : manager.refreshStreamUrl(soundId, newUrl, seekPosition),
+      seek: (soundId, position) => manager.seekSound(soundId, position),
     },
     volume: {
       setChannelVolume: (soundId, volume) => manager.setVolume(soundId, volume),

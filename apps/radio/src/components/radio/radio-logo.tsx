@@ -1,3 +1,4 @@
+/** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 import { cn } from "@avoid.quest/ui/lib/utils";
 import { AudioLinesIcon } from "lucide-react";
 import { useState } from "react";
@@ -11,43 +12,43 @@ type RadioLogoProps = {
 };
 
 const sizeMap = {
-  sm: "size-8",
-  md: "size-10",
-  lg: "size-12",
-  xl: "size-20",
   "2xl": "size-24",
   "3xl": "size-28",
   "4xl": "size-52",
+  lg: "size-12",
+  md: "size-10",
+  sm: "size-8",
+  xl: "size-20",
 };
 
 const sizePixels = {
-  sm: 32,
-  md: 40,
-  lg: 48,
-  xl: 80,
   "2xl": 96,
   "3xl": 112,
   "4xl": 208,
+  lg: 48,
+  md: 40,
+  sm: 32,
+  xl: 80,
 };
 
 const iconSizeMap = {
-  sm: "size-4",
-  md: "size-4",
-  lg: "size-5",
-  xl: "size-6",
   "2xl": "size-7",
   "3xl": "size-8",
   "4xl": "size-12",
+  lg: "size-5",
+  md: "size-4",
+  sm: "size-4",
+  xl: "size-6",
 };
 
 const imagePaddingMap = {
-  sm: "p-0.5",
-  md: "p-0.5",
-  lg: "p-0.5",
-  xl: "p-1",
   "2xl": "p-1",
   "3xl": "p-1.5",
   "4xl": "p-2",
+  lg: "p-0.5",
+  md: "p-0.5",
+  sm: "p-0.5",
+  xl: "p-1",
 };
 
 export function RadioLogo({

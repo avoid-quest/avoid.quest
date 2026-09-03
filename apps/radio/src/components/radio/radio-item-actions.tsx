@@ -1,3 +1,4 @@
+/** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 import { Button } from "@avoid.quest/ui/components/button";
 import {
   DropdownMenu,
@@ -43,8 +44,8 @@ export function RadioItemActions({
   const [isUpdating, setIsUpdating] = useState(false);
   const isSession = isSessionRadio(radio);
 
-  const handleToggle = (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleToggle = (event: React.MouseEvent) => {
+    event.stopPropagation();
     if (!radio.id) {
       return;
     }
@@ -65,23 +66,23 @@ export function RadioItemActions({
     }
   };
 
-  const handleDelete = (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleDelete = (event: React.MouseEvent) => {
+    event.stopPropagation();
     onDelete?.(radio);
   };
 
-  const handleEdit = (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleEdit = (event: React.MouseEvent) => {
+    event.stopPropagation();
     onEdit?.(radio);
   };
 
-  const handleSave = (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleSave = (event: React.MouseEvent) => {
+    event.stopPropagation();
     onSave?.(radio);
   };
 
-  const handleCopyStreamLink = async (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleCopyStreamLink = async (event: React.MouseEvent) => {
+    event.stopPropagation();
     try {
       await navigator.clipboard.writeText(radio.streamUrl);
       toast.success("Stream link copied to clipboard");
@@ -90,11 +91,14 @@ export function RadioItemActions({
     }
   };
 
-  const handleGoToWebsite = (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleGoToWebsite = (event: React.MouseEvent) => {
+    event.stopPropagation();
     if (radio.websiteUrl) {
       window.open(radio.websiteUrl, "_blank", "noopener,noreferrer");
     }
+  };
+  const handleStopPropagation = (event: React.MouseEvent) => {
+    event.stopPropagation();
   };
 
   return (
@@ -103,7 +107,7 @@ export function RadioItemActions({
         <Button
           className="h-8 w-8 p-0"
           disabled={disabled || isUpdating}
-          onClick={(e) => e.stopPropagation()}
+          onClick={handleStopPropagation}
           size="sm"
           variant="ghost"
         >
@@ -111,7 +115,7 @@ export function RadioItemActions({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        {isSession && onSave && (
+        {isSession && onSave ? (
           <>
             <DropdownMenuItem onClick={handleSave}>
               <BookmarkPlusIcon className="mr-2 size-4" />
@@ -119,7 +123,7 @@ export function RadioItemActions({
             </DropdownMenuItem>
             <DropdownMenuSeparator />
           </>
-        )}
+        ) : null}
 
         <DropdownMenuItem onClick={handleCopyStreamLink}>
           <CopyIcon className="mr-2 size-4" />
@@ -142,7 +146,7 @@ export function RadioItemActions({
               Edit
             </DropdownMenuItem>
 
-            {onToggle && (
+            {onToggle ? (
               <DropdownMenuItem disabled={isUpdating} onClick={handleToggle}>
                 {radio.enabled ? (
                   <>
@@ -156,7 +160,7 @@ export function RadioItemActions({
                   </>
                 )}
               </DropdownMenuItem>
-            )}
+            ) : null}
           </>
         )}
 

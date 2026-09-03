@@ -4,16 +4,16 @@ import { normalizeIcecastSource, selectIcecastSource } from "./icecast-status";
 describe("Icecast status parsing", () => {
   test("normalizes a single source object", () => {
     const selected = selectIcecastSource(
-      { icestats: { source: { title: "Artist - Title", bitrate: "128" } } },
+      { icestats: { source: { bitrate: "128", title: "Artist - Title" } } },
       "https://radio.example/live"
     );
 
     expect(selected).not.toBeNull();
     const normalized = normalizeIcecastSource({
+      expiresAt: 16_000,
+      sampledAt: 1000,
       source: selected ?? {},
       streamUrl: "https://radio.example/live",
-      sampledAt: 1000,
-      expiresAt: 16_000,
     });
 
     expect(normalized?.source).toBe("icecast-status-json");
@@ -24,7 +24,7 @@ describe("Icecast status parsing", () => {
 
   test("matches single source by mount path when path data is present", () => {
     const selected = selectIcecastSource(
-      { icestats: { source: { title: "Right", mount: "/live" } } },
+      { icestats: { source: { mount: "/live", title: "Right" } } },
       "https://radio.example/live"
     );
 
@@ -35,7 +35,7 @@ describe("Icecast status parsing", () => {
     const selected = selectIcecastSource(
       {
         icestats: {
-          source: { title: "Wrong", listenurl: "https://radio.example/other" },
+          source: { listenurl: "https://radio.example/other", title: "Wrong" },
         },
       },
       "https://radio.example/live"
@@ -49,8 +49,8 @@ describe("Icecast status parsing", () => {
       {
         icestats: {
           source: [
-            { title: "Wrong", listenurl: "https://radio.example/other" },
-            { title: "Right", listenurl: "https://radio.example/live" },
+            { listenurl: "https://radio.example/other", title: "Wrong" },
+            { listenurl: "https://radio.example/live", title: "Right" },
           ],
         },
       },
@@ -65,7 +65,7 @@ describe("Icecast status parsing", () => {
       {
         icestats: {
           source: [
-            { title: "Wrong", listenurl: "https://radio.example/other" },
+            { listenurl: "https://radio.example/other", title: "Wrong" },
           ],
         },
       },
@@ -77,10 +77,10 @@ describe("Icecast status parsing", () => {
 
   test("returns null when title is missing", () => {
     const normalized = normalizeIcecastSource({
+      expiresAt: 16_000,
+      sampledAt: 1000,
       source: { server_name: "Station" },
       streamUrl: "https://radio.example/live",
-      sampledAt: 1000,
-      expiresAt: 16_000,
     });
 
     expect(normalized).toBeNull();

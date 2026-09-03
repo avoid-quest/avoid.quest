@@ -56,7 +56,7 @@ describe("NAM model storage", () => {
     const nested = createDefaultEffectConfig("neuralAmp", "nested", 0);
     nested.modelId = sharedId;
     const container = createDefaultEffectConfig("fxComposite", "container", 0);
-    const firstChain = container.chains[0];
+    const [firstChain] = container.chains;
     if (!firstChain) {
       throw new Error("Default composite requires a chain");
     }

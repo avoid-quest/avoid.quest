@@ -18,12 +18,12 @@ class BrowserOutputGraph implements OutputBrowserGraph {
   readonly cueInput: GainNode;
   readonly headphoneGain: GainNode;
   readonly mainDelay: DelayNode;
-  readonly mainOutput: AudioNode;
+  readonly mainMeterTap: AudioNode;
 
   constructor(context: AudioContext) {
     this.context = context;
     this.mainDelay = context.createDelay(MAX_OUTPUT_DELAY_SECONDS);
-    this.mainOutput = this.mainDelay;
+    this.mainMeterTap = context.createGain();
     this.cueInput = context.createGain();
     this.cueDelay = context.createDelay(MAX_OUTPUT_DELAY_SECONDS);
     this.headphoneGain = context.createGain();
@@ -36,8 +36,9 @@ class BrowserOutputGraph implements OutputBrowserGraph {
     source.connect(this.cueInput);
   }
 
-  connectMain(source: AudioNode): void {
-    source.connect(this.mainDelay);
+  connectMain(source: AudioNode, realtime = false): void {
+    source.connect(this.mainMeterTap);
+    source.connect(realtime ? this.context.destination : this.mainDelay);
   }
 
   disconnectCue(source: AudioNode): void {
@@ -45,10 +46,21 @@ class BrowserOutputGraph implements OutputBrowserGraph {
   }
 
   disconnectMain(source: AudioNode): void {
+    safeDisconnectFrom(
+      source,
+      this.mainMeterTap,
+      "OutputRouting.disconnectMainMeter"
+    );
     safeDisconnectFrom(source, this.mainDelay, "OutputRouting.disconnectMain");
+    safeDisconnectFrom(
+      source,
+      this.context.destination,
+      "OutputRouting.disconnectMainRealtime"
+    );
   }
 
   dispose(): void {
+    safeDisconnect(this.mainMeterTap, "OutputRouting.cleanup");
     safeDisconnect(this.mainDelay, "OutputRouting.cleanup");
     safeDisconnect(this.cueInput, "OutputRouting.cleanup");
     safeDisconnect(this.cueDelay, "OutputRouting.cleanup");
@@ -82,7 +94,7 @@ class BrowserOutputGraph implements OutputBrowserGraph {
 
 class BrowserCueSink implements OutputCueSink {
   readonly deviceId: string;
-  private disposed = false;
+  private disposed = false as boolean;
   private readonly destination: MediaStreamAudioDestinationNode;
   private readonly element: HTMLAudioElement;
   private readonly graph: BrowserOutputGraph;

@@ -40,7 +40,6 @@ afterEach(async () => {
 describe("validateImportData", () => {
   test("accepts version 1 exports and drops legacy player fields", () => {
     const imported = validateImportData({
-      version: 1,
       exportDate: "2026-04-16T00:00:00.000Z",
       radios: [],
       settings: {
@@ -51,6 +50,7 @@ describe("validateImportData", () => {
           single: { transitionDuration: 3456 },
         },
       },
+      version: 1,
     });
 
     expect(imported.version).toBe(1);
@@ -64,7 +64,6 @@ describe("validateImportData", () => {
 
   test("preserves omitted restoreStateOnLoad so merge imports can keep local value", () => {
     const imported = validateImportData({
-      version: 1,
       exportDate: "2026-04-16T00:00:00.000Z",
       radios: [],
       settings: {
@@ -72,6 +71,7 @@ describe("validateImportData", () => {
           mode: "dj",
         },
       },
+      version: 1,
     });
 
     expect(imported.settings.player).toEqual({
@@ -82,7 +82,6 @@ describe("validateImportData", () => {
 
   test("preserves omitted mode so merge imports can keep local value", () => {
     const imported = validateImportData({
-      version: 1,
       exportDate: "2026-04-16T00:00:00.000Z",
       radios: [],
       settings: {
@@ -90,6 +89,7 @@ describe("validateImportData", () => {
           restoreStateOnLoad: false,
         },
       },
+      version: 1,
     });
 
     expect(imported.settings.player.mode).toBeUndefined();
@@ -102,19 +102,18 @@ describe("mergeImportedData", () => {
     await radiosCollection.stateWhenReady();
 
     radiosCollection.insert({
+      enabled: true,
       id: "radio-1",
-      name: "Existing",
-      streamUrl: "https://radio.example/original.mp3",
       metadataConfig: {
         kind: "airtime-live-info",
         urls: ["https://radio.example/api/live-info"],
       },
+      name: "Existing",
       order: 1,
-      enabled: true,
+      streamUrl: "https://radio.example/original.mp3",
     });
 
     mergeImportedData({
-      version: 1,
       exportDate: "2026-04-16T00:00:00.000Z",
       radios: [
         {
@@ -128,14 +127,15 @@ describe("mergeImportedData", () => {
           mode: "single",
         },
       },
+      version: 1,
     });
 
     expect(radiosCollection.state.get("radio-1")).toMatchObject({
-      streamUrl: "https://radio.example/replaced.mp3",
       metadataConfig: {
         kind: "airtime-live-info",
         urls: ["https://radio.example/api/live-info"],
       },
+      streamUrl: "https://radio.example/replaced.mp3",
     });
   });
 
@@ -151,7 +151,6 @@ describe("mergeImportedData", () => {
     });
 
     mergeImportedData({
-      version: 1,
       exportDate: "2026-04-16T00:00:00.000Z",
       radios: [],
       settings: {
@@ -159,6 +158,7 @@ describe("mergeImportedData", () => {
           mode: "dj",
         },
       },
+      version: 1,
     });
 
     expect(getSettings()?.player).toEqual({
@@ -180,7 +180,6 @@ describe("mergeImportedData", () => {
 
     mergeImportedData(
       validateImportData({
-        version: 1,
         exportDate: "2026-04-16T00:00:00.000Z",
         radios: [],
         settings: {
@@ -188,6 +187,7 @@ describe("mergeImportedData", () => {
             restoreStateOnLoad: false,
           },
         },
+        version: 1,
       })
     );
 
@@ -201,32 +201,32 @@ describe("mergeImportedData", () => {
     await radiosCollection.stateWhenReady();
 
     radiosCollection.insert({
+      enabled: true,
       id: "radio-1",
       name: "Existing",
-      streamUrl: "https://radio.example/live",
-      streamFormat: "progressive",
       order: 1,
-      enabled: true,
+      streamFormat: "progressive",
+      streamUrl: "https://radio.example/live",
     });
 
     mergeImportedData({
-      version: 2,
       exportDate: "2026-07-10T00:00:00.000Z",
       radios: [
         {
           id: "imported-existing",
           name: "Existing",
-          streamUrl: "https://radio.example/live",
           streamFormat: "hls",
+          streamUrl: "https://radio.example/live",
         },
         {
           id: "imported-new",
           name: "New",
-          streamUrl: "https://radio.example/new",
           streamFormat: "hls",
+          streamUrl: "https://radio.example/new",
         },
       ],
       settings: { player: { mode: "single" } },
+      version: 2,
     });
 
     expect(radiosCollection.state.get("radio-1")?.streamFormat).toBe("hls");
@@ -241,16 +241,15 @@ describe("mergeImportedData", () => {
     await radiosCollection.stateWhenReady();
 
     radiosCollection.insert({
+      enabled: true,
       id: "radio-1",
       name: "Existing",
-      streamUrl: "https://radio.example/original",
-      streamFormat: "hls",
       order: 1,
-      enabled: true,
+      streamFormat: "hls",
+      streamUrl: "https://radio.example/original",
     });
 
     mergeImportedData({
-      version: 1,
       exportDate: "2026-04-16T00:00:00.000Z",
       radios: [
         {
@@ -260,6 +259,7 @@ describe("mergeImportedData", () => {
         },
       ],
       settings: { player: { mode: "single" } },
+      version: 1,
     });
 
     expect(radiosCollection.state.get("radio-1")?.streamFormat).toBe("hls");
@@ -271,17 +271,17 @@ describe("stream format imports", () => {
     await radiosCollection.stateWhenReady();
 
     replaceImportedData({
-      version: 2,
       exportDate: "2026-07-10T00:00:00.000Z",
       radios: [
         {
           id: "radio-1",
           name: "HLS Radio",
-          streamUrl: "https://radio.example/live",
           streamFormat: "hls",
+          streamUrl: "https://radio.example/live",
         },
       ],
       settings: { player: { mode: "single" } },
+      version: 2,
     });
 
     expect(radiosCollection.state.get("radio-1")?.streamFormat).toBe("hls");
@@ -291,28 +291,28 @@ describe("stream format imports", () => {
     await radiosCollection.stateWhenReady();
 
     radiosCollection.insert({
+      enabled: true,
       id: "radio-1",
       name: "Existing",
-      streamUrl: "https://radio.example/live",
-      streamFormat: "progressive",
       order: 1,
-      enabled: true,
+      streamFormat: "progressive",
+      streamUrl: "https://radio.example/live",
     });
 
     expect(
       previewImportChanges({
-        version: 2,
         exportDate: "2026-07-10T00:00:00.000Z",
         radios: [
           {
             id: "imported-radio",
             name: "Existing",
-            streamUrl: "https://radio.example/live",
             streamFormat: "hls",
+            streamUrl: "https://radio.example/live",
           },
         ],
         settings: { player: { mode: "single" } },
+        version: 2,
       })
-    ).toMatchObject({ updatedRadios: 1, unchangedRadios: 0 });
+    ).toMatchObject({ unchangedRadios: 0, updatedRadios: 1 });
   });
 });

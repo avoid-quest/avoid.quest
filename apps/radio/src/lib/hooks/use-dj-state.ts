@@ -55,12 +55,12 @@ function toMixerRecord(): MixerRecord | undefined {
     return;
   }
   return {
-    id: MIXER_ID,
     crossfadePosition: session.crossfadePosition,
-    masterVolume: session.masterVolume,
-    headphoneVolume: session.headphoneVolume,
     deckACueEnabled: deckA?.cueEnabled ?? false,
     deckBCueEnabled: deckB?.cueEnabled ?? false,
+    headphoneVolume: session.headphoneVolume,
+    id: MIXER_ID,
+    masterVolume: session.masterVolume,
   };
 }
 
@@ -87,12 +87,12 @@ export function useMixer(): MixerRecord | undefined {
       (channel) => channel.id === DECK_B_CHANNEL_ID
     );
     return {
-      id: MIXER_ID,
       crossfadePosition: session.crossfadePosition,
-      masterVolume: session.masterVolume,
-      headphoneVolume: session.headphoneVolume,
       deckACueEnabled: deckA?.cueEnabled ?? false,
       deckBCueEnabled: deckB?.cueEnabled ?? false,
+      headphoneVolume: session.headphoneVolume,
+      id: MIXER_ID,
+      masterVolume: session.masterVolume,
     };
   }, [session]);
 }

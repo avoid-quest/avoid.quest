@@ -77,9 +77,9 @@ describe("CTAGCompressor", () => {
     const comp = new CTAGCompressor(44_100);
     expect(() =>
       comp.setConfig({
-        threshold: -15,
-        ratio: 6,
         knee: 8,
+        ratio: 6,
+        threshold: -15,
       })
     ).not.toThrow();
   });
@@ -109,7 +109,7 @@ describe("CTAGCompressor", () => {
     comp.setRatio(4);
 
     // Process multiple blocks to let envelope settle
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 5; i += 1) {
       comp.process(input, output, 0, 128);
     }
 
@@ -213,14 +213,14 @@ describe("CTAGCompressor", () => {
     // Process with 100% wet - need multiple blocks for envelope
     comp.setThreshold(-10);
     comp.setMix(1);
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 5; i += 1) {
       comp.process(input, output100, 0, 128);
     }
 
     // Reset and process with 50% wet
     comp.reset();
     comp.setMix(0.5);
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 5; i += 1) {
       comp.process(input, output50, 0, 128);
     }
 

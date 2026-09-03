@@ -1,3 +1,4 @@
+// biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers
 import { Slider } from "@avoid.quest/ui/components/slider";
 import { MidiControlWrapper } from "@/components/audio/midi-control-wrapper";
 
@@ -10,6 +11,9 @@ export function MixerCrossfader({
   crossfadePosition,
   onCrossfadeChange,
 }: MixerCrossfaderProps) {
+  const handleValueChange = ([value]: number[]) =>
+    onCrossfadeChange((value ?? 0) / 100);
+
   return (
     <MidiControlWrapper targetId="mixer:crossfader">
       <div className="flex items-center gap-2.5">
@@ -20,7 +24,7 @@ export function MixerCrossfader({
             defaultValue={[50]}
             max={100}
             min={0}
-            onValueChange={([v]) => onCrossfadeChange(v / 100)}
+            onValueChange={handleValueChange}
             step={1}
             value={[crossfadePosition * 100]}
           />

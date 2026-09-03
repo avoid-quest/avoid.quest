@@ -2,16 +2,19 @@ import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ChannelSlider, snapChannelSliderValue } from "./channel-slider";
 
+const formatValue = (value: number) => `${value}`;
+const handleChange = () => undefined;
+
 describe("ChannelSlider", () => {
   test("renders a default tick and larger coarse-pointer touch target", () => {
     const html = renderToStaticMarkup(
       <ChannelSlider
         defaultValue={1}
-        formatValue={(value) => `${value}`}
+        formatValue={formatValue}
         label="VOL"
         max={1.585}
         min={0}
-        onChange={() => undefined}
+        onChange={handleChange}
         step={0.01}
         value={1}
       />
@@ -27,11 +30,11 @@ describe("ChannelSlider", () => {
       <ChannelSlider
         defaultValue={0}
         fillFromDefault
-        formatValue={(value) => `${value}`}
+        formatValue={formatValue}
         label="FILT"
         max={1}
         min={-1}
-        onChange={() => undefined}
+        onChange={handleChange}
         step={0.01}
         value={0.5}
       />

@@ -8,15 +8,15 @@ import type { AudioManager } from "./audio-manager.js";
 
 function createTestAudioManager() {
   return {
-    playSound: mock(async (_soundId: string, _volume?: number) => undefined),
     pauseSound: mock((_soundId: string) => undefined),
-    seekSound: mock((_soundId: string, _position: number) => undefined),
+    playSound: mock(async (_soundId: string, _volume?: number) => undefined),
     refreshStreamUrl: mock(
       async (_soundId: string, _newUrl: string, _seekPosition?: number) =>
         undefined
     ),
-    setVolume: mock((_soundId: string, _volume: number) => undefined),
+    seekSound: mock((_soundId: string, _position: number) => undefined),
     setGlobalVolume: mock((_volume: number) => undefined),
+    setVolume: mock((_soundId: string, _volume: number) => undefined),
   } satisfies Pick<
     AudioManager,
     | "playSound"

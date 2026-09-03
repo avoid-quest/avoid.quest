@@ -1,3 +1,4 @@
+// biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers
 import { Button } from "@avoid.quest/ui/components/button";
 import {
   Field,
@@ -10,7 +11,7 @@ import { Input } from "@avoid.quest/ui/components/input";
 import { Textarea } from "@avoid.quest/ui/components/textarea";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { CheckCircleIcon } from "lucide-react";
-import { Controller, useForm } from "react-hook-form";
+import { type Control, useController, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import type { Radio } from "@/lib/audio";
 import { updateRadio } from "@/lib/hooks/use-radios";
@@ -39,7 +40,7 @@ const getScrapedValue = (
   }
   const fieldData = scrapedData[field];
   if (Array.isArray(fieldData) && fieldData.length > 0) {
-    const firstOption = fieldData[0];
+    const [firstOption] = fieldData;
     if (
       firstOption &&
       typeof firstOption === "object" &&
@@ -57,10 +58,14 @@ const getAutoFilledFields = (scrapedData: RadioMetadata | null) => {
     return {};
   }
   return {
-    name: scrapedData.name && scrapedData.name.length > 0,
-    streamUrl: scrapedData.streamUrl && scrapedData.streamUrl.length > 0,
-    logoUrl: scrapedData.logoUrl && scrapedData.logoUrl.length > 0,
-    description: scrapedData.description && scrapedData.description.length > 0,
+    description: Boolean(
+      scrapedData.description && scrapedData.description.length > 0
+    ),
+    logoUrl: Boolean(scrapedData.logoUrl && scrapedData.logoUrl.length > 0),
+    name: Boolean(scrapedData.name && scrapedData.name.length > 0),
+    streamUrl: Boolean(
+      scrapedData.streamUrl && scrapedData.streamUrl.length > 0
+    ),
   };
 };
 
@@ -95,14 +100,72 @@ const getFormDefaultValues = (
   radio: Radio | undefined,
   scrapedData: RadioMetadata | null | undefined
 ): RadioFormData => ({
+  description:
+    radio?.description ?? getScrapedValue(scrapedData ?? null, "description"),
+  logoUrl: radio?.logoUrl ?? getScrapedValue(scrapedData ?? null, "logoUrl"),
   name: radio?.name ?? getScrapedValue(scrapedData ?? null, "name"),
   streamUrl:
     radio?.streamUrl ?? getScrapedValue(scrapedData ?? null, "streamUrl"),
-  logoUrl: radio?.logoUrl ?? getScrapedValue(scrapedData ?? null, "logoUrl"),
-  description:
-    radio?.description ?? getScrapedValue(scrapedData ?? null, "description"),
   websiteUrl: radio?.websiteUrl ?? scrapedData?.websiteUrl ?? "",
 });
+
+type RadioFormFieldName = keyof Pick<
+  RadioFormData,
+  "description" | "logoUrl" | "name" | "streamUrl" | "websiteUrl"
+>;
+
+type RadioFormFieldProps = {
+  autoFilled?: boolean;
+  control: Control<RadioFormData>;
+  label: string;
+  multiline?: boolean;
+  name: RadioFormFieldName;
+  placeholder: string;
+};
+
+function RadioFormField({
+  autoFilled = false,
+  control,
+  label,
+  multiline = false,
+  name,
+  placeholder,
+}: RadioFormFieldProps) {
+  const { field, fieldState } = useController({ control, name });
+  const inputProps = {
+    "aria-invalid": fieldState.invalid,
+    id: field.name,
+    placeholder,
+    ...field,
+  };
+
+  return (
+    <Field data-invalid={fieldState.invalid}>
+      <FieldLabel className="flex items-center gap-2" htmlFor={field.name}>
+        {label}
+        {autoFilled ? (
+          <div className="flex items-center gap-1 text-primary text-xs">
+            <CheckCircleIcon className="size-3" />
+            Auto-filled
+          </div>
+        ) : null}
+      </FieldLabel>
+      {multiline ? (
+        <Textarea className="min-h-20" {...inputProps} />
+      ) : (
+        <Input {...inputProps} />
+      )}
+      {fieldState.invalid ? <FieldError errors={[fieldState.error]} /> : null}
+    </Field>
+  );
+}
+
+function getSubmitLabel(isSubmitting: boolean, mode: "create" | "edit") {
+  if (isSubmitting) {
+    return "Saving...";
+  }
+  return mode === "create" ? "Create" : "Update";
+}
 
 export function RadioForm({
   mode,
@@ -112,162 +175,69 @@ export function RadioForm({
   scrapedData,
 }: RadioFormProps) {
   const form = useForm<RadioFormData>({
+    defaultValues: getFormDefaultValues(radio, scrapedData),
     // biome-ignore lint/suspicious/noExplicitAny: Zod 4 type inference workaround
     resolver: zodResolver(radioSchema as any),
-    defaultValues: getFormDefaultValues(radio, scrapedData),
   });
 
   const autoFilledFields = getAutoFilledFields(scrapedData ?? null);
 
-  const onSubmit = (data: RadioFormData) =>
-    handleFormSubmit(data, mode, radio, onSuccess);
+  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) =>
+    form.handleSubmit((data) => handleFormSubmit(data, mode, radio, onSuccess))(
+      event
+    );
+  const watchedName = form.watch("name");
+  const watchedLogoUrl = form.watch("logoUrl");
+  const watchedStreamUrl = form.watch("streamUrl");
+  const showPreviews = mode === "edit" || Boolean(scrapedData);
+  const submitLabel = getSubmitLabel(form.formState.isSubmitting, mode);
 
   return (
-    <form className="space-y-4" onSubmit={form.handleSubmit(onSubmit)}>
+    <form className="space-y-4" onSubmit={handleSubmit}>
       <FieldSet>
         <FieldGroup>
-          <Controller
+          <RadioFormField
+            autoFilled={autoFilledFields.name}
             control={form.control}
+            label="Name"
             name="name"
-            render={({ field, fieldState }) => (
-              <Field data-invalid={fieldState.invalid}>
-                <FieldLabel
-                  className="flex items-center gap-2"
-                  htmlFor={field.name}
-                >
-                  Name
-                  {autoFilledFields.name && (
-                    <div className="flex items-center gap-1 text-primary text-xs">
-                      <CheckCircleIcon className="size-3" />
-                      Auto-filled
-                    </div>
-                  )}
-                </FieldLabel>
-                <Input
-                  aria-invalid={fieldState.invalid}
-                  id={field.name}
-                  placeholder="Radio station name"
-                  {...field}
-                />
-                {fieldState.invalid && (
-                  <FieldError errors={[fieldState.error]} />
-                )}
-              </Field>
-            )}
+            placeholder="Radio station name"
           />
 
-          <Controller
+          <RadioFormField
+            autoFilled={autoFilledFields.streamUrl}
             control={form.control}
+            label="Stream URL"
             name="streamUrl"
-            render={({ field, fieldState }) => (
-              <Field data-invalid={fieldState.invalid}>
-                <FieldLabel
-                  className="flex items-center gap-2"
-                  htmlFor={field.name}
-                >
-                  Stream URL
-                  {autoFilledFields.streamUrl && (
-                    <div className="flex items-center gap-1 text-primary text-xs">
-                      <CheckCircleIcon className="size-3" />
-                      Auto-filled
-                    </div>
-                  )}
-                </FieldLabel>
-                <Input
-                  aria-invalid={fieldState.invalid}
-                  id={field.name}
-                  placeholder="https://example.com/stream.mp3"
-                  {...field}
-                />
-                {fieldState.invalid && (
-                  <FieldError errors={[fieldState.error]} />
-                )}
-              </Field>
-            )}
+            placeholder="https://example.com/stream.mp3"
           />
 
-          <Controller
+          <RadioFormField
+            autoFilled={autoFilledFields.logoUrl}
             control={form.control}
+            label="Logo URL"
             name="logoUrl"
-            render={({ field, fieldState }) => (
-              <Field data-invalid={fieldState.invalid}>
-                <FieldLabel
-                  className="flex items-center gap-2"
-                  htmlFor={field.name}
-                >
-                  Logo URL
-                  {autoFilledFields.logoUrl && (
-                    <div className="flex items-center gap-1 text-primary text-xs">
-                      <CheckCircleIcon className="size-3" />
-                      Auto-filled
-                    </div>
-                  )}
-                </FieldLabel>
-                <Input
-                  aria-invalid={fieldState.invalid}
-                  id={field.name}
-                  placeholder="https://example.com/logo.png"
-                  {...field}
-                />
-                {fieldState.invalid && (
-                  <FieldError errors={[fieldState.error]} />
-                )}
-              </Field>
-            )}
+            placeholder="https://example.com/logo.png"
           />
 
-          <Controller
+          <RadioFormField
+            autoFilled={autoFilledFields.description}
             control={form.control}
+            label="Description"
+            multiline
             name="description"
-            render={({ field, fieldState }) => (
-              <Field data-invalid={fieldState.invalid}>
-                <FieldLabel
-                  className="flex items-center gap-2"
-                  htmlFor={field.name}
-                >
-                  Description
-                  {autoFilledFields.description && (
-                    <div className="flex items-center gap-1 text-primary text-xs">
-                      <CheckCircleIcon className="size-3" />
-                      Auto-filled
-                    </div>
-                  )}
-                </FieldLabel>
-                <Textarea
-                  aria-invalid={fieldState.invalid}
-                  className="min-h-20"
-                  id={field.name}
-                  placeholder="Radio station description"
-                  {...field}
-                />
-                {fieldState.invalid && (
-                  <FieldError errors={[fieldState.error]} />
-                )}
-              </Field>
-            )}
+            placeholder="Radio station description"
           />
 
-          <Controller
+          <RadioFormField
             control={form.control}
+            label="Website URL"
             name="websiteUrl"
-            render={({ field, fieldState }) => (
-              <Field data-invalid={fieldState.invalid}>
-                <FieldLabel htmlFor={field.name}>Website URL</FieldLabel>
-                <Input
-                  aria-invalid={fieldState.invalid}
-                  id={field.name}
-                  placeholder="https://example.com"
-                  {...field}
-                />
-                {fieldState.invalid && (
-                  <FieldError errors={[fieldState.error]} />
-                )}
-              </Field>
-            )}
+            placeholder="https://example.com"
           />
         </FieldGroup>
       </FieldSet>
-      {scrapedData && scrapedData.missingFields.length > 0 && (
+      {scrapedData && scrapedData.missingFields.length > 0 ? (
         <div className="space-y-2 border-t pt-4">
           <h4 className="font-medium text-amber-600 text-sm">
             Missing Required Fields
@@ -287,53 +257,48 @@ export function RadioForm({
             ))}
           </ul>
         </div>
-      )}
+      ) : null}
 
       {/* URL Previews - Only show in edit mode or when scraped data is available */}
-      {(mode === "edit" || scrapedData) && (
+      {showPreviews ? (
         <div className="space-y-3 border-t pt-4">
           <h4 className="font-medium text-sm">Live Previews</h4>
           <div className="grid gap-3 sm:grid-cols-2">
-            {form.watch("logoUrl") && (
+            {watchedLogoUrl ? (
               <div className="space-y-1">
                 <div className="font-medium text-muted-foreground text-xs">
                   Logo Preview
                 </div>
                 <RadioFieldPreview
                   field="logoUrl"
-                  radioName={form.watch("name") || radio?.name || "Radio"}
-                  value={form.watch("logoUrl") || ""}
+                  radioName={watchedName || radio?.name || "Radio"}
+                  value={watchedLogoUrl}
                 />
               </div>
-            )}
+            ) : null}
 
-            {form.watch("streamUrl") && (
+            {watchedStreamUrl ? (
               <div className="space-y-1">
                 <div className="font-medium text-muted-foreground text-xs">
                   Audio Stream Preview
                 </div>
                 <RadioFieldPreview
                   field="streamUrl"
-                  radioName={form.watch("name") || radio?.name || "Radio"}
-                  value={form.watch("streamUrl") || ""}
+                  radioName={watchedName || radio?.name || "Radio"}
+                  value={watchedStreamUrl}
                 />
               </div>
-            )}
+            ) : null}
           </div>
         </div>
-      )}
+      ) : null}
 
       <div className="flex justify-end gap-2 pt-4">
         <Button onClick={onCancel} type="button" variant="outline">
           Cancel
         </Button>
         <Button disabled={form.formState.isSubmitting} type="submit">
-          {(() => {
-            if (form.formState.isSubmitting) {
-              return "Saving...";
-            }
-            return mode === "create" ? "Create" : "Update";
-          })()}
+          {submitLabel}
         </Button>
       </div>
     </form>

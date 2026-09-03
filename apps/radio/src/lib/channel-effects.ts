@@ -57,23 +57,26 @@ export type ChannelEffectsResult = {
 };
 
 export type ChannelEffects = {
-  bind(ref: ChannelEffectsRef, soundId: string): Promise<ChannelEffectsResult>;
-  change(
+  bind: (
+    ref: ChannelEffectsRef,
+    soundId: string
+  ) => Promise<ChannelEffectsResult>;
+  change: (
     ref: ChannelEffectsRef,
     change: ChannelEffectsChange
-  ): Promise<ChannelEffectsResult>;
-  setTempo(
+  ) => Promise<ChannelEffectsResult>;
+  setTempo: (
     sessionId: PlaybackSessionId,
     bpm: number
-  ): Promise<ChannelEffectsResult[]>;
-  unbind(ref: ChannelEffectsRef): void;
+  ) => Promise<ChannelEffectsResult[]>;
+  unbind: (ref: ChannelEffectsRef) => void;
 };
 
 type EffectsRuntime = {
-  reconcile(
+  reconcile: (
     soundId: string,
     desired: DesiredEffectsState
-  ): Promise<EffectsRuntimeOutcome>;
+  ) => Promise<EffectsRuntimeOutcome>;
 };
 
 type ChannelEffectsOptions = {
@@ -134,13 +137,13 @@ export function createChannelEffects({
     }
     const sidechainChannelId = findSidechainChannelId(channel.effects);
     return {
-      tree: normalizeEffectTree(channel.effects),
       dryWet: Math.max(0, Math.min(1, channel.effectsDryWet)),
-      tempo: getPlaybackSession(ref.sessionId)?.tempo ?? 120,
       sidechainSoundId: sidechainChannelId
         ? (bindings.get(refKey({ ...ref, channelId: sidechainChannelId })) ??
           null)
         : null,
+      tempo: getPlaybackSession(ref.sessionId)?.tempo ?? 120,
+      tree: normalizeEffectTree(channel.effects),
     };
   };
 
@@ -160,19 +163,18 @@ export function createChannelEffects({
   const reconcileBound = async (
     except?: ChannelEffectsRef
   ): Promise<ChannelEffectsResult[]> => {
-    const results: ChannelEffectsResult[] = [];
-    for (const key of bindings.keys()) {
-      const separator = key.indexOf(":");
-      const ref = {
-        sessionId: key.slice(0, separator) as PlaybackSessionId,
-        channelId: key.slice(separator + 1),
-      };
-      if (except && refKey(except) === key) {
-        continue;
-      }
-      results.push(await reconcile(ref));
-    }
-    return results;
+    const excludedKey = except ? refKey(except) : null;
+    return await Promise.all(
+      [...bindings.keys()]
+        .filter((key) => key !== excludedKey)
+        .map((key) => {
+          const separator = key.indexOf(":");
+          return reconcile({
+            channelId: key.slice(separator + 1),
+            sessionId: key.slice(0, separator) as PlaybackSessionId,
+          });
+        })
+    );
   };
 
   return {
@@ -254,19 +256,16 @@ export function createChannelEffects({
     },
     async setTempo(sessionId, bpm) {
       setPlaybackSessionTempo(sessionId, bpm);
-      const results: ChannelEffectsResult[] = [];
-      for (const key of bindings.keys()) {
-        if (!key.startsWith(`${sessionId}:`)) {
-          continue;
-        }
-        results.push(
-          await reconcile({
-            sessionId,
-            channelId: key.slice(sessionId.length + 1),
-          })
-        );
-      }
-      return results;
+      return await Promise.all(
+        [...bindings.keys()]
+          .filter((key) => key.startsWith(`${sessionId}:`))
+          .map((key) =>
+            reconcile({
+              channelId: key.slice(sessionId.length + 1),
+              sessionId,
+            })
+          )
+      );
     },
     unbind(ref) {
       bindings.delete(refKey(ref));

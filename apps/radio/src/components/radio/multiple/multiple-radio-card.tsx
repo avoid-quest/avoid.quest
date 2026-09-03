@@ -1,3 +1,4 @@
+/** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 import { PlayPauseButton } from "@avoid.quest/ui/components/play-pause-button";
 import { Slider } from "@avoid.quest/ui/components/slider";
 import { cn } from "@avoid.quest/ui/lib/utils";
@@ -13,14 +14,32 @@ import { RadioNowPlaying } from "../radio-now-playing";
 type MultipleRadioCardProps = {
   radio: Radio;
   playerState: MultipleSessionPlayerState | null;
-  onTogglePlayPause: () => void;
-  onToggleMute: () => void;
-  onVolumeChange: (volume: number) => void;
+  onTogglePlayPause: (radio: Radio) => void;
+  onToggleMute: (radio: Radio) => void;
+  onVolumeChange: (radio: Radio, volume: number) => void;
   onEdit?: (radio: Radio) => void;
   onDelete?: (radio: Radio) => void;
   onToggle?: (radio: Radio, enabled: boolean) => void;
   onSave?: (radio: Radio) => void;
 };
+
+function RadioSubtitle({ radio }: { radio: Radio }) {
+  if (radio.placeTitle) {
+    return (
+      <p className="truncate text-muted-foreground/60 text-xs leading-snug">
+        {radio.placeTitle}, {radio.countryTitle}
+      </p>
+    );
+  }
+  if (radio.description) {
+    return (
+      <p className="truncate text-muted-foreground/60 text-xs leading-snug">
+        {radio.description}
+      </p>
+    );
+  }
+  return null;
+}
 
 export function MultipleRadioCard({
   radio,
@@ -39,13 +58,14 @@ export function MultipleRadioCard({
   const isMuted = playerState?.isMuted ?? volume === 0;
   const error = playerState?.error ?? null;
   const { metadata } = useRadioMetadata({
-    radio,
     enabled: isPlaying && !isLoading,
+    radio,
   });
 
-  const handleVolumeChange = (value: number[]) => {
-    onVolumeChange(value[0] ?? 0);
-  };
+  const handleVolumeChange = (value: number[]) =>
+    onVolumeChange(radio, value[0] ?? 0);
+  const handleTogglePlayPause = () => onTogglePlayPause(radio);
+  const handleToggleMute = () => onToggleMute(radio);
 
   const isSession = isSessionRadio(radio);
 
@@ -64,20 +84,10 @@ export function MultipleRadioCard({
           <p className="truncate font-semibold text-sm leading-tight">
             {radio.name}
           </p>
-          {radio.placeTitle ? (
-            <p className="truncate text-muted-foreground/60 text-xs leading-snug">
-              {radio.placeTitle}, {radio.countryTitle}
-            </p>
-          ) : (
-            radio.description && (
-              <p className="truncate text-muted-foreground/60 text-xs leading-snug">
-                {radio.description}
-              </p>
-            )
-          )}
-          {isPlaying && (
+          <RadioSubtitle radio={radio} />
+          {isPlaying ? (
             <RadioNowPlaying className="truncate" metadata={metadata} />
-          )}
+          ) : null}
         </div>
         <RadioItemActions
           onDelete={onDelete}
@@ -89,11 +99,11 @@ export function MultipleRadioCard({
       </div>
 
       {/* Error */}
-      {error && (
+      {error ? (
         <div className="mx-3 mb-2 rounded-md bg-destructive/10 px-2 py-1">
           <p className="font-mono text-[10px] text-destructive">{error}</p>
         </div>
-      )}
+      ) : null}
 
       {/* Controls */}
       <div className="flex items-center gap-2 border-border/50 border-t px-3 py-2">
@@ -102,14 +112,14 @@ export function MultipleRadioCard({
           iconClassName="size-3.5"
           isLoading={isLoading}
           isPlaying={isPlaying}
-          onClick={onTogglePlayPause}
+          onClick={handleTogglePlayPause}
           size="sm"
           variant={isPlaying && !isLoading ? "outline" : "default"}
         />
         <button
           aria-label={isMuted ? "Unmute" : "Mute"}
           className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground"
-          onClick={onToggleMute}
+          onClick={handleToggleMute}
           type="button"
         >
           {isMuted || volume === 0 ? (

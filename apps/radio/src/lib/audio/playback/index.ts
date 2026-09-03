@@ -8,6 +8,7 @@
 // Audio Context
 export {
   AudioContextManager,
+  type AudioContextPerformanceSnapshot,
   type ContextStateCallback,
   getAudioContext,
   getAudioContextManager,

@@ -174,11 +174,11 @@ function PlayerIdentity({
         </p>
         <p className="min-w-0 truncate font-semibold text-xl">{radio.name}</p>
         <NowPlayingLine metadata={metadata} />
-        {radio.placeTitle && (
+        {radio.placeTitle ? (
           <p className="mt-1 truncate text-muted-foreground text-sm">
             {radio.placeTitle}, {radio.countryTitle}
           </p>
-        )}
+        ) : null}
       </div>
     </div>
   );

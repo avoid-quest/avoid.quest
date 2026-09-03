@@ -20,8 +20,8 @@ export const Route = createFileRoute("/tunnel")({
     handlers: {
       POST: ({ request }) =>
         handleSentryTunnelRequest(request, {
-          runtimeDsn: readRuntimeSentryDsn(),
           fallbackDsn: readClientSentryDsn(),
+          runtimeDsn: readRuntimeSentryDsn(),
         }),
     },
   },

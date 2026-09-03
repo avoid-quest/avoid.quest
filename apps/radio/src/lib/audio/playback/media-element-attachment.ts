@@ -146,10 +146,10 @@ export class MediaElementAttachment {
 
     const hls = new Hls({
       fetchSetup: this.getFetchSetup(input.credentials),
+      liveMaxLatencyDurationCount: 10,
+      liveSyncDurationCount: 4,
       loader: FetchLoader,
       lowLatencyMode: false,
-      liveSyncDurationCount: 4,
-      liveMaxLatencyDurationCount: 10,
       maxBufferLength: 60,
       maxMaxBufferLength: 120,
     });
@@ -205,7 +205,7 @@ export class MediaElementAttachment {
   }
 
   private destroyHls(): void {
-    const hls = this.hls;
+    const { hls } = this;
     this.hls = null;
     hls?.destroy();
     this.hlsMediaRecoveryAttempt = 0;

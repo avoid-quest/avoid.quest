@@ -9,7 +9,7 @@ export class GateEffect {
   private hold = 20;
   private floor = -80;
   private returnAmount = 0;
-  private inverse = false;
+  private inverse = false as boolean;
   private envelope = 0;
   private gain = 0;
   private holdSamples = 0;
@@ -71,7 +71,7 @@ export class GateEffect {
       -1 / (this.sampleRate * this.release * 0.001)
     );
     const maxHold = Math.round(this.sampleRate * this.hold * 0.001);
-    for (let i = fromIndex; i < toIndex; i++) {
+    for (let i = fromIndex; i < toIndex; i += 1) {
       const level = Math.max(
         Math.abs(detector[0][i] ?? 0),
         Math.abs(detector[1][i] ?? 0)
@@ -82,7 +82,7 @@ export class GateEffect {
       if (this.envelope >= threshold) {
         this.holdSamples = maxHold;
       } else if (this.holdSamples > 0) {
-        this.holdSamples--;
+        this.holdSamples -= 1;
       }
       const open =
         this.envelope >= (this.gain > floor ? closeThreshold : threshold) ||
@@ -156,7 +156,7 @@ export class MaximizerEffect {
       this.bufferL.length - 1,
       Math.round(this.sampleRate * this.lookahead * 0.001)
     );
-    for (let i = fromIndex; i < toIndex; i++) {
+    for (let i = fromIndex; i < toIndex; i += 1) {
       const inL = input[0][i] ?? 0;
       const inR = input[1][i] ?? 0;
       this.bufferL[this.writeIndex] = inL;

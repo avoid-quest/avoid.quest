@@ -24,7 +24,10 @@ import {
   type EffectsBackend,
   EffectsBackendRouter,
 } from "./effects-backend-router.js";
-import type { EffectsGraphRuntime } from "./effects-graph-runtime.js";
+import type {
+  EffectsGraphRuntime,
+  EffectsPerformanceSnapshot,
+} from "./effects-graph-runtime.js";
 import { OfficialOpenDawRuntime } from "./official-opendaw-runtime.js";
 
 type SidechainConnection = { source: AudioNode; target: AudioNode };
@@ -36,6 +39,7 @@ type SoundEffectsState = {
   effects: EffectConfig[];
   generation: number;
   graph: EffectsBackendRouter | null;
+  inputChannels: 1 | 2;
   manager: WorkletManager | null;
   managerPromise: Promise<WorkletManager> | null;
   officialConnected: boolean;
@@ -63,6 +67,7 @@ const createSoundState = (): SoundEffectsState => ({
   effects: [],
   generation: 0,
   graph: null,
+  inputChannels: 2,
   manager: null,
   managerPromise: null,
   officialConnected: false,
@@ -74,8 +79,8 @@ const createSoundState = (): SoundEffectsState => ({
 
 class EffectsController {
   private officialRuntime: EffectsGraphRuntime | null = null;
-  private officialRuntimeUnavailable = false;
-  private officialRuntimeWarningReported = false;
+  private officialRuntimeUnavailable = false as boolean;
+  private officialRuntimeWarningReported = false as boolean;
   private readonly officialRegisteredSoundIds = new Set<string>();
   private readonly officialSoundOwners = new Map<string, number>();
   private nextOfficialRuntimeGeneration = 0;
@@ -117,7 +122,8 @@ class EffectsController {
   }
 
   private advance(state: SoundEffectsState): number {
-    state.generation = ++this.nextGeneration;
+    this.nextGeneration += 1;
+    state.generation = this.nextGeneration;
     return state.generation;
   }
 
@@ -161,6 +167,10 @@ class EffectsController {
         status: "inactive",
       }
     );
+  }
+
+  getPerformanceSnapshot(): EffectsPerformanceSnapshot | null {
+    return this.officialRuntime?.getPerformanceSnapshot?.() ?? null;
   }
 
   async reconcile(
@@ -261,7 +271,7 @@ class EffectsController {
     previous: readonly EffectConfig[],
     next: readonly EffectConfig[]
   ): void {
-    const manager = state.manager;
+    const { manager } = state;
     if (!manager) {
       return;
     }
@@ -363,9 +373,9 @@ class EffectsController {
       }
       state.manager = manager;
       attachWorkletManagerListeners({
-        wm: manager,
-        sounds: this.sounds,
         notifyListeners: this.notifyListeners,
+        sounds: this.sounds,
+        wm: manager,
       });
       this.refreshSidechains();
       return manager;
@@ -384,10 +394,12 @@ class EffectsController {
   async connectGraph(
     soundId: string,
     source: AudioNode,
-    destination: AudioNode
+    destination: AudioNode,
+    inputChannels: 1 | 2 = 2
   ): Promise<boolean> {
     const state = this.getState(soundId);
     this.disconnectGraph(soundId, state);
+    state.inputChannels = inputChannels;
 
     const shouldProcess = this.shouldProcess(state);
     // Keep effectful sources silent while their requested backend prepares,
@@ -480,7 +492,7 @@ class EffectsController {
     soundId: string,
     state: SoundEffectsState
   ): void {
-    const manager = state.manager;
+    const { manager } = state;
     if (!manager) {
       return;
     }
@@ -668,7 +680,7 @@ class EffectsController {
       );
       return false;
     }
-    const graph = state.graph;
+    const { graph } = state;
     if (!(graph && canUseOfficialOpenDawRuntime(state.effects))) {
       return false;
     }
@@ -685,7 +697,8 @@ class EffectsController {
         soundId,
         graph.source,
         graph.officialGain,
-        runtimeGeneration
+        runtimeGeneration,
+        state.inputChannels
       );
       if (
         !(
@@ -764,6 +777,7 @@ class EffectsController {
       ) {
         continue;
       }
+      // biome-ignore lint/performance/noAwaitInLoops: registrations mutate shared runtime ownership in order
       await this.registerNonOfficialSource(soundId, state, state.generation);
     }
     for (const [soundId, state] of this.states) {
@@ -777,7 +791,7 @@ class EffectsController {
     generation: number
   ): Promise<void> {
     const runtime = this.officialRuntime;
-    const graph = state.graph;
+    const { graph } = state;
     const isOfficialSidechain = [...this.states.values()].some(
       (candidate) =>
         candidate.officialConnected &&
@@ -796,7 +810,8 @@ class EffectsController {
     const connected = await runtime.connectSidechainSource(
       soundId,
       graph.source,
-      runtimeGeneration
+      runtimeGeneration,
+      state.inputChannels
     );
     if (!connected) {
       return;
@@ -881,7 +896,7 @@ class EffectsController {
   }
 
   private disconnectGraph(soundId: string, state: SoundEffectsState): void {
-    const graph = state.graph;
+    const { graph } = state;
     if (!graph) {
       return;
     }
@@ -910,7 +925,7 @@ class EffectsController {
     backend: EffectsBackend,
     generation: number
   ): void {
-    const graph = state.graph;
+    const { graph } = state;
     if (!(graph && state.generation === generation)) {
       return;
     }

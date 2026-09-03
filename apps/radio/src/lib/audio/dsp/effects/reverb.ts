@@ -108,13 +108,15 @@ export class DattorroReverb {
       return 0;
     }
     const frac = offset - ~~offset;
-    let int = ~~offset + d[2] - 1;
-    const mask = d[3];
-
-    const x0 = d[0][int++ & mask] ?? 0;
-    const x1 = d[0][int++ & mask] ?? 0;
-    const x2 = d[0][int++ & mask] ?? 0;
-    const x3 = d[0][int & mask] ?? 0;
+    const [delay, , readIndex, mask] = d;
+    let int = ~~offset + readIndex - 1;
+    const x0 = delay[int & mask] ?? 0;
+    int += 1;
+    const x1 = delay[int & mask] ?? 0;
+    int += 1;
+    const x2 = delay[int & mask] ?? 0;
+    int += 1;
+    const x3 = delay[int & mask] ?? 0;
 
     const a = (3 * (x1 - x2) - x0 + x3) / 2;
     const b = 2 * x2 + x0 - (5 * x1 + x3) / 2;
@@ -210,7 +212,7 @@ export class DattorroReverb {
     const dr = this.dry;
 
     // Write to predelay and dry output
-    for (let i = fromIndex; i < toIndex; i++) {
+    for (let i = fromIndex; i < toIndex; i += 1) {
       const monoInput = ((inputL[i] ?? 0) + (inputR[i] ?? 0)) * 0.5;
       const preDelayIndex =
         (this.preDelayLength + this.preDelayWrite - pd + (i - fromIndex)) %
@@ -223,7 +225,7 @@ export class DattorroReverb {
     }
 
     // Process reverb
-    for (let i = fromIndex; i < toIndex; i++) {
+    for (let i = fromIndex; i < toIndex; i += 1) {
       let lo = 0.0;
       let ro = 0.0;
 

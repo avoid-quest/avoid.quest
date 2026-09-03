@@ -113,48 +113,51 @@ export type DjDeckAudioChange =
   | { type: "volume"; volume: number };
 
 export type DjDeckAudioAdapter = {
-  activate(input: {
+  activate: (input: {
     deckId: DeckId;
     onMeter: (level: { left: number; right: number }) => void;
     onState: (state: AudioState) => void;
     radio: Radio;
     soundId: string;
-  }): () => void;
-  applyStrip(soundId: string, channel: PlaybackChannelRecord): void;
-  change(soundId: string, change: DjDeckAudioChange): void;
-  getCueTap(soundId: string): AudioNode | null;
-  getDeviceChannelCount(soundId: string): number | null;
-  loadFile(file: File): Promise<FileAudioMetadata>;
-  refresh(
+  }) => () => void;
+  applyStrip: (soundId: string, channel: PlaybackChannelRecord) => void;
+  change: (soundId: string, change: DjDeckAudioChange) => void;
+  getCueTap: (soundId: string) => AudioNode | null;
+  getDeviceChannelCount: (soundId: string) => number | null;
+  loadFile: (file: File) => Promise<FileAudioMetadata>;
+  refresh: (
     soundId: string,
     streamUrl: string,
     position: number,
     streamFormat: StreamFormat
-  ): Promise<void>;
-  releaseFileUrl(url: string): void;
-  resume(): Promise<void>;
-  setDeviceChannelSelection(soundId: string, selection: ChannelSelection): void;
-  startDevice(soundId: string, deviceId: string): Promise<void>;
-  transport(
+  ) => Promise<void>;
+  releaseFileUrl: (url: string) => void;
+  resume: () => Promise<void>;
+  setDeviceChannelSelection: (
+    soundId: string,
+    selection: ChannelSelection
+  ) => void;
+  startDevice: (soundId: string, deviceId: string) => Promise<void>;
+  transport: (
     soundId: string,
     intent:
       | { type: "pause" }
       | { type: "play"; volume: number }
       | { type: "seek"; position: number }
-  ): Promise<void>;
+  ) => Promise<void>;
 };
 
 export type DjDeckPlatformAdapter = {
-  loadItem(url: string): ReturnType<typeof loadPlatformItem>;
-  resolveStream(
+  loadItem: (url: string) => ReturnType<typeof loadPlatformItem>;
+  resolveStream: (
     input: PlatformStreamResolutionInput
-  ): Promise<PlatformStreamResolution | null>;
+  ) => Promise<PlatformStreamResolution | null>;
 };
 
 export type DjDeckHandle = {
-  load(intent: DjDeckLoadIntent): Promise<DjDeckLoadResult>;
-  transport(intent: DjDeckTransportIntent): Promise<void>;
-  change(change: DjDeckChange): void;
+  load: (intent: DjDeckLoadIntent) => Promise<DjDeckLoadResult>;
+  transport: (intent: DjDeckTransportIntent) => Promise<void>;
+  change: (change: DjDeckChange) => void;
 };
 
 export type DjDeckPendingSource = {
@@ -163,12 +166,12 @@ export type DjDeckPendingSource = {
 } | null;
 
 export type DjDeckModule = {
-  deck(deckId: DeckId): DjDeckHandle;
-  deactivate(): void;
+  deck: (deckId: DeckId) => DjDeckHandle;
+  deactivate: () => void;
   pendingSource: {
-    cancel(): void;
-    getSnapshot(): DjDeckPendingSource;
-    subscribe(listener: () => void): () => void;
+    cancel: () => void;
+    getSnapshot: () => DjDeckPendingSource;
+    subscribe: (listener: () => void) => () => void;
   };
 };
 
@@ -200,8 +203,8 @@ const soundIdFor = (deckId: DeckId, radio: Radio, generation: number): string =>
   `${sideForDeck(deckId)}_${radio.id}:${generation}`;
 
 const effectsRef = (deckId: DeckId) => ({
-  sessionId: "dj" as const,
   channelId: deckId,
+  sessionId: "dj" as const,
 });
 
 function getLocalFileUrl(radio: Radio | null): string | null {
@@ -214,17 +217,17 @@ function createLocalFileRadio(
   metadata: FileAudioMetadata
 ): Radio {
   return {
-    id: `local-file-${sideForDeck(deckId)}-${Date.now()}`,
-    name: metadata.displayName,
-    streamUrl: metadata.objectUrl,
     description: "Local File",
     enabled: true,
+    id: `local-file-${sideForDeck(deckId)}-${Date.now()}`,
+    name: metadata.displayName,
     platformMetadata: {
-      platform: "local-file",
       itemType: "track",
+      platform: "local-file",
       url: "",
       ...metadata,
     },
+    streamUrl: metadata.objectUrl,
   };
 }
 
@@ -268,9 +271,9 @@ function getRefreshRequest(radio: Radio): StreamRefreshRequest | null {
       failureMessage: "Failed to refresh YouTube stream - please reload",
       resolution: {
         platform: "youtube",
+        radio,
         reason: "stream-refresh",
         videoId,
-        radio,
       },
     };
   }
@@ -292,8 +295,8 @@ function getRefreshRequest(radio: Radio): StreamRefreshRequest | null {
     resolution: {
       canonicalUrl,
       platform: metadata.platform,
-      reason: "stream-refresh",
       radio,
+      reason: "stream-refresh",
     },
   };
 }
@@ -526,12 +529,12 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
     playbackCode: AudioErrorCode = "PLAY_ERROR"
   ): void => {
     const playbackError = createPlaybackActionError({
-      mode: "dj",
-      code: playbackCode,
       cause: error,
       channelId: deckId,
-      radio: radio ?? undefined,
+      code: playbackCode,
       fallbackMessage,
+      mode: "dj",
+      radio: radio ?? undefined,
     });
     options.context.reportError(playbackError);
     reportDjErrorSurface(
@@ -626,13 +629,13 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
     }
     const radio = getPlaybackChannel("dj", deckId)?.radio ?? null;
     setPlaybackChannelRuntime(deckId, () => ({
-      soundId,
-      isPlaying: state.isPlaying,
-      isLoading: state.isLoading,
-      isBuffering: state.isBuffering,
       error: state.error
         ? toRuntimeAudioError(state.error, state.error.code)
         : null,
+      isBuffering: state.isBuffering,
+      isLoading: state.isLoading,
+      isPlaying: state.isPlaying,
+      soundId,
     }));
     if (state.isPlaying && !state.isLoading) {
       restorePlayableState(deckId, generation, soundId);
@@ -738,7 +741,7 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
   const resetEffects = async (deckId: DeckId): Promise<void> => {
     await Promise.all([
       options.effects
-        .change(effectsRef(deckId), { type: "replace", tree: [] })
+        .change(effectsRef(deckId), { tree: [], type: "replace" })
         .catch(reportEffectsError),
       options.effects
         .change(effectsRef(deckId), { type: "set-dry-wet", value: 1 })
@@ -752,18 +755,18 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
   ): Promise<void> => {
     updatePlaybackChannel("dj", deckId, (draft) => {
       Object.assign(draft, {
-        volume: 1,
+        channelFilter: 0,
+        filter: {
+          enabled: false,
+          frequency: 1000,
+          gain: 0,
+          Q: 1,
+          type: "lowpass",
+        },
         muted: false,
         pan: 0,
         speed: 1,
-        channelFilter: 0,
-        filter: {
-          type: "lowpass",
-          frequency: 1000,
-          Q: 1,
-          gain: 0,
-          enabled: false,
-        },
+        volume: 1,
       });
       if (clearSource) {
         draft.radio = null;
@@ -819,11 +822,11 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
     try {
       activationCleanup = options.audio.activate({
         deckId,
-        radio,
-        soundId,
         onMeter: (level) => setPlaybackChannelPeakLevel(deckId, level),
         onState: (state) =>
           handleAudioState(deckId, generation, soundId, state),
+        radio,
+        soundId,
       });
       if (!isCurrent(deckId, generation)) {
         activationCleanup();
@@ -884,9 +887,9 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
     try {
       resolved = await options.platform.resolveStream({
         platform: "youtube",
+        radio,
         reason: "initial-load",
         videoId,
-        radio,
       });
     } catch (error) {
       if (isLoadCurrent(deckId, loadGeneration)) {
@@ -945,10 +948,11 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
     if (!(runtime.soundId && channel?.radio) || runtime.isPlaying) {
       return;
     }
-    const generation = runtimes[deckId].generation;
-    const playGeneration = ++runtimes[deckId].playGeneration;
+    const { generation } = runtimes[deckId];
+    runtimes[deckId].playGeneration += 1;
+    const { playGeneration } = runtimes[deckId];
     const { radio, volume } = channel;
-    const soundId = runtime.soundId;
+    const { soundId } = runtime;
     const stillCurrent = () =>
       isCurrent(deckId, generation) &&
       runtimes[deckId].playGeneration === playGeneration &&
@@ -980,7 +984,7 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
 
   const pause = async (deckId: DeckId): Promise<void> => {
     runtimes[deckId].playGeneration += 1;
-    const soundId = getPlaybackChannelRuntime(deckId).soundId;
+    const { soundId } = getPlaybackChannelRuntime(deckId);
     if (soundId) {
       await options.audio.transport(soundId, { type: "pause" });
     }
@@ -1061,7 +1065,7 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
   ): Promise<void> {
     runtimes[deckId].stripRestored = false;
     try {
-      await options.audio.transport(soundId, { type: "seek", position: 0 });
+      await options.audio.transport(soundId, { position: 0, type: "seek" });
       if (!isContinuationCurrent(deckId, generation, soundId)) {
         return;
       }
@@ -1113,10 +1117,10 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
     }
     try {
       await load(deckId, {
-        type: "track-url",
+        autoPlay: true,
         radio: channel.radio,
         streamUrl: next.streamUrl,
-        autoPlay: true,
+        type: "track-url",
       });
     } catch (error) {
       reportFailure(
@@ -1140,7 +1144,7 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
       setPendingSource({ deckId, platform: intent.platform });
       return intent;
     }
-    return await load(deckId, intent.source);
+    return await loadSource(deckId, intent.source);
   }
 
   async function loadDeviceIntent(
@@ -1150,20 +1154,20 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
   ): Promise<DeckSourceLoadResult> {
     const side = sideForDeck(deckId);
     await commitRadio(deckId, loadGeneration, {
-      id: `device-input-${side}`,
-      name: intent.deviceLabel,
-      streamUrl: "",
       description: "Device input (mic/line-in)",
       enabled: true,
+      id: `device-input-${side}`,
+      name: intent.deviceLabel,
       platformMetadata: {
-        platform: "device-input",
-        itemType: "track",
-        url: "",
+        channelCount: 2,
+        channelSelection: { left: 0, right: 1 },
         deviceId: intent.deviceId,
         deviceLabel: intent.deviceLabel,
-        channelSelection: { left: 0, right: 1 },
-        channelCount: 2,
+        itemType: "track",
+        platform: "device-input",
+        url: "",
       },
+      streamUrl: "",
     });
     return loaded();
   }
@@ -1302,13 +1306,10 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
     return loaded();
   }
 
-  const load = async (
+  async function loadSource(
     deckId: DeckId,
-    intent: DjDeckLoadIntent
-  ): Promise<DjDeckLoadResult> => {
-    if (intent.type === "library") {
-      return await loadLibraryIntent(deckId, intent.radio);
-    }
+    intent: DeckSourceLoadIntent
+  ): Promise<DeckSourceLoadResult> {
     const loadGeneration = beginSourceLoad(deckId);
     switch (intent.type) {
       case "radio":
@@ -1326,7 +1327,15 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
       default:
         return intent satisfies never;
     }
-  };
+  }
+
+  const load = async (
+    deckId: DeckId,
+    intent: DjDeckLoadIntent
+  ): Promise<DjDeckLoadResult> =>
+    intent.type === "library"
+      ? await loadLibraryIntent(deckId, intent.radio)
+      : await loadSource(deckId, intent);
 
   const transport = async (
     deckId: DeckId,
@@ -1349,7 +1358,7 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
       return;
     }
     if (intent.type === "seek") {
-      const soundId = getPlaybackChannelRuntime(deckId).soundId;
+      const { soundId } = getPlaybackChannelRuntime(deckId);
       if (soundId) {
         await options.audio.transport(soundId, intent);
       }
@@ -1368,7 +1377,7 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
     deckId: DeckId,
     input: DjDeckAudioChange
   ): void => {
-    const soundId = getPlaybackChannelRuntime(deckId).soundId;
+    const { soundId } = getPlaybackChannelRuntime(deckId);
     if (soundId) {
       options.audio.change(soundId, input);
     }
@@ -1382,7 +1391,7 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
     if (!isDeviceInputMetadata(metadata)) {
       return;
     }
-    const soundId = getPlaybackChannelRuntime(deckId).soundId;
+    const { soundId } = getPlaybackChannelRuntime(deckId);
     if (soundId) {
       options.audio.setDeviceChannelSelection(soundId, selection);
     }
@@ -1401,7 +1410,7 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
     }
     const enabled = requested ?? !current;
     const runtime = runtimes[deckId];
-    const soundId = getPlaybackChannelRuntime(deckId).soundId;
+    const { soundId } = getPlaybackChannelRuntime(deckId);
     if (runtime.cueRegistration) {
       runtime.cueRegistration.setEnabled(enabled);
     } else {
@@ -1493,6 +1502,10 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
   const handles = {} as Record<DeckId, DjDeckHandle>;
   for (const deckId of ["deck-a", "deck-b"] as const) {
     handles[deckId] = {
+      change: (input) => {
+        subscribeToOutputErrors();
+        change(deckId, input);
+      },
       load: (intent) => {
         subscribeToOutputErrors();
         return load(deckId, intent);
@@ -1501,16 +1514,10 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
         subscribeToOutputErrors();
         return transport(deckId, intent);
       },
-      change: (input) => {
-        subscribeToOutputErrors();
-        change(deckId, input);
-      },
     };
   }
 
   return {
-    deck: (deckId) => handles[deckId],
-    pendingSource,
     deactivate() {
       pendingSource.cancel();
       for (const deckId of ["deck-a", "deck-b"] as const) {
@@ -1531,6 +1538,8 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
       outputErrorCleanup = null;
       clearDjErrorSurface();
     },
+    deck: (deckId) => handles[deckId],
+    pendingSource,
   };
 }
 
@@ -1559,7 +1568,7 @@ export function createDjDeckEffectChange(
   effectId = generateId()
 ): DjDeckChange {
   const effect: EffectConfig = createDefaultEffectConfig(type, effectId, 0);
-  return { type: "effect", change: { type: "add", effect } };
+  return { change: { effect, type: "add" }, type: "effect" };
 }
 
 export type { PlaybackActionError } from "@/lib/playback-action-errors.js";

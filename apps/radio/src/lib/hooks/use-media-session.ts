@@ -85,12 +85,12 @@ function buildMetadata(options: MediaSessionOptions): MediaMetadata | null {
       return null;
     }
     const text = getMediaSessionText({
-      radio: options.radio,
       metadata: options.metadata,
+      radio: options.radio,
     });
     const metadata: MediaMetadataInit = {
-      title: sanitizeForBluetooth(text.title),
       artist: sanitizeForBluetooth(text.artist),
+      title: sanitizeForBluetooth(text.title),
     };
     if (options.metadata?.album) {
       metadata.album = sanitizeForBluetooth(options.metadata.album);

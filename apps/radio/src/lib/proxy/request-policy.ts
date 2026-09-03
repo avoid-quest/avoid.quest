@@ -58,9 +58,9 @@ function withSessionCookie(response: Response, sessionId: string): Response {
   headers.append("Set-Cookie", createSessionCookie(sessionId));
 
   return new Response(response.body, {
+    headers,
     status: response.status,
     statusText: response.statusText,
-    headers,
   });
 }
 
@@ -71,8 +71,8 @@ export function createProxyRequestPolicy(
 ) {
   const problem = (error: AppError, origin: string, requestId: string) =>
     problemResponse(error, {
-      requestId,
       headers: getCorsHeaders(origin),
+      requestId,
     });
 
   const options = (request: Request) => {
@@ -83,8 +83,8 @@ export function createProxyRequestPolicy(
     headers.set("x-request-id", requestId);
 
     return new Response(null, {
-      status: 200,
       headers,
+      status: 200,
     });
   };
 
@@ -93,10 +93,10 @@ export function createProxyRequestPolicy(
 
   const run = (config: ProxyRouteConfig): Promise<Response> =>
     runApiRoute({
-      request: config.request,
-      operation: config.operation,
-      fallback: config.fallback,
       errorHeaders: ({ request }) => errorHeaders(request),
+      fallback: config.fallback,
+      operation: config.operation,
+      request: config.request,
       run: async ({ requestId }) => {
         const origin = resolveProxyOrigin(config.request);
         const authResult = await dependencies.validateAuthAndRateLimit(

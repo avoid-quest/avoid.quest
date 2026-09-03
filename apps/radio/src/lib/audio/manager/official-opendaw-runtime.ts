@@ -6,7 +6,10 @@ import {
   clearWerkstattRuntimeStatus,
   setWerkstattRuntimeStatus,
 } from "../dsp/effects/werkstatt-runtime-status.js";
-import type { EffectsGraphRuntime } from "./effects-graph-runtime.js";
+import type {
+  EffectsGraphRuntime,
+  EffectsPerformanceSnapshot,
+} from "./effects-graph-runtime.js";
 import {
   bindOfficialSidechain,
   createMasterRack,
@@ -16,15 +19,16 @@ import {
   restoreWerkstattParameterValues,
   setMasterRackDryWet,
   updateOfficialEffectGroup,
+  usesDirectOfficialEffectLayout,
 } from "./official-opendaw-effect-adapter.js";
 import { ensureOpenDawAudioWorklets } from "./opendaw-audio-worklets.js";
 
-const MAX_STEREO_MONITORING_SOURCES = 4;
+const MAX_MONITORING_CHANNELS = 8;
 
 export const DEFAULT_OPENDAW_RUNTIME_URLS = {
+  offlineWorkerUrl: "/opendaw/wasm-offline-worker.js",
   processorUrl: "/opendaw/processors.js",
   wasmProcessorUrl: "/opendaw/wasm-processor.js",
-  offlineWorkerUrl: "/opendaw/wasm-offline-worker.js",
   wasmUrl: "/opendaw",
 } as const;
 
@@ -46,11 +50,12 @@ type RuntimeModuleLoader = () => Promise<RuntimeModules>;
 type WerkstattCompiler = ReturnType<
   typeof import("@opendaw/studio-adapters").ScriptCompiler.create
 >;
-type Terminable = { terminate(): void };
+type Terminable = { terminate: () => void };
 
 type SoundUnit = ReturnType<Project["api"]["createAnyInstrument"]> & {
   effects: EffectConfig[];
   groups: OfficialEffectGroup[];
+  inputChannels: 1 | 2;
   monitoring: boolean;
   rack: ReturnType<typeof createMasterRack>;
   source: AudioNode | null;
@@ -75,10 +80,10 @@ function unavailableAssetManager(): ProjectEnv["sampleManager"] {
   };
   return {
     getOrCreate: unavailable,
-    record: () => undefined,
     invalidate: () => undefined,
-    remove: () => undefined,
+    record: () => undefined,
     register: unavailable,
+    remove: () => undefined,
   };
 }
 
@@ -125,7 +130,7 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
   private silentDestination: GainNode | null = null;
   private nextWerkstattGeneration = 0;
   private bpm = 120;
-  private closed = false;
+  private closed = false as boolean;
 
   constructor(
     context: AudioContext,
@@ -143,6 +148,23 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
 
   get soundCount(): number {
     return this.soundUnits.size;
+  }
+
+  getPerformanceSnapshot(): EffectsPerformanceSnapshot | null {
+    const { project } = this;
+    if (!project) {
+      return null;
+    }
+    return {
+      backend: "official",
+      monitoringChannelCount: [...this.soundUnits.values()].reduce(
+        (total, unit) =>
+          unit.source === null ? total : total + unit.inputChannels,
+        0
+      ),
+      soundCount: this.soundUnits.size,
+      workletCount: 1,
+    };
   }
 
   async initialize(): Promise<void> {
@@ -172,11 +194,15 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     }
 
     const modules = await this.moduleLoader();
-    const { AudioWorklets, Project, SampleService } = modules.core;
+    const {
+      AudioWorklets,
+      Project: OpenDawProject,
+      SampleService,
+    } = modules.core;
 
     modules.wasm.WasmEngine.install({
-      processorUrl: this.urls.wasmProcessorUrl,
       offlineWorkerUrl: this.urls.offlineWorkerUrl,
+      processorUrl: this.urls.wasmProcessorUrl,
       wasmUrl: this.urls.wasmUrl,
     });
 
@@ -192,17 +218,26 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       throw new Error("openDAW WASM engine assets failed to load");
     }
 
-    const project = Project.new({
+    const env = {
       audioContext: this.context,
       audioWorklets,
       sampleManager: unavailableAssetManager(),
-      soundfontManager: unavailableSoundfontManager(),
       sampleService: new SampleService(
         this.context,
         modules.adapters.BpmDetector.Unknown
       ),
+      soundfontManager: unavailableSoundfontManager(),
       soundfontService: undefined as unknown as ProjectEnv["soundfontService"],
-    });
+    };
+    // Live monitoring does not use openDAW's editor user or output maximizer.
+    const project = OpenDawProject.fromSkeleton(
+      env,
+      modules.adapters.ProjectSkeleton.empty({
+        createDefaultUser: false,
+        createOutputMaximizer: false,
+      }),
+      false
+    );
     try {
       const worklet = project.startAudioWorklet();
 
@@ -211,16 +246,15 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       // would duplicate the signal.
       worklet.disconnect(this.context.destination, 0, 0);
       await project.engine.isReady();
-      project.engine.play();
 
       if (this.closed) {
         throw new Error("openDAW runtime initialization was canceled");
       }
 
       this.werkstattCompiler = modules.adapters.ScriptCompiler.create({
+        functionName: "werkstatt",
         headerTag: "werkstatt",
         registryName: "werkstattProcessors",
-        functionName: "werkstatt",
       });
       this.modules = modules;
       this.project = project;
@@ -234,7 +268,8 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     soundId: string,
     source: AudioNode,
     destination: AudioNode,
-    generation = (this.connectionGenerations.get(soundId) ?? 0) + 1
+    generation = (this.connectionGenerations.get(soundId) ?? 0) + 1,
+    inputChannels: 1 | 2 = 2
   ): Promise<boolean> {
     if (!this.beginSoundConnection(soundId, generation)) {
       return false;
@@ -254,14 +289,16 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       source,
       destination,
       true,
-      generation
+      generation,
+      inputChannels
     );
   }
 
   async connectSidechainSource(
     soundId: string,
     source: AudioNode,
-    generation = (this.connectionGenerations.get(soundId) ?? 0) + 1
+    generation = (this.connectionGenerations.get(soundId) ?? 0) + 1,
+    inputChannels: 1 | 2 = 2
   ): Promise<boolean> {
     if (!this.beginSoundConnection(soundId, generation)) {
       return false;
@@ -274,7 +311,12 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       return false;
     }
     const existing = this.soundUnits.get(soundId);
-    if (existing && !existing.monitoring && existing.source === source) {
+    if (
+      existing &&
+      !existing.monitoring &&
+      existing.source === source &&
+      existing.inputChannels === inputChannels
+    ) {
       this.rebindSidechains();
       return true;
     }
@@ -283,7 +325,8 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       source,
       this.getSilentDestination(),
       false,
-      generation
+      generation,
+      inputChannels
     );
   }
 
@@ -292,20 +335,28 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     source: AudioNode,
     destination: AudioNode,
     monitoring: boolean,
-    generation: number
+    generation: number,
+    inputChannels: 1 | 2
   ): boolean {
     if (!this.isCurrentSoundConnection(soundId, generation)) {
       return false;
     }
     const project = this.requireProject();
     let unit = this.soundUnits.get(soundId);
+    const occupiedChannels = [...this.soundUnits.entries()].reduce(
+      (total, [id, candidate]) =>
+        id === soundId || candidate.source === null
+          ? total
+          : total + candidate.inputChannels,
+      0
+    );
+    if (occupiedChannels + inputChannels > MAX_MONITORING_CHANNELS) {
+      throw new Error(
+        `openDAW monitoring supports at most ${MAX_MONITORING_CHANNELS} input channels`
+      );
+    }
 
     if (!unit) {
-      if (this.soundUnits.size >= MAX_STEREO_MONITORING_SOURCES) {
-        throw new Error(
-          `openDAW monitoring supports at most ${MAX_STEREO_MONITORING_SOURCES} stereo sounds`
-        );
-      }
       const product = project.editing
         .modify(() => {
           const created = project.api.createInstrument(
@@ -321,17 +372,19 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
         .unwrap();
       unit = {
         ...product,
+        destination: null,
         effects: [],
         groups: [],
+        inputChannels,
         monitoring,
         source: null,
-        destination: null,
       };
       this.soundUnits.set(soundId, unit);
     } else if (
       unit.source === source &&
       unit.destination === destination &&
-      unit.monitoring === monitoring
+      unit.monitoring === monitoring &&
+      unit.inputChannels === inputChannels
     ) {
       this.rebindSidechains();
       return true;
@@ -342,11 +395,12 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     project.engine.registerMonitoringSource(
       unit.audioUnitBox.address.uuid,
       source,
-      2,
+      inputChannels,
       destination
     );
     unit.source = source;
     unit.destination = destination;
+    unit.inputChannels = inputChannels;
     unit.monitoring = monitoring;
     this.rebindSidechains();
     return true;
@@ -366,7 +420,7 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
 
   private disconnectSoundUnit(soundId: string): void {
     const unit = this.soundUnits.get(soundId);
-    const project = this.project;
+    const { project } = this;
     if (!(unit && project && unit.source)) {
       return;
     }
@@ -390,7 +444,7 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       return;
     }
     this.disconnectSoundUnit(soundId);
-    const project = this.project;
+    const { project } = this;
     if (project) {
       this.releaseWerkstattGroups(unit.groups);
       project.editing.modify(() =>
@@ -404,7 +458,7 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
 
   syncEffects(soundId: string, effects: readonly EffectConfig[]): void {
     const unit = this.soundUnits.get(soundId);
-    const project = this.project;
+    const { project } = this;
     if (!(unit && project)) {
       return;
     }
@@ -481,7 +535,7 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
 
   setDryWet(soundId: string, value: number): void {
     const unit = this.soundUnits.get(soundId);
-    const project = this.project;
+    const { project } = this;
     if (!(unit && project)) {
       return;
     }
@@ -489,7 +543,7 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
   }
 
   setTempo(bpm: number): void {
-    const project = this.project;
+    const { project } = this;
     if (!project) {
       return;
     }
@@ -544,9 +598,9 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     const modules = this.requireModules();
     return {
       boxes: modules.boxes,
+      bpm: this.bpm,
       core: modules.core,
       project: this.requireProject(),
-      bpm: this.bpm,
     };
   }
 
@@ -582,17 +636,18 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     config: Extract<EffectConfig, { type: "werkstatt" }>
   ): void {
     const compiler = this.werkstattCompiler;
-    const project = this.project;
+    const { project } = this;
     if (!(compiler && project)) {
       return;
     }
     this.subscribeWerkstattMessages(group, config.id);
-    const generation = ++this.nextWerkstattGeneration;
+    this.nextWerkstattGeneration += 1;
+    const generation = this.nextWerkstattGeneration;
     this.werkstattGenerations.set(group, generation);
     this.werkstattGroups.set(config.id, group);
     setWerkstattRuntimeStatus(config.id, {
-      state: "compiling",
       message: "Compiling locally in the openDAW audio worklet…",
+      state: "compiling",
     });
     compiler
       .compile(
@@ -609,8 +664,8 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
           restoreWerkstattParameterValues(group, config.parameters)
         );
         setWerkstattRuntimeStatus(config.id, {
-          state: "ready",
           message: "Compiled and running in the client-side audio worklet.",
+          state: "ready",
         });
       })
       .catch((cause: unknown) => {
@@ -618,9 +673,9 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
           return;
         }
         setWerkstattRuntimeStatus(config.id, {
-          state: "error",
           message:
             cause instanceof Error ? cause.message : "Compilation failed.",
+          state: "error",
         });
       });
   }
@@ -640,8 +695,8 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       (message) => {
         if (this.werkstattGroups.get(effectId) === group) {
           setWerkstattRuntimeStatus(effectId, {
-            state: "error",
             message,
+            state: "error",
           });
         }
       }
@@ -725,7 +780,7 @@ function stableEffectUpdates(
     before: EffectConfig;
     after: EffectConfig;
   }> = [];
-  for (let index = 0; index < previousFlat.length; index++) {
+  for (let index = 0; index < previousFlat.length; index += 1) {
     const before = previousFlat[index];
     const after = nextFlat[index];
     if (!(before && after)) {
@@ -761,7 +816,9 @@ function hasStableEffectLayout(
         !after ||
         before.id !== after.id ||
         before.type !== after.type ||
-        before.order !== after.order
+        before.order !== after.order ||
+        usesDirectOfficialEffectLayout(before) !==
+          usesDirectOfficialEffectLayout(after)
       ) {
         return false;
       }

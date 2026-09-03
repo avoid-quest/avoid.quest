@@ -27,10 +27,10 @@ describe("compatibility effect containers", () => {
       let inputEnergy = 0;
       let outputEnergy = 0;
 
-      for (let block = 0; block < 100; block++) {
+      for (let block = 0; block < 100; block += 1) {
         const input = buffers();
         const output = buffers();
-        for (let index = 0; index < BLOCK_SIZE; index++) {
+        for (let index = 0; index < BLOCK_SIZE; index += 1) {
           const sample = Math.sin(
             (2 * Math.PI * frequency * (block * BLOCK_SIZE + index)) /
               SAMPLE_RATE
@@ -70,10 +70,10 @@ describe("compatibility effect containers", () => {
     let inputEnergy = 0;
     let outputEnergy = 0;
 
-    for (let block = 0; block < 100; block++) {
+    for (let block = 0; block < 100; block += 1) {
       const input = buffers();
       const output = buffers();
-      for (let index = 0; index < BLOCK_SIZE; index++) {
+      for (let index = 0; index < BLOCK_SIZE; index += 1) {
         const sample = Math.sin(
           (2 * Math.PI * frequency * (block * BLOCK_SIZE + index)) / SAMPLE_RATE
         );
@@ -82,7 +82,7 @@ describe("compatibility effect containers", () => {
       }
       effect.process(input, output, 0, BLOCK_SIZE);
       if (block >= 50) {
-        for (let index = 0; index < BLOCK_SIZE; index++) {
+        for (let index = 0; index < BLOCK_SIZE; index += 1) {
           inputEnergy += (input[0][index] ?? 0) ** 2;
           outputEnergy += (output[0][index] ?? 0) ** 2;
         }
@@ -114,7 +114,7 @@ describe("compatibility effect containers", () => {
 
     effect.process(input, output, 0, BLOCK_SIZE);
 
-    for (let index = 0; index < BLOCK_SIZE; index++) {
+    for (let index = 0; index < BLOCK_SIZE; index += 1) {
       expect(output[0][index]).toBeCloseTo(input[0][index] ?? 0, 6);
       expect(output[1][index]).toBeCloseTo(input[1][index] ?? 0, 6);
     }
@@ -166,7 +166,7 @@ describe("compatibility effect containers", () => {
     const config = createDefaultEffectConfig("fxComposite", "fx", 0);
     const delay = createDefaultEffectConfig("delay", "delay", 0);
     const reverb = createDefaultEffectConfig("plateReverb", "reverb", 1);
-    const firstChain = config.chains[0];
+    const [firstChain] = config.chains;
     if (!firstChain) {
       throw new Error("Default composite must contain a chain");
     }
@@ -178,13 +178,13 @@ describe("compatibility effect containers", () => {
     const updateProcessor = mock(
       (
         _processor: {
-          process(
+          process: (
             input: StereoChannels,
             output: StereoChannels,
             fromIndex: number,
             toIndex: number
-          ): void;
-          reset(): void;
+          ) => void;
+          reset: () => void;
         },
         _child: EffectConfig
       ) => undefined
@@ -195,12 +195,12 @@ describe("compatibility effect containers", () => {
       SAMPLE_RATE,
       config,
       (child) => {
-        creations++;
+        creations += 1;
         const state = { reset: mock(() => undefined), value: 0 };
         states.set(child.id, state);
         return {
           process: (input, output, fromIndex, toIndex) => {
-            state.value++;
+            state.value += 1;
             output[0].set(input[0].subarray(fromIndex, toIndex), fromIndex);
             output[1].set(input[1].subarray(fromIndex, toIndex), fromIndex);
           },
@@ -219,11 +219,11 @@ describe("compatibility effect containers", () => {
       ...config,
       chains: config.chains.map((chain) => ({
         ...chain,
-        gain: 0.75,
         effects:
           chain.id === firstChain.id
             ? [{ ...delay, feedback: 0.73 }]
             : chain.effects,
+        gain: 0.75,
       })),
     });
 
@@ -233,7 +233,7 @@ describe("compatibility effect containers", () => {
     expect(states.get(reverb.id)?.reset).toHaveBeenCalledTimes(1);
     expect(updateProcessor).toHaveBeenCalledWith(
       expect.any(Object),
-      expect.objectContaining({ id: delay.id, feedback: 0.73 })
+      expect.objectContaining({ feedback: 0.73, id: delay.id })
     );
   });
 
@@ -248,10 +248,9 @@ describe("compatibility effect containers", () => {
     gate.sidechain = { channelId: "deck-b" };
     compressor.sidechain = { channelId: "deck-b" };
     vocoder.sidechain = { channelId: "deck-b" };
-    const deepestLeft = deepest.chains[0];
-    const deepestRight = deepest.chains[1];
-    const nestedFirst = nested.chains[0];
-    const rootFirst = root.chains[0];
+    const [deepestLeft, deepestRight] = deepest.chains;
+    const [nestedFirst] = nested.chains;
+    const [rootFirst] = root.chains;
     if (!(deepestLeft && deepestRight && nestedFirst && rootFirst)) {
       throw new Error("Default containers require their fixed chains");
     }
@@ -265,14 +264,14 @@ describe("compatibility effect containers", () => {
       ReturnType<typeof mock<(input: StereoChannels | null) => void>>
     >();
     let factory: (config: EffectConfig) => {
-      process(
+      process: (
         input: StereoChannels,
         output: StereoChannels,
         fromIndex: number,
         toIndex: number
-      ): void;
-      reset(): void;
-      setSidechainInput?(input: StereoChannels | null): void;
+      ) => void;
+      reset: () => void;
+      setSidechainInput?: (input: StereoChannels | null) => void;
     };
     factory = (config) => {
       if (
@@ -312,11 +311,11 @@ describe("compatibility effect containers", () => {
   });
 
   test.each([
-    { pan: -1, left: 0.2, right: 0 },
-    { pan: -0.5, left: 0.3, right: -0.1 },
-    { pan: 0, left: 0.4, right: -0.2 },
-    { pan: 0.5, left: 0.2, right: 0 },
-    { pan: 1, left: 0, right: 0.2 },
+    { left: 0.2, pan: -1, right: 0 },
+    { left: 0.3, pan: -0.5, right: -0.1 },
+    { left: 0.4, pan: 0, right: -0.2 },
+    { left: 0.2, pan: 0.5, right: 0 },
+    { left: 0, pan: 1, right: 0.2 },
   ])("cross-pans stereo split branches at $pan", ({ pan, left, right }) => {
     const config = createDefaultEffectConfig("stereoSplit", "stereo", 0);
     const [leftChain, rightChain] = config.chains;

@@ -138,12 +138,14 @@ const REQUIRED_METADATA_STRING_KEYS = new Set([
 ]);
 const TRAILING_SLASH_PATTERN = /\/$/;
 
-function normalizeMetadataValue(value: unknown, key?: string): unknown {
+function normalizeMetadataValue(value: unknown, parentKey?: string): unknown {
   if (typeof value === "string") {
     const trimmed = value.trim();
     return (
       trimmed ||
-      (key && REQUIRED_METADATA_STRING_KEYS.has(key) ? "" : undefined)
+      (parentKey && REQUIRED_METADATA_STRING_KEYS.has(parentKey)
+        ? ""
+        : undefined)
     );
   }
   if (Array.isArray(value)) {
@@ -176,7 +178,7 @@ function normalizeRadio(radio: Radio): Radio {
   const websiteUrl = normalizeOptionalString(radio.websiteUrl);
   const placeTitle = normalizeOptionalString(radio.placeTitle);
   const countryTitle = normalizeOptionalString(radio.countryTitle);
-  let id = radio.id;
+  let { id } = radio;
   if (platformMetadata?.platform === "radio-browser") {
     id = `rb_${platformMetadata.stationUuid}`;
   } else if (platformMetadata?.platform === "radiogarden") {
@@ -315,9 +317,7 @@ function validatePreparedRadio(radio: Radio): ExternalStationResult<Radio> {
     };
   }
 
-  try {
-    new URL(radio.streamUrl);
-  } catch {
+  if (!URL.canParse(radio.streamUrl)) {
     return {
       error: {
         code: "INVALID_STATION_CANDIDATE",
@@ -341,23 +341,23 @@ function createRadioGardenRadio(
     name: normalizeRequiredString(name),
     streamUrl: normalizeRequiredString(streamUrl),
     ...(streamFormat ? { streamFormat } : {}),
-    description: normalizeOptionalString(result.subtitle),
-    placeTitle: normalizeOptionalString(result.placeTitle),
     countryTitle: normalizeOptionalString(result.countryTitle),
-    websiteUrl: normalizeOptionalString(result.website),
+    description: normalizeOptionalString(result.subtitle),
     enabled: true,
     isSystem: false,
+    placeTitle: normalizeOptionalString(result.placeTitle),
     platformMetadata: {
-      platform: "radiogarden",
-      itemType: "channel",
-      url: normalizeRequiredString(result.url),
       channelId: result.channelId,
-      name: normalizeRequiredString(name),
-      subtitle: normalizeOptionalString(result.subtitle),
-      placeTitle: normalizeOptionalString(result.placeTitle),
       countryTitle: normalizeOptionalString(result.countryTitle),
+      itemType: "channel",
+      name: normalizeRequiredString(name),
+      placeTitle: normalizeOptionalString(result.placeTitle),
+      platform: "radiogarden",
+      subtitle: normalizeOptionalString(result.subtitle),
+      url: normalizeRequiredString(result.url),
       website: normalizeOptionalString(result.website),
     },
+    websiteUrl: normalizeOptionalString(result.website),
   };
 }
 
@@ -373,23 +373,23 @@ function createRadioBrowserRadio(station: RadioBrowserStation): Radio {
       : state;
 
   return {
-    id: `rb_${stationUuid}`,
-    name: normalizeRequiredString(station.name),
-    streamUrl: resolvedUrl || canonicalUrl,
-    logoUrl: normalizeOptionalString(station.favicon),
-    description: normalizeOptionalString(station.tags.join(", ")),
-    websiteUrl: normalizeOptionalString(station.homepage),
-    placeTitle,
     countryTitle,
+    description: normalizeOptionalString(station.tags.join(", ")),
     enabled: true,
+    id: `rb_${stationUuid}`,
     isSystem: false,
+    logoUrl: normalizeOptionalString(station.favicon),
+    name: normalizeRequiredString(station.name),
+    placeTitle,
     platformMetadata: {
-      platform: "radio-browser",
-      itemType: "station",
-      url: canonicalUrl,
-      stationUuid,
       hls: station.hls,
+      itemType: "station",
+      platform: "radio-browser",
+      stationUuid,
+      url: canonicalUrl,
     },
+    streamUrl: resolvedUrl || canonicalUrl,
+    websiteUrl: normalizeOptionalString(station.homepage),
   };
 }
 
@@ -401,13 +401,13 @@ function createImportedStationRadio(input: {
   websiteUrl?: string;
 }): Radio {
   return {
-    name: input.name.trim(),
-    streamUrl: input.streamUrl.trim(),
-    logoUrl: input.logoUrl?.trim() || undefined,
     description: input.description?.trim() || undefined,
-    websiteUrl: input.websiteUrl?.trim() || undefined,
     enabled: true,
     isSystem: false,
+    logoUrl: input.logoUrl?.trim() || undefined,
+    name: input.name.trim(),
+    streamUrl: input.streamUrl.trim(),
+    websiteUrl: input.websiteUrl?.trim() || undefined,
   };
 }
 
@@ -429,16 +429,16 @@ function toSavedRadioRecord(
     name: normalizeRequiredString(radio.name),
     streamUrl: normalizeRequiredString(radio.streamUrl),
     ...(radio.streamFormat ? { streamFormat: radio.streamFormat } : {}),
-    logoUrl: normalizeOptionalString(radio.logoUrl),
-    description: normalizeOptionalString(radio.description),
-    websiteUrl: normalizeOptionalString(radio.websiteUrl),
-    placeTitle: normalizeOptionalString(radio.placeTitle),
     countryTitle: normalizeOptionalString(radio.countryTitle),
-    order,
+    description: normalizeOptionalString(radio.description),
     enabled: true,
     isSystem: false,
-    platformMetadata: normalizePlatformMetadata(radio.platformMetadata),
+    logoUrl: normalizeOptionalString(radio.logoUrl),
     metadataConfig: radio.metadataConfig,
+    order,
+    placeTitle: normalizeOptionalString(radio.placeTitle),
+    platformMetadata: normalizePlatformMetadata(radio.platformMetadata),
+    websiteUrl: normalizeOptionalString(radio.websiteUrl),
   };
 }
 
@@ -454,21 +454,21 @@ async function resolveRadioGardenStation(
     }
 
     return {
-      ok: true,
       data: createRadioGardenRadio(
         result,
         resolved.data.streamUrl,
         options?.name ?? result.title,
         resolved.data.format
       ),
+      ok: true,
     };
   } catch (error) {
     return {
-      ok: false,
       error: normalizeWorkflowError(error, {
         code: "RADIO_GARDEN_WORKFLOW_FAILED",
         message: "Failed to resolve station",
       }),
+      ok: false,
     };
   }
 }
@@ -484,31 +484,31 @@ export async function resolvePlatformStation(
     }
 
     return {
-      ok: true,
       data: createPlatformRadio(
         resolved.data.streamUrl,
         resolved.data.metadata,
         resolved.data.format
       ),
+      ok: true,
     };
   } catch (error) {
     return {
-      ok: false,
       error: normalizeWorkflowError(error, {
         code: "PLATFORM_STATION_WORKFLOW_FAILED",
         message: "Failed to resolve platform item",
       }),
+      ok: false,
     };
   }
 }
 
 function radioGardenUnavailableResult<T>(): ExternalStationResult<T> {
   return {
-    ok: false,
     error: {
       code: "RADIO_GARDEN_RESOLVE_UNAVAILABLE",
       message: "Radio Garden resolution is unavailable here",
     },
+    ok: false,
   };
 }
 
@@ -648,7 +648,7 @@ export function createStationIntake(dependencies: StationIntakeDependencies) {
         dependencies.session.getAll(),
         prepared.data.radio
       );
-      const existingSession = matchingSessions[0];
+      const [existingSession] = matchingSessions;
       const radio =
         existingSession && candidate.origin === "discovery"
           ? normalizeRadio(existingSession)

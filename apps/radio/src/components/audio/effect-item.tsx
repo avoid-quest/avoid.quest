@@ -1,3 +1,4 @@
+/** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 import { Button } from "@avoid.quest/ui/components/button";
 import {
   Card,
@@ -17,6 +18,7 @@ import {
   RotateCcwIcon,
   XIcon,
 } from "lucide-react";
+import type { SyntheticEvent } from "react";
 import {
   createDefaultEffectConfig,
   type EffectConfig,
@@ -48,6 +50,10 @@ export function createEffectResetPatch(
   } as Partial<EffectConfig>;
 }
 
+function stopPropagation(event: SyntheticEvent) {
+  event.stopPropagation();
+}
+
 export function EffectItem({
   effect,
   onUpdate,
@@ -65,16 +71,16 @@ export function EffectItem({
 
   const Icon = EFFECT_ICONS[effect.type] ?? FilterIcon;
 
-  const handleEnabledChange = (enabled: boolean) => {
+  function handleEnabledChange(enabled: boolean) {
     onUpdate({ enabled });
-  };
+  }
 
-  const handleReset = () => {
+  function handleReset() {
     if (!metadata?.defaultConfig) {
       return;
     }
     onUpdate(createEffectResetPatch(effect));
-  };
+  }
 
   return (
     <Card
@@ -98,9 +104,9 @@ export function EffectItem({
             ref={dragHandleRef}
             style={{
               touchAction: "none",
+              userSelect: "none",
               WebkitTouchCallout: "none",
               WebkitUserSelect: "none",
-              userSelect: "none",
             }}
             {...dragHandleAttributes}
             {...dragHandleListeners}
@@ -143,9 +149,9 @@ export function EffectItem({
         {/** biome-ignore lint/a11y/noStaticElementInteractions: just a toggle */}
         <div
           className="flex shrink-0 items-center gap-2"
-          onMouseDown={(e) => e.stopPropagation()}
-          onPointerDown={(e) => e.stopPropagation()}
-          onTouchStart={(e) => e.stopPropagation()}
+          onMouseDown={stopPropagation}
+          onPointerDown={stopPropagation}
+          onTouchStart={stopPropagation}
         >
           <Toggle
             aria-label={`${effectName} enabled`}
@@ -181,7 +187,7 @@ export function EffectItem({
         </div>
       </CardHeader>
 
-      {isExpanded && (
+      {isExpanded ? (
         <CardContent className="space-y-4 border-t bg-muted/30 pt-4 pb-4">
           <EffectVisualization effect={effect} />
           <EffectParams
@@ -191,7 +197,7 @@ export function EffectItem({
             onUpdate={onUpdate}
           />
         </CardContent>
-      )}
+      ) : null}
     </Card>
   );
 }

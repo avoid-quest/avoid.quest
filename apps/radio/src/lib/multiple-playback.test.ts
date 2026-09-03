@@ -42,35 +42,35 @@ async function resetCollections(): Promise<void> {
 
 function insertSettings(): void {
   settingsCollection.insert({
+    audio: {
+      cueOutputId: null,
+      delay: { cueDelayMs: 0, mainDelayMs: 0 },
+      mainOutputId: "default",
+    },
     id: "app-settings",
     player: { mode: "multiple", restoreStateOnLoad: true },
-    audio: {
-      mainOutputId: "default",
-      cueOutputId: null,
-      delay: { mainDelayMs: 0, cueDelayMs: 0 },
-    },
   });
 }
 
 function insertMultipleSession(radios: Radio[] = []): void {
   playbackSessionsCollection.insert({
-    id: "multiple",
+    activeChannelId: null,
     channels: radios.map((radio, order) => ({
       ...createDefaultChannel(getMultipleChannelId(radio), "multiple", order),
       radio,
     })),
-    masterVolume: 0.8,
     crossfadePosition: 0.5,
     headphoneVolume: 1,
-    activeChannelId: null,
+    id: "multiple",
+    masterVolume: 0.8,
   });
 }
 
 function createTestContext(): PlaybackActionContext {
   return {
     audio: {
-      hasSound: mock((_soundId: string) => false),
       cleanupSound: mock((_soundId: string) => undefined),
+      hasSound: mock((_soundId: string) => false),
       pauseSound: mock((_soundId: string) => undefined),
       playSound: mock(async (_soundId: string, _volume: number) => undefined),
       setGlobalVolume: mock((_volume: number) => undefined),
@@ -130,8 +130,8 @@ function createTestContext(): PlaybackActionContext {
     getMainOutputRouter: () => null,
     lifecycle: { mainOutputSettingsApplied: true },
     reportError: mock(() => undefined),
-    resumeAudioContext: mock(async () => undefined),
     resetAudioManager: mock(() => undefined),
+    resumeAudioContext: mock(async () => undefined),
   };
 }
 
@@ -293,16 +293,16 @@ describe("Multiple Playback", () => {
     const invalid = {
       ...station("invalid"),
       platformMetadata: {
-        platform: "youtube",
         itemType: "video",
+        platform: "youtube",
         url: "https://youtube.example/watch?v=invalid",
       },
     } as Radio;
     const channelId = getMultipleChannelId(invalid);
     insertMultipleSession([invalid]);
     setPlaybackChannelRuntime(channelId, () => ({
-      soundId: `multiple:${channelId}`,
       isPlaying: true,
+      soundId: `multiple:${channelId}`,
     }));
     const context = createTestContext();
 
@@ -538,8 +538,8 @@ describe("Multiple Playback", () => {
     const lateChannelId = getMultipleChannelId(late);
     insertMultipleSession([initial]);
     setPlaybackChannelRuntime(initialChannelId, () => ({
-      soundId: `multiple:${initialChannelId}`,
       isPlaying: true,
+      soundId: `multiple:${initialChannelId}`,
     }));
     const fade = Promise.withResolvers<void>();
     const context = createTestContext();
@@ -968,14 +968,14 @@ describe("Multiple Playback", () => {
     insertMultipleSession();
     const channelId = "multi:orphan";
     setPlaybackChannelRuntime(channelId, () => ({
-      soundId: "multiple:orphan",
-      isPlaying: true,
       error: {
-        id: "stale",
         code: "STREAM_ABORTED",
+        id: "stale",
         message: "stale",
         timestamp: 1,
       },
+      isPlaying: true,
+      soundId: "multiple:orphan",
     }));
     const liveSounds = new Set(["multiple:orphan"]);
     const context = createTestContext();
@@ -989,9 +989,9 @@ describe("Multiple Playback", () => {
 
     expect(liveSounds.size).toBe(0);
     expect(getPlaybackChannelRuntime(channelId)).toMatchObject({
-      soundId: null,
-      isPlaying: false,
       error: null,
+      isPlaying: false,
+      soundId: null,
     });
   });
 
@@ -1003,11 +1003,11 @@ describe("Multiple Playback", () => {
       draft.volume = 0.37;
       draft.muted = true;
       draft.filter = {
-        type: "highpass",
-        frequency: 2200,
-        Q: 0.8,
-        gain: 0,
         enabled: true,
+        frequency: 2200,
+        gain: 0,
+        Q: 0.8,
+        type: "highpass",
       };
     });
 
@@ -1015,16 +1015,16 @@ describe("Multiple Playback", () => {
 
     expect(getPlaybackSession("multiple")?.channels).toEqual([
       expect.objectContaining({
-        id: channelId,
-        volume: 0.37,
-        muted: true,
         filter: {
-          type: "highpass",
-          frequency: 2200,
-          Q: 0.8,
-          gain: 0,
           enabled: true,
+          frequency: 2200,
+          gain: 0,
+          Q: 0.8,
+          type: "highpass",
         },
+        id: channelId,
+        muted: true,
+        volume: 0.37,
       }),
     ]);
   });
@@ -1033,24 +1033,24 @@ describe("Multiple Playback", () => {
     const valid = station("valid");
     const local = {
       ...station("local"),
-      streamUrl: "blob:https://radio.example/local",
       platformMetadata: {
-        platform: "local-file",
-        itemType: "track",
-        url: "",
-        fileName: "local.mp3",
         displayName: "Local",
         duration: 10,
+        fileName: "local.mp3",
         fileSize: 100,
+        itemType: "track",
         mimeType: "audio/mpeg",
         objectUrl: "blob:https://radio.example/local",
+        platform: "local-file",
+        url: "",
       },
+      streamUrl: "blob:https://radio.example/local",
     } as Radio;
     insertMultipleSession([valid, local]);
     const localChannelId = getMultipleChannelId(local);
     setPlaybackChannelRuntime(localChannelId, () => ({
-      soundId: "multiple:local",
       isPlaying: true,
+      soundId: "multiple:local",
     }));
 
     await getMultiplePlayback({ ctx: createTestContext() }).activate();
@@ -1059,9 +1059,9 @@ describe("Multiple Playback", () => {
       `multiple:${getMultipleChannelId(valid)}`
     );
     expect(getPlaybackChannelRuntime(localChannelId)).toMatchObject({
-      soundId: null,
-      isPlaying: false,
       error: null,
+      isPlaying: false,
+      soundId: null,
     });
   });
 

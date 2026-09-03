@@ -1,3 +1,4 @@
+// biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers
 import type {
   SearchPlatform,
   UnifiedSearchResult,
@@ -54,6 +55,14 @@ function ExternalSearchContent({
     clearResults();
     setYoutubeFilter(filter);
   };
+  const handleError = (message: string) => {
+    setError(message);
+    setResults([]);
+  };
+  const handleResults = (nextResults: UnifiedSearchResult[]) => {
+    setError(null);
+    setResults(nextResults);
+  };
 
   const searchContextKey = [
     lockedPlatform ?? "unlocked",
@@ -69,15 +78,9 @@ function ExternalSearchContent({
         locked={lockedPlatform !== undefined}
         onBandcampFilterChange={handleBandcampFilterChange}
         onClearResults={clearResults}
-        onError={(message) => {
-          setError(message);
-          setResults([]);
-        }}
+        onError={handleError}
         onPlatformChange={handlePlatformChange}
-        onResults={(nextResults) => {
-          setError(null);
-          setResults(nextResults);
-        }}
+        onResults={handleResults}
         onYoutubeFilterChange={handleYoutubeFilterChange}
         platform={platform}
         searchContextKey={searchContextKey}

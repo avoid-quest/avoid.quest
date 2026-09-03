@@ -5,8 +5,11 @@ import {
   type ExternalMetadataProviderInput,
   tryAirtimeLiveInfo,
   tryAzuraCastNowPlaying,
+  tryHkcrSchedule,
   tryNtsLiveApi,
+  tryRadioAlharaApi,
   tryRadioBlackoutApi,
+  tryResonanceExtraApi,
   tryShoutcastStatus,
 } from "./external-providers";
 import {
@@ -21,6 +24,7 @@ import {
   parseIcyMetaInt,
   readFirstIcyMetadataBlock,
 } from "./icy-parser";
+import { tryLylApi } from "./lyl-provider";
 import type {
   RadioMetadataConfig,
   RadioMetadataErrorCode,
@@ -66,8 +70,12 @@ type ExternalRadioMetadataConfig = Extract<
     kind:
       | "airtime-live-info"
       | "azuracast-now-playing"
+      | "hkcr-schedule"
+      | "lyl-api"
       | "nts-live-api"
+      | "radio-alhara-api"
       | "radio-blackout-api"
+      | "resonance-extra-api"
       | "shoutcast-status";
   }
 >;
@@ -81,6 +89,10 @@ function retrieveExternalResult(
       return tryAirtimeLiveInfo(input, config.urls);
     case "azuracast-now-playing":
       return tryAzuraCastNowPlaying(input, config.url);
+    case "hkcr-schedule":
+      return tryHkcrSchedule(input);
+    case "lyl-api":
+      return tryLylApi(input);
     case "shoutcast-status":
       return tryShoutcastStatus(input, {
         endpoint: config.url,
@@ -88,8 +100,12 @@ function retrieveExternalResult(
       });
     case "nts-live-api":
       return tryNtsLiveApi(input, config.channel);
+    case "radio-alhara-api":
+      return tryRadioAlharaApi(input);
     case "radio-blackout-api":
       return tryRadioBlackoutApi(input, config.url ?? undefined);
+    case "resonance-extra-api":
+      return tryResonanceExtraApi(input);
     default: {
       const exhaustive: never = config;
       throw new Error(`Unsupported external metadata config: ${exhaustive}`);
@@ -280,9 +296,13 @@ export function createRadioMetadataRetrieval({
         );
       case "airtime-live-info":
       case "azuracast-now-playing":
+      case "hkcr-schedule":
+      case "lyl-api":
       case "shoutcast-status":
       case "nts-live-api":
-      case "radio-blackout-api": {
+      case "radio-alhara-api":
+      case "radio-blackout-api":
+      case "resonance-extra-api": {
         const externalResult = await retrieveExternalProvider(input, config);
         if (externalResult.ok) {
           return externalResult;

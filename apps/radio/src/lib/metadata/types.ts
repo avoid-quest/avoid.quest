@@ -8,7 +8,11 @@ export type RadioMetadataSource =
   | "azuracast-now-playing"
   | "shoutcast-status"
   | "nts-live-api"
-  | "radio-blackout-api";
+  | "radio-blackout-api"
+  | "hkcr-schedule"
+  | "lyl-api"
+  | "radio-alhara-api"
+  | "resonance-extra-api";
 
 export type RadioMetadataConfig = z.infer<typeof radioMetadataConfigSchema>;
 

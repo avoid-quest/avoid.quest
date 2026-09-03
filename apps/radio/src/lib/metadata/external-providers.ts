@@ -1,11 +1,33 @@
-import { parseRadioTitle } from "./title-parser";
+import { cleanMetadataText, parseRadioTitle } from "./title-parser";
 import type { RadioMetadataSource, RadioNowPlaying } from "./types";
 import { RadioMetadataValidationError } from "./upstream-fetch";
 
 type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
 const AZURACAST_LISTEN_PATH_PATTERN = /\/listen\/([^/]+)/;
+const AIRTIME_STATION_NAMES: Record<string, string> = {
+  "cashmereradio.out.airtime.pro": "Cashmere Radio",
+  "radio.syg.ma": "Sygma Radio",
+  "stream-relay-geo.internetpublicradio.live": "Internet Public Radio",
+};
+const CASHMERE_GRAPHQL_URL = "https://backstage.cashmereradio.com/graphql";
+const CASHMERE_REST_URL = "https://backstage.cashmereradio.com/wp-json/wp/v2";
+const CASHMERE_SHOW_PATH_PATTERN = /^\/shows\/([^/]+)\/?$/;
+const DATE_STAMP_PATTERN = /^(\d{2})\.(\d{2})\.(\d{2}|\d{4})$/;
+const HKCR_SCHEDULE_URL = "https://cms.hkcr.live/schedule/current";
+const HKCR_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const HKCR_TIME_PATTERN = /^\d{2}:\d{2}$/;
+const IPR_REPLAY_SUFFIX_PATTERN = /\s*\((?:r|replay)\)\s*$/i;
+const IPR_SEARCH_URL = "https://www.internetpublicradio.live/api/search";
 const INTEGER_FIELD_PATTERN = /^\d+$/;
+const HTML_TAG_PATTERN = /<[^>]*>/g;
+const RADIO_ALHARA_NOW_PLAYING_URL =
+  "https://ch2.radioalhara.net/api/now-playing";
+const RESONANCE_EXTRA_API_URL =
+  "https://x.resonance.fm/api/current_and_upcoming";
+const SANITY_IMAGE_REF_PATTERN = /^image-([a-f\d]+)-(\d+x\d+)-([a-z\d]+)$/i;
+const TRAILING_SLASH_PATTERN = /\/$/;
+const WHITESPACE_PATTERN = /\s+/g;
 
 export type ExternalMetadataProviderInput = {
   fetchImpl: FetchLike;
@@ -15,6 +37,7 @@ export type ExternalMetadataProviderInput = {
 };
 
 type AirtimeTrack = {
+  album_artwork_image?: unknown;
   name?: unknown;
   metadata?: {
     artist_name?: unknown;
@@ -22,10 +45,13 @@ type AirtimeTrack = {
     album_title?: unknown;
     genre?: unknown;
     artwork_url?: unknown;
+    artwork?: unknown;
     url?: unknown;
     info_url?: unknown;
     audio_source_url?: unknown;
     buy_this_url?: unknown;
+    comments?: unknown;
+    description?: unknown;
   };
 };
 
@@ -41,6 +67,38 @@ type AirtimeShow = {
   description?: unknown;
   image_path?: unknown;
   url?: unknown;
+};
+
+type CashmereEpisode = {
+  featuredImage?: { node?: { sourceUrl?: unknown } };
+  title?: unknown;
+  uri?: unknown;
+};
+
+type CashmereShow = {
+  _embedded?: {
+    "wp:featuredmedia"?: Array<{ source_url?: unknown }>;
+  };
+  content?: { rendered?: unknown };
+  link?: unknown;
+  slug?: unknown;
+};
+
+type IprSearchResult = {
+  _type?: unknown;
+  date?: unknown;
+  image?: { asset?: { _ref?: unknown } };
+  label?: unknown;
+  resident?: { slug?: { current?: unknown } };
+  series?: { slug?: { current?: unknown } };
+  slug?: { current?: unknown };
+};
+
+type SygmaEpisode = {
+  description?: unknown;
+  picture?: { url?: unknown };
+  slug?: unknown;
+  title?: unknown;
 };
 
 type BlackoutListening = {
@@ -80,6 +138,36 @@ type ShoutcastStatus = {
   bitrate?: unknown;
 };
 
+type HkcrScheduleEntry = {
+  date?: unknown;
+  description?: unknown;
+  endTime?: unknown;
+  picture?: { url?: unknown };
+  resident?: { name?: unknown; slug?: unknown };
+  startTime?: unknown;
+  thumbnail?: { url?: unknown };
+  title?: unknown;
+};
+
+type ResonanceExtraSchedule = {
+  now?: {
+    backgrounds?: { image?: unknown }[];
+    description?: unknown;
+    host?: unknown;
+    name?: unknown;
+    path?: unknown;
+    series_link?: unknown;
+    series_name?: unknown;
+  };
+};
+
+type RadioAlharaNowPlaying = {
+  artist?: unknown;
+  episodeTitle?: unknown;
+  scheduledTitle?: unknown;
+  title?: unknown;
+};
+
 type Link = {
   href?: unknown;
   rel?: unknown;
@@ -99,6 +187,15 @@ function asPublicUrl(value: unknown): string | null {
     return url.protocol === "http:" || url.protocol === "https:"
       ? url.toString()
       : null;
+  } catch {
+    return null;
+  }
+}
+
+function resolvePublicUrl(value: unknown, base: string): string | null {
+  const text = asString(value);
+  try {
+    return text ? asPublicUrl(new URL(text, base).toString()) : null;
   } catch {
     return null;
   }
@@ -196,6 +293,7 @@ function getAirtimeItemUrl(input: {
 }): string | null {
   return (
     asPublicUrl(input.metadata?.url) ??
+    asPublicUrl(input.metadata?.info_url) ??
     getSygmaEpisodeUrl(input.streamUrl, input.metadata?.info_url) ??
     asPublicUrl(input.metadata?.audio_source_url) ??
     asPublicUrl(input.metadata?.buy_this_url) ??
@@ -224,7 +322,11 @@ function normalizeAirtimeLiveInfo(input: {
 
   return buildNowPlaying({
     album: asString(metadata?.album_title),
-    artworkUrl: asString(metadata?.artwork_url) ?? asString(show?.image_path),
+    artworkUrl:
+      asPublicUrl(metadata?.artwork_url) ??
+      asPublicUrl(metadata?.artwork) ??
+      asPublicUrl(track?.album_artwork_image) ??
+      asPublicUrl(show?.image_path),
     expiresAt: input.expiresAt,
     genre: asString(metadata?.genre),
     itemUrl: getAirtimeItemUrl({
@@ -237,6 +339,7 @@ function normalizeAirtimeLiveInfo(input: {
     sampledAt: input.sampledAt,
     source: "airtime-live-info",
     stationDescription: asString(show?.description),
+    stationName: AIRTIME_STATION_NAMES[new URL(input.streamUrl).hostname],
     streamUrl: input.streamUrl,
   });
 }
@@ -263,11 +366,17 @@ function getAirtimeCandidateUrls(streamUrl: string): string[] {
 
 async function fetchObjectJson(
   fetchImpl: FetchLike,
-  url: string
+  url: string,
+  init: RequestInit = {}
 ): Promise<{ data: object; response: Response } | null> {
+  const headers = new Headers(init.headers);
+  if (!headers.has("Accept")) {
+    headers.set("Accept", "application/json");
+  }
   const response = await fetchImpl(url, {
-    headers: { Accept: "application/json" },
-    method: "GET",
+    ...init,
+    headers,
+    method: init.method ?? "GET",
   });
   if (!response.ok) {
     await response.body?.cancel().catch(() => undefined);
@@ -300,6 +409,292 @@ async function fetchText(
   } catch {
     return null;
   }
+}
+
+function comparableTitle(value: unknown): string | null {
+  const text = asString(value);
+  const rawTitle = text ? parseRadioTitle(text).rawTitle : null;
+  return rawTitle
+    ? rawTitle.normalize("NFKC").replace(/\s+/g, " ").toLowerCase()
+    : null;
+}
+
+async function enrichSygmaNowPlaying(
+  fetchImpl: FetchLike,
+  nowPlaying: RadioNowPlaying
+): Promise<RadioNowPlaying> {
+  if (
+    (nowPlaying.artworkUrl && nowPlaying.stationDescription) ||
+    !nowPlaying.itemUrl
+  ) {
+    return nowPlaying;
+  }
+  const itemUrl = new URL(nowPlaying.itemUrl);
+  if (
+    itemUrl.hostname !== "radio.syg.ma" ||
+    !itemUrl.pathname.startsWith("/episodes/")
+  ) {
+    return nowPlaying;
+  }
+  const encodedSlug = itemUrl.pathname.split("/").filter(Boolean).at(-1);
+  const slug = encodedSlug ? decodeURIComponent(encodedSlug) : null;
+  if (!slug) {
+    return nowPlaying;
+  }
+  const result = await fetchObjectJson(
+    fetchImpl,
+    `https://backend.radio.syg.ma/episodes/${encodeURIComponent(slug)}.json`
+  );
+  const episode = result?.data as SygmaEpisode | undefined;
+  if (
+    !episode ||
+    asString(episode?.slug) !== slug ||
+    comparableTitle(episode?.title) !== comparableTitle(nowPlaying.title)
+  ) {
+    return nowPlaying;
+  }
+  return {
+    ...nowPlaying,
+    artworkUrl: nowPlaying.artworkUrl ?? asPublicUrl(episode.picture?.url),
+    stationDescription:
+      nowPlaying.stationDescription ?? asString(episode.description),
+  };
+}
+
+async function enrichCashmereNowPlaying(
+  fetchImpl: FetchLike,
+  nowPlaying: RadioNowPlaying
+): Promise<RadioNowPlaying> {
+  const showUrl = getCashmereShowUrl(nowPlaying.itemUrl);
+  if (showUrl && !(nowPlaying.artworkUrl && nowPlaying.stationDescription)) {
+    const result = await fetchObjectJson(
+      fetchImpl,
+      `${CASHMERE_REST_URL}/pages?slug=${encodeURIComponent(showUrl.slug)}&_embed=wp%3Afeaturedmedia&_fields=slug%2Clink%2Ccontent%2C_links%2C_embedded`
+    );
+    const shows = Array.isArray(result?.data)
+      ? (result.data as CashmereShow[])
+      : [];
+    const [show] = shows;
+    if (
+      shows.length !== 1 ||
+      asString(show?.slug) !== showUrl.slug ||
+      !cashmereShowLinkMatches(show?.link, showUrl.pathname)
+    ) {
+      return nowPlaying;
+    }
+    return {
+      ...nowPlaying,
+      artworkUrl:
+        nowPlaying.artworkUrl ??
+        asPublicUrl(show?._embedded?.["wp:featuredmedia"]?.[0]?.source_url),
+      stationDescription:
+        nowPlaying.stationDescription ?? plainText(show?.content?.rendered),
+    };
+  }
+  if ((nowPlaying.artworkUrl && nowPlaying.itemUrl) || !nowPlaying.title) {
+    return nowPlaying;
+  }
+  const result = await fetchObjectJson(fetchImpl, CASHMERE_GRAPHQL_URL, {
+    body: JSON.stringify({
+      query:
+        "query SearchEpisode($q: String!) { episodes(where: {search: $q}, first: 10) { nodes { title uri featuredImage { node { sourceUrl } } } } }",
+      variables: { q: nowPlaying.title },
+    }),
+    headers: { "Content-Type": "application/json" },
+    method: "POST",
+  });
+  const responseData = result?.data as
+    | { data?: { episodes?: { nodes?: CashmereEpisode[] } } }
+    | undefined;
+  const nodes = responseData?.data?.episodes?.nodes;
+  const matches = nodes?.filter(
+    (node) => comparableTitle(node.title) === comparableTitle(nowPlaying.title)
+  );
+  if (matches?.length !== 1) {
+    return nowPlaying;
+  }
+
+  const [episode] = matches;
+  const uri = asString(episode?.uri);
+  const itemUrl = uri
+    ? new URL(uri, "https://cashmereradio.com").toString()
+    : null;
+  return {
+    ...nowPlaying,
+    artworkUrl:
+      nowPlaying.artworkUrl ??
+      asPublicUrl(episode?.featuredImage?.node?.sourceUrl),
+    itemUrl: nowPlaying.itemUrl ?? itemUrl,
+  };
+}
+
+function getCashmereShowUrl(
+  value: string | null
+): { pathname: string; slug: string } | null {
+  try {
+    const url = value ? new URL(value) : null;
+    const match = url?.pathname.match(CASHMERE_SHOW_PATH_PATTERN);
+    return url?.protocol === "https:" &&
+      url.hostname === "cashmereradio.com" &&
+      match?.[1]
+      ? { pathname: url.pathname, slug: decodeURIComponent(match[1]) }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function cashmereShowLinkMatches(value: unknown, pathname: string): boolean {
+  try {
+    const url = new URL(asString(value) ?? "");
+    return (
+      url.protocol === "https:" &&
+      url.hostname === "backstage.cashmereradio.com" &&
+      url.pathname.replace(TRAILING_SLASH_PATTERN, "") ===
+        pathname.replace(TRAILING_SLASH_PATTERN, "")
+    );
+  } catch {
+    return false;
+  }
+}
+
+function plainText(value: unknown): string | null {
+  const text = asString(value);
+  return text
+    ? cleanMetadataText(
+        text.replace(HTML_TAG_PATTERN, " ").replace(WHITESPACE_PATTERN, " ")
+      ) || null
+    : null;
+}
+
+function getAirtimeEpisodeDate(
+  metadata: AirtimeTrack["metadata"]
+): string | null {
+  const value = asString(metadata?.comments) ?? asString(metadata?.description);
+  const match = value?.match(DATE_STAMP_PATTERN);
+  if (!match) {
+    return null;
+  }
+  const [, day, month, rawYear] = match;
+  const year = rawYear.length === 2 ? `20${rawYear}` : rawYear;
+  const date = `${year}-${month}-${day}`;
+  const parsed = new Date(`${date}T00:00:00Z`);
+  return Number.isNaN(parsed.getTime()) ||
+    parsed.toISOString().slice(0, 10) !== date
+    ? null
+    : date;
+}
+
+function getIprArtworkUrl(result: IprSearchResult | undefined): string | null {
+  const ref = asString(result?.image?.asset?._ref);
+  const match = ref?.match(SANITY_IMAGE_REF_PATTERN);
+  return match
+    ? `https://cdn.sanity.io/images/7rbo2iih/production/${match[1]}-${match[2]}.${match[3]}`
+    : null;
+}
+
+function getIprItemUrl(result: IprSearchResult | undefined): string | null {
+  const type = asString(result?._type);
+  const slug = asString(result?.slug?.current);
+  if (!(type && slug)) {
+    return null;
+  }
+  if (type === "resident" || type === "series") {
+    return new URL(
+      `/${type === "resident" ? "residents" : "series"}/${encodeURIComponent(slug)}`,
+      "https://www.internetpublicradio.live"
+    ).toString();
+  }
+  if (type === "guest") {
+    return new URL(
+      `/guests/episodes/${encodeURIComponent(slug)}`,
+      "https://www.internetpublicradio.live"
+    ).toString();
+  }
+  const parentSlug =
+    asString(result?.resident?.slug?.current) ??
+    asString(result?.series?.slug?.current);
+  return type === "episode" && parentSlug
+    ? new URL(
+        `/${encodeURIComponent(parentSlug)}/episodes/${encodeURIComponent(slug)}`,
+        "https://www.internetpublicradio.live"
+      ).toString()
+    : null;
+}
+
+async function enrichIprNowPlaying(
+  fetchImpl: FetchLike,
+  nowPlaying: RadioNowPlaying,
+  metadata: AirtimeTrack["metadata"]
+): Promise<RadioNowPlaying> {
+  if ((nowPlaying.artworkUrl && nowPlaying.itemUrl) || !nowPlaying.title) {
+    return nowPlaying;
+  }
+  const title = nowPlaying.title.replace(IPR_REPLAY_SUFFIX_PATTERN, "").trim();
+  const url = new URL(IPR_SEARCH_URL);
+  url.searchParams.set("q", title);
+  const result = await fetchObjectJson(fetchImpl, url.toString());
+  if (!(result && Array.isArray(result.data))) {
+    return nowPlaying;
+  }
+
+  const matches = (result.data as IprSearchResult[]).filter(
+    (candidate) => comparableTitle(candidate.label) === comparableTitle(title)
+  );
+  const episodes = matches.filter((candidate) => {
+    const type = asString(candidate._type);
+    return type === "episode" || type === "guest";
+  });
+  const episodeDate = getAirtimeEpisodeDate(metadata);
+  const datedEpisodes = episodeDate
+    ? episodes.filter((candidate) => asString(candidate.date) === episodeDate)
+    : [];
+  let episode: IprSearchResult | undefined;
+  if (datedEpisodes.length === 1) {
+    [episode] = datedEpisodes;
+  } else if (episodes.length === 1) {
+    [episode] = episodes;
+  }
+  const shows = matches.filter((candidate) => {
+    const type = asString(candidate._type);
+    return type === "resident" || type === "series";
+  });
+  const selected = episode ?? (shows.length === 1 ? shows[0] : undefined);
+  return selected
+    ? {
+        ...nowPlaying,
+        artworkUrl: nowPlaying.artworkUrl ?? getIprArtworkUrl(selected),
+        itemUrl:
+          nowPlaying.itemUrl ?? (episode ? getIprItemUrl(episode) : null),
+      }
+    : nowPlaying;
+}
+
+async function enrichAirtimeNowPlaying(input: {
+  data: AirtimeLiveInfo;
+  fetchImpl: FetchLike;
+  nowPlaying: RadioNowPlaying;
+  streamUrl: string;
+}): Promise<RadioNowPlaying> {
+  try {
+    const { data, fetchImpl, nowPlaying, streamUrl } = input;
+    const { hostname } = new URL(streamUrl);
+    if (hostname === "radio.syg.ma") {
+      return await enrichSygmaNowPlaying(fetchImpl, nowPlaying);
+    }
+    if (hostname === "cashmereradio.out.airtime.pro") {
+      return await enrichCashmereNowPlaying(fetchImpl, nowPlaying);
+    }
+    if (hostname === "stream-relay-geo.internetpublicradio.live") {
+      const track = data.tracks?.current ?? data.current;
+      return await enrichIprNowPlaying(fetchImpl, nowPlaying, track?.metadata);
+    }
+  } catch (error) {
+    if (shouldPropagateFetchError(error)) {
+      throw error;
+    }
+  }
+  return input.nowPlaying;
 }
 
 function getAzuraCastCandidateUrls(streamUrl: string): string[] {
@@ -559,12 +954,22 @@ export async function tryAirtimeLiveInfo(
       }
       return null;
     }
-    return result
-      ? normalizeAirtimeLiveInfo({
-          data: result.data as AirtimeLiveInfo,
-          expiresAt: input.expiresAt,
-          resolvedUrl: result.response.url || url,
-          sampledAt: input.sampledAt,
+    if (!result) {
+      return null;
+    }
+    const data = result.data as AirtimeLiveInfo;
+    const nowPlaying = normalizeAirtimeLiveInfo({
+      data,
+      expiresAt: input.expiresAt,
+      resolvedUrl: result.response.url || url,
+      sampledAt: input.sampledAt,
+      streamUrl: input.streamUrl,
+    });
+    return nowPlaying
+      ? await enrichAirtimeNowPlaying({
+          data,
+          fetchImpl: input.fetchImpl,
+          nowPlaying,
           streamUrl: input.streamUrl,
         })
       : null;
@@ -642,8 +1047,222 @@ export async function tryNtsLiveApi(
     sampledAt: input.sampledAt,
     source: "nts-live-api",
     stationDescription: asString(now?.embeds?.details?.description),
+    stationName: `NTS Radio | Channel ${channelName}`,
     streamUrl: input.streamUrl,
   });
+}
+
+function getHkcrScheduleWindow(
+  entry: HkcrScheduleEntry
+): { start: number; end: number } | null {
+  const date = asString(entry.date);
+  const startTime = asString(entry.startTime);
+  const endTime = asString(entry.endTime);
+  if (!(date && startTime && endTime)) {
+    return null;
+  }
+  if (
+    !(
+      HKCR_DATE_PATTERN.test(date) &&
+      HKCR_TIME_PATTERN.test(startTime) &&
+      HKCR_TIME_PATTERN.test(endTime)
+    )
+  ) {
+    return null;
+  }
+
+  const start = Date.parse(`${date}T${startTime}:00+08:00`);
+  let end = Date.parse(`${date}T${endTime}:00+08:00`);
+  if (!(Number.isFinite(start) && Number.isFinite(end))) {
+    return null;
+  }
+  if (end <= start) {
+    end += 24 * 60 * 60 * 1000;
+  }
+  return { end, start };
+}
+
+function normalizeHkcrSchedule(input: {
+  data: object;
+  streamUrl: string;
+  resolvedUrl?: string;
+  sampledAt: number;
+  expiresAt: number;
+}): RadioNowPlaying | null {
+  if (!Array.isArray(input.data)) {
+    return null;
+  }
+  const entry = input.data.find((candidate) => {
+    const window = getHkcrScheduleWindow(candidate as HkcrScheduleEntry);
+    return (
+      window && input.sampledAt >= window.start && input.sampledAt < window.end
+    );
+  }) as HkcrScheduleEntry | undefined;
+  const title = asString(entry?.title);
+  if (!(entry && title)) {
+    return null;
+  }
+
+  const artist = asString(entry.resident?.name);
+  const residentSlug = asString(entry.resident?.slug);
+  return buildNowPlaying({
+    artworkUrl:
+      asPublicUrl(entry.thumbnail?.url) ?? asPublicUrl(entry.picture?.url),
+    expiresAt: input.expiresAt,
+    itemUrl: residentSlug
+      ? new URL(
+          `/residents/${encodeURIComponent(residentSlug)}`,
+          "https://hkcr.live"
+        ).toString()
+      : null,
+    rawTitle: artist && artist !== title ? `${artist} - ${title}` : title,
+    resolvedUrl: input.resolvedUrl,
+    sampledAt: input.sampledAt,
+    source: "hkcr-schedule",
+    stationDescription: asString(entry.description),
+    stationName: "HKCR",
+    streamUrl: input.streamUrl,
+  });
+}
+
+export async function tryHkcrSchedule(
+  input: ExternalMetadataProviderInput
+): Promise<RadioNowPlaying | null> {
+  let result: Awaited<ReturnType<typeof fetchObjectJson>>;
+  try {
+    result = await fetchObjectJson(input.fetchImpl, HKCR_SCHEDULE_URL);
+  } catch (error) {
+    if (shouldPropagateFetchError(error)) {
+      throw error;
+    }
+    return null;
+  }
+  return result
+    ? normalizeHkcrSchedule({
+        data: result.data,
+        expiresAt: input.expiresAt,
+        resolvedUrl: result.response.url || HKCR_SCHEDULE_URL,
+        sampledAt: input.sampledAt,
+        streamUrl: input.streamUrl,
+      })
+    : null;
+}
+
+function normalizeResonanceExtraSchedule(input: {
+  data: object;
+  streamUrl: string;
+  resolvedUrl?: string;
+  sampledAt: number;
+  expiresAt: number;
+}): RadioNowPlaying | null {
+  const { now } = input.data as ResonanceExtraSchedule;
+  const title = asString(now?.name);
+  if (!title) {
+    return null;
+  }
+
+  const artist = asString(now?.host);
+  const rawTitle = artist ? `${artist} - ${title}` : title;
+  const result = buildNowPlaying({
+    album: asString(now?.series_name),
+    artworkUrl: resolvePublicUrl(
+      now?.backgrounds?.[0]?.image,
+      "https://x.resonance.fm"
+    ),
+    expiresAt: input.expiresAt,
+    itemUrl:
+      resolvePublicUrl(now?.path, "https://extra.resonance.fm") ??
+      resolvePublicUrl(now?.series_link, "https://extra.resonance.fm"),
+    rawTitle,
+    resolvedUrl: input.resolvedUrl,
+    sampledAt: input.sampledAt,
+    source: "resonance-extra-api",
+    stationDescription: asString(now?.description),
+    stationName: "Resonance Extra",
+    streamUrl: input.streamUrl,
+  });
+  return result ? { ...result, artist, rawTitle, title } : null;
+}
+
+export async function tryResonanceExtraApi(
+  input: ExternalMetadataProviderInput
+): Promise<RadioNowPlaying | null> {
+  let result: Awaited<ReturnType<typeof fetchObjectJson>>;
+  try {
+    result = await fetchObjectJson(input.fetchImpl, RESONANCE_EXTRA_API_URL);
+  } catch (error) {
+    if (shouldPropagateFetchError(error)) {
+      throw error;
+    }
+    return null;
+  }
+  return result
+    ? normalizeResonanceExtraSchedule({
+        data: result.data,
+        expiresAt: input.expiresAt,
+        resolvedUrl: result.response.url || RESONANCE_EXTRA_API_URL,
+        sampledAt: input.sampledAt,
+        streamUrl: input.streamUrl,
+      })
+    : null;
+}
+
+function normalizeRadioAlharaNowPlaying(input: {
+  data: object;
+  streamUrl: string;
+  resolvedUrl?: string;
+  sampledAt: number;
+  expiresAt: number;
+}): RadioNowPlaying | null {
+  const data = input.data as RadioAlharaNowPlaying;
+  const title =
+    asString(data.episodeTitle) ??
+    asString(data.title) ??
+    asString(data.scheduledTitle);
+  if (!title) {
+    return null;
+  }
+
+  const artist = asString(data.artist);
+  const showTitle = asString(data.scheduledTitle) ?? asString(data.title);
+  const rawTitle = artist ? `${artist} - ${title}` : title;
+  const result = buildNowPlaying({
+    album: showTitle === title ? null : showTitle,
+    expiresAt: input.expiresAt,
+    rawTitle,
+    resolvedUrl: input.resolvedUrl,
+    sampledAt: input.sampledAt,
+    source: "radio-alhara-api",
+    stationName: "Radio Alhara",
+    streamUrl: input.streamUrl,
+  });
+  return result ? { ...result, artist, rawTitle, title } : null;
+}
+
+export async function tryRadioAlharaApi(
+  input: ExternalMetadataProviderInput
+): Promise<RadioNowPlaying | null> {
+  let result: Awaited<ReturnType<typeof fetchObjectJson>>;
+  try {
+    result = await fetchObjectJson(
+      input.fetchImpl,
+      RADIO_ALHARA_NOW_PLAYING_URL
+    );
+  } catch (error) {
+    if (shouldPropagateFetchError(error)) {
+      throw error;
+    }
+    return null;
+  }
+  return result
+    ? normalizeRadioAlharaNowPlaying({
+        data: result.data,
+        expiresAt: input.expiresAt,
+        resolvedUrl: result.response.url || RADIO_ALHARA_NOW_PLAYING_URL,
+        sampledAt: input.sampledAt,
+        streamUrl: input.streamUrl,
+      })
+    : null;
 }
 
 export async function tryRadioBlackoutApi(
@@ -676,6 +1295,7 @@ export async function tryRadioBlackoutApi(
     sampledAt: input.sampledAt,
     source: "radio-blackout-api",
     stationDescription: asString(data.excerpt),
+    stationName: "Radio BlackOut",
     streamUrl: input.streamUrl,
   });
 }

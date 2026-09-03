@@ -188,6 +188,11 @@ function parseMetadataConfig(params: URLSearchParams): MetadataConfigResult {
     }
     case "radio-blackout-api":
       return parseMetadataUrlConfig(kind, params);
+    case "hkcr-schedule":
+    case "lyl-api":
+    case "radio-alhara-api":
+    case "resonance-extra-api":
+      return { config: { kind }, ok: true };
     case "icy":
       return { config: { kind }, ok: true };
     case "none":

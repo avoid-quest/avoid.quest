@@ -100,6 +100,17 @@ export const radios: Radio[] = [
     websiteUrl: "https://www.internetpublicradio.live/",
   },
   {
+    description:
+      "A community platform and independent radio station featuring underground music from Hong Kong, Asia and around the world.",
+    isSystem: true,
+    logoUrl: "https://hkcr.live/assets/logo.png",
+    name: "HKCR",
+    order: 9,
+    streamFormat: "hls",
+    streamUrl: "https://stream-test.hkcr.live/hls/main.m3u8",
+    websiteUrl: "https://hkcr.live/",
+  },
+  {
     description: "Radio AlHara راديو الحارة",
     isSystem: true,
     logoUrl: "https://radioalhara.net/img/radio-alhara-logo.svg",

@@ -14,6 +14,54 @@ const iprStream =
   "https://stream-relay-geo.internetpublicradio.live/stream/main";
 const hkcrStream = "https://stream-test.hkcr.live/hls/main.m3u8";
 
+test("matches a Cashmere archive title whose filename uses underscores for spaces", async () => {
+  const result = await tryAirtimeLiveInfo({
+    ...input,
+    fetchImpl: (url) => {
+      if (url.endsWith("/graphql")) {
+        return json({
+          data: {
+            episodes: {
+              nodes: [
+                {
+                  databaseId: 33_444,
+                  featuredImage: {
+                    node: {
+                      sourceUrl: "https://media.cashmereradio.com/islands.jpg",
+                    },
+                  },
+                  title: "Self-Hypnosis #7_Islands",
+                  uri: "/episode/self-hypnosis-7_islands/",
+                },
+              ],
+            },
+          },
+        });
+      }
+      if (url.includes("/wp-json/wp/v2/episode/33444?")) {
+        return json({
+          content: { rendered: "<p>Islands description.</p>" },
+          id: 33_444,
+          link: "https://backstage.cashmereradio.com/episode/self-hypnosis-7_islands/",
+          slug: "self-hypnosis-7_islands",
+        });
+      }
+      if (url.includes("/wp-json/")) {
+        return json([]);
+      }
+      return json({
+        tracks: { current: { name: "SELF-HYPNOSIS #7 ISLANDS" } },
+      });
+    },
+    streamUrl: cashmereStream,
+  });
+  expect(result).toMatchObject({
+    artworkUrl: "https://media.cashmereradio.com/islands.jpg",
+    itemUrl: "https://cashmereradio.com/episode/self-hypnosis-7_islands/",
+    stationDescription: "Islands description.",
+  });
+});
+
 test("enriches a Cashmere filename from its exact show when the recording has no episode", async () => {
   const result = await tryAirtimeLiveInfo({
     ...input,

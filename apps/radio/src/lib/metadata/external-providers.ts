@@ -511,6 +511,10 @@ async function enrichSygmaNowPlaying(
   };
 }
 
+function comparableCashmereTitle(value: unknown): string | null {
+  return comparableTitle(asString(value)?.replaceAll("_", " "));
+}
+
 async function enrichCashmereNowPlaying(
   fetchImpl: FetchLike,
   nowPlaying: RadioNowPlaying
@@ -568,8 +572,10 @@ async function enrichCashmereNowPlaying(
   const nodes = responseData?.data?.episodes?.nodes;
   const matches = nodes?.filter(
     (node) =>
-      comparableTitle(node.title) ===
-      comparableTitle(nowPlaying.title?.replace(AUDIO_EXTENSION_PATTERN, ""))
+      comparableCashmereTitle(node.title) ===
+      comparableCashmereTitle(
+        nowPlaying.title?.replace(AUDIO_EXTENSION_PATTERN, "")
+      )
   );
   if (matches?.length !== 1) {
     return await enrichCashmereShowByTitle(fetchImpl, nowPlaying);
@@ -611,7 +617,8 @@ async function enrichCashmereShowByTitle(
   const matches = Array.isArray(result?.data)
     ? (result.data as CashmereShow[]).filter(
         (candidate) =>
-          comparableTitle(candidate.title?.rendered) === comparableTitle(title)
+          comparableCashmereTitle(candidate.title?.rendered) ===
+          comparableCashmereTitle(title)
       )
     : [];
   const show = matches.length === 1 ? matches[0] : null;

@@ -1,5 +1,6 @@
 import {
   createCollection,
+  deepEquals,
   localStorageCollectionOptions,
 } from "@tanstack/react-db";
 import { z } from "zod";
@@ -106,8 +107,7 @@ function hasRadioChanged(existing: RadioRecord, incoming: Radio): boolean {
     existing.logoUrl !== incoming.logoUrl ||
     existing.description !== incoming.description ||
     existing.websiteUrl !== incoming.websiteUrl ||
-    JSON.stringify(existing.metadataConfig) !==
-      JSON.stringify(incoming.metadataConfig)
+    !deepEquals(existing.metadataConfig, incoming.metadataConfig)
   );
 }
 

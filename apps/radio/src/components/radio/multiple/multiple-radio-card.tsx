@@ -54,7 +54,7 @@ export function MultipleRadioCard({
     <div
       className={cn(
         "flex flex-col rounded-lg border border-border/50 bg-card/50 transition-colors",
-        isPlaying && "border-primary/20",
+        isPlaying && !isLoading && "border-foreground/40",
         isSession && "border-l-2 border-l-[#00d084]/40"
       )}
     >
@@ -71,7 +71,6 @@ export function MultipleRadioCard({
             />
           }
           isLoading={isLoading}
-          isPlaying={isPlaying}
           metadata={metadata}
           radio={radio}
         />

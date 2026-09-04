@@ -16,7 +16,6 @@ import { RadioLogo } from "./radio-logo";
 type RadioNowPlayingProps = {
   radio: Radio;
   metadata?: RadioNowPlayingMetadata | null;
-  isPlaying: boolean;
   isLoading?: boolean;
   variant?: "featured" | "compact";
   className?: string;
@@ -77,7 +76,6 @@ function getIdentity(
 export function RadioNowPlaying({
   radio,
   metadata,
-  isPlaying,
   isLoading = false,
   variant = "compact",
   className,
@@ -86,16 +84,17 @@ export function RadioNowPlaying({
   const featured = variant === "featured";
   const identity = getIdentity(radio, metadata);
   const { hasNowPlaying, subtitle, title } = identity;
-  const playbackStatus = isPlaying ? "Now playing" : "Ready";
-  const status = isLoading ? "Connecting" : playbackStatus;
-  const fallbackLabel = featured ? "Radio" : status;
-  const sourceLabel = hasNowPlaying ? radio.name : fallbackLabel;
+  const connectionStatus = isLoading ? (
+    <p className="text-muted-foreground text-xs" role="status">
+      Connecting…
+    </p>
+  ) : null;
   const Heading = featured ? "h2" : "h3";
   const detailsTrigger = (
     <DialogTrigger asChild>
       <button
         aria-label={`Details for ${title}`}
-        className="shrink-0 rounded px-1 py-1 text-muted-foreground text-xs transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="h-8 shrink-0 rounded px-1 text-muted-foreground text-xs transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         type="button"
       >
         Details
@@ -103,7 +102,9 @@ export function RadioNowPlaying({
     </DialogTrigger>
   );
   const detailActions = (
-    <div className="flex shrink-0 items-center gap-2">
+    <div
+      className={cn("mt-1 -ml-1 flex items-center gap-1", featured && "mt-2")}
+    >
       {detailsTrigger}
       {actions}
     </div>
@@ -113,27 +114,12 @@ export function RadioNowPlaying({
     <Dialog>
       <section
         aria-label={`${radio.name} now playing`}
-        className={cn("min-w-0", featured && "space-y-4", className)}
+        className={cn("min-w-0", className)}
       >
-        {featured ? (
-          <div className="flex items-center justify-between gap-3">
-            <p className="flex items-center gap-2 font-mono text-[10px] text-muted-foreground uppercase tracking-widest">
-              <span
-                className={cn(
-                  "size-1.5 rounded-full bg-muted-foreground/40",
-                  isPlaying && !isLoading && "bg-emerald-500"
-                )}
-              />
-              {status}
-            </p>
-            {detailActions}
-          </div>
-        ) : null}
         <div
           className={cn(
-            "flex min-w-0 items-center gap-3",
-            !featured && "min-h-18",
-            featured && "gap-5 lg:flex-col lg:items-start lg:gap-6"
+            "flex min-w-0 items-start gap-3",
+            featured && "gap-5 lg:flex-col lg:gap-6"
           )}
         >
           <Artwork
@@ -146,17 +132,21 @@ export function RadioNowPlaying({
             radio={radio}
           />
           <div className="min-w-0 flex-1 lg:w-full">
-            <div className="flex min-w-0 items-center justify-between gap-2">
-              <p className="truncate font-medium text-[10px] text-muted-foreground uppercase tracking-wider">
-                {sourceLabel}
+            {hasNowPlaying ? (
+              <p
+                className={cn(
+                  "mb-1 truncate font-medium text-[10px] text-muted-foreground uppercase tracking-wider",
+                  featured &&
+                    "mb-1.5 font-normal text-xs normal-case tracking-[0.01em]"
+                )}
+              >
+                {radio.name}
               </p>
-              {!featured && detailActions}
-            </div>
+            ) : null}
             <Heading
               className={cn(
                 "min-w-0 font-semibold text-sm leading-snug",
-                featured &&
-                  "mt-1.5 text-xl leading-tight tracking-tight lg:text-3xl"
+                featured && "text-xl leading-tight tracking-tight lg:text-3xl"
               )}
             >
               {metadata?.itemUrl ? (
@@ -195,6 +185,8 @@ export function RadioNowPlaying({
                 {subtitle}
               </p>
             ) : null}
+            {connectionStatus}
+            {detailActions}
           </div>
         </div>
       </section>

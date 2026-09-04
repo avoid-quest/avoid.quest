@@ -65,6 +65,8 @@ describe("DeckTransport", () => {
   beforeEach(() => {
     deckContextMock.metadata = undefined;
     deckContextMock.deckSide = "left";
+    deckContextMock.isPlaying = false;
+    deckContextMock.isLoading = false;
   });
 
   test("keeps long station titles constrained and offers full details", () => {
@@ -99,6 +101,25 @@ describe("DeckTransport", () => {
     expect(html.includes("whitespace-nowrap")).toBeTrue();
     expect(html.includes(`title="${LONG_TITLE}"`)).toBeTrue();
     expect(html.includes("Details for")).toBeFalse();
+  });
+
+  test("marks active radio transports with a border, not a playback badge", () => {
+    deckContextMock.isPlaying = true;
+    const playing = renderToStaticMarkup(<DeckTransport />);
+    expect(playing.includes("border-foreground/40")).toBeTrue();
+    expect(playing.includes(">Now playing<")).toBeFalse();
+    expect(playing.includes(">Ready<")).toBeFalse();
+
+    deckContextMock.isLoading = true;
+    const connecting = renderToStaticMarkup(<DeckTransport />);
+    expect(connecting.includes("border-foreground/40")).toBeFalse();
+    expect(connecting.includes("Connecting…")).toBeTrue();
+
+    deckContextMock.isPlaying = false;
+    deckContextMock.isLoading = false;
+    const paused = renderToStaticMarkup(<DeckTransport />);
+    expect(paused.includes("border-foreground/40")).toBeFalse();
+    expect(paused.includes("Connecting…")).toBeFalse();
   });
 
   for (const side of ["left", "right"] as const) {

@@ -100,7 +100,6 @@ function PlayerPanel({
       <RadioNowPlaying
         actions={actions}
         isLoading={isLoading}
-        isPlaying={isPlaying}
         metadata={metadata}
         radio={radio}
         variant="featured"

@@ -98,17 +98,22 @@ describe("RadioNowPlaying", () => {
   for (const variant of ["featured", "compact"] as const) {
     test(`uses the same show identity and details in ${variant} mode`, () => {
       const view = render(
-        <RadioNowPlaying
-          isPlaying={true}
-          metadata={metadata}
-          radio={radio}
-          variant={variant}
-        />
+        <RadioNowPlaying metadata={metadata} radio={radio} variant={variant} />
       );
 
       expect(view.getByRole("heading", { name: "Current Show" })).toBeTruthy();
       expect(view.getByText("Host Name")).toBeTruthy();
       expect(view.getByText("Example Radio")).toBeTruthy();
+      expect(view.queryByText("Now playing")).toBeNull();
+      expect(view.queryByText("Ready")).toBeNull();
+      expect(view.queryByRole("status")).toBeNull();
+      const heading = view.getByRole("heading", { name: "Current Show" });
+      const detailsButton = view.getByRole("button", {
+        name: "Details for Current Show",
+      });
+      expect(heading.compareDocumentPosition(detailsButton)).toBe(
+        Node.DOCUMENT_POSITION_FOLLOWING
+      );
       expect(view.queryByText("Current show description.")).toBeNull();
       expect(
         view.getByRole("link", { name: "Current Show" }).getAttribute("href")
@@ -129,10 +134,42 @@ describe("RadioNowPlaying", () => {
     });
   }
 
+  for (const variant of ["featured", "compact"] as const) {
+    for (const nowPlaying of [metadata, null]) {
+      test(`shows only a transient connection status in ${variant} mode ${nowPlaying ? "with" : "without"} metadata`, () => {
+        const view = render(
+          <RadioNowPlaying
+            isLoading={true}
+            metadata={nowPlaying}
+            radio={radio}
+            variant={variant}
+          />
+        );
+        expect(view.getByRole("status").textContent).toBe("Connecting…");
+        expect(
+          view.getByRole("heading", { name: nowPlaying?.title ?? radio.name })
+        ).toBeTruthy();
+        view.rerender(
+          <RadioNowPlaying
+            isLoading={false}
+            metadata={nowPlaying}
+            radio={radio}
+            variant={variant}
+          />
+        );
+        expect(view.queryByRole("status")).toBeNull();
+        expect(view.queryByText("Now playing")).toBeNull();
+        expect(view.queryByText("Ready")).toBeNull();
+      });
+    }
+  }
+
   test("falls back to station identity without inventing current show data", () => {
-    const view = render(<RadioNowPlaying isPlaying={false} radio={radio} />);
+    const view = render(<RadioNowPlaying radio={radio} />);
     expect(view.getByRole("heading", { name: "Example Radio" })).toBeTruthy();
-    expect(view.getByText("Ready")).toBeTruthy();
+    expect(view.queryByText("Ready")).toBeNull();
+    expect(view.getAllByText("Example Radio")).toHaveLength(1);
+    expect(view.container.querySelector("section p")).toBeNull();
     expect(view.queryByRole("link")).toBeNull();
     fireEvent.click(
       view.getByRole("button", { name: "Details for Example Radio" })
@@ -141,16 +178,13 @@ describe("RadioNowPlaying", () => {
   });
 
   test("recovers from a failed artwork URL when the show changes", () => {
-    const view = render(
-      <RadioNowPlaying isPlaying={true} metadata={metadata} radio={radio} />
-    );
+    const view = render(<RadioNowPlaying metadata={metadata} radio={radio} />);
     fireEvent.error(view.getByRole("img", { name: "Current Show artwork" }));
     expect(
       view.getByRole("img", { name: "Example Radio logo" }).getAttribute("src")
     ).toBe(radio.logoUrl ?? null);
     view.rerender(
       <RadioNowPlaying
-        isPlaying={true}
         metadata={{ ...metadata, artworkUrl: "https://radio.example/next.jpg" }}
         radio={radio}
       />
@@ -169,7 +203,6 @@ describe("RadioNowPlaying", () => {
       "A complete episode description that must remain readable. ".repeat(30);
     const view = render(
       <RadioNowPlaying
-        isPlaying={true}
         metadata={{
           ...metadata,
           artworkUrl: null,

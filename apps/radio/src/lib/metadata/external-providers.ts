@@ -1817,13 +1817,11 @@ export async function tryRadioBlackoutApi(
     stationName: "Radio BlackOut",
     streamUrl: input.streamUrl,
   });
-  return nowPlaying
-    ? await enrichBlackoutShow(input.fetchImpl, nowPlaying)
-    : null;
+  return nowPlaying ? await enrichBlackoutShow(input, nowPlaying) : null;
 }
 
 async function enrichBlackoutShow(
-  fetchImpl: FetchLike,
+  input: ExternalMetadataProviderInput,
   nowPlaying: RadioNowPlaying
 ): Promise<RadioNowPlaying> {
   const itemUrl = nowPlaying.itemUrl ? new URL(nowPlaying.itemUrl) : null;
@@ -1835,23 +1833,45 @@ async function enrichBlackoutShow(
     const slug = decodeURIComponent(match[1]);
     const url = new URL("https://radioblackout.org/wp-json/wp/v2/shows");
     url.searchParams.set("slug", slug);
-    const result = await fetchObjectJson(fetchImpl, url.toString());
-    const records = Array.isArray(result?.data)
-      ? (result.data as BlackoutShow[])
-      : [];
-    const show = records.length === 1 ? records[0] : null;
-    if (
-      asString(show?.slug) !== slug ||
-      asPublicUrl(show?.link) !== itemUrl.toString() ||
-      comparableTitle(show?.title) !== comparableTitle(nowPlaying.title)
-    ) {
-      return nowPlaying;
-    }
+    const details = await cacheMetadata({
+      key: [
+        "blackout",
+        "show-details",
+        url.toString(),
+        itemUrl.toString(),
+        comparableTitle(nowPlaying.title),
+      ],
+      kv: input.kv,
+      now: input.now,
+      retrieve: async () => {
+        const result = await fetchObjectJson(input.fetchImpl, url.toString());
+        if (!Array.isArray(result?.data)) {
+          return null;
+        }
+        const records = result.data as BlackoutShow[];
+        if (records.length === 0) {
+          return { genre: null, stationDescription: null };
+        }
+        const show = records.length === 1 ? records[0] : null;
+        if (
+          asString(show?.slug) !== slug ||
+          asPublicUrl(show?.link) !== itemUrl.toString() ||
+          comparableTitle(show?.title) !== comparableTitle(nowPlaying.title)
+        ) {
+          return null;
+        }
+        return {
+          genre: asStringArray(show?.tags).join(", ") || null,
+          stationDescription: plainText(show?.content),
+        };
+      },
+      ttl: EPISODE_METADATA_TTL,
+    });
     return {
       ...nowPlaying,
-      genre: asStringArray(show?.tags).join(", ") || nowPlaying.genre,
+      genre: details?.genre ?? nowPlaying.genre,
       stationDescription:
-        plainText(show?.content) ?? nowPlaying.stationDescription,
+        details?.stationDescription ?? nowPlaying.stationDescription,
     };
   } catch (error) {
     if (error instanceof RadioMetadataValidationError) {

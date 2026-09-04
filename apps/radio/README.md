@@ -145,6 +145,10 @@ after 60 seconds; episode/show enrichment after six hours; Radio Garden station
 attributes after 24 hours; and Radio Browser/Radio Garden searches after ten
 minutes. NTS channels reuse one live feed. Fields returned in the live feed
 retain its 60-second lifetime even when they include artwork or station details.
+Separate enrichment caches cover Sygma, Cashmere, IPR, LYL, HKCR, and BlackOut.
+HKCR keeps its live/replay schedule separate from show details. BlackOut stores
+the verified full description and genres separately from its listening feed.
+Revised Airtime and HKCR cache keys bypass older incomplete enrichment records.
 
 Cache hits preserve the original `sampledAt` and `expiresAt`. KV is eventually
 consistent: propagation can take 60 seconds or longer, and concurrent misses

@@ -9,7 +9,7 @@
 	"main": "@tanstack/react-start/server-entry",
 	"workers_dev": true,
 	"preview_urls": true,
-	"kv_namespaces": [{ "binding": "RADIO_METADATA" }],
+	"kv_namespaces": [{ "binding": "RADIO_METADATA", "id": "aa14587423074dcfb86e4533b7162de0" }],
 	"observability": {
 		"enabled": true,
 		"logs": {

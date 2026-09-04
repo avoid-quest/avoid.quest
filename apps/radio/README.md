@@ -165,11 +165,10 @@ outside KV and are refreshed together by station UUID on cache hits. These searc
 still need one provider lookup; searches with only query-free URLs need none.
 Browser playback probes and player state stay local.
 
-Wrangler's supported [automatic provisioning](https://developers.cloudflare.com/changelog/post/2025-10-24-automatic-resource-provisioning/)
-creates the namespace on the next authorized deployment from the binding-only
-entry in `wrangler.jsonc`. Local development uses local KV. If provisioning is
-disabled in the release environment, create one namespace and add its real `id`
-to that entry before deployment. See [KV expiry and consistency](https://developers.cloudflare.com/kv/api/write-key-value-pairs/)
+The `RADIO_METADATA` entry in `wrangler.jsonc` binds the existing
+`radio-radio-metadata` namespace by ID, so repeated uploads reuse it instead of
+attempting to provision another namespace with the same name. Local development
+uses local KV. See [KV expiry and consistency](https://developers.cloudflare.com/kv/api/write-key-value-pairs/)
 and [Radio Browser's provider requirements](https://api.radio-browser.info/).
 
 ## Development

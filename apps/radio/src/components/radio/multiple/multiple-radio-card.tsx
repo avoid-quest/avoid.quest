@@ -53,23 +53,23 @@ export function MultipleRadioCard({
   return (
     <div
       className={cn(
-        "flex flex-col rounded-lg border border-border/50 bg-card/50 transition-colors",
+        "relative flex flex-col rounded-lg border border-border/50 bg-card/50 transition-colors",
         isPlaying && !isLoading && "border-foreground/40",
         isSession && "border-l-2 border-l-[#00d084]/40"
       )}
     >
+      <div className="absolute top-2 right-2">
+        <RadioItemActions
+          onDelete={onDelete}
+          onEdit={onEdit}
+          onSave={onSave}
+          onToggle={onToggle}
+          radio={radio}
+        />
+      </div>
       {/* Header */}
-      <div className="px-3 py-3">
+      <div className="py-3 pr-12 pl-3">
         <RadioNowPlaying
-          actions={
-            <RadioItemActions
-              onDelete={onDelete}
-              onEdit={onEdit}
-              onSave={onSave}
-              onToggle={onToggle}
-              radio={radio}
-            />
-          }
           isLoading={isLoading}
           metadata={metadata}
           radio={radio}

@@ -96,6 +96,74 @@ const radio: Radio = {
 
 describe("RadioNowPlaying", () => {
   for (const variant of ["featured", "compact"] as const) {
+    test(`attaches player genres to featured artwork and keeps full Details in ${variant} mode`, () => {
+      const view = render(
+        <RadioNowPlaying
+          metadata={{
+            ...metadata,
+            genre: " Art Pop, Downtempo, , Art Pop, R&B / Soul ",
+          }}
+          radio={radio}
+          variant={variant}
+        />
+      );
+      const playerGenres = view.queryByRole("list", { name: "Genres" });
+      if (variant === "featured") {
+        const artworkButton = view.getByRole("button", {
+          name: "Details for Current Show",
+        });
+        expect(artworkButton.parentElement?.contains(playerGenres)).toBe(true);
+        expect(artworkButton.querySelector("ul")).toBeNull();
+        expect(
+          view.getByText("Host Name").parentElement?.contains(playerGenres)
+        ).toBe(false);
+        expect(view.getByText("2 more genres in Details")).toBeTruthy();
+        expect(view.getByText("Example Radio").nextElementSibling).toBe(
+          view.getByRole("heading", { name: "Current Show" })
+        );
+      } else {
+        expect(playerGenres).toBeNull();
+      }
+
+      fireEvent.click(
+        view.getByRole("button", { name: "Details for Current Show" })
+      );
+      const details = within(view.getByRole("dialog"));
+      const genres = details.getByRole("list", { name: "Genres" });
+      const pills = within(genres).getAllByRole("listitem");
+      expect(pills.map((pill) => pill.textContent)).toEqual([
+        "Art Pop",
+        "Downtempo",
+        "R&B / Soul",
+      ]);
+      for (const pill of pills) {
+        expect(pill.firstElementChild?.getAttribute("data-slot")).toBe("badge");
+      }
+      expect(within(genres).queryByRole("button")).toBeNull();
+      expect(within(genres).queryByRole("link")).toBeNull();
+    });
+  }
+
+  for (const genre of [null, "", " , , "]) {
+    test(`omits empty genre rows for ${JSON.stringify(genre)}`, () => {
+      const view = render(
+        <RadioNowPlaying
+          metadata={{ ...metadata, genre }}
+          radio={radio}
+          variant="featured"
+        />
+      );
+      expect(view.queryByRole("list", { name: "Genres" })).toBeNull();
+      fireEvent.click(
+        view.getByRole("button", { name: "Details for Current Show" })
+      );
+      expect(
+        within(view.getByRole("dialog")).queryByRole("list", { name: "Genres" })
+      ).toBeNull();
+    });
+  }
+
+  for (const variant of ["featured", "compact"] as const) {
     test(`uses the same show identity and details in ${variant} mode`, () => {
       const view = render(
         <RadioNowPlaying metadata={metadata} radio={radio} variant={variant} />
@@ -107,12 +175,15 @@ describe("RadioNowPlaying", () => {
       expect(view.queryByText("Now playing")).toBeNull();
       expect(view.queryByText("Ready")).toBeNull();
       expect(view.queryByRole("status")).toBeNull();
-      const heading = view.getByRole("heading", { name: "Current Show" });
       const detailsButton = view.getByRole("button", {
         name: "Details for Current Show",
       });
-      expect(heading.compareDocumentPosition(detailsButton)).toBe(
-        Node.DOCUMENT_POSITION_FOLLOWING
+      expect(view.queryByText("Details")).toBeNull();
+      expect(
+        within(detailsButton).getByRole("img", { name: "Current Show artwork" })
+      ).toBeTruthy();
+      expect(detailsButton.getAttribute("title")).toBe(
+        "View details for Current Show"
       );
       expect(view.queryByText("Current show description.")).toBeNull();
       expect(
@@ -129,7 +200,9 @@ describe("RadioNowPlaying", () => {
       expect(details.getByText("Ambient")).toBeTruthy();
       expect(details.getByText("Current show description.")).toBeTruthy();
       expect(
-        details.getByRole("link", { name: "Open page" }).getAttribute("href")
+        details
+          .getByRole("link", { name: "Open source page" })
+          .getAttribute("href")
       ).toBe(metadata.itemUrl);
     });
   }
@@ -177,6 +250,70 @@ describe("RadioNowPlaying", () => {
     expect(view.getByText("Static station description.")).toBeTruthy();
   });
 
+  test("keeps broadcast and station information together without dropping either description", () => {
+    const view = render(
+      <RadioNowPlaying
+        metadata={{ ...metadata, bitrate: 192 }}
+        radio={{
+          ...radio,
+          countryTitle: "Germany",
+          placeTitle: "Berlin",
+          streamFormat: "hls",
+          websiteUrl: "https://radio.example/",
+        }}
+      />
+    );
+    fireEvent.click(
+      view.getByRole("button", { name: "Details for Current Show" })
+    );
+    const details = within(view.getByRole("dialog"));
+    expect(details.getByText("Current show description.")).toBeTruthy();
+    expect(details.getByText("Static station description.")).toBeTruthy();
+    expect(details.getByText("Berlin, Germany")).toBeTruthy();
+    expect(
+      details
+        .getByRole("link", { name: "Station website" })
+        .getAttribute("href")
+    ).toBe("https://radio.example/");
+    expect(
+      details
+        .getByText("Stream information")
+        .parentElement?.hasAttribute("open")
+    ).toBe(false);
+    expect(details.getByText("192 kbps")).toBeTruthy();
+    expect(details.getByText("HLS")).toBeTruthy();
+    expect(details.getByText("Host Name - Current Show")).toBeTruthy();
+    expect(details.getByText(metadata.streamUrl)).toBeTruthy();
+    expect(
+      details.getByText("https://radio.example/api/now-playing")
+    ).toBeTruthy();
+    expect(details.getByText(metadata.source)).toBeTruthy();
+    expect(
+      details.getByText(new Date(metadata.sampledAt).toLocaleString())
+    ).toBeTruthy();
+  });
+
+  test("does not repeat identical descriptions or render unsafe station links", () => {
+    const view = render(
+      <RadioNowPlaying
+        metadata={{
+          ...metadata,
+          stationDescription: "Static station description.",
+        }}
+        radio={{ ...radio, websiteUrl: "javascript:alert(1)" }}
+      />
+    );
+    fireEvent.click(
+      view.getByRole("button", { name: "Details for Current Show" })
+    );
+    const details = within(view.getByRole("dialog"));
+    expect(details.getAllByText("Static station description.")).toHaveLength(1);
+    expect(
+      details.queryByRole("heading", { name: "About this broadcast" })
+    ).toBeNull();
+    expect(details.queryByRole("link", { name: "Station website" })).toBeNull();
+  });
+
   test("recovers from a failed artwork URL when the show changes", () => {
     const view = render(<RadioNowPlaying metadata={metadata} radio={radio} />);
     fireEvent.error(view.getByRole("img", { name: "Current Show artwork" }));
@@ -194,6 +331,20 @@ describe("RadioNowPlaying", () => {
         .getByRole("img", { name: "Current Show artwork" })
         .getAttribute("src")
     ).toBe("https://radio.example/next.jpg");
+  });
+
+  test("opens details from the fallback artwork when no image is available", () => {
+    const view = render(
+      <RadioNowPlaying radio={{ ...radio, logoUrl: undefined }} />
+    );
+    const trigger = view.getByRole("button", {
+      name: "Details for Example Radio",
+    });
+    expect(trigger.getAttribute("type")).toBe("button");
+    expect(view.queryByText("Details")).toBeNull();
+    fireEvent.click(trigger);
+    expect(view.getByRole("dialog", { name: "Example Radio" })).toBeTruthy();
+    expect(view.getByText("Static station description.")).toBeTruthy();
   });
 
   test("keeps complete long text in Details without inventing a missing link", () => {
@@ -220,7 +371,9 @@ describe("RadioNowPlaying", () => {
     );
     const details = within(view.getByRole("dialog"));
     expect(details.getByRole("heading", { level: 2 }).textContent).toBe(title);
-    expect(details.getByText(description.trim()).textContent).toBe(description);
+    expect(details.getByText(description.trim()).textContent).toBe(
+      description.trim()
+    );
   });
 
   test("makes show details available from the Single player", () => {

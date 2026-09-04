@@ -1,6 +1,5 @@
 import { PlayPauseButton } from "@avoid.quest/ui/components/play-pause-button";
 import { Slider } from "@avoid.quest/ui/components/slider";
-import { cn } from "@avoid.quest/ui/lib/utils";
 import { Music2Icon, Volume2Icon, VolumeXIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import type { Radio } from "@/lib/audio";
@@ -23,7 +22,7 @@ type SharedPanelProps = {
 };
 
 export function NowPlayingPanel(props: SharedPanelProps) {
-  return <PlayerPanel {...props} mode="desktop" />;
+  return <PlayerPanel {...props} />;
 }
 
 type MobilePanelProps = SharedPanelProps & {
@@ -46,7 +45,7 @@ export function MobileNowPlayingPanel({
   }
 
   return (
-    <div className="shrink-0 border-border/50 border-b px-5 py-5 lg:hidden">
+    <div className="relative shrink-0 border-border/50 border-b px-5 pt-12 pb-5 lg:hidden">
       <PlayerPanel
         {...playerProps}
         actions={
@@ -58,7 +57,6 @@ export function MobileNowPlayingPanel({
             radio={radio}
           />
         }
-        mode="mobile"
         radio={radio}
       />
     </div>
@@ -74,11 +72,10 @@ function PlayerPanel({
   isMuted,
   metadata,
   actions,
-  mode,
   onPlayPause,
   onVolumeChange,
   onMuteToggle,
-}: SharedPanelProps & { mode: "desktop" | "mobile" }) {
+}: SharedPanelProps) {
   if (!radio) {
     return (
       <div className="flex flex-col items-center justify-center gap-3 py-24">
@@ -91,14 +88,9 @@ function PlayerPanel({
   }
 
   return (
-    <div
-      className={cn(
-        "mx-auto flex w-full max-w-lg flex-col gap-5",
-        mode === "mobile" && "pt-2"
-      )}
-    >
+    <div className="mx-auto flex w-full max-w-lg flex-col gap-5">
+      {actions ? <div className="absolute top-3 right-3">{actions}</div> : null}
       <RadioNowPlaying
-        actions={actions}
         isLoading={isLoading}
         metadata={metadata}
         radio={radio}

@@ -3,9 +3,12 @@ import { ScrollArea } from "@avoid.quest/ui/components/scroll-area";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import { AudioLinesIcon } from "lucide-react";
 import type { Radio } from "@/lib/audio";
+import { useRadioMetadata } from "@/lib/hooks/use-radio-metadata";
 import { isSessionRadio } from "@/lib/hooks/use-session-radios";
 import { RadioItemActions } from "../radio-item-actions";
+import { RadioListItemMetadata } from "../radio-list-item-metadata";
 import { RadioLogo } from "../radio-logo";
+import { RadioNowPlayingDetailsButton } from "../radio-now-playing";
 
 function StationLocationLabel({ radio }: { radio: Radio }) {
   if (radio.placeTitle) {
@@ -43,12 +46,13 @@ function StationRow({
   onToggle: (radio: Radio, enabled: boolean) => void;
 }) {
   const isSession = isSessionRadio(radio);
+  const { metadata } = useRadioMetadata({ poll: false, radio });
   const handleSelect = () => onSelect(radio);
 
   return (
     <div
       className={cn(
-        "group flex items-center gap-3 rounded-lg px-2.5 py-2.5 transition-colors",
+        "group flex w-full min-w-0 items-center gap-3 rounded-lg px-2.5 py-2.5 transition-colors",
         "hover:bg-muted/40",
         isSession && "border-l-2 border-l-[#00d084]/40"
       )}
@@ -76,22 +80,29 @@ function StationRow({
               </span>
             ) : null}
           </div>
-          <StationLocationLabel radio={radio} />
+          <RadioListItemMetadata
+            fallback={<StationLocationLabel radio={radio} />}
+            metadata={metadata}
+            radio={radio}
+          />
         </div>
       </button>
-      <div
-        className={cn(
-          "shrink-0",
-          !isSession && "opacity-0 group-hover:opacity-100"
-        )}
-      >
-        <RadioItemActions
-          onDelete={onDelete}
-          onEdit={onEdit}
-          onSave={onSave}
-          onToggle={onToggle}
-          radio={radio}
-        />
+      <div className="flex shrink-0 items-center gap-0.5">
+        <RadioNowPlayingDetailsButton metadata={metadata} radio={radio} />
+        <div
+          className={cn(
+            !isSession &&
+              "opacity-0 group-focus-within:opacity-100 group-hover:opacity-100"
+          )}
+        >
+          <RadioItemActions
+            onDelete={onDelete}
+            onEdit={onEdit}
+            onSave={onSave}
+            onToggle={onToggle}
+            radio={radio}
+          />
+        </div>
       </div>
     </div>
   );
@@ -137,9 +148,9 @@ export function StationList({
         {searchBar}
       </div>
 
-      <ScrollArea className="min-h-0 flex-1">
+      <ScrollArea className="min-h-0 min-w-0 flex-1 overflow-x-hidden">
         {allRadios.length > 0 ? (
-          <div className="flex flex-col gap-1 px-1.5 pb-1.5">
+          <div className="flex w-0 min-w-full flex-col gap-1 px-1.5 pb-1.5">
             {allRadios.map((radio) => (
               <StationRow
                 isCurrent={currentRadioId === radio.id}

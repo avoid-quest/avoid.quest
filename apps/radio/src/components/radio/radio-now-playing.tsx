@@ -10,7 +10,12 @@ import {
   DialogTrigger,
 } from "@avoid.quest/ui/components/dialog";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { ArrowUpRightIcon, ChevronDownIcon, XIcon } from "lucide-react";
+import {
+  ArrowUpRightIcon,
+  ChevronDownIcon,
+  InfoIcon,
+  XIcon,
+} from "lucide-react";
 import { useState } from "react";
 import type { Radio } from "@/lib/audio";
 import type { RadioNowPlaying as RadioNowPlayingMetadata } from "@/lib/metadata/types";
@@ -155,6 +160,37 @@ function getIdentity(
     .join(", ");
   const subtitle = artist || (hasNowPlaying ? null : location || null);
   return { hasNowPlaying, location, subtitle, title };
+}
+
+export function RadioNowPlayingDetailsButton({
+  radio,
+  metadata,
+  className,
+}: Pick<RadioNowPlayingProps, "radio" | "metadata" | "className">) {
+  const identity = getIdentity(radio, metadata);
+
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <button
+          aria-label={`Details for ${identity.title}`}
+          className={cn(
+            "flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            className
+          )}
+          title={`View details for ${identity.title}`}
+          type="button"
+        >
+          <InfoIcon aria-hidden="true" className="size-3.5" />
+        </button>
+      </DialogTrigger>
+      <NowPlayingDetails
+        identity={identity}
+        metadata={metadata}
+        radio={radio}
+      />
+    </Dialog>
+  );
 }
 
 export function RadioNowPlaying({

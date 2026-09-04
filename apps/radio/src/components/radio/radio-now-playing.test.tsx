@@ -60,11 +60,13 @@ afterEach(cleanup);
 let RadioNowPlaying: typeof import("./radio-now-playing")["RadioNowPlaying"];
 let NowPlayingPanel: typeof import("./single/single-player-now-playing")["NowPlayingPanel"];
 let MultipleRadioCard: typeof import("./multiple/multiple-radio-card")["MultipleRadioCard"];
+let StationList: typeof import("./single/single-player-station-list")["StationList"];
 
 beforeAll(async () => {
   ({ RadioNowPlaying } = await import("./radio-now-playing"));
   ({ NowPlayingPanel } = await import("./single/single-player-now-playing"));
   ({ MultipleRadioCard } = await import("./multiple/multiple-radio-card"));
+  ({ StationList } = await import("./single/single-player-station-list"));
 });
 
 const metadata: RadioNowPlayingMetadata = {
@@ -408,6 +410,44 @@ describe("RadioNowPlaying", () => {
     fireEvent.click(
       view.getByRole("button", { name: "Details for Current Show" })
     );
+    expect(view.getByText("Current show description.")).toBeTruthy();
+  });
+
+  test("previews current metadata and full details from the Single station list", () => {
+    const listedRadio = { ...radio, id: "example-radio" };
+    const client = new QueryClient();
+    client.setQueryData(
+      radioMetadataKeys.stream(radio.streamUrl, radio.metadataConfig),
+      {
+        data: metadata,
+        ok: true,
+      }
+    );
+    const view = render(
+      <QueryClientProvider client={client}>
+        <StationList
+          currentRadioId={listedRadio.id}
+          onDelete={noop}
+          onEdit={noop}
+          onSave={noop}
+          onSelect={noop}
+          onToggle={noop}
+          radios={[listedRadio]}
+          searchBar={null}
+          sessionRadios={[]}
+        />
+      </QueryClientProvider>
+    );
+
+    expect(
+      view.getByTitle(
+        "Now playing on Example Radio: Current Show · Host Name, Ambient"
+      ).textContent
+    ).toBe("Current Show · Host NameAmbient");
+    fireEvent.click(
+      view.getByRole("button", { name: "Details for Current Show" })
+    );
+    expect(view.getByRole("dialog", { name: "Current Show" })).toBeTruthy();
     expect(view.getByText("Current show description.")).toBeTruthy();
   });
 

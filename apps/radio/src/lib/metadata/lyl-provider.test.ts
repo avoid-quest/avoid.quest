@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { createMetadataKvFixture } from "./kv-test-fixture";
 import { tryLylApi } from "./lyl-provider";
 import { RadioMetadataValidationError } from "./upstream-fetch";
 
@@ -41,6 +42,66 @@ function providerInput(
 }
 
 describe("LYL metadata provider", () => {
+  test("caches episode descriptions separately from the live calendar and playback URLs", async () => {
+    const { kv, entries, put } = createMetadataKvFixture();
+    let time = SAMPLED_AT;
+    let liveCalls = 0;
+    let detailCalls = 0;
+    const read = (slug: string) =>
+      tryLylApi({
+        ...providerInput((_url, init) => {
+          const { query, variables } = JSON.parse(String(init?.body));
+          if (query.includes("query NowPlaying")) {
+            liveCalls += 1;
+            return Promise.resolve(
+              json({
+                data: {
+                  calendar: [currentEntry({ slug })],
+                  onair: {
+                    hls: "https://lyl.live/live.m3u8?token=live-secret",
+                    title: "Current Entry",
+                  },
+                },
+              })
+            );
+          }
+          detailCalls += 1;
+          return Promise.resolve(
+            json({
+              data: {
+                episodeBySlug: {
+                  description: "Details",
+                  links: [
+                    { url: "https://lyl.live/audio?token=episode-secret" },
+                  ],
+                  slug: variables.slug,
+                  title: "Current Entry",
+                },
+              },
+            })
+          );
+        }),
+        expiresAt: time + 60_000,
+        kv,
+        now: () => time,
+        sampledAt: time,
+      });
+    expect(await read("first")).toMatchObject({
+      stationDescription: "Details",
+    });
+    time += 60_000;
+    expect(await read("first")).toMatchObject({
+      sampledAt: time,
+      stationDescription: "Details",
+    });
+    expect(liveCalls).toBe(2);
+    expect(detailCalls).toBe(1);
+    await read("second");
+    expect(detailCalls).toBe(2);
+    expect(put.mock.calls[0]?.[2]).toEqual({ expirationTtl: 21_600 });
+    expect([...entries.values()].join()).not.toContain("token=");
+  });
+
   test("propagates primary calendar aborts", async () => {
     const error = new DOMException("aborted", "AbortError");
     await expect(

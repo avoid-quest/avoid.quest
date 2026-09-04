@@ -264,7 +264,10 @@ async function fetchJson(
 
   try {
     const response = await fetchImpl(url, {
-      headers: { Accept: "application/json" },
+      headers: {
+        Accept: "application/json",
+        "User-Agent": "avoid.quest/radio",
+      },
       signal: controller.signal,
     });
     if (!response.ok) {

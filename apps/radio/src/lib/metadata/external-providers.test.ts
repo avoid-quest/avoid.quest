@@ -9,7 +9,108 @@ import {
   tryResonanceExtraApi,
   tryShoutcastStatus,
 } from "./external-providers";
+import { createMetadataKvFixture } from "./kv-test-fixture";
 import { RadioMetadataValidationError } from "./upstream-fetch";
+
+test("NTS channels share a live feed and retain its original sampling time", async () => {
+  const { kv } = createMetadataKvFixture();
+  let time = 1000;
+  let calls = 0;
+  const read = (channel: "1" | "2") =>
+    tryNtsLiveApi(
+      {
+        expiresAt: time + 60_000,
+        fetchImpl: () => {
+          calls += 1;
+          return Promise.resolve(
+            Response.json({
+              results: [
+                { channel_name: "1", now: { broadcast_title: "First show" } },
+                { channel_name: "2", now: { broadcast_title: "Second show" } },
+              ],
+            })
+          );
+        },
+        kv,
+        now: () => time,
+        sampledAt: time,
+        streamUrl: `https://stream-relay-geo.ntslive.net/stream${channel}`,
+      },
+      channel
+    );
+  expect(await read("1")).toMatchObject({
+    sampledAt: 1000,
+    title: "First show",
+  });
+  time = 30_000;
+  expect(await read("2")).toMatchObject({
+    expiresAt: 61_000,
+    sampledAt: 1000,
+    streamUrl: "https://stream-relay-geo.ntslive.net/stream2",
+    title: "Second show",
+  });
+  expect(calls).toBe(1);
+  time = 61_000;
+  expect(await read("2")).toMatchObject({
+    expiresAt: 121_000,
+    sampledAt: 61_000,
+  });
+  expect(calls).toBe(2);
+});
+
+test("Sygma episode enrichment outlives live snapshots without storing playback fields", async () => {
+  const { kv, entries, put } = createMetadataKvFixture();
+  let time = 1000;
+  let episodeCalls = 0;
+  let liveCalls = 0;
+  const read = () =>
+    tryAirtimeLiveInfo(
+      {
+        expiresAt: time + 60_000,
+        fetchImpl: (url) => {
+          if (url.includes("backend.radio.syg.ma")) {
+            episodeCalls += 1;
+            return Promise.resolve(
+              Response.json({
+                description: "Description",
+                picture: { url: "https://radio.syg.ma/art.jpg" },
+                slug: "episode",
+                stream: "https://audio.example/signed?token=secret",
+                title: "Episode",
+              })
+            );
+          }
+          liveCalls += 1;
+          return Promise.resolve(
+            Response.json({
+              current: { metadata: { info_url: "episode" }, name: "Episode" },
+            })
+          );
+        },
+        kv,
+        now: () => time,
+        sampledAt: time,
+        streamUrl: "https://radio.syg.ma/audio/live",
+      },
+      ["https://radio.syg.ma/api/live-info"]
+    );
+  expect(await read()).toMatchObject({
+    sampledAt: 1000,
+    stationDescription: "Description",
+  });
+  time += 60_000;
+  expect(await read()).toMatchObject({
+    sampledAt: time,
+    stationDescription: "Description",
+  });
+  expect(liveCalls).toBe(2);
+  expect(episodeCalls).toBe(1);
+  expect(put.mock.calls[0]?.[2]).toEqual({ expirationTtl: 21_600 });
+  expect([...entries.values()].join()).not.toContain("token=secret");
+  time += 21_600_000;
+  await read();
+  expect(episodeCalls).toBe(2);
+});
 
 function json(data: unknown) {
   return new Response(JSON.stringify(data), {

@@ -1,11 +1,9 @@
-import {
-  type RadioBrowserStation,
-  searchRadioBrowser,
-} from "@avoid.quest/platforms/radiobrowser";
+import type { RadioBrowserStation } from "@avoid.quest/platforms/radiobrowser";
 import { probeBrowserReadableAudio } from "@/lib/audio/playback/browser-audio-probe";
 import {
   prepareRadioGardenSearchCandidate,
   type RadioGardenSearchCandidate,
+  searchRadioBrowser,
   searchRadioGarden,
 } from "@/lib/platform-client";
 import { stationIntake } from "./external-station-workflow";
@@ -108,10 +106,7 @@ export const productionStationDiscoveryAdapters: StationDiscoveryAdapters = {
     search: async (query, { limit, signal }) => {
       const candidates = await Promise.all(
         (
-          await searchRadioBrowser(query, {
-            limit,
-            signal,
-          })
+          await stopWaitingOnAbort(searchRadioBrowser(query, limit), signal)
         ).map(toRadioBrowserCandidate)
       );
       return candidates.filter(

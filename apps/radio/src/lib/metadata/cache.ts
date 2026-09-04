@@ -9,9 +9,69 @@ const MAX_CACHE_ENTRIES = 256;
 const cache = new Map<string, CacheEntry>();
 const inFlight = new Map<string, Promise<RadioMetadataResponse>>();
 
-export const RADIO_METADATA_SUCCESS_TTL_MS = 15_000;
+export const RADIO_METADATA_SUCCESS_TTL_MS = 60_000;
 export const RADIO_METADATA_UNSUPPORTED_TTL_MS = 10_000;
 export const RADIO_METADATA_FAILURE_TTL_MS = 5000;
+export const EPISODE_METADATA_TTL = 6 * 60 * 60;
+export const STATION_METADATA_TTL = 24 * 60 * 60;
+export const DIRECTORY_SEARCH_TTL = 10 * 60;
+
+export type MetadataKv = Pick<KVNamespace, "get" | "put">;
+
+export async function cacheMetadata<T>({
+  kv,
+  key,
+  ttl,
+  retrieve,
+  now = Date.now,
+  shouldCache = (value) => value !== null,
+  expiresAt,
+}: {
+  kv?: MetadataKv;
+  key: readonly unknown[];
+  ttl: number;
+  retrieve: () => Promise<T>;
+  now?: () => number;
+  shouldCache?: (value: T) => boolean;
+  expiresAt?: (value: T) => number;
+}): Promise<T> {
+  if (!kv) {
+    return retrieve();
+  }
+  // Hash all arguments to keep arbitrary URLs/queries within KV's key limit.
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(JSON.stringify(key))
+  );
+  const cacheKey = `metadata:v1:${Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0")
+  ).join("")}`;
+  try {
+    const entry = await kv.get<{ value: T; expiresAt: number }>(
+      cacheKey,
+      "json"
+    );
+    if (entry && entry.expiresAt > now()) {
+      return entry.value;
+    }
+  } catch {
+    // KV availability must not prevent provider retrieval.
+  }
+  const sampledAt = now();
+  const value = await retrieve();
+  const deadline = expiresAt?.(value) ?? sampledAt + ttl * 1000;
+  if (shouldCache(value) && deadline > now()) {
+    try {
+      await kv.put(cacheKey, JSON.stringify({ expiresAt: deadline, value }), {
+        // Logical expiry also handles snapshots sampled before this lookup.
+        expirationTtl: Math.max(60, Math.ceil((deadline - now()) / 1000)),
+      });
+    } catch {
+      // A failed or competing write must not discard valid provider data.
+    }
+  }
+  return value;
+}
 
 export function getRadioMetadataCacheKey(streamUrl: string): string {
   return new URL(streamUrl).toString();

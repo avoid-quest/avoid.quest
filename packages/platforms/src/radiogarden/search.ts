@@ -1,5 +1,7 @@
 import type {
+  RadioGardenItemError,
   RadioGardenItemResponse,
+  RadioGardenMetadata,
   RadioGardenSearchResult,
 } from "./types.js";
 
@@ -217,9 +219,11 @@ export async function getRadioGardenSuggestions(): Promise<
   return results.slice(0, 16);
 }
 
-export async function getRadioGardenItem(
+export async function getRadioGardenMetadata(
   channelId: string
-): Promise<RadioGardenItemResponse> {
+): Promise<
+  RadioGardenItemError | { success: true; metadata: RadioGardenMetadata }
+> {
   let metaResponse: Response;
   try {
     metaResponse = await fetch(
@@ -257,7 +261,6 @@ export async function getRadioGardenItem(
   }
 
   const channel = metaData.data;
-  const streamUrl = await resolveRadioGardenStream(channelId);
 
   return {
     metadata: {
@@ -272,7 +275,15 @@ export async function getRadioGardenItem(
       url: `https://radio.garden${channel.url}`,
       website: channel.website || undefined,
     },
-    streamUrl,
     success: true,
   };
+}
+
+export async function getRadioGardenItem(
+  channelId: string
+): Promise<RadioGardenItemResponse> {
+  const result = await getRadioGardenMetadata(channelId);
+  return result.success
+    ? { ...result, streamUrl: await resolveRadioGardenStream(channelId) }
+    : result;
 }

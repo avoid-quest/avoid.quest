@@ -48,6 +48,7 @@ Server functions (TanStack Start `createServerFn`):
 | `utils/platform.functions.ts` | Bandcamp, SoundCloud, and Radio Garden metadata/URL resolution |
 | `utils/search.functions.ts` | Bandcamp and SoundCloud search |
 | `utils/radio-garden.functions.ts` | Radio Garden search and suggestions |
+| `utils/radio-browser.functions.ts` | Shared Radio Browser directory search |
 
 Audio bytes never pass through the app server. Static audio URLs and M3U/PLS
 playlists are resolved directly in the browser. Bandcamp's fresh, validated
@@ -136,6 +137,33 @@ should be configured with Cloudflare account-level custom domains or routes
 outside this repository.
 
 Workers Builds PR comments should include the branch preview URL after upload.
+
+### Shared radio metadata
+
+The radio Worker uses one `RADIO_METADATA` KV binding. Live snapshots expire
+after 60 seconds; episode/show enrichment after six hours; Radio Garden station
+attributes after 24 hours; and Radio Browser/Radio Garden searches after ten
+minutes. NTS channels reuse one live feed. Fields returned in the live feed
+retain its 60-second lifetime even when they include artwork or station details.
+
+Cache hits preserve the original `sampledAt` and `expiresAt`. KV is eventually
+consistent: propagation can take 60 seconds or longer, and concurrent misses
+can repeat provider calls. Reads and writes are best effort; provider failures
+are not stored as successful empty searches. The existing local now-playing
+cache and in-flight deduplication remain, capped by the snapshot's expiry.
+
+Episode enrichment stores descriptive fields. Radio Garden resolves playback
+URLs on each request, outside the station cache. Radio Browser searches with
+query-bearing or credential-bearing playback URLs bypass KV because these may
+carry signatures or sessions. Browser playback probes and player state stay local.
+
+Wrangler's supported [automatic provisioning](https://developers.cloudflare.com/changelog/post/2025-10-24-automatic-resource-provisioning/)
+creates the namespace on the next authorized deployment from the binding-only
+entry in `wrangler.jsonc`. Local development uses local KV. If provisioning is
+disabled in the release environment, create one namespace and add its real `id`
+to that entry before deployment. No remote namespace or deployed cache behavior
+was verified for this change. See [KV expiry and consistency](https://developers.cloudflare.com/kv/api/write-key-value-pairs/)
+and [Radio Browser's provider requirements](https://api.radio-browser.info/).
 
 ## Development
 

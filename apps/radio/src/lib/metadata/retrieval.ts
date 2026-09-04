@@ -1,6 +1,6 @@
 import { captureError } from "@avoid.quest/error";
 import type { StreamUrlValidationFailure } from "@/lib/proxy/url-policy";
-import { RADIO_METADATA_SUCCESS_TTL_MS } from "./cache";
+import { type MetadataKv, RADIO_METADATA_SUCCESS_TTL_MS } from "./cache";
 import {
   type ExternalMetadataProviderInput,
   tryAirtimeLiveInfo,
@@ -39,6 +39,7 @@ import {
 type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
 export type RadioMetadataRetrievalDependencies = {
+  kv?: MetadataKv;
   captureError?: typeof captureError;
   fetchFollowingPublicRedirects: MetadataUpstreamFetch;
   now?: () => number;
@@ -159,6 +160,7 @@ function isAbortError(error: unknown): boolean {
 }
 
 export function createRadioMetadataRetrieval({
+  kv,
   captureError: captureErrorImpl = captureError,
   fetchFollowingPublicRedirects,
   now = Date.now,
@@ -284,6 +286,8 @@ export function createRadioMetadataRetrieval({
     const input = {
       expiresAt,
       fetchImpl: providerFetch,
+      kv,
+      now,
       sampledAt,
       streamUrl,
     };

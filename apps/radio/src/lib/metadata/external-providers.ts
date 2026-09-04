@@ -1,3 +1,9 @@
+import {
+  cacheMetadata,
+  EPISODE_METADATA_TTL,
+  type MetadataKv,
+  RADIO_METADATA_SUCCESS_TTL_MS,
+} from "./cache";
 import { cleanMetadataText, parseRadioTitle } from "./title-parser";
 import type { RadioMetadataSource, RadioNowPlaying } from "./types";
 import { RadioMetadataValidationError } from "./upstream-fetch";
@@ -35,6 +41,8 @@ const TRAILING_SLASH_PATTERN = /\/$/;
 const WHITESPACE_PATTERN = /\s+/g;
 
 export type ExternalMetadataProviderInput = {
+  kv?: MetadataKv;
+  now?: () => number;
   fetchImpl: FetchLike;
   streamUrl: string;
   sampledAt: number;
@@ -896,6 +904,46 @@ async function enrichIprDescription(
   }
 }
 
+async function cachedAirtimeEnrichment(
+  input: ExternalMetadataProviderInput,
+  data: AirtimeLiveInfo,
+  nowPlaying: RadioNowPlaying
+): Promise<RadioNowPlaying> {
+  const track = data.tracks?.current ?? data.current;
+  const fields = [
+    "artworkUrl",
+    "itemUrl",
+    "stationDescription",
+    "genre",
+  ] as const;
+  const details = await cacheMetadata({
+    key: [
+      new URL(input.streamUrl).hostname,
+      "episode-details",
+      nowPlaying.title,
+      fields.map((field) => nowPlaying[field]),
+      getAirtimeEpisodeDate(track?.metadata),
+    ],
+    kv: input.kv,
+    now: input.now,
+    retrieve: async () => {
+      const enriched = await enrichAirtimeNowPlaying({
+        ...input,
+        data,
+        nowPlaying,
+      });
+      return Object.fromEntries(
+        fields
+          .filter((field) => enriched[field] !== nowPlaying[field])
+          .map((field) => [field, enriched[field]])
+      );
+    },
+    shouldCache: (value) => Object.keys(value).length > 0,
+    ttl: EPISODE_METADATA_TTL,
+  });
+  return { ...nowPlaying, ...details };
+}
+
 async function enrichAirtimeNowPlaying(input: {
   data: AirtimeLiveInfo;
   fetchImpl: FetchLike;
@@ -1192,39 +1240,61 @@ export async function tryAirtimeLiveInfo(
       streamUrl: input.streamUrl,
     });
     return nowPlaying
-      ? await enrichAirtimeNowPlaying({
-          data,
-          fetchImpl: input.fetchImpl,
-          nowPlaying,
-          streamUrl: input.streamUrl,
-        })
+      ? await cachedAirtimeEnrichment(input, data, nowPlaying)
       : null;
   });
 }
+
+const NTS_LIVE_URL = "https://www.nts.live/api/v2/live";
 
 export async function tryNtsLiveApi(
   input: ExternalMetadataProviderInput,
   requestedChannel?: "1" | "2"
 ): Promise<RadioNowPlaying | null> {
-  let result: Awaited<ReturnType<typeof fetchObjectJson>>;
   try {
-    result = await fetchObjectJson(
-      input.fetchImpl,
-      "https://www.nts.live/api/v2/live"
-    );
+    const channels = await cacheMetadata({
+      expiresAt: (value) =>
+        value?.find((channel) => channel !== null)?.expiresAt ?? 0,
+      key: ["nts", "live-feed", NTS_LIVE_URL],
+      kv: input.kv,
+      now: input.now,
+      retrieve: async () => {
+        const result = await fetchObjectJson(input.fetchImpl, NTS_LIVE_URL);
+        if (!result) {
+          return null;
+        }
+        return (["1", "2"] as const).map((channel) =>
+          normalizeNtsLiveApi(
+            { ...input, streamUrl: "" },
+            result.data,
+            channel,
+            result.response.url || NTS_LIVE_URL
+          )
+        );
+      },
+      shouldCache: (value) => !!value?.some(Boolean),
+      ttl: RADIO_METADATA_SUCCESS_TTL_MS / 1000,
+    });
+    const selectedChannel =
+      requestedChannel ??
+      (new URL(input.streamUrl).pathname === "/stream2" ? "2" : "1");
+    const result = channels?.[selectedChannel === "1" ? 0 : 1];
+    return result ? { ...result, streamUrl: input.streamUrl } : null;
   } catch (error) {
     if (shouldPropagateFetchError(error)) {
       throw error;
     }
     return null;
   }
-  if (!result) {
-    return null;
-  }
-  const channelName =
-    requestedChannel ??
-    (new URL(input.streamUrl).pathname === "/stream2" ? "2" : "1");
-  const { results } = result.data as { results?: unknown };
+}
+
+function normalizeNtsLiveApi(
+  input: ExternalMetadataProviderInput,
+  data: object,
+  channelName: "1" | "2",
+  resolvedUrl: string
+): RadioNowPlaying | null {
+  const { results } = data as { results?: unknown };
   const channel = Array.isArray(results)
     ? results.find(
         (item) =>
@@ -1269,7 +1339,7 @@ export async function tryNtsLiveApi(
     genre: asString(now?.embeds?.details?.genres?.[0]?.value),
     itemUrl,
     rawTitle: title,
-    resolvedUrl: result.response.url || "https://www.nts.live/api/v2/live",
+    resolvedUrl,
     sampledAt: input.sampledAt,
     source: "nts-live-api",
     stationDescription: asString(now?.embeds?.details?.description),
@@ -1405,7 +1475,7 @@ export async function tryHkcrSchedule(
     return null;
   }
   const showId = asString(entry.show);
-  const show = showId ? await fetchHkcrShow(input.fetchImpl, showId) : null;
+  const show = showId ? await fetchHkcrShow(input, showId) : null;
   const slug = asString(show?.slug);
   const showUrl = slug
     ? new URL(
@@ -1447,16 +1517,39 @@ export async function tryHkcrSchedule(
 }
 
 async function fetchHkcrShow(
-  fetchImpl: FetchLike,
+  input: ExternalMetadataProviderInput,
   showId: string
 ): Promise<HkcrShow | null> {
   try {
-    const result = await fetchObjectJson(
-      fetchImpl,
-      `${HKCR_SHOW_URL}/${encodeURIComponent(showId)}`
-    );
-    const candidate = result?.data as HkcrShow | undefined;
-    return candidate?._id === showId ? candidate : null;
+    return await cacheMetadata({
+      key: ["hkcr", "show-details-v2", HKCR_SHOW_URL, showId],
+      kv: input.kv,
+      now: input.now,
+      retrieve: async () => {
+        const result = await fetchObjectJson(
+          input.fetchImpl,
+          `${HKCR_SHOW_URL}/${encodeURIComponent(showId)}`
+        );
+        const candidate = result?.data as HkcrShow | undefined;
+        if (candidate?._id !== showId) {
+          return null;
+        }
+        return {
+          content: plainText(candidate.content),
+          medium: { url: asPublicUrl(candidate.medium?.url) },
+          picture: { url: asPublicUrl(candidate.picture?.url) },
+          resident: {
+            name: asString(candidate.resident?.name),
+            slug: asString(candidate.resident?.slug),
+          },
+          slug: asString(candidate.slug),
+          tags: candidate.tags?.map((tag) => ({ name: asString(tag.name) })),
+          thumbnail: { url: asPublicUrl(candidate.thumbnail?.url) },
+          title: asString(candidate.title),
+        };
+      },
+      ttl: EPISODE_METADATA_TTL,
+    });
   } catch (error) {
     if (error instanceof RadioMetadataValidationError) {
       throw error;

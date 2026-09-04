@@ -1,12 +1,13 @@
 // Import from subpath to avoid pulling in incompatible deps (cheerio etc.)
+import { env } from "cloudflare:workers";
 import { type AppResult, runServerFn } from "@avoid.quest/error";
 import {
   type RadioGardenSearchResult,
   resolveRadioGardenStream,
-  searchRadioGarden,
 } from "@avoid.quest/platforms/radiogarden/search";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
+import { searchCachedRadioGarden } from "@/lib/stations/directory-cache";
 import { rateLimitMiddleware } from "./middleware";
 
 const RadioGardenSearchSchema = z.object({
@@ -46,7 +47,10 @@ export const radioGardenSearch = createServerFn({ method: "POST" })
         },
         operation: "radioGardenSearch",
         run: async () => {
-          const results = await searchRadioGarden(data.query);
+          const results = await searchCachedRadioGarden(
+            env.RADIO_METADATA,
+            data.query
+          );
           const candidates = await Promise.all(
             results.slice(0, RADIO_GARDEN_SEARCH_LIMIT).map(async (result) => {
               try {

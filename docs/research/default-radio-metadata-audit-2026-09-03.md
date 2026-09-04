@@ -8,7 +8,7 @@ Only the repository and first-party station sites, APIs, and stream headers were
 
 The matrix records the working tree as observed during the audit, including the uncommitted provider work that was already present. Compared with `HEAD`, that work added HKCR schedule lookup, Sygma artwork enrichment, Cashmere episode enrichment, and IPR search enrichment in [`external-providers.ts`](../../apps/radio/src/lib/metadata/external-providers.ts). Those additions are marked `WT`.
 
-All actionable findings below were subsequently addressed in the same working tree: Resonance Extra, LYL, and Radio Alhara now use dedicated first-party providers; Sygma, Cashmere, and IPR have conservative first-party enrichment; static station names are filled; and every default has a validated non-`none` metadata strategy. The remaining null fields are upstream-limited: HKCR does not publish a live show ID consistently, Radio Alhara publishes no public item URL or artwork, Sygma publishes no structured host, and ambiguous IPR replays cannot be linked to an exact episode safely.
+The initial implementation added dedicated providers, conservative enrichment, station names, and a validated non-`none` metadata strategy for every default. That wiring did not establish complete enrichment. A September 4 follow-up found additional first-party data that the providers never requested, documented below. Missing fields must be checked against the station's current sources before classifying them as upstream limitations.
 
 `Actual item` means a page for the programme or episode that is currently playing. A resident, series, or station page is not counted as an actual item.
 
@@ -69,7 +69,7 @@ The page's `__NEXT_DATA__.props.pageProps.data` also contains `description` and 
 
 - [NTS live API](https://www.nts.live/api/v2/live) provided broadcast title, details link, description, artwork, and genre for both channels. The generated [Channel 1 episode](https://www.nts.live/shows/trevorjackson/episodes/trevor-jackson-19th-march-2020) and [Channel 2 episode](https://www.nts.live/shows/the-nts-guide-to/episodes/the-nts-guide-to-cowpunk-23rd-september-2025) both returned `200`. Add static channel station names; the sampled Channel 2 payload had no separate host, so null is accurate.
 - [Radio BlackOut listening API](https://radioblackout.org/api/listening) provided the current title, excerpt, featured image, and the actual [Cosmic Mamba show](https://radioblackout.org/shows/blackmamba/). Add the static station name. The source did not expose a structured host.
-- [HKCR current schedule](https://cms.hkcr.live/schedule/current) had no entry covering 23:55 HKT, so a null result was correct. Scheduled entries provide title, resident, description, and picture/thumbnail, but every sampled current entry had `show: null`. Historic entries can include a show ID; `GET https://cms.hkcr.live/shows/{id}` then provides a slug for `https://hkcr.live/shows/{slug}`. Until `show` is populated during or after a broadcast, the resident page is an honest fallback, not an actual show or episode.
+- [HKCR current schedule](https://cms.hkcr.live/schedule/current) had no entry covering 23:55 HKT. This alone did not establish an off-air window: the initial audit missed the separate replay schedule used by HKCR's frontend. Scheduled entries provide title, resident, description, and picture/thumbnail, but every sampled current entry had `show: null`. Entries with a show ID can resolve their full record through `GET https://cms.hkcr.live/shows/{id}`.
 
 ## Assignment order
 
@@ -81,4 +81,17 @@ The page's `__NEXT_DATA__.props.pageProps.data` also contains `description` and 
 6. Sygma description enrichment.
 7. Static station-name fill for Sygma, Cashmere, NTS 1/2, Radio BlackOut, and IPR.
 
-HKCR's exact item link and Radio Alhara's artwork, description, and item link are presently limited by upstream data. They should not be fabricated.
+## Follow-up, September 4
+
+An independent sweep traced all ten curated stations through their configured provider and compared the results with current first-party sources. All ten were already wired. Four provider omissions accounted for missing published enrichment:
+
+- **HKCR:** `/schedule/current` omitted an active replay. The site's frontend also requests [`/replay-slots/range`](https://cms.hkcr.live/replay-slots/range?startDate=2026-09-04&endDate=2026-09-05). The 13:00–14:00 UTC slot identifies show `6897aaf312134072c4dd1686`; its [show record](https://cms.hkcr.live/shows/6897aaf312134072c4dd1686) supplies the title, resident, artwork, description, genres, and public slug. The provider needs both live and replay schedules, with current-window and show-ID checks.
+- **Cashmere:** the live title `Circles in Space by Radiocircolo 13.05.2026.mp3` did not match an indexed episode. A unique exact [show page](https://cashmereradio.com/shows/circles-in-space-by-radiocircolo/) publishes artwork and a description. Removing the filename suffix and terminal broadcast date permits a conservative show fallback without linking a different dated episode.
+- **Internet Public Radio:** search results identified the dated `Idle Not Idle` episode and its artwork, but the provider never fetched the selected Sanity document's description. The selected record publishes "Randomness selections compiled by music collector from Porto, Diogo Ferreira." Sanity's [`pt::text`](https://www.sanity.io/docs/specifications/groq-functions) projects Portable Text into plain text without importing playback fields.
+- **Radio BlackOut:** `/api/listening` supplies a truncated excerpt containing HTML entities. The matching [HARRAGA show record](https://radioblackout.org/wp-json/wp/v2/shows?slug=harraga) supplies full HTML content and tags. The existing Details panel displayed the encoded excerpt literally. Fetching the verified show record and normalizing its text fixes this without changing the UI.
+
+Sygma, LYL, both NTS channels, and Resonance Extra returned current titles, artwork, public item links, and programme descriptions in the follow-up sweep. These observations do not guarantee every future broadcast has every field.
+
+Radio Alhara's current [now-playing feed](https://ch2.radioalhara.net/api/now-playing) supplied the episode title, show title, and artist, with `episodeId: null` and no artwork, description, or public item URL. The [official frontend](https://www.radioalhara.net/) used those same fields and static station artwork. Those absent programme fields remain an observed upstream limit. Ambiguous or date-mismatched IPR episodes remain unlinked; a matching show must not be presented as an exact episode.
+
+After the provider fixes, a separate live sweep ran every configured default through `createRadioMetadataRetrieval` and `createMetadataUpstreamFetch(fetch)`, including real DNS/redirect validation and the existing eight-second timeout. All ten returned their configured provider successfully. Nine returned artwork, a public item link, and a programme description; Alhara returned its available text fields. The four repaired paths returned descriptions of 253 characters for Cashmere, 77 for IPR, 692 for HKCR, and 1,191 for BlackOut. This validates the local implementation against live sources; deployed verification must identify the tested commit separately.

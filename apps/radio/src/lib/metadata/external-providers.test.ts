@@ -970,7 +970,7 @@ describe("external radio metadata providers", () => {
         calls.push(url);
         return Promise.resolve(
           url === "https://cms.hkcr.live/shows/show-id"
-            ? json({ slug: "actual-show" })
+            ? json({ _id: "show-id", slug: "actual-show" })
             : json([
                 {
                   date: "2026-09-03",
@@ -988,7 +988,7 @@ describe("external radio metadata providers", () => {
     });
 
     expect(calls).toEqual([
-      "https://cms.hkcr.live/schedule/current",
+      "https://cms.hkcr.live/schedule/range?startDate=2026-09-02&endDate=2026-09-04",
       "https://cms.hkcr.live/shows/show-id",
     ]);
     expect(result?.itemUrl).toBe("https://hkcr.live/shows/actual-show");

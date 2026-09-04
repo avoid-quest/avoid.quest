@@ -13,9 +13,11 @@ const AIRTIME_STATION_NAMES: Record<string, string> = {
 const CASHMERE_GRAPHQL_URL = "https://backstage.cashmereradio.com/graphql";
 const CASHMERE_REST_URL = "https://backstage.cashmereradio.com/wp-json/wp/v2";
 const CASHMERE_EPISODE_PATH_PATTERN = /^\/episode\/([^/]+)\/?$/;
-const CASHMERE_SHOW_PATH_PATTERN = /^\/shows\/([^/]+)\/?$/;
+const SHOW_PATH_PATTERN = /^\/shows\/([^/]+)\/?$/;
+const AUDIO_EXTENSION_PATTERN = /\.(?:mp3|wav|flac|m4a|aac|ogg)$/i;
+const CASHMERE_RECORDING_DATE_PATTERN = /\s+\d{2}\.\d{2}\.\d{4}$/;
 const DATE_STAMP_PATTERN = /^(\d{2})\.(\d{2})\.(\d{2}|\d{4})$/;
-const HKCR_SCHEDULE_URL = "https://cms.hkcr.live/schedule/current";
+const HKCR_SCHEDULE_URL = "https://cms.hkcr.live/schedule/range";
 const HKCR_SHOW_URL = "https://cms.hkcr.live/shows";
 const HKCR_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const HKCR_TIME_PATTERN = /^\d{2}:\d{2}$/;
@@ -97,9 +99,11 @@ type CashmereShow = {
   content?: { rendered?: unknown };
   link?: unknown;
   slug?: unknown;
+  title?: { rendered?: unknown };
 };
 
 type IprSearchResult = {
+  _id?: unknown;
   _type?: unknown;
   date?: unknown;
   image?: { asset?: { _ref?: unknown } };
@@ -121,6 +125,14 @@ type BlackoutListening = {
   excerpt?: unknown;
   featured_media?: unknown;
   link?: unknown;
+};
+
+type BlackoutShow = {
+  title?: unknown;
+  slug?: unknown;
+  link?: unknown;
+  content?: unknown;
+  tags?: unknown;
 };
 
 type AzuraCastNowPlaying = {
@@ -163,9 +175,23 @@ type HkcrScheduleEntry = {
   startTime?: unknown;
   thumbnail?: { url?: unknown };
   title?: unknown;
+  status?: unknown;
 };
 
-type HkcrShow = { slug?: unknown };
+type HkcrShow = HkcrScheduleEntry & {
+  _id?: unknown;
+  content?: unknown;
+  medium?: { url?: unknown };
+  slug?: unknown;
+  tags?: { name?: unknown }[];
+};
+
+type HkcrReplaySlot = {
+  start?: unknown;
+  end?: unknown;
+  show?: unknown;
+  replay?: { title?: unknown; show?: unknown };
+};
 
 type ResonanceExtraSchedule = {
   now?: {
@@ -531,7 +557,7 @@ async function enrichCashmereNowPlaying(
     body: JSON.stringify({
       query:
         "query SearchEpisode($q: String!) { episodes(where: {search: $q}, first: 10) { nodes { databaseId title uri featuredImage { node { sourceUrl } } } } }",
-      variables: { q: nowPlaying.title },
+      variables: { q: nowPlaying.title.replace(AUDIO_EXTENSION_PATTERN, "") },
     }),
     headers: { "Content-Type": "application/json" },
     method: "POST",
@@ -541,10 +567,12 @@ async function enrichCashmereNowPlaying(
     | undefined;
   const nodes = responseData?.data?.episodes?.nodes;
   const matches = nodes?.filter(
-    (node) => comparableTitle(node.title) === comparableTitle(nowPlaying.title)
+    (node) =>
+      comparableTitle(node.title) ===
+      comparableTitle(nowPlaying.title?.replace(AUDIO_EXTENSION_PATTERN, ""))
   );
   if (matches?.length !== 1) {
-    return nowPlaying;
+    return await enrichCashmereShowByTitle(fetchImpl, nowPlaying);
   }
 
   const [episode] = matches;
@@ -561,6 +589,46 @@ async function enrichCashmereNowPlaying(
     itemUrl: nowPlaying.itemUrl ?? itemUrl,
   };
   return await enrichCashmereEpisodeRecord(fetchImpl, enriched, episode);
+}
+
+async function enrichCashmereShowByTitle(
+  fetchImpl: FetchLike,
+  nowPlaying: RadioNowPlaying
+): Promise<RadioNowPlaying> {
+  const title = nowPlaying.title
+    ?.replace(AUDIO_EXTENSION_PATTERN, "")
+    .replace(CASHMERE_RECORDING_DATE_PATTERN, "")
+    .trim();
+  if (!title || nowPlaying.itemUrl) {
+    return nowPlaying;
+  }
+  const url = new URL(`${CASHMERE_REST_URL}/pages`);
+  url.searchParams.set("search", title);
+  url.searchParams.set("per_page", "20");
+  url.searchParams.set("_embed", "wp:featuredmedia");
+  url.searchParams.set("_fields", "title,slug,link,content,_links,_embedded");
+  const result = await fetchObjectJson(fetchImpl, url.toString());
+  const matches = Array.isArray(result?.data)
+    ? (result.data as CashmereShow[]).filter(
+        (candidate) =>
+          comparableTitle(candidate.title?.rendered) === comparableTitle(title)
+      )
+    : [];
+  const show = matches.length === 1 ? matches[0] : null;
+  const slug = asString(show?.slug);
+  const pathname = slug ? `/shows/${encodeURIComponent(slug)}/` : null;
+  if (!(show && pathname && cashmereBackendLinkMatches(show.link, pathname))) {
+    return nowPlaying;
+  }
+  return {
+    ...nowPlaying,
+    artworkUrl:
+      nowPlaying.artworkUrl ??
+      asPublicUrl(show._embedded?.["wp:featuredmedia"]?.[0]?.source_url),
+    itemUrl: new URL(pathname, "https://cashmereradio.com").toString(),
+    stationDescription:
+      nowPlaying.stationDescription ?? plainText(show.content?.rendered),
+  };
 }
 
 async function enrichCashmereEpisodeRecord(
@@ -625,7 +693,7 @@ function getCashmereShowUrl(
 ): { pathname: string; slug: string } | null {
   try {
     const url = value ? new URL(value) : null;
-    const match = url?.pathname.match(CASHMERE_SHOW_PATH_PATTERN);
+    const match = url?.pathname.match(SHOW_PATH_PATTERN);
     return url?.protocol === "https:" &&
       url.hostname === "cashmereradio.com" &&
       match?.[1]
@@ -653,9 +721,9 @@ function cashmereBackendLinkMatches(value: unknown, pathname: string): boolean {
 function plainText(value: unknown): string | null {
   const text = asString(value);
   return text
-    ? cleanMetadataText(
-        text.replace(HTML_TAG_PATTERN, " ").replace(WHITESPACE_PATTERN, " ")
-      ) || null
+    ? cleanMetadataText(text.replace(HTML_TAG_PATTERN, " "))
+        .replace(WHITESPACE_PATTERN, " ")
+        .trim() || null
     : null;
 }
 
@@ -719,7 +787,12 @@ async function enrichIprNowPlaying(
   nowPlaying: RadioNowPlaying,
   metadata: AirtimeTrack["metadata"]
 ): Promise<RadioNowPlaying> {
-  if ((nowPlaying.artworkUrl && nowPlaying.itemUrl) || !nowPlaying.title) {
+  if (
+    (nowPlaying.artworkUrl &&
+      nowPlaying.itemUrl &&
+      nowPlaying.stationDescription) ||
+    !nowPlaying.title
+  ) {
     return nowPlaying;
   }
   const title = nowPlaying.title.replace(IPR_REPLAY_SUFFIX_PATTERN, "").trim();
@@ -752,7 +825,7 @@ async function enrichIprNowPlaying(
     return type === "resident" || type === "series";
   });
   const selected = episode ?? (shows.length === 1 ? shows[0] : undefined);
-  return selected
+  const enriched = selected
     ? {
         ...nowPlaying,
         artworkUrl: nowPlaying.artworkUrl ?? getIprArtworkUrl(selected),
@@ -760,6 +833,60 @@ async function enrichIprNowPlaying(
           nowPlaying.itemUrl ?? (episode ? getIprItemUrl(episode) : null),
       }
     : nowPlaying;
+  return selected
+    ? await enrichIprDescription(fetchImpl, enriched, selected)
+    : enriched;
+}
+
+async function enrichIprDescription(
+  fetchImpl: FetchLike,
+  nowPlaying: RadioNowPlaying,
+  selected: IprSearchResult
+): Promise<RadioNowPlaying> {
+  const id = asString(selected._id);
+  if (!id || nowPlaying.stationDescription) {
+    return nowPlaying;
+  }
+  const url = new URL(
+    "https://7rbo2iih.api.sanity.io/v2024-01-01/data/query/production"
+  );
+  url.searchParams.set(
+    "query",
+    '*[_id == $id][0]{_id,_type,slug,title,name,"description":pt::text(description)}'
+  );
+  url.searchParams.set("$id", JSON.stringify(id));
+  try {
+    const response = await fetchObjectJson(fetchImpl, url.toString());
+    const record = (
+      response?.data as
+        | {
+            result?: {
+              _id?: unknown;
+              _type?: unknown;
+              slug?: { current?: unknown };
+              title?: unknown;
+              name?: unknown;
+              description?: unknown;
+            };
+          }
+        | undefined
+    )?.result;
+    if (
+      record?._id !== id ||
+      record._type !== selected._type ||
+      asString(record.slug?.current) !== asString(selected.slug?.current) ||
+      comparableTitle(record.title ?? record.name) !==
+        comparableTitle(selected.label)
+    ) {
+      return nowPlaying;
+    }
+    return { ...nowPlaying, stationDescription: asString(record.description) };
+  } catch (error) {
+    if (error instanceof RadioMetadataValidationError) {
+      throw error;
+    }
+    return nowPlaying;
+  }
 }
 
 async function enrichAirtimeNowPlaying(input: {
@@ -1192,6 +1319,9 @@ function findCurrentHkcrEntry(
   }
   return (
     data.find((candidate) => {
+      if (asString(candidate.status)?.startsWith("cancelled")) {
+        return false;
+      }
       const window = getHkcrScheduleWindow(candidate as HkcrScheduleEntry);
       return window && sampledAt >= window.start && sampledAt < window.end;
     }) ?? null
@@ -1230,7 +1360,7 @@ function normalizeHkcrSchedule(input: {
     resolvedUrl: input.resolvedUrl,
     sampledAt: input.sampledAt,
     source: "hkcr-schedule",
-    stationDescription: asString(entry.description),
+    stationDescription: plainText(entry.description),
     stationName: "HKCR",
     streamUrl: input.streamUrl,
   });
@@ -1248,7 +1378,10 @@ export async function tryHkcrSchedule(
 ): Promise<RadioNowPlaying | null> {
   let result: Awaited<ReturnType<typeof fetchObjectJson>>;
   try {
-    result = await fetchObjectJson(input.fetchImpl, HKCR_SCHEDULE_URL);
+    result = await fetchObjectJson(
+      input.fetchImpl,
+      hkcrRangeUrl(HKCR_SCHEDULE_URL, input.sampledAt, -1)
+    );
   } catch (error) {
     if (shouldPropagateFetchError(error)) {
       throw error;
@@ -1258,39 +1391,121 @@ export async function tryHkcrSchedule(
   if (!result) {
     return null;
   }
-  const entry = findCurrentHkcrEntry(result.data, input.sampledAt);
+  const entry =
+    findCurrentHkcrEntry(result.data, input.sampledAt) ??
+    (await findCurrentHkcrReplay(input));
   if (!entry) {
     return null;
   }
-  let showUrl: string | null = null;
   const showId = asString(entry.show);
-  if (showId) {
-    try {
-      const showResult = await fetchObjectJson(
-        input.fetchImpl,
-        `${HKCR_SHOW_URL}/${encodeURIComponent(showId)}`
-      );
-      const slug = asString((showResult?.data as HkcrShow | undefined)?.slug);
-      showUrl = slug
-        ? new URL(
-            `/shows/${encodeURIComponent(slug)}`,
-            "https://hkcr.live"
-          ).toString()
-        : null;
-    } catch (error) {
-      if (error instanceof RadioMetadataValidationError) {
-        throw error;
-      }
-    }
-  }
-  return normalizeHkcrSchedule({
-    entry,
+  const show = showId ? await fetchHkcrShow(input.fetchImpl, showId) : null;
+  const slug = asString(show?.slug);
+  const showUrl = slug
+    ? new URL(
+        `/shows/${encodeURIComponent(slug)}`,
+        "https://hkcr.live"
+      ).toString()
+    : null;
+  const normalized = normalizeHkcrSchedule({
+    entry: {
+      ...entry,
+      description: asString(show?.content) ?? asString(entry.description),
+      resident: entry.resident ?? show?.resident,
+      thumbnail: {
+        url:
+          asPublicUrl(entry.thumbnail?.url) ??
+          asPublicUrl(entry.picture?.url) ??
+          asPublicUrl(show?.medium?.url) ??
+          asPublicUrl(show?.thumbnail?.url) ??
+          asPublicUrl(show?.picture?.url),
+      },
+      title: asString(entry.title) ?? asString(show?.title),
+    },
     expiresAt: input.expiresAt,
     resolvedUrl: result.response.url || HKCR_SCHEDULE_URL,
     sampledAt: input.sampledAt,
     showUrl,
     streamUrl: input.streamUrl,
   });
+  return normalized
+    ? {
+        ...normalized,
+        genre:
+          show?.tags
+            ?.map((tag) => asString(tag.name))
+            .filter(Boolean)
+            .join(", ") || null,
+      }
+    : null;
+}
+
+async function fetchHkcrShow(
+  fetchImpl: FetchLike,
+  showId: string
+): Promise<HkcrShow | null> {
+  try {
+    const result = await fetchObjectJson(
+      fetchImpl,
+      `${HKCR_SHOW_URL}/${encodeURIComponent(showId)}`
+    );
+    const candidate = result?.data as HkcrShow | undefined;
+    return candidate?._id === showId ? candidate : null;
+  } catch (error) {
+    if (error instanceof RadioMetadataValidationError) {
+      throw error;
+    }
+    return null;
+  }
+}
+
+function hkcrRangeUrl(
+  endpoint: string,
+  sampledAt: number,
+  startOffset: number
+): string {
+  const date = (offset: number) =>
+    new Date(sampledAt + HKCR_UTC_OFFSET_MS + offset * 86_400_000)
+      .toISOString()
+      .slice(0, 10);
+  const url = new URL(endpoint);
+  url.searchParams.set("startDate", date(startOffset));
+  url.searchParams.set("endDate", date(1));
+  return url.toString();
+}
+
+async function findCurrentHkcrReplay(
+  input: ExternalMetadataProviderInput
+): Promise<HkcrScheduleEntry | null> {
+  let result: Awaited<ReturnType<typeof fetchObjectJson>>;
+  try {
+    result = await fetchObjectJson(
+      input.fetchImpl,
+      hkcrRangeUrl(
+        "https://cms.hkcr.live/replay-slots/range",
+        input.sampledAt,
+        -1
+      )
+    );
+  } catch (error) {
+    if (shouldPropagateFetchError(error)) {
+      throw error;
+    }
+    return null;
+  }
+  const slots = (result?.data as { slots?: HkcrReplaySlot[] } | undefined)
+    ?.slots;
+  if (!Array.isArray(slots)) {
+    return null;
+  }
+  const matches = slots.filter(
+    (candidate) =>
+      input.sampledAt >= Date.parse(asString(candidate.start) ?? "") &&
+      input.sampledAt < Date.parse(asString(candidate.end) ?? "")
+  );
+  const slot = matches.length === 1 ? matches[0] : null;
+  return slot
+    ? { show: slot.show ?? slot.replay?.show, title: slot.replay?.title }
+    : null;
 }
 
 function normalizeResonanceExtraSchedule(input: {
@@ -1431,7 +1646,7 @@ export async function tryRadioBlackoutApi(
   if (!title) {
     return null;
   }
-  return buildNowPlaying({
+  const nowPlaying = buildNowPlaying({
     artworkUrl: asString(data.featured_media),
     expiresAt: input.expiresAt,
     itemUrl: asPublicUrl(data.link),
@@ -1439,8 +1654,50 @@ export async function tryRadioBlackoutApi(
     resolvedUrl: result.response.url || endpoint,
     sampledAt: input.sampledAt,
     source: "radio-blackout-api",
-    stationDescription: asString(data.excerpt),
+    stationDescription: plainText(data.excerpt),
     stationName: "Radio BlackOut",
     streamUrl: input.streamUrl,
   });
+  return nowPlaying
+    ? await enrichBlackoutShow(input.fetchImpl, nowPlaying)
+    : null;
+}
+
+async function enrichBlackoutShow(
+  fetchImpl: FetchLike,
+  nowPlaying: RadioNowPlaying
+): Promise<RadioNowPlaying> {
+  const itemUrl = nowPlaying.itemUrl ? new URL(nowPlaying.itemUrl) : null;
+  const match = itemUrl?.pathname.match(SHOW_PATH_PATTERN);
+  if (itemUrl?.origin !== "https://radioblackout.org" || !match?.[1]) {
+    return nowPlaying;
+  }
+  try {
+    const slug = decodeURIComponent(match[1]);
+    const url = new URL("https://radioblackout.org/wp-json/wp/v2/shows");
+    url.searchParams.set("slug", slug);
+    const result = await fetchObjectJson(fetchImpl, url.toString());
+    const records = Array.isArray(result?.data)
+      ? (result.data as BlackoutShow[])
+      : [];
+    const show = records.length === 1 ? records[0] : null;
+    if (
+      asString(show?.slug) !== slug ||
+      asPublicUrl(show?.link) !== itemUrl.toString() ||
+      comparableTitle(show?.title) !== comparableTitle(nowPlaying.title)
+    ) {
+      return nowPlaying;
+    }
+    return {
+      ...nowPlaying,
+      genre: asStringArray(show?.tags).join(", ") || nowPlaying.genre,
+      stationDescription:
+        plainText(show?.content) ?? nowPlaying.stationDescription,
+    };
+  } catch (error) {
+    if (error instanceof RadioMetadataValidationError) {
+      throw error;
+    }
+    return nowPlaying;
+  }
 }

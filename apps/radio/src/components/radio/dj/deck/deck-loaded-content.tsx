@@ -38,7 +38,7 @@ export function LoadedDeckContent({
   } = useDeckContext();
   const isMobile = useIsMobile();
   const { metadata } = useRadioMetadata({
-    enabled: isPlaying && !isLoading,
+    poll: isPlaying && !isLoading,
     radio,
   });
 

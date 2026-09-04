@@ -123,6 +123,10 @@ describe("RadioNowPlaying", () => {
         );
       } else {
         expect(playerGenres).toBeNull();
+        expect(
+          view.getByLabelText("Genres: Art Pop, Downtempo, R&B / Soul")
+            .textContent
+        ).toBe("Art Pop+2");
       }
 
       fireEvent.click(
@@ -407,7 +411,7 @@ describe("RadioNowPlaying", () => {
     expect(view.getByText("Current show description.")).toBeTruthy();
   });
 
-  test("makes the same show details available from a Multiple card", () => {
+  test("makes the same show details available from an idle Multiple card", () => {
     const client = new QueryClient();
     client.setQueryData(
       radioMetadataKeys.stream(radio.streamUrl, radio.metadataConfig),
@@ -427,7 +431,7 @@ describe("RadioNowPlaying", () => {
             id: "test-radio",
             isLoading: false,
             isMuted: true,
-            isPlaying: true,
+            isPlaying: false,
             radio,
             volume: 0,
           }}

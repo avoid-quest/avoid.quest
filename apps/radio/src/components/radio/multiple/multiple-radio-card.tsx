@@ -39,7 +39,7 @@ export function MultipleRadioCard({
   const isMuted = playerState?.isMuted ?? volume === 0;
   const error = playerState?.error ?? null;
   const { metadata } = useRadioMetadata({
-    enabled: isPlaying && !isLoading,
+    poll: isPlaying && !isLoading,
     radio,
   });
 

@@ -24,6 +24,17 @@ type RadioNowPlayingProps = {
   className?: string;
 };
 
+function getGenres(genre?: string | null): string[] {
+  return [
+    ...new Set(
+      genre
+        ?.split(",")
+        .map((value) => value.trim())
+        .filter(Boolean)
+    ),
+  ];
+}
+
 function GenreBadges({
   genre,
   className,
@@ -33,14 +44,7 @@ function GenreBadges({
   className?: string;
   overArtwork?: boolean;
 }) {
-  const genres = [
-    ...new Set(
-      genre
-        ?.split(",")
-        .map((value) => value.trim())
-        .filter(Boolean)
-    ),
-  ];
+  const genres = getGenres(genre);
   if (genres.length === 0) {
     return null;
   }
@@ -75,6 +79,30 @@ function GenreBadges({
         </li>
       ) : null}
     </ul>
+  );
+}
+
+function CompactGenreBadge({ genre }: { genre?: string | null }) {
+  const genres = getGenres(genre);
+  const [firstGenre] = genres;
+  if (!firstGenre) {
+    return null;
+  }
+
+  const remaining = genres.length - 1;
+  return (
+    <Badge
+      aria-label={`Genres: ${genres.join(", ")}`}
+      className="mt-1.5 flex h-4 max-w-full gap-1 border-foreground/10 bg-transparent px-1.5 py-0 font-normal text-[9px] text-muted-foreground leading-none"
+      variant="outline"
+    >
+      <span className="truncate">{firstGenre}</span>
+      {remaining > 0 ? (
+        <span aria-hidden="true" className="shrink-0">
+          +{remaining}
+        </span>
+      ) : null}
+    </Badge>
   );
 }
 
@@ -250,6 +278,7 @@ export function RadioNowPlaying({
                 {subtitle}
               </p>
             ) : null}
+            {featured ? null : <CompactGenreBadge genre={metadata?.genre} />}
             {connectionStatus}
           </div>
         </div>

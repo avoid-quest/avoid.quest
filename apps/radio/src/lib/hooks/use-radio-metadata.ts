@@ -94,10 +94,10 @@ function getMetadataErrorMessage(error: unknown): string | null {
 
 export function useRadioMetadata({
   radio,
-  enabled: requested,
+  poll,
 }: {
   radio: Radio | null;
-  enabled: boolean;
+  poll: boolean;
 }): {
   metadata: RadioNowPlaying | null;
   isLoading: boolean;
@@ -107,9 +107,7 @@ export function useRadioMetadata({
   const streamUrl = radio?.streamUrl;
   const metadataConfig = getUsableMetadataConfig(getRadioMetadataConfig(radio));
   const enabled =
-    requested &&
-    Boolean(metadataConfig) &&
-    isMetadataEligibleStreamUrl(streamUrl);
+    Boolean(metadataConfig) && isMetadataEligibleStreamUrl(streamUrl);
 
   const query = useQuery({
     enabled,
@@ -121,7 +119,7 @@ export function useRadioMetadata({
       return fetchRadioMetadata(streamUrl, metadataConfig);
     },
     queryKey: radioMetadataKeys.stream(streamUrl, metadataConfig ?? undefined),
-    refetchInterval: enabled ? POLL_INTERVAL_MS : false,
+    refetchInterval: enabled && poll ? POLL_INTERVAL_MS : false,
     retry: 1,
     staleTime: 15_000,
   });

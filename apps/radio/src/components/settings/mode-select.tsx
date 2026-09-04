@@ -55,9 +55,11 @@ export function ModeSelect({ className }: { className?: string }) {
         const Icon = modeIcons[mode.value];
         return (
           <ToggleGroupItem
+            aria-label={mode.label}
             className="h-7 cursor-pointer gap-1.5 px-3 text-xs"
             disabled={isTransitioning}
             key={mode.value}
+            title={mode.label}
             value={mode.value}
           >
             <Icon className="size-3.5" />

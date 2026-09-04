@@ -250,6 +250,73 @@ describe("radio metadata retrieval", () => {
     expect(calls).toEqual(["https://strapi.lyl.live/graphql", streamUrl]);
   });
 
+  test.each(["EPISODE", "SHOW"])(
+    "preserves LYL calendar metadata when %s details time out",
+    async (type) => {
+      let calls = 0;
+      let detailSignal: AbortSignal | null | undefined;
+      const retrieval = createRadioMetadataRetrieval({
+        fetchFollowingPublicRedirects: createMetadataUpstreamFetch(
+          (_url, init) => {
+            calls += 1;
+            if (calls === 1) {
+              return Promise.resolve(
+                jsonResponse({
+                  data: {
+                    calendar: [
+                      {
+                        artists: "Current Host",
+                        end: "2026-09-03T17:30:00.000Z",
+                        slug: "current-entry",
+                        start: "2026-09-03T16:30:00.000Z",
+                        title: "Current Entry",
+                        type,
+                      },
+                    ],
+                    onair: {
+                      hls: "https://radio.lyl.live/hls/live.m3u8",
+                      title: "Current Host - Current Entry",
+                    },
+                  },
+                })
+              );
+            }
+            detailSignal = init?.signal;
+            return new Promise((_resolve, reject) => {
+              detailSignal?.addEventListener(
+                "abort",
+                () => reject(detailSignal?.reason),
+                { once: true }
+              );
+            });
+          }
+        ),
+        now: () => Date.parse("2026-09-03T16:45:00.000Z"),
+        timeoutMs: 20,
+      });
+
+      const response = await retrieval.retrieve(
+        "https://icecast.lyl.live/live",
+        { kind: "lyl-api" }
+      );
+
+      expect(response).toMatchObject({
+        data: {
+          artist: "Current Host",
+          artworkUrl: null,
+          genre: null,
+          itemUrl: `https://lyl.live/${type === "EPISODE" ? "episode" : "show"}/current-entry`,
+          source: "lyl-api",
+          stationDescription: null,
+          title: "Current Entry",
+        },
+        ok: true,
+      });
+      expect(calls).toBe(2);
+      expect(detailSignal?.aborted).toBeTrue();
+    }
+  );
+
   test("falls back to Radio Alhara ICY metadata when its API is unavailable", async () => {
     const calls: string[] = [];
     const streamUrl = "https://n03.radiojar.com/78cxy6wkxtzuv";

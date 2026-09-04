@@ -157,75 +157,101 @@ describe("external radio metadata providers", () => {
     ).rejects.toThrow("aborted");
   });
 
-  test("tries Cashmere Airtime v2 before legacy live-info fallback", async () => {
-    const calls: string[] = [];
-    const result = await tryAirtimeLiveInfo({
-      expiresAt: 2000,
-      fetchImpl: (url, init) => {
-        calls.push(url);
-        if (url === "https://backstage.cashmereradio.com/graphql") {
-          expect(init?.method).toBe("POST");
+  test.each([
+    "/episode/v2-show/",
+    "episode/v2-show/",
+    "https://cashmereradio.com/episode/v2-show/",
+    "//cashmereradio.com/episode/v2-show/",
+  ])(
+    "accepts verified Cashmere episode URI %s from Airtime v2 enrichment",
+    async (uri) => {
+      const calls: string[] = [];
+      const result = await tryAirtimeLiveInfo({
+        expiresAt: 2000,
+        fetchImpl: (url, init) => {
+          calls.push(url);
+          if (url === "https://backstage.cashmereradio.com/graphql") {
+            expect(init?.method).toBe("POST");
+            return Promise.resolve(
+              json({
+                data: {
+                  episodes: {
+                    nodes: [
+                      {
+                        featuredImage: {
+                          node: {
+                            sourceUrl:
+                              "https://media.cashmereradio.com/piss-14.jpg",
+                          },
+                        },
+                        title: "V2 Show",
+                        uri,
+                      },
+                    ],
+                  },
+                },
+              })
+            );
+          }
           return Promise.resolve(
             json({
-              data: {
-                episodes: {
-                  nodes: [
-                    {
-                      featuredImage: {
-                        node: {
-                          sourceUrl:
-                            "https://media.cashmereradio.com/piss-14.jpg",
-                        },
-                      },
-                      title: "V2 Show",
-                      uri: "/episode/v2-show/",
-                    },
-                  ],
+              tracks: {
+                current: {
+                  metadata: {
+                    artist_name: "Cashmere Host",
+                    track_title: "V2 Show",
+                  },
                 },
               },
             })
           );
-        }
-        return Promise.resolve(
-          json({
-            tracks: {
-              current: {
-                metadata: {
-                  artist_name: "Cashmere Host",
-                  track_title: "V2 Show",
-                },
-              },
-            },
-          })
-        );
-      },
-      sampledAt: 1000,
-      streamUrl: "https://cashmereradio.out.airtime.pro/cashmereradio_b",
-    });
+        },
+        sampledAt: 1000,
+        streamUrl: "https://cashmereradio.out.airtime.pro/cashmereradio_b",
+      });
 
-    expect(calls[0]).toBe("https://cashmereradio.airtime.pro/api/live-info-v2");
-    expect(result?.artist).toBe("Cashmere Host");
-    expect(result?.artworkUrl).toBe(
-      "https://media.cashmereradio.com/piss-14.jpg"
-    );
-    expect(result?.itemUrl).toBe("https://cashmereradio.com/episode/v2-show/");
-    expect(result?.stationName).toBe("Cashmere Radio");
-    expect(result?.title).toBe("V2 Show");
-  });
+      expect(calls[0]).toBe(
+        "https://cashmereradio.airtime.pro/api/live-info-v2"
+      );
+      expect(result?.artist).toBe("Cashmere Host");
+      expect(result?.artworkUrl).toBe(
+        "https://media.cashmereradio.com/piss-14.jpg"
+      );
+      expect(result?.itemUrl).toBe(
+        "https://cashmereradio.com/episode/v2-show/"
+      );
+      expect(result?.stationName).toBe("Cashmere Radio");
+      expect(result?.title).toBe("V2 Show");
+    }
+  );
 
-  test("rejects non-HTTP Cashmere episode links", async () => {
+  test.each([
+    "javascript:alert(1)",
+    "data:text/html,unsafe",
+    "https://unrelated.example/episode/unsafe-link-show/",
+    "//unrelated.example/episode/unsafe-link-show/",
+    "http://cashmereradio.com/episode/unsafe-link-show/",
+    "https://cashmereradio.com:8443/episode/unsafe-link-show/",
+    "https://user:password@cashmereradio.com/episode/unsafe-link-show/",
+    "https://cashmereradio.com/shows/unsafe-link-show/",
+    "/episode/../shows/unsafe-link-show/",
+    "/episode/%E0%A4%A/",
+  ])("rejects unverified Cashmere episode URI %s", async (uri) => {
+    const calls: string[] = [];
     const result = await tryAirtimeLiveInfo({
       expiresAt: 2000,
-      fetchImpl: (url) =>
-        Promise.resolve(
+      fetchImpl: (url) => {
+        calls.push(url);
+        return Promise.resolve(
           url === "https://backstage.cashmereradio.com/graphql"
             ? json({
                 data: {
                   episodes: {
                     nodes: [
                       {
+                        databaseId: 42,
                         title: "Unsafe Link Show",
-                        uri: "javascript:alert(1)",
+                        uri,
                       },
                     ],
                   },
@@ -238,82 +264,119 @@ describe("external radio metadata providers", () => {
                   },
                 },
               })
-        ),
-      sampledAt: 1000,
-      streamUrl: "https://cashmereradio.out.airtime.pro/cashmereradio_b",
-    });
-
-    expect(result?.itemUrl).toBeNull();
-  });
-
-  test("enriches an exact Cashmere archive episode from its REST record", async () => {
-    const calls: string[] = [];
-    const result = await tryAirtimeLiveInfo({
-      expiresAt: 2000,
-      fetchImpl: (url) => {
-        calls.push(url);
-        if (url === "https://cashmereradio.airtime.pro/api/live-info-v2") {
-          return Promise.resolve(
-            json({
-              tracks: {
-                current: {
-                  metadata: { track_title: "Archive Show" },
-                },
-              },
-            })
-          );
-        }
-        if (url === "https://backstage.cashmereradio.com/graphql") {
-          return Promise.resolve(
-            json({
-              data: {
-                episodes: {
-                  nodes: [
-                    {
-                      databaseId: 42,
-                      title: "Archive Show",
-                      uri: "/episode/archive-show/",
-                    },
-                  ],
-                },
-              },
-            })
-          );
-        }
-        if (
-          url.startsWith(
-            "https://backstage.cashmereradio.com/wp-json/wp/v2/episode/42?"
-          )
-        ) {
-          return Promise.resolve(
-            json({
-              acf: {
-                episode_filter_genre: ["Ambient", "Experimental"],
-                episode_filter_mood: ["Dreamy"],
-              },
-              content: {
-                rendered: "<p>Archive &amp; episode description.</p>",
-              },
-              id: 42,
-              link: "https://backstage.cashmereradio.com/episode/archive-show/",
-              slug: "archive-show",
-            })
-          );
-        }
-        throw new Error(`Unexpected URL: ${url}`);
+        );
       },
       sampledAt: 1000,
       streamUrl: "https://cashmereradio.out.airtime.pro/cashmereradio_b",
     });
 
-    expect(calls).toHaveLength(3);
-    expect(result).toMatchObject({
-      genre: "Ambient, Experimental, Dreamy",
-      itemUrl: "https://cashmereradio.com/episode/archive-show/",
-      stationDescription: "Archive & episode description.",
-      title: "Archive Show",
-    });
+    expect(result?.itemUrl).toBeNull();
+    expect(result?.title).toBe("Unsafe Link Show");
+    expect(calls).toHaveLength(2);
   });
+
+  test.each([
+    { artwork: null, description: null, genre: null },
+    {
+      artwork: "https://media.cashmereradio.com/archive.jpg",
+      description: null,
+      genre: null,
+    },
+    {
+      artwork: "https://media.cashmereradio.com/archive.jpg",
+      description: "Feed description",
+      genre: null,
+    },
+    {
+      artwork: "https://media.cashmereradio.com/archive.jpg",
+      description: null,
+      genre: "Feed genre",
+    },
+    {
+      artwork: "https://media.cashmereradio.com/archive.jpg",
+      description: "Feed description",
+      genre: "Feed genre",
+    },
+  ])(
+    "enriches missing Cashmere archive fields from its REST record: %j",
+    async ({ artwork, description, genre }) => {
+      const calls: string[] = [];
+      const result = await tryAirtimeLiveInfo({
+        expiresAt: 2000,
+        fetchImpl: (url) => {
+          calls.push(url);
+          if (url === "https://cashmereradio.airtime.pro/api/live-info-v2") {
+            return Promise.resolve(
+              json({
+                shows: { current: { description } },
+                tracks: {
+                  current: {
+                    metadata: {
+                      artwork_url: artwork,
+                      genre,
+                      track_title: "Archive Show",
+                      url: artwork
+                        ? "https://cashmereradio.com/episode/archive-show/"
+                        : null,
+                    },
+                  },
+                },
+              })
+            );
+          }
+          if (url === "https://backstage.cashmereradio.com/graphql") {
+            return Promise.resolve(
+              json({
+                data: {
+                  episodes: {
+                    nodes: [
+                      {
+                        databaseId: 42,
+                        title: "Archive Show",
+                        uri: "/episode/archive-show/",
+                      },
+                    ],
+                  },
+                },
+              })
+            );
+          }
+          if (
+            url.startsWith(
+              "https://backstage.cashmereradio.com/wp-json/wp/v2/episode/42?"
+            )
+          ) {
+            return Promise.resolve(
+              json({
+                acf: {
+                  episode_filter_genre: ["Ambient", "Experimental"],
+                  episode_filter_mood: ["Dreamy"],
+                },
+                content: {
+                  rendered: "<p>Archive &amp; episode description.</p>",
+                },
+                id: 42,
+                link: "https://backstage.cashmereradio.com/episode/archive-show/",
+                slug: "archive-show",
+              })
+            );
+          }
+          throw new Error(`Unexpected URL: ${url}`);
+        },
+        sampledAt: 1000,
+        streamUrl: "https://cashmereradio.out.airtime.pro/cashmereradio_b",
+      });
+
+      expect(calls).toHaveLength(artwork && description && genre ? 1 : 3);
+      expect(result).toMatchObject({
+        artworkUrl: artwork,
+        genre: genre ?? "Ambient, Experimental, Dreamy",
+        itemUrl: "https://cashmereradio.com/episode/archive-show/",
+        stationDescription: description ?? "Archive & episode description.",
+        title: "Archive Show",
+      });
+    }
+  );
 
   test("enriches an exact Cashmere live show from its first-party page record", async () => {
     const calls: string[] = [];
@@ -827,6 +890,55 @@ describe("external radio metadata providers", () => {
       stationDescription: "Current show description",
       stationName: "HKCR",
       title: "Current Show",
+    });
+  });
+
+  test.each([
+    { artist: null, title: "Morning Show - Replay" },
+    { artist: "Resident - Collective", title: "Morning Show" },
+    { artist: "Resident - Collective", title: "Morning Show - Replay" },
+    { artist: "Morning Show - Replay", title: "Morning Show - Replay" },
+  ])("preserves structured HKCR names: %j", async ({ artist, title }) => {
+    const result = await tryHkcrSchedule({
+      expiresAt: Date.parse("2026-09-03T04:00:00Z"),
+      fetchImpl: async () =>
+        json([
+          {
+            date: "2026-09-03",
+            endTime: "12:00",
+            resident: artist ? { name: artist } : null,
+            startTime: "11:00",
+            title,
+          },
+        ]),
+      sampledAt: Date.parse("2026-09-03T03:30:00Z"),
+      streamUrl: "https://stream-test.hkcr.live/hls/main.m3u8",
+    });
+
+    expect(result).toMatchObject({ artist, title });
+  });
+
+  test("cleans structured HKCR names without splitting separators", async () => {
+    const result = await tryHkcrSchedule({
+      expiresAt: Date.parse("2026-09-03T04:00:00Z"),
+      fetchImpl: async () =>
+        json([
+          {
+            date: "2026-09-03",
+            endTime: "12:00",
+            resident: { name: "A &amp; B\0 - Collective" },
+            startTime: "11:00",
+            title: "Rock &amp; Roll\0 - Replay",
+          },
+        ]),
+      sampledAt: Date.parse("2026-09-03T03:30:00Z"),
+      streamUrl: "https://stream-test.hkcr.live/hls/main.m3u8",
+    });
+
+    expect(result).toMatchObject({
+      artist: "A & B - Collective",
+      rawTitle: "A & B - Collective - Rock & Roll - Replay",
+      title: "Rock & Roll - Replay",
     });
   });
 

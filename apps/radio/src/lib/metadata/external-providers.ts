@@ -490,7 +490,10 @@ async function enrichCashmereNowPlaying(
   nowPlaying: RadioNowPlaying
 ): Promise<RadioNowPlaying> {
   const showUrl = getCashmereShowUrl(nowPlaying.itemUrl);
-  if (showUrl && !(nowPlaying.artworkUrl && nowPlaying.stationDescription)) {
+  if (showUrl) {
+    if (nowPlaying.artworkUrl && nowPlaying.stationDescription) {
+      return nowPlaying;
+    }
     const result = await fetchObjectJson(
       fetchImpl,
       `${CASHMERE_REST_URL}/pages?slug=${encodeURIComponent(showUrl.slug)}&_embed=wp%3Afeaturedmedia&_fields=slug%2Clink%2Ccontent%2C_links%2C_embedded`
@@ -515,7 +518,13 @@ async function enrichCashmereNowPlaying(
         nowPlaying.stationDescription ?? plainText(show?.content?.rendered),
     };
   }
-  if ((nowPlaying.artworkUrl && nowPlaying.itemUrl) || !nowPlaying.title) {
+  if (
+    (nowPlaying.artworkUrl &&
+      nowPlaying.itemUrl &&
+      nowPlaying.stationDescription &&
+      nowPlaying.genre) ||
+    !nowPlaying.title
+  ) {
     return nowPlaying;
   }
   const result = await fetchObjectJson(fetchImpl, CASHMERE_GRAPHQL_URL, {
@@ -540,9 +549,10 @@ async function enrichCashmereNowPlaying(
 
   const [episode] = matches;
   const uri = asString(episode?.uri);
-  const itemUrl = uri
+  const candidateUrl = uri
     ? resolvePublicUrl(uri, "https://cashmereradio.com")
     : null;
+  const itemUrl = getCashmereEpisodeUrl(candidateUrl) ? candidateUrl : null;
   const enriched = {
     ...nowPlaying,
     artworkUrl:
@@ -599,8 +609,9 @@ function getCashmereEpisodeUrl(
   try {
     const url = value ? new URL(value) : null;
     const match = url?.pathname.match(CASHMERE_EPISODE_PATH_PATTERN);
-    return url?.protocol === "https:" &&
-      url.hostname === "cashmereradio.com" &&
+    return url?.origin === "https://cashmereradio.com" &&
+      !url.username &&
+      !url.password &&
       match?.[1]
       ? { pathname: url.pathname, slug: decodeURIComponent(match[1]) }
       : null;
@@ -1203,7 +1214,7 @@ function normalizeHkcrSchedule(input: {
 
   const artist = asString(entry.resident?.name);
   const residentSlug = asString(entry.resident?.slug);
-  return buildNowPlaying({
+  const result = buildNowPlaying({
     artworkUrl:
       asPublicUrl(entry.thumbnail?.url) ?? asPublicUrl(entry.picture?.url),
     expiresAt: input.expiresAt,
@@ -1223,6 +1234,13 @@ function normalizeHkcrSchedule(input: {
     stationName: "HKCR",
     streamUrl: input.streamUrl,
   });
+  return result
+    ? {
+        ...result,
+        artist: cleanMetadataText(artist) || null,
+        title: cleanMetadataText(title) || null,
+      }
+    : null;
 }
 
 export async function tryHkcrSchedule(

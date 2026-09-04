@@ -209,7 +209,7 @@ async function getEpisode(
       ?.episodeBySlug;
     return asString(episode?.slug) === slug ? (episode ?? null) : null;
   } catch (error) {
-    if (shouldPropagate(error)) {
+    if (error instanceof RadioMetadataValidationError) {
       throw error;
     }
     return null;
@@ -226,7 +226,7 @@ async function getShow(
       ?.showBySlug;
     return asString(show?.slug) === slug ? (show ?? null) : null;
   } catch (error) {
-    if (shouldPropagate(error)) {
+    if (error instanceof RadioMetadataValidationError) {
       throw error;
     }
     return null;

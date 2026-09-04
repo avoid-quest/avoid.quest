@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { tryLylApi } from "./lyl-provider";
+import { RadioMetadataValidationError } from "./upstream-fetch";
 
 const SAMPLED_AT = Date.parse("2026-09-03T16:45:00.000Z");
 
@@ -40,6 +41,47 @@ function providerInput(
 }
 
 describe("LYL metadata provider", () => {
+  test("propagates primary calendar aborts", async () => {
+    const error = new DOMException("aborted", "AbortError");
+    await expect(
+      tryLylApi(
+        providerInput(() => {
+          throw error;
+        })
+      )
+    ).rejects.toBe(error);
+  });
+
+  test.each(["EPISODE", "SHOW"] as const)(
+    "propagates URL validation failures from optional %s details",
+    async (type) => {
+      const error = new RadioMetadataValidationError("internal-address");
+      let calls = 0;
+      await expect(
+        tryLylApi(
+          providerInput(() => {
+            calls += 1;
+            if (calls === 2) {
+              throw error;
+            }
+            return Promise.resolve(
+              json({
+                data: {
+                  calendar: [currentEntry({ type })],
+                  onair: {
+                    hls: "https://radio.lyl.live/hls/live.m3u8",
+                    title: "Host - Current Entry",
+                  },
+                },
+              })
+            );
+          })
+        )
+      ).rejects.toBe(error);
+      expect(calls).toBe(2);
+    }
+  );
+
   test("matches the on-air title and enriches the selected show", async () => {
     const calls: RequestInit[] = [];
     const result = await tryLylApi(

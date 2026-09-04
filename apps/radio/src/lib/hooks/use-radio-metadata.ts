@@ -125,6 +125,8 @@ export function useRadioMetadata({
     },
     queryKey: radioMetadataKeys.stream(streamUrl, metadataConfig ?? undefined),
     refetchInterval: enabled && poll ? POLL_INTERVAL_MS : false,
+    refetchOnReconnect: poll,
+    refetchOnWindowFocus: poll,
     retry: 1,
     staleTime: 15_000,
   });

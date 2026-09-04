@@ -1,5 +1,9 @@
 import { afterEach, beforeAll, describe, expect, test } from "bun:test";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  focusManager,
+  QueryClient,
+  QueryClientProvider,
+} from "@tanstack/react-query";
 import {
   cleanup,
   fireEvent,
@@ -133,9 +137,19 @@ test("gates preview requests and refreshes metadata when polling starts", async 
     await waitFor(() => expect(requests).toHaveLength(1));
     await waitFor(() => expect(view.result.current.metadata).toEqual(metadata));
 
+    await client.invalidateQueries({
+      queryKey: radioMetadataKeys.stream(radio.streamUrl, radio.metadataConfig),
+      refetchType: "none",
+    });
+    focusManager.setFocused(false);
+    focusManager.setFocused(true);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(requests).toHaveLength(1);
+
     view.rerender({ enabled: true, poll: true });
     await waitFor(() => expect(requests).toHaveLength(2));
   } finally {
+    focusManager.setFocused(undefined);
     globalThis.fetch = originalFetch;
     client.clear();
   }

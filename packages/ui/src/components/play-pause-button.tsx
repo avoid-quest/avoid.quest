@@ -50,6 +50,7 @@ export function PlayPauseButton({
   inline = false,
 }: PlayPauseButtonProps) {
   const isDisabled = disabled || isLoading;
+  const playPauseLabel = isPlaying ? "Pause" : "Play";
 
   const renderIcon = () => {
     if (isLoading) {
@@ -65,6 +66,7 @@ export function PlayPauseButton({
 
   const button = (
     <Button
+      aria-label={isLoading ? "Loading" : playPauseLabel}
       className={cn(inline ? "" : "size-16 rounded-full", className)}
       disabled={isDisabled}
       onClick={onClick}

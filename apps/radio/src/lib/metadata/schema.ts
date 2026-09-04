@@ -27,5 +27,9 @@ export const radioMetadataConfigSchema = z.discriminatedUnion("kind", [
     kind: z.literal("radio-blackout-api"),
     url: z.string().optional(),
   }),
+  z.object({ kind: z.literal("hkcr-schedule") }),
+  z.object({ kind: z.literal("lyl-api") }),
+  z.object({ kind: z.literal("radio-alhara-api") }),
+  z.object({ kind: z.literal("resonance-extra-api") }),
   z.object({ kind: z.literal("icy") }),
 ]);

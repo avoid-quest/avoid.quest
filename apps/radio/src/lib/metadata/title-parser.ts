@@ -1,12 +1,21 @@
 const EMPTY_TITLES = new Set(["", "-", "unknown"]);
 
-const HTML_ENTITY_PATTERN = /&(#\d+|#x[\da-f]+|amp|lt|gt|quot|apos);/gi;
+const HTML_ENTITY_PATTERN =
+  /&(#\d+|#x[\da-f]+|amp|lt|gt|quot|apos|nbsp|hellip|ndash|mdash|lsquo|rsquo|ldquo|rdquo);/gi;
 const HTML_ENTITY_REPLACEMENTS: Record<string, string> = {
   amp: "&",
   apos: "'",
   gt: ">",
+  hellip: "…",
+  ldquo: "“",
+  lsquo: "‘",
   lt: "<",
+  mdash: "—",
+  nbsp: " ",
+  ndash: "–",
   quot: '"',
+  rdquo: "”",
+  rsquo: "’",
 };
 
 function decodeCodePoint(codePoint: number, fallback: string): string {

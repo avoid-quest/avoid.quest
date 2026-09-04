@@ -105,6 +105,7 @@ export function RadioItemActions({
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button
+          aria-label={`Options for ${radio.name}`}
           className="h-8 w-8 p-0"
           disabled={disabled || isUpdating}
           onClick={handleStopPropagation}

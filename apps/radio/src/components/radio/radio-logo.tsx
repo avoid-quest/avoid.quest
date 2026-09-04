@@ -112,12 +112,7 @@ export function RadioLogo({
       />
       {/* Loading state */}
       {!(imageLoaded || imageError) && (
-        <div
-          className={cn(
-            "absolute inset-0 flex items-center justify-center rounded-sm bg-muted",
-            sizeMap[size]
-          )}
-        >
+        <div className="absolute inset-0 flex items-center justify-center rounded-sm bg-muted">
           <AudioLinesIcon
             className={cn(
               iconSizeMap[size],

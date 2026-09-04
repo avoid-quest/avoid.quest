@@ -165,6 +165,191 @@ describe("radio metadata retrieval", () => {
     ]);
   });
 
+  test("falls back to Resonance Extra ICY metadata when its schedule API is unavailable", async () => {
+    const calls: string[] = [];
+    const streamUrl = "https://stream.resonance.fm/resonance-extra";
+    const retrieval = createRadioMetadataRetrieval({
+      fetchFollowingPublicRedirects: createMetadataUpstreamFetch((url) => {
+        calls.push(String(url));
+        return Promise.resolve(
+          String(url) === streamUrl
+            ? icyResponse("Fallback Artist - Fallback Title")
+            : new Response(null, { status: 503 })
+        );
+      }),
+      now: () => 1000,
+    });
+
+    const response = await retrieval.retrieve(streamUrl, {
+      kind: "resonance-extra-api",
+    });
+
+    expect(response).toMatchObject({
+      data: {
+        artist: "Fallback Artist",
+        source: "icy",
+        title: "Fallback Title",
+      },
+      ok: true,
+    });
+    expect(calls).toEqual([
+      "https://x.resonance.fm/api/current_and_upcoming",
+      streamUrl,
+    ]);
+  });
+
+  test("falls back to LYL ICY metadata when its live API is ambiguous", async () => {
+    const calls: string[] = [];
+    const streamUrl = "https://icecast.lyl.live/live";
+    const retrieval = createRadioMetadataRetrieval({
+      fetchFollowingPublicRedirects: createMetadataUpstreamFetch((url) => {
+        calls.push(String(url));
+        if (String(url) === streamUrl) {
+          return Promise.resolve(icyResponse("LYL Radio - Live"));
+        }
+        return Promise.resolve(
+          jsonResponse({
+            data: {
+              calendar: [
+                {
+                  end: "2026-09-03T17:30:00.000Z",
+                  slug: "episode-a",
+                  start: "2026-09-03T16:30:00.000Z",
+                  title: "Episode A",
+                  type: "EPISODE",
+                },
+                {
+                  end: "2026-09-03T17:30:00.000Z",
+                  slug: "episode-b",
+                  start: "2026-09-03T16:30:00.000Z",
+                  title: "Episode B",
+                  type: "EPISODE",
+                },
+              ],
+              onair: {
+                hls: "https://radio.lyl.live/hls/live.m3u8",
+                title: "LYL Radio - Live",
+              },
+            },
+          })
+        );
+      }),
+      now: () => Date.parse("2026-09-03T16:45:00.000Z"),
+    });
+
+    const response = await retrieval.retrieve(streamUrl, { kind: "lyl-api" });
+
+    expect(response).toMatchObject({
+      data: {
+        artist: "LYL Radio",
+        source: "icy",
+        title: "Live",
+      },
+      ok: true,
+    });
+    expect(calls).toEqual(["https://strapi.lyl.live/graphql", streamUrl]);
+  });
+
+  test.each(["EPISODE", "SHOW"])(
+    "preserves LYL calendar metadata when %s details time out",
+    async (type) => {
+      let calls = 0;
+      let detailSignal: AbortSignal | null | undefined;
+      const retrieval = createRadioMetadataRetrieval({
+        fetchFollowingPublicRedirects: createMetadataUpstreamFetch(
+          (_url, init) => {
+            calls += 1;
+            if (calls === 1) {
+              return Promise.resolve(
+                jsonResponse({
+                  data: {
+                    calendar: [
+                      {
+                        artists: "Current Host",
+                        end: "2026-09-03T17:30:00.000Z",
+                        slug: "current-entry",
+                        start: "2026-09-03T16:30:00.000Z",
+                        title: "Current Entry",
+                        type,
+                      },
+                    ],
+                    onair: {
+                      hls: "https://radio.lyl.live/hls/live.m3u8",
+                      title: "Current Host - Current Entry",
+                    },
+                  },
+                })
+              );
+            }
+            detailSignal = init?.signal;
+            return new Promise((_resolve, reject) => {
+              detailSignal?.addEventListener(
+                "abort",
+                () => reject(detailSignal?.reason),
+                { once: true }
+              );
+            });
+          }
+        ),
+        now: () => Date.parse("2026-09-03T16:45:00.000Z"),
+        timeoutMs: 20,
+      });
+
+      const response = await retrieval.retrieve(
+        "https://icecast.lyl.live/live",
+        { kind: "lyl-api" }
+      );
+
+      expect(response).toMatchObject({
+        data: {
+          artist: "Current Host",
+          artworkUrl: null,
+          genre: null,
+          itemUrl: `https://lyl.live/${type === "EPISODE" ? "episode" : "show"}/current-entry`,
+          source: "lyl-api",
+          stationDescription: null,
+          title: "Current Entry",
+        },
+        ok: true,
+      });
+      expect(calls).toBe(2);
+      expect(detailSignal?.aborted).toBeTrue();
+    }
+  );
+
+  test("falls back to Radio Alhara ICY metadata when its API is unavailable", async () => {
+    const calls: string[] = [];
+    const streamUrl = "https://n03.radiojar.com/78cxy6wkxtzuv";
+    const retrieval = createRadioMetadataRetrieval({
+      fetchFollowingPublicRedirects: createMetadataUpstreamFetch((url) => {
+        calls.push(String(url));
+        return Promise.resolve(
+          String(url) === streamUrl
+            ? icyResponse("Radio Alhara - Dimkal")
+            : new Response(null, { status: 503 })
+        );
+      }),
+      now: () => 1000,
+    });
+
+    const response = await retrieval.retrieve(streamUrl, {
+      kind: "radio-alhara-api",
+    });
+
+    expect(response).toMatchObject({
+      data: {
+        artist: "Radio Alhara",
+        source: "icy",
+        title: "Dimkal",
+      },
+      ok: true,
+    });
+    expect(calls).toEqual([
+      "https://ch2.radioalhara.net/api/now-playing",
+      streamUrl,
+    ]);
+  });
+
   test("uses configured SHOUTcast status endpoint without probing alternatives", async () => {
     const calls: string[] = [];
     const retrieval = createRadioMetadataRetrieval({

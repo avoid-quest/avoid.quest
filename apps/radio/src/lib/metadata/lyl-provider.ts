@@ -298,20 +298,22 @@ export async function tryLylApi(
   const episode =
     type === "EPISODE"
       ? await cacheMetadata({
-          key: ["lyl", "episode", slug],
+          key: ["lyl", "episode", slug, comparableTitle(title)],
           kv: input.kv,
           now: input.now,
-          retrieve: () => getEpisode(input.fetchImpl, slug),
+          retrieve: async () =>
+            trustMatchingTitle(await getEpisode(input.fetchImpl, slug), title),
           ttl: EPISODE_METADATA_TTL,
         })
       : null;
   const show =
     type === "SHOW"
       ? await cacheMetadata({
-          key: ["lyl", "show", slug],
+          key: ["lyl", "show", slug, comparableTitle(title)],
           kv: input.kv,
           now: input.now,
-          retrieve: () => getShow(input.fetchImpl, slug),
+          retrieve: async () =>
+            trustMatchingTitle(await getShow(input.fetchImpl, slug), title),
           ttl: EPISODE_METADATA_TTL,
         })
       : null;

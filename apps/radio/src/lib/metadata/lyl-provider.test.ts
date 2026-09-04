@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { cacheMetadata, EPISODE_METADATA_TTL } from "./cache";
 import { createMetadataKvFixture } from "./kv-test-fixture";
 import { tryLylApi } from "./lyl-provider";
 import { RadioMetadataValidationError } from "./upstream-fetch";
@@ -101,6 +102,139 @@ describe("LYL metadata provider", () => {
     expect(put.mock.calls[0]?.[2]).toEqual({ expirationTtl: 21_600 });
     expect([...entries.values()].join()).not.toContain("token=");
   });
+
+  test.each(["EPISODE", "SHOW"] as const)(
+    "retries mismatched %s details despite an old cache entry, then reuses matching details",
+    async (type) => {
+      const { kv, put } = createMetadataKvFixture();
+      await cacheMetadata({
+        key: ["lyl", type.toLowerCase(), "current-entry"],
+        kv,
+        now: () => SAMPLED_AT,
+        retrieve: () =>
+          Promise.resolve({
+            description: "Old mismatched details",
+            slug: "current-entry",
+            title: "Old Title",
+          }),
+        ttl: EPISODE_METADATA_TTL,
+      });
+      put.mockClear();
+      let liveCalls = 0;
+      let detailCalls = 0;
+      const read = () =>
+        tryLylApi({
+          ...providerInput((_url, init) => {
+            const { query } = JSON.parse(String(init?.body));
+            if (query.includes("query NowPlaying")) {
+              liveCalls += 1;
+              return Promise.resolve(
+                json({
+                  data: {
+                    calendar: [currentEntry({ type })],
+                    onair: {
+                      hls: "https://lyl.live/live.m3u8?token=live-secret",
+                      title: "Current Entry",
+                    },
+                  },
+                })
+              );
+            }
+            detailCalls += 1;
+            return Promise.resolve(
+              json({
+                data: {
+                  [type === "EPISODE" ? "episodeBySlug" : "showBySlug"]: {
+                    description: "Recovered details",
+                    image: { url: "https://static.lyl.live/current.png" },
+                    slug: "current-entry",
+                    title: detailCalls === 1 ? "Wrong Title" : "Current Entry",
+                  },
+                },
+              })
+            );
+          }),
+          kv,
+          now: () => SAMPLED_AT,
+        });
+
+      expect(await read()).toMatchObject({
+        artworkUrl: null,
+        stationDescription: null,
+        title: "Current Entry",
+      });
+      expect(detailCalls).toBe(1);
+      expect(put).not.toHaveBeenCalled();
+      expect(await read()).toMatchObject({
+        artworkUrl: "https://static.lyl.live/current.png",
+        stationDescription: "Recovered details",
+        title: "Current Entry",
+      });
+      expect(await read()).toMatchObject({
+        artworkUrl: "https://static.lyl.live/current.png",
+        stationDescription: "Recovered details",
+        title: "Current Entry",
+      });
+      expect(liveCalls).toBe(3);
+      expect(detailCalls).toBe(2);
+      expect(put).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  test.each(["EPISODE", "SHOW"] as const)(
+    "isolates %s details when the selected title changes for the same slug",
+    async (type) => {
+      const { kv } = createMetadataKvFixture();
+      let detailCalls = 0;
+      const read = (title: string) =>
+        tryLylApi({
+          ...providerInput((_url, init) => {
+            const { query } = JSON.parse(String(init?.body));
+            if (query.includes("query NowPlaying")) {
+              return Promise.resolve(
+                json({
+                  data: {
+                    calendar: [currentEntry({ title, type })],
+                    onair: {
+                      hls: "https://lyl.live/live.m3u8",
+                      title,
+                    },
+                  },
+                })
+              );
+            }
+            detailCalls += 1;
+            return Promise.resolve(
+              json({
+                data: {
+                  [type === "EPISODE" ? "episodeBySlug" : "showBySlug"]: {
+                    description: `Details for ${title}`,
+                    slug: "current-entry",
+                    title,
+                  },
+                },
+              })
+            );
+          }),
+          kv,
+          now: () => SAMPLED_AT,
+        });
+
+      expect(await read("Original Title")).toMatchObject({
+        stationDescription: "Details for Original Title",
+        title: "Original Title",
+      });
+      expect(await read("Corrected Title")).toMatchObject({
+        stationDescription: "Details for Corrected Title",
+        title: "Corrected Title",
+      });
+      expect(await read(" CORRECTED   TITLE ")).toMatchObject({
+        stationDescription: "Details for Corrected Title",
+        title: "CORRECTED   TITLE",
+      });
+      expect(detailCalls).toBe(2);
+    }
+  );
 
   test("propagates primary calendar aborts", async () => {
     const error = new DOMException("aborted", "AbortError");

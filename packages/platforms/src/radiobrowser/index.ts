@@ -59,10 +59,27 @@ async function asSafeResolvedHttpsUrl(
   if (!url) {
     return "";
   }
+  let resolutionError: Error | undefined;
   const validation = await validateResolvedPublicHttpUrl(url, {
-    resolveHostname,
+    resolveHostname:
+      resolveHostname === false
+        ? false
+        : async (...args) => {
+            try {
+              return await resolveHostname(...args);
+            } catch (cause) {
+              resolutionError = new Error("Radio Browser DNS lookup failed", {
+                cause,
+              });
+              throw resolutionError;
+            }
+          },
     signal,
   });
+  // An unavailable resolver must not turn a partial search into a cacheable one.
+  if (resolutionError) {
+    throw resolutionError;
+  }
   return validation.ok ? url : "";
 }
 
@@ -340,15 +357,10 @@ function normalizeLimit(limit: number | undefined): number {
   return Math.max(1, Math.min(MAX_LIMIT, Math.trunc(limit as number)));
 }
 
-export async function searchRadioBrowser(
-  query: string,
-  options: RadioBrowserSearchOptions = {}
+async function fetchStations(
+  createUrl: (server: string) => URL,
+  options: RadioBrowserSearchOptions
 ): Promise<RadioBrowserStation[]> {
-  const normalizedQuery = query.trim().slice(0, 200);
-  if (!normalizedQuery) {
-    return [];
-  }
-
   const fetchImpl = options.fetchImpl ?? fetch;
   const resolveHostname =
     options.resolveHostname ??
@@ -385,7 +397,7 @@ export async function searchRadioBrowser(
     const requestSignal = createTimeoutSignal(options.signal, timeoutMs);
     try {
       const payload = await fetchJson(
-        createSearchUrl(server, normalizedQuery, normalizeLimit(options.limit)),
+        createUrl(server),
         fetchImpl,
         requestSignal.signal,
         timeoutMs
@@ -424,4 +436,36 @@ export async function searchRadioBrowser(
   };
 
   return searchServer(0);
+}
+
+export function searchRadioBrowser(
+  query: string,
+  options: RadioBrowserSearchOptions = {}
+): Promise<RadioBrowserStation[]> {
+  const normalizedQuery = query.trim().slice(0, 200);
+  return normalizedQuery
+    ? fetchStations(
+        (server) =>
+          createSearchUrl(
+            server,
+            normalizedQuery,
+            normalizeLimit(options.limit)
+          ),
+        options
+      )
+    : Promise.resolve([]);
+}
+
+export function getRadioBrowserStations(
+  stationUuids: readonly string[],
+  options: RadioBrowserSearchOptions = {}
+): Promise<RadioBrowserStation[]> {
+  if (stationUuids.length === 0) {
+    return Promise.resolve([]);
+  }
+  return fetchStations((server) => {
+    const url = new URL("/json/stations/byuuid", server);
+    url.searchParams.set("uuids", stationUuids.join(","));
+    return url;
+  }, options);
 }

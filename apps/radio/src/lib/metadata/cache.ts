@@ -18,6 +18,23 @@ export const DIRECTORY_SEARCH_TTL = 10 * 60;
 
 export type MetadataKv = Pick<KVNamespace, "get" | "put">;
 
+// Give each best-effort KV operation a bounded chance to finish.
+const METADATA_KV_TIMEOUT_MS = 500;
+
+async function waitForKv<T>(operation: Promise<T>): Promise<T | undefined> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      operation,
+      new Promise<undefined>((resolve) => {
+        timeout = setTimeout(() => resolve(undefined), METADATA_KV_TIMEOUT_MS);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 export async function cacheMetadata<T>({
   kv,
   key,
@@ -47,9 +64,8 @@ export async function cacheMetadata<T>({
     byte.toString(16).padStart(2, "0")
   ).join("")}`;
   try {
-    const entry = await kv.get<{ value: T; expiresAt: number }>(
-      cacheKey,
-      "json"
+    const entry = await waitForKv(
+      kv.get<{ value: T; expiresAt: number }>(cacheKey, "json")
     );
     if (entry && entry.expiresAt > now()) {
       return entry.value;
@@ -62,10 +78,12 @@ export async function cacheMetadata<T>({
   const deadline = expiresAt?.(value) ?? sampledAt + ttl * 1000;
   if (shouldCache(value) && deadline > now()) {
     try {
-      await kv.put(cacheKey, JSON.stringify({ expiresAt: deadline, value }), {
-        // Logical expiry also handles snapshots sampled before this lookup.
-        expirationTtl: Math.max(60, Math.ceil((deadline - now()) / 1000)),
-      });
+      await waitForKv(
+        kv.put(cacheKey, JSON.stringify({ expiresAt: deadline, value }), {
+          // Logical expiry also handles snapshots sampled before this lookup.
+          expirationTtl: Math.max(60, Math.ceil((deadline - now()) / 1000)),
+        })
+      );
     } catch {
       // A failed or competing write must not discard valid provider data.
     }

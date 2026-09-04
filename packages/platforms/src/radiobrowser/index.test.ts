@@ -1,5 +1,5 @@
 import { describe, expect, mock, test } from "bun:test";
-import { searchRadioBrowser } from "./index.js";
+import { getRadioBrowserStations, searchRadioBrowser } from "./index.js";
 
 function jsonResponse(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -220,7 +220,7 @@ describe("searchRadioBrowser", () => {
     expect(resolveHostname).toHaveBeenCalledTimes(2);
   });
 
-  test("fails closed when a stream hostname cannot be resolved", async () => {
+  test("fails the search when a stream hostname resolver is unavailable", async () => {
     const resolveHostname = mock(() =>
       Promise.reject(new Error("DNS unavailable"))
     );
@@ -237,6 +237,24 @@ describe("searchRadioBrowser", () => {
           ])
         ),
         resolveHostname,
+        servers: ["https://radio-browser.example"],
+      })
+    ).rejects.toThrow("every discovered server");
+  });
+
+  test("drops a nonexistent hostname without treating it as a DNS outage", async () => {
+    await expect(
+      searchRadioBrowser("nonexistent", {
+        fetchImpl: mock(async () =>
+          jsonResponse([
+            {
+              name: "No DNS records",
+              stationuuid: "station-1",
+              url: "https://nonexistent.example/live.mp3",
+            },
+          ])
+        ),
+        resolveHostname: async () => [],
         servers: ["https://radio-browser.example"],
       })
     ).resolves.toEqual([]);
@@ -277,5 +295,86 @@ describe("searchRadioBrowser", () => {
       })
     ).rejects.toBe(abortError);
     expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("getRadioBrowserStations", () => {
+  test("retrieves UUIDs together and retries mirrors with the same URL validation", async () => {
+    const requested: URL[] = [];
+    const fetchImpl = mock((input: string | URL | Request) => {
+      const url = new URL(String(input));
+      requested.push(url);
+      if (url.hostname === "one.example") {
+        return Promise.resolve(jsonResponse({}, 503));
+      }
+      return Promise.resolve(
+        jsonResponse([
+          {
+            name: "Public",
+            stationuuid: "public",
+            url_resolved: "https://public.example/live?utm_source=directory",
+          },
+          {
+            name: "Private DNS",
+            stationuuid: "private",
+            url_resolved: "https://private.example/live",
+          },
+          {
+            name: "Credentials",
+            stationuuid: "credentials",
+            url_resolved: "https://user:pass@public.example/live",
+          },
+        ])
+      );
+    });
+    const stations = await getRadioBrowserStations(
+      ["public", "private", "credentials"],
+      {
+        fetchImpl,
+        random: () => 0.999,
+        resolveHostname: async (hostname) =>
+          hostname === "public.example" ? ["93.184.216.34"] : ["127.0.0.1"],
+        servers: ["https://one.example", "https://two.example"],
+      }
+    );
+    expect(stations).toEqual([
+      expect.objectContaining({
+        stationUuid: "public",
+        urlResolved: "https://public.example/live?utm_source=directory",
+      }),
+    ]);
+    expect(
+      requested.map((url) => [url.hostname, url.pathname, url.search])
+    ).toEqual([
+      [
+        "one.example",
+        "/json/stations/byuuid",
+        "?uuids=public%2Cprivate%2Ccredentials",
+      ],
+      [
+        "two.example",
+        "/json/stations/byuuid",
+        "?uuids=public%2Cprivate%2Ccredentials",
+      ],
+    ]);
+  });
+
+  test("bounds UUID lookup DNS resolution by the request timeout", async () => {
+    await expect(
+      getRadioBrowserStations(["slow"], {
+        fetchImpl: mock(async () =>
+          jsonResponse([
+            {
+              name: "Slow",
+              stationuuid: "slow",
+              url_resolved: "https://slow.example/live",
+            },
+          ])
+        ),
+        resolveHostname: () => new Promise(() => undefined),
+        servers: ["https://radio-browser.example"],
+        timeoutMs: 1,
+      })
+    ).rejects.toThrow("every discovered server");
   });
 });

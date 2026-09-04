@@ -148,21 +148,24 @@ retain its 60-second lifetime even when they include artwork or station details.
 
 Cache hits preserve the original `sampledAt` and `expiresAt`. KV is eventually
 consistent: propagation can take 60 seconds or longer, and concurrent misses
-can repeat provider calls. Reads and writes are best effort; provider failures
-are not stored as successful empty searches. The existing local now-playing
-cache and in-flight deduplication remain, capped by the snapshot's expiry.
+can repeat provider calls. Each KV read or write waits at most 500 ms before
+continuing without the cache result. Provider failures, including directory DNS
+failures and incomplete enrichment, are not stored as successful results. The
+existing local now-playing cache and in-flight deduplication remain, capped by
+the snapshot's expiry.
 
 Episode enrichment stores descriptive fields. Radio Garden resolves playback
-URLs on each request, outside the station cache. Radio Browser searches with
-query-bearing or credential-bearing playback URLs bypass KV because these may
-carry signatures or sessions. Browser playback probes and player state stay local.
+URLs on each request, outside the station cache. Radio Browser caches search
+descriptions and validated query-free playback URLs. Query-bearing URLs stay
+outside KV and are refreshed together by station UUID on cache hits. These searches
+still need one provider lookup; searches with only query-free URLs need none.
+Browser playback probes and player state stay local.
 
 Wrangler's supported [automatic provisioning](https://developers.cloudflare.com/changelog/post/2025-10-24-automatic-resource-provisioning/)
 creates the namespace on the next authorized deployment from the binding-only
 entry in `wrangler.jsonc`. Local development uses local KV. If provisioning is
 disabled in the release environment, create one namespace and add its real `id`
-to that entry before deployment. No remote namespace or deployed cache behavior
-was verified for this change. See [KV expiry and consistency](https://developers.cloudflare.com/kv/api/write-key-value-pairs/)
+to that entry before deployment. See [KV expiry and consistency](https://developers.cloudflare.com/kv/api/write-key-value-pairs/)
 and [Radio Browser's provider requirements](https://api.radio-browser.info/).
 
 ## Development

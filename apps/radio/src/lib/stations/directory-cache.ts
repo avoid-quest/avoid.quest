@@ -1,4 +1,8 @@
-import { searchRadioBrowser } from "@avoid.quest/platforms/radiobrowser";
+import {
+  getRadioBrowserStations,
+  type RadioBrowserStation,
+  searchRadioBrowser,
+} from "@avoid.quest/platforms/radiobrowser";
 import {
   getRadioGardenMetadata,
   resolveRadioGardenStream,
@@ -20,22 +24,51 @@ function hasPublicPlaybackUrl(value: string): boolean {
   return !(url.search || url.username || url.password);
 }
 
-export function searchCachedRadioBrowser(
+export async function searchCachedRadioBrowser(
   kv: MetadataKv,
   query: string,
   limit: number
 ) {
-  return cacheMetadata({
-    key: ["radio-browser", "search", query, limit],
+  let retrieved: RadioBrowserStation[] | undefined;
+  const stations = await cacheMetadata({
+    key: ["radio-browser", "search-v2", query, limit],
     kv,
-    retrieve: () => searchRadioBrowser(query, { limit }),
-    shouldCache: (stations) =>
-      stations.every(
-        (station) =>
-          hasPublicPlaybackUrl(station.url) &&
-          hasPublicPlaybackUrl(station.urlResolved)
-      ),
+    retrieve: async () => {
+      retrieved = await searchRadioBrowser(query, { limit });
+      return retrieved.map((station) =>
+        hasPublicPlaybackUrl(station.url) &&
+        hasPublicPlaybackUrl(station.urlResolved)
+          ? station
+          : { ...station, url: "", urlResolved: "" }
+      );
+    },
     ttl: DIRECTORY_SEARCH_TTL,
+  });
+  if (retrieved) {
+    return retrieved;
+  }
+  const refresh = stations.filter(
+    (station) => !(station.url || station.urlResolved)
+  );
+  if (refresh.length === 0) {
+    return stations;
+  }
+  // Keep search metadata shared without persisting expiring/session URLs.
+  const fresh = new Map(
+    (
+      await getRadioBrowserStations(
+        refresh.map((station) => station.stationUuid)
+      )
+    ).map((station) => [station.stationUuid, station])
+  );
+  return stations.flatMap((station) => {
+    if (station.url || station.urlResolved) {
+      return [station];
+    }
+    const playback = fresh.get(station.stationUuid);
+    return playback
+      ? [{ ...station, url: playback.url, urlResolved: playback.urlResolved }]
+      : [];
   });
 }
 

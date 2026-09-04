@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, jest, mock, test } from "bun:test";
 import {
   cacheMetadata,
   clearRadioMetadataCache,
@@ -131,6 +131,82 @@ describe("shared metadata cache", () => {
       ).toEqual({ title: "Valid" });
     }
   );
+
+  test.each(["read", "write"])(
+    "returns provider data after a stalled KV %s",
+    async (operation) => {
+      jest.useFakeTimers();
+      try {
+        const { kv, get, put } = createMetadataKvFixture();
+        const started = Promise.withResolvers<void>();
+        const stalled = Promise.withResolvers<never>();
+        (operation === "read" ? get : put).mockImplementation(() => {
+          started.resolve();
+          return stalled.promise;
+        });
+        const value = { expiresAt: 2000, title: "Valid" };
+        const retrieve = mock(() => Promise.resolve(value));
+        let settled = false;
+        const pending = cacheMetadata({
+          expiresAt: (result) => result.expiresAt,
+          key: ["provider", "details"],
+          kv,
+          now: () => 1000,
+          retrieve,
+          ttl: 60,
+        }).then((result) => {
+          settled = true;
+          return result;
+        });
+        await started.promise;
+        jest.advanceTimersByTime(499);
+        await Promise.resolve();
+        expect(settled).toBe(false);
+        expect(retrieve).toHaveBeenCalledTimes(operation === "read" ? 0 : 1);
+
+        jest.advanceTimersByTime(1);
+        expect(await pending).toEqual(value);
+        expect(retrieve).toHaveBeenCalledTimes(1);
+        expect(JSON.parse(put.mock.calls[0]?.[1] ?? "null")).toEqual({
+          expiresAt: 2000,
+          value,
+        });
+
+        stalled.reject(new Error("late KV failure"));
+        await Promise.resolve();
+      } finally {
+        jest.useRealTimers();
+      }
+    },
+    1000
+  );
+
+  test("preserves provider expiry through retrieval and cache hits", async () => {
+    const { kv, put } = createMetadataKvFixture();
+    let time = 1000;
+    const retrieve = mock(() => {
+      time += 250;
+      return Promise.resolve(success);
+    });
+    const read = () =>
+      cacheMetadata({
+        expiresAt: (result) => (result.ok ? result.data.expiresAt : 0),
+        key: ["provider", "now-playing"],
+        kv,
+        now: () => time,
+        retrieve,
+        ttl: 60,
+      });
+    expect(await read()).toEqual(success);
+    expect(put.mock.calls[0]?.[2]).toEqual({ expirationTtl: 60 });
+    time = 1999;
+    expect(await read()).toEqual(success);
+    expect(retrieve).toHaveBeenCalledTimes(1);
+    time = 2000;
+    expect(await read()).toEqual(success);
+    expect(retrieve).toHaveBeenCalledTimes(2);
+    expect(put).toHaveBeenCalledTimes(1);
+  });
 
   test("does not cache upstream failures or null metadata", async () => {
     const { kv, put } = createMetadataKvFixture();

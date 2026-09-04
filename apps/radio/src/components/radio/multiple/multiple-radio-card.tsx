@@ -4,6 +4,7 @@ import { Slider } from "@avoid.quest/ui/components/slider";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import { Volume2Icon, VolumeXIcon } from "lucide-react";
 import type { Radio } from "@/lib/audio";
+import { useHasEnteredViewport } from "@/lib/hooks/use-has-entered-viewport";
 import type { MultipleSessionPlayerState } from "@/lib/hooks/use-multiple-session";
 import { useRadioMetadata } from "@/lib/hooks/use-radio-metadata";
 import { isSessionRadio } from "@/lib/hooks/use-session-radios";
@@ -38,7 +39,10 @@ export function MultipleRadioCard({
   const volume = playerState?.volume ?? 1;
   const isMuted = playerState?.isMuted ?? volume === 0;
   const error = playerState?.error ?? null;
+  const { elementRef, hasEnteredViewport } =
+    useHasEnteredViewport<HTMLDivElement>();
   const { metadata } = useRadioMetadata({
+    enabled: isPlaying || hasEnteredViewport,
     poll: isPlaying && !isLoading,
     radio,
   });
@@ -57,6 +61,7 @@ export function MultipleRadioCard({
         isPlaying && !isLoading && "border-foreground/40",
         isSession && "border-l-2 border-l-[#00d084]/40"
       )}
+      ref={elementRef}
     >
       <div className="absolute top-2 right-2">
         <RadioItemActions

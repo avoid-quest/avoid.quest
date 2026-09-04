@@ -3,6 +3,7 @@ import { ScrollArea } from "@avoid.quest/ui/components/scroll-area";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import { AudioLinesIcon } from "lucide-react";
 import type { Radio } from "@/lib/audio";
+import { useHasEnteredViewport } from "@/lib/hooks/use-has-entered-viewport";
 import { useRadioMetadata } from "@/lib/hooks/use-radio-metadata";
 import { isSessionRadio } from "@/lib/hooks/use-session-radios";
 import { RadioItemActions } from "../radio-item-actions";
@@ -46,7 +47,13 @@ function StationRow({
   onToggle: (radio: Radio, enabled: boolean) => void;
 }) {
   const isSession = isSessionRadio(radio);
-  const { metadata } = useRadioMetadata({ poll: false, radio });
+  const { elementRef, hasEnteredViewport } =
+    useHasEnteredViewport<HTMLDivElement>();
+  const { metadata } = useRadioMetadata({
+    enabled: hasEnteredViewport,
+    poll: false,
+    radio,
+  });
   const handleSelect = () => onSelect(radio);
 
   return (
@@ -56,6 +63,7 @@ function StationRow({
         "hover:bg-muted/40",
         isSession && "border-l-2 border-l-[#00d084]/40"
       )}
+      ref={elementRef}
     >
       <button
         className="flex min-w-0 flex-1 items-center gap-3 text-left"

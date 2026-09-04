@@ -97,16 +97,18 @@ function CompactGenreBadge({ genre }: { genre?: string | null }) {
   const remaining = genres.length - 1;
   return (
     <Badge
-      aria-label={`Genres: ${genres.join(", ")}`}
       className="mt-1.5 flex h-4 max-w-full gap-1 border-foreground/10 bg-transparent px-1.5 py-0 font-normal text-[9px] text-muted-foreground leading-none"
       variant="outline"
     >
-      <span className="truncate">{firstGenre}</span>
+      <span aria-hidden="true" className="truncate">
+        {firstGenre}
+      </span>
       {remaining > 0 ? (
         <span aria-hidden="true" className="shrink-0">
           +{remaining}
         </span>
       ) : null}
+      <span className="sr-only">Genres: {genres.join(", ")}</span>
     </Badge>
   );
 }

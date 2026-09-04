@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useEffect, useRef } from "react";
 import type { Radio } from "@/lib/audio";
 import { getRadioMetadataConfig } from "@/lib/metadata/radio-config";
 import { decodeRadioMetadataResponse } from "@/lib/metadata/response-decoder";
@@ -95,9 +96,11 @@ function getMetadataErrorMessage(error: unknown): string | null {
 export function useRadioMetadata({
   radio,
   poll,
+  enabled: requested = true,
 }: {
   radio: Radio | null;
   poll: boolean;
+  enabled?: boolean;
 }): {
   metadata: RadioNowPlaying | null;
   isLoading: boolean;
@@ -107,7 +110,9 @@ export function useRadioMetadata({
   const streamUrl = radio?.streamUrl;
   const metadataConfig = getUsableMetadataConfig(getRadioMetadataConfig(radio));
   const enabled =
-    Boolean(metadataConfig) && isMetadataEligibleStreamUrl(streamUrl);
+    requested &&
+    Boolean(metadataConfig) &&
+    isMetadataEligibleStreamUrl(streamUrl);
 
   const query = useQuery({
     enabled,
@@ -123,6 +128,16 @@ export function useRadioMetadata({
     retry: 1,
     staleTime: 15_000,
   });
+
+  const wasPolling = useRef(poll);
+  useEffect(() => {
+    const startedPolling = poll && !wasPolling.current;
+    wasPolling.current = poll;
+
+    if (startedPolling && enabled && !query.isFetching) {
+      query.refetch();
+    }
+  }, [enabled, poll, query.isFetching, query.refetch]);
 
   if (!enabled) {
     return {

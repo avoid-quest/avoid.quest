@@ -4,8 +4,10 @@ import {
   validatePublicStreamUrl,
 } from "@/lib/proxy/url-policy";
 import {
+  cacheMetadata,
   getOrSetCachedRadioMetadata,
   getRadioMetadataCacheKey,
+  type MetadataKv,
   RADIO_METADATA_FAILURE_TTL_MS,
   RADIO_METADATA_SUCCESS_TTL_MS,
   RADIO_METADATA_UNSUPPORTED_TTL_MS,
@@ -33,15 +35,16 @@ type RadioMetadataWorkflowContext = {
 };
 
 type RadioMetadataWorkflowDependencies = {
+  kv?: MetadataKv;
   captureError?: typeof captureError;
   fetchImpl?: FetchLike;
   now?: () => number;
   timeoutMs?: number;
 };
 
-function ttlForResponse(response: RadioMetadataResponse): number {
+function ttlForResponse(response: RadioMetadataResponse, now: number): number {
   if (response.ok) {
-    return RADIO_METADATA_SUCCESS_TTL_MS;
+    return Math.max(0, response.data.expiresAt - now);
   }
   return response.error.code === "RADIO_METADATA_UNSUPPORTED"
     ? RADIO_METADATA_UNSUPPORTED_TTL_MS
@@ -204,6 +207,7 @@ function parseMetadataConfig(params: URLSearchParams): MetadataConfigResult {
 }
 
 export function createRadioMetadataWorkflow({
+  kv,
   captureError: captureErrorImpl = captureError,
   fetchImpl = fetch,
   now = Date.now,
@@ -212,6 +216,7 @@ export function createRadioMetadataWorkflow({
   const retrieval = createRadioMetadataRetrieval({
     captureError: captureErrorImpl,
     fetchFollowingPublicRedirects: createMetadataUpstreamFetch(fetchImpl),
+    kv,
     now,
     timeoutMs,
   });
@@ -249,8 +254,23 @@ export function createRadioMetadataWorkflow({
     );
     const response = await getOrSetCachedRadioMetadata(cacheKey, {
       now,
-      retrieve: () => retrieval.retrieve(validation.url, configResult.config),
-      ttlForResponse,
+      retrieve: () =>
+        cacheMetadata({
+          expiresAt: (result) => (result.ok ? result.data.expiresAt : 0),
+          key: [
+            configResult.config.kind,
+            "now-playing",
+            validation.url,
+            configResult.config,
+          ],
+          kv,
+          now,
+          retrieve: () =>
+            retrieval.retrieve(validation.url, configResult.config),
+          shouldCache: (result) => result.ok,
+          ttl: RADIO_METADATA_SUCCESS_TTL_MS / 1000,
+        }),
+      ttlForResponse: (result) => ttlForResponse(result, now()),
     });
     return jsonResponse(
       response,

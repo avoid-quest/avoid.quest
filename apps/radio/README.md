@@ -48,6 +48,7 @@ Server functions (TanStack Start `createServerFn`):
 | `utils/platform.functions.ts` | Bandcamp, SoundCloud, and Radio Garden metadata/URL resolution |
 | `utils/search.functions.ts` | Bandcamp and SoundCloud search |
 | `utils/radio-garden.functions.ts` | Radio Garden search and suggestions |
+| `utils/radio-browser.functions.ts` | Shared Radio Browser directory search |
 
 Audio bytes never pass through the app server. Static audio URLs and M3U/PLS
 playlists are resolved directly in the browser. Bandcamp's fresh, validated
@@ -136,6 +137,39 @@ should be configured with Cloudflare account-level custom domains or routes
 outside this repository.
 
 Workers Builds PR comments should include the branch preview URL after upload.
+
+### Shared radio metadata
+
+The radio Worker uses one `RADIO_METADATA` KV binding. Live snapshots expire
+after 60 seconds; episode/show enrichment after six hours; Radio Garden station
+attributes after 24 hours; and Radio Browser/Radio Garden searches after ten
+minutes. NTS channels reuse one live feed. Fields returned in the live feed
+retain its 60-second lifetime even when they include artwork or station details.
+Separate enrichment caches cover Sygma, Cashmere, IPR, LYL, HKCR, and BlackOut.
+HKCR keeps its live/replay schedule separate from show details. BlackOut stores
+the verified full description and genres separately from its listening feed.
+Revised Airtime and HKCR cache keys bypass older incomplete enrichment records.
+
+Cache hits preserve the original `sampledAt` and `expiresAt`. KV is eventually
+consistent: propagation can take 60 seconds or longer, and concurrent misses
+can repeat provider calls. Each KV read or write waits at most 500 ms before
+continuing without the cache result. Provider failures, including directory DNS
+failures and incomplete enrichment, are not stored as successful results. The
+existing local now-playing cache and in-flight deduplication remain, capped by
+the snapshot's expiry.
+
+Episode enrichment stores descriptive fields. Radio Garden resolves playback
+URLs on each request, outside the station cache. Radio Browser caches search
+descriptions and validated query-free playback URLs. Query-bearing URLs stay
+outside KV and are refreshed together by station UUID on cache hits. These searches
+still need one provider lookup; searches with only query-free URLs need none.
+Browser playback probes and player state stay local.
+
+The `RADIO_METADATA` entry in `wrangler.jsonc` binds the existing
+`radio-radio-metadata` namespace by ID, so repeated uploads reuse it instead of
+attempting to provision another namespace with the same name. Local development
+uses local KV. See [KV expiry and consistency](https://developers.cloudflare.com/kv/api/write-key-value-pairs/)
+and [Radio Browser's provider requirements](https://api.radio-browser.info/).
 
 ## Development
 

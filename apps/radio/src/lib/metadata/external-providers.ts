@@ -1,3 +1,9 @@
+import {
+  cacheMetadata,
+  EPISODE_METADATA_TTL,
+  type MetadataKv,
+  RADIO_METADATA_SUCCESS_TTL_MS,
+} from "./cache";
 import { cleanMetadataText, parseRadioTitle } from "./title-parser";
 import type { RadioMetadataSource, RadioNowPlaying } from "./types";
 import { RadioMetadataValidationError } from "./upstream-fetch";
@@ -35,6 +41,8 @@ const TRAILING_SLASH_PATTERN = /\/$/;
 const WHITESPACE_PATTERN = /\s+/g;
 
 export type ExternalMetadataProviderInput = {
+  kv?: MetadataKv;
+  now?: () => number;
   fetchImpl: FetchLike;
   streamUrl: string;
   sampledAt: number;
@@ -72,6 +80,11 @@ type AirtimeShow = {
   description?: unknown;
   image_path?: unknown;
   url?: unknown;
+};
+
+type AirtimeEnrichment = {
+  complete: boolean;
+  nowPlaying: RadioNowPlaying;
 };
 
 type CashmereEpisode = {
@@ -472,24 +485,24 @@ function comparableTitle(value: unknown): string | null {
 async function enrichSygmaNowPlaying(
   fetchImpl: FetchLike,
   nowPlaying: RadioNowPlaying
-): Promise<RadioNowPlaying> {
+): Promise<AirtimeEnrichment> {
   if (
     (nowPlaying.artworkUrl && nowPlaying.stationDescription) ||
     !nowPlaying.itemUrl
   ) {
-    return nowPlaying;
+    return { complete: true, nowPlaying };
   }
   const itemUrl = new URL(nowPlaying.itemUrl);
   if (
     itemUrl.hostname !== "radio.syg.ma" ||
     !itemUrl.pathname.startsWith("/episodes/")
   ) {
-    return nowPlaying;
+    return { complete: true, nowPlaying };
   }
   const encodedSlug = itemUrl.pathname.split("/").filter(Boolean).at(-1);
   const slug = encodedSlug ? decodeURIComponent(encodedSlug) : null;
   if (!slug) {
-    return nowPlaying;
+    return { complete: true, nowPlaying };
   }
   const result = await fetchObjectJson(
     fetchImpl,
@@ -501,13 +514,16 @@ async function enrichSygmaNowPlaying(
     asString(episode?.slug) !== slug ||
     comparableTitle(episode?.title) !== comparableTitle(nowPlaying.title)
   ) {
-    return nowPlaying;
+    return { complete: false, nowPlaying };
   }
   return {
-    ...nowPlaying,
-    artworkUrl: nowPlaying.artworkUrl ?? asPublicUrl(episode.picture?.url),
-    stationDescription:
-      nowPlaying.stationDescription ?? asString(episode.description),
+    complete: true,
+    nowPlaying: {
+      ...nowPlaying,
+      artworkUrl: nowPlaying.artworkUrl ?? asPublicUrl(episode.picture?.url),
+      stationDescription:
+        nowPlaying.stationDescription ?? asString(episode.description),
+    },
   };
 }
 
@@ -518,67 +534,50 @@ function comparableCashmereTitle(value: unknown): string | null {
 async function enrichCashmereNowPlaying(
   fetchImpl: FetchLike,
   nowPlaying: RadioNowPlaying
-): Promise<RadioNowPlaying> {
+): Promise<AirtimeEnrichment> {
   const showUrl = getCashmereShowUrl(nowPlaying.itemUrl);
   if (showUrl) {
-    if (nowPlaying.artworkUrl && nowPlaying.stationDescription) {
-      return nowPlaying;
-    }
-    const result = await fetchObjectJson(
-      fetchImpl,
-      `${CASHMERE_REST_URL}/pages?slug=${encodeURIComponent(showUrl.slug)}&_embed=wp%3Afeaturedmedia&_fields=slug%2Clink%2Ccontent%2C_links%2C_embedded`
-    );
-    const shows = Array.isArray(result?.data)
-      ? (result.data as CashmereShow[])
-      : [];
-    const [show] = shows;
-    if (
-      shows.length !== 1 ||
-      asString(show?.slug) !== showUrl.slug ||
-      !cashmereBackendLinkMatches(show?.link, showUrl.pathname)
-    ) {
-      return nowPlaying;
-    }
-    return {
-      ...nowPlaying,
-      artworkUrl:
-        nowPlaying.artworkUrl ??
-        asPublicUrl(show?._embedded?.["wp:featuredmedia"]?.[0]?.source_url),
-      stationDescription:
-        nowPlaying.stationDescription ?? plainText(show?.content?.rendered),
-    };
+    return await enrichCashmereKnownShow(fetchImpl, nowPlaying, showUrl);
   }
   if (
-    (nowPlaying.artworkUrl &&
-      nowPlaying.itemUrl &&
-      nowPlaying.stationDescription &&
-      nowPlaying.genre) ||
+    [
+      nowPlaying.artworkUrl,
+      nowPlaying.itemUrl,
+      nowPlaying.stationDescription,
+      nowPlaying.genre,
+    ].every(Boolean) ||
     !nowPlaying.title
   ) {
-    return nowPlaying;
+    return { complete: true, nowPlaying };
   }
+  const searchTitle = nowPlaying.title.replace(AUDIO_EXTENSION_PATTERN, "");
   const result = await fetchObjectJson(fetchImpl, CASHMERE_GRAPHQL_URL, {
     body: JSON.stringify({
       query:
         "query SearchEpisode($q: String!) { episodes(where: {search: $q}, first: 10) { nodes { databaseId title uri featuredImage { node { sourceUrl } } } } }",
-      variables: { q: nowPlaying.title.replace(AUDIO_EXTENSION_PATTERN, "") },
+      variables: { q: searchTitle },
     }),
     headers: { "Content-Type": "application/json" },
     method: "POST",
   });
   const responseData = result?.data as
-    | { data?: { episodes?: { nodes?: CashmereEpisode[] } } }
+    | {
+        data?: { episodes?: { nodes?: CashmereEpisode[] } };
+        errors?: unknown[];
+      }
     | undefined;
   const nodes = responseData?.data?.episodes?.nodes;
-  const matches = nodes?.filter(
-    (node) =>
-      comparableCashmereTitle(node.title) ===
-      comparableCashmereTitle(
-        nowPlaying.title?.replace(AUDIO_EXTENSION_PATTERN, "")
+  const complete = Array.isArray(nodes) && !responseData?.errors?.length;
+  const matches = Array.isArray(nodes)
+    ? nodes.filter(
+        (node) =>
+          comparableCashmereTitle(node.title) ===
+          comparableCashmereTitle(searchTitle)
       )
-  );
-  if (matches?.length !== 1) {
-    return await enrichCashmereShowByTitle(fetchImpl, nowPlaying);
+    : [];
+  if (matches.length !== 1) {
+    const details = await enrichCashmereShowByTitle(fetchImpl, nowPlaying);
+    return { ...details, complete: complete && details.complete };
   }
 
   const [episode] = matches;
@@ -594,19 +593,60 @@ async function enrichCashmereNowPlaying(
       asPublicUrl(episode?.featuredImage?.node?.sourceUrl),
     itemUrl: nowPlaying.itemUrl ?? itemUrl,
   };
-  return await enrichCashmereEpisodeRecord(fetchImpl, enriched, episode);
+  const details = await enrichCashmereEpisodeRecord(
+    fetchImpl,
+    enriched,
+    episode
+  );
+  return { ...details, complete: complete && details.complete };
+}
+
+async function enrichCashmereKnownShow(
+  fetchImpl: FetchLike,
+  nowPlaying: RadioNowPlaying,
+  showUrl: { slug: string; pathname: string }
+): Promise<AirtimeEnrichment> {
+  if (nowPlaying.artworkUrl && nowPlaying.stationDescription) {
+    return { complete: true, nowPlaying };
+  }
+  const result = await fetchObjectJson(
+    fetchImpl,
+    `${CASHMERE_REST_URL}/pages?slug=${encodeURIComponent(showUrl.slug)}&_embed=wp%3Afeaturedmedia&_fields=slug%2Clink%2Ccontent%2C_links%2C_embedded`
+  );
+  const shows = Array.isArray(result?.data)
+    ? (result.data as CashmereShow[])
+    : null;
+  const show = shows?.[0];
+  if (
+    shows?.length !== 1 ||
+    asString(show?.slug) !== showUrl.slug ||
+    !cashmereBackendLinkMatches(show?.link, showUrl.pathname)
+  ) {
+    return { complete: shows?.length === 0, nowPlaying };
+  }
+  return {
+    complete: true,
+    nowPlaying: {
+      ...nowPlaying,
+      artworkUrl:
+        nowPlaying.artworkUrl ??
+        asPublicUrl(show?._embedded?.["wp:featuredmedia"]?.[0]?.source_url),
+      stationDescription:
+        nowPlaying.stationDescription ?? plainText(show?.content?.rendered),
+    },
+  };
 }
 
 async function enrichCashmereShowByTitle(
   fetchImpl: FetchLike,
   nowPlaying: RadioNowPlaying
-): Promise<RadioNowPlaying> {
+): Promise<AirtimeEnrichment> {
   const title = nowPlaying.title
     ?.replace(AUDIO_EXTENSION_PATTERN, "")
     .replace(CASHMERE_RECORDING_DATE_PATTERN, "")
     .trim();
   if (!title || nowPlaying.itemUrl) {
-    return nowPlaying;
+    return { complete: true, nowPlaying };
   }
   const url = new URL(`${CASHMERE_REST_URL}/pages`);
   url.searchParams.set("search", title);
@@ -614,27 +654,34 @@ async function enrichCashmereShowByTitle(
   url.searchParams.set("_embed", "wp:featuredmedia");
   url.searchParams.set("_fields", "title,slug,link,content,_links,_embedded");
   const result = await fetchObjectJson(fetchImpl, url.toString());
-  const matches = Array.isArray(result?.data)
-    ? (result.data as CashmereShow[]).filter(
-        (candidate) =>
-          comparableCashmereTitle(candidate.title?.rendered) ===
-          comparableCashmereTitle(title)
-      )
-    : [];
-  const show = matches.length === 1 ? matches[0] : null;
+  if (!Array.isArray(result?.data)) {
+    return { complete: false, nowPlaying };
+  }
+  const matches = (result.data as CashmereShow[]).filter(
+    (candidate) =>
+      comparableCashmereTitle(candidate.title?.rendered) ===
+      comparableCashmereTitle(title)
+  );
+  if (matches.length !== 1) {
+    return { complete: true, nowPlaying };
+  }
+  const [show] = matches;
   const slug = asString(show?.slug);
   const pathname = slug ? `/shows/${encodeURIComponent(slug)}/` : null;
-  if (!(show && pathname && cashmereBackendLinkMatches(show.link, pathname))) {
-    return nowPlaying;
+  if (!(pathname && cashmereBackendLinkMatches(show?.link, pathname))) {
+    return { complete: false, nowPlaying };
   }
   return {
-    ...nowPlaying,
-    artworkUrl:
-      nowPlaying.artworkUrl ??
-      asPublicUrl(show._embedded?.["wp:featuredmedia"]?.[0]?.source_url),
-    itemUrl: new URL(pathname, "https://cashmereradio.com").toString(),
-    stationDescription:
-      nowPlaying.stationDescription ?? plainText(show.content?.rendered),
+    complete: true,
+    nowPlaying: {
+      ...nowPlaying,
+      artworkUrl:
+        nowPlaying.artworkUrl ??
+        asPublicUrl(show._embedded?.["wp:featuredmedia"]?.[0]?.source_url),
+      itemUrl: new URL(pathname, "https://cashmereradio.com").toString(),
+      stationDescription:
+        nowPlaying.stationDescription ?? plainText(show.content?.rendered),
+    },
   };
 }
 
@@ -642,7 +689,7 @@ async function enrichCashmereEpisodeRecord(
   fetchImpl: FetchLike,
   nowPlaying: RadioNowPlaying,
   episode: CashmereEpisode | undefined
-): Promise<RadioNowPlaying> {
+): Promise<AirtimeEnrichment> {
   const databaseId = episode?.databaseId;
   const episodeUrl = getCashmereEpisodeUrl(nowPlaying.itemUrl);
   if (
@@ -652,29 +699,40 @@ async function enrichCashmereEpisodeRecord(
       episodeUrl
     )
   ) {
-    return nowPlaying;
+    return { complete: true, nowPlaying };
   }
-  const detailResult = await fetchObjectJson(
-    fetchImpl,
-    `${CASHMERE_REST_URL}/episode/${databaseId}?_fields=id%2Cslug%2Clink%2Ccontent%2Cacf`
-  );
+  let detailResult: Awaited<ReturnType<typeof fetchObjectJson>>;
+  try {
+    detailResult = await fetchObjectJson(
+      fetchImpl,
+      `${CASHMERE_REST_URL}/episode/${databaseId}?_fields=id%2Cslug%2Clink%2Ccontent%2Cacf`
+    );
+  } catch (error) {
+    if (error instanceof RadioMetadataValidationError) {
+      throw error;
+    }
+    return { complete: false, nowPlaying };
+  }
   const record = detailResult?.data as CashmereEpisodeRecord | undefined;
   if (
     record?.id !== databaseId ||
     asString(record.slug) !== episodeUrl.slug ||
     !cashmereBackendLinkMatches(record.link, episodeUrl.pathname)
   ) {
-    return nowPlaying;
+    return { complete: false, nowPlaying };
   }
   const tags = [
     ...asStringArray(record.acf?.episode_filter_genre),
     ...asStringArray(record.acf?.episode_filter_mood),
   ];
   return {
-    ...nowPlaying,
-    genre: nowPlaying.genre ?? ([...new Set(tags)].join(", ") || null),
-    stationDescription:
-      nowPlaying.stationDescription ?? plainText(record.content?.rendered),
+    complete: true,
+    nowPlaying: {
+      ...nowPlaying,
+      genre: nowPlaying.genre ?? ([...new Set(tags)].join(", ") || null),
+      stationDescription:
+        nowPlaying.stationDescription ?? plainText(record.content?.rendered),
+    },
   };
 }
 
@@ -793,21 +851,21 @@ async function enrichIprNowPlaying(
   fetchImpl: FetchLike,
   nowPlaying: RadioNowPlaying,
   metadata: AirtimeTrack["metadata"]
-): Promise<RadioNowPlaying> {
+): Promise<AirtimeEnrichment> {
   if (
     (nowPlaying.artworkUrl &&
       nowPlaying.itemUrl &&
       nowPlaying.stationDescription) ||
     !nowPlaying.title
   ) {
-    return nowPlaying;
+    return { complete: true, nowPlaying };
   }
   const title = nowPlaying.title.replace(IPR_REPLAY_SUFFIX_PATTERN, "").trim();
   const url = new URL(IPR_SEARCH_URL);
   url.searchParams.set("q", title);
   const result = await fetchObjectJson(fetchImpl, url.toString());
   if (!(result && Array.isArray(result.data))) {
-    return nowPlaying;
+    return { complete: false, nowPlaying };
   }
 
   const matches = (result.data as IprSearchResult[]).filter(
@@ -842,17 +900,17 @@ async function enrichIprNowPlaying(
     : nowPlaying;
   return selected
     ? await enrichIprDescription(fetchImpl, enriched, selected)
-    : enriched;
+    : { complete: true, nowPlaying: enriched };
 }
 
 async function enrichIprDescription(
   fetchImpl: FetchLike,
   nowPlaying: RadioNowPlaying,
   selected: IprSearchResult
-): Promise<RadioNowPlaying> {
+): Promise<AirtimeEnrichment> {
   const id = asString(selected._id);
   if (!id || nowPlaying.stationDescription) {
-    return nowPlaying;
+    return { complete: true, nowPlaying };
   }
   const url = new URL(
     "https://7rbo2iih.api.sanity.io/v2024-01-01/data/query/production"
@@ -885,15 +943,64 @@ async function enrichIprDescription(
       comparableTitle(record.title ?? record.name) !==
         comparableTitle(selected.label)
     ) {
-      return nowPlaying;
+      return { complete: false, nowPlaying };
     }
-    return { ...nowPlaying, stationDescription: asString(record.description) };
+    return {
+      complete: true,
+      nowPlaying: {
+        ...nowPlaying,
+        stationDescription: asString(record.description),
+      },
+    };
   } catch (error) {
     if (error instanceof RadioMetadataValidationError) {
       throw error;
     }
-    return nowPlaying;
+    return { complete: false, nowPlaying };
   }
+}
+
+async function cachedAirtimeEnrichment(
+  input: ExternalMetadataProviderInput,
+  data: AirtimeLiveInfo,
+  nowPlaying: RadioNowPlaying
+): Promise<RadioNowPlaying> {
+  const track = data.tracks?.current ?? data.current;
+  const fields = [
+    "artworkUrl",
+    "itemUrl",
+    "stationDescription",
+    "genre",
+  ] as const;
+  let complete = false;
+  const details = await cacheMetadata({
+    key: [
+      new URL(input.streamUrl).hostname,
+      "episode-details-v3",
+      nowPlaying.title,
+      fields.map((field) => nowPlaying[field]),
+      getAirtimeEpisodeDate(track?.metadata),
+    ],
+    kv: input.kv,
+    now: input.now,
+    retrieve: async () => {
+      const { complete: enrichmentComplete, nowPlaying: enriched } =
+        await enrichAirtimeNowPlaying({
+          ...input,
+          data,
+          nowPlaying,
+        });
+      complete = enrichmentComplete;
+      return Object.fromEntries(
+        fields
+          .filter((field) => enriched[field] !== nowPlaying[field])
+          .map((field) => [field, enriched[field]])
+      );
+    },
+    shouldCache: () => complete,
+    ttl: EPISODE_METADATA_TTL,
+  });
+  return { ...nowPlaying, ...details };
 }
 
 async function enrichAirtimeNowPlaying(input: {
@@ -901,7 +1008,7 @@ async function enrichAirtimeNowPlaying(input: {
   fetchImpl: FetchLike;
   nowPlaying: RadioNowPlaying;
   streamUrl: string;
-}): Promise<RadioNowPlaying> {
+}): Promise<AirtimeEnrichment> {
   try {
     const { data, fetchImpl, nowPlaying, streamUrl } = input;
     const { hostname } = new URL(streamUrl);
@@ -920,7 +1027,7 @@ async function enrichAirtimeNowPlaying(input: {
       throw error;
     }
   }
-  return input.nowPlaying;
+  return { complete: false, nowPlaying: input.nowPlaying };
 }
 
 function getAzuraCastCandidateUrls(streamUrl: string): string[] {
@@ -1192,39 +1299,61 @@ export async function tryAirtimeLiveInfo(
       streamUrl: input.streamUrl,
     });
     return nowPlaying
-      ? await enrichAirtimeNowPlaying({
-          data,
-          fetchImpl: input.fetchImpl,
-          nowPlaying,
-          streamUrl: input.streamUrl,
-        })
+      ? await cachedAirtimeEnrichment(input, data, nowPlaying)
       : null;
   });
 }
+
+const NTS_LIVE_URL = "https://www.nts.live/api/v2/live";
 
 export async function tryNtsLiveApi(
   input: ExternalMetadataProviderInput,
   requestedChannel?: "1" | "2"
 ): Promise<RadioNowPlaying | null> {
-  let result: Awaited<ReturnType<typeof fetchObjectJson>>;
   try {
-    result = await fetchObjectJson(
-      input.fetchImpl,
-      "https://www.nts.live/api/v2/live"
-    );
+    const channels = await cacheMetadata({
+      expiresAt: (value) =>
+        value?.find((channel) => channel !== null)?.expiresAt ?? 0,
+      key: ["nts", "live-feed", NTS_LIVE_URL],
+      kv: input.kv,
+      now: input.now,
+      retrieve: async () => {
+        const result = await fetchObjectJson(input.fetchImpl, NTS_LIVE_URL);
+        if (!result) {
+          return null;
+        }
+        return (["1", "2"] as const).map((channel) =>
+          normalizeNtsLiveApi(
+            { ...input, streamUrl: "" },
+            result.data,
+            channel,
+            result.response.url || NTS_LIVE_URL
+          )
+        );
+      },
+      shouldCache: (value) => !!value?.some(Boolean),
+      ttl: RADIO_METADATA_SUCCESS_TTL_MS / 1000,
+    });
+    const selectedChannel =
+      requestedChannel ??
+      (new URL(input.streamUrl).pathname === "/stream2" ? "2" : "1");
+    const result = channels?.[selectedChannel === "1" ? 0 : 1];
+    return result ? { ...result, streamUrl: input.streamUrl } : null;
   } catch (error) {
     if (shouldPropagateFetchError(error)) {
       throw error;
     }
     return null;
   }
-  if (!result) {
-    return null;
-  }
-  const channelName =
-    requestedChannel ??
-    (new URL(input.streamUrl).pathname === "/stream2" ? "2" : "1");
-  const { results } = result.data as { results?: unknown };
+}
+
+function normalizeNtsLiveApi(
+  input: ExternalMetadataProviderInput,
+  data: object,
+  channelName: "1" | "2",
+  resolvedUrl: string
+): RadioNowPlaying | null {
+  const { results } = data as { results?: unknown };
   const channel = Array.isArray(results)
     ? results.find(
         (item) =>
@@ -1269,7 +1398,7 @@ export async function tryNtsLiveApi(
     genre: asString(now?.embeds?.details?.genres?.[0]?.value),
     itemUrl,
     rawTitle: title,
-    resolvedUrl: result.response.url || "https://www.nts.live/api/v2/live",
+    resolvedUrl,
     sampledAt: input.sampledAt,
     source: "nts-live-api",
     stationDescription: asString(now?.embeds?.details?.description),
@@ -1405,7 +1534,7 @@ export async function tryHkcrSchedule(
     return null;
   }
   const showId = asString(entry.show);
-  const show = showId ? await fetchHkcrShow(input.fetchImpl, showId) : null;
+  const show = showId ? await fetchHkcrShow(input, showId) : null;
   const slug = asString(show?.slug);
   const showUrl = slug
     ? new URL(
@@ -1447,16 +1576,39 @@ export async function tryHkcrSchedule(
 }
 
 async function fetchHkcrShow(
-  fetchImpl: FetchLike,
+  input: ExternalMetadataProviderInput,
   showId: string
 ): Promise<HkcrShow | null> {
   try {
-    const result = await fetchObjectJson(
-      fetchImpl,
-      `${HKCR_SHOW_URL}/${encodeURIComponent(showId)}`
-    );
-    const candidate = result?.data as HkcrShow | undefined;
-    return candidate?._id === showId ? candidate : null;
+    return await cacheMetadata({
+      key: ["hkcr", "show-details-v2", HKCR_SHOW_URL, showId],
+      kv: input.kv,
+      now: input.now,
+      retrieve: async () => {
+        const result = await fetchObjectJson(
+          input.fetchImpl,
+          `${HKCR_SHOW_URL}/${encodeURIComponent(showId)}`
+        );
+        const candidate = result?.data as HkcrShow | undefined;
+        if (candidate?._id !== showId) {
+          return null;
+        }
+        return {
+          content: plainText(candidate.content),
+          medium: { url: asPublicUrl(candidate.medium?.url) },
+          picture: { url: asPublicUrl(candidate.picture?.url) },
+          resident: {
+            name: asString(candidate.resident?.name),
+            slug: asString(candidate.resident?.slug),
+          },
+          slug: asString(candidate.slug),
+          tags: candidate.tags?.map((tag) => ({ name: asString(tag.name) })),
+          thumbnail: { url: asPublicUrl(candidate.thumbnail?.url) },
+          title: asString(candidate.title),
+        };
+      },
+      ttl: EPISODE_METADATA_TTL,
+    });
   } catch (error) {
     if (error instanceof RadioMetadataValidationError) {
       throw error;
@@ -1665,13 +1817,11 @@ export async function tryRadioBlackoutApi(
     stationName: "Radio BlackOut",
     streamUrl: input.streamUrl,
   });
-  return nowPlaying
-    ? await enrichBlackoutShow(input.fetchImpl, nowPlaying)
-    : null;
+  return nowPlaying ? await enrichBlackoutShow(input, nowPlaying) : null;
 }
 
 async function enrichBlackoutShow(
-  fetchImpl: FetchLike,
+  input: ExternalMetadataProviderInput,
   nowPlaying: RadioNowPlaying
 ): Promise<RadioNowPlaying> {
   const itemUrl = nowPlaying.itemUrl ? new URL(nowPlaying.itemUrl) : null;
@@ -1683,23 +1833,45 @@ async function enrichBlackoutShow(
     const slug = decodeURIComponent(match[1]);
     const url = new URL("https://radioblackout.org/wp-json/wp/v2/shows");
     url.searchParams.set("slug", slug);
-    const result = await fetchObjectJson(fetchImpl, url.toString());
-    const records = Array.isArray(result?.data)
-      ? (result.data as BlackoutShow[])
-      : [];
-    const show = records.length === 1 ? records[0] : null;
-    if (
-      asString(show?.slug) !== slug ||
-      asPublicUrl(show?.link) !== itemUrl.toString() ||
-      comparableTitle(show?.title) !== comparableTitle(nowPlaying.title)
-    ) {
-      return nowPlaying;
-    }
+    const details = await cacheMetadata({
+      key: [
+        "blackout",
+        "show-details",
+        url.toString(),
+        itemUrl.toString(),
+        comparableTitle(nowPlaying.title),
+      ],
+      kv: input.kv,
+      now: input.now,
+      retrieve: async () => {
+        const result = await fetchObjectJson(input.fetchImpl, url.toString());
+        if (!Array.isArray(result?.data)) {
+          return null;
+        }
+        const records = result.data as BlackoutShow[];
+        if (records.length === 0) {
+          return { genre: null, stationDescription: null };
+        }
+        const show = records.length === 1 ? records[0] : null;
+        if (
+          asString(show?.slug) !== slug ||
+          asPublicUrl(show?.link) !== itemUrl.toString() ||
+          comparableTitle(show?.title) !== comparableTitle(nowPlaying.title)
+        ) {
+          return null;
+        }
+        return {
+          genre: asStringArray(show?.tags).join(", ") || null,
+          stationDescription: plainText(show?.content),
+        };
+      },
+      ttl: EPISODE_METADATA_TTL,
+    });
     return {
       ...nowPlaying,
-      genre: asStringArray(show?.tags).join(", ") || nowPlaying.genre,
+      genre: details?.genre ?? nowPlaying.genre,
       stationDescription:
-        plainText(show?.content) ?? nowPlaying.stationDescription,
+        details?.stationDescription ?? nowPlaying.stationDescription,
     };
   } catch (error) {
     if (error instanceof RadioMetadataValidationError) {

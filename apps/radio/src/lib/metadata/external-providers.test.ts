@@ -9,7 +9,249 @@ import {
   tryResonanceExtraApi,
   tryShoutcastStatus,
 } from "./external-providers";
+import { createMetadataKvFixture } from "./kv-test-fixture";
 import { RadioMetadataValidationError } from "./upstream-fetch";
+
+test("NTS channels share a live feed and retain its original sampling time", async () => {
+  const { kv } = createMetadataKvFixture();
+  let time = 1000;
+  let calls = 0;
+  const read = (channel: "1" | "2") =>
+    tryNtsLiveApi(
+      {
+        expiresAt: time + 60_000,
+        fetchImpl: () => {
+          calls += 1;
+          return Promise.resolve(
+            Response.json({
+              results: [
+                { channel_name: "1", now: { broadcast_title: "First show" } },
+                { channel_name: "2", now: { broadcast_title: "Second show" } },
+              ],
+            })
+          );
+        },
+        kv,
+        now: () => time,
+        sampledAt: time,
+        streamUrl: `https://stream-relay-geo.ntslive.net/stream${channel}`,
+      },
+      channel
+    );
+  expect(await read("1")).toMatchObject({
+    sampledAt: 1000,
+    title: "First show",
+  });
+  time = 30_000;
+  expect(await read("2")).toMatchObject({
+    expiresAt: 61_000,
+    sampledAt: 1000,
+    streamUrl: "https://stream-relay-geo.ntslive.net/stream2",
+    title: "Second show",
+  });
+  expect(calls).toBe(1);
+  time = 61_000;
+  expect(await read("2")).toMatchObject({
+    expiresAt: 121_000,
+    sampledAt: 61_000,
+  });
+  expect(calls).toBe(2);
+});
+
+test("Sygma episode enrichment outlives live snapshots without storing playback fields", async () => {
+  const { kv, entries, put } = createMetadataKvFixture();
+  let time = 1000;
+  let episodeCalls = 0;
+  let liveCalls = 0;
+  const read = () =>
+    tryAirtimeLiveInfo(
+      {
+        expiresAt: time + 60_000,
+        fetchImpl: (url) => {
+          if (url.includes("backend.radio.syg.ma")) {
+            episodeCalls += 1;
+            return Promise.resolve(
+              Response.json({
+                description: "Description",
+                picture: { url: "https://radio.syg.ma/art.jpg" },
+                slug: "episode",
+                stream: "https://audio.example/signed?token=secret",
+                title: "Episode",
+              })
+            );
+          }
+          liveCalls += 1;
+          return Promise.resolve(
+            Response.json({
+              current: { metadata: { info_url: "episode" }, name: "Episode" },
+            })
+          );
+        },
+        kv,
+        now: () => time,
+        sampledAt: time,
+        streamUrl: "https://radio.syg.ma/audio/live",
+      },
+      ["https://radio.syg.ma/api/live-info"]
+    );
+  expect(await read()).toMatchObject({
+    sampledAt: 1000,
+    stationDescription: "Description",
+  });
+  time += 60_000;
+  expect(await read()).toMatchObject({
+    sampledAt: time,
+    stationDescription: "Description",
+  });
+  expect(liveCalls).toBe(2);
+  expect(episodeCalls).toBe(1);
+  expect(put.mock.calls[0]?.[2]).toEqual({ expirationTtl: 21_600 });
+  expect([...entries.values()].join()).not.toContain("token=secret");
+  time += 21_600_000;
+  await read();
+  expect(episodeCalls).toBe(2);
+});
+
+test.each(["http", "json", "network", "abort"])(
+  "retries partial Cashmere enrichment after %s failure without losing artwork",
+  async (failure) => {
+    const { kv, put } = createMetadataKvFixture();
+    let time = 1000;
+    let episodeCalls = 0;
+    let graphqlCalls = 0;
+    let liveCalls = 0;
+    const read = () =>
+      tryAirtimeLiveInfo({
+        expiresAt: time + 60_000,
+        fetchImpl: (url) => {
+          if (url === "https://backstage.cashmereradio.com/graphql") {
+            graphqlCalls += 1;
+            return Promise.resolve(
+              Response.json({
+                data: {
+                  episodes: {
+                    nodes: [
+                      {
+                        databaseId: 42,
+                        featuredImage: {
+                          node: {
+                            sourceUrl:
+                              "https://media.cashmereradio.com/show.jpg",
+                          },
+                        },
+                        title: "Archive Show",
+                        uri: "/episode/archive-show/",
+                      },
+                    ],
+                  },
+                },
+              })
+            );
+          }
+          if (url.includes("/wp-json/wp/v2/episode/42?")) {
+            episodeCalls += 1;
+            if (episodeCalls === 1) {
+              if (failure === "network") {
+                throw new TypeError("fetch failed");
+              }
+              if (failure === "abort") {
+                throw new DOMException("aborted", "AbortError");
+              }
+              return Promise.resolve(
+                new Response("Unavailable", {
+                  status: failure === "http" ? 503 : 200,
+                })
+              );
+            }
+            return Promise.resolve(
+              Response.json({
+                content: { rendered: "<p>Recovered description.</p>" },
+                id: 42,
+                link: "https://backstage.cashmereradio.com/episode/archive-show/",
+                slug: "archive-show",
+              })
+            );
+          }
+          liveCalls += 1;
+          return Promise.resolve(
+            Response.json({
+              tracks: { current: { name: "Archive Show" } },
+            })
+          );
+        },
+        kv,
+        now: () => time,
+        sampledAt: time,
+        streamUrl: "https://cashmereradio.out.airtime.pro/cashmereradio_b",
+      });
+    const partial = {
+      artworkUrl: "https://media.cashmereradio.com/show.jpg",
+      itemUrl: "https://cashmereradio.com/episode/archive-show/",
+      title: "Archive Show",
+    };
+    expect(await read()).toMatchObject({
+      ...partial,
+      sampledAt: 1000,
+      stationDescription: null,
+    });
+    expect(put).not.toHaveBeenCalled();
+    time += 60_000;
+    expect(await read()).toMatchObject({
+      ...partial,
+      sampledAt: time,
+      stationDescription: "Recovered description.",
+    });
+    expect(put).toHaveBeenCalledTimes(1);
+    time += 60_000;
+    expect(await read()).toMatchObject({
+      ...partial,
+      sampledAt: time,
+      stationDescription: "Recovered description.",
+    });
+    expect(liveCalls).toBe(3);
+    expect(graphqlCalls).toBe(2);
+    expect(episodeCalls).toBe(2);
+  }
+);
+
+test("caches valid empty Cashmere episode and show searches between live samples", async () => {
+  const { kv, put } = createMetadataKvFixture();
+  let time = 1000;
+  let graphqlCalls = 0;
+  let showCalls = 0;
+  const read = () =>
+    tryAirtimeLiveInfo({
+      expiresAt: time + 60_000,
+      fetchImpl: (url) => {
+        if (url === "https://backstage.cashmereradio.com/graphql") {
+          graphqlCalls += 1;
+          return Promise.resolve(
+            Response.json({ data: { episodes: { nodes: [] } } })
+          );
+        }
+        if (url.includes("/wp-json/wp/v2/pages?")) {
+          showCalls += 1;
+          return Promise.resolve(Response.json([]));
+        }
+        return Promise.resolve(
+          Response.json({ tracks: { current: { name: "Unarchived Show" } } })
+        );
+      },
+      kv,
+      now: () => time,
+      sampledAt: time,
+      streamUrl: "https://cashmereradio.out.airtime.pro/cashmereradio_b",
+    });
+  expect(await read()).toMatchObject({ title: "Unarchived Show" });
+  time += 60_000;
+  expect(await read()).toMatchObject({
+    sampledAt: time,
+    title: "Unarchived Show",
+  });
+  expect(graphqlCalls).toBe(1);
+  expect(showCalls).toBe(1);
+  expect(put).toHaveBeenCalledTimes(1);
+});
 
 function json(data: unknown) {
   return new Response(JSON.stringify(data), {
@@ -437,12 +679,16 @@ describe("external radio metadata providers", () => {
     });
   });
 
-  test("keeps Cashmere live metadata unchanged when the page identity differs", async () => {
-    const result = await tryAirtimeLiveInfo({
-      expiresAt: 2000,
-      fetchImpl: (url) =>
-        url === "https://cashmereradio.airtime.pro/api/live-info-v2"
-          ? Promise.resolve(
+  test("retries Cashmere show enrichment when its page identity differs", async () => {
+    const { kv, put } = createMetadataKvFixture();
+    let time = 1000;
+    let showCalls = 0;
+    const read = () =>
+      tryAirtimeLiveInfo({
+        expiresAt: time + 60_000,
+        fetchImpl: (url) => {
+          if (url === "https://cashmereradio.airtime.pro/api/live-info-v2") {
+            return Promise.resolve(
               json({
                 shows: {
                   current: {
@@ -451,33 +697,49 @@ describe("external radio metadata providers", () => {
                   },
                 },
               })
-            )
-          : Promise.resolve(
-              json([
-                {
-                  _embedded: {
-                    "wp:featuredmedia": [
-                      {
-                        source_url: "https://media.cashmereradio.com/wrong.jpg",
-                      },
-                    ],
-                  },
-                  content: { rendered: "<p>Wrong description.</p>" },
-                  link: "https://backstage.cashmereradio.com/shows/wrong-show/",
-                  slug: "wrong-show",
+            );
+          }
+          showCalls += 1;
+          const slug = showCalls === 1 ? "wrong-show" : "expected-show";
+          return Promise.resolve(
+            json([
+              {
+                _embedded: {
+                  "wp:featuredmedia": [
+                    {
+                      source_url: `https://media.cashmereradio.com/${slug}.jpg`,
+                    },
+                  ],
                 },
-              ])
-            ),
-      sampledAt: 1000,
-      streamUrl: "https://cashmereradio.out.airtime.pro/cashmereradio_b",
-    });
+                content: { rendered: `<p>${slug} description.</p>` },
+                link: `https://backstage.cashmereradio.com/shows/${slug}/`,
+                slug,
+              },
+            ])
+          );
+        },
+        kv,
+        now: () => time,
+        sampledAt: time,
+        streamUrl: "https://cashmereradio.out.airtime.pro/cashmereradio_b",
+      });
 
-    expect(result).toMatchObject({
+    expect(await read()).toMatchObject({
       artworkUrl: null,
       itemUrl: "https://cashmereradio.com/shows/expected-show/",
       stationDescription: null,
       title: "Expected Show",
     });
+    expect(put).not.toHaveBeenCalled();
+    time += 60_000;
+    expect(await read()).toMatchObject({
+      artworkUrl: "https://media.cashmereradio.com/expected-show.jpg",
+      stationDescription: "expected-show description.",
+    });
+    time += 60_000;
+    await read();
+    expect(showCalls).toBe(2);
+    expect(put).toHaveBeenCalledTimes(1);
   });
 
   test("does not present an IPR resident fallback as the current episode", async () => {

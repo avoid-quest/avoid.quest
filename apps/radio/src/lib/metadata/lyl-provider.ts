@@ -1,3 +1,4 @@
+import { cacheMetadata, EPISODE_METADATA_TTL, type MetadataKv } from "./cache";
 import { parseRadioTitle } from "./title-parser";
 import type { RadioNowPlaying } from "./types";
 import { RadioMetadataValidationError } from "./upstream-fetch";
@@ -20,7 +21,6 @@ const EPISODE_QUERY = `
       description
       image { url }
       show { title slug }
-      links { type url }
       styles { name }
     }
   }
@@ -86,6 +86,8 @@ type LylEpisode = NonNullable<
 type LylShow = NonNullable<NonNullable<LylShowResponse["data"]>["showBySlug"]>;
 
 export type LylProviderInput = {
+  kv?: MetadataKv;
+  now?: () => number;
   expiresAt: number;
   fetchImpl: FetchLike;
   sampledAt: number;
@@ -207,7 +209,21 @@ async function getEpisode(
     const result = await postGraphql(fetchImpl, EPISODE_QUERY, { slug });
     const episode = (result?.data as LylEpisodeResponse | undefined)?.data
       ?.episodeBySlug;
-    return asString(episode?.slug) === slug ? (episode ?? null) : null;
+    return asString(episode?.slug) === slug && episode
+      ? {
+          description: asString(episode.description),
+          image: { url: asPublicUrl(episode.image?.url) },
+          show: {
+            slug: asString(episode.show?.slug),
+            title: asString(episode.show?.title),
+          },
+          slug,
+          styles: episode.styles?.map((style) => ({
+            name: asString(style.name),
+          })),
+          title: asString(episode.title),
+        }
+      : null;
   } catch (error) {
     if (error instanceof RadioMetadataValidationError) {
       throw error;
@@ -224,7 +240,16 @@ async function getShow(
     const result = await postGraphql(fetchImpl, SHOW_QUERY, { slug });
     const show = (result?.data as LylShowResponse | undefined)?.data
       ?.showBySlug;
-    return asString(show?.slug) === slug ? (show ?? null) : null;
+    return asString(show?.slug) === slug && show
+      ? {
+          artists: asString(show.artists),
+          description: asString(show.description),
+          image: { url: asPublicUrl(show.image?.url) },
+          slug,
+          styles: show.styles?.map((style) => ({ name: asString(style.name) })),
+          title: asString(show.title),
+        }
+      : null;
   } catch (error) {
     if (error instanceof RadioMetadataValidationError) {
       throw error;
@@ -271,8 +296,27 @@ export async function tryLylApi(
   }
 
   const episode =
-    type === "EPISODE" ? await getEpisode(input.fetchImpl, slug) : null;
-  const show = type === "SHOW" ? await getShow(input.fetchImpl, slug) : null;
+    type === "EPISODE"
+      ? await cacheMetadata({
+          key: ["lyl", "episode", slug, comparableTitle(title)],
+          kv: input.kv,
+          now: input.now,
+          retrieve: async () =>
+            trustMatchingTitle(await getEpisode(input.fetchImpl, slug), title),
+          ttl: EPISODE_METADATA_TTL,
+        })
+      : null;
+  const show =
+    type === "SHOW"
+      ? await cacheMetadata({
+          key: ["lyl", "show", slug, comparableTitle(title)],
+          kv: input.kv,
+          now: input.now,
+          retrieve: async () =>
+            trustMatchingTitle(await getShow(input.fetchImpl, slug), title),
+          ttl: EPISODE_METADATA_TTL,
+        })
+      : null;
   const trustedEpisode = trustMatchingTitle(episode, title);
   const trustedShow = trustMatchingTitle(show, title);
   const details = trustedEpisode ?? trustedShow;

@@ -5,7 +5,8 @@ import { createProxyRouteRegistration } from "@/lib/proxy/proxy-route-registrati
 
 export const Route = createFileRoute("/api/radio-metadata")({
   server: createProxyRouteRegistration({
-    createWorkflow: () => createRadioMetadataWorkflow(),
+    createWorkflow: () =>
+      createRadioMetadataWorkflow({ kv: env.RADIO_METADATA }),
     env,
     identifier: "radio-metadata",
     internalErrorCode: "RADIO_METADATA_INTERNAL_ERROR",

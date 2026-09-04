@@ -1,3 +1,4 @@
+import { env } from "cloudflare:workers";
 import {
   AppError,
   type AppErrorInit,
@@ -11,7 +12,6 @@ import {
 } from "@avoid.quest/platforms/bandcamp";
 import {
   extractChannelId,
-  getRadioGardenItem,
   isRadioGardenUrl,
 } from "@avoid.quest/platforms/radiogarden";
 import {
@@ -24,6 +24,7 @@ import {
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import type { PlatformMetadata } from "@/lib/platform-types";
+import { getCachedRadioGardenItem } from "@/lib/stations/directory-cache";
 import { rateLimitMiddleware } from "./middleware";
 
 const LoadPlatformItemSchema = z.object({
@@ -139,7 +140,10 @@ async function resolveRadioGardenItem(
   }
 
   try {
-    const result = await getRadioGardenItem(channelId);
+    const result = await getCachedRadioGardenItem(
+      env.RADIO_METADATA,
+      channelId
+    );
     if (!result.success) {
       throw providerError(
         "radiogarden",

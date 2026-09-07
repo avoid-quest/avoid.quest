@@ -141,14 +141,21 @@ Workers Builds PR comments should include the branch preview URL after upload.
 ### Shared radio metadata
 
 The radio Worker uses one `RADIO_METADATA` KV binding. Live snapshots expire
-after 60 seconds; episode/show enrichment after six hours; Radio Garden station
+after 15 minutes; episode/show enrichment after six hours; Radio Garden station
 attributes after 24 hours; and Radio Browser/Radio Garden searches after ten
 minutes. NTS channels reuse one live feed. Fields returned in the live feed
-retain its 60-second lifetime even when they include artwork or station details.
+retain its 15-minute lifetime even when they include artwork or station details.
 Separate enrichment caches cover Sygma, Cashmere, IPR, LYL, HKCR, and BlackOut.
 HKCR keeps its live/replay schedule separate from show details. BlackOut stores
 the verified full description and genres separately from its listening feed.
 Revised Airtime and HKCR cache keys bypass older incomplete enrichment records.
+
+A continuously requested live key now needs about 96 refresh writes per day,
+instead of 1,440 at a one-minute TTL. Titles, artists, and show details can lag
+changes by up to 15 minutes. Polling remains at 30 seconds for playing stations;
+cache hits reuse the snapshot without writing it again. KV reads still count,
+and multiple keys, concurrent misses, enrichment, and other account usage mean
+this is not a hard guarantee of staying below the free daily quota.
 
 Cache hits preserve the original `sampledAt` and `expiresAt`. KV is eventually
 consistent: propagation can take 60 seconds or longer, and concurrent misses

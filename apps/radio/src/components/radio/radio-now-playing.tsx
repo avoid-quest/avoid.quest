@@ -10,7 +10,12 @@ import {
   DialogTrigger,
 } from "@avoid.quest/ui/components/dialog";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { ArrowUpRightIcon, ChevronDownIcon, XIcon } from "lucide-react";
+import {
+  ArrowUpRightIcon,
+  ChevronDownIcon,
+  InfoIcon,
+  XIcon,
+} from "lucide-react";
 import { useState } from "react";
 import type { Radio } from "@/lib/audio";
 import type { RadioNowPlaying as RadioNowPlayingMetadata } from "@/lib/metadata/types";
@@ -24,6 +29,17 @@ type RadioNowPlayingProps = {
   className?: string;
 };
 
+function getGenres(genre?: string | null): string[] {
+  return [
+    ...new Set(
+      genre
+        ?.split(",")
+        .map((value) => value.trim())
+        .filter(Boolean)
+    ),
+  ];
+}
+
 function GenreBadges({
   genre,
   className,
@@ -33,14 +49,7 @@ function GenreBadges({
   className?: string;
   overArtwork?: boolean;
 }) {
-  const genres = [
-    ...new Set(
-      genre
-        ?.split(",")
-        .map((value) => value.trim())
-        .filter(Boolean)
-    ),
-  ];
+  const genres = getGenres(genre);
   if (genres.length === 0) {
     return null;
   }
@@ -75,6 +84,32 @@ function GenreBadges({
         </li>
       ) : null}
     </ul>
+  );
+}
+
+function CompactGenreBadge({ genre }: { genre?: string | null }) {
+  const genres = getGenres(genre);
+  const [firstGenre] = genres;
+  if (!firstGenre) {
+    return null;
+  }
+
+  const remaining = genres.length - 1;
+  return (
+    <Badge
+      className="mt-1.5 flex h-4 max-w-full gap-1 border-foreground/10 bg-transparent px-1.5 py-0 font-normal text-[9px] text-muted-foreground leading-none"
+      variant="outline"
+    >
+      <span aria-hidden="true" className="truncate">
+        {firstGenre}
+      </span>
+      {remaining > 0 ? (
+        <span aria-hidden="true" className="shrink-0">
+          +{remaining}
+        </span>
+      ) : null}
+      <span className="sr-only">Genres: {genres.join(", ")}</span>
+    </Badge>
   );
 }
 
@@ -127,6 +162,37 @@ function getIdentity(
     .join(", ");
   const subtitle = artist || (hasNowPlaying ? null : location || null);
   return { hasNowPlaying, location, subtitle, title };
+}
+
+export function RadioNowPlayingDetailsButton({
+  radio,
+  metadata,
+  className,
+}: Pick<RadioNowPlayingProps, "radio" | "metadata" | "className">) {
+  const identity = getIdentity(radio, metadata);
+
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <button
+          aria-label={`Details for ${identity.title}`}
+          className={cn(
+            "flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            className
+          )}
+          title={`View details for ${identity.title}`}
+          type="button"
+        >
+          <InfoIcon aria-hidden="true" className="size-3.5" />
+        </button>
+      </DialogTrigger>
+      <NowPlayingDetails
+        identity={identity}
+        metadata={metadata}
+        radio={radio}
+      />
+    </Dialog>
+  );
 }
 
 export function RadioNowPlaying({
@@ -250,6 +316,7 @@ export function RadioNowPlaying({
                 {subtitle}
               </p>
             ) : null}
+            {featured ? null : <CompactGenreBadge genre={metadata?.genre} />}
             {connectionStatus}
           </div>
         </div>

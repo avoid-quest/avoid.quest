@@ -1,6 +1,17 @@
 import { afterEach, beforeAll, describe, expect, test } from "bun:test";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, within } from "@testing-library/react";
+import {
+  focusManager,
+  QueryClient,
+  QueryClientProvider,
+} from "@tanstack/react-query";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  renderHook,
+  waitFor,
+  within,
+} from "@testing-library/react";
 // @ts-expect-error jsdom types are not installed in this workspace.
 import { JSDOM } from "jsdom";
 import type { Radio } from "@/lib/audio";
@@ -60,11 +71,15 @@ afterEach(cleanup);
 let RadioNowPlaying: typeof import("./radio-now-playing")["RadioNowPlaying"];
 let NowPlayingPanel: typeof import("./single/single-player-now-playing")["NowPlayingPanel"];
 let MultipleRadioCard: typeof import("./multiple/multiple-radio-card")["MultipleRadioCard"];
+let StationList: typeof import("./single/single-player-station-list")["StationList"];
+let useRadioMetadata: typeof import("@/lib/hooks/use-radio-metadata")["useRadioMetadata"];
 
 beforeAll(async () => {
   ({ RadioNowPlaying } = await import("./radio-now-playing"));
   ({ NowPlayingPanel } = await import("./single/single-player-now-playing"));
   ({ MultipleRadioCard } = await import("./multiple/multiple-radio-card"));
+  ({ StationList } = await import("./single/single-player-station-list"));
+  ({ useRadioMetadata } = await import("@/lib/hooks/use-radio-metadata"));
 });
 
 const metadata: RadioNowPlayingMetadata = {
@@ -93,6 +108,52 @@ const radio: Radio = {
   name: "Example Radio",
   streamUrl: "https://radio.example/live",
 };
+
+test("gates preview requests and refreshes metadata when polling starts", async () => {
+  const client = new QueryClient();
+  const originalFetch = globalThis.fetch;
+  const requests: string[] = [];
+  globalThis.fetch = Object.assign(
+    (input: Parameters<typeof fetch>[0]) => {
+      requests.push(String(input));
+      return Promise.resolve(Response.json({ data: metadata, ok: true }));
+    },
+    { preconnect: originalFetch.preconnect }
+  );
+
+  try {
+    const view = renderHook(
+      ({ enabled, poll }) => useRadioMetadata({ enabled, poll, radio }),
+      {
+        initialProps: { enabled: false, poll: false },
+        wrapper: ({ children }) => (
+          <QueryClientProvider client={client}>{children}</QueryClientProvider>
+        ),
+      }
+    );
+
+    expect(requests).toHaveLength(0);
+    view.rerender({ enabled: true, poll: false });
+    await waitFor(() => expect(requests).toHaveLength(1));
+    await waitFor(() => expect(view.result.current.metadata).toEqual(metadata));
+
+    await client.invalidateQueries({
+      queryKey: radioMetadataKeys.stream(radio.streamUrl, radio.metadataConfig),
+      refetchType: "none",
+    });
+    focusManager.setFocused(false);
+    focusManager.setFocused(true);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(requests).toHaveLength(1);
+
+    view.rerender({ enabled: true, poll: true });
+    await waitFor(() => expect(requests).toHaveLength(2));
+  } finally {
+    focusManager.setFocused(undefined);
+    globalThis.fetch = originalFetch;
+    client.clear();
+  }
+});
 
 describe("RadioNowPlaying", () => {
   for (const variant of ["featured", "compact"] as const) {
@@ -123,6 +184,14 @@ describe("RadioNowPlaying", () => {
         );
       } else {
         expect(playerGenres).toBeNull();
+        const fullGenreDescription = view.getByText(
+          "Genres: Art Pop, Downtempo, R&B / Soul"
+        );
+        expect(fullGenreDescription.classList.contains("sr-only")).toBe(true);
+        expect(
+          fullGenreDescription.parentElement?.querySelector("[aria-hidden]")
+            ?.textContent
+        ).toBe("Art Pop");
       }
 
       fireEvent.click(
@@ -407,7 +476,45 @@ describe("RadioNowPlaying", () => {
     expect(view.getByText("Current show description.")).toBeTruthy();
   });
 
-  test("makes the same show details available from a Multiple card", () => {
+  test("previews current metadata and full details from the Single station list", () => {
+    const listedRadio = { ...radio, id: "example-radio" };
+    const client = new QueryClient();
+    client.setQueryData(
+      radioMetadataKeys.stream(radio.streamUrl, radio.metadataConfig),
+      {
+        data: metadata,
+        ok: true,
+      }
+    );
+    const view = render(
+      <QueryClientProvider client={client}>
+        <StationList
+          currentRadioId={listedRadio.id}
+          onDelete={noop}
+          onEdit={noop}
+          onSave={noop}
+          onSelect={noop}
+          onToggle={noop}
+          radios={[listedRadio]}
+          searchBar={null}
+          sessionRadios={[]}
+        />
+      </QueryClientProvider>
+    );
+
+    expect(
+      view.getByTitle(
+        "Now playing on Example Radio: Current Show · Host Name, Ambient"
+      ).textContent
+    ).toBe("Current Show · Host NameAmbient");
+    fireEvent.click(
+      view.getByRole("button", { name: "Details for Current Show" })
+    );
+    expect(view.getByRole("dialog", { name: "Current Show" })).toBeTruthy();
+    expect(view.getByText("Current show description.")).toBeTruthy();
+  });
+
+  test("makes the same show details available from an idle Multiple card", () => {
     const client = new QueryClient();
     client.setQueryData(
       radioMetadataKeys.stream(radio.streamUrl, radio.metadataConfig),
@@ -427,7 +534,7 @@ describe("RadioNowPlaying", () => {
             id: "test-radio",
             isLoading: false,
             isMuted: true,
-            isPlaying: true,
+            isPlaying: false,
             radio,
             volume: 0,
           }}

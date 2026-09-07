@@ -140,35 +140,44 @@ Workers Builds PR comments should include the branch preview URL after upload.
 
 ### Shared radio metadata
 
-The radio Worker uses one `RADIO_METADATA` KV binding. Live snapshots expire
-after 60 seconds; episode/show enrichment after six hours; Radio Garden station
-attributes after 24 hours; and Radio Browser/Radio Garden searches after ten
-minutes. NTS channels reuse one live feed. Fields returned in the live feed
-retain its 60-second lifetime even when they include artwork or station details.
-Separate enrichment caches cover Sygma, Cashmere, IPR, LYL, HKCR, and BlackOut.
-HKCR keeps its live/replay schedule separate from show details. BlackOut stores
-the verified full description and genres separately from its listening feed.
-Revised Airtime and HKCR cache keys bypass older incomplete enrichment records.
+The radio Worker uses Cloudflare's Cache API for disposable metadata. It makes
+no Workers KV reads or writes. Live snapshots expire after 60 seconds;
+episode/show enrichment after six hours; Radio Garden station attributes after
+24 hours; and Radio Browser/Radio Garden searches after ten minutes. NTS
+channels reuse one live feed. Fields returned in a live feed retain its
+60-second lifetime, including artwork and station details.
 
-Cache hits preserve the original `sampledAt` and `expiresAt`. KV is eventually
-consistent: propagation can take 60 seconds or longer, and concurrent misses
-can repeat provider calls. Each KV read or write waits at most 500 ms before
-continuing without the cache result. Provider failures, including directory DNS
-failures and incomplete enrichment, are not stored as successful results. The
-existing local now-playing cache and in-flight deduplication remain, capped by
-the snapshot's expiry.
+Cache hits preserve the original `sampledAt` and `expiresAt`. A named cache
+isolates metadata from normal HTTP responses, and keys include the request
+origin plus a hash of all provider arguments. Cache entries are local to each
+Cloudflare data center and may be evicted before expiry. Concurrent misses can
+repeat provider calls. Each cache read or write waits at most 500 ms before
+continuing without the cache result. Provider failures and incomplete enrichment
+are not stored as successful results. The existing local now-playing cache and
+in-flight deduplication remain, capped by the snapshot's expiry.
 
 Episode enrichment stores descriptive fields. Radio Garden resolves playback
 URLs on each request, outside the station cache. Radio Browser caches search
 descriptions and validated query-free playback URLs. Query-bearing URLs stay
-outside KV and are refreshed together by station UUID on cache hits. These searches
-still need one provider lookup; searches with only query-free URLs need none.
-Browser playback probes and player state stay local.
+outside the shared cache and are refreshed together by station UUID on cache
+hits. Browser playback probes and player state stay local.
 
-The `RADIO_METADATA` entry in `wrangler.jsonc` binds the existing
-`radio-radio-metadata` namespace by ID, so repeated uploads reuse it instead of
-attempting to provision another namespace with the same name. Local development
-uses local KV. See [KV expiry and consistency](https://developers.cloudflare.com/kv/api/write-key-value-pairs/)
+Workers KV's free allowance is 100,000 reads and 1,000 writes per day, with
+separate limits of 1,000 deletes and lists. One live key rewritten every minute
+would need 1,440 writes per day. Bulk operations still count each key, and KV's
+`cacheTtl` improves read latency without eliminating KV operations. The radio
+Worker therefore has no KV binding. The old namespace is not deleted by this
+change; its existing entries expire without explicit delete operations.
+
+Cache API storage does not replicate between data centers, so provider traffic
+can increase compared with KV. Worker request and CPU limits still apply, and
+other Workers may still consume the account's KV allowance. Cache operations
+are ineffective in dashboard/Playground previews and unavailable behind
+Cloudflare Access. Verify production cache behavior after deployment.
+
+References: [KV pricing](https://developers.cloudflare.com/kv/platform/pricing/),
+[KV reads and cacheTtl](https://developers.cloudflare.com/kv/api/read-key-value-pairs/),
+[Cache API behavior and limitations](https://developers.cloudflare.com/workers/runtime-apis/cache/),
 and [Radio Browser's provider requirements](https://api.radio-browser.info/).
 
 ## Development

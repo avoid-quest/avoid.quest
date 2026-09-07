@@ -1,7 +1,7 @@
 import {
   cacheMetadata,
   EPISODE_METADATA_TTL,
-  type MetadataKv,
+  type MetadataStore,
   RADIO_METADATA_SUCCESS_TTL_MS,
 } from "./cache";
 import { cleanMetadataText, parseRadioTitle } from "./title-parser";
@@ -41,7 +41,7 @@ const TRAILING_SLASH_PATTERN = /\/$/;
 const WHITESPACE_PATTERN = /\s+/g;
 
 export type ExternalMetadataProviderInput = {
-  kv?: MetadataKv;
+  store?: MetadataStore;
   now?: () => number;
   fetchImpl: FetchLike;
   streamUrl: string;
@@ -981,7 +981,6 @@ async function cachedAirtimeEnrichment(
       fields.map((field) => nowPlaying[field]),
       getAirtimeEpisodeDate(track?.metadata),
     ],
-    kv: input.kv,
     now: input.now,
     retrieve: async () => {
       const { complete: enrichmentComplete, nowPlaying: enriched } =
@@ -998,6 +997,7 @@ async function cachedAirtimeEnrichment(
       );
     },
     shouldCache: () => complete,
+    store: input.store,
     ttl: EPISODE_METADATA_TTL,
   });
   return { ...nowPlaying, ...details };
@@ -1315,7 +1315,6 @@ export async function tryNtsLiveApi(
       expiresAt: (value) =>
         value?.find((channel) => channel !== null)?.expiresAt ?? 0,
       key: ["nts", "live-feed", NTS_LIVE_URL],
-      kv: input.kv,
       now: input.now,
       retrieve: async () => {
         const result = await fetchObjectJson(input.fetchImpl, NTS_LIVE_URL);
@@ -1332,6 +1331,7 @@ export async function tryNtsLiveApi(
         );
       },
       shouldCache: (value) => !!value?.some(Boolean),
+      store: input.store,
       ttl: RADIO_METADATA_SUCCESS_TTL_MS / 1000,
     });
     const selectedChannel =
@@ -1582,7 +1582,6 @@ async function fetchHkcrShow(
   try {
     return await cacheMetadata({
       key: ["hkcr", "show-details-v2", HKCR_SHOW_URL, showId],
-      kv: input.kv,
       now: input.now,
       retrieve: async () => {
         const result = await fetchObjectJson(
@@ -1607,6 +1606,7 @@ async function fetchHkcrShow(
           title: asString(candidate.title),
         };
       },
+      store: input.store,
       ttl: EPISODE_METADATA_TTL,
     });
   } catch (error) {
@@ -1841,7 +1841,6 @@ async function enrichBlackoutShow(
         itemUrl.toString(),
         comparableTitle(nowPlaying.title),
       ],
-      kv: input.kv,
       now: input.now,
       retrieve: async () => {
         const result = await fetchObjectJson(input.fetchImpl, url.toString());
@@ -1865,6 +1864,7 @@ async function enrichBlackoutShow(
           stationDescription: plainText(show?.content),
         };
       },
+      store: input.store,
       ttl: EPISODE_METADATA_TTL,
     });
     return {

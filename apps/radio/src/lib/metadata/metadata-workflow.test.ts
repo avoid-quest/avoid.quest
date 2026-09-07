@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { clearRadioMetadataCache } from "./cache";
-import { createMetadataKvFixture } from "./kv-test-fixture";
 import { createRadioMetadataWorkflow } from "./metadata-workflow";
+import { createMetadataStoreFixture } from "./store-test-fixture";
 import type { RadioMetadataResponse } from "./types";
 
 function createRequest(metadataUrls: string[]): Request {
@@ -17,7 +17,7 @@ function createRequest(metadataUrls: string[]): Request {
 
 describe("createRadioMetadataWorkflow", () => {
   test("shares live snapshots between independent request contexts without resampling", async () => {
-    const { kv, put } = createMetadataKvFixture();
+    const { store, put } = createMetadataStoreFixture();
     let time = 1000;
     const urls: string[] = [];
     const request = createRequest(["https://metadata.example/live-info"]);
@@ -32,8 +32,8 @@ describe("createRadioMetadataWorkflow", () => {
             Response.json({ current: { name: `Track ${urls.length}` } })
           );
         },
-        kv,
         now: () => time,
+        store,
       });
       return workflow.handle({
         origin: `https://${requestId}.example`,
@@ -73,11 +73,11 @@ describe("createRadioMetadataWorkflow", () => {
   });
 
   test("does not store an upstream failure as a shared unsupported result", async () => {
-    const { kv, put } = createMetadataKvFixture();
+    const { store, put } = createMetadataStoreFixture();
     clearRadioMetadataCache();
     const workflow = createRadioMetadataWorkflow({
       fetchImpl: () => Promise.resolve(new Response(null, { status: 503 })),
-      kv,
+      store,
     });
     const response = await workflow.handle({
       origin: "https://app.example",

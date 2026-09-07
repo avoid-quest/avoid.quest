@@ -16,18 +16,28 @@ export const EPISODE_METADATA_TTL = 6 * 60 * 60;
 export const STATION_METADATA_TTL = 24 * 60 * 60;
 export const DIRECTORY_SEARCH_TTL = 10 * 60;
 
-export type MetadataKv = Pick<KVNamespace, "get" | "put">;
+export type MetadataStore = {
+  get: <T>(key: string, type: "json") => Promise<T | null>;
+  put: (
+    key: string,
+    value: string,
+    options: { expirationTtl: number }
+  ) => Promise<void>;
+};
 
-// Give each best-effort KV operation a bounded chance to finish.
-const METADATA_KV_TIMEOUT_MS = 500;
+// Give each best-effort cache operation a bounded chance to finish.
+const METADATA_CACHE_TIMEOUT_MS = 500;
 
-async function waitForKv<T>(operation: Promise<T>): Promise<T | undefined> {
+async function waitForCache<T>(operation: Promise<T>): Promise<T | undefined> {
   let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
       operation,
       new Promise<undefined>((resolve) => {
-        timeout = setTimeout(() => resolve(undefined), METADATA_KV_TIMEOUT_MS);
+        timeout = setTimeout(
+          () => resolve(undefined),
+          METADATA_CACHE_TIMEOUT_MS
+        );
       }),
     ]);
   } finally {
@@ -36,7 +46,7 @@ async function waitForKv<T>(operation: Promise<T>): Promise<T | undefined> {
 }
 
 export async function cacheMetadata<T>({
-  kv,
+  store,
   key,
   ttl,
   retrieve,
@@ -44,7 +54,7 @@ export async function cacheMetadata<T>({
   shouldCache = (value) => value !== null,
   expiresAt,
 }: {
-  kv?: MetadataKv;
+  store?: MetadataStore;
   key: readonly unknown[];
   ttl: number;
   retrieve: () => Promise<T>;
@@ -52,10 +62,10 @@ export async function cacheMetadata<T>({
   shouldCache?: (value: T) => boolean;
   expiresAt?: (value: T) => number;
 }): Promise<T> {
-  if (!kv) {
+  if (!store) {
     return retrieve();
   }
-  // Hash all arguments to keep arbitrary URLs/queries within KV's key limit.
+  // Hash every argument so cache keys contain no provider URLs or queries.
   const digest = await crypto.subtle.digest(
     "SHA-256",
     new TextEncoder().encode(JSON.stringify(key))
@@ -64,22 +74,22 @@ export async function cacheMetadata<T>({
     byte.toString(16).padStart(2, "0")
   ).join("")}`;
   try {
-    const entry = await waitForKv(
-      kv.get<{ value: T; expiresAt: number }>(cacheKey, "json")
+    const entry = await waitForCache(
+      store.get<{ value: T; expiresAt: number }>(cacheKey, "json")
     );
     if (entry && entry.expiresAt > now()) {
       return entry.value;
     }
   } catch {
-    // KV availability must not prevent provider retrieval.
+    // Cache availability must not prevent provider retrieval.
   }
   const sampledAt = now();
   const value = await retrieve();
   const deadline = expiresAt?.(value) ?? sampledAt + ttl * 1000;
   if (shouldCache(value) && deadline > now()) {
     try {
-      await waitForKv(
-        kv.put(cacheKey, JSON.stringify({ expiresAt: deadline, value }), {
+      await waitForCache(
+        store.put(cacheKey, JSON.stringify({ expiresAt: deadline, value }), {
           // Logical expiry also handles snapshots sampled before this lookup.
           expirationTtl: Math.max(60, Math.ceil((deadline - now()) / 1000)),
         })

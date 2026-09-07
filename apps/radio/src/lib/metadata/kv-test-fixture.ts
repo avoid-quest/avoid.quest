@@ -1,7 +1,7 @@
 import { mock } from "bun:test";
-import type { MetadataStore } from "./cache";
+import type { MetadataKv } from "./cache";
 
-export function createMetadataStoreFixture() {
+export function createMetadataKvFixture() {
   const entries = new Map<string, string>();
   const get = mock((key: string) =>
     Promise.resolve(JSON.parse(entries.get(key) ?? "null"))
@@ -12,5 +12,5 @@ export function createMetadataStoreFixture() {
       return Promise.resolve();
     }
   );
-  return { entries, get, put, store: { get, put } as unknown as MetadataStore };
+  return { entries, get, kv: { get, put } as unknown as MetadataKv, put };
 }

@@ -9,11 +9,11 @@ import {
   tryResonanceExtraApi,
   tryShoutcastStatus,
 } from "./external-providers";
-import { createMetadataStoreFixture } from "./store-test-fixture";
+import { createMetadataKvFixture } from "./kv-test-fixture";
 import { RadioMetadataValidationError } from "./upstream-fetch";
 
 test("NTS channels share a live feed and retain its original sampling time", async () => {
-  const { store } = createMetadataStoreFixture();
+  const { kv } = createMetadataKvFixture();
   let time = 1000;
   let calls = 0;
   const read = (channel: "1" | "2") =>
@@ -31,9 +31,9 @@ test("NTS channels share a live feed and retain its original sampling time", asy
             })
           );
         },
+        kv,
         now: () => time,
         sampledAt: time,
-        store,
         streamUrl: `https://stream-relay-geo.ntslive.net/stream${channel}`,
       },
       channel
@@ -59,7 +59,7 @@ test("NTS channels share a live feed and retain its original sampling time", asy
 });
 
 test("Sygma episode enrichment outlives live snapshots without storing playback fields", async () => {
-  const { store, entries, put } = createMetadataStoreFixture();
+  const { kv, entries, put } = createMetadataKvFixture();
   let time = 1000;
   let episodeCalls = 0;
   let liveCalls = 0;
@@ -87,9 +87,9 @@ test("Sygma episode enrichment outlives live snapshots without storing playback 
             })
           );
         },
+        kv,
         now: () => time,
         sampledAt: time,
-        store,
         streamUrl: "https://radio.syg.ma/audio/live",
       },
       ["https://radio.syg.ma/api/live-info"]
@@ -115,7 +115,7 @@ test("Sygma episode enrichment outlives live snapshots without storing playback 
 test.each(["http", "json", "network", "abort"])(
   "retries partial Cashmere enrichment after %s failure without losing artwork",
   async (failure) => {
-    const { store, put } = createMetadataStoreFixture();
+    const { kv, put } = createMetadataKvFixture();
     let time = 1000;
     let episodeCalls = 0;
     let graphqlCalls = 0;
@@ -179,9 +179,9 @@ test.each(["http", "json", "network", "abort"])(
             })
           );
         },
+        kv,
         now: () => time,
         sampledAt: time,
-        store,
         streamUrl: "https://cashmereradio.out.airtime.pro/cashmereradio_b",
       });
     const partial = {
@@ -215,7 +215,7 @@ test.each(["http", "json", "network", "abort"])(
 );
 
 test("caches valid empty Cashmere episode and show searches between live samples", async () => {
-  const { store, put } = createMetadataStoreFixture();
+  const { kv, put } = createMetadataKvFixture();
   let time = 1000;
   let graphqlCalls = 0;
   let showCalls = 0;
@@ -237,9 +237,9 @@ test("caches valid empty Cashmere episode and show searches between live samples
           Response.json({ tracks: { current: { name: "Unarchived Show" } } })
         );
       },
+      kv,
       now: () => time,
       sampledAt: time,
-      store,
       streamUrl: "https://cashmereradio.out.airtime.pro/cashmereradio_b",
     });
   expect(await read()).toMatchObject({ title: "Unarchived Show" });
@@ -680,7 +680,7 @@ describe("external radio metadata providers", () => {
   });
 
   test("retries Cashmere show enrichment when its page identity differs", async () => {
-    const { store, put } = createMetadataStoreFixture();
+    const { kv, put } = createMetadataKvFixture();
     let time = 1000;
     let showCalls = 0;
     const read = () =>
@@ -718,9 +718,9 @@ describe("external radio metadata providers", () => {
             ])
           );
         },
+        kv,
         now: () => time,
         sampledAt: time,
-        store,
         streamUrl: "https://cashmereradio.out.airtime.pro/cashmereradio_b",
       });
 

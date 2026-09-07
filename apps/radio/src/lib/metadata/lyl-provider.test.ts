@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { cacheMetadata, EPISODE_METADATA_TTL } from "./cache";
+import { createMetadataKvFixture } from "./kv-test-fixture";
 import { tryLylApi } from "./lyl-provider";
-import { createMetadataStoreFixture } from "./store-test-fixture";
 import { RadioMetadataValidationError } from "./upstream-fetch";
 
 const SAMPLED_AT = Date.parse("2026-09-03T16:45:00.000Z");
@@ -44,7 +44,7 @@ function providerInput(
 
 describe("LYL metadata provider", () => {
   test("caches episode descriptions separately from the live calendar and playback URLs", async () => {
-    const { store, entries, put } = createMetadataStoreFixture();
+    const { kv, entries, put } = createMetadataKvFixture();
     let time = SAMPLED_AT;
     let liveCalls = 0;
     let detailCalls = 0;
@@ -83,9 +83,9 @@ describe("LYL metadata provider", () => {
           );
         }),
         expiresAt: time + 60_000,
+        kv,
         now: () => time,
         sampledAt: time,
-        store,
       });
     expect(await read("first")).toMatchObject({
       stationDescription: "Details",
@@ -106,9 +106,10 @@ describe("LYL metadata provider", () => {
   test.each(["EPISODE", "SHOW"] as const)(
     "retries mismatched %s details despite an old cache entry, then reuses matching details",
     async (type) => {
-      const { store, put } = createMetadataStoreFixture();
+      const { kv, put } = createMetadataKvFixture();
       await cacheMetadata({
         key: ["lyl", type.toLowerCase(), "current-entry"],
+        kv,
         now: () => SAMPLED_AT,
         retrieve: () =>
           Promise.resolve({
@@ -116,7 +117,6 @@ describe("LYL metadata provider", () => {
             slug: "current-entry",
             title: "Old Title",
           }),
-        store,
         ttl: EPISODE_METADATA_TTL,
       });
       put.mockClear();
@@ -154,8 +154,8 @@ describe("LYL metadata provider", () => {
               })
             );
           }),
+          kv,
           now: () => SAMPLED_AT,
-          store,
         });
 
       expect(await read()).toMatchObject({
@@ -184,7 +184,7 @@ describe("LYL metadata provider", () => {
   test.each(["EPISODE", "SHOW"] as const)(
     "isolates %s details when the selected title changes for the same slug",
     async (type) => {
-      const { store } = createMetadataStoreFixture();
+      const { kv } = createMetadataKvFixture();
       let detailCalls = 0;
       const read = (title: string) =>
         tryLylApi({
@@ -216,8 +216,8 @@ describe("LYL metadata provider", () => {
               })
             );
           }),
+          kv,
           now: () => SAMPLED_AT,
-          store,
         });
 
       expect(await read("Original Title")).toMatchObject({

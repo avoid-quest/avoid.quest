@@ -1,8 +1,4 @@
-import {
-  cacheMetadata,
-  EPISODE_METADATA_TTL,
-  type MetadataStore,
-} from "./cache";
+import { cacheMetadata, EPISODE_METADATA_TTL, type MetadataKv } from "./cache";
 import { parseRadioTitle } from "./title-parser";
 import type { RadioNowPlaying } from "./types";
 import { RadioMetadataValidationError } from "./upstream-fetch";
@@ -90,7 +86,7 @@ type LylEpisode = NonNullable<
 type LylShow = NonNullable<NonNullable<LylShowResponse["data"]>["showBySlug"]>;
 
 export type LylProviderInput = {
-  store?: MetadataStore;
+  kv?: MetadataKv;
   now?: () => number;
   expiresAt: number;
   fetchImpl: FetchLike;
@@ -303,10 +299,10 @@ export async function tryLylApi(
     type === "EPISODE"
       ? await cacheMetadata({
           key: ["lyl", "episode", slug, comparableTitle(title)],
+          kv: input.kv,
           now: input.now,
           retrieve: async () =>
             trustMatchingTitle(await getEpisode(input.fetchImpl, slug), title),
-          store: input.store,
           ttl: EPISODE_METADATA_TTL,
         })
       : null;
@@ -314,10 +310,10 @@ export async function tryLylApi(
     type === "SHOW"
       ? await cacheMetadata({
           key: ["lyl", "show", slug, comparableTitle(title)],
+          kv: input.kv,
           now: input.now,
           retrieve: async () =>
             trustMatchingTitle(await getShow(input.fetchImpl, slug), title),
-          store: input.store,
           ttl: EPISODE_METADATA_TTL,
         })
       : null;

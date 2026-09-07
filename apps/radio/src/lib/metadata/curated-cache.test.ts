@@ -5,7 +5,7 @@ import {
   tryHkcrSchedule,
   tryRadioBlackoutApi,
 } from "./external-providers";
-import { createMetadataStoreFixture } from "./store-test-fixture";
+import { createMetadataKvFixture } from "./kv-test-fixture";
 
 const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
 const START = Date.parse("2026-09-04T13:30:00Z");
@@ -32,7 +32,7 @@ const IPR_FIELDS = {
 };
 
 test("HKCR caches only show display fields for six hours, independently for each show ID", async () => {
-  const { store, entries, put } = createMetadataStoreFixture();
+  const { kv, entries, put } = createMetadataKvFixture();
   let time = START;
   let scheduleCalls = 0;
   let replayCalls = 0;
@@ -81,9 +81,9 @@ test("HKCR caches only show display fields for six hours, independently for each
           tracklist: ["private-tracklist"],
         });
       },
+      kv,
       now: () => time,
       sampledAt: time,
-      store,
       streamUrl: "https://stream-test.hkcr.live/hls/main.m3u8",
     });
   expect(await read("first")).toMatchObject({
@@ -141,7 +141,7 @@ test("HKCR caches only show display fields for six hours, independently for each
 });
 
 test("BlackOut reuses sanitized full description and genres until six-hour expiry", async () => {
-  const { store, entries, put } = createMetadataStoreFixture();
+  const { kv, entries, put } = createMetadataKvFixture();
   let time = START;
   let liveCalls = 0;
   let detailCalls = 0;
@@ -171,9 +171,9 @@ test("BlackOut reuses sanitized full description and genres until six-hour expir
           },
         ]);
       },
+      kv,
       now: () => time,
       sampledAt: time,
-      store,
       streamUrl: "https://zeppelin.streampunk.cc/_stream/blackout.mp3",
     });
   expect(await read()).toMatchObject({
@@ -203,7 +203,7 @@ test("BlackOut reuses sanitized full description and genres until six-hour expir
 test.each(["http", "json", "network", "abort"])(
   "BlackOut retries %s detail failures before caching recovery",
   async (failure) => {
-    const { store, put } = createMetadataStoreFixture();
+    const { kv, put } = createMetadataKvFixture();
     let time = START;
     let detailCalls = 0;
     const read = () =>
@@ -242,9 +242,9 @@ test.each(["http", "json", "network", "abort"])(
             },
           ]);
         },
+        kv,
         now: () => time,
         sampledAt: time,
-        store,
         streamUrl: "https://zeppelin.streampunk.cc/_stream/blackout.mp3",
       });
     expect(await read()).toMatchObject({
@@ -271,7 +271,7 @@ test.each(["http", "json", "network", "abort"])(
 );
 
 test("cached empty BlackOut details preserve each fresh live excerpt", async () => {
-  const { store, put } = createMetadataStoreFixture();
+  const { kv, put } = createMetadataKvFixture();
   let time = START;
   let liveCalls = 0;
   let detailCalls = 0;
@@ -298,9 +298,9 @@ test("cached empty BlackOut details preserve each fresh live excerpt", async () 
           },
         ]);
       },
+      kv,
       now: () => time,
       sampledAt: time,
-      store,
       streamUrl: "https://zeppelin.streampunk.cc/_stream/blackout.mp3",
     });
   expect(await read()).toMatchObject({ stationDescription: "Live excerpt 1" });
@@ -316,7 +316,7 @@ test("cached empty BlackOut details preserve each fresh live excerpt", async () 
 test.each(["http", "json", "network", "abort", "mismatched document"])(
   "IPR preserves art and its episode link after %s details, then retries and caches",
   async (failure) => {
-    const { store, put, entries } = createMetadataStoreFixture();
+    const { kv, put, entries } = createMetadataKvFixture();
     let time = START;
     let liveCalls = 0;
     let searchCalls = 0;
@@ -376,9 +376,9 @@ test.each(["http", "json", "network", "abort", "mismatched document"])(
               },
             });
           },
+          kv,
           now: () => time,
           sampledAt: time,
-          store,
           streamUrl: IPR_STREAM,
         },
         [IPR_FEED]
@@ -410,7 +410,7 @@ test.each(["http", "json", "network", "abort", "mismatched document"])(
 );
 
 test("an unexpired empty Airtime v2 entry cannot hide newly available IPR enrichment", async () => {
-  const { store, entries } = createMetadataStoreFixture();
+  const { kv, entries } = createMetadataKvFixture();
   await cacheMetadata({
     key: [
       new URL(IPR_STREAM).hostname,
@@ -419,9 +419,9 @@ test("an unexpired empty Airtime v2 entry cannot hide newly available IPR enrich
       [null, null, null, null],
       "2022-09-20",
     ],
+    kv,
     now: () => START,
     retrieve: () => Promise.resolve({}),
-    store,
     ttl: EPISODE_METADATA_TTL,
   });
   expect(entries.size).toBe(1);
@@ -454,9 +454,9 @@ test("an unexpired empty Airtime v2 entry cannot hide newly available IPR enrich
           },
         });
       },
+      kv,
       now: () => START,
       sampledAt: START,
-      store,
       streamUrl: IPR_STREAM,
     },
     [IPR_FEED]

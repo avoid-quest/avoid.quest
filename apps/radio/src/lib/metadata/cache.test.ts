@@ -6,7 +6,7 @@ import {
   getOrSetCachedRadioMetadata,
   setCachedRadioMetadata,
 } from "./cache";
-import { createMetadataStoreFixture } from "./store-test-fixture";
+import { createMetadataKvFixture } from "./kv-test-fixture";
 import type { RadioMetadataResponse } from "./types";
 
 const success: RadioMetadataResponse = {
@@ -67,18 +67,18 @@ describe("radio metadata cache", () => {
 
 describe("shared metadata cache", () => {
   test("shares valid empty results and refreshes logically expired entries", async () => {
-    const { store, put } = createMetadataStoreFixture();
+    const { kv, put } = createMetadataKvFixture();
     let time = 1000;
     let calls = 0;
     const read = () =>
       cacheMetadata({
         key: ["directory", "search", "empty", 10],
+        kv,
         now: () => time,
         retrieve: () => {
           calls += 1;
           return Promise.resolve([]);
         },
-        store,
         ttl: 600,
       });
     expect(await read()).toEqual([]);
@@ -91,7 +91,7 @@ describe("shared metadata cache", () => {
   });
 
   test("keys include provider, operation and every argument even for long inputs", async () => {
-    const { store, entries } = createMetadataStoreFixture();
+    const { kv, entries } = createMetadataKvFixture();
     const keys = [
       ["nts", "live", "x".repeat(2000), "1"],
       ["nts", "live", "x".repeat(2000), "2"],
@@ -103,8 +103,8 @@ describe("shared metadata cache", () => {
         expect(
           await cacheMetadata({
             key,
+            kv,
             retrieve: () => Promise.resolve(index),
-            store,
             ttl: 60,
           })
         ).toBe(index);
@@ -115,17 +115,17 @@ describe("shared metadata cache", () => {
   });
 
   test.each(["read", "write"])(
-    "returns provider data after a cache %s failure",
+    "returns provider data after a KV %s failure",
     async (operation) => {
-      const { store, get, put } = createMetadataStoreFixture();
+      const { kv, get, put } = createMetadataKvFixture();
       (operation === "read" ? get : put).mockRejectedValue(
-        new Error("cache unavailable")
+        new Error("KV unavailable")
       );
       expect(
         await cacheMetadata({
           key: ["provider", "details"],
+          kv,
           retrieve: () => Promise.resolve({ title: "Valid" }),
-          store,
           ttl: 60,
         })
       ).toEqual({ title: "Valid" });
@@ -133,11 +133,11 @@ describe("shared metadata cache", () => {
   );
 
   test.each(["read", "write"])(
-    "returns provider data after a stalled cache %s",
+    "returns provider data after a stalled KV %s",
     async (operation) => {
       jest.useFakeTimers();
       try {
-        const { store, get, put } = createMetadataStoreFixture();
+        const { kv, get, put } = createMetadataKvFixture();
         const started = Promise.withResolvers<void>();
         const stalled = Promise.withResolvers<never>();
         (operation === "read" ? get : put).mockImplementation(() => {
@@ -150,9 +150,9 @@ describe("shared metadata cache", () => {
         const pending = cacheMetadata({
           expiresAt: (result) => result.expiresAt,
           key: ["provider", "details"],
+          kv,
           now: () => 1000,
           retrieve,
-          store,
           ttl: 60,
         }).then((result) => {
           settled = true;
@@ -172,7 +172,7 @@ describe("shared metadata cache", () => {
           value,
         });
 
-        stalled.reject(new Error("late cache failure"));
+        stalled.reject(new Error("late KV failure"));
         await Promise.resolve();
       } finally {
         jest.useRealTimers();
@@ -182,7 +182,7 @@ describe("shared metadata cache", () => {
   );
 
   test("preserves provider expiry through retrieval and cache hits", async () => {
-    const { store, put } = createMetadataStoreFixture();
+    const { kv, put } = createMetadataKvFixture();
     let time = 1000;
     const retrieve = mock(() => {
       time += 250;
@@ -192,9 +192,9 @@ describe("shared metadata cache", () => {
       cacheMetadata({
         expiresAt: (result) => (result.ok ? result.data.expiresAt : 0),
         key: ["provider", "now-playing"],
+        kv,
         now: () => time,
         retrieve,
-        store,
         ttl: 60,
       });
     expect(await read()).toEqual(success);
@@ -209,8 +209,8 @@ describe("shared metadata cache", () => {
   });
 
   test("does not cache upstream failures or null metadata", async () => {
-    const { store, put } = createMetadataStoreFixture();
-    const options = { key: ["provider", "details"], store, ttl: 60 };
+    const { kv, put } = createMetadataKvFixture();
+    const options = { key: ["provider", "details"], kv, ttl: 60 };
     await expect(
       cacheMetadata({
         ...options,

@@ -7,7 +7,7 @@ import {
   cacheMetadata,
   getOrSetCachedRadioMetadata,
   getRadioMetadataCacheKey,
-  type MetadataStore,
+  type MetadataKv,
   RADIO_METADATA_FAILURE_TTL_MS,
   RADIO_METADATA_SUCCESS_TTL_MS,
   RADIO_METADATA_UNSUPPORTED_TTL_MS,
@@ -35,7 +35,7 @@ type RadioMetadataWorkflowContext = {
 };
 
 type RadioMetadataWorkflowDependencies = {
-  store?: MetadataStore;
+  kv?: MetadataKv;
   captureError?: typeof captureError;
   fetchImpl?: FetchLike;
   now?: () => number;
@@ -207,7 +207,7 @@ function parseMetadataConfig(params: URLSearchParams): MetadataConfigResult {
 }
 
 export function createRadioMetadataWorkflow({
-  store,
+  kv,
   captureError: captureErrorImpl = captureError,
   fetchImpl = fetch,
   now = Date.now,
@@ -216,8 +216,8 @@ export function createRadioMetadataWorkflow({
   const retrieval = createRadioMetadataRetrieval({
     captureError: captureErrorImpl,
     fetchFollowingPublicRedirects: createMetadataUpstreamFetch(fetchImpl),
+    kv,
     now,
-    store,
     timeoutMs,
   });
 
@@ -263,11 +263,11 @@ export function createRadioMetadataWorkflow({
             validation.url,
             configResult.config,
           ],
+          kv,
           now,
           retrieve: () =>
             retrieval.retrieve(validation.url, configResult.config),
           shouldCache: (result) => result.ok,
-          store,
           ttl: RADIO_METADATA_SUCCESS_TTL_MS / 1000,
         }),
       ttlForResponse: (result) => ttlForResponse(result, now()),

@@ -1,6 +1,6 @@
 import { afterEach, expect, mock, spyOn, test } from "bun:test";
 import { cacheMetadata, DIRECTORY_SEARCH_TTL } from "@/lib/metadata/cache";
-import { createMetadataStoreFixture } from "@/lib/metadata/store-test-fixture";
+import { createMetadataKvFixture } from "@/lib/metadata/kv-test-fixture";
 import {
   getCachedRadioGardenItem,
   searchCachedRadioBrowser,
@@ -19,7 +19,7 @@ afterEach(() => {
 });
 
 test("Radio Garden shares station attributes but resolves playback on every request", async () => {
-  const { store, entries, put } = createMetadataStoreFixture();
+  const { kv, entries, put } = createMetadataKvFixture();
   let attributes = 0;
   let streams = 0;
   spyOn(fetchTarget, "fetch").mockImplementation((input) => {
@@ -45,11 +45,11 @@ test("Radio Garden shares station attributes but resolves playback on every requ
       })
     );
   });
-  expect(await getCachedRadioGardenItem(store, "station")).toMatchObject({
+  expect(await getCachedRadioGardenItem(kv, "station")).toMatchObject({
     streamUrl: "https://audio.example/live?token=1",
     success: true,
   });
-  expect(await getCachedRadioGardenItem(store, "station")).toMatchObject({
+  expect(await getCachedRadioGardenItem(kv, "station")).toMatchObject({
     streamUrl: "https://audio.example/live?token=2",
     success: true,
   });
@@ -60,23 +60,23 @@ test("Radio Garden shares station attributes but resolves playback on every requ
 });
 
 test("Radio Garden caches empty searches but retries upstream failures", async () => {
-  const { store, put } = createMetadataStoreFixture();
+  const { kv, put } = createMetadataKvFixture();
   const fetchMock = spyOn(fetchTarget, "fetch").mockResolvedValue(
     new Response(null, { status: 503 })
   );
-  await expect(searchCachedRadioGarden(store, "empty")).rejects.toThrow();
+  await expect(searchCachedRadioGarden(kv, "empty")).rejects.toThrow();
   expect(put).not.toHaveBeenCalled();
   fetchMock.mockImplementation(() =>
     Promise.resolve(Response.json({ hits: { hits: [] } }))
   );
-  expect(await searchCachedRadioGarden(store, "empty")).toEqual([]);
-  expect(await searchCachedRadioGarden(store, "empty")).toEqual([]);
+  expect(await searchCachedRadioGarden(kv, "empty")).toEqual([]);
+  expect(await searchCachedRadioGarden(kv, "empty")).toEqual([]);
   expect(fetchMock).toHaveBeenCalledTimes(2);
   expect(put.mock.calls[0]?.[2]).toEqual({ expirationTtl: 600 });
 });
 
 test("Radio Browser shares validated searches and isolates query and limit", async () => {
-  const { store } = createMetadataStoreFixture();
+  const { kv } = createMetadataKvFixture();
   const searches: URL[] = [];
   spyOn(fetchTarget, "fetch").mockImplementation((input) => {
     const url = new URL(String(input));
@@ -113,12 +113,12 @@ test("Radio Browser shares validated searches and isolates query and limit", asy
       ])
     );
   });
-  const first = await searchCachedRadioBrowser(store, "ambient", 10);
+  const first = await searchCachedRadioBrowser(kv, "ambient", 10);
   expect(first.map((station) => station.stationUuid)).toEqual(["valid"]);
-  expect(await searchCachedRadioBrowser(store, "ambient", 10)).toEqual(first);
+  expect(await searchCachedRadioBrowser(kv, "ambient", 10)).toEqual(first);
   expect(searches).toHaveLength(1);
-  await searchCachedRadioBrowser(store, "ambient", 20);
-  await searchCachedRadioBrowser(store, "jazz", 10);
+  await searchCachedRadioBrowser(kv, "ambient", 20);
+  await searchCachedRadioBrowser(kv, "jazz", 10);
   expect(
     searches.map((url) => [
       url.searchParams.get("name"),
@@ -132,7 +132,7 @@ test("Radio Browser shares validated searches and isolates query and limit", asy
 });
 
 test("Radio Browser caches mixed searches and refreshes query-bearing playback in one lookup", async () => {
-  const { store, entries, put } = createMetadataStoreFixture();
+  const { kv, entries, put } = createMetadataKvFixture();
   const searches: URL[] = [];
   const lookups: URL[] = [];
   spyOn(fetchTarget, "fetch").mockImplementation((input) => {
@@ -177,7 +177,7 @@ test("Radio Browser caches mixed searches and refreshes query-bearing playback i
       ])
     );
   });
-  const first = await searchCachedRadioBrowser(store, "mixed", 10);
+  const first = await searchCachedRadioBrowser(kv, "mixed", 10);
   expect(first.map((station) => station.stationUuid)).toEqual([
     "signed",
     "public",
@@ -186,8 +186,8 @@ test("Radio Browser caches mixed searches and refreshes query-bearing playback i
   expect(first[0]?.urlResolved).toContain("token=1");
   expect(put).toHaveBeenCalledTimes(1);
   expect(lookups).toHaveLength(0);
-  const second = await searchCachedRadioBrowser(store, "mixed", 10);
-  const third = await searchCachedRadioBrowser(store, "mixed", 10);
+  const second = await searchCachedRadioBrowser(kv, "mixed", 10);
+  const third = await searchCachedRadioBrowser(kv, "mixed", 10);
   expect(second.map((station) => station.stationUuid)).toEqual(
     first.map((station) => station.stationUuid)
   );
@@ -209,7 +209,7 @@ test("Radio Browser caches mixed searches and refreshes query-bearing playback i
 });
 
 test("Radio Browser retries a DNS outage instead of caching a partial search", async () => {
-  const { store, put } = createMetadataStoreFixture();
+  const { kv, put } = createMetadataKvFixture();
   const dnsResponse = mock(() => new Response(null, { status: 503 }));
   let searches = 0;
   spyOn(fetchTarget, "fetch").mockImplementation((input) => {
@@ -238,7 +238,7 @@ test("Radio Browser retries a DNS outage instead of caching a partial search", a
       ])
     );
   });
-  await expect(searchCachedRadioBrowser(store, "dns", 10)).rejects.toThrow();
+  await expect(searchCachedRadioBrowser(kv, "dns", 10)).rejects.toThrow();
   expect(put).not.toHaveBeenCalled();
   dnsResponse.mockImplementation(() =>
     Response.json({
@@ -246,18 +246,18 @@ test("Radio Browser retries a DNS outage instead of caching a partial search", a
       Status: 0,
     })
   );
-  const recovered = await searchCachedRadioBrowser(store, "dns", 10);
+  const recovered = await searchCachedRadioBrowser(kv, "dns", 10);
   expect(recovered.map((station) => station.stationUuid)).toEqual([
     "dns",
     "public-ip",
   ]);
-  expect(await searchCachedRadioBrowser(store, "dns", 10)).toEqual(recovered);
+  expect(await searchCachedRadioBrowser(kv, "dns", 10)).toEqual(recovered);
   expect(searches).toBe(2);
   expect(put).toHaveBeenCalledTimes(1);
 });
 
 test("Radio Browser retries failed refreshes and only filters unavailable stations from successful lookups", async () => {
-  const { store, put } = createMetadataStoreFixture();
+  const { kv, put } = createMetadataKvFixture();
   let state: "initial" | "outage" | "unsafe" | "missing" | "recovered" =
     "initial";
   let searches = 0;
@@ -298,26 +298,24 @@ test("Radio Browser retries failed refreshes and only filters unavailable statio
       ])
     );
   });
-  const first = await searchCachedRadioBrowser(store, "refresh", 10);
+  const first = await searchCachedRadioBrowser(kv, "refresh", 10);
   expect(first).toHaveLength(2);
   state = "outage";
-  await expect(
-    searchCachedRadioBrowser(store, "refresh", 10)
-  ).rejects.toThrow();
+  await expect(searchCachedRadioBrowser(kv, "refresh", 10)).rejects.toThrow();
   state = "unsafe";
   expect(
-    (await searchCachedRadioBrowser(store, "refresh", 10)).map(
+    (await searchCachedRadioBrowser(kv, "refresh", 10)).map(
       (station) => station.stationUuid
     )
   ).toEqual(["public"]);
   state = "missing";
   expect(
-    (await searchCachedRadioBrowser(store, "refresh", 10)).map(
+    (await searchCachedRadioBrowser(kv, "refresh", 10)).map(
       (station) => station.stationUuid
     )
   ).toEqual(["public"]);
   state = "recovered";
-  const recovered = await searchCachedRadioBrowser(store, "refresh", 10);
+  const recovered = await searchCachedRadioBrowser(kv, "refresh", 10);
   expect(recovered.map((station) => station.stationUuid)).toEqual([
     "station",
     "public",
@@ -328,11 +326,11 @@ test("Radio Browser retries failed refreshes and only filters unavailable statio
 });
 
 test("Radio Browser caches valid empty searches and bypasses the old failure-prone key", async () => {
-  const { store, put } = createMetadataStoreFixture();
+  const { kv, put } = createMetadataKvFixture();
   await cacheMetadata({
     key: ["radio-browser", "search", "empty", 10],
+    kv,
     retrieve: async () => [{ stationUuid: "old-partial-result" }],
-    store,
     ttl: DIRECTORY_SEARCH_TTL,
   });
   let searches = 0;
@@ -345,8 +343,8 @@ test("Radio Browser caches valid empty searches and bypasses the old failure-pro
     searches += 1;
     return Promise.resolve(Response.json([]));
   });
-  expect(await searchCachedRadioBrowser(store, "empty", 10)).toEqual([]);
-  expect(await searchCachedRadioBrowser(store, "empty", 10)).toEqual([]);
+  expect(await searchCachedRadioBrowser(kv, "empty", 10)).toEqual([]);
+  expect(await searchCachedRadioBrowser(kv, "empty", 10)).toEqual([]);
   expect(searches).toBe(1);
   expect(put).toHaveBeenCalledTimes(2);
 });

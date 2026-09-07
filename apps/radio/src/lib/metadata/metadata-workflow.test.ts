@@ -50,10 +50,20 @@ describe("createRadioMetadataWorkflow", () => {
       "https://second.example"
     );
     expect(first).toMatchObject({
-      data: { expiresAt: 61_000, sampledAt: 1000 },
+      data: { expiresAt: 901_000, sampledAt: 1000 },
     });
     expect(urls).toHaveLength(1);
-    expect(put.mock.calls[0]?.[2]).toEqual({ expirationTtl: 60 });
+    expect(put.mock.calls[0]?.[2]).toEqual({ expirationTtl: 900 });
+
+    // Cold Worker contexts must reuse KV throughout the full 15-minute window.
+    for (const timestamp of [61_000, 300_000, 900_999]) {
+      time = timestamp;
+      // biome-ignore lint/performance/noAwaitInLoops: Advance the fake clock between independent requests.
+      const cached = await (await read("cached")).json();
+      expect(cached as RadioMetadataResponse).toEqual(first);
+    }
+    expect(urls).toHaveLength(1);
+    expect(put).toHaveBeenCalledTimes(1);
 
     const differentConfig = createRequest(["https://other.example/live-info"]);
     expect(
@@ -61,11 +71,11 @@ describe("createRadioMetadataWorkflow", () => {
     ).toMatchObject({
       data: { title: "Track 2" },
     });
-    time = 61_000;
+    time = 901_000;
     expect(await (await read("fourth", request, false)).json()).toMatchObject({
       data: {
-        expiresAt: 121_000,
-        sampledAt: 61_000,
+        expiresAt: 1_801_000,
+        sampledAt: 901_000,
         title: "Track 3",
       },
     });

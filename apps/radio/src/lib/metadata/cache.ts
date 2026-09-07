@@ -9,7 +9,7 @@ const MAX_CACHE_ENTRIES = 256;
 const cache = new Map<string, CacheEntry>();
 const inFlight = new Map<string, Promise<RadioMetadataResponse>>();
 
-export const RADIO_METADATA_SUCCESS_TTL_MS = 60_000;
+export const RADIO_METADATA_SUCCESS_TTL_MS = 15 * 60_000;
 export const RADIO_METADATA_UNSUPPORTED_TTL_MS = 10_000;
 export const RADIO_METADATA_FAILURE_TTL_MS = 5000;
 export const EPISODE_METADATA_TTL = 6 * 60 * 60;

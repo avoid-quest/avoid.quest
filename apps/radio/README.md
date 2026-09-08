@@ -140,6 +140,24 @@ Workers Builds PR comments should include the branch preview URL after upload.
 
 ### Shared radio metadata
 
+External players can request `GET /api/radio-metadata?stationId=<id>` using an
+ID from `/playlist.m3u` or `/api/stations.json`. The Worker resolves the current
+stream and metadata configuration from the same default station list as those
+exports. When `stationId` is supplied, caller `url`, `kind`, and provider-specific
+parameters do not override it. Unknown or disabled IDs return HTTP 404 with
+`ok: false`; stations without a metadata source return the existing unsupported
+response. The configured `url` and `kind` lookup remains supported for the radio
+app's editable stations.
+
+Both forms use the same retrieval and cache. Success returns `{ ok: true, data }`
+with the existing `RadioNowPlaying` fields, including `streamUrl`, nullable
+`title`/`artworkUrl`, `sampledAt`, and `expiresAt`. Clients must match `streamUrl`
+to their playing catalog entry and discard expired snapshots. Keep the service's
+anonymous session cookie on the requesting client and honor HTTP 429 retries.
+The existing session, rate-limit, URL validation and origin policies apply.
+When renaming a default station, give it an explicit `id` retaining its previous
+exported identity, whose value follows the `avoid-radio-` prefix.
+
 The radio Worker uses one `RADIO_METADATA` KV binding. Live snapshots expire
 after 15 minutes; episode/show enrichment after six hours; Radio Garden station
 attributes after 24 hours; and Radio Browser/Radio Garden searches after ten

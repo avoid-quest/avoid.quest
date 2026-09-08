@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  findPublicRadio,
   getPublicKodiStations,
   KODI_DEFAULT_GROUP_TITLE,
   renderKodiM3uPlaylist,
@@ -106,4 +107,21 @@ describe("renderKodiM3uPlaylist", () => {
       ].join("\n")
     );
   });
+});
+
+test("public station lookup shares export identity and eligibility after stream changes", () => {
+  const radios: Radio[] = [
+    { id: "stable", name: "Renamed", streamUrl: "https://radio.example/new" },
+    {
+      enabled: false,
+      id: "disabled",
+      name: "Disabled",
+      streamUrl: "https://radio.example/off",
+    },
+    { id: "asset", name: "Asset", streamUrl: "/local.mp3" },
+  ];
+  expect(findPublicRadio(radios, "avoid-radio-stable")).toBe(radios[0]);
+  expect(findPublicRadio(radios, "avoid-radio-disabled")).toBeUndefined();
+  expect(findPublicRadio(radios, "avoid-radio-asset")).toBeUndefined();
+  expect(findPublicRadio(radios, "unknown")).toBeUndefined();
 });

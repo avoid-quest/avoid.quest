@@ -135,3 +135,55 @@ describe("createRadioMetadataWorkflow", () => {
     expect(response.status).toBe(400);
   });
 });
+
+test("station-ID lookup reuses configured retrieval and cache without accepting caller overrides", async () => {
+  clearRadioMetadataCache();
+  const urls: string[] = [];
+  const workflow = createRadioMetadataWorkflow({
+    fetchImpl: (url) => {
+      urls.push(url);
+      return Promise.resolve(
+        Response.json({ current: { name: "Shared programme" } })
+      );
+    },
+    now: () => 1000,
+  });
+  const read = (query: string) =>
+    workflow.handle({
+      origin: "https://radio.avoid.quest",
+      request: new Request(
+        `https://radio.avoid.quest/api/radio-metadata?${query}`
+      ),
+      requestId: "station",
+    });
+  const byId = await read(
+    "stationId=avoid-radio-sygma-radio&url=http://127.0.0.1/private&kind=icy"
+  );
+  expect(byId.status).toBe(200);
+  const payload = (await byId.json()) as RadioMetadataResponse;
+  expect(payload).toMatchObject({
+    data: {
+      expiresAt: 901_000,
+      sampledAt: 1000,
+      streamUrl: "https://radio.syg.ma/audio.mp3",
+      title: "Shared programme",
+    },
+    ok: true,
+  });
+  const configured = await read(
+    new URLSearchParams({
+      kind: "airtime-live-info",
+      metadataUrl: "https://radio.syg.ma/stats-icecast.json",
+      url: "https://radio.syg.ma/audio.mp3",
+    }).toString()
+  );
+  expect((await configured.json()) as RadioMetadataResponse).toEqual(payload);
+  expect(urls).toEqual(["https://radio.syg.ma/stats-icecast.json"]);
+  expect(
+    (await read("stationId=not-exported&url=https://example.com/live&kind=icy"))
+      .status
+  ).toBe(404);
+  expect((await read("stationId=")).status).toBe(404);
+  expect(urls).toHaveLength(1);
+  clearRadioMetadataCache();
+});

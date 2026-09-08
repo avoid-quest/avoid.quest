@@ -1,4 +1,6 @@
 import { captureError } from "@avoid.quest/error";
+import { radios } from "@/lib/const";
+import { findPublicRadio } from "@/lib/kodi-playlist";
 import {
   type StreamUrlValidationResult,
   validatePublicStreamUrl,
@@ -227,7 +229,24 @@ export function createRadioMetadataWorkflow({
     requestId,
   }: RadioMetadataWorkflowContext): Promise<Response> => {
     const params = new URL(request.url).searchParams;
-    const urlParam = params.get("url");
+    const stationId = params.get("stationId");
+    const station =
+      stationId === null ? undefined : findPublicRadio(radios, stationId);
+    if (stationId !== null && !station) {
+      return jsonResponse(
+        {
+          error: {
+            code: "RADIO_METADATA_UNSUPPORTED",
+            message: "Public station not found",
+          },
+          ok: false,
+        },
+        origin,
+        requestId,
+        404
+      );
+    }
+    const urlParam = station ? station.streamUrl : params.get("url");
     const validation = validatePublicStreamUrl(urlParam);
     if (!validation.ok) {
       const response = validationErrorForReason(validation.reason);
@@ -239,7 +258,15 @@ export function createRadioMetadataWorkflow({
       );
     }
 
-    const configResult = parseMetadataConfig(params);
+    let configResult: MetadataConfigResult;
+    if (station) {
+      configResult =
+        station.metadataConfig && station.metadataConfig.kind !== "none"
+          ? { config: station.metadataConfig, ok: true }
+          : unsupportedConfigResponse();
+    } else {
+      configResult = parseMetadataConfig(params);
+    }
     if (!configResult.ok) {
       return jsonResponse(
         configResult.response,

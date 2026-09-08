@@ -101,6 +101,13 @@ function toKodiStation(
   return station;
 }
 
+export function findPublicRadio(
+  radios: Radio[],
+  stationId: string
+): Radio | undefined {
+  return radios.find((radio) => toKodiStation(radio)?.id === stationId);
+}
+
 export function getPublicKodiStations(
   radios: Radio[],
   groupTitle = KODI_DEFAULT_GROUP_TITLE
